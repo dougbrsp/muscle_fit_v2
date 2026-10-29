@@ -4,5 +4,5 @@
 # Versoes com que o pacote v1 foi gerado e reproduzido byte a byte (2026-10-03).
 numpy==2.5.3
 opencv-python-headless==5.0.0.93
-pillow==12.3.0
+pillow==13.0.0
 potracer==0.0.4
