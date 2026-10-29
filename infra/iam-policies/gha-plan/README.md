@@ -16,15 +16,15 @@ Todas as etapas da "Ordem de execução" foram executadas. O texto abaixo fica c
 
 Pendência fora do AWS-03: a decisão sobre expirar as versões não correntes do tfstate (ver "Versões antigas do tfstate e decisão pendente").
 
-## Repositório v2 (M103, lido em 2026-10-29)
+## Repositório v2 (M103, virada em 2026-10-29)
 
-O projeto migrou para o repositório **público** `dougbrsp/muscle_fit_v2` (ID `1436380326`). O antigo, `dougbrsp/muscle_fit` (ID `1356252176`), ficou privado e arquivado. As duas trusts foram ampliadas fora deste PR (dono da conta) e hoje aceitam os dois repositórios, cada um nas formas com nome e com IDs. Os JSONs desta pasta refletem esse estado real (`aws iam get-role --role-name <role> --profile musclefit`, 2026-10-29):
+O projeto migrou para o repositório **público** `dougbrsp/muscle_fit_v2` (ID `1436380326`). O antigo, `dougbrsp/muscle_fit` (ID `1356252176`), foi arquivado e continua privado. Durante a transição as duas trusts aceitaram os dois repositórios. **A virada foi feita em 2026-10-29** pelo dono da conta, fora do Terraform: os subs do repositório antigo saíram das duas trusts, que hoje só aceitam o v2, nas formas com nome e com IDs. Os JSONs desta pasta refletem esse estado real (`aws iam get-role --role-name <role> --profile musclefit`, 2026-10-29):
 
-- `musclefit-gha-plan-trust.json`: `StringEquals` com 4 `sub`, todos `:pull_request`: `repo:dougbrsp/muscle_fit`, `repo:dougbrsp@33515327/muscle_fit@1356252176`, `repo:dougbrsp/muscle_fit_v2` e `repo:dougbrsp@33515327/muscle_fit_v2@1436380326`.
-- `musclefit-gha-deploy-trust-sem-pull-request.json`: `StringLike` com 8 `sub`: `ref:refs/heads/main` e `environment:production` para cada uma das 4 formas acima. Continua sem `pull_request` e sem curinga.
-- `musclefit-gha-deploy-trust-atual-2026-10-10.json` é retrato histórico (antes do Passo B) e não muda.
+- `musclefit-gha-plan-trust.json`: `StringEquals` com 2 `sub`, ambos `:pull_request`: `repo:dougbrsp/muscle_fit_v2` e `repo:dougbrsp@33515327/muscle_fit_v2@1436380326`.
+- `musclefit-gha-deploy-trust-sem-pull-request.json`: `StringLike` com 4 `sub`: `ref:refs/heads/main` e `environment:production` para cada uma das 2 formas acima. Continua sem `pull_request` e sem curinga.
+- `musclefit-gha-deploy-trust-atual-2026-10-10.json` é retrato histórico (antes do Passo B, ainda com o repositório antigo) e não muda.
 
-**Na virada** (quando o v2 estiver validado em PR, deploy e promoção), os subs do repositório antigo (`muscle_fit` e `muscle_fit@1356252176`) **saem** das duas trusts, por runbook do dono da conta. No mesmo PR que registrar a virada: tirar esses subs dos dois JSONs e deixar `REPO_NOME`/`REPO_IDS` de `scripts/test_iam_gha_plan.py` só com o v2. A guarda (`python -m pytest -q scripts/test_iam_gha_plan.py`) compara o conjunto exato de `sub`, então JSON e AWS precisam andar juntos.
+`REPO_NOME`/`REPO_IDS` de `scripts/test_iam_gha_plan.py` têm só o v2. A guarda (`python -m pytest -q scripts/test_iam_gha_plan.py`) compara o conjunto exato de `sub`, então JSON e AWS precisam andar juntos. Workflows do repositório antigo não conseguem mais assumir as roles.
 
 ## Estado na conta (lido em 2026-10-10, só Get/List/Describe/Lookup/Simulate)
 
