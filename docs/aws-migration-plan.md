@@ -355,7 +355,7 @@ Nesta fase, o IaC (Terraform ou CDK) cobre **apenas**:
 - [x] Certificado ACM de `app.musclefit.com.br` (e apex, se SAN do mesmo certificado) `ISSUED` em `us-east-1`
 - [ ] Registros alias reservados (`app`, `api`, apex) criados na hosted zone, ainda sem destino resolvendo (aguardando Fases 3/4)
 - [x] Backend de state do IaC criado em `sa-east-1` — bucket `musclefit-tfstate-930413537709` + tabela `musclefit-tfstate-lock`
-- [x] IAM role de deploy via OIDC, sem chaves estáticas — `musclefit-gha-deploy`, escopada a `dougbrsp/muscle_fit_v2` branch `main` (até 2026-10-29, `dougbrsp/muscle_fit`; na transição do M103 aceita os dois)
+- [x] IAM role de deploy via OIDC, sem chaves estáticas — `musclefit-gha-deploy`, escopada a `dougbrsp/muscle_fit_v2` branch `main` (até 2026-10-29, `dougbrsp/muscle_fit`, hoje arquivado e privado; a virada do M103 tirou o antigo da trust em 2026-10-29)
 
 ### Fase 1 — Fundação de dados
 1. Subir o cluster Aurora `musclefit-db` vazio em `sa-east-1`, com o schema aplicado.
@@ -1070,5 +1070,5 @@ O salto de v2 para v3 é dominado pelo prêmio de preço de `sa-east-1` sobre se
 | Secrets Manager (prefixo) | `musclefit/*` | Sem mais `openai-api-key`; inclui `musclefit/aurora-credentials`, `musclefit/intervals-api-key` |
 | Domínio | `musclefit.com.br` (`api.musclefit.com.br`, `app.musclefit.com.br`) | Registrado no Registro.br; DNS **permanece no Registro.br** (registros específicos cadastrados manualmente no painel deles, sem delegação ao Route 53 — ver Fase 0, item 0.3, decisão revertida em 2026-09-04 após incidente de e-mail). **Atualização 2026-10-03/05 (M44):** DNS de volta ao Route 53, gerido por `infra/route53.tf`, delegado desde 2026-10-03; o Registro.br fica só como registrador |
 | CloudWatch Dashboard | `musclefit-overview` | Inclui latência das chamadas à OpenAI e `ServerlessDatabaseCapacity` |
-| IAM role de deploy (CI/CD) | `musclefit-gha-deploy` | OIDC do GitHub Actions, trust restrita a `ref:refs/heads/main` e `environment:production` de `dougbrsp/muscle_fit_v2` (na transição do M103 também do antigo `dougbrsp/muscle_fit`); já criada (Fase 0) |
+| IAM role de deploy (CI/CD) | `musclefit-gha-deploy` | OIDC do GitHub Actions, trust restrita a `ref:refs/heads/main` e `environment:production` de `dougbrsp/muscle_fit_v2` (o antigo `dougbrsp/muscle_fit`, arquivado e privado, saiu da trust na virada do M103, em 2026-10-29); já criada (Fase 0) |
 | Backend de state Terraform | `musclefit-tfstate-930413537709` (S3) / `musclefit-tfstate-lock` (DynamoDB) | `sa-east-1`; já criado (Fase 0) — IaC deverá importar, não recriar |

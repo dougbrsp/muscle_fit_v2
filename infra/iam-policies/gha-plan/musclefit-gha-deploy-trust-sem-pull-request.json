@@ -13,10 +13,6 @@
         },
         "StringLike": {
           "token.actions.githubusercontent.com:sub": [
-            "repo:dougbrsp/muscle_fit:ref:refs/heads/main",
-            "repo:dougbrsp/muscle_fit:environment:production",
-            "repo:dougbrsp@33515327/muscle_fit@1356252176:ref:refs/heads/main",
-            "repo:dougbrsp@33515327/muscle_fit@1356252176:environment:production",
             "repo:dougbrsp/muscle_fit_v2:ref:refs/heads/main",
             "repo:dougbrsp/muscle_fit_v2:environment:production",
             "repo:dougbrsp@33515327/muscle_fit_v2@1436380326:ref:refs/heads/main",

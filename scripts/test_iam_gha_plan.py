@@ -25,14 +25,11 @@ RAIZ = Path(__file__).resolve().parent.parent
 DIR = RAIZ / "infra" / "iam-policies" / "gha-plan"
 CONTA = "930413537709"
 REGIAO = "sa-east-1"
-# M103 (2026-10-29): o projeto migrou para o repositorio publico `muscle_fit_v2`. Na
-# transicao, as trusts aceitam o antigo (`muscle_fit`, privado e arquivado) e o v2. Na
-# virada, os subs do antigo saem da AWS e daqui (ver README, "Repositorio v2").
-REPO_IDS = (
-    "repo:dougbrsp@33515327/muscle_fit@1356252176",
-    "repo:dougbrsp@33515327/muscle_fit_v2@1436380326",
-)
-REPO_NOME = ("repo:dougbrsp/muscle_fit", "repo:dougbrsp/muscle_fit_v2")
+# M103: o projeto migrou para o repositorio publico `muscle_fit_v2`. Na virada
+# (2026-10-29) os subs do antigo (`muscle_fit`, privado e arquivado) sairam das trusts
+# na AWS; as trusts aceitam so o v2 (ver README, "Repositorio v2").
+REPO_IDS = ("repo:dougbrsp@33515327/muscle_fit_v2@1436380326",)
+REPO_NOME = ("repo:dougbrsp/muscle_fit_v2",)
 LIMITE_MANAGED = 6144
 
 # Prefixos de verbo permitidos numa role de plan. `apigateway:GET` e o unico verbo HTTP
