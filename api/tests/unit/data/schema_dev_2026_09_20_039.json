@@ -1,0 +1,416 @@
+{
+ "_origem": "Recorte do information_schema do MySQL 8.0.46 do ambiente DEV (docker compose, schema fitness) em 2026-09-20, na versao 38 de schema_migration_files - a mesma versao da Aurora de producao para exercise_catalog/users. Lido SOMENTE por SELECT; nenhuma escrita. Nao e um dump do banco, so metadados de 2 tabelas.",
+ "columns": [
+  {
+   "ckey": "PRI",
+   "col": "id",
+   "coll": null,
+   "dflt": null,
+   "extra": "auto_increment",
+   "nullable": "NO",
+   "pos": 1,
+   "t": "exercise_catalog",
+   "type": "bigint unsigned"
+  },
+  {
+   "ckey": "UNI",
+   "col": "name",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "NO",
+   "pos": 2,
+   "t": "exercise_catalog",
+   "type": "varchar(255)"
+  },
+  {
+   "ckey": "",
+   "col": "body_position",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 3,
+   "t": "exercise_catalog",
+   "type": "varchar(120)"
+  },
+  {
+   "ckey": "",
+   "col": "movement",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 4,
+   "t": "exercise_catalog",
+   "type": "varchar(120)"
+  },
+  {
+   "ckey": "",
+   "col": "trajectory",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 5,
+   "t": "exercise_catalog",
+   "type": "varchar(120)"
+  },
+  {
+   "ckey": "",
+   "col": "biomechanical_pattern",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 6,
+   "t": "exercise_catalog",
+   "type": "varchar(160)"
+  },
+  {
+   "ckey": "",
+   "col": "primary_joint",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 7,
+   "t": "exercise_catalog",
+   "type": "varchar(160)"
+  },
+  {
+   "ckey": "",
+   "col": "resistance_vector",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 8,
+   "t": "exercise_catalog",
+   "type": "varchar(120)"
+  },
+  {
+   "ckey": "",
+   "col": "keywords",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 9,
+   "t": "exercise_catalog",
+   "type": "text"
+  },
+  {
+   "ckey": "",
+   "col": "description",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 10,
+   "t": "exercise_catalog",
+   "type": "text"
+  },
+  {
+   "ckey": "",
+   "col": "is_active",
+   "coll": null,
+   "dflt": "1",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 11,
+   "t": "exercise_catalog",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "",
+   "col": "created_at",
+   "coll": null,
+   "dflt": "CURRENT_TIMESTAMP",
+   "extra": "DEFAULT_GENERATED",
+   "nullable": "NO",
+   "pos": 12,
+   "t": "exercise_catalog",
+   "type": "timestamp"
+  },
+  {
+   "ckey": "",
+   "col": "updated_at",
+   "coll": null,
+   "dflt": "CURRENT_TIMESTAMP",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+   "nullable": "NO",
+   "pos": 13,
+   "t": "exercise_catalog",
+   "type": "timestamp"
+  },
+  {
+   "ckey": "",
+   "col": "is_unilateral",
+   "coll": null,
+   "dflt": "0",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 14,
+   "t": "exercise_catalog",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "",
+   "col": "is_compound",
+   "coll": null,
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 15,
+   "t": "exercise_catalog",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "PRI",
+   "col": "id",
+   "coll": null,
+   "dflt": null,
+   "extra": "auto_increment",
+   "nullable": "NO",
+   "pos": 1,
+   "t": "users",
+   "type": "bigint"
+  },
+  {
+   "ckey": "UNI",
+   "col": "username",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "NO",
+   "pos": 2,
+   "t": "users",
+   "type": "varchar(80)"
+  },
+  {
+   "ckey": "",
+   "col": "password_hash",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "NO",
+   "pos": 3,
+   "t": "users",
+   "type": "varchar(255)"
+  },
+  {
+   "ckey": "",
+   "col": "full_name",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 4,
+   "t": "users",
+   "type": "varchar(160)"
+  },
+  {
+   "ckey": "",
+   "col": "email",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 5,
+   "t": "users",
+   "type": "varchar(160)"
+  },
+  {
+   "ckey": "",
+   "col": "photo_path",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 6,
+   "t": "users",
+   "type": "varchar(255)"
+  },
+  {
+   "ckey": "",
+   "col": "birth_date",
+   "coll": null,
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 7,
+   "t": "users",
+   "type": "date"
+  },
+  {
+   "ckey": "",
+   "col": "sex",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 8,
+   "t": "users",
+   "type": "varchar(20)"
+  },
+  {
+   "ckey": "",
+   "col": "role",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": "regular",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 9,
+   "t": "users",
+   "type": "enum('admin','regular','personal_trainer')"
+  },
+  {
+   "ckey": "",
+   "col": "is_active",
+   "coll": null,
+   "dflt": "1",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 10,
+   "t": "users",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "",
+   "col": "is_advanced_user",
+   "coll": null,
+   "dflt": "0",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 11,
+   "t": "users",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "",
+   "col": "intervals_athlete_id",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 12,
+   "t": "users",
+   "type": "varchar(80)"
+  },
+  {
+   "ckey": "",
+   "col": "intervals_api_key_encrypted",
+   "coll": "utf8mb4_0900_ai_ci",
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 13,
+   "t": "users",
+   "type": "varchar(255)"
+  },
+  {
+   "ckey": "",
+   "col": "failed_login_attempts",
+   "coll": null,
+   "dflt": "0",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 14,
+   "t": "users",
+   "type": "int"
+  },
+  {
+   "ckey": "",
+   "col": "locked_until",
+   "coll": null,
+   "dflt": null,
+   "extra": "",
+   "nullable": "YES",
+   "pos": 15,
+   "t": "users",
+   "type": "timestamp"
+  },
+  {
+   "ckey": "",
+   "col": "must_change_password",
+   "coll": null,
+   "dflt": "0",
+   "extra": "",
+   "nullable": "NO",
+   "pos": 16,
+   "t": "users",
+   "type": "tinyint(1)"
+  },
+  {
+   "ckey": "",
+   "col": "created_at",
+   "coll": null,
+   "dflt": "CURRENT_TIMESTAMP",
+   "extra": "DEFAULT_GENERATED",
+   "nullable": "NO",
+   "pos": 17,
+   "t": "users",
+   "type": "timestamp"
+  },
+  {
+   "ckey": "",
+   "col": "updated_at",
+   "coll": null,
+   "dflt": "CURRENT_TIMESTAMP",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+   "nullable": "NO",
+   "pos": 18,
+   "t": "users",
+   "type": "timestamp"
+  }
+ ],
+ "foreign_keys": [],
+ "indexes": [
+  {
+   "col": "id",
+   "idx": "PRIMARY",
+   "non_unique": 0,
+   "seq": 1,
+   "t": "exercise_catalog"
+  },
+  {
+   "col": "name",
+   "idx": "uq_exercise_catalog_name",
+   "non_unique": 0,
+   "seq": 1,
+   "t": "exercise_catalog"
+  },
+  {
+   "col": "id",
+   "idx": "PRIMARY",
+   "non_unique": 0,
+   "seq": 1,
+   "t": "users"
+  },
+  {
+   "col": "username",
+   "idx": "uq_users_username",
+   "non_unique": 0,
+   "seq": 1,
+   "t": "users"
+  }
+ ],
+ "tables": [
+  {
+   "engine": "InnoDB",
+   "table_name": "exercise_catalog"
+  },
+  {
+   "engine": "InnoDB",
+   "table_name": "users"
+  }
+ ],
+ "versao": [
+  {
+   "mysql": "8.0.46",
+   "schema_migration_files": 38
+  }
+ ],
+ "views": []
+}

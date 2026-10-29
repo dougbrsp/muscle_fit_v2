@@ -1,0 +1,36 @@
+# M82 - override do docker-compose.yml usado SO pela CI (job `backend smoke
+# test` do .github/workflows/ci-develop.yml). O DEV local nunca carrega este
+# arquivo (o compose so le sozinho o docker-compose.override.yml).
+#
+# Troca, so no build, a imagem do FROM dos 3 servicos que constroem a partir
+# de api/Dockerfile* pela origem escolhida por
+# .github/scripts/escolher-base-python.sh: o MESMO digest, vindo de um registro
+# que respondeu (mirror.gcr.io antes do public.ecr.aws, cujo pull anonimo tem
+# cota por IP e derrubou o job com "429 Data limit exceeded" em 16 e 17/10).
+# Mecanismo: contexto nomeado do BuildKit (build.additional_contexts); a chave
+# e a referencia exata do FROM, o valor e docker-image://<origem>@<digest>.
+#
+# As duas variaveis vem da saida do script (o workflow grava no GITHUB_ENV,
+# junto com COMPOSE_FILE, para que up/exec/logs/down e o
+# scripts/smoke-async-jobs.sh usem os mesmos arquivos). Sem elas o compose
+# falha de proposito, com a mensagem abaixo.
+#
+# Uso local (reproduz a CI sem tocar nos containers do DEV: so `build`, e com
+# outro nome de projeto):
+#   eval "$(.github/scripts/escolher-base-python.sh | sed -n \
+#     -e 's/^ref=/export BASE_PYTHON_REF=/p' -e 's/^origem=/export BASE_PYTHON_ORIGEM=/p')"
+#   docker compose -p m82prova -f docker-compose.yml \
+#     -f .github/compose/base-python-espelho.yml build api api-engines lambda-ai
+x-base-python-espelho: &base-python-espelho
+  - "${BASE_PYTHON_REF:?defina BASE_PYTHON_REF (saida ref de .github/scripts/escolher-base-python.sh)}=docker-image://${BASE_PYTHON_ORIGEM:?defina BASE_PYTHON_ORIGEM (saida origem de .github/scripts/escolher-base-python.sh)}"
+
+services:
+  api:
+    build:
+      additional_contexts: *base-python-espelho
+  api-engines:
+    build:
+      additional_contexts: *base-python-espelho
+  lambda-ai:
+    build:
+      additional_contexts: *base-python-espelho

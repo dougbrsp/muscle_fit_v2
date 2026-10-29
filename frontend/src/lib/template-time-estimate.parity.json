@@ -1,0 +1,725 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): resultado COMPLETO do dono (api/app/periodization/time_estimate.py::estimate_slot_time). O vitest roda o espelho TS (template-time-estimate.ts) contra os mesmos casos. 'default_rest_seconds' ausente = o que a tela mostra (descanso não definido conta 0 s, Fase 7); 90 = a conta do complemento de volume (M46). Não edite à mão.",
+  "cases": [
+    {
+      "name": "slot vazio",
+      "items": [],
+      "expected": {
+        "total_seconds": 0,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 0,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "rascunho da IA: faixa de reps, sem descanso",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 4,
+          "reps_target": "8-12",
+          "rest_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 120,
+        "breakdown": {
+          "work": 120,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 120,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "descanso e pico de contração",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "reps_target": "10",
+          "rest_seconds": 90,
+          "peak_contraction_seconds": 2
+        }
+      ],
+      "expected": {
+        "total_seconds": 420,
+        "breakdown": {
+          "work": 420,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 150,
+          "rest_seconds": 270
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "aquecimento, ajuste e faixa por extenso",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "reps_target": "8 a 12",
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 60,
+          "feeler_set_sets_count": 1,
+          "feeler_set_reps": 5,
+          "feeler_set_rest_seconds": 30
+        }
+      ],
+      "expected": {
+        "total_seconds": 327,
+        "breakdown": {
+          "work": 90,
+          "warmup": 192,
+          "technique": 0,
+          "feeler": 45,
+          "cardio": 0,
+          "exec_seconds": 177,
+          "rest_seconds": 150
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "cardio e técnica com pausa",
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_duration_minutes": 20
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "reps_target": "12",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      ],
+      "expected": {
+        "total_seconds": 1317,
+        "breakdown": {
+          "work": 72,
+          "warmup": 0,
+          "technique": 45,
+          "feeler": 0,
+          "cardio": 1200,
+          "exec_seconds": 72,
+          "rest_seconds": 45
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "reps vazio vira 10; vírgula decimal; três números usam os dois primeiros",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "reps_target": null
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "reps_target": "7,5"
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "reps_target": "8-12-15"
+        }
+      ],
+      "expected": {
+        "total_seconds": 113,
+        "breakdown": {
+          "work": 113,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 113,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 3,
+        "has_estimated_reps": true
+      }
+    },
+    {
+      "name": "arredondamento do Math.round (meio para cima)",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "reps_target": "1,5"
+        }
+      ],
+      "expected": {
+        "total_seconds": 5,
+        "breakdown": {
+          "work": 5,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 5,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "sem séries de trabalho: só o aquecimento conta",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": null,
+          "warmup_sets_count": 1,
+          "warmup_reps": 10,
+          "warmup_rest_seconds": 45
+        }
+      ],
+      "expected": {
+        "total_seconds": 75,
+        "breakdown": {
+          "work": 0,
+          "warmup": 75,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 30,
+          "rest_seconds": 45
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "complemento: descanso padrão de 90 s quando rest_seconds é nulo",
+      "default_rest_seconds": 90,
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 4,
+          "reps_target": "8-12",
+          "rest_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 480,
+        "breakdown": {
+          "work": 480,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 120,
+          "rest_seconds": 360
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "complemento: descanso definido no item prevalece sobre o padrão",
+      "default_rest_seconds": 90,
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "reps_target": "10",
+          "rest_seconds": 60
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "reps_target": "10",
+          "rest_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 510,
+        "breakdown": {
+          "work": 510,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 150,
+          "rest_seconds": 360
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "complemento: padrão não toca aquecimento, ajuste, técnica nem cardio",
+      "default_rest_seconds": 90,
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_duration_minutes": 10
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": null,
+          "warmup_sets_count": 1,
+          "warmup_reps": 10,
+          "warmup_rest_seconds": null,
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 630,
+        "breakdown": {
+          "work": 0,
+          "warmup": 30,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 600,
+          "exec_seconds": 30,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "descanso 0 explícito também é 'sem descanso definido'",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "reps_target": "10",
+          "rest_seconds": 0
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "reps_target": "10",
+          "rest_seconds": 60
+        }
+      ],
+      "expected": {
+        "total_seconds": 360,
+        "breakdown": {
+          "work": 360,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 180,
+          "rest_seconds": 180
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "item de grupo muscular com séries não conta como exercício sem descanso",
+      "items": [
+        {
+          "item_kind": "muscle_group",
+          "sets_count": 3,
+          "reps_target": "10",
+          "rest_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 90,
+        "breakdown": {
+          "work": 90,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 90,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "parcelas de execução e descanso arredondadas à parte (meio segundo)",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "reps_target": "8,5",
+          "rest_seconds": 30,
+          "peak_contraction_seconds": 1,
+          "advanced_technique_applications": 1,
+          "advanced_technique_duration_seconds": 7.5
+        }
+      ],
+      "expected": {
+        "total_seconds": 72,
+        "breakdown": {
+          "work": 64,
+          "warmup": 0,
+          "technique": 8,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 34,
+          "rest_seconds": 38
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "rest-pause sem duração usa a pausa padrão do dono; com duração, a do item; drop set sem padrão",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": null
+        },
+        {
+          "item_kind": "equipment",
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": 20
+        },
+        {
+          "item_kind": "equipment",
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": null
+        }
+      ],
+      "expected": {
+        "total_seconds": 70,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 70,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 0,
+          "rest_seconds": 70
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "prancha: 3 séries de 60 s com 30 s de descanso",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "measure": "duration",
+          "duration_seconds_target": 60,
+          "rest_seconds": 30
+        }
+      ],
+      "expected": {
+        "total_seconds": 270,
+        "breakdown": {
+          "work": 270,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 180,
+          "rest_seconds": 90
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "máximo de reps com janela de 30 s usa a janela",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "measure": "max_reps",
+          "time_window_seconds": 30,
+          "rest_seconds": 60
+        }
+      ],
+      "expected": {
+        "total_seconds": 180,
+        "breakdown": {
+          "work": 180,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 60,
+          "rest_seconds": 120
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "máximo de reps sem janela estima as repetições",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "measure": "max_reps",
+          "rest_seconds": 60
+        }
+      ],
+      "expected": {
+        "total_seconds": 180,
+        "breakdown": {
+          "work": 180,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 60,
+          "rest_seconds": 120
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": true
+      }
+    },
+    {
+      "name": "medida 'reps' explícita é a conta de sempre (pico conta)",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 3,
+          "measure": "reps",
+          "reps_target": "10",
+          "peak_contraction_seconds": 2,
+          "rest_seconds": 60
+        }
+      ],
+      "expected": {
+        "total_seconds": 330,
+        "breakdown": {
+          "work": 330,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 150,
+          "rest_seconds": 180
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "tempo por série ignora reps e pico; medida desconhecida lê como reps",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 2,
+          "measure": "duration",
+          "duration_seconds_target": 45,
+          "reps_target": "12",
+          "peak_contraction_seconds": 2,
+          "rest_seconds": null
+        },
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "measure": "minutos",
+          "reps_target": "10",
+          "rest_seconds": 90
+        }
+      ],
+      "expected": {
+        "total_seconds": 210,
+        "breakdown": {
+          "work": 210,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 120,
+          "rest_seconds": 90
+        },
+        "items_without_rest": 1,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "medida por tempo sem alvo cai na conta por repetições",
+      "items": [
+        {
+          "item_kind": "equipment",
+          "sets_count": 1,
+          "measure": "duration",
+          "rest_seconds": 30
+        }
+      ],
+      "default_rest_seconds": 90,
+      "expected": {
+        "total_seconds": 60,
+        "breakdown": {
+          "work": 60,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 0,
+          "exec_seconds": 30,
+          "rest_seconds": 30
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": true
+      }
+    },
+    {
+      "name": "cardio Normal com aquecimento, zona e recuperação",
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_mode": "continuous",
+          "cardio_warmup_minutes": 5,
+          "cardio_duration_minutes": 30,
+          "cardio_target_zone": 2,
+          "cardio_cooldown_minutes": 5
+        }
+      ],
+      "expected": {
+        "total_seconds": 2400,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 2400,
+          "exec_seconds": 0,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "cardio HIIT: séries x (alta + baixa) em segundos + aquecimento e recuperação",
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_mode": "hiit",
+          "cardio_warmup_minutes": 10,
+          "hiit_low_seconds": 90,
+          "hiit_high_seconds": 30,
+          "hiit_low_zone": 2,
+          "hiit_high_zone": 4,
+          "hiit_rounds": 8,
+          "cardio_cooldown_minutes": 5,
+          "cardio_duration_minutes": 99
+        }
+      ],
+      "expected": {
+        "total_seconds": 1860,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 1860,
+          "exec_seconds": 0,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "cardio sem modo é Normal; modo em maiúsculas e modo desconhecido",
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_duration_minutes": 12.5,
+          "cardio_cooldown_minutes": null
+        },
+        {
+          "item_kind": "cardio",
+          "cardio_mode": " HIIT ",
+          "hiit_low_seconds": 45,
+          "hiit_high_seconds": 15,
+          "hiit_rounds": 3
+        },
+        {
+          "item_kind": "cardio",
+          "cardio_mode": "intervalado",
+          "cardio_duration_minutes": 10,
+          "hiit_rounds": 4,
+          "hiit_high_seconds": 30
+        }
+      ],
+      "expected": {
+        "total_seconds": 1530,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 1530,
+          "exec_seconds": 0,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    },
+    {
+      "name": "cardio HIIT incompleto e valores negativos contam 0",
+      "items": [
+        {
+          "item_kind": "cardio",
+          "cardio_mode": "hiit",
+          "hiit_high_seconds": 20,
+          "hiit_rounds": null,
+          "cardio_warmup_minutes": -5,
+          "cardio_cooldown_minutes": 2
+        },
+        {
+          "item_kind": "cardio",
+          "cardio_mode": "hiit",
+          "hiit_low_seconds": -10,
+          "hiit_high_seconds": 20,
+          "hiit_rounds": 2.5
+        }
+      ],
+      "expected": {
+        "total_seconds": 170,
+        "breakdown": {
+          "work": 0,
+          "warmup": 0,
+          "technique": 0,
+          "feeler": 0,
+          "cardio": 170,
+          "exec_seconds": 0,
+          "rest_seconds": 0
+        },
+        "items_without_rest": 0,
+        "has_estimated_reps": false
+      }
+    }
+  ]
+}

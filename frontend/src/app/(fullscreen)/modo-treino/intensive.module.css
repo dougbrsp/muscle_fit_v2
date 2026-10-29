@@ -1,0 +1,336 @@
+/* Modo Intensivo (FST-7). Só tokens `--wm-*` (`ui/workout-mode-css-vars.ts`):
+   laranja = destaque, verde = concluído, âmbar = fadiga/pendente. */
+
+.card {
+  background: var(--wm-surface);
+  border: 1px solid var(--wm-border);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.headline {
+  color: var(--wm-orange);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.title {
+  color: var(--wm-text);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--wm-text-muted);
+  font-size: 13px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tile {
+  background: var(--wm-raised);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.tileLabel {
+  color: var(--wm-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.tileValue {
+  color: var(--wm-text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tileHint {
+  color: var(--wm-text-muted);
+  font-size: 11px;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--wm-text);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Série em execução */
+.setHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.setLabel {
+  color: var(--wm-orange);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.load {
+  color: var(--wm-text);
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.loadSuffix {
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.repsStepper {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 64px;
+  gap: 8px;
+  align-items: center;
+}
+
+.stepButton {
+  height: 64px;
+  border-radius: 16px;
+  border: 1px solid var(--wm-orange-border);
+  background: var(--wm-raised);
+  color: var(--wm-orange);
+  font-size: 28px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.stepButton:disabled {
+  opacity: 0.4;
+}
+
+.repsInput {
+  width: 100%;
+  min-width: 0;
+  height: 64px;
+  border-radius: 16px;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  font-size: 34px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.info {
+  color: var(--wm-text-muted);
+  font-size: 13px;
+}
+
+.info strong {
+  color: var(--wm-text);
+}
+
+.linkButton {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 8px 0;
+  min-height: 44px;
+  color: var(--wm-orange-soft);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inlineRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.smallInput {
+  width: 88px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Ajuste rápido */
+.adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adjustButtons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.adjustButton {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--wm-warning);
+  background: var(--wm-raised);
+  color: var(--wm-warning);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.adjustButton:disabled {
+  opacity: 0.4;
+}
+
+.adjustNeutral {
+  border-color: var(--wm-border);
+  color: var(--wm-text);
+}
+
+@media (max-width: 359px) {
+  .adjustButtons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Pendentes / erros */
+.pendingChip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--wm-warning);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: var(--wm-warning);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.errorBox {
+  border: 1px solid var(--wm-danger);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: var(--wm-danger);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stretch {
+  color: var(--wm-success);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Revisão */
+.tableRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.3fr);
+  column-gap: 6px;
+  align-items: center;
+  width: 100%;
+  font-size: 14px;
+}
+
+
+.reviewList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reviewItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border-top: 1px solid var(--wm-border);
+  padding-bottom: 6px;
+}
+
+
+.cell {
+  color: var(--wm-text);
+  font-weight: 700;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rowPending .cell {
+  color: var(--wm-warning);
+}
+
+.status {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.statusDone {
+  color: var(--wm-success);
+}
+
+.statusPending {
+  color: var(--wm-warning);
+}
+
+.statusError {
+  color: var(--wm-danger);
+}
+
+.statusSaving {
+  color: var(--wm-text-muted);
+}
+
+.editPanel {
+  background: var(--wm-raised);
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editButton {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--wm-orange-border);
+  background: var(--wm-raised);
+  color: var(--wm-orange);
+  font-weight: 800;
+  padding: 0 14px;
+  cursor: pointer;
+}

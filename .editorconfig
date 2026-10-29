@@ -1,0 +1,11 @@
+root = true
+
+# Arquivos de texto sempre UTF-8 sem BOM e LF (coerente com .gitattributes).
+# Evita regressao de mojibake (ver api/tests/unit/test_sem_mojibake.py).
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[Makefile]
+indent_style = tab

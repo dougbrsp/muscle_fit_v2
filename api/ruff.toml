@@ -1,0 +1,30 @@
+# Ruff no CI (COD-10 da auditoria de 2026-10-08, arquivo privado).
+#
+# Conjunto MINIMO, so "erro real" (codigo que quebra ou se comporta errado em
+# runtime), e que ja passa limpo hoje. Nada de estilo nem formatacao: o
+# `ruff format` NAO roda e nenhum arquivo foi reformatado.
+#
+#   E9   - erro de sintaxe / IO ao ler o arquivo
+#   F63  - comparacao invalida (`is` com literal, `assert (tupla)`, ...)
+#   F7   - instrucao fora de lugar (`return`/`yield` fora de funcao, `break` fora de laco, ...)
+#   F82  - nome indefinido (`F821`), `__all__` com nome inexistente, variavel local usada antes de atribuir
+#   F50/F52/F60/F62 - `%`/`.format` com argumentos incompativeis, dict com chave repetida, starred invalido
+#   PLE  - erros do pylint (ex.: `return` com valor em `__init__`, `await` fora de async)
+#   F541 - f-string sem placeholder (COD-11: os 2 casos, um deles SQL, viraram string comum)
+#   F401 - import sem uso (ligado em 2026-10-10 com os 41 corrigidos; import
+#          de proposito - efeito colateral, re-export, alvo de monkeypatch -
+#          leva `# noqa: F401 - <motivo>` ou entra no `__all__`)
+#   F811 - redefinicao sem uso (110 em 2026-10-10: 109 eram fixture do pytest
+#          importada de outro modulo e recebida como parametro, falso positivo
+#          marcado com `# noqa: F811 - fixture do pytest importada`; 1 real corrigido)
+#   F841 - variavel local sem uso (9 corrigidos em 2026-10-10)
+#
+# Fora por enquanto (cada um vira PR proprio, com a correcao junto):
+#   B/BLE001/S608 (a medir).
+#
+# Rodar local:  cd api && ruff check   (versao fixada em requirements-lint.txt)
+target-version = "py312"
+extend-exclude = ["vendor"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F50", "F52", "F60", "F62", "F541", "F401", "F811", "F841", "PLE"]

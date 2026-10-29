@@ -1,0 +1,66 @@
+name: DB Migrations (manual)
+
+# Operacao do banco SEM acesso manual a AWS, pela Lambda musclefit-migrations
+# (api/app/migrate.py), invocada de forma sincrona:
+#
+# - migracoes de schema: status, dry-run ou migrate. Usado na ativacao do PR-02
+#   (status + dry-run antes de ligar RUN_DB_MIGRATIONS) e para
+#   inspecao/reexecucao depois.
+# - replay das trilhas da progressao (api/app/replay_progression.py):
+#   replay-dry-run e replay. E o passo 1 de
+#   docs/refatoracao-motores/ATIVACAO_MOTORES_DETERMINISTICOS.md, pre-requisito
+#   de PROGRESSION_ENGINE=v2. Fica SO aqui, e nao em deploy-producao.yml, de
+#   proposito: e operacao pontual de ativacao, nao parte de todo deploy.
+#
+# Nao publica codigo: a funcao roda a imagem que o estagio backend de
+# deploy-producao.yml publicou por ultimo.
+#
+# Mesma logica do passo de migracao de deploy-producao.yml: scripts/invoke-migrations.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "schema: status (leitura) | dry-run (plano) | migrate (aplica) -- progressao: replay-dry-run (plano) | replay (grava)"
+        type: choice
+        options:
+          - status
+          - dry-run
+          - migrate
+          - replay-dry-run
+          - replay
+        default: dry-run
+
+permissions:
+  id-token: write # OIDC -> role musclefit-gha-deploy
+  contents: read
+
+# Mesmo grupo de deploy-producao.yml: nunca invoca a funcao enquanto um deploy
+# de producao (que atualiza o codigo e roda migrate) esta em andamento.
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: sa-east-1
+
+jobs:
+  invoke:
+    name: musclefit-migrations (${{ inputs.action }})
+    # Restrito a main: o dispatch a partir de outra branch nao roda.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Mesmo environment de protecao do job terraform-apply de deploy-producao.yml (aprovacao
+    # manual se o repo tiver protection rule). A trust policy de
+    # musclefit-gha-deploy ja aceita o claim sub environment:production.
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: invoke musclefit-migrations
+        run: bash scripts/invoke-migrations.sh "${{ inputs.action }}"

@@ -1,0 +1,53 @@
+name: CI (cobertura de Lambdas no deploy)
+
+# Reprova PR em que uma aws_lambda_function com package_type = "Image" em infra/*.tf
+# nao recebe update-function-code no .github/workflows/deploy-producao.yml (MAP do step
+# "update-function-code + wait" ou excecao explicita com step proprio).
+#
+# Incidente que motivou (2026-09-21 -> 2026-10-01): musclefit-intervals-sync nasceu no
+# PR #155 fora do MAP, ficou presa ao digest anterior ao modulo
+# app.lambda_intervals_sync e falhou toda execucao diaria com Runtime.ImportModuleError.
+#
+# Python puro (stdlib), sem credenciais e sem AWS: nunca declara `id-token: write` nem
+# chama configure-aws-credentials. Workflow proprio (e nao dentro do terraform.yml) para
+# que mudancas so em .github/workflows/ nao disparem um terraform plan com OIDC.
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/**"
+      - "scripts/check-deploy-lambda-coverage.py"
+      - "scripts/cloudfront_invalidation_paths.py"
+      - "scripts/test_cloudfront_invalidation_paths.py"
+
+# Tambem roda os testes do gerador de paths de invalidacao do frontend (M68,
+# scripts/cloudfront_invalidation_paths.py, usado pelo job "(3) frontend deploy"):
+# os prefixos protegidos saem do infra/cloudfront.tf, entao mudanca la ou no
+# workflow reexecuta a garantia de que nenhum path invalida /equipment/*, /gyms/*
+# ou /exercise-cards/*.
+
+permissions:
+  contents: read
+
+# Push novo no mesmo PR cancela a rodada anterior (economia de Actions).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: toda Lambda de imagem esta no deploy
+        run: python scripts/check-deploy-lambda-coverage.py
+
+      - name: invalidacao do frontend nao toca uploads (M68)
+        run: python -m unittest discover -s scripts -p "test_cloudfront_invalidation_paths.py" -v

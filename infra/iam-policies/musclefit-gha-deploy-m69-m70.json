@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "M69UploadsLifecycle",
+      "Effect": "Allow",
+      "Action": ["s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration"],
+      "Resource": "arn:aws:s3:::musclefit-uploads"
+    },
+    {
+      "Sid": "M70AsyncAiEventInvokeConfig",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:PutFunctionEventInvokeConfig",
+        "lambda:GetFunctionEventInvokeConfig",
+        "lambda:UpdateFunctionEventInvokeConfig",
+        "lambda:DeleteFunctionEventInvokeConfig"
+      ],
+      "Resource": [
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator:*",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent:*",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai:*"
+      ]
+    }
+  ]
+}

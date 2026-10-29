@@ -1,0 +1,255 @@
+{
+ "_origem": "Aurora de producao (musclefit), information_schema extraido pelo Tech Lead em 2026-09-14, somente leitura; recorte para a migracao 031: lista COMPLETA de tabelas do schema (copiada de aurora_schema_2026_09_14_030.json, antes da 030 remover as duas tabelas de backup) - prova que advanced_techniques NAO existe na Aurora. Sem colunas/indices/FKs: a 031 so le information_schema.TABLES quando a tabela esta ausente. Reconfirmado em 2026-09-17 por SELECT somente leitura na Aurora (Data API): advanced_techniques ausente, MAX(schema_migration_files.version)=30, MySQL 8.0.39, collation do banco e das colunas *.advanced_technique = utf8mb4_0900_ai_ci; valores legados de advanced_technique: slot_items rest_pause=7, drop_set=4, partial_reps=3; plan_exercises rest_pause=7, drop_set=4, partial_reps=4 (nenhum fora do catalogo).",
+ "versao": [
+  {
+   "aurora": "3.08.2",
+   "mysql": "8.0.39",
+   "sql_mode": "STRICT_TRANS_TABLES"
+  }
+ ],
+ "tables": [
+  {
+   "table_name": "activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "activity_hr_zones",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "body_composition",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "cardio_recommendations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "daily_biometrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "devices",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_aliases",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_external_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_legacy_id_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_mappings_backup_20260714",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "exercise_muscle_contributions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_sets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_zepp_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercises_backup_before_mapping_sync",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gyms",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "imports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "intervals_activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "intervals_wellness",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "manual_effort_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_group_body_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_groups",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_recovery_coefficients",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "reports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_files",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_lock",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migrations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sleep_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sources",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_type_muscle_group_targets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "user_sessions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "users",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "weekly_summaries",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_assignments",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slot_items",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slots",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_templates",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plans",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  }
+ ],
+ "columns": [],
+ "indexes": [],
+ "foreign_keys": []
+}

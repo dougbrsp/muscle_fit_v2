@@ -1,0 +1,264 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ApigatewayDomainnamesE2",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:DELETE",
+        "apigateway:GET",
+        "apigateway:PATCH",
+        "apigateway:POST",
+        "apigateway:PUT"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:sa-east-1::/domainnames",
+        "arn:aws:apigateway:sa-east-1::/domainnames/*",
+        "arn:aws:apigateway:sa-east-1::/restapis",
+        "arn:aws:apigateway:sa-east-1::/restapis/*",
+        "arn:aws:apigateway:sa-east-1::/tags/*"
+      ]
+    },
+    {
+      "Sid": "ApigatewayAccount",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:GET",
+        "apigateway:PATCH"
+      ],
+      "Resource": "arn:aws:apigateway:sa-east-1::/account"
+    },
+    {
+      "Sid": "ApigatewayStages",
+      "Effect": "Allow",
+      "Action": "apigateway:SetWebACL",
+      "Resource": "arn:aws:apigateway:sa-east-1::/restapis/*/stages/*"
+    },
+    {
+      "Sid": "EcrPublicTodos",
+      "Effect": "Allow",
+      "Action": "ecr-public:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:CreateRepository",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetLifecyclePolicy",
+        "ecr:InitiateLayerUpload",
+        "ecr:ListTagsForResource",
+        "ecr:PutImage",
+        "ecr:PutLifecyclePolicy",
+        "ecr:SetRepositoryPolicy",
+        "ecr:TagResource",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-*"
+    },
+    {
+      "Sid": "EcrMusclefitEngines",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:DeleteRepository",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:PutImageTagMutability"
+      ],
+      "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-engines"
+    },
+    {
+      "Sid": "EcrMusclefitAiGeneratorsE1",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:PutImageTagMutability"
+      ],
+      "Resource": [
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-ai-generators",
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-api-core"
+      ]
+    },
+    {
+      "Sid": "EcrTodos",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EventsMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:DisableRule",
+        "events:EnableRule",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule",
+        "events:PutRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:TagResource",
+        "events:UntagResource"
+      ],
+      "Resource": "arn:aws:events:sa-east-1:930413537709:rule/musclefit-*"
+    },
+    {
+      "Sid": "EventsMusclefit2",
+      "Effect": "Allow",
+      "Action": [
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule",
+        "events:PutRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:TagResource",
+        "events:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:events:us-east-1:930413537709:rule/musclefit-*",
+        "arn:aws:events:us-east-2:930413537709:rule/musclefit-*",
+        "arn:aws:events:us-west-2:930413537709:rule/musclefit-*"
+      ]
+    },
+    {
+      "Sid": "LambdaMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:AddPermission",
+        "lambda:CreateAlias",
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:DeleteFunctionConcurrency",
+        "lambda:GetAlias",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConcurrency",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetPolicy",
+        "lambda:InvokeFunction",
+        "lambda:ListVersionsByFunction",
+        "lambda:PublishVersion",
+        "lambda:PutFunctionConcurrency",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UpdateAlias",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-*"
+    },
+    {
+      "Sid": "LambdaMusclefitCardioAgentE2",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:DeleteFunctionEventInvokeConfig",
+        "lambda:GetFunctionEventInvokeConfig",
+        "lambda:PutFunctionEventInvokeConfig",
+        "lambda:UpdateFunctionEventInvokeConfig"
+      ],
+      "Resource": [
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent:*",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator:*",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai:*"
+      ]
+    },
+    {
+      "Sid": "LambdaMusclefitMigrations",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:ListTags",
+        "lambda:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations:*"
+      ]
+    },
+    {
+      "Sid": "LambdaMusclefitEngines",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:ListTags",
+        "lambda:UntagResource"
+      ],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-engines"
+    },
+    {
+      "Sid": "LogsMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:ListTagsForResource",
+        "logs:ListTagsLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
+      ],
+      "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-*"
+    },
+    {
+      "Sid": "LogsMusclefitE1",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:ListTagsForResource",
+        "logs:ListTagsLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
+      ],
+      "Resource": [
+        "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/apigateway/musclefit-*",
+        "arn:aws:logs:sa-east-1:930413537709:log-group:API-Gateway-Execution-Logs_vaercx9o3g/*"
+      ]
+    },
+    {
+      "Sid": "LogsMusclefitEnginesE1",
+      "Effect": "Allow",
+      "Action": "logs:DeleteLogGroup",
+      "Resource": [
+        "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-engines*",
+        "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-migrations",
+        "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-migrations:*"
+      ]
+    },
+    {
+      "Sid": "LogsTodos",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogGroups",
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogsMusclefitDb",
+      "Effect": "Allow",
+      "Action": [
+        "logs:ListTagsForResource",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
+      ],
+      "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/rds/cluster/musclefit-db/*"
+    },
+    {
+      "Sid": "StsTodosEcrPublicAmazonawsCom",
+      "Effect": "Allow",
+      "Action": "sts:GetServiceBearerToken",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "sts:AWSServiceName": "ecr-public.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

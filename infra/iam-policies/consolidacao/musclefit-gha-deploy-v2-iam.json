@@ -1,0 +1,87 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "IamMusclefitExec",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:PutRolePolicy",
+        "iam:TagRole"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-*-exec"
+    },
+    {
+      "Sid": "IamAwsserviceroleforaccessanalyzerE1",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": [
+        "arn:aws:iam::930413537709:role/aws-service-role/access-analyzer.amazonaws.com/AWSServiceRoleForAccessAnalyzer",
+        "arn:aws:iam::930413537709:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty"
+      ]
+    },
+    {
+      "Sid": "IamMusclefitMigrationsExec",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListInstanceProfilesForRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec"
+    },
+    {
+      "Sid": "IamMusclefitExecLambdaAmazonawsCom",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-*-exec",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "IamMusclefitApigwCloudwatchExecApigatewayAmazonawsCom",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-apigw-cloudwatch-exec",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "apigateway.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "IamMusclefitRootAlertForwardExecEventsAmazonawsCom",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-root-alert-forward-exec",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "events.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "IamMusclefitEnginesExec",
+      "Effect": "Allow",
+      "Action": "iam:UntagRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec"
+    },
+    {
+      "Sid": "IamMusclefitApigwCloudwatchExec",
+      "Effect": "Allow",
+      "Action": "iam:UpdateAssumeRolePolicy",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-apigw-cloudwatch-exec"
+    }
+  ]
+}

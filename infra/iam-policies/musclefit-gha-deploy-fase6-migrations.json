@@ -1,0 +1,87 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "MusclefitMigrationsRoleLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:ListInstanceProfilesForRole"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec"
+    },
+    {
+      "Sid": "MusclefitMigrationsRolePolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec"
+    },
+    {
+      "Sid": "MusclefitMigrationsPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "MusclefitMigrationsLambdaFunction",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:ListVersionsByFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:PublishVersion",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags",
+        "lambda:GetPolicy"
+      ],
+      "Resource": [
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations:*"
+      ]
+    },
+    {
+      "Sid": "MusclefitMigrationsInvokeFromPipeline",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": [
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations",
+        "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations:*"
+      ]
+    },
+    {
+      "Sid": "MusclefitMigrationsLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-migrations:*"
+    }
+  ]
+}

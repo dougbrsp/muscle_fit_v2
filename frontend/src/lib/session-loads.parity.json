@@ -1,0 +1,2627 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): cargas calculadas pelo dono (api/app/domain/session_loads.py). O vitest roda o espelho TS (workout-mode-load-suggestions.ts) contra os mesmos casos. `quick_load_adjust_cases` (Modo Intensivo): ajuste rápido de carga (`session_loads.quick_load_adjust`) em kg, em lb (valores já convertidos pelo cliente) e nas bordas. Não edite à mão.",
+  "cases": [
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": null,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": null,
+      "round_to_step": 7.5,
+      "warmup_loads_kg": [
+        2.5,
+        2.5
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        5.0,
+        7.5
+      ],
+      "drop_set_loads_kg": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": null,
+      "round_to_step": 12.5,
+      "warmup_loads_kg": [
+        2.5,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        7.5,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        7.5,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": null,
+      "round_to_step": 12.5,
+      "warmup_loads_kg": [
+        2.5,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        7.5,
+        10.0,
+        12.5
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        7.5,
+        7.5
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": null,
+      "round_to_step": 22.5,
+      "warmup_loads_kg": [
+        5.0,
+        10.0
+      ],
+      "feeler_loads_kg": [
+        12.5,
+        15.0,
+        20.0
+      ],
+      "drop_set_loads_kg": [
+        17.5,
+        15.0,
+        12.5
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": null,
+      "round_to_step": 32.5,
+      "warmup_loads_kg": [
+        7.5,
+        12.5
+      ],
+      "feeler_loads_kg": [
+        15.0,
+        22.5,
+        27.5
+      ],
+      "drop_set_loads_kg": [
+        25.0,
+        20.0,
+        15.0
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": null,
+      "round_to_step": 37.5,
+      "warmup_loads_kg": [
+        7.5,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        20.0,
+        27.5,
+        35.0
+      ],
+      "drop_set_loads_kg": [
+        30.0,
+        25.0,
+        20.0
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": null,
+      "round_to_step": 45.0,
+      "warmup_loads_kg": [
+        10.0,
+        17.5
+      ],
+      "feeler_loads_kg": [
+        22.5,
+        30.0,
+        40.0
+      ],
+      "drop_set_loads_kg": [
+        35.0,
+        27.5,
+        22.5
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": null,
+      "round_to_step": 55.0,
+      "warmup_loads_kg": [
+        10.0,
+        22.5
+      ],
+      "feeler_loads_kg": [
+        27.5,
+        37.5,
+        50.0
+      ],
+      "drop_set_loads_kg": [
+        45.0,
+        35.0,
+        27.5
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": null,
+      "round_to_step": 62.5,
+      "warmup_loads_kg": [
+        12.5,
+        25.0
+      ],
+      "feeler_loads_kg": [
+        32.5,
+        45.0,
+        57.5
+      ],
+      "drop_set_loads_kg": [
+        50.0,
+        40.0,
+        32.5
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": null,
+      "round_to_step": 72.5,
+      "warmup_loads_kg": [
+        15.0,
+        30.0
+      ],
+      "feeler_loads_kg": [
+        37.5,
+        50.0,
+        65.0
+      ],
+      "drop_set_loads_kg": [
+        57.5,
+        47.5,
+        37.5
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": null,
+      "round_to_step": 80.0,
+      "warmup_loads_kg": [
+        15.0,
+        32.5
+      ],
+      "feeler_loads_kg": [
+        40.0,
+        55.0,
+        72.5
+      ],
+      "drop_set_loads_kg": [
+        65.0,
+        50.0,
+        40.0
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": null,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        50.0
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": null,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        52.5
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": null,
+      "round_to_step": 140.0,
+      "warmup_loads_kg": [
+        27.5,
+        55.0
+      ],
+      "feeler_loads_kg": [
+        70.0,
+        97.5,
+        125.0
+      ],
+      "drop_set_loads_kg": [
+        112.5,
+        90.0,
+        72.5
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 0.5,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 0.5,
+      "round_to_step": 7.5,
+      "warmup_loads_kg": [
+        1.5,
+        3.0
+      ],
+      "feeler_loads_kg": [
+        4.0,
+        5.5,
+        7.0
+      ],
+      "drop_set_loads_kg": [
+        6.0,
+        5.0,
+        4.0
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 0.5,
+      "round_to_step": 11.5,
+      "warmup_loads_kg": [
+        2.5,
+        4.5
+      ],
+      "feeler_loads_kg": [
+        5.5,
+        8.0,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        9.0,
+        7.5,
+        6.0
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 0.5,
+      "round_to_step": 12.5,
+      "warmup_loads_kg": [
+        2.5,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        6.5,
+        9.0,
+        11.5
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        8.0,
+        6.5
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 0.5,
+      "round_to_step": 22.5,
+      "warmup_loads_kg": [
+        4.5,
+        9.0
+      ],
+      "feeler_loads_kg": [
+        11.5,
+        16.0,
+        20.5
+      ],
+      "drop_set_loads_kg": [
+        18.0,
+        14.5,
+        11.5
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 0.5,
+      "round_to_step": 31.5,
+      "warmup_loads_kg": [
+        6.5,
+        12.5
+      ],
+      "feeler_loads_kg": [
+        15.5,
+        22.0,
+        28.0
+      ],
+      "drop_set_loads_kg": [
+        25.0,
+        20.0,
+        16.0
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 0.5,
+      "round_to_step": 37.5,
+      "warmup_loads_kg": [
+        7.5,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        19.0,
+        26.5,
+        34.0
+      ],
+      "drop_set_loads_kg": [
+        30.0,
+        24.0,
+        19.0
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 0.5,
+      "round_to_step": 44.5,
+      "warmup_loads_kg": [
+        9.0,
+        18.0
+      ],
+      "feeler_loads_kg": [
+        22.5,
+        31.0,
+        40.0
+      ],
+      "drop_set_loads_kg": [
+        35.5,
+        28.5,
+        23.0
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 0.5,
+      "round_to_step": 55.0,
+      "warmup_loads_kg": [
+        11.0,
+        22.0
+      ],
+      "feeler_loads_kg": [
+        27.5,
+        38.5,
+        49.5
+      ],
+      "drop_set_loads_kg": [
+        44.0,
+        35.0,
+        28.0
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 0.5,
+      "round_to_step": 63.0,
+      "warmup_loads_kg": [
+        12.5,
+        25.0
+      ],
+      "feeler_loads_kg": [
+        31.5,
+        44.0,
+        56.5
+      ],
+      "drop_set_loads_kg": [
+        50.5,
+        40.5,
+        32.5
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 0.5,
+      "round_to_step": 72.5,
+      "warmup_loads_kg": [
+        14.5,
+        29.0
+      ],
+      "feeler_loads_kg": [
+        36.5,
+        51.0,
+        65.5
+      ],
+      "drop_set_loads_kg": [
+        58.0,
+        46.5,
+        37.0
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 0.5,
+      "round_to_step": 80.0,
+      "warmup_loads_kg": [
+        16.0,
+        32.0
+      ],
+      "feeler_loads_kg": [
+        40.0,
+        56.0,
+        72.0
+      ],
+      "drop_set_loads_kg": [
+        64.0,
+        51.0,
+        41.0
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 0.5,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        64.0,
+        51.0
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 0.5,
+      "round_to_step": 101.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.5
+      ],
+      "feeler_loads_kg": [
+        50.5,
+        70.5,
+        91.0
+      ],
+      "drop_set_loads_kg": [
+        81.0,
+        64.5,
+        51.5
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 0.5,
+      "round_to_step": 140.0,
+      "warmup_loads_kg": [
+        28.0,
+        56.0
+      ],
+      "feeler_loads_kg": [
+        70.0,
+        98.0,
+        126.0
+      ],
+      "drop_set_loads_kg": [
+        112.0,
+        89.5,
+        71.5
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 1,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 1,
+      "round_to_step": 8.0,
+      "warmup_loads_kg": [
+        2.0,
+        3.0
+      ],
+      "feeler_loads_kg": [
+        4.0,
+        5.0,
+        7.0
+      ],
+      "drop_set_loads_kg": [
+        6.0,
+        5.0,
+        4.0
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 1,
+      "round_to_step": 11.0,
+      "warmup_loads_kg": [
+        2.0,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        6.0,
+        8.0,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        9.0,
+        7.0,
+        6.0
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 1,
+      "round_to_step": 13.0,
+      "warmup_loads_kg": [
+        3.0,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        6.0,
+        9.0,
+        11.0
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        8.0,
+        6.0
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 1,
+      "round_to_step": 23.0,
+      "warmup_loads_kg": [
+        5.0,
+        9.0
+      ],
+      "feeler_loads_kg": [
+        11.0,
+        16.0,
+        20.0
+      ],
+      "drop_set_loads_kg": [
+        18.0,
+        15.0,
+        12.0
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 1,
+      "round_to_step": 31.0,
+      "warmup_loads_kg": [
+        6.0,
+        13.0
+      ],
+      "feeler_loads_kg": [
+        16.0,
+        22.0,
+        28.0
+      ],
+      "drop_set_loads_kg": [
+        25.0,
+        20.0,
+        16.0
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 1,
+      "round_to_step": 38.0,
+      "warmup_loads_kg": [
+        8.0,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        19.0,
+        26.0,
+        34.0
+      ],
+      "drop_set_loads_kg": [
+        30.0,
+        24.0,
+        19.0
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 1,
+      "round_to_step": 45.0,
+      "warmup_loads_kg": [
+        9.0,
+        18.0
+      ],
+      "feeler_loads_kg": [
+        22.0,
+        31.0,
+        40.0
+      ],
+      "drop_set_loads_kg": [
+        36.0,
+        29.0,
+        23.0
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 1,
+      "round_to_step": 55.0,
+      "warmup_loads_kg": [
+        11.0,
+        22.0
+      ],
+      "feeler_loads_kg": [
+        28.0,
+        39.0,
+        50.0
+      ],
+      "drop_set_loads_kg": [
+        44.0,
+        35.0,
+        28.0
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 1,
+      "round_to_step": 63.0,
+      "warmup_loads_kg": [
+        13.0,
+        25.0
+      ],
+      "feeler_loads_kg": [
+        32.0,
+        44.0,
+        57.0
+      ],
+      "drop_set_loads_kg": [
+        50.0,
+        40.0,
+        32.0
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 1,
+      "round_to_step": 73.0,
+      "warmup_loads_kg": [
+        15.0,
+        29.0
+      ],
+      "feeler_loads_kg": [
+        36.0,
+        51.0,
+        65.0
+      ],
+      "drop_set_loads_kg": [
+        58.0,
+        46.0,
+        37.0
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 1,
+      "round_to_step": 80.0,
+      "warmup_loads_kg": [
+        16.0,
+        32.0
+      ],
+      "feeler_loads_kg": [
+        40.0,
+        56.0,
+        72.0
+      ],
+      "drop_set_loads_kg": [
+        64.0,
+        51.0,
+        41.0
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 1,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        64.0,
+        51.0
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 1,
+      "round_to_step": 101.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        51.0,
+        71.0,
+        91.0
+      ],
+      "drop_set_loads_kg": [
+        81.0,
+        65.0,
+        52.0
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 1,
+      "round_to_step": 140.0,
+      "warmup_loads_kg": [
+        28.0,
+        56.0
+      ],
+      "feeler_loads_kg": [
+        70.0,
+        98.0,
+        126.0
+      ],
+      "drop_set_loads_kg": [
+        112.0,
+        90.0,
+        72.0
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 2.27,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 2.27,
+      "round_to_step": 6.81,
+      "warmup_loads_kg": [
+        2.27,
+        2.27
+      ],
+      "feeler_loads_kg": [
+        4.54,
+        4.54,
+        6.81
+      ],
+      "drop_set_loads_kg": [
+        6.81,
+        4.54,
+        4.54
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 2.27,
+      "round_to_step": 11.35,
+      "warmup_loads_kg": [
+        2.27,
+        4.54
+      ],
+      "feeler_loads_kg": [
+        6.81,
+        9.08,
+        11.35
+      ],
+      "drop_set_loads_kg": [
+        9.08,
+        6.81,
+        6.81
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 2.27,
+      "round_to_step": 13.62,
+      "warmup_loads_kg": [
+        2.27,
+        4.54
+      ],
+      "feeler_loads_kg": [
+        6.81,
+        9.08,
+        11.35
+      ],
+      "drop_set_loads_kg": [
+        9.08,
+        9.08,
+        6.81
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 2.27,
+      "round_to_step": 22.7,
+      "warmup_loads_kg": [
+        4.54,
+        9.08
+      ],
+      "feeler_loads_kg": [
+        11.35,
+        15.89,
+        20.43
+      ],
+      "drop_set_loads_kg": [
+        18.16,
+        13.62,
+        11.35
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 2.27,
+      "round_to_step": 31.78,
+      "warmup_loads_kg": [
+        6.81,
+        13.62
+      ],
+      "feeler_loads_kg": [
+        15.89,
+        22.7,
+        27.24
+      ],
+      "drop_set_loads_kg": [
+        24.97,
+        20.43,
+        15.89
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 2.27,
+      "round_to_step": 38.59,
+      "warmup_loads_kg": [
+        6.81,
+        15.89
+      ],
+      "feeler_loads_kg": [
+        18.16,
+        27.24,
+        34.05
+      ],
+      "drop_set_loads_kg": [
+        29.51,
+        24.97,
+        18.16
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 2.27,
+      "round_to_step": 45.4,
+      "warmup_loads_kg": [
+        9.08,
+        18.16
+      ],
+      "feeler_loads_kg": [
+        22.7,
+        31.78,
+        40.86
+      ],
+      "drop_set_loads_kg": [
+        36.32,
+        29.51,
+        22.7
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 2.27,
+      "round_to_step": 54.48,
+      "warmup_loads_kg": [
+        11.35,
+        22.7
+      ],
+      "feeler_loads_kg": [
+        27.24,
+        38.59,
+        49.94
+      ],
+      "drop_set_loads_kg": [
+        43.13,
+        36.32,
+        27.24
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 2.27,
+      "round_to_step": 63.56,
+      "warmup_loads_kg": [
+        13.62,
+        24.97
+      ],
+      "feeler_loads_kg": [
+        31.78,
+        43.13,
+        56.75
+      ],
+      "drop_set_loads_kg": [
+        49.94,
+        40.86,
+        31.78
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 2.27,
+      "round_to_step": 72.64,
+      "warmup_loads_kg": [
+        13.62,
+        29.51
+      ],
+      "feeler_loads_kg": [
+        36.32,
+        49.94,
+        65.83
+      ],
+      "drop_set_loads_kg": [
+        59.02,
+        45.4,
+        36.32
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 2.27,
+      "round_to_step": 79.45,
+      "warmup_loads_kg": [
+        15.89,
+        31.78
+      ],
+      "feeler_loads_kg": [
+        40.86,
+        56.75,
+        72.64
+      ],
+      "drop_set_loads_kg": [
+        63.56,
+        52.21,
+        40.86
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 2.27,
+      "round_to_step": 99.88,
+      "warmup_loads_kg": [
+        20.43,
+        40.86
+      ],
+      "feeler_loads_kg": [
+        49.94,
+        70.37,
+        90.8
+      ],
+      "drop_set_loads_kg": [
+        79.45,
+        63.56,
+        52.21
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 2.27,
+      "round_to_step": 99.88,
+      "warmup_loads_kg": [
+        20.43,
+        40.86
+      ],
+      "feeler_loads_kg": [
+        49.94,
+        70.37,
+        90.8
+      ],
+      "drop_set_loads_kg": [
+        81.72,
+        63.56,
+        52.21
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 2.27,
+      "round_to_step": 140.74,
+      "warmup_loads_kg": [
+        27.24,
+        56.75
+      ],
+      "feeler_loads_kg": [
+        70.37,
+        97.61,
+        127.12
+      ],
+      "drop_set_loads_kg": [
+        111.23,
+        88.53,
+        72.64
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 2.5,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 2.5,
+      "round_to_step": 7.5,
+      "warmup_loads_kg": [
+        2.5,
+        2.5
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        5.0,
+        7.5
+      ],
+      "drop_set_loads_kg": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 2.5,
+      "round_to_step": 12.5,
+      "warmup_loads_kg": [
+        2.5,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        7.5,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        7.5,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 2.5,
+      "round_to_step": 12.5,
+      "warmup_loads_kg": [
+        2.5,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        7.5,
+        10.0,
+        12.5
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        7.5,
+        7.5
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 2.5,
+      "round_to_step": 22.5,
+      "warmup_loads_kg": [
+        5.0,
+        10.0
+      ],
+      "feeler_loads_kg": [
+        12.5,
+        15.0,
+        20.0
+      ],
+      "drop_set_loads_kg": [
+        17.5,
+        15.0,
+        12.5
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 2.5,
+      "round_to_step": 32.5,
+      "warmup_loads_kg": [
+        7.5,
+        12.5
+      ],
+      "feeler_loads_kg": [
+        15.0,
+        22.5,
+        27.5
+      ],
+      "drop_set_loads_kg": [
+        25.0,
+        20.0,
+        15.0
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 2.5,
+      "round_to_step": 37.5,
+      "warmup_loads_kg": [
+        7.5,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        20.0,
+        27.5,
+        35.0
+      ],
+      "drop_set_loads_kg": [
+        30.0,
+        25.0,
+        20.0
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 2.5,
+      "round_to_step": 45.0,
+      "warmup_loads_kg": [
+        10.0,
+        17.5
+      ],
+      "feeler_loads_kg": [
+        22.5,
+        30.0,
+        40.0
+      ],
+      "drop_set_loads_kg": [
+        35.0,
+        27.5,
+        22.5
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 2.5,
+      "round_to_step": 55.0,
+      "warmup_loads_kg": [
+        10.0,
+        22.5
+      ],
+      "feeler_loads_kg": [
+        27.5,
+        37.5,
+        50.0
+      ],
+      "drop_set_loads_kg": [
+        45.0,
+        35.0,
+        27.5
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 2.5,
+      "round_to_step": 62.5,
+      "warmup_loads_kg": [
+        12.5,
+        25.0
+      ],
+      "feeler_loads_kg": [
+        32.5,
+        45.0,
+        57.5
+      ],
+      "drop_set_loads_kg": [
+        50.0,
+        40.0,
+        32.5
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 2.5,
+      "round_to_step": 72.5,
+      "warmup_loads_kg": [
+        15.0,
+        30.0
+      ],
+      "feeler_loads_kg": [
+        37.5,
+        50.0,
+        65.0
+      ],
+      "drop_set_loads_kg": [
+        57.5,
+        47.5,
+        37.5
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 2.5,
+      "round_to_step": 80.0,
+      "warmup_loads_kg": [
+        15.0,
+        32.5
+      ],
+      "feeler_loads_kg": [
+        40.0,
+        55.0,
+        72.5
+      ],
+      "drop_set_loads_kg": [
+        65.0,
+        50.0,
+        40.0
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 2.5,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        50.0
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 2.5,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        52.5
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 2.5,
+      "round_to_step": 140.0,
+      "warmup_loads_kg": [
+        27.5,
+        55.0
+      ],
+      "feeler_loads_kg": [
+        70.0,
+        97.5,
+        125.0
+      ],
+      "drop_set_loads_kg": [
+        112.5,
+        90.0,
+        72.5
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 4.54,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 4.54,
+      "round_to_step": 9.08,
+      "warmup_loads_kg": [
+        0.0,
+        4.54
+      ],
+      "feeler_loads_kg": [
+        4.54,
+        4.54,
+        4.54
+      ],
+      "drop_set_loads_kg": [
+        4.54,
+        4.54,
+        4.54
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 4.54,
+      "round_to_step": 13.62,
+      "warmup_loads_kg": [
+        4.54,
+        4.54
+      ],
+      "feeler_loads_kg": [
+        4.54,
+        9.08,
+        9.08
+      ],
+      "drop_set_loads_kg": [
+        9.08,
+        9.08,
+        4.54
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 4.54,
+      "round_to_step": 13.62,
+      "warmup_loads_kg": [
+        4.54,
+        4.54
+      ],
+      "feeler_loads_kg": [
+        4.54,
+        9.08,
+        9.08
+      ],
+      "drop_set_loads_kg": [
+        9.08,
+        9.08,
+        4.54
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 4.54,
+      "round_to_step": 22.7,
+      "warmup_loads_kg": [
+        4.54,
+        9.08
+      ],
+      "feeler_loads_kg": [
+        9.08,
+        13.62,
+        18.16
+      ],
+      "drop_set_loads_kg": [
+        18.16,
+        13.62,
+        13.62
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 4.54,
+      "round_to_step": 31.78,
+      "warmup_loads_kg": [
+        4.54,
+        13.62
+      ],
+      "feeler_loads_kg": [
+        13.62,
+        22.7,
+        27.24
+      ],
+      "drop_set_loads_kg": [
+        27.24,
+        18.16,
+        18.16
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 4.54,
+      "round_to_step": 36.32,
+      "warmup_loads_kg": [
+        9.08,
+        13.62
+      ],
+      "feeler_loads_kg": [
+        18.16,
+        27.24,
+        31.78
+      ],
+      "drop_set_loads_kg": [
+        31.78,
+        22.7,
+        18.16
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 4.54,
+      "round_to_step": 45.4,
+      "warmup_loads_kg": [
+        9.08,
+        18.16
+      ],
+      "feeler_loads_kg": [
+        22.7,
+        31.78,
+        40.86
+      ],
+      "drop_set_loads_kg": [
+        36.32,
+        27.24,
+        22.7
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 4.54,
+      "round_to_step": 54.48,
+      "warmup_loads_kg": [
+        9.08,
+        22.7
+      ],
+      "feeler_loads_kg": [
+        27.24,
+        36.32,
+        49.94
+      ],
+      "drop_set_loads_kg": [
+        45.4,
+        36.32,
+        27.24
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 4.54,
+      "round_to_step": 63.56,
+      "warmup_loads_kg": [
+        13.62,
+        27.24
+      ],
+      "feeler_loads_kg": [
+        31.78,
+        45.4,
+        54.48
+      ],
+      "drop_set_loads_kg": [
+        49.94,
+        40.86,
+        31.78
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 4.54,
+      "round_to_step": 72.64,
+      "warmup_loads_kg": [
+        13.62,
+        27.24
+      ],
+      "feeler_loads_kg": [
+        36.32,
+        49.94,
+        63.56
+      ],
+      "drop_set_loads_kg": [
+        59.02,
+        45.4,
+        36.32
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 4.54,
+      "round_to_step": 81.72,
+      "warmup_loads_kg": [
+        18.16,
+        31.78
+      ],
+      "feeler_loads_kg": [
+        40.86,
+        54.48,
+        72.64
+      ],
+      "drop_set_loads_kg": [
+        63.56,
+        49.94,
+        40.86
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 4.54,
+      "round_to_step": 99.88,
+      "warmup_loads_kg": [
+        18.16,
+        40.86
+      ],
+      "feeler_loads_kg": [
+        49.94,
+        68.1,
+        90.8
+      ],
+      "drop_set_loads_kg": [
+        81.72,
+        63.56,
+        49.94
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 4.54,
+      "round_to_step": 99.88,
+      "warmup_loads_kg": [
+        18.16,
+        40.86
+      ],
+      "feeler_loads_kg": [
+        49.94,
+        72.64,
+        90.8
+      ],
+      "drop_set_loads_kg": [
+        81.72,
+        63.56,
+        49.94
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 4.54,
+      "round_to_step": 140.74,
+      "warmup_loads_kg": [
+        27.24,
+        54.48
+      ],
+      "feeler_loads_kg": [
+        68.1,
+        99.88,
+        127.12
+      ],
+      "drop_set_loads_kg": [
+        113.5,
+        90.8,
+        72.64
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    },
+    {
+      "anchor_kg": 0,
+      "load_increment_kg": 5,
+      "round_to_step": 0.0,
+      "warmup_loads_kg": [
+        0.0,
+        0.0
+      ],
+      "feeler_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "drop_set_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rest_pause_loads_kg": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "anchor_kg": 7.5,
+      "load_increment_kg": 5,
+      "round_to_step": 10.0,
+      "warmup_loads_kg": [
+        0.0,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "drop_set_loads_kg": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        7.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "anchor_kg": 11.35,
+      "load_increment_kg": 5,
+      "round_to_step": 10.0,
+      "warmup_loads_kg": [
+        0.0,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        10.0,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        5.0,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        11.35,
+        11.35,
+        11.35
+      ]
+    },
+    {
+      "anchor_kg": 12.5,
+      "load_increment_kg": 5,
+      "round_to_step": 15.0,
+      "warmup_loads_kg": [
+        5.0,
+        5.0
+      ],
+      "feeler_loads_kg": [
+        5.0,
+        10.0,
+        10.0
+      ],
+      "drop_set_loads_kg": [
+        10.0,
+        10.0,
+        5.0
+      ],
+      "rest_pause_loads_kg": [
+        12.5,
+        12.5,
+        12.5
+      ]
+    },
+    {
+      "anchor_kg": 22.68,
+      "load_increment_kg": 5,
+      "round_to_step": 25.0,
+      "warmup_loads_kg": [
+        5.0,
+        10.0
+      ],
+      "feeler_loads_kg": [
+        10.0,
+        15.0,
+        20.0
+      ],
+      "drop_set_loads_kg": [
+        20.0,
+        15.0,
+        10.0
+      ],
+      "rest_pause_loads_kg": [
+        22.68,
+        22.68,
+        22.68
+      ]
+    },
+    {
+      "anchor_kg": 31.25,
+      "load_increment_kg": 5,
+      "round_to_step": 30.0,
+      "warmup_loads_kg": [
+        5.0,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        15.0,
+        20.0,
+        30.0
+      ],
+      "drop_set_loads_kg": [
+        25.0,
+        20.0,
+        15.0
+      ],
+      "rest_pause_loads_kg": [
+        31.25,
+        31.25,
+        31.25
+      ]
+    },
+    {
+      "anchor_kg": 37.5,
+      "load_increment_kg": 5,
+      "round_to_step": 40.0,
+      "warmup_loads_kg": [
+        10.0,
+        15.0
+      ],
+      "feeler_loads_kg": [
+        20.0,
+        25.0,
+        35.0
+      ],
+      "drop_set_loads_kg": [
+        30.0,
+        25.0,
+        20.0
+      ],
+      "rest_pause_loads_kg": [
+        37.5,
+        37.5,
+        37.5
+      ]
+    },
+    {
+      "anchor_kg": 44.63,
+      "load_increment_kg": 5,
+      "round_to_step": 45.0,
+      "warmup_loads_kg": [
+        10.0,
+        20.0
+      ],
+      "feeler_loads_kg": [
+        20.0,
+        30.0,
+        40.0
+      ],
+      "drop_set_loads_kg": [
+        35.0,
+        30.0,
+        25.0
+      ],
+      "rest_pause_loads_kg": [
+        44.63,
+        44.63,
+        44.63
+      ]
+    },
+    {
+      "anchor_kg": 55,
+      "load_increment_kg": 5,
+      "round_to_step": 55.0,
+      "warmup_loads_kg": [
+        10.0,
+        20.0
+      ],
+      "feeler_loads_kg": [
+        30.0,
+        40.0,
+        50.0
+      ],
+      "drop_set_loads_kg": [
+        45.0,
+        35.0,
+        30.0
+      ],
+      "rest_pause_loads_kg": [
+        55.0,
+        55.0,
+        55.0
+      ]
+    },
+    {
+      "anchor_kg": 63,
+      "load_increment_kg": 5,
+      "round_to_step": 65.0,
+      "warmup_loads_kg": [
+        15.0,
+        25.0
+      ],
+      "feeler_loads_kg": [
+        30.0,
+        45.0,
+        55.0
+      ],
+      "drop_set_loads_kg": [
+        50.0,
+        40.0,
+        30.0
+      ],
+      "rest_pause_loads_kg": [
+        63.0,
+        63.0,
+        63.0
+      ]
+    },
+    {
+      "anchor_kg": 72.5,
+      "load_increment_kg": 5,
+      "round_to_step": 75.0,
+      "warmup_loads_kg": [
+        15.0,
+        30.0
+      ],
+      "feeler_loads_kg": [
+        35.0,
+        50.0,
+        65.0
+      ],
+      "drop_set_loads_kg": [
+        60.0,
+        45.0,
+        35.0
+      ],
+      "rest_pause_loads_kg": [
+        72.5,
+        72.5,
+        72.5
+      ]
+    },
+    {
+      "anchor_kg": 80,
+      "load_increment_kg": 5,
+      "round_to_step": 80.0,
+      "warmup_loads_kg": [
+        15.0,
+        30.0
+      ],
+      "feeler_loads_kg": [
+        40.0,
+        55.0,
+        70.0
+      ],
+      "drop_set_loads_kg": [
+        65.0,
+        50.0,
+        40.0
+      ],
+      "rest_pause_loads_kg": [
+        80.0,
+        80.0,
+        80.0
+      ]
+    },
+    {
+      "anchor_kg": 100,
+      "load_increment_kg": 5,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        50.0
+      ],
+      "rest_pause_loads_kg": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "anchor_kg": 101,
+      "load_increment_kg": 5,
+      "round_to_step": 100.0,
+      "warmup_loads_kg": [
+        20.0,
+        40.0
+      ],
+      "feeler_loads_kg": [
+        50.0,
+        70.0,
+        90.0
+      ],
+      "drop_set_loads_kg": [
+        80.0,
+        65.0,
+        50.0
+      ],
+      "rest_pause_loads_kg": [
+        101.0,
+        101.0,
+        101.0
+      ]
+    },
+    {
+      "anchor_kg": 140,
+      "load_increment_kg": 5,
+      "round_to_step": 140.0,
+      "warmup_loads_kg": [
+        30.0,
+        55.0
+      ],
+      "feeler_loads_kg": [
+        70.0,
+        100.0,
+        125.0
+      ],
+      "drop_set_loads_kg": [
+        110.0,
+        90.0,
+        70.0
+      ],
+      "rest_pause_loads_kg": [
+        140.0,
+        140.0,
+        140.0
+      ]
+    }
+  ],
+  "quick_load_adjust_cases": [
+    {
+      "current": 70,
+      "step": 5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 65.0,
+        "minus_5pct": 65.0,
+        "minus_10pct": 60.0
+      }
+    },
+    {
+      "current": 70,
+      "step": 2.5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 67.5,
+        "minus_5pct": 65.0,
+        "minus_10pct": 62.5
+      }
+    },
+    {
+      "current": 44.63,
+      "step": 2.5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 42.5,
+        "minus_5pct": 40.0,
+        "minus_10pct": 40.0
+      }
+    },
+    {
+      "current": 11.35,
+      "step": 2.27,
+      "unit": "kg",
+      "results": {
+        "minus_step": 9.08,
+        "minus_5pct": 9.08,
+        "minus_10pct": 9.08
+      }
+    },
+    {
+      "current": 20,
+      "step": null,
+      "unit": "kg",
+      "results": {
+        "minus_step": 17.5,
+        "minus_5pct": 17.5,
+        "minus_10pct": 17.5
+      }
+    },
+    {
+      "current": 155,
+      "step": 5,
+      "unit": "lb",
+      "results": {
+        "minus_step": 150.0,
+        "minus_5pct": 145.0,
+        "minus_10pct": 135.0
+      }
+    },
+    {
+      "current": 45,
+      "step": 2.5,
+      "unit": "lb",
+      "results": {
+        "minus_step": 42.5,
+        "minus_5pct": 42.5,
+        "minus_10pct": 40.0
+      }
+    },
+    {
+      "current": 2,
+      "step": 2.5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 0.0,
+        "minus_5pct": 0.0,
+        "minus_10pct": 0.0
+      }
+    },
+    {
+      "current": 2.5,
+      "step": 2.5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 0.0,
+        "minus_5pct": 0.0,
+        "minus_10pct": 0.0
+      }
+    },
+    {
+      "current": 0,
+      "step": 2.5,
+      "unit": "kg",
+      "results": {
+        "minus_step": 0.0,
+        "minus_5pct": 0.0,
+        "minus_10pct": 0.0
+      }
+    }
+  ]
+}

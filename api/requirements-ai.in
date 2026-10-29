@@ -1,0 +1,10 @@
+# Dependencias da imagem api/Dockerfile.ai (Lambdas de IA, migrations,
+# intervals-sync): as de producao + awslambdaric. Lock com hashes em
+# requirements-ai.txt, compilado com as MESMAS versoes de requirements.txt
+# (ver api/scripts/lock-requirements.sh).
+-r requirements.in
+# awslambdaric FIXADO (M49): a 4.1.0 (28/09/2026) foi publicada so como sdist,
+# sem wheels, e seu build exige cmake (scripts/preinstall.sh) - quebra o build
+# de TODAS as imagens de Lambda. Revisar so quando a 4.1.x voltar a ter wheel
+# (o Dependabot ignora awslambdaric >= 4.1 ate la: .github/dependabot.yml).
+awslambdaric==4.0.4

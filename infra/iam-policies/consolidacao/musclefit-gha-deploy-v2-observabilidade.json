@@ -1,0 +1,153 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AccessAnalyzerMusclefitAccount",
+      "Effect": "Allow",
+      "Action": [
+        "access-analyzer:CreateAnalyzer",
+        "access-analyzer:DeleteAnalyzer",
+        "access-analyzer:GetAnalyzer",
+        "access-analyzer:ListTagsForResource",
+        "access-analyzer:TagResource",
+        "access-analyzer:UntagResource"
+      ],
+      "Resource": "arn:aws:access-analyzer:sa-east-1:930413537709:analyzer/musclefit-account"
+    },
+    {
+      "Sid": "AccessAnalyzerTodos",
+      "Effect": "Allow",
+      "Action": "access-analyzer:ListAnalyzers",
+      "Resource": "*"
+    },
+    {
+      "Sid": "BudgetsMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "budgets:ListTagsForResource",
+        "budgets:TagResource",
+        "budgets:UntagResource"
+      ],
+      "Resource": "arn:aws:budgets::930413537709:budget/musclefit-*"
+    },
+    {
+      "Sid": "BudgetsBudget",
+      "Effect": "Allow",
+      "Action": [
+        "budgets:ModifyBudget",
+        "budgets:ViewBudget"
+      ],
+      "Resource": "arn:aws:budgets::930413537709:budget/*"
+    },
+    {
+      "Sid": "CeTodos",
+      "Effect": "Allow",
+      "Action": [
+        "ce:CreateAnomalyMonitor",
+        "ce:CreateAnomalySubscription",
+        "ce:DeleteAnomalyMonitor",
+        "ce:DeleteAnomalySubscription",
+        "ce:GetAnomalies",
+        "ce:GetAnomalyMonitors",
+        "ce:GetAnomalySubscriptions",
+        "ce:TagResource",
+        "ce:UpdateAnomalyMonitor",
+        "ce:UpdateAnomalySubscription"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudtrailMusclefitTrail",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:AddTags",
+        "cloudtrail:CreateTrail",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:GetEventSelectors",
+        "cloudtrail:GetTrail",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:ListTags",
+        "cloudtrail:PutEventSelectors",
+        "cloudtrail:RemoveTags",
+        "cloudtrail:StartLogging",
+        "cloudtrail:StopLogging",
+        "cloudtrail:UpdateTrail"
+      ],
+      "Resource": "arn:aws:cloudtrail:sa-east-1:930413537709:trail/musclefit-trail"
+    },
+    {
+      "Sid": "CloudtrailTodos",
+      "Effect": "Allow",
+      "Action": "cloudtrail:DescribeTrails",
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudwatchMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:ListTagsForResource",
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "Resource": "arn:aws:cloudwatch:*:930413537709:alarm:musclefit-*"
+    },
+    {
+      "Sid": "CloudwatchTodos",
+      "Effect": "Allow",
+      "Action": "cloudwatch:DescribeAlarms",
+      "Resource": "*"
+    },
+    {
+      "Sid": "GuarddutyTodos",
+      "Effect": "Allow",
+      "Action": [
+        "guardduty:CreateDetector",
+        "guardduty:ListDetectors"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "GuarddutyDetector",
+      "Effect": "Allow",
+      "Action": [
+        "guardduty:DeleteDetector",
+        "guardduty:GetDetector",
+        "guardduty:ListTagsForResource",
+        "guardduty:TagResource",
+        "guardduty:UntagResource",
+        "guardduty:UpdateDetector"
+      ],
+      "Resource": "arn:aws:guardduty:sa-east-1:930413537709:detector/*"
+    },
+    {
+      "Sid": "SnsMusclefitAlerts",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetSubscriptionAttributes",
+        "sns:GetTopicAttributes",
+        "sns:ListSubscriptionsByTopic",
+        "sns:ListTagsForResource",
+        "sns:SetSubscriptionAttributes",
+        "sns:SetTopicAttributes",
+        "sns:Subscribe",
+        "sns:TagResource",
+        "sns:Unsubscribe",
+        "sns:UntagResource"
+      ],
+      "Resource": "arn:aws:sns:*:930413537709:musclefit-alerts"
+    },
+    {
+      "Sid": "SnsMusclefitAlerts2",
+      "Effect": "Allow",
+      "Action": [
+        "sns:GetSubscriptionAttributes",
+        "sns:SetSubscriptionAttributes"
+      ],
+      "Resource": "arn:aws:sns:*:930413537709:musclefit-alerts:*"
+    }
+  ]
+}

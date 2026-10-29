@@ -1,0 +1,320 @@
+{
+  "_prompt_version": "nutrition-label-v2",
+  "input": [
+    {
+      "content": [
+        {
+          "text": "<<PROMPT 2198 chars, sha256 5d44823c1a4092c5>>",
+          "type": "input_text"
+        },
+        {
+          "detail": "high",
+          "image_url": "<<IMAGEM data URL, sha256 ea94887edad67525>>",
+          "type": "input_image"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 16384,
+  "model": "gpt-5.4-mini",
+  "store": false,
+  "text": {
+    "format": {
+      "name": "nutrition_label_reading",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basis": {
+            "enum": [
+              "g",
+              "ml",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "brand": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "household_measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "legibility": {
+            "enum": [
+              "ok",
+              "partial",
+              "unreadable"
+            ],
+            "type": "string"
+          },
+          "not_significant": {
+            "items": {
+              "enum": [
+                "energy_kcal",
+                "carbohydrates_g",
+                "total_sugars_g",
+                "added_sugars_g",
+                "protein_g",
+                "total_fat_g",
+                "saturated_fat_g",
+                "trans_fat_g",
+                "fiber_g",
+                "sodium_mg"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "per_100": {
+            "additionalProperties": false,
+            "properties": {
+              "added_sugars_g": {
+                "description": "Açúcares adicionados (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "carbohydrates_g": {
+                "description": "Carboidratos (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "energy_kcal": {
+                "description": "Valor energético (kcal)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "energy_kj": {
+                "description": "Valor energético (kJ)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "fiber_g": {
+                "description": "Fibras alimentares (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "protein_g": {
+                "description": "Proteínas (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "saturated_fat_g": {
+                "description": "Gorduras saturadas (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "sodium_mg": {
+                "description": "Sódio (mg)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "total_fat_g": {
+                "description": "Gorduras totais (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "total_sugars_g": {
+                "description": "Açúcares totais (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "trans_fat_g": {
+                "description": "Gorduras trans (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "energy_kcal",
+              "energy_kj",
+              "carbohydrates_g",
+              "total_sugars_g",
+              "added_sugars_g",
+              "protein_g",
+              "total_fat_g",
+              "saturated_fat_g",
+              "trans_fat_g",
+              "fiber_g",
+              "sodium_mg"
+            ],
+            "type": "object"
+          },
+          "per_serving": {
+            "additionalProperties": false,
+            "properties": {
+              "added_sugars_g": {
+                "description": "Açúcares adicionados (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "carbohydrates_g": {
+                "description": "Carboidratos (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "energy_kcal": {
+                "description": "Valor energético (kcal)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "energy_kj": {
+                "description": "Valor energético (kJ)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "fiber_g": {
+                "description": "Fibras alimentares (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "protein_g": {
+                "description": "Proteínas (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "saturated_fat_g": {
+                "description": "Gorduras saturadas (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "sodium_mg": {
+                "description": "Sódio (mg)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "total_fat_g": {
+                "description": "Gorduras totais (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "total_sugars_g": {
+                "description": "Açúcares totais (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "trans_fat_g": {
+                "description": "Gorduras trans (g)",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "energy_kcal",
+              "energy_kj",
+              "carbohydrates_g",
+              "total_sugars_g",
+              "added_sugars_g",
+              "protein_g",
+              "total_fat_g",
+              "saturated_fat_g",
+              "trans_fat_g",
+              "fiber_g",
+              "sodium_mg"
+            ],
+            "type": "object"
+          },
+          "product_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serving_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "servings_per_package": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_name",
+          "brand",
+          "barcode",
+          "basis",
+          "serving_size",
+          "household_measure",
+          "servings_per_package",
+          "per_100",
+          "per_serving",
+          "legibility",
+          "not_significant",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+    }
+  }
+}

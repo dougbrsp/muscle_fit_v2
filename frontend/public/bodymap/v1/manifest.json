@@ -1,0 +1,156 @@
+{
+ "version": "BODYMAP_V1",
+ "canvas": [
+  1536,
+  1024
+ ],
+ "views": {
+  "front": [
+   211,
+   26,
+   664,
+   947
+  ],
+  "back": [
+   831,
+   26,
+   1314,
+   946
+  ]
+ },
+ "compositor": {
+  "lum_lo": 4,
+  "lum_hi": 181,
+  "K0": 0.3,
+  "K1": 0.7,
+  "dim": 0.82,
+  "formula": "tint = color * (K0 + K1 * clamp((L - lo)/(hi - lo)))"
+ },
+ "slugs_db": [
+  "abs",
+  "obliques",
+  "adductor",
+  "forearm",
+  "quadriceps",
+  "biceps",
+  "upper-back",
+  "trapezius",
+  "gluteal",
+  "lower-back",
+  "front-deltoids",
+  "back-deltoids",
+  "chest",
+  "hamstring",
+  "triceps",
+  "calves"
+ ],
+ "slugs_extra": [
+  "neck"
+ ],
+ "aliases": {
+  "abductors": "adductor"
+ },
+ "not_mapped": {
+  "knees": "articulacao, nao e grupo muscular do banco; fica sem destaque na arte",
+  "head": "parte da arte base"
+ },
+ "source": {
+  "base": "gpt-image-1.5 high 1536x1024 transparent (prompts/base_v2.txt)",
+  "segmentation": "gpt-image-1.5 edit medium input_fidelity=high (prompts/path3_segment.txt)",
+  "labels": "path3_assignment.json (atribuicao humana unica) + watershed na arte base + potrace"
+ },
+ "files": {
+  "bodymap-base.png": {
+   "bytes": 2537483,
+   "sha256": "8d0e48a7942b5d41744a016b6deac4b165739c20fccbb0fb9b49340b3c5e4185"
+  },
+  "bodymap-base.webp": {
+   "bytes": 233034,
+   "sha256": "ce298a7b7dc1595e005a43abe9a054caad8f0d1bbb1db63dab8ed7f80932fc8e"
+  },
+  "bodymap-base@768.webp": {
+   "bytes": 71930,
+   "sha256": "05f4fd801d21a85b4896dbca826ec1311ae9411618ea5d1a8ff8d5126da7983d"
+  },
+  "bodymap-regions.json": {
+   "bytes": 46705,
+   "sha256": "973aa19a49733f3ff666ecea63ba496663c6cf3f9de89c2fb823a41669188682"
+  },
+  "bodymap-regions.svg": {
+   "bytes": 47329,
+   "sha256": "17324a5cf8690ffef79a134da01b0e536f2dd76f992d510d533e1315dfc7b8bb"
+  },
+  "masks/abductors.png": {
+   "bytes": 1114,
+   "sha256": "b632fc605d36e970c4028f3c2c63d3dc16eddc56424158ba117c199582fa8b5d"
+  },
+  "masks/abs.png": {
+   "bytes": 1092,
+   "sha256": "07bea043ab461e44104f2887f2b53fe42ab4d074960ce30f555ba1430875fc4a"
+  },
+  "masks/adductor.png": {
+   "bytes": 1114,
+   "sha256": "b632fc605d36e970c4028f3c2c63d3dc16eddc56424158ba117c199582fa8b5d"
+  },
+  "masks/back-deltoids.png": {
+   "bytes": 811,
+   "sha256": "d1102e93a75e8e25787e717feaa1703b95dc021317f1e2f4ba682edd18aee115"
+  },
+  "masks/biceps.png": {
+   "bytes": 853,
+   "sha256": "3f3ed8a21946ba6b94ce9e07c9c93bff52f31da02e7cfe1287c6fdbf38036105"
+  },
+  "masks/calves.png": {
+   "bytes": 1892,
+   "sha256": "66598396c7b4b389a6fc107f9202be63c5a9ae691011308bf4870acba57ec089"
+  },
+  "masks/chest.png": {
+   "bytes": 856,
+   "sha256": "e39bbf60cbc034f0de92bdc33f1734fd1f89533ff01b4d112dd6a4fbd81601ec"
+  },
+  "masks/forearm.png": {
+   "bytes": 1618,
+   "sha256": "2e0d06ba9197759e37d0f4e64cf06209de9ddc3a0294261e7545d42709e3b939"
+  },
+  "masks/front-deltoids.png": {
+   "bytes": 863,
+   "sha256": "856970fe5a19295ad57d39439309c8abc62a06b7b3c6f48add36909cc160ad65"
+  },
+  "masks/gluteal.png": {
+   "bytes": 1132,
+   "sha256": "9509a63734eaf52d9188a5fa44f41eb54b34b033a9ab2a9c8f82717664dab0d9"
+  },
+  "masks/hamstring.png": {
+   "bytes": 1164,
+   "sha256": "e0c0d78f691b666b995154553259caa4f72ad1b650276127ec096754e69dd44a"
+  },
+  "masks/lower-back.png": {
+   "bytes": 801,
+   "sha256": "567825ed4de7b3f8a925b55610c5da5f5c06d1512c73fc0607330a7537d13a43"
+  },
+  "masks/neck.png": {
+   "bytes": 512,
+   "sha256": "8f6f428e25dd0e801400c1de916d0c8e8dc7ac8f17ce2211b540a783d4e194ba"
+  },
+  "masks/obliques.png": {
+   "bytes": 1184,
+   "sha256": "96fb1f8fe562aff077921eca953a747da89a726d828e6dbfcf4b98b558124392"
+  },
+  "masks/quadriceps.png": {
+   "bytes": 1609,
+   "sha256": "2e569d326a0dd1a0cd9e01a92e5b11d2ac5cc8b868be12f36b936977ff22c264"
+  },
+  "masks/trapezius.png": {
+   "bytes": 1483,
+   "sha256": "ea5fca068cb042f6a43ab94d9b72f5a66fe288315bcd56fc38ed45561334ebbb"
+  },
+  "masks/triceps.png": {
+   "bytes": 1344,
+   "sha256": "64be9254947c930190053ea53555682bdeae2d2b8b7d58d946a5b6bbd6996863"
+  },
+  "masks/upper-back.png": {
+   "bytes": 1506,
+   "sha256": "49d926eef97ec0c76c683502ebdaee75063d3d3a4415f5b464847c9e75fdaac0"
+  }
+ }
+}

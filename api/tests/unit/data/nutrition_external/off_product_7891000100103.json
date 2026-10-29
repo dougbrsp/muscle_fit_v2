@@ -1,0 +1,246 @@
+{
+ "brands": "Nestlé, Moça",
+ "code": "7891000100103",
+ "generic_name": "Leite Condensado",
+ "generic_name_pt": "Leite Condensado",
+ "last_modified_t": 1772570022,
+ "nutrition": {
+  "aggregated_set": {
+   "nutrients": {
+    "added-sugars": {
+     "modifier": "~",
+     "source": "estimate",
+     "source_index": 1,
+     "source_per": "100g",
+     "unit": "g",
+     "value": 5.5
+    },
+    "alcohol": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "% vol",
+     "value": 0.0
+    },
+    "carbohydrates": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 55.0
+    },
+    "energy": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "kJ",
+     "value": 1365.0,
+     "value_computed": 270
+    },
+    "energy-kcal": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "kcal",
+     "value": 325.0,
+     "value_computed": 64
+    },
+    "energy-kj": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "kJ",
+     "value": 1365.0,
+     "value_computed": 270
+    },
+    "fat": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 8.0
+    },
+    "fiber": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 0.0
+    },
+    "fruits-vegetables-legumes": {
+     "modifier": "~",
+     "source": "estimate",
+     "source_index": 1,
+     "source_per": "100g",
+     "unit": "%",
+     "value": 0
+    },
+    "fruits-vegetables-nuts": {
+     "modifier": "~",
+     "source": "estimate",
+     "source_index": 1,
+     "source_per": "100g",
+     "unit": "%",
+     "value": 0
+    },
+    "nova-group": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "",
+     "value": 20.0
+    },
+    "proteins": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 7.0
+    },
+    "salt": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 0.0,
+     "value_computed": 0
+    },
+    "saturated-fat": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 5.0
+    },
+    "sodium": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 0.0,
+     "value_computed": 0
+    },
+    "sugars": {
+     "source": "packaging",
+     "source_index": 0,
+     "source_per": "serving",
+     "unit": "g",
+     "value": 55.0
+    }
+   },
+   "per": "100g",
+   "preparation": "as_sold"
+  },
+  "input_sets": [
+   {
+    "last_updated_t": 1772570019,
+    "nutrients": {
+     "alcohol": {
+      "unit": "% vol",
+      "value": 0,
+      "value_string": "0"
+     },
+     "carbohydrates": {
+      "unit": "g",
+      "value": 11,
+      "value_string": "11"
+     },
+     "energy-kcal": {
+      "unit": "kcal",
+      "value": 65,
+      "value_computed": 64,
+      "value_string": "65"
+     },
+     "energy-kj": {
+      "unit": "kJ",
+      "value": 273,
+      "value_computed": 270,
+      "value_string": "273"
+     },
+     "fat": {
+      "unit": "g",
+      "value": 1.6,
+      "value_string": "1.6"
+     },
+     "fiber": {
+      "unit": "g",
+      "value": 0,
+      "value_string": "0"
+     },
+     "nova-group": {
+      "unit": "",
+      "value": 4,
+      "value_string": "4"
+     },
+     "proteins": {
+      "unit": "g",
+      "value": 1.4,
+      "value_string": "1.4"
+     },
+     "salt": {
+      "unit": "g",
+      "value": 0,
+      "value_computed": 0,
+      "value_string": "0"
+     },
+     "saturated-fat": {
+      "unit": "g",
+      "value": 1,
+      "value_string": "1"
+     },
+     "sodium": {
+      "unit": "g",
+      "value": 0,
+      "value_computed": 0,
+      "value_string": "0"
+     },
+     "sugars": {
+      "unit": "g",
+      "value": 11,
+      "value_string": "11"
+     }
+    },
+    "per": "serving",
+    "per_quantity": 20,
+    "per_unit": "g",
+    "preparation": "as_sold",
+    "source": "packaging"
+   },
+   {
+    "nutrients": {
+     "added-sugars": {
+      "modifier": "~",
+      "unit": "g",
+      "value": 5.5,
+      "value_string": "5.5"
+     },
+     "fruits-vegetables-legumes": {
+      "modifier": "~",
+      "unit": "%",
+      "value": 0,
+      "value_string": "0"
+     },
+     "fruits-vegetables-nuts": {
+      "modifier": "~",
+      "unit": "%",
+      "value": 0,
+      "value_string": "0"
+     }
+    },
+    "per": "100g",
+    "per_quantity": 100,
+    "per_unit": "g",
+    "preparation": "as_sold",
+    "source": "estimate",
+    "source_description": "Estimate from ingredients"
+   }
+  ]
+ },
+ "product_name": "Leite Condensado Integral moça",
+ "product_name_pt": "Leite Condensado Integral moça",
+ "product_quantity": 395,
+ "product_quantity_unit": "g",
+ "quantity": "395 g",
+ "serving_quantity": 20,
+ "serving_size": "20 g"
+}

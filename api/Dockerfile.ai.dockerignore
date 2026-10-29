@@ -1,0 +1,47 @@
+# Ignore file ESPECIFICO de api/Dockerfile.ai (imagem de PRODUCAO musclefit-ai-generators,
+# usada por plan-generator, cardio-agent, workout-ai e musclefit-migrations).
+#
+# BuildKit usa `<Dockerfile>.dockerignore` (ao lado do Dockerfile) com precedencia
+# sobre um `.dockerignore` na raiz do contexto:
+# https://docs.docker.com/build/concepts/context/#filename-and-location
+# Por ser especifico, NAO afeta os builds de dev (Dockerfile.dev /
+# Dockerfile.engines.dev do docker-compose.yml), que compartilham o contexto api/.
+#
+# ALLOWLIST: tudo fica fora do contexto, exceto o que o Dockerfile copia.
+# REGRA: arquivo novo necessario na imagem de producao precisa ser liberado aqui
+# (e nos demais Dockerfile.*.dockerignore de producao que tambem o copiarem).
+# Defesa em profundidade contra tests/, scripts/, .env*, dumps e caches locais
+# entrarem na imagem por um COPY futuro mais amplo.
+
+*
+
+# --- liberado (o que api/Dockerfile.ai copia) ---
+# Lock com hashes (M47): requirements.txt + awslambdaric.
+!requirements-ai.txt
+!app
+# Templates dos prompts de sistema (M103 P1): SO a pasta prompts/ do submodulo
+# privado api/privado. O RAG (privado/rag) e o resto do submodulo continuam fora
+# (o passo "RAG privado fora da imagem" do ci-docker-images.yml confere); o
+# README do formato tambem nao vai.
+!privado/prompts
+privado/prompts/README.md
+!db/migrations
+
+# --- mesmo dentro do que foi liberado: nunca artefatos de dev/PII ---
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/.env
+**/.env.*
+**/*.sql
+**/*.sql.gz
+**/*.dump
+**/backups
+
+# --- excecao: as migracoes versionadas (NNN_descricao.sql) SAO necessarias em
+# /var/task/db/migrations para app.migrate (Lambda musclefit-migrations). A ultima
+# regra que casa vence, por isso vem depois de **/*.sql.
+!db/migrations/*.sql

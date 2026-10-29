@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "MusclefitCdnUpdate",
+      "Effect": "Allow",
+      "Action": ["cloudfront:UpdateDistribution", "cloudfront:GetDistributionConfig"],
+      "Resource": "arn:aws:cloudfront::930413537709:distribution/EOA1PMADLM7RO"
+    }
+  ]
+}

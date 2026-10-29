@@ -1,0 +1,45 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan*
+crash.log
+crash.*.log
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+# Saida do checkpoint de calibracao dos cards (api/scripts/exercise_card_calibration.py, so DEV)
+api/scripts/calibration-out/
+
+# Backup do DEV e SQL gerado por scripts/prod_to_dev.py (contem dados pessoais)
+backups/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Publicacao (M103 L1): artefatos locais e segredos que nunca entram no repositorio
+.playwright-mcp/
+.claude/settings.local.json
+.claude/worktrees/
+*.pem
+*.key
+*.p12
+*.bak
+*.dump
+*.sql.gz

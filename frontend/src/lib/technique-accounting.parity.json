@@ -1,0 +1,2207 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): resultado do dono (api/app/domain/technique_accounting.py; pontos de esforço de MuscleRecoveryService). O vitest roda o espelho TS (technique-accounting.ts) contra os mesmos casos. Não edite à mão.",
+  "catalogs": {
+    "migracao_060": {
+      "drop_set": {
+        "activation_set_equivalent": 0.5,
+        "max_equivalent_per_anchor": 1.0,
+        "set_type": "drop_set"
+      },
+      "rest_pause": {
+        "activation_set_equivalent": 0.4,
+        "max_equivalent_per_anchor": 1.0,
+        "set_type": "rest_pause"
+      },
+      "forced_reps": {
+        "activation_set_equivalent": 0.25,
+        "max_equivalent_per_anchor": 0.5,
+        "set_type": "forced_rep"
+      },
+      "negative_reps": {
+        "activation_set_equivalent": 0.25,
+        "max_equivalent_per_anchor": 0.5,
+        "set_type": "forced_rep"
+      },
+      "partial_reps": {
+        "activation_set_equivalent": 0.15,
+        "max_equivalent_per_anchor": 0.5,
+        "set_type": "forced_rep"
+      },
+      "cheat_reps": {
+        "activation_set_equivalent": 0.15,
+        "max_equivalent_per_anchor": 0.5,
+        "set_type": "forced_rep"
+      },
+      "fst7": {
+        "activation_set_equivalent": 0,
+        "max_equivalent_per_anchor": 0,
+        "default_sets_count": 7,
+        "set_type": "working"
+      },
+      "gvt": {
+        "activation_set_equivalent": 0,
+        "max_equivalent_per_anchor": 0,
+        "default_sets_count": 10,
+        "set_type": "working"
+      },
+      "tecnica_nova": {
+        "activation_set_equivalent": 0.3,
+        "max_equivalent_per_anchor": 0.6,
+        "set_type": "working"
+      }
+    },
+    "nao_calibrado": {
+      "rest_pause": {
+        "activation_set_equivalent": 0.4,
+        "max_equivalent_per_anchor": null
+      }
+    }
+  },
+  "effort_factor": [
+    {
+      "rpe_application": null,
+      "rpe_reference": null,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": null,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": null,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": null,
+      "rpe_reference": 9,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": null,
+      "rpe_reference": 10,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 5,
+      "rpe_reference": null,
+      "expected": 0.14285714285714285
+    },
+    {
+      "rpe_application": 5,
+      "rpe_reference": 7,
+      "expected": 0.5
+    },
+    {
+      "rpe_application": 5,
+      "rpe_reference": 8,
+      "expected": 0.25
+    },
+    {
+      "rpe_application": 5,
+      "rpe_reference": 9,
+      "expected": 0.17647058823529413
+    },
+    {
+      "rpe_application": 5,
+      "rpe_reference": 10,
+      "expected": 0.14285714285714285
+    },
+    {
+      "rpe_application": 6.5,
+      "rpe_reference": null,
+      "expected": 0.14285714285714285
+    },
+    {
+      "rpe_application": 6.5,
+      "rpe_reference": 7,
+      "expected": 0.5
+    },
+    {
+      "rpe_application": 6.5,
+      "rpe_reference": 8,
+      "expected": 0.25
+    },
+    {
+      "rpe_application": 6.5,
+      "rpe_reference": 9,
+      "expected": 0.17647058823529413
+    },
+    {
+      "rpe_application": 6.5,
+      "rpe_reference": 10,
+      "expected": 0.14285714285714285
+    },
+    {
+      "rpe_application": 7,
+      "rpe_reference": null,
+      "expected": 0.2857142857142857
+    },
+    {
+      "rpe_application": 7,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 7,
+      "rpe_reference": 8,
+      "expected": 0.5
+    },
+    {
+      "rpe_application": 7,
+      "rpe_reference": 9,
+      "expected": 0.35294117647058826
+    },
+    {
+      "rpe_application": 7,
+      "rpe_reference": 10,
+      "expected": 0.2857142857142857
+    },
+    {
+      "rpe_application": 7.25,
+      "rpe_reference": null,
+      "expected": 0.35714285714285715
+    },
+    {
+      "rpe_application": 7.25,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 7.25,
+      "rpe_reference": 8,
+      "expected": 0.625
+    },
+    {
+      "rpe_application": 7.25,
+      "rpe_reference": 9,
+      "expected": 0.4411764705882353
+    },
+    {
+      "rpe_application": 7.25,
+      "rpe_reference": 10,
+      "expected": 0.35714285714285715
+    },
+    {
+      "rpe_application": 8,
+      "rpe_reference": null,
+      "expected": 0.5714285714285714
+    },
+    {
+      "rpe_application": 8,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8,
+      "rpe_reference": 9,
+      "expected": 0.7058823529411765
+    },
+    {
+      "rpe_application": 8,
+      "rpe_reference": 10,
+      "expected": 0.5714285714285714
+    },
+    {
+      "rpe_application": 8.5,
+      "rpe_reference": null,
+      "expected": 0.6857142857142856
+    },
+    {
+      "rpe_application": 8.5,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8.5,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8.5,
+      "rpe_reference": 9,
+      "expected": 0.8470588235294118
+    },
+    {
+      "rpe_application": 8.5,
+      "rpe_reference": 10,
+      "expected": 0.6857142857142856
+    },
+    {
+      "rpe_application": 8.75,
+      "rpe_reference": null,
+      "expected": 0.7476190476190475
+    },
+    {
+      "rpe_application": 8.75,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8.75,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 8.75,
+      "rpe_reference": 9,
+      "expected": 0.9235294117647058
+    },
+    {
+      "rpe_application": 8.75,
+      "rpe_reference": 10,
+      "expected": 0.7476190476190475
+    },
+    {
+      "rpe_application": 9,
+      "rpe_reference": null,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9,
+      "rpe_reference": 9,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9,
+      "rpe_reference": 10,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9.5,
+      "rpe_reference": null,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9.5,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9.5,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9.5,
+      "rpe_reference": 9,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 9.5,
+      "rpe_reference": 10,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 10,
+      "rpe_reference": null,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 10,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 10,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 10,
+      "rpe_reference": 9,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 10,
+      "rpe_reference": 10,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 11,
+      "rpe_reference": null,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 11,
+      "rpe_reference": 7,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 11,
+      "rpe_reference": 8,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 11,
+      "rpe_reference": 9,
+      "expected": 1.0
+    },
+    {
+      "rpe_application": 11,
+      "rpe_reference": 10,
+      "expected": 1.0
+    }
+  ],
+  "application_equivalent": [
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.75
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.2857142857142857
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.625
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.8333333333333334
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 1.25
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "drop_set",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.75
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.2857142857142857
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.625
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.8333333333333334
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 1.25
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.4
+    },
+    {
+      "application": {
+        "technique_code": "rest_pause",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.75
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.5
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.75
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.8333333333333334
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 1.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "forced_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.375
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.25
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.375
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.4166666666666667
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.625
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.15
+    },
+    {
+      "application": {
+        "technique_code": "partial_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "fst7",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "tecnica_nova",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.3
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": null,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": null
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 6,
+        "rpe": 8
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 10,
+        "rpe": 9.5
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 12,
+      "anchor_rpe": 10,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": null,
+      "anchor_rpe": null,
+      "expected": 0.0
+    },
+    {
+      "application": {
+        "technique_code": "myo_reps",
+        "reps": 0,
+        "rpe": 7
+      },
+      "ref_reps": 8,
+      "anchor_rpe": 8.5,
+      "expected": 0.0
+    }
+  ],
+  "realized_block_equivalent": [
+    {
+      "name": "6 reps de uma série de 12 = meia série",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "dois mini-blocos de 6 = uma série",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 1.0,
+        "by_technique": {
+          "rest_pause": 1.0
+        },
+        "raw_by_technique": {
+          "rest_pause": 1.0
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "6+4+3 = 1,08, o teto reduz a 1,0",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 4,
+          "rpe": 10
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 3,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 1.0,
+        "by_technique": {
+          "rest_pause": 1.0
+        },
+        "raw_by_technique": {
+          "rest_pause": 1.0833333333333333
+        },
+        "ref_reps": 12,
+        "capped": true
+      }
+    },
+    {
+      "name": "RPE baixo pondera pelos pontos de esforço",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 8
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.2857142857142857,
+        "by_technique": {
+          "rest_pause": 0.2857142857142857
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.2857142857142857
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "RPE >= 9 vale esforço cheio mesmo abaixo da âncora",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 9
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "sem âncora: topo da faixa prescrita",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": null,
+      "anchor_rpe": null,
+      "reps_target": "10-12",
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "âncora sem reps: topo da faixa prescrita",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 3,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 0,
+      "anchor_rpe": 10,
+      "reps_target": "6",
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 6,
+        "capped": false
+      }
+    },
+    {
+      "name": "reps forçadas: extras / ref × 1,0",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "forced_reps",
+          "reps": 3,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.25,
+        "by_technique": {
+          "forced_reps": 0.25
+        },
+        "raw_by_technique": {
+          "forced_reps": 0.25
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "negativas: extras / ref × 1,0",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "negative_reps",
+          "reps": 2,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 10,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.2,
+        "by_technique": {
+          "negative_reps": 0.2
+        },
+        "raw_by_technique": {
+          "negative_reps": 0.2
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "parciais: peso 0,5 e teto 0,5",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "partial_reps",
+          "reps": 12,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "partial_reps": 0.5
+        },
+        "raw_by_technique": {
+          "partial_reps": 0.5
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "cheat: peso 0,5",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "cheat_reps",
+          "reps": 4,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 10,
+      "anchor_rpe": 9,
+      "reps_target": null,
+      "expected": {
+        "total": 0.2,
+        "by_technique": {
+          "cheat_reps": 0.2
+        },
+        "raw_by_technique": {
+          "cheat_reps": 0.2
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "sem reps: coeficiente do catálogo × aplicações",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "drop_set",
+          "reps": null,
+          "rpe": null
+        },
+        {
+          "technique_code": "drop_set",
+          "reps": null,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 1.0,
+        "by_technique": {
+          "drop_set": 1.0
+        },
+        "raw_by_technique": {
+          "drop_set": 1.0
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "sem referência nenhuma: coeficiente do catálogo",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": null,
+      "anchor_rpe": null,
+      "reps_target": null,
+      "expected": {
+        "total": 0.4,
+        "by_technique": {
+          "rest_pause": 0.4
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.4
+        },
+        "ref_reps": null,
+        "capped": false
+      }
+    },
+    {
+      "name": "FST-7 não soma equivalente",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "fst7",
+          "reps": 10,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 10,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.0,
+        "by_technique": {
+          "fst7": 0.0
+        },
+        "raw_by_technique": {
+          "fst7": 0.0
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "GVT não soma equivalente",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "gvt",
+          "reps": 10,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 10,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.0,
+        "by_technique": {
+          "gvt": 0.0
+        },
+        "raw_by_technique": {
+          "gvt": 0.0
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "código fora do catálogo vale 0",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "myo_reps",
+          "reps": 6,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.0,
+        "by_technique": {
+          "myo_reps": 0.0
+        },
+        "raw_by_technique": {
+          "myo_reps": 0.0
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "técnica nova sem regra por reps: coeficiente",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "tecnica_nova",
+          "reps": 8,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.3,
+        "by_technique": {
+          "tecnica_nova": 0.3
+        },
+        "raw_by_technique": {
+          "tecnica_nova": 0.3
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "teto é por técnica na mesma âncora",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 10
+        },
+        {
+          "technique_code": "forced_reps",
+          "reps": 12,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 1.5,
+        "by_technique": {
+          "rest_pause": 1.0,
+          "forced_reps": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 1.5,
+          "forced_reps": 1.0
+        },
+        "ref_reps": 12,
+        "capped": true
+      }
+    },
+    {
+      "name": "âncora sem RPE usa a referência padrão",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": 8
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": null,
+      "reps_target": null,
+      "expected": {
+        "total": 0.2857142857142857,
+        "by_technique": {
+          "rest_pause": 0.2857142857142857
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.2857142857142857
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "aplicação sem RPE = esforço cheio",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 6,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 8,
+      "reps_target": null,
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "drop com RPE fracionário",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "drop_set",
+          "reps": 8,
+          "rpe": 7.5
+        },
+        {
+          "technique_code": "drop_set",
+          "reps": 5,
+          "rpe": 8.5
+        }
+      ],
+      "anchor_reps": 10,
+      "anchor_rpe": 9.5,
+      "reps_target": null,
+      "expected": {
+        "total": 0.7578947368421054,
+        "by_technique": {
+          "drop_set": 0.7578947368421054
+        },
+        "raw_by_technique": {
+          "drop_set": 0.7578947368421054
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "reps negativas não descontam",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": -3,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.0,
+        "by_technique": {
+          "rest_pause": 0.0
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.0
+        },
+        "ref_reps": 12,
+        "capped": false
+      }
+    },
+    {
+      "name": "âncora fracionária trunca",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 5,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": 10.7,
+      "anchor_rpe": 10,
+      "reps_target": null,
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 10,
+        "capped": false
+      }
+    },
+    {
+      "name": "faixa por extenso",
+      "catalog": "migracao_060",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 4,
+          "rpe": 10
+        }
+      ],
+      "anchor_reps": null,
+      "anchor_rpe": null,
+      "reps_target": "8 a 12",
+      "expected": {
+        "total": 0.5,
+        "by_technique": {
+          "rest_pause": 0.5
+        },
+        "raw_by_technique": {
+          "rest_pause": 0.5
+        },
+        "ref_reps": 8,
+        "capped": false
+      }
+    },
+    {
+      "name": "linha não calibrada usa teto padrão de uma série",
+      "catalog": "nao_calibrado",
+      "applications": [
+        {
+          "technique_code": "rest_pause",
+          "reps": 12,
+          "rpe": null
+        },
+        {
+          "technique_code": "rest_pause",
+          "reps": 12,
+          "rpe": null
+        }
+      ],
+      "anchor_reps": 12,
+      "anchor_rpe": null,
+      "reps_target": null,
+      "expected": {
+        "total": 1.0,
+        "by_technique": {
+          "rest_pause": 1.0
+        },
+        "raw_by_technique": {
+          "rest_pause": 2.0
+        },
+        "ref_reps": 12,
+        "capped": true
+      }
+    }
+  ],
+  "planned_equivalent": [
+    {
+      "technique_code": "rest_pause",
+      "applications": 2,
+      "expected": 0.8
+    },
+    {
+      "technique_code": "rest_pause",
+      "applications": 3,
+      "expected": 1.0
+    },
+    {
+      "technique_code": "drop_set",
+      "applications": 1,
+      "expected": 0.5
+    },
+    {
+      "technique_code": "forced_reps",
+      "applications": 4,
+      "expected": 0.5
+    },
+    {
+      "technique_code": "partial_reps",
+      "applications": 2,
+      "expected": 0.3
+    },
+    {
+      "technique_code": "fst7",
+      "applications": 7,
+      "expected": 0.0
+    },
+    {
+      "technique_code": "gvt",
+      "applications": 10,
+      "expected": 0.0
+    },
+    {
+      "technique_code": null,
+      "applications": 2,
+      "expected": 0.0
+    },
+    {
+      "technique_code": "rest_pause",
+      "applications": 0,
+      "expected": 0.0
+    },
+    {
+      "technique_code": "rest_pause",
+      "applications": -1,
+      "expected": 0.0
+    },
+    {
+      "technique_code": "rest_pause",
+      "applications": "2",
+      "expected": 0.8
+    },
+    {
+      "technique_code": "myo_reps",
+      "applications": 2,
+      "expected": 0.0
+    },
+    {
+      "technique_code": "tecnica_nova",
+      "applications": 1,
+      "expected": 0.3
+    },
+    {
+      "technique_code": "tecnica_nova",
+      "applications": 5,
+      "expected": 0.6
+    },
+    {
+      "technique_code": "rest_pause",
+      "applications": 1.5,
+      "expected": 0.6000000000000001
+    }
+  ],
+  "reference_reps": [
+    {
+      "anchor_reps": 12,
+      "reps_target": "8-10",
+      "expected": 12
+    },
+    {
+      "anchor_reps": null,
+      "reps_target": "8-10",
+      "expected": 10
+    },
+    {
+      "anchor_reps": null,
+      "reps_target": null,
+      "expected": null
+    },
+    {
+      "anchor_reps": 0,
+      "reps_target": "12",
+      "expected": 12
+    },
+    {
+      "anchor_reps": null,
+      "reps_target": "8 a 12",
+      "expected": 8
+    },
+    {
+      "anchor_reps": 10.9,
+      "reps_target": null,
+      "expected": 10
+    },
+    {
+      "anchor_reps": "9",
+      "reps_target": null,
+      "expected": 9
+    },
+    {
+      "anchor_reps": null,
+      "reps_target": "7,5",
+      "expected": 7
+    }
+  ]
+}

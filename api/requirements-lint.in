@@ -1,0 +1,4 @@
+# Ferramentas de lint do CI (job `lint` do ci-develop.yml). Nunca entram em
+# imagem. Lock com hashes em requirements-lint.txt (api/scripts/lock-requirements.sh).
+# Config do ruff: api/ruff.toml.
+ruff==0.17.0

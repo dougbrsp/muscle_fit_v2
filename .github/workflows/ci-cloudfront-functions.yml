@@ -1,0 +1,35 @@
+name: CI (CloudFront Functions)
+
+# Testes unitarios das CloudFront Functions (infra/cloudfront-functions/).
+# Node puro (`node --test`), sem dependencias, sem credenciais e sem AWS:
+# nunca declara `id-token: write` nem chama configure-aws-credentials.
+# A publicacao da function continua exclusiva do terraform apply, hoje no estagio (1)
+# de deploy-producao.yml (workflow_dispatch na main).
+
+on:
+  pull_request:
+    paths:
+      - "infra/cloudfront-functions/**"
+      - ".github/workflows/ci-cloudfront-functions.yml"
+
+permissions:
+  contents: read
+
+# Push novo no mesmo PR cancela a rodada anterior (economia de Actions).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: node --test
+        run: node --test "infra/cloudfront-functions/*.test.mjs"

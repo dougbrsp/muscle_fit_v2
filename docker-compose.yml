@@ -1,0 +1,342 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      # SEG-19: so em 127.0.0.1 (nao exposto na LAN/Tailscale). Porta do host parametrizavel (default inalterado) para permitir uma
+      # segunda stack isolada (`docker compose -p <outro-nome>`) em paralelo.
+      - "127.0.0.1:${MUSCLEFIT_MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - musclefit_mysql_data:/var/lib/mysql
+      # Migrations legadas (renumeradas) aplicadas automaticamente pelo MySQL
+      # na primeira inicializacao do volume, em ordem alfabetica (001_..020_).
+      - ./api/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  localstack:
+    image: localstack/localstack:3
+    restart: unless-stopped
+    environment:
+      # `ses`: e-mail de "Esqueci minha senha" (M5) - a api chama
+      # boto3.client("ses").send_email via AWS_ENDPOINT_URL; sem o servico
+      # habilitado o LocalStack responde 500 e o 00-bootstrap.sh nao consegue
+      # verificar o remetente. Mudar esta lista exige recriar o container
+      # (`docker compose up -d --force-recreate localstack`).
+      SERVICES: s3,dynamodb,secretsmanager,lambda,ses
+      AWS_DEFAULT_REGION: ${AWS_REGION:-sa-east-1}
+      # Repassados para dentro do container LocalStack, lidos pelo script de
+      # bootstrap (localstack/init/ready.d/00-bootstrap.sh) como valor
+      # placeholder dos secrets - nao sao segredos reais de producao.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      API_TOKEN: ${API_TOKEN:-dev-local-token}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      # M5: remetente a verificar no SES emulado (00-bootstrap.sh).
+      PASSWORD_RESET_FROM_EMAIL: ${PASSWORD_RESET_FROM_EMAIL:-no-reply@musclefit.local}
+    ports:
+      - "127.0.0.1:${MUSCLEFIT_LOCALSTACK_HOST_PORT:-4566}:4566"
+    volumes:
+      - ./localstack/init/ready.d:/etc/localstack/init/ready.d
+      - musclefit_localstack_data:/var/lib/localstack
+    healthcheck:
+      # So fica healthy depois que os scripts de ready.d (bootstrap da tabela
+      # DynamoDB, buckets e secrets) CONCLUIREM sem erro. `/_localstack/health`
+      # sozinho fica verde antes disso, e um bootstrap que falhe passaria
+      # despercebido ate o primeiro PutItem (500 em POST de job assincrono).
+      test: ["CMD-SHELL", "curl -fs http://localhost:4566/_localstack/init/ready | grep -Eq '\"completed\": ?true' && ! curl -fs http://localhost:4566/_localstack/init/ready | grep -q '\"ERROR\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # SEG-12: /docs, /redoc e /openapi.json so em DEV (producao nao define).
+      API_DOCS_ENABLED: "1"
+      # Dentro do compose, os hostnames sao os nomes dos servicos - sobrepoe
+      # qualquer valor de localhost que porventura esteja no .env do host.
+      MYSQL_HOST: mysql
+      AWS_ENDPOINT_URL: http://localstack:4566
+      # Jobs assincronos (202 + job_id + polling) - mesmas env vars que
+      # infra/lambda_api_core.tf define na Lambda real, com os MESMOS nomes de
+      # funcao. Ver docs/local-dev.md, "Jobs assincronos".
+      ASYNC_JOBS_TABLE: musclefit-async-jobs
+      PLAN_GENERATOR_FUNCTION_NAME: musclefit-plan-generator
+      CARDIO_AGENT_FUNCTION_NAME: musclefit-cardio-agent
+      WORKOUT_AI_FUNCTION_NAME: musclefit-workout-ai
+      # So o cliente `lambda` do boto3 sai do LocalStack e vai para o emulador
+      # local da API Invoke (nginx:9001 -> lambda-ai).
+      # Precedencia nativa do botocore: AWS_ENDPOINT_URL_<SERVICO> vence
+      # AWS_ENDPOINT_URL. Env de runtime do compose - NUNCA em infra/.
+      AWS_ENDPOINT_URL_LAMBDA: http://nginx:9001
+      # Motores novos LIGADOS em DEV (PR-10 e PR-12) e, desde o PR-14, tambem
+      # em PRODUCAO: `infra/lambda_motores_deterministicos.tf` define as duas
+      # nas Lambdas `musclefit-api-core` e `musclefit-plan-generator`. Este
+      # servico `api` e o equivalente da api-core, por isso recebe as duas
+      # aqui - e o equivalente da plan-generator e o servico `lambda-ai`, que
+      # tambem as recebe. Paridade DEV x producao, nao divergencia.
+      #
+      # `v2` = o avaliador roda no finish e mantem
+      # progression_group_states/progression_tracks vivas E essas trilhas
+      # podem alimentar a prescricao (em `shadow` elas so eram gravadas).
+      PROGRESSION_ENGINE: v2
+      # RAG: paridade com `infra/lambda_api_core.tf`, que define
+      # RAG_S3_BUCKET/RAG_S3_PREFIX/RAG_MARKDOWN_DIR=/tmp/rag na Lambda
+      # `musclefit-api-core` - esta api-core LE RAG (ex:
+      # `GET /training-types/rag-folders`, via
+      # rag_chunking.list_training_type_rag_folders). Sem isto, o default
+      # `/app/rag` nao existe no container e o endpoint devolvia [] em
+      # silencio ("Nenhuma fonte disponivel" no modal de Periodizacao).
+      # Mesmo caminho e mesmo bind mount que lambda-ai ja
+      # usam; sem RAG_S3_BUCKET, ensure_rag_local() so devolve o diretorio.
+      RAG_MARKDOWN_DIR: /var/task/rag
+      # Modos A e B deterministicos (secoes 6.1/6.2). Exige
+      # `PROGRESSION_ENGINE=v2`: sem as trilhas alimentadas, o motor
+      # prescreveria sobre estado vazio. O replay e pre-requisito das duas
+      # flags (em producao rodou em 2026-09-18) - ver
+      # docs/refatoracao-motores/ATIVACAO_MOTORES_DETERMINISTICOS.md.
+      GENERATION_ENGINE: deterministic
+      # Bucket de uploads (foto de equipamento/logo de academia/foto de perfil
+      # e, com os cards ilustrados, a publicacao do card): mesmo nome e mesmo
+      # bucket que `infra/lambda_api_core.tf` define na `musclefit-api-core`,
+      # criado no LocalStack pelo 00-bootstrap.sh. Sem esta linha o upload de
+      # foto de equipamento respondia 503 `photo_storage_unavailable` em DEV.
+      EQUIPMENT_PHOTOS_BUCKET: musclefit-uploads
+      # Cards ilustrados de exercicios - paridade com `infra/lambda_api_core.tf`
+      # (mesmos NOMES; so os valores de ambiente mudam):
+      #   - PUBLIC_ASSETS_BASE_URL: em producao e a CDN
+      #     (https://app.musclefit.com.br, behavior /exercise-cards/*); aqui e
+      #     o bucket no LocalStack, path-style, no host/porta que o NAVEGADOR
+      #     alcanca (o 00-bootstrap.sh libera GET anonimo so em
+      #     exercise-cards/*).
+      #   - S3_PRESIGN_ENDPOINT_URL: SO DEV, nunca em infra/. A URL pre-assinada
+      #     do rascunho e aberta pelo navegador, que nao resolve
+      #     `localstack:4566` (AWS_ENDPOINT_URL deste container); a assinatura
+      #     e feita para o host do LocalStack visto do host. Em producao a
+      #     variavel nao existe e o presign usa o endpoint S3 padrao.
+      #   - EXERCISE_CARD_GENERATION_ENABLED: LIGADA em DEV (o checkpoint de
+      #     calibracao visual roda aqui, com OPENAI_API_KEY real no .env);
+      #     "false" em producao ate o fim do checkpoint. Sobrescreva no .env
+      #     para desligar.
+      #   - Limites e OPENAI_IMAGE_*: mesmos defaults de producao.
+      PUBLIC_ASSETS_BASE_URL: http://localhost:${MUSCLEFIT_LOCALSTACK_HOST_PORT:-4566}/musclefit-uploads
+      S3_PRESIGN_ENDPOINT_URL: http://localhost:${MUSCLEFIT_LOCALSTACK_HOST_PORT:-4566}
+      EXERCISE_CARD_GENERATION_ENABLED: ${EXERCISE_CARD_GENERATION_ENABLED:-true}
+      EXERCISE_CARD_MAX_GENERATIONS_PER_DAY: ${EXERCISE_CARD_MAX_GENERATIONS_PER_DAY:-100}
+      EXERCISE_CARD_MAX_IN_FLIGHT: ${EXERCISE_CARD_MAX_IN_FLIGHT:-2}
+      EXERCISE_CARD_STALE_MINUTES: ${EXERCISE_CARD_STALE_MINUTES:-10}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-medium}
+      OPENAI_IMAGE_SIZE: ${OPENAI_IMAGE_SIZE:-1024x1536}
+      OPENAI_IMAGE_TIMEOUT_SECONDS: ${OPENAI_IMAGE_TIMEOUT_SECONDS:-150}
+    # Sem publicacao de porta no host: quem fala com a API de fora do compose
+    # (frontend, curl, browser) fala com o proxy `nginx` na porta 8000 - ver
+    # servico `nginx` abaixo e docs/local-dev.md ("Arquitetura de 2 backends
+    # + proxy"). Dentro da rede do compose, `nginx` chama este servico por
+    # `api:8000`.
+    expose:
+      - "8000"
+    volumes:
+      # Hot-reload: altera o codigo no host e o uvicorn --reload dentro do
+      # container recarrega sozinho, sem rebuild de imagem.
+      - ./api/app:/app/app
+      - ./api/scripts:/app/scripts
+      # Migracoes versionadas, lidas por `python -m app.migrate` (default
+      # /app/db/migrations) - ver docs/local-dev.md.
+      - ./api/db:/app/db:ro
+      # Backups com dump real de producao (PII) - NAO copiados para a imagem
+      # (Dockerfile.dev so copia app/ e scripts/); montados so em runtime,
+      # read-only, para que `make seed`/bootstrap_local_db.py consiga
+      # localizar o restore.sql mais recente quando SEED_WITH_PROD_DUMP=1.
+      - ./tools/onprem-sync:/app/tools/onprem-sync:ro
+      # Conteudo de RAG versionado no repo, montado read-only no mesmo
+      # caminho que lambda-ai usa (em producao este mesmo
+      # conteudo chega por S3 -> /tmp/rag, ver app/rag_storage.py).
+      - ./api/privado/rag/markdown:/var/task/rag:ro
+      # Templates dos prompts de sistema (M103 P1), no caminho default de
+      # app/prompt_store.py (<pacote>/../privado/prompts); nas imagens de producao
+      # entram por COPY (api/Dockerfile*).
+      - ./api/privado/prompts:/app/privado/prompts:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # Segundo backend HTTP, paridade local com a Lambda `musclefit-engines` de
+  # producao (motores deterministicos - recuperacao muscular, volume,
+  # progressao, ativacao muscular - ver infra/lambda_engines.tf e
+  # app/main_engines.py). Em producao, o API Gateway roteia um conjunto
+  # especifico de paths sob /analytics/* e /exercises/* para esta Lambda
+  # separada (ver infra/api_gateway.tf); localmente quem faz esse mesmo
+  # roteamento por path e o servico `nginx` abaixo. Ver docs/local-dev.md.
+  api-engines:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.engines.dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_DOCS_ENABLED: "1"
+      MYSQL_HOST: mysql
+      AWS_ENDPOINT_URL: http://localstack:4566
+      # RAG: paridade com `infra/lambda_engines.tf`, que tambem define
+      # RAG_S3_BUCKET/RAG_S3_PREFIX/RAG_MARKDOWN_DIR na Lambda
+      # `musclefit-engines`. Nenhuma rota HOJE incluida em
+      # `app/main_engines.py` le RAG (o consumidor do pacote,
+      # `intelligence/report_data_service.py`, entra por reports_core.py /
+      # workouts_analysis_core.py, que ficam na api-core), mas a imagem e o
+      # MESMO pacote app/ - basta um router migrar para ca para o RAG passar
+      # a ser lido. Producao ja cobre esse caso; DEV passa a cobrir tambem.
+      RAG_MARKDOWN_DIR: /var/task/rag
+    # Sem publicacao de porta no host: so acessivel de dentro da rede do
+    # compose (pelo `nginx`, como `api-engines:8000`) - mesma paridade de
+    # producao, onde esta Lambda so recebe trafego HTTP via API Gateway.
+    expose:
+      - "8000"
+    volumes:
+      # Mesmo pacote app/ do servico `api` (musclefit-engines reaproveita o
+      # MESMO app/ - ver comentario em api/Dockerfile.engines) - hot-reload
+      # identico ao servico `api`.
+      - ./api/app:/app/app
+      - ./api/privado/rag/markdown:/var/task/rag:ro
+      # Templates dos prompts de sistema (M103 P1), no caminho default de
+      # app/prompt_store.py (<pacote>/../privado/prompts); nas imagens de producao
+      # entram por COPY (api/Dockerfile*).
+      - ./api/privado/prompts:/app/privado/prompts:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Lambdas assincronas (job async + polling) - paridade local com
+  # musclefit-plan-generator, musclefit-cardio-agent e musclefit-workout-ai
+  # (imagem api/Dockerfile.ai).
+  #
+  # Cada servico e construido a partir do Dockerfile de PRODUCAO da funcao,
+  # sem altera-lo - mesmas dependencias Python/apt que a Lambda real. So o
+  # entrypoint e trocado, em runtime, pelo emulador da API Invoke
+  # (dev/lambda-local/lambda_invoke_emulator.py, montado por volume e fora de
+  # qualquer build context), que chama o handler REAL
+  # (`handler(event, context)`) num subprocesso por invocacao. Nenhum ramo
+  # `if dev` no codigo da aplicacao. Ver docs/local-dev.md, "Jobs assincronos".
+  #
+  # LAMBDA_LOCAL_FUNCTIONS = nome -> handler:timeout, transcrito de
+  # infra/lambda_ai_generators.tf e infra/lambda_workout_ai.tf (manter
+  # sincronizado).
+  # ---------------------------------------------------------------------------
+  lambda-ai:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.ai
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_HOST: mysql
+      AWS_ENDPOINT_URL: http://localstack:4566
+      ASYNC_JOBS_TABLE: musclefit-async-jobs
+      # Em producao o RAG e hidratado de S3 para /tmp/rag (app/rag_storage.py);
+      # aqui o conteudo versionado do repo e montado direto (sem RAG_S3_BUCKET,
+      # ensure_rag_local() so devolve o diretorio).
+      RAG_MARKDOWN_DIR: /var/task/rag
+      # A GERACAO da ficha roda aqui, no handler
+      # `app.lambda_plan_generator.handler` - nao no servico `api`. Sem as duas
+      # flags neste servico, DEV gerava a ficha pelo motor LEGADO e congelava
+      # pelo deterministico: a configuracao pela metade, dentro do proprio DEV
+      # (achado do PR-14). Em producao o equivalente e
+      # `musclefit-plan-generator`, que recebe as duas por
+      # `infra/lambda_motores_deterministicos.tf`.
+      #
+      # Aqui as flags valem para o processo INTEIRO do emulador, que hospeda
+      # tambem cardio-agent e workout-ai. Nao ha problema: nenhum dos dois le
+      # as flags (e por isso, em producao, `musclefit-cardio-agent` e
+      # `musclefit-workout-ai` NAO as recebem).
+      PROGRESSION_ENGINE: v2
+      GENERATION_ENGINE: deterministic
+      # Cards ilustrados de exercicios - o worker (job_kind "exercise-card")
+      # roda no handler da plan-generator. Paridade com
+      # `local.exercise_card_worker_env` de `infra/lambda_ai_generators.tf`:
+      # o bucket onde grava o rascunho (exercise-card-drafts/) e o grupo
+      # OPENAI_IMAGE_* (o worker e quem chama a OpenAI). Mesma ressalva das
+      # flags acima: aqui valem para o processo inteiro do emulador; em
+      # producao so a `musclefit-plan-generator` recebe.
+      EQUIPMENT_PHOTOS_BUCKET: musclefit-uploads
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-medium}
+      OPENAI_IMAGE_SIZE: ${OPENAI_IMAGE_SIZE:-1024x1536}
+      OPENAI_IMAGE_TIMEOUT_SECONDS: ${OPENAI_IMAGE_TIMEOUT_SECONDS:-150}
+      # plan-generator: 180 s, igual a `infra/lambda_ai_generators.tf` (era
+      # 120; o card ilustrado pode levar ate ~2 min na OpenAI).
+      LAMBDA_LOCAL_FUNCTIONS: >-
+        musclefit-plan-generator=app.lambda_plan_generator.handler:180,
+        musclefit-cardio-agent=app.lambda_cardio_agent.handler:120,
+        musclefit-workout-ai=app.lambda_workout_ai.handler:120
+    entrypoint: ["python", "/opt/lambda-local/lambda_invoke_emulator.py", "--port", "9001"]
+    command: []
+    expose:
+      - "9001"
+    volumes:
+      # Hot-reload: cada invocacao roda num processo novo e importa o app/ atual.
+      - ./api/app:/var/task/app
+      - ./dev/lambda-local:/opt/lambda-local:ro
+      - ./api/privado/rag/markdown:/var/task/rag:ro
+      # Templates dos prompts de sistema (M103 P1), no caminho default de
+      # app/prompt_store.py (<pacote>/../privado/prompts); nas imagens de producao
+      # entram por COPY (api/Dockerfile*).
+      - ./api/privado/prompts:/var/task/privado/prompts:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9001/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # Proxy reverso que replica, localmente, o roteamento por path que o API
+  # Gateway faz em producao entre musclefit-api-core (`api`) e
+  # musclefit-engines (`api-engines`) - ver nginx/local-dev.conf (lista de
+  # paths, transcrita de infra/api_gateway.tf) e docs/local-dev.md. Publica a
+  # porta 8000 do host - a MESMA porta/URL que quem consome a API local
+  # sempre usou (frontend com NEXT_PUBLIC_API_BASE_URL=http://localhost:8000,
+  # curl, etc.) - a existencia deste proxy e transparente para eles.
+  #
+  # Tambem escuta na porta 9001 (so rede interna, nao publicada) como o
+  # endpoint da API Lambda Invoke usado pelo `api` - roteia por nome de
+  # funcao para lambda-ai (nginx/lambda-local.conf).
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${MUSCLEFIT_API_HOST_PORT:-8000}:8000"
+    volumes:
+      - ./nginx/local-dev.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/lambda-local.conf:/etc/nginx/conf.d/lambda-local.conf:ro
+      - ./nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+    depends_on:
+      - api
+      - api-engines
+      - lambda-ai
+
+volumes:
+  musclefit_mysql_data:
+  musclefit_localstack_data:

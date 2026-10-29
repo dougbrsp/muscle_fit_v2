@@ -1,0 +1,50 @@
+name: checkout do submodulo privado (api/privado)
+description: >-
+  M103 P0. Faz o checkout do repositorio privado muscle_fit_privado (RAG e prompts)
+  em api/privado, no commit exato apontado pelo gitlink do repositorio publico, com
+  a deploy key SOMENTE LEITURA (secret PRIVADO_DEPLOY_KEY) e falha se o RAG vier
+  vazio. Rode DEPOIS do checkout do repositorio principal.
+
+  Por que nao `actions/checkout` com `submodules: true` + `ssh-key` no checkout
+  principal: com `ssh-key`, o checkout busca TAMBEM o repositorio principal por SSH
+  com essa chave, e a deploy key so da acesso ao muscle_fit_privado. Aqui o principal
+  continua com o token do workflow e so o submodulo usa a deploy key.
+
+  O conteudo do RAG nunca e impresso: o log mostra so o commit e a contagem de .md.
+
+inputs:
+  ssh-key:
+    description: secrets.PRIVADO_DEPLOY_KEY (deploy key somente leitura do muscle_fit_privado)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: commit do submodulo (gitlink de api/privado)
+      id: gitlink
+      shell: bash
+      run: |
+        set -euo pipefail
+        sha=$(git rev-parse HEAD:api/privado)
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        echo "submodulo api/privado no commit $sha"
+
+    - name: checkout muscle_fit_privado em api/privado
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ github.repository_owner }}/muscle_fit_privado
+        ref: ${{ steps.gitlink.outputs.sha }}
+        path: api/privado
+        ssh-key: ${{ inputs.ssh-key }}
+        persist-credentials: false
+
+    - name: RAG presente (falha com api/privado/rag/markdown vazio)
+      shell: bash
+      run: |
+        set -euo pipefail
+        n=$(find api/privado/rag/markdown -type f -name '*.md' 2>/dev/null | wc -l)
+        if [ "$n" -eq 0 ]; then
+          echo "::error::api/privado/rag/markdown vazio ou ausente: sem RAG o terraform apagaria o S3 e os testes nao varreriam nada."
+          exit 1
+        fi
+        echo "api/privado/rag/markdown: $n arquivos .md (conteudo nao impresso)"

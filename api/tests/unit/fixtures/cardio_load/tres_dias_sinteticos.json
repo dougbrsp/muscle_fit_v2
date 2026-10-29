@@ -1,0 +1,411 @@
+{
+ "descricao": "M99: 9 dias SINTETICOS de atividades (gerados em 2026-10-29, sem dado de usuario; mesma forma do Intervals: dia local e segundos nas 7 zonas) e um EPOC/PAI acumulado de 7 dias de 'relogio' tambem sintetico (estimado do motor com ruido de ate 8%) em 10, 11 e 12/08. A validacao do modelo contra o relogio real esta no PR do M99 (#652), nao neste arquivo.",
+ "atividades": [
+  {
+   "activity_date": "2026-08-04",
+   "hr_zone_seconds": [
+    536,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-04",
+   "hr_zone_seconds": [
+    82,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-04",
+   "hr_zone_seconds": [
+    3284,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-04",
+   "hr_zone_seconds": [
+    439,
+    216,
+    442,
+    92,
+    50,
+    45,
+    12
+   ]
+  },
+  {
+   "activity_date": "2026-08-05",
+   "hr_zone_seconds": [
+    292,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-05",
+   "hr_zone_seconds": [
+    138,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-05",
+   "hr_zone_seconds": [
+    512,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-05",
+   "hr_zone_seconds": [
+    2811,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-06",
+   "hr_zone_seconds": [
+    857,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-06",
+   "hr_zone_seconds": [
+    658,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-06",
+   "hr_zone_seconds": [
+    2710,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-06",
+   "hr_zone_seconds": [
+    338,
+    352,
+    431,
+    208,
+    89,
+    14,
+    6
+   ]
+  },
+  {
+   "activity_date": "2026-08-07",
+   "hr_zone_seconds": [
+    687,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-07",
+   "hr_zone_seconds": [
+    151,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-07",
+   "hr_zone_seconds": [
+    3073,
+    109,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-08",
+   "hr_zone_seconds": [
+    644,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-08",
+   "hr_zone_seconds": [
+    416,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-08",
+   "hr_zone_seconds": [
+    3450,
+    65,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-08",
+   "hr_zone_seconds": [
+    1114,
+    405,
+    364,
+    398,
+    113,
+    40,
+    10
+   ]
+  },
+  {
+   "activity_date": "2026-08-09",
+   "hr_zone_seconds": [
+    531,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-09",
+   "hr_zone_seconds": [
+    3163,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-10",
+   "hr_zone_seconds": [
+    635,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-10",
+   "hr_zone_seconds": [
+    824,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-10",
+   "hr_zone_seconds": [
+    1328,
+    402,
+    280,
+    308,
+    46,
+    60,
+    15
+   ]
+  },
+  {
+   "activity_date": "2026-08-11",
+   "hr_zone_seconds": [
+    455,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-11",
+   "hr_zone_seconds": [
+    128,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-11",
+   "hr_zone_seconds": [
+    655,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-11",
+   "hr_zone_seconds": [
+    3562,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-12",
+   "hr_zone_seconds": [
+    801,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-12",
+   "hr_zone_seconds": [
+    2341,
+    73,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "activity_date": "2026-08-12",
+   "hr_zone_seconds": [
+    372,
+    535,
+    259,
+    84,
+    42,
+    4,
+    2
+   ]
+  }
+ ],
+ "relogio": [
+  {
+   "local_date": "2026-08-10",
+   "epoc": 271,
+   "pai": 76
+  },
+  {
+   "local_date": "2026-08-11",
+   "epoc": 272,
+   "pai": 63
+  },
+  {
+   "local_date": "2026-08-12",
+   "epoc": 290,
+   "pai": 80
+  }
+ ],
+ "estimado_cardio_load_v1_7d": [
+  {
+   "local_date": "2026-08-10",
+   "epoc_7d_estimated": 277,
+   "pai_7d_estimated": 80
+  },
+  {
+   "local_date": "2026-08-11",
+   "epoc_7d_estimated": 254,
+   "pai_7d_estimated": 67
+  },
+  {
+   "local_date": "2026-08-12",
+   "epoc_7d_estimated": 275,
+   "pai_7d_estimated": 80
+  }
+ ]
+}

@@ -1,0 +1,222 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote3b_set_types_fe.py (--gravar) a partir de api/app/set_types.py. Não edite à mão: mude o dono e regenere. M76 Lote 3b.",
+  "working": "working",
+  "backoff": "backoff",
+  "laboral": "laboral",
+  "aliases": {
+    "drop set": "drop_set",
+    "drop-set": "drop_set",
+    "dropset": "drop_set",
+    "feeler_set": "feeler",
+    "forced_reps": "forced_rep",
+    "rest pause": "rest_pause",
+    "rest-pause": "rest_pause",
+    "restpause": "rest_pause",
+    "warm-up": "warmup",
+    "warm_up": "warmup"
+  },
+  "preparatory": [
+    "feeler",
+    "laboral",
+    "warmup"
+  ],
+  "technique_application": [
+    "drop_set",
+    "forced_rep",
+    "rest_pause"
+  ],
+  "known": [
+    "backoff",
+    "drop_set",
+    "feeler",
+    "forced_rep",
+    "laboral",
+    "rest_pause",
+    "warmup",
+    "working"
+  ],
+  "cases": [
+    {
+      "input": null,
+      "normalized": "working",
+      "is_working": true,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "",
+      "normalized": "working",
+      "is_working": true,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "   ",
+      "normalized": "working",
+      "is_working": true,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "WARMUP",
+      "normalized": "warmup",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": " Drop-Set ",
+      "normalized": "drop_set",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "Rest Pause",
+      "normalized": "rest_pause",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "BACKOFF",
+      "normalized": "backoff",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "superset",
+      "normalized": "superset",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "backoff",
+      "normalized": "backoff",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "drop_set",
+      "normalized": "drop_set",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "feeler",
+      "normalized": "feeler",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": "forced_rep",
+      "normalized": "forced_rep",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "laboral",
+      "normalized": "laboral",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": "rest_pause",
+      "normalized": "rest_pause",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "warmup",
+      "normalized": "warmup",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": "working",
+      "normalized": "working",
+      "is_working": true,
+      "is_preparatory": false,
+      "is_technique_application": false
+    },
+    {
+      "input": "drop set",
+      "normalized": "drop_set",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "drop-set",
+      "normalized": "drop_set",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "dropset",
+      "normalized": "drop_set",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "feeler_set",
+      "normalized": "feeler",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": "forced_reps",
+      "normalized": "forced_rep",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "rest pause",
+      "normalized": "rest_pause",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "rest-pause",
+      "normalized": "rest_pause",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "restpause",
+      "normalized": "rest_pause",
+      "is_working": false,
+      "is_preparatory": false,
+      "is_technique_application": true
+    },
+    {
+      "input": "warm-up",
+      "normalized": "warmup",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    },
+    {
+      "input": "warm_up",
+      "normalized": "warmup",
+      "is_working": false,
+      "is_preparatory": true,
+      "is_technique_application": false
+    }
+  ]
+}

@@ -1,0 +1,587 @@
+{
+  "cardio_agent": {
+    "avulso_14d": {
+      "body_sha256": "4d0758b2f9df2b4866c69613e371a5b007d39bfea1352272346192588f3cd044",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 31058,
+      "prompt_sha256": "f1423d9a533965e312de1c261b73a62f09a75ee3121165e8d971b651c0b5e000",
+      "store": false
+    },
+    "avulso_30d": {
+      "body_sha256": "850573c79a0bd3872a75d89c90941e690d69527fe86036137269db6fa6c7975b",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 48606,
+      "prompt_sha256": "3ce501a45984435cf3cea76b02d2a0576305ccc5486e4283ab80ffb5973f80b7",
+      "store": false
+    },
+    "avulso_7d": {
+      "body_sha256": "1b5358bc45a73f4aa7f8caf8e67c60ef5e40db11c55f3e684d0e61fe1399d2aa",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 23474,
+      "prompt_sha256": "e38e3f20c9821b6720f3edea223fb6c5ee35de0ce4ac9d1c6f0c87206e793ece",
+      "store": false
+    },
+    "com_plano_planejado": {
+      "body_sha256": "c2a7b2acff9ef906e6bbef98c36cf6d77793c9c602a62b9e21192ca92999241f",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 31374,
+      "prompt_sha256": "1a450e4878fde4084f1da33596a06dac4c34ea8265a49d33aa45c1eb7e7dfa1c",
+      "store": false
+    },
+    "data_sem_plano": {
+      "body_sha256": "6e8beaf894ba40f482b13240a82802d662f1de4b13ee66acbe2ac53c0da11370",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 30964,
+      "prompt_sha256": "d4188f6d5dda35bd21744e3a4f7a95997b9808eccb9a1fa39260d64d46aacdee",
+      "store": false
+    },
+    "tsb_baixo_hiit_vetado": {
+      "body_sha256": "e34093dcb9759bc4a0170438bc63bb7b17e9c38bc40bf8d105afcb079a9659b9",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "cardio_agent:cardio-agent-v5",
+      "prompt_chars": 31058,
+      "prompt_sha256": "332576a83cd5c8985d0e802c9c01968f61abaa7551c3f47efc033efa955ba99e",
+      "store": false
+    }
+  },
+  "exercise_description": {
+    "abdominal_crunch_maquina": {
+      "body_sha256": "cfe0133a44c6a112f98396406159cda8136052949312b3500e118083f393a9ba",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1427,
+      "prompt_sha256": "631d7ddff5b109da0d71dd7d803627657d1c25321d280f537c32e27dc4651aac",
+      "store": false
+    },
+    "elevacao_pelvica_articulada": {
+      "body_sha256": "20ddc70baf9dac36eb77751d30e28f4dde17bb3984c6b7a65cc4cfbc41f2e3a9",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1506,
+      "prompt_sha256": "3ba4da86dd94650bba7c70b41e1be02c1799b88ff6370cf5bc11d1f2e20281ae",
+      "store": false
+    },
+    "hack_squat": {
+      "body_sha256": "74cd827b974b715688e3ff464923869cb72e830bf0860ba529118550ec405e14",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1407,
+      "prompt_sha256": "dcdd4dc8fc308c93f02dc3e5b7daf0f4c62cf308adce20104d15519b9743f4b6",
+      "store": false
+    },
+    "remada_serrote": {
+      "body_sha256": "ed88ed8d4114eaee1ac7ea4baf1847d15b82f1a82f3642e864341f97a39e452d",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1528,
+      "prompt_sha256": "d96b5fdd0417774bafa03835fd5600b03dfbacd78c82cfaa131e4dc6253d960f",
+      "store": false
+    },
+    "rosca_scott_maquina": {
+      "body_sha256": "3da6692f89bb80f11f6eb7e93d2af1309b394c1acf0c8b9998e13838aad468b0",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1386,
+      "prompt_sha256": "1aa16c9c80a3f06544f9b5eb90e1ff9e1a01d7708296315a9f67d529f4578990",
+      "store": false
+    },
+    "supino_reto_barra": {
+      "body_sha256": "2ad3a7ca25e3a8a6fb8d5e583547ca8e4c2b1ca5a50477fa2ede32bdb7fd3b93",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1427,
+      "prompt_sha256": "67ca8ec3473cc995a5347b02158146ba2abd1faacfa41f13f5b12aea8d7585a2",
+      "store": false
+    }
+  },
+  "exercise_summary": {
+    "assimetria_com_notas": {
+      "body_sha256": "2e72084cbe7396f1cebbf9f29484569d7137936a762c6dab494bc3c274090ef2",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1989,
+      "prompt_sha256": "89cdf3f8c7dcbeb30e6ea826fed0f3b9472500c6f1b6e4d6deb4e20323fed290",
+      "store": false
+    },
+    "dor_muscular_alta": {
+      "body_sha256": "146bd5bf01d73433bb54dd465927b2651e31a588b71c11ca68b729a1d0f07d4a",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1835,
+      "prompt_sha256": "19cc9f7d40b1b73fc08ec9f5f3d55117acc73c64d1c99c7dc6c9be136348a359",
+      "store": false
+    },
+    "plato": {
+      "body_sha256": "17c8875ee27561dbdfdc67c7bc1b5cf1b0e6530e84c806f28556951a392567f3",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1719,
+      "prompt_sha256": "bdba859735baecda352f727423e1e41c5247baaf11cce33c815766690b0f80e1",
+      "store": false
+    },
+    "progresso_increase_load": {
+      "body_sha256": "7f03b5090fa949a9b415a9700c92ce7cc6ae92b06c34eb8e46e1563e2c89675e",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1836,
+      "prompt_sha256": "4df10ec826a88903554a9a2f5a2bde8b7ea9cf6f0450c86fd99283848596853a",
+      "store": false
+    },
+    "queda_de_reps": {
+      "body_sha256": "ab7af494242df446e3b9704d9ba28da2ded308710998eca7f9c00359574ac0ea",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1767,
+      "prompt_sha256": "54774da24d5f4436b15a1a46e61cf0e0e9773ce488ea4aa5f51e1109bfd83019",
+      "store": false
+    },
+    "tecnica_avancada": {
+      "body_sha256": "c77336e43d1a04aeb67ec9a94b9eb618254dcb0523d6dad024aff8869680bcae",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 1954,
+      "prompt_sha256": "ed320ce408c90976c2d7b3a21b24951172654e0ea497068ee78b2d30581c66f0",
+      "store": false
+    }
+  },
+  "insights": {
+    "aderencia_modelo": {
+      "body_sha256": "a14357002446d545bb4b6a49b4c3867f53e49355ff8ee3349a8b40fa9d8ce3d9",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "insights:insights-prompt-v6",
+      "prompt_chars": 26267,
+      "prompt_sha256": "94dd6c144a5dcf4e71f352bfc70e2801e11d3c5e34dc3dd035485043a3e02c6a",
+      "store": false
+    },
+    "dado_ausente_cintura": {
+      "body_sha256": "322cfd006c1bd44b9ad28d053760f263d92b8e03e74b5882eb4a83b6fa7f4038",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "insights:insights-prompt-v6",
+      "prompt_chars": 32849,
+      "prompt_sha256": "661e509052187a9e0e82ecb0307af8bbdcad5e86e2e047ea1539183a5604bdd5",
+      "store": false
+    },
+    "estagnacao": {
+      "body_sha256": "e94c12a29e5d7f8d43dac71764fd9e0714212688ca9a54edf69415f9e1bd2794",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "insights:insights-prompt-v6",
+      "prompt_chars": 26269,
+      "prompt_sha256": "4181921254c0dd6699d496dd07ca46b5c3c1bf926ca599da45f6ca6abaed540e",
+      "store": false
+    },
+    "recuperacao_7d": {
+      "body_sha256": "a68773a88f0d2a6e9a8dea83696d83cbe290ba1e603a6455d501e9a76ad1ca08",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "insights:insights-prompt-v6",
+      "prompt_chars": 25926,
+      "prompt_sha256": "a299f570b58e98c51e177d970a5c561d8c5671ef4f73a5792e398aa51d56ed02",
+      "store": false
+    },
+    "volume_peito": {
+      "body_sha256": "fb448b48ee5d32abd3c1d43411ec5f00c6709015e3a1ef7c363b6070fff3bd8c",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "insights:insights-prompt-v6",
+      "prompt_chars": 26269,
+      "prompt_sha256": "023070f5665c7412557192f2c7bea563f6f0732a088b04258ef1162cf8c7adf9",
+      "store": false
+    }
+  },
+  "meal_parse": {
+    "almoco_prato_feito": {
+      "body_sha256": "8f0e5340ab801b29816884c6f6157521413975e8b9e04e2e3754f7e19bf962ae",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3633,
+      "prompt_sha256": "b86b44707b408f030d6557bfaa6717bebb8f48cf58ab8778a83abb30536a2307",
+      "store": false
+    },
+    "cafe_da_manha_pao_ovo": {
+      "body_sha256": "8035a57b2819872e7e2269cb575dad33f96761c3906d2ef7e66a1a9c281e57ed",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3639,
+      "prompt_sha256": "a068414f55db1494c7b56e90ba7e2122f6c1cfb94d02549b8a6fd9caa3f26a17",
+      "store": false
+    },
+    "feijoada_completa": {
+      "body_sha256": "c4d51a592039219c93862183f520238576fd49874300fa860693b531c5573a61",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3613,
+      "prompt_sha256": "7986ff22c56e8e09b01c8bf4abe15f96d8a776ae8a5ef5445866161d109cd02b",
+      "store": false
+    },
+    "industrializados": {
+      "body_sha256": "22c0940e06f8bf5c7cdfe2cddd6ad4548a9589c94b4cc19602404284c3dac3ba",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3615,
+      "prompt_sha256": "786202fb6984b578b45a7b9e89b346ed6bc7749a350e8162ac25fd55715f526a",
+      "store": false
+    },
+    "jantar_frango_batata_doce": {
+      "body_sha256": "ebf0e8ed155b8421726c6d9c24d75f1dc5d6133e584d28deb03e67820007a921",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3622,
+      "prompt_sha256": "4809441c03663a1e14c1161b0decf871fd8c7d3946847939513099eeb67414c2",
+      "store": false
+    },
+    "lanche_iogurte_aveia_mel": {
+      "body_sha256": "0348baa5b68c0e84876ffade9924a2ab051ec4e306d1b27d85d5599b2618ffa5",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3649,
+      "prompt_sha256": "812cafad9906b80418cda23e626fdd12d7bf93c9a2db5a950535a0665d13529f",
+      "store": false
+    },
+    "medidas_caseiras": {
+      "body_sha256": "ca6790d52485179d90efaff2e1d9ed58d865ce6f87ffc7323a6607232fa6e462",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3638,
+      "prompt_sha256": "c2de0128d8e149ee3df6e6f785211e0dcbe319fcb1645fbb0dc30c386abb60d9",
+      "store": false
+    },
+    "pos_treino_whey": {
+      "body_sha256": "0b6a6657c6162eb28abc65e4663e4165e9c9002bb021b230280a826f391384ca",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3626,
+      "prompt_sha256": "854a4489c3e1a3fd1b7a9bbf42cdc5a314efe3dcdca1bbcdd0665d8a5a418434",
+      "store": false
+    },
+    "sem_comida": {
+      "body_sha256": "c174f853204d94162264f4b8cfb724d982ee1221bf1f88d6c591156f42b94afc",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3586,
+      "prompt_sha256": "e5da9299f48f541753e52fd9b6599c2b9c6ece35abeecb2dff35580350d1c62a",
+      "store": false
+    }
+  },
+  "periodization": {
+    "cardio_hiit_vespera_de_perna": {
+      "body_sha256": "d140c15595e5d8b92ef9915f5fdd662ae100e40b9ce9ec769d754a5a83cd7898",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 12954,
+      "prompt_sha256": "4ef063a361b20c4f892bb1a9423669adcf5d2fa53a3cff077eea367fd6a0eed4",
+      "store": false
+    },
+    "cardio_no_dia_de_descanso": {
+      "body_sha256": "fc709ce0fa80d4afb667ba239d7aea2bfd2f944aa63b7e1288a912fee581b91a",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 9695,
+      "prompt_sha256": "d4a70c55fa0bf369f479c9ecd4268ad68e8c8b050ad40ef14350a29b1bbd8dad",
+      "store": false
+    },
+    "cardio_pedido_modo_b_4_dias": {
+      "body_sha256": "2c118fecee2ca46b9470ae6d5d17d6817f9d623a1adba61415673108ed21e402",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 49321,
+      "prompt_sha256": "315a667758e146a7d164e940a8c0ecdfd39b0f1ef127eeab7508d2d97623f604",
+      "store": false
+    },
+    "cardio_proibido_pelo_usuario": {
+      "body_sha256": "e6e58a1426f0c8d8732fb10c085e7416e2a478cdca961535d7db84775361d73e",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 12913,
+      "prompt_sha256": "4b57ee1450c28cf8b9bfed89dc4be13fb35f8aae0661a546a3161c473fe8d59b",
+      "store": false
+    },
+    "modo_a_3_dias_sem_perfil": {
+      "body_sha256": "e63bb71075a4a2b0410e07db3ccd6fe86e0212989e512ba373125e9d20072446",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 6791,
+      "prompt_sha256": "8b5aa7176b3da2c26de87c8c973b1ff23f07ce7602dddd1c52e4a93a19c2058e",
+      "store": false
+    },
+    "modo_a_5_dias": {
+      "body_sha256": "ef587096554e7be62be3c9ca274d23c96807272568878ac5ff10cce2c7e7d643",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 9499,
+      "prompt_sha256": "2c749507fe276c2b85801b4623c16f1e98cb74ce1f8adcd45334366ac9c49163",
+      "store": false
+    },
+    "modo_b_4_dias_instrucoes": {
+      "body_sha256": "4765fe288f87169e577e2089efbf8a8c9ac9a32f63cb45e39c90f8e9c4c21749",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 46478,
+      "prompt_sha256": "507163b4fdf4264883c4d6c805c1ecdc69da5482de94734628ddb1817c2747a7",
+      "store": false
+    },
+    "modo_b_5_dias_sem_perfil": {
+      "body_sha256": "3d000b6f398df89f7db6c1f12cadb1c4e29d728dd980436b226d97de520cb2e9",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 38114,
+      "prompt_sha256": "12297b16ae3044313a365f2fc98d877f1a16eed8b3e39b4fa9430378aea1a8af",
+      "store": false
+    },
+    "modo_b_6_dias_abc": {
+      "body_sha256": "cd0b8fdf83248de278b075e067325363abffc3cf7bad68acd30bee0e139cf634",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 45871,
+      "prompt_sha256": "f37df681c9a07ace9c34657948768838815bb95a1a21a7bef1851bd8cfc0d215",
+      "store": false
+    },
+    "modo_b_6_dias_abc_ponderado": {
+      "body_sha256": "f4c68432e4a3d6ccdcc7d101e35ef4223d420c4bd2230933dcf59c2a8a98f5ff",
+      "max_output_tokens": 30720,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "periodization:periodization-v14",
+      "prompt_chars": 59849,
+      "prompt_sha256": "06ac21f9eee02de75149ea0f8a08eda2db3d8923bce3ee7df7787b39678c5cff",
+      "store": false
+    }
+  },
+  "set_evaluation": {
+    "apos_tecnica_avancada": {
+      "body_sha256": "eb25cde74c82ee8c8c0897706cdae5ddcc4028ad694dacf1ee84f55aed35283b",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4350,
+      "prompt_sha256": "206b8fe0d5fd8592663441258fc247d4fd904cf02c6090cc2da99e4e753b9fe0",
+      "store": false
+    },
+    "assimetria_unilateral_nota": {
+      "body_sha256": "70dbb7cf0cf4a1dfd4b24c0063f258e0223c0043be3ea66e40c37464f69d0c86",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5252,
+      "prompt_sha256": "243b977a0e1945e6009f160661ec1037556b331d3c72cf048c0263fb20b8c9f0",
+      "store": false
+    },
+    "dor_articular": {
+      "body_sha256": "881a4318506457938a83d7e903cebeb8d927fd8cac18c23b4ad6274896997c5f",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4972,
+      "prompt_sha256": "9cb2072eb786ef4923e893f47860a1e4a6367adcfd242ad9f2111a4eb17d7c8a",
+      "store": false
+    },
+    "dor_muscular_alta_com_nota": {
+      "body_sha256": "515aa2ecfcce0d262b62db7b250d2d894db877e1667d07c3db98b3dfe46a3e7a",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5991,
+      "prompt_sha256": "1385389279ad790d97752cbd548d4cbf37959b05840ba33c7c1e7e6b31f0e55e",
+      "store": false
+    },
+    "falha_antes_de_6_reps": {
+      "body_sha256": "040f9594afcbffa8d971ea98c062f4f8077131d8c5fce7fe876bcabe1cd37357",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5031,
+      "prompt_sha256": "38035de350bcd1ee9a82ad7cd2f05273b74f0f5c55ff286eea9da24f7075878e",
+      "store": false
+    },
+    "plato_hack_squat": {
+      "body_sha256": "5899be3401bb8764a1faca3286f6842560a00fe3bf73ee1b759b864ec00df4be",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5092,
+      "prompt_sha256": "d053536d420ba33711993ec9df59f8fc52159a4e51a161cfb5844ffdbeb2a250",
+      "store": false
+    },
+    "progresso_reps_acima_da_faixa": {
+      "body_sha256": "c7a9d3c13c1d9f9954a62d35250f4adfaccea5eacf5f772640fa64ca8a9a4fc2",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4992,
+      "prompt_sha256": "629a56517c8c47734aab668b4873efceda7f2caec68880ae6c038069a3da6d38",
+      "store": false
+    },
+    "queda_de_reps_rpe_10": {
+      "body_sha256": "6007d0c7145d02d68958b83d3b034c9f155305f020511c8c8fa980adfa0d39b8",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5008,
+      "prompt_sha256": "556864fc5bc1a8631d2711b37ce6494688d993526d9b99df04d157ba9adbe086",
+      "store": false
+    },
+    "reps_acima_do_limite_rpe_10": {
+      "body_sha256": "0e60093f6c69c87fe8310cefdd0643f80c921e9fe8b031c168b87d2417cb36e9",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5071,
+      "prompt_sha256": "510c38ec5e5e295da4bc4a8a75837fbfae71bf63a27fc7f931f03f874fdaba05",
+      "store": false
+    },
+    "rpe_10_primeira_serie": {
+      "body_sha256": "c17447b713dd3b41b431b25c551aa7ece4edcf40e6ccac3f81170b787a203e9b",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 5019,
+      "prompt_sha256": "a4272fb4d6aa16e4ad7d506aa113a0ecc0aca9f9d5712643080801bffd43f083",
+      "store": false
+    }
+  },
+  "workout_summary": {
+    "costas_biceps_increase": {
+      "body_sha256": "94e580b2697261e1e2c31482333e059ca8dd8c5774751e0d1a54835cbaedb13c",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4226,
+      "prompt_sha256": "ce663cef856648480e423d0a039408061b72939d1c731aa6afa537fe9334eca2",
+      "store": false
+    },
+    "peito_decrease_load": {
+      "body_sha256": "61b3dd216a0afa4168cae24dbe230f6c366f34e911af052f85949760a0506cb3",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4301,
+      "prompt_sha256": "9becd86c0c4d6e7e31c6c3f2ad46b33d2c0e69f2f933661c895ed3c25f6d0069",
+      "store": false
+    },
+    "peito_ombro_triceps_queda": {
+      "body_sha256": "2ca155868cfed103adcbe94ca5464857c1d45f75d5db0b21a645c4b2a4280cd9",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4541,
+      "prompt_sha256": "deb9a2aa6978cb4f0553a7e786d81167cfcf2d1d489c1d5cebe0708cd2dc9fa0",
+      "store": false
+    },
+    "posterior_gluteos": {
+      "body_sha256": "2e87ce84015684c452f8e93f0f8b49c61f3ff4865abb76a9c09239e0d69c6734",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4414,
+      "prompt_sha256": "20a0421dfd3a1e3d80599057d767fedfe743e6586b54d946b1ed805f0d466830",
+      "store": false
+    },
+    "quadriceps_tecnicas": {
+      "body_sha256": "c2553873a66f1b9c6b912ccfa97fe484bbc1d793d216b389496600c3ddc98132",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 4513,
+      "prompt_sha256": "3377fc78fab8ea7b8ccd4009df7902fd6c60305ad9d6670b5f9df95deee2a00e",
+      "store": false
+    },
+    "sessao_longa_outra_academia": {
+      "body_sha256": "98f7b5b9db3fe59804dc96da63623fb4941b5c509c65ae56bc15bc67757f98fd",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": null,
+      "prompt_chars": 3272,
+      "prompt_sha256": "13fd7e6e63ecba5d22d6b6794be3b0228f115426dc40c1a67e79acb07b548e12",
+      "store": false
+    }
+  },
+  "workouts_analysis": {
+    "dias_180": {
+      "body_sha256": "e1cbe2d1ad2143c80d5ce6036828b41d389aa8dced907363949fe7e25b163112",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "workouts_analysis:workouts-analysis-v5",
+      "prompt_chars": 402912,
+      "prompt_sha256": "2940fb95cffe5ec58b016b8816b287ce0d66326c0e39cf1ea77626f930fb7ea1",
+      "store": false
+    },
+    "dias_30": {
+      "body_sha256": "98c2b7ed6c179b79099c0e70353b3aaae5dcd2b4fa496e65448388d827969041",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "workouts_analysis:workouts-analysis-v5",
+      "prompt_chars": 318589,
+      "prompt_sha256": "d96fdcca17e8432085feb1d2bcb11b427e478997ac0a69ac0526741df8ee71a9",
+      "store": false
+    },
+    "dias_60": {
+      "body_sha256": "c6ae637885117decd48cd74aea9ce02e3a540482ebcfd3d42e109cee05521d6a",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "workouts_analysis:workouts-analysis-v5",
+      "prompt_chars": 362646,
+      "prompt_sha256": "ff1c6a5c31d1b9050f05f7fcba2adc4ee38548e77ffaee8c08e50e82c581d8e3",
+      "store": false
+    },
+    "dias_7": {
+      "body_sha256": "bd822acae9425e6db3dfe696ce1c73a81a109cdfce9cea7a3ad41aae06e948aa",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "workouts_analysis:workouts-analysis-v5",
+      "prompt_chars": 244667,
+      "prompt_sha256": "1e5e2eb134e448d821ddfc907ab87db64ea5819d31b6f9de6579110d94bc740b",
+      "store": false
+    },
+    "dias_90": {
+      "body_sha256": "c5870832e0f5aefe45d1c8322152fa17905fbc2037290373524323cec051eb45",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.4-mini",
+      "prompt_cache_key": "workouts_analysis:workouts-analysis-v5",
+      "prompt_chars": 400785,
+      "prompt_sha256": "fd150505b65b2659af088f749d1a4c8c272d355174e475b2e228a8292f56f9f8",
+      "store": false
+    }
+  }
+}

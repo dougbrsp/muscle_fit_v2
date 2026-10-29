@@ -1,0 +1,96 @@
+{
+  "_origem": "codigo anterior ao SEG-04: _internal_get('/gyms') e _internal_get('/exercise-mapping-catalog?limit=500&active_only=true') via HTTP com token mestre",
+  "self_call_paths": [
+    "/gyms",
+    "/exercise-mapping-catalog?limit=500&active_only=true"
+  ],
+  "statements": [
+    {
+      "sql": "SELECT * FROM gyms WHERE is_active = 1 ORDER BY name",
+      "params": null
+    },
+    {
+      "sql": "SELECT COUNT(*) AS total FROM exercise_catalog ec LEFT JOIN muscle_groups pg ON pg.id = ( SELECT emc_pri.muscle_group_id FROM exercise_muscle_contributions emc_pri WHERE emc_pri.exercise_id = ec.id AND emc_pri.role = 'PRIMARY' AND emc_pri.is_active = 1 ORDER BY emc_pri.id ASC LIMIT 1 ) LEFT JOIN muscle_groups sg ON sg.id = ( SELECT emc_sec.muscle_group_id FROM exercise_muscle_contributions emc_sec WHERE emc_sec.exercise_id = ec.id AND emc_sec.role = 'SECONDARY' AND emc_sec.is_active = 1 ORDER BY emc_sec.id ASC LIMIT 1 ) WHERE ec.is_active = 1",
+      "params": []
+    },
+    {
+      "sql": "SELECT ec.id, ec.name AS exercise_name, ( SELECT exm.external_name FROM exercise_external_mappings exm WHERE exm.exercise_id = ec.id AND exm.provider = 'AMAZFIT' AND exm.is_active = 1 ORDER BY exm.id ASC LIMIT 1 ) AS amazfit_name, NULL AS equipment, ec.body_position, ec.movement, ec.trajectory, ec.biomechanical_pattern, ec.primary_joint, ec.resistance_vector, pg.id AS primary_group_id, pg.name AS primary_group, sg.id AS secondary_group_id, sg.name AS secondary_group, ec.keywords, ec.description, ( SELECT exm.mapping_status FROM exercise_external_mappings exm WHERE exm.exercise_id = ec.id AND exm.provider = 'AMAZFIT' AND exm.is_active = 1 ORDER BY exm.id ASC LIMIT 1 ) AS mapping_status, ( SELECT exm.source FROM exercise_external_mappings exm WHERE exm.exercise_id = ec.id AND exm.provider = 'AMAZFIT' AND exm.is_active = 1 ORDER BY exm.id ASC LIMIT 1 ) AS source, ec.is_active, ec.created_at, ec.updated_at FROM exercise_catalog ec LEFT JOIN muscle_groups pg ON pg.id = ( SELECT emc_pri.muscle_group_id FROM exercise_muscle_contributions emc_pri WHERE emc_pri.exercise_id = ec.id AND emc_pri.role = 'PRIMARY' AND emc_pri.is_active = 1 ORDER BY emc_pri.id ASC LIMIT 1 ) LEFT JOIN muscle_groups sg ON sg.id = ( SELECT emc_sec.muscle_group_id FROM exercise_muscle_contributions emc_sec WHERE emc_sec.exercise_id = ec.id AND emc_sec.role = 'SECONDARY' AND emc_sec.is_active = 1 ORDER BY emc_sec.id ASC LIMIT 1 ) WHERE ec.is_active = 1 ORDER BY CASE WHEN ec.name = %s THEN 0 WHEN EXISTS ( SELECT 1 FROM exercise_aliases ea_exact WHERE ea_exact.exercise_id = ec.id AND ea_exact.alias = %s ) THEN 1 ELSE 2 END, pg.name, ec.name LIMIT %s OFFSET %s",
+      "params": [
+        "",
+        "",
+        500,
+        0
+      ]
+    }
+  ],
+  "gyms": [
+    {
+      "id": 1,
+      "owner_user_id": 1,
+      "name": "Academia Centro",
+      "usual_weekdays": [
+        1,
+        3,
+        5
+      ],
+      "is_recurring": 1,
+      "notes": null,
+      "opens_at": "06:00:00",
+      "closes_at": "22:30:00",
+      "is_active": 1,
+      "created_at": "2026-09-01T10:00:00",
+      "updated_at": "2026-09-02T11:30:15",
+      "has_logo": true,
+      "logo_url": "https://app.musclefit.com.br/gyms/1.png"
+    },
+    {
+      "id": 47,
+      "owner_user_id": 2,
+      "name": "Box Zona Sul",
+      "usual_weekdays": null,
+      "is_recurring": 0,
+      "notes": "Sem barra olímpica",
+      "opens_at": null,
+      "closes_at": "21:00:59",
+      "is_active": 1,
+      "created_at": "2026-09-10T08:00:00",
+      "updated_at": "2026-09-10T08:00:00",
+      "has_logo": false,
+      "logo_url": null
+    }
+  ],
+  "exercise_catalog": [
+    {
+      "id": 1001,
+      "exercise_name": "Supino reto com barra",
+      "amazfit_name": "Supino reto",
+      "equipment": null,
+      "body_position": "deitado",
+      "movement": "empurrar",
+      "trajectory": "horizontal",
+      "biomechanical_pattern": "empurrar horizontal",
+      "primary_joint": "ombro",
+      "resistance_vector": "vertical",
+      "primary_group": "Peitoral",
+      "secondary_group": "Tríceps",
+      "keywords": "supino, barra",
+      "description": "Descida controlada até o peito."
+    },
+    {
+      "id": 1004,
+      "exercise_name": "Agachamento livre",
+      "amazfit_name": null,
+      "equipment": null,
+      "body_position": "em pé",
+      "movement": "agachar",
+      "trajectory": null,
+      "biomechanical_pattern": "dominante de joelho",
+      "primary_joint": "joelho",
+      "resistance_vector": 1.5,
+      "primary_group": "Quadríceps",
+      "secondary_group": null,
+      "keywords": null,
+      "description": null
+    }
+  ]
+}

@@ -1,0 +1,3002 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): resultado do dono (api/app/domain/intensity_density.py; rampa por training_history.parse_rpe_ramp, reps por periodization/time_estimate.parse_reps_target). O vitest roda o espelho TS (intensity-density.ts) contra os mesmos casos. Não edite à mão.",
+  "catalog": [
+    {
+      "code": "rest_pause",
+      "failure_requirement": "requires_failure"
+    },
+    {
+      "code": "drop_set",
+      "failure_requirement": "requires_failure"
+    },
+    {
+      "code": "fst7",
+      "failure_requirement": "requires_failure"
+    },
+    {
+      "code": "gvt",
+      "failure_requirement": "failure_not_required"
+    },
+    {
+      "code": "forced_reps",
+      "failure_requirement": "beyond_failure"
+    },
+    {
+      "code": "negative_reps",
+      "failure_requirement": "beyond_failure"
+    },
+    {
+      "code": "partial_reps",
+      "failure_requirement": "beyond_failure"
+    },
+    {
+      "code": "cheat_reps",
+      "failure_requirement": "beyond_failure"
+    }
+  ],
+  "ramps": [
+    {
+      "input": "8-9-10",
+      "expected": [
+        8.0,
+        9.0,
+        10.0
+      ]
+    },
+    {
+      "input": "9",
+      "expected": [
+        9.0
+      ]
+    },
+    {
+      "input": "8,5",
+      "expected": [
+        8.5
+      ]
+    },
+    {
+      "input": 9,
+      "expected": [
+        9.0
+      ]
+    },
+    {
+      "input": 8.5,
+      "expected": [
+        8.5
+      ]
+    },
+    {
+      "input": "",
+      "expected": []
+    },
+    {
+      "input": null,
+      "expected": []
+    },
+    {
+      "input": "8-8.5-9-9.5-10",
+      "expected": [
+        8.0,
+        8.5,
+        9.0,
+        9.5,
+        10.0
+      ]
+    },
+    {
+      "input": "RPE 9",
+      "expected": [
+        9.0
+      ]
+    },
+    {
+      "input": "sem número",
+      "expected": []
+    }
+  ],
+  "items": [
+    {
+      "name": "vazio",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": null,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": null
+        },
+        "position": null,
+        "direction": null
+      }
+    },
+    {
+      "name": "pesado até a falha",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.0,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 1.0,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "leve e denso",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "15",
+        "rpe_target": "7",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 1.0,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.0,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "rampa curta repete o último degrau",
+      "item": {
+        "sets_count": 4,
+        "reps_target": null,
+        "rpe_target": "8-9",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.6,
+        "density": 0.6666666666666666,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.4666666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "técnica de falha: última série RPE 10",
+      "item": {
+        "sets_count": 3,
+        "reps_target": null,
+        "rpe_target": "8",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.5333333333333333,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.6,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "além da falha também força a última série",
+      "item": {
+        "sets_count": 3,
+        "reps_target": null,
+        "rpe_target": "8",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.5333333333333333,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.6,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "GVT não exige falha",
+      "item": {
+        "sets_count": 3,
+        "reps_target": null,
+        "rpe_target": "8",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.48333333333333334,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "sem séries: tamanho da rampa",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "8-9-10",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.6666666666666666,
+        "density": null,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": null
+        },
+        "position": 0.6666666666666666,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "só densidade: p = 1 − D",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "15",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.6666666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.33333333333333337,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "descanso no meio da escala",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": null,
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.5,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": 0.5,
+          "sets": null
+        },
+        "position": 0.5,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "séries fracionárias arredondam meio para cima",
+      "item": {
+        "sets_count": 2.5,
+        "reps_target": null,
+        "rpe_target": "8-9-10",
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.6666666666666666,
+        "density": 0.16666666666666666,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": 0.16666666666666666
+        },
+        "position": 0.75,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "faixa de reps por extenso",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8 a 12",
+        "rpe_target": "9",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 1,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.6999999999999998,
+        "density": 0.41111111111111104,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.2,
+          "rest": 0.6666666666666666,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.6444444444444444,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "perto do equilíbrio",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "8-12",
+        "rpe_target": "9",
+        "rest_seconds": 120,
+        "peak_contraction_seconds": 2,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.7,
+        "density": 0.3222222222222222,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.4,
+          "rest": 0.4444444444444444,
+          "sets": 0.0
+        },
+        "position": 0.6888888888888889,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "por tempo: sem subíndice de reps",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "15",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": null,
+        "measure": "duration"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.4444444444444444,
+        "subindices": {
+          "reps": null,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.4277777777777778,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "máximo de reps: sem subíndice de reps",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "12",
+        "rpe_target": "9",
+        "rest_seconds": 60,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null,
+        "measure": "max_reps"
+      },
+      "expected": {
+        "intensity": 0.6999999999999998,
+        "density": 0.611111111111111,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": 0.8888888888888888,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.5444444444444444,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "medida reps explícita: igual a ausente",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "12",
+        "rpe_target": "9",
+        "rest_seconds": 60,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null,
+        "measure": "reps"
+      },
+      "expected": {
+        "intensity": 0.6999999999999998,
+        "density": 0.6296296296296295,
+        "subindices": {
+          "reps": 0.6666666666666666,
+          "peak": null,
+          "rest": 0.8888888888888888,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.5351851851851852,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "medida desconhecida lê como reps",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "12",
+        "rpe_target": "9",
+        "rest_seconds": 60,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null,
+        "measure": "minutos"
+      },
+      "expected": {
+        "intensity": 0.6999999999999998,
+        "density": 0.6296296296296295,
+        "subindices": {
+          "reps": 0.6666666666666666,
+          "peak": null,
+          "rest": 0.8888888888888888,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.5351851851851852,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 0",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": null,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": null,
+          "sets": null
+        },
+        "position": null,
+        "direction": null
+      }
+    },
+    {
+      "name": "gerado 1",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.625,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 2",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.5694444444444444,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.3652777777777778,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 3",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.675,
+        "density": 0.7916666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 0.5,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.4416666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 4",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.8,
+        "density": 0.75,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.525,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 5",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.7000000000000001,
+        "density": 0.48148148148148145,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": null,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.6092592592592593,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 6",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.875,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 7",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.5833333333333333,
+        "subindices": {
+          "reps": null,
+          "peak": 0.5,
+          "rest": 0.6666666666666666,
+          "sets": null
+        },
+        "position": 0.45833333333333337,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 8",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": null,
+          "sets": 0.0
+        },
+        "position": 0.6666666666666667,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 9",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.3333333333333333,
+        "density": 0.6944444444444445,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.3194444444444444,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 10",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.475,
+        "density": 0.8888888888888888,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": 1.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.29305555555555557,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 11",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.6199999999999999,
+        "density": 0.625,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.0,
+          "rest": 0.5,
+          "sets": 1.0
+        },
+        "position": 0.49749999999999994,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 12",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.8333333333333334,
+        "density": 0.4861111111111111,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.6736111111111112,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 13",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 0.875,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 14",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 1.0,
+        "subindices": {
+          "reps": null,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": null
+        },
+        "position": 0.5,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 15",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.2222222222222222,
+        "subindices": {
+          "reps": 0.0,
+          "peak": null,
+          "rest": 0.6666666666666666,
+          "sets": 0.0
+        },
+        "position": 0.6388888888888888,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 16",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.25925925925925924,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.0,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.7407407407407407,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 17",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.7916666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.10416666666666669,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 18",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 1.0,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.15000000000000002,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 19",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.6833333333333332,
+        "density": 0.7361111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 0.5,
+          "sets": 1.0
+        },
+        "position": 0.47361111111111104,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 20",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.0,
+        "subindices": {
+          "reps": 0.0,
+          "peak": null,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 0.65,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 21",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.0,
+        "subindices": {
+          "reps": null,
+          "peak": 0.0,
+          "rest": 0.0,
+          "sets": null
+        },
+        "position": 1.0,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 22",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.375,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.8125,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 23",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.6111111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 0.6666666666666666,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.19444444444444442,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 24",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.8888888888888888,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": null,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.11111111111111116,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 25",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.2,
+        "density": 1.0,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.09999999999999998,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 26",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.6111111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.34444444444444444,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 27",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.5,
+          "rest": 0.5,
+          "sets": 0.0
+        },
+        "position": 0.875,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 28",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.6666666666666666,
+        "density": 0.5,
+        "subindices": {
+          "reps": null,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": null
+        },
+        "position": 0.5833333333333333,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 29",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.7,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 0.725,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 30",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.5925925925925926,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": null,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.7037037037037037,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 31",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.25,
+        "density": 0.5833333333333333,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.0,
+          "rest": 0.6666666666666666,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.33333333333333337,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 32",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.8333333333333334,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.5,
+          "rest": null,
+          "sets": 1.0
+        },
+        "position": 0.16666666666666663,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 33",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.16666666666666666,
+        "density": 0.8611111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.15277777777777773,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 34",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.5,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.75,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 35",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.5,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": 0.5,
+          "sets": null
+        },
+        "position": 0.5,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 36",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.0,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 0.75,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 37",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.7999999999999999,
+        "density": 0.3194444444444444,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": 0.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.7402777777777778,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 38",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.9166666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.5416666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 39",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.2,
+        "density": 0.9166666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 0.6666666666666666,
+          "sets": 1.0
+        },
+        "position": 0.14166666666666672,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 40",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.7222222222222222,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": null,
+          "rest": null,
+          "sets": 1.0
+        },
+        "position": 0.2777777777777778,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 41",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.375,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 42",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.75,
+        "subindices": {
+          "reps": null,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": null
+        },
+        "position": 0.275,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 43",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.65,
+        "density": 0.375,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 0.5,
+          "sets": 0.0
+        },
+        "position": 0.6375,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 44",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.6666666666666666,
+        "density": 0.4444444444444444,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.6111111111111112,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 45",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.7749999999999999,
+        "density": 0.5555555555555555,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": 0.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.6097222222222223,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 46",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.75,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.625,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 47",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.6527777777777778,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": 0.6666666666666666,
+          "sets": 1.0
+        },
+        "position": 0.1736111111111111,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 48",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": null,
+          "sets": 0.0
+        },
+        "position": 0.6666666666666667,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 49",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 1.0,
+        "subindices": {
+          "reps": null,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": null
+        },
+        "position": 0.5,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 50",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": 0.0,
+          "peak": null,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.48333333333333334,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 51",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.6666666666666666,
+        "density": 0.3194444444444444,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.0,
+          "rest": 0.5,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.6736111111111112,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 52",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.75,
+        "density": 0.5416666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.5,
+          "rest": 0.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.6041666666666667,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 53",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.7,
+        "density": 0.75,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.475,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 54",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.8611111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.5694444444444444,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 55",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.2222222222222222,
+        "subindices": {
+          "reps": 0.0,
+          "peak": null,
+          "rest": 0.6666666666666666,
+          "sets": 0.0
+        },
+        "position": 0.8888888888888888,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 56",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.0,
+        "subindices": {
+          "reps": null,
+          "peak": 0.0,
+          "rest": null,
+          "sets": null
+        },
+        "position": 1.0,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 57",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.375,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.5625,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 58",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.5333333333333333,
+        "density": 0.6944444444444445,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.4194444444444444,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 59",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.6,
+        "density": 0.7916666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 0.5,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.4041666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 60",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": null,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.8,
+        "density": 0.6666666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.5666666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 61",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.75,
+        "density": 0.3611111111111111,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.0,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.6944444444444444,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 62",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.375,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.8125,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 63",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.5,
+        "density": 0.8333333333333333,
+        "subindices": {
+          "reps": null,
+          "peak": 1.0,
+          "rest": 0.6666666666666666,
+          "sets": null
+        },
+        "position": 0.33333333333333337,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 64",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.3333333333333333,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": null,
+          "sets": 0.0
+        },
+        "position": 0.6666666666666667,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 65",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.5925925925925926,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": null,
+          "rest": 1.0,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.20370370370370372,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 66",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.6666666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.31666666666666665,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 67",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.6799999999999999,
+        "density": 0.75,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.5,
+          "rest": 0.5,
+          "sets": 1.0
+        },
+        "position": 0.46499999999999997,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 68",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.8333333333333334,
+        "density": 0.6111111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 1.0
+        },
+        "position": 0.6111111111111112,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 69",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.25,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 0.875,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 70",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 1.0,
+        "subindices": {
+          "reps": null,
+          "peak": null,
+          "rest": 1.0,
+          "sets": null
+        },
+        "position": 0.5,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 71",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.0,
+        "density": 0.16666666666666666,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 0.6666666666666666,
+          "sets": 0.0
+        },
+        "position": 0.4166666666666667,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 72",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.4259259259259259,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": null,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.5740740740740742,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 73",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.25,
+        "density": 0.9166666666666666,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.16666666666666669,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 74",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 1.0,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.15000000000000002,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 75",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.6833333333333332,
+        "density": 0.6481481481481481,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": null,
+          "rest": 0.5,
+          "sets": 1.0
+        },
+        "position": 0.5175925925925926,
+        "direction": "balanced"
+      }
+    },
+    {
+      "name": "gerado 76",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "8-9-10",
+        "rest_seconds": 180,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.0,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 0.0,
+          "rest": 0.0,
+          "sets": 0.0
+        },
+        "position": 1.0,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 77",
+      "item": {
+        "sets_count": null,
+        "reps_target": null,
+        "rpe_target": "9,5",
+        "rest_seconds": 240,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.7,
+        "density": 0.25,
+        "subindices": {
+          "reps": null,
+          "peak": 0.5,
+          "rest": 0.0,
+          "sets": null
+        },
+        "position": 0.725,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 78",
+      "item": {
+        "sets_count": 2,
+        "reps_target": "6",
+        "rpe_target": "10",
+        "rest_seconds": 0,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": null
+      },
+      "expected": {
+        "intensity": 1.0,
+        "density": 0.5,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 1.0,
+          "sets": 0.0
+        },
+        "position": 0.75,
+        "direction": "intensity"
+      }
+    },
+    {
+      "name": "gerado 79",
+      "item": {
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rpe_target": "6-7",
+        "rest_seconds": 90,
+        "peak_contraction_seconds": 7,
+        "advanced_technique": "drop_set"
+      },
+      "expected": {
+        "intensity": 0.3333333333333333,
+        "density": 0.6111111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 1.0,
+          "rest": 0.6666666666666666,
+          "sets": 0.3333333333333333
+        },
+        "position": 0.36111111111111105,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 80",
+      "item": {
+        "sets_count": 4,
+        "reps_target": "15",
+        "rpe_target": null,
+        "rest_seconds": null,
+        "peak_contraction_seconds": null,
+        "advanced_technique": "gvt"
+      },
+      "expected": {
+        "intensity": null,
+        "density": 0.8333333333333333,
+        "subindices": {
+          "reps": 1.0,
+          "peak": null,
+          "rest": null,
+          "sets": 0.6666666666666666
+        },
+        "position": 0.16666666666666674,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 81",
+      "item": {
+        "sets_count": 5,
+        "reps_target": "20",
+        "rpe_target": "7",
+        "rest_seconds": 30,
+        "peak_contraction_seconds": 0,
+        "advanced_technique": "forced_reps"
+      },
+      "expected": {
+        "intensity": 0.2,
+        "density": 0.75,
+        "subindices": {
+          "reps": 1.0,
+          "peak": 0.0,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.22499999999999998,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 82",
+      "item": {
+        "sets_count": 6,
+        "reps_target": "10",
+        "rpe_target": "8",
+        "rest_seconds": 45,
+        "peak_contraction_seconds": 2.5,
+        "advanced_technique": "fst7"
+      },
+      "expected": {
+        "intensity": 0.4166666666666667,
+        "density": 0.7361111111111112,
+        "subindices": {
+          "reps": 0.4444444444444444,
+          "peak": 0.5,
+          "rest": 1.0,
+          "sets": 1.0
+        },
+        "position": 0.3402777777777778,
+        "direction": "density"
+      }
+    },
+    {
+      "name": "gerado 83",
+      "item": {
+        "sets_count": 1,
+        "reps_target": "3",
+        "rpe_target": "8-9",
+        "rest_seconds": 112.5,
+        "peak_contraction_seconds": 5,
+        "advanced_technique": "codigo_fora_do_catalogo"
+      },
+      "expected": {
+        "intensity": 0.3,
+        "density": 0.375,
+        "subindices": {
+          "reps": 0.0,
+          "peak": 1.0,
+          "rest": 0.5,
+          "sets": 0.0
+        },
+        "position": 0.4625,
+        "direction": "balanced"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "pondera por value (secundária pesa menos) e ignora estabilizador",
+      "entries": [
+        {
+          "item": {
+            "sets_count": 2,
+            "reps_target": "6",
+            "rpe_target": "10",
+            "rest_seconds": 180,
+            "peak_contraction_seconds": 0,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 1,
+              "muscle_group": "Peitoral",
+              "role": "primary",
+              "value": 14
+            },
+            {
+              "muscle_group_id": 2,
+              "muscle_group": "Tríceps",
+              "role": "secondary",
+              "value": 7
+            },
+            {
+              "muscle_group_id": 3,
+              "muscle_group": "Core",
+              "role": "stabilizer",
+              "value": 3
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 5,
+            "reps_target": "15",
+            "rpe_target": "7",
+            "rest_seconds": 45,
+            "peak_contraction_seconds": 5,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 2,
+              "muscle_group": "Tríceps",
+              "role": "primary",
+              "value": 21
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "muscle_group_id": 2,
+          "muscle_group": "Tríceps",
+          "weight": 28.0,
+          "position": 0.25,
+          "intensity": 0.25,
+          "density": 0.75,
+          "subindices": {
+            "reps": 0.75,
+            "peak": 0.75,
+            "rest": 0.75,
+            "sets": 0.75
+          },
+          "direction": "density"
+        },
+        {
+          "muscle_group_id": 1,
+          "muscle_group": "Peitoral",
+          "weight": 14.0,
+          "position": 1.0,
+          "intensity": 1.0,
+          "density": 0.0,
+          "subindices": {
+            "reps": 0.0,
+            "peak": 0.0,
+            "rest": 0.0,
+            "sets": 0.0
+          },
+          "direction": "intensity"
+        }
+      ]
+    },
+    {
+      "name": "grupo sem insumo fica sem dados",
+      "entries": [
+        {
+          "item": {
+            "sets_count": null,
+            "reps_target": null,
+            "rpe_target": null,
+            "rest_seconds": null,
+            "peak_contraction_seconds": null,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 5,
+              "muscle_group": "Costas",
+              "role": "primary",
+              "value": 3
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "muscle_group_id": 5,
+          "muscle_group": "Costas",
+          "weight": 3.0,
+          "position": null,
+          "intensity": null,
+          "density": null,
+          "subindices": {
+            "reps": null,
+            "peak": null,
+            "rest": null,
+            "sets": null
+          },
+          "direction": null
+        }
+      ]
+    },
+    {
+      "name": "peso zero ou negativo não entra; subíndice ausente não dilui",
+      "entries": [
+        {
+          "item": {
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rpe_target": "9",
+            "rest_seconds": null,
+            "peak_contraction_seconds": null,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": null,
+              "muscle_group": "Ombro",
+              "role": "primary",
+              "value": 9
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 4,
+            "reps_target": null,
+            "rpe_target": null,
+            "rest_seconds": 60,
+            "peak_contraction_seconds": 3,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": null,
+              "muscle_group": "Ombro",
+              "role": "secondary",
+              "value": 4.5
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 4,
+            "reps_target": "5",
+            "rpe_target": "10",
+            "rest_seconds": 200,
+            "peak_contraction_seconds": 0,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": null,
+              "muscle_group": "Ombro",
+              "role": "primary",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 4,
+            "reps_target": "5",
+            "rpe_target": "10",
+            "rest_seconds": 200,
+            "peak_contraction_seconds": 0,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": null,
+              "muscle_group": "Bíceps",
+              "role": "primary",
+              "value": -2
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "muscle_group_id": null,
+          "muscle_group": "Ombro",
+          "weight": 13.5,
+          "position": 0.5308641975308641,
+          "intensity": 0.6999999999999998,
+          "density": 0.4987654320987654,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.6,
+            "rest": 0.8888888888888888,
+            "sets": 0.4444444444444444
+          },
+          "direction": "balanced"
+        }
+      ]
+    },
+    {
+      "name": "vários grupos com técnica e rampa",
+      "entries": [
+        {
+          "item": {
+            "sets_count": 3,
+            "reps_target": "10-12",
+            "rpe_target": "8-9-10",
+            "rest_seconds": 90,
+            "peak_contraction_seconds": 1,
+            "advanced_technique": "rest_pause"
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 10,
+              "muscle_group": "Quadríceps",
+              "role": "primary",
+              "value": 21
+            },
+            {
+              "muscle_group_id": 11,
+              "muscle_group": "Glúteos",
+              "role": "secondary",
+              "value": 10.5
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 4,
+            "reps_target": "15-20",
+            "rpe_target": "8",
+            "rest_seconds": 60,
+            "peak_contraction_seconds": 0,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 10,
+              "muscle_group": "Quadríceps",
+              "role": "primary",
+              "value": 28
+            },
+            {
+              "muscle_group_id": 12,
+              "muscle_group": "Panturrilha",
+              "role": "stabilizer",
+              "value": 7
+            }
+          ]
+        },
+        {
+          "item": {
+            "sets_count": 3,
+            "reps_target": "8",
+            "rpe_target": "9",
+            "rest_seconds": 150,
+            "peak_contraction_seconds": 2,
+            "advanced_technique": "gvt"
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 11,
+              "muscle_group": "Glúteos",
+              "role": "primary",
+              "value": 12
+            },
+            {
+              "muscle_group_id": 13,
+              "muscle_group": "Posterior",
+              "role": "secondary",
+              "value": 6
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "muscle_group_id": 10,
+          "muscle_group": "Quadríceps",
+          "weight": 49.0,
+          "position": 0.45198412698412704,
+          "intensity": 0.45714285714285713,
+          "density": 0.5531746031746031,
+          "subindices": {
+            "reps": 0.8095238095238096,
+            "peak": 0.08571428571428572,
+            "rest": 0.7936507936507936,
+            "sets": 0.5238095238095237
+          },
+          "direction": "balanced"
+        },
+        {
+          "muscle_group_id": 11,
+          "muscle_group": "Glúteos",
+          "weight": 22.5,
+          "position": 0.6612962962962963,
+          "intensity": 0.6844444444444444,
+          "density": 0.3618518518518518,
+          "subindices": {
+            "reps": 0.37777777777777777,
+            "peak": 0.3066666666666667,
+            "rest": 0.4296296296296296,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 13,
+          "muscle_group": "Posterior",
+          "weight": 6.0,
+          "position": 0.7027777777777778,
+          "intensity": 0.6999999999999998,
+          "density": 0.29444444444444445,
+          "subindices": {
+            "reps": 0.2222222222222222,
+            "peak": 0.4000000000000001,
+            "rest": 0.2222222222222222,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        }
+      ]
+    },
+    {
+      "name": "empate de peso ordena o nome como pt-BR (acento, caixa)",
+      "entries": [
+        {
+          "item": {
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rpe_target": "9",
+            "rest_seconds": 90,
+            "peak_contraction_seconds": 1,
+            "advanced_technique": null
+          },
+          "contributions": [
+            {
+              "muscle_group_id": 20,
+              "muscle_group": "Abdutores Quadril",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 21,
+              "muscle_group": "Core",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 22,
+              "muscle_group": "Abdômen",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 23,
+              "muscle_group": "core",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 24,
+              "muscle_group": "Abdomen",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 25,
+              "muscle_group": "Pã",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 26,
+              "muscle_group": "Pâ",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 27,
+              "muscle_group": "Pà",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 28,
+              "muscle_group": "Pá",
+              "role": "primary",
+              "value": 6
+            },
+            {
+              "muscle_group_id": 29,
+              "muscle_group": "Pä",
+              "role": "primary",
+              "value": 6
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "muscle_group_id": 24,
+          "muscle_group": "Abdomen",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 22,
+          "muscle_group": "Abdômen",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 20,
+          "muscle_group": "Abdutores Quadril",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 23,
+          "muscle_group": "core",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 21,
+          "muscle_group": "Core",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 28,
+          "muscle_group": "Pá",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 27,
+          "muscle_group": "Pà",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 26,
+          "muscle_group": "Pâ",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 29,
+          "muscle_group": "Pä",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        },
+        {
+          "muscle_group_id": 25,
+          "muscle_group": "Pã",
+          "weight": 6.0,
+          "position": 0.6444444444444444,
+          "intensity": 0.6999999999999998,
+          "density": 0.41111111111111104,
+          "subindices": {
+            "reps": 0.4444444444444444,
+            "peak": 0.20000000000000004,
+            "rest": 0.6666666666666666,
+            "sets": 0.3333333333333333
+          },
+          "direction": "intensity"
+        }
+      ]
+    }
+  ]
+}

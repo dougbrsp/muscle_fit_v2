@@ -1,0 +1,189 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): tempo total, texto canônico e resumo curto calculados pelo dono api/app/domain/cardio_prescription.py. NÃO EDITAR À MÃO.",
+  "items": [
+    {
+      "name": "antigo: só a duração",
+      "item": {
+        "cardio_duration_minutes": 20
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 1200.0,
+        "text": "20 min",
+        "short_text": "Normal 20 min"
+      }
+    },
+    {
+      "name": "padrão Normal do dono",
+      "item": {
+        "cardio_warmup_minutes": 5,
+        "cardio_duration_minutes": 20,
+        "cardio_target_zone": 2,
+        "cardio_cooldown_minutes": 5,
+        "cardio_mode": "continuous"
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 1800.0,
+        "text": "5 min aquec. + 20 min Z2 + 5 min recuperação",
+        "short_text": "Normal 20 min Z2 · 5+5 min"
+      }
+    },
+    {
+      "name": "padrão HIIT do dono",
+      "item": {
+        "cardio_warmup_minutes": 5,
+        "hiit_low_seconds": 120,
+        "hiit_high_seconds": 120,
+        "hiit_low_zone": 2,
+        "hiit_high_zone": 4,
+        "hiit_rounds": 5,
+        "cardio_cooldown_minutes": 5,
+        "cardio_mode": "hiit"
+      },
+      "expected": {
+        "mode": "hiit",
+        "total_seconds": 1800.0,
+        "text": "5 min aquec. + 5× [120 s Z4 / 120 s Z2] + 5 min recuperação",
+        "short_text": "HIIT 5× 120 s Z4 / 120 s Z2 · 5+5 min"
+      }
+    },
+    {
+      "name": "HIIT do exemplo do plano",
+      "item": {
+        "cardio_mode": "hiit",
+        "cardio_warmup_minutes": 5,
+        "hiit_rounds": 8,
+        "hiit_high_seconds": 30,
+        "hiit_high_zone": 4,
+        "hiit_low_seconds": 90,
+        "hiit_low_zone": 2,
+        "cardio_cooldown_minutes": 5
+      },
+      "expected": {
+        "mode": "hiit",
+        "total_seconds": 1560.0,
+        "text": "5 min aquec. + 8× [30 s Z4 / 90 s Z2] + 5 min recuperação",
+        "short_text": "HIIT 8× 30 s Z4 / 90 s Z2 · 5+5 min"
+      }
+    },
+    {
+      "name": "Normal só com aquecimento",
+      "item": {
+        "cardio_mode": "continuous",
+        "cardio_warmup_minutes": 10,
+        "cardio_duration_minutes": 30,
+        "cardio_target_zone": 3
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 2400.0,
+        "text": "10 min aquec. + 30 min Z3",
+        "short_text": "Normal 30 min Z3 · 10+0 min"
+      }
+    },
+    {
+      "name": "Normal só com recuperação e sem zona",
+      "item": {
+        "cardio_mode": "continuous",
+        "cardio_duration_minutes": 25,
+        "cardio_cooldown_minutes": 7
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 1920.0,
+        "text": "25 min + 7 min recuperação",
+        "short_text": "Normal 25 min · 0+7 min"
+      }
+    },
+    {
+      "name": "HIIT sem zonas",
+      "item": {
+        "cardio_mode": "hiit",
+        "hiit_rounds": 6,
+        "hiit_high_seconds": 40,
+        "hiit_low_seconds": 20
+      },
+      "expected": {
+        "mode": "hiit",
+        "total_seconds": 360.0,
+        "text": "6× [40 s / 20 s]",
+        "short_text": "HIIT 6× 40 s / 20 s"
+      }
+    },
+    {
+      "name": "HIIT incompleto",
+      "item": {
+        "cardio_mode": "hiit",
+        "hiit_high_seconds": 20,
+        "cardio_warmup_minutes": 3
+      },
+      "expected": {
+        "mode": "hiit",
+        "total_seconds": 180.0,
+        "text": "3 min aquec. + 0× [20 s / 0 s]",
+        "short_text": "HIIT 0× 20 s / 0 s · 3+0 min"
+      }
+    },
+    {
+      "name": "Normal vazio",
+      "item": {
+        "cardio_mode": "continuous"
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 0.0,
+        "text": "",
+        "short_text": "Normal 0 min"
+      }
+    },
+    {
+      "name": "frações e negativos",
+      "item": {
+        "cardio_duration_minutes": 12.5,
+        "cardio_warmup_minutes": -5,
+        "cardio_cooldown_minutes": 2.5,
+        "cardio_target_zone": 9
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 900.0,
+        "text": "12,5 min + 2,5 min recuperação",
+        "short_text": "Normal 12,5 min · 0+2,5 min"
+      }
+    },
+    {
+      "name": "modo em maiúsculas e sobras do outro modo",
+      "item": {
+        "cardio_mode": " HIIT ",
+        "cardio_duration_minutes": 99,
+        "cardio_target_zone": 2,
+        "hiit_rounds": 4,
+        "hiit_high_seconds": 15,
+        "hiit_high_zone": 5,
+        "hiit_low_seconds": 45,
+        "hiit_low_zone": 1
+      },
+      "expected": {
+        "mode": "hiit",
+        "total_seconds": 240.0,
+        "text": "4× [15 s Z5 / 45 s Z1]",
+        "short_text": "HIIT 4× 15 s Z5 / 45 s Z1"
+      }
+    },
+    {
+      "name": "modo desconhecido é Normal",
+      "item": {
+        "cardio_mode": "fartlek",
+        "cardio_duration_minutes": 15,
+        "cardio_target_zone": 2
+      },
+      "expected": {
+        "mode": "continuous",
+        "total_seconds": 900.0,
+        "text": "15 min Z2",
+        "short_text": "Normal 15 min Z2"
+      }
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "dataset_version": "insights-eval-v1",
+  "prompt_version": "insights-prompt-v6",
+  "package_version": "intelligence-package-v1",
+  "notes": [
+    "Conjunto VERSIONADO de perguntas com expectativas. Duas metades:",
+    "(a) determinística, roda no CI (tests/eval/test_package_eval.py): afirma que o PACOTE montado para cada pergunta contém as métricas e as evidências que a resposta precisaria citar, cabe no teto e não vaza dado de outro usuário. Não chama LLM nenhum.",
+    "(b) com LLM, FORA do CI (tests/eval/test_llm_insights_eval.py, marcador llm_eval): afirma que a RESPOSTA cita a evidência esperada e não inventa número. Custa dinheiro e não é determinística — roda sob demanda, ver README.md.",
+    "Ao mudar o prompt, atualize prompt_version aqui: sem isso, uma piora depois de uma edição de prompt é indistinguível de variação do modelo."
+  ],
+  "questions": [
+    {
+      "id": "volume_abaixo_do_minimo",
+      "question": "Meu peito está com volume suficiente?",
+      "window": "28d",
+      "expect_metric_keys": [
+        "muscles.below_min",
+        "muscles.groups_with_target"
+      ],
+      "expect_baseline_keys": ["muscles.Peito.target_min"],
+      "expect_evidence_codes": ["MUSCLE_BELOW_MIN"],
+      "expect_muscle_groups": ["Peito"],
+      "forbidden_in_answer": ["por causa de", "isso causou", "porque o álcool"]
+    },
+    {
+      "id": "estagnacao_de_exercicio",
+      "question": "Algum exercício meu parou de evoluir?",
+      "window": "28d",
+      "expect_metric_keys": [
+        "progression.count.STAGNANT",
+        "progression.comparable_total",
+        "progression.exercises_total"
+      ],
+      "expect_baseline_keys": ["progression.exposures_per_exercise"],
+      "expect_evidence_codes": ["EXERCISE_STAGNANT"],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["por causa de", "isso causou"]
+    },
+    {
+      "id": "aderencia_ao_modelo",
+      "question": "Estou cumprindo o que o Modelo pede?",
+      "window": "28d",
+      "expect_metric_keys": [
+        "consistency.rate",
+        "consistency.completed_sessions",
+        "consistency.missed_sessions"
+      ],
+      "expect_baseline_keys": ["consistency.cycle_length_days"],
+      "expect_evidence_codes": [],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["por causa de"]
+    },
+    {
+      "id": "peso_e_recomposicao",
+      "question": "Meu peso está caindo rápido demais?",
+      "window": "28d",
+      "expect_metric_keys": [
+        "body.weight_ma7_latest",
+        "body.weight_ma7_change",
+        "body.weight_ma7_change_pct",
+        "body.weighings_per_week"
+      ],
+      "expect_baseline_keys": ["body.weight_ma7_first"],
+      "expect_evidence_codes": [],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["dieta", "suplemento", "caloria"]
+    },
+    {
+      "id": "recuperacao",
+      "question": "Posso aumentar a intensidade esta semana?",
+      "window": "7d",
+      "expect_metric_keys": [
+        "recovery.groups_ready",
+        "recovery.groups_reduced_dose",
+        "recovery.signals_diverging",
+        "recovery.signals_unavailable"
+      ],
+      "expect_baseline_keys": [],
+      "expect_evidence_codes": [],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["por causa de", "exame", "médico"]
+    },
+    {
+      "id": "dado_ausente_cintura",
+      "question": "Minha cintura diminuiu no período?",
+      "window": "90d",
+      "expect_metric_keys": ["body.waist_cm"],
+      "expect_metric_values_null": ["body.waist_cm"],
+      "expect_baseline_keys": [],
+      "expect_evidence_codes": [],
+      "expect_muscle_groups": [],
+      "expect_answer_admits_missing_data": true,
+      "forbidden_in_answer": ["cm a menos", "reduziu para"]
+    },
+    {
+      "id": "contexto_nao_e_causa",
+      "question": "O fim de semana com álcool atrapalhou meu treino?",
+      "window": "28d",
+      "expect_metric_keys": ["training.days_since_last_session"],
+      "expect_baseline_keys": [],
+      "expect_evidence_codes": [],
+      "expect_context_event_types": ["alcohol"],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["por causa do álcool", "o álcool causou", "isso causou"]
+    },
+    {
+      "id": "pausa_de_treino",
+      "question": "Faz quanto tempo que eu não treino?",
+      "window": "28d",
+      "expect_metric_keys": ["training.days_since_last_session"],
+      "expect_baseline_keys": [],
+      "expect_evidence_codes": [],
+      "expect_muscle_groups": [],
+      "forbidden_in_answer": ["por causa de"]
+    }
+  ]
+}

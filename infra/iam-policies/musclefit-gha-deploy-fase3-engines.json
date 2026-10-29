@@ -1,0 +1,97 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "MusclefitEnginesEcrRepoManage",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DeleteRepository",
+        "ecr:DescribeRepositories",
+        "ecr:PutLifecyclePolicy",
+        "ecr:GetLifecyclePolicy",
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:TagResource",
+        "ecr:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-engines"
+    },
+    {
+      "Sid": "MusclefitEnginesExecRoleManage",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec"
+    },
+    {
+      "Sid": "MusclefitEnginesExecRolePassToLambda",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "MusclefitApiCoreAndAiGeneratorsInvokeEnginesInlinePolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::930413537709:role/musclefit-api-core-exec",
+        "arn:aws:iam::930413537709:role/musclefit-ai-generators-exec"
+      ]
+    },
+    {
+      "Sid": "MusclefitEnginesLambdaFunctionManage",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:ListVersionsByFunction",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags",
+        "lambda:GetPolicy",
+        "lambda:AddPermission",
+        "lambda:RemovePermission"
+      ],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-engines"
+    },
+    {
+      "Sid": "MusclefitEnginesLogGroupManage",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-engines*"
+    }
+  ]
+}

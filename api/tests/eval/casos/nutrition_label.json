@@ -1,0 +1,251 @@
+{
+  "_comment": "Eval PAGO da leitura da foto do rótulo (nutrição L6; tests/eval/test_nutrition_label_eval.py). Imagens SINTÉTICAS (tests/eval/imagens/nutrition_labels/, geradas por tests/eval/gerar_imagens_rotulo.py a partir de `desenho`; fonte Inter, OFL 1.1; produtos, marcas e números fictícios), no modelo da RDC 429/2020 + IN 75/2020 e um no modelo antigo da RDC 360/2003. `expect.food` = o formulário que o worker devolve DEPOIS da revisão do motor (label_photo.review_reading), na escala de PREFILL_DECIMALS.",
+  "prompt_version": "nutrition-label-v2",
+  "cases": [
+    {
+      "id": "biscoito_rdc429",
+      "image": "biscoito_rdc429.jpg",
+      "desenho": {
+        "tabela": {
+          "porcoes": 6,
+          "porcao": "30 g (3 unidades)",
+          "colunas": ["100 g", "30 g", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [450, 135, 7], 0],
+            ["Carboidratos (g)", [65, "19,5", 7], 0],
+            ["Açúcares totais (g)", [20, "6,0", ""], 1],
+            ["Açúcares adicionados (g)", [15, "4,5", 9], 1],
+            ["Proteínas (g)", ["8,0", "2,4", 5], 0],
+            ["Gorduras totais (g)", [18, "5,4", 8], 0],
+            ["Gorduras saturadas (g)", ["6,0", "1,8", 9], 1],
+            ["Gorduras trans (g)", [0, 0, 0], 1],
+            ["Fibras alimentares (g)", ["4,0", "1,2", 5], 0],
+            ["Sódio (mg)", [300, 90, 5], 0]
+          ],
+          "rodape": ["*Percentual de valores diários fornecidos pela porção."]
+        },
+        "foto": {"semente": 1, "rotacao": 2.0, "desfoque": 0.4, "ruido": 18, "perspectiva": 0.02, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok"],
+        "food": {
+          "basis": "g", "energy_kcal": 450, "carbohydrates_g": 65, "total_sugars_g": 20, "added_sugars_g": 15,
+          "protein_g": 8, "total_fat_g": 18, "saturated_fat_g": 6, "trans_fat_g": 0, "fiber_g": 4, "sodium_mg": 300,
+          "serving_size": 30, "servings_per_package": 6
+        },
+        "per_serving": {"energy_kcal": 135, "sodium_mg": 90}
+      }
+    },
+    {
+      "id": "suco_uva_ml",
+      "image": "suco_uva_ml.jpg",
+      "desenho": {
+        "tabela": {
+          "porcoes": 5,
+          "porcao": "200 ml (1 copo)",
+          "colunas": ["100 ml", "200 ml", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [60, 120, 6], 0],
+            ["Carboidratos (g)", [15, 30, 10], 0],
+            ["Açúcares totais (g)", [14, 28, ""], 1],
+            ["Açúcares adicionados (g)", [0, 0, 0], 1],
+            ["Proteínas (g)", [0, 0, 0], 0],
+            ["Gorduras totais (g)", [0, 0, 0], 0],
+            ["Gorduras saturadas (g)", [0, 0, 0], 1],
+            ["Gorduras trans (g)", [0, 0, 0], 1],
+            ["Fibras alimentares (g)", [0, 0, 0], 0],
+            ["Sódio (mg)", [5, 10, 0], 0]
+          ],
+          "rodape": ["*Percentual de valores diários fornecidos pela porção."]
+        },
+        "foto": {"semente": 2, "rotacao": -3.0, "desfoque": 0.6, "ruido": 25, "perspectiva": 0.04, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok"],
+        "food": {
+          "basis": "ml", "energy_kcal": 60, "carbohydrates_g": 15, "total_sugars_g": 14, "added_sugars_g": 0,
+          "protein_g": 0, "total_fat_g": 0, "saturated_fat_g": 0, "trans_fat_g": 0, "fiber_g": 0, "sodium_mg": 5,
+          "serving_size": 200, "servings_per_package": 5
+        }
+      }
+    },
+    {
+      "id": "iogurte_foto_inclinada",
+      "image": "iogurte_foto_inclinada.jpg",
+      "desenho": {
+        "tabela": {
+          "porcoes": 1,
+          "porcao": "170 g (1 pote)",
+          "colunas": ["100 g", "170 g", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [63, 107, 5], 0],
+            ["Carboidratos (g)", ["5,3", "9,0", 3], 0],
+            ["Açúcares totais (g)", ["5,3", "9,0", ""], 1],
+            ["Açúcares adicionados (g)", [0, 0, 0], 1],
+            ["Proteínas (g)", ["4,0", "6,8", 14], 0],
+            ["Gorduras totais (g)", ["2,9", "4,9", 8], 0],
+            ["Gorduras saturadas (g)", ["1,8", "3,1", 16], 1],
+            ["Gorduras trans (g)", [0, 0, 0], 1],
+            ["Fibras alimentares (g)", [0, 0, 0], 0],
+            ["Sódio (mg)", [55, 94, 5], 0]
+          ],
+          "rodape": ["*Percentual de valores diários fornecidos pela porção."]
+        },
+        "foto": {"semente": 3, "rotacao": 6.0, "desfoque": 1.0, "ruido": 35, "perspectiva": 0.08, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok", "partial"],
+        "food": {
+          "basis": "g", "energy_kcal": 63, "carbohydrates_g": 5.3, "total_sugars_g": 5.3, "added_sugars_g": 0,
+          "protein_g": 4, "total_fat_g": 2.9, "saturated_fat_g": 1.8, "trans_fat_g": 0, "fiber_g": 0, "sodium_mg": 55,
+          "serving_size": 170, "servings_per_package": 1
+        }
+      }
+    },
+    {
+      "id": "granola_modelo_antigo",
+      "image": "granola_modelo_antigo.jpg",
+      "desenho": {
+        "tabela": {
+          "modelo_antigo": true,
+          "porcao": "40 g (4 colheres de sopa)",
+          "colunas": ["Por porção", "%VD(*)"],
+          "linhas": [
+            ["Valor energético", ["172 kcal = 722 kJ", 9], 0],
+            ["Carboidratos", ["26 g", 9], 0],
+            ["Proteínas", ["4,0 g", 5], 0],
+            ["Gorduras totais", ["6,0 g", 11], 0],
+            ["Gorduras saturadas", ["1,2 g", 5], 1],
+            ["Gorduras trans", ["0 g", "**"], 1],
+            ["Fibra alimentar", ["3,2 g", 13], 0],
+            ["Sódio", ["24 mg", 1], 0]
+          ],
+          "rodape": ["(*) Valores Diários com base em uma dieta de 2.000 kcal ou 8.400 kJ.", "(**) VD não estabelecido."]
+        },
+        "foto": {"semente": 4, "rotacao": -1.5, "desfoque": 0.5, "ruido": 22, "perspectiva": 0.03, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok", "partial"],
+        "food": {
+          "basis": "g", "energy_kcal": 430, "carbohydrates_g": 65, "protein_g": 10, "total_fat_g": 15,
+          "saturated_fat_g": 3, "trans_fat_g": 0, "fiber_g": 8, "sodium_mg": 60, "serving_size": 40
+        },
+        "per_serving": {"energy_kcal": 172},
+        "avisos_obrigatorios": ["label_derived_from_serving:energy_kcal"]
+      }
+    },
+    {
+      "id": "arroz_nao_contem",
+      "image": "arroz_nao_contem.jpg",
+      "desenho": {
+        "tabela": {
+          "porcoes": 20,
+          "porcao": "50 g (1/4 de xícara)",
+          "colunas": ["100 g", "50 g", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [350, 175, 9], 0],
+            ["Carboidratos (g)", [79, "39,5", 13], 0],
+            ["Açúcares totais (g)", [0, 0, ""], 1],
+            ["Proteínas (g)", ["7,2", "3,6", 7], 0],
+            ["Gorduras totais (g)", ["0,6", "0,3", 0], 0],
+            ["Gorduras saturadas (g)", ["0,2", "0,1", 1], 1],
+            ["Fibras alimentares (g)", ["1,6", "0,8", 3], 0]
+          ],
+          "rodape": [
+            "Não contém quantidades significativas de açúcares adicionados,",
+            "gorduras trans e sódio.",
+            "*Percentual de valores diários fornecidos pela porção."
+          ]
+        },
+        "foto": {"semente": 5, "rotacao": 1.0, "desfoque": 0.5, "ruido": 20, "perspectiva": 0.02, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok"],
+        "food": {
+          "basis": "g", "energy_kcal": 350, "carbohydrates_g": 79, "total_sugars_g": 0, "added_sugars_g": 0,
+          "protein_g": 7.2, "total_fat_g": 0.6, "saturated_fat_g": 0.2, "trans_fat_g": 0, "fiber_g": 1.6,
+          "sodium_mg": 0, "serving_size": 50, "servings_per_package": 20
+        },
+        "avisos_obrigatorios": [
+          "label_not_significant:added_sugars_g", "label_not_significant:trans_fat_g", "label_not_significant:sodium_mg"
+        ]
+      }
+    },
+    {
+      "id": "queijo_produto_codigo",
+      "image": "queijo_produto_codigo.jpg",
+      "desenho": {
+        "tabela": {
+          "cabecalho_produto": "QUEIJO MINAS FRESCAL",
+          "marca": "Laticínios Serra Azul (marca fictícia)",
+          "codigo_barras": "7 891234 567895",
+          "porcoes": 10,
+          "porcao": "30 g (1 fatia)",
+          "colunas": ["100 g", "30 g", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [264, 79, 4], 0],
+            ["Carboidratos (g)", ["3,2", "1,0", 0], 0],
+            ["Açúcares totais (g)", [0, 0, ""], 1],
+            ["Açúcares adicionados (g)", [0, 0, 0], 1],
+            ["Proteínas (g)", ["17,4", "5,2", 10], 0],
+            ["Gorduras totais (g)", ["20,2", "6,1", 9], 0],
+            ["Gorduras saturadas (g)", ["12,3", "3,7", 18], 1],
+            ["Gorduras trans (g)", [0, 0, 0], 1],
+            ["Fibras alimentares (g)", [0, 0, 0], 0],
+            ["Sódio (mg)", [402, 121, 6], 0]
+          ],
+          "rodape": ["*Percentual de valores diários fornecidos pela porção."]
+        },
+        "foto": {"semente": 6, "rotacao": 1.5, "desfoque": 0.4, "ruido": 20, "perspectiva": 0.03, "largura_final": 1000}
+      },
+      "expect": {
+        "legibilidade_aceita": ["ok"],
+        "nome_contem": "queijo minas",
+        "barcode": "7891234567895",
+        "food": {
+          "basis": "g", "energy_kcal": 264, "carbohydrates_g": 3.2, "total_sugars_g": 0, "added_sugars_g": 0,
+          "protein_g": 17.4, "total_fat_g": 20.2, "saturated_fat_g": 12.3, "trans_fat_g": 0, "fiber_g": 0,
+          "sodium_mg": 402, "serving_size": 30, "servings_per_package": 10
+        }
+      }
+    },
+    {
+      "id": "biscoito_borrado",
+      "image": "biscoito_borrado.jpg",
+      "desenho": {
+        "tabela": {
+          "porcoes": 6,
+          "porcao": "30 g (3 unidades)",
+          "colunas": ["100 g", "30 g", "%VD*"],
+          "linhas": [
+            ["Valor energético (kcal)", [450, 135, 7], 0],
+            ["Carboidratos (g)", [65, "19,5", 7], 0],
+            ["Açúcares totais (g)", [20, "6,0", ""], 1],
+            ["Açúcares adicionados (g)", [15, "4,5", 9], 1],
+            ["Proteínas (g)", ["8,0", "2,4", 5], 0],
+            ["Gorduras totais (g)", [18, "5,4", 8], 0],
+            ["Gorduras saturadas (g)", ["6,0", "1,8", 9], 1],
+            ["Gorduras trans (g)", [0, 0, 0], 1],
+            ["Fibras alimentares (g)", ["4,0", "1,2", 5], 0],
+            ["Sódio (mg)", [300, 90, 5], 0]
+          ],
+          "rodape": ["*Percentual de valores diários fornecidos pela porção."]
+        },
+        "foto": {"semente": 7, "rotacao": 3.0, "desfoque": 7.0, "ruido": 30, "perspectiva": 0.05, "largura_final": 700}
+      },
+      "expect": {
+        "legibilidade_aceita": ["unreadable", "partial"],
+        "sem_valor_inventado": true
+      }
+    },
+    {
+      "id": "biscoito_foto_grande",
+      "image": "biscoito_rdc429.jpg",
+      "foto_grande": true,
+      "expect": {
+        "legibilidade_aceita": ["ok"],
+        "food": {"basis": "g", "energy_kcal": 450, "protein_g": 8, "total_fat_g": 18, "sodium_mg": 300, "serving_size": 30}
+      }
+    }
+  ]
+}

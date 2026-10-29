@@ -1,0 +1,92 @@
+{
+ "abs|1x": [
+  2,
+  3,
+  6,
+  12,
+  "derived",
+  "derived (proposta D1): EXG-020 so prescreve abdomen em 2x/semana; em 1x a mesma faixa de 2-3 exercicios e aplicada por falta de prescricao propria",
+  "derived",
+  "derived (proposta D1): EXG-020 prescreve 2-3 exercicios e deixa as series 'conforme series adotadas por exercicio'; convertido pela regra de EXG-004 (3-4 series por exercicio)"
+ ],
+ "abs|2x": [
+  2,
+  3,
+  6,
+  12,
+  "methodology",
+  "EXG-020",
+  "derived",
+  "derived (proposta D1): EXG-020 prescreve 2-3 exercicios e deixa as series 'conforme series adotadas por exercicio'; convertido pela regra de EXG-004 (3-4 series por exercicio)"
+ ],
+ "abs|3x_plus": [
+  1,
+  2,
+  3,
+  8,
+  "derived",
+  "derived (proposta D2): celula abdomen 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2",
+  "derived",
+  "derived (proposta D2): celula abdomen 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2"
+ ],
+ "large|1x": [
+  4,
+  5,
+  15,
+  20,
+  "methodology",
+  "EXG-015",
+  "methodology",
+  "EXG-015"
+ ],
+ "large|2x": [
+  3,
+  4,
+  9,
+  16,
+  "methodology",
+  "EXG-016",
+  "methodology",
+  "EXG-016"
+ ],
+ "large|3x_plus": [
+  2,
+  3,
+  6,
+  12,
+  "derived",
+  "derived (proposta D2): celula grandes 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2",
+  "derived",
+  "derived (proposta D2): celula grandes 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2"
+ ],
+ "small|1x": [
+  3,
+  4,
+  9,
+  16,
+  "methodology",
+  "EXG-017",
+  "methodology",
+  "EXG-017"
+ ],
+ "small|2x": [
+  2,
+  3,
+  6,
+  12,
+  "methodology",
+  "EXG-018",
+  "methodology",
+  "EXG-018"
+ ],
+ "small|3x_plus": [
+  1,
+  2,
+  3,
+  8,
+  "derived",
+  "derived (proposta D2): celula pequenos 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2",
+  "derived",
+  "derived (proposta D2): celula pequenos 2x menos 1 exercicio por sessao (mesmo passo de 1x->2x, EXG-019), piso 1; series pela regra de EXG-004 (3-4 por exercicio), piso 2"
+ ]
+}

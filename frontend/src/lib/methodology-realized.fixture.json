@@ -1,0 +1,357 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote4b_ativacao_e_status.py (--gravar): resposta de GET /analytics/methodology-realized para o cenário do teste (api/app/intelligence/methodology_realized.py). O vitest da tabela de 7 dias desenha este payload. Não edite à mão.",
+  "metric_version": "realized-v2",
+  "counting_mode": "primary_only",
+  "days": [
+    "2026-09-25",
+    "2026-09-26",
+    "2026-09-27",
+    "2026-09-28",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-01"
+  ],
+  "items": [
+    {
+      "muscle_group_id": 1,
+      "muscle_group": "Peitoral",
+      "member_groups": [
+        {
+          "muscle_group_id": 1,
+          "muscle_group": "Peitoral"
+        }
+      ],
+      "volume_class_name": "Grandes",
+      "days": [
+        {
+          "date": "2026-09-25",
+          "direct_sets": 4.0,
+          "effective_sets": 4.0,
+          "status": "WITHIN_RANGE"
+        },
+        {
+          "date": "2026-09-26",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-27",
+          "direct_sets": 2.0,
+          "effective_sets": 3.0,
+          "status": "BELOW_RANGE"
+        },
+        {
+          "date": "2026-09-28",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-29",
+          "direct_sets": 6.0,
+          "effective_sets": 6.0,
+          "status": "ABOVE_RANGE"
+        },
+        {
+          "date": "2026-09-30",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-10-01",
+          "direct_sets": 0.0,
+          "effective_sets": 2.0,
+          "status": null
+        }
+      ],
+      "days_trained": 3,
+      "frequency_bucket": "3x_plus",
+      "session_range": {
+        "min": 3.0,
+        "max": 5.0
+      },
+      "direct_sets_per_session": 4.0,
+      "session_status": "WITHIN_RANGE",
+      "weekly_total": 12.0,
+      "weekly_range": {
+        "min": 10.0,
+        "max": 20.0
+      },
+      "weekly_status": "WITHIN_RANGE"
+    },
+    {
+      "muscle_group_id": 2,
+      "muscle_group": "Costas",
+      "member_groups": [
+        {
+          "muscle_group_id": 2,
+          "muscle_group": "Costas"
+        },
+        {
+          "muscle_group_id": 6,
+          "muscle_group": "Dorsal alto"
+        },
+        {
+          "muscle_group_id": 7,
+          "muscle_group": "Romboides"
+        }
+      ],
+      "volume_class_name": "Grandes",
+      "days": [
+        {
+          "date": "2026-09-25",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-26",
+          "direct_sets": 10.0,
+          "effective_sets": 10.0,
+          "status": "WITHIN_RANGE"
+        },
+        {
+          "date": "2026-09-27",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-28",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-29",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-30",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-10-01",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        }
+      ],
+      "days_trained": 1,
+      "frequency_bucket": "1x",
+      "session_range": {
+        "min": 8.0,
+        "max": 12.0
+      },
+      "direct_sets_per_session": 10.0,
+      "session_status": "WITHIN_RANGE",
+      "weekly_total": 10.0,
+      "weekly_range": {
+        "min": 10.0,
+        "max": 20.0
+      },
+      "weekly_status": "WITHIN_RANGE"
+    },
+    {
+      "muscle_group_id": 4,
+      "muscle_group": "Bíceps",
+      "member_groups": [
+        {
+          "muscle_group_id": 4,
+          "muscle_group": "Bíceps"
+        }
+      ],
+      "volume_class_name": "Pequenos",
+      "days": [
+        {
+          "date": "2026-09-25",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-26",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-27",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-28",
+          "direct_sets": 3.0,
+          "effective_sets": 3.0,
+          "status": "NOT_EVALUABLE"
+        },
+        {
+          "date": "2026-09-29",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-30",
+          "direct_sets": 2.0,
+          "effective_sets": 2.0,
+          "status": "NOT_EVALUABLE"
+        },
+        {
+          "date": "2026-10-01",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        }
+      ],
+      "days_trained": 2,
+      "frequency_bucket": "2x",
+      "session_range": null,
+      "direct_sets_per_session": 2.5,
+      "session_status": "NOT_EVALUABLE",
+      "weekly_total": 5.0,
+      "weekly_range": {
+        "min": 6.0,
+        "max": 12.0
+      },
+      "weekly_status": "BELOW_RANGE"
+    },
+    {
+      "muscle_group_id": 5,
+      "muscle_group": "Antebraço",
+      "member_groups": [
+        {
+          "muscle_group_id": 5,
+          "muscle_group": "Antebraço"
+        }
+      ],
+      "volume_class_name": null,
+      "days": [
+        {
+          "date": "2026-09-25",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-26",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-27",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-28",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-29",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-30",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-10-01",
+          "direct_sets": 3.0,
+          "effective_sets": 3.0,
+          "status": "NOT_EVALUABLE"
+        }
+      ],
+      "days_trained": 1,
+      "frequency_bucket": "1x",
+      "session_range": null,
+      "direct_sets_per_session": 3.0,
+      "session_status": "NOT_EVALUABLE",
+      "weekly_total": 3.0,
+      "weekly_range": null,
+      "weekly_status": "NOT_EVALUABLE"
+    },
+    {
+      "muscle_group_id": 3,
+      "muscle_group": "Quadríceps",
+      "member_groups": [
+        {
+          "muscle_group_id": 3,
+          "muscle_group": "Quadríceps"
+        }
+      ],
+      "volume_class_name": "Grandes",
+      "days": [
+        {
+          "date": "2026-09-25",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-26",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-27",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-28",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-29",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-09-30",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        },
+        {
+          "date": "2026-10-01",
+          "direct_sets": 0.0,
+          "effective_sets": 0.0,
+          "status": null
+        }
+      ],
+      "days_trained": 0,
+      "frequency_bucket": null,
+      "session_range": null,
+      "direct_sets_per_session": null,
+      "session_status": "NOT_DIRECTLY_TRAINED",
+      "weekly_total": 0.0,
+      "weekly_range": {
+        "min": 10.0,
+        "max": 20.0
+      },
+      "weekly_status": "BELOW_RANGE"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: #0a0a0a;
+  color: #f5f5f5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+  M26 — "o app abre com zoom no iPhone".
+  O Safari do iOS (inclusive no modo standalone, o app aberto pelo ícone da
+  Tela de Início) DÁ ZOOM automaticamente ao focar um campo de formulário cujo
+  texto seja MENOR que 16px — e, diferente do Safari com barra de endereço, no
+  standalone não existe gesto/UI que desfaça esse zoom: ele fica valendo para
+  a sessão inteira do app, inclusive nas próximas aberturas pelo ícone. Como a
+  primeira tela do app é o login (dois campos), bastava entrar uma vez para o
+  app passar a abrir "com um pouco de zoom" (16/14 ≈ 1,14x), cortando o
+  conteúdo nas laterais.
+
+  A correção é dar 16px ao TEXTO DOS CAMPOS em dispositivos de toque — não
+  desligar o zoom (`maximum-scale=1`/`user-scalable=no` apenas esconderiam o
+  defeito e tirariam do usuário o zoom de acessibilidade).
+
+  `pointer: coarse` isola a regra ao toque (celular/tablet): no desktop os
+  campos continuam com o tamanho do design system. A altura dos campos é
+  definida por `--input-height` (não pelo font-size), então nada muda de
+  layout — só o texto digitado fica um pouco maior.
+
+  A especificidade precisa ser MAIOR que a do Mantine (`.m_...`, uma classe):
+  por isso `elemento.classe` (0,1,1) em vez de só `input` (0,0,1).
+*/
+@media (pointer: coarse) {
+  input.mantine-Input-input,
+  input.mantine-PasswordInput-innerInput,
+  textarea.mantine-Input-input,
+  select.mantine-Input-input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+.brand-gradient-text {
+  background: linear-gradient(135deg, #ff9500 0%, #e8451c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

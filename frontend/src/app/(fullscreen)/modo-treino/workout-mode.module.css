@@ -1,0 +1,1351 @@
+/*
+ * Novo visual do Modo Treino. CSS module ISOLADO: nada aqui vaza para outras
+ * telas (sem seletor global). As cores chegam como variáveis `--wm-*`,
+ * definidas no elemento raiz a partir de `BRAND` (`theme.ts`) por
+ * `ui/workout-mode-css-vars.ts` — este arquivo não repete hexadecimal da marca.
+ *
+ * PR4 ("uma tela"): Briefing, Execução e Descanso cabem numa viewport de
+ * celular (alvo 390×664) sem rolar a página. Por isso: título em linha
+ * compacta, cards de 12 px, gap de 8 px, raios de 14–16 px, glow laranja SÓ
+ * no CTA e no relógio do descanso, e o rodapé de ação no FIM do fluxo
+ * (sticky, com safe-area), sem cobrir o conteúdo.
+ */
+
+.root {
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+/* Tela que ocupa a altura útil (header fora): o rodapé de ação desce até o
+   fim da viewport com `margin-top: auto`, sem reservar altura fixa. */
+.screen {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* ── Superfícies ─────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--wm-surface);
+  border: 1px solid var(--wm-border);
+  border-radius: 16px;
+  min-width: 0;
+}
+
+/* Glow laranja: só no relógio do descanso (e no CTA, ver `.primaryCta`). */
+.hero {
+  background: var(--wm-surface);
+  border: 1px solid var(--wm-orange-border);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px var(--wm-orange-glow-inner),
+    0 0 24px -8px var(--wm-orange-glow);
+  padding: 12px;
+  min-width: 0;
+}
+
+.raised {
+  background: var(--wm-raised);
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
+  min-width: 0;
+}
+
+/* ── Progresso global (dentro da barra fina do topo) ─────────────────────── */
+
+.progressLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  min-width: 0;
+  color: var(--wm-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.progressLabel {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.progressDone {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--wm-success);
+  white-space: nowrap;
+}
+
+.progressTrack {
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--wm-raised);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--wm-orange);
+  transition: width 200ms ease-out;
+}
+
+/* Selo "Avançado" (modo da ficha) na linha de progresso. */
+.modeChip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--wm-orange);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: var(--wm-raised);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.chipSm {
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.chipLabel {
+  color: var(--wm-text);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* ── Título compacto (foto + nome + equipamento · fadiga) ───────────────── */
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 56px;
+}
+
+.titleText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Nome em até 2 linhas, sem quebrar palavra no meio (o corte, se houver, é
+   no fim da 2ª linha; o nome completo continua no DOM e no `title`). */
+.titleName {
+  margin: 0;
+  color: var(--wm-text);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.titleMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.titleMetaText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleMeta > :not(.titleMetaText) {
+  flex: 0 0 auto;
+}
+
+.thumbnail {
+  flex: 0 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--wm-raised);
+  border: 1px solid var(--wm-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbButton {
+  appearance: none;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+
+/* Botão de ícone 44 px (Info do título). */
+.iconButton {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-raised);
+  color: var(--wm-orange);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.thumbButton:focus-visible,
+.iconButton:focus-visible,
+.iconAction:focus-visible,
+.textToggle:focus-visible,
+.unitSuffix:focus-visible,
+.linkRow:focus-visible {
+  outline: 2px solid var(--wm-orange);
+  outline-offset: 2px;
+}
+
+.eyebrow {
+  color: var(--wm-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+/* ── Métricas do briefing: 4 numa linha ─────────────────────────────────── */
+
+.metricGrid {
+  display: grid;
+  /* "Séries x reps" e "Esforço" são os valores mais longos. */
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: 6px;
+}
+
+.metricTile {
+  composes: raised;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--wm-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.metricIcon {
+  color: var(--wm-orange);
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.metricValue {
+  margin-top: 2px;
+  color: var(--wm-text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 359px) {
+  .metricTile {
+    padding: 6px;
+  }
+
+  .metricLabel {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  .metricValue {
+    font-size: 13px;
+  }
+}
+
+/* ── Acordeão ────────────────────────────────────────────────────────────── */
+
+.accordion {
+  composes: card;
+  overflow: hidden;
+}
+
+.accordionHeader {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.accordionHeader:focus-visible {
+  outline: 2px solid var(--wm-orange);
+  outline-offset: -2px;
+  border-radius: 16px;
+}
+
+.accordionIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--wm-orange);
+}
+
+.accordionText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.accordionTitle {
+  display: block;
+  color: var(--wm-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.accordionSummary {
+  display: block;
+  margin-top: 1px;
+  color: var(--wm-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Resumo na MESMA linha do título ("Ajuste de hoje: Manter"). */
+.accordionInline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.accordionInline > .accordionTitle {
+  flex: 0 0 auto;
+}
+
+.accordionInlineSummary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordionInline strong {
+  color: var(--wm-text);
+  font-weight: 800;
+}
+
+.accordionChevron {
+  flex: 0 0 auto;
+  color: var(--wm-text-muted);
+  display: inline-flex;
+  transition: transform 200ms ease-out;
+}
+
+.accordionHeader[aria-expanded='true'] .accordionChevron {
+  transform: rotate(180deg);
+}
+
+.accordionPanel {
+  padding: 0 12px 10px;
+  color: var(--wm-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stepList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.stepList li + li {
+  margin-top: 4px;
+}
+
+/* Variante "Ajuste de hoje". */
+.accordionAccent .accordionIcon {
+  color: var(--wm-orange);
+}
+
+/* Variante de atenção (cuidados de segurança). */
+.accordionWarning .accordionIcon {
+  color: var(--wm-warning);
+}
+
+/* Grupo de linhas compactas num card só (Como estamos / Treino anterior). */
+.rowGroup {
+  composes: card;
+  overflow: hidden;
+}
+
+.rowGroup > * + * {
+  border-top: 1px solid var(--wm-border);
+}
+
+.rowGroup > .accordion {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rowGroup > * + .accordion {
+  border-top: 1px solid var(--wm-border);
+}
+
+/* Duas linhas compactas lado a lado (ex.: "Mais opções" | "Músculos"). A
+   aberta ocupa a largura toda, abaixo da outra. */
+.pairRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.pairRow > :only-child,
+.pairOpen {
+  grid-column: 1 / -1;
+}
+
+.pairOpen {
+  order: 10;
+}
+
+/* Linha de texto tocável (ex.: "Adicionar exercício avulso"). */
+.linkRow {
+  composes: card;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  color: var(--wm-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.linkRowIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--wm-orange);
+}
+
+.linkRowText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── "Como executar" (botão da gaveta + alerta de Atenção em 1 linha) ──── */
+
+.howTo {
+  composes: card;
+  overflow: hidden;
+}
+
+.howToButton {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.howToButton:focus-visible {
+  outline: 2px solid var(--wm-orange);
+  outline-offset: -2px;
+  border-radius: 16px;
+}
+
+.howToThumb {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--wm-raised);
+}
+
+.attentionLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--wm-border);
+  color: var(--wm-text);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.attentionLine > svg {
+  flex: 0 0 auto;
+  color: var(--wm-warning);
+}
+
+.attentionText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Conteúdo da gaveta de instruções. */
+.drawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  color: var(--wm-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.drawerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawerSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wm-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.drawerSectionTitle > span:first-child {
+  display: inline-flex;
+  color: var(--wm-orange);
+}
+
+.drawerWarning .drawerSectionTitle > span:first-child {
+  color: var(--wm-warning);
+}
+
+/* ── Barra de ações (rodapé no fim do fluxo, sticky) ─────────────────────── */
+
+.actionBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: auto -16px 0;
+  padding: 6px 16px calc(8px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--wm-bg) 80%, transparent);
+}
+
+.actionRow {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.actionRow > .primaryCta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.primaryCta {
+  box-shadow: 0 6px 24px -8px var(--wm-orange-glow);
+}
+
+.secondaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+
+/* Ação de ícone com legenda curta (Trocar / Pular / Encerrar): explícita,
+   nunca escondida em menu; o rótulo completo vai no `aria-label`/`title`. */
+.iconAction {
+  appearance: none;
+  flex: 0 0 52px;
+  width: 52px;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
+  background: var(--wm-raised);
+  color: var(--wm-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 150ms ease-out;
+}
+
+.iconAction:active {
+  border-color: var(--wm-orange-border);
+}
+
+.iconAction:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.iconActionIcon {
+  display: inline-flex;
+  color: var(--wm-orange);
+}
+
+.iconActionCaption {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Fileira de ações largas (ex.: transição para o próximo exercício). */
+.iconActionRow {
+  display: flex;
+  gap: 6px;
+}
+
+.iconActionRow > .iconAction {
+  flex: 1 1 0;
+  width: auto;
+}
+
+@media (max-width: 359px) {
+  .iconAction {
+    flex-basis: 46px;
+    width: 46px;
+    font-size: 10px;
+  }
+
+  .actionRow .primaryCta :global(.mantine-Button-section) {
+    display: none;
+  }
+}
+
+/* ── Linha "Próximo" ─────────────────────────────────────────────────────── */
+
+.nextLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 4px;
+  min-width: 0;
+  color: var(--wm-text);
+  font-size: 13px;
+}
+
+.nextLineText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nextLineText > span:first-child {
+  color: var(--wm-text-muted);
+}
+
+.nextLine .chip {
+  flex: 0 0 auto;
+}
+
+/* ── Movimento reduzido ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill,
+  .accordionChevron,
+  .iconAction {
+    transition: none;
+  }
+}
+
+/* ── Texto com corte + "ver mais" inline ────────────────────────────────── */
+
+.clampRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.clampText {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+  color: var(--wm-text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--wm-clamp, 1);
+  line-clamp: var(--wm-clamp, 1);
+  overflow: hidden;
+}
+
+.clampTextOpen {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+.textToggle {
+  appearance: none;
+  flex: 0 0 auto;
+  position: relative;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--wm-orange);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Área de toque de 44 px sem aumentar a linha. */
+.textToggle::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+
+/* ── Execução / registro de série ───────────────────────────────────────── */
+
+.loggerRoot {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.actionNotice {
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.setCard {
+  composes: card;
+  padding: 10px 12px 12px;
+}
+
+.setHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.setBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: var(--wm-orange);
+  color: var(--wm-bg);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.targetLine {
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.setBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Campos: 3 colunas (valor em cima, – e + embaixo, todos ≥ 44 px). Abaixo de
+   360 px não cabem 3 colunas com alvos de 44 px: uma linha por campo, com o
+   rótulo à esquerda e – [valor] + à direita. */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--wm-field-cols, 3), minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fieldGrid2 {
+  --wm-field-cols: 2;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 20px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  min-width: 0;
+  color: var(--wm-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fieldHint {
+  color: var(--wm-text-muted);
+  font-weight: 600;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    'input input'
+    'minus plus';
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldMinus {
+  grid-area: minus;
+}
+
+.fieldPlus {
+  grid-area: plus;
+}
+
+.fieldInput {
+  grid-area: input;
+  min-width: 0;
+}
+
+.fieldRow .stepButton {
+  width: 100%;
+}
+
+/* Campo de linha inteira (ex.: reps extras): rótulo à esquerda. */
+.fieldFull.field,
+.fieldInline.field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.fieldFull .fieldLabelRow,
+.fieldInline .fieldLabelRow {
+  flex: 0 1 40%;
+}
+
+.fieldFull .fieldLabel,
+.fieldInline .fieldLabel {
+  white-space: normal;
+}
+
+.fieldFull .fieldRow,
+.fieldInline .fieldRow {
+  flex: 1 1 auto;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-areas: 'minus input plus';
+}
+
+@media (max-width: 359px) {
+  .fieldGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .field {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .fieldLabelRow {
+    flex: 0 0 84px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .fieldLabel {
+    white-space: normal;
+  }
+
+  .fieldRow {
+    flex: 1 1 auto;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    grid-template-areas: 'minus input plus';
+  }
+}
+
+/* Unidade kg/lb como sufixo tocável do rótulo "Carga" (M3). */
+.unitSuffix {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--wm-orange-border);
+  border-radius: 999px;
+  background: var(--wm-raised);
+  color: var(--wm-orange);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.unitSuffix::before {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
+
+.innerPanel {
+  composes: raised;
+  padding: 10px;
+}
+
+/* Linha de destaque compacta (Dica da IA, avaliação da IA, regra do motor). */
+.tipRow {
+  composes: card;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.tipRowAi {
+  border-color: var(--wm-orange-border);
+}
+
+.tipIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--wm-orange);
+  margin-top: 1px;
+}
+
+.tipBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tipTitle {
+  color: var(--wm-orange);
+  font-weight: 800;
+}
+
+.aiTipStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+}
+
+.aiTipFootnote {
+  margin: 0;
+  color: var(--wm-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.historyList {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.historyList li {
+  overflow-wrap: anywhere;
+}
+
+.historyCurrent {
+  color: var(--wm-text);
+  font-weight: 700;
+}
+
+.historyRecords {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--wm-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--wm-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unitSuffix {
+    transition: none;
+  }
+}
+
+/* ── Descanso / intervalo ───────────────────────────────────────────────── */
+
+.restHero {
+  composes: hero;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  text-align: center;
+}
+
+.restClockRow {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 8px;
+}
+
+.restClockBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.restClock {
+  color: var(--wm-text);
+  font-size: clamp(52px, 16vw, 64px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.restTrack {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wm-raised);
+  overflow: hidden;
+}
+
+.restFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--wm-orange), var(--wm-orange-soft));
+  transition: width 250ms linear;
+}
+
+/* "Próxima: Série 2 de 3 · 47,5 kg" — a ÚNICA carga da próxima série. */
+.restNext {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px 8px;
+  color: var(--wm-text-muted);
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.restNext strong {
+  color: var(--wm-text);
+}
+
+.restNextLoad {
+  color: var(--wm-text);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.restAdjustButton {
+  appearance: none;
+  width: 56px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--wm-orange-border);
+  background: var(--wm-raised);
+  color: var(--wm-orange);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 150ms ease-out;
+}
+
+.restAdjustButton:active {
+  transform: scale(0.94);
+}
+
+.restAdjustButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.restAdjustButton:focus-visible {
+  outline: 2px solid var(--wm-orange);
+  outline-offset: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Série salva + selos + regra do motor, num card só. */
+.engineCard {
+  composes: card;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  min-width: 0;
+}
+
+.engineLine {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.engineAction {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.engineExplanation {
+  margin: 0;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Próximo exercício numa linha (thumb de 40 px + nome + chip). */
+.nextCard {
+  composes: card;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.nextCardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nextCardText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nextCardTitle {
+  color: var(--wm-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.nextCardTitle > span:first-child {
+  color: var(--wm-text-muted);
+  font-weight: 600;
+}
+
+.nextCardPlanned {
+  margin-top: 1px;
+  color: var(--wm-text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nextCardChips {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 40%;
+}
+
+.mapPanel {
+  padding: 0 12px 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restFill,
+  .restAdjustButton {
+    transition: none;
+  }
+}

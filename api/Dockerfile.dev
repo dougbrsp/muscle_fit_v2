@@ -1,0 +1,44 @@
+# Imagem base fixada por DIGEST (M48): a tag `3.12-slim` e mutavel e mudava o
+# runtime de producao sem PR. O digest e o do indice multi-arquitetura
+# (publicado em 2026-10-06). Origem: espelho oficial da Docker Official Image
+# no ECR Public (AWS-12), o MESMO indice/digest do Docker Hub, fora do Docker
+# Hub (o deploy de 2026-10-09 falhou com 504/429 la). O pull anonimo do ECR
+# Public tem cota propria (500 GB/mes por IP; ver
+# vendor/aws-lambda-web-adapter/README.md): o deploy-producao.yml autentica no
+# ECR Public quando a role permite e faz o pull com novas tentativas.
+# Para atualizar (o Dependabot tambem abre o PR, ecosystem docker):
+#   docker buildx imagetools inspect public.ecr.aws/docker/library/python:3.12-slim
+#   -> linha "Digest:"
+# e troque o MESMO digest em TODOS os api/Dockerfile* e em
+# api/scripts/lock-requirements.sh (os locks sao compilados nessa imagem).
+FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Mesmas dependencias nativas do Dockerfile de producao - mantidas aqui para
+# paridade de runtime entre dev local e producao Lambda. Ver comentario em
+# Dockerfile.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Sem AWS Lambda Web Adapter aqui: em dev local o uvicorn e chamado
+# diretamente (sem API Gateway/Lambda na frente), ver CMD abaixo.
+
+# Lock com hashes (M47): todas as transitivas fixadas e conferidas por hash;
+# `--require-hashes` recusa qualquer pacote fora do lock. Gerado a partir de
+# requirements.in por api/scripts/lock-requirements.sh.
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --require-hashes -r /app/requirements.txt
+
+COPY app /app/app
+COPY scripts /app/scripts
+
+EXPOSE 8000
+
+# --reload: hot-reload a partir do volume montado em docker-compose.yml
+# (./api/app:/app/app), sem precisar rebuildar a imagem a cada alteracao.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -1,0 +1,10 @@
+# Dependencias SO de desenvolvimento/testes. Nunca entram nas imagens de
+# producao (Dockerfile*/Lambdas instalam apenas requirements.txt/-ai.txt).
+# Lock com hashes: requirements-dev.txt (compilado com as MESMAS versoes de
+# requirements.txt; ver api/scripts/lock-requirements.sh).
+#   CI/Linux:      pip install --require-hashes -r requirements-dev.txt
+#   host Windows:  pip install -r requirements-dev.in  (o lock e Linux/3.12)
+-r requirements.in
+pytest==9.1.1
+# fastapi.testclient.TestClient (testes HTTP dos endpoints legados).
+httpx==0.28.1

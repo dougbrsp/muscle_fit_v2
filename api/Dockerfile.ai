@@ -1,0 +1,81 @@
+# Imagem separada e mais leve para as Lambdas de IA assincronas
+# (musclefit-plan-generator, musclefit-cardio-agent) - ver
+# docs/aws-migration-plan.md, secao 1.2 e Fase 3.
+#
+# Diferenca chave em relacao ao Dockerfile do musclefit-api-core: SEM Lambda
+# Web Adapter. Essas duas Lambdas nao recebem trafego HTTP via API Gateway -
+# sao invocadas diretamente (`lambda:InvokeFunction`, `InvocationType=Event`)
+# por musclefit-api-core. Misturar o Web Adapter (que se registra como
+# extensao E assume o loop de invocacao via Runtime API) com um handler
+# `awslambdaric` tradicional no mesmo processo causaria disputa por quem
+# consome os eventos do Runtime API - por isso uma imagem propria, sem a
+# extensao, usando awslambdaric "puro" (funciona sobre qualquer base image,
+# nao precisa da imagem oficial da AWS - so precisa do pacote `awslambdaric`
+# + ENTRYPOINT/CMD apontando pra ele).
+#
+# Reaproveita o mesmo `app/` e as mesmas versoes de requirements.txt do
+# musclefit-api-core (requirements-ai.txt = o mesmo lock + awslambdaric):
+# manter os MESMOS requirements evita divergencia de versao entre as imagens e
+# simplifica manutencao. O Pillow E usado aqui: o job `exercise-card` da
+# plan-generator compoe o card ilustrado (titulo, rotulos, musculos, silhueta
+# do mapa corporal e logo) logo depois da OpenAI, com as fontes de
+# app/assets/fonts/, o logo de app/assets/branding/ e o mapa corporal v1 de
+# app/assets/bodymap/v1/ - todos entram pelo `COPY app` (o smoke de CI,
+# .github/scripts/smoke-lambda-image.sh, prova que carregam, conferem com o
+# manifest e renderizam DENTRO desta imagem). Nada de libs apt nem numpy: o
+# Pillow do wheel ja traz FreeType e libwebp.
+# Imagem base fixada por DIGEST (M48): a tag `3.12-slim` e mutavel e mudava o
+# runtime de producao sem PR. O digest e o do indice multi-arquitetura
+# (publicado em 2026-10-06). Origem: espelho oficial da Docker Official Image
+# no ECR Public (AWS-12), o MESMO indice/digest do Docker Hub, fora do Docker
+# Hub (o deploy de 2026-10-09 falhou com 504/429 la). O pull anonimo do ECR
+# Public tem cota propria (500 GB/mes por IP; ver
+# vendor/aws-lambda-web-adapter/README.md): o deploy-producao.yml autentica no
+# ECR Public quando a role permite e faz o pull com novas tentativas.
+# Para atualizar (o Dependabot tambem abre o PR, ecosystem docker):
+#   docker buildx imagetools inspect public.ecr.aws/docker/library/python:3.12-slim
+#   -> linha "Digest:"
+# e troque o MESMO digest em TODOS os api/Dockerfile* e em
+# api/scripts/lock-requirements.sh (os locks sao compilados nessa imagem).
+FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /var/task
+
+# SEG-16: usuario SEM privilegio (uid/gid 10001) para rodar o processo. No
+# Lambda o efeito e nenhum: a AWS ja roda a imagem com um usuario padrao de
+# privilegio minimo (docs: "you don't need to specify a USER") e so exige que
+# os arquivos sejam legiveis por qualquer usuario. Vale para `docker run` local,
+# smoke e varredura (Trivy). Codigo, libs e a extensao do Web Adapter seguem
+# de root e so leitura para o app; o unico disco gravavel e o /tmp, como no Lambda.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/app \
+       --shell /usr/sbin/nologin app
+
+# Lock com hashes (M47) = requirements.txt (mesmas versoes, usado como
+# constraint na compilacao) + awslambdaric; `--require-hashes` recusa qualquer
+# pacote fora do lock. Gerado por api/scripts/lock-requirements.sh.
+# awslambdaric FIXADO em 4.0.4 (M49) dentro de requirements-ai.in: a 4.1.0
+# (28/09/2026) saiu so como sdist, sem wheels, e o build exige cmake.
+COPY requirements-ai.txt /var/task/requirements-ai.txt
+RUN pip install --no-cache-dir --require-hashes -r /var/task/requirements-ai.txt
+
+COPY app /var/task/app
+# Templates dos prompts de sistema (M103 P1): SO a pasta prompts/ do submodulo
+# privado api/privado (o RAG e o resto ficam fora; ver api/Dockerfile). Lidos por
+# app/prompt_store.py no caminho default /var/task/privado/prompts.
+COPY privado/prompts /var/task/privado/prompts
+# Migracoes versionadas: lidas por app/migrate.py (Lambda musclefit-migrations,
+# mesma imagem, image_config.command = app.migrate.handler - ver
+# infra/lambda_migrations.tf). Default do runner: /var/task/db/migrations.
+COPY db/migrations /var/task/db/migrations
+
+# Processo sem privilegio (SEG-16; ver o useradd acima).
+USER 10001:10001
+
+ENTRYPOINT ["python", "-m", "awslambdaric"]
+# Comando padrao (sobrescrito por function.image_config.command no Terraform
+# para escolher o handler certo por funcao - plan_generator vs cardio_agent).
+CMD ["app.lambda_plan_generator.handler"]

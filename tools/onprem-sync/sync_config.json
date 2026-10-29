@@ -1,0 +1,74 @@
+{
+  "_comment": "Configuracao declarativa do espelhamento onpremise -> Aurora. Ver README.md.",
+
+  "onprem": {
+    "container": "fitness-mysql",
+    "database": "fitness",
+    "mysql_user": "root",
+    "password_env": "MYSQL_ROOT_PASSWORD",
+    "_comment": "password_env e lido DENTRO do container (docker exec sh -c), nunca da maquina host. Nenhuma senha e gravada neste arquivo."
+  },
+
+  "aurora": {
+    "region": "sa-east-1",
+    "cluster_arn": "arn:aws:rds:sa-east-1:930413537709:cluster:musclefit-db",
+    "cluster_identifier": "musclefit-db",
+    "secret_arn": null,
+    "database": "musclefit",
+    "profile": "musclefit-tf",
+    "_comment": "secret_arn null => descoberto em runtime via rds:DescribeDBClusters (MasterUserSecret.SecretArn), para nao fixar ARN gerenciado pelo RDS. profile: esta maquina NAO tem perfil `default`; sem apontar o perfil, o boto3 procura o `default`, nao acha nada e falha com 'Unable to locate credentials' mesmo com a sessao valida. Usa-se `musclefit-tf` e NAO `musclefit` porque o perfil `musclefit` guarda a sessao via `login_session`, provider que exige a dependencia extra botocore[crt]; `musclefit-tf` le a MESMA sessao por `credential_process` (delegando ao AWS CLI, que ja traz o crt), sem dependencia nova. Precedencia: --aws-profile > AWS_PROFILE > este valor."
+  },
+
+  "session": {
+    "time_zone": "+00:00",
+    "_comment": "Fixado nos DOIS lados. Colunas TIMESTAMP sao convertidas para o time_zone da sessao na leitura; sem fixar, onprem e Aurora renderizariam o mesmo instante como strings diferentes e todo TIMESTAMP apareceria como divergencia."
+  },
+
+  "excluded_tables": {
+    "schema_migrations": "Controle de migracao POR INSTANCIA. Replicar sobrescreveria o historico de migracoes do Aurora com o do onprem.",
+    "exercise_mappings": "Tabela legada, vazia no onprem. Nao ha o que espelhar.",
+    "exercise_mappings_backup_20260714": "Backup ad-hoc criado a mao no onprem. Lixo operacional, nao dado de produto. Removida da Aurora pela migracao 030; continua aqui porque ainda existe no onprem (sem a entrada, o preflight abortaria com 'Tabelas ausentes no Aurora').",
+    "exercises_backup_before_mapping_sync": "Backup ad-hoc criado a mao no onprem. Lixo operacional, nao dado de produto. Removida da Aurora pela migracao 030; continua aqui porque ainda existe no onprem (sem a entrada, o preflight abortaria com 'Tabelas ausentes no Aurora').",
+    "user_sessions": "Tokens de sessao. Espelhar derrubaria/loggaria sessoes ativas do app AWS sem beneficio. Remova desta lista se quiser sincronizar mesmo assim."
+  },
+
+  "legacy_tables": {
+    "_comment": "Tabelas LEGADAS que CONTINUAM sincronizadas (nao confundir com excluded_tables) apenas enquanto a aplicacao ainda as escreve. O sync so as sinaliza no relatorio e tolera que deixem de existir no schema (remocao futura). Remover a entrada daqui no mesmo PR que dropar a tabela. Ver docs/refatoracao-motores/PLANO_20260912.md, secao 'Remocao do legado de vinculos equipamento <-> exercicio'.",
+    "equipment_exercise_mappings": "Espelho legado de equipment_exercises (canonica desde o PR #56). Sincronizada so enquanto app/equipment_exercises.py espelha escritas nela e os endpoints /equipment-exercise-mappings existem. REMOVER NA FASE 2 (junto com endpoints, espelho e DROP da tabela)."
+  },
+
+  "batch": {
+    "max_rows_per_batch": 200,
+    "max_bytes_per_batch": 700000,
+    "max_bytes_per_read_page": 700000,
+    "max_rows_per_read_page": 500,
+    "_comment": "Limite duro do RDS Data API e ~1 MB por chamada (request e response). Os tetos aqui sao conservadores; o dimensionamento real e feito por tamanho medido de linha, nao por contagem fixa."
+  },
+
+  "encoding_probes": [
+    {
+      "table": "gyms",
+      "pk": { "id": "1" },
+      "column": "name",
+      "note": "Acentuacao CORRETA em UTF-8 ('Gavioes Jabaquara' com o-til). Detecta double-encoding introduzido pelo sync."
+    },
+    {
+      "table": "gyms",
+      "pk": { "id": "11" },
+      "column": "name",
+      "note": "Linha JA mojibake na origem ('GaviAues'). O espelho deve reproduzir o defeito byte a byte - se 'consertar' ou piorar, nao e espelho exato."
+    },
+    {
+      "table": "muscle_groups",
+      "pk": { "id": "1" },
+      "column": "name",
+      "note": "Acentuacao correta em tabela de dominio ('Abdomen' com o-circunflexo)."
+    }
+  ],
+
+  "collation_exceptions": {
+    "intervals_activities": "utf8mb4_unicode_ci",
+    "intervals_wellness": "utf8mb4_unicode_ci",
+    "_comment": "Divergem do utf8mb4_0900_ai_ci do resto do schema. O sync nao faz join entre tabelas de collation diferente justamente para nao esbarrar em 'Illegal mix of collations'; a verificacao de FK orfa usa comparacao por coluna numerica (ids), imune a collation. Registrado aqui para o preflight avisar se o Aurora divergir."
+  }
+}

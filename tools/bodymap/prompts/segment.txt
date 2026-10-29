@@ -1,0 +1,25 @@
+Convert this exact image into a flat-color anatomical segmentation map (a color-by-number chart of the muscle groups).
+
+Keep EXACTLY the same two figures: same canvas framing, same pose, same position, same height and width, same outer silhouette and the same borders between muscles. Do not move, resize or redraw the anatomy - only replace the graphite shading with flat colors.
+
+Fill each muscle group with ONE flat, solid, uniform color - no shading, no gradients, no texture, no highlights, no outlines - using exactly this palette (LEFT figure = front view, RIGHT figure = back view):
+- pectoralis major (chest, front view) = #FF0000 red
+- anterior and lateral deltoids (front view) = #FF8000 orange
+- posterior deltoids (back view) = #8000FF purple
+- biceps (front of the upper arms) = #0000FF blue
+- triceps (back of the upper arms; also the inner upper arm when visible in the front view) = #FF00FF magenta
+- forearm muscles, elbow to wrist, both views = #00FF00 green
+- rectus abdominis (six-pack) = #FFFF00 yellow
+- external obliques and serratus (sides of the waist, front view) = #00FFFF cyan
+- quadriceps and the front of the thighs = #0080FF azure
+- adductors (inner thighs, both views) = #FF0080 pink
+- lower-leg muscles (calves, soleus, tibialis), both views = #80FF00 lime
+- trapezius (upper and middle trapezius in the back view, and the upper trapezius between neck and shoulders in the front view) = #00FF80 spring green
+- latissimus dorsi, teres and infraspinatus (upper back, back view) = #804000 brown
+- erector spinae / lower back (back view) = #A0A0FF lavender
+- gluteus maximus and medius (back view) = #008080 teal
+- hamstrings (back of the thighs) = #800000 maroon
+- neck muscles = #808000 olive
+Everything else on the bodies (head, hands, feet, knees, ankles, wrists, hips, bones, tendons, grooves) = flat dark grey #404040.
+
+Background stays fully transparent. No text, no labels, no legend, no numbers, no outlines, no arrows.

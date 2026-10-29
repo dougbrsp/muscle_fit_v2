@@ -1,0 +1,60 @@
+# Falsos positivos do gitleaks (regra generic-api-key), revisados um a um em 2026-10-29 (M103).
+# .env.example: chave Fernet fixa so para dev local, documentada no proprio arquivo;
+#   producao le a chave do Secrets Manager (musclefit/secret-encryption-key).
+# body_service.py: argumento version_key com o nome da versao da media movel de peso.
+# test_guarda_fontes_da_verdade.py: texto da constante ESTIMATE_KEY dentro do teste.
+# test_schema_lifecycle_filtro.py: tokens ficticios de teste.
+# test_users_photo_security.py: senha ficticia de teste.
+# exercise-cards-fixtures.ts: idempotency_key (UUID) de fixture.
+# Cada fingerprint aparece com caminho relativo (gitleaks --source .) e com o
+# prefixo /repo/ (gitleaks via Docker montando a raiz em /repo).
+.env.example:generic-api-key:61
+api/app/intelligence/dashboard/body_service.py:generic-api-key:415
+api/app/intelligence/dashboard/body_service.py:generic-api-key:418
+api/app/intelligence/dashboard/body_service.py:generic-api-key:420
+api/app/intelligence/dashboard/body_service.py:generic-api-key:422
+api/app/intelligence/dashboard/body_service.py:generic-api-key:427
+api/app/intelligence/dashboard/body_service.py:generic-api-key:627
+api/app/intelligence/dashboard/body_service.py:generic-api-key:968
+api/app/intelligence/dashboard/body_service.py:generic-api-key:972
+api/tests/unit/test_guarda_fontes_da_verdade.py:generic-api-key:3016
+api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:174
+api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:187
+api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:218
+api/tests/unit/test_users_photo_security.py:generic-api-key:102
+api/tests/unit/test_users_photo_security.py:generic-api-key:106
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:44
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:88
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:133
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:174
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:215
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:256
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:302
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:346
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:402
+frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:444
+/repo/.env.example:generic-api-key:61
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:415
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:418
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:420
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:422
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:427
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:627
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:968
+/repo/api/app/intelligence/dashboard/body_service.py:generic-api-key:972
+/repo/api/tests/unit/test_guarda_fontes_da_verdade.py:generic-api-key:3016
+/repo/api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:174
+/repo/api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:187
+/repo/api/tests/unit/test_schema_lifecycle_filtro.py:generic-api-key:218
+/repo/api/tests/unit/test_users_photo_security.py:generic-api-key:102
+/repo/api/tests/unit/test_users_photo_security.py:generic-api-key:106
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:44
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:88
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:133
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:174
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:215
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:256
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:302
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:346
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:402
+/repo/frontend/src/lib/exercise-cards-fixtures.ts:generic-api-key:444

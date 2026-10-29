@@ -1,0 +1,330 @@
+{
+ "fdcId": 1104812,
+ "description": "Flour, rice, brown",
+ "dataType": "Foundation",
+ "publicationDate": "10/30/2020",
+ "foodCategory": {
+  "id": 20,
+  "code": "2000",
+  "description": "Cereal Grains and Pasta"
+ },
+ "ndbNumber": 20090,
+ "foodNutrients": [
+  {
+   "nutrient": {
+    "id": 2045,
+    "number": "951",
+    "name": "Proximates",
+    "rank": 50,
+    "unitName": "g"
+   },
+   "type": "FoodNutrient"
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1051,
+    "number": "255",
+    "name": "Water",
+    "rank": 100,
+    "unitName": "g"
+   },
+   "id": 13336283,
+   "amount": 12.1
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1008,
+    "number": "208",
+    "name": "Energy",
+    "rank": 300,
+    "unitName": "kcal"
+   },
+   "id": 13336282,
+   "amount": 365.25
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1062,
+    "number": "268",
+    "name": "Energy",
+    "rank": 400,
+    "unitName": "kJ"
+   },
+   "id": 13336269,
+   "amount": 1582.206
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1002,
+    "number": "202",
+    "name": "Nitrogen",
+    "rank": 500,
+    "unitName": "g"
+   },
+   "id": 13336289,
+   "amount": 1.15
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1003,
+    "number": "203",
+    "name": "Protein",
+    "rank": 600,
+    "unitName": "g"
+   },
+   "id": 13336276,
+   "amount": 7.19
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1004,
+    "number": "204",
+    "name": "Total lipid (fat)",
+    "rank": 800,
+    "unitName": "g"
+   },
+   "id": 13336280,
+   "amount": 3.85
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1007,
+    "number": "207",
+    "name": "Ash",
+    "rank": 1000,
+    "unitName": "g"
+   },
+   "id": 13336277,
+   "amount": 1.4
+  },
+  {
+   "nutrient": {
+    "id": 2039,
+    "number": "956",
+    "name": "Carbohydrates",
+    "rank": 1100,
+    "unitName": "g"
+   },
+   "type": "FoodNutrient"
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1005,
+    "number": "205",
+    "name": "Carbohydrate, by difference",
+    "rank": 1110,
+    "unitName": "g"
+   },
+   "id": 13336281,
+   "amount": 75.5
+  },
+  {
+   "nutrient": {
+    "id": 2043,
+    "number": "300",
+    "name": "Minerals",
+    "rank": 5200,
+    "unitName": "mg"
+   },
+   "type": "FoodNutrient"
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1087,
+    "number": "301",
+    "name": "Calcium, Ca",
+    "rank": 5300,
+    "unitName": "mg"
+   },
+   "id": 13336284,
+   "amount": 10
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1089,
+    "number": "303",
+    "name": "Iron, Fe",
+    "rank": 5400,
+    "unitName": "mg"
+   },
+   "id": 13336270,
+   "amount": 1.5
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1090,
+    "number": "304",
+    "name": "Magnesium, Mg",
+    "rank": 5500,
+    "unitName": "mg"
+   },
+   "id": 13336271,
+   "amount": 124.0
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1091,
+    "number": "305",
+    "name": "Phosphorus, P",
+    "rank": 5600,
+    "unitName": "mg"
+   },
+   "id": 13336272,
+   "amount": 319.0
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1092,
+    "number": "306",
+    "name": "Potassium, K",
+    "rank": 5700,
+    "unitName": "mg"
+   },
+   "id": 13336285,
+   "amount": 265.0
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1093,
+    "number": "307",
+    "name": "Sodium, Na",
+    "rank": 5800,
+    "unitName": "mg"
+   },
+   "id": 13336273,
+   "amount": 1
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1095,
+    "number": "309",
+    "name": "Zinc, Zn",
+    "rank": 5900,
+    "unitName": "mg"
+   },
+   "id": 13336286,
+   "amount": 1.91
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1098,
+    "number": "312",
+    "name": "Copper, Cu",
+    "rank": 6000,
+    "unitName": "mg"
+   },
+   "id": 13336274,
+   "amount": 0.286
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1101,
+    "number": "315",
+    "name": "Manganese, Mn",
+    "rank": 6100,
+    "unitName": "mg"
+   },
+   "id": 13336275,
+   "amount": 2.84
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1103,
+    "number": "317",
+    "name": "Selenium, Se",
+    "rank": 6200,
+    "unitName": "µg"
+   },
+   "id": 13336291,
+   "amount": 9.68
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1102,
+    "number": "316",
+    "name": "Molybdenum, Mo",
+    "rank": 6243,
+    "unitName": "µg"
+   },
+   "id": 13336290,
+   "amount": 56.2
+  },
+  {
+   "nutrient": {
+    "id": 2046,
+    "number": "952",
+    "name": "Vitamins and Other Components",
+    "rank": 6250,
+    "unitName": "g"
+   },
+   "type": "FoodNutrient"
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1165,
+    "number": "404",
+    "name": "Thiamin",
+    "rank": 6400,
+    "unitName": "mg"
+   },
+   "id": 13336278,
+   "amount": 0.322
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1166,
+    "number": "405",
+    "name": "Riboflavin",
+    "rank": 6500,
+    "unitName": "mg"
+   },
+   "id": 13336279,
+   "amount": 0.008
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1167,
+    "number": "406",
+    "name": "Niacin",
+    "rank": 6600,
+    "unitName": "mg"
+   },
+   "id": 13336287,
+   "amount": 5.99
+  },
+  {
+   "type": "FoodNutrient",
+   "nutrient": {
+    "id": 1175,
+    "number": "415",
+    "name": "Vitamin B-6",
+    "rank": 6800,
+    "unitName": "mg"
+   },
+   "id": 13336288,
+   "amount": 0.132
+  }
+ ]
+}

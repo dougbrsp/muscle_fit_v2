@@ -1,0 +1,213 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AcmTodosSaEast1",
+      "Effect": "Allow",
+      "Action": [
+        "acm:AddTagsToCertificate",
+        "acm:DeleteCertificate",
+        "acm:DescribeCertificate",
+        "acm:GetCertificate",
+        "acm:ListCertificates",
+        "acm:ListTagsForCertificate",
+        "acm:RemoveTagsFromCertificate",
+        "acm:RequestCertificate"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "sa-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "AcmTodosUsEast1",
+      "Effect": "Allow",
+      "Action": [
+        "acm:AddTagsToCertificate",
+        "acm:DeleteCertificate",
+        "acm:DescribeCertificate",
+        "acm:GetCertificate",
+        "acm:ListCertificates",
+        "acm:ListTagsForCertificate",
+        "acm:RemoveTagsFromCertificate",
+        "acm:RequestCertificate"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "DynamodbMusclefitAsyncJobs",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource",
+        "dynamodb:TagResource",
+        "dynamodb:UpdateTimeToLive"
+      ],
+      "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-async-jobs"
+    },
+    {
+      "Sid": "DynamodbMusclefitTfstateLock",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:ListTagsOfResource",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-tfstate-lock"
+    },
+    {
+      "Sid": "Ec2TodosSaEast1",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateSubnet",
+        "ec2:CreateTags",
+        "ec2:CreateVpc",
+        "ec2:DeleteSecurityGroup",
+        "ec2:DeleteSubnet",
+        "ec2:DeleteTags",
+        "ec2:DeleteVpc",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcs",
+        "ec2:ModifyVpcAttribute",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "sa-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "RdsMusclefitDbE2",
+      "Effect": "Allow",
+      "Action": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBCluster",
+        "rds:CreateDBInstance",
+        "rds:CreateDBSubnetGroup",
+        "rds:DeleteDBCluster",
+        "rds:DeleteDBInstance",
+        "rds:DeleteDBSubnetGroup",
+        "rds:ModifyDBCluster",
+        "rds:ModifyDBInstance",
+        "rds:ModifyDBSubnetGroup",
+        "rds:RemoveTagsFromResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:sa-east-1:930413537709:cluster:musclefit-db",
+        "arn:aws:rds:sa-east-1:930413537709:db:musclefit-db-instance-1",
+        "arn:aws:rds:sa-east-1:930413537709:subgrp:musclefit-db-subnet-group"
+      ]
+    },
+    {
+      "Sid": "RdsTodos",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBClusters",
+        "rds:DescribeDBEngineVersions",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeGlobalClusters",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Route53ChangeE1",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ChangeResourceRecordSets",
+        "route53:ChangeTagsForResource",
+        "route53:DeleteHostedZone",
+        "route53:GetChange",
+        "route53:GetHostedZone",
+        "route53:ListHostedZones",
+        "route53:ListHostedZonesByName",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:route53:::change/*",
+        "arn:aws:route53:::hostedzone/*"
+      ]
+    },
+    {
+      "Sid": "Route53Todos",
+      "Effect": "Allow",
+      "Action": "route53:CreateHostedZone",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsmanagerMusclefitE1",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:TagResource"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/*",
+        "arn:aws:secretsmanager:sa-east-1:930413537709:secret:rds!cluster-*"
+      ]
+    },
+    {
+      "Sid": "Wafv2Musclefit",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:AssociateWebACL",
+        "wafv2:CreateWebACL",
+        "wafv2:DeleteWebACL",
+        "wafv2:GetWebACL",
+        "wafv2:ListTagsForResource",
+        "wafv2:TagResource",
+        "wafv2:UntagResource",
+        "wafv2:UpdateWebACL"
+      ],
+      "Resource": "arn:aws:wafv2:sa-east-1:930413537709:regional/webacl/musclefit-*/*"
+    },
+    {
+      "Sid": "Wafv2GetWebACLForResource",
+      "Effect": "Allow",
+      "Action": "wafv2:GetWebACLForResource",
+      "Resource": "arn:aws:wafv2:sa-east-1:930413537709:regional/webacl/*/*"
+    },
+    {
+      "Sid": "Wafv2Managedruleset",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:CreateWebACL",
+        "wafv2:UpdateWebACL"
+      ],
+      "Resource": "arn:aws:wafv2:sa-east-1:930413537709:regional/managedruleset/*/*"
+    }
+  ]
+}

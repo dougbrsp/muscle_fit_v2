@@ -1,0 +1,3895 @@
+[
+  {
+    "name": "fila: ordem por sequence, sem os cancelados, com a continuação sintética no fim",
+    "fn": "buildExecutionQueueFromIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          },
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          }
+        ],
+        "syntheticExercises": [
+          {
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "workout_plan_exercise_id": -1,
+            "sequence": 9999,
+            "exercise_name": "Remada máquina",
+            "mapping_id": 105,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Máquina remada",
+            "preferred_equipment_id": 7,
+            "sets_count": 2,
+            "reps_target": "8-10",
+            "load_target": "60kg",
+            "rpe_target": "8",
+            "rest_seconds": 120,
+            "load_increment_kg": 5
+          }
+        ],
+        "cancelledIds": [
+          13
+        ]
+      }
+    ],
+    "expected": [
+      {
+        "workout_plan_exercise_id": 11,
+        "sequence": 1,
+        "exercise_name": "Supino reto",
+        "mapping_id": 101,
+        "muscle_primary": "Peitoral",
+        "muscle_secondary": "Tríceps",
+        "equipment_name": "Banco reto",
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rest_seconds": 90
+      },
+      {
+        "workout_plan_exercise_id": 12,
+        "sequence": 2,
+        "exercise_name": "Tríceps corda",
+        "mapping_id": 102,
+        "muscle_primary": "Tríceps",
+        "sets_count": 3,
+        "rest_seconds": 60
+      },
+      {
+        "workout_plan_exercise_id": 14,
+        "sequence": 4,
+        "exercise_name": "Remada baixa",
+        "mapping_id": 104,
+        "muscle_primary": "Costas",
+        "muscle_secondary": "Bíceps",
+        "equipment_name": "Polia baixa",
+        "sets_count": 3,
+        "rest_seconds": 120,
+        "warmup_sets_count": 2,
+        "warmup_reps": 12,
+        "warmup_rest_seconds": 45,
+        "feeler_set_sets_count": 2,
+        "feeler_set_reps": 6,
+        "feeler_set_rest_seconds": 75,
+        "advanced_technique": "rest_pause",
+        "advanced_technique_applications": 3,
+        "advanced_technique_duration_seconds": 15
+      },
+      {
+        "advanced_technique": "rest_pause",
+        "advanced_technique_applications": 3,
+        "advanced_technique_duration_seconds": 15,
+        "warmup_sets_count": 2,
+        "warmup_reps": 12,
+        "warmup_rest_seconds": 45,
+        "feeler_set_sets_count": 2,
+        "feeler_set_reps": 6,
+        "feeler_set_rest_seconds": 75,
+        "workout_plan_exercise_id": -1,
+        "sequence": 9999,
+        "exercise_name": "Remada máquina",
+        "mapping_id": 105,
+        "muscle_primary": "Costas",
+        "muscle_secondary": "Bíceps",
+        "equipment_name": "Máquina remada",
+        "preferred_equipment_id": 7,
+        "sets_count": 2,
+        "reps_target": "8-10",
+        "load_target": "60kg",
+        "rpe_target": "8",
+        "rest_seconds": 120,
+        "load_increment_kg": 5
+      }
+    ]
+  },
+  {
+    "name": "fila: pulado vai para o fim, concluído não se move",
+    "fn": "reorderPendingBySkipByPlanItem",
+    "input": [
+      [
+        {
+          "done": true,
+          "planExercise": {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        }
+      ],
+      [
+        12
+      ],
+      null
+    ],
+    "expected": [
+      {
+        "done": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        }
+      }
+    ]
+  },
+  {
+    "name": "fila: escolhido no modal vem primeiro, pulado continua no fim",
+    "fn": "reorderPendingBySkipByPlanItem",
+    "input": [
+      [
+        {
+          "done": true,
+          "planExercise": {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        }
+      ],
+      [
+        12
+      ],
+      14
+    ],
+    "expected": [
+      {
+        "done": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        }
+      },
+      {
+        "done": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        }
+      }
+    ]
+  },
+  {
+    "name": "fila: posição exibida = concluídos + 1",
+    "fn": "executionPositionOrdinal",
+    "input": [
+      [
+        {
+          "done": true,
+          "planExercise": {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        }
+      ]
+    ],
+    "expected": 2
+  },
+  {
+    "name": "troca antes da 1ª série: override no próprio item",
+    "fn": "shouldSwapAsOverride",
+    "input": [
+      {
+        "hasLoggedRow": false,
+        "workoutPlanExerciseId": 14
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "troca antes da 1ª série numa continuação sintética: não é override",
+    "fn": "shouldSwapAsOverride",
+    "input": [
+      {
+        "hasLoggedRow": false,
+        "workoutPlanExerciseId": -1
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "troca depois da 1ª série: encerra o item e cria continuação",
+    "fn": "shouldSwapAsOverride",
+    "input": [
+      {
+        "hasLoggedRow": true,
+        "workoutPlanExerciseId": 14
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "troca depois da 1ª série: continuação herda a configuração avançada e o vínculo com a ficha",
+    "fn": "buildSyntheticContinuation",
+    "input": [
+      {
+        "localId": -1,
+        "current": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "remainingSets": 2,
+        "choice": {
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "equipment_link_id": 7,
+          "equipment_name": "Máquina remada"
+        },
+        "targets": {
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "load_increment_kg": 5,
+          "effective_rpe_ceiling": 9,
+          "failure_allowed": false
+        },
+        "existingExtras": []
+      }
+    ],
+    "expected": {
+      "localId": -1,
+      "exercise_name": "Remada máquina",
+      "mapping_id": 105,
+      "equipment_link_id": 7,
+      "equipment_name": "Máquina remada",
+      "muscle_primary": "Costas",
+      "muscle_secondary": "Bíceps",
+      "sets_count": 2,
+      "reps_target": "8-10",
+      "load_target": "60kg",
+      "rpe_target": "8",
+      "rest_seconds": 120,
+      "load_increment_kg": 5,
+      "effective_rpe_ceiling": 9,
+      "failure_allowed": false,
+      "originalWorkoutPlanExerciseId": 14,
+      "advanced_technique": "rest_pause",
+      "advanced_technique_applications": 3,
+      "advanced_technique_duration_seconds": 15,
+      "warmup_sets_count": 2,
+      "warmup_reps": 12,
+      "warmup_rest_seconds": 45,
+      "feeler_set_sets_count": 2,
+      "feeler_set_reps": 6,
+      "feeler_set_rest_seconds": 75
+    }
+  },
+  {
+    "name": "troca de novo a partir da continuação: mantém o item ORIGINAL da ficha",
+    "fn": "buildSyntheticContinuation",
+    "input": [
+      {
+        "localId": -2,
+        "current": {
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "workout_plan_exercise_id": -1,
+          "sequence": 9999,
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Máquina remada",
+          "preferred_equipment_id": 7,
+          "sets_count": 2,
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "rest_seconds": 120,
+          "load_increment_kg": 5
+        },
+        "remainingSets": 1,
+        "choice": {
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "equipment_link_id": 7,
+          "equipment_name": "Máquina remada"
+        },
+        "targets": {
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "load_increment_kg": 5,
+          "effective_rpe_ceiling": 9,
+          "failure_allowed": false
+        },
+        "existingExtras": [
+          {
+            "localId": -1,
+            "exercise_name": "Remada máquina",
+            "mapping_id": 105,
+            "equipment_link_id": 7,
+            "equipment_name": "Máquina remada",
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "sets_count": 2,
+            "reps_target": "8-10",
+            "load_target": "60kg",
+            "rpe_target": "8",
+            "rest_seconds": 120,
+            "load_increment_kg": 5,
+            "effective_rpe_ceiling": 9,
+            "failure_allowed": false,
+            "originalWorkoutPlanExerciseId": 14,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "localId": -2,
+      "exercise_name": "Remada máquina",
+      "mapping_id": 105,
+      "equipment_link_id": 7,
+      "equipment_name": "Máquina remada",
+      "muscle_primary": "Costas",
+      "muscle_secondary": "Bíceps",
+      "sets_count": 1,
+      "reps_target": "8-10",
+      "load_target": "60kg",
+      "rpe_target": "8",
+      "rest_seconds": 120,
+      "load_increment_kg": 5,
+      "effective_rpe_ceiling": 9,
+      "failure_allowed": false,
+      "originalWorkoutPlanExerciseId": 14,
+      "advanced_technique": "rest_pause",
+      "advanced_technique_applications": 3,
+      "advanced_technique_duration_seconds": 15,
+      "warmup_sets_count": 2,
+      "warmup_reps": 12,
+      "warmup_rest_seconds": 45,
+      "feeler_set_sets_count": 2,
+      "feeler_set_reps": 6,
+      "feeler_set_rest_seconds": 75
+    }
+  },
+  {
+    "name": "troca: continuação vira item virtual da fila",
+    "fn": "syntheticExtraToPlanExercise",
+    "input": [
+      {
+        "localId": -1,
+        "exercise_name": "Remada máquina",
+        "mapping_id": 105,
+        "equipment_link_id": 7,
+        "equipment_name": "Máquina remada",
+        "muscle_primary": "Costas",
+        "muscle_secondary": "Bíceps",
+        "sets_count": 2,
+        "reps_target": "8-10",
+        "load_target": "60kg",
+        "rpe_target": "8",
+        "rest_seconds": 120,
+        "load_increment_kg": 5,
+        "effective_rpe_ceiling": 9,
+        "failure_allowed": false,
+        "originalWorkoutPlanExerciseId": 14,
+        "advanced_technique": "rest_pause",
+        "advanced_technique_applications": 3,
+        "advanced_technique_duration_seconds": 15,
+        "warmup_sets_count": 2,
+        "warmup_reps": 12,
+        "warmup_rest_seconds": 45,
+        "feeler_set_sets_count": 2,
+        "feeler_set_reps": 6,
+        "feeler_set_rest_seconds": 75
+      }
+    ],
+    "expected": {
+      "advanced_technique": "rest_pause",
+      "advanced_technique_applications": 3,
+      "advanced_technique_duration_seconds": 15,
+      "warmup_sets_count": 2,
+      "warmup_reps": 12,
+      "warmup_rest_seconds": 45,
+      "feeler_set_sets_count": 2,
+      "feeler_set_reps": 6,
+      "feeler_set_rest_seconds": 75,
+      "workout_plan_exercise_id": -1,
+      "sequence": 9999,
+      "exercise_name": "Remada máquina",
+      "mapping_id": 105,
+      "muscle_primary": "Costas",
+      "muscle_secondary": "Bíceps",
+      "equipment_name": "Máquina remada",
+      "preferred_equipment_id": 7,
+      "sets_count": 2,
+      "reps_target": "8-10",
+      "load_target": "60kg",
+      "rpe_target": "8",
+      "rest_seconds": 120,
+      "load_increment_kg": 5
+    }
+  },
+  {
+    "name": "troca: aquecimento continua valendo, ajuste volta",
+    "fn": "progressAfterEquipmentSwap",
+    "input": [
+      {
+        "warmupDone": 2
+      }
+    ],
+    "expected": {
+      "warmupDone": 2,
+      "feelerDone": 0,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "troca por exercício que a ficha já prescreve (pendente): pula para ele",
+    "fn": "findPlanItemForSubstitutedExerciseFromIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        ],
+        "chosenMappingId": 102,
+        "currentWorkoutPlanExerciseId": 11,
+        "pendingIds": [
+          12,
+          13,
+          14
+        ]
+      }
+    ],
+    "expected": 12
+  },
+  {
+    "name": "troca por exercício da ficha já concluído: override normal",
+    "fn": "findPlanItemForSubstitutedExerciseFromIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        ],
+        "chosenMappingId": 102,
+        "currentWorkoutPlanExerciseId": 11,
+        "pendingIds": [
+          13,
+          14
+        ]
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "aquecimento genérico: grupos ativados pelos concluídos",
+    "fn": "collectActivatedMuscleGroups",
+    "input": [
+      [
+        {
+          "done": true,
+          "planExercise": {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          }
+        },
+        {
+          "done": false,
+          "planExercise": {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        }
+      ]
+    ],
+    "expected": [
+      "peitoral",
+      "tríceps"
+    ]
+  },
+  {
+    "name": "aquecimento genérico: grupo já ativado como secundário não pede aquecimento",
+    "fn": "needsGenericWarmup",
+    "input": [
+      "Tríceps",
+      [
+        "peitoral",
+        "tríceps"
+      ]
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: grupo novo (normalizado) pede aquecimento",
+    "fn": "needsGenericWarmup",
+    "input": [
+      " Ombros ",
+      [
+        "peitoral",
+        "tríceps"
+      ]
+    ],
+    "expected": true
+  },
+  {
+    "name": "aquecimento genérico: sem grupo primário não pede",
+    "fn": "needsGenericWarmup",
+    "input": [
+      null,
+      []
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: estado reconciliado com 1 aquecimento já gravado",
+    "fn": "resolveGenericWarmupState",
+    "input": [
+      {
+        "workoutPlanExerciseId": 13,
+        "local": null,
+        "loggedSets": [
+          {
+            "set_type": "warmup"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "first": "done",
+      "second": "pending"
+    }
+  },
+  {
+    "name": "aquecimento genérico: pulado localmente + gravado preenche a outra posição",
+    "fn": "resolveGenericWarmupState",
+    "input": [
+      {
+        "workoutPlanExerciseId": 13,
+        "local": {
+          "first": "skipped",
+          "second": "pending"
+        },
+        "loggedSets": [
+          {
+            "set_type": "Warm-up"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "first": "skipped",
+      "second": "done"
+    }
+  },
+  {
+    "name": "aquecimento genérico: sem item da ficha fica resolvido",
+    "fn": "resolveGenericWarmupState",
+    "input": [
+      {
+        "workoutPlanExerciseId": null,
+        "local": null,
+        "loggedSets": []
+      }
+    ],
+    "expected": {
+      "first": "skipped",
+      "second": "skipped"
+    }
+  },
+  {
+    "name": "aquecimento genérico: aparece no modo normal antes da 1ª série",
+    "fn": "shouldShowGenericWarmup",
+    "input": [
+      {
+        "advancedMode": false,
+        "hasCurrent": true,
+        "loggedCount": 0,
+        "workoutPlanExerciseId": 13,
+        "needsWarmup": true,
+        "warmupState": {
+          "first": "pending",
+          "second": "pending"
+        }
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "aquecimento genérico: nunca no modo avançado (vale o configurado)",
+    "fn": "shouldShowGenericWarmup",
+    "input": [
+      {
+        "advancedMode": true,
+        "hasCurrent": true,
+        "loggedCount": 0,
+        "workoutPlanExerciseId": 13,
+        "needsWarmup": true,
+        "warmupState": {
+          "first": "pending",
+          "second": "pending"
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: some depois da 1ª série",
+    "fn": "shouldShowGenericWarmup",
+    "input": [
+      {
+        "advancedMode": false,
+        "hasCurrent": true,
+        "loggedCount": 1,
+        "workoutPlanExerciseId": 13,
+        "needsWarmup": true,
+        "warmupState": {
+          "first": "pending",
+          "second": "pending"
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: some com as 2 séries resolvidas",
+    "fn": "shouldShowGenericWarmup",
+    "input": [
+      {
+        "advancedMode": false,
+        "hasCurrent": true,
+        "loggedCount": 0,
+        "workoutPlanExerciseId": 13,
+        "needsWarmup": true,
+        "warmupState": {
+          "first": "done",
+          "second": "skipped"
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: cargas pelo espelho (sem plano)",
+    "fn": "genericWarmupLoads",
+    "input": [
+      80
+    ],
+    "expected": [
+      15,
+      32.5
+    ]
+  },
+  {
+    "name": "aquecimento genérico: 1ª série a gravar (espelho)",
+    "fn": "genericWarmupSet",
+    "input": [
+      "first",
+      80,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": {
+      "set_type": "warmup",
+      "reps": 15,
+      "weight_kg": 15
+    }
+  },
+  {
+    "name": "aquecimento genérico: 2ª série a gravar lê a carga da API",
+    "fn": "genericWarmupSet",
+    "input": [
+      "second",
+      80,
+      {
+        "plan": {
+          "load_anchor_kg": 80,
+          "warmup_loads_kg": [
+            15,
+            30
+          ]
+        },
+        "step": 2.5
+      }
+    ],
+    "expected": {
+      "set_type": "warmup",
+      "reps": 15,
+      "weight_kg": 30
+    }
+  },
+  {
+    "name": "aquecimento configurado: 2ª série de aquecimento",
+    "fn": "resolveAdvancedSubStage",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 0,
+        "warmupTarget": 2,
+        "warmupDone": 1,
+        "feelerTarget": 2,
+        "feelerDone": 0,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 0
+      }
+    ],
+    "expected": {
+      "kind": "warmup",
+      "index": 2,
+      "total": 2
+    }
+  },
+  {
+    "name": "aquecimento configurado: a 1ª carga em todas as séries",
+    "fn": "warmupLoad",
+    "input": [
+      80,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": 15
+  },
+  {
+    "name": "aquecimento configurado: rótulo da próxima série",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": {
+          "kind": "warmup",
+          "index": 2,
+          "total": 2
+        },
+        "workingSetNumber": 1,
+        "workingSetTotal": 3,
+        "weightKg": 15
+      }
+    ],
+    "expected": {
+      "label": "Aquecimento 2/2",
+      "weightKg": 15
+    }
+  },
+  {
+    "name": "ajuste: 2ª série de ajuste depois do aquecimento",
+    "fn": "resolveAdvancedSubStage",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 0,
+        "warmupTarget": 2,
+        "warmupDone": 2,
+        "feelerTarget": 2,
+        "feelerDone": 1,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 0
+      }
+    ],
+    "expected": {
+      "kind": "feeler",
+      "index": 2,
+      "total": 2
+    }
+  },
+  {
+    "name": "ajuste: 1ª carga pelo espelho",
+    "fn": "feelerSetLoad",
+    "input": [
+      80,
+      1,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": 40
+  },
+  {
+    "name": "ajuste: 2ª carga lida da API",
+    "fn": "feelerSetLoad",
+    "input": [
+      80,
+      2,
+      {
+        "plan": {
+          "load_anchor_kg": 80,
+          "feeler_loads_kg": [
+            40,
+            57.5
+          ]
+        },
+        "step": 2.5
+      }
+    ],
+    "expected": 57.5
+  },
+  {
+    "name": "ajuste: espelho no passo do equipamento",
+    "fn": "mirrorFeelerLoad",
+    "input": [
+      100,
+      3,
+      5
+    ],
+    "expected": 90
+  },
+  {
+    "name": "ajuste: rótulo da próxima série",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": {
+          "kind": "feeler",
+          "index": 1,
+          "total": 2
+        },
+        "workingSetNumber": 1,
+        "workingSetTotal": 3,
+        "weightKg": 40
+      }
+    ],
+    "expected": {
+      "label": "Série de ajuste 1/2",
+      "weightKg": 40
+    }
+  },
+  {
+    "name": "técnica: rest-pause vira sub-etapa",
+    "fn": "techniqueStageTarget",
+    "input": [
+      {
+        "workout_plan_exercise_id": 14,
+        "sequence": 4,
+        "exercise_name": "Remada baixa",
+        "mapping_id": 104,
+        "muscle_primary": "Costas",
+        "muscle_secondary": "Bíceps",
+        "equipment_name": "Polia baixa",
+        "sets_count": 3,
+        "rest_seconds": 120,
+        "warmup_sets_count": 2,
+        "warmup_reps": 12,
+        "warmup_rest_seconds": 45,
+        "feeler_set_sets_count": 2,
+        "feeler_set_reps": 6,
+        "feeler_set_rest_seconds": 75,
+        "advanced_technique": "rest_pause",
+        "advanced_technique_applications": 3,
+        "advanced_technique_duration_seconds": 15
+      }
+    ],
+    "expected": 3
+  },
+  {
+    "name": "técnica: drop-set vira sub-etapa",
+    "fn": "techniqueStageTarget",
+    "input": [
+      {
+        "workout_plan_exercise_id": 13,
+        "sequence": 3,
+        "exercise_name": "Elevação lateral",
+        "mapping_id": 103,
+        "muscle_primary": " Ombros ",
+        "sets_count": 3,
+        "rest_seconds": 60,
+        "advanced_technique": "drop_set",
+        "advanced_technique_applications": 2
+      }
+    ],
+    "expected": 2
+  },
+  {
+    "name": "técnica: FST-7 é série de trabalho comum",
+    "fn": "techniqueStageTarget",
+    "input": [
+      {
+        "advanced_technique": "fst7",
+        "advanced_technique_applications": 7
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "name": "técnica: família além da falha não vira sub-etapa",
+    "fn": "techniqueStageTarget",
+    "input": [
+      {
+        "advanced_technique": "forced_reps",
+        "advanced_technique_applications": 2
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "name": "rest-pause: 1º mini-bloco depois das séries de trabalho",
+    "fn": "resolveAdvancedSubStage",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 3,
+        "warmupTarget": 0,
+        "warmupDone": 0,
+        "feelerTarget": 0,
+        "feelerDone": 0,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 0
+      }
+    ],
+    "expected": {
+      "kind": "technique",
+      "index": 1,
+      "total": 3
+    }
+  },
+  {
+    "name": "rest-pause: 1 gravado + 1 pulado -> 3º mini-bloco",
+    "fn": "resolveAdvancedSubStage",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 4,
+        "warmupTarget": 0,
+        "warmupDone": 0,
+        "feelerTarget": 0,
+        "feelerDone": 0,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 1
+      }
+    ],
+    "expected": {
+      "kind": "technique",
+      "index": 3,
+      "total": 3
+    }
+  },
+  {
+    "name": "rest-pause: pular a última aplicação conclui o exercício",
+    "fn": "isAdvancedExerciseDone",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 5,
+        "warmupTarget": 0,
+        "warmupDone": 0,
+        "feelerTarget": 0,
+        "feelerDone": 0,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 1
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "rest-pause: puladas não concluem com trabalho faltando",
+    "fn": "isAdvancedExerciseDone",
+    "input": [
+      {
+        "workingTarget": 3,
+        "loggedNonPreparatory": 2,
+        "warmupTarget": 0,
+        "warmupDone": 0,
+        "feelerTarget": 0,
+        "feelerDone": 0,
+        "techniqueTarget": 3,
+        "techniqueSkipped": 3
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "rest-pause: repete a carga de trabalho sem arredondar",
+    "fn": "techniqueApplicationLoad",
+    "input": [
+      "rest_pause",
+      51.3,
+      2,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": 51.3
+  },
+  {
+    "name": "drop-set: 1º drop no passo do equipamento",
+    "fn": "techniqueApplicationLoad",
+    "input": [
+      "drop_set",
+      50,
+      1,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": 40
+  },
+  {
+    "name": "drop-set: 2º drop composto",
+    "fn": "techniqueApplicationLoad",
+    "input": [
+      "drop_set",
+      50,
+      2,
+      {
+        "step": 2.5
+      }
+    ],
+    "expected": 32.5
+  },
+  {
+    "name": "drop-set: carga lida da API quando a âncora é a prescrita",
+    "fn": "techniqueApplicationLoad",
+    "input": [
+      "drop_set",
+      50,
+      1,
+      {
+        "plan": {
+          "load_anchor_kg": 50,
+          "application_loads_kg": [
+            41,
+            33
+          ]
+        },
+        "step": 2.5
+      }
+    ],
+    "expected": 41
+  },
+  {
+    "name": "rest-pause: substantivo da aplicação",
+    "fn": "getAdvancedTechniqueApplicationNoun",
+    "input": [
+      "rest_pause"
+    ],
+    "expected": "Mini-bloco"
+  },
+  {
+    "name": "drop-set: substantivo da aplicação",
+    "fn": "getAdvancedTechniqueApplicationNoun",
+    "input": [
+      "drop_set"
+    ],
+    "expected": "Drop"
+  },
+  {
+    "name": "drop-set: rótulo do próximo drop",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": {
+          "kind": "technique",
+          "index": 2,
+          "total": 2
+        },
+        "techniqueApplicationNoun": "Drop",
+        "workingSetNumber": 4,
+        "workingSetTotal": 3,
+        "weightKg": 32.5
+      }
+    ],
+    "expected": {
+      "label": "Drop 2/2",
+      "weightKg": 32.5
+    }
+  },
+  {
+    "name": "próxima série: trabalho \"Série N de S\"",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": null,
+        "workingSetNumber": 2,
+        "workingSetTotal": 3,
+        "weightKg": 60
+      }
+    ],
+    "expected": {
+      "label": "Série 2 de 3",
+      "weightKg": 60
+    }
+  },
+  {
+    "name": "próxima série: acima da meta some o \"de N\"",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": null,
+        "workingSetNumber": 4,
+        "workingSetTotal": 3,
+        "weightKg": 60
+      }
+    ],
+    "expected": {
+      "label": "Série 4",
+      "weightKg": 60
+    }
+  },
+  {
+    "name": "próxima série: transição de exercício não mostra número",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": true,
+        "stage": null,
+        "workingSetNumber": 1,
+        "workingSetTotal": 3,
+        "weightKg": 60
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "descanso: depois do aquecimento usa o do aquecimento",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": "warmup",
+        "isExerciseTransition": false,
+        "completedStageKind": "warmup",
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 45
+  },
+  {
+    "name": "descanso: depois do ajuste usa o do ajuste",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": null,
+        "isExerciseTransition": false,
+        "completedStageKind": "feeler",
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 75
+  },
+  {
+    "name": "descanso: antes do mini-bloco usa a pausa da técnica",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": "technique",
+        "isExerciseTransition": false,
+        "completedStageKind": null,
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 15
+  },
+  {
+    "name": "descanso: entre aplicações da técnica também usa a pausa",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": "technique",
+        "isExerciseTransition": false,
+        "completedStageKind": "technique",
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 15
+  },
+  {
+    "name": "descanso: transição de exercício usa o da série",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": "technique",
+        "isExerciseTransition": true,
+        "completedStageKind": null,
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 120
+  },
+  {
+    "name": "descanso: aquecimento sem descanso próprio cai no da série",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": null,
+        "isExerciseTransition": false,
+        "completedStageKind": "warmup",
+        "warmupRestSeconds": null,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": 120,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 120
+  },
+  {
+    "name": "descanso: sem descanso na ficha cai no default do backend",
+    "fn": "resolveRestSeconds",
+    "input": [
+      {
+        "nextStageKind": null,
+        "isExerciseTransition": false,
+        "completedStageKind": null,
+        "warmupRestSeconds": 45,
+        "feelerRestSeconds": 75,
+        "techniqueDurationSeconds": 15,
+        "restSeconds": null,
+        "defaultRestSeconds": 60
+      }
+    ],
+    "expected": 60
+  },
+  {
+    "name": "séries: próximo set_number físico conta aquecimento e ajuste",
+    "fn": "nextPhysicalSetNumber",
+    "input": [
+      [
+        {
+          "set_number": 1
+        },
+        {
+          "set_number": 2
+        },
+        {
+          "set_number": 4
+        }
+      ]
+    ],
+    "expected": 5
+  },
+  {
+    "name": "séries: \"Série N de S\" não conta aquecimento nem ajuste",
+    "fn": "countNonPreparatorySets",
+    "input": [
+      [
+        {
+          "set_type": "warmup"
+        },
+        {
+          "set_type": "feeler"
+        },
+        {
+          "set_type": null
+        },
+        {
+          "set_type": "drop_set"
+        }
+      ]
+    ],
+    "expected": 2
+  },
+  {
+    "name": "séries: apelido legado normalizado",
+    "fn": "normalizeSetType",
+    "input": [
+      " Warm-up "
+    ],
+    "expected": "warmup"
+  },
+  {
+    "name": "séries: teto seguro só restringe a sugestão",
+    "fn": "clampRpeSuggestion",
+    "input": [
+      10,
+      9
+    ],
+    "expected": 9
+  },
+  {
+    "name": "contadores: avançado com aquecimento gravado e local, ajuste e rest-pause",
+    "fn": "buildAdvancedExerciseCounters",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "loggedSets": [
+          {
+            "set_type": "warmup"
+          },
+          {
+            "set_type": "working"
+          }
+        ],
+        "advancedMode": true,
+        "localProgress": {
+          "warmupDone": 2,
+          "feelerDone": 0,
+          "techniqueSkipped": 0
+        }
+      }
+    ],
+    "expected": {
+      "workingTarget": 3,
+      "loggedNonPreparatory": 1,
+      "warmupTarget": 2,
+      "warmupDone": 2,
+      "feelerTarget": 2,
+      "feelerDone": 0,
+      "techniqueTarget": 3,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "contadores: modo normal zera aquecimento/ajuste e mantém a técnica",
+    "fn": "buildAdvancedExerciseCounters",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "loggedSets": [
+          {
+            "set_type": "warmup"
+          }
+        ],
+        "advancedMode": false,
+        "localProgress": null
+      }
+    ],
+    "expected": {
+      "workingTarget": 3,
+      "loggedNonPreparatory": 0,
+      "warmupTarget": 0,
+      "warmupDone": 0,
+      "feelerTarget": 0,
+      "feelerDone": 0,
+      "techniqueTarget": 3,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "contadores: séries sugeridas do par trocado mandam no alvo de trabalho",
+    "fn": "buildAdvancedExerciseCounters",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        },
+        "loggedSets": [],
+        "advancedMode": false,
+        "adjustedSetsCount": 4
+      }
+    ],
+    "expected": {
+      "workingTarget": 4,
+      "loggedNonPreparatory": 0,
+      "warmupTarget": 0,
+      "warmupDone": 0,
+      "feelerTarget": 0,
+      "feelerDone": 0,
+      "techniqueTarget": 0,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "contadores: sem sets_count e com aquecimento/ajuste sem contagem vale o piso do backend",
+    "fn": "buildAdvancedExerciseCounters",
+    "input": [
+      {
+        "planExercise": {
+          "warmup_reps": 12,
+          "warmup_sets_count": 0,
+          "feeler_set_reps": 6,
+          "feeler_set_sets_count": null
+        },
+        "loggedSets": [
+          {
+            "set_type": "feeler"
+          },
+          {
+            "set_type": "feeler"
+          }
+        ],
+        "advancedMode": true
+      }
+    ],
+    "expected": {
+      "workingTarget": 1,
+      "loggedNonPreparatory": 0,
+      "warmupTarget": 1,
+      "warmupDone": 0,
+      "feelerTarget": 1,
+      "feelerDone": 1,
+      "techniqueTarget": 0,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "contadores: aplicação pulada localmente entra na conta",
+    "fn": "buildAdvancedExerciseCounters",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        },
+        "loggedSets": [
+          {
+            "set_type": "working"
+          },
+          {
+            "set_type": "working"
+          },
+          {
+            "set_type": "working"
+          },
+          {
+            "set_type": "drop_set"
+          }
+        ],
+        "advancedMode": false,
+        "localProgress": {
+          "warmupDone": 0,
+          "feelerDone": 0,
+          "techniqueSkipped": 1
+        }
+      }
+    ],
+    "expected": {
+      "workingTarget": 3,
+      "loggedNonPreparatory": 4,
+      "warmupTarget": 0,
+      "warmupDone": 0,
+      "feelerTarget": 0,
+      "feelerDone": 0,
+      "techniqueTarget": 2,
+      "techniqueSkipped": 1
+    }
+  },
+  {
+    "name": "cobertura: exercício da ficha já executado no slot de outro item fica concluído",
+    "fn": "findPlanItemsCoveredByAnotherSlotIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        ],
+        "loggedExercises": [
+          {
+            "workout_plan_exercise_id": 14,
+            "mapping_id": 101,
+            "planned_mapping_id": 104
+          }
+        ]
+      }
+    ],
+    "expected": [
+      11
+    ]
+  },
+  {
+    "name": "cobertura: item com lançamento próprio não é coberto",
+    "fn": "findPlanItemsCoveredByAnotherSlotIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        ],
+        "loggedExercises": [
+          {
+            "workout_plan_exercise_id": 14,
+            "mapping_id": 101,
+            "planned_mapping_id": 104
+          },
+          {
+            "workout_plan_exercise_id": 11,
+            "mapping_id": 101,
+            "planned_mapping_id": 101
+          }
+        ]
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "cobertura: lançamento no próprio slot e avulso não cobrem nada",
+    "fn": "findPlanItemsCoveredByAnotherSlotIds",
+    "input": [
+      {
+        "planExercises": [
+          {
+            "workout_plan_exercise_id": 11,
+            "sequence": 1,
+            "exercise_name": "Supino reto",
+            "mapping_id": 101,
+            "muscle_primary": "Peitoral",
+            "muscle_secondary": "Tríceps",
+            "equipment_name": "Banco reto",
+            "sets_count": 3,
+            "reps_target": "8-12",
+            "rest_seconds": 90
+          },
+          {
+            "workout_plan_exercise_id": 12,
+            "sequence": 2,
+            "exercise_name": "Tríceps corda",
+            "mapping_id": 102,
+            "muscle_primary": "Tríceps",
+            "sets_count": 3,
+            "rest_seconds": 60
+          },
+          {
+            "workout_plan_exercise_id": 13,
+            "sequence": 3,
+            "exercise_name": "Elevação lateral",
+            "mapping_id": 103,
+            "muscle_primary": " Ombros ",
+            "sets_count": 3,
+            "rest_seconds": 60,
+            "advanced_technique": "drop_set",
+            "advanced_technique_applications": 2
+          },
+          {
+            "workout_plan_exercise_id": 14,
+            "sequence": 4,
+            "exercise_name": "Remada baixa",
+            "mapping_id": 104,
+            "muscle_primary": "Costas",
+            "muscle_secondary": "Bíceps",
+            "equipment_name": "Polia baixa",
+            "sets_count": 3,
+            "rest_seconds": 120,
+            "warmup_sets_count": 2,
+            "warmup_reps": 12,
+            "warmup_rest_seconds": 45,
+            "feeler_set_sets_count": 2,
+            "feeler_set_reps": 6,
+            "feeler_set_rest_seconds": 75,
+            "advanced_technique": "rest_pause",
+            "advanced_technique_applications": 3,
+            "advanced_technique_duration_seconds": 15
+          }
+        ],
+        "loggedExercises": [
+          {
+            "workout_plan_exercise_id": 12,
+            "mapping_id": 102,
+            "planned_mapping_id": 102
+          },
+          {
+            "workout_plan_exercise_id": null,
+            "mapping_id": 101,
+            "planned_mapping_id": null
+          }
+        ]
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "par: prescrição congelada vale sobre o overlay de segurança de hoje",
+    "fn": "resolveSessionPairLimits",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90,
+          "load_increment_kg": 2,
+          "prescription": {
+            "effective_rpe_target": 8,
+            "effective_rpe_ceiling": 8,
+            "load_anchor_kg": 60
+          },
+          "safety_overlay": {
+            "effective_rpe_ceiling": 7
+          }
+        },
+        "hasOverride": false,
+        "pairSuggestion": null,
+        "syntheticExtra": null
+      }
+    ],
+    "expected": {
+      "rpeCeiling": 8,
+      "loadIncrementKg": 2,
+      "loadPlan": {
+        "effective_rpe_target": 8,
+        "effective_rpe_ceiling": 8,
+        "load_anchor_kg": 60
+      }
+    }
+  },
+  {
+    "name": "par: sem prescrição congelada vale o overlay de segurança de hoje",
+    "fn": "resolveSessionPairLimits",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90,
+          "load_increment_kg": 2,
+          "safety_overlay": {
+            "effective_rpe_ceiling": 7
+          }
+        },
+        "hasOverride": false,
+        "pairSuggestion": null,
+        "syntheticExtra": null
+      }
+    ],
+    "expected": {
+      "rpeCeiling": 7,
+      "loadIncrementKg": 2,
+      "loadPlan": null
+    }
+  },
+  {
+    "name": "par: equipamento trocado lê a sugestão do par novo",
+    "fn": "resolveSessionPairLimits",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90,
+          "prescription": {
+            "effective_rpe_target": 8,
+            "effective_rpe_ceiling": 8,
+            "load_anchor_kg": 60
+          }
+        },
+        "hasOverride": true,
+        "pairSuggestion": {
+          "reps_target": " 8-10 ",
+          "load_target": "62.5kg",
+          "rpe_target": "8",
+          "progression_note": " Subir 2,5 kg ",
+          "has_history": true,
+          "effective_rpe_ceiling": 9,
+          "load_increment_kg": 5
+        },
+        "syntheticExtra": null
+      }
+    ],
+    "expected": {
+      "rpeCeiling": 9,
+      "loadIncrementKg": 5,
+      "loadPlan": null
+    }
+  },
+  {
+    "name": "par: troca sem a sugestão carregada fica sem teto nem passo",
+    "fn": "resolveSessionPairLimits",
+    "input": [
+      {
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90,
+          "prescription": {
+            "effective_rpe_target": 8,
+            "effective_rpe_ceiling": 8,
+            "load_anchor_kg": 60
+          }
+        },
+        "hasOverride": true,
+        "pairSuggestion": null,
+        "syntheticExtra": null
+      }
+    ],
+    "expected": {
+      "rpeCeiling": null,
+      "loadIncrementKg": null,
+      "loadPlan": null
+    }
+  },
+  {
+    "name": "par: continuação sintética usa o que a API devolveu na troca",
+    "fn": "resolveSessionPairLimits",
+    "input": [
+      {
+        "planExercise": {
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "workout_plan_exercise_id": -1,
+          "sequence": 9999,
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Máquina remada",
+          "preferred_equipment_id": 7,
+          "sets_count": 2,
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "rest_seconds": 120,
+          "load_increment_kg": 5
+        },
+        "hasOverride": false,
+        "pairSuggestion": null,
+        "syntheticExtra": {
+          "localId": -1,
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "equipment_link_id": 7,
+          "equipment_name": "Máquina remada",
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "sets_count": 2,
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "rest_seconds": 120,
+          "load_increment_kg": 5,
+          "effective_rpe_ceiling": 9,
+          "failure_allowed": false,
+          "originalWorkoutPlanExerciseId": 14,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75
+        }
+      }
+    ],
+    "expected": {
+      "rpeCeiling": 9,
+      "loadIncrementKg": 5,
+      "loadPlan": null
+    }
+  },
+  {
+    "name": "âncora: última série de trabalho, nunca aquecimento nem drop",
+    "fn": "findAnchorWorkingSet",
+    "input": [
+      [
+        {
+          "set_number": 1,
+          "set_type": "warmup",
+          "reps": 12,
+          "weight_kg": 20
+        },
+        {
+          "set_number": 2,
+          "set_type": "working",
+          "reps": 10,
+          "weight_kg": 60,
+          "rpe": 8
+        },
+        {
+          "set_number": 3,
+          "set_type": null,
+          "reps": 9,
+          "weight_kg": 60,
+          "rpe": 9
+        },
+        {
+          "set_number": 4,
+          "set_type": "drop_set",
+          "reps": 8,
+          "weight_kg": 45
+        }
+      ]
+    ],
+    "expected": {
+      "set_number": 3,
+      "set_type": null,
+      "reps": 9,
+      "weight_kg": 60,
+      "rpe": 9
+    }
+  },
+  {
+    "name": "âncora: sem série de trabalho devolve null",
+    "fn": "findAnchorWorkingSet",
+    "input": [
+      [
+        {
+          "set_number": 1,
+          "set_type": "feeler",
+          "reps": 3,
+          "weight_kg": 50
+        }
+      ]
+    ],
+    "expected": null
+  },
+  {
+    "name": "alvos do par: texto aparado e nota presente",
+    "fn": "suggestedProgressionTargets",
+    "input": [
+      {
+        "reps_target": " 8-10 ",
+        "load_target": "62.5kg",
+        "rpe_target": "8",
+        "progression_note": " Subir 2,5 kg ",
+        "has_history": true
+      }
+    ],
+    "expected": {
+      "reps_target": "8-10",
+      "load_target": "62.5kg",
+      "rpe_target": "8",
+      "progression_note": "Subir 2,5 kg"
+    }
+  },
+  {
+    "name": "alvos do par: grupo sem trabalho direto (SKIP) vira texto vazio, nunca null",
+    "fn": "suggestedProgressionTargets",
+    "input": [
+      {
+        "reps_target": null,
+        "load_target": "62.5kg",
+        "rpe_target": "  ",
+        "progression_note": "",
+        "has_history": true
+      }
+    ],
+    "expected": {
+      "reps_target": "",
+      "load_target": "62.5kg",
+      "rpe_target": "",
+      "progression_note": null
+    }
+  },
+  {
+    "name": "fluxo avançado: item com aquecimento/ajuste/técnica no modo avançado",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "fluxo avançado: só aquecimento já basta",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": {
+          "warmup_reps": 12
+        }
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "fluxo avançado: modo normal nunca tem",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "fluxo avançado: item sem configuração avançada não tem",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "fluxo avançado: sem item não tem",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": null
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "modo da ficha: sem configuração avançada é normal",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        }
+      ]
+    ],
+    "expected": "normal"
+  },
+  {
+    "name": "modo da ficha: só aquecimento é avançado",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45
+        }
+      ]
+    ],
+    "expected": "advanced"
+  },
+  {
+    "name": "modo da ficha: só série de ajuste é avançado",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "feeler_set_sets_count": 1,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75
+        }
+      ]
+    ],
+    "expected": "advanced"
+  },
+  {
+    "name": "modo da ficha: só técnica é avançado",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        },
+        {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        }
+      ]
+    ],
+    "expected": "advanced"
+  },
+  {
+    "name": "modo da ficha: técnica removida pela segurança (resíduo de aplicações) é normal",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": null,
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": 15
+        }
+      ]
+    ],
+    "expected": "normal"
+  },
+  {
+    "name": "modo da ficha: mistura com um item avançado é avançado",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60
+        },
+        {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        },
+        {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        }
+      ]
+    ],
+    "expected": "advanced"
+  },
+  {
+    "name": "modo da ficha: ficha vazia é normal",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      []
+    ],
+    "expected": "normal"
+  },
+  {
+    "name": "modo da ficha: sem ficha é normal",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      null
+    ],
+    "expected": "normal"
+  },
+  {
+    "name": "config avançada: resíduo da técnica removida não conta",
+    "fn": "planHasAdvancedConfig",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": null,
+          "advanced_technique_applications": 2,
+          "advanced_technique_duration_seconds": 15
+        }
+      ]
+    ],
+    "expected": false
+  },
+  {
+    "name": "config avançada: item só com aquecimento conta",
+    "fn": "exerciseHasAdvancedConfig",
+    "input": [
+      {
+        "workout_plan_exercise_id": 12,
+        "sequence": 2,
+        "exercise_name": "Tríceps corda",
+        "mapping_id": 102,
+        "muscle_primary": "Tríceps",
+        "sets_count": 3,
+        "rest_seconds": 60,
+        "warmup_sets_count": 2,
+        "warmup_reps": 12,
+        "warmup_rest_seconds": 45
+      }
+    ],
+    "expected": true
+  },
+  {
+    "name": "config avançada: sem item não conta",
+    "fn": "exerciseHasAdvancedConfig",
+    "input": [
+      null
+    ],
+    "expected": false
+  },
+  {
+    "name": "sub-etapa: avançado mostra o aquecimento pendente",
+    "fn": "advancedStageOf",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "counters": {
+          "workingTarget": 3,
+          "loggedNonPreparatory": 0,
+          "warmupTarget": 2,
+          "warmupDone": 1,
+          "feelerTarget": 2,
+          "feelerDone": 0,
+          "techniqueTarget": 3,
+          "techniqueSkipped": 0
+        }
+      }
+    ],
+    "expected": {
+      "kind": "warmup",
+      "index": 2,
+      "total": 2
+    }
+  },
+  {
+    "name": "sub-etapa: técnica vale também no modo normal (Fase 5)",
+    "fn": "advancedStageOf",
+    "input": [
+      {
+        "advancedMode": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 13,
+          "sequence": 3,
+          "exercise_name": "Elevação lateral",
+          "mapping_id": 103,
+          "muscle_primary": " Ombros ",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "advanced_technique": "drop_set",
+          "advanced_technique_applications": 2
+        },
+        "counters": {
+          "workingTarget": 3,
+          "loggedNonPreparatory": 3,
+          "warmupTarget": 0,
+          "warmupDone": 0,
+          "feelerTarget": 0,
+          "feelerDone": 0,
+          "techniqueTarget": 2,
+          "techniqueSkipped": 0
+        }
+      }
+    ],
+    "expected": {
+      "kind": "technique",
+      "index": 1,
+      "total": 2
+    }
+  },
+  {
+    "name": "sub-etapa: modo normal sem técnica é série de trabalho (null)",
+    "fn": "advancedStageOf",
+    "input": [
+      {
+        "advancedMode": false,
+        "planExercise": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "counters": {
+          "workingTarget": 3,
+          "loggedNonPreparatory": 0,
+          "warmupTarget": 2,
+          "warmupDone": 0,
+          "feelerTarget": 0,
+          "feelerDone": 0,
+          "techniqueTarget": 0,
+          "techniqueSkipped": 0
+        }
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "sub-etapa: sem item é null",
+    "fn": "advancedStageOf",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": null,
+        "counters": null
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "progresso efetivo: o maior entre o local (com puladas) e o gravado",
+    "fn": "effectiveAdvancedStageDone",
+    "input": [
+      {
+        "localProgress": {
+          "warmupDone": 1,
+          "feelerDone": 2,
+          "techniqueSkipped": 0
+        },
+        "loggedSets": [
+          {
+            "set_type": "warmup"
+          },
+          {
+            "set_type": "warmup"
+          },
+          {
+            "set_type": "feeler"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "warmupDone": 2,
+      "feelerDone": 2
+    }
+  },
+  {
+    "name": "progresso efetivo: sem progresso local conta o gravado",
+    "fn": "effectiveAdvancedStageDone",
+    "input": [
+      {
+        "localProgress": null,
+        "loggedSets": [
+          {
+            "set_type": "Warm-up"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "warmupDone": 1,
+      "feelerDone": 0
+    }
+  },
+  {
+    "name": "progresso local: concluir aquecimento parte do efetivo + 1",
+    "fn": "advanceLocalStageProgress",
+    "input": [
+      {
+        "existing": {
+          "warmupDone": 0,
+          "feelerDone": 1,
+          "techniqueSkipped": 0
+        },
+        "kind": "warmup",
+        "effectiveDone": {
+          "warmupDone": 1,
+          "feelerDone": 1
+        }
+      }
+    ],
+    "expected": {
+      "warmupDone": 2,
+      "feelerDone": 1,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "progresso local: pular ajuste sem progresso anterior",
+    "fn": "advanceLocalStageProgress",
+    "input": [
+      {
+        "existing": null,
+        "kind": "feeler",
+        "effectiveDone": {
+          "warmupDone": 2,
+          "feelerDone": 0
+        }
+      }
+    ],
+    "expected": {
+      "warmupDone": 0,
+      "feelerDone": 1,
+      "techniqueSkipped": 0
+    }
+  },
+  {
+    "name": "progresso local: \"Encerrar técnica\" marca as restantes como puladas",
+    "fn": "advanceLocalStageProgress",
+    "input": [
+      {
+        "existing": {
+          "warmupDone": 2,
+          "feelerDone": 2,
+          "techniqueSkipped": 1
+        },
+        "kind": "technique",
+        "effectiveDone": {
+          "warmupDone": 2,
+          "feelerDone": 2
+        },
+        "count": 2
+      }
+    ],
+    "expected": {
+      "warmupDone": 2,
+      "feelerDone": 2,
+      "techniqueSkipped": 3
+    }
+  },
+  {
+    "name": "\"Encerrar técnica\": a aplicação atual e as seguintes",
+    "fn": "remainingTechniqueApplications",
+    "input": [
+      {
+        "kind": "technique",
+        "index": 2,
+        "total": 3
+      }
+    ],
+    "expected": 2
+  },
+  {
+    "name": "\"Encerrar técnica\" na última aplicação: só ela",
+    "fn": "remainingTechniqueApplications",
+    "input": [
+      {
+        "kind": "technique",
+        "index": 3,
+        "total": 3
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "name": "sessão anterior: só trabalho, sem aplicação de técnica, em ordem de execução",
+    "fn": "selectPreviousSessionWorkingSets",
+    "input": [
+      {
+        "item": {
+          "sets": [
+            {
+              "set_number": 5,
+              "set_type": "working",
+              "reps": 8,
+              "weight_kg": 60,
+              "rpe": 9
+            },
+            {
+              "set_number": 1,
+              "set_type": "warmup",
+              "reps": 12,
+              "weight_kg": 20,
+              "rpe": null
+            },
+            {
+              "set_number": 3,
+              "set_type": null,
+              "reps": 10,
+              "weight_kg": 60,
+              "rpe": 8
+            },
+            {
+              "set_number": 2,
+              "set_type": "feeler",
+              "reps": 3,
+              "weight_kg": 50,
+              "rpe": null
+            },
+            {
+              "set_number": 6,
+              "set_type": "working",
+              "reps": 6,
+              "weight_kg": 60,
+              "rpe": 10,
+              "is_technique_application": true
+            },
+            {
+              "set_number": 7,
+              "set_type": "backoff",
+              "reps": 12,
+              "weight_kg": 45,
+              "rpe": 8
+            },
+            {
+              "set_number": 4,
+              "set_type": "drop_set",
+              "reps": 6,
+              "weight_kg": 45,
+              "rpe": 10
+            }
+          ]
+        }
+      }
+    ],
+    "expected": [
+      {
+        "set_number": 3,
+        "set_type": null,
+        "reps": 10,
+        "weight_kg": 60,
+        "rpe": 8
+      },
+      {
+        "set_number": 5,
+        "set_type": "working",
+        "reps": 8,
+        "weight_kg": 60,
+        "rpe": 9
+      }
+    ]
+  },
+  {
+    "name": "sessão anterior: sem histórico devolve lista vazia",
+    "fn": "selectPreviousSessionWorkingSets",
+    "input": [
+      {
+        "item": null
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "medida: item sem medida é repetições",
+    "fn": "setMeasureOf",
+    "input": [
+      {
+        "workout_plan_exercise_id": 11,
+        "sequence": 1,
+        "exercise_name": "Supino reto",
+        "mapping_id": 101,
+        "muscle_primary": "Peitoral",
+        "muscle_secondary": "Tríceps",
+        "equipment_name": "Banco reto",
+        "sets_count": 3,
+        "reps_target": "8-12",
+        "rest_seconds": 90
+      }
+    ],
+    "expected": {
+      "measure": "reps",
+      "durationSecondsTarget": null,
+      "timeWindowSeconds": null
+    }
+  },
+  {
+    "name": "medida: item por tempo com o alvo",
+    "fn": "setMeasureOf",
+    "input": [
+      {
+        "workout_plan_exercise_id": 15,
+        "sequence": 5,
+        "exercise_name": "Prancha",
+        "mapping_id": 106,
+        "muscle_primary": "Abdômen",
+        "sets_count": 3,
+        "reps_target": null,
+        "rest_seconds": 60,
+        "measure": "duration",
+        "duration_seconds_target": 60,
+        "time_window_seconds": null
+      }
+    ],
+    "expected": {
+      "measure": "duration",
+      "durationSecondsTarget": 60,
+      "timeWindowSeconds": null
+    }
+  },
+  {
+    "name": "medida: prescrição congelada vale sobre a linha da ficha",
+    "fn": "setMeasureOf",
+    "input": [
+      {
+        "workout_plan_exercise_id": 12,
+        "sequence": 2,
+        "exercise_name": "Tríceps corda",
+        "mapping_id": 102,
+        "muscle_primary": "Tríceps",
+        "sets_count": 3,
+        "rest_seconds": 60,
+        "prescription": {
+          "measure": "max_reps",
+          "time_window_seconds": 30
+        }
+      }
+    ],
+    "expected": {
+      "measure": "max_reps",
+      "durationSecondsTarget": null,
+      "timeWindowSeconds": 30
+    }
+  },
+  {
+    "name": "medida: leitura tolerante (desconhecida = reps)",
+    "fn": "normalizeMeasure",
+    "input": [
+      " Xyz "
+    ],
+    "expected": "reps"
+  },
+  {
+    "name": "medida: tempo não é baseada em reps",
+    "fn": "isRepBased",
+    "input": [
+      "duration"
+    ],
+    "expected": false
+  },
+  {
+    "name": "registro reps: IA > última série > alvo > fallback, carga obrigatória",
+    "fn": "measureLoggerDefaults",
+    "input": [
+      {
+        "measure": null,
+        "repsTarget": "8-12",
+        "lastSet": {
+          "reps": 9,
+          "weight_kg": 60
+        }
+      }
+    ],
+    "expected": {
+      "reps": 9,
+      "durationSeconds": null,
+      "windowSeconds": null,
+      "loadOptional": false,
+      "repsRequired": true,
+      "durationRequired": false
+    }
+  },
+  {
+    "name": "registro reps: sem histórico cai no fallback do backend",
+    "fn": "measureLoggerDefaults",
+    "input": [
+      {
+        "measure": "reps",
+        "repsTarget": null,
+        "lastSet": null
+      }
+    ],
+    "expected": {
+      "reps": 10,
+      "durationSeconds": null,
+      "windowSeconds": null,
+      "loadOptional": false,
+      "repsRequired": true,
+      "durationRequired": false
+    }
+  },
+  {
+    "name": "registro tempo: segundos do alvo, sem reps, carga opcional",
+    "fn": "measureLoggerDefaults",
+    "input": [
+      {
+        "measure": "duration",
+        "durationSecondsTarget": 60,
+        "suggestedReps": 10
+      }
+    ],
+    "expected": {
+      "reps": null,
+      "durationSeconds": 60,
+      "windowSeconds": null,
+      "loadOptional": true,
+      "repsRequired": false,
+      "durationRequired": true
+    }
+  },
+  {
+    "name": "registro tempo: segundos da última série desta sessão",
+    "fn": "measureLoggerDefaults",
+    "input": [
+      {
+        "measure": "duration",
+        "durationSecondsTarget": 60,
+        "lastSet": {
+          "reps": null,
+          "duration_seconds": 52
+        }
+      }
+    ],
+    "expected": {
+      "reps": null,
+      "durationSeconds": 52,
+      "windowSeconds": null,
+      "loadOptional": true,
+      "repsRequired": false,
+      "durationRequired": true
+    }
+  },
+  {
+    "name": "registro máximo: reps obrigatórias sem alvo, janela do item",
+    "fn": "measureLoggerDefaults",
+    "input": [
+      {
+        "measure": "max_reps",
+        "timeWindowSeconds": 30,
+        "repsTarget": "8-12",
+        "lastSet": null
+      }
+    ],
+    "expected": {
+      "reps": null,
+      "durationSeconds": null,
+      "windowSeconds": 30,
+      "loadOptional": true,
+      "repsRequired": true,
+      "durationRequired": false
+    }
+  },
+  {
+    "name": "cronômetro: reps não tem",
+    "fn": "executionTimerSpec",
+    "input": [
+      {
+        "measure": "reps",
+        "durationSecondsTarget": 60
+      }
+    ],
+    "expected": {
+      "mode": "none",
+      "targetSeconds": null
+    }
+  },
+  {
+    "name": "cronômetro: tempo é regressivo até o alvo",
+    "fn": "executionTimerSpec",
+    "input": [
+      {
+        "measure": "duration",
+        "durationSecondsTarget": 60
+      }
+    ],
+    "expected": {
+      "mode": "countdown",
+      "targetSeconds": 60
+    }
+  },
+  {
+    "name": "cronômetro: máximo com janela é regressivo da janela",
+    "fn": "executionTimerSpec",
+    "input": [
+      {
+        "measure": "max_reps",
+        "timeWindowSeconds": 30
+      }
+    ],
+    "expected": {
+      "mode": "countdown",
+      "targetSeconds": 30
+    }
+  },
+  {
+    "name": "cronômetro: máximo sem janela é livre",
+    "fn": "executionTimerSpec",
+    "input": [
+      {
+        "measure": "max_reps"
+      }
+    ],
+    "expected": {
+      "mode": "stopwatch",
+      "targetSeconds": null
+    }
+  },
+  {
+    "name": "rótulo: série por tempo com o alvo",
+    "fn": "measureSetLabel",
+    "input": [
+      "Série 1 de 3",
+      {
+        "measure": "duration",
+        "durationSecondsTarget": 60
+      }
+    ],
+    "expected": "Série 1 de 3 · 60 s"
+  },
+  {
+    "name": "rótulo: série de reps fica como veio",
+    "fn": "measureSetLabel",
+    "input": [
+      "Série 1 de 3",
+      {
+        "measure": null
+      }
+    ],
+    "expected": "Série 1 de 3"
+  },
+  {
+    "name": "alvo: máximo com janela",
+    "fn": "measureTargetText",
+    "input": [
+      {
+        "measure": "max_reps",
+        "timeWindowSeconds": 30
+      }
+    ],
+    "expected": "reps máx. em 30 s"
+  },
+  {
+    "name": "texto da série: máximo em janela (espelho do dono)",
+    "fn": "formatSetMeasureText",
+    "input": [
+      {
+        "measure": "max_reps",
+        "reps": 15,
+        "durationSeconds": 30
+      }
+    ],
+    "expected": "15 reps em 30 s"
+  },
+  {
+    "name": "POST da série: reps não ganha chave nenhuma",
+    "fn": "setMeasurePayload",
+    "input": [
+      {
+        "reps": 10,
+        "weight_kg": 40,
+        "rpe": 8
+      }
+    ],
+    "expected": {}
+  },
+  {
+    "name": "POST da série: tempo manda a medida e os segundos",
+    "fn": "setMeasurePayload",
+    "input": [
+      {
+        "reps": null,
+        "weight_kg": null,
+        "measure": "duration",
+        "duration_seconds": 58
+      }
+    ],
+    "expected": {
+      "measure": "duration",
+      "duration_seconds": 58
+    }
+  },
+  {
+    "name": "segundos: acima do teto do dono não valem",
+    "fn": "isDurationSecondsValid",
+    "input": [
+      3601
+    ],
+    "expected": false
+  },
+  {
+    "name": "máximo de reps: abaixo do piso do dono não vale",
+    "fn": "isMaxRepsValid",
+    "input": [
+      0
+    ],
+    "expected": false
+  },
+  {
+    "name": "modo da ficha: item por tempo nunca é avançado, nem com resíduo",
+    "fn": "resolveWorkoutModeFromPlan",
+    "input": [
+      [
+        {
+          "workout_plan_exercise_id": 11,
+          "sequence": 1,
+          "exercise_name": "Supino reto",
+          "mapping_id": 101,
+          "muscle_primary": "Peitoral",
+          "muscle_secondary": "Tríceps",
+          "equipment_name": "Banco reto",
+          "sets_count": 3,
+          "reps_target": "8-12",
+          "rest_seconds": 90
+        },
+        {
+          "workout_plan_exercise_id": 15,
+          "sequence": 5,
+          "exercise_name": "Prancha",
+          "mapping_id": 106,
+          "muscle_primary": "Abdômen",
+          "sets_count": 3,
+          "reps_target": null,
+          "rest_seconds": 60,
+          "measure": "duration",
+          "duration_seconds_target": 60,
+          "time_window_seconds": null,
+          "warmup_reps": 12,
+          "advanced_technique": "drop_set"
+        },
+        {
+          "workout_plan_exercise_id": 12,
+          "sequence": 2,
+          "exercise_name": "Tríceps corda",
+          "mapping_id": 102,
+          "muscle_primary": "Tríceps",
+          "sets_count": 3,
+          "rest_seconds": 60,
+          "reps_target": null,
+          "measure": "max_reps",
+          "duration_seconds_target": null,
+          "time_window_seconds": 30
+        }
+      ]
+    ],
+    "expected": "normal"
+  },
+  {
+    "name": "fluxo avançado: item por tempo no modo avançado não tem",
+    "fn": "hasAdvancedFlow",
+    "input": [
+      {
+        "advancedMode": true,
+        "planExercise": {
+          "workout_plan_exercise_id": 15,
+          "sequence": 5,
+          "exercise_name": "Prancha",
+          "mapping_id": 106,
+          "muscle_primary": "Abdômen",
+          "sets_count": 3,
+          "reps_target": null,
+          "rest_seconds": 60,
+          "measure": "duration",
+          "duration_seconds_target": 60,
+          "time_window_seconds": null,
+          "warmup_reps": 12,
+          "advanced_technique": "drop_set"
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "aquecimento genérico: item por tempo não pede",
+    "fn": "shouldShowGenericWarmup",
+    "input": [
+      {
+        "advancedMode": false,
+        "measure": "duration",
+        "hasCurrent": true,
+        "loggedCount": 0,
+        "workoutPlanExerciseId": 15,
+        "needsWarmup": true,
+        "warmupState": {
+          "first": "pending",
+          "second": "pending"
+        }
+      }
+    ],
+    "expected": false
+  },
+  {
+    "name": "próxima série: por tempo, só o rótulo, sem sugestão de carga",
+    "fn": "resolveNextSetPreview",
+    "input": [
+      {
+        "isExerciseTransition": false,
+        "stage": null,
+        "workingSetNumber": 2,
+        "workingSetTotal": 3,
+        "weightKg": 20,
+        "measure": "duration"
+      }
+    ],
+    "expected": {
+      "label": "Série 2 de 3",
+      "weightKg": null
+    }
+  },
+  {
+    "name": "troca depois da 1ª série: continuação de item por tempo continua por tempo",
+    "fn": "buildSyntheticContinuation",
+    "input": [
+      {
+        "localId": -1,
+        "current": {
+          "workout_plan_exercise_id": 15,
+          "sequence": 5,
+          "exercise_name": "Prancha",
+          "mapping_id": 106,
+          "muscle_primary": "Abdômen",
+          "sets_count": 3,
+          "reps_target": null,
+          "rest_seconds": 60,
+          "measure": "duration",
+          "duration_seconds_target": 60,
+          "time_window_seconds": null
+        },
+        "remainingSets": 2,
+        "choice": {
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "equipment_link_id": 7,
+          "equipment_name": "Máquina remada"
+        },
+        "targets": {
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "load_increment_kg": 5,
+          "effective_rpe_ceiling": 9,
+          "failure_allowed": false
+        },
+        "existingExtras": []
+      }
+    ],
+    "expected": {
+      "localId": -1,
+      "exercise_name": "Remada máquina",
+      "mapping_id": 105,
+      "equipment_link_id": 7,
+      "equipment_name": "Máquina remada",
+      "muscle_primary": "Abdômen",
+      "sets_count": 2,
+      "reps_target": "8-10",
+      "load_target": "60kg",
+      "rpe_target": "8",
+      "rest_seconds": 60,
+      "load_increment_kg": 5,
+      "effective_rpe_ceiling": 9,
+      "failure_allowed": false,
+      "originalWorkoutPlanExerciseId": 15,
+      "measure": "duration",
+      "duration_seconds_target": 60
+    }
+  },
+  {
+    "name": "troca depois da última série prevista: continuação fica com o piso MIN_SETS_COUNT",
+    "fn": "buildSyntheticContinuation",
+    "input": [
+      {
+        "localId": -1,
+        "current": {
+          "workout_plan_exercise_id": 14,
+          "sequence": 4,
+          "exercise_name": "Remada baixa",
+          "mapping_id": 104,
+          "muscle_primary": "Costas",
+          "muscle_secondary": "Bíceps",
+          "equipment_name": "Polia baixa",
+          "sets_count": 3,
+          "rest_seconds": 120,
+          "warmup_sets_count": 2,
+          "warmup_reps": 12,
+          "warmup_rest_seconds": 45,
+          "feeler_set_sets_count": 2,
+          "feeler_set_reps": 6,
+          "feeler_set_rest_seconds": 75,
+          "advanced_technique": "rest_pause",
+          "advanced_technique_applications": 3,
+          "advanced_technique_duration_seconds": 15
+        },
+        "remainingSets": 0,
+        "choice": {
+          "exercise_name": "Remada máquina",
+          "mapping_id": 105,
+          "equipment_link_id": 7,
+          "equipment_name": "Máquina remada"
+        },
+        "targets": {
+          "reps_target": "8-10",
+          "load_target": "60kg",
+          "rpe_target": "8",
+          "load_increment_kg": 5,
+          "effective_rpe_ceiling": 9,
+          "failure_allowed": false
+        },
+        "existingExtras": []
+      }
+    ],
+    "expected": {
+      "localId": -1,
+      "exercise_name": "Remada máquina",
+      "mapping_id": 105,
+      "equipment_link_id": 7,
+      "equipment_name": "Máquina remada",
+      "muscle_primary": "Costas",
+      "muscle_secondary": "Bíceps",
+      "sets_count": 1,
+      "reps_target": "8-10",
+      "load_target": "60kg",
+      "rpe_target": "8",
+      "rest_seconds": 120,
+      "load_increment_kg": 5,
+      "effective_rpe_ceiling": 9,
+      "failure_allowed": false,
+      "originalWorkoutPlanExerciseId": 14,
+      "advanced_technique": "rest_pause",
+      "advanced_technique_applications": 3,
+      "advanced_technique_duration_seconds": 15,
+      "warmup_sets_count": 2,
+      "warmup_reps": 12,
+      "warmup_rest_seconds": 45,
+      "feeler_set_sets_count": 2,
+      "feeler_set_reps": 6,
+      "feeler_set_rest_seconds": 75
+    }
+  }
+]

@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Aws14EcrPutImageTagMutability",
+      "Effect": "Allow",
+      "Action": ["ecr:PutImageTagMutability"],
+      "Resource": [
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-api-core",
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-engines",
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-ai-generators"
+      ]
+    },
+    {
+      "Sid": "Aws14EcrDeleteLifecyclePolicy",
+      "Effect": "Allow",
+      "Action": ["ecr:DeleteLifecyclePolicy"],
+      "Resource": [
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-api-core",
+        "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-ai-generators"
+      ]
+    }
+  ]
+}

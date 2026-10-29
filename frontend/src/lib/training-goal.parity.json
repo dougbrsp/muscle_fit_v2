@@ -1,0 +1,172 @@
+{
+  "_doc": "GERADO por api/tests/unit/test_m97_f3_objetivo_telas.py (--gravar): precedência do dono api/app/domain/training_goal.py (resolve_goal), o payload de GET /training-goals e os números do deload (api/app/domain/deload.py). Não edite à mão.",
+  "payload": {
+    "default": "hypertrophy",
+    "items": [
+      {
+        "value": "hypertrophy",
+        "label": "Hipertrofia",
+        "is_default": true,
+        "defaults": {
+          "training_goal": "hypertrophy",
+          "reps_target": "8-12",
+          "rpe_target": "8-9",
+          "min_rest_seconds": 30,
+          "max_rest_seconds": 90,
+          "rest_seconds": 60,
+          "sets_count": 3,
+          "rest_seconds_sanity_min": 15,
+          "rest_seconds_sanity_max": 240
+        },
+        "rest_follows_generation_interval": true,
+        "target_rpe": 8,
+        "rpe_ceiling": null,
+        "disallowed_techniques": []
+      },
+      {
+        "value": "strength",
+        "label": "Força",
+        "is_default": false,
+        "defaults": {
+          "training_goal": "strength",
+          "reps_target": "3-5",
+          "rpe_target": "7-9",
+          "min_rest_seconds": 180,
+          "max_rest_seconds": 300,
+          "rest_seconds": 240,
+          "sets_count": 3,
+          "rest_seconds_sanity_min": 15,
+          "rest_seconds_sanity_max": 300
+        },
+        "rest_follows_generation_interval": false,
+        "target_rpe": 8,
+        "rpe_ceiling": 9,
+        "disallowed_techniques": [
+          "drop_set",
+          "fst7",
+          "gvt",
+          "rest_pause"
+        ]
+      }
+    ]
+  },
+  "deload_constants": {
+    "load_factor": 0.6,
+    "target_rpe": 6,
+    "sets_reduction_fraction": 0.3333333333333333,
+    "min_sets": 1,
+    "period_default_days": 7,
+    "period_max_days": 14
+  },
+  "deload_prescription": {
+    "training_goal": "strength",
+    "working_load_kg": 80.0,
+    "load_kg": 47.5,
+    "load_factor": 0.6,
+    "target_rpe": 6,
+    "reps_target": 8,
+    "sets_count": 2
+  },
+  "precedence": [
+    {
+      "override": null,
+      "template_goal": null,
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": null,
+      "template_goal": "hypertrophy",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": null,
+      "template_goal": "strength",
+      "resolved": "strength"
+    },
+    {
+      "override": null,
+      "template_goal": "desconhecido",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "",
+      "template_goal": null,
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "",
+      "template_goal": "hypertrophy",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "",
+      "template_goal": "strength",
+      "resolved": "strength"
+    },
+    {
+      "override": "",
+      "template_goal": "desconhecido",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "hypertrophy",
+      "template_goal": null,
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "hypertrophy",
+      "template_goal": "hypertrophy",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "hypertrophy",
+      "template_goal": "strength",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "hypertrophy",
+      "template_goal": "desconhecido",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "strength",
+      "template_goal": null,
+      "resolved": "strength"
+    },
+    {
+      "override": "strength",
+      "template_goal": "hypertrophy",
+      "resolved": "strength"
+    },
+    {
+      "override": "strength",
+      "template_goal": "strength",
+      "resolved": "strength"
+    },
+    {
+      "override": "strength",
+      "template_goal": "desconhecido",
+      "resolved": "strength"
+    },
+    {
+      "override": "desconhecido",
+      "template_goal": null,
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "desconhecido",
+      "template_goal": "hypertrophy",
+      "resolved": "hypertrophy"
+    },
+    {
+      "override": "desconhecido",
+      "template_goal": "strength",
+      "resolved": "strength"
+    },
+    {
+      "override": "desconhecido",
+      "template_goal": "desconhecido",
+      "resolved": "hypertrophy"
+    }
+  ]
+}

@@ -1,0 +1,683 @@
+{
+ "_origem": "Aurora de producao (musclefit), information_schema lido em 2026-09-17 19:20 UTC por SELECT somente leitura via RDS Data API (perfil musclefit, sa-east-1); recorte para as migracoes 032/033: lista COMPLETA de tabelas do schema; colunas completas de equipment, equipment_exercises e advanced_techniques, e users.id; indices e FKs de equipment/equipment_exercises. MAX(schema_migration_files.version)=31: a 031 JA rodou em producao (deploy feito durante esta sessao; a leitura anterior, do mesmo dia, ainda mostrava versao 30 e advanced_techniques ausente). `coll` = COLLATION_NAME da coluna.",
+ "versao": [
+  {
+   "aurora": "3.08.2",
+   "mysql": "8.0.39",
+   "sql_mode": "STRICT_TRANS_TABLES"
+  }
+ ],
+ "tables": [
+  {
+   "table_name": "activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "activity_hr_zones",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "advanced_techniques",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "body_composition",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "cardio_recommendations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "daily_biometrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "devices",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_aliases",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_external_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_legacy_id_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_muscle_contributions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_sets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_zepp_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gyms",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "imports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "intervals_activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "intervals_wellness",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "manual_effort_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_group_body_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_groups",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_recovery_coefficients",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "reports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_files",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_lock",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migrations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sleep_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sources",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_type_muscle_group_targets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "user_sessions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "users",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "weekly_summaries",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_assignments",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slot_items",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slots",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_templates",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plans",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  }
+ ],
+ "views": [
+  "vw_muscle_group_equipment_exercises"
+ ],
+ "columns": [
+  {
+   "t": "advanced_techniques",
+   "pos": 1,
+   "col": "code",
+   "type": "varchar(20)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 2,
+   "col": "name",
+   "type": "varchar(80)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 3,
+   "col": "failure_requirement",
+   "type": "enum('failure_not_required','may_reach_failure','requires_failure','beyond_failure')",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 4,
+   "col": "requires_partner",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 5,
+   "col": "auto_applicable",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 6,
+   "col": "min_experience",
+   "type": "enum('beginner','intermediate','advanced')",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 7,
+   "col": "set_type",
+   "type": "varchar(40)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 8,
+   "col": "activation_set_equivalent",
+   "type": "decimal(4,2)",
+   "nullable": "NO",
+   "dflt": "0.00",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 9,
+   "col": "recovery_cost_factor",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "advanced_techniques",
+   "pos": 10,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 2,
+   "col": "name",
+   "type": "varchar(160)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment",
+   "pos": 3,
+   "col": "notes",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment",
+   "pos": 4,
+   "col": "photo_path",
+   "type": "varchar(500)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment",
+   "pos": 5,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 6,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 7,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 8,
+   "col": "equipment_type_id",
+   "type": "bigint unsigned",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment",
+   "pos": 9,
+   "col": "manufacturer",
+   "type": "varchar(100)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment",
+   "pos": 10,
+   "col": "model",
+   "type": "varchar(150)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment",
+   "pos": 11,
+   "col": "location",
+   "type": "varchar(150)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 2,
+   "col": "equipment_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 3,
+   "col": "exercise_id",
+   "type": "bigint unsigned",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 4,
+   "col": "is_preferred",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 5,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": "",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 6,
+   "col": "notes",
+   "type": "varchar(500)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 7,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED",
+   "coll": null
+  },
+  {
+   "t": "equipment_exercises",
+   "pos": 8,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+   "coll": null
+  },
+  {
+   "t": "users",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment",
+   "coll": null
+  }
+ ],
+ "indexes": [
+  {
+   "t": "equipment",
+   "idx": "idx_equipment_type",
+   "seq": 1,
+   "col": "equipment_type_id",
+   "non_unique": 1
+  },
+  {
+   "t": "equipment",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "equipment",
+   "idx": "uq_equipment_name",
+   "seq": 1,
+   "col": "name",
+   "non_unique": 0
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "idx_eqex_equipment_active",
+   "seq": 1,
+   "col": "equipment_id",
+   "non_unique": 1
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "idx_eqex_equipment_active",
+   "seq": 2,
+   "col": "is_active",
+   "non_unique": 1
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "idx_eqex_exercise_active",
+   "seq": 1,
+   "col": "exercise_id",
+   "non_unique": 1
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "idx_eqex_exercise_active",
+   "seq": 2,
+   "col": "is_active",
+   "non_unique": 1
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "uq_equipment_exercises_equipment_exercise",
+   "seq": 1,
+   "col": "equipment_id",
+   "non_unique": 0
+  },
+  {
+   "t": "equipment_exercises",
+   "idx": "uq_equipment_exercises_equipment_exercise",
+   "seq": 2,
+   "col": "exercise_id",
+   "non_unique": 0
+  }
+ ],
+ "foreign_keys": [
+  {
+   "t": "equipment",
+   "fk": "fk_equipment_type",
+   "col": "equipment_type_id",
+   "ref_t": "equipment_types",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercises",
+   "fk": "fk_eqex_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercises",
+   "fk": "fk_eqex_exercise",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  }
+ ]
+}

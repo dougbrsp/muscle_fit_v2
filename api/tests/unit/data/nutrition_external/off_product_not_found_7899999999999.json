@@ -1,0 +1,31 @@
+{
+ "http_status": 404,
+ "body": {
+  "code": "7899999999999",
+  "errors": [
+   {
+    "field": {
+     "id": "code",
+     "value": "7899999999999"
+    },
+    "impact": {
+     "id": "failure",
+     "lc_name": "Failure",
+     "name": "Failure"
+    },
+    "message": {
+     "id": "product_not_found",
+     "lc_name": "",
+     "name": ""
+    }
+   }
+  ],
+  "result": {
+   "id": "product_not_found",
+   "lc_name": "Product not found",
+   "name": "Product not found"
+  },
+  "status": "failure",
+  "warnings": []
+ }
+}

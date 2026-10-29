@@ -1,0 +1,3 @@
+[submodule "api/privado"]
+	path = api/privado
+	url = ../muscle_fit_privado.git

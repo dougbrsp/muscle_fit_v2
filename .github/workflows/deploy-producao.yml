@@ -1,0 +1,689 @@
+name: Deploy produção
+
+# Unico caminho de publicacao em producao (infra + backend + frontend).
+#
+# Antes deste workflow, o merge develop -> main disparava em PARALELO, via `push`:
+#   - terraform.yml      (apply de infra/**)
+#   - backend-deploy.yml (4 imagens ECR + 6 Lambdas, api/**; hoje sao 6 + musclefit-migrations)
+#   - frontend-deploy.yml (export estatico S3 + CloudFront, frontend/**)
+# (backend-deploy.yml e frontend-deploy.yml foram removidos no PR #67; a logica deles
+# vive hoje nos jobs backend-build/backend-deploy e frontend-deploy deste arquivo.)
+# sem ponto de parada e sem ordem garantida (ex.: frontend publicando rotas novas antes
+# do apply publicar a CloudFront Function nova em infra/cloudfront-functions/).
+# Agora nenhum deploy roda em push: publicar e disparar este workflow manualmente
+# a partir da main, e os estagios rodam em SEQUENCIA via `needs`:
+#   (1) terraform apply  ->  (2) backend (build+push das 3 imagens, depois as 7 Lambdas;
+#       migrate so com RUN_DB_MIGRATIONS=true)  ->  (3) frontend
+# Se um estagio falha, os seguintes nao rodam. Cada estagio pode ser pulado por input.
+#
+# Por que jobs neste mesmo arquivo (e nao workflow_call / reusable workflows):
+# a trust policy de musclefit-gha-deploy valida o claim `sub` (e aud=sts.amazonaws.com),
+# e o repo nao versiona o JSON dessa trust policy (so a descricao em
+# docs/aws-migration-plan.md: formatos pull_request / ref:refs/heads/main /
+# environment:production). Reusable workflows mudam `job_workflow_ref` e o contexto do
+# token; sem o JSON nao ha como provar que a policy nao olha isso. Jobs locais geram
+# exatamente os mesmos claims que os workflows antigos geravam:
+#   - terraform-apply: `environment: production` -> sub = repo:dougbrsp/muscle_fit:environment:production
+#     (o environment tem precedencia sobre o ref no sub; igual ao job apply do terraform.yml).
+#   - backend-build / backend-deploy / frontend-deploy: SEM environment, ref main ->
+#     sub = repo:dougbrsp/muscle_fit:ref:refs/heads/main (o evento workflow_dispatch nao
+#     entra no sub; so pull_request tem formato proprio). Igual ao que os antigos
+#     backend-deploy.yml e frontend-deploy.yml (removidos no PR #67) geravam em push na main.
+# Nenhuma mudanca de trust policy ou de permissoes da role e necessaria.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_terraform:
+        description: "(1) terraform apply (infra/)"
+        type: boolean
+        default: true
+      run_backend:
+        description: "(2) backend: build+push das 3 imagens ECR e update das 7 Lambdas (6 da app + musclefit-migrations); migrate so se RUN_DB_MIGRATIONS=true"
+        type: boolean
+        default: true
+      run_frontend:
+        description: "(3) frontend: next build + S3 sync + invalidacao CloudFront"
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write # necessario para o OIDC assumir a role musclefit-gha-deploy
+  contents: read
+
+# Mesmo grupo de db-migrations.yml (e do antigo backend-deploy.yml): nunca invoca
+# musclefit-migrations enquanto um deploy esta em andamento, e dois deploys nunca se
+# sobrepoem. Desde o AWS-14 cada run publica a tag IMUTAVEL do proprio commit
+# (repo:<sha>), entao dois runs nao sobrescrevem mais a imagem um do outro; o grupo
+# continua necessario porque dois runs simultaneos ainda poderiam intercalar os
+# update-function-code e deixar as 7 funcoes em commits diferentes, e por causa do
+# migrate. cancel-in-progress: false porque cancelar um run no meio do
+# update-function-code e exatamente o estado misto que este pipeline existe para evitar.
+# (Semantica do GitHub: no maximo 1 run em andamento + 1 pendente por grupo; um novo
+# dispatch substitui o pendente anterior.)
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: sa-east-1
+  AWS_ACCOUNT_ID: "930413537709"
+  ECR_REGISTRY: 930413537709.dkr.ecr.sa-east-1.amazonaws.com
+  # AWS-14: tag por commit, IMUTAVEL no ECR (infra/ecr.tf e lambda_*.tf). Antes era
+  # `latest` (mutavel): o mesmo nome apontava para imagens diferentes ao longo do
+  # tempo e o ECR so guardava o historico como imagens sem tag. `latest` ficou
+  # congelada no ECR e so e usada pelo Terraform ao CRIAR uma funcao.
+  IMAGE_TAG: ${{ github.sha }}
+  TF_WORKING_DIR: infra
+  FRONTEND_WORKING_DIR: frontend
+
+jobs:
+  guard:
+    name: validar ref (somente main)
+    runs-on: ubuntu-24.04
+    permissions: {} # nao assume role, nao le codigo
+    steps:
+      - name: falhar se nao for refs/heads/main
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Deploy produção so pode ser disparado a partir de refs/heads/main (recebido: $GITHUB_REF). Nenhum estagio sera executado."
+            exit 1
+          fi
+          echo "ok: ref=$GITHUB_REF sha=$GITHUB_SHA"
+
+  # ---------------------------------------------------------------------------
+  # (1) Terraform apply - logica movida sem alteracao do job `apply` de terraform.yml
+  # ---------------------------------------------------------------------------
+  terraform-apply:
+    name: (1) terraform apply
+    needs: guard
+    if: ${{ inputs.run_terraform }}
+    runs-on: ubuntu-24.04
+    environment: production # exige aprovacao manual se o repo tiver protection rule configurada no environment
+    permissions:
+      id-token: write # necessario para o OIDC assumir a role musclefit-gha-deploy
+      contents: read
+      pull-requests: write # herdado do nivel de workflow do antigo terraform.yml (o apply rodava com ele); nao afeta claims OIDC
+    env:
+      # Dado pessoal fora do codigo (M103 L3): variable do repositorio, sem default em infra/variables.tf.
+      TF_VAR_alerts_email: ${{ vars.TF_VAR_alerts_email }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # M103 P0: infra/s3_rag.tf publica api/privado/rag/markdown (submodulo privado
+      # muscle_fit_privado, deploy key somente leitura).
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      # Trava explicita (alem da precondition em infra/s3_rag.tf): sem o RAG o
+      # fileset fica vazio e o apply APAGARIA todo o RAG do S3 de producao.
+      - name: RAG do submodulo presente (antes do plan/apply)
+        run: |
+          set -euo pipefail
+          n=$(find api/privado/rag/markdown -type f -name '*.md' 2>/dev/null | wc -l)
+          if [ "$n" -eq 0 ]; then
+            echo "::error::api/privado/rag/markdown vazio: o apply apagaria todo o RAG do S3. Abortando."
+            exit 1
+          fi
+          echo "RAG presente: $n arquivos .md"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "~> 1.7"
+          # Sem o wrapper: ele reimprime stdout/stderr no log e grava como output do step.
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      # O log do Actions sera publico (M103 L3). Equivale ao antigo
+      # `terraform apply -auto-approve` (plan + apply do MESMO plano, sem prompt), mas
+      # o diff de atributos vai para arquivo no runner e nao e impresso nem vira
+      # artefato. O log mostra so os enderecos com acao, a linha "Plan: ..." e
+      # "Apply complete! ...". Erros (stderr) nao sao filtrados; o exit code do
+      # terraform e preservado (set -o pipefail; a filtragem nunca falha o step).
+      - name: terraform apply (resumo)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          # Plano e logs brutos nunca ficam no runner, nem em caso de falha.
+          trap 'rm -f tfplan "$RUNNER_TEMP/plan.log" "$RUNNER_TEMP/plan-show.txt" "$RUNNER_TEMP/apply.log"' EXIT
+          terraform plan -no-color -input=false -out=tfplan > "$RUNNER_TEMP/plan.log"
+          terraform show -no-color tfplan > "$RUNNER_TEMP/plan-show.txt"
+          echo "Enderecos com acao:"
+          grep -E '^  # [^(]' "$RUNNER_TEMP/plan-show.txt" || echo "  (nenhum)"
+          grep -E '^(Plan: |No changes\.|(│ )?Warning: )' "$RUNNER_TEMP/plan.log" || true
+          terraform apply -no-color -input=false tfplan > "$RUNNER_TEMP/apply.log"
+          grep -E '^(Apply complete!|(│ )?Warning: )' "$RUNNER_TEMP/apply.log" || true
+
+  # ---------------------------------------------------------------------------
+  # (2) Backend - logica movida sem alteracao do antigo backend-deploy.yml (removido no PR #67)
+  #
+  # Fato estrutural que dita o desenho: os 4 Dockerfiles em api/ fazem `COPY app ...` do
+  # MESMO diretorio api/app. Qualquer commit em api/app/** invalida as 3 imagens, entao NAO
+  # existe build seletivo por Dockerfile - sempre se builda e publica as 4, e so depois se
+  # atualizam as 7 Lambdas. Isso evita estado misto (uma imagem nova, outra velha, ambas
+  # servindo a mesma API).
+  # ---------------------------------------------------------------------------
+  backend-build:
+    name: (2) backend build+push ${{ matrix.ecr_repo }}
+    needs: [guard, terraform-apply]
+    # Roda se: input ligado, guard ok e o estagio (1) passou OU foi pulado por input.
+    # `!cancelled()` substitui o success() implicito, que pularia este job quando (1) e
+    # pulado; falha/cancelamento de (1) continua bloqueando.
+    if: >-
+      ${{ !cancelled() && inputs.run_backend
+      && needs.guard.result == 'success'
+      && (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    # Sem gate de "environment: production" aqui (ao contrario do apply):
+    #   - o apply usa o gate porque muta INFRAESTRUTURA (Aurora, API Gateway, IAM,
+    #     CloudFront); um erro la pode ser destrutivo e nao trivialmente reversivel.
+    #   - aqui so se publica CODIGO de aplicacao em Lambdas ja existentes. Reverter e
+    #     reexecutar este workflow a partir da main com o commit anterior.
+    # NOTA OIDC: o gate nao e so politica, ele muda o claim `sub` do token do GitHub de
+    # `repo:...:ref:refs/heads/main` para `repo:...:environment:production`. A trust policy
+    # de musclefit-gha-deploy ja cobre os dois formatos (e ambos os padroes de nome de repo,
+    # com e sem os IDs numericos), entao adicionar o gate no futuro NAO exige mexer no IAM.
+    # Mantido sem environment para preservar exatamente o claim usado ate hoje.
+    strategy:
+      # fail-fast: false para que uma falha de build nao deixe o run com parte das imagens
+      # publicada "por acidente" e o resto cancelada sem log util. O job de deploy so roda
+      # com backend-build verde, entao push parcial nunca vira deploy parcial.
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile
+            ecr_repo: musclefit-api-core
+          - dockerfile: Dockerfile.engines
+            ecr_repo: musclefit-engines
+          - dockerfile: Dockerfile.ai
+            ecr_repo: musclefit-ai-generators
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # M103 P1: as 3 imagens EMPACOTAM os templates dos prompts de sistema
+      # (`COPY privado/prompts`, api/Dockerfile*), que moram no submodulo privado
+      # muscle_fit_privado (deploy key somente leitura). Sem ele o build falha no
+      # COPY; o .dockerignore deixa o RAG e o resto do submodulo fora da imagem.
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      - name: templates de prompt do submodulo presentes (antes do build)
+        run: |
+          set -euo pipefail
+          n=$(find api/privado/prompts -mindepth 2 -type f -name '*.md' 2>/dev/null | wc -l)
+          if [ "$n" -eq 0 ]; then
+            echo "::error::api/privado/prompts sem templates: a imagem sairia sem os prompts. Abortando."
+            exit 1
+          fi
+          echo "api/privado/prompts: $n templates (conteudo nao impresso)"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR login
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      # Tag imutavel (AWS-14): se ESTE commit ja tem imagem neste repositorio (re-run
+      # do workflow, ou re-run so do job que falhou), o push falharia com
+      # ImageTagAlreadyExistsException. Nesse caso reaproveita a imagem ja publicada
+      # (mesmo commit, mesmo Dockerfile) em vez de reconstruir; o login no ECR Public e
+      # o pre-pull abaixo tambem sao pulados (so servem ao build). ecr:DescribeImages
+      # ja esta na role (managed musclefit-gha-deploy-v2-compute, consolidacao AWS-13).
+      - name: imagem deste commit ja publicada?
+        id: exists
+        run: |
+          set -euo pipefail
+          if OUT=$(aws ecr describe-images \
+              --repository-name "${{ matrix.ecr_repo }}" \
+              --image-ids imageTag="$IMAGE_TAG" \
+              --query 'imageDetails[0].imageDigest' --output text 2>"$RUNNER_TEMP/describe-err.txt"); then
+            echo "::notice::${{ matrix.ecr_repo }}:$IMAGE_TAG ja existe ($OUT); build/push pulados"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif grep -q ImageNotFoundException "$RUNNER_TEMP/describe-err.txt"; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/describe-err.txt" >&2
+            echo "::error::describe-images falhou (nao e ImageNotFound)"; exit 1
+          fi
+
+      # AWS-12: a base Python vem do ECR Public (public.ecr.aws/docker/library, mesmo
+      # digest do Docker Hub), fora do Docker Hub que derrubou o deploy de 2026-10-09
+      # (504/429). O pull ANONIMO do ECR Public tambem tem cota: 500 GB/mes por IP de
+      # origem, nao ajustavel, e os runners compartilham IPs - ja estourou em
+      # 2026-09-28 (ver api/vendor/aws-lambda-web-adapter/README.md). Por isso este job,
+      # que ja tem credencial AWS, TENTA autenticar no ECR Public (cota de usuario
+      # autenticado, sem o teto anonimo). Precisa de ecr-public:GetAuthorizationToken
+      # e sts:GetServiceBearerToken na role.
+      # Estado medido em 2026-10-17 (M82): o login FALHA. O deploy de 16/10 (run
+      # 38973794316) registrou "AccessDeniedException ... not authorized to perform:
+      # sts:GetServiceBearerToken on resource: * because no identity-based policy
+      # allows". A musclefit-gha-deploy-v2-compute (v4) tem ecr-public:
+      # GetAuthorizationToken sem condicao, mas so libera sts:GetServiceBearerToken com
+      # `StringEquals sts:AWSServiceName = ecr-public.amazonaws.com`, condicao que a
+      # chamada real nao satisfaz: simulate-principal-policy da implicitDeny sem
+      # contexto e allowed so quando o contexto e informado (o "allowed" de 10/10 no
+      # infra/README.md veio dessa simulacao com contexto). A correcao e uma nova
+      # versao da v2-compute sem essa condicao (ou com uma condicao que funcione), com
+      # aval do usuario, FORA deste workflow e do M82. Ate la o login falha com aviso
+      # (com a 1a linha do erro real) e o pull segue anonimo; desde o M82 a cota
+      # anonima estourada nao derruba mais o deploy: o pre-pull abaixo cai para um
+      # espelho com o MESMO digest.
+      - name: ECR Public login (melhor esforco)
+        if: steps.exists.outputs.found != 'true'
+        run: |
+          if aws ecr-public get-login-password --region us-east-1 2>"$RUNNER_TEMP/ecrpub-err.txt" \
+              | docker login --username AWS --password-stdin public.ecr.aws 2>"$RUNNER_TEMP/ecrpub-login-err.txt"; then
+            echo "pull autenticado no ECR Public"
+          else
+            cat "$RUNNER_TEMP/ecrpub-err.txt" "$RUNNER_TEMP/ecrpub-login-err.txt" >&2 || true
+            # 1a linha nao vazia do erro real (do aws; se ele nao falhou, do docker login).
+            ERRO=$(cat "$RUNNER_TEMP/ecrpub-err.txt" "$RUNNER_TEMP/ecrpub-login-err.txt" 2>/dev/null \
+                     | grep -m1 -v '^[[:space:]]*$' | cut -c1-400 || true)
+            echo "::warning::sem login no ECR Public: ${ERRO:-erro sem mensagem}. Pull da base segue ANONIMO (cota por IP); o pre-pull cai para o espelho de mesmo digest se o ECR Public falhar"
+          fi
+
+      # As 3 pernas da matriz puxam a base ao mesmo tempo, e o ECR Public tambem
+      # limita a TAXA de pull: o pull antecipado com novas tentativas absorve um
+      # "toomanyrequests" isolado. O `docker build` abaixo (driver docker) reaproveita
+      # a imagem ja presente no daemon.
+      # M82: o pre-pull usa .github/scripts/escolher-base-python.sh --pull, que le o
+      # FROM SO do Dockerfile desta perna da matriz (a paridade entre todos os
+      # api/Dockerfile* ja e guardada no PR pelo ci-docker-images.yml; aqui um
+      # Dockerfile alheio a perna nao derruba o deploy dela) e tenta, nesta ordem e
+      # sempre com o digest do FROM:
+      #   1. public.ecr.aws (a origem de hoje; autenticada se o login acima deu certo);
+      #   2. mirror.gcr.io/library/python (espelho do Docker Hub mantido pelo Google);
+      #   3. docker.io/library/python.
+      # "Rate exceeded" ganha novas tentativas; "Data limit exceeded" (cota mensal do
+      # pull anonimo) passa direto para o espelho. A imagem que vai para o ECR tem as
+      # MESMAS camadas base de antes: o digest e o endereco do conteudo e o docker
+      # confere o sha256 do que baixa, entao so muda o registro de onde os bytes vem.
+      # `COPY --from=` com imagem externa nao existe mais nos Dockerfiles (o adaptador
+      # Lambda foi vendorizado); se voltar a existir, o script avisa no log.
+      # Tempo: cada tentativa de pull tem 180 s (timeout padrao do --pull); com 3
+      # tentativas e esperas de 15/30 s, uma origem travada custa ~10 min antes de o
+      # script passar para a proxima. timeout-minutes: 20 limita o passo inteiro, para
+      # um registro travado nao prender o grupo de concorrencia `backend-deploy`.
+      - name: pre-pull da imagem base (ECR Public; espelho de mesmo digest se falhar)
+        id: base
+        if: steps.exists.outputs.found != 'true'
+        timeout-minutes: 20
+        env:
+          BASE_PYTHON_ORIGENS: public.ecr.aws/docker/library/python mirror.gcr.io/library/python docker.io/library/python
+          BASE_PYTHON_TENTATIVAS: "3"
+          BASE_PYTHON_ESPERA: "15"
+          DOCKERFILE: api/${{ matrix.dockerfile }}
+        run: .github/scripts/escolher-base-python.sh --pull "$DOCKERFILE"
+
+      - name: docker build + push
+        if: steps.exists.outputs.found != 'true'
+        working-directory: api
+        env:
+          BASE_BUILD_CONTEXT: ${{ steps.base.outputs.build_context }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$ECR_REGISTRY/${{ matrix.ecr_repo }}:$IMAGE_TAG"
+
+          # --platform linux/amd64: as Lambdas sao x86_64; o runner do GitHub tambem e
+          #   amd64, mas deixar explicito evita surpresa se o runner mudar de arquitetura.
+          # --provenance=false --sbom=false: OBRIGATORIOS. Sem eles o buildx moderno publica
+          #   um manifesto OCI multi-plataforma com attestations, e o Lambda recusa a imagem
+          #   com "The image manifest, config or layer media type for the source image ...
+          #   is not supported". Nao remover.
+          # --build-context (M82): contexto nomeado do BuildKit; o FROM resolve para a
+          #   imagem que o pre-pull acima baixou ("<FROM>=docker-image://<origem>@<digest>"),
+          #   ja presente no daemon. Com a origem public.ecr.aws e o mesmo pull de antes.
+          docker build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --build-context "$BASE_BUILD_CONTEXT" \
+            -f "${{ matrix.dockerfile }}" \
+            -t "$IMAGE_URI" \
+            .
+
+          docker push "$IMAGE_URI"
+
+  backend-deploy:
+    name: (2) backend update lambdas
+    # Barreira explicita: nenhum update-function-code comeca antes das 3 imagens estarem
+    # no ECR. Requisito 6 do desenho - nunca deixar estado misto entre imagens.
+    needs: [guard, terraform-apply, backend-build]
+    if: >-
+      ${{ !cancelled() && inputs.run_backend
+      && needs.guard.result == 'success'
+      && (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped')
+      && needs.backend-build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Ordem do job (8 funcoes atualizadas SEMPRE; migrate so com o gate):
+      #   (a) update-function-code de musclefit-migrations      <- sempre
+      #   (b) migrate (scripts/invoke-migrations.sh migrate)     <- so se RUN_DB_MIGRATIONS=true
+      #   (c) update-function-code das 7 Lambdas da aplicacao    <- sempre
+      # Schema expande primeiro, codigo novo sobe depois. Se (b) falhar, o job para e as
+      # 7 Lambdas continuam com o codigo anterior (compativel com o schema atual, pois as
+      # migracoes sao so aditivas).
+      #
+      # Por que (a) NAO fica atras do gate (incidente 2026-09-14): o terraform-apply cria
+      # musclefit-migrations com image_uri ...musclefit-ai-generators:latest ANTES deste
+      # estagio publicar as imagens, entao a funcao nasce com o digest antigo (sem
+      # app/migrate.py). Com (a) atras do gate, ela nunca recebia a imagem nova e
+      # `db-migrations.yml action=status` falhava com Runtime.ImportModuleError. Atualizar
+      # o codigo nao executa nada no banco; status/dry-run manuais passam a enxergar a
+      # imagem do ultimo deploy de backend.
+      #
+      # Por que (a) nao entra no MAP das 7 Lambdas: o MAP roda depois de (b), e (b) precisa
+      # que a funcao ja tenha a imagem deste commit. Passo proprio, antes de (b).
+      #
+      # Gate RUN_DB_MIGRATIONS (GitHub > Settings > Variables): so ligar depois de validar
+      # `status` e `dry-run` via db-migrations.yml apos um deploy de backend concluido.
+      # Permissoes de (a) e (b): policy infra/iam-policies/musclefit-gha-deploy-fase6-migrations.json
+      # (anexada a role musclefit-gha-deploy).
+      - name: migracoes de banco - atualizar codigo de musclefit-migrations
+        run: |
+          set -euo pipefail
+          # Mesma imagem de musclefit-plan-generator (awslambdaric); o handler
+          # app.migrate.handler vem do image_config.command no Terraform
+          # (update-function-code nao toca image_config).
+          aws lambda update-function-code \
+            --function-name musclefit-migrations \
+            --image-uri "$ECR_REGISTRY/musclefit-ai-generators:$IMAGE_TAG" \
+            --publish \
+            --no-cli-pager \
+            --output text --query 'FunctionArn'
+          aws lambda wait function-updated --function-name musclefit-migrations
+
+      # Checkout so para scripts/invoke-migrations.sh (compartilhado com db-migrations.yml).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: vars.RUN_DB_MIGRATIONS == 'true'
+
+      # Falha aqui = job para e as 7 Lambdas NAO sao atualizadas.
+      - name: migracoes de banco - migrate (musclefit-migrations)
+        if: vars.RUN_DB_MIGRATIONS == 'true'
+        run: bash scripts/invoke-migrations.sh migrate
+
+      - name: aviso - migracoes desligadas
+        if: vars.RUN_DB_MIGRATIONS != 'true'
+        run: |
+          echo "::warning::RUN_DB_MIGRATIONS != 'true': migrate NAO foi executado neste deploy (o codigo de musclefit-migrations foi atualizado mesmo assim). Ver comentario do passo 'migracoes de banco' em deploy-producao.yml."
+
+      - name: update-function-code + wait (6 lambdas)
+        run: |
+          set -euo pipefail
+
+          # Mapa funcao -> repositorio ECR, conferido em infra/*.tf:
+          #   lambda_api_core.tf       musclefit-api-core        <- musclefit-api-core
+          #   lambda_engines.tf        musclefit-engines         <- musclefit-engines
+          #   lambda_ai_generators.tf  musclefit-plan-generator  <- musclefit-ai-generators
+          #   lambda_ai_generators.tf  musclefit-cardio-agent    <- musclefit-ai-generators
+          #   lambda_workout_ai.tf     musclefit-workout-ai      <- musclefit-ai-generators
+          #   lambda_intervals_sync.tf musclefit-intervals-sync  <- musclefit-ai-generators
+          # musclefit-intervals-sync ficou FORA deste MAP de 21/09 a 01/10 (PR #155 criou a
+          # funcao, ninguem a incluiu aqui): presa ao digest anterior ao modulo
+          # app.lambda_intervals_sync, falhou toda execucao com Runtime.ImportModuleError.
+          # Para nao repetir: scripts/check-deploy-lambda-coverage.py (workflow
+          # ci-deploy-lambda-coverage.yml) reprova PR em que uma aws_lambda_function de
+          # imagem em infra/*.tf nao esteja neste MAP nem na lista de excecoes do script.
+          # As funcoes de IA compartilham a MESMA imagem e se diferenciam apenas pelo
+          # image_config.command no Terraform. update-function-code nao toca image_config,
+          # entao o handler de cada uma continua o que o Terraform definiu.
+          MAP="
+          musclefit-api-core:musclefit-api-core
+          musclefit-engines:musclefit-engines
+          musclefit-plan-generator:musclefit-ai-generators
+          musclefit-cardio-agent:musclefit-ai-generators
+          musclefit-workout-ai:musclefit-ai-generators
+          musclefit-intervals-sync:musclefit-ai-generators
+          "
+
+          # Fase 1: dispara os 6 updates com a tag imutavel deste commit (AWS-14). O
+          # Terraform ignora image_uri das Lambdas (lifecycle ignore_changes), entao
+          # repo:<sha> na funcao nao gera diff nem e revertido no proximo apply.
+          for entry in $MAP; do
+            fn="${entry%%:*}"
+            repo="${entry##*:}"
+            echo "::group::update-function-code $fn"
+            aws lambda update-function-code \
+              --function-name "$fn" \
+              --image-uri "$ECR_REGISTRY/$repo:$IMAGE_TAG" \
+              --publish \
+              --no-cli-pager \
+              --output text --query 'FunctionArn'
+            echo "::endgroup::"
+          done
+
+          # Fase 2: espera cada funcao sair de LastUpdateStatus=InProgress. O waiter falha
+          # (exit != 0) se a funcao entrar em Failed ou nao estabilizar, derrubando o job -
+          # que e exatamente o sinal que faltava no deploy manual.
+          for entry in $MAP; do
+            fn="${entry%%:*}"
+            echo "aguardando $fn estabilizar..."
+            aws lambda wait function-updated --function-name "$fn"
+            aws lambda get-function-configuration \
+              --function-name "$fn" \
+              --no-cli-pager \
+              --output text --query '[FunctionName,LastUpdateStatus,State]'
+          done
+
+  # ---------------------------------------------------------------------------
+  # (3) Frontend - logica movida sem alteracao do antigo frontend-deploy.yml (removido no PR #67)
+  # ---------------------------------------------------------------------------
+  frontend-deploy:
+    name: (3) frontend deploy
+    # Todos os estagios anteriores sao `needs` diretos: um backend-deploy "skipped" porque
+    # backend-build FALHOU nao pode ser confundido com backend pulado por input.
+    needs: [guard, terraform-apply, backend-build, backend-deploy]
+    if: >-
+      ${{ !cancelled() && inputs.run_frontend
+      && needs.guard.result == 'success'
+      && (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped')
+      && (needs.backend-build.result == 'success' || needs.backend-build.result == 'skipped')
+      && (needs.backend-deploy.result == 'success' || needs.backend-deploy.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    # Sem gate de "environment: production" aqui (diferente do apply): deploy de frontend
+    # estatico é baixo risco e totalmente reversivel via novo deploy/invalidation, ao contrario de
+    # apply de infraestrutura. Mantido sem environment para preservar o claim `sub`
+    # ref:refs/heads/main usado ate hoje.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: ${{ env.FRONTEND_WORKING_DIR }}/package-lock.json
+
+      - name: npm ci
+        working-directory: ${{ env.FRONTEND_WORKING_DIR }}
+        run: npm ci
+
+      - name: next build
+        # frontend/next.config.mjs usa output: "export", entao "npm run build" ja gera
+        # frontend/out/ direto. NEXT_PUBLIC_API_BASE_URL nao e setada aqui de proposito:
+        # frontend/src/lib/config.ts ja tem https://api.musclefit.com.br como default,
+        # que e o valor correto de producao.
+        #
+        # NEXT_PUBLIC_TURNSTILE_SITE_KEY: site key (PUBLICA) do widget Cloudflare
+        # Turnstile do formulario "Esqueci minha senha" (M5), embutida no bundle
+        # estatico em build-time. E uma *variable* do repositorio (Settings >
+        # Secrets and variables > Actions > Variables), nao um secret: a site key
+        # e publica por definicao - a SECRET key fica no Secrets Manager
+        # (musclefit/turnstile-secret-key, infra/secrets.tf) e so a Lambda le.
+        # Enquanto a variable nao existir, o build sai com a string vazia e o
+        # widget nao renderiza (o backend continua exigindo o token).
+        working-directory: ${{ env.FRONTEND_WORKING_DIR }}
+        env:
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+        run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # M68: invalidacao escopada ao frontend, nunca mais "/*". "/*" expulsava da
+      # borda tambem as fotos e os cards ilustrados (/equipment/*, /gyms/*,
+      # /exercise-cards/* -> origin musclefit-uploads, imutaveis). O script tira
+      # as entradas de primeiro nivel da UNIAO de out/ (rota nova) com a raiz do
+      # bucket ANTES do sync (rota apagada pelo --delete) e gera o menor
+      # wildcard por entrada que nao casa com nenhum path_pattern de
+      # ordered_cache_behavior do infra/cloudfront.tf (~20 paths, ex.: "/a*",
+      # "/exercic*"); _next/ (assets com hash) fica de fora. Roda ANTES do sync
+      # e falha o job se algum path casar com prefixo de uploads - nesse caso
+      # nada foi publicado. Testes: scripts/test_cloudfront_invalidation_paths.py
+      # (CI: ci-deploy-lambda-coverage.yml).
+      - name: compute CloudFront invalidation paths
+        run: |
+          set -euo pipefail
+          aws s3api list-objects-v2 --bucket musclefit-frontend-assets --delimiter / \
+            --query '{CommonPrefixes: CommonPrefixes, Contents: Contents[].{Key: Key}}' \
+            --output json > "$RUNNER_TEMP/bucket-root.json"
+          python3 scripts/cloudfront_invalidation_paths.py \
+            --out-dir "${{ env.FRONTEND_WORKING_DIR }}/out" \
+            --bucket-listing "$RUNNER_TEMP/bucket-root.json" \
+            --cloudfront-tf infra/cloudfront.tf \
+            --batches-out "$RUNNER_TEMP/invalidation-batches.txt" > "$RUNNER_TEMP/invalidation-paths.txt"
+          echo "paths a invalidar ($(wc -l < "$RUNNER_TEMP/invalidation-paths.txt")):"
+          cat "$RUNNER_TEMP/invalidation-paths.txt"
+          echo "lotes ($(wc -l < "$RUNNER_TEMP/invalidation-batches.txt")):"
+          cat "$RUNNER_TEMP/invalidation-batches.txt"
+
+      - name: sync out/ to S3
+        run: aws s3 sync ${{ env.FRONTEND_WORKING_DIR }}/out/ s3://musclefit-frontend-assets --delete
+
+      # Hotfix M68 (run 37227083220): a cota da CloudFront e de 15 PATHS com
+      # wildcard EM ANDAMENTO ao mesmo tempo na distribuicao (somando todas as
+      # invalidacoes InProgress), nao 15 invalidacoes; paths exatos como "/"
+      # nao contam nessa cota. Uma requisicao unica com 18 wildcards nunca
+      # passa. Por isso: lotes de <= 15 wildcards (script, --batches-out) e
+      # espera de cada lote concluir antes do proximo. Invalidacao de terceiros
+      # em andamento (ex.: "/*" manual): a role nao tem ListInvalidations, entao
+      # em vez de listar, o create e repetido com espera enquanto a API
+      # responder TooManyInvalidationsInProgress. Cada lote leva ~1-5 min.
+      - name: invalidate CloudFront cache (frontend only)
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          DIST=EOA1PMADLM7RO
+          mapfile -t PATHS < "$RUNNER_TEMP/invalidation-paths.txt"
+          mapfile -t BATCHES < "$RUNNER_TEMP/invalidation-batches.txt"
+          [[ ${#PATHS[@]} -gt 0 ]] || { echo "::error::lista de invalidacao vazia"; exit 1; }
+          [[ ${#BATCHES[@]} -gt 0 ]] || { echo "::error::lista de lotes vazia"; exit 1; }
+          # Trava independente do script: nenhum path pode casar com uploads,
+          # e nenhum lote passa de 15 wildcards. Wildcard "/<x>*" casa
+          # "/<prot>..." se um for prefixo do outro; path exato so casa se
+          # comecar por "/<prot>".
+          TOTAL=0
+          for line in "${BATCHES[@]}"; do
+            read -r -a B <<< "$line"
+            W=0
+            for p in "${B[@]}"; do
+              [[ "$p" == *'*' ]] && W=$((W + 1))
+              for prot in /equipment/ /gyms/ /exercise-cards/; do
+                if [[ "$p" == "$prot"* ]] || { [[ "$p" == *'*' ]] && [[ "$prot" == "${p%'*'}"* ]]; }; then
+                  echo "::error::path de invalidacao $p casa com uploads $prot"; exit 1
+                fi
+              done
+            done
+            [[ $W -le 15 ]] || { echo "::error::lote com $W wildcards (> 15): $line"; exit 1; }
+            TOTAL=$((TOTAL + ${#B[@]}))
+          done
+          [[ $TOTAL -eq ${#PATHS[@]} ]] || { echo "::error::lotes ($TOTAL) != paths (${#PATHS[@]})"; exit 1; }
+
+          {
+            echo "### Invalidacao CloudFront (${#PATHS[@]} paths em ${#BATCHES[@]} lote(s))"
+          } >> "$GITHUB_STEP_SUMMARY"
+          n=0
+          for line in "${BATCHES[@]}"; do
+            n=$((n + 1))
+            read -r -a B <<< "$line"
+            # Cria o lote; se a cota de wildcards estiver ocupada (invalidacao
+            # de outro deploy ou manual), espera e tenta de novo (ate ~15 min).
+            INV_ID=""
+            for attempt in $(seq 1 30); do
+              if OUT=$(aws cloudfront create-invalidation --distribution-id "$DIST" \
+                  --paths "${B[@]}" --query 'Invalidation.Id' --output text 2>"$RUNNER_TEMP/inv-err.txt"); then
+                INV_ID="$OUT"; break
+              fi
+              if grep -q TooManyInvalidationsInProgress "$RUNNER_TEMP/inv-err.txt"; then
+                echo "lote $n: cota de invalidacao ocupada (tentativa $attempt/30), aguardando 30s"
+                sleep 30
+                continue
+              fi
+              cat "$RUNNER_TEMP/inv-err.txt" >&2
+              echo "::error::create-invalidation do lote $n falhou"; exit 1
+            done
+            [[ -n "$INV_ID" ]] || { echo "::error::lote $n: cota de invalidacao ocupada por tempo demais"; exit 1; }
+            echo "lote $n/${#BATCHES[@]}: invalidacao $INV_ID com ${#B[@]} paths; aguardando concluir"
+            {
+              echo "#### Lote $n: \`$INV_ID\`"
+              # shellcheck disable=SC2016 # crases literais (markdown), nao expansao
+              printf -- '- `%s`\n' "${B[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            # O waiter consulta a cada 20s por ate 10 min; repete uma vez se
+            # estourar (a invalidacao continua valendo, so demorou mais).
+            aws cloudfront wait invalidation-completed --distribution-id "$DIST" --id "$INV_ID" \
+              || aws cloudfront wait invalidation-completed --distribution-id "$DIST" --id "$INV_ID"
+            echo "lote $n concluido ($INV_ID)"
+          done
+
+  summary:
+    name: resumo
+    needs: [guard, terraform-apply, backend-build, backend-deploy, frontend-deploy]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {} # nao assume role, nao le codigo
+    steps:
+      - name: escrever resumo
+        env:
+          IN_TF: ${{ inputs.run_terraform }}
+          IN_BE: ${{ inputs.run_backend }}
+          IN_FE: ${{ inputs.run_frontend }}
+          R_GUARD: ${{ needs.guard.result }}
+          R_TF: ${{ needs.terraform-apply.result }}
+          R_BUILD: ${{ needs.backend-build.result }}
+          R_BE: ${{ needs.backend-deploy.result }}
+          R_FE: ${{ needs.frontend-deploy.result }}
+          RUN_DB_MIGRATIONS: ${{ vars.RUN_DB_MIGRATIONS }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Deploy produção"
+            echo
+            echo "- ref: \`$GITHUB_REF\`"
+            echo "- commit publicado (todos os estagios fazem checkout deste SHA): \`$GITHUB_SHA\`"
+            echo "- disparado por: \`$GITHUB_ACTOR\` (run $GITHUB_RUN_ID, tentativa $GITHUB_RUN_ATTEMPT)"
+            echo "- imagens ECR: tag imutavel \`$IMAGE_TAG\` (= commit \`$GITHUB_SHA\`)"
+            echo "- RUN_DB_MIGRATIONS: \`${RUN_DB_MIGRATIONS:-<nao definida>}\` (migrate so roda com \`true\`)"
+            echo "- estagio backend atualiza sempre 8 funcoes: as 7 da aplicacao + \`musclefit-migrations\` (codigo, sem executar migracoes)"
+            echo
+            echo "| estagio | solicitado | resultado |"
+            echo "|---|---|---|"
+            echo "| guard (ref main) | sempre | $R_GUARD |"
+            echo "| (1) terraform apply | $IN_TF | $R_TF |"
+            echo "| (2) backend build+push (3 imagens) | $IN_BE | $R_BUILD |"
+            echo "| (2) backend update lambdas (8 funcoes; migrate se gate) | $IN_BE | $R_BE |"
+            echo "| (3) frontend S3 + CloudFront | $IN_FE | $R_FE |"
+            echo
+            echo "\`skipped\` com solicitado=true significa que um estagio anterior falhou/foi cancelado."
+          } >>"$GITHUB_STEP_SUMMARY"

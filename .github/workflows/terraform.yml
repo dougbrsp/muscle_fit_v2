@@ -1,0 +1,97 @@
+name: Terraform (infra)
+
+# Somente `plan` em PRs. O `apply` NAO roda mais em push na main: foi movido, sem
+# alteracao, para o estagio (1) de .github/workflows/deploy-producao.yml
+# (workflow_dispatch, restrito a main, em sequencia com backend e frontend).
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      # M103 P0: o RAG publicado no S3 (infra/s3_rag.tf) vem do submodulo privado.
+      # Bump do ponteiro (gitlink `api/privado`) mostra no plan o que muda no bucket.
+      - "api/privado"
+      - ".gitmodules"
+      - ".github/actions/checkout-privado/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  id-token: write # OIDC assume a role SO LEITURA musclefit-gha-plan (AWS-03)
+  contents: read
+
+# Push novo no mesmo PR cancela a rodada anterior (economia de Actions).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: sa-east-1
+  TF_WORKING_DIR: infra
+  # Dado pessoal fora do codigo (M103 L3): variable do repositorio, sem default em infra/variables.tf.
+  TF_VAR_alerts_email: ${{ vars.TF_VAR_alerts_email }}
+
+jobs:
+  plan:
+    # So PRs do proprio repositorio: PR de fork nao recebe token OIDC (e nao deve
+    # tentar assumir a role). Nunca usar pull_request_target aqui.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # M103 P0: infra/s3_rag.tf publica api/privado/rag/markdown (submodulo privado).
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      # Trava explicita (alem da precondition em infra/s3_rag.tf): sem o RAG o
+      # fileset fica vazio e o plan apagaria todo o RAG do S3 de producao.
+      - name: RAG do submodulo presente (antes do plan)
+        run: |
+          set -euo pipefail
+          n=$(find api/privado/rag/markdown -type f -name '*.md' 2>/dev/null | wc -l)
+          if [ "$n" -eq 0 ]; then
+            echo "::error::api/privado/rag/markdown vazio: o plan apagaria todo o RAG do S3. Abortando."
+            exit 1
+          fi
+          echo "RAG presente: $n arquivos .md"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-plan
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "~> 1.7"
+          # Sem o wrapper: ele reimprime stdout/stderr no log e grava como output do step.
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform validate
+
+      # O log do Actions sera publico (M103 L3): o plano completo (atributos, refresh
+      # com ids) vai para arquivo no runner e NAO e impresso nem vira artefato. O log
+      # mostra so a linha "Plan: X to add, Y to change, Z to destroy" (ou "No changes.")
+      # e os enderecos com acao. Erros do Terraform saem no stderr, que nao e filtrado
+      # (diagnosticos citam endereco/argumento, nao valores de atributos).
+      - name: terraform plan (resumo)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          # Plano e logs brutos nunca ficam no runner, nem em caso de falha.
+          trap 'rm -f tfplan "$RUNNER_TEMP/plan.log" "$RUNNER_TEMP/plan-show.txt" "$RUNNER_TEMP/apply.log"' EXIT
+          terraform plan -no-color -input=false -lock=false -out=tfplan > "$RUNNER_TEMP/plan.log"
+          terraform show -no-color tfplan > "$RUNNER_TEMP/plan-show.txt"
+          echo "Enderecos com acao:"
+          grep -E '^  # [^(]' "$RUNNER_TEMP/plan-show.txt" || echo "  (nenhum)"
+          grep -E '^(Plan: |No changes\.|(│ )?Warning: )' "$RUNNER_TEMP/plan.log" || true

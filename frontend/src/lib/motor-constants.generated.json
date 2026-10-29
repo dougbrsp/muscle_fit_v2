@@ -1,0 +1,1224 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar) a partir de api/app/domain/session_loads.py, api/app/domain/training_safety.py, api/app/intelligence/muscle_contribution_resolver.py e api/app/domain/progression_status_labels.py, api/app/domain/prescription_defaults.py e api/app/periodization/time_estimate.py e limits.py, api/app/domain/intensity_status_labels.py, api/app/domain/exercise_briefing.py (DECISION_LABELS), api/app/domain/set_evaluation_categories.py, api/app/domain/next_set_load.py, api/app/engine_decision_context.py, api/app/domain/intensity_density.py e api/app/domain/technique_accounting.py (pontos de esforço de api/app/intelligence/muscle_recovery_service.py) e api/app/intelligence/methodology_volume.py (modo de contagem do volume), api/app/domain/body_measurement_sites.py (locais de medida, L0 de nutrição), api/app/domain/nutrition (bloco nutrition, L1 de nutrição) e api/app/domain/set_measures.py (bloco set_measures, Lote T1 das medidas de série). Não edite à mão: mude o dono e regenere. M76 Lote 1b (C7, C10), Lote 3c (pesos por papel, C13), Lote 4c (E7, E8), RPE 10 Lotes 1 (P1) e 6 (P9) e espelhos de intensidade × densidade (E13) e de técnica (2026-10-13).",
+  "session_loads": {
+    "default_load_step_kg": 2.5,
+    "warmup_load_factors": [
+      0.2,
+      0.4
+    ],
+    "generic_warmup_reps": 15,
+    "feeler_first_factor": 0.5,
+    "feeler_step_factor": 0.2,
+    "drop_set_load_factor": 0.8,
+    "quick_adjust_actions": [
+      "minus_step",
+      "minus_5pct",
+      "minus_10pct"
+    ],
+    "quick_adjust_factors": {
+      "minus_5pct": 0.95,
+      "minus_10pct": 0.9
+    },
+    "load_adjust_sources": [
+      "protocol",
+      "fatigue",
+      "manual"
+    ]
+  },
+  "training_safety": {
+    "min_safe_rpe": 6,
+    "max_safe_rpe": 10,
+    "default_max_safe_rpe": 9
+  },
+  "muscle_contributions": {
+    "default_write_weights": {
+      "PRIMARY": 1.0,
+      "SECONDARY": 0.5,
+      "STABILIZER": 0.25
+    }
+  },
+  "exercise_progression_labels": {
+    "PROGRESSING": "Progredindo",
+    "STABLE": "Estável",
+    "PLATEAU_SUSPECTED": "Suspeita de platô",
+    "REGRESSING": "Regredindo",
+    "INSUFFICIENT_DATA": "Dados insuficientes",
+    "NOT_COMPARABLE": "Não comparável"
+  },
+  "prescription": {
+    "default_reps_target": "8-12",
+    "default_rpe_target": "8-9",
+    "default_min_rest_seconds": 30,
+    "default_max_rest_seconds": 90,
+    "default_rest_seconds": 60,
+    "rest_seconds_sanity_min": 15,
+    "rest_seconds_sanity_max": 240,
+    "min_sets_count": 1,
+    "set_logger_fallback_reps": 10,
+    "set_logger_fallback_load_kg": 20
+  },
+  "time_estimate": {
+    "exec_seconds_per_rep": 3,
+    "default_estimated_reps": 10,
+    "rest_when_undefined_seconds": 0,
+    "rest_pause_technique_code": "rest_pause",
+    "rest_pause_default_pause_seconds": 15
+  },
+  "cardio_prescription": {
+    "item_kind": "cardio",
+    "modes": [
+      "continuous",
+      "hiit"
+    ],
+    "default_mode": "continuous",
+    "mode_labels": {
+      "continuous": "Normal",
+      "hiit": "HIIT"
+    },
+    "seconds_per_minute": 60,
+    "mode_fields": {
+      "continuous": [
+        "cardio_warmup_minutes",
+        "cardio_duration_minutes",
+        "cardio_target_zone",
+        "cardio_cooldown_minutes"
+      ],
+      "hiit": [
+        "cardio_warmup_minutes",
+        "hiit_low_seconds",
+        "hiit_high_seconds",
+        "hiit_low_zone",
+        "hiit_high_zone",
+        "hiit_rounds",
+        "cardio_cooldown_minutes"
+      ]
+    },
+    "required_fields": {
+      "continuous": [
+        "cardio_duration_minutes"
+      ],
+      "hiit": [
+        "hiit_low_seconds",
+        "hiit_high_seconds",
+        "hiit_low_zone",
+        "hiit_high_zone",
+        "hiit_rounds"
+      ]
+    },
+    "zone_fields": [
+      "cardio_target_zone",
+      "hiit_high_zone",
+      "hiit_low_zone"
+    ],
+    "limits": {
+      "cardio_duration_minutes": {
+        "min": 1,
+        "max": 240
+      },
+      "cardio_warmup_minutes": {
+        "min": 0,
+        "max": 60
+      },
+      "cardio_cooldown_minutes": {
+        "min": 0,
+        "max": 60
+      },
+      "cardio_target_zone": {
+        "min": 1,
+        "max": 5
+      },
+      "hiit_low_seconds": {
+        "min": 5,
+        "max": 600
+      },
+      "hiit_high_seconds": {
+        "min": 5,
+        "max": 600
+      },
+      "hiit_low_zone": {
+        "min": 1,
+        "max": 5
+      },
+      "hiit_high_zone": {
+        "min": 1,
+        "max": 5
+      },
+      "hiit_rounds": {
+        "min": 1,
+        "max": 50
+      }
+    },
+    "session_max_minutes": 240,
+    "defaults": {
+      "continuous": {
+        "cardio_warmup_minutes": 5,
+        "cardio_duration_minutes": 20,
+        "cardio_target_zone": 2,
+        "cardio_cooldown_minutes": 5
+      },
+      "hiit": {
+        "cardio_warmup_minutes": 5,
+        "hiit_low_seconds": 120,
+        "hiit_high_seconds": 120,
+        "hiit_low_zone": 2,
+        "hiit_high_zone": 4,
+        "hiit_rounds": 5,
+        "cardio_cooldown_minutes": 5
+      }
+    },
+    "field_labels": {
+      "cardio_mode": "tipo de cardio",
+      "cardio_duration_minutes": "tempo de cardio (min)",
+      "cardio_warmup_minutes": "aquecimento (min)",
+      "cardio_cooldown_minutes": "recuperação (min)",
+      "cardio_target_zone": "zona-alvo",
+      "hiit_low_seconds": "tempo em zona baixa (s)",
+      "hiit_high_seconds": "tempo em zona alta (s)",
+      "hiit_low_zone": "zona baixa",
+      "hiit_high_zone": "zona alta",
+      "hiit_rounds": "nº de séries"
+    }
+  },
+  "hr_zones": {
+    "zone_min": 1,
+    "zone_max": 5,
+    "zone_numbers": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "zone_labels": {
+      "1": "Z1",
+      "2": "Z2",
+      "3": "Z3",
+      "4": "Z4",
+      "5": "Z5"
+    },
+    "manual_max_hr_bpm": {
+      "min": 100,
+      "max": 230
+    }
+  },
+  "periodization_limits": {
+    "max_prioritized_per_slot": 3,
+    "complement_max_exercises_per_slot": 9,
+    "complement_max_sets_per_exercise": 6,
+    "slot_time_limit_minutes": 90,
+    "sets_per_exercise_ideal_max": 4
+  },
+  "intensity": {
+    "intensity_status_labels": {
+      "REACHED": "Esforço atingido",
+      "BELOW_TARGET": "Esforço abaixo do alvo",
+      "FAILURE_NOT_ALLOWED_REACHED_CEILING": "Esforço atingido (falha não permitida)",
+      "ABOVE_SAFE_CEILING": "RPE acima do teto seguro"
+    },
+    "safety_event_labels": {
+      "RPE_ABOVE_SAFE_CEILING": "RPE acima do teto seguro",
+      "RPE_ABOVE_RECOVERY_TARGET": "RPE acima do alvo do dia"
+    },
+    "reps_position_labels": {
+      "BELOW_FLOOR": "Reps abaixo da faixa",
+      "IN_RANGE": "Reps dentro da faixa",
+      "AT_TOP": "Reps no teto da faixa",
+      "ABOVE_TOP": "Reps acima da faixa"
+    },
+    "safety_event_rpe_above_ceiling": "RPE_ABOVE_SAFE_CEILING",
+    "safety_event_rpe_above_recovery_target": "RPE_ABOVE_RECOVERY_TARGET",
+    "safety_alert_events": [
+      "RPE_ABOVE_SAFE_CEILING"
+    ]
+  },
+  "progression_decision_labels": {
+    "INCREASE_LOAD": "Aumentar carga",
+    "DECREASE_LOAD": "Reduzir carga",
+    "ADD_SET": "Acrescentar série",
+    "APPLY_TECHNIQUE": "Aplicar técnica avançada",
+    "SET_REP_RANGE_10_12": "Definir faixa de 10 a 12 repetições",
+    "HOLD": "Manter",
+    "SKIP": "Sem progressão nesta sessão"
+  },
+  "set_evaluation": {
+    "categories": [
+      "HOLD",
+      "INCREASE_LOAD",
+      "DECREASE_LOAD"
+    ],
+    "category_labels": {
+      "HOLD": "Manter",
+      "INCREASE_LOAD": "Aumentar carga",
+      "DECREASE_LOAD": "Reduzir carga"
+    },
+    "category_directions": {
+      "HOLD": "HOLD",
+      "INCREASE_LOAD": "UP",
+      "DECREASE_LOAD": "DOWN"
+    },
+    "load_adjustment_reason_engine_target": "ENGINE_TARGET_LOAD",
+    "load_adjustment_reason_equipment_step": "EQUIPMENT_STEP"
+  },
+  "next_set_load": {
+    "reasons": [
+      "NEXT_SET_PAIN",
+      "NEXT_SET_REPS_ABOVE_LIMIT",
+      "NEXT_SET_LOW_RPE_AT_REPS",
+      "NEXT_SET_FAILURE_BEFORE_MIN_REPS",
+      "NEXT_SET_WITHIN_RULE",
+      "NEXT_SET_WITHIN_PLANNED_RAMP",
+      "NEXT_SET_RULE_MATCHED",
+      "NEXT_SET_HOLD_EFFORT_BELOW_TARGET",
+      "NEXT_SET_HOLD_ABOVE_SAFE_CEILING",
+      "NEXT_SET_DELOAD"
+    ],
+    "reason_labels": {
+      "NEXT_SET_PAIN": "Dor articular ou dor muscular acima de 6/10",
+      "NEXT_SET_REPS_ABOVE_LIMIT": "Mais de 15 repetições: carga leve",
+      "NEXT_SET_LOW_RPE_AT_REPS": "12 ou mais repetições com RPE abaixo de 9: carga leve",
+      "NEXT_SET_FAILURE_BEFORE_MIN_REPS": "RPE 10 antes de 6 repetições: carga pesada",
+      "NEXT_SET_WITHIN_RULE": "Repetições e RPE dentro do esperado: carga adequada",
+      "NEXT_SET_WITHIN_PLANNED_RAMP": "RPE dentro da rampa planejada: carga adequada",
+      "NEXT_SET_RULE_MATCHED": "Regra de carga cadastrada",
+      "NEXT_SET_HOLD_EFFORT_BELOW_TARGET": "Esforço abaixo do alvo: mantenha a carga e busque o RPE-alvo",
+      "NEXT_SET_HOLD_ABOVE_SAFE_CEILING": "RPE acima do teto seguro: mantenha a carga e pare antes da falha",
+      "NEXT_SET_DELOAD": "Sessão de deload: 60% da carga de trabalho, RPE-alvo 6"
+    },
+    "load_adjustment_reason_rule": "NEXT_SET_LOAD_RULE",
+    "reason_rule_matched": "NEXT_SET_RULE_MATCHED",
+    "rule_vocabulary": {
+      "set_positions": [
+        {
+          "value": "any",
+          "label": "qualquer"
+        },
+        {
+          "value": "first",
+          "label": "1ª série"
+        },
+        {
+          "value": "second",
+          "label": "2ª série"
+        },
+        {
+          "value": "third_plus",
+          "label": "3ª série em diante"
+        }
+      ],
+      "fatigue_conditions": [
+        {
+          "value": "any",
+          "label": "qualquer"
+        },
+        {
+          "value": "rested",
+          "label": "descansado"
+        },
+        {
+          "value": "pre_fatigued",
+          "label": "pré-fatigado"
+        },
+        {
+          "value": "heavily_fatigued",
+          "label": "muito fatigado"
+        }
+      ],
+      "condition_ops": [
+        {
+          "value": ">",
+          "label": ">"
+        },
+        {
+          "value": ">=",
+          "label": "≥"
+        },
+        {
+          "value": "<",
+          "label": "<"
+        },
+        {
+          "value": "<=",
+          "label": "≤"
+        },
+        {
+          "value": "between",
+          "label": "entre"
+        }
+      ],
+      "reps_tokens": [
+        {
+          "value": "floor",
+          "label": "piso"
+        },
+        {
+          "value": "ceiling",
+          "label": "teto"
+        }
+      ],
+      "rpe_tokens": [
+        {
+          "value": "max",
+          "label": "máximo"
+        }
+      ],
+      "actions": [
+        {
+          "value": "HOLD",
+          "label": "Manter"
+        },
+        {
+          "value": "INCREASE_LOAD",
+          "label": "Aumentar carga"
+        },
+        {
+          "value": "DECREASE_LOAD",
+          "label": "Reduzir carga"
+        }
+      ],
+      "magnitude_kinds": [
+        {
+          "value": "steps",
+          "label": "passos do equipamento"
+        },
+        {
+          "value": "percent",
+          "label": "percentual da carga"
+        }
+      ]
+    },
+    "rule_limits": {
+      "max_rules": 20,
+      "magnitude_percent_min": 1,
+      "magnitude_percent_max": 50,
+      "magnitude_steps_min": 1,
+      "magnitude_steps_max": 4,
+      "reps_floor_min": 1,
+      "reps_ceiling_max": 30,
+      "rule_rpe_min": 1,
+      "rule_rpe_max": 10
+    },
+    "default_ruleset": {
+      "reps_floor": 6,
+      "reps_ceiling": 12,
+      "version": 0,
+      "source": "default",
+      "rules": [
+        {
+          "position": 1,
+          "set_position": "any",
+          "fatigue": "any",
+          "reps": {
+            "op": ">",
+            "value": 15
+          },
+          "rpe": null,
+          "respect_planned_ramp": false,
+          "action": "INCREASE_LOAD",
+          "magnitude": {
+            "kind": "steps",
+            "value": 1
+          },
+          "reason_code": "NEXT_SET_REPS_ABOVE_LIMIT"
+        },
+        {
+          "position": 2,
+          "set_position": "any",
+          "fatigue": "any",
+          "reps": {
+            "op": ">=",
+            "value": 12
+          },
+          "rpe": {
+            "op": "<",
+            "value": 9
+          },
+          "respect_planned_ramp": true,
+          "action": "INCREASE_LOAD",
+          "magnitude": {
+            "kind": "steps",
+            "value": 1
+          },
+          "reason_code": "NEXT_SET_LOW_RPE_AT_REPS"
+        },
+        {
+          "position": 3,
+          "set_position": "any",
+          "fatigue": "any",
+          "reps": {
+            "op": "<",
+            "value": 6
+          },
+          "rpe": {
+            "op": ">=",
+            "value": 10
+          },
+          "respect_planned_ramp": false,
+          "action": "DECREASE_LOAD",
+          "magnitude": {
+            "kind": "steps",
+            "value": 1
+          },
+          "reason_code": "NEXT_SET_FAILURE_BEFORE_MIN_REPS"
+        }
+      ]
+    }
+  },
+  "intensity_density": {
+    "rpe_intensity_points": [
+      {
+        "min_rpe": 10.0,
+        "points": 1.0
+      },
+      {
+        "min_rpe": 9.0,
+        "points": 0.7
+      },
+      {
+        "min_rpe": 8.0,
+        "points": 0.3
+      }
+    ],
+    "failure_last_set_rpe": 10.0,
+    "failure_requirements": [
+      "beyond_failure",
+      "requires_failure"
+    ],
+    "reps_density_range": {
+      "min": 6,
+      "max": 15
+    },
+    "peak_density_range": {
+      "min": 0,
+      "max": 5
+    },
+    "rest_density_range": {
+      "longest": 180,
+      "shortest": 45
+    },
+    "sets_volume_range": {
+      "min": 2,
+      "max": 5
+    },
+    "balanced_band": 0.1,
+    "position_midpoint": 0.5,
+    "roles": [
+      "primary",
+      "secondary"
+    ]
+  },
+  "technique_accounting": {
+    "reps_weighted_codes": [
+      "drop_set",
+      "rest_pause"
+    ],
+    "beyond_failure_weights": {
+      "forced_reps": 1.0,
+      "negative_reps": 1.0,
+      "partial_reps": 0.5,
+      "cheat_reps": 0.5
+    },
+    "sets_only_codes": [
+      "fst7",
+      "gvt"
+    ],
+    "default_max_equivalent": 1.0,
+    "full_effort_rpe": 9.0,
+    "default_reference_rpe": 10.0,
+    "effort_points": [
+      [
+        6.5,
+        0.15
+      ],
+      [
+        7.0,
+        0.3
+      ],
+      [
+        7.5,
+        0.45
+      ],
+      [
+        8.0,
+        0.6
+      ],
+      [
+        8.5,
+        0.72
+      ],
+      [
+        9.0,
+        0.85
+      ],
+      [
+        9.5,
+        0.95
+      ],
+      [
+        10.0,
+        1.05
+      ]
+    ]
+  },
+  "methodology_volume": {
+    "frequency_buckets": [
+      "1x",
+      "2x",
+      "3x_plus"
+    ],
+    "unclassified_volume_class_label": "Sem macro-grupo",
+    "default_counting_mode": "primary_only",
+    "counting_modes": [
+      {
+        "value": "primary_only",
+        "label": "Só primários",
+        "description": "Conta só o grupo primário de cada exercício, sem ponderação. Secundários e estabilizadores ficam fora.",
+        "sets_unit_label": "séries diretas",
+        "sets_unit_label_singular": "série direta"
+      },
+      {
+        "value": "primary_secondary",
+        "label": "Primários + secundários (ponderado)",
+        "description": "Primário e secundário somam séries × participação cadastrada no exercício; estabilizadores ficam fora. A sessão conta na frequência do grupo com primário ou com ao menos 1 série somada de secundário. Exercícios por sessão contam só o primário.",
+        "sets_unit_label": "séries ponderadas",
+        "sets_unit_label_singular": "série ponderada"
+      }
+    ]
+  },
+  "body_measurement_sites": {
+    "sites": [
+      "waist",
+      "hip",
+      "chest",
+      "arm_l",
+      "arm_r",
+      "thigh_l",
+      "thigh_r",
+      "calf_l",
+      "calf_r",
+      "neck",
+      "forearm_l",
+      "forearm_r"
+    ],
+    "labels": {
+      "waist": "Cintura",
+      "hip": "Quadril",
+      "chest": "Peitoral",
+      "arm_l": "Braço esquerdo",
+      "arm_r": "Braço direito",
+      "thigh_l": "Coxa esquerda",
+      "thigh_r": "Coxa direita",
+      "calf_l": "Panturrilha esquerda",
+      "calf_r": "Panturrilha direita",
+      "neck": "Pescoço",
+      "forearm_l": "Antebraço esquerdo",
+      "forearm_r": "Antebraço direito"
+    },
+    "sides": {
+      "arm_l": "left",
+      "arm_r": "right",
+      "thigh_l": "left",
+      "thigh_r": "right",
+      "calf_l": "left",
+      "calf_r": "right",
+      "forearm_l": "left",
+      "forearm_r": "right"
+    },
+    "waist_site": "waist",
+    "neck_site": "neck"
+  },
+  "nutrition": {
+    "engine_version": "nutrition-v1",
+    "sexes": [
+      "male",
+      "female",
+      "other"
+    ],
+    "sex_labels": {
+      "male": "Masculino",
+      "female": "Feminino",
+      "other": "Outro"
+    },
+    "activity_levels": [
+      "sedentary",
+      "light",
+      "moderate",
+      "active",
+      "very_active"
+    ],
+    "activity_level_labels": {
+      "sedentary": "Sedentário",
+      "light": "Leve",
+      "moderate": "Moderado",
+      "active": "Ativo",
+      "very_active": "Muito ativo"
+    },
+    "strategies": [
+      "cutting",
+      "bulking",
+      "maintenance"
+    ],
+    "strategy_labels": {
+      "cutting": "Cutting",
+      "bulking": "Bulking",
+      "maintenance": "Manutenção"
+    },
+    "protein_bases": [
+      "fat_free_mass",
+      "body_weight"
+    ],
+    "protein_basis_labels": {
+      "fat_free_mass": "g por kg de massa livre de gordura",
+      "body_weight": "g por kg de peso corporal"
+    },
+    "day_kinds": [
+      "high",
+      "normal",
+      "low"
+    ],
+    "day_kind_labels": {
+      "high": "Dia alto em carbo",
+      "normal": "Dia normal",
+      "low": "Dia baixo em carbo"
+    },
+    "meal_slots": [
+      "breakfast",
+      "morning_snack",
+      "lunch",
+      "afternoon_snack",
+      "pre_workout",
+      "post_workout",
+      "dinner",
+      "supper",
+      "other"
+    ],
+    "meal_slot_labels": {
+      "breakfast": "Café da manhã",
+      "morning_snack": "Lanche da manhã",
+      "lunch": "Almoço",
+      "afternoon_snack": "Lanche da tarde",
+      "pre_workout": "Pré-treino",
+      "post_workout": "Pós-treino",
+      "dinner": "Jantar",
+      "supper": "Ceia",
+      "other": "Outra refeição"
+    },
+    "bmr_formulas": [
+      "auto",
+      "mifflin_st_jeor",
+      "katch_mcardle",
+      "cunningham",
+      "harris_benedict"
+    ],
+    "bmr_formula_labels": {
+      "auto": "Automática",
+      "mifflin_st_jeor": "Mifflin-St Jeor",
+      "katch_mcardle": "Katch-McArdle",
+      "cunningham": "Cunningham",
+      "harris_benedict": "Harris-Benedict (revisada)"
+    },
+    "default_bmr_formula": "auto",
+    "tdee_modes": [
+      "explicit_training",
+      "included_in_factor"
+    ],
+    "tdee_mode_labels": {
+      "explicit_training": "Treino somado à parte",
+      "included_in_factor": "Treino embutido no fator"
+    },
+    "default_tdee_mode": "explicit_training",
+    "session_kinds": [
+      "vigorous",
+      "squat_deadlift",
+      "multiple_exercises",
+      "circuit"
+    ],
+    "session_kind_labels": {
+      "vigorous": "Musculação vigorosa",
+      "squat_deadlift": "Agachamento / levantamento terra",
+      "multiple_exercises": "Múltiplos exercícios",
+      "circuit": "Circuito"
+    },
+    "training_kcal_natures": [
+      "reported",
+      "met"
+    ],
+    "training_kcal_nature_labels": {
+      "reported": "Informada",
+      "met": "Estimada por MET"
+    },
+    "meal_natures": [
+      "DERIVED",
+      "ESTIMATED",
+      "MIXED"
+    ],
+    "meal_nature_labels": {
+      "DERIVED": "Calculado do catálogo",
+      "ESTIMATED": "Estimado",
+      "MIXED": "Misto"
+    },
+    "body_fat_methods": [
+      "bioimpedance",
+      "navy"
+    ],
+    "body_fat_method_labels": {
+      "bioimpedance": "Bioimpedância",
+      "navy": "Circunferências (Marinha dos EUA)"
+    },
+    "phase_kinds": [
+      "cutting",
+      "bulking",
+      "maintenance",
+      "diet_break",
+      "refeed"
+    ],
+    "phase_kind_labels": {
+      "cutting": "Cutting",
+      "bulking": "Bulking",
+      "maintenance": "Manutenção",
+      "diet_break": "Pausa de dieta",
+      "refeed": "Refeed"
+    },
+    "break_protocols": [
+      "none",
+      "matador",
+      "icecap"
+    ],
+    "break_protocol_labels": {
+      "none": "Sem pausas programadas",
+      "matador": "MATADOR",
+      "icecap": "ICECAP"
+    },
+    "plan_states": [
+      "draft",
+      "current",
+      "superseded"
+    ],
+    "plan_state_labels": {
+      "draft": "Rascunho",
+      "current": "Vigente",
+      "superseded": "Substituído"
+    },
+    "strategy_only_fields": {
+      "weekly_rate_share": "cutting",
+      "surplus_share": "bulking",
+      "carb_min_g_per_kg": "bulking"
+    },
+    "notices": {
+      "carb_cycling_unavailable": "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana.",
+      "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
+      "phase_should_stop": "O % de gordura atual já chegou à meta desta fase.",
+      "target_frozen": "Meta congelada: 2 dia(s) depois do dia ela não muda mais.",
+      "target_backfilled": "Meta calculada depois que o dia congelou (ninguém abriu o diário a tempo), com os dados disponíveis no dia em que o diário foi aberto.",
+      "intake_incomplete_days": "Dia com refeição de total incompleto (alimento sem energia ou macro na tabela) fica fora do banco e da aderência.",
+      "training_unknown_future_day": "Dia futuro: o treino ainda não aconteceu e não entrou no gasto."
+    },
+    "units": [
+      "g",
+      "ml",
+      "unit",
+      "portion",
+      "colher_sopa",
+      "colher_sobremesa",
+      "colher_cha",
+      "xicara"
+    ],
+    "form_ranges": {
+      "height_cm": [
+        100.0,
+        250.0
+      ],
+      "weight_kg": [
+        20.0,
+        350.0
+      ],
+      "body_fat_percent": [
+        3.0,
+        60.0
+      ],
+      "meals_per_day": [
+        3,
+        6
+      ],
+      "cutting": {
+        "protein_basis": "fat_free_mass",
+        "weekly_rate_share": [
+          0.005,
+          0.01
+        ],
+        "weekly_rate_share_default": 0.007,
+        "protein_g_per_kg": [
+          2.3,
+          3.1
+        ],
+        "protein_g_per_kg_default": 2.6,
+        "fat_kcal_share": [
+          0.15,
+          0.3
+        ],
+        "fat_kcal_share_default": 0.25,
+        "max_deficit_share": 0.25,
+        "min_intake_bmr_multiple": 1.0
+      },
+      "bulking": {
+        "protein_basis": "body_weight",
+        "surplus_share": [
+          0.1,
+          0.2
+        ],
+        "surplus_share_default": 0.1,
+        "surplus_share_advanced": [
+          0.05,
+          0.1
+        ],
+        "surplus_share_default_advanced": 0.05,
+        "protein_g_per_kg": [
+          1.6,
+          2.2
+        ],
+        "protein_g_per_kg_default": 2.0,
+        "fat_kcal_share": [
+          0.2,
+          0.35
+        ],
+        "fat_kcal_share_default": 0.25,
+        "carb_min_g_per_kg": [
+          3.0,
+          5.0
+        ],
+        "carb_min_g_per_kg_default": 3.0
+      },
+      "maintenance": {
+        "protein_basis": "body_weight",
+        "protein_g_per_kg": [
+          1.6,
+          2.2
+        ],
+        "protein_g_per_kg_default": 2.0,
+        "fat_kcal_share": [
+          0.2,
+          0.35
+        ],
+        "fat_kcal_share_default": 0.25,
+        "tolerance_share": 0.05
+      },
+      "refeed_days_per_week_default": 2,
+      "max_cut_weeks_without_break": 8,
+      "stop_body_fat_percent": {
+        "bulking": {
+          "male": 15.0,
+          "female": 25.0
+        },
+        "cutting": {
+          "male": 10.0,
+          "female": 18.0
+        }
+      }
+    },
+    "rdc429_fields": [
+      {
+        "code": "serving_size",
+        "label": "Porção",
+        "unit": "g ou ml",
+        "required": true
+      },
+      {
+        "code": "household_measure",
+        "label": "Medida caseira",
+        "unit": "texto",
+        "required": true
+      },
+      {
+        "code": "servings_per_package",
+        "label": "Porções por embalagem",
+        "unit": "n",
+        "required": false
+      },
+      {
+        "code": "energy_kcal",
+        "label": "Valor energético",
+        "unit": "kcal",
+        "required": true
+      },
+      {
+        "code": "energy_kj",
+        "label": "Valor energético",
+        "unit": "kJ",
+        "required": false
+      },
+      {
+        "code": "carbohydrates_g",
+        "label": "Carboidratos",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "total_sugars_g",
+        "label": "Açúcares totais",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "added_sugars_g",
+        "label": "Açúcares adicionados",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "protein_g",
+        "label": "Proteínas",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "total_fat_g",
+        "label": "Gorduras totais",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "saturated_fat_g",
+        "label": "Gorduras saturadas",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "trans_fat_g",
+        "label": "Gorduras trans",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "fiber_g",
+        "label": "Fibras alimentares",
+        "unit": "g",
+        "required": true
+      },
+      {
+        "code": "sodium_mg",
+        "label": "Sódio",
+        "unit": "mg",
+        "required": true
+      }
+    ],
+    "generic_portions": [
+      {
+        "code": "colher_sopa",
+        "label": "Colher de sopa",
+        "ml": 15.0
+      },
+      {
+        "code": "colher_sobremesa",
+        "label": "Colher de sobremesa",
+        "ml": 10.0
+      },
+      {
+        "code": "colher_cha",
+        "label": "Colher de chá",
+        "ml": 5.0
+      },
+      {
+        "code": "xicara",
+        "label": "Xícara",
+        "ml": 240.0
+      }
+    ],
+    "food_sources": [
+      "taco",
+      "usda",
+      "off",
+      "tbca_manual",
+      "user",
+      "label_photo",
+      "ai_estimate"
+    ],
+    "food_source_labels": {
+      "taco": "TACO 4ª ed.",
+      "usda": "USDA FoodData Central",
+      "off": "Open Food Facts",
+      "tbca_manual": "TBCA (digitado)",
+      "user": "Cadastro próprio",
+      "label_photo": "Foto do rótulo",
+      "ai_estimate": "Estimativa da IA"
+    },
+    "food_bases": [
+      "g",
+      "ml"
+    ],
+    "food_basis_labels": {
+      "g": "por 100 g",
+      "ml": "por 100 ml"
+    },
+    "default_food_basis": "g",
+    "food_per_100_fields": [
+      "energy_kcal",
+      "carbohydrates_g",
+      "total_sugars_g",
+      "added_sugars_g",
+      "protein_g",
+      "total_fat_g",
+      "saturated_fat_g",
+      "trans_fat_g",
+      "fiber_g",
+      "sodium_mg"
+    ],
+    "food_serving_fields": [
+      "serving_size",
+      "household_measure",
+      "servings_per_package"
+    ],
+    "food_required_fields": [
+      "energy_kcal",
+      "carbohydrates_g",
+      "protein_g",
+      "total_fat_g"
+    ],
+    "food_citations": {
+      "taco": "Núcleo de Estudos e Pesquisas em Alimentação (NEPA-UNICAMP). Tabela Brasileira de Composição de Alimentos – TACO. 4. ed. rev. e ampl. Campinas: NEPA-UNICAMP, 2011. 161 p.",
+      "usda": "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.",
+      "off": "Contém informações do Open Food Facts (https://world.openfoodfacts.org), disponibilizadas sob a Open Database License (ODbL)."
+    },
+    "food_licenses": {
+      "taco": "Reprodução total ou parcial permitida desde que citada a fonte (NEPA-UNICAMP).",
+      "usda": "CC0 1.0 Universal (domínio público).",
+      "off": "Open Database License (ODbL) v1.0; conteúdo individual sob a Database Contents License (DbCL) v1.0."
+    },
+    "usda_data_types": [
+      "Foundation",
+      "SR Legacy"
+    ],
+    "usda_data_type_labels": {
+      "Foundation": "Foundation Foods",
+      "SR Legacy": "SR Legacy (Standard Reference)"
+    },
+    "unit_labels": {
+      "g": "Gramas (g)",
+      "ml": "Mililitros (ml)",
+      "unit": "Unidade",
+      "portion": "Porção",
+      "colher_sopa": "Colher de sopa",
+      "colher_sobremesa": "Colher de sobremesa",
+      "colher_cha": "Colher de chá",
+      "xicara": "Xícara"
+    },
+    "portion_units": [
+      "unit",
+      "portion"
+    ],
+    "nutrient_fields": [
+      "energy_kcal",
+      "protein_g",
+      "carbohydrates_g",
+      "total_fat_g",
+      "fiber_g",
+      "sodium_mg"
+    ],
+    "energy_field": "energy_kcal",
+    "item_nutrient_fields": [
+      "energy_kcal",
+      "protein_g",
+      "carbohydrates_g",
+      "total_fat_g"
+    ],
+    "hunger_levels": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "hunger_labels": {
+      "1": "Sem fome",
+      "2": "Pouca fome",
+      "3": "Fome moderada",
+      "4": "Muita fome",
+      "5": "Fome intensa"
+    },
+    "water_ml_range": [
+      0.0,
+      10000.0
+    ],
+    "meal_max_items": 30,
+    "meal_parse": {
+      "text_max_chars": 1000,
+      "match_statuses": [
+        "selected",
+        "choice",
+        "estimated",
+        "unmatched"
+      ],
+      "match_status_labels": {
+        "selected": "Encontrado no catálogo",
+        "choice": "Escolha o alimento",
+        "estimated": "Estimado pela IA",
+        "unmatched": "Não encontrado no catálogo"
+      },
+      "estimate_source": "ai_estimate",
+      "estimate_basis": "g",
+      "quota_exceeded_label": "Limite de 30 leituras de refeição por IA por dia atingido. Tente de novo amanhã."
+    },
+    "label_photo": {
+      "max_bytes": 1572864,
+      "content_type": "image/jpeg",
+      "resize_max_edge_px": 1280,
+      "resize_quality": 0.85,
+      "retention_days": 30,
+      "food_source": "label_photo"
+    },
+    "label_legibilities": [
+      "ok",
+      "partial",
+      "unreadable"
+    ],
+    "label_legibility_labels": {
+      "ok": "Tabela legível",
+      "partial": "Tabela parcialmente legível",
+      "unreadable": "Tabela ilegível"
+    }
+  },
+  "set_measures": {
+    "measures": [
+      {
+        "value": "reps",
+        "label": "Repetições",
+        "short_label": "reps",
+        "rep_based": true
+      },
+      {
+        "value": "duration",
+        "label": "Tempo",
+        "short_label": "s",
+        "rep_based": false
+      },
+      {
+        "value": "max_reps",
+        "label": "Máximo de repetições",
+        "short_label": "reps máx.",
+        "rep_based": false
+      }
+    ],
+    "default_measure": "reps",
+    "values": {
+      "reps": "reps",
+      "duration": "duration",
+      "max_reps": "max_reps"
+    },
+    "limits": {
+      "duration_seconds_min": 1,
+      "duration_seconds_max": 3600,
+      "time_window_seconds_min": 5,
+      "time_window_seconds_max": 600,
+      "max_reps_min_reps": 1
+    },
+    "advanced_block_presence_fields": [
+      "advanced_technique",
+      "warmup_reps",
+      "feeler_set_reps",
+      "peak_contraction_seconds"
+    ],
+    "empty_text": "—",
+    "reason_not_rep_based": "measure_not_rep_based",
+    "reason_labels": {
+      "measure_not_rep_based": "Série por tempo ou por máximo de repetições: não entra na comparação de carga"
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "feature": "meal_parse",
+  "prompt_version": "nutrition-parse-v1",
+  "fonte": "Casos escritos à mão no L5b (2026-10-18): descrições típicas de refeição, sem dado de usuário. Catálogo = seed da TACO 4ª ed. (migração 081). `taco` = números aceitos da TACO; `gramas` = faixa da quantidade proposta na base (g); `estimativa` = faixa de kcal por 100 g aceita quando a proposta é a estimativa da IA (sem ela, o item precisa casar com a TACO).",
+  "cases": [
+    {
+      "id": "almoco_prato_feito",
+      "descricao": "Prato feito com os quatro componentes ditos sem quantidade",
+      "input": {
+        "text": "Almoço: arroz branco, feijão carioca, um bife de contra-filé grelhado e salada de alface com tomate.",
+        "meal_slot": "lunch",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "arroz", "palavras": ["arroz"], "taco": [3, 5], "gramas": [60, 300]},
+          {"rotulo": "feijão", "palavras": ["feijao"], "taco": [561], "gramas": [50, 300]},
+          {"rotulo": "bife", "palavras": ["bife", "contra", "carne"], "taco": [342, 344, 346, 529], "gramas": [70, 250], "estimativa": [150, 320]},
+          {"rotulo": "alface", "palavras": ["alface"], "taco": [77, 78, 79, 80], "gramas": [5, 100], "estimativa": [5, 30]},
+          {"rotulo": "tomate", "palavras": ["tomate"], "taco": [157, 161], "gramas": [15, 200], "estimativa": [10, 35]}
+        ]
+      }
+    },
+    {
+      "id": "cafe_da_manha_pao_ovo",
+      "descricao": "Unidades contáveis, medida caseira e 'sem açúcar' (não pode virar item)",
+      "input": {
+        "text": "Café da manhã: um pão francês com manteiga, dois ovos fritos e uma xícara de café preto sem açúcar.",
+        "meal_slot": "breakfast",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "pão francês", "palavras": ["pao"], "taco": [53], "gramas": [40, 110]},
+          {"rotulo": "manteiga", "palavras": ["manteiga"], "taco": [261, 262], "gramas": [3, 25], "estimativa": [650, 800]},
+          {"rotulo": "ovos", "palavras": ["ovo"], "taco": [488, 489, 490], "gramas": [80, 140]},
+          {"rotulo": "café", "palavras": ["cafe"], "taco": [471], "gramas": [50, 300], "estimativa": [0, 20]}
+        ]
+      }
+    },
+    {
+      "id": "pos_treino_whey",
+      "descricao": "Gramas e ml ditos; whey fora da TACO (tem de vir a estimativa)",
+      "input": {
+        "text": "Pós-treino: 30 g de whey protein batido com 300 ml de leite desnatado e uma banana prata.",
+        "meal_slot": "post_workout",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "whey", "palavras": ["whey", "proteina"], "taco": [], "gramas": [25, 35], "estimativa": [330, 450]},
+          {"rotulo": "leite desnatado", "palavras": ["leite"], "taco": [456, 457], "gramas": [250, 350], "estimativa": [25, 45]},
+          {"rotulo": "banana", "palavras": ["banana"], "taco": [182], "gramas": [60, 150], "estimativa": [80, 120]}
+        ]
+      }
+    },
+    {
+      "id": "jantar_frango_batata_doce",
+      "descricao": "Gramas exatos ditos e um item sem quantidade",
+      "input": {
+        "text": "Jantar: 150 g de peito de frango grelhado, 200 g de batata doce cozida e brócolis cozido.",
+        "meal_slot": "dinner",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "frango", "palavras": ["frango"], "taco": [410], "gramas": [140, 160]},
+          {"rotulo": "batata doce", "palavras": ["batata"], "taco": [88], "gramas": [190, 210]},
+          {"rotulo": "brócolis", "palavras": ["brocolis"], "taco": [100], "gramas": [30, 200]}
+        ]
+      }
+    },
+    {
+      "id": "lanche_iogurte_aveia_mel",
+      "descricao": "Medidas caseiras (colher de sopa e de chá)",
+      "input": {
+        "text": "Lanche: um pote de iogurte natural com duas colheres de sopa de aveia em flocos e uma colher de chá de mel.",
+        "meal_slot": "afternoon_snack",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "iogurte", "palavras": ["iogurte"], "taco": [448, 449], "gramas": [90, 200]},
+          {"rotulo": "aveia", "palavras": ["aveia"], "taco": [7], "gramas": [10, 45], "estimativa": [340, 420]},
+          {"rotulo": "mel", "palavras": ["mel"], "taco": [507], "gramas": [3, 15], "estimativa": [280, 340]}
+        ]
+      }
+    },
+    {
+      "id": "feijoada_completa",
+      "descricao": "Feijoada vira um alimento só; farofa, couve e laranja, cada um no seu item",
+      "input": {
+        "text": "Comi um prato de feijoada com farofa, couve refogada e uma laranja de sobremesa.",
+        "meal_slot": "lunch",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "feijoada", "palavras": ["feijoada"], "taco": [540], "gramas": [150, 600]},
+          {"rotulo": "farofa", "palavras": ["farofa"], "taco": [131], "gramas": [15, 120], "estimativa": [330, 460]},
+          {"rotulo": "couve", "palavras": ["couve"], "taco": [115, 116], "gramas": [20, 150], "estimativa": [25, 130]},
+          {"rotulo": "laranja", "palavras": ["laranja"], "taco": [208, 210, 212, 214, 216], "gramas": [80, 250], "estimativa": [30, 60]}
+        ]
+      }
+    },
+    {
+      "id": "sem_comida",
+      "descricao": "Texto sem comida: nenhum item inventado",
+      "input": {
+        "text": "Hoje treinei pernas pesado e dormi oito horas.",
+        "meal_slot": null,
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": []
+      }
+    },
+    {
+      "id": "industrializados",
+      "descricao": "Barra de proteína fora da TACO (estimativa) e refrigerante em lata",
+      "input": {
+        "text": "Uma barra de proteína sabor chocolate e uma lata de refrigerante de cola.",
+        "meal_slot": "afternoon_snack",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "barra de proteína", "palavras": ["barra"], "taco": [], "gramas": [30, 80], "estimativa": [300, 450]},
+          {"rotulo": "refrigerante de cola", "palavras": ["refrigerante", "cola"], "taco": [480], "gramas": [300, 400], "estimativa": [30, 50]}
+        ]
+      }
+    },
+    {
+      "id": "medidas_caseiras",
+      "descricao": "Colher de sopa, concha (unidade) e azeite como item próprio",
+      "input": {
+        "text": "4 colheres de sopa de arroz integral, uma concha de feijão preto e uma colher de sopa de azeite de oliva.",
+        "meal_slot": "dinner",
+        "local_date": "2026-10-18"
+      },
+      "expect": {
+        "itens": [
+          {"rotulo": "arroz integral", "palavras": ["arroz"], "taco": [1], "gramas": [40, 140]},
+          {"rotulo": "feijão preto", "palavras": ["feijao"], "taco": [567], "gramas": [60, 200]},
+          {"rotulo": "azeite", "palavras": ["azeite"], "taco": [260], "gramas": [5, 16], "estimativa": [850, 900]}
+        ]
+      }
+    }
+  ]
+}

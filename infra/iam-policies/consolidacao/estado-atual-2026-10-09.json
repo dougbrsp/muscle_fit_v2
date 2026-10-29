@@ -1,0 +1,134 @@
+{
+  "_comentario": "Retrato LIDO da conta em 2026-10-09 (iam ListAttachedRolePolicies/GetPolicy/GetPolicyVersion/ListRolePolicies/GetRolePolicy da role musclefit-gha-deploy, so leitura). 9 managed + 6 inline. Base da verificacao de equivalencia (scripts/iam_consolidacao_check.py). Nao contem segredo.",
+  "role": "musclefit-gha-deploy",
+  "managed": {
+    "musclefit-gha-deploy-fase8-ses": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Effect": "Allow", "Action": ["ses:CreateEmailIdentity", "ses:DeleteEmailIdentity", "ses:GetEmailIdentity", "ses:PutEmailIdentityDkimAttributes", "ses:PutEmailIdentityDkimSigningAttributes", "ses:PutEmailIdentityMailFromAttributes", "ses:PutEmailIdentityFeedbackAttributes", "ses:PutEmailIdentityConfigurationSetAttributes", "ses:TagResource", "ses:UntagResource", "ses:ListTagsForResource"], "Resource": "arn:aws:ses:sa-east-1:930413537709:identity/musclefit.com.br"}
+      ]}
+    },
+    "musclefit-gha-deploy-m69-m70": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "M69UploadsLifecycle", "Effect": "Allow", "Action": ["s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration"], "Resource": "arn:aws:s3:::musclefit-uploads"},
+        {"Sid": "M70AsyncAiEventInvokeConfig", "Effect": "Allow", "Action": ["lambda:PutFunctionEventInvokeConfig", "lambda:GetFunctionEventInvokeConfig", "lambda:UpdateFunctionEventInvokeConfig", "lambda:DeleteFunctionEventInvokeConfig"], "Resource": ["arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-plan-generator:*", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-cardio-agent:*", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai:*"]}
+      ]}
+    },
+    "musclefit-gha-deploy-cards-cloudfront": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "MusclefitCdnUpdate", "Effect": "Allow", "Action": ["cloudfront:UpdateDistribution", "cloudfront:GetDistributionConfig"], "Resource": "arn:aws:cloudfront::930413537709:distribution/EOA1PMADLM7RO"}
+      ]}
+    },
+    "musclefit-gha-deploy-fase7-eventbridge": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Effect": "Allow", "Action": ["events:PutRule", "events:DeleteRule", "events:DescribeRule", "events:EnableRule", "events:DisableRule", "events:PutTargets", "events:RemoveTargets", "events:ListTargetsByRule", "events:TagResource", "events:UntagResource", "events:ListTagsForResource"], "Resource": "arn:aws:events:sa-east-1:930413537709:rule/musclefit-*"}
+      ]}
+    },
+    "musclefit-gha-deploy-fase5-planreadonly": {
+      "version": "v3",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "LogsDescribeAccountWide", "Effect": "Allow", "Action": ["logs:DescribeLogGroups"], "Resource": "*"},
+        {"Sid": "LogsListTagsMusclefit", "Effect": "Allow", "Action": ["logs:ListTagsForResource", "logs:ListTagsLogGroup"], "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-*"},
+        {"Sid": "S3BucketConfigReadMusclefit", "Effect": "Allow", "Action": ["s3:GetBucketPolicy", "s3:GetBucketAcl", "s3:GetBucketPublicAccessBlock", "s3:GetBucketTagging", "s3:GetBucketCORS", "s3:GetBucketLogging", "s3:GetBucketWebsite", "s3:GetBucketNotification", "s3:GetBucketOwnershipControls", "s3:GetBucketRequestPayment", "s3:GetAccelerateConfiguration", "s3:GetReplicationConfiguration", "s3:GetBucketObjectLockConfiguration", "s3:GetLifecycleConfiguration", "s3:GetBucketVersioning", "s3:GetEncryptionConfiguration"], "Resource": ["arn:aws:s3:::musclefit-frontend-assets", "arn:aws:s3:::musclefit-uploads"]},
+        {"Sid": "SecretsManagerGetSecretValueMusclefit", "Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": ["arn:aws:secretsmanager:sa-east-1:930413537709:secret:rds!cluster-*", "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/*"]},
+        {"Sid": "CloudFrontReadMusclefit", "Effect": "Allow", "Action": ["cloudfront:GetDistribution", "cloudfront:GetFunction", "cloudfront:DescribeFunction", "cloudfront:GetOriginAccessControl", "cloudfront:ListTagsForResource"], "Resource": "*"},
+        {"Sid": "CloudFrontFunctionManageMusclefit", "Effect": "Allow", "Action": ["cloudfront:CreateFunction", "cloudfront:UpdateFunction", "cloudfront:DeleteFunction", "cloudfront:PublishFunction", "cloudfront:TestFunction", "cloudfront:TagResource", "cloudfront:UntagResource"], "Resource": "arn:aws:cloudfront::930413537709:function/musclefit-*"},
+        {"Sid": "EcrLifecyclePolicyAndTagsRead", "Effect": "Allow", "Action": ["ecr:GetLifecyclePolicy", "ecr:ListTagsForResource", "ecr:DescribeImages"], "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-*"},
+        {"Sid": "RdsDescribeGlobalClusters", "Effect": "Allow", "Action": ["rds:DescribeGlobalClusters"], "Resource": "*"},
+        {"Sid": "DynamoDbDescribeContinuousBackups", "Effect": "Allow", "Action": ["dynamodb:DescribeContinuousBackups", "dynamodb:ListTagsOfResource"], "Resource": ["arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-async-jobs", "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-tfstate-lock"]}
+      ]}
+    },
+    "musclefit-gha-deploy-fase5-rag": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "MusclefitRagBucketManage", "Effect": "Allow", "Action": ["s3:CreateBucket", "s3:DeleteBucket", "s3:PutBucketVersioning", "s3:GetBucketVersioning", "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock", "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration", "s3:PutBucketTagging", "s3:GetBucketTagging", "s3:PutBucketPolicy", "s3:GetBucketPolicy", "s3:GetBucketAcl", "s3:GetBucketCORS", "s3:GetBucketLogging", "s3:GetBucketWebsite", "s3:GetBucketNotification", "s3:GetBucketOwnershipControls", "s3:GetBucketRequestPayment", "s3:GetAccelerateConfiguration", "s3:GetReplicationConfiguration", "s3:GetBucketObjectLockConfiguration", "s3:GetLifecycleConfiguration", "s3:ListBucket"], "Resource": "arn:aws:s3:::musclefit-rag"},
+        {"Sid": "MusclefitRagObjectsManage", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:PutObjectTagging", "s3:GetObjectTagging"], "Resource": "arn:aws:s3:::musclefit-rag/*"},
+        {"Sid": "MusclefitApiCoreExecRagInlinePolicy", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy"], "Resource": "arn:aws:iam::930413537709:role/musclefit-api-core-exec"},
+        {"Sid": "MusclefitEnginesExecRagInlinePolicy", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy"], "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec"},
+        {"Sid": "MusclefitAiGeneratorsExecRagInlinePolicy", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy"], "Resource": "arn:aws:iam::930413537709:role/musclefit-ai-generators-exec"},
+        {"Sid": "MusclefitWorkoutAiExecRagInlinePolicy", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy"], "Resource": "arn:aws:iam::930413537709:role/musclefit-workout-ai-exec"}
+      ]}
+    },
+    "musclefit-gha-deploy-lote1-observabilidade": {
+      "version": "v2",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "Lote1Budgets", "Effect": "Allow", "Action": ["budgets:ViewBudget", "budgets:ModifyBudget", "budgets:ListTagsForResource", "budgets:TagResource", "budgets:UntagResource"], "Resource": "arn:aws:budgets::930413537709:budget/musclefit-*"},
+        {"Sid": "Lote1CloudTrailTrail", "Effect": "Allow", "Action": ["cloudtrail:CreateTrail", "cloudtrail:UpdateTrail", "cloudtrail:DeleteTrail", "cloudtrail:StartLogging", "cloudtrail:StopLogging", "cloudtrail:GetTrail", "cloudtrail:GetTrailStatus", "cloudtrail:GetEventSelectors", "cloudtrail:PutEventSelectors", "cloudtrail:ListTags", "cloudtrail:AddTags", "cloudtrail:RemoveTags"], "Resource": "arn:aws:cloudtrail:sa-east-1:930413537709:trail/musclefit-trail"},
+        {"Sid": "Lote1CloudTrailDescribe", "Effect": "Allow", "Action": ["cloudtrail:DescribeTrails"], "Resource": "*"},
+        {"Sid": "Lote1CloudTrailBucket", "Effect": "Allow", "Action": ["s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket", "s3:GetBucketLocation", "s3:GetBucketAcl", "s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock", "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration", "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration", "s3:GetBucketTagging", "s3:PutBucketTagging", "s3:GetBucketVersioning", "s3:GetBucketCORS", "s3:GetBucketWebsite", "s3:GetBucketLogging", "s3:GetBucketRequestPayment", "s3:GetAccelerateConfiguration", "s3:GetReplicationConfiguration", "s3:GetBucketObjectLockConfiguration", "s3:GetBucketOwnershipControls"], "Resource": "arn:aws:s3:::musclefit-cloudtrail-930413537709"},
+        {"Sid": "Lote1AccessAnalyzer", "Effect": "Allow", "Action": ["access-analyzer:CreateAnalyzer", "access-analyzer:DeleteAnalyzer", "access-analyzer:GetAnalyzer", "access-analyzer:ListTagsForResource", "access-analyzer:TagResource", "access-analyzer:UntagResource"], "Resource": "arn:aws:access-analyzer:sa-east-1:930413537709:analyzer/musclefit-account"},
+        {"Sid": "Lote1AccessAnalyzerList", "Effect": "Allow", "Action": ["access-analyzer:ListAnalyzers"], "Resource": "*"},
+        {"Sid": "Lote1GuardDutyDetector", "Effect": "Allow", "Action": ["guardduty:GetDetector", "guardduty:UpdateDetector", "guardduty:DeleteDetector", "guardduty:TagResource", "guardduty:UntagResource", "guardduty:ListTagsForResource"], "Resource": "arn:aws:guardduty:sa-east-1:930413537709:detector/*"},
+        {"Sid": "Lote1GuardDutyCreateList", "Effect": "Allow", "Action": ["guardduty:CreateDetector", "guardduty:ListDetectors"], "Resource": "*"},
+        {"Sid": "Lote1ServiceLinkedRoles", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": ["arn:aws:iam::930413537709:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty", "arn:aws:iam::930413537709:role/aws-service-role/access-analyzer.amazonaws.com/AWSServiceRoleForAccessAnalyzer"]},
+        {"Sid": "Lote1SnsAlertsTopic", "Effect": "Allow", "Action": ["sns:CreateTopic", "sns:DeleteTopic", "sns:GetTopicAttributes", "sns:SetTopicAttributes", "sns:Subscribe", "sns:Unsubscribe", "sns:GetSubscriptionAttributes", "sns:SetSubscriptionAttributes", "sns:ListSubscriptionsByTopic", "sns:ListTagsForResource", "sns:TagResource", "sns:UntagResource"], "Resource": "arn:aws:sns:*:930413537709:musclefit-alerts"},
+        {"Sid": "Lote1SnsSubscription", "Effect": "Allow", "Action": ["sns:GetSubscriptionAttributes", "sns:SetSubscriptionAttributes"], "Resource": "arn:aws:sns:*:930413537709:musclefit-alerts:*"},
+        {"Sid": "Lote1CloudWatchAlarms", "Effect": "Allow", "Action": ["cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms", "cloudwatch:ListTagsForResource", "cloudwatch:TagResource", "cloudwatch:UntagResource"], "Resource": "arn:aws:cloudwatch:*:930413537709:alarm:musclefit-*"},
+        {"Sid": "Lote1CloudWatchDescribe", "Effect": "Allow", "Action": ["cloudwatch:DescribeAlarms"], "Resource": "*"}
+      ]}
+    },
+    "musclefit-gha-deploy-fase6-migrations": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "MusclefitMigrationsRoleLifecycle", "Effect": "Allow", "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:TagRole", "iam:UntagRole", "iam:UpdateAssumeRolePolicy", "iam:ListInstanceProfilesForRole"], "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec"},
+        {"Sid": "MusclefitMigrationsRolePolicies", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies"], "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec"},
+        {"Sid": "MusclefitMigrationsPassRole", "Effect": "Allow", "Action": "iam:PassRole", "Resource": "arn:aws:iam::930413537709:role/musclefit-migrations-exec", "Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}},
+        {"Sid": "MusclefitMigrationsLambdaFunction", "Effect": "Allow", "Action": ["lambda:CreateFunction", "lambda:DeleteFunction", "lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:GetFunctionCodeSigningConfig", "lambda:ListVersionsByFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:PublishVersion", "lambda:TagResource", "lambda:UntagResource", "lambda:ListTags", "lambda:GetPolicy"], "Resource": ["arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations:*"]},
+        {"Sid": "MusclefitMigrationsInvokeFromPipeline", "Effect": "Allow", "Action": "lambda:InvokeFunction", "Resource": ["arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations", "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-migrations:*"]},
+        {"Sid": "MusclefitMigrationsLogGroup", "Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups", "logs:PutRetentionPolicy", "logs:TagResource", "logs:ListTagsForResource"], "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-migrations:*"}
+      ]}
+    },
+    "musclefit-gha-deploy-m44-route53": {
+      "version": "v1",
+      "doc": {"Version": "2012-10-17", "Statement": [
+        {"Sid": "Route53CreateHostedZone", "Effect": "Allow", "Action": "route53:CreateHostedZone", "Resource": "*"}
+      ]}
+    }
+  },
+  "inline": {
+    "musclefit-gha-deploy-fase0": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "TerraformStateBucket", "Effect": "Allow", "Action": ["s3:CreateBucket", "s3:PutBucketVersioning", "s3:PutBucketEncryption", "s3:PutBucketPublicAccessBlock", "s3:PutBucketPolicy", "s3:GetBucketPolicy", "s3:GetBucketVersioning", "s3:GetEncryptionConfiguration", "s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::musclefit-tfstate-930413537709", "arn:aws:s3:::musclefit-tfstate-930413537709/*"]},
+      {"Sid": "TerraformLockTable", "Effect": "Allow", "Action": ["dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem"], "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-tfstate-lock"},
+      {"Sid": "Route53HostedZone", "Effect": "Allow", "Action": ["route53:CreateHostedZone", "route53:DeleteHostedZone", "route53:GetHostedZone", "route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets", "route53:GetChange", "route53:ChangeTagsForResource", "route53:ListTagsForResource"], "Resource": ["arn:aws:route53:::hostedzone/*", "arn:aws:route53:::change/*"]},
+      {"Sid": "AcmSaEast1", "Effect": "Allow", "Action": ["acm:RequestCertificate", "acm:DescribeCertificate", "acm:GetCertificate", "acm:ListCertificates", "acm:DeleteCertificate", "acm:AddTagsToCertificate", "acm:RemoveTagsFromCertificate", "acm:ListTagsForCertificate"], "Resource": "*", "Condition": {"StringEquals": {"aws:RequestedRegion": "sa-east-1"}}},
+      {"Sid": "AcmUsEast1Cloudfront", "Effect": "Allow", "Action": ["acm:RequestCertificate", "acm:DescribeCertificate", "acm:GetCertificate", "acm:ListCertificates", "acm:DeleteCertificate", "acm:AddTagsToCertificate", "acm:RemoveTagsFromCertificate", "acm:ListTagsForCertificate"], "Resource": "*", "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}},
+      {"Sid": "Budgets", "Effect": "Allow", "Action": ["budgets:ViewBudget", "budgets:ModifyBudget"], "Resource": "arn:aws:budgets::930413537709:budget/*"},
+      {"Sid": "CostAnomalyDetection", "Effect": "Allow", "Action": ["ce:GetAnomalyMonitors", "ce:CreateAnomalyMonitor", "ce:UpdateAnomalyMonitor", "ce:DeleteAnomalyMonitor", "ce:GetAnomalySubscriptions", "ce:CreateAnomalySubscription", "ce:UpdateAnomalySubscription", "ce:DeleteAnomalySubscription", "ce:GetAnomalies", "ce:TagResource"], "Resource": "*"}
+    ]},
+    "musclefit-gha-deploy-fase1": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "Ec2VpcForAuroraSubnetGroup", "Effect": "Allow", "Action": ["ec2:CreateVpc", "ec2:DeleteVpc", "ec2:ModifyVpcAttribute", "ec2:DescribeVpcs", "ec2:DescribeVpcAttribute", "ec2:CreateSubnet", "ec2:DeleteSubnet", "ec2:DescribeSubnets", "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup", "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules", "ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress", "ec2:CreateTags", "ec2:DeleteTags", "ec2:DescribeTags", "ec2:DescribeAvailabilityZones"], "Resource": "*", "Condition": {"StringEquals": {"aws:RequestedRegion": "sa-east-1"}}},
+      {"Sid": "RdsAuroraManage", "Effect": "Allow", "Action": ["rds:CreateDBCluster", "rds:DeleteDBCluster", "rds:ModifyDBCluster", "rds:CreateDBInstance", "rds:DeleteDBInstance", "rds:ModifyDBInstance", "rds:CreateDBSubnetGroup", "rds:DeleteDBSubnetGroup", "rds:ModifyDBSubnetGroup", "rds:AddTagsToResource", "rds:RemoveTagsFromResource"], "Resource": ["arn:aws:rds:sa-east-1:930413537709:cluster:musclefit-db", "arn:aws:rds:sa-east-1:930413537709:db:musclefit-db-instance-1", "arn:aws:rds:sa-east-1:930413537709:subgrp:musclefit-db-subnet-group"]},
+      {"Sid": "RdsDescribeReadOnly", "Effect": "Allow", "Action": ["rds:DescribeDBClusters", "rds:DescribeDBInstances", "rds:DescribeDBSubnetGroups", "rds:DescribeDBEngineVersions", "rds:ListTagsForResource"], "Resource": "*"},
+      {"Sid": "SecretsManagerAuroraManagedSecret", "Effect": "Allow", "Action": ["secretsmanager:CreateSecret", "secretsmanager:DescribeSecret", "secretsmanager:TagResource", "secretsmanager:DeleteSecret", "secretsmanager:GetResourcePolicy"], "Resource": ["arn:aws:secretsmanager:sa-east-1:930413537709:secret:rds!cluster-*", "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/*"]}
+    ]},
+    "musclefit-gha-deploy-fase3": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "EcrRepoAndPush", "Effect": "Allow", "Action": ["ecr:CreateRepository", "ecr:DescribeRepositories", "ecr:GetAuthorizationToken", "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:TagResource", "ecr:SetRepositoryPolicy", "ecr:PutLifecyclePolicy"], "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-*"},
+      {"Sid": "EcrAuthToken", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*"},
+      {"Sid": "LambdaManage", "Effect": "Allow", "Action": ["lambda:CreateFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:DeleteFunction", "lambda:AddPermission", "lambda:RemovePermission", "lambda:GetPolicy", "lambda:TagResource", "lambda:ListVersionsByFunction", "lambda:PublishVersion", "lambda:CreateAlias", "lambda:UpdateAlias", "lambda:GetAlias", "lambda:InvokeFunction"], "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-*"},
+      {"Sid": "ApiGatewayManage", "Effect": "Allow", "Action": ["apigateway:GET", "apigateway:POST", "apigateway:PUT", "apigateway:PATCH", "apigateway:DELETE"], "Resource": ["arn:aws:apigateway:sa-east-1::/restapis", "arn:aws:apigateway:sa-east-1::/restapis/*", "arn:aws:apigateway:sa-east-1::/domainnames", "arn:aws:apigateway:sa-east-1::/domainnames/*", "arn:aws:apigateway:sa-east-1::/tags/*"]},
+      {"Sid": "DynamoDbAsyncJobs", "Effect": "Allow", "Action": ["dynamodb:CreateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable", "dynamodb:UpdateTimeToLive", "dynamodb:DescribeTimeToLive", "dynamodb:TagResource"], "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-async-jobs"},
+      {"Sid": "IamLambdaExecutionRoles", "Effect": "Allow", "Action": ["iam:CreateRole", "iam:GetRole", "iam:DeleteRole", "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:TagRole", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies"], "Resource": "arn:aws:iam::930413537709:role/musclefit-*-exec"},
+      {"Sid": "IamPassRoleToLambda", "Effect": "Allow", "Action": "iam:PassRole", "Resource": "arn:aws:iam::930413537709:role/musclefit-*-exec", "Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}},
+      {"Sid": "LogsForLambda", "Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:PutRetentionPolicy", "logs:DescribeLogGroups", "logs:TagResource"], "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-*"}
+    ]},
+    "musclefit-gha-deploy-fase3-engines": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "MusclefitEnginesEcrRepoManage", "Effect": "Allow", "Action": ["ecr:CreateRepository", "ecr:DeleteRepository", "ecr:DescribeRepositories", "ecr:PutLifecyclePolicy", "ecr:GetLifecyclePolicy", "ecr:DeleteLifecyclePolicy", "ecr:PutImageScanningConfiguration", "ecr:TagResource", "ecr:ListTagsForResource"], "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-engines"},
+      {"Sid": "MusclefitEnginesExecRoleManage", "Effect": "Allow", "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies"], "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec"},
+      {"Sid": "MusclefitEnginesExecRolePassToLambda", "Effect": "Allow", "Action": "iam:PassRole", "Resource": "arn:aws:iam::930413537709:role/musclefit-engines-exec", "Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}},
+      {"Sid": "MusclefitApiCoreAndAiGeneratorsInvokeEnginesInlinePolicy", "Effect": "Allow", "Action": ["iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy"], "Resource": ["arn:aws:iam::930413537709:role/musclefit-api-core-exec", "arn:aws:iam::930413537709:role/musclefit-ai-generators-exec"]},
+      {"Sid": "MusclefitEnginesLambdaFunctionManage", "Effect": "Allow", "Action": ["lambda:CreateFunction", "lambda:DeleteFunction", "lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:ListVersionsByFunction", "lambda:TagResource", "lambda:UntagResource", "lambda:ListTags", "lambda:GetPolicy", "lambda:AddPermission", "lambda:RemovePermission"], "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-engines"},
+      {"Sid": "MusclefitEnginesLogGroupManage", "Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups", "logs:PutRetentionPolicy", "logs:TagResource", "logs:ListTagsForResource"], "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-engines*"}
+    ]},
+    "musclefit-gha-deploy-fase3-uploads": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "S3UploadsBucket", "Effect": "Allow", "Action": ["s3:CreateBucket", "s3:PutBucketVersioning", "s3:PutBucketEncryption", "s3:PutBucketPublicAccessBlock", "s3:PutBucketPolicy", "s3:PutBucketCORS", "s3:GetBucketPolicy", "s3:GetBucketVersioning", "s3:GetEncryptionConfiguration", "s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::musclefit-uploads", "arn:aws:s3:::musclefit-uploads/*"]}
+    ]},
+    "musclefit-gha-deploy-fase4-frontend": {"Version": "2012-10-17", "Statement": [
+      {"Sid": "MusclefitFrontendAssetsBucketList", "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": "arn:aws:s3:::musclefit-frontend-assets"},
+      {"Sid": "MusclefitFrontendAssetsObjectReadWrite", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::musclefit-frontend-assets/*"},
+      {"Sid": "MusclefitFrontendCloudFrontInvalidation", "Effect": "Allow", "Action": ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"], "Resource": "arn:aws:cloudfront::930413537709:distribution/EOA1PMADLM7RO"}
+    ]}
+  }
+}

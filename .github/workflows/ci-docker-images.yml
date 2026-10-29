@@ -1,0 +1,308 @@
+name: CI (imagens Lambda)
+
+# Builda e faz smoke das 3 imagens Lambda de PRODUCAO (api/Dockerfile*) em todo
+# PR contra `develop`, para que erro de COPY, de caminho das migracoes, de
+# dependencia ou de import de handler apareca no PR - e nao so no
+# deploy-producao.yml (job backend-build, workflow_dispatch na `main`), que e o
+# unico lugar que builda essas
+# imagens hoje.
+#
+# Mesma postura de seguranca do ci-develop.yml (workflow separado dele de
+# proposito, para nao conflitar com a suite de testes daquele arquivo):
+#   - `permissions: contents: read` e o UNICO escopo;
+#   - NUNCA `id-token: write`, NUNCA aws-actions/configure-aws-credentials;
+#   - build com `push: false` (imagem so carregada no docker local do runner),
+#     nenhum login em registry;
+#   - o smoke roda com `--network none` e sem credencial AWS nenhuma.
+#
+# Build identico ao do job backend-build de deploy-producao.yml: contexto api/, linux/amd64 (as
+# Lambdas nao declaram `architectures` no Terraform -> x86_64, e o runner e
+# amd64: build nativo, sem QEMU), provenance/sbom desligados. Cache de camadas
+# type=gha por Dockerfile para manter o tempo de CI baixo.
+#
+# Imagem base Python (M82): o FROM dos Dockerfiles aponta para o ECR Public, cujo
+# pull ANONIMO tem cota por IP de origem; os runners compartilham IPs e o job
+# caiu com "429 Too Many Requests - toomanyrequests: Data limit exceeded" em
+# 16 e 17/10 (PRs #549, #552, #553, #556; so passava ao reexecutar 15 a 45 min
+# depois). O passo "origem da imagem base Python" escolhe, com
+# .github/scripts/escolher-base-python.sh, a 1a origem que responde com o MESMO
+# digest do FROM (mirror.gcr.io -> public.ecr.aws -> docker.io), e o build usa
+# essa origem por contexto nomeado do BuildKit (`build-contexts:`). O conteudo
+# nao muda: o digest e conferido no pull. Os Dockerfiles (e o DEV local e a
+# producao) continuam com o mesmo FROM, e o Dependabot segue atualizando o digest
+# la; o script le o FROM, entao o bump propaga sozinho. Sem credencial nenhuma
+# (nem login no ECR Public, nem ECR privado): a postura de seguranca acima vale.
+# O job `contexto-deploy` prova, tambem sem credencial, o caminho do deploy
+# (--pull + driver docker + --build-context), que o build acima nao exercita.
+#
+# O que o smoke prova: ver .github/scripts/smoke-lambda-image.sh e
+# docs/local-dev.md ("Smoke das imagens Lambda de producao").
+#
+# Varredura Trivy (AWS-12): so aqui (PR/CI), NUNCA no deploy-producao.yml.
+# INFORMATIVA por enquanto: `continue-on-error` + `--exit-code 0`, resultado
+# no job summary. Endurecer depois (ex.: `--exit-code 1 --severity CRITICAL
+# --ignore-unfixed`) e decisao explicita, em PR proprio. Roda o Trivy pela
+# imagem oficial fixada por digest (sem action de terceiro, sem segredo, sem
+# login em registry); a base de vulnerabilidades vem do espelho no ECR Public,
+# com os espelhos padrao do Trivy como fallback.
+#
+# Economia de GitHub Actions (2026-10-10; ~600 min/semana neste arquivo):
+#   - PR para `develop`: o job `changes` so libera o build quando o PR toca o
+#     que muda a IMAGEM ou o smoke dela: api/Dockerfile*, os .dockerignore,
+#     api/requirements* (locks com hashes e .in), infra/lambda_*.tf (handlers
+#     lidos do Terraform), .github/scripts/* e este workflow. Codigo de
+#     aplicacao (api/app/**) sozinho nao builda aqui: o lint/unit do
+#     ci-develop.yml cobre, e a promocao builda tudo.
+#   - PR para `main` (promocao), PR com o rotulo `ci-completo` ou
+#     workflow_dispatch: builda as 3 imagens, sem filtro.
+#   - `on.paths` e o mesmo de antes; build pulado aparece como "skipping".
+
+on:
+  pull_request:
+    branches: [develop, main]
+    # `labeled`: o rotulo `ci-completo` forca o build das 3 imagens.
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "api/**"
+      # Handlers testados sao lidos de image_config.command nesses arquivos.
+      - "infra/lambda_*.tf"
+      - ".github/scripts/smoke-lambda-image.sh"
+      - ".github/scripts/lambda_image_handlers.py"
+      - ".github/scripts/rie_invoke.py"
+      - ".github/scripts/trivy_summary.py"
+      - ".github/scripts/escolher-base-python.sh"
+      - ".github/scripts/provar-contexto-base.sh"
+      - ".github/actions/checkout-privado/**"
+      - ".github/workflows/ci-docker-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Mesmo mecanismo do job `changes` do ci-develop.yml: diff do merge commit
+  # de teste contra o 1o pai (ponta da base), sem action de terceiro.
+  changes:
+    name: changes (o PR mexe na imagem?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      imagens: ${{ steps.areas.outputs.imagens }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: classificar arquivos alterados
+        id: areas
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          ROTULO_CI_COMPLETO: ${{ contains(github.event.pull_request.labels.*.name, 'ci-completo') }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENTO" != "pull_request" ]; then
+            imagens=true; motivo="$EVENTO: build completo"
+          elif [ "$BASE_REF" = "main" ]; then
+            imagens=true; motivo="PR para main (promocao): build completo"
+          elif [ "$ROTULO_CI_COMPLETO" = "true" ]; then
+            imagens=true; motivo="rotulo ci-completo: build completo"
+          else
+            alterados="$RUNNER_TEMP/alterados.txt"
+            if ! git diff --name-only HEAD^1 HEAD > "$alterados"; then
+              echo "::warning::nao consegui listar os arquivos do PR; buildando tudo"
+              imagens=true; motivo="diff indisponivel: build completo"
+            elif grep -Eq '^api/Dockerfile|^api/requirements|^api/privado$|(^|/)[^/]*\.dockerignore$|^infra/lambda_[^/]*\.tf$|^\.github/scripts/|^\.github/actions/checkout-privado/|^\.github/workflows/ci-docker-images\.yml$' "$alterados"; then
+              imagens=true; motivo="PR para develop tocou Dockerfile/lock/.dockerignore/lambda_*.tf/scripts do smoke/ponteiro do submodulo privado (prompts na imagem)"
+            else
+              imagens=false; motivo="PR para develop sem mudanca de imagem (sem o rotulo ci-completo)"
+            fi
+            cat "$alterados" || true
+          fi
+          echo "imagens=$imagens" >> "$GITHUB_OUTPUT"
+          echo "### Imagens Lambda: build=$imagens ($motivo)" >> "$GITHUB_STEP_SUMMARY"
+          echo "build=$imagens ($motivo)"
+
+  build-smoke:
+    name: build + smoke ${{ matrix.dockerfile }}
+    needs: changes
+    # M103 P1: as imagens EMPACOTAM os templates de prompt do submodulo privado
+    # (COPY privado/prompts). PR de fork nao recebe a PRIVADO_DEPLOY_KEY: sem o
+    # submodulo o build falharia no COPY, entao o job nao roda para fork (skipping).
+    if: >-
+      needs.changes.outputs.imagens == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      # Uma imagem quebrada nao deve esconder o resultado das outras.
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile.ai
+            id: ai
+          - dockerfile: Dockerfile
+            id: api-core
+          - dockerfile: Dockerfile.engines
+            id: engines
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # M103 P0/P1: o submodulo privado (api/privado) fica DENTRO do contexto de
+      # build (api/). As imagens copiam SO privado/prompts (templates dos prompts,
+      # M103 P1); o passo "RAG privado fora da imagem" abaixo prova que as allowlists
+      # dos api/Dockerfile*.dockerignore mantem o RAG e o resto do submodulo fora.
+      # PR de fork nem chega aqui (`if` do job).
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # M82: 1a origem que responde com o MESMO digest do FROM (mirror.gcr.io ->
+      # public.ecr.aws -> docker.io; teste leve com `imagetools inspect`, com
+      # novas tentativas curtas). Saida `build_context` =
+      # "<FROM exato>=docker-image://<origem>@<digest>"; a origem usada vai para o
+      # job summary. Nenhuma origem respondeu: o job falha aqui, com mensagem clara.
+      - name: origem da imagem base Python (M82)
+        id: base
+        run: .github/scripts/escolher-base-python.sh
+
+      - name: Marca inicio do build
+        id: t0
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # `build-contexts` (M82): contexto nomeado do BuildKit; troca a imagem do
+      # FROM pela origem escolhida acima SO neste build. Cache type=gha continua
+      # valido com a origem trocada: a chave de cache da imagem base e o digest do
+      # manifesto + plataforma (e a cadeia de camadas), nao o nome do registro.
+      # Conferido localmente (cache do BuildKit, a mesma chave que o type=gha
+      # exporta/importa): trocar ECR Public por mirror.gcr.io deixou todos os
+      # passos CACHED e a imagem final com o MESMO ID.
+      - name: docker build (linux/amd64, sem push)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: api
+          file: api/${{ matrix.dockerfile }}
+          build-contexts: ${{ steps.base.outputs.build_context }}
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          push: false
+          load: true
+          tags: mfsmoke-${{ matrix.id }}:ci
+          cache-from: type=gha,scope=lambda-image-${{ matrix.id }}
+          cache-to: type=gha,mode=max,scope=lambda-image-${{ matrix.id }}
+
+      - name: Tempo de build
+        run: |
+          secs=$(( $(date +%s) - ${{ steps.t0.outputs.epoch }} ))
+          size=$(docker image inspect -f '{{.Size}}' mfsmoke-${{ matrix.id }}:ci)
+          echo "build ${{ matrix.dockerfile }}: ${secs}s, imagem $((size / 1024 / 1024)) MiB"
+          echo "| ${{ matrix.dockerfile }} | ${secs}s | $((size / 1024 / 1024)) MiB |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke da imagem
+        run: .github/scripts/smoke-lambda-image.sh "${{ matrix.dockerfile }}" "mfsmoke-${{ matrix.id }}:ci"
+
+      # M103 P0: o RAG privado nunca entra na imagem (as Lambdas leem o RAG do S3).
+      # M103 P1: do submodulo, so os templates de prompt (<workdir>/privado/prompts/**/*.md)
+      # entram. Lista o sistema de arquivos da imagem e falha se achar arquivos do RAG
+      # ou qualquer coisa de privado/ fora de privado/prompts/*.md (README incluido), ou
+      # se os templates nao estiverem la. So nomes de arquivo sao inspecionados.
+      - name: RAG privado fora da imagem
+        env:
+          IMAGEM: mfsmoke-${{ matrix.id }}:ci
+        run: |
+          set -euo pipefail
+          cid=$(docker create "$IMAGEM")
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          docker export "$cid" | tar -t > "$RUNNER_TEMP/arquivos-imagem.txt"
+          prompts='^(app|var/task)/privado/(prompts/([a-z0-9_]+/([a-z0-9_][a-z0-9_.-]*\.md)?)?)?$'
+          grep -Ev "$prompts" "$RUNNER_TEMP/arquivos-imagem.txt" > "$RUNNER_TEMP/fora-dos-prompts.txt" || true
+          if grep -Eq '(^|/)privado(/|$)|(^|/)rag/markdown/|(^|/)TIPOS_TREINO/|(^|/)(PROGRESSAO|HIPERTROFIA|HABILIDADES_TREINO)\.md$' "$RUNNER_TEMP/fora-dos-prompts.txt" \
+             || grep -E "$prompts" "$RUNNER_TEMP/arquivos-imagem.txt" | grep -Eiq 'README\.md$'; then
+            echo "::error::a imagem $IMAGEM contem arquivos do RAG/submodulo privado alem de privado/prompts/*.md; confira o .dockerignore"
+            exit 1
+          fi
+          n=$(grep -Ec '/privado/prompts/[a-z0-9_]+/[^/]+\.md$' "$RUNNER_TEMP/arquivos-imagem.txt" || true)
+          if [ "$n" -eq 0 ]; then
+            echo "::error::a imagem $IMAGEM nao tem os templates de prompt (privado/prompts); confira o COPY e o .dockerignore"
+            exit 1
+          fi
+          echo "ok: do submodulo privado so $n templates de prompt; nenhum arquivo do RAG em $IMAGEM ($(wc -l < "$RUNNER_TEMP/arquivos-imagem.txt") entradas)"
+
+      # Informativo (AWS-12): nunca reprova o job. Imagem do Trivy por digest
+      # (o MESMO indice no ECR Public e no GHCR, conferido em 2026-10-09). Para
+      # atualizar: `docker buildx imagetools inspect
+      # public.ecr.aws/aquasecurity/trivy:<versao>` e troque versao + digest nas
+      # duas variaveis (o Dependabot nao acompanha imagem usada em `run:`).
+      # O pull anonimo do ECR Public tem limite de taxa por IP e as 3 pernas da
+      # matriz puxam juntas (no 1o run deste passo uma recebeu "toomanyrequests:
+      # Rate exceeded"): por isso o pull tem novas tentativas com espera e cai
+      # para o GHCR com o mesmo digest.
+      - name: Trivy (vulnerabilidades da imagem, informativo)
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          TRIVY_IMAGE: public.ecr.aws/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          TRIVY_IMAGE_FALLBACK: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          ALVO: mfsmoke-${{ matrix.id }}:ci
+          ROTULO: ${{ matrix.dockerfile }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy"
+          IMG=""
+          for cand in "$TRIVY_IMAGE" "$TRIVY_IMAGE_FALLBACK"; do
+            for attempt in 1 2 3; do
+              if docker pull -q "$cand"; then IMG="$cand"; break 2; fi
+              echo "pull de $cand falhou (tentativa $attempt/3); aguardando $((attempt * 10))s"
+              sleep $((attempt * 10))
+            done
+          done
+          if [ -n "$IMG" ]; then
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$RUNNER_TEMP/trivy:/out" \
+              "$IMG" image \
+                --db-repository public.ecr.aws/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2 \
+                --scanners vuln \
+                --pkg-types os,library \
+                --exit-code 0 \
+                --no-progress \
+                --format json \
+                --output /out/report.json \
+                "$ALVO" || echo "::warning::Trivy nao concluiu a varredura de $ROTULO (informativo)"
+          else
+            echo "::warning::imagem do Trivy indisponivel (ECR Public e GHCR); varredura de $ROTULO pulada (informativo)"
+          fi
+          python3 .github/scripts/trivy_summary.py "$RUNNER_TEMP/trivy/report.json" "$ROTULO" "$GITHUB_STEP_SUMMARY"
+
+  # M82 - prova barata (sem credencial, ~1 min) do caminho que o deploy-producao.yml
+  # usa para a base Python e que nenhum outro job exercita: escolher-base-python.sh
+  # --pull + builder `default` (driver docker, sem setup-buildx-action) +
+  # `docker buildx build --build-context`. Se a chave do contexto nao casar com o
+  # FROM, o BuildKit ignora o contexto SEM AVISAR e puxa do public.ecr.aws: o script
+  # reprova se o log nao mostrar "[context <FROM>] load metadata for <origem>" ou se
+  # citar public.ecr.aws fora do contexto quando a origem escolhida for outra. Builda
+  # so um Dockerfile minimo (mesmo FROM + RUN true). Mesmas condicoes dos outros
+  # jobs: so `contents: read` (permissions do workflow), nunca id-token, e so roda
+  # quando o job `changes` libera as imagens.
+  contexto-deploy:
+    name: base Python no caminho do deploy (driver docker + --build-context)
+    needs: changes
+    if: needs.changes.outputs.imagens == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: --pull + docker buildx build --builder default --build-context
+        run: .github/scripts/provar-contexto-base.sh

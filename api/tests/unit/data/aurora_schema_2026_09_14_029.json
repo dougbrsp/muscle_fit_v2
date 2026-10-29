@@ -1,0 +1,111 @@
+{
+ "_origem": "Aurora de producao (musclefit), information_schema extraido pelo Tech Lead em 2026-09-14, somente leitura; recorte de exercise_aliases (tabela, colunas, indices, FKs) lido pela migracao 029",
+ "versao": [
+  {
+   "aurora": "3.08.2",
+   "mysql": "8.0.39",
+   "sql_mode": "STRICT_TRANS_TABLES"
+  }
+ ],
+ "tables": [
+  {
+   "table_name": "exercise_aliases",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci",
+   "approx_rows": 412
+  }
+ ],
+ "columns": [
+  {
+   "t": "exercise_aliases",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "exercise_aliases",
+   "pos": 2,
+   "col": "exercise_id",
+   "type": "bigint unsigned",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercise_aliases",
+   "pos": 3,
+   "col": "alias",
+   "type": "varchar(255)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_aliases",
+   "pos": 4,
+   "col": "source",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_aliases",
+   "pos": 5,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  }
+ ],
+ "indexes": [
+  {
+   "t": "exercise_aliases",
+   "idx": "idx_exercise_aliases_exercise",
+   "seq": 1,
+   "col": "exercise_id",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_aliases",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "exercise_aliases",
+   "idx": "uq_exercise_aliases_exercise_alias",
+   "seq": 1,
+   "col": "exercise_id",
+   "non_unique": 0
+  },
+  {
+   "t": "exercise_aliases",
+   "idx": "uq_exercise_aliases_exercise_alias",
+   "seq": 2,
+   "col": "alias",
+   "non_unique": 0
+  }
+ ],
+ "foreign_keys": [
+  {
+   "t": "exercise_aliases",
+   "fk": "fk_exercise_aliases_exercise_catalog",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  }
+ ]
+}

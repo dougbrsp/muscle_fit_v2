@@ -1,0 +1,208 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TfStateLista",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::musclefit-tfstate-930413537709"
+    },
+    {
+      "Sid": "S3HeadBucketDosBucketsGerenciados",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": [
+        "arn:aws:s3:::musclefit-cloudtrail-930413537709",
+        "arn:aws:s3:::musclefit-frontend-assets",
+        "arn:aws:s3:::musclefit-rag",
+        "arn:aws:s3:::musclefit-uploads"
+      ]
+    },
+    {
+      "Sid": "TfStateLeitura",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::musclefit-tfstate-930413537709/fase1/terraform.tfstate"
+    },
+    {
+      "Sid": "TfStateDigestDoLock",
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-tfstate-lock"
+    },
+    {
+      "Sid": "S3ConfiguracaoDosBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetAccelerateConfiguration",
+        "s3:GetBucket*",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::musclefit-*"
+    },
+    {
+      "Sid": "S3ObjetosDoRag",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectTagging"
+      ],
+      "Resource": "arn:aws:s3:::musclefit-rag/*"
+    },
+    {
+      "Sid": "SecretsMetadados",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy"
+      ],
+      "Resource": "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/*"
+    },
+    {
+      "Sid": "LambdaMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction*",
+        "lambda:GetPolicy",
+        "lambda:GetRuntimeManagementConfig",
+        "lambda:ListAliases",
+        "lambda:ListFunctionEventInvokeConfigs",
+        "lambda:ListTags",
+        "lambda:ListVersionsByFunction"
+      ],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-*"
+    },
+    {
+      "Sid": "EcrMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetLifecyclePolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:ecr:sa-east-1:930413537709:repository/musclefit-*"
+    },
+    {
+      "Sid": "DynamoDbMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Describe*",
+        "dynamodb:ListTagsOfResource"
+      ],
+      "Resource": "arn:aws:dynamodb:sa-east-1:930413537709:table/musclefit-*"
+    },
+    {
+      "Sid": "EventBridgeRegrasMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "events:DescribeRule",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule"
+      ],
+      "Resource": "arn:aws:events:*:930413537709:rule/musclefit-*"
+    },
+    {
+      "Sid": "IamRolesMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-*"
+    },
+    {
+      "Sid": "SesDominio",
+      "Effect": "Allow",
+      "Action": [
+        "ses:GetEmailIdentity",
+        "ses:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:ses:sa-east-1:930413537709:identity/musclefit.com.br"
+    },
+    {
+      "Sid": "SnsMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "sns:GetSubscriptionAttributes",
+        "sns:GetTopicAttributes",
+        "sns:ListSubscriptionsByTopic",
+        "sns:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:sns:*:930413537709:musclefit-*"
+    },
+    {
+      "Sid": "BudgetsDaConta",
+      "Effect": "Allow",
+      "Action": [
+        "budgets:ListTagsForResource",
+        "budgets:ViewBudget"
+      ],
+      "Resource": "arn:aws:budgets::930413537709:budget/*"
+    },
+    {
+      "Sid": "WafMusclefit",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:GetWebACL",
+        "wafv2:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:wafv2:sa-east-1:930413537709:regional/webacl/musclefit-*/*"
+    },
+    {
+      "Sid": "WafGetWebACLForResource",
+      "Effect": "Allow",
+      "Action": "wafv2:GetWebACLForResource",
+      "Resource": "arn:aws:wafv2:sa-east-1:930413537709:regional/webacl/*/*"
+    },
+    {
+      "Sid": "MetadadosDeConfiguracao",
+      "Effect": "Allow",
+      "Action": [
+        "access-analyzer:GetAnalyzer",
+        "access-analyzer:ListAnalyzers",
+        "access-analyzer:ListTagsForResource",
+        "acm:DescribeCertificate",
+        "acm:GetCertificate",
+        "acm:ListCertificates",
+        "acm:ListTagsForCertificate",
+        "apigateway:GET",
+        "cloudfront:DescribeFunction",
+        "cloudfront:GetDistribution",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:GetFunction",
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:ListTagsForResource",
+        "cloudtrail:DescribeTrails",
+        "cloudtrail:GetEventSelectors",
+        "cloudtrail:GetInsightSelectors",
+        "cloudtrail:GetTrail",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:ListTags",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource",
+        "ec2:Describe*",
+        "guardduty:GetDetector",
+        "guardduty:ListDetectors",
+        "guardduty:ListTagsForResource",
+        "logs:DescribeLogGroups",
+        "logs:ListTagsForResource",
+        "logs:ListTagsLogGroup",
+        "rds:Describe*",
+        "rds:ListTagsForResource",
+        "route53:GetChange",
+        "route53:GetHostedZone",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

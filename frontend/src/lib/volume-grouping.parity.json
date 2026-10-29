@@ -1,0 +1,40 @@
+{
+  "_comment": "Paridade da chave de agrupamento: backend `slot_session_comparison.grouping_key_of` (dono) x frontend `volume-grouping.groupingKeyOf`. Os dois testes leem este arquivo.",
+  "cases": [
+    {
+      "level": "muscle_group",
+      "row": { "muscle_group": "Peitoral", "parent_group_id": 12, "parent_group_name": "Peitoral", "volume_class_id": 1, "volume_class_name": "Grandes", "volume_class_order": 1 },
+      "expected": { "key": "grupo:Peitoral", "label": "Peitoral", "order": null }
+    },
+    {
+      "level": "muscle_group",
+      "row": { "muscle_group": "" },
+      "expected": { "key": "grupo:Outros", "label": "Outros", "order": null }
+    },
+    {
+      "level": "parent_group",
+      "row": { "muscle_group": "Peitoral inferior", "parent_group_id": 12, "parent_group_name": "Peitoral", "volume_class_id": 1, "volume_class_name": "Grandes", "volume_class_order": 1 },
+      "expected": { "key": "pai:12", "label": "Peitoral", "order": null }
+    },
+    {
+      "level": "parent_group",
+      "row": { "muscle_group": "Outros", "parent_group_id": null, "parent_group_name": "Outros", "volume_class_id": null, "volume_class_name": "Sem macro-grupo", "volume_class_order": null },
+      "expected": { "key": "pai:Outros", "label": "Outros", "order": null }
+    },
+    {
+      "level": "volume_class",
+      "row": { "muscle_group": "Bíceps", "parent_group_id": 5, "parent_group_name": "Bíceps", "volume_class_id": 2, "volume_class_name": "Pequenos", "volume_class_order": 2 },
+      "expected": { "key": "macro:2", "label": "Pequenos", "order": 2 }
+    },
+    {
+      "level": "volume_class",
+      "row": { "muscle_group": "Core", "parent_group_id": 55, "parent_group_name": "Core", "volume_class_id": null, "volume_class_name": "Sem macro-grupo", "volume_class_order": null },
+      "expected": { "key": "macro:sem-classe", "label": "Sem macro-grupo", "order": null }
+    },
+    {
+      "level": "volume_class",
+      "row": { "muscle_group": "Tríceps" },
+      "expected": { "key": "grupo:Tríceps", "label": "Tríceps", "order": null }
+    }
+  ]
+}

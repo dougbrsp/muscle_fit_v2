@@ -1,0 +1,16 @@
+* text=auto eol=lf
+api/vendor/aws-lambda-web-adapter/**/lambda-adapter-* binary
+# Mapa corporal v1: bytes idênticos ao pacote aprovado (testes comparam sha256
+# com o manifest e, no backend, com a mesma cópia do regions.json).
+frontend/public/bodymap/**/*.json -text
+# Fontes dos cards ilustrados (api/app/assets/fonts/README.md): binario, sem normalizacao.
+api/app/assets/fonts/**/*.ttf binary
+# Mapa corporal v1 (api/app/assets/bodymap/v1/README.md): arte e mascaras binarias;
+# regions.json byte a byte igual ao da web (sha256 no manifest) - sem normalizacao.
+api/app/assets/bodymap/**/*.webp binary
+api/app/assets/bodymap/**/*.png binary
+api/app/assets/bodymap/**/regions.json -text
+# Fonte da TACO (docs/nutricao/fontes/README.md): bytes iguais ao SHA-256 registrado.
+docs/nutricao/fontes/*.xlsx binary
+# Imagens sinteticas do eval da foto do rotulo (api/tests/eval/imagens/nutrition_labels/README.md).
+api/tests/eval/imagens/**/*.jpg binary

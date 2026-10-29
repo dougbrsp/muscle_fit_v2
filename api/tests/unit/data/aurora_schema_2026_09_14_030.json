@@ -1,0 +1,1418 @@
+{
+ "_origem": "Aurora de producao (musclefit), information_schema extraido pelo Tech Lead em 2026-09-14, somente leitura; recorte para a migracao 030: TODAS as tabelas e TODAS as FKs do schema (a 030 le as FKs que entram ou saem das tabelas de backup), colunas e indices so das duas tabelas de backup (DDL dos testes de integracao). `view_table_usage`: resultado da verificacao do Tech Lead na Aurora (0 views referenciam as duas tabelas).",
+ "versao": [
+  {
+   "aurora": "3.08.2",
+   "mysql": "8.0.39",
+   "sql_mode": "STRICT_TRANS_TABLES"
+  }
+ ],
+ "tables": [
+  {
+   "table_name": "activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "activity_hr_zones",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "body_composition",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "cardio_recommendations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "daily_biometrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "devices",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "equipment_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_aliases",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_external_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_legacy_id_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_mappings_backup_20260714",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "exercise_muscle_contributions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_sets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercise_zepp_mappings",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "exercises_backup_before_mapping_sync",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gym_equipment_catalog",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gyms",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "imports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "intervals_activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "intervals_wellness",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "manual_effort_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_group_body_map",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_groups",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "muscle_recovery_coefficients",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "reports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_files",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migration_lock",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "schema_migrations",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sleep_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sources",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_type_muscle_group_targets",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "training_types",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "user_sessions",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "users",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "weekly_summaries",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_exercises",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_assignments",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slot_items",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_template_slots",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plan_templates",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "workout_plans",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  }
+ ],
+ "foreign_keys": [
+  {
+   "t": "activities",
+   "fk": "fk_activities_gym",
+   "col": "gym_id",
+   "ref_t": "gyms",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activities",
+   "fk": "fk_activities_imports",
+   "col": "import_id",
+   "ref_t": "imports",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activities",
+   "fk": "fk_activities_sources",
+   "col": "source_id",
+   "ref_t": "sources",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activities",
+   "fk": "fk_activities_training_type",
+   "col": "training_type_id",
+   "ref_t": "training_types",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activities",
+   "fk": "fk_activities_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activities",
+   "fk": "fk_activities_workout_plan",
+   "col": "workout_plan_id",
+   "ref_t": "workout_plans",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "activity_hr_zones",
+   "fk": "fk_hr_zones_activity",
+   "col": "activity_id",
+   "ref_t": "activities",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "body_composition",
+   "fk": "fk_body_composition_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "cardio_recommendations",
+   "fk": "fk_cardio_recommendations_workout_plan",
+   "col": "workout_plan_id",
+   "ref_t": "workout_plans",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "daily_biometrics",
+   "fk": "fk_daily_biometrics_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment",
+   "fk": "fk_equipment_type",
+   "col": "equipment_type_id",
+   "ref_t": "equipment_types",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercise_mappings",
+   "fk": "fk_eem_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercise_mappings",
+   "fk": "fk_eem_mapping_catalog",
+   "col": "mapping_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercises",
+   "fk": "fk_eqex_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "equipment_exercises",
+   "fk": "fk_eqex_exercise",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_aliases",
+   "fk": "fk_exercise_aliases_exercise_catalog",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_external_mappings",
+   "fk": "fk_exm_exercise",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_legacy_id_map",
+   "fk": "fk_elim_canonical",
+   "col": "canonical_exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_muscle_contributions",
+   "fk": "fk_emc_exercise_catalog",
+   "col": "exercise_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_muscle_contributions",
+   "fk": "fk_emc_muscle_group",
+   "col": "muscle_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_sets",
+   "fk": "fk_sets_exercise",
+   "col": "exercise_id",
+   "ref_t": "exercises",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_zepp_mappings",
+   "fk": "fk_zm_primary_group",
+   "col": "primary_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercise_zepp_mappings",
+   "fk": "fk_zm_secondary_group",
+   "col": "secondary_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercises",
+   "fk": "fk_exercises_activity",
+   "col": "activity_id",
+   "ref_t": "activities",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercises",
+   "fk": "fk_exercises_equipment",
+   "col": "equipment_id",
+   "ref_t": "gym_equipment",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercises",
+   "fk": "fk_exercises_mapping_catalog",
+   "col": "mapping_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "exercises",
+   "fk": "fk_exercises_workout_plan_exercise",
+   "col": "workout_plan_exercise_id",
+   "ref_t": "workout_plan_exercises",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gym_equipment",
+   "fk": "fk_gym_equipment_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gym_equipment",
+   "fk": "fk_gym_equipment_gym",
+   "col": "gym_id",
+   "ref_t": "gyms",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gym_equipment",
+   "fk": "fk_gym_equipment_mapping_catalog",
+   "col": "mapping_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gym_equipment_catalog",
+   "fk": "fk_gec_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gym_equipment_catalog",
+   "fk": "fk_gec_gym",
+   "col": "gym_id",
+   "ref_t": "gyms",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "gyms",
+   "fk": "fk_gyms_owner",
+   "col": "owner_user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "imports",
+   "fk": "fk_imports_sources",
+   "col": "source_id",
+   "ref_t": "sources",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "muscle_group_body_map",
+   "fk": "fk_mgbm_muscle_group",
+   "col": "muscle_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "muscle_recovery_coefficients",
+   "fk": "fk_mrc_muscle_group",
+   "col": "muscle_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "muscle_recovery_coefficients",
+   "fk": "fk_mrc_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "training_type_muscle_group_targets",
+   "fk": "fk_ttmgt_muscle_group",
+   "col": "muscle_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "training_type_muscle_group_targets",
+   "fk": "fk_ttmgt_type",
+   "col": "training_type_id",
+   "ref_t": "training_types",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "training_types",
+   "fk": "fk_tt_created_by",
+   "col": "created_by_user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "user_sessions",
+   "fk": "fk_user_sessions_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_exercises",
+   "fk": "fk_plan_exercises_plan",
+   "col": "plan_id",
+   "ref_t": "workout_plans",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_exercises",
+   "fk": "fk_wpe_mapping_catalog",
+   "col": "mapping_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_exercises",
+   "fk": "fk_wpe_pref_equipment",
+   "col": "preferred_equipment_id",
+   "ref_t": "gym_equipment",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_assignments",
+   "fk": "fk_wpta_assigned_by",
+   "col": "assigned_by_user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_assignments",
+   "fk": "fk_wpta_template",
+   "col": "template_id",
+   "ref_t": "workout_plan_templates",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_assignments",
+   "fk": "fk_wpta_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_slot_items",
+   "fk": "fk_wptsi_equipment",
+   "col": "equipment_id",
+   "ref_t": "equipment",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_slot_items",
+   "fk": "fk_wptsi_mapping",
+   "col": "mapping_id",
+   "ref_t": "exercise_catalog",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_slot_items",
+   "fk": "fk_wptsi_muscle_group",
+   "col": "muscle_group_id",
+   "ref_t": "muscle_groups",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_slot_items",
+   "fk": "fk_wptsi_slot",
+   "col": "slot_id",
+   "ref_t": "workout_plan_template_slots",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_template_slots",
+   "fk": "fk_wpts_template",
+   "col": "template_id",
+   "ref_t": "workout_plan_templates",
+   "ref_col": "id",
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_templates",
+   "fk": "fk_wpt_created_by",
+   "col": "created_by_user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plan_templates",
+   "fk": "fk_wpt_training_type",
+   "col": "training_type_id",
+   "ref_t": "training_types",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plans",
+   "fk": "fk_workout_plans_gym",
+   "col": "gym_id",
+   "ref_t": "gyms",
+   "ref_col": "id",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plans",
+   "fk": "fk_workout_plans_user",
+   "col": "user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  },
+  {
+   "t": "workout_plans",
+   "fk": "fk_wp_template",
+   "col": "template_id",
+   "ref_t": "workout_plan_templates",
+   "ref_col": "id",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  }
+ ],
+ "columns": [
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 2,
+   "col": "exercise_name",
+   "type": "varchar(255)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 3,
+   "col": "amazfit_name",
+   "type": "varchar(255)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 4,
+   "col": "equipment",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 5,
+   "col": "body_position",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 6,
+   "col": "movement",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 7,
+   "col": "trajectory",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 8,
+   "col": "biomechanical_pattern",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 9,
+   "col": "primary_joint",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 10,
+   "col": "resistance_vector",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 11,
+   "col": "primary_group",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 12,
+   "col": "secondary_group",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 13,
+   "col": "primary_muscles",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 14,
+   "col": "secondary_muscles",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 15,
+   "col": "keywords",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 16,
+   "col": "description",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 17,
+   "col": "mapping_status",
+   "type": "varchar(40)",
+   "nullable": "NO",
+   "dflt": "confirmed",
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 18,
+   "col": "source",
+   "type": "varchar(160)",
+   "nullable": "NO",
+   "dflt": "manual",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 19,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 20,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "pos": 21,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 2,
+   "col": "activity_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 3,
+   "col": "sequence",
+   "type": "int",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 4,
+   "col": "original_name",
+   "type": "varchar(255)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 5,
+   "col": "mapped_name",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 6,
+   "col": "muscle_primary",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 7,
+   "col": "muscle_secondary",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 8,
+   "col": "sets_count",
+   "type": "int",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 9,
+   "col": "reps_total",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 10,
+   "col": "volume_kg",
+   "type": "decimal(12,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 11,
+   "col": "min_weight_kg",
+   "type": "decimal(8,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 12,
+   "col": "best_weight_kg",
+   "type": "decimal(8,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 13,
+   "col": "avg_rpe",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 14,
+   "col": "notes",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 15,
+   "col": "source_row_hash",
+   "type": "char(64)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 16,
+   "col": "raw_sets_text",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 17,
+   "col": "raw_reps_text",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 18,
+   "col": "raw_load_text",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 19,
+   "col": "raw_rpe_text",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 20,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 21,
+   "col": "mapping_id",
+   "type": "bigint",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 22,
+   "col": "canonical_exercise_name",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 23,
+   "col": "canonical_amazfit_name",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 24,
+   "col": "canonical_primary_group",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 25,
+   "col": "canonical_secondary_group",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 26,
+   "col": "canonical_primary_muscles",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 27,
+   "col": "canonical_secondary_muscles",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 28,
+   "col": "canonical_mapping_status",
+   "type": "varchar(64)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 29,
+   "col": "canonical_mapping_source",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 30,
+   "col": "canonical_confidence",
+   "type": "decimal(6,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "pos": 31,
+   "col": "canonical_resolved_at",
+   "type": "datetime",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  }
+ ],
+ "indexes": [
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 1,
+   "col": "exercise_name",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 2,
+   "col": "amazfit_name",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 3,
+   "col": "keywords",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 4,
+   "col": "description",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 5,
+   "col": "primary_muscles",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "ft_exercise_zepp_mappings_search",
+   "seq": 6,
+   "col": "secondary_muscles",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "idx_exercise_zepp_mappings_amazfit_name",
+   "seq": 1,
+   "col": "amazfit_name",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "idx_exercise_zepp_mappings_primary_group",
+   "seq": 1,
+   "col": "primary_group",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "idx_exercise_zepp_mappings_status",
+   "seq": 1,
+   "col": "mapping_status",
+   "non_unique": 1
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "exercise_mappings_backup_20260714",
+   "idx": "uq_exercise_zepp_mappings_exercise_name",
+   "seq": 1,
+   "col": "exercise_name",
+   "non_unique": 0
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "idx_exercises_activity_sequence",
+   "seq": 1,
+   "col": "activity_id",
+   "non_unique": 1
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "idx_exercises_activity_sequence",
+   "seq": 2,
+   "col": "sequence",
+   "non_unique": 1
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "idx_exercises_canonical_primary_group",
+   "seq": 1,
+   "col": "canonical_primary_group",
+   "non_unique": 1
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "idx_exercises_mapped_name",
+   "seq": 1,
+   "col": "mapped_name",
+   "non_unique": 1
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "idx_exercises_mapping_id",
+   "seq": 1,
+   "col": "mapping_id",
+   "non_unique": 1
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "exercises_backup_before_mapping_sync",
+   "idx": "uq_exercise_source_hash",
+   "seq": 1,
+   "col": "source_row_hash",
+   "non_unique": 0
+  }
+ ],
+ "view_table_usage": []
+}

@@ -1,0 +1,1238 @@
+{
+ "source": "information_schema da Aurora de producao (Aurora 3.08.2 / MySQL 8.0.39), somente leitura, 2026-09-14",
+ "tables": [
+  {
+   "table_name": "devices",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "gyms",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "intervals_activities",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "intervals_wellness",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci"
+  },
+  {
+   "table_name": "manual_effort_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "reports",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "sleep_metrics",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  },
+  {
+   "table_name": "users",
+   "engine": "InnoDB",
+   "collation": "utf8mb4_0900_ai_ci"
+  }
+ ],
+ "columns": [
+  {
+   "t": "devices",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "devices",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 3,
+   "col": "device_name",
+   "type": "varchar(160)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 4,
+   "col": "platform",
+   "type": "varchar(80)",
+   "nullable": "NO",
+   "dflt": "zepp",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 5,
+   "col": "token_hash",
+   "type": "char(64)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 6,
+   "col": "paired_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "devices",
+   "pos": 7,
+   "col": "last_seen_at",
+   "type": "timestamp",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 8,
+   "col": "revoked_at",
+   "type": "timestamp",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "devices",
+   "pos": 9,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "gyms",
+   "pos": 2,
+   "col": "owner_user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 3,
+   "col": "name",
+   "type": "varchar(120)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 4,
+   "col": "usual_weekdays",
+   "type": "json",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 5,
+   "col": "is_recurring",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 6,
+   "col": "notes",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 7,
+   "col": "logo_path",
+   "type": "varchar(500)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 8,
+   "col": "opens_at",
+   "type": "time",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 9,
+   "col": "closes_at",
+   "type": "time",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 10,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "gyms",
+   "pos": 11,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "gyms",
+   "pos": 12,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 3,
+   "col": "external_id",
+   "type": "varchar(191)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 4,
+   "col": "activity_date",
+   "type": "date",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 5,
+   "col": "start_time",
+   "type": "datetime",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 6,
+   "col": "name",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 7,
+   "col": "sport_type",
+   "type": "varchar(80)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 8,
+   "col": "moving_time_seconds",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 9,
+   "col": "elapsed_time_seconds",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 10,
+   "col": "distance_meters",
+   "type": "decimal(12,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 11,
+   "col": "calories_kcal",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 12,
+   "col": "avg_hr_bpm",
+   "type": "decimal(6,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 13,
+   "col": "max_hr_bpm",
+   "type": "decimal(6,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 14,
+   "col": "training_load",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 15,
+   "col": "intensity",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 16,
+   "col": "raw_json",
+   "type": "json",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_activities",
+   "pos": 17,
+   "col": "synced_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 1,
+   "col": "wellness_date",
+   "type": "date",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 3,
+   "col": "fitness_ctl",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 4,
+   "col": "fatigue_atl",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 5,
+   "col": "form_tsb",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 6,
+   "col": "ramp_rate",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 7,
+   "col": "weight_kg",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 8,
+   "col": "resting_hr_bpm",
+   "type": "decimal(6,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 9,
+   "col": "hrv_ms",
+   "type": "decimal(10,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 10,
+   "col": "sleep_seconds",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 11,
+   "col": "raw_json",
+   "type": "json",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 12,
+   "col": "synced_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 13,
+   "col": "readiness_score",
+   "type": "decimal(6,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "intervals_wellness",
+   "pos": 14,
+   "col": "daily_effort_load",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 3,
+   "col": "local_date",
+   "type": "date",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 4,
+   "col": "epoc_training_load",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 5,
+   "col": "pai_score",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 6,
+   "col": "notes",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 7,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "manual_effort_metrics",
+   "pos": 8,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "reports",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "reports",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 3,
+   "col": "status",
+   "type": "enum('generating','done','failed')",
+   "nullable": "NO",
+   "dflt": "generating",
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 4,
+   "col": "period_days",
+   "type": "int",
+   "nullable": "NO",
+   "dflt": "90",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 5,
+   "col": "requested_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "reports",
+   "pos": 6,
+   "col": "completed_at",
+   "type": "timestamp",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 7,
+   "col": "model",
+   "type": "varchar(120)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 8,
+   "col": "pdf_path",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 9,
+   "col": "error_message",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 10,
+   "col": "context_snapshot",
+   "type": "json",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "reports",
+   "pos": 11,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 2,
+   "col": "user_id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "MUL",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 3,
+   "col": "local_date",
+   "type": "date",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 4,
+   "col": "duration_hours",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 5,
+   "col": "regularity_percent",
+   "type": "decimal(5,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 6,
+   "col": "deep_sleep_hours",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 7,
+   "col": "rem_sleep_hours",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 8,
+   "col": "awake_count",
+   "type": "int",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 9,
+   "col": "awake_hours",
+   "type": "decimal(4,2)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 10,
+   "col": "notes",
+   "type": "text",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 11,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "sleep_metrics",
+   "pos": 12,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  },
+  {
+   "t": "users",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment"
+  },
+  {
+   "t": "users",
+   "pos": 2,
+   "col": "username",
+   "type": "varchar(80)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 3,
+   "col": "password_hash",
+   "type": "varchar(255)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 4,
+   "col": "full_name",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 5,
+   "col": "email",
+   "type": "varchar(160)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 6,
+   "col": "photo_path",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 7,
+   "col": "birth_date",
+   "type": "date",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 8,
+   "col": "sex",
+   "type": "varchar(20)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 9,
+   "col": "role",
+   "type": "enum('admin','regular','personal_trainer')",
+   "nullable": "NO",
+   "dflt": "regular",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 10,
+   "col": "is_active",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "1",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 11,
+   "col": "is_advanced_user",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 12,
+   "col": "intervals_athlete_id",
+   "type": "varchar(80)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 13,
+   "col": "intervals_api_key_encrypted",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 14,
+   "col": "failed_login_attempts",
+   "type": "int",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 15,
+   "col": "locked_until",
+   "type": "timestamp",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 16,
+   "col": "must_change_password",
+   "type": "tinyint(1)",
+   "nullable": "NO",
+   "dflt": "0",
+   "ckey": "",
+   "extra": ""
+  },
+  {
+   "t": "users",
+   "pos": 17,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED"
+  },
+  {
+   "t": "users",
+   "pos": 18,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+  }
+ ],
+ "indexes": [
+  {
+   "t": "devices",
+   "idx": "idx_devices_active",
+   "seq": 1,
+   "col": "is_active",
+   "non_unique": 1
+  },
+  {
+   "t": "devices",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "devices",
+   "idx": "uq_devices_token_hash",
+   "seq": 1,
+   "col": "token_hash",
+   "non_unique": 0
+  },
+  {
+   "t": "gyms",
+   "idx": "idx_gyms_owner",
+   "seq": 1,
+   "col": "owner_user_id",
+   "non_unique": 1
+  },
+  {
+   "t": "gyms",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "gyms",
+   "idx": "uq_gyms_name",
+   "seq": 1,
+   "col": "name",
+   "non_unique": 0
+  },
+  {
+   "t": "intervals_activities",
+   "idx": "idx_intervals_activities_date",
+   "seq": 1,
+   "col": "activity_date",
+   "non_unique": 1
+  },
+  {
+   "t": "intervals_activities",
+   "idx": "idx_intervals_activities_sport_type",
+   "seq": 1,
+   "col": "sport_type",
+   "non_unique": 1
+  },
+  {
+   "t": "intervals_activities",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "intervals_activities",
+   "idx": "uq_intervals_activities_user_external",
+   "seq": 1,
+   "col": "user_id",
+   "non_unique": 0
+  },
+  {
+   "t": "intervals_activities",
+   "idx": "uq_intervals_activities_user_external",
+   "seq": 2,
+   "col": "external_id",
+   "non_unique": 0
+  },
+  {
+   "t": "intervals_wellness",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "user_id",
+   "non_unique": 0
+  },
+  {
+   "t": "intervals_wellness",
+   "idx": "PRIMARY",
+   "seq": 2,
+   "col": "wellness_date",
+   "non_unique": 0
+  },
+  {
+   "t": "manual_effort_metrics",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "manual_effort_metrics",
+   "idx": "uq_manual_effort_metrics_user_date",
+   "seq": 1,
+   "col": "user_id",
+   "non_unique": 0
+  },
+  {
+   "t": "manual_effort_metrics",
+   "idx": "uq_manual_effort_metrics_user_date",
+   "seq": 2,
+   "col": "local_date",
+   "non_unique": 0
+  },
+  {
+   "t": "reports",
+   "idx": "idx_reports_status",
+   "seq": 1,
+   "col": "status",
+   "non_unique": 1
+  },
+  {
+   "t": "reports",
+   "idx": "idx_reports_user",
+   "seq": 1,
+   "col": "user_id",
+   "non_unique": 1
+  },
+  {
+   "t": "reports",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "sleep_metrics",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "sleep_metrics",
+   "idx": "uq_sleep_metrics_user_date",
+   "seq": 1,
+   "col": "user_id",
+   "non_unique": 0
+  },
+  {
+   "t": "sleep_metrics",
+   "idx": "uq_sleep_metrics_user_date",
+   "seq": 2,
+   "col": "local_date",
+   "non_unique": 0
+  },
+  {
+   "t": "users",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "users",
+   "idx": "uq_users_username",
+   "seq": 1,
+   "col": "username",
+   "non_unique": 0
+  }
+ ],
+ "foreign_keys": [
+  {
+   "t": "gyms",
+   "fk": "fk_gyms_owner",
+   "col": "owner_user_id",
+   "ref_t": "users",
+   "ref_col": "id",
+   "on_delete": "RESTRICT",
+   "on_update": "NO ACTION"
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateEmailIdentity",
+        "ses:DeleteEmailIdentity",
+        "ses:GetEmailIdentity",
+        "ses:PutEmailIdentityDkimAttributes",
+        "ses:PutEmailIdentityDkimSigningAttributes",
+        "ses:PutEmailIdentityMailFromAttributes",
+        "ses:PutEmailIdentityFeedbackAttributes",
+        "ses:PutEmailIdentityConfigurationSetAttributes",
+        "ses:TagResource",
+        "ses:UntagResource",
+        "ses:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:ses:sa-east-1:930413537709:identity/musclefit.com.br"
+    }
+  ]
+}

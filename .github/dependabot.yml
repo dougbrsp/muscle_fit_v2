@@ -1,0 +1,104 @@
+# Dependabot (SEG-13 / AWS-12): PRs semanais de atualizacao, com poucos PRs
+# abertos por vez para nao inundar a fila nem gastar GitHub Actions.
+# Todos miram a `develop` (fluxo do projeto: develop -> validacao -> main).
+#
+# pip (api/): os locks com hashes (requirements*.txt) sao compilados por
+# pip-tools a partir de requirements*.in (M47). Se o PR do Dependabot nao
+# recompilar todos os locks, rode `sh api/scripts/lock-requirements.sh` na
+# branch do PR antes do merge.
+# docker (api/): a imagem base esta fixada por digest (M48) e vem do espelho
+# oficial no ECR Public (public.ecr.aws/docker/library/python, AWS-12: sem o
+# limite de pull anonimo do Docker Hub). O Dependabot consulta o proprio ECR
+# Public (registro publico, sem credencial) e atualiza o digest. O mesmo digest
+# vive em api/scripts/lock-requirements.sh: troque la tambem no PR do bot.
+# M82: a CI e o deploy podem puxar esse MESMO digest de um espelho
+# (.github/scripts/escolher-base-python.sh le o FROM); nada a trocar alem dos
+# Dockerfiles e do lock-requirements.sh, mas o FROM tem que ser igual em todos.
+# github-actions: as actions estao fixadas por SHA de commit com comentario
+# `# vX.Y.Z` (AWS-12); o Dependabot atualiza o SHA E o comentario juntos.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/api"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    ignore:
+      # M49: a 4.1.x saiu so como sdist (build exige cmake) e quebra as imagens.
+      - dependency-name: "awslambdaric"
+        versions: [">=4.1.0"]
+      # A 0.142.0 passou a exigir `opentelemetry-api` (OpenTelemetry nativo):
+      # dependencia nova nas 3 imagens de Lambda, com auto-configuracao no
+      # startup (a 0.142.2 so deixou de derrubar o app quando ela falha). A
+      # 0.141.1 e a ultima sem ela (#459). Subir para >=0.142 e decisao
+      # explicita, com PR proprio que avalie o OpenTelemetry nas Lambdas,
+      # nao bump do bot (motivo de o #453 nao ter sido mesclado).
+      - dependency-name: "fastapi"
+        versions: [">=0.142.0"]
+    groups:
+      python-patch:
+        update-types: ["patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    ignore:
+      # M86: as versoes grandes destes pacotes sao uma migracao unica do
+      # frontend (Node 22, Next 16, React 19, ESLint 9, TypeScript 7, vitest 5),
+      # nao bump do bot. Sozinhas falham no CI (#480/#573 vitest 5 e
+      # #481/#574 eslint-config-next 16: ERESOLVE no npm; #483 TypeScript 7:
+      # fora do peer do typescript-eslint e TS2882 nos imports de CSS) e
+      # travavam os 3 espacos do limite acima. Minor e patch continuam liberados.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm-patch:
+        update-types: ["patch"]
+
+  - package-ecosystem: "docker"
+    directory: "/api"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    ignore:
+      # Muda a versao do Python das Lambdas: decisao explicita, nao bot.
+      # O nome da dependencia no ECR Public e "docker/library/python"; "python"
+      # fica para o caso de o bot normalizar a Docker Official Image.
+      - dependency-name: "docker/library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2

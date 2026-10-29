@@ -1,0 +1,6 @@
+# Snapshots do Aurora gerados antes de cada --apply. NAO versionar: contem
+# dados pessoais reais, inclusive hashes de senha de `users`.
+backups/
+
+__pycache__/
+*.pyc

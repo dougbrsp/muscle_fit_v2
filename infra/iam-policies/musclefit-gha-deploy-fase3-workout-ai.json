@@ -1,0 +1,89 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "MusclefitWorkoutAiRoleLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-workout-ai-exec"
+    },
+    {
+      "Sid": "MusclefitWorkoutAiRolePolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-workout-ai-exec"
+    },
+    {
+      "Sid": "MusclefitWorkoutAiPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-workout-ai-exec",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "MusclefitApiCoreInvokeWorkoutAiPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::930413537709:role/musclefit-api-core-exec"
+    },
+    {
+      "Sid": "MusclefitWorkoutAiLambdaFunction",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags",
+        "lambda:AddPermission",
+        "lambda:RemovePermission",
+        "lambda:GetPolicy"
+      ],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-workout-ai"
+    },
+    {
+      "Sid": "MusclefitWorkoutAiUpdateApiCoreConfig",
+      "Effect": "Allow",
+      "Action": ["lambda:UpdateFunctionConfiguration", "lambda:GetFunctionConfiguration"],
+      "Resource": "arn:aws:lambda:sa-east-1:930413537709:function:musclefit-api-core"
+    },
+    {
+      "Sid": "MusclefitWorkoutAiLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:logs:sa-east-1:930413537709:log-group:/aws/lambda/musclefit-workout-ai:*"
+    }
+  ]
+}

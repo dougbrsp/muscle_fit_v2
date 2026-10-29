@@ -1,0 +1,139 @@
+{
+  "_origem": "Recorte do information_schema do MySQL 8.0.46 do ambiente DEV (docker compose, schema fitness) em 2026-09-26, na versao 49 de schema_migration_files. Lido SOMENTE por SELECT; nenhuma escrita, nenhum dado de usuario - so metadados de 1 tabela (training_type_muscle_group_targets, a unica que a 052 altera). A forma dessa tabela vem do baseline 010_training_types.sql (schema_migrations 33), aplicado identico em DEV e em producao e nunca alterado por migracao .py posterior - por isso o recorte DEV descreve producao para o que a 052 precisa saber; o teste test_o_recorte_descreve_a_tabela_do_baseline_010 amarra as duas pontas comparando o recorte com o DDL do arquivo. Mesmo precedente de schema_dev_2026_09_24_049.json (migracao 049) e schema_dev_2026_09_20_039.json (migracao 039).",
+  "versao": [
+    {
+      "mysql": "8.0.46",
+      "schema_migration_files": 49
+    }
+  ],
+  "tables": [
+    {
+      "table_name": "training_type_muscle_group_targets",
+      "engine": "InnoDB"
+    }
+  ],
+  "columns": [
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 1,
+      "col": "id",
+      "type": "bigint",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "PRI",
+      "extra": "auto_increment",
+      "coll": null,
+      "gen": ""
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 2,
+      "col": "training_type_id",
+      "type": "bigint",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "MUL",
+      "extra": "",
+      "coll": null,
+      "gen": ""
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 3,
+      "col": "muscle_group_id",
+      "type": "bigint",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "MUL",
+      "extra": "",
+      "coll": null,
+      "gen": ""
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 4,
+      "col": "min_weekly_sets",
+      "type": "decimal(6,2)",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "",
+      "extra": "",
+      "coll": null,
+      "gen": ""
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 5,
+      "col": "target_weekly_sets",
+      "type": "decimal(6,2)",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "",
+      "extra": "",
+      "coll": null,
+      "gen": ""
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "pos": 6,
+      "col": "max_weekly_sets",
+      "type": "decimal(6,2)",
+      "nullable": "NO",
+      "dflt": null,
+      "ckey": "",
+      "extra": "",
+      "coll": null,
+      "gen": ""
+    }
+  ],
+  "indexes": [
+    {
+      "t": "training_type_muscle_group_targets",
+      "idx": "idx_ttmgt_muscle_group",
+      "seq": 1,
+      "col": "muscle_group_id",
+      "non_unique": 1
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "idx": "PRIMARY",
+      "seq": 1,
+      "col": "id",
+      "non_unique": 0
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "idx": "uq_ttmgt_type_group",
+      "seq": 1,
+      "col": "training_type_id",
+      "non_unique": 0
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "idx": "uq_ttmgt_type_group",
+      "seq": 2,
+      "col": "muscle_group_id",
+      "non_unique": 0
+    }
+  ],
+  "foreign_keys": [
+    {
+      "t": "training_type_muscle_group_targets",
+      "fk": "fk_ttmgt_muscle_group",
+      "col": "muscle_group_id",
+      "ref_t": "muscle_groups",
+      "ref_col": "id",
+      "on_delete": "RESTRICT",
+      "on_update": "NO ACTION"
+    },
+    {
+      "t": "training_type_muscle_group_targets",
+      "fk": "fk_ttmgt_type",
+      "col": "training_type_id",
+      "ref_t": "training_types",
+      "ref_col": "id",
+      "on_delete": "CASCADE",
+      "on_update": "NO ACTION"
+    }
+  ]
+}

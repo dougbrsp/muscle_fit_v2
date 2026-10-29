@@ -1,0 +1,8 @@
+# SO para (re)gerar o mapa corporal no host (tools/bodymap/README.md).
+# NUNCA entra em api/requirements.txt nem nas imagens Docker: o backend
+# compoe o mapa so com o Pillow (app/body_map_render.py).
+# Versoes com que o pacote v1 foi gerado e reproduzido byte a byte (2026-10-03).
+numpy==2.5.3
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+potracer==0.0.4

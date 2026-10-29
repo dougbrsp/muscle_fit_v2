@@ -1,0 +1,585 @@
+name: CI (develop)
+
+# Confianca pre-merge para o fluxo feature -> develop, SEM nenhuma capacidade
+# de deploy real. Ao contrario de terraform.yml/deploy-producao.yml/
+# db-migrations.yml (que rodam so contra `main` e assumem a role
+# musclefit-gha-deploy via OIDC), este workflow:
+#   - dispara so em Pull Request (contra `develop` e, na promocao, contra
+#     `main`), nunca em push;
+#   - NUNCA declara `permissions: id-token: write` e NUNCA chama
+#     aws-actions/configure-aws-credentials - essa e a garantia estrutural
+#     (nao so uma convencao) de que ele nao consegue assumir a role
+#     musclefit-gha-deploy nem tocar em nenhum recurso AWS real;
+#   - as unicas "credenciais AWS" usadas aqui sao as dummy (test/test) do
+#     LocalStack, vindas do proprio .env.example versionado no repo.
+#
+# Escopo do smoke test: valida que o ambiente de dev local (Docker Compose +
+# LocalStack, ver docs/local-dev.md) sobe e responde - a mesma coisa que o
+# PR 2 (#44) validou manualmente, agora automatizada a cada PR.
+#
+# Economia de GitHub Actions (2026-10-10; ~3.000 min/semana so neste arquivo):
+#   - PR para `develop`: o job `changes` le os arquivos do PR e so roda o que
+#     a area tocada exige. Backend (`api/**`, compose, localstack, dev, nginx,
+#     submodulo privado api/privado...) -> lint-backend + backend-unit. Frontend (`frontend/**`,
+#     CloudFront Functions) -> lint-frontend + frontend-build. Integracao com
+#     MySQL (`backend-tests`) e smoke compose + LocalStack (`backend-smoke`)
+#     NAO rodam, a menos que o PR tenha o rotulo `ci-completo`.
+#   - PR para `main` (promocao do lote) ou PR com rotulo `ci-completo`: roda
+#     TUDO, sem filtro de area. A `main` continua protegida pela suite inteira.
+#     Idem (M82) para PR que mexe em .github/compose/ ou em
+#     .github/scripts/escolher-base-python.sh: so o backend-smoke os exercita.
+#   - Adicionar o rotulo `ci-completo` dispara uma rodada nova (types:
+#     labeled). Remover o rotulo nao dispara nada; o proximo push volta ao
+#     modo filtrado.
+#   - Job pulado aparece como "skipping" (nunca pendente). Sem job agregador:
+#     o repositorio nao tem branch protection/check obrigatorio (plano Free,
+#     API 403), e o criterio de merge ja avalia todos os checks
+#     (pass ou skipping).
+#   - `on.paths` continua o MESMO de antes: PR que nao toca nenhum desses
+#     caminhos nem dispara o workflow (vale tambem para a promocao: se ela nao
+#     toca nada daqui, nada daqui mudou em relacao a `main`).
+
+on:
+  pull_request:
+    branches: [develop, main]
+    # `labeled`: adicionar o rotulo `ci-completo` dispara a suite inteira.
+    # Outro rotulo qualquer tambem dispara uma rodada (o GitHub nao filtra
+    # pelo nome do rotulo no `on:`); ela refaz o mesmo trabalho filtrado e a
+    # concorrencia abaixo cancela a rodada anterior do mesmo PR.
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      # Codigo que o smoke test/lint realmente exercita.
+      - "api/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - "localstack/**"
+      - ".env.example"
+      # Emulador local da API Lambda Invoke + proxy + smoke dos jobs assincronos.
+      - "dev/**"
+      - "nginx/**"
+      # M103 P0: o RAG mora no submodulo privado api/privado; o bump do ponteiro
+      # (gitlink `api/privado`) ja casa com "api/**". Ver tambem .gitmodules e o
+      # checkout do submodulo.
+      - ".gitmodules"
+      - ".github/actions/checkout-privado/**"
+      - "scripts/smoke-async-jobs.sh"
+      # M82: origem da imagem base Python do smoke compose (script + override).
+      - ".github/scripts/escolher-base-python.sh"
+      - ".github/compose/**"
+      # CloudFront Function carregada pelo smoke do export (frontend-build).
+      - "infra/cloudfront-functions/**"
+      # O proprio workflow: uma mudanca aqui deve se auto-validar.
+      - ".github/workflows/ci-develop.yml"
+      # Deliberadamente FORA do filtro (mesma logica do terraform.yml, que ja
+      # cobre infra/** com plan proprio, e dos docs, que nao afetam runtime):
+      #   - "infra/**"    -> terraform.yml ja faz plan nesses PRs.
+      #   - "docs/**"     -> nao afeta codigo nem containers.
+      #   - "MUSCLE_FIT.md" -> documentacao solta na raiz, mesmo motivo.
+
+# contents: read e o UNICO escopo concedido. Sem id-token: write nao ha OIDC
+# para assumir NENHUMA role AWS - este workflow so consegue fazer checkout do
+# codigo e rodar containers locais no proprio runner.
+permissions:
+  contents: read
+
+# Um push novo no mesmo PR cancela a rodada anterior (que ja nao vale nada).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Quais areas o PR toca e se a rodada e completa. Sem action de terceiro: o
+  # checkout de um pull_request e o merge commit de teste (refs/pull/N/merge),
+  # cujo 1o pai e a ponta da base. Com fetch-depth 2, `git diff HEAD^1 HEAD`
+  # e exatamente o que o PR muda em relacao a base atual.
+  # Saidas: backend/frontend ja vem "true" quando a rodada e completa.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: changes (areas tocadas pelo PR)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.areas.outputs.backend }}
+      frontend: ${{ steps.areas.outputs.frontend }}
+      completo: ${{ steps.areas.outputs.completo }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: classificar arquivos alterados
+        id: areas
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          ROTULO_CI_COMPLETO: ${{ contains(github.event.pull_request.labels.*.name, 'ci-completo') }}
+        run: |
+          set -euo pipefail
+          completo=false
+          motivo="PR para ${BASE_REF} sem o rotulo ci-completo: so a area tocada"
+          if [ "$BASE_REF" = "main" ]; then
+            completo=true; motivo="PR para main (promocao): suite inteira"
+          elif [ "$ROTULO_CI_COMPLETO" = "true" ]; then
+            completo=true; motivo="rotulo ci-completo: suite inteira"
+          fi
+
+          alterados="$RUNNER_TEMP/alterados.txt"
+          if ! git diff --name-only HEAD^1 HEAD > "$alterados"; then
+            # Sem o pai da base nao da para filtrar: roda tudo (nunca menos).
+            echo "::warning::nao consegui listar os arquivos do PR; rodando a suite inteira"
+            completo=true; motivo="diff indisponivel: suite inteira"
+            : > "$alterados"
+          fi
+
+          casa() { if grep -Eq "$1" "$alterados"; then echo true; else echo false; fi; }
+          # M82: o override do compose e o script da origem da base Python so sao
+          # exercitados pelo backend-smoke (rodada completa). Mudou um deles: rodada
+          # completa, sem depender do rotulo, para o smoke nunca ficar sem teste.
+          if [ "$completo" != "true" ] && [ "$(casa '^\.github/compose/|^\.github/scripts/escolher-base-python\.sh$')" = "true" ]; then
+            completo=true; motivo="PR mexe no override do compose ou no script da base Python (M82): suite inteira"
+          fi
+          # Backend: mesmos caminhos do on.paths que o lint/unit exercitam.
+          # `^api/` inclui o gitlink `api/privado` (bump do RAG privado, M103 P0).
+          backend=$(casa '^(api/|localstack/|dev/|nginx/)|^docker-compose\.yml$|^\.env\.example$|^\.gitmodules$|^\.github/actions/checkout-privado/|^scripts/smoke-async-jobs\.sh$|^\.github/workflows/ci-develop\.yml$')
+          # Frontend: o smoke do export carrega a CloudFront Function real.
+          frontend=$(casa '^(frontend/|infra/cloudfront-functions/)|^\.github/workflows/ci-develop\.yml$')
+          if [ "$completo" = "true" ]; then backend=true; frontend=true; fi
+
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "completo=$completo"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Areas do CI"
+            echo ""
+            echo "- modo: $motivo"
+            echo "- backend (lint-backend, backend-unit): $backend"
+            echo "- frontend (lint-frontend, frontend-build): $frontend"
+            echo "- integracao + smoke compose: $completo"
+            echo ""
+            echo "<details><summary>arquivos alterados ($(wc -l < "$alterados"))</summary>"
+            echo ""
+            echo '```'
+            head -n 300 "$alterados"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$alterados"
+
+  # ---------------------------------------------------------------------------
+  # Lint (COD-10 da auditoria de 2026-10-08):
+  #   - Frontend: `npm run typecheck` (tsc --noEmit) e `npm run lint` (next
+  #     lint com frontend/.eslintrc.json = "next/core-web-vitals"). So ERRO
+  #     reprova; os avisos (react-hooks/exhaustive-deps, no-img-element)
+  #     aparecem no log e ficam para PRs proprios.
+  #   - Backend: py_compile (sintaxe) + `ruff check` com o conjunto MINIMO de
+  #     erros reais de api/ruff.toml (nome indefinido, comparacao invalida,
+  #     instrucao fora de lugar, format com argumentos errados, import/variavel
+  #     sem uso, redefinicao...). Sem
+  #     `ruff format`: nada de reformatar o repositorio. O ruff vem do lock
+  #     com hashes api/requirements-lint.txt (M47).
+  # Separado em dois jobs (2026-10-10) para cada um rodar so quando a sua
+  # area muda. A develop/main nao tem check obrigatorio configurado (o plano
+  # do repositorio privado nao oferece branch protection); o criterio de merge
+  # avalia todos os checks (pass ou skipping).
+  # ---------------------------------------------------------------------------
+  lint-frontend:
+    name: lint frontend (typecheck + next lint)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: frontend - npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: frontend - npm run typecheck (tsc --noEmit)
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: frontend - npm run lint (next lint, next/core-web-vitals)
+        working-directory: frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run lint
+
+  lint-backend:
+    name: lint backend (py_compile + ruff)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: api/requirements-lint.txt
+
+      - name: backend - py_compile
+        working-directory: api
+        run: python -m py_compile $(git ls-files 'app/*.py')
+
+      - name: backend - ruff check (api/ruff.toml)
+        working-directory: api
+        run: |
+          python -m pip install --require-hashes -r requirements-lint.txt
+          ruff check --output-format github
+
+  # ---------------------------------------------------------------------------
+  # Smoke test do ambiente de dev local: sobe os mesmos 3 servicos do
+  # docker-compose.yml (mysql, localstack, api) validados manualmente no PR 2
+  # (#44) e confirma que a API responde em /health e /ready.
+  # So na rodada completa (PR para main ou rotulo ci-completo).
+  # Sem cache de camadas type=gha aqui: as imagens de dev sobem por
+  # `docker compose up` (driver docker padrao, que nao exporta cache gha) e o
+  # job agora roda poucas vezes por semana; trocar por buildx bake + driver
+  # docker-container nao se paga.
+  # Imagem base Python (M82): as 3 imagens buildadas aqui (api, api-engines,
+  # lambda-ai) fazem FROM no ECR Public, cujo pull anonimo tem cota por IP; o
+  # job caiu com "429 Data limit exceeded" em 16 e 17/10. O passo "origem da
+  # imagem base Python" escolhe a 1a origem com o MESMO digest e liga o override
+  # .github/compose/base-python-espelho.yml (build.additional_contexts =
+  # contexto nomeado do BuildKit, funciona com o driver docker padrao) via
+  # COMPOSE_FILE no GITHUB_ENV, para que up/exec/logs/down e o
+  # scripts/smoke-async-jobs.sh usem os mesmos arquivos. O docker-compose.yml
+  # do DEV nao muda. Sem credencial AWS nenhuma.
+  # ---------------------------------------------------------------------------
+  backend-smoke:
+    name: backend smoke test (docker compose + localstack)
+    needs: changes
+    # M103 P0: o compose monta o RAG do submodulo privado api/privado. PR de fork
+    # nao recebe a PRIVADO_DEPLOY_KEY: o job e pulado (nunca pull_request_target).
+    if: >-
+      needs.changes.outputs.completo == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      - name: preparar .env a partir do .env.example
+        # .env.example ja traz DB_BACKEND=pymysql, credenciais dummy do
+        # LocalStack (test/test) e uma SECRET_ENCRYPTION_KEY valida - nenhum
+        # segredo real e necessario para o backend subir neste modo. Nenhum
+        # ajuste de conteudo e necessario: os hostnames MYSQL_HOST=mysql e
+        # AWS_ENDPOINT_URL=http://localstack:4566 sao resolvidos de DENTRO do
+        # compose (o proprio docker-compose.yml ja sobrescreve esses dois para
+        # o servico `api`, ver environment: em docker-compose.yml) - so os
+        # curls feitos abaixo, de FORA do compose (do proprio runner), usam
+        # localhost:8000/localhost:4566, que ja e o que os labels de porta
+        # publicam no host.
+        run: cp .env.example .env
+
+      # M82: escolhe a origem da base (mirror.gcr.io -> public.ecr.aws ->
+      # docker.io, sempre com o digest do FROM) e grava no GITHUB_ENV as
+      # variaveis que o override interpola, junto com COMPOSE_FILE. Nenhuma
+      # origem respondeu: o job falha aqui, com mensagem clara.
+      - name: origem da imagem base Python (M82)
+        run: |
+          set -euo pipefail
+          .github/scripts/escolher-base-python.sh > "$RUNNER_TEMP/base-python.txt"
+          BASE_PYTHON_REF=$(sed -n 's/^ref=//p' "$RUNNER_TEMP/base-python.txt")
+          BASE_PYTHON_ORIGEM=$(sed -n 's/^origem=//p' "$RUNNER_TEMP/base-python.txt")
+          COMPOSE_FILE=docker-compose.yml:.github/compose/base-python-espelho.yml
+          export BASE_PYTHON_REF BASE_PYTHON_ORIGEM COMPOSE_FILE
+          # Falha cedo se o override nao resolver (variavel ausente, YAML errado).
+          docker compose config -q
+          {
+            echo "BASE_PYTHON_REF=$BASE_PYTHON_REF"
+            echo "BASE_PYTHON_ORIGEM=$BASE_PYTHON_ORIGEM"
+            echo "COMPOSE_FILE=$COMPOSE_FILE"
+          } >> "$GITHUB_ENV"
+
+      - name: docker compose up (mysql, localstack, api, api-engines, nginx)
+        # api-engines + nginx: replicam localmente o roteamento por path do
+        # API Gateway entre as Lambdas musclefit-api-core e musclefit-engines
+        # (ver docs/local-dev.md, "Arquitetura de 2 backends + proxy") -
+        # adicionados ao smoke test para cobrir a regressao corrigida nesta
+        # mesma PR (404 em /analytics/muscle-recovery no ambiente local).
+        # lambda-ai: Lambdas assincronas locais (handler real na imagem
+        # Dockerfile.ai), exercitadas pelo passo "jobs assincronos ponta a
+        # ponta" abaixo.
+        run: docker compose up -d --wait mysql localstack api api-engines lambda-ai nginx
+        # --wait: suportado pelo Docker Compose v2 (>= v2.17) ja pre-instalado
+        # nos runners ubuntu-24.04 (confirmado com `docker compose version`
+        # durante o desenvolvimento deste PR - v2.2x/v5.x disponivel). Espera
+        # os healthchecks definidos no docker-compose.yml (mysql, localstack)
+        # ficarem healthy antes de devolver o controle, sem loop manual de
+        # polling em `docker compose ps`. O servico `api` nao tem healthcheck
+        # proprio no docker-compose.yml, entao o --wait so garante que o
+        # container subiu (nao trava esperando; o curl de /ready abaixo e que
+        # confirma que a API + MySQL estao respondendo de fato).
+
+      - name: checar /health e /ready da API
+        run: |
+          set -euo pipefail
+          # --retry-all-errors (nao so --retry-connrefused): na validacao manual
+          # deste job, o container `api` as vezes aparece "healthy" no
+          # `docker compose up --wait` mas ainda devolve uma resposta vazia
+          # (curl exit 52) por uma fracao de segundo antes do uvicorn aceitar
+          # conexoes de fato - --retry-all-errors cobre esse caso, nao so
+          # "conexao recusada".
+          echo "GET /health"
+          curl --fail --retry 10 --retry-delay 3 --retry-all-errors http://localhost:8000/health
+          echo
+          echo "GET /ready"
+          curl --fail --retry 10 --retry-delay 3 --retry-all-errors http://localhost:8000/ready
+          echo
+
+      - name: migracoes versionadas (python -m app.migrate)
+        # Mesma ordem de producao (deploy-producao.yml: migracao ANTES do
+        # codigo). O init do MySQL so aplica os .sql 001..021; tabelas como
+        # `reports` (hoje sem escrita: o relatorio virou GET /reports/markdown)
+        # e `cardio_recommendations` vem das migracoes .py (025, 027), sem DDL
+        # em runtime.
+        run: docker compose exec -T api python -m app.migrate
+
+      - name: jobs assincronos ponta a ponta (POST 202 -> lambda-local -> GET /jobs ate done/failed)
+        # Cobre as 3 Lambdas assincronas (plan-generator, workout-ai,
+        # cardio-agent) rodando o handler real na imagem Dockerfile.ai - ver
+        # docs/local-dev.md, "Jobs assincronos". Sem OPENAI_API_KEY no CI: jobs
+        # de IA terminam `failed` com mensagem clara, o que ja prova o caminho
+        # inteiro. No fim, checa o relatorio sincrono GET /reports/markdown
+        # (200, text/markdown, Content-Disposition attachment).
+        run: bash scripts/smoke-async-jobs.sh
+
+      # pytest saiu deste job: roda de forma obrigatoria no job
+      # `backend-tests` abaixo (unit + integracao com MySQL proprio).
+
+      - name: logs dos containers (em caso de falha)
+        if: failure()
+        run: docker compose logs
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # Testes do backend que precisam de banco (pytest) - OBRIGATORIOS.
+  # A parte `unit` (sem banco) fica no job `backend-unit` acima, em paralelo.
+  #   - integration: MySQL 8.0 descartavel neste runner. As fixtures criam o
+  #     schema `musclefit_test` e aplicam api/db/migrations/*.sql.
+  # O MySQL sobe via `docker run` (e nao `services:`) para poder passar flags
+  # de servidor: datadir em tmpfs e sem fsync, porque os dados sao
+  # descartaveis e as 21 migrations ficam bem mais rapidas.
+  # Credenciais dummy, locais ao runner. DB_BACKEND=pymysql e forcado SO
+  # dentro do processo de teste (api/tests/conftest.py), nunca na aplicacao.
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # M38 - `pytest tests/unit` saiu do job de banco para um job PROPRIO, em
+  # paralelo. Motivo (medido no run verde 36252518076): a suite unitaria inteira
+  # - 122 arquivos, 1723 testes - custa 9 SEGUNDOS, mas estava presa atras do
+  # `pip install` e na frente do `docker run mysql` (33s) + integracao (1m16) +
+  # dataapi (5m02) do MESMO job. Duas consequencias ruins: (a) uma falha
+  # unitaria trivial so era reportada junto com o resto e (b) ela ABORTAVA o job
+  # antes de qualquer teste de banco rodar, garantindo outra rodada de CI.
+  # Separado, o veredito unitario sai em ~40s e nao bloqueia mais nada.
+  # ---------------------------------------------------------------------------
+  backend-unit:
+    name: backend unit (pytest tests/unit, sem banco)
+    needs: changes
+    # M103 P0: a guarda e os testes de RAG leem o submodulo privado api/privado.
+    # PR de fork nao recebe a PRIVADO_DEPLOY_KEY: o job e pulado.
+    if: >-
+      needs.changes.outputs.backend == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-dev.txt
+
+      - name: pip install -r requirements-dev.txt
+        working-directory: api
+        # Lock com hashes (M47): mesmas versoes das imagens, conferidas por hash.
+        run: python -m pip install --require-hashes -r requirements-dev.txt
+
+      # M103 P1: `privado/tests/unit` = testes do submodulo privado (asserts com
+      # frases dos prompts). O log deste job e PUBLICO: a falha de um teste privado
+      # sai sem traceback nem valores (api/privado/tests/conftest.py), e os
+      # snapshots publicos comparam sem imprimir o texto (tests/support/privado.py).
+      - name: pytest unit
+        working-directory: api
+        run: python -m pytest tests/unit privado/tests/unit --durations=30 --durations-min=0.5
+
+  # So na rodada completa (PR para main ou rotulo ci-completo): ~10 min por
+  # rodada, metade do consumo deste arquivo em PR para develop.
+  backend-tests:
+    name: backend tests (pytest integration + dataapi, MySQL)
+    needs: changes
+    # M103 P0: mesma regra do backend-unit (RAG no submodulo privado; fork pula).
+    if: >-
+      needs.changes.outputs.completo == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    env:
+      TEST_MYSQL_HOST: 127.0.0.1
+      TEST_MYSQL_PORT: "3306"
+      TEST_MYSQL_USER: root
+      TEST_MYSQL_PASSWORD: musclefit-root
+      TEST_MYSQL_DATABASE: musclefit_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/checkout-privado
+        with:
+          ssh-key: ${{ secrets.PRIVADO_DEPLOY_KEY }}
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # Mesma versao das imagens (api/Dockerfile*).
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-dev.txt
+
+      - name: pip install -r requirements-dev.txt
+        working-directory: api
+        # Lock com hashes (M47): mesmas versoes das imagens, conferidas por hash.
+        run: python -m pip install --require-hashes -r requirements-dev.txt
+
+      # M38 - instrumentacao: `--durations` imprime os N testes mais lentos de
+      # CADA passo no log do proprio run. Hoje o CI nao publica NENHUM tempo por
+      # teste, so o tempo do passo inteiro (o job `backend tests` leva ~7m30, dos
+      # quais ~5m sao o passo `pytest dataapi`) - sem isso, qualquer decisao de
+      # cortar/consolidar teste e chute. `--durations-min=0.5` esconde a cauda de
+      # milissegundos e deixa so o que realmente paga o tempo do job.
+      # Custo: zero (nao roda nada a mais; so formata o relatorio que o pytest ja
+      # tem em memoria). Impacto em producao: nenhum - so CI de teste.
+      - name: subir MySQL 8.0 descartavel
+        run: |
+          set -euo pipefail
+          docker run -d --name musclefit-test-mysql \
+            --tmpfs /var/lib/mysql \
+            -e MYSQL_ROOT_PASSWORD="$TEST_MYSQL_PASSWORD" \
+            -p 3306:3306 \
+            mysql:8.0 --innodb-flush-log-at-trx-commit=0 --sync-binlog=0 --skip-log-bin
+          # Espera o servidor DEFINITIVO aceitar TCP. O servidor temporario de
+          # init do entrypoint roda com skip-networking, entao nao conta.
+          for i in $(seq 1 60); do
+            if docker exec musclefit-test-mysql mysql -h127.0.0.1 -uroot -p"$TEST_MYSQL_PASSWORD" -e "SELECT 1" >/dev/null 2>&1; then
+              echo "MySQL pronto"; exit 0
+            fi
+            sleep 2
+          done
+          docker logs musclefit-test-mysql
+          exit 1
+
+      # `-m` na linha de comando SUBSTITUI o `-m "not slow"` do addopts de
+      # api/pytest.ini (pytest nao combina os dois) - por isso o `and not
+      # slow` e explicito aqui. Sem ele, os testes de MEDICAO de desempenho
+      # (dataset de 16 mil series) rodavam no caminho critico do CI e
+      # reprovavam PRs sem relacao com eles: em 2026-09-25 o #213 (so
+      # frontend) e o #217 (so Terraform/compose) foram reprovados pela MESMA
+      # medicao, e os dois passaram no rerun do mesmo commit.
+      # Rode-os sob demanda: `python -m pytest -s -m slow ...`.
+      - name: pytest integration (MySQL + migrations)
+        working-directory: api
+        run: python -m pytest tests/integration -m "not dataapi and not slow" --durations=30 --durations-min=0.5
+
+      # Caminho de PRODUCAO do banco: o shim app/db_dataapi.py (RDS Data API)
+      # contra um dublê do servico rds-data (api/tests/support/fake_rds_data.py)
+      # apoiado neste mesmo MySQL. O client boto3 e real, mas toda requisicao e
+      # respondida em processo (credenciais e endpoint ficticios): nenhuma
+      # chamada AWS sai do runner. DB_BACKEND=data-api existe SO dentro do
+      # processo de teste (monkeypatch), nunca na aplicacao/infra.
+      # M38 - `if: ${{ !cancelled() }}`: sem isto, uma falha no passo anterior
+      # (`pytest integration`) ABORTA o job e o passo `dataapi` NUNCA roda -
+      # quem esta corrigindo o PR so descobre a falha de dataapi na RODADA
+      # SEGUINTE, depois de mais ~8 min de CI e mais um ciclo de leitura de log.
+      # Nos ultimos 30 runs do ci-develop.yml, 12 das 13 reprovacoes foram neste
+      # job, e branches como feat/m16-generation-runs (6 runs) e
+      # feat/dashboard-f2-1-context-events (4 runs) gastaram rodadas exatamente
+      # assim. Com `!cancelled()` o job continua vermelho, mas reporta TUDO de
+      # uma vez. `!cancelled()` (e nao `always()`) para que um cancelamento
+      # manual continue interrompendo o job de imediato.
+      - name: pytest dataapi (shim RDS Data API via dublê + paridade com pymysql)
+        if: ${{ !cancelled() }}
+        working-directory: api
+        run: python -m pytest tests/integration -m "dataapi and not slow" --durations=40 --durations-min=0.5
+
+      - name: logs do MySQL (em caso de falha)
+        if: failure()
+        run: docker logs musclefit-test-mysql || true
+
+      - name: remover MySQL
+        if: always()
+        run: docker rm -f musclefit-test-mysql || true
+
+  # ---------------------------------------------------------------------------
+  # Build do frontend: independente do backend (output: "export" - estatico,
+  # sem servidor Node, nao precisa da API rodando pra buildar).
+  # ---------------------------------------------------------------------------
+  frontend-build:
+    name: frontend build (next export)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      # frontend/src/lib/config.ts usa NEXT_PUBLIC_API_BASE_URL em build-time
+      # (embutida no bundle estatico), com fallback para o dominio de
+      # producao quando ausente. Aqui setamos um valor dummy de localhost so
+      # para deixar explicito que este build de CI nao aponta pra producao -
+      # o build funcionaria igual sem esta env (usaria o fallback), mas
+      # setar explicitamente evita qualquer referencia (mesmo que so no
+      # bundle de teste) a api.musclefit.com.br saindo de um workflow de PR.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # M5: site key de TESTE oficial da Cloudflare Turnstile (publica, sempre
+      # passa) - so para o build de CI exercitar a pagina /esqueci-senha com o
+      # widget ligado. A de producao entra em deploy-producao.yml (PR de infra).
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm test (vitest)
+        working-directory: frontend
+        run: npm test
+
+      - name: next build (output export)
+        working-directory: frontend
+        run: npm run build
+
+      # Exercita o ARTEFATO de producao (out/) com a CloudFront Function real
+      # (infra/cloudfront-functions/spa-index-rewrite.js): rotas dinamicas
+      # (/metas-ativacao/novo/, /modelos-treino/1/ ...) precisam servir o
+      # objeto .../placeholder/index.html e os redirects /tipos-treinamento
+      # precisam responder 301. Falha se um PR quebrar isso.
+      - name: smoke do export estatico (out/ + CloudFront Function)
+        working-directory: frontend
+        run: npm run smoke:export

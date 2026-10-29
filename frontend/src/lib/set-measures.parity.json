@@ -1,0 +1,195 @@
+{
+  "_comment": "GERADO por api/tests/unit/test_m76_lote1b_espelhos_fe.py (--gravar): normalização e texto das medidas de série calculados pelo dono api/app/domain/set_measures.py. Não edite à mão: mude o dono e regenere. Medidas de série, Lote T1 (2026-10-20).",
+  "normalize": [
+    {
+      "input": null,
+      "normalized": "reps",
+      "rep_based": true,
+      "label": null
+    },
+    {
+      "input": "",
+      "normalized": "reps",
+      "rep_based": true,
+      "label": null
+    },
+    {
+      "input": "  ",
+      "normalized": "reps",
+      "rep_based": true,
+      "label": null
+    },
+    {
+      "input": "reps",
+      "normalized": "reps",
+      "rep_based": true,
+      "label": "Repetições"
+    },
+    {
+      "input": "REPS ",
+      "normalized": "reps",
+      "rep_based": true,
+      "label": "Repetições"
+    },
+    {
+      "input": "duration",
+      "normalized": "duration",
+      "rep_based": false,
+      "label": "Tempo"
+    },
+    {
+      "input": "Duration",
+      "normalized": "duration",
+      "rep_based": false,
+      "label": "Tempo"
+    },
+    {
+      "input": "max_reps",
+      "normalized": "max_reps",
+      "rep_based": false,
+      "label": "Máximo de repetições"
+    },
+    {
+      "input": "tempo",
+      "normalized": "reps",
+      "rep_based": true,
+      "label": null
+    }
+  ],
+  "format": [
+    {
+      "measure": "reps",
+      "reps": 10,
+      "duration_seconds": null,
+      "text": "10 reps"
+    },
+    {
+      "measure": null,
+      "reps": 8,
+      "duration_seconds": null,
+      "text": "8 reps"
+    },
+    {
+      "measure": "reps",
+      "reps": "12",
+      "duration_seconds": null,
+      "text": "12 reps"
+    },
+    {
+      "measure": "reps",
+      "reps": 10,
+      "duration_seconds": 30,
+      "text": "10 reps"
+    },
+    {
+      "measure": "reps",
+      "reps": null,
+      "duration_seconds": null,
+      "text": "—"
+    },
+    {
+      "measure": "duration",
+      "reps": null,
+      "duration_seconds": 60,
+      "text": "60 s"
+    },
+    {
+      "measure": "duration",
+      "reps": 10,
+      "duration_seconds": 60,
+      "text": "60 s"
+    },
+    {
+      "measure": "duration",
+      "reps": null,
+      "duration_seconds": null,
+      "text": "—"
+    },
+    {
+      "measure": "max_reps",
+      "reps": 15,
+      "duration_seconds": 30,
+      "text": "15 reps em 30 s"
+    },
+    {
+      "measure": "max_reps",
+      "reps": 15,
+      "duration_seconds": null,
+      "text": "15 reps"
+    },
+    {
+      "measure": "max_reps",
+      "reps": null,
+      "duration_seconds": 30,
+      "text": "—"
+    },
+    {
+      "measure": "tempo",
+      "reps": 9,
+      "duration_seconds": 45,
+      "text": "9 reps"
+    }
+  ],
+  "planned_execution": [
+    {
+      "measure": "reps",
+      "duration_seconds_target": null,
+      "time_window_seconds": null,
+      "seconds": null
+    },
+    {
+      "measure": null,
+      "duration_seconds_target": 60,
+      "time_window_seconds": 30,
+      "seconds": null
+    },
+    {
+      "measure": "duration",
+      "duration_seconds_target": 60,
+      "time_window_seconds": null,
+      "seconds": 60.0
+    },
+    {
+      "measure": "duration",
+      "duration_seconds_target": "45",
+      "time_window_seconds": null,
+      "seconds": 45.0
+    },
+    {
+      "measure": "duration",
+      "duration_seconds_target": null,
+      "time_window_seconds": null,
+      "seconds": null
+    },
+    {
+      "measure": "duration",
+      "duration_seconds_target": 60,
+      "time_window_seconds": 30,
+      "seconds": 60.0
+    },
+    {
+      "measure": "max_reps",
+      "duration_seconds_target": null,
+      "time_window_seconds": 30,
+      "seconds": 30.0
+    },
+    {
+      "measure": "max_reps",
+      "duration_seconds_target": 60,
+      "time_window_seconds": null,
+      "seconds": null
+    },
+    {
+      "measure": "max_reps",
+      "duration_seconds_target": null,
+      "time_window_seconds": null,
+      "seconds": null
+    },
+    {
+      "measure": "tempo",
+      "duration_seconds_target": 60,
+      "time_window_seconds": 30,
+      "seconds": null
+    }
+  ]
+}

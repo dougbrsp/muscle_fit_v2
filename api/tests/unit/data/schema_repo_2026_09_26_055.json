@@ -1,0 +1,188 @@
+{
+ "_origem": "Recorte de `muscle_groups` montado a partir do PROPRIO repositorio, e nao de uma leitura de banco: a FORMA da tabela vem do `CREATE TABLE muscle_groups` do baseline `001_schema.sql` (schema_migrations 11) e as LINHAS (id + nome) vem da secao 4 de `002_reestruturacao.sql`, o UPDATE por id que o usuario confirmou como 'tabela definitiva'. Os dois arquivos rodam identicos em DEV e em producao e nenhuma migracao posterior (003..054) toca a forma da tabela nem os nomes dos grupos - conferido por grep em api/db/migrations/. Nenhuma conexao a AWS nem ao DEV foi aberta para produzir este arquivo (ordem do usuario: nada roda localmente, o CI e o unico portao), e por isso os testes `test_o_recorte_descreve_a_tabela_do_baseline_001` e `test_o_recorte_tem_exatamente_os_nomes_que_a_002_fixou` amarram o recorte aos dois arquivos: se o baseline mudar, o recorte para de bater e o teste cai.",
+ "versao": [
+  {
+   "mysql": "8.0.46",
+   "schema_migration_files": 54
+  }
+ ],
+ "tables": [
+  {
+   "table_name": "muscle_groups",
+   "engine": "InnoDB"
+  }
+ ],
+ "columns": [
+  {
+   "t": "muscle_groups",
+   "pos": 1,
+   "col": "id",
+   "type": "bigint",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "PRI",
+   "extra": "auto_increment",
+   "coll": null,
+   "gen": ""
+  },
+  {
+   "t": "muscle_groups",
+   "pos": 2,
+   "col": "name",
+   "type": "varchar(120)",
+   "nullable": "NO",
+   "dflt": null,
+   "ckey": "UNI",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci",
+   "gen": ""
+  },
+  {
+   "t": "muscle_groups",
+   "pos": 3,
+   "col": "primary_muscles",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci",
+   "gen": ""
+  },
+  {
+   "t": "muscle_groups",
+   "pos": 4,
+   "col": "secondary_muscles",
+   "type": "varchar(255)",
+   "nullable": "YES",
+   "dflt": null,
+   "ckey": "",
+   "extra": "",
+   "coll": "utf8mb4_0900_ai_ci",
+   "gen": ""
+  },
+  {
+   "t": "muscle_groups",
+   "pos": 5,
+   "col": "created_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED",
+   "coll": null,
+   "gen": ""
+  },
+  {
+   "t": "muscle_groups",
+   "pos": 6,
+   "col": "updated_at",
+   "type": "timestamp",
+   "nullable": "NO",
+   "dflt": "CURRENT_TIMESTAMP",
+   "ckey": "",
+   "extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+   "coll": null,
+   "gen": ""
+  }
+ ],
+ "indexes": [
+  {
+   "t": "muscle_groups",
+   "idx": "PRIMARY",
+   "seq": 1,
+   "col": "id",
+   "non_unique": 0
+  },
+  {
+   "t": "muscle_groups",
+   "idx": "name",
+   "seq": 1,
+   "col": "name",
+   "non_unique": 0
+  }
+ ],
+ "foreign_keys": [],
+ "rows": [
+  {
+   "id": 1,
+   "name": "Abdômen"
+  },
+  {
+   "id": 2,
+   "name": "Adutores"
+  },
+  {
+   "id": 3,
+   "name": "Antebraço anterior"
+  },
+  {
+   "id": 4,
+   "name": "Quadríceps"
+  },
+  {
+   "id": 5,
+   "name": "Bíceps"
+  },
+  {
+   "id": 6,
+   "name": "Costas — largura dorsal"
+  },
+  {
+   "id": 7,
+   "name": "Costas — miolo/densidade"
+  },
+  {
+   "id": 8,
+   "name": "Glúteos"
+  },
+  {
+   "id": 9,
+   "name": "Lombar"
+  },
+  {
+   "id": 10,
+   "name": "Ombros / Deltoides"
+  },
+  {
+   "id": 12,
+   "name": "Peitoral superior"
+  },
+  {
+   "id": 13,
+   "name": "Posterior de coxa / Isquiotibiais"
+  },
+  {
+   "id": 14,
+   "name": "Tríceps"
+  },
+  {
+   "id": 50,
+   "name": "Antebraço posterior"
+  },
+  {
+   "id": 51,
+   "name": "Panturrilha posterior"
+  },
+  {
+   "id": 52,
+   "name": "Peitoral"
+  },
+  {
+   "id": 53,
+   "name": "Panturrilha anterior"
+  },
+  {
+   "id": 54,
+   "name": "Flexores do quadril"
+  },
+  {
+   "id": 55,
+   "name": "Core"
+  },
+  {
+   "id": 56,
+   "name": "Manguito rotador"
+  }
+ ]
+}
