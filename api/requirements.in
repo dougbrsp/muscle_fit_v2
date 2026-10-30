@@ -14,7 +14,7 @@ starlette==1.7.0
 # confiavel do X-Forwarded-For (o que o API Gateway anexa); app/client_ip.py
 # continua valendo. HTTP/2/zttp sao opt-in e nao sao usados.
 uvicorn[standard]==0.54.0
-pydantic==2.14.0
+pydantic==2.14.1
 # SDK oficial da Anthropic (Claude): provedor LLM opcional por feature
 # (app/llm_anthropic.py; padrao de toda feature segue OpenAI). Importado so
 # quando uma feature esta ligada na Anthropic. 2.x: API version 2026-10-21,
