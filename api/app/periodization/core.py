@@ -24,7 +24,7 @@ from ..db import transaction
 from ..models import PeriodizationDraftIn
 from ..observability import EVENT_PERIODIZATION_VALIDATION_FAILED, log_event
 from ..openai_client import USER_MESSAGE_UNAVAILABLE, OpenAIGenerationError, call_openai_structured
-from .context import build_context, build_prompt
+from .context import build_context, build_prompt, build_prompt_cache_prefix
 from .logs import STATUS_FAILED, STATUS_SUCCEEDED, finish_log
 from .output_schema import SCHEMA_NAME, output_schema
 from .validation import validate_draft
@@ -152,6 +152,7 @@ def run_periodization_draft(
             feature="periodization",
             user_id=user_id,
             prompt_version=PROMPT_VERSION,
+            cache_prefix=build_prompt_cache_prefix(context),
         )
     except Exception as exc:
         finish_log(generation_log_id, status=STATUS_FAILED, model=model)

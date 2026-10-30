@@ -15,6 +15,7 @@ from app import openai_client
 from app.openai_client import OpenAIGenerationError, call_openai_structured
 from app.periodization import context as ctx
 from app.periodization.core import MODEL_ENV_VAR, PeriodizationError, resolve_model
+from app.domain.nutrition import ai_usage
 from app.periodization.logs import estimate_cost_usd
 from app.periodization.output_schema import OUTPUT_SCHEMA, SCHEMA_NAME
 from app.domain.effective_intensity import clamp_rpe_text
@@ -335,18 +336,15 @@ def test_clamp_de_rpe_e_deterministico(valor, teto, esperado):
     assert (resultado if clamps else None) == esperado
 
 
-def test_custo_sai_de_preco_configurado_e_nunca_e_inventado(monkeypatch):
-    monkeypatch.delenv("OPENAI_PRICE_IN_PER_MTOKEN", raising=False)
-    monkeypatch.delenv("OPENAI_PRICE_OUT_PER_MTOKEN", raising=False)
-    assert estimate_cost_usd(10_000, 2_000) is None  # sem preco -> NULL, tokens gravados
-
-    monkeypatch.setenv("OPENAI_PRICE_IN_PER_MTOKEN", "0.25")
-    monkeypatch.setenv("OPENAI_PRICE_OUT_PER_MTOKEN", "2")
-    assert estimate_cost_usd(1_000_000, 100_000) == pytest.approx(0.45)
-    assert estimate_cost_usd(None, None) == 0.0
-
-    monkeypatch.setenv("OPENAI_PRICE_IN_PER_MTOKEN", "nao numero")
-    assert estimate_cost_usd(1_000_000, 0) == 0.0
+def test_custo_sai_do_dono_do_preco_e_nunca_e_inventado(monkeypatch):
+    # Mapa §74: o preco por modelo e de `ai_usage` (tabela com fonte); a env
+    # antiga `OPENAI_PRICE_*` nao conta mais.
+    monkeypatch.setenv("OPENAI_PRICE_IN_PER_MTOKEN", "999")
+    assert estimate_cost_usd("modelo-sem-preco", 10_000, 2_000) is None  # fora da tabela -> NULL
+    assert estimate_cost_usd("gpt-5.4-mini", None, 2_000) is None  # token ausente -> NULL
+    esperado = round(float(ai_usage.estimate_cost_usd("gpt-5.4-mini", 1_000_000, 100_000)), 4)
+    assert estimate_cost_usd("gpt-5.4-mini", 1_000_000, 100_000) == esperado == pytest.approx(1.2)
+    assert estimate_cost_usd("claude-sonnet-5-5", 1_000_000, 100_000) == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------

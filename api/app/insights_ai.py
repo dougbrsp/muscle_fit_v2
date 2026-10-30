@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 from typing import Any, Mapping
 
-from .insights_prompt import build_insight_prompt, effective_prompt_version
+from .insights_prompt import build_insight_prompt, effective_prompt_version, insight_cache_prefix
 from .openai_client import LLM_TIMEOUT_LONG_SECONDS, OpenAIGenerationError, call_openai
 
 OPENAI_MODEL = os.environ.get("OPENAI_INSIGHTS_MODEL", "gpt-5.4-mini")
@@ -75,6 +75,14 @@ def generate_insight(
     )
     version = effective_prompt_version(training_goals, deload)
     model = _model()
+    cache_prefix = insight_cache_prefix(
+        package,
+        rag_text,
+        question=question,
+        training_goals=training_goals,
+        deload=deload,
+        technique_names=technique_names,
+    )
     try:
         insight_text = call_openai(
             prompt,
@@ -83,6 +91,7 @@ def generate_insight(
             feature="insights",
             user_id=user_id,
             prompt_version=version,
+            cache_prefix=cache_prefix,
         )
     except OpenAIGenerationError as exc:
         raise InsightsGenerationError(str(exc)) from exc

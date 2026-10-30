@@ -119,6 +119,7 @@ resource "aws_iam_role_policy" "musclefit_workout_ai_data_api" {
         Resource = [
           aws_rds_cluster.musclefit_db.master_user_secret[0].secret_arn,
           aws_secretsmanager_secret.openai_api_key.arn,
+          aws_secretsmanager_secret.anthropic_api_key.arn,
           aws_secretsmanager_secret.api_token.arn,
           aws_secretsmanager_secret.secret_encryption_key.arn,
         ]
@@ -190,7 +191,8 @@ resource "aws_lambda_function" "musclefit_workout_ai" {
   reserved_concurrent_executions = var.lambda_reserved_concurrency["workout-ai"]
 
   environment {
-    variables = {
+    # Provedor LLM por feature + ARN da chave da Anthropic: infra/llm_providers.tf.
+    variables = merge({
       AURORA_CLUSTER_ARN               = aws_rds_cluster.musclefit_db.arn
       AURORA_SECRET_ARN                = aws_rds_cluster.musclefit_db.master_user_secret[0].secret_arn
       AURORA_DATABASE                  = var.db_name
@@ -213,7 +215,7 @@ resource "aws_lambda_function" "musclefit_workout_ai" {
       RAG_S3_BUCKET    = aws_s3_bucket.musclefit_rag.bucket
       RAG_S3_PREFIX    = "markdown/"
       RAG_MARKDOWN_DIR = "/tmp/rag"
-    }
+    }, local.llm_provider_env)
   }
 
   depends_on = [aws_cloudwatch_log_group.musclefit_workout_ai]

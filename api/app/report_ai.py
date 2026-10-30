@@ -59,11 +59,17 @@ class ReportGenerationError(OpenAIGenerationError):
     `/dashboard/treinos` (`workouts_analysis_core.py`)."""
 
 
-def _call_openai(prompt: str, user_id: Any = None) -> str:
+def _collapse_blank_lines(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def _call_openai(prompt: str, user_id: Any = None, cache_prefix: str | None = None) -> str:
     # Colapsa linhas em branco excedentes deixadas pela insercao condicional
     # do bloco de RAG (_rag_section retorna "" quando nao ha contexto) - so
     # cosmetica, nao muda o conteudo do prompt.
-    prompt = re.sub(r"\n{3,}", "\n\n", prompt)
+    prompt = _collapse_blank_lines(prompt)
+    if cache_prefix:
+        cache_prefix = _collapse_blank_lines(cache_prefix).rstrip("\n")
     try:
         return _call_openai_shared(
             prompt,
@@ -72,6 +78,7 @@ def _call_openai(prompt: str, user_id: Any = None) -> str:
             feature="workouts_analysis",
             user_id=user_id,
             prompt_version=PROMPT_VERSION,
+            cache_prefix=cache_prefix,
         )
     except OpenAIGenerationError as exc:
         raise ReportGenerationError(str(exc)) from exc
@@ -135,21 +142,33 @@ def build_prompt(training_payload: dict[str, Any], days: int, rag_context: str =
     """Prompt da "Analise por IA" (antes do colapso de linhas em branco de
     `_call_openai`). A prosa vem do template privado; os numeros, de
     `prompt_values()`; os dados, do payload `training`."""
+    return prompt_store.render(PROMPT_FEATURE_DIR, PROMPT_VERSION, _values(training_payload, days, rag_context)).strip()
+
+
+# Placeholders que mudam a cada pedido (fim do prefixo cacheavel).
+REQUEST_PLACEHOLDERS = ("dias", "dados")
+
+
+def build_cache_prefix(training_payload: dict[str, Any], days: int, rag_context: str = "") -> str:
+    """Comeco estavel de `build_prompt` (instrucoes + RAG), para o
+    `cache_control` do provedor Anthropic. Nao muda o prompt."""
+    return prompt_store.render_prefix(
+        PROMPT_FEATURE_DIR, PROMPT_VERSION, _values(training_payload, days, rag_context), REQUEST_PLACEHOLDERS
+    ).lstrip()
+
+
+def _values(training_payload: dict[str, Any], days: int, rag_context: str) -> dict[str, str]:
     rag_section = _rag_section(rag_context)
     # Ordem fixa (IA-05): instrucoes (iguais em toda chamada) -> RAG (igual
     # para o mesmo conjunto de grupos) -> janela e dados (variam por pedido).
     # O prompt caching automatico da OpenAI so reaproveita PREFIXO identico.
-    return prompt_store.render(
-        PROMPT_FEATURE_DIR,
-        PROMPT_VERSION,
-        {
-            **prompt_values(),
-            "regra_dados_usuario": user_data_rule(),
-            "secao_rag": rag_section,
-            "dias": f"{days}",
-            "dados": _dump(_ai_training_payload(training_payload)),
-        },
-    ).strip()
+    return {
+        **prompt_values(),
+        "regra_dados_usuario": user_data_rule(),
+        "secao_rag": rag_section,
+        "dias": f"{days}",
+        "dados": _dump(_ai_training_payload(training_payload)),
+    }
 
 
 def analyze_training_evolution(
@@ -164,4 +183,8 @@ def analyze_training_evolution(
 
     Progressao por exercicio: a IA recebe o status da regra unica
     (`exercise_progression`) e e instruida a usa-lo em vez de inferir (M74)."""
-    return _call_openai(build_prompt(training_payload, days, rag_context), user_id)
+    return _call_openai(
+        build_prompt(training_payload, days, rag_context),
+        user_id,
+        cache_prefix=build_cache_prefix(training_payload, days, rag_context),
+    )
