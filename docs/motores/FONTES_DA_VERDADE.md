@@ -3523,6 +3523,8 @@ centavo. Sem default de status nem enumeração na migração (vocabulário do m
    fica para o backlog; migrar a periodização muda semântica (`cost_usd` deixa de ser NULL) e exige "Impacto em
    produção" medido. Até lá, no escopo de nutrição é proibido usar o custo da periodização ou ler `OPENAI_PRICE_*`
    (guarda `cota_ia_copia_nutricao`).
+   **Resolvida para a periodização no §74 (2026-10-30)**: `periodization/logs.estimate_cost_usd` consome o dono;
+   a proibição da guarda no escopo de nutrição continua.
 
 **Guarda.** Padrões novos, os dois nascem vazios:
 - `cota_ia_nutricao` (repo inteiro): constantes do dono redefinidas, job type em literal, variável de cota comparada
@@ -6251,7 +6253,11 @@ devolve o começo estável do mesmo prompt (`insight_cache_prefix`, `report_ai.b
 **Impacto em produção:** com os padrões, nenhum comportamento muda. As features seguem na OpenAI com o mesmo corpo
 HTTP (`test_llm_corpo_http_snapshot.py` e `test_llm_prompt_renderizado_snapshot.py` passam sem regravar).
 `llm.usage`/`llm.error`/`llm.output_incomplete` ganham `provider=openai`. `template_generation_logs.cost_usd` deixa de
-ser sempre NULL: é coluna de auditoria, e nenhuma tela nem regra a lê. A infra importa o secret existente
+ser sempre NULL. Medido em 2026-10-30, só com leitura: em produção, `SELECT COUNT(*), COUNT(cost_usd) FROM
+template_generation_logs` devolveu 8 linhas, nenhuma com custo. A Lambda `musclefit-plan-generator` tem 21 envs, nenhuma
+`*PRICE*`. Só `periodization/logs.py` (escrita) cita a coluna dessa tabela em `api/app`. Em `frontend/src`, `cost_usd`
+aparece só nos cards ilustrados, que são outra tabela. É uma coluna de auditoria sem leitor, e não há backfill: as linhas
+antigas ficam NULL. A infra importa o secret existente
 `musclefit/claude-api-key` (só tags mudam), dá `GetSecretValue` nele às 3 roles que já leem o da OpenAI e publica as
 envs `LLM_PROVIDER_<FEATURE>=openai` e `ANTHROPIC_API_KEY_SECRET_ARN` em api-core, plan-generator, cardio-agent e
 workout-ai.
