@@ -38,6 +38,9 @@ services:
       # bootstrap (localstack/init/ready.d/00-bootstrap.sh) como valor
       # placeholder dos secrets - nao sao segredos reais de producao.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Provedor Anthropic por feature (app/llm_anthropic.py): o secret
+      # musclefit/claude-api-key do LocalStack espelha o de producao.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       API_TOKEN: ${API_TOKEN:-dev-local-token}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
       # M5: remetente a verificar no SES emulado (00-bootstrap.sh).

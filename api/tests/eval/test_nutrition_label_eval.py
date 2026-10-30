@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import random
 import sys
 import time
@@ -36,7 +35,9 @@ from PIL import Image
 
 from app import nutrition_label_ai as ai
 from app.domain.nutrition import ai_usage, label_photo
+from app.domain.nutrition.ai_usage import AiFeature
 from tests.eval.criterios_llm import avaliar_rotulo
+from tests.support import llm_eval_provider
 
 pytestmark = pytest.mark.llm_eval
 
@@ -57,9 +58,9 @@ def _stdout_utf8() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _exige_chave():
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY não configurada: o eval pago precisa da chave real.")
+def _exige_chave(monkeypatch):
+    # Provedor/modelo do eval (`tests/support/llm_eval_provider.py`): SKIP sem a chave dele.
+    llm_eval_provider.apply(monkeypatch, AiFeature.LABEL_PHOTO.value)
 
 
 def _foto_grande(dados: bytes) -> bytes:

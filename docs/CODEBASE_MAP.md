@@ -147,7 +147,7 @@ muscle_fit/
 
 ### Backend — IA (`api/app/`)
 
-Padrão: rota cria job (202) → Lambda assíncrona reivindica o job (`async_jobs.claim_job`, M81: job já fechado como `worker_lost` ou entrega duplicada não chama a IA) → roda `*_core.py` → `*_ai.py` monta prompt (`*_prompt.py`) → `openai_client.call_openai[_structured]` (urllib, `/v1/responses`, sem SDK) → resultado no banco/DynamoDB. Texto livre do usuário passa por `prompt_user_data.py` (`<dados_do_usuario>`). Decisão do motor chega pronta via `engine_decision_context.py`.
+Padrão: rota cria job (202) → Lambda assíncrona reivindica o job (`async_jobs.claim_job`, M81: job já fechado como `worker_lost` ou entrega duplicada não chama a IA) → roda `*_core.py` → `*_ai.py` monta prompt (`*_prompt.py`) → `openai_client.call_openai[_structured]` (OpenAI por urllib, `/v1/responses`, sem SDK; ou Claude por feature, ver abaixo) → resultado no banco/DynamoDB. Texto livre do usuário passa por `prompt_user_data.py` (`<dados_do_usuario>`). Decisão do motor chega pronta via `engine_decision_context.py`.
 
 | Feature | Arquivos | Env do modelo |
 |---|---|---|
@@ -160,6 +160,18 @@ Padrão: rota cria job (202) → Lambda assíncrona reivindica o job (`async_job
 | Periodização (Modelo) | `periodization/*` | `OPENAI_MODEL_PERIODIZATION` (sem default) |
 | Cards ilustrados | `exercise_card_*` | config de imagem |
 | RAG | `rag_chunking.py` (seletivo por grupo), `rag_storage.py` (hidrata do S3) | `RAG_MARKDOWN_DIR`, `RAG_S3_BUCKET` |
+
+#### Provedor LLM por feature (OpenAI × Anthropic)
+
+O cliente único continua sendo `openai_client.call_openai`, `call_openai_structured` e `call_openai_structured_vision` (assinaturas iguais; novo kwarg opcional `cache_prefix`). Por `feature` (o rótulo do `llm.usage`), `_dispatch` decide o provedor: **padrão `openai` em toda feature**, com o mesmo corpo HTTP de antes (snapshots intactos). Com `LLM_PROVIDER_<FEATURE>=anthropic`, a chamada vai para `llm_anthropic.py` (SDK oficial `anthropic`, importado só nesse caso).
+
+- **Envs** (`<FEATURE>` = rótulo em maiúsculas: `SET_EVALUATION`, `EXERCISE_SUMMARY`, `WORKOUT_SUMMARY`, `EXERCISE_DESCRIPTION`, `INSIGHTS`, `WORKOUTS_ANALYSIS`, `CARDIO_AGENT`, `PERIODIZATION`, `MEAL_PARSE`, `LABEL_PHOTO`, `WORKOUT_PLAN`): `LLM_PROVIDER_<FEATURE>` (`openai`|`anthropic`), `ANTHROPIC_MODEL_<FEATURE>` (padrão: `claude-haiku-5-5` em avaliação de série e resumos; `claude-sonnet-5-5` nas demais), `ANTHROPIC_EFFORT_<FEATURE>` (padrão `low` nas três leves, `medium` nas demais), `LLM_FALLBACK_PROVIDER_<FEATURE>` ou `LLM_FALLBACK_PROVIDER` (`openai` liga o fallback), `ANTHROPIC_API_KEY` (de `ANTHROPIC_API_KEY_SECRET_ARN`, secret `musclefit/claude-api-key`, via `secrets_bootstrap.py`).
+- **Terraform** (`infra/llm_providers.tf`): `llm_provider_by_feature`, `anthropic_model_by_feature`, `anthropic_effort_by_feature` (mapas, padrão `{}`) e `llm_fallback_provider` (padrão `""`) viram `local.llm_provider_env`, publicado só em api-core, ai-generators e workout-ai (as mesmas que leem a chave da OpenAI). **Ligar uma feature** = PR que põe `{ insights = "anthropic" }` em `llm_provider_by_feature` (depois do eval).
+- **Pedido Claude**: `messages.create` com `thinking: adaptive`, `output_config.effort`, `max_tokens` = teto da feature (`LLM_MAX_OUTPUT_TOKENS`, que já conta raciocínio), sem `temperature`/`top_p`/`top_k` e sem prefill. Estruturado: `output_config.format` (`json_schema`) com o schema passado por `llm_anthropic_schema.adapt_schema` (limites de 16 uniões e 24 opcionais; o excedente de anuláveis vira opcional e `restore` devolve `null`). Visão: bloco `image` base64. Resposta lida pelos blocos `type == "text"`.
+- **Cache**: nas features de `PROMPT_CACHE_KEY_FEATURES`, o `cache_prefix` (instruções + RAG; `insight_cache_prefix`, `report_ai.build_cache_prefix`, `build_prompt_cache_prefix` da periodização, `cardio_agent_ai.cache_prefix_of`) vira um bloco com `cache_control`. Não vai para a OpenAI.
+- **Erros e retry**: `max_retries=0` no SDK; o retry é o do cliente (429/5xx/529 na janela de 10 s, nunca em timeout). Classes tipadas do SDK viram `OpenAIGenerationError` com mensagem genérica; códigos novos `ANTHROPIC_REFUSAL`, `ANTHROPIC_BILLING`, `ANTHROPIC_AUTH`, `ANTHROPIC_NOT_CONFIGURED`, `ANTHROPIC_CONNECTION`, `ANTHROPIC_SCHEMA_UNSUPPORTED`. `stop_reason` `max_tokens` = `llm.output_incomplete`.
+- **Fallback** (`llm.fallback`): com o fallback ligado, crédito/billing, chave, erro HTTP depois do retry, conexão, schema fora do subconjunto e recusa refazem na OpenAI com o modelo OpenAI da feature e o tempo que sobrou. Timeout e saída cortada/JSON inválido não refazem (já cobrados).
+- **Custo**: `llm.usage` ganha `provider` (e `cache_write_tokens` no Claude); `input_tokens` é a entrada inteira (como na OpenAI). Preço por modelo, inclusive a faixa de prompt longo do Haiku, só em `domain/nutrition/ai_usage.py` (mapa §74). Eval GPT × Claude: `tests/support/llm_eval_provider.py` (`LLM_EVAL_PROVIDER`, `LLM_EVAL_MODEL`, `LLM_EVAL_EFFORT`). Retenção: `docs/ia/RETENCAO_DADOS_ANTHROPIC.md`.
 
 ### Backend — `domain/` (regras puras, sem FastAPI)
 

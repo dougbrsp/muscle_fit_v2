@@ -149,12 +149,25 @@ def load_rag_text() -> str:
     return select_cardio_rag_text()
 
 
+# Separador entre o prefixo estavel (instrucoes + RAG) e os dados. Os dados
+# sao JSON compacto (sem quebra de linha crua), entao a ULTIMA ocorrencia do
+# separador e sempre a fronteira.
+DATA_MARKER = "\n\nDados:\n"
+
+
+def cache_prefix_of(prompt: str) -> str | None:
+    """Prefixo cacheavel de um prompt de `build_prompt` (para o
+    `cache_control` do provedor Anthropic); None se nao houver separador."""
+    end = prompt.rfind(DATA_MARKER)
+    return prompt[:end] if end > 0 else None
+
+
 def build_prompt(context: dict[str, Any], rag_text: str = "") -> str:
     """Instrucoes fixas -> RAG (fixo por versao) -> dados: o prefixo e
     cacheavel (`prompt_cache_key`). Dados em JSON compacto."""
     rag = f"\n\n{RAG_HEADER}\n{rag_text}" if rag_text else ""
     dados = json.dumps(prompt_context(context), ensure_ascii=False, default=str, separators=(",", ":"))
-    return system_prompt() + rag + "\n\nDados:\n" + dados
+    return system_prompt() + rag + DATA_MARKER + dados
 
 
 def call_openai(prompt: str, user_id: int | None = None) -> dict[str, Any]:
@@ -170,6 +183,7 @@ def call_openai(prompt: str, user_id: int | None = None) -> dict[str, Any]:
             feature="cardio_agent",
             user_id=user_id,
             prompt_version=PROMPT_VERSION,
+            cache_prefix=cache_prefix_of(prompt),
         )
     except OpenAIGenerationError as exc:
         raise CardioAgentGenerationError(str(exc)) from exc

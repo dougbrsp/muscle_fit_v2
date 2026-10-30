@@ -109,6 +109,9 @@ create_or_update_secret() {
 }
 
 create_or_update_secret "musclefit/openai-api-key" "${OPENAI_API_KEY:-dev-placeholder}"
+# Provedor Anthropic por feature (app/llm_anthropic.py). Sem chave no .env, o
+# secret nasce com o placeholder (o Secrets Manager nao aceita valor vazio).
+create_or_update_secret "musclefit/claude-api-key" "${ANTHROPIC_API_KEY:-dev-placeholder}"
 create_or_update_secret "musclefit/api-token" "${API_TOKEN:-dev-local-token}"
 create_or_update_secret "musclefit/secret-encryption-key" "${SECRET_ENCRYPTION_KEY:-dev-placeholder}"
 

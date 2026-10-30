@@ -8,23 +8,23 @@ todos pela checagem antes da primeira linha existir. Com a linha criada antes de
 invocar a Lambda, a contagem e sempre coerente - e o `generation_log_id` ja vai
 no payload do job, sem round-trip extra.
 
-Custo: `tokens_in`/`tokens_out` vem da resposta da OpenAI e sao SEMPRE gravados.
-`cost_usd` depende de tabela de preco, que muda com o tempo e nao deve ser
-chumbada (nem inventada) no codigo: sai de `OPENAI_PRICE_IN_PER_MTOKEN`/
-`OPENAI_PRICE_OUT_PER_MTOKEN` (USD por milhao de tokens). Sem as env vars,
-`cost_usd` fica NULL e o custo se calcula depois a partir dos tokens, que estao
-gravados.
+Custo: `tokens_in`/`tokens_out` vem da resposta do provedor e sao SEMPRE
+gravados. `cost_usd` sai do DONO do preco por modelo
+(`domain/nutrition/ai_usage.estimate_cost_usd`, tabela com fonte e data; mapa
+§54 decisao 7 e §74): modelo fora da tabela ou token ausente -> NULL, nunca um
+preco inventado. Antes do §74 o preco vinha de `OPENAI_PRICE_*_PER_MTOKEN`,
+que a infra nunca publicou (a coluna ficava sempre NULL).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Any, Optional
 
 from ..db import transaction
+from ..domain.nutrition import ai_usage
 
 logger = logging.getLogger("musclefit.periodization")
 
@@ -164,7 +164,7 @@ def finish_log(
                         else None,
                         tokens_in,
                         tokens_out,
-                        estimate_cost_usd(tokens_in, tokens_out),
+                        estimate_cost_usd(model, tokens_in, tokens_out),
                         generation_log_id,
                     ),
                 )
@@ -172,24 +172,14 @@ def finish_log(
         logger.exception("Falha ao fechar template_generation_logs id=%s", generation_log_id)
 
 
-def estimate_cost_usd(tokens_in: Optional[int], tokens_out: Optional[int]) -> Optional[float]:
-    """Custo em USD a partir dos precos em env var (USD por MILHAO de tokens).
-    Sem preco configurado devolve None (coluna NULL) - melhor um custo ausente
-    que um custo inventado; os tokens ficam gravados de qualquer forma."""
-    price_in = _price("OPENAI_PRICE_IN_PER_MTOKEN")
-    price_out = _price("OPENAI_PRICE_OUT_PER_MTOKEN")
-    if price_in is None and price_out is None:
-        return None
-    total = ((tokens_in or 0) * (price_in or 0.0) + (tokens_out or 0) * (price_out or 0.0)) / 1_000_000
-    return round(total, 4)
+# Escala da coluna `template_generation_logs.cost_usd` (DECIMAL(8,4), migracao 038).
+LOG_COST_DECIMAL_PLACES = 4
 
 
-def _price(env_var: str) -> Optional[float]:
-    raw = (os.environ.get(env_var) or "").strip()
-    if not raw:
+def estimate_cost_usd(model: Optional[str], tokens_in: Optional[int], tokens_out: Optional[int]) -> Optional[float]:
+    """Custo em USD pelo dono (`ai_usage.estimate_cost_usd`), na escala da
+    coluna. Modelo sem preco ou token ausente -> None (coluna NULL)."""
+    custo = ai_usage.estimate_cost_usd(model, tokens_in, tokens_out)
+    if custo is None:
         return None
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning("%s=%r nao e numero; custo da periodizacao fica sem esse componente.", env_var, raw)
-        return None
+    return round(float(custo), LOG_COST_DECIMAL_PLACES)

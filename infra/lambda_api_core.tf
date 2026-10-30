@@ -75,6 +75,7 @@ resource "aws_iam_role_policy" "musclefit_api_core_data_api" {
         Resource = [
           aws_rds_cluster.musclefit_db.master_user_secret[0].secret_arn,
           aws_secretsmanager_secret.openai_api_key.arn,
+          aws_secretsmanager_secret.anthropic_api_key.arn,
           aws_secretsmanager_secret.api_token.arn,
           aws_secretsmanager_secret.secret_encryption_key.arn,
           aws_secretsmanager_secret.turnstile_secret_key.arn,
@@ -264,7 +265,8 @@ resource "aws_lambda_function" "musclefit_api_core" {
       EXERCISE_CARD_MAX_IN_FLIGHT           = "2"
       EXERCISE_CARD_STALE_MINUTES           = "10"
       PUBLIC_ASSETS_BASE_URL                = local.public_assets_base_url
-    }, local.exercise_card_image_env, local.deterministic_engines_env)
+      # Provedor LLM por feature + ARN da chave da Anthropic: infra/llm_providers.tf.
+    }, local.exercise_card_image_env, local.deterministic_engines_env, local.llm_provider_env)
   }
 
   depends_on = [aws_cloudwatch_log_group.musclefit_api_core]

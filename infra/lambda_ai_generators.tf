@@ -129,6 +129,7 @@ resource "aws_iam_role_policy" "musclefit_ai_generators_data_api" {
         Resource = [
           aws_rds_cluster.musclefit_db.master_user_secret[0].secret_arn,
           aws_secretsmanager_secret.openai_api_key.arn,
+          aws_secretsmanager_secret.anthropic_api_key.arn,
           # SEG-04: sem `api_token` - nenhuma das duas Lambdas autentica nem
           # chama a API HTTP (gyms/catalogo vem direto do banco).
           aws_secretsmanager_secret.secret_encryption_key.arn,
@@ -239,7 +240,8 @@ resource "aws_cloudwatch_log_group" "musclefit_cardio_agent" {
 }
 
 locals {
-  ai_generators_env = {
+  # Provedor LLM por feature + ARN da chave da Anthropic: infra/llm_providers.tf.
+  ai_generators_env = merge({
     AURORA_CLUSTER_ARN               = aws_rds_cluster.musclefit_db.arn
     AURORA_SECRET_ARN                = aws_rds_cluster.musclefit_db.master_user_secret[0].secret_arn
     AURORA_DATABASE                  = var.db_name
@@ -267,7 +269,7 @@ locals {
     RAG_S3_BUCKET    = aws_s3_bucket.musclefit_rag.bucket
     RAG_S3_PREFIX    = "markdown/"
     RAG_MARKDOWN_DIR = "/tmp/rag"
-  }
+  }, local.llm_provider_env)
 
   # Cards ilustrados de exercicios - o que o worker (job_kind "exercise-card",
   # so na musclefit-plan-generator) precisa: o bucket onde grava o rascunho

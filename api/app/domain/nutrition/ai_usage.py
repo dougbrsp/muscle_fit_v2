@@ -38,6 +38,14 @@ todo token de entrada paga o preço cheio: o custo é um teto. Snapshot datado
 (`gpt-5.4-mini-2026-03-17`) usa o preço do modelo-base. Preço muda: atualizar a
 tabela, a fonte e a data juntos.
 
+Modelos Claude (Anthropic, fonte em `ANTHROPIC_PRICE_SOURCE_URL`): a mesma
+tabela, mais a faixa de prompt longo do Haiku 5.5 (`MODEL_LONG_PROMPT_PRICES`:
+prompt ACIMA do limiar paga outra tabela; o "prompt" conta toda a entrada,
+inclusive cache). Escrita de cache (1,25x na Anthropic) entra pelo preço cheio
+da entrada: o custo do Claude com cache é uma estimativa por baixo. O dono do
+preço por modelo de TODA chamada de texto é este módulo (mapa §74);
+`periodization.logs` consome `estimate_cost_usd`.
+
 Módulo PURO: sem banco, sem FastAPI, sem I/O e sem relógio.
 """
 
@@ -136,17 +144,40 @@ class ModelPrice:
         }
 
 
+# Anthropic (Claude): página oficial de preços consultada em 2026-10-30.
+# claude-sonnet-5-5 US$ 2 / 0,10 (acerto de cache, 0,05x da entrada) / 10;
+# claude-haiku-5-5 US$ 0,10 / 0,01 / 0,50 para prompt de até 100.000 tokens e
+# US$ 0,50 / 0,05 / 2,50 acima disso — por 1 milhão de tokens de entrada /
+# entrada lida do cache / saída. Os tokens de raciocínio (thinking) vêm somados
+# em `output_tokens`.
+ANTHROPIC_PRICE_SOURCE_URL: Final[str] = "https://platform.claude.com/docs/en/about-claude/pricing"
+ANTHROPIC_PRICES_CHECKED_ON: Final[str] = "2026-10-30"
+HAIKU_LONG_PROMPT_THRESHOLD_TOKENS: Final[int] = 100_000
+
 MODEL_PRICES_USD_CENTS_PER_MTOKEN: Final[Mapping[str, ModelPrice]] = MappingProxyType(
     {
         "gpt-5.4-mini": ModelPrice(Decimal(75), Decimal("7.5"), Decimal(450)),
         "gpt-5.4-nano": ModelPrice(Decimal(20), Decimal(2), Decimal(125)),
         "gpt-5.4": ModelPrice(Decimal(250), Decimal(25), Decimal(1500)),
         "gpt-4o-mini": ModelPrice(Decimal(15), Decimal("7.5"), Decimal(60)),
+        "claude-sonnet-5-5": ModelPrice(Decimal(200), Decimal(10), Decimal(1000)),
+        "claude-haiku-5-5": ModelPrice(Decimal(10), Decimal(1), Decimal(50)),
     }
 )
 
-# Sufixo de snapshot datado que a OpenAI devolve em `model` (`gpt-4o-mini-2024-07-18`).
-_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+# Faixa de prompt longo: (limiar em tokens de entrada, preço ACIMA do limiar).
+MODEL_LONG_PROMPT_PRICES: Final[Mapping[str, tuple[int, ModelPrice]]] = MappingProxyType(
+    {
+        "claude-haiku-5-5": (
+            HAIKU_LONG_PROMPT_THRESHOLD_TOKENS,
+            ModelPrice(Decimal(50), Decimal(5), Decimal(250)),
+        ),
+    }
+)
+
+# Sufixo de snapshot datado que o provedor devolve em `model`: OpenAI
+# `gpt-4o-mini-2024-07-18`; Anthropic `claude-...-20251001`.
+_SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-?\d{2}-?\d{2}$")
 
 
 # ---------------------------------------------------------------------------
@@ -254,15 +285,29 @@ def quota_status(feature: Any, used_today: Any) -> QuotaStatus:
 # ---------------------------------------------------------------------------
 
 
-def price_for_model(model: Any) -> Optional[ModelPrice]:
-    """Preço do modelo (o snapshot datado usa o do modelo-base); fora da tabela → None."""
+def _model_key(model: Any) -> Optional[str]:
+    """Nome do modelo na tabela (o snapshot datado vira o modelo-base)."""
     if not isinstance(model, str) or not model.strip():
         return None
     nome = model.strip().lower()
-    preco = MODEL_PRICES_USD_CENTS_PER_MTOKEN.get(nome)
-    if preco is None:
-        preco = MODEL_PRICES_USD_CENTS_PER_MTOKEN.get(_SNAPSHOT_SUFFIX.sub("", nome))
-    return preco
+    if nome in MODEL_PRICES_USD_CENTS_PER_MTOKEN:
+        return nome
+    base = _SNAPSHOT_SUFFIX.sub("", nome)
+    return base if base in MODEL_PRICES_USD_CENTS_PER_MTOKEN else None
+
+
+def price_for_model(model: Any, prompt_tokens: Any = None) -> Optional[ModelPrice]:
+    """Preço do modelo (o snapshot datado usa o do modelo-base); fora da tabela → None.
+    `prompt_tokens` (toda a entrada) escolhe a faixa de prompt longo, quando o
+    modelo tem uma (`MODEL_LONG_PROMPT_PRICES`); sem ele, a faixa padrão."""
+    chave = _model_key(model)
+    if chave is None:
+        return None
+    faixa = MODEL_LONG_PROMPT_PRICES.get(chave)
+    entrada = count_or_none(prompt_tokens)
+    if faixa is not None and entrada is not None and entrada > faixa[0]:
+        return faixa[1]
+    return MODEL_PRICES_USD_CENTS_PER_MTOKEN[chave]
 
 
 def estimate_cost_usd(
@@ -274,8 +319,8 @@ def estimate_cost_usd(
     """Custo em USD de uma chamada; None se o modelo não tem preço ou falta um dos
     tokens. `cached_tokens_in` (parte de `tokens_in` servida do cache) é opcional:
     sem ele o custo é o teto (entrada toda a preço cheio)."""
-    preco = price_for_model(model)
     entrada, saida = count_or_none(tokens_in), count_or_none(tokens_out)
+    preco = price_for_model(model, entrada)
     if preco is None or entrada is None or saida is None:
         return None
     em_cache = min(count_or_none(cached_tokens_in) or 0, entrada)
@@ -289,6 +334,8 @@ def estimate_cost_usd(
 
 
 __all__ = [
+    "ANTHROPIC_PRICES_CHECKED_ON",
+    "ANTHROPIC_PRICE_SOURCE_URL",
     "CENTS_PER_USD",
     "COST_USD_DECIMAL_PLACES",
     "DAILY_QUOTA",
@@ -298,6 +345,8 @@ __all__ = [
     "LABEL_PHOTO_JOB_TYPE",
     "MEAL_PARSE_DAILY_QUOTA",
     "MEAL_PARSE_JOB_TYPE",
+    "HAIKU_LONG_PROMPT_THRESHOLD_TOKENS",
+    "MODEL_LONG_PROMPT_PRICES",
     "MODEL_PRICES_USD_CENTS_PER_MTOKEN",
     "OPEN_STATUS",
     "PRICES_CHECKED_ON",

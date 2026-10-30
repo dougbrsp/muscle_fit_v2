@@ -22,7 +22,6 @@ bug esta no `addopts` ou no workflow - nao aqui.
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
@@ -31,6 +30,7 @@ import pytest
 from app.insights_ai import generate_insight
 from app.insights_prompt import PROMPT_VERSION
 from app.intelligence.dashboard.intelligence_package import package_from_overview
+from tests.support import llm_eval_provider
 from tests.support.pacote_inteligencia import overview_sintetico
 
 pytestmark = pytest.mark.llm_eval
@@ -45,10 +45,14 @@ PERGUNTAS = CONJUNTO["questions"]
 NUMERO = re.compile(r"\d+[.,]\d+")
 
 
+@pytest.fixture(autouse=True)
+def _provedor(monkeypatch):
+    # Provedor/modelo do eval (`tests/support/llm_eval_provider.py`): SKIP sem a chave dele.
+    llm_eval_provider.apply(monkeypatch, "insights")
+
+
 @pytest.fixture(scope="module")
 def cenario():
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY não configurada: a avaliação com LLM precisa da chave real.")
     return overview_sintetico()
 
 

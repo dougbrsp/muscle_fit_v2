@@ -1375,7 +1375,8 @@ PADROES: tuple[Padrao, ...] = (
         # com o custo de `ai_usage.estimate_cost_usd`. O FE lê a cota da API.
         regex=re.compile(
             r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
-            r"|MODEL_PRICES_USD_CENTS_PER_MTOKEN|TOKENS_PER_PRICE_UNIT|CENTS_PER_USD|COST_USD_DECIMAL_PLACES)"
+            r"|MODEL_PRICES_USD_CENTS_PER_MTOKEN|MODEL_LONG_PROMPT_PRICES|HAIKU_LONG_PROMPT_THRESHOLD_TOKENS"
+            r"|TOKENS_PER_PRICE_UNIT|CENTS_PER_USD|COST_USD_DECIMAL_PLACES)"
             r"\s*(?::[^=\n]+)?=\s*(?:[\d({\[]|MappingProxyType|frozenset)"
             r"""|["'`]nutrition-(?:meal-parse|label-ocr)["'`]"""
             # Cota comparada ou atribuída a número (`cota_usada >= 30`, `remainingQuota === 0`,
@@ -1386,8 +1387,9 @@ PADROES: tuple[Padrao, ...] = (
             r"""|(?:\b(?i:(?:\w*_)?(?:quota|cota)(?:_\w*)?)\b|\b\w*(?:Quota|Cota)\w*)["'\])]*\s*"""
             r"""(?::[^=<>!\n]+(?==))?(?:[<>]=?|[!=]?==?)\s*\d"""
             r"""|(?:\b(?i:(?:\w*_)?(?:quota|cota)(?:_\w*)?)\b|\b\w*(?:Quota|Cota)\w*)["']?\s*:\s*[1-9]"""
-            # Tabela de preço por modelo copiada com outro nome.
-            r"""|["'`]gpt-[\w.\-]+["'`]\s*:\s*[\d(\[{]|\bModelPrice\("""
+            # Tabela de preço por modelo copiada com outro nome (OpenAI e, desde o
+            # §74, Claude: inclusive a faixa de prompt longo do Haiku).
+            r"""|["'`](?:gpt|claude)-[\w.\-]+["'`]\s*:\s*[\d(\[{]|\bModelPrice\("""
         ),
         donos=("api/app/domain/nutrition/ai_usage.py",),
         inventario="NUT-L5A",
@@ -2981,6 +2983,8 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "cota_ia_nutricao": (
         ("MEAL_PARSE_DAILY_QUOTA = 30", "LABEL_PHOTO_DAILY_QUOTA: Final[int] = 10",
+         '"claude-haiku-5-5": (100_000, 50),', "HAIKU_LONG_PROMPT_THRESHOLD_TOKENS = 100_000",
+         "MODEL_LONG_PROMPT_PRICES = {",
          "DAILY_QUOTA = {AiFeature.MEAL_PARSE: 30}", "const MEAL_PARSE_DAILY_QUOTA = 30;",
          "TOKENS_PER_PRICE_UNIT = 1_000_000", "MODEL_PRICES_USD_CENTS_PER_MTOKEN = {",
          "FEATURE_JOB_TYPE: Mapping[str, str] = MappingProxyType({",

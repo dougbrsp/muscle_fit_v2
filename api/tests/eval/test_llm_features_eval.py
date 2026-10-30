@@ -16,17 +16,20 @@ Criterios: `tests/eval/criterios_llm.py` (objetivos; nada de estilo). Custo
 por rodada e como comparar versoes: `docs/ia/EVALS.md`.
 
 Sem `OPENAI_API_KEY` todo caso da SKIP (nunca falha por falta de chave).
+
+Provedor/modelo por feature (GPT x Claude): `LLM_EVAL_PROVIDER`,
+`LLM_EVAL_MODEL`, `LLM_EVAL_EFFORT` (`tests/support/llm_eval_provider.py`);
+com `anthropic`, a chave exigida e a `ANTHROPIC_API_KEY`.
 """
 
 from __future__ import annotations
 
-import os
 import sys
 
 import pytest
 
 from tests.eval.criterios_llm import AVALIADORES, texto_da_saida
-from tests.support import llm_casos
+from tests.support import llm_casos, llm_eval_provider
 
 pytestmark = pytest.mark.llm_eval
 
@@ -47,14 +50,9 @@ def _stdout_utf8() -> None:
         pass
 
 
-@pytest.fixture(autouse=True)
-def _exige_chave():
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY não configurada: o eval pago precisa da chave real.")
-
-
 @pytest.mark.parametrize(("feature", "caso"), CASOS, ids=[f"{f}/{c['id']}" for f, c in CASOS])
 def test_feature_cumpre_os_criterios(monkeypatch, feature, caso):
+    llm_eval_provider.apply(monkeypatch, feature)
     saida = llm_casos.executar(feature, caso, monkeypatch, rag="real")
     problemas = AVALIADORES[feature](saida, caso)
     _stdout_utf8()
