@@ -14,6 +14,8 @@
 # o esforco que venceu no eval e fallback POR FEATURE para a OpenAI.
 # periodization, set_evaluation, workouts_analysis, exercise_summary e
 # workout_plan seguem na OpenAI (sem env de modelo/esforco/fallback).
+# periodization foi reavaliada sem raciocinio (rodada 2 de
+# docs/ia/EVAL_PERIODIZACAO_2026-10-31.md): 50-54% de aprovacao, nao liga.
 #
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
@@ -73,6 +75,22 @@ variable "anthropic_effort_by_feature" {
   }
 }
 
+# Raciocinio por feature (ANTHROPIC_THINKING_<FEATURE>): adaptive (padrao do
+# codigo) ou disabled. disabled so com esforco low/medium/high (a API responde
+# 400 com xhigh/max; o codigo falha antes da rede com ANTHROPIC_CONFIG_INVALID
+# e a combinacao publicada e travada em teste). Feature ausente = adaptive, o
+# corpo de sempre.
+variable "anthropic_thinking_by_feature" {
+  description = "Raciocinio do Claude por feature (ANTHROPIC_THINKING_<FEATURE>): adaptive ou disabled. Ausente = adaptive."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for t in values(var.anthropic_thinking_by_feature) : contains(["adaptive", "disabled"], t)])
+    error_message = "anthropic_thinking_by_feature aceita so adaptive ou disabled."
+  }
+}
+
 variable "llm_fallback_provider" {
   description = "Fallback global quando o Claude falha (credito, chave, indisponibilidade, recusa): \"\" (desligado) ou openai."
   type        = string
@@ -124,6 +142,7 @@ locals {
     { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") },
     { for f, m in var.anthropic_model_by_feature : "ANTHROPIC_MODEL_${upper(f)}" => m if contains(local.llm_features, f) },
     { for f, e in var.anthropic_effort_by_feature : "ANTHROPIC_EFFORT_${upper(f)}" => e if contains(local.llm_features, f) },
+    { for f, t in var.anthropic_thinking_by_feature : "ANTHROPIC_THINKING_${upper(f)}" => t if contains(local.llm_features, f) },
     { for f, p in var.llm_fallback_provider_by_feature : "LLM_FALLBACK_PROVIDER_${upper(f)}" => p if contains(local.llm_features, f) },
     var.llm_fallback_provider == "" ? {} : { LLM_FALLBACK_PROVIDER = var.llm_fallback_provider },
     { ANTHROPIC_API_KEY_SECRET_ARN = aws_secretsmanager_secret.anthropic_api_key.arn },

@@ -66,6 +66,50 @@ Sem timeout, toda chamada devolveu `usage`, inclusive as cortadas.
 
 ## Pendências
 
-1. **Raciocínio nos Modelos grandes.** Testar o Haiku 5.5 sem raciocínio: a documentação da Anthropic aceita `thinking: {type: "disabled"}` no Haiku 5.5 com esforço `high` ou abaixo. Hoje o cliente sempre manda `adaptive`, então isso exige um ajuste por feature no `llm_anthropic`, mais um eval. A alternativa é subir `LLM_MAX_OUTPUT_TOKENS["periodization"]`, mas isso não reduz a latência.
+1. ~~**Raciocínio nos Modelos grandes.** Testar o Haiku 5.5 sem raciocínio.~~ Feito na mesma data (seção abaixo): sem raciocínio, a aprovação cai para o nível da OpenAI.
 2. Reavaliar a virada quando o p95 dos casos de 6 dias ficar abaixo de 60% do teto.
 3. `modo_b_6_dias_abc_ponderado` segue o caso mais difícil nos dois provedores (trio fora do catálogo).
+
+## Rodada 2: Haiku 5.5 sem raciocínio (2026-10-31)
+
+**Capacidade nova:** `ANTHROPIC_THINKING_<FEATURE>` (`adaptive`, o padrão, ou `disabled`), lida por `llm_anthropic.thinking_config`, e o mapa Terraform `anthropic_thinking_by_feature` (padrão `{}`). A API só aceita `disabled` com esforço em `EFFORTS_WITHOUT_THINKING` (`low`/`medium`/`high`). Com `xhigh`/`max`, a chamada falha antes da rede com `ANTHROPIC_CONFIG_INVALID`, que é elegível ao fallback. Sem env nova, o corpo das 6 features em produção é idêntico ao de antes (snapshot em `test_llm_thinking_por_feature.py`). No eval, a env é `LLM_EVAL_THINKING`.
+
+Mesmos 10 casos, critérios, prompt (`periodization-v14`), teto de 150 s e `max_tokens` de 30.720. Todos os braços usaram `claude-haiku-5-5` com `thinking: disabled`, 5 rodadas × 10 casos cada. A OpenAI não foi repetida: a linha de base é o braço A acima. A primeira rodada do `high` rodou sozinha. As outras 14 rodaram com os 3 braços em paralelo (no máximo 3 chamadas simultâneas).
+
+| Braço | Aprovação | Saída cortada | Timeouts | p50 / p95 (s) | 6 dias (s, 10 gerações) | Saída p50 / máx. (tokens) | US$/geração |
+|---|---|---|---|---|---|---|---|
+| A gpt-5.4-mini (linha de base) | 8/20 (40%) | 0 | 0 | 7,5 / 13,4 | 10,0–19,2 | 2,9 mil / 4,9 mil | 0,0204 |
+| E' Haiku `low` com raciocínio (rodada 1) | 26/30 (87%) | 2 | 0 | 24,6 / 125,3 | 73,5–141,0 | 5,7 mil / ~30 mil | 0,0100 |
+| (a) Haiku `high`, sem raciocínio | 25/50 (50%) | 0 | 0 | 13,8 / 36,8 | 16,1–45,3 (mediana 25,0) | 4,6 mil / 13,8 mil | 0,0062 |
+| (b) Haiku `medium`, sem raciocínio | 25/50 (50%) | 0 | 0 | 13,1 / 29,5 | 17,7–39,0 (mediana 27,1) | 4,2 mil / 13,9 mil | 0,0060 |
+| (c) Haiku `low`, sem raciocínio | 27/50 (54%) | 0 | 0 | 12,1 / 30,2 | 17,6–41,2 (mediana 25,7) | 4,0 mil / 11,3 mil | 0,0059 |
+
+Falhas por critério. O teste para no primeiro problema de cada caso, então a contagem é de casos reprovados pelo primeiro critério:
+- (a): trio fora do catálogo ×18, `rest_seconds` preenchido com regra nula ×7.
+- (b): trio fora do catálogo ×19, `rest_seconds` preenchido ×5, 4 priorizados (máx. 3) ×1.
+- (c): trio fora do catálogo ×18, `rest_seconds` preenchido ×4, sequência incompleta ×1.
+
+Por caso, nos 3 braços (15 gerações cada), as reprovações se concentram em 5 casos: `modo_b_6_dias_abc_ponderado` 15/15, `modo_b_4_dias_instrucoes` 15/15, `cardio_pedido_modo_b_4_dias` 15/15, `modo_b_6_dias_abc` 14/15 e `modo_b_5_dias_sem_perfil` 14/15. Os outros 5 casos passaram em todas as gerações.
+
+**Leitura.** Desligar o raciocínio resolveu a latência e o teto. O p95 caiu de 125 s para 30–37 s, nenhum caso de 6 dias passou de 46 s e não houve saída cortada (máximo de 14 mil tokens contra 30.720). Também ficou 40% mais barato. A qualidade, porém, voltou ao nível da OpenAI: sem raciocínio, o Haiku volta a montar trios (grupo, exercício, equipamento) fora do catálogo do RAG e a preencher `rest_seconds` onde a regra pede nulo. Ao que tudo indica, é o raciocínio que fazia a checagem contra o catálogo. O esforço quase não muda o resultado com o raciocínio desligado (50–54%).
+
+### Decisão: a periodização segue na OpenAI
+
+Critério do pedido: aprovação ≥ 80% e acima da OpenAI, zero saída cortada, zero timeout e p95 ≤ 90 s.
+
+| Braço | Aprovação ≥ 80% | Cortada = 0 | Timeout = 0 | p95 ≤ 90 s |
+|---|---|---|---|---|
+| (a) `high` | não (50%) | sim | sim | sim (36,8 s) |
+| (b) `medium` | não (50%) | sim | sim | sim (29,5 s) |
+| (c) `low` | não (54%) | sim | sim | sim (30,2 s) |
+
+Nenhum braço cumpre tudo, e `infra/llm_providers.tf` não liga a periodização. Fica só a capacidade de configurar o raciocínio por feature: `anthropic_thinking_by_feature = {}`, sem nenhuma env nova publicada.
+
+**Custo da rodada 2:** US$ 0,906 medidos (`llm.usage` pela tabela do dono): (a) 0,309, (b) 0,302 e (c) 0,294, para 150 gerações. O orçamento era US$ 3.
+
+### Pendências da rodada 2
+
+1. **Raciocínio só onde importa.** O dilema é qualidade com raciocínio contra latência e corte sem ele. Os caminhos possíveis são:
+   - raciocínio `adaptive` em `low` com `LLM_MAX_OUTPUT_TOKENS["periodization"]` maior, o que resolve o corte mas não a latência;
+   - deixar a checagem do trio no motor e pedir ao modelo só a escolha, com o catálogo validado depois (é domínio de motor: a regra fica no dono, não no prompt).
+2. A falha dominante sem raciocínio (trio fora do catálogo) é a mesma da OpenAI. Um `periodization-v15` focado em trio e `rest_seconds` poderia beneficiar os dois provedores, mas exige outro eval.
