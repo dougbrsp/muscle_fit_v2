@@ -6270,7 +6270,7 @@ que não cobra a escrita à parte) e o argumento `cache_write_tokens_in` de `est
 Sonnet 5.5 continua 0,05× a entrada (US$ 0,10/MTok), reconferida na fonte oficial em 2026-10-31. Quem consome:
 `tests/eval/resumo_uso_eval.py` (soma o `cache_write_tokens` do `llm.usage`). Nenhum consumidor de produção recebe hoje
 tokens de escrita: as features com cache não gravam custo (`llm.usage` só leva tokens), e o `cache_control` saiu do
-caminho Anthropic (`llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES` vazio; conta no comentário da constante).
+caminho Anthropic (`llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES` vazio). Conta de equilíbrio, com os valores de hoje do dono: cada escrita custa 0,25× a entrada a mais e cada leitura economiza 0,9× (Haiku; 0,95× no Sonnet 5.5), então o cache se paga com ≥ 0,28 leitura por escrita. Com N chamadas/dia independentes, P(outra em 5 min) = 1 − exp(−N·5/1440) ≥ 0,28 exige N ≈ 95 por feature e versão de prompt; produção teve ≤ 1 em 14 dias.
 
 **Fora dos motores:** o provedor por feature (`infra/llm_providers.tf`) e o modelo gravado por feature
 (`openai_client.TextResult`) são configuração do cliente LLM, sem regra de domínio. Nenhum prompt muda. Guarda e

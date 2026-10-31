@@ -86,3 +86,29 @@ def test_dev_cria_o_mesmo_secret_no_localstack():
     bootstrap = (REPO / "localstack" / "init" / "ready.d" / "00-bootstrap.sh").read_text(encoding="utf-8")
     assert 'create_or_update_secret "musclefit/claude-api-key"' in bootstrap
     assert "ANTHROPIC_API_KEY=" in (REPO / ".env.example").read_text(encoding="utf-8")
+
+
+# Limite da AWS: 4 KB para TODAS as envs de uma Lambda. Medido em producao
+# (leitura, 2026-10-31) antes da virada: a api-core, a maior, tinha 1718 bytes
+# (chave + valor) sem nenhuma env de LLM. O bloco de LLM tem de caber no que
+# sobra com folga; a proxima feature ligada deve colapsar as envs (por
+# exemplo, um JSON unico) se este orcamento estourar.
+API_CORE_ENV_BYTES_SEM_LLM = 1718
+LAMBDA_ENV_LIMIT_BYTES = 4096
+LLM_ENV_BUDGET_BYTES = 1400
+
+
+def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
+    tf = _tf("llm_providers.tf")
+    provedores = _mapa_padrao(tf, "llm_provider_by_feature")
+    envs = {f"LLM_PROVIDER_{f.upper()}": provedores.get(f, "openai") for f in llm_anthropic.LLM_FEATURES}
+    for variavel, prefixo in (
+        ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
+        ("anthropic_effort_by_feature", "ANTHROPIC_EFFORT_"),
+        ("llm_fallback_provider_by_feature", "LLM_FALLBACK_PROVIDER_"),
+    ):
+        envs.update({f"{prefixo}{f.upper()}": v for f, v in _mapa_padrao(tf, variavel).items()})
+    envs["ANTHROPIC_API_KEY_SECRET_ARN"] = ARN
+    tamanho = sum(len(k) + len(v) for k, v in envs.items())
+    assert tamanho <= LLM_ENV_BUDGET_BYTES, tamanho
+    assert API_CORE_ENV_BYTES_SEM_LLM + LLM_ENV_BUDGET_BYTES < LAMBDA_ENV_LIMIT_BYTES

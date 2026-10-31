@@ -111,16 +111,15 @@ ANTHROPIC_SCHEMA_UNSUPPORTED: Final[str] = "ANTHROPIC_SCHEMA_UNSUPPORTED"
 
 # Features que mandam `cache_control` (cache de 5 min) no prefixo estavel.
 # Diferente do `prompt_cache_key` da OpenAI (gratis: so agrupa o cache
-# automatico), na Anthropic a ESCRITA no cache custa 1,25x a entrada
-# (`ai_usage.ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER`) e a leitura 0,1x (0,05x no
-# Sonnet 5.5). Por escrita, o cache se paga quando sai >= 0,25/0,9 ~ 0,28
-# leitura do mesmo prefixo dentro de 5 min. Com chegadas independentes de
-# N chamadas/dia, P(outra chamada em 5 min) = 1 - exp(-N*5/1440): chegar a
-# 0,28 exige ~95 chamadas/dia por feature e versao de prompt. O volume de
-# producao de 17 a 30/10 (docs/ia/EVAL_ANTHROPIC_2026-10-30.md) foi de 1
-# chamada em 14 dias para insights, cardio_agent e periodization, e 0 para
-# workouts_analysis: o cache nunca seria lido e cada chamada pagaria 25% a
-# mais no prefixo. Por isso, VAZIO. As features de `PROMPT_CACHE_KEY_FEATURES`
+# automatico), na Anthropic a ESCRITA no cache custa mais que a entrada
+# (`ai_usage.ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER`) e so se paga se o mesmo
+# prefixo for LIDO de novo dentro de 5 min (`ModelPrice.cached_input_cents`).
+# A conta de equilibrio (dezenas de chamadas/dia por feature e versao de
+# prompt) esta em docs/motores/FONTES_DA_VERDADE.md §75. O volume de producao
+# de 17 a 30/10 (docs/ia/EVAL_ANTHROPIC_2026-10-30.md) foi de 1 chamada em 14
+# dias para insights, cardio_agent e periodization, e 0 para
+# workouts_analysis: o cache nunca seria lido e cada chamada pagaria a escrita
+# no prefixo. Por isso, VAZIO. As features de `PROMPT_CACHE_KEY_FEATURES`
 # continuam passando o `cache_prefix`: religar e por a feature aqui (precisa
 # ser subconjunto de `PROMPT_CACHE_KEY_FEATURES`), com o volume medido.
 ANTHROPIC_CACHE_CONTROL_FEATURES: Final[frozenset[str]] = frozenset()
