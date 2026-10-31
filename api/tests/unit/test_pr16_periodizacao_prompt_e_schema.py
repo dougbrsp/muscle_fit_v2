@@ -149,7 +149,8 @@ def test_prompt_traz_so_as_regras_do_modo_pedido():
     exigir(regras_a in modo_a and regras_b not in modo_a, "Modo A so com as regras dele")
     exigir(regras_b in modo_b and regras_a not in modo_b, "Modo B so com as regras dele")
     # o catalogo da academia (prompt caro) so entra no modo que precisa dele
-    catalogo = '"mapping_id": 1001'
+    # v15: o catalogo vai com a referencia do motor (`catalog_refs`), sem os ids do par.
+    catalogo = '"ref": "E1"'
     exigir(catalogo in modo_b and catalogo not in modo_a, "catalogo so no Modo B")
     for prompt in (modo_a, modo_b):
         exigir('"name": "Peitoral"' in prompt, "grupos no prompt")
@@ -157,16 +158,16 @@ def test_prompt_traz_so_as_regras_do_modo_pedido():
         exigir("PROGRESSAO.md" in prompt, "RAG no prompt")
 
 
-def test_rest_seconds_no_schema_e_anulavel_e_o_prompt_manda_deixar_null():
-    """Fase 7, Frente B: o descanso por exercicio existe no item (schema
-    estrito = chave obrigatoria e anulavel), mas e decisao do profissional."""
-    item = OUTPUT_SCHEMA["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
-    assert item["properties"]["rest_seconds"]["type"] == ["integer", "null"]
-    assert "rest_seconds" in item["required"]
-    # O texto que manda deixar null e travado no privado; aqui, que as regras
-    # dos dois modos citam o campo.
-    for modo in ("equipment_series", "percent_budget"):
-        exigir("rest_seconds" in ctx._mode_rules(modo, _contexto(modo)), f"regra do {modo} cita rest_seconds")
+def test_rest_seconds_fora_do_schema_da_llm_nos_dois_modos():
+    """Fase 7, Frente B: o descanso por exercicio e decisao do profissional
+    (o validador zera o campo). Desde a v15 ele nem vai ao schema da LLM: a
+    rodada 2 do eval de 2026-10-31 mostrou o modelo preenchendo o campo."""
+    from app.periodization.output_schema import output_schema
+
+    for schema in (OUTPUT_SCHEMA, output_schema(True), output_schema(False, True, ["E1"]), output_schema(True, True, None)):
+        item = schema["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
+        assert "rest_seconds" not in item["properties"]
+        assert "rest_seconds" not in item["required"]
 
 
 def test_validador_descarta_rest_seconds_vindo_da_llm():

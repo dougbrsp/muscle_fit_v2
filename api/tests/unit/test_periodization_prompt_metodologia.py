@@ -125,7 +125,8 @@ def test_versao_do_prompt_subiu_para_v6():
     # v10 (IA-05) = RAG logo depois das regras (prefixo cacheavel).
     # v11 (modo de contagem, Lote 5) = regra de contagem e checklist pelo modo do pedido.
     # v12 (M97 F5) = objetivo por dia; v13 (M98 C5) = cardio no Modelo quando pedido.
-    assert PROMPT_VERSION == "periodization-v14"
+    # v15 = referencia do catalogo (`catalog_refs`) no lugar do trio; sem `rest_seconds` no schema.
+    assert PROMPT_VERSION == "periodization-v15"
     assert ENGINE_VERSION.startswith("periodization-v8.")
 
 
