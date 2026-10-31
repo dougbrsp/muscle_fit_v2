@@ -117,3 +117,5 @@ O padrão do PR #11 (Sonnet nas features de raciocínio) não se pagou em nenhum
 - Periodização: subir o timeout de 90 s (e conferir a Lambda), depois refazer o eval com Haiku `low`.
 - Adaptador: estudar como evitar que os campos de `cardio_items` virem opcionais (por exemplo, converter primeiro os anuláveis de força, que costumam vir nulos), com um eval antes/depois.
 - Custo: incluir o adicional de escrita no cache e reconferir o preço da leitura de cache do Sonnet 5.5 na tabela do dono (`ai_usage`).
+
+**Atualização de 2026-10-31:** as pendências 2 (adaptador de cardio) e 3 (timeout de 90 s) foram tratadas e a periodização foi reavaliada em `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. Ela segue na OpenAI: o p95 do Haiku `low` nos Modelos de 6 dias passa de 60% do novo teto, e 2 de 6 gerações bateram no teto de saída.

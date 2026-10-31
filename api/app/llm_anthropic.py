@@ -552,12 +552,13 @@ def call_text_result(
 def call_structured(
     prompt: str, schema: dict, timeout: float, *, feature: Optional[str], user_id=None,
     prompt_version: Optional[str] = None, images: Sequence[ImageInput] = (),
-    cache_prefix: Optional[str] = None,
+    cache_prefix: Optional[str] = None, optional_first: Sequence[tuple[str, ...]] = (),
 ) -> StructuredResult:
     """Saida estruturada (`output_config.format` json_schema) com o schema
-    adaptado (`llm_anthropic_schema`); a volta tem a forma do schema original."""
+    adaptado (`llm_anthropic_schema`); a volta tem a forma do schema original.
+    `optional_first`: ver `llm_anthropic_schema.adapt_schema`."""
     try:
-        adapted = llm_anthropic_schema.adapt_schema(schema)
+        adapted = llm_anthropic_schema.adapt_schema(schema, optional_first)
     except llm_anthropic_schema.SchemaAdaptationError as exc:
         error = _error(USER_MESSAGE_UNAVAILABLE, code=ANTHROPIC_SCHEMA_UNSUPPORTED, diagnostic=str(exc))
         log_failure(error, provider=PROVIDER_ANTHROPIC, feature=feature, prompt_version=prompt_version, user_id=user_id)

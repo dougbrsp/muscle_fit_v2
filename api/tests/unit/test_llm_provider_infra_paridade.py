@@ -6,7 +6,8 @@
 - o ARN e a leitura do secret `musclefit/claude-api-key` vao SO para as 3
   Lambdas que ja leem a chave da OpenAI; engines, intervals-sync e migrations
   ficam sem;
-- o secret entra por `import` (ja existe), sem `_version` nem `description`;
+- o secret ja esta no state (import aplicado em 2026-10-31, bloco removido),
+  sem `_version` nem `description`;
 - o DEV (LocalStack) cria o mesmo secret."""
 
 from __future__ import annotations
@@ -74,9 +75,12 @@ def test_so_as_tres_lambdas_de_ia_leem_a_chave_da_anthropic():
         assert "anthropic_api_key" not in tf and "llm_provider_env" not in tf, nome
 
 
-def test_secret_importado_sem_version_nem_descricao():
+def test_secret_sem_import_sem_version_nem_descricao():
     tf = _tf("secrets.tf")
-    assert f'id = "{ARN}"' in tf
+    # O import rodou no deploy de 2026-10-31 (promocao #14); o bloco saiu e o
+    # recurso continua no state. Voltar com o bloco nao quebraria nada, mas
+    # nao ha motivo: o ARN so entra nas Lambdas pela referencia ao recurso.
+    assert "to = aws_secretsmanager_secret.anthropic_api_key" not in tf
     recurso = re.search(r'resource "aws_secretsmanager_secret" "anthropic_api_key" \{(.*?)\n\}', tf, re.S).group(1)
     assert 'name = "musclefit/claude-api-key"' in recurso and "description" not in recurso
     assert 'aws_secretsmanager_secret_version" "anthropic_api_key"' not in tf

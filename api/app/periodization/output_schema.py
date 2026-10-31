@@ -44,6 +44,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
 
 from ..domain import cardio_prescription
+from ..llm_anthropic_schema import ITEMS as _ITEMS
 
 
 def _nullable(*types: str) -> dict:
@@ -151,6 +152,48 @@ OUTPUT_SCHEMA_WITH_CARDIO: dict = _output_schema(with_cardio=True)
 
 def output_schema(with_cardio: bool) -> dict:
     return OUTPUT_SCHEMA_WITH_CARDIO if with_cardio else OUTPUT_SCHEMA
+
+
+# ---------------------------------------------------------------------------
+# Adaptacao para a Anthropic (so o caminho Claude; o schema acima nao muda)
+# ---------------------------------------------------------------------------
+#
+# O subconjunto da Anthropic aceita no maximo 16 unioes por pedido
+# (`llm_anthropic_schema.MAX_UNION_PARAMS`): o adaptador converte o excedente
+# de anulaveis em campos OPCIONAIS ("ausente" = null na volta). Sem cardio
+# sobram 5; com cardio, 14. Esta lista diz QUAIS converter primeiro: os campos
+# do item de forca que o prompt manda deixar null ou que so existem com
+# tecnica/aquecimento/serie de ajuste, os de cardio que o dono trata "ausente"
+# como 0 (`cardio_prescription.ZERO_WHEN_MISSING_FIELDS`) e a descricao do
+# Modelo. Ficam anulaveis OBRIGATORIOS os que o dono `cardio_prescription`
+# exige por modo (`REQUIRED_FIELDS`: duracao da sessao continua, series do
+# HIIT): no eval de 2026-10-30, convertidos pela ordem do schema, eles foram
+# omitidos em 2 de 4 rodadas. Os 5 primeiros sao os que a ordem do schema ja
+# convertia sem cardio: o pedido sem cardio fica identico ao de antes.
+_ITEM_PATH = ("template", "slots", _ITEMS, "items", _ITEMS)
+_CARDIO_PATH = ("template", "slots", _ITEMS, CARDIO_ITEMS_FIELD, _ITEMS)
+_ITEM_OPTIONAL_FIRST = (
+    "rest_seconds",
+    "peak_contraction_seconds",
+    "feeler_set_rest_seconds",
+    "feeler_set_reps",
+    "feeler_set_sets_count",
+    "warmup_rest_seconds",
+    "warmup_reps",
+    "warmup_sets_count",
+    "advanced_technique_duration_seconds",
+    "advanced_technique_applications",
+    "advanced_technique",
+)
+ANTHROPIC_OPTIONAL_FIRST: tuple[tuple[str, ...], ...] = (
+    *(_ITEM_PATH + (name,) for name in _ITEM_OPTIONAL_FIRST),
+    *(
+        _CARDIO_PATH + (name,)
+        for name in _CARDIO_NUMERIC_FIELDS
+        if name in cardio_prescription.ZERO_WHEN_MISSING_FIELDS
+    ),
+    ("template", "description"),
+)
 
 
 # ---------------------------------------------------------------------------

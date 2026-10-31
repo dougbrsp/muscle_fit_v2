@@ -2409,9 +2409,11 @@ leituras de banco:**
   avaliação.
 
 **Margem na Lambda:**
-- Orçamento: a Lambda de IA tem 180 s (`infra/lambda_ai_generators.tf`). A OpenAI pode consumir
-  até 90 s (`core.OPENAI_TIMEOUT_SECONDS`), então sobram ~90 s para validar. A Lambda é a `plan-generator`, que roda a Periodização.
-- Pior resposta medida: 2,18 s, cerca de 41x abaixo desses 90 s.
+- Orçamento: a Lambda de IA tem 180 s (`infra/lambda_ai_generators.tf`). A OpenAI podia consumir
+  até 90 s (o antigo `core.OPENAI_TIMEOUT_SECONDS`), então sobravam ~90 s para validar. A Lambda é a `plan-generator`, que roda a Periodização.
+  Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`) e sobram 30 s
+  (`core.LAMBDA_RESERVED_SECONDS`) para contexto, validação e log.
+- Pior resposta medida: 2,18 s, cerca de 41x abaixo daqueles 90 s e 14x abaixo dos 30 s de hoje.
 - Mesmo somando o pior caso do corte (+1,6 s), o validador fica abaixo de 4 s.
 - Risco residual, não tratado aqui: o acréscimo tem `MAX_STEPS` = 500 passos aceitos, mas não tem
   teto para as tentativas rejeitadas. Medido: até 237 avaliações.
@@ -6278,3 +6280,25 @@ allowlist inalteradas.
 
 **Impacto em produção:** `ai_usage_log.cost_usd` e `template_generation_logs.cost_usd` não mudam (nenhuma das duas
 recebe tokens de escrita no cache). O efeito da virada (modelo gravado, impressão do resumo de treino) está no PR.
+
+## 76. Orçamento de tempo da Periodização e adaptador de schema com prioridade da feature (2026-10-31)
+
+Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização segue na OpenAI.
+
+**Donos.**
+
+| Regra | Dono | Consumidores |
+|---|---|---|
+| Teto da chamada à LLM da Periodização: timeout da `musclefit-plan-generator` menos a folga (hoje 180 − 30 = 150 s); teto efetivo encolhido pelo tempo já gasto no contexto, preservando a folga pós-chamada (metade da folga) | `periodization/core.py` (`LLM_TIMEOUT_SECONDS`, `LAMBDA_RESERVED_SECONDS`, `POST_LLM_RESERVED_SECONDS`, `llm_timeout_for`; `OPENAI_TIMEOUT_SECONDS` é alias) sobre `async_jobs.LAMBDA_TIMEOUT_SECONDS` (paridade com o Terraform em `test_m73_async_jobs_worker_lost.py`) | `core.run_periodization_draft`; espelho gerado `motor-constants.generated.json` → `periodization_job.llm_timeout_seconds` |
+| Prazo do job da Periodização (`pending` vira `failed`/`worker_lost`) | `async_jobs.worker_lost_deadline_seconds` (timeout da Lambda + `WORKER_LOST_GRACE_SECONDS`), exportado por `core.export_for_frontend` | `periodization_job.job_deadline_seconds` → `frontend/src/lib/periodization.ts` (`PERIODIZATION_POLL_TIMEOUT_MS` = prazo + um intervalo de polling) |
+| Quais anuláveis do schema da Periodização viram opcionais primeiro no caminho Anthropic | `periodization/output_schema.py` (`ANTHROPIC_OPTIONAL_FIRST`, derivado de `cardio_prescription.ZERO_WHEN_MISSING_FIELDS`; ficam obrigatórios os de `REQUIRED_FIELDS`). Usa o sentinela `ITEMS` do adaptador para os caminhos | `llm_anthropic_schema.adapt_schema(optional_first)` via `call_openai_structured(anthropic_optional_first=...)` |
+
+**Proibido fora do dono:** timeout da periodização escrito à mão em tela, Lambda, rota ou comentário. O frontend lê os dois valores do espelho, com paridade em `test_m76_lote1b_espelhos_fe.py` e no `periodization.test.ts`. `EXPECTED_DURATION_SECONDS` do `PeriodizationModal.tsx` (60 s) não é regra: só satura a barra de progresso, sem decidir nada.
+
+**Guarda e allowlist:** inalteradas. Nenhum prompt ou RAG muda (sem `periodization-v15`).
+
+**Impacto em produção** (medido pelo eval, com o código deste PR):
+- A periodização segue em `LLM_PROVIDER_PERIODIZATION=openai` (`infra/llm_providers.tf` intocado). O schema enviado à OpenAI e o pedido Claude sem cardio são byte a byte os de antes (`test_periodizacao_sem_cardio_fica_identica_a_de_antes`).
+- O OpenAI responde em 7,5 s (p50) e 19,2 s (máximo, 20 gerações): o teto de 150 s só pesa numa resposta pendurada. Nesse caso o job falha aos ~150 s em vez de ~90 s, ainda como `failed` com mensagem.
+- Se o contexto demorar mais que a folga, a chamada encolhe. Abaixo do mínimo de uma tentativa (`TEXT_RETRY_MIN_ATTEMPT_SECONDS`), o job falha limpo, sem chamar a LLM.
+- A tela espera até 242 s (antes, 150 s), para nunca desistir antes de o backend fechar o job.

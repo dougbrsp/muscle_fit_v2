@@ -115,20 +115,14 @@ resource "aws_secretsmanager_secret" "usda_api_key" {
 # usuario com o valor real (ARN abaixo, sufixo -SFXRNu). describe-secret em
 # 2026-10-30: sem descricao, sem tags, KMS padrao (aws/secretsmanager), sem
 # rotacao. Por isso:
-#   - `import` em vez de create (create falharia com ResourceExistsException);
+#   - entrou no state por `import` (create falharia com ResourceExistsException).
+#     O import rodou no deploy 41190698119 (2026-10-31, promocao #14) e o bloco
+#     `import` saiu no PR seguinte: o recurso segue no state, sem mudanca no plan;
 #   - NENHUM aws_secretsmanager_secret_version (regra do topo do arquivo);
 #   - SEM `description`: o console nao tem, e o pipeline nao tem
-#     secretsmanager:UpdateSecret - qualquer diff aqui faria o apply falhar
-#     logo apos o import.
-# Plan esperado: 1 import + update in-place SO de tags (default_tags do
-# provider via TagResource, coberto pela `musclefit-gha-deploy-v2-rede-dados`).
+#     secretsmanager:UpdateSecret - qualquer diff aqui faria o apply falhar.
 # As Lambdas recebem o ARN em ANTHROPIC_API_KEY_SECRET_ARN e
 # api/app/secrets_bootstrap.py hidrata ANTHROPIC_API_KEY no cold start.
-import {
-  to = aws_secretsmanager_secret.anthropic_api_key
-  id = "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/claude-api-key-SFXRNu"
-}
-
 resource "aws_secretsmanager_secret" "anthropic_api_key" {
   name = "musclefit/claude-api-key"
 }
