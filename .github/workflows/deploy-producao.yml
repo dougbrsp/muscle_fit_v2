@@ -23,10 +23,10 @@ name: Deploy produção
 # environment:production). Reusable workflows mudam `job_workflow_ref` e o contexto do
 # token; sem o JSON nao ha como provar que a policy nao olha isso. Jobs locais geram
 # exatamente os mesmos claims que os workflows antigos geravam:
-#   - terraform-apply: `environment: production` -> sub = repo:dougbrsp/muscle_fit:environment:production
+#   - terraform-apply: `environment: production` -> sub = repo:dougbrsp/muscle_fit_v2:environment:production
 #     (o environment tem precedencia sobre o ref no sub; igual ao job apply do terraform.yml).
 #   - backend-build / backend-deploy / frontend-deploy: SEM environment, ref main ->
-#     sub = repo:dougbrsp/muscle_fit:ref:refs/heads/main (o evento workflow_dispatch nao
+#     sub = repo:dougbrsp/muscle_fit_v2:ref:refs/heads/main (o evento workflow_dispatch nao
 #     entra no sub; so pull_request tem formato proprio). Igual ao que os antigos
 #     backend-deploy.yml e frontend-deploy.yml (removidos no PR #67) geravam em push na main.
 # Nenhuma mudanca de trust policy ou de permissoes da role e necessaria.

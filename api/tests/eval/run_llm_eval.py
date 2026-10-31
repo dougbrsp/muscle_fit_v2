@@ -12,6 +12,7 @@ duas formas de execucao, um criterio so.
     cd api
     OPENAI_API_KEY=... python -m tests.eval.run_llm_eval
     OPENAI_API_KEY=... python -m tests.eval.run_llm_eval --id volume_abaixo_do_minimo
+    ANTHROPIC_API_KEY=... python -m tests.eval.run_llm_eval --provider anthropic [--model ...] [--effort ...]
 
 Cada execucao custa uma chamada a OpenAI por pergunta do conjunto. O RAG NAO
 e injetado por padrao (`--rag` liga): a avaliacao mede disciplina sobre o
@@ -29,10 +30,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app import llm_anthropic  # noqa: E402
 from app.insights_ai import generate_insight  # noqa: E402
 from app.insights_prompt import PROMPT_VERSION  # noqa: E402
 from app.intelligence.dashboard.intelligence_package import package_from_overview  # noqa: E402
 from tests.eval.test_llm_insights_eval import avaliar  # noqa: E402
+from tests.support import llm_eval_provider  # noqa: E402
 from tests.support.pacote_inteligencia import overview_sintetico  # noqa: E402
 
 DATASET = Path(__file__).with_name("questions.json")
@@ -42,10 +45,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Avaliação com LLM das respostas de /insights.")
     parser.add_argument("--id", action="append", help="roda só a(s) pergunta(s) com este id")
     parser.add_argument("--rag", action="store_true", help="injeta o RAG filtrado (mais caro)")
+    parser.add_argument("--provider", choices=llm_anthropic.PROVIDERS, default=llm_anthropic.DEFAULT_PROVIDER,
+                        help="provedor da feature insights (padrão: openai)")
+    parser.add_argument("--model", help="modelo Claude (só com --provider anthropic)")
+    parser.add_argument("--effort", choices=llm_anthropic.EFFORTS, help="esforço do Claude (só com anthropic)")
     args = parser.parse_args()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY não configurada.", file=sys.stderr)
+    os.environ[llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, "insights")] = args.provider
+    if args.model:
+        os.environ[llm_anthropic.feature_env(llm_anthropic.ENV_MODEL_PREFIX, "insights")] = args.model
+    if args.effort:
+        os.environ[llm_anthropic.feature_env(llm_anthropic.ENV_EFFORT_PREFIX, "insights")] = args.effort
+    chave = llm_eval_provider.key_env(args.provider)
+    if not os.environ.get(chave):
+        print(f"{chave} não configurada.", file=sys.stderr)
         return 2
 
     conjunto = json.loads(DATASET.read_text(encoding="utf-8"))

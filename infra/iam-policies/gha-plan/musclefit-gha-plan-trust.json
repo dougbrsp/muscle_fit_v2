@@ -12,8 +12,8 @@
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
           "token.actions.githubusercontent.com:sub": [
-            "repo:dougbrsp/muscle_fit:pull_request",
-            "repo:dougbrsp@33515327/muscle_fit@1356252176:pull_request"
+            "repo:dougbrsp/muscle_fit_v2:pull_request",
+            "repo:dougbrsp@33515327/muscle_fit_v2@1436380326:pull_request"
           ]
         }
       }

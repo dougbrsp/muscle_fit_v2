@@ -32,9 +32,9 @@ name: CI (develop)
 #     labeled). Remover o rotulo nao dispara nada; o proximo push volta ao
 #     modo filtrado.
 #   - Job pulado aparece como "skipping" (nunca pendente). Sem job agregador:
-#     o repositorio nao tem branch protection/check obrigatorio (plano Free,
-#     API 403), e o criterio de merge ja avalia todos os checks
-#     (pass ou skipping).
+#     o ruleset de main/develop (repositorio publico desde 2026-10-29) exige
+#     PR e bloqueia force-push e exclusao, mas nao tem check obrigatorio; o
+#     criterio de merge ja avalia todos os checks (pass ou skipping).
 #   - `on.paths` continua o MESMO de antes: PR que nao toca nenhum desses
 #     caminhos nem dispara o workflow (vale tambem para a promocao: se ela nao
 #     toca nada daqui, nada daqui mudou em relacao a `main`).
@@ -181,9 +181,9 @@ jobs:
   #     `ruff format`: nada de reformatar o repositorio. O ruff vem do lock
   #     com hashes api/requirements-lint.txt (M47).
   # Separado em dois jobs (2026-10-10) para cada um rodar so quando a sua
-  # area muda. A develop/main nao tem check obrigatorio configurado (o plano
-  # do repositorio privado nao oferece branch protection); o criterio de merge
-  # avalia todos os checks (pass ou skipping).
+  # area muda. O ruleset de develop/main exige PR e bloqueia force-push e
+  # exclusao, mas nao tem check obrigatorio; o criterio de merge avalia todos
+  # os checks (pass ou skipping).
   # ---------------------------------------------------------------------------
   lint-frontend:
     name: lint frontend (typecheck + next lint)

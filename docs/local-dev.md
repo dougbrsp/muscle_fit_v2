@@ -30,7 +30,7 @@ de `infra/s3_rag.tf`.
 Clone novo:
 
 ```
-git clone --recurse-submodules https://github.com/dougbrsp/muscle_fit.git
+git clone --recurse-submodules https://github.com/dougbrsp/muscle_fit_v2.git
 ```
 
 Clone existente, depois de cada `git pull`/`merge` que mude o ponteiro:
@@ -902,8 +902,10 @@ terceiro) e decide o que roda:
 - **Promocao `develop -> main`:** roda sempre tudo. A `main` continua
   protegida pela suite inteira; o que a develop deixou de rodar e pego ali.
 - **Veredito:** job pulado aparece como *skipping*, nunca pendente. Nao ha
-  job agregador: sem branch protection, ele nao protegeria nada e custaria
-  ~1 min cobrado por rodada. O criterio de merge avalia todos os checks
+  job agregador: o ruleset de `main`/`develop` (repositorio publico desde
+  2026-10-29) exige PR e bloqueia force-push e exclusao, mas nao tem check
+  obrigatorio, entao o agregador nao protegeria nada; o environment
+  `production` exige reviewer. O criterio de merge avalia todos os checks
   (`pass` ou `skipping`).
 - **Concorrencia:** um push novo no mesmo PR cancela a rodada anterior em
   todos os workflows de PR (`ci-develop`, `ci-docker-images`, `terraform`,

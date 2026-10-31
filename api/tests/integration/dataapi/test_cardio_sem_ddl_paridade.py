@@ -23,6 +23,7 @@ import pytest
 from fastapi import HTTPException
 
 from app import async_jobs, cardio_agent_ai, lambda_cardio_agent
+from app.openai_client import StructuredResult
 from app import cardio_recommendations as cr
 from app.load_conventions import has_load_convention_column
 from app.security import Identity
@@ -139,7 +140,11 @@ def _generate_202(env, monkeypatch):
 
 def _handler(env, monkeypatch):
     done, failed = [], []
-    monkeypatch.setattr(cardio_agent_ai, "call_openai", lambda prompt, *_a, **_k: dict(LLM_V3))
+    monkeypatch.setattr(
+        cardio_agent_ai, "call_openai",
+        lambda prompt, *_a, **_k: StructuredResult(data=dict(LLM_V3), model=cardio_agent_ai.OPENAI_MODEL,
+                                                   tokens_in=None, tokens_out=None),
+    )
     monkeypatch.setattr(async_jobs, "mark_done", lambda job_id, result: done.append((job_id, result)))
     monkeypatch.setattr(async_jobs, "mark_failed", lambda job_id, error: failed.append((job_id, error)))
     monkeypatch.setattr(async_jobs, "claim_job", lambda job_id: True)  # M81

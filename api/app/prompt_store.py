@@ -32,7 +32,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from . import rag_placeholders
 
@@ -111,6 +111,23 @@ def render(feature: str, name: str, values: Mapping[str, str]) -> str:
         raise PromptPlaceholderError(f"{feature}/{name}: placeholder(s) sem valor: {exc.args[0]}") from exc
 
 
+# Marca do primeiro valor variável em `render_prefix`. Um caractere de
+# controle que nenhum template nem valor real contém.
+_PREFIX_END = "\x00"
+
+
+def render_prefix(feature: str, name: str, values: Mapping[str, str], variable: Iterable[str]) -> str:
+    """Começo ESTÁVEL do mesmo `render`: o texto antes do primeiro placeholder
+    cujo valor muda a cada pedido (`variable`). É o prefixo cacheável do prompt
+    (instruções + RAG) que o provedor Anthropic marca com `cache_control`; não
+    muda nenhum byte do prompt. Sem placeholder variável, o texto inteiro."""
+    keys = set(variable)
+    marked = {key: (_PREFIX_END if key in keys else value) for key, value in values.items()}
+    text = render(feature, name, marked)
+    end = text.find(_PREFIX_END)
+    return text if end < 0 else text[:end]
+
+
 def clear_cache() -> None:
     _read.cache_clear()
 
@@ -125,5 +142,6 @@ __all__ = [
     "load",
     "prompts_dir",
     "render",
+    "render_prefix",
     "template_path",
 ]

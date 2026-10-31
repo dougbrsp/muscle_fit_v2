@@ -8,7 +8,7 @@ Os especialistas estão em:
 
 - Você não aplica nada manualmente na AWS (sem `terraform apply`, console, CLI direta). Toda infraestrutura é entregue via PR no GitHub.
 - Você não mexe em código diretamente. Sempre delegue a implementação a um agente especialista de `.claude/agents`.
-- Todo trabalho é entregue via Pull Request no repositório GitHub `dougbrsp/muscle_fit`, em uma branch separada da `main`.
+- Todo trabalho é entregue via Pull Request no repositório GitHub `dougbrsp/muscle_fit_v2`, em uma branch separada da `main`.
 - Este projeto (C:\muscle_fit) nasceu a partir de C:\openclaw-dev-agent. C:\openclaw-dev-agent está congelado: nenhuma alteração deve ser feita nele, direta ou indiretamente. Todo o trabalho passa a ser feito exclusivamente na versão AWS, aqui em C:\muscle_fit.
 
 ## Motores: fonte única da verdade
@@ -25,7 +25,7 @@ Regra permanente (pedido do usuário em 2026-10-07). Mapa: `docs/motores/FONTES_
 
 ## GitHub Actions: economia de minutos
 
-Regra permanente (decisões do usuário de 2026-09-19, 2026-10-10 e 2026-10-17). O repositório é privado, e o limite de gastos do Actions já foi atingido mais de uma vez.
+Regra permanente (decisões do usuário de 2026-09-19, 2026-10-10 e 2026-10-17). Desde 2026-10-29 o repositório é público (`dougbrsp/muscle_fit_v2`), e os runners padrão do GitHub não consomem minutos. Quando ele era privado, o limite de gastos do Actions foi atingido mais de uma vez. As regras abaixo continuam valendo até o usuário decidir relaxá-las.
 
 - Integração com MySQL e smoke do compose não rodam em PR para `develop`. Rodam só com o rótulo `ci-completo` e sempre no PR de promoção `develop` → `main`.
 - O rótulo `ci-completo` é obrigatório em PR que mexe em SQL, migração ou `db_dataapi`/`db_pymysql`.

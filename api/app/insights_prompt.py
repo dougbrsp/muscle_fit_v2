@@ -129,6 +129,46 @@ def _delimit_user_text(package: Mapping[str, Any]) -> Any:
     return delimited
 
 
+def _values(
+    package: Mapping[str, Any],
+    rag_text: str,
+    *,
+    question: str | None,
+    training_goals: Any,
+    deload: bool,
+    technique_names: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Valores do template (a montagem de sempre de `build_insight_prompt`)."""
+    asked = sanitize_user_text(question or package.get("question"), QUESTION_MAX_CHARS)
+    window = package.get("window") or {}
+    if hasattr(window, "model_dump"):
+        window = window.model_dump(mode="json")
+    periodo = (
+        f"{_plain(window.get('date_from'))} a {_plain(window.get('date_to'))} ({_plain(window.get('kind'))})"
+    )
+
+    # Ordem fixa (IA-05): o que nao muda entre chamadas vem primeiro (papel,
+    # regras, formato), depois o RAG (igual para o mesmo conjunto de grupos) e
+    # so entao o que varia por pedido (janela, qualidade, pacote, pergunta). O
+    # prompt caching automatico da OpenAI so reaproveita PREFIXO identico.
+    goal_text = prompt_section(
+        training_goals, deload, deload_scope=SCOPE_WINDOW, technique_names=technique_names
+    )
+    return {
+        "foco": focus_text(training_goals),
+        "regra_dados_usuario": user_data_rule(),
+        "bloco_objetivo": goal_text,
+        "rag": rag_text,
+        "periodo": periodo,
+        "fuso": f"{_plain(package.get('timezone'))}",
+        "qualidade": f"{_plain(package.get('data_quality'))}",
+        "versao_prompt": effective_prompt_version(training_goals, deload),
+        "versao_pacote": f"{_plain(package.get('package_version'))}",
+        "pacote": render_package(package),
+        "pergunta": user_data_block(asked),
+    }
+
+
 def build_insight_prompt(
     package: Mapping[str, Any],
     rag_text: str,
@@ -149,38 +189,41 @@ def build_insight_prompt(
     `question` explicito sobrepoe `package["question"]` apenas para o caso de
     quem monta o pacote sem pergunta (o endpoint do Personal Trainer) querer
     reaproveita-lo - o normal e a pergunta ja estar dentro do pacote."""
-    asked = sanitize_user_text(question or package.get("question"), QUESTION_MAX_CHARS)
-    window = package.get("window") or {}
-    if hasattr(window, "model_dump"):
-        window = window.model_dump(mode="json")
-    periodo = (
-        f"{_plain(window.get('date_from'))} a {_plain(window.get('date_to'))} ({_plain(window.get('kind'))})"
+    values = _values(
+        package, rag_text, question=question, training_goals=training_goals, deload=deload,
+        technique_names=technique_names,
     )
-
-    # Ordem fixa (IA-05): o que nao muda entre chamadas vem primeiro (papel,
-    # regras, formato), depois o RAG (igual para o mesmo conjunto de grupos) e
-    # so entao o que varia por pedido (janela, qualidade, pacote, pergunta). O
-    # prompt caching automatico da OpenAI so reaproveita PREFIXO identico.
-    goal_text = prompt_section(
-        training_goals, deload, deload_scope=SCOPE_WINDOW, technique_names=technique_names
-    )
-    return prompt_store.render(
-        PROMPT_FEATURE_DIR,
-        PROMPT_VERSION,
-        {
-            "foco": focus_text(training_goals),
-            "regra_dados_usuario": user_data_rule(),
-            "bloco_objetivo": goal_text,
-            "rag": rag_text,
-            "periodo": periodo,
-            "fuso": f"{_plain(package.get('timezone'))}",
-            "qualidade": f"{_plain(package.get('data_quality'))}",
-            "versao_prompt": effective_prompt_version(training_goals, deload),
-            "versao_pacote": f"{_plain(package.get('package_version'))}",
-            "pacote": render_package(package),
-            "pergunta": user_data_block(asked),
-        },
-    )
+    return prompt_store.render(PROMPT_FEATURE_DIR, PROMPT_VERSION, values)
 
 
-__all__ = ["PROMPT_VERSION", "build_insight_prompt", "effective_prompt_version", "render_package"]
+# Placeholders que mudam a cada pedido: o prefixo cacheavel termina no
+# primeiro deles (`prompt_store.render_prefix`).
+REQUEST_PLACEHOLDERS = ("periodo", "fuso", "qualidade", "versao_pacote", "pacote", "pergunta")
+
+
+def insight_cache_prefix(
+    package: Mapping[str, Any],
+    rag_text: str,
+    *,
+    question: str | None = None,
+    training_goals: Any = None,
+    deload: bool = False,
+    technique_names: Mapping[str, str] | None = None,
+) -> str:
+    """Comeco estavel de `build_insight_prompt` (instrucoes + RAG), para o
+    `cache_control` do provedor Anthropic. Nao muda o prompt."""
+    values = _values(
+        package, rag_text, question=question, training_goals=training_goals, deload=deload,
+        technique_names=technique_names,
+    )
+    return prompt_store.render_prefix(PROMPT_FEATURE_DIR, PROMPT_VERSION, values, REQUEST_PLACEHOLDERS)
+
+
+__all__ = [
+    "PROMPT_VERSION",
+    "REQUEST_PLACEHOLDERS",
+    "build_insight_prompt",
+    "effective_prompt_version",
+    "insight_cache_prefix",
+    "render_package",
+]

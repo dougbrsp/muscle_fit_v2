@@ -377,6 +377,7 @@ def _emit_usage(
     output_details = output_details if isinstance(output_details, dict) else {}
     log_event(
         EVENT_LLM_USAGE,
+        provider=PROVIDER_OPENAI,
         feature=feature,
         model=str((data or {}).get("model") or model or "") or None,
         input_tokens=_as_int(usage.get("input_tokens")),
@@ -426,6 +427,7 @@ def _post(
             )
             log_failure(
                 exc,
+                provider=PROVIDER_OPENAI,
                 feature=feature,
                 prompt_version=prompt_version,
                 user_id=user_id,
@@ -464,6 +466,7 @@ def _post(
         # So metadados: nunca o prompt nem o texto cortado.
         log_event(
             EVENT_LLM_OUTPUT_INCOMPLETE,
+            provider=PROVIDER_OPENAI,
             feature=feature,
             prompt_version=prompt_version,
             user_id=user_id,
@@ -521,6 +524,67 @@ class StructuredResult:
     tokens_out: Optional[int]
 
 
+@dataclass(frozen=True)
+class TextResult:
+    """Saida de `call_openai_text`: o texto + QUEM respondeu, para a feature
+    gravar o modelo realmente usado (inclusive depois do fallback).
+
+    `model`: o que o provedor devolveu em `model` (pode ser snapshot datado),
+    senao o pedido - o mesmo criterio do `StructuredResult.model`.
+    `requested_model`: o nome CONFIGURADO pedido ao provedor que respondeu
+    (estavel, sem sufixo de data) - serve de chave (ex.: impressao digital do
+    resumo de treino), onde o eco datado mudaria a cada snapshot."""
+
+    text: str
+    model: str
+    requested_model: str
+
+
+# ---------------------------------------------------------------------------
+# Provedor por feature (Anthropic opcional; implementacao em `llm_anthropic`)
+# ---------------------------------------------------------------------------
+#
+# Sem `LLM_PROVIDER_<FEATURE>=anthropic`, as tres `call_openai*` seguem
+# exatamente o caminho de sempre (mesmo corpo HTTP, mesmo endpoint): o modulo
+# `llm_anthropic` so e importado para ler a env, e o SDK `anthropic` nem isso.
+PROVIDER_OPENAI = "openai"
+EVENT_LLM_FALLBACK = "llm.fallback"
+
+
+def _dispatch(feature, timeout, *, user_id, prompt_version, openai_call, anthropic_call):
+    """Roda na Anthropic quando a feature esta ligada nela; se falhar com um
+    erro elegivel e o fallback estiver ligado, refaz na OpenAI (modelo OpenAI
+    da feature) com o tempo que sobrou - nunca menos que o minimo de uma
+    tentativa, para a Lambda ainda conseguir gravar a falha."""
+    from . import llm_anthropic
+
+    if llm_anthropic.provider_for(feature) != llm_anthropic.PROVIDER_ANTHROPIC:
+        return openai_call(timeout)
+    started = _monotonic()
+    try:
+        return anthropic_call(timeout)
+    except OpenAIGenerationError as exc:
+        fallback = llm_anthropic.fallback_provider_for(feature)
+        remaining = timeout - (_monotonic() - started)
+        if (
+            fallback != PROVIDER_OPENAI
+            or not llm_anthropic.fallback_eligible(exc)
+            or remaining < TEXT_RETRY_MIN_ATTEMPT_SECONDS
+        ):
+            raise
+        log_event(
+            EVENT_LLM_FALLBACK,
+            feature=feature,
+            from_provider=llm_anthropic.PROVIDER_ANTHROPIC,
+            to_provider=PROVIDER_OPENAI,
+            code=exc.code,
+            status=exc.status,
+            prompt_version=prompt_version,
+            user_id=user_id,
+        )
+        return openai_call(remaining)
+
+
 def call_openai(
     prompt: str,
     model: str,
@@ -529,6 +593,7 @@ def call_openai(
     feature: Optional[str] = None,
     user_id=None,
     prompt_version: Optional[str] = None,
+    cache_prefix: Optional[str] = None,
 ) -> str:
     """Chama a API Responses da OpenAI (https://api.openai.com/v1/responses)
     com o prompt e o modelo informados, retornando o texto de saída.
@@ -549,16 +614,66 @@ def call_openai(
     configurada" são feitas aqui (`_api_key`), e a falha propaga
     `OpenAIGenerationError` - cada módulo chamador continua livre para
     envolver numa exceção própria que herde dela.
+
+    `cache_prefix` (opcional): o começo ESTÁVEL do prompt (instruções + RAG).
+    Não vai para a OpenAI (que usa o `prompt_cache_key`); no provedor
+    Anthropic vira o bloco com `cache_control`. Com `LLM_PROVIDER_<FEATURE>`
+    = `anthropic` a chamada vai para `llm_anthropic` (ver `_dispatch`).
     """
-    return _output_text(
-        _post(
+
+    return call_openai_text(
+        prompt, model, timeout, feature=feature, user_id=user_id, prompt_version=prompt_version,
+        cache_prefix=cache_prefix,
+    ).text
+
+
+def call_openai_text(
+    prompt: str,
+    model: str,
+    timeout: float = 90,
+    *,
+    feature: Optional[str] = None,
+    user_id=None,
+    prompt_version: Optional[str] = None,
+    cache_prefix: Optional[str] = None,
+) -> TextResult:
+    """`call_openai` que devolve tambem o modelo que respondeu (`TextResult`).
+    Use quando a feature grava o nome do modelo: com o provedor por feature e
+    o fallback, o `model` passado aqui (o da OpenAI) nao e necessariamente o
+    que respondeu."""
+
+    def _openai(t: float) -> TextResult:
+        data = _post(
             {"model": model, "input": prompt},
-            timeout,
+            t,
             feature=feature,
             user_id=user_id,
             prompt_version=prompt_version,
         )
+        return TextResult(text=_output_text(data), model=str(data.get("model") or model), requested_model=model)
+
+    def _anthropic(t: float) -> TextResult:
+        from . import llm_anthropic
+
+        return llm_anthropic.call_text_result(
+            prompt, t, feature=feature, user_id=user_id, prompt_version=prompt_version, cache_prefix=cache_prefix
+        )
+
+    return _dispatch(
+        feature, timeout, user_id=user_id, prompt_version=prompt_version, openai_call=_openai, anthropic_call=_anthropic
     )
+
+
+def primary_model(feature: Optional[str], openai_model: str) -> str:
+    """Modelo CONFIGURADO do provedor primario da feature: o Claude da feature
+    quando `LLM_PROVIDER_<FEATURE>=anthropic`, senao `openai_model`. E o
+    `TextResult.requested_model` de uma chamada sem fallback - para comparar
+    uma chave gravada antes de chamar (dedupe do resumo de treino)."""
+    from . import llm_anthropic
+
+    if llm_anthropic.provider_for(feature) == llm_anthropic.PROVIDER_ANTHROPIC:
+        return llm_anthropic.anthropic_model_for(feature)
+    return openai_model
 
 
 def call_openai_structured(
@@ -571,6 +686,7 @@ def call_openai_structured(
     feature: Optional[str] = None,
     user_id=None,
     prompt_version: Optional[str] = None,
+    cache_prefix: Optional[str] = None,
 ) -> StructuredResult:
     """Saida ESTRUTURADA (`text.format={type:"json_schema", strict:true}`) da
     API Responses: o modelo e obrigado pelo servidor da OpenAI a devolver um
@@ -588,7 +704,42 @@ def call_openai_structured(
 
     Erros (todos `OpenAIGenerationError`): falha HTTP, timeout, recusa do
     modelo, resposta vazia ou JSON que nao parseia.
+
+    `cache_prefix` e o provedor por feature: ver `call_openai`.
     """
+
+    def _anthropic(t: float) -> StructuredResult:
+        from . import llm_anthropic
+
+        return llm_anthropic.call_structured(
+            prompt, schema, t, feature=feature, user_id=user_id, prompt_version=prompt_version,
+            cache_prefix=cache_prefix,
+        )
+
+    return _dispatch(
+        feature,
+        timeout,
+        user_id=user_id,
+        prompt_version=prompt_version,
+        openai_call=lambda t: _openai_structured(
+            prompt, model, schema, schema_name=schema_name, timeout=t, feature=feature,
+            user_id=user_id, prompt_version=prompt_version,
+        ),
+        anthropic_call=_anthropic,
+    )
+
+
+def _openai_structured(
+    prompt: str,
+    model: str,
+    schema: dict,
+    *,
+    schema_name: str,
+    timeout: float,
+    feature: Optional[str],
+    user_id,
+    prompt_version: Optional[str],
+) -> StructuredResult:
     data = _post(
         {
             "model": model,
@@ -674,11 +825,49 @@ def call_openai_structured_vision(
     alternativa da decisao D-E do plano de nutricao, caso o modelo nao aceite
     saida estruturada com imagem; com `json_object` o `schema` nao vai no corpo
     (o prompt precisa pedir JSON) e quem chama valida a forma (Pydantic).
-    `call_openai_structured` fica intacta."""
+    `call_openai_structured` fica intacta.
+
+    Provedor por feature: ver `call_openai`. Na Anthropic a imagem vai num
+    bloco `image` base64 (`detail` nao tem equivalente) e a saida e sempre
+    `json_schema`."""
     if response_format not in STRUCTURED_FORMATS:
         raise ValueError(f"response_format invalido: {response_format!r}")
     if not images:
         raise ValueError("call_openai_structured_vision exige ao menos uma imagem")
+
+    def _anthropic(t: float) -> StructuredResult:
+        from . import llm_anthropic
+
+        return llm_anthropic.call_structured(
+            prompt, schema, t, feature=feature, user_id=user_id, prompt_version=prompt_version, images=images
+        )
+
+    return _dispatch(
+        feature,
+        timeout,
+        user_id=user_id,
+        prompt_version=prompt_version,
+        openai_call=lambda t: _openai_structured_vision(
+            prompt, images, model, schema, schema_name=schema_name, timeout=t, feature=feature,
+            user_id=user_id, prompt_version=prompt_version, response_format=response_format,
+        ),
+        anthropic_call=_anthropic,
+    )
+
+
+def _openai_structured_vision(
+    prompt: str,
+    images: list[ImageInput],
+    model: str,
+    schema: dict,
+    *,
+    schema_name: str,
+    timeout: float,
+    feature: Optional[str],
+    user_id,
+    prompt_version: Optional[str],
+    response_format: str,
+) -> StructuredResult:
     if response_format == STRUCTURED_FORMAT_JSON_SCHEMA:
         text_format = {"type": "json_schema", "name": schema_name, "strict": True, "schema": schema}
     else:

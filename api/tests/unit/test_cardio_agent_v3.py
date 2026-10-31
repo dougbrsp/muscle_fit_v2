@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from app import cardio_agent_ai, cardio_generation_core, cardio_recommendation_v3 as contract
+from app.openai_client import StructuredResult
 from app import rag_chunking, rag_placeholders
 from app.domain import cardio_envelope as ce
 from app.domain import cardio_prescription as cp
@@ -195,8 +196,9 @@ def test_gera_json_validado_e_markdown(monkeypatch):
 
     def _call(prompt, user_id=None):
         vistos["prompt"] = prompt
-        return {"summary": "s", "objective": "o", "confidence": "medium", "confidence_reason": "r",
-                "sessions": [_llm_session(THU + timedelta(days=1), "hiit", **_hiit_fields())]}
+        dados = {"summary": "s", "objective": "o", "confidence": "medium", "confidence_reason": "r",
+                 "sessions": [_llm_session(THU + timedelta(days=1), "hiit", **_hiit_fields())]}
+        return StructuredResult(data=dados, model="claude-haiku-5-5", tokens_in=1, tokens_out=1)
 
     monkeypatch.setattr(cardio_agent_ai, "CardioAgentContextV3Service", _Svc)
     monkeypatch.setattr(cardio_agent_ai, "call_openai", _call)
@@ -204,6 +206,7 @@ def test_gera_json_validado_e_markdown(monkeypatch):
     out = cardio_agent_ai.generate_cardio_recommendation(days=14, user_id=1, workout_plan_id=7, reference_date="2026-10-08")
     assert vistos["kwargs"]["workout_plan_id"] == 7 and vistos["kwargs"]["reference_date"] == THU
     assert out["prompt_version"] == cardio_agent_ai.PROMPT_VERSION == "cardio-agent-v5"
+    assert out["model"] == "claude-haiku-5-5"  # o modelo que respondeu, nao o OPENAI_MODEL
     session = out["recommendation_json"]["sessions"][0]
     assert session["prescription"][cp.MODE_FIELD] == "continuous"  # HIIT na véspera de perna: o envelope vence
     assert "## Sessões recomendadas" in out["recommendation_markdown"]

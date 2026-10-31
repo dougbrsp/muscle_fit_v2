@@ -24,8 +24,8 @@ from .engine_decision_context import EngineDecision, GroupDecision, format_decis
 from .goal_prompt_context import focus_text, goal_label_suffix, prompt_section
 from .goal_prompt_context import prompt_version as goal_prompt_version
 from .load_conventions import format_tonnage
-from .openai_client import LLM_TIMEOUT_LIVE_SECONDS, OpenAIGenerationError
-from .openai_client import call_openai as _call_openai_shared
+from .openai_client import LLM_TIMEOUT_LIVE_SECONDS, OpenAIGenerationError, TextResult, primary_model
+from .openai_client import call_openai_text as _call_openai_shared
 from .prompt_user_data import USER_NAME_MAX_CHARS, USER_NOTES_MAX_CHARS, user_data_inline, user_data_rule
 from .set_labels import set_display_label
 from .set_types import non_preparatory_sets
@@ -184,26 +184,38 @@ def build_prompt(
     return prompt.strip()
 
 
-def input_fingerprint(prompt: str) -> str:
+FEATURE = "workout_summary"
+
+
+def input_fingerprint(prompt: str, model: Optional[str] = None) -> str:
     """Impressao digital da ENTRADA do resumo (IA-14): SHA-256 de modelo +
     `PROMPT_VERSION` + prompt renderizado. O prompt ja carrega tudo o que
     muda a resposta (series, notas, decisoes do motor); modelo e versao
     entram porque a mesma entrada num modelo/prompt novo e outro resumo.
-    Gravada em `activities.ai_summary_input_sha256` (migracao 070)."""
-    material = "\n".join((OPENAI_MODEL, PROMPT_VERSION, prompt))
+    Gravada em `activities.ai_summary_input_sha256` (migracao 070).
+
+    `model`: o nome CONFIGURADO do modelo que respondeu
+    (`TextResult.requested_model`, estavel; nunca o eco datado). Sem ele, o do
+    provedor primario da feature (`openai_client.primary_model`): `OPENAI_MODEL`
+    com a feature na OpenAI - a mesma impressao de antes do provedor por
+    feature - ou o Claude da feature com `LLM_PROVIDER_WORKOUT_SUMMARY=anthropic`.
+    Trocar de provedor muda a impressao: o resumo salvo antes so e gerado de
+    novo quando alguem o pede outra vez (sob demanda), nunca em lote."""
+    material = "\n".join((model or primary_model(FEATURE, OPENAI_MODEL), PROMPT_VERSION, prompt))
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-def call_openai(prompt: str, user_id: Any = None, prompt_version: str = PROMPT_VERSION) -> str:
-    """Wrapper fino sobre `openai_client.call_openai` (cliente unico: chave lida
-    a cada chamada, retry so em 429/5xx, evento `llm.usage`). Reexporta toda
-    falha como `WorkoutSummaryError`, subclasse de `OpenAIGenerationError`."""
+def call_openai(prompt: str, user_id: Any = None, prompt_version: str = PROMPT_VERSION) -> TextResult:
+    """Wrapper fino sobre `openai_client.call_openai_text` (cliente unico: chave
+    lida a cada chamada, retry so em 429/5xx, evento `llm.usage`, provedor por
+    feature com fallback). Devolve o texto E o modelo que respondeu. Reexporta
+    toda falha como `WorkoutSummaryError`, subclasse de `OpenAIGenerationError`."""
     try:
         return _call_openai_shared(
             prompt,
             model=OPENAI_MODEL,
             timeout=LLM_TIMEOUT_LIVE_SECONDS,
-            feature="workout_summary",
+            feature=FEATURE,
             user_id=user_id,
             prompt_version=prompt_version,
         )
@@ -226,6 +238,12 @@ def generate_workout_summary(
         raise WorkoutSummaryError("activity inválida: id ausente.")
 
     prompt = build_prompt(activity, engine_decisions, technique_names)
-    summary = call_openai(prompt, user_id, effective_prompt_version(activity)).strip()
+    result = call_openai(prompt, user_id, effective_prompt_version(activity))
 
-    return {"model": OPENAI_MODEL, "summary": summary, "input_sha256": input_fingerprint(prompt)}
+    # Modelo que RESPONDEU (inclusive depois do fallback); a impressao usa o
+    # nome configurado dele, para o dedupe bater na proxima chamada igual.
+    return {
+        "model": result.model,
+        "summary": result.text.strip(),
+        "input_sha256": input_fingerprint(prompt, result.requested_model),
+    }

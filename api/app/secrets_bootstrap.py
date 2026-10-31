@@ -31,6 +31,12 @@ EVENT_SECRET_LOAD_FAILED = "secrets_bootstrap.load_failed"
 # (env var carregada pela app, env var que aponta para o ARN do secret)
 _SECRETS = [
     ("OPENAI_API_KEY", "OPENAI_API_KEY_SECRET_ARN"),
+    # Provedor Anthropic por feature (`app/llm_anthropic.py`): chave do secret
+    # `musclefit/claude-api-key`, so nas 3 Lambdas que ja leem a da OpenAI
+    # (api-core, ai-generators, workout-ai). Sem ARN (DEV sem chave, testes):
+    # no-op; a feature ligada na Anthropic responde "nao configurada"
+    # (`ANTHROPIC_NOT_CONFIGURED`, elegivel ao fallback para a OpenAI).
+    ("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_SECRET_ARN"),
     ("API_TOKEN", "API_TOKEN_SECRET_ARN"),
     ("SECRET_ENCRYPTION_KEY", "SECRET_ENCRYPTION_KEY_SECRET_ARN"),
     # M5: secret do Cloudflare Turnstile (`musclefit/turnstile-secret-key`),

@@ -733,7 +733,7 @@ def test_auditoria_registra_tokens_status_e_relatorio(db_conn, catalog, academia
     log_id = create_pending_log(db_conn, catalog.user_id, pedido, PROMPT_VERSION)
     db_conn.commit()
 
-    _llm(monkeypatch, _saida([_slot(1, [_item(muscle_group_id=catalog.muscle_groups["Peitoral"])])]), tokens=(1500, 400))
+    chamadas = _llm(monkeypatch, _saida([_slot(1, [_item(muscle_group_id=catalog.muscle_groups["Peitoral"])])]), tokens=(1500, 400))
     resultado = run_periodization_draft(pedido, catalog.user_id, log_id)
     assert resultado["generation_log_id"] == log_id
 
@@ -742,7 +742,13 @@ def test_auditoria_registra_tokens_status_e_relatorio(db_conn, catalog, academia
         row = cur.fetchone()
     assert row["status"] == "succeeded"
     assert (row["tokens_in"], row["tokens_out"]) == (1500, 400)
-    assert row["cost_usd"] is None  # sem preco configurado: NULL, nunca inventado
+    # Custo pelo dono do preco (`ai_usage`, mapa §74), na escala da coluna.
+    from app.periodization.logs import estimate_cost_usd
+
+    esperado = estimate_cost_usd(chamadas[0]["model"], 1500, 400)
+    assert (row["cost_usd"] is None) == (esperado is None)
+    if esperado is not None:
+        assert float(row["cost_usd"]) == pytest.approx(esperado)
     assert json.loads(row["validation_report"])["errors"] == []
     # instrucao do usuario fica SO aqui (secao 14)
     assert "Joelho sensivel." in json.loads(row["request_json"])["instructions"]

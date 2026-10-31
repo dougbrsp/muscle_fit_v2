@@ -49,10 +49,10 @@ def _balanced_block(texto: str, abre_idx: int) -> str:
 
 
 def _locals_com_rag() -> set[str]:
-    """Nomes de locals cujo corpo define `RAG_MARKDOWN_DIR`."""
+    """Nomes de locals cujo corpo define `RAG_MARKDOWN_DIR` (`= {` ou `= merge({`)."""
     nomes: set[str] = set()
     for texto in _tf_texts():
-        for match in re.finditer(r"^\s*([A-Za-z0-9_]+)\s*=\s*\{", texto, re.MULTILINE):
+        for match in re.finditer(r"^\s*([A-Za-z0-9_]+)\s*=\s*(?:merge\(\s*)?\{", texto, re.MULTILINE):
             corpo = _balanced_block(texto, match.end() - 1)
             if re.search(rf"^\s*{RAG_ENV_NAME}\s*=", corpo, re.MULTILINE):
                 nomes.add(match.group(1))

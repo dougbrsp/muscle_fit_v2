@@ -553,21 +553,7 @@ def build_prompt(context: dict[str, Any]) -> str:
     request = context["request"]
     mode_b = request["volume_mode"] == "equipment_series"
     parts = [
-        _text(".cabecalho"),
-        _text(
-            ".regras",
-            {
-                "days": f"{request['days_per_cycle']}",
-                "volume_mode": f"{request['volume_mode']}",
-                "max_prioritized": f"{MAX_PRIORITIZED_PER_SLOT}",
-                "mode_rules": _mode_rules(request["volume_mode"], context),
-            },
-        ),
-        # Ordem fixa (IA-05, v9): instrucoes -> RAG -> dados do pedido. O RAG
-        # vem logo depois das regras para o prefixo (cabecalho + regras + RAG)
-        # ser identico entre geracoes com as mesmas fontes: o prompt caching
-        # automatico da OpenAI so reaproveita PREFIXO identico.
-        _text(".rag", {"rag": context["rag_text"]}),
+        *_stable_parts(context),
         _text(".grupos", {"grupos": _json(context["muscle_groups"])}),
         _targets_section(context, mode_b),
         _text(".tecnicas", {"tecnicas": _json(context["techniques"])}),
@@ -599,6 +585,35 @@ def build_prompt(context: dict[str, Any]) -> str:
         # contra a celula.
         parts.append(_final_checklist(request["days_per_cycle"], counting_mode_of_context(context)))
     return "\n\n".join(parts)
+
+
+def _stable_parts(context: dict[str, Any]) -> list[str]:
+    """Cabecalho + regras + RAG: o prefixo do prompt igual entre geracoes com
+    o mesmo pedido de dias/modo e as mesmas fontes."""
+    request = context["request"]
+    return [
+        _text(".cabecalho"),
+        _text(
+            ".regras",
+            {
+                "days": f"{request['days_per_cycle']}",
+                "volume_mode": f"{request['volume_mode']}",
+                "max_prioritized": f"{MAX_PRIORITIZED_PER_SLOT}",
+                "mode_rules": _mode_rules(request["volume_mode"], context),
+            },
+        ),
+        # Ordem fixa (IA-05, v9): instrucoes -> RAG -> dados do pedido. O RAG
+        # vem logo depois das regras para o prefixo (cabecalho + regras + RAG)
+        # ser identico entre geracoes com as mesmas fontes: o prompt caching
+        # automatico da OpenAI so reaproveita PREFIXO identico.
+        _text(".rag", {"rag": context["rag_text"]}),
+    ]
+
+
+def build_prompt_cache_prefix(context: dict[str, Any]) -> str:
+    """Comeco estavel de `build_prompt` (as mesmas partes, a mesma juncao),
+    para o `cache_control` do provedor Anthropic. Nao muda o prompt."""
+    return "\n\n".join(_stable_parts(context))
 
 
 def _final_checklist(days: int, counting_mode: VolumeCountingMode = DEFAULT_VOLUME_COUNTING_MODE) -> str:

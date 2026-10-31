@@ -115,9 +115,16 @@ def test_analise_janela_fora_da_primeira_frase(monkeypatch):
     from app import report_ai
 
     capturado = {}
-    monkeypatch.setattr(report_ai, "_call_openai", lambda prompt, user_id=None: capturado.setdefault("p", prompt))
+    monkeypatch.setattr(
+        report_ai,
+        "_call_openai",
+        lambda prompt, user_id=None, cache_prefix=None: capturado.update(p=prompt, prefixo=cache_prefix),
+    )
     report_ai.analyze_training_evolution({}, days=45, rag_context="<<RAG>>")
     prompt = capturado["p"]
+    # Prefixo cacheavel (provedor Anthropic): comeco do prompt, com o RAG e sem a janela.
+    assert prompt.startswith(capturado["prefixo"]) and "<<RAG>>" in capturado["prefixo"]
+    assert " 45 " not in capturado["prefixo"]
     assert "45" not in prompt.split("\n\n", 1)[0]
     # Ordem instrucoes -> RAG -> janela -> dados, por ancoras estruturais (os
     # rotulos sao prosa do template, privado desde o M103 P2).

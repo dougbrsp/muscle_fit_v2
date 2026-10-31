@@ -25,8 +25,11 @@ RAIZ = Path(__file__).resolve().parent.parent
 DIR = RAIZ / "infra" / "iam-policies" / "gha-plan"
 CONTA = "930413537709"
 REGIAO = "sa-east-1"
-REPO_IDS = "repo:dougbrsp@33515327/muscle_fit@1356252176"
-REPO_NOME = "repo:dougbrsp/muscle_fit"
+# M103: o projeto migrou para o repositorio publico `muscle_fit_v2`. Na virada
+# (2026-10-29) os subs do antigo (`muscle_fit`, privado e arquivado) sairam das trusts
+# na AWS; as trusts aceitam so o v2 (ver README, "Repositorio v2").
+REPO_IDS = ("repo:dougbrsp@33515327/muscle_fit_v2@1436380326",)
+REPO_NOME = ("repo:dougbrsp/muscle_fit_v2",)
 LIMITE_MANAGED = 6144
 
 # Prefixos de verbo permitidos numa role de plan. `apigateway:GET` e o unico verbo HTTP
@@ -240,7 +243,7 @@ def _subs(doc):
 
 def test_trust_da_role_de_plan_so_aceita_pull_request():
     doc = _carrega("musclefit-gha-plan-trust.json")
-    assert _subs(doc) == {f"{REPO_NOME}:pull_request", f"{REPO_IDS}:pull_request"}
+    assert _subs(doc) == {f"{r}:pull_request" for r in REPO_NOME + REPO_IDS}
     # sem curinga: StringEquals e nenhum StringLike
     assert set(doc["Statement"][0]["Condition"]) == {"StringEquals"}
 
@@ -250,8 +253,9 @@ def test_trust_alvo_da_role_de_deploy_nao_aceita_pull_request():
     subs = _subs(doc)
     assert not any("pull_request" in s or "*" in s for s in subs)
     assert subs == {
-        f"{REPO_NOME}:ref:refs/heads/main", f"{REPO_NOME}:environment:production",
-        f"{REPO_IDS}:ref:refs/heads/main", f"{REPO_IDS}:environment:production",
+        f"{r}:{ctx}"
+        for r in REPO_NOME + REPO_IDS
+        for ctx in ("ref:refs/heads/main", "environment:production")
     }
 
 

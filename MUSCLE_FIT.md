@@ -373,7 +373,7 @@ O arquivo (e os irmãos `iam_gha_eventbridge.tf`, `iam_gha_ses.tf`, `iam_gha_rou
 | Bucket de state | `musclefit-tfstate-930413537709` |
 | Tabela de lock | `musclefit-tfstate-lock` (`LockID`, `PAY_PER_REQUEST`) |
 | Provedor OIDC | `token.actions.githubusercontent.com` |
-| Role de deploy | `arn:aws:iam::930413537709:role/musclefit-gha-deploy` — trust policy aceita `sub` nos formatos `repo:dougbrsp/muscle_fit:ref:refs/heads/main`, `pull_request` e `environment:production` (com e sem IDs numéricos do repo, conforme comentário em `backend-deploy.yml` e plano Fase 7) |
+| Role de deploy | `arn:aws:iam::930413537709:role/musclefit-gha-deploy` — trust policy aceita `sub` nos formatos `repo:dougbrsp/muscle_fit_v2:ref:refs/heads/main` e `environment:production` (com e sem IDs numéricos do repo); `pull_request` vai para a role só leitura `musclefit-gha-plan`. Na transição do M103 (2026-10-29) as duas trusts aceitam também o repositório antigo `dougbrsp/muscle_fit`, cujos subs saem na virada. Estado versionado em `infra/iam-policies/gha-plan/` |
 | Certificado ACM API | `arn:aws:acm:sa-east-1:930413537709:certificate/d0d1b680-4a31-4844-823d-0076079a4cac` (`api.musclefit.com.br`) |
 | Certificado ACM frontend | `arn:aws:acm:us-east-1:930413537709:certificate/4c2d79c0-61bb-4ee5-847f-1265513edd5a` (`app.musclefit.com.br` + apex) |
 | Budget | `musclefit-monthly`, US$ 30/mês, alertas 80%/100% para o e-mail do responsável pela conta |
@@ -397,7 +397,7 @@ Desde 2026-10-10 (economia de GitHub Actions): `ci-develop.yml` e `ci-docker-ima
 - PR para `develop`: só a área tocada (backend → `lint backend` + `backend unit`; frontend → `lint frontend` + `frontend build`; imagens Lambda só se mudar `api/Dockerfile*`, `api/requirements*`, `.dockerignore`, `infra/lambda_*.tf` ou `.github/scripts/*`). Integração com MySQL e smoke compose + LocalStack não rodam.
 - Rótulo `ci-completo` no PR para `develop`: suíte inteira; adicionar o rótulo dispara a rodada.
 - PR para `main` (promoção): suíte inteira dos dois workflows, sem filtro.
-- Job pulado = *skipping*. Sem job agregador (sem branch protection no plano Free); o critério de merge avalia todos os checks (`pass` ou `skipping`).
+- Job pulado = *skipping*. Sem job agregador (o ruleset de `main`/`develop` exige PR e bloqueia force-push e exclusão, mas não tem check obrigatório; o environment `production` exige reviewer); o critério de merge avalia todos os checks (`pass` ou `skipping`).
 - `concurrency` com `cancel-in-progress: true` em todos os workflows de PR; `deploy-producao.yml` e `db-migrations.yml` mantêm `backend-deploy` sem cancelamento.
 - Detalhes e tabela por job: `docs/local-dev.md`, "O que o CI roda em cada PR".
 

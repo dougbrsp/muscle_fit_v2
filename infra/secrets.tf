@@ -106,6 +106,33 @@ resource "aws_secretsmanager_secret" "usda_api_key" {
   description = "Chave de API de acesso ao USDA" # igual ao console; ver comentario acima (sem UpdateSecret no pipeline)
 }
 
+# musclefit/claude-api-key: chave da API da Anthropic (Claude), provedor LLM
+# opcional por feature (api/app/llm_anthropic.py, infra/llm_providers.tf).
+# Quem le: as 3 Lambdas que ja leem a chave da OpenAI (api-core,
+# ai-generators, workout-ai); engines, intervals-sync e migrations nao.
+#
+# Mesmo caso do Turnstile e do USDA: o secret JA EXISTIA, criado a mao pelo
+# usuario com o valor real (ARN abaixo, sufixo -SFXRNu). describe-secret em
+# 2026-10-30: sem descricao, sem tags, KMS padrao (aws/secretsmanager), sem
+# rotacao. Por isso:
+#   - `import` em vez de create (create falharia com ResourceExistsException);
+#   - NENHUM aws_secretsmanager_secret_version (regra do topo do arquivo);
+#   - SEM `description`: o console nao tem, e o pipeline nao tem
+#     secretsmanager:UpdateSecret - qualquer diff aqui faria o apply falhar
+#     logo apos o import.
+# Plan esperado: 1 import + update in-place SO de tags (default_tags do
+# provider via TagResource, coberto pela `musclefit-gha-deploy-v2-rede-dados`).
+# As Lambdas recebem o ARN em ANTHROPIC_API_KEY_SECRET_ARN e
+# api/app/secrets_bootstrap.py hidrata ANTHROPIC_API_KEY no cold start.
+import {
+  to = aws_secretsmanager_secret.anthropic_api_key
+  id = "arn:aws:secretsmanager:sa-east-1:930413537709:secret:musclefit/claude-api-key-SFXRNu"
+}
+
+resource "aws_secretsmanager_secret" "anthropic_api_key" {
+  name = "musclefit/claude-api-key"
+}
+
 # AWS-03, etapa 5: os 3 aws_secretsmanager_secret_version que nasceram com o
 # placeholder "replace_me" + ignore_changes (2026-09-03) saem do state SEM
 # destruir nada. `destroy = false` (Terraform >= 1.7, versions.tf) faz o apply
