@@ -26,8 +26,18 @@ import {
   storePeriodizationSeed,
   validatePeriodizationForm,
 } from './periodization';
+import { PERIODIZATION_POLL_TIMEOUT_MS } from './periodization';
 import { PERIODIZATION_REPORT_CODE_LABEL } from './periodization-types';
 import type { PeriodizationFormState, PeriodizationJobResult } from './periodization-types';
+import motorConstants from './motor-constants.generated.json';
+
+describe('espera do polling da periodização', () => {
+  it('passa do prazo do job no backend, que passa do teto da chamada à LLM', () => {
+    const { job_deadline_seconds, llm_timeout_seconds } = motorConstants.periodization_job;
+    expect(job_deadline_seconds).toBeGreaterThan(llm_timeout_seconds);
+    expect(PERIODIZATION_POLL_TIMEOUT_MS).toBeGreaterThan(job_deadline_seconds * 1000);
+  });
+});
 
 function form(overrides: Partial<PeriodizationFormState> = {}): PeriodizationFormState {
   return { ...newPeriodizationForm(), ...overrides };

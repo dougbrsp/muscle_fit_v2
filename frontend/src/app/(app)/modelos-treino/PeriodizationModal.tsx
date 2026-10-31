@@ -67,9 +67,10 @@ import type {
 import { VOLUME_MODE_OPTIONS, type VolumeMode } from '@/lib/workout-plan-templates-types';
 import { BRAND } from '@/theme';
 
-// Expectativa honesta de duração (§7.1: RAG + chamada à OpenAI com timeout de
-// 90 s dentro de uma Lambda de 120 s). Serve só para a barra de progresso não
-// mentir: ela satura e continua "em andamento", nunca finge ter acabado.
+// Expectativa honesta de duração (§7.1: RAG + chamada à LLM com o teto
+// `periodization_job.llm_timeout_seconds` do espelho gerado). Serve só para a
+// barra de progresso não mentir: ela satura e continua "em andamento", nunca
+// finge ter acabado.
 const EXPECTED_DURATION_SECONDS = 60;
 
 type Phase = 'form' | 'generating' | 'failed';

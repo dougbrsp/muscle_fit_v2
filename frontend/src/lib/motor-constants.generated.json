@@ -208,6 +208,10 @@
     "slot_time_limit_minutes": 90,
     "sets_per_exercise_ideal_max": 4
   },
+  "periodization_job": {
+    "llm_timeout_seconds": 150,
+    "job_deadline_seconds": 240
+  },
   "intensity": {
     "intensity_status_labels": {
       "REACHED": "Esforço atingido",

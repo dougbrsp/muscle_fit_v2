@@ -91,7 +91,7 @@ python -m tests.eval.resumo_uso_eval uso_openai.jsonl uso_claude.jsonl uso_haiku
 - `resumo_uso_eval` usa o preço do dono (`app.domain.nutrition.ai_usage.estimate_cost_usd`). A escrita no cache da Anthropic entra a preço de entrada comum (a tabela do dono não tem o adicional de escrita), então o custo das features com `cache_control` é um piso.
 - As chaves vêm do Secrets Manager (`musclefit/claude-api-key`, `musclefit/openai-api-key`), lidas direto para a env do processo do pytest; nunca impressas nem gravadas.
 - O tokenizador do Claude conta de 1,35× a 1,8× mais tokens de entrada que o da OpenAI para o mesmo prompt em português (medido no eval de 2026-10-30; menor nos prompts longos de JSON, maior nos curtos em prosa). Estime o custo do braço Claude com esse fator.
-- Resultado comparativo de 2026-10-30: `docs/ia/EVAL_ANTHROPIC_2026-10-30.md`.
+- Resultado comparativo de 2026-10-30: `docs/ia/EVAL_ANTHROPIC_2026-10-30.md`. Periodização com teto de 150 s e adaptador de cardio (2026-10-31): `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`.
 
 Sem `OPENAI_API_KEY`, todo caso dá skip. Os critérios ficam em `api/tests/eval/criterios_llm.py` e são objetivos: categoria aceita ou proibida, primeira linha igual à categoria, JSON de sugestão presente, RPE dentro do teto do par, carga dentro da decisão do motor, número de frases, ausência de markdown, seções `##` obrigatórias, número decimal que não existe na entrada (lido em pt-BR: "26,6", "13.894", "41.112,5"; floats longos citados inteiros também casam), regras duras da periodização (slots, sequência, priorizados, trio do catálogo) e descrição sem séries, reps, carga ou RPE. O eval imprime a resposta de cada caso para revisão humana lado a lado.
 
