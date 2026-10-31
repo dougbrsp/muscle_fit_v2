@@ -12,10 +12,12 @@
 # Virada de 2026-10-31 (decisao do usuario, eval em
 # docs/ia/EVAL_ANTHROPIC_2026-10-30.md): 6 features no claude-haiku-5-5, com
 # o esforco que venceu no eval e fallback POR FEATURE para a OpenAI.
-# periodization, set_evaluation, workouts_analysis, exercise_summary e
-# workout_plan seguem na OpenAI (sem env de modelo/esforco/fallback).
-# periodization foi reavaliada sem raciocinio (rodada 2 de
-# docs/ia/EVAL_PERIODIZACAO_2026-10-31.md): 50-54% de aprovacao, nao liga.
+# set_evaluation, workouts_analysis, exercise_summary e workout_plan seguem
+# na OpenAI (sem env de modelo/esforco/fallback).
+# periodization ligada no Haiku SEM raciocinio, esforco low, fallback openai,
+# depois do prompt periodization-v15 (a IA escolhe a referencia do catalogo e
+# o motor monta o trio): 47/50 (94%) contra 26/30 (87%) da OpenAI v15, zero
+# saida cortada, zero timeout, p95 26 s (docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md).
 #
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
@@ -34,6 +36,7 @@ variable "llm_provider_by_feature" {
     meal_parse           = "anthropic"
     exercise_description = "anthropic"
     workout_summary      = "anthropic"
+    periodization        = "anthropic"
   }
 
   validation {
@@ -52,6 +55,7 @@ variable "anthropic_model_by_feature" {
     meal_parse           = "claude-haiku-5-5"
     exercise_description = "claude-haiku-5-5"
     workout_summary      = "claude-haiku-5-5"
+    periodization        = "claude-haiku-5-5"
   }
 }
 
@@ -67,6 +71,7 @@ variable "anthropic_effort_by_feature" {
     meal_parse           = "medium"
     exercise_description = "medium"
     workout_summary      = "low"
+    periodization        = "low"
   }
 
   validation {
@@ -83,7 +88,9 @@ variable "anthropic_effort_by_feature" {
 variable "anthropic_thinking_by_feature" {
   description = "Raciocinio do Claude por feature (ANTHROPIC_THINKING_<FEATURE>): adaptive ou disabled. Ausente = adaptive."
   type        = map(string)
-  default     = {}
+  default = {
+    periodization = "disabled"
+  }
 
   validation {
     condition     = alltrue([for t in values(var.anthropic_thinking_by_feature) : contains(["adaptive", "disabled"], t)])
@@ -115,6 +122,7 @@ variable "llm_fallback_provider_by_feature" {
     meal_parse           = "openai"
     exercise_description = "openai"
     workout_summary      = "openai"
+    periodization        = "openai"
   }
 
   validation {

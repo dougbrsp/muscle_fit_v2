@@ -240,6 +240,46 @@ def test_periodizacao_sem_cardio_fica_identica_a_de_antes():
     assert adaptado.schema == adapt_schema(original).schema
 
 
+def _periodizacao_modo_b(com_cardio: bool, refs):
+    from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST
+
+    original = output_schema(com_cardio, True, refs)
+    return original, adapt_schema(original, ANTHROPIC_OPTIONAL_FIRST)
+
+
+@pytest.mark.parametrize("com_cardio", [False, True])
+def test_periodizacao_modo_b_com_enum_de_refs_cabe_nos_limites_e_volta_inteira(com_cardio):
+    """v15: o item do Modo B so tem `catalog_ref` (enum por pedido) no lugar
+    do trio. A `enum` de strings nao e uniao: o pedido cabe nos limites, sem
+    cardio nem precisa de opcional, e a ida e volta devolve a forma original."""
+    from app.periodization.catalog_refs import CATALOG_REF_FIELD, MAX_ENUM_REFS
+
+    refs = [f"E{n}" for n in range(1, MAX_ENUM_REFS + 1)]
+    original, adaptado = _periodizacao_modo_b(com_cardio, refs)
+    unioes, opcionais = _counts(adaptado.schema)
+    assert unioes <= MAX_UNION_PARAMS and opcionais <= MAX_OPTIONAL_PARAMS
+    if not com_cardio:
+        assert adaptado.optional_paths == frozenset()
+    item = adaptado.schema["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
+    assert item["properties"][CATALOG_REF_FIELD] == {"type": "string", "enum": refs}
+    assert CATALOG_REF_FIELD in item["required"]
+    for campo in ("muscle_group_id", "mapping_id", "equipment_id", "item_kind", "rest_seconds"):
+        assert campo not in item["properties"], campo
+    for campo in ("sets_count", "reps_target", "rpe_target"):
+        assert campo in item["required"], campo
+    resposta = _amostra(adaptado.schema)
+    devolvido = restore(resposta, original, adaptado.optional_paths)
+    assert _faltando(devolvido, original) == []
+
+
+def test_periodizacao_modo_b_sem_enum_vira_string_livre():
+    from app.periodization.catalog_refs import CATALOG_REF_FIELD
+
+    original, _adaptado = _periodizacao_modo_b(False, None)
+    item = original["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
+    assert item["properties"][CATALOG_REF_FIELD] == {"type": "string"}
+
+
 def test_periodizacao_com_cardio_mantem_obrigatorios_do_dono_e_cabe_nos_limites():
     from app.domain import cardio_prescription as cp
     from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST, CARDIO_ITEMS_FIELD

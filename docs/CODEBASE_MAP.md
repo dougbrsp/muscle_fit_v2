@@ -177,9 +177,10 @@ O cliente único continua sendo `openai_client.call_openai`, `call_openai_struct
   | `insights` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | workout-ai |
   | `meal_parse` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | workout-ai |
   | `workout_summary` | Anthropic | `claude-haiku-5-5` | `low` | OpenAI | workout-ai |
-  | `periodization`, `set_evaluation`, `workouts_analysis`, `exercise_summary`, `workout_plan` | OpenAI | `gpt-5.4-mini` (env `OPENAI_*` da feature) | — | — | — |
+  | `periodization` (prompt v15, `docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md`) | Anthropic | `claude-haiku-5-5` | `low` (raciocínio `disabled`) | OpenAI | plan-generator |
+  | `set_evaluation`, `workouts_analysis`, `exercise_summary`, `workout_plan` | OpenAI | `gpt-5.4-mini` (env `OPENAI_*` da feature) | — | — | — |
 
-  A periodização foi reavaliada em `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md` e segue na OpenAI (latência dos Modelos de 6 dias no Haiku).
+  A periodização foi para o Haiku sem raciocínio (esforço `low`, fallback `openai`) com o prompt `periodization-v15`, em que a IA escolhe a referência do catálogo e o motor (`periodization/catalog_refs.py`) monta o trio (`docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md`).
 
 - **Modelo gravado**: a feature grava o modelo que RESPONDEU (`StructuredResult.model` ou `TextResult.model`), inclusive depois do fallback. A impressão digital do resumo de treino (`workout_summary_ai.input_fingerprint`) usa o nome configurado do modelo (`TextResult.requested_model`/`openai_client.primary_model`).
 - **Cache**: a OpenAI recebe `prompt_cache_key` (grátis) nas features de `PROMPT_CACHE_KEY_FEATURES`; o `cache_control` da Anthropic só vai nas de `llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES` (hoje nenhuma: a escrita custa 1,25× e o volume não chega à leitura).

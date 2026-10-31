@@ -42,6 +42,9 @@ VIRADA_HAIKU = {
     "meal_parse": "medium",
     "exercise_description": "medium",
     "workout_summary": "low",
+    # Prompt periodization-v15 (docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md):
+    # Haiku sem raciocinio, esforco low.
+    "periodization": "low",
 }
 
 
@@ -52,7 +55,7 @@ def _mapa_padrao(tf: str, variavel: str) -> dict[str, str]:
     return dict(re.findall(r'^\s*([a-z_]+)\s*=\s*"([^"]*)"', bloco, re.M))
 
 
-def test_padrao_publicado_liga_so_as_6_da_virada_no_haiku_com_fallback_por_feature():
+def test_padrao_publicado_liga_so_as_da_virada_no_haiku_com_fallback_por_feature():
     tf = _tf("llm_providers.tf")
     assert 'lookup(var.llm_provider_by_feature, f, "openai")' in tf
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")

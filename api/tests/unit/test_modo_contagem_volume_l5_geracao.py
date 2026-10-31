@@ -171,7 +171,8 @@ def test_pedido_com_modo_invalido_e_recusado():
 
 def test_prompt_version_subiu():
     # v13 (M98 C5): cardio no Modelo; sem cardio pedido o texto e o da v12.
-    assert PROMPT_VERSION == "periodization-v14"
+    # v15: referencia do catalogo no lugar do trio (escolha guiada pelo motor).
+    assert PROMPT_VERSION == "periodization-v15"
 
 
 # ---------------------------------------------------------------------------

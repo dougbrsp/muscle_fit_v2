@@ -32,6 +32,7 @@ from ..openai_client import (
     OpenAIGenerationError,
     call_openai_structured,
 )
+from . import catalog_refs
 from .context import build_context, build_prompt, build_prompt_cache_prefix
 from .logs import STATUS_FAILED, STATUS_SUCCEEDED, finish_log
 from .output_schema import ANTHROPIC_OPTIONAL_FIRST, SCHEMA_NAME, output_schema
@@ -86,7 +87,13 @@ logger = logging.getLogger("musclefit.periodization")
 # vetado so na VESPERA do dia de perna (no proprio dia, permitido depois da
 # forca); a faixa do TSB segue interpolada (-25/-35 em `cardio_envelope`).
 # Sem pedido de cardio, prompt e schema continuam os da v12, letra por letra.
-PROMPT_VERSION = "periodization-v14"
+# v15 (31/10/2026, escolha guiada pelo motor): no Modo B o catalogo vai com a
+# referencia curta de cada opcao valida (`catalog_refs`, ex.: "E17") no lugar
+# dos ids, e o item da saida tem so `catalog_ref` (enum por pedido) no lugar
+# do trio; o motor monta o trio antes da validacao (`resolve_output`).
+# `rest_seconds` saiu do schema nos dois modos (regra do motor: null). Prosa
+# do Modo A, do objetivo e do cardio igual a da v14, menos o `rest_seconds`.
+PROMPT_VERSION = "periodization-v15"
 ENGINE_VERSION = "periodization-v8.0.0"
 
 # Orcamento de tempo da chamada a LLM (secao 7.3): MENOR que o timeout da
@@ -189,6 +196,8 @@ def run_periodization_draft(
         request.volume_mode,
     )
 
+    mode_b = request.volume_mode == "equipment_series"
+    ref_index = catalog_refs.build_index(context) if mode_b else {}
     llm_timeout = llm_timeout_for(time.monotonic() - started)
     if llm_timeout < TEXT_RETRY_MIN_ATTEMPT_SECONDS:
         finish_log(generation_log_id, status=STATUS_FAILED, model=model)
@@ -198,7 +207,7 @@ def run_periodization_draft(
         result = call_openai_structured(
             prompt,
             model,
-            output_schema(bool(context.get("cardio"))),
+            output_schema(bool(context.get("cardio")), mode_b, catalog_refs.schema_enum(ref_index)),
             schema_name=SCHEMA_NAME,
             timeout=llm_timeout,
             feature="periodization",
@@ -219,8 +228,21 @@ def run_periodization_draft(
             message = USER_MESSAGE_UNAVAILABLE
         raise PeriodizationError(f"Falha na geracao pela OpenAI: {message}") from exc
 
+    # v15: a referencia escolhida vira o trio ANTES de qualquer validacao (o
+    # validador e o rascunho veem o formato de sempre). Referencia
+    # desconhecida deixa o trio vazio: o item sai como `ITEM_REMOVED` e o
+    # complemento de volume cobre o grupo; a contagem vai ao relatorio.
+    resolved, ref_stats = catalog_refs.resolve_output(result.data, ref_index)
+    if ref_stats.total:
+        logger.info(
+            "periodizacao: referencias do catalogo total=%d resolvidas=%d desconhecidas=%d",
+            ref_stats.total,
+            ref_stats.resolved,
+            len(ref_stats.unknown),
+        )
     with transaction() as conn:
-        draft, report, extras = validate_draft(conn, request, result.data, cardio=context.get("cardio"))
+        draft, report, extras = validate_draft(conn, request, resolved, cardio=context.get("cardio"))
+    report = catalog_refs.attach_to_report(report, ref_stats)
 
     status = STATUS_FAILED if report["errors"] else STATUS_SUCCEEDED
     finish_log(
