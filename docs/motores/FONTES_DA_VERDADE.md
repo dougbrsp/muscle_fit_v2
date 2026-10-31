@@ -6285,7 +6285,7 @@ recebe tokens de escrita no cache). O efeito da virada (modelo gravado, impress�
 
 ## 76. Orçamento de tempo da Periodização e adaptador de schema com prioridade da feature (2026-10-31)
 
-Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização segue na OpenAI.
+Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização segue na OpenAI. (Superado pelo §77: com o prompt v15 a periodização foi para o Haiku sem raciocínio.)
 
 **Donos.**
 
@@ -6304,3 +6304,26 @@ Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização seg
 - O OpenAI responde em 7,5 s (p50) e 19,2 s (máximo, 20 gerações): o teto de 150 s só pesa numa resposta pendurada. Nesse caso o job falha aos ~150 s em vez de ~90 s, ainda como `failed` com mensagem.
 - Se o contexto demorar mais que a folga, a chamada encolhe. Abaixo do mínimo de uma tentativa (`TEXT_RETRY_MIN_ATTEMPT_SECONDS`), o job falha limpo, sem chamar a LLM.
 - A tela espera até 242 s (antes, 150 s), para nunca desistir antes de o backend fechar o job.
+
+## 77. Periodização: a IA escolhe a referência do catálogo e o motor monta o trio (prompt v15, 2026-10-31)
+
+Dono novo `periodization/catalog_refs.py` (linha "Escolha do exercício pela IA" na tabela; guarda `referencia_catalogo_fora_do_dono`, allowlist vazia).
+- No Modo B, cada opção válida da academia vira uma referência curta.
+- A LLM escolhe só a referência, com `enum` por pedido até `MAX_ENUM_REFS`.
+- O motor monta o trio antes de `validate_draft`.
+- Referência desconhecida vira `ITEM_REMOVED`, mais `CATALOG_REF_UNKNOWN` e a contagem em `validation_report.catalog_refs`.
+- `rest_seconds` saiu do schema da LLM (o validador já zerava).
+- Formato gravado e rascunho do frontend iguais (teste de paridade).
+
+**Impacto em produção** (medido, `docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md`):
+- Trio fora do catálogo foi de 18/20 falhas (OpenAI v14) para 0 em 110 gerações.
+- Aprovação: OpenAI de 40% para 87%; Haiku sem raciocínio de 54% para 94%, com p95 26 s e nada cortado.
+- A periodização vai para o Haiku sem raciocínio, esforço `low`, fallback `openai` (`infra/llm_providers.tf`: `LLM_PROVIDER_PERIODIZATION=anthropic`, `ANTHROPIC_MODEL_PERIODIZATION=claude-haiku-5-5`, `ANTHROPIC_EFFORT_PERIODIZATION=low`, `ANTHROPIC_THINKING_PERIODIZATION=disabled`, `LLM_FALLBACK_PROVIDER_PERIODIZATION=openai`; bloco de envs de LLM em 1372 de 1400 bytes do orçamento).
+- Maior catálogo de produção: 107 referências (teto 160 < 250).
+- `template_generation_logs`: 8 gerações, nenhum `EQUIPMENT_REPLACED`.
+- Rollback em dois níveis:
+  - nível 1, só env: apagar `periodization` de `llm_provider_by_feature` e, opcionalmente, de `anthropic_thinking_by_feature`; mantém a v15 na OpenAI, que mediu 87%;
+  - nível 2: reverter o PR, o que devolve a v14 (gitlink `520cdf6`), o schema com o trio e a OpenAI.
+  - Uma falha do Claude já cai na OpenAI pelo fallback por feature.
+- Janela da promoção: o `deploy-producao.yml` roda o `terraform-apply` (envs) ANTES do `backend-deploy` (imagem). Por alguns minutos a `plan-generator` antiga (v14, sem leitor de `ANTHROPIC_THINKING_*`) responde no Haiku com raciocínio. Isso é o braço E' da v14: 87%, mais lento, com risco de corte nos Modelos de 6 dias, e o validador segue consertando. Em produção foram 8 gerações em 6 semanas. Smoke pós-promoção: uma geração no Modo B, conferindo `model` e `validation_report.catalog_refs` em `template_generation_logs`.
+- Plan esperado: só `~ environment` in-place em api-core, plan-generator, cardio-agent e workout-ai. `LLM_PROVIDER_PERIODIZATION` muda de openai para anthropic; entram `ANTHROPIC_MODEL/EFFORT/THINKING_PERIODIZATION` e `LLM_FALLBACK_PROVIDER_PERIODIZATION`. O bloco de LLM fica em 1372 de 1400 bytes do orçamento do teste (≈ 3,1 KB de 4 KB na api-core). A próxima feature ligada precisa colapsar as envs.
