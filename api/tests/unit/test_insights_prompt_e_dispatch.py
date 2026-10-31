@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import insights_ai, insights_core, insights_prompt, prompt_store
+from app import insights_ai, insights_core, insights_prompt, openai_client, prompt_store
 from app.prompt_user_data import user_data_rule
 from tests.support.pacote_inteligencia import overview_sintetico
 from app.intelligence.dashboard.intelligence_package import package_from_overview
@@ -91,22 +91,26 @@ def test_chave_da_api_nao_e_constante_de_modulo():
 
 
 def test_erro_do_cliente_compartilhado_chega_como_erro_de_insight(monkeypatch, pacote):
-    from app import openai_client
-
     def _explode(prompt, model, timeout=90, **_kw):
         raise openai_client.OpenAIGenerationError("OPENAI_API_KEY nao configurada no backend.")
 
-    monkeypatch.setattr(insights_ai, "call_openai", _explode)
+    monkeypatch.setattr(insights_ai, "call_openai_text", _explode)
     with pytest.raises(insights_ai.InsightsGenerationError) as exc:
         insights_ai.generate_insight("pergunta", pacote, "RAG")
     assert "OPENAI_API_KEY" in str(exc.value)
 
 
 def test_modelo_e_lido_a_cada_chamada(monkeypatch, pacote):
-    monkeypatch.setattr(insights_ai, "call_openai", lambda prompt, model, timeout=90, **_kw: "ok")
+    pedidos = []
+
+    def _responde(prompt, model, timeout=90, **_kw):
+        pedidos.append(model)
+        return openai_client.TextResult(text="ok", model=model, requested_model=model)
+
+    monkeypatch.setattr(insights_ai, "call_openai_text", _responde)
     monkeypatch.setenv("OPENAI_INSIGHTS_MODEL", "modelo-de-teste")
     resultado = insights_ai.generate_insight("pergunta", pacote, "RAG")
-    assert resultado["model"] == "modelo-de-teste"
+    assert pedidos == ["modelo-de-teste"] and resultado["model"] == "modelo-de-teste"
     assert resultado["prompt_version"] == insights_prompt.PROMPT_VERSION
 
 
@@ -123,13 +127,13 @@ class _Espiao:
 
     def __call__(self, prompt, model, timeout=90, **_kw):
         self.prompts.append(prompt)
-        return "resposta do modelo"
+        return openai_client.TextResult(text="resposta do modelo", model=model, requested_model=model)
 
 
 @pytest.fixture
 def cenario(monkeypatch):
     espiao = _Espiao()
-    monkeypatch.setattr(insights_ai, "call_openai", espiao)
+    monkeypatch.setattr(insights_ai, "call_openai_text", espiao)
 
     chamadas: dict[str, object] = {}
 

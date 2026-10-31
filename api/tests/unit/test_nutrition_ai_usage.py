@@ -147,7 +147,12 @@ def test_tabela_de_precos_tem_fonte_e_data():
     for modelo, preco in ai.MODEL_PRICES_USD_CENTS_PER_MTOKEN.items():
         assert modelo == modelo.strip().lower()
         assert 0 < preco.cached_input_cents <= preco.input_cents < preco.output_cents, modelo
-        assert set(preco.to_dict()) == {"input_cents", "cached_input_cents", "output_cents"}
+        campos = {"input_cents", "cached_input_cents", "output_cents"}
+        # Escrita no cache: so quem cobra a parte (Anthropic, 1,25x a entrada).
+        if preco.cache_write_cents is not None:
+            assert preco.cache_write_cents == preco.input_cents * ai.ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER, modelo
+            campos.add("cache_write_cents")
+        assert set(preco.to_dict()) == campos
 
 
 @pytest.mark.parametrize(

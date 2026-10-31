@@ -71,7 +71,10 @@ def ambiente(monkeypatch):
 
     def fake_call_openai(prompt, user_id=None, prompt_version=None):
         chamadas.append(prompt)
-        return f"Resumo numero {len(chamadas)}."
+        return openai_client.TextResult(
+            text=f"Resumo numero {len(chamadas)}.", model=workout_ai.OPENAI_MODEL + "-2026-03-17",
+            requested_model=workout_ai.OPENAI_MODEL,
+        )
 
     monkeypatch.setattr(core, "activity_detail", banco.detail)
     monkeypatch.setattr(core, "save_activity_ai_summary", banco.save)
