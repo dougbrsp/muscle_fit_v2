@@ -143,7 +143,40 @@ def test_anyof_com_null_e_enum_com_null():
     assert ("obj",) in adaptado.optional_paths
     adaptado2 = adapt_schema(_nulavel(0) | {"properties": {"e": {"type": ["string", "null"], "enum": ["a", None]}},
                                             "required": ["e"]})
-    assert adaptado2.schema["properties"]["e"]["enum"] == ["a", None]  # dentro do limite: intacto
+    # Enum com lista de tipos vira anyOf (o servidor recusa a lista + enum);
+    # segue sendo UMA uniao e o conjunto de valores e o mesmo.
+    assert adaptado2.schema["properties"]["e"] == {"anyOf": [{"type": "string", "enum": ["a"]}, {"type": "null"}]}
+    assert _counts(adaptado2.schema) == _counts(_nulavel(0) | {"properties": {"e": {"type": ["string", "null"]}},
+                                                              "required": ["e"]})
+
+
+def _tipos_com_enum(no, caminho=()):
+    if isinstance(no, list):
+        return [c for v in no for c in _tipos_com_enum(v, caminho)]
+    if not isinstance(no, dict):
+        return []
+    achados = [caminho] if isinstance(no.get("type"), list) and "enum" in no else []
+    for chave, valor in no.items():
+        achados += _tipos_com_enum(valor, caminho + (chave,))
+    return achados
+
+
+@pytest.mark.parametrize("nome", SCHEMAS_REAIS)
+def test_schema_adaptado_nao_tem_enum_com_lista_de_tipos(nome):
+    """400 do servidor no eval de 2026-10-30 (`basis` do rotulo): "Enum value
+    'g' does not match declared type '['string', 'null']'"."""
+    assert _tipos_com_enum(adapt_schema(SCHEMAS_REAIS[nome]()).schema) == []
+
+
+def test_basis_do_rotulo_vira_anyof_e_volta_igual():
+    original = nutrition_label_ai.output_schema()
+    adaptado = adapt_schema(original)
+    basis = adaptado.schema["properties"]["basis"]
+    assert basis["anyOf"][1] == {"type": "null"}
+    assert None not in basis["anyOf"][0]["enum"]
+    assert set(basis["anyOf"][0]["enum"]) | {None} == set(original["properties"]["basis"]["enum"])
+    resposta = _amostra(adaptado.schema) | {"basis": None}
+    assert restore(resposta, original, adaptado.optional_paths)["basis"] is None
 
 
 def test_palavras_fora_do_subconjunto_saem():

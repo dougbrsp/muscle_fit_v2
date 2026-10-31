@@ -69,6 +69,30 @@ cd api
 PYTHONIOENCODING=utf-8 OPENAI_API_KEY=... python -m pytest -s -m llm_eval tests/eval/test_llm_features_eval.py -k insights > depois.txt 2>&1
 ```
 
+### Braço Anthropic (Claude) e registro de uso
+
+O mesmo eval roda no Claude pelo cliente único (`app.llm_anthropic`), com os mesmos casos e critérios. `LLM_EVAL_PROVIDER`, `LLM_EVAL_MODEL` e `LLM_EVAL_EFFORT` viram, só durante o teste, as envs de produção da feature (`LLM_PROVIDER_<FEATURE>`, `ANTHROPIC_MODEL_<FEATURE>`, `ANTHROPIC_EFFORT_<FEATURE>`; `tests/support/llm_eval_provider.py`). Sem `LLM_EVAL_MODEL`, vale o padrão do PR #11: Haiku 5.5 com esforço `low` em `set_evaluation`, `exercise_summary` e `workout_summary`, e Sonnet 5.5 com esforço `medium` nas demais (`DEFAULT_ANTHROPIC_MODEL`/`DEFAULT_ANTHROPIC_EFFORT`).
+
+```bash
+cd api
+# Claude, modelo padrão de cada feature (texto + rótulo):
+LLM_EVAL_PROVIDER=anthropic ANTHROPIC_API_KEY=... LLM_EVAL_USAGE_JSONL=uso_claude.jsonl PYTHONUTF8=1 \
+  python -m pytest -s -m llm_eval tests/eval/test_llm_features_eval.py tests/eval/test_nutrition_label_eval.py
+# Haiku numa feature que por padrão é Sonnet:
+LLM_EVAL_PROVIDER=anthropic LLM_EVAL_MODEL=claude-haiku-5-5 ANTHROPIC_API_KEY=... LLM_EVAL_USAGE_JSONL=uso_haiku.jsonl \
+  python -m pytest -s -m llm_eval tests/eval/test_llm_features_eval.py -k periodization
+# OpenAI (linha de base), com o mesmo registro:
+OPENAI_API_KEY=... LLM_EVAL_USAGE_JSONL=uso_openai.jsonl python -m pytest -s -m llm_eval tests/eval/test_llm_features_eval.py
+# Resumo por feature e modelo (aprovação, erros, p50/p95, tokens, custo):
+python -m tests.eval.resumo_uso_eval uso_openai.jsonl uso_claude.jsonl uso_haiku.jsonl
+```
+
+- `LLM_EVAL_USAGE_JSONL` (`tests/eval/conftest.py`): grava cada `llm.usage`, `llm.error` e `llm.output_incomplete` do caso, com o `nodeid`, e uma linha `eval.case` com o resultado. Só metadados: nunca prompt, resposta ou chave. Sem a env, nada muda.
+- `resumo_uso_eval` usa o preço do dono (`app.domain.nutrition.ai_usage.estimate_cost_usd`). A escrita no cache da Anthropic entra a preço de entrada comum (a tabela do dono não tem o adicional de escrita), então o custo das features com `cache_control` é um piso.
+- As chaves vêm do Secrets Manager (`musclefit/claude-api-key`, `musclefit/openai-api-key`), lidas direto para a env do processo do pytest; nunca impressas nem gravadas.
+- O tokenizador do Claude conta de 1,35× a 1,8× mais tokens de entrada que o da OpenAI para o mesmo prompt em português (medido no eval de 2026-10-30; menor nos prompts longos de JSON, maior nos curtos em prosa). Estime o custo do braço Claude com esse fator.
+- Resultado comparativo de 2026-10-30: `docs/ia/EVAL_ANTHROPIC_2026-10-30.md`.
+
 Sem `OPENAI_API_KEY`, todo caso dá skip. Os critérios ficam em `api/tests/eval/criterios_llm.py` e são objetivos: categoria aceita ou proibida, primeira linha igual à categoria, JSON de sugestão presente, RPE dentro do teto do par, carga dentro da decisão do motor, número de frases, ausência de markdown, seções `##` obrigatórias, número decimal que não existe na entrada (lido em pt-BR: "26,6", "13.894", "41.112,5"; floats longos citados inteiros também casam), regras duras da periodização (slots, sequência, priorizados, trio do catálogo) e descrição sem séries, reps, carga ou RPE. O eval imprime a resposta de cada caso para revisão humana lado a lado.
 
 ### Custo estimado por rodada completa (50 casos)

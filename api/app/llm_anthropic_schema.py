@@ -18,6 +18,10 @@ a cada campo opcional ausente, na ordem das propriedades do schema original:
 o dicionario que o chamador recebe tem a mesma forma de sempre. Sem perda de
 significado - "ausente" e "null" sao o mesmo valor para os validadores.
 
+`enum` junto de lista de tipos (`{"type": ["string", "null"], "enum": [...]}`,
+o `basis` do rotulo) e recusado pelo servidor; vira `anyOf` com o mesmo
+conjunto de valores (`_split_typed_enum`; eval de 2026-10-30).
+
 Tambem sai do schema o que o subconjunto nao aceita (restricoes numericas e de
 texto, `minItems` acima de 1, `maxItems`): o validador deterministico de cada
 feature continua conferindo os limites do lado de ca. Hoje nenhum schema usa
@@ -126,6 +130,29 @@ def _strip(node: Any, removed: list[str]) -> Any:
     return out
 
 
+def _split_typed_enum(node: Any) -> Any:
+    """`{"type": [T, "null"], "enum": [..., None]}` -> `anyOf` de
+    `{"type": T, "enum": [...]}` e `{"type": "null"}`.
+
+    O servidor da Anthropic recusa `enum` junto de lista de tipos (400
+    "Enum value 'g' does not match declared type '['string', 'null']'", visto
+    no eval de 2026-10-30 com o `basis` do rotulo). A forma `anyOf` e o mesmo
+    conjunto de valores e conta como UMA uniao, igual a lista de tipos."""
+    if isinstance(node, list):
+        return [_split_typed_enum(v) for v in node]
+    if not isinstance(node, dict):
+        return node
+    out = {k: _split_typed_enum(v) for k, v in node.items()}
+    types = out.get("type")
+    if isinstance(types, list) and isinstance(out.get("enum"), list) and "null" in types and "anyOf" not in out:
+        rest = [t for t in types if t != "null"]
+        if len(rest) == 1:
+            enum = out.pop("enum")
+            out.pop("type")
+            out["anyOf"] = [{"type": rest[0], "enum": [v for v in enum if v is not None]}, {"type": "null"}]
+    return out
+
+
 def _walk(node: Any, path: tuple[str, ...], visit) -> None:
     """Percorre propriedades, itens e alternativas de `anyOf`, em ordem."""
     if not isinstance(node, dict):
@@ -160,7 +187,7 @@ def adapt_schema(schema: dict) -> AdaptedSchema:
     """Schema aceito pela Anthropic + o que `restore` precisa para devolver
     a forma original. Levanta `SchemaAdaptationError` se nao couber."""
     removed: list[str] = []
-    adapted = _strip(copy.deepcopy(schema), removed)
+    adapted = _split_typed_enum(_strip(copy.deepcopy(schema), removed))
     unions, optional = _counts(adapted)
     excess = unions - MAX_UNION_PARAMS
     converted: set[tuple[str, ...]] = set()
