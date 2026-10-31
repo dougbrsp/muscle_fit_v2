@@ -27,7 +27,7 @@ import os
 from typing import Any, Mapping
 
 from .insights_prompt import build_insight_prompt, effective_prompt_version, insight_cache_prefix
-from .openai_client import LLM_TIMEOUT_LONG_SECONDS, OpenAIGenerationError, call_openai
+from .openai_client import LLM_TIMEOUT_LONG_SECONDS, OpenAIGenerationError, call_openai_text
 
 OPENAI_MODEL = os.environ.get("OPENAI_INSIGHTS_MODEL", "gpt-5.4-mini")
 
@@ -84,7 +84,7 @@ def generate_insight(
         technique_names=technique_names,
     )
     try:
-        insight_text = call_openai(
+        result = call_openai_text(
             prompt,
             model,
             timeout=LLM_TIMEOUT_LONG_SECONDS,
@@ -96,9 +96,11 @@ def generate_insight(
     except OpenAIGenerationError as exc:
         raise InsightsGenerationError(str(exc)) from exc
 
+    # Modelo que RESPONDEU (Claude, ou a OpenAI depois do fallback), nao o
+    # configurado para a OpenAI.
     return {
-        "model": model,
-        "insight": insight_text,
+        "model": result.model,
+        "insight": result.text,
         "prompt_version": version,
         "package_version": str(package.get("package_version") or ""),
         "prompt_chars": len(prompt),

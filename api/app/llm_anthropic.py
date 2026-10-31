@@ -40,7 +40,6 @@ from .openai_client import (
     LLM_MAX_OUTPUT_TOKENS,
     LLM_OUTPUT_CAP_FLOOR_TOKENS,
     OPENAI_TIMEOUT,
-    PROMPT_CACHE_KEY_FEATURES,
     TEXT_MAX_ATTEMPTS,
     TEXT_RETRY_BACKOFF_SECONDS,
     TEXT_RETRY_MIN_ATTEMPT_SECONDS,
@@ -51,6 +50,7 @@ from .openai_client import (
     ImageInput,
     OpenAIGenerationError,
     StructuredResult,
+    TextResult,
     classify_http_status,
     log_failure,
     user_message_for,
@@ -108,6 +108,22 @@ ANTHROPIC_AUTH: Final[str] = "ANTHROPIC_AUTH"
 ANTHROPIC_NOT_CONFIGURED: Final[str] = "ANTHROPIC_NOT_CONFIGURED"
 ANTHROPIC_CONNECTION: Final[str] = "ANTHROPIC_CONNECTION"
 ANTHROPIC_SCHEMA_UNSUPPORTED: Final[str] = "ANTHROPIC_SCHEMA_UNSUPPORTED"
+
+# Features que mandam `cache_control` (cache de 5 min) no prefixo estavel.
+# Diferente do `prompt_cache_key` da OpenAI (gratis: so agrupa o cache
+# automatico), na Anthropic a ESCRITA no cache custa 1,25x a entrada
+# (`ai_usage.ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER`) e a leitura 0,1x (0,05x no
+# Sonnet 5.5). Por escrita, o cache se paga quando sai >= 0,25/0,9 ~ 0,28
+# leitura do mesmo prefixo dentro de 5 min. Com chegadas independentes de
+# N chamadas/dia, P(outra chamada em 5 min) = 1 - exp(-N*5/1440): chegar a
+# 0,28 exige ~95 chamadas/dia por feature e versao de prompt. O volume de
+# producao de 17 a 30/10 (docs/ia/EVAL_ANTHROPIC_2026-10-30.md) foi de 1
+# chamada em 14 dias para insights, cardio_agent e periodization, e 0 para
+# workouts_analysis: o cache nunca seria lido e cada chamada pagaria 25% a
+# mais no prefixo. Por isso, VAZIO. As features de `PROMPT_CACHE_KEY_FEATURES`
+# continuam passando o `cache_prefix`: religar e por a feature aqui (precisa
+# ser subconjunto de `PROMPT_CACHE_KEY_FEATURES`), com o volume medido.
+ANTHROPIC_CACHE_CONTROL_FEATURES: Final[frozenset[str]] = frozenset()
 
 EVENT_LLM_FALLBACK: Final[str] = "llm.fallback"
 EVENT_LLM_CONFIG_INVALID: Final[str] = "llm.config_invalid"
@@ -282,10 +298,10 @@ def _client(api_key: str):
 def _text_blocks(prompt: str, *, feature: Optional[str], prompt_version: Optional[str],
                  cache_prefix: Optional[str]) -> list[dict]:
     """Prompt em um bloco, ou em dois com `cache_control` no prefixo estavel
-    (instrucoes + RAG) - o equivalente ao `prompt_cache_key` da OpenAI, nas
-    mesmas features. Prefixo que nao bate com o comeco do prompt e ignorado."""
+    (instrucoes + RAG) nas features de `ANTHROPIC_CACHE_CONTROL_FEATURES`.
+    Prefixo que nao bate com o comeco do prompt e ignorado."""
     cacheable = (
-        feature in PROMPT_CACHE_KEY_FEATURES
+        feature in ANTHROPIC_CACHE_CONTROL_FEATURES
         and prompt_version
         and cache_prefix
         and len(cache_prefix) < len(prompt)
@@ -516,8 +532,22 @@ def call_text(
     prompt: str, timeout: float, *, feature: Optional[str], user_id=None,
     prompt_version: Optional[str] = None, cache_prefix: Optional[str] = None,
 ) -> str:
+    return call_text_result(
+        prompt, timeout, feature=feature, user_id=user_id, prompt_version=prompt_version, cache_prefix=cache_prefix
+    ).text
+
+
+def call_text_result(
+    prompt: str, timeout: float, *, feature: Optional[str], user_id=None,
+    prompt_version: Optional[str] = None, cache_prefix: Optional[str] = None,
+) -> TextResult:
+    """Texto + modelo que respondeu (eco do servidor) + modelo pedido."""
     kwargs = build_request(prompt, feature=feature, prompt_version=prompt_version, cache_prefix=cache_prefix)
-    return output_text(send(kwargs, timeout, feature=feature, user_id=user_id, prompt_version=prompt_version))
+    message = send(kwargs, timeout, feature=feature, user_id=user_id, prompt_version=prompt_version)
+    return TextResult(
+        text=output_text(message), model=str(_get(message, "model") or kwargs["model"]),
+        requested_model=kwargs["model"],
+    )
 
 
 def call_structured(
@@ -577,6 +607,7 @@ __all__ = [
     "ANTHROPIC_NOT_CONFIGURED",
     "ANTHROPIC_REFUSAL",
     "ANTHROPIC_SCHEMA_UNSUPPORTED",
+    "ANTHROPIC_CACHE_CONTROL_FEATURES",
     "DEFAULT_ANTHROPIC_EFFORT",
     "DEFAULT_ANTHROPIC_MODEL",
     "DEFAULT_MAX_TOKENS",
@@ -589,6 +620,7 @@ __all__ = [
     "PROVIDER_ANTHROPIC",
     "PROVIDER_OPENAI",
     "anthropic_effort_for",
+    "call_text_result",
     "anthropic_model_for",
     "build_request",
     "call_structured",

@@ -1,7 +1,8 @@
 """Contrato infra x codigo do provedor LLM por feature (infra/llm_providers.tf).
 
 - a lista de features publicada pelo Terraform e a de `llm_anthropic.LLM_FEATURES`;
-- o padrao publicado e `openai` (nada muda sem PR que ligue a feature);
+- so as 6 features da virada vao para o Claude Haiku, com fallback por
+  feature; o resto segue `openai`;
 - o ARN e a leitura do secret `musclefit/claude-api-key` vao SO para as 3
   Lambdas que ja leem a chave da OpenAI; engines, intervals-sync e migrations
   ficam sem;
@@ -30,12 +31,36 @@ def test_features_do_terraform_sao_as_do_codigo():
     assert tuple(re.findall(r'"([a-z_]+)"', bloco)) == llm_anthropic.LLM_FEATURES
 
 
-def test_padrao_publicado_e_openai_sem_modelo_nem_fallback():
+# Virada de 2026-10-31 (decisao do usuario; eval em
+# docs/ia/EVAL_ANTHROPIC_2026-10-30.md): so estas 6, no Haiku, com o esforco
+# vencedor e fallback por feature para a OpenAI.
+VIRADA_HAIKU = {
+    "cardio_agent": "medium",
+    "label_photo": "medium",
+    "insights": "medium",
+    "meal_parse": "medium",
+    "exercise_description": "medium",
+    "workout_summary": "low",
+}
+
+
+def _mapa_padrao(tf: str, variavel: str) -> dict[str, str]:
+    bloco = re.search(rf'variable "{variavel}" \{{.*?default = \{{(.*?)\n  \}}', tf, re.S).group(1)
+    return dict(re.findall(r'^\s*([a-z_]+)\s*=\s*"([^"]*)"', bloco, re.M))
+
+
+def test_padrao_publicado_liga_so_as_6_da_virada_no_haiku_com_fallback_por_feature():
     tf = _tf("llm_providers.tf")
     assert 'lookup(var.llm_provider_by_feature, f, "openai")' in tf
-    for variavel in ("llm_provider_by_feature", "anthropic_model_by_feature", "anthropic_effort_by_feature"):
-        assert re.search(rf'variable "{variavel}" \{{.*?default\s+= \{{\}}', tf, re.S), variavel
+    provedores = _mapa_padrao(tf, "llm_provider_by_feature")
+    assert provedores == {f: "anthropic" for f in VIRADA_HAIKU}
+    assert _mapa_padrao(tf, "anthropic_model_by_feature") == {f: llm_anthropic.ANTHROPIC_MODEL_HAIKU for f in VIRADA_HAIKU}
+    assert _mapa_padrao(tf, "anthropic_effort_by_feature") == VIRADA_HAIKU
+    assert _mapa_padrao(tf, "llm_fallback_provider_by_feature") == {f: "openai" for f in VIRADA_HAIKU}
+    assert set(VIRADA_HAIKU) <= set(llm_anthropic.LLM_FEATURES)
+    # As que seguem na OpenAI nao recebem fallback: o global continua vazio.
     assert re.search(r'variable "llm_fallback_provider" \{.*?default\s+= ""', tf, re.S)
+    assert '"LLM_FALLBACK_PROVIDER_${upper(f)}"' in tf
     assert llm_anthropic.DEFAULT_PROVIDER == "openai"
 
 

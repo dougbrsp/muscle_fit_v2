@@ -1,8 +1,8 @@
 """Cada feature real ligada na Anthropic (rede falsa): o MESMO prompt que iria
 para a OpenAI vai para o Claude, o schema real passa pelo adaptador e a
-resposta volta pelo caminho de sempre da feature. Nas features com
-`prompt_cache_key`, o prefixo estavel (instrucoes + RAG) vai num bloco com
-`cache_control`. Nenhuma chamada paga."""
+resposta volta pelo caminho de sempre da feature. Nas features de
+`ANTHROPIC_CACHE_CONTROL_FEATURES` (hoje nenhuma), o prefixo estavel
+(instrucoes + RAG) vai num bloco com `cache_control`. Nenhuma chamada paga."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def test_feature_na_anthropic_recebe_o_mesmo_prompt(monkeypatch, feature):
     assert pedido["model"] == llm_anthropic.DEFAULT_ANTHROPIC_MODEL[feature]
     if "text" in corpo_openai:  # estruturada na OpenAI -> estruturada no Claude
         assert pedido["output_config"]["format"]["type"] == "json_schema"
-    if feature in openai_client.PROMPT_CACHE_KEY_FEATURES:
+    if feature in llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES:
         prefixo, resto = blocos
         assert prefixo["cache_control"] == {"type": "ephemeral"} and "cache_control" not in resto
         # O RAG (marcador fixo no snapshot) esta no prefixo; os dados, nao.

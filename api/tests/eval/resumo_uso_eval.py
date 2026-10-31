@@ -5,11 +5,9 @@ provedor, latencia p50/p95, tokens e custo.
     cd api && python -m tests.eval.resumo_uso_eval uso_openai.jsonl uso_claude.jsonl
 
 O custo usa a tabela de precos do dono (`app.domain.nutrition.ai_usage`,
-`estimate_cost_usd`: entrada, entrada lida do cache e saida). A escrita no
-cache da Anthropic (`cache_write_tokens`, cobrada a mais que a entrada comum)
-nao esta na tabela do dono: o resumo a soma ao preco de entrada e mostra os
-tokens escritos a parte, para quem ler saber que o custo dessas linhas e um
-piso. Nao chama a rede.
+`estimate_cost_usd`: entrada, entrada lida do cache, entrada escrita no cache
+da Anthropic (`cache_write_tokens`, 1,25x a entrada pela tabela do dono) e
+saida). Nao chama a rede.
 """
 
 from __future__ import annotations
@@ -70,7 +68,8 @@ def _caso(linha: dict[str, Any]) -> tuple[str, str]:
 
 def custo_da_chamada(evento: dict[str, Any]) -> Optional[Decimal]:
     custo = estimate_cost_usd(
-        evento.get("model"), evento.get("input_tokens"), evento.get("output_tokens"), evento.get("cached_tokens")
+        evento.get("model"), evento.get("input_tokens"), evento.get("output_tokens"), evento.get("cached_tokens"),
+        evento.get("cache_write_tokens"),
     )
     return custo
 

@@ -41,8 +41,11 @@ tabela, a fonte e a data juntos.
 Modelos Claude (Anthropic, fonte em `ANTHROPIC_PRICE_SOURCE_URL`): a mesma
 tabela, mais a faixa de prompt longo do Haiku 5.5 (`MODEL_LONG_PROMPT_PRICES`:
 prompt ACIMA do limiar paga outra tabela; o "prompt" conta toda a entrada,
-inclusive cache). Escrita de cache (1,25x na Anthropic) entra pelo preço cheio
-da entrada: o custo do Claude com cache é uma estimativa por baixo. O dono do
+inclusive cache). A escrita no cache de 5 min da Anthropic paga
+`ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER` × a entrada (`ModelPrice.cache_write_cents`)
+quando quem chama informa os tokens escritos (`cache_write_tokens_in`, o
+`cache_write_tokens` do `llm.usage`); sem eles, entram pelo preço cheio da
+entrada (estimativa por baixo). A OpenAI não cobra a escrita à parte. O dono do
 preço por modelo de TODA chamada de texto é este módulo (mapa §74);
 `periodization.logs` consome `estimate_cost_usd`.
 
@@ -130,29 +133,49 @@ COST_USD_DECIMAL_PLACES: Final[int] = 6
 
 @dataclass(frozen=True)
 class ModelPrice:
-    """Centavos de dólar por 1 milhão de tokens."""
+    """Centavos de dólar por 1 milhão de tokens. `cache_write_cents`: preço do
+    token ESCRITO no cache (Anthropic); None = o provedor não cobra a escrita à
+    parte (OpenAI) e ela paga o preço da entrada."""
 
     input_cents: Decimal
     cached_input_cents: Decimal
     output_cents: Decimal
+    cache_write_cents: Optional[Decimal] = None
 
     def to_dict(self) -> dict[str, str]:
-        return {
+        dados = {
             "input_cents": str(self.input_cents),
             "cached_input_cents": str(self.cached_input_cents),
             "output_cents": str(self.output_cents),
         }
+        if self.cache_write_cents is not None:
+            dados["cache_write_cents"] = str(self.cache_write_cents)
+        return dados
 
 
-# Anthropic (Claude): página oficial de preços consultada em 2026-10-30.
-# claude-sonnet-5-5 US$ 2 / 0,10 (acerto de cache, 0,05x da entrada) / 10;
-# claude-haiku-5-5 US$ 0,10 / 0,01 / 0,50 para prompt de até 100.000 tokens e
-# US$ 0,50 / 0,05 / 2,50 acima disso — por 1 milhão de tokens de entrada /
-# entrada lida do cache / saída. Os tokens de raciocínio (thinking) vêm somados
-# em `output_tokens`.
+# Anthropic (Claude): página oficial de preços reconferida em 2026-10-31
+# (tabela "Model pricing" e seção "Prompt caching").
+# claude-sonnet-5-5 US$ 2 / 2,50 (escrita 5 min) / 0,10 (acerto de cache: "Cache
+# hits and refreshes on Claude Opus 5.5 and Claude Sonnet 5.5 are priced at
+# 0.05x the base input price") / 10; claude-haiku-5-5 US$ 0,10 / 0,125 / 0,01 /
+# 0,50 para prompt de até 100.000 tokens e US$ 0,50 / 0,625 / 0,05 / 2,50 acima
+# disso — por 1 milhão de tokens de entrada / escrita no cache de 5 min / entrada
+# lida do cache / saída. A escrita de 5 min é "1.25x base input price" para
+# todos os modelos. Os tokens de raciocínio (thinking) vêm somados em
+# `output_tokens`.
 ANTHROPIC_PRICE_SOURCE_URL: Final[str] = "https://platform.claude.com/docs/en/about-claude/pricing"
-ANTHROPIC_PRICES_CHECKED_ON: Final[str] = "2026-10-30"
+ANTHROPIC_PRICES_CHECKED_ON: Final[str] = "2026-10-31"
 HAIKU_LONG_PROMPT_THRESHOLD_TOKENS: Final[int] = 100_000
+# Escrita no cache de 5 min (o `cache_control: ephemeral` do cliente, sem `ttl`).
+ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER: Final[Decimal] = Decimal("1.25")
+
+
+def _claude_price(input_cents: Decimal, cached_input_cents: Decimal, output_cents: Decimal) -> ModelPrice:
+    return ModelPrice(
+        input_cents, cached_input_cents, output_cents,
+        cache_write_cents=input_cents * ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER,
+    )
+
 
 MODEL_PRICES_USD_CENTS_PER_MTOKEN: Final[Mapping[str, ModelPrice]] = MappingProxyType(
     {
@@ -160,8 +183,8 @@ MODEL_PRICES_USD_CENTS_PER_MTOKEN: Final[Mapping[str, ModelPrice]] = MappingProx
         "gpt-5.4-nano": ModelPrice(Decimal(20), Decimal(2), Decimal(125)),
         "gpt-5.4": ModelPrice(Decimal(250), Decimal(25), Decimal(1500)),
         "gpt-4o-mini": ModelPrice(Decimal(15), Decimal("7.5"), Decimal(60)),
-        "claude-sonnet-5-5": ModelPrice(Decimal(200), Decimal(10), Decimal(1000)),
-        "claude-haiku-5-5": ModelPrice(Decimal(10), Decimal(1), Decimal(50)),
+        "claude-sonnet-5-5": _claude_price(Decimal(200), Decimal(10), Decimal(1000)),
+        "claude-haiku-5-5": _claude_price(Decimal(10), Decimal(1), Decimal(50)),
     }
 )
 
@@ -170,7 +193,7 @@ MODEL_LONG_PROMPT_PRICES: Final[Mapping[str, tuple[int, ModelPrice]]] = MappingP
     {
         "claude-haiku-5-5": (
             HAIKU_LONG_PROMPT_THRESHOLD_TOKENS,
-            ModelPrice(Decimal(50), Decimal(5), Decimal(250)),
+            _claude_price(Decimal(50), Decimal(5), Decimal(250)),
         ),
     }
 )
@@ -315,18 +338,25 @@ def estimate_cost_usd(
     tokens_in: Any,
     tokens_out: Any,
     cached_tokens_in: Any = None,
+    cache_write_tokens_in: Any = None,
 ) -> Optional[Decimal]:
     """Custo em USD de uma chamada; None se o modelo não tem preço ou falta um dos
     tokens. `cached_tokens_in` (parte de `tokens_in` servida do cache) é opcional:
-    sem ele o custo é o teto (entrada toda a preço cheio)."""
+    sem ele o custo é o teto (entrada toda a preço cheio).
+    `cache_write_tokens_in` (parte de `tokens_in` ESCRITA no cache, Anthropic) é
+    opcional: paga `cache_write_cents` quando o modelo cobra a escrita à parte;
+    sem ele (ou num modelo sem esse preço), paga o preço da entrada."""
     entrada, saida = count_or_none(tokens_in), count_or_none(tokens_out)
     preco = price_for_model(model, entrada)
     if preco is None or entrada is None or saida is None:
         return None
     em_cache = min(count_or_none(cached_tokens_in) or 0, entrada)
+    escrita = min(count_or_none(cache_write_tokens_in) or 0, entrada - em_cache)
+    preco_escrita = preco.input_cents if preco.cache_write_cents is None else preco.cache_write_cents
     centavos = (
-        (entrada - em_cache) * preco.input_cents
+        (entrada - em_cache - escrita) * preco.input_cents
         + em_cache * preco.cached_input_cents
+        + escrita * preco_escrita
         + saida * preco.output_cents
     )
     usd = centavos / Decimal(TOKENS_PER_PRICE_UNIT * CENTS_PER_USD)
@@ -334,6 +364,7 @@ def estimate_cost_usd(
 
 
 __all__ = [
+    "ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER",
     "ANTHROPIC_PRICES_CHECKED_ON",
     "ANTHROPIC_PRICE_SOURCE_URL",
     "CENTS_PER_USD",

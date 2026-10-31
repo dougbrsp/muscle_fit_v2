@@ -524,6 +524,22 @@ class StructuredResult:
     tokens_out: Optional[int]
 
 
+@dataclass(frozen=True)
+class TextResult:
+    """Saida de `call_openai_text`: o texto + QUEM respondeu, para a feature
+    gravar o modelo realmente usado (inclusive depois do fallback).
+
+    `model`: o que o provedor devolveu em `model` (pode ser snapshot datado),
+    senao o pedido - o mesmo criterio do `StructuredResult.model`.
+    `requested_model`: o nome CONFIGURADO pedido ao provedor que respondeu
+    (estavel, sem sufixo de data) - serve de chave (ex.: impressao digital do
+    resumo de treino), onde o eco datado mudaria a cada snapshot."""
+
+    text: str
+    model: str
+    requested_model: str
+
+
 # ---------------------------------------------------------------------------
 # Provedor por feature (Anthropic opcional; implementacao em `llm_anthropic`)
 # ---------------------------------------------------------------------------
@@ -605,27 +621,59 @@ def call_openai(
     = `anthropic` a chamada vai para `llm_anthropic` (ver `_dispatch`).
     """
 
-    def _openai(t: float) -> str:
-        return _output_text(
-            _post(
-                {"model": model, "input": prompt},
-                t,
-                feature=feature,
-                user_id=user_id,
-                prompt_version=prompt_version,
-            )
-        )
+    return call_openai_text(
+        prompt, model, timeout, feature=feature, user_id=user_id, prompt_version=prompt_version,
+        cache_prefix=cache_prefix,
+    ).text
 
-    def _anthropic(t: float) -> str:
+
+def call_openai_text(
+    prompt: str,
+    model: str,
+    timeout: float = 90,
+    *,
+    feature: Optional[str] = None,
+    user_id=None,
+    prompt_version: Optional[str] = None,
+    cache_prefix: Optional[str] = None,
+) -> TextResult:
+    """`call_openai` que devolve tambem o modelo que respondeu (`TextResult`).
+    Use quando a feature grava o nome do modelo: com o provedor por feature e
+    o fallback, o `model` passado aqui (o da OpenAI) nao e necessariamente o
+    que respondeu."""
+
+    def _openai(t: float) -> TextResult:
+        data = _post(
+            {"model": model, "input": prompt},
+            t,
+            feature=feature,
+            user_id=user_id,
+            prompt_version=prompt_version,
+        )
+        return TextResult(text=_output_text(data), model=str(data.get("model") or model), requested_model=model)
+
+    def _anthropic(t: float) -> TextResult:
         from . import llm_anthropic
 
-        return llm_anthropic.call_text(
+        return llm_anthropic.call_text_result(
             prompt, t, feature=feature, user_id=user_id, prompt_version=prompt_version, cache_prefix=cache_prefix
         )
 
     return _dispatch(
         feature, timeout, user_id=user_id, prompt_version=prompt_version, openai_call=_openai, anthropic_call=_anthropic
     )
+
+
+def primary_model(feature: Optional[str], openai_model: str) -> str:
+    """Modelo CONFIGURADO do provedor primario da feature: o Claude da feature
+    quando `LLM_PROVIDER_<FEATURE>=anthropic`, senao `openai_model`. E o
+    `TextResult.requested_model` de uma chamada sem fallback - para comparar
+    uma chave gravada antes de chamar (dedupe do resumo de treino)."""
+    from . import llm_anthropic
+
+    if llm_anthropic.provider_for(feature) == llm_anthropic.PROVIDER_ANTHROPIC:
+        return llm_anthropic.anthropic_model_for(feature)
+    return openai_model
 
 
 def call_openai_structured(

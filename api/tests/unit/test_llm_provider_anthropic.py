@@ -230,7 +230,22 @@ def test_visao_vai_em_bloco_image_base64(monkeypatch):
     assert bloco_txt == {"type": "text", "text": "leia"}
 
 
-def test_cache_control_no_prefixo_estavel_so_nas_features_com_cache_key(monkeypatch):
+def test_cache_control_desligado_por_padrao_em_toda_feature(monkeypatch):
+    """Volume de producao baixo demais para o cache de 5 min ser lido: a
+    escrita (1,25x) so custaria mais (ver `ANTHROPIC_CACHE_CONTROL_FEATURES`)."""
+    assert llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES == frozenset()
+    assert llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES <= openai_client.PROMPT_CACHE_KEY_FEATURES
+    for feature in sorted(openai_client.PROMPT_CACHE_KEY_FEATURES):
+        monkeypatch.setenv(llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, feature), "anthropic")
+    cliente = _anthropic_falsa(monkeypatch, *[_mensagem() for _ in openai_client.PROMPT_CACHE_KEY_FEATURES])
+    for feature in sorted(openai_client.PROMPT_CACHE_KEY_FEATURES):
+        openai_client.call_openai("REGRAS+RAG|dados", "m", feature=feature, prompt_version="v1", cache_prefix="REGRAS+RAG")
+    for pedido in cliente.pedidos:
+        assert pedido["messages"][0]["content"] == [{"type": "text", "text": "REGRAS+RAG|dados"}]
+
+
+def test_cache_control_no_prefixo_estavel_quando_a_feature_liga_o_cache(monkeypatch):
+    monkeypatch.setattr(llm_anthropic, "ANTHROPIC_CACHE_CONTROL_FEATURES", frozenset({"insights"}))
     monkeypatch.setenv("LLM_PROVIDER_INSIGHTS", "anthropic")
     monkeypatch.setenv("LLM_PROVIDER_EXERCISE_SUMMARY", "anthropic")
     cliente = _anthropic_falsa(monkeypatch, _mensagem(), _mensagem(), _mensagem())

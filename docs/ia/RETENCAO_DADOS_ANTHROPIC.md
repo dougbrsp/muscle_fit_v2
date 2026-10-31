@@ -1,9 +1,23 @@
 # Dados pessoais enviados à Anthropic (Claude): minimização e retenção
 
-Data: 2026-10-30. Espelho de [`RETENCAO_DADOS_OPENAI.md`](RETENCAO_DADOS_OPENAI.md) para o provedor Anthropic,
-que entra como opção **por feature** no cliente único (`api/app/openai_client.py` → `api/app/llm_anthropic.py`).
-Com os padrões de hoje, **nenhuma** feature chama a Anthropic: toda feature continua na OpenAI até um PR ligar
-`LLM_PROVIDER_<FEATURE>=anthropic` (ver `infra/llm_providers.tf`). Os cards ilustrados (imagem) ficam na OpenAI.
+Data: 2026-10-30, revisado em 2026-10-31 (virada). Espelho de [`RETENCAO_DADOS_OPENAI.md`](RETENCAO_DADOS_OPENAI.md)
+para o provedor Anthropic, que entra **por feature** no cliente único (`api/app/openai_client.py` →
+`api/app/llm_anthropic.py`).
+
+**Desde a virada de 2026-10-31** (`infra/llm_providers.tf`), seis features mandam dados à Anthropic, todas no
+`claude-haiku-5-5` e com fallback para a OpenAI (que então recebe o mesmo prompt, como antes):
+
+| Feature | O que vai para a Anthropic (inventário igual ao da política da OpenAI) |
+|---|---|
+| `cardio_agent` | contexto compacto de cardio (plano, recuperação, wellness do Intervals, cardio realizado) + RAG |
+| `label_photo` | **foto** do rótulo nutricional (bloco `image` base64) + instruções |
+| `insights` | pacote de visão geral montado pelo servidor + pergunta do usuário + RAG |
+| `meal_parse` | texto livre da refeição digitado pelo usuário (delimitado como dado) |
+| `exercise_description` | dados do exercício do catálogo (nome, equipamento, músculos) |
+| `workout_summary` | séries, notas e decisões do motor de um treino (delimitados como dado) |
+
+`periodization`, `set_evaluation`, `workouts_analysis`, `exercise_summary` e `workout_plan` seguem só na OpenAI. Os
+cards ilustrados (imagem) também.
 
 ## Regra
 
@@ -24,8 +38,10 @@ texto que iria para a OpenAI; teste `api/tests/unit/test_llm_provider_anthropic_
 
 Fonte principal: Privacy Center da Anthropic, artigo "How long do you store my data?"
 (<https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-data>, última atualização 2026-07-01,
-consultado em 2026-10-30). Uso para treino: Commercial Terms of Service
-(<https://www.anthropic.com/legal/commercial-terms>, consultado em 2026-10-30).
+consultado em 2026-10-30 e de novo em 2026-10-31). Uso para treino: Commercial Terms of Service
+(<https://www.anthropic.com/legal/commercial-terms>, consultado em 2026-10-30). "API and data retention"
+(<https://platform.claude.com/docs/en/manage-claude/api-and-data-retention>) e "Data residency"
+(<https://platform.claude.com/docs/en/manage-claude/data-residency>), consultados em 2026-10-31.
 
 | Onde | O quê | Quanto tempo | Fonte |
 |---|---|---|---|
@@ -33,18 +49,25 @@ consultado em 2026-10-30). Uso para treino: Commercial Terms of Service
 | Conversa marcada pelos sistemas de *trust and safety* | Entradas e saídas | Até 2 anos | Privacy Center |
 | Idem | Notas de classificação de *trust and safety* | Até 7 anos | Privacy Center |
 | Exigência legal ou aplicação da Usage Policy | Entradas e saídas | Pelo tempo necessário | Privacy Center |
-| Retenção zero (ZDR) | — | Só por acordo com a Anthropic. **Não temos acordo** | Privacy Center |
-| "Covered Models" | — | A Anthropic exige retenção limitada e revisão como parte do trabalho de segurança. **A confirmar** se `claude-sonnet-5-5` e `claude-haiku-5-5` são "Covered Models" e qual o prazo | Privacy Center |
+| Retenção zero (ZDR) | — | Só por acordo com a Anthropic. **Não temos acordo** (a confirmar na Console) | Privacy Center |
+| "Covered Models" | — | Exigem 30 dias de retenção. São só "Claude Fable 5.1, Claude Mythos 5.1, Claude Fable 5, and Claude Mythos 5": `claude-haiku-5-5` e `claude-sonnet-5-5` **não** são | API and data retention |
+| Schema da saída estruturada | Só o JSON schema (sem prompt nem resposta) | "Only the JSON schema is cached, for up to 24 hours since last use". Nossos schemas não levam dado de usuário | API and data retention |
+| Cache de prompt | Representações KV e hashes, em memória | "Your prompts and Claude's outputs are not stored" (o cliente não manda mais `cache_control`, ver `llm_anthropic.ANTHROPIC_CACHE_CONTROL_FEATURES`) | API and data retention |
 | Treino de modelos | Conteúdo enviado pela API | "Anthropic may not train models on Customer Content from Services" | Commercial Terms |
-| Região de processamento | — | **A confirmar.** O cliente não manda `inference_geo`; onde a inferência roda fica no padrão da conta | — |
+| Região de processamento | Inferência | O cliente não manda `inference_geo`: vale o `default_inference_geo` do workspace; sem ele, `"global"` ("Inference may run in any available geography"). Só existem `"global"` e `"us"`; não há região no Brasil | Data residency |
+| Região de armazenamento | Dados em repouso | "Currently, `"us"` is the only available workspace geo" | Data residency |
 
 Do nosso lado, nada muda: DynamoDB `async_jobs` (TTL de 6 h), `cardio_recommendations.context_snapshot`,
 `template_generation_logs.request_json` e `activities.ai_summary` seguem a tabela da política da OpenAI.
 
-## Pendências
+## Pendências (checklist do usuário; não bloqueiam o PR)
 
-- Confirmar na Console da Anthropic (organização do `musclefit/claude-api-key`) o prazo de retenção vigente e se
-  algum dos modelos usados é "Covered Model", e citar a Anthropic como suboperador na política de privacidade
-  **antes** do PR que liga a primeira feature.
-- Avaliar se algum dado de saúde do inventário deve sair do prompt antes da virada de cada feature (mesmo critério
-  do IA-17: só com o eval pago da feature).
+- [ ] Console da Anthropic (organização/workspace do `musclefit/claude-api-key`): conferir o prazo de retenção
+      vigente e se há acordo de ZDR (hoje presumimos que **não**: 30 dias).
+- [ ] Console: conferir `default_inference_geo`/`allowed_inference_geos` do workspace. Sem configuração, a inferência
+      é `"global"`; `"us"` custa 1,1× (página de preços).
+- [ ] Política de privacidade: o app não tem página publicada que liste suboperadores (nada em `frontend/src`). Ao
+      publicar uma, citar OpenAI **e** Anthropic (transferência internacional para os EUA, LGPD art. 33) — texto
+      jurídico a revisar pelo usuário.
+- [ ] Avaliar se algum dado de saúde do inventário deve sair do prompt (mesmo critério do IA-17: só com o eval pago
+      da feature).

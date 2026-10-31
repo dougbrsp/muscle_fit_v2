@@ -10,7 +10,7 @@ from . import prompt_store
 from .domain import cardio_envelope, cardio_policy, cardio_prescription
 from .domain.hr_zones import HR_ZONE_MAX, HR_ZONE_MIN, zone_label
 from .intelligence.cardio_context_v3 import CardioAgentContextV3Service
-from .openai_client import OpenAIGenerationError
+from .openai_client import OpenAIGenerationError, StructuredResult
 from .openai_client import call_openai_structured as _call_openai_structured
 from .prompt_user_data import (
     USER_NAME_MAX_CHARS,
@@ -170,9 +170,11 @@ def build_prompt(context: dict[str, Any], rag_text: str = "") -> str:
     return system_prompt() + rag + DATA_MARKER + dados
 
 
-def call_openai(prompt: str, user_id: int | None = None) -> dict[str, Any]:
+def call_openai(prompt: str, user_id: int | None = None) -> StructuredResult:
     """Saida estruturada (schema strict); qualquer falha vira
-    `CardioAgentGenerationError` (subclasse de `OpenAIGenerationError`)."""
+    `CardioAgentGenerationError` (subclasse de `OpenAIGenerationError`).
+    Devolve o `StructuredResult` inteiro: `.data` e o JSON e `.model` o modelo
+    que RESPONDEU (Claude, ou a OpenAI depois do fallback)."""
     try:
         result = _call_openai_structured(
             prompt,
@@ -187,7 +189,7 @@ def call_openai(prompt: str, user_id: int | None = None) -> dict[str, Any]:
         )
     except OpenAIGenerationError as exc:
         raise CardioAgentGenerationError(str(exc)) from exc
-    return result.data
+    return result
 
 
 def build_envelope(context: dict[str, Any]) -> cardio_envelope.Envelope:
@@ -243,14 +245,14 @@ def generate_cardio_recommendation(
     context["envelope"] = envelope.to_dict()
     rag_text = load_rag_text()
     prompt = build_prompt(context, rag_text)
-    data = call_openai(prompt, user_id)
-    recommendation = contract.process_llm_output(data, envelope, context, prompt_version=PROMPT_VERSION)
+    result = call_openai(prompt, user_id)
+    recommendation = contract.process_llm_output(result.data, envelope, context, prompt_version=PROMPT_VERSION)
     # RAG vazio (S3/arquivo indisponível) não derruba a geração, mas fica
     # registrado na linha para o smoke e para a auditoria.
     recommendation["rag_chars"] = len(rag_text or "")
 
     return {
-        "model": OPENAI_MODEL,
+        "model": result.model,
         "prompt_version": PROMPT_VERSION,
         "recommendation_json": recommendation,
         "recommendation_markdown": contract.render_markdown(recommendation),
