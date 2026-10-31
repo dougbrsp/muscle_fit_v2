@@ -46,6 +46,8 @@ VIRADA_HAIKU = {
 
 
 def _mapa_padrao(tf: str, variavel: str) -> dict[str, str]:
+    if re.search(rf'variable "{variavel}" \{{[^}}]*?default\s*=\s*\{{\}}', tf):
+        return {}
     bloco = re.search(rf'variable "{variavel}" \{{.*?default = \{{(.*?)\n  \}}', tf, re.S).group(1)
     return dict(re.findall(r'^\s*([a-z_]+)\s*=\s*"([^"]*)"', bloco, re.M))
 
@@ -109,6 +111,7 @@ def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     for variavel, prefixo in (
         ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
         ("anthropic_effort_by_feature", "ANTHROPIC_EFFORT_"),
+        ("anthropic_thinking_by_feature", "ANTHROPIC_THINKING_"),
         ("llm_fallback_provider_by_feature", "LLM_FALLBACK_PROVIDER_"),
     ):
         envs.update({f"{prefixo}{f.upper()}": v for f, v in _mapa_padrao(tf, variavel).items()})
@@ -116,3 +119,16 @@ def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     tamanho = sum(len(k) + len(v) for k, v in envs.items())
     assert tamanho <= LLM_ENV_BUDGET_BYTES, tamanho
     assert API_CORE_ENV_BYTES_SEM_LLM + LLM_ENV_BUDGET_BYTES < LAMBDA_ENV_LIMIT_BYTES
+
+
+def test_raciocinio_publicado_so_com_valores_e_esforcos_que_a_api_aceita():
+    tf = _tf("llm_providers.tf")
+    assert '"ANTHROPIC_THINKING_${upper(f)}"' in tf
+    raciocinio = _mapa_padrao(tf, "anthropic_thinking_by_feature")
+    esforcos = _mapa_padrao(tf, "anthropic_effort_by_feature")
+    assert set(raciocinio) <= set(llm_anthropic.LLM_FEATURES)
+    for feature, modo in raciocinio.items():
+        assert modo in llm_anthropic.THINKING_MODES, feature
+        if modo == llm_anthropic.THINKING_DISABLED:
+            esforco = esforcos.get(feature, llm_anthropic.DEFAULT_ANTHROPIC_EFFORT[feature])
+            assert esforco in llm_anthropic.EFFORTS_WITHOUT_THINKING, feature

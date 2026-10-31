@@ -23,7 +23,7 @@ from app.openai_client import (
     OpenAIGenerationError,
 )
 
-_ENVS_NOVAS = ("LLM_PROVIDER_", "ANTHROPIC_MODEL_", "ANTHROPIC_EFFORT_", "LLM_FALLBACK_PROVIDER")
+_ENVS_NOVAS = ("LLM_PROVIDER_", "ANTHROPIC_MODEL_", "ANTHROPIC_EFFORT_", "ANTHROPIC_THINKING_", "LLM_FALLBACK_PROVIDER")
 
 
 @pytest.fixture(autouse=True)

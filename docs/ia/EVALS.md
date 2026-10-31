@@ -71,7 +71,7 @@ PYTHONIOENCODING=utf-8 OPENAI_API_KEY=... python -m pytest -s -m llm_eval tests/
 
 ### Braço Anthropic (Claude) e registro de uso
 
-O mesmo eval roda no Claude pelo cliente único (`app.llm_anthropic`), com os mesmos casos e critérios. `LLM_EVAL_PROVIDER`, `LLM_EVAL_MODEL` e `LLM_EVAL_EFFORT` viram, só durante o teste, as envs de produção da feature (`LLM_PROVIDER_<FEATURE>`, `ANTHROPIC_MODEL_<FEATURE>`, `ANTHROPIC_EFFORT_<FEATURE>`; `tests/support/llm_eval_provider.py`). Sem `LLM_EVAL_MODEL`, vale o padrão do PR #11: Haiku 5.5 com esforço `low` em `set_evaluation`, `exercise_summary` e `workout_summary`, e Sonnet 5.5 com esforço `medium` nas demais (`DEFAULT_ANTHROPIC_MODEL`/`DEFAULT_ANTHROPIC_EFFORT`).
+O mesmo eval roda no Claude pelo cliente único (`app.llm_anthropic`), com os mesmos casos e critérios. `LLM_EVAL_PROVIDER`, `LLM_EVAL_MODEL`, `LLM_EVAL_EFFORT` e `LLM_EVAL_THINKING` (`adaptive` ou `disabled`) viram, só durante o teste, as envs de produção da feature (`LLM_PROVIDER_<FEATURE>`, `ANTHROPIC_MODEL_<FEATURE>`, `ANTHROPIC_EFFORT_<FEATURE>`, `ANTHROPIC_THINKING_<FEATURE>`; `tests/support/llm_eval_provider.py`). Sem `LLM_EVAL_MODEL`, vale o padrão do PR #11: Haiku 5.5 com esforço `low` em `set_evaluation`, `exercise_summary` e `workout_summary`, e Sonnet 5.5 com esforço `medium` nas demais (`DEFAULT_ANTHROPIC_MODEL`/`DEFAULT_ANTHROPIC_EFFORT`).
 
 ```bash
 cd api
