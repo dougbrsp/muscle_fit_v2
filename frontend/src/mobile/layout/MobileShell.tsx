@@ -82,7 +82,7 @@ export default function MobileShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <span style={{ flex: 1 }} />
-          <Link href="/perfil" aria-label={displayName ? `Perfil de ${displayName}` : 'Perfil'}>
+          <Link href="/perfil" style={{ textDecoration: "none" }} aria-label={displayName ? `Perfil de ${displayName}` : 'Perfil'}>
             <Avatar radius="xl" size={32} color="brand">
               {displayName ? displayName.charAt(0).toUpperCase() : <IconUser size={16} />}
             </Avatar>
