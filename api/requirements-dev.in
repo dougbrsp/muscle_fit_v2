@@ -5,6 +5,6 @@
 #   CI/Linux:      pip install --require-hashes -r requirements-dev.txt
 #   host Windows:  pip install -r requirements-dev.in  (o lock e Linux/3.12)
 -r requirements.in
-pytest==9.1.1
+pytest==9.2.0
 # fastapi.testclient.TestClient (testes HTTP dos endpoints legados).
 httpx==0.28.1
