@@ -1,10 +1,10 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
 
 /**
- * Sonda (nao e gate): mede overflow horizontal de cada rota autenticada no
- * shell mobile e guarda um print. Saida: test-results/mobile-layout/probe.json
- * Ligada por PROBE=1.
+ * A3: toda rota autenticada do menu e utilizavel no shell mobile em 320 px:
+ * o shell monta e a PAGINA nao rola na horizontal (tabelas largas rolam dentro
+ * do proprio container). Tambem grava um print e um JSON (test-results/mobile-layout/routes-320.json).
  */
 const ROUTES = [
   '/dashboard/', '/dashboard/treinos/', '/dashboard/progressao/', '/dashboard/recovery/', '/dashboard/musculos/',
@@ -15,12 +15,10 @@ const ROUTES = [
   '/regras-carga/', '/metas-ativacao/', '/modelos-treino/', '/usuarios/', '/perfil/',
 ];
 
-test.skip(!process.env.PROBE, 'sonda manual (PROBE=1)');
-
-test('sonda de overflow por rota', async ({ page }) => {
+test('A3: todas as rotas do menu em 320 sem overflow de pagina', async ({ page }) => {
   test.setTimeout(600_000);
   const out: Record<string, unknown>[] = [];
-  for (const width of [320, 390]) {
+  for (const width of [320]) {
     await page.setViewportSize({ width, height: 800 });
     await page.clock.setFixedTime(FROZEN_NOW);
     await installMockApi(page);
@@ -44,11 +42,13 @@ test('sonda de overflow por rota', async ({ page }) => {
         return { sw, iw, worst, max: Math.round(max), text: (document.querySelector('main')?.textContent || '').slice(0, 60) };
       });
       out.push({ width, route, ...m, overflow: m.sw > m.iw });
+      expect(m.sw, `overflow de pagina em ${route}`).toBeLessThanOrEqual(m.iw);
+      expect(await page.locator('[data-mobile-shell="true"]').count(), `shell em ${route}`).toBe(1);
       const name = route.replace(/\//g, '_');
-      await page.screenshot({ path: `e2e/mobile-layout/__screens__/probe${name}${width}.png` });
+      await page.screenshot({ path: `e2e/mobile-layout/__screens__/rota${name}${width}.png` });
     }
   }
   const fs = await import('node:fs');
   fs.mkdirSync('test-results/mobile-layout', { recursive: true });
-  fs.writeFileSync('test-results/mobile-layout/probe.json', JSON.stringify(out, null, 1));
+  fs.writeFileSync('test-results/mobile-layout/routes-320.json', JSON.stringify(out, null, 1));
 });
