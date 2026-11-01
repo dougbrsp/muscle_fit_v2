@@ -13,7 +13,7 @@ import { dashboardKeys, fetchOverview } from '@/lib/dashboard-api';
 import { dashboardHref, useDashboardFilters } from '@/lib/dashboard-filters';
 import { fmtInt } from '@/lib/dashboard-format';
 import { NO_ACTIONS_MESSAGE } from '@/lib/dashboard-overview';
-import { MOBILE_TOKENS } from '@/theme';
+import { MOBILE_TOKENS } from '@/mobile/tokens';
 import { DashboardOverviewClient } from '@/app/(app)/dashboard/DashboardOverviewClient';
 import { ErrorState } from '../ui';
 import styles from './mobile-home.module.css';

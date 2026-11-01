@@ -4,7 +4,7 @@ import { Center, Loader } from '@mantine/core';
 import dynamic from 'next/dynamic';
 import type { ReactNode } from 'react';
 import { useLayoutMode } from '@/lib/mobile/layout-mode';
-import { MOBILE_TOKENS } from '@/theme';
+import { MOBILE_TOKENS } from '@/mobile/tokens';
 
 // O shell mobile só é baixado quando a flag está ligada E a largura é de
 // celular: o bundle desktop não paga por ele.

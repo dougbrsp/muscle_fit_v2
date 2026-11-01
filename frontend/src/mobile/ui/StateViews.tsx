@@ -9,7 +9,7 @@ import {
   type Icon as TablerIcon,
 } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
-import { MOBILE_TOKENS } from '@/theme';
+import { MOBILE_TOKENS } from '@/mobile/tokens';
 import { useOnlineStatus } from './use-online-status';
 
 /**

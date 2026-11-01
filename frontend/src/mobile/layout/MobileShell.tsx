@@ -8,7 +8,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { logoutAndRedirect } from '@/lib/app-logout';
 import { navVisibilityFromUser, visibleMainNavItems } from '@/lib/nav-items';
-import { MOBILE_TOKENS } from '@/theme';
+import { MOBILE_TOKENS } from '@/mobile/tokens';
 import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
 import { resolveMobileScreen } from '../screens/registry';

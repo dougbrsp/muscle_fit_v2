@@ -10,7 +10,7 @@ import {
   DashboardNavLinksFallback,
 } from '@/components/dashboard/DashboardNavLinks';
 import { isNavItemActive } from '@/lib/nav-items';
-import { MOBILE_TOKENS } from '@/theme';
+import { MOBILE_TOKENS } from '@/mobile/tokens';
 import type { MoreSections } from './primary-nav';
 import styles from './mobile-shell.module.css';
 
