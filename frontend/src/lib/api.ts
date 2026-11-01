@@ -60,7 +60,9 @@ function redirectToLogin(): void {
   if (redirectingToLogin) return;
   redirectingToLogin = true;
 
-  clearSession();
+  // 401: sessão morta, sem como pedir confirmação. Apaga os dados da conta,
+  // mas preserva (isoladas por usuário) as séries ainda não sincronizadas.
+  void clearSession({ keepUnsynced: true });
 
   const currentPath = `${window.location.pathname}${window.location.search}`;
   const next = sanitizeNextPath(currentPath);

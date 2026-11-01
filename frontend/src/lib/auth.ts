@@ -1,4 +1,6 @@
 import { getApiBaseUrl } from './config';
+import { registerActiveWorkProvider } from './mobile/active-work';
+import { LEGACY_PARKED_KEY, LEGACY_SESSION_KEY } from './offline/keys';
 
 export interface SessionUser {
   id: number;
@@ -97,12 +99,42 @@ const LEGACY_USER_STORAGE_KEY = 'musclefit.session_user';
  * naturalmente) — inacessível a JS por definição (HttpOnly). Chamado após
  * logout explícito e pelo interceptor de 401 em `apiFetch`.
  */
-export function clearSession(): void {
-  if (typeof window === 'undefined') return;
+export function clearSession(options: { keepUnsynced?: boolean } = {}): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  // Dados locais do treino da conta (IndexedDB + chaves legadas): a parte
+  // síncrona roda já; a Promise devolvida conclui a limpeza do banco.
   try {
     window.localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_USER_STORAGE_KEY);
+    // Chaves do treino SEM escopo de usuário (anteriores ao IndexedDB): saem já.
+    window.localStorage.removeItem(LEGACY_SESSION_KEY);
+    window.localStorage.removeItem(LEGACY_PARKED_KEY);
   } catch {
     // localStorage indisponível (modo privado, cookies desabilitados etc.).
   }
+  // O restante (IndexedDB) carrega sob demanda para não pesar no bundle comum.
+  return import('./offline/purge').then((module) => module.purgeOfflineData(options)).catch(() => undefined);
 }
+
+/**
+ * Chamar ANTES de `POST /auth/logout`: se houver séries ainda não sincronizadas
+ * neste aparelho, avisa e pede confirmação explícita (nada é descartado em
+ * silêncio). Devolve `false` quando o usuário desiste de sair.
+ */
+export async function confirmLogoutWithUnsyncedOps(): Promise<boolean> {
+  let count = 0;
+  try {
+    count = await (await import('./offline/purge')).countUnsyncedOps();
+  } catch {
+    count = 0;
+  }
+  if (count <= 0 || typeof window === 'undefined') return true;
+  const noun = count === 1 ? '1 série não sincronizada' : `${count} séries não sincronizadas`;
+  return window.confirm(
+    `Você tem ${noun} neste aparelho. Se sair agora, ${count === 1 ? 'ela será perdida' : 'elas serão perdidas'}. Deseja sair mesmo assim?`,
+  );
+}
+
+// Contrato `hasActiveWork()` (Frente C): a implementação real é carregada sob
+// demanda para não pesar no bundle comum. Erro ao carregar = "há trabalho".
+registerActiveWorkProvider(async () => (await import('./offline/active-work')).offlineHasActiveWork());
