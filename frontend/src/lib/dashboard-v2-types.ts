@@ -178,12 +178,7 @@ export type MuscleGroupVolumeStatus =
   | 'SEM_DADOS';
 
 /** Status de DESEMPENHO (melhor e1RM do mesmo exercício nas duas janelas). */
-export type MuscleGroupPerformanceStatus =
-  | 'PROGREDINDO'
-  | 'ESTAVEL'
-  | 'SUSPEITA_PLATO'
-  | 'REGREDINDO'
-  | 'DADOS_INSUFICIENTES';
+export type MuscleGroupPerformanceStatus = 'PROGREDINDO' | 'ESTAVEL' | 'REGREDINDO' | 'DADOS_INSUFICIENTES';
 
 export type MuscleGroupPerformanceExercise = {
   exercise_id: number;
@@ -202,7 +197,6 @@ export type MuscleGroupPerformanceExercise = {
 /** Por que o grupo ficou sem leitura de desempenho (`null` quando classificado). */
 export type MuscleGroupPerformanceInsufficientReason =
   | 'NO_COMPARABLE_EXERCISE'
-  | 'ALL_OUTLIERS'
   | 'LOW_ACTIVATION';
 
 export type MuscleGroupProgressionItem = {
@@ -231,6 +225,8 @@ export type MuscleGroupProgressionItem = {
   performance_activation_sum: number;
   performance_insufficient_reason: MuscleGroupPerformanceInsufficientReason | null;
   performance_exercises: MuscleGroupPerformanceExercise[];
+  /** Contagem de exercícios do grupo por status (mesmas chaves do resumo). Só exibir; ausente em respostas antigas. */
+  progression_counts?: ExerciseProgressionCounts;
   /** Variação da tonelagem POR SESSÃO (M50) — a janela atual termina hoje. */
   change_pct: number | null;
   /** Variação da tonelagem total (contexto; a classificação exige que concorde). */
@@ -263,6 +259,8 @@ export type ExerciseProgressionSummary = {
 export type MuscleGroupProgressionResponse = {
   /** Ausente em respostas antigas: nesse caso nada é exibido. */
   exercise_progression?: ExerciseProgressionSummary | null;
+  /** Base do `performance_status` por grupo (descrição vinda do backend). */
+  performance_status_basis?: string;
   days: number;
   stable_band_pct: number;
   min_sessions_per_window: number;

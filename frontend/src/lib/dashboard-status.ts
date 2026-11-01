@@ -256,7 +256,6 @@ const EXERCISE_PROGRESSION: Record<ExerciseProgressionCode, StatusVisual> = {
 export const MUSCLE_GROUP_PROGRESSION_ORDER = [
   'PROGREDINDO',
   'ESTAVEL',
-  'SUSPEITA_PLATO',
   'REGREDINDO',
   'DADOS_INSUFICIENTES',
   'NOVO',
@@ -301,7 +300,6 @@ const PT_PROGRESSION_SHARED = {
 
 const MUSCLE_GROUP_PROGRESSION: Record<MuscleGroupProgressionCode, StatusVisual> = {
   ...PT_PROGRESSION_SHARED,
-  SUSPEITA_PLATO: EXERCISE_PROGRESSION.PLATEAU_SUSPECTED,
   NOVO: {
     label: 'Sem período anterior',
     color: 'gray',

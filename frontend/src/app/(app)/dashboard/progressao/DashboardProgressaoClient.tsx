@@ -162,11 +162,11 @@ export function DashboardProgressaoClient() {
         </Text>
       </div>
 
-      <MuscleGroupProgressionPanel range={dayRange} />
+      <MuscleGroupProgressionPanel window={windowQuery} />
 
       <StrengthPanel window={windowQuery} filters={filters} />
 
-      <Title order={3} id="detalhe-por-exercicio" c={BRAND.textPrimary}>
+      <Title order={3} c={BRAND.textPrimary}>
         Detalhe por exercício
       </Title>
 

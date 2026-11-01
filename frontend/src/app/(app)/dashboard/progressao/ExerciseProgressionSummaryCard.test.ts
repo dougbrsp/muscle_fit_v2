@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { MantineProvider } from '@mantine/core';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -49,5 +51,18 @@ describe('ExerciseProgressionSummaryCard', () => {
   it('sem o campo, não renderiza nada nem inventa contagem', () => {
     expect(render(undefined)).toBe('');
     expect(render(null)).toBe('');
+  });
+});
+
+describe('Painel por grupo e home: sem contagem própria de progressão', () => {
+  const lerFonte = (relativo: string) => readFileSync(resolve(__dirname, relativo), 'utf8');
+
+  it('o card e o painel não filtram/contam status no cliente', () => {
+    const card = lerFonte('./ExerciseProgressionSummaryCard.tsx');
+    const painel = lerFonte('./MuscleGroupProgressionPanel.tsx');
+    expect(card).not.toMatch(/\.filter\(|\.reduce\(|\.length/);
+    expect(painel).not.toMatch(/performance_status\s*===/);
+    expect(painel).not.toContain('PerformanceSummary');
+    expect(painel).toContain('<ExerciseProgressionSummaryCard summary={data?.exercise_progression}');
   });
 });

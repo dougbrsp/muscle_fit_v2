@@ -3,17 +3,16 @@ import type { MuscleGroupPerformanceExercise, MuscleGroupProgressionItem } from 
 
 /**
  * Texto do tooltip da coluna "Desempenho" de `/dashboard/progressao`.
- * Regras no servidor (`api/app/intelligence/muscle_group_performance.py`):
- * exercício com variação de e1RM acima de ±50% é descartado do cálculo
- * (atípico, mas continua listado) e o grupo só é classificado com ativação
- * somada dos exercícios usados ≥ 0,5.
+ * O status do grupo é a agregação ponderada dos status dos exercícios (regra
+ * do motor dono, a mesma da home). A variação de e1RM listada aqui é só
+ * informativa. Exercício marcado como atípico é listado, mas fica fora do
+ * percentual informativo.
  */
 export const OUTLIER_LABEL = 'variação atípica — conferir registro';
 
 const INSUFFICIENT_REASON_LABEL: Record<string, string> = {
-  NO_COMPARABLE_EXERCISE: 'Nenhum exercício feito nas duas janelas no mesmo equipamento.',
-  ALL_OUTLIERS: 'Todos os exercícios comparáveis tiveram variação atípica (acima de ±50%).',
-  LOW_ACTIVATION: 'Poucos exercícios trabalham este grupo diretamente (ativação somada abaixo de 50%).',
+  NO_COMPARABLE_EXERCISE: 'Nenhum exercício comparável na janela',
+  LOW_ACTIVATION: 'Exercícios comparáveis com participação insuficiente no grupo',
 };
 
 function exerciseLine(ex: MuscleGroupPerformanceExercise): string {
@@ -30,6 +29,6 @@ export function performanceTooltip(item: MuscleGroupProgressionItem): string | n
   if (reason === 'NO_COMPARABLE_EXERCISE' && exercises.length === 0) return null;
   const header = reason
     ? (INSUFFICIENT_REASON_LABEL[reason] ?? 'Sem leitura de desempenho.')
-    : `e1RM estimado, mesma máquina nas duas janelas (${fmtInt(item.performance_exercises_compared)} exercícios):`;
+    : `Variação informativa de e1RM, mesmo equipamento nas duas janelas (${fmtInt(item.performance_exercises_compared)} exercícios):`;
   return [header, ...exercises.map(exerciseLine)].join('\n');
 }

@@ -163,7 +163,6 @@ describe('valores de cada enum (espelho do backend)', () => {
     expect(MUSCLE_GROUP_PROGRESSION_ORDER).toEqual([
       'PROGREDINDO',
       'ESTAVEL',
-      'SUSPEITA_PLATO',
       'REGREDINDO',
       // M50: janela atual com poucas sessões não vira "regredindo".
       'DADOS_INSUFICIENTES',

@@ -122,8 +122,14 @@ export const dashboardKeys = {
   /** M97 F4: `goal` = objetivo da sugestão (`null` = o default do backend). */
   progressionSuggestion: (mappingId: number | null, goal: TrainingGoalValue | null = null) =>
     ['dashboard', 'progression-suggestion', mappingId, goal] as const,
-  progressionByMuscleGroup: (range: DashboardDayRange) =>
-    ['dashboard', 'progression-by-muscle-group', range.days, range.date_from ?? null, range.date_to ?? null] as const,
+  progressionByMuscleGroup: (window: DashboardWindowQuery) =>
+    [
+      'dashboard',
+      'progression-by-muscle-group',
+      window.window,
+      window.date_from ?? null,
+      window.date_to ?? null,
+    ] as const,
   exerciseOptions: () => ['dashboard', 'mapping-canonical-options'] as const,
   /**
    * v3 (F3.1). A chave da LISTA leva a janela; a do DETALHE leva só o id, e é
@@ -399,14 +405,16 @@ export function fetchAdherence(window: DashboardWindowQuery) {
  * músculos, corpo, recuperação e as regras de insight numa chamada (cada
  * serviço uma vez). Nada é recalculado aqui.
  */
+export function overviewPath(window: DashboardWindowQuery): string {
+  return `/analytics/dashboard/overview${query({
+    window: window.window,
+    date_from: window.date_from,
+    date_to: window.date_to,
+  })}`;
+}
+
 export function fetchOverview(window: DashboardWindowQuery) {
-  return apiFetch<OverviewResponse>(
-    `/analytics/dashboard/overview${query({
-      window: window.window,
-      date_from: window.date_from,
-      date_to: window.date_to,
-    })}`,
-  );
+  return apiFetch<OverviewResponse>(overviewPath(window));
 }
 
 /**
@@ -653,10 +661,20 @@ export function fetchProgressionSuggestion(mappingId: number | null, goal?: Trai
   );
 }
 
-export function fetchProgressionByMuscleGroup(range: DashboardDayRange) {
-  return apiFetch<MuscleGroupProgressionResponse>(
-    `/analytics/dashboard-progression-by-muscle-group${query({ ...range })}`,
-  );
+/**
+ * Mesma janela do overview (`window` + datas no `custom`): a home e
+ * `/progressao` precisam resolver o MESMO período, inclusive `cycle`.
+ */
+export function progressionByMuscleGroupPath(window: DashboardWindowQuery): string {
+  return `/analytics/dashboard-progression-by-muscle-group${query({
+    window: window.window,
+    date_from: window.date_from,
+    date_to: window.date_to,
+  })}`;
+}
+
+export function fetchProgressionByMuscleGroup(window: DashboardWindowQuery) {
+  return apiFetch<MuscleGroupProgressionResponse>(progressionByMuscleGroupPath(window));
 }
 
 /**

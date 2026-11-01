@@ -1,6 +1,6 @@
 import { Group, Paper, Text } from '@mantine/core';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
-import { fmtInt } from '@/lib/dashboard-format';
+import { fmtDate, fmtInt } from '@/lib/dashboard-format';
 import type { ExerciseProgressionSummary } from '@/lib/dashboard-v2-types';
 import { BRAND } from '@/theme';
 
@@ -23,6 +23,7 @@ export function ExerciseProgressionSummaryCard({ summary }: { summary: ExerciseP
       withBorder
       radius="lg"
       p="md"
+      id="progressao-por-exercicio"
       data-testid="exercise-progression-summary"
       style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}
     >
@@ -38,7 +39,8 @@ export function ExerciseProgressionSummaryCard({ summary }: { summary: ExerciseP
         ))}
       </Group>
       <Text size="xs" c={BRAND.textMuted} mt={6}>
-        {fmtInt(counts.comparable_total)} exercícios comparáveis.
+        {fmtInt(counts.comparable_total)} exercícios comparáveis, de {fmtDate(summary.period_start)} a{' '}
+        {fmtDate(summary.period_end)}.
       </Text>
     </Paper>
   );
