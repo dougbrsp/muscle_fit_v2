@@ -19,7 +19,7 @@ type Input = {
 type Policy = {
   decideStrategy: (i: Input) => string;
   STRATEGY: { BYPASS: string; STATIC: string; NAVIGATION: string; IMAGE: string };
-  isCacheable: (r: unknown) => boolean;
+  isCacheable: (r: unknown, allowHtml?: boolean) => boolean;
   extractStaticUrls: (html: string) => string[];
 };
 
@@ -66,6 +66,15 @@ describe('sw.js: roteamento de cache (allowlist)', () => {
     expect(decide({ url: 'https://api.musclefit.com.br/exercise-cards/1/card.webp', destination: 'image' })).toBe(STRATEGY.BYPASS);
   });
 
+  it('rotas de autenticação (token na URL) passam direto, com ou sem query', () => {
+    for (const path of ['/redefinir-senha/', '/redefinir-senha', '/esqueci-senha/', '/esqueci-senha']) {
+      expect(decide({ path, mode: 'navigate' }), path).toBe(STRATEGY.BYPASS);
+      expect(decide({ url: `${ORIGIN}${path}?token=abc`, mode: 'navigate' }), path).toBe(STRATEGY.BYPASS);
+    }
+    // não confunde com rota parecida
+    expect(decide({ path: '/redefinir-senhas-x/', mode: 'navigate' })).toBe(STRATEGY.NAVIGATION);
+  });
+
   it('NUNCA cacheia /auth/* e /api/* mesmo na mesma origem, inclusive navegação', () => {
     for (const path of ['/auth/me', '/auth/login', '/auth', '/api/x']) {
       expect(decide({ path, mode: 'navigate' }), path).toBe(STRATEGY.BYPASS);
@@ -90,11 +99,11 @@ describe('sw.js: roteamento de cache (allowlist)', () => {
   });
 
   it('só respostas 200, sem redirect/opaque/no-store entram no cache', () => {
-    const r = (o: Record<string, unknown>, cc = '') => ({
+    const r = (o: Record<string, unknown>, cc = '', ct = 'application/javascript') => ({
       status: 200,
       type: 'basic',
       redirected: false,
-      headers: { get: () => cc },
+      headers: { get: (n: string) => (n.toLowerCase() === 'cache-control' ? cc : ct) },
       ...o,
     });
     expect(isCacheable(r({}))).toBe(true);
@@ -103,6 +112,9 @@ describe('sw.js: roteamento de cache (allowlist)', () => {
     expect(isCacheable(r({ redirected: true }))).toBe(false);
     expect(isCacheable(r({}, 'no-store'))).toBe(false);
     expect(isCacheable(r({}, 'private, max-age=0'))).toBe(false);
+    // index.html devolvido pelo CloudFront para objeto ausente não vira estático/imagem
+    expect(isCacheable(r({}, '', 'text/html; charset=utf-8'))).toBe(false);
+    expect(isCacheable(r({}, '', 'text/html; charset=utf-8'), true)).toBe(true);
   });
 });
 

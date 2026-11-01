@@ -61,7 +61,7 @@ test('flag ligada: registra com escopo "/" e pré-cacheia o shell com seus chunk
 // Offline REAL: o Chromium com `setOffline` derruba a navegação antes de o SW
 // responder (diferente de um aparelho de verdade), então o teste usa um servidor
 // próprio e o encerra. A rede falha como falharia no celular (conexão recusada).
-const OFFLINE_PORT = 4176;
+const OFFLINE_PORT = Number(process.env.E2E_PORT ?? 4174) + 2;
 const OFFLINE_ORIGIN = `http://127.0.0.1:${OFFLINE_PORT}`;
 
 async function startStaticServer(): Promise<ChildProcess> {
@@ -99,7 +99,8 @@ test('offline: shell abre do cache (HTML + chunks) e rota nunca visitada cai no 
 
   const res = await page.goto(`${OFFLINE_ORIGIN}/perfil/`);
   expect(res?.status()).toBe(200); // fallback ao shell, não erro do navegador
-  await expect(page.locator('body')).not.toBeEmpty();
+  // O corpo da resposta é o HTML do shell em cache (o app em /perfil pode não ter o chunk da rota offline).
+  expect(await res!.text()).toContain('<title>MuscleFit</title>');
 });
 
 test('nenhuma resposta da API (nem /auth) vai para o Cache Storage, mesmo com credentials e Authorization', async ({ page }) => {
@@ -165,4 +166,23 @@ test('kill switch: o sw.js autodestrutivo desregistra e apaga os caches sem reca
   await expect.poll(() => registrations(page), { timeout: 20_000 }).toBe(0);
   await expect.poll(() => cacheNames(page), { timeout: 20_000 }).toEqual([]);
   expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe('viva');
+});
+
+test('rota de autenticação com token na URL nunca vira chave do Cache Storage', async ({ page }) => {
+  resetSw('e2e-v1'); // o teste anterior (kill switch) deixa o sw.js autodestrutivo em out/
+  await page.goto('/?mobile=1');
+  await waitControlled(page);
+  await page.goto('/redefinir-senha/?token=segredo-123&mobile=1');
+  await page.goto('/perfil/?mobile=1&x=1');
+  await page.waitForLoadState('networkidle');
+  const urls = await page.evaluate(async () => {
+    const out: string[] = [];
+    for (const name of await caches.keys()) {
+      for (const req of await (await caches.open(name)).keys()) out.push(req.url);
+    }
+    return out;
+  });
+  // Chunks JS públicos (/_next/static/**) podem citar a rota; o que não pode existir é página dela ou query.
+  expect(urls.filter((u) => !u.includes('/_next/static/') && /redefinir|esqueci|token|segredo|[?]/.test(u))).toEqual([]);
+  expect(urls.filter((u) => u.includes('?'))).toEqual([]);
 });

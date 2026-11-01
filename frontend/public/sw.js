@@ -9,8 +9,15 @@
  * O QUE NUNCA FAZ (allowlist, não denylist)
  *  - Só trata GET da MESMA origem do app e só os caminhos listados abaixo. A API
  *    (outra origem: api.musclefit.com.br / NEXT_PUBLIC_API_BASE_URL), /auth/*,
- *    requisições com Authorization ou credentials 'include', Range e qualquer
- *    método diferente de GET passam direto para a rede (sem respondWith).
+ *    as rotas de autenticação (/esqueci-senha, /redefinir-senha: a URL pode
+ *    carregar token), fetch com Authorization ou credentials 'include' (cors),
+ *    Range e qualquer método diferente de GET passam direto para a rede (sem
+ *    respondWith).
+ *  - Navegação só é gravada no cache quando a URL NÃO tem query string; o
+ *    fallback offline usa a chave sem query (pathname). Assim nenhum token ou
+ *    parâmetro de URL vira chave do Cache Storage.
+ *  - Estáticos e imagens nunca gravam resposta text/html (o CloudFront devolve o
+ *    index.html com 200 para objeto ausente; isso não pode virar um .js/.png).
  *  - Por construção não há dado autenticado no Cache Storage: o HTML é estático
  *    (export do Next, sem dado de usuário) e as imagens/estáticos são públicos.
  *    Por isso o logout não precisa limpar estes caches (nem um 401).
@@ -23,6 +30,11 @@
  *  - `node scripts/build-sw.mjs --kill` troca o `sw.js` publicado por uma versão
  *    autodestrutiva (apaga os caches musclefit-* e se desregistra, sem recarregar
  *    nenhuma aba). Com a flag mobile desligada o app também desregistra o SW.
+ *  - ROLLBACK COMPLETO = kill switch (pwa_kill_switch no deploy) + desligar a
+ *    flag mobile. Só o kill switch com a flag LIGADA não basta: o app registra
+ *    de novo o `/sw.js` (agora autodestrutivo) a cada abertura e ele se
+ *    desregistra de novo; a flag desligada faz o cliente desregistrar e parar
+ *    de registrar (`shouldUnregisterServiceWorker`).
  *
  * `CACHE_VERSION` é carimbado no build por `scripts/build-sw.mjs`.
  */
@@ -67,6 +79,8 @@ const IMAGE_PREFIXES = ['/exercise-cards/', '/equipment/', '/gyms/'];
 const IMAGE_EXTENSION = /\.(png|jpe?g|webp|avif|gif|svg)$/i;
 // Caminhos que jamais passam pelo cache, mesmo que casassem com a allowlist.
 const NEVER_CACHE_PREFIXES = ['/auth/', '/api/'];
+// Rotas de autenticação do app: a URL pode trazer token (ex.: /redefinir-senha?token=...).
+const AUTH_ROUTE_PREFIXES = ['/esqueci-senha', '/redefinir-senha'];
 
 const STRATEGY = {
   BYPASS: 'bypass',
@@ -99,6 +113,8 @@ function decideStrategy(input) {
   const path = url.pathname;
   if (NEVER_CACHE_PREFIXES.some((p) => path === p.slice(0, -1) || path.startsWith(p))) return STRATEGY.BYPASS;
 
+  if (AUTH_ROUTE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return STRATEGY.BYPASS;
+
   if (input.mode === 'navigate') return STRATEGY.NAVIGATION;
 
   if (STATIC_FILES.includes(path) || STATIC_PREFIXES.some((p) => path.startsWith(p))) return STRATEGY.STATIC;
@@ -115,11 +131,18 @@ function extractStaticUrls(html) {
   return Array.from(new Set(found)).slice(0, MAX_SHELL_STATIC_PRECACHE);
 }
 
-/** Só respostas completas, sem redirecionamento e sem `no-store` entram no cache. */
-function isCacheable(response) {
+/**
+ * Só respostas completas, sem redirecionamento e sem `no-store` entram no cache.
+ * `allowHtml` só é true para páginas: estáticos/imagens com Content-Type text/html
+ * são o index.html que o CloudFront devolve com 200 para objeto ausente.
+ */
+function isCacheable(response, allowHtml) {
   if (!response || response.status !== 200 || response.type === 'opaque' || response.redirected) return false;
   const cc = response.headers.get('Cache-Control') || '';
-  return !/no-store|private/i.test(cc);
+  if (/no-store|private/i.test(cc)) return false;
+  const ct = response.headers.get('Content-Type') || '';
+  if (!allowHtml && /^text\/html/i.test(ct)) return false;
+  return true;
 }
 
 async function trimCache(cacheName, max) {
@@ -161,17 +184,24 @@ function fetchWithTimeout(request, ms) {
   });
 }
 
+/** Chave de página no cache: origem + pathname, nunca a query (pode haver token/parâmetro). */
+function pageKey(request) {
+  const u = new URL(request.url);
+  return new Request(u.origin + u.pathname);
+}
+
 async function networkFirstNavigation(request) {
   try {
     const response = await fetchWithTimeout(request, NAVIGATION_NETWORK_TIMEOUT_MS);
-    if (isCacheable(response)) {
+    // Só grava navegação sem query string; com query o fallback usa a página sem query.
+    if (new URL(request.url).search === '' && isCacheable(response, true)) {
       const copy = response.clone();
-      await putAndTrim(PAGES_CACHE, request, copy, MAX_PAGE_ENTRIES);
+      await putAndTrim(PAGES_CACHE, pageKey(request), copy, MAX_PAGE_ENTRIES);
     }
     return response;
   } catch (e) {
     const cached =
-      (await caches.match(request, { cacheName: PAGES_CACHE, ignoreSearch: true })) ||
+      (await caches.match(pageKey(request), { cacheName: PAGES_CACHE })) ||
       (await caches.match(SHELL_URL, { cacheName: PAGES_CACHE }));
     if (cached) return cached;
     return new Response('Sem conexão. Abra o MuscleFit novamente quando estiver online.', {
@@ -211,7 +241,7 @@ self.addEventListener('install', (event) => {
         }),
         (async () => {
           const r = await fetch(new Request(SHELL_URL, { cache: 'reload' }));
-          if (!isCacheable(r)) return;
+          if (!isCacheable(r, true)) return;
           // Os chunks do shell já foram pedidos pela página ANTES de o SW controlá-la;
           // sem pré-cache deles o shell em cache abriria sem JS no 1º uso offline.
           const html = await r.clone().text();

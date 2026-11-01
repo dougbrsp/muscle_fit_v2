@@ -3,9 +3,8 @@
 import { ActionIcon, Button, Group, Paper, Text } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 
-import { isMobileUiEnabled } from '@/lib/mobile/flags';
+import { useMobileUi } from '@/lib/mobile/flags';
 import { useLayoutMode } from '@/lib/mobile/layout-mode';
 import { shouldShowInstallBanner } from '@/lib/pwa/install-banner-policy';
 import { useInstallPrompt } from '@/lib/pwa/use-install-prompt';
@@ -20,11 +19,7 @@ export function InstallBanner() {
   const pathname = usePathname();
   const layoutMode = useLayoutMode();
   const { mode, dismissed, promptInstall, dismiss } = useInstallPrompt();
-  const [flagOn, setFlagOn] = useState(false);
-
-  useEffect(() => {
-    setFlagOn(isMobileUiEnabled());
-  }, []);
+  const flagOn = useMobileUi() === true;
 
   const show = shouldShowInstallBanner({
     mobileUiEnabled: flagOn,

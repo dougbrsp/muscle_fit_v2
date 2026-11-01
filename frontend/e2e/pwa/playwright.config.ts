@@ -8,8 +8,9 @@ import { defineConfig, devices } from '@playwright/test';
  *   npm run e2e:build   # nao existe script; use: node e2e/build.mjs
  *   npx playwright test -c e2e/pwa/playwright.config.ts
  */
-const PORT = 4174;
-const MOCK_API_PORT = 4175;
+// E2E_PORT permite rodar em paralelo com outras frentes; a API falsa usa PORT+1 e o servidor do teste offline PORT+2.
+const PORT = Number(process.env.E2E_PORT ?? 4174);
+const MOCK_API_PORT = PORT + 1;
 
 export default defineConfig({
   testDir: '.',
