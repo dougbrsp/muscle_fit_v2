@@ -5,7 +5,10 @@ import sys
 
 import pytest
 
+import app
 from app import runtime_guard
+
+_DB_ORIGINAL = importlib.import_module("app.db")
 
 
 def _recarregar_db(monkeypatch, *, lambda_real, backend):
@@ -17,16 +20,11 @@ def _recarregar_db(monkeypatch, *, lambda_real, backend):
         monkeypatch.delenv("DB_BACKEND", raising=False)
     else:
         monkeypatch.setenv("DB_BACKEND", backend)
-    sys.modules.pop("app.db", None)
+    # monkeypatch restaura sys.modules["app.db"] e o atributo app.db no teardown.
+    monkeypatch.delitem(sys.modules, "app.db", raising=False)
+    if hasattr(app, "db"):
+        monkeypatch.setattr(app, "db", app.db)
     return importlib.import_module("app.db")
-
-
-@pytest.fixture(autouse=True)
-def _restaura_db(monkeypatch):
-    yield
-    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
-    monkeypatch.delenv("DB_BACKEND", raising=False)
-    sys.modules.pop("app.db", None)
 
 
 def test_lambda_real_com_pymysql_e_recusada(monkeypatch):
@@ -68,3 +66,9 @@ def test_helper_usa_o_tipo_de_erro_do_chamador(monkeypatch):
 
     with pytest.raises(MeuErro, match=runtime_guard.MENSAGEM_RECUSA):
         runtime_guard.exigir_data_api_em_lambda(MeuErro)
+
+
+def test_sentinela_nao_vaza_estado_de_app_db():
+    # Roda depois dos casos acima: o modulo e o atributo originais voltam.
+    assert sys.modules["app.db"] is _DB_ORIGINAL
+    assert app.db is _DB_ORIGINAL

@@ -2,8 +2,17 @@
 
 Dentro de uma Lambda real o backend de banco TEM que ser o Data API. Config de
 dev (`DB_BACKEND=pymysql`) vazada para la significaria falar TCP com um MySQL
-inexistente (ou pior, com outro banco). O criterio vive so aqui; `db.py`,
-`migrate.py` e `lambda_intervals_sync.py` o reutilizam.
+inexistente (ou pior, com outro banco). `db.py`, `migrate.py` e
+`lambda_intervals_sync.py` reutilizam este helper.
+
+Politica: falha fechado para qualquer `DB_BACKEND` diferente de `data-api`
+(inclusive vazio). Em Lambda real o erro ocorre no import (`Runtime.ImportModuleError`)
+para quem importa `app.db` no topo (api-core, engines, IA, intervals-sync); so o
+`migrate`, que importa tarde, mantem `MigrationError`.
+
+Limite conhecido: o emulador de dev e `exercise_card_calibration.py` usam
+marcadores extras (`AWS_EXECUTION_ENV`/`AWS_LAMBDA_RUNTIME_API`); a unificacao
+dos criterios esta no backlog.
 
 Criterio: `AWS_LAMBDA_FUNCTION_NAME` definido e nao vazio (o runtime da AWS
 sempre o define). O emulador local de Lambdas do dev
