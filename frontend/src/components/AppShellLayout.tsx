@@ -18,54 +18,22 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
-  IconActivity,
-  IconApple,
-  IconBarbell,
-  IconBodyScan,
-  IconCalendarEvent,
-  IconMoodSmile,
-  IconBuildingWarehouse,
-  IconChartBar,
-  IconChartHistogram,
-  IconEngine,
-  IconGauge,
-  IconHistory,
-  IconRepeat,
   IconChevronDown,
-  IconClipboardList,
-  IconDatabase,
-  IconHeartRateMonitor,
   IconLayoutDashboard,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
-  IconFileAnalytics,
   IconLogout,
-  IconMessageChatbot,
-  IconNotes,
-  IconPlayerPlay,
-  IconPlugConnected,
-  IconRun,
-  IconReportMedical,
-  IconScale,
-  IconShieldCheck,
-  IconStars,
-  IconTarget,
-  IconTemplate,
   IconUser,
-  IconUsers,
-  IconWeight,
-  type Icon as TablerIcon,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   DashboardNavLinks,
   DashboardNavLinksFallback,
   DashboardNavMenuItems,
   DashboardNavMenuItemsFallback,
-  type DashboardNavItem,
 } from '@/components/dashboard/DashboardNavLinks';
 import { apiFetch } from '@/lib/api';
 import { clearSession, type SessionUser } from '@/lib/auth';
@@ -77,45 +45,18 @@ import {
   readNavbarCollapsed,
   writeNavbarCollapsed,
 } from '@/lib/navbar-collapse';
+import {
+  DASHBOARD_NAV_ITEMS,
+  isNavItemActive,
+  navVisibilityFromUser,
+  visibleMainNavItems,
+  type MainNavItem,
+} from '@/lib/nav-items';
+import { isMobileUiEnabled } from '@/lib/mobile/flags';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
-}
-
-/**
- * Sub-itens do menu "Dashboard": a visão geral (rota `/dashboard`, existente
- * desde a Etapa 2) mais as 6 sub-rotas analíticas do Dashboard v2.
- */
-const DASHBOARD_NAV_ITEMS: readonly DashboardNavItem[] = [
-  { href: '/dashboard', label: 'Visão geral', icon: IconGauge },
-  { href: '/dashboard/treinos', label: 'Treinos', icon: IconHistory },
-  { href: '/dashboard/progressao', label: 'Progressão', icon: IconChartHistogram },
-  { href: '/dashboard/recovery', label: 'Recuperação', icon: IconHeartRateMonitor },
-  { href: '/dashboard/musculos', label: 'Grupos musculares', icon: IconBodyScan },
-  { href: '/dashboard/corpo', label: 'Corpo', icon: IconScale },
-  { href: '/dashboard/cardio', label: 'Cardio', icon: IconRun },
-  { href: '/dashboard/ciclo', label: 'Ciclo de treino', icon: IconRepeat },
-  { href: '/dashboard/contexto', label: 'Contexto', icon: IconCalendarEvent },
-  { href: '/dashboard/checkin', label: 'Check-in diário', icon: IconMoodSmile },
-  { href: '/dashboard/engine', label: 'Motor de geração', icon: IconEngine },
-  { href: '/dashboard/data-quality', label: 'Qualidade dos dados', icon: IconShieldCheck },
-  { href: '/dashboard/relatorios', label: 'Relatórios', icon: IconFileAnalytics },
-] as const;
-
-/** Item simples (sem submenu) do menu principal. */
-type MainNavItem = {
-  href: string;
-  label: string;
-  icon: TablerIcon;
-  /** Prefixos de rota que marcam o item como ativo (default: o próprio `href`). */
-  prefixes?: readonly string[];
-  /** Regra de permissão/configuração; ausente = sempre visível. */
-  visible?: boolean;
-};
-
-function isNavItemActive(item: MainNavItem, pathname: string | null): boolean {
-  return (item.prefixes ?? [item.href]).some((prefix) => Boolean(pathname?.startsWith(prefix)));
 }
 
 /**
@@ -167,7 +108,31 @@ function useNavbarCollapsed() {
   return { collapsed: isNavbarCollapsed(preference, isDesktop), toggle };
 }
 
+// Chunk separado: com a flag desligada o seletor nem é baixado.
+const MobileLayoutSelector = lazy(() =>
+  import('@/mobile/MobileLayoutSelector').then((m) => ({ default: m.MobileLayoutSelector })),
+);
+
+/**
+ * Seletor de layout (plano mobile, 3.1/3.2). Flag desligada = a árvore
+ * desktop de sempre, sem montar o seletor nem baixar o shell mobile. Ligada,
+ * o seletor escolhe por largura (`useLayoutMode`): desktop continua sendo
+ * este mesmo `DesktopAppShell`. A flag é lida uma vez na montagem; este
+ * componente só renderiza depois do guard de sessão, ou seja, já no cliente.
+ */
 export function AppShellLayout({ children }: { children: ReactNode }) {
+  const [mobileUi] = useState(() => isMobileUiEnabled());
+  if (!mobileUi) return <DesktopAppShell>{children}</DesktopAppShell>;
+  return (
+    <Suspense fallback={null}>
+      <MobileLayoutSelector renderDesktop={() => <DesktopAppShell>{children}</DesktopAppShell>}>
+        {children}
+      </MobileLayoutSelector>
+    </Suspense>
+  );
+}
+
+function DesktopAppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure();
@@ -181,97 +146,13 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
 
   const user = currentUserQuery.data;
   const displayName = user?.full_name || user?.username || '';
-  // Router /training-types inteiro é admin/PT-only no backend
-  // (require_admin_or_pt). Enquanto /auth/me ainda não resolveu, mantém o
-  // item visível por padrão (evita "sumir e voltar"); a própria tela trata
-  // 403 com mensagem clara para quem não tem permissão.
-  const canManageTrainingTypes =
-    !currentUserQuery.isSuccess || user?.role === 'admin' || user?.role === 'personal_trainer';
-  // Router /workout-plan-templates inteiro (exceto assigned-to-me) também é
-  // admin/PT-only no backend (require_admin_or_pt) — mesma regra de nav de
-  // "Metas de Ativação".
-  const canManageWorkoutPlanTemplates = canManageTrainingTypes;
-  // GET /users inteiro é admin-only no backend (require_admin, role
-  // EXATAMENTE "admin" — personal_trainer não passa aqui, diferente da regra
-  // acima). Igual às demais, mantém visível até /auth/me resolver; a própria
-  // tela trata 403 com mensagem clara para quem não é admin.
-  const isAdmin = !currentUserQuery.isSuccess || user?.role === 'admin';
-  // Itens "Intervals.icu" e "Cardio" dependem de credenciais do Intervals.icu
-  // configuradas (`GET /auth/me`.`intervals_configured`). Mesma convenção das
-  // demais flags de nav: mantém visível até /auth/me resolver (evita
-  // "sumir e voltar"); acesso direto às rotas continua mostrando a mensagem
-  // de "configure suas credenciais" já existente nessas páginas.
-  const hasIntervalsConfigured = !currentUserQuery.isSuccess || user?.intervals_configured === true;
+  // Permissões de visibilidade e lista de rotas: `lib/nav-items.ts` (fonte
+  // única, compartilhada com o shell mobile).
+  const visibleNavItems = visibleMainNavItems(navVisibilityFromUser(user, currentUserQuery.isSuccess));
 
   const { collapsed, toggle: toggleCollapsed } = useNavbarCollapsed();
   const toggleLabel = navbarToggleLabel(collapsed);
 
-  // Itens simples do menu, na ordem de exibição (o "Dashboard", com submenu,
-  // vem antes e é renderizado à parte). Uma lista só alimenta os dois modos
-  // (expandido e recolhido) para não duplicar rota/rótulo/ícone/permissão.
-  //
-  // Rotas que saíram do menu mas continuam respondendo (redirect), só para
-  // não quebrar favoritos:
-  // - "Recuperação muscular" (/recuperacao-muscular) -> /dashboard/recovery
-  //   (2ª passada da F2.4: mapa corporal, recomendação de séries e fatores do
-  //   cálculo, M33, foram para "Dashboard > Recuperação").
-  // - "Evolução corporal" (/evolucao-corporal) -> /dashboard/corpo (F2.4: a
-  //   tabela/os gráficos brutos já estavam em "Indicadores Físicos").
-  // - "Grupos musculares" (/grupos-musculares) -> /dashboard/musculos (#292;
-  //   catálogo canônico e exercícios sem classificação ficaram em "Domínio
-  //   de exercícios").
-  // - "Treinos" (/treinos) -> /dashboard/treinos (#294; "Ativação muscular
-  //   (últimos 7 dias)" foi para "Dashboard > Músculos", #295).
-  // - "Cardio" (/cardio, ao vivo) -> /dashboard/cardio (M98 C4: uma leitura
-  //   só do Intervals, pelo cache; o item segue em "Dashboard > Cardio").
-  const navItems: readonly MainNavItem[] = [
-    { href: '/registro-exercicios', label: 'Registro de exercícios', icon: IconClipboardList },
-    { href: '/modo-treino', label: 'Modo Treino', icon: IconPlayerPlay },
-    { href: '/agente-cardio', label: 'Agente de Cardio', icon: IconActivity },
-    { href: '/insights', label: 'Insights', icon: IconMessageChatbot },
-    { href: '/indicadores-fisicos', label: 'Indicadores Físicos', icon: IconReportMedical },
-    // Nutrição: a entrada abre o diário (`/nutricao`, L4). Todos veem: admin/PT
-    // acompanham o diário e o plano dos alunos, os demais o próprio (o backend
-    // decide o acesso). Plano (`/nutricao/plano`, L2b) e catálogo de alimentos
-    // (`/nutricao/alimentos`, L3a) são seções da mesma entrada: o prefixo
-    // `/nutricao` mantém o item ativo e a troca de seção fica no
-    // `NutritionSubnav` das páginas, sem item novo aqui.
-    { href: '/nutricao', label: 'Nutrição', icon: IconApple, prefixes: ['/nutricao'] },
-    { href: '/intervals-icu', label: 'Intervals.icu', icon: IconRun, visible: hasIntervalsConfigured },
-    { href: '/exercicios', label: 'Exercícios', icon: IconBarbell },
-    { href: '/volume-grupamentos', label: 'Volume por grupamento', icon: IconChartBar },
-    { href: '/planos-treino', label: 'Planos de treino', icon: IconNotes },
-    { href: '/academias', label: 'Academias', icon: IconBuildingWarehouse },
-    { href: '/preferencias-treino', label: 'Preferências de Treino', icon: IconStars },
-    // Catálogo de exercícios/equipamentos: só admin (decisão do usuário em
-    // 2026-10-13; personal trainer também não vê). As páginas têm guarda de
-    // rota (`AdminOnlyRoute`) e o backend continua barrando a escrita.
-    {
-      href: '/equipamentos-exercicios',
-      label: 'Equipamentos x Exercícios',
-      icon: IconPlugConnected,
-      visible: isAdmin,
-    },
-    { href: '/dominio-exercicios', label: 'Domínio de Exercícios', icon: IconDatabase, visible: isAdmin },
-    // Regras de carga da próxima série (R4): só admin; publicar vale para todos
-    // os usuários. Guarda de rota `AdminOnlyRoute` + `require_admin` no backend.
-    { href: '/regras-carga', label: 'Regras de carga', icon: IconWeight, visible: isAdmin },
-    {
-      href: '/metas-ativacao',
-      label: 'Metas de Ativação',
-      icon: IconTarget,
-      visible: canManageTrainingTypes,
-    },
-    {
-      href: '/modelos-treino',
-      label: 'Modelos de treino',
-      icon: IconTemplate,
-      prefixes: ['/modelos-treino', '/diagnostico-volume'],
-      visible: canManageWorkoutPlanTemplates,
-    },
-    { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: isAdmin },
-  ];
-  const visibleNavItems = navItems.filter((item) => item.visible ?? true);
   const dashboardActive = Boolean(pathname?.startsWith('/dashboard'));
 
   async function handleLogout() {

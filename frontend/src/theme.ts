@@ -33,6 +33,26 @@ export const WORKOUT_MODE_TOKENS = {
   warning: '#FFCA28',
 } as const;
 
+// Tokens do shell mobile (plano mobile, 3.3). Derivados de `BRAND` e
+// `WORKOUT_MODE_TOKENS`; só dimensões de layout e aliases de cor. NÃO são
+// regra de domínio. `touchTarget` = alvo mínimo de toque (WCAG 2.5.5 / HIG).
+export const MOBILE_TOKENS = {
+  bg: BRAND.bg,
+  surface: BRAND.bgElevated,
+  surfaceRaised: BRAND.bgSurface,
+  border: BRAND.border,
+  accent: BRAND.orange,
+  accentSoft: WORKOUT_MODE_TOKENS.orangeSoft,
+  text: BRAND.textPrimary,
+  textMuted: BRAND.textMuted,
+  danger: WORKOUT_MODE_TOKENS.danger,
+  warning: WORKOUT_MODE_TOKENS.warning,
+  touchTarget: 44,
+  headerHeight: 56,
+  bottomNavHeight: 60,
+  contentPadding: 16,
+} as const;
+
 // Escala de laranja/vermelho para uso como `color="brand"` nos componentes Mantine.
 const brandTuple: MantineColorsTuple = [
   '#fff2e0',
