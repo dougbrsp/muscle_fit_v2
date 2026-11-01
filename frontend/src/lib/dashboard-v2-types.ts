@@ -178,7 +178,12 @@ export type MuscleGroupVolumeStatus =
   | 'SEM_DADOS';
 
 /** Status de DESEMPENHO (melhor e1RM do mesmo exercício nas duas janelas). */
-export type MuscleGroupPerformanceStatus = 'PROGREDINDO' | 'ESTAVEL' | 'REGREDINDO' | 'DADOS_INSUFICIENTES';
+export type MuscleGroupPerformanceStatus =
+  | 'PROGREDINDO'
+  | 'ESTAVEL'
+  | 'SUSPEITA_PLATO'
+  | 'REGREDINDO'
+  | 'DADOS_INSUFICIENTES';
 
 export type MuscleGroupPerformanceExercise = {
   exercise_id: number;
@@ -235,7 +240,29 @@ export type MuscleGroupProgressionItem = {
   phase_status: string | null;
 };
 
+/** Contagem de EXERCÍCIOS comparáveis por status, vinda do motor (mesma da home). Só exibir. */
+export type ExerciseProgressionCounts = {
+  progressing: number;
+  stable: number;
+  plateau_suspected: number;
+  regressing: number;
+  comparable_total: number;
+  not_comparable: number;
+  insufficient_data: number;
+};
+
+export type ExerciseProgressionSummary = {
+  window_days: number;
+  period_start: string;
+  period_end: string;
+  counts: ExerciseProgressionCounts;
+  /** Frase pronta do backend (a mesma da home). */
+  answer: string;
+};
+
 export type MuscleGroupProgressionResponse = {
+  /** Ausente em respostas antigas: nesse caso nada é exibido. */
+  exercise_progression?: ExerciseProgressionSummary | null;
   days: number;
   stable_band_pct: number;
   min_sessions_per_window: number;

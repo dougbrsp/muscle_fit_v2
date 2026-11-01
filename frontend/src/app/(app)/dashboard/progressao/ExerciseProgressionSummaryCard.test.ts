@@ -1,0 +1,53 @@
+import { MantineProvider } from '@mantine/core';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import type { ExerciseProgressionSummary } from '@/lib/dashboard-v2-types';
+import { theme } from '@/theme';
+import { ExerciseProgressionSummaryCard } from './ExerciseProgressionSummaryCard';
+
+const SUMMARY: ExerciseProgressionSummary = {
+  window_days: 30,
+  period_start: '2026-10-02',
+  period_end: '2026-11-01',
+  counts: {
+    progressing: 18,
+    stable: 7,
+    plateau_suspected: 4,
+    regressing: 9,
+    comparable_total: 40,
+    not_comparable: 2,
+    insufficient_data: 5,
+  },
+  answer: '18 de 40 exercícios comparáveis progredindo; 4 com suspeita de platô e 9 regredindo.',
+};
+
+function render(summary: ExerciseProgressionSummary | null | undefined) {
+  // Tira os <style> injetados pelo MantineProvider: sobra só o markup do card.
+  return renderToStaticMarkup(
+    createElement(MantineProvider, { theme }, createElement(ExerciseProgressionSummaryCard, { summary })),
+  ).replace(/<style[\s\S]*?<\/style>/g, '');
+}
+
+describe('ExerciseProgressionSummaryCard', () => {
+  it('mostra a frase e as contagens exatamente como o backend enviou', () => {
+    const html = render(SUMMARY);
+    expect(html).toContain(SUMMARY.answer);
+    expect(html).toMatch(/Progredindo[^<]*18/);
+    expect(html).toMatch(/Estável[^<]*7/);
+    expect(html).toMatch(/Suspeita de platô[^<]*4/);
+    expect(html).toMatch(/Regredindo[^<]*9/);
+    expect(html).toContain('40 exercícios comparáveis');
+  });
+
+  it('não conta nada por conta própria: números vêm só do payload', () => {
+    const html = render({ ...SUMMARY, counts: { ...SUMMARY.counts, progressing: 123, comparable_total: 456 } });
+    expect(html).toMatch(/Progredindo[^<]*123/);
+    expect(html).toContain('456 exercícios comparáveis');
+  });
+
+  it('sem o campo, não renderiza nada nem inventa contagem', () => {
+    expect(render(undefined)).toBe('');
+    expect(render(null)).toBe('');
+  });
+});

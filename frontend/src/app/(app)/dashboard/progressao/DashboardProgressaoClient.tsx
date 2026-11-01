@@ -166,7 +166,7 @@ export function DashboardProgressaoClient() {
 
       <StrengthPanel window={windowQuery} filters={filters} />
 
-      <Title order={3} c={BRAND.textPrimary}>
+      <Title order={3} id="detalhe-por-exercicio" c={BRAND.textPrimary}>
         Detalhe por exercício
       </Title>
 

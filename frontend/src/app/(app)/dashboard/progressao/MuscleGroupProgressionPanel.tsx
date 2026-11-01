@@ -2,13 +2,14 @@
 
 import { Group, Paper, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import { ExerciseProgressionSummaryCard } from './ExerciseProgressionSummaryCard';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { DashboardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { dashboardKeys, fetchProgressionByMuscleGroup } from '@/lib/dashboard-api';
 import type { DashboardDayRange } from '@/lib/dashboard-filters';
 import { fmtDate, fmtInt, fmtKgTotal, fmtSignedPercent } from '@/lib/dashboard-format';
 import { performanceTooltip } from '@/lib/dashboard-muscle-performance';
-import { MUSCLE_GROUP_PROGRESSION_ORDER, statusVisual } from '@/lib/dashboard-status';
+import { statusVisual } from '@/lib/dashboard-status';
 import type { MuscleGroupProgressionItem } from '@/lib/dashboard-v2-types';
 import { BRAND } from '@/theme';
 
@@ -54,9 +55,11 @@ export function MuscleGroupProgressionPanel({ range }: { range: DashboardDayRang
   const data = query.data;
 
   return (
+    <Stack gap="lg">
+    <ExerciseProgressionSummaryCard summary={data?.exercise_progression} />
     <Paper withBorder radius="lg" p="md" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
       <Text fw={700} c={BRAND.textPrimary}>
-        Progressão por grupo muscular
+        Tendência por grupo muscular
       </Text>
       <Text size="xs" c={BRAND.textMuted}>
         {isCustom ? `Período escolhido (${days} dias)` : `Últimos ${days} dias`} contra os {days} dias anteriores
@@ -79,9 +82,7 @@ export function MuscleGroupProgressionPanel({ range }: { range: DashboardDayRang
         registro) e fica fora da média; com ativação somada abaixo de 50%, ou sem exercício em comum, não há leitura.
       </Text>
 
-      {items.length > 0 && <PerformanceSummary items={items} />}
-
-      {query.isLoading && <DashboardSkeleton rows={5} withHeader={false} />}
+            {query.isLoading && <DashboardSkeleton rows={5} withHeader={false} />}
       {query.isError && (
         <ErrorState title="Não foi possível carregar a progressão por grupo muscular." error={query.error} />
       )}
@@ -146,6 +147,7 @@ export function MuscleGroupProgressionPanel({ range }: { range: DashboardDayRang
         </Table.ScrollContainer>
       )}
     </Paper>
+    </Stack>
   );
 }
 
@@ -172,24 +174,6 @@ function PeriodCell({
         </Text>
       )}
     </>
-  );
-}
-
-/** Contagem por status de DESEMPENHO (nunca de volume), na ordem canônica. */
-function PerformanceSummary({ items }: { items: MuscleGroupProgressionItem[] }) {
-  const counts = MUSCLE_GROUP_PROGRESSION_ORDER.map((code) => ({
-    code,
-    count: items.filter((item) => item.performance_status === code).length,
-  })).filter((entry) => entry.count > 0);
-  return (
-    <Group gap="xs" mb="sm">
-      <Text size="xs" fw={600} c={BRAND.textPrimary}>
-        Desempenho:
-      </Text>
-      {counts.map(({ code, count }) => (
-        <StatusBadge key={code} domain="muscleGroupProgression" code={code} suffix={` · ${count}`} />
-      ))}
-    </Group>
   );
 }
 
