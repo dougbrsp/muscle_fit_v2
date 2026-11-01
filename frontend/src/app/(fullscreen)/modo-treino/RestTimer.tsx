@@ -76,6 +76,8 @@ function useRestCountdown({
     return { remaining, total: start.totalSeconds, expired: remaining <= 0 };
   });
 
+  const [overdue, setOverdue] = useState(0);
+
   useEffect(() => {
     const now = Date.now();
     const start = resolveRestStart({ restKey, initialSeconds, stored: getStoredRef.current?.() ?? null, now });
@@ -87,7 +89,10 @@ function useRestCountdown({
       endsAt: start.endsAt,
       totalSeconds: start.totalSeconds,
       autoAdvanceOnZero: () => autoAdvanceRef.current,
-      onChange: setSnapshot,
+      onChange: (snap) => {
+        setSnapshot(snap);
+        setOverdue(countdownRef.current?.overdue() ?? 0);
+      },
       onZero: () => {
         if (!restoredExpired) signalTimerFinished();
         onExpiredRef.current?.();
@@ -101,11 +106,17 @@ function useRestCountdown({
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') countdown.recalc();
     };
+    // Volta de segundo plano / tela bloqueada / bfcache: recalcula pelo relógio.
+    const onResume = () => countdown.recalc();
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onResume);
+    window.addEventListener('focus', onResume);
     return () => {
       countdown.dispose();
       if (countdownRef.current === countdown) countdownRef.current = null;
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onResume);
+      window.removeEventListener('focus', onResume);
     };
     // `initialSeconds` entra só no início de cada descanso (como antes).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +124,7 @@ function useRestCountdown({
 
   return {
     ...snapshot,
+    overdue,
     adjust: (deltaSeconds: number) => countdownRef.current?.adjust(deltaSeconds),
     finish: () => countdownRef.current?.finish() ?? false,
   };
@@ -160,7 +172,7 @@ export function RestTimerHero({
   readyOnZero = null,
   ...countdownInput
 }: HeroProps) {
-  const { remaining, total, expired, adjust, finish } = useRestCountdown({
+  const { remaining, total, expired, overdue, adjust, finish } = useRestCountdown({
     ...countdownInput,
     autoAdvanceOnZero: !isExerciseTransition && readyOnZero == null,
   });
@@ -192,6 +204,11 @@ export function RestTimerHero({
             >
               {formatRestClock(remaining)}
             </div>
+            {expired && overdue >= 1 && (
+              <span className={styles.eyebrow} data-testid="rest-overdue">
+                Expirado há {formatRestClock(overdue)}
+              </span>
+            )}
           </div>
           <button
             type="button"

@@ -20,6 +20,11 @@ export const REST_ADJUST_STEP_SECONDS = 15;
 
 const TICK_MS = 1000;
 
+/** Segundos decorridos desde que o descanso venceu (0 enquanto não venceu). Só apresentação ("expirado há mm:ss"). */
+export function restOverdueSeconds(endsAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - endsAt) / 1000));
+}
+
 /** Segundos que faltam até `endsAt` (nunca negativo). Mesmo arredondamento de antes. */
 export function remainingRestSeconds(endsAt: number, now: number): number {
   return Math.max(0, Math.round((endsAt - now) / 1000));
@@ -182,6 +187,8 @@ export type RestCountdown = {
   finish: () => boolean;
   dispose: () => void;
   snapshot: () => RestCountdownSnapshot;
+  /** Segundos desde o vencimento (0 se ainda não venceu). */
+  overdue: () => number;
 };
 
 /**
@@ -249,6 +256,7 @@ export function createRestCountdown(options: RestCountdownOptions): RestCountdow
       stop();
     },
     snapshot,
+    overdue: () => restOverdueSeconds(endsAt, now()),
   };
 }
 

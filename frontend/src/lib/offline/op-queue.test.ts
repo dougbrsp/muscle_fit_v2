@@ -324,3 +324,49 @@ describe('fila offline: persistência e isolamento', () => {
     expect(classifyFailure(new HttpError('x', 404))).toBe('conflict');
   });
 });
+
+describe('fila offline: apoio à tela', () => {
+  it('whenSettled resolve synced só depois do 2xx e conflict em recusa; erro de rede não resolve', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    server.failWith(() => new HttpError('Erro interno', 500));
+    await queue.enqueue(SET_INPUT);
+    await queue.flush();
+    let settled: string | null = null;
+    void queue.whenSettled('set:5:1').then((value) => (settled = value));
+    await Promise.resolve();
+    expect(settled).toBeNull(); // error não é final
+    server.failWith(null);
+    clock += BACKOFF_MS[0] + 1;
+    await queue.flush();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe('synced');
+  });
+
+  it('discardConfirmed remove a pendência quando o servidor confirmou por fora da fila', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    server.failWith(() => new HttpError('Dados inválidos', 422));
+    await queue.enqueue(SET_INPUT);
+    await queue.flush();
+    expect(queue.getSnapshot().conflict).toBe(1);
+    await queue.discardConfirmed('set:5:1');
+    expect(queue.getSnapshot().ops).toHaveLength(0);
+    expect(await countUnsyncedOps(1)).toBe(0);
+  });
+
+  it('retry aceita a client_key (usado pelo "Tentar de novo" do Modo Intensivo)', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    server.failWith(() => new HttpError('Dados inválidos', 422));
+    await queue.enqueue(SET_INPUT);
+    await queue.flush();
+    server.failWith(null);
+    await queue.retry('set:5:1');
+    expect(queue.stateOf('set:5:1')).toBe('synced');
+  });
+});

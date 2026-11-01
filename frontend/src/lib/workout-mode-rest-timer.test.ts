@@ -265,3 +265,32 @@ describe('apresentação', () => {
     expect(restPrimaryLabel({ expired: true, isExerciseTransition: true, hasNextExercise: false })).toBe('Continuar');
   });
 });
+
+describe('descanso vencido (expirado há mm:ss)', () => {
+  it('restOverdueSeconds: 0 antes do fim; depois, segundos decorridos desde endsAt', async () => {
+    const { restOverdueSeconds } = await import('./workout-mode-rest-timer');
+    expect(restOverdueSeconds(10_000, 5_000)).toBe(0);
+    expect(restOverdueSeconds(10_000, 10_000)).toBe(0);
+    expect(restOverdueSeconds(10_000, 10_999)).toBe(0);
+    expect(restOverdueSeconds(10_000, 75_000)).toBe(65);
+  });
+
+  it('o relógio devolve o atraso pelo timestamp absoluto (voltar do segundo plano depois do fim)', async () => {
+    const { createRestCountdown } = await import('./workout-mode-rest-timer');
+    let clock = 0;
+    const countdown = createRestCountdown({
+      endsAt: 60_000,
+      totalSeconds: 60,
+      autoAdvanceOnZero: () => false,
+      onChange: () => undefined,
+      onZero: () => undefined,
+      onFinish: () => undefined,
+      now: () => clock,
+    });
+    clock = 60_000 + 125_000; // app ficou 2 min 5 s em segundo plano depois de vencer
+    countdown.recalc();
+    expect(countdown.snapshot()).toEqual({ remaining: 0, total: 60, expired: true });
+    expect(countdown.overdue()).toBe(125);
+    countdown.dispose();
+  });
+});

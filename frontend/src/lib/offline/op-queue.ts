@@ -291,7 +291,7 @@ export function createOpQueue(deps: OpQueueDeps) {
 
   /** Tentar agora: ignora o backoff de uma op em `error`. */
   async function retry(opId: string): Promise<void> {
-    const op = ops.find((candidate) => candidate.opId === opId);
+    const op = ops.find((candidate) => candidate.opId === opId || candidate.clientKey === opId);
     if (!op || (op.status !== 'error' && op.status !== 'conflict')) return;
     const next: OfflineOp = { ...op, status: 'saved_local', nextAttemptAt: undefined };
     replace(next);
@@ -339,6 +339,42 @@ export function createOpQueue(deps: OpQueueDeps) {
     };
   }
 
+  /**
+   * O servidor confirmou esta `client_key` por fora da fila (POST direto com
+   * 2xx): a op local deixa de ser pendência. Nada é enviado.
+   */
+  async function discardConfirmed(clientKey: string): Promise<void> {
+    const stale = ops.filter((op) => op.clientKey === clientKey && op.status !== 'synced');
+    if (stale.length === 0) return;
+    for (const op of stale) await removeOp(op);
+    ops = ops.filter((op) => !stale.includes(op));
+    emit();
+  }
+
+  /**
+   * Espera a op chegar a um estado final: 'synced' (2xx do servidor),
+   * 'conflict' (ação do usuário) ou 'removed' (descartada/purge). Erros de
+   * rede NÃO resolvem: a op segue tentando.
+   */
+  function whenSettled(clientKey: string): Promise<'synced' | 'conflict' | 'removed'> {
+    return new Promise((resolve) => {
+      const check = (): boolean => {
+        const op = ops.find((candidate) => candidate.clientKey === clientKey);
+        const outcome = !op ? 'removed' : op.status === 'synced' ? 'synced' : op.status === 'conflict' ? 'conflict' : null;
+        if (outcome) resolve(outcome);
+        return outcome != null;
+      };
+      if (check()) return;
+      const unsubscribe = (() => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      })();
+      function listener() {
+        if (check()) unsubscribe();
+      }
+    });
+  }
+
   function stateOf(clientKey: string): OpStatus | null {
     return ops.find((op) => op.clientKey === clientKey)?.status ?? null;
   }
@@ -351,6 +387,8 @@ export function createOpQueue(deps: OpQueueDeps) {
     resolveConflict,
     start,
     stateOf,
+    whenSettled,
+    discardConfirmed,
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
       listeners.add(listener);
