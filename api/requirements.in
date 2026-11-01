@@ -29,7 +29,7 @@ boto3==1.35.99
 PyMySQL==1.2.3
 cryptography==50.0.2
 python-multipart==0.0.32
-Pillow==12.3.0
+Pillow==13.0.0
 # bcrypt 5 recusa (ValueError) senha > 72 bytes em vez de truncar: app/auth.py
 # trunca nos mesmos 72 bytes antes de chamar, preservando os hashes existentes.
 bcrypt==5.0.0
