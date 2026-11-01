@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import os
 
+from .runtime_guard import exigir_data_api_em_lambda
+
 __all__ = [
     "Connection",
     "Cursor",
@@ -29,6 +31,9 @@ __all__ = [
     "is_duplicate_key_error",
     "is_unknown_key_error",
 ]
+
+# Recusa pymysql dentro de Lambda real ANTES de importar db_pymysql (anti-vazamento).
+exigir_data_api_em_lambda()
 
 if os.environ.get("DB_BACKEND", "data-api") == "pymysql":
     from .db_pymysql import (
