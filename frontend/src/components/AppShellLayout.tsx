@@ -5,8 +5,10 @@ import {
   AppShell,
   Avatar,
   Burger,
+  Center,
   Group,
   Image,
+  Loader,
   Menu,
   NavLink,
   ScrollArea,
@@ -36,7 +38,7 @@ import {
   DashboardNavMenuItemsFallback,
 } from '@/components/dashboard/DashboardNavLinks';
 import { apiFetch } from '@/lib/api';
-import { clearSession, type SessionUser } from '@/lib/auth';
+import type { SessionUser } from '@/lib/auth';
 import {
   browserStorage,
   isNavbarCollapsed,
@@ -52,7 +54,8 @@ import {
   visibleMainNavItems,
   type MainNavItem,
 } from '@/lib/nav-items';
-import { isMobileUiEnabled } from '@/lib/mobile/flags';
+import { logoutAndRedirect } from '@/lib/app-logout';
+import { applyQueryOverride, useMobileUi } from '@/lib/mobile/flags';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -108,6 +111,14 @@ function useNavbarCollapsed() {
   return { collapsed: isNavbarCollapsed(preference, isDesktop), toggle };
 }
 
+function NeutralScreen() {
+  return (
+    <Center style={{ minHeight: '100dvh', background: BRAND.bg }}>
+      <Loader color="brand" />
+    </Center>
+  );
+}
+
 // Chunk separado: com a flag desligada o seletor nem é baixado.
 const MobileLayoutSelector = lazy(() =>
   import('@/mobile/MobileLayoutSelector').then((m) => ({ default: m.MobileLayoutSelector })),
@@ -121,7 +132,13 @@ const MobileLayoutSelector = lazy(() =>
  * componente só renderiza depois do guard de sessão, ou seja, já no cliente.
  */
 export function AppShellLayout({ children }: { children: ReactNode }) {
-  const [mobileUi] = useState(() => isMobileUiEnabled());
+  // `?mobile=0|1` (QA) persiste o override uma vez; o efeito vem ANTES do de
+  // `useMobileUi`, que le o storage ja atualizado.
+  useEffect(() => {
+    applyQueryOverride();
+  }, []);
+  const mobileUi = useMobileUi();
+  if (mobileUi === null) return <NeutralScreen />;
   if (!mobileUi) return <DesktopAppShell>{children}</DesktopAppShell>;
   return (
     <Suspense fallback={null}>
@@ -155,21 +172,13 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
 
   const dashboardActive = Boolean(pathname?.startsWith('/dashboard'));
 
-  async function handleLogout() {
-    try {
-      await apiFetch('/auth/logout', { method: 'POST' });
-    } catch {
-      // mesmo se a chamada falhar (token já expirado, rede etc.), a sessão
-      // local é limpa e o usuário é redirecionado de qualquer forma.
-    } finally {
-      clearSession();
-      router.replace('/');
-    }
+  function handleLogout() {
+    void logoutAndRedirect(router.replace);
   }
 
   return (
     <AppShell
-      header={{ height: 64 }}
+      header={{ height: 'calc(64px + env(safe-area-inset-top, 0px))' }}
       navbar={{
         width: navbarWidth(collapsed),
         breakpoint: 'sm',
@@ -180,10 +189,16 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
         header: {
           background: BRAND.bgElevated,
           borderBottom: `1px solid ${BRAND.border}`,
+          // Safe areas (celular com flag OFF, PWA, paisagem com notch): env() = 0 no desktop.
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
         },
         navbar: {
           background: BRAND.bgElevated,
           borderRight: `1px solid ${BRAND.border}`,
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           // O Mantine já anima transform/top/height da navbar (e o padding do
           // `main`); a largura acompanha a alternância recolhido/expandido.
           transitionProperty: 'transform, top, height, width',

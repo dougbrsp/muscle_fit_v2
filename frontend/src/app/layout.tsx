@@ -25,6 +25,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Safe areas (notch, barra de status do PWA): so valem com `cover`; o desktop
+  // nao muda (env() = 0). Header/navbar do AppShell e o shell mobile usam env().
+  viewportFit: 'cover',
   themeColor: '#0a0a0a',
 };
 

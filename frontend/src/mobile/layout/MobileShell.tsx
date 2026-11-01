@@ -6,12 +6,12 @@ import { IconDots, IconUser } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
-import { apiFetch } from '@/lib/api';
-import { clearSession } from '@/lib/auth';
+import { logoutAndRedirect } from '@/lib/app-logout';
 import { navVisibilityFromUser, visibleMainNavItems } from '@/lib/nav-items';
 import { MOBILE_TOKENS } from '@/theme';
 import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
+import { resolveMobileScreen } from '../screens/registry';
 import { MoreSheet } from './MoreSheet';
 import { PRIMARY_TABS, buildMoreSections, isMoreActive, isPrimaryTabActive } from './primary-nav';
 import styles from './mobile-shell.module.css';
@@ -54,17 +54,12 @@ export default function MobileShell({ children }: { children: ReactNode }) {
     closeMore();
   }, [pathname, closeMore]);
 
-  async function handleLogout() {
-    try {
-      await apiFetch('/auth/logout', { method: 'POST' });
-    } catch {
-      // mesmo se a chamada falhar (token expirado, rede), limpa e redireciona.
-    } finally {
-      clearSession();
-      router.replace('/');
-    }
+  function handleLogout() {
+    void logoutAndRedirect(router.replace);
   }
 
+  // Tela mobile propria da rota (A2b), se existir; senao a pagina de sempre.
+  const Screen = resolveMobileScreen(pathname);
   const displayName = userQuery.data?.full_name || userQuery.data?.username || '';
 
   return (
@@ -93,7 +88,7 @@ export default function MobileShell({ children }: { children: ReactNode }) {
       <OfflineBanner />
 
       <main id="mobile-main" className={styles.main}>
-        {children}
+        {Screen ? <Screen /> : children}
       </main>
 
       <nav className={styles.nav} aria-label="Navegação principal">

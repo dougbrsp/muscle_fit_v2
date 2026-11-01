@@ -16,4 +16,11 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 | MB-9 | Paisagem >= 768 px (ex.: iPhone Pro Max 844 px) | Cai no layout desktop por decisão do plano (3.1). | Reavaliar após validar em aparelho real. |
 | MB-10 | Troca de viewport | Estado local de página (filtros digitados, abas) reinicia ao cruzar 768 px, pois a árvore muda. Dados do servidor ficam no cache do TanStack Query; a sessão de treino fica em storage. | Aceito; se incomodar, elevar filtros para a URL. |
 
+## Decisão A2b (telas P1)
+
+- **Início**: tela mobile própria (`src/mobile/screens/MobileHome.tsx`), escolhida pelo shell via `screens/registry.ts` só com flag ON + largura de celular. Mesmos hooks/queries da visão geral (`useDashboardFilters`, `fetchOverview`, mesma chave de cache); todo texto e número vem do backend. O painel completo continua disponível, recolhido ("Ver visão geral completa").
+- **Histórico** (`registro-exercicios`, `dashboard/treinos`) e **Biblioteca** (`exercicios`): mantidos como estão no shell. Já são colunas empilhadas e não rolam a página; o único ponto fraco é a tabela larga e o filtro em 4 colunas do registro (MB-1/MB-2), que exigem mexer em página compartilhada e ficam para PR próprio com prova de desktop idêntico.
+- **Perfil**: formulário em coluna única, bom com os alvos de 44 px e fonte de 16 px do shell.
+- **Safe-area**: `viewportFit: 'cover'` no layout raiz e `env(safe-area-inset-*)` no header/navbar do AppShell desktop (celular com flag OFF, PWA, paisagem com notch) e no shell mobile. No desktop `env()` vale 0 e o e2e Chromium 1280/1440 segue idêntico. Falta validar o efeito real em iPhone.
+
 Pendente fora do código: validação em iPhone real (PWA instalada, teclado, safe areas).

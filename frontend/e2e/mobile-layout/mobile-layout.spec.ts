@@ -179,3 +179,33 @@ test('A2: historico, biblioteca e treinos sem overflow de pagina em 320', async 
     await noHorizontalOverflow(page);
   }
 });
+
+test('A2b: Inicio mobile tem CTA de iniciar treino no alcance do polegar e usa os dados do overview', async ({ page }) => {
+  await open(page, '/dashboard/', 'on', { width: 375, height: 800 });
+  await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'Início', level: 1 })).toBeVisible({ timeout: 20_000 });
+  const cta = page.getByRole('link', { name: /iniciar treino/i });
+  await expect(cta).toBeVisible();
+  const box = await cta.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  // metade inferior da tela (zona do polegar) e acima do bottom nav
+  expect(box!.y).toBeGreaterThan(400);
+  const navBox = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(navBox!.y);
+  await expect(page.getByText(/voce concluiu 10 de 12/i).first()).toBeVisible();
+  await expect(page.getByText('Recuperação', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Próxima ação', { exact: true }).first()).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: 'e2e/mobile-layout/__screens__/inicio-375.png' });
+  await cta.click();
+  await expect(page).toHaveURL(/\/modo-treino\/?$/);
+});
+
+test('A2b: visao geral completa fica recolhida e abre sob demanda', async ({ page }) => {
+  await open(page, '/dashboard/', 'on', { width: 375, height: 800 });
+  await expect(page.getByRole('heading', { name: 'Início', level: 1 })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'Visão geral', level: 1 })).toBeHidden();
+  await page.getByRole('button', { name: /ver visão geral completa/i }).click();
+  await expect(page.getByRole('heading', { name: 'Visão geral', level: 1 })).toBeVisible();
+  await noHorizontalOverflow(page);
+});
