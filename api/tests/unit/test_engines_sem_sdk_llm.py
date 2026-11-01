@@ -10,16 +10,21 @@ API = Path(__file__).resolve().parents[2]
 SDK = ("anthropic", "openai")
 
 
-def _pacotes(lock: str) -> set[str]:
-    return {m.group(1).lower() for m in re.finditer(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?==", lock, re.M)}
+def _pinos(lock: str) -> dict[str, str]:
+    return {
+        m.group(1).lower(): m.group(2)
+        for m in re.finditer(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?==([^\s\\]+)", lock, re.M)
+    }
 
 
 def test_lock_engines_sem_sdk_llm_e_lock_core_com():
-    engines = _pacotes((API / "requirements-engines.txt").read_text(encoding="utf-8"))
-    core = _pacotes((API / "requirements.txt").read_text(encoding="utf-8"))
+    engines = _pinos((API / "requirements-engines.txt").read_text(encoding="utf-8"))
+    core = _pinos((API / "requirements.txt").read_text(encoding="utf-8"))
     assert "anthropic" in core
-    assert not engines.intersection(SDK)
-    assert engines < core
+    assert not set(engines).intersection(SDK)
+    assert set(engines) < set(core)
+    divergentes = {n: (v, core[n]) for n, v in engines.items() if core.get(n) != v}
+    assert not divergentes, f"versoes diferentes entre os locks: {divergentes}"
 
 
 def test_in_engines_nao_traz_sdk():
