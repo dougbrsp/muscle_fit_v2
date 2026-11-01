@@ -553,16 +553,34 @@ jobs:
           PWA_KILL_SWITCH: ${{ inputs.pwa_kill_switch }}
         run: |
           set -euo pipefail
-          # Tolerante a ordem de merge: sem o PWA no frontend (sem out/sw.js) nao ha o que fazer.
-          if [[ ! -f out/sw.js || ! -f scripts/build-sw.mjs ]]; then
-            echo "::notice::out/sw.js ou scripts/build-sw.mjs ausente (PWA ainda nao publicado); etapa pulada (vale tambem para o kill switch)"
+          # Kill switch: a fonte do sw.js autodestrutivo fica INLINE de proposito (mesmo texto de
+          # KILL_SW_SOURCE em frontend/scripts/build-sw.mjs) para funcionar mesmo que o script ou o
+          # sw.js do build nao existam; sempre publica, nunca pula.
+          if [[ "$PWA_KILL_SWITCH" == "true" ]]; then
+            mkdir -p out
+            cat > out/sw.js <<'KILL_SW_EOF'
+          /* MuscleFit service worker KILL SWITCH: remove caches e se desregistra. */
+          self.addEventListener('install', () => self.skipWaiting());
+          self.addEventListener('activate', (event) => {
+            event.waitUntil(
+              (async () => {
+                const names = await caches.keys();
+                await Promise.all(names.filter((n) => n.startsWith('musclefit-')).map((n) => caches.delete(n)));
+                await self.registration.unregister();
+              })(),
+            );
+          });
+          // Sem handler de fetch: toda requisicao vai direto para a rede.
+          KILL_SW_EOF
+            echo "::warning::pwa_kill_switch=true: publicando o service worker autodestrutivo"
             exit 0
           fi
-          if [[ "$PWA_KILL_SWITCH" == "true" ]]; then
-            node scripts/build-sw.mjs --kill
-          else
-            node scripts/build-sw.mjs
+          # Sem kill switch, tolerante a ordem de merge: sem o PWA no frontend nao ha o que fazer.
+          if [[ ! -f out/sw.js || ! -f scripts/build-sw.mjs ]]; then
+            echo "::notice::out/sw.js ou scripts/build-sw.mjs ausente (PWA ainda nao publicado); etapa pulada"
+            exit 0
           fi
+          node scripts/build-sw.mjs
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
