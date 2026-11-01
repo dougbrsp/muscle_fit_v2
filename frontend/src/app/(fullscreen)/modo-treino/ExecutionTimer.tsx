@@ -96,9 +96,13 @@ export function ExecutionTimer({ spec, resetKey, onStop }: Props) {
       if (document.visibilityState === 'visible') tick();
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', tick);
+    window.addEventListener('focus', tick);
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', tick);
+      window.removeEventListener('focus', tick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, targetMs]);

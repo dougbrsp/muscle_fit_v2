@@ -28,6 +28,7 @@ import { ModeSelectScreen } from './ModeSelectScreen';
 import { PlanExecutionScreen } from './PlanExecutionScreen';
 import { StorageStatusNotice } from './StorageStatusNotice';
 import { SyncIndicator } from './SyncIndicator';
+import { WakeLockNotice } from './WakeLockNotice';
 import { WorkoutModeShell } from './WorkoutModeShell';
 import { preloadMuscleBodyMap } from '@/components/MuscleBodyMapLazy';
 
@@ -168,6 +169,7 @@ export function WorkoutModeClient() {
     >
       <StorageStatusNotice />
       <SyncIndicator />
+      {session && <WakeLockNotice />}
       {!session && <ModeSelectScreen onSessionStarted={handleSessionStarted} />}
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
