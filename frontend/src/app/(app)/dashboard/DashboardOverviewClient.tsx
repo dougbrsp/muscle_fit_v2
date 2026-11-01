@@ -178,7 +178,7 @@ function ProgressionCard({ block, filters }: { block: ProgressionBlock; filters:
       answer={block.answer}
       quality={block.data_quality}
       limitations={block.limitations}
-      drilldownHref={hubHref(block.drilldown_href, filters)}
+      drilldownHref={`${hubHref(block.drilldown_href, filters)}#progressao-por-exercicio`}
       drilldownLabel="Ver progressão por exercício"
     >
       {bars.length > 0 && (

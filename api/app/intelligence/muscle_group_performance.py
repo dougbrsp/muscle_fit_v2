@@ -1,98 +1,87 @@
 """Desempenho por GRUPO MUSCULAR em `/dashboard/progressao` - parte pura.
 
-## Por que existe (2026-10-02)
+## Fonte unica do status (2026-11-01)
 
-O painel classificava cada grupo so pela TONELAGEM (volume). Com o Modelo novo
-o doug reduziu o volume de proposito (de ~3-4,5 para ~2 series por exercicio)
-enquanto ficava mais forte: o e1RM do mesmo exercicio subiu em 14 de 18 grupos
-na janela de 28 dias, e a tela dizia "REGREDINDO" em 10. Queda de volume
-planejada nao e regressao. Decisao do usuario: DUAS dimensoes separadas por
-grupo - "Volume" (tonelagem, rotulos neutros, `muscle_group_progression`) e
-"Desempenho" (este modulo).
+O `performance_status` do grupo NAO e mais uma classificacao propria. Ele e a
+AGREGACAO PONDERADA dos status dos EXERCICIOS do grupo, calculados pelo dono
+(`dashboard/comparability.classify_exercise_progression`, o mesmo da home):
+`comparability.aggregate_group_progression` (regra e constantes la). Os pesos
+sao os `stimulus_weight` de `exercise_muscle_contributions` (participacao
+muscular que ja existia), sem peso novo. Antes, uma regra propria (melhor e1RM
+da janela contra a anterior, banda de +-5%, descarte de +-50%, ativacao minima)
+dava um numero diferente do da home - terceira divergencia reportada.
 
-## Metrica
+## O que sobrou deste modulo (informativo, nunca gera status)
 
 Para cada exercicio presente nas DUAS janelas com a MESMA chave de
-comparabilidade (`comparability.build_key`: exercicio canonico + equipamento +
-convencao de carga), compara-se o MELHOR e1RM de cada janela. O e1RM e Epley
-com RIR pelo dono (`domain/e1rm.reliable_e1rm`, politica
-`MissingRpePolicy.RIR_ZERO`), por serie de trabalho com ate
-`E1RM_MAX_RELIABLE_REPS` reps (`analytics._fetch_group_e1rm_rows`; ate o M76
-Lote 3a a formula era reescrita em SQL). A variacao do grupo e a
-media das variacoes dos exercicios ponderada pelo `stimulus_weight` do
-exercicio naquele grupo - um supino pesa pouco no triceps, a extensao de
-triceps pesa tudo.
+comparabilidade (`comparability.build_key`) compara-se o MELHOR e1RM de cada
+janela (Epley com RIR pelo dono `domain/e1rm.reliable_e1rm`, politica
+`MissingRpePolicy.RIR_ZERO`, series de trabalho com ate
+`E1RM_MAX_RELIABLE_REPS` reps - ver `analytics._fetch_group_e1rm_rows`). O
+resultado e `performance_change_pct` (media das variacoes ponderada pelo
+`stimulus_weight`) e a lista `performance_exercises`, para o usuario CONFERIR
+o numero. A variacao de mais de `OUTLIER_CHANGE_PCT` (+-50%) e atipica
+(quase sempre registro errado) e fica FORA da media informativa, marcada com
+`outlier: true`. Nada disso muda o status do grupo.
 
-Regras herdadas (nao negociaveis, ver `dashboard/comparability.py`):
-
-- troca de maquina/convencao NAO e piora: chaves diferentes nao se comparam;
-  equipamento ausente so compara quando TODAS as exposicoes do exercicio estao
-  sem equipamento (excecao do §8.1, `all_equipment_missing`);
-- `assisted` e `bodyweight` nao tem e1RM (`supports_e1rm`);
-- so series de trabalho: aquecimento/ajuste ficam de fora, e tambem as
-  aplicacoes de tecnica e o backoff - mini-blocos de rest-pause (5 reps no
-  peso da serie) e drops nao medem forca maxima e so puxariam o e1RM para
-  baixo de forma artificial.
-
-Formula (decisao do usuario em 2026-10-06, meio-termo, substituindo a de
-2026-10-02 so no teto de reps e no uso do RIR quando disponivel):
-- RIR = max(0, 10 - RPE) quando a serie tem RPE (= `e1rm.estimated_1rm`);
-- RIR = 0 quando a serie NAO tem RPE - as ~14% de series de trabalho sem RPE
-  (medido em 2026-10-02) continuam contando, como antes;
-- so series com ate 12 reps (`e1rm_max_reliable_reps`, o teto da regra unica):
-  acima disso o Epley nao e confiavel.
-A banda, as travas e a agregacao por grupo abaixo NAO mudaram.
-
-Faixa de estabilidade: a MESMA do volume (`STABLE_BAND_PCT`, +-5%) - nenhum
-limiar novo. Sem exercicio comparavel nas duas janelas: `DADOS_INSUFICIENTES`.
-
-## Duas travas (aprovadas pelo usuario em 2026-10-02)
-
-1. Variacao atipica (`OUTLIER_CHANGE_PCT`): exercicio cujo e1RM variou mais
-   de +50% ou menos de -50% entre as janelas e DESCARTADO do calculo do
-   grupo - quase sempre e registro errado (carga por lado x total, maquina
-   trocada sem cadastro). Continua listado em `performance_exercises` com
-   `outlier: true` / `excluded_reason: "OUTLIER_CHANGE"` para o usuario
-   conferir. Caso real: remada articulada 46 -> 101 kg (+120%) inflava Costas
-   (dorsal) para +30,5%. Exatamente +-50% ainda entra.
-2. Ativacao minima (`MIN_ACTIVATION_SUM`): o grupo so e classificado quando a
-   soma do `stimulus_weight` dos exercicios USADOS (sem os atipicos) e >= 0,5.
-   Abaixo disso: `DADOS_INSUFICIENTES` com
-   `performance_insufficient_reason: "LOW_ACTIVATION"`. Caso real: Adutores em
-   7 dias com +100% vindo de um unico exercicio com 20% de ativacao.
+Regras herdadas de `dashboard/comparability.py`: troca de maquina/convencao
+NAO e piora (chaves diferentes nao se comparam); equipamento ausente so compara
+quando todas as exposicoes do exercicio estao sem equipamento (§8.1);
+`assisted` e `bodyweight` nao tem e1RM; so series de trabalho.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .dashboard.comparability import ComparabilityKey, all_equipment_missing, build_key, keys_match
+from .dashboard.comparability import (
+    GROUP_REASON_LOW_ACTIVATION,
+    GROUP_REASON_NO_COMPARABLE_EXERCISE,
+    ComparabilityKey,
+    aggregate_group_progression,
+    all_equipment_missing,
+    build_key,
+    keys_match,
+)
+from .dashboard.metrics_registry import ExerciseProgressionStatus
 from ..load_conventions import normalize_load_convention, supports_e1rm
 from .muscle_group_progression import (
     DADOS_INSUFICIENTES,
     ESTAVEL,
     PROGREDINDO,
     REGREDINDO,
-    STABLE_BAND_PCT,
 )
 
-# Base da variacao de desempenho (ecoada no payload para o frontend explicar).
+# Base da variacao de e1RM (informativa; ecoada no payload).
 PERFORMANCE_BASIS = "best_e1rm_epley_same_exercise"
+# Base do STATUS do grupo: agregacao ponderada dos status dos exercicios (dono).
+STATUS_BASIS = "weighted_exercise_progression_status"
 
-# Variacao de e1RM (em %, absoluta) acima da qual o exercicio e descartado do
-# calculo do grupo como atipico ("conferir registro"). Estritamente maior:
-# +-50% exatos ainda contam.
+# Variacao de e1RM (em %, absoluta) acima da qual o exercicio e tratado como
+# atipico ("conferir registro") e fica fora da media INFORMATIVA. Estritamente
+# maior: +-50% exatos ainda contam. Nunca altera o status do grupo.
 OUTLIER_CHANGE_PCT = 50.0
 OUTLIER_CHANGE = "OUTLIER_CHANGE"
 
-# Soma minima do `stimulus_weight` dos exercicios usados para o grupo receber
-# PROGREDINDO/ESTAVEL/REGREDINDO. Abaixo: DADOS_INSUFICIENTES.
-MIN_ACTIVATION_SUM = 0.5
+# Motivos de `performance_insufficient_reason` (None quando ha classificacao);
+# definidos pelo dono, reexportados aqui para o contrato da tela.
+NO_COMPARABLE_EXERCISE = GROUP_REASON_NO_COMPARABLE_EXERCISE
+LOW_ACTIVATION = GROUP_REASON_LOW_ACTIVATION
+# Lote de progressao falhou: o grupo fica sem status por indisponibilidade, nao por falta de dado.
+PROGRESSION_UNAVAILABLE = "PROGRESSION_UNAVAILABLE"
 
-# Motivos de `performance_insufficient_reason` (None quando ha classificacao).
-NO_COMPARABLE_EXERCISE = "NO_COMPARABLE_EXERCISE"
-ALL_OUTLIERS = "ALL_OUTLIERS"
-LOW_ACTIVATION = "LOW_ACTIVATION"
+# Mesmo vocabulario do enum do dono, com os valores de enum do grupo.
+_GROUP_STATUS = {
+    ExerciseProgressionStatus.PROGRESSING: PROGREDINDO,
+    ExerciseProgressionStatus.STABLE: ESTAVEL,
+    ExerciseProgressionStatus.REGRESSING: REGREDINDO,
+    ExerciseProgressionStatus.INSUFFICIENT_DATA: DADOS_INSUFICIENTES,
+}
+
+_ZERO_COUNTS = {
+    "progressing": 0, "stable": 0, "plateau_suspected": 0, "regressing": 0,
+    "comparable_total": 0, "not_comparable": 0, "insufficient_data": 0,
+}
 
 
 def _float(value: Any) -> Optional[float]:
@@ -102,14 +91,6 @@ def _float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _status(change_pct: float) -> str:
-    if change_pct >= STABLE_BAND_PCT:
-        return PROGREDINDO
-    if change_pct <= -STABLE_BAND_PCT:
-        return REGREDINDO
-    return ESTAVEL
 
 
 def insufficient() -> Dict[str, Any]:
@@ -122,20 +103,40 @@ def insufficient() -> Dict[str, Any]:
         "performance_activation_sum": 0.0,
         "performance_insufficient_reason": NO_COMPARABLE_EXERCISE,
         "performance_exercises": [],
+        "progression_counts": dict(_ZERO_COUNTS),
     }
+
+
+def mark_progression_unavailable(items: Iterable[Dict[str, Any]]) -> None:
+    """Degradacao: o motivo de cada grupo passa a ser `PROGRESSION_UNAVAILABLE`
+    (o status ja e DADOS_INSUFICIENTES porque nao ha status de exercicio)."""
+    for item in items:
+        item["performance_insufficient_reason"] = PROGRESSION_UNAVAILABLE
 
 
 def _is_outlier(change_pct: float) -> bool:
     return abs(change_pct) > OUTLIER_CHANGE_PCT
 
 
-def build_group_performance(rows: Iterable[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    """`rows`: uma linha por (periodo, exercicio canonico, equipamento,
-    convencao bruta, grupo) com `period` ('current'|'previous'),
-    `exercise_id`, `exercise_name`, `equipment_id`, `load_convention` (bruta;
-    `None` = sem cadastro = `total`), `muscle_group_id`, `stimulus_weight` e
-    `best_e1rm_kg`. Devolve `{muscle_group_id: leitura}`; grupo ausente do
-    dicionario = sem exercicio comparavel (quem monta usa `insufficient()`)."""
+def build_group_performance(
+    rows: Iterable[Dict[str, Any]],
+    *,
+    exercise_items: Optional[Iterable[Dict[str, Any]]] = None,
+    group_weights: Optional[Dict[int, Dict[int, float]]] = None,
+) -> Dict[int, Dict[str, Any]]:
+    """STATUS: `exercise_items` (itens de `get_exercises_progression_batch`,
+    `exercise_id` canonico + `status`) e `group_weights`
+    (`{grupo: {exercicio canonico: stimulus_weight}}`) alimentam
+    `comparability.aggregate_group_progression`. Sem eles, nenhum grupo tem
+    status (todos `insufficient()`).
+
+    `rows` (INFORMATIVO, nao gera status): uma linha por (periodo, exercicio
+    canonico, equipamento, convencao bruta, grupo) com `period`
+    (current ou previous), `exercise_id`, `exercise_name`, `equipment_id`,
+    `load_convention` (bruta; `None` = sem cadastro = `total`),
+    `muscle_group_id`, `stimulus_weight` e `best_e1rm_kg`. Devolve
+    `{muscle_group_id: leitura}`; grupo ausente = sem exercicio comparavel
+    (quem monta usa `insufficient()`)."""
     rows = list(rows)
 
     # Excecao do §8.1: decidida por EXERCICIO, olhando as duas janelas juntas.
@@ -193,19 +194,34 @@ def build_group_performance(rows: Iterable[Dict[str, Any]]) -> Dict[int, Dict[st
             }
         )
 
+    # Status: agregacao do dono sobre os status dos exercicios do grupo.
+    status_by_exercise = {int(item["exercise_id"]): item["status"] for item in (exercise_items or [])}
+    aggregated: Dict[int, Dict[str, Any]] = {}
+    for group_id, weights in (group_weights or {}).items():
+        entries = [
+            (status_by_exercise[int(exercise_id)], weight)
+            for exercise_id, weight in weights.items()
+            if int(exercise_id) in status_by_exercise
+        ]
+        if entries:
+            aggregated[int(group_id)] = aggregate_group_progression(entries)
+
     result: Dict[int, Dict[str, Any]] = {}
-    for group_id, exercises in by_group.items():
+    for group_id in set(by_group) | set(aggregated):
+        exercises = by_group.get(group_id, [])
         used = [item for item in exercises if not item["outlier"]]
-        # Arredonda para nao perder 0,2 + 0,3 = 0,49999... no limiar.
         total_weight = sum(item["stimulus_weight"] for item in used)
-        activation = round(total_weight, 6)
-        if not used:
-            status, change_pct, reason = DADOS_INSUFICIENTES, None, ALL_OUTLIERS
-        elif activation < MIN_ACTIVATION_SUM:
-            status, change_pct, reason = DADOS_INSUFICIENTES, None, LOW_ACTIVATION
+        change_pct = (
+            round(sum(item["_change"] * item["stimulus_weight"] for item in used) / total_weight, 1)
+            if used and total_weight > 0
+            else None
+        )
+        verdict = aggregated.get(group_id)
+        if verdict is None:
+            status, reason, weight_sum, counts = DADOS_INSUFICIENTES, NO_COMPARABLE_EXERCISE, 0.0, dict(_ZERO_COUNTS)
         else:
-            weighted = sum(item["_change"] * item["stimulus_weight"] for item in used) / total_weight
-            status, change_pct, reason = _status(weighted), round(weighted, 1), None
+            status = _GROUP_STATUS[verdict["status"]]
+            reason, weight_sum, counts = verdict["reason"], verdict["comparable_weight"], verdict["counts"]
         exercises.sort(key=lambda i: (i["outlier"], -i["stimulus_weight"], i["exercise_name"] or ""))
         for item in exercises:
             del item["_change"]
@@ -214,8 +230,9 @@ def build_group_performance(rows: Iterable[Dict[str, Any]]) -> Dict[int, Dict[st
             "performance_change_pct": change_pct,
             "performance_exercises_compared": len(used),
             "performance_exercises_excluded": len(exercises) - len(used),
-            "performance_activation_sum": round(activation, 3),
+            "performance_activation_sum": round(weight_sum, 3),
             "performance_insufficient_reason": reason,
             "performance_exercises": exercises,
+            "progression_counts": counts,
         }
     return result

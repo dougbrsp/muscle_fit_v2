@@ -15,10 +15,9 @@ import sqlite3
 from datetime import date
 
 from app import analytics
+from app.intelligence.dashboard.comparability import GROUP_MIN_COMPARABLE_WEIGHT
 from app.intelligence.muscle_group_performance import (
-    ALL_OUTLIERS,
     LOW_ACTIVATION,
-    MIN_ACTIVATION_SUM,
     NO_COMPARABLE_EXERCISE,
     OUTLIER_CHANGE,
     OUTLIER_CHANGE_PCT,
@@ -59,10 +58,22 @@ def _tonnage_rows(current_avg, previous_avg, sessions=4, group=QUAD):
     ]
 
 
-def test_volume_cai_e_desempenho_sobe():
-    """O caso que motivou a mudanca: metade das series (tonelagem -40%), carga maior
-    (e1RM 160 -> 180, +12,5%). Volume menor + PROGREDINDO - nunca REGREDINDO."""
-    performance = build_group_performance([_e1rm_row("previous", 160.0), _e1rm_row("current", 180.0)])
+def _status_inputs(*specs, group=QUAD):
+    """`specs`: `(exercise_id, status, stimulus_weight)` -> argumentos de
+    `exercise_items`/`group_weights` de `build_group_performance`."""
+    items = [{"exercise_id": ex, "status": status} for ex, status, _w in specs]
+    weights = {group: {ex: weight for ex, _status, weight in specs}}
+    return {"exercise_items": items, "group_weights": weights}
+
+
+def test_volume_cai_e_status_vem_dos_exercicios():
+    """O caso que motivou a mudanca de 2026-10-02: metade das series (tonelagem
+    -40%), carga maior (e1RM 160 -> 180, +12,5%). Volume menor, nunca REGREDINDO.
+    Desde 2026-11-01 o STATUS vem do dono (exercicio PROGRESSING); o e1RM e so informativo."""
+    performance = build_group_performance(
+        [_e1rm_row("previous", 160.0), _e1rm_row("current", 180.0)],
+        **_status_inputs((22, "PROGRESSING", 1.0)),
+    )
     (item,) = build_group_progression(_tonnage_rows(2400.0, 4000.0), None, performance)
 
     assert item["volume_status"] == VOLUME_DOWN
@@ -70,14 +81,33 @@ def test_volume_cai_e_desempenho_sobe():
     assert item["performance_status"] == "PROGREDINDO"
     assert item["performance_change_pct"] == 12.5
     assert item["performance_exercises_compared"] == 1
+    assert item["progression_counts"]["progressing"] == 1
     (exercise,) = item["performance_exercises"]
     assert exercise["previous_e1rm_kg"] == 160.0 and exercise["current_e1rm_kg"] == 180.0
     # Compatibilidade: o campo antigo continua (deprecado), com o valor de antes.
     assert item["classification"] == "REGREDINDO"
 
 
-def test_sem_exercicio_em_comum_e_dados_insuficientes():
-    """Exercicio trocado entre as janelas: nao ha o que comparar."""
+def test_e1rm_sobe_mas_o_dono_diz_estavel_o_status_segue_o_dono():
+    """Nenhuma banda de e1RM gera status: +12,5% no e1RM, exercicio STABLE no dono."""
+    performance = build_group_performance(
+        [_e1rm_row("previous", 160.0), _e1rm_row("current", 180.0)],
+        **_status_inputs((22, "STABLE", 1.0)),
+    )
+    assert performance[QUAD]["performance_status"] == "ESTAVEL"
+    assert performance[QUAD]["performance_change_pct"] == 12.5
+
+
+def test_sem_status_dos_exercicios_nao_ha_status():
+    """Sem `exercise_items` o e1RM sozinho NAO classifica."""
+    performance = build_group_performance([_e1rm_row("previous", 160.0), _e1rm_row("current", 200.0)])
+    assert performance[QUAD]["performance_status"] == "DADOS_INSUFICIENTES"
+    assert performance[QUAD]["performance_insufficient_reason"] == NO_COMPARABLE_EXERCISE
+    assert performance[QUAD]["performance_change_pct"] == 25.0
+
+
+def test_sem_exercicio_em_comum_nao_ha_leitura_de_e1rm():
+    """Exercicio trocado entre as janelas: nao ha o que comparar no e1RM."""
     performance = build_group_performance(
         [_e1rm_row("previous", 160.0, exercise_id=22), _e1rm_row("current", 200.0, exercise_id=60)]
     )
@@ -115,7 +145,7 @@ def test_equipamento_ausente_so_compara_quando_todas_as_exposicoes_estao_sem():
     so_sem = build_group_performance(
         [_e1rm_row("previous", 100.0, equipment_id=None), _e1rm_row("current", 110.0, equipment_id=None)]
     )
-    assert so_sem[QUAD]["performance_status"] == "PROGREDINDO"
+    assert so_sem[QUAD]["performance_change_pct"] == 10.0
 
     misto = build_group_performance(
         [
@@ -127,9 +157,9 @@ def test_equipamento_ausente_so_compara_quando_todas_as_exposicoes_estao_sem():
     assert misto == {}
 
 
-def test_media_ponderada_pela_ativacao_e_faixa_estavel():
+def test_media_ponderada_do_e1rm_e_informativa():
     """Extensora (100% quadriceps) +4%, agachamento (50%) +10%:
-    (4x1 + 10x0,5) / 1,5 = 6,0% -> PROGREDINDO pela faixa de 5% do painel."""
+    (4x1 + 10x0,5) / 1,5 = 6,0% - so a metrica informativa; o status e do dono."""
     rows = [
         _e1rm_row("previous", 100.0, exercise_id=20, name="Extensora"),
         _e1rm_row("current", 104.0, exercise_id=20, name="Extensora"),
@@ -138,18 +168,11 @@ def test_media_ponderada_pela_ativacao_e_faixa_estavel():
     ]
     group = build_group_performance(rows)[QUAD]
     assert group["performance_change_pct"] == 6.0
-    assert group["performance_status"] == "PROGREDINDO"
     assert [e["exercise_name"] for e in group["performance_exercises"]] == ["Extensora", "Agachamento"]
-
-    so_extensora = build_group_performance(rows[:2])[QUAD]
-    assert so_extensora["performance_status"] == "ESTAVEL"
-
-    queda = build_group_performance([_e1rm_row("previous", 100.0), _e1rm_row("current", 94.0)])[QUAD]
-    assert queda["performance_status"] == "REGREDINDO"
 
 
 # ---------------------------------------------------------------------------
-# Travas aprovadas em 2026-10-02: variacao atipica e ativacao minima.
+# Agregacao do status do grupo (dono: `comparability.aggregate_group_progression`)
 # ---------------------------------------------------------------------------
 
 DORSAL = 12
@@ -158,26 +181,94 @@ ADUTORES = 17
 
 def test_constantes_documentadas():
     assert OUTLIER_CHANGE_PCT == 50.0
-    assert MIN_ACTIVATION_SUM == 0.5
+    assert GROUP_MIN_COMPARABLE_WEIGHT == 0.5
 
 
-def test_atipico_e_descartado_mas_continua_listado():
-    """Cenario sintetico baseado em caso real: remada articulada 45 -> 100 kg
-    (+122%) inflava Costas
-    (dorsal). Sai do calculo, fica na lista marcada para conferir."""
+def test_agregacao_vence_o_balde_de_maior_peso():
+    """Progredindo 1,0 contra regredindo 0,5 e estavel 0,25 -> PROGREDINDO."""
+    group = build_group_performance(
+        [],
+        **_status_inputs((1, "PROGRESSING", 1.0), (2, "REGRESSING", 0.5), (3, "STABLE", 0.25)),
+    )[QUAD]
+    assert group["performance_status"] == "PROGREDINDO"
+    assert group["progression_counts"]["comparable_total"] == 3
+    assert group["performance_activation_sum"] == 1.75
+
+    regride = build_group_performance(
+        [], **_status_inputs((1, "PROGRESSING", 0.25), (2, "REGRESSING", 1.0))
+    )[QUAD]
+    assert regride["performance_status"] == "REGREDINDO"
+
+
+def test_plato_conta_como_estavel_no_grupo_e_aparece_na_contagem():
+    group = build_group_performance(
+        [], **_status_inputs((1, "PLATEAU_SUSPECTED", 1.0), (2, "PROGRESSING", 0.5))
+    )[QUAD]
+    assert group["performance_status"] == "ESTAVEL"
+    assert group["progression_counts"]["plateau_suspected"] == 1
+
+
+def test_empate_no_topo_e_estavel():
+    group = build_group_performance(
+        [], **_status_inputs((1, "PROGRESSING", 0.5), (2, "REGRESSING", 0.5))
+    )[QUAD]
+    assert group["performance_status"] == "ESTAVEL"
+
+
+def test_nao_comparavel_e_dados_insuficientes_ficam_fora_do_peso():
+    group = build_group_performance(
+        [],
+        **_status_inputs((1, "NOT_COMPARABLE", 1.0), (2, "INSUFFICIENT_DATA", 1.0), (3, "REGRESSING", 0.6)),
+    )[QUAD]
+    assert group["performance_status"] == "REGREDINDO"
+    assert group["performance_activation_sum"] == 0.6
+    counts = group["progression_counts"]
+    assert (counts["not_comparable"], counts["insufficient_data"], counts["comparable_total"]) == (1, 1, 1)
+
+    nenhum = build_group_performance(
+        [], **_status_inputs((1, "NOT_COMPARABLE", 1.0), (2, "INSUFFICIENT_DATA", 1.0))
+    )[QUAD]
+    assert nenhum["performance_status"] == "DADOS_INSUFICIENTES"
+    assert nenhum["performance_insufficient_reason"] == NO_COMPARABLE_EXERCISE
+
+
+def test_peso_comparavel_0_2_e_dados_insuficientes():
+    """Adutores: um unico exercicio comparavel com 20% de ativacao."""
+    group = build_group_performance(
+        [], **_status_inputs((1, "PROGRESSING", 0.2), group=ADUTORES)
+    )[ADUTORES]
+    assert group["performance_status"] == "DADOS_INSUFICIENTES"
+    assert group["performance_insufficient_reason"] == LOW_ACTIVATION
+    assert group["performance_activation_sum"] == 0.2
+
+
+def test_peso_comparavel_0_5_exato_classifica():
+    """0,2 + 0,3 = 0,49999... em ponto flutuante: o limiar ainda classifica."""
+    group = build_group_performance(
+        [], **_status_inputs((1, "PROGRESSING", 0.2), (2, "PROGRESSING", 0.3), group=ADUTORES)
+    )[ADUTORES]
+    assert group["performance_activation_sum"] == 0.5
+    assert group["performance_status"] == "PROGREDINDO"
+    assert group["performance_insufficient_reason"] is None
+
+
+def test_atipico_sai_so_da_media_informativa_nao_do_status():
+    """Remada articulada 45 -> 100 kg (+122%): fora da media do e1RM (marcada
+    para conferir), mas o STATUS do grupo continua sendo o do dono (aqui o
+    exercicio e REGRESSING no dono, com peso maior)."""
     rows = [
         _e1rm_row("previous", 100.0, exercise_id=30, group=DORSAL, name="Puxada"),
         _e1rm_row("current", 106.0, exercise_id=30, group=DORSAL, name="Puxada"),
         _e1rm_row("previous", 45.0, exercise_id=31, group=DORSAL, name="Remada articulada"),
         _e1rm_row("current", 100.0, exercise_id=31, group=DORSAL, name="Remada articulada"),
     ]
-    group = build_group_performance(rows)[DORSAL]
+    group = build_group_performance(
+        rows, **_status_inputs((30, "PROGRESSING", 1.0), (31, "REGRESSING", 1.0), (32, "REGRESSING", 0.5), group=DORSAL)
+    )[DORSAL]
     assert group["performance_change_pct"] == 6.0
-    assert group["performance_status"] == "PROGREDINDO"
+    assert group["performance_status"] == "REGREDINDO"
     assert group["performance_exercises_compared"] == 1
     assert group["performance_exercises_excluded"] == 1
-    assert group["performance_activation_sum"] == 1.0
-    assert group["performance_insufficient_reason"] is None
     usado, atipico = group["performance_exercises"]
     assert (usado["exercise_name"], usado["outlier"], usado["excluded_reason"]) == ("Puxada", False, None)
     assert (atipico["exercise_name"], atipico["outlier"], atipico["excluded_reason"]) == (
@@ -195,87 +286,32 @@ def test_limite_do_atipico_e_estrito_nos_dois_sentidos():
 
     queda = build_group_performance([_e1rm_row("previous", 100.0), _e1rm_row("current", 49.0)])[QUAD]
     assert queda["performance_exercises_excluded"] == 1
-    assert queda["performance_status"] == "DADOS_INSUFICIENTES"
+    assert queda["performance_change_pct"] is None
 
 
-def test_todos_atipicos_e_dados_insuficientes():
+def test_todos_atipicos_sem_media_mas_status_do_dono():
     rows = [
         _e1rm_row("previous", 40.0, exercise_id=31, group=DORSAL, name="Remada articulada"),
         _e1rm_row("current", 100.0, exercise_id=31, group=DORSAL, name="Remada articulada"),
-        _e1rm_row("previous", 100.0, exercise_id=30, group=DORSAL, name="Puxada"),
-        _e1rm_row("current", 40.0, exercise_id=30, group=DORSAL, name="Puxada"),
     ]
-    group = build_group_performance(rows)[DORSAL]
-    assert group["performance_status"] == "DADOS_INSUFICIENTES"
+    group = build_group_performance(rows, **_status_inputs((31, "PROGRESSING", 1.0), group=DORSAL))[DORSAL]
     assert group["performance_change_pct"] is None
     assert group["performance_exercises_compared"] == 0
-    assert group["performance_exercises_excluded"] == 2
-    assert group["performance_activation_sum"] == 0.0
-    assert group["performance_insufficient_reason"] == ALL_OUTLIERS
+    assert group["performance_exercises_excluded"] == 1
+    assert group["performance_status"] == "PROGREDINDO"
     assert all(e["outlier"] for e in group["performance_exercises"])
 
     # O merge no painel mantem a leitura (nao cai no `insufficient()` vazio).
     (item,) = build_group_progression(_tonnage_rows(1000.0, 1000.0, group=DORSAL), None, {DORSAL: group})
-    assert item["performance_status"] == "DADOS_INSUFICIENTES"
-    assert len(item["performance_exercises"]) == 2
-
-
-def test_ativacao_0_2_e_dados_insuficientes():
-    """Cenario sintetico baseado em caso real: Adutores em 7 dias, +100% de um unico exercicio a 20%."""
-    rows = [
-        _e1rm_row("previous", 50.0, group=ADUTORES, weight=0.2, name="Agachamento sumo"),
-        _e1rm_row("current", 74.0, group=ADUTORES, weight=0.2, name="Agachamento sumo"),
-    ]
-    group = build_group_performance(rows)[ADUTORES]
-    assert group["performance_status"] == "DADOS_INSUFICIENTES"
-    assert group["performance_change_pct"] is None
-    assert group["performance_insufficient_reason"] == LOW_ACTIVATION
-    assert group["performance_activation_sum"] == 0.2
-    assert group["performance_exercises_compared"] == 1
-    assert group["performance_exercises"][0]["outlier"] is False
-
-
-def test_ativacao_0_5_exata_classifica():
-    """0,2 + 0,3 = 0,49999... em ponto flutuante: o limiar ainda classifica."""
-    rows = [
-        _e1rm_row("previous", 100.0, exercise_id=40, group=ADUTORES, weight=0.2, name="A"),
-        _e1rm_row("current", 110.0, exercise_id=40, group=ADUTORES, weight=0.2, name="A"),
-        _e1rm_row("previous", 100.0, exercise_id=41, group=ADUTORES, weight=0.3, name="B"),
-        _e1rm_row("current", 110.0, exercise_id=41, group=ADUTORES, weight=0.3, name="B"),
-    ]
-    group = build_group_performance(rows)[ADUTORES]
-    assert group["performance_activation_sum"] == 0.5
-    assert group["performance_status"] == "PROGREDINDO"
-    assert group["performance_change_pct"] == 10.0
-    assert group["performance_insufficient_reason"] is None
-
-    unico = build_group_performance(
-        [_e1rm_row("previous", 100.0, weight=0.5), _e1rm_row("current", 102.0, weight=0.5)]
-    )[QUAD]
-    assert unico["performance_status"] == "ESTAVEL"
-
-
-def test_atipico_e_ativacao_minima_juntos():
-    """Sem o atipico (100% de ativacao) sobra so 0,4: DADOS_INSUFICIENTES por
-    ativacao - o atipico nao conta para a soma."""
-    rows = [
-        _e1rm_row("previous", 45.0, exercise_id=31, group=DORSAL, weight=1.0, name="Remada articulada"),
-        _e1rm_row("current", 100.0, exercise_id=31, group=DORSAL, weight=1.0, name="Remada articulada"),
-        _e1rm_row("previous", 100.0, exercise_id=58, group=DORSAL, weight=0.4, name="Levantamento terra"),
-        _e1rm_row("current", 108.0, exercise_id=58, group=DORSAL, weight=0.4, name="Levantamento terra"),
-    ]
-    group = build_group_performance(rows)[DORSAL]
-    assert group["performance_status"] == "DADOS_INSUFICIENTES"
-    assert group["performance_insufficient_reason"] == LOW_ACTIVATION
-    assert group["performance_activation_sum"] == 0.4
-    assert (group["performance_exercises_compared"], group["performance_exercises_excluded"]) == (1, 1)
-    assert [e["outlier"] for e in group["performance_exercises"]] == [False, True]
+    assert item["performance_status"] == "PROGREDINDO"
+    assert len(item["performance_exercises"]) == 1
 
 
 def test_grupo_sem_leitura_explica_o_motivo():
     (item,) = build_group_progression(_tonnage_rows(1000.0, 1000.0), None, {})
     assert item["performance_insufficient_reason"] == NO_COMPARABLE_EXERCISE
     assert item["performance_exercises_excluded"] == 0
+    assert item["progression_counts"]["comparable_total"] == 0
 
 
 def test_volume_status_neutro():
@@ -434,12 +470,19 @@ def test_endpoint_devolve_as_duas_dimensoes(monkeypatch):
         else [],
     )
 
+    monkeypatch.setattr(
+        analytics, "_exercise_progression_items", lambda user_id, windows, goal, tz=None: ([{"exercise_id": 22, "status": "PROGRESSING"}], False)
+    )
+    monkeypatch.setattr(analytics, "_fetch_exercise_group_weights", lambda user_id, windows: {QUAD: {22: 1.0}})
+
     class _Identity:
         user_id = 1
 
     payload = analytics.dashboard_progression_by_muscle_group(
-        days=28, date_from=None, date_to=None, identity=_Identity()
+        days=28, date_from=None, date_to=None, window=None, goal="hypertrophy", identity=_Identity()
     )
+    assert payload["exercise_progression"]["counts"]["progressing"] == 1
+    assert payload["exercise_progression"]["window_days"] == 28
     assert payload["performance_basis"] == PERFORMANCE_BASIS
     assert payload["stable_band_pct"] == 5.0
     (item,) = payload["items"]

@@ -1854,6 +1854,26 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/domain/set_sides.py",),
         inventario="M102 (§71)",
     ),
+    Padrao(
+        chave="status_progressao_paralelo",
+        regra="status de progressão (exercício ou grupo) CLASSIFICADO fora do dono: `return`/atribuição de "
+        "`ExerciseProgressionStatus.<status>` ou de PROGREDINDO/ESTAVEL/REGREDINDO, e contagem por status "
+        "no FE (`.filter(... 'PROGRESSING'/'REGRESSING' ...)`)",
+        # 2026-11-01 (contagem única): a home e a /progressao contam o MESMO status por EXERCÍCIO
+        # (`comparability.classify_exercise_progression`) e o grupo é a agregação ponderada dele
+        # (`comparability.aggregate_group_progression`). Consumir (`status is X`, `!= X.value`) é livre;
+        # produzir/contar status é do dono. O status de VOLUME do grupo (`muscle_group_progression`)
+        # é outra grandeza e tem dono próprio.
+        regex=re.compile(
+            r"\breturn\s+ExerciseProgressionStatus\.(?:PROGRESSING|STABLE|PLATEAU_SUSPECTED|REGRESSING)\b"
+            r"|\bstatus\s*=\s*ExerciseProgressionStatus\.(?:PROGRESSING|STABLE|PLATEAU_SUSPECTED|REGRESSING)\b(?!\.value)"
+            r"|\breturn\s+(?:PROGREDINDO|ESTAVEL|REGREDINDO)\b"
+            r"|\bstatus\s*=\s*(?:PROGREDINDO|ESTAVEL|REGREDINDO)\b"
+            r"|\.filter\([^\n]{0,80}(?:'|\")(?:PROGRESSING|REGRESSING|PLATEAU_SUSPECTED)(?:'|\")"
+        ),
+        donos=("api/app/intelligence/dashboard/comparability.py",),
+        inventario="C12",
+    ),
 )
 
 PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
@@ -2041,6 +2061,8 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "vocabulario_ia_serie": {},  # RPE 10 Lote 6/P9 (2026-10-11): nasce vazia (o FE saiu junto)
     # C13: rótulos de status de progressão com um dono só desde o Lote 3c
     # (`domain/progression_status_labels.py`; FE via `motor-constants.generated.json`).
+    # Contagem única de progressão (2026-11-01, C12): nasce vazia.
+    "status_progressao_paralelo": {},
     "rotulo_progressao": {
         # Tendência de VOLUME do grupo ("Estável" = volume sem variação), não
         # status de progressão por exercício; permanente.
@@ -3105,6 +3127,13 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "fallback_registro_serie_cadeia": (
         ("lastSet?.reps ?? 10", "suggested?.suggested_load_kg ?? 20", "set.weight_kg ?? 20"),
         ("lastSet?.reps ?? SET_LOGGER_FALLBACK_REPS", "set.reps ?? 0", "x.weight_kg ?? null", "anchorRpe ?? 10"),
+    ),
+    "status_progressao_paralelo": (
+        ("return ExerciseProgressionStatus.PROGRESSING", "status = ExerciseProgressionStatus.REGRESSING",
+         "return PROGREDINDO", "status = ESTAVEL", "const n = items.filter((i) => i.status === 'PROGRESSING').length;"),
+        ("if status is ExerciseProgressionStatus.REGRESSING:", "item.get('status') != ExerciseProgressionStatus.REGRESSING.value",
+         "ExerciseProgressionStatus.PROGRESSING: PROGREDINDO,", "status = _GROUP_STATUS[verdict]",
+         "const n = summary.counts.progressing;"),
     ),
     "rotulo_progressao": (
         ("STABLE: { label: 'Estável', color: 'blue' }", '"PLATEAU_SUSPECTED": "Suspeita de plato",',

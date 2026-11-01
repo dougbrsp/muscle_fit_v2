@@ -162,7 +162,7 @@ export function DashboardProgressaoClient() {
         </Text>
       </div>
 
-      <MuscleGroupProgressionPanel range={dayRange} />
+      <MuscleGroupProgressionPanel window={windowQuery} />
 
       <StrengthPanel window={windowQuery} filters={filters} />
 
