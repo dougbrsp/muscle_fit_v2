@@ -31,4 +31,4 @@ Pillow==13.0.0
 # trunca nos mesmos 72 bytes antes de chamar, preservando os hashes existentes.
 bcrypt==5.0.0
 # zoneinfo (users.timezone, migracao 044): banco IANA independente do SO do container
-tzdata==2026.5
+tzdata==2026.6
