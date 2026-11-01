@@ -2,8 +2,9 @@
 # abertos por vez para nao inundar a fila nem gastar GitHub Actions.
 # Todos miram a `develop` (fluxo do projeto: develop -> validacao -> main).
 #
-# pip (api/): os locks com hashes (requirements*.txt) sao compilados por
-# pip-tools a partir de requirements*.in (M47). Se o PR do Dependabot nao
+# pip (api/): os 4 locks com hashes (requirements.txt, -engines.txt, -ai.txt,
+# -dev.txt) sao compilados por pip-tools a partir de requirements*.in (M47);
+# os pins diretos de producao vivem em requirements-base.in. Se o PR do Dependabot nao
 # recompilar todos os locks, rode `sh api/scripts/lock-requirements.sh` na
 # branch do PR antes do merge.
 # docker (api/): a imagem base esta fixada por digest (M48) e vem do espelho

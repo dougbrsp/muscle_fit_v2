@@ -1,0 +1,6 @@
+# Dependencias da imagem Dockerfile.engines (Lambda musclefit-engines, motores
+# deterministicos SEM IA): so as comuns, sem o SDK `anthropic`. Lock com hashes em
+# requirements-engines.txt, compilado com as MESMAS versoes de requirements.txt
+# (ver api/scripts/lock-requirements.sh). A guarda e
+# api/tests/unit/test_engines_sem_sdk_llm.py.
+-r requirements-base.in

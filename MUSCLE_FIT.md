@@ -438,8 +438,10 @@ Sequência de deploy completa de uma mudança que altere `api/**` e `infra/**` n
 
 #### 4.1 Dependências Python (`api/requirements*.in` → locks com hashes)
 
-- `api/requirements.in`: dependências **diretas** de produção, editadas à mão (fastapi, uvicorn[standard], pydantic, boto3, PyMySQL, cryptography, python-multipart, Pillow, bcrypt, tzdata).
-- `api/requirements.txt`: lock compilado por pip-tools com **todas** as transitivas e hashes (M47); instalado com `pip install --require-hashes` por `Dockerfile`, `Dockerfile.engines` e os `.dev`.
+- `api/requirements-base.in`: dependências **diretas** de produção comuns a todas as imagens, editadas à mão (fastapi, uvicorn[standard], pydantic, boto3, PyMySQL, cryptography, python-multipart, Pillow, bcrypt, tzdata), sem o SDK de LLM.
+- `api/requirements.in`: `-r requirements-base.in` + `anthropic` (api-core, IA e dev). `api/requirements-engines.in`: só a base (engines, sem IA).
+- `api/requirements.txt`: lock compilado por pip-tools com **todas** as transitivas e hashes (M47); instalado com `pip install --require-hashes` por `Dockerfile` e `Dockerfile.dev`.
+- `api/requirements-engines.txt`: o mesmo lock sem o SDK `anthropic` e suas transitivas exclusivas; usado por `Dockerfile.engines` e `Dockerfile.engines.dev`.
 - `api/requirements-ai.txt`: o mesmo lock + `awslambdaric==4.0.4` (M49), usado só por `Dockerfile.ai`.
 - `api/requirements-dev.txt`: o mesmo lock + pytest/httpx, usado pelo CI.
 - Recompilar: `sh api/scripts/lock-requirements.sh` (roda dentro da imagem base das Lambdas, Linux/Python 3.12). Imagem base fixada por digest em todos os Dockerfiles (M48); Dependabot semanal em `.github/dependabot.yml`.
@@ -453,7 +455,7 @@ Sequência de deploy completa de uma mudança que altere `api/**` e `infra/**` n
 | `WORKDIR` | `/app` | `/app` | `/var/task` | `/var/task` |
 | Pacotes apt | `libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info fonts-dejavu-core` | `libffi-dev` | nenhum | mesma lista do `Dockerfile` |
 | Lambda Web Adapter | `COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter` | idem | não | não |
-| pip | `pip install --no-cache-dir --require-hashes -r requirements.txt` | idem | `... --require-hashes -r requirements-ai.txt` | `... -r requirements.txt awslambdaric` |
+| pip | `pip install --no-cache-dir --require-hashes -r requirements.txt` | `... -r requirements-engines.txt` | `... --require-hashes -r requirements-ai.txt` | `... -r requirements.txt awslambdaric` |
 | Código | `COPY app /app/app` | `COPY app /app/app` | `COPY app /var/task/app` | `COPY app /var/task/app` |
 | `EXPOSE` | 8000 | 8000 | — | — |
 | `ENTRYPOINT` | (default da imagem) | (default) | `["python", "-m", "awslambdaric"]` | `["python", "-m", "awslambdaric"]` |

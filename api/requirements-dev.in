@@ -1,5 +1,5 @@
 # Dependencias SO de desenvolvimento/testes. Nunca entram nas imagens de
-# producao (Dockerfile*/Lambdas instalam apenas requirements.txt/-ai.txt).
+# producao (Dockerfile*/Lambdas instalam apenas requirements.txt/-engines.txt/-ai.txt).
 # Lock com hashes: requirements-dev.txt (compilado com as MESMAS versoes de
 # requirements.txt; ver api/scripts/lock-requirements.sh).
 #   CI/Linux:      pip install --require-hashes -r requirements-dev.txt

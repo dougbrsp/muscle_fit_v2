@@ -333,7 +333,7 @@ fi
 
 # ---------------------------------------------------------------------------
 step "4/5 Pillow com WebP, logo oficial, fontes e mapa corporal dos cards de exercicios"
-# WebP: as 3 imagens instalam o MESMO requirements.txt (Pillow com libwebp
+# WebP: as 3 imagens instalam locks com a MESMA versao do Pillow (requirements*.txt; libwebp
 # embutida no wheel); um encode real em memoria, alem do features.check,
 # prova que o codec funciona dentro da imagem, sem rede.
 # Logo + fontes + mapa corporal + compositor: obrigatorios na imagem da
