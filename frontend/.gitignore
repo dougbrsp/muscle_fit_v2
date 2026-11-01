@@ -8,3 +8,7 @@ npm-debug.log*
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright
+test-results
+playwright-report
