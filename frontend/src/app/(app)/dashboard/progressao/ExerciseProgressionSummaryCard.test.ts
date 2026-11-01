@@ -48,6 +48,12 @@ describe('ExerciseProgressionSummaryCard', () => {
     expect(html).toContain('456 exercícios comparáveis');
   });
 
+  it('avisa leitura parcial só quando truncated=true', () => {
+    expect(render({ ...SUMMARY, truncated: true })).toContain('Leitura parcial: janela muito longa; considere uma janela menor');
+    expect(render({ ...SUMMARY, truncated: false })).not.toContain('Leitura parcial');
+    expect(render(SUMMARY)).not.toContain('Leitura parcial');
+  });
+
   it('sem o campo, não renderiza nada nem inventa contagem', () => {
     expect(render(undefined)).toBe('');
     expect(render(null)).toBe('');
@@ -63,6 +69,6 @@ describe('Painel por grupo e home: sem contagem própria de progressão', () => 
     expect(card).not.toMatch(/\.filter\(|\.reduce\(|\.length/);
     expect(painel).not.toMatch(/performance_status\s*===/);
     expect(painel).not.toContain('PerformanceSummary');
-    expect(painel).toContain('<ExerciseProgressionSummaryCard summary={data?.exercise_progression}');
+    expect(painel).toMatch(/<ExerciseProgressionSummaryCard summary=\{data\?\.degraded \? null : data\?\.exercise_progression\}/);
   });
 });

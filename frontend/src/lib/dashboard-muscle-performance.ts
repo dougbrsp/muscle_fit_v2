@@ -10,9 +10,12 @@ import type { MuscleGroupPerformanceExercise, MuscleGroupProgressionItem } from 
  */
 export const OUTLIER_LABEL = 'variação atípica — conferir registro';
 
+export const UNAVAILABLE_LABEL = 'Classificação indisponível no momento';
+
 const INSUFFICIENT_REASON_LABEL: Record<string, string> = {
   NO_COMPARABLE_EXERCISE: 'Nenhum exercício comparável na janela',
   LOW_ACTIVATION: 'Exercícios comparáveis com participação insuficiente no grupo',
+  PROGRESSION_UNAVAILABLE: UNAVAILABLE_LABEL,
 };
 
 function exerciseLine(ex: MuscleGroupPerformanceExercise): string {
@@ -23,7 +26,8 @@ function exerciseLine(ex: MuscleGroupPerformanceExercise): string {
 }
 
 /** `null` quando não há nada a explicar (grupo sem exercício comparável). */
-export function performanceTooltip(item: MuscleGroupProgressionItem): string | null {
+export function performanceTooltip(item: MuscleGroupProgressionItem, degraded = false): string | null {
+  if (degraded || item.performance_insufficient_reason === 'PROGRESSION_UNAVAILABLE') return UNAVAILABLE_LABEL;
   const exercises = item.performance_exercises ?? [];
   const reason = item.performance_insufficient_reason ?? null;
   if (reason === 'NO_COMPARABLE_EXERCISE' && exercises.length === 0) return null;

@@ -31,9 +31,9 @@ import { BRAND } from '@/theme';
  * tonelagem enquanto a força sobe, e a tela dizia "regredindo" em 10 grupos
  * do doug com o e1RM subindo em quase todos. Agora são DUAS colunas:
  * "Volume" (tonelagem, `volume_status`, rótulos neutros — domínio
- * `muscleGroupVolume`) e "Desempenho" (melhor e1RM do mesmo exercício nas duas
- * janelas, `performance_status` — domínio `muscleGroupProgression`). O status
- * do grupo é a agregação do motor dono (mesma regra da home); o resumo do topo
+ * `muscleGroupVolume`) e "Desempenho" (`performance_status` — domínio `muscleGroupProgression`). O status
+ * do grupo é a agregação ponderada dos status dos exercícios do grupo (mesma
+ * regra da home), na janela atual; o resumo do topo
  * é a contagem de EXERCÍCIOS do backend, nada é contado aqui. `classification`
  * (deprecado) não é mais lido aqui.
  *
@@ -53,7 +53,7 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
 
   return (
     <Stack gap="lg">
-      <ExerciseProgressionSummaryCard summary={data?.exercise_progression} />
+      <ExerciseProgressionSummaryCard summary={data?.degraded ? null : data?.exercise_progression} />
       <Paper withBorder radius="lg" p="md" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
         <Text fw={700} c={BRAND.textPrimary}>
           Tendência por grupo muscular
@@ -129,7 +129,7 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
                       <VolumeCell item={item} />
                     </Table.Td>
                     <Table.Td>
-                      <PerformanceCell item={item} />
+                      <PerformanceCell item={item} degraded={data?.degraded === true} />
                     </Table.Td>
                     <Table.Td>
                       <Text size="xs" c={BRAND.textMuted}>
@@ -193,8 +193,8 @@ function VolumeCell({ item }: { item: MuscleGroupProgressionItem }) {
   );
 }
 
-function PerformanceCell({ item }: { item: MuscleGroupProgressionItem }) {
-  const tooltip = performanceTooltip(item);
+function PerformanceCell({ item, degraded }: { item: MuscleGroupProgressionItem; degraded: boolean }) {
+  const tooltip = performanceTooltip(item, degraded);
   const badge = <StatusBadge domain="muscleGroupProgression" code={item.performance_status} size="xs" />;
   return (
     <Stack gap={4} align="flex-start">

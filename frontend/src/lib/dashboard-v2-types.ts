@@ -177,7 +177,7 @@ export type MuscleGroupVolumeStatus =
   | 'NOVO'
   | 'SEM_DADOS';
 
-/** Status de DESEMPENHO (melhor e1RM do mesmo exercício nas duas janelas). */
+/** Status de DESEMPENHO: agregação ponderada dos status dos exercícios do grupo (mesma regra da home), na janela atual. */
 export type MuscleGroupPerformanceStatus = 'PROGREDINDO' | 'ESTAVEL' | 'REGREDINDO' | 'DADOS_INSUFICIENTES';
 
 export type MuscleGroupPerformanceExercise = {
@@ -197,7 +197,8 @@ export type MuscleGroupPerformanceExercise = {
 /** Por que o grupo ficou sem leitura de desempenho (`null` quando classificado). */
 export type MuscleGroupPerformanceInsufficientReason =
   | 'NO_COMPARABLE_EXERCISE'
-  | 'LOW_ACTIVATION';
+  | 'LOW_ACTIVATION'
+  | 'PROGRESSION_UNAVAILABLE';
 
 export type MuscleGroupProgressionItem = {
   muscle_group_id: number;
@@ -254,6 +255,8 @@ export type ExerciseProgressionSummary = {
   counts: ExerciseProgressionCounts;
   /** Frase pronta do backend (a mesma da home). */
   answer: string;
+  /** Leitura parcial: janela longa demais para cobrir todos os exercícios. */
+  truncated?: boolean;
 };
 
 export type MuscleGroupProgressionResponse = {
@@ -261,6 +264,8 @@ export type MuscleGroupProgressionResponse = {
   exercise_progression?: ExerciseProgressionSummary | null;
   /** Base do `performance_status` por grupo (descrição vinda do backend). */
   performance_status_basis?: string;
+  /** Classificação indisponível no momento: o resumo não é exibido. */
+  degraded?: boolean;
   days: number;
   stable_band_pct: number;
   min_sessions_per_window: number;

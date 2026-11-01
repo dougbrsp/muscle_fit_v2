@@ -42,6 +42,11 @@ export function ExerciseProgressionSummaryCard({ summary }: { summary: ExerciseP
         {fmtInt(counts.comparable_total)} exercícios comparáveis, de {fmtDate(summary.period_start)} a{' '}
         {fmtDate(summary.period_end)}.
       </Text>
+      {summary.truncated === true && (
+        <Text size="xs" c={BRAND.textMuted} mt={4}>
+          Leitura parcial: janela muito longa; considere uma janela menor.
+        </Text>
+      )}
     </Paper>
   );
 }

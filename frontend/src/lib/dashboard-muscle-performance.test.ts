@@ -80,4 +80,12 @@ describe('performanceTooltip', () => {
     );
     expect(text).toBeNull();
   });
+
+  it('classificação indisponível: motivo do grupo ou resposta degradada', () => {
+    const porMotivo = performanceTooltip(
+      item({ performance_status: 'DADOS_INSUFICIENTES', performance_insufficient_reason: 'PROGRESSION_UNAVAILABLE' }),
+    );
+    expect(porMotivo).toBe('Classificação indisponível no momento');
+    expect(performanceTooltip(item({}), true)).toBe('Classificação indisponível no momento');
+  });
 });
