@@ -8,7 +8,9 @@ import { defineConfig, devices } from '@playwright/test';
  * sem rede externa, relogio congelado.
  *
  * Uso local (NAO roda no CI por enquanto):
- *   npm run e2e                  # build + testes
+ *   npm run e2e                  # build + testes (Chromium: prova autoritativa)
+ *   npm run e2e:webkit           # WebKit, OPCIONAL: oscila no Windows (viewport,
+ *                                # tolerancia 0.2%); falha de WebKit nao bloqueia o PR
  *   npm run e2e:test             # so os testes (reusa out/ existente)
  *   npm run e2e:update           # regenera os snapshots de referencia
  *
@@ -16,7 +18,8 @@ import { defineConfig, devices } from '@playwright/test';
  * isso o caminho do snapshot nao leva sufixo de plataforma e a comparacao so
  * e valida no mesmo SO. Ao levar para o CI (Linux), regenerar la.
  */
-const PORT = 4179;
+// Porta por env para agentes/execucoes paralelos nao colidirem (default 4179).
+const PORT = Number(process.env.E2E_PORT ?? 4179);
 
 export default defineConfig({
   testDir: './e2e/desktop-baseline',

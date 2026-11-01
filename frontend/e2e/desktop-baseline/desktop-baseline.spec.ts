@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, MOCK_API_ORIGIN, installMockApi } from './mock-api';
 
-const LOCAL_ORIGIN = 'http://127.0.0.1:4179';
+const LOCAL_ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 4179}`;
 
 /**
  * Regressao visual do DESKTOP nas rotas criticas (viewports 1280 e 1440, ver
@@ -32,7 +32,8 @@ async function settle(page: Page) {
 }
 
 for (const route of ROUTES) {
-  test(`desktop: ${route.name}`, async ({ page }) => {
+  test(`desktop: ${route.name}`, async ({ page }, testInfo) => {
+    const isWebkit = testInfo.project.name.startsWith('webkit');
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -58,8 +59,14 @@ for (const route of ROUTES) {
     // Recharts anima via JS e no WebKit o quadro final oscila entre execucoes:
     // o CONTEUDO dos graficos fica mascarado (a caixa/layout continua comparada).
     await expect(page).toHaveScreenshot(`${route.name}.png`, {
-      fullPage: true,
       mask: [page.locator('.recharts-wrapper')],
+      // Chromium e a prova autoritativa: pagina inteira, 0 pixels de diferenca.
+      // WebKit no Windows oscila a altura da pagina (+-4 px) e o antialias entre
+      // execucoes: so o viewport, com tolerancia pequena (corpo da regressao fica
+      // coberto pelo Chromium).
+      ...(isWebkit
+        ? { fullPage: false, maxDiffPixels: undefined, maxDiffPixelRatio: 0.002 }
+        : { fullPage: true }),
     });
 
     expect(mock.unhandled, 'chamadas de API nao mockadas').toEqual([]);
