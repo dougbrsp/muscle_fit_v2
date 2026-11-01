@@ -9,7 +9,7 @@ fastapi==0.141.1
 # resposta CORS (mais correto para cache; nao muda o Allow-Origin). Nao usamos
 # BaseHTTPMiddleware, BackgroundTasks nem WebSocket, onde estao as outras
 # mudancas. Subir junto com a FastAPI, conferindo o changelog.
-starlette==1.7.0
+starlette==1.10.0
 # uvicorn 0.54 (SEG-16): o ProxyHeadersMiddleware segue pegando o ULTIMO IP nao
 # confiavel do X-Forwarded-For (o que o API Gateway anexa); app/client_ip.py
 # continua valendo. HTTP/2/zttp sao opt-in e nao sao usados.
