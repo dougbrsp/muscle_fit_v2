@@ -44,9 +44,10 @@ RUN groupadd --system --gid 10001 app \
 # /exercises/suggested-* (ver infra/api_gateway.tf) - o Web Adapter traduz
 # o evento recebido para uma requisicao HTTP comum contra o uvicorn local.
 #
-# Reaproveita o MESMO `app/` e o MESMO requirements.txt do
-# musclefit-api-core (nao um subconjunto): evita divergencia de versao entre
-# as imagens, mesmo raciocinio ja documentado em Dockerfile.ai. As deps
+# Reaproveita o MESMO `app/` do musclefit-api-core e as MESMAS versoes
+# (requirements-engines.txt e compilado com requirements.txt como constraint),
+# so SEM o SDK `anthropic` e suas transitivas: esta Lambda nao chama LLM nem
+# recebe LLM_PROVIDER_* (guarda: tests/unit/test_engines_sem_sdk_llm.py). As deps
 # pesadas nao usadas neste caminho (Pillow/weasyprint/matplotlib) custam
 # tamanho de imagem, nao comportamento.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -69,9 +70,9 @@ ENV AWS_LWA_READINESS_CHECK_PATH=/health
 
 # Lock com hashes (M47): todas as transitivas fixadas e conferidas por hash;
 # `--require-hashes` recusa qualquer pacote fora do lock. Gerado a partir de
-# requirements.in por api/scripts/lock-requirements.sh.
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --require-hashes -r /app/requirements.txt
+# requirements-engines.in por api/scripts/lock-requirements.sh.
+COPY requirements-engines.txt /app/requirements-engines.txt
+RUN pip install --no-cache-dir --require-hashes -r /app/requirements-engines.txt
 
 COPY app /app/app
 # Templates dos prompts de sistema (M103 P1): SO a pasta prompts/ do submodulo

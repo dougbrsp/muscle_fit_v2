@@ -70,6 +70,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Sequence
 
+from .runtime_guard import exigir_data_api_em_lambda
+
 logger = logging.getLogger("fitness.migrate")
 
 BASELINE_MAX_VERSION = 21
@@ -706,8 +708,7 @@ def status(conn_factory: Optional[ConnFactory] = None, migrations_dir: Optional[
 def _guard_backend_in_lambda() -> None:
     # Regra anti-vazamento: dentro de uma Lambda real o backend TEM que ser o
     # Data API. DB_BACKEND=pymysql ali significaria config de dev vazada.
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") and os.environ.get("DB_BACKEND", "data-api") != "data-api":
-        raise MigrationError("DB_BACKEND diferente de data-api dentro de uma Lambda; recusando executar.")
+    exigir_data_api_em_lambda(MigrationError)
 
 
 # Margem entre o fim do orcamento do replay e o timeout da Lambda: tempo para

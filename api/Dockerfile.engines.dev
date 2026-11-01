@@ -32,9 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Lock com hashes (M47): todas as transitivas fixadas e conferidas por hash;
 # `--require-hashes` recusa qualquer pacote fora do lock. Gerado a partir de
-# requirements.in por api/scripts/lock-requirements.sh.
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --require-hashes -r /app/requirements.txt
+# requirements-engines.in por api/scripts/lock-requirements.sh (o MESMO lock da
+# imagem de producao engines, sem o SDK de LLM).
+COPY requirements-engines.txt /app/requirements-engines.txt
+RUN pip install --no-cache-dir --require-hashes -r /app/requirements-engines.txt
 
 COPY app /app/app
 

@@ -1,0 +1,34 @@
+# Dependencias DIRETAS de producao COMUNS a todas as imagens (editadas a mao),
+# SEM o SDK de LLM. Nenhum Dockerfile instala este arquivo direto:
+# requirements.in = este + anthropic (api-core, IA, dev); requirements-engines.in = so este.
+# As imagens NAO instalam este arquivo: instalam o lock compilado `requirements.txt` (todas as
+# transitivas fixadas, com hashes, `pip install --require-hashes`) - M47.
+# Depois de mudar este arquivo, recompile os locks (Linux/Python 3.12, igual
+# as imagens):  sh api/scripts/lock-requirements.sh
+fastapi==0.141.1
+# Starlette fixada explicitamente (a FastAPI so exige >=0.46). 1.7.0 (SEG-16):
+# exige anyio 4 (o lock ja usa 4.x) e passa a mandar `Vary: Origin` em toda
+# resposta CORS (mais correto para cache; nao muda o Allow-Origin). Nao usamos
+# BaseHTTPMiddleware, BackgroundTasks nem WebSocket, onde estao as outras
+# mudancas. Subir junto com a FastAPI, conferindo o changelog.
+starlette==1.10.0
+# uvicorn 0.54 (SEG-16): o ProxyHeadersMiddleware segue pegando o ULTIMO IP nao
+# confiavel do X-Forwarded-For (o que o API Gateway anexa); app/client_ip.py
+# continua valendo. HTTP/2/zttp sao opt-in e nao sao usados.
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+boto3==1.35.99
+# PyMySQL: so o DEV local e os testes (DB_BACKEND=pymysql); producao usa a RDS
+# Data API (app/db.py, default "data-api"). 1.2 (deps 2026-10-13): TLS
+# oportunista por padrao (sem verificar certificado, cai para texto se o
+# servidor nao tiver TLS), ping() sem reconnect, `db=`/`passwd=` deprecados
+# (usamos database=/password=), bytes enviados como X'..' (correcao de SQLi).
+PyMySQL==1.2.3
+cryptography==50.0.2
+python-multipart==0.0.32
+Pillow==13.0.0
+# bcrypt 5 recusa (ValueError) senha > 72 bytes em vez de truncar: app/auth.py
+# trunca nos mesmos 72 bytes antes de chamar, preservando os hashes existentes.
+bcrypt==5.0.0
+# zoneinfo (users.timezone, migracao 044): banco IANA independente do SO do container
+tzdata==2026.5

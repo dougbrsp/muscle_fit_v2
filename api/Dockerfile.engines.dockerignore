@@ -15,8 +15,8 @@
 *
 
 # --- liberado (o que api/Dockerfile.engines copia) ---
-# Lock com hashes (M47), compilado de requirements.in (que NAO entra na imagem).
-!requirements.txt
+# Lock com hashes (M47), compilado de requirements-engines.in (que NAO entra na imagem).
+!requirements-engines.txt
 !app
 # Templates dos prompts de sistema (M103 P1): SO a pasta prompts/ do submodulo
 # privado api/privado. O RAG (privado/rag) e o resto do submodulo continuam fora

@@ -706,7 +706,7 @@ file proprio em **allowlist** ao lado dele:
 | Dockerfile (producao) | Ignore file | Liberado no contexto |
 |---|---|---|
 | `api/Dockerfile` | `api/Dockerfile.dockerignore` | `requirements.txt` (lock com hashes), `app/`, `vendor/aws-lambda-web-adapter/` |
-| `api/Dockerfile.engines` | `api/Dockerfile.engines.dockerignore` | `requirements.txt` (lock com hashes), `app/`, `vendor/aws-lambda-web-adapter/` |
+| `api/Dockerfile.engines` | `api/Dockerfile.engines.dockerignore` | `requirements-engines.txt` (lock com hashes), `app/`, `vendor/aws-lambda-web-adapter/` |
 | `api/Dockerfile.ai` | `api/Dockerfile.ai.dockerignore` | `requirements-ai.txt` (lock com hashes + awslambdaric), `app/`, `db/migrations/` |
 
 O BuildKit (builder padrao do `docker build` desde o Docker Engine 23 e do
