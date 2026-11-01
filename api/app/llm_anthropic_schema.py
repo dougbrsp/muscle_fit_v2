@@ -12,11 +12,19 @@ da Anthropic aceita isso, mas com LIMITES por pedido (documentacao oficial
 - no maximo `MAX_OPTIONAL_PARAMS` parametros opcionais (fora do `required`).
 
 O rotulo (29 anulaveis) e a periodizacao (21 e 30 com cardio) passam do
-primeiro limite. O adaptador troca o EXCEDENTE de anulaveis (na ordem do
-schema) por campo OPCIONAL nao anulavel e, na volta, `restore` devolve `None`
+primeiro limite. O adaptador troca o EXCEDENTE de anulaveis por campo
+OPCIONAL nao anulavel e, na volta, `restore` devolve `None`
 a cada campo opcional ausente, na ordem das propriedades do schema original:
 o dicionario que o chamador recebe tem a mesma forma de sempre. Sem perda de
 significado - "ausente" e "null" sao o mesmo valor para os validadores.
+
+Quais anulaveis viram opcionais: primeiro os caminhos que a FEATURE indica em
+`optional_first` (na ordem dada; o dono do schema sabe quais campos costumam
+vir nulos ou tem "ausente" com o mesmo sentido de "null"), depois os ultimos do
+schema. Motivo (eval de 2026-10-30): na periodizacao com cardio a ordem do
+schema convertia os campos que o dono `cardio_prescription` exige por modo
+(duracao, series do HIIT), e o Claude passou a omiti-los. Sem `optional_first`
+o resultado e o de antes, campo por campo.
 
 `enum` junto de lista de tipos (`{"type": ["string", "null"], "enum": [...]}`,
 o `basis` do rotulo) e recusado pelo servidor; vira `anyOf` com o mesmo
@@ -34,7 +42,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from typing import Any, Final, Optional
+from typing import Any, Final, Optional, Sequence
 
 # Fonte: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 # (tabela de limites; consultada em 2026-10-30).
@@ -183,9 +191,13 @@ def _counts(schema: dict) -> tuple[int, int]:
     return unions, optional
 
 
-def adapt_schema(schema: dict) -> AdaptedSchema:
+def adapt_schema(schema: dict, optional_first: Sequence[tuple[str, ...]] = ()) -> AdaptedSchema:
     """Schema aceito pela Anthropic + o que `restore` precisa para devolver
-    a forma original. Levanta `SchemaAdaptationError` se nao couber."""
+    a forma original. Levanta `SchemaAdaptationError` se nao couber.
+
+    `optional_first`: caminhos (passos de `_walk`, `ITEMS` para elemento de
+    lista) dos anulaveis que viram opcionais ANTES dos demais, na ordem dada.
+    Caminho que nao e anulavel obrigatorio e ignorado."""
     removed: list[str] = []
     adapted = _split_typed_enum(_strip(copy.deepcopy(schema), removed))
     unions, optional = _counts(adapted)
@@ -199,9 +211,13 @@ def adapt_schema(schema: dict) -> AdaptedSchema:
                 candidates.append((parent, name, path))
 
         _walk(adapted, (), visit)
-        # Os ULTIMOS anulaveis do schema viram opcionais: os primeiros (os do
-        # topo, como nome e marca no rotulo) seguem como sempre foram.
-        for parent, name, path in candidates[-excess:]:
+        # Primeiro os indicados pela feature (na ordem dada); depois os ULTIMOS
+        # anulaveis do schema: os primeiros (os do topo, como nome e marca no
+        # rotulo) seguem como sempre foram.
+        rank = {tuple(p): i for i, p in enumerate(optional_first)}
+        preferred = sorted((c for c in candidates if c[2] in rank), key=lambda c: rank[c[2]])
+        rest = [c for c in reversed(candidates) if c[2] not in rank]
+        for parent, name, path in (preferred + rest)[:excess]:
             parent["properties"][name] = _non_null_variant(parent["properties"][name])
             parent["required"] = [r for r in parent["required"] if r != name]
             converted.add(path)

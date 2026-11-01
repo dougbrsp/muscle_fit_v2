@@ -12,8 +12,12 @@
 # Virada de 2026-10-31 (decisao do usuario, eval em
 # docs/ia/EVAL_ANTHROPIC_2026-10-30.md): 6 features no claude-haiku-5-5, com
 # o esforco que venceu no eval e fallback POR FEATURE para a OpenAI.
-# periodization, set_evaluation, workouts_analysis, exercise_summary e
-# workout_plan seguem na OpenAI (sem env de modelo/esforco/fallback).
+# set_evaluation, workouts_analysis, exercise_summary e workout_plan seguem
+# na OpenAI (sem env de modelo/esforco/fallback).
+# periodization ligada no Haiku SEM raciocinio, esforco low, fallback openai,
+# depois do prompt periodization-v15 (a IA escolhe a referencia do catalogo e
+# o motor monta o trio): 47/50 (94%) contra 26/30 (87%) da OpenAI v15, zero
+# saida cortada, zero timeout, p95 26 s (docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md).
 #
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
@@ -32,6 +36,7 @@ variable "llm_provider_by_feature" {
     meal_parse           = "anthropic"
     exercise_description = "anthropic"
     workout_summary      = "anthropic"
+    periodization        = "anthropic"
   }
 
   validation {
@@ -50,6 +55,7 @@ variable "anthropic_model_by_feature" {
     meal_parse           = "claude-haiku-5-5"
     exercise_description = "claude-haiku-5-5"
     workout_summary      = "claude-haiku-5-5"
+    periodization        = "claude-haiku-5-5"
   }
 }
 
@@ -65,11 +71,30 @@ variable "anthropic_effort_by_feature" {
     meal_parse           = "medium"
     exercise_description = "medium"
     workout_summary      = "low"
+    periodization        = "low"
   }
 
   validation {
     condition     = alltrue([for e in values(var.anthropic_effort_by_feature) : contains(["low", "medium", "high", "xhigh", "max"], e)])
     error_message = "anthropic_effort_by_feature aceita so low, medium, high, xhigh ou max."
+  }
+}
+
+# Raciocinio por feature (ANTHROPIC_THINKING_<FEATURE>): adaptive (padrao do
+# codigo) ou disabled. disabled so com esforco low/medium/high (a API responde
+# 400 com xhigh/max; o codigo falha antes da rede com ANTHROPIC_CONFIG_INVALID
+# e a combinacao publicada e travada em teste). Feature ausente = adaptive, o
+# corpo de sempre.
+variable "anthropic_thinking_by_feature" {
+  description = "Raciocinio do Claude por feature (ANTHROPIC_THINKING_<FEATURE>): adaptive ou disabled. Ausente = adaptive."
+  type        = map(string)
+  default = {
+    periodization = "disabled"
+  }
+
+  validation {
+    condition     = alltrue([for t in values(var.anthropic_thinking_by_feature) : contains(["adaptive", "disabled"], t)])
+    error_message = "anthropic_thinking_by_feature aceita so adaptive ou disabled."
   }
 }
 
@@ -97,6 +122,7 @@ variable "llm_fallback_provider_by_feature" {
     meal_parse           = "openai"
     exercise_description = "openai"
     workout_summary      = "openai"
+    periodization        = "openai"
   }
 
   validation {
@@ -124,6 +150,7 @@ locals {
     { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") },
     { for f, m in var.anthropic_model_by_feature : "ANTHROPIC_MODEL_${upper(f)}" => m if contains(local.llm_features, f) },
     { for f, e in var.anthropic_effort_by_feature : "ANTHROPIC_EFFORT_${upper(f)}" => e if contains(local.llm_features, f) },
+    { for f, t in var.anthropic_thinking_by_feature : "ANTHROPIC_THINKING_${upper(f)}" => t if contains(local.llm_features, f) },
     { for f, p in var.llm_fallback_provider_by_feature : "LLM_FALLBACK_PROVIDER_${upper(f)}" => p if contains(local.llm_features, f) },
     var.llm_fallback_provider == "" ? {} : { LLM_FALLBACK_PROVIDER = var.llm_fallback_provider },
     { ANTHROPIC_API_KEY_SECRET_ARN = aws_secretsmanager_secret.anthropic_api_key.arn },

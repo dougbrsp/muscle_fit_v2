@@ -205,3 +205,125 @@ def test_schema_que_nao_cabe_levanta():
     schema = {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
     with pytest.raises(SchemaAdaptationError):
         adapt_schema(schema)
+
+
+# ---------------------------------------------------------------------------
+# `optional_first`: a feature escolhe quais anulaveis viram opcionais
+# ---------------------------------------------------------------------------
+
+
+def test_optional_first_converte_os_indicados_antes_dos_ultimos():
+    schema = _nulavel(MAX_UNION_PARAMS + 2)
+    adaptado = adapt_schema(schema, [("c0",), ("nao_existe",), ("c3",)])
+    assert adaptado.optional_paths == {("c0",), ("c3",)}
+    assert "c0" not in adaptado.schema["required"] and f"c{MAX_UNION_PARAMS + 1}" in adaptado.schema["required"]
+    resposta = {f"c{i}": i for i in range(1, MAX_UNION_PARAMS + 2) if i != 3}
+    devolvido = restore(resposta, schema, adaptado.optional_paths)
+    assert list(devolvido) == list(schema["properties"]) and devolvido["c0"] is None and devolvido["c3"] is None
+
+
+def test_optional_first_maior_que_o_excedente_usa_so_os_primeiros_e_sem_ele_nada_muda():
+    schema = _nulavel(MAX_UNION_PARAMS + 1)
+    assert adapt_schema(schema, [("c5",), ("c1",)]).optional_paths == {("c5",)}
+    assert adapt_schema(schema, ()).schema == adapt_schema(schema).schema
+
+
+def _periodizacao(com_cardio: bool):
+    from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST
+
+    original = output_schema(com_cardio)
+    return original, adapt_schema(original, ANTHROPIC_OPTIONAL_FIRST)
+
+
+def test_periodizacao_sem_cardio_fica_identica_a_de_antes():
+    original, adaptado = _periodizacao(False)
+    assert adaptado.schema == adapt_schema(original).schema
+
+
+def _periodizacao_modo_b(com_cardio: bool, refs):
+    from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST
+
+    original = output_schema(com_cardio, True, refs)
+    return original, adapt_schema(original, ANTHROPIC_OPTIONAL_FIRST)
+
+
+@pytest.mark.parametrize("com_cardio", [False, True])
+def test_periodizacao_modo_b_com_enum_de_refs_cabe_nos_limites_e_volta_inteira(com_cardio):
+    """v15: o item do Modo B so tem `catalog_ref` (enum por pedido) no lugar
+    do trio. A `enum` de strings nao e uniao: o pedido cabe nos limites, sem
+    cardio nem precisa de opcional, e a ida e volta devolve a forma original."""
+    from app.periodization.catalog_refs import CATALOG_REF_FIELD, MAX_ENUM_REFS
+
+    refs = [f"E{n}" for n in range(1, MAX_ENUM_REFS + 1)]
+    original, adaptado = _periodizacao_modo_b(com_cardio, refs)
+    unioes, opcionais = _counts(adaptado.schema)
+    assert unioes <= MAX_UNION_PARAMS and opcionais <= MAX_OPTIONAL_PARAMS
+    if not com_cardio:
+        assert adaptado.optional_paths == frozenset()
+    item = adaptado.schema["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
+    assert item["properties"][CATALOG_REF_FIELD] == {"type": "string", "enum": refs}
+    assert CATALOG_REF_FIELD in item["required"]
+    for campo in ("muscle_group_id", "mapping_id", "equipment_id", "item_kind", "rest_seconds"):
+        assert campo not in item["properties"], campo
+    for campo in ("sets_count", "reps_target", "rpe_target"):
+        assert campo in item["required"], campo
+    resposta = _amostra(adaptado.schema)
+    devolvido = restore(resposta, original, adaptado.optional_paths)
+    assert _faltando(devolvido, original) == []
+
+
+def test_periodizacao_modo_b_sem_enum_vira_string_livre():
+    from app.periodization.catalog_refs import CATALOG_REF_FIELD
+
+    original, _adaptado = _periodizacao_modo_b(False, None)
+    item = original["properties"]["template"]["properties"]["slots"]["items"]["properties"]["items"]["items"]
+    assert item["properties"][CATALOG_REF_FIELD] == {"type": "string"}
+
+
+def test_periodizacao_com_cardio_mantem_obrigatorios_do_dono_e_cabe_nos_limites():
+    from app.domain import cardio_prescription as cp
+    from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST, CARDIO_ITEMS_FIELD
+
+    _original, adaptado = _periodizacao(True)
+    unioes, opcionais = _counts(adaptado.schema)
+    assert unioes <= MAX_UNION_PARAMS and opcionais <= MAX_OPTIONAL_PARAMS
+    assert adaptado.optional_paths == set(ANTHROPIC_OPTIONAL_FIRST)  # cabe exatamente na lista
+    slot = adaptado.schema["properties"]["template"]["properties"]["slots"]["items"]
+    cardio = slot["properties"][CARDIO_ITEMS_FIELD]["items"]
+    exigidos = {campo for campos in cp.REQUIRED_FIELDS.values() for campo in campos}
+    for campo in exigidos:
+        assert campo in cardio["required"], campo  # o Claude nao pode omitir
+        assert "null" in cardio["properties"][campo]["type"]  # o outro modo segue null
+    convertidos_cardio = {p[-1] for p in adaptado.optional_paths if CARDIO_ITEMS_FIELD in p}
+    assert convertidos_cardio == set(cp.ZERO_WHEN_MISSING_FIELDS)  # "ausente" = 0 para o dono
+    # Campos centrais do item de forca seguem obrigatorios.
+    item = slot["properties"]["items"]["items"]
+    for campo in (
+        "muscle_group_id",
+        "priority_min_pct",
+        "priority_max_pct",
+        "mapping_id",
+        "equipment_id",
+        "sets_count",
+        "reps_target",
+        "rpe_target",
+    ):
+        assert campo in item["required"], campo
+
+
+def test_periodizacao_com_cardio_ida_e_volta_hiit_e_continuo():
+    from app.periodization.output_schema import PeriodizationOutput
+
+    original, adaptado = _periodizacao(True)
+    resposta = _amostra(adaptado.schema)
+    slot = resposta["template"]["slots"][0]
+    continuo = dict(slot["cardio_items"][0], cardio_mode="continuous", cardio_duration_minutes=20)
+    hiit = dict(slot["cardio_items"][0], cardio_mode="hiit", hiit_rounds=8)
+    slot["cardio_items"] = [continuo, hiit]
+    devolvido = restore(resposta, original, adaptado.optional_paths)
+    assert _faltando(devolvido, original) == []
+    volta = devolvido["template"]["slots"][0]["cardio_items"]
+    assert volta[0]["cardio_duration_minutes"] == 20 and volta[0]["cardio_warmup_minutes"] is None
+    assert volta[1]["hiit_rounds"] == 8 and volta[1]["cardio_cooldown_minutes"] is None
+    assert devolvido["template"]["description"] is None
+    PeriodizationOutput(**devolvido)  # a forma devolvida passa no espelho pydantic do dono

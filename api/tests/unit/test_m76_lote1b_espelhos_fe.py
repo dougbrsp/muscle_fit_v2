@@ -72,6 +72,7 @@ from app.domain import training_safety as ts  # noqa: E402
 from app.domain.progression_status_labels import EXERCISE_PROGRESSION_LABELS  # noqa: E402
 from app.intelligence import methodology_volume as mvol  # noqa: E402
 from app.intelligence.muscle_contribution_resolver import DEFAULT_WRITE_WEIGHTS  # noqa: E402
+from app.periodization import core as pcore  # noqa: E402
 from app.periodization import limits  # noqa: E402
 from app.periodization import time_estimate as te  # noqa: E402
 from app.domain import cardio_prescription as cp  # noqa: E402
@@ -152,6 +153,9 @@ def constantes() -> dict[str, Any]:
         # Lote 4c (E9): tetos do complemento e de priorizados (rótulos do
         # relatório da Periodização e validação do builder).
         "periodization_limits": limits.export_for_frontend(),
+        # Migracao Claude (2026-10-31): tempo da chamada da Periodizacao e prazo
+        # do job (a espera do polling em `/modelos-treino`).
+        "periodization_job": pcore.export_for_frontend(),
         # Lote 1/P1 da investigação RPE 10 (2026-10-11): códigos e rótulos de
         # `intensity_status`/`safety_event` (dono `domain/intensity_status_labels.py`).
         "intensity": isl.export_for_frontend(),

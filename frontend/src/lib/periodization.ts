@@ -9,7 +9,9 @@
 // rascunho vive em `sessionStorage` entre a listagem e o builder, e só vira
 // modelo no `POST /workout-plan-templates` que o usuário dispara no "Salvar".
 
+import { ASYNC_JOB_POLL_INTERVAL_MS } from '@/lib/async-job-poll';
 import { DEFAULT_COUNTING_MODE, normalizeCountingMode } from '@/lib/volume-counting-mode';
+import motorConstants from './motor-constants.generated.json';
 import type {
   PeriodizationDraftRequest,
   PeriodizationFailure,
@@ -35,10 +37,13 @@ export const PERIODIZATION_DAYS_DEFAULT = 4;
 // Teto de fontes RAG: `Field(max_length=10)` em `rag_sources`.
 export const PERIODIZATION_MAX_RAG_SOURCES = 10;
 
-// Espera do polling. A Lambda tem 120 s de timeout e a chamada à OpenAI 90 s
-// (§7.3): o teto do cliente precisa ser MAIOR que isso, senão a tela desiste
-// de um job que ainda vai responder.
-export const PERIODIZATION_POLL_TIMEOUT_MS = 150_000;
+// Espera do polling: o prazo em que o backend fecha o job `pending` como
+// `failed`/`worker_lost` (timeout da Lambda + folga; `periodization_job` do
+// espelho gerado de `api/app/periodization/core.py`), mais um intervalo de
+// polling para ler esse fechamento. Assim a tela nunca desiste de um job que
+// ainda vai responder (a chamada à LLM tem `llm_timeout_seconds`).
+export const PERIODIZATION_POLL_TIMEOUT_MS =
+  motorConstants.periodization_job.job_deadline_seconds * 1000 + ASYNC_JOB_POLL_INTERVAL_MS;
 
 export const PERIODIZATION_DRAFT_STORAGE_KEY = 'musclefit.periodization-draft.v1';
 

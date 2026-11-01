@@ -2,15 +2,15 @@
 deterministica -> rascunho (PLANO_20260912.md secao 7.1).
 
 Roda na Lambda `musclefit-plan-generator` (`lambda_plan_generator.py` despacha
-por `job_kind`), reaproveitando imagem, timeout de 120 s e IAM que ja existem.
+por `job_kind`), reaproveitando imagem, timeout (180 s) e IAM que ja existem.
 
 **Nada aqui escreve em `workout_plan_templates`** (nem em slots/itens). As
 UNICAS escritas deste modulo sao em `template_generation_logs` (auditoria). O
 modelo de treino so passa a existir quando o usuario, depois de editar o
 rascunho, chama o `POST /workout-plan-templates` de sempre.
 
-Sem retry: uma chamada de LLM por job. Retry dobraria o custo e nao cabe nos
-120 s (timeout de 90 s da chamada + contexto + validacao).
+Sem retry: uma chamada de LLM por job. Retry dobraria o custo e nao cabe no
+timeout da Lambda (`LLM_TIMEOUT_SECONDS` da chamada + contexto + validacao).
 """
 
 from __future__ import annotations
@@ -18,15 +18,24 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any, Optional
 
+from ..async_jobs import LAMBDA_TIMEOUT_SECONDS
 from ..db import transaction
 from ..models import PeriodizationDraftIn
 from ..observability import EVENT_PERIODIZATION_VALIDATION_FAILED, log_event
-from ..openai_client import USER_MESSAGE_UNAVAILABLE, OpenAIGenerationError, call_openai_structured
+from ..openai_client import (
+    TEXT_RETRY_MIN_ATTEMPT_SECONDS,
+    USER_MESSAGE_TIMEOUT,
+    USER_MESSAGE_UNAVAILABLE,
+    OpenAIGenerationError,
+    call_openai_structured,
+)
+from . import catalog_refs
 from .context import build_context, build_prompt, build_prompt_cache_prefix
 from .logs import STATUS_FAILED, STATUS_SUCCEEDED, finish_log
-from .output_schema import SCHEMA_NAME, output_schema
+from .output_schema import ANTHROPIC_OPTIONAL_FIRST, SCHEMA_NAME, output_schema
 from .validation import validate_draft
 
 logger = logging.getLogger("musclefit.periodization")
@@ -78,14 +87,52 @@ logger = logging.getLogger("musclefit.periodization")
 # vetado so na VESPERA do dia de perna (no proprio dia, permitido depois da
 # forca); a faixa do TSB segue interpolada (-25/-35 em `cardio_envelope`).
 # Sem pedido de cardio, prompt e schema continuam os da v12, letra por letra.
-PROMPT_VERSION = "periodization-v14"
+# v15 (31/10/2026, escolha guiada pelo motor): no Modo B o catalogo vai com a
+# referencia curta de cada opcao valida (`catalog_refs`, ex.: "E17") no lugar
+# dos ids, e o item da saida tem so `catalog_ref` (enum por pedido) no lugar
+# do trio; o motor monta o trio antes da validacao (`resolve_output`).
+# `rest_seconds` saiu do schema nos dois modos (regra do motor: null). Prosa
+# do Modo A, do objetivo e do cardio igual a da v14, menos o `rest_seconds`.
+PROMPT_VERSION = "periodization-v15"
 ENGINE_VERSION = "periodization-v8.0.0"
 
-# Timeout da chamada a OpenAI: MENOR que os 120 s da Lambda, de proposito
-# (secao 7.3) - o estouro precisa virar job `failed` com mensagem.
-OPENAI_TIMEOUT_SECONDS = 90
+# Orcamento de tempo da chamada a LLM (secao 7.3): MENOR que o timeout da
+# Lambda que roda o job, de proposito - o estouro precisa virar job `failed`
+# com mensagem, nao Lambda morta (com 0 retries, `lambda_async_invoke_config.tf`,
+# a Lambda morta so vira `worker_lost` no poll, timeout + 60 s depois).
+# Derivado do timeout da `musclefit-plan-generator` (`async_jobs`, fonte unica
+# com paridade contra o Terraform) menos a folga reservada para o resto do
+# job: contexto (RAG + leituras no Aurora, inclusive a retomada do auto-pause),
+# validacao deterministica (pior caso medido < 4 s) e gravacao do log/job.
+# Era 90 s: o Claude Haiku 5.5 com raciocinio passa disso nos Modelos de 6
+# dias (eval de 2026-10-30 e docs/ia/EVAL_PERIODIZACAO_2026-10-31.md).
+PLAN_GENERATOR_FUNCTION = "musclefit-plan-generator"
+LAMBDA_RESERVED_SECONDS = 30
+LLM_TIMEOUT_SECONDS = LAMBDA_TIMEOUT_SECONDS[PLAN_GENERATOR_FUNCTION] - LAMBDA_RESERVED_SECONDS
+# Parte da folga que fica para DEPOIS da chamada (validacao + log + escrita do
+# job). O teto efetivo da chamada e o menor entre `LLM_TIMEOUT_SECONDS` e o
+# que sobra da Lambda descontado o tempo ja gasto no contexto
+# (`llm_timeout_for`): contexto lento (retomada do Aurora) encolhe a chamada,
+# em vez de a Lambda morrer e o job so fechar como `worker_lost`.
+POST_LLM_RESERVED_SECONDS = LAMBDA_RESERVED_SECONDS // 2
+# Nome antigo, mantido para quem ja o le (mapa de fontes, testes).
+OPENAI_TIMEOUT_SECONDS = LLM_TIMEOUT_SECONDS
 
 MODEL_ENV_VAR = "OPENAI_MODEL_PERIODIZATION"
+JOB_TYPE = "periodization"  # `async_jobs.JOB_TYPE_LAMBDA` (workout_plan_templates.py)
+
+
+def export_for_frontend() -> dict[str, int]:
+    """Secao `periodization_job` do `motor-constants.generated.json`: o tempo
+    da chamada e o prazo em que o job `pending` vira `failed`/`worker_lost` no
+    poll (`async_jobs.worker_lost_deadline_seconds`). A tela de geracao espera
+    ate esse prazo, para nunca desistir de um job que ainda vai responder."""
+    from ..async_jobs import worker_lost_deadline_seconds
+
+    return {
+        "llm_timeout_seconds": LLM_TIMEOUT_SECONDS,
+        "job_deadline_seconds": int(worker_lost_deadline_seconds(JOB_TYPE) or 0),
+    }
 
 
 class PeriodizationError(RuntimeError):
@@ -103,6 +150,12 @@ class PeriodizationError(RuntimeError):
             if payload
             else message
         )
+
+
+def llm_timeout_for(elapsed_seconds: float) -> float:
+    """Teto da chamada depois de `elapsed_seconds` gastos no job (contexto)."""
+    remaining = LAMBDA_TIMEOUT_SECONDS[PLAN_GENERATOR_FUNCTION] - POST_LLM_RESERVED_SECONDS - elapsed_seconds
+    return min(float(LLM_TIMEOUT_SECONDS), remaining)
 
 
 def resolve_model() -> str:
@@ -129,6 +182,7 @@ def run_periodization_draft(
     configuracao, falha da OpenAI ou erro estrutural no relatorio) - o
     `lambda_plan_generator` transforma isso em job `failed`, com o relatorio
     dentro da mensagem quando ele existe."""
+    started = time.monotonic()
     request = PeriodizationDraftIn(**(payload or {}))
     model = _resolve_model_or_fail(generation_log_id)
 
@@ -142,17 +196,25 @@ def run_periodization_draft(
         request.volume_mode,
     )
 
+    mode_b = request.volume_mode == "equipment_series"
+    ref_index = catalog_refs.build_index(context) if mode_b else {}
+    llm_timeout = llm_timeout_for(time.monotonic() - started)
+    if llm_timeout < TEXT_RETRY_MIN_ATTEMPT_SECONDS:
+        finish_log(generation_log_id, status=STATUS_FAILED, model=model)
+        logger.error("periodizacao: contexto consumiu o orcamento da Lambda (%.1f s para a LLM)", llm_timeout)
+        raise PeriodizationError(f"Falha na geracao pela OpenAI: {USER_MESSAGE_TIMEOUT}")
     try:
         result = call_openai_structured(
             prompt,
             model,
-            output_schema(bool(context.get("cardio"))),
+            output_schema(bool(context.get("cardio")), mode_b, catalog_refs.schema_enum(ref_index)),
             schema_name=SCHEMA_NAME,
-            timeout=OPENAI_TIMEOUT_SECONDS,
+            timeout=llm_timeout,
             feature="periodization",
             user_id=user_id,
             prompt_version=PROMPT_VERSION,
             cache_prefix=build_prompt_cache_prefix(context),
+            anthropic_optional_first=ANTHROPIC_OPTIONAL_FIRST,
         )
     except Exception as exc:
         finish_log(generation_log_id, status=STATUS_FAILED, model=model)
@@ -166,8 +228,21 @@ def run_periodization_draft(
             message = USER_MESSAGE_UNAVAILABLE
         raise PeriodizationError(f"Falha na geracao pela OpenAI: {message}") from exc
 
+    # v15: a referencia escolhida vira o trio ANTES de qualquer validacao (o
+    # validador e o rascunho veem o formato de sempre). Referencia
+    # desconhecida deixa o trio vazio: o item sai como `ITEM_REMOVED` e o
+    # complemento de volume cobre o grupo; a contagem vai ao relatorio.
+    resolved, ref_stats = catalog_refs.resolve_output(result.data, ref_index)
+    if ref_stats.total:
+        logger.info(
+            "periodizacao: referencias do catalogo total=%d resolvidas=%d desconhecidas=%d",
+            ref_stats.total,
+            ref_stats.resolved,
+            len(ref_stats.unknown),
+        )
     with transaction() as conn:
-        draft, report, extras = validate_draft(conn, request, result.data, cardio=context.get("cardio"))
+        draft, report, extras = validate_draft(conn, request, resolved, cardio=context.get("cardio"))
+    report = catalog_refs.attach_to_report(report, ref_stats)
 
     status = STATUS_FAILED if report["errors"] else STATUS_SUCCEEDED
     finish_log(

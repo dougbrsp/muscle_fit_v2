@@ -143,15 +143,14 @@ def test_resposta_que_viola_o_prompt_e_pega(monkeypatch, feature, caso_id, texto
 def _rascunho_valido(caso: dict) -> dict:
     """Rascunho que cumpre as regras duras, montado do proprio contexto."""
     pedido, contexto = caso["input"]["request"], caso["input"]["context"]
-    ids = {g["name"]: g["id"] for g in contexto["muscle_groups"]}
     slots = []
     for sequencia in range(1, pedido["days_per_cycle"] + 1):
         itens = []
         if pedido["volume_mode"] == "equipment_series":
-            grupo, linhas = next(iter(contexto["gym_catalog"].items()))
-            linha = linhas[0]
-            itens.append({"item_kind": "equipment", "muscle_group_id": ids[grupo], "mapping_id": linha["mapping_id"],
-                          "equipment_id": linha["equipment_id"], "sets_count": 3, "rest_seconds": None, "prioritize": False})
+            # v15: a LLM devolve a referencia do catalogo; o motor monta o trio.
+            from app.periodization.catalog_refs import CATALOG_REF_FIELD, build_index
+
+            itens.append({CATALOG_REF_FIELD: next(iter(build_index(contexto))), "sets_count": 3, "prioritize": False})
         else:
             itens.append({"item_kind": "muscle_group", "muscle_group_id": contexto["muscle_groups"][0]["id"],
                           "priority_min_pct": 30, "priority_max_pct": 40, "prioritize": True})
@@ -166,10 +165,26 @@ def test_periodizacao_regras_duras(monkeypatch, caso_id):
     assert _rodar(monkeypatch, "periodization", caso, json.dumps(valido)) == []
 
     invalido = json.loads(json.dumps(valido))
-    invalido["template"]["slots"][0]["items"][0]["muscle_group_id"] = 999_999
+    modo_b = caso["input"]["request"]["volume_mode"] == "equipment_series"
+    item = invalido["template"]["slots"][0]["items"][0]
+    if modo_b:  # v15: o grupo vem da referencia; a invalida reprova
+        item["catalog_ref"] = "E999999"
+    else:
+        item["muscle_group_id"] = 999_999
     invalido["template"]["slots"].pop()
     problemas = _rodar(monkeypatch, "periodization", caso, json.dumps(invalido))
-    assert any("sequences" in p for p in problemas) and any("inventado" in p for p in problemas), problemas
+    trecho = "referencia invalida" if modo_b else "inventado"
+    assert any("sequences" in p for p in problemas) and any(trecho in p for p in problemas), problemas
+
+
+def test_periodizacao_referencia_invalida_reprova_como_trio_fora_do_catalogo(monkeypatch):
+    from app.periodization.catalog_refs import CATALOG_REF_FIELD
+
+    caso = _caso("periodization", "modo_b_6_dias_abc")
+    invalido = _rascunho_valido(caso)
+    invalido["template"]["slots"][0]["items"][0][CATALOG_REF_FIELD] = "E9999"
+    problemas = _rodar(monkeypatch, "periodization", caso, json.dumps(invalido))
+    assert problemas == ["slot 1: trio fora do catalogo (referencia invalida 'E9999')"], problemas
 
 
 def test_numeros_fora_da_entrada_aceita_arredondamento_e_milhar():

@@ -337,6 +337,18 @@ def avaliar_periodization(saida: Mapping[str, Any], caso: Mapping[str, Any]) -> 
         nome: {(row["mapping_id"], row["equipment_id"]) for row in rows}
         for nome, rows in (contexto.get("gym_catalog") or {}).items()
     }
+    # v15 (escolha guiada pelo motor): a saida avaliada ja e a RESOLVIDA pelo
+    # motor (`catalog_refs.resolve_output`, antes dos auto-fixes do validador),
+    # entao o trio abaixo e o que a LLM escolheu pela referencia. Referencia
+    # desconhecida reprova como o trio invalido reprovava (o relatorio traz a
+    # posicao: `CATALOG_REF_UNKNOWN`).
+    from app.periodization.catalog_refs import CATALOG_REF_UNKNOWN
+
+    invalidas = {
+        (fix.get("slot"), fix.get("item")): fix.get("ref")
+        for fix in ((saida.get("validation_report") or {}).get("auto_fixes") or [])
+        if fix.get("code") == CATALOG_REF_UNKNOWN
+    }
     for slot in slots:
         itens = slot.get("items") or []
         rotulo = f"slot {slot.get('sequence')}"
@@ -345,7 +357,10 @@ def avaliar_periodization(saida: Mapping[str, Any], caso: Mapping[str, Any]) -> 
         priorizados = sum(1 for item in itens if item.get("prioritize"))
         if priorizados > MAX_PRIORITIZED_PER_SLOT:
             problemas.append(f"{rotulo}: {priorizados} priorizados (max {MAX_PRIORITIZED_PER_SLOT})")
-        for item in itens:
+        for posicao, item in enumerate(itens, start=1):
+            if (slot.get("sequence"), posicao) in invalidas:
+                problemas.append(f"{rotulo}: trio fora do catalogo (referencia invalida {invalidas[(slot.get('sequence'), posicao)]!r})")
+                continue
             if item.get("muscle_group_id") not in grupos:
                 problemas.append(f"{rotulo}: muscle_group_id inventado {item.get('muscle_group_id')}")
                 continue

@@ -70,7 +70,7 @@ from ..rag_chunking import (  # noqa: F401 - MAX_RAG_BASE_CHARS reexportado (con
     rag_base_limit,
     truncate_rag,
 )
-from . import goal_plan
+from . import catalog_refs, goal_plan
 from .limits import (
     MAX_PRIORITIZED_PER_SLOT,
     SESSION_EXERCISES_MAX,
@@ -564,7 +564,9 @@ def build_prompt(context: dict[str, Any]) -> str:
         # inventar faixa - o validador tambem nao avalia grupo sem macro-grupo.
         ranges = _json(context["methodology_ranges"]) if context.get("methodology_ranges") else _text(".sem_faixas")
         parts.append(_text(".tabela", {"tabela": ranges}))
-        parts.append(_text(".catalogo", {"catalogo": _json(context["gym_catalog"])}))
+        # v15: cada linha com a referencia curta do motor (`catalog_refs`) no
+        # lugar do par de ids; a LLM escolhe a referencia e o motor monta o trio.
+        parts.append(_text(".catalogo", {"catalogo": _json(catalog_refs.catalog_for_prompt(context))}))
     if context.get("goal_plan"):
         parts.append(goal_plan_section(context["goal_plan"], mode_b))
     if context.get("cardio"):

@@ -17,6 +17,9 @@ Configuracao (env, lida A CADA chamada; `<FEATURE>` = rotulo `feature` do
 - `ANTHROPIC_MODEL_<FEATURE>`: modelo Claude (padrao em `DEFAULT_ANTHROPIC_MODEL`).
 - `ANTHROPIC_EFFORT_<FEATURE>`: `low`/`medium`/`high`/`xhigh`/`max`
   (padrao em `DEFAULT_ANTHROPIC_EFFORT`).
+- `ANTHROPIC_THINKING_<FEATURE>`: `adaptive` (padrao, o corpo de sempre) ou
+  `disabled` (sem raciocinio; a API so aceita com esforco em
+  `EFFORTS_WITHOUT_THINKING`, ver `thinking_config`).
 - `LLM_FALLBACK_PROVIDER_<FEATURE>` ou `LLM_FALLBACK_PROVIDER` (global): `openai`
   liga o fallback (ver `fallback_eligible`). Vazio = sem fallback.
 - `ANTHROPIC_API_KEY`: populada no cold start por `secrets_bootstrap` a partir
@@ -68,6 +71,7 @@ DEFAULT_PROVIDER: Final[str] = PROVIDER_OPENAI
 ENV_PROVIDER_PREFIX: Final[str] = "LLM_PROVIDER_"
 ENV_MODEL_PREFIX: Final[str] = "ANTHROPIC_MODEL_"
 ENV_EFFORT_PREFIX: Final[str] = "ANTHROPIC_EFFORT_"
+ENV_THINKING_PREFIX: Final[str] = "ANTHROPIC_THINKING_"
 ENV_FALLBACK_PREFIX: Final[str] = "LLM_FALLBACK_PROVIDER_"
 ENV_FALLBACK_GLOBAL: Final[str] = "LLM_FALLBACK_PROVIDER"
 ENV_API_KEY: Final[str] = "ANTHROPIC_API_KEY"
@@ -87,6 +91,18 @@ LIGHT_FEATURES: Final[frozenset[str]] = frozenset({"set_evaluation", "exercise_s
 EFFORT_LOW: Final[str] = "low"
 EFFORT_MEDIUM: Final[str] = "medium"
 EFFORTS: Final[tuple[str, ...]] = ("low", "medium", "high", "xhigh", "max")
+
+# Raciocinio (`thinking.type`). `adaptive` e o padrao de toda feature (corpo
+# de sempre). `disabled` desliga o raciocinio: no Claude Haiku 5.5 a API so o
+# aceita com esforco `low`/`medium`/`high` (com `xhigh`/`max` responde 400), e
+# com ele nao pode haver esforco por mensagem nem `block_binding` (tambem
+# 400), que este cliente nao usa (uma mensagem, sem historico). Combinacao
+# invalida falha ANTES da rede (`ANTHROPIC_CONFIG_INVALID`).
+THINKING_ADAPTIVE: Final[str] = "adaptive"
+THINKING_DISABLED: Final[str] = "disabled"
+THINKING_MODES: Final[tuple[str, ...]] = (THINKING_ADAPTIVE, THINKING_DISABLED)
+DEFAULT_THINKING: Final[str] = THINKING_ADAPTIVE
+EFFORTS_WITHOUT_THINKING: Final[tuple[str, ...]] = ("low", "medium", "high")
 
 DEFAULT_ANTHROPIC_MODEL: Final[dict[str, str]] = {
     f: (ANTHROPIC_MODEL_HAIKU if f in LIGHT_FEATURES else ANTHROPIC_MODEL_SONNET) for f in LLM_FEATURES
@@ -108,6 +124,7 @@ ANTHROPIC_AUTH: Final[str] = "ANTHROPIC_AUTH"
 ANTHROPIC_NOT_CONFIGURED: Final[str] = "ANTHROPIC_NOT_CONFIGURED"
 ANTHROPIC_CONNECTION: Final[str] = "ANTHROPIC_CONNECTION"
 ANTHROPIC_SCHEMA_UNSUPPORTED: Final[str] = "ANTHROPIC_SCHEMA_UNSUPPORTED"
+ANTHROPIC_CONFIG_INVALID: Final[str] = "ANTHROPIC_CONFIG_INVALID"
 
 # Features que mandam `cache_control` (cache de 5 min) no prefixo estavel.
 # Diferente do `prompt_cache_key` da OpenAI (gratis: so agrupa o cache
@@ -181,6 +198,17 @@ def anthropic_effort_for(feature: Optional[str]) -> str:
     return DEFAULT_ANTHROPIC_EFFORT.get(feature or "", EFFORT_MEDIUM)
 
 
+def anthropic_thinking_for(feature: Optional[str]) -> str:
+    """Modo de raciocinio da feature. Sem env ou valor invalido: `adaptive`."""
+    name = feature_env(ENV_THINKING_PREFIX, feature)
+    value = _env(name).lower()
+    if value in THINKING_MODES:
+        return value
+    if value:
+        _invalid(name, value)
+    return DEFAULT_THINKING
+
+
 def fallback_provider_for(feature: Optional[str]) -> Optional[str]:
     """`openai` quando o fallback esta ligado (env da feature vence a global)."""
     name = feature_env(ENV_FALLBACK_PREFIX, feature)
@@ -201,7 +229,8 @@ def fallback_provider_for(feature: Optional[str]) -> Optional[str]:
 # credito/billing, chave (ausente, invalida, sem permissao), qualquer resposta
 # de erro HTTP (429 e 5xx/529 ja depois do retry; 4xx de configuracao, como
 # modelo inexistente ou schema recusado), erro de conexao antes da resposta,
-# schema que nao cabe no subconjunto e recusa. NAO entram: timeout (a
+# schema que nao cabe no subconjunto, recusa e combinacao de envs que a API
+# recusaria (`ANTHROPIC_CONFIG_INVALID`, antes da rede: nada cobrado). NAO entram: timeout (a
 # Anthropic pode ter gerado e cobrado, e o orcamento de tempo foi gasto) e
 # resposta gerada mas inutil (cortada ou JSON invalido: ja foi cobrada; segue
 # o caminho de falha de sempre, como na OpenAI).
@@ -213,6 +242,7 @@ _FALLBACK_CODES: Final[frozenset[str]] = frozenset(
         ANTHROPIC_NOT_CONFIGURED,
         ANTHROPIC_CONNECTION,
         ANTHROPIC_SCHEMA_UNSUPPORTED,
+        ANTHROPIC_CONFIG_INVALID,
     }
 )
 
@@ -331,6 +361,24 @@ def _image_block(image: ImageInput) -> dict:
     }
 
 
+def thinking_config(feature: Optional[str], effort: str) -> dict:
+    """`thinking` do pedido. `disabled` com esforco fora de
+    `EFFORTS_WITHOUT_THINKING` daria 400: falha aqui, antes da rede, com erro
+    de configuracao (elegivel ao fallback; registra `llm.config_invalid`)."""
+    mode = anthropic_thinking_for(feature)
+    if mode == THINKING_DISABLED and effort not in EFFORTS_WITHOUT_THINKING:
+        name = feature_env(ENV_THINKING_PREFIX, feature)
+        _invalid(name, f"{mode}+effort={effort}")
+        raise _error(
+            USER_MESSAGE_UNAVAILABLE, code=ANTHROPIC_CONFIG_INVALID,
+            diagnostic=(
+                f"{name}={THINKING_DISABLED} exige {feature_env(ENV_EFFORT_PREFIX, feature)} em "
+                f"{'/'.join(EFFORTS_WITHOUT_THINKING)} (recebido: {effort})."
+            ),
+        )
+    return {"type": mode}
+
+
 def build_request(
     prompt: str,
     *,
@@ -341,16 +389,19 @@ def build_request(
     cache_prefix: Optional[str] = None,
 ) -> dict:
     """Argumentos de `messages.create`. Sem `temperature`/`top_p`/`top_k` nem
-    prefill (400 nesses modelos); thinking adaptativo com esforco por feature."""
+    prefill (400 nesses modelos); thinking (`thinking_config`) e esforco por
+    feature. Sem `ANTHROPIC_THINKING_<FEATURE>`, o corpo e o de sempre."""
+    effort = anthropic_effort_for(feature)
+    thinking = thinking_config(feature, effort)
     content = [*(_image_block(i) for i in images)]
     content += _text_blocks(prompt, feature=feature, prompt_version=prompt_version, cache_prefix=cache_prefix)
-    output_config: dict = {"effort": anthropic_effort_for(feature)}
+    output_config: dict = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
     return {
         "model": anthropic_model_for(feature),
         "max_tokens": LLM_MAX_OUTPUT_TOKENS.get(feature or "") or DEFAULT_MAX_TOKENS,
-        "thinking": {"type": "adaptive"},
+        "thinking": thinking,
         "output_config": output_config,
         "messages": [{"role": "user", "content": content}],
     }
@@ -552,12 +603,13 @@ def call_text_result(
 def call_structured(
     prompt: str, schema: dict, timeout: float, *, feature: Optional[str], user_id=None,
     prompt_version: Optional[str] = None, images: Sequence[ImageInput] = (),
-    cache_prefix: Optional[str] = None,
+    cache_prefix: Optional[str] = None, optional_first: Sequence[tuple[str, ...]] = (),
 ) -> StructuredResult:
     """Saida estruturada (`output_config.format` json_schema) com o schema
-    adaptado (`llm_anthropic_schema`); a volta tem a forma do schema original."""
+    adaptado (`llm_anthropic_schema`); a volta tem a forma do schema original.
+    `optional_first`: ver `llm_anthropic_schema.adapt_schema`."""
     try:
-        adapted = llm_anthropic_schema.adapt_schema(schema)
+        adapted = llm_anthropic_schema.adapt_schema(schema, optional_first)
     except llm_anthropic_schema.SchemaAdaptationError as exc:
         error = _error(USER_MESSAGE_UNAVAILABLE, code=ANTHROPIC_SCHEMA_UNSUPPORTED, diagnostic=str(exc))
         log_failure(error, provider=PROVIDER_ANTHROPIC, feature=feature, prompt_version=prompt_version, user_id=user_id)
@@ -599,6 +651,7 @@ def _structured_payload(text: str) -> dict:
 
 __all__ = [
     "ANTHROPIC_AUTH",
+    "ANTHROPIC_CONFIG_INVALID",
     "ANTHROPIC_BILLING",
     "ANTHROPIC_CONNECTION",
     "ANTHROPIC_MODEL_HAIKU",
@@ -611,16 +664,22 @@ __all__ = [
     "DEFAULT_ANTHROPIC_MODEL",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_PROVIDER",
+    "DEFAULT_THINKING",
     "EFFORTS",
+    "EFFORTS_WITHOUT_THINKING",
     "EVENT_LLM_FALLBACK",
     "LIGHT_FEATURES",
     "LLM_FEATURES",
     "PROVIDERS",
     "PROVIDER_ANTHROPIC",
     "PROVIDER_OPENAI",
+    "THINKING_ADAPTIVE",
+    "THINKING_DISABLED",
+    "THINKING_MODES",
     "anthropic_effort_for",
     "call_text_result",
     "anthropic_model_for",
+    "anthropic_thinking_for",
     "build_request",
     "call_structured",
     "call_text",
@@ -630,5 +689,6 @@ __all__ = [
     "output_text",
     "provider_for",
     "send",
+    "thinking_config",
     "usage_of",
 ]

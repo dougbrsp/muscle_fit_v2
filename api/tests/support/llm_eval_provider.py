@@ -7,10 +7,13 @@ GPT x Claude feature a feature com os MESMOS casos e criterios.
     LLM_EVAL_PROVIDER=anthropic ANTHROPIC_API_KEY=... python -m pytest -s -m llm_eval tests/eval
     # Claude com outro modelo/esforco:
     LLM_EVAL_PROVIDER=anthropic LLM_EVAL_MODEL=claude-sonnet-5-5 LLM_EVAL_EFFORT=high ...
+    # Sem raciocinio (so com esforco low/medium/high):
+    LLM_EVAL_PROVIDER=anthropic LLM_EVAL_MODEL=claude-haiku-5-5 LLM_EVAL_EFFORT=high LLM_EVAL_THINKING=disabled ...
 
-`LLM_EVAL_PROVIDER` / `LLM_EVAL_MODEL` / `LLM_EVAL_EFFORT` so viram as envs de
-producao da feature (`LLM_PROVIDER_<FEATURE>`, `ANTHROPIC_MODEL_<FEATURE>`,
-`ANTHROPIC_EFFORT_<FEATURE>`, lidas por `app.llm_anthropic`) DURANTE o teste
+`LLM_EVAL_PROVIDER` / `LLM_EVAL_MODEL` / `LLM_EVAL_EFFORT` / `LLM_EVAL_THINKING`
+so viram as envs de producao da feature (`LLM_PROVIDER_<FEATURE>`,
+`ANTHROPIC_MODEL_<FEATURE>`, `ANTHROPIC_EFFORT_<FEATURE>`,
+`ANTHROPIC_THINKING_<FEATURE>`, lidas por `app.llm_anthropic`) DURANTE o teste
 (monkeypatch): o eval passa pelo mesmo cliente unico que a producao usa. Sem
 a chave do provedor escolhido, o caso da SKIP (nunca falha por falta de
 chave). Nada aqui chama a rede.
@@ -27,6 +30,7 @@ from app import llm_anthropic
 ENV_EVAL_PROVIDER = "LLM_EVAL_PROVIDER"
 ENV_EVAL_MODEL = "LLM_EVAL_MODEL"
 ENV_EVAL_EFFORT = "LLM_EVAL_EFFORT"
+ENV_EVAL_THINKING = "LLM_EVAL_THINKING"
 
 _KEY_ENV = {
     llm_anthropic.PROVIDER_OPENAI: "OPENAI_API_KEY",
@@ -59,7 +63,12 @@ def apply(monkeypatch, feature: str) -> str:
             monkeypatch.setenv(llm_anthropic.feature_env(llm_anthropic.ENV_MODEL_PREFIX, feature), model)
         if effort:
             monkeypatch.setenv(llm_anthropic.feature_env(llm_anthropic.ENV_EFFORT_PREFIX, feature), effort)
+        thinking = (os.environ.get(ENV_EVAL_THINKING) or "").strip()
+        if thinking:
+            monkeypatch.setenv(llm_anthropic.feature_env(llm_anthropic.ENV_THINKING_PREFIX, feature), thinking)
     return provider
 
 
-__all__ = ["ENV_EVAL_EFFORT", "ENV_EVAL_MODEL", "ENV_EVAL_PROVIDER", "apply", "eval_provider", "key_env"]
+__all__ = [
+    "ENV_EVAL_EFFORT", "ENV_EVAL_MODEL", "ENV_EVAL_PROVIDER", "ENV_EVAL_THINKING", "apply", "eval_provider", "key_env",
+]

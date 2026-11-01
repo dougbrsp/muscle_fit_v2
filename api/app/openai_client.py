@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Sequence
 
 from .observability import log_event
 
@@ -687,6 +687,7 @@ def call_openai_structured(
     user_id=None,
     prompt_version: Optional[str] = None,
     cache_prefix: Optional[str] = None,
+    anthropic_optional_first: Sequence[tuple[str, ...]] = (),
 ) -> StructuredResult:
     """Saida ESTRUTURADA (`text.format={type:"json_schema", strict:true}`) da
     API Responses: o modelo e obrigado pelo servidor da OpenAI a devolver um
@@ -706,6 +707,9 @@ def call_openai_structured(
     modelo, resposta vazia ou JSON que nao parseia.
 
     `cache_prefix` e o provedor por feature: ver `call_openai`.
+    `anthropic_optional_first`: so no caminho Anthropic, os anulaveis que o
+    adaptador converte em opcionais primeiro (`llm_anthropic_schema.adapt_schema`);
+    o schema enviado a OpenAI nao muda.
     """
 
     def _anthropic(t: float) -> StructuredResult:
@@ -713,7 +717,7 @@ def call_openai_structured(
 
         return llm_anthropic.call_structured(
             prompt, schema, t, feature=feature, user_id=user_id, prompt_version=prompt_version,
-            cache_prefix=cache_prefix,
+            cache_prefix=cache_prefix, optional_first=anthropic_optional_first,
         )
 
     return _dispatch(

@@ -1288,6 +1288,20 @@ PADROES: tuple[Padrao, ...] = (
         linguagens=frozenset({"py"}),
     ),
     Padrao(
+        chave="referencia_catalogo_fora_do_dono",
+        regra="referencia do catalogo da IA (periodization-v15) montada ou resolvida fora do dono",
+        # 2026-10-31 (prompt v15, mapa: "Escolha do exercicio pela IA"): a LLM
+        # escolhe a referencia curta e `periodization/catalog_refs.py` numera
+        # (`REF_PREFIX`) e monta o trio. O nome do campo e a numeracao escritos
+        # em outro modulo (`"catalog_ref"`, `f"E{n}"`) seriam uma segunda regra
+        # de "qual exercicio a IA escolheu" - consumidores usam
+        # `CATALOG_REF_FIELD`/`build_index`/`resolve_output`.
+        regex=re.compile(r"[\"']catalog_ref[\"']|\bf[\"']E\{"),
+        donos=("api/app/periodization/catalog_refs.py",),
+        inventario="v15",
+        linguagens=frozenset({"py"}),
+    ),
+    Padrao(
         chave="bom_para_paralelo",
         regra="instante \"Bom para\" (grupo pronto para novo estímulo) somando horas restantes/estimadas a um instante fora do dono",
         # 2026-10-17 (coluna "Bom para" da prontidão por grupo): o instante é de
@@ -2011,6 +2025,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "chave_slot_fora_do_dono": {},  # 2026-10-24: nasce vazia (a tela de treinos lê `session.group`)
     "recencia_planejada_fora_do_dono": {},  # 2026-10-27 (M101): nasce vazia
     "exercicio_livre_fora_do_dono": {},  # 2026-10-27 (M101c): nasce vazia (as 2 cópias saíram no PR)
+    "referencia_catalogo_fora_do_dono": {},  # 2026-10-31 (periodization-v15): nasce vazia
     "linhagem_modelo_fora_do_dono": {},  # 2026-10-24: nasce vazia (090; só o leitor lê, só o duplicate grava)
     "rotulo_estrategia": {
         # INTENÇÃO da metodologia de volume (§3.5: `MethodologyIntent`, "Abaixo
@@ -2929,6 +2944,10 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "recencia_planejada_fora_do_dono": (
         ("load_user_recency(cur, user_id, gym_id, include_planned=True)", "rank(rows, includePlanned: true)"),
         ("load_user_recency(cur, user_id, gym_id)", "planned_sets = 3", "is_planned = True"),
+    ),
+    "referencia_catalogo_fora_do_dono": (
+        ('item["catalog_ref"]', "ref = f\"E{numero}\"", "item.get('catalog_ref')"),
+        ("item[CATALOG_REF_FIELD]", "catalog_refs.resolve_output(data, index)", "catalog_ref_count = 0"),
     ),
     "exercicio_livre_fora_do_dono": (
         ("def _is_free_exercise_item(item):", "not item.mapping_id and not item.equipment_id",
