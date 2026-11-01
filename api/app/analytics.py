@@ -1762,21 +1762,25 @@ def _fetch_exercise_group_weights(user_id: int, windows: Dict[str, date]) -> Dic
     return result
 
 
-def _exercise_progression_items(user_id: int, windows: Dict[str, date], goal: Any) -> List[Dict[str, Any]]:
+def _exercise_progression_items(
+    user_id: int, windows: Dict[str, date], goal: Any, timezone_name: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Status de TODOS os exercicios da janela ATUAL, pela MESMA chamada da home
     (`exposure_service.get_exercises_progression_batch`, mesmo objetivo e mesmas
     datas de `current_from`..`current_to`). Com `days=28` terminando hoje (a
     janela padrao da home) os itens sao identicos aos dela."""
     from .intelligence.dashboard.contracts import WindowInfo, WindowKind
     from .intelligence.dashboard.exposure_service import get_exercises_progression_batch
-    from .intelligence.dashboard.time_windows import user_timezone
+    from .timezones import DEFAULT_TIMEZONE
 
+    # O lote so le `date_from`/`date_to` da janela: o fuso nao muda o resultado,
+    # entao nao se releva `users.timezone` (quem ja o resolveu passa).
     with _connect() as conn:
         window = WindowInfo(
             kind=WindowKind.CUSTOM,
             date_from=windows["current_from"],
             date_to=windows["current_to"],
-            timezone=user_timezone(conn, user_id),
+            timezone=timezone_name or DEFAULT_TIMEZONE,
             days=(windows["current_to"] - windows["current_from"]).days + 1,
         )
         items, _truncated, _limit = get_exercises_progression_batch(
@@ -1808,6 +1812,11 @@ def dashboard_progression_by_muscle_group(
     days: int = Query(default=30, ge=1, le=1825),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
+    window: Optional[str] = Query(
+        default=None,
+        description="Janela atual como no overview (7d, 28d, 90d, 180d, cycle, custom). "
+        "Presente, vence days/date_from/date_to (custom exige date_from e date_to).",
+    ),
     goal: str = Depends(goal_query),
     identity: Identity = Depends(get_current_identity),
 ):
@@ -1826,7 +1835,8 @@ def dashboard_progression_by_muscle_group(
     MESMA chamada `get_exercises_progression_batch`, no mesmo objetivo e na
     janela ATUAL desta rota (`current_from`..`current_to`; `days` ou
     `date_from`/`date_to`). Com `days=28` (a janela padrao da home) os numeros
-    sao identicos aos da home. O `performance_status` de cada grupo e a
+    sao identicos aos da home. `window` (como no overview, inclusive `cycle`)
+    vence `days`/`date_from`/`date_to`. O `performance_status` de cada grupo e a
     agregacao ponderada desses mesmos status."""
     from .intelligence.dashboard.comparability import exercise_progression_summary
     from .intelligence.dashboard.contracts import ExerciseProgressionSummaryOut
@@ -1844,24 +1854,46 @@ def dashboard_progression_by_muscle_group(
     # e o periodo de mesmo tamanho logo antes dela; sem eles, `days` terminando
     # hoje como sempre. A regra de classificacao (M50) e a mesma nos dois casos
     # - ver o docstring de `muscle_group_progression`.
-    date_range = _custom_date_range(identity.user_id, date_from, date_to)
-    if date_range is not None:
-        windows = range_comparison_windows(*date_range)
-        days = _range_days(date_range)
+    timezone_name: Optional[str] = None
+    if window:
+        # Contagem unica: a janela atual e resolvida EXATAMENTE como no overview
+        # (`analytics_dashboard._resolve`: ciclo do Modelo, mesmos valores e 400
+        # nas mesmas combinacoes); a anterior tem a mesma duracao, logo antes.
+        from .analytics_dashboard import _resolve
+        from .intelligence.dashboard.time_windows import user_timezone
+
+        with _connect() as conn:
+            timezone_name = user_timezone(conn, identity.user_id)
+        resolved = _resolve(window, date_from, date_to, timezone_name, identity.user_id)
+        windows = range_comparison_windows(resolved.date_from, resolved.date_to)
+        days = resolved.days
     else:
-        days = _safe_days(days)
-        windows = comparison_windows(_user_today(identity.user_id), days)
+        date_range = _custom_date_range(identity.user_id, date_from, date_to)
+        if date_range is not None:
+            windows = range_comparison_windows(*date_range)
+            days = _range_days(date_range)
+        else:
+            days = _safe_days(days)
+            windows = comparison_windows(_user_today(identity.user_id), days)
     # Convencao de carga detectada UMA vez para as duas leituras (M58).
     load_convention = _load_convention_expr()
     rows = _fetch_group_tonnage_rows(identity.user_id, windows, load_convention)
     # Status do grupo = agregacao (dono) dos status dos exercicios; o e1RM
     # entra so como metrica informativa. Os mesmos itens alimentam o bloco
     # `exercise_progression` (contagem + frase identicas as da home).
-    exercise_items = _exercise_progression_items(identity.user_id, windows, goal)
+    # Falha do lote de progressao NAO derruba o painel de tonelagem: sem os
+    # status, `exercise_progression` = null e os grupos ficam DADOS_INSUFICIENTES.
+    exercise_items: Optional[List[Dict[str, Any]]]
+    try:
+        exercise_items = _exercise_progression_items(identity.user_id, windows, goal, timezone_name)
+        group_weights = _fetch_exercise_group_weights(identity.user_id, windows)
+    except Exception:  # noqa: BLE001 - degradacao declarada
+        logger.exception("Lote de progressao indisponivel em dashboard-progression-by-muscle-group")
+        exercise_items, group_weights = None, {}
     performance = build_group_performance(
         _fetch_group_e1rm_rows(identity.user_id, windows, load_convention),
         exercise_items=exercise_items,
-        group_weights=_fetch_exercise_group_weights(identity.user_id, windows),
+        group_weights=group_weights,
     )
     # M97 F1: a fase (secundaria) e a do objetivo `goal`; tonelagem (volume) e
     # e1RM (unico entre objetivos) nao separam objetivo nesta fase.
@@ -1874,7 +1906,9 @@ def dashboard_progression_by_muscle_group(
         "performance_basis": PERFORMANCE_BASIS,
         "performance_status_basis": STATUS_BASIS,
         **{key: value.isoformat() for key, value in windows.items()},
-        "exercise_progression": ExerciseProgressionSummaryOut.model_validate(
+        "exercise_progression": None
+        if exercise_items is None
+        else ExerciseProgressionSummaryOut.model_validate(
             exercise_progression_summary(
                 exercise_items,
                 window_days=days,

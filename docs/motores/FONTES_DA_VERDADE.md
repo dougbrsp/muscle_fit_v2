@@ -132,8 +132,7 @@ já declara `progression_decisions` como evidência.
 | Prompts/RAG de progressão | decisão do motor pronta via `engine_decision_context.py` (ação, carga/reps alvo, passo do equipamento) | "+5%", "2,5%-5%" e qualquer incremento percentual em prompt/RAG; IA inferindo progressão | C11 | 1 (1c ✅: avaliação de série, resumos de exercício e de treino, `PROGRESSAO.md`, `workout_plan_templates_engine.py`, `MUSCLE_FIT.md`; 1a ✅ `workout_plan_ai.py` (incrementos do motor interpolados); 5a ✅ `abc_workout_ai.py` apagado) | `percentual_de_carga` |
 | Contagem de progressão por status (home "Estou evoluindo?" e `/dashboard/progressao`) e status de progressão por GRUPO muscular | `dashboard/comparability.py`: `progression_counts` (progredindo/estável/suspeita de platô/regredindo/comparáveis/não comparáveis/dados insuficientes), `progression_answer` (a frase da home), `exercise_progression_summary` (bloco `exercise_progression` da tela por grupo) e `aggregate_group_progression` (status do grupo = agregação PONDERADA dos status dos exercícios; pesos = `stimulus_weight` de `exercise_muscle_contributions`, sem peso novo; só exercícios comparáveis; vence o balde de maior peso entre progredindo / estável(+platô) / regredindo, empate no topo = ESTÁVEL; peso comparável < `GROUP_MIN_COMPARABLE_WEIGHT` = 0,5 → DADOS_INSUFICIENTES `LOW_ACTIVATION`). Consumidores: `overview_service.progression_block` (home), `GET /analytics/dashboard-progression-by-muscle-group` (`exercise_progression` + `performance_status` por grupo via `muscle_group_performance.build_group_performance`), ambos sobre a MESMA chamada `exposure_service.get_exercises_progression_batch`. O e1RM por grupo (`performance_change_pct`, `performance_exercises`) é só informativo (e1RM do dono `domain/e1rm`) e nunca gera status | contar/classificar status por exercício ou grupo no FE ou em rota; banda de ±% sobre o e1RM para status; `_status`/`OUTLIER`/`MIN_ACTIVATION`/`RIR_ZERO` gerando status; segunda contagem por "grupos" na tela | ✅ C12 deixa de ser exceção: antes a `/progressao` contava GRUPOS (regra própria do e1RM, banda ±5%) e a home contava EXERCÍCIOS; os números divergiam (3ª vez reportada). Agora os números das duas telas vêm do mesmo lote para o mesmo período | 2026-11-01 (contagem única) | `status_progressao_paralelo` (allowlist vazia) |
 | Desempenho/volume por grupo | `muscle_group_performance.py`, `muscle_group_progression.py` (volume por tonelagem e variação de e1RM informativa) consumindo `e1rm` do dono | cópias de Epley/RIR e de `comparability` | ✅ C12 resolvido no Lote 3a (cópias de Epley/RIR); o STATUS de desempenho do grupo passou ao dono em 2026-11-01 (linha acima) | 3a | `epley`, `rir` |
-| Rótulos de status de progressão por exercício | `domain/progression_status_labels.EXERCISE_PROGRESSION_LABELS` (com acento); `metrics_registry.EXERCISE_PROGRESSION_STATUS_LABELS` e `exercise_briefing.PERFORMANCE_LABELS` derivam dele; FE via `motor-constants.generated.json` (`dashboard-status.ts`, `exercise-progress.ts`) | rótulo literal ("Estável", "Suspeita de platô", "Não comparável"...) fora do dono | ✅ C13 resolvido no Lote 3c | 3c | `status_progressao_paralelo` | `return`/`status =` de `ExerciseProgressionStatus.<status>` (sem `.value`) ou de PROGREDINDO/ESTAVEL/REGREDINDO, e `.filter(... 'PROGRESSING'/'REGRESSING'/'PLATEAU_SUSPECTED' ...)` no FE (contagem por status fora do dono; py e ts) | `dashboard/comparability.py` | C12 | 2026-11-01 (allowlist vazia) |
-| `rotulo_progressao` |
+| Rótulos de status de progressão por exercício | `domain/progression_status_labels.EXERCISE_PROGRESSION_LABELS` (com acento); `metrics_registry.EXERCISE_PROGRESSION_STATUS_LABELS` e `exercise_briefing.PERFORMANCE_LABELS` derivam dele; FE via `motor-constants.generated.json` (`dashboard-status.ts`, `exercise-progress.ts`) | rótulo literal ("Estável", "Suspeita de platô", "Não comparável"...) fora do dono | ✅ C13 resolvido no Lote 3c | 3c | `rotulo_progressao` |
 | Janela do briefing | 90 dias (`time_windows`) | 91 dias | C14 | 1 | — |
 
 ### 3.4 Recomendação / insights
@@ -455,6 +454,7 @@ são a referência viva.
 | `limiar_fadiga` | `0.92` / `0.85` (só Python) | `muscle_recovery_service.py` | B4, D3 | 2c (allowlist vazia) |
 | `meta_fallback` | literal `27`/`27.0` (só Python) | `volume_service.py` | §4 Metas | — (hoje zero) |
 | `peso_secundario` | `SECONDARY_FACTOR`; `secondary…` + `0.5`/`0.3`/`0.25` na mesma linha | `muscle_contribution_resolver.py` (`DEFAULT_WRITE_WEIGHTS`) | A | 3c (allowlist vazia) |
+| `status_progressao_paralelo` | `return`/`status =` de `ExerciseProgressionStatus.<status>` (sem `.value`) ou de PROGREDINDO/ESTAVEL/REGREDINDO, e `.filter(... 'PROGRESSING'/'REGRESSING'/'PLATEAU_SUSPECTED' ...)` no FE (contagem por status fora do dono; py e ts) | `dashboard/comparability.py` | C12 | 2026-11-01 (allowlist vazia) |
 | `rotulo_progressao` | `"Progredindo"`, `"Regredindo"`, `"Estável"`, `"Suspeita de platô"`, `"Não comparável"` como literal entre aspas (com ou sem acento; py e ts) | `domain/progression_status_labels.py` | C13 | 3c (sobra 1 permanente) |
 | `trained_at` | `COALESCE(x.started_at, x.ended_at` | `time_windows.py` | A, B10 | 2b (allowlist vazia) |
 | `normalizacao_semanal` | `* 7 /`, `7.0 /`, `max(7,` / `max(WEEKLY_WINDOW_DAYS,` | `methodology_volume.py` | E1, E2 | 4a (sobra 1 permanente: `body_service`) |
@@ -6349,3 +6349,21 @@ REGREDINDO / DADOS_INSUFICIENTES; suspeita de platô conta como ESTAVEL no grupo
 `exercise_progression` e `performance_status_basis`. Semântica de `performance_activation_sum`: peso
 comparável (dono); `performance_exercises_compared/excluded` e `performance_change_pct` seguem sendo
 a leitura informativa do e1RM.
+
+**Janela.** A rota aceita `window` (`7d`, `28d`, `90d`, `180d`, `cycle`, `custom`, resolvido por
+`analytics_dashboard._resolve`, a mesma função e a mesma validação do overview, inclusive o ciclo do
+Modelo); presente, vence `days`/`date_from`/`date_to`. A janela anterior tem a mesma duração, logo antes.
+
+**Impacto em produção** (medido no DEV local, usuário 1, somente leitura em 2026-11-01; **é DEV, não
+produção**). O status do grupo agora vem só da janela ATUAL: a janela anterior deixou de entrar no
+status e só alimenta o delta informativo de e1RM e a tonelagem. Janela de 28 dias (2026-10-05..2026-11-01):
+home e tela passam a mostrar os mesmos números (7 comparáveis: 2 progredindo, 1 estável, 1 platô,
+3 regredindo; 1 não comparável; 29 dados insuficientes). Status por grupo, antes → depois: DADOS_INSUFICIENTES
+5 → 9, ESTAVEL 7 → 2, PROGREDINDO 3 → 2, REGREDINDO 4 → 6; 8 de 19 grupos mudam: Quadríceps
+ESTAVEL → REGREDINDO, Costas meio ESTAVEL → PROGREDINDO, Glúteos PROGREDINDO → REGREDINDO, Core
+ESTAVEL → REGREDINDO, Lombar ESTAVEL → DADOS_INSUFICIENTES, Antebraço ESTAVEL → DADOS_INSUFICIENTES,
+Panturrilha PROGREDINDO → DADOS_INSUFICIENTES, Peitoral REGREDINDO → DADOS_INSUFICIENTES. Janelas
+curtas deixam mais grupos sem status: em 7 dias (2026-10-26..2026-11-01) só 4 exercícios tinham série e
+nenhum com duas exposições comparáveis, então os 9 grupos ficam DADOS_INSUFICIENTES (antes: 5 ESTAVEL e 4
+DADOS_INSUFICIENTES). `cycle` não foi medido de forma útil: o Modelo do usuário 1 no DEV resolve para ciclo
+de 1 dia. Os números de produção podem diferir.

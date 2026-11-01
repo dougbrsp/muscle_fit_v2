@@ -166,7 +166,7 @@ def test_agregacao_aceita_o_valor_textual_do_status():
 def client(monkeypatch):
     chamadas = {}
 
-    def fake_items(user_id, windows, goal):
+    def fake_items(user_id, windows, goal, timezone_name=None):
         chamadas["janela"] = (windows["current_from"], windows["current_to"])
         chamadas["goal"] = goal
         return _items(**CASO_USUARIO)
@@ -233,3 +233,146 @@ def test_rota_janela_custom_usa_o_periodo_pedido(client):
     ).json()
     assert client.chamadas["janela"] == (date(2026, 9, 4), HOJE)
     assert body["exercise_progression"]["window_days"] == 29
+
+
+# ---------------------------------------------------------------------------
+# QA independente: helper que monta o universo da rota + bordas extras
+# ---------------------------------------------------------------------------
+
+
+def test_helper_da_rota_chama_o_mesmo_lote_da_home(monkeypatch):
+    """`_exercise_progression_items` usa `get_exercises_progression_batch` com a
+    janela atual (datas e dias) e o objetivo pedido, igual a home."""
+    import contextlib
+
+    from app.intelligence.dashboard import exposure_service, time_windows
+
+    capturado = {}
+
+    @contextlib.contextmanager
+    def fake_connect():
+        yield "CONN"
+
+    def fake_batch(conn, *, user_id, window, training_goal=None, **kw):
+        capturado.update(conn=conn, user_id=user_id, window=window, goal=training_goal)
+        return [{"status": "PROGRESSING"}], False, 5
+
+    monkeypatch.setattr(analytics, "_connect", fake_connect)
+    monkeypatch.setattr(exposure_service, "get_exercises_progression_batch", fake_batch)
+    monkeypatch.setattr(time_windows, "user_timezone", lambda conn, uid: "America/Sao_Paulo")
+
+    janelas = {"current_from": date(2026, 9, 5), "current_to": HOJE}
+    itens = analytics._exercise_progression_items(7, janelas, "strength")
+
+    assert itens == [{"status": "PROGRESSING"}]
+    assert capturado["conn"] == "CONN" and capturado["user_id"] == 7 and capturado["goal"] == "strength"
+    janela = capturado["window"]
+    assert (janela.date_from, janela.date_to, janela.days) == (date(2026, 9, 5), HOJE, 28)
+    assert janela.timezone == "America/Sao_Paulo"
+
+
+def test_agregacao_empate_a_tres_e_peso_zero():
+    # Os tres baldes empatados -> ESTAVEL.
+    tres = aggregate_group_progression([(S.PROGRESSING, 0.5), (S.STABLE, 0.5), (S.REGRESSING, 0.5)])
+    assert tres["status"] is S.STABLE
+    # Empate so no topo entre progredindo e regredindo, com estavel menor.
+    assert aggregate_group_progression([(S.PROGRESSING, 0.6), (S.REGRESSING, 0.6), (S.STABLE, 0.1)])[
+        "status"
+    ] is S.STABLE
+    # Peso zero/negativo/None conta como comparavel mas nao soma peso.
+    zero = aggregate_group_progression([(S.PROGRESSING, 0.0), (S.REGRESSING, -1.0), (S.STABLE, None)])
+    assert zero["counts"]["comparable_total"] == 3
+    assert zero["comparable_weight"] == 0.0
+    assert zero["status"] is S.INSUFFICIENT_DATA and zero["reason"] == "LOW_ACTIVATION"
+    # Platô soma no balde estavel e ganha de progredindo menor.
+    assert aggregate_group_progression([(S.PLATEAU_SUSPECTED, 0.7), (S.PROGRESSING, 0.5)])["status"] is S.STABLE
+    assert aggregate_group_progression([(S.PLATEAU_SUSPECTED, 0.7)])["counts"]["plateau_suspected"] == 1
+
+
+def test_contagem_ignora_status_desconhecido_e_frase_total_zero_no_resumo():
+    assert progression_counts([{"status": "XYZ"}])["comparable_total"] == 0
+    resumo = exercise_progression_summary([], window_days=28, period_start=date(2026, 9, 5), period_end=HOJE)
+    assert resumo["answer"] == "Nenhum exercício com série de trabalho no período."
+    assert resumo["counts"]["comparable_total"] == 0
+
+
+# ---------------------------------------------------------------------------
+# `window` (como no overview) e degradacao do lote de progressao
+# ---------------------------------------------------------------------------
+
+
+class _Conn:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def janela_do_overview(monkeypatch):
+    from app import analytics_dashboard
+    from app.intelligence.dashboard import time_windows
+
+    monkeypatch.setattr(analytics, "_connect", lambda: _Conn())
+    monkeypatch.setattr(time_windows, "user_timezone", lambda conn, user_id: "UTC")
+    monkeypatch.setattr(analytics_dashboard, "user_today", lambda tz: HOJE)
+    monkeypatch.setattr(analytics_dashboard, "resolve_cycle_length_days", lambda user_id: 14)
+    return analytics_dashboard
+
+
+def test_window_cycle_resolve_as_mesmas_datas_e_contagens_da_home(client, janela_do_overview):
+    # a home resolve a janela por `_resolve` (overview) e conta pelos mesmos itens
+    resolvida = janela_do_overview._resolve("cycle", None, None, "UTC", 7)
+    assert resolvida.days == 14
+
+    body = client.get("/analytics/dashboard-progression-by-muscle-group?window=cycle&days=28").json()
+
+    assert client.chamadas["janela"] == (resolvida.date_from, resolvida.date_to)
+    bloco = body["exercise_progression"]
+    assert (bloco["period_start"], bloco["period_end"]) == (resolvida.date_from.isoformat(), resolvida.date_to.isoformat())
+    assert bloco["window_days"] == 14 == body["days"]
+    # janela anterior: mesma duracao, imediatamente antes
+    assert body["previous_to"] == (resolvida.date_from.fromordinal(resolvida.date_from.toordinal() - 1)).isoformat()
+    assert body["previous_from"] == resolvida.date_from.fromordinal(resolvida.date_from.toordinal() - 14).isoformat()
+    home = progression_block(
+        _items(**CASO_USUARIO), truncated=False, exposures_per_exercise=5,
+        window=WindowInfo(kind=WindowKind.CYCLE, date_from=resolvida.date_from, date_to=resolvida.date_to,
+                          timezone="UTC", days=resolvida.days),
+    )
+    assert bloco["answer"] == home["answer"]
+    assert bloco["counts"]["comparable_total"] == home["comparable_total"]
+
+
+def test_window_invalida_ou_ciclo_sem_modelo_e_400(client, janela_do_overview, monkeypatch):
+    assert client.get("/analytics/dashboard-progression-by-muscle-group?window=xyz").status_code == 400
+    assert client.get("/analytics/dashboard-progression-by-muscle-group?window=custom").status_code == 400
+    monkeypatch.setattr(janela_do_overview, "resolve_cycle_length_days", lambda user_id: None)
+    assert client.get("/analytics/dashboard-progression-by-muscle-group?window=cycle").status_code == 400
+
+
+def test_window_28d_vence_days(client, janela_do_overview):
+    body = client.get("/analytics/dashboard-progression-by-muscle-group?window=28d&days=7").json()
+    assert body["days"] == 28 and body["exercise_progression"]["window_days"] == 28
+
+
+def test_falha_do_lote_de_progressao_nao_derruba_a_tonelagem(client, monkeypatch):
+    def quebra(*a, **k):
+        raise RuntimeError("data api fora")
+
+    monkeypatch.setattr(analytics, "_exercise_progression_items", quebra)
+    monkeypatch.setattr(
+        analytics,
+        "_fetch_group_tonnage_rows",
+        lambda *a, **k: [
+            {"period": "current", "muscle_group_id": 4, "muscle_group_name": "Quadriceps",
+             "tonnage_kg": 1000.0, "sets_count": 8, "sessions_count": 4}
+        ],
+    )
+    resp = client.get("/analytics/dashboard-progression-by-muscle-group?days=28")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["exercise_progression"] is None
+    (item,) = body["items"]
+    assert item["performance_status"] == "DADOS_INSUFICIENTES"
+    assert item["current_tonnage_kg"] == 1000.0

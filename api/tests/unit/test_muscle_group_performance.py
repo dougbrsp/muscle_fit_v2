@@ -471,7 +471,7 @@ def test_endpoint_devolve_as_duas_dimensoes(monkeypatch):
     )
 
     monkeypatch.setattr(
-        analytics, "_exercise_progression_items", lambda user_id, windows, goal: [{"exercise_id": 22, "status": "PROGRESSING"}]
+        analytics, "_exercise_progression_items", lambda user_id, windows, goal, tz=None: [{"exercise_id": 22, "status": "PROGRESSING"}]
     )
     monkeypatch.setattr(analytics, "_fetch_exercise_group_weights", lambda user_id, windows: {QUAD: {22: 1.0}})
 
@@ -479,7 +479,7 @@ def test_endpoint_devolve_as_duas_dimensoes(monkeypatch):
         user_id = 1
 
     payload = analytics.dashboard_progression_by_muscle_group(
-        days=28, date_from=None, date_to=None, goal="hypertrophy", identity=_Identity()
+        days=28, date_from=None, date_to=None, window=None, goal="hypertrophy", identity=_Identity()
     )
     assert payload["exercise_progression"]["counts"]["progressing"] == 1
     assert payload["exercise_progression"]["window_days"] == 28
