@@ -153,3 +153,29 @@ test('rotacao e troca de viewport mudam so a apresentacao', async ({ page }) => 
   await expect(page.locator(SHELL)).toBeVisible();
   expect(new URL(page.url()).pathname).toBe('/dashboard/');
 });
+
+test('A2: campos e botoes das paginas P1 tem >= 44px e fonte >= 16px no shell', async ({ page }) => {
+  await open(page, '/perfil/', 'on', { width: 375, height: 800 });
+  await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+  const nome = page.getByLabel('Nome completo');
+  await expect(nome).toBeVisible({ timeout: 20_000 });
+  const box = await nome.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  const fontSize = await nome.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(fontSize).toBeGreaterThanOrEqual(16);
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: 'e2e/mobile-layout/__screens__/perfil-375.png' });
+});
+
+test('A2: historico, biblioteca e treinos sem overflow de pagina em 320', async ({ page }) => {
+  await open(page, '/dashboard/treinos/', 'on', { width: 320, height: 800 });
+  await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/costas e biceps/i).first()).toBeVisible({ timeout: 20_000 });
+  await noHorizontalOverflow(page);
+  for (const path of ['/registro-exercicios/', '/exercicios/']) {
+    await page.goto(path);
+    await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+    await page.waitForLoadState('networkidle');
+    await noHorizontalOverflow(page);
+  }
+});

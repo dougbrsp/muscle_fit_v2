@@ -69,6 +69,44 @@
   padding-bottom: calc(var(--m-bottom-nav) + env(safe-area-inset-bottom) + var(--m-pad));
 }
 
+/* A2: refinos de apresentacao das paginas dentro do shell mobile. Escopo
+   `.main`: nada disso afeta o desktop (o shell so monta em < 768 px). */
+.main h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.main h2 {
+  font-size: 1.375rem;
+}
+
+/* alvos de toque de 44 px nos controles do Mantine */
+.main :global(.mantine-Input-input),
+.main :global(.mantine-Button-root),
+.main :global(.mantine-SegmentedControl-control),
+.main :global(.mantine-Tabs-tab) {
+  min-height: var(--m-touch);
+}
+
+.main :global(.mantine-ActionIcon-root) {
+  min-width: var(--m-touch);
+  min-height: var(--m-touch);
+}
+
+/* 16 px: abaixo disso o iOS Safari da zoom ao focar um campo */
+.main input:not([type='checkbox']):not([type='radio']),
+.main select,
+.main textarea {
+  font-size: 16px;
+}
+
+/* tabelas largas rolam dentro do proprio container, nunca a pagina inteira */
+.main :global(.mantine-ScrollArea-root),
+.main :global(.mantine-Table-scrollContainer) {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
 .nav {
   position: fixed;
   left: 0;
