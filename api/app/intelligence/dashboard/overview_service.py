@@ -57,6 +57,7 @@ from .body_service import (  # noqa: F401 - reexportados: `body_block`, `pick_da
     waist_summary,
 )
 from .coercion import to_date, to_float
+from .comparability import MIN_COMPARABLE_FOR_RELIABLE_ANSWER, progression_answer, progression_counts, progression_total
 from .context_service import load_context_events, load_deload_ranges, load_training_gap
 from .contracts import DataNature, DataQuality, Severity, TargetSource, WindowInfo, WindowKind
 from .data_quality_service import build_data_quality
@@ -302,36 +303,25 @@ def progression_block(
             }
         )
 
-    total = len(items)
-    comparable = sum(
-        len(by_status.get(status, []))
-        for status in (
-            ExerciseProgressionStatus.PROGRESSING.value,
-            ExerciseProgressionStatus.STABLE.value,
-            ExerciseProgressionStatus.PLATEAU_SUSPECTED.value,
-            ExerciseProgressionStatus.REGRESSING.value,
-        )
-    )
-    progressing = len(by_status.get(ExerciseProgressionStatus.PROGRESSING.value, []))
-    regressing = len(by_status.get(ExerciseProgressionStatus.REGRESSING.value, []))
-    plateau = len(by_status.get(ExerciseProgressionStatus.PLATEAU_SUSPECTED.value, []))
+    # Contagem e frase vêm do dono (`comparability`): a mesma de
+    # `/dashboard/progressao` (`exercise_progression`).
+    summary = progression_counts(items)
+    total = progression_total(summary)
+    comparable = summary["comparable_total"]
 
     limitations: list[str] = []
+    answer = progression_answer(summary)
     if total == 0:
         quality = DataQuality.INSUFFICIENT
-        answer = "Nenhum exercício com série de trabalho no período."
     elif comparable == 0:
         quality = DataQuality.INSUFFICIENT
-        answer = f"{total} exercícios no período, nenhum com duas exposições comparáveis ainda."
         limitations.append("Progressão exige ao menos 2 exposições na mesma máquina/convenção de carga.")
     else:
-        quality = DataQuality.HIGH if comparable >= 3 else DataQuality.MEDIUM
-        answer = (
-            f"{progressing} de {comparable} exercícios comparáveis progredindo; "
-            f"{plateau} com suspeita de platô e {regressing} regredindo."
-        )
-        if comparable < 3:
-            limitations.append("Menos de 3 exercícios comparáveis: a leitura geral ainda é fraca (§7).")
+        quality = DataQuality.HIGH if comparable >= MIN_COMPARABLE_FOR_RELIABLE_ANSWER else DataQuality.MEDIUM
+        if comparable < MIN_COMPARABLE_FOR_RELIABLE_ANSWER:
+            limitations.append(
+                f"Menos de {MIN_COMPARABLE_FOR_RELIABLE_ANSWER} exercícios comparáveis: a leitura geral ainda é fraca (§7)."
+            )
     if truncated:
         limitations.append(
             "Lote de exposições cortado pelo teto de 1 MB da Data API: alguns exercícios foram lidos com "

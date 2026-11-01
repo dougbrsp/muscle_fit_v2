@@ -53,7 +53,7 @@ define constante numerica propria.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ...domain import e1rm as _e1rm
 from ...domain.set_measures import REASON_MEASURE_NOT_REP_BASED as _REASON_MEASURE_NOT_REP_BASED
@@ -748,13 +748,174 @@ def classify_exercise_progression(
     return ExerciseProgressionStatus.STABLE, reasons
 
 
+# ---------------------------------------------------------------------------
+# Contagem e agregacao por grupo (2026-11-01, "contagem unica de progressao")
+#
+# A home ("Estou evoluindo?") e `/dashboard/progressao` contam a MESMA coisa:
+# o status de cada EXERCICIO (`classify_exercise_progression`). O grupo muscular
+# e uma agregacao PONDERADA desses status, nunca uma classificacao propria
+# (antes: banda de +-5% sobre o e1RM em `muscle_group_performance._status`).
+# ---------------------------------------------------------------------------
+
+#: Status que contam como "comparaveis" (denominador da frase da home).
+COMPARABLE_PROGRESSION_STATUSES: tuple[ExerciseProgressionStatus, ...] = (
+    ExerciseProgressionStatus.PROGRESSING,
+    ExerciseProgressionStatus.STABLE,
+    ExerciseProgressionStatus.PLATEAU_SUSPECTED,
+    ExerciseProgressionStatus.REGRESSING,
+)
+
+#: Menos exercicios comparaveis do que isto e a leitura geral e fraca (§7).
+MIN_COMPARABLE_FOR_RELIABLE_ANSWER = 3
+
+#: Peso minimo (soma do `stimulus_weight` dos exercicios COMPARAVEIS do grupo)
+#: para o grupo receber status. Abaixo: INSUFFICIENT_DATA / LOW_ACTIVATION.
+#: Mesmo valor que ja valia na tela por grupo (antes `MIN_ACTIVATION_SUM`).
+GROUP_MIN_COMPARABLE_WEIGHT = 0.5
+
+#: Motivos de um grupo sem status (None quando ha status).
+GROUP_REASON_NO_COMPARABLE_EXERCISE = "NO_COMPARABLE_EXERCISE"
+GROUP_REASON_LOW_ACTIVATION = "LOW_ACTIVATION"
+
+
+def progression_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    """Contagem por status dos itens de `get_exercises_progression_batch`
+    (`item["status"]`). Fonte unica das contagens da home e de
+    `/dashboard/progressao`. `comparable_total` = progredindo + estavel +
+    suspeita de platô + regredindo."""
+    tally = {status.value: 0 for status in ExerciseProgressionStatus}
+    for item in items:
+        status = str(item["status"])
+        if status in tally:
+            tally[status] += 1
+    return {
+        "progressing": tally[ExerciseProgressionStatus.PROGRESSING.value],
+        "stable": tally[ExerciseProgressionStatus.STABLE.value],
+        "plateau_suspected": tally[ExerciseProgressionStatus.PLATEAU_SUSPECTED.value],
+        "regressing": tally[ExerciseProgressionStatus.REGRESSING.value],
+        "comparable_total": sum(tally[status.value] for status in COMPARABLE_PROGRESSION_STATUSES),
+        "not_comparable": tally[ExerciseProgressionStatus.NOT_COMPARABLE.value],
+        "insufficient_data": tally[ExerciseProgressionStatus.INSUFFICIENT_DATA.value],
+    }
+
+
+def progression_total(counts: Mapping[str, int]) -> int:
+    """Exercicios no periodo (todos os status)."""
+    return int(counts["comparable_total"]) + int(counts["not_comparable"]) + int(counts["insufficient_data"])
+
+
+def progression_answer(counts: Mapping[str, int]) -> str:
+    """A frase de "Estou evoluindo?" (home e `/dashboard/progressao`)."""
+    total = progression_total(counts)
+    comparable = int(counts["comparable_total"])
+    if total == 0:
+        return "Nenhum exercício com série de trabalho no período."
+    if comparable == 0:
+        return f"{total} exercícios no período, nenhum com duas exposições comparáveis ainda."
+    return (
+        f"{counts['progressing']} de {comparable} exercícios comparáveis progredindo; "
+        f"{counts['plateau_suspected']} com suspeita de platô e {counts['regressing']} regredindo."
+    )
+
+
+def exercise_progression_summary(
+    items: Sequence[Mapping[str, Any]], *, window_days: int, period_start: Any, period_end: Any
+) -> dict[str, Any]:
+    """Bloco `exercise_progression` da tela por grupo: contagem + frase do
+    dono sobre os MESMOS itens que a home recebe do lote
+    (`get_exercises_progression_batch`) para o mesmo periodo."""
+    counts = progression_counts(items)
+    return {
+        "window_days": int(window_days),
+        "period_start": period_start,
+        "period_end": period_end,
+        "counts": counts,
+        "answer": progression_answer(counts),
+    }
+
+
+def aggregate_group_progression(entries: Iterable[tuple[Any, float]]) -> dict[str, Any]:
+    """Status de um GRUPO muscular a partir dos status dos seus exercicios.
+
+    `entries`: `(status do exercicio, peso)` - o status e o do dono
+    (`classify_exercise_progression`) e o peso e o `stimulus_weight` do
+    exercicio naquele grupo (`exercise_muscle_contributions`), sem peso novo.
+
+    Regra: so exercicios COMPARAVEIS entram (nao comparavel / dados
+    insuficientes ficam fora). Soma-se o peso de cada balde - progredindo,
+    regredindo e "estavel" (estavel + suspeita de platô) - e vence o balde de
+    MAIOR peso; empate no topo = ESTAVEL (na duvida, nao ha evidencia de
+    mudanca). Peso comparavel total abaixo de `GROUP_MIN_COMPARABLE_WEIGHT` =
+    INSUFFICIENT_DATA / `LOW_ACTIVATION`; nenhum comparavel =
+    INSUFFICIENT_DATA / `NO_COMPARABLE_EXERCISE`.
+
+    Devolve `status` (PROGRESSING | STABLE | REGRESSING | INSUFFICIENT_DATA),
+    `reason`, `comparable_weight`, `counts` (por status de exercicio, mesmas
+    chaves de `progression_counts`) e `weights` (progressing/stable/regressing)."""
+    counts = {
+        "progressing": 0, "stable": 0, "plateau_suspected": 0, "regressing": 0,
+        "comparable_total": 0, "not_comparable": 0, "insufficient_data": 0,
+    }
+    weights = {"progressing": 0.0, "stable": 0.0, "regressing": 0.0}
+    key_by_status = {
+        ExerciseProgressionStatus.PROGRESSING.value: ("progressing", "progressing"),
+        ExerciseProgressionStatus.STABLE.value: ("stable", "stable"),
+        ExerciseProgressionStatus.PLATEAU_SUSPECTED.value: ("plateau_suspected", "stable"),
+        ExerciseProgressionStatus.REGRESSING.value: ("regressing", "regressing"),
+        ExerciseProgressionStatus.NOT_COMPARABLE.value: ("not_comparable", None),
+        ExerciseProgressionStatus.INSUFFICIENT_DATA.value: ("insufficient_data", None),
+    }
+    for status, weight in entries:
+        mapped = key_by_status.get(getattr(status, "value", status))
+        if mapped is None:
+            continue
+        count_key, bucket = mapped
+        counts[count_key] += 1
+        if bucket is not None:
+            counts["comparable_total"] += 1
+            weights[bucket] += max(float(weight or 0.0), 0.0)
+    # Arredonda para nao perder 0,2 + 0,3 = 0,49999... no limiar.
+    comparable_weight = round(sum(weights.values()), 6)
+
+    if counts["comparable_total"] == 0:
+        status, reason = ExerciseProgressionStatus.INSUFFICIENT_DATA, GROUP_REASON_NO_COMPARABLE_EXERCISE
+    elif comparable_weight < GROUP_MIN_COMPARABLE_WEIGHT:
+        status, reason = ExerciseProgressionStatus.INSUFFICIENT_DATA, GROUP_REASON_LOW_ACTIVATION
+    else:
+        reason = None
+        top = max(weights.values())
+        winners = [name for name, value in weights.items() if round(value - top, 6) == 0]
+        if len(winners) > 1:
+            status = ExerciseProgressionStatus.STABLE
+        else:
+            status = {
+                "progressing": ExerciseProgressionStatus.PROGRESSING,
+                "stable": ExerciseProgressionStatus.STABLE,
+                "regressing": ExerciseProgressionStatus.REGRESSING,
+            }[winners[0]]
+    return {
+        "status": status,
+        "reason": reason,
+        "comparable_weight": comparable_weight,
+        "counts": counts,
+        "weights": {key: round(value, 6) for key, value in weights.items()},
+    }
+
+
 __all__ = [
+    "COMPARABLE_PROGRESSION_STATUSES",
     "ComparabilityKey",
     "DEFAULT_LOAD_CONVENTION",
+    "GROUP_MIN_COMPARABLE_WEIGHT",
+    "GROUP_REASON_LOW_ACTIVATION",
+    "GROUP_REASON_NO_COMPARABLE_EXERCISE",
+    "MIN_COMPARABLE_FOR_RELIABLE_ANSWER",
     "ExposureSummary",
     "LOAD_CONVENTION_LABELS",
     "LoadConvention",
     "PairedTopReps",
+    "aggregate_group_progression",
+    "exercise_progression_summary",
     "all_equipment_missing",
     "build_key",
     "classify_exercise_progression",
@@ -766,6 +927,9 @@ __all__ = [
     "normalize_load_convention",
     "paired_top_reps",
     "physical_keys_match",
+    "progression_answer",
+    "progression_counts",
+    "progression_total",
     "top_load_reps",
     "top_load_sets",
     "trailing_comparable_indices",

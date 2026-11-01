@@ -1726,6 +1726,65 @@ def _fetch_group_e1rm_rows(
     return result
 
 
+def _fetch_exercise_group_weights(user_id: int, windows: Dict[str, date]) -> Dict[int, Dict[int, float]]:
+    """Participacao muscular dos exercicios do periodo: `{grupo: {exercicio
+    canonico: stimulus_weight}}` (`exercise_muscle_contributions`, o maior
+    peso por par). So leitura; os pesos sao os que o dono ja usa - a agregacao
+    por grupo e `comparability.aggregate_group_progression`."""
+    canonical = "COALESCE(elm.canonical_exercise_id, e.mapping_id)"
+    rows = _fetch_all(
+        f"""
+        SELECT emc.exercise_id AS exercise_id,
+               emc.muscle_group_id AS muscle_group_id,
+               MAX(emc.stimulus_weight) AS stimulus_weight
+        FROM exercise_muscle_contributions emc
+        WHERE emc.is_active = 1
+          AND emc.exercise_id IN (
+              SELECT {canonical}
+              FROM activities a
+              JOIN exercises e ON e.activity_id = a.id
+              LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
+              WHERE a.user_id = %s
+                AND a.local_date >= %s
+                AND a.local_date <= %s
+          )
+        GROUP BY emc.exercise_id, emc.muscle_group_id
+        """,
+        (user_id, windows["current_from"], windows["current_to"]),
+    )
+    result: Dict[int, Dict[int, float]] = {}
+    for row in rows:
+        if row.get("exercise_id") is None or row.get("muscle_group_id") is None:
+            continue
+        result.setdefault(int(row["muscle_group_id"]), {})[int(row["exercise_id"])] = float(
+            row.get("stimulus_weight") or 0.0
+        )
+    return result
+
+
+def _exercise_progression_items(user_id: int, windows: Dict[str, date], goal: Any) -> List[Dict[str, Any]]:
+    """Status de TODOS os exercicios da janela ATUAL, pela MESMA chamada da home
+    (`exposure_service.get_exercises_progression_batch`, mesmo objetivo e mesmas
+    datas de `current_from`..`current_to`). Com `days=28` terminando hoje (a
+    janela padrao da home) os itens sao identicos aos dela."""
+    from .intelligence.dashboard.contracts import WindowInfo, WindowKind
+    from .intelligence.dashboard.exposure_service import get_exercises_progression_batch
+    from .intelligence.dashboard.time_windows import user_timezone
+
+    with _connect() as conn:
+        window = WindowInfo(
+            kind=WindowKind.CUSTOM,
+            date_from=windows["current_from"],
+            date_to=windows["current_to"],
+            timezone=user_timezone(conn, user_id),
+            days=(windows["current_to"] - windows["current_from"]).days + 1,
+        )
+        items, _truncated, _limit = get_exercises_progression_batch(
+            conn, user_id=user_id, window=window, training_goal=goal
+        )
+    return items
+
+
 def _group_phases(user_id: int, training_goal: Any = None) -> Dict[int, Dict[str, Any]]:
     """Fase por grupo NO OBJETIVO pedido (M97 F1; ausente = default) -
     informacao secundaria. Tabela ausente/erro -> {}."""
@@ -1759,8 +1818,19 @@ def dashboard_progression_by_muscle_group(
     Desde 2026-10-02 cada grupo tem DUAS dimensoes: volume (`volume_status`,
     rotulo neutro) e desempenho (`performance_status`, melhor e1RM do mesmo
     exercicio). Regras em `intelligence/muscle_group_progression.py` e
-    `intelligence/muscle_group_performance.py`."""
-    from .intelligence.muscle_group_performance import PERFORMANCE_BASIS, build_group_performance
+    `intelligence/muscle_group_performance.py`.
+
+    Contagem unica de progressao (2026-11-01): o campo de topo
+    `exercise_progression` traz a contagem por status de EXERCICIO e a frase
+    "Estou evoluindo?" da home, calculadas pelo dono (`comparability`) sobre a
+    MESMA chamada `get_exercises_progression_batch`, no mesmo objetivo e na
+    janela ATUAL desta rota (`current_from`..`current_to`; `days` ou
+    `date_from`/`date_to`). Com `days=28` (a janela padrao da home) os numeros
+    sao identicos aos da home. O `performance_status` de cada grupo e a
+    agregacao ponderada desses mesmos status."""
+    from .intelligence.dashboard.comparability import exercise_progression_summary
+    from .intelligence.dashboard.contracts import ExerciseProgressionSummaryOut
+    from .intelligence.muscle_group_performance import PERFORMANCE_BASIS, STATUS_BASIS, build_group_performance
     from .intelligence.muscle_group_progression import (
         COMPARISON_BASIS,
         MIN_SESSIONS_PER_WINDOW,
@@ -1784,7 +1854,15 @@ def dashboard_progression_by_muscle_group(
     # Convencao de carga detectada UMA vez para as duas leituras (M58).
     load_convention = _load_convention_expr()
     rows = _fetch_group_tonnage_rows(identity.user_id, windows, load_convention)
-    performance = build_group_performance(_fetch_group_e1rm_rows(identity.user_id, windows, load_convention))
+    # Status do grupo = agregacao (dono) dos status dos exercicios; o e1RM
+    # entra so como metrica informativa. Os mesmos itens alimentam o bloco
+    # `exercise_progression` (contagem + frase identicas as da home).
+    exercise_items = _exercise_progression_items(identity.user_id, windows, goal)
+    performance = build_group_performance(
+        _fetch_group_e1rm_rows(identity.user_id, windows, load_convention),
+        exercise_items=exercise_items,
+        group_weights=_fetch_exercise_group_weights(identity.user_id, windows),
+    )
     # M97 F1: a fase (secundaria) e a do objetivo `goal`; tonelagem (volume) e
     # e1RM (unico entre objetivos) nao separam objetivo nesta fase.
     items = build_group_progression(rows, _group_phases(identity.user_id, goal), performance)
@@ -1794,7 +1872,16 @@ def dashboard_progression_by_muscle_group(
         "min_sessions_per_window": MIN_SESSIONS_PER_WINDOW,
         "comparison_basis": COMPARISON_BASIS,
         "performance_basis": PERFORMANCE_BASIS,
+        "performance_status_basis": STATUS_BASIS,
         **{key: value.isoformat() for key, value in windows.items()},
+        "exercise_progression": ExerciseProgressionSummaryOut.model_validate(
+            exercise_progression_summary(
+                exercise_items,
+                window_days=days,
+                period_start=windows["current_from"],
+                period_end=windows["current_to"],
+            )
+        ).model_dump(mode="json"),
         "items": items,
     }
 
