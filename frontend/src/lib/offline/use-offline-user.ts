@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, apiFetch } from '../api';
 import type { SessionUser } from '../auth';
-import { activateOfflineUser, type LegacyOwnership } from './session-store';
+import { activateOffline, opQueue } from './queue';
+import type { LegacyOwnership } from './session-store';
 
 export type OfflineUserState = 'loading' | 'ready' | 'error';
 
@@ -33,7 +34,7 @@ export function useOfflineUser(): { state: OfflineUserState; userId: number | nu
     setState('loading');
     apiFetch<SessionUser>('/auth/me')
       .then(async (me) => {
-        await activateOfflineUser(me.id, { validateLegacySession: checkLegacySessionOwnership });
+        await activateOffline(me.id, { validateLegacySession: checkLegacySessionOwnership });
         if (cancelled) return;
         setUserId(me.id);
         setState('ready');
@@ -45,6 +46,12 @@ export function useOfflineUser(): { state: OfflineUserState; userId: number | nu
       cancelled = true;
     };
   }, [attempt]);
+
+  // Gatilhos de sincronização (online, voltar ao primeiro plano, reabrir, tick).
+  useEffect(() => {
+    if (state !== 'ready') return undefined;
+    return opQueue.start();
+  }, [state, userId]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   return { state, userId, retry };

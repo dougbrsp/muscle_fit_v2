@@ -27,6 +27,7 @@ import { FreeformScreen } from './FreeformScreen';
 import { ModeSelectScreen } from './ModeSelectScreen';
 import { PlanExecutionScreen } from './PlanExecutionScreen';
 import { StorageStatusNotice } from './StorageStatusNotice';
+import { SyncIndicator } from './SyncIndicator';
 import { WorkoutModeShell } from './WorkoutModeShell';
 import { preloadMuscleBodyMap } from '@/components/MuscleBodyMapLazy';
 
@@ -166,6 +167,7 @@ export function WorkoutModeClient() {
       inSession={Boolean(session)}
     >
       <StorageStatusNotice />
+      <SyncIndicator />
       {!session && <ModeSelectScreen onSessionStarted={handleSessionStarted} />}
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
