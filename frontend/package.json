@@ -11,6 +11,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test": "vitest run",
+    "e2e": "node e2e/build.mjs && playwright test --project=chromium-1280 --project=chromium-1440",
+    "e2e:webkit": "node e2e/build.mjs && playwright test --project=webkit-1280 --project=webkit-1440",
+    "e2e:test": "playwright test",
+    "e2e:update": "playwright test --update-snapshots",
     "build:workout-core": "node scripts/build-workout-core.mjs"
   },
   "dependencies": {
@@ -30,6 +34,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@resvg/resvg-js": "2.6.2",
     "@types/node": "^20.17.0",
     "@types/react": "^18.3.18",
