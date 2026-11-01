@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 # Igual a lambda_plan_generator/lambda_cardio_agent: resolver segredos ANTES
 # de importar modulo de negocio (a chave de criptografia dos segredos do
@@ -36,6 +35,7 @@ load_secrets()
 
 from . import intervals_sync  # noqa: E402
 from .logging_config import configure_logging  # noqa: E402
+from .runtime_guard import exigir_data_api_em_lambda  # noqa: E402
 
 logger = logging.getLogger("musclefit.lambda_intervals_sync")
 
@@ -47,8 +47,7 @@ class IntervalsSyncEventError(Exception):
 def _guard_backend_in_lambda() -> None:
     # Regra anti-vazamento dev/prod (mesma de app/migrate.py): dentro de uma
     # Lambda real o backend TEM que ser o Data API.
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") and os.environ.get("DB_BACKEND", "data-api") != "data-api":
-        raise IntervalsSyncEventError("DB_BACKEND diferente de data-api dentro de uma Lambda; recusando executar.")
+    exigir_data_api_em_lambda(IntervalsSyncEventError)
 
 
 def _user_ids(raw):
