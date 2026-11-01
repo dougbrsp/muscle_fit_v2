@@ -554,8 +554,8 @@ jobs:
         run: |
           set -euo pipefail
           # Tolerante a ordem de merge: sem o PWA no frontend (sem out/sw.js) nao ha o que fazer.
-          if [[ ! -f out/sw.js ]]; then
-            echo "::notice::out/sw.js ausente (PWA ainda nao publicado); etapa pulada"
+          if [[ ! -f out/sw.js || ! -f scripts/build-sw.mjs ]]; then
+            echo "::notice::out/sw.js ou scripts/build-sw.mjs ausente (PWA ainda nao publicado); etapa pulada (vale tambem para o kill switch)"
             exit 0
           fi
           if [[ "$PWA_KILL_SWITCH" == "true" ]]; then
