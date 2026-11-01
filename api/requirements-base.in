@@ -16,7 +16,7 @@ starlette==1.10.0
 # confiavel do X-Forwarded-For (o que o API Gateway anexa); app/client_ip.py
 # continua valendo. HTTP/2/zttp sao opt-in e nao sao usados.
 uvicorn[standard]==0.54.0
-pydantic==2.14.1
+pydantic==2.14.2
 boto3==1.35.99
 # PyMySQL: so o DEV local e os testes (DB_BACKEND=pymysql); producao usa a RDS
 # Data API (app/db.py, default "data-api"). 1.2 (deps 2026-10-13): TLS
@@ -31,4 +31,4 @@ Pillow==13.0.0
 # trunca nos mesmos 72 bytes antes de chamar, preservando os hashes existentes.
 bcrypt==5.0.0
 # zoneinfo (users.timezone, migracao 044): banco IANA independente do SO do container
-tzdata==2026.5
+tzdata==2026.6

@@ -65,21 +65,8 @@ describe('performanceTooltip', () => {
         performance_exercises: [ex({ stimulus_weight: 0.2 })],
       }),
     );
-    expect(text).toContain('Poucos exercícios trabalham este grupo diretamente');
+    expect(text).toContain('Exercícios comparáveis com participação insuficiente no grupo');
     expect(text).toContain('ativação 20%');
-  });
-
-  it('explica quando todos são atípicos', () => {
-    const text = performanceTooltip(
-      item({
-        performance_status: 'DADOS_INSUFICIENTES',
-        performance_change_pct: null,
-        performance_insufficient_reason: 'ALL_OUTLIERS',
-        performance_exercises: [ex({ outlier: true, excluded_reason: 'OUTLIER_CHANGE', change_pct: 80 })],
-      }),
-    );
-    expect(text).toContain('Todos os exercícios');
-    expect(text).toContain(OUTLIER_LABEL);
   });
 
   it('sem exercício comparável não tem tooltip', () => {
@@ -92,5 +79,13 @@ describe('performanceTooltip', () => {
       }),
     );
     expect(text).toBeNull();
+  });
+
+  it('classificação indisponível: motivo do grupo ou resposta degradada', () => {
+    const porMotivo = performanceTooltip(
+      item({ performance_status: 'DADOS_INSUFICIENTES', performance_insufficient_reason: 'PROGRESSION_UNAVAILABLE' }),
+    );
+    expect(porMotivo).toBe('Classificação indisponível no momento');
+    expect(performanceTooltip(item({}), true)).toBe('Classificação indisponível no momento');
   });
 });

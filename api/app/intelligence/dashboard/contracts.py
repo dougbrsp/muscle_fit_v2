@@ -1449,6 +1449,32 @@ class ProgressionStatusCountOut(_Contract):
     exercises: list[ProgressionExerciseOut] = Field(default_factory=list)
 
 
+class ExerciseProgressionCountsOut(_Contract):
+    """Contagem por status de exercicio (`comparability.progression_counts`)."""
+
+    progressing: int = Field(ge=0)
+    stable: int = Field(ge=0)
+    plateau_suspected: int = Field(ge=0)
+    regressing: int = Field(ge=0)
+    comparable_total: int = Field(ge=0)
+    not_comparable: int = Field(ge=0)
+    insufficient_data: int = Field(ge=0)
+
+
+class ExerciseProgressionSummaryOut(_Contract):
+    """`exercise_progression` de `GET /analytics/dashboard-progression-by-muscle-group`:
+    a MESMA contagem e a MESMA frase da home ("Estou evoluindo?") para o mesmo
+    periodo. Fonte unica: `comparability.exercise_progression_summary`."""
+
+    window_days: int = Field(ge=1)
+    period_start: date
+    period_end: date
+    counts: ExerciseProgressionCountsOut
+    answer: str
+    # Lote cortado pelo teto de 1 MB da Data API (mesmo criterio de `truncated` da home).
+    truncated: bool = False
+
+
 class ProgressionBlockOut(OverviewBlockBase):
     """"Estou evoluindo?" <- contagem por `ExerciseProgressionStatus`, sem score.
 

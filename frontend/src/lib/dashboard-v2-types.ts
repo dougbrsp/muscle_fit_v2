@@ -177,7 +177,7 @@ export type MuscleGroupVolumeStatus =
   | 'NOVO'
   | 'SEM_DADOS';
 
-/** Status de DESEMPENHO (melhor e1RM do mesmo exercício nas duas janelas). */
+/** Status de DESEMPENHO: agregação ponderada dos status dos exercícios do grupo (mesma regra da home), na janela atual. */
 export type MuscleGroupPerformanceStatus = 'PROGREDINDO' | 'ESTAVEL' | 'REGREDINDO' | 'DADOS_INSUFICIENTES';
 
 export type MuscleGroupPerformanceExercise = {
@@ -197,8 +197,8 @@ export type MuscleGroupPerformanceExercise = {
 /** Por que o grupo ficou sem leitura de desempenho (`null` quando classificado). */
 export type MuscleGroupPerformanceInsufficientReason =
   | 'NO_COMPARABLE_EXERCISE'
-  | 'ALL_OUTLIERS'
-  | 'LOW_ACTIVATION';
+  | 'LOW_ACTIVATION'
+  | 'PROGRESSION_UNAVAILABLE';
 
 export type MuscleGroupProgressionItem = {
   muscle_group_id: number;
@@ -226,6 +226,8 @@ export type MuscleGroupProgressionItem = {
   performance_activation_sum: number;
   performance_insufficient_reason: MuscleGroupPerformanceInsufficientReason | null;
   performance_exercises: MuscleGroupPerformanceExercise[];
+  /** Contagem de exercícios do grupo por status (mesmas chaves do resumo). Só exibir; ausente em respostas antigas. */
+  progression_counts?: ExerciseProgressionCounts;
   /** Variação da tonelagem POR SESSÃO (M50) — a janela atual termina hoje. */
   change_pct: number | null;
   /** Variação da tonelagem total (contexto; a classificação exige que concorde). */
@@ -235,7 +237,35 @@ export type MuscleGroupProgressionItem = {
   phase_status: string | null;
 };
 
+/** Contagem de EXERCÍCIOS comparáveis por status, vinda do motor (mesma da home). Só exibir. */
+export type ExerciseProgressionCounts = {
+  progressing: number;
+  stable: number;
+  plateau_suspected: number;
+  regressing: number;
+  comparable_total: number;
+  not_comparable: number;
+  insufficient_data: number;
+};
+
+export type ExerciseProgressionSummary = {
+  window_days: number;
+  period_start: string;
+  period_end: string;
+  counts: ExerciseProgressionCounts;
+  /** Frase pronta do backend (a mesma da home). */
+  answer: string;
+  /** Leitura parcial: janela longa demais para cobrir todos os exercícios. */
+  truncated?: boolean;
+};
+
 export type MuscleGroupProgressionResponse = {
+  /** Ausente em respostas antigas: nesse caso nada é exibido. */
+  exercise_progression?: ExerciseProgressionSummary | null;
+  /** Base do `performance_status` por grupo (descrição vinda do backend). */
+  performance_status_basis?: string;
+  /** Classificação indisponível no momento: o resumo não é exibido. */
+  degraded?: boolean;
   days: number;
   stable_band_pct: number;
   min_sessions_per_window: number;
