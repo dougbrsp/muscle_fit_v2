@@ -8,9 +8,10 @@
 #   sh api/scripts/lock-requirements.sh            # mantem as versoes atuais
 #   sh api/scripts/lock-requirements.sh --upgrade  # sobe as transitivas
 #
-# Saida: api/requirements.txt (Dockerfile, Dockerfile.engines e os .dev),
+# Saida: api/requirements.txt (Dockerfile e os .dev),
+# api/requirements-engines.txt (Dockerfile.engines, sem o SDK anthropic),
 # api/requirements-ai.txt (Dockerfile.ai) e api/requirements-dev.txt (CI).
-# Os dois ultimos usam requirements.txt como constraint: mesmas versoes.
+# Os tres ultimos usam requirements.txt como constraint: mesmas versoes.
 # api/requirements-lint.txt (so o ruff, sem dependencias) e o lock do job de
 # lint do CI; independe dos demais.
 set -eu
@@ -31,6 +32,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$API_DIR:/work" -w /work \
     OPTS='--quiet --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url $EXTRA'
     pip-compile \$OPTS --output-file requirements.txt requirements.in
     pip-compile \$OPTS --constraint requirements.txt --output-file requirements-ai.txt requirements-ai.in
+    pip-compile \$OPTS --constraint requirements.txt --output-file requirements-engines.txt requirements-engines.in
     pip-compile \$OPTS --constraint requirements.txt --output-file requirements-dev.txt requirements-dev.in
     pip-compile \$OPTS --output-file requirements-lint.txt requirements-lint.in
   "
