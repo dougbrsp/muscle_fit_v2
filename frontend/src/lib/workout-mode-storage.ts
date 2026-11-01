@@ -5,11 +5,27 @@
 // compartilhado com o relógio (`workout-mode-core/`) não importa este módulo.
 // Comportamento idêntico ao de antes do split.
 
+import {
+  isOfflineStorePurged,
+  isOfflineStoreReady,
+  readParked,
+  readSession,
+  writeParked,
+  writeSession,
+} from './offline/session-store';
 import type { StoredWorkoutModeSession } from './workout-mode-types';
+
+// Fachada: com usuário ativo (`activateOfflineUser`, feito por WorkoutModeClient
+// antes de renderizar o treino) a persistência é o IndexedDB escopado por
+// usuário (`lib/offline`). Sem usuário ativo nesta página (testes, código
+// legado) mantém o localStorage de antes; depois de um purge (logout/401) as
+// gravações são descartadas e nunca voltam para a chave sem escopo.
 
 const STORAGE_KEY = 'musclefit.workout-mode-session';
 
 export function loadStoredSession(): StoredWorkoutModeSession | null {
+  if (isOfflineStoreReady()) return readSession();
+  if (isOfflineStorePurged()) return null;
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -23,6 +39,8 @@ export function loadStoredSession(): StoredWorkoutModeSession | null {
 }
 
 export function saveStoredSession(session: StoredWorkoutModeSession): void {
+  if (isOfflineStoreReady()) return writeSession(session);
+  if (isOfflineStorePurged()) return;
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
@@ -38,6 +56,8 @@ export function restoreBriefedKeys(session: Pick<StoredWorkoutModeSession, 'brie
 }
 
 export function clearStoredSession(): void {
+  if (isOfflineStoreReady()) return writeSession(null);
+  if (isOfflineStorePurged()) return;
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY);
 }
@@ -51,6 +71,13 @@ export function clearStoredSession(): void {
 const PARKED_STORAGE_KEY = 'musclefit.workout-mode-parked-session';
 
 export function parkStoredSession(): void {
+  if (isOfflineStoreReady()) {
+    const current = readSession();
+    if (current) writeParked(current);
+    writeSession(null);
+    return;
+  }
+  if (isOfflineStorePurged()) return;
   if (typeof window === 'undefined') return;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -62,6 +89,8 @@ export function parkStoredSession(): void {
 }
 
 export function loadParkedSession(): StoredWorkoutModeSession | null {
+  if (isOfflineStoreReady()) return readParked();
+  if (isOfflineStorePurged()) return null;
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(PARKED_STORAGE_KEY);
@@ -75,6 +104,8 @@ export function loadParkedSession(): StoredWorkoutModeSession | null {
 }
 
 export function clearParkedSession(): void {
+  if (isOfflineStoreReady()) return writeParked(null);
+  if (isOfflineStorePurged()) return;
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(PARKED_STORAGE_KEY);
