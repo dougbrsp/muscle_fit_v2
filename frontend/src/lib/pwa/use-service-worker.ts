@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { hasActiveWork } from '@/lib/mobile/active-work';
+import { hasActiveWork, hasActiveWorkProviders } from '@/lib/mobile/active-work';
 import { isMobileUiEnabled } from '@/lib/mobile/flags';
 
 import { UPDATE_RECHECK_INTERVAL_MS } from './constants';
@@ -13,7 +13,8 @@ import {
   shouldUnregisterServiceWorker,
   unregisterServiceWorkerAndCaches,
 } from './sw-register';
-import { tryApplyUpdate } from './update-gate';
+import { isSilentPath } from './install-banner-policy';
+import { isBusyForUpdate, tryApplyUpdate } from './update-gate';
 
 export type ServiceWorkerUpdateState = {
   /** Há versão nova em `waiting` E o aplicativo está ocioso (sem treino/ops pendentes). */
@@ -26,6 +27,9 @@ export type ServiceWorkerUpdateState = {
  * versão fica em `waiting`; só é oferecida quando `hasActiveWork()` é false e
  * só é aplicada (SKIP_WAITING + reload) depois de reconferir `hasActiveWork()`.
  */
+/** Ocupado OU desconhecido (sem provedor registrado): nunca oferecer/aplicar atualização. */
+const busyForUpdate = () => isBusyForUpdate({ hasProviders: hasActiveWorkProviders, hasActiveWork });
+
 export function useServiceWorker(): ServiceWorkerUpdateState {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [idle, setIdle] = useState(false);
@@ -73,7 +77,10 @@ export function useServiceWorker(): ServiceWorkerUpdateState {
 
     const onControllerChange = () => {
       // Só recarrega quando fomos nós que pedimos (evita reload na 1ª instalação/claim).
-      if (applying.current) window.location.reload();
+      if (!applying.current) return;
+      applying.current = false;
+      // Em rota de treino não recarrega nunca; o novo SW já controla, a página segue com o JS atual.
+      if (!isSilentPath(window.location.pathname)) window.location.reload();
     };
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
 
@@ -90,15 +97,24 @@ export function useServiceWorker(): ServiceWorkerUpdateState {
       setIdle(false);
       return undefined;
     }
+    // Versão que ficou obsoleta (substituída por outra ou ativada): limpa o estado.
+    const onState = () => {
+      if (waiting.state === 'redundant' || waiting.state === 'activated') {
+        applying.current = waiting.state === 'activated' ? applying.current : false;
+        setWaiting(null);
+      }
+    };
+    waiting.addEventListener('statechange', onState);
     let alive = true;
     const tick = async () => {
-      const busy = await hasActiveWork();
+      const busy = await busyForUpdate();
       if (alive) setIdle(!busy);
     };
     void tick();
     const id = window.setInterval(() => void tick(), UPDATE_RECHECK_INTERVAL_MS);
     return () => {
       alive = false;
+      waiting.removeEventListener('statechange', onState);
       window.clearInterval(id);
     };
   }, [waiting]);
@@ -106,7 +122,7 @@ export function useServiceWorker(): ServiceWorkerUpdateState {
   const applyUpdate = useCallback(async () => {
     if (!waiting) return;
     const applied = await tryApplyUpdate({
-      hasActiveWork,
+      hasActiveWork: busyForUpdate,
       markApplying: () => {
         applying.current = true;
       },

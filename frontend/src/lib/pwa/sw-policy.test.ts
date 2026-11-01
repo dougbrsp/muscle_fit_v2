@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { shouldRegisterServiceWorker, shouldUnregisterServiceWorker } from './sw-register';
-import { tryApplyUpdate } from './update-gate';
+import { isBusyForUpdate, tryApplyUpdate } from './update-gate';
 import { shouldOfferUpdate } from './update-policy';
 
 type Input = {
@@ -185,5 +185,14 @@ describe('update-gate: atualização com sessão ativa', () => {
     });
     expect(ok).toBe(false);
     expect(calls).toEqual([]);
+  });
+});
+
+describe('update-gate: sem provedor registrado', () => {
+  it('sem provedor = ocupado (nunca oferece/aplica); com provedor, vale a resposta dele', async () => {
+    const answer = (v: boolean) => async () => v;
+    expect(await isBusyForUpdate({ hasProviders: () => false, hasActiveWork: answer(false) })).toBe(true);
+    expect(await isBusyForUpdate({ hasProviders: () => true, hasActiveWork: answer(false) })).toBe(false);
+    expect(await isBusyForUpdate({ hasProviders: () => true, hasActiveWork: answer(true) })).toBe(true);
   });
 });

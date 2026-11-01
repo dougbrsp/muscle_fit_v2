@@ -42,6 +42,17 @@ test('flag desligada: o SW não registra', async ({ page }) => {
   expect(await cacheNames(page)).toEqual([]);
 });
 
+test('flag ligada e depois desligada: desregistra e apaga os caches musclefit-*', async ({ page }) => {
+  await page.goto('/?mobile=1');
+  await waitControlled(page);
+  expect(await registrations(page)).toBe(1);
+  expect((await cacheNames(page)).length).toBeGreaterThan(0);
+
+  await page.goto('/?mobile=0');
+  await expect.poll(() => registrations(page), { timeout: 20_000 }).toBe(0);
+  await expect.poll(async () => (await cacheNames(page)).filter((n) => n.startsWith('musclefit-')), { timeout: 20_000 }).toEqual([]);
+});
+
 test('flag ligada: registra com escopo "/" e pré-cacheia o shell com seus chunks', async ({ page }) => {
   await page.goto('/?mobile=1');
   await waitControlled(page);
@@ -130,7 +141,7 @@ test('nenhuma resposta da API (nem /auth) vai para o Cache Storage, mesmo com cr
   expect(urls.filter((u) => /mock-api\.test|api\.musclefit|\/auth\/|\/activities|\/workout-sessions/.test(u))).toEqual([]);
 });
 
-test('atualização: fica em waiting sem recarregar; só aplica no toque e troca os caches', async ({ page }) => {
+test('atualização sem provedor de trabalho ativo: fica em waiting, sem aviso e sem recarregar', async ({ page }) => {
   await page.goto('/?mobile=1');
   await waitControlled(page);
   await page.evaluate(() => {
@@ -139,18 +150,23 @@ test('atualização: fica em waiting sem recarregar; só aplica no toque e troca
 
   buildSw([], 'e2e-v2');
   await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => !!r?.waiting)), { timeout: 20_000 })
+    .toBe(true);
 
-  // hasActiveWork() é false (sem provedor): o aviso aparece, MAS a página não recarrega sozinha.
-  await expect(page.getByTestId('pwa-update-notice')).toBeVisible({ timeout: 20_000 });
+  // Nenhuma frente registrou provedor de hasActiveWork(): "desconhecido" = ocupado. Sem aviso
+  // (esperando mais que o intervalo de reavaliação de 5 s), sem recarga, SW antigo ativo.
+  await page.waitForTimeout(7000);
+  await expect(page.getByTestId('pwa-update-notice')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe('viva');
   const during = await cacheNames(page);
   expect(during).toEqual(expect.arrayContaining(['musclefit-static-e2e-v1', 'musclefit-static-e2e-v2']));
 
-  await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Atualizar' }).click()]);
-  await waitControlled(page);
-  expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBeUndefined();
-  await expect.poll(() => cacheNames(page)).not.toContain('musclefit-static-e2e-v1');
-  expect(await cacheNames(page)).toContain('musclefit-static-e2e-v2');
+  // Lado do SW: a mensagem SKIP_WAITING (que a página só manda sem trabalho ativo) ativa a versão
+  // nova e troca os caches. A página, sem ter pedido, NÃO recarrega.
+  await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.waiting?.postMessage({ type: 'SKIP_WAITING' })));
+  await expect.poll(() => cacheNames(page), { timeout: 20_000 }).not.toContain('musclefit-static-e2e-v1');
+  expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe('viva');
 });
 
 test('kill switch: o sw.js autodestrutivo desregistra e apaga os caches sem recarregar a aba', async ({ page }) => {

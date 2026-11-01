@@ -35,6 +35,10 @@
  *    de novo o `/sw.js` (agora autodestrutivo) a cada abertura e ele se
  *    desregistra de novo; a flag desligada faz o cliente desregistrar e parar
  *    de registrar (`shouldUnregisterServiceWorker`).
+ *  - A flag também tem override no aparelho: `localStorage['musclefit.flag.mobile-ui']='on'`
+ *    (ou `?mobile=1`) sobrevive à flag de build OFF e mantém o SW registrado nesse
+ *    aparelho. O rollback completo inclui limpar o override (ou o kill switch,
+ *    que desregistra mesmo assim) em quem testou com `on`.
  *
  * `CACHE_VERSION` é carimbado no build por `scripts/build-sw.mjs`.
  */

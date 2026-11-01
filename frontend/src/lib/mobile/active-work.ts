@@ -28,6 +28,11 @@ export function registerActiveWorkProvider(fn: ActiveWorkProvider): () => void {
   };
 }
 
+/** Há ao menos um provedor registrado? Quem precisa de "sem provedor = desconhecido" (ex.: atualização do SW) usa isto. */
+export function hasActiveWorkProviders(): boolean {
+  return providers.size > 0;
+}
+
 async function askProvider(fn: ActiveWorkProvider): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<boolean>((resolve) => {

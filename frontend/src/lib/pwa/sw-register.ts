@@ -11,7 +11,11 @@ export function shouldRegisterServiceWorker(i: SwRegisterInput): boolean {
   return i.isProduction && i.mobileUiEnabled && i.supported;
 }
 
-/** Pura: desfazer um SW anterior quando a flag foi desligada (rollback pelo cliente). */
+/**
+ * Pura: desfazer um SW anterior quando a flag foi desligada (rollback pelo cliente).
+ * Atenção: override `on` em localStorage (`musclefit.flag.mobile-ui`) ou `?mobile=1` mantém a
+ * flag LIGADA no aparelho mesmo com a flag de build OFF; limpar o override faz parte do rollback.
+ */
 export function shouldUnregisterServiceWorker(i: SwRegisterInput): boolean {
   return i.isProduction && !i.mobileUiEnabled && i.supported;
 }
