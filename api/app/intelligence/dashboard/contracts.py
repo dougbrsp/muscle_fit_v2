@@ -1471,6 +1471,8 @@ class ExerciseProgressionSummaryOut(_Contract):
     period_end: date
     counts: ExerciseProgressionCountsOut
     answer: str
+    # Lote cortado pelo teto de 1 MB da Data API (mesmo criterio de `truncated` da home).
+    truncated: bool = False
 
 
 class ProgressionBlockOut(OverviewBlockBase):

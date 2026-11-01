@@ -471,7 +471,7 @@ def test_endpoint_devolve_as_duas_dimensoes(monkeypatch):
     )
 
     monkeypatch.setattr(
-        analytics, "_exercise_progression_items", lambda user_id, windows, goal, tz=None: [{"exercise_id": 22, "status": "PROGRESSING"}]
+        analytics, "_exercise_progression_items", lambda user_id, windows, goal, tz=None: ([{"exercise_id": 22, "status": "PROGRESSING"}], False)
     )
     monkeypatch.setattr(analytics, "_fetch_exercise_group_weights", lambda user_id, windows: {QUAD: {22: 1.0}})
 

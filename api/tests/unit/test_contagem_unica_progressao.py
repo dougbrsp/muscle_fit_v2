@@ -169,7 +169,7 @@ def client(monkeypatch):
     def fake_items(user_id, windows, goal, timezone_name=None):
         chamadas["janela"] = (windows["current_from"], windows["current_to"])
         chamadas["goal"] = goal
-        return _items(**CASO_USUARIO)
+        return _items(**CASO_USUARIO), chamadas.get("truncado", False)
 
     monkeypatch.setattr(analytics, "_user_today", lambda user_id: HOJE)
     monkeypatch.setattr(analytics, "_fetch_group_tonnage_rows", lambda *a, **k: [])
@@ -264,7 +264,7 @@ def test_helper_da_rota_chama_o_mesmo_lote_da_home(monkeypatch):
     janelas = {"current_from": date(2026, 9, 5), "current_to": HOJE}
     itens = analytics._exercise_progression_items(7, janelas, "strength")
 
-    assert itens == [{"status": "PROGRESSING"}]
+    assert itens == ([{"status": "PROGRESSING"}], False)
     assert capturado["conn"] == "CONN" and capturado["user_id"] == 7 and capturado["goal"] == "strength"
     janela = capturado["window"]
     assert (janela.date_from, janela.date_to, janela.days) == (date(2026, 9, 5), HOJE, 28)
@@ -376,3 +376,46 @@ def test_falha_do_lote_de_progressao_nao_derruba_a_tonelagem(client, monkeypatch
     (item,) = body["items"]
     assert item["performance_status"] == "DADOS_INSUFICIENTES"
     assert item["current_tonnage_kg"] == 1000.0
+
+
+def test_truncated_do_lote_chega_ao_bloco_e_bate_com_a_home(client):
+    client.chamadas["truncado"] = True
+    bloco = client.get("/analytics/dashboard-progression-by-muscle-group?days=28").json()["exercise_progression"]
+    assert bloco["truncated"] is True
+    # a home expoe o mesmo campo, vindo do mesmo `truncated` do lote
+    home = progression_block(_items(**CASO_USUARIO), truncated=True, exposures_per_exercise=5, window=_window())
+    assert home["truncated"] is True
+    client.chamadas["truncado"] = False
+    assert client.get("/analytics/dashboard-progression-by-muscle-group?days=28").json()["exercise_progression"][
+        "truncated"
+    ] is False
+
+
+def test_degradacao_declara_degraded_e_motivo_proprio(client, monkeypatch):
+    eventos = []
+    monkeypatch.setattr(analytics, "log_event", lambda event, **fields: eventos.append(event))
+
+    def quebra(*a, **k):
+        raise RuntimeError("data api fora")
+
+    monkeypatch.setattr(analytics, "_fetch_exercise_group_weights", quebra)
+    monkeypatch.setattr(
+        analytics,
+        "_fetch_group_tonnage_rows",
+        lambda *a, **k: [
+            {"period": "current", "muscle_group_id": 4, "muscle_group_name": "Quadriceps",
+             "tonnage_kg": 1000.0, "sets_count": 8, "sessions_count": 4}
+        ],
+    )
+    body = client.get("/analytics/dashboard-progression-by-muscle-group?days=28").json()
+    assert body["degraded"] is True
+    assert body["exercise_progression"] is None
+    (item,) = body["items"]
+    assert item["performance_status"] == "DADOS_INSUFICIENTES"
+    assert item["performance_insufficient_reason"] == "PROGRESSION_UNAVAILABLE"
+    assert eventos == ["progression_batch_degraded"]
+
+
+def test_sem_falha_degraded_e_false(client):
+    body = client.get("/analytics/dashboard-progression-by-muscle-group?days=28").json()
+    assert body["degraded"] is False

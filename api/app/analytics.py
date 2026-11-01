@@ -12,6 +12,7 @@ from . import intervals_activity_kind
 from .domain import effective_intensity
 from .load_conventions import exercise_tonnage_joins_sql, sql_tonnage_excluded_sets, sql_tonnage_sum
 from .models import MuscleActivationPreviewIn
+from .observability import log_event
 from .security import Identity, get_current_identity
 from .domain.set_measures import is_rep_based, sql_if_rep_based, sql_is_rep_based
 from .set_types import sql_not_preparatory, sql_set_confirmed
@@ -1764,7 +1765,7 @@ def _fetch_exercise_group_weights(user_id: int, windows: Dict[str, date]) -> Dic
 
 def _exercise_progression_items(
     user_id: int, windows: Dict[str, date], goal: Any, timezone_name: Optional[str] = None
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], bool]:
     """Status de TODOS os exercicios da janela ATUAL, pela MESMA chamada da home
     (`exposure_service.get_exercises_progression_batch`, mesmo objetivo e mesmas
     datas de `current_from`..`current_to`). Com `days=28` terminando hoje (a
@@ -1783,10 +1784,10 @@ def _exercise_progression_items(
             timezone=timezone_name or DEFAULT_TIMEZONE,
             days=(windows["current_to"] - windows["current_from"]).days + 1,
         )
-        items, _truncated, _limit = get_exercises_progression_batch(
+        items, truncated, _limit = get_exercises_progression_batch(
             conn, user_id=user_id, window=window, training_goal=goal
         )
-    return items
+    return items, bool(truncated)
 
 
 def _group_phases(user_id: int, training_goal: Any = None) -> Dict[int, Dict[str, Any]]:
@@ -1840,7 +1841,12 @@ def dashboard_progression_by_muscle_group(
     agregacao ponderada desses mesmos status."""
     from .intelligence.dashboard.comparability import exercise_progression_summary
     from .intelligence.dashboard.contracts import ExerciseProgressionSummaryOut
-    from .intelligence.muscle_group_performance import PERFORMANCE_BASIS, STATUS_BASIS, build_group_performance
+    from .intelligence.muscle_group_performance import (
+        PERFORMANCE_BASIS,
+        STATUS_BASIS,
+        build_group_performance,
+        mark_progression_unavailable,
+    )
     from .intelligence.muscle_group_progression import (
         COMPARISON_BASIS,
         MIN_SESSIONS_PER_WINDOW,
@@ -1884,11 +1890,13 @@ def dashboard_progression_by_muscle_group(
     # Falha do lote de progressao NAO derruba o painel de tonelagem: sem os
     # status, `exercise_progression` = null e os grupos ficam DADOS_INSUFICIENTES.
     exercise_items: Optional[List[Dict[str, Any]]]
+    truncated = False
     try:
-        exercise_items = _exercise_progression_items(identity.user_id, windows, goal, timezone_name)
+        exercise_items, truncated = _exercise_progression_items(identity.user_id, windows, goal, timezone_name)
         group_weights = _fetch_exercise_group_weights(identity.user_id, windows)
     except Exception:  # noqa: BLE001 - degradacao declarada
         logger.exception("Lote de progressao indisponivel em dashboard-progression-by-muscle-group")
+        log_event("progression_batch_degraded", user_id=identity.user_id, route="dashboard-progression-by-muscle-group")
         exercise_items, group_weights = None, {}
     performance = build_group_performance(
         _fetch_group_e1rm_rows(identity.user_id, windows, load_convention),
@@ -1898,8 +1906,12 @@ def dashboard_progression_by_muscle_group(
     # M97 F1: a fase (secundaria) e a do objetivo `goal`; tonelagem (volume) e
     # e1RM (unico entre objetivos) nao separam objetivo nesta fase.
     items = build_group_progression(rows, _group_phases(identity.user_id, goal), performance)
+    degraded = exercise_items is None
+    if degraded:
+        mark_progression_unavailable(items)
     return {
         "days": days,
+        "degraded": degraded,
         "stable_band_pct": STABLE_BAND_PCT,
         "min_sessions_per_window": MIN_SESSIONS_PER_WINDOW,
         "comparison_basis": COMPARISON_BASIS,
@@ -1914,6 +1926,7 @@ def dashboard_progression_by_muscle_group(
                 window_days=days,
                 period_start=windows["current_from"],
                 period_end=windows["current_to"],
+                truncated=truncated,
             )
         ).model_dump(mode="json"),
         "items": items,

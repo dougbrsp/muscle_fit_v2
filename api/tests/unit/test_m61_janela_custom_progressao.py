@@ -125,7 +125,7 @@ def chamadas(monkeypatch):
     monkeypatch.setattr(analytics, "_fetch_group_tonnage_rows", fake_tonnage)
     monkeypatch.setattr(analytics, "_fetch_group_e1rm_rows", lambda *a, **k: [])
     monkeypatch.setattr(analytics, "_fetch_exercise_group_weights", lambda *a, **k: {})
-    monkeypatch.setattr(analytics, "_exercise_progression_items", lambda *a, **k: [])
+    monkeypatch.setattr(analytics, "_exercise_progression_items", lambda *a, **k: ([], False))
     monkeypatch.setattr(analytics, "_load_convention_expr", lambda: "NULL")
     monkeypatch.setattr(analytics, "_group_phases", lambda user_id, *_: {})
     return log

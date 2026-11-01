@@ -67,6 +67,8 @@ OUTLIER_CHANGE = "OUTLIER_CHANGE"
 # definidos pelo dono, reexportados aqui para o contrato da tela.
 NO_COMPARABLE_EXERCISE = GROUP_REASON_NO_COMPARABLE_EXERCISE
 LOW_ACTIVATION = GROUP_REASON_LOW_ACTIVATION
+# Lote de progressao falhou: o grupo fica sem status por indisponibilidade, nao por falta de dado.
+PROGRESSION_UNAVAILABLE = "PROGRESSION_UNAVAILABLE"
 
 # Mesmo vocabulario do enum do dono, com os valores de enum do grupo.
 _GROUP_STATUS = {
@@ -103,6 +105,13 @@ def insufficient() -> Dict[str, Any]:
         "performance_exercises": [],
         "progression_counts": dict(_ZERO_COUNTS),
     }
+
+
+def mark_progression_unavailable(items: Iterable[Dict[str, Any]]) -> None:
+    """Degradacao: o motivo de cada grupo passa a ser `PROGRESSION_UNAVAILABLE`
+    (o status ja e DADOS_INSUFICIENTES porque nao ha status de exercicio)."""
+    for item in items:
+        item["performance_insufficient_reason"] = PROGRESSION_UNAVAILABLE
 
 
 def _is_outlier(change_pct: float) -> bool:

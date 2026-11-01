@@ -819,7 +819,7 @@ def progression_answer(counts: Mapping[str, int]) -> str:
 
 
 def exercise_progression_summary(
-    items: Sequence[Mapping[str, Any]], *, window_days: int, period_start: Any, period_end: Any
+    items: Sequence[Mapping[str, Any]], *, window_days: int, period_start: Any, period_end: Any, truncated: bool = False
 ) -> dict[str, Any]:
     """Bloco `exercise_progression` da tela por grupo: contagem + frase do
     dono sobre os MESMOS itens que a home recebe do lote
@@ -831,6 +831,7 @@ def exercise_progression_summary(
         "period_end": period_end,
         "counts": counts,
         "answer": progression_answer(counts),
+        "truncated": bool(truncated),
     }
 
 
