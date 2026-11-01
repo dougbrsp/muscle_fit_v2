@@ -15,6 +15,7 @@ O que estes testes protegem, em ordem de importancia:
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 from fastapi import FastAPI
@@ -197,10 +198,15 @@ def test_json_valido_gera_rascunho_e_nao_grava_nenhum_template(db_conn, catalog,
     )
     chamadas = _llm(monkeypatch, saida)
 
+    inicio = time.monotonic()
     with recorded_sql("pymysql", monkeypatch, None) as sql:
         resultado = run_periodization_draft(_pedido(catalog), catalog.user_id, None)
+    gasto = time.monotonic() - inicio
 
-    assert chamadas[0]["timeout"] == 90
+    # Teto vem do motor (`periodization.core`): nunca acima de
+    # `LLM_TIMEOUT_SECONDS` e nunca abaixo do que `llm_timeout_for` daria com o
+    # tempo total do teste (que cobre o tempo de contexto medido pelo motor).
+    assert periodization_core.llm_timeout_for(gasto) <= chamadas[0]["timeout"] <= periodization_core.LLM_TIMEOUT_SECONDS
     assert resultado["validation_report"] == {"errors": [], "warnings": [], "auto_fixes": []}
     assert resultado["prompt_version"] == PROMPT_VERSION
     assert resultado["rationale"].startswith("Divisao ABC")
