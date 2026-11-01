@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FROZEN_NOW, installMockApi } from './mock-api';
+import { FROZEN_NOW, MOCK_API_ORIGIN, installMockApi } from './mock-api';
+
+const LOCAL_ORIGIN = 'http://127.0.0.1:4179';
 
 /**
  * Regressao visual do DESKTOP nas rotas criticas (viewports 1280 e 1440, ver
@@ -17,9 +19,9 @@ type RouteCase = {
 const ROUTES: RouteCase[] = [
   { name: 'login', path: '/', anonymous: true, ready: /entrar/i },
   { name: 'home-dashboard', path: '/dashboard/', ready: /voce concluiu 10 de 12|pronto para treinar/i },
-  { name: 'modo-treino', path: '/modo-treino/', ready: /./ },
+  { name: 'modo-treino', path: '/modo-treino/', ready: /escolha como come.ar seu treino de hoje/i },
   { name: 'historico', path: '/dashboard/treinos/', ready: /costas e biceps/i },
-  { name: 'biblioteca-exercicios', path: '/exercicios/', ready: /./ },
+  { name: 'biblioteca-exercicios', path: '/exercicios/', ready: /progress.o do exerc.cio/i },
   { name: 'planos-treino', path: '/planos-treino/', ready: /treino a - peito/i },
   { name: 'perfil', path: '/perfil/', ready: /ana teste|ana@example/i },
 ];
@@ -35,6 +37,18 @@ for (const route of ROUTES) {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await page.clock.setFixedTime(FROZEN_NOW);
+    // Rede fechada: tudo fora do servidor local e da API mockada e abortado e
+    // conta como falha. Registrada ANTES do mock (rotas posteriores vencem).
+    const blocked: string[] = [];
+    await page.route('**', async (r) => {
+      const origin = new URL(r.request().url()).origin;
+      if (origin === LOCAL_ORIGIN || origin === MOCK_API_ORIGIN) {
+        await r.fallback();
+        return;
+      }
+      blocked.push(`${r.request().method()} ${r.request().url()}`);
+      await r.abort();
+    });
     const mock = await installMockApi(page, { anonymous: route.anonymous });
 
     await page.goto(route.path);
@@ -49,6 +63,7 @@ for (const route of ROUTES) {
     });
 
     expect(mock.unhandled, 'chamadas de API nao mockadas').toEqual([]);
+    expect(blocked, 'requisicoes externas bloqueadas').toEqual([]);
     expect(pageErrors, 'erros de pagina').toEqual([]);
   });
 }

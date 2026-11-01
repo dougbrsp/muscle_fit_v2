@@ -1,9 +1,13 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 /**
  * Flag da UI mobile (plano mobile, seção 3.2). Módulo único: nenhum outro
  * arquivo lê `NEXT_PUBLIC_MOBILE_UI` nem `musclefit.flag.mobile-ui`.
  *
  * Precedência (maior primeiro):
- *   1. query `?mobile=0|1` (QA) — ao ser usada, persiste o override;
+ *   1. query `?mobile=0|1` (QA) — persistida so por `applyQueryOverride()`;
  *   2. override persistido em `localStorage['musclefit.flag.mobile-ui']` = `on`/`off`;
  *   3. `NEXT_PUBLIC_MOBILE_UI` (build-time); sem valor reconhecido = DESLIGADA.
  *
@@ -82,9 +86,28 @@ export function clearMobileUiOverride(): void {
 }
 
 /**
- * Flag efetiva. No servidor/prerender (sem `window`) usa só o valor de build.
+ * Aplica o `?mobile=0|1` da URL atual persistindo o override (QA). E o UNICO
+ * ponto com efeito colateral; chame-o uma vez, em efeito/inicializacao
+ * (ex.: provider raiz), nunca durante o render. No servidor nao faz nada.
+ */
+export function applyQueryOverride(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const queryOverride = parseQueryOverride(window.location.search);
+    if (queryOverride) writeStorage(queryOverride);
+  } catch {
+    // ignorado
+  }
+}
+
+/**
+ * Flag efetiva, leitura PURA (build + storage + query; nao grava nada).
+ * No servidor/prerender (sem `window`) usa so o valor de build.
+ * NAO chamar durante o render de componentes: no export estatico o servidor
+ * devolve o valor de build e o cliente pode divergir (hydration mismatch).
+ * Em componentes use `useMobileUi()`.
  * `process.env.NEXT_PUBLIC_MOBILE_UI` precisa ficar literal para o Next
- * substituí-lo em build-time.
+ * substitui-lo em build-time.
  */
 export function isMobileUiEnabled(): boolean {
   const buildFlag = parseBuildFlag(process.env.NEXT_PUBLIC_MOBILE_UI);
@@ -96,7 +119,14 @@ export function isMobileUiEnabled(): boolean {
   } catch {
     queryOverride = null;
   }
-  if (queryOverride) writeStorage(queryOverride);
-
   return resolveMobileUi(buildFlag, readStorage(), queryOverride);
+}
+
+/** `null` ate montar (sem hydration mismatch); depois a flag efetiva. */
+export function useMobileUi(): boolean | null {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    setEnabled(isMobileUiEnabled());
+  }, []);
+  return enabled;
 }

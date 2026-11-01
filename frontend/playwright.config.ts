@@ -16,7 +16,7 @@ import { defineConfig, devices } from '@playwright/test';
  * isso o caminho do snapshot nao leva sufixo de plataforma e a comparacao so
  * e valida no mesmo SO. Ao levar para o CI (Linux), regenerar la.
  */
-const PORT = 4173;
+const PORT = 4179;
 
 export default defineConfig({
   testDir: './e2e/desktop-baseline',
@@ -58,7 +58,7 @@ export default defineConfig({
   webServer: {
     command: `node scripts/serve-export.mjs --port ${PORT} --dir out`,
     url: `http://127.0.0.1:${PORT}/`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });

@@ -7,18 +7,42 @@ import { useEffect, useState } from 'react';
  *
  * Origem: o `sm` do Mantine é 48em (= 768 px, ver `theme.breakpoints` padrão
  * em @mantine/core), o mesmo corte que o `AppShell` usa para trocar navbar.
- * Smartphone = largura < 768 px. Usamos 767.98px (e não 767px) para não
- * deixar fresta com larguras fracionárias entre 767 e 768 (zoom, DPR).
- * Tablet (>= 768 px) recebe o layout desktop. Sem User-Agent.
+ * Smartphone = largura < 768 px. A query usa em (47.99em), a mesma unidade do
+ * `smallerThan="sm"` do Mantine, para os dois cortes coincidirem mesmo com
+ * fonte raiz alterada. Sem fresta com larguras fracionárias. Tablet
+ * (>= 768 px) recebe o layout desktop. Sem User-Agent.
  */
 export const MOBILE_BREAKPOINT_PX = 768;
-export const MOBILE_MEDIA_QUERY = `(max-width: ${MOBILE_BREAKPOINT_PX - 0.02}px)`;
+export const MOBILE_MEDIA_QUERY = '(max-width: 47.99em)';
 
 export type LayoutMode = 'mobile' | 'desktop';
 
 /** Pura: converte o resultado do matchMedia no modo de layout. */
 export function layoutModeFromMatch(matches: boolean): LayoutMode {
   return matches ? 'mobile' : 'desktop';
+}
+
+export type MediaQueryLike = Pick<MediaQueryList, 'matches'> &
+  Partial<
+    Pick<MediaQueryList, 'addEventListener' | 'removeEventListener' | 'addListener' | 'removeListener'>
+  >;
+
+/**
+ * Assina o MediaQueryList: chama `onChange` já com o valor atual e a cada
+ * `change`. Devolve o cancelamento. Fallback para addListener (Safari < 14).
+ */
+export function subscribeMediaQuery(
+  mql: MediaQueryLike,
+  onChange: (matches: boolean) => void,
+): () => void {
+  const update = () => onChange(mql.matches);
+  update();
+  if (typeof mql.addEventListener === 'function' && typeof mql.removeEventListener === 'function') {
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener?.('change', update);
+  }
+  mql.addListener?.(update);
+  return () => mql.removeListener?.(update);
 }
 
 /**
@@ -35,15 +59,7 @@ export function useLayoutMode(): LayoutMode | null {
       return undefined;
     }
     const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const update = () => setMode(layoutModeFromMatch(mql.matches));
-    update();
-    if (typeof mql.addEventListener === 'function') {
-      mql.addEventListener('change', update);
-      return () => mql.removeEventListener('change', update);
-    }
-    // Safari < 14
-    mql.addListener(update);
-    return () => mql.removeListener(update);
+    return subscribeMediaQuery(mql, (matches) => setMode(layoutModeFromMatch(matches)));
   }, []);
 
   return mode;

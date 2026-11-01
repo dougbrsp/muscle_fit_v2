@@ -1,6 +1,10 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MOBILE_UI_STORAGE_KEY,
+  applyQueryOverride,
+  useMobileUi,
   clearMobileUiOverride,
   isMobileUiEnabled,
   parseBuildFlag,
@@ -87,10 +91,29 @@ describe('isMobileUiEnabled', () => {
     fakeWindow({ stored: 'off' });
     expect(isMobileUiEnabled()).toBe(false);
   });
-  it('query persiste o override e vence o salvo', () => {
+  it('query vence o salvo e a leitura NAO grava', () => {
     const store = fakeWindow({ search: '?mobile=1', stored: 'off' });
     expect(isMobileUiEnabled()).toBe(true);
+    expect(store.get(MOBILE_UI_STORAGE_KEY)).toBe('off');
+  });
+  it('applyQueryOverride persiste ?mobile=0|1 e ignora o resto', () => {
+    let store = fakeWindow({ search: '?mobile=1' });
+    applyQueryOverride();
     expect(store.get(MOBILE_UI_STORAGE_KEY)).toBe('on');
+    store = fakeWindow({ search: '?mobile=0', stored: 'on' });
+    applyQueryOverride();
+    expect(store.get(MOBILE_UI_STORAGE_KEY)).toBe('off');
+    store = fakeWindow({ search: '?mobile=9' });
+    applyQueryOverride();
+    expect(store.has(MOBILE_UI_STORAGE_KEY)).toBe(false);
+    fakeWindow({ throwing: true, search: '?mobile=1' });
+    expect(() => applyQueryOverride()).not.toThrow();
+  });
+  it('useMobileUi devolve null antes de montar', () => {
+    function Probe() {
+      return createElement('span', null, String(useMobileUi()));
+    }
+    expect(renderToStaticMarkup(createElement(Probe))).toBe('<span>null</span>');
   });
   it('storage bloqueado não quebra; query ainda vale na leitura', () => {
     fakeWindow({ throwing: true });

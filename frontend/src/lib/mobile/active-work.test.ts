@@ -1,10 +1,19 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { hasActiveWork, registerActiveWorkProvider } from './active-work';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  ACTIVE_WORK_PROVIDER_TIMEOUT_MS,
+  hasActiveWork,
+  registerActiveWorkProvider,
+} from './active-work';
 
-let unregister: (() => void) | null = null;
+const offs: Array<() => void> = [];
+function reg(fn: () => boolean | Promise<boolean>) {
+  const off = registerActiveWorkProvider(fn);
+  offs.push(off);
+  return off;
+}
 afterEach(() => {
-  unregister?.();
-  unregister = null;
+  offs.splice(0).forEach((off) => off());
+  vi.useRealTimers();
 });
 
 describe('hasActiveWork', () => {
@@ -12,28 +21,40 @@ describe('hasActiveWork', () => {
     expect(await hasActiveWork()).toBe(false);
   });
   it('usa o provedor (síncrono e assíncrono)', async () => {
-    unregister = registerActiveWorkProvider(() => true);
+    const off = reg(() => true);
     expect(await hasActiveWork()).toBe(true);
-    unregister();
-    unregister = registerActiveWorkProvider(async () => false);
+    off();
+    reg(async () => false);
     expect(await hasActiveWork()).toBe(false);
   });
-  it('falha do provedor conta como trabalho ativo', async () => {
-    unregister = registerActiveWorkProvider(() => {
+  it('vários provedores: OR de todos', async () => {
+    reg(() => false);
+    reg(async () => false);
+    expect(await hasActiveWork()).toBe(false);
+    reg(async () => true);
+    expect(await hasActiveWork()).toBe(true);
+  });
+  it('falha de qualquer provedor conta como trabalho ativo', async () => {
+    reg(() => false);
+    const off = reg(() => {
       throw new Error('idb indisponível');
     });
     expect(await hasActiveWork()).toBe(true);
-    unregister();
-    unregister = registerActiveWorkProvider(() => Promise.reject(new Error('x')));
+    off();
+    reg(() => Promise.reject(new Error('x')));
     expect(await hasActiveWork()).toBe(true);
   });
   it('o cancelamento só remove o próprio provedor', async () => {
-    const off1 = registerActiveWorkProvider(() => true);
-    unregister = registerActiveWorkProvider(() => false);
+    const off1 = reg(() => true);
+    reg(() => false);
     off1();
     expect(await hasActiveWork()).toBe(false);
-    unregister();
-    unregister = null;
-    expect(await hasActiveWork()).toBe(false);
+  });
+  it('provedor que não responde no prazo conta como trabalho ativo', async () => {
+    vi.useFakeTimers();
+    reg(() => new Promise<boolean>(() => {}));
+    const result = hasActiveWork();
+    await vi.advanceTimersByTimeAsync(ACTIVE_WORK_PROVIDER_TIMEOUT_MS + 1);
+    expect(await result).toBe(true);
   });
 });
