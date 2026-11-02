@@ -213,7 +213,7 @@ describe('M102: série unilateral (E/D)', () => {
   it('trabalho de exercício unilateral mostra reps e RPE por lado, carga única', () => {
     const html = render({ unilateral: true });
     expect(html).toContain('data-testid="unilateral-set-fields"');
-    for (const label of ['Reps E', 'Reps D', 'RPE E', 'RPE D']) expect(html).toContain(label);
+    for (const label of ['Esquerdo', 'Direito', 'Repetições do lado esquerdo', 'Repetições do lado direito', 'RPE do lado esquerdo', 'RPE do lado direito', 'Carga']) expect(html).toContain(label);
   });
 
   it('backoff também; aquecimento, técnica e exercício bilateral ficam com valor único', () => {
