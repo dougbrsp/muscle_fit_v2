@@ -12,6 +12,11 @@ O que este arquivo prova (os testes unitários usam um banco em memória):
 - isolamento: o outro usuário não vê nem altera a lista do aluno;
 - `POST /nutrition/foods` com `barcode` grava `food_items.barcode` e o EAN já
   cadastrado responde 409 com o item existente (`FOOD_BY_BARCODE_SQL`);
+- a busca com preferidos: `FAVORITE_IDS_SQL` e a busca extra `favorites_only`
+  (`id IN (SELECT food_id FROM user_favorite_foods WHERE user_id = %s)`) trazem o
+  favorito que casa com o termo mesmo fora do lote de candidatos, primeiro e com
+  `is_favorite`, sem afetar a busca de outro usuário;
+- reordenar parcial: só as posições que mudaram são regravadas;
 - o payload é idêntico nos dois backends.
 """
 
@@ -164,3 +169,67 @@ def test_cadastro_manual_com_ean_e_conflito_nos_dois_backends(usuarios, raw, mon
             assert cur.fetchone() == {"n": 2}  # um privado de cada usuário
         resultados.append([_sem_volateis(r.json()) for r in (criado, conflito, do_outro, invalido)])
     assert resultados[0] == resultados[1]
+
+
+def test_busca_poe_o_favorito_primeiro_mesmo_fora_do_lote_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    """FULLTEXT real + subselect `favorites_only`: o favorito que ficaria além do lote de 60 candidatos
+    (muitos itens com o mesmo termo) volta primeiro, com `is_favorite`; o outro usuário não vê a marca."""
+    with raw.cursor() as cur:
+        cur.execute("DELETE FROM food_items WHERE source <> 'taco'")
+        ids = []
+        for i in range(70):
+            cur.execute(
+                "INSERT INTO food_items (source, name, name_normalized, basis, energy_kcal, carbohydrates_g, protein_g, "
+                "total_fat_g, owner_user_id, is_active, created_by) "
+                "VALUES ('user', %s, %s, 'g', 100, 20, 2, 1, NULL, 1, %s)",
+                (f"Zzbusca teste {i:03d}", f"zzbusca teste {i:03d}", usuarios["aluno"]),
+            )
+            ids.append(int(cur.lastrowid))
+    raw.commit()
+    favorito = ids[-1]
+    resultados = []
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        with raw.cursor() as cur:
+            cur.execute("DELETE FROM user_favorite_foods")
+        raw.commit()
+        aluno, outro = _client(usuarios["aluno"]), _client(usuarios["outro"])
+        assert aluno.post("/nutrition/favorites", json={"food_id": favorito}).status_code == 201
+        do_aluno = aluno.get("/nutrition/foods/search", params={"q": "zzbusca teste"}).json()["items"]
+        do_outro = outro.get("/nutrition/foods/search", params={"q": "zzbusca teste"}).json()["items"]
+        assert do_aluno[0]["id"] == favorito and do_aluno[0]["is_favorite"] is True
+        assert not any(i["is_favorite"] for i in do_aluno[1:]) and not any(i["is_favorite"] for i in do_outro)
+        assert favorito not in [i["id"] for i in do_outro]  # fora do lote de 20 para quem não favoritou
+        resultados.append([_sem_volateis(i) for i in do_aluno[:3]])
+    assert resultados[0] == resultados[1]
+
+
+def test_reordenar_parcial_regrava_so_o_que_mudou_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    comidas = _taco(raw)
+    arroz, oleo = comidas[TACO_ARROZ], comidas[TACO_FEIJAO]
+    with raw.cursor() as cur:
+        cur.execute("SELECT id FROM food_items WHERE source = 'taco' AND source_id = '517'")
+        sal = int(cur.fetchone()["id"])
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        with raw.cursor() as cur:
+            cur.execute("DELETE FROM user_favorite_foods")
+        raw.commit()
+        aluno = _client(usuarios["aluno"])
+        for food_id in (arroz, oleo, sal):
+            assert aluno.post("/nutrition/favorites", json={"food_id": food_id}).status_code == 201
+        with raw.cursor() as cur:
+            cur.execute("UPDATE user_favorite_foods SET updated_at = '2000-01-01 00:00:00' WHERE user_id = %s",
+                        (usuarios["aluno"],))
+        raw.commit()
+        resposta = aluno.post("/nutrition/favorites/reorder", json={"food_ids": [arroz, sal, oleo]})
+        assert resposta.status_code == 200
+        assert [i["food"]["id"] for i in resposta.json()["items"]] == [arroz, sal, oleo]
+        with raw.cursor() as cur:
+            cur.execute("SELECT food_id, position, updated_at > '2000-01-01 00:00:00' AS tocado "
+                        "FROM user_favorite_foods WHERE user_id = %s ORDER BY position", (usuarios["aluno"],))
+            linhas = cur.fetchall()
+        # o primeiro (arroz) não mudou de posição e não foi regravado; os outros dois, sim
+        assert [(int(r["food_id"]), int(r["position"]), int(r["tocado"])) for r in linhas] == [
+            (arroz, 1, 0), (sal, 2, 1), (oleo, 3, 1),
+        ]

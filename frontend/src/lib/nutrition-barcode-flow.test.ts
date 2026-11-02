@@ -6,6 +6,7 @@ import {
   isBarcodeNotFound,
   newFoodFromBarcode,
   selectionAfterBarcodeConflict,
+  shouldOpenRegistration,
 } from './nutrition-barcode-flow';
 
 const erro = (status: number, code: string, extra: Record<string, unknown> = {}) =>
@@ -43,5 +44,13 @@ describe('409 de EAN já cadastrado -> usar o alimento existente', () => {
 
   it('outro erro não vira seleção', () => {
     expect(selectionAfterBarcodeConflict(erro(409, 'outro', { existing_food_id: 12 }))).toBeNull();
+  });
+});
+
+describe('shouldOpenRegistration', () => {
+  it('abre sozinho só sem formulário aberto; com formulário aberto só o toque (force) troca', () => {
+    expect(shouldOpenRegistration(false, false)).toBe(true);
+    expect(shouldOpenRegistration(true, false)).toBe(false); // não descarta o que foi digitado
+    expect(shouldOpenRegistration(true, true)).toBe(true);
   });
 });

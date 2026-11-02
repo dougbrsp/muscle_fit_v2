@@ -26,13 +26,13 @@ import {
   fetchFood,
   foodKeys,
   nutritionErrorInfo,
-  removeFavorite,
   reorderFavorites,
   updateFavoriteDefault,
 } from '@/lib/nutrition-api';
 import { UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import {
   favoriteErrorLines,
+  removeFavoriteIfPresent,
   favoriteDefaultFormFrom,
   favoriteDefaultPayload,
   favoriteDefaultSummary,
@@ -146,7 +146,11 @@ export function FavoritesManager() {
   // Toda alteração da lista: para uma leitura em voo (ela devolveria a ordem velha por cima), e ao
   // terminar, com sucesso ou erro, relê a lista (um erro de ordem velha 400/409 se corrige sozinho).
   const preparar = () => queryClient.cancelQueries({ queryKey: favoriteKeys.all });
-  const relerLista = () => queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
+  // A busca embutida mostra a estrela de `is_favorite`: relê junto, senão ela fica defasada.
+  const relerLista = async () => {
+    await queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
+    await queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  };
   const guardar = (resposta: FavoritesResponse) => queryClient.setQueryData(favoriteKeys.all, resposta);
   const reordenar = useMutation({
     mutationFn: reorderFavorites,
@@ -155,7 +159,7 @@ export function FavoritesManager() {
     onSettled: relerLista,
   });
   const remover = useMutation({
-    mutationFn: (foodId: number) => removeFavorite(foodId),
+    mutationFn: (foodId: number) => removeFavoriteIfPresent(foodId),
     onMutate: preparar,
     onSettled: relerLista,
   });

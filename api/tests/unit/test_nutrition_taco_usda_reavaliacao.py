@@ -252,6 +252,7 @@ def test_detalhe_e_busca_do_alimento_mostram_a_origem_dos_valores(monkeypatch):
                    total_fat_g=2.17)
     monkeypatch.setattr(foods_mod, "get_conn", banco.conn)
     monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
     app = FastAPI()
     app.include_router(foods_mod.router)
     app.dependency_overrides[get_current_identity] = _identidade()

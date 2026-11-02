@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { barcodeConflict } from './nutrition-api';
 import { ApiError } from './api';
 import {
@@ -7,6 +7,8 @@ import {
   favoriteDefaultPayload,
   favoriteDefaultSummary,
   favoriteErrorLines,
+  isFavoriteAlreadyGone,
+  removeFavoriteIfPresent,
   moveFavorite,
 } from './nutrition-favorites';
 import type { FavoriteItem, FoodItem } from './nutrition-types';
@@ -124,5 +126,27 @@ describe('favoriteErrorLines', () => {
     expect(favoriteErrorLines(comItens, 'fallback')).toEqual(['A lista de preferidos aceita até 200 alimentos.']);
     expect(favoriteErrorLines(new ApiError('Falhou', 500), 'fallback')).toEqual(['Falhou']);
     expect(favoriteErrorLines(new Error('x'), 'fallback')).toEqual(['fallback']);
+  });
+});
+
+describe('DELETE com estrela defasada', () => {
+  it('"não é favorito" (404 favorite_not_found) não é erro para o usuário', () => {
+    expect(isFavoriteAlreadyGone(new ApiError('x', 404, { error: 'favorite_not_found', message: 'm' }))).toBe(true);
+    expect(isFavoriteAlreadyGone(new ApiError('x', 404, { error: 'food_not_found', message: 'm' }))).toBe(false);
+    expect(isFavoriteAlreadyGone(new Error('x'))).toBe(false);
+  });
+
+  it('removeFavoriteIfPresent engole só o 404 de favorito ausente', async () => {
+    const original = globalThis.fetch;
+    try {
+      const responder = (status: number, corpo: unknown) =>
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(corpo), { status, headers: { 'content-type': 'application/json' } }));
+      globalThis.fetch = responder(404, { detail: { error: 'favorite_not_found', message: 'm' } }) as typeof fetch;
+      await expect(removeFavoriteIfPresent(7)).resolves.toBeUndefined();
+      globalThis.fetch = responder(500, { detail: 'falhou' }) as typeof fetch;
+      await expect(removeFavoriteIfPresent(7)).rejects.toBeInstanceOf(ApiError);
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });

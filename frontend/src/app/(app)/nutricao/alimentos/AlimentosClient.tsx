@@ -15,7 +15,7 @@ import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { UsdaSearch } from '@/components/nutrition/UsdaSearch';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { newFoodFromBarcode, existingFoodSelection } from '@/lib/nutrition-barcode-flow';
+import { existingFoodSelection, newFoodFromBarcode, shouldOpenRegistration } from '@/lib/nutrition-barcode-flow';
 import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
 import { LABEL_LEGIBILITY_OPTIONS, LABEL_PHOTO, nutritionLabel } from '@/lib/nutrition-constants';
 import { foodFormFromPrefill } from '@/lib/nutrition-food-form';
@@ -104,7 +104,6 @@ export function AlimentosClient() {
 
   /** Código de barras ou importação do USDA: abre o item (já gravado pela API) no detalhe. */
   async function afterExternal(food: ExternalFoodResponse) {
-    setLookupResets((n) => n + 1);
     setEditing(null);
     setSaved(null);
     setExternal(food);
@@ -114,14 +113,15 @@ export function AlimentosClient() {
   }
 
   /** Código lido/digitado sem produto no OFF: abre o cadastro manual com o EAN e leva a tela até ele. */
-  function registerWithBarcode(ean: string) {
+  function registerWithBarcode(ean: string, force: boolean): boolean {
     const novo = newFoodFromBarcode(ean);
-    if (!novo) return;
+    if (!novo || !shouldOpenRegistration(editing !== null, force)) return false;
     setSaved(null);
     setExternal(null);
     setUnreadable(null);
     setEditing(novo);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    return true;
   }
 
   /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */

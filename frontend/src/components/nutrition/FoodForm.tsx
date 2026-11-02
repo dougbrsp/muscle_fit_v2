@@ -6,6 +6,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
 import { barcodeConflict, createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
+import { selectionAfterBarcodeConflict } from '@/lib/nutrition-barcode-flow';
 import {
   FOOD_BASIS_OPTIONS,
   FOOD_PER_100_FIELDS,
@@ -73,6 +74,7 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
     onSuccess: onSaved,
   });
   const conflito = saveMutation.isError ? barcodeConflict(saveMutation.error) : null;
+  const existente = saveMutation.isError ? selectionAfterBarcodeConflict(saveMutation.error) : null;
   const erro =
     saveMutation.isError && !conflito ? nutritionErrorInfo(saveMutation.error, 'Não foi possível salvar o alimento.') : null;
 
@@ -184,11 +186,11 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
               {conflito.foodName ? `O código ${codigo.trim()} já pertence a "${conflito.foodName}".` : 'Já existe um alimento com este código.'}{' '}
               Use o alimento existente em vez de cadastrar outro.
             </Text>
-            {onUseExisting && (
+            {onUseExisting && existente && (
               <Button
                 variant="light"
                 color="brand"
-                onClick={() => onUseExisting(conflito.foodId)}
+                onClick={() => onUseExisting(existente.selectedId)}
                 style={{ minHeight: 44, alignSelf: 'flex-start' }}
               >
                 Usar o alimento existente

@@ -171,7 +171,24 @@ async function startNative(
 }
 
 // Erros por quadro do zxing (nenhum código na imagem, dígito verificador, formato): o leitor segue lendo.
+// Identificados por `getKind()` (string ESTÁTICA da classe, `NotFoundException.kind`), nunca por `name`:
+// o `ts-custom-error` do zxing deriva o `name` de `new.target.name`, que a minificação do build de
+// produção troca por uma letra, e o primeiro quadro sem código viraria erro fatal.
 const ZXING_FRAME_ERRORS = ['NotFoundException', 'ChecksumException', 'FormatException'];
+
+/** `kind` do erro do zxing (`Exception.getKind()`); `null` para qualquer outro erro (ex.: DOMException da câmera). */
+export function zxingErrorKind(error: unknown): string | null {
+  const getKind = typeof error === 'object' && error !== null ? (error as { getKind?: unknown }).getKind : undefined;
+  if (typeof getKind !== 'function') return null;
+  const kind = (getKind as () => unknown).call(error);
+  return typeof kind === 'string' ? kind : null;
+}
+
+/** O erro do callback do zxing é só "este quadro não tinha código legível"? */
+export function isZxingFrameError(error: unknown): boolean {
+  const kind = zxingErrorKind(error);
+  return kind !== null && ZXING_FRAME_ERRORS.includes(kind);
+}
 
 async function startZxing(
   video: HTMLVideoElement,
@@ -190,8 +207,7 @@ async function startZxing(
     controles = controls;
     if (parado) return;
     if (!result) {
-      const nome = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name: unknown }).name) : '';
-      if (error && !ZXING_FRAME_ERRORS.includes(nome)) {
+      if (error && !isZxingFrameError(error)) {
         // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
         stop();
         onFatal?.(new CameraError(classifyCameraError(error)));

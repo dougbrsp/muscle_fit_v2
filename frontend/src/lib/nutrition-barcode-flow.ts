@@ -24,6 +24,14 @@ export function editingAfterLookupError(error: unknown, ean: string): NewFoodFro
   return isBarcodeNotFound(error) ? newFoodFromBarcode(ean) : null;
 }
 
+/**
+ * Abrir o cadastro sozinho (consulta sem produto) só se não há formulário aberto: senão o que a pessoa
+ * já digitou seria descartado. Com formulário aberto a tela mantém o botão, e só o toque (`force`) troca.
+ */
+export function shouldOpenRegistration(editingIsOpen: boolean, force: boolean): boolean {
+  return force || !editingIsOpen;
+}
+
 /** EAN já cadastrado (409 do cadastro): fecha o formulário e seleciona o alimento existente. */
 export type UseExistingFood = { selectedId: number; editing: null };
 

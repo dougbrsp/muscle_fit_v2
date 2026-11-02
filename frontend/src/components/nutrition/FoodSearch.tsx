@@ -25,10 +25,9 @@ import {
   fetchFavorites,
   foodKeys,
   nutritionErrorInfo,
-  removeFavorite,
   searchFoods,
 } from '@/lib/nutrition-api';
-import { favoriteErrorLines } from '@/lib/nutrition-favorites';
+import { favoriteErrorLines, removeFavoriteIfPresent } from '@/lib/nutrition-favorites';
 import { FOOD_PER_100_FIELDS, FOOD_REQUIRED_FIELDS, FOOD_SOURCE_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import type { FoodSearchItem, FoodSearchScope } from '@/lib/nutrition-types';
@@ -75,7 +74,7 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
   const alternar = useMutation({
     mutationKey: FAVORITE_TOGGLE_KEY,
     mutationFn: async (item: FoodSearchItem) => {
-      if (item.is_favorite) await removeFavorite(item.id);
+      if (item.is_favorite) await removeFavoriteIfPresent(item.id);
       else await addFavorite({ food_id: item.id });
     },
     onSettled: async () => {

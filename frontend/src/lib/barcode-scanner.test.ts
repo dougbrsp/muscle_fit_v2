@@ -4,6 +4,7 @@ import {
   CameraError,
   classifyCameraError,
   digitsOnly,
+  isZxingFrameError,
   startBarcodeScan,
   type BarcodeDetectorCtor,
   type ScannerDeps,
@@ -21,6 +22,11 @@ function fakeVideo() {
 
 function domError(name: string) {
   return Object.assign(new Error(name), { name });
+}
+
+/** Erro do zxing como sai do build de produção: `name` minificado (`t`), `getKind()` estático intacto. */
+function zxingError(kind: string, minifiedName = 't') {
+  return Object.assign(new Error(kind), { name: minifiedName, getKind: () => kind });
 }
 
 describe('digitsOnly', () => {
@@ -162,7 +168,7 @@ describe('startBarcodeScan', () => {
     const onCode = vi.fn();
     await startBarcodeScan(video, onCode, { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader });
     const cb = capturado.cb as Callback;
-    cb(undefined, domError('NotFoundException'), { stop });
+    cb(undefined, zxingError('NotFoundException'), { stop });
     cb({ getText: () => 'https://qr.example' }, null, { stop });
     expect(onCode).not.toHaveBeenCalled();
     cb({ getText: () => '7891000100103' }, null, { stop });
@@ -227,8 +233,9 @@ describe('startBarcodeScan', () => {
       onFatal,
     );
     const cb = capturado.cb as Callback;
-    cb(undefined, domError('NotFoundException'), { stop });
-    cb(undefined, domError('ChecksumException'), { stop });
+    cb(undefined, zxingError('NotFoundException'), { stop });
+    cb(undefined, zxingError('ChecksumException', 'e'), { stop });
+    cb(undefined, zxingError('FormatException', 'n'), { stop });
     expect(onFatal).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();
     cb(undefined, domError('NotReadableError'), { stop });
@@ -259,5 +266,21 @@ describe('startBarcodeScan', () => {
     await startBarcodeScan(fakeVideo(), vi.fn(), { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) }, detectorCtor: ctor });
     const opcoes = (ctor as unknown as { mock: { calls: Array<[{ formats: string[] }]> } }).mock.calls[0][0];
     expect(opcoes.formats).toEqual(['ean_13', 'ean_8', 'upc_a']);
+  });
+});
+
+describe('isZxingFrameError (independe do name minificado)', () => {
+  it('reconhece os erros de quadro pelo getKind(), mesmo com name trocado', () => {
+    for (const kind of ['NotFoundException', 'ChecksumException', 'FormatException']) {
+      expect(isZxingFrameError(zxingError(kind, 'a'))).toBe(true);
+    }
+  });
+
+  it('erro de zxing de outro tipo, DOMException da câmera e lixo são fatais, mesmo com name parecido', () => {
+    expect(isZxingFrameError(zxingError('IllegalStateException'))).toBe(false);
+    expect(isZxingFrameError(domError('NotFoundException'))).toBe(false); // sem getKind: não é erro de quadro
+    expect(isZxingFrameError(domError('NotReadableError'))).toBe(false);
+    expect(isZxingFrameError(null)).toBe(false);
+    expect(isZxingFrameError('NotFoundException')).toBe(false);
   });
 });

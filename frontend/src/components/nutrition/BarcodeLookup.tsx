@@ -13,8 +13,11 @@ import { BRAND } from '@/theme';
 
 type Props = {
   onFound: (food: ExternalFoodResponse) => void;
-  /** Código sem produto utilizável (Open Food Facts não conhece): abre o cadastro manual com o EAN, direto. */
-  onNotFound?: (ean: string) => void;
+  /**
+   * Código sem produto utilizável (Open Food Facts não conhece): abre o cadastro manual com o EAN, direto.
+   * Devolve `false` quando não abriu (já há formulário aberto e `force` é falso): a tela oferece o botão.
+   */
+  onNotFound?: (ean: string, force: boolean) => boolean;
   /** Muda depois de um cadastro salvo ou produto aberto: limpa o código, o resultado e o erro. */
   resetSignal?: number;
 };
@@ -30,12 +33,13 @@ export function BarcodeLookup({ onFound, onNotFound, resetSignal = 0 }: Props) {
   const [ean, setEan] = useState('');
   const [consultado, setConsultado] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [cadastroAberto, setCadastroAberto] = useState(false);
   const consulta = useMutation({
     mutationFn: (codigo: string) => lookupBarcode(codigo),
     onSuccess: onFound,
     // Código válido sem produto utilizável: o cadastro manual abre sozinho, com o EAN preenchido.
     onError: (erro, codigo) => {
-      if (editingAfterLookupError(erro, codigo)) onNotFound?.(codigo);
+      if (editingAfterLookupError(erro, codigo)) setCadastroAberto(onNotFound?.(codigo, false) ?? false);
     },
   });
 
@@ -44,6 +48,7 @@ export function BarcodeLookup({ onFound, onNotFound, resetSignal = 0 }: Props) {
     // Depois de salvar ou abrir um produto, a consulta anterior não fica na tela.
     setEan('');
     setConsultado('');
+    setCadastroAberto(false);
     reset();
   }, [resetSignal, reset]);
 
@@ -115,8 +120,19 @@ export function BarcodeLookup({ onFound, onNotFound, resetSignal = 0 }: Props) {
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Produto não encontrado">
           <Text size="sm">
             {erro.message}
-            {onNotFound ? ` Abrimos o cadastro com o código ${consultado} já preenchido.` : ''}
+            {cadastroAberto ? ` Abrimos o cadastro com o código ${consultado} já preenchido.` : ''}
           </Text>
+          {onNotFound && !cadastroAberto && (
+            <Button
+              mt="xs"
+              variant="light"
+              color="brand"
+              onClick={() => setCadastroAberto(onNotFound(consultado, true))}
+              style={{ minHeight: 44 }}
+            >
+              Cadastrar com o código {consultado}
+            </Button>
+          )}
         </Alert>
       )}
       {achado && (

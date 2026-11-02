@@ -7,7 +7,7 @@
 // API (`meal_math`, decisão E9): a tela NÃO calcula macro nem converte porção.
 
 import { UNIT_OPTIONS, nutritionLabel, type NutritionCode } from './nutrition-constants';
-import { nutritionErrorInfo } from './nutrition-api';
+import { nutritionErrorCode, nutritionErrorInfo, removeFavorite } from './nutrition-api';
 import { inputNumberOrNull } from './nutrition-format';
 import { editorItemFromFood, type MealEditorItem } from './nutrition-meal-form';
 import type { FavoriteDefaultPayload, FavoriteItem } from './nutrition-types';
@@ -71,4 +71,21 @@ export function favoriteDefaultSummary(favorite: FavoriteItem): string | null {
 export function favoriteErrorLines(error: unknown, fallback: string): string[] {
   const info = nutritionErrorInfo(error, fallback);
   return info.items.length > 0 ? info.items.map((item) => item.label) : [info.message];
+}
+
+/**
+ * O DELETE respondeu "não é favorito" (404 `favorite_not_found`): a estrela estava defasada (outra aba ou
+ * outro toque já removeu). O resultado desejado já vale, então não é erro para o usuário.
+ */
+export function isFavoriteAlreadyGone(error: unknown): boolean {
+  return nutritionErrorCode(error) === 'favorite_not_found';
+}
+
+/** Remove o preferido; se ele já não estava na lista, segue sem erro (a lista é relida depois). */
+export async function removeFavoriteIfPresent(foodId: number): Promise<void> {
+  try {
+    await removeFavorite(foodId);
+  } catch (error) {
+    if (!isFavoriteAlreadyGone(error)) throw error;
+  }
 }
