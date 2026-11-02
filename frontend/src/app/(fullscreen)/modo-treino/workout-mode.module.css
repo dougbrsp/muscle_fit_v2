@@ -1007,7 +1007,11 @@
 
 /* Conteúdo acima da barra fixa: rolagem/foco nunca deixam itens atrás dela. */
 .pairRow,
-.sideStack {
+.pairRow input,
+.pairRow button,
+.sideStack,
+.sideStack input,
+.sideStack button {
   scroll-margin-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
