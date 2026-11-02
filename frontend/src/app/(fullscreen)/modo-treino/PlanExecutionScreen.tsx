@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '@/lib/api';
 import { overlayQueuedSets } from '@/lib/offline/overlay';
-import { fetchWithSnapshot } from '@/lib/offline/snapshots';
+import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
 import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
 import { postSetOrQueue } from './offline-set-post';
@@ -558,6 +558,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     queryKey: activityQueryKey,
     // Offline reabre com o último retrato do servidor (`fetchWithSnapshot`).
     networkMode: 'always',
+    // Até a rede responder, mostra o último retrato do MESMO usuário.
+    placeholderData: () => readSnapshot<ActivityDetail>(`activity:${session.session_id}`),
     queryFn: () =>
       fetchWithSnapshot(`activity:${session.session_id}`, () => apiFetch<ActivityDetail>(`/activities/${session.session_id}`)),
     refetchOnMount: 'always',
@@ -568,6 +570,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     // de deload desde a 1ª série e sem técnica (dono `domain/deload.py`).
     queryKey: workoutModePlanQueryKey(session.workout_plan_id, session.session_id),
     networkMode: 'always',
+    placeholderData: () => readSnapshot<WorkoutPlanDetail>(`plan:${session.workout_plan_id}:${session.session_id}`),
     queryFn: () =>
       fetchWithSnapshot(`plan:${session.workout_plan_id}:${session.session_id}`, () =>
         apiFetch<WorkoutPlanDetail>(workoutModePlanPath(Number(session.workout_plan_id), session.session_id)),

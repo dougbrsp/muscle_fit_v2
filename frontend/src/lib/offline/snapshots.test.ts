@@ -33,7 +33,12 @@ describe('retrato offline das leituras', () => {
     await flushBackendTasks();
     const backend = createMemoryBackend();
     setOfflineBackendForTests(backend);
-    await backend.put('meta', makeKey(1, 'snap:activity:9'), { id: 9 });
+    await backend.put('meta', makeKey(1, 'snap:activity:9'), { v: 1, data: { id: 9 } });
+    await backend.put('meta', makeKey(1, 'snap:old'), { v: 0, data: { id: 1 } });
+    await loadSnapshots(1);
+    expect(readSnapshot('activity:9')).toEqual({ id: 9 });
+    expect(readSnapshot('old')).toBeUndefined(); // outra versao do formato
+    await purgeOfflineUser(1);
     await purgeOfflineUser(2);
     await loadSnapshots(2);
     expect(readSnapshot('activity:9')).toBeUndefined();
