@@ -11,12 +11,14 @@ Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §3.3, §3.4 e §7.
   no calendário proposto (o admin/PT decide a pausa).
 - Parada sugerida por % de gordura (decisão D-C, default editável no plano):
   bulking até H 15% / M 25%; cutting até H 10% / M 18%. `Sex.OTHER` sem default.
-
 - Projeção até o alvo (N1): `project_goal`. O ritmo é % do peso por semana,
   composto (o peso muda, o ritmo em kg também): semanas = ln(alvo/atual) /
   ln(1 ∓ ritmo). Para alvo de %G, o peso final supõe a MLG atual constante
-  (`target_weight_for_body_fat`): no bulking a MLG cresce, então o prazo é
-  conservador. Sem dado não há número: devolve o motivo.
+  (`target_weight_for_body_fat`): é o peso MÍNIMO (cutting) ou o mais baixo (bulking) que
+  cumpre o alvo. No cutting a MLG cai um pouco e o peso final real fica acima, e no
+  bulking a MLG cresce e o peso final real é maior: o prazo é OTIMISTA (limite inferior).
+  O resultado carrega `lean_mass_constant` e o motivo `projection_lean_mass_constant`.
+  Sem dado não há número: devolve o motivo.
 
 O motor PROPÕE o calendário; admin/PT publica (decisão D4). Tudo em datas
 civis; a data de início é argumento (sem relógio).
@@ -35,7 +37,7 @@ from typing import Any, Final, Mapping, Optional, Sequence
 from .anthropometrics import WEIGHT_KG_RANGE, Sex, positive_number
 from .body_composition import PERCENT, body_fat_is_valid, ffm_kg, target_weight_for_body_fat
 from .energy_density import DAYS_PER_WEEK
-from .strategy import BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT, CUT_WEEKLY_RATE_SHARE_DEFAULT, Strategy
+from .strategy import Strategy, StrategyParams, weekly_rate_share_for, weekly_rate_share_range_for
 
 MATADOR_ON_WEEKS: Final[int] = 2
 MATADOR_OFF_WEEKS: Final[int] = 2
@@ -52,6 +54,8 @@ CUT_STOP_BODY_FAT_PERCENT: Final[Mapping[Sex, float]] = {Sex.MALE: 10.0, Sex.FEM
 # de uma balança doméstica; 0,5 ponto percentual é a ordem do erro de bioimpedância.
 PROJECTION_WEIGHT_TOLERANCE_KG: Final[float] = 0.1
 PROJECTION_BODY_FAT_TOLERANCE_PERCENT: Final[float] = 0.5
+# Horizonte máximo da projeção: 10 anos (default de desenho); além disso o prazo não é informação útil.
+PROJECTION_MAX_WEEKS: Final[float] = 520.0
 
 REASON_MISSING_WEIGHT = "projection_missing_weight"
 REASON_MISSING_BODY_FAT = "projection_missing_body_fat"
@@ -60,10 +64,14 @@ REASON_TWO_TARGETS = "projection_two_targets"
 REASON_INVALID_TARGET = "projection_invalid_target"
 REASON_MISSING_RATE = "projection_missing_rate"
 REASON_MISSING_START = "projection_missing_start"
+REASON_START_WRONG_SIDE = "projection_start_on_wrong_side"
+REASON_MISSING_TARGET_WEIGHT = "projection_missing_target_weight"
+REASON_BEYOND_HORIZON = "projection_beyond_horizon"
+REASON_LEAN_MASS_CONSTANT = "projection_lean_mass_constant"
 REASON_TARGET_AGAINST_STRATEGY = "projection_target_against_strategy"
 REASON_TARGET_MOVES_WITHOUT_STRATEGY = "projection_maintenance_with_distant_target"
 
-WARN_EXCEEDS_MAX_CUT_WEEKS ="exceeds_max_cut_weeks_without_break"
+WARN_EXCEEDS_MAX_CUT_WEEKS = "exceeds_max_cut_weeks_without_break"
 LIMIT_WEEKS_NOT_POSITIVE = "weeks_must_be_positive"
 
 
@@ -254,7 +262,8 @@ class GoalProjection:
     """Projeção até o alvo. `current`/`target` na unidade do alvo (kg ou %G);
     `target_weight_kg` é o peso em que o alvo se cumpre; `weeks`/`eta_date` só
     com PROJECTED (0 e a data de hoje quando já atingido); `progress_percent`
-    precisa do ponto de partida (0..100)."""
+    precisa do ponto de partida (0..100). `is_minimum_estimate`: alvo de %G com a MLG
+    atual suposta constante, então `weeks` é um limite inferior (prazo otimista)."""
 
     status: ProjectionStatus
     goal_kind: Optional[GoalKind]
@@ -266,6 +275,7 @@ class GoalProjection:
     progress_percent: Optional[float] = None
     weekly_rate_share: Optional[float] = None
     reasons: tuple[str, ...] = ()
+    is_minimum_estimate: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -279,6 +289,7 @@ class GoalProjection:
             "progress_percent": self.progress_percent,
             "weekly_rate_share": self.weekly_rate_share,
             "reasons": list(self.reasons),
+            "is_minimum_estimate": self.is_minimum_estimate,
         }
 
 
@@ -286,15 +297,28 @@ def _insufficient(kind: Optional[GoalKind], *reasons: str) -> GoalProjection:
     return GoalProjection(status=ProjectionStatus.INSUFFICIENT_DATA, goal_kind=kind, reasons=tuple(reasons))
 
 
-def _progress_percent(start: Optional[float], current: float, target: float) -> Optional[float]:
-    if start is None or start == target:
+def _progress_percent(start: Optional[float], current: float, target: float, wants_loss: bool) -> Optional[float]:
+    """Parte do caminho já feita (0..100). Partida do lado errado do alvo (ou igual a ele)
+    não define caminho: None."""
+    if start is None:
+        return None
+    lado_certo = start > target if wants_loss else start < target
+    if not lado_certo:
         return None
     avancado = (start - current) / (start - target)
     return min(max(avancado, 0.0), 1.0) * PERCENT
 
 
+def _explicit_rate(value: Any, bounds: Optional[tuple[float, float]]) -> Optional[float]:
+    """Ritmo informado: número finito dentro da faixa da estratégia; senão None."""
+    ritmo = positive_number(value)
+    if ritmo is None or bounds is None or not bounds[0] <= ritmo <= bounds[1]:
+        return None
+    return ritmo
+
+
 def project_goal(
-    strategy: Strategy,
+    params: StrategyParams,
     current_weight_kg: Any,
     goal_weight_kg: Any = None,
     goal_body_fat_percent: Any = None,
@@ -303,15 +327,19 @@ def project_goal(
     start_body_fat_percent: Any = None,
     weekly_rate_share: Any = None,
     as_of: Optional[date] = None,
+    tdee_kcal: Any = None,
+    fat_mass_kg: Any = None,
 ) -> GoalProjection:
     """Quanto falta, em quanto tempo e quanto do caminho já foi feito.
 
-    Exatamente um alvo (peso ou %G). `weekly_rate_share` (fração do peso por
-    semana) vale sobre o default da estratégia (cutting: `CUT_WEEKLY_RATE_SHARE_DEFAULT`;
-    bulking: piso da faixa de ganho). Manutenção não move o peso: só "atingido"
-    (dentro da tolerância) ou incoerente. Alvo do lado errado da estratégia
-    (cutting com alvo acima do atual, bulking abaixo) é incoerente, salvo se o
-    ponto de partida mostra que o alvo já foi ultrapassado no sentido certo."""
+    Exatamente um alvo (peso ou %G). O ritmo (fração do peso por semana) é o informado em
+    `weekly_rate_share`, que precisa estar na faixa da estratégia (senão
+    `REASON_MISSING_RATE`), ou o de `strategy.weekly_rate_share_for` (cutting: o do plano;
+    bulking: o do superávit do plano quando há `tdee_kcal`, peso e `fat_mass_kg`, senão o piso
+    da faixa de ganho). Manutenção não move o peso: só "atingido" (dentro da tolerância) ou
+    incoerente. Alvo do lado errado da estratégia é incoerente, salvo se o ponto de partida mostra
+    que o alvo já foi ultrapassado no sentido certo. Passa de `PROJECTION_MAX_WEEKS`: sem prazo."""
+    strategy = params.strategy
     tem_peso, tem_gordura = goal_weight_kg is not None, goal_body_fat_percent is not None
     if tem_peso and tem_gordura:
         return _insufficient(None, REASON_TWO_TARGETS)
@@ -343,7 +371,13 @@ def project_goal(
 
     def _result(status: ProjectionStatus, **extra: Any) -> GoalProjection:
         return GoalProjection(
-            status=status, goal_kind=kind, current=atual, target=alvo, target_weight_kg=peso_alvo, **extra
+            status=status,
+            goal_kind=kind,
+            current=atual,
+            target=alvo,
+            target_weight_kg=peso_alvo,
+            is_minimum_estimate=kind == GoalKind.BODY_FAT,
+            **extra,
         )
 
     def _reached() -> GoalProjection:
@@ -363,19 +397,33 @@ def project_goal(
             return _reached()
         return _result(ProjectionStatus.INCOHERENT, reasons=(REASON_TARGET_AGAINST_STRATEGY,))
 
-    ritmo = positive_number(weekly_rate_share)
-    if ritmo is None:
-        ritmo = CUT_WEEKLY_RATE_SHARE_DEFAULT if quer_perder else BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT
-    if peso_alvo is None or ritmo >= 1.0:
+    if weekly_rate_share is not None:
+        ritmo = _explicit_rate(weekly_rate_share, weekly_rate_share_range_for(strategy))
+    else:
+        ritmo = positive_number(weekly_rate_share_for(params, tdee_kcal, peso, fat_mass_kg))
+    if ritmo is None or ritmo >= 1.0:
         return _result(ProjectionStatus.INSUFFICIENT_DATA, reasons=(REASON_MISSING_RATE,))
+    if peso_alvo is None:
+        return _result(ProjectionStatus.INSUFFICIENT_DATA, reasons=(REASON_MISSING_TARGET_WEIGHT,))
     fator = (1.0 - ritmo) if quer_perder else (1.0 + ritmo)
-    semanas = math.log(peso_alvo / peso) / math.log(fator)
+    passo = math.log(fator)  # 0 quando o ritmo derivado é menor que a resolução do float
+    semanas = math.log(peso_alvo / peso) / passo if passo != 0.0 else math.inf
+    if not math.isfinite(semanas) or semanas > PROJECTION_MAX_WEEKS:
+        return _result(ProjectionStatus.INSUFFICIENT_DATA, reasons=(REASON_BEYOND_HORIZON,))
     eta = as_of + timedelta(days=math.ceil(semanas * DAYS_PER_WEEK)) if as_of is not None else None
+    progresso = _progress_percent(partida, atual, alvo, quer_perder)
+    motivos: list[str] = []
+    if partida is None:
+        motivos.append(REASON_MISSING_START)
+    elif progresso is None:
+        motivos.append(REASON_START_WRONG_SIDE)
+    if kind == GoalKind.BODY_FAT:
+        motivos.append(REASON_LEAN_MASS_CONSTANT)
     return _result(
         ProjectionStatus.PROJECTED,
         weeks=semanas,
         eta_date=eta,
-        progress_percent=_progress_percent(partida, atual, alvo),
+        progress_percent=progresso,
         weekly_rate_share=ritmo,
-        reasons=() if partida is not None else (REASON_MISSING_START,),
+        reasons=tuple(motivos),
     )

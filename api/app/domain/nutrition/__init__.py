@@ -142,6 +142,7 @@ def export_for_frontend() -> dict[str, Any]:
         "goal_kind_labels": lb.labels_by_code(lb.GOAL_KIND_LABELS),
         "projection_statuses": _codes(phases.ProjectionStatus),
         "projection_status_labels": lb.labels_by_code(lb.PROJECTION_STATUS_LABELS),
+        "weekday_names": {str(indice): nome for indice, nome in lb.WEEKDAY_LABELS.items()},
         "day_kinds": _codes(carb_cycling.DayKind),
         "day_kind_labels": lb.labels_by_code(lb.DAY_KIND_LABELS),
         "meal_slots": _codes(lb.MealSlot),

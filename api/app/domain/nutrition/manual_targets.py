@@ -35,34 +35,40 @@ from .strategy import (
 )
 
 # --- Limites de BLOQUEIO -------------------------------------------------------
-# Proteína (g/kg da base da estratégia: MLG no cutting, peso nos demais).
-# Piso 0,8: a RDA do IOM (2005) para adultos é o mínimo para não perder massa
-# magra; abaixo disso, com déficit ou treino, o plano trabalha contra o objetivo.
+# Valor digitado acima disto (em gramas) é erro de digitação: trata-se como inválido, sem kcal.
+# Default de desenho (5 kg de qualquer macro por dia já passa de 20.000 kcal).
+MANUAL_GRAMS_MAX: Final[float] = 5000.0
+
+# Proteína (g/kg). BASES: o PISO é sempre sobre o PESO corporal (a RDA de 0,8 g/kg do IOM 2005
+# é por kg de peso), quando há peso; o TETO é sobre a MASSA LIVRE DE GORDURA quando há (os
+# estudos de dose alta, Antonio 2014/2016, reportam por kg de peso de treinados magros, e a MLG é a
+# base mais restritiva); no cutting sem MLG o teto usa o peso. A faixa de AVISO usa a base da
+# estratégia (MLG no cutting, peso nos demais).
+# Piso 0,8: abaixo da RDA, com déficit ou treino, o plano trabalha contra o objetivo.
 PROTEIN_BLOCK_MIN_G_PER_KG: Final[float] = 0.8
-# Teto 3,5: Antonio 2014 e 2016 testaram 3,3-3,4 g/kg (8 semanas a 1 ano) em treinados
-# sem dano observado; acima disso não há evidência de segurança nem de benefício (a
-# faixa de aviso da fonte termina em 3,1 g/kg de MLG no cutting e 2,2 nos demais).
+# Teto 3,5: Antonio 2014 e 2016 testaram 3,3-3,4 g/kg (8 semanas a 1 ano) em treinados sem dano
+# observado; acima disso não há evidência de segurança nem de benefício (a faixa de aviso da
+# fonte termina em 3,1 g/kg de MLG no cutting e 2,2 nos demais).
 PROTEIN_BLOCK_MAX_G_PER_KG: Final[float] = 3.5
 
-# Gordura (fração das kcal). Piso 10%: abaixo do mínimo de 15-20% da energia indicado
-# por FAO/WHO (2010, "Fats and fatty acids in human nutrition"), onde a ingestão de ácidos
-# graxos essenciais e de vitaminas lipossolúveis fica ameaçada. Teto 60%: acima da faixa
-# 20-35% (IOM 2005) e de qualquer faixa do motor; o MuscleFit não prescreve dieta
-# cetogênica (default de desenho).
+# Gordura (fração das kcal). DEFAULT DE DESENHO: FAO/WHO (2010, "Fats and fatty acids in human
+# nutrition") indica mínimo de 15-20% da energia, então o piso de bloqueio de 10% fica ABAIXO da
+# fonte de propósito: entre 10% e a faixa da estratégia o valor salva com aviso. Teto 60%: acima da
+# faixa 20-35% (IOM 2005) e de qualquer faixa do motor; o MuscleFit não prescreve dieta cetogênica.
 FAT_BLOCK_MIN_KCAL_SHARE: Final[float] = 0.10
 FAT_BLOCK_MAX_KCAL_SHARE: Final[float] = 0.60
 
-# Carboidrato (g/kg de peso). Burke 2011 recomenda 6-10 g/kg para 1 a 3 horas de esporte por
-# dia e 8-12 g/kg para 4 a 5 horas ou mais. Aviso acima de 8 (default de desenho: o treino de
-# força não exige a faixa alta); bloqueio acima de 12, o topo de Burke 2011, reservado a
-# esforço extremo: fora disso é quase sempre erro de digitação.
+# Carboidrato (g/kg de peso). DEFAULT DE DESENHO. Burke 2011 recomenda 6-10 g/kg para 1 a 3 horas de
+# esporte por dia e 8-12 g/kg para 4 a 5 horas ou mais; essas são faixas de ENDURANCE, não de
+# musculação, e servem só de contexto. Aviso acima de 8 e bloqueio acima de 12: fora disso é
+# quase sempre erro de digitação.
 CARB_WARN_MAX_G_PER_KG: Final[float] = 8.0
 CARB_BLOCK_MAX_G_PER_KG: Final[float] = 12.0
 
 # Energia do dia. Piso 800 kcal: definição de dieta de muito baixa caloria (VLCD, NIH 1998;
-# Tsai & Wadden 2006), que exige supervisão médica. Teto 8.000 kcal: o gasto medido no Tour de
-# France fica perto de 6.500 kcal/dia (Westerterp 1986) e o extremo da literatura é pouco
-# maior; em treino de força passar disso é erro (default de desenho).
+# Tsai & Wadden 2006), que exige supervisão médica. Teto 8.000 kcal: DEFAULT DE DESENHO; o gasto
+# medido no Tour de France (cerca de 6.500 kcal/dia, Westerterp 1986) é só contexto do extremo da
+# literatura, e em treino de força passar disso é erro.
 KCAL_BLOCK_MIN: Final[float] = 800.0
 KCAL_BLOCK_MAX: Final[float] = 8000.0
 
@@ -82,7 +88,8 @@ MANUAL_BLOCKED_BELOW = "manual_blocked_below"
 MANUAL_BLOCKED_ABOVE = "manual_blocked_above"
 MANUAL_BELOW_BMR = "manual_below_bmr"
 MANUAL_DIFFERS_FROM_TARGET = "manual_differs_from_target"
-LIMIT_MISSING_BASE = "manual_missing_base_for_field"  # `<código>:<campo>`
+MISSING_BASE = "manual_missing_base_for_field"  # `<código>:<campo>`: sem base de g/kg, a faixa não foi conferida
+LIMIT_MISSING_BASE = MISSING_BASE
 
 
 class RangeStatus(str, Enum):
@@ -157,9 +164,13 @@ def _grade(
     block: tuple[Optional[float], Optional[float]],
     extra_codes: tuple[str, ...] = (),
 ) -> FieldCheck:
-    """Classifica `metric_value` contra a faixa de aviso e os limites de bloqueio."""
+    """Classifica `metric_value` contra a faixa de aviso e os limites de bloqueio. Sem a
+    métrica (falta a base do g/kg) o campo NUNCA fica dentro da faixa: vira aviso com
+    `manual_missing_base_for_field:<campo>`."""
     if metric_value is None:
-        return FieldCheck(field, value, RangeStatus.WITHIN_RANGE, metric, None, warn)
+        return FieldCheck(
+            field, value, RangeStatus.WARNING, metric, None, warn, (f"{MISSING_BASE}:{field}", *extra_codes)
+        )
     piso, teto = block
     if piso is not None and metric_value < piso:
         return FieldCheck(
@@ -178,6 +189,48 @@ def _grade(
     return FieldCheck(field, value, status, metric, metric_value, warn, tuple(codes))
 
 
+def _valid_grams(value: Any) -> Optional[float]:
+    """Gramas finitas, >= 0 e até `MANUAL_GRAMS_MAX`; o resto é inválido."""
+    gramas = non_negative_number(value)
+    return gramas if gramas is not None and gramas <= MANUAL_GRAMS_MAX else None
+
+
+def _protein_check(
+    proteina: float, params: StrategyParams, peso: Optional[float], mlg: Optional[float]
+) -> FieldCheck:
+    """Proteína: aviso pela base da estratégia; bloqueio pelo piso sobre o PESO (se há) e pelo
+    teto sobre a MLG (se há; senão o peso)."""
+    base_estrategia = mlg if params.protein_basis == ProteinBasis.FAT_FREE_MASS else peso
+    base_piso = peso if peso is not None else mlg
+    base_teto = mlg if mlg is not None else peso
+    if base_piso is not None and proteina / base_piso < PROTEIN_BLOCK_MIN_G_PER_KG:
+        return _grade(
+            FIELD_PROTEIN,
+            proteina,
+            "g_per_kg",
+            proteina / base_piso,
+            protein_range_for(params.strategy),
+            (PROTEIN_BLOCK_MIN_G_PER_KG, None),
+        )
+    if base_teto is not None and proteina / base_teto > PROTEIN_BLOCK_MAX_G_PER_KG:
+        return _grade(
+            FIELD_PROTEIN,
+            proteina,
+            "g_per_kg",
+            proteina / base_teto,
+            protein_range_for(params.strategy),
+            (None, PROTEIN_BLOCK_MAX_G_PER_KG),
+        )
+    return _grade(
+        FIELD_PROTEIN,
+        proteina,
+        "g_per_kg",
+        None if base_estrategia is None else proteina / base_estrategia,
+        protein_range_for(params.strategy),
+        (None, None),
+    )
+
+
 def check_manual_targets(
     protein_g: Any,
     carb_g: Any,
@@ -190,14 +243,16 @@ def check_manual_targets(
 ) -> ManualTargetsCheck:
     """Valida as gramas manuais do dia contra a estratégia do plano.
 
-    `weight_kg`/`ffm_kg` dão a base dos g/kg (a de `params.protein_basis` para a
-    proteína; o peso para o carboidrato). Sem a base, o campo fica sem a checagem em
-    g/kg e a limitação é devolvida (nunca se inventa o peso). `target_kcal` (meta
-    da estratégia) e `bmr_kcal` só geram AVISOS."""
+    `weight_kg`/`ffm_kg` dão a base dos g/kg (proteína: ver `_protein_check`; carboidrato: o
+    peso). Sem a base, o campo sai em AVISO `manual_missing_base_for_field` (nunca "dentro da
+    faixa") e a limitação é devolvida; o peso nunca é inventado. `target_kcal` (meta da estratégia)
+    e `bmr_kcal` só geram AVISOS. Texto numérico ("160") é aceito como número, como em
+    `anthropometrics.non_negative_number`; valor negativo, não numérico, infinito ou acima de
+    `MANUAL_GRAMS_MAX` é inválido."""
     valores = {
-        FIELD_PROTEIN: non_negative_number(protein_g),
-        FIELD_CARB: non_negative_number(carb_g),
-        FIELD_FAT: non_negative_number(fat_g),
+        FIELD_PROTEIN: _valid_grams(protein_g),
+        FIELD_CARB: _valid_grams(carb_g),
+        FIELD_FAT: _valid_grams(fat_g),
     }
     invalidos = [campo for campo, v in valores.items() if v is None]
     if invalidos:
@@ -217,23 +272,15 @@ def check_manual_targets(
     assert kcal is not None and proteina is not None and carbo is not None and gordura is not None
     limitacoes: list[str] = []
     peso = positive_number(weight_kg)
-    base_proteina = positive_number(ffm_kg) if params.protein_basis == ProteinBasis.FAT_FREE_MASS else peso
+    mlg = positive_number(ffm_kg)
 
-    # Proteína.
-    if base_proteina is None:
-        limitacoes.append(f"{LIMIT_MISSING_BASE}:{FIELD_PROTEIN}")
-    checagem_proteina = _grade(
-        FIELD_PROTEIN,
-        proteina,
-        "g_per_kg",
-        None if base_proteina is None else proteina / base_proteina,
-        protein_range_for(params.strategy),
-        (PROTEIN_BLOCK_MIN_G_PER_KG, PROTEIN_BLOCK_MAX_G_PER_KG),
-    )
+    checagem_proteina = _protein_check(proteina, params, peso, mlg)
+    if checagem_proteina.metric_value is None:
+        limitacoes.append(f"{MISSING_BASE}:{FIELD_PROTEIN}")
 
     # Carboidrato: piso do bulking (o do plano) ou o piso geral; teto de aviso e de bloqueio.
     if peso is None:
-        limitacoes.append(f"{LIMIT_MISSING_BASE}:{FIELD_CARB}")
+        limitacoes.append(f"{MISSING_BASE}:{FIELD_CARB}")
     carbo_min = MIN_CARB_G_PER_KG
     if params.strategy == Strategy.BULKING and params.carb_min_g_per_kg is not None:
         carbo_min = params.carb_min_g_per_kg
@@ -246,7 +293,7 @@ def check_manual_targets(
         (None, CARB_BLOCK_MAX_G_PER_KG),
     )
 
-    # Gordura: fração das kcal resultantes. Sem energia nenhuma não há fração.
+    # Gordura: fração das kcal resultantes. Sem energia nenhuma não há fração (e a kcal bloqueia).
     fracao_gordura = gordura * KCAL_PER_G_FAT / kcal if kcal > 0 else None
     checagem_gordura = _grade(
         FIELD_FAT,

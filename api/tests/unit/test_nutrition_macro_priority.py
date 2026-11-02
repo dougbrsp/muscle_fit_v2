@@ -5,6 +5,8 @@ proteína e movem só a fração de gordura dentro da faixa da estratégia."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from app.domain.nutrition import macros as mc
@@ -128,3 +130,35 @@ def test_normalize_macro_priority():
     assert mc.normalize_macro_priority(None) == st.DEFAULT_MACRO_PRIORITY == P.BALANCED
     assert mc.normalize_macro_priority(" High_Carb ") == P.HIGH_CARB
     assert mc.normalize_macro_priority("x") is None
+
+
+def test_gordura_alta_nunca_da_menos_gordura_que_o_equilibrado_com_params_fora_do_default():
+    # Bulking com gordura de 30% no plano, 80 kg, 2000 kcal: o piso de carbo (960 kcal) deixa só 20% para a gordura;
+    # o preset não pode recuar para o padrão da estratégia (25%) nem ficar abaixo dos 30% do plano.
+    params = replace(st.StrategyParams.defaults_for(S.BULKING), fat_kcal_share=0.30)
+    base = mc.macro_split(2000.0, params, PESO, MLG)
+    alta = mc.macro_split_for_priority(2000.0, params, P.HIGH_FAT, PESO, MLG)
+    assert alta.fat_g >= base.fat_g
+    assert _share_gordura(alta) == pytest.approx(0.30)
+
+
+def test_gordura_alta_com_plano_fora_do_default_sobe_ate_o_teto_quando_cabe():
+    params = replace(st.StrategyParams.defaults_for(S.MAINTENANCE), fat_kcal_share=0.30)
+    alta = mc.macro_split_for_priority(2600.0, params, P.HIGH_FAT, PESO, MLG)
+    assert _share_gordura(alta) == pytest.approx(st.MAINT_FAT_KCAL_SHARE_RANGE[1])
+
+
+def test_proteina_fixa_respeita_o_piso_de_carbo_do_bulking():
+    # 80 kg, 2200 kcal: proteína 640 kcal; metade do resto seria 35% de gordura e deixaria o carbo em
+    # 2,47 g/kg (< 3,0). O piso de 3 g/kg = 960 kcal limita a gordura a (2200 - 640 - 960) / 2200 = 27,3%.
+    alvo = _split(S.BULKING, 2200.0, P.FIXED_PROTEIN)
+    assert alvo.carb_g / PESO == pytest.approx(st.BULK_CARB_MIN_G_PER_KG)
+    assert _share_gordura(alvo) == pytest.approx(600.0 / 2200.0)
+    assert mc.LIMIT_CARB_BELOW_MIN not in alvo.limitations
+
+
+def test_proteina_fixa_nao_leva_a_gordura_abaixo_do_piso_da_faixa():
+    # Sem folga alguma de carbo: a gordura fica no piso da faixa (15% no cutting), nunca abaixo.
+    params = st.StrategyParams.defaults_for(S.CUTTING)
+    alvo = mc.macro_split_for_priority(1000.0, params, P.FIXED_PROTEIN, PESO, MLG)
+    assert _share_gordura(alvo) >= st.CUT_FAT_KCAL_SHARE_RANGE[0] - 1e-9

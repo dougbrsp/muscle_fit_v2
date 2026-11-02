@@ -20,13 +20,15 @@ limitação.
 
 Dias escolhidos (N1, decisão D5): o usuário marca cada dia da semana como alto,
 normal ou baixo (`validate_cycle_days`; 0 = segunda … 6 = domingo, como em
-`phases.refeed_dates`); o botão "puxar do Modelo" usa `propose_day_kinds`. Com
-a escolha manual, só semana toda normal (sem ciclo) ou com ao menos um dia alto E
-um baixo é aceita: com dias altos e normais apenas, ou baixos e normais apenas, os
-multiplicadores não somam 7 sem mexer nos dias normais, ou seja, não preservam a
-média. `distribute_week_over_mean` cicla sobre a MÉDIA semanal do carbo dos sete
-dias: com o gasto do treino explícito cada dia já tem um carbo diferente, e ciclar
-dia a dia sobre esses valores somava cerca de +50 g/semana.
+`phases.refeed_dates`); o botão "puxar do Modelo" usa `propose_day_kinds`. A semana
+pode ter só dias altos e normais, ou só baixos e normais: os multiplicadores nominais
+(1,25 / 1,0 / 0,75) são reescalados por um fator comum para somar 7, e o dia normal
+pode sair diferente de 1,0 (ex.: 0,933). `week_multipliers` devolve o multiplicador real
+de cada tipo e `WeekDistribution.day_multipliers` o de cada dia. Só é recusada a semana
+em que não há como ciclar: os 7 dias altos ou os 7 baixos. `distribute_week_over_mean`
+cicla sobre a MÉDIA semanal do carbo dos sete dias: com o gasto do treino explícito cada
+dia já tem um carbo diferente, e ciclar dia a dia sobre esses valores somava cerca de
++50 g/semana.
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
@@ -54,7 +56,7 @@ ERR_INVALID_DAY_MAP = "invalid_day_map"
 ERR_INVALID_WEEKDAY = "invalid_weekday"  # `invalid_weekday:<chave>`
 ERR_DUPLICATE_WEEKDAY = "duplicate_weekday"  # `duplicate_weekday:<dia>`
 ERR_INVALID_DAY_KIND = "invalid_day_kind"  # `invalid_day_kind:<dia>`
-ERR_CYCLE_NEEDS_HIGH_AND_LOW = "carb_cycle_needs_high_and_low"
+ERR_CYCLE_ALL_DAYS_SAME_EXTREME = "carb_cycle_all_days_same_extreme"
 
 
 class DayKind(str, Enum):
@@ -92,11 +94,14 @@ class WeekMultipliers:
 
 
 def week_multipliers(kinds: Sequence[DayKind], carb_g: Any, weight_kg: Any = None) -> WeekMultipliers:
-    """Multiplicador de carbo por tipo de dia que preserva a soma semanal."""
+    """Multiplicador de carbo por tipo de dia que preserva a soma semanal (a soma dos 7
+    multiplicadores dos dias é 7). Semana sem como ciclar (toda normal, ou os 7 dias altos,
+    ou os 7 baixos) fica plana. Com o piso de 1 g/kg, o tipo mais baixo da semana (baixo, ou
+    normal se não há baixo) fica no piso e o absorvedor (alto, ou normal se não há alto) leva o resto."""
     if len(kinds) != DAYS_PER_WEEK:
         raise ValueError(LIMIT_WEEK_NOT_SEVEN_DAYS)
     contagem = {kind: sum(1 for k in kinds if k == kind) for kind in DayKind}
-    if contagem[DayKind.HIGH] == 0 or contagem[DayKind.LOW] == 0:
+    if DAYS_PER_WEEK in contagem.values():
         return WeekMultipliers(by_kind=dict(FLAT_MULTIPLIERS))
     soma_nominal = sum(contagem[kind] * NOMINAL_MULTIPLIERS[kind] for kind in DayKind)
     escala = DAYS_PER_WEEK / soma_nominal
@@ -107,15 +112,29 @@ def week_multipliers(kinds: Sequence[DayKind], carb_g: Any, weight_kg: Any = Non
     if carbo is None or peso is None:
         return WeekMultipliers(by_kind=por_tipo)
     piso = MIN_LOW_CARB_G_PER_KG * peso / carbo
-    if por_tipo[DayKind.LOW] >= piso:
+    menor = DayKind.LOW if contagem[DayKind.LOW] else DayKind.NORMAL
+    if por_tipo[menor] >= piso:
         return WeekMultipliers(by_kind=por_tipo)
-    # O piso prende o dia baixo: dias normais ficam em 1,0 e o alto absorve o resto.
-    baixo = piso
-    normal = NORMAL_CARB_MULTIPLIER
-    alto = (DAYS_PER_WEEK - contagem[DayKind.LOW] * baixo - contagem[DayKind.NORMAL] * normal) / contagem[DayKind.HIGH]
+    # O piso prende o tipo mais baixo da semana; o outro tipo absorve o resto.
+    plana = WeekMultipliers(by_kind=dict(FLAT_MULTIPLIERS), limitations=(LIMIT_CARB_FLOOR_PREVENTS_CYCLE,))
+    if menor == DayKind.LOW:
+        baixo, normal = piso, NORMAL_CARB_MULTIPLIER
+        if contagem[DayKind.HIGH]:
+            alto = (DAYS_PER_WEEK - contagem[DayKind.LOW] * baixo - contagem[DayKind.NORMAL] * normal) / contagem[DayKind.HIGH]
+            if alto <= normal:
+                return plana
+        else:
+            alto = NOMINAL_MULTIPLIERS[DayKind.HIGH]  # sem dia alto: valor sem uso
+            normal = (DAYS_PER_WEEK - contagem[DayKind.LOW] * baixo) / contagem[DayKind.NORMAL]
+            if normal <= baixo:
+                return plana
+        return WeekMultipliers(by_kind={DayKind.HIGH: alto, DayKind.NORMAL: normal, DayKind.LOW: baixo})
+    # Só altos e normais: o dia normal fica no piso e o alto absorve.
+    normal = piso
+    alto = (DAYS_PER_WEEK - contagem[DayKind.NORMAL] * normal) / contagem[DayKind.HIGH]
     if alto <= normal:
-        return WeekMultipliers(by_kind=dict(FLAT_MULTIPLIERS), limitations=(LIMIT_CARB_FLOOR_PREVENTS_CYCLE,))
-    return WeekMultipliers(by_kind={DayKind.HIGH: alto, DayKind.NORMAL: normal, DayKind.LOW: baixo})
+        return plana
+    return WeekMultipliers(by_kind={DayKind.HIGH: alto, DayKind.NORMAL: normal, DayKind.LOW: LOW_CARB_MULTIPLIER})
 
 
 def _day_target(target: MacroTargets, multiplier: float) -> MacroTargets:
@@ -133,10 +152,16 @@ class WeekDistribution:
     multipliers: WeekMultipliers
     limitations: tuple[str, ...] = ()
 
+    @property
+    def day_multipliers(self) -> tuple[float, ...]:
+        """Multiplicador REAL de cada dia (segunda primeiro), para a tela mostrar."""
+        return tuple(self.multipliers.by_kind[kind] for kind in self.kinds)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "days": [d.to_dict() for d in self.days],
             "kinds": [k.value for k in self.kinds],
+            "day_multipliers": list(self.day_multipliers),
             "multipliers": self.multipliers.to_dict(),
             "limitations": list(self.limitations),
         }
@@ -193,7 +218,7 @@ class CycleDays:
 
     @property
     def cycles(self) -> bool:
-        return self.valid and DayKind.HIGH in self.kinds and DayKind.LOW in self.kinds
+        return self.valid and len(set(self.kinds)) > 1
 
     @property
     def day_map(self) -> dict[int, str]:
@@ -208,11 +233,12 @@ def _flat_week() -> tuple[DayKind, ...]:
 
 
 def _weekday_index(key: Any) -> Optional[int]:
+    """Dia 0..6 a partir de int ou de UM dígito ASCII (com espaços nas pontas); o resto é inválido."""
     if isinstance(key, bool):
         return None
     if isinstance(key, int):
         indice = key
-    elif isinstance(key, str) and key.strip().isdigit():
+    elif isinstance(key, str) and len(key.strip()) == 1 and key.strip() in "0123456789":
         indice = int(key.strip())
     else:
         return None
@@ -230,8 +256,8 @@ def _day_kind(value: Any) -> Optional[DayKind]:
 
 def validate_cycle_days(day_map: Any) -> CycleDays:
     """Valida o mapa dia da semana -> alto/normal/baixo. Dia ausente = NORMAL.
-    Erros: dia fora de 0..6 ou repetido, tipo desconhecido e combinação que não
-    preserva a média semanal (só altos ou só baixos, sem o oposto)."""
+    Erros: dia fora de 0..6 ou repetido, tipo desconhecido e a semana em que não há como
+    ciclar (os 7 dias altos ou os 7 baixos). Altos + normais ou baixos + normais é válido."""
     if not isinstance(day_map, Mapping):
         return CycleDays(kinds=_flat_week(), errors=(ERR_INVALID_DAY_MAP,))
     erros: list[str] = []
@@ -250,9 +276,8 @@ def validate_cycle_days(day_map: Any) -> CycleDays:
             continue
         escolhidos[indice] = tipo
     tipos = tuple(escolhidos.get(i, DayKind.NORMAL) for i in range(DAYS_PER_WEEK))
-    tem_alto, tem_baixo = DayKind.HIGH in tipos, DayKind.LOW in tipos
-    if not erros and tem_alto != tem_baixo:
-        erros.append(ERR_CYCLE_NEEDS_HIGH_AND_LOW)
+    if not erros and len(set(tipos)) == 1 and tipos[0] != DayKind.NORMAL:
+        erros.append(ERR_CYCLE_ALL_DAYS_SAME_EXTREME)
     if erros:
         return CycleDays(kinds=_flat_week(), errors=tuple(erros))
     return CycleDays(kinds=tipos)

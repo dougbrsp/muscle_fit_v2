@@ -40,6 +40,11 @@ export const SEX_OPTIONS = optionsOf(NUTRITION.sexes, NUTRITION.sex_labels);
 export const ACTIVITY_LEVEL_OPTIONS = optionsOf(NUTRITION.activity_levels, NUTRITION.activity_level_labels);
 export const STRATEGY_OPTIONS = optionsOf(NUTRITION.strategies, NUTRITION.strategy_labels);
 export const PROTEIN_BASIS_OPTIONS = optionsOf(NUTRITION.protein_bases, NUTRITION.protein_basis_labels);
+// N1 (2026-11-02): prioridade de macros e vocabulário da validação de gramas e da projeção (só exibição).
+export const MACRO_PRIORITY_OPTIONS = optionsOf(NUTRITION.macro_priorities, NUTRITION.macro_priority_labels);
+export const RANGE_STATUS_OPTIONS = optionsOf(NUTRITION.range_statuses, NUTRITION.range_status_labels);
+export const GOAL_KIND_OPTIONS = optionsOf(NUTRITION.goal_kinds, NUTRITION.goal_kind_labels);
+export const PROJECTION_STATUS_OPTIONS = optionsOf(NUTRITION.projection_statuses, NUTRITION.projection_status_labels);
 export const DAY_KIND_OPTIONS = optionsOf(NUTRITION.day_kinds, NUTRITION.day_kind_labels);
 export const MEAL_SLOT_OPTIONS = optionsOf(NUTRITION.meal_slots, NUTRITION.meal_slot_labels);
 export const BMR_FORMULA_OPTIONS = optionsOf(NUTRITION.bmr_formulas, NUTRITION.bmr_formula_labels);

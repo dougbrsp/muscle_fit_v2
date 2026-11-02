@@ -234,6 +234,17 @@ def normalize_macro_priority(value: Any) -> Optional[MacroPriority]:
         return None
 
 
+def _fat_cap_by_carb_floor(
+    params: StrategyParams, energia: float, proteina_kcal: float, weight_kg: Optional[float]
+) -> Optional[float]:
+    """Maior fração de gordura que ainda deixa o carboidrato no piso (o `carb_min_g_per_kg` do
+    plano, senão `MIN_CARB_G_PER_KG`). Sem peso não há piso: None."""
+    if weight_kg is None:
+        return None
+    carbo_min = params.carb_min_g_per_kg if params.carb_min_g_per_kg is not None else MIN_CARB_G_PER_KG
+    return (energia - proteina_kcal - carbo_min * weight_kg * KCAL_PER_G_CARB) / energia
+
+
 def _fat_share_for_priority(
     params: StrategyParams, priority: MacroPriority, energia: float, base_kg: float, weight_kg: Optional[float]
 ) -> float:
@@ -241,18 +252,20 @@ def _fat_share_for_priority(
     proteina_kcal = params.protein_g_per_kg * base_kg * KCAL_PER_G_PROTEIN
     if priority == MacroPriority.HIGH_CARB:
         return piso
+    cap = _fat_cap_by_carb_floor(params, energia, proteina_kcal, weight_kg)
     if priority == MacroPriority.FIXED_PROTEIN:
         restante = energia - proteina_kcal
         if restante <= 0:
             return params.fat_kcal_share
-        return min(max(FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER * restante / energia, piso), teto)
-    # HIGH_FAT: teto da faixa, mas o carboidrato não cai abaixo do piso.
-    if weight_kg is None:
-        return teto
-    carbo_min = params.carb_min_g_per_kg if params.carb_min_g_per_kg is not None else MIN_CARB_G_PER_KG
-    gordura_max = (energia - proteina_kcal - carbo_min * weight_kg * KCAL_PER_G_CARB) / energia
-    padrao = StrategyParams.defaults_for(params.strategy).fat_kcal_share
-    return min(teto, max(padrao, gordura_max))
+        share = min(max(FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER * restante / energia, piso), teto)
+        # O piso de carboidrato vale também aqui; a gordura não desce abaixo do piso da faixa.
+        return share if cap is None else max(piso, min(share, cap))
+    # HIGH_FAT: teto da faixa, mas o carboidrato não cai abaixo do piso e a gordura nunca
+    # fica abaixo da fração do próprio plano (o que o EQUILIBRADO usaria).
+    base = params.fat_kcal_share
+    if cap is None:
+        return max(base, teto)
+    return max(base, min(teto, max(base, cap)))
 
 
 def macro_split_for_priority(

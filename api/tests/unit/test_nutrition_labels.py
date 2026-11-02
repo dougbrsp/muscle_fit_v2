@@ -104,7 +104,7 @@ def test_export_for_frontend():
     # hunger_labels, water_ml_range, meal_max_items
     # L5b: + meal_parse (teto do texto e a decisão de cada item; a cota vem da API)
     # L6: + label_photo, label_legibilities, label_legibility_labels
-    assert len(bloco) == 73
+    assert len(bloco) == 74
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {

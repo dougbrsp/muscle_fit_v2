@@ -109,6 +109,17 @@ PROJECTION_STATUS_LABELS: Final[Mapping[ProjectionStatus, str]] = {
     ProjectionStatus.INSUFFICIENT_DATA: "Dados insuficientes para projetar",
 }
 
+# Dia da semana do ciclo de carbo (0 = segunda … 6 = domingo, como em `phases.refeed_dates`).
+WEEKDAY_LABELS: Final[Mapping[int, str]] = {
+    0: "Segunda-feira",
+    1: "Terça-feira",
+    2: "Quarta-feira",
+    3: "Quinta-feira",
+    4: "Sexta-feira",
+    5: "Sábado",
+    6: "Domingo",
+}
+
 MEAL_SLOT_LABELS: Final[Mapping[MealSlot, str]] = {
     MealSlot.BREAKFAST: "Café da manhã",
     MealSlot.MORNING_SNACK: "Lanche da manhã",
@@ -367,9 +378,8 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     # %G.
     bc_mod.LIMIT_BODY_FAT_MISSING: "Sem % de gordura (bioimpedância ou fita).",
     cc_mod.ERR_INVALID_DAY_MAP: "Escolha de dias do ciclo de carbo inválida: esperado um mapa dia da semana → tipo.",
-    cc_mod.ERR_CYCLE_NEEDS_HIGH_AND_LOW: (
-        "Para manter a média semanal, o ciclo de carbo precisa de ao menos um dia alto e um baixo "
-        "(ou nenhum dos dois)."
+    cc_mod.ERR_CYCLE_ALL_DAYS_SAME_EXTREME: (
+        "Com os sete dias altos (ou os sete baixos) não há ciclo: marque ao menos um dia de outro tipo."
     ),
     # Prioridade de macros (N1).
     macros_mod.ERR_INVALID_MACRO_PRIORITY: "Prioridade de macros inválida.",
@@ -379,7 +389,13 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     phases_mod.REASON_MISSING_TARGET: "Defina o peso-alvo ou o % de gordura alvo.",
     phases_mod.REASON_TWO_TARGETS: "Defina só um alvo: peso ou % de gordura.",
     phases_mod.REASON_INVALID_TARGET: "Alvo fora da faixa plausível.",
-    phases_mod.REASON_MISSING_RATE: "Sem ritmo semanal válido para projetar.",
+    phases_mod.REASON_MISSING_RATE: "Sem ritmo semanal válido (dentro da faixa da estratégia) para projetar.",
+    phases_mod.REASON_MISSING_TARGET_WEIGHT: "Não foi possível calcular o peso em que o alvo de gordura se cumpre.",
+    phases_mod.REASON_BEYOND_HORIZON: "Nesse ritmo o alvo fica além do horizonte da projeção.",
+    phases_mod.REASON_START_WRONG_SIDE: "O ponto de partida está do lado errado do alvo: o percentual do caminho não se aplica.",
+    phases_mod.REASON_LEAN_MASS_CONSTANT: (
+        "Estimativa mínima: supõe a massa livre de gordura atual constante; o prazo real tende a ser maior."
+    ),
     phases_mod.REASON_MISSING_START: "Sem o ponto de partida: o percentual do caminho não pode ser calculado.",
     phases_mod.REASON_TARGET_AGAINST_STRATEGY: "O alvo está no sentido contrário ao da estratégia.",
     phases_mod.REASON_TARGET_MOVES_WITHOUT_STRATEGY: "A manutenção não move o peso: o alvo está distante do atual.",
@@ -567,7 +583,7 @@ PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     # Dias do ciclo de carbo (N1, D5).
     cc_mod.ERR_INVALID_WEEKDAY: "Dia da semana inválido: {field}.",
     cc_mod.ERR_DUPLICATE_WEEKDAY: "Dia da semana repetido: {field}.",
-    cc_mod.ERR_INVALID_DAY_KIND: "Tipo de dia inválido (dia {field}).",
+    cc_mod.ERR_INVALID_DAY_KIND: "Tipo de dia inválido ({field}).",
     plan_mod.ERR_PARAM_NOT_APPLICABLE: "{field}: não se aplica a esta estratégia.",
     bc_mod.LIMIT_BODY_FAT_OUT_OF_RANGE: "% de gordura fora da faixa plausível ({field}).",
     # Catálogo de alimentos (L3a): `<código>:<campo da RDC 429>`.
@@ -600,6 +616,7 @@ RDC429_FIELD_LABELS: Final[Mapping[str, str]] = {campo.code: f"{campo.label} ({c
 
 _FIELD_LABELS: Final[Mapping[str, str]] = {
     **PLAN_FIELD_LABELS,
+    **{str(indice): nome for indice, nome in WEEKDAY_LABELS.items()},
     **labels_by_code(BODY_FAT_METHOD_LABELS),
     **RDC429_FIELD_LABELS,
 }

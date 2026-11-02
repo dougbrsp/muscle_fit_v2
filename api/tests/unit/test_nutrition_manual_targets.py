@@ -50,8 +50,53 @@ def test_proteina_absurda_bloqueia(proteina, codigo):
 
 
 def test_limites_exatos_de_proteina_nao_bloqueiam():
+    # Piso sobre o PESO (0,8 × 80); teto sobre a MLG (3,5 × 64) quando há MLG.
     assert _campo(_check(0.8 * PESO, 300, 70), "protein_g").status == R.WARNING
-    assert _campo(_check(3.5 * PESO, 300, 70), "protein_g").status == R.WARNING
+    assert _campo(_check(3.5 * MLG, 300, 70), "protein_g").status == R.WARNING
+    assert _campo(_check(3.5 * MLG + 1, 300, 70), "protein_g").status == R.BLOCKED
+
+
+def test_bloqueio_de_proteina_usa_peso_no_piso_e_mlg_no_teto():
+    # 200 g: 2,5 g/kg do peso (aviso na manutenção), mas 3,125 g/kg da MLG, ainda abaixo do teto.
+    assert _campo(_check(200, 300, 70), "protein_g").status == R.WARNING
+    # 240 g: 3,0 g/kg do peso, 3,75 g/kg da MLG: bloqueia só porque o teto usa a MLG.
+    assert _campo(_check(240, 300, 70), "protein_g").codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",)
+    assert _campo(_check(240, 300, 70, ffm_kg=None), "protein_g").status == R.WARNING  # sem MLG, o teto usa o peso
+    # No cutting sem MLG, o piso e o teto são sobre o peso.
+    assert _campo(_check(50, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g").status == R.BLOCKED  # 0,625 g/kg
+    assert _campo(_check(300, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g").status == R.BLOCKED  # 3,75 g/kg
+
+
+def test_zero_de_proteina_no_cutting_sem_mlg_bloqueia_pelo_peso():
+    r = _check(0, 200, 55, estrategia=S.CUTTING, ffm_kg=None)
+    assert _campo(r, "protein_g").codes == (f"{mt.MANUAL_BLOCKED_BELOW}:protein_g",) and not r.can_save
+
+
+def test_sem_nenhuma_base_o_campo_nunca_sai_dentro_da_faixa():
+    r = _check(0, 900, 70, estrategia=S.CUTTING, weight_kg=None, ffm_kg=None)
+    for campo in ("protein_g", "carb_g"):
+        assert _campo(r, campo).status == R.WARNING
+        assert _campo(r, campo).codes == (f"{mt.MISSING_BASE}:{campo}",)
+    assert r.status == R.WARNING and r.can_save
+    assert lb.limitation_label(f"{mt.MISSING_BASE}:protein_g").startswith("Prote")
+    # Cutting com peso mas sem %G: a faixa da proteína (por MLG) não é conferida, e 0 g ainda bloqueia pelo piso.
+    sem_mlg = _check(160, 200, 55, estrategia=S.CUTTING, ffm_kg=None)
+    assert _campo(sem_mlg, "protein_g").status == R.WARNING and _campo(sem_mlg, "carb_g").status != R.WARNING
+
+
+@pytest.mark.parametrize("enorme", [1e308, 5001, 1e30, "1e308"])
+def test_gramas_enormes_sao_invalidas_e_o_resultado_serializa(enorme):
+    import json
+
+    r = _check(enorme, 300, 70)
+    assert r.kcal is None and not r.can_save
+    assert _campo(r, "protein_g").codes == (f"{mt.MANUAL_INVALID_VALUE}:protein_g",)
+    json.dumps(r.to_dict(), allow_nan=False)
+
+
+def test_texto_numerico_e_aceito_como_numero():
+    # Contrato de `non_negative_number`: "160" vale 160 (a rota recebe JSON, mas o motor não presume o tipo).
+    assert _check("160", "300", "70").kcal == pytest.approx(_check(160, 300, 70).kcal)
 
 
 def test_proteina_do_cutting_usa_a_base_de_massa_livre_de_gordura():
@@ -113,6 +158,7 @@ def test_valor_invalido_bloqueia_sem_kcal(ruim):
 def test_sem_peso_nao_inventa_g_por_kg():
     r = _check(160, 300, 70, weight_kg=None, ffm_kg=None)
     assert _campo(r, "protein_g").metric_value is None and _campo(r, "carb_g").metric_value is None
+    assert _campo(r, "protein_g").status == R.WARNING
     assert set(r.limitations) == {f"{mt.LIMIT_MISSING_BASE}:protein_g", f"{mt.LIMIT_MISSING_BASE}:carb_g"}
     assert r.can_save
 
@@ -136,7 +182,7 @@ def test_todo_codigo_emitido_tem_rotulo_com_o_campo():
         mt.MANUAL_BLOCKED_ABOVE,
         mt.MANUAL_BELOW_BMR,
         mt.MANUAL_DIFFERS_FROM_TARGET,
-        mt.LIMIT_MISSING_BASE,
+        mt.MISSING_BASE,
     ):
         texto = lb.limitation_label(f"{codigo}:carb_g")
         assert texto.startswith("Carboidrato (g)")

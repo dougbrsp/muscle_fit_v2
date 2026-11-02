@@ -122,13 +122,31 @@ def fat_share_range_for(strategy: Strategy) -> tuple[float, float]:
     return MAINT_FAT_KCAL_SHARE_RANGE
 
 
-def weekly_rate_share_for(params: "StrategyParams") -> Optional[float]:
+def weekly_rate_share_range_for(strategy: Strategy) -> Optional[tuple[float, float]]:
+    """Faixa do ritmo semanal (fração do peso): perda no cutting, ganho no bulking;
+    manutenção não tem."""
+    if strategy == Strategy.CUTTING:
+        return CUT_WEEKLY_RATE_SHARE_RANGE
+    if strategy == Strategy.BULKING:
+        return BULK_WEEKLY_RATE_SHARE_RANGE
+    return None
+
+
+def weekly_rate_share_for(
+    params: "StrategyParams", tdee_kcal: Any = None, weight_kg: Any = None, fat_mass_kg: Any = None
+) -> Optional[float]:
     """Ritmo semanal (fração do peso) da estratégia para projetar o alvo:
-    cutting = o do plano ou o default; bulking = piso da faixa de ganho;
-    manutenção = None (o peso não se move)."""
+    cutting = o do plano ou o default; bulking = o implicado pelo superávit do plano
+    (`surplus_share` × TDEE, na densidade energética da massa gorda atual) quando há
+    TDEE, peso e massa gorda; senão o piso da faixa de ganho; manutenção = None."""
     if params.strategy == Strategy.CUTTING:
         return params.weekly_rate_share if params.weekly_rate_share is not None else CUT_WEEKLY_RATE_SHARE_DEFAULT
     if params.strategy == Strategy.BULKING:
+        tdee, peso = positive_number(tdee_kcal), positive_number(weight_kg)
+        if params.surplus_share is not None and tdee is not None and peso is not None:
+            kg_semana = weekly_kg_for_daily_kcal(params.surplus_share * tdee, fat_mass_kg)
+            if kg_semana is not None and kg_semana > 0:
+                return kg_semana / peso
         return BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT
     return None
 

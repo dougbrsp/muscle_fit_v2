@@ -246,7 +246,7 @@ recebe o formulário pré-preenchido pronto.
 | Macros: Atwater 4/4/9/7, fibra 14 g/1.000 kcal, divisão em gramas, proteína por refeição 0,40–0,55 g/kg, 3–6 refeições | `nutrition/macros.py` (`kcal_from_macros`, `macro_split`, `macro_split_for_priority` e `normalize_macro_priority` do N1, §78; `KCAL_PER_G_*`) + `strategy.MacroPriority` | `meal_math`, `carb_cycling`, `daily_target`, diário (L4); presets de prioridade pelo plano (N2) | `* 4`/`/ 9` ou `KCAL_PER_G_* = <número>` fora do dono | L1 | `kcal_por_grama`, `faixa_proteina` |
 | Ciclo de carbo: dia de treino ×1,25, descanso ×0,75 reescalados para a soma semanal = 7 × alvo, piso 1 g/kg, proteína e gordura constantes, kcal acompanha o carbo (D-I) | `nutrition/carb_cycling.py` (`day_kinds_for_week`, `week_multipliers`, `distribute_week`, `apply_cycle`; N1, §78: `validate_cycle_days`, `propose_day_kinds`, `distribute_week_over_mean`) | `daily_target`; materialização com os dias escolhidos ou puxados do Modelo (N2) | multiplicador ou piso reescritos; ciclar fora do dono | L1 | — (sem literal estável; invariantes em `test_nutrition_carb_cycling.py`) |
 | Calendário de fases: MATADOR 2/2, ICECAP 3/1, refeed 2 dias/semana, teto de 8 semanas de cutting sem pausa, %G de parada (H 15/10, M 25/18, D-C; o efetivo é o do plano ou o default, `resolve_stop_body_fat`, L2b); pausa/refeed levam a meta à manutenção | `nutrition/phases.py` (`propose_calendar`, `phase_for_date`, `refeed_dates`, `stop_body_fat_default`, `resolve_stop_body_fat`, `should_stop`; N1, §78: `project_goal`, `GoalProjection`, `ProjectionStatus`) | publish do plano (L2/L8), `plan.goal_summary` (L2b), `context_service` (fase derivada, L8) | protocolo escrito à mão ("2 on/2 off", "3+1"); fallback do %G de parada na rota ou na tela | L1 | `pausa_dieta` |
-| Gramas manuais de macros (N1, §78, D6): kcal resultante (Atwater), resultado por campo (`RangeStatus`: dentro da faixa, aviso que salva, bloqueio) com a faixa de aviso da estratégia e limites de bloqueio com fonte (proteína 0,8–3,5 g/kg, gordura 10–60% das kcal, carboidrato até 12 g/kg, energia 800–8.000 kcal); avisos de energia contra a TMB e a meta | `nutrition/manual_targets.py` (`check_manual_targets`, `ManualTargetsCheck`, `FieldCheck`, `RangeStatus`, `*_BLOCK_*`, `*_WARN_*`) | plano autogerido (N2: salva se `can_save`, mostra os avisos), FE via JSON (`range_statuses`) | limite de bloqueio ou faixa de aviso das gramas escrito na rota, no Pydantic ou na tela; kcal das gramas manuais somada fora do dono | N1 | `faixa_proteina` (os limites com número) |
+| Gramas manuais de macros (N1, §78, D6): kcal resultante (Atwater), resultado por campo (`RangeStatus`: dentro da faixa, aviso que salva, bloqueio; sem base de g/kg o campo é AVISO `manual_missing_base_for_field`, nunca dentro da faixa) com a faixa de aviso da estratégia e limites de bloqueio: proteína 0,8 g/kg do PESO (piso) e 3,5 g/kg da MLG (teto; sem MLG, do peso), gordura 10–60% das kcal, carboidrato até 12 g/kg, energia 800–8.000 kcal, gramas até `MANUAL_GRAMS_MAX`. Fontes: RDA/IOM, Antonio 2014/2016, VLCD; piso de gordura, tetos de carboidrato e de energia são default de desenho | `nutrition/manual_targets.py` (`check_manual_targets`, `ManualTargetsCheck`, `FieldCheck`, `RangeStatus`, `*_BLOCK_*`, `*_WARN_*`) | plano autogerido (N2: salva se `can_save`, mostra os avisos), FE via JSON (`range_statuses`) | limite de bloqueio ou faixa de aviso das gramas escrito na rota, no Pydantic ou na tela; kcal das gramas manuais somada fora do dono | N1 | `faixa_proteina` (os limites com número) |
 | Rótulo da prioridade de macros (N1, §78): "Equilibrado", "Proteína fixa…", "Carboidrato alto…", "Gordura alta…" | `nutrition/labels.py` (`MACRO_PRIORITY_LABELS`, `RANGE_STATUS_LABELS`, `GOAL_KIND_LABELS`, `PROJECTION_STATUS_LABELS`) → bloco `nutrition` do JSON gerado (`macro_priority_labels` etc.) | telas do plano (N2) | rótulo escrito à mão no FE ou no prompt | N1 | `rotulo_prioridade_macros` |
 | TDEE observado (adaptativo): ingestão média − inclinação do peso (mínimos quadrados) × densidade; só com ≥ 14 dias, ≥ 80% registrados e pesagens cobrindo ≥ 1 semana; `reconcile` só SUGERE (D-J) | `nutrition/adaptive_tdee.py` (`observed_tdee`, `weight_trend`, `reconcile`, `RECONCILE_WEIGHT_BY_QUALITY`) | dashboard (L7), sugestão de recálculo ao admin/PT (L8) | recálculo automático do plano; tendência de peso própria para o gasto | L1 | — (limiares cobertos por `test_nutrition_adaptive_tdee.py`) |
 | Semana: começa na segunda, orçamento = soma das metas (E3), banco ≤ 10% do alvo diário e ≤ 5% do semanal, aderência ±5% nas kcal e proteína ≥ 90%, semana válida com ≥ 5 dias (D-H). Diário (L4, §52): dia "registrado" só com refeição e energia + 3 macros COMPLETOS (`intake_macros`; dia de total incompleto fica fora do banco e da aderência, `intake_incomplete_days`), balanço do dia por nutriente (`day_balance`: meta − ingestão e fração da meta só com ingestão completa; ingestão − TDEE), relatório da semana (`week_report`) e a correspondência nutriente do diário → campo da meta (`BALANCE_FIELDS`) | `nutrition/weekly_budget.py` (`week_start`, `weekly_budget`, `bank_state`, `weekly_adherence`, `target_macros`, `intake_macros`, `day_balance`, `week_report`) | `GET /nutrition/weeks` e `GET /nutrition/days/{date}` (`nutrition_days.py`, L4), dashboard (L7) | tolerância/teto reescritos; SQL decidindo aderência; saldo ou fração da meta calculados na tela; dia incompleto somado como se fosse completo | L1, L4 | `diario_nutricao`, `soma_nutrientes` |
@@ -6380,26 +6380,49 @@ Só motor: sem migração, sem rota, sem tela; os consumidores chegam no N2. Tud
   de sempre, bit a bit (teste de retrocompatibilidade). Os outros presets mantêm a proteína (g/kg do plano) e só
   movem a fração de gordura dentro da faixa da estratégia (Helms 2014, 15–30% no cutting; Iraki 2019 e ISSN 2017,
   20–35% no bulking e na manutenção): FIXED_PROTEIN divide o que sobra em partes iguais de kcal entre carboidrato e
-  gordura (`FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER`); HIGH_CARB põe a gordura no piso; HIGH_FAT no teto, sem deixar o
-  carboidrato abaixo do piso (`carb_min_g_per_kg` do bulking, senão `MIN_CARB_G_PER_KG`, que é também o piso do dia
-  baixo do ciclo). O plano ainda não guarda a prioridade (coluna `macro_priority` no N2).
+  gordura (`FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER`); HIGH_CARB põe a gordura no piso; HIGH_FAT no teto. FIXED_PROTEIN
+  e HIGH_FAT respeitam o piso de carboidrato (`carb_min_g_per_kg` do bulking, senão `MIN_CARB_G_PER_KG`, que é
+  também o piso do ciclo), e HIGH_FAT nunca dá menos gordura que a fração do próprio plano. O plano ainda não
+  guarda a prioridade (coluna `macro_priority` no N2).
 - **Gramas manuais** (`manual_targets.check_manual_targets`). Faixa de aviso = faixa da fonte da estratégia; bloqueio
-  = limite do módulo, cada um com a razão no comentário (RDA 0,8 g/kg; Antonio 2014/2016 até 3,4 g/kg; FAO/WHO 2010 e IOM
-  2005 para a gordura; Burke 2011 para o carboidrato; VLCD < 800 kcal; 8.000 kcal como teto de desenho). Limites sem
-  fonte primária estão marcados "default de desenho" para o dono do produto ajustar.
-- **Projeção até o alvo** (`phases.project_goal`). Ritmo composto em % do peso por semana (cutting: o do plano ou
-  `CUT_WEEKLY_RATE_SHARE_DEFAULT`; bulking: piso da faixa, `BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT`). Alvo de %G
-  usa a MLG atual constante (conservador no bulking). Situações: projetado, alcançado, incoerente com a estratégia,
-  dados insuficientes (com o motivo; nunca número inventado). O percentual do caminho precisa do ponto de partida.
+  = limite do módulo, cada um com a razão no comentário. Bases da proteína: o PISO (0,8 g/kg, RDA do IOM) é sempre
+  sobre o PESO quando há peso; o TETO (3,5 g/kg, Antonio 2014/2016) é sobre a MLG quando há, e no cutting sem MLG
+  sobre o peso. Sem a base de um g/kg o campo sai em AVISO `manual_missing_base_for_field:<campo>` (nunca dentro da
+  faixa). Gramas acima de `MANUAL_GRAMS_MAX` ou não finitas são inválidas (sem kcal). Têm fonte: o piso de proteína
+  (RDA), o teto de proteína (Antonio) e o piso de energia (VLCD). São DEFAULT DE DESENHO, sem fonte que os fixe: o piso
+  de gordura de 10% (a FAO/WHO 2010 indica 15–20%, então o bloqueio fica abaixo da fonte de propósito e a faixa entre
+  eles salva com aviso), o teto de gordura de 60%, o aviso e o bloqueio de carboidrato (8 e 12 g/kg; Burke 2011 são
+  faixas de endurance e só dão contexto) e o teto de 8.000 kcal (Westerterp 1986, ~6.500 kcal/dia, é só contexto).
+  As citações vieram de memória e não foram conferidas na fonte primária.
+- **Projeção até o alvo** (`phases.project_goal(params, ...)`). Ritmo composto em % do peso por semana, de
+  `strategy.weekly_rate_share_for` (cutting: o do plano ou `CUT_WEEKLY_RATE_SHARE_DEFAULT`; bulking: o implicado
+  pelo `surplus_share` do plano quando há TDEE, peso e massa gorda, senão o piso da faixa de ganho). Ritmo informado
+  precisa estar na faixa da estratégia (senão `projection_missing_rate`); passa de `PROJECTION_MAX_WEEKS` (520) devolve
+  `projection_beyond_horizon`. Alvo de %G supõe a MLG atual constante: o peso final é o MÍNIMO que cumpre o alvo, então
+  o prazo é OTIMISTA (limite inferior; o real tende a ser maior). O resultado traz `is_minimum_estimate` e o motivo
+  `projection_lean_mass_constant`; não há modelo de partição de massa. Situações: projetado, alcançado, incoerente
+  com a estratégia, dados insuficientes (com o motivo; nunca número inventado). O percentual do caminho precisa do
+  ponto de partida do lado certo do alvo (senão `projection_start_on_wrong_side`).
 - **Ciclo de carbo por dias escolhidos** (`carb_cycling.validate_cycle_days`, `propose_day_kinds`,
-  `distribute_week_over_mean`). Dias 0 = segunda … 6 = domingo; só semana sem ciclo ou com ao menos um dia alto E um baixo
-  preserva a média (alto+normal ou baixo+normal não somam 7). `distribute_week_over_mean` cicla sobre a MÉDIA
-  semanal do carbo: ciclar dia a dia sobre metas que já variam com o treino explícito somava cerca de +50 g/semana
-  (coberto por teste). `plan.py` continua recusando `carb_cycling_unavailable` e `daily_target` não mudou: religar é do N2.
+  `distribute_week_over_mean`). Dias 0 = segunda … 6 = domingo (chave inteira ou UM dígito ASCII). Qualquer mistura é aceita
+  menos os 7 dias altos ou os 7 baixos (não há como ciclar). Altos + normais ou baixos + normais preservam a média pela
+  mesma escala de `week_multipliers`, então o dia normal pode ficar fora de 1,0 (ex.: 0,933 com 2 altos e 5 normais);
+  `WeekDistribution.day_multipliers` devolve o multiplicador real de cada dia. O piso de 1 g/kg vale para o tipo mais baixo
+  da semana (baixo, ou normal se não há baixo). `distribute_week_over_mean` cicla sobre a MÉDIA semanal do carbo: ciclar
+  dia a dia sobre metas que já variam com o treino explícito somava cerca de +50 g/semana (coberto por teste). A soma de
+  carbo, proteína e gordura se preserva sempre; a de kcal só quando cada meta de entrada fecha por Atwater (a kcal do
+  dia é recalculada; meta com `kcal_below_protein_and_fat` sai com a kcal de Atwater, coberto por teste). `plan.py`
+  continua recusando `carb_cycling_unavailable` e `daily_target` não mudou: religar é do N2.
 - **Espelho do FE**: `export_for_frontend` ganhou só vocabulário e rótulos (`macro_priorities`, `range_statuses`,
-  `goal_kinds`, `projection_statuses`, `default_macro_priority`); nenhum número de cálculo. Guarda: padrão novo
-  `rotulo_prioridade_macros` (allowlist vazia) e `manual_targets.py` como dono em `faixa_proteina`.
+  `goal_kinds`, `projection_statuses`, `weekday_names`, `default_macro_priority`); nenhum número de cálculo. Guarda:
+  padrão novo `rotulo_prioridade_macros` (allowlist vazia) e `manual_targets.py` como dono em `faixa_proteina`.
+
+**Pendência do N2**: `distribute_week_over_mean` exige as 7 metas da semana, e `daily_target` materializa dia a dia,
+com treino futuro desconhecido e dias já congelados. O N2 precisa decidir como montar a média semanal (metas congeladas
+mais as ainda calculáveis) antes de ligar o ciclo à materialização.
 
 **Impacto em produção**: nenhum. Sem migração, variável de ambiente, IAM ou Terraform; nenhum consumidor em runtime
-chama as funções novas, e `macro_split`, `distribute_week`, `daily_target` e `plan` seguem com o comportamento anterior.
-Único arquivo gerado que muda é `frontend/src/lib/motor-constants.generated.json` (43 linhas aditivas no bloco `nutrition`).
+chama as funções novas, e `macro_split`, `distribute_week`, `daily_target` e `plan` seguem com o comportamento anterior
+nos fluxos que existem hoje (`week_multipliers` só ganhou comportamento novo para semanas só com altos ou só com baixos
+mais normais, que `day_kinds_for_week` nunca produz). Único arquivo gerado que muda é
+`frontend/src/lib/motor-constants.generated.json` (linhas aditivas no bloco `nutrition`).
