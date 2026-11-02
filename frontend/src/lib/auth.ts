@@ -137,4 +137,13 @@ export async function confirmLogoutWithUnsyncedOps(): Promise<boolean> {
 
 // Contrato `hasActiveWork()` (Frente C): a implementação real é carregada sob
 // demanda para não pesar no bundle comum. Erro ao carregar = "há trabalho".
-registerActiveWorkProvider(async () => (await import('./offline/active-work')).offlineHasActiveWork());
+// O chunk é pré-carregado já na abertura (e memorizado): pedi-lo só quando um SW
+// novo entra em `waiting` atravessava o SW antigo no meio da troca e travava o
+// kill switch (e2e/pwa/service-worker.spec.ts).
+let activeWorkModule: Promise<typeof import('./offline/active-work')> | null = null;
+function loadActiveWorkModule() {
+  activeWorkModule ??= import('./offline/active-work');
+  return activeWorkModule;
+}
+if (typeof window !== 'undefined') void loadActiveWorkModule().catch(() => undefined);
+registerActiveWorkProvider(async () => (await loadActiveWorkModule()).offlineHasActiveWork());

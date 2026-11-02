@@ -141,7 +141,7 @@ test('nenhuma resposta da API (nem /auth) vai para o Cache Storage, mesmo com cr
   expect(urls.filter((u) => /mock-api\.test|api\.musclefit|\/auth\/|\/activities|\/workout-sessions/.test(u))).toEqual([]);
 });
 
-test('atualização sem provedor de trabalho ativo: fica em waiting, sem aviso e sem recarregar', async ({ page }) => {
+test('atualização com provedor registrado e sem trabalho ativo: fica em waiting, avisa e não recarrega sozinha', async ({ page }) => {
   await page.goto('/?mobile=1');
   await waitControlled(page);
   await page.evaluate(() => {
@@ -154,10 +154,10 @@ test('atualização sem provedor de trabalho ativo: fica em waiting, sem aviso e
     .poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => !!r?.waiting)), { timeout: 20_000 })
     .toBe(true);
 
-  // Nenhuma frente registrou provedor de hasActiveWork(): "desconhecido" = ocupado. Sem aviso
-  // (esperando mais que o intervalo de reavaliação de 5 s), sem recarga, SW antigo ativo.
-  await page.waitForTimeout(7000);
-  await expect(page.getByTestId('pwa-update-notice')).toHaveCount(0);
+  // O provedor da Frente B (registrado por lib/auth.ts) responde "sem trabalho ativo" na tela de
+  // login: o aviso aparece, mas a página NÃO recarrega sozinha (só ao tocar em Atualizar).
+  // ("Sem provedor = ocupado" é coberto por unit em src/lib/pwa/update-gate.)
+  await expect(page.getByTestId('pwa-update-notice')).toBeVisible({ timeout: 20_000 });
   expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe('viva');
   const during = await cacheNames(page);
   expect(during).toEqual(expect.arrayContaining(['musclefit-static-e2e-v1', 'musclefit-static-e2e-v2']));
