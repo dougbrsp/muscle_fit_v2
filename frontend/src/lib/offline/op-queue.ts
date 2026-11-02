@@ -91,6 +91,7 @@ export function createOpQueue(deps: OpQueueDeps) {
   let flushing: Promise<void> | null = null;
   let flushAgain = false;
   let generation = 0;
+  let hydratedUser: number | null = null;
 
   function buildSnapshot(): QueueSnapshot {
     let error = 0;
@@ -139,12 +140,16 @@ export function createOpQueue(deps: OpQueueDeps) {
   onOfflinePurge(() => {
     generation += 1;
     userId = null;
+    hydratedUser = null;
     ops = [];
     emit();
   });
 
   /** Carrega as ops do usuário; `syncing` que sobrou de um fechamento abrupto volta a `saved_local`. */
   async function hydrate(forUser: number): Promise<void> {
+    // Mesmo usuário já carregado (remontagem, volta da rede): não recarrega do disco
+    // nem derruba um envio em andamento — evita reenvio desnecessário.
+    if (hydratedUser === forUser && userId === forUser) return;
     generation += 1;
     const myGeneration = generation;
     userId = forUser;
@@ -168,6 +173,7 @@ export function createOpQueue(deps: OpQueueDeps) {
       }
     }
     ops = loaded;
+    hydratedUser = forUser;
     emit();
   }
 

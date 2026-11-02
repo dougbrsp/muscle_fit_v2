@@ -9,7 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  *   npx playwright test -c playwright.resilience.config.ts
  */
-const PORT = 4174;
+const PORT = Number(process.env.E2E_PORT ?? 4174);
 const externalBase = process.env.E2E_BASE_URL;
 
 export default defineConfig({

@@ -266,3 +266,21 @@ test('descanso do FST-7 vencido em segundo plano mostra "expirado ha mm:ss" ao v
   expect(seconds).toBeGreaterThanOrEqual(15);
   expect(seconds).toBeLessThanOrEqual(25);
 });
+
+test('reabrir sem rede com usuario conhecido restaura a sessao local e mostra o aviso offline', async ({ page }) => {
+  await openWorkout(page);
+  await logSet(page, 10, 40);
+  await expect(page.getByTestId('rest-clock')).toBeVisible();
+
+  api.setNetworkDown(true);
+  await page.reload();
+  await expect(page.getByTestId('offline-banner')).toContainText('Offline');
+  // Sessao local restaurada do IndexedDB (nao cai na selecao de modo). A tela do
+  // exercicio depende de dados do servidor (nao persistidos): limite conhecido.
+  await expect(page.getByRole('button', { name: 'Sair do modo de treino' })).toBeVisible({ timeout: 20_000 });
+  expect((await idbKeys(page)).some((k) => k.startsWith('workout_session/v1:1:session'))).toBe(true);
+
+  api.setNetworkDown(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByTestId('offline-banner')).toHaveCount(0, { timeout: 20_000 });
+});
