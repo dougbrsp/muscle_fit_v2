@@ -217,5 +217,10 @@ export function nutritionLabel(
 export type LabelPhotoParams = typeof NUTRITION.label_photo;
 
 export const LABEL_PHOTO: LabelPhotoParams = NUTRITION.label_photo;
+
+// Foto do prato (Lote L10): dono `domain/nutrition/meal_photo.py`. Mesma leitura do
+// JSON gerado: limite, redução, retenção e o texto da cota esgotada são do motor.
+export type MealPhotoParams = typeof NUTRITION.meal_photo;
+export const MEAL_PHOTO: MealPhotoParams = NUTRITION.meal_photo;
 /** Legibilidade que a leitura devolve (tabela legível, parcial, ilegível). */
 export const LABEL_LEGIBILITY_OPTIONS = optionsOf(NUTRITION.label_legibilities, NUTRITION.label_legibility_labels);

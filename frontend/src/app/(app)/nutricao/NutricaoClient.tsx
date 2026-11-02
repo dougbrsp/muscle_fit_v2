@@ -1,7 +1,7 @@
 'use client';
 
 import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { IconAlertTriangle, IconPlus, IconSparkles } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { DayHeader } from '@/components/nutrition/DayHeader';
@@ -32,7 +32,7 @@ type Editing = { mode: 'new' } | { mode: 'edit'; meal: Meal } | { mode: 'parsed'
  * refeições; admin e personal trainer escolhem o aluno (sem vínculo formal,
  * D-L). Meta do dia, totais, balanço, semana e kcal do treino vêm prontos da
  * API (motor `domain/nutrition`); o preview da refeição é uma chamada (E9). A
- * refeição também pode ser descrita em texto para a IA ler (L5b, `MealParseModal`):
+ * refeição também pode ser descrita em texto (L5b) ou fotografada (L10) para a IA ler (`MealParseModal`):
  * o editor abre com os itens propostos para a pessoa confirmar. A tela só exibe.
  */
 export function NutricaoClient() {
@@ -41,7 +41,7 @@ export function NutricaoClient() {
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
-  const [lendo, setLendo] = useState(false);
+  const [lendo, setLendo] = useState<'text' | 'photo' | null>(null);
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
   const role = currentUserQuery.data?.role;
@@ -97,7 +97,7 @@ export function NutricaoClient() {
           Diário
         </Title>
         <Text c={BRAND.textMuted} size="md">
-          Registre as refeições com alimentos do catálogo ou descreva a refeição para a IA ler. A meta do dia, os
+          Registre as refeições com alimentos do catálogo, por foto do prato ou descrevendo para a IA ler. A meta do dia, os
           totais e a semana são calculados pelo motor de nutrição.
         </Text>
       </Stack>
@@ -154,7 +154,10 @@ export function NutricaoClient() {
                   </Group>
                   {editing === null && (
                     <Group gap="xs">
-                      <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => setLendo(true)}>
+                      <Button variant="light" color="brand" leftSection={<IconCamera size={16} />} onClick={() => setLendo('photo')}>
+                        Foto do prato
+                      </Button>
+                      <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => setLendo('text')}>
                         Descrever com IA
                       </Button>
                       <Button color="brand" leftSection={<IconPlus size={16} />} onClick={() => setEditing({ mode: 'new' })}>
@@ -165,12 +168,13 @@ export function NutricaoClient() {
                 </Group>
                 {dia.totals && <TotalsLine totals={dia.totals} />}
                 <MealParseModal
-                  opened={lendo}
-                  onClose={() => setLendo(false)}
+                  opened={lendo !== null}
+                  mode={lendo ?? 'text'}
+                  onClose={() => setLendo(null)}
                   userId={userId}
                   date={date}
                   onParsed={(form) => {
-                    setLendo(false);
+                    setLendo(null);
                     setEditing({ mode: 'parsed', form });
                   }}
                 />

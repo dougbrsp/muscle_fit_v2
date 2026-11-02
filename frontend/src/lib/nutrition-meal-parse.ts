@@ -4,7 +4,7 @@
 // (`domain/nutrition/meal_parse`, `meal_math`), que a API aplica na leitura, no
 // preview e na gravação. A tela não decide nada pela nota nem por número.
 
-import { AI_ESTIMATE_BASIS, MEAL_PARSE_STATUS_OPTIONS, nutritionLabel } from './nutrition-constants';
+import { AI_ESTIMATE_BASIS, MEAL_PARSE_STATUS_OPTIONS, MEAL_PHOTO, nutritionLabel } from './nutrition-constants';
 import type { MealEditorForm, MealEditorItem } from './nutrition-meal-form';
 import type { MealParseItem, MealParseResult } from './nutrition-types';
 
@@ -31,6 +31,13 @@ export function editorItemFromParse(item: MealParseItem, key: string): MealEdito
     originLabel: nutritionLabel(MEAL_PARSE_STATUS_OPTIONS, item.status),
     notices: item.limitations,
   };
+}
+
+/** Foto do prato (L10) -> o mesmo editor da leitura por texto: sem texto descrito e
+ * com a origem que a API grava. Os avisos da leitura vêm prontos do motor. */
+export function editorFormFromPhoto(result: MealParseResult, context: { date: string; slot: string | null }): MealEditorForm {
+  const form = editorFormFromParse(result, { ...context, text: '' });
+  return form.ai ? { ...form, ai: { ...form.ai, ai_source: MEAL_PHOTO.meal_source } } : form;
 }
 
 /** Resultado da leitura -> formulário do editor (dia e refeição da leitura, ou os da tela). */

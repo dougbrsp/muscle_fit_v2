@@ -448,6 +448,8 @@ export type MealPayload = {
 export type MealCreatePayload = MealPayload & {
   user_id?: number | null;
   ai_job_id?: string | null;
+  /** Só a foto do prato (L10): `MEAL_PHOTO.meal_source`. */
+  ai_source?: string | null;
   description_raw?: string | null;
 };
 
@@ -521,6 +523,21 @@ export type MealParseResult = {
   prompt_version: string;
   engine_version: string;
 };
+
+/** `POST /nutrition/meals/photo` (`MealPhotoUploadIn`, L10): foto reduzida em base64 sem padding. */
+export type MealPhotoPayload = {
+  image_base64: string;
+  local_date: string;
+  meal_slot: NutritionCode | null;
+  user_id?: number | null;
+};
+
+/** `POST /nutrition/meals/photo` (202): o job e o prazo do polling (em segundos). */
+export type MealPhotoDispatch = { job_id: string; status: string; poll_timeout_seconds: number | null };
+
+/** Resultado do job da foto: a forma da leitura por texto, com o que a IA viu. Sem itens
+ * (foto sem comida ou não identificada), o motivo vem em `limitations`. */
+export type MealPhotoResult = MealParseResult & { plate_status: NutritionCode };
 
 export type MealPreview = {
   user_id: number;

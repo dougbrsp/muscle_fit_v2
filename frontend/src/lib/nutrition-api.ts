@@ -7,7 +7,7 @@ import { apiFetch, ApiError } from './api';
 import { ASYNC_JOB_POLL_TIMEOUT_MS, dispatchAndPollJob, pollAsyncJob } from './async-job-poll';
 import { blobToBase64 } from './base64';
 import { resizeImageForUpload } from './image-resize';
-import { LABEL_PHOTO } from './nutrition-constants';
+import { LABEL_PHOTO, MEAL_PHOTO } from './nutrition-constants';
 import type {
   AiQuota,
   DayLogPayload,
@@ -28,6 +28,9 @@ import type {
   Meal,
   MealCreatePayload,
   MealParsePayload,
+  MealPhotoDispatch,
+  MealPhotoPayload,
+  MealPhotoResult,
   MealParseResult,
   MealPayload,
   MealPreview,
@@ -290,6 +293,56 @@ export function parseMealText(payload: MealParsePayload): Promise<MealParseResul
       timeoutMessage: 'A leitura da refeição demorou demais. Tente novamente em instantes.',
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Foto do prato (Lote L10): mesmo caminho da foto do rótulo; itens, casamento, cota e
+// mensagens são da API. A tela reduz, envia e acompanha o job.
+// ---------------------------------------------------------------------------
+
+export const mealPhotoKeys = {
+  usage: ['nutrition-meal-photo-usage'] as const,
+};
+
+/** Cota de análises de foto do prato de hoje, de quem pede (N vem da API). */
+export function fetchMealPhotoUsage(): Promise<AiQuota> {
+  return apiFetch<AiQuota>('/nutrition/meals/photo/usage');
+}
+
+export type MealPhotoContext = Omit<MealPhotoPayload, 'image_base64'>;
+
+/** Envia a foto JÁ REDUZIDA como base64 sem padding (motivo em `uploadLabelPhoto`). */
+export async function uploadMealPhoto(photo: Blob, context: MealPhotoContext): Promise<MealPhotoDispatch> {
+  const payload: MealPhotoPayload = { ...context, image_base64: await blobToBase64(photo, { padding: false }) };
+  return apiFetch<MealPhotoDispatch>('/nutrition/meals/photo', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/**
+ * Foto escolhida -> redução por canvas (sempre; se o navegador não conseguir, NADA é
+ * enviado) -> upload -> polling do job até o prazo que a API devolveu. Resolve com os
+ * itens lidos; lista vazia = foto sem comida ou não identificada, com o motivo em
+ * `limitations`.
+ */
+export async function readMealPhoto(
+  file: Blob,
+  context: MealPhotoContext,
+  onStage?: (stage: LabelPhotoStage) => void,
+): Promise<MealPhotoResult> {
+  onStage?.('resizing');
+  const reduzida = await resizeImageForUpload(file, {
+    maxEdge: MEAL_PHOTO.resize_max_edge_px,
+    quality: MEAL_PHOTO.resize_quality,
+    contentType: MEAL_PHOTO.content_type,
+  });
+  onStage?.('uploading');
+  const despacho = await uploadMealPhoto(reduzida, context);
+  onStage?.('reading');
+  const prazo = despacho.poll_timeout_seconds;
+  return pollAsyncJob<MealPhotoResult>(despacho.job_id, {
+    timeoutMs: prazo ? prazo * MS_PER_SECOND : ASYNC_JOB_POLL_TIMEOUT_MS,
+    failedFallbackMessage: 'Não foi possível analisar a foto. Tente de novo.',
+    timeoutMessage: 'A análise da foto demorou demais. Tente de novo em instantes.',
+  });
 }
 
 type StructuredDetail = {

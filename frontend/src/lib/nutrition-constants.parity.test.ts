@@ -25,6 +25,7 @@ import {
   ITEM_NUTRIENT_FIELDS,
   LABEL_LEGIBILITY_OPTIONS,
   LABEL_PHOTO,
+  MEAL_PHOTO,
   MEAL_ITEMS_LIMIT,
   MEAL_NATURE_OPTIONS,
   MEAL_PARSE_QUOTA_EXCEEDED_LABEL,
@@ -272,6 +273,7 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
 
   it('foto do rótulo (L6): redução, upload, retenção e a fonte do cadastro vêm do dono', () => {
     expect(LABEL_PHOTO).toBe(N.label_photo);
+    expect(MEAL_PHOTO).toBe(N.meal_photo);
     expect(LABEL_PHOTO.resize_max_edge_px).toBeGreaterThan(0);
     expect(LABEL_PHOTO.resize_quality).toBeGreaterThan(0);
     expect(LABEL_PHOTO.resize_quality).toBeLessThanOrEqual(1);

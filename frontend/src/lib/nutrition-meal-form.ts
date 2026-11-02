@@ -65,7 +65,14 @@ export type MealEditorForm = {
   notes: string;
   items: MealEditorItem[];
   /** Leitura por IA que originou a refeição (L5b): o job e o texto descrito. */
-  ai: { job_id: string; description_raw: string; notes: string | null; limitations: NutritionLimitation[] } | null;
+  /** `ai_source`: origem que a API grava além do `ai_text` padrão (foto do prato, L10). */
+  ai: {
+    job_id: string;
+    description_raw: string;
+    notes: string | null;
+    limitations: NutritionLimitation[];
+    ai_source?: string;
+  } | null;
 };
 
 const SEM_LEITURA: Pick<
@@ -210,5 +217,6 @@ export function mealCreatePayload(form: MealEditorForm, userId: number | null): 
     ...corpo,
     ...(userId != null ? { user_id: userId } : {}),
     ...(form.ai ? { ai_job_id: form.ai.job_id, description_raw: form.ai.description_raw } : {}),
+    ...(form.ai?.ai_source ? { ai_source: form.ai.ai_source } : {}),
   };
 }
