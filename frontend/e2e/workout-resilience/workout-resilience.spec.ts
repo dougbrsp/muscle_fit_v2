@@ -421,3 +421,32 @@ test('Modo Intensivo offline: fica "salvando" ate o 2xx; recusa do servidor vira
   await expect(page.getByTestId('sync-indicator')).toHaveCount(0);
   expect(api.fstBodies).toHaveLength(1); // descartada: nunca virou serie salva no servidor
 });
+
+test('logout com serie pendente pede confirmacao; cancelar mantem a fila, confirmar apaga', async ({ page }) => {
+  await openWorkout(page);
+  api.failNextSetPosts(1000, 503);
+  await logSet(page, 10, 40);
+  await expect(page.getByTestId('sync-indicator')).toContainText('aguardando envio');
+
+  const messages: string[] = [];
+  let accept = false;
+  page.on('dialog', async (dialog) => {
+    messages.push(dialog.message());
+    if (accept) await dialog.accept();
+    else await dialog.dismiss();
+  });
+
+  await page.goto('/dashboard/');
+  await page.getByRole('banner').getByRole('button').last().click();
+  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await expect.poll(() => messages.length).toBe(1);
+  expect(messages[0]).toMatch(/1 série não sincronizada/);
+  await expect(page).toHaveURL(/dashboard/); // cancelou: continua logado
+  expect((await idbKeys(page)).filter((k) => k.startsWith('op_queue/v1:1:op:'))).toHaveLength(1);
+
+  accept = true;
+  await page.getByRole('banner').getByRole('button').last().click();
+  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
+});
