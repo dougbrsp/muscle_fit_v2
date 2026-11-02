@@ -117,10 +117,18 @@ def test_semana_com_o_mesmo_numero_de_altos_e_baixos_usa_os_nominais():
     assert mult.by_kind[N] == pytest.approx(cc.NORMAL_CARB_MULTIPLIER)
 
 
-@pytest.mark.parametrize("tipos", [(H,) * 7, (L,) * 7, (N,) * 7, (H, N, N, N, N, N, N), (L, N, N, N, N, N, N)])
-def test_sem_alto_ou_sem_baixo_fica_plano(tipos):
+@pytest.mark.parametrize("tipos", [(H,) * 7, (L,) * 7, (N,) * 7])
+def test_semana_sem_como_ciclar_fica_plana(tipos):
     mult = cc.week_multipliers(tipos, 300.0, PESO)
     assert all(valor == cc.NORMAL_CARB_MULTIPLIER for valor in mult.by_kind.values())
+
+
+@pytest.mark.parametrize("tipos", [(H, N, N, N, N, N, N), (L, N, N, N, N, N, N)])
+def test_um_tipo_so_com_normais_cicla_e_preserva_a_soma_(tipos):
+    # Decisão do líder (N1, D3): só altos + normais, ou só baixos + normais, cicla com a mesma escala.
+    mult = cc.week_multipliers(tipos, 300.0, PESO)
+    assert sum(mult.by_kind[k] for k in tipos) == pytest.approx(7.0)
+    assert mult.by_kind[N] != cc.NORMAL_CARB_MULTIPLIER
 
 
 def test_piso_de_1_g_por_kg_prende_o_dia_baixo_e_o_alto_absorve():
