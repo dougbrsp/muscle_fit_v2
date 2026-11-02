@@ -30,3 +30,19 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 - **P3-1**: item do code-reviewer a completar (texto original não chegou à frente A).
 
 Pendente fora do código: validação em iPhone real (PWA instalada, teclado, safe areas).
+
+## Itens adicionados na consolidação final (2026-11-02)
+
+| # | Item | Origem e situação |
+|---|---|---|
+| P3-1 | Com flag OFF no desktop entra 1 frame extra de loader (`NeutralScreen` enquanto `useMobileUi()===null`), visualmente igual ao loader do guard, sem flash de conteúdo. Para zerar, ler a flag com `useSyncExternalStore` (`getServerSnapshot` null). | `frontend/src/components/AppShellLayout.tsx:142`; registrado pelo code-reviewer |
+| P2-4 (complemento) | E2E e goldens no CI Linux. Hoje não há Playwright em `.github/`; os goldens são de Windows. | Verificado por busca em `.github/` |
+| P2-5 | WebKit desktop: histórico de instabilidade (viewport, tolerância de 0,2 %). Opcional, não bloqueia. | `frontend/playwright.config.ts` |
+| P2-6 | Override de flag por link persistente (`?mobile=0|1` grava no aparelho). Restringir ou não em produção? | `frontend/src/lib/mobile/flags.ts` |
+| P2-7 | Reabertura do IndexedDB sem teste automatizado. | `frontend/src/lib/offline/backend.ts` (`openIndexedDbBackend`) |
+| P2-8 | Aviso "Salvando série" no layout de descanso do intensivo: revisar texto e enquadramento. | `frontend/src/app/(fullscreen)/modo-treino/IntensiveRest.tsx:43` |
+| P2-9 | Prova do 409 `set_number_conflict` na RDS Data API (formato do erro UNIQUE não provado). | Lacuna de validação em ambiente real |
+| P2-10 | Navegação offline entre rotas (RSC): só o shell fica em cache; rota nunca visitada cai no shell. | `frontend/public/sw.js` (`networkFirstNavigation`) |
+| P1-1 | Validação em iPhone real: PWA instalada, teclado, safe areas e segundo plano. | Pendente fora do código |
+| P1-2 | Troca de conta confirmada apaga séries não sincronizadas da conta anterior. Confirmar a política com o usuário antes de produção. | `frontend/src/lib/offline/session-store.ts:157-163` |
+| P1-3 | Ligar `NEXT_PUBLIC_MOBILE_UI` em DEV: não há configuração versionada. | Verificado por busca no repositório |

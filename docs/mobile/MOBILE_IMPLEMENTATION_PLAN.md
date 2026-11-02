@@ -227,3 +227,23 @@ Entrega: C1 manifest/ícones/banner iOS; C2 SW + atualização segura (depende d
 
 ## 9. Itens fora de escopo desta fase
 Nenhum código de produto, infra ou deploy. Backend só se L4 for confirmado. Melhorias descobertas fora do escopo (ex.: warnings de lint preexistentes) vão para o backlog, não para estes PRs.
+
+## 10. Status da execução
+
+Verificado no código do worktree `docs/mobile-final` (base `feat/mobile-b5` @ `8e1e75f5`). Números de PR não foram verificados neste trabalho e ficam para o Tech Lead preencher.
+
+| Entrega | Situação no código | Desvio em relação ao plano |
+|---|---|---|
+| PR1 (fundações) | `flags.ts`, `layout-mode.ts` e testes presentes | Nenhum |
+| `viewport-fit=cover` | Presente em `frontend/src/app/layout.tsx:30` | Saiu do PR1 e entrou na frente A |
+| Frente A (layout, shell, Início) | `MobileLayoutSelector`, `MobileShell`, `MoreSheet`, `MobileHome`, `registry.ts`, `AppShellLayout` com seletor atrás da flag | Tablet e paisagem acima de 768 px ficam no desktop, como no plano |
+| Frente B (persistência, fila, timers) | `frontend/src/lib/offline/**`, `session-store.ts`, `offline-set-post.ts`, `wake-lock.ts`, `WakeLockNotice.tsx`, `SyncIndicator.tsx` | Fila só com `addExercise` e `addSet`, como no plano. Troca de conta apaga séries pendentes da conta anterior, o que o plano não previa (ver pendências) |
+| Frente C (PWA) | `public/sw.js`, `scripts/build-sw.mjs`, `frontend/src/lib/pwa/**`, `InstallBanner` | Sem `skipWaiting` automático, como no plano |
+| C-infra | `.github/workflows/deploy-producao.yml`: `sw.js` e `manifest.json` com `no-cache`; kill switch `pwa_kill_switch` | Cabeçalhos via `aws s3 cp`, não via CloudFront |
+| Testes de frente B | E2E de atualização com trabalho ativo e sem trabalho ativo em `frontend/e2e/workout-resilience/sw-update.spec.ts` | Positivo de atualização implementado na frente B |
+| Backend, replay | Eco e `duplicate: true` em `api/app/workout_sessions.py`; comparação de eco no cliente em `frontend/src/lib/offline/echo.ts` | Prova na RDS Data API pendente |
+| WebKit | Configurado como projeto opcional (`e2e:webkit`) | Não bloqueia; instável no Windows |
+| Plano de testes E2E | Configs de PWA, resiliência, layout mobile e baseline desktop presentes | Não rodam no CI |
+| Documentação | `docs/mobile/README.md`, `docs/adr/` (0001–0003), backlog consolidado | ADRs 0001–0003 criados nesta entrega |
+
+Pendências que bloqueiam liberação em produção: validação em iPhone real, prova do 409 na Data API, confirmação da política de troca de conta, e aval explícito para ligar a flag.
