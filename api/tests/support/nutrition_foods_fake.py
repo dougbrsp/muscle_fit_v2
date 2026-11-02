@@ -166,12 +166,20 @@ class FakeCursor:
         elif sql == foods.INSERT_FOOD_SQL:
             food_id = db.next_food_id
             db.next_food_id += 1
-            colunas = ("source", *foods._WRITE_COLUMNS, "owner_user_id", "created_by")
+            colunas = ("source", "barcode", *foods._WRITE_COLUMNS, "owner_user_id", "created_by")
             linha = {coluna: None for coluna in foods.FOOD_COLUMNS}
             linha.update(dict(zip(colunas, p)), id=food_id, is_active=1, created_at=AGORA, updated_at=AGORA)
             linha["_normalized"] = linha["name_normalized"]
             db.foods[food_id] = linha
             self.lastrowid, self.rowcount = food_id, 1
+        elif sql == foods.FOOD_BY_BARCODE_SQL:
+            codigo, usuario = p
+            achados = [
+                _publico(r)
+                for r in db.foods.values()
+                if r["barcode"] == codigo and r["is_active"] and (r["owner_user_id"] is None or r["owner_user_id"] == usuario)
+            ]
+            self._rows = sorted(achados, key=lambda r: r["id"])[:1]
         elif sql == foods.UPDATE_FOOD_SQL:
             linha = db.foods[int(p[-1])]
             linha.update(dict(zip(foods._WRITE_COLUMNS, p[:-1])))

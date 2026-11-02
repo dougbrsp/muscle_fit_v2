@@ -46,7 +46,7 @@ from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.catalog import FoodSource
 from .intelligence.dashboard.time_windows import user_day_start_db_for
 from .nutrition_access import can_view_food
-from .nutrition_foods import FOOD_COLUMNS, FOODS, _connect, _error, food_public
+from .nutrition_foods import FOOD_COLUMNS, FOODS, _connect, _error, food_by_barcode, food_public
 from .nutrition_schema import require_food_tables
 from .security import Identity, get_current_identity
 
@@ -191,6 +191,9 @@ def lookup_barcode(
         with conn.cursor() as cur:
             require_food_tables(cur)
             linha = _food_by_source(cur, FoodSource.OFF, codigo)
+            if linha is None:
+                # N3: o EAN cadastrado à mão (ou por outra fonte) também é cache; não gasta consulta ao OFF.
+                linha = food_by_barcode(cur, codigo, int(identity.user_id))
             if linha is None:
                 usadas = _off_lookups_today(conn, cur, int(identity.user_id))
     if linha is not None:

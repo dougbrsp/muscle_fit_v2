@@ -3,7 +3,7 @@
 import { Alert, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { BarcodeLookup } from '@/components/nutrition/BarcodeLookup';
 import { FoodCitationFooter } from '@/components/nutrition/FoodCitationFooter';
 import { FoodDetailCard } from '@/components/nutrition/FoodDetailCard';
@@ -25,7 +25,7 @@ async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
 }
 
-type Editing = { mode: 'new' } | { mode: 'edit' } | { mode: 'label'; reading: LabelPhotoReading } | null;
+type Editing = { mode: 'new'; barcode?: string } | { mode: 'edit' } | { mode: 'label'; reading: LabelPhotoReading } | null;
 
 /**
  * `/nutricao/alimentos` — catálogo de alimentos (Lote L3a). Busca na TACO 4ª
@@ -37,7 +37,8 @@ type Editing = { mode: 'new' } | { mode: 'edit' } | { mode: 'label'; reading: La
  * (motor `domain/nutrition`: `food_text`, `catalog`, `external_sources`); a tela
  * só exibe. Desde o L6, a foto do rótulo: a IA lê a tabela, o motor revisa
  * (`label_photo`) e o formulário abre pré-preenchido para o usuário conferir e
- * salvar (`source=label_photo`). Sem leitor de código de barras pela câmera.
+ * salvar (`source=label_photo`). Desde o N3, o código de barras também se lê pela câmera, e o
+ * código sem produto no Open Food Facts abre o cadastro manual com o EAN preenchido.
  */
 export function AlimentosClient() {
   const qc = useQueryClient();
@@ -48,6 +49,7 @@ export function AlimentosClient() {
   const [unreadable, setUnreadable] = useState<LabelPhotoReading | null>(null);
   // Cada leitura nova remonta o formulário (o estado inicial vem da leitura).
   const [labelReads, setLabelReads] = useState(0);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user'],
@@ -106,6 +108,24 @@ export function AlimentosClient() {
     await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
   }
 
+  /** Código lido/digitado sem produto no OFF: abre o cadastro manual com o EAN e leva a tela até ele. */
+  function registerWithBarcode(ean: string) {
+    setSaved(null);
+    setExternal(null);
+    setUnreadable(null);
+    setEditing({ mode: 'new', barcode: ean });
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }
+
+  /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */
+  async function useExisting(foodId: number) {
+    setEditing(null);
+    setSaved(null);
+    setExternal(null);
+    setSelectedId(foodId);
+    await qc.invalidateQueries({ queryKey: foodKeys.detail(foodId) });
+  }
+
   const detail = detailQuery.data ?? null;
 
   return (
@@ -147,7 +167,7 @@ export function AlimentosClient() {
             <Title order={4} c={BRAND.textPrimary}>
               Código de barras
             </Title>
-            <BarcodeLookup onFound={afterExternal} />
+            <BarcodeLookup onFound={afterExternal} onNotFound={registerWithBarcode} />
           </Stack>
         </Paper>
         <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
@@ -193,7 +213,7 @@ export function AlimentosClient() {
       )}
 
       {editing ? (
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+        <Paper ref={formRef} withBorder radius="md" p="md" bg={BRAND.bgElevated}>
           <Stack gap="sm">
             <Title order={3} c={BRAND.textPrimary}>
               {editing.mode === 'edit' ? 'Editar alimento' : editing.mode === 'label' ? 'Alimento da foto do rótulo' : 'Novo alimento'}
@@ -216,8 +236,16 @@ export function AlimentosClient() {
               </>
             )}
             <FoodForm
-              key={editing.mode === 'edit' ? (detail?.id ?? 'editar') : editing.mode === 'label' ? `rotulo-${labelReads}` : 'novo'}
+              key={
+                editing.mode === 'edit'
+                  ? (detail?.id ?? 'editar')
+                  : editing.mode === 'label'
+                    ? `rotulo-${labelReads}`
+                    : `novo-${editing.barcode ?? ''}`
+              }
               food={editing.mode === 'edit' ? detail : null}
+              barcode={editing.mode === 'new' ? editing.barcode : undefined}
+              onUseExisting={useExisting}
               initial={editing.mode === 'label' ? foodFormFromPrefill(editing.reading.food) : undefined}
               createSource={editing.mode === 'label' ? LABEL_PHOTO.food_source : undefined}
               onSaved={afterSave}

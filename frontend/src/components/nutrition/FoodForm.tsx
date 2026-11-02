@@ -1,10 +1,11 @@
 'use client';
 
-import { Button, Group, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { IconBarcode } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
-import { createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
+import { barcodeConflict, createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
 import {
   FOOD_BASIS_OPTIONS,
   FOOD_PER_100_FIELDS,
@@ -24,6 +25,10 @@ type Props = {
   initial?: FoodFormState;
   /** Fonte do cadastro novo (`USER_ENTRY_SOURCES` do motor; ausente = manual). */
   createSource?: NutritionCode;
+  /** EAN do cadastro novo (leitor de câmera/digitação quando o Open Food Facts não achou); a API valida e grava em `food_items.barcode`. */
+  barcode?: string;
+  /** EAN já cadastrado (409): a tela oferece abrir o alimento existente. */
+  onUseExisting?: (foodId: number) => void;
   onSaved: (food: FoodSaveResponse) => void;
   onCancel: () => void;
 };
@@ -38,8 +43,9 @@ function servingField(code: string): Rdc429Field | undefined {
  * valida (400 com o código do motor) e devolve os avisos (Atwater, subtotal),
  * que não bloqueiam. O alimento novo é privado do usuário (D-G).
  */
-export function FoodForm({ food, initial, createSource, onSaved, onCancel }: Props) {
+export function FoodForm({ food, initial, createSource, barcode, onUseExisting, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FoodFormState>(() => (food ? foodFormFromItem(food) : (initial ?? emptyFoodForm())));
+  const [codigo, setCodigo] = useState(barcode ?? '');
   const base = nutritionLabel(FOOD_BASIS_OPTIONS, form.basis);
   const porcao = servingField('serving_size');
   const medida = servingField('household_measure');
@@ -57,11 +63,18 @@ export function FoodForm({ food, initial, createSource, onSaved, onCancel }: Pro
     mutationFn: () => {
       const payload = foodPayloadFromForm(form);
       if (food) return updateFood(food.id, payload);
-      return createFood(createSource ? { ...payload, source: createSource } : payload);
+      const ean = codigo.trim();
+      return createFood({
+        ...payload,
+        ...(createSource ? { source: createSource } : {}),
+        ...(ean ? { barcode: ean } : {}),
+      });
     },
     onSuccess: onSaved,
   });
-  const erro = saveMutation.isError ? nutritionErrorInfo(saveMutation.error, 'Não foi possível salvar o alimento.') : null;
+  const conflito = saveMutation.isError ? barcodeConflict(saveMutation.error) : null;
+  const erro =
+    saveMutation.isError && !conflito ? nutritionErrorInfo(saveMutation.error, 'Não foi possível salvar o alimento.') : null;
 
   return (
     <Stack gap="md">
@@ -92,6 +105,18 @@ export function FoodForm({ food, initial, createSource, onSaved, onCancel }: Pro
           onChange={(event) => update({ category: event.currentTarget.value })}
           maxLength={120}
         />
+        {!food && (
+          <TextInput
+            label="Código de barras (EAN)"
+            description="Opcional. Leia ou digite o código da embalagem para achar este alimento pelo leitor."
+            leftSection={<IconBarcode size={16} />}
+            inputMode="numeric"
+            autoComplete="off"
+            value={codigo}
+            onChange={(event) => setCodigo(event.currentTarget.value)}
+            maxLength={32}
+          />
+        )}
       </SimpleGrid>
 
       <div>
@@ -152,6 +177,26 @@ export function FoodForm({ food, initial, createSource, onSaved, onCancel }: Pro
         )}
       </SimpleGrid>
 
+      {conflito && (
+        <Alert color="yellow" title="Este código de barras já está cadastrado">
+          <Stack gap="xs">
+            <Text size="sm">
+              {conflito.foodName ? `O código ${codigo.trim()} já pertence a "${conflito.foodName}".` : 'Já existe um alimento com este código.'}{' '}
+              Use o alimento existente em vez de cadastrar outro.
+            </Text>
+            {onUseExisting && (
+              <Button
+                variant="light"
+                color="brand"
+                onClick={() => onUseExisting(conflito.foodId)}
+                style={{ minHeight: 44, alignSelf: 'flex-start' }}
+              >
+                Usar o alimento existente
+              </Button>
+            )}
+          </Stack>
+        </Alert>
+      )}
       {erro && <NutritionLimitations items={erro.items} title={erro.message} tone="error" />}
       {erro && erro.items.length === 0 && (
         <Text size="sm" c="red">

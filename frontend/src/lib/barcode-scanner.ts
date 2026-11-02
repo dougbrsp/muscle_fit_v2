@@ -1,0 +1,210 @@
+// Leitor de código de barras pela câmera (nutrição N3, decisão D4): `BarcodeDetector`
+// nativo quando o navegador o tem (Chrome/Android) e `@zxing/browser` como reserva
+// (Safari/iOS e desktop), carregado com import dinâmico SÓ ao abrir o leitor.
+//
+// Só transporte: o leitor devolve o TEXTO lido (apenas dígitos). Dígito verificador,
+// comprimento e forma canônica do EAN/GTIN são da API (`external_sources.normalize_gtin`),
+// que responde 400 com o texto do motor; nada de regra do código de barras aqui.
+// A câmera é sempre liberada em `stop()` (fechar o leitor, ler um código ou desmontar).
+
+export type CameraErrorKind = 'permission_denied' | 'no_camera' | 'insecure_context' | 'unsupported' | 'unknown';
+
+/** Falha ao abrir a câmera, já classificada para a tela cair na digitação com a mensagem certa. */
+export class CameraError extends Error {
+  readonly kind: CameraErrorKind;
+
+  constructor(kind: CameraErrorKind) {
+    super(CAMERA_ERROR_MESSAGES[kind]);
+    this.name = 'CameraError';
+    this.kind = kind;
+  }
+}
+
+export const CAMERA_ERROR_MESSAGES: Record<CameraErrorKind, string> = {
+  permission_denied:
+    'A câmera está bloqueada para este site. Libere o acesso à câmera nas permissões do navegador ou digite o código.',
+  no_camera: 'Nenhuma câmera foi encontrada neste aparelho. Digite o código de barras.',
+  insecure_context: 'A câmera só funciona em conexão segura (https). Digite o código de barras.',
+  unsupported: 'Este navegador não consegue usar a câmera para ler o código. Digite o código de barras.',
+  unknown: 'Não foi possível abrir a câmera. Digite o código de barras.',
+};
+
+const PERMISSION_ERRORS = ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'];
+const NO_CAMERA_ERRORS = ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError', 'NotReadableError'];
+
+/** Classifica o erro do `getUserMedia` (ou do leitor de reserva). */
+export function classifyCameraError(error: unknown): CameraErrorKind {
+  if (error instanceof CameraError) return error.kind;
+  const nome = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name: unknown }).name) : '';
+  if (PERMISSION_ERRORS.includes(nome)) return 'permission_denied';
+  if (NO_CAMERA_ERRORS.includes(nome)) return 'no_camera';
+  if (nome === 'TypeError') return 'unsupported';
+  return 'unknown';
+}
+
+/** Texto lido só com dígitos (descarta QR code, URL e ruído); `null` se não sobrar nada. */
+export function digitsOnly(text: string | null | undefined): string | null {
+  const limpo = (text ?? '').trim();
+  return /^\d+$/.test(limpo) ? limpo : null;
+}
+
+// Formatos de produto de varejo que o leitor tenta (códigos do `BarcodeDetector`). Não é regra
+// de GTIN: a API decide o que vale; isto só evita gastar quadro com QR/Code128.
+const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
+const NATIVE_POLL_MS = 200;
+
+type DetectedBarcode = { rawValue?: string };
+type BarcodeDetectorLike = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
+export type BarcodeDetectorCtor = {
+  new (options?: { formats?: string[] }): BarcodeDetectorLike;
+  getSupportedFormats?: () => Promise<string[]>;
+};
+
+type ZxingControls = { stop: () => void };
+type ZxingReaderLike = {
+  decodeFromConstraints: (
+    constraints: MediaStreamConstraints,
+    video: HTMLVideoElement,
+    callback: (result: { getText: () => string } | undefined, error: unknown, controls: ZxingControls) => void,
+  ) => Promise<ZxingControls>;
+};
+export type ZxingLoader = () => Promise<ZxingReaderLike>;
+
+export type ScannerDeps = {
+  mediaDevices?: Pick<MediaDevices, 'getUserMedia'> | null;
+  isSecureContext?: boolean;
+  detectorCtor?: BarcodeDetectorCtor | null;
+  loadZxing?: ZxingLoader;
+};
+
+export type ScanHandle = { stop: () => void };
+
+const CONSTRAINTS: MediaStreamConstraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
+
+/** Carrega o `@zxing/browser` (chunk separado) só quando o leitor de reserva é necessário. */
+const loadZxingReader: ZxingLoader = async () => {
+  const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+    import('@zxing/browser'),
+    import('@zxing/library'),
+  ]);
+  const hints = new Map<unknown, unknown>([
+    [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]],
+  ]);
+  return new BrowserMultiFormatReader(hints as never) as unknown as ZxingReaderLike;
+};
+
+function browserDeps(): ScannerDeps {
+  const nav = typeof navigator === 'undefined' ? undefined : navigator;
+  return {
+    mediaDevices: nav?.mediaDevices ?? null,
+    isSecureContext: typeof window === 'undefined' ? true : window.isSecureContext,
+    detectorCtor: (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector ?? null,
+    loadZxing: loadZxingReader,
+  };
+}
+
+async function nativeFormatsSupported(ctor: BarcodeDetectorCtor): Promise<boolean> {
+  try {
+    const suportados = await ctor.getSupportedFormats?.();
+    if (!suportados) return true;
+    return NATIVE_FORMATS.some((formato) => suportados.includes(formato));
+  } catch {
+    return false;
+  }
+}
+
+function stopStream(video: HTMLVideoElement, stream: MediaStream | null): void {
+  stream?.getTracks().forEach((track) => track.stop());
+  video.srcObject = null;
+}
+
+async function startNative(
+  video: HTMLVideoElement,
+  ctor: BarcodeDetectorCtor,
+  mediaDevices: Pick<MediaDevices, 'getUserMedia'>,
+  onCode: (code: string) => void,
+): Promise<ScanHandle> {
+  const stream = await mediaDevices.getUserMedia(CONSTRAINTS);
+  let parado = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const stop = () => {
+    parado = true;
+    if (timer !== null) clearTimeout(timer);
+    stopStream(video, stream);
+  };
+  try {
+    video.srcObject = stream;
+    await video.play();
+    const detector = new ctor({ formats: [...NATIVE_FORMATS] });
+    const varrer = async () => {
+      if (parado) return;
+      try {
+        const achados = await detector.detect(video);
+        const codigo = achados.map((a) => digitsOnly(a.rawValue)).find((c): c is string => c !== null);
+        if (codigo && !parado) {
+          stop();
+          onCode(codigo);
+          return;
+        }
+      } catch {
+        // Quadro sem imagem ainda (vídeo aquecendo): tenta no próximo ciclo.
+      }
+      if (!parado) timer = setTimeout(varrer, NATIVE_POLL_MS);
+    };
+    timer = setTimeout(varrer, NATIVE_POLL_MS);
+  } catch (error) {
+    stop();
+    throw error;
+  }
+  return { stop };
+}
+
+async function startZxing(
+  video: HTMLVideoElement,
+  loadZxing: ZxingLoader,
+  onCode: (code: string) => void,
+): Promise<ScanHandle> {
+  const reader = await loadZxing();
+  let parado = false;
+  let controles: ZxingControls | null = null;
+  const stop = () => {
+    parado = true;
+    controles?.stop();
+    video.srcObject = null;
+  };
+  controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, _error, controls) => {
+    controles = controls;
+    if (parado || !result) return; // erro por quadro sem código (NotFoundException): segue lendo
+    const codigo = digitsOnly(result.getText());
+    if (codigo) {
+      stop();
+      onCode(codigo);
+    }
+  });
+  if (parado) controles.stop(); // leu antes de `decodeFromConstraints` resolver
+  return { stop };
+}
+
+/**
+ * Abre a câmera no `video` e chama `onCode` UMA vez com o primeiro código só de dígitos.
+ * Rejeita com `CameraError` (permissão, sem câmera, contexto inseguro, navegador sem
+ * suporte); nesse caso a câmera já foi liberada. `stop()` libera a câmera e é seguro repetir.
+ */
+export async function startBarcodeScan(
+  video: HTMLVideoElement,
+  onCode: (code: string) => void,
+  deps: ScannerDeps = browserDeps(),
+): Promise<ScanHandle> {
+  const mediaDevices = deps.mediaDevices;
+  if (!mediaDevices?.getUserMedia) {
+    throw new CameraError(deps.isSecureContext === false ? 'insecure_context' : 'unsupported');
+  }
+  try {
+    if (deps.detectorCtor && (await nativeFormatsSupported(deps.detectorCtor))) {
+      return await startNative(video, deps.detectorCtor, mediaDevices, onCode);
+    }
+    return await startZxing(video, deps.loadZxing ?? loadZxingReader, onCode);
+  } catch (error) {
+    throw error instanceof CameraError ? error : new CameraError(classifyCameraError(error));
+  }
+}

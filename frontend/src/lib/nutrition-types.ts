@@ -661,8 +661,8 @@ export type NutritionWeek = {
 // (`domain/nutrition/label_photo`); aqui só o formato.
 // ---------------------------------------------------------------------------
 
-/** Corpo de `POST /nutrition/foods` (`FoodItemCreateIn`): o de `FoodItemPayload` + a fonte do cadastro. */
-export type FoodItemCreatePayload = FoodItemPayload & { source?: NutritionCode | null };
+/** Corpo de `POST /nutrition/foods` (`FoodItemCreateIn`): o de `FoodItemPayload` + a fonte do cadastro e o EAN opcional (N3). */
+export type FoodItemCreatePayload = FoodItemPayload & { source?: NutritionCode | null; barcode?: string | null };
 
 /** Corpo de `POST /nutrition/foods/label-photo` (`LabelPhotoUploadIn`): a foto reduzida em base64, sem padding. */
 export type LabelPhotoUploadPayload = { image_base64: string };
@@ -689,3 +689,40 @@ export type LabelPhotoReading = {
   /** Observações livres da IA sobre o que não deu para ler. */
   ai_notes: string[];
 };
+
+// ---------------------------------------------------------------------------
+// Alimentos preferidos (Lote N3): respostas de `api/app/nutrition_favorites.py`.
+// Teto, porção padrão (conversão do diário, `meal_math`) e ordem são do motor
+// (`domain/nutrition/favorites`); aqui só o formato.
+// ---------------------------------------------------------------------------
+
+/** Porção padrão do favorito: a quantidade/unidade que entra no diário (a conta é do `meal_math`). */
+export type FavoriteDefault = {
+  quantity: number;
+  /** Código de `UNIT_OPTIONS` (`meal_math.Unit`). */
+  unit: NutritionCode;
+  portion_id: number | null;
+  portion_label: string | null;
+  portion_amount: number | null;
+};
+
+export type FavoriteItem = {
+  food: FoodItem;
+  position: number;
+  default: FavoriteDefault | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** `GET /nutrition/favorites` (e a resposta de `POST /reorder`): na ordem do usuário. */
+export type FavoritesResponse = { items: FavoriteItem[]; max_items: number };
+
+/** Corpo de `PUT /nutrition/favorites/{food_id}` (`FavoriteDefaultIn`); tudo `null` = sem porção padrão. */
+export type FavoriteDefaultPayload = {
+  default_quantity: number | null;
+  default_unit: NutritionCode | null;
+  default_portion_id: number | null;
+};
+
+/** Corpo de `POST /nutrition/favorites` (`FavoriteCreateIn`). */
+export type FavoriteCreatePayload = { food_id: number } & Partial<FavoriteDefaultPayload>;

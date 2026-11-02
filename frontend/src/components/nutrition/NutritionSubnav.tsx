@@ -7,6 +7,7 @@ const SECOES = [
   { href: '/nutricao', label: 'Diário' },
   { href: '/nutricao/plano', label: 'Plano' },
   { href: '/nutricao/alimentos', label: 'Alimentos' },
+  { href: '/nutricao/favoritos', label: 'Preferidos' },
 ] as const;
 
 type Props = { active: (typeof SECOES)[number]['href'] };

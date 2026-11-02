@@ -6367,3 +6367,17 @@ curtas deixam mais grupos sem status: em 7 dias (2026-10-26..2026-11-01) só 4 e
 nenhum com duas exposições comparáveis, então os 9 grupos ficam DADOS_INSUFICIENTES (antes: 5 ESTAVEL e 4
 DADOS_INSUFICIENTES). `cycle` não foi medido de forma útil: o Modelo do usuário 1 no DEV resolve para ciclo
 de 1 dia. Os números de produção podem diferir.
+
+## 78. Nutrição N3 — alimentos preferidos e EAN do cadastro manual (2026-11-02)
+
+Chave da guarda: `favoritos_nutricao`. Plano: `.omc/plans/nutricao-reformulacao-2026-11-02.md` §3 (lote N3).
+
+| Regra | Dono | Consumidores | Proibido fora do dono | Guarda |
+|---|---|---|---|---|
+| Teto da lista de preferidos (`MAX_FAVORITES` = 200, default de desenho, sem fonte externa); porção padrão do favorito (quantidade + unidade juntas ou nenhuma; porção cadastrada só com a unidade `portion`/`unit`; conversão e teto SÃO os do diário: `meal_math.resolve_amount` + `diary.item_amount_errors`, sem conta nova); ordem (permutação exata dos favoritos atuais, posições consecutivas a partir de 1); textos dos erros em `labels` | `nutrition/favorites.py` (`default_errors`, `canonical_unit`, `can_add`, `order_errors`, `positions_for`, `next_position`, `MAX_FAVORITES`) + `nutrition/labels.py` | `nutrition_favorites.py` (rotas `/nutrition/favorites`, só SQL e resposta), tela de preferidos e atalhos no `FoodSearch`/`MealEditor` (leem `max_items` e o `default` da API; o item entra no diário pelo `POST /nutrition/meals(/preview)`, onde o `meal_math` calcula) | teto escrito na rota/tela, conversão da porção padrão feita no FE ou no SQL, ordem decidida fora do dono | `favoritos_nutricao` |
+| Quem pode ver/alterar os preferidos: a lista é PESSOAL (nenhuma rota recebe `user_id`; o SQL filtra sempre por `user_id = favorites_owner(identity)`); favoritar exige alimento ativo que o usuário pode usar (`can_favorite_food`) e porção pública ou dele (`can_favorite_portion`) | `nutrition_access.py` | `nutrition_favorites.py` | checar papel/dono dentro da rota | (teste de isolamento em `test_nutrition_favorites_routes.py`) |
+| EAN do cadastro manual: validado pelo dono do GTIN (`external_sources.normalize_gtin`, forma canônica), gravado em `food_items.barcode`; EAN já cadastrado e visível ao usuário -> 409 `barcode_already_registered` com o item existente; a consulta por código reencontra o EAN cadastrado à mão antes de gastar uma consulta ao OFF | `nutrition/external_sources.py` (`normalize_gtin`) | `nutrition_foods.py` (`barcode_or_none`, `FOOD_BY_BARCODE_SQL`), `nutrition_external_foods.py` | validar EAN/dígito verificador na rota, no Pydantic ou na tela | `fontes_externas_alimentos` |
+
+Tabela `user_favorite_foods` (migração 102): FK só para `users` (CASCADE); `food_id` e `default_portion_id` são referências lógicas; `UNIQUE (user_id, food_id)`. Leitor de câmera (D4): `BarcodeDetector` nativo e `@zxing/browser` sob demanda; o leitor só entrega o texto do código, a validação é a da API.
+
+**Impacto em produção.** Aditivo: migração 102 cria uma tabela nova (sem backfill; `down` = `DROP TABLE`); rotas novas e campo opcional `barcode` em `POST /nutrition/foods`; nenhuma regra de cálculo existente muda. A janela de deploy é coberta: as rotas respondem 503 citando a 102 até a migração rodar.

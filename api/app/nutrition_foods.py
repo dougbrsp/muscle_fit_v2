@@ -11,7 +11,11 @@ Rotas (prefixo `/nutrition/foods`):
                                            os privados de todos, para promover
 - `GET  /{id}`                             alimento + porções visíveis + permissões
 - `POST /`                                 `FoodItemCreateIn` -> alimento PRIVADO do usuário
-                                           (D-G), 201; regra do motor violada -> 400 com os
+                                           (D-G), 201; `barcode` opcional (N3: validado por
+                                           `external_sources.normalize_gtin`, gravado em
+                                           `food_items.barcode`; EAN já cadastrado e visível
+                                           -> 409 `barcode_already_registered` com o
+                                           `existing_food_id`); regra do motor violada -> 400 com os
                                            códigos; Atwater/subtotal/soma dos macros ->
                                            `warnings`. `source` (L6): ausente = manual,
                                            `label_photo` = formulário da foto do rótulo
@@ -40,8 +44,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import catalog, food_text
+from .domain.nutrition import external_sources as fontes
 from .domain.nutrition import labels as nutrition_labels
 from .nutrition_access import (
+    VISIBLE_FOODS_SQL,
     VISIBLE_PORTIONS_SQL,
     can_add_portion,
     can_edit_food,
@@ -82,8 +88,12 @@ MATCH_EXPR = "MATCH(name_normalized) AGAINST (%s IN BOOLEAN MODE)"
 _WRITE_COLUMNS: tuple[str, ...] = ("name", "name_normalized", "brand", "category", "basis", *catalog.PER_100_FIELDS,
                                    "serving_size", "household_measure", "servings_per_package")
 INSERT_FOOD_SQL = (
-    f"INSERT INTO {FOODS} (source, {', '.join(_WRITE_COLUMNS)}, owner_user_id, is_active, created_by) "
-    f"VALUES (%s, {', '.join(['%s'] * len(_WRITE_COLUMNS))}, %s, 1, %s)"
+    f"INSERT INTO {FOODS} (source, barcode, {', '.join(_WRITE_COLUMNS)}, owner_user_id, is_active, created_by) "
+    f"VALUES (%s, %s, {', '.join(['%s'] * len(_WRITE_COLUMNS))}, %s, 1, %s)"
+)
+# EAN já cadastrado e visível ao usuário (público ou dele; N3): `barcode` tem índice, não UNIQUE.
+FOOD_BY_BARCODE_SQL = (
+    f"{_SELECT_FOODS} WHERE barcode = %s AND is_active = 1 AND {VISIBLE_FOODS_SQL} ORDER BY id LIMIT 1"
 )
 UPDATE_FOOD_SQL = f"UPDATE {FOODS} SET {', '.join(f'{c} = %s' for c in _WRITE_COLUMNS)} WHERE id = %s"
 PROMOTE_FOOD_SQL = f"UPDATE {FOODS} SET owner_user_id = NULL WHERE id = %s AND owner_user_id = %s"
@@ -201,6 +211,33 @@ def _invalid_food(codes: list[str]) -> HTTPException:
     )
 
 
+def barcode_or_none(raw: Optional[str]) -> Optional[str]:
+    """GTIN canônico (`external_sources.normalize_gtin`, dono do EAN) do cadastro
+    manual, ou None se não veio código. Código informado e inválido -> 400."""
+    if raw is None or not raw.strip():
+        return None
+    codigo = fontes.normalize_gtin(raw)
+    if codigo is None:
+        raise _error(400, fontes.ERR_INVALID_BARCODE, nutrition_labels.limitation_label(fontes.ERR_INVALID_BARCODE))
+    return codigo
+
+
+def food_by_barcode(cur: Any, barcode: str, user_id: int) -> Optional[dict[str, Any]]:
+    """Alimento ativo, visível ao usuário, com este código de barras."""
+    cur.execute(FOOD_BY_BARCODE_SQL, (barcode, int(user_id)))
+    return cur.fetchone()
+
+
+def _barcode_conflict(existente: dict[str, Any]) -> HTTPException:
+    return _error(
+        409,
+        "barcode_already_registered",
+        "Este código de barras já está cadastrado. Use o alimento existente.",
+        existing_food_id=int(existente["id"]),
+        existing_food_name=existente.get("name"),
+    )
+
+
 def _validated_write_values(payload: FoodItemIn) -> tuple[tuple[Any, ...], catalog.FoodValidation]:
     """Valida no motor e devolve os valores na ordem de `_WRITE_COLUMNS`."""
     validacao = catalog.validate_food_values(payload.model_dump(), payload.basis)
@@ -305,13 +342,18 @@ def create_food(payload: FoodItemCreateIn, identity: Identity = Depends(get_curr
     fonte = catalog.user_entry_source(payload.source)
     if fonte is None:
         raise _invalid_food([catalog.ERR_INVALID_SOURCE])
+    codigo = barcode_or_none(payload.barcode)
     valores, validacao = _validated_write_values(payload)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
+            if codigo is not None:
+                existente = food_by_barcode(cur, codigo, int(identity.user_id))
+                if existente is not None:
+                    raise _barcode_conflict(existente)
             cur.execute(
                 INSERT_FOOD_SQL,
-                (fonte.value, *valores, int(identity.user_id), int(identity.user_id)),
+                (fonte.value, codigo, *valores, int(identity.user_id), int(identity.user_id)),
             )
             novo_id = cur.lastrowid
             if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado

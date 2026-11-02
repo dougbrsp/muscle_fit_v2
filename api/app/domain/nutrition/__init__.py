@@ -27,6 +27,8 @@ Módulos (um dono por regra):
   de consultas ao OFF (L3b).
 - `diary`: diário de refeições — refeição (`MealSlot`), origem, entrada da
   refeição e do item, água e fome do dia (L4).
+- `favorites`: alimentos preferidos do usuário — teto da lista, porção padrão (pela
+  matemática do diário: `meal_math` + `diary`) e ordem (N3).
 - `labels`: rótulos pt-BR, vocabulário RDC 429 e texto das limitações.
 - `daily_target`: orquestrador `compute_daily_target`, `ENGINE_VERSION`,
   congelamento da meta materializada e contexto do dia (L2b).
