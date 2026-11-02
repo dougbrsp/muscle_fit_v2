@@ -84,6 +84,8 @@ class FakeSessionDB(NullContext):
         self._result = None
         self.lastrowid = None
         self._next_id = 100
+        self.error_prefix = ""  # simula o embrulho do DataApiError (db_dataapi.py)
+        self.insert_set_error: Exception | None = None
 
     # -- cursor -------------------------------------------------------------
     def execute(self, sql, params=None):
@@ -126,11 +128,13 @@ class FakeSessionDB(NullContext):
         elif flat.startswith("INSERT INTO exercise_sets "):
             self.inserts.append(flat)
             row = _row(flat, p)
+            if self.insert_set_error is not None:
+                raise self.insert_set_error
             for other in self.sets + self.hidden_sets:
                 if other["exercise_id"] != row["exercise_id"]:
                     continue
                 if other["set_number"] == row["set_number"]:
-                    raise _Duplicate("(1062, \"Duplicate entry for key 'exercise_sets.uq_exercise_set_number'\")")
+                    raise _Duplicate(self.error_prefix + "(1062, \"Duplicate entry for key 'exercise_sets.uq_exercise_set_number'\")")
                 if row["client_key"] is not None and other["client_key"] == row["client_key"]:
                     raise _Duplicate("(1062, \"Duplicate entry for key 'exercise_sets.uq_exercise_sets_exercise_client_key'\")")
             self.sets.append(row)
@@ -391,3 +395,51 @@ def test_tamanho_da_chave_igual_ao_da_coluna_da_087():
     # A UNIQUE é por pai real: sessão para o exercício, exercício para a série.
     assert modulo["TARGETS"]["exercises"][1] == ("activity_id", "client_key")
     assert modulo["TARGETS"]["exercise_sets"][1] == ("exercise_id", "client_key")
+
+
+def test_serie_criacao_e_replay_tem_os_mesmos_campos_gravados(db):
+    ex = db.add_exercise()
+    # Precisão acima da coluna (DECIMAL(x,2) ROUND_HALF_UP): os dois caminhos ecoam o mesmo valor.
+    criacao = _add_set(ex, client_key="set-1", weight_kg=Decimal("40.005"), rpe=Decimal("8.125"),
+                       joint_pain=True, muscle_pain=3)
+    replay = _add_set(ex, client_key="set-1", weight_kg=Decimal(1), rpe=Decimal(1), joint_pain=False, muscle_pain=9)
+    for campo in ("reps", "weight_kg", "rpe", "set_type", "joint_pain", "muscle_pain"):
+        assert criacao[campo] == replay[campo], campo
+        assert type(criacao[campo]) is type(replay[campo]), campo
+    assert criacao["weight_kg"] == 40.01 and criacao["rpe"] == 8.13
+    assert criacao["joint_pain"] is True and criacao["muscle_pain"] == 3
+
+
+def test_serie_dor_articular_vira_bool_mesmo_gravada_como_inteiro(db):
+    ex = db.add_exercise()
+    _add_set(ex, client_key="set-1")
+    db.sets[0]["joint_pain"] = 1  # TINYINT(1) relido do banco
+    assert _add_set(ex, client_key="set-1")["joint_pain"] is True
+
+
+@pytest.mark.parametrize("prefixo", ["", "execute_statement falhou para SQL: 'INSERT INTO exercise_sets ...' -- An error occurred (BadRequestException) when calling the ExecuteStatement operation: "])
+def test_serie_set_number_ocupado_com_outra_chave_e_409(db, prefixo):
+    db.error_prefix = prefixo
+    ex = db.add_exercise()
+    _add_set(ex, client_key="set-1", set_number=1)
+    with pytest.raises(HTTPException) as err:
+        _add_set(ex, client_key="set-2", set_number=1)
+    assert err.value.status_code == 409 and err.value.detail["code"] == "set_number_conflict"
+    assert len(db.sets) == 1
+
+
+def test_serie_sem_chave_com_set_number_repetido_e_409(db):
+    ex = db.add_exercise()
+    _add_set(ex, set_number=1)
+    with pytest.raises(HTTPException) as err:
+        _add_set(ex, set_number=1)
+    assert err.value.status_code == 409 and err.value.detail["set_number"] == 1 and len(db.sets) == 1
+
+
+def test_serie_violacao_nao_unique_continua_subindo(db):
+    ex = db.add_exercise()
+    db.insert_set_error = RuntimeError("(1452, 'Cannot add or update a child row: a foreign key constraint fails')")
+    with pytest.raises(RuntimeError, match="foreign key"):
+        _add_set(ex, client_key="set-1")
+    with pytest.raises(RuntimeError, match="foreign key"):
+        _add_set(ex)
