@@ -7,8 +7,11 @@
  *   proteger) registra provedores com `registerActiveWorkProvider`.
  * - Quem CONSOME é a frente C (`hasActiveWork()`).
  * - Vários provedores: o resultado é o OR de todos.
- * - Sem provedor registrado, devolve `false`: por isso a atualização do SW não
- *   pode ser ligada em produção antes de a frente B registrar o provedor.
+ * - Sem provedor registrado, `hasActiveWork()` devolve `false`, mas isso é
+ *   "desconhecido", não "ocioso": quem recarrega a página (atualização do SW)
+ *   consulta `hasActiveWorkProviders()` e trata a ausência de provedor como
+ *   OCUPADO. Assim a atualização só passa a ser oferecida depois de a frente B
+ *   registrar o provedor.
  * - Falha ou demora de qualquer provedor é tratada como "há trabalho" (`true`):
  *   na dúvida, não recarregar a página e arriscar perder dados.
  */

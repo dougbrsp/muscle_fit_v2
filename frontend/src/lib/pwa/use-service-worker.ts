@@ -22,14 +22,15 @@ export type ServiceWorkerUpdateState = {
   applyUpdate: () => Promise<void>;
 };
 
-/**
- * Registra o SW (produção + flag mobile) e expõe a atualização segura: a nova
- * versão fica em `waiting`; só é oferecida quando `hasActiveWork()` é false e
- * só é aplicada (SKIP_WAITING + reload) depois de reconferir `hasActiveWork()`.
- */
 /** Ocupado OU desconhecido (sem provedor registrado): nunca oferecer/aplicar atualização. */
 const busyForUpdate = () => isBusyForUpdate({ hasProviders: hasActiveWorkProviders, hasActiveWork });
 
+/**
+ * Registra o SW (produção + flag mobile) e expõe a atualização segura: a nova
+ * versão fica em `waiting`; só é oferecida quando há provedor registrado e ele
+ * responde "sem trabalho ativo" (sem provedor = ocupado), e só é aplicada
+ * (SKIP_WAITING + reload) depois de reconferir essa mesma condição.
+ */
 export function useServiceWorker(): ServiceWorkerUpdateState {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [idle, setIdle] = useState(false);
@@ -105,6 +106,7 @@ export function useServiceWorker(): ServiceWorkerUpdateState {
       }
     };
     waiting.addEventListener('statechange', onState);
+    onState(); // cobre a corrida: ficou redundant/activated antes de o listener existir
     let alive = true;
     const tick = async () => {
       const busy = await busyForUpdate();
