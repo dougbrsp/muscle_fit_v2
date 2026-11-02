@@ -17,7 +17,13 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { formatStrengthLoadRange } from '@/lib/exercise-briefing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, isTransientApiError } from '@/lib/api';
+import { overlayQueuedSets } from '@/lib/offline/overlay';
+import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
+import { opQueue } from '@/lib/offline/queue';
+import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
+import { postSetOrQueue } from './offline-set-post';
+import styles from './workout-mode.module.css';
 import {
   buildMuscleMapItems,
   clampRpeSuggestion,
@@ -503,6 +509,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // A série que abriu o descanso foi gravada (chip "SÉRIE SALVA"); etapa
   // pulada não grava nada.
   const [restSetSaved, setRestSetSaved] = useState(restoredRest?.set_saved ?? false);
+  // `client_key` da série que abriu o descanso quando ela só está na fila offline
+  // (salva no aparelho, ainda sem 2xx). Não persiste: some no reload; a fila segue.
+  const [restLocalClientKey, setRestLocalClientKey] = useState<string | null>(null);
+  const restLocalStatus = useOpStatus(restLocalClientKey);
   const [extendMode, setExtendMode] = useState(false);
   // M4: exercicios cujo briefing ja foi lido NESTA sessao. Persistido em
   // `briefed_keys` (novo visual, PR1/3): sem isso, um reload depois de
@@ -534,9 +544,24 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const nextSyntheticIdRef = useRef(-1000);
 
   const activityQueryKey = ['activity-detail-workout-mode', session.session_id];
+  // Depois de gravar: com o servidor, espera o refetch (contadores oficiais);
+  // se a série ficou só na fila offline, não segura a tela esperando uma
+  // consulta que vai falhar sem rede.
+  async function refreshActivityAfterSave(queued: boolean) {
+    if (queued) {
+      void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+  }
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
-    queryFn: () => apiFetch<ActivityDetail>(`/activities/${session.session_id}`),
+    // Offline reabre com o último retrato do servidor (`fetchWithSnapshot`).
+    networkMode: 'always',
+    // Até a rede responder, mostra o último retrato do MESMO usuário.
+    placeholderData: () => readSnapshot<ActivityDetail>(`activity:${session.session_id}`),
+    queryFn: () =>
+      fetchWithSnapshot(`activity:${session.session_id}`, () => apiFetch<ActivityDetail>(`/activities/${session.session_id}`)),
     refetchOnMount: 'always',
   });
 
@@ -544,17 +569,39 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     // Com `session_id`: numa sessão de deload a ficha já vem com a prescrição
     // de deload desde a 1ª série e sem técnica (dono `domain/deload.py`).
     queryKey: workoutModePlanQueryKey(session.workout_plan_id, session.session_id),
-    queryFn: () => apiFetch<WorkoutPlanDetail>(workoutModePlanPath(Number(session.workout_plan_id), session.session_id)),
+    networkMode: 'always',
+    placeholderData: () => readSnapshot<WorkoutPlanDetail>(`plan:${session.workout_plan_id}:${session.session_id}`),
+    queryFn: () =>
+      fetchWithSnapshot(`plan:${session.workout_plan_id}:${session.session_id}`, () =>
+        apiFetch<WorkoutPlanDetail>(workoutModePlanPath(Number(session.workout_plan_id), session.session_id)),
+      ),
     enabled: Boolean(session.workout_plan_id),
   });
 
   const gymEquipmentQuery = useQuery({
     queryKey: ['workout-mode-plan-gym-equipment', session.gym_id],
-    queryFn: () => apiFetch<ApiList<GymEquipmentLink>>(`/gym-equipment?gym_id=${session.gym_id}&active_only=true`),
+    networkMode: 'always',
+    queryFn: () =>
+      fetchWithSnapshot(`gym-equipment:${session.gym_id}`, () =>
+        apiFetch<ApiList<GymEquipmentLink>>(`/gym-equipment?gym_id=${session.gym_id}&active_only=true`),
+      ),
     enabled: Boolean(session.gym_id),
   });
 
-  const activity = activityQuery.data;
+  // Séries gravadas offline ainda não confirmadas entram na contagem/numeração
+  // (cópia do que a tela enviou); o servidor continua sendo a fonte quando responde.
+  const opQueueSnapshot = useOpQueue();
+  const activity = useMemo(
+    () => overlayQueuedSets(activityQuery.data, opQueueSnapshot.ops),
+    [activityQuery.data, opQueueSnapshot.ops],
+  );
+  // Série offline confirmada pelo servidor: traz o registro oficial (e os
+  // derivados do backend) no lugar da cópia local.
+  const syncedOpsCount = opQueueSnapshot.ops.filter((op) => op.status === 'synced').length;
+  useEffect(() => {
+    if (syncedOpsCount > 0) void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncedOpsCount]);
   const plan = planQuery.data;
 
   // Modo avançado da sessão: desde o PR B4 da Evolução ZEPP decidido pela
@@ -578,6 +625,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       briefed_keys: Array.from(briefedKeys),
       rest_timer: restTimerRef.current,
       intensive_blocks: intensiveBlocksRef.current,
+      exercise_client_keys: Object.fromEntries(exerciseKeysRef.current),
       ...next,
     });
   }
@@ -643,6 +691,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }) {
     restActiveRef.current = true;
     restTimerRef.current = null;
+    setRestLocalClientKey(null);
     setRestKey(`${key}@${Date.now()}`);
     setResting(true);
     setRestIsExerciseTransition(isExerciseTransition);
@@ -1264,7 +1313,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }
 
   // ── Lançamento de séries ────────────────────────────────────────────────
+  const exerciseKeysRef = useRef(new Map<string, string>(Object.entries(session.exercise_client_keys ?? {})));
   const ensureExerciseMutation = useMutation({
+    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    networkMode: 'always',
     mutationFn: async () => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       if (current.loggedRow) return current.loggedRow.id;
@@ -1278,16 +1330,51 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           ? planItemId
           : (midExerciseExtras.find((extra) => extra.localId === planItemId)?.originalWorkoutPlanExerciseId ?? null);
 
-      const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
-        method: 'POST',
-        body: JSON.stringify({
-          original_name: effectiveExerciseName,
-          mapping_id: effectiveMappingId,
-          equipment_id: effectiveEquipmentLinkId,
-          workout_plan_exercise_id: workoutPlanExerciseId,
-        }),
-      });
-      return created.exercise_id;
+      // `client_key` do exercício: estável entre tentativas (o servidor deduplica por
+      // ela), então reenviar ou enfileirar nunca cria um segundo exercício.
+      const slot = `${session.session_id}#${workoutPlanExerciseId ?? effectiveExerciseName}`;
+      let exerciseKey = exerciseKeysRef.current.get(slot);
+      if (!exerciseKey) {
+        exerciseKey = newIdempotencyKey();
+        exerciseKeysRef.current.set(slot, exerciseKey);
+        // Persistido já: se a tela remontar antes do envio, a chave é a mesma.
+        const stored = loadStoredSession();
+        if (stored && stored.session_id === session.session_id) {
+          saveStoredSession({ ...stored, exercise_client_keys: Object.fromEntries(exerciseKeysRef.current) });
+        }
+      }
+      const queuedExercise = opQueue.findExerciseOp(exerciseKey);
+      if (queuedExercise) {
+        // Já está na fila offline: usa o id real se o servidor já respondeu, senão o id LOCAL.
+        const realId = (queuedExercise.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
+        return typeof realId === 'number' ? realId : (queuedExercise.localId as number);
+      }
+      const exerciseBody = {
+        original_name: effectiveExerciseName,
+        mapping_id: effectiveMappingId,
+        equipment_id: effectiveEquipmentLinkId,
+        workout_plan_exercise_id: workoutPlanExerciseId,
+        client_key: exerciseKey,
+      };
+      try {
+        const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
+          method: 'POST',
+          body: JSON.stringify(exerciseBody),
+        });
+        return created.exercise_id;
+      } catch (error) {
+        if (!isTransientApiError(error)) throw error;
+        // Sem rede/serviço: o exercício entra na fila (mesma client_key) e a tela segue
+        // com um id local até o servidor confirmar; as séries ficam atrás dele (FIFO).
+        const queued = await opQueue.enqueue({
+          kind: 'addExercise',
+          sessionId: session.session_id,
+          exerciseId: null,
+          payload: exerciseBody,
+          clientKey: exerciseKey,
+        });
+        return queued.localId as number;
+      }
     },
   });
 
@@ -1319,13 +1406,16 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // proteção do "Finalizar série", ver `saveSetLatchRef`).
   const savePreparatoryLatchRef = useRef(createSubmitLatch());
   const savePreparatorySetMutation = useMutation({
+    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    networkMode: 'always',
     mutationFn: async (input: PreparatorySetInput) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       const exerciseId = await ensureExerciseMutation.mutateAsync();
       const physicalSetNumber = nextPhysicalSetNumber(current.loggedRow?.sets);
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const preparatoryPosted = await postSetOrQueue({
+        sessionId: session.session_id,
+        exerciseId,
+        body: {
           set_number: physicalSetNumber,
           client_key: setClientKeyFor(exerciseId, physicalSetNumber),
           set_type: input.set_type,
@@ -1335,10 +1425,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           muscle_pain: input.muscle_pain ?? null,
           joint_pain: input.joint_pain ?? null,
           notes: input.notes ?? null,
-        }),
+        },
       });
       releaseSetClientKey(exerciseId, physicalSetNumber);
-      await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+      await refreshActivityAfterSave(preparatoryPosted.queued);
     },
     onSettled: () => savePreparatoryLatchRef.current.release(),
   });
@@ -1349,24 +1439,29 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // activity trouxer as séries (`isLaboralItemDone`).
   const saveLaboralLatchRef = useRef(createSubmitLatch());
   const saveLaboralMutation = useMutation({
+    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    networkMode: 'always',
     mutationFn: async () => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       const prescription = laboralPrescriptionOf(current.planExercise);
       if (!prescription) throw new ApiError('Exercício laboral sem padrão.', 0);
       const exerciseId = await ensureExerciseMutation.mutateAsync();
       const records = laboralSetRecords(prescription, nextPhysicalSetNumber(current.loggedRow?.sets));
+      let laboralQueued = false;
       for (const record of records) {
-        await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-          method: 'POST',
-          body: JSON.stringify({
+        const laboralPosted = await postSetOrQueue({
+          sessionId: session.session_id,
+          exerciseId,
+          body: {
             ...record,
             client_key: setClientKeyFor(exerciseId, record.set_number),
             rpe: null,
-          }),
+          },
         });
+        if (laboralPosted.queued) laboralQueued = true;
       }
       for (const record of records) releaseSetClientKey(exerciseId, record.set_number);
-      await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+      await refreshActivityAfterSave(laboralQueued);
     },
     onSettled: () => saveLaboralLatchRef.current.release(),
   });
@@ -1389,6 +1484,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // no `onSettled` do PRÓPRIO hook (sempre dispara, sucesso ou erro).
   const saveSetLatchRef = useRef(createSubmitLatch());
   const saveSetMutation = useMutation({
+    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    networkMode: 'always',
     mutationFn: async (values: SetLoggerValues) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       const tappedAt = Date.now();
@@ -1424,11 +1521,13 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       // Contexto de fadiga para a IA: aquecimento/ajuste ficam de fora.
       const previousSets = (current.loggedRow?.sets || []).filter((set) => !isPreparatorySetType(set.set_type));
 
-      const saved = await apiFetch<SavedSetIntensity>(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const mainClientKey = setClientKeyFor(exerciseId, physicalSetNumber);
+      const posted = await postSetOrQueue<SavedSetIntensity>({
+        sessionId: session.session_id,
+        exerciseId,
+        body: {
           set_number: physicalSetNumber,
-          client_key: setClientKeyFor(exerciseId, physicalSetNumber),
+          client_key: mainClientKey,
           ...(values.set_type ? { set_type: values.set_type } : {}),
           reps: values.reps,
           weight_kg: values.weight_kg,
@@ -1446,17 +1545,22 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           notes: values.notes,
           ...(values.technique_code ? { technique_code: values.technique_code } : {}),
           ...(values.anchor_set_number != null ? { anchor_set_number: values.anchor_set_number } : {}),
-        }),
+        },
       });
+      // `saved` só existe com a resposta do servidor; offline a série ficou na fila.
+      const saved = posted.saved;
+      const queuedClientKey = posted.queued ? posted.clientKey : null;
 
       // Família além da falha: as reps extras lançadas no card da última série
       // de trabalho viram UMA linha `forced_rep` ligada a ela (a série recém-
       // gravada é a âncora).
       const extraReps = values.extra_reps ?? 0;
+      let extraQueued = false;
       if (extraReps > 0 && current.planExercise.advanced_technique) {
-        await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-          method: 'POST',
-          body: JSON.stringify({
+        const extraPosted = await postSetOrQueue({
+          sessionId: session.session_id,
+          exerciseId,
+          body: {
             set_number: physicalSetNumber + 1,
             client_key: setClientKeyFor(exerciseId, physicalSetNumber + 1),
             set_type: getAdvancedTechniqueSetType(current.planExercise.advanced_technique),
@@ -1465,8 +1569,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             rpe: null,
             technique_code: current.planExercise.advanced_technique,
             anchor_set_number: physicalSetNumber,
-          }),
+          },
         });
+        extraQueued = extraPosted.queued;
         releaseSetClientKey(exerciseId, physicalSetNumber + 1);
       }
       releaseSetClientKey(exerciseId, physicalSetNumber);
@@ -1474,7 +1579,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       // Aguarda o refetch antes de considerar a série salva: garante que
       // `current.loggedCount` já reflita a série recém-gravada quando a
       // próxima tela renderizar.
-      await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+      await refreshActivityAfterSave(posted.queued || extraQueued);
       return {
         exerciseId,
         setNumber,
@@ -1484,6 +1589,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         isLastSetOfExercise,
         evalKey,
         saved,
+        queuedClientKey,
         opensApplication,
         applicationPauseSeconds,
         tappedAt,
@@ -1498,12 +1604,14 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       isLastSetOfExercise,
       evalKey,
       saved,
+      queuedClientKey,
       opensApplication,
       applicationPauseSeconds,
       tappedAt,
     }) => {
       // Só aqui (sucesso confirmado pelo servidor) o descanso passa a dizer
-      // "SÉRIE SALVA": erro nunca chega a este ponto.
+      // "SÉRIE SALVA": erro nunca chega a este ponto. Série só na fila offline
+      // NÃO é "salva": o descanso mostra "salva no aparelho" até o 2xx.
       setLastSavedSet({ forKey: evalKey, saved: saved ?? {} });
       if (opensApplication) {
         setApplicationAdjust(null);
@@ -1518,9 +1626,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           isExerciseTransition: isLastSetOfExercise,
           afterStageKind: null,
           fromKey: isLastSetOfExercise ? evalKey : null,
-          setSaved: true,
+          setSaved: queuedClientKey == null,
         });
       }
+      setRestLocalClientKey(queuedClientKey);
       if (perSetAiEnabled) {
         runEvaluation(exerciseId, setNumber, values, previousSets, evalKey);
       } else {
@@ -1553,6 +1662,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   };
   const saveApplicationLatchRef = useRef(createSubmitLatch());
   const saveApplicationMutation = useMutation({
+    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    networkMode: 'always',
     mutationFn: async (input: ApplicationSaveInput) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       const tappedAt = Date.now();
@@ -1564,12 +1675,14 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         loggedNonPreparatory: setNumber,
       });
       const evalKey = currentKey;
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-        method: 'POST',
-        body: JSON.stringify(
-          intensiveApplicationPayload({
+      const applicationClientKey = setClientKeyFor(exerciseId, physicalSetNumber);
+      const applicationPosted = await postSetOrQueue({
+        sessionId: session.session_id,
+        exerciseId,
+        body: {
+          ...intensiveApplicationPayload({
             setNumber: physicalSetNumber,
-            clientKey: setClientKeyFor(exerciseId, physicalSetNumber),
+            clientKey: applicationClientKey,
             setType: getAdvancedTechniqueSetType(input.techniqueCode),
             techniqueCode: input.techniqueCode,
             anchorSetNumber: input.anchorSetNumber,
@@ -1578,10 +1691,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             completedAt: new Date(tappedAt).toISOString(),
             restSeconds: input.pauseSeconds,
           }),
-        ),
+          client_key: applicationClientKey,
+        },
       });
       releaseSetClientKey(exerciseId, physicalSetNumber);
-      await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+      await refreshActivityAfterSave(applicationPosted.queued);
       return { exerciseId, setNumber, isLastSetOfExercise, evalKey, tappedAt, pauseSeconds: input.pauseSeconds };
     },
     onSettled: () => saveApplicationLatchRef.current.release(),
@@ -1616,8 +1730,20 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // PATCH de uma série gravada (confirmação de reps pendentes / correção).
   // 409 = sessão já finalizada; 404 = série sumiu: viram mensagem legível.
   async function patchSessionSet(exerciseId: number, setNumber: number, body: Record<string, number>) {
+    // Série ainda só na fila offline: edita a operação pendente (mesma client_key)
+    // em vez de mandar um PATCH para uma série que o servidor ainda não conhece.
+    const pendingEdit = await opQueue.editPendingSet(session.session_id, exerciseId, setNumber, body);
+    if (pendingEdit === 'edited') return;
+    if (pendingEdit === 'in_flight') {
+      throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
+    }
+    // Nunca PATCH com id local: troca pelo id real do servidor (ou espera a confirmação).
+    const serverExerciseId = opQueue.toServerExerciseId(exerciseId);
+    if (serverExerciseId == null) {
+      throw new Error('O exercício ainda não foi confirmado no servidor. Tente corrigir de novo em instantes.');
+    }
     try {
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets/${setNumber}`, {
+      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${serverExerciseId}/sets/${setNumber}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
@@ -1642,6 +1768,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     previousSets: ActivityDetail['exercises'][number]['sets'],
     evalKey: string | null,
   ) {
+    if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
     if (!current) return;
     setEvaluation({ loading: true, error: false, result: null, forKey: evalKey });
     fetchWorkoutAiResult<SetEvaluationResult>('/exercises/evaluate-set', {
@@ -1694,6 +1821,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // Resumo de fim de EXERCÍCIO — incondicional (independe de
   // `perSetAiEnabled`), disparado quando a última série do exercício é salva.
   function runExerciseSummary(exerciseId: number) {
+    if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
     setExerciseSummary({ loading: true, error: false, result: null });
     fetchWorkoutAiResult<ExerciseSummaryResult>(`/exercises/${exerciseId}/summarize`, { method: 'POST' })
       .then((result) => setExerciseSummary({ loading: false, error: false, result }))
@@ -2285,19 +2413,41 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   ) {
     try {
       const exerciseId = await ensureIntensiveExerciseId();
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-        method: 'POST',
-        body: JSON.stringify(intensiveSetPayload(record, restSeconds)),
+      const main = intensiveSetPayload(record, restSeconds);
+      const posted = await postSetOrQueue({
+        sessionId: session.session_id,
+        exerciseId,
+        body: { ...main, client_key: record.clientKey },
       });
       const extra = intensiveExtraRepsPayload(record, {
         techniqueCode,
         setType: getAdvancedTechniqueSetType(techniqueCode),
       });
+      const queuedKeys: string[] = posted.queued ? [posted.clientKey] : [];
       if (extra) {
-        await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets`, {
-          method: 'POST',
-          body: JSON.stringify(extra),
+        const extraPosted = await postSetOrQueue({
+          sessionId: session.session_id,
+          exerciseId,
+          body: { ...extra, client_key: extra.client_key as string },
         });
+        if (extraPosted.queued) queuedKeys.push(extraPosted.clientKey);
+      }
+      if (queuedKeys.length > 0) {
+        // Só na fila offline: continua "salvando" (nunca "salva") até o servidor
+        // confirmar com 2xx; um conflito vira erro com "Tentar de novo".
+        const outcomes = await Promise.all(queuedKeys.map((key) => opQueue.whenSettled(key)));
+        // Só 'synced' (2xx, inclusive confirmado por fora da fila) é sucesso: descartada
+        // pelo usuário ou apagada por logout/troca de conta NÃO é série salva.
+        if (outcomes.some((outcome) => outcome !== 'synced')) {
+          dispatch({
+            type: 'SAVE_FAILED',
+            clientKey: record.clientKey,
+            error: outcomes.includes('conflict')
+              ? SAVE_SET_ERROR
+              : 'Esta série foi descartada neste aparelho e não foi salva. Registre de novo.',
+          });
+          return;
+        }
       }
       dispatch({ type: 'SAVE_OK', clientKey: record.clientKey });
       void queryClient.invalidateQueries({ queryKey: activityQueryKey });
@@ -2333,6 +2483,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     const record = intensiveBlock?.records.find((row) => row.clientKey === clientKey);
     if (!record || !intensiveProfile || record.sync === 'saving') return;
     intensiveDispatch({ type: 'RETRY', clientKey });
+    void opQueue.retry(clientKey);
     void sendIntensiveRecord(record, intensiveDispatch, intensiveRestSeconds(intensiveProfile), intensiveProfile.techniqueCode);
   }
 
@@ -2490,6 +2641,17 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           nextSet={nextSetPreview}
           weightUnit={weightUnit}
         >
+          {restLocalClientKey != null && (
+            <div className={styles.restNext} data-testid="set-local-chip" role="status">
+              <span>
+                {restLocalStatus === 'synced'
+                  ? 'Série sincronizada'
+                  : restLocalStatus === 'conflict'
+                    ? 'Série não aceita pelo servidor — veja o aviso acima'
+                    : 'Série salva no aparelho · aguardando envio'}
+              </span>
+            </div>
+          )}
           <RestSavedSetPanel
             view={restSavedSetView({
               setSaved: restSetSaved,

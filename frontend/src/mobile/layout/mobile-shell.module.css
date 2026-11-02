@@ -1,0 +1,199 @@
+/* Shell mobile (plano mobile, 3.3). Cores/dimensões vêm de MOBILE_TOKENS via
+   variáveis inline no .root; aqui só layout, safe-area e movimento. */
+
+.root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--m-bg);
+  color: var(--m-text);
+}
+
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -100px;
+  z-index: 300;
+  padding: 12px 16px;
+  min-height: var(--m-touch);
+  background: var(--m-accent);
+  color: #0a0a0a;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
+.skip:focus {
+  top: 8px;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-sizing: content-box;
+  height: var(--m-header);
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  display: flex;
+  align-items: center;
+  background: var(--m-surface);
+  border-bottom: 1px solid var(--m-border);
+}
+
+.headerInner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 var(--m-pad);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--m-touch);
+  color: inherit;
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding-top: var(--m-pad);
+  padding-left: calc(var(--m-pad) + env(safe-area-inset-left));
+  padding-right: calc(var(--m-pad) + env(safe-area-inset-right));
+  /* reserva o bottom nav (altura + safe-area) mais uma folga */
+  padding-bottom: calc(var(--m-bottom-nav) + env(safe-area-inset-bottom) + var(--m-pad));
+}
+
+/* A2: refinos de apresentacao das paginas dentro do shell mobile. Escopo
+   `.main`: nada disso afeta o desktop (o shell so monta em < 768 px). */
+.main h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.main h2 {
+  font-size: 1.375rem;
+}
+
+/* alvos de toque de 44 px nos controles do Mantine */
+.main :global(.mantine-Input-input),
+.main :global(.mantine-Button-root),
+.main :global(.mantine-SegmentedControl-control),
+.main :global(.mantine-Tabs-tab) {
+  min-height: var(--m-touch);
+}
+
+.main :global(.mantine-ActionIcon-root) {
+  min-width: var(--m-touch);
+  min-height: var(--m-touch);
+}
+
+/* 16 px: abaixo disso o iOS Safari da zoom ao focar um campo */
+.main input:not([type='checkbox']):not([type='radio']),
+.main select,
+.main textarea {
+  font-size: 16px;
+}
+
+/* tabelas largas rolam dentro do proprio container, nunca a pagina inteira */
+.main :global(.mantine-ScrollArea-root),
+.main :global(.mantine-Table-scrollContainer) {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  box-sizing: content-box;
+  height: var(--m-bottom-nav);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  background: var(--m-surface);
+  border-top: 1px solid var(--m-border);
+}
+
+.tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+  min-height: var(--m-touch);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  color: var(--m-text-muted);
+  text-decoration: none;
+  font-size: 11px;
+  line-height: 1.2;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 120ms ease;
+}
+
+.tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab[aria-current='page'],
+.tab[aria-expanded='true'] {
+  color: var(--m-accent);
+  font-weight: 700;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+
+.moreLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--m-touch);
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--m-text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.moreLink[aria-current='page'] {
+  background: rgba(255, 149, 0, 0.14);
+  color: var(--m-accent);
+}
+
+/* NavLink do hub do Dashboard (componente compartilhado com o desktop): só
+   garante o alvo de toque de 44 px dentro da folha "Mais". */
+.dash a {
+  min-height: var(--m-touch);
+}
+
+.sheetBody {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}

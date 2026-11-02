@@ -1080,55 +1080,67 @@ export function SetLoggerCard({
           </div>
         ) : sidesMode ? (
           // M102: série unilateral — reps e RPE por lado, carga única (total).
-          <div className={styles.fieldGrid} data-testid="unilateral-set-fields">
-            <SteppedField
-              label="Reps E"
-              accessibleName="Repetições do lado esquerdo"
-              value={sides.reps_left}
-              onChange={(value) => editSide('reps_left', value)}
-              step={1}
-              min={0}
-              decimalScale={0}
-            />
-            <SteppedField
-              label="Reps D"
-              accessibleName="Repetições do lado direito"
-              value={sides.reps_right}
-              onChange={(value) => editSide('reps_right', value)}
-              step={1}
-              min={0}
-              decimalScale={0}
-            />
-            <SteppedField
-              label="RPE E"
-              accessibleName="RPE do lado esquerdo"
-              value={sides.rpe_left}
-              onChange={(value) => editSide('rpe_left', value)}
-              step={0.5}
-              min={0}
-              decimalScale={1}
-            />
-            <SteppedField
-              label="RPE D"
-              accessibleName="RPE do lado direito"
-              value={sides.rpe_right}
-              onChange={(value) => editSide('rpe_right', value)}
-              step={0.5}
-              min={0}
-              decimalScale={1}
-            />
-            <SteppedField
-              label="Carga"
-              accessibleName={`Carga (${weightUnit})`}
-              labelSuffix={unitSuffix}
-              value={weightField.display}
-              onChange={editWeight}
-              step={loadStepperStep(weightUnit, loadIncrementKg)}
-              min={0}
-              decimalScale={DISPLAY_DECIMALS[weightUnit]}
-              suffix=""
-              full
-            />
+          <div className={styles.sideStack} data-testid="unilateral-set-fields">
+            <div className={styles.sideGroup} role="group" aria-label="Lado esquerdo" data-testid="side-group-left">
+              <span className={styles.sideGroupTitle}>Esquerdo</span>
+              <div className={`${styles.fieldGrid} ${styles.fieldGrid2} ${styles.fieldGridKeep2}`}>
+                <SteppedField
+                  label="Reps"
+                  accessibleName="Repetições do lado esquerdo"
+                  value={sides.reps_left}
+                  onChange={(value) => editSide('reps_left', value)}
+                  step={1}
+                  min={0}
+                  decimalScale={0}
+                />
+                <SteppedField
+                  label="RPE"
+                  accessibleName="RPE do lado esquerdo"
+                  value={sides.rpe_left}
+                  onChange={(value) => editSide('rpe_left', value)}
+                  step={0.5}
+                  min={0}
+                  decimalScale={1}
+                />
+              </div>
+            </div>
+            <div className={styles.sideGroup} role="group" aria-label="Lado direito" data-testid="side-group-right">
+              <span className={styles.sideGroupTitle}>Direito</span>
+              <div className={`${styles.fieldGrid} ${styles.fieldGrid2} ${styles.fieldGridKeep2}`}>
+                <SteppedField
+                  label="Reps"
+                  accessibleName="Repetições do lado direito"
+                  value={sides.reps_right}
+                  onChange={(value) => editSide('reps_right', value)}
+                  step={1}
+                  min={0}
+                  decimalScale={0}
+                />
+                <SteppedField
+                  label="RPE"
+                  accessibleName="RPE do lado direito"
+                  value={sides.rpe_right}
+                  onChange={(value) => editSide('rpe_right', value)}
+                  step={0.5}
+                  min={0}
+                  decimalScale={1}
+                />
+              </div>
+            </div>
+            <div className={styles.fieldGrid}>
+              <SteppedField
+                label="Carga"
+                accessibleName={`Carga (${weightUnit})`}
+                labelSuffix={unitSuffix}
+                value={weightField.display}
+                onChange={editWeight}
+                step={loadStepperStep(weightUnit, loadIncrementKg)}
+                min={0}
+                decimalScale={DISPLAY_DECIMALS[weightUnit]}
+                suffix=""
+                full
+              />
+            </div>
           </div>
         ) : (
           <div className={styles.fieldGrid}>

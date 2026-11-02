@@ -7,19 +7,28 @@
 //   então o fundo não pode ter cantos transparentes.
 // - O logo ocupa ~72% da largura, deixando margem de segurança para a máscara
 //   do iOS e para ícones "maskable" do Android.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { Resvg } from '@resvg/resvg-js';
 
 const ICON_BACKGROUND = '#0a0a0a'; // igual a src/app/globals.css (body)
 
-const ICONS = [
-  { file: 'apple-touch-icon.png', size: 180 },
-  { file: 'icon-192.png', size: 192 },
-  { file: 'icon-512.png', size: 512 },
-];
-
 const LOGO_WIDTH_RATIO = 0.72;
+
+// Ícone "maskable" (Android recorta com máscaras de formatos variados): todo o
+// logo precisa caber no círculo da safe zone (raio = 40% do lado, ou seja, 80%
+// do ícone). O logo é um retângulo largo (902x746); com 0.60 do lado em
+// largura a meia-diagonal fica ~0.39 do lado, dentro do raio de 0.40. Mesmo
+// logo oficial, só com mais margem: nada é redesenhado.
+const MASKABLE_LOGO_WIDTH_RATIO = 0.6;
+
+const ICONS = [
+  { file: 'apple-touch-icon.png', size: 180, ratio: LOGO_WIDTH_RATIO },
+  { file: 'icon-192.png', size: 192, ratio: LOGO_WIDTH_RATIO },
+  { file: 'icon-512.png', size: 512, ratio: LOGO_WIDTH_RATIO },
+  { file: 'icons/maskable-192.png', size: 192, ratio: MASKABLE_LOGO_WIDTH_RATIO },
+  { file: 'icons/maskable-512.png', size: 512, ratio: MASKABLE_LOGO_WIDTH_RATIO },
+];
 
 /**
  * Lê o viewBox de `public/logo.svg` em vez de fixá-lo no script: o recorte do
@@ -34,8 +43,8 @@ function readViewBox(logoSvg) {
   return { minX, minY, width, height };
 }
 
-function buildIconSvg(logoSvg, viewBox, size) {
-  const logoWidth = size * LOGO_WIDTH_RATIO;
+function buildIconSvg(logoSvg, viewBox, size, ratio) {
+  const logoWidth = size * ratio;
   const logoHeight = logoWidth * (viewBox.height / viewBox.width);
   const x = (size - logoWidth) / 2;
   const y = (size - logoHeight) / 2;
@@ -49,8 +58,10 @@ function buildIconSvg(logoSvg, viewBox, size) {
 const logoSvg = readFileSync(new URL('../public/logo.svg', import.meta.url), 'utf8');
 const logoViewBox = readViewBox(logoSvg);
 
-for (const { file, size } of ICONS) {
-  const png = new Resvg(buildIconSvg(logoSvg, logoViewBox, size), {
+mkdirSync(new URL('../public/icons/', import.meta.url), { recursive: true });
+
+for (const { file, size, ratio } of ICONS) {
+  const png = new Resvg(buildIconSvg(logoSvg, logoViewBox, size, ratio), {
     fitTo: { mode: 'width', value: size },
     background: ICON_BACKGROUND,
   })

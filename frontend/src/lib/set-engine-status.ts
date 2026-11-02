@@ -67,6 +67,11 @@ export type SavedSetIntensity = {
   safety_event?: string | null;
   safety_event_label?: string | null;
   next_set_load?: NextSetLoad | null;
+  // Eco do gravado (também no replay `duplicate`): a fila offline compara com o enviado.
+  weight_kg?: number | null;
+  set_type?: string | null;
+  joint_pain?: boolean | null;
+  muscle_pain?: number | null;
   // M102: reps/RPE OFICIAIS gravados (pior lado quando há lados) e o texto dos lados.
   reps?: number | null;
   rpe?: number | null;

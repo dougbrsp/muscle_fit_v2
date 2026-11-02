@@ -25,7 +25,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import replace
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -1094,8 +1094,29 @@ def _number_or_none(value: Any) -> Optional[float]:
     return float(value) if value is not None else None
 
 
+def _as_stored_2dp(value: Any) -> Optional[float]:
+    """Espelho da precisão da coluna (DECIMAL(x,2), ROUND_HALF_UP do MySQL):
+    a criação ecoa o valor como o banco o grava, para criação e replay
+    devolverem o mesmo número. Não altera o que é gravado nem valida entrada;
+    não é regra de treino."""
+    if value is None:
+        return None
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 def _logged_values(row: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {"reps": row.get("reps"), "rpe": _number_or_none(row.get("rpe"))}
+    # Eco do GRAVADO (aditivo): a fila offline compara com o que enviou e
+    # detecta "mesma client_key, payload diferente" no replay.
+    values: dict[str, Any] = {
+        "reps": row.get("reps"),
+        "rpe": _as_stored_2dp(row.get("rpe")),
+        "weight_kg": _as_stored_2dp(row.get("weight_kg")),
+        "set_type": row.get("set_type"),
+        # `joint_pain` é TINYINT(1): bool nos dois caminhos; `muscle_pain`
+        # é TINYINT 0-10 (inteiro), não bool.
+        "joint_pain": None if row.get("joint_pain") is None else bool(row.get("joint_pain")),
+        "muscle_pain": row.get("muscle_pain"),
+    }
     for field in SIDE_FIELDS:
         value = row.get(field)
         values[field] = _number_or_none(value) if field.startswith("rpe") else value
@@ -1347,6 +1368,10 @@ def add_session_set(
                 # M102: o gravado (canônico do dono + lados) vai na resposta.
                 "reps": payload.reps,
                 "rpe": payload.rpe,
+                "weight_kg": payload.weight_kg,
+                "set_type": set_type,
+                "joint_pain": payload.joint_pain,
+                "muscle_pain": payload.muscle_pain,
                 **{field: getattr(payload, field) for field in SIDE_FIELDS},
             }
 
@@ -1396,6 +1421,20 @@ def add_session_set(
                     exc, client_key, lambda: _find_set_by_client_key(cur, exercise_id, client_key, locking=True)
                 )
                 if stored is None:
+                    if is_duplicate_key_error(exc) and "uq_exercise_set_number" in str(exc):
+                        # L4: `set_number` ocupado por OUTRA série (outra chave):
+                        # conflito recuperável; o cliente relê a sessão e reenvia.
+                        # Corrida do set_number AUTOMÁTICO (MAX+1 de dois envios
+                        # simultâneos) cai aqui também: reler e reenviar sem
+                        # `set_number`.
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "code": "set_number_conflict",
+                                "message": "Já existe outra série com este número neste exercício.",
+                                "set_number": set_number,
+                            },
+                        ) from exc
                     raise
                 return _duplicate_set_response(
                     conn, cur, session_id, exercise_id, exercise_row, stored, client_key, user_id=identity.user_id
