@@ -1004,7 +1004,12 @@ PADROES: tuple[Padrao, ...] = (
             r"|\b(?:protein_g_per_kg|fat_kcal_share|surplus_share|weekly_rate_share|carb_min_g_per_kg|max_deficit_share"
             r"""|min_intake_bmr_multiple)\w*["']?\s*[:=]\s*[\d(\[]"""
         ),
-        donos=("api/app/domain/nutrition/strategy.py", "api/app/domain/nutrition/macros.py"),
+        # `manual_targets.py` (N1, D6) é dono dos limites de BLOQUEIO das gramas manuais, com fonte.
+        donos=(
+            "api/app/domain/nutrition/strategy.py",
+            "api/app/domain/nutrition/macros.py",
+            "api/app/domain/nutrition/manual_targets.py",
+        ),
         inventario="NUTRICAO-L1",
         linguagens=frozenset({"py", "ts", "md"}),
     ),
@@ -1043,6 +1048,21 @@ PADROES: tuple[Padrao, ...] = (
         ),
         donos=("api/app/domain/nutrition/labels.py",),
         inventario="NUTRICAO-L1",
+    ),
+    Padrao(
+        chave="rotulo_prioridade_macros",
+        regra='rótulo pt-BR da prioridade de macros escrito à mão ("Proteína fixa", "Carboidrato alto", "Gordura alta")',
+        # N1 (2026-11-02): o dono é `labels.MACRO_PRIORITY_LABELS`; o FE lê `macro_priority_labels`
+        # do JSON gerado. "Equilibrado" é genérico demais e fica de fora. Só o rótulo
+        # que ABRE a string ou o texto JSX (o rótulo completo continua casando).
+        regex=re.compile(
+            r"""["'`](?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)"""
+            r"|>\s*(?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)[^<]*<"
+        ),
+        donos=("api/app/domain/nutrition/labels.py",),
+        inventario="NUTRICAO-N1",
+        linguagens=frozenset({"py", "ts", "md"}),
+        escopo=ESCOPO_NUTRICAO,
     ),
     Padrao(
         chave="kcal_treino_prioridade",
@@ -2068,6 +2088,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
         "api/app/intelligence/report/markdown_renderer.py": 1,  # INTENT_LABELS["maintenance"]
         "frontend/src/lib/methodology-volume.ts": 2,  # METHODOLOGY_INTENT_OPTIONS (maintenance, cutting)
     },
+    "rotulo_prioridade_macros": {},  # N1 (2026-11-02): nasce vazia
     "kcal_treino_prioridade": {},
     "vocabulario_ia_serie": {},  # RPE 10 Lote 6/P9 (2026-10-11): nasce vazia (o FE saiu junto)
     # C13: rótulos de status de progressão com um dono só desde o Lote 3c
@@ -2833,6 +2854,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("'Cutting (definição)'", "STRATEGY_LABELS[s]", "'cutting'", "Manutenção da intensidade",
          "nutrition.strategy_labels[code]", "<Badge>{strategyLabel}</Badge>", "<Text>Cutting (definição)</Text>",
          "<Text>Fase de Bulking</Text>"),
+    ),
+    "rotulo_prioridade_macros": (
+        ("label: 'Proteína fixa'", 'PRIORITY = "Carbo alto"', "`Gordura alta`", "<Badge>Carboidrato alto</Badge>",
+         "<Text> Gordura alta (carboidrato baixo) </Text>"),
+        ("MACRO_PRIORITY_LABELS[p]", "nutrition.macro_priority_labels[code]", "'high_carb'", "Meta de gordura alta no jantar",
+         "<Text>{priorityLabel}</Text>", "'Equilibrado'"),
     ),
     "kcal_treino_prioridade": (
         ("kcal = activity.calories_kcal or estimativa_met", "const kcal = session.calories_kcal ?? estimate.kcal;",

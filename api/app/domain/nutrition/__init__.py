@@ -14,8 +14,11 @@ Módulos (um dono por regra):
 - `energy_density`: Hall 2008 / Forbes (kcal por kg de variação de peso).
 - `strategy`: cutting / bulking / manutenção, faixas, defaults, alvo calórico.
 - `macros`: Atwater, fibra, divisão em gramas, proteína por refeição.
-- `carb_cycling`: distribuição semanal do carbo com média preservada.
-- `phases`: calendário (MATADOR, ICECAP, refeeds, teto de semanas, %G de parada).
+- `carb_cycling`: distribuição semanal do carbo com média preservada; dias
+  escolhidos pelo usuário e proposta a partir do Modelo (N1).
+- `manual_targets`: gramas manuais validadas (dentro / aviso / bloqueio, N1).
+- `phases`: calendário (MATADOR, ICECAP, refeeds, teto de semanas, %G de parada)
+  e projeção até o alvo de peso ou de %G (N1).
 - `adaptive_tdee`: gasto observado; só SUGERE recálculo (D-J).
 - `weekly_budget`: orçamento, banco e aderência da semana.
 - `meal_math`: gramas por unidade/porção, macros de item/refeição, consistência.
@@ -88,6 +91,7 @@ from . import (  # noqa: F401  (reexport dos módulos do pacote)
     label_photo,
     labels,
     macros,
+    manual_targets,
     meal_math,
     meal_parse,
     phases,
@@ -131,6 +135,16 @@ def export_for_frontend() -> dict[str, Any]:
         "strategy_labels": lb.labels_by_code(lb.STRATEGY_LABELS),
         "protein_bases": _codes(st.ProteinBasis),
         "protein_basis_labels": lb.labels_by_code(lb.PROTEIN_BASIS_LABELS),
+        "macro_priorities": _codes(strategy.MacroPriority),
+        "macro_priority_labels": lb.labels_by_code(lb.MACRO_PRIORITY_LABELS),
+        "default_macro_priority": strategy.DEFAULT_MACRO_PRIORITY.value,
+        "range_statuses": _codes(manual_targets.RangeStatus),
+        "range_status_labels": lb.labels_by_code(lb.RANGE_STATUS_LABELS),
+        "goal_kinds": _codes(phases.GoalKind),
+        "goal_kind_labels": lb.labels_by_code(lb.GOAL_KIND_LABELS),
+        "projection_statuses": _codes(phases.ProjectionStatus),
+        "projection_status_labels": lb.labels_by_code(lb.PROJECTION_STATUS_LABELS),
+        "weekday_names": {str(indice): nome for indice, nome in lb.WEEKDAY_LABELS.items()},
         "day_kinds": _codes(carb_cycling.DayKind),
         "day_kind_labels": lb.labels_by_code(lb.DAY_KIND_LABELS),
         "meal_slots": _codes(lb.MealSlot),
