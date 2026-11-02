@@ -146,6 +146,21 @@ export function WorkoutModeClient() {
     router.push('/registro-exercicios');
   }
 
+  if (offlineUser.state === 'locked') {
+    return (
+      <Stack align="center" gap="sm" p="lg" data-testid="tab-locked-notice" role="status">
+        <Text fw={600}>Treino aberto em outra aba</Text>
+        <Text size="sm" c={BRAND.textMuted} ta="center">
+          Para não gravar por cima do mesmo treino, só uma aba por vez escreve. Feche a outra aba ou use o botão abaixo
+          quando ela for fechada; esta aba continua automaticamente quando a outra sair.
+        </Text>
+        <Button variant="default" onClick={offlineUser.retry}>
+          Tentar de novo
+        </Button>
+      </Stack>
+    );
+  }
+
   if (offlineUser.state === 'error') {
     return (
       <RecoverableError

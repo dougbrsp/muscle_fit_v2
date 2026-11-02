@@ -11,7 +11,10 @@ const SNAP_PREFIX = 'snap:';
 /** Versão do formato do retrato; outra versão é ignorada (nunca interpretada). */
 export const SNAPSHOT_VERSION = 1;
 
-type Stored = { v: number; data: unknown };
+type Stored = { v: number; data: unknown; at?: number };
+
+/** Quantos retratos antigos de cada tipo (activity:, plan:) ficam no aparelho; os mais velhos são podados. */
+export const SNAPSHOT_MAX_PER_KIND = 3;
 
 let snapUser: number | null = null;
 let cache = new Map<string, unknown>();
@@ -21,15 +24,42 @@ onOfflinePurge(() => {
   cache = new Map();
 });
 
+function deleteSnapshotKey(userId: number, name: string): Promise<void> {
+  return enqueueBackendTask(async () => {
+    try {
+      const backend = await getOfflineBackend();
+      await backend.delete('meta', makeKey(userId, `${SNAP_PREFIX}${name}`));
+    } catch {
+      // poda é só limpeza
+    }
+  });
+}
+
 export async function loadSnapshots(userId: number): Promise<void> {
   if (snapUser === userId) return;
   const backend = await getOfflineBackend();
   const rows = await enqueueBackendTask(() => backend.list('meta', makeKey(userId, SNAP_PREFIX)));
   const prefix = makeKey(userId, SNAP_PREFIX);
   const next = new Map<string, unknown>();
+  const stamps = new Map<string, number>();
   for (const row of rows) {
     const stored = row.value as Stored | null;
-    if (stored && stored.v === SNAPSHOT_VERSION) next.set(row.key.slice(prefix.length), stored.data);
+    const name = row.key.slice(prefix.length);
+    if (stored && stored.v === SNAPSHOT_VERSION) {
+      next.set(name, stored.data);
+      stamps.set(name, stored.at ?? 0);
+    } else {
+      void deleteSnapshotKey(userId, name); // outra versão do formato: não serve, sai
+    }
+  }
+  // Poda: por tipo (activity:, plan:), só os mais recentes ficam.
+  for (const kind of ['activity:', 'plan:']) {
+    const names = Array.from(stamps.keys()).filter((name) => name.startsWith(kind));
+    names.sort((a, b) => (stamps.get(b) ?? 0) - (stamps.get(a) ?? 0));
+    for (const old of names.slice(SNAPSHOT_MAX_PER_KIND)) {
+      next.delete(old);
+      void deleteSnapshotKey(userId, old);
+    }
   }
   cache = next;
   snapUser = userId;
@@ -47,7 +77,7 @@ export function writeSnapshot(name: string, value: unknown): void {
     if (snapUser !== userId) return;
     try {
       const backend = await getOfflineBackend();
-      await backend.put('meta', makeKey(userId, `${SNAP_PREFIX}${name}`), { v: SNAPSHOT_VERSION, data: value } satisfies Stored);
+      await backend.put('meta', makeKey(userId, `${SNAP_PREFIX}${name}`), { v: SNAPSHOT_VERSION, data: value, at: Date.now() } satisfies Stored);
     } catch {
       // cota/armazenamento: o retrato é só conveniência offline
     }

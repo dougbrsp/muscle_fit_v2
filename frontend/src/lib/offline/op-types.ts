@@ -12,7 +12,7 @@ export type OfflineOp = {
   userId: number;
   kind: OpKind;
   sessionId: number;
-  /** Chave do exercício no cliente (id do servidor ou `client_key` do exercício ainda não sincronizado). */
+  /** Exercício da série: id do servidor (>0), id LOCAL negativo (`localId` de um addExercise) ou a `client_key` dele. */
   exerciseId: number | string | null;
   /** Corpo exato que seria enviado ao servidor (sem derivar nada no cliente). */
   payload: Record<string, unknown>;
@@ -23,7 +23,9 @@ export type OfflineOp = {
   /** Epoch ms da próxima tentativa (backoff); ausente = elegível agora. */
   nextAttemptAt?: number;
   /** Por que está em conflito (decide as ações oferecidas ao usuário). */
-  conflictKind?: 'echo_mismatch' | 'set_number' | 'http';
+  conflictKind?: 'echo_mismatch' | 'set_number' | 'orphan' | 'http';
+  /** addExercise: id LOCAL negativo usado pela tela até o servidor devolver o id real. */
+  localId?: number;
   /** Mensagem recuperável da última falha (nunca mostrada como sucesso). */
   lastError?: string | null;
   /** Resposta do servidor quando `synced` (para conciliar a tela). */

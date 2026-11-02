@@ -60,3 +60,33 @@ describe('overlayQueuedSets', () => {
     expect(overlayQueuedSets(base, [op({ kind: 'addExercise' }), op({ exerciseId: 'ex:A' })])).toBe(base);
   });
 });
+
+
+describe('overlayQueuedSets: exercício criado offline', () => {
+  const exOp = (overrides: Partial<OfflineOp> = {}): OfflineOp =>
+    op({
+      kind: 'addExercise',
+      exerciseId: null,
+      localId: -1001,
+      clientKey: 'ex:A',
+      payload: { original_name: 'Crucifixo', workout_plan_exercise_id: 7002, mapping_id: 12 },
+      ...overrides,
+    });
+
+  it('cria a linha sintética (id local) com as séries pendentes dela', () => {
+    const base = activity([{ set_number: 1 }]);
+    const result = overlayQueuedSets(base, [exOp(), op({ exerciseId: -1001, clientKey: 'k9', payload: { set_number: 1, reps: 8 } })]);
+    expect(result?.exercises).toHaveLength(3);
+    const created = result?.exercises[2];
+    expect(created).toMatchObject({ id: -1001, original_name: 'Crucifixo', workout_plan_exercise_id: 7002 });
+    expect(created?.sets).toHaveLength(1);
+  });
+
+  it('quando o servidor já devolveu o exercício, a série pendente vai para a linha real (sem duplicar o exercício)', () => {
+    const base = activity([]);
+    const synced = exOp({ status: 'synced', serverResponse: { exercise_id: 6 } });
+    const result = overlayQueuedSets(base, [synced, op({ exerciseId: -1001, clientKey: 'k9', payload: { set_number: 1, reps: 8 } })]);
+    expect(result?.exercises).toHaveLength(2);
+    expect(result?.exercises[1].sets).toHaveLength(1);
+  });
+});

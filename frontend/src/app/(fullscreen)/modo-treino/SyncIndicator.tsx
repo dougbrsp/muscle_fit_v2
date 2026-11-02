@@ -44,14 +44,24 @@ export function SyncIndicator() {
             Não foi possível enviar um registro: {op.lastError ?? 'o servidor recusou.'}
           </Text>
           <Group gap="xs">
-            {/* Mesma chave com conteúdo diferente no servidor: reenviar repetiria o conflito. */}
-            {op.conflictKind !== 'echo_mismatch' && (
+            {/* Mesma chave com conteúdo diferente no servidor, ou exercício de origem descartado:
+                reenviar repetiria o conflito. */}
+            {op.conflictKind === 'set_number' && (
+              <Button
+                size="compact-xs"
+                variant="default"
+                onClick={() => void opQueue.resolveConflict(op.opId, 'resend_renumbered')}
+              >
+                Reenviar com o próximo número
+              </Button>
+            )}
+            {op.conflictKind !== 'echo_mismatch' && op.conflictKind !== 'orphan' && op.conflictKind !== 'set_number' && (
               <Button size="compact-xs" variant="default" onClick={() => void opQueue.resolveConflict(op.opId, 'resend')}>
                 Tentar de novo
               </Button>
             )}
             <Button size="compact-xs" variant="default" onClick={() => void opQueue.resolveConflict(op.opId, 'keep_server')}>
-              Manter o do servidor
+              {op.conflictKind === 'orphan' ? 'Descartar' : 'Manter o do servidor'}
             </Button>
           </Group>
         </Alert>

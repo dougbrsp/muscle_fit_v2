@@ -2,9 +2,9 @@ import type { Page, Route } from '@playwright/test';
 
 /**
  * API mockada e COM ESTADO para os cenarios de resiliencia do Modo Treino.
- * Replica so o contrato de idempotencia do backend (`client_key` por exercicio:
- * a 2a chamada devolve `duplicate: true` sem gravar); nao replica regra de
- * negocio (valores arbitrarios). Chamadas nao mapeadas respondem 404 e ficam em
+ * Replica so o contrato de idempotencia do backend (`client_key` por exercicio e
+ * por serie: a 2a chamada devolve `duplicate: true` sem gravar); nao replica regra
+ * de negocio (valores arbitrarios). Chamadas nao mapeadas respondem 404 e ficam em
  * `unhandled` para inspecao.
  */
 export const API = 'http://mock-api.test';
@@ -17,8 +17,10 @@ export type UserKey = keyof typeof USERS;
 
 export const SESSION_ID = 900;
 export const PLAN_ID = 50;
-export const EXERCISE_ID = 501;
+export const EXERCISE_ID = 501; // Supino (ja existe no servidor ao abrir a sessao)
 export const PLAN_ITEM_ID = 7001;
+export const CRUCIFIXO_PLAN_ITEM_ID = 7002;
+export const CRUCIFIXO_EXERCISE_ID = 502; // criado so quando o exercicio e lancado
 export const FST_PLAN_ITEM_ID = 7003;
 export const FST_EXERCISE_ID = 503;
 
@@ -27,18 +29,23 @@ type StoredSet = { set_number: number; client_key: string; body: Record<string, 
 export type MockWorkoutApi = {
   /** Chamadas `POST .../sets` recebidas (inclui as recusadas por falha forcada). */
   setPosts: Array<{ client_key: string; status: number }>;
-  /** Series efetivamente gravadas no "servidor" (dedupe por client_key). */
+  /** Chamadas `POST .../exercises` recebidas (client_key, plan item). */
+  exercisePosts: Array<{ client_key: string | null; workout_plan_exercise_id: unknown; duplicate: boolean }>;
+  /** Series efetivamente gravadas no "servidor" para o Supino (dedupe por client_key). */
   serverSets: () => StoredSet[];
+  /** Series gravadas do Crucifixo (exercicio criado offline nos cenarios). */
+  crucifixoSets: () => StoredSet[];
   unhandled: string[];
   /** Corpos das series FST-7 recebidas (para conferir a carga efetiva gravada). */
   fstBodies: Array<Record<string, unknown>>;
-  /** Proximos N POST de serie respondem com `status` (padrao 500). */
+  /** Proximos N POST de serie (qualquer exercicio) respondem com `status` (padrao 500). */
   failNextSetPosts: (count: number, status?: number) => void;
   /** Rede fora: toda chamada a API falha na conexao (como sem sinal). */
   setNetworkDown: (down: boolean) => void;
+  /** `GET /auth/me` passa a responder este status (null = normal). */
+  setAuthMeStatus: (status: number | null) => void;
   /** Troca o usuario autenticado (cookie simulado). */
   loginAs: (user: UserKey) => void;
-  setClock: (ms: number) => void;
 };
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
@@ -48,13 +55,36 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   let failures = 0;
   let failureStatus = 500;
   let networkDown = false;
+  let authMeStatus: number | null = null;
   const unhandled: string[] = [];
   const fstBodies: Array<Record<string, unknown>> = [];
   const setPosts: MockWorkoutApi['setPosts'] = [];
-  const sets = new Map<string, StoredSet>(); // client_key -> set
-  const fstSets = new Map<string, StoredSet>();
-  let fstCreated = false;
+  const exercisePosts: MockWorkoutApi['exercisePosts'] = [];
   const sessionOwner = 1;
+
+  // Series por exercicio do servidor: client_key -> serie.
+  const setsByExercise = new Map<number, Map<string, StoredSet>>([
+    [EXERCISE_ID, new Map()],
+    [CRUCIFIXO_EXERCISE_ID, new Map()],
+    [FST_EXERCISE_ID, new Map()],
+  ]);
+  // Exercicios criados no servidor (por client_key) -> id.
+  const exercisesByKey = new Map<string, number>();
+  const createdExercises = new Set<number>([EXERCISE_ID]);
+  const planItemOf: Record<number, { id: number; sequence: number; name: string; mapping: number }> = {
+    [CRUCIFIXO_PLAN_ITEM_ID]: { id: CRUCIFIXO_EXERCISE_ID, sequence: 2, name: 'Crucifixo', mapping: 12 },
+    [FST_PLAN_ITEM_ID]: { id: FST_EXERCISE_ID, sequence: 3, name: 'Peck deck', mapping: 13 },
+  };
+  const wpeOfExercise: Record<number, number> = {
+    [EXERCISE_ID]: PLAN_ITEM_ID,
+    [CRUCIFIXO_EXERCISE_ID]: CRUCIFIXO_PLAN_ITEM_ID,
+    [FST_EXERCISE_ID]: FST_PLAN_ITEM_ID,
+  };
+
+  const rowsOf = (exerciseId: number) =>
+    Array.from(setsByExercise.get(exerciseId)?.values() ?? [])
+      .sort((a, b) => a.set_number - b.set_number)
+      .map((stored) => ({ ...stored.body, set_number: stored.set_number, client_key: stored.client_key }));
 
   const activity = () => ({
     id: SESSION_ID,
@@ -64,34 +94,19 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     gym_id: 1,
     session_status: 'in_progress',
     workout_plan_id: PLAN_ID,
-    exercises: [
-      {
-        id: EXERCISE_ID,
+    exercises: Array.from(createdExercises).map((exerciseId) => {
+      const wpe = wpeOfExercise[exerciseId];
+      const meta = wpe === PLAN_ITEM_ID ? { sequence: 1, name: 'Supino reto', mapping: 11 } : planItemOf[wpe];
+      return {
+        id: exerciseId,
         activity_id: SESSION_ID,
-        sequence: 1,
-        original_name: 'Supino reto',
-        mapping_id: 11,
-        workout_plan_exercise_id: PLAN_ITEM_ID,
-        sets: Array.from(sets.values())
-          .sort((a, b) => a.set_number - b.set_number)
-          .map((stored) => ({ ...stored.body, set_number: stored.set_number, client_key: stored.client_key })),
-      },
-      ...(fstCreated
-        ? [
-            {
-              id: FST_EXERCISE_ID,
-              activity_id: SESSION_ID,
-              sequence: 2,
-              original_name: 'Peck deck',
-              mapping_id: 13,
-              workout_plan_exercise_id: FST_PLAN_ITEM_ID,
-              sets: Array.from(fstSets.values())
-                .sort((a, b) => a.set_number - b.set_number)
-                .map((stored) => ({ ...stored.body, set_number: stored.set_number, client_key: stored.client_key })),
-            },
-          ]
-        : []),
-    ],
+        sequence: meta.sequence,
+        original_name: meta.name,
+        mapping_id: meta.mapping,
+        workout_plan_exercise_id: wpe,
+        sets: rowsOf(exerciseId),
+      };
+    }),
   });
 
   const plan = {
@@ -100,24 +115,8 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     gym_id: 1,
     gym_name: 'Academia Central',
     exercises: [
-      {
-        workout_plan_exercise_id: PLAN_ITEM_ID,
-        sequence: 1,
-        exercise_name: 'Supino reto',
-        mapping_id: 11,
-        sets_count: 4,
-        reps_target: '8-12',
-        rest_seconds: 60,
-      },
-      {
-        workout_plan_exercise_id: 7002,
-        sequence: 2,
-        exercise_name: 'Crucifixo',
-        mapping_id: 12,
-        sets_count: 3,
-        reps_target: '10-15',
-        rest_seconds: 60,
-      },
+      { workout_plan_exercise_id: PLAN_ITEM_ID, sequence: 1, exercise_name: 'Supino reto', mapping_id: 11, sets_count: 4, reps_target: '8-12', rest_seconds: 60 },
+      { workout_plan_exercise_id: CRUCIFIXO_PLAN_ITEM_ID, sequence: 2, exercise_name: 'Crucifixo', mapping_id: 12, sets_count: 3, reps_target: '10-15', rest_seconds: 60 },
       {
         workout_plan_exercise_id: FST_PLAN_ITEM_ID,
         sequence: 3,
@@ -151,6 +150,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     const key = `${req.method()} ${path}`;
 
     if (key === 'GET /auth/me') {
+      if (authMeStatus != null) return send(authMeStatus, { detail: 'e2e: /auth/me forcado' });
       return send(200, {
         ...USERS[user],
         role: 'user',
@@ -172,36 +172,35 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     if (key === 'GET /gyms') return send(200, { items: [{ id: 1, name: 'Academia Central', is_active: true }] });
 
     if (key === `POST /workout-sessions/${SESSION_ID}/exercises`) {
-      fstCreated = true;
+      const body = JSON.parse(req.postData() ?? '{}') as Record<string, unknown>;
+      const clientKey = typeof body.client_key === 'string' ? body.client_key : null;
+      const meta = planItemOf[Number(body.workout_plan_exercise_id)];
+      if (!meta) {
+        unhandled.push(`${key} wpe=${String(body.workout_plan_exercise_id)}`);
+        return send(404, { detail: 'e2e: item de ficha desconhecido' });
+      }
+      const existing = clientKey ? exercisesByKey.get(clientKey) : undefined;
+      exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null });
+      if (clientKey && existing == null) exercisesByKey.set(clientKey, meta.id);
+      createdExercises.add(meta.id);
       return send(200, {
         status: 'ok',
         session_id: SESSION_ID,
-        exercise_id: FST_EXERCISE_ID,
-        sequence: 2,
-        mapping_id: 13,
+        exercise_id: meta.id,
+        sequence: meta.sequence,
+        mapping_id: meta.mapping,
         equipment_id: null,
-        workout_plan_exercise_id: FST_PLAN_ITEM_ID,
-        duplicate: false,
+        workout_plan_exercise_id: Number(body.workout_plan_exercise_id),
+        client_key: clientKey,
+        duplicate: existing != null,
       });
     }
-    const fstPath = new RegExp(`^/workout-sessions/${SESSION_ID}/exercises/${FST_EXERCISE_ID}/sets$`);
-    if (req.method() === 'POST' && fstPath.test(path)) {
-      const body = JSON.parse(req.postData() ?? '{}') as Record<string, unknown>;
-      const clientKey = String(body.client_key ?? '');
-      const existing = fstSets.get(clientKey);
-      if (existing) {
-        setPosts.push({ client_key: clientKey, status: 200 });
-        return send(200, { status: 'ok', set_number: existing.set_number, client_key: clientKey, duplicate: true });
-      }
-      const setNumber = Number(body.set_number ?? fstSets.size + 1);
-      fstSets.set(clientKey, { set_number: setNumber, client_key: clientKey, body });
-      fstBodies.push(body);
-      setPosts.push({ client_key: clientKey, status: 200 });
-      return send(200, { status: 'ok', set_number: setNumber, client_key: clientKey, duplicate: false });
-    }
 
-    const setsPath = new RegExp(`^/workout-sessions/${SESSION_ID}/exercises/${EXERCISE_ID}/sets$`);
-    if (req.method() === 'POST' && setsPath.test(path)) {
+    const setsMatch = new RegExp(`^/workout-sessions/${SESSION_ID}/exercises/(\\d+)/sets$`).exec(path);
+    if (req.method() === 'POST' && setsMatch) {
+      const exerciseId = Number(setsMatch[1]);
+      const bucket = setsByExercise.get(exerciseId);
+      if (!bucket || !createdExercises.has(exerciseId)) return send(404, { detail: 'Exercício não encontrado nesta sessão.' });
       const body = JSON.parse(req.postData() ?? '{}') as Record<string, unknown>;
       const clientKey = String(body.client_key ?? '');
       if (failures > 0) {
@@ -209,13 +208,14 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         setPosts.push({ client_key: clientKey, status: failureStatus });
         return send(failureStatus, { detail: 'Erro interno.' });
       }
-      const existing = sets.get(clientKey);
+      const existing = bucket.get(clientKey);
       if (existing) {
         setPosts.push({ client_key: clientKey, status: 200 });
         return send(200, { status: 'ok', set_number: existing.set_number, client_key: clientKey, duplicate: true });
       }
-      const setNumber = Number(body.set_number ?? sets.size + 1);
-      sets.set(clientKey, { set_number: setNumber, client_key: clientKey, body });
+      const setNumber = Number(body.set_number ?? bucket.size + 1);
+      bucket.set(clientKey, { set_number: setNumber, client_key: clientKey, body });
+      if (exerciseId === FST_EXERCISE_ID) fstBodies.push(body);
       setPosts.push({ client_key: clientKey, status: 200 });
       return send(200, { status: 'ok', set_number: setNumber, client_key: clientKey, duplicate: false });
     }
@@ -226,7 +226,9 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
 
   return {
     setPosts,
-    serverSets: () => Array.from(sets.values()),
+    exercisePosts,
+    serverSets: () => Array.from(setsByExercise.get(EXERCISE_ID)?.values() ?? []),
+    crucifixoSets: () => Array.from(setsByExercise.get(CRUCIFIXO_EXERCISE_ID)?.values() ?? []),
     unhandled,
     fstBodies,
     failNextSetPosts: (count, status = 500) => {
@@ -236,10 +238,12 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     setNetworkDown: (down) => {
       networkDown = down;
     },
+    setAuthMeStatus: (status) => {
+      authMeStatus = status;
+    },
     loginAs: (next) => {
       user = next;
     },
-    setClock: () => undefined,
   };
 }
 
