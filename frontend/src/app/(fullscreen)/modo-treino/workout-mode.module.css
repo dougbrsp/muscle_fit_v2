@@ -979,6 +979,64 @@
   grid-template-areas: 'minus input plus';
 }
 
+/* Série unilateral: um grupo por lado (Reps | RPE), carga embaixo. */
+.sideStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sideGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+}
+
+.sideGroupTitle {
+  color: var(--wm-orange);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Conteúdo acima da barra fixa: rolagem/foco nunca deixam itens atrás dela. */
+.pairRow,
+.sideStack {
+  scroll-margin-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 359px) {
+  .fieldGrid.fieldGridKeep2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .fieldGridKeep2 .field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .fieldGridKeep2 .fieldLabelRow {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .fieldGridKeep2 .fieldRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'input input'
+      'minus plus';
+  }
+}
+
 @media (max-width: 359px) {
   .fieldGrid {
     grid-template-columns: minmax(0, 1fr);
