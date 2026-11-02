@@ -625,6 +625,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       briefed_keys: Array.from(briefedKeys),
       rest_timer: restTimerRef.current,
       intensive_blocks: intensiveBlocksRef.current,
+      exercise_client_keys: Object.fromEntries(exerciseKeysRef.current),
       ...next,
     });
   }
@@ -1312,7 +1313,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }
 
   // ── Lançamento de séries ────────────────────────────────────────────────
-  const exerciseKeysRef = useRef(new Map<string, string>());
+  const exerciseKeysRef = useRef(new Map<string, string>(Object.entries(session.exercise_client_keys ?? {})));
   const ensureExerciseMutation = useMutation({
     // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
     networkMode: 'always',
@@ -1336,6 +1337,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       if (!exerciseKey) {
         exerciseKey = newIdempotencyKey();
         exerciseKeysRef.current.set(slot, exerciseKey);
+        // Persistido já: se a tela remontar antes do envio, a chave é a mesma.
+        const stored = loadStoredSession();
+        if (stored && stored.session_id === session.session_id) {
+          saveStoredSession({ ...stored, exercise_client_keys: Object.fromEntries(exerciseKeysRef.current) });
+        }
       }
       const queuedExercise = opQueue.findExerciseOp(exerciseKey);
       if (queuedExercise) {
@@ -1731,8 +1737,13 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     if (pendingEdit === 'in_flight') {
       throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
     }
+    // Nunca PATCH com id local: troca pelo id real do servidor (ou espera a confirmação).
+    const serverExerciseId = opQueue.toServerExerciseId(exerciseId);
+    if (serverExerciseId == null) {
+      throw new Error('O exercício ainda não foi confirmado no servidor. Tente corrigir de novo em instantes.');
+    }
     try {
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets/${setNumber}`, {
+      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${serverExerciseId}/sets/${setNumber}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
@@ -1757,6 +1768,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     previousSets: ActivityDetail['exercises'][number]['sets'],
     evalKey: string | null,
   ) {
+    if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
     if (!current) return;
     setEvaluation({ loading: true, error: false, result: null, forKey: evalKey });
     fetchWorkoutAiResult<SetEvaluationResult>('/exercises/evaluate-set', {
@@ -1809,6 +1821,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // Resumo de fim de EXERCÍCIO — incondicional (independe de
   // `perSetAiEnabled`), disparado quando a última série do exercício é salva.
   function runExerciseSummary(exerciseId: number) {
+    if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
     setExerciseSummary({ loading: true, error: false, result: null });
     fetchWorkoutAiResult<ExerciseSummaryResult>(`/exercises/${exerciseId}/summarize`, { method: 'POST' })
       .then((result) => setExerciseSummary({ loading: false, error: false, result }))

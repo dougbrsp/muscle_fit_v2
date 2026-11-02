@@ -218,6 +218,30 @@ export function createOpQueue(deps: OpQueueDeps) {
     return typeof id === 'number' ? id : null;
   }
 
+  /** Todas as formas de apontar o mesmo exercício: id local, id real (se já confirmado) e client_key. */
+  function equivalentExerciseIds(exerciseId: number): Set<number | string> {
+    const forms = new Set<number | string>([exerciseId]);
+    const parent = ops.find(
+      (op) =>
+        op.kind === 'addExercise' &&
+        (exerciseId < 0
+          ? op.localId === exerciseId
+          : (op.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id === exerciseId),
+    );
+    if (parent) {
+      forms.add(parent.clientKey);
+      if (typeof parent.localId === 'number') forms.add(parent.localId);
+      const real = serverExerciseId(parent.localId as number);
+      if (real != null) forms.add(real);
+    }
+    return forms;
+  }
+
+  /** Id para falar com o servidor (PATCH etc.): negativo vira o real; null se ainda não confirmado. */
+  function toServerExerciseId(exerciseId: number): number | null {
+    return exerciseId < 0 ? serverExerciseId(exerciseId) : exerciseId;
+  }
+
   function findExerciseOp(clientKey: string): OfflineOp | undefined {
     return ops.find((op) => op.kind === 'addExercise' && op.clientKey === clientKey);
   }
@@ -255,11 +279,15 @@ export function createOpQueue(deps: OpQueueDeps) {
     setNumber: number,
     patch: Record<string, unknown>,
   ): Promise<'edited' | 'in_flight' | 'none'> {
+    // O exercício muda de identidade quando o servidor responde (id local negativo -> real):
+    // compara pelas DUAS formas, sempre.
+    const forms = equivalentExerciseIds(exerciseId);
     const op = ops.find(
       (candidate) =>
         candidate.kind === 'addSet' &&
         candidate.sessionId === sessionId &&
-        candidate.exerciseId === exerciseId &&
+        candidate.exerciseId != null &&
+        forms.has(candidate.exerciseId) &&
         candidate.payload.set_number === setNumber &&
         candidate.status !== 'synced',
     );
@@ -563,6 +591,7 @@ export function createOpQueue(deps: OpQueueDeps) {
     stateOf,
     whenSettled,
     serverExerciseId,
+    toServerExerciseId,
     findExerciseOp,
     discardConfirmed,
     getSnapshot: () => snapshot,

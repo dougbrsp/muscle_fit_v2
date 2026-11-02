@@ -74,3 +74,26 @@ describe('único escritor entre abas', () => {
     expect((await acquireWriterLock(1)).role).toBe('owner');
   });
 });
+
+
+describe('único escritor: pedidos repetidos', () => {
+  it('"Tentar de novo" reutiliza a MESMA espera: um só pedido de lock pendente por usuário', async () => {
+    const locks = installLocks();
+    let requests = 0;
+    const original = locks.request.bind(locks);
+    locks.request = (name, options, callback) => {
+      requests += 1;
+      return original(name, options, callback);
+    };
+    await acquireWriterLock(1);
+    resetWriterLockForTests(); // outra aba
+    const a = await acquireWriterLock(1);
+    const b = await acquireWriterLock(1); // clique em "Tentar de novo"
+    expect(a.role).toBe('follower');
+    expect(b.whenOwner).toBe(a.whenOwner);
+    expect(requests).toBe(1 /* dona */ + 2 /* ifAvailable x2 */ + 1 /* uma espera */);
+    locks.release('musclefit-offline-1');
+    await b.whenOwner;
+    expect((await acquireWriterLock(1)).role).toBe('owner'); // agora ela mesma segura o lock
+  });
+});
