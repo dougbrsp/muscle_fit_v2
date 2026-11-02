@@ -28,7 +28,19 @@ export default defineConfig({
     serviceWorkers: 'block',
     viewport: { width: 390, height: 844 },
   },
-  projects: [{ name: 'chromium-390', use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } } }],
+  projects: [
+    {
+      name: 'chromium-390',
+      testIgnore: /sw-update\.spec\.ts/,
+      use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } },
+    },
+    {
+      // Service worker liberado (o resto do arquivo o bloqueia): atualizacao x trabalho ativo.
+      name: 'chromium-sw',
+      testMatch: /sw-update\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], serviceWorkers: 'allow' },
+    },
+  ],
   webServer: externalBase
     ? undefined
     : {

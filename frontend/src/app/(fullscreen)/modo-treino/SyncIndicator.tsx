@@ -44,9 +44,12 @@ export function SyncIndicator() {
             Não foi possível enviar um registro: {op.lastError ?? 'o servidor recusou.'}
           </Text>
           <Group gap="xs">
-            <Button size="compact-xs" variant="default" onClick={() => void opQueue.resolveConflict(op.opId, 'resend')}>
-              Tentar de novo
-            </Button>
+            {/* Mesma chave com conteúdo diferente no servidor: reenviar repetiria o conflito. */}
+            {op.conflictKind !== 'echo_mismatch' && (
+              <Button size="compact-xs" variant="default" onClick={() => void opQueue.resolveConflict(op.opId, 'resend')}>
+                Tentar de novo
+              </Button>
+            )}
             <Button size="compact-xs" variant="default" onClick={() => void opQueue.resolveConflict(op.opId, 'keep_server')}>
               Manter o do servidor
             </Button>

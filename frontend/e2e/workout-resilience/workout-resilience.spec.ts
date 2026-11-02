@@ -267,20 +267,31 @@ test('descanso do FST-7 vencido em segundo plano mostra "expirado ha mm:ss" ao v
   expect(seconds).toBeLessThanOrEqual(25);
 });
 
-test('reabrir sem rede com usuario conhecido restaura a sessao local e mostra o aviso offline', async ({ page }) => {
+test('reabrir 100% offline restaura a tela do exercicio, aceita nova serie e sincroniza ao voltar a rede', async ({ page }) => {
   await openWorkout(page);
   await logSet(page, 10, 40);
   await expect(page.getByTestId('rest-clock')).toBeVisible();
+  expect(api.serverSets()).toHaveLength(1);
 
   api.setNetworkDown(true);
   await page.reload();
   await expect(page.getByTestId('offline-banner')).toContainText('Offline');
-  // Sessao local restaurada do IndexedDB (nao cai na selecao de modo). A tela do
-  // exercicio depende de dados do servidor (nao persistidos): limite conhecido.
-  await expect(page.getByRole('button', { name: 'Sair do modo de treino' })).toBeVisible({ timeout: 20_000 });
-  expect((await idbKeys(page)).some((k) => k.startsWith('workout_session/v1:1:session'))).toBe(true);
+  // Retrato do ultimo estado do servidor (IndexedDB do usuario) + descanso restaurado.
+  const skip = page.getByRole('button', { name: /pular descanso/i });
+  await expect(skip.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 30_000 });
+  if (await skip.isVisible().catch(() => false)) await skip.click();
+  await expect(page.getByTestId('set-save')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/SÉRIE 2 DE 4/i)).toBeVisible();
+
+  await logSet(page, 9, 40);
+  await expect(page.getByTestId('set-local-chip')).toContainText('salva no aparelho');
+  expect(api.serverSets()).toHaveLength(1);
 
   api.setNetworkDown(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => api.serverSets().length, { timeout: 30_000 }).toBe(2);
   await expect(page.getByTestId('offline-banner')).toHaveCount(0, { timeout: 20_000 });
+  const keys = new Map<string, number>();
+  for (const p of api.setPosts.filter((x) => x.status === 200)) keys.set(p.client_key, (keys.get(p.client_key) ?? 0) + 1);
+  expect(Array.from(keys.values()).every((n) => n === 1)).toBe(true);
 });
