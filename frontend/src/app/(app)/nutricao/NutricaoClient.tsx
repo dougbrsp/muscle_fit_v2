@@ -41,7 +41,9 @@ export function NutricaoClient() {
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
-  const [lendo, setLendo] = useState<'text' | 'photo' | null>(null);
+  const [lendo, setLendo] = useState(false);
+  // Fica com o último modo depois de fechar: o título não pisca na animação de saída.
+  const [modoLeitura, setModoLeitura] = useState<'text' | 'photo'>('text');
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
   const role = currentUserQuery.data?.role;
@@ -69,6 +71,11 @@ export function NutricaoClient() {
     mutationFn: (meal: Meal) => deleteMeal(meal.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: diaryKeys.all }),
   });
+
+  function abrirLeitura(modo: 'text' | 'photo') {
+    setModoLeitura(modo);
+    setLendo(true);
+  }
 
   function trocarAluno(novo: number | null) {
     setUserId(novo);
@@ -154,10 +161,10 @@ export function NutricaoClient() {
                   </Group>
                   {editing === null && (
                     <Group gap="xs">
-                      <Button variant="light" color="brand" leftSection={<IconCamera size={16} />} onClick={() => setLendo('photo')}>
+                      <Button variant="light" color="brand" leftSection={<IconCamera size={16} />} onClick={() => abrirLeitura('photo')}>
                         Foto do prato
                       </Button>
-                      <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => setLendo('text')}>
+                      <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => abrirLeitura('text')}>
                         Descrever com IA
                       </Button>
                       <Button color="brand" leftSection={<IconPlus size={16} />} onClick={() => setEditing({ mode: 'new' })}>
@@ -168,14 +175,15 @@ export function NutricaoClient() {
                 </Group>
                 {dia.totals && <TotalsLine totals={dia.totals} />}
                 <MealParseModal
-                  opened={lendo !== null}
-                  mode={lendo ?? 'text'}
-                  onClose={() => setLendo(null)}
+                  opened={lendo}
+                  mode={modoLeitura}
+                  onClose={() => setLendo(false)}
                   userId={userId}
                   date={date}
                   onParsed={(form) => {
-                    setLendo(null);
-                    setEditing({ mode: 'parsed', form });
+                    setLendo(false);
+                    // Nunca por cima de um formulário aberto: a pessoa perderia o que digitou.
+                    setEditing((atual) => atual ?? { mode: 'parsed', form });
                   }}
                 />
                 {editing && (

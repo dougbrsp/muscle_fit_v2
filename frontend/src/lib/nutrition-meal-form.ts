@@ -12,6 +12,8 @@
 
 import {
   AI_ESTIMATE_BASIS,
+  CATALOG_ITEM_NATURE,
+  ESTIMATE_ITEM_NATURE,
   MEAL_NATURE_OPTIONS,
   PORTION_UNITS,
   nutritionLabel,
@@ -25,6 +27,7 @@ import type {
   MealItemPayload,
   MealParseCandidate,
   MealPayload,
+  MealPreviewPayload,
   NutritionLimitation,
 } from './nutrition-types';
 
@@ -64,8 +67,8 @@ export type MealEditorForm = {
   eaten_at: string;
   notes: string;
   items: MealEditorItem[];
-  /** Leitura por IA que originou a refeição (L5b): o job e o texto descrito. */
-  /** `ai_source`: origem que a API grava além do `ai_text` padrão (foto do prato, L10). */
+  /** Leitura por IA que originou a refeição (L5b): o job e o texto descrito.
+   * `ai_source`: origem que a API grava além do `ai_text` padrão (foto do prato, L10). */
   ai: {
     job_id: string;
     description_raw: string;
@@ -148,6 +151,7 @@ export function chooseCandidate(item: MealEditorItem, candidate: MealParseCandid
     usesEstimate: false,
     portion_id: null,
     matchConfidence: candidate.score,
+    originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, CATALOG_ITEM_NATURE),
   };
 }
 
@@ -164,6 +168,7 @@ export function chooseEstimate(item: MealEditorItem): MealEditorItem {
     portion_id: null,
     ...(item.proposal ? { quantity: item.proposal.quantity, unit: item.proposal.unit } : {}),
     matchConfidence: null,
+    originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, ESTIMATE_ITEM_NATURE),
   };
 }
 
@@ -213,10 +218,30 @@ export function mealPayload(form: MealEditorForm): MealPayload | null {
 export function mealCreatePayload(form: MealEditorForm, userId: number | null): MealCreatePayload | null {
   const corpo = mealPayload(form);
   if (corpo === null) return null;
+  return { ...corpo, ...origemDoCorpo(form, userId) };
+}
+
+function origemDoCorpo(form: MealEditorForm, userId: number | null) {
   return {
-    ...corpo,
     ...(userId != null ? { user_id: userId } : {}),
     ...(form.ai ? { ai_job_id: form.ai.job_id, description_raw: form.ai.description_raw } : {}),
     ...(form.ai?.ai_source ? { ai_source: form.ai.ai_source } : {}),
+  };
+}
+
+/** Corpo do preview: os macros não dependem da refeição, então `meal_slot` pode faltar
+ * (gravar continua exigindo, em `mealCreatePayload`). `null` sem item ou com item sem
+ * quantidade/origem. */
+export function mealPreviewPayload(form: MealEditorForm, userId: number | null, mealId?: number): MealPreviewPayload | null {
+  const itens = itemsPayload(form.items);
+  if (itens === null || itens.length === 0) return null;
+  return {
+    local_date: form.local_date,
+    meal_slot: form.meal_slot,
+    eaten_at: form.eaten_at || null,
+    notes: form.notes.trim() || null,
+    items: itens,
+    ...origemDoCorpo(form, userId),
+    ...(mealId != null ? { meal_id: mealId } : {}),
   };
 }

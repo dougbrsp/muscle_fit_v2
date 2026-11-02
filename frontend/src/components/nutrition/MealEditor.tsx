@@ -30,6 +30,7 @@ import {
   editorItemFromFood,
   itemHasSource,
   mealCreatePayload,
+  mealPreviewPayload,
   mealPayload,
   unitUsesPortion,
   type MealEditorForm,
@@ -198,7 +199,7 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
   const proximaChave = useRef(0);
 
   const corpo = mealCreatePayload(form, userId);
-  const corpoPreview: MealPreviewPayload | null = corpo ? { ...corpo, ...(meal ? { meal_id: meal.id } : {}) } : null;
+  const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, userId, meal?.id);
   const [previewDebounced] = useDebouncedValue(corpoPreview ? JSON.stringify(corpoPreview) : null, ATRASO_DO_PREVIEW_MS);
   const preview = useQuery({
     queryKey: ['nutrition-meal-preview', previewDebounced],
@@ -319,6 +320,11 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
         {semOrigem && (
           <Text size="sm" c="yellow">
             Escolha o alimento de cada item marcado (ou a estimativa da IA, quando houver).
+          </Text>
+        )}
+        {form.meal_slot === null && corpoPreview !== null && (
+          <Text size="sm" c="yellow">
+            Escolha a refeição para salvar. O cálculo abaixo não depende dela.
           </Text>
         )}
         {faltaQuantidade && (

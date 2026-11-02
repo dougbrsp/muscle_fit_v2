@@ -188,6 +188,9 @@ export const AI_ESTIMATE_SOURCE: NutritionCode = MEAL_PARSE.estimate_source;
 export const AI_ESTIMATE_BASIS: NutritionCode = MEAL_PARSE.estimate_basis;
 /** Texto do dono para a cota do dia esgotada (com o número da cota). */
 export const MEAL_PARSE_QUOTA_EXCEEDED_LABEL: string = MEAL_PARSE.quota_exceeded_label;
+/** Natureza do item conforme a origem escolhida no editor (selo pelo `MEAL_NATURE_OPTIONS`). */
+export const CATALOG_ITEM_NATURE: NutritionCode = MEAL_PARSE.catalog_item_nature;
+export const ESTIMATE_ITEM_NATURE: NutritionCode = MEAL_PARSE.estimate_item_nature;
 
 /** Avisos das telas, com o texto do dono (`labels.NOTICE_LABELS`). */
 export const NUTRITION_NOTICES: Readonly<Record<string, string>> = NUTRITION.notices;

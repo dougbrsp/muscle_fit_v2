@@ -454,7 +454,11 @@ export type MealCreatePayload = MealPayload & {
 };
 
 /** `POST /nutrition/meals/preview` (`MealPreviewIn`): `meal_id` = refeição em edição. */
-export type MealPreviewPayload = MealCreatePayload & { meal_id?: number | null };
+export type MealPreviewPayload = Omit<MealCreatePayload, 'meal_slot'> & {
+  /** Pode faltar: os macros do item não dependem da refeição. */
+  meal_slot: NutritionCode | null;
+  meal_id?: number | null;
+};
 
 // ---------------------------------------------------------------------------
 // Leitura da refeição por IA (Lote L5b): `POST /nutrition/meals/parse` (202) +
@@ -537,7 +541,10 @@ export type MealPhotoDispatch = { job_id: string; status: string; poll_timeout_s
 
 /** Resultado do job da foto: a forma da leitura por texto, com o que a IA viu. Sem itens
  * (foto sem comida ou não identificada), o motivo vem em `limitations`. */
-export type MealPhotoResult = MealParseResult & { plate_status: NutritionCode };
+export type MealPhotoResult = Omit<MealParseResult, 'items'> & { items: MealPhotoItem[]; plate_status: NutritionCode };
+
+/** Item da foto: a natureza da proposta (`MEAL_NATURE_OPTIONS`), `null` enquanto a pessoa não escolher. */
+export type MealPhotoItem = MealParseItem & { nature: NutritionCode | null };
 
 export type MealPreview = {
   user_id: number;

@@ -1158,6 +1158,8 @@
       },
       "estimate_source": "ai_estimate",
       "estimate_basis": "g",
+      "catalog_item_nature": "DERIVED",
+      "estimate_item_nature": "ESTIMATED",
       "quota_exceeded_label": "Limite de 30 leituras de refeição por IA por dia atingido. Tente de novo amanhã."
     },
     "label_photo": {
@@ -1173,7 +1175,8 @@
       "content_type": "image/jpeg",
       "resize_max_edge_px": 1280,
       "resize_quality": 0.85,
-      "retention_days": 30,
+      "retention_days": 1,
+      "retention_label": "1 dia",
       "meal_source": "ai_photo",
       "quota_exceeded_label": "Limite de 10 análises de foto do prato por dia atingido. Tente de novo amanhã."
     },

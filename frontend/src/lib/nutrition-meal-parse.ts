@@ -4,9 +4,9 @@
 // (`domain/nutrition/meal_parse`, `meal_math`), que a API aplica na leitura, no
 // preview e na gravação. A tela não decide nada pela nota nem por número.
 
-import { AI_ESTIMATE_BASIS, MEAL_PARSE_STATUS_OPTIONS, MEAL_PHOTO, nutritionLabel } from './nutrition-constants';
+import { AI_ESTIMATE_BASIS, MEAL_NATURE_OPTIONS, MEAL_PARSE_STATUS_OPTIONS, MEAL_PHOTO, nutritionLabel } from './nutrition-constants';
 import type { MealEditorForm, MealEditorItem } from './nutrition-meal-form';
-import type { MealParseItem, MealParseResult } from './nutrition-types';
+import type { MealParseItem, MealParseResult, MealPhotoResult } from './nutrition-types';
 
 /** Um item lido -> item do editor, com a proposta do motor. Sem alimento
  * pré-selecionado e sem estimativa como proposta, o item fica sem origem até a
@@ -35,9 +35,17 @@ export function editorItemFromParse(item: MealParseItem, key: string): MealEdito
 
 /** Foto do prato (L10) -> o mesmo editor da leitura por texto: sem texto descrito e
  * com a origem que a API grava. Os avisos da leitura vêm prontos do motor. */
-export function editorFormFromPhoto(result: MealParseResult, context: { date: string; slot: string | null }): MealEditorForm {
+export function editorFormFromPhoto(result: MealPhotoResult, context: { date: string; slot: string | null }): MealEditorForm {
   const form = editorFormFromParse(result, { ...context, text: '' });
-  return form.ai ? { ...form, ai: { ...form.ai, ai_source: MEAL_PHOTO.meal_source } } : form;
+  return {
+    ...form,
+    // Selo pela natureza que o motor propôs; sem ela (escolha pendente), o estado do casamento.
+    items: form.items.map((item, indice) => {
+      const natureza = result.items[indice].nature;
+      return natureza ? { ...item, originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, natureza) } : item;
+    }),
+    ai: form.ai ? { ...form.ai, ai_source: MEAL_PHOTO.meal_source } : null,
+  };
 }
 
 /** Resultado da leitura -> formulário do editor (dia e refeição da leitura, ou os da tela). */

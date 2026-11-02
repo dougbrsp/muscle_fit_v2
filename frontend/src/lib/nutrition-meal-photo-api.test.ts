@@ -88,6 +88,7 @@ describe('foto do prato: editor', () => {
     model: 'm',
     prompt_version: 'p',
     engine_version: 'e',
+    plate_status: 'recognized',
   };
 
   it('grava com a origem do dono e sem texto descrito no formulário', () => {
