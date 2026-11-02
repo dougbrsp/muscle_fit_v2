@@ -46,6 +46,10 @@ on:
         description: "(3) frontend: next build + S3 sync + invalidacao CloudFront"
         type: boolean
         default: true
+      pwa_kill_switch:
+        description: "(3) frontend: publica o service worker AUTODESTRUTIVO no lugar do sw.js (desregistra o SW e apaga os caches musclefit-* nos aparelhos; rollback do PWA sem reverter o app)"
+        type: boolean
+        default: false
 
 permissions:
   id-token: write # necessario para o OIDC assumir a role musclefit-gha-deploy
@@ -536,6 +540,48 @@ jobs:
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
         run: npm run build
 
+      # PWA (service worker): carimba CACHE_VERSION (= commit) em out/sw.js, de modo que
+      # cada deploy gere um sw.js diferente e os aparelhos facam o fluxo de atualizacao
+      # segura (versao nova fica em "waiting"; o app so aplica sem treino ativo).
+      # Com a entrada pwa_kill_switch=true, publica no lugar o sw.js AUTODESTRUTIVO
+      # (apaga os caches musclefit-* e se desregistra, sem recarregar abas). Sem
+      # AWS/credenciais: so reescreve frontend/out/sw.js. Script: frontend/scripts/build-sw.mjs.
+      - name: service worker (carimbo de versao ou kill switch)
+        working-directory: ${{ env.FRONTEND_WORKING_DIR }}
+        env:
+          CACHE_VERSION: ${{ github.sha }}
+          PWA_KILL_SWITCH: ${{ inputs.pwa_kill_switch }}
+        run: |
+          set -euo pipefail
+          # Kill switch: a fonte do sw.js autodestrutivo fica INLINE de proposito (mesmo texto de
+          # KILL_SW_SOURCE em frontend/scripts/build-sw.mjs) para funcionar mesmo que o script ou o
+          # sw.js do build nao existam; sempre publica, nunca pula.
+          if [[ "$PWA_KILL_SWITCH" == "true" ]]; then
+            mkdir -p out
+            cat > out/sw.js <<'KILL_SW_EOF'
+          /* MuscleFit service worker KILL SWITCH: remove caches e se desregistra. */
+          self.addEventListener('install', () => self.skipWaiting());
+          self.addEventListener('activate', (event) => {
+            event.waitUntil(
+              (async () => {
+                const names = await caches.keys();
+                await Promise.all(names.filter((n) => n.startsWith('musclefit-')).map((n) => caches.delete(n)));
+                await self.registration.unregister();
+              })(),
+            );
+          });
+          // Sem handler de fetch: toda requisição vai direto para a rede.
+          KILL_SW_EOF
+            echo "::warning::pwa_kill_switch=true: publicando o service worker autodestrutivo"
+            exit 0
+          fi
+          # Sem kill switch, tolerante a ordem de merge: sem o PWA no frontend nao ha o que fazer.
+          if [[ ! -f out/sw.js || ! -f scripts/build-sw.mjs ]]; then
+            echo "::notice::out/sw.js ou scripts/build-sw.mjs ausente (PWA ainda nao publicado); etapa pulada"
+            exit 0
+          fi
+          node scripts/build-sw.mjs
+
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::930413537709:role/musclefit-gha-deploy
@@ -568,8 +614,32 @@ jobs:
           echo "lotes ($(wc -l < "$RUNNER_TEMP/invalidation-batches.txt")):"
           cat "$RUNNER_TEMP/invalidation-batches.txt"
 
+      # sw.js e manifest.json saem do sync (--exclude tambem os poupa do --delete: ambos
+      # existem em todo build) e sobem DEPOIS, com Cache-Control: no-cache. Sem metadata o
+      # default behavior (CachingOptimized, TTL padrao de 1 dia) e o cache HTTP do
+      # navegador poderiam servir um sw.js velho por ate 24 h e adiar a atualizacao do
+      # PWA. Com no-cache a borda e o navegador revalidam sempre (a CloudFront respeita o
+      # min TTL de 1 s da politica). Ficam por ultimo para que o sw.js novo so apareca
+      # depois de todos os assets que ele pre-carrega. Sao entradas de primeiro nivel de
+      # out/, entao ja entram na invalidacao calculada acima (/s*, /m*).
       - name: sync out/ to S3
-        run: aws s3 sync ${{ env.FRONTEND_WORKING_DIR }}/out/ s3://musclefit-frontend-assets --delete
+        run: |
+          set -euo pipefail
+          OUT="${{ env.FRONTEND_WORKING_DIR }}/out"
+          aws s3 sync "$OUT/" s3://musclefit-frontend-assets --delete \
+            --exclude "sw.js" --exclude "manifest.json"
+          if [[ -f "$OUT/manifest.json" ]]; then
+            aws s3 cp "$OUT/manifest.json" s3://musclefit-frontend-assets/manifest.json \
+              --cache-control "no-cache" --content-type "application/json"
+          else
+            echo "::notice::out/manifest.json ausente; upload do manifest.json pulado"
+          fi
+          if [[ -f "$OUT/sw.js" ]]; then
+            aws s3 cp "$OUT/sw.js" s3://musclefit-frontend-assets/sw.js \
+              --cache-control "no-cache" --content-type "application/javascript"
+          else
+            echo "::notice::out/sw.js ausente (PWA ainda nao publicado); upload do sw.js pulado"
+          fi
 
       # Hotfix M68 (run 37227083220): a cota da CloudFront e de 15 PATHS com
       # wildcard EM ANDAMENTO ao mesmo tempo na distribuicao (somando todas as
