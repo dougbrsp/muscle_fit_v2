@@ -1,8 +1,11 @@
 'use client';
 
-import { Center, Loader } from '@mantine/core';
+import { Center, Loader, Text } from '@mantine/core';
+import { useEffect } from 'react';
 import { RecoverableError } from '@/components/RecoverableError';
 import { TRANSIENT_ERROR_MESSAGE } from '@/lib/api';
+import { isTransientSessionFailure } from '@/lib/offline/use-offline-user';
+import { knownUserForOffline } from '@/lib/offline/scope';
 import { useSessionGuard } from '@/lib/use-session-guard';
 import { BRAND } from '@/theme';
 
@@ -19,7 +22,29 @@ import { BRAND } from '@/theme';
  * Novas telas full-screen autenticadas devem viver dentro deste grupo.
  */
 export default function FullscreenAuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const { state, retry } = useSessionGuard();
+  const { state, error, retry } = useSessionGuard();
+
+  // Falha transitória (sem rede ou 5xx — nunca 401/403) com um usuário conhecido
+  // e confirmado há menos de 7 dias neste aparelho: abre o treino com os dados
+  // locais, sem chamadas autenticadas além da fila. Ao voltar a rede, revalida.
+  const offlineKnownUser =
+    state === 'unavailable' && isTransientSessionFailure(error) && knownUserForOffline() != null;
+  useEffect(() => {
+    if (!offlineKnownUser) return undefined;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [offlineKnownUser, retry]);
+
+  if (offlineKnownUser) {
+    return (
+      <>
+        <Text size="xs" ta="center" role="status" data-testid="offline-banner" py={4} style={{ background: BRAND.bg }} c={BRAND.textMuted}>
+          Offline — dados deste aparelho
+        </Text>
+        {children}
+      </>
+    );
+  }
 
   if (state === 'unavailable') {
     return (

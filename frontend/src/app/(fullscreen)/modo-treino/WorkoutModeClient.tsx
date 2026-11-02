@@ -6,7 +6,9 @@ import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { RecoverableError } from '@/components/RecoverableError';
 import { apiFetch } from '@/lib/api';
+import { useOfflineUser } from '@/lib/offline/use-offline-user';
 import type { PlanCardioResponse } from '@/lib/analytics-types';
 import { type StoredWorkoutModeSession, type WorkoutAiSummaryResult } from '@/lib/workout-mode-types';
 import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
@@ -24,6 +26,9 @@ import { CardioAfterStrength } from './CardioAfterStrength';
 import { FreeformScreen } from './FreeformScreen';
 import { ModeSelectScreen } from './ModeSelectScreen';
 import { PlanExecutionScreen } from './PlanExecutionScreen';
+import { StorageStatusNotice } from './StorageStatusNotice';
+import { SyncIndicator } from './SyncIndicator';
+import { WakeLockNotice } from './WakeLockNotice';
 import { WorkoutModeShell } from './WorkoutModeShell';
 import { preloadMuscleBodyMap } from '@/components/MuscleBodyMapLazy';
 
@@ -74,11 +79,15 @@ export function WorkoutModeClient() {
   // Vaga na barra do topo onde a execução desenha a linha de progresso.
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
+  // Partição offline do usuário (IndexedDB) hidratada ANTES de ler a sessão local.
+  const offlineUser = useOfflineUser();
+
   useEffect(() => {
+    if (offlineUser.state !== 'ready') return;
     setSession(loadStoredSession());
     setPerSetAiEnabled(loadPerSetAiPreference());
     setHydrated(true);
-  }, []);
+  }, [offlineUser.state, offlineUser.userId]);
 
   function handleSessionStarted(next: StoredWorkoutModeSession) {
     // A retomada já mesclou o snapshot guardado ao sair (ver
@@ -137,6 +146,31 @@ export function WorkoutModeClient() {
     router.push('/registro-exercicios');
   }
 
+  if (offlineUser.state === 'locked') {
+    return (
+      <Stack align="center" gap="sm" p="lg" data-testid="tab-locked-notice" role="status">
+        <Text fw={600}>Treino aberto em outra aba</Text>
+        <Text size="sm" c={BRAND.textMuted} ta="center">
+          Para não gravar por cima do mesmo treino, só uma aba por vez escreve. Feche a outra aba ou use o botão abaixo
+          quando ela for fechada; esta aba continua automaticamente quando a outra sair.
+        </Text>
+        <Button variant="default" onClick={offlineUser.retry}>
+          Tentar de novo
+        </Button>
+      </Stack>
+    );
+  }
+
+  if (offlineUser.state === 'error') {
+    return (
+      <RecoverableError
+        title="Não foi possível abrir o treino"
+        description="Não conseguimos confirmar sua conta para carregar os dados salvos neste aparelho. Verifique a conexão e tente de novo."
+        onRetry={offlineUser.retry}
+      />
+    );
+  }
+
   if (!hydrated) {
     return null;
   }
@@ -148,6 +182,9 @@ export function WorkoutModeClient() {
       onHeaderSlot={setHeaderSlot}
       inSession={Boolean(session)}
     >
+      <StorageStatusNotice />
+      <SyncIndicator />
+      {session && <WakeLockNotice />}
       {!session && <ModeSelectScreen onSessionStarted={handleSessionStarted} />}
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
