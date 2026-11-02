@@ -354,8 +354,9 @@ resource "aws_wafv2_web_acl" "api" {
   #    - SizeRestrictions_BODY (corpo > 8 KB): bloquear quebraria o editor de
   #      Modelo; tambem casa upload multipart de foto (gyms.py/users.py, ate
   #      8 MB, read_limited_photo devolve 413 acima disso), importacao de
-  #      treino/Zepp, pacotes do dashboard e a foto do rotulo (POST
-  #      /nutrition/foods/label-photo, nutricao L6: JSON com a foto em base64
+  #      treino/Zepp, pacotes do dashboard e as fotos do rotulo e do prato (POST
+  #      /nutrition/foods/label-photo e /nutrition/meals/photo, nutricao L6 e L10:
+  #      JSON com a foto em base64
   #      SEM padding, ate ~2 MB - o alfabeto do base64 nao forma as assinaturas
   #      XSS/LFI/RFI/SSRF do corpo, que bytes de JPEG crus poderiam formar).
   #    - NoUserAgent_HEADER: o side service do Zepp (app-side/index.js) faz
