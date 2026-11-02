@@ -1095,7 +1095,16 @@ def _number_or_none(value: Any) -> Optional[float]:
 
 
 def _logged_values(row: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {"reps": row.get("reps"), "rpe": _number_or_none(row.get("rpe"))}
+    # Eco do GRAVADO (aditivo): a fila offline compara com o que enviou e
+    # detecta "mesma client_key, payload diferente" no replay.
+    values: dict[str, Any] = {
+        "reps": row.get("reps"),
+        "rpe": _number_or_none(row.get("rpe")),
+        "weight_kg": _number_or_none(row.get("weight_kg")),
+        "set_type": row.get("set_type"),
+        "joint_pain": row.get("joint_pain"),
+        "muscle_pain": row.get("muscle_pain"),
+    }
     for field in SIDE_FIELDS:
         value = row.get(field)
         values[field] = _number_or_none(value) if field.startswith("rpe") else value
@@ -1347,6 +1356,10 @@ def add_session_set(
                 # M102: o gravado (canônico do dono + lados) vai na resposta.
                 "reps": payload.reps,
                 "rpe": payload.rpe,
+                "weight_kg": payload.weight_kg,
+                "set_type": set_type,
+                "joint_pain": payload.joint_pain,
+                "muscle_pain": payload.muscle_pain,
                 **{field: getattr(payload, field) for field in SIDE_FIELDS},
             }
 
@@ -1396,6 +1409,17 @@ def add_session_set(
                     exc, client_key, lambda: _find_set_by_client_key(cur, exercise_id, client_key, locking=True)
                 )
                 if stored is None:
+                    if is_duplicate_key_error(exc) and "uq_exercise_set_number" in str(exc):
+                        # L4: `set_number` ocupado por OUTRA série (outra chave):
+                        # conflito recuperável; o cliente relê a sessão e reenvia.
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "code": "set_number_conflict",
+                                "message": "Já existe outra série com este número neste exercício.",
+                                "set_number": set_number,
+                            },
+                        ) from exc
                     raise
                 return _duplicate_set_response(
                     conn, cur, session_id, exercise_id, exercise_row, stored, client_key, user_id=identity.user_id

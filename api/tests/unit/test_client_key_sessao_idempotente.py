@@ -325,8 +325,24 @@ def test_serie_corrida_na_unique_devolve_a_do_outro_envio(db):
 def test_serie_outra_violacao_unique_continua_subindo(db):
     ex = db.add_exercise()
     _add_set(ex, client_key="set-1", set_number=1)
-    with pytest.raises(_Duplicate, match="uq_exercise_set_number"):
+    with pytest.raises(HTTPException) as err:
         _add_set(ex, client_key="set-2", set_number=1)
+    # L4: conflito recuperável (409 com código), nada corrompido.
+    assert err.value.status_code == 409 and err.value.detail["code"] == "set_number_conflict"
+    assert err.value.detail["set_number"] == 1 and len(db.sets) == 1
+    assert db.sets[0]["client_key"] == "set-1"
+
+
+def test_serie_replay_ecoa_o_gravado(db):
+    ex = db.add_exercise()
+    primeira = _add_set(ex, client_key="set-1")
+    mesma = _add_set(ex, client_key="set-1")
+    outra = _add_set(ex, client_key="set-1", reps=4, weight_kg=Decimal(80), rpe=Decimal(10))
+    for r in (mesma, outra):
+        assert r["duplicate"] is True
+        assert (r["reps"], r["weight_kg"], r["rpe"]) == (17, 40.0, 8.0)
+        assert r["set_type"] == primeira["set_type"]
+    assert primeira["weight_kg"] == 40.0 and len(db.sets) == 1
 
 
 def test_serie_em_treino_finalizado(monkeypatch):
