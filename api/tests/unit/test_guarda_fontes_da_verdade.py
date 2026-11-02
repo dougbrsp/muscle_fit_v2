@@ -1513,7 +1513,7 @@ PADROES: tuple[Padrao, ...] = (
         # 2026-11-02 (nutrição L10): a rota, o armazenamento, o worker e a tela consomem
         # o dono `domain/nutrition/meal_photo`, que reaproveita o transporte de
         # `label_photo`. O IAM e o lifecycle do prefixo (`.tf`, que a guarda não varre)
-        # têm teste de paridade; o id da regra (`nutrition-meals-expire-30d`) não casa.
+        # têm teste de paridade; o id da regra (`nutrition-meals-expire-1d`) não casa.
         regex=re.compile(
             r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING)|MEAL_IMAGE_DETAIL)"
             r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\.)"""

@@ -549,7 +549,8 @@ export type MealPhotoItem = MealParseItem & { nature: NutritionCode | null };
 export type MealPreview = {
   user_id: number;
   local_date: string;
-  meal_slot: NutritionCode;
+  /** `null` quando o preview foi pedido antes de escolher a refeição. */
+  meal_slot: NutritionCode | null;
   items: MealItem[];
   totals: NutritionTotals;
   engine_version: string;

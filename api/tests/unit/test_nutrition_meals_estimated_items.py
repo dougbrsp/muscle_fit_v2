@@ -188,6 +188,7 @@ def test_preview_sem_refeicao_mostra_os_macros_do_motor_e_gravar_continua_exigin
     assert preview.status_code == 200, preview.text
     dados = preview.json()
     assert dados["meal_slot"] is None and dados["totals"]["nature"] == "MIXED"
+    assert diary.validate_meal_header(diary.PREVIEW_MEAL_SLOT.value, 1) == ()
     assert [item["nature"] for item in dados["items"]] == ["DERIVED", "ESTIMATED"]
     assert db.meals == {}
     assert _client().post("/nutrition/meals", json=corpo).status_code == 422

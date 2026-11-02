@@ -6385,7 +6385,8 @@ apelidos de lá, e `decode_upload`/`upload_error` só traduzem o código, porque
 `meal_parse.validate_estimate` passa a recusar a estimativa cujos macros somam mais que a base (`catalog.WARN_MACROS_ABOVE_BASIS`,
 impossível num alimento): vale também para a leitura por texto, e o catálogo continua tratando isso como aviso.
 `meal_parse.CATALOG_ITEM_NATURE`/`ESTIMATE_ITEM_NATURE`: o selo do item no editor, publicado no bloco `meal_parse`.
-`label_photo.PHOTO_SNIFF_BYTES`: quantos bytes bastam para a assinatura, nas duas rotas. `labels`: textos dos
+`label_photo.PHOTO_SNIFF_BYTES`: quantos bytes bastam para a assinatura, nas duas rotas.
+`diary.PREVIEW_MEAL_SLOT`: o slot com que o preview valida a refeição ainda sem escolha. `labels`: textos dos
 códigos novos. `export_for_frontend`: bloco `meal_photo`. `openai_client.LLM_OUTPUT_OBSERVED_MAX_TOKENS["meal_photo"]` herda o
 valor de `meal_parse` (mesmo item; sem eval pago ainda); o teto efetivo é o piso.
 
@@ -6428,5 +6429,9 @@ acerto de alimento e de gramas. O teto de saída herdado também precisa dessa m
   teste, o bloco fica em cerca de 1380 bytes.
 - Role de deploy: sem permissão nova (`iam:PutRolePolicy` em `musclefit-*-exec` e `s3:PutLifecycleConfiguration` no bucket, que o
   L6 já usou).
+- `validate_estimate` (medido pelo líder em produção em 2026-11-02, só com SELECT): `meal_items` tem 1 linha (`DERIVED`, refeição
+  `manual`), 0 itens `ESTIMATED`, 0 refeições `ai_text`/`ai_photo` e `ai_usage_log` vazio. Logo, 0 estimativas gravadas seriam
+  afetadas e nenhuma leitura de IA foi registrada ainda.
+- Retenção de 1 dia: desvio do plano §9 c (30 dias), por decisão do líder, já informado ao usuário. A foto do rótulo segue com 30 dias.
 - Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 1 dia (versão não corrente, mais 1 dia).
 - Reversão: reverter o código é seguro; num rollback, manter a regra de lifecycle até o prefixo esvaziar.

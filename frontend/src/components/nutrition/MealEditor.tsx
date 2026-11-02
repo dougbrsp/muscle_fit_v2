@@ -228,7 +228,7 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
   const erroPreview = preview.isError ? nutritionErrorInfo(preview.error, 'Não foi possível calcular a refeição.') : null;
   const erroSalvar = salvar.isError ? nutritionErrorInfo(salvar.error, 'Não foi possível salvar a refeição.') : null;
   const semOrigem = form.items.some((item) => !itemHasSource(item));
-  const faltaQuantidade = form.items.length > 0 && corpo === null && form.meal_slot !== null && !semOrigem;
+  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>

@@ -99,6 +99,7 @@ export function MealParseModal({ opened, onClose, userId, date, onParsed, mode =
     onSuccess: (resultado) => {
       onParsed(editorFormFromParse(resultado, { date, slot: slotTexto, text: texto }));
       setTexto('');
+      setSlotTexto(null);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: mealParseKeys.quota }),
   });
@@ -112,6 +113,7 @@ export function MealParseModal({ opened, onClose, userId, date, onParsed, mode =
         return;
       }
       onParsed(editorFormFromPhoto(resultado, { date, slot: slotFoto }));
+      setSlotFoto(null);
     },
     onSettled: async () => {
       setStage(null);

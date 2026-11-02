@@ -461,7 +461,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"As kcal informadas diferem mais de {_percent(meal_math_mod.ATWATER_TOLERANCE_SHARE)} "
         "das kcal calculadas pelos macros (Atwater). Confira os valores."
     ),
-    catalog_mod.WARN_MACROS_ABOVE_BASIS: "Proteína, carboidrato e gordura somados passam da base da tabela.",
+    catalog_mod.WARN_MACROS_ABOVE_BASIS: "Proteína, carboidrato e gordura somados passam da base do alimento.",
     # Diário (L4): quantidade do item, macro ausente e totais.
     meal_math_mod.LIMIT_MISSING_QUANTITY: "Quantidade ausente ou inválida (precisa ser maior que zero).",
     meal_math_mod.LIMIT_UNKNOWN_UNIT: "Unidade desconhecida.",
