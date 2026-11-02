@@ -570,7 +570,7 @@ jobs:
               })(),
             );
           });
-          // Sem handler de fetch: toda requisicao vai direto para a rede.
+          // Sem handler de fetch: toda requisição vai direto para a rede.
           KILL_SW_EOF
             echo "::warning::pwa_kill_switch=true: publicando o service worker autodestrutivo"
             exit 0
@@ -628,8 +628,12 @@ jobs:
           OUT="${{ env.FRONTEND_WORKING_DIR }}/out"
           aws s3 sync "$OUT/" s3://musclefit-frontend-assets --delete \
             --exclude "sw.js" --exclude "manifest.json"
-          aws s3 cp "$OUT/manifest.json" s3://musclefit-frontend-assets/manifest.json \
-            --cache-control "no-cache" --content-type "application/json"
+          if [[ -f "$OUT/manifest.json" ]]; then
+            aws s3 cp "$OUT/manifest.json" s3://musclefit-frontend-assets/manifest.json \
+              --cache-control "no-cache" --content-type "application/json"
+          else
+            echo "::notice::out/manifest.json ausente; upload do manifest.json pulado"
+          fi
           if [[ -f "$OUT/sw.js" ]]; then
             aws s3 cp "$OUT/sw.js" s3://musclefit-frontend-assets/sw.js \
               --cache-control "no-cache" --content-type "application/javascript"
