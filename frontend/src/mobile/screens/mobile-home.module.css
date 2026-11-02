@@ -1,0 +1,24 @@
+.card {
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--m-touch);
+  margin-top: 4px;
+  color: var(--m-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Sticky dentro do fluxo da pagina: gruda acima do bottom nav (altura + safe-area). */
+.cta {
+  position: sticky;
+  bottom: calc(var(--m-bottom-nav) + env(safe-area-inset-bottom) + 8px);
+  z-index: 50;
+  padding-top: 8px;
+}

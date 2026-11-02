@@ -105,7 +105,12 @@ const PWA_HEAD_TAGS = [
   ['theme-color', /<meta name="theme-color" content="[^"]+"/],
   // M26: sem `width=device-width, initial-scale=1` o iOS abre a página num
   // viewport de 980px e a exibe escalada (o app "abre com zoom").
-  ['viewport device-width + initial-scale=1', /<meta name="viewport" content="width=device-width, initial-scale=1"/],
+  // O Next emite os tokens numa ordem própria; cada um é exigido de forma
+  // independente (lookahead) dentro do mesmo content do viewport.
+  [
+    'viewport device-width + initial-scale=1 + viewport-fit=cover',
+    /<meta name="viewport" content="(?=(?:[^"]*,\s*)?width=device-width(?:,|"))(?=(?:[^"]*,\s*)?initial-scale=1(?:,|"))(?=(?:[^"]*,\s*)?viewport-fit=cover(?:,|"))[^"]*"/,
+  ],
 ];
 
 // M26: o zoom NÃO pode ser "resolvido" desligando o zoom. `maximum-scale`/
