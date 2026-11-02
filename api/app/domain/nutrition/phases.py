@@ -14,10 +14,12 @@ Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §3.3, §3.4 e §7.
 - Projeção até o alvo (N1): `project_goal`. O ritmo é % do peso por semana,
   composto (o peso muda, o ritmo em kg também): semanas = ln(alvo/atual) /
   ln(1 ∓ ritmo). Para alvo de %G, o peso final supõe a MLG atual constante
-  (`target_weight_for_body_fat`): é o peso MÍNIMO (cutting) ou o mais baixo (bulking) que
-  cumpre o alvo. No cutting a MLG cai um pouco e o peso final real fica acima, e no
-  bulking a MLG cresce e o peso final real é maior: o prazo é OTIMISTA (limite inferior).
-  O resultado carrega `lean_mass_constant` e o motivo `projection_lean_mass_constant`.
+  (`target_weight_for_body_fat`). No cutting esse é o MAIOR peso que cumpre o alvo: se a MLG
+  cair, o peso final real é MENOR (100 kg a 25% com alvo de 15%: 88,2 kg com MLG constante,
+  84,7 kg se a MLG cair para 72 kg). No bulking é o MENOR peso que cumpre o alvo: se a MLG
+  crescer, o real é maior. Nos dois casos falta mais peso a mudar do que o calculado, então o
+  prazo é OTIMISTA (limite inferior; o real tende a ser maior). O resultado carrega
+  `is_minimum_estimate` (só quando projetado) e o motivo `projection_lean_mass_constant`.
   Sem dado não há número: devolve o motivo.
 
 O motor PROPÕE o calendário; admin/PT publica (decisão D4). Tudo em datas
@@ -68,6 +70,7 @@ REASON_START_WRONG_SIDE = "projection_start_on_wrong_side"
 REASON_MISSING_TARGET_WEIGHT = "projection_missing_target_weight"
 REASON_BEYOND_HORIZON = "projection_beyond_horizon"
 REASON_LEAN_MASS_CONSTANT = "projection_lean_mass_constant"
+REASON_RATE_OUTSIDE_RANGE = "projection_rate_outside_range"
 REASON_TARGET_AGAINST_STRATEGY = "projection_target_against_strategy"
 REASON_TARGET_MOVES_WITHOUT_STRATEGY = "projection_maintenance_with_distant_target"
 
@@ -376,7 +379,7 @@ def project_goal(
             current=atual,
             target=alvo,
             target_weight_kg=peso_alvo,
-            is_minimum_estimate=kind == GoalKind.BODY_FAT,
+            is_minimum_estimate=kind == GoalKind.BODY_FAT and status == ProjectionStatus.PROJECTED,
             **extra,
         )
 
@@ -417,6 +420,9 @@ def project_goal(
         motivos.append(REASON_MISSING_START)
     elif progresso is None:
         motivos.append(REASON_START_WRONG_SIDE)
+    faixa_ritmo = weekly_rate_share_range_for(strategy)
+    if weekly_rate_share is None and faixa_ritmo is not None and not faixa_ritmo[0] <= ritmo <= faixa_ritmo[1]:
+        motivos.append(REASON_RATE_OUTSIDE_RANGE)  # o ritmo do plano é projetado como está; só se avisa
     if kind == GoalKind.BODY_FAT:
         motivos.append(REASON_LEAN_MASS_CONSTANT)
     return _result(

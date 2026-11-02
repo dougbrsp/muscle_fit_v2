@@ -50,18 +50,57 @@ def test_proteina_absurda_bloqueia(proteina, codigo):
 
 
 def test_limites_exatos_de_proteina_nao_bloqueiam():
-    # Piso sobre o PESO (0,8 × 80); teto sobre a MLG (3,5 × 64) quando há MLG.
+    # Manutenção (base = peso 80 kg): piso 0,8 × 80 e teto 3,5 × 80 valem, um pouco além bloqueia.
     assert _campo(_check(0.8 * PESO, 300, 70), "protein_g").status == R.WARNING
-    assert _campo(_check(3.5 * MLG, 300, 70), "protein_g").status == R.WARNING
-    assert _campo(_check(3.5 * MLG + 1, 300, 70), "protein_g").status == R.BLOCKED
+    assert _campo(_check(3.5 * PESO, 300, 70), "protein_g").status == R.WARNING
+    assert _campo(_check(3.5 * PESO + 1, 300, 70), "protein_g").status == R.BLOCKED
+    # Cutting (base = MLG 64 kg): teto 3,5 × 64.
+    assert _campo(_check(3.5 * MLG, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.WARNING
+    assert _campo(_check(3.5 * MLG + 1, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.BLOCKED
 
 
-def test_bloqueio_de_proteina_usa_peso_no_piso_e_mlg_no_teto():
-    # 200 g: 2,5 g/kg do peso (aviso na manutenção), mas 3,125 g/kg da MLG, ainda abaixo do teto.
-    assert _campo(_check(200, 300, 70), "protein_g").status == R.WARNING
-    # 240 g: 3,0 g/kg do peso, 3,75 g/kg da MLG: bloqueia só porque o teto usa a MLG.
-    assert _campo(_check(240, 300, 70), "protein_g").codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",)
-    assert _campo(_check(240, 300, 70, ffm_kg=None), "protein_g").status == R.WARNING  # sem MLG, o teto usa o peso
+def test_teto_de_proteina_usa_a_base_da_estrategia():
+    # Manutenção, 70 kg, 40% de gordura (MLG 42 kg): 154 g = 2,2 g/kg do peso (topo da faixa) e 3,67 g/kg da
+    # MLG. Dentro da faixa recomendada, não pode bloquear.
+    r = _check(154, 300, 70, weight_kg=70.0, ffm_kg=42.0)
+    assert _campo(r, "protein_g").status == R.WITHIN_RANGE and r.can_save
+    # No cutting o teto é por MLG: 3,6 g/kg de 64 kg = 230,4 g bloqueia (e passaria por peso: 2,88 g/kg).
+    cut = _campo(_check(230.4, 200, 55, estrategia=S.CUTTING), "protein_g")
+    assert cut.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",) and cut.base == "fat_free_mass"
+    # No cutting sem MLG o teto usa o peso (3,6 g/kg × 80 = 288 g), e a faixa não é comparada (bases diferentes).
+    semmlg = _campo(_check(290, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g")
+    assert semmlg.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",)
+    assert semmlg.base == "body_weight" and semmlg.recommended is None
+
+
+@pytest.mark.parametrize("estrategia", list(S))
+@pytest.mark.parametrize("gordura_corporal", [3.0, 10.0, 25.0, 40.0, 60.0])
+def test_nada_dentro_da_faixa_recomendada_e_bloqueado(estrategia, gordura_corporal):
+    params = st.StrategyParams.defaults_for(estrategia)
+    peso = 70.0
+    mlg = peso * (1.0 - gordura_corporal / 100.0)
+    base = mlg if params.protein_basis == st.ProteinBasis.FAT_FREE_MASS else peso
+    piso, teto = st.protein_range_for(estrategia)
+    for g_por_kg in (piso + 1e-9, (piso + teto) / 2.0, teto - 1e-9):
+        r = mt.check_manual_targets(g_por_kg * base, 3.0 * peso, 70.0, params, weight_kg=peso, ffm_kg=mlg)
+        campo = _campo(r, "protein_g")
+        assert campo.status == R.WITHIN_RANGE, (estrategia, gordura_corporal, g_por_kg)
+        # Valor e faixa na mesma base.
+        assert campo.base == ("fat_free_mass" if params.protein_basis == st.ProteinBasis.FAT_FREE_MASS else "body_weight")
+        assert campo.recommended == (piso, teto)
+
+
+def test_field_check_nao_mistura_bases_no_bloqueio_do_piso():
+    # Cutting com 20 g de proteína: o piso é sobre o peso (0,25 g/kg), a faixa é em MLG: sem faixa no resultado.
+    campo = _campo(_check(20, 200, 55, estrategia=S.CUTTING), "protein_g")
+    assert campo.codes == (f"{mt.MANUAL_BLOCKED_BELOW}:protein_g",)
+    assert campo.base == "body_weight" and campo.metric_value == pytest.approx(0.25) and campo.recommended is None
+    assert campo.to_dict()["base"] == "body_weight"
+
+
+def test_bloqueio_de_proteina_usa_peso_no_piso():
+    # 50 g de 80 kg: 0,625 g/kg bloqueia mesmo sendo 0,78 g/kg da MLG.
+    assert _campo(_check(50, 300, 70), "protein_g").codes == (f"{mt.MANUAL_BLOCKED_BELOW}:protein_g",)
     # No cutting sem MLG, o piso e o teto são sobre o peso.
     assert _campo(_check(50, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g").status == R.BLOCKED  # 0,625 g/kg
     assert _campo(_check(300, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g").status == R.BLOCKED  # 3,75 g/kg

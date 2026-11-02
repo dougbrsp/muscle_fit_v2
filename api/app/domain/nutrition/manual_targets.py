@@ -39,11 +39,11 @@ from .strategy import (
 # Default de desenho (5 kg de qualquer macro por dia já passa de 20.000 kcal).
 MANUAL_GRAMS_MAX: Final[float] = 5000.0
 
-# Proteína (g/kg). BASES: o PISO é sempre sobre o PESO corporal (a RDA de 0,8 g/kg do IOM 2005
-# é por kg de peso), quando há peso; o TETO é sobre a MASSA LIVRE DE GORDURA quando há (os
-# estudos de dose alta, Antonio 2014/2016, reportam por kg de peso de treinados magros, e a MLG é a
-# base mais restritiva); no cutting sem MLG o teto usa o peso. A faixa de AVISO usa a base da
-# estratégia (MLG no cutting, peso nos demais).
+# Proteína (g/kg). BASES: o PISO é sempre sobre o PESO corporal (a RDA de 0,8 g/kg do IOM 2005 é
+# por kg de peso), quando há peso. O TETO usa a MESMA base da faixa de aviso da estratégia (peso
+# na manutenção e no bulking, MLG no cutting; no cutting sem MLG, o peso), para que nenhum valor
+# dentro da faixa recomendada seja bloqueado: com a MLG como base única, 154 g de um aluno de 70 kg
+# com 40% de gordura (2,2 g/kg de peso, 3,67 g/kg de MLG) bloquearia na manutenção.
 # Piso 0,8: abaixo da RDA, com déficit ou treino, o plano trabalha contra o objetivo.
 PROTEIN_BLOCK_MIN_G_PER_KG: Final[float] = 0.8
 # Teto 3,5: Antonio 2014 e 2016 testaram 3,3-3,4 g/kg (8 semanas a 1 ano) em treinados sem dano
@@ -108,8 +108,8 @@ _SEVERITY: Final[dict[RangeStatus, int]] = {
 @dataclass(frozen=True)
 class FieldCheck:
     """Resultado de um campo. `metric` diz o que foi medido (`g_per_kg`,
-    `kcal_share`, `kcal`); `recommended` é a faixa de aviso naquela métrica
-    (None = sem faixa); `codes` são `<código>:<campo>` (rótulos em `labels.py`)."""
+    `kcal_share`, `kcal`); `recommended` é a faixa de aviso NA MESMA BASE de `metric_value`
+    (None = sem faixa, ou a base do valor difere da base da faixa); `codes` são `<código>:<campo>` (rótulos em `labels.py`)."""
 
     field: str
     value: Optional[float]
@@ -118,6 +118,7 @@ class FieldCheck:
     metric_value: Optional[float] = None
     recommended: Optional[tuple[float, float]] = None
     codes: tuple[str, ...] = ()
+    base: Optional[str] = None  # base do g/kg de `metric_value` (`body_weight` ou `fat_free_mass`)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -128,6 +129,7 @@ class FieldCheck:
             "metric_value": self.metric_value,
             "recommended": list(self.recommended) if self.recommended else None,
             "codes": list(self.codes),
+            "base": self.base,
         }
 
 
@@ -163,22 +165,23 @@ def _grade(
     warn: Optional[tuple[float, float]],
     block: tuple[Optional[float], Optional[float]],
     extra_codes: tuple[str, ...] = (),
+    base: Optional[str] = None,
 ) -> FieldCheck:
     """Classifica `metric_value` contra a faixa de aviso e os limites de bloqueio. Sem a
     métrica (falta a base do g/kg) o campo NUNCA fica dentro da faixa: vira aviso com
     `manual_missing_base_for_field:<campo>`."""
     if metric_value is None:
         return FieldCheck(
-            field, value, RangeStatus.WARNING, metric, None, warn, (f"{MISSING_BASE}:{field}", *extra_codes)
+            field, value, RangeStatus.WARNING, metric, None, warn, (f"{MISSING_BASE}:{field}", *extra_codes), base
         )
     piso, teto = block
     if piso is not None and metric_value < piso:
         return FieldCheck(
-            field, value, RangeStatus.BLOCKED, metric, metric_value, warn, (f"{MANUAL_BLOCKED_BELOW}:{field}",)
+            field, value, RangeStatus.BLOCKED, metric, metric_value, warn, (f"{MANUAL_BLOCKED_BELOW}:{field}",), base
         )
     if teto is not None and metric_value > teto:
         return FieldCheck(
-            field, value, RangeStatus.BLOCKED, metric, metric_value, warn, (f"{MANUAL_BLOCKED_ABOVE}:{field}",)
+            field, value, RangeStatus.BLOCKED, metric, metric_value, warn, (f"{MANUAL_BLOCKED_ABOVE}:{field}",), base
         )
     codes = list(extra_codes)
     if warn is not None and metric_value < warn[0]:
@@ -186,7 +189,7 @@ def _grade(
     elif warn is not None and metric_value > warn[1]:
         codes.append(f"{MANUAL_ABOVE_RANGE}:{field}")
     status = RangeStatus.WARNING if codes else RangeStatus.WITHIN_RANGE
-    return FieldCheck(field, value, status, metric, metric_value, warn, tuple(codes))
+    return FieldCheck(field, value, status, metric, metric_value, warn, tuple(codes), base)
 
 
 def _valid_grams(value: Any) -> Optional[float]:
@@ -195,40 +198,40 @@ def _valid_grams(value: Any) -> Optional[float]:
     return gramas if gramas is not None and gramas <= MANUAL_GRAMS_MAX else None
 
 
-def _protein_check(
-    proteina: float, params: StrategyParams, peso: Optional[float], mlg: Optional[float]
-) -> FieldCheck:
-    """Proteína: aviso pela base da estratégia; bloqueio pelo piso sobre o PESO (se há) e pelo
-    teto sobre a MLG (se há; senão o peso)."""
-    base_estrategia = mlg if params.protein_basis == ProteinBasis.FAT_FREE_MASS else peso
-    base_piso = peso if peso is not None else mlg
-    base_teto = mlg if mlg is not None else peso
+_BASE_WEIGHT: Final[str] = "body_weight"
+_BASE_FFM: Final[str] = "fat_free_mass"
+
+
+def _protein_check(proteina: float, params: StrategyParams, peso: Optional[float], mlg: Optional[float]) -> FieldCheck:
+    """Proteína. Aviso pela faixa da estratégia, na base dela (MLG no cutting, peso nos demais).
+    Bloqueio: piso sobre o PESO (se há; senão a MLG) e teto na base da estratégia (no cutting sem
+    MLG, o peso). Cada FieldCheck só leva a faixa quando o valor e a faixa estão na mesma base."""
+    usa_mlg = params.protein_basis == ProteinBasis.FAT_FREE_MASS
+    base_estrategia, nome_estrategia = (mlg, _BASE_FFM) if usa_mlg else (peso, _BASE_WEIGHT)
+    faixa = protein_range_for(params.strategy)
+
+    def _resultado(base_kg: float, nome: str, bloqueio: tuple[Optional[float], Optional[float]]) -> FieldCheck:
+        return _grade(
+            FIELD_PROTEIN,
+            proteina,
+            "g_per_kg",
+            proteina / base_kg,
+            faixa if nome == nome_estrategia else None,
+            bloqueio,
+            base=nome,
+        )
+
+    base_piso, nome_piso = (peso, _BASE_WEIGHT) if peso is not None else (mlg, _BASE_FFM)
     if base_piso is not None and proteina / base_piso < PROTEIN_BLOCK_MIN_G_PER_KG:
-        return _grade(
-            FIELD_PROTEIN,
-            proteina,
-            "g_per_kg",
-            proteina / base_piso,
-            protein_range_for(params.strategy),
-            (PROTEIN_BLOCK_MIN_G_PER_KG, None),
-        )
+        return _resultado(base_piso, nome_piso, (PROTEIN_BLOCK_MIN_G_PER_KG, None))
+    base_teto, nome_teto = (base_estrategia, nome_estrategia)
+    if base_teto is None and usa_mlg and peso is not None:
+        base_teto, nome_teto = peso, _BASE_WEIGHT  # cutting sem MLG: o teto usa o peso
     if base_teto is not None and proteina / base_teto > PROTEIN_BLOCK_MAX_G_PER_KG:
-        return _grade(
-            FIELD_PROTEIN,
-            proteina,
-            "g_per_kg",
-            proteina / base_teto,
-            protein_range_for(params.strategy),
-            (None, PROTEIN_BLOCK_MAX_G_PER_KG),
-        )
-    return _grade(
-        FIELD_PROTEIN,
-        proteina,
-        "g_per_kg",
-        None if base_estrategia is None else proteina / base_estrategia,
-        protein_range_for(params.strategy),
-        (None, None),
-    )
+        return _resultado(base_teto, nome_teto, (None, PROTEIN_BLOCK_MAX_G_PER_KG))
+    if base_estrategia is None:
+        return _grade(FIELD_PROTEIN, proteina, "g_per_kg", None, faixa, (None, None), base=nome_estrategia)
+    return _resultado(base_estrategia, nome_estrategia, (None, None))
 
 
 def check_manual_targets(
@@ -244,7 +247,7 @@ def check_manual_targets(
     """Valida as gramas manuais do dia contra a estratégia do plano.
 
     `weight_kg`/`ffm_kg` dão a base dos g/kg (proteína: ver `_protein_check`; carboidrato: o
-    peso). Sem a base, o campo sai em AVISO `manual_missing_base_for_field` (nunca "dentro da
+    peso). Sem peso e sem MLG, 0 g de proteína só gera aviso: quem salva (N2) deve exigir o peso. Sem a base, o campo sai em AVISO `manual_missing_base_for_field` (nunca "dentro da
     faixa") e a limitação é devolvida; o peso nunca é inventado. `target_kcal` (meta da estratégia)
     e `bmr_kcal` só geram AVISOS. Texto numérico ("160") é aceito como número, como em
     `anthropometrics.non_negative_number`; valor negativo, não numérico, infinito ou acima de
@@ -291,6 +294,7 @@ def check_manual_targets(
         None if peso is None else carbo / peso,
         (carbo_min, CARB_WARN_MAX_G_PER_KG),
         (None, CARB_BLOCK_MAX_G_PER_KG),
+        base=_BASE_WEIGHT,
     )
 
     # Gordura: fração das kcal resultantes. Sem energia nenhuma não há fração (e a kcal bloqueia).

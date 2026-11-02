@@ -393,6 +393,9 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     phases_mod.REASON_MISSING_TARGET_WEIGHT: "Não foi possível calcular o peso em que o alvo de gordura se cumpre.",
     phases_mod.REASON_BEYOND_HORIZON: "Nesse ritmo o alvo fica além do horizonte da projeção.",
     phases_mod.REASON_START_WRONG_SIDE: "O ponto de partida está do lado errado do alvo: o percentual do caminho não se aplica.",
+    phases_mod.REASON_RATE_OUTSIDE_RANGE: (
+        "O ritmo que o plano implica está fora da faixa recomendada da estratégia; a projeção usa o ritmo do plano."
+    ),
     phases_mod.REASON_LEAN_MASS_CONSTANT: (
         "Estimativa mínima: supõe a massa livre de gordura atual constante; o prazo real tende a ser maior."
     ),

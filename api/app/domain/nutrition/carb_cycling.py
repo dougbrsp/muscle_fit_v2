@@ -307,9 +307,12 @@ def distribute_week_over_mean(
 ) -> WeekDistribution:
     """Cicla o carbo sobre a MÉDIA semanal das 7 metas (já com o gasto do treino
     de cada dia): carbo do dia = média × multiplicador do tipo. Proteína e gordura
-    ficam como cada dia as tem; kcal recalculada. A soma semanal de carbo e de
-    kcal é igual à das metas de entrada. Semana sem ciclo (sem dia alto e baixo)
-    devolve as metas como vieram."""
+    ficam como cada dia as tem; a kcal do dia é RECALCULADA por Atwater. A soma
+    semanal de carbo, proteína e gordura é igual à das metas de entrada; a de kcal
+    também, só quando cada meta de entrada já fecha por Atwater (meta com carbo zerado
+    por `kcal_below_protein_and_fat` sai com a kcal de Atwater, maior que a declarada).
+    Semana em que `week_multipliers` não cicla (toda normal, os 7 iguais ou o piso de
+    carbo impede) devolve as metas como vieram."""
     metas = tuple(days)
     tipos = tuple(kinds)
     if len(metas) != DAYS_PER_WEEK or len(tipos) != DAYS_PER_WEEK:

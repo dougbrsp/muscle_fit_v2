@@ -213,3 +213,46 @@ def test_project_goal_usa_o_ritmo_do_dono():
     assert st.weekly_rate_share_for(MANT) is None
     p = ph.project_goal(replace(CUT, weekly_rate_share=0.005), 90.0, goal_weight_kg=80.0)
     assert p.weekly_rate_share == 0.005
+
+
+def test_ritmo_derivado_fora_da_faixa_nao_e_limitado_mas_avisa():
+    # Superávit de 20% de 2800 kcal = 560 kcal/dia; MG 8 kg -> fração de gordura 8/18,4 = 0,4348, densidade
+    # 5.104 kcal/kg; 560 × 7 / 5104 = 0,768 kg/semana = 0,96% de 80 kg, acima do teto de 0,5%.
+    params = replace(BULK, surplus_share=0.20)
+    p = ph.project_goal(params, 80.0, goal_weight_kg=84.0, tdee_kcal=2800.0, fat_mass_kg=8.0)
+    assert p.status == PS.PROJECTED
+    assert p.weekly_rate_share == pytest.approx(0.0096, abs=1e-4)  # o ritmo do plano, sem corte
+    assert ph.REASON_RATE_OUTSIDE_RANGE in p.reasons
+    assert lb.limitation_label(ph.REASON_RATE_OUTSIDE_RANGE) != ph.REASON_RATE_OUTSIDE_RANGE
+    dentro = ph.project_goal(BULK, 80.0, goal_weight_kg=84.0, tdee_kcal=2800.0, fat_mass_kg=20.0)
+    assert ph.REASON_RATE_OUTSIDE_RANGE not in dentro.reasons
+    # Cutting com ritmo do plano fora da faixa (1,5%/semana): projeta o do plano e avisa.
+    cut = ph.project_goal(replace(CUT, weekly_rate_share=0.015), 90.0, goal_weight_kg=80.0)
+    assert cut.weekly_rate_share == 0.015 and ph.REASON_RATE_OUTSIDE_RANGE in cut.reasons
+
+
+def test_is_minimum_estimate_so_quando_projetado():
+    atingido = ph.project_goal(CUT, 80.0, goal_body_fat_percent=15.0, current_body_fat_percent=14.0, start_body_fat_percent=20.0)
+    incoerente = ph.project_goal(CUT, 80.0, goal_body_fat_percent=20.0, current_body_fat_percent=15.0)
+    faltando = ph.project_goal(CUT, 80.0, goal_body_fat_percent=15.0)
+    projetado = ph.project_goal(CUT, 100.0, goal_body_fat_percent=15.0, current_body_fat_percent=25.0)
+    assert [x.is_minimum_estimate for x in (atingido, incoerente, faltando, projetado)] == [False, False, False, True]
+    assert atingido.status == PS.GOAL_REACHED and incoerente.status == PS.INCOHERENT
+
+
+def test_cutting_mlg_constante_e_o_maior_peso_e_o_prazo_real_e_maior():
+    # 100 kg a 25%: MLG 75 kg, alvo 15% -> 88,2 kg com MLG constante. Se a MLG cair para 72 kg, o peso final
+    # real é 72 / 0,85 = 84,7 kg: MENOR que o calculado, então falta mais peso a perder.
+    p = ph.project_goal(CUT, 100.0, goal_body_fat_percent=15.0, current_body_fat_percent=25.0)
+    assert p.target_weight_kg == pytest.approx(88.235, abs=1e-3)
+    real = ph.project_goal(CUT, 100.0, goal_weight_kg=72.0 / 0.85)
+    assert real.target_weight_kg == pytest.approx(84.706, abs=1e-3) and real.target_weight_kg < p.target_weight_kg
+    assert real.weeks > p.weeks
+
+
+def test_bulking_mlg_constante_e_o_menor_peso_e_o_prazo_real_e_maior():
+    # 80 kg a 10%: MLG 72 kg, alvo 15% -> 84,7 kg. Se a MLG crescer para 74 kg, o peso final real é 87,1 kg.
+    p = ph.project_goal(BULK, 80.0, goal_body_fat_percent=15.0, current_body_fat_percent=10.0)
+    real = ph.project_goal(BULK, 80.0, goal_weight_kg=74.0 / 0.85)
+    assert real.target_weight_kg == pytest.approx(87.059, abs=1e-3) and real.target_weight_kg > p.target_weight_kg
+    assert real.weeks > p.weeks
