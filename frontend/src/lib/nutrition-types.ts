@@ -280,7 +280,12 @@ export type FoodItem = {
 };
 
 /** Item de `GET /nutrition/foods/search`: nota e pré-seleção do motor (`food_text`). */
-export type FoodSearchItem = FoodItem & { score: number; auto_accept: boolean };
+export type FoodSearchItem = FoodItem & {
+  score: number;
+  auto_accept: boolean;
+  /** Preferido do usuário (N3): a API já põe os preferidos primeiro, antes do corte da lista. */
+  is_favorite?: boolean;
+};
 
 export type FoodSearchResponse = { query: string; normalized: string; items: FoodSearchItem[] };
 

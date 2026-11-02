@@ -15,9 +15,9 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconArrowDown, IconArrowUp, IconPencil, IconStarFilled, IconTrash } from '@tabler/icons-react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { FoodSearch } from './FoodSearch';
+import { FAVORITE_TOGGLE_KEY, FoodSearch } from './FoodSearch';
 import { NutritionLimitations } from './NutritionLimitations';
 import {
   addFavorite,
@@ -32,6 +32,7 @@ import {
 } from '@/lib/nutrition-api';
 import { UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import {
+  favoriteErrorLines,
   favoriteDefaultFormFrom,
   favoriteDefaultPayload,
   favoriteDefaultSummary,
@@ -142,20 +143,40 @@ export function FavoritesManager() {
   const favoritos = useQuery({ queryKey: favoriteKeys.all, queryFn: fetchFavorites, retry: false });
   const itens = favoritos.data?.items ?? [];
 
+  // Toda alteração da lista: para uma leitura em voo (ela devolveria a ordem velha por cima), e ao
+  // terminar, com sucesso ou erro, relê a lista (um erro de ordem velha 400/409 se corrige sozinho).
+  const preparar = () => queryClient.cancelQueries({ queryKey: favoriteKeys.all });
+  const relerLista = () => queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
   const guardar = (resposta: FavoritesResponse) => queryClient.setQueryData(favoriteKeys.all, resposta);
-  const reordenar = useMutation({ mutationFn: reorderFavorites, onSuccess: guardar });
+  const reordenar = useMutation({
+    mutationFn: reorderFavorites,
+    onMutate: preparar,
+    onSuccess: guardar,
+    onSettled: relerLista,
+  });
   const remover = useMutation({
     mutationFn: (foodId: number) => removeFavorite(foodId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: favoriteKeys.all }),
+    onMutate: preparar,
+    onSettled: relerLista,
   });
   const adicionar = useMutation({
     mutationFn: (foodId: number) => addFavorite({ food_id: foodId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: favoriteKeys.all }),
+    onMutate: preparar,
+    onSettled: relerLista,
   });
-  const ocupado = reordenar.isPending || remover.isPending;
+  // A estrela da busca (dentro do FoodSearch) também altera a lista: trava os botões enquanto grava.
+  const alternando = useIsMutating({ mutationKey: FAVORITE_TOGGLE_KEY }) > 0;
+  const ocupado = reordenar.isPending || remover.isPending || adicionar.isPending || alternando || favoritos.isFetching;
   const erro = [favoritos, reordenar, remover, adicionar].find((m) => m.isError);
 
+  function limparErros() {
+    reordenar.reset();
+    remover.reset();
+    adicionar.reset();
+  }
+
   function mover(foodId: number, delta: -1 | 1) {
+    limparErros();
     reordenar.mutate(moveFavorite(itens.map((i) => i.food.id), foodId, delta));
   }
 
@@ -169,13 +190,24 @@ export function FavoritesManager() {
           <Text size="sm" c={BRAND.textMuted}>
             Busque um alimento e toque na estrela, ou toque na linha para adicioná-lo agora.
           </Text>
-          <FoodSearch isAdmin={false} selectedId={null} onSelect={(alimento) => adicionar.mutate(alimento.id)} />
+          <FoodSearch
+            isAdmin={false}
+            selectedId={null}
+            onSelect={(alimento) => {
+              limparErros();
+              adicionar.mutate(alimento.id);
+            }}
+          />
         </Stack>
       </Paper>
 
       {erro && (
-        <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-          {nutritionErrorInfo(erro.error, 'Não foi possível atualizar os preferidos.').message}
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} withCloseButton onClose={limparErros}>
+          {favoriteErrorLines(erro.error, 'Não foi possível atualizar os preferidos.').map((linha) => (
+            <Text key={linha} size="sm">
+              {linha}
+            </Text>
+          ))}
         </Alert>
       )}
 
@@ -252,7 +284,10 @@ export function FavoritesManager() {
                     color="red"
                     aria-label={`Remover ${favorito.food.name} dos preferidos`}
                     disabled={ocupado}
-                    onClick={() => remover.mutate(favorito.food.id)}
+                    onClick={() => {
+                      limparErros();
+                      remover.mutate(favorito.food.id);
+                    }}
                     style={{ minWidth: TOUCH_TARGET_PX, minHeight: TOUCH_TARGET_PX }}
                   >
                     <IconTrash size={18} />

@@ -55,11 +55,12 @@ from .nutrition_access import (
     can_promote_food,
     can_view_food,
     foods_visibility,
+    favorites_owner,
     ownership,
     portion_owner_for,
     portions_visibility,
 )
-from .nutrition_schema import require_food_tables
+from .nutrition_schema import has_favorites_table, require_food_tables
 from .request_models import FoodItemCreateIn, FoodItemIn, FoodPortionIn
 from .security import Identity, get_current_identity, require_admin
 
@@ -110,13 +111,22 @@ INSERT_PORTION_SQL = (
 PROMOTE_PORTIONS_SQL = f"UPDATE {PORTIONS} SET owner_user_id = NULL WHERE food_id = %s AND owner_user_id = %s"
 
 
-def search_sql(*, fulltext: bool, visibility: str, with_source: bool) -> str:
+# Preferidos do usuário (N3, migração 102): ids para marcar `is_favorite` e filtro da busca extra.
+FAVORITE_IDS_SQL = "SELECT food_id FROM user_favorite_foods WHERE user_id = %s"
+FAVORITES_ONLY_SQL = "id IN (SELECT food_id FROM user_favorite_foods WHERE user_id = %s)"
+
+
+def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_only: bool = False) -> str:
     """SELECT da busca. Parâmetros, na ordem: expressão (FULLTEXT ou prefixo
     LIKE, ambas de `food_text`), os da visibilidade (`nutrition_access`), fonte
-    (se filtrada), expressão de novo (ordem do FULLTEXT) e o lote de candidatos."""
+    (se filtrada), dono dos preferidos (se `favorites_only`: a busca extra que
+    garante os preferidos que casam mesmo fora do lote), expressão de novo (ordem
+    do FULLTEXT) e o lote de candidatos."""
     filtros = [MATCH_EXPR if fulltext else "name_normalized LIKE %s", "is_active = 1", visibility]
     if with_source:
         filtros.append("source = %s")
+    if favorites_only:
+        filtros.append(FAVORITES_ONLY_SQL)
     ordem = f"{MATCH_EXPR} DESC, id" if fulltext else "name_normalized, id"
     return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY {ordem} LIMIT %s"
 
@@ -310,16 +320,40 @@ def search_foods(
         params.append(expressao)
     params.append(food_text.SEARCH_CANDIDATE_POOL)
     sql = search_sql(fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None)
+    sql_favoritos = search_sql(
+        fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None, favorites_only=True
+    )
 
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
             cur.execute(sql, tuple(params))
             linhas = cur.fetchall() or []
+            favoritos: set[int] = set()
+            # Preferidos (N3) só no escopo normal e se a 102 já rodou. Os que casam com o termo entram
+            # mesmo fora do lote de candidatos (a busca extra repete o filtro restrita aos preferidos).
+            if not private_all and has_favorites_table(cur):
+                dono = favorites_owner(identity)
+                cur.execute(FAVORITE_IDS_SQL, (dono,))
+                favoritos = {int(f["food_id"]) for f in (cur.fetchall() or [])}
+                if favoritos:
+                    # `params` já leva expressão, visibilidade e fonte; o dono dos preferidos entra antes
+                    # da expressão de ordenação e do lote.
+                    base = [expressao, *params_visibilidade] + ([fonte.value] if fonte is not None else [])
+                    extra = [*base, dono] + ([expressao] if fulltext else []) + [food_text.SEARCH_CANDIDATE_POOL]
+                    cur.execute(sql_favoritos, tuple(extra))
+                    linhas = [*linhas, *(cur.fetchall() or [])]
     por_id = {int(linha["id"]): linha for linha in linhas}
-    ordem = food_text.order_for_search(q, [(food_id, linha["name"]) for food_id, linha in por_id.items()])
+    ordem = food_text.favorites_first(
+        food_text.order_for_search(q, [(food_id, linha["name"]) for food_id, linha in por_id.items()]), favoritos
+    )
     resposta["items"] = [
-        {**food_public(por_id[int(m.candidate_id)], identity), "score": m.score, "auto_accept": m.auto_accept}
+        {
+            **food_public(por_id[int(m.candidate_id)], identity),
+            "score": m.score,
+            "auto_accept": m.auto_accept,
+            "is_favorite": int(m.candidate_id) in favoritos,
+        }
         for m in ordem[: food_text.search_limit(limit)]
     ]
     return resposta

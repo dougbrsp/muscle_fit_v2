@@ -7,19 +7,13 @@
 // API (`meal_math`, decisão E9): a tela NÃO calcula macro nem converte porção.
 
 import { UNIT_OPTIONS, nutritionLabel, type NutritionCode } from './nutrition-constants';
+import { nutritionErrorInfo } from './nutrition-api';
 import { inputNumberOrNull } from './nutrition-format';
 import { editorItemFromFood, type MealEditorItem } from './nutrition-meal-form';
 import type { FavoriteDefaultPayload, FavoriteItem } from './nutrition-types';
 
-/** Ids dos alimentos favoritos (para marcar a estrela na busca). */
-export function favoriteIds(items: readonly FavoriteItem[]): Set<number> {
-  return new Set(items.map((item) => item.food.id));
-}
-
-/** Favoritos primeiro, mantendo a ordem relativa de cada grupo (a ordem da busca é do motor). */
-export function favoritesFirst<T extends { id: number }>(items: readonly T[], ids: ReadonlySet<number>): T[] {
-  return [...items.filter((item) => ids.has(item.id)), ...items.filter((item) => !ids.has(item.id))];
-}
+// A ordem da busca (preferidos primeiro, antes do corte) é do motor (`food_text.favorites_first`): a
+// resposta já vem ordenada e com `is_favorite`; a tela só exibe.
 
 /** Move o alimento `delta` posições (-1 sobe, +1 desce); fora dos limites devolve a lista como está. */
 export function moveFavorite(foodIds: readonly number[], foodId: number, delta: -1 | 1): number[] {
@@ -53,10 +47,13 @@ export function favoriteDefaultFormFrom(favorite: FavoriteItem): FavoriteDefault
     : { quantity: '', unit: null, portionId: null };
 }
 
-/** Corpo do PUT: quantidade vazia limpa a porção padrão (tudo `null`); a API valida o resto. */
+/**
+ * Corpo do PUT: quantidade vazia LIMPA a porção padrão (tudo `null`, como a tela avisa); com
+ * quantidade, vai o que o usuário escolheu e a API valida o resto (unidade, porção, faixa).
+ */
 export function favoriteDefaultPayload(form: FavoriteDefaultForm): FavoriteDefaultPayload {
   const quantidade = inputNumberOrNull(form.quantity);
-  if (quantidade === null && form.unit === null) {
+  if (quantidade === null) {
     return { default_quantity: null, default_unit: null, default_portion_id: null };
   }
   return { default_quantity: quantidade, default_unit: form.unit, default_portion_id: form.portionId };
@@ -68,4 +65,10 @@ export function favoriteDefaultSummary(favorite: FavoriteItem): string | null {
   if (!padrao) return null;
   if (padrao.portion_label) return `${padrao.quantity} × ${padrao.portion_label}`;
   return `${padrao.quantity} ${nutritionLabel(UNIT_OPTIONS, padrao.unit) ?? padrao.unit}`;
+}
+
+/** Linhas de um erro da API dos preferidos: os textos do motor (ex.: teto da lista) ou, sem eles, a mensagem. */
+export function favoriteErrorLines(error: unknown, fallback: string): string[] {
+  const info = nutritionErrorInfo(error, fallback);
+  return info.items.length > 0 ? info.items.map((item) => item.label) : [info.message];
 }

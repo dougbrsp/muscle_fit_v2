@@ -3,8 +3,9 @@
 import { Alert, Button, Loader, Modal, Stack, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconCameraOff } from '@tabler/icons-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { CAMERA_ERROR_MESSAGES, CameraError, startBarcodeScan, type ScanHandle } from '@/lib/barcode-scanner';
+import { SCANNER_INITIAL_STATE, scannerReducer } from '@/lib/barcode-scanner-state';
 import { BRAND } from '@/theme';
 
 type Props = {
@@ -28,33 +29,44 @@ const TOUCH_TARGET_PX = 44;
 export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
   const fullScreen = useMediaQuery(MOBILE_QUERY) ?? false;
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  const [starting, setStarting] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [{ starting, error }, dispatch] = useReducer(scannerReducer, SCANNER_INITIAL_STATE);
   const onDetectedRef = useRef(onDetected);
   onDetectedRef.current = onDetected;
+
+  // Cada abertura recomeça limpa: sem isto, a mensagem de uma falha anterior impedia o vídeo de
+  // montar e a câmera nunca mais abria (o efeito de baixo depende do elemento <video>).
+  useEffect(() => {
+    if (opened) dispatch({ type: 'open' });
+  }, [opened]);
 
   useEffect(() => {
     if (!opened || !video) return undefined;
     let cancelled = false;
     let handle: ScanHandle | null = null;
-    setStarting(true);
-    setError(null);
-    startBarcodeScan(video, (code) => {
-      if (!cancelled) onDetectedRef.current(code);
-    })
+    const falhou = (falha: unknown) => {
+      if (cancelled) return;
+      dispatch({
+        type: 'failed',
+        message: falha instanceof CameraError ? falha.message : CAMERA_ERROR_MESSAGES.unknown,
+      });
+    };
+    startBarcodeScan(
+      video,
+      (code) => {
+        if (!cancelled) onDetectedRef.current(code);
+      },
+      undefined,
+      falhou,
+    )
       .then((started) => {
         if (cancelled) {
           started.stop();
           return;
         }
         handle = started;
-        setStarting(false);
+        dispatch({ type: 'started' });
       })
-      .catch((falha: unknown) => {
-        if (cancelled) return;
-        setError(falha instanceof CameraError ? falha.message : CAMERA_ERROR_MESSAGES.unknown);
-        setStarting(false);
-      });
+      .catch(falhou);
     return () => {
       cancelled = true;
       handle?.stop(); // libera a câmera ao fechar ou desmontar

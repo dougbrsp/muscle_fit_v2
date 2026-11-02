@@ -40,6 +40,7 @@ describe('classifyCameraError', () => {
     expect(classifyCameraError(domError('SecurityError'))).toBe('permission_denied');
     expect(classifyCameraError(domError('NotFoundError'))).toBe('no_camera');
     expect(classifyCameraError(domError('OverconstrainedError'))).toBe('no_camera');
+    expect(classifyCameraError(domError('NotReadableError'))).toBe('camera_busy');
     expect(classifyCameraError(domError('TypeError'))).toBe('unsupported');
     expect(classifyCameraError(new Error('x'))).toBe('unknown');
     expect(classifyCameraError(null)).toBe('unknown');
@@ -169,5 +170,94 @@ describe('startBarcodeScan', () => {
     expect(stop).toHaveBeenCalled();
     cb({ getText: () => '7891000100103' }, null, { stop });
     expect(onCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('zxing: várias leituras seguidas chamam onCode uma vez só', async () => {
+    const stop = vi.fn();
+    type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
+    const capturado: { cb: Callback | null } = { cb: null };
+    const loader: ZxingLoader = async () => ({
+      decodeFromConstraints: async (_c, _v, callback) => {
+        capturado.cb = callback;
+        return { stop };
+      },
+    });
+    const onCode = vi.fn();
+    await startBarcodeScan(fakeVideo(), onCode, { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader });
+    const cb = capturado.cb as Callback;
+    for (const codigo of ['7891000100103', '7891000100103', '7891000315507']) cb({ getText: () => codigo }, null, { stop });
+    expect(onCode).toHaveBeenCalledTimes(1);
+    expect(onCode).toHaveBeenCalledWith('7891000100103');
+  });
+
+  it('zxing: stop() antes de o leitor abrir libera a câmera assim que ele resolve', async () => {
+    const stopControles = vi.fn();
+    let resolver: (c: { stop: () => void }) => void = () => undefined;
+    const loader: ZxingLoader = async () => ({
+      decodeFromConstraints: () => new Promise((resolve) => (resolver = resolve)),
+    });
+    const promessa = startBarcodeScan(fakeVideo(), vi.fn(), {
+      mediaDevices: { getUserMedia: vi.fn() },
+      detectorCtor: null,
+      loadZxing: loader,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    resolver({ stop: stopControles });
+    const handle = await promessa;
+    handle.stop();
+    expect(stopControles).toHaveBeenCalled();
+  });
+
+  it('zxing: erro de quadro segue lendo; erro fatal para, libera e avisa a tela', async () => {
+    const stop = vi.fn();
+    type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
+    const capturado: { cb: Callback | null } = { cb: null };
+    const loader: ZxingLoader = async () => ({
+      decodeFromConstraints: async (_c, _v, callback) => {
+        capturado.cb = callback;
+        return { stop };
+      },
+    });
+    const onFatal = vi.fn();
+    const onCode = vi.fn();
+    await startBarcodeScan(
+      fakeVideo(),
+      onCode,
+      { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader },
+      onFatal,
+    );
+    const cb = capturado.cb as Callback;
+    cb(undefined, domError('NotFoundException'), { stop });
+    cb(undefined, domError('ChecksumException'), { stop });
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    cb(undefined, domError('NotReadableError'), { stop });
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(onFatal).toHaveBeenCalledTimes(1);
+    expect(onFatal.mock.calls[0][0]).toMatchObject({ name: 'CameraError', kind: 'camera_busy' });
+    cb({ getText: () => '7891000100103' }, null, { stop });
+    expect(onCode).not.toHaveBeenCalled(); // depois do erro fatal nada mais é entregue
+  });
+
+  it('nativo: só zera o srcObject se ele ainda for o nosso stream', async () => {
+    const { stream } = fakeStream();
+    const video = fakeVideo();
+    const ctor = vi.fn().mockImplementation(() => ({ detect: vi.fn().mockResolvedValue([]) })) as unknown as BarcodeDetectorCtor;
+    const handle = await startBarcodeScan(video, vi.fn(), {
+      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+      detectorCtor: ctor,
+    });
+    const outro = {} as MediaStream;
+    (video as { srcObject: MediaStream | null }).srcObject = outro;
+    handle.stop();
+    expect(video.srcObject).toBe(outro);
+  });
+
+  it('não pede UPC-E ao leitor nativo (o dono do GTIN não expande UPC-E)', async () => {
+    const { stream } = fakeStream();
+    const ctor = vi.fn().mockImplementation(() => ({ detect: vi.fn().mockResolvedValue([]) })) as unknown as BarcodeDetectorCtor;
+    await startBarcodeScan(fakeVideo(), vi.fn(), { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) }, detectorCtor: ctor });
+    const opcoes = (ctor as unknown as { mock: { calls: Array<[{ formats: string[] }]> } }).mock.calls[0][0];
+    expect(opcoes.formats).toEqual(['ean_13', 'ean_8', 'upc_a']);
   });
 });

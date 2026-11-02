@@ -3,22 +3,21 @@
 import { Alert, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { IconAlertTriangle, IconBarcode, IconCamera } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { BarcodeScanner } from './BarcodeScanner';
 import { NutritionLimitations } from './NutritionLimitations';
-import { lookupBarcode, nutritionErrorCode, nutritionErrorInfo } from '@/lib/nutrition-api';
+import { editingAfterLookupError } from '@/lib/nutrition-barcode-flow';
+import { lookupBarcode, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { ExternalFoodResponse } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
 type Props = {
   onFound: (food: ExternalFoodResponse) => void;
-  /** Código sem produto utilizável (Open Food Facts não conhece): abre o cadastro manual com o EAN. */
+  /** Código sem produto utilizável (Open Food Facts não conhece): abre o cadastro manual com o EAN, direto. */
   onNotFound?: (ean: string) => void;
+  /** Muda depois de um cadastro salvo ou produto aberto: limpa o código, o resultado e o erro. */
+  resetSignal?: number;
 };
-
-// Respostas da API para "o código é válido, mas não há produto utilizável": o OFF não conhece
-// (404) ou conhece com dados que não passam nas regras do catálogo (422, "cadastre manualmente").
-const NOT_FOUND_CODES = ['off_not_found', 'invalid_external_food'];
 
 /**
  * Consulta por código de barras (Lote L3b; leitor pela câmera no N3). O código vem da câmera
@@ -27,14 +26,26 @@ const NOT_FOUND_CODES = ['off_not_found', 'invalid_external_food'];
  * achar, no Open Food Facts, com limite diário de consultas novas. Produto desconhecido oferece
  * o cadastro manual já com o código. A tela só manda o texto e exibe o resultado ou o erro.
  */
-export function BarcodeLookup({ onFound, onNotFound }: Props) {
+export function BarcodeLookup({ onFound, onNotFound, resetSignal = 0 }: Props) {
   const [ean, setEan] = useState('');
   const [consultado, setConsultado] = useState('');
   const [scanning, setScanning] = useState(false);
   const consulta = useMutation({
     mutationFn: (codigo: string) => lookupBarcode(codigo),
     onSuccess: onFound,
+    // Código válido sem produto utilizável: o cadastro manual abre sozinho, com o EAN preenchido.
+    onError: (erro, codigo) => {
+      if (editingAfterLookupError(erro, codigo)) onNotFound?.(codigo);
+    },
   });
+
+  const { reset } = consulta;
+  useEffect(() => {
+    // Depois de salvar ou abrir um produto, a consulta anterior não fica na tela.
+    setEan('');
+    setConsultado('');
+    reset();
+  }, [resetSignal, reset]);
 
   function consultar(codigo: string) {
     setConsultado(codigo);
@@ -54,7 +65,7 @@ export function BarcodeLookup({ onFound, onNotFound }: Props) {
   }
 
   const erro = consulta.isError ? nutritionErrorInfo(consulta.error, 'Não foi possível consultar o código de barras.') : null;
-  const naoAchado = consulta.isError && NOT_FOUND_CODES.includes(nutritionErrorCode(consulta.error) ?? '');
+  const naoAchado = consulta.isError && editingAfterLookupError(consulta.error, consultado) !== null;
   const achado = consulta.isSuccess ? consulta.data : null;
 
   return (
@@ -102,19 +113,10 @@ export function BarcodeLookup({ onFound, onNotFound }: Props) {
       )}
       {erro && naoAchado && (
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Produto não encontrado">
-          <Stack gap="xs">
-            <Text size="sm">{erro.message}</Text>
-            {onNotFound && (
-              <Button
-                variant="light"
-                color="brand"
-                onClick={() => onNotFound(consultado)}
-                style={{ minHeight: 44, alignSelf: 'flex-start' }}
-              >
-                Cadastrar com o código {consultado}
-              </Button>
-            )}
-          </Stack>
+          <Text size="sm">
+            {erro.message}
+            {onNotFound ? ` Abrimos o cadastro com o código ${consultado} já preenchido.` : ''}
+          </Text>
         </Alert>
       )}
       {achado && (

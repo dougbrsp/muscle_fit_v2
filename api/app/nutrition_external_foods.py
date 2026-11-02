@@ -191,11 +191,16 @@ def lookup_barcode(
         with conn.cursor() as cur:
             require_food_tables(cur)
             linha = _food_by_source(cur, FoodSource.OFF, codigo)
-            if linha is None:
+            # Linha do OFF desativada (ou invisível ao usuário): não serve de cache, mas também não pode
+            # esconder um cadastro local do mesmo EAN nem impedir a oferta de cadastro na tela.
+            off_indisponivel = linha is not None and not (linha.get("is_active") and can_view_food(identity, linha))
+            if linha is None or off_indisponivel:
                 # N3: o EAN cadastrado à mão (ou por outra fonte) também é cache; não gasta consulta ao OFF.
                 linha = food_by_barcode(cur, codigo, int(identity.user_id))
-            if linha is None:
+            if linha is None and not off_indisponivel:
                 usadas = _off_lookups_today(conn, cur, int(identity.user_id))
+    if linha is None and off_indisponivel:
+        raise _error(404, "food_not_found", "Produto indisponível no catálogo para este código.")
     if linha is not None:
         return _external_food_response(linha, identity, from_cache=True)
     if not fontes.off_lookup_allowed(usadas):

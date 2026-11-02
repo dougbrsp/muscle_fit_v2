@@ -85,7 +85,12 @@ def _item_public(
 ) -> dict[str, Any]:
     quantidade = favorito.get("default_quantity")
     padrao = None
-    if quantidade is not None and favorito.get("default_unit"):
+    # Porção padrão cuja porção cadastrada sumiu (apagada ou fora da visibilidade do usuário):
+    # o favorito segue na lista, sem porção padrão, em vez de apontar para uma porção inexistente.
+    porcao_perdida = favorito.get("default_portion_id") is not None and (
+        porcao is None or not can_favorite_portion(identity, porcao)
+    )
+    if quantidade is not None and favorito.get("default_unit") and not porcao_perdida:
         padrao = {
             "quantity": _num(quantidade),
             "unit": favorito.get("default_unit"),
@@ -146,9 +151,6 @@ def _validated_default(
     cur: Any, identity: Identity, alimento: dict[str, Any], payload: FavoriteDefaultIn
 ) -> tuple[Optional[float], Optional[str], Optional[int]]:
     """Valida a porção padrão no motor e devolve `(quantidade, unidade, porcao_id)` para gravar."""
-    unidade = None if payload.default_unit is None else (
-        favorites_engine.canonical_unit(payload.default_unit) or payload.default_unit.strip().lower()
-    )
     porcao: Optional[dict[str, Any]] = None
     if payload.default_portion_id is not None:
         cur.execute(PORTION_SQL, (int(payload.default_portion_id),))
@@ -161,7 +163,7 @@ def _validated_default(
             raise _error(404, "portion_not_found", "Porção não encontrada para este alimento.")
     erros = favorites_engine.default_errors(
         payload.default_quantity,
-        unidade,
+        payload.default_unit,
         payload.default_portion_id,
         alimento.get("basis"),
         None if porcao is None else porcao.get("amount"),
@@ -169,6 +171,8 @@ def _validated_default(
     )
     if erros:
         raise _invalid(erros)
+    # Só com o motor sem erros a unidade é gravada, na forma canônica dele.
+    unidade = None if payload.default_unit is None else favorites_engine.canonical_unit(payload.default_unit)
     quantidade = None if payload.default_quantity is None else float(payload.default_quantity)
     return quantidade, unidade, None if payload.default_portion_id is None else int(payload.default_portion_id)
 
@@ -194,12 +198,16 @@ def reorder_favorites(payload: FavoriteReorderIn, identity: Identity = Depends(g
         with conn.cursor() as cur:
             require_favorites_table(cur)
             require_food_tables(cur)
-            atuais = [int(item["food"]["id"]) for item in _listed(cur, identity)]
+            listados = _listed(cur, identity)
+            atuais = [int(item["food"]["id"]) for item in listados]
             erros = favorites_engine.order_errors(atuais, payload.food_ids)
             if erros:
                 raise _invalid(erros)
-            for food_id, posicao in favorites_engine.positions_for(payload.food_ids):
-                cur.execute(UPDATE_POSITION_SQL, (posicao, dono, food_id))
+            # Só o que mudou, em ordem de food_id (ordem estável de travas entre pedidos concorrentes).
+            atuais_pos = {int(item["food"]["id"]): int(item["position"]) for item in listados}
+            for food_id, posicao in sorted(favorites_engine.positions_for(payload.food_ids)):
+                if atuais_pos.get(food_id) != posicao:
+                    cur.execute(UPDATE_POSITION_SQL, (posicao, dono, food_id))
             return _response(cur, identity)
 
 

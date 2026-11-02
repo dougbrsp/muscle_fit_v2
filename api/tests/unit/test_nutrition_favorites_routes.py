@@ -114,7 +114,6 @@ class FakeFavConn(FakeConn):
 class FakeFavDB(FakeFoodsDB):
     def __init__(self) -> None:
         super().__init__()
-        self.favorites: list[dict[str, Any]] = []
         self.next_fav_id = 0
 
     def conn(self) -> FakeFavConn:  # type: ignore[override]
@@ -139,12 +138,14 @@ def db(monkeypatch):
     for modulo in (foods_mod, rotas):
         monkeypatch.setattr(modulo, "require_food_tables", lambda cur: None)
     monkeypatch.setattr(rotas, "require_favorites_table", lambda cur: None)
+    monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
     return banco
 
 
 def _client(user_id: int = ALUNO, role: str = "regular") -> TestClient:
     app = FastAPI()
     app.include_router(rotas.router)
+    app.include_router(foods_mod.router)
     app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=user_id, role=role, source="session")
     return TestClient(app, raise_server_exceptions=False)
 
@@ -372,3 +373,71 @@ def test_um_usuario_nunca_le_nem_altera_os_preferidos_de_outro(db):
     assert _ids(aluno.get("/nutrition/favorites")) == [db.arroz, db.feijao]
     # nenhuma linha de um usuário foi tocada pelo outro
     assert {f["user_id"] for f in db.favorites} == {ALUNO, OUTRO}
+
+
+# ---------------------------------------------------------------------------
+# Busca: preferidos primeiro, no dono, antes do corte (P1 da revisão)
+# ---------------------------------------------------------------------------
+
+
+def _muitos_arrozes(db, total: int = 70) -> list[int]:
+    return [
+        db.add_food(f"Arroz teste {i:03d}", energy_kcal=130, carbohydrates_g=28, protein_g=2.5, total_fat_g=0.2)
+        for i in range(total)
+    ]
+
+
+def test_busca_poe_o_favorito_primeiro_mesmo_fora_do_lote_de_candidatos(db):
+    ids = _muitos_arrozes(db)
+    favorito = ids[65]  # além do lote de 60 candidatos e do corte de 20 resultados
+    cliente = _client()
+    sem = cliente.get("/nutrition/foods/search", params={"q": "arroz teste"}).json()["items"]
+    assert favorito not in [i["id"] for i in sem] and not any(i["is_favorite"] for i in sem)
+    assert _favoritar(cliente, favorito).status_code == 201
+    itens = cliente.get("/nutrition/foods/search", params={"q": "arroz teste"}).json()["items"]
+    assert itens[0]["id"] == favorito and itens[0]["is_favorite"] is True
+    assert len(itens) == 20 and not any(i["is_favorite"] for i in itens[1:])
+
+
+def test_busca_de_outro_usuario_nao_e_afetada_pelos_favoritos(db):
+    ids = _muitos_arrozes(db)
+    _favoritar(_client(), ids[65])
+    antes = _client(OUTRO).get("/nutrition/foods/search", params={"q": "arroz teste"}).json()["items"]
+    assert ids[65] not in [i["id"] for i in antes] and not any(i["is_favorite"] for i in antes)
+    # o admin no escopo private_all também não recebe a marcação
+    admin = _client(ADMIN, "admin").get("/nutrition/foods/search", params={"q": "arroz", "scope": "private_all"})
+    assert all(i["is_favorite"] is False for i in admin.json()["items"])
+
+
+def test_favorito_que_nao_casa_com_o_termo_nao_entra_na_busca(db):
+    cliente = _client()
+    _favoritar(cliente, db.feijao)
+    itens = cliente.get("/nutrition/foods/search", params={"q": "arroz"}).json()["items"]
+    assert db.feijao not in [i["id"] for i in itens]
+
+
+def test_porcao_apagada_depois_de_favoritada_deixa_o_favorito_sem_padrao(db):
+    cliente = _client()
+    _favoritar(cliente, db.arroz, default_quantity=2, default_unit="portion", default_portion_id=db.porcao_arroz)
+    del db.portions[db.porcao_arroz]
+    item = cliente.get("/nutrition/favorites").json()["items"][0]
+    assert item["food"]["id"] == db.arroz and item["default"] is None
+
+
+def test_reordenar_grava_so_as_posicoes_que_mudaram_em_ordem_de_food_id(db):
+    cliente = _client()
+    for food_id in (db.arroz, db.feijao, db.privado_meu):
+        _favoritar(cliente, food_id)
+    db.queries.clear()
+    resposta = cliente.post("/nutrition/favorites/reorder", json={"food_ids": [db.arroz, db.privado_meu, db.feijao]})
+    assert resposta.status_code == 200
+    escritas = [p for sql, p in db.queries if sql == rotas.UPDATE_POSITION_SQL]
+    assert [e[2] for e in escritas] == sorted([db.feijao, db.privado_meu])  # arroz não mudou de posição
+    assert all(e[1] == ALUNO for e in escritas)
+
+
+def test_unidade_gravada_e_a_canonica_do_motor_e_so_com_motor_sem_erros(db):
+    cliente = _client()
+    assert _favoritar(cliente, db.arroz, default_quantity=10, default_unit=" G ").json()["default"]["unit"] == "g"
+    assert _favoritar(cliente, db.feijao, default_quantity=10, default_unit="balde").status_code == 400
+    assert [f["default_unit"] for f in db.favorites] == ["g"]

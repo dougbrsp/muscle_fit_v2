@@ -6,8 +6,7 @@ import {
   favoriteDefaultFormFrom,
   favoriteDefaultPayload,
   favoriteDefaultSummary,
-  favoriteIds,
-  favoritesFirst,
+  favoriteErrorLines,
   moveFavorite,
 } from './nutrition-favorites';
 import type { FavoriteItem, FoodItem } from './nutrition-types';
@@ -19,20 +18,6 @@ function food(id: number, name = `Alimento ${id}`): FoodItem {
 function favorite(id: number, padrao: FavoriteItem['default'] = null): FavoriteItem {
   return { food: food(id), position: id, default: padrao, created_at: null, updated_at: null };
 }
-
-describe('favoritesFirst', () => {
-  it('põe os favoritos antes e mantém a ordem da busca dentro de cada grupo', () => {
-    const resultado = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
-    const ids = favoriteIds([favorite(4), favorite(2)]);
-    expect(favoritesFirst(resultado, ids).map((i) => i.id)).toEqual([2, 4, 1, 3]);
-  });
-
-  it('sem favoritos devolve a mesma ordem, sem mutar a entrada', () => {
-    const resultado = [{ id: 3 }, { id: 1 }];
-    expect(favoritesFirst(resultado, new Set()).map((i) => i.id)).toEqual([3, 1]);
-    expect(resultado.map((i) => i.id)).toEqual([3, 1]);
-  });
-});
 
 describe('moveFavorite', () => {
   it('sobe e desce uma posição', () => {
@@ -79,10 +64,13 @@ describe('porção padrão (formulário <-> corpo do PUT)', () => {
     });
     // quantidade sem unidade vai como está: a API responde 400 com o código do motor
     expect(favoriteDefaultPayload({ quantity: 3, unit: null, portionId: null }).default_unit).toBeNull();
+  });
+
+  it('quantidade vazia limpa tudo, mesmo com unidade ou porção escolhidas (como a tela avisa)', () => {
     expect(favoriteDefaultPayload({ quantity: '', unit: 'g', portionId: 4 })).toEqual({
       default_quantity: null,
-      default_unit: 'g',
-      default_portion_id: 4,
+      default_unit: null,
+      default_portion_id: null,
     });
   });
 
@@ -123,5 +111,18 @@ describe('barcodeConflict', () => {
     expect(barcodeConflict(new ApiError('x', 409, { error: 'outro', existing_food_id: 1 }))).toBeNull();
     expect(barcodeConflict(new ApiError('x', 409, { error: 'barcode_already_registered' }))).toBeNull();
     expect(barcodeConflict(new Error('x'))).toBeNull();
+  });
+});
+
+describe('favoriteErrorLines', () => {
+  it('mostra os textos do motor (ex.: teto da lista) e, sem eles, a mensagem', () => {
+    const comItens = new ApiError('x', 409, {
+      error: 'invalid_favorite',
+      message: 'Preferido fora das regras.',
+      errors: [{ code: 'too_many_favorites', label: 'A lista de preferidos aceita até 200 alimentos.' }],
+    });
+    expect(favoriteErrorLines(comItens, 'fallback')).toEqual(['A lista de preferidos aceita até 200 alimentos.']);
+    expect(favoriteErrorLines(new ApiError('Falhou', 500), 'fallback')).toEqual(['Falhou']);
+    expect(favoriteErrorLines(new Error('x'), 'fallback')).toEqual(['fallback']);
   });
 });

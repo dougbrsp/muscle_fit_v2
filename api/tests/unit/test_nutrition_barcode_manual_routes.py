@@ -110,3 +110,18 @@ def test_ean_cadastrado_a_mao_e_achado_na_consulta_sem_gastar_o_off(db, chamadas
     # outro usuário não enxerga o privado: cai no OFF
     outro = _client(OUTRO).get(f"/nutrition/foods/barcode/{MOCA}")
     assert outro.status_code == 200 and outro.json()["from_cache"] is False and chamadas_ao_off == [MOCA]
+
+
+def test_linha_do_off_inativa_nao_impede_o_cadastro_local_nem_a_oferta_de_cadastro(db, chamadas_ao_off):
+    db.add_food("Produto OFF desativado", source="off", source_id=MOCA, barcode=MOCA, active=False,
+                energy_kcal=300, carbohydrates_g=50, protein_g=5, total_fat_g=8)
+    cliente = _client()
+    # Sem cadastro local: 404 (a tela oferece o cadastro) e nenhuma chamada nem consulta contada ao OFF.
+    vazio = cliente.get(f"/nutrition/foods/barcode/{MOCA}")
+    assert vazio.status_code == 404 and vazio.json()["detail"]["error"] == "food_not_found"
+    assert chamadas_ao_off == [] and not [q for q in db.queries if q[0] == rotas.OFF_LOOKUPS_TODAY_SQL]
+    # O cadastro manual do mesmo EAN passa (a linha inativa não conflita) e a consulta o encontra.
+    criado = cliente.post("/nutrition/foods", json={**MANUAL, "barcode": MOCA})
+    assert criado.status_code == 201
+    achado = cliente.get(f"/nutrition/foods/barcode/{MOCA}")
+    assert achado.status_code == 200 and achado.json()["id"] == criado.json()["id"]

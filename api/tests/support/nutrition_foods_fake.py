@@ -27,12 +27,15 @@ from app.domain.nutrition.food_text import normalize_name
 AGORA = datetime(2026, 10, 17, 12, 0, 0)
 
 
-def _search_variants() -> dict[str, tuple[bool, str, bool]]:
+def _search_variants() -> dict[str, tuple[bool, str, bool, bool]]:
     return {
-        foods.search_sql(fulltext=ft, visibility=vis, with_source=src): (ft, vis == access.VISIBLE_FOODS_SQL, src)
+        foods.search_sql(fulltext=ft, visibility=vis, with_source=src, favorites_only=fav): (
+            ft, vis == access.VISIBLE_FOODS_SQL, src, fav,
+        )
         for ft in (True, False)
         for vis in (access.VISIBLE_FOODS_SQL, access.PRIVATE_FOODS_SQL)
         for src in (True, False)
+        for fav in (True, False)
     }
 
 
@@ -42,6 +45,7 @@ class FakeFoodsDB:
         self.portions: dict[int, dict[str, Any]] = {}
         self.next_food_id = 1
         self.next_portion_id = 1
+        self.favorites: list[dict[str, Any]] = []  # `user_favorite_foods` (N3): {user_id, food_id, ...}
         self.queries: list[tuple[str, tuple]] = []
         self.now = AGORA  # `created_at` das linhas gravadas pela importação externa
         self._search = _search_variants()
@@ -119,12 +123,14 @@ class FakeCursor:
     def fetchall(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self._rows]
 
-    def _buscar(self, variante: tuple[bool, str, bool], p: tuple) -> list[dict[str, Any]]:
-        fulltext, visiveis, com_fonte = variante
+    def _buscar(self, variante: tuple[bool, str, bool, bool], p: tuple) -> list[dict[str, Any]]:
+        fulltext, visiveis, com_fonte, so_favoritos = variante
         resto = list(p)
         termo = resto.pop(0)
         usuario = resto.pop(0) if visiveis else None
         fonte = resto.pop(0) if com_fonte else None
+        dono_favoritos = resto.pop(0) if so_favoritos else None
+        ids_favoritos = {f["food_id"] for f in self.db.favorites if f["user_id"] == dono_favoritos}
         if fulltext:
             assert resto.pop(0) == termo
         lote = resto.pop(0)
@@ -133,6 +139,8 @@ class FakeCursor:
         achados = []
         for linha in self.db.foods.values():
             if not linha["is_active"]:
+                continue
+            if so_favoritos and linha["id"] not in ids_favoritos:
                 continue
             dono = linha["owner_user_id"]
             if visiveis and not (dono is None or dono == usuario):
@@ -160,6 +168,8 @@ class FakeCursor:
         if sql in db._search:
             self._rows = self._buscar(db._search[sql], p)
             self.rowcount = len(self._rows)
+        elif sql == foods.FAVORITE_IDS_SQL:
+            self._rows = [{"food_id": f["food_id"]} for f in db.favorites if f["user_id"] == p[0]]
         elif sql == foods.FOOD_BY_ID_SQL:
             linha = db.foods.get(int(p[0]))
             self._rows = [_publico(linha)] if linha else []

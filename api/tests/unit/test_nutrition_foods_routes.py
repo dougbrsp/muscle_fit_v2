@@ -41,6 +41,7 @@ def db(monkeypatch):
                    protein_g=0, total_fat_g=0)
     monkeypatch.setattr(foods_mod, "get_conn", banco.conn)
     monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
     return banco
 
 

@@ -15,6 +15,7 @@ import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { UsdaSearch } from '@/components/nutrition/UsdaSearch';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { newFoodFromBarcode, existingFoodSelection } from '@/lib/nutrition-barcode-flow';
 import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
 import { LABEL_LEGIBILITY_OPTIONS, LABEL_PHOTO, nutritionLabel } from '@/lib/nutrition-constants';
 import { foodFormFromPrefill } from '@/lib/nutrition-food-form';
@@ -50,6 +51,8 @@ export function AlimentosClient() {
   // Cada leitura nova remonta o formulário (o estado inicial vem da leitura).
   const [labelReads, setLabelReads] = useState(0);
   const formRef = useRef<HTMLDivElement>(null);
+  // Muda depois de salvar/abrir um produto: o leitor de código de barras limpa o código e o resultado.
+  const [lookupResets, setLookupResets] = useState(0);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user'],
@@ -89,6 +92,7 @@ export function AlimentosClient() {
   }
 
   async function afterSave(food: FoodSaveResponse) {
+    setLookupResets((n) => n + 1);
     setEditing(null);
     setUnreadable(null);
     setSaved(food);
@@ -100,6 +104,7 @@ export function AlimentosClient() {
 
   /** Código de barras ou importação do USDA: abre o item (já gravado pela API) no detalhe. */
   async function afterExternal(food: ExternalFoodResponse) {
+    setLookupResets((n) => n + 1);
     setEditing(null);
     setSaved(null);
     setExternal(food);
@@ -110,19 +115,23 @@ export function AlimentosClient() {
 
   /** Código lido/digitado sem produto no OFF: abre o cadastro manual com o EAN e leva a tela até ele. */
   function registerWithBarcode(ean: string) {
+    const novo = newFoodFromBarcode(ean);
+    if (!novo) return;
     setSaved(null);
     setExternal(null);
     setUnreadable(null);
-    setEditing({ mode: 'new', barcode: ean });
+    setEditing(novo);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
 
   /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */
   async function useExisting(foodId: number) {
-    setEditing(null);
+    const selecao = existingFoodSelection(foodId);
+    setLookupResets((n) => n + 1);
+    setEditing(selecao.editing);
     setSaved(null);
     setExternal(null);
-    setSelectedId(foodId);
+    setSelectedId(selecao.selectedId);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(foodId) });
   }
 
@@ -167,7 +176,7 @@ export function AlimentosClient() {
             <Title order={4} c={BRAND.textPrimary}>
               Código de barras
             </Title>
-            <BarcodeLookup onFound={afterExternal} onNotFound={registerWithBarcode} />
+            <BarcodeLookup onFound={afterExternal} onNotFound={registerWithBarcode} resetSignal={lookupResets} />
           </Stack>
         </Paper>
         <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>

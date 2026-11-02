@@ -7,7 +7,13 @@
 // que responde 400 com o texto do motor; nada de regra do código de barras aqui.
 // A câmera é sempre liberada em `stop()` (fechar o leitor, ler um código ou desmontar).
 
-export type CameraErrorKind = 'permission_denied' | 'no_camera' | 'insecure_context' | 'unsupported' | 'unknown';
+export type CameraErrorKind =
+  | 'permission_denied'
+  | 'no_camera'
+  | 'camera_busy'
+  | 'insecure_context'
+  | 'unsupported'
+  | 'unknown';
 
 /** Falha ao abrir a câmera, já classificada para a tela cair na digitação com a mensagem certa. */
 export class CameraError extends Error {
@@ -24,13 +30,16 @@ export const CAMERA_ERROR_MESSAGES: Record<CameraErrorKind, string> = {
   permission_denied:
     'A câmera está bloqueada para este site. Libere o acesso à câmera nas permissões do navegador ou digite o código.',
   no_camera: 'Nenhuma câmera foi encontrada neste aparelho. Digite o código de barras.',
+  camera_busy:
+    'A câmera está em uso por outro aplicativo ou aba. Feche-o e tente de novo, ou digite o código de barras.',
   insecure_context: 'A câmera só funciona em conexão segura (https). Digite o código de barras.',
   unsupported: 'Este navegador não consegue usar a câmera para ler o código. Digite o código de barras.',
   unknown: 'Não foi possível abrir a câmera. Digite o código de barras.',
 };
 
 const PERMISSION_ERRORS = ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'];
-const NO_CAMERA_ERRORS = ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError', 'NotReadableError'];
+const NO_CAMERA_ERRORS = ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError'];
+const CAMERA_BUSY_ERRORS = ['NotReadableError', 'TrackStartError'];
 
 /** Classifica o erro do `getUserMedia` (ou do leitor de reserva). */
 export function classifyCameraError(error: unknown): CameraErrorKind {
@@ -38,6 +47,7 @@ export function classifyCameraError(error: unknown): CameraErrorKind {
   const nome = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name: unknown }).name) : '';
   if (PERMISSION_ERRORS.includes(nome)) return 'permission_denied';
   if (NO_CAMERA_ERRORS.includes(nome)) return 'no_camera';
+  if (CAMERA_BUSY_ERRORS.includes(nome)) return 'camera_busy';
   if (nome === 'TypeError') return 'unsupported';
   return 'unknown';
 }
@@ -50,7 +60,8 @@ export function digitsOnly(text: string | null | undefined): string | null {
 
 // Formatos de produto de varejo que o leitor tenta (códigos do `BarcodeDetector`). Não é regra
 // de GTIN: a API decide o que vale; isto só evita gastar quadro com QR/Code128.
-const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
+// UPC-E fica de fora: `normalize_gtin` (dono do GTIN) não expande UPC-E para 12 dígitos, então a API recusaria.
+const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a'] as const;
 const NATIVE_POLL_MS = 200;
 
 type DetectedBarcode = { rawValue?: string };
@@ -88,7 +99,7 @@ const loadZxingReader: ZxingLoader = async () => {
     import('@zxing/library'),
   ]);
   const hints = new Map<unknown, unknown>([
-    [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]],
+    [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A]],
   ]);
   return new BrowserMultiFormatReader(hints as never) as unknown as ZxingReaderLike;
 };
@@ -115,7 +126,7 @@ async function nativeFormatsSupported(ctor: BarcodeDetectorCtor): Promise<boolea
 
 function stopStream(video: HTMLVideoElement, stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
-  video.srcObject = null;
+  if (video.srcObject === stream) video.srcObject = null; // outro leitor pode ter assumido o vídeo
 }
 
 async function startNative(
@@ -159,10 +170,14 @@ async function startNative(
   return { stop };
 }
 
+// Erros por quadro do zxing (nenhum código na imagem, dígito verificador, formato): o leitor segue lendo.
+const ZXING_FRAME_ERRORS = ['NotFoundException', 'ChecksumException', 'FormatException'];
+
 async function startZxing(
   video: HTMLVideoElement,
   loadZxing: ZxingLoader,
   onCode: (code: string) => void,
+  onFatal?: (error: CameraError) => void,
 ): Promise<ScanHandle> {
   const reader = await loadZxing();
   let parado = false;
@@ -170,11 +185,19 @@ async function startZxing(
   const stop = () => {
     parado = true;
     controles?.stop();
-    video.srcObject = null;
   };
-  controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, _error, controls) => {
+  controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, error, controls) => {
     controles = controls;
-    if (parado || !result) return; // erro por quadro sem código (NotFoundException): segue lendo
+    if (parado) return;
+    if (!result) {
+      const nome = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name: unknown }).name) : '';
+      if (error && !ZXING_FRAME_ERRORS.includes(nome)) {
+        // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
+        stop();
+        onFatal?.(new CameraError(classifyCameraError(error)));
+      }
+      return;
+    }
     const codigo = digitsOnly(result.getText());
     if (codigo) {
       stop();
@@ -194,6 +217,8 @@ export async function startBarcodeScan(
   video: HTMLVideoElement,
   onCode: (code: string) => void,
   deps: ScannerDeps = browserDeps(),
+  /** Falha DEPOIS de aberta (leitor de reserva): a câmera já foi liberada; a tela mostra e oferece digitar. */
+  onFatal?: (error: CameraError) => void,
 ): Promise<ScanHandle> {
   const mediaDevices = deps.mediaDevices;
   if (!mediaDevices?.getUserMedia) {
@@ -203,7 +228,7 @@ export async function startBarcodeScan(
     if (deps.detectorCtor && (await nativeFormatsSupported(deps.detectorCtor))) {
       return await startNative(video, deps.detectorCtor, mediaDevices, onCode);
     }
-    return await startZxing(video, deps.loadZxing ?? loadZxingReader, onCode);
+    return await startZxing(video, deps.loadZxing ?? loadZxingReader, onCode, onFatal);
   } catch (error) {
     throw error instanceof CameraError ? error : new CameraError(classifyCameraError(error));
   }
