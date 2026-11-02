@@ -149,7 +149,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "musclefit_uploads" {
   # versionamento continua sendo a rede de seguranca contra exclusao indevida
   # (SEG-01), agora com janela de recuperacao de 90 dias em vez de infinita. Regras
   # sobrepostas: nos prefixos exercise-card-drafts/, nutrition-labels/ e
-  # nutrition-meals/ vale a mais curta (1 dia, nas regras desses prefixos), que e o comportamento do S3 quando
+  # nutrition-meals/ vale, para a versao nao corrente, a mais curta (1 dia, nas regras desses prefixos), que e o comportamento do S3 quando
   # duas expiracoes casam o mesmo objeto.
   rule {
     id     = "versoes-antigas-90d"
@@ -201,13 +201,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "musclefit_uploads" {
 
   # Nutricao L10 (foto do prato): `nutrition-meals/<user_id>/<uuid>.jpg`, gravada
   # pela api-core em POST /nutrition/meals/photo e lida uma vez pelo worker da
-  # musclefit-plan-generator, expira em 30 dias. A refeicao salva NAO depende da
-  # foto (itens e totais ficam no banco; a chave nao e gravada). Os 30 dias sao
-  # ESPELHADOS por `MEAL_PHOTO_RETENTION_DAYS` em
+  # musclefit-plan-generator, expira em 1 dia: a foto so serve para essa leitura e a
+  # refeicao salva NAO depende dela (itens e totais ficam no banco; a chave nao e
+  # gravada). O dia e ESPELHADO por `MEAL_PHOTO_RETENTION_DAYS` em
   # api/app/domain/nutrition/meal_photo.py (teste de paridade). Mesmo desenho e
-  # mesmo cuidado no rollback da regra do rotulo acima.
+  # mesmo cuidado no rollback da regra do rotulo acima: `expiration` poe o delete
+  # marker e a versao some 1 dia depois.
   rule {
-    id     = "nutrition-meals-expire-30d"
+    id     = "nutrition-meals-expire-1d"
     status = "Enabled"
 
     filter {
@@ -215,7 +216,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "musclefit_uploads" {
     }
 
     expiration {
-      days = 30
+      days = 1
     }
 
     noncurrent_version_expiration {

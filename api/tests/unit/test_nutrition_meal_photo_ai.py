@@ -220,6 +220,21 @@ def test_falha_da_ia_propaga_e_fecha_com_o_codigo_do_cliente(monkeypatch, uso):
     assert uso.fechamentos[0]["status"] == AiUsageStatus.FAILED and uso.fechamentos[0]["error_code"] == "OPENAI_UNAVAILABLE"
 
 
+def test_erro_inesperado_vira_a_mensagem_do_dono_com_os_tokens_gastos(monkeypatch, uso):
+    _foto(monkeypatch)
+    _ia(monkeypatch, LEITURA)
+    _catalogo(monkeypatch)
+    segredo = "s3://bucket/chave-interna"
+    monkeypatch.setattr(ai.meal_parse, "build_result", lambda *a, **k: (_ for _ in ()).throw(ValueError(segredo)))
+    with pytest.raises(ai.MealPhotoJobError) as exc:
+        ai.run_meal_photo_job(_evento())
+    assert exc.value.code == meal_photo.ERR_MEAL_READING_UNEXPECTED
+    assert str(exc.value) == lb.limitation_label(meal_photo.ERR_MEAL_READING_UNEXPECTED)
+    assert segredo not in str(exc.value)
+    [fechamento] = uso.fechamentos
+    assert fechamento["error_code"] == meal_photo.ERR_MEAL_READING_UNEXPECTED and fechamento["tokens_in"] == 900
+
+
 def test_falha_do_catalogo_depois_da_ia_guarda_os_tokens(monkeypatch, uso):
     _foto(monkeypatch)
     _ia(monkeypatch, LEITURA)
@@ -307,6 +322,32 @@ def test_sem_chave_da_anthropic_cai_no_fallback_da_openai(monkeypatch):
     _, imagem = corpo["input"][0]["content"]
     assert imagem["detail"] == meal_photo.MEAL_IMAGE_DETAIL
     assert leitura.model == ai.model_name() and (leitura.tokens_in, leitura.tokens_out) == (1800, 420)
+
+
+def test_recusa_da_anthropic_cai_no_fallback_da_openai(monkeypatch):
+    _ligar_claude(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chave-de-teste")
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-de-teste")
+
+    class _Mensagens:
+        def create(self, **kwargs):
+            return {"model": kwargs["model"], "stop_reason": "refusal", "content": [],
+                    "usage": {"input_tokens": 700, "output_tokens": 0}}
+
+    class _Cliente:
+        messages = _Mensagens()
+
+    enviados = []
+
+    def _fake(request, timeout=None):
+        enviados.append(json.loads(request.data.decode("utf-8")))
+        return _RespostaOpenAI()
+
+    monkeypatch.setattr(llm_anthropic, "_client", lambda _chave: _Cliente())
+    monkeypatch.setattr(openai_client.urllib.request, "urlopen", _fake)
+    leitura = ai.read_meal_photo(JPEG, user_id=USUARIO)
+    assert len(enviados) == 1 and leitura.model == ai.model_name()
+    assert [item["name"] for item in leitura.data["items"]] == ["arroz branco", "moqueca capixaba"]
 
 
 def test_sem_fallback_a_falha_da_anthropic_propaga(monkeypatch):

@@ -221,6 +221,11 @@ MEAL_PARSE_MATCH_STATUS_LABELS: Final[Mapping[MatchStatus, str]] = {
 }
 
 
+def days_label(days: int) -> str:
+    """`1 dia`, `30 dias`: o prazo do dono, no texto para a pessoa."""
+    return f"{days} dia" if days == 1 else f"{days} dias"
+
+
 def ai_quota_exceeded_label(feature: Any) -> str:
     """Texto do 429 da feature, com a cota do dono (`ai_usage.DAILY_QUOTA`)."""
     codigo = ai_usage_mod.normalize_feature(feature)
@@ -415,8 +420,8 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     mp_mod.ERR_MEAL_PHOTO_DISPATCH_FAILED: "Não foi possível iniciar a análise da foto agora. Tente de novo em instantes.",
     mp_mod.ERR_MEAL_PHOTO_KEY_INVALID: "Foto do prato inválida.",
     mp_mod.ERR_MEAL_PHOTO_NOT_FOUND: (
-        f"A foto não está mais disponível (as fotos do prato ficam guardadas por {mp_mod.MEAL_PHOTO_RETENTION_DAYS} "
-        "dias). Envie de novo."
+        f"A foto não está mais disponível (as fotos do prato expiram depois de {days_label(mp_mod.MEAL_PHOTO_RETENTION_DAYS)}). "
+        "Envie de novo."
     ),
     mp_mod.ERR_MEAL_READING_INVALID: "A IA devolveu a análise da foto fora do formato. Tente de novo.",
     mp_mod.ERR_MEAL_READING_UNEXPECTED: "Não foi possível analisar a foto agora. Tente novamente.",

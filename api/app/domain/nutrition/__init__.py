@@ -62,7 +62,7 @@ L5b (mapa §55): `api/app/nutrition_meal_parse.py` (rota 202 + cota),
 `api/app/nutrition_meal_parse_worker.py` e o item estimado em `nutrition_meals.py`.
 L6 (mapa §56): `api/app/nutrition_label_photo.py` (upload e 202),
 `api/app/nutrition_label_storage.py` (S3) e o worker `api/app/nutrition_label_ai.py`
-(leitura pela IA + `label_photo.review_reading`). L10 (mapa §78): a foto do prato,
+(leitura pela IA + `label_photo.review_reading`). L10 (mapa §80): a foto do prato,
 com o dono `meal_photo`, em `api/app/nutrition_meal_photo.py` (upload e 202),
 `api/app/nutrition_meal_photo_storage.py` (S3) e `api/app/nutrition_meal_photo_ai.py`.
 """
@@ -241,6 +241,9 @@ def export_for_frontend() -> dict[str, Any]:
             "match_status_labels": lb.labels_by_code(lb.MEAL_PARSE_MATCH_STATUS_LABELS),
             "estimate_source": meal_parse.ESTIMATE_SOURCE.value,
             "estimate_basis": meal_parse.ESTIMATE_BASIS.value,
+            # Natureza do item conforme a origem que a pessoa escolhe no editor.
+            "catalog_item_nature": meal_parse.CATALOG_ITEM_NATURE.value,
+            "estimate_item_nature": meal_parse.ESTIMATE_ITEM_NATURE.value,
             "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PARSE),
         },
         # Foto do rótulo (L6): parâmetros da redução por canvas e do upload (a API
@@ -262,6 +265,7 @@ def export_for_frontend() -> dict[str, Any]:
             "resize_max_edge_px": label_photo.RESIZE_MAX_EDGE_PX,
             "resize_quality": label_photo.RESIZE_JPEG_QUALITY,
             "retention_days": meal_photo.MEAL_PHOTO_RETENTION_DAYS,
+            "retention_label": lb.days_label(meal_photo.MEAL_PHOTO_RETENTION_DAYS),
             # Origem com que a refeição é gravada (`POST /nutrition/meals`, `ai_source`).
             "meal_source": diary.MealSource.AI_PHOTO.value,
             "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PHOTO),

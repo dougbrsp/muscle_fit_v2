@@ -233,7 +233,7 @@ resource "aws_iam_role_policy" "musclefit_ai_generators_nutrition_labels" {
 # `ai_usage.MEAL_PHOTO_JOB_TYPE` LE a foto que a api-core gravou em
 # nutrition-meals/<user_id>/<uuid>.jpg. So GetObject e so nesse prefixo (o mesmo de
 # `meal_photo.MEAL_PHOTO_S3_PREFIX`, teste de paridade); a gravacao e da api-core e a
-# foto expira em 30 dias pela regra nutrition-meals-expire-30d.
+# foto expira em 1 dia pela regra nutrition-meals-expire-1d.
 resource "aws_iam_role_policy" "musclefit_ai_generators_nutrition_meals" {
   name = "musclefit-ai-generators-nutrition-meals"
   role = aws_iam_role.musclefit_ai_generators_exec.id

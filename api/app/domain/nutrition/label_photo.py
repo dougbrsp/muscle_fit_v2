@@ -95,6 +95,9 @@ LABEL_PHOTO_EXTENSION: Final[str] = ".jpg"
 LABEL_PHOTO_S3_PREFIX: Final[str] = "nutrition-labels"
 LABEL_PHOTO_RETENTION_DAYS: Final[int] = 30
 LABEL_PHOTO_IMAGES_PER_READING: Final[int] = 1
+# Bytes que bastam para a assinatura da imagem (`gyms.sniff_image_content_type`), nas
+# rotas das fotos do rótulo e do prato.
+PHOTO_SNIFF_BYTES: Final[int] = 16
 
 # Redução no navegador (canvas): maior borda e qualidade do JPEG reencodado. A
 # qualidade fica em % (a escala dos editores de imagem; o literal da fração em
@@ -481,6 +484,7 @@ __all__ = [
     "LABEL_PHOTO_MAX_MIB",
     "LABEL_PHOTO_RETENTION_DAYS",
     "LABEL_PHOTO_S3_PREFIX",
+    "PHOTO_SNIFF_BYTES",
     "PREFILL_DECIMALS",
     "RESIZE_JPEG_QUALITY",
     "RESIZE_JPEG_QUALITY_PERCENT",

@@ -99,6 +99,10 @@ ESTIMATE_FIELDS: Final[tuple[str, ...]] = (ENERGY_FIELD, PROTEIN_FIELD, CARB_FIE
 ESTIMATE_REQUIRED_FIELDS: Final[tuple[str, ...]] = catalog.REQUIRED_PER_100_FIELDS
 ESTIMATE_KEY: Final[str] = f"estimated_per_{PER_100G_REFERENCE:g}{ESTIMATE_BASIS.value}"
 ESTIMATE_SOURCE: Final[catalog.FoodSource] = catalog.FoodSource.AI_ESTIMATE
+# Natureza do item conforme a origem: alimento do catálogo pelo motor do diário,
+# ou estimativa da IA (`estimated_item_nutrition`). O selo do editor sai daqui.
+CATALOG_ITEM_NATURE: Final[MealNature] = MealNature.DERIVED
+ESTIMATE_ITEM_NATURE: Final[MealNature] = MealNature.ESTIMATED
 # A confiança que a IA declara (só informativa: nenhuma decisão usa o valor).
 CONFIDENCE_RANGE: Final[tuple[float, float]] = (0.0, 1.0)
 
@@ -197,13 +201,15 @@ def validate_estimate(values: Any) -> EstimateValidation:
     `ESTIMATE_FIELDS`, com as regras de entrada do catálogo
     (`catalog.validate_food_values`: obrigatórios, número >= 0, teto da base).
     Inválida -> `nutrients` None e os códigos do catálogo; Atwater fora da
-    tolerância é aviso, não erro."""
+    tolerância é aviso, não erro. Macros somando mais que a base também invalidam:
+    no rótulo é aviso para a pessoa conferir, mas numa estimativa é impossível."""
     if not isinstance(values, Mapping):
         return EstimateValidation(None, (LIMIT_ESTIMATE_INVALID,), ())
     so_estimativa = {campo: values.get(campo) for campo in ESTIMATE_FIELDS}
     validacao = catalog.validate_food_values(so_estimativa, ESTIMATE_BASIS, required=ESTIMATE_REQUIRED_FIELDS)
-    if validacao.errors:
-        return EstimateValidation(None, tuple(validacao.errors), tuple(validacao.warnings))
+    if validacao.errors or catalog.WARN_MACROS_ABOVE_BASIS in validacao.warnings:
+        erros = validacao.errors or (catalog.WARN_MACROS_ABOVE_BASIS,)
+        return EstimateValidation(None, tuple(erros), tuple(validacao.warnings))
     numeros = {campo: validacao.values.get(campo) for campo in ESTIMATE_FIELDS}
     return EstimateValidation(nutrients_from_values(numeros), (), tuple(validacao.warnings))
 
@@ -465,7 +471,7 @@ def estimated_item_nutrition(estimate: Nutrients, resolution: AmountResolution) 
     """Nutrientes do item estimado: a mesma conta do diário (`meal_math.item_nutrition`,
     com a regra do macro ausente) sobre a estimativa por 100 g, natureza
     ESTIMATED e a limitação `LIMIT_AI_ESTIMATE`. Sem quantidade -> None."""
-    nutricao = item_nutrition(estimate, resolution, nature=MealNature.ESTIMATED)
+    nutricao = item_nutrition(estimate, resolution, nature=ESTIMATE_ITEM_NATURE)
     if nutricao is None:
         return None
     return dataclasses.replace(nutricao, limitations=tuple(dict.fromkeys((*nutricao.limitations, LIMIT_AI_ESTIMATE))))
@@ -474,6 +480,7 @@ def estimated_item_nutrition(estimate: Nutrients, resolution: AmountResolution) 
 __all__ = [
     "AI_UNITS",
     "CANDIDATES_PER_ITEM",
+    "CATALOG_ITEM_NATURE",
     "CATALOG_CANDIDATE_STATUSES",
     "CONFIDENCE_RANGE",
     "ERR_DISPATCH_FAILED",
@@ -484,6 +491,7 @@ __all__ = [
     "ERR_WORKER_FAILED",
     "ESTIMATE_BASIS",
     "ESTIMATE_FIELDS",
+    "ESTIMATE_ITEM_NATURE",
     "ESTIMATE_KEY",
     "ESTIMATE_REQUIRED_FIELDS",
     "ESTIMATE_SOURCE",

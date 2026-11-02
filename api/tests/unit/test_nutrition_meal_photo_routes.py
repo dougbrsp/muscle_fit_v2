@@ -6,6 +6,7 @@ o despacho falham. O router é conferido no `app.main.app` real."""
 from __future__ import annotations
 
 import base64
+import json
 
 import pytest
 from fastapi import FastAPI
@@ -212,6 +213,21 @@ def test_base64_invalido_ou_grande_antes_de_decodificar(monkeypatch, foto, statu
     despacho = _Despacho(monkeypatch)
     resposta = _client().post(URL, json={"image_base64": foto, "local_date": DIA})
     assert resposta.status_code == status and resposta.json()["detail"]["error"] == codigo
+    assert despacho.eventos == []
+
+
+def test_tipo_declarado_que_nao_bate_com_os_bytes_nao_engana_a_rota(monkeypatch):
+    """Vale a assinatura dos bytes: PNG num data URL de JPEG, num pedido com
+    `Content-Type` de imagem ou com o tipo declarado no corpo nunca chega ao S3."""
+    despacho = _Despacho(monkeypatch)
+    cliente = _client()
+    data_url = f"data:image/jpeg;base64,{_b64(PNG)}"
+    assert cliente.post(URL, json={"image_base64": data_url, "local_date": DIA}).status_code == 400
+    assert cliente.post(URL, json={"image_base64": _b64(PNG), "local_date": DIA, "content_type": "image/jpeg"}).status_code == 422
+    corpo = json.dumps({"image_base64": _b64(PNG), "local_date": DIA})
+    resposta = cliente.post(URL, content=corpo, headers={"Content-Type": "image/jpeg"})
+    assert resposta.status_code in (415, 422)
+    assert _enviar(cliente, PNG).json()["detail"]["error"] == meal_photo.ERR_MEAL_PHOTO_UNSUPPORTED_TYPE
     assert despacho.eventos == []
 
 

@@ -97,7 +97,7 @@ def _regra_lifecycle(nome: str) -> str:
 
 
 def test_retencao_e_prefixo_sao_espelho_do_lifecycle_do_bucket():
-    regra = _regra_lifecycle("nutrition-meals-expire-30d")
+    regra = _regra_lifecycle("nutrition-meals-expire-1d")
     assert f'prefix = "{mp.MEAL_PHOTO_S3_PREFIX}/"' in regra
     assert re.search(r"expiration \{\s*days = (\d+)", regra).group(1) == str(mp.MEAL_PHOTO_RETENTION_DAYS)
     assert 'status = "Enabled"' in regra
@@ -212,3 +212,27 @@ def test_origem_da_refeicao_gravada():
     assert meal_parse.meal_source("job-1") is diary.MealSource.AI_TEXT
     assert meal_parse.meal_source("job-1", "outra") is diary.MealSource.AI_TEXT
     assert meal_parse.meal_source("job-1", diary.MealSource.AI_PHOTO.value) is diary.MealSource.AI_PHOTO
+
+
+@pytest.mark.parametrize(
+    "estimativa",
+    [
+        {"energy_kcal": 5000, "protein_g": 10, "carbohydrates_g": 10, "total_fat_g": 1},
+        {"energy_kcal": 200, "protein_g": 150, "carbohydrates_g": 10, "total_fat_g": 1},
+        {"energy_kcal": -1, "protein_g": 1, "carbohydrates_g": 1, "total_fat_g": 1},
+        {"energy_kcal": 200, "protein_g": 90, "carbohydrates_g": 90, "total_fat_g": 90},
+    ],
+    ids=["energia", "macro", "negativo", "soma_dos_macros"],
+)
+def test_estimativa_implausivel_nao_vira_proposta(estimativa):
+    [item] = mp.review_reading(
+        {"plate_status": "recognized", "items": [_item(**{meal_parse.ESTIMATE_KEY: {"fiber_g": None, **estimativa}})]}
+    ).items
+    assert item.estimate is None and meal_parse.LIMIT_ESTIMATE_INVALID in item.limitations
+    assert meal_parse.classify_item(0, item, ()).status is MatchStatus.UNMATCHED
+
+
+def test_texto_do_prazo_acompanha_o_dono():
+    assert lb.days_label(1) == "1 dia" and lb.days_label(30) == "30 dias"
+    assert lb.days_label(mp.MEAL_PHOTO_RETENTION_DAYS) in lb.limitation_label(mp.ERR_MEAL_PHOTO_NOT_FOUND)
+

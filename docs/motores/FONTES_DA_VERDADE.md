@@ -6369,19 +6369,23 @@ nenhum com duas exposições comparáveis, então os 9 grupos ficam DADOS_INSUFI
 DADOS_INSUFICIENTES). `cycle` não foi medido de forma útil: o Modelo do usuário 1 no DEV resolve para ciclo
 de 1 dia. Os números de produção podem diferir.
 
-## 78. Foto do prato (Lote N4 / L10, 2026-11-02)
+## 80. Foto do prato (Lote N4 / L10, 2026-11-02)
 
 Decisões do usuário: D1 (Claude Haiku 5.5 com visão e fallback OpenAI) e D11 (10 análises por usuário/dia).
 
 **Dono novo.** `domain/nutrition/meal_photo.py` (Python puro, sem relógio): `MEAL_PHOTO_S3_PREFIX`, `MEAL_PHOTO_RETENTION_DAYS`
-(30 d, espelho da regra `nutrition-meals-expire-30d`, paridade), `MEAL_PHOTO_IMAGES_PER_READING`, `meal_photo_key`,
+(1 d, espelho da regra `nutrition-meals-expire-1d`, paridade; o plano §9 c dizia 30, reduzido na revisão do lote porque a foto só é lida uma vez), `MEAL_PHOTO_IMAGES_PER_READING`, `meal_photo_key`,
 `is_meal_photo_key_of`, `PlateStatus`, `review_reading` e `item_nature`. O transporte (limite, JPEG, base64 sem padding,
 redução, `detail`) continua em `label_photo`: `MEAL_PHOTO_MAX_BYTES`, `MEAL_PHOTO_CONTENT_TYPE` e `MEAL_IMAGE_DETAIL` são
 apelidos de lá, e `decode_upload`/`upload_error` só traduzem o código, porque o texto do erro não pode falar de rótulo.
 `label_photo` ganhou `photo_key`/`is_photo_key_of` (a forma da chave), sem mudança para o rótulo.
 
 **Donos que mudaram.** `ai_usage`: `AiFeature.MEAL_PHOTO`, `MEAL_PHOTO_DAILY_QUOTA` = 10, `MEAL_PHOTO_JOB_TYPE`.
-`meal_parse.meal_source(ai_job_id, ai_source)`: `ai_photo` quando a tela diz, `ai_text` nos demais. `labels`: textos dos
+`meal_parse.meal_source(ai_job_id, ai_source)`: `ai_photo` quando a tela diz, `ai_text` nos demais.
+`meal_parse.validate_estimate` passa a recusar a estimativa cujos macros somam mais que a base (`catalog.WARN_MACROS_ABOVE_BASIS`,
+impossível num alimento): vale também para a leitura por texto, e o catálogo continua tratando isso como aviso.
+`meal_parse.CATALOG_ITEM_NATURE`/`ESTIMATE_ITEM_NATURE`: o selo do item no editor, publicado no bloco `meal_parse`.
+`label_photo.PHOTO_SNIFF_BYTES`: quantos bytes bastam para a assinatura, nas duas rotas. `labels`: textos dos
 códigos novos. `export_for_frontend`: bloco `meal_photo`. `openai_client.LLM_OUTPUT_OBSERVED_MAX_TOKENS["meal_photo"]` herda o
 valor de `meal_parse` (mesmo item; sem eval pago ainda); o teto efetivo é o piso.
 
@@ -6398,6 +6402,8 @@ valor de `meal_parse` (mesmo item; sem eval pago ainda); o teto efetivo é o pis
 - Prompt `nutrition-photo-v1` (`api/privado/prompts/nutrition_meal_photo/`, consumidor registrado na guarda): interpola
   unidades, confiança, chave e campos da estimativa, status do prato, `diary.ITEM_AMOUNT_MAX` e `diary.MEAL_MAX_ITEMS`.
 - Tela: `MealParseModal` (`mode="photo"`), `readMealPhoto`, `editorFormFromPhoto`; lê o bloco `meal_photo` do JSON gerado.
+- `POST /nutrition/meals/preview` aceita `meal_slot` vazio (`MealPreviewIn`): os macros do item não dependem da refeição, e a
+  tela mostra o cálculo do motor antes de a pessoa escolher. Gravar continua exigindo a refeição.
 
 **Regras de negócio.** A IA só identifica e estima gramas. Item casado com o catálogo é DERIVED pelo `meal_math`; item sem
 casamento usa a estimativa por 100 g da IA, validada pelas regras do catálogo, e fica ESTIMATED (o mesmo caminho do texto,
@@ -6415,12 +6421,12 @@ acerto de alimento e de gramas. O teto de saída herdado também precisa dessa m
 
 **Impacto em produção.**
 - Migração: nenhuma (`ai_usage_log.feature` é VARCHAR(32), `meals.source` é VARCHAR(16) e `ai_photo` já estava em `MealSource`).
-- Terraform: regra `nutrition-meals-expire-30d` (in-place no lifecycle único), `aws_iam_role_policy.musclefit_ai_generators_nutrition_meals`
+- Terraform: regra `nutrition-meals-expire-1d` (in-place no lifecycle único), `aws_iam_role_policy.musclefit_ai_generators_nutrition_meals`
   (nova, `s3:GetObject` só em `nutrition-meals/*`), envs `*_MEAL_PHOTO` nas 4 Lambdas de `local.llm_provider_env`. Saem 4 envs
   `LLM_PROVIDER_<F>=openai` de `set_evaluation`, `exercise_summary`, `workouts_analysis` e `workout_plan`, sem mudança de
   comportamento (o padrão do código é `openai`), para o bloco caber no orçamento de 1400 bytes do teste de 4 KB. Pelo cálculo do
   teste, o bloco fica em cerca de 1380 bytes.
 - Role de deploy: sem permissão nova (`iam:PutRolePolicy` em `musclefit-*-exec` e `s3:PutLifecycleConfiguration` no bucket, que o
   L6 já usou).
-- Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 30 dias.
+- Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 1 dia (versão não corrente, mais 1 dia).
 - Reversão: reverter o código é seguro; num rollback, manter a regra de lifecycle até o prefixo esvaziar.

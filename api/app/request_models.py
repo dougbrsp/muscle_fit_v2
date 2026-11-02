@@ -15,7 +15,7 @@ handlers, com o mesmo 400 de antes.
 from __future__ import annotations
 
 from datetime import date, time
-from typing import Any, List, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -272,7 +272,7 @@ class MealIn(MealBodyIn):
 
     user_id: Optional[int] = None
     ai_job_id: Optional[str] = Field(default=None, max_length=64)
-    ai_source: Optional[str] = Field(default=None, max_length=16)
+    ai_source: Optional[Literal["ai_photo"]] = None
     description_raw: Optional[str] = Field(default=None, max_length=NOTES_MAX)
 
 
@@ -302,9 +302,12 @@ class MealPhotoUploadIn(_StrictIn):
 
 class MealPreviewIn(MealIn):
     """POST /nutrition/meals/preview (sem gravar). `meal_id` = refeição em
-    edição (os itens com `id` usam o snapshot congelado dela)."""
+    edição (os itens com `id` usam o snapshot congelado dela). `meal_slot`
+    pode faltar: os macros do item não dependem da refeição, e a tela mostra o
+    cálculo antes de a pessoa escolher (L10). Gravar continua exigindo."""
 
     meal_id: Optional[int] = None
+    meal_slot: Optional[str] = Field(default=None, min_length=1, max_length=24)
 
 
 class NutritionDayIn(_StrictIn):

@@ -20,7 +20,7 @@ cota): é dele o job e o custo; o aluno do diário vai no payload, para a busca 
 catálogo dele. O corpo é JSON com base64 sem padding pelo mesmo motivo do rótulo
 (CRS do WAF); a tela sempre reencoda a foto pelo canvas, sem EXIF/XMP.
 
-Regra dos motores (mapa §78): limite, tipo, chave e códigos de
+Regra dos motores (mapa §80): limite, tipo, chave e códigos de
 `domain/nutrition/meal_photo`; cota, feature e job type de `ai_usage`; o prazo do
 polling é o do worker perdido do M73. Esta camada só transporta.
 """
@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from . import async_jobs, nutrition_ai_quota, nutrition_meal_photo_storage
 from .db import get_conn
 from .db_helpers import connect_or_503
-from .domain.nutrition import diary, meal_photo
+from .domain.nutrition import diary, label_photo, meal_photo
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.ai_usage import MEAL_PHOTO_JOB_TYPE, AiFeature, AiUsageStatus
 from .gyms import sniff_image_content_type
@@ -50,9 +50,6 @@ logger = logging.getLogger("musclefit.nutrition.meal_photo")
 router = APIRouter(prefix="/nutrition/meals/photo", tags=["nutrition"])
 
 FEATURE = AiFeature.MEAL_PHOTO
-
-# Bytes que bastam para a assinatura da imagem (`gyms.sniff_image_content_type`).
-_SNIFF_BYTES = 16
 
 _STATUS_BY_UPLOAD_ERROR: dict[str, int] = {
     meal_photo.ERR_MEAL_PHOTO_EMPTY: 400,
@@ -86,7 +83,7 @@ def upload_meal_photo(payload: MealPhotoUploadIn, identity: Identity = Depends(g
 
     dados, erro = meal_photo.decode_upload(payload.image_base64)
     dados = dados or b""
-    erro = erro or meal_photo.upload_error(len(dados), sniff_image_content_type(dados[:_SNIFF_BYTES]))
+    erro = erro or meal_photo.upload_error(len(dados), sniff_image_content_type(dados[:label_photo.PHOTO_SNIFF_BYTES]))
     if erro:
         raise _error(_STATUS_BY_UPLOAD_ERROR[erro], erro, max_bytes=meal_photo.MEAL_PHOTO_MAX_BYTES)
     slot = diary.normalize_meal_slot(payload.meal_slot)

@@ -553,7 +553,9 @@ def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_curren
                 if int(refeicao["user_id"]) != aluno:
                     raise _error(404, "meal_not_found", "Refeição não encontrada.")
                 existentes = {int(item["id"]): item for item in _meal_items(cur, payload.meal_id)}
-            itens = resolve_items(cur, identity, aluno, payload.meal_slot, payload.items, existentes)
+            # Sem refeição escolhida, só o slot da validação: o preview não grava nada.
+            slot = payload.meal_slot or diary.MealSlot.OTHER.value
+            itens = resolve_items(cur, identity, aluno, slot, payload.items, existentes)
     totais = meal_math.sum_items([item.nutrition for item in itens])
     return {
         "user_id": aluno,

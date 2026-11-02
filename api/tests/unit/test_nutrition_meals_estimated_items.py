@@ -159,3 +159,35 @@ def test_match_confidence_fora_da_faixa_e_cortada(db):
     corpo["items"][0]["match_confidence"] = 7
     refeicao = _client().post("/nutrition/meals", json=corpo).json()
     assert refeicao["items"][0]["match_confidence"] == mp.CONFIDENCE_RANGE[1]
+
+
+def test_refeicao_da_foto_mistura_derived_e_estimated_e_grava_a_origem_sem_texto(db):
+    """L10: `source`, `description_raw` NULL e `ai_job_id` na linha gravada."""
+    corpo = _refeicao(db, ai_source=diary.MealSource.AI_PHOTO.value, ai_job_id="job-foto")
+    resposta = _client().post("/nutrition/meals", json=corpo)
+    assert resposta.status_code == 201, resposta.text
+    refeicao = resposta.json()
+    assert refeicao["source"] == "ai_photo" and refeicao["ai_job_id"] == "job-foto"
+    assert refeicao["description_raw"] is None
+    [gravada] = db.meals.values()
+    assert gravada["source"] == "ai_photo" and gravada["ai_job_id"] == "job-foto" and gravada["description_raw"] is None
+    assert [item["nature"] for item in refeicao["items"]] == ["DERIVED", "ESTIMATED"]
+    assert refeicao["totals"]["nature"] == "MIXED"
+
+
+@pytest.mark.parametrize("origem", ["ai_text", "manual", "qualquer"])
+def test_origem_fora_do_contrato_e_recusada(db, origem):
+    resposta = _client().post("/nutrition/meals", json=_refeicao(db, ai_source=origem))
+    assert resposta.status_code == 422 and db.meals == {}
+
+
+def test_preview_sem_refeicao_mostra_os_macros_do_motor_e_gravar_continua_exigindo(db):
+    corpo = _refeicao(db)
+    del corpo["meal_slot"]
+    preview = _client().post("/nutrition/meals/preview", json={**corpo, "meal_slot": None})
+    assert preview.status_code == 200, preview.text
+    dados = preview.json()
+    assert dados["meal_slot"] is None and dados["totals"]["nature"] == "MIXED"
+    assert [item["nature"] for item in dados["items"]] == ["DERIVED", "ESTIMATED"]
+    assert db.meals == {}
+    assert _client().post("/nutrition/meals", json=corpo).status_code == 422

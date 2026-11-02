@@ -1,7 +1,7 @@
 """Foto do prato: upload, armazenamento e a revisão determinística do que a IA viu
 (Lote L10; decisões D1 e D11 de 2026-11-02).
 
-Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §78; guarda
+Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §80; guarda
 `api/tests/unit/test_guarda_fontes_da_verdade.py`, padrão `foto_prato_nutricao`).
 Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §9 (c). A cota e o job type são de
 `ai_usage`; o transporte da foto (limite, JPEG, base64 sem padding, redução no
@@ -14,8 +14,9 @@ copiar; os itens, o casamento e a proposta, de `meal_parse`; os nutrientes, de
   rótulo. Uma imagem por leitura.
 - Chave S3: `nutrition-meals/{user_id}/{uuid hex}.jpg`, só ids internos.
   `is_meal_photo_key_of` confere que a chave é do usuário (o worker não lê foto de
-  outro). Retenção de `MEAL_PHOTO_RETENTION_DAYS` (30 d, plano §9 c): espelho da regra
-  `nutrition-meals-expire-30d` de `infra/s3_uploads.tf`, com teste de paridade.
+  outro). Retenção de `MEAL_PHOTO_RETENTION_DAYS` (1 d: a foto só é lida uma vez pelo
+  worker e a refeição não guarda a chave): espelho da regra `nutrition-meals-expire-1d`
+  de `infra/s3_uploads.tf`, com teste de paridade.
 - Revisão (`review_reading`): a IA só IDENTIFICA os alimentos e estima os gramas; o
   motor decide. `PlateStatus` diferente de `RECOGNIZED`, ou nenhum item válido, devolve
   o resultado VAZIO com a limitação de por quê, descartando qualquer item que tenha
@@ -23,7 +24,7 @@ copiar; os itens, o casamento e a proposta, de `meal_parse`; os nutrientes, de
   descartados e a pessoa informa a quantidade. Depois do casamento, o item casado é
   DERIVED (`meal_math`) e o sem casamento é ESTIMATED (`item_nature`), como no texto.
 
-Default de desenho, SEM fonte bibliográfica: 30 dias (plano §9 c).
+Default de desenho, SEM fonte bibliográfica: 1 dia (revisão do lote N4, 2026-11-02; o plano §9 c dizia 30).
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O e sem relógio.
 """
@@ -56,7 +57,7 @@ class PlateStatus(str, Enum):
 MEAL_PHOTO_MAX_BYTES: Final[int] = label_photo.LABEL_PHOTO_MAX_BYTES
 MEAL_PHOTO_CONTENT_TYPE: Final[str] = label_photo.LABEL_PHOTO_CONTENT_TYPE
 MEAL_PHOTO_S3_PREFIX: Final[str] = "nutrition-meals"
-MEAL_PHOTO_RETENTION_DAYS: Final[int] = 30
+MEAL_PHOTO_RETENTION_DAYS: Final[int] = 1
 MEAL_PHOTO_IMAGES_PER_READING: Final[int] = 1
 MEAL_IMAGE_DETAIL: Final[str] = label_photo.LABEL_IMAGE_DETAIL
 
@@ -161,8 +162,8 @@ def review_reading(reading: Mapping[str, Any]) -> MealPhotoReview:
 # Natureza do item proposto: casado pelo motor do diário, estimado pela IA. Sem
 # entrada aqui (`CHOICE`, `UNMATCHED`) a origem só existe depois que a pessoa escolher.
 _NATURE_BY_STATUS: Final[Mapping[MatchStatus, MealNature]] = {
-    MatchStatus.SELECTED: MealNature.DERIVED,
-    MatchStatus.ESTIMATED: MealNature.ESTIMATED,
+    MatchStatus.SELECTED: meal_parse.CATALOG_ITEM_NATURE,
+    MatchStatus.ESTIMATED: meal_parse.ESTIMATE_ITEM_NATURE,
 }
 
 

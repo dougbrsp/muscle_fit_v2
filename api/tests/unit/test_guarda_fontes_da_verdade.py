@@ -3122,7 +3122,7 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          'MEAL_IMAGE_DETAIL = "high"', 'key = f"nutrition-meals/{user_id}/{uuid4().hex}.jpg"',
          "const prefixo = `nutrition-meals/${id}`;", 'PREFIX = "nutrition-meals"'),
         ("chave = meal_photo.meal_photo_key(usuario, uuid.uuid4().hex)", "if dados > meal_photo.MEAL_PHOTO_MAX_BYTES:",
-         "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-30d"', "/nutrition/meals/photo",
+         "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-1d"', "/nutrition/meals/photo",
          "ContentType=meal_photo.MEAL_PHOTO_CONTENT_TYPE"),
     ),
     "fallback_registro_serie": (

@@ -317,6 +317,28 @@ def test_post_nutrition_meals_lida_pela_foto():
     MealIn.model_validate({**_REFEICAO, "ai_job_id": "job-1", "ai_source": "ai_photo", "description_raw": ""})
 
 
+def test_ai_source_so_aceita_a_origem_do_dono():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.domain.nutrition.diary import MealSource
+
+    assert MealIn.model_validate({**_REFEICAO, "ai_source": MealSource.AI_PHOTO.value}).ai_source == MealSource.AI_PHOTO.value
+    with pytest.raises(ValidationError):
+        MealIn.model_validate({**_REFEICAO, "ai_source": MealSource.AI_TEXT.value})
+
+
+def test_preview_aceita_refeicao_vazia_e_gravar_nao():
+    # nutrition-meal-form.ts (`mealPreviewPayload`, L10): macros antes de escolher a refeição.
+    import pytest
+    from pydantic import ValidationError
+
+    sem_refeicao = {chave: valor for chave, valor in _REFEICAO.items() if chave != "meal_slot"}
+    MealPreviewIn.model_validate({**sem_refeicao, "meal_slot": None})
+    with pytest.raises(ValidationError):
+        MealIn.model_validate(sem_refeicao)
+
+
 def test_post_nutrition_meals_lida_pela_ia():
     corpo = {
         **_REFEICAO,

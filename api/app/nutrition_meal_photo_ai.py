@@ -17,7 +17,7 @@ A foto é dado NÃO CONFIÁVEL: o prompt manda ignorar texto na imagem; a saída
 schema estrito sem campo de texto livre para a tela (`notes` não existe aqui), e nome e
 preparo só servem para a busca e para o rótulo do item, cortados pelo motor.
 
-Regra dos motores (mapa §78): a IA só identifica os alimentos e estima os gramas (e a
+Regra dos motores (mapa §80): a IA só identifica os alimentos e estima os gramas (e a
 estimativa por 100 g que o item sem casamento usa, como no texto); os nutrientes são de
 `meal_math`, no preview e na gravação. Nenhum número do prompt é escrito à mão:
 `prompt_values` interpola da fonte (`api/privado/tests/unit/test_nutrition_meal_photo_prompt.py`
@@ -295,8 +295,10 @@ def run_meal_photo_job(event: Mapping[str, Any]) -> dict[str, Any]:
         raise
     except Exception as exc:
         gastos = {"model": leitura.model, "tokens_in": leitura.tokens_in, "tokens_out": leitura.tokens_out} if leitura else {}
+        logger.exception("Falha inesperada na foto do prato (ai_usage_id=%s)", usage_id)
         _fail(usage_id, exc, code=meal_photo.ERR_MEAL_READING_UNEXPECTED, **gastos)
-        raise
+        # A tela nunca vê `str(exc)`: o handler grava a mensagem do dono no job.
+        raise MealPhotoJobError(meal_photo.ERR_MEAL_READING_UNEXPECTED, **gastos) from exc
     nutrition_ai_quota.finish_usage(
         usage_id,
         status=AiUsageStatus.SUCCEEDED,
