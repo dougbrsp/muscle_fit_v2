@@ -674,6 +674,49 @@
       "fat_free_mass": "g por kg de massa livre de gordura",
       "body_weight": "g por kg de peso corporal"
     },
+    "macro_priorities": [
+      "balanced",
+      "fixed_protein",
+      "high_carb",
+      "high_fat"
+    ],
+    "macro_priority_labels": {
+      "balanced": "Equilibrado",
+      "fixed_protein": "Proteína fixa (carboidrato e gordura equilibrados)",
+      "high_carb": "Carboidrato alto (gordura baixa)",
+      "high_fat": "Gordura alta (carboidrato baixo)"
+    },
+    "default_macro_priority": "balanced",
+    "range_statuses": [
+      "within_range",
+      "warning",
+      "blocked"
+    ],
+    "range_status_labels": {
+      "within_range": "Dentro da faixa recomendada",
+      "warning": "Fora da faixa recomendada (salva com aviso)",
+      "blocked": "Valor não permitido"
+    },
+    "goal_kinds": [
+      "weight",
+      "body_fat"
+    ],
+    "goal_kind_labels": {
+      "weight": "Peso-alvo",
+      "body_fat": "% de gordura alvo"
+    },
+    "projection_statuses": [
+      "projected",
+      "goal_reached",
+      "incoherent_with_strategy",
+      "insufficient_data"
+    ],
+    "projection_status_labels": {
+      "projected": "Projeção até o alvo",
+      "goal_reached": "Alvo alcançado",
+      "incoherent_with_strategy": "Alvo incoerente com a estratégia",
+      "insufficient_data": "Dados insuficientes para projetar"
+    },
     "day_kinds": [
       "high",
       "normal",

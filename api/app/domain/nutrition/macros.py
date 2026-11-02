@@ -10,17 +10,31 @@ Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7; guarda
 - Proteína por refeição: 0,40–0,55 g/kg; 3–6 refeições/dia.
 - Divisão: proteína pela base da estratégia (g/kg de MLG no cutting, de peso no
   resto), gordura como fração das kcal, carboidrato com o resto.
+- Prioridade de macros (N1): `macro_split_for_priority`. BALANCED é o `macro_split`
+  de sempre. Os outros presets mantêm a proteína (g/kg do plano) e só mexem na
+  fração de gordura DENTRO da faixa da estratégia (Helms 2014 no cutting, 15–30%;
+  Iraki 2019 no bulking e ISSN 2017 na manutenção, 20–35%): FIXED_PROTEIN divide o
+  que sobra das kcal em partes iguais entre carboidrato e gordura; HIGH_CARB põe a
+  gordura no piso da faixa; HIGH_FAT põe a gordura no teto, sem deixar o carboidrato
+  abaixo do piso (carbo mínimo do bulking, senão `MIN_CARB_G_PER_KG`).
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final, Optional
 
 from .anthropometrics import non_negative_number, positive_number
-from .strategy import ProteinBasis, Strategy, StrategyParams
+from .strategy import (
+    DEFAULT_MACRO_PRIORITY,
+    MacroPriority,
+    ProteinBasis,
+    Strategy,
+    StrategyParams,
+    fat_share_range_for,
+)
 
 KCAL_PER_G_PROTEIN: Final[float] = 4.0
 KCAL_PER_G_CARB: Final[float] = 4.0
@@ -32,6 +46,14 @@ FIBER_KCAL_REFERENCE: Final[float] = 1000.0
 
 PROTEIN_PER_MEAL_G_PER_KG_RANGE: Final[tuple[float, float]] = (0.40, 0.55)
 MEALS_PER_DAY_RANGE: Final[tuple[int, int]] = (3, 6)
+
+# Piso de carboidrato por kg de peso: o mesmo do dia baixo do ciclo de carbo
+# (`carb_cycling.MIN_LOW_CARB_G_PER_KG` aponta para cá). Default de desenho.
+MIN_CARB_G_PER_KG: Final[float] = 1.0
+# FIXED_PROTEIN: fração do que sobra das kcal (depois da proteína) que vai para a gordura.
+FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER: Final[float] = 0.5
+
+ERR_INVALID_MACRO_PRIORITY = "invalid_macro_priority"
 
 LIMIT_MISSING_KCAL = "missing_kcal"
 LIMIT_MISSING_PROTEIN_BASIS = "missing_protein_basis"
@@ -198,6 +220,59 @@ def macro_split(kcal: Any, params: StrategyParams, weight_kg: Any = None, ffm_kg
         protein_g_per_kg=params.protein_g_per_kg,
         limitations=tuple(limitacoes),
     )
+
+
+def normalize_macro_priority(value: Any) -> Optional[MacroPriority]:
+    """`None` -> padrão (BALANCED); código ou enum válido -> o enum; outro -> None."""
+    if value is None:
+        return DEFAULT_MACRO_PRIORITY
+    if isinstance(value, MacroPriority):
+        return value
+    try:
+        return MacroPriority(str(value).strip().lower())
+    except ValueError:
+        return None
+
+
+def _fat_share_for_priority(
+    params: StrategyParams, priority: MacroPriority, energia: float, base_kg: float, weight_kg: Optional[float]
+) -> float:
+    piso, teto = fat_share_range_for(params.strategy)
+    proteina_kcal = params.protein_g_per_kg * base_kg * KCAL_PER_G_PROTEIN
+    if priority == MacroPriority.HIGH_CARB:
+        return piso
+    if priority == MacroPriority.FIXED_PROTEIN:
+        restante = energia - proteina_kcal
+        if restante <= 0:
+            return params.fat_kcal_share
+        return min(max(FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER * restante / energia, piso), teto)
+    # HIGH_FAT: teto da faixa, mas o carboidrato não cai abaixo do piso.
+    if weight_kg is None:
+        return teto
+    carbo_min = params.carb_min_g_per_kg if params.carb_min_g_per_kg is not None else MIN_CARB_G_PER_KG
+    gordura_max = (energia - proteina_kcal - carbo_min * weight_kg * KCAL_PER_G_CARB) / energia
+    padrao = StrategyParams.defaults_for(params.strategy).fat_kcal_share
+    return min(teto, max(padrao, gordura_max))
+
+
+def macro_split_for_priority(
+    kcal: Any,
+    params: StrategyParams,
+    priority: Any = None,
+    weight_kg: Any = None,
+    ffm_kg: Any = None,
+) -> MacroTargets:
+    """Gramas do dia pela prioridade de macros. Sem prioridade ou BALANCED é
+    exatamente `macro_split`. Prioridade desconhecida -> `ValueError`."""
+    prioridade = normalize_macro_priority(priority)
+    if prioridade is None:
+        raise ValueError(ERR_INVALID_MACRO_PRIORITY)
+    energia = positive_number(kcal)
+    base_kg = positive_number(ffm_kg) if params.protein_basis == ProteinBasis.FAT_FREE_MASS else positive_number(weight_kg)
+    if prioridade == MacroPriority.BALANCED or energia is None or base_kg is None:
+        return macro_split(kcal, params, weight_kg, ffm_kg)
+    share = _fat_share_for_priority(params, prioridade, energia, base_kg, positive_number(weight_kg))
+    return macro_split(kcal, replace(params, fat_kcal_share=share), weight_kg, ffm_kg)
 
 
 def protein_per_meal(protein_g: Any, meals_per_day: Any) -> Optional[float]:

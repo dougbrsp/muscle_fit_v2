@@ -28,8 +28,10 @@ from . import energy_expenditure as ee_mod
 from . import external_sources as ext_mod
 from . import label_photo as lp_mod
 from . import macros as macros_mod
+from . import manual_targets as manual_mod
 from . import meal_math as meal_math_mod
 from . import meal_parse as meal_parse_mod
+from . import phases as phases_mod
 from . import plan as plan_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
@@ -45,9 +47,10 @@ from .external_sources import UsdaDataType
 from .label_photo import LabelLegibility
 from .meal_math import GENERIC_PORTIONS, MealNature, Unit
 from .meal_parse import MatchStatus
-from .phases import BreakProtocol, PhaseKind
+from .manual_targets import RangeStatus
+from .phases import BreakProtocol, GoalKind, PhaseKind, ProjectionStatus
 from .plan import PlanState
-from .strategy import ProteinBasis, Strategy
+from .strategy import MacroPriority, ProteinBasis, Strategy
 
 
 SEX_LABELS: Final[Mapping[Sex, str]] = {
@@ -79,6 +82,31 @@ DAY_KIND_LABELS: Final[Mapping[DayKind, str]] = {
     DayKind.HIGH: "Dia alto em carbo",
     DayKind.NORMAL: "Dia normal",
     DayKind.LOW: "Dia baixo em carbo",
+}
+
+MACRO_PRIORITY_LABELS: Final[Mapping[MacroPriority, str]] = {
+    MacroPriority.BALANCED: "Equilibrado",
+    MacroPriority.FIXED_PROTEIN: "Proteína fixa (carboidrato e gordura equilibrados)",
+    MacroPriority.HIGH_CARB: "Carboidrato alto (gordura baixa)",
+    MacroPriority.HIGH_FAT: "Gordura alta (carboidrato baixo)",
+}
+
+RANGE_STATUS_LABELS: Final[Mapping[RangeStatus, str]] = {
+    RangeStatus.WITHIN_RANGE: "Dentro da faixa recomendada",
+    RangeStatus.WARNING: "Fora da faixa recomendada (salva com aviso)",
+    RangeStatus.BLOCKED: "Valor não permitido",
+}
+
+GOAL_KIND_LABELS: Final[Mapping[GoalKind, str]] = {
+    GoalKind.WEIGHT: "Peso-alvo",
+    GoalKind.BODY_FAT: "% de gordura alvo",
+}
+
+PROJECTION_STATUS_LABELS: Final[Mapping[ProjectionStatus, str]] = {
+    ProjectionStatus.PROJECTED: "Projeção até o alvo",
+    ProjectionStatus.GOAL_REACHED: "Alvo alcançado",
+    ProjectionStatus.INCOHERENT: "Alvo incoerente com a estratégia",
+    ProjectionStatus.INSUFFICIENT_DATA: "Dados insuficientes para projetar",
 }
 
 MEAL_SLOT_LABELS: Final[Mapping[MealSlot, str]] = {
@@ -290,6 +318,10 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     "bmr_formula": "Fórmula da TMB",
     "tdee_mode": "Gasto do treino",
     "activity_level": "Nível de atividade",
+    manual_mod.FIELD_PROTEIN: "Proteína (g)",
+    manual_mod.FIELD_CARB: "Carboidrato (g)",
+    manual_mod.FIELD_FAT: "Gordura (g)",
+    manual_mod.FIELD_KCAL: "Energia do dia (kcal)",
 }
 
 
@@ -334,6 +366,23 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     cc_mod.LIMIT_TARGET_NOT_COMPUTABLE: "Meta não calculável.",
     # %G.
     bc_mod.LIMIT_BODY_FAT_MISSING: "Sem % de gordura (bioimpedância ou fita).",
+    cc_mod.ERR_INVALID_DAY_MAP: "Escolha de dias do ciclo de carbo inválida: esperado um mapa dia da semana → tipo.",
+    cc_mod.ERR_CYCLE_NEEDS_HIGH_AND_LOW: (
+        "Para manter a média semanal, o ciclo de carbo precisa de ao menos um dia alto e um baixo "
+        "(ou nenhum dos dois)."
+    ),
+    # Prioridade de macros (N1).
+    macros_mod.ERR_INVALID_MACRO_PRIORITY: "Prioridade de macros inválida.",
+    # Projeção até o alvo (N1).
+    phases_mod.REASON_MISSING_WEIGHT: "Sem peso atual para projetar.",
+    phases_mod.REASON_MISSING_BODY_FAT: "Sem % de gordura atual válido para projetar o alvo de gordura.",
+    phases_mod.REASON_MISSING_TARGET: "Defina o peso-alvo ou o % de gordura alvo.",
+    phases_mod.REASON_TWO_TARGETS: "Defina só um alvo: peso ou % de gordura.",
+    phases_mod.REASON_INVALID_TARGET: "Alvo fora da faixa plausível.",
+    phases_mod.REASON_MISSING_RATE: "Sem ritmo semanal válido para projetar.",
+    phases_mod.REASON_MISSING_START: "Sem o ponto de partida: o percentual do caminho não pode ser calculado.",
+    phases_mod.REASON_TARGET_AGAINST_STRATEGY: "O alvo está no sentido contrário ao da estratégia.",
+    phases_mod.REASON_TARGET_MOVES_WITHOUT_STRATEGY: "A manutenção não move o peso: o alvo está distante do atual.",
     # Clamps do cutting (decisão D-B).
     strategy_mod.CLAMP_MAX_DEFICIT_SHARE: (
         f"Déficit limitado a {_percent(strategy_mod.CUT_MAX_DEFICIT_SHARE)} do gasto total."
@@ -506,6 +555,19 @@ NOTICE_LABELS: Final[Mapping[str, str]] = {
 PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     strategy_mod.LIMIT_PARAM_OUT_OF_RANGE: "{field}: fora da faixa da fonte.",
     plan_mod.ERR_INVALID_CODE: "{field}: código inválido.",
+    # Gramas manuais (N1, D6): `<código>:<campo>`.
+    manual_mod.MANUAL_INVALID_VALUE: "{field}: valor inválido (número maior ou igual a zero).",
+    manual_mod.MANUAL_BELOW_RANGE: "{field}: abaixo da faixa recomendada. Salva, mas confira.",
+    manual_mod.MANUAL_ABOVE_RANGE: "{field}: acima da faixa recomendada. Salva, mas confira.",
+    manual_mod.MANUAL_BLOCKED_BELOW: "{field}: abaixo do mínimo seguro. Não pode ser salvo.",
+    manual_mod.MANUAL_BLOCKED_ABOVE: "{field}: acima do máximo aceito. Não pode ser salvo.",
+    manual_mod.MANUAL_BELOW_BMR: "{field}: abaixo da taxa metabólica basal. Salva, mas confira.",
+    manual_mod.MANUAL_DIFFERS_FROM_TARGET: "{field}: distante da meta calórica da estratégia. Salva, mas confira.",
+    manual_mod.LIMIT_MISSING_BASE: "{field}: sem peso ou massa livre de gordura, a faixa em g/kg não foi conferida.",
+    # Dias do ciclo de carbo (N1, D5).
+    cc_mod.ERR_INVALID_WEEKDAY: "Dia da semana inválido: {field}.",
+    cc_mod.ERR_DUPLICATE_WEEKDAY: "Dia da semana repetido: {field}.",
+    cc_mod.ERR_INVALID_DAY_KIND: "Tipo de dia inválido (dia {field}).",
     plan_mod.ERR_PARAM_NOT_APPLICABLE: "{field}: não se aplica a esta estratégia.",
     bc_mod.LIMIT_BODY_FAT_OUT_OF_RANGE: "% de gordura fora da faixa plausível ({field}).",
     # Catálogo de alimentos (L3a): `<código>:<campo da RDC 429>`.

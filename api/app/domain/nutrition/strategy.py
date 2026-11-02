@@ -48,6 +48,20 @@ class ProteinBasis(str, Enum):
     BODY_WEIGHT = "body_weight"
 
 
+class MacroPriority(str, Enum):
+    """Prioridade de macros (N1, 2026-11-02): como o motor reparte as kcal que
+    sobram depois da proteína. O padrão (`BALANCED`) é o comportamento anterior
+    ao N1, inalterado. Os presets vivem em `macros.macro_split_for_priority`."""
+
+    BALANCED = "balanced"
+    FIXED_PROTEIN = "fixed_protein"  # proteína fixa; carboidrato e gordura em partes iguais das kcal restantes
+    HIGH_CARB = "high_carb"  # mais carboidrato, gordura no piso da faixa da estratégia
+    HIGH_FAT = "high_fat"  # mais gordura (teto da faixa), menos carboidrato
+
+
+DEFAULT_MACRO_PRIORITY: Final[MacroPriority] = MacroPriority.BALANCED
+
+
 # --- Cutting (Helms 2014; Garthe 2011) ---------------------------------------
 CUT_WEEKLY_RATE_SHARE_RANGE: Final[tuple[float, float]] = (0.005, 0.010)  # % do PC por semana
 CUT_WEEKLY_RATE_SHARE_DEFAULT: Final[float] = 0.007
@@ -64,6 +78,9 @@ BULK_SURPLUS_SHARE_DEFAULT: Final[float] = 0.10
 BULK_SURPLUS_SHARE_RANGE_ADVANCED: Final[tuple[float, float]] = (0.05, 0.10)
 BULK_SURPLUS_SHARE_DEFAULT_ADVANCED: Final[float] = 0.05
 BULK_WEEKLY_RATE_SHARE_RANGE: Final[tuple[float, float]] = (0.0025, 0.005)  # ganho esperado, monitoramento
+# Ritmo usado na projeção até o alvo (N1): o PISO da faixa de ganho, coerente com o
+# superávit pequeno do default (Iraki 2019; Slater 2019). Default de desenho.
+BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT: Final[float] = BULK_WEEKLY_RATE_SHARE_RANGE[0]
 BULK_PROTEIN_G_PER_KG_RANGE: Final[tuple[float, float]] = (1.6, 2.2)
 BULK_PROTEIN_G_PER_KG_DEFAULT: Final[float] = 2.0
 BULK_FAT_G_PER_KG_RANGE: Final[tuple[float, float]] = (0.5, 1.5)
@@ -103,6 +120,17 @@ def fat_share_range_for(strategy: Strategy) -> tuple[float, float]:
     if strategy == Strategy.BULKING:
         return BULK_FAT_KCAL_SHARE_RANGE
     return MAINT_FAT_KCAL_SHARE_RANGE
+
+
+def weekly_rate_share_for(params: "StrategyParams") -> Optional[float]:
+    """Ritmo semanal (fração do peso) da estratégia para projetar o alvo:
+    cutting = o do plano ou o default; bulking = piso da faixa de ganho;
+    manutenção = None (o peso não se move)."""
+    if params.strategy == Strategy.CUTTING:
+        return params.weekly_rate_share if params.weekly_rate_share is not None else CUT_WEEKLY_RATE_SHARE_DEFAULT
+    if params.strategy == Strategy.BULKING:
+        return BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT
+    return None
 
 
 def surplus_range_for(advanced: bool) -> tuple[float, float]:
