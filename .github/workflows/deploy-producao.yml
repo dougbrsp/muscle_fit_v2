@@ -538,6 +538,10 @@ jobs:
         working-directory: ${{ env.FRONTEND_WORKING_DIR }}
         env:
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          # Liga a interface mobile/PWA (flag lida em frontend/src/lib/mobile/flags.ts;
+          # default OFF quando ausente). Rollback: remover a linha (ou "0") e rodar o
+          # deploy so do frontend. Kill switch do SW segue via input pwa_kill_switch.
+          NEXT_PUBLIC_MOBILE_UI: "1"
         run: npm run build
 
       # PWA (service worker): carimba CACHE_VERSION (= commit) em out/sw.js, de modo que
