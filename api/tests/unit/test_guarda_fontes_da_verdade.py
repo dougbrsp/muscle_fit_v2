@@ -1379,7 +1379,7 @@ PADROES: tuple[Padrao, ...] = (
         chave="cota_ia_nutricao",
         regra="cota, job type ou preço do uso de IA da nutrição fora do dono: constante de `ai_usage` redefinida "
         "(`*_DAILY_QUOTA`, `DAILY_QUOTA`, `FEATURE_JOB_TYPE`, tabela de preços, unidades do custo), job type "
-        "`nutrition-meal-parse`/`nutrition-label-ocr` em literal ou cota comparada com número",
+        "`nutrition-meal-parse`/`nutrition-label-ocr`/`nutrition-meal-photo` em literal ou cota comparada com número",
         # 2026-10-18 (nutrição L5a): a rota do L5b/L6 reserva pela cota do dono
         # (`nutrition_ai_quota.open_usage` -> `ai_usage.quota_status`), importa o
         # nome do job type do dono (`from .domain.nutrition.ai_usage import
@@ -1388,11 +1388,11 @@ PADROES: tuple[Padrao, ...] = (
         # `async_jobs.JOB_TYPE_LAMBDA` é `ai_usage.MEAL_PARSE_JOB_TYPE`; o worker fecha
         # com o custo de `ai_usage.estimate_cost_usd`. O FE lê a cota da API.
         regex=re.compile(
-            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
+            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|MEAL_PHOTO_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
             r"|MODEL_PRICES_USD_CENTS_PER_MTOKEN|MODEL_LONG_PROMPT_PRICES|HAIKU_LONG_PROMPT_THRESHOLD_TOKENS"
             r"|TOKENS_PER_PRICE_UNIT|CENTS_PER_USD|COST_USD_DECIMAL_PLACES)"
             r"\s*(?::[^=\n]+)?=\s*(?:[\d({\[]|MappingProxyType|frozenset)"
-            r"""|["'`]nutrition-(?:meal-parse|label-ocr)["'`]"""
+            r"""|["'`]nutrition-(?:meal-parse|label-ocr|meal-photo)["'`]"""
             # Cota comparada ou atribuída a número (`cota_usada >= 30`, `remainingQuota === 0`,
             # `quota: int = 10`, `"quota": 30`). "cota"/"quota" como parte do nome (snake ou
             # camelCase), não dentro de outra palavra (`cotacao`).
@@ -1505,6 +1505,22 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/domain/nutrition/label_photo.py",),
         inventario="NUT-L6",
         escopo=(*ESCOPO_NUTRICAO, "frontend/src/lib/image-resize.ts"),
+    ),
+    Padrao(
+        chave="foto_prato_nutricao",
+        regra="foto do prato fora do dono: constante de `meal_photo` redefinida (limite de bytes, tipo, prefixo S3, "
+        "retenção, imagens por leitura, `detail`) ou o prefixo `nutrition-meals` em literal (com ou sem a barra)",
+        # 2026-11-02 (nutrição L10): a rota, o armazenamento, o worker e a tela consomem
+        # o dono `domain/nutrition/meal_photo`, que reaproveita o transporte de
+        # `label_photo`. O IAM e o lifecycle do prefixo (`.tf`, que a guarda não varre)
+        # têm teste de paridade; o id da regra (`nutrition-meals-expire-30d`) não casa.
+        regex=re.compile(
+            r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING)|MEAL_IMAGE_DETAIL)"
+            r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\.)"""
+            r"""|["'`]nutrition-meals(?=[/"'`])"""
+        ),
+        donos=("api/app/domain/nutrition/meal_photo.py",),
+        inventario="NUT-L10",
     ),
     Padrao(
         chave="fallback_registro_serie",
@@ -2090,6 +2106,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "leitura_refeicao_ia": {},  # NUT-L5B (2026-10-18): nasce vazia (prompt, schema, worker e tela consomem o dono)
     "foto_rotulo_nutricao": {},  # NUT-L6 (2026-10-18): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
     "foto_rotulo_numeros": {},  # NUT-L6 (2026-10-18): nasce vazia (a tela lê o JSON gerado; o helper não tem default)
+    "foto_prato_nutricao": {},  # NUT-L10 (2026-11-02): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
     # ZEPP-B2 (2026-10-19): nasce vazia (as 7 cópias de PlanExecutionScreen/FreeformScreen foram para o dono)
     "fallback_registro_serie": {},
     "fallback_registro_serie_cadeia": {},  # ZEPP-B2 (2026-10-19, revisão do guardião): nasce vazia
@@ -2184,6 +2201,7 @@ CONSUMIDOR_DO_PROMPT: dict[str, str] = {
     "api/privado/prompts/exercise_description/": "api/app/exercise_description_ai.py",
     "api/privado/prompts/nutrition_label/": "api/app/nutrition_label_ai.py",
     "api/privado/prompts/nutrition_meal_parse/": "api/app/nutrition_meal_parse_ai.py",
+    "api/privado/prompts/nutrition_meal_photo/": "api/app/nutrition_meal_photo_ai.py",
     # M103 P2: insights, "Análise por IA", resumos e os fragmentos compartilhados.
     "api/privado/prompts/insights/": "api/app/insights_prompt.py",
     "api/privado/prompts/workouts_analysis/": "api/app/report_ai.py",
@@ -3098,6 +3116,15 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "DayKind.HIGH", "contentType: LABEL_PHOTO.content_type", "MIN_DATA_QUALITY = 0.5",
          '"data_quality": 0.6', "DataQuality.MEDIUM: 0.5", "20971520"),
     ),
+    "foto_prato_nutricao": (
+        ('MEAL_PHOTO_S3_PREFIX = "nutrition-meals"', "MEAL_PHOTO_RETENTION_DAYS: int = 30",
+         "MEAL_PHOTO_MAX_BYTES = 1572864", "MEAL_PHOTO_MAX_BYTES = label_photo.LABEL_PHOTO_MAX_BYTES",
+         'MEAL_IMAGE_DETAIL = "high"', 'key = f"nutrition-meals/{user_id}/{uuid4().hex}.jpg"',
+         "const prefixo = `nutrition-meals/${id}`;", 'PREFIX = "nutrition-meals"'),
+        ("chave = meal_photo.meal_photo_key(usuario, uuid.uuid4().hex)", "if dados > meal_photo.MEAL_PHOTO_MAX_BYTES:",
+         "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-30d"', "/nutrition/meals/photo",
+         "ContentType=meal_photo.MEAL_PHOTO_CONTENT_TYPE"),
+    ),
     "fallback_registro_serie": (
         ("const workingSetsTarget = adjusted ?? planExercise.sets_count ?? 1;",
          "advancedMode ? planExercise.warmup_sets_count || 1 : 0", "pe.feeler_set_sets_count || 2",
@@ -3401,6 +3428,23 @@ def test_arquivos_da_foto_do_rotulo_estao_no_escopo_de_nutricao(rel: str):
     assert (RAIZ / rel).is_file(), rel
     assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
     assert "frontend/src/lib/image-resize.ts" in PADROES_POR_CHAVE["foto_rotulo_numeros"].escopo
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "api/app/domain/nutrition/meal_photo.py",
+        "api/app/nutrition_meal_photo.py",
+        "api/app/nutrition_meal_photo_ai.py",
+        "api/app/nutrition_meal_photo_storage.py",
+        "frontend/src/components/nutrition/MealParseModal.tsx",
+    ],
+)
+def test_arquivos_da_foto_do_prato_estao_no_escopo_de_nutricao(rel: str):
+    """Nutrição L10: motor, rota, armazenamento, worker e tela da foto do prato ficam
+    sob `ESCOPO_NUTRICAO` (valem `foto_rotulo_numeros`, `soma_nutrientes`...)."""
+    assert (RAIZ / rel).is_file(), rel
+    assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
 
 
 def test_comentario_e_docstring_nao_contam_mas_sql_e_prompt_contam():

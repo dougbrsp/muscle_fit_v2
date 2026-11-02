@@ -62,7 +62,9 @@ L5b (mapa §55): `api/app/nutrition_meal_parse.py` (rota 202 + cota),
 `api/app/nutrition_meal_parse_worker.py` e o item estimado em `nutrition_meals.py`.
 L6 (mapa §56): `api/app/nutrition_label_photo.py` (upload e 202),
 `api/app/nutrition_label_storage.py` (S3) e o worker `api/app/nutrition_label_ai.py`
-(leitura pela IA + `label_photo.review_reading`).
+(leitura pela IA + `label_photo.review_reading`). L10 (mapa §78): a foto do prato,
+com o dono `meal_photo`, em `api/app/nutrition_meal_photo.py` (upload e 202),
+`api/app/nutrition_meal_photo_storage.py` (S3) e `api/app/nutrition_meal_photo_ai.py`.
 """
 
 from __future__ import annotations
@@ -84,6 +86,7 @@ from . import (  # noqa: F401  (reexport dos módulos do pacote)
     external_sources,
     food_text,
     label_photo,
+    meal_photo,
     labels,
     macros,
     meal_math,
@@ -250,6 +253,18 @@ def export_for_frontend() -> dict[str, Any]:
             "retention_days": label_photo.LABEL_PHOTO_RETENTION_DAYS,
             # Fonte com que o formulário da leitura é salvo (`POST /nutrition/foods`).
             "food_source": catalog.FoodSource.LABEL_PHOTO.value,
+        },
+        # Foto do prato (L10): redução por canvas e upload com os parâmetros do dono
+        # (a API confere de novo: 413/415). A cota do dia vem da API, nunca daqui.
+        "meal_photo": {
+            "max_bytes": meal_photo.MEAL_PHOTO_MAX_BYTES,
+            "content_type": meal_photo.MEAL_PHOTO_CONTENT_TYPE,
+            "resize_max_edge_px": label_photo.RESIZE_MAX_EDGE_PX,
+            "resize_quality": label_photo.RESIZE_JPEG_QUALITY,
+            "retention_days": meal_photo.MEAL_PHOTO_RETENTION_DAYS,
+            # Origem com que a refeição é gravada (`POST /nutrition/meals`, `ai_source`).
+            "meal_source": diary.MealSource.AI_PHOTO.value,
+            "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PHOTO),
         },
         "label_legibilities": _codes(label_photo.LabelLegibility),
         "label_legibility_labels": lb.labels_by_code(lb.LABEL_LEGIBILITY_LABELS),

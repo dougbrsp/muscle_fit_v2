@@ -141,9 +141,12 @@ def validate_text(raw: Any) -> tuple[str, tuple[str, ...]]:
     return texto, ()
 
 
-def meal_source(ai_job_id: Any) -> MealSource:
-    """Origem da refeição gravada: `ai_text` quando veio de uma leitura por IA."""
-    return MealSource.AI_TEXT if str(ai_job_id or "").strip() else MealSource.MANUAL
+def meal_source(ai_job_id: Any, ai_source: Any = None) -> MealSource:
+    """Origem da refeição gravada: sem job, `manual`; com job, `ai_photo` quando a
+    tela disse que a leitura veio da foto do prato (L10) e `ai_text` nos demais."""
+    if not str(ai_job_id or "").strip():
+        return MealSource.MANUAL
+    return MealSource.AI_PHOTO if ai_source == MealSource.AI_PHOTO.value else MealSource.AI_TEXT
 
 
 # ---------------------------------------------------------------------------

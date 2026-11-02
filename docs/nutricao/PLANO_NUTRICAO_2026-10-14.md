@@ -476,7 +476,7 @@ Tabelas de alimentos, rotulagem e APIs:
 | L7 Dashboard | não iniciado | — | — |
 | L8 Ciclos/fases/adaptativo | não iniciado | — | — |
 | L9 Relatório/insights | não iniciado | — | — |
-| L10 Foto de refeição | não iniciado (futuro) | — | — |
+| L10 Foto de refeição | implementado no lote N4 de 2026-11-02 (ver mapa §78), sem eval pago com fotos | — | — |
 | L11 Hardening | não iniciado (opcional) | — | — |
 
 L0 a L4 estão em produção desde a promoção #571 (17/10/2026, 23h10 UTC, deploy 39077773130), que aplicou as migrações 074–083 (25 statements) com o PR #562 (secret do USDA). A próxima promoção leva a 084 do M85 (3 statements) e a 085 do L5a (1 `CREATE TABLE`), 4 statements, com

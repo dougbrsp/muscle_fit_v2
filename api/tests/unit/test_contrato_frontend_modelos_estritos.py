@@ -20,6 +20,7 @@ from app.request_models import (
     MealBodyIn,
     MealIn,
     MealParseIn,
+    MealPhotoUploadIn,
     MealPreviewIn,
     NutritionDayIn,
     NutritionPlanIn,
@@ -303,6 +304,17 @@ _ESTIMATIVA = {"name": "whey protein", "energy_kcal": 400, "protein_g": 80, "car
 def test_post_nutrition_meals_parse():
     MealParseIn.model_validate({"text": "arroz e feijão", "local_date": "2026-10-18", "meal_slot": None})
     MealParseIn.model_validate({"text": "arroz", "local_date": "2026-10-18", "meal_slot": "lunch", "user_id": 2})
+
+
+def test_post_nutrition_meals_photo():
+    # frontend/src/lib/nutrition-api.ts (uploadMealPhoto, L10): foto em base64 sem padding + dia.
+    MealPhotoUploadIn.model_validate({"image_base64": "/9j/4A", "local_date": "2026-11-02", "meal_slot": None})
+    MealPhotoUploadIn.model_validate({"image_base64": "/9j/4A", "local_date": "2026-11-02", "meal_slot": "lunch", "user_id": 2})
+
+
+def test_post_nutrition_meals_lida_pela_foto():
+    # nutrition-meal-form.ts (`mealCreatePayload`, L10): `ai_job_id` + `ai_source`.
+    MealIn.model_validate({**_REFEICAO, "ai_job_id": "job-1", "ai_source": "ai_photo", "description_raw": ""})
 
 
 def test_post_nutrition_meals_lida_pela_ia():

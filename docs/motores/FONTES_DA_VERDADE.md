@@ -526,6 +526,7 @@ são a referência viva.
 | `leitura_refeicao_ia` | constante da leitura da refeição por IA redefinida fora do dono, também com prefixo (`MEAL_PARSE_TEXT_MAX_CHARS = 1000` no FE casa): `TEXT_MAX_CHARS`, `CANDIDATES_PER_ITEM`, `ITEM_LABEL_MAX_CHARS`, `CONFIDENCE_RANGE` `= <número>`/`= (`/`= [`; `AI_UNITS`, `ESTIMATE_FIELDS`, `ESTIMATE_REQUIRED_FIELDS`, `ESTIMATE_KEY`, `CATALOG_CANDIDATE_STATUSES`, `UNSTATED_QUANTITY_UNIT`, `ESTIMATE_BASIS` `= (`/`= [`/`= {`/string/f-string/`frozenset`/`new Set`) ou a chave da estimativa em literal (`"estimated_per_100g"`: o schema e o worker usam `ESTIMATE_KEY`) (py e ts; repo inteiro; os limiares do casamento são de `catalogo_alimentos` e `nota_matching`) | `domain/nutrition/meal_parse.py` | NUT-L5B | L5b nutrição (2026-10-18, nasce vazia) |
 | `foto_rotulo_nutricao` | foto do rótulo fora do dono, repo inteiro (py e ts): constante de `label_photo` redefinida (`LABEL_PHOTO_MAX_BYTES`, `LABEL_PHOTO_MAX_MIB`, `LABEL_PHOTO_CONTENT_TYPE`, `LABEL_PHOTO_ACCEPTED_CONTENT_TYPES`, `LABEL_PHOTO_EXTENSION`, `LABEL_PHOTO_S3_PREFIX`, `LABEL_PHOTO_RETENTION_DAYS`, `LABEL_PHOTO_IMAGES_PER_READING`, `RESIZE_MAX_EDGE_PX`, `RESIZE_JPEG_QUALITY`, `RESIZE_JPEG_QUALITY_PERCENT`, `LABEL_PHOTO_MAX_BASE64_CHARS`, `LABEL_IMAGE_DETAIL` `= <número>`/`= "…"`/`= int(`/`= frozenset`...), o prefixo `nutrition-labels` em literal, com ou sem a barra (a chave sai de `label_photo_key`; o IAM e o lifecycle do `.tf` têm teste de paridade; o id `nutrition-labels-expire-30d` não casa) e 1,5 MiB à mão (`1572864`, `1.5 * 1024`, `1024 * 1024 * 1.5`, `1536 * 1024`) | `domain/nutrition/label_photo.py` | NUT-L6 | L6 nutrição (2026-10-18, nasce vazia; ampliado na revisão do guardião) |
 | `foto_rotulo_numeros` | parâmetro da redução ou do upload escrito à mão, só no `ESCOPO_NUTRICAO` e em `frontend/src/lib/image-resize.ts`: `1280`, `quality`/`qualidade` com fração ou inteiro, sozinha ou com prefixo de imagem (`quality: 0.85`, `jpegQuality = 85`, `JPEG_QUALITY = 85`; `DataQuality`/`MIN_DATA_QUALITY` não casam), `toBlob(…, 0.85)` (também com arrow function), `0.85`/`.85` solto, `maxEdge: <número>`, o teto do corpo em base64 (`2097152`), `"image/jpeg"` em literal e o `detail` da imagem em literal (`detail: "high"`, `ImageInput(…, "high")`; `"high"` sem âncora não, por `DayKind.HIGH`) (o helper não tem default; a tela lê o JSON gerado; rota, armazenamento e worker usam o tipo e o `detail` do dono) | `domain/nutrition/label_photo.py` | NUT-L6 | L6 nutrição (2026-10-18, nasce vazia; ampliado na revisão do guardião) |
+| `foto_prato_nutricao` | foto do prato fora do dono, repo inteiro (py e ts): constante de `meal_photo` redefinida (`MEAL_PHOTO_MAX_BYTES`, `MEAL_PHOTO_CONTENT_TYPE`, `MEAL_PHOTO_S3_PREFIX`, `MEAL_PHOTO_RETENTION_DAYS`, `MEAL_PHOTO_IMAGES_PER_READING`, `MEAL_IMAGE_DETAIL`) ou o prefixo `nutrition-meals` em literal; o id da regra de lifecycle não casa | `domain/nutrition/meal_photo.py` (FE via `nutrition-constants.ts`) | NUT-L10 | L10 nutrição (2026-11-02; nasce com allowlist vazia) |
 | `fallback_registro_serie` | piso de séries ou valor inicial do registro da série à mão: `sets_count ?? N`/`\|\| N`/`or N` (N ≥ 1; `?? 0` de soma não casa), `parseNumericTarget(…) ?? N` (até um nível de parênteses dentro) e `SET_LOGGER_FALLBACK_* = N` fora do dono (a tela e o núcleo leem `MIN_SETS_COUNT`/`SET_LOGGER_FALLBACK_*` do JSON gerado); desde o B3 também `max(N, …sets/target/remaining…)`, a ordem invertida `max(…sets/remaining…, N)` e `…remaining/target… ?? N`/`\|\| N` (de fora, conscientemente: nome sem sets/target/remaining, expressão entre parênteses e ternário; §57.2) | `domain/prescription_defaults.py` | E8, ZEPP-B2, ZEPP-B3 | B2 da Evolução ZEPP (2026-10-19, nasce vazia, §57.1) |
 | `modo_treino_pela_ficha` | só no Modo Treino (`modo-treino/`, `lib/workout-mode-*`): disjunção de duas ou mais comparações `advanced_technique`/`warmup_reps`/`feeler_set_reps` `!= null` na mesma linha, ou o filtro legado `has_advanced_technique` (de fora, conscientemente: disjunção em várias linhas e forma truthy; §57.3) | `frontend/src/lib/workout-mode-advanced-stage.ts` | ZEPP-B4 | B4 da Evolução ZEPP (2026-10-19, nasce vazia, §57.3) |
 | `fallback_registro_serie_cadeia` | só no Modo Treino (`modo-treino/`, `lib/workout-mode-*`): número de 2 dígitos no fim de uma cadeia de `??` de reps/carga (`lastSet?.reps ?? 10`, `suggested_load_kg ?? 20`) | `domain/prescription_defaults.py` | E8, ZEPP-B2 | B2 da Evolução ZEPP (2026-10-19, nasce vazia, revisão do guardião) |
@@ -6367,3 +6368,59 @@ curtas deixam mais grupos sem status: em 7 dias (2026-10-26..2026-11-01) só 4 e
 nenhum com duas exposições comparáveis, então os 9 grupos ficam DADOS_INSUFICIENTES (antes: 5 ESTAVEL e 4
 DADOS_INSUFICIENTES). `cycle` não foi medido de forma útil: o Modelo do usuário 1 no DEV resolve para ciclo
 de 1 dia. Os números de produção podem diferir.
+
+## 78. Foto do prato (Lote N4 / L10, 2026-11-02)
+
+Decisões do usuário: D1 (Claude Haiku 5.5 com visão e fallback OpenAI) e D11 (10 análises por usuário/dia).
+
+**Dono novo.** `domain/nutrition/meal_photo.py` (Python puro, sem relógio): `MEAL_PHOTO_S3_PREFIX`, `MEAL_PHOTO_RETENTION_DAYS`
+(30 d, espelho da regra `nutrition-meals-expire-30d`, paridade), `MEAL_PHOTO_IMAGES_PER_READING`, `meal_photo_key`,
+`is_meal_photo_key_of`, `PlateStatus`, `review_reading` e `item_nature`. O transporte (limite, JPEG, base64 sem padding,
+redução, `detail`) continua em `label_photo`: `MEAL_PHOTO_MAX_BYTES`, `MEAL_PHOTO_CONTENT_TYPE` e `MEAL_IMAGE_DETAIL` são
+apelidos de lá, e `decode_upload`/`upload_error` só traduzem o código, porque o texto do erro não pode falar de rótulo.
+`label_photo` ganhou `photo_key`/`is_photo_key_of` (a forma da chave), sem mudança para o rótulo.
+
+**Donos que mudaram.** `ai_usage`: `AiFeature.MEAL_PHOTO`, `MEAL_PHOTO_DAILY_QUOTA` = 10, `MEAL_PHOTO_JOB_TYPE`.
+`meal_parse.meal_source(ai_job_id, ai_source)`: `ai_photo` quando a tela diz, `ai_text` nos demais. `labels`: textos dos
+códigos novos. `export_for_frontend`: bloco `meal_photo`. `openai_client.LLM_OUTPUT_OBSERVED_MAX_TOKENS["meal_photo"]` herda o
+valor de `meal_parse` (mesmo item; sem eval pago ainda); o teto efetivo é o piso.
+
+**Consumidores (só transportam).**
+- `api/app/nutrition_meal_photo.py` (api-core): `POST /nutrition/meals/photo` (acesso ao aluno → tamanho, alfabeto, tipo e
+  refeição, sem gastar cota → cota → S3 → job → vínculo → invoke da plan-generator; falha fecha a linha como `failed` e
+  responde 503) e `GET /nutrition/meals/photo/usage`. O resultado sai pelo `GET /jobs/{id}` de sempre, só para o dono do job
+  (M65). A cota, o job e a chave são de QUEM PEDE; o aluno vai no payload, para a busca no catálogo dele.
+- `api/app/nutrition_meal_photo_storage.py`: S3, com o cliente e o bucket de `nutrition_label_storage`.
+- `api/app/nutrition_meal_photo_ai.py` (worker, `musclefit-plan-generator`): chave do usuário → foto → uma chamada
+  (`call_openai_structured_vision`, feature `meal_photo`) → Pydantic estrito (`extra="forbid"`, campo que falta ou sobra é falha
+  do job) → `meal_photo.review_reading` → casamento (`nutrition_meal_parse_worker.match_items`, o mesmo do texto) →
+  `meal_parse.build_result` → `finish_usage` em todos os caminhos. Nada é gravado no diário.
+- Prompt `nutrition-photo-v1` (`api/privado/prompts/nutrition_meal_photo/`, consumidor registrado na guarda): interpola
+  unidades, confiança, chave e campos da estimativa, status do prato, `diary.ITEM_AMOUNT_MAX` e `diary.MEAL_MAX_ITEMS`.
+- Tela: `MealParseModal` (`mode="photo"`), `readMealPhoto`, `editorFormFromPhoto`; lê o bloco `meal_photo` do JSON gerado.
+
+**Regras de negócio.** A IA só identifica e estima gramas. Item casado com o catálogo é DERIVED pelo `meal_math`; item sem
+casamento usa a estimativa por 100 g da IA, validada pelas regras do catálogo, e fica ESTIMATED (o mesmo caminho do texto,
+inclusive o item com vários candidatos, em que a pessoa escolhe). `PlateStatus` diferente de `recognized`, ou nenhum item
+válido, devolve o resultado vazio com a limitação do motivo e descarta item que tenha vindo junto. Gramas acima de
+`diary.ITEM_AMOUNT_MAX` são descartados e a pessoa informa. A foto é dado não confiável: o prompt manda ignorar texto na
+imagem e a saída não tem campo de texto livre que chegue à tela além do nome e do preparo do item.
+
+**Guarda.** Padrão novo `foto_prato_nutricao`, com allowlist vazia; `cota_ia_nutricao` cobre a constante e o job type novos;
+`CONSUMIDOR_DO_PROMPT` ganhou a pasta. Testes: `test_nutrition_meal_photo*.py`; prosa em
+`api/privado/tests/unit/test_nutrition_meal_photo_prompt.py`.
+
+**Pendências registradas.** Eval pago com fotos reais: o Terraform já liga a feature no Haiku com o esforço do rótulo, sem medir
+acerto de alimento e de gramas. O teto de saída herdado também precisa dessa medição.
+
+**Impacto em produção.**
+- Migração: nenhuma (`ai_usage_log.feature` é VARCHAR(32), `meals.source` é VARCHAR(16) e `ai_photo` já estava em `MealSource`).
+- Terraform: regra `nutrition-meals-expire-30d` (in-place no lifecycle único), `aws_iam_role_policy.musclefit_ai_generators_nutrition_meals`
+  (nova, `s3:GetObject` só em `nutrition-meals/*`), envs `*_MEAL_PHOTO` nas 4 Lambdas de `local.llm_provider_env`. Saem 4 envs
+  `LLM_PROVIDER_<F>=openai` de `set_evaluation`, `exercise_summary`, `workouts_analysis` e `workout_plan`, sem mudança de
+  comportamento (o padrão do código é `openai`), para o bloco caber no orçamento de 1400 bytes do teste de 4 KB. Pelo cálculo do
+  teste, o bloco fica em cerca de 1380 bytes.
+- Role de deploy: sem permissão nova (`iam:PutRolePolicy` em `musclefit-*-exec` e `s3:PutLifecycleConfiguration` no bucket, que o
+  L6 já usou).
+- Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 30 dias.
+- Reversão: reverter o código é seguro; num rollback, manter a regra de lifecycle até o prefixo esvaziar.
