@@ -10,7 +10,7 @@ export const opQueue = createOpQueue({ transport: apiOpTransport });
 
 export async function activateOffline(userId: number, options: ActivateOptions = {}): Promise<StorageStatus> {
   const status = await activateOfflineUser(userId, options);
-  await opQueue.hydrate(userId);
+  await opQueue.hydrate(userId, { force: options.force });
   await loadSnapshots(userId);
   return status;
 }

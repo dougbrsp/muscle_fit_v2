@@ -22,6 +22,12 @@ import { enqueueBackendTask, onOfflinePurge } from './scope';
 export const BACKOFF_MS: readonly number[] = [2_000, 5_000, 15_000, 30_000, 60_000];
 export const SYNC_TICK_MS = 20_000;
 export const SYNCED_RETENTION_MS = 24 * 60 * 60 * 1000;
+/**
+ * Política de retenção (não é regra de treino): operação que não chegou ao
+ * servidor em 30 dias é descartada na reabertura, para não guardar dado de
+ * conta para sempre no aparelho.
+ */
+export const OP_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type TransportResult = { response: unknown };
 /** Envia a op ao servidor. Lança `{ status, message }` (ex.: `ApiError`) em falha HTTP/rede. */
@@ -84,10 +90,6 @@ function isSetNumberConflict(error: unknown): boolean {
   return Boolean(detail) && typeof detail === 'object' && (detail as { code?: unknown }).code === 'set_number_conflict';
 }
 
-function groupOf(op: OfflineOp): string {
-  if (op.kind === 'addExercise') return `ex:${op.clientKey}`;
-  return typeof op.exerciseId === 'string' ? `ex:${op.exerciseId}` : `id:${String(op.exerciseId)}`;
-}
 
 export function createOpQueue(deps: OpQueueDeps) {
   const now = deps.now ?? (() => Date.now());
@@ -103,6 +105,18 @@ export function createOpQueue(deps: OpQueueDeps) {
   let flushAgain = false;
   let generation = 0;
   let hydratedUser: number | null = null;
+  /** client_keys confirmadas pelo servidor por fora da fila (POST direto 2xx). */
+  const confirmedOutside = new Set<string>();
+
+  function groupOf(op: OfflineOp): string {
+    if (op.kind === 'addExercise') return `ex:${op.clientKey}`;
+    if (typeof op.exerciseId === 'string') return `ex:${op.exerciseId}`;
+    if (typeof op.exerciseId === 'number' && op.exerciseId < 0) {
+      const parent = ops.find((candidate) => candidate.kind === 'addExercise' && candidate.localId === op.exerciseId);
+      return parent ? `ex:${parent.clientKey}` : `local:${op.exerciseId}`;
+    }
+    return `id:${String(op.exerciseId)}`;
+  }
 
   function buildSnapshot(): QueueSnapshot {
     let error = 0;
@@ -153,14 +167,15 @@ export function createOpQueue(deps: OpQueueDeps) {
     userId = null;
     hydratedUser = null;
     ops = [];
+    confirmedOutside.clear();
     emit();
   });
 
   /** Carrega as ops do usuário; `syncing` que sobrou de um fechamento abrupto volta a `saved_local`. */
-  async function hydrate(forUser: number): Promise<void> {
+  async function hydrate(forUser: number, options: { force?: boolean } = {}): Promise<void> {
     // Mesmo usuário já carregado (remontagem, volta da rede): não recarrega do disco
     // nem derruba um envio em andamento — evita reenvio desnecessário.
-    if (hydratedUser === forUser && userId === forUser) return;
+    if (hydratedUser === forUser && userId === forUser && !options.force) return;
     generation += 1;
     const myGeneration = generation;
     userId = forUser;
@@ -171,7 +186,7 @@ export function createOpQueue(deps: OpQueueDeps) {
     for (const row of rows) {
       const op = row.value as OfflineOp;
       if (!op || typeof op.opId !== 'string') continue;
-      if (op.status === 'synced' && now() - op.createdAt > SYNCED_RETENTION_MS) {
+      if ((op.status === 'synced' && now() - op.createdAt > SYNCED_RETENTION_MS) || now() - op.createdAt > OP_TTL_MS) {
         void removeOp(op);
         continue;
       }
@@ -183,9 +198,28 @@ export function createOpQueue(deps: OpQueueDeps) {
         loaded.push(op);
       }
     }
-    ops = loaded;
+    // Ops gravadas enquanto a leitura do disco corria (enqueue concorrente) prevalecem na memória.
+    const inMemory = options.force
+      ? []
+      : ops.filter((op) => op.userId === forUser && !loaded.some((candidate) => candidate.opId === op.opId));
+    ops = [...loaded, ...inMemory];
     hydratedUser = forUser;
     emit();
+  }
+
+  function nextLocalId(): number {
+    return Math.min(-1000, ...ops.map((op) => op.localId ?? 0)) - 1;
+  }
+
+  /** Id do servidor de um exercício criado offline (`localId`), ou null se ainda não confirmado. */
+  function serverExerciseId(localId: number): number | null {
+    const parent = ops.find((op) => op.kind === 'addExercise' && op.localId === localId && op.status === 'synced');
+    const id = (parent?.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
+    return typeof id === 'number' ? id : null;
+  }
+
+  function findExerciseOp(clientKey: string): OfflineOp | undefined {
+    return ops.find((op) => op.kind === 'addExercise' && op.clientKey === clientKey);
   }
 
   function isEditable(op: OfflineOp): boolean {
@@ -260,6 +294,7 @@ export function createOpQueue(deps: OpQueueDeps) {
       createdAt: now(),
       attempts: 0,
       status: 'saved_local',
+      ...(input.kind === 'addExercise' ? { localId: nextLocalId() } : {}),
     };
     await persistOp(op);
     ops = [...ops, op];
@@ -268,11 +303,16 @@ export function createOpQueue(deps: OpQueueDeps) {
     return op;
   }
 
-  function resolveExerciseId(op: OfflineOp): number | null | 'blocked' {
+  function resolveExerciseId(op: OfflineOp): number | null | 'blocked' | 'orphan' {
     if (op.kind === 'addExercise') return null;
-    if (typeof op.exerciseId === 'number') return op.exerciseId;
-    const parent = ops.find((candidate) => candidate.kind === 'addExercise' && candidate.clientKey === op.exerciseId);
-    if (!parent || parent.status !== 'synced') return 'blocked';
+    if (typeof op.exerciseId === 'number' && op.exerciseId > 0) return op.exerciseId;
+    const parent = ops.find(
+      (candidate) =>
+        candidate.kind === 'addExercise' &&
+        (typeof op.exerciseId === 'number' ? candidate.localId === op.exerciseId : candidate.clientKey === op.exerciseId),
+    );
+    if (!parent) return 'orphan';
+    if (parent.status !== 'synced') return 'blocked';
     const id = (parent.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
     return typeof id === 'number' ? id : 'blocked';
   }
@@ -298,6 +338,19 @@ export function createOpQueue(deps: OpQueueDeps) {
       }
       const exerciseId = resolveExerciseId(op);
       if (exerciseId === 'blocked') {
+        blocked.add(group);
+        continue;
+      }
+      if (exerciseId === 'orphan') {
+        // O exercício de origem foi descartado: este registro nunca poderá ser enviado.
+        const orphan: OfflineOp = {
+          ...op,
+          status: 'conflict',
+          conflictKind: 'orphan',
+          lastError: 'O exercício deste registro foi descartado; o registro não pode ser enviado.',
+        };
+        replace(orphan);
+        await persistOp(orphan).catch(() => undefined);
         blocked.add(group);
         continue;
       }
@@ -397,13 +450,31 @@ export function createOpQueue(deps: OpQueueDeps) {
    * `client_key` (sem sobrescrever o que o servidor já tem); 'keep_server'
    * descarta a versão local.
    */
-  async function resolveConflict(opId: string, choice: 'resend' | 'keep_server'): Promise<void> {
+  async function resolveConflict(opId: string, choice: 'resend' | 'keep_server' | 'resend_renumbered'): Promise<void> {
     const op = ops.find((candidate) => candidate.opId === opId);
     if (!op || op.status !== 'conflict') return;
     if (choice === 'keep_server') {
-      await removeOp(op);
-      ops = ops.filter((candidate) => candidate.opId !== opId);
+      // Descartar um exercício leva junto as séries que dependem dele (nunca ficam presas).
+      const dropped = ops.filter(
+        (candidate) =>
+          candidate.opId === opId ||
+          (op.kind === 'addExercise' &&
+            candidate.kind === 'addSet' &&
+            candidate.status !== 'synced' &&
+            (candidate.exerciseId === op.localId || candidate.exerciseId === op.clientKey)),
+      );
+      for (const item of dropped) await removeOp(item);
+      ops = ops.filter((candidate) => !dropped.includes(candidate));
       emit();
+      return;
+    }
+    if (choice === 'resend_renumbered') {
+      // Colisão de set_number: reenvia SEM número para o servidor atribuir o próximo livre
+      // (a mesma client_key continua valendo; o servidor decide o número).
+      const rest = { ...op.payload };
+      delete rest.set_number;
+      await replacePayload(op, rest);
+      await flush();
       return;
     }
     await retry(opId);
@@ -439,6 +510,7 @@ export function createOpQueue(deps: OpQueueDeps) {
   async function discardConfirmed(clientKey: string): Promise<void> {
     const stale = ops.filter((op) => op.clientKey === clientKey && op.status !== 'synced');
     if (stale.length === 0) return;
+    confirmedOutside.add(clientKey);
     for (const op of stale) await removeOp(op);
     ops = ops.filter((op) => !stale.includes(op));
     emit();
@@ -449,11 +521,19 @@ export function createOpQueue(deps: OpQueueDeps) {
    * 'conflict' (ação do usuário) ou 'removed' (descartada/purge). Erros de
    * rede NÃO resolvem: a op segue tentando.
    */
-  function whenSettled(clientKey: string): Promise<'synced' | 'conflict' | 'removed'> {
+  function whenSettled(clientKey: string): Promise<'synced' | 'conflict' | 'discarded'> {
     return new Promise((resolve) => {
       const check = (): boolean => {
         const op = ops.find((candidate) => candidate.clientKey === clientKey);
-        const outcome = !op ? 'removed' : op.status === 'synced' ? 'synced' : op.status === 'conflict' ? 'conflict' : null;
+        const outcome = !op
+          ? confirmedOutside.has(clientKey)
+            ? 'synced'
+            : 'discarded'
+          : op.status === 'synced'
+            ? 'synced'
+            : op.status === 'conflict'
+              ? 'conflict'
+              : null;
         if (outcome) resolve(outcome);
         return outcome != null;
       };
@@ -482,6 +562,8 @@ export function createOpQueue(deps: OpQueueDeps) {
     start,
     stateOf,
     whenSettled,
+    serverExerciseId,
+    findExerciseOp,
     discardConfirmed,
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {

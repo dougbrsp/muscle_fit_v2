@@ -9,7 +9,7 @@ import type { StoredWorkoutModeSession } from '../workout-mode-types';
 import { getOfflineBackend, type BackendKind } from './backend';
 import { LEGACY_PARKED_KEY, LEGACY_SESSION_KEY, makeKey } from './keys';
 import { purgeOfflineUser } from './purge';
-import { enqueueBackendTask, onOfflinePurge, resolveKnownUserId, setActiveUserId } from './scope';
+import { enqueueBackendTask, markUserVerified, onOfflinePurge, resolveKnownUserId, setActiveUserId } from './scope';
 
 const SESSION_NAME = 'session';
 const PARKED_NAME = 'parked';
@@ -89,6 +89,10 @@ function removeLegacy(key: string): void {
 }
 
 export type ActivateOptions = {
+  /** O usuário acaba de ser confirmado por `/auth/me` 200 (renova a validade do modo offline). */
+  verified?: boolean;
+  /** Recarrega do disco mesmo já hidratado (ex.: depois de outra aba ter escrito). */
+  force?: boolean;
   /**
    * Confere se a sessão guardada na chave legada (sem escopo) pertence ao
    * usuário atual (ex.: `GET /activities/{id}`). Sem isto, a chave legada é
@@ -118,9 +122,9 @@ async function migrateLegacySlot(
     } catch {
       ownership = 'unknown';
     }
-  } else {
-    ownership = 'foreign';
   }
+  // Sem como provar a posse: não atribui a ninguém, mas também não apaga (tenta depois).
+
   if (ownership === 'unknown') return current; // sem rede/erro: tenta de novo na próxima ativação
   removeLegacy(legacyKey);
   if (ownership === 'foreign') return current;
@@ -145,13 +149,17 @@ async function requestPersistence(): Promise<void> {
  * espelho antes de carregar a partição do novo.
  */
 export function activateOfflineUser(userId: number, options: ActivateOptions = {}): Promise<StorageStatus> {
-  if (state.hydrated && state.userId === userId) return Promise.resolve(status);
+  if (state.hydrated && state.userId === userId && !options.force) {
+    if (options.verified) markUserVerified();
+    return Promise.resolve(status);
+  }
   if (activating && activating.userId === userId) return activating.promise;
-  // Sobra de outra conta neste aparelho (ex.: 401 que redirecionou antes do
-  // purge terminar): limpa, preservando só o que ainda não foi sincronizado.
+  // Login CONFIRMADO de outra conta neste aparelho: a anterior não volta a estas
+  // ops sem novo login (houve 401/logout), então tudo dela é apagado, inclusive
+  // séries não sincronizadas (política documentada em ADR/relatório B5).
   const previousUserId = resolveKnownUserId();
-  if (previousUserId != null && previousUserId !== userId) {
-    void purgeOfflineUser(previousUserId, { keepUnsynced: true }).catch(() => undefined);
+  if (options.verified && previousUserId != null && previousUserId !== userId) {
+    void purgeOfflineUser(previousUserId).catch(() => undefined);
   }
   const promise = (async () => {
     if (state.userId !== userId) {
@@ -176,6 +184,7 @@ export function activateOfflineUser(userId: number, options: ActivateOptions = {
     state.parked = parked;
     state.hydrated = true;
     setActiveUserId(userId);
+    if (options.verified) markUserVerified();
     setStatus({ kind: backend.kind, degraded: backend.kind !== 'indexeddb' });
     void requestPersistence();
     return status;

@@ -19,7 +19,18 @@ export async function postSetOrQueue<T>(args: {
   exerciseId: number;
   body: Record<string, unknown> & { client_key: string };
 }): Promise<SetPostResult<T>> {
-  const { sessionId, exerciseId, body } = args;
+  const { sessionId, body } = args;
+  let exerciseId = args.exerciseId;
+  // Id LOCAL (negativo): exercício criado offline. Se o servidor já o confirmou, usa o
+  // id real; senão a série só pode ir para a fila, atrás do exercício.
+  if (exerciseId < 0) {
+    const realId = opQueue.serverExerciseId(exerciseId);
+    if (realId == null) {
+      await opQueue.enqueue({ kind: 'addSet', sessionId, exerciseId, payload: body, clientKey: body.client_key });
+      return { queued: true, saved: null, clientKey: body.client_key };
+    }
+    exerciseId = realId;
+  }
   let saved: T;
   try {
     saved = await apiFetch<T>(`/workout-sessions/${sessionId}/exercises/${exerciseId}/sets`, {

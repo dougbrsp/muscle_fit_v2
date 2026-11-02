@@ -124,7 +124,7 @@ describe('fachada workout-mode-storage com usuário ativo', () => {
     saveStoredSession(SESSION_A);
     await flushBackendTasks();
     resetOfflineStoreForTests();
-    await activateOfflineUser(2);
+    await activateOfflineUser(2, { verified: true });
     expect(loadStoredSession()).toBeNull();
     saveStoredSession(SESSION_B);
     await flushBackendTasks();
@@ -179,11 +179,11 @@ describe('migração do localStorage legado', () => {
     expect(ls.has(LEGACY_SESSION_KEY)).toBe(false);
   });
 
-  it('sem validação disponível, não atribui a ninguém e descarta', async () => {
+  it('sem validação disponível, não atribui a ninguém e também não apaga a chave legada', async () => {
     ls.set(LEGACY_SESSION_KEY, JSON.stringify(SESSION_A));
     await activateOfflineUser(1);
     expect(loadStoredSession()).toBeNull();
-    expect(ls.has(LEGACY_SESSION_KEY)).toBe(false);
+    expect(ls.has(LEGACY_SESSION_KEY)).toBe(true);
   });
 
   it('erro de rede na validação mantém a chave legada para nova tentativa', async () => {
@@ -236,17 +236,17 @@ describe('purge e logout', () => {
     expect(await backend.list('workout_session', makeKey(1, ''))).toEqual([]);
   });
 
-  it('sobra de outra conta (401 sem purge concluído) é limpa ao ativar o próximo usuário, preservando ops não sincronizadas', async () => {
+  it('login confirmado de OUTRA conta apaga tudo da anterior, inclusive ops não sincronizadas', async () => {
     await activateOfflineUser(1);
     saveStoredSession(SESSION_A);
     await backend.put('op_queue', makeKey(1, 'op:a'), op({ opId: 'a', status: 'error' }));
     await flushBackendTasks();
     resetOfflineStoreForTests(); // recarregou a página: marcador do usuário 1 continua
-    await activateOfflineUser(2);
+    await activateOfflineUser(2, { verified: true });
     await flushBackendTasks();
     expect(loadStoredSession()).toBeNull();
     expect(await backend.get('workout_session', makeKey(1, 'session'))).toBeUndefined();
-    expect(await countUnsyncedOps(1)).toBe(1);
+    expect(await countUnsyncedOps(1)).toBe(0);
     expect(await countUnsyncedOps(2)).toBe(0);
   });
 
@@ -310,5 +310,41 @@ describe('hasActiveWork (contrato da Frente C)', () => {
     setActiveUserId(1);
     expect(await hasActiveWork()).toBe(true);
     off();
+  });
+});
+
+
+describe('último usuário conhecido para abrir offline', () => {
+  it('vale até 7 dias depois do /auth/me 200 e some por ops órfãs ou purge', async () => {
+    const { knownUserForOffline, KNOWN_USER_MAX_AGE_MS } = await import('./scope');
+    const { ORPHAN_FLAG_KEY } = await import('./keys');
+    const t0 = 1_000_000_000_000;
+    expect(knownUserForOffline(t0)).toBeNull(); // nunca confirmado
+    await activateOfflineUser(1, { verified: true });
+    const verifiedAt = Number(ls.get('musclefit.offline.last-verified'));
+    expect(knownUserForOffline(verifiedAt + 1000)).toBe(1);
+    expect(knownUserForOffline(verifiedAt + KNOWN_USER_MAX_AGE_MS + 1)).toBeNull();
+    ls.set(ORPHAN_FLAG_KEY, '1');
+    expect(knownUserForOffline(verifiedAt + 1000)).toBeNull();
+  });
+
+  it('ativação sem verificação (fallback offline) NÃO renova a validade', async () => {
+    await activateOfflineUser(1, { verified: true });
+    const first = ls.get('musclefit.offline.last-verified');
+    resetOfflineStoreForTests();
+    await activateOfflineUser(1);
+    expect(ls.get('musclefit.offline.last-verified')).toBe(first);
+  });
+
+  it('401 (keepUnsynced) com ops pendentes marca o marcador como órfão; logout completo limpa tudo', async () => {
+    const { knownUserForOffline } = await import('./scope');
+    await activateOfflineUser(1, { verified: true });
+    await backend.put('op_queue', makeKey(1, 'op:a'), op({ opId: 'a', status: 'error' }));
+    await purgeOfflineData({ keepUnsynced: true });
+    expect(knownUserForOffline()).toBeNull();
+    expect(ls.get('musclefit.offline.orphan-ops')).toBe('1');
+    await purgeOfflineData();
+    expect(ls.has('musclefit.offline.orphan-ops')).toBe(false);
+    expect(ls.has('musclefit.offline.last-verified')).toBe(false);
   });
 });

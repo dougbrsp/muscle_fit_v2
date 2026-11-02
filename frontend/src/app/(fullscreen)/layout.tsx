@@ -3,8 +3,9 @@
 import { Center, Loader, Text } from '@mantine/core';
 import { useEffect } from 'react';
 import { RecoverableError } from '@/components/RecoverableError';
-import { ApiError, TRANSIENT_ERROR_MESSAGE } from '@/lib/api';
-import { resolveKnownUserId } from '@/lib/offline/scope';
+import { TRANSIENT_ERROR_MESSAGE } from '@/lib/api';
+import { isTransientSessionFailure } from '@/lib/offline/use-offline-user';
+import { knownUserForOffline } from '@/lib/offline/scope';
 import { useSessionGuard } from '@/lib/use-session-guard';
 import { BRAND } from '@/theme';
 
@@ -23,11 +24,11 @@ import { BRAND } from '@/theme';
 export default function FullscreenAuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const { state, error, retry } = useSessionGuard();
 
-  // Sem rede (falha de conexão, status 0 — nunca 401/403/5xx) e com um usuário
-  // já conhecido neste aparelho: abre o treino com os dados locais, sem chamadas
-  // autenticadas além da fila. Ao voltar a rede, revalida a sessão de verdade.
+  // Falha transitória (sem rede ou 5xx — nunca 401/403) com um usuário conhecido
+  // e confirmado há menos de 7 dias neste aparelho: abre o treino com os dados
+  // locais, sem chamadas autenticadas além da fila. Ao voltar a rede, revalida.
   const offlineKnownUser =
-    state === 'unavailable' && error instanceof ApiError && error.status === 0 && resolveKnownUserId() != null;
+    state === 'unavailable' && isTransientSessionFailure(error) && knownUserForOffline() != null;
   useEffect(() => {
     if (!offlineKnownUser) return undefined;
     window.addEventListener('online', retry);

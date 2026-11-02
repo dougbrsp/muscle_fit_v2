@@ -14,6 +14,11 @@ export type StoreName = (typeof STORE_NAMES)[number];
 /** Marcador (só o id numérico, sem dados) do último usuário ativo neste aparelho. */
 export const ACTIVE_USER_MARKER_KEY = 'musclefit.offline.active-user';
 
+/** Quando (epoch ms) o último `GET /auth/me` 200 confirmou o usuário marcado. */
+export const LAST_VERIFIED_KEY = 'musclefit.offline.last-verified';
+/** '1' enquanto o marcador só existe por causa de ops órfãs (sessão encerrada por 401). */
+export const ORPHAN_FLAG_KEY = 'musclefit.offline.orphan-ops';
+
 /** Chaves legadas do localStorage (anteriores ao escopo por usuário). */
 export const LEGACY_SESSION_KEY = 'musclefit.workout-mode-session';
 export const LEGACY_PARKED_KEY = 'musclefit.workout-mode-parked-session';

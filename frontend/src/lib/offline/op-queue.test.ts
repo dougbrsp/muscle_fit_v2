@@ -441,3 +441,151 @@ describe('fila offline: eco do servidor e edição de pendente', () => {
     expect(await queue.editPendingSet(10, 5, 2, { reps: 6 })).toBe('none'); // já sincronizada: PATCH
   });
 });
+
+
+describe('fila offline: exercício criado offline (addExercise + séries encadeadas)', () => {
+  const EX = {
+    kind: 'addExercise' as const,
+    sessionId: 10,
+    exerciseId: null,
+    payload: { original_name: 'Crucifixo', workout_plan_exercise_id: 7002 },
+    clientKey: 'ex:A',
+  };
+
+  it('addExercise recebe id local negativo e as séries (por id local) saem depois dele, uma vez cada', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    clock = 1;
+    const ex = await queue.enqueue(EX);
+    expect(ex.localId).toBeLessThan(0);
+    clock = 2;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: ex.localId as number, clientKey: 'set:A:1' });
+    clock = 3;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: ex.localId as number, clientKey: 'set:A:2', payload: { set_number: 2, reps: 9 } });
+    online = true;
+    await queue.flush();
+    await queue.flush();
+    expect(server.calls.map((c) => [c.kind, c.clientKey, c.exerciseId])).toEqual([
+      ['addExercise', 'ex:A', null],
+      ['addSet', 'set:A:1', 100],
+      ['addSet', 'set:A:2', 100],
+    ]);
+    expect(server.exercises.size).toBe(1);
+    expect(queue.serverExerciseId(ex.localId as number)).toBe(100);
+  });
+
+  it('reenviar o addExercise (resposta perdida) não duplica o exercício', async () => {
+    const server = fakeServer();
+    let lost = true;
+    const lossy: OpTransport = async (op, id) => {
+      const result = await server.transport(op, id);
+      if (lost) {
+        lost = false;
+        throw new HttpError('timeout', 0);
+      }
+      return result;
+    };
+    const queue = createOpQueue({ backend: async () => backend, transport: lossy, now: () => clock, isOnline: () => online });
+    await queue.hydrate(1);
+    await queue.enqueue(EX);
+    await queue.flush();
+    clock += BACKOFF_MS[0] + 1;
+    await queue.flush();
+    expect(server.exercises.size).toBe(1);
+    expect(queue.stateOf('ex:A')).toBe('synced');
+  });
+
+  it('descartar o exercício (manter do servidor) leva junto as séries dele: nada fica preso', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    server.failWith(() => new HttpError('Dados inválidos', 422));
+    const ex = await queue.enqueue(EX);
+    await queue.enqueue({ ...SET_INPUT, exerciseId: ex.localId as number, clientKey: 'set:A:1' });
+    await queue.flush();
+    expect(queue.stateOf('ex:A')).toBe('conflict');
+    await queue.resolveConflict(ex.opId, 'keep_server');
+    expect(queue.getSnapshot().ops).toHaveLength(0);
+    expect(await countUnsyncedOps(1)).toBe(0);
+  });
+
+  it('série cujo exercício de origem sumiu vira conflito "orphan" (só descartar)', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: -4242, clientKey: 'set:?:1' });
+    online = true;
+    await queue.flush();
+    const op = queue.getSnapshot().ops[0];
+    expect(op.status).toBe('conflict');
+    expect(op.conflictKind).toBe('orphan');
+    expect(server.calls).toHaveLength(0);
+  });
+});
+
+describe('fila offline: resolução, descarte e hidratação', () => {
+  it('409 set_number_conflict: "reenviar com o próximo número" reenvia SEM set_number, mesma client_key', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    let first = true;
+    server.failWith(() => {
+      if (!first) return null;
+      first = false;
+      return Object.assign(new HttpError('x', 409), { detail: { code: 'set_number_conflict', message: 'Ocupado', set_number: 2 } });
+    });
+    const op = await queue.enqueue({ ...SET_INPUT, payload: { set_number: 2, reps: 10 } });
+    await queue.flush();
+    expect(queue.getSnapshot().ops[0].conflictKind).toBe('set_number');
+    await queue.resolveConflict(op.opId, 'resend_renumbered');
+    expect(queue.stateOf('set:5:1')).toBe('synced');
+    expect('set_number' in server.calls.at(-1)!.payload).toBe(false);
+    expect(server.calls.at(-1)?.clientKey).toBe('set:5:1');
+  });
+
+  it('whenSettled: descartada = discarded (não é sucesso); confirmada por fora = synced', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    server.failWith(() => new HttpError('Dados inválidos', 422));
+    const a = await queue.enqueue(SET_INPUT);
+    await queue.flush();
+    const waitA = queue.whenSettled('set:5:1');
+    // conflito já é um estado final
+    expect(await waitA).toBe('conflict');
+    await queue.resolveConflict(a.opId, 'keep_server');
+    expect(await queue.whenSettled('set:5:1')).toBe('discarded');
+
+    await queue.enqueue({ ...SET_INPUT, clientKey: 'set:5:2' });
+    await queue.flush();
+    await queue.discardConfirmed('set:5:2');
+    expect(await queue.whenSettled('set:5:2')).toBe('synced');
+  });
+
+  it('enqueue durante a hidratação não perde a op (mescla com o que veio do disco)', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    const hydrating = queue.hydrate(1);
+    online = false;
+    await queue.enqueue(SET_INPUT);
+    await hydrating;
+    expect(queue.getSnapshot().ops.map((op) => op.clientKey)).toEqual(['set:5:1']);
+  });
+
+  it('op mais velha que o TTL (30 dias) é descartada na reabertura', async () => {
+    const { OP_TTL_MS } = await import('./op-queue');
+    const server = fakeServer();
+    const old = build(server);
+    await old.hydrate(1);
+    online = false;
+    await old.enqueue(SET_INPUT);
+    clock += OP_TTL_MS + 1000;
+    const reopened = build(server);
+    await reopened.hydrate(1);
+    expect(reopened.getSnapshot().ops).toHaveLength(0);
+    expect(await countUnsyncedOps(1)).toBe(0);
+  });
+});

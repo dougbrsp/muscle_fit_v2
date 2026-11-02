@@ -17,7 +17,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { formatStrengthLoadRange } from '@/lib/exercise-briefing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, isTransientApiError } from '@/lib/api';
 import { overlayQueuedSets } from '@/lib/offline/overlay';
 import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
@@ -1312,6 +1312,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }
 
   // ── Lançamento de séries ────────────────────────────────────────────────
+  const exerciseKeysRef = useRef(new Map<string, string>());
   const ensureExerciseMutation = useMutation({
     // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
     networkMode: 'always',
@@ -1328,16 +1329,46 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           ? planItemId
           : (midExerciseExtras.find((extra) => extra.localId === planItemId)?.originalWorkoutPlanExerciseId ?? null);
 
-      const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
-        method: 'POST',
-        body: JSON.stringify({
-          original_name: effectiveExerciseName,
-          mapping_id: effectiveMappingId,
-          equipment_id: effectiveEquipmentLinkId,
-          workout_plan_exercise_id: workoutPlanExerciseId,
-        }),
-      });
-      return created.exercise_id;
+      // `client_key` do exercício: estável entre tentativas (o servidor deduplica por
+      // ela), então reenviar ou enfileirar nunca cria um segundo exercício.
+      const slot = `${session.session_id}#${workoutPlanExerciseId ?? effectiveExerciseName}`;
+      let exerciseKey = exerciseKeysRef.current.get(slot);
+      if (!exerciseKey) {
+        exerciseKey = newIdempotencyKey();
+        exerciseKeysRef.current.set(slot, exerciseKey);
+      }
+      const queuedExercise = opQueue.findExerciseOp(exerciseKey);
+      if (queuedExercise) {
+        // Já está na fila offline: usa o id real se o servidor já respondeu, senão o id LOCAL.
+        const realId = (queuedExercise.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
+        return typeof realId === 'number' ? realId : (queuedExercise.localId as number);
+      }
+      const exerciseBody = {
+        original_name: effectiveExerciseName,
+        mapping_id: effectiveMappingId,
+        equipment_id: effectiveEquipmentLinkId,
+        workout_plan_exercise_id: workoutPlanExerciseId,
+        client_key: exerciseKey,
+      };
+      try {
+        const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
+          method: 'POST',
+          body: JSON.stringify(exerciseBody),
+        });
+        return created.exercise_id;
+      } catch (error) {
+        if (!isTransientApiError(error)) throw error;
+        // Sem rede/serviço: o exercício entra na fila (mesma client_key) e a tela segue
+        // com um id local até o servidor confirmar; as séries ficam atrás dele (FIFO).
+        const queued = await opQueue.enqueue({
+          kind: 'addExercise',
+          sessionId: session.session_id,
+          exerciseId: null,
+          payload: exerciseBody,
+          clientKey: exerciseKey,
+        });
+        return queued.localId as number;
+      }
     },
   });
 
@@ -2392,8 +2423,16 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         // Só na fila offline: continua "salvando" (nunca "salva") até o servidor
         // confirmar com 2xx; um conflito vira erro com "Tentar de novo".
         const outcomes = await Promise.all(queuedKeys.map((key) => opQueue.whenSettled(key)));
-        if (outcomes.includes('conflict')) {
-          dispatch({ type: 'SAVE_FAILED', clientKey: record.clientKey, error: SAVE_SET_ERROR });
+        // Só 'synced' (2xx, inclusive confirmado por fora da fila) é sucesso: descartada
+        // pelo usuário ou apagada por logout/troca de conta NÃO é série salva.
+        if (outcomes.some((outcome) => outcome !== 'synced')) {
+          dispatch({
+            type: 'SAVE_FAILED',
+            clientKey: record.clientKey,
+            error: outcomes.includes('conflict')
+              ? SAVE_SET_ERROR
+              : 'Esta série foi descartada neste aparelho e não foi salva. Registre de novo.',
+          });
           return;
         }
       }

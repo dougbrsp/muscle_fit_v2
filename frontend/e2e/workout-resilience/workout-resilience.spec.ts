@@ -295,3 +295,129 @@ test('reabrir 100% offline restaura a tela do exercicio, aceita nova serie e sin
   for (const p of api.setPosts.filter((x) => x.status === 200)) keys.set(p.client_key, (keys.get(p.client_key) ?? 0) + 1);
   expect(Array.from(keys.values()).every((n) => n === 1)).toBe(true);
 });
+
+async function seedCrucifixoOnly(page: Page) {
+  // Fila do treino so com o Crucifixo (item 7002), cujo exercicio ainda NAO existe no servidor.
+  await page.addInitScript((session) => {
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, cancelled_exercise_ids: [7001, 7003] }),
+    );
+  }, LEGACY_SESSION);
+}
+
+test('exercicio novo offline: addExercise + series na fila, e ao reconectar 1 exercicio e N series sem duplicata', async ({
+  page,
+  context,
+}) => {
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await expect(page.getByTestId('set-save')).toBeVisible();
+
+  api.setNetworkDown(true);
+  await context.setOffline(true);
+  await logSet(page, 12, 20);
+  await expect(page.getByTestId('set-local-chip')).toContainText('salva no aparelho');
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+  await expect(page.getByText(/SÉRIE 2 DE 3/i)).toBeVisible(); // a tela ja conta as series locais
+  await logSet(page, 11, 20);
+  await expect(page.getByTestId('set-local-chip')).toContainText('salva no aparelho');
+  expect(api.exercisePosts).toHaveLength(0);
+  const queued = (await idbKeys(page)).filter((k) => k.startsWith('op_queue/'));
+  expect(queued).toHaveLength(3); // 1 addExercise + 2 addSet
+
+  api.setNetworkDown(false);
+  await context.setOffline(false);
+  await expect.poll(() => api.crucifixoSets().length, { timeout: 40_000 }).toBe(2);
+  expect(new Set(api.exercisePosts.map((p) => p.client_key)).size).toBe(1);
+  expect(api.exercisePosts.filter((p) => !p.duplicate)).toHaveLength(1);
+  const perKey = new Map<string, number>();
+  for (const post of api.setPosts.filter((p) => p.status === 200)) perKey.set(post.client_key, (perKey.get(post.client_key) ?? 0) + 1);
+  expect(Array.from(perKey.values()).every((n) => n === 1)).toBe(true);
+  expect(perKey.size).toBe(2);
+  await expect(page.getByTestId('sync-indicator')).toHaveCount(0, { timeout: 20_000 });
+});
+
+test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
+  await openWorkout(page);
+  api.setAuthMeStatus(503);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForTimeout(6000); // retries do GET + revalidacao
+  await expect(page.getByTestId('set-save')).toBeVisible();
+  await expect(page.getByText('Não foi possível abrir o treino')).toHaveCount(0);
+  await logSet(page, 10, 40);
+  await expect.poll(() => api.serverSets().length).toBe(1);
+});
+
+test('reabrir com /auth/me em 503 usa o usuario conhecido (recente) e mostra o aviso offline', async ({ page }) => {
+  await openWorkout(page);
+  api.setAuthMeStatus(503);
+  await page.reload();
+  await expect(page.getByTestId('offline-banner')).toContainText('Offline', { timeout: 30_000 });
+  await expect(page.getByTestId('set-save').or(page.getByRole('button', { name: /iniciar exercício/i }))).toBeVisible({
+    timeout: 30_000,
+  });
+});
+
+test('401 em /auth/me nunca usa o fallback offline', async ({ page }) => {
+  await openWorkout(page);
+  api.setAuthMeStatus(401);
+  await page.reload();
+  await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+  await expect(page.getByTestId('set-save')).toHaveCount(0);
+});
+
+test('duas abas: a segunda avisa "treino aberto em outra aba" e assume ao fechar a primeira', async ({ page, context }) => {
+  await openWorkout(page);
+  const second = await context.newPage();
+  const secondApi = await installWorkoutApi(second);
+  void secondApi;
+  await second.goto('/modo-treino/');
+  await expect(second.getByTestId('tab-locked-notice')).toContainText('outra aba', { timeout: 20_000 });
+  await expect(second.getByTestId('set-save')).toHaveCount(0);
+
+  await page.close();
+  await expect(second.getByTestId('tab-locked-notice')).toHaveCount(0, { timeout: 30_000 });
+  await expect(second.getByTestId('set-save').or(second.getByRole('button', { name: /iniciar exercício/i }))).toBeVisible({
+    timeout: 30_000,
+  });
+});
+
+test('Modo Intensivo offline: fica "salvando" ate o 2xx; recusa do servidor vira erro e descartar nunca vira "salva"', async ({
+  page,
+  context,
+}) => {
+  await page.addInitScript((session) => {
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, advanced_mode: true, cancelled_exercise_ids: [7001, 7002] }),
+    );
+  }, LEGACY_SESSION);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await page.getByTestId('intensive-start').click();
+  await page.getByTestId('intensive-reps-input').fill('10');
+  // 1a serie ja cria o exercicio; o corte de rede vem so depois dele existir.
+  await page.getByTestId('intensive-complete-set').click();
+  await expect.poll(() => api.fstBodies.length).toBe(1);
+  await page.getByTestId('rest-primary-cta').click();
+
+  api.setNetworkDown(true);
+  await context.setOffline(true);
+  await page.getByTestId('intensive-reps-input').fill('9');
+  await page.getByTestId('intensive-complete-set').click();
+  await expect(page.getByTestId('sync-indicator')).toContainText('aguardando envio');
+  expect(api.fstBodies).toHaveLength(1);
+
+  api.setNetworkDown(false);
+  api.failNextSetPosts(1000, 422);
+  await context.setOffline(false);
+  await expect(page.getByTestId('sync-indicator')).toContainText('Não foi possível enviar', { timeout: 40_000 });
+  expect(api.fstBodies).toHaveLength(1); // nada foi gravado
+
+  // Descartar (manter o do servidor) nao e sucesso: a serie segue sem estar salva.
+  await page.getByRole('button', { name: 'Manter o do servidor' }).click();
+  await expect(page.getByTestId('sync-indicator')).toHaveCount(0);
+  expect(api.fstBodies).toHaveLength(1); // descartada: nunca virou serie salva no servidor
+});

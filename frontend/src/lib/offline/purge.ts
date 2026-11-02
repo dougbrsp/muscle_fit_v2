@@ -5,7 +5,15 @@
 import { getOfflineBackend } from './backend';
 import { ACTIVE_USER_MARKER_KEY, LEGACY_PARKED_KEY, LEGACY_SESSION_KEY, STORE_NAMES, makeKey, userPrefix } from './keys';
 import { OP_KEY_PREFIX, isUnsyncedOp, type OfflineOp } from './op-types';
-import { enqueueBackendTask, getActiveUserId, notifyOfflinePurge, resolveKnownUserId, setActiveUserId } from './scope';
+import {
+  clearVerification,
+  enqueueBackendTask,
+  getActiveUserId,
+  notifyOfflinePurge,
+  resolveKnownUserId,
+  setActiveUserId,
+  setOrphanFlag,
+} from './scope';
 
 /** Quantas operações do usuário ainda não foram confirmadas pelo servidor. */
 export async function countUnsyncedOps(userId: number | null = resolveKnownUserId()): Promise<number> {
@@ -39,7 +47,14 @@ export function purgeOfflineUser(userId: number, options: { keepUnsynced?: boole
       }
       await backend.deletePrefix(store, prefix);
     }
-    if (kept === 0 && resolveKnownUserId() === userId) setActiveUserId(null);
+    if (kept === 0 && resolveKnownUserId() === userId) {
+      setActiveUserId(null);
+      setOrphanFlag(false);
+      clearVerification();
+    } else if (kept > 0 && resolveKnownUserId() === userId) {
+      // O marcador resta só por ops órfãs: não serve para abrir o treino offline.
+      setOrphanFlag(true);
+    }
   });
 }
 
@@ -66,6 +81,8 @@ export function purgeOfflineData(options: { keepUnsynced?: boolean } = {}): Prom
     } catch {
       // ignore
     }
+    clearVerification();
+    setOrphanFlag(false);
   }
   return purgeOfflineUser(userId, options).catch(() => undefined);
 }

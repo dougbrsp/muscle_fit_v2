@@ -143,7 +143,10 @@ function prefixRange(prefix: string): IDBKeyRange {
   return IDBKeyRange.bound(prefix, `${prefix}￿`);
 }
 
-export function openIndexedDbBackend(factory: IDBFactory): Promise<OfflineBackend> {
+/** Espera máxima por outra aba liberar o banco numa atualização de esquema (política técnica). */
+export const IDB_BLOCKED_TIMEOUT_MS = 10_000;
+
+function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     let opened: IDBOpenDBRequest;
     try {
@@ -152,47 +155,93 @@ export function openIndexedDbBackend(factory: IDBFactory): Promise<OfflineBacken
       reject(error);
       return;
     }
+    // Outra aba ainda segura uma versão antiga: ela recebe `versionchange` e fecha;
+    // aqui só esperamos (não caímos para o localStorage escondendo os dados).
+    let blocked: ReturnType<typeof setTimeout> | null = null;
+    opened.onblocked = () => {
+      blocked ??= setTimeout(() => reject(new Error('Abertura do IndexedDB bloqueada por outra aba.')), IDB_BLOCKED_TIMEOUT_MS);
+    };
     opened.onupgradeneeded = (event) => {
       const tx = opened.transaction;
       if (tx) runMigrations(opened.result, tx, event.oldVersion, event.newVersion ?? DB_VERSION);
     };
-    opened.onblocked = () => reject(new Error('Abertura do IndexedDB bloqueada.'));
-    opened.onerror = () => reject(opened.error ?? new Error('Não foi possível abrir o IndexedDB.'));
+    opened.onerror = () => {
+      if (blocked) clearTimeout(blocked);
+      reject(opened.error ?? new Error('Não foi possível abrir o IndexedDB.'));
+    };
     opened.onsuccess = () => {
-      const db = opened.result;
-      // Outra aba pediu upgrade: fecha para não bloqueá-la.
-      db.onversionchange = () => db.close();
-      resolve({
-        kind: 'indexeddb',
-        async get(store, key) {
-          const tx = db.transaction(store, 'readonly');
-          return (await request(tx.objectStore(store).get(key))) as unknown;
-        },
-        async put(store, key, value) {
-          const tx = db.transaction(store, 'readwrite');
-          tx.objectStore(store).put(value, key);
-          await done(tx);
-        },
-        async delete(store, key) {
-          const tx = db.transaction(store, 'readwrite');
-          tx.objectStore(store).delete(key);
-          await done(tx);
-        },
-        async list(store, prefix) {
-          const tx = db.transaction(store, 'readonly');
-          const os = tx.objectStore(store);
-          const range = prefixRange(prefix);
-          const [keys, values] = await Promise.all([request(os.getAllKeys(range)), request(os.getAll(range))]);
-          return keys.map((key, index) => ({ key: String(key), value: values[index] as unknown }));
-        },
-        async deletePrefix(store, prefix) {
-          const tx = db.transaction(store, 'readwrite');
-          tx.objectStore(store).delete(prefixRange(prefix));
-          await done(tx);
-        },
-      });
+      if (blocked) clearTimeout(blocked);
+      resolve(opened.result);
     };
   });
+}
+
+export async function openIndexedDbBackend(factory: IDBFactory): Promise<OfflineBackend> {
+  let db = await openDatabase(factory);
+  let closed = false;
+  const watch = (database: IDBDatabase) => {
+    // Outra aba pediu upgrade/exclusão: fecha para não bloqueá-la e reabre na próxima operação.
+    database.onversionchange = () => {
+      closed = true;
+      database.close();
+    };
+    database.onclose = () => {
+      closed = true;
+    };
+  };
+  watch(db);
+
+  async function run<T>(operation: (database: IDBDatabase) => Promise<T>): Promise<T> {
+    if (closed) {
+      db = await openDatabase(factory);
+      closed = false;
+      watch(db);
+    }
+    try {
+      return await operation(db);
+    } catch (error) {
+      if ((error as { name?: string } | null)?.name !== 'InvalidStateError') throw error;
+      db = await openDatabase(factory);
+      closed = false;
+      watch(db);
+      return operation(db);
+    }
+  }
+
+  return {
+    kind: 'indexeddb',
+    get: (store, key) =>
+      run(async (database) => {
+        const tx = database.transaction(store, 'readonly');
+        return (await request(tx.objectStore(store).get(key))) as unknown;
+      }),
+    put: (store, key, value) =>
+      run(async (database) => {
+        const tx = database.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value, key);
+        await done(tx);
+      }),
+    delete: (store, key) =>
+      run(async (database) => {
+        const tx = database.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        await done(tx);
+      }),
+    list: (store, prefix) =>
+      run(async (database) => {
+        const tx = database.transaction(store, 'readonly');
+        const os = tx.objectStore(store);
+        const range = prefixRange(prefix);
+        const [keys, values] = await Promise.all([request(os.getAllKeys(range)), request(os.getAll(range))]);
+        return keys.map((key, index) => ({ key: String(key), value: values[index] as unknown }));
+      }),
+    deletePrefix: (store, prefix) =>
+      run(async (database) => {
+        const tx = database.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(prefixRange(prefix));
+        await done(tx);
+      }),
+  };
 }
 
 // ---------------------------------------------------------------------------
