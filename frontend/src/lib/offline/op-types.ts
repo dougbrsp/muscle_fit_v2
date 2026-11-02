@@ -22,6 +22,8 @@ export type OfflineOp = {
   status: OpStatus;
   /** Epoch ms da próxima tentativa (backoff); ausente = elegível agora. */
   nextAttemptAt?: number;
+  /** Por que está em conflito (decide as ações oferecidas ao usuário). */
+  conflictKind?: 'echo_mismatch' | 'set_number' | 'http';
   /** Mensagem recuperável da última falha (nunca mostrada como sucesso). */
   lastError?: string | null;
   /** Resposta do servidor quando `synced` (para conciliar a tela). */

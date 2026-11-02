@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '@/lib/api';
 import { overlayQueuedSets } from '@/lib/offline/overlay';
+import { fetchWithSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
 import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
 import { postSetOrQueue } from './offline-set-post';
@@ -555,7 +556,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
-    queryFn: () => apiFetch<ActivityDetail>(`/activities/${session.session_id}`),
+    // Offline reabre com o último retrato do servidor (`fetchWithSnapshot`).
+    networkMode: 'always',
+    queryFn: () =>
+      fetchWithSnapshot(`activity:${session.session_id}`, () => apiFetch<ActivityDetail>(`/activities/${session.session_id}`)),
     refetchOnMount: 'always',
   });
 
@@ -563,13 +567,21 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     // Com `session_id`: numa sessão de deload a ficha já vem com a prescrição
     // de deload desde a 1ª série e sem técnica (dono `domain/deload.py`).
     queryKey: workoutModePlanQueryKey(session.workout_plan_id, session.session_id),
-    queryFn: () => apiFetch<WorkoutPlanDetail>(workoutModePlanPath(Number(session.workout_plan_id), session.session_id)),
+    networkMode: 'always',
+    queryFn: () =>
+      fetchWithSnapshot(`plan:${session.workout_plan_id}:${session.session_id}`, () =>
+        apiFetch<WorkoutPlanDetail>(workoutModePlanPath(Number(session.workout_plan_id), session.session_id)),
+      ),
     enabled: Boolean(session.workout_plan_id),
   });
 
   const gymEquipmentQuery = useQuery({
     queryKey: ['workout-mode-plan-gym-equipment', session.gym_id],
-    queryFn: () => apiFetch<ApiList<GymEquipmentLink>>(`/gym-equipment?gym_id=${session.gym_id}&active_only=true`),
+    networkMode: 'always',
+    queryFn: () =>
+      fetchWithSnapshot(`gym-equipment:${session.gym_id}`, () =>
+        apiFetch<ApiList<GymEquipmentLink>>(`/gym-equipment?gym_id=${session.gym_id}&active_only=true`),
+      ),
     enabled: Boolean(session.gym_id),
   });
 
@@ -1678,6 +1690,13 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // PATCH de uma série gravada (confirmação de reps pendentes / correção).
   // 409 = sessão já finalizada; 404 = série sumiu: viram mensagem legível.
   async function patchSessionSet(exerciseId: number, setNumber: number, body: Record<string, number>) {
+    // Série ainda só na fila offline: edita a operação pendente (mesma client_key)
+    // em vez de mandar um PATCH para uma série que o servidor ainda não conhece.
+    const pendingEdit = await opQueue.editPendingSet(session.session_id, exerciseId, setNumber, body);
+    if (pendingEdit === 'edited') return;
+    if (pendingEdit === 'in_flight') {
+      throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
+    }
     try {
       await apiFetch(`/workout-sessions/${session.session_id}/exercises/${exerciseId}/sets/${setNumber}`, {
         method: 'PATCH',

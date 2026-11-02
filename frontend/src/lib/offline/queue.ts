@@ -3,6 +3,7 @@
 
 import { createOpQueue } from './op-queue';
 import { apiOpTransport } from './op-transport';
+import { loadSnapshots } from './snapshots';
 import { activateOfflineUser, type ActivateOptions, type StorageStatus } from './session-store';
 
 export const opQueue = createOpQueue({ transport: apiOpTransport });
@@ -10,5 +11,6 @@ export const opQueue = createOpQueue({ transport: apiOpTransport });
 export async function activateOffline(userId: number, options: ActivateOptions = {}): Promise<StorageStatus> {
   const status = await activateOfflineUser(userId, options);
   await opQueue.hydrate(userId);
+  await loadSnapshots(userId);
   return status;
 }

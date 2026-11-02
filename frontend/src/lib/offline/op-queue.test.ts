@@ -370,3 +370,74 @@ describe('fila offline: apoio à tela', () => {
     expect(queue.stateOf('set:5:1')).toBe('synced');
   });
 });
+
+describe('fila offline: eco do servidor e edição de pendente', () => {
+  function serverWithEcho(echo: Record<string, unknown>): OpTransport {
+    return async () => ({ response: { status: 'ok', duplicate: true, set_number: 2, ...echo } });
+  }
+  async function run(transport: OpTransport) {
+    const queue = createOpQueue({ backend: async () => backend, transport, now: () => clock, isOnline: () => online });
+    await queue.hydrate(1);
+    await queue.enqueue(SET_INPUT);
+    await queue.flush();
+    return queue;
+  }
+
+  it('replay com valores gravados diferentes vira conflict (echo_mismatch), nunca synced', async () => {
+    const queue = await run(serverWithEcho({ reps: 8, weight_kg: 40, set_type: 'working', rpe: 8 }));
+    const op = queue.getSnapshot().ops[0];
+    expect(op.status).toBe('conflict');
+    expect(op.conflictKind).toBe('echo_mismatch');
+    expect(op.lastError).toContain('repetições');
+  });
+
+  it('eco igual (inclusive tipos string/number) ou ausente não gera conflito', async () => {
+    expect((await run(serverWithEcho({ reps: 10, weight_kg: '40.00' }))).stateOf('set:5:1')).toBe('synced');
+    expect((await run(serverWithEcho({}))).stateOf('set:5:1')).toBe('synced');
+  });
+
+  it('eco em criação nova (duplicate:false) não é comparado', async () => {
+    const queue = await run(async () => ({ response: { status: 'ok', duplicate: false, reps: 99 } }));
+    expect(queue.stateOf('set:5:1')).toBe('synced');
+  });
+
+  it('409 set_number_conflict vira conflict recuperável com a mensagem do servidor', async () => {
+    const error = Object.assign(new HttpError('x', 409), {
+      detail: { code: 'set_number_conflict', message: 'Já existe a série 2.', set_number: 2 },
+    });
+    const queue = await run(async () => {
+      throw error;
+    });
+    const op = queue.getSnapshot().ops[0];
+    expect(op.status).toBe('conflict');
+    expect(op.conflictKind).toBe('set_number');
+    expect(op.lastError).toBe('Já existe a série 2.');
+  });
+
+  it('editar série pendente atualiza a MESMA op (mesma client_key), sem criar outra', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    const first = await queue.enqueue(SET_INPUT);
+    const edited = await queue.enqueue({ ...SET_INPUT, payload: { ...SET_INPUT.payload, reps: 9 } });
+    expect(edited.opId).toBe(first.opId);
+    expect(queue.getSnapshot().ops).toHaveLength(1);
+    expect(queue.getSnapshot().ops[0].payload.reps).toBe(9);
+    expect(await queue.editPendingSet(10, 5, 2, { reps: 7 })).toBe('none');
+  });
+
+  it('editPendingSet altera o corpo pendente por set_number e envia só a versão final', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    await queue.enqueue({ ...SET_INPUT, payload: { set_number: 2, reps: 10, weight_kg: 40 } });
+    expect(await queue.editPendingSet(10, 5, 2, { reps: 8 })).toBe('edited');
+    online = true;
+    await queue.flush();
+    expect(server.calls).toHaveLength(1);
+    expect(server.calls[0].payload).toMatchObject({ set_number: 2, reps: 8, weight_kg: 40 });
+    expect(await queue.editPendingSet(10, 5, 2, { reps: 6 })).toBe('none'); // já sincronizada: PATCH
+  });
+});

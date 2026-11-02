@@ -14,6 +14,7 @@
 
 import { getOfflineBackend, type OfflineBackend } from './backend';
 import { makeKey } from './keys';
+import { describeEchoMismatch } from './echo';
 import { OP_KEY_PREFIX, isUnsyncedOp, type OfflineOp, type OpKind, type OpStatus } from './op-types';
 import { enqueueBackendTask, onOfflinePurge } from './scope';
 
@@ -70,7 +71,17 @@ function defaultId(): string {
 }
 
 function errorMessage(error: unknown): string {
+  const detail = (error as { detail?: unknown } | null)?.detail;
+  if (detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string') {
+    return (detail as { message: string }).message;
+  }
   return error instanceof Error && error.message ? error.message : 'Falha ao sincronizar.';
+}
+
+/** 409 `set_number_conflict`: outro registro ocupa esse número de série no servidor. */
+function isSetNumberConflict(error: unknown): boolean {
+  const detail = (error as { detail?: unknown } | null)?.detail;
+  return Boolean(detail) && typeof detail === 'object' && (detail as { code?: unknown }).code === 'set_number_conflict';
 }
 
 function groupOf(op: OfflineOp): string {
@@ -177,11 +188,67 @@ export function createOpQueue(deps: OpQueueDeps) {
     emit();
   }
 
+  function isEditable(op: OfflineOp): boolean {
+    return op.status === 'saved_local' || op.status === 'error' || op.status === 'conflict';
+  }
+
+  function samePayload(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  /** Troca o corpo de uma op ainda não enviada (mesma client_key) e a recoloca na fila. */
+  async function replacePayload(op: OfflineOp, payload: Record<string, unknown>): Promise<void> {
+    const next: OfflineOp = {
+      ...op,
+      payload,
+      status: 'saved_local',
+      conflictKind: undefined,
+      lastError: null,
+      nextAttemptAt: undefined,
+    };
+    await persistOp(next);
+    replace(next);
+  }
+
+  /**
+   * Edita uma série AINDA PENDENTE (mesma client_key, sem nova op).
+   * 'edited' = corpo atualizado na fila; 'in_flight' = o envio está em curso (tente
+   * de novo em instantes); 'none' = não está pendente (use o PATCH ao servidor).
+   */
+  async function editPendingSet(
+    sessionId: number,
+    exerciseId: number,
+    setNumber: number,
+    patch: Record<string, unknown>,
+  ): Promise<'edited' | 'in_flight' | 'none'> {
+    const op = ops.find(
+      (candidate) =>
+        candidate.kind === 'addSet' &&
+        candidate.sessionId === sessionId &&
+        candidate.exerciseId === exerciseId &&
+        candidate.payload.set_number === setNumber &&
+        candidate.status !== 'synced',
+    );
+    if (!op) return 'none';
+    if (op.status === 'syncing') return 'in_flight';
+    await replacePayload(op, { ...op.payload, ...patch });
+    void flush();
+    return 'edited';
+  }
+
   /** Grava a op no aparelho. Só resolve depois de gravada; rejeita se não conseguiu (a tela NÃO mostra "salvo"). */
   async function enqueue(input: OpInput): Promise<OfflineOp> {
     if (userId == null) throw new Error('Nenhum usuário ativo para gravar a operação.');
     const existing = ops.find((op) => op.kind === input.kind && op.sessionId === input.sessionId && op.clientKey === input.clientKey);
-    if (existing) return existing; // mesma chave = mesma operação (duplo toque, remontagem)
+    if (existing) {
+      // Mesma chave = mesma operação (duplo toque, remontagem, edição): atualiza o
+      // corpo se ainda não saiu; em voo/sincronizada devolve a op como está.
+      if (isEditable(existing) && !samePayload(existing.payload, input.payload)) {
+        await replacePayload(existing, input.payload);
+        void flush();
+      }
+      return ops.find((op) => op.opId === existing.opId) ?? existing;
+    }
     const op: OfflineOp = {
       opId: newId(),
       userId,
@@ -240,6 +307,21 @@ export function createOpQueue(deps: OpQueueDeps) {
       try {
         const result = await deps.transport(syncing, exerciseId);
         if (myGeneration !== generation) return;
+        // Replay com a mesma chave mas conteúdo diferente: nunca vira "sincronizado".
+        const mismatch = syncing.kind === 'addSet' ? describeEchoMismatch(syncing.payload, result.response) : null;
+        if (mismatch) {
+          const clash: OfflineOp = {
+            ...syncing,
+            status: 'conflict',
+            conflictKind: 'echo_mismatch',
+            lastError: mismatch,
+            serverResponse: result.response,
+          };
+          replace(clash);
+          await persistOp(clash).catch(() => undefined);
+          blocked.add(group);
+          continue;
+        }
         const done: OfflineOp = {
           ...syncing,
           status: 'synced',
@@ -261,7 +343,12 @@ export function createOpQueue(deps: OpQueueDeps) {
         }
         const failed: OfflineOp =
           kind === 'conflict'
-            ? { ...syncing, status: 'conflict', lastError: errorMessage(error) }
+            ? {
+                ...syncing,
+                status: 'conflict',
+                conflictKind: isSetNumberConflict(error) ? 'set_number' : 'http',
+                lastError: errorMessage(error),
+              }
             : {
                 ...syncing,
                 status: 'error',
@@ -391,6 +478,7 @@ export function createOpQueue(deps: OpQueueDeps) {
     flush,
     retry,
     resolveConflict,
+    editPendingSet,
     start,
     stateOf,
     whenSettled,
