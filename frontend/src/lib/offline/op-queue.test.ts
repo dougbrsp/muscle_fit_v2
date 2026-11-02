@@ -589,3 +589,73 @@ describe('fila offline: resolução, descarte e hidratação', () => {
     expect(await countUnsyncedOps(1)).toBe(0);
   });
 });
+
+
+describe('fila offline: identidade do exercício (local -> real)', () => {
+  const EXO = {
+    kind: 'addExercise' as const,
+    sessionId: 10,
+    exerciseId: null,
+    payload: { original_name: 'Crucifixo' },
+    clientKey: 'ex:A',
+  };
+
+  it('editPendingSet acha a série pelo id local E pelo id real (antes e depois de o servidor responder)', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    const ex = await queue.enqueue(EXO);
+    const local = ex.localId as number;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: local, clientKey: 'set:A:1', payload: { set_number: 1, reps: 10 } });
+    // Antes do sync: o id local edita a op pendente.
+    expect(await queue.editPendingSet(10, local, 1, { reps: 8 })).toBe('edited');
+    expect(queue.getSnapshot().ops.find((op) => op.clientKey === 'set:A:1')?.payload.reps).toBe(8);
+
+    // Exercício confirmado, série ainda pendente (travada, ex.: erro): o id REAL também acha a op.
+    server.failWith(() => new HttpError('x', 500));
+    online = true;
+    await queue.flush();
+    expect(queue.stateOf('ex:A')).toBe('error');
+    server.failWith(null);
+    clock += BACKOFF_MS[0] + 1;
+    await queue.flush(); // exercício sincroniza; a série vai atrás
+    clock += BACKOFF_MS[1] + 1;
+    await queue.flush();
+    const real = queue.serverExerciseId(local) as number;
+    expect(real).toBe(100);
+    // Já sincronizada: 'none' (o PATCH ao servidor é o caminho), mas pelas duas formas de id.
+    expect(await queue.editPendingSet(10, local, 1, { reps: 7 })).toBe('none');
+    expect(await queue.editPendingSet(10, real, 1, { reps: 7 })).toBe('none');
+  });
+
+  it('com a série ainda pendente depois de o exercício ser confirmado, o id real edita a mesma op', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = true;
+    // Exercício sincroniza; a série fica em erro (500) e continua pendente.
+    const ex = await queue.enqueue(EXO);
+    await queue.flush();
+    server.failWith(() => new HttpError('x', 500));
+    await queue.enqueue({ ...SET_INPUT, exerciseId: ex.localId as number, clientKey: 'set:A:1', payload: { set_number: 1, reps: 10 } });
+    await queue.flush();
+    expect(queue.stateOf('set:A:1')).toBe('error');
+    const real = queue.serverExerciseId(ex.localId as number) as number;
+    expect(await queue.editPendingSet(10, real, 1, { reps: 6 })).toBe('edited');
+    expect(queue.getSnapshot().ops.find((op) => op.clientKey === 'set:A:1')?.payload.reps).toBe(6);
+  });
+
+  it('toServerExerciseId: negativo vira o real (ou null se não confirmado); positivo passa direto', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    const ex = await queue.enqueue(EXO);
+    expect(queue.toServerExerciseId(ex.localId as number)).toBeNull();
+    expect(queue.toServerExerciseId(501)).toBe(501);
+    online = true;
+    await queue.flush();
+    expect(queue.toServerExerciseId(ex.localId as number)).toBe(100);
+  });
+});

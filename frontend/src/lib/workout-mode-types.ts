@@ -224,6 +224,9 @@ export type StoredWorkoutModeSession = {
   // confirmadas e o descanso do bloco). Validado na leitura por
   // `reconcileIntensiveBlock`, que também cruza com o servidor.
   intensive_blocks?: Record<number, IntensiveBlockState>;
+  // `client_key` do exercício por item do plano (`<sessão>#<item ou nome>`): a remontagem
+  // reaproveita a MESMA chave, então um addExercise reenviado nunca cria outro exercício.
+  exercise_client_keys?: Record<string, string>;
 };
 
 // Persistência em localStorage (load/save/park/clear e a preferência da IA por

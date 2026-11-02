@@ -20,7 +20,11 @@ type LocksApi = {
   ) => Promise<unknown>;
 };
 
+// Ressalva (política, não regra de treino): uma aba da conta A que ficou aberta durante a troca
+// para a conta B pode regravar ops de A; o servidor recusa por posse (404/403), e a op vira conflito.
 let heldFor: number | null = null;
+/** UM pedido de lock pendente por usuário: "Tentar de novo" e remontagens reutilizam a mesma espera. */
+const pendingOwner = new Map<number, Promise<void>>();
 
 function locksApi(): LocksApi | null {
   if (typeof navigator === 'undefined') return null;
@@ -38,13 +42,18 @@ export function acquireWriterLock(userId: number): Promise<WriterLock> {
   return new Promise((resolve) => {
     void locks.request(name, { ifAvailable: true }, (lock) => {
       if (!lock) {
-        const whenOwner = new Promise<void>((becameOwner) => {
-          void locks.request(name, {}, () => {
-            heldFor = userId;
-            becameOwner();
-            return new Promise<never>(() => undefined);
+        let whenOwner = pendingOwner.get(userId);
+        if (!whenOwner) {
+          whenOwner = new Promise<void>((becameOwner) => {
+            void locks.request(name, {}, () => {
+              heldFor = userId;
+              pendingOwner.delete(userId);
+              becameOwner();
+              return new Promise<never>(() => undefined);
+            });
           });
-        });
+          pendingOwner.set(userId, whenOwner);
+        }
         resolve({ role: 'follower', whenOwner });
         return undefined;
       }
@@ -58,4 +67,5 @@ export function acquireWriterLock(userId: number): Promise<WriterLock> {
 /** Só para testes. */
 export function resetWriterLockForTests(): void {
   heldFor = null;
+  pendingOwner.clear();
 }

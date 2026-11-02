@@ -36,6 +36,8 @@ export type MockWorkoutApi = {
   /** Series gravadas do Crucifixo (exercicio criado offline nos cenarios). */
   crucifixoSets: () => StoredSet[];
   unhandled: string[];
+  /** PATCH de series recebidos (id do exercicio na URL, numero, corpo). */
+  patches: Array<{ exerciseId: string; setNumber: number; body: Record<string, unknown> }>;
   /** Corpos das series FST-7 recebidas (para conferir a carga efetiva gravada). */
   fstBodies: Array<Record<string, unknown>>;
   /** Proximos N POST de serie (qualquer exercicio) respondem com `status` (padrao 500). */
@@ -58,6 +60,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   let authMeStatus: number | null = null;
   const unhandled: string[] = [];
   const fstBodies: Array<Record<string, unknown>> = [];
+  const patches: MockWorkoutApi['patches'] = [];
   const setPosts: MockWorkoutApi['setPosts'] = [];
   const exercisePosts: MockWorkoutApi['exercisePosts'] = [];
   const sessionOwner = 1;
@@ -196,6 +199,17 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       });
     }
 
+    const patchMatch = new RegExp(`^/workout-sessions/${SESSION_ID}/exercises/(-?\\d+)/sets/(\\d+)$`).exec(path);
+    if (req.method() === 'PATCH' && patchMatch) {
+      const body = JSON.parse(req.postData() ?? '{}') as Record<string, unknown>;
+      patches.push({ exerciseId: patchMatch[1], setNumber: Number(patchMatch[2]), body });
+      const bucket = setsByExercise.get(Number(patchMatch[1]));
+      const target = bucket ? Array.from(bucket.values()).find((stored) => stored.set_number === Number(patchMatch[2])) : undefined;
+      if (!target) return send(404, { detail: 'Série não encontrada.' });
+      Object.assign(target.body, body);
+      return send(200, { status: 'ok' });
+    }
+
     const setsMatch = new RegExp(`^/workout-sessions/${SESSION_ID}/exercises/(\\d+)/sets$`).exec(path);
     if (req.method() === 'POST' && setsMatch) {
       const exerciseId = Number(setsMatch[1]);
@@ -231,6 +245,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     crucifixoSets: () => Array.from(setsByExercise.get(CRUCIFIXO_EXERCISE_ID)?.values() ?? []),
     unhandled,
     fstBodies,
+    patches,
     failNextSetPosts: (count, status = 500) => {
       failures = count;
       failureStatus = status;

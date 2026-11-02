@@ -450,3 +450,50 @@ test('logout com serie pendente pede confirmacao; cancelar mantem a fila, confir
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
 });
+
+test('editar serie de exercicio criado offline: depois do sync o PATCH vai ao id REAL, nunca ao id local', async ({ page, context }) => {
+  await page.addInitScript((session) => {
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, advanced_mode: true, cancelled_exercise_ids: [7001, 7002] }),
+    );
+  }, LEGACY_SESSION);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await page.getByTestId('intensive-start').click();
+
+  api.setNetworkDown(true);
+  await context.setOffline(true);
+  await page.getByTestId('intensive-complete-set').click(); // sem reps: fica pendente para confirmar
+  await expect(page.getByTestId('sync-indicator')).toContainText('aguardando envio');
+  expect(api.exercisePosts).toHaveLength(0);
+
+  api.setNetworkDown(false);
+  await context.setOffline(false);
+  await expect.poll(() => api.fstBodies.length, { timeout: 40_000 }).toBe(1);
+  expect(api.exercisePosts.filter((p) => !p.duplicate)).toHaveLength(1);
+
+  // Confirma as reps pendentes pelo chip: PATCH ao exercicio real (503), nunca a um id negativo.
+  const chip = page.getByTestId('intensive-pending-chip');
+  await expect(chip).toBeVisible({ timeout: 20_000 });
+  await chip.getByRole('spinbutton').fill('9');
+  await chip.getByRole('button', { name: 'OK' }).click();
+  await expect.poll(() => api.patches.length, { timeout: 20_000 }).toBe(1);
+  expect(api.patches[0]).toMatchObject({ exerciseId: '503', body: { reps: 9 } });
+});
+
+test('duas abas: "Tentar de novo" na segunda e fechar a primeira -> a segunda assume sozinha, uma vez so', async ({ page, context }) => {
+  await openWorkout(page);
+  const second = await context.newPage();
+  await installWorkoutApi(second);
+  await second.goto('/modo-treino/');
+  await expect(second.getByTestId('tab-locked-notice')).toBeVisible({ timeout: 20_000 });
+  await second.getByRole('button', { name: 'Tentar de novo' }).click();
+  await expect(second.getByTestId('tab-locked-notice')).toBeVisible();
+
+  await page.close();
+  await expect(second.getByTestId('tab-locked-notice')).toHaveCount(0, { timeout: 30_000 });
+  await expect(second.getByTestId('set-save').or(second.getByRole('button', { name: /iniciar exercício/i }))).toBeVisible({
+    timeout: 30_000,
+  });
+});

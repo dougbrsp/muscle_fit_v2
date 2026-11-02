@@ -348,3 +348,15 @@ describe('último usuário conhecido para abrir offline', () => {
     expect(ls.has('musclefit.offline.last-verified')).toBe(false);
   });
 });
+
+
+describe('chaves de exercício na sessão local', () => {
+  it('exercise_client_keys sobrevive ao reload (remontagem reaproveita a mesma client_key)', async () => {
+    await activateOfflineUser(1);
+    saveStoredSession({ ...SESSION_A, exercise_client_keys: { '10#7002': 'key-abc' } });
+    await flushBackendTasks();
+    resetOfflineStoreForTests();
+    await activateOfflineUser(1);
+    expect(loadStoredSession()?.exercise_client_keys).toEqual({ '10#7002': 'key-abc' });
+  });
+});
