@@ -23,4 +23,10 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 - **Perfil**: formulário em coluna única, bom com os alvos de 44 px e fonte de 16 px do shell.
 - **Safe-area**: `viewportFit: 'cover'` no layout raiz e `env(safe-area-inset-*)` no header/navbar do AppShell desktop (celular com flag OFF, PWA, paisagem com notch) e no shell mobile. No desktop `env()` vale 0 e o e2e Chromium 1280/1440 segue idêntico. Falta validar o efeito real em iPhone.
 
+## Registros da revisão
+
+- **MB-10 (confirmado)**: cruzar 768 px remonta a página (estado local da página perdido; URL, cache de dados e sessão de treino preservados). Coberto por e2e. Modo Treino não é afetado (rota fullscreen fora do shell).
+- **P2-4**: o CI não roda os e2e Playwright (desktop e mobile são locais). Decidir se entram no CI, respeitando a regra de economia de Actions.
+- **P3-1**: item do code-reviewer a completar (texto original não chegou à frente A).
+
 Pendente fora do código: validação em iPhone real (PWA instalada, teclado, safe areas).

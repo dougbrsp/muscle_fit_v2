@@ -87,7 +87,7 @@ export default function MobileShell({ children }: { children: ReactNode }) {
 
       <OfflineBanner />
 
-      <main id="mobile-main" className={styles.main}>
+      <main id="mobile-main" tabIndex={-1} className={styles.main}>
         {Screen ? <Screen /> : children}
       </main>
 

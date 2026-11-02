@@ -10,12 +10,13 @@ import { InsightCard } from '@/components/dashboard/InsightCard';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { AllClearState } from '@/components/dashboard/states';
 import { dashboardKeys, fetchOverview } from '@/lib/dashboard-api';
-import { dashboardHref, useDashboardFilters } from '@/lib/dashboard-filters';
+import { dashboardHref, useDashboardFilters, type DashboardFilters } from '@/lib/dashboard-filters';
 import { fmtInt } from '@/lib/dashboard-format';
 import { NO_ACTIONS_MESSAGE } from '@/lib/dashboard-overview';
 import { MOBILE_TOKENS } from '@/mobile/tokens';
 import { DashboardOverviewClient } from '@/app/(app)/dashboard/DashboardOverviewClient';
 import { ErrorState } from '../ui';
+import { safeInternalHref } from './safe-href';
 import styles from './mobile-home.module.css';
 
 /**
@@ -32,6 +33,12 @@ export function MobileHome() {
       <MobileHomeContent />
     </Suspense>
   );
+}
+
+function drilldownHref(raw: string, filters: DashboardFilters): string | null {
+  const safe = safeInternalHref(raw);
+  if (!safe) return null;
+  return safe.startsWith('/dashboard') ? dashboardHref(safe, filters) : safe;
 }
 
 function HomeSkeleton() {
@@ -80,10 +87,9 @@ function MobileHomeContent() {
   const slotName = consistency.next_slot
     ? (consistency.next_slot.name ?? `slot ${consistency.next_slot.sequence}`)
     : null;
-  const recoveryHref = dashboardHref(recovery.drilldown_href, filters);
-  const actionsHref = nextActions.drilldown_href.startsWith('/dashboard')
-    ? dashboardHref(nextActions.drilldown_href, filters)
-    : nextActions.drilldown_href;
+  // `drilldown_href` vem da API: so caminho interno (ver safe-href.ts).
+  const recoveryHref = drilldownHref(recovery.drilldown_href, filters);
+  const actionsHref = drilldownHref(nextActions.drilldown_href, filters);
 
   return (
     <Stack gap="md">
@@ -116,9 +122,11 @@ function MobileHomeContent() {
         <Text size="sm" c={MOBILE_TOKENS.textMuted} mt={4}>
           Grupos prontos: {fmtInt(recovery.groups_ready)} de {fmtInt(recovery.groups_total)}
         </Text>
-        <Link href={recoveryHref} className={styles.link}>
-          Ver prontidão e sinais
-        </Link>
+        {recoveryHref ? (
+          <Link href={recoveryHref} className={styles.link}>
+            Ver prontidão e sinais
+          </Link>
+        ) : null}
       </Section>
 
       <Section title="Próxima ação">
@@ -131,11 +139,13 @@ function MobileHomeContent() {
             ))}
           </Stack>
         )}
-        <Link href={actionsHref} className={styles.link}>
-          {nextActions.total_triggered > 1
-            ? `Ver todas as ${fmtInt(nextActions.total_triggered)} sugestões`
-            : 'Ver lista completa de sugestões'}
-        </Link>
+        {actionsHref ? (
+          <Link href={actionsHref} className={styles.link}>
+            {nextActions.total_triggered > 1
+              ? `Ver todas as ${fmtInt(nextActions.total_triggered)} sugestões`
+              : 'Ver lista completa de sugestões'}
+          </Link>
+        ) : null}
       </Section>
 
       <Button
@@ -149,7 +159,8 @@ function MobileHomeContent() {
         {detailsOpened ? 'Ocultar visão geral completa' : 'Ver visão geral completa'}
       </Button>
       <Collapse in={detailsOpened} transitionDuration={0}>
-        <DashboardOverviewClient />
+        {/* so monta quando aberto: sem o custo de render dos 6 blocos no Início */}
+        {detailsOpened ? <DashboardOverviewClient /> : null}
       </Collapse>
 
       {/* CTA ao alcance do polegar: fixo acima do bottom nav, na zona inferior. */}

@@ -9,6 +9,7 @@ import {
   Group,
   Image,
   Loader,
+  rem,
   Menu,
   NavLink,
   ScrollArea,
@@ -114,7 +115,7 @@ function useNavbarCollapsed() {
 function NeutralScreen() {
   return (
     <Center style={{ minHeight: '100dvh', background: BRAND.bg }}>
-      <Loader color="brand" />
+      <Loader color="brand" aria-label="Carregando" />
     </Center>
   );
 }
@@ -141,7 +142,7 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
   if (mobileUi === null) return <NeutralScreen />;
   if (!mobileUi) return <DesktopAppShell>{children}</DesktopAppShell>;
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<NeutralScreen />}>
       <MobileLayoutSelector renderDesktop={() => <DesktopAppShell>{children}</DesktopAppShell>}>
         {children}
       </MobileLayoutSelector>
@@ -178,7 +179,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
 
   return (
     <AppShell
-      header={{ height: 'calc(64px + env(safe-area-inset-top, 0px))' }}
+      header={{ height: `calc(${rem(64)} + env(safe-area-inset-top, 0px))` }}
       navbar={{
         width: navbarWidth(collapsed),
         breakpoint: 'sm',
@@ -206,6 +207,9 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
         },
         main: {
           background: BRAND.bg,
+          // Safe areas (viewport-fit=cover): env() = 0 no desktop.
+          paddingRight: 'max(var(--app-shell-padding), env(safe-area-inset-right, 0px))',
+          paddingBottom: 'max(var(--app-shell-padding), env(safe-area-inset-bottom, 0px))',
         },
       }}
     >

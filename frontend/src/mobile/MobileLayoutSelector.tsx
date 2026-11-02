@@ -27,6 +27,14 @@ function NeutralScreen() {
  * shell: cache de dados é do TanStack Query (acima) e a sessão de treino fica
  * em storage; trocar de viewport desmonta apenas a apresentação.
  * Tablet (>= 768 px) cai no layout desktop atual.
+ *
+ * Cruzar 768 px REMONTA a página (children): as duas árvores (AppShell do
+ * Mantine x shell mobile) têm tipos diferentes na mesma posição, e manter
+ * `children` estável exigiria mexer na estrutura do desktop. Sobrevivem: a
+ * URL, o cache do TanStack Query e a sessão de treino (storage). Perde-se o
+ * estado local da página (campo digitado, aba aberta). Ver
+ * docs/mobile/BACKLOG_MOBILE.md (MB-10). O Modo Treino (fullscreen) não passa
+ * por aqui.
  */
 export function MobileLayoutSelector({
   children,
