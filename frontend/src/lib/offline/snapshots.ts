@@ -8,6 +8,10 @@ import { makeKey } from './keys';
 import { enqueueBackendTask, onOfflinePurge } from './scope';
 
 const SNAP_PREFIX = 'snap:';
+/** Versão do formato do retrato; outra versão é ignorada (nunca interpretada). */
+export const SNAPSHOT_VERSION = 1;
+
+type Stored = { v: number; data: unknown };
 
 let snapUser: number | null = null;
 let cache = new Map<string, unknown>();
@@ -23,7 +27,10 @@ export async function loadSnapshots(userId: number): Promise<void> {
   const rows = await enqueueBackendTask(() => backend.list('meta', makeKey(userId, SNAP_PREFIX)));
   const prefix = makeKey(userId, SNAP_PREFIX);
   const next = new Map<string, unknown>();
-  for (const row of rows) next.set(row.key.slice(prefix.length), row.value);
+  for (const row of rows) {
+    const stored = row.value as Stored | null;
+    if (stored && stored.v === SNAPSHOT_VERSION) next.set(row.key.slice(prefix.length), stored.data);
+  }
   cache = next;
   snapUser = userId;
 }
@@ -40,7 +47,7 @@ export function writeSnapshot(name: string, value: unknown): void {
     if (snapUser !== userId) return;
     try {
       const backend = await getOfflineBackend();
-      await backend.put('meta', makeKey(userId, `${SNAP_PREFIX}${name}`), value);
+      await backend.put('meta', makeKey(userId, `${SNAP_PREFIX}${name}`), { v: SNAPSHOT_VERSION, data: value } satisfies Stored);
     } catch {
       // cota/armazenamento: o retrato é só conveniência offline
     }
