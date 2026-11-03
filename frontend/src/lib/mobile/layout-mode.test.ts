@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
   MOBILE_BREAKPOINT_PX,
+  MOBILE_LANDSCAPE_QUERY,
   MOBILE_MEDIA_QUERY,
+  MOBILE_PORTRAIT_QUERY,
   layoutModeFromMatch,
   subscribeMediaQuery,
   useLayoutMode,
@@ -12,7 +14,14 @@ import {
 describe('layout-mode', () => {
   it('breakpoint alinhado ao sm do Mantine (48em = 768px)', () => {
     expect(MOBILE_BREAKPOINT_PX).toBe(768);
-    expect(MOBILE_MEDIA_QUERY).toBe('(max-width: 47.99em)');
+    expect(MOBILE_PORTRAIT_QUERY).toBe('(max-width: 47.99em)');
+  });
+  it('paisagem de celular (D2): toque + altura baixa, sem User-Agent', () => {
+    expect(MOBILE_LANDSCAPE_QUERY).toBe('(pointer: coarse) and (max-height: 31.25em)');
+    expect(MOBILE_MEDIA_QUERY).toBe(
+      '(max-width: 47.99em), (pointer: coarse) and (max-height: 31.25em)',
+    );
+    expect(MOBILE_MEDIA_QUERY.toLowerCase()).not.toContain('user-agent');
   });
   it('mapeia o resultado do matchMedia', () => {
     expect(layoutModeFromMatch(true)).toBe('mobile');

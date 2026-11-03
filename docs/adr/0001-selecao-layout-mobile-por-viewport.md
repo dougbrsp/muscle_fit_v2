@@ -1,6 +1,6 @@
 # ADR 0001: Seleção de layout mobile por viewport, com feature flag e shell carregado sob demanda
 
-- **Status**: Aceita
+- **Status**: Aceita (a regra de paisagem de celular foi atualizada pela [ADR 0004](0004-navegacao-iphone-e-secoes-so-desktop.md))
 - **Data**: 2026-11-02
 
 ## Contexto

@@ -1,0 +1,525 @@
+/* Primitivos do iPhone (mobile v2, docs/mobile/DESIGN_IPHONE.md). Cores e
+   medidas vêm das variáveis --m-* definidas no .root do shell
+   (MOBILE_TOKENS). Aqui só layout, tipografia e movimento. */
+
+/* ---------- ScreenHeader ---------- */
+.screenHeader {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 4px 0 16px;
+}
+
+.screenHeaderText {
+  flex: 1;
+  min-width: 0;
+}
+
+.screenHeader .largeTitle {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 19px;
+  color: var(--m-text-2);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ---------- ListGroup / ListRow ---------- */
+.group {
+  margin: 0 0 var(--m-group-gap);
+  min-width: 0;
+}
+
+.group .groupTitle {
+  margin: 0 0 6px;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--m-text-2);
+}
+
+.groupBody {
+  background: var(--m-surface);
+  border-radius: var(--m-radius);
+  overflow: hidden;
+}
+
+.block {
+  padding: 14px 16px;
+}
+
+.block + .row {
+  --row-inset: 16px;
+}
+
+.block + .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--row-inset);
+  right: 0;
+  height: 1px;
+  background: var(--m-sep);
+}
+
+.groupFooter {
+  margin: 6px 0 0;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--m-text-2);
+}
+
+.row {
+  --row-inset: 16px;
+  appearance: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 16px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--m-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rowStatic {
+  cursor: default;
+}
+
+.rowWithIcon {
+  --row-inset: 58px;
+}
+
+.row + .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--row-inset);
+  right: 0;
+  height: 1px;
+  background: var(--m-sep);
+}
+
+[role='listitem'] + [role='listitem'] > .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--row-inset);
+  right: 0;
+  height: 1px;
+  background: var(--m-sep);
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row:not(.rowStatic):active {
+  background: var(--m-raised);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: -2px;
+}
+
+.row[aria-current='page'] .rowTitle {
+  color: var(--m-accent);
+}
+
+.rowIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--m-raised);
+  color: var(--m-text-2);
+}
+
+.row[aria-current='page'] .rowIcon {
+  color: var(--m-accent);
+}
+
+.rowBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  display: block;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.rowSubtitle {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--m-text-2);
+  overflow-wrap: anywhere;
+}
+
+.rowValue {
+  flex-shrink: 0;
+  max-width: 45%;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--m-text-2);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--m-text-3);
+}
+
+.rowDestructive .rowTitle,
+.rowDestructive .rowIcon {
+  color: var(--m-danger);
+}
+
+/* ---------- DataCard / StatTile ---------- */
+.card {
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--m-radius);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a.card,
+button.card {
+  cursor: pointer;
+  min-height: var(--m-touch);
+}
+
+a.card:active,
+button.card:active {
+  background: var(--m-raised);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: 2px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--m-text-2);
+}
+
+.cardValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.cardSecondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cardSecLabel {
+  color: var(--m-text-2);
+}
+
+.cardSecValue {
+  margin-left: 4px;
+  color: var(--m-text);
+  font-weight: 600;
+}
+
+.tile {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--m-radius);
+  background: var(--m-surface);
+}
+
+.tileLabel {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--m-text-2);
+}
+
+.tileValue {
+  margin-top: 2px;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.tileHint {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--m-text-2);
+}
+
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* ---------- ResponsiveDataList (comparação em colunas, sem <table>) ---------- */
+.cols {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 16px;
+  min-height: 48px;
+  position: relative;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.cols + .cols::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--m-sep);
+}
+
+.colsHead {
+  min-height: 32px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--m-text-2);
+}
+
+.cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cellEnd {
+  text-align: right;
+}
+
+/* ---------- BottomSheet ---------- */
+.sheetBody {
+  padding: 0 0 calc(16px + env(safe-area-inset-bottom));
+}
+
+.sheetFooter {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 0 calc(8px + env(safe-area-inset-bottom));
+  background: var(--m-bg);
+}
+
+/* ---------- SegmentedFilter ---------- */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--m-raised);
+}
+
+.segment {
+  appearance: none;
+  box-sizing: border-box;
+  min-height: 40px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--m-text-2);
+  font: inherit;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.segment[aria-checked='true'] {
+  background: var(--m-bg);
+  color: var(--m-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: 1px;
+}
+
+/* ---------- FilterSheet: botão-gatilho ---------- */
+.filterButton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--m-touch);
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--m-raised);
+  color: var(--m-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.filterButton:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: 2px;
+}
+
+.filterBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--m-accent);
+  color: #0a0a0a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.filterFields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- MobileChart ---------- */
+.chart {
+  margin: 0 0 var(--m-group-gap);
+  min-width: 0;
+}
+
+.chartSummary {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--m-text);
+}
+
+.chartCanvas {
+  min-width: 0;
+  border-radius: var(--m-radius);
+  background: var(--m-surface);
+  padding: 8px 4px 4px 0;
+  /* toque rola a página; o gesto horizontal fica com o gráfico */
+  touch-action: pan-y;
+}
+
+/* ---------- StickyAction ---------- */
+.stickySpacer {
+  height: calc(var(--m-touch) + 28px);
+}
+
+.sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--m-nav-offset);
+  z-index: 90;
+  box-sizing: border-box;
+  padding: 10px calc(var(--m-pad) + env(safe-area-inset-right)) 10px
+    calc(var(--m-pad) + env(safe-area-inset-left));
+  background: linear-gradient(to top, var(--m-bg) 65%, rgba(10, 10, 10, 0));
+  pointer-events: none;
+}
+
+.sticky > * {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment {
+    transition: none;
+  }
+}

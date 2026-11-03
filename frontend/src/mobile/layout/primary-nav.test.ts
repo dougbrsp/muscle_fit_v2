@@ -1,55 +1,204 @@
 import { describe, expect, it } from 'vitest';
-import { DASHBOARD_NAV_ITEMS, visibleMainNavItems, navVisibilityFromUser } from '@/lib/nav-items';
-import { PRIMARY_TABS, buildMoreSections, isMoreActive, isPrimaryTabActive } from './primary-nav';
+import {
+  DASHBOARD_NAV_ITEMS,
+  isDesktopOnlyPath,
+  mobileMainNavItems,
+  navVisibilityFromUser,
+  visibleMainNavItems,
+} from '@/lib/nav-items';
+import {
+  EVOLUCAO_HUB_HREF,
+  PRIMARY_TABS,
+  backTargetFor,
+  buildEvolucaoGroups,
+  buildMoreGroups,
+  isEvolucaoHub,
+  isMoreActive,
+  isPrimaryTabActive,
+} from './primary-nav';
+import { isNavGroupItemActive, scrollMemoryKey } from './nav-active';
 
 const admin = navVisibilityFromUser({ role: 'admin', intervals_configured: true }, true);
+const pt = navVisibilityFromUser({ role: 'personal_trainer', intervals_configured: false }, true);
 const plain = navVisibilityFromUser({ role: 'user', intervals_configured: false }, true);
 
-describe('bottom nav mobile', () => {
-  it('Início só acende na própria rota (com ou sem barra final)', () => {
-    const inicio = PRIMARY_TABS[0];
-    expect(isPrimaryTabActive(inicio, '/dashboard')).toBe(true);
-    expect(isPrimaryTabActive(inicio, '/dashboard/')).toBe(true);
-    expect(isPrimaryTabActive(inicio, '/dashboard/treinos/')).toBe(false);
+const tab = (id: string) => PRIMARY_TABS.find((t) => t.id === id)!;
+
+describe('tab bar mobile (5 abas)', () => {
+  it('são 4 links + Mais = 5, na ordem do HIG', () => {
+    expect(PRIMARY_TABS.map((t) => t.label)).toEqual(['Início', 'Treino', 'Histórico', 'Evolução']);
   });
 
-  it('abas por prefixo acendem em subrotas; "Mais" acende no resto', () => {
-    const biblioteca = PRIMARY_TABS.find((t) => t.label === 'Biblioteca')!;
-    expect(isPrimaryTabActive(biblioteca, '/exercicios/12/')).toBe(true);
-    expect(isPrimaryTabActive(biblioteca, '/exercicios-extra')).toBe(false);
+  it('Início só acende em /dashboard sem o hub (com ou sem barra final)', () => {
+    expect(isPrimaryTabActive(tab('inicio'), '/dashboard')).toBe(true);
+    expect(isPrimaryTabActive(tab('inicio'), '/dashboard/')).toBe(true);
+    expect(isPrimaryTabActive(tab('inicio'), '/dashboard/', 'hub=evolucao')).toBe(false);
+    expect(isPrimaryTabActive(tab('inicio'), '/dashboard/treinos/')).toBe(false);
+  });
+
+  it('Evolução acende no hub e em tudo que é análise; Mais acende no resto', () => {
+    const evo = tab('evolucao');
+    expect(isEvolucaoHub('/dashboard/', '?hub=evolucao')).toBe(true);
+    expect(isEvolucaoHub('/dashboard/', '?hub=outro')).toBe(false);
+    expect(isPrimaryTabActive(evo, '/dashboard/', '?hub=evolucao')).toBe(true);
+    expect(isPrimaryTabActive(evo, '/dashboard/progressao/')).toBe(true);
+    expect(isPrimaryTabActive(evo, '/insights/')).toBe(true);
+    expect(isPrimaryTabActive(evo, '/agente-cardio')).toBe(true);
+    expect(isPrimaryTabActive(evo, '/dashboard/')).toBe(false);
     expect(isMoreActive('/nutricao/')).toBe(true);
-    expect(isMoreActive('/dashboard/progressao/')).toBe(true);
-    expect(isMoreActive('/perfil/')).toBe(false);
+    expect(isMoreActive('/perfil/')).toBe(true);
+    expect(isMoreActive('/dashboard/progressao/')).toBe(false);
+    expect(isMoreActive('/registro-exercicios/9/')).toBe(false);
+  });
+
+  it('Treino e Histórico casam por segmento', () => {
+    expect(isPrimaryTabActive(tab('historico'), '/registro-exercicios/12/')).toBe(true);
+    expect(isPrimaryTabActive(tab('historico'), '/registro-exercicios-extra')).toBe(false);
+    expect(isPrimaryTabActive(tab('treino'), '/modo-treino')).toBe(true);
   });
 });
 
-describe('"Mais" cobre todas as rotas do menu desktop', () => {
+describe('D1: seções só do computador', () => {
+  const SEIS = [
+    '/academias',
+    '/equipamentos-exercicios',
+    '/dominio-exercicios',
+    '/regras-carga',
+    '/metas-ativacao',
+    '/modelos-treino',
+  ];
+
   for (const [nome, vis] of [
     ['admin', admin],
+    ['personal trainer', pt],
     ['usuário comum', plain],
   ] as const) {
-    it(`nenhuma rota fica inacessível (${nome})`, () => {
-      const main = visibleMainNavItems(vis);
-      const sections = buildMoreSections(main);
-      const reachable = new Set<string>([
+    it(`nenhuma das 6 aparece na navegação mobile (${nome})`, () => {
+      const main = mobileMainNavItems(vis);
+      const groups = buildMoreGroups(visibleMainNavItems(vis));
+      const evolucao = buildEvolucaoGroups(visibleMainNavItems(vis));
+      const shown = new Set<string>([
+        ...main.map((i) => i.href),
+        ...groups.flatMap((g) => g.items.map((i) => i.href)),
+        ...evolucao.flatMap((g) => g.items.map((i) => i.href)),
         ...PRIMARY_TABS.map((t) => t.href),
-        ...sections.dashboard.map((i) => i.href),
-        ...sections.main.map((i) => i.href),
       ]);
-      for (const item of main) expect(reachable.has(item.href), item.href).toBe(true);
-      for (const item of DASHBOARD_NAV_ITEMS) expect(reachable.has(item.href), item.href).toBe(true);
+      for (const href of SEIS) expect(shown.has(href), href).toBe(false);
     });
   }
 
-  it('itens administrativos respeitam a permissão', () => {
-    const hrefs = (v: typeof admin) => visibleMainNavItems(v).map((i) => i.href);
-    expect(hrefs(admin)).toContain('/usuarios');
-    expect(hrefs(plain)).not.toContain('/usuarios');
-    expect(hrefs(plain)).not.toContain('/intervals-icu');
+  it('admin/PT ainda veem as seis no desktop (visibleMainNavItems não muda)', () => {
+    const hrefs = visibleMainNavItems(admin).map((i) => i.href);
+    for (const href of SEIS) expect(hrefs, href).toContain(href);
+    const ptHrefs = visibleMainNavItems(pt).map((i) => i.href);
+    expect(ptHrefs).toContain('/modelos-treino');
+    expect(ptHrefs).toContain('/metas-ativacao');
+    expect(ptHrefs).toContain('/academias');
   });
 
-  it('enquanto /auth/me não resolve, itens condicionais ficam visíveis', () => {
+  it('isDesktopOnlyPath cobre subrotas, diagnóstico de volume e o redirect legado', () => {
+    for (const p of [
+      '/academias',
+      '/academias/',
+      '/equipamentos-exercicios',
+      '/dominio-exercicios/',
+      '/regras-carga',
+      '/metas-ativacao',
+      '/metas-ativacao/7',
+      '/modelos-treino',
+      '/modelos-treino/12/',
+      '/diagnostico-volume/3',
+      '/tipos-treinamento',
+      '/tipos-treinamento/4',
+    ]) {
+      expect(isDesktopOnlyPath(p), p).toBe(true);
+    }
+    for (const p of ['/dashboard', '/academias-x', '/exercicios', '/planos-treino/1', '/usuarios', '/', '', null, undefined]) {
+      expect(isDesktopOnlyPath(p), String(p)).toBe(false);
+    }
+  });
+});
+
+describe('toda rota mobile continua alcançável', () => {
+  for (const [nome, vis] of [
+    ['admin', admin],
+    ['personal trainer', pt],
+    ['usuário comum', plain],
+  ] as const) {
+    it(`menu principal e dashboard (${nome})`, () => {
+      const visible = visibleMainNavItems(vis);
+      const reachable = new Set<string>([
+        ...PRIMARY_TABS.map((t) => t.href.split('?')[0].replace(/\/$/, '')),
+        ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+        ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+      ]);
+      for (const item of visible) {
+        if (item.desktopOnly) continue;
+        expect(reachable.has(item.href), item.href).toBe(true);
+      }
+      for (const item of DASHBOARD_NAV_ITEMS) {
+        if (item.href === '/dashboard') continue;
+        expect(reachable.has(item.href), item.href).toBe(true);
+      }
+      expect(reachable.has('/perfil')).toBe(true);
+    });
+  }
+
+  it('itens administrativos e condicionais respeitam o papel', () => {
+    const more = (v: typeof admin) => buildMoreGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
+    const evo = (v: typeof admin) => buildEvolucaoGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
+    expect(more(admin)).toContain('/usuarios');
+    expect(more(plain)).not.toContain('/usuarios');
+    expect(evo(admin)).toContain('/intervals-icu');
+    expect(evo(plain)).not.toContain('/intervals-icu');
+  });
+
+  it('enquanto /auth/me não resolve, itens condicionais ficam visíveis (menos os só-desktop)', () => {
     const pending = navVisibilityFromUser(undefined, false);
-    expect(visibleMainNavItems(pending).map((i) => i.href)).toContain('/usuarios');
+    const hrefs = buildMoreGroups(visibleMainNavItems(pending)).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs).toContain('/usuarios');
+    expect(hrefs).not.toContain('/modelos-treino');
+  });
+
+  it('nenhum item aparece em dois lugares da navegação', () => {
+    const visible = visibleMainNavItems(admin);
+    const all = [
+      ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+      ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+    ];
+    expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('header de 2º nível', () => {
+  it('raízes das abas não têm voltar', () => {
+    for (const p of ['/dashboard', '/dashboard/', '/modo-treino', '/registro-exercicios/']) {
+      expect(backTargetFor(p), p).toBeNull();
+    }
+  });
+  it('análises voltam para o hub Evolução', () => {
+    for (const p of ['/dashboard/progressao/', '/dashboard/exercicios/5', '/insights', '/agente-cardio', '/intervals-icu']) {
+      expect(backTargetFor(p), p).toEqual({ label: 'Evolução', href: EVOLUCAO_HUB_HREF });
+    }
+  });
+  it('detalhes voltam para a raiz da seção; o resto volta para Mais', () => {
+    expect(backTargetFor('/registro-exercicios/9')).toEqual({ label: 'Histórico', href: '/registro-exercicios/' });
+    expect(backTargetFor('/planos-treino/3/')).toEqual({ label: 'Planos de treino', href: '/planos-treino/' });
+    expect(backTargetFor('/nutricao/plano')).toEqual({ label: 'Nutrição', href: '/nutricao/' });
+    expect(backTargetFor('/perfil')).toEqual({ label: 'Mais', href: null });
+    expect(backTargetFor('/exercicios')).toEqual({ label: 'Mais', href: null });
+  });
+});
+
+describe('auxiliares', () => {
+  it('isNavGroupItemActive casa por segmento', () => {
+    expect(isNavGroupItemActive('/nutricao', '/nutricao/plano/')).toBe(true);
+    expect(isNavGroupItemActive('/nutricao', '/nutricao-x')).toBe(false);
+  });
+  it('scrollMemoryKey só existe nas raízes das abas', () => {
+    expect(scrollMemoryKey('/dashboard/', '')).toBe('inicio');
+    expect(scrollMemoryKey('/dashboard/', 'hub=evolucao')).toBe('evolucao');
+    expect(scrollMemoryKey('/registro-exercicios', '')).toBe('historico');
+    expect(scrollMemoryKey('/perfil', '')).toBeNull();
   });
 });

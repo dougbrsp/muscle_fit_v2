@@ -1,11 +1,11 @@
 'use client';
 
-import { Button, Collapse, Group, Skeleton, Stack, Text, Title } from '@mantine/core';
+import { Button, Collapse, Skeleton, Stack } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconChevronDown, IconChevronUp, IconPlayerPlay } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Suspense, type ReactNode } from 'react';
+import { Suspense } from 'react';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { AllClearState } from '@/components/dashboard/states';
@@ -15,9 +15,9 @@ import { dashboardKeys, fetchOverview } from '@/lib/dashboard-api';
 import { dashboardHref, useDashboardFilters, type DashboardFilters } from '@/lib/dashboard-filters';
 import { fmtInt } from '@/lib/dashboard-format';
 import { NO_ACTIONS_MESSAGE } from '@/lib/dashboard-overview';
-import { MOBILE_TOKENS } from '@/mobile/tokens';
+import { isDesktopOnlyPath } from '@/lib/nav-items';
 import { DashboardOverviewClient } from '@/app/(app)/dashboard/DashboardOverviewClient';
-import { ErrorState } from '../ui';
+import { ErrorState, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../ui';
 import { safeInternalHref } from './safe-href';
 import styles from './mobile-home.module.css';
 
@@ -28,6 +28,7 @@ import styles from './mobile-home.module.css';
  * `headline`, contagens de grupos, `next_slot`); aqui só muda a hierarquia
  * para o celular: treino de hoje com o botão de iniciar ao alcance do
  * polegar, recuperação, próxima ação e, recolhido, o painel completo.
+ * Superfícies agrupadas (ListGroup) em vez de cartões com contorno.
  */
 export function MobileHome() {
   return (
@@ -40,27 +41,19 @@ export function MobileHome() {
 function drilldownHref(raw: string, filters: DashboardFilters): string | null {
   const safe = safeInternalHref(raw);
   if (!safe) return null;
+  // Seção só do computador: sem atalho no celular (a rota abriria a tela D1).
+  if (isDesktopOnlyPath(safe.split('?')[0])) return null;
   return safe.startsWith('/dashboard') ? dashboardHref(safe, filters) : safe;
 }
 
 function HomeSkeleton() {
   return (
     <Stack gap="md" aria-busy="true" aria-label="Carregando o início">
-      <Skeleton height={140} radius="lg" />
+      <Skeleton height={40} width={140} radius="md" />
+      <Skeleton height={130} radius="lg" />
       <Skeleton height={120} radius="lg" />
-      <Skeleton height={160} radius="lg" />
+      <Skeleton height={150} radius="lg" />
     </Stack>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className={styles.card} aria-label={title}>
-      <Text size="xs" fw={700} tt="uppercase" c={MOBILE_TOKENS.textMuted} mb={8}>
-        {title}
-      </Text>
-      {children}
-    </section>
   );
 }
 
@@ -94,64 +87,63 @@ function MobileHomeContent() {
   const actionsHref = drilldownHref(nextActions.drilldown_href, filters);
 
   return (
-    <Stack gap="md">
-      <Title order={1} c={MOBILE_TOKENS.text}>
-        Início
-      </Title>
+    <>
+      <ScreenHeader title="Início" />
 
-      <Section title="Treino de hoje">
-        <Text fw={700} size="lg" c={MOBILE_TOKENS.text}>
-          {slotName ?? (consistency.template_name ? consistency.template_name : 'Modo Treino')}
-        </Text>
-        <Text size="sm" c={MOBILE_TOKENS.textMuted} mt={4}>
-          {consistency.answer}
-        </Text>
-        <Group gap={6} mt="sm">
-          <Text size="sm" c={MOBILE_TOKENS.textMuted}>
+      <ListGroup title="Treino de hoje">
+        <ListBlock>
+          <p className={styles.slot}>
+            {slotName ?? (consistency.template_name ? consistency.template_name : 'Modo Treino')}
+          </p>
+          <p className={styles.answer}>{consistency.answer}</p>
+          <p className={styles.meta}>
             Ciclo: {fmtInt(consistency.cycle_slots_done)}/{fmtInt(consistency.cycle_slots_total)}
-          </Text>
-        </Group>
-      </Section>
+          </p>
+        </ListBlock>
+      </ListGroup>
 
-      <Section title="Recuperação">
-        <Group gap={6} wrap="wrap" mb={6}>
-          <StatusBadge domain="severity" code={recovery.level} size="sm" />
-          <StatusBadge domain="dataQuality" code={recovery.uncertainty} size="sm" />
-        </Group>
-        <Text fw={600} c={MOBILE_TOKENS.text}>
-          {recovery.headline}
-        </Text>
-        <Text size="sm" c={MOBILE_TOKENS.textMuted} mt={4}>
-          Grupos prontos: {fmtInt(recovery.groups_ready)} de {fmtInt(recovery.groups_total)}
-        </Text>
-        {recoveryHref ? (
-          <Link href={recoveryHref} className={styles.link}>
-            Ver prontidão e sinais
-          </Link>
-        ) : null}
-      </Section>
+      <ListGroup title="Recuperação">
+        <ListBlock>
+          <div className={styles.badges}>
+            <StatusBadge domain="severity" code={recovery.level} size="sm" />
+            <StatusBadge domain="dataQuality" code={recovery.uncertainty} size="sm" />
+          </div>
+          <p className={styles.headline}>{recovery.headline}</p>
+          <p className={styles.meta}>
+            Grupos prontos: {fmtInt(recovery.groups_ready)} de {fmtInt(recovery.groups_total)}
+          </p>
+        </ListBlock>
+        {recoveryHref ? <ListRow title="Ver prontidão e sinais" href={recoveryHref} /> : null}
+      </ListGroup>
 
-      <Section title="Próxima ação">
-        {nextActions.items.length === 0 ? (
-          <AllClearState>{NO_ACTIONS_MESSAGE}</AllClearState>
-        ) : (
-          <Stack gap="sm">
-            {nextActions.items.slice(0, 1).map((insight) => (
-              <InsightCard key={insight.fingerprint} insight={insight} filters={filters} compact />
-            ))}
-          </Stack>
-        )}
+      <ListGroup title="Próxima ação">
+        <ListBlock>
+          {nextActions.items.length === 0 ? (
+            <AllClearState>{NO_ACTIONS_MESSAGE}</AllClearState>
+          ) : (
+            nextActions.items
+              .slice(0, 1)
+              .map((insight) => (
+                <InsightCard key={insight.fingerprint} insight={insight} filters={filters} compact />
+              ))
+          )}
+        </ListBlock>
         {actionsHref ? (
-          <Link href={actionsHref} className={styles.link}>
-            {nextActions.total_triggered > 1
-              ? `Ver todas as ${fmtInt(nextActions.total_triggered)} sugestões`
-              : 'Ver lista completa de sugestões'}
-          </Link>
+          <ListRow
+            title={
+              nextActions.total_triggered > 1
+                ? `Ver todas as ${fmtInt(nextActions.total_triggered)} sugestões`
+                : 'Ver lista completa de sugestões'
+            }
+            href={actionsHref}
+          />
         ) : null}
-      </Section>
+      </ListGroup>
 
       {/* D12: macros do dia e atalho de registro; o check-in semanal (N7) entra pelo `checkinSlot`. */}
-      <NutritionTodayCard className={styles.card} checkinSlot={<CheckinCard />} />
+      <div className={styles.gap}>
+        <NutritionTodayCard className={styles.card} checkinSlot={<CheckinCard />} />
+      </div>
 
       <Button
         variant="subtle"
@@ -168,8 +160,8 @@ function MobileHomeContent() {
         {detailsOpened ? <DashboardOverviewClient /> : null}
       </Collapse>
 
-      {/* CTA ao alcance do polegar: fixo acima do bottom nav, na zona inferior. */}
-      <div className={styles.cta}>
+      {/* CTA ao alcance do polegar: fixo acima da tab bar (desce com o teclado). */}
+      <StickyAction>
         <Button
           component={Link}
           href="/modo-treino"
@@ -178,10 +170,11 @@ function MobileHomeContent() {
           fullWidth
           leftSection={<IconPlayerPlay size={20} />}
           aria-label={slotName ? `Iniciar treino: ${slotName}` : 'Iniciar treino'}
+          style={{ minHeight: 48 }}
         >
           Iniciar treino
         </Button>
-      </div>
-    </Stack>
+      </StickyAction>
+    </>
   );
 }
