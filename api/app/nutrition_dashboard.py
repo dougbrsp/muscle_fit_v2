@@ -23,7 +23,7 @@ Acesso: `nutrition_access` (D-L). Tabelas ausentes: 503 citando a migração.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -33,8 +33,7 @@ from .db_helpers import connect_or_503
 from .domain.nutrition import dashboard as dash
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.body_composition import resolved_fat_mass_kg
-from .domain.nutrition.phases import project_goal
-from .domain.nutrition.plan import plan_in_force
+from .domain.nutrition.plan import PROJECTION_TRAINING_WINDOW_DAYS, plan_in_force, project_plan_goal, projection_tdee
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import day_balance, target_macros
 from .intelligence.dashboard.body_service import moving_average_points
@@ -43,8 +42,10 @@ from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_days import balance_public, target_of
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
+from .nutrition_plans import past_training_kcal
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
+    compute_day,
     ensure_diary_targets,
     load_published_plans,
     load_user_inputs,
@@ -145,7 +146,8 @@ def get_dashboard(
             cur.execute(MUSCLE_WINDOW_SQL, (aluno, inicio_lido, hoje))
             musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
-            entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
+            # Cobre também os dias de treino da projeção (TDEE estável do plano, N2).
+            entradas = load_user_inputs(cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje)
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
     metas_por_dia = dash.last_by_day(dias_lidos, ((_as_date(m["local_date"]), m) for m in metas_linhas))
@@ -207,7 +209,7 @@ def get_dashboard(
     tdees = [None if m is None else m.get("tdee_kcal") for m in metas_por_dia]
     gasto_formula = dash.window_tdee_kcal(dias_lidos, hoje, tdees)
 
-    # --- plano em vigor, projeção até o alvo (dono: `phases.project_goal`) --------------------------
+    # --- plano em vigor, projeção até o alvo (dono: `plan.project_plan_goal` -> `phases.project_goal`) --------------------------
     plano_publico = None
     projecao = None
     ref = plan_in_force(planos.refs, hoje)
@@ -227,17 +229,19 @@ def get_dashboard(
                 (r.number for r in series.bioimpedance_body_fat if r.local_date and r.local_date >= inicio_caminho and r.number),
                 None,
             )
-            resultado = project_goal(
-                configuracao.strategy_params(),
-                current_weight_kg=sujeito.weight_kg,
-                goal_weight_kg=configuracao.goal_weight_kg,
-                goal_body_fat_percent=configuracao.goal_body_fat_percent,
-                current_body_fat_percent=sujeito.body_fat_percent,
+            # Mesmo dono e mesmo TDEE estável da projeção do plano (N2): gramas manuais e modo do treino incluídos.
+            comp_hoje = compute_day(entradas, configuracao, hoje, hoje)
+            tdee_estavel, premissas = projection_tdee(
+                comp_hoje.target.tdee, past_training_kcal(entradas, configuracao, hoje), configuracao.manual_adds_training
+            )
+            resultado = project_plan_goal(
+                configuracao,
+                comp_hoje.subject.subject,
+                tdee_estavel,
+                hoje,
+                premissas,
                 start_weight_kg=partida_peso,
                 start_body_fat_percent=partida_gordura,
-                as_of=hoje,
-                tdee_kcal=dash.projection_tdee_kcal(dias_lidos, hoje, tdees),
-                fat_mass_kg=massa_gorda,
             )
             projecao = resultado.to_dict()
             projecao["reason_items"] = nutrition_labels.limitation_items(resultado.reasons)

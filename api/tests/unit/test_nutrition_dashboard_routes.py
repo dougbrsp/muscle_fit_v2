@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app import nutrition_dashboard as dash_mod
 from app import nutrition_days as days_mod
 from app import nutrition_meals as meals_mod
+from app import nutrition_plans as plans_mod
 from app import nutrition_targets_service as svc
 from app.domain.nutrition import adaptive_tdee as atdee
 from app.domain.nutrition import dashboard as dash
@@ -45,6 +46,9 @@ def db(monkeypatch):
     monkeypatch.setattr(meals_mod, "require_food_tables", lambda cur: None)
     monkeypatch.setattr(dash_mod, "_today_for", lambda conn, user_id: HOJE)
     monkeypatch.setattr(days_mod, "_today_for", lambda conn, user_id: HOJE)
+    monkeypatch.setattr(plans_mod, "get_conn", banco.conn)
+    monkeypatch.setattr(plans_mod, "_today_for", lambda conn, user_id: HOJE)
+    monkeypatch.setattr(plans_mod, "require_nutrition_tables", lambda cur: None)
     monkeypatch.setattr(svc, "has_body_measurements_table", lambda cur: True)
     return banco
 
@@ -56,7 +60,7 @@ def _publicar(banco, strategy="cutting", inicio=INICIO_DO_PLANO, **settings):
 
 def _client(role: str = "regular", user_id: int = ALUNO) -> TestClient:
     app = FastAPI()
-    for modulo in (dash_mod, meals_mod, days_mod):
+    for modulo in (dash_mod, meals_mod, days_mod, plans_mod):
         app.include_router(modulo.router)
     app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=user_id, role=role, source="session")
     return TestClient(app, raise_server_exceptions=False)
@@ -322,6 +326,49 @@ def test_plano_sem_alvo_avisa_e_nao_projeta(db):
     _publicar(db, strategy="cutting")
     corpo = _client().get("/nutrition/dashboard").json()
     assert corpo["projection"] is None and corpo["plan"] is not None and dash.EMPTY_NO_GOAL in _codigos(corpo["empty_states"])
+
+
+def _com_historico(banco):
+    for indice in range(1, 15):
+        banco.add_body(ALUNO, HOJE - timedelta(days=indice), weight=round(80.0 - 0.02 * indice, 2))
+    banco.add_body(ALUNO, HOJE - timedelta(days=1), weight=79.7, body_fat=20.0)  # a massa gorda que as gramas manuais exigem
+    banco.add_session(ALUNO, HOJE - timedelta(days=2), 400)
+
+
+def test_projecao_do_painel_e_a_mesma_do_plano_com_gramas_manuais(db):
+    """Sem caminho paralelo: com gramas manuais e `training_mode`, o prazo do painel sai de `plan.project_plan_goal`
+    com o TDEE estável do plano, igual ao da prévia do plano (N2)."""
+    manual = {"protein_g": 160, "carb_g": 150, "fat_g": 50, "training_mode": "add_training"}
+    _publicar(db, strategy="cutting", goal_weight_kg=Decimal("75"), manual_targets_json=manual)
+    rascunho = db.add_plan(ALUNO, status="draft", strategy="cutting", goal_weight_kg=Decimal("75"), manual_targets_json=manual)
+    _com_historico(db)
+    cliente = _client()
+    painel = cliente.get("/nutrition/dashboard").json()["projection"]
+    previa = cliente.post(f"/nutrition/plans/{rascunho}/preview").json()["projection"]
+    assert painel["status"] == previa["status"] == "projected"
+    assert painel["weeks"] == pytest.approx(previa["weeks"]) and painel["weekly_rate_share"] == pytest.approx(previa["weekly_rate_share"])
+    ignorar = {"projection_missing_start", "projection_start_on_wrong_side"}
+    assert set(painel["reasons"]) - ignorar == set(previa["reasons"]) - ignorar
+    assert painel["progress_percent"] is not None  # o painel acrescenta o ponto de partida (a prévia não tem)
+
+
+def test_gramas_manuais_contra_a_estrategia_nao_viram_prazo_no_painel(db):
+    # 4.000 kcal em gramas num cutting: saldo positivo, o dono recusa a projeção (nunca cai no ritmo padrão).
+    _publicar(db, strategy="cutting", goal_weight_kg=Decimal("75"),
+              manual_targets_json={"protein_g": 250, "carb_g": 450, "fat_g": 130})
+    _com_historico(db)
+    projecao = _client().get("/nutrition/dashboard").json()["projection"]
+    assert projecao["status"] == "incoherent_with_strategy" and projecao["weeks"] is None
+
+
+def test_prioridade_de_macros_e_gramas_entre_versoes_nao_reiniciam_o_caminho(db):
+    # Mesma estratégia e mesmo alvo; muda só a prioridade de macros e as gramas: o caminho segue do início da primeira.
+    _publicar(db, strategy="cutting", inicio=date(2026, 9, 1), goal_weight_kg=Decimal("75"))
+    _publicar(db, strategy="cutting", inicio=date(2026, 10, 1), goal_weight_kg=Decimal("75"), macro_priority="high_carb")
+    db.add_body(ALUNO, date(2026, 9, 5), weight=82.0)
+    db.add_body(ALUNO, HOJE - timedelta(days=1), weight=79.0)
+    projecao = _client().get("/nutrition/dashboard").json()["projection"]
+    assert projecao["progress_percent"] == pytest.approx(100 * (82 - 79) / (82 - 75))
 
 
 def test_sequencia_de_versoes_mantem_o_inicio_do_caminho(db):

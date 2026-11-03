@@ -652,13 +652,15 @@ def project_plan_goal(
     tdee_kcal: Any = None,
     as_of: Optional[date] = None,
     premises: Sequence[str] = (),
+    start_weight_kg: Any = None,
+    start_body_fat_percent: Any = None,
 ) -> GoalProjection:
     """Projeção do alvo do plano (`phases.project_goal`) para o sujeito de hoje: peso-alvo OU %G
     alvo do plano (os dois ou nenhum voltam como dados insuficientes, com o motivo). Com gramas
     manuais o ritmo vem das kcal manuais contra o TDEE (cutting: o déficit; bulking: o superávit,
     que `strategy.weekly_rate_share_for` converte em ritmo); gramas que vão contra a estratégia
     devolvem `incoherent_with_strategy` e sem TDEE, dados insuficientes, sempre com o motivo."""
-    projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of)
+    projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of, start_weight_kg, start_body_fat_percent)
     # A premissa do TDEE só aparece quando ele entrou no ritmo projetado (bulking ou gramas manuais fora da manutenção).
     bulking_deriva = (
         settings.strategy == Strategy.BULKING
@@ -675,7 +677,14 @@ def project_plan_goal(
     return replace(projecao, reasons=(*projecao.reasons, *(p for p in premises if p not in projecao.reasons)))
 
 
-def _project_plan_goal(settings: PlanSettings, subject: Subject, tdee_kcal: Any, as_of: Optional[date]) -> GoalProjection:
+def _project_plan_goal(
+    settings: PlanSettings,
+    subject: Subject,
+    tdee_kcal: Any,
+    as_of: Optional[date],
+    start_weight_kg: Any = None,
+    start_body_fat_percent: Any = None,
+) -> GoalProjection:
     params = settings.strategy_params()
     if settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE:
         tdee = positive_number(tdee_kcal)
@@ -709,6 +718,8 @@ def _project_plan_goal(settings: PlanSettings, subject: Subject, tdee_kcal: Any,
         goal_weight_kg=settings.goal_weight_kg,
         goal_body_fat_percent=settings.goal_body_fat_percent,
         current_body_fat_percent=subject.body_fat_percent,
+        start_weight_kg=start_weight_kg,
+        start_body_fat_percent=start_body_fat_percent,
         as_of=as_of,
         tdee_kcal=tdee_kcal,
         fat_mass_kg=resolved_fat_mass_kg(subject),

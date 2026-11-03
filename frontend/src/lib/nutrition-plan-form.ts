@@ -4,6 +4,7 @@
 
 import { DEFAULT_MACRO_PRIORITY, DEFAULT_MANUAL_TRAINING_MODE, type NutritionCode } from './nutrition-constants';
 import { diaryKeys, nutritionKeys } from './nutrition-api';
+import { dashboardKeys } from './nutrition-dashboard';
 import type { NutritionManualTargetsInput } from './nutrition-types';
 
 /** Valor de campo numérico do formulário: número, texto digitado ou vazio. */
@@ -63,9 +64,10 @@ export function applyTemplateProposal(
 }
 
 /**
- * Caches que ficam velhos quando as metas mudam (publicar ou recalcular): o plano em vigor e o diário
- * (que lê a meta de cada dia). Chaves do React Query.
+ * Caches que ficam velhos quando as metas mudam (publicar ou recalcular): o plano em vigor, o diário
+ * (que lê a meta de cada dia; o card de hoje, `/nutrition/today`, mora sob `diaryKeys.all`) e o painel
+ * `/dashboard/nutricao` (N5). Chaves do React Query.
  */
 export function targetsChangedKeys(): ReadonlyArray<readonly unknown[]> {
-  return [nutritionKeys.myPlan, diaryKeys.all];
+  return [nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all];
 }

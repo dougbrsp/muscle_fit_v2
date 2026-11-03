@@ -378,10 +378,15 @@ def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) ->
     (informada > MET), para o TDEE estável da projeção."""
     inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     fim = today - timedelta(days=1)
-    entradas = load_user_inputs(cur, aluno, inicio, fim, today)
-    dias = [inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)]
+    return past_training_kcal(load_user_inputs(cur, aluno, inicio, fim, today), settings, today)
+
+
+def past_training_kcal(entradas: Any, settings: PlanSettings, today: date) -> list[Optional[float]]:
+    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias antes de hoje a partir de entradas JÁ lidas
+    (precisam cobrir a janela). Público para o dashboard (N5) usar o MESMO TDEE estável da projeção do plano."""
+    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     resultado: list[Optional[float]] = []
-    for dia in dias:
+    for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
         comp = compute_day(entradas, settings, dia, today)
         resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
     return resultado
