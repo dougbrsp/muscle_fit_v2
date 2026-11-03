@@ -3,6 +3,8 @@
 - a lista de features publicada pelo Terraform e a de `llm_anthropic.LLM_FEATURES`;
 - so as 6 features da virada vao para o Claude Haiku, com fallback por
   feature; o resto segue `openai`;
+- a sugestao de metas (N6) le as envs de `meal_parse`, sem env propria, e nenhuma
+  feature existente muda de provedor nem de modelo;
 - o ARN e a leitura do secret `musclefit/claude-api-key` vao SO para as 3
   Lambdas que ja leem a chave da OpenAI; engines, intervals-sync e migrations
   ficam sem;
@@ -12,8 +14,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
+
+import pytest
 
 from app import llm_anthropic
 
@@ -115,9 +120,10 @@ def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")
     assert llm_anthropic.DEFAULT_PROVIDER == llm_anthropic.PROVIDER_OPENAI  # o que nao e publicado
     envs = {
+        # Toda entrada explicita e publicada, inclusive com openai (`contains(keys(...), f)` no Terraform).
         f"LLM_PROVIDER_{f}".upper(): provedores[f]
         for f in llm_anthropic.LLM_FEATURES
-        if provedores.get(f, llm_anthropic.DEFAULT_PROVIDER) != llm_anthropic.DEFAULT_PROVIDER
+        if f in provedores
     }
     for variavel, prefixo in (
         ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
@@ -130,6 +136,133 @@ def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     tamanho = sum(len(k) + len(v) for k, v in envs.items())
     assert tamanho <= LLM_ENV_BUDGET_BYTES, tamanho
     assert API_CORE_ENV_BYTES_SEM_LLM + LLM_ENV_BUDGET_BYTES < LAMBDA_ENV_LIMIT_BYTES
+
+
+def _envs_publicadas(tf: str) -> dict[str, str]:
+    """As envs de LLM que `local.llm_provider_env` publica com os padroes do Terraform (sem o ARN)."""
+    provedores = _mapa_padrao(tf, "llm_provider_by_feature")
+    features = re.findall(r'"([a-z_]+)"', re.search(r"llm_features = \[(.*?)\]", tf, re.S).group(1))
+    # Entrada explicita em llm_provider_by_feature e publicada, mesmo com openai (o modo de cortar so a sugestao).
+    envs = {f"LLM_PROVIDER_{f.upper()}": provedores[f] for f in features if f in provedores}
+    for variavel, prefixo in (
+        ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
+        ("anthropic_effort_by_feature", "ANTHROPIC_EFFORT_"),
+        ("anthropic_thinking_by_feature", "ANTHROPIC_THINKING_"),
+        ("llm_fallback_provider_by_feature", "LLM_FALLBACK_PROVIDER_"),
+    ):
+        envs.update({f"{prefixo}{f.upper()}": v for f, v in _mapa_padrao(tf, variavel).items() if f in features})
+    return envs
+
+
+# O que cada feature usa em producao ANTES do N6 (provedor, modelo, esforco, raciocinio, fallback), escrito por
+# extenso de proposito: e a prova de que a sugestao de metas nao muda nenhuma feature existente.
+HAIKU = llm_anthropic.ANTHROPIC_MODEL_HAIKU
+SONNET = llm_anthropic.ANTHROPIC_MODEL_SONNET
+CONFIG_EM_PRODUCAO_ANTES_DO_N6 = {
+    "set_evaluation": ("openai", HAIKU, "low", "adaptive", None),
+    "exercise_summary": ("openai", HAIKU, "low", "adaptive", None),
+    "workout_summary": ("anthropic", HAIKU, "low", "adaptive", "openai"),
+    "exercise_description": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "insights": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "workouts_analysis": ("openai", SONNET, "medium", "adaptive", None),
+    "cardio_agent": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "periodization": ("anthropic", HAIKU, "low", "disabled", "openai"),
+    "meal_parse": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "label_photo": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "meal_photo": ("anthropic", HAIKU, "medium", "adaptive", "openai"),
+    "workout_plan": ("openai", SONNET, "medium", "adaptive", None),
+}
+
+
+def _config(feature: str) -> tuple:
+    return (
+        llm_anthropic.provider_for(feature),
+        llm_anthropic.anthropic_model_for(feature),
+        llm_anthropic.anthropic_effort_for(feature),
+        llm_anthropic.anthropic_thinking_for(feature),
+        llm_anthropic.fallback_provider_for(feature),
+    )
+
+
+def test_n6_nao_muda_provedor_nem_modelo_de_nenhuma_feature_existente(monkeypatch):
+    """Roda o codigo com as envs que o Terraform publica. Toda feature antiga fica como estava."""
+    for nome in list(os.environ):
+        if nome.startswith(("LLM_", "ANTHROPIC_")):
+            monkeypatch.delenv(nome)
+    for nome, valor in _envs_publicadas(_tf("llm_providers.tf")).items():
+        monkeypatch.setenv(nome, valor)
+    assert {f: _config(f) for f in CONFIG_EM_PRODUCAO_ANTES_DO_N6} == CONFIG_EM_PRODUCAO_ANTES_DO_N6
+    assert set(llm_anthropic.LLM_FEATURES) == {*CONFIG_EM_PRODUCAO_ANTES_DO_N6, "plan_suggestion"}
+
+
+def test_sugestao_de_metas_le_a_config_de_meal_parse_sem_env_propria(monkeypatch):
+    tf = _tf("llm_providers.tf")
+    envs = _envs_publicadas(tf)
+    # Nenhuma env nova: o bloco de LLM continua do mesmo tamanho.
+    assert not [nome for nome in envs if "PLAN_SUGGESTION" in nome]
+    for nome, valor in envs.items():
+        monkeypatch.setenv(nome, valor)
+    assert llm_anthropic.FEATURE_CONFIG_SOURCE == {"plan_suggestion": "meal_parse"}
+    assert _config("plan_suggestion") == _config("meal_parse") == ("anthropic", HAIKU, "medium", "adaptive", "openai")
+    # So ela le env de outra feature; as demais usam o proprio nome.
+    for feature in CONFIG_EM_PRODUCAO_ANTES_DO_N6:
+        assert llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, feature) == f"LLM_PROVIDER_{feature.upper()}"
+
+
+def _limpa_envs_llm(monkeypatch):
+    for nome in list(os.environ):
+        if nome.startswith(("LLM_", "ANTHROPIC_")):
+            monkeypatch.delenv(nome)
+    for nome, valor in _envs_publicadas(_tf("llm_providers.tf")).items():
+        monkeypatch.setenv(nome, valor)
+
+
+def test_env_propria_desliga_so_a_sugestao_e_meal_parse_nao_muda(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    antes = _config("meal_parse")
+    monkeypatch.setenv("LLM_PROVIDER_PLAN_SUGGESTION", "openai")
+    assert llm_anthropic.provider_for("plan_suggestion") == "openai"
+    assert _config("meal_parse") == antes
+
+
+def test_env_propria_vence_uma_a_uma(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_EFFORT_PLAN_SUGGESTION", "low")
+    assert _config("plan_suggestion") == ("anthropic", HAIKU, "low", "adaptive", "openai")
+    assert llm_anthropic.anthropic_effort_for("meal_parse") == "medium"
+
+
+def test_virar_meal_parse_leva_a_sugestao_salvo_com_env_propria(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER_MEAL_PARSE", "openai")
+    assert llm_anthropic.provider_for("plan_suggestion") == "openai"
+    monkeypatch.setenv("LLM_PROVIDER_PLAN_SUGGESTION", "anthropic")
+    assert llm_anthropic.provider_for("plan_suggestion") == "anthropic"
+    assert llm_anthropic.provider_for("meal_parse") == "openai"
+
+
+def test_diagnostico_cita_a_env_de_onde_veio_o_valor(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_THINKING_MEAL_PARSE", "disabled")
+    monkeypatch.setenv("ANTHROPIC_EFFORT_MEAL_PARSE", "xhigh")
+    with pytest.raises(llm_anthropic.OpenAIGenerationError) as erro:
+        llm_anthropic.thinking_config("plan_suggestion", "xhigh")
+    assert "ANTHROPIC_THINKING_MEAL_PARSE" in erro.value.diagnostic
+    assert "ANTHROPIC_EFFORT_MEAL_PARSE" in erro.value.diagnostic
+    monkeypatch.setenv("ANTHROPIC_THINKING_PLAN_SUGGESTION", "disabled")
+    with pytest.raises(llm_anthropic.OpenAIGenerationError) as erro:
+        llm_anthropic.thinking_config("plan_suggestion", "xhigh")
+    assert "ANTHROPIC_THINKING_PLAN_SUGGESTION" in erro.value.diagnostic
+
+
+def test_terraform_publica_entrada_explicita_e_nao_muda_as_envs_de_hoje():
+    tf = _tf("llm_providers.tf")
+    # Sem isto, `plan_suggestion = "openai"` nao publicaria nada e valeria a env de meal_parse.
+    assert 'contains(keys(var.llm_provider_by_feature), f)' in tf
+    # Nos padroes, nenhum mapa tem entrada openai: o filtro novo nao publica nada a mais.
+    assert "openai" not in _mapa_padrao(tf, "llm_provider_by_feature").values()
+    assert not [nome for nome in _envs_publicadas(tf) if "PLAN_SUGGESTION" in nome]
+    assert llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, "plan_suggestion") == "LLM_PROVIDER_PLAN_SUGGESTION"
 
 
 def test_raciocinio_publicado_so_com_valores_e_esforcos_que_a_api_aceita():

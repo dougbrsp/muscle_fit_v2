@@ -186,7 +186,7 @@ if fora or not achados:
     print("privado/ deveria ter so prompts/**/*.md:", fora or "(vazio)")
     sys.exit(1)
 from types import SimpleNamespace
-from app import cardio_agent_ai, exercise_description_ai, nutrition_label_ai, nutrition_meal_parse_ai, nutrition_meal_photo_ai
+from app import cardio_agent_ai, exercise_description_ai, nutrition_label_ai, nutrition_meal_parse_ai, nutrition_meal_photo_ai, nutrition_plan_suggestion_ai
 from app import exercise_summary_ai, goal_prompt_context, insights_prompt, prompt_user_data, report_ai, workout_summary_ai
 from app.intelligence.template_ai_selector_v2 import build_v2_selection_prompt
 from app.domain.training_goal import GOAL_VALUES
@@ -197,6 +197,7 @@ renderizados = {
     "nutrition_label": nutrition_label_ai.build_prompt(),
     "nutrition_meal_parse": nutrition_meal_parse_ai.build_prompt("smoke", None),
     "nutrition_meal_photo": nutrition_meal_photo_ai.build_prompt(),
+    "nutrition_plan_suggestion": nutrition_plan_suggestion_ai.build_prompt({}),
     "exercise_description": exercise_description_ai.build_prompt({"name": "smoke", "equipment_names": ["x"]}, [{"muscle_group_name": "y"}])
     + exercise_description_ai.build_prompt({"name": "smoke"}, []),
     # M103 P2: insights, analise por IA, resumos e os fragmentos compartilhados

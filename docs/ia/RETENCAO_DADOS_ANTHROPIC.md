@@ -12,10 +12,13 @@ para o provedor Anthropic, que entra **por feature** no cliente único (`api/app
 | `cardio_agent` | contexto compacto de cardio (plano, recuperação, wellness do Intervals, cardio realizado) + RAG |
 | `label_photo` | **foto** do rótulo nutricional (bloco `image` base64) + instruções |
 | `meal_photo` | **foto** do prato (bloco `image` base64, reencodada no aparelho, sem EXIF/XMP) + instruções |
+| `plan_suggestion` | perfil sem identificador (sexo, idade, altura, peso, % de gordura, atividade), TMB e gasto do motor, tendência do peso, treino agregado e o formulário do plano |
 | `insights` | pacote de visão geral montado pelo servidor + pergunta do usuário + RAG |
 | `meal_parse` | texto livre da refeição digitado pelo usuário (delimitado como dado) |
 | `exercise_description` | dados do exercício do catálogo (nome, equipamento, músculos) |
 | `workout_summary` | séries, notas e decisões do motor de um treino (delimitados como dado) |
+
+`plan_suggestion` não tem env própria: segue o provedor de `meal_parse` (`llm_anthropic.FEATURE_CONFIG_SOURCE`) e, com ele, vai à Anthropic. Para cortar o envio só dela: `plan_suggestion = "openai"` em `llm_provider_by_feature` (`infra/llm_providers.tf`), porque a env própria vence. Se `meal_parse` voltar à OpenAI sem isso, a sugestão vai junto.
 
 `periodization`, `set_evaluation`, `workouts_analysis`, `exercise_summary` e `workout_plan` seguem só na OpenAI. Os
 cards ilustrados (imagem) também.

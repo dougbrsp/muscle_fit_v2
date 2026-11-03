@@ -15,9 +15,11 @@ handlers, com o mesmo 400 de antes.
 from __future__ import annotations
 
 from datetime import date, time
-from typing import Any, List, Literal, Optional, Union
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 
 NOTES_MAX = 2000
 SHORT_TEXT_MAX = 160
@@ -154,6 +156,39 @@ class NutritionPlanIn(NutritionPlanSettingsIn):
     usuário (D2). Para outro usuário exige admin/PT."""
 
     user_id: Optional[int] = None
+
+
+_FormNumber = Annotated[float, Field(ge=0, le=CURRENT_NUMBER_MAX)]
+
+
+class PlanSuggestionCurrentIn(_StrictIn):
+    """Estado do formulário do plano, para a sugestão por IA (N6): comparação, contexto e o que muda a conta (atividade,
+    gasto do treino, fórmula). Faixas e códigos são do motor (`plan_suggestion.normalize_current`); o que aqui não for
+    código conhecido é descartado lá. O limite dos números é só de sanidade (`CURRENT_NUMBER_MAX`)."""
+
+    strategy: Optional[str] = Field(default=None, max_length=16)
+    advanced: bool = False
+    protein_g_per_kg: Optional[_FormNumber] = None
+    fat_kcal_share: Optional[_FormNumber] = None
+    weekly_rate_share: Optional[_FormNumber] = None
+    surplus_share: Optional[_FormNumber] = None
+    carb_min_g_per_kg: Optional[_FormNumber] = None
+    macro_priority: Optional[str] = Field(default=None, max_length=24)
+    meals_per_day: Optional[_FormNumber] = None
+    goal_weight_kg: Optional[_FormNumber] = None
+    goal_body_fat_percent: Optional[_FormNumber] = None
+    activity_level: Optional[str] = Field(default=None, max_length=16)
+    tdee_mode: Optional[str] = Field(default=None, max_length=24)
+    bmr_formula: Optional[str] = Field(default=None, max_length=24)
+    # As gramas manuais estão ligadas? Só o sinal: as gramas não vão para a IA.
+    manual_targets: bool = False
+
+
+class PlanSuggestionIn(_StrictIn):
+    """POST /nutrition/plan-suggestion (N6): sem `user_id`, o próprio usuário; outro exige admin/PT."""
+
+    user_id: Optional[int] = None
+    current: PlanSuggestionCurrentIn = Field(default_factory=PlanSuggestionCurrentIn)
 
 
 class NutritionPlanPublishIn(_StrictIn):
@@ -372,6 +407,8 @@ __all__ = [
     "NutritionPlanIn",
     "NutritionPlanPublishIn",
     "NutritionPlanSettingsIn",
+    "PlanSuggestionCurrentIn",
+    "PlanSuggestionIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

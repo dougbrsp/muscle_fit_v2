@@ -32,8 +32,9 @@ conjunto de valores (`_split_typed_enum`; eval de 2026-10-30).
 
 Tambem sai do schema o que o subconjunto nao aceita (restricoes numericas e de
 texto, `minItems` acima de 1, `maxItems`): o validador deterministico de cada
-feature continua conferindo os limites do lado de ca. Hoje nenhum schema usa
-essas palavras; a remocao existe para um schema futuro nao virar 400.
+feature continua conferindo os limites do lado de ca. Hoje so o `maxItems` da
+sugestao de metas (`plan_suggestion`, que o motor confere) usa essas palavras; a
+remocao existe para o schema nao virar 400.
 
 Sem I/O, sem SDK: so dicionarios.
 """

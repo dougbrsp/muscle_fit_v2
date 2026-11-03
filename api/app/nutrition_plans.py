@@ -12,6 +12,8 @@ admin e PT operam o de qualquer aluno; usuário comum nunca alcança o plano de 
 - `POST   /plans/{id}/preview`      sujeito, TMB, TDEE, alvo, macros, os 7 dias da semana atual,
                                     a projeção até o alvo e os avisos, SEM gravar; 422 lista os
                                     dados do aluno que faltam (códigos do motor)
+- `POST   /plan-preview`            a mesma prévia para o formulário AINDA NÃO salvo (N6, sugestão por IA):
+                                    `NutritionPlanIn` -> o que o motor calcula, sem gravar; `plan` = null
 - `GET    /cycle-days/from-template` proposta dos dias alto/normal/baixo a partir do Modelo
                                     atribuído ("puxar do Modelo", D5); o usuário ajusta antes de salvar
 - `POST   /plans/{id}/publish`      `{expected_current_id}` (a vigente que a tela
@@ -353,7 +355,7 @@ def _compute_week(cur: Any, user_id: int, settings: PlanSettings, today: date) -
     return [compute_day(entradas, settings, dia, today) for dia in janela.days()]
 
 
-def _subject_incomplete(comp: DayComputation) -> HTTPException:
+def subject_incomplete_error(comp: DayComputation) -> HTTPException:
     return _error(
         422,
         "nutrition_subject_incomplete",
@@ -383,7 +385,7 @@ def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) ->
 
 
 def _preview_payload(
-    row: dict[str, Any],
+    row: Optional[dict[str, Any]],
     user: dict[str, Any],
     semana: list[DayComputation],
     today: date,
@@ -412,7 +414,7 @@ def _preview_payload(
     # Bloqueios (não são avisos): salvar já os recusaria; a tela desabilita Publicar com o motivo.
     bloqueios = (*manual_save_errors(manual, sujeito), *erros_ciclo)
     return {
-        "plan": plan_public(row),
+        "plan": plan_public(row) if row is not None else None,
         "user": user,
         "today": today.isoformat(),
         "engine_version": ENGINE_VERSION,
@@ -525,8 +527,28 @@ def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
             passado = _past_training(cur, aluno, settings_from_row(linha), hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
-        raise _subject_incomplete(comp_hoje)
+        raise subject_incomplete_error(comp_hoje)
     return _preview_payload(linha, usuario, semana, hoje, passado)
+
+
+@router.post("/plan-preview")
+def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_actor)):
+    """Calcula a semana atual com o formulário ainda não salvo, sem gravar nada: mesma validação do
+    `POST /plans` (400 com o código do motor) e mesma prévia do plano salvo."""
+    settings = _validate_payload(payload)
+    aluno = resolve_target_user(identity, payload.user_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_nutrition_tables(cur)
+            usuario = fetch_target_user(cur, aluno)
+        hoje = _today_for(conn, aluno)
+        with conn.cursor() as cur:
+            semana = _compute_week(cur, aluno, settings, hoje)
+            passado = _past_training(cur, aluno, settings, hoje)
+    comp_hoje = next(comp for comp in semana if comp.day == hoje)
+    if not comp_hoje.target.computable:
+        raise subject_incomplete_error(comp_hoje)
+    return _preview_payload(None, usuario, semana, hoje, passado)
 
 
 @router.post("/plans/{plan_id}/publish")
@@ -571,7 +593,7 @@ def publish_plan(
             entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
             comp_hoje = compute_day(entradas, settings, hoje, hoje)
             if not comp_hoje.target.computable:
-                raise _subject_incomplete(comp_hoje)
+                raise subject_incomplete_error(comp_hoje)
             agora = db_now(cur)
             try:
                 cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, int(plan_id)))
