@@ -35,9 +35,9 @@ Precedência, da maior para a menor (`flags.ts`):
 
 1. `?mobile=1` ou `?mobile=0` na URL. Persiste o override no aparelho (uso de QA).
 2. `localStorage['musclefit.flag.mobile-ui']` = `on` ou `off`.
-3. `NEXT_PUBLIC_MOBILE_UI` no build. Ausente ou sem valor reconhecido = desligada.
+3. `NEXT_PUBLIC_MOBILE_UI` no build. Ausente = desligada no build de produção e LIGADA no `next dev` (NODE_ENV=development); valor explícito sempre vale.
 
-Estado atual, verificado no repositório: `NEXT_PUBLIC_MOBILE_UI` não aparece em nenhum workflow de `.github/` nem no restante do repositório. Portanto o build de produção a lê como ausente, ou seja, desligada. Não há configuração versionada que a ligue em DEV. O plano previa "ligada em DEV"; essa parte ainda não está implementada.
+Estado atual, verificado no repositório: `NEXT_PUBLIC_MOBILE_UI` não aparece em nenhum workflow de `.github/` nem no restante do repositório. Portanto o build de produção a lê como ausente, ou seja, desligada. (Desatualizado: o workflow de deploy já liga em produção e, desde o ajuste pós-teste da nutrição, o `next dev` liga por padrão.)
 
 Como ligar em desenvolvimento local, sem alterar nada no repositório:
 

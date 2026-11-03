@@ -9,7 +9,11 @@ import { useEffect, useState } from 'react';
  * Precedência (maior primeiro):
  *   1. query `?mobile=0|1` (QA) — persistida so por `applyQueryOverride()`;
  *   2. override persistido em `localStorage['musclefit.flag.mobile-ui']` = `on`/`off`;
- *   3. `NEXT_PUBLIC_MOBILE_UI` (build-time); sem valor reconhecido = DESLIGADA.
+ *   3. `NEXT_PUBLIC_MOBILE_UI` (build-time); sem valor reconhecido = DESLIGADA,
+ *      exceto no `next dev` (NODE_ENV=development) sem a variavel, onde fica
+ *      LIGADA: sem isso o iPhone abria o layout desktop (sem barra inferior)
+ *      sempre que o override do localStorage era perdido. Build de producao
+ *      (NODE_ENV=production) segue so a variavel.
  *
  * Sem regra de negócio: só liga/desliga a UI. Todo acesso a storage é
  * protegido (modo privado, cookies bloqueados e SSR não podem quebrar a tela).
@@ -27,6 +31,15 @@ const FALSY = new Set(['0', 'false', 'off', 'no']);
 export function parseBuildFlag(raw: string | undefined | null): boolean {
   if (raw == null) return false;
   return TRUTHY.has(raw.trim().toLowerCase());
+}
+
+/**
+ * Flag de build efetiva: variavel explicita manda; ausente, o `next dev` liga
+ * (plano mobile: "ligada em DEV") e qualquer outro build fica desligado.
+ */
+export function resolveBuildFlag(raw: string | undefined | null, nodeEnv: string | undefined): boolean {
+  if (raw == null || raw.trim() === '') return nodeEnv === 'development';
+  return parseBuildFlag(raw);
 }
 
 /** Interpreta o valor do override em storage; inválido = sem override. */
@@ -110,7 +123,7 @@ export function applyQueryOverride(): void {
  * substitui-lo em build-time.
  */
 export function isMobileUiEnabled(): boolean {
-  const buildFlag = parseBuildFlag(process.env.NEXT_PUBLIC_MOBILE_UI);
+  const buildFlag = resolveBuildFlag(process.env.NEXT_PUBLIC_MOBILE_UI, process.env.NODE_ENV);
   if (typeof window === 'undefined') return buildFlag;
 
   let queryOverride: MobileUiOverride | null = null;
