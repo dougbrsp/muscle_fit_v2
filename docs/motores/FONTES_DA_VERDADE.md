@@ -6617,6 +6617,24 @@ os bloqueios e as constantes são as do N1.
   - *Incoerência das faixas de superávit e ritmo (bulking)*: o default avançado (superávit 5%) dá cerca de 0,21%/semana, abaixo do piso de
     0,25%; superávit acima de cerca de 12% passa do teto de 0,5%/semana; só aviso, nunca recusa. Decisão de produto pendente.
 
+- **Rodada 2 de revisão**:
+  - *TDEE estável da projeção* (`plan.projection_tdee`, `training_kcal_of_day`, `PROJECTION_TRAINING_WINDOW_DAYS` = 14, default de
+    desenho): a projeção (com ou sem gramas manuais) não pode depender do dia em que a prévia é aberta. No modo explícito o TDEE é a
+    base sem treino (TMB × fator) mais a média do gasto de treino dos 14 dias ANTES de hoje (0 em dia sem treino; dia de treino sem kcal
+    fica fora da média); sem nenhum treino no histórico, só a base, com a premissa `projection_tdee_without_training` nos motivos. No
+    modo com o treino no fator, o TDEE do fator. A janela anda um dia por dia, então o prazo pode mudar de um dia para o outro com o
+    histórico, mas nunca por causa do treino de hoje.
+  - *Gramas manuais sem massa gorda*: a projeção devolve `insufficient_data` com `projection_manual_missing_fat_mass` (cutting e bulking),
+    nunca o ritmo padrão (a densidade do tecido e o ritmo derivado precisam da massa gorda).
+  - *Bloqueios fora dos avisos*: a prévia traz `blocking` e `can_publish` (bloqueios do ciclo e das gramas), separados de `warnings`; a
+    tela desabilita Publicar e mostra o motivo. O percentual do ritmo sai pronto de `GoalProjection.to_dict` (`weekly_rate_percent`).
+  - *Publicação condicionada à versão*: com `expected_updated_at`, o UPDATE da publicação leva `AND updated_at = <versão lida>`; zero linhas
+    afetadas é 409 `draft_changed`. Limite conhecido: `updated_at` é DATETIME com resolução de 1 s, então uma edição na mesma
+    segundo da leitura passa despercebida.
+  - *Backlog (sem alterar)*: limite de taxa em recálculo e publicação; a contagem de rascunhos (`draft_limit`) não é atômica (leitura e
+    INSERT em passos separados), então o teto de 20 é aproximado sob concorrência.
+  - *Merge com o N5*: a chave de cache do dashboard de nutrição entra em `frontend/src/lib/nutrition-plan-form.ts::targetsChangedKeys`.
+
 **Impacto em produção** (MEDIDO pelo líder em produção em 2026-11-02, só com SELECT):
 - Dados: 1 plano (1 vigente, 1 dono); `carb_cycling_json` não nulo = 0 (nenhum valor antigo vira dia escolhido); 3 usuários `regular`;
   22 metas diárias de 1 usuário. Exposição nova: qualquer usuário logado passa a criar planos (até 20 rascunhos cada), gerando linhas em

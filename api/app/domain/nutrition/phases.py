@@ -291,6 +291,8 @@ class GoalProjection:
             "eta_date": self.eta_date.isoformat() if self.eta_date else None,
             "progress_percent": self.progress_percent,
             "weekly_rate_share": self.weekly_rate_share,
+            # Ritmo em % do peso por semana, pronto para a tela.
+            "weekly_rate_percent": None if self.weekly_rate_share is None else self.weekly_rate_share * PERCENT,
             "reasons": list(self.reasons),
             "is_minimum_estimate": self.is_minimum_estimate,
         }

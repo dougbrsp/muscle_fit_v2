@@ -230,8 +230,14 @@ class FakeCursor:
                     self.rowcount += 1
                     db.writes.append(f"supersede plan {plano['id']}")
             return self._result([])
-        if sql == plans_mod._PUBLISH_SQL:
+        if sql in (plans_mod._PUBLISH_SQL, plans_mod._PUBLISH_IF_UNCHANGED_SQL):
+            versao_lida = None
+            if sql == plans_mod._PUBLISH_IF_UNCHANGED_SQL:
+                *p, versao_lida = p
+                p = tuple(p)
             status, inicio, publicado, por, versao, plano_id, rascunho = p
+            if versao_lida is not None and db.plans.get(int(plano_id), {}).get("updated_at") != versao_lida:
+                return self._result([])
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == rascunho:
                 vigentes = [r for r in db.plans.values() if r["user_id"] == plano["user_id"] and r["status"] == status

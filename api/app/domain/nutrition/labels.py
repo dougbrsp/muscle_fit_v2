@@ -445,6 +445,12 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     plan_mod.REASON_MANUAL_AGAINST_STRATEGY: (
         "As gramas manuais vão contra a estratégia (superávit no cutting ou déficit no bulking): sem projeção."
     ),
+    plan_mod.REASON_MANUAL_MISSING_FAT_MASS: (
+        "Sem massa gorda (% de gordura) não dá para derivar o ritmo das gramas manuais: registre um % de gordura."
+    ),
+    plan_mod.REASON_TDEE_WITHOUT_TRAINING: (
+        "Sem treino nos últimos dias, o gasto da projeção é o da base sem treino; treinar mais encurta o prazo."
+    ),
     plan_mod.REASON_MANUAL_MISSING_TDEE: "Sem o gasto total (TDEE) não dá para derivar o ritmo das gramas manuais.",
     plan_mod.NOTE_TEMPLATE_PARTIAL_WEEKDAYS: (
         "Só alguns slots do Modelo têm dia da semana: marque os dias à mão."

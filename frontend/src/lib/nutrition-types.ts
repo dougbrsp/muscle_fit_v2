@@ -197,6 +197,9 @@ export type NutritionPlanPreview = {
   limitations: NutritionLimitation[];
   /** Projeção até o alvo do plano (`phases.project_goal`), toda calculada pela API. */
   projection: NutritionProjection;
+  /** Bloqueios do motor (salvar já os recusaria): a tela desabilita Publicar com o motivo. */
+  blocking: NutritionLimitation[];
+  can_publish: boolean;
   /** Avisos que não impedem salvar nem publicar (ritmo derivado fora da faixa, gramas fora da faixa). */
   warnings: NutritionLimitation[];
   /** Checagem das gramas manuais contra o seu peso (null sem gramas manuais). */

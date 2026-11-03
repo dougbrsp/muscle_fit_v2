@@ -35,8 +35,8 @@ o cálculo da meta são do pacote `domain/nutrition`. Esta camada valida com
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
-from typing import Any, Optional
+from datetime import date, timedelta
+from typing import Any, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -51,12 +51,14 @@ from .domain.nutrition.daily_target import (
     recompute_window,
     week_window,
 )
-from .domain.nutrition.body_composition import PERCENT
 from .domain.nutrition.plan import (
     ERR_DRAFT_LIMIT,
     MAX_DRAFTS_PER_USER,
     NOTE_TEMPLATE_PARTIAL_WEEKDAYS,
     PLAN_LIST_MAX,
+    PROJECTION_TRAINING_WINDOW_DAYS,
+    projection_tdee,
+    training_kcal_of_day,
     check_cycle_floors,
     partial_week_warnings,
     template_weekdays_note,
@@ -149,6 +151,8 @@ _TEMPLATE_SLOTS_SQL = (
     "JOIN workout_plan_template_versions v ON v.id = s.version_id "
     "AND s.template_id = v.current_template_id WHERE v.current_template_id = %s ORDER BY s.sequence"
 )
+# Com `expected_updated_at`, a publicação só vale se o rascunho continua na versão lida (resolução de 1 s do DATETIME).
+_PUBLISH_IF_UNCHANGED_SQL = _PUBLISH_SQL + " AND updated_at = %s"
 _BY_ID_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE id = %s"
 _BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT %s"
 _DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
@@ -352,17 +356,37 @@ def _subject_incomplete(comp: DayComputation) -> HTTPException:
     )
 
 
-def _projection(comp: DayComputation, today: date) -> dict[str, Any]:
+def _projection(comp: DayComputation, today: date, past_training: Sequence[Optional[float]]) -> dict[str, Any]:
     """Projeção até o alvo do plano (`phases.project_goal` via `plan.project_plan_goal`), com a
-    premissa `is_minimum_estimate` e os motivos rotulados."""
-    projecao = project_plan_goal(comp.settings, comp.subject.subject, comp.target.tdee.kcal, today).to_dict()
+    premissa `is_minimum_estimate` e os motivos rotulados. O TDEE é o ESTÁVEL do motor (`plan.projection_tdee`),
+    que não depende do treino do dia em que a prévia é aberta."""
+    tdee, premissas = projection_tdee(comp.target.tdee, past_training)
+    projecao = project_plan_goal(comp.settings, comp.subject.subject, tdee, today, premissas).to_dict()
     projecao["reason_items"] = nutrition_labels.limitation_items(projecao["reasons"])
-    ritmo = projecao["weekly_rate_share"]
-    projecao["weekly_rate_percent"] = None if ritmo is None else ritmo * PERCENT
     return projecao
 
 
-def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[DayComputation], today: date) -> dict[str, Any]:
+def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) -> list[Optional[float]]:
+    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
+    treino; `None` em dia de treino sem kcal), para o TDEE estável da projeção."""
+    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
+    fim = today - timedelta(days=1)
+    entradas = load_user_inputs(cur, aluno, inicio, fim, today)
+    dias = [inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)]
+    resultado: list[Optional[float]] = []
+    for dia in dias:
+        comp = compute_day(entradas, settings, dia, today)
+        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.context.training_kcal_reported))
+    return resultado
+
+
+def _preview_payload(
+    row: dict[str, Any],
+    user: dict[str, Any],
+    semana: list[DayComputation],
+    today: date,
+    past_training: Sequence[Optional[float]] = (),
+) -> dict[str, Any]:
     hoje = next(comp for comp in semana if comp.day == today)
     limitacoes: list[str] = []
     for comp in semana:
@@ -373,10 +397,11 @@ def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[Day
     avisos = (
         *plan_warnings(hoje.settings, sujeito, hoje.target.tdee.kcal),
         *manual_save_warnings(manual),
-        *erros_ciclo,
         *avisos_ciclo,
         *partial_week_warnings(hoje.settings, today),
     )
+    # Bloqueios (não são avisos): salvar já os recusaria; a tela desabilita Publicar com o motivo.
+    bloqueios = (*manual_save_errors(manual, sujeito), *erros_ciclo)
     return {
         "plan": plan_public(row),
         "user": user,
@@ -389,8 +414,10 @@ def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[Day
         # Os dias que a publicação de hoje de fato cria (do dia de hoje ao fim da semana): a tela só mostra estes.
         "publish_days": [dia.isoformat() for dia in publication_window(today, None).days()],
         "limitations": nutrition_labels.limitation_items(limitacoes),
-        "projection": _projection(hoje, today),
+        "projection": _projection(hoje, today, past_training),
         "warnings": nutrition_labels.limitation_items(avisos),
+        "blocking": nutrition_labels.limitation_items(bloqueios),
+        "can_publish": not bloqueios,
         "manual_check": _manual_check_public(manual),
     }
 
@@ -486,10 +513,11 @@ def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
         hoje = _today_for(conn, aluno)
         with conn.cursor() as cur:
             semana = _compute_week(cur, aluno, settings_from_row(linha), hoje)
+            passado = _past_training(cur, aluno, settings_from_row(linha), hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
         raise _subject_incomplete(comp_hoje)
-    return _preview_payload(linha, usuario, semana, hoje)
+    return _preview_payload(linha, usuario, semana, hoje, passado)
 
 
 @router.post("/plans/{plan_id}/publish")
@@ -538,12 +566,19 @@ def publish_plan(
             agora = db_now(cur)
             try:
                 cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, int(plan_id)))
-                cur.execute(_PUBLISH_SQL, (PUBLISHED, hoje, agora, identity.user_id, ENGINE_VERSION, int(plan_id), DRAFT))
+                parametros = (PUBLISHED, hoje, agora, identity.user_id, ENGINE_VERSION, int(plan_id), DRAFT)
+                if payload.expected_updated_at is not None:
+                    # A versão lida entra no WHERE: edição concorrente depois da conferência vira 0 linhas (409).
+                    cur.execute(_PUBLISH_IF_UNCHANGED_SQL, (*parametros, linha.get("updated_at")))
+                else:
+                    cur.execute(_PUBLISH_SQL, parametros)
             except Exception as exc:  # noqa: BLE001 - corrida no UNIQUE da vigente vira 409, não 500
                 if is_duplicate_key_error(exc):
                     raise _error(409, "publish_conflict", "Outro plano foi publicado agora; recarregue.") from exc
                 raise
             if int(cur.rowcount or 0) == 0:
+                if payload.expected_updated_at is not None:
+                    raise _error(409, "draft_changed", "O rascunho foi alterado, publicado ou apagado durante a publicação; recarregue.")
                 raise _error(409, "plan_not_draft", "O rascunho já foi publicado ou apagado; recarregue.")
         metas = ensure_daily_targets(conn, aluno, janela, today=hoje, inputs=entradas)
         with conn.cursor() as cur:

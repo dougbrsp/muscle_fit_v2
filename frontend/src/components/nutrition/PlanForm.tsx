@@ -444,7 +444,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
           zIndex: 5,
           background: BRAND.bgElevated,
           paddingTop: 'var(--mantine-spacing-xs)',
-          paddingBottom: 'calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom))',
+          paddingBottom: 'var(--mantine-spacing-xs)', // a safe-area já está no `bottom`
         }}
       >
         <Button variant="default" onClick={onCancel}>

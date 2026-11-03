@@ -224,6 +224,8 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
     onError: (erro) => {
       const codigo = nutritionErrorCode(erro);
       if (codigo === 'publish_conflict' || codigo === 'draft_changed') onConflict?.();
+      // Rascunho alterado: fecha a confirmação para a pessoa rever o plano antes de publicar de novo.
+      if (codigo === 'draft_changed') closeConfirm();
     },
   });
 
@@ -270,6 +272,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
         <ProjectionCard projection={preview.projection} />
         {preview.manual_check && <ManualCheckCard check={preview.manual_check} />}
       </SimpleGrid>
+      <NutritionLimitations items={preview.blocking} title="Este plano não pode ser publicado" tone="error" />
       <NutritionLimitations items={preview.warnings} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
@@ -292,12 +295,23 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
             zIndex: 5,
             background: BRAND.bgElevated,
             paddingTop: 'var(--mantine-spacing-xs)',
-            paddingBottom: 'calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom))',
+            paddingBottom: 'var(--mantine-spacing-xs)', // a safe-area já está no `bottom`
           }}
         >
-          <Button color="brand" leftSection={<IconCheck size={16} />} onClick={openConfirm}>
+          <Button
+            color="brand"
+            leftSection={<IconCheck size={16} />}
+            onClick={openConfirm}
+            disabled={!preview.can_publish}
+            title={preview.can_publish ? undefined : (preview.blocking[0]?.label ?? 'O motor bloqueou este plano.')}
+          >
             Publicar plano
           </Button>
+          {!preview.can_publish && (
+            <Text size="xs" c="red">
+              {preview.blocking[0]?.label ?? 'O motor bloqueou este plano.'}
+            </Text>
+          )}
         </Group>
       )}
       {isCurrent && (
@@ -322,6 +336,12 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
       {recomputeError && recomputeError.items.length === 0 && (
         <Text c="red" size="sm">
           {recomputeError.message}
+        </Text>
+      )}
+
+      {publishError && !confirmOpened && (
+        <Text c="red" size="sm">
+          {publishError.message}
         </Text>
       )}
 
