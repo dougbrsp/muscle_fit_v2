@@ -37,4 +37,5 @@ export const SCREENS_C: Readonly<Record<string, ComponentType>> = {
   '/preferencias-treino': lazyScreen(() =>
     import('./telas/PreferenciasScreen').then((m) => ({ default: m.PreferenciasScreen })),
   ),
+  '/volume-grupamentos': lazyScreen(() => import('./telas/VolumeScreen').then((m) => ({ default: m.VolumeScreen }))),
 };

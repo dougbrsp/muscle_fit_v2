@@ -25,7 +25,24 @@ export type RecordListRow = {
   deleting?: boolean;
 };
 
+export type PeriodComparisonRow = {
+  key: string;
+  label: ReactNode;
+  /** [período][métrica], já desenhados (valores e setas de tendência prontos). */
+  periods: ReactNode[][];
+  evolution?: ReactNode;
+  toggle?: { expanded: boolean; onToggle: () => void };
+};
+
 export type PresentationSlots = {
+  /** Comparativo por período (T-3..T-0, S-3..S-0) em lista, com o detalhe por toque. */
+  periodComparison: ComponentType<{
+    groupingLabel: string;
+    periodLabels: string[];
+    metricLabels: string[];
+    rows: PeriodComparisonRow[];
+    emptyText: string;
+  }>;
   /** Cabeçalho de página genérico (título e descrição). */
   pageHeader: ComponentType<{ title: string; description: ReactNode }>;
   /** Lista de registros (bioimpedância, medidas, sono...) no lugar da tabela; detalhe e ações por toque. */
