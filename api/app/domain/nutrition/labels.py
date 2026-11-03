@@ -199,15 +199,6 @@ UNIT_LABELS: Final[Mapping[Unit, str]] = {
     **{unidade: porcao.label for unidade, porcao in GENERIC_PORTIONS.items()},
 }
 
-# Escala de fome do diário (`diary.HUNGER_SCALE`).
-HUNGER_LABELS: Final[Mapping[int, str]] = {
-    1: "Sem fome",
-    2: "Pouca fome",
-    3: "Fome moderada",
-    4: "Muita fome",
-    5: "Fome intensa",
-}
-
 BODY_FAT_METHOD_LABELS: Final[Mapping[BodyFatMethod, str]] = {
     BodyFatMethod.BIOIMPEDANCE: "Bioimpedância",
     BodyFatMethod.NAVY: "Circunferências (Marinha dos EUA)",
@@ -653,10 +644,6 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     diary_mod.ERR_ITEM_AMOUNT_OUT_OF_RANGE: (
         f"Quantidade acima de {diary_mod.ITEM_AMOUNT_MAX:g} g ou ml num alimento só."
-    ),
-    diary_mod.ERR_INVALID_HUNGER: f"Fome: de {diary_mod.HUNGER_SCALE[0]} a {diary_mod.HUNGER_SCALE[1]}.",
-    diary_mod.ERR_INVALID_WATER: (
-        f"Água: de {diary_mod.WATER_ML_RANGE[0]:g} a {diary_mod.WATER_ML_RANGE[1]:g} ml no dia."
     ),
     # Alimentos preferidos (N3, `favorites`).
     fav_mod.ERR_TOO_MANY_FAVORITES: f"A lista de preferidos aceita até {fav_mod.MAX_FAVORITES} alimentos.",

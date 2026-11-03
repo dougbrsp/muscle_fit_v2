@@ -95,7 +95,7 @@ def test_tabelas_ausentes_respondem_503(db, monkeypatch):
     cliente = _client()
     assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}").status_code == 503
     assert cliente.get("/nutrition/weeks").status_code == 503
-    assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}", json={"hunger": 3}).status_code == 503
+    assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}", json={"notes": "x"}).status_code == 503
     assert db.targets == {}
 
 
@@ -234,31 +234,27 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
 # ---------------------------------------------------------------------------
 
 
-def test_agua_e_fome_gravam_e_voltam_no_dia(db):
+def test_anotacao_grava_e_volta_no_dia(db):
     cliente = _client()
-    resposta = cliente.put(f"/nutrition/days/{HOJE.isoformat()}", json={"water_ml": 2500, "hunger": 3, "notes": "ok"})
+    resposta = cliente.put(f"/nutrition/days/{HOJE.isoformat()}", json={"notes": "ok"})
     assert resposta.status_code == 200, resposta.text
-    assert resposta.json()["day_log"] == {"water_ml": 2500.0, "hunger": 3, "notes": "ok", "updated_at": "2026-10-17T12:00:00"}
-    assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}").json()["day_log"]["hunger"] == 3
+    assert resposta.json()["day_log"] == {"notes": "ok", "updated_at": "2026-10-17T12:00:00"}
+    assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}").json()["day_log"]["notes"] == "ok"
     limpo = cliente.put(f"/nutrition/days/{HOJE.isoformat()}", json={}).json()["day_log"]
-    assert limpo["water_ml"] is None and limpo["hunger"] is None  # PUT substitui a linha
+    assert limpo["notes"] is None  # PUT substitui a anotação
 
 
-@pytest.mark.parametrize(
-    ("corpo", "codigos"),
-    [
-        ({"hunger": 6}, [diary.ERR_INVALID_HUNGER]),
-        ({"hunger": 2.5}, [diary.ERR_INVALID_HUNGER]),
-        ({"water_ml": -1}, [diary.ERR_INVALID_WATER]),
-        ({"water_ml": diary.WATER_ML_RANGE[1] + 1, "hunger": 0}, [diary.ERR_INVALID_WATER, diary.ERR_INVALID_HUNGER]),
-    ],
-)
-def test_agua_e_fome_fora_da_faixa_do_motor_respondem_400(db, corpo, codigos):
-    resposta = _client().put(f"/nutrition/days/{HOJE.isoformat()}", json=corpo)
-    assert resposta.status_code == 400 and resposta.json()["detail"]["error"] == "invalid_day_log"
-    assert _codigos(resposta.json()["detail"]["errors"]) == codigos
-    assert db.day_logs == {}
-    assert _client().put(f"/nutrition/days/{HOJE.isoformat()}", json={"x": 1}).status_code == 422
+def test_cliente_antigo_com_agua_e_fome_nao_vira_422_e_nada_disso_grava(db):
+    """PWA em cache ainda manda `water_ml`/`hunger`: aceito e ignorado (extra="ignore")."""
+    resposta = _client().put(
+        f"/nutrition/days/{HOJE.isoformat()}", json={"water_ml": 2500, "hunger": 3, "notes": "ok"}
+    )
+    assert resposta.status_code == 200, resposta.text
+    assert resposta.json()["day_log"] == {"notes": "ok", "updated_at": "2026-10-17T12:00:00"}
+    assert "water_ml" not in db.day_logs[next(iter(db.day_logs))]
+    assert _client().put(f"/nutrition/days/{HOJE.isoformat()}", json={"water_ml": -1, "hunger": 99}).status_code == 200
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +302,7 @@ def test_aluno_nao_le_nem_escreve_o_diario_de_terceiro(db):
     intruso = _client(user_id=OUTRO)
     assert intruso.get(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}").status_code == 403
     assert intruso.get(f"/nutrition/weeks?user_id={ALUNO}").status_code == 403
-    assert intruso.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"hunger": 3}).status_code == 403
+    assert intruso.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"notes": "x"}).status_code == 403
     assert db.targets == {} and db.day_logs == {}
 
 
@@ -315,6 +311,6 @@ def test_admin_e_pt_veem_e_anotam_o_dia_do_aluno(db, papel):
     cliente = _client(papel, user_id=ADMIN)
     corpo = cliente.get(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}").json()
     assert corpo["user"]["id"] == ALUNO and corpo["target"] is not None
-    assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"water_ml": 1000}).status_code == 200
+    assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"notes": "x"}).status_code == 200
     assert db.day_logs[(ALUNO, HOJE)]["updated_by"] == ADMIN
     assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}?user_id=999").status_code == 404

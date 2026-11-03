@@ -13,7 +13,7 @@ import { TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
 import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
-import { WaterHungerInputs } from '@/components/nutrition/WaterHungerInputs';
+import { DayNotesInput } from '@/components/nutrition/DayNotesInput';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
@@ -157,7 +157,7 @@ export function NutricaoClient() {
                 <TargetVsIntakeCard day={dia} />
                 <Stack gap="md">
                   <TrainingKcalRow training={dia.training} />
-                  <WaterHungerInputs key={`${userId ?? 'eu'}-${date}`} date={date} userId={userId} dayLog={dia.day_log} onSaved={atualizar} />
+                  <DayNotesInput key={`${userId ?? 'eu'}-${date}`} date={date} userId={userId} dayLog={dia.day_log} onSaved={atualizar} />
                 </Stack>
               </SimpleGrid>
 

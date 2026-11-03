@@ -39,7 +39,7 @@ describe('nutrition-api (diário L4): só transporte para as rotas do motor', ()
     await createMeal({ ...corpo, user_id: 2 });
     await updateMeal(4, corpo);
     await deleteMeal(4);
-    await saveNutritionDayLog('2026-10-17', { water_ml: 2000, hunger: 3, notes: null }, 2);
+    await saveNutritionDayLog('2026-10-17', { notes: 'ok' }, 2);
     const chamadas = apiFetch.mock.calls.map(([caminho, init]) => [caminho, init?.method]);
     expect(chamadas).toEqual([
       ['/nutrition/meals/preview', 'POST'],

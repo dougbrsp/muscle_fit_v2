@@ -26,7 +26,6 @@ import {
   FOOD_SERVING_FIELDS,
   FOOD_SOURCE_OPTIONS,
   GENERIC_PORTIONS,
-  HUNGER_OPTIONS,
   ITEM_NUTRIENT_FIELDS,
   LABEL_LEGIBILITY_OPTIONS,
   LABEL_PHOTO,
@@ -55,7 +54,6 @@ import {
   NUTRITION_NOTICES,
   STRATEGY_ONLY_FIELDS,
   UNIT_OPTIONS,
-  WATER_ML_LIMITS,
   fieldAppliesToStrategy,
   nutrientField,
   nutritionLabel,
@@ -95,9 +93,8 @@ const PARES: ReadonlyArray<Par> = [
   [FOOD_SOURCE_OPTIONS, N.food_sources, N.food_source_labels],
   [FOOD_BASIS_OPTIONS, N.food_bases, N.food_basis_labels],
   [USDA_DATA_TYPE_OPTIONS, N.usda_data_types, N.usda_data_type_labels],
-  // Diário (L4): unidades do item e escala de fome (níveis numéricos viram texto no Select).
+  // Diário (L4): unidades do item.
   [UNIT_OPTIONS, N.units, N.unit_labels],
-  [HUNGER_OPTIONS, N.hunger_levels.map(String), N.hunger_labels],
   // Foto do rótulo (L6): legibilidade da leitura.
   [LABEL_LEGIBILITY_OPTIONS, N.label_legibilities, N.label_legibility_labels],
 ];
@@ -257,7 +254,6 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
     expect(nutrientField(ENERGY_NUTRIENT)?.unit).toBe('kcal');
     expect(ITEM_NUTRIENT_FIELDS.map((campo) => campo.code)).toEqual(N.item_nutrient_fields);
     expect(ITEM_NUTRIENT_FIELDS[0].code).toBe(ENERGY_NUTRIENT);
-    expect(WATER_ML_LIMITS).toEqual(N.water_ml_range);
     expect(PORTION_UNITS).toEqual(N.portion_units);
     expect(PORTION_UNITS.every((codigo) => MEAL_UNITS.includes(codigo))).toBe(true);
     expect(MEAL_ITEMS_LIMIT).toBe(N.meal_max_items);

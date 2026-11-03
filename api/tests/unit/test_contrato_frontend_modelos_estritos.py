@@ -358,9 +358,10 @@ def test_post_nutrition_meals_lida_pela_ia():
 
 
 def test_put_nutrition_days():
-    # WaterHungerInputs.tsx: saveNutritionDayLog(date, { water_ml, hunger, notes }, userId).
+    # DayNotesInput.tsx: saveNutritionDayLog(date, { notes }, userId); cliente antigo ainda manda water_ml/hunger.
+    NutritionDayIn.model_validate({"notes": None})
+    NutritionDayIn.model_validate({"notes": "ok"})
     NutritionDayIn.model_validate({"water_ml": 2000, "hunger": 3, "notes": None})
-    NutritionDayIn.model_validate({"water_ml": None, "hunger": None, "notes": "ok"})
 
 
 def test_post_cardio_recommendations_apply():
