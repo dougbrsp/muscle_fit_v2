@@ -352,6 +352,38 @@ def test_projecao_do_painel_e_a_mesma_do_plano_com_gramas_manuais(db):
     assert painel["progress_percent"] is not None  # o painel acrescenta o ponto de partida (a prévia não tem)
 
 
+@pytest.mark.parametrize(
+    ("estrategia", "alvo", "extra"),
+    [
+        # Gramas manuais no modo FIXO (valem todo dia) e treino conhecido há 2 dias: o TDEE estável leva a média do treino.
+        ("cutting", Decimal("75"), {"manual_targets_json": {"protein_g": 160, "carb_g": 150, "fat_g": 50, "training_mode": "fixed"}}),
+        # Bulking automático (sem gramas): o ritmo vem do `surplus_share` do plano contra o mesmo TDEE.
+        ("bulking", Decimal("85"), {"surplus_share": Decimal("0.10")}),
+    ],
+)
+def test_painel_e_previa_projetam_o_mesmo_prazo_e_sem_a_premissa_de_treino(db, estrategia, alvo, extra):
+    _publicar(db, strategy=estrategia, goal_weight_kg=alvo, **extra)
+    rascunho = db.add_plan(ALUNO, status="draft", strategy=estrategia, goal_weight_kg=alvo, **extra)
+    _com_historico(db)  # sessão de 400 kcal há 2 dias e massa gorda
+    cliente = _client()
+    painel = cliente.get("/nutrition/dashboard").json()["projection"]
+    previa = cliente.post(f"/nutrition/plans/{rascunho}/preview").json()["projection"]
+    assert painel["status"] == previa["status"] == "projected"
+    assert painel["weeks"] == pytest.approx(previa["weeks"]) and painel["weekly_rate_share"] == pytest.approx(previa["weekly_rate_share"])
+    assert "projection_tdee_without_training" not in painel["reasons"] + previa["reasons"]
+
+
+def test_janela_ampliada_das_entradas_nao_encurta_o_ponto_de_partida_do_caminho(db):
+    """A rota lê as séries até hoje (`load_user_inputs` com a janela do treino da projeção): a primeira pesagem do
+    plano, bem mais antiga que essa janela, continua sendo a partida do caminho."""
+    _publicar(db, strategy="cutting", inicio=date(2026, 9, 1), goal_weight_kg=Decimal("75"))
+    db.add_body(ALUNO, date(2026, 9, 3), weight=82.0)  # há mais de 40 dias; fora de qualquer janela de 14 dias
+    for indice in range(1, 4):
+        db.add_body(ALUNO, HOJE - timedelta(days=indice), weight=79.0)
+    projecao = _client().get("/nutrition/dashboard").json()["projection"]
+    assert projecao["progress_percent"] == pytest.approx(100 * (82 - 79) / (82 - 75))
+
+
 def test_gramas_manuais_contra_a_estrategia_nao_viram_prazo_no_painel(db):
     # 4.000 kcal em gramas num cutting: saldo positivo, o dono recusa a projeção (nunca cai no ritmo padrão).
     _publicar(db, strategy="cutting", goal_weight_kg=Decimal("75"),

@@ -13,8 +13,9 @@ Rotas (prefixo `/nutrition`):
                                    home mobile lê
 
 Regra dos motores (`docs/motores/FONTES_DA_VERDADE.md` §82): a agregação é de
-`domain/nutrition/dashboard` (compõe `weekly_budget`, `adaptive_tdee` e
-`phases.project_goal`); aqui só se leem as linhas gravadas (metas materializadas,
+`domain/nutrition/dashboard` (compõe `weekly_budget` e `adaptive_tdee`); a
+projeção até o alvo é a do plano (`plan.project_plan_goal` com o TDEE estável
+`plan.projection_tdee`, o mesmo da prévia do plano do N2); aqui só se leem as linhas gravadas (metas materializadas,
 totais gravados das refeições, composição corporal) e se monta a resposta. Não há
 soma de nutrientes nem regra de nutrição neste arquivo. O dashboard NÃO materializa
 metas de dias passados (sem backfill): dia com refeição e sem meta gravada é avisado.
@@ -42,13 +43,13 @@ from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_days import balance_public, target_of
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
-from .nutrition_plans import past_training_kcal
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
     compute_day,
     ensure_diary_targets,
     load_published_plans,
     load_user_inputs,
+    past_training_kcal,
     read_targets,
     target_row_public,
 )
@@ -209,7 +210,7 @@ def get_dashboard(
     tdees = [None if m is None else m.get("tdee_kcal") for m in metas_por_dia]
     gasto_formula = dash.window_tdee_kcal(dias_lidos, hoje, tdees)
 
-    # --- plano em vigor, projeção até o alvo (dono: `plan.project_plan_goal` -> `phases.project_goal`) --------------------------
+    # --- plano em vigor, projeção até o alvo (dono: `plan.project_plan_goal`, a mesma do plano) --------------------------
     plano_publico = None
     projecao = None
     ref = plan_in_force(planos.refs, hoje)

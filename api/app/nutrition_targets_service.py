@@ -38,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Iterable, Optional, Sequence
 
@@ -60,7 +60,14 @@ from .domain.nutrition.daily_target import (
     is_target_frozen,
     was_backfilled,
 )
-from .domain.nutrition.plan import PlanSettings, PublishedPlanRef, build_plan_settings, plan_in_force
+from .domain.nutrition.plan import (
+    PROJECTION_TRAINING_WINDOW_DAYS,
+    PlanSettings,
+    PublishedPlanRef,
+    build_plan_settings,
+    plan_in_force,
+    training_kcal_of_day,
+)
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
 
@@ -322,6 +329,19 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
     return DayComputation(day=day, target=meta, subject=sujeito, context=contexto, settings=settings)
 
 
+def past_training_kcal(inputs: UserInputs, settings: PlanSettings, today: date) -> list[Optional[float]]:
+    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
+    treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
+    (informada > MET), para o TDEE estável da projeção (`plan.projection_tdee`). As entradas precisam cobrir a
+    janela. Usada pela prévia do plano e pelo dashboard de nutrição, que projetam com o MESMO TDEE."""
+    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
+    resultado: list[Optional[float]] = []
+    for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
+        comp = compute_day(inputs, settings, dia, today)
+        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
+    return resultado
+
+
 def inputs_fingerprint(plan_id: int, comp: DayComputation) -> str:
     """Hash das ENTRADAS do cálculo de um dia (só para comparar igualdade e não
     regravar o que não mudou; nenhuma regra mora aqui)."""
@@ -567,6 +587,7 @@ __all__ = [
     "ensure_daily_targets",
     "ensure_diary_targets",
     "inputs_fingerprint",
+    "past_training_kcal",
     "last_target_date",
     "load_published_plans",
     "load_user_inputs",

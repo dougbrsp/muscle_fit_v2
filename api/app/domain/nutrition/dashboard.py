@@ -5,8 +5,8 @@ Dono da AGREGAÇÃO da janela do dashboard: o que a rota e a tela mostram sobre
 aderência por dia e por semana, kcal e macros × meta, pontos de corpo, o gasto
 médio da fórmula e o bloco do TDEE adaptativo. Não cria regra de nutrição:
 compõe os donos (`weekly_budget` para meta × ingestão, banco e aderência;
-`adaptive_tdee` para tendência de peso e gasto observado; `phases` para a
-projeção, que a rota chama direto).
+`adaptive_tdee` para tendência de peso e gasto observado). A projeção até o
+alvo NÃO é daqui: é a do plano (`plan.project_plan_goal`), que a rota chama.
 
 Regras deste módulo:
 - Agrega pelos TOTAIS GRAVADOS de cada dia (`NutritionTotals` do `meal_math`),

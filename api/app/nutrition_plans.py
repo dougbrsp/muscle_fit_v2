@@ -59,7 +59,6 @@ from .domain.nutrition.plan import (
     PROJECTION_TRAINING_WINDOW_DAYS,
     projection_tdee,
     rest_day_strategy_kcal,
-    training_kcal_of_day,
     check_cycle_floors,
     partial_week_warnings,
     template_weekdays_note,
@@ -91,6 +90,7 @@ from .nutrition_targets_service import (
     last_target_date,
     load_published_plans,
     load_user_inputs,
+    past_training_kcal,
     settings_from_row,
     week_rows,
 )
@@ -380,16 +380,6 @@ def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) ->
     fim = today - timedelta(days=1)
     return past_training_kcal(load_user_inputs(cur, aluno, inicio, fim, today), settings, today)
 
-
-def past_training_kcal(entradas: Any, settings: PlanSettings, today: date) -> list[Optional[float]]:
-    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias antes de hoje a partir de entradas JÁ lidas
-    (precisam cobrir a janela). Público para o dashboard (N5) usar o MESMO TDEE estável da projeção do plano."""
-    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
-    resultado: list[Optional[float]] = []
-    for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
-        comp = compute_day(entradas, settings, dia, today)
-        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
-    return resultado
 
 
 def _preview_payload(

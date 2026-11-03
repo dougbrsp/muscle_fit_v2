@@ -1392,6 +1392,18 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-N5",
     ),
     Padrao(
+        chave="projecao_dashboard_nutricao",
+        regra="projeção até o alvo calculada no dashboard de nutrição fora do dono do plano: `project_goal(` direto "
+        "ou o TDEE próprio da projeção (`projection_tdee_kcal`) em `nutrition_dashboard.py`",
+        # 2026-11-03 (nutrição N5, §82): a projeção do painel é a do plano do N2 (`plan.project_plan_goal` com o TDEE
+        # estável `plan.projection_tdee`), a mesma da prévia, inclusive com gramas manuais; o painel só acrescenta o
+        # ponto de partida do caminho. Um `project_goal(` direto aqui voltaria a ignorar as gramas e o modo do treino.
+        regex=re.compile(r"(?<![\w.])project_goal\s*\(|\bphases\.project_goal\s*\(|\bprojection_tdee_kcal\b"),
+        donos=("api/app/domain/nutrition/phases.py", "api/app/domain/nutrition/plan.py"),
+        inventario="NUT-N5",
+        escopo=("api/app/nutrition_dashboard.py",),
+    ),
+    Padrao(
         chave="soma_nutrientes",
         regra="soma de nutrientes de itens, refeições ou dias (`sum(`/`SUM(`/`.reduce(`/`+=` sobre energy_kcal, "
         "protein_g, carbohydrates_g, total_fat_g, fiber_g, sodium_mg ou as metas da 079) ou escala por 100 g/ml "
@@ -2147,6 +2159,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
     "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
     "dashboard_nutricao": {},  # NUT-N5 (2026-11-02): nasce vazia (a rota importa o dono; a tela só exibe)
+    "projecao_dashboard_nutricao": {},  # NUT-N5 (2026-11-03): nasce vazia (o painel chama `plan.project_plan_goal`)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3086,6 +3099,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("MAX_FAVORITES = 200", "const MAX_FAVORITES = 50;", "MAX_FAVORITES: Final[int] = 100"),
         ("if not favorites_engine.can_add(total):", "max_items: favorites_engine.MAX_FAVORITES",
          "from .domain.nutrition.favorites import MAX_FAVORITES"),
+    ),
+    "projecao_dashboard_nutricao": (
+        ("resultado = project_goal(params, peso)", "resultado = phases.project_goal(cfg.strategy_params(), 80)",
+         "tdee_kcal=dash.projection_tdee_kcal(dias, hoje, tdees)", "projection_tdee_kcal = 2800.0"),
+        ("project_plan_goal(configuracao, sujeito, tdee, hoje)", "projection_tdee(comp.target.tdee, passado, True)",
+         "dash.window_tdee_kcal(dias, hoje, tdees)", "from .domain.nutrition.plan import project_plan_goal"),
     ),
     "dashboard_nutricao": (
         ("DASHBOARD_DEFAULT_DAYS = 28", "const WINDOW_CHOICES_DAYS = [7, 28];", "ADAPTIVE_WINDOW_DAYS: Final[int] = 28", "DASHBOARD_MAX_DAYS: Final[int] = 90",
