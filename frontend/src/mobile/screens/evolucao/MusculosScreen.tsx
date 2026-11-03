@@ -31,7 +31,6 @@ import {
   BottomSheet,
   DataCard,
   EmptyState,
-  FilterButton,
   FilterSheet,
   ListBlock,
   ListGroup,
@@ -103,9 +102,15 @@ function MusculosContent() {
       <ScreenHeader
         title="Grupos musculares"
         subtitle="Volume realizado contra a meta semanal. Planejado e projetado aparecem à parte."
-        actions={<FilterButton activeCount={extraFilters} onClick={openSheet} />}
       />
       <PeriodFilter filters={filters} setFilters={setFilters} rangeError={rangeError} />
+      <ListGroup>
+        <ListRow
+          title="Ordenar e exibir"
+          subtitle={`${MUSCLE_SORT_LABELS[sort]} · prontidão ${showReadiness ? 'ligada' : 'desligada'}`}
+          onClick={openSheet}
+        />
+      </ListGroup>
 
       <FilterSheet
         opened={sheet}
