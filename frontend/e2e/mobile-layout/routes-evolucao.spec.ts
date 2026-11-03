@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
+import { FROZEN_NOW, installMockApi, MOCK_API_ORIGIN } from '../desktop-baseline/mock-api';
+import { resolveFixture } from './evolucao-fixtures';
 
 /**
  * Mobile v2, frente B (Evolucao e dashboards): as 18 rotas migradas montam a
@@ -36,6 +37,8 @@ const VIEWPORTS = [
   { name: '844x390-paisagem', width: 844, height: 390, touch: true },
 ] as const;
 
+const FULL_PAGE = new Set(['dashboard/musculos', 'dashboard/cardio', 'dashboard/treinos', 'dashboard/progressao', 'intervals-icu']);
+
 const SHOTS_DIR = 'C:/muscle_fit/.omc/artifacts/mobile-v2/b';
 
 for (const vp of VIEWPORTS) {
@@ -48,6 +51,24 @@ for (const vp of VIEWPORTS) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.clock.setFixedTime(FROZEN_NOW);
       await installMockApi(page);
+      // Fixtures realistas SO desta spec (por cima do mock-api, que nao muda); o que nao estiver aqui cai no mock-api.
+      await page.route(`${MOCK_API_ORIGIN}/**`, async (route) => {
+        const req = route.request();
+        if (req.method() !== 'GET') return route.fallback();
+        const payload = resolveFixture(`GET ${new URL(req.url()).pathname}`);
+        if (payload === undefined) return route.fallback();
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: {
+            'access-control-allow-origin': req.headers()['origin'] ?? '*',
+            'access-control-allow-credentials': 'true',
+          },
+          body: JSON.stringify(payload),
+        });
+      });
+      const pageErrors: string[] = [];
+      page.on('pageerror', (e) => pageErrors.push(e.message.slice(0, 200)));
       await page.addInitScript(() => window.localStorage.setItem('musclefit.flag.mobile-ui', 'on'));
       for (const route of ROUTES) {
         await page.goto(route);
@@ -80,10 +101,14 @@ for (const vp of VIEWPORTS) {
         expect(m.tables, `<table> em ${route}`).toBe(0);
         expect(m.mobileTitle, `tela mobile (titulo grande) em ${route}`).toBeGreaterThan(0);
         if (vp.name === '390') {
-          const name = route.replace(/^\/|\/$/g, '').replace(/\//g, '_');
+          const slug = route.replace(/^\/|\/$/g, '');
+          const name = slug.replace(/\//g, '_');
+          await page.waitForTimeout(1800); // fim da animacao dos graficos
           await page.screenshot({ path: `${SHOTS_DIR}/${name}.png` });
+          if (FULL_PAGE.has(slug)) await page.screenshot({ path: `${SHOTS_DIR}/${name}_full.png`, fullPage: true });
         }
       }
+      expect(pageErrors, `erros de pagina em ${vp.name}`).toEqual([]);
       const fs = await import('node:fs');
       fs.mkdirSync('test-results/mobile-layout', { recursive: true });
       fs.writeFileSync(`test-results/mobile-layout/evolucao-${vp.name}.json`, JSON.stringify(out, null, 1));

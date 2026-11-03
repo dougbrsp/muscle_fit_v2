@@ -228,6 +228,7 @@ export function AgenteCardioScreen() {
         <ListGroup title={`Recomendação gerada (${formatDateOrDash(generated.reference_date)})`}>
           <div className={styles.md}>
             <CardioRecommendationPanel
+              hideApplyToTemplate
               recommendationId={generated.id}
               markdown={generated.recommendation_markdown}
               promptVersion={generated.prompt_version}
@@ -243,6 +244,7 @@ export function AgenteCardioScreen() {
         getKey={(r) => r.id}
         isLoading={historyQuery.isLoading}
         isError={historyQuery.isError}
+        isOffline={!online}
         onRetry={() => void historyQuery.refetch()}
         errorTitle="Erro ao carregar histórico"
         emptyTitle="Nenhuma recomendação gerada ainda"
@@ -276,7 +278,7 @@ export function AgenteCardioScreen() {
       >
         {rec ? (
           <div className={styles.md} style={{ padding: 0 }}>
-            <CardioRecommendationPanel recommendationId={rec.id} markdown={rec.recommendation_markdown} promptVersion={rec.prompt_version} />
+            <CardioRecommendationPanel hideApplyToTemplate recommendationId={rec.id} markdown={rec.recommendation_markdown} promptVersion={rec.prompt_version} />
           </div>
         ) : null}
       </BottomSheet>

@@ -57,6 +57,7 @@ import {
   ResponsiveDataList,
   ScreenHeader,
   SegmentedFilter,
+  useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
 import { BlockSkeleton, PeriodFilter, QueryGate } from './shared';
@@ -518,6 +519,7 @@ function ExercicioPicker({
   selectedId: number | null;
   onPick: (id: number | null, name: string | null) => void;
 }) {
+  const online = useOnlineStatus();
   const [text, setText] = useState('');
   const [group, setGroup] = useState('');
   const all = useMemo(() => query.data?.items ?? [], [query.data]);
@@ -562,6 +564,7 @@ function ExercicioPicker({
           getKey={(o) => o.id}
           isLoading={query.isLoading}
           isError={query.isError}
+          isOffline={!online}
           onRetry={() => void query.refetch()}
           emptyTitle="Nenhum exercício encontrado"
           renderItem={(o) => (

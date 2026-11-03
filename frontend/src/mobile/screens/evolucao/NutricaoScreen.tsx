@@ -39,6 +39,7 @@ import {
   ScreenHeader,
   StatGrid,
   StatTile,
+  useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
 import { QueryGate } from './shared';
@@ -347,6 +348,7 @@ function Adaptativo({ data }: { data: NutritionDashboard }) {
 }
 
 function Checkins() {
+  const online = useOnlineStatus();
   const query = useQuery({ queryKey: checkinKeys.history(), queryFn: () => fetchCheckinHistory(), retry: false });
   return (
     <>
@@ -359,6 +361,7 @@ function Checkins() {
         getKey={(c) => c.id}
         isLoading={query.isLoading}
         isError={query.isError}
+        isOffline={!online}
         onRetry={() => void query.refetch()}
         errorTitle="Não foi possível carregar o histórico de check-ins"
         emptyTitle="Nenhum check-in ainda"

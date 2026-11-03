@@ -61,19 +61,18 @@ export function QueryGate<T>({
   children: (data: T) => ReactNode;
 }) {
   const online = useOnlineStatus();
+  // Dados vencem erro de refetch: só mostra erro/offline quando não há dado nenhum.
+  if (query.data !== undefined) return <>{children(query.data)}</>;
   if (query.isLoading) return <BlockSkeleton rows={rows} label={`Carregando: ${title}`} />;
-  if (query.isError || query.data === undefined) {
-    if (!online) return <OfflineState onRetry={() => void query.refetch()} />;
-    const detail = query.error instanceof Error && query.error.message ? query.error.message : undefined;
-    return (
-      <ErrorState
-        title={`Não foi possível carregar: ${title}`}
-        description={detail ?? 'Verifique a conexão e tente de novo.'}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
-  return <>{children(query.data)}</>;
+  if (!online) return <OfflineState onRetry={() => void query.refetch()} />;
+  const detail = query.error instanceof Error && query.error.message ? query.error.message : undefined;
+  return (
+    <ErrorState
+      title={`Não foi possível carregar: ${title}`}
+      description={detail ?? 'Verifique a conexão e tente de novo.'}
+      onRetry={() => void query.refetch()}
+    />
+  );
 }
 
 /** Rodapé com o que os números NÃO permitem concluir (antes só em Tooltip). */
