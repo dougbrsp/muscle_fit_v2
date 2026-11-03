@@ -104,6 +104,8 @@ Dono: `domain/progression_engine.py` (v2) via `generation/deterministic_prescrip
 segurança em `domain/training_safety.py` + `domain/effective_intensity.py`. §4 "Progressão"
 já declara `progression_decisions` como evidência.
 
+Persistência do `finish`: `progression_state.persist_result` grava só trilhas/grupos NOVOS ou com colunas de negócio alteradas em relação ao estado carregado (`baseline_*`, sem SELECT de id quando o id é conhecido); `engine_version`/`updated_at` passam a significar "quem gravou a linha por último"; o replay (`rebuild_for_user`) apaga e grava tudo. Não é regra de progressão nova.
+
 | Regra | Dono | Proibido fora do dono | Divergências | Lote | Guarda |
 |---|---|---|---|---|---|
 | Sugestão de carga/reps (um motor só) | `domain/prescription_service.suggest_for_pair(s)` → `prescribe_pairs` → `progression_engine.prescribe` | `suggest_load_and_reps` (apagado com `progression_service.py`), faixa derivada da sessão, RPE por média; IA por série com carga livre (1c ✅: `engine_decision_context.bound_ai_load`, no passo via `round_to_equipment_step`) | ✅ C1, C2 resolvidos no Lote 1a (IA por série: 1c) | 1a | `motor_legado_carga`, `defaults_prescricao`, `percentual_de_carga` |
