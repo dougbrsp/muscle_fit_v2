@@ -34,6 +34,7 @@ type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
  */
 function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initialUser?: { id: number; label: string } }) {
   const qc = useQueryClient();
+  const PrimaryAction = usePresentationSlot('primaryAction');
   const [userId, setUserId] = useState<number | null>(fixedUserId ?? initialUser?.id ?? null);
   const [warnings, setWarnings] = useState<NutritionLimitation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -83,19 +84,29 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
         {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
-        {userId !== null && (
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => {
-              setEditing({ mode: 'new' });
-              setNotice(null);
-              setWarnings([]);
-            }}
-          >
-            Novo rascunho
-          </Button>
-        )}
+        {userId !== null &&
+          (PrimaryAction ? (
+            <PrimaryAction
+              label="Novo rascunho"
+              onClick={() => {
+                setEditing({ mode: 'new' });
+                setNotice(null);
+                setWarnings([]);
+              }}
+            />
+          ) : (
+            <Button
+              color="brand"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => {
+                setEditing({ mode: 'new' });
+                setNotice(null);
+                setWarnings([]);
+              }}
+            >
+              Novo rascunho
+            </Button>
+          ))}
       </Group>
 
       {userId !== null && <CheckinDayField key={userId} userId={userId} />}

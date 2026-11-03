@@ -233,7 +233,7 @@ export function BioimpedanciaSection() {
             Medições manuais de composição corporal.
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} color="brand" onClick={handleOpenCreate}>
+        <Button leftSection={<IconPlus size={16} />} color="brand" onClick={handleOpenCreate} fullWidth={!!RecordList}>
           Novo lançamento
         </Button>
       </Group>

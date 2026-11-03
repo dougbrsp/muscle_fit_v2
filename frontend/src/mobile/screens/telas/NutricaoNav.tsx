@@ -17,13 +17,12 @@ export type NutricaoSecao = (typeof SECOES)[number]['href'];
 /** Seção atual da Nutrição numa linha só; o toque abre a lista das demais (substitui a faixa de botões do desktop). */
 export function NutricaoNav({ active }: { active: NutricaoSecao }) {
   const [opened, setOpened] = useState(false);
-  const atual = SECOES.find((secao) => secao.href === active);
   return (
     <>
       <ListGroup aria-label="Seções da Nutrição">
-        <ListRow title="Seção da Nutrição" value={atual?.label} onClick={() => setOpened(true)} />
+        <ListRow title="Outras seções da Nutrição" onClick={() => setOpened(true)} />
       </ListGroup>
-      <BottomSheet opened={opened} onClose={() => setOpened(false)} title="Seções da Nutrição">
+      <BottomSheet opened={opened} onClose={() => setOpened(false)} title="Nutrição">
         <ListGroup>
           {SECOES.map((secao) => (
             <ListRow key={secao.href} title={secao.label} href={secao.href} current={secao.href === active} />

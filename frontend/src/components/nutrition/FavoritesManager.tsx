@@ -217,13 +217,13 @@ export function FavoritesManager() {
 
       <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
         <Stack gap="sm">
-          <Group gap={6}>
+          <Group gap={6} wrap="nowrap">
             <IconStarFilled size={16} color="var(--mantine-color-yellow-5)" />
             <Title order={4} c={BRAND.textPrimary}>
               Meus preferidos
             </Title>
             {favoritos.data && (
-              <Text size="xs" c={BRAND.textMuted}>
+              <Text size="xs" c={BRAND.textMuted} style={{ whiteSpace: 'nowrap' }}>
                 {itens.length} de {favoritos.data.max_items}
               </Text>
             )}

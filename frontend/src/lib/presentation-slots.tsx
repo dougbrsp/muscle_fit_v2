@@ -35,6 +35,10 @@ export type PeriodComparisonRow = {
 };
 
 export type PresentationSlots = {
+  /** Cabeçalho do dia do diário (celular): dia da semana uma vez, data no campo. */
+  dayHeader: ComponentType<{ date: string | null; today: string | null; onDateChange: (date: string) => void }>;
+  /** Ação principal da página (celular: fixa acima da tab bar). */
+  primaryAction: ComponentType<{ label: string; onClick: () => void }>;
   /** Os 7 dias da semana do diário numa faixa (celular), no lugar dos cartões. */
   weekDays: ComponentType<{ days: NutritionWeek['days']; today: string; selected: string | null; onSelect: (date: string) => void }>;
   /** Comparativo por período (T-3..T-0, S-3..S-0) em lista, com o detalhe por toque. */
@@ -77,6 +81,11 @@ export type { Checkin };
 const PresentationContext = createContext<Partial<PresentationSlots>>({});
 
 export const PresentationProvider = PresentationContext.Provider;
+
+/** Há apresentação alternativa (celular) em volta deste componente? */
+export function usePresentationActive(): boolean {
+  return Object.keys(useContext(PresentationContext)).length > 0;
+}
 
 /** Slot de apresentação alternativa, ou `undefined` (desktop: desenha o padrão). */
 export function usePresentationSlot<K extends keyof PresentationSlots>(name: K): PresentationSlots[K] | undefined {

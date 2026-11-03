@@ -1,7 +1,7 @@
 'use client';
 
 import { Select, Stack } from '@mantine/core';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { BioimpedanciaSection } from '@/app/(app)/indicadores-fisicos/BioimpedanciaSection';
 import { EffortMetricsSection } from '@/app/(app)/indicadores-fisicos/EffortMetricsSection';
 import { MedidasFitaSection } from '@/app/(app)/indicadores-fisicos/MedidasFitaSection';
@@ -26,6 +26,14 @@ type Section = (typeof SECTIONS)[number]['value'];
  */
 export function IndicadoresScreen() {
   const [section, setSection] = useState<Section>('bio');
+  // Seção já visitada continua montada (só escondida): o que foi digitado nela não se perde ao trocar.
+  const [visited, setVisited] = useState<ReadonlySet<Section>>(new Set<Section>(['bio']));
+  const pane = (id: Section, node: ReactNode) =>
+    visited.has(id) ? (
+      <div key={id} hidden={section !== id}>
+        {node}
+      </div>
+    ) : null;
   return (
     <MobileRecordsPresentation>
       <ScreenHeader title="Indicadores físicos" subtitle="Bioimpedância, medidas, recuperação, sono e esforço estimado" />
@@ -35,14 +43,18 @@ export function IndicadoresScreen() {
           label="Seção"
           data={SECTIONS as unknown as { value: string; label: string }[]}
           value={section}
-          onChange={(v) => setSection((v as Section) || 'bio')}
+          onChange={(v) => {
+            const next = (v as Section) || 'bio';
+            setSection(next);
+            setVisited((current) => new Set([...current, next]));
+          }}
           allowDeselect={false}
         />
-        {section === 'bio' ? <BioimpedanciaSection /> : null}
-        {section === 'fita' ? <MedidasFitaSection /> : null}
-        {section === 'recovery' ? <RecoveryMetricsSection /> : null}
-        {section === 'sleep' ? <SleepMetricsSection /> : null}
-        {section === 'effort' ? <EffortMetricsSection /> : null}
+        {pane('bio', <BioimpedanciaSection />)}
+        {pane('fita', <MedidasFitaSection />)}
+        {pane('recovery', <RecoveryMetricsSection />)}
+        {pane('sleep', <SleepMetricsSection />)}
+        {pane('effort', <EffortMetricsSection />)}
       </Stack>
     </MobileRecordsPresentation>
   );

@@ -182,7 +182,7 @@ export function SleepMetricsSection() {
             Lançamento manual — duração, regularidade, sono profundo/REM e despertares.
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} color="brand" onClick={handleOpenCreate}>
+        <Button leftSection={<IconPlus size={16} />} color="brand" onClick={handleOpenCreate} fullWidth={!!RecordList}>
           Novo lançamento
         </Button>
       </Group>

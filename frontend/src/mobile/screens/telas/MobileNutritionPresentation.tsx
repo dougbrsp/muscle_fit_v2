@@ -1,11 +1,12 @@
 'use client';
 
-import { Badge, Button, Group, Text } from '@mantine/core';
-import { IconDownload, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { ActionIcon, Badge, Button, Group, Text, TextInput } from '@mantine/core';
+import { IconChevronLeft, IconChevronRight, IconDownload, IconPlus, IconStar, IconStarFilled } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { quantidade } from '@/components/nutrition/MealCard';
 import { trainingText } from '@/components/nutrition/WeekTargetsTable';
 import {
+  ENERGY_NUTRIENT,
   FOOD_PER_100_FIELDS,
   FOOD_REQUIRED_FIELDS,
   FOOD_SOURCE_OPTIONS,
@@ -13,10 +14,10 @@ import {
   USDA_DATA_TYPE_OPTIONS,
   nutritionLabel,
 } from '@/lib/nutrition-constants';
-import { formatGrams, formatKcal, formatWithUnit, weekdayShort } from '@/lib/nutrition-format';
+import { formatDayLong, formatGrams, formatKcal, formatWithUnit, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { PresentationProvider, type PresentationSlots } from '@/lib/presentation-slots';
-import { ListBlock, ListGroup, ListRow, ScreenHeader } from '../../ui';
+import { ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
 import { NutricaoNav, type NutricaoSecao } from './NutricaoNav';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 
@@ -27,6 +28,49 @@ function per100Summary(per100: Record<string, number | null | undefined>): strin
 }
 
 const SLOTS: Partial<PresentationSlots> = {
+  dayHeader: ({ date, today, onDateChange }) => {
+    const weekday = date ? formatDayLong(date).split(',')[0] : '';
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ActionIcon variant="light" color="brand" size={44} aria-label="Dia anterior" disabled={!date} onClick={() => date && onDateChange(shiftIsoDate(date, -1))}>
+            <IconChevronLeft size={20} />
+          </ActionIcon>
+          <TextInput
+            style={{ flex: 1 }}
+            type="date"
+            size="md"
+            aria-label="Data do diário"
+            value={date ?? ''}
+            onChange={(event) => {
+              const valor = event.currentTarget.value;
+              if (valor) onDateChange(valor);
+            }}
+          />
+          <ActionIcon variant="light" color="brand" size={44} aria-label="Dia seguinte" disabled={!date} onClick={() => date && onDateChange(shiftIsoDate(date, 1))}>
+            <IconChevronRight size={20} />
+          </ActionIcon>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{weekday.charAt(0).toUpperCase() + weekday.slice(1)}</h3>
+          {today && date !== today ? (
+            <Button variant="subtle" color="brand" mih={44} onClick={() => onDateChange(today)}>
+              Hoje
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  },
+
+  primaryAction: ({ label, onClick }) => (
+    <StickyAction>
+      <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={onClick}>
+        {label}
+      </Button>
+    </StickyAction>
+  ),
+
   weekDays: ({ days, today, selected, onSelect }) => (
     <div role="group" aria-label="Dias da semana" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
       {days.map((dia) => {
@@ -119,13 +163,11 @@ const SLOTS: Partial<PresentationSlots> = {
             <ListRow
               title={item.name}
               subtitle={[
-                [item.brand, item.category].filter(Boolean).join(' · '),
-                `${nutritionLabel(FOOD_SOURCE_OPTIONS, item.source)}${item.is_public ? '' : item.is_own ? ' · Meu' : ' · Privado'}`,
-                per100Summary(item.per_100),
-                item.citation ?? 'Cadastro sem citação de tabela',
+                `${formatWithUnit(item.per_100[ENERGY_NUTRIENT], 'kcal', 0)} por 100 ${item.basis}`,
+                item.serving.household_measure || item.brand || item.category,
               ]
                 .filter(Boolean)
-                .join(' | ')}
+                .join(' · ')}
               current={item.id === selectedId}
               onClick={() => onSelect(item)}
             />
@@ -137,9 +179,9 @@ const SLOTS: Partial<PresentationSlots> = {
               aria-pressed={item.is_favorite}
               disabled={togglingId === item.id}
               onClick={() => onToggleFavorite(item)}
-              style={{ minWidth: 48, background: 'none', border: 0, color: item.is_favorite ? '#fab005' : 'inherit', cursor: 'pointer' }}
+              style={{ minWidth: 48, minHeight: 48, background: 'none', border: 0, color: item.is_favorite ? '#fab005' : 'inherit', cursor: 'pointer' }}
             >
-              {item.is_favorite ? <IconStarFilled size={20} /> : <IconStar size={20} />}
+              {item.is_favorite ? <IconStarFilled size={22} /> : <IconStar size={22} />}
             </button>
           ) : null}
         </div>

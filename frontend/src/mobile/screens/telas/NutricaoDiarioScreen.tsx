@@ -240,6 +240,11 @@ function NutricaoDiarioContent() {
       >
         {selectedMeal ? (
           <Stack gap="sm">
+            {remover.isError ? (
+              <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
+                {nutritionErrorInfo(remover.error, 'Não foi possível excluir a refeição.').message}
+              </Alert>
+            ) : null}
             <ListGroup title="Itens">
               {selectedMeal.items.map((item) => (
                 <ListRow

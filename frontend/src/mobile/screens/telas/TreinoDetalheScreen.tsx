@@ -643,7 +643,7 @@ export function TreinoDetalheScreen() {
             icon={IconCheck}
             title="Finalizar treino"
             subtitle={finishMutation.isError ? String(finishMutation.error) : finishMutation.isPending ? 'Finalizando...' : undefined}
-            onClick={() => finishMutation.mutate()}
+            onClick={finishMutation.isPending ? undefined : () => finishMutation.mutate()}
           />
         ) : null}
       </ListGroup>
@@ -733,7 +733,7 @@ export function TreinoDetalheScreen() {
           selectedRow ? (
             confirmDelete ? (
               <>
-                <SheetButton variant="default" onClick={() => setConfirmDelete(false)}>
+                <SheetButton variant="default" disabled={deleteExerciseMutation.isPending} onClick={() => setConfirmDelete(false)}>
                   Cancelar
                 </SheetButton>
                 <SheetButton
