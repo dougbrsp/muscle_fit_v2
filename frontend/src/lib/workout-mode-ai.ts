@@ -28,18 +28,19 @@ import type { AsyncJob } from './analytics-types';
 //   o trade-off não compensa aqui. Fica como opção a revisitar só se a
 //   concorrência/volume crescerem a ponto do custo de poll curto pesar.
 const WORKOUT_AI_POLL_INTERVAL_MS = 500;
-// Teto de espera no cliente — bem abaixo do timeout de 60s da Lambda
-// `musclefit-workout-ai` (ver `infra/lambda_workout_ai.tf`), generoso o
-// bastante para uma chamada de IA lenta sem deixar o usuário esperando
-// indefinidamente por um card "avaliação indisponível"/"resumo indisponível".
-const WORKOUT_AI_POLL_TIMEOUT_MS = 20000;
+// Teto PADRÃO de espera no cliente (`evaluate-set` e `summarize`, turnos curtos
+// de IA): evita deixar o usuário esperando por um card "avaliação
+// indisponível". Chamadas mais lentas (resumo do treino inteiro, que pode
+// levar até o timeout de 60s da Lambda `musclefit-workout-ai`, ver
+// `infra/lambda_workout_ai.tf`) passam um prazo próprio em `timeoutMs`.
+export const WORKOUT_AI_POLL_TIMEOUT_MS = 20000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function pollWorkoutAiJob<TResult>(jobId: string): Promise<TResult> {
-  const deadline = Date.now() + WORKOUT_AI_POLL_TIMEOUT_MS;
+async function pollWorkoutAiJob<TResult>(jobId: string, timeoutMs: number): Promise<TResult> {
+  const deadline = Date.now() + timeoutMs;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const job = await apiFetch<AsyncJob<TResult>>(`/jobs/${jobId}`);
@@ -60,7 +61,11 @@ async function pollWorkoutAiJob<TResult>(jobId: string): Promise<TResult> {
 // `job_id`) e resolve/rejeita com o MESMO shape de resultado do endpoint
 // síncrono antigo, via polling curto em `GET /jobs/{job_id}` — usar no lugar
 // de `apiFetch` direto nesses 3 endpoints específicos.
-export async function fetchWorkoutAiResult<TResult>(path: string, init: RequestInit = {}): Promise<TResult> {
+export async function fetchWorkoutAiResult<TResult>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs: number = WORKOUT_AI_POLL_TIMEOUT_MS,
+): Promise<TResult> {
   const { job_id } = await apiFetch<{ job_id: string; status: string }>(path, { ...init, method: init.method ?? 'POST' });
-  return pollWorkoutAiJob<TResult>(job_id);
+  return pollWorkoutAiJob<TResult>(job_id, timeoutMs);
 }

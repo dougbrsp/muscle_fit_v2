@@ -5,12 +5,13 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RecoverableError } from '@/components/RecoverableError';
 import { apiFetch } from '@/lib/api';
 import { useOfflineUser } from '@/lib/offline/use-offline-user';
 import type { PlanCardioResponse } from '@/lib/analytics-types';
 import { type StoredWorkoutModeSession, type WorkoutAiSummaryResult } from '@/lib/workout-mode-types';
+import { ASYNC_JOB_POLL_TIMEOUT_MS } from '@/lib/async-job-poll';
 import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
 import {
   clearParkedSession,
@@ -67,6 +68,12 @@ const initialCompletionState: CompletionState = {
  *   resumo de IA do treino via `POST /activities/{id}/ai-summary/generate`,
  *   mostrar o modal de conclusão e navegar de volta).
  */
+// Prazo de espera do resumo de IA do treino: a Lambda `musclefit-workout-ai` tem
+// timeout de 60s e a partida a frio soma segundos (job de 22s medido em
+// produção, o padrão de 20s não bastava); os 90s de `ASYNC_JOB_POLL_TIMEOUT_MS`
+// cobrem os 60s com folga.
+const WORKOUT_SUMMARY_TIMEOUT_MS = ASYNC_JOB_POLL_TIMEOUT_MS;
+
 export function WorkoutModeClient() {
   // COD-14: o mapa corporal da execução vem sob demanda; começa a baixar já na montagem.
   useEffect(preloadMuscleBodyMap, []);
@@ -76,6 +83,9 @@ export function WorkoutModeClient() {
   const [exitOpen, { open: openExit, close: closeExit }] = useDisclosure(false);
   const [perSetAiEnabled, setPerSetAiEnabled] = useState(false);
   const [completion, setCompletion] = useState<CompletionState>(initialCompletionState);
+  // Número da conclusão em curso; sair do modal o invalida, para o resumo que
+  // chegar depois não atualizar estado de um modal já fechado.
+  const completionRunRef = useRef(0);
   // Vaga na barra do topo onde a execução desenha a linha de progresso.
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
@@ -117,9 +127,20 @@ export function WorkoutModeClient() {
     clearParkedSession();
     setSession(null);
     setCompletion({ open: true, loading: true, error: false, summary: null, workoutPlanId });
-    fetchWorkoutAiResult<WorkoutAiSummaryResult>(`/activities/${sessionId}/ai-summary/generate`, { method: 'POST' })
-      .then((result) => setCompletion((prev) => ({ ...prev, loading: false, error: false, summary: result.summary })))
-      .catch(() => setCompletion((prev) => ({ ...prev, loading: false, error: true, summary: null })));
+    const run = ++completionRunRef.current;
+    fetchWorkoutAiResult<WorkoutAiSummaryResult>(
+      `/activities/${sessionId}/ai-summary/generate`,
+      { method: 'POST' },
+      WORKOUT_SUMMARY_TIMEOUT_MS,
+    )
+      .then((result) => {
+        if (run !== completionRunRef.current) return;
+        setCompletion((prev) => ({ ...prev, loading: false, error: false, summary: result.summary }));
+      })
+      .catch(() => {
+        if (run !== completionRunRef.current) return;
+        setCompletion((prev) => ({ ...prev, loading: false, error: true, summary: null }));
+      });
   }
 
   // Cardio do slot da ficha encerrada. Falha = o bloco só não aparece (o
@@ -132,6 +153,7 @@ export function WorkoutModeClient() {
   });
 
   function closeCompletionAndReturn() {
+    completionRunRef.current += 1;
     setCompletion(initialCompletionState);
     router.push('/registro-exercicios');
   }
@@ -226,8 +248,6 @@ export function WorkoutModeClient() {
         title="Treino concluído"
         size="sm"
         centered
-        closeOnClickOutside={!completion.loading}
-        withCloseButton={!completion.loading}
       >
         <Stack gap="sm">
           {completion.loading && (
@@ -254,7 +274,7 @@ export function WorkoutModeClient() {
             </Group>
           )}
           <CardioAfterStrength cardio={cardioQuery.data} />
-          <Button fullWidth radius="xl" disabled={completion.loading} onClick={closeCompletionAndReturn}>
+          <Button fullWidth radius="xl" onClick={closeCompletionAndReturn}>
             Voltar aos treinos
           </Button>
         </Stack>
