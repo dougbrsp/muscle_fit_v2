@@ -96,7 +96,7 @@ def _require_tables(cur: Any) -> None:
     require_diary_tables(cur)
 
 
-def _target_of(row: Optional[dict[str, Any]]):
+def target_of(row: Optional[dict[str, Any]]):
     if row is None:
         return None
     return target_macros(row.get("kcal"), row.get("protein_g"), row.get("carbs_g"), row.get("fat_g"), row.get("fiber_g"))
@@ -155,7 +155,7 @@ def _training(cur: Any, user_id: int, day: date, today: date) -> dict[str, Any]:
     }
 
 
-def _balance_public(balanco) -> dict[str, Any]:
+def balance_public(balanco) -> dict[str, Any]:
     corpo = balanco.to_dict()
     corpo["limitations"] = nutrition_labels.limitation_items(balanco.limitations)
     return corpo
@@ -187,7 +187,7 @@ def get_day(
             diario = _read_day_log(cur, aluno, local_date)
             treino = _training(cur, aluno, local_date, hoje)
     totais = day_totals(linhas)
-    balanco = day_balance(_target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
+    balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
         "user": usuario,
         "local_date": local_date.isoformat(),
@@ -197,7 +197,7 @@ def get_day(
         "target_notices": nutrition_labels.limitation_items(diary_target_notice(acao)),
         "meals": refeicoes,
         "totals": totals_public(totais),
-        "balance": _balance_public(balanco),
+        "balance": balance_public(balanco),
         "day_log": day_log_public(diario),
         "training": treino,
     }
@@ -255,7 +255,7 @@ def get_week(
         dia = linha["local_date"] if isinstance(linha["local_date"], date) else date.fromisoformat(str(linha["local_date"])[:10])
         por_dia.setdefault(dia, []).append(linha)
     totais = [day_totals(por_dia.get(dia, [])) for dia in dias]
-    relatorio = week_report(dias, [_target_of(metas.rows.get(dia)) for dia in dias], totais)
+    relatorio = week_report(dias, [target_of(metas.rows.get(dia)) for dia in dias], totais)
     registrados = set(relatorio.logged_days)
     incompletos = set(relatorio.incomplete_days)
     corpo = relatorio.to_dict()

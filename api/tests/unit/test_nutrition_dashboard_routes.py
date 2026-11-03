@@ -123,8 +123,9 @@ def test_sem_nenhum_dado_devolve_estados_vazios_e_nao_quebra(db):
     assert resposta.status_code == 200, resposta.text
     corpo = resposta.json()
     assert len(corpo["days"]) == dash.DASHBOARD_DEFAULT_DAYS and corpo["plan"] is None and corpo["projection"] is None
-    assert {dash.EMPTY_NO_PLAN, dash.EMPTY_NO_WEIGHT, dash.EMPTY_NO_BIOIMPEDANCE,
-            dash.EMPTY_FEW_LOGGED_DAYS} <= set(_codigos(corpo["empty_states"]))
+    assert {dash.EMPTY_NO_PLAN, dash.EMPTY_NO_WEIGHT, dash.EMPTY_NO_BIOIMPEDANCE} <= set(_codigos(corpo["empty_states"]))
+    assert dash.EMPTY_FEW_LOGGED_DAYS not in _codigos(corpo["empty_states"])  # sem plano o aviso é o do plano
+    assert "relógio" in next(i["label"] for i in corpo["empty_states"] if i["code"] == dash.EMPTY_NO_WEIGHT)
     assert all(item["label"] != item["code"] for item in corpo["empty_states"])
     assert corpo["body"]["points"] == [] and corpo["adaptive_tdee"]["applied"] is False
     assert corpo["adherence"]["logged_days"] == 0 and corpo["adherence"]["incomplete_days"] == []
@@ -156,6 +157,19 @@ def test_aderencia_conta_dias_fechados_hoje_fica_fora_e_sem_registro_e_a_parte(d
     ultima = corpo["weeks"][-1]
     assert HOJE.isoformat() not in ultima["report"]["logged_days"]
     assert all(set(item) == {"code", "label"} for item in ultima["report"]["limitations"])
+
+
+def test_com_plano_e_poucos_dias_registrados_avisa(db):
+    _publicar(db, strategy="maintenance")
+    assert dash.EMPTY_FEW_LOGGED_DAYS in _codigos(_client().get("/nutrition/dashboard").json()["empty_states"])
+
+
+def test_gasto_da_formula_ignora_a_meta_de_hoje(db):
+    _publicar(db, strategy="maintenance")
+    db.add_body(ALUNO, HOJE - timedelta(days=3), weight=80)
+    corpo = _client().get("/nutrition/dashboard").json()  # só hoje tem meta gravada
+    assert (ALUNO, HOJE) in db.targets
+    assert corpo["adaptive_tdee"]["suggestion"]["formula_kcal"] is None
 
 
 def test_dias_antes_do_plano_ficam_fora_da_conta(db):

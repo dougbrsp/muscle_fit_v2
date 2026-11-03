@@ -418,9 +418,13 @@ def goal_sequence_start(versions: Sequence[PlanVersion], today: date) -> Optiona
 # ---------------------------------------------------------------------------
 
 
-def window_tdee_kcal(tdee_kcal: Sequence[Optional[float]]) -> Optional[float]:
-    """Gasto médio da fórmula: média do TDEE das metas dos dias que têm meta (nenhum = `None`)."""
-    valores = [v for v in (positive_number(x) for x in tdee_kcal) if v is not None]
+def window_tdee_kcal(
+    days: Sequence[date], today: date, tdee_kcal: Sequence[Optional[float]]
+) -> Optional[float]:
+    """Gasto médio da fórmula: média do TDEE das metas dos últimos `ADAPTIVE_WINDOW_DAYS` dias FECHADOS
+    que têm meta (hoje, dia aberto, não entra; nenhum = `None`). `days` e `tdee_kcal` alinhados."""
+    pares = list(zip(days, tdee_kcal))[-ADAPTIVE_WINDOW_DAYS:]
+    valores = [v for dia, x in pares if dia < today and (v := positive_number(x)) is not None]
     return sum(valores) / len(valores) if valores else None
 
 
@@ -476,7 +480,7 @@ def empty_states(
         codigos.append(EMPTY_NO_WEIGHT)
     if bioimpedance_readings == 0:
         codigos.append(EMPTY_NO_BIOIMPEDANCE)
-    if logged_days < FEW_LOGGED_DAYS:
+    if has_plan and logged_days < FEW_LOGGED_DAYS:  # sem plano nenhum dia conta: o aviso certo é o do plano
         codigos.append(EMPTY_FEW_LOGGED_DAYS)
     if has_plan and meal_days_without_target > 0:
         codigos.append(EMPTY_DAYS_WITHOUT_TARGET)

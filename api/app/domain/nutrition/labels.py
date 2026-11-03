@@ -577,11 +577,14 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     # Dashboard de nutrição (N5, `dashboard`) e gasto observado (`adaptive_tdee`).
     dash_mod.EMPTY_NO_PLAN: "Sem plano de nutrição publicado: não há meta para comparar com o que você comeu.",
     dash_mod.EMPTY_NO_GOAL: "O plano não tem peso-alvo nem % de gordura alvo: sem projeção de chegada.",
-    dash_mod.EMPTY_NO_WEIGHT: "Nenhuma pesagem no período: registre o peso para ver a tendência.",
+    dash_mod.EMPTY_NO_WEIGHT: (
+        "Nenhuma pesagem de balança ou bioimpedância (Indicadores físicos) no período. Este painel só lê essas "
+        "pesagens: peso que está só no relógio ou no Intervals.icu não aparece aqui."
+    ),
     dash_mod.EMPTY_NO_BIOIMPEDANCE: "Nenhuma bioimpedância no período: sem % de gordura nem massa muscular.",
     dash_mod.EMPTY_FEW_LOGGED_DAYS: (
-        f"Menos de {dash_mod.FEW_LOGGED_DAYS} dias com refeições de total completo no período: "
-        "a aderência ainda diz pouco."
+        f"Menos de {dash_mod.FEW_LOGGED_DAYS} dias fechados com refeições de total completo desde o início do plano "
+        "(dentro do período): a aderência ainda diz pouco."
     ),
     dash_mod.EMPTY_DAYS_WITHOUT_TARGET: (
         "Há dia(s) com refeição registrada e sem meta calculada (a meta nasce ao abrir o diário do dia): "

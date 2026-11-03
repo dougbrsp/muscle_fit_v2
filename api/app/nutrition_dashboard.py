@@ -41,7 +41,7 @@ from .intelligence.dashboard.body_service import moving_average_points
 from .intelligence.dashboard.metrics_registry import threshold
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
-from .nutrition_days import _balance_public, _target_of
+from .nutrition_days import balance_public, target_of
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
@@ -110,7 +110,7 @@ def get_today(
             linhas = list(cur.fetchall() or [])
     meta = metas.rows.get(hoje)
     totais = day_totals(linhas)
-    balanco = day_balance(_target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
+    balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
         "user": usuario,
         "local_date": hoje.isoformat(),
@@ -118,7 +118,7 @@ def get_today(
         "target": meta,
         "target_action": metas.actions[hoje].value,
         "totals": totals_public(totais),
-        "balance": _balance_public(balanco),
+        "balance": balance_public(balanco),
     }
 
 
@@ -205,7 +205,7 @@ def get_dashboard(
 
     # --- gasto: média do TDEE das metas dos últimos dias do TDEE observado ---------------------------
     tdees = [None if m is None else m.get("tdee_kcal") for m in metas_por_dia]
-    gasto_formula = dash.window_tdee_kcal(tdees[-dash.ADAPTIVE_WINDOW_DAYS :])
+    gasto_formula = dash.window_tdee_kcal(dias_lidos, hoje, tdees)
 
     # --- plano em vigor, projeção até o alvo (dono: `phases.project_goal`) --------------------------
     plano_publico = None

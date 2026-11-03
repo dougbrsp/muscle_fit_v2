@@ -1,11 +1,11 @@
 'use client';
 
-import { Alert, Badge, Card, Group, Progress, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Progress, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { DashboardCardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
@@ -239,7 +239,10 @@ function BodySection({ data }: { data: NutritionDashboard }) {
           </div>
         </Stack>
       ) : (
-        <EmptyState title="Sem pesagem no período" description="Registre o peso em Indicadores físicos para ver a tendência." actionHref="/indicadores-fisicos" actionLabel="Ir para Indicadores físicos" />
+        <EmptyState
+          title="Sem pesagem no período"
+          description="Este painel lê só as pesagens de balança e bioimpedância de Indicadores físicos. Peso que está apenas no relógio ou no Intervals.icu não aparece aqui."
+          actionHref="/indicadores-fisicos" actionLabel="Ir para Indicadores físicos" />
       )}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
         {temGordura && (
@@ -376,8 +379,18 @@ export function DashboardNutricaoClient() {
     queryFn: () => fetchNutritionDashboard(days, userId),
     enabled: currentUserQuery.isSuccess,
     retry: false,
+    // Trocar o período mantém o painel anterior enquanto o novo carrega (só do mesmo aluno: nunca mostra o de outro).
+    placeholderData: (anterior, consultaAnterior) =>
+      consultaAnterior?.queryKey[1] === (userId ?? 'me') ? keepPreviousData(anterior) : undefined,
   });
   const data = consulta.data;
+  // O seletor guarda as janelas da última resposta: não some enquanto carrega nem depois de um erro.
+  const [janelas, setJanelas] = useState<{ choices: number[]; atual: number } | null>(null);
+  useEffect(() => {
+    if (consulta.data && !consulta.isPlaceholderData) {
+      setJanelas({ choices: consulta.data.window_choices, atual: consulta.data.window_days });
+    }
+  }, [consulta.data, consulta.isPlaceholderData]);
   const trocarAluno = (novo: number | null) => {
     setUserId(novo);
     setDays(null);
@@ -400,15 +413,20 @@ export function DashboardNutricaoClient() {
 
       <Group align="flex-end" gap="md" wrap="wrap">
         {canManage && <UserPicker value={userId} onChange={trocarAluno} />}
-        {data && (
+        {janelas && (
           <Select
             label="Período"
             w={200}
             allowDeselect={false}
-            data={data.window_choices.map((n) => ({ value: String(n), label: `Últimos ${n} dias` }))}
-            value={String(data.window_days)}
+            data={janelas.choices.map((n) => ({ value: String(n), label: `Últimos ${n} dias` }))}
+            value={String(days ?? janelas.atual)}
             onChange={(valor) => valor && setDays(Number(valor))}
           />
+        )}
+        {consulta.isPlaceholderData && (
+          <Text size="sm" c="dimmed" role="status">
+            Atualizando...
+          </Text>
         )}
       </Group>
 
@@ -417,7 +435,12 @@ export function DashboardNutricaoClient() {
       )}
       {(consulta.isLoading || currentUserQuery.isLoading) && <DashboardCardSkeleton rows={6} />}
       {consulta.isError && (
-        <ErrorState title="Não foi possível carregar o painel de nutrição" description={nutritionErrorInfo(consulta.error, 'Tente novamente em instantes.').message} />
+        <Stack gap="xs" align="flex-start">
+          <ErrorState title="Não foi possível carregar o painel de nutrição" description={nutritionErrorInfo(consulta.error, 'Tente novamente em instantes.').message} />
+          <Button variant="light" color="brand" onClick={() => void consulta.refetch()}>
+            Tentar de novo
+          </Button>
+        </Stack>
       )}
       {data && (
         <Stack gap="lg">

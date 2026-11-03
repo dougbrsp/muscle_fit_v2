@@ -184,9 +184,16 @@ def test_ritmo_do_peso_vem_da_inclinacao_do_dono():
     assert poucas["weekly_change_kg"] is None and poucas["limitations"]
 
 
-def test_gasto_medio_da_formula_so_dos_dias_com_meta():
-    assert dash.window_tdee_kcal([2500.0, None, 2700.0, 0]) == 2600.0
-    assert dash.window_tdee_kcal([None, None]) is None
+def test_gasto_medio_da_formula_so_dos_dias_fechados_com_meta():
+    dias = (date(2026, 10, 14), date(2026, 10, 15), date(2026, 10, 16), HOJE)
+    assert dash.window_tdee_kcal(dias, HOJE, [2500.0, None, 2700.0, 9000.0]) == 2600.0  # hoje (aberto) não entra
+    assert dash.window_tdee_kcal(dias, HOJE, [None, None, None, 9000.0]) is None
+
+
+def test_gasto_medio_da_formula_olha_so_a_janela_do_tdee_observado():
+    dias = dash.window_dates(HOJE, dash.ADAPTIVE_WINDOW_DAYS + 5)
+    valores = [4000.0] * 5 + [2000.0] * (dash.ADAPTIVE_WINDOW_DAYS - 1) + [9000.0]
+    assert dash.window_tdee_kcal(dias, HOJE, valores) == 2000.0
 
 
 def test_tdee_adaptativo_so_sugere_e_olha_a_janela_preferida():
@@ -236,7 +243,13 @@ def test_sequencia_ignora_versao_futura_e_desempata_pela_publicacao():
 def test_estados_vazios_dizem_o_que_falta():
     vazio = dash.empty_states(has_plan=False, has_goal=False, weight_readings=0, bioimpedance_readings=0,
                               logged_days=0, meal_days_without_target=7)
-    assert vazio == (dash.EMPTY_NO_PLAN, dash.EMPTY_NO_WEIGHT, dash.EMPTY_NO_BIOIMPEDANCE, dash.EMPTY_FEW_LOGGED_DAYS)
+    assert vazio == (dash.EMPTY_NO_PLAN, dash.EMPTY_NO_WEIGHT, dash.EMPTY_NO_BIOIMPEDANCE)
+    poucos = dash.empty_states(has_plan=True, has_goal=True, weight_readings=5, bioimpedance_readings=1,
+                               logged_days=dash.FEW_LOGGED_DAYS - 1, meal_days_without_target=0)
+    assert poucos == (dash.EMPTY_FEW_LOGGED_DAYS,)
+    sem_plano_com_poucos_dias = dash.empty_states(has_plan=False, has_goal=False, weight_readings=5,
+                                                  bioimpedance_readings=1, logged_days=0, meal_days_without_target=0)
+    assert sem_plano_com_poucos_dias == (dash.EMPTY_NO_PLAN,)  # sem plano nenhum dia conta
     sem_alvo = dash.empty_states(has_plan=True, has_goal=False, weight_readings=5, bioimpedance_readings=1,
                                  logged_days=10, meal_days_without_target=2)
     assert sem_alvo == (dash.EMPTY_NO_GOAL, dash.EMPTY_DAYS_WITHOUT_TARGET)

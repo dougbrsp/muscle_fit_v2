@@ -269,7 +269,9 @@ class BalanceRow:
     tela não calcular: `within_target` (ingerido até a meta), `to_consume` (o que
     falta, nunca negativo) e `excess` (o que passou da meta, nunca negativo);
     `within_target + to_consume` = meta. Com meta e ingestão completa, ou com meta e nenhuma
-    refeição (0 consumido, meta toda a consumir); ingestão incompleta fica sem partes."""
+    refeição (0 consumido, meta toda a consumir); ingestão incompleta fica sem partes.
+    `remaining` e `share` seguem nulos sem refeição (não há ingestão para subtrair nem dividir),
+    enquanto `to_consume = meta`: quem desenha o gráfico lê as partes, não esses dois."""
 
     field: str
     target: Optional[float]
