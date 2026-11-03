@@ -57,3 +57,17 @@ Entregue: ADR [0004](../adr/0004-navegacao-iphone-e-secoes-so-desktop.md), [DESI
 | MB-12 | MB-1 a MB-3 e MB-6 (tabelas, filtros, gráficos, estados) | Frentes B e C, com os primitivos novos |
 | MB-13 | Teclado decidido por foco, não por `visualViewport` | Validar em iPhone real |
 | MB-14 | Rotas só-desktop abertas por link compartilhado (`InsightCard`, `DataQuality`, `SafeMarkdown`, `CardioRecommendationPanel`) caem na tela D1; o CTA existe nesses componentes | Aceito (D1); esconder o CTA exigiria mexer em componente do desktop |
+
+## Mobile v2: frente C (treino, corpo, nutricao e conta)
+
+Duplicacao aceita entre as telas mobile e os clients do desktop (mesmas chaves e endpoints; extraido so o mecanico em `lib/exercise-log-save.ts`, `lib/workout-plan-payload.ts` e `lib/suggested-progression-apply.ts`):
+
+| # | Item |
+|---|---|
+| C-1 | Queries de catalogo/grupos/equipamento e estado do formulario de lancamento em `TreinoDetalheScreen` vs `WorkoutDetailClient`. |
+| C-2 | Mutations de PUT/refresh/cardio/delete em `PlanoDetalheScreen` vs `PlanDetailClient`; job de geracao em `GerarPlanoView` vs `GenerateDraftModal`. |
+| C-3 | Catalogo canonico, swap eligibility e breakdown em `PlanExercisesEditor` vs `ExercisesTable`. |
+
+Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; edicao de exercicio sem catalogo manda `mapping_id` nulo; cancelar durante o reset de senha perde a senha temporaria.
+
+Visual pendente da rodada 1: Diario ("Quarta-feira" em caixa, data repetida); busca de Alimentos (nome + kcal + porcao sem separadores, estrela e chevron com 44 pt); Preferidos; "Novo rascunho" do Plano em `StickyAction`; Perfil e Preferencias com `StickyAction` (exige extrair o estado do formulario); grafico de 1 ponto sem marcador em Indicadores; Historico com menu "..."; confirmacao de descarte nas visoes de pagina inteira; `StickyAction` em Indicadores; fixtures realistas para Volume, Check-in com proposta, Perfil e Preferencias.

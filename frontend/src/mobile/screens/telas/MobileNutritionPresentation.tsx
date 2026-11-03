@@ -27,6 +27,36 @@ function per100Summary(per100: Record<string, number | null | undefined>): strin
 }
 
 const SLOTS: Partial<PresentationSlots> = {
+  weekDays: ({ days, today, selected, onSelect }) => (
+    <div role="group" aria-label="Dias da semana" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+      {days.map((dia) => {
+        const ativo = dia.local_date === selected;
+        return (
+          <button
+            key={dia.local_date}
+            type="button"
+            aria-pressed={ativo}
+            aria-label={`Abrir ${formatDateBR(dia.local_date)}${dia.logged ? ', registrado' : ''}`}
+            onClick={() => onSelect(dia.local_date)}
+            style={{
+              minHeight: 56,
+              padding: 0,
+              borderRadius: 10,
+              border: dia.local_date === today ? '1px solid var(--mantine-color-brand-5)' : '1px solid transparent',
+              background: ativo ? 'var(--mantine-color-brand-light)' : 'transparent',
+              color: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ display: 'block', fontSize: 11, textTransform: 'capitalize' }}>{weekdayShort(dia.local_date).slice(0, 3)}</span>
+            <span style={{ display: 'block', fontSize: 16, fontWeight: 700 }}>{formatDateBR(dia.local_date).slice(0, 2)}</span>
+            <span aria-hidden style={{ display: 'block', fontSize: 10, color: dia.logged ? '#51cf66' : 'transparent' }}>●</span>
+          </button>
+        );
+      })}
+    </div>
+  ),
+
   nutritionHeader: ({ active, title, description }) => (
     <>
       <ScreenHeader title={title} subtitle={typeof description === 'string' ? description : undefined} />

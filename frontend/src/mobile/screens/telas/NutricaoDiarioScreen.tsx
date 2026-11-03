@@ -22,7 +22,7 @@ import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, nutrition
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
 import { BottomSheet, ListBlock, ListGroup, ListRow, LoadingState, ScreenHeader, StickyAction } from '../../ui';
-import { SheetButton } from './common';
+import { SheetButton, useBackToClose } from './common';
 import { MobileNutritionPresentation } from './MobileNutritionPresentation';
 import { NutricaoNav } from './NutricaoNav';
 
@@ -75,6 +75,8 @@ function NutricaoDiarioContent() {
       await invalidarDiario();
     },
   });
+
+  useBackToClose(editing !== null, () => setEditing(null));
 
   function abrirLeitura(modo: 'text' | 'photo') {
     setModoLeitura(modo);

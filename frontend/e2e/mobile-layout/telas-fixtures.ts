@@ -109,6 +109,21 @@ const FIXTURES: Record<string, unknown> = {
   'GET /nutrition/days/2026-10-14': NUTRITION_DAY,
   'GET /nutrition/foods/search': { query: 'arroz', normalized: 'arroz', items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')] },
   'GET /nutrition/favorites': { items: [] },
+  'GET /advanced-techniques': { items: [] },
+  'GET /nutrition/checkin': {
+    user: USER, today: '2026-10-14', settings: { weekday: 0, weekday_label: 'Segunda-feira', is_default: true }, weekday_options: [],
+    due_date: '2026-10-19', week_start: '2026-10-12', week_end: '2026-10-18', checkin: null, none_items: [],
+  },
+  'GET /nutrition/foods/label-photo/usage': { feature: 'label_photo', limit: 5, used: 0, remaining: 5, allowed: true },
+  'PUT /exercises/logs/11': { ok: true },
+  'PUT /workout-plans/1': PLAN_DETAIL,
+  'GET /users': {
+    items: [
+      { id: 1, username: 'ana', full_name: 'Ana Teste', email: 'ana@example.com', role: 'admin', is_active: true, has_photo: false, birth_date: null, sex: null },
+      { id: 2, username: 'bia', full_name: 'Bia Souza', email: 'bia@example.com', role: 'regular', is_active: true, has_photo: false, birth_date: null, sex: null },
+    ],
+  },
+  'POST /users/2/reset-password': { temporary_password: 'Tmp-Abc12345', revoked_sessions: 1 },
   'GET /body-composition': {
     items: [
       { id: 1, local_date: '2026-10-12', measured_at: null, weight_kg: 82.4, bmi: 25.1, body_fat_percent: 17.8, muscle_mass_kg: 36.2, body_water_percent: 56.1 },
@@ -122,6 +137,15 @@ export async function installTelasFixtures(page: Page) {
   await page.route(`${MOCK_API_ORIGIN}/**`, async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
+    if (url.pathname.endsWith('/muscle-map.png')) {
+      await route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': req.headers()['origin'] ?? '*', 'access-control-allow-credentials': 'true' },
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'),
+      });
+      return;
+    }
     const fixture = FIXTURES[`${req.method()} ${url.pathname}`];
     if (fixture === undefined || req.method() === 'OPTIONS') {
       await route.fallback();
@@ -138,6 +162,23 @@ export async function installTelasFixtures(page: Page) {
       },
       contentType: 'application/json',
       body: JSON.stringify(fixture),
+    });
+  });
+}
+
+/** `/auth/me` como admin (a sessão base do mock é de usuário comum). */
+export async function installAdminSession(page: Page) {
+  await page.route(`${MOCK_API_ORIGIN}/auth/me`, async (route: Route) => {
+    const origin = route.request().headers()['origin'] ?? '*';
+    if (route.request().method() === 'OPTIONS') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' },
+      contentType: 'application/json',
+      body: JSON.stringify({ id: 1, username: 'ana', full_name: 'Ana Teste', role: 'admin', must_change_password: false, intervals_configured: false, timezone: 'America/Sao_Paulo', features: { exercise_cards: false } }),
     });
   });
 }

@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { apiFetch } from '@/lib/api';
 import type { ExerciseProgressResponse } from '@/lib/analytics-types';
-import { formatFixed, formatKgFixed } from '@/lib/format';
+import { formatDateOrDash, formatFixed, formatKgFixed } from '@/lib/format';
 import { CHART_COLORS, CHART_GRID_STROKE } from '@/components/charts/chartTheme';
 import {
   BottomSheet,
@@ -115,7 +115,7 @@ export function ExerciciosScreen() {
         renderItem={(item) => (
           <ListRow
             title={item.mapped_name || item.original_name}
-            subtitle={`${item.local_date} · ${item.activity_name}`}
+            subtitle={`${formatDateOrDash(item.local_date)} · ${item.activity_name}`}
             value={formatKgFixed(item.best_weight_kg, 1)}
             onClick={() => setSelected(item)}
           />
@@ -125,7 +125,7 @@ export function ExerciciosScreen() {
       <BottomSheet opened={selected !== null} onClose={() => setSelected(null)} title={selected?.mapped_name || selected?.original_name || 'Exercício'}>
         {selected ? (
           <ListGroup>
-            <ListRow title="Data" value={selected.local_date} />
+            <ListRow title="Data" value={formatDateOrDash(selected.local_date)} />
             <ListRow title="Atividade" value={selected.activity_name} />
             <ListRow title="Séries" value={String(selected.sets_count ?? '-')} />
             <ListRow title="Reps" value={String(selected.reps_total ?? '-')} />

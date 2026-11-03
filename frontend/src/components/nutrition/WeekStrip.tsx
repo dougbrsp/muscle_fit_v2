@@ -10,6 +10,7 @@ import { formatKcal, formatShareAsPercent, formatSignedKcal, formatTotal, shiftI
 import { hasValues, weekBarRows } from '@/lib/nutrition-dashboard';
 import type { NutritionWeek, WeekDay } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura do gráfico (200).
@@ -77,6 +78,7 @@ function DayPill({ day, selected, today, onSelect }: { day: WeekDay; selected: b
 
 /** A semana do diário (segunda a domingo): ingestão × meta por dia e o resumo do motor (`weekly_budget`). */
 export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
+  const WeekDays = usePresentationSlot('weekDays');
   if (!week) return null;
   const { report } = week;
   const linhasBarras = weekBarRows(week, weekdayShort);
@@ -94,6 +96,9 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           <IconChevronRight size={18} />
         </ActionIcon>
       </Group>
+      {WeekDays ? (
+        <WeekDays days={week.days} today={week.today} selected={selected} onSelect={onSelect} />
+      ) : (
       <SimpleGrid cols={{ base: 2, xs: 4, md: 7 }} spacing="xs">
         {week.days.map((dia) => (
           <DayPill
@@ -105,6 +110,7 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           />
         ))}
       </SimpleGrid>
+      )}
       <Text size="xs" fw={700} tt="uppercase" c={BRAND.textMuted}>
         Energia da semana: consumido × meta (kcal)
       </Text>

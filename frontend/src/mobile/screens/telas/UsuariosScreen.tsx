@@ -28,7 +28,7 @@ import {
   ScreenHeader,
   StickyAction,
 } from '../../ui';
-import { SheetButton } from './common';
+import { SheetButton, useBackToClose } from './common';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -71,6 +71,8 @@ export function UsuariosScreen() {
   function bumpPhotoVersion(userId: number) {
     setPhotoVersions((current) => ({ ...current, [userId]: (current[userId] || 0) + 1 }));
   }
+
+  useBackToClose(view.kind !== 'list', () => setView({ kind: 'list' }));
 
   // criar
   const [createUsername, setCreateUsername] = useState('');

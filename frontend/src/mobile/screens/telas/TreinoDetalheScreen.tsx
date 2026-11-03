@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Badge, Button, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
+import { Alert, Badge, Button, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconCheck, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import {
   setEditFields,
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
-import { formatNumberOrDash } from '@/lib/format';
+import { formatDateOrDash, formatNumberOrDash } from '@/lib/format';
 import { isWorkingSetType } from '@/lib/set-types';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
@@ -60,7 +60,7 @@ import {
   StickyAction,
 } from '../../ui';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
-import { QueryGate, SheetButton } from './common';
+import { QueryGate, SheetButton, useBackToClose } from './common';
 import { MuscleActivationList } from './MuscleActivationList';
 
 /**
@@ -77,6 +77,7 @@ export function TreinoDetalheScreen() {
   const queryClient = useQueryClient();
 
   const [formOpen, setFormOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
   const [selectedRow, setSelectedRow] = useState<ExerciseLogRow | null>(null);
@@ -86,6 +87,10 @@ export function TreinoDetalheScreen() {
   const [caloriesDraft, setCaloriesDraft] = useState<number | ''>('');
 
   const isValidId = Number.isFinite(activityId) && activityId > 0;
+  useBackToClose(formOpen, () => {
+    resetForm();
+    setFormOpen(false);
+  });
 
   const activityQuery = useQuery({
     queryKey: ['activity-detail', activityId],
@@ -392,7 +397,7 @@ export function TreinoDetalheScreen() {
   const formSetDisplay = describeSets(form.sets);
   const kcal = activity.calories_kcal == null ? null : Number(activity.calories_kcal);
   const when = [
-    activity.local_date + (extractTime(activity.started_at) ? ` às ${extractTime(activity.started_at)}` : ''),
+    formatDateOrDash(activity.local_date) + (extractTime(activity.started_at) ? ` às ${extractTime(activity.started_at)}` : ''),
     activity.gym_name,
     activity.conducted_by
       ? (conductedByOptions.find((o) => o.value === activity.conducted_by)?.label || activity.conducted_by)
@@ -488,29 +493,6 @@ export function TreinoDetalheScreen() {
             />
           ) : null}
 
-          <NumberInput
-            size="md"
-            label="Dor muscular (0-10)"
-            description="Opcional: dor muscular residual sentida neste exercício"
-            min={0}
-            max={10}
-            step={1}
-            inputMode="numeric"
-            value={form.muscle_pain ?? undefined}
-            onChange={(value) => setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))}
-            clampBehavior="strict"
-          />
-          <Switch
-            size="md"
-            label="Dor articular"
-            description="Opcional: reportou dor articular neste exercício"
-            checked={form.joint_pain}
-            onChange={(event) => {
-              const checked = event.currentTarget.checked;
-              setForm((c) => ({ ...c, joint_pain: checked }));
-            }}
-          />
-
           <Text fw={600}>Séries</Text>
           {form.sets.map((set, index) => {
             const display = formSetDisplay[index];
@@ -573,6 +555,36 @@ export function TreinoDetalheScreen() {
           <Button variant="default" mih={48} leftSection={<IconPlus size={16} />} onClick={addSet}>
             Adicionar série
           </Button>
+          <Button variant="subtle" color="gray" mih={44} onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen}>
+            {moreOpen ? 'Ocultar detalhes' : 'Mais detalhes (dor muscular e articular)'}
+          </Button>
+          <Collapse in={moreOpen} transitionDuration={0}>
+            <Stack gap="md">
+          <NumberInput
+            size="md"
+            label="Dor muscular (0-10)"
+            description="Opcional: dor muscular residual sentida neste exercício"
+            min={0}
+            max={10}
+            step={1}
+            inputMode="numeric"
+            hideControls
+            value={form.muscle_pain ?? undefined}
+            onChange={(value) => setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))}
+            clampBehavior="strict"
+          />
+          <Switch
+            size="md"
+            label="Dor articular"
+            description="Opcional: reportou dor articular neste exercício"
+            checked={form.joint_pain}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setForm((c) => ({ ...c, joint_pain: checked }));
+            }}
+          />
+            </Stack>
+          </Collapse>
 
           {saveExerciseMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
@@ -581,30 +593,16 @@ export function TreinoDetalheScreen() {
           ) : null}
         </Stack>
         <StickyAction>
-          <Group wrap="nowrap" gap="sm">
-            <Button
-              variant="default"
-              size="md"
-              mih={48}
-              onClick={() => {
-                resetForm();
-                setFormOpen(false);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              size="md"
-              color="brand"
-              mih={48}
-              style={{ flex: 1 }}
-              leftSection={<IconPlus size={20} />}
-              loading={saveExerciseMutation.isPending}
-              onClick={() => saveExerciseMutation.mutate()}
-            >
-              {editingExerciseId ? 'Salvar' : 'Lançar'}
-            </Button>
-          </Group>
+          <Button
+            fullWidth
+            size="lg"
+            color="brand"
+            mih={48}
+            loading={saveExerciseMutation.isPending}
+            onClick={() => saveExerciseMutation.mutate()}
+          >
+            {editingExerciseId ? 'Salvar alterações' : 'Lançar exercício'}
+          </Button>
         </StickyAction>
       </>
     );
@@ -634,13 +632,12 @@ export function TreinoDetalheScreen() {
         <StatTile
           label="kcal gastas"
           value={formatNumberOrDash(kcal, 0)}
-          hint={activity.calories_source_label ?? undefined}
         />
       </StatGrid>
 
       <ListGroup title="Treino">
         <ListRow icon={IconEdit} title="Editar treino" onClick={openHeaderEdit} />
-        <ListRow icon={IconEdit} title="Editar kcal gastas" onClick={openCalories} />
+        <ListRow icon={IconEdit} title="Editar kcal gastas" subtitle={activity.calories_source_label ?? undefined} onClick={openCalories} />
         {canFinish ? (
           <ListRow
             icon={IconCheck}
@@ -708,7 +705,7 @@ export function TreinoDetalheScreen() {
                 ]
                   .filter(Boolean)
                   .join(' · ')}
-                value={formatLoggedSets(row.sets)}
+                value={`${row.sets.length} ${row.sets.length === 1 ? 'série' : 'séries'}`}
                 onClick={() => setSelectedRow(row)}
               />
             );

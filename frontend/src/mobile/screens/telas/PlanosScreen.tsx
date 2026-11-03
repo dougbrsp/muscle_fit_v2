@@ -9,7 +9,7 @@ import { ApiError, apiFetch } from '@/lib/api';
 import { formatDateOrDash } from '@/lib/format';
 import { planTypeDisplayLabel, type ApiListResponse, type WorkoutPlanListItem } from '@/lib/workout-plans-types';
 import { BottomSheet, ListGroup, ListRow, ResponsiveDataList, ScreenHeader, StickyAction } from '../../ui';
-import { SheetButton } from './common';
+import { SheetButton, useBackToClose } from './common';
 import { GerarPlanoView } from './GerarPlanoView';
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -43,6 +43,8 @@ export function PlanosScreen() {
     deleteMutation.reset();
   }
 
+  useBackToClose(generating, () => setGenerating(false));
+
   if (generating) return <GerarPlanoView onClose={() => setGenerating(false)} />;
 
   const items = plansQuery.data?.items;
@@ -69,7 +71,7 @@ export function PlanosScreen() {
             ]
               .filter(Boolean)
               .join(' · ')}
-            value={`${plan.exercises_count} ex.`}
+            value={`${plan.exercises_count} ${plan.exercises_count === 1 ? 'exercício' : 'exercícios'}`}
             onClick={() => setSelected(plan)}
           />
         )}

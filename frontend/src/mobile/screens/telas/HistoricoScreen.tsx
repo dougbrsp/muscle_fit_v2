@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import { apiFetch } from '@/lib/api';
-import { formatNumberOrDash } from '@/lib/format';
+import { formatDateOrDash, formatNumberOrDash } from '@/lib/format';
 import {
   ApiList,
   buildStartedAt,
@@ -174,7 +174,7 @@ export function HistoricoScreen() {
           return (
             <ListRow
               title={w.name}
-              subtitle={[w.local_date, st?.label, w.workout_plan_name].filter(Boolean).join(' · ')}
+              subtitle={[formatDateOrDash(w.local_date), st?.label, w.workout_plan_name].filter(Boolean).join(' · ')}
               value={`${formatNumberOrDash(w.total_volume_kg, 1)} kg`}
               onClick={() => setSelected(w)}
             />
@@ -246,14 +246,9 @@ export function HistoricoScreen() {
                 </SheetButton>
               </>
             ) : (
-              <>
-                <SheetButton variant="default" color="red" onClick={() => setConfirmDelete(true)}>
-                  Excluir
-                </SheetButton>
-                <SheetButton color="brand" onClick={() => router.push(`/registro-exercicios/${selected.id}`)}>
-                  Abrir treino
-                </SheetButton>
-              </>
+              <SheetButton color="brand" onClick={() => router.push(`/registro-exercicios/${selected.id}`)}>
+                Abrir treino
+              </SheetButton>
             )
           ) : undefined
         }
@@ -272,13 +267,14 @@ export function HistoricoScreen() {
           </>
         ) : selected ? (
           <ListGroup>
-            <ListRow title="Data" value={selected.local_date} />
+            <ListRow title="Data" value={formatDateOrDash(selected.local_date)} />
             <ListRow title="Status" value={statusInfo?.label ?? '-'} />
             <ListRow title="Academia" value={selected.gym_name || '-'} />
             <ListRow title="Condutor" value={conductor || '-'} />
             <ListRow title="Carga total" value={`${formatNumberOrDash(selected.total_volume_kg, 1)} kg`} />
             <ListRow title="RPE médio" value={formatNumberOrDash(selected.avg_rpe, 1)} />
             <ListRow title="Ficha vinculada" value={selected.workout_plan_name || '-'} />
+            <ListRow destructive title="Excluir treino" onClick={() => setConfirmDelete(true)} />
           </ListGroup>
         ) : null}
       </BottomSheet>

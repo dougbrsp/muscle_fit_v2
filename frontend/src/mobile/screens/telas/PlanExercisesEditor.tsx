@@ -35,6 +35,7 @@ import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defa
 import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { SuggestedProgressionResponse, WorkoutPlanExercise } from '@/lib/workout-plans-types';
+import { useBackToClose } from './common';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 import { EmptyState, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
 
@@ -76,6 +77,8 @@ export function PlanExercisesEditor({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [typing, setTyping] = useState(false);
+
+  useBackToClose(editIndex !== null, () => setEditing(null));
 
   const exercisesRef = useRef(exercises);
   useEffect(() => {
@@ -364,9 +367,15 @@ export function PlanExercisesEditor({
             {configBadges.map((b) => (
               <ListRow key={b.key} title={<Badge color={b.color} variant="light">{b.label}</Badge>} subtitle={b.tooltip} />
             ))}
-            {configBadges.length === 0 ? <ListRow title="Nenhuma configuração avançada" /> : null}
-            {!readOnly ? (
-              <ListRow icon={IconSettings} title="Editar técnica, aquecimento, ajuste e pico" onClick={() => setAdvancedOpen(true)} />
+            {configBadges.length === 0 ? (
+              <ListRow
+                icon={IconSettings}
+                title="Técnica, aquecimento, ajuste e pico"
+                subtitle="Nenhuma configurada"
+                onClick={readOnly ? undefined : () => setAdvancedOpen(true)}
+              />
+            ) : !readOnly ? (
+              <ListRow icon={IconSettings} title="Editar configuração avançada" onClick={() => setAdvancedOpen(true)} />
             ) : null}
           </ListGroup>
 

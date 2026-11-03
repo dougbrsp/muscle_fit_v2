@@ -11,10 +11,10 @@ import { PlanMuscleMap } from '@/app/(app)/planos-treino/PlanMuscleMap';
 import { preloadMarkdown } from '@/components/LazyMarkdown';
 import { CardioRecommendationPanel } from '@/components/cardio/CardioRecommendationPanel';
 import { ApiError, apiFetch } from '@/lib/api';
+import { formatDateOrDash } from '@/lib/format';
 import type { CardioRecommendation, CardioRecommendationsResponse } from '@/lib/analytics-types';
 import { dispatchAndPollJob } from '@/lib/async-job-poll';
 import { indexSwapOptions, type ExerciseSwapOptionsResponse, type SwapEligibilityIndex } from '@/lib/exercise-swap-options';
-import { formatDateOrDash } from '@/lib/format';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
 import { buildPlanUpdatePayload } from '@/lib/workout-plan-payload';
@@ -29,7 +29,7 @@ import {
 } from '@/lib/workout-plans-types';
 import { BottomSheet, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
-import { QueryGate, SheetButton } from './common';
+import { QueryGate, SheetButton, useBackToClose } from './common';
 import { PlanActivationPreviewList } from './PlanActivationPreviewList';
 import { PlanExercisesEditor } from './PlanExercisesEditor';
 
@@ -70,6 +70,8 @@ export function PlanoDetalheScreen() {
   const [hydrated, setHydrated] = useState(false);
   const [swapTarget, setSwapTarget] = useState<WorkoutPlanExercise | null>(null);
   const [editingRow, setEditingRow] = useState(false);
+  const [editingHeader, setEditingHeader] = useState(false);
+  useBackToClose(editingHeader, () => setEditingHeader(false));
 
   const planQuery = useQuery({
     queryKey: ['workout-plan', planId],
@@ -217,6 +219,8 @@ export function PlanoDetalheScreen() {
       {editingRow ? null : (
         <>
           <ScreenHeader title={plan.name} subtitle={[planTypeDisplayLabel(plan), plan.split_day ? `Treino ${plan.split_day}` : null].filter(Boolean).join(' · ')} />
+          {editingHeader ? (
+            <>
           <Stack gap="md" mb="md">
             <TextInput size="md" label="Nome da ficha" value={name} onChange={(e) => setName(e.currentTarget.value)} />
             <Select
@@ -244,6 +248,19 @@ export function PlanoDetalheScreen() {
               </Alert>
             ) : null}
           </Stack>
+              <Button variant="light" color="brand" fullWidth mih={48} mb="md" onClick={() => setEditingHeader(false)}>
+                Concluir edição dos dados
+              </Button>
+            </>
+          ) : (
+            <ListGroup title="Dados da ficha">
+              <ListRow title="Status" value={WORKOUT_PLAN_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status} onClick={() => setEditingHeader(true)} />
+              <ListRow title="Data e hora" value={[formatDateOrDash(planDate), planTime].filter(Boolean).join(' ')} onClick={() => setEditingHeader(true)} />
+              <ListRow title="Academia" value={gymOptions.find((g) => g.value === gymId)?.label ?? '-'} onClick={() => setEditingHeader(true)} />
+              <ListRow title="Objetivo" subtitle={goal || undefined} value={goal ? undefined : '-'} onClick={() => setEditingHeader(true)} />
+              {updateMutation.isSuccess ? <ListRow title="Alterações salvas" /> : null}
+            </ListGroup>
+          )}
 
           {rawPayload.generation_summary || (rawPayload.excluded_due_to_recovery?.length ?? 0) > 0 ? (
             <Stack mb="md">
@@ -251,14 +268,9 @@ export function PlanoDetalheScreen() {
             </Stack>
           ) : null}
 
-          {exercisesEditable ? (
-            <Text size="xs" c="dimmed" mb="sm">
-              Ficha não finalizada: equipamento, séries, reps, carga, RPE, descanso, técnica avançada e demais parâmetros
-              podem ser editados. O grupamento muscular de cada exercício fica travado.
-            </Text>
-          ) : (
+          {exercisesEditable ? null : (
             <Alert color="gray" variant="light" mb="sm" title="Ficha finalizada">
-              Os exercícios desta ficha ficam somente leitura.
+              Os exercícios ficam somente leitura.
             </Alert>
           )}
         </>

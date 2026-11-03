@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
-import { installTelasFixtures } from './telas-fixtures';
+import { installAdminSession, installTelasFixtures } from './telas-fixtures';
 
 /**
  * Mobile v2, frente C: as telas migradas (treino, corpo, nutricao e conta)
@@ -55,12 +55,21 @@ for (const vp of VIEWPORTS) {
   test.describe(`telas da frente C em ${vp.name}`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
+    let unhandled: string[] = [];
+
     test.beforeEach(async ({ page }) => {
       mkdirSync(SHOTS, { recursive: true });
       await page.clock.setFixedTime(FROZEN_NOW);
-      await installMockApi(page);
+      unhandled = (await installMockApi(page)).unhandled;
       await installTelasFixtures(page);
       await page.addInitScript(() => window.localStorage.setItem('musclefit.flag.mobile-ui', 'on'));
+    });
+
+    test.afterEach(async ({}, info) => {
+      // Rota nao mockada = teste frágil: as telas com dados realistas nao podem depender do 599 do mock base.
+      if (/rotas migradas|indicadores: percorre/.test(info.title)) return;
+      const faltando = [...new Set(unhandled)].filter((k) => !k.startsWith('OPTIONS'));
+      expect(faltando, `rotas nao mockadas em "${info.title}"`).toEqual([]);
     });
 
     test('rotas migradas: sem overflow de pagina e sem <table>', async ({ page }) => {
@@ -135,6 +144,77 @@ for (const vp of VIEWPORTS) {
       await page.getByLabel('Buscar alimento').fill('arroz');
       await expect(page.getByText('Arroz, integral, cozido')).toBeVisible();
       await check(page, 'alimentos-busca', vp.name);
+    });
+
+    test('treino: serie unilateral E/D e PUT do exercicio editado', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByText('Rosca unilateral com halter', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await expect(page.getByRole('dialog').getByText(/E\s*10/)).toBeVisible();
+      await page.waitForTimeout(600);
+      await check(page, 'treino-serie-unilateral', vp.name);
+      await page.keyboard.press('Escape');
+      await page.getByText('Supino reto com barra', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await page.getByRole('button', { name: 'Editar', exact: true }).click();
+      const put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/exercises/logs/11'));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      const body = JSON.parse((await put).postData() ?? '{}');
+      expect(body.original_name).toBe('Supino reto com barra');
+      expect(body.sets).toHaveLength(3);
+      expect(body.gym_id).toBe(1);
+    });
+
+    test('plano: PUT da ficha com os exercicios', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/planos-treino/1/');
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      const put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/workout-plans/1'));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      const body = JSON.parse((await put).postData() ?? '{}');
+      expect(body.name).toBe('Ficha A - Peito e tríceps');
+      expect(body.exercises).toHaveLength(3);
+      expect(body.template_id).toBe(7);
+    });
+
+    test('usuarios: admin lista, edita e reseta senha', async ({ page }) => {
+      test.setTimeout(120_000);
+      await installAdminSession(page);
+      await open(page, '/usuarios/');
+      await expect(page.getByText('bia', { exact: true })).toBeVisible();
+      await check(page, 'usuarios-lista', vp.name);
+      await page.getByText('bia', { exact: true }).click();
+      await expect(page.getByText('Editar bia')).toBeVisible();
+      await check(page, 'usuarios-edicao', vp.name);
+      await page.getByRole('button', { name: 'Resetar senha' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Resetar senha' }).click();
+      await expect(page.getByText('Tmp-Abc12345')).toBeVisible();
+      await check(page, 'usuarios-reset', vp.name);
+    });
+
+    test('usuarios: nao admin nao chama GET /users', async ({ page }) => {
+      test.setTimeout(120_000);
+      const calls: string[] = [];
+      page.on('request', (r) => {
+        if (r.method() === 'GET' && new URL(r.url()).pathname === '/users') calls.push(r.url());
+      });
+      await open(page, '/usuarios/');
+      await expect(page.getByText('Acesso restrito a administradores.')).toBeVisible();
+      expect(calls).toEqual([]);
+      await check(page, 'usuarios-nao-admin', vp.name);
+    });
+
+    test('indicadores: percorre as 5 secoes', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/indicadores-fisicos/');
+      const titulos = ['Bioimpedância', 'Medidas por fita', 'Recuperação (Intervals.icu)', 'Sono', 'Esforço (EPOC / PAI)'];
+      for (const titulo of titulos) {
+        await page.getByRole('textbox', { name: 'Seção' }).click();
+        await page.getByRole('option', { name: titulo, exact: true }).click();
+        await expect(page.getByRole('textbox', { name: 'Seção' })).toHaveValue(titulo);
+        await check(page, `indicadores-secao-${titulo}`, vp.name);
+      }
     });
   });
 }

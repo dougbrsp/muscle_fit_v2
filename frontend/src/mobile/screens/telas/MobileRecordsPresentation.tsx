@@ -31,41 +31,38 @@ function RecordList({ label, rows, emptyText }: { label: string; rows: RecordLis
         onClose={() => setOpenKey(null)}
         title={selected?.title ?? label}
         footer={
-          selected && (selected.onEdit || selected.onDelete) ? (
-            <>
-              {selected.onDelete ? (
-                <SheetButton
-                  variant="default"
-                  color="red"
-                  loading={selected.deleting}
-                  onClick={() => {
-                    selected.onDelete?.();
-                    setOpenKey(null);
-                  }}
-                >
-                  Excluir
-                </SheetButton>
-              ) : null}
-              {selected.onEdit ? (
-                <SheetButton
-                  color="brand"
-                  onClick={() => {
-                    selected.onEdit?.();
-                    setOpenKey(null);
-                  }}
-                >
-                  Editar
-                </SheetButton>
-              ) : null}
-            </>
+          selected?.onEdit ? (
+            <SheetButton
+              color="brand"
+              onClick={() => {
+                selected.onEdit?.();
+                setOpenKey(null);
+              }}
+            >
+              Editar
+            </SheetButton>
           ) : undefined
         }
       >
         {selected ? (
           <ListGroup>
-            {selected.details.map(([k, v]) => (
+            {selected.details
+              .filter(([, v]) => v.replace(/[\s%-]|kg/g, '') !== '')
+              .map(([k, v]) => (
               <ListRow key={k} title={k} value={v} />
             ))}
+          </ListGroup>
+        ) : null}
+        {selected?.onDelete ? (
+          <ListGroup>
+            <ListRow
+              destructive
+              title={selected.deleting ? 'Excluindo...' : 'Excluir lançamento'}
+              onClick={() => {
+                selected.onDelete?.();
+                setOpenKey(null);
+              }}
+            />
           </ListGroup>
         ) : null}
       </BottomSheet>
