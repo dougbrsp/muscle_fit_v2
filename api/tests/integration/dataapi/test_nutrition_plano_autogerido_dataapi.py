@@ -15,6 +15,7 @@ em memória dos testes unitários.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 
 import pytest
 from fastapi import FastAPI
@@ -120,8 +121,24 @@ def test_usuario_opera_o_proprio_plano_nos_dois_backends(usuarios, raw, monkeypa
             json={"strategy": "maintenance", "cycle_days": DIAS, "manual_targets": MANUAL},
         )
         assert bom.status_code == 200, (backend, bom.text)
-        assert bom.json()["manual_targets"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0}
+        # Contrato (rodada 4): `manual_targets` devolve o modo junto das gramas; o padrão é `fixed`.
+        assert bom.json()["manual_targets"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0, "training_mode": "fixed"}
         assert bom.json()["macro_priority"] == "balanced"
+
+        # Modo `add_training`: grava no JSON, volta do banco (os dois backends) e a leitura do plano o devolve.
+        soma = aluno.put(
+            f"/nutrition/plans/{plano['id']}",
+            json={"strategy": "maintenance", "cycle_days": DIAS, "manual_targets": MANUAL, "manual_training_mode": "add_training"},
+        )
+        assert soma.status_code == 200, (backend, soma.text)
+        assert soma.json()["manual_targets"]["training_mode"] == "add_training"
+        with raw.cursor() as cur:
+            cur.execute("SELECT manual_targets_json FROM nutrition_plans WHERE id = %s", (plano["id"],))
+            gravado = cur.fetchone()["manual_targets_json"]
+        gravado = json.loads(gravado) if isinstance(gravado, (str, bytes)) else gravado
+        assert gravado["training_mode"] == "add_training" and gravado["protein_g"] == 160
+        lido = next(p for p in aluno.get("/nutrition/plans").json()["items"] if p["id"] == plano["id"])
+        assert lido["manual_targets"]["training_mode"] == "add_training"
 
         publicado = aluno.post(f"/nutrition/plans/{plano['id']}/publish", json={"expected_current_id": None})
         assert publicado.status_code == 200, (backend, publicado.text)
