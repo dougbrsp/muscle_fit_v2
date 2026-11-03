@@ -11,4 +11,6 @@ export const SCREENS_B: Readonly<Record<string, ComponentType>> = {
   '/dashboard/progressao': lazyScreen(() => import('./evolucao/ProgressaoScreen').then((m) => ({ default: m.ProgressaoScreen }))),
   '/dashboard/recovery': lazyScreen(() => import('./evolucao/RecoveryScreen').then((m) => ({ default: m.RecoveryScreen }))),
   '/dashboard/musculos': lazyScreen(() => import('./evolucao/MusculosScreen').then((m) => ({ default: m.MusculosScreen }))),
+  '/dashboard/corpo': lazyScreen(() => import('./evolucao/CorpoScreen').then((m) => ({ default: m.CorpoScreen }))),
+  '/dashboard/cardio': lazyScreen(() => import('./evolucao/CardioScreen').then((m) => ({ default: m.CardioScreen }))),
 };
