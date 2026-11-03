@@ -109,11 +109,13 @@ CURRENT_NUMBER_MAX: Final[float] = 1000.0
 # casas (teste), então arredondar um valor aceito não o tira da faixa.
 SUGGESTION_DECIMALS: Final[Mapping[str, int]] = MappingProxyType(
     {
-        "protein_g_per_kg": 2,
-        "fat_kcal_share": 3,
-        "weekly_rate_share": 4,
-        "surplus_share": 3,
-        "carb_min_g_per_kg": 2,
+        campo: casas
+        for casas, campos in (
+            (2, ("protein_g_per_kg", "carb_min_g_per_kg")),
+            (3, ("fat_kcal_share", "surplus_share")),
+            (4, ("weekly_rate_share",)),
+        )
+        for campo in campos
     }
 )
 
