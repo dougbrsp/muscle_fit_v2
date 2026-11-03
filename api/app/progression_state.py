@@ -484,10 +484,9 @@ def _read_tracks(conn: Any, user_id: int) -> dict[tuple[int, int, str, str], Tra
     }
 
 
-def save_group_state(conn: Any, user_id: int, state: GroupState) -> int:
-    """Upsert por `(user_id, muscle_group_id, training_goal)` (chave unica
-    `uk_pgs_user_group`, 093); devolve o id."""
-    values = (
+def _group_values(state: GroupState) -> tuple[Any, ...]:
+    """Colunas de negocio gravadas de um estado de grupo (ordem de `_GROUP_COLUMNS`)."""
+    return (
         state.phase,
         state.phase_status,
         int(state.reps_min),
@@ -503,6 +502,13 @@ def save_group_state(conn: Any, user_id: int, state: GroupState) -> int:
         None if state.technique_target_key is None else int(state.technique_target_key[0]),
         None if state.technique_target_key is None else int(state.technique_target_key[1]),
     )
+
+
+def save_group_state(conn: Any, user_id: int, state: GroupState) -> int:
+    """Upsert por `(user_id, muscle_group_id, training_goal)` (chave unica
+    `uk_pgs_user_group`, 093); devolve o id. Estado que ja traz `id` so faz o
+    UPDATE (sem o SELECT de volta: o id e conhecido)."""
+    values = _group_values(state)
     assignments = ", ".join(f"{column} = %s" for column in _GROUP_COLUMNS)
     key = (int(user_id), int(state.muscle_group_id), goal_value(state.training_goal))
     where = f"WHERE user_id = %s AND muscle_group_id = %s AND {sql_goal_is(GROUP_STATES_TABLE)}"
@@ -520,15 +526,15 @@ def save_group_state(conn: Any, user_id: int, state: GroupState) -> int:
                 f"INSERT INTO {GROUP_STATES_TABLE} ({columns}) VALUES ({placeholders})",
                 key + values + (ENGINE_VERSION,),
             )
+        if state.id is not None:
+            return int(state.id)
         cur.execute(f"SELECT id FROM {GROUP_STATES_TABLE} {where}", key)
         return int(cur.fetchone()["id"])
 
 
-def save_track(conn: Any, user_id: int, track: TrackState) -> int:
-    """Upsert por `(user_id, exercise_id, equipment_id, fatigue_context,
-    training_goal)` (chave unica `uk_ptr_user_pair_context`, 093); devolve o
-    id."""
-    values = (
+def _track_values(track: TrackState) -> tuple[Any, ...]:
+    """Colunas de negocio gravadas de uma trilha (ordem de `_TRACK_COLUMNS`)."""
+    return (
         track.muscle_group_id,
         track.load_status,
         track.working_load_kg,
@@ -545,6 +551,13 @@ def save_track(conn: Any, user_id: int, track: TrackState) -> int:
         track.pending_load_source,
         track.plateau_load_applied_at,
     )
+
+
+def save_track(conn: Any, user_id: int, track: TrackState) -> int:
+    """Upsert por `(user_id, exercise_id, equipment_id, fatigue_context,
+    training_goal)` (chave unica `uk_ptr_user_pair_context`, 093); devolve o
+    id. Trilha que ja traz `id` so faz o UPDATE (sem o SELECT de volta)."""
+    values = _track_values(track)
     assignments = ", ".join(f"{column} = %s" for column in _TRACK_COLUMNS)
     key = (
         int(user_id),
@@ -574,6 +587,8 @@ def save_track(conn: Any, user_id: int, track: TrackState) -> int:
                 f"INSERT INTO {TRACKS_TABLE} ({columns}) VALUES ({placeholders})",
                 key + values + (ENGINE_VERSION,),
             )
+        if track.id is not None:
+            return int(track.id)
         cur.execute(f"SELECT id FROM {TRACKS_TABLE} {where}", key)
         return int(cur.fetchone()["id"])
 
@@ -628,6 +643,8 @@ def persist_result(
     activity_id: Optional[int] = None,
     per_session: bool = False,
     training_goal: Any = None,
+    baseline_groups: Optional[Mapping[Any, GroupState]] = None,
+    baseline_tracks: Optional[Mapping[Any, TrackState]] = None,
 ) -> dict[str, int]:
     """Grava estado + decisoes de UM objetivo (`training_goal`, ausente =
     default: as decisoes levam o objetivo; estados e trilhas, o deles). Os ids das trilhas/grupos sao resolvidos antes
@@ -636,12 +653,33 @@ def persist_result(
     `per_session=True` (replay): grava `result.session_decisions`, cada grupo
     com o `activity_id` da sessao que o gerou, na mesma ordem da lista plana.
     Sem ele, todas as `result.decisions` vao com o `activity_id` recebido (o
-    `finish`, que avalia uma sessao so)."""
-    group_ids = {
-        muscle_group_id: save_group_state(conn, user_id, state)
-        for muscle_group_id, state in sorted(result.group_states.items())
-    }
-    track_ids = {key: save_track(conn, user_id, track) for key, track in sorted(result.tracks.items())}
+    `finish`, que avalia uma sessao so).
+
+    `baseline_groups`/`baseline_tracks` (o estado CARREGADO antes da avaliacao,
+    por `GroupState.key`/`TrackState.key`): o `finish` so grava o que e novo ou
+    mudou nas colunas de negocio em relacao a ele; o resto ja esta no banco e
+    so reaproveita o id (custo proporcional ao tocado, nao ao historico: cada
+    gravacao sao chamadas da RDS Data API). Sem baseline (replay, que apaga o
+    estado antes), grava tudo."""
+    selective = baseline_groups is not None or baseline_tracks is not None
+    group_ids: dict[int, int] = {}
+    for muscle_group_id, state in sorted(result.group_states.items()):
+        known = (baseline_groups or {}).get(state.key) if selective else None
+        if known is not None and known.id is not None and _group_values(known) == _group_values(state):
+            group_ids[muscle_group_id] = int(known.id)
+            continue
+        if state.id is None and known is not None:
+            state = replace(state, id=known.id)
+        group_ids[muscle_group_id] = save_group_state(conn, user_id, state)
+    track_ids: dict[Any, int] = {}
+    for key, track in sorted(result.tracks.items()):
+        known = (baseline_tracks or {}).get(track.key) if selective else None
+        if known is not None and known.id is not None and _track_values(known) == _track_values(track):
+            track_ids[key] = int(known.id)
+            continue
+        if track.id is None and known is not None:
+            track = replace(track, id=known.id)
+        track_ids[key] = save_track(conn, user_id, track)
     if per_session:
         batches = [(batch.activity_id, batch.decisions) for batch in result.session_decisions]
     else:
@@ -672,13 +710,22 @@ def persist_goal_evaluation(
     *,
     activity_id: Optional[int] = None,
     per_session: bool = False,
+    baseline_groups: Optional[Mapping[Any, GroupState]] = None,
+    baseline_tracks: Optional[Mapping[Any, TrackState]] = None,
 ) -> dict[str, int]:
     """`persist_result` de cada objetivo avaliado (M97 F1), somando as
     contagens. Um objetivo so = exatamente o `persist_result` de antes."""
     totals = {"groups": 0, "tracks": 0, "decisions": 0}
     for goal, result in evaluation.results.items():
         counts = persist_result(
-            conn, user_id, result, activity_id=activity_id, per_session=per_session, training_goal=goal
+            conn,
+            user_id,
+            result,
+            activity_id=activity_id,
+            per_session=per_session,
+            training_goal=goal,
+            baseline_groups=baseline_groups,
+            baseline_tracks=baseline_tracks,
         )
         for name in totals:
             totals[name] += counts[name]
@@ -774,14 +821,25 @@ def run_session_evaluation(
     inputs = build_session_inputs(conn, user_id, window, readiness=readiness)
     # M97 F1: cada objetivo executado na sessao e avaliado so com as
     # execucoes e os estados dele.
+    loaded_groups = load_all_group_states(conn, user_id)
+    loaded_tracks = load_tracks(conn, user_id)
     result = evaluate_session_by_goal(
         session,
         window,
-        group_states=load_all_group_states(conn, user_id),
-        tracks=load_tracks(conn, user_id),
+        group_states=loaded_groups,
+        tracks=loaded_tracks,
         inputs=inputs,
     )
-    counts = persist_goal_evaluation(conn, user_id, result, activity_id=session.activity_id)
+    # So o novo/alterado vai ao banco: o `finish` roda dentro do teto de 29 s do
+    # API Gateway e gravar as centenas de trilhas intactas estourava o prazo.
+    counts = persist_goal_evaluation(
+        conn,
+        user_id,
+        result,
+        activity_id=session.activity_id,
+        baseline_groups=loaded_groups,
+        baseline_tracks=loaded_tracks,
+    )
     log_decision_events(user_id, session.activity_id, result.decisions)
     summary = {
         "activity_id": session.activity_id,
