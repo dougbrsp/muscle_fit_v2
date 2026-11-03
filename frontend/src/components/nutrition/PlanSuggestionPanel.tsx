@@ -156,6 +156,7 @@ export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo, o
               <Button
                 variant="default"
                 leftSection={<IconArrowBackUp size={16} />}
+                disabled={sugestao.isPending}
                 onClick={() => {
                   setResultado(null);
                   onUndo();
@@ -167,6 +168,7 @@ export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo, o
                 variant="light"
                 color="brand"
                 leftSection={<IconCheck size={16} />}
+                disabled={sugestao.isPending}
                 onClick={() => {
                   setResultado(null);
                   onKeep();

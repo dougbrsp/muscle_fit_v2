@@ -18,6 +18,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 from app import llm_anthropic
 
 REPO = Path(__file__).resolve().parents[3]
@@ -237,6 +239,20 @@ def test_virar_meal_parse_leva_a_sugestao_salvo_com_env_propria(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER_PLAN_SUGGESTION", "anthropic")
     assert llm_anthropic.provider_for("plan_suggestion") == "anthropic"
     assert llm_anthropic.provider_for("meal_parse") == "openai"
+
+
+def test_diagnostico_cita_a_env_de_onde_veio_o_valor(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_THINKING_MEAL_PARSE", "disabled")
+    monkeypatch.setenv("ANTHROPIC_EFFORT_MEAL_PARSE", "xhigh")
+    with pytest.raises(llm_anthropic.OpenAIGenerationError) as erro:
+        llm_anthropic.thinking_config("plan_suggestion", "xhigh")
+    assert "ANTHROPIC_THINKING_MEAL_PARSE" in erro.value.diagnostic
+    assert "ANTHROPIC_EFFORT_MEAL_PARSE" in erro.value.diagnostic
+    monkeypatch.setenv("ANTHROPIC_THINKING_PLAN_SUGGESTION", "disabled")
+    with pytest.raises(llm_anthropic.OpenAIGenerationError) as erro:
+        llm_anthropic.thinking_config("plan_suggestion", "xhigh")
+    assert "ANTHROPIC_THINKING_PLAN_SUGGESTION" in erro.value.diagnostic
 
 
 def test_terraform_publica_entrada_explicita_e_nao_muda_as_envs_de_hoje():

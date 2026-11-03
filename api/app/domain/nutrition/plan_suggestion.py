@@ -126,7 +126,9 @@ ERR_SUGGESTION_FIELD_INVALID = "suggestion_field_invalid"  # f"suggestion_field_
 ERR_SUGGESTION_REASON_INVALID = "suggestion_reason_invalid"
 ERR_SUGGESTION_STOP_REACHED = "suggestion_stop_reached"
 ERR_SUGGESTION_NOT_COMPUTABLE = "suggestion_not_computable"
-# O que a tela e o job veem (o detalhe fica nos códigos, no `ai_usage_log`).
+# Recusas em que tentar de novo não resolve: a tela mostra o rótulo do próprio código.
+REFUSALS_WITH_OWN_LABEL: Final[frozenset[str]] = frozenset({ERR_SUGGESTION_STOP_REACHED, ERR_SUGGESTION_NOT_COMPUTABLE})
+# O que a tela e o job veem nas demais (o detalhe fica nos códigos, no `ai_usage_log`).
 ERR_SUGGESTION_REFUSED = "plan_suggestion_refused"
 ERR_SUGGESTION_FAILED = "plan_suggestion_failed"
 ERR_SUGGESTION_TIMEOUT = "plan_suggestion_timeout"
@@ -442,6 +444,7 @@ __all__ = [
     "PERCENT_LABEL_DECIMALS",
     "SHARE_TO_PERCENT",
     "REASONS_KEY",
+    "REFUSALS_WITH_OWN_LABEL",
     "REASONS_MAX",
     "SUGGESTION_DECIMALS",
     "SUGGESTION_FIELDS",

@@ -389,12 +389,13 @@ def thinking_config(feature: Optional[str], effort: str) -> dict:
     de configuracao (elegivel ao fallback; registra `llm.config_invalid`)."""
     mode = anthropic_thinking_for(feature)
     if mode == THINKING_DISABLED and effort not in EFFORTS_WITHOUT_THINKING:
-        name = feature_env(ENV_THINKING_PREFIX, feature)
+        # Os nomes de onde os valores vieram: com `FEATURE_CONFIG_SOURCE`, pode ser a env de outra feature.
+        name = _config_env(ENV_THINKING_PREFIX, feature)[0]
         _invalid(name, f"{mode}+effort={effort}")
         raise _error(
             USER_MESSAGE_UNAVAILABLE, code=ANTHROPIC_CONFIG_INVALID,
             diagnostic=(
-                f"{name}={THINKING_DISABLED} exige {feature_env(ENV_EFFORT_PREFIX, feature)} em "
+                f"{name}={THINKING_DISABLED} exige {_config_env(ENV_EFFORT_PREFIX, feature)[0]} em "
                 f"{'/'.join(EFFORTS_WITHOUT_THINKING)} (recebido: {effort})."
             ),
         )

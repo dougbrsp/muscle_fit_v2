@@ -137,10 +137,14 @@ export type SuggestionFormSlice = ReturnType<typeof suggestionFormPatch>;
 /** O formulário e o que desfazer. `undo` = null: nada a desfazer. */
 export type SuggestionFormState<F extends SuggestionFormSlice> = { form: F; undo: SuggestionFormSlice | null };
 
-export function applySuggestion<F extends SuggestionFormSlice>(form: F, fields: PlanSuggestionFields): SuggestionFormState<F> {
+/** Com uma sugestão ainda aberta, "Desfazer" continua voltando ao estado anterior à primeira. */
+export function applySuggestion<F extends SuggestionFormSlice>(
+  state: SuggestionFormState<F>,
+  fields: PlanSuggestionFields,
+): SuggestionFormState<F> {
   const patch = suggestionFormPatch(fields);
-  const undo = Object.fromEntries(Object.keys(patch).map((chave) => [chave, form[chave as keyof SuggestionFormSlice]]));
-  return { form: { ...form, ...patch }, undo: undo as SuggestionFormSlice };
+  const fatia = Object.fromEntries(Object.keys(patch).map((chave) => [chave, state.form[chave as keyof SuggestionFormSlice]]));
+  return { form: { ...state.form, ...patch }, undo: state.undo ?? (fatia as SuggestionFormSlice) };
 }
 
 /** "Desfazer": volta só as chaves da sugestão; o que a pessoa mudou nos outros campos fica. */

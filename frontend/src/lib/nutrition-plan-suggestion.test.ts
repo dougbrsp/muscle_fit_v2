@@ -175,7 +175,7 @@ describe('aplicar, desfazer e manter', () => {
   };
 
   it('aplicar preenche só o que a IA sugere e guarda como estava', () => {
-    const { form, undo } = applySuggestion(FORM_INICIAL, CAMPOS);
+    const { form, undo } = applySuggestion({ form: FORM_INICIAL, undo: null }, CAMPOS);
     expect(form.strategy).toBe('bulking');
     expect(form.manualOn).toBe(false);
     expect(form.goalWeight).toBe(75);
@@ -184,15 +184,29 @@ describe('aplicar, desfazer e manter', () => {
   });
 
   it('desfazer volta só as chaves da sugestão e não perde a edição de outro campo', () => {
-    const aplicado = applySuggestion(FORM_INICIAL, CAMPOS);
+    const aplicado = applySuggestion({ form: FORM_INICIAL, undo: null }, CAMPOS);
     const editado = { ...aplicado, form: { ...aplicado.form, notes: 'editei depois', goalWeight: 70 } };
     const { form, undo } = undoSuggestion(editado);
     expect(form).toEqual({ ...FORM_INICIAL, notes: 'editei depois', goalWeight: 70 });
     expect(undo).toBeNull();
   });
 
+  it('duas sugestões seguidas: desfazer volta ao estado anterior à primeira', () => {
+    const primeira = applySuggestion({ form: FORM_INICIAL, undo: null }, CAMPOS);
+    const segunda = applySuggestion(primeira, { ...CAMPOS, strategy: 'maintenance', meals_per_day: 3 });
+    expect(segunda.form.strategy).toBe('maintenance');
+    expect(segunda.undo?.strategy).toBe('cutting');
+    expect(undoSuggestion(segunda).form).toEqual(FORM_INICIAL);
+  });
+
+  it('depois de manter, a sugestão seguinte desfaz para o que foi mantido', () => {
+    const mantido = keepSuggestion(applySuggestion({ form: FORM_INICIAL, undo: null }, CAMPOS));
+    const nova = applySuggestion(mantido, { ...CAMPOS, strategy: 'maintenance' });
+    expect(undoSuggestion(nova).form).toEqual(mantido.form);
+  });
+
   it('manter fica com o formulário e não há mais o que desfazer', () => {
-    const aplicado = applySuggestion(FORM_INICIAL, CAMPOS);
+    const aplicado = applySuggestion({ form: FORM_INICIAL, undo: null }, CAMPOS);
     const mantido = keepSuggestion(aplicado);
     expect(mantido.form).toEqual(aplicado.form);
     expect(mantido.undo).toBeNull();

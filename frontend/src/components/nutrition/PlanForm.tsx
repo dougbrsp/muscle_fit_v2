@@ -259,7 +259,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         userId={userId}
         current={suggestionCurrentPayload(payload, form.manualOn)}
         draft={form.strategy ? (userId == null ? payload : { ...payload, user_id: userId }) : null}
-        onApply={(fields: PlanSuggestionFields) => setSuggestionState(applySuggestion(form, fields))}
+        onApply={(fields: PlanSuggestionFields) => setSuggestionState(applySuggestion({ form, undo: antesDaSugestao }, fields))}
         onUndo={() => setSuggestionState(undoSuggestion({ form, undo: antesDaSugestao }))}
         onKeep={() => setSuggestionState(keepSuggestion({ form, undo: antesDaSugestao }))}
         onPendingChange={setSugestaoPendente}

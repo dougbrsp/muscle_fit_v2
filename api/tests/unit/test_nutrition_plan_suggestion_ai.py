@@ -138,9 +138,26 @@ def test_parada_atingida_recusa(monkeypatch, uso):
     magro = Subject(sex=Sex.MALE, age_years=30, height_cm=178.0, weight_kg=70.0, body_fat_percent=8.0)
     monkeypatch.setattr(ai, "load_context", lambda aluno, atual: _preparado(magro))
     _ia(monkeypatch, SUGESTAO)
-    with pytest.raises(ai.PlanSuggestionError):
+    with pytest.raises(ai.PlanSuggestionError) as erro:
         ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
+    assert str(erro.value) == lb.limitation_label(ps.ERR_SUGGESTION_STOP_REACHED)
+    assert "Tente de novo" not in str(erro.value)
     assert uso.fechamentos[0]["error_code"] == ps.ERR_SUGGESTION_STOP_REACHED
+
+
+def test_falha_no_calculo_depois_da_ia_fecha_com_os_tokens_sem_vazar_a_excecao(monkeypatch, uso):
+    def _falha(*a, **kw):
+        raise KeyError("detalhe interno do motor")
+
+    monkeypatch.setattr(ai, "compute_day", _falha)
+    _ia(monkeypatch, SUGESTAO)
+    with pytest.raises(ai.PlanSuggestionError) as erro:
+        ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
+    assert str(erro.value) == lb.limitation_label(ps.ERR_SUGGESTION_FAILED)
+    assert "detalhe interno" not in str(erro.value)
+    [fechou] = uso.fechamentos
+    assert fechou["status"] == AiUsageStatus.FAILED and fechou["error_code"] == ps.ERR_SUGGESTION_FAILED
+    assert (fechou["model"], fechou["tokens_in"], fechou["tokens_out"]) == ("claude-haiku-5-5", 500, 80)
 
 
 @pytest.mark.parametrize(
@@ -164,7 +181,8 @@ def test_cutting_sem_massa_gorda_o_motor_nao_calcula_e_a_sugestao_e_recusada(mon
     _ia(monkeypatch, SUGESTAO)
     with pytest.raises(ai.PlanSuggestionError) as erro:
         ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
-    assert "Nada mudou no formulário" in str(erro.value)
+    assert str(erro.value) == lb.limitation_label(ps.ERR_SUGGESTION_NOT_COMPUTABLE)
+    assert "Tente de novo" not in str(erro.value)
     [fechou] = uso.fechamentos
     assert fechou["status"] == AiUsageStatus.FAILED and fechou["error_code"] == ps.ERR_SUGGESTION_NOT_COMPUTABLE
     assert lb.limitation_label(ps.ERR_SUGGESTION_NOT_COMPUTABLE) != ps.ERR_SUGGESTION_NOT_COMPUTABLE

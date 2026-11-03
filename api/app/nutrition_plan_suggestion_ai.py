@@ -252,14 +252,22 @@ def dispatch_plan_suggestion(payload: dict[str, Any], user_id: Any, ai_usage_id:
     erros = revisao.errors
     if revisao.settings is not None and not erros:
         # Válida na faixa, mas o motor precisa conseguir calcular (cutting sem massa gorda, por exemplo).
-        meta = compute_day(entradas.inputs, revisao.settings, entradas.today, entradas.today).target
+        try:
+            meta = compute_day(entradas.inputs, revisao.settings, entradas.today, entradas.today).target
+        except Exception as exc:
+            logger.exception("Falha ao calcular a sugestão de metas (ai_usage_id=%s)", ai_usage_id)
+            nutrition_ai_quota.finish_usage(
+                ai_usage_id, status=AiUsageStatus.FAILED, error_code=plan_suggestion.ERR_SUGGESTION_FAILED, **uso
+            )
+            raise PlanSuggestionError(_public_message(plan_suggestion.ERR_SUGGESTION_FAILED)) from exc
         if not meta.computable:
             erros = (plan_suggestion.ERR_SUGGESTION_NOT_COMPUTABLE,)
     if erros or revisao.settings is None:
         # Só os códigos, que passaram pelo alfabeto do motor: nunca o conteúdo da resposta.
         logger.warning("Sugestão de metas recusada pelo motor (ai_usage_id=%s, códigos=%s)", ai_usage_id, erros)
         nutrition_ai_quota.finish_usage(ai_usage_id, status=AiUsageStatus.FAILED, error_code=erros[0], **uso)
-        raise PlanSuggestionError(_public_message(plan_suggestion.ERR_SUGGESTION_REFUSED))
+        proprio = erros[0] in plan_suggestion.REFUSALS_WITH_OWN_LABEL
+        raise PlanSuggestionError(_public_message(erros[0] if proprio else plan_suggestion.ERR_SUGGESTION_REFUSED))
 
     nutrition_ai_quota.finish_usage(ai_usage_id, status=AiUsageStatus.SUCCEEDED, **uso)
     return {
