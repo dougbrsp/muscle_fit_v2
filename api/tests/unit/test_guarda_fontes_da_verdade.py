@@ -1462,7 +1462,7 @@ PADROES: tuple[Padrao, ...] = (
         chave="cota_ia_nutricao",
         regra="cota, job type ou preço do uso de IA da nutrição fora do dono: constante de `ai_usage` redefinida "
         "(`*_DAILY_QUOTA`, `DAILY_QUOTA`, `FEATURE_JOB_TYPE`, tabela de preços, unidades do custo), job type "
-        "`nutrition-meal-parse`/`nutrition-label-ocr`/`nutrition-meal-photo` em literal ou cota comparada com número",
+        "`nutrition-meal-parse`/`nutrition-label-ocr`/`nutrition-meal-photo`/`nutrition-plan-suggestion` em literal ou cota comparada com número",
         # 2026-10-18 (nutrição L5a): a rota do L5b/L6 reserva pela cota do dono
         # (`nutrition_ai_quota.open_usage` -> `ai_usage.quota_status`), importa o
         # nome do job type do dono (`from .domain.nutrition.ai_usage import
@@ -1471,11 +1471,11 @@ PADROES: tuple[Padrao, ...] = (
         # `async_jobs.JOB_TYPE_LAMBDA` é `ai_usage.MEAL_PARSE_JOB_TYPE`; o worker fecha
         # com o custo de `ai_usage.estimate_cost_usd`. O FE lê a cota da API.
         regex=re.compile(
-            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|MEAL_PHOTO_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
+            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|MEAL_PHOTO_DAILY_QUOTA|PLAN_SUGGESTION_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
             r"|MODEL_PRICES_USD_CENTS_PER_MTOKEN|MODEL_LONG_PROMPT_PRICES|HAIKU_LONG_PROMPT_THRESHOLD_TOKENS"
             r"|TOKENS_PER_PRICE_UNIT|CENTS_PER_USD|COST_USD_DECIMAL_PLACES)"
             r"\s*(?::[^=\n]+)?=\s*(?:[\d({\[]|MappingProxyType|frozenset)"
-            r"""|["'`]nutrition-(?:meal-parse|label-ocr|meal-photo)["'`]"""
+            r"""|["'`]nutrition-(?:meal-parse|label-ocr|meal-photo|plan-suggestion)["'`]"""
             # Cota comparada ou atribuída a número (`cota_usada >= 30`, `remainingQuota === 0`,
             # `quota: int = 10`, `"quota": 30`). "cota"/"quota" como parte do nome (snake ou
             # camelCase), não dentro de outra palavra (`cotacao`).
@@ -1604,6 +1604,16 @@ PADROES: tuple[Padrao, ...] = (
         ),
         donos=("api/app/domain/nutrition/meal_photo.py",),
         inventario="NUT-L10",
+    ),
+    Padrao(
+        chave="sugestao_plano_ia",
+        regra="sugestão de metas por IA fora do dono: lista fechada de campos, de motivos ou teto de motivos de "
+        "`plan_suggestion` redefinidos (a IA nunca devolve grama nem kcal como meta, decisão D3)",
+        # 2026-11-03 (nutrição N6): rota, worker e tela consomem o dono; a validação é `build_plan_settings`.
+        regex=re.compile(r"\b(?:SUGGESTION_FIELDS|REASONS_MAX|ALWAYS_NUMBER_FIELDS|OPTIONAL_NUMBER_FIELDS)\s*(?::[^=\n]+)?=\s*[\d(\[{]"),
+        donos=("api/app/domain/nutrition/plan_suggestion.py",),
+        inventario="NUT-N6",
+        escopo=ESCOPO_NUTRICAO,
     ),
     Padrao(
         chave="fallback_registro_serie",
@@ -2196,6 +2206,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "foto_rotulo_nutricao": {},  # NUT-L6 (2026-10-18): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
     "foto_rotulo_numeros": {},  # NUT-L6 (2026-10-18): nasce vazia (a tela lê o JSON gerado; o helper não tem default)
     "foto_prato_nutricao": {},  # NUT-L10 (2026-11-02): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
+    "sugestao_plano_ia": {},  # NUT-N6 (2026-11-03): nasce vazia (rota, worker e tela consomem o dono)
     # ZEPP-B2 (2026-10-19): nasce vazia (as 7 cópias de PlanExecutionScreen/FreeformScreen foram para o dono)
     "fallback_registro_serie": {},
     "fallback_registro_serie_cadeia": {},  # ZEPP-B2 (2026-10-19, revisão do guardião): nasce vazia
@@ -2291,6 +2302,7 @@ CONSUMIDOR_DO_PROMPT: dict[str, str] = {
     "api/privado/prompts/nutrition_label/": "api/app/nutrition_label_ai.py",
     "api/privado/prompts/nutrition_meal_parse/": "api/app/nutrition_meal_parse_ai.py",
     "api/privado/prompts/nutrition_meal_photo/": "api/app/nutrition_meal_photo_ai.py",
+    "api/privado/prompts/nutrition_plan_suggestion/": "api/app/nutrition_plan_suggestion_ai.py",
     # M103 P2: insights, "Análise por IA", resumos e os fragmentos compartilhados.
     "api/privado/prompts/insights/": "api/app/insights_prompt.py",
     "api/privado/prompts/workouts_analysis/": "api/app/report_ai.py",
@@ -3241,6 +3253,11 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "DayKind.HIGH", "contentType: LABEL_PHOTO.content_type", "MIN_DATA_QUALITY = 0.5",
          '"data_quality": 0.6', "DataQuality.MEDIUM: 0.5", "20971520"),
     ),
+    "sugestao_plano_ia": (
+        ('SUGGESTION_FIELDS = ("strategy", "protein_g")', "REASONS_MAX: int = 3", "REASONS_MAX = 5",
+         'OPTIONAL_NUMBER_FIELDS = ["surplus_share"]'),
+        ("for campo in plan_suggestion.SUGGESTION_FIELDS:", "len(raw) > REASONS_MAX", "plan_suggestion.REASONS_MAX"),
+    ),
     "foto_prato_nutricao": (
         ('MEAL_PHOTO_S3_PREFIX = "nutrition-meals"', "MEAL_PHOTO_RETENTION_DAYS: int = 30",
          "MEAL_PHOTO_MAX_BYTES = 1572864", "MEAL_PHOTO_MAX_BYTES = label_photo.LABEL_PHOTO_MAX_BYTES",
@@ -3568,6 +3585,22 @@ def test_arquivos_da_foto_do_rotulo_estao_no_escopo_de_nutricao(rel: str):
 def test_arquivos_da_foto_do_prato_estao_no_escopo_de_nutricao(rel: str):
     """Nutrição L10: motor, rota, armazenamento, worker e tela da foto do prato ficam
     sob `ESCOPO_NUTRICAO` (valem `foto_rotulo_numeros`, `soma_nutrientes`...)."""
+    assert (RAIZ / rel).is_file(), rel
+    assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "api/app/domain/nutrition/plan_suggestion.py",
+        "api/app/nutrition_plan_suggestion.py",
+        "api/app/nutrition_plan_suggestion_ai.py",
+        "frontend/src/components/nutrition/PlanSuggestionPanel.tsx",
+        "frontend/src/lib/nutrition-plan-suggestion.ts",
+    ],
+)
+def test_arquivos_da_sugestao_de_metas_estao_no_escopo_de_nutricao(rel: str):
+    """Nutrição N6: motor, rota, worker e tela da sugestão de metas ficam sob `ESCOPO_NUTRICAO`."""
     assert (RAIZ / rel).is_file(), rel
     assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
 

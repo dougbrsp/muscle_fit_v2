@@ -30,6 +30,7 @@ from app.domain.nutrition import daily_target as _dt
 from app.domain.nutrition import energy_expenditure as _ee
 from app.domain.nutrition import external_sources as _ext
 from app.domain.nutrition import label_photo as _lp
+from app.domain.nutrition import plan_suggestion as _ps
 from app.domain.nutrition import macros as _macros
 from app.domain.nutrition import manual_targets as _mt
 from app.domain.nutrition import diary as _diary
@@ -205,12 +206,15 @@ _PREFIXADOS = {
     _cc.ERR_INVALID_WEEKDAY,
     _cc.ERR_DUPLICATE_WEEKDAY,
     _cc.ERR_INVALID_DAY_KIND,
+    _ps.ERR_SUGGESTION_FIELD_FORBIDDEN,
+    _ps.ERR_SUGGESTION_FIELD_MISSING,
+    _ps.ERR_SUGGESTION_FIELD_INVALID,
 }
 
 
 def _codigos_do_motor() -> set[str]:
     codigos: set[str] = set()
-    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _mt, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp):
+    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _mt, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp, _ps):
         for nome, valor in vars(modulo).items():
             if nome.startswith(("LIMIT_", "CLAMP_", "ERR_", "WARN_")) and isinstance(valor, str):
                 codigos.add(valor)

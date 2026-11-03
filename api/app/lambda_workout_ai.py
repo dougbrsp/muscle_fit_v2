@@ -9,7 +9,7 @@ Evento esperado (payload publicado por `app/async_jobs.invoke_async` a
 partir de `POST /exercises/evaluate-set`, `POST /exercises/{id}/summarize`,
 `POST /activities/{id}/ai-summary/generate`, `POST /workouts-analysis/generate`
 ou `POST /insights/generate`):
-    {"job_id": "...", "job_type": "workout-ai-evaluate-set" | "workout-ai-exercise-summary" | "workout-ai-activity-summary" | "workouts_analysis" | "insights" | "nutrition-meal-parse", "payload": {...}, "user_id": 1}
+    {"job_id": "...", "job_type": "workout-ai-evaluate-set" | "workout-ai-exercise-summary" | "workout-ai-activity-summary" | "workouts_analysis" | "insights" | "nutrition-meal-parse" | "nutrition-plan-suggestion", "payload": {...}, "user_id": 1}
 
 A leitura da refeicao por IA (nutricao L5b, `POST /nutrition/meals/parse`) traz
 tambem `"ai_usage_id"`: a linha `pending` do `ai_usage_log` que a rota abriu. O

@@ -4,6 +4,7 @@
 
 import { DEFAULT_MACRO_PRIORITY, DEFAULT_MANUAL_TRAINING_MODE, type NutritionCode } from './nutrition-constants';
 import { diaryKeys, nutritionKeys } from './nutrition-api';
+import { checkinKeys } from './nutrition-checkin';
 import { dashboardKeys } from './nutrition-dashboard';
 import type { NutritionManualTargetsInput } from './nutrition-types';
 
@@ -80,8 +81,8 @@ export function maintenanceAdjustPayload(
 /**
  * Caches que ficam velhos quando as metas mudam (publicar ou recalcular): o plano em vigor, o diário
  * (que lê a meta de cada dia; o card de hoje, `/nutrition/today`, mora sob `diaryKeys.all`) e o painel
- * `/dashboard/nutricao` (N5). Chaves do React Query.
+ * `/dashboard/nutricao` (N5) e o check-in semanal (N7: a proposta é do plano que a gerou). Chaves do React Query.
  */
 export function targetsChangedKeys(): ReadonlyArray<readonly unknown[]> {
-  return [nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all];
+  return [nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all, checkinKeys.all];
 }

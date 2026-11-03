@@ -1,10 +1,11 @@
 'use client';
 
-import { Button, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text, Textarea } from '@mantine/core';
+import { Button, Fieldset, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text, Textarea } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
 import { PlanCycleDays, flatCycleDays, type CycleDaysValue } from './PlanCycleDays';
+import { PlanSuggestionPanel } from './PlanSuggestionPanel';
 import { createNutritionPlan, nutritionErrorInfo, updateNutritionPlan } from '@/lib/nutrition-api';
 import {
   ACTIVITY_LEVEL_OPTIONS,
@@ -29,14 +30,22 @@ import {
   type NutritionCode,
   type StrategyFormRanges,
 } from '@/lib/nutrition-constants';
-import { inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
+import { asField, inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
 import {
   cycleDaysPayload,
   macroPriorityPayload,
-  maintenanceAdjustPayload,
   manualTargetsPayload,
+  maintenanceAdjustPayload,
   manualTrainingModePayload,
 } from '@/lib/nutrition-plan-form';
+import {
+  applySuggestion,
+  keepSuggestion,
+  suggestionCurrentPayload,
+  undoSuggestion,
+  type PlanSuggestionFields,
+  type SuggestionFormSlice,
+} from '@/lib/nutrition-plan-suggestion';
 import type { NutritionPlan, NutritionPlanSaved, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
@@ -70,10 +79,6 @@ type FormState = {
 
 /** Tipo "normal" do dia (código do motor em `DAY_KIND_OPTIONS`). */
 const NORMAL_DAY_KIND: NutritionCode = DAY_KIND_OPTIONS.find((tipo) => tipo.value === 'normal')?.value ?? '';
-
-function asField(value: number | null | undefined): NumberField {
-  return value == null ? '' : value;
-}
 
 /** Defaults da estratégia exatamente como o motor exporta (`form_ranges`). */
 function strategyDefaults(ranges: StrategyFormRanges | null, advanced: boolean): Partial<FormState> {
@@ -184,14 +189,17 @@ type Props = {
  */
 export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FormState>(() => initialState(plan));
+  // Os campos que a sugestão da IA preencheu, como estavam, para o "Desfazer".
+  const [antesDaSugestao, setAntesDaSugestao] = useState<SuggestionFormSlice | null>(null);
+  const [sugestaoPendente, setSugestaoPendente] = useState(false);
   const ranges = strategyFormRanges(form.strategy);
   const surplusRange = form.advanced ? ranges?.surplus_share_advanced : ranges?.surplus_share;
   // Quais campos a estratégia usa: `STRATEGY_ONLY_FIELDS` do motor (via JSON gerado).
   const usaRitmo = fieldAppliesToStrategy('weekly_rate_share', form.strategy);
   const usaSuperavit = fieldAppliesToStrategy('surplus_share', form.strategy);
+  const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
   const usaAjusteManutencao = fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy);
   const ajusteManutencao = maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust);
-  const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
 
   // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
   const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
@@ -209,32 +217,38 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
     update({ advanced, surplusPercent: asField(shareToPercent(superavit ?? null)) });
   }
 
+  const payload: NutritionPlanSettingsPayload = {
+    strategy: form.strategy ?? '',
+    advanced: usaSuperavit ? form.advanced : false,
+    protein_g_per_kg: inputNumberOrNull(form.protein),
+    fat_kcal_share: percentToShare(form.fatPercent),
+    weekly_rate_share: usaRitmo ? percentToShare(form.ratePercent) : null,
+    surplus_share: usaSuperavit ? percentToShare(form.surplusPercent) : null,
+    carb_min_g_per_kg: usaCarboMinimo ? inputNumberOrNull(form.carbMin) : null,
+    bmr_formula: form.bmrFormula,
+    tdee_mode: form.tdeeMode,
+    activity_level: form.activityLevel,
+    meals_per_day: inputNumberOrNull(form.meals),
+    goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
+    goal_weight_kg: inputNumberOrNull(form.goalWeight),
+    macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
+    manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
+    manual_training_mode: manualTrainingModePayload(
+      form.manualOn,
+      modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
+    ),
+    cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
+    maintenance_kcal_adjust: ajusteManutencao,
+    notes: form.notes.trim() ? form.notes.trim() : null,
+  };
+
+  function setSuggestionState(state: { form: FormState; undo: SuggestionFormSlice | null }) {
+    setForm(state.form);
+    setAntesDaSugestao(state.undo);
+  }
+
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload: NutritionPlanSettingsPayload = {
-        strategy: form.strategy ?? '',
-        advanced: usaSuperavit ? form.advanced : false,
-        protein_g_per_kg: inputNumberOrNull(form.protein),
-        fat_kcal_share: percentToShare(form.fatPercent),
-        weekly_rate_share: usaRitmo ? percentToShare(form.ratePercent) : null,
-        surplus_share: usaSuperavit ? percentToShare(form.surplusPercent) : null,
-        carb_min_g_per_kg: usaCarboMinimo ? inputNumberOrNull(form.carbMin) : null,
-        bmr_formula: form.bmrFormula,
-        tdee_mode: form.tdeeMode,
-        activity_level: form.activityLevel,
-        meals_per_day: inputNumberOrNull(form.meals),
-        goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
-        goal_weight_kg: inputNumberOrNull(form.goalWeight),
-        macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
-        manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
-        manual_training_mode: manualTrainingModePayload(
-          form.manualOn,
-          modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
-        ),
-        cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
-        maintenance_kcal_adjust: maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust),
-        notes: form.notes.trim() ? form.notes.trim() : null,
-      };
       return plan
         ? updateNutritionPlan(plan.id, payload)
         : createNutritionPlan(userId == null ? payload : { ...payload, user_id: userId });
@@ -247,224 +261,238 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
 
   return (
     <Stack gap="md">
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-        <Select
-          label="Estratégia"
-          placeholder="Escolha a estratégia"
-          data={[...STRATEGY_OPTIONS]}
-          value={form.strategy}
-          onChange={changeStrategy}
-          required
-          allowDeselect={false}
-        />
-        {ranges && usaSuperavit && (
-          <Switch
-            mt="xl"
-            label="Nível avançado (superávit menor)"
-            checked={form.advanced}
-            onChange={(event) => changeAdvanced(event.currentTarget.checked)}
-          />
-        )}
-      </SimpleGrid>
+      <PlanSuggestionPanel
+        userId={userId}
+        current={suggestionCurrentPayload(payload, form.manualOn)}
+        draft={form.strategy ? (userId == null ? payload : { ...payload, user_id: userId }) : null}
+        onApply={(fields: PlanSuggestionFields) => setSuggestionState(applySuggestion({ form, undo: antesDaSugestao }, fields))}
+        onUndo={() => setSuggestionState(undoSuggestion({ form, undo: antesDaSugestao }))}
+        onKeep={() => setSuggestionState(keepSuggestion({ form, undo: antesDaSugestao }))}
+        onPendingChange={setSugestaoPendente}
+      />
 
-      {ranges && (
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-          <NumberInput
-            label="Proteína (g/kg)"
-            description={[proteinBasis, rangeHint(ranges.protein_g_per_kg, ' g/kg')].filter(Boolean).join(' · ')}
-            value={form.protein}
-            onChange={(protein) => update({ protein })}
-            {...bounds(ranges.protein_g_per_kg)}
-            step={0.1}
-            decimalScale={2}
-            decimalSeparator=","
-          />
-          <NumberInput
-            label="Gordura (% das kcal)"
-            description={rangeHint(ranges.fat_kcal_share, '%', true)}
-            value={form.fatPercent}
-            onChange={(fatPercent) => update({ fatPercent })}
-            {...percentBounds(ranges.fat_kcal_share)}
-            step={1}
-            decimalScale={1}
-            decimalSeparator=","
-            suffix="%"
-          />
-          {usaRitmo && (
-            <NumberInput
-              label="Ritmo de perda (% do peso por semana)"
-              description={rangeHint(ranges.weekly_rate_share, '%', true)}
-              value={form.ratePercent}
-              onChange={(ratePercent) => update({ ratePercent })}
-              {...percentBounds(ranges.weekly_rate_share)}
-              step={0.1}
-              decimalScale={2}
-              decimalSeparator=","
-              suffix="%"
+      <Fieldset variant="unstyled" p={0} disabled={sugestaoPendente}>
+        <Stack gap="md">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+            <Select
+              label="Estratégia"
+              placeholder="Escolha a estratégia"
+              data={[...STRATEGY_OPTIONS]}
+              value={form.strategy}
+              onChange={changeStrategy}
+              required
+              allowDeselect={false}
             />
+            {ranges && usaSuperavit && (
+              <Switch
+                mt="xl"
+                label="Nível avançado (superávit menor)"
+                checked={form.advanced}
+                onChange={(event) => changeAdvanced(event.currentTarget.checked)}
+              />
+            )}
+          </SimpleGrid>
+
+          {ranges && (
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+              <NumberInput
+                label="Proteína (g/kg)"
+                description={[proteinBasis, rangeHint(ranges.protein_g_per_kg, ' g/kg')].filter(Boolean).join(' · ')}
+                value={form.protein}
+                onChange={(protein) => update({ protein })}
+                {...bounds(ranges.protein_g_per_kg)}
+                step={0.1}
+                decimalScale={2}
+                decimalSeparator=","
+              />
+              <NumberInput
+                label="Gordura (% das kcal)"
+                description={rangeHint(ranges.fat_kcal_share, '%', true)}
+                value={form.fatPercent}
+                onChange={(fatPercent) => update({ fatPercent })}
+                {...percentBounds(ranges.fat_kcal_share)}
+                step={1}
+                decimalScale={1}
+                decimalSeparator=","
+                suffix="%"
+              />
+              {usaRitmo && (
+                <NumberInput
+                  label="Ritmo de perda (% do peso por semana)"
+                  description={rangeHint(ranges.weekly_rate_share, '%', true)}
+                  value={form.ratePercent}
+                  onChange={(ratePercent) => update({ ratePercent })}
+                  {...percentBounds(ranges.weekly_rate_share)}
+                  step={0.1}
+                  decimalScale={2}
+                  decimalSeparator=","
+                  suffix="%"
+                />
+              )}
+              {usaSuperavit && (
+                <NumberInput
+                  label="Superávit (% do gasto)"
+                  description={rangeHint(surplusRange, '%', true)}
+                  value={form.surplusPercent}
+                  onChange={(surplusPercent) => update({ surplusPercent })}
+                  {...percentBounds(surplusRange)}
+                  step={1}
+                  decimalScale={1}
+                  decimalSeparator=","
+                  suffix="%"
+                />
+              )}
+              {usaCarboMinimo && (
+                <NumberInput
+                  label="Carboidrato mínimo (g/kg)"
+                  description={rangeHint(ranges.carb_min_g_per_kg, ' g/kg')}
+                  value={form.carbMin}
+                  onChange={(carbMin) => update({ carbMin })}
+                  {...bounds(ranges.carb_min_g_per_kg)}
+                  step={0.5}
+                  decimalScale={2}
+                  decimalSeparator=","
+                />
+              )}
+              {usaAjusteManutencao && !!ajusteManutencao && (
+                <Text size="sm" c={BRAND.textMuted}>
+                  Ajuste da manutenção em vigor: {ajusteManutencao > 0 ? '+' : ''}
+                  {ajusteManutencao} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
+                </Text>
+              )}
+            </SimpleGrid>
           )}
-          {usaSuperavit && (
+
+          <Select
+            label="Prioridade de macros"
+            description="Como o motor reparte as calorias que sobram depois da proteína."
+            data={[...MACRO_PRIORITY_OPTIONS]}
+            value={form.macroPriority}
+            onChange={(macroPriority) => update({ macroPriority: macroPriority ?? DEFAULT_MACRO_PRIORITY })}
+            disabled={form.manualOn}
+            allowDeselect={false}
+          />
+
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+            <Select
+              label="Fórmula da TMB"
+              data={[...BMR_FORMULA_OPTIONS]}
+              value={form.bmrFormula}
+              onChange={(bmrFormula) => update({ bmrFormula: bmrFormula ?? DEFAULT_BMR_FORMULA })}
+              allowDeselect={false}
+            />
+            <Select
+              label="Gasto do treino"
+              description="Como o gasto dos seus treinos entra na meta do dia."
+              data={[...TDEE_MODE_OPTIONS]}
+              value={form.tdeeMode}
+              onChange={(tdeeMode) => update({ tdeeMode: tdeeMode ?? DEFAULT_TDEE_MODE })}
+              allowDeselect={false}
+            />
+            <Select
+              label="Nível de atividade"
+              placeholder="Usar o do perfil"
+              data={[...ACTIVITY_LEVEL_OPTIONS]}
+              value={form.activityLevel}
+              onChange={(activityLevel) => update({ activityLevel })}
+              clearable
+            />
+          </SimpleGrid>
+
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
             <NumberInput
-              label="Superávit (% do gasto)"
-              description={rangeHint(surplusRange, '%', true)}
-              value={form.surplusPercent}
-              onChange={(surplusPercent) => update({ surplusPercent })}
-              {...percentBounds(surplusRange)}
-              step={1}
+              label="Refeições por dia"
+              description={rangeHint(NUTRITION_FORM_RANGES.meals_per_day, '')}
+              value={form.meals}
+              onChange={(meals) => update({ meals })}
+              {...bounds(NUTRITION_FORM_RANGES.meals_per_day)}
+              allowDecimal={false}
+            />
+            <NumberInput
+              label="% de gordura alvo"
+              description={stopBodyFatHint(form.strategy)}
+              value={form.goalBodyFat}
+              onChange={(goalBodyFat) => update({ goalBodyFat })}
+              {...bounds(NUTRITION_FORM_RANGES.body_fat_percent)}
               decimalScale={1}
               decimalSeparator=","
               suffix="%"
             />
-          )}
-          {usaCarboMinimo && (
             <NumberInput
-              label="Carboidrato mínimo (g/kg)"
-              description={rangeHint(ranges.carb_min_g_per_kg, ' g/kg')}
-              value={form.carbMin}
-              onChange={(carbMin) => update({ carbMin })}
-              {...bounds(ranges.carb_min_g_per_kg)}
-              step={0.5}
-              decimalScale={2}
+              label="Peso-alvo (kg)"
+              value={form.goalWeight}
+              onChange={(goalWeight) => update({ goalWeight })}
+              {...bounds(NUTRITION_FORM_RANGES.weight_kg)}
+              decimalScale={1}
               decimalSeparator=","
             />
-          )}
-          {usaAjusteManutencao && !!ajusteManutencao && (
-            <Text size="sm" c={BRAND.textMuted}>
-              Ajuste da manutenção em vigor: {ajusteManutencao > 0 ? '+' : ''}
-              {ajusteManutencao} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
-            </Text>
-          )}
-        </SimpleGrid>
-      )}
-
-      <Select
-        label="Prioridade de macros"
-        description="Como o motor reparte as calorias que sobram depois da proteína."
-        data={[...MACRO_PRIORITY_OPTIONS]}
-        value={form.macroPriority}
-        onChange={(macroPriority) => update({ macroPriority: macroPriority ?? DEFAULT_MACRO_PRIORITY })}
-        disabled={form.manualOn}
-        allowDeselect={false}
-      />
-
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-        <Select
-          label="Fórmula da TMB"
-          data={[...BMR_FORMULA_OPTIONS]}
-          value={form.bmrFormula}
-          onChange={(bmrFormula) => update({ bmrFormula: bmrFormula ?? DEFAULT_BMR_FORMULA })}
-          allowDeselect={false}
-        />
-        <Select
-          label="Gasto do treino"
-          description="Como o gasto dos seus treinos entra na meta do dia."
-          data={[...TDEE_MODE_OPTIONS]}
-          value={form.tdeeMode}
-          onChange={(tdeeMode) => update({ tdeeMode: tdeeMode ?? DEFAULT_TDEE_MODE })}
-          allowDeselect={false}
-        />
-        <Select
-          label="Nível de atividade"
-          placeholder="Usar o do perfil"
-          data={[...ACTIVITY_LEVEL_OPTIONS]}
-          value={form.activityLevel}
-          onChange={(activityLevel) => update({ activityLevel })}
-          clearable
-        />
-      </SimpleGrid>
-
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-        <NumberInput
-          label="Refeições por dia"
-          description={rangeHint(NUTRITION_FORM_RANGES.meals_per_day, '')}
-          value={form.meals}
-          onChange={(meals) => update({ meals })}
-          {...bounds(NUTRITION_FORM_RANGES.meals_per_day)}
-          allowDecimal={false}
-        />
-        <NumberInput
-          label="% de gordura alvo"
-          description={stopBodyFatHint(form.strategy)}
-          value={form.goalBodyFat}
-          onChange={(goalBodyFat) => update({ goalBodyFat })}
-          {...bounds(NUTRITION_FORM_RANGES.body_fat_percent)}
-          decimalScale={1}
-          decimalSeparator=","
-          suffix="%"
-        />
-        <NumberInput
-          label="Peso-alvo (kg)"
-          value={form.goalWeight}
-          onChange={(goalWeight) => update({ goalWeight })}
-          {...bounds(NUTRITION_FORM_RANGES.weight_kg)}
-          decimalScale={1}
-          decimalSeparator=","
-        />
-      </SimpleGrid>
-
-      <Stack gap="xs">
-        <Switch
-          label="Definir as gramas manualmente"
-          description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas, avisa e precisa do seu peso registrado."
-          checked={form.manualOn}
-          onChange={(event) => update({ manualOn: event.currentTarget.checked })}
-        />
-        {form.manualOn && (
-          <Select
-            label="Gramas manuais e treino"
-            description={MANUAL_TRAINING_MODE_HINTS[modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE]}
-            data={MANUAL_TRAINING_MODE_OPTIONS.filter((opcao) => modosManuais.includes(opcao.value))}
-            value={modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE}
-            onChange={(manualMode) => update({ manualMode: manualMode ?? DEFAULT_MANUAL_TRAINING_MODE })}
-            allowDeselect={false}
-          />
-        )}
-        {form.manualOn && (
-          <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
-            <NumberInput
-              label="Proteína (g)"
-              value={form.manualProtein}
-              onChange={(manualProtein) => update({ manualProtein })}
-              min={0}
-              decimalScale={0}
-              inputMode="numeric"
-            />
-            <NumberInput
-              label="Carboidrato (g)"
-              value={form.manualCarb}
-              onChange={(manualCarb) => update({ manualCarb })}
-              min={0}
-              decimalScale={0}
-              inputMode="numeric"
-            />
-            <NumberInput
-              label="Gordura (g)"
-              value={form.manualFat}
-              onChange={(manualFat) => update({ manualFat })}
-              min={0}
-              decimalScale={0}
-              inputMode="numeric"
-            />
           </SimpleGrid>
-        )}
-      </Stack>
 
-      <PlanCycleDays
-        enabled={form.cycleOn}
-        onEnabledChange={(cycleOn) => update({ cycleOn })}
-        value={form.cycleDays}
-        onChange={(cycleDays) => update({ cycleDays })}
-        userId={userId}
-      />
+          <Stack gap="xs">
+            <Switch
+              label="Definir as gramas manualmente"
+              description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas, avisa e precisa do seu peso registrado."
+              checked={form.manualOn}
+              onChange={(event) => update({ manualOn: event.currentTarget.checked })}
+            />
+            {form.manualOn && (
+              <Select
+                label="Gramas manuais e treino"
+                description={MANUAL_TRAINING_MODE_HINTS[modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE]}
+                data={MANUAL_TRAINING_MODE_OPTIONS.filter((opcao) => modosManuais.includes(opcao.value))}
+                value={modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE}
+                onChange={(manualMode) => update({ manualMode: manualMode ?? DEFAULT_MANUAL_TRAINING_MODE })}
+                allowDeselect={false}
+              />
+            )}
+            {form.manualOn && (
+              <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
+                <NumberInput
+                  label="Proteína (g)"
+                  value={form.manualProtein}
+                  onChange={(manualProtein) => update({ manualProtein })}
+                  min={0}
+                  decimalScale={0}
+                  inputMode="numeric"
+                />
+                <NumberInput
+                  label="Carboidrato (g)"
+                  value={form.manualCarb}
+                  onChange={(manualCarb) => update({ manualCarb })}
+                  min={0}
+                  decimalScale={0}
+                  inputMode="numeric"
+                />
+                <NumberInput
+                  label="Gordura (g)"
+                  value={form.manualFat}
+                  onChange={(manualFat) => update({ manualFat })}
+                  min={0}
+                  decimalScale={0}
+                  inputMode="numeric"
+                />
+              </SimpleGrid>
+            )}
+          </Stack>
 
-      <Textarea
-        label="Observações"
-        value={form.notes}
-        onChange={(event) => update({ notes: event.currentTarget.value })}
-        maxLength={1000}
-        autosize
-        minRows={2}
-      />
+          <PlanCycleDays
+            enabled={form.cycleOn}
+            onEnabledChange={(cycleOn) => update({ cycleOn })}
+            value={form.cycleDays}
+            onChange={(cycleDays) => update({ cycleDays })}
+            userId={userId}
+          />
+
+          <Textarea
+            label="Observações"
+            value={form.notes}
+            onChange={(event) => update({ notes: event.currentTarget.value })}
+            maxLength={1000}
+            autosize
+            minRows={2}
+          />
+        </Stack>
+      </Fieldset>
 
       {erro && <NutritionLimitations items={erro.items} title={erro.message} tone="error" />}
       {erro && erro.items.length === 0 && (
@@ -492,7 +520,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
           color="brand"
           onClick={() => saveMutation.mutate()}
           loading={saveMutation.isPending}
-          disabled={!form.strategy}
+          disabled={!form.strategy || sugestaoPendente}
         >
           Salvar rascunho
         </Button>

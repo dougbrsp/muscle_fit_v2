@@ -36,6 +36,7 @@ E8 = {
     AiFeature.MEAL_PARSE: "musclefit-workout-ai",
     AiFeature.LABEL_PHOTO: "musclefit-plan-generator",
     AiFeature.MEAL_PHOTO: "musclefit-plan-generator",
+    AiFeature.PLAN_SUGGESTION: "musclefit-workout-ai",
 }
 
 

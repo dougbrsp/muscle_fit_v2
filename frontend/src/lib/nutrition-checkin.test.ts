@@ -63,7 +63,7 @@ describe('chaves e invalidação', () => {
   });
 
   it('aceitar invalida o que as metas novas tornam velho: plano, diário e painel', () => {
-    expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all]);
+    expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all, checkinKeys.all]);
   });
 });
 

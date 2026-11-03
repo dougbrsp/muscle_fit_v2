@@ -92,6 +92,7 @@ from . import (  # noqa: F401  (reexport dos módulos do pacote)
     food_text,
     label_photo,
     meal_photo,
+    plan_suggestion,
     labels,
     macros,
     manual_targets,
