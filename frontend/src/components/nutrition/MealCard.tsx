@@ -15,6 +15,7 @@ import {
 import { formatNumberOrDash } from '@/lib/format';
 import { formatTotal, formatWithUnit } from '@/lib/nutrition-format';
 import type { Meal, MealItem, NutritionTotals } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // Colunas da tabela de itens: energia e os três macros do dono (`item_nutrient_fields`); fibra e sódio ficam no total.
@@ -69,6 +70,8 @@ export function quantidade(item: MealItem): string {
 
 /** Itens da refeição, com os nutrientes congelados na gravação ou do preview. */
 export function MealItemsTable({ items }: { items: MealItem[] }) {
+  const Alternative = usePresentationSlot('mealItems');
+  if (Alternative) return <Alternative items={items} />;
   return (
     <Table.ScrollContainer minWidth={560}>
       <Table verticalSpacing={4} fz="sm">

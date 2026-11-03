@@ -20,6 +20,7 @@ import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutr
 import { LABEL_LEGIBILITY_OPTIONS, LABEL_PHOTO, nutritionLabel } from '@/lib/nutrition-constants';
 import { foodFormFromPrefill } from '@/lib/nutrition-food-form';
 import type { ExternalFoodResponse, FoodSaveResponse, LabelPhotoReading } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -43,6 +44,7 @@ type Editing = { mode: 'new'; barcode?: string } | { mode: 'edit' } | { mode: 'l
  */
 export function AlimentosClient() {
   const qc = useQueryClient();
+  const Header = usePresentationSlot('nutritionHeader');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [saved, setSaved] = useState<FoodSaveResponse | null>(null);
@@ -139,6 +141,13 @@ export function AlimentosClient() {
 
   return (
     <Stack gap="xl">
+      {Header ? (
+        <Header
+          active="/nutricao/alimentos"
+          title="Alimentos"
+          description="Busque na TACO e nos seus alimentos, consulte um produto pelo código de barras ou importe do USDA. Alimento novo cadastrado por você fica visível só para você até o administrador torná-lo público."
+        />
+      ) : (
       <Stack gap="xs">
         <NutritionSubnav active="/nutricao/alimentos" />
         <Title order={1} c={BRAND.textPrimary}>
@@ -150,6 +159,7 @@ export function AlimentosClient() {
           administrador torná-lo público.
         </Text>
       </Stack>
+      )}
 
       <FoodSearch
         isAdmin={isAdmin}

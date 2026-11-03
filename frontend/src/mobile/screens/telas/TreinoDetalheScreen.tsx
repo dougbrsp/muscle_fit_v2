@@ -52,6 +52,7 @@ import {
   StatTile,
   StickyAction,
 } from '../../ui';
+import { PortalFieldsStyle } from './PortalFieldsStyle';
 import { QueryGate, SheetButton } from './common';
 import { MuscleActivationList } from './MuscleActivationList';
 
@@ -899,6 +900,7 @@ export function TreinoDetalheScreen() {
         ) : null}
       </BottomSheet>
 
+      <PortalFieldsStyle />
       <NewWorkoutModal
         opened={headerEditOpen}
         onClose={closeHeaderEdit}

@@ -35,6 +35,7 @@ import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defa
 import { suggestedProgressionTargets } from '@/lib/suggested-progression';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { SuggestedProgressionResponse, WorkoutPlanExercise } from '@/lib/workout-plans-types';
+import { PortalFieldsStyle } from './PortalFieldsStyle';
 import { EmptyState, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
 
 const showAllOptions: OptionsFilter = ({ options }) => options;
@@ -426,6 +427,7 @@ export function PlanExercisesEditor({
             Concluir
           </Button>
         </StickyAction>
+        <PortalFieldsStyle />
         <AdvancedConfigModal
           exercise={advancedOpen ? exercise : null}
           onClose={() => setAdvancedOpen(false)}

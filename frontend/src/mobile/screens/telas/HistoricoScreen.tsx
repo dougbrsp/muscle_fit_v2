@@ -31,6 +31,7 @@ import {
   StickyAction,
 } from '../../ui';
 import { SheetButton } from './common';
+import { PortalFieldsStyle } from './PortalFieldsStyle';
 
 const PAGE_SIZE = 20;
 // Mesmo lote do desktop: o backend filtra e a paginação é no cliente.
@@ -282,6 +283,7 @@ export function HistoricoScreen() {
         ) : null}
       </BottomSheet>
 
+      <PortalFieldsStyle />
       <NewWorkoutModal
         opened={newOpen}
         onClose={closeNew}

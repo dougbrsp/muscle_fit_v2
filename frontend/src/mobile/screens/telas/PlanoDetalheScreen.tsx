@@ -28,6 +28,7 @@ import {
   type WorkoutPlanInput,
 } from '@/lib/workout-plans-types';
 import { BottomSheet, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
+import { PortalFieldsStyle } from './PortalFieldsStyle';
 import { QueryGate, SheetButton } from './common';
 import { PlanActivationPreviewList } from './PlanActivationPreviewList';
 import { PlanExercisesEditor } from './PlanExercisesEditor';
@@ -357,6 +358,7 @@ export function PlanoDetalheScreen() {
         </>
       )}
 
+      <PortalFieldsStyle />
       <EquipmentSwapModal
         opened={swapTarget != null}
         onClose={() => setSwapTarget(null)}

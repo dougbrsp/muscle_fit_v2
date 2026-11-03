@@ -12,7 +12,9 @@ const SECOES = [
 ] as const;
 
 /** Seções da Nutrição em lista (substitui a faixa de botões do desktop). */
-export function NutricaoNav({ active }: { active: (typeof SECOES)[number]['href'] }) {
+export type NutricaoSecao = (typeof SECOES)[number]['href'];
+
+export function NutricaoNav({ active }: { active: NutricaoSecao }) {
   return (
     <ListGroup title="Seções da Nutrição" aria-label="Seções da Nutrição">
       {SECOES.filter((secao) => secao.href !== active).map((secao) => (

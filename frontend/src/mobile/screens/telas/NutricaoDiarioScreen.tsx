@@ -23,6 +23,7 @@ import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
 import { BottomSheet, ListBlock, ListGroup, ListRow, LoadingState, ScreenHeader, StickyAction } from '../../ui';
 import { SheetButton } from './common';
+import { MobileNutritionPresentation } from './MobileNutritionPresentation';
 import { NutricaoNav } from './NutricaoNav';
 
 type Editing = { mode: 'new' } | { mode: 'edit'; meal: Meal } | { mode: 'parsed'; form: MealEditorForm } | null;
@@ -32,7 +33,7 @@ type Editing = { mode: 'new' } | { mode: 'edit'; meal: Meal } | { mode: 'parsed'
  * personal trainer (escolher aluno só existe na montagem do plano). Mesmas
  * queries/chaves do desktop; meta, totais, balanço e semana vêm prontos da API.
  */
-export function NutricaoDiarioScreen() {
+function NutricaoDiarioContent() {
   const qc = useQueryClient();
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -271,5 +272,13 @@ export function NutricaoDiarioScreen() {
         ) : null}
       </BottomSheet>
     </>
+  );
+}
+
+export function NutricaoDiarioScreen() {
+  return (
+    <MobileNutritionPresentation>
+      <NutricaoDiarioContent />
+    </MobileNutritionPresentation>
   );
 }
