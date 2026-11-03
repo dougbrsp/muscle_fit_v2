@@ -40,7 +40,7 @@ import {
 } from '../../ui';
 import styles from './evolucao.module.css';
 import { MusculosExtras } from './MusculosExtras';
-import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { BlockSkeleton, SectionJump, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 export function MusculosScreen() {
   return (
@@ -104,6 +104,15 @@ function MusculosContent() {
         subtitle="Volume realizado contra a meta semanal. Planejado e projetado aparecem à parte."
       />
       <PeriodFilter filters={filters} setFilters={setFilters} rangeError={rangeError} />
+      <SectionJump
+        items={[
+          { id: 'sec-lista', label: 'Grupos' },
+          { id: 'sec-sessao', label: 'Últimas sessões' },
+          { id: 'sec-ativacao', label: 'Ativação 7 dias' },
+          { id: 'sec-tendencia', label: 'Tendência' },
+        ]}
+      />
+      <div id="sec-lista" />
       <ListGroup>
         <ListRow
           title="Ordenar e exibir"

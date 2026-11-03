@@ -28,6 +28,7 @@ import {
 import type { ContextEvent, ContextEventType } from '@/lib/dashboard-context-types';
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtInt } from '@/lib/dashboard-format';
+import { localTodayIso } from '@/lib/report-markdown';
 import {
   BottomSheet,
   EmptyState,
@@ -36,12 +37,14 @@ import {
   ListRow,
   ScreenHeader,
   StickyAction,
+  useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { BlockSkeleton, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { plural } from './pure';
+import { BlockSkeleton, OfflineNote, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 const STALE_TIME = 60_000;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localTodayIso();
 
 export function ContextoScreen() {
   return (
@@ -52,6 +55,7 @@ export function ContextoScreen() {
 }
 
 function ContextoContent() {
+  const online = useOnlineStatus();
   const qc = useQueryClient();
   const { filters, setFilters, windowQuery, rangeError } = useDashboardFilters();
   const [sheet, { open, close }] = useDisclosure(false);
@@ -66,6 +70,7 @@ function ContextoContent() {
   const dias = useMemo(() => groupByDayDescending(payload?.items ?? []), [payload?.items]);
 
   const apagar = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (id: number) => deleteContextEvent(id),
     onSuccess: () => {
       notifications.show({ color: 'green', message: 'Evento apagado.' });
@@ -92,8 +97,8 @@ function ContextoContent() {
             >
               <ListBlock>
                 <div className={styles.badges}>
-                  <Badge color="blue" variant="light" size="lg">{fmtInt(p.manual_total)} registrado(s)</Badge>
-                  <Badge color="grape" variant="light" size="lg">{fmtInt(p.derived_total)} derivado(s)</Badge>
+                  <Badge color="blue" variant="light" size="lg">{plural(p.manual_total, 'registrado', 'registrados')}</Badge>
+                  <Badge color="grape" variant="light" size="lg">{plural(p.derived_total, 'derivado', 'derivados')}</Badge>
                   <StatusBadge domain="dataNature" code={p.nature} size="sm" />
                   <StatusBadge domain="dataQuality" code={p.data_quality} size="sm" />
                 </div>
@@ -102,7 +107,7 @@ function ContextoContent() {
                 </p>
                 <p className={styles.body} style={{ marginTop: 8 }}>
                   Última sessão registrada: {p.last_session_local_date ? fmtDate(p.last_session_local_date) : EM_DASH}
-                  {p.days_since_last_session != null ? ` (${fmtInt(p.days_since_last_session)} dia(s) atrás)` : ''}
+                  {p.days_since_last_session != null ? ` (${plural(p.days_since_last_session, 'dia', 'dias')} atrás)` : ''}
                 </p>
                 {p.counts.length > 0 ? (
                   <div className={styles.chips} style={{ marginTop: 8 }}>
@@ -158,6 +163,7 @@ function ContextoContent() {
                     fullWidth
                     mih={44}
                     loading={apagar.isPending}
+                    disabled={!online}
                     onClick={() => apagar.mutate(evento.id as number)}
                   >
                     Apagar evento
@@ -183,10 +189,12 @@ function ContextoContent() {
         )}
       </QueryGate>
       <StickyAction>
-        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={18} />} onClick={open}>
+        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={18} />} disabled={!query.data || !online} onClick={open}>
           Registrar evento
         </Button>
       </StickyAction>
+      <OfflineNote what="registrar o evento" />
+      <div className={styles.scrollEnd} aria-hidden />
     </>
   );
 }
@@ -200,10 +208,12 @@ function RegistroSheet({
   onClose: () => void;
   tabelaDisponivel: boolean;
 }) {
+  const online = useOnlineStatus();
   const qc = useQueryClient();
   const [form, setForm] = useState<ContextFormState>(() => emptyContextForm(today()));
   const [errors, setErrors] = useState<ContextFormErrors>({});
   const salvar = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: () => createContextEvent(toContextEventInput(form)),
     onSuccess: (resposta) => {
       notifications.show({
@@ -231,7 +241,7 @@ function RegistroSheet({
       onClose={onClose}
       title="Registrar evento de contexto"
       footer={
-        <Button fullWidth color="brand" mih={44} loading={salvar.isPending} disabled={!tabelaDisponivel} onClick={submit}>
+        <Button fullWidth color="brand" mih={44} loading={salvar.isPending} disabled={!tabelaDisponivel || !online} onClick={submit}>
           Registrar
         </Button>
       }

@@ -19,5 +19,7 @@
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .md { padding: 14px 16px; font-size: 15px; line-height: 21px; overflow-wrap: anywhere; }
+.jump { appearance: none; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--m-sep); background: var(--m-surface); color: var(--m-text); font: inherit; font-size: 14px; }
+.scrollEnd { height: 96px; }
 .chartBlock { padding: 12px 12px 8px; }
 .sectionTitle { margin: 0 0 6px; padding: 0 16px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--m-text-2); }

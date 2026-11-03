@@ -40,6 +40,7 @@ import {
   ScreenHeader,
 } from '../../ui';
 import styles from './evolucao.module.css';
+import { plural } from './pure';
 import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 export function CorpoScreen() {
@@ -241,7 +242,7 @@ function CorpoBody({ payload }: { payload: BodyResponse }) {
 
       <ListGroup
         title="Bioimpedância"
-        footer={`Estimativa da balança${bio.latest_local_date ? ` · última leitura ${fmtDate(bio.latest_local_date)}` : ''} · ${bio.readings_count} leitura(s) no período.`}
+        footer={`Estimativa da balança${bio.latest_local_date ? ` · última leitura ${fmtDate(bio.latest_local_date)}` : ''} · ${plural(bio.readings_count, 'leitura', 'leituras')} no período.`}
       >
         <ListBlock>
           <div className={styles.badges} style={{ margin: 0 }}>

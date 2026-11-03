@@ -25,7 +25,7 @@ import {
   BottomSheet,
   DataCard,
   EmptyState,
-  FilterButton,
+
   ListBlock,
   ListGroup,
   ListRow,
@@ -33,6 +33,7 @@ import {
   ScreenHeader,
 } from '../../ui';
 import styles from './evolucao.module.css';
+import { plural } from './pure';
 import { BlockSkeleton, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 const STALE_TIME = 60_000;
@@ -70,13 +71,17 @@ function EngineContent() {
   );
   const payload = planQuery.data;
   const limitacoes = useMemo(() => (payload ? collectEngineLimitations(payload) : []), [payload]);
+  // Escolher uma geração leva direto à auditoria (ela abre abaixo da lista).
+  const pick = (id: number) => {
+    setFilters({ planId: id });
+    window.setTimeout(() => document.getElementById('sec-auditoria')?.scrollIntoView({ block: 'start' }), 400);
+  };
 
   return (
     <>
       <ScreenHeader
         title="Motor de geração"
         subtitle="Por que a sua ficha saiu assim: planejado, gerado (e por quê) e executado."
-        actions={<FilterButton activeCount={planId != null ? 1 : 0} onClick={open} />}
       />
       <PeriodFilter filters={filters} setFilters={setFilters} rangeError={rangeError} />
 
@@ -98,19 +103,15 @@ function EngineContent() {
               getKey={(r) => `${r.source}-${r.run_id ?? r.workout_plan_id}`}
               emptyTitle="Nenhuma geração neste período"
               emptyDescription="A tabela generation_runs passou a registrar cada geração em 2026-09-26; antes disso só existe o que as fichas salvas guardaram no próprio payload."
-              renderItem={(r) => {
-                const meta = AUDIT_SOURCE_META[r.source];
-                return (
-                  <ListRow
-                    title={r.workout_plan_id == null ? 'Rascunho não salvo' : (r.plan_name ?? `Ficha ${r.workout_plan_id}`)}
-                    subtitle={`${runTimestampLabel(r)} · motor ${r.engine_version ?? EM_DASH}${r.llm_used === true ? ' · IA' : ''} · ${r.volume_mode ?? EM_DASH} · ${fmtInt(r.safety_clamp_count)} limite(s), ${fmtInt(r.substitution_count)} troca(s), ${fmtInt(r.fallback_count)} alternativa(s)`}
-                    trailing={<Badge variant="light" color={meta.color} radius="sm">{meta.label}</Badge>}
-                    onClick={r.workout_plan_id != null ? () => setFilters({ planId: r.workout_plan_id }) : undefined}
-                  />
-                );
-              }}
+              renderItem={(r) => (
+                <ListRow
+                  title={r.workout_plan_id == null ? 'Rascunho não salvo' : (r.plan_name ?? `Ficha ${r.workout_plan_id}`)}
+                  subtitle={runTimestampLabel(r)}
+                  value={r.workout_plan_id == null ? 'sem ficha' : undefined}
+                  onClick={r.workout_plan_id != null ? () => pick(r.workout_plan_id as number) : undefined}
+                />
+              )}
             />
-            <p className={styles.note}>Origem: {Object.values(AUDIT_SOURCE_META).map((m) => `${m.label}: ${m.hint}`).join(' · ')}</p>
           </>
         )}
       </QueryGate>
@@ -122,11 +123,11 @@ function EngineContent() {
             const c = p.item_status_counts;
             return (
               <>
+                <div id="sec-auditoria" />
                 <ListGroup title={p.plan_name ?? `Ficha ${p.plan_id}`}>
                   <ListBlock>
                     <div className={styles.badges}>
                       {p.run.engine_version ? <Badge variant="light" color="gray" radius="sm">Motor {p.run.engine_version}</Badge> : null}
-                      {p.volume_mode ? <Badge variant="light" color="gray" radius="sm">{p.volume_mode}</Badge> : null}
                       <Badge variant="light" color={meta.color} radius="sm">{meta.label}</Badge>
                     </div>
                     <p className={styles.meta} style={{ marginTop: 0 }}>{meta.hint}</p>
@@ -135,7 +136,7 @@ function EngineContent() {
                       {versionLabel(p.template_version_number) ? ` ${versionLabel(p.template_version_number)}` : ''}
                       {p.template_slot_name ? ` · slot ${p.template_slot_name}` : ''}
                     </p>
-                    <p className={styles.meta}>Gerada em: {runTimestampLabel(p.run)} · {fmtInt(p.sessions_count)} sessão(ões) registrada(s)</p>
+                    <p className={styles.meta}>Gerada em: {runTimestampLabel(p.run)} · {plural(p.sessions_count, 'sessão', 'sessões')} registrada(s)</p>
                     <p className={styles.meta}>
                       Itens: {c.completed} concluído(s) · {c.interrupted} interrompido(s) · {c.skipped} pulado(s) · {c.substituted} substituído(s) · {c.extra} extra(s)
                     </p>
@@ -152,18 +153,13 @@ function EngineContent() {
                 ) : (
                   <ResponsiveDataList
                     aria-label="Itens da ficha"
-                    variant="cards"
                     items={p.items}
                     getKey={(it) => it.plan_exercise_id ?? `extra-${it.plan_sequence}-${it.generated_name}`}
                     renderItem={(it) => (
-                      <DataCard
+                      <ListRow
                         title={`${it.plan_sequence ?? EM_DASH}. ${it.generated_name ?? EM_DASH}`}
-                        value={executedSummary(it)}
-                        status={<StatusBadge domain="planItemStatus" code={it.status} size="xs" />}
-                        secondary={[
-                          { label: 'Modelo planejou', value: plannedSummary(it.planned) },
-                          { label: 'Motor gerou', value: generatedSummary(it) },
-                        ]}
+                        subtitle={executedSummary(it)}
+                        trailing={<StatusBadge domain="planItemStatus" code={it.status} size="xs" />}
                         onClick={() => setItem(it)}
                       />
                     )}
@@ -212,7 +208,7 @@ function EngineContent() {
               title={o.label}
               current={o.value === planId}
               onClick={() => {
-                setFilters({ planId: o.value });
+                pick(o.value);
                 close();
               }}
             />
@@ -229,7 +225,7 @@ function EngineContent() {
               <ListRow
                 title="Você executou"
                 subtitle={[
-                  item.missing_sets != null && item.missing_sets > 0 ? `faltaram ${item.missing_sets} série(s) para o prescrito` : null,
+                  item.missing_sets != null && item.missing_sets > 0 ? `faltaram ${plural(item.missing_sets, 'série', 'séries')} para o prescrito` : null,
                   item.substitution ? `no lugar de ${item.substitution.planned_name ?? EM_DASH}` : null,
                 ]
                   .filter(Boolean)

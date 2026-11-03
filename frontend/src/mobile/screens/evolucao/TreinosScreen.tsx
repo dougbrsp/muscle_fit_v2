@@ -59,10 +59,12 @@ import {
   ScreenHeader,
   StatGrid,
   StatTile,
+  useOnlineStatus,
 } from '../../ui';
 import { MOBILE_TOKENS } from '../../tokens';
 import { AnaliseIaSnapshotMobile } from './AnaliseIaSnapshotMobile';
 import styles from './evolucao.module.css';
+import { plural } from './pure';
 import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 /** Janelas desta tela (as mesmas do desktop): `7d` fica de fora. */
@@ -135,7 +137,7 @@ function TreinosContent() {
                     (grupo.kind === 'slot'
                       ? `${grupo.templateName ?? 'Modelo sem nome'} · slot ${grupo.slotSequence} · `
                       : '') +
-                    `${grupo.sessions.length} sessão(ões)` +
+                    `${plural(grupo.sessions.length, 'sessão', 'sessões')}` +
                     (grupo.kind === 'unlinked' ? ' · sem vínculo com ficha' : '') +
                     (grupo.kind === 'no_template' ? ' · ficha sem vínculo com Modelo' : '')
                   }
@@ -145,7 +147,7 @@ function TreinosContent() {
                       key={s.activity_id}
                       title={fmtDate(s.local_date)}
                       subtitle={`${s.name || 'Sem nome'}${s.plan_link?.template_slot_name ? ` · ${s.plan_link.template_slot_name}` : ''}${s.deload_label ? ` · ${s.deload_label}` : ''}`}
-                      value={`${metricText(s.physical_sets, 0)} séries`}
+                      value={`${fmtInt(s.physical_sets.value)} séries`}
                       onClick={() => setAberta(s)}
                     />
                   ))}
@@ -194,19 +196,19 @@ function Consistencia() {
             <ListGroup title="Consistência">
               <ListBlock>
                 <p className={styles.headline}>{pct != null ? `${fmtInt(pct)}% do planejado` : 'Consistência não calculável'}</p>
+              </ListBlock>
+              <ListBlock>
+                <StatGrid>
+                  <StatTile label="Esperadas" value={metricText(d.expected_sessions, 0)} hint={d.has_template ? undefined : 'sem Modelo'} />
+                  <StatTile label="Realizadas" value={metricText(d.completed_sessions, 0)} />
+                  <StatTile label="Com ficha" value={metricText(d.planned_sessions, 0)} />
+                  <StatTile label="Não executadas" value={metricText(d.missed_sessions, 0)} />
+                </StatGrid>
                 <p className={styles.meta}>
                   {d.has_template
                     ? `Modelo "${d.template_name ?? 'sem nome'}" · ciclo de ${fmtInt(d.cycle_length_days)} dias`
                     : 'Sem Modelo de Ficha atribuído.'}
                 </p>
-              </ListBlock>
-              <ListBlock>
-                <StatGrid>
-                  <StatTile label="Esperadas" value={metricText(d.expected_sessions, 0)} />
-                  <StatTile label="Realizadas" value={metricText(d.completed_sessions, 0)} />
-                  <StatTile label="Com ficha" value={metricText(d.planned_sessions, 0)} />
-                  <StatTile label="Não executadas" value={metricText(d.missed_sessions, 0)} />
-                </StatGrid>
               </ListBlock>
               {d.slots.length > 0 ? (
                 <ListBlock>
@@ -319,7 +321,7 @@ function DistribuicaoRpe({ days }: { days: number }) {
               </p>
             ) : (
               <MobileChart
-                summary={`${fmtInt(totalRpeSets(linhas))} série(s) com RPE nos últimos ${days} dias, por nota.`}
+                summary={`${plural(totalRpeSets(linhas), 'série', 'séries')} com RPE nos últimos ${days} dias, por nota.`}
                 label="Séries por nota de RPE"
               >
                 <BarChart data={linhas} margin={MOBILE_CHART_MARGIN}>
@@ -338,8 +340,9 @@ function DistribuicaoRpe({ days }: { days: number }) {
 }
 
 function AnaliseIa({ days }: { days: number }) {
+  const online = useOnlineStatus();
   const [snapshot, setSnapshot] = useState(false);
-  const geracao = useMutation({ mutationFn: (janela: number) => generateWorkoutsAnalysis(janela) });
+  const geracao = useMutation({ networkMode: 'always', mutationFn: (janela: number) => generateWorkoutsAnalysis(janela) });
   const falha = geracao.isError ? aiAnalysisFailure(geracao.error) : null;
   const result = geracao.data ?? null;
   return (
@@ -354,6 +357,7 @@ function AnaliseIa({ days }: { days: number }) {
           color="brand"
           leftSection={<IconBrain size={18} />}
           loading={geracao.isPending}
+          disabled={!online}
           onClick={() => geracao.mutate(days)}
         >
           Gerar análise
@@ -414,7 +418,7 @@ function SessaoDetalhe({ session }: { session: WorkoutSession }) {
             {session.name || 'Sem nome'}
             {session.deload_label ? ` · ${session.deload_label}` : ''}
           </p>
-          <p className={styles.meta}>{fmtInt(totalItems(session.item_status_counts))} item(ns)</p>
+          <p className={styles.meta}>{plural(totalItems(session.item_status_counts), 'item', 'itens')}</p>
         </ListBlock>
         <ListBlock>
           <StatGrid>
@@ -495,7 +499,7 @@ function ItemBloco({ item, href }: { item: PlanItem; href: string | null }) {
         </p>
       ) : null}
       {item.status === 'INTERRUPTED' && item.missing_sets != null ? (
-        <p className={styles.meta} style={{ margin: 0 }}>Faltaram {fmtInt(item.missing_sets)} série(s) para o prescrito.</p>
+        <p className={styles.meta} style={{ margin: 0 }}>Faltaram {plural(item.missing_sets, 'série', 'séries')} para o prescrito.</p>
       ) : null}
       {item.technique ? <p className={styles.meta} style={{ margin: 0 }}>{textoTecnicaAplicada(item.technique)}</p> : null}
       <p className={styles.body}>
@@ -506,7 +510,7 @@ function ItemBloco({ item, href }: { item: PlanItem; href: string | null }) {
       </p>
       <p className={styles.body}>
         <strong>Executado: </strong>
-        {ex ? `${fmtInt(ex.working_sets)} série(s) de trabalho` : EM_DASH}
+        {ex ? `${plural(ex.working_sets, 'série', 'séries')} de trabalho` : EM_DASH}
       </p>
       {ex ? (
         <p className={styles.meta} style={{ margin: 0 }}>

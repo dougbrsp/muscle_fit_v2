@@ -87,7 +87,9 @@ function DataQualityContent() {
                       {fix ? (
                         <ListRow title="Corrigir" href={fix} />
                       ) : (
-                        <ListRow title="Corrigir" subtitle="Disponível no computador" />
+                        <ListBlock>
+                          <p className={styles.meta} style={{ marginTop: 0 }}>A correção deste item está disponível no computador.</p>
+                        </ListBlock>
                       )}
                     </ListGroup>
                   );

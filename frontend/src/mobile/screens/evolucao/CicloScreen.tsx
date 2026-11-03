@@ -55,7 +55,7 @@ export function CicloScreen() {
                   <ListRow
                     key={slot.sequence}
                     title={`#${slot.sequence} ${slot.name}`}
-                    subtitle={`${slot.slot_type}${slot.weekday != null ? ` · ${WEEKDAY_LABELS[slot.weekday] ?? `Dia ${slot.weekday}`}` : ''}`}
+                    subtitle={slot.weekday != null ? (WEEKDAY_LABELS[slot.weekday] ?? `Dia ${slot.weekday}`) : 'Sem dia fixo'}
                     current={slot.status === 'next'}
                     trailing={<StatusBadge domain="cycleSlot" code={slot.status} />}
                   />

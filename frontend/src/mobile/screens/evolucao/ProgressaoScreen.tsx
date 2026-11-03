@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@mantine/core';
+import { Badge, Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -60,8 +60,8 @@ import {
   useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { BlockSkeleton, PeriodFilter, QueryGate } from './shared';
-import { ExerciseProgressionSummaryCard } from '@/app/(app)/dashboard/progressao/ExerciseProgressionSummaryCard';
+import { plural } from './pure';
+import { BlockSkeleton, PeriodFilter, QueryGate, SectionJump } from './shared';
 
 export function ProgressaoScreen() {
   return (
@@ -77,8 +77,18 @@ function ProgressaoContent() {
     <>
       <ScreenHeader title="Progressão" subtitle="Por grupo muscular e, abaixo, por exercício com veredito de tendência." />
       <PeriodFilter filters={filters} setFilters={setFilters} rangeError={rangeError} />
+      <SectionJump
+        items={[
+          { id: 'sec-exercicio', label: 'Detalhe por exercício' },
+          { id: 'sec-grupos', label: 'Grupos musculares' },
+          { id: 'sec-forca', label: 'Força' },
+        ]}
+      />
+      <div id="sec-grupos" />
       <GruposSection window={windowQuery} />
+      <div id="sec-forca" />
       <ForcaSection window={windowQuery} />
+      <div id="sec-exercicio" />
       <ExercicioSection />
     </>
   );
@@ -102,7 +112,25 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
     <QueryGate query={query} title="progressão por grupo" rows={4}>
       {(data) => (
         <>
-          <ExerciseProgressionSummaryCard summary={data.degraded ? null : data.exercise_progression} />
+          {!data.degraded && data.exercise_progression ? (
+            <ListGroup title="Progressão por exercício" footer={`${fmtInt(data.exercise_progression.counts.comparable_total)} exercícios comparáveis, de ${fmtDate(data.exercise_progression.period_start)} a ${fmtDate(data.exercise_progression.period_end)}.${data.exercise_progression.truncated ? ' Leitura parcial: janela muito longa; considere uma janela menor.' : ''}`}>
+              <ListBlock>
+                <p className={styles.headline}>{data.exercise_progression.answer}</p>
+                <div className={styles.badges} style={{ marginTop: 10 }}>
+                  {(
+                    [
+                      ['PROGRESSING', data.exercise_progression.counts.progressing],
+                      ['STABLE', data.exercise_progression.counts.stable],
+                      ['PLATEAU_SUSPECTED', data.exercise_progression.counts.plateau_suspected],
+                      ['REGRESSING', data.exercise_progression.counts.regressing],
+                    ] as const
+                  ).map(([code, count]) => (
+                    <StatusBadge key={code} domain="exerciseProgression" code={code} size="xs" suffix={` ${count}`} />
+                  ))}
+                </div>
+              </ListBlock>
+            </ListGroup>
+          ) : null}
           <ListGroup
             title="Tendência por grupo muscular"
             footer={`Compara a janela atual com a anterior de mesmo tamanho (${fmtDate(data.current_from)}–${fmtDate(data.current_to)} × ${fmtDate(data.previous_from)}–${fmtDate(data.previous_to)}).`}
@@ -123,7 +151,7 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
                 status={<StatusBadge domain="muscleGroupProgression" code={i.performance_status} size="xs" />}
                 secondary={[
                   { label: 'Volume', value: i.change_pct != null ? fmtSignedPercent(i.change_pct) : EM_DASH },
-                  { label: 'Fase', value: i.phase ?? EM_DASH },
+                  { label: 'Trilha', value: i.phase ?? EM_DASH },
                 ]}
                 onClick={() => setOpen(i)}
               />
@@ -229,7 +257,7 @@ function ForcaSection({ window }: { window: ReturnType<typeof useDashboardFilter
             {row.name}
           </Link>
           <p className={styles.meta}>
-            {fmtInt(row.strengthSessions)} sessão(ões) de força · 1RM estimado {fmtKg(row.latestE1rm)}
+            {plural(row.strengthSessions, 'sessão', 'sessões')} de força · 1RM estimado {fmtKg(row.latestE1rm)}
             {row.latestE1rmDate ? ` (${fmtDate(row.latestE1rmDate)})` : ''} · melhor {fmtKg(row.bestE1rm)}
             {row.bestE1rmReliable === false ? ' (pouco confiável)' : ''}
           </p>
@@ -336,18 +364,24 @@ function ExercicioSection() {
         />
       ) : (
         <QueryGate
-          query={{
-            data: progressionQuery.data && trendQuery.data !== undefined ? progressionQuery.data : undefined,
-            isLoading: progressionQuery.isLoading || trendQuery.isLoading,
-            isError: progressionQuery.isError || trendQuery.isError,
-            error: progressionQuery.error ?? trendQuery.error,
-            refetch: () => void Promise.all([progressionQuery.refetch(), trendQuery.refetch()]),
-          }}
+          query={progressionQuery}
           title="progressão do exercício"
           rows={3}
         >
           {() => (
             <>
+              {trendQuery.isError && !trend ? (
+                <ListGroup title="Tendência">
+                  <ListBlock>
+                    <p className={styles.err} role="alert" style={{ fontSize: 15 }}>
+                      Não foi possível carregar o veredito de tendência deste exercício. As sessões abaixo continuam válidas.
+                    </p>
+                    <Button variant="default" mih={44} mt="sm" onClick={() => void trendQuery.refetch()}>
+                      Tentar de novo
+                    </Button>
+                  </ListBlock>
+                </ListGroup>
+              ) : null}
               {trend ? (
                 <ListGroup title="Tendência">
                   <ListBlock>
@@ -364,7 +398,7 @@ function ExercicioSection() {
                         Comparado em: {trend.equipment_name || 'equipamento não identificado'} · {loadConventionLabel(trend.load_convention)}
                         {trend.load_convention_source === 'default_total' ? ' (assumida)' : ''} ·{' '}
                         {fatigueContextLabel(trend.fatigue_context) ? `condição ${fatigueContextLabel(trend.fatigue_context)} · ` : ''}
-                        {fmtInt(trend.comparable_exposures)} de {fmtInt(trend.exposures_in_window)} exposição(ões) no período
+                        {fmtInt(trend.comparable_exposures)} de {plural(trend.exposures_in_window, 'exposição', 'exposições')} no período
                       </p>
                     ) : null}
                     {suggestionQuery.data ? (
@@ -384,7 +418,7 @@ function ExercicioSection() {
                     <MobileChart
                       summary="Só as sessões comparáveis com o veredito (mesmo equipamento e convenção de carga). Ambas as séries estão em kg."
                       label="1RM estimado e carga de topo"
-                      height={220}
+                      height={260}
                     >
                       <ComposedChart data={chart.points} margin={MOBILE_CHART_MARGIN}>
                         <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" />
@@ -416,14 +450,14 @@ function ExercicioSection() {
                   <ListBlock>
                     <p className={styles.meta} style={{ marginTop: 0 }}>
                       {chart.otherKeySessions > 0
-                        ? `${fmtInt(chart.otherKeySessions)} sessão(ões) em outro equipamento/convenção ficaram fora do gráfico (seguem na lista). `
+                        ? `${plural(chart.otherKeySessions, 'sessão', 'sessões')} em outro equipamento/convenção ficaram fora do gráfico (seguem na lista). `
                         : ''}
                       {chart.unreliableE1rm > 0
                         ? `${fmtInt(chart.unreliableE1rm)} 1RM estimado(s) de séries com mais de 12 repetições omitido(s): pouco confiável(is). `
                         : ''}
                       {(chart.strengthPoints ?? 0) > 0 ? 'Pontos destacados: sessões de força. ' : ''}
                       {(chart.deloadSessions ?? 0) > 0
-                        ? `${fmtInt(chart.deloadSessions ?? 0)} sessão(ões) de deload marcada(s) (linha tracejada), fora da linha do 1RM estimado.`
+                        ? `${plural(chart.deloadSessions ?? 0, 'sessão', 'sessões')} de deload marcada(s) (linha tracejada), fora da linha do 1RM estimado.`
                         : ''}
                     </p>
                   </ListBlock>

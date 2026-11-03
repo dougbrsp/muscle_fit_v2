@@ -9,7 +9,7 @@ import { UnifiedE1rmChart } from '@/components/charts/UnifiedE1rmChart';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { ApiError } from '@/lib/api';
 import { dashboardKeys, fetchExerciseProgress } from '@/lib/dashboard-api';
-import { dashboardHref, useDashboardFilters } from '@/lib/dashboard-filters';
+import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtDecimal, fmtInt, fmtKg, fmtRpe, fmtSignedPercent } from '@/lib/dashboard-format';
 import type { ExerciseProgressResponse, Exposure } from '@/lib/dashboard-v3-types';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
@@ -47,10 +47,12 @@ import {
   ListRow,
   ResponsiveDataList,
   ScreenHeader,
-  SegmentedFilter,
+  StatGrid,
+  StatTile,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { BlockSkeleton, metricText, PartialNote, PeriodFilter } from './shared';
+import { plural } from './pure';
+import { BlockSkeleton, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 /** `/dashboard/exercicios/[exerciseId]`: mesma consulta e mesma chave do desktop. */
 export function ExercicioScreen() {
@@ -78,41 +80,58 @@ function ExercicioContent() {
     retry: (failureCount, error) => (error instanceof ApiError && error.status === 404 ? false : failureCount < 2),
   });
   const notFound = (query.error instanceof ApiError && query.error.status === 404) || (rawId != null && exerciseId == null);
-  const voltar = dashboardHref('/dashboard/progressao', filters);
 
   return (
     <>
       <ScreenHeader title={query.data ? (query.data.exercise.name || query.data.exercise.amazfit_name || 'Exercício') : 'Exercício'} subtitle="Estou evoluindo neste exercício, em condições comparáveis?" />
-      <ListGroup>
-        <ListRow title="Voltar para Progressão" href={voltar} />
-      </ListGroup>
-      {goals && goalSelected ? (
-        <div className={styles.gap}>
-          <SegmentedFilter
-            label="Objetivo da progressão"
-            value={goalSelected}
-            onChange={(v) => setGoal(goalQueryParam(goals, v))}
-            options={progressionGoalOptions(goals).slice(0, 4)}
-          />
-        </div>
-      ) : null}
-      <PeriodFilter filters={filters} setFilters={setFilters} rangeError={rangeError} />
+      <PeriodFilter
+        filters={filters}
+        setFilters={setFilters}
+        rangeError={rangeError}
+        extraCount={goal != null ? 1 : 0}
+        onClearExtra={() => setGoal(null)}
+        extra={
+          goals && goalSelected ? (
+            <div className={styles.field}>
+              <label className={styles.fieldLabel} htmlFor="mob-objetivo">
+                Objetivo da progressão
+              </label>
+              <select
+                id="mob-objetivo"
+                className={styles.dateInput}
+                value={goalSelected}
+                onChange={(e) => setGoal(goalQueryParam(goals, e.currentTarget.value))}
+              >
+                {progressionGoalOptions(goals).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null
+        }
+      />
 
       {notFound ? (
         <ErrorState
           title="Exercício não encontrado"
           description="Este exercício não existe no catálogo canônico. Verifique o link ou escolha outro exercício na tela de Progressão."
         />
-      ) : exerciseId == null || query.isLoading ? (
-        <BlockSkeleton rows={4} label="Carregando progresso do exercício" />
-      ) : query.isError || !query.data ? (
-        <ErrorState
-          title="Não foi possível carregar o progresso deste exercício"
-          description={query.error instanceof Error ? query.error.message : 'Verifique a conexão e tente de novo.'}
-          onRetry={() => void query.refetch()}
-        />
       ) : (
-        <Conteudo data={query.data} defaultGoal={defaultGoalValue(goals)} />
+        <QueryGate
+          query={{
+            data: query.data,
+            isLoading: exerciseId == null || query.isLoading,
+            isError: query.isError,
+            error: query.error,
+            refetch: query.refetch,
+          }}
+          title="progresso do exercício"
+          rows={4}
+        >
+          {(d) => <Conteudo data={d} defaultGoal={defaultGoalValue(goals)} />}
+        </QueryGate>
       )}
     </>
   );
@@ -138,6 +157,12 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
     <>
       <ListGroup>
         <ListBlock>
+          <StatGrid>
+            <StatTile label="1RM estimado (última)" value={fmtKg(ultima?.e1rm)} hint={ultima?.local_date ? fmtDate(ultima.local_date) : undefined} />
+            <StatTile label="Melhor carga (período)" value={fmtKg(data.records.best_load_kg?.value)} hint={data.records.best_load_kg?.local_date ? fmtDate(data.records.best_load_kg.local_date) : undefined} />
+          </StatGrid>
+        </ListBlock>
+        <ListBlock>
           <div className={styles.badges}>
             <StatusBadge domain="exerciseProgression" code={data.status} size="lg" />
           </div>
@@ -161,7 +186,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
             </>
           ) : null}
           <p className={styles.meta}>
-            Período de {fmtDate(data.window.date_from)} a {fmtDate(data.window.date_to)} · {fmtInt(data.exposures.length)} exposição(ões) · regra{' '}
+            Período de {fmtDate(data.window.date_from)} a {fmtDate(data.window.date_to)} · {plural(data.exposures.length, 'exposição', 'exposições')} · regra{' '}
             {data.metric_versions.exercise_progression_status ?? 'desconhecida'}
           </p>
         </ListBlock>
@@ -208,7 +233,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
 
       <ListGroup
         title={`Tendência ${trend.metric ? `— ${trend.label}` : ''}`}
-        footer={`Somente exposições comparáveis com a chave atual (mesmo equipamento e mesma convenção de carga).${trend.excluded > 0 ? ` ${fmtInt(trend.excluded)} exposição(ões) ficaram de fora por não serem comparáveis.` : ''}`}
+        footer={`Somente exposições comparáveis com a chave atual (mesmo equipamento e mesma convenção de carga).${trend.excluded > 0 ? ` ${plural(trend.excluded, 'exposição', 'exposições')} ficaram de fora por não serem comparáveis.` : ''}`}
       >
         {trend.metric == null ? (
           <ListBlock><p className={styles.body}>Ainda não há duas exposições comparáveis com valor para desenhar uma linha.</p></ListBlock>
@@ -222,7 +247,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
       {unified.hasSeries && (unified.strengthPoints > 0 || unified.deloadSessions > 0) ? (
         <ListGroup
           title="1RM estimado: todos os objetivos"
-          footer={`${fmtInt(unified.strengthPoints)} ponto(s) de força · ${fmtInt(unified.deloadSessions)} sessão(ões) de deload${unified.otherKeyPoints > 0 ? ` · ${fmtInt(unified.otherKeyPoints)} ponto(s) em outro equipamento/convenção ficaram de fora` : ''}. Pontos destacados: sessões de força. Linhas tracejadas: deload.`}
+          footer={`${fmtInt(unified.strengthPoints)} ponto(s) de força · ${plural(unified.deloadSessions, 'sessão', 'sessões')} de deload${unified.otherKeyPoints > 0 ? ` · ${fmtInt(unified.otherKeyPoints)} ponto(s) em outro equipamento/convenção ficaram de fora` : ''}. Pontos destacados: sessões de força. Linhas tracejadas: deload.`}
         >
           <div className={styles.chartBlock} role="img" aria-label="1RM estimado, todos os objetivos" style={{ height: 230 }}>
             <UnifiedE1rmChart chart={unified} />
@@ -243,11 +268,11 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
           <ListBlock>
             <p className={styles.body}>
               Ainda não há duas sessões comparáveis com RPE registrado para desenhar uma linha.
-              {rpe.missing > 0 ? ` ${fmtInt(rpe.missing)} sessão(ões) sem RPE.` : ''}
+              {rpe.missing > 0 ? ` ${plural(rpe.missing, 'sessão', 'sessões')} sem RPE.` : ''}
             </p>
           </ListBlock>
         )}
-        {rpe.missing > 0 && rpe.hasSeries ? <ListBlock><p className={styles.meta} style={{ marginTop: 0 }}>{fmtInt(rpe.missing)} sessão(ões) sem RPE registrado.</p></ListBlock> : null}
+        {rpe.missing > 0 && rpe.hasSeries ? <ListBlock><p className={styles.meta} style={{ marginTop: 0 }}>{plural(rpe.missing, 'sessão', 'sessões')} sem RPE registrado.</p></ListBlock> : null}
       </ListGroup>
 
       <ListGroup

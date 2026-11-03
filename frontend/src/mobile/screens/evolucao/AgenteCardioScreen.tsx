@@ -7,7 +7,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { CardioRecommendationPanel } from '@/components/cardio/CardioRecommendationPanel';
 import { preloadMarkdown } from '@/components/LazyMarkdown';
-import { EffortChart, SleepChart, WellnessChart } from '@/app/(app)/agente-cardio/AgenteCardioCharts';
+import { Legend, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
+import { CHART_COLORS, CHART_TOOLTIP_CONTENT_STYLE, CHART_TOOLTIP_ITEM_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/components/charts/chartTheme';
+import { EffortChart, WellnessChart } from '@/app/(app)/agente-cardio/AgenteCardioCharts';
 import { apiFetch } from '@/lib/api';
 import type {
   AsyncJob,
@@ -26,13 +28,16 @@ import {
   ListBlock,
   ListGroup,
   ListRow,
+  MOBILE_CHART_AXIS,
+  MOBILE_CHART_MARGIN,
+  MobileChart,
   ResponsiveDataList,
   ScreenHeader,
   StickyAction,
   useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { QueryGate } from './shared';
+import { OfflineNote, QueryGate } from './shared';
 
 const DAY_OPTIONS = [
   { value: '7', label: '7 dias' },
@@ -63,6 +68,7 @@ export function AgenteCardioScreen() {
     queryFn: () => apiFetch<CardioAgentContextResponse>(`/analytics/cardio-agent-context?days=${days}`),
   });
   const generate = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (payload: { days: number }) =>
       apiFetch<{ job_id: string; status: string }>('/cardio-recommendations/generate', {
         method: 'POST',
@@ -85,6 +91,7 @@ export function AgenteCardioScreen() {
   }, [job?.status, jobId, qc]);
 
   const remover = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (id: number) => apiFetch(`/cardio-recommendations/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cardio-recommendations-history'] });
@@ -172,7 +179,16 @@ export function AgenteCardioScreen() {
             <ListGroup title={`Sono: ${days} dias`}>
               {sleep.length > 0 ? (
                 <div className={styles.chartBlock} role="img" aria-label="Sono por dia">
-                  <SleepChart sleepChartData={sleep} />
+                  <MobileChart summary="Duração total e sono profundo, em horas." label="Sono por dia">
+                    <LineChart data={sleep} margin={MOBILE_CHART_MARGIN}>
+                      <XAxis dataKey="date" {...MOBILE_CHART_AXIS} />
+                      <YAxis {...MOBILE_CHART_AXIS} width={36} unit=" h" domain={[0, 'auto']} />
+                      <Tooltip contentStyle={CHART_TOOLTIP_CONTENT_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} itemStyle={CHART_TOOLTIP_ITEM_STYLE} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="duration_hours" name="Duração" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="deep_sleep_hours" name="Sono profundo" stroke={CHART_COLORS.secondary} strokeWidth={2} dot={false} connectNulls />
+                    </LineChart>
+                  </MobileChart>
                 </div>
               ) : (
                 <ListBlock><p className={styles.body}>Sem registros manuais de sono no período. Cadastre em Indicadores físicos.</p></ListBlock>
@@ -270,7 +286,7 @@ export function AgenteCardioScreen() {
         title={rec ? `Recomendação de ${formatDateOrDash(rec.reference_date)}` : 'Recomendação'}
         footer={
           rec ? (
-            <Button color="red" variant="light" fullWidth mih={44} onClick={() => setDeleteTarget(rec)}>
+            <Button color="red" variant="light" fullWidth mih={44} disabled={!online} onClick={() => setDeleteTarget(rec)}>
               Excluir recomendação
             </Button>
           ) : undefined
@@ -293,7 +309,7 @@ export function AgenteCardioScreen() {
             <Button variant="default" style={{ flex: 1, minHeight: 44 }} disabled={remover.isPending} onClick={() => setDeleteTarget(null)}>
               Cancelar
             </Button>
-            <Button color="red" style={{ flex: 1, minHeight: 44 }} loading={remover.isPending} onClick={() => deleteTarget && remover.mutate(deleteTarget.id)}>
+            <Button color="red" style={{ flex: 1, minHeight: 44 }} loading={remover.isPending} disabled={!online} onClick={() => deleteTarget && remover.mutate(deleteTarget.id)}>
               Excluir
             </Button>
           </>
@@ -310,7 +326,6 @@ export function AgenteCardioScreen() {
         ) : null}
       </BottomSheet>
 
-      {!online ? <EmptyState title="Sem conexão" description="A geração e o histórico dependem do servidor. Tente de novo quando a rede voltar." /> : null}
 
       <StickyAction>
         <Button
@@ -320,6 +335,7 @@ export function AgenteCardioScreen() {
           mih={48}
           leftSection={<IconSparkles size={18} />}
           loading={isGenerating}
+          disabled={!online}
           onClick={() => {
             setJobId(null);
             generate.mutate({ days: Number(days) });
@@ -328,6 +344,8 @@ export function AgenteCardioScreen() {
           Gerar recomendação
         </Button>
       </StickyAction>
+      <OfflineNote what="gerar ou excluir recomendações" />
+      <div className={styles.scrollEnd} aria-hidden />
     </>
   );
 }

@@ -80,7 +80,7 @@ import {
 } from '../../ui';
 import { MOBILE_TOKENS } from '../../tokens';
 import styles from './evolucao.module.css';
-import { PartialNote, QueryGate } from './shared';
+import { PartialNote, QueryGate, SheetRow } from './shared';
 
 /**
  * Blocos de apoio de Grupos musculares: comparativo por sessão (T-0..T-3,
@@ -123,7 +123,6 @@ function DeltaText({ values }: { values: Array<number | null> }) {
 }
 
 function Comparativos({ comparatives }: { comparatives: MuscleComparatives }) {
-  const [grupo, setGrupo] = useState<MuscleComparatives['by_session'][number] | null>(null);
   const [equip, setEquip] = useState<MuscleComparatives['by_equipment'][number] | null>(null);
   if (comparatives.sessions_compared === 0) {
     return (
@@ -138,46 +137,45 @@ function Comparativos({ comparatives }: { comparatives: MuscleComparatives }) {
   }
   return (
     <>
+      <div id="sec-sessao" />
       <p className={styles.sectionTitle}>{SESSION_UNIT_TITLE}</p>
       <p className={styles.note} style={{ marginBottom: 8 }}>{SESSION_UNIT_SUBTITLE}</p>
       <PartialNote quality={comparatives.data_quality} limitations={comparatives.limitations} />
 
-      <ResponsiveDataList
-        aria-label="Comparativo por sessão, por grupo"
-        variant="cards"
-        items={comparatives.by_session}
-        getKey={(r) => r.muscle_group_id}
-        renderItem={(r) => {
-          const slots = pointsByOffset(r.points, COLUNAS);
-          const t0 = slots[0];
-          return (
-            <DataCard
-              title={r.muscle_group}
-              value={t0 ? `${fmtSets(t0.effective_sets_stimulus)} efetivas` : EM_DASH}
-              status={<DeltaText values={slots.map((p) => p?.effective_sets_stimulus ?? null)} />}
-              secondary={[
-                { label: 'T-0', value: t0 ? fmtDate(t0.local_date) : EM_DASH },
-                { label: 'Sessões', value: fmtInt(r.sessions_in_window) },
-              ]}
-              onClick={() => setGrupo(r)}
-            />
-          );
-        }}
-      />
-      <BottomSheet opened={grupo !== null} onClose={() => setGrupo(null)} title={grupo?.muscle_group ?? 'Grupo'}>
-        {grupo ? (
+      <ListGroup>
+        <SheetRow
+          title="Comparativo por grupo (T-0 a T-3)"
+          subtitle={`${comparatives.by_session.length} grupos · ${comparatives.sessions_compared} sessões comparadas`}
+          sheetTitle="Comparativo por sessão"
+        >
           <ListGroup footer="Mais volume numa sessão não é bom nem ruim: o status contra a meta está na lista de grupos.">
-            {pointsByOffset(grupo.points, COLUNAS).map((p, i) => (
-              <ListRow
-                key={i}
-                title={`${sessionOffsetLabel(i)} · ${p ? fmtDate(p.local_date) : EM_DASH}`}
-                subtitle={p ? `RPE ${fmtRpe(p.avg_rpe)} · ${fmtKg(p.tonnage_kg)}` : undefined}
-                value={p ? `${fmtSets(p.effective_sets_stimulus)} efetivas` : EM_DASH}
-              />
-            ))}
+            {comparatives.by_session.map((r) => {
+              const slots = pointsByOffset(r.points, COLUNAS);
+              const t0 = slots[0];
+              return (
+                <SheetRow
+                  key={r.muscle_group_id}
+                  title={r.muscle_group}
+                  subtitle={`T-0 ${t0 ? fmtDate(t0.local_date) : EM_DASH} · ${fmtInt(r.sessions_in_window)} sessões`}
+                  value={t0 ? `${fmtSets(t0.effective_sets_stimulus)} efetivas` : EM_DASH}
+                  sheetTitle={r.muscle_group}
+                >
+                  <ListGroup>
+                    {slots.map((p, i) => (
+                      <ListRow
+                        key={i}
+                        title={`${sessionOffsetLabel(i)} · ${p ? fmtDate(p.local_date) : EM_DASH}`}
+                        subtitle={p ? `RPE ${fmtRpe(p.avg_rpe)} · ${fmtKg(p.tonnage_kg)}` : undefined}
+                        value={p ? `${fmtSets(p.effective_sets_stimulus)} efetivas` : EM_DASH}
+                      />
+                    ))}
+                  </ListGroup>
+                </SheetRow>
+              );
+            })}
           </ListGroup>
-        ) : null}
-      </BottomSheet>
+        </SheetRow>
+      </ListGroup>
 
       {comparatives.by_equipment.length > 0 ? (
         <ListGroup
@@ -303,6 +301,7 @@ function Ativacao7d() {
 
   return (
     <>
+      <div id="sec-ativacao" />
       <p className={styles.sectionTitle}>Ativação muscular (últimos 7 dias)</p>
       <p className={styles.note} style={{ marginBottom: 8 }}>
         Séries diretas por grupo e dia, comparadas com a faixa por treino do macro-grupo na frequência real da semana. Toque num
@@ -368,10 +367,8 @@ function Ativacao7d() {
 }
 
 // ---------------------------------------------------------------------------
-// Tendência por grupo muscular
+// Tendência por grupo muscular (ranking: top 3 + o resto por toque)
 // ---------------------------------------------------------------------------
-
-const LINE_COLORS = [CHART_COLORS.primary, CHART_COLORS.secondary, '#4DA3FF', '#8B93A6', '#2f9e44', '#B98CFF'];
 
 function Tendencia() {
   const [filters, setFilters] = useState<MuscleGroupTrendFilters>(DEFAULT_MUSCLE_GROUP_TREND_FILTERS);
@@ -385,22 +382,25 @@ function Tendencia() {
   const trendRows = useMemo(() => trendQuery.data?.trend_rows ?? [], [trendQuery.data]);
   const totals = useMemo(() => buildTrendGroupTotals(trendRows), [trendRows]);
   const groupOptions = useMemo(() => buildTrendGroupOptions(totals), [totals]);
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const selectedValid = useMemo(() => keepAvailableGroups(selectedGroups, groupOptions), [selectedGroups, groupOptions]);
-  const visible = useMemo(() => resolveVisibleGroups(selectedValid, groupOptions), [selectedValid, groupOptions]);
   const periods = useMemo(() => buildTrendPeriods(trendRows), [trendRows]);
   const index = useMemo(() => trendValueIndex(trendRows), [trendRows]);
-  const points = useMemo(() => pivotTrend(periods, index, visible), [periods, index, visible]);
-  const ranking = useMemo(() => buildPressureRows(periods, index, totals, visible), [periods, index, totals, visible]);
+  const ranking = useMemo(() => buildPressureRows(periods, index, totals, groupOptions), [periods, index, totals, groupOptions]);
   const isDefault =
     period === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.period &&
     metric === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.metric &&
     days === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.days &&
-    includeSecondary === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.includeSecondary &&
-    selectedValid.length === 0;
+    includeSecondary === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.includeSecondary;
+  const linha = (r: (typeof ranking)[number], i: number) => (
+    <ListRow
+      key={r.group}
+      title={`${i + 1}. ${r.group}`}
+      subtitle={`Anterior ${formatTrendMetric(r.previous, metric)} · janela ${formatTrendMetric(r.total, metric)} · ${r.variation == null ? 'sem base' : `${r.variation > 0 ? '+' : ''}${r.variation.toFixed(1)}%`}`}
+      value={formatTrendMetric(r.latest, metric)}
+    />
+  );
 
   return (
-    <>
+    <div id="sec-tendencia">
       <div className={styles.toolbar} style={{ marginTop: 8 }}>
         <p className={styles.sectionTitle} style={{ flex: 1, margin: 0 }}>
           Tendência por grupo muscular
@@ -408,18 +408,10 @@ function Tendencia() {
         <FilterButton activeCount={isDefault ? 0 : 1} onClick={open} />
       </div>
       <p className={styles.note} style={{ marginBottom: 8 }}>
-        Agregado por {TREND_PERIOD_DESCRIPTION[period] || 'período'} e grupo muscular canônico. Janela e granularidade próprias deste
-        bloco: não seguem o período do topo.
+        Agregado por {TREND_PERIOD_DESCRIPTION[period] || 'período'} e grupo muscular canônico. Janela e granularidade próprias deste bloco: não seguem
+        o período do topo.
       </p>
-      <FilterSheet
-        opened={sheet}
-        onClose={close}
-        activeCount={isDefault ? 0 : 1}
-        onClear={() => {
-          setFilters(DEFAULT_MUSCLE_GROUP_TREND_FILTERS);
-          setSelectedGroups([]);
-        }}
-      >
+      <FilterSheet opened={sheet} onClose={close} activeCount={isDefault ? 0 : 1} onClear={() => setFilters(DEFAULT_MUSCLE_GROUP_TREND_FILTERS)}>
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="mob-tr-gran">Granularidade</label>
           <select id="mob-tr-gran" className={styles.dateInput} value={period} onChange={(e) => isTrendPeriod(e.currentTarget.value) && update({ period: e.currentTarget.value })}>
@@ -444,70 +436,26 @@ function Tendencia() {
           checked={includeSecondary}
           onChange={(e) => update({ includeSecondary: e.currentTarget.checked })}
         />
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Grupos exibidos (por padrão, os {DEFAULT_VISIBLE_GROUPS} com maior pressão acumulada)</span>
-          {groupOptions.map((g) => (
-            <Checkbox
-              key={g}
-              label={g}
-              checked={visible.includes(g)}
-              onChange={(e) => {
-                const next = e.currentTarget.checked ? [...visible, g] : visible.filter((v) => v !== g);
-                setSelectedGroups(next);
-              }}
-              styles={{ root: { minHeight: 44, display: 'flex', alignItems: 'center' } }}
-            />
-          ))}
-        </div>
       </FilterSheet>
       <QueryGate query={trendQuery} title="tendência por grupo" rows={2}>
         {() =>
-          points.length === 0 ? (
+          ranking.length === 0 ? (
             <EmptyState title="Sem dados" description="Nenhum dado disponível para os filtros selecionados." />
           ) : (
-            <>
-              <div className={styles.gap}>
-                <ListGroup>
-                  <div className={styles.chartBlock}>
-                    <MobileChart summary={`Pressão por ${TREND_PERIOD_DESCRIPTION[period] || 'período'}, grupos exibidos.`} label="Tendência por grupo muscular" height={220}>
-                      <LineChart data={points} margin={MOBILE_CHART_MARGIN}>
-                        <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="4 4" vertical={false} />
-                        <XAxis dataKey="period" {...MOBILE_CHART_AXIS} />
-                        <YAxis {...MOBILE_CHART_AXIS} width={44} />
-                        <Tooltip
-                          contentStyle={CHART_TOOLTIP_CONTENT_STYLE}
-                          labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-                          itemStyle={CHART_TOOLTIP_ITEM_STYLE}
-                          formatter={(v) => formatTrendMetric(Number(v), metric)}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 11, color: MOBILE_TOKENS.textSecondary }} />
-                        {visible.map((g, i) => (
-                          <Line key={g} type="monotone" dataKey={g} name={g} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} dot={false} connectNulls />
-                        ))}
-                      </LineChart>
-                    </MobileChart>
-                  </div>
-                </ListGroup>
-              </div>
-              <ListGroup title={`Pressão no período mais recente (${periods[periods.length - 1] || 'sem período'})`} footer="Ranking dos grupos exibidos e variação contra o período anterior.">
-                {ranking.map((r, i) => (
-                  <ListRow
-                    key={r.group}
-                    title={`${i + 1}. ${r.group}`}
-                    subtitle={`Anterior ${formatTrendMetric(r.previous, metric)} · janela ${formatTrendMetric(r.total, metric)}`}
-                    value={formatTrendMetric(r.latest, metric)}
-                    trailing={
-                      <span className={styles.fieldLabel}>
-                        {r.variation == null ? 'Sem base' : `${r.variation > 0 ? '+' : ''}${r.variation.toFixed(1)}%`}
-                      </span>
-                    }
-                  />
-                ))}
-              </ListGroup>
-            </>
+            <ListGroup
+              title={`Pressão no período mais recente (${periods[periods.length - 1] || 'sem período'})`}
+              footer="Ranking dos grupos e variação contra o período anterior."
+            >
+              {ranking.slice(0, 3).map(linha)}
+              {ranking.length > 3 ? (
+                <SheetRow title={`Ver os outros ${ranking.length - 3} grupos`} sheetTitle="Pressão por grupo">
+                  <ListGroup>{ranking.map(linha)}</ListGroup>
+                </SheetRow>
+              ) : null}
+            </ListGroup>
           )
         }
       </QueryGate>
-    </>
+    </div>
   );
 }

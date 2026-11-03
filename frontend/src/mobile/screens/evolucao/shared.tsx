@@ -13,9 +13,11 @@ import {
 } from '@/lib/dashboard-filters';
 import type { DataQuality } from '@/lib/dashboard-v3-types';
 import {
+  BottomSheet,
   ErrorState,
   FilterButton,
   FilterSheet,
+  ListRow,
   OfflineState,
   SegmentedFilter,
   useOnlineStatus,
@@ -138,7 +140,14 @@ export function PeriodFilter({
   rangeError,
   allowed,
   onChange,
+  extra,
+  extraCount = 0,
+  onClearExtra,
 }: {
+  /** Outros filtros da tela (ex.: objetivo) na MESMA folha, para haver um controle só. */
+  extra?: ReactNode;
+  extraCount?: number;
+  onClearExtra?: () => void;
   filters: DashboardFilters;
   setFilters: (patch: Partial<DashboardFilters>) => void;
   rangeError?: string | null;
@@ -149,13 +158,14 @@ export function PeriodFilter({
   const [opened, { open, close }] = useDisclosure(false);
   const all = allowed ?? (['7d', '28d', '90d', '180d', 'custom', 'cycle'] as const);
   const quick = QUICK.filter((w) => all.includes(w)).slice(0, 3);
-  const current = all.includes(filters.window) ? filters.window : all[0];
+  // Mostra o período REAL da URL (a consulta usa `filters.window`), mesmo que fora das janelas oferecidas.
+  const current = filters.window;
   const options = quick.includes(current) ? quick : [...quick, current];
   const apply = (patch: Partial<DashboardFilters>) => {
     onChange?.();
     setFilters(patch);
   };
-  const active = current !== DEFAULT_DASHBOARD_WINDOW ? 1 : 0;
+  const active = (current !== DEFAULT_DASHBOARD_WINDOW ? 1 : 0) + extraCount;
 
   return (
     <>
@@ -179,8 +189,12 @@ export function PeriodFilter({
         opened={opened}
         onClose={close}
         activeCount={active}
-        onClear={() => apply({ window: DEFAULT_DASHBOARD_WINDOW, dateFrom: null, dateTo: null })}
+        onClear={() => {
+          onClearExtra?.();
+          apply({ window: DEFAULT_DASHBOARD_WINDOW, dateFrom: null, dateTo: null });
+        }}
       >
+        {extra}
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="mob-periodo">
             Período
@@ -191,7 +205,7 @@ export function PeriodFilter({
             value={current}
             onChange={(e) => apply({ window: e.currentTarget.value as DashboardWindow })}
           >
-            {dashboardWindowSelectData(all).map((o) => (
+            {dashboardWindowSelectData(all.includes(current) ? all : [...all, current]).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -235,4 +249,62 @@ export function PeriodFilter({
 /** Rótulo do período atual (para subtítulo). */
 export function windowLabel(filters: DashboardFilters): string {
   return DASHBOARD_WINDOW_LABELS[filters.window];
+}
+
+/** Linha que abre uma folha com o detalhe (tela curta no topo, o resto por toque). */
+export function SheetRow({
+  title,
+  subtitle,
+  value,
+  sheetTitle,
+  children,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  value?: ReactNode;
+  sheetTitle: string;
+  children: ReactNode;
+}) {
+  const [opened, { open, close }] = useDisclosure(false);
+  return (
+    <>
+      <ListRow title={title} subtitle={subtitle} value={value} onClick={open} />
+      <BottomSheet opened={opened} onClose={close} title={sheetTitle}>
+        {opened ? children : null}
+      </BottomSheet>
+    </>
+  );
+}
+
+/** Atalhos entre seções de uma tela longa (rolagem até o `id`; respeita movimento reduzido). */
+export function SectionJump({ items }: { items: ReadonlyArray<{ id: string; label: string }> }) {
+  return (
+    <nav aria-label="Ir para a seção" className={styles.chips} style={{ marginBottom: 16 }}>
+      {items.map((i) => (
+        <button
+          key={i.id}
+          type="button"
+          className={styles.jump}
+          onClick={() => {
+            const el = document.getElementById(i.id);
+            const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            el?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+          }}
+        >
+          {i.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** Aviso único de ação que depende da rede (mutação/IA): só aparece offline. */
+export function OfflineNote({ what }: { what: string }) {
+  const online = useOnlineStatus();
+  if (online) return null;
+  return (
+    <p className={styles.err} role="status" style={{ margin: '8px 0 0' }}>
+      Sem conexão: {what} precisa da rede. Tente de novo quando ela voltar.
+    </p>
+  );
 }

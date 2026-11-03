@@ -4,8 +4,15 @@ import { Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { LoadChart, MinutesChart, RampRateChart, WellnessChart } from '@/app/(app)/intervals-icu/IntervalsIcuCharts';
+import { Bar, BarChart, Legend, Line, LineChart, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  CHART_COLORS,
+  CHART_TOOLTIP_CONTENT_STYLE,
+  CHART_TOOLTIP_ITEM_STYLE,
+  CHART_TOOLTIP_LABEL_STYLE,
+} from '@/components/charts/chartTheme';
 import { apiFetch, ApiError } from '@/lib/api';
+import { fmtDecimal } from '@/lib/dashboard-format';
 import { averageOf, sumBy, type IntervalsDashboard, type IntervalsStatus, type IntervalsWellnessManualPatch, type IntervalsWellnessTrendPoint } from '@/lib/intervals-types';
 import { formatDateBR, formatNumberOrDash } from '@/lib/physical-indicators-types';
 import {
@@ -13,13 +20,18 @@ import {
   ListBlock,
   ListGroup,
   ListRow,
+  MOBILE_CHART_AXIS,
+  MOBILE_CHART_MARGIN,
+  MobileChart,
   ResponsiveDataList,
   ScreenHeader,
   StatGrid,
   StatTile,
+  useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { QueryGate } from './shared';
+import { plural } from './pure';
+import { OfflineNote, QueryGate, SheetRow } from './shared';
 
 const DAY_OPTIONS = [
   { value: '30', label: '30 dias' },
@@ -28,11 +40,16 @@ const DAY_OPTIONS = [
   { value: '365', label: '12 meses' },
   { value: '1095', label: '3 anos' },
 ];
-const PAGE = 20;
+const PAGE = 7;
+const TOOLTIP = {
+  contentStyle: CHART_TOOLTIP_CONTENT_STYLE,
+  labelStyle: CHART_TOOLTIP_LABEL_STYLE,
+  itemStyle: CHART_TOOLTIP_ITEM_STYLE,
+};
 
 /**
- * `/intervals-icu`: leitura do dashboard do Intervals.icu (mesmas consultas do desktop) e a edição manual de FC de repouso e HRV,
- * agora numa folha. Sem Intervals configurado, a tela explica e leva ao Perfil (mesma condição do desktop).
+ * `/intervals-icu`: leitura do dashboard do Intervals.icu (mesmas consultas do desktop) e edição manual de FC de repouso e HRV numa folha.
+ * Sem Intervals configurado, a tela explica e leva ao Perfil (mesma condição do desktop).
  */
 export function IntervalsScreen() {
   const [days, setDays] = useState('90');
@@ -52,19 +69,20 @@ export function IntervalsScreen() {
   });
   const data = dashboardQuery.data;
   const daily = useMemo(() => data?.daily_activity ?? [], [data]);
+  // Só os dias com atividade (os zerados não têm o que mostrar e achatam as barras).
+  const activeDays = useMemo(() => daily.filter((i) => i.activities > 0 || i.minutes > 0), [daily]);
   const wellnessTrend = useMemo(() => data?.wellness_trend ?? [], [data]);
   const recent = useMemo(() => data?.recent_activities ?? [], [data]);
-  const dailyRows = useMemo(() => [...daily].reverse(), [daily]);
+  const dailyRows = useMemo(() => [...activeDays].reverse(), [activeDays]);
   const wellnessRows = useMemo(() => [...wellnessTrend].reverse(), [wellnessTrend]);
   const recentRows = useMemo(() => recent.map((item, index) => ({ item, key: `${item.date}-${item.name}-${index}` })), [recent]);
 
-  const minutesChartData = useMemo(() => daily.map((i) => ({ data: formatDateBR(i.date), minutos: i.minutes })), [daily]);
-  const loadChartData = useMemo(() => daily.map((i) => ({ data: formatDateBR(i.date), carga: i.load })), [daily]);
+  const barData = useMemo(() => activeDays.map((i) => ({ data: formatDateBR(i.date), minutos: i.minutes, carga: i.load })), [activeDays]);
   const wellnessChartData = useMemo(
-    () => wellnessTrend.map((i) => ({ data: formatDateBR(i.date), fitness: i.fitness, fatigue: i.fatigue, form: i.form })),
+    () => wellnessTrend.map((i) => ({ data: formatDateBR(i.date), fitness: i.fitness, fatigue: i.fatigue, form: i.form, rampa: i.rampRate })),
     [wellnessTrend],
   );
-  const rampRateChartData = useMemo(() => wellnessTrend.map((i) => ({ data: formatDateBR(i.date), rampa: i.rampRate })), [wellnessTrend]);
+  const latestW = wellnessTrend.length > 0 ? wellnessTrend[wellnessTrend.length - 1] : null;
 
   const totalMinutes = sumBy(daily, (i) => i.minutes);
   const totalCalories = sumBy(daily, (i) => i.calories);
@@ -85,10 +103,7 @@ export function IntervalsScreen() {
 
   return (
     <>
-      <ScreenHeader
-        title="Intervals.icu"
-        subtitle="Atividades ao vivo; wellness do histórico salvo, atualizado ao abrir e diariamente."
-      />
+      <ScreenHeader title="Intervals.icu" subtitle="Atividades ao vivo; wellness do histórico salvo, atualizado ao abrir e diariamente." />
       <ListGroup>
         <ListRow title="Janela" value={DAY_OPTIONS.find((o) => o.value === days)?.label} onClick={openPicker} />
       </ListGroup>
@@ -122,77 +137,82 @@ export function IntervalsScreen() {
       >
         {(d) => (
           <>
-            <ListGroup>
+            <ListGroup title="Resumo do período">
               <ListBlock>
                 <StatGrid>
                   <StatTile label="Atividades" value={String(d.activity_count)} />
                   <StatTile label="Tempo total" value={`${totalMinutes.toLocaleString('pt-BR')} min`} />
                   <StatTile label="Carga (training load)" value={Math.round(totalLoad).toLocaleString('pt-BR')} />
-                  <StatTile
-                    label="FC média"
-                    value={avgHr ? avgHr.toFixed(0) : '-'}
-                    hint={`${totalDistance.toFixed(1)} km · ${Math.round(totalCalories).toLocaleString('pt-BR')} kcal`}
-                  />
+                  <StatTile label="FC média" value={avgHr ? `${avgHr.toFixed(0)} bpm` : '-'} />
                 </StatGrid>
+                <p className={styles.meta}>
+                  {totalDistance.toFixed(1)} km · {Math.round(totalCalories).toLocaleString('pt-BR')} kcal no período.
+                </p>
               </ListBlock>
             </ListGroup>
 
-            {minutesChartData.length > 0 || loadChartData.length > 0 ? (
-              <>
-                <ListGroup title="Minutos por dia">
-                  <div className={styles.chartBlock} role="img" aria-label="Minutos por dia">
-                    <MinutesChart minutesChartData={minutesChartData} />
+            {barData.length > 0 ? (
+              <ListGroup title="Minutos por dia" footer={`Só os ${activeDays.length} dias com atividade.`}>
+                <div className={styles.chartBlock}>
+                  <MobileChart summary={`${activeDays.length} dias com atividade em ${daily.length} dias.`} label="Minutos por dia com atividade">
+                    <BarChart data={barData} margin={MOBILE_CHART_MARGIN}>
+                      <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
+                      <YAxis {...MOBILE_CHART_AXIS} width={36} />
+                      <Tooltip {...TOOLTIP} formatter={(v) => [`${v} min`, 'Minutos']} />
+                      <Bar dataKey="minutos" name="Minutos" fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </MobileChart>
+                </div>
+                <SheetRow title="Carga (training load) por dia" subtitle="Só os dias com atividade" sheetTitle="Carga por dia">
+                  <div className={styles.chartBlock}>
+                    <MobileChart summary={`Carga total no período: ${Math.round(totalLoad).toLocaleString('pt-BR')}.`} label="Carga por dia com atividade">
+                      <BarChart data={barData} margin={MOBILE_CHART_MARGIN}>
+                        <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
+                        <YAxis {...MOBILE_CHART_AXIS} width={36} />
+                        <Tooltip {...TOOLTIP} formatter={(v) => [fmtDecimal(Number(v), 0), 'Carga']} />
+                        <Bar dataKey="carga" name="Carga" fill={CHART_COLORS.secondary} radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </MobileChart>
                   </div>
-                </ListGroup>
-                <ListGroup title="Carga (training load) por dia">
-                  <div className={styles.chartBlock} role="img" aria-label="Carga por dia">
-                    <LoadChart loadChartData={loadChartData} />
-                  </div>
-                </ListGroup>
-              </>
-            ) : null}
-            {wellnessChartData.length > 0 || rampRateChartData.length > 0 ? (
-              <>
-                <ListGroup title="Fitness, fadiga e forma">
-                  <div className={styles.chartBlock} role="img" aria-label="Fitness, fadiga e forma por dia">
-                    <WellnessChart wellnessChartData={wellnessChartData} />
-                  </div>
-                </ListGroup>
-                <ListGroup title="Ramp rate">
-                  <div className={styles.chartBlock} role="img" aria-label="Ramp rate por dia">
-                    <RampRateChart rampRateChartData={rampRateChartData} />
-                  </div>
-                </ListGroup>
-              </>
+                </SheetRow>
+              </ListGroup>
             ) : null}
 
-            <p className={styles.sectionTitle}>Atividades por dia ({daily.length} dias)</p>
-            <ResponsiveDataList
-              aria-label="Atividades por dia"
-              items={dailyRows.slice(0, limits.daily)}
-              getKey={(i) => i.date}
-              emptyTitle="Nenhuma atividade no período selecionado"
-              renderItem={(i) => (
-                <ListRow
-                  title={formatDateBR(i.date)}
-                  subtitle={`${i.activities} atividade(s) · ${i.calories || '-'} kcal · ${i.distanceKm.toFixed(2)} km · carga ${formatNumberOrDash(i.load, 1)} · FC ${i.avgHr != null ? i.avgHr.toFixed(0) : '-'}`}
-                  value={`${i.minutes} min`}
-                />
-              )}
-            />
-            {dailyRows.length > limits.daily ? (
-              <div className={styles.pager}>
-                <Button variant="default" mih={44} onClick={() => setLimits((l) => ({ ...l, daily: l.daily + PAGE }))}>
-                  Mostrar mais
-                </Button>
-              </div>
+            {wellnessChartData.length > 0 && latestW ? (
+              <ListGroup title="Fitness, fadiga e forma" footer="Wellness do Intervals.icu (CTL/ATL/TSB). Toque num dia da lista para ver o detalhe e editar FC de repouso e HRV.">
+                <div className={styles.chartBlock}>
+                  <MobileChart
+                    summary={`Último dia: forma (TSB) ${formatNumberOrDash(latestW.form, 1)} · fitness ${formatNumberOrDash(latestW.fitness, 1)} · fadiga ${formatNumberOrDash(latestW.fatigue, 1)}.`}
+                    label="Fitness, fadiga e forma por dia"
+                  >
+                    <LineChart data={wellnessChartData} margin={MOBILE_CHART_MARGIN}>
+                      <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
+                      <YAxis {...MOBILE_CHART_AXIS} width={36} />
+                      <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
+                      <Tooltip {...TOOLTIP} formatter={(v, n) => [fmtDecimal(Number(v), 1), String(n)]} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="fitness" name="Fitness" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="fatigue" name="Fadiga" stroke={CHART_COLORS.secondary} strokeWidth={2} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="form" name="Forma" stroke={CHART_COLORS.positive} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
+                    </LineChart>
+                  </MobileChart>
+                </div>
+                <SheetRow title="Ramp rate" subtitle="Ritmo de variação do fitness" value={formatNumberOrDash(latestW.rampRate, 1)} sheetTitle="Ramp rate por dia">
+                  <div className={styles.chartBlock}>
+                    <MobileChart summary={`Último: ${formatNumberOrDash(latestW.rampRate, 1)}.`} label="Ramp rate por dia">
+                      <LineChart data={wellnessChartData} margin={MOBILE_CHART_MARGIN}>
+                        <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
+                        <YAxis {...MOBILE_CHART_AXIS} width={36} />
+                        <Tooltip {...TOOLTIP} formatter={(v) => [fmtDecimal(Number(v), 1), 'Ramp rate']} />
+                        <Line type="monotone" dataKey="rampa" name="Ramp rate" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} connectNulls />
+                      </LineChart>
+                    </MobileChart>
+                  </div>
+                </SheetRow>
+              </ListGroup>
             ) : null}
 
-            <p className={styles.sectionTitle}>Fitness, fadiga e forma ({wellnessTrend.length} dias)</p>
-            <p className={styles.note} style={{ marginBottom: 8 }}>
-              Wellness do Intervals.icu (CTL/ATL/TSB, HRV, FC de repouso e ramp rate). FC de repouso e HRV podem ser editados; o
-              Intervals sobrescreve se enviar o dado do dia. Toque num dia para editar.
-            </p>
+            <p className={styles.sectionTitle}>Wellness por dia ({wellnessTrend.length})</p>
             <ResponsiveDataList
               aria-label="Wellness por dia"
               items={wellnessRows.slice(0, limits.wellness)}
@@ -201,8 +221,8 @@ export function IntervalsScreen() {
               renderItem={(i) => (
                 <ListRow
                   title={formatDateBR(i.date)}
-                  subtitle={`CTL ${formatNumberOrDash(i.fitness, 1)} · ATL ${formatNumberOrDash(i.fatigue, 1)} · TSB ${formatNumberOrDash(i.form, 1)} · ramp ${formatNumberOrDash(i.rampRate, 1)}`}
-                  value={`FC ${formatNumberOrDash(i.restingHr, 0)}${i.restingHrSource === 'manual' ? ' ✎' : ''} · HRV ${formatNumberOrDash(i.hrv, 0)}${i.hrvSource === 'manual' ? ' ✎' : ''}`}
+                  subtitle={`FC de repouso ${formatNumberOrDash(i.restingHr, 0)}${i.restingHrSource === 'manual' ? ' (editada)' : ''} · HRV ${formatNumberOrDash(i.hrv, 0)}${i.hrvSource === 'manual' ? ' (editado)' : ''}`}
+                  value={`Forma ${formatNumberOrDash(i.form, 1)}`}
                   onClick={() => setEdit(i)}
                 />
               )}
@@ -215,30 +235,57 @@ export function IntervalsScreen() {
               </div>
             ) : null}
 
-            <p className={styles.sectionTitle}>Atividades recentes ({recent.length})</p>
-            <p className={styles.note} style={{ marginBottom: 8 }}>
-              Últimas atividades lidas do Intervals.icu (até 30). A gravação no banco é feita pelo sync automático diário.
-            </p>
-            <ResponsiveDataList
-              aria-label="Atividades recentes"
-              items={recentRows.slice(0, limits.recent)}
-              getKey={(r) => r.key}
-              emptyTitle="Nenhuma atividade recente encontrada"
-              renderItem={({ item }) => (
-                <ListRow
-                  title={item.name}
-                  subtitle={`${formatDateBR(item.date)} · ${item.sport} · ${item.calories || '-'} kcal · FC ${item.avgHr ?? '-'} · carga ${item.load ?? '-'}`}
-                  value={`${item.minutes} min`}
+            <ListGroup title="Atividades">
+              <SheetRow title="Atividades por dia" subtitle="Só os dias com atividade" value={`${activeDays.length} dias`} sheetTitle="Atividades por dia">
+                <ResponsiveDataList
+                  aria-label="Atividades por dia"
+                  items={dailyRows.slice(0, limits.daily)}
+                  getKey={(i) => i.date}
+                  emptyTitle="Nenhuma atividade no período selecionado"
+                  renderItem={(i) => (
+                    <ListRow
+                      title={formatDateBR(i.date)}
+                      subtitle={`${plural(i.activities, 'atividade', 'atividades')} · ${i.calories || '-'} kcal · ${i.distanceKm.toFixed(2)} km · carga ${formatNumberOrDash(i.load, 1)} · FC ${i.avgHr != null ? i.avgHr.toFixed(0) : '-'}`}
+                      value={`${i.minutes} min`}
+                    />
+                  )}
                 />
-              )}
-            />
-            {recentRows.length > limits.recent ? (
-              <div className={styles.pager}>
-                <Button variant="default" mih={44} onClick={() => setLimits((l) => ({ ...l, recent: l.recent + PAGE }))}>
-                  Mostrar mais
-                </Button>
-              </div>
-            ) : null}
+                {dailyRows.length > limits.daily ? (
+                  <div className={styles.pager}>
+                    <Button variant="default" mih={44} onClick={() => setLimits((l) => ({ ...l, daily: l.daily + PAGE }))}>
+                      Mostrar mais
+                    </Button>
+                  </div>
+                ) : null}
+              </SheetRow>
+              <SheetRow
+                title="Atividades recentes"
+                subtitle="Últimas lidas do Intervals.icu (até 30); a gravação é feita pelo sync diário"
+                value={`${recent.length}`}
+                sheetTitle="Atividades recentes"
+              >
+                <ResponsiveDataList
+                  aria-label="Atividades recentes"
+                  items={recentRows.slice(0, limits.recent)}
+                  getKey={(r) => r.key}
+                  emptyTitle="Nenhuma atividade recente encontrada"
+                  renderItem={({ item }) => (
+                    <ListRow
+                      title={item.name}
+                      subtitle={`${formatDateBR(item.date)} · ${item.sport} · ${item.calories || '-'} kcal · FC ${item.avgHr ?? '-'} · carga ${item.load ?? '-'}`}
+                      value={`${item.minutes} min`}
+                    />
+                  )}
+                />
+                {recentRows.length > limits.recent ? (
+                  <div className={styles.pager}>
+                    <Button variant="default" mih={44} onClick={() => setLimits((l) => ({ ...l, recent: l.recent + PAGE }))}>
+                      Mostrar mais
+                    </Button>
+                  </div>
+                ) : null}
+              </SheetRow>
+            </ListGroup>
           </>
         )}
       </QueryGate>
@@ -250,12 +297,29 @@ export function IntervalsScreen() {
   );
 }
 
+/** Patch só com o que mudou: campo vazio ou igual ao atual não envia (limpar a edição é ação própria). */
+function montarPatch(
+  campos: ReadonlyArray<readonly ['resting_hr_bpm' | 'hrv_ms', string, number | null]>,
+): { patch: IntervalsWellnessManualPatch; erro: string | null } {
+  const patch: IntervalsWellnessManualPatch = {};
+  for (const [campo, texto, atual] of campos) {
+    const t = texto.trim();
+    if (t === '' || Number(t) === atual) continue;
+    const n = Number(t);
+    if (!Number.isFinite(n)) return { patch, erro: 'Informe um número.' };
+    patch[campo] = n;
+  }
+  return { patch, erro: null };
+}
+
 function EditorWellness({ ponto, onDone }: { ponto: IntervalsWellnessTrendPoint; onDone: () => void }) {
+  const online = useOnlineStatus();
   const qc = useQueryClient();
   const [rhr, setRhr] = useState(ponto.restingHr == null ? '' : String(ponto.restingHr));
   const [hrv, setHrv] = useState(ponto.hrv == null ? '' : String(ponto.hrv));
   const [erro, setErro] = useState<string | null>(null);
   const mutation = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (patch: IntervalsWellnessManualPatch) =>
       apiFetch(`/integrations/intervals/wellness/${ponto.date}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     onSuccess: () => {
@@ -267,20 +331,13 @@ function EditorWellness({ ponto, onDone }: { ponto: IntervalsWellnessTrendPoint;
   });
 
   function salvar() {
-    const patch: IntervalsWellnessManualPatch = {};
-    for (const [campo, texto, atual] of [
+    const { patch, erro: e } = montarPatch([
       ['resting_hr_bpm', rhr, ponto.restingHr],
       ['hrv_ms', hrv, ponto.hrv],
-    ] as const) {
-      const t = texto.trim();
-      // Campo vazio não apaga nada: limpar a edição é a ação própria.
-      if (t === '' || Number(t) === atual) continue;
-      const n = Number(t);
-      if (!Number.isFinite(n)) {
-        setErro('Informe um número.');
-        return;
-      }
-      patch[campo] = n;
+    ]);
+    if (e) {
+      setErro(e);
+      return;
     }
     if (Object.keys(patch).length === 0) {
       onDone();
@@ -291,6 +348,12 @@ function EditorWellness({ ponto, onDone }: { ponto: IntervalsWellnessTrendPoint;
 
   return (
     <div className={styles.stack}>
+      <ListGroup title="Dia">
+        <ListRow title="Fitness (CTL)" value={formatNumberOrDash(ponto.fitness, 1)} />
+        <ListRow title="Fadiga (ATL)" value={formatNumberOrDash(ponto.fatigue, 1)} />
+        <ListRow title="Forma (TSB)" value={formatNumberOrDash(ponto.form, 1)} />
+        <ListRow title="Ramp rate" value={formatNumberOrDash(ponto.rampRate, 1)} />
+      </ListGroup>
       <p className={styles.meta} style={{ margin: 0 }}>
         Editado manualmente, o valor será substituído se o Intervals enviar dado deste dia. A faixa aceita é validada pelo servidor.
       </p>
@@ -303,19 +366,20 @@ function EditorWellness({ ponto, onDone }: { ponto: IntervalsWellnessTrendPoint;
         <input id="mob-int-hrv" type="number" inputMode="decimal" className={styles.dateInput} value={hrv} onChange={(e) => setHrv(e.currentTarget.value)} disabled={mutation.isPending} />
       </div>
       {erro ? <p className={styles.err} role="alert">{erro}</p> : null}
-      <Button color="brand" fullWidth mih={44} loading={mutation.isPending} onClick={salvar}>
+      <Button color="brand" fullWidth mih={44} loading={mutation.isPending} disabled={!online} onClick={salvar}>
         Salvar
       </Button>
       {ponto.restingHrSource === 'manual' ? (
-        <Button variant="default" fullWidth mih={44} disabled={mutation.isPending} onClick={() => mutation.mutate({ resting_hr_bpm: null })}>
+        <Button variant="default" fullWidth mih={44} disabled={mutation.isPending || !online} onClick={() => mutation.mutate({ resting_hr_bpm: null })}>
           Limpar edição manual da FC de repouso
         </Button>
       ) : null}
       {ponto.hrvSource === 'manual' ? (
-        <Button variant="default" fullWidth mih={44} disabled={mutation.isPending} onClick={() => mutation.mutate({ hrv_ms: null })}>
+        <Button variant="default" fullWidth mih={44} disabled={mutation.isPending || !online} onClick={() => mutation.mutate({ hrv_ms: null })}>
           Limpar edição manual do HRV
         </Button>
       ) : null}
+      <OfflineNote what="salvar a edição" />
     </div>
   );
 }

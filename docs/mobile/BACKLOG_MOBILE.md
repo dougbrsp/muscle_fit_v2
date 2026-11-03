@@ -57,3 +57,14 @@ Entregue: ADR [0004](../adr/0004-navegacao-iphone-e-secoes-so-desktop.md), [DESI
 | MB-12 | MB-1 a MB-3 e MB-6 (tabelas, filtros, gráficos, estados) | Frentes B e C, com os primitivos novos |
 | MB-13 | Teclado decidido por foco, não por `visualViewport` | Validar em iPhone real |
 | MB-14 | Rotas só-desktop abertas por link compartilhado (`InsightCard`, `DataQuality`, `SafeMarkdown`, `CardioRecommendationPanel`) caem na tela D1; o CTA existe nesses componentes | Aceito (D1); esconder o CTA exigiria mexer em componente do desktop |
+
+## Mobile v2 (2026-11-03): frente B, Evolução e dashboards
+
+| # | Item | Situação |
+|---|---|---|
+| MB-B1 | Download do relatório em Markdown (`lib/report-markdown.ts:132-134`, âncora com blob) no iPhone/PWA: validar em aparelho real; arquivo compartilhado com o desktop, não alterado. | Validar em iPhone real |
+| MB-B2 | Textos de janela escritos à mão ("14 dias", "28 dias", "60 dias", "Últimas N semanas") no desktop e no mobile deveriam vir do backend junto com o valor. | Backlog (backend) |
+| MB-B3 | Cor de consistência (>=80/>=50 em `/dashboard/treinos`), de variação por grupo (>5/<-5 em `MuscleGroupTrend`) e de delta (`betterWhen` em `ExerciseProgressClient`) no desktop deveriam virar status do backend. O mobile não replica (usa texto neutro). | Backlog (motores) |
+| MB-B4 | Duplicação aceita entre telas mobile e páginas desktop: séries/consultas do Agente de Cardio (`agente-cardio/page.tsx` x `AgenteCardioScreen.tsx`), montagem do patch de `WellnessManualCell` x `IntervalsScreen.tsx`, `DAY_OPTIONS` e `CONTEUDO` de Relatórios. Extrair exige editar arquivos do desktop. | Backlog (refatoração com prova comparativa) |
+| MB-B5 | `ExerciseProgressionSummaryCard`, `MetricValue` e `InsightCard` (desktop) têm contorno/Tooltip como único acesso a parte da informação; no mobile há versão própria. Unificar depois. | Backlog |
+| MB-B6 | `StatGrid`/`StatTile` (primitivo da Frente A) têm respiro grande em blocos densos. | Pedido à Frente A |

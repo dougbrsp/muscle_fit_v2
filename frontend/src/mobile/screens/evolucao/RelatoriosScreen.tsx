@@ -18,6 +18,7 @@ import {
 } from '@/lib/report-markdown';
 import { ErrorState, ListBlock, ListGroup, ScreenHeader, StickyAction, useOnlineStatus } from '../../ui';
 import styles from './evolucao.module.css';
+import { OfflineNote, SheetRow } from './shared';
 
 const CONTEUDO = [
   'Cada seção traz o resumo do período e o detalhamento diário: uma linha por data (DD/MM/AAAA), só nos dias com registro.',
@@ -97,22 +98,22 @@ export function RelatoriosScreen() {
               </>
             ) : null}
             {downloading ? <p className={styles.meta} role="status" style={{ margin: 0 }}>Gerando o relatório… pode levar alguns segundos.</p> : null}
-            {!online ? <p className={styles.meta} role="status" style={{ margin: 0 }}>Sem conexão: o relatório é gerado pelo servidor. Tente de novo quando a rede voltar.</p> : null}
           </div>
         </ListBlock>
       </ListGroup>
 
       {error ? <ErrorState title="Não foi possível gerar o relatório" description={error} onRetry={() => void handleDownload()} /> : null}
 
-      <ListGroup
-        title="O que vem no relatório"
-        footer="Só dados registrados, sem análise por IA. Os números saem dos mesmos cálculos das abas do Dashboard, e o arquivo abre em qualquer editor de texto."
-      >
-        <ListBlock>
-          {CONTEUDO.map((c) => (
-            <p key={c} className={styles.body} style={{ marginBottom: 8 }}>• {c}</p>
-          ))}
-        </ListBlock>
+      <ListGroup footer="Só dados registrados, sem análise por IA. Os números saem dos mesmos cálculos das abas do Dashboard, e o arquivo abre em qualquer editor de texto.">
+        <SheetRow title="O que vem no relatório" subtitle="Seções e detalhamento diário" sheetTitle="O que vem no relatório">
+          <ListGroup>
+            <ListBlock>
+              {CONTEUDO.map((c) => (
+                <p key={c} className={styles.body} style={{ marginBottom: 8 }}>• {c}</p>
+              ))}
+            </ListBlock>
+          </ListGroup>
+        </SheetRow>
       </ListGroup>
 
       <StickyAction>
@@ -123,12 +124,14 @@ export function RelatoriosScreen() {
           mih={48}
           leftSection={<IconDownload size={18} />}
           loading={downloading}
-          disabled={period === 'custom' && rangeError !== null}
+          disabled={(period === 'custom' && rangeError !== null) || !online}
           onClick={() => void handleDownload()}
         >
           Baixar relatório (.md)
         </Button>
       </StickyAction>
+      <OfflineNote what="gerar o relatório" />
+      <div className={styles.scrollEnd} aria-hidden />
     </>
   );
 }

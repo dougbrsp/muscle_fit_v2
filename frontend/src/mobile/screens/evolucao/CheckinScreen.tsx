@@ -27,6 +27,7 @@ import {
   type DailyCheckin,
 } from '@/lib/dashboard-checkin-types';
 import { EM_DASH, fmtDate, fmtInt } from '@/lib/dashboard-format';
+import { localTodayIso } from '@/lib/report-markdown';
 import {
   BottomSheet,
   EmptyState,
@@ -35,21 +36,22 @@ import {
   ListRow,
   ScreenHeader,
   StickyAction,
+  useOnlineStatus,
 } from '../../ui';
 import { MOBILE_TOKENS } from '../../tokens';
 import styles from './evolucao.module.css';
-import { QueryGate } from './shared';
+import { plural } from './pure';
+import { OfflineNote, QueryGate } from './shared';
 
 const DIAS_NA_LISTA = 14;
 const STALE_TIME = 60_000;
 const ESCALA = Array.from({ length: CHECKIN_SCORE_MAX - CHECKIN_SCORE_MIN + 1 }, (_, i) => CHECKIN_SCORE_MIN + i);
 
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const hoje = () => localTodayIso();
 
 /** `/dashboard/checkin`: mesmo formulário, mesmas consultas e mesmas mutações do desktop. */
 export function CheckinScreen() {
+  const online = useOnlineStatus();
   const qc = useQueryClient();
   const [dia, setDia] = useState<string>(() => hoje());
   const [form, setForm] = useState<CheckinFormState>(() => emptyCheckinForm(hoje()));
@@ -72,6 +74,7 @@ export function CheckinScreen() {
   const tabelaDisponivel = query.data?.table_available !== false;
 
   const salvar = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: () => saveDailyCheckin(toCheckinInput(form)),
     onSuccess: (resposta) => {
       notifications.show({
@@ -92,6 +95,7 @@ export function CheckinScreen() {
       }),
   });
   const remover = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (id: number) => deleteDailyCheckin(id),
     onSuccess: () => {
       notifications.show({ color: 'green', message: 'Check-in apagado.' });
@@ -108,7 +112,14 @@ export function CheckinScreen() {
   function submit() {
     const found = validateCheckinForm(form);
     setErrors(found);
-    if (Object.keys(found).length === 0) salvar.mutate();
+    const first = Object.keys(found)[0];
+    if (first) {
+      // Rola até o primeiro campo com erro (a mensagem fica logo abaixo dele).
+      const id = first === 'local_date' ? 'mob-checkin-dia' : first === 'notes' ? 'mob-checkin-nota' : `checkin-${first}`;
+      window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'center' }), 50);
+      return;
+    }
+    salvar.mutate();
   }
 
   return (
@@ -151,6 +162,7 @@ export function CheckinScreen() {
               </ListBlock>
               {CHECKIN_SCORE_FIELDS.map((field) => (
                 <ListBlock key={field}>
+                  <div id={`checkin-${field}`} />
                   <Escala
                     field={field}
                     value={form[field]}
@@ -189,7 +201,7 @@ export function CheckinScreen() {
               <>
                 <ListGroup
                   title="Últimos dias"
-                  footer={CHECKIN_SCORE_FIELDS.map((f) => `${CHECKIN_SCORE_LABELS[f]}: ${fmtInt(answeredDays(itens, f))} dia(s)`).join(' · ')}
+                  footer={CHECKIN_SCORE_FIELDS.map((f) => `${CHECKIN_SCORE_LABELS[f]}: ${plural(answeredDays(itens, f), 'dia', 'dias')}`).join(' · ')}
                 >
                   {itens.map((item) => (
                     <ListRow
@@ -231,6 +243,7 @@ export function CheckinScreen() {
               color="red"
               style={{ flex: 1, minHeight: 44 }}
               loading={remover.isPending}
+              disabled={!online}
               onClick={() => apagar && remover.mutate(apagar.id)}
             >
               Apagar
@@ -249,12 +262,14 @@ export function CheckinScreen() {
           mih={48}
           leftSection={<IconCheck size={18} />}
           loading={salvar.isPending}
-          disabled={!tabelaDisponivel}
+          disabled={!tabelaDisponivel || !online}
           onClick={submit}
         >
           {doDia ? 'Salvar correção' : 'Registrar'}
         </Button>
       </StickyAction>
+      <OfflineNote what="registrar o check-in" />
+      <div className={styles.scrollEnd} aria-hidden />
     </>
   );
 }
@@ -305,7 +320,7 @@ function Escala({
           );
         })}
       </div>
-      <p className={styles.meta}>{value === '' ? 'Em branco (não respondido). Toque de novo para limpar.' : 'Toque no mesmo número para deixar em branco.'}</p>
+      <p className={styles.meta}>{value === '' ? 'Em branco: este item não é enviado e o que já foi gravado neste dia é preservado.' : 'Toque no mesmo número para tirar a resposta do envio (não apaga o que já foi gravado).'}</p>
       {error ? <p className={styles.err}>{error}</p> : null}
     </div>
   );

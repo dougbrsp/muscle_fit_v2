@@ -23,9 +23,11 @@ import {
   ListRow,
   ScreenHeader,
   StickyAction,
+  useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
-import { BlockSkeleton, mobileSafeHref, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { plural } from './pure';
+import { BlockSkeleton, mobileSafeHref, OfflineNote, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 const PAGE_SIZE = 20;
 
@@ -135,9 +137,9 @@ function InsightsDashboardContent() {
               </ListGroup>
             ) : null}
             <p className={styles.note} style={{ marginBottom: 12 }}>
-              {fmtInt(p.total)} sugestão(ões) · {fmtInt(p.rules_evaluated)} regras avaliadas
+              {plural(p.total, 'sugestão', 'sugestões')} · {fmtInt(p.rules_evaluated)} regras avaliadas
               {p.rules_disabled.length > 0 ? ` · desligadas: ${p.rules_disabled.join(', ')}` : ''}
-              {!silenciados && p.suppressed_total > 0 ? ` · ${fmtInt(p.suppressed_total)} silenciada(s) por já ter(em) sido vista(s)` : ''}
+              {!silenciados && p.suppressed_total > 0 ? ` · ${plural(p.suppressed_total, 'silenciada por já ter sido vista', 'silenciadas por já terem sido vistas')}` : ''}
             </p>
             <PartialNote quality={p.data_quality} limitations={p.limitations} fixHref={null} />
             {p.items.length === 0 ? (
@@ -194,9 +196,11 @@ const WINDOW_OPTIONS = [
 
 export function InsightsIaScreen() {
   useEffect(preloadMarkdown, []);
+  const online = useOnlineStatus();
   const [janela, setJanela] = useState('28d');
   const [pergunta, setPergunta] = useState('Analise meu histórico recente de treino e sugira melhorias práticas.');
   const gerar = useMutation({
+    networkMode: 'always', // offline falha na hora; nunca dispara sozinha ao voltar a rede
     mutationFn: (payload: InsightsGenerateRequest) =>
       dispatchAndPollJob<InsightsGenerateResponse>('/insights/generate', {
         method: 'POST',
@@ -269,12 +273,14 @@ export function InsightsIaScreen() {
           mih={48}
           leftSection={<IconBrain size={18} />}
           loading={gerar.isPending}
-          disabled={!pergunta.trim()}
+          disabled={!pergunta.trim() || !online}
           onClick={() => gerar.mutate({ question: pergunta, window: janela })}
         >
           Gerar insight
         </Button>
       </StickyAction>
+      <OfflineNote what="gerar o insight" />
+      <div className={styles.scrollEnd} aria-hidden />
     </>
   );
 }

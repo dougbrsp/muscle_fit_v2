@@ -358,6 +358,8 @@ const trendRows = days(84).filter((_, i) => i % 7 === 0).flatMap((d, w) => GROUP
 const mappedTrend = { ok: true, source: 'e2e', metric: 'volume', period: 'weekly', days: 180, total_sets: 400, mapped_sets: 392, unmapped_sets: 8, mapped_ratio: 0.98, unmapped: [], trend_rows: trendRows, table_rows: [] };
 const goals = { default: 'hypertrophy', items: [{ value: 'hypertrophy', label: 'Hipertrofia', is_default: true, defaults: {}, rest_follows_generation_interval: true, target_rpe: 8, rpe_ceiling: 9, disallowed_techniques: [] }, { value: 'strength', label: 'Força', is_default: false, defaults: {}, rest_follows_generation_interval: false, target_rpe: 9, rpe_ceiling: 10, disallowed_techniques: [] }] };
 
+const bodyMap = { items: [['Peito','chest'],['Costas','trapezius'],['Quadríceps','quadriceps'],['Ombros','trapezius'],['Bíceps','biceps'],['Tríceps','triceps'],['Posterior de coxa','hamstring'],['Glúteos','gluteal']].map(([g,s]) => ({ muscle_group: g, slugs: [s] })) };
+
 /** Mapa `METODO caminho` -> payload; caminho com `*` = um segmento dinamico. */
 export const EVOLUCAO_FIXTURES: Array<[RegExp, unknown]> = [
   [/^GET \/analytics\/dashboard\/recovery-signals$/, recovery],
@@ -390,6 +392,7 @@ export const EVOLUCAO_FIXTURES: Array<[RegExp, unknown]> = [
   [/^GET \/analytics\/muscle-recovery-consecutive-check$/, consecutive],
   [/^GET \/analytics\/muscle-groups-mapped-trend$/, mappedTrend],
   [/^GET \/training-goals$/, goals],
+  [/^GET \/analytics\/muscle-group-body-map$/, bodyMap],
 ];
 
 /** Resolve o payload (alguns dependem do id da rota). */

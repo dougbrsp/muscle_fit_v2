@@ -2,6 +2,12 @@ import { EM_DASH, fmtDecimal } from '@/lib/dashboard-format';
 import type { Metric } from '@/lib/dashboard-v3-types';
 import { isDesktopOnlyPath } from '@/lib/nav-items';
 
+/** "1 sessão" / "3 sessões": plural correto em português (apresentação pura). */
+export function plural(n: number | null | undefined, one: string, many: string): string {
+  const v = n ?? 0;
+  return `${v.toLocaleString('pt-BR')} ${v === 1 ? one : many}`;
+}
+
 /** Texto de uma `Metric` do backend: `null` vira traço, nunca zero. Só apresentação. */
 export function metricText(metric: Metric | null | undefined, digits = 1): string {
   if (!metric || metric.value == null) return EM_DASH;

@@ -42,6 +42,7 @@ import {
   useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
+import { plural } from './pure';
 import { QueryGate } from './shared';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -83,7 +84,9 @@ export function NutricaoScreen() {
       <ScreenHeader title="Nutrição: painel" subtitle="Como a alimentação está indo em relação ao plano e ao corpo." />
       <ListGroup>
         <ListRow title="Abrir o diário" href="/nutricao" />
-        {janelas ? (
+      </ListGroup>
+      {janelas ? (
+        <ListGroup>
           <ListBlock>
             <label className={styles.fieldLabel} htmlFor="mob-nutri-periodo">
               Período
@@ -106,8 +109,8 @@ export function NutricaoScreen() {
               </p>
             ) : null}
           </ListBlock>
-        ) : null}
-      </ListGroup>
+        </ListGroup>
+      ) : null}
       <QueryGate query={gate} title="painel de nutrição" rows={5}>
         {(data) => <Painel data={data} />}
       </QueryGate>
@@ -149,13 +152,22 @@ function Aderencia({ data }: { data: NutritionDashboard }) {
               hint={a.open_today ? 'hoje ainda não conta' : undefined}
             />
             <StatTile label="Sem registro" value={fmtInt(a.no_record_days)} hint="dias sem nenhuma refeição" />
-            <StatTile label="Energia na tolerância" value={fmtInt(a.kcal_within_tolerance_days)} hint={`de ${fmtInt(a.logged_days)} dia(s)`} />
-            <StatTile label="Proteína no mínimo" value={fmtInt(a.protein_ok_days)} hint={`de ${fmtInt(a.logged_days)} dia(s)`} />
+            <StatTile label="Energia na tolerância" value={fmtInt(a.kcal_within_tolerance_days)} hint={`de ${plural(a.logged_days, 'dia', 'dias')}`} />
+            <StatTile label="Proteína no mínimo" value={fmtInt(a.protein_ok_days)} hint={`de ${plural(a.logged_days, 'dia', 'dias')}`} />
           </StatGrid>
           {a.incomplete_days.length > 0 ? (
             <p className={styles.meta}>Dias com total incompleto: {a.incomplete_days.map((d) => fmtDate(d)).join(', ')}</p>
           ) : null}
         </ListBlock>
+        {semanas.length > 0 && hasValues(semanas, (l) => l.kcal ?? l.proteina) ? (
+          <ListBlock>
+            <p className={styles.body}>
+              {fmtInt(a.logged_days)} de {fmtInt(a.counted_days)} dias registrados; energia na tolerância em {fmtInt(a.kcal_within_tolerance_days)} e proteína no
+              mínimo em {fmtInt(a.protein_ok_days)} deles.
+            </p>
+            <p className={styles.meta}>Gráfico: cada par de barras é uma semana; laranja = energia, cinza = proteína, em % da meta (linha tracejada = 100%).</p>
+          </ListBlock>
+        ) : null}
         {semanas.length > 0 && hasValues(semanas, (l) => l.kcal ?? l.proteina) ? (
           <div className={styles.chartBlock} role="img" aria-label="Barras da aderência por semana: energia e proteína em porcentagem da meta. A lista abaixo traz os mesmos números.">
             <WeekAdherenceBars rows={semanas} />
@@ -331,7 +343,7 @@ function Adaptativo({ data }: { data: NutritionDashboard }) {
         <ListRow title="Pela fórmula" value={formatKcal(suggestion.formula_kcal)} />
         <ListRow
           title="Observado"
-          subtitle={observed.kcal == null ? undefined : `${fmtInt(observed.logged_days)} dia(s) com diário`}
+          subtitle={observed.kcal == null ? undefined : `${plural(observed.logged_days, 'dia', 'dias')} com diário`}
           value={formatKcal(observed.kcal)}
         />
         <ListRow title="Sugestão" subtitle="não aplicada" value={formatKcal(suggestion.suggested_kcal)} />

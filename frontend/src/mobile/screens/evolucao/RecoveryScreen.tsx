@@ -40,6 +40,7 @@ import {
   ScreenHeader,
 } from '../../ui';
 import styles from './evolucao.module.css';
+import { plural } from './pure';
 import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 const RECOVERY_WINDOWS = ['7d', 'cycle', '28d', 'custom'] as const satisfies readonly DashboardWindow[];
@@ -102,7 +103,7 @@ function RecoveryContent() {
                 <ListRow
                   key={code}
                   title={<StatusBadge domain="readiness" code={code} />}
-                  value={`${contagem[code] ?? 0} grupo(s)`}
+                  value={`${plural(contagem[code] ?? 0, 'grupo', 'grupos')}`}
                 />
               ))}
             </ListGroup>
@@ -239,7 +240,7 @@ function SinalDetalhe({ s }: { s: RecoverySignal }) {
           </div>
           <p className={styles.body}>{s.description}</p>
         </ListBlock>
-        <ListRow title="No período" subtitle={`${s.observations} medida(s)`} value={metricText(s.current)} />
+        <ListRow title="No período" subtitle={`${plural(s.observations, 'medida', 'medidas')}`} value={metricText(s.current)} />
         <ListRow
           title="Sua baseline"
           subtitle={s.baseline.value == null ? `Precisa de ${s.min_observations} pontos na janela de referência; há ${s.baseline_observations}.` : undefined}
@@ -256,7 +257,7 @@ function TreinoVsDescanso({ bloco }: { bloco: TrainingVsRest }) {
     <>
       <p className={styles.sectionTitle}>Dia com treino × dia sem treino</p>
       <p className={styles.note} style={{ marginBottom: 8 }}>
-        {bloco.training_days} dia(s) com treino e {bloco.rest_days} sem treino no período. Dois grupos observados não são um
+        {plural(bloco.training_days, 'dia', 'dias')} com treino e {bloco.rest_days} sem treino no período. Dois grupos observados não são um
         experimento: a diferença é associação, nunca causa.
       </p>
       {bloco.metrics.length === 0 ? (
@@ -270,8 +271,8 @@ function TreinoVsDescanso({ bloco }: { bloco: TrainingVsRest }) {
               </div>
               <p className={styles.meta} style={{ marginTop: 0 }}>{trainingVsRestLabel(m)}</p>
             </ListBlock>
-            <ListRow title="Dia com treino" subtitle={`${m.training_observations} dia(s)`} value={metricText(m.training_days)} />
-            <ListRow title="Dia sem treino" subtitle={`${m.rest_observations} dia(s)`} value={metricText(m.rest_days)} />
+            <ListRow title="Dia com treino" subtitle={`${plural(m.training_observations, 'dia', 'dias')}`} value={metricText(m.training_days)} />
+            <ListRow title="Dia sem treino" subtitle={`${plural(m.rest_observations, 'dia', 'dias')}`} value={metricText(m.rest_days)} />
             <LimitationsNote items={[...m.limitations, ...metricLimitations([m.training_days, m.rest_days])]} />
           </ListGroup>
         ))
