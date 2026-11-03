@@ -24,7 +24,7 @@ import { formatNumberOrDash } from '@/lib/format';
 // compartilhado (`/dashboard/musculos`, mapa corporal) não muda.
 const YELLOW_HEX = '#f08c00';
 
-function activationVisual(assessment: MuscleActivationAssessment): StatusVisual {
+export function activationVisual(assessment: MuscleActivationAssessment): StatusVisual {
   const severityVisual = plannedSeverityVisual(assessment.severity);
   if (severityVisual) return severityVisual;
   const visual = statusVisual(assessment.status_domain, assessment.status);
@@ -34,7 +34,7 @@ function activationVisual(assessment: MuscleActivationAssessment): StatusVisual 
   return visual;
 }
 
-function formatActivationCell(series: number, equivalent: number): string {
+export function formatActivationCell(series: number, equivalent: number): string {
   if (series === 0) return '-';
   const participationPct = Math.round((equivalent / series) * 100);
   return `${series} séries × ${participationPct}%`;
@@ -50,13 +50,13 @@ function hasOwnTarget(assessment: MuscleActivationAssessment | undefined): boole
   return assessment != null && assessment.target_source !== 'generic_fallback' && assessment.target_sets != null;
 }
 
-function metaLabel(assessment: MuscleActivationAssessment | undefined): string {
+export function metaLabel(assessment: MuscleActivationAssessment | undefined): string {
   if (!hasOwnTarget(assessment)) return '-';
   const target = formatNumberOrDash(assessment!.target_sets);
   return assessment!.max_sets != null ? `${target} (máx ${formatNumberOrDash(assessment!.max_sets)})` : target;
 }
 
-function assessmentTooltip(row: MuscleActivationRow, assessment: MuscleActivationAssessment, label: string): string {
+export function assessmentTooltip(row: MuscleActivationRow, assessment: MuscleActivationAssessment, label: string): string {
   const actual = formatNumberOrDash(row.total_equivalent);
   if (!hasOwnTarget(assessment)) return `${label} (${actual} séries equivalentes, ${TARGET_SOURCE_LABEL.generic_fallback})`;
   const target = formatNumberOrDash(assessment.target_sets);
