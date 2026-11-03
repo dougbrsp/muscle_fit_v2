@@ -188,7 +188,6 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
     expect(fieldAppliesToStrategy('protein_g_per_kg', N.strategies[0])).toBe(true);
     expect(NUTRITION_NOTICES).toBe(N.notices);
     for (const codigo of [
-      'carb_cycling_unavailable',
       'scale_bmr_deviation',
       'phase_should_stop',
       // Diário (L4): selos e dicas com o texto das limitações do motor.

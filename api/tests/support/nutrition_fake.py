@@ -44,6 +44,8 @@ class FakeNutritionDB:
         self.writes: list[str] = []
         self.batches: list[int] = []
         self.locks: list[tuple[str, int]] = []
+        # Modelos de treino: id -> {"name", "slots": [(weekday | None, slot_type)]} (rota "puxar do Modelo").
+        self.templates: dict[int, dict[str, Any]] = {}
 
     # --- helpers de cenário -------------------------------------------------
     def add_weight(self, user_id: int, day: date, kg: float, **extra: Any) -> None:
@@ -70,6 +72,7 @@ class FakeNutritionDB:
             "training_kcal_mode": "explicit_training", "goal_body_fat_percent": None, "goal_weight_kg": None,
             "weekly_rate_share": None, "surplus_share": None, "protein_g_per_kg": Decimal("2.00"),
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
+            "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
             "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }
@@ -174,6 +177,12 @@ class FakeCursor:
         if sql == svc._UPSERT_SQL:
             self._upsert(p)
             return self._result([])
+        if sql == plans_mod._TEMPLATE_NAME_SQL:
+            modelo = db.templates.get(int(p[0]))
+            return self._result([{"name": modelo["name"]}] if modelo else [])
+        if sql == plans_mod._TEMPLATE_SLOTS_SQL:
+            modelo = db.templates.get(int(p[0]))
+            return self._result([{"weekday": dia, "slot_type": tipo} for dia, tipo in (modelo["slots"] if modelo else [])])
         if sql == "SELECT NOW() AS agora":
             return self._result([{"agora": db.now}])
         if sql == plans_mod._INSERT_SQL:

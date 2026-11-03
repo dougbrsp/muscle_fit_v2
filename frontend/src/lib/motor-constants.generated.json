@@ -860,7 +860,6 @@
       "carb_min_g_per_kg": "bulking"
     },
     "notices": {
-      "carb_cycling_unavailable": "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana.",
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
       "phase_should_stop": "O % de gordura atual já chegou à meta desta fase.",
       "target_frozen": "Meta congelada: 2 dia(s) depois do dia ela não muda mais.",

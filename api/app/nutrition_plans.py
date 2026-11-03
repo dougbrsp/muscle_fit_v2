@@ -1,20 +1,25 @@
 """Plano nutricional do aluno: rascunho, preview, publicação e metas diárias
 (plano de nutrição §8.1, §13 L2b). Vive na api-core (`{proxy+}`).
 
-Rotas (prefixo `/nutrition`):
-- `GET    /plans?user_id=`          admin/PT: versões do aluno (vigente, histórico, rascunhos)
-- `POST   /plans`                   admin/PT: `NutritionPlanIn` -> rascunho (201)
-- `PUT    /plans/{id}`              admin/PT: só rascunho (409 se publicado)
-- `DELETE /plans/{id}`              admin/PT: só rascunho (409 se publicado)
-- `POST   /plans/{id}/preview`      admin/PT: sujeito, TMB, TDEE, alvo, macros e os 7
-                                    dias da semana atual, SEM gravar; 422 lista os
+Rotas (prefixo `/nutrition`). Plano autogerido (N2, D2): o usuário opera o PRÓPRIO plano;
+admin e PT operam o de qualquer aluno; usuário comum nunca alcança o plano de outro (403 por
+`user_id`, 404 por id de plano). Sem `user_id`, o alvo é o próprio usuário.
+- `GET    /plans?user_id=`          versões do aluno (vigente, histórico, rascunhos)
+- `POST   /plans`                   `NutritionPlanIn` -> rascunho (201); gramas manuais fora da faixa
+                                    salvam com `warnings`, bloqueadas ou sem peso do aluno dão 400
+- `PUT    /plans/{id}`              só rascunho (409 se publicado)
+- `DELETE /plans/{id}`              só rascunho (409 se publicado)
+- `POST   /plans/{id}/preview`      sujeito, TMB, TDEE, alvo, macros, os 7 dias da semana atual,
+                                    a projeção até o alvo e os avisos, SEM gravar; 422 lista os
                                     dados do aluno que faltam (códigos do motor)
-- `POST   /plans/{id}/publish`      admin/PT: `{expected_current_id}` (a vigente que a tela
+- `GET    /cycle-days/from-template` proposta dos dias alto/normal/baixo a partir do Modelo
+                                    atribuído ("puxar do Modelo", D5); o usuário ajusta antes de salvar
+- `POST   /plans/{id}/publish`      `{expected_current_id}` (a vigente que a tela
                                     viu, ou null) — concorrência otimista: a vigente é lida
                                     com `FOR UPDATE` e, se divergir, 409 `publish_conflict`;
                                     substitui a vigente e materializa a janela de publicação
                                     do motor (passadas intactas)
-- `POST   /targets/recompute`       admin/PT: `{user_id, date_from, date_to?}` na janela de
+- `POST   /targets/recompute`       `{user_id?, date_from, date_to?}` na janela de
                                     recálculo do motor (400 com o código do motor)
 - `GET    /me/plan`                 qualquer usuário: o plano em vigor hoje (só leitura),
                                     o resumo do sujeito e a semana; 404 `no_published_plan`
@@ -29,6 +34,7 @@ o cálculo da meta são do pacote `domain/nutrition`. Esta camada valida com
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Any, Optional
 
@@ -45,9 +51,26 @@ from .domain.nutrition.daily_target import (
     recompute_window,
     week_window,
 )
-from .domain.nutrition.plan import PlanSettings, PlanStatus, build_plan_settings, goal_summary, plan_state
+from .domain.nutrition.plan import (
+    NOTE_TEMPLATE_NOT_ASSIGNED,
+    NOTE_TEMPLATE_NO_CYCLE,
+    NOTE_TEMPLATE_WITHOUT_WEEKDAYS,
+    PlanSettings,
+    PlanStatus,
+    build_plan_settings,
+    check_plan_manual_targets,
+    goal_summary,
+    manual_save_errors,
+    manual_save_warnings,
+    plan_state,
+    plan_warnings,
+    project_plan_goal,
+    propose_cycle_from_template,
+    training_weekdays_from_template,
+)
 from .intelligence.dashboard.time_windows import user_today_for
-from .nutrition_access import fetch_target_user, require_plan_manager, resolve_target_user
+from .intelligence.methodology_volume import is_training_slot_type
+from .nutrition_access import fetch_target_user, plan_actor, resolve_plan_owner, resolve_target_user
 from .nutrition_schema import require_nutrition_tables
 from .nutrition_targets_service import (
     DayComputation,
@@ -68,7 +91,7 @@ from .request_models import (
     NutritionTargetsRecomputeIn,
 )
 from .security import Identity, get_current_identity
-from .template_assignments import db_now
+from .template_assignments import db_now, resolve_active_template_id
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
@@ -78,6 +101,7 @@ _PLAN_COLUMNS = (
     "id, user_id, created_by, published_by, status, strategy, advanced, bmr_formula, activity_level, "
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
+    "macro_priority, manual_targets_json, carb_cycling_json, "
     "effective_from, superseded_at, published_at, created_at, updated_at"
 )
 
@@ -85,7 +109,8 @@ _PLAN_COLUMNS = (
 _SETTINGS_WRITE_COLUMNS = (
     "strategy", "advanced", "bmr_formula", "activity_level", "training_kcal_mode", "goal_body_fat_percent",
     "goal_weight_kg", "weekly_rate_share", "surplus_share", "protein_g_per_kg", "fat_kcal_share",
-    "carb_min_g_per_kg", "meals_per_day", "notes", "engine_version",
+    "carb_min_g_per_kg", "meals_per_day", "macro_priority", "manual_targets_json", "carb_cycling_json", "notes",
+    "engine_version",
 )
 
 _INSERT_SQL = (
@@ -109,6 +134,13 @@ _SUPERSEDE_SQL = (
 _PUBLISH_SQL = (
     f"UPDATE {TABLE} SET status = %s, effective_from = %s, published_at = %s, published_by = %s, engine_version = %s "
     "WHERE id = %s AND status = %s"
+)
+_TEMPLATE_NAME_SQL = "SELECT name FROM workout_plan_templates WHERE id = %s"
+# Slots da versão VIGENTE do Modelo (desde a 065 os leitores só enxergam a versão vigente).
+_TEMPLATE_SLOTS_SQL = (
+    "SELECT s.weekday, s.slot_type FROM workout_plan_template_slots s "
+    "JOIN workout_plan_template_versions v ON v.id = s.version_id "
+    "WHERE v.current_template_id = %s ORDER BY s.sequence"
 )
 _BY_ID_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE id = %s"
 _BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC"
@@ -158,7 +190,9 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         meals_per_day=payload.meals_per_day,
         goal_body_fat_percent=payload.goal_body_fat_percent,
         goal_weight_kg=payload.goal_weight_kg,
-        carb_cycling_enabled=payload.carb_cycling_enabled,
+        macro_priority=payload.macro_priority,
+        manual_targets=payload.manual_targets,
+        cycle_days=payload.cycle_days,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -180,6 +214,9 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.fat_kcal_share,
         settings.carb_min_g_per_kg,
         settings.meals_per_day,
+        settings.macro_priority.value,
+        settings.manual_macros.to_dict() if settings.manual_macros else None,
+        settings.cycle_days,
         notes,
         ENGINE_VERSION,
     )
@@ -217,6 +254,39 @@ def _fetch_plan(cur: Any, plan_id: int) -> dict[str, Any]:
 def _require_draft(row: dict[str, Any]) -> None:
     if row.get("status") != DRAFT:
         raise _error(409, "plan_not_draft", "Só um rascunho pode ser alterado; o plano já foi publicado.")
+
+
+def _manual_check(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> tuple[Any, tuple[str, ...]]:
+    """Gramas manuais do plano contra o sujeito de HOJE (peso e MLG do aluno): levanta 400
+    `invalid_plan` quando falta o peso ou o motor bloqueia; devolve (checagem, avisos). Sem
+    gramas manuais não consulta nada. A meta da ESTRATÉGIA (sem as gramas) e a TMB servem só
+    aos avisos de energia."""
+    if settings.manual_macros is None:
+        return None, ()
+    with conn.cursor() as cur:
+        entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
+    comp = compute_day(entradas, replace(settings, manual_macros=None), hoje, hoje)
+    sujeito = comp.subject.subject
+    checagem = check_plan_manual_targets(settings, sujeito, comp.target.kcal_target.kcal, comp.target.bmr.kcal)
+    erros = manual_save_errors(checagem, sujeito)
+    if erros:
+        raise _invalid_plan(erros)
+    return checagem, manual_save_warnings(checagem)
+
+
+def _manual_check_public(check: Any) -> Optional[dict[str, Any]]:
+    """Checagem das gramas manuais para a API, com o rótulo de cada campo e o texto dos códigos."""
+    if check is None:
+        return None
+    dados = check.to_dict()
+    for campo in dados["fields"]:
+        campo["label"] = nutrition_labels.field_label(campo["field"])
+        campo["code_items"] = nutrition_labels.limitation_items(campo["codes"])
+    return dados
+
+
+def _saved_plan(row: dict[str, Any], warnings: tuple[str, ...]) -> dict[str, Any]:
+    return {**plan_public(row), "warnings": nutrition_labels.limitation_items(warnings)}
 
 
 def _no_published_plan(message: str) -> HTTPException:
@@ -265,11 +335,22 @@ def _subject_incomplete(comp: DayComputation) -> HTTPException:
     )
 
 
+def _projection(comp: DayComputation, today: date) -> dict[str, Any]:
+    """Projeção até o alvo do plano (`phases.project_goal` via `plan.project_plan_goal`), com a
+    premissa `is_minimum_estimate` e os motivos rotulados."""
+    projecao = project_plan_goal(comp.settings, comp.subject.subject, comp.target.tdee.kcal, today).to_dict()
+    projecao["reason_items"] = nutrition_labels.limitation_items(projecao["reasons"])
+    return projecao
+
+
 def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[DayComputation], today: date) -> dict[str, Any]:
     hoje = next(comp for comp in semana if comp.day == today)
     limitacoes: list[str] = []
     for comp in semana:
         limitacoes.extend(comp.target.limitations)
+    sujeito = hoje.subject.subject
+    manual = check_plan_manual_targets(hoje.settings, sujeito, hoje.target.kcal_target.kcal, hoje.target.bmr.kcal)
+    avisos = (*plan_warnings(hoje.settings, sujeito, hoje.target.tdee.kcal), *manual_save_warnings(manual))
     return {
         "plan": plan_public(row),
         "user": user,
@@ -280,18 +361,21 @@ def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[Day
         "goal": _goal(hoje),
         "week": [day_public(comp, today) for comp in semana],
         "limitations": nutrition_labels.limitation_items(limitacoes),
+        "projection": _projection(hoje, today),
+        "warnings": nutrition_labels.limitation_items(avisos),
+        "manual_check": _manual_check_public(manual),
     }
 
 
 # ---------------------------------------------------------------------------
-# Rotas admin/PT
+# Rotas do plano (o próprio usuário; admin/PT para qualquer aluno)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/plans")
 def list_plans(
-    user_id: int = Query(...),
-    identity: Identity = Depends(require_plan_manager),
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(plan_actor),
 ):
     alvo = resolve_target_user(identity, user_id)
     with _connect() as conn:
@@ -304,45 +388,49 @@ def list_plans(
 
 
 @router.post("/plans", status_code=201)
-def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(require_plan_manager)):
+def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_actor)):
     settings = _validate_payload(payload)
     alvo = resolve_target_user(identity, payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             fetch_target_user(cur, alvo)
+        _, avisos = _manual_check(conn, alvo, settings, _today_for(conn, alvo)) if settings.manual_macros else (None, ())
+        with conn.cursor() as cur:
             cur.execute(_INSERT_SQL, (alvo, identity.user_id, DRAFT, *_settings_write_values(settings, payload.notes)))
             novo_id = cur.lastrowid
             if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
                 raise _error(500, "plan_insert_failed", "Plano não encontrado após gravar.")
             linha = _fetch_plan(cur, int(novo_id))
-    return plan_public(linha)
+    return _saved_plan(linha, avisos)
 
 
 @router.put("/plans/{plan_id}")
-def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identity = Depends(require_plan_manager)):
+def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identity = Depends(plan_actor)):
     settings = _validate_payload(payload)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            resolve_target_user(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
+        _, avisos = _manual_check(conn, aluno, settings, _today_for(conn, aluno)) if settings.manual_macros else (None, ())
+        with conn.cursor() as cur:
             cur.execute(_UPDATE_DRAFT_SQL, (*_settings_write_values(settings, payload.notes), int(plan_id), DRAFT))
             if int(cur.rowcount or 0) == 0:
                 # Publicado ou apagado por outra chamada entre a leitura e o UPDATE.
                 raise _error(409, "plan_not_draft", "O rascunho mudou durante a edição; recarregue.")
             linha = _fetch_plan(cur, plan_id)
-    return plan_public(linha)
+    return _saved_plan(linha, avisos)
 
 
 @router.delete("/plans/{plan_id}")
-def delete_plan(plan_id: int, identity: Identity = Depends(require_plan_manager)):
+def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     with _connect() as conn:
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            resolve_target_user(identity, int(linha["user_id"]))
+            resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
             cur.execute(_DELETE_DRAFT_SQL, (int(plan_id), DRAFT))
             if int(cur.rowcount or 0) == 0:
@@ -351,13 +439,13 @@ def delete_plan(plan_id: int, identity: Identity = Depends(require_plan_manager)
 
 
 @router.post("/plans/{plan_id}/preview")
-def preview_plan(plan_id: int, identity: Identity = Depends(require_plan_manager)):
+def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     """Calcula a semana atual com ESTE plano, sem gravar nada."""
     with _connect() as conn:
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            aluno = resolve_target_user(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
         with conn.cursor() as cur:
@@ -372,7 +460,7 @@ def preview_plan(plan_id: int, identity: Identity = Depends(require_plan_manager
 def publish_plan(
     plan_id: int,
     payload: NutritionPlanPublishIn,
-    identity: Identity = Depends(require_plan_manager),
+    identity: Identity = Depends(plan_actor),
 ):
     """Rascunho -> vigente a partir de HOJE (dia do aluno). Concorrência
     otimista: a vigente é travada (`FOR UPDATE`) e comparada com
@@ -383,7 +471,7 @@ def publish_plan(
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            aluno = resolve_target_user(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
             cur.execute(_CURRENT_FOR_UPDATE_SQL, (aluno, PUBLISHED))
             vigente = cur.fetchone()
@@ -397,6 +485,7 @@ def publish_plan(
                 )
         hoje = _today_for(conn, aluno)
         settings = settings_from_row(linha)
+        _manual_check(conn, aluno, settings, hoje)
         with conn.cursor() as cur:
             janela = publication_window(hoje, last_target_date(cur, aluno))
             entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
@@ -420,7 +509,7 @@ def publish_plan(
 
 
 @router.post("/targets/recompute")
-def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity = Depends(require_plan_manager)):
+def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity = Depends(plan_actor)):
     """Recalcula as metas na janela de recálculo do motor (`recompute_window`)
     com o plano em vigor em cada dia."""
     aluno = resolve_target_user(identity, payload.user_id)
@@ -446,6 +535,51 @@ def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity =
             raise _no_published_plan("O aluno não tem plano publicado.")
         metas = ensure_daily_targets(conn, aluno, janela, today=hoje)
     return {"user_id": aluno, **janela.to_dict(), "targets": metas}
+
+
+@router.get("/cycle-days/from-template")
+def cycle_days_from_template(
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(plan_actor),
+):
+    """Botão "puxar do Modelo" (D5): os dias da semana com treino no Modelo atribuído viram dia
+    alto e os demais baixo (`carb_cycling.propose_day_kinds`). É só uma PROPOSTA: o usuário ajusta
+    antes de salvar. Sem Modelo, ou com Modelo sem dia da semana nos slots, não propõe nada e
+    explica em `notes`."""
+    aluno = resolve_target_user(identity, user_id)
+    modelo_id = resolve_active_template_id(aluno)
+    notas: list[str] = []
+    modelo: Optional[dict[str, Any]] = None
+    proposta = None
+    dias_treino: Optional[tuple[int, ...]] = None
+    if modelo_id is None:
+        notas.append(NOTE_TEMPLATE_NOT_ASSIGNED)
+    else:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                require_nutrition_tables(cur)
+                cur.execute(_TEMPLATE_NAME_SQL, (int(modelo_id),))
+                nome = cur.fetchone() or {}
+                cur.execute(_TEMPLATE_SLOTS_SQL, (int(modelo_id),))
+                slots = [
+                    (int(linha["weekday"]) if linha.get("weekday") is not None else None, is_training_slot_type(linha.get("slot_type")))
+                    for linha in (cur.fetchall() or [])
+                ]
+        modelo = {"id": int(modelo_id), "name": nome.get("name")}
+        proposta = propose_cycle_from_template(slots)
+        dias_treino = training_weekdays_from_template(slots)
+        if proposta is None:
+            notas.append(NOTE_TEMPLATE_WITHOUT_WEEKDAYS)
+        elif not proposta.cycles:
+            notas.append(NOTE_TEMPLATE_NO_CYCLE)
+    return {
+        "user_id": aluno,
+        "template": modelo,
+        "training_weekdays": list(dias_treino) if dias_treino is not None else None,
+        "cycle_days": proposta.day_map if proposta is not None and proposta.valid else None,
+        "cycles": bool(proposta and proposta.cycles),
+        "notes": nutrition_labels.limitation_items(notas),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -18,13 +18,22 @@ import {
 } from '@/lib/nutrition-api';
 import {
   BMR_FORMULA_OPTIONS,
+  PROJECTION_STATUS_OPTIONS,
+  RANGE_STATUS_OPTIONS,
   TDEE_MODE_OPTIONS,
   TRAINING_KCAL_NATURE_OPTIONS,
   nutritionLabel,
   nutritionNotice,
 } from '@/lib/nutrition-constants';
 import { formatGrams, formatKcal } from '@/lib/nutrition-format';
-import type { NutritionGoal, NutritionPlan, NutritionPublishResponse, NutritionTargetDetail } from '@/lib/nutrition-types';
+import type {
+  NutritionGoal,
+  NutritionManualCheck,
+  NutritionPlan,
+  NutritionProjection,
+  NutritionPublishResponse,
+  NutritionTargetDetail,
+} from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
 
@@ -110,6 +119,73 @@ export function GoalCard({ goal }: { goal: NutritionGoal }) {
   );
 }
 
+/**
+ * Projeção até o alvo (`phases.project_goal`): prazo, data e quanto do caminho já foi feito, tudo
+ * calculado pela API. Alvo de %G supõe a massa magra atual constante, então o prazo é um limite
+ * inferior (`is_minimum_estimate`) e a tela diz isso.
+ */
+export function ProjectionCard({ projection }: { projection: NutritionProjection }) {
+  const projetado = projection.status === 'projected';
+  return (
+    <Card withBorder radius="md" bg={BRAND.bgSurface}>
+      <Stack gap={6}>
+        <Title order={4} c={BRAND.textPrimary}>
+          Projeção até o alvo
+        </Title>
+        <Line label="Situação" value={nutritionLabel(PROJECTION_STATUS_OPTIONS, projection.status) ?? '-'} />
+        {projection.target_weight_kg != null && (
+          <Line label="Peso em que o alvo se cumpre" value={`${formatNumberOrDash(projection.target_weight_kg, 1)} kg`} />
+        )}
+        {projection.weeks != null && (
+          <Line
+            label={projection.is_minimum_estimate ? 'Prazo (no mínimo)' : 'Prazo'}
+            value={`${formatNumberOrDash(projection.weeks, 1)} semana(s)`}
+          />
+        )}
+        {projection.eta_date && (
+          <Line label={projection.is_minimum_estimate ? 'Chegada (a partir de)' : 'Chegada'} value={formatDateBR(projection.eta_date)} />
+        )}
+        {projection.progress_percent != null && (
+          <Line label="Já percorrido" value={`${formatNumberOrDash(projection.progress_percent, 0)}%`} />
+        )}
+        {projetado && projection.weekly_rate_share != null && (
+          <Line label="Ritmo considerado" value={`${formatNumberOrDash(projection.weekly_rate_share * 100, 2)}% do peso por semana`} />
+        )}
+        {projection.is_minimum_estimate && (
+          <Text size="xs" c="yellow">
+            Estimativa mínima: supõe que sua massa magra atual não muda. Se ela mudar, o prazo real tende a ser maior.
+          </Text>
+        )}
+        <NutritionLimitations items={projection.reason_items} title="Premissas e limites" tone="info" />
+      </Stack>
+    </Card>
+  );
+}
+
+/** Gramas manuais contra as faixas do motor: o que está dentro, o que salva com aviso. */
+export function ManualCheckCard({ check }: { check: NutritionManualCheck }) {
+  return (
+    <Card withBorder radius="md" bg={BRAND.bgSurface}>
+      <Stack gap={6}>
+        <Title order={4} c={BRAND.textPrimary}>
+          Gramas manuais
+        </Title>
+        <Line label="Energia resultante" value={formatKcal(check.kcal)} />
+        {check.fields.map((campo) => (
+          <div key={campo.field}>
+            <Line label={campo.label} value={nutritionLabel(RANGE_STATUS_OPTIONS, campo.status) ?? campo.status} />
+            {campo.code_items.map((item) => (
+              <Text key={item.code} size="xs" c="yellow">
+                {item.label}
+              </Text>
+            ))}
+          </div>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
 type Props = {
   plan: NutritionPlan;
   /** Id da vigente do aluno que a tela mostra (null = nenhuma): vai na publicação (409 se mudou). */
@@ -182,6 +258,11 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
         <TodayTargetCard target={preview.target} />
         <GoalCard goal={preview.goal} />
       </SimpleGrid>
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+        <ProjectionCard projection={preview.projection} />
+        {preview.manual_check && <ManualCheckCard check={preview.manual_check} />}
+      </SimpleGrid>
+      <NutritionLimitations items={preview.warnings} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
         Semana atual
@@ -193,7 +274,17 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
       <NutritionLimitations items={preview.limitations} title="Avisos do motor nesta semana" />
 
       {isDraft && (
-        <Group justify="flex-end">
+        <Group
+          justify="flex-end"
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 5,
+            background: BRAND.bgElevated,
+            paddingTop: 'var(--mantine-spacing-xs)',
+            paddingBottom: 'calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom))',
+          }}
+        >
           <Button color="brand" leftSection={<IconCheck size={16} />} onClick={openConfirm}>
             Publicar plano
           </Button>
@@ -227,7 +318,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
       <Modal opened={confirmOpened} onClose={closeConfirm} title="Publicar plano" centered>
         <Stack gap="md">
           <Text size="sm">
-            O plano passa a valer a partir de hoje ({formatDateBR(preview.today)}) e substitui o plano vigente do aluno.
+            O plano passa a valer a partir de hoje ({formatDateBR(preview.today)}) e substitui o plano vigente.
             As metas de dias anteriores ficam como estão.
           </Text>
           {publishError && <NutritionLimitations items={publishError.items} title={publishError.message} tone="error" />}

@@ -5,10 +5,13 @@ import { formatNumberOrDash } from '@/lib/format';
 import {
   ACTIVITY_LEVEL_OPTIONS,
   BMR_FORMULA_OPTIONS,
+  DAY_KIND_OPTIONS,
+  MACRO_PRIORITY_OPTIONS,
   PLAN_STATE_OPTIONS,
   PROTEIN_BASIS_OPTIONS,
   STRATEGY_OPTIONS,
   TDEE_MODE_OPTIONS,
+  WEEKDAY_OPTIONS,
   nutritionLabel,
 } from '@/lib/nutrition-constants';
 import { formatShareAsPercent } from '@/lib/nutrition-format';
@@ -63,6 +66,25 @@ export function PlanSummary({
   }
   if (plan.carb_min_g_per_kg != null) {
     linhas.push({ label: 'Carboidrato mínimo', value: `${formatNumberOrDash(plan.carb_min_g_per_kg, 2)} g por kg de peso` });
+  }
+  if (plan.manual_targets) {
+    const { protein_g: p, carb_g: c, fat_g: g } = plan.manual_targets;
+    linhas.push({
+      label: 'Gramas manuais',
+      value: `Proteína ${formatNumberOrDash(p, 0)} g · Carboidrato ${formatNumberOrDash(c, 0)} g · Gordura ${formatNumberOrDash(g, 0)} g`,
+    });
+  } else {
+    linhas.push({
+      label: 'Prioridade de macros',
+      value: nutritionLabel(MACRO_PRIORITY_OPTIONS, plan.macro_priority) ?? '-',
+    });
+  }
+  if (plan.cycle_days) {
+    const dias = plan.cycle_days;
+    linhas.push({
+      label: 'Dias de mais e menos gasto',
+      value: WEEKDAY_OPTIONS.map((dia) => `${dia.label.slice(0, 3)}: ${nutritionLabel(DAY_KIND_OPTIONS, dias[dia.value]) ?? '-'}`).join(' · '),
+    });
   }
   linhas.push(
     { label: 'Fórmula da TMB', value: nutritionLabel(BMR_FORMULA_OPTIONS, plan.bmr_formula) ?? '-' },

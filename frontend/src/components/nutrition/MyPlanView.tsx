@@ -23,7 +23,7 @@ export function MyPlanView() {
     if (isNoPublishedPlan(myPlanQuery.error)) {
       return (
         <Alert color="blue" icon={<IconInfoCircle size={16} />} radius="md">
-          Você ainda não tem um plano nutricional. Ele é definido pelo seu personal trainer ou por um administrador.
+          Você ainda não tem um plano nutricional publicado. Crie o seu abaixo, confira o preview e publique.
         </Alert>
       );
     }

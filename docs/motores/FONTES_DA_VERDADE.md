@@ -6424,7 +6424,7 @@ Só motor: sem migração, sem rota, sem tela; os consumidores chegam no N2. Tud
   `goal_kinds`, `projection_statuses`, `weekday_names`, `default_macro_priority`); nenhum número de cálculo. Guarda:
   padrão novo `rotulo_prioridade_macros` (allowlist vazia) e `manual_targets.py` como dono em `faixa_proteina`.
 
-**Pendências do N2**:
+**Pendências do N2** (resolvidas no §81):
 - `distribute_week_over_mean` exige as 7 metas da semana, e `daily_target` materializa dia a dia, com treino futuro
   desconhecido e dias já congelados. O N2 precisa decidir como montar a média semanal (metas congeladas mais as ainda
   calculáveis) antes de ligar o ciclo à materialização.
@@ -6519,3 +6519,86 @@ acerto de alimento e de gramas. O teto de saída herdado também precisa dessa m
 - Retenção de 1 dia: desvio do plano §9 c (30 dias), por decisão do líder, já informado ao usuário. A foto do rótulo segue com 30 dias.
 - Dados: nenhuma linha existente muda. As fotos ficam fora da CDN, pelos mesmos motivos do rótulo, e expiram em 1 dia (versão não corrente, mais 1 dia).
 - Reversão: reverter o código é seguro; num rollback, manter a regra de lifecycle até o prefixo esvaziar.
+
+
+## 81. Nutrição N2 — plano autogerido (2026-11-02)
+
+Lote N2 do plano `.omc/plans/nutricao-reformulacao-2026-11-02.md` (itens 6, 7, 8, 9, 10 e 12; decisões D2, D5 e D6). Liga ao plano e à
+meta diária o que o N1 (§78) deixou só no motor. Donos: `plan.py` (validação, avisos, projeção, "puxar do Modelo"), `daily_target.py`
+(a meta do dia) e `carb_cycling.apply_cycle_over_base` (o ciclo dia a dia, função nova e aditiva). Nenhuma regra numérica nova: as faixas,
+os bloqueios e as constantes são as do N1.
+
+- **Acesso (D2)** (`nutrition_access.plan_actor`, `resolve_plan_owner`). O próprio usuário cria, edita, apaga, vê o preview, publica e
+  recalcula o PRÓPRIO plano; admin e personal continuam operando o de qualquer aluno. Usuário comum com `user_id` alheio recebe 403
+  (`resolve_target_user`); por id de plano alheio recebe 404 `plan_not_found`, igual ao inexistente (o id não revela que existe).
+  `user_id` passou a opcional em `GET /plans`, `POST /plans` e `POST /targets/recompute` (sem ele, o próprio usuário). Saiu
+  `require_plan_manager`.
+- **Migração 101** (`api/db/migrations/101_plano_autogerido.py`): `nutrition_plans.macro_priority VARCHAR(16) NOT NULL DEFAULT
+  'balanced'` e `manual_targets_json JSON NULL`, um `ADD COLUMN ... ALGORITHM=INSTANT` por coluna, sem backfill, idempotente,
+  reversível (`down` solta as duas). Os dias alto/normal/baixo usam a coluna `carb_cycling_json` que a 078 já criou (mapa dia 0..6,
+  segunda = 0, para `high`/`normal`/`low`). O runner aplica por nome de arquivo, então a 101 roda depois da 102 sem problema.
+- **Validação no motor** (`plan.build_plan_settings`). Novos: `macro_priority`, `manual_targets` e `cycle_days`.
+  `carb_cycling_unavailable` saiu (código, rótulo e aviso do espelho do FE). `carb_cycling_enabled` do corpo é ignorado (clientes
+  antigos continuam aceitos). Prioridade diferente da padrão junto com gramas manuais é `param_not_applicable:macro_priority` (as
+  gramas mandam). Dias: `carb_cycling.validate_cycle_days`; semana toda normal não ativa o ciclo.
+- **Gramas manuais (D6)**. Na entrada, o motor valida o que não depende do aluno (formato, valor inválido, bloqueio de energia e de
+  gordura). Ao SALVAR (rascunho criado ou editado) e ao PUBLICAR, a rota confere contra o sujeito de hoje
+  (`plan.check_plan_manual_targets`, `manual_save_errors`): sem peso do aluno é 400 `manual_targets_require_weight`; campo BLOQUEADO é
+  400 com o código do motor; fora da faixa recomendada SALVA e a resposta traz `warnings` (`manual_save_warnings`). A meta diária
+  (`daily_target._manual_targets`) usa as gramas do plano, com kcal de Atwater, e os avisos viram `limitations`. As gramas não
+  acompanham o treino nem a pausa/refeed do dia (o usuário fixou os números).
+- **Gasto do treino** (`training_kcal_mode`, item 7). Já existia na coluna e no `PlanSettings.tdee_mode`; agora vem no corpo do plano e
+  está no formulário com a explicação. Nada novo no cálculo.
+- **Prioridade de macros** (`strategy.MacroPriority`). A meta diária chama `macros.macro_split_for_priority`; BALANCED é o
+  `macro_split` de sempre, bit a bit (teste).
+- **Ciclo de carbo na materialização (desenho do item d)**. `distribute_week_over_mean` exige as 7 metas, mas a materialização é dia a
+  dia, com treino futuro desconhecido e dias congelados. Em vez de montar a semana, cada dia usa `apply_cycle_over_base(meta_do_dia,
+  base, tipo_do_dia, kinds, peso)`: a BASE é a meta do mesmo dia SEM o treino explícito (o gasto de descanso do plano, igual em todos
+  os dias), os 7 multiplicadores de `week_multipliers` somam 7, e o carbo do dia é `carbo_do_dia + base_carbo × (multiplicador − 1)`.
+  Logo o que o ciclo move soma zero na semana, seja qual for o treino de cada dia, e o carbo do treino entra por cima, sem ser
+  redistribuído. Cada dia depende só de si e do plano: dia futuro, dia congelado e dia recalculado dão o mesmo valor que a semana
+  inteira (teste). Proteína e gordura ficam como estão; a kcal é recalculada por Atwater. Com o gasto embutido no fator ou com gramas
+  manuais, a base é a própria meta do dia. Limite conhecido: se o peso muda no meio da semana, a base dos dias recalculados muda um
+  pouco e os multiplicadores dos dias já gravados não são refeitos, então a soma desvia só da ordem do ajuste de base (0,0015% no
+  teste); quando o piso de 1 g/kg prende o dia baixo o multiplicador depende da base, com o mesmo efeito. Dia congelado nunca muda
+  (`days_to_materialize`, inalterado; teste no serviço).
+- **"Puxar do Modelo" (D5)** (`GET /nutrition/cycle-days/from-template`, `plan.propose_cycle_from_template`). Lê os slots da versão
+  vigente do Modelo atribuído (`workout_plan_template_slots` por `workout_plan_template_versions.current_template_id`); `weekday`
+  1..7 vira 0..6, slot que não é descanso (`methodology_volume.is_training_slot_type`) vira treino, e `carb_cycling.propose_day_kinds`
+  propõe alto/baixo. É só proposta: o usuário ajusta e salva. Sem Modelo, sem `weekday` em nenhum slot, ou Modelo que treina todo dia (ou
+  nenhum), a rota não propõe e explica em `notes` (`template_not_assigned`, `template_without_weekdays`, `template_no_cycle`). O
+  `weekday` do slot é informativo no Modelo (o ciclo do Modelo é por dias desde a época, não pelo calendário), então a proposta
+  só vale quando o Modelo foi desenhado por dia da semana.
+- **Ritmo derivado é só aviso (item f)** (`plan.plan_warnings`). O plano nunca é recusado por ritmo derivado do superávit. Incoerência
+  registrada entre as faixas do N1: o default avançado (superávit 5%, TDEE 2800, 12 kg de gordura, 80 kg) dá 0,21%/semana, abaixo do
+  piso de 0,25% da faixa de ritmo; do outro lado, superávit acima de cerca de 12% já passa do teto de 0,5%/semana e o teto de 20% do superávit
+  não avançado dá 0,83%. As duas faixas (`BULK_SURPLUS_SHARE_RANGE*` e `BULK_WEEKLY_RATE_SHARE_RANGE`) não são coerentes entre si; o
+  motor devolve o código `projection_rate_outside_range` em `warnings` do preview e a projeção usa o ritmo do plano como está.
+  Decisão de produto pendente: alinhar as faixas ou manter o aviso.
+- **Projeção na prévia** (`plan.project_plan_goal` sobre `phases.project_goal`). O preview traz `projection` (situação, peso em que o
+  alvo se cumpre, prazo, chegada, % do caminho, ritmo, motivos rotulados) e a premissa `is_minimum_estimate` (alvo de %G supõe a MLG
+  atual constante, então o prazo é um limite inferior). Sem alvo ou com dois alvos a projeção explica em vez de inventar. O percentual
+  do caminho fica sem valor (sem ponto de partida) e o motivo `projection_missing_start` aparece como premissa.
+- **Hash das entradas**. `PlanSettings.fingerprint_dict` só inclui as chaves do N2 quando saem do padrão, então o plano publicado antes
+  da 101 mantém o `inputs_hash` e as metas não são regravadas à toa (teste).
+- **Frontend** (`/nutricao/plano`): o usuário comum vê o plano vigente e "Seus planos" (rascunho, preview, publicação); admin/PT
+  escolhem o aluno. Formulário com estratégia, alvo de peso ou %G, prioridade, gasto do treino, gramas manuais, dias da semana e botão
+  "Puxar do Modelo"; prévia com projeção, avisos e checagem das gramas. Barras de ação presas ao rodapé com
+  `env(safe-area-inset-bottom)` (shell mobile). Sem cálculo no FE: vocabulário, rótulos e dias da semana vêm de
+  `motor-constants.generated.json` (regenerado: sai o aviso `carb_cycling_unavailable`).
+- **Guarda**: nenhum padrão novo e a allowlist não cresceu.
+
+**Impacto em produção** (a medir pelo líder, só SELECT):
+- Migração 101: duas colunas em `nutrition_plans` (metadado, INSTANT), sem backfill. O código novo só lê as colunas depois do deploy
+  do backend, que roda o migrate antes das Lambdas.
+- Semântica: plano publicado antes da 101 (sem as colunas preenchidas) tem resultado idêntico, hash incluso. Para dimensionar e
+  provar: `SELECT COUNT(*) AS planos, SUM(status = 'published' AND superseded_at IS NULL) AS vigentes FROM nutrition_plans`, e
+  `SELECT COUNT(*) FROM nutrition_plans WHERE carb_cycling_json IS NOT NULL` (precisa dar 0: o L2b nunca gravou essa coluna; se der
+  diferente de 0, o valor seria lido como dias escolhidos).
+- Exposição nova: qualquer usuário logado cria planos, e com isso passa a gerar linhas em `nutrition_plans` e
+  `nutrition_daily_targets` (materialização ao publicar e ao abrir o plano/diário). Dimensionar com `SELECT COUNT(*) FROM users
+  WHERE role = 'regular'` e `SELECT COUNT(DISTINCT user_id) FROM nutrition_plans`.
+- Contrato da API: `user_id` opcional nas rotas de plano; usuário comum com id de plano alheio recebe 404 (antes 403 para todas as
+  rotas de plano); `carb_cycling_enabled` ignorado; respostas de criar e editar ganham `warnings`; o preview ganha `projection`,
+  `warnings` e `manual_check`.
+- Sem env, IAM, Terraform ou workflow.

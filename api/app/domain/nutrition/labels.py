@@ -342,6 +342,10 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     manual_mod.FIELD_CARB: "Carboidrato (g)",
     manual_mod.FIELD_FAT: "Gordura (g)",
     manual_mod.FIELD_KCAL: "Energia do dia (kcal)",
+    plan_mod.FIELD_MACRO_PRIORITY: "Prioridade de macros",
+    plan_mod.FIELD_MANUAL_TARGETS: "Gramas manuais",
+    "manual_macros": "Gramas manuais",
+    "cycle_kinds": "Dias de mais e menos gasto",
 }
 
 
@@ -417,7 +421,14 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     strategy_mod.CLAMP_MIN_INTAKE_BMR_MULTIPLE: "Ingestão elevada ao piso do cutting (TMB).",
     # Entrada do plano.
-    plan_mod.ERR_CARB_CYCLING_UNAVAILABLE: "Ciclo de carboidrato ainda indisponível (chega com o calendário de fases).",
+    plan_mod.NOTE_TEMPLATE_NOT_ASSIGNED: "Você não tem Modelo de treino atribuído: marque os dias à mão.",
+    plan_mod.NOTE_TEMPLATE_WITHOUT_WEEKDAYS: (
+        "O Modelo não define os dias da semana dos treinos: marque os dias à mão."
+    ),
+    plan_mod.NOTE_TEMPLATE_NO_CYCLE: (
+        "O Modelo treina todos os dias (ou nenhum): não há dia de mais ou menos gasto para marcar."
+    ),
+    plan_mod.ERR_MANUAL_REQUIRES_WEIGHT: "Para salvar gramas manuais, registre seu peso: sem ele o motor não confere as faixas em g/kg.",
     # Janelas de recálculo.
     dt_mod.ERR_DATE_FROM_FROZEN: (
         f"Dias com mais de {dt_mod.TARGET_FREEZE_LAG_DAYS - 1} dia(s) no passado já estão congelados e não são recalculados."
@@ -581,7 +592,6 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
 }
 
 # Avisos exibidos pelas telas (o FE lê do bloco `nutrition.notices`).
-NOTICE_CARB_CYCLING_UNAVAILABLE = plan_mod.ERR_CARB_CYCLING_UNAVAILABLE
 NOTICE_SCALE_BMR_DEVIATION = "scale_bmr_deviation"
 NOTICE_PHASE_SHOULD_STOP = "phase_should_stop"
 # Diário (L4): selos e dicas das telas com o MESMO texto das limitações do motor.
@@ -591,9 +601,6 @@ NOTICE_INCOMPLETE_INTAKE_DAYS = wb_mod.LIMIT_INCOMPLETE_INTAKE_DAYS
 NOTICE_TRAINING_UNKNOWN_FUTURE_DAY = dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY
 
 NOTICE_LABELS: Final[Mapping[str, str]] = {
-    NOTICE_CARB_CYCLING_UNAVAILABLE: (
-        "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana."
-    ),
     NOTICE_SCALE_BMR_DEVIATION: (
         f"A TMB da balança difere mais de {_percent(bmr_mod.SCALE_BMR_DEVIATION_WARN_SHARE)} da calculada pela fórmula."
     ),
@@ -659,6 +666,11 @@ _FIELD_LABELS: Final[Mapping[str, str]] = {
     **labels_by_code(BODY_FAT_METHOD_LABELS),
     **RDC429_FIELD_LABELS,
 }
+
+
+def field_label(code: str) -> str:
+    """Rótulo pt-BR de um campo (`protein_g`, `kcal`...); desconhecido volta como o próprio código."""
+    return _FIELD_LABELS.get(code, code)
 
 
 def limitation_label(code: str) -> str:

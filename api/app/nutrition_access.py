@@ -1,6 +1,9 @@
 """Quem vê e quem define o plano nutricional de quem (plano de nutrição §5 D1,
 decisão D-L; Lote L2b).
 
+Planos (N2, decisão D2 de 2026-11-02): o usuário cria, edita e publica o PRÓPRIO plano (`plan_actor`);
+admin e personal trainer continuam podendo para qualquer aluno; usuário comum nunca alcança o plano de outro.
+
 Regra de hoje (decisão do usuário, 2026-10-14): o próprio usuário passa;
 TERCEIRO exige admin ou personal trainer (`security.require_admin_or_pt`), e o
 personal trainer vê/define para QUALQUER aluno — sem vínculo formal PT↔aluno,
@@ -23,14 +26,30 @@ from typing import Any, Optional
 from fastapi import Depends, HTTPException
 
 from .domain.nutrition import catalog
-from .security import Identity, get_current_identity, require_admin_or_pt
+from .security import Identity, get_current_identity, is_admin_or_pt, require_admin_or_pt
 
 _USER_SQL = "SELECT id, username, full_name FROM users WHERE id = %s"
 
 
-def require_plan_manager(identity: Identity = Depends(get_current_identity)) -> Identity:
-    """Dependência das rotas que criam/editam/publicam planos: admin ou PT."""
-    return require_admin_or_pt(identity)
+def plan_actor(identity: Identity = Depends(get_current_identity)) -> Identity:
+    """Dependência das rotas de plano (N2, D2): qualquer usuário logado cria, edita e publica o
+    PRÓPRIO plano; o plano de outro usuário exige admin ou PT, decidido em `resolve_target_user`
+    (por usuário) e `resolve_plan_owner` (por id de plano)."""
+    return identity
+
+
+def is_staff(identity: Identity) -> bool:
+    """Admin ou personal trainer (a regra de `security.require_admin_or_pt`, sem levantar)."""
+    return is_admin_or_pt(identity)
+
+
+def resolve_plan_owner(identity: Identity, owner_user_id: int) -> int:
+    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: o próprio
+    usuário, admin ou PT passam; qualquer outro recebe 404 `plan_not_found` (igual ao plano que
+    não existe), para o id de um plano alheio não revelar que ele existe."""
+    if int(owner_user_id) == int(identity.user_id) or is_staff(identity):
+        return int(owner_user_id)
+    raise HTTPException(status_code=404, detail={"error": "plan_not_found", "message": "Plano não encontrado."})
 
 
 def resolve_target_user(identity: Identity, user_id: Optional[int]) -> int:
@@ -212,9 +231,11 @@ __all__ = [
     "fetch_target_user",
     "foods_visibility",
     "is_admin",
+    "is_staff",
+    "plan_actor",
     "ownership",
     "portion_owner_for",
     "portions_visibility",
-    "require_plan_manager",
+    "resolve_plan_owner",
     "resolve_target_user",
 ]
