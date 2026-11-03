@@ -700,6 +700,15 @@
       "add_training": "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, pela conversão de energia do motor. Só vale com o gasto do treino à parte."
     },
     "default_manual_training_mode": "fixed",
+    "manual_training_modes_by_tdee_mode": {
+      "explicit_training": [
+        "fixed",
+        "add_training"
+      ],
+      "included_in_factor": [
+        "fixed"
+      ]
+    },
     "range_statuses": [
       "within_range",
       "warning",

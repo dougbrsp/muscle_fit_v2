@@ -13,6 +13,7 @@ import {
   DEFAULT_BMR_FORMULA,
   DEFAULT_MACRO_PRIORITY,
   DEFAULT_MANUAL_TRAINING_MODE,
+  MANUAL_TRAINING_MODES_BY_TDEE_MODE,
   MANUAL_TRAINING_MODE_HINTS,
   MANUAL_TRAINING_MODE_OPTIONS,
   DEFAULT_TDEE_MODE,
@@ -187,6 +188,9 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
   const usaSuperavit = fieldAppliesToStrategy('surplus_share', form.strategy);
   const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
 
+  // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
+  const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
+
   function update(patch: Partial<FormState>) {
     setForm((atual) => ({ ...atual, ...patch }));
   }
@@ -218,7 +222,10 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         goal_weight_kg: inputNumberOrNull(form.goalWeight),
         macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
         manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
-        manual_training_mode: manualTrainingModePayload(form.manualOn, form.manualMode),
+        manual_training_mode: manualTrainingModePayload(
+          form.manualOn,
+          modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
+        ),
         cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
         notes: form.notes.trim() ? form.notes.trim() : null,
       };
@@ -393,9 +400,9 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         {form.manualOn && (
           <Select
             label="Gramas manuais e treino"
-            description={MANUAL_TRAINING_MODE_HINTS[form.manualMode]}
-            data={[...MANUAL_TRAINING_MODE_OPTIONS]}
-            value={form.manualMode}
+            description={MANUAL_TRAINING_MODE_HINTS[modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE]}
+            data={MANUAL_TRAINING_MODE_OPTIONS.filter((opcao) => modosManuais.includes(opcao.value))}
+            value={modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE}
             onChange={(manualMode) => update({ manualMode: manualMode ?? DEFAULT_MANUAL_TRAINING_MODE })}
             allowDeselect={false}
           />

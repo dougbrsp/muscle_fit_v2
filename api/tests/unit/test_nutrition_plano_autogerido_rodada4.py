@@ -131,11 +131,21 @@ def test_modo_valido_padrao_e_invalido():
     assert pl.build_plan_settings(strategy="maintenance", manual_training_mode="fixed").ok  # o padrão sem gramas é inofensivo
 
 
-def test_com_o_gasto_embutido_o_modo_soma_treino_nao_soma():
-    cfg = pl.build_plan_settings(
+def test_com_o_gasto_embutido_o_modo_soma_treino_e_recusado():
+    r = pl.build_plan_settings(
         strategy="maintenance", manual_targets=MANUAL, manual_training_mode="add_training", tdee_mode="included_in_factor"
-    ).settings
-    assert cfg.manual_macros.training_mode == ADD and cfg.manual_adds_training is False
+    )
+    assert r.errors == ("param_not_applicable:manual_training_mode",)
+    assert pl.build_plan_settings(
+        strategy="maintenance", manual_targets=MANUAL, manual_training_mode="fixed", tdee_mode="included_in_factor"
+    ).ok
+    assert pl.manual_training_modes_for(ee.TdeeMode.EXPLICIT_TRAINING) == (FIXED, ADD)
+    assert pl.manual_training_modes_for(ee.TdeeMode.INCLUDED_IN_FACTOR) == (FIXED,)
+    # Plano já gravado nessa combinação continua lido (sem soma de treino).
+    lido = svc.settings_from_row({"strategy": "maintenance", "advanced": 0, "bmr_formula": "auto", "training_kcal_mode": "included_in_factor",
+                                  "protein_g_per_kg": 2.0, "fat_kcal_share": 0.25,
+                                  "manual_targets_json": {"protein_g": 160, "carb_g": 300, "fat_g": 70, "training_mode": "add_training"}})
+    assert lido.manual_macros is not None and lido.manual_adds_training is False
 
 
 def test_plano_antigo_e_hash_inalterados():
@@ -286,3 +296,27 @@ def test_plano_de_bulking_existente_nao_muda_de_hash_nem_de_meta():
     meta = compute_daily_target(COM_MLG, PlanParams(strategy_params=st.StrategyParams.defaults_for(S.BULKING)), DayContext(day=SEGUNDA))
     assert meta.kcal_target.kcal == pytest.approx(meta.tdee.kcal * 1.10)
     assert st.BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT == 0.0025  # projeção sem TDEE: o valor que o N1 gravou
+
+
+def test_aviso_de_ritmo_do_bulking_com_gramas_manuais_usa_o_saldo_manual():
+    sujeito = Subject(sex=Sex.MALE, age_years=30, height_cm=180, weight_kg=80, body_fat_percent=15.0, activity_level=ActivityLevel.MODERATE)
+    # TDEE 2800; gramas de 3.800 kcal = +1.000/dia (~1,8%/semana neste usuário): fora da faixa -> aviso.
+    alto = pl.build_plan_settings(strategy="bulking", manual_targets={"protein_g": 200, "carb_g": 580, "fat_g": 76}).settings
+    assert pl.plan_warnings(alto, sujeito, 2800) == (pl.REASON_RATE_OUTSIDE_RANGE,)
+    # +300 kcal/dia (~0,5%/semana): dentro.
+    medio = pl.build_plan_settings(strategy="bulking", manual_targets={"protein_g": 180, "carb_g": 400, "fat_g": 86}).settings
+    assert pl.plan_warnings(medio, sujeito, 2800) == ()
+    # Sem superávit (a projeção é que diz incoerente) ou sem TDEE: sem aviso de ritmo.
+    baixo = pl.build_plan_settings(strategy="bulking", manual_targets={"protein_g": 150, "carb_g": 300, "fat_g": 60}).settings
+    assert pl.plan_warnings(baixo, sujeito, 2800) == () and pl.plan_warnings(alto, sujeito, None) == ()
+    # O superávit do plano (10%, ~0,42%/semana) não é o que vale quando há gramas: sem elas, dentro da faixa.
+    assert pl.plan_warnings(pl.build_plan_settings(strategy="bulking").settings, sujeito, 2800) == ()
+
+
+def test_premissa_do_tdee_nao_aparece_no_bulking_automatico_sem_massa_gorda():
+    so_peso = Subject(sex=Sex.MALE, age_years=30, height_cm=180, weight_kg=80, activity_level=ActivityLevel.MODERATE)
+    cfg = pl.build_plan_settings(strategy="bulking", goal_weight_kg=95.0).settings
+    premissa = (pl.REASON_TDEE_WITHOUT_TRAINING,)
+    assert pl.REASON_TDEE_WITHOUT_TRAINING not in pl.project_plan_goal(cfg, so_peso, 2800, SEGUNDA, premissa).reasons
+    com_gordura = replace(so_peso, body_fat_percent=15.0)
+    assert pl.REASON_TDEE_WITHOUT_TRAINING in pl.project_plan_goal(cfg, com_gordura, 2800, SEGUNDA, premissa).reasons

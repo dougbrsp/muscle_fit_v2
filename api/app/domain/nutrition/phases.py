@@ -340,8 +340,8 @@ def project_goal(
     Exatamente um alvo (peso ou %G). O ritmo (fração do peso por semana) é o informado em
     `weekly_rate_share`, que precisa estar na faixa da estratégia (senão
     `REASON_MISSING_RATE`), ou o de `strategy.weekly_rate_share_for` (cutting: o do plano;
-    bulking: o do superávit do plano quando há `tdee_kcal`, peso e `fat_mass_kg`, senão o piso
-    da faixa de ganho). Manutenção não move o peso: só "atingido" (dentro da tolerância) ou
+    bulking: o do superávit do plano quando há `tdee_kcal`, peso e `fat_mass_kg`, senão
+    `BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT`, o literal próprio de 0,25%/semana). Manutenção não move o peso: só "atingido" (dentro da tolerância) ou
     incoerente. Alvo do lado errado da estratégia é incoerente, salvo se o ponto de partida mostra
     que o alvo já foi ultrapassado no sentido certo. Passa de `PROJECTION_MAX_WEEKS`: sem prazo."""
     strategy = params.strategy

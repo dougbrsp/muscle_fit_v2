@@ -145,6 +145,10 @@ def export_for_frontend() -> dict[str, Any]:
         "manual_training_mode_labels": lb.labels_by_code(lb.MANUAL_TRAINING_MODE_LABELS),
         "manual_training_mode_hints": lb.labels_by_code(lb.MANUAL_TRAINING_MODE_HINTS),
         "default_manual_training_mode": manual_targets.DEFAULT_MANUAL_TRAINING_MODE.value,
+        # Modos das gramas manuais que valem para cada modo de gasto do treino (a tela só oferece estes).
+        "manual_training_modes_by_tdee_mode": {
+            modo.value: [m.value for m in plan.manual_training_modes_for(modo)] for modo in energy_expenditure.TdeeMode
+        },
         "range_statuses": _codes(manual_targets.RangeStatus),
         "range_status_labels": lb.labels_by_code(lb.RANGE_STATUS_LABELS),
         "goal_kinds": _codes(phases.GoalKind),

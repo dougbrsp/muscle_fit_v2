@@ -145,7 +145,8 @@ def weekly_rate_share_for(
     """Ritmo semanal (fração do peso) da estratégia para projetar o alvo:
     cutting = o do plano ou o default; bulking = o implicado pelo superávit do plano
     (`surplus_share` × TDEE, na densidade energética da massa gorda atual) quando há
-    TDEE, peso e massa gorda; senão o piso da faixa de ganho; manutenção = None."""
+    TDEE, peso e massa gorda; senão `BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT` (0,25%/semana, literal próprio);
+    manutenção = None."""
     if params.strategy == Strategy.CUTTING:
         return params.weekly_rate_share if params.weekly_rate_share is not None else CUT_WEEKLY_RATE_SHARE_DEFAULT
     if params.strategy == Strategy.BULKING:

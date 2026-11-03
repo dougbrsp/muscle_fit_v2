@@ -280,6 +280,14 @@ def normalize_priority(value: Any) -> Optional[MacroPriority]:
         return None
 
 
+def manual_training_modes_for(tdee_mode: ee.TdeeMode) -> tuple[ManualTrainingMode, ...]:
+    """Modos das gramas manuais que valem para o modo de gasto do treino: `add_training` só com o treino à parte
+    (explícito); com o treino já no fator do gasto só o `fixed`. A tela só oferece estes."""
+    if tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING:
+        return (ManualTrainingMode.FIXED, ManualTrainingMode.ADD_TRAINING)
+    return (ManualTrainingMode.FIXED,)
+
+
 def _manual_training_mode(value: Any) -> Optional[ManualTrainingMode]:
     """Modo das gramas manuais com o treino (vazio = padrão); código desconhecido = None."""
     if value is None or (isinstance(value, str) and not value.strip()):
@@ -424,6 +432,9 @@ def build_plan_settings(
         erros.append(_code(ERR_INVALID_CODE, FIELD_MANUAL_TRAINING_MODE))
         modo_manual = DEFAULT_MANUAL_TRAINING_MODE
     elif manual_targets is None and modo_manual != DEFAULT_MANUAL_TRAINING_MODE:
+        erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_MANUAL_TRAINING_MODE))
+    if modo_manual not in manual_training_modes_for(modo):
+        # `add_training` soma o treino do dia, que só existe à parte quando o gasto do treino é explícito.
         erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_MANUAL_TRAINING_MODE))
     if manual_targets is not None:
         manual = _manual_macros(manual_targets, estrategia, avancado, erros)
@@ -573,16 +584,21 @@ def manual_save_warnings(check: Optional[ManualTargetsCheck]) -> tuple[str, ...]
 
 
 def plan_warnings(settings: PlanSettings, subject: Subject, tdee_kcal: Any = None) -> tuple[str, ...]:
-    """Avisos do plano que NÃO impedem salvar nem publicar. O ritmo implicado pelo superávit do
-    bulking fora de `strategy.weekly_rate_share_range_for` é só aviso: o default avançado do
-    motor (superávit 5%, TDEE 2800, 12 kg de gordura, 80 kg) dá cerca de 0,21%/semana, abaixo do
-    piso de 0,25% (a faixa de superávit e a de ritmo não são coerentes entre si; mapa §81)."""
+    """Avisos do plano que NÃO impedem salvar nem publicar. O ritmo implicado pelo superávit do bulking
+    fora de `strategy.weekly_rate_share_range_for` (a faixa do nível, padrão ou avançado) é só aviso. Com
+    gramas manuais o superávit é o SALDO manual contra o `tdee_kcal`, o mesmo da projeção; gramas que não
+    dão superávit não geram este aviso (a projeção já diz que são incoerentes). Faixas e a grade: mapa §81."""
     faixa = weekly_rate_share_range_for(settings.strategy, settings.advanced)
     if settings.strategy != Strategy.BULKING or faixa is None:
         return ()
-    ritmo = weekly_rate_share_for(
-        settings.strategy_params(), tdee_kcal, subject.weight_kg, resolved_fat_mass_kg(subject)
-    )
+    params = settings.strategy_params()
+    if settings.manual_macros is not None:
+        tdee = positive_number(tdee_kcal)
+        saldo = (kcal_from_macros(*settings.manual_macros.as_tuple()) or 0.0) - (tdee or 0.0)
+        if tdee is None or saldo <= 0:
+            return ()
+        params = replace(params, surplus_share=saldo / tdee)
+    ritmo = weekly_rate_share_for(params, tdee_kcal, subject.weight_kg, resolved_fat_mass_kg(subject))
     if ritmo is not None and not faixa[0] <= ritmo <= faixa[1]:
         return (REASON_RATE_OUTSIDE_RANGE,)
     return ()
@@ -644,8 +660,15 @@ def project_plan_goal(
     devolvem `incoherent_with_strategy` e sem TDEE, dados insuficientes, sempre com o motivo."""
     projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of)
     # A premissa do TDEE só aparece quando ele entrou no ritmo projetado (bulking ou gramas manuais fora da manutenção).
+    bulking_deriva = (
+        settings.strategy == Strategy.BULKING
+        and positive_number(tdee_kcal) is not None
+        and positive_number(subject.weight_kg) is not None
+        and resolved_fat_mass_kg(subject) is not None
+        and settings.surplus_share is not None
+    )  # sem isso o ritmo cai no valor padrão e o TDEE não entrou
     tdee_no_ritmo = projecao.status == ProjectionStatus.PROJECTED and (
-        settings.strategy == Strategy.BULKING or (settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE)
+        bulking_deriva or (settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE)
     )
     if not premises or not tdee_no_ritmo:
         return projecao

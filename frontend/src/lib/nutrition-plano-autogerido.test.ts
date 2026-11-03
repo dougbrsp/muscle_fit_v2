@@ -24,7 +24,8 @@ const {
   manualTrainingModePayload,
   targetsChangedKeys,
 } = await import('./nutrition-plan-form');
-const { DEFAULT_MANUAL_TRAINING_MODE, MANUAL_TRAINING_MODE_HINTS, MANUAL_TRAINING_MODE_OPTIONS } = await import('./nutrition-constants');
+const { DEFAULT_MANUAL_TRAINING_MODE, MANUAL_TRAINING_MODES_BY_TDEE_MODE, MANUAL_TRAINING_MODE_HINTS, MANUAL_TRAINING_MODE_OPTIONS, TDEE_MODE_OPTIONS } =
+  await import('./nutrition-constants');
 
 beforeEach(() => apiFetch.mockReset());
 
@@ -141,5 +142,16 @@ describe('plano autogerido: gramas manuais e treino (rodada 4)', () => {
       expect(opcao.label).not.toBe(opcao.value);
       expect(MANUAL_TRAINING_MODE_HINTS[opcao.value].length).toBeGreaterThan(10);
     }
+  });
+});
+
+describe('plano autogerido: combinações de gramas manuais e gasto do treino', () => {
+  it('todo modo de gasto tem os modos de gramas que valem, sempre com o padrão', () => {
+    for (const tdee of TDEE_MODE_OPTIONS) {
+      const modos = MANUAL_TRAINING_MODES_BY_TDEE_MODE[tdee.value];
+      expect(modos).toContain(DEFAULT_MANUAL_TRAINING_MODE);
+    }
+    const tamanhos = TDEE_MODE_OPTIONS.map((t) => MANUAL_TRAINING_MODES_BY_TDEE_MODE[t.value].length).sort();
+    expect(tamanhos).toEqual([1, 2]); // um modo de gasto aceita só o fixo, o outro os dois
   });
 });
