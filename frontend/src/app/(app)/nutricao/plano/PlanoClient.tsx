@@ -13,6 +13,7 @@ import { PlanHistory } from '@/components/nutrition/PlanHistory';
 import { PlanPreview } from '@/components/nutrition/PlanPreview';
 import { PlanSummary } from '@/components/nutrition/PlanSummary';
 import { UserPicker } from '@/components/nutrition/UserPicker';
+import { planoInicial } from '@/lib/nutrition-plan-user';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
@@ -25,11 +26,6 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 }
 
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
-
-/** Admin/PT abrem o plano com o PRÓPRIO usuário pré-selecionado (o seletor troca); assim o campo do dia do check-in aparece. */
-export function planoInicial(user: { id: number; username: string; full_name: string | null }): { id: number; label: string } {
-  return { id: user.id, label: user.full_name || user.username };
-}
 
 /**
  * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum

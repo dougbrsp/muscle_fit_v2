@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { planoInicial } from './nutrition-plan-user';
 
 // Regressão (ajustes pós-teste, 2026-11-03): o seletor de aluno existe só na montagem do plano.
 // O contrato é do código-fonte (sem DOM): quem importa `UserPicker` e quem fala `user_id`.
@@ -38,8 +39,7 @@ describe('escolha de aluno só na montagem do plano', () => {
 });
 
 describe('plano: admin e personal abrem com o próprio usuário pré-selecionado', () => {
-  it('planoInicial usa o nome completo, ou o usuário quando não há nome', async () => {
-    const { planoInicial } = await import('../app/(app)/nutricao/plano/PlanoClient');
+  it('planoInicial usa o nome completo, ou o usuário quando não há nome', () => {
     expect(planoInicial({ id: 3, username: 'dougbr', full_name: 'Douglas B.' })).toEqual({ id: 3, label: 'Douglas B.' });
     expect(planoInicial({ id: 4, username: 'pt1', full_name: null })).toEqual({ id: 4, label: 'pt1' });
   });
