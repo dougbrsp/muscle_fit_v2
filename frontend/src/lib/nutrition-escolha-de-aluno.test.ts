@@ -39,8 +39,8 @@ describe('escolha de aluno só na montagem do plano', () => {
 });
 
 describe('plano: admin e personal abrem com o próprio usuário pré-selecionado', () => {
-  it('planoInicial usa o nome completo, ou o usuário quando não há nome', () => {
-    expect(planoInicial({ id: 3, username: 'dougbr', full_name: 'Douglas B.' })).toEqual({ id: 3, label: 'Douglas B.' });
+  it('planoInicial usa o mesmo rótulo do lookup ("Nome (usuário)"), ou o usuário quando não há nome', () => {
+    expect(planoInicial({ id: 3, username: 'dougbr', full_name: 'Douglas B.' })).toEqual({ id: 3, label: 'Douglas B. (dougbr)' });
     expect(planoInicial({ id: 4, username: 'pt1', full_name: null })).toEqual({ id: 4, label: 'pt1' });
   });
 
