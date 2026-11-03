@@ -1,11 +1,33 @@
 'use client';
 
-import { Alert, Badge, Group, Paper, Select, Stack, Switch, Table, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Group,
+  Paper,
+  Select,
+  Stack,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconAlertTriangle, IconSearch } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { IconAlertTriangle, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { foodKeys, nutritionErrorInfo, searchFoods } from '@/lib/nutrition-api';
+import {
+  addFavorite,
+  favoriteKeys,
+  fetchFavorites,
+  foodKeys,
+  nutritionErrorInfo,
+  searchFoods,
+} from '@/lib/nutrition-api';
+import { favoriteErrorLines, removeFavoriteIfPresent } from '@/lib/nutrition-favorites';
 import { FOOD_PER_100_FIELDS, FOOD_REQUIRED_FIELDS, FOOD_SOURCE_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import type { FoodSearchItem, FoodSearchScope } from '@/lib/nutrition-types';
@@ -16,6 +38,8 @@ import { BRAND } from '@/theme';
 // rótulo e a unidade da RDC 429 do JSON gerado. Os demais ficam no detalhe.
 const COLUNAS = FOOD_PER_100_FIELDS.filter((campo) => FOOD_REQUIRED_FIELDS.includes(campo.code));
 const ATRASO_DA_BUSCA_MS = 300;
+/** Chave da mutação da estrela: a tela de preferidos a observa para travar a reordenação enquanto grava. */
+export const FAVORITE_TOGGLE_KEY = ['nutrition-favorite-toggle'] as const;
 
 type Props = {
   isAdmin: boolean;
@@ -41,7 +65,25 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
     retry: false,
     staleTime: 30_000,
   });
+
+  // Preferidos (N3): a API já devolve os preferidos primeiro (antes do corte) e `is_favorite`; a tela só
+  // exibe a estrela. Sem a migração 102 (503) a consulta falha em silêncio e a busca segue sem estrelas.
+  // No escopo `private_all` (admin) os itens são de outros usuários: sem estrela.
+  const queryClient = useQueryClient();
+  const favoritos = useQuery({ queryKey: favoriteKeys.all, queryFn: fetchFavorites, retry: false, staleTime: 30_000 });
+  const alternar = useMutation({
+    mutationKey: FAVORITE_TOGGLE_KEY,
+    mutationFn: async (item: FoodSearchItem) => {
+      if (item.is_favorite) await removeFavoriteIfPresent(item.id);
+      else await addFavorite({ food_id: item.id });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
+      await queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    },
+  });
   const itens = query.data?.items ?? [];
+  const comEstrela = favoritos.isSuccess && scope === 'visible';
 
   return (
     <Stack gap="sm">
@@ -79,6 +121,15 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
           {nutritionErrorInfo(query.error, 'Não foi possível buscar alimentos.').message}
         </Alert>
       )}
+      {alternar.isError && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} withCloseButton onClose={() => alternar.reset()}>
+          {favoriteErrorLines(alternar.error, 'Não foi possível atualizar os preferidos.').map((linha) => (
+            <Text key={linha} size="sm">
+              {linha}
+            </Text>
+          ))}
+        </Alert>
+      )}
       {busca.length > 0 && query.isSuccess && itens.length === 0 && (
         <Text c={BRAND.textMuted} size="sm">
           Nenhum alimento encontrado. Cadastre um alimento novo abaixo.
@@ -90,6 +141,7 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
           <Table highlightOnHover verticalSpacing="xs" miw={640}>
             <Table.Thead>
               <Table.Tr>
+                {comEstrela && <Table.Th w={52} aria-label="Preferido" />}
                 <Table.Th>Alimento</Table.Th>
                 <Table.Th>Fonte</Table.Th>
                 {COLUNAS.map((campo) => (
@@ -107,6 +159,24 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
                   style={{ cursor: 'pointer' }}
                   onClick={() => onSelect(item)}
                 >
+                  {comEstrela && (
+                    <Table.Td>
+                      <ActionIcon
+                        variant="subtle"
+                        color={item.is_favorite ? 'yellow' : 'gray'}
+                        aria-label={item.is_favorite ? `Remover ${item.name} dos preferidos` : `Favoritar ${item.name}`}
+                        aria-pressed={item.is_favorite}
+                        loading={alternar.isPending && alternar.variables?.id === item.id}
+                        style={{ minWidth: 44, minHeight: 44 }}
+                        onClick={(event) => {
+                          event.stopPropagation(); // a linha seleciona o alimento; a estrela só alterna o preferido
+                          alternar.mutate(item);
+                        }}
+                      >
+                        {item.is_favorite ? <IconStarFilled size={20} /> : <IconStar size={20} />}
+                      </ActionIcon>
+                    </Table.Td>
+                  )}
                   <Table.Td>
                     {/* O clique sobe para a linha; o botão dá foco e Enter pelo teclado. */}
                     <UnstyledButton aria-label={`Ver ${item.name}`}>

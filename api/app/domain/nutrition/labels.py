@@ -26,6 +26,7 @@ from . import daily_target as dt_mod
 from . import diary as diary_mod
 from . import energy_expenditure as ee_mod
 from . import external_sources as ext_mod
+from . import favorites as fav_mod
 from . import label_photo as lp_mod
 from . import macros as macros_mod
 from . import manual_targets as manual_mod
@@ -524,6 +525,11 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     diary_mod.ERR_INVALID_WATER: (
         f"Água: de {diary_mod.WATER_ML_RANGE[0]:g} a {diary_mod.WATER_ML_RANGE[1]:g} ml no dia."
     ),
+    # Alimentos preferidos (N3, `favorites`).
+    fav_mod.ERR_TOO_MANY_FAVORITES: f"A lista de preferidos aceita até {fav_mod.MAX_FAVORITES} alimentos.",
+    fav_mod.ERR_DEFAULT_INCOMPLETE: "Porção padrão: informe a quantidade e a unidade juntas, ou deixe as duas vazias.",
+    fav_mod.ERR_DEFAULT_PORTION_UNIT: "Porção cadastrada só vale com a unidade porção ou unidade.",
+    fav_mod.ERR_INVALID_ORDER: "A nova ordem precisa conter exatamente os alimentos da lista, cada um uma vez.",
     # Semana e balanço do dia (L4, `weekly_budget`).
     wb_mod.LIMIT_NO_TARGETS: "Nenhum dia da semana tem meta calculada.",
     wb_mod.LIMIT_NO_LOGGED_DAYS: "Nenhum dia da semana com refeições de total completo.",

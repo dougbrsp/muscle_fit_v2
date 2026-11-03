@@ -1368,6 +1368,17 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-L4",
     ),
     Padrao(
+        chave="favoritos_nutricao",
+        regra="teto da lista de preferidos ou as constantes de erro da porção padrão/ordem redefinidos com valor "
+        "fora do dono",
+        # 2026-11-02 (nutrição N3): dono `favorites` (teto, porção padrão pela matemática do diário,
+        # ordem). A rota `nutrition_favorites` importa o motor; a tela mostra o que a API devolve
+        # (`max_items`) e não repete o teto.
+        regex=re.compile(r"\b(?:MAX_FAVORITES|FAVORITES_LIMIT)\s*(?::[^=\n]+)?=\s*[\d(\[]"),
+        donos=("api/app/domain/nutrition/favorites.py",),
+        inventario="NUT-N3",
+    ),
+    Padrao(
         chave="soma_nutrientes",
         regra="soma de nutrientes de itens, refeições ou dias (`sum(`/`SUM(`/`.reduce(`/`+=` sobre energy_kcal, "
         "protein_g, carbohydrates_g, total_fat_g, fiber_g, sodium_mg ou as metas da 079) ou escala por 100 g/ml "
@@ -2105,6 +2116,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "kj_kcal": {},  # NUT-L3B (2026-10-17, revisão do guardião): nasce vazia (só `meal_math` converte)
     "bom_para_paralelo": {},  # BOM-PARA (2026-10-17): nasce vazia (a tela só formata `ready_at`)
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
+    "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3037,6 +3049,11 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "if resolution.amount > ITEM_AMOUNT_MAX:", "GENERIC_PORTIONS.map((p) => p.code)", "unit: 'colher_sopa'",
          "dt_mod.TARGET_FREEZE_LAG_DAYS - 1", "const [WATER_MIN, WATER_MAX] = NUTRITION.water_ml_range;",
          "colher_sopa: GENERIC_PORTIONS[0]"),
+    ),
+    "favoritos_nutricao": (
+        ("MAX_FAVORITES = 200", "const MAX_FAVORITES = 50;", "MAX_FAVORITES: Final[int] = 100"),
+        ("if not favorites_engine.can_add(total):", "max_items: favorites_engine.MAX_FAVORITES",
+         "from .domain.nutrition.favorites import MAX_FAVORITES"),
     ),
     "soma_nutrientes": (
         ("total = sum(item['energy_kcal'] for item in itens)", "SELECT SUM(m.protein_g) FROM meals m",

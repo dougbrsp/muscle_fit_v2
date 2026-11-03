@@ -68,6 +68,15 @@ AI_USAGE_TABLE_MISSING_MESSAGE = (
 )
 
 
+FAVORITES_TABLE = "user_favorite_foods"
+FAVORITES_TABLES: tuple[str, ...] = (FAVORITES_TABLE,)
+FAVORITES_MIGRATION = "102"
+
+FAVORITES_TABLE_MISSING_MESSAGE = (
+    "Alimentos preferidos indisponíveis: a tabela `user_favorite_foods` (migração 102) ainda não existe neste banco."
+)
+
+
 def tables_sql(count: int) -> str:
     """COUNT das tabelas pedidas no schema atual (um `%s` por tabela)."""
     return (
@@ -207,6 +216,25 @@ def require_ai_usage_table(cursor: Any) -> None:
         raise ai_usage_table_missing_error()
 
 
+def has_favorites_table(cursor: Any) -> bool:
+    """A tabela dos alimentos preferidos (102) existe NESTE schema? Sem DDL."""
+    return _has_tables(cursor, FAVORITES_TABLES)
+
+
+def favorites_table_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={"error": "favorite_foods_table_missing", "migration": FAVORITES_MIGRATION,
+                "message": FAVORITES_TABLE_MISSING_MESSAGE},
+    )
+
+
+def require_favorites_table(cursor: Any) -> None:
+    """503 citando a 102 quando `user_favorite_foods` ainda não existe."""
+    if not has_favorites_table(cursor):
+        raise favorites_table_missing_error()
+
+
 def reset_nutrition_tables_cache() -> None:
     """Esquece a detecção (só para testes que desfazem as migrações)."""
     _present.clear()
@@ -218,6 +246,8 @@ __all__ = [
     "AI_USAGE_TABLE",
     "DIARY_MIGRATIONS",
     "DIARY_TABLES",
+    "FAVORITES_MIGRATION",
+    "FAVORITES_TABLE",
     "FOOD_FIELD_SOURCES_COLUMN",
     "FOOD_FIELD_SOURCES_MIGRATION",
     "FOOD_MIGRATIONS",
@@ -227,15 +257,18 @@ __all__ = [
     "TARGETS_TABLE",
     "ai_usage_table_missing_error",
     "diary_tables_missing_error",
+    "favorites_table_missing_error",
     "food_field_sources_missing_error",
     "food_tables_missing_error",
     "has_ai_usage_table",
     "has_diary_tables",
+    "has_favorites_table",
     "has_food_field_sources",
     "has_food_tables",
     "has_nutrition_tables",
     "require_ai_usage_table",
     "require_diary_tables",
+    "require_favorites_table",
     "require_food_tables",
     "require_nutrition_tables",
     "reset_nutrition_tables_cache",
