@@ -6668,7 +6668,7 @@ os bloqueios e as constantes são as do N1.
   - *O que muda para um plano de bulking já publicado*: só o aviso. O superávit gravado, as metas, o `inputs_hash` e as metas futuras
     não congeladas NÃO mudam (a faixa não entra no hash nem no cálculo da meta); dias congelados nunca mudam. Muda a prévia: o aviso
     `projection_rate_outside_range` some nos casos que a faixa nova contém. Nada a recalcular nem a congelar no plano. Quantos planos de
-    bulking existem em produção: **a confirmar** (acesso AWS a renovar). Consulta SELECT exata:
+    bulking existem em produção: **0** (medido pelo líder em 2026-11-03, só com SELECT; todos os campos nulos), então a mudança de faixa não afeta plano existente. Consulta SELECT usada:
     `SELECT COUNT(*) AS planos, SUM(status = 'published' AND superseded_at IS NULL) AS vigentes, SUM(advanced = 1) AS avancados,
     SUM(surplus_share > 0.12) AS superavit_acima_de_12 FROM nutrition_plans WHERE strategy = 'bulking';`
 
