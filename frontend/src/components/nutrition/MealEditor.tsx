@@ -19,10 +19,12 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { FavoriteShortcuts } from './FavoriteShortcuts';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
+import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
 import {
   chooseCandidate,
   chooseEstimate,
@@ -277,6 +279,15 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
             w={170}
           />
         </Group>
+
+        <FavoriteShortcuts
+          disabled={form.items.length >= MEAL_ITEMS_LIMIT}
+          onPick={(favorito) => {
+            proximaChave.current += 1;
+            const novo = editorItemFromFavorite(favorito, `novo-${proximaChave.current}`);
+            setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
+          }}
+        />
 
         <FoodSearch
           isAdmin={false}

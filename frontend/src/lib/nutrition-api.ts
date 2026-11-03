@@ -13,6 +13,10 @@ import type {
   DayLogPayload,
   DayLogResponse,
   ExternalFoodResponse,
+  FavoriteCreatePayload,
+  FavoriteDefaultPayload,
+  FavoriteItem,
+  FavoritesResponse,
   FoodDetail,
   FoodItem,
   FoodItemCreatePayload,
@@ -129,6 +133,38 @@ export function fetchFood(foodId: number): Promise<FoodDetail> {
 
 export function createFood(payload: FoodItemCreatePayload): Promise<FoodSaveResponse> {
   return apiFetch<FoodSaveResponse>('/nutrition/foods', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// ---------------------------------------------------------------------------
+// Alimentos preferidos (Lote N3). A lista é pessoal (a API usa a sessão); teto,
+// porção padrão e ordem são do motor.
+// ---------------------------------------------------------------------------
+
+export const favoriteKeys = {
+  all: ['nutrition-favorites'] as const,
+};
+
+export function fetchFavorites(): Promise<FavoritesResponse> {
+  return apiFetch<FavoritesResponse>('/nutrition/favorites');
+}
+
+export function addFavorite(payload: FavoriteCreatePayload): Promise<FavoriteItem> {
+  return apiFetch<FavoriteItem>('/nutrition/favorites', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateFavoriteDefault(foodId: number, payload: FavoriteDefaultPayload): Promise<FavoriteItem> {
+  return apiFetch<FavoriteItem>(`/nutrition/favorites/${foodId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function removeFavorite(foodId: number): Promise<{ status: string; food_id: number }> {
+  return apiFetch(`/nutrition/favorites/${foodId}`, { method: 'DELETE' });
+}
+
+export function reorderFavorites(foodIds: number[]): Promise<FavoritesResponse> {
+  return apiFetch<FavoritesResponse>('/nutrition/favorites/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ food_ids: foodIds }),
+  });
 }
 
 export function updateFood(foodId: number, payload: FoodItemPayload): Promise<FoodSaveResponse> {
@@ -372,6 +408,15 @@ export function nutritionErrorInfo(
     return { message: detail.message || fallback, items: detail.errors ?? detail.missing ?? [] };
   }
   return { message: error instanceof ApiError ? error.message : fallback, items: [] };
+}
+
+/** Conflito de EAN no cadastro manual (409): o alimento que já tem o código, para a tela oferecê-lo. */
+export function barcodeConflict(error: unknown): { foodId: number; foodName: string | null } | null {
+  if (!(error instanceof ApiError) || nutritionErrorCode(error) !== 'barcode_already_registered') return null;
+  const detail = error.detail as { existing_food_id?: unknown; existing_food_name?: unknown };
+  const foodId = Number(detail.existing_food_id);
+  if (!Number.isInteger(foodId) || foodId <= 0) return null;
+  return { foodId, foodName: typeof detail.existing_food_name === 'string' ? detail.existing_food_name : null };
 }
 
 /**

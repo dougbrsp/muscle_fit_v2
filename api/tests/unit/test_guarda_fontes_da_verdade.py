@@ -1004,7 +1004,12 @@ PADROES: tuple[Padrao, ...] = (
             r"|\b(?:protein_g_per_kg|fat_kcal_share|surplus_share|weekly_rate_share|carb_min_g_per_kg|max_deficit_share"
             r"""|min_intake_bmr_multiple)\w*["']?\s*[:=]\s*[\d(\[]"""
         ),
-        donos=("api/app/domain/nutrition/strategy.py", "api/app/domain/nutrition/macros.py"),
+        # `manual_targets.py` (N1, D6) é dono dos limites de BLOQUEIO das gramas manuais, com fonte.
+        donos=(
+            "api/app/domain/nutrition/strategy.py",
+            "api/app/domain/nutrition/macros.py",
+            "api/app/domain/nutrition/manual_targets.py",
+        ),
         inventario="NUTRICAO-L1",
         linguagens=frozenset({"py", "ts", "md"}),
     ),
@@ -1043,6 +1048,21 @@ PADROES: tuple[Padrao, ...] = (
         ),
         donos=("api/app/domain/nutrition/labels.py",),
         inventario="NUTRICAO-L1",
+    ),
+    Padrao(
+        chave="rotulo_prioridade_macros",
+        regra='rótulo pt-BR da prioridade de macros escrito à mão ("Proteína fixa", "Carboidrato alto", "Gordura alta")',
+        # N1 (2026-11-02): o dono é `labels.MACRO_PRIORITY_LABELS`; o FE lê `macro_priority_labels`
+        # do JSON gerado. "Equilibrado" é genérico demais e fica de fora. Só o rótulo
+        # que ABRE a string ou o texto JSX (o rótulo completo continua casando).
+        regex=re.compile(
+            r"""["'`](?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)"""
+            r"|>\s*(?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)[^<]*<"
+        ),
+        donos=("api/app/domain/nutrition/labels.py",),
+        inventario="NUTRICAO-N1",
+        linguagens=frozenset({"py", "ts", "md"}),
+        escopo=ESCOPO_NUTRICAO,
     ),
     Padrao(
         chave="kcal_treino_prioridade",
@@ -1346,6 +1366,17 @@ PADROES: tuple[Padrao, ...] = (
             "api/app/domain/nutrition/daily_target.py",
         ),
         inventario="NUT-L4",
+    ),
+    Padrao(
+        chave="favoritos_nutricao",
+        regra="teto da lista de preferidos ou as constantes de erro da porção padrão/ordem redefinidos com valor "
+        "fora do dono",
+        # 2026-11-02 (nutrição N3): dono `favorites` (teto, porção padrão pela matemática do diário,
+        # ordem). A rota `nutrition_favorites` importa o motor; a tela mostra o que a API devolve
+        # (`max_items`) e não repete o teto.
+        regex=re.compile(r"\b(?:MAX_FAVORITES|FAVORITES_LIMIT)\s*(?::[^=\n]+)?=\s*[\d(\[]"),
+        donos=("api/app/domain/nutrition/favorites.py",),
+        inventario="NUT-N3",
     ),
     Padrao(
         chave="soma_nutrientes",
@@ -2073,6 +2104,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
         "api/app/intelligence/report/markdown_renderer.py": 1,  # INTENT_LABELS["maintenance"]
         "frontend/src/lib/methodology-volume.ts": 2,  # METHODOLOGY_INTENT_OPTIONS (maintenance, cutting)
     },
+    "rotulo_prioridade_macros": {},  # N1 (2026-11-02): nasce vazia
     "kcal_treino_prioridade": {},
     "vocabulario_ia_serie": {},  # RPE 10 Lote 6/P9 (2026-10-11): nasce vazia (o FE saiu junto)
     # C13: rótulos de status de progressão com um dono só desde o Lote 3c
@@ -2100,6 +2132,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "kj_kcal": {},  # NUT-L3B (2026-10-17, revisão do guardião): nasce vazia (só `meal_math` converte)
     "bom_para_paralelo": {},  # BOM-PARA (2026-10-17): nasce vazia (a tela só formata `ready_at`)
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
+    "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -2840,6 +2873,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "nutrition.strategy_labels[code]", "<Badge>{strategyLabel}</Badge>", "<Text>Cutting (definição)</Text>",
          "<Text>Fase de Bulking</Text>"),
     ),
+    "rotulo_prioridade_macros": (
+        ("label: 'Proteína fixa'", 'PRIORITY = "Carbo alto"', "`Gordura alta`", "<Badge>Carboidrato alto</Badge>",
+         "<Text> Gordura alta (carboidrato baixo) </Text>"),
+        ("MACRO_PRIORITY_LABELS[p]", "nutrition.macro_priority_labels[code]", "'high_carb'", "Meta de gordura alta no jantar",
+         "<Text>{priorityLabel}</Text>", "'Equilibrado'"),
+    ),
     "kcal_treino_prioridade": (
         ("kcal = activity.calories_kcal or estimativa_met", "const kcal = session.calories_kcal ?? estimate.kcal;",
          "x.calories_kcal || metKcal", 'row.get("calories_kcal") or met_kcal', "TRAINING_KCAL_NATURE_PRIORITY = (",
@@ -3028,6 +3067,11 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "if resolution.amount > ITEM_AMOUNT_MAX:", "GENERIC_PORTIONS.map((p) => p.code)", "unit: 'colher_sopa'",
          "dt_mod.TARGET_FREEZE_LAG_DAYS - 1", "const [WATER_MIN, WATER_MAX] = NUTRITION.water_ml_range;",
          "colher_sopa: GENERIC_PORTIONS[0]"),
+    ),
+    "favoritos_nutricao": (
+        ("MAX_FAVORITES = 200", "const MAX_FAVORITES = 50;", "MAX_FAVORITES: Final[int] = 100"),
+        ("if not favorites_engine.can_add(total):", "max_items: favorites_engine.MAX_FAVORITES",
+         "from .domain.nutrition.favorites import MAX_FAVORITES"),
     ),
     "soma_nutrientes": (
         ("total = sum(item['energy_kcal'] for item in itens)", "SELECT SUM(m.protein_g) FROM meals m",

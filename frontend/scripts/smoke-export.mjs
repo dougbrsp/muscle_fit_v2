@@ -47,6 +47,8 @@ const DYNAMIC_ROUTES = [
   ['/nutricao/plano/', 'nutricao/plano/index.html'],
   // Nutrição L3a: catálogo de alimentos (TACO + cadastro do usuário).
   ['/nutricao/alimentos/', 'nutricao/alimentos/index.html'],
+  // Nutrição N3: edição da lista de alimentos preferidos.
+  ['/nutricao/favoritos/', 'nutricao/favoritos/index.html'],
   // O 301 de /treinos não pode capturar o próprio destino nem rotas vizinhas.
   ['/dashboard/treinos/', 'dashboard/treinos/index.html'],
   ['/modo-treino/', 'modo-treino/index.html'],

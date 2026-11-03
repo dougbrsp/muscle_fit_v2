@@ -722,6 +722,20 @@ except Exception as exc:
     )
 # END nutrition label photo router
 
+# BEGIN nutrition favorites router (nutricao N3, migracao 102)
+# Alimentos preferidos do usuario (lista pessoal: favoritar, porcao padrao,
+# reordenar). Regras em `domain/nutrition/favorites`; tabela ausente responde 503
+# citando a 102.
+try:
+    from app.nutrition_favorites import router as nutrition_favorites_router
+    app.include_router(nutrition_favorites_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_favorites").exception(
+        "Nutrition favorites router não foi carregado. Erro: %s", exc
+    )
+# END nutrition favorites router
+
 # BEGIN nutrition meal photo router (foto do prato, Lote L10; sem migracao)
 # Foto do prato: mesmo desenho da foto do rotulo, com o dono `meal_photo`, a cota
 # `meal_photo` (ai_usage_log, 085) e o prefixo nutrition-meals/. A refeicao continua

@@ -233,6 +233,16 @@ def prefix_pattern(query: Any) -> Optional[str]:
     return f"{normalizado}%" if normalizado else None
 
 
+def favorites_first(matches: Sequence[Match], favorite_ids: Any) -> tuple[Match, ...]:
+    """Preferidos do usuário (N3) antes dos demais, mantendo a ordem da nota dentro de cada
+    grupo. Roda ANTES do corte por `search_limit`, para o favorito não cair fora da lista."""
+    favoritos = set(favorite_ids)
+    return (
+        *(m for m in matches if m.candidate_id in favoritos),
+        *(m for m in matches if m.candidate_id not in favoritos),
+    )
+
+
 def search_limit(raw: Any) -> int:
     """Quantos resultados devolver: o pedido, limitado a 1..`SEARCH_RESULT_LIMIT_MAX`;
     ausente/inválido = `SEARCH_RESULT_LIMIT_DEFAULT`."""

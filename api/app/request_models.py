@@ -199,6 +199,9 @@ class FoodItemCreateIn(FoodItemIn):
     `FoodItemIn`: a fonte não muda depois de criada."""
 
     source: Optional[str] = Field(default=None, max_length=16)
+    # N3: EAN/GTIN do produto (leitor de câmera ou digitado). Dígito verificador e forma
+    # canônica: `external_sources.normalize_gtin`; aqui só tipo e tamanho.
+    barcode: Optional[str] = Field(default=None, max_length=32)
 
 
 class LabelPhotoUploadIn(_StrictIn):
@@ -217,6 +220,30 @@ class FoodPortionIn(_StrictIn):
 
     label: str = Field(min_length=1, max_length=120)
     amount: Number
+
+
+class FavoriteDefaultIn(_StrictIn):
+    """Porção padrão de um alimento preferido (nutrição N3): quantidade e unidade
+    (código de `meal_math.Unit`) juntas, ou nenhuma. `default_portion_id` escolhe
+    uma porção cadastrada do alimento. Conversão e faixa NÃO são validadas aqui:
+    `domain/nutrition/favorites.default_errors` (que usa o `meal_math`) responde 400."""
+
+    default_quantity: Optional[Number] = None
+    default_unit: Optional[str] = Field(default=None, max_length=24)
+    default_portion_id: Optional[int] = None
+
+
+class FavoriteCreateIn(FavoriteDefaultIn):
+    """POST /nutrition/favorites: o alimento e a porção padrão opcional."""
+
+    food_id: int
+
+
+class FavoriteReorderIn(_StrictIn):
+    """POST /nutrition/favorites/reorder: a lista inteira na nova ordem (permutação
+    exata dos favoritos atuais, conferida por `favorites.order_errors`)."""
+
+    food_ids: list[int]
 
 
 class MealItemEstimateIn(_StrictIn):

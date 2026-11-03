@@ -31,6 +31,7 @@ from app.domain.nutrition import energy_expenditure as _ee
 from app.domain.nutrition import external_sources as _ext
 from app.domain.nutrition import label_photo as _lp
 from app.domain.nutrition import macros as _macros
+from app.domain.nutrition import manual_targets as _mt
 from app.domain.nutrition import diary as _diary
 from app.domain.nutrition import plan as _plan
 from app.domain.nutrition import strategy as _st
@@ -104,7 +105,7 @@ def test_export_for_frontend():
     # L5b: + meal_parse (teto do texto e a decisão de cada item; a cota vem da API)
     # L6: + label_photo, label_legibilities, label_legibility_labels
     # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
-    assert len(bloco) == 65
+    assert len(bloco) == 75
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
@@ -191,12 +192,24 @@ _PREFIXADOS = {
     _lp.WARN_LABEL_DERIVED_FROM_SERVING,
     _lp.WARN_LABEL_SERVING_INCONSISTENT,
     _lp.WARN_LABEL_NOT_SIGNIFICANT,
+    # N1: gramas manuais (D6) e dias do ciclo de carbo (D5).
+    _mt.MANUAL_INVALID_VALUE,
+    _mt.MANUAL_BELOW_RANGE,
+    _mt.MANUAL_ABOVE_RANGE,
+    _mt.MANUAL_BLOCKED_BELOW,
+    _mt.MANUAL_BLOCKED_ABOVE,
+    _mt.MANUAL_BELOW_BMR,
+    _mt.MANUAL_DIFFERS_FROM_TARGET,
+    _mt.LIMIT_MISSING_BASE,
+    _cc.ERR_INVALID_WEEKDAY,
+    _cc.ERR_DUPLICATE_WEEKDAY,
+    _cc.ERR_INVALID_DAY_KIND,
 }
 
 
 def _codigos_do_motor() -> set[str]:
     codigos: set[str] = set()
-    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp):
+    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _mt, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp):
         for nome, valor in vars(modulo).items():
             if nome.startswith(("LIMIT_", "CLAMP_", "ERR_", "WARN_")) and isinstance(valor, str):
                 codigos.add(valor)

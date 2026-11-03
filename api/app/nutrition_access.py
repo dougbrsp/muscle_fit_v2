@@ -159,6 +159,31 @@ def can_log_portion(identity: Identity, diary_user_id: int, portion: dict[str, A
     return dono is None or dono in (int(diary_user_id), int(identity.user_id))
 
 
+# ---------------------------------------------------------------------------
+# Alimentos preferidos (N3): a lista é PESSOAL. Nenhuma rota recebe `user_id`:
+# quem lê, cria, reordena ou apaga é sempre o dono da sessão, então um usuário
+# nunca alcança os preferidos de outro (nem admin/PT: não há vínculo formal que
+# justifique). O SQL sempre filtra por `user_id = favorites_owner(identity)`.
+# ---------------------------------------------------------------------------
+
+
+def favorites_owner(identity: Identity) -> int:
+    """Dono da lista de preferidos desta chamada: o próprio usuário logado."""
+    return int(identity.user_id)
+
+
+def can_favorite_food(identity: Identity, food: dict[str, Any]) -> bool:
+    """Favoritar/manter na lista: alimento ativo que o usuário pode usar no diário
+    (público ou dele)."""
+    return bool(food.get("is_active", 1)) and can_use_food(identity, food)
+
+
+def can_favorite_portion(identity: Identity, portion: dict[str, Any]) -> bool:
+    """Porção padrão do favorito: pública ou do próprio usuário."""
+    dono = _owner(portion)
+    return dono is None or dono == int(identity.user_id)
+
+
 def portions_visibility(identity: Identity, food: dict[str, Any]) -> tuple[str, tuple[Any, ...]]:
     """Porções visíveis de um alimento: as públicas, as do usuário e, num
     alimento PRIVADO, as do dono dele (o admin que vai promover vê o que será
@@ -174,6 +199,8 @@ __all__ = [
     "VISIBLE_PORTIONS_SQL",
     "can_add_portion",
     "can_edit_food",
+    "can_favorite_food",
+    "can_favorite_portion",
     "can_list_private_foods",
     "can_log_food",
     "can_log_portion",
@@ -181,6 +208,7 @@ __all__ = [
     "can_use_food",
     "can_view_food",
     "diary_foods_visibility",
+    "favorites_owner",
     "fetch_target_user",
     "foods_visibility",
     "is_admin",
