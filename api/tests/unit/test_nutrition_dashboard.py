@@ -190,6 +190,14 @@ def test_gasto_medio_da_formula_so_dos_dias_fechados_com_meta():
     assert dash.window_tdee_kcal(dias, HOJE, [None, None, None, 9000.0]) is None
 
 
+def test_projecao_usa_a_meta_de_hoje_so_quando_nenhum_dia_fechado_tem_meta():
+    dias = (date(2026, 10, 15), date(2026, 10, 16), HOJE)
+    assert dash.projection_tdee_kcal(dias, HOJE, [None, None, 2800.0]) == 2800.0  # substituto, só para a projeção
+    assert dash.window_tdee_kcal(dias, HOJE, [None, None, 2800.0]) is None  # o "pela fórmula" segue sem hoje
+    assert dash.projection_tdee_kcal(dias, HOJE, [2500.0, None, 2800.0]) == 2500.0  # com dia fechado, hoje não entra
+    assert dash.projection_tdee_kcal(dias, HOJE, [None, None, None]) is None
+
+
 def test_gasto_medio_da_formula_olha_so_a_janela_do_tdee_observado():
     dias = dash.window_dates(HOJE, dash.ADAPTIVE_WINDOW_DAYS + 5)
     valores = [4000.0] * 5 + [2000.0] * (dash.ADAPTIVE_WINDOW_DAYS - 1) + [9000.0]

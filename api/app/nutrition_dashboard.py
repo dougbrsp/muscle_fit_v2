@@ -236,7 +236,7 @@ def get_dashboard(
                 start_weight_kg=partida_peso,
                 start_body_fat_percent=partida_gordura,
                 as_of=hoje,
-                tdee_kcal=gasto_formula,
+                tdee_kcal=dash.projection_tdee_kcal(dias_lidos, hoje, tdees),
                 fat_mass_kg=massa_gorda,
             )
             projecao = resultado.to_dict()

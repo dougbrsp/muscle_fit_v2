@@ -428,6 +428,21 @@ def window_tdee_kcal(
     return sum(valores) / len(valores) if valores else None
 
 
+def projection_tdee_kcal(
+    days: Sequence[date], today: date, tdee_kcal: Sequence[Optional[float]]
+) -> Optional[float]:
+    """Gasto para a PROJEÇÃO de bulking: o da fórmula (`window_tdee_kcal`, sem hoje) e, só quando nenhum dia
+    fechado da janela tem meta, o TDEE da meta de hoje como substituto (para o prazo não saltar no dia
+    seguinte). O "pela fórmula" mostrado ao usuário continua sem hoje."""
+    media = window_tdee_kcal(days, today, tdee_kcal)
+    if media is not None:
+        return media
+    for dia, valor in zip(days, tdee_kcal):
+        if dia == today:
+            return positive_number(valor)
+    return None
+
+
 def adaptive_intake_kcal(
     days: Sequence[date], today: date, day_totals: Sequence[Optional[NutritionTotals]]
 ) -> list[Optional[float]]:
@@ -526,6 +541,7 @@ __all__ = [
     "last_by_day",
     "normalize_window_days",
     "positive_series",
+    "projection_tdee_kcal",
     "week_blocks",
     "weight_trend_public",
     "window_adherence",

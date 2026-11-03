@@ -385,7 +385,7 @@ export function DashboardNutricaoClient() {
   });
   const data = consulta.data;
   // O seletor guarda as janelas da última resposta: não some enquanto carrega nem depois de um erro.
-  const [janelas, setJanelas] = useState<{ choices: number[]; atual: number } | null>(null);
+  const [janelas, setJanelas] = useState<{ choices: number[]; atual: number | null } | null>(null);
   useEffect(() => {
     if (consulta.data && !consulta.isPlaceholderData) {
       setJanelas({ choices: consulta.data.window_choices, atual: consulta.data.window_days });
@@ -394,6 +394,8 @@ export function DashboardNutricaoClient() {
   const trocarAluno = (novo: number | null) => {
     setUserId(novo);
     setDays(null);
+    // A janela da resposta anterior era de outro aluno: o seletor espera a nova resposta para mostrar a atual.
+    setJanelas((anterior) => (anterior ? { ...anterior, atual: null } : anterior));
   };
 
   return (
@@ -419,7 +421,7 @@ export function DashboardNutricaoClient() {
             w={200}
             allowDeselect={false}
             data={janelas.choices.map((n) => ({ value: String(n), label: `Últimos ${n} dias` }))}
-            value={String(days ?? janelas.atual)}
+            value={days != null ? String(days) : janelas.atual != null ? String(janelas.atual) : null}
             onChange={(valor) => valor && setDays(Number(valor))}
           />
         )}
