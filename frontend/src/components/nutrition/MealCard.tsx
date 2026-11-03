@@ -61,7 +61,7 @@ export function TotalsLine({ totals }: { totals: NutritionTotals }) {
   );
 }
 
-function quantidade(item: MealItem): string {
+export function quantidade(item: MealItem): string {
   const unidade = nutritionLabel(UNIT_OPTIONS, item.unit) ?? item.unit;
   const porcao = item.portion_label ? ` (${item.portion_label})` : '';
   return `${formatNumberOrDash(item.quantity, 2)} × ${unidade}${porcao} = ${formatWithUnit(item.amount, item.basis, 0)}`;
