@@ -359,10 +359,10 @@ export function UsuariosScreen() {
         </form>
         <StickyAction>
           <Group wrap="nowrap" gap="sm">
-            <Button variant="default" size="lg" mih={48} onClick={() => setView({ kind: 'list' })}>
+            <Button variant="default" size="md" mih={48} onClick={() => setView({ kind: 'list' })}>
               Cancelar
             </Button>
-            <Button size="lg" color="brand" mih={48} style={{ flex: 1 }} disabled={!canSubmitCreate} loading={createMutation.isPending} onClick={() => submitCreate()}>
+            <Button size="md" color="brand" mih={48} style={{ flex: 1 }} disabled={!canSubmitCreate} loading={createMutation.isPending} onClick={() => submitCreate()}>
               Criar usuário
             </Button>
           </Group>
@@ -443,10 +443,10 @@ export function UsuariosScreen() {
         </Stack>
         <StickyAction>
           <Group wrap="nowrap" gap="sm">
-            <Button variant="default" size="lg" mih={48} onClick={() => setView({ kind: 'list' })}>
+            <Button variant="default" size="md" mih={48} onClick={() => setView({ kind: 'list' })}>
               Cancelar
             </Button>
-            <Button size="lg" color="brand" mih={48} style={{ flex: 1 }} loading={updateMutation.isPending} onClick={saveEdit}>
+            <Button size="md" color="brand" mih={48} style={{ flex: 1 }} loading={updateMutation.isPending} onClick={saveEdit}>
               Salvar
             </Button>
           </Group>

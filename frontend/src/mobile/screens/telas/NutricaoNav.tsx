@@ -1,6 +1,7 @@
 'use client';
 
-import { ListGroup, ListRow } from '../../ui';
+import { useState } from 'react';
+import { BottomSheet, ListGroup, ListRow } from '../../ui';
 
 const SECOES = [
   { href: '/nutricao', label: 'Diário' },
@@ -11,15 +12,24 @@ const SECOES = [
   { href: '/dashboard/nutricao', label: 'Painel' },
 ] as const;
 
-/** Seções da Nutrição em lista (substitui a faixa de botões do desktop). */
 export type NutricaoSecao = (typeof SECOES)[number]['href'];
 
+/** Seção atual da Nutrição numa linha só; o toque abre a lista das demais (substitui a faixa de botões do desktop). */
 export function NutricaoNav({ active }: { active: NutricaoSecao }) {
+  const [opened, setOpened] = useState(false);
+  const atual = SECOES.find((secao) => secao.href === active);
   return (
-    <ListGroup title="Seções da Nutrição" aria-label="Seções da Nutrição">
-      {SECOES.filter((secao) => secao.href !== active).map((secao) => (
-        <ListRow key={secao.href} title={secao.label} href={secao.href} />
-      ))}
-    </ListGroup>
+    <>
+      <ListGroup aria-label="Seções da Nutrição">
+        <ListRow title="Seção da Nutrição" value={atual?.label} onClick={() => setOpened(true)} />
+      </ListGroup>
+      <BottomSheet opened={opened} onClose={() => setOpened(false)} title="Seções da Nutrição">
+        <ListGroup>
+          {SECOES.map((secao) => (
+            <ListRow key={secao.href} title={secao.label} href={secao.href} current={secao.href === active} />
+          ))}
+        </ListGroup>
+      </BottomSheet>
+    </>
   );
 }

@@ -185,11 +185,11 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
         {editingRow ? null : (
           <StickyAction>
             <Group wrap="nowrap" gap="sm">
-              <Button variant="default" size="lg" mih={48} onClick={resetDraft}>
+              <Button variant="default" size="md" mih={48} onClick={resetDraft}>
                 Outro
               </Button>
               <Button
-                size="lg"
+                size="md"
                 color="brand"
                 mih={48}
                 style={{ flex: 1 }}
@@ -308,11 +308,11 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
           </Stack>
           <StickyAction>
             <Group wrap="nowrap" gap="sm">
-              <Button variant="default" size="lg" mih={48} onClick={onClose}>
+              <Button variant="default" size="md" mih={48} onClick={onClose}>
                 Cancelar
               </Button>
               <Button
-                size="lg"
+                size="md"
                 color="brand"
                 mih={48}
                 style={{ flex: 1 }}

@@ -1,0 +1,143 @@
+import type { Page, Route } from '@playwright/test';
+import { MOCK_API_ORIGIN } from '../desktop-baseline/mock-api';
+
+/**
+ * Dados realistas para as telas da frente C (sem alterar `mock-api.ts`): as
+ * rotas daqui são registradas DEPOIS do mock base, então têm prioridade; o que
+ * não está aqui cai (`route.fallback()`) no mock base.
+ */
+const sets = (rows: Array<Record<string, unknown>>) =>
+  rows.map((r, i) => ({ id: i + 1, set_number: i + 1, set_type: 'working', ...r }));
+
+const ACTIVITY_LIST = {
+  items: [
+    { id: 1, local_date: '2026-10-13', activity_type: 'strength', name: 'Treino A - Peito e tríceps', gym_name: 'Academia Central', conducted_by: 'dougfitness', session_status: 'done', workout_plan_name: 'Ficha A', total_volume_kg: 8420.5, avg_rpe: 8.2 },
+    { id: 2, local_date: '2026-10-11', activity_type: 'strength', name: 'Treino B - Costas e bíceps', gym_name: 'Academia Central', conducted_by: 'personal', session_status: 'done', workout_plan_name: 'Ficha B', total_volume_kg: 7310, avg_rpe: 8 },
+    { id: 3, local_date: '2026-10-09', activity_type: 'strength', name: 'Treino C - Pernas', gym_name: 'Academia Central', conducted_by: 'dougfitness', session_status: 'in_progress', workout_plan_name: null, total_volume_kg: 5120, avg_rpe: 7.5 },
+  ],
+};
+
+const ACTIVITY_DETAIL = {
+  ...ACTIVITY_LIST.items[0],
+  id: 1,
+  started_at: '2026-10-13T18:30:00',
+  gym_id: 1,
+  conducted_by: 'dougfitness',
+  workout_plan_id: 1,
+  calories_kcal: 412.37,
+  calories_source_label: 'Intervals.icu',
+  ai_summary: 'Boa sessão de empurrar, com progressão de carga no supino.',
+  ai_summary_generated_at: '2026-10-13T20:00:00',
+  exercises: [
+    {
+      id: 11, activity_id: 1, sequence: 1, original_name: 'Supino reto com barra', mapped_name: 'Supino reto', mapping_id: 1, muscle_primary: 'Peitoral',
+      equipment_name: 'Banco reto', workout_plan_exercise_id: 101, planned_mapping_id: 1,
+      sets: sets([
+        { reps: 10, weight_kg: 80, rpe: 8 },
+        { reps: 9, weight_kg: 80, rpe: 8.5 },
+        { reps: 8, weight_kg: 80, rpe: 9 },
+      ]),
+    },
+    {
+      id: 12, activity_id: 1, sequence: 2, original_name: 'Rosca unilateral com halter', mapped_name: 'Rosca direta', mapping_id: 2, muscle_primary: 'Bíceps',
+      equipment_name: 'Halteres', workout_plan_exercise_id: 102, planned_mapping_id: 3, planned_exercise_name: 'Rosca martelo',
+      sets: sets([
+        { reps: 10, weight_kg: 16, rpe: 8, reps_left: 10, reps_right: 9, rpe_left: 8, rpe_right: 8.5, sides_text: 'reps E 10 · D 9' },
+        { reps: 9, weight_kg: 16, rpe: 9, reps_left: 10, reps_right: 9, rpe_left: 8.5, rpe_right: 9, sides_text: 'reps E 10 · D 9' },
+      ]),
+    },
+  ],
+};
+
+const PLAN_EXERCISES = [
+  { workout_plan_exercise_id: 101, sequence: 1, exercise_name: 'Supino reto com barra', mapping_id: 1, muscle_primary: 'Peitoral', equipment_name: 'Banco reto', sets_count: 4, reps_target: '8-10', load_target: '80 kg', rpe_target: '8', rest_seconds: 120, warmup: false, progression: 'increased', progression_note: 'Carga subiu em relação à sessão anterior.' },
+  { workout_plan_exercise_id: 102, sequence: 2, exercise_name: 'Crucifixo inclinado', mapping_id: 4, muscle_primary: 'Peitoral', equipment_name: 'Halteres', sets_count: 3, reps_target: '10-12', load_target: '18 kg', rpe_target: '8', rest_seconds: 90, warmup: false, advanced_technique: null },
+  { workout_plan_exercise_id: 103, sequence: 3, exercise_name: 'Tríceps na polia', mapping_id: 5, muscle_primary: 'Tríceps', equipment_name: 'Polia alta', sets_count: 3, reps_target: '10-15', load_target: '30 kg', rpe_target: '8', rest_seconds: 75, warmup: false },
+];
+
+const PLAN_LIST = {
+  items: [
+    { id: 1, name: 'Ficha A - Peito e tríceps', plan_date: '2026-10-14', plan_time: '18:30', gym_id: 1, gym_name: 'Academia Central', plan_type: 'abc', split_day: 'A', template_id: 7, template_name: 'ABC Hipertrofia', goal: 'Hipertrofia de peito', status: 'planned', exercises_count: 3, created_at: '2026-10-10T10:00:00', updated_at: '2026-10-10T10:00:00' },
+    { id: 2, name: 'Ficha B - Costas e bíceps', plan_date: '2026-10-11', plan_time: null, gym_id: 1, gym_name: 'Academia Central', plan_type: 'abc', split_day: 'B', template_id: 7, template_name: 'ABC Hipertrofia', goal: null, status: 'completed', exercises_count: 4, created_at: '2026-10-08T10:00:00', updated_at: '2026-10-11T10:00:00' },
+  ],
+};
+
+const PLAN_DETAIL = { ...PLAN_LIST.items[0], template_slot_sequence: 1, editable: true, raw_payload: null, exercises: PLAN_EXERCISES };
+
+const FOOD = (id: number, name: string) => ({
+  id, source: 'taco', source_id: String(id), source_version: '4', barcode: null, name, brand: null, category: 'Cereais', basis: 'g',
+  per_100: { energy_kcal: 128, protein_g: 2.5, carbohydrate_g: 28.1, lipid_g: 0.2 }, serving: { serving_size: null, household_measure: null, servings_per_package: null },
+  license: null, citation: 'TACO 4ª ed.', field_sources: [], is_public: true, is_own: false, is_active: true,
+  permissions: { can_edit: false, can_add_portion: false, can_promote: false }, created_at: null, updated_at: null,
+  score: 0.9, auto_accept: true, is_favorite: id === 1,
+});
+
+const USER = { id: 1, username: 'ana', full_name: 'Ana Teste' };
+const NUTRITION_DAY = {
+  user: USER, local_date: '2026-10-14', today: '2026-10-14', target: null, target_action: 'skip', target_notices: [], meals: [], totals: null,
+  balance: { rows: [], tdee_kcal: null, energy_balance_kcal: null, limitations: [] }, day_log: null,
+  training: { is_training_day: false, training_known: true, sessions: [], comparison: null },
+};
+const NUTRITION_WEEK = {
+  user: USER, today: '2026-10-14', start: '2026-10-12', end: '2026-10-18',
+  days: ['12', '13', '14', '15', '16', '17', '18'].map((d) => ({ local_date: `2026-10-${d}`, target: null, target_action: 'skip', totals: null, intake_kcal: null, logged: false, intake_incomplete: false })),
+  report: { days: [], budget: { kcal: null, protein_g: null, carb_g: null, fat_g: null, days_with_target: 0 }, bank: { balance_kcal: null, carryover_kcal: null, max_daily_carryover_kcal: null, max_weekly_bank_kcal: null, logged_days: 0 },
+    adherence: { kcal_share: null, protein_share: null, logged_days: 0, valid_week: false, kcal_within_tolerance: null, protein_ok: null }, logged_days: [], incomplete_days: [], limitations: [] },
+};
+
+const FIXTURES: Record<string, unknown> = {
+  'GET /activities': ACTIVITY_LIST,
+  'GET /activities/1': ACTIVITY_DETAIL,
+  'GET /analytics/muscle-activation-by-activity': {
+    items: [
+      { muscle_group: 'Peitoral', primary_series: 3, primary_equivalent: 3, secondary_series: 0, secondary_equivalent: 0, stabilizer_series: 0, stabilizer_equivalent: 0, total_equivalent: 3 },
+      { muscle_group: 'Bíceps', primary_series: 2, primary_equivalent: 2, secondary_series: 0, secondary_equivalent: 0, stabilizer_series: 0, stabilizer_equivalent: 0, total_equivalent: 2 },
+    ],
+  },
+  'GET /workout-plans': PLAN_LIST,
+  'GET /workout-plans/1': PLAN_DETAIL,
+  'GET /workout-plans/1/exercise-swap-options': { plan_id: 1, editable: true, rows: [] },
+  'GET /workout-plan-templates/assigned-to-me': { items: [{ id: 7, name: 'ABC Hipertrofia', slots: [{ sequence: 1, name: 'A' }] }] },
+  'GET /mapping-canonical/options': { items: [{ id: 1, exercise_name: 'Supino reto com barra', amazfit_name: 'Bench press', primary_group: 'Peitoral' }] },
+  'GET /exercise-mapping-catalog': { items: [{ id: 1, exercise_name: 'Supino reto com barra', amazfit_name: 'Bench press', primary_group: 'Peitoral', secondary_group: 'Tríceps' }] },
+  'GET /exercise-mapping-catalog/groups': { items: [{ primary_group: 'Peitoral' }, { primary_group: 'Bíceps' }] },
+  'GET /gym-equipment': { items: [{ id: 1, equipment_id: 1, equipment_name: 'Banco reto', mapping_exercise_name: 'Supino reto com barra', photo_url: null }] },
+  'GET /cardio-recommendations': { items: [] },
+  'POST /analytics/muscle-activation-breakdown': { items: [] },
+  'POST /analytics/muscle-activation-preview': { items: [] },
+  'GET /nutrition/weeks': NUTRITION_WEEK,
+  'GET /nutrition/days/2026-10-14': NUTRITION_DAY,
+  'GET /nutrition/foods/search': { query: 'arroz', normalized: 'arroz', items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')] },
+  'GET /nutrition/favorites': { items: [] },
+  'GET /body-composition': {
+    items: [
+      { id: 1, local_date: '2026-10-12', measured_at: null, weight_kg: 82.4, bmi: 25.1, body_fat_percent: 17.8, muscle_mass_kg: 36.2, body_water_percent: 56.1 },
+      { id: 2, local_date: '2026-09-28', measured_at: null, weight_kg: 83.1, bmi: 25.3, body_fat_percent: 18.4, muscle_mass_kg: 35.9, body_water_percent: 55.7 },
+    ],
+  },
+};
+
+/** Registra as fixtures da frente C por cima do mock base. */
+export async function installTelasFixtures(page: Page) {
+  await page.route(`${MOCK_API_ORIGIN}/**`, async (route: Route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const fixture = FIXTURES[`${req.method()} ${url.pathname}`];
+    if (fixture === undefined || req.method() === 'OPTIONS') {
+      await route.fallback();
+      return;
+    }
+    const origin = req.headers()['origin'] ?? '*';
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'access-control-allow-origin': origin,
+        'access-control-allow-credentials': 'true',
+        'access-control-allow-headers': '*',
+        'access-control-allow-methods': '*',
+      },
+      contentType: 'application/json',
+      body: JSON.stringify(fixture),
+    });
+  });
+}

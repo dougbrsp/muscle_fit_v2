@@ -23,6 +23,7 @@ import { isWorkingSetType } from '@/lib/set-types';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
+import { headerMetaPayload, saveExerciseLog } from '@/lib/exercise-log-save';
 import { finishWorkoutSession } from '@/lib/workout-session-finish';
 import {
   ActivityDetail,
@@ -211,58 +212,7 @@ export function TreinoDetalheScreen() {
   }
 
   const saveExerciseMutation = useMutation({
-    mutationFn: async () => {
-      if (!form.exercise_name) throw new Error('Selecione um exercício.');
-      if (editingExerciseId) {
-        return apiFetch(`/exercises/logs/${editingExerciseId}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            local_date: activity?.local_date,
-            started_at: activity?.started_at || null,
-            original_name: form.exercise_name,
-            mapping_id: selectedMap?.id ?? null,
-            mapped_name: selectedMap?.amazfit_name || form.exercise_name,
-            muscle_primary: selectedMap?.primary_group || null,
-            muscle_secondary: selectedMap?.secondary_group || null,
-            gym_id: activity?.gym_id ?? null,
-            conducted_by: activity?.conducted_by ?? null,
-            equipment_id: form.equipment_id ? Number(form.equipment_id) : null,
-            workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
-            muscle_pain: form.muscle_pain,
-            joint_pain: form.joint_pain,
-            sets: form.sets.map(setUpdatePayload),
-          }),
-        });
-      }
-      const exerciseResult = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${activityId}/exercises`, {
-        method: 'POST',
-        body: JSON.stringify({
-          original_name: form.exercise_name,
-          mapping_id: selectedMap?.id ?? null,
-          equipment_id: form.equipment_id ? Number(form.equipment_id) : null,
-          workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
-          muscle_pain: form.muscle_pain,
-          joint_pain: form.joint_pain,
-        }),
-      });
-      for (let index = 0; index < form.sets.length; index += 1) {
-        const set = form.sets[index];
-        try {
-          await apiFetch(`/workout-sessions/${activityId}/exercises/${exerciseResult.exercise_id}/sets`, {
-            method: 'POST',
-            body: JSON.stringify({ set_number: index + 1, reps: set.reps, weight_kg: set.weight_kg, rpe: set.rpe }),
-          });
-        } catch (error) {
-          throw new Error(
-            `Exercício criado (série ${index + 1} de ${form.sets.length} falhou ao salvar). ` +
-              `Edite o registro na lista para completar as séries restantes. Detalhe: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-          );
-        }
-      }
-      return exerciseResult;
-    },
+    mutationFn: () => saveExerciseLog({ activityId, activity, form, editingExerciseId, selectedMap }),
     onSuccess: async () => {
       setEditingExerciseId(null);
       setForm(emptyExerciseForm());
@@ -284,15 +234,7 @@ export function TreinoDetalheScreen() {
     mutationFn: async (headerForm: WorkoutHeaderForm) =>
       apiFetch(`/workout-sessions/${activityId}/meta`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          name: headerForm.name,
-          local_date: headerForm.local_date,
-          started_at: buildStartedAt(headerForm.local_date, headerForm.started_at_time),
-          gym_id: headerForm.gym_id ? Number(headerForm.gym_id) : null,
-          training_type_id: headerForm.training_type_id ? Number(headerForm.training_type_id) : null,
-          conducted_by: headerForm.conducted_by || null,
-          workout_plan_id: headerForm.workout_plan_id ? Number(headerForm.workout_plan_id) : null,
-        }),
+        body: JSON.stringify(headerMetaPayload(headerForm)),
       }),
     onSuccess: async () => {
       closeHeaderEdit();
@@ -675,7 +617,7 @@ export function TreinoDetalheScreen() {
           <Group wrap="nowrap" gap="sm">
             <Button
               variant="default"
-              size="lg"
+              size="md"
               mih={48}
               onClick={() => {
                 resetForm();
@@ -685,7 +627,7 @@ export function TreinoDetalheScreen() {
               Cancelar
             </Button>
             <Button
-              size="lg"
+              size="md"
               color="brand"
               mih={48}
               style={{ flex: 1 }}
@@ -693,7 +635,7 @@ export function TreinoDetalheScreen() {
               loading={saveExerciseMutation.isPending}
               onClick={() => saveExerciseMutation.mutate()}
             >
-              {editingExerciseId ? 'Salvar edição' : 'Lançar exercício'}
+              {editingExerciseId ? 'Salvar' : 'Lançar'}
             </Button>
           </Group>
         </StickyAction>
