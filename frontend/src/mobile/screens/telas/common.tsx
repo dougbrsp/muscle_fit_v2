@@ -77,3 +77,13 @@ export function useBackToClose(open: boolean, onClose: () => void) {
     };
   }, [open]);
 }
+
+/**
+ * Tira o foco do campo ativo. Depois de escolher uma opção num Select, o primeiro
+ * toque no botão fixo era engolido (só fechava o foco do campo): sem foco preso, o
+ * toque seguinte já aciona a ação.
+ */
+export function blurActive() {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) active.blur();
+}

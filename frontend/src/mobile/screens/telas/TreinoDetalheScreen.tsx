@@ -60,7 +60,7 @@ import {
   StickyAction,
 } from '../../ui';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
-import { QueryGate, SheetButton, useBackToClose } from './common';
+import { QueryGate, SheetButton, blurActive, useBackToClose } from './common';
 import { MuscleActivationList } from './MuscleActivationList';
 
 /**
@@ -87,10 +87,8 @@ export function TreinoDetalheScreen() {
   const [caloriesDraft, setCaloriesDraft] = useState<number | ''>('');
 
   const isValidId = Number.isFinite(activityId) && activityId > 0;
-  useBackToClose(formOpen, () => {
-    resetForm();
-    setFormOpen(false);
-  });
+  // Voltar fecha a visão e MANTÉM o rascunho: reabrir continua de onde parou.
+  useBackToClose(formOpen, () => setFormOpen(false));
 
   const activityQuery = useQuery({
     queryKey: ['activity-detail', activityId],
@@ -298,8 +296,11 @@ export function TreinoDetalheScreen() {
   }
 
   function startNewExercise() {
-    setEditingExerciseId(null);
-    setForm(emptyExerciseForm());
+    // Rascunho em andamento (de um lançamento novo) continua; saindo de uma edição, começa limpo.
+    if (editingExerciseId !== null) {
+      setEditingExerciseId(null);
+      setForm(emptyExerciseForm());
+    }
     saveExerciseMutation.reset();
     setFormOpen(true);
   }
@@ -422,7 +423,10 @@ export function TreinoDetalheScreen() {
             placeholder="Selecione o grupo trabalhado"
             data={groupOptions}
             value={form.muscle_group}
-            onChange={(value) => setForm((c) => ({ ...c, muscle_group: value || null, equipment_id: '', exercise_name: '' }))}
+            onChange={(value) => {
+              setForm((c) => ({ ...c, muscle_group: value || null, equipment_id: '', exercise_name: '' }));
+              blurActive();
+            }}
             nothingFoundMessage="Nenhum grupo muscular encontrado"
           />
           <Select
@@ -438,7 +442,10 @@ export function TreinoDetalheScreen() {
             }
             data={equipmentOptions}
             value={form.equipment_id || null}
-            onChange={(value) => setForm((c) => ({ ...c, equipment_id: value || '', exercise_name: '' }))}
+            onChange={(value) => {
+              setForm((c) => ({ ...c, equipment_id: value || '', exercise_name: '' }));
+              blurActive();
+            }}
             clearable
             disabled={!activity.gym_id || !form.muscle_group}
             nothingFoundMessage="Nenhum equipamento cadastrado para esse grupo muscular nessa academia"
@@ -475,6 +482,7 @@ export function TreinoDetalheScreen() {
                 exercise_name: value,
                 equipment_id: exactLink ? String(exactLink.id) : c.equipment_id,
               }));
+              blurActive();
             }}
             nothingFoundMessage="Nenhum exercício encontrado para este equipamento"
           />

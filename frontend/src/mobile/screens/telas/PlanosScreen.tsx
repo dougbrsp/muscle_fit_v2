@@ -21,6 +21,8 @@ export function PlanosScreen() {
   const qc = useQueryClient();
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
+  // Depois de aberta, a visão de geração fica montada (escondida) para voltar não perder o rascunho.
+  const [generationStarted, setGenerationStarted] = useState(false);
   const [selected, setSelected] = useState<WorkoutPlanListItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -45,12 +47,16 @@ export function PlanosScreen() {
 
   useBackToClose(generating, () => setGenerating(false));
 
-  if (generating) return <GerarPlanoView onClose={() => setGenerating(false)} />;
-
   const items = plansQuery.data?.items;
 
   return (
     <>
+      {generationStarted ? (
+        <div hidden={!generating}>
+          <GerarPlanoView onClose={() => setGenerating(false)} />
+        </div>
+      ) : null}
+      <div hidden={generating}>
       <ScreenHeader title="Planos de treino" subtitle="Fichas geradas dos seus Modelos" />
       <ResponsiveDataList
         aria-label="Planos de treino"
@@ -78,7 +84,10 @@ export function PlanosScreen() {
       />
 
       <StickyAction>
-        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => setGenerating(true)}>
+        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => {
+            setGenerationStarted(true);
+            setGenerating(true);
+          }}>
           Gerar novo plano
         </Button>
       </StickyAction>
@@ -134,6 +143,7 @@ export function PlanosScreen() {
           </ListGroup>
         ) : null}
       </BottomSheet>
+      </div>
     </>
   );
 }

@@ -85,7 +85,85 @@ const NUTRITION_WEEK = {
     adherence: { kcal_share: null, protein_share: null, logged_days: 0, valid_week: false, kcal_within_tolerance: null, protein_ok: null }, logged_days: [], incomplete_days: [], limitations: [] },
 };
 
+const NUTRIENTS = { energy_kcal: 128, protein_g: 2.5, carbohydrate_g: 28.1, lipid_g: 0.2 };
+const MEAL_ITEM = {
+  id: 1, position: 1, food_id: 1, portion_id: null, portion_label: null, label: 'Arroz, integral, cozido', quantity: 150, unit: 'g', amount: 150, basis: 'g',
+  nutrients: NUTRIENTS, nature: 'DERIVED', limitations: [], food_source: 'taco', citation: 'TACO 4ª ed.', field_sources: [],
+};
+const MEAL_TOTALS = { nutrients: NUTRIENTS, incomplete_fields: [], complete: true, nature: 'DERIVED', item_count: 1, limitations: [] };
+const MEAL = {
+  id: 5, user_id: 1, local_date: '2026-10-14', meal_slot: 'lunch', eaten_at: '12:30', source: 'manual', notes: null,
+  totals: MEAL_TOTALS, items: [MEAL_ITEM], engine_version: 'x', created_at: null, updated_at: null,
+};
+const FOOD_DETAIL = {
+  ...FOOD(1, 'Arroz, integral, cozido'),
+  portions: [{ id: 1, food_id: 1, label: '1 colher de servir', amount: 60, source: 'taco', is_public: true, is_own: false }],
+  permissions: { can_edit: false, can_add_portion: true, can_promote: false },
+};
+const CHECKIN = {
+  id: 9, user_id: 1, week_start: '2026-10-05', week_end: '2026-10-11', due_date: '2026-10-12', status: 'proposed', status_label: 'Aguardando sua resposta',
+  verdict: 'slow', verdict_label: 'Abaixo do ritmo', can_respond: true, show_card: true, expires_at: null, expires_on: '2026-10-19', adjustment_kcal: 100,
+  missing_items: [], reason_items: [{ code: 'slow', label: 'O peso variou menos do que o esperado para a semana.' }],
+  proposal: {
+    before: { kcal: 2200, protein_g: 160, carb_g: 240, fat_g: 70 }, after: { kcal: 2300, protein_g: 160, carb_g: 265, fat_g: 70 }, delta_kcal: 100, changes: {},
+    change_items: [{ field: 'maintenance_kcal_adjust', label: 'Ajuste da manutenção', unit: 'kcal', before: 0, after: 100 }], scope: 'rest_day', scope_label: 'Dia sem treino',
+  },
+  engine_version: 'x', source_plan_id: 1, generated_plan_id: null, responded_at: null, created_at: null,
+  summary: {
+    complete_days: 6, days_with_target: 7, mean_intake_kcal: 2150, mean_target_kcal: 2200, mean_tdee_kcal: 2500, planned_balance_kcal: -300, kcal_share: 0.98, protein_share: 1,
+    adherence_valid: true, kcal_within_tolerance: true, weight_week_mean_kg: 82.4, weight_previous_week_mean_kg: 82.5, weight_weekly_change_kg: -0.1, weight_weekly_change_share: -0.001,
+    expected_weekly_change_kg: -0.4, maintenance_band_kg: 0.2, body_fat_percent: 17.8, muscle_mass_kg: 36.2,
+    weight_trend: { weekly_change: -0.1, valid_for_bia: false }, lean_trend: { weekly_change: null, valid_for_bia: false }, fat_trend: { weekly_change: null, valid_for_bia: false },
+    observed_tdee: { kcal: 2480, quality: 'ok' },
+  },
+  goal: { goal_weight_kg: 78, goal_body_fat_percent: 15 },
+};
+const GROUP = (key: string, label: string) => ({ key, label, order: 0 });
+const SLOT = { template_id: 7, slot_sequence: 1, slot_id: 1, slot_name: 'A', template_name: 'ABC Hipertrofia', label: 'A - ABC Hipertrofia' };
+const VOL_ROW = (key: string, label: string) => ({
+  group: GROUP(key, label), comparison_status: 'same_slot', slot: SLOT,
+  by_period: {
+    t3: { activity_id: 1, local_date: '2026-09-22', volume_kg: 3000, avg_rpe: 7.5, sets_count: 9 },
+    t2: { activity_id: 2, local_date: '2026-09-29', volume_kg: 3200, avg_rpe: 8, sets_count: 9 },
+    t1: { activity_id: 3, local_date: '2026-10-06', volume_kg: 3100, avg_rpe: 8, sets_count: 9 },
+    t0: { activity_id: 4, local_date: '2026-10-13', volume_kg: 3400, avg_rpe: 8.5, sets_count: 9 },
+  },
+});
+const SETS_ROW = (key: string, label: string) => ({
+  group: GROUP(key, label), comparison_status: 'same_slot', slot: SLOT,
+  by_period: {
+    t3: { activity_id: 1, local_date: '2026-09-22', equivalent_sets: 9 },
+    t2: { activity_id: 2, local_date: '2026-09-29', equivalent_sets: 9 },
+    t1: { activity_id: 3, local_date: '2026-10-06', equivalent_sets: 10 },
+    t0: { activity_id: 4, local_date: '2026-10-13', equivalent_sets: 11 },
+  },
+});
+const LEVEL = { volume: [VOL_ROW('peito', 'Peito'), VOL_ROW('costas', 'Costas')], equivalent_sets: [SETS_ROW('peito', 'Peito'), SETS_ROW('costas', 'Costas')] };
+const NUTRITION_PLAN = {
+  id: 1, user_id: 1, status: 'published', state: 'current', notes: null, engine_version: 'x', effective_from: '2026-10-01', superseded_at: null, published_at: '2026-10-01T10:00:00',
+  created_by: 1, published_by: 1, created_at: null, updated_at: '2026-10-01T10:00:00', strategy: 'maintenance', advanced: false, protein_g_per_kg: null, fat_kcal_share: 0.25,
+  weekly_rate_share: null, surplus_share: null, carb_min_g_per_kg: null, bmr_formula: 'mifflin', tdee_mode: 'activity_factor', activity_level: null, meals_per_day: 4,
+  goal_body_fat_percent: null, goal_weight_kg: null, carb_cycling_enabled: false, macro_priority: 'protein', manual_targets: null, cycle_days: null, maintenance_kcal_adjust: 0,
+};
+
 const FIXTURES: Record<string, unknown> = {
+  'GET /training-goals': { default: 'hypertrophy', items: [] },
+  'GET /analytics/muscle-groups-recent-exercise-volume': { items: [] },
+  'GET /analytics/muscle-groups-slot-comparison': { limit: 400, sessions_per_slot: 4, period_keys: ['t3', 't2', 't1', 't0'], levels: { volume_class: LEVEL, parent_group: LEVEL, muscle_group: LEVEL } },
+  'GET /analytics/training-volume': { overview: { days: 14, items: [] }, trend: { days: 14, items: [] } },
+  'GET /nutrition/plans': { user: USER, items: [NUTRITION_PLAN] },
+  'GET /nutrition/me/plan': { __status: 404, body: { detail: { error: 'no_published_plan', message: 'Você ainda não tem plano publicado.' } } },
+  'GET /nutrition/foods/1': FOOD_DETAIL,
+  'GET /nutrition/foods/usda/search': {
+    query: 'rice', total_hits: 1,
+    items: [{ fdc_id: 1, name: 'Rice, white, cooked', data_type: 'foundation', category: 'Cereal Grains', basis: 'g', per_100: { energy_kcal: 130, protein_g: 2.7, carbohydrate_g: 28, lipid_g: 0.3 }, energy_origin: null }],
+  },
+  'POST /nutrition/meals/preview': { items: [MEAL_ITEM], totals: MEAL_TOTALS, warnings: [] },
+  'POST /nutrition/meals': MEAL,
+  'POST /workout-sessions/1/exercises': { exercise_id: 21 },
+  'POST /workout-sessions/1/exercises/21/sets': { ok: true },
+  'DELETE /users/2': { status: 'ok', id: 2, is_active: false },
+
   'GET /activities': ACTIVITY_LIST,
   'GET /activities/1': ACTIVITY_DETAIL,
   'GET /analytics/muscle-activation-by-activity': {
@@ -152,8 +230,9 @@ export async function installTelasFixtures(page: Page) {
       return;
     }
     const origin = req.headers()['origin'] ?? '*';
+    const withStatus = fixture as { __status?: number; body?: unknown };
     await route.fulfill({
-      status: 200,
+      status: withStatus.__status ?? 200,
       headers: {
         'access-control-allow-origin': origin,
         'access-control-allow-credentials': 'true',
@@ -161,7 +240,7 @@ export async function installTelasFixtures(page: Page) {
         'access-control-allow-methods': '*',
       },
       contentType: 'application/json',
-      body: JSON.stringify(fixture),
+      body: JSON.stringify(withStatus.__status ? withStatus.body : fixture),
     });
   });
 }
@@ -179,6 +258,24 @@ export async function installAdminSession(page: Page) {
       headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' },
       contentType: 'application/json',
       body: JSON.stringify({ id: 1, username: 'ana', full_name: 'Ana Teste', role: 'admin', must_change_password: false, intervals_configured: false, timezone: 'America/Sao_Paulo', features: { exercise_cards: false } }),
+    });
+  });
+}
+
+export async function installCheckinProposal(page: Page) {
+  await page.route(`${MOCK_API_ORIGIN}/nutrition/checkin`, async (route: Route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': route.request().headers()['origin'] ?? '*', 'access-control-allow-credentials': 'true' },
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: USER, today: '2026-10-14', settings: { weekday: 0, weekday_label: 'Segunda-feira', is_default: true }, weekday_options: [],
+        due_date: '2026-10-19', week_start: '2026-10-12', week_end: '2026-10-18', checkin: CHECKIN, none_items: [],
+      }),
     });
   });
 }

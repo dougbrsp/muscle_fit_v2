@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
-import { installAdminSession, installTelasFixtures } from './telas-fixtures';
+import { installAdminSession, installCheckinProposal, installTelasFixtures } from './telas-fixtures';
 
 /**
  * Mobile v2, frente C: as telas migradas (treino, corpo, nutricao e conta)
@@ -67,7 +67,7 @@ for (const vp of VIEWPORTS) {
 
     test.afterEach(async ({}, info) => {
       // Rota nao mockada = teste frágil: as telas com dados realistas nao podem depender do 599 do mock base.
-      if (/rotas migradas|indicadores: percorre/.test(info.title)) return;
+      if (/rotas migradas|indicadores: percorre|volume|plano nutricional|check-in|usda/.test(info.title)) return;
       const faltando = [...new Set(unhandled)].filter((k) => !k.startsWith('OPTIONS'));
       expect(faltando, `rotas nao mockadas em "${info.title}"`).toEqual([]);
     });
@@ -215,6 +215,146 @@ for (const vp of VIEWPORTS) {
         await expect(page.getByRole('textbox', { name: 'Seção' })).toHaveValue(titulo);
         await check(page, `indicadores-secao-${titulo}`, vp.name);
       }
+    });
+
+    test('usuarios: desativar volta a lista e nao reativa ao salvar', async ({ page }) => {
+      test.setTimeout(120_000);
+      await installAdminSession(page);
+      const puts: string[] = [];
+      page.on('request', (r) => {
+        if (r.method() === 'PUT' && r.url().includes('/users/2')) puts.push(r.url());
+      });
+      await open(page, '/usuarios/');
+      await page.getByText('bia', { exact: true }).click();
+      await page.getByRole('button', { name: 'Desativar usuário' }).click();
+      const del = page.waitForRequest((r) => r.method() === 'DELETE' && r.url().endsWith('/users/2'));
+      await page.getByRole('dialog').getByRole('button', { name: 'Desativar' }).click();
+      await del;
+      await expect(page.getByText('Editar bia')).toHaveCount(0);
+      await expect(page.getByText('Novo usuário')).toBeVisible();
+      expect(puts).toEqual([]);
+    });
+
+    test('voltar (goBack) fecha o lancamento e mantem o rascunho', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await expect(page.getByText('Séries', { exact: true })).toBeVisible();
+      await page.getByLabel('Repetições').fill('12');
+      await page.goBack();
+      await expect(page.getByText('Treino', { exact: true }).first()).toBeVisible();
+      expect(new URL(page.url()).pathname).toBe('/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await expect(page.getByLabel('Repetições')).toHaveValue('12');
+    });
+
+    test('voltar (goBack) fecha a linha do plano; fechar por codigo nao deixa entrada presa', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/planos-treino/');
+      await page.getByText('Ficha A - Peito e tríceps').click();
+      await page.getByRole('button', { name: 'Abrir plano' }).click();
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      expect(new URL(page.url()).pathname).toMatch(/^\/planos-treino\/1\/?$/);
+      // goBack fecha a edicao da linha, sem sair da rota, e o digitado fica
+      await page.getByText('1. Supino reto com barra').click();
+      await page.getByLabel('Reps').fill('6-8');
+      await page.goBack();
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      expect(new URL(page.url()).pathname).toMatch(/^\/planos-treino\/1\/?$/);
+      await page.getByText('1. Supino reto com barra').click();
+      await expect(page.getByLabel('Reps')).toHaveValue('6-8');
+      // fechar por codigo (Concluir) desfaz a entrada: o proximo goBack sai da rota
+      await page.getByRole('button', { name: 'Concluir' }).click();
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/planos-treino\/?$/);
+    });
+
+    test('voltar (goBack) fecha a geracao de plano sem sair da rota', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/planos-treino/');
+      await page.getByRole('button', { name: 'Gerar novo plano' }).click();
+      await page.getByLabel('Objetivo (opcional)').fill('foco em peito');
+      await page.goBack();
+      await expect(page.getByText('Ficha A - Peito e tríceps')).toBeVisible();
+      expect(new URL(page.url()).pathname).toBe('/planos-treino/');
+      await page.getByRole('button', { name: 'Gerar novo plano' }).click();
+      await expect(page.getByLabel('Objetivo (opcional)')).toHaveValue('foco em peito');
+    });
+
+    test('lancamento novo: POST do exercicio e da serie', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await page.getByRole('textbox', { name: 'Grupo muscular' }).click();
+      await page.getByRole('option', { name: 'Peitoral' }).click();
+      await page.getByRole('textbox', { name: 'Equipamento' }).click();
+      await page.getByRole('option', { name: 'Banco reto' }).click();
+      await page.getByRole('textbox', { name: 'Exercício canônico' }).click();
+      await page.getByRole('option', { name: 'Supino reto com barra' }).click();
+      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises'));
+      const setPost = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises/21/sets'));
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      const body = JSON.parse((await post).postData() ?? '{}');
+      expect(body.original_name).toBe('Supino reto com barra');
+      expect(body.mapping_id).toBe(1);
+      expect(body.equipment_id).toBe(1);
+      const setBody = JSON.parse((await setPost).postData() ?? '{}');
+      expect(setBody).toMatchObject({ set_number: 1, reps: 10, weight_kg: 20 });
+    });
+
+    test('diario: POST da refeicao com item da busca (mealItems sem tabela)', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/nutricao/');
+      await page.getByRole('button', { name: 'Adicionar refeição' }).click();
+      await page.getByLabel('Buscar alimento').fill('arroz');
+      await page.getByText('Arroz, integral, cozido').first().click();
+      await page.getByLabel('Quantidade').first().fill('150');
+      await page.getByRole('textbox', { name: 'Refeição' }).first().click();
+      await page.getByRole('option').first().click();
+      await expect(page.getByText('Itens')).toBeVisible();
+      await page.waitForTimeout(800);
+      await check(page, 'diario-refeicao-itens', vp.name);
+      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/nutrition/meals'));
+      await page.getByRole('button', { name: /Salvar/ }).first().click();
+      const body = JSON.parse((await post).postData() ?? '{}');
+      expect(body.local_date).toBe('2026-10-14');
+      expect(body.items?.[0]?.food_id).toBe(1);
+    });
+
+    test('alimentos: usda e porcoes em lista, sem tabela', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/nutricao/alimentos/');
+      await page.getByLabel('Buscar no USDA (em inglês)').fill('rice');
+      await page.getByRole('button', { name: 'Buscar no USDA' }).click();
+      await expect(page.getByText('Rice, white, cooked')).toBeVisible();
+      await check(page, 'alimentos-usda', vp.name);
+      await page.getByLabel('Buscar alimento', { exact: true }).fill('arroz');
+      await page.getByText('Arroz, integral, cozido').first().click();
+      await expect(page.getByText('1 colher de servir')).toBeVisible();
+      await check(page, 'alimentos-porcoes', vp.name);
+    });
+
+    test('check-in com proposta em lista', async ({ page }) => {
+      test.setTimeout(120_000);
+      await installCheckinProposal(page);
+      await open(page, '/nutricao/checkin/');
+      await expect(page.getByText('Dia sem treino')).toBeVisible();
+      await check(page, 'checkin-proposta', vp.name);
+    });
+
+    test('volume: comparativo em lista e detalhe por toque', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/volume-grupamentos/');
+      await expect(page.getByText('Peito').first()).toBeVisible();
+      await check(page, 'volume-comparativo', vp.name);
+    });
+
+    test('plano nutricional: novo rascunho fixo', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/nutricao/plano/');
+      await expect(page.getByRole('button', { name: 'Novo rascunho' })).toBeVisible();
+      await check(page, 'nutricao-plano', vp.name);
     });
   });
 }
