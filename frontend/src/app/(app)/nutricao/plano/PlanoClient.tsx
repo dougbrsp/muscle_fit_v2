@@ -15,6 +15,7 @@ import { UserPicker } from '@/components/nutrition/UserPicker';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
+import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type { NutritionLimitation, NutritionPlan, NutritionPlanSaved } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
@@ -25,7 +26,7 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
 
 /**
- * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o aluno; o usuário comum
+ * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum
  * opera o próprio plano (`fixedUserId`, D2). O acesso é decidido pela API.
  */
 function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
@@ -47,6 +48,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
     mutationFn: (plan: NutritionPlan) => deleteNutritionPlan(plan.id),
     onSuccess: async (_resultado, plan) => {
       if (selectedId === plan.id) setSelectedId(null);
+      setWarnings([]);
       setNotice('Rascunho excluído.');
       await qc.invalidateQueries({ queryKey: nutritionKeys.plans(plan.user_id) });
     },
@@ -108,7 +110,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
       {userId !== null && plansQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {plansQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-          {nutritionErrorInfo(plansQuery.error, 'Não foi possível carregar os planos do aluno.').message}
+          {nutritionErrorInfo(plansQuery.error, 'Não foi possível carregar os planos.').message}
         </Alert>
       )}
 
@@ -142,10 +144,12 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
             onSelect={(plan) => {
               setSelectedId(plan.id);
               setNotice(null);
+              setWarnings([]);
             }}
             onEdit={(plan) => {
               setEditing({ mode: 'edit', plan });
               setNotice(null);
+              setWarnings([]);
             }}
             onDelete={(plan) => deleteMutation.mutate(plan)}
             deletingId={deleteMutation.isPending ? (deleteMutation.variables?.id ?? null) : null}
@@ -162,8 +166,11 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
             onConflict={() => qc.invalidateQueries({ queryKey: nutritionKeys.plans(selected.user_id) })}
             onPublished={async (result) => {
               setSelectedId(result.plan.id);
+              setWarnings([]);
               setNotice(`Plano publicado. ${result.targets.length} meta(s) diária(s) calculada(s) a partir de hoje.`);
               await qc.invalidateQueries({ queryKey: nutritionKeys.plans(result.plan.user_id) });
+              // O plano em vigor e o diário já lidos mostram as metas antigas: força a releitura.
+              await Promise.all(targetsChangedKeys().map((queryKey) => qc.invalidateQueries({ queryKey })));
             }}
           />
         </Stack>
@@ -174,7 +181,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
 
 /**
  * `/nutricao/plano` — plano nutricional. Cada usuário cria, edita e publica o próprio plano
- * (N2, D2); admin e personal trainer fazem o mesmo para qualquer aluno. O backend decide o
+ * (N2, D2); admin e personal trainer fazem o mesmo para qualquer usuário. O backend decide o
  * acesso (`nutrition_access.py`) e calcula tudo (motor `domain/nutrition`); a tela só exibe.
  */
 export function PlanoClient() {
@@ -196,7 +203,7 @@ export function PlanoClient() {
         </Title>
         <Text c={BRAND.textMuted} size="md">
           {canManage
-            ? 'Defina a estratégia e os parâmetros do aluno, confira a semana calculada pelo motor e publique.'
+            ? 'Defina a estratégia e os parâmetros, confira a semana calculada pelo motor e publique.'
             : 'Escolha sua estratégia, seu alvo e como distribuir as calorias; o motor calcula suas metas.'}
         </Text>
       </div>

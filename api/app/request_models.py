@@ -160,6 +160,9 @@ class NutritionPlanPublishIn(_StrictIn):
     (pode ser null): divergir da vigente travada responde 409 `publish_conflict`."""
 
     expected_current_id: Optional[int]
+    # Versão do rascunho que a tela viu (`updated_at` do plano). Se mudou, 409 `draft_changed`; ausente = sem conferência
+    # (cliente antigo).
+    expected_updated_at: Optional[str] = Field(default=None, max_length=40)
 
 
 class NutritionTargetsRecomputeIn(_StrictIn):

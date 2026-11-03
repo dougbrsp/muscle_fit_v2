@@ -32,6 +32,10 @@ import { BRAND } from '@/theme';
 
 type NumberField = number | string;
 
+/** Com gramas manuais, treino e estratégia não alteram as metas (decisão a confirmar com o usuário: mudar aqui). */
+const MANUAL_TARGETS_HINT =
+  'Você fixa proteína, carboidrato e gordura. Treino e estratégia não alteram essas metas; o motor confere as faixas, avisa e precisa do seu peso registrado.';
+
 type FormState = {
   strategy: NutritionCode | null;
   advanced: boolean;
@@ -153,7 +157,7 @@ function stopBodyFatHint(strategy: NutritionCode | null): string | undefined {
 }
 
 type Props = {
-  /** Aluno do plano (admin/PT); `null` = o próprio usuário (D2). */
+  /** Dono do plano (admin/PT); `null` = o próprio usuário (D2). */
   userId: number | null;
   plan: NutritionPlan | null;
   onSaved: (plan: NutritionPlanSaved) => void;
@@ -161,7 +165,7 @@ type Props = {
 };
 
 /**
- * Formulário do rascunho (o próprio usuário, ou admin/PT para um aluno). Opções, faixas e defaults vêm do motor
+ * Formulário do rascunho (o próprio usuário, ou admin/PT para outro usuário). Opções, faixas e defaults vêm do motor
  * (`motor-constants.generated.json` via `nutrition-constants.ts`); a API valida
  * de novo e responde 400 com o código do motor. Frações (gordura, ritmo,
  * superávit) aparecem em % só para a tela.
@@ -234,7 +238,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         {ranges && usaSuperavit && (
           <Switch
             mt="xl"
-            label="Aluno avançado (superávit menor)"
+            label="Nível avançado (superávit menor)"
             checked={form.advanced}
             onChange={(event) => changeAdvanced(event.currentTarget.checked)}
           />
@@ -373,7 +377,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
       <Stack gap="xs">
         <Switch
           label="Definir as gramas manualmente"
-          description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas e avisa; precisa do seu peso registrado."
+          description={MANUAL_TARGETS_HINT}
           checked={form.manualOn}
           onChange={(event) => update({ manualOn: event.currentTarget.checked })}
         />
@@ -436,7 +440,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         justify="flex-end"
         style={{
           position: 'sticky',
-          bottom: 0,
+          bottom: 'calc(var(--m-bottom-nav, 0px) + env(safe-area-inset-bottom))',
           zIndex: 5,
           background: BRAND.bgElevated,
           paddingTop: 'var(--mantine-spacing-xs)',
@@ -456,7 +460,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         </Button>
       </Group>
       <Text size="xs" c={BRAND.textMuted}>
-        O rascunho não muda nada para o aluno até ser publicado.
+        O rascunho não muda nenhuma meta até ser publicado.
       </Text>
     </Stack>
   );

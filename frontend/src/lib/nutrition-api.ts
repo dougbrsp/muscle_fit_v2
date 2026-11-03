@@ -96,8 +96,16 @@ export function previewNutritionPlan(planId: number): Promise<NutritionPlanPrevi
  * (ou `null`): se outra publicação mudou a vigente no meio, a API responde 409
  * `publish_conflict` (concorrência otimista) e a tela pede para recarregar.
  */
-export function publishNutritionPlan(planId: number, expectedCurrentId: number | null): Promise<NutritionPublishResponse> {
-  const payload: NutritionPlanPublishPayload = { expected_current_id: expectedCurrentId };
+export function publishNutritionPlan(
+  planId: number,
+  expectedCurrentId: number | null,
+  expectedUpdatedAt?: string | null,
+): Promise<NutritionPublishResponse> {
+  // `expected_updated_at` = a versão do rascunho que a tela mostrou: se mudou, a API responde 409 `draft_changed`.
+  const payload: NutritionPlanPublishPayload = {
+    expected_current_id: expectedCurrentId,
+    expected_updated_at: expectedUpdatedAt ?? null,
+  };
   return apiFetch<NutritionPublishResponse>(`/nutrition/plans/${planId}/publish`, {
     method: 'POST',
     body: JSON.stringify(payload),

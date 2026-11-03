@@ -351,7 +351,11 @@ def apply_cycle_over_base(
     com dias futuros desconhecidos ou já congelados: cada dia só depende de si e do plano, e
     o carbo do treino entra por cima, sem ser redistribuído. Se o piso de carbo muda o
     multiplicador de um dia para outro (peso ou base diferentes), a soma da semana pode
-    desviar do exato (só quando o piso prende)."""
+    desviar do exato (só quando o piso prende).
+
+    Atwater: a kcal do dia é RECALCULADA pelas gramas (`kcal_from_macros`), então a kcal da meta com ciclo é a
+    do dia sem ciclo mais 4 kcal por grama de carbo movido (a de uma meta que já não fechava por Atwater, como a
+    de `kcal_below_protein_and_fat`, passa a fechar). A invariante é a soma semanal do carbo, não a da kcal-alvo."""
     if not target.computable or not base.computable:
         return target, (LIMIT_TARGET_NOT_COMPUTABLE,)
     mult = week_multipliers(tuple(kinds), base.carb_g, weight_kg)

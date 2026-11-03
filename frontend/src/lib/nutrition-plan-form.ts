@@ -3,6 +3,7 @@
 // de FORMULÁRIO: gramas manuais mandam sobre a prioridade, e dias desligados viram null.
 
 import { DEFAULT_MACRO_PRIORITY, type NutritionCode } from './nutrition-constants';
+import { diaryKeys, nutritionKeys } from './nutrition-api';
 import type { NutritionManualTargetsInput } from './nutrition-types';
 
 /** Valor de campo numérico do formulário: número, texto digitado ou vazio. */
@@ -43,4 +44,23 @@ export function cycleDaysPayload(
   days: Readonly<Record<string, NutritionCode>>,
 ): Record<string, NutritionCode> | null {
   return on ? { ...days } : null;
+}
+
+/**
+ * Proposta do "puxar do Modelo" aplicada aos dias marcados: sem proposta (`null`: sem Modelo, Modelo parcial ou
+ * que treina todo dia) o que o usuário marcou fica como está.
+ */
+export function applyTemplateProposal(
+  current: Readonly<Record<string, NutritionCode>>,
+  proposal: Readonly<Record<string, NutritionCode>> | null,
+): Record<string, NutritionCode> {
+  return proposal ? { ...current, ...proposal } : { ...current };
+}
+
+/**
+ * Caches que ficam velhos quando as metas mudam (publicar ou recalcular): o plano em vigor e o diário
+ * (que lê a meta de cada dia). Chaves do React Query.
+ */
+export function targetsChangedKeys(): ReadonlyArray<readonly unknown[]> {
+  return [nutritionKeys.myPlan, diaryKeys.all];
 }

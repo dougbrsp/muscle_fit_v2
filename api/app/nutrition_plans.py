@@ -51,10 +51,17 @@ from .domain.nutrition.daily_target import (
     recompute_window,
     week_window,
 )
+from .domain.nutrition.body_composition import PERCENT
 from .domain.nutrition.plan import (
+    ERR_DRAFT_LIMIT,
+    MAX_DRAFTS_PER_USER,
+    NOTE_TEMPLATE_PARTIAL_WEEKDAYS,
+    PLAN_LIST_MAX,
+    check_cycle_floors,
+    partial_week_warnings,
+    template_weekdays_note,
     NOTE_TEMPLATE_NOT_ASSIGNED,
     NOTE_TEMPLATE_NO_CYCLE,
-    NOTE_TEMPLATE_WITHOUT_WEEKDAYS,
     PlanSettings,
     PlanStatus,
     build_plan_settings,
@@ -140,10 +147,11 @@ _TEMPLATE_NAME_SQL = "SELECT name FROM workout_plan_templates WHERE id = %s"
 _TEMPLATE_SLOTS_SQL = (
     "SELECT s.weekday, s.slot_type FROM workout_plan_template_slots s "
     "JOIN workout_plan_template_versions v ON v.id = s.version_id "
-    "WHERE v.current_template_id = %s ORDER BY s.sequence"
+    "AND s.template_id = v.current_template_id WHERE v.current_template_id = %s ORDER BY s.sequence"
 )
 _BY_ID_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE id = %s"
-_BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC"
+_BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT %s"
+_DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
 
 DRAFT = PlanStatus.DRAFT.value
 PUBLISHED = PlanStatus.PUBLISHED.value
@@ -256,22 +264,28 @@ def _require_draft(row: dict[str, Any]) -> None:
         raise _error(409, "plan_not_draft", "Só um rascunho pode ser alterado; o plano já foi publicado.")
 
 
-def _manual_check(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> tuple[Any, tuple[str, ...]]:
-    """Gramas manuais do plano contra o sujeito de HOJE (peso e MLG do aluno): levanta 400
-    `invalid_plan` quando falta o peso ou o motor bloqueia; devolve (checagem, avisos). Sem
-    gramas manuais não consulta nada. A meta da ESTRATÉGIA (sem as gramas) e a TMB servem só
-    aos avisos de energia."""
-    if settings.manual_macros is None:
+def _plan_checks(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> tuple[Any, tuple[str, ...]]:
+    """Confere o plano contra o sujeito de HOJE (peso e MLG do usuário): gramas manuais (D6) e pisos do
+    ciclo (menor e maior dia, com e sem gramas manuais). Levanta 400 `invalid_plan` quando falta o peso ou o
+    motor bloqueia; devolve (checagem das gramas, avisos). Sem gramas manuais nem ciclo não consulta nada. A
+    meta da ESTRATÉGIA (sem as gramas) e a TMB servem só aos avisos de energia."""
+    if settings.manual_macros is None and settings.cycle_kinds is None:
         return None, ()
     with conn.cursor() as cur:
         entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
     comp = compute_day(entradas, replace(settings, manual_macros=None), hoje, hoje)
     sujeito = comp.subject.subject
     checagem = check_plan_manual_targets(settings, sujeito, comp.target.kcal_target.kcal, comp.target.bmr.kcal)
-    erros = manual_save_errors(checagem, sujeito)
+    erros = list(manual_save_errors(checagem, sujeito))
+    erros_ciclo, avisos_ciclo = check_cycle_floors(settings, sujeito, comp.subject.scale_bmr_kcal, comp.subject.ffm_age_days)
+    erros.extend(erros_ciclo)
     if erros:
-        raise _invalid_plan(erros)
-    return checagem, manual_save_warnings(checagem)
+        raise _invalid_plan(tuple(erros))
+    return checagem, (*manual_save_warnings(checagem), *avisos_ciclo)
+
+
+def _needs_checks(settings: PlanSettings) -> bool:
+    return settings.manual_macros is not None or settings.cycle_kinds is not None
 
 
 def _manual_check_public(check: Any) -> Optional[dict[str, Any]]:
@@ -304,6 +318,9 @@ def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
     alvo["clamped_by"] = nutrition_labels.limitation_items(meta.kcal_target.clamped_by)
     return {
         **day_public(comp, today),
+        # Diferença REAL para o gasto total (já com gramas manuais, ciclo e prioridade); `kcal_target.delta_kcal`
+        # é só a da estratégia.
+        "kcal_delta": meta.kcal_delta,
         "bmr": meta.bmr.to_dict(),
         "scale_comparison": meta.scale_comparison.to_dict() if meta.scale_comparison else None,
         "tdee": meta.tdee.to_dict(),
@@ -329,7 +346,7 @@ def _subject_incomplete(comp: DayComputation) -> HTTPException:
     return _error(
         422,
         "nutrition_subject_incomplete",
-        "Faltam dados do aluno para calcular a meta de hoje.",
+        "Faltam dados do perfil para calcular a meta de hoje.",
         missing=nutrition_labels.limitation_items(missing_subject_data(comp.target)),
         subject=comp.subject.to_dict(),
     )
@@ -340,6 +357,8 @@ def _projection(comp: DayComputation, today: date) -> dict[str, Any]:
     premissa `is_minimum_estimate` e os motivos rotulados."""
     projecao = project_plan_goal(comp.settings, comp.subject.subject, comp.target.tdee.kcal, today).to_dict()
     projecao["reason_items"] = nutrition_labels.limitation_items(projecao["reasons"])
+    ritmo = projecao["weekly_rate_share"]
+    projecao["weekly_rate_percent"] = None if ritmo is None else ritmo * PERCENT
     return projecao
 
 
@@ -350,7 +369,14 @@ def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[Day
         limitacoes.extend(comp.target.limitations)
     sujeito = hoje.subject.subject
     manual = check_plan_manual_targets(hoje.settings, sujeito, hoje.target.kcal_target.kcal, hoje.target.bmr.kcal)
-    avisos = (*plan_warnings(hoje.settings, sujeito, hoje.target.tdee.kcal), *manual_save_warnings(manual))
+    erros_ciclo, avisos_ciclo = check_cycle_floors(hoje.settings, sujeito, hoje.subject.scale_bmr_kcal, hoje.subject.ffm_age_days)
+    avisos = (
+        *plan_warnings(hoje.settings, sujeito, hoje.target.tdee.kcal),
+        *manual_save_warnings(manual),
+        *erros_ciclo,
+        *avisos_ciclo,
+        *partial_week_warnings(hoje.settings, today),
+    )
     return {
         "plan": plan_public(row),
         "user": user,
@@ -360,6 +386,8 @@ def _preview_payload(row: dict[str, Any], user: dict[str, Any], semana: list[Day
         "target": _target_detail(hoje, today),
         "goal": _goal(hoje),
         "week": [day_public(comp, today) for comp in semana],
+        # Os dias que a publicação de hoje de fato cria (do dia de hoje ao fim da semana): a tela só mostra estes.
+        "publish_days": [dia.isoformat() for dia in publication_window(today, None).days()],
         "limitations": nutrition_labels.limitation_items(limitacoes),
         "projection": _projection(hoje, today),
         "warnings": nutrition_labels.limitation_items(avisos),
@@ -382,7 +410,7 @@ def list_plans(
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             usuario = fetch_target_user(cur, alvo)
-            cur.execute(_BY_USER_SQL, (alvo,))
+            cur.execute(_BY_USER_SQL, (alvo, PLAN_LIST_MAX))
             linhas = cur.fetchall() or []
     return {"user": usuario, "items": [plan_public(linha) for linha in linhas]}
 
@@ -395,7 +423,15 @@ def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_acto
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             fetch_target_user(cur, alvo)
-        _, avisos = _manual_check(conn, alvo, settings, _today_for(conn, alvo)) if settings.manual_macros else (None, ())
+            cur.execute(_DRAFT_COUNT_SQL, (alvo, DRAFT))
+            if int((cur.fetchone() or {}).get("n") or 0) >= MAX_DRAFTS_PER_USER:
+                raise _error(
+                    409,
+                    ERR_DRAFT_LIMIT,
+                    nutrition_labels.limitation_label(ERR_DRAFT_LIMIT),
+                    max_drafts=MAX_DRAFTS_PER_USER,
+                )
+        _, avisos = _plan_checks(conn, alvo, settings, _today_for(conn, alvo)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
             cur.execute(_INSERT_SQL, (alvo, identity.user_id, DRAFT, *_settings_write_values(settings, payload.notes)))
             novo_id = cur.lastrowid
@@ -414,7 +450,7 @@ def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identi
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
-        _, avisos = _manual_check(conn, aluno, settings, _today_for(conn, aluno)) if settings.manual_macros else (None, ())
+        _, avisos = _plan_checks(conn, aluno, settings, _today_for(conn, aluno)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
             cur.execute(_UPDATE_DRAFT_SQL, (*_settings_write_values(settings, payload.notes), int(plan_id), DRAFT))
             if int(cur.rowcount or 0) == 0:
@@ -462,7 +498,7 @@ def publish_plan(
     payload: NutritionPlanPublishIn,
     identity: Identity = Depends(plan_actor),
 ):
-    """Rascunho -> vigente a partir de HOJE (dia do aluno). Concorrência
+    """Rascunho -> vigente a partir de HOJE (dia civil de quem é dono do plano). Concorrência
     otimista: a vigente é travada (`FOR UPDATE`) e comparada com
     `expected_current_id`; outra publicação no meio -> 409 `publish_conflict`.
     Materializa a janela de publicação do motor (`publication_window`): nenhuma
@@ -473,6 +509,13 @@ def publish_plan(
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
+            if payload.expected_updated_at is not None and payload.expected_updated_at != _iso(linha.get("updated_at")):
+                raise _error(
+                    409,
+                    "draft_changed",
+                    "O rascunho foi alterado depois que a tela o carregou; recarregue e confira antes de publicar.",
+                    current_updated_at=_iso(linha.get("updated_at")),
+                )
             cur.execute(_CURRENT_FOR_UPDATE_SQL, (aluno, PUBLISHED))
             vigente = cur.fetchone()
             vigente_id = int(vigente["id"]) if vigente else None
@@ -480,12 +523,12 @@ def publish_plan(
                 raise _error(
                     409,
                     "publish_conflict",
-                    "O plano vigente do aluno mudou desde que a tela carregou; recarregue antes de publicar.",
+                    "O plano vigente mudou desde que a tela carregou; recarregue antes de publicar.",
                     current_id=vigente_id,
                 )
         hoje = _today_for(conn, aluno)
         settings = settings_from_row(linha)
-        _manual_check(conn, aluno, settings, hoje)
+        _plan_checks(conn, aluno, settings, hoje)
         with conn.cursor() as cur:
             janela = publication_window(hoje, last_target_date(cur, aluno))
             entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
@@ -498,7 +541,7 @@ def publish_plan(
                 cur.execute(_PUBLISH_SQL, (PUBLISHED, hoje, agora, identity.user_id, ENGINE_VERSION, int(plan_id), DRAFT))
             except Exception as exc:  # noqa: BLE001 - corrida no UNIQUE da vigente vira 409, não 500
                 if is_duplicate_key_error(exc):
-                    raise _error(409, "publish_conflict", "Outro plano foi publicado para este aluno agora; recarregue.") from exc
+                    raise _error(409, "publish_conflict", "Outro plano foi publicado agora; recarregue.") from exc
                 raise
             if int(cur.rowcount or 0) == 0:
                 raise _error(409, "plan_not_draft", "O rascunho já foi publicado ou apagado; recarregue.")
@@ -532,7 +575,7 @@ def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity =
         with conn.cursor() as cur:
             planos = load_published_plans(cur, aluno)
         if planos.for_day(janela.date_to) is None:
-            raise _no_published_plan("O aluno não tem plano publicado.")
+            raise _no_published_plan("Não há plano publicado.")
         metas = ensure_daily_targets(conn, aluno, janela, today=hoje)
     return {"user_id": aluno, **janela.to_dict(), "targets": metas}
 
@@ -569,14 +612,15 @@ def cycle_days_from_template(
         proposta = propose_cycle_from_template(slots)
         dias_treino = training_weekdays_from_template(slots)
         if proposta is None:
-            notas.append(NOTE_TEMPLATE_WITHOUT_WEEKDAYS)
+            notas.append(template_weekdays_note(slots) or NOTE_TEMPLATE_PARTIAL_WEEKDAYS)
         elif not proposta.cycles:
             notas.append(NOTE_TEMPLATE_NO_CYCLE)
     return {
         "user_id": aluno,
         "template": modelo,
         "training_weekdays": list(dias_treino) if dias_treino is not None else None,
-        "cycle_days": proposta.day_map if proposta is not None and proposta.valid else None,
+        # Só quando há ciclo: um Modelo que treina todo dia (ou nenhum) devolve null e não apaga o que o usuário marcou.
+        "cycle_days": proposta.day_map if proposta is not None and proposta.cycles else None,
         "cycles": bool(proposta and proposta.cycles),
         "notes": nutrition_labels.limitation_items(notas),
     }

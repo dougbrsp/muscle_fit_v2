@@ -33,7 +33,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O, sem relógio.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Any, Final, Mapping, Optional, Sequence
 
@@ -41,12 +41,23 @@ from . import energy_expenditure as ee
 from .anthropometrics import ActivityLevel, Subject, normalize_activity_level, positive_number, weight_is_valid
 from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_ffm_kg, target_weight_for_body_fat
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
+from ..cardio_envelope import slots_have_weekdays
 from .carb_cycling import CycleDays, DayKind, propose_day_kinds, validate_cycle_days
-from .daily_target import PlanParams
+from .daily_target import DayContext, PlanParams, compute_daily_target
 from .macros import meals_per_day_is_valid
-from .manual_targets import ManualTargetsCheck, RangeStatus, check_manual_targets
-from .phases import GoalProjection, REASON_RATE_OUTSIDE_RANGE, project_goal, resolve_stop_body_fat, should_stop
+from .energy_density import weekly_kg_for_daily_kcal
+from .macros import kcal_from_macros
+from .manual_targets import KCAL_BLOCK_MAX, KCAL_BLOCK_MIN, ManualTargetsCheck, RangeStatus, check_manual_targets
+from .phases import (
+    GoalProjection,
+    ProjectionStatus,
+    REASON_RATE_OUTSIDE_RANGE,
+    project_goal,
+    resolve_stop_body_fat,
+    should_stop,
+)
 from .strategy import (
+    CUT_MIN_INTAKE_BMR_MULTIPLE,
     DEFAULT_MACRO_PRIORITY,
     LIMIT_PARAM_OUT_OF_RANGE,
     MacroPriority,
@@ -80,6 +91,21 @@ ERR_MANUAL_REQUIRES_WEIGHT = "manual_targets_require_weight"
 NOTE_TEMPLATE_NOT_ASSIGNED = "template_not_assigned"
 NOTE_TEMPLATE_WITHOUT_WEEKDAYS = "template_without_weekdays"
 NOTE_TEMPLATE_NO_CYCLE = "template_no_cycle"
+NOTE_TEMPLATE_PARTIAL_WEEKDAYS = "template_partial_weekdays"
+# Pisos do ciclo (decisão do líder, N2 rodada 1): o menor e o maior dia do ciclo são conferidos ao salvar e publicar.
+ERR_CYCLE_KCAL_BELOW_MIN = "cycle_kcal_below_minimum"  # bloqueia: abaixo de `manual_targets.KCAL_BLOCK_MIN`
+ERR_CYCLE_KCAL_ABOVE_MAX = "cycle_kcal_above_maximum"  # bloqueia: acima de `manual_targets.KCAL_BLOCK_MAX`
+WARN_CYCLE_KCAL_BELOW_BMR = "cycle_kcal_below_bmr"  # avisa, como na D6
+WARN_CYCLE_PARTIAL_WEEK = "cycle_partial_week"  # publicação fora da segunda: sem compensação
+# Projeção com gramas manuais.
+REASON_MANUAL_AGAINST_STRATEGY = "projection_manual_against_strategy"
+REASON_MANUAL_MISSING_TDEE = "projection_manual_missing_tdee"
+# Rascunhos por usuário e itens por listagem (default de desenho, N2 rodada 1): autogerido sem teto encheria a tabela.
+MAX_DRAFTS_PER_USER: Final[int] = 20
+PLAN_LIST_MAX: Final[int] = 100
+ERR_DRAFT_LIMIT = "draft_limit"
+# Dia de referência só para escolher o dia da semana ao conferir o ciclo (uma segunda-feira).
+_CYCLE_CHECK_MONDAY: Final[date] = date(2026, 1, 5)
 FIELD_MANUAL_TARGETS = "manual_targets"
 FIELD_MACRO_PRIORITY = "macro_priority"
 # Chaves das gramas manuais no payload e no JSON gravado.
@@ -524,9 +550,33 @@ def project_plan_goal(
     settings: PlanSettings, subject: Subject, tdee_kcal: Any = None, as_of: Optional[date] = None
 ) -> GoalProjection:
     """Projeção do alvo do plano (`phases.project_goal`) para o sujeito de hoje: peso-alvo OU %G
-    alvo do plano (os dois ou nenhum voltam como dados insuficientes, com o motivo)."""
+    alvo do plano (os dois ou nenhum voltam como dados insuficientes, com o motivo). Com gramas
+    manuais o ritmo vem das kcal manuais contra o TDEE (cutting: o déficit; bulking: o superávit,
+    que `strategy.weekly_rate_share_for` converte em ritmo); gramas que vão contra a estratégia
+    devolvem `incoherent_with_strategy` e sem TDEE, dados insuficientes, sempre com o motivo."""
+    params = settings.strategy_params()
+    if settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE:
+        tdee = positive_number(tdee_kcal)
+        if tdee is None:
+            return GoalProjection(
+                status=ProjectionStatus.INSUFFICIENT_DATA, goal_kind=None, reasons=(REASON_MANUAL_MISSING_TDEE,)
+            )
+        kcal = kcal_from_macros(*settings.manual_macros.as_tuple())
+        saldo = (kcal or 0.0) - tdee  # negativo = déficit
+        contra = saldo >= 0 if settings.strategy == Strategy.CUTTING else saldo <= 0
+        if contra:
+            return GoalProjection(
+                status=ProjectionStatus.INCOHERENT, goal_kind=None, reasons=(REASON_MANUAL_AGAINST_STRATEGY,)
+            )
+        if settings.strategy == Strategy.CUTTING:
+            kg_semana = weekly_kg_for_daily_kcal(-saldo, resolved_fat_mass_kg(subject))
+            peso = positive_number(subject.weight_kg)
+            ritmo = kg_semana / peso if kg_semana is not None and peso is not None else None
+            params = replace(params, weekly_rate_share=ritmo)
+        else:
+            params = replace(params, surplus_share=saldo / tdee)
     return project_goal(
-        settings.strategy_params(),
+        params,
         subject.weight_kg,
         goal_weight_kg=settings.goal_weight_kg,
         goal_body_fat_percent=settings.goal_body_fat_percent,
@@ -537,14 +587,62 @@ def project_plan_goal(
     )
 
 
+def check_cycle_floors(
+    settings: PlanSettings, subject: Subject, scale_bmr: Any = None, ffm_age_days: Optional[int] = None
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Pisos do ciclo (erros, avisos): o menor e o maior dia do ciclo, num dia sem treino, com ou sem gramas
+    manuais. Energia abaixo de `KCAL_BLOCK_MIN` ou acima de `KCAL_BLOCK_MAX` BLOQUEIA; abaixo da TMB
+    (`CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB) só avisa, como na D6. Sem ciclo: nada."""
+    if settings.cycle_kinds is None:
+        return (), ()
+    params = settings.plan_params(ffm_age_days)
+    erros: list[str] = []
+    avisos: list[str] = []
+    for tipo in dict.fromkeys(settings.cycle_kinds):
+        indice = settings.cycle_kinds.index(tipo)
+        meta = compute_daily_target(
+            subject, params, DayContext(day=_CYCLE_CHECK_MONDAY + timedelta(days=indice)), scale_bmr=scale_bmr
+        )
+        kcal = meta.macros.kcal
+        if kcal is None:
+            continue
+        if kcal < KCAL_BLOCK_MIN and ERR_CYCLE_KCAL_BELOW_MIN not in erros:
+            erros.append(ERR_CYCLE_KCAL_BELOW_MIN)
+        if kcal > KCAL_BLOCK_MAX and ERR_CYCLE_KCAL_ABOVE_MAX not in erros:
+            erros.append(ERR_CYCLE_KCAL_ABOVE_MAX)
+        tmb = positive_number(meta.bmr.kcal)
+        if tmb is not None and kcal < CUT_MIN_INTAKE_BMR_MULTIPLE * tmb and WARN_CYCLE_KCAL_BELOW_BMR not in avisos:
+            avisos.append(WARN_CYCLE_KCAL_BELOW_BMR)
+    return tuple(erros), tuple(avisos)
+
+
+def partial_week_warnings(settings: PlanSettings, today: date) -> tuple[str, ...]:
+    """Publicar com ciclo fora da segunda-feira: os dias que já passaram não entram e não há compensação
+    (decisão do líder); a média da semana só fecha em semana completa do mesmo plano."""
+    return (WARN_CYCLE_PARTIAL_WEEK,) if settings.cycle_kinds is not None and today.weekday() != 0 else ()
+
+
+def _weekday_slots(slots: Sequence[tuple[Optional[int], bool]]) -> list[dict[str, Any]]:
+    return [{"weekday": dia} for dia, _treino in slots]
+
+
+def template_weekdays_note(slots: Sequence[tuple[Optional[int], bool]]) -> Optional[str]:
+    """Por que o Modelo não dá para mapear nos dias da semana: nenhum slot com dia (`template_without_weekdays`)
+    ou só alguns (`template_partial_weekdays`). `None` = todos os slots têm dia."""
+    if slots_have_weekdays(_weekday_slots(slots)):
+        return None
+    if any(slots_have_weekdays([slot]) for slot in _weekday_slots(slots)):
+        return NOTE_TEMPLATE_PARTIAL_WEEKDAYS
+    return NOTE_TEMPLATE_WITHOUT_WEEKDAYS
+
+
 def training_weekdays_from_template(slots: Sequence[tuple[Optional[int], bool]]) -> Optional[tuple[int, ...]]:
     """Dias da semana (0 = segunda … 6 = domingo) com treino no Modelo, a partir dos slots
-    `(weekday 1 = segunda … 7 = domingo | None, é_treino)`. O dia da semana do slot é
-    informativo no Modelo; sem NENHUM slot com dia da semana não há como mapear: `None`."""
-    com_dia = [(dia, treino) for dia, treino in slots if dia is not None and 1 <= int(dia) <= 7]
-    if not com_dia:
+    `(weekday 1 = segunda … 7 = domingo | None, é_treino)`. O dia da semana do slot é informativo no
+    Modelo: só mapeia quando TODOS os slots o têm (o mesmo predicado de `cardio_envelope`); senão `None`."""
+    if not slots_have_weekdays(_weekday_slots(slots)):
         return None
-    return tuple(sorted({int(dia) - 1 for dia, treino in com_dia if treino}))
+    return tuple(sorted({int(dia) - 1 for dia, treino in slots if treino and dia is not None}))
 
 
 def propose_cycle_from_template(slots: Sequence[tuple[Optional[int], bool]]) -> Optional[CycleDays]:

@@ -96,7 +96,7 @@ export type NutritionPlanSettingsPayload = {
 export type NutritionPlanPayload = NutritionPlanSettingsPayload & { user_id?: number };
 
 /** Corpo de `POST /nutrition/plans/{id}/publish` (`NutritionPlanPublishIn`): obrigatório, pode ser null. */
-export type NutritionPlanPublishPayload = { expected_current_id: number | null };
+export type NutritionPlanPublishPayload = { expected_current_id: number | null; expected_updated_at?: string | null };
 
 /** Janela de materialização do motor (`daily_target.TargetWindow`). */
 export type NutritionTargetWindow = { date_from: string; date_to: string; create_until: string };
@@ -168,6 +168,8 @@ export type NutritionTargetDetail = NutritionDayTarget & {
     limitations: string[];
   };
   macros: Record<string, unknown>;
+  /** Diferença REAL entre a meta do dia e o gasto total (negativa = déficit), já com gramas manuais, ciclo e prioridade. */
+  kcal_delta: number | null;
   protein_per_meal_g: number | null;
 };
 
@@ -190,6 +192,8 @@ export type NutritionPlanPreview = {
   target: NutritionTargetDetail;
   goal: NutritionGoal;
   week: NutritionDayTarget[];
+  /** Dias (ISO) que a publicação de hoje de fato cria: do dia de hoje ao fim da semana. */
+  publish_days: string[];
   limitations: NutritionLimitation[];
   /** Projeção até o alvo do plano (`phases.project_goal`), toda calculada pela API. */
   projection: NutritionProjection;
@@ -213,6 +217,8 @@ export type NutritionProjection = {
   weekly_rate_share: number | null;
   reasons: string[];
   reason_items: NutritionLimitation[];
+  /** Ritmo semanal em % do peso, pronto (calculado pela API). */
+  weekly_rate_percent: number | null;
   /** Alvo de %G supõe a massa magra atual constante: o prazo é um limite inferior (otimista). */
   is_minimum_estimate: boolean;
 };

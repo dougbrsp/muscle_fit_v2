@@ -83,6 +83,8 @@ LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycl
 # L8. A meta sai como dia sem treino e avisa (no modo explícito o treino do dia
 # entra no TDEE quando acontecer, até o dia congelar).
 LIMIT_TRAINING_UNKNOWN_FUTURE_DAY = "training_unknown_future_day"
+# Gramas manuais em dia de pausa/refeed: a fase leva a estratégia à manutenção, mas as gramas fixas do usuário não mudam.
+LIMIT_MANUAL_TARGETS_IGNORE_PHASE = "manual_targets_ignore_phase"
 
 # Congelamento da meta materializada (E2). 2 dias: o sync do Intervals.icu grava
 # a kcal do treino na madrugada do dia seguinte (cron 05:45 BRT), então ONTEM
@@ -187,6 +189,14 @@ class DailyTarget:
     @property
     def computable(self) -> bool:
         return self.macros.computable
+
+    @property
+    def kcal_delta(self) -> Optional[float]:
+        """Diferença REAL entre a meta do dia e o gasto total (negativa = déficit): já com gramas manuais,
+        ciclo e prioridade. `kcal_target.delta_kcal` é só o da estratégia, antes de tudo isso."""
+        if self.macros.kcal is None or self.tdee.kcal is None:
+            return None
+        return float(self.macros.kcal) - float(self.tdee.kcal)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -311,6 +321,8 @@ def compute_daily_target(
         # Gramas manuais (D6): o usuário fixou proteína, carboidrato e gordura; a kcal é a de
         # Atwater das gramas e não acompanha o treino do dia. Os avisos do motor viram limitações.
         metas, limitacoes_manual = _manual_targets(plan_params, params, subject, mlg, alvo.kcal, tmb.kcal)
+        if fase is not None and fase in MAINTENANCE_KCAL_PHASES:
+            limitacoes_manual = _unique(limitacoes_manual, (LIMIT_MANUAL_TARGETS_IGNORE_PHASE,))
     else:
         metas = macros_mod.macro_split_for_priority(
             alvo.kcal, params, plan_params.macro_priority, subject.weight_kg, mlg

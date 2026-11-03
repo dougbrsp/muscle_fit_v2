@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -198,7 +198,10 @@ class FakeCursor:
             plano = db.plans.get(int(p[0]))
             return self._result([plano] if plano else [])
         if sql == plans_mod._BY_USER_SQL:
-            return self._result(sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"]))
+            linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"])
+            return self._result(linhas[: int(p[1])])
+        if sql == plans_mod._DRAFT_COUNT_SQL:
+            return self._result([{"n": sum(1 for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1])}])
         if sql == plans_mod._CURRENT_FOR_UPDATE_SQL:
             db.locks.append(("current", p[0]))
             return self._result([{"id": r["id"]} for r in db.plans.values()
@@ -208,6 +211,7 @@ class FakeCursor:
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == status:
                 plano.update(dict(zip(plans_mod._SETTINGS_WRITE_COLUMNS, valores)))
+                plano["updated_at"] = db.now + timedelta(seconds=len(db.writes) + 1)  # o banco atualiza updated_at
                 self.rowcount = 1
                 db.writes.append(f"update plan {plano_id}")
             return self._result([])

@@ -181,3 +181,27 @@ def test_puxar_do_modelo_le_os_slots_da_versao_vigente(usuarios, raw, db_backend
     assert corpo["cycle_days"] == DIAS and corpo["cycles"] is True
     sem_modelo = _client(usuarios["outro"]).get("/nutrition/cycle-days/from-template").json()
     assert sem_modelo["template"] is None and sem_modelo["notes"][0]["code"] == "template_not_assigned"
+
+
+def test_limite_de_rascunhos_listagem_e_versao_do_rascunho_no_banco_real(usuarios, raw, monkeypatch, db_backend):
+    """SQL novo da rodada 1: contagem de rascunhos, LIMIT da listagem e `updated_at` como versão do rascunho."""
+    monkeypatch.setattr(nutrition_plans, "MAX_DRAFTS_PER_USER", 2)
+    monkeypatch.setattr(nutrition_plans, "PLAN_LIST_MAX", 1)
+    aluno = _client(usuarios["aluno"])
+    primeiro = aluno.post("/nutrition/plans", json={"strategy": "maintenance"})
+    assert primeiro.status_code == 201, (db_backend, primeiro.text)
+    assert aluno.post("/nutrition/plans", json={"strategy": "maintenance"}).status_code == 201
+    estouro = aluno.post("/nutrition/plans", json={"strategy": "maintenance"})
+    assert estouro.status_code == 409 and estouro.json()["detail"]["error"] == "draft_limit"
+    assert len(aluno.get("/nutrition/plans").json()["items"]) == 1
+    # A versão do rascunho que a tela viu: publicar com outra versão é 409 e não grava.
+    velha = "2000-01-01T00:00:00"
+    recusado = aluno.post(
+        f"/nutrition/plans/{primeiro.json()['id']}/publish", json={"expected_current_id": None, "expected_updated_at": velha}
+    )
+    assert recusado.status_code == 409 and recusado.json()["detail"]["error"] == "draft_changed"
+    certo = aluno.post(
+        f"/nutrition/plans/{primeiro.json()['id']}/publish",
+        json={"expected_current_id": None, "expected_updated_at": primeiro.json()["updated_at"]},
+    )
+    assert certo.status_code == 200, (db_backend, certo.text)

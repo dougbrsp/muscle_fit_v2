@@ -428,6 +428,28 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     plan_mod.NOTE_TEMPLATE_NO_CYCLE: (
         "O Modelo treina todos os dias (ou nenhum): não há dia de mais ou menos gasto para marcar."
     ),
+    dt_mod.LIMIT_MANUAL_TARGETS_IGNORE_PHASE: (
+        "Pausa ou refeed: as gramas manuais continuam as mesmas (a fase não as altera)."
+    ),
+    plan_mod.ERR_CYCLE_KCAL_BELOW_MIN: (
+        f"Num dia do ciclo a energia fica abaixo do mínimo seguro ({manual_mod.KCAL_BLOCK_MIN:.0f} kcal). Não pode ser salvo."
+    ),
+    plan_mod.ERR_CYCLE_KCAL_ABOVE_MAX: (
+        f"Num dia do ciclo a energia passa do máximo aceito ({manual_mod.KCAL_BLOCK_MAX:.0f} kcal). Não pode ser salvo."
+    ),
+    plan_mod.WARN_CYCLE_KCAL_BELOW_BMR: "Num dia do ciclo a energia fica abaixo da taxa metabólica basal. Salva, mas confira.",
+    plan_mod.WARN_CYCLE_PARTIAL_WEEK: (
+        "Publicando fora da segunda-feira, os dias que já passaram não entram e não há compensação: a média da "
+        "semana só fecha em semana completa do mesmo plano."
+    ),
+    plan_mod.REASON_MANUAL_AGAINST_STRATEGY: (
+        "As gramas manuais vão contra a estratégia (superávit no cutting ou déficit no bulking): sem projeção."
+    ),
+    plan_mod.REASON_MANUAL_MISSING_TDEE: "Sem o gasto total (TDEE) não dá para derivar o ritmo das gramas manuais.",
+    plan_mod.NOTE_TEMPLATE_PARTIAL_WEEKDAYS: (
+        "Só alguns slots do Modelo têm dia da semana: marque os dias à mão."
+    ),
+    plan_mod.ERR_DRAFT_LIMIT: "Você atingiu o limite de rascunhos: apague um para criar outro.",
     plan_mod.ERR_MANUAL_REQUIRES_WEIGHT: "Para salvar gramas manuais, registre seu peso: sem ele o motor não confere as faixas em g/kg.",
     # Janelas de recálculo.
     dt_mod.ERR_DATE_FROM_FROZEN: (

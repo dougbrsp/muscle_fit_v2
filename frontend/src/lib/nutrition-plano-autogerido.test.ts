@@ -5,11 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiFetch = vi.fn();
 vi.mock('./api', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api')>()), apiFetch }));
 
-const { createNutritionPlan, fetchCycleDaysFromTemplate, fetchNutritionPlans, nutritionKeys, updateNutritionPlan } =
-  await import('./nutrition-api');
+const {
+  createNutritionPlan,
+  diaryKeys,
+  fetchCycleDaysFromTemplate,
+  fetchNutritionPlans,
+  nutritionKeys,
+  publishNutritionPlan,
+  updateNutritionPlan,
+} = await import('./nutrition-api');
 const { DAY_KIND_OPTIONS, DEFAULT_MACRO_PRIORITY, MACRO_PRIORITY_OPTIONS, NUTRITION_NOTICES, WEEKDAY_OPTIONS } =
   await import('./nutrition-constants');
-const { cycleDaysPayload, macroPriorityPayload, manualTargetsPayload } = await import('./nutrition-plan-form');
+const { applyTemplateProposal, cycleDaysPayload, macroPriorityPayload, manualTargetsPayload, targetsChangedKeys } =
+  await import('./nutrition-plan-form');
 
 beforeEach(() => apiFetch.mockReset());
 
@@ -85,5 +93,29 @@ describe('plano autogerido: vocabulário do motor', () => {
 
   it('o aviso "ciclo indisponível" saiu do espelho', () => {
     expect(Object.keys(NUTRITION_NOTICES)).not.toContain('carb_cycling_unavailable');
+  });
+});
+
+describe('plano autogerido: rodada 1 de revisão', () => {
+  it('publicar envia a versão do rascunho que a tela viu (409 draft_changed se mudou)', async () => {
+    apiFetch.mockResolvedValue({});
+    await publishNutritionPlan(5, 2, '2026-11-02T10:00:00');
+    await publishNutritionPlan(5, null);
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({
+      expected_current_id: 2,
+      expected_updated_at: '2026-11-02T10:00:00',
+    });
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toEqual({ expected_current_id: null, expected_updated_at: null });
+  });
+
+  it('publicar e recalcular invalidam o plano em vigor e o diário', () => {
+    expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all]);
+  });
+
+  it('sem proposta do Modelo o que o usuário marcou fica; com proposta, ela vale', () => {
+    const marcado = { '0': 'low', '1': 'high' };
+    expect(applyTemplateProposal(marcado, null)).toEqual(marcado);
+    expect(applyTemplateProposal(marcado, null)).not.toBe(marcado);
+    expect(applyTemplateProposal(marcado, { '0': 'high' })).toEqual({ '0': 'high', '1': 'high' });
   });
 });

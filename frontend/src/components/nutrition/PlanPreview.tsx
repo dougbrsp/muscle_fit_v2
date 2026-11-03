@@ -3,7 +3,7 @@
 import { Alert, Button, Card, Group, Modal, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NutritionLimitations } from './NutritionLimitations';
 import { SubjectCard } from './SubjectCard';
 import { WeekTargetsTable } from './WeekTargetsTable';
@@ -26,6 +26,7 @@ import {
   nutritionNotice,
 } from '@/lib/nutrition-constants';
 import { formatGrams, formatKcal } from '@/lib/nutrition-format';
+import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type {
   NutritionGoal,
   NutritionManualCheck,
@@ -54,7 +55,8 @@ function Line({ label, value }: { label: string; value: string }) {
 export function TodayTargetCard({ target }: { target: NutritionTargetDetail }) {
   const natureza = nutritionLabel(TRAINING_KCAL_NATURE_OPTIONS, target.training.kcal_nature);
   const fator = formatNumberOrDash(target.tdee.activity_factor, 3);
-  const delta = target.kcal_target.delta_kcal;
+  // Diferença REAL para o gasto (já com gramas manuais, ciclo e prioridade), calculada pelo motor.
+  const delta = target.kcal_delta;
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>
       <Stack gap={6}>
@@ -149,7 +151,7 @@ export function ProjectionCard({ projection }: { projection: NutritionProjection
           <Line label="Já percorrido" value={`${formatNumberOrDash(projection.progress_percent, 0)}%`} />
         )}
         {projetado && projection.weekly_rate_share != null && (
-          <Line label="Ritmo considerado" value={`${formatNumberOrDash(projection.weekly_rate_share * 100, 2)}% do peso por semana`} />
+          <Line label="Ritmo considerado" value={`${formatNumberOrDash(projection.weekly_rate_percent, 2)}% do peso por semana`} />
         )}
         {projection.is_minimum_estimate && (
           <Text size="xs" c="yellow">
@@ -188,7 +190,7 @@ export function ManualCheckCard({ check }: { check: NutritionManualCheck }) {
 
 type Props = {
   plan: NutritionPlan;
-  /** Id da vigente do aluno que a tela mostra (null = nenhuma): vai na publicação (409 se mudou). */
+  /** Id da vigente que a tela mostra (null = nenhuma): vai na publicação (409 se mudou). */
   currentPlanId: number | null;
   onPublished: (result: NutritionPublishResponse) => void;
   /** Outra publicação mudou a vigente (409 `publish_conflict`): a tela recarrega a lista. */
@@ -197,11 +199,12 @@ type Props = {
 
 /**
  * Preview do plano (POST, sem gravar): sujeito, meta de hoje e os 7 dias da
- * semana atual, calculados pelo motor. 422 = faltam dados do aluno (lista
+ * semana atual, calculados pelo motor. 422 = faltam dados do perfil (lista
  * vinda da API). Rascunho pode ser publicado; o vigente pode ter as metas
  * recalculadas de hoje em diante.
  */
 export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Props) {
+  const qc = useQueryClient();
   const [confirmOpened, { open: openConfirm, close: closeConfirm }] = useDisclosure(false);
   const isDraft = plan.state === 'draft';
   const isCurrent = plan.state === 'current';
@@ -213,19 +216,24 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
   });
 
   const publishMutation = useMutation({
-    mutationFn: () => publishNutritionPlan(plan.id, currentPlanId),
+    mutationFn: () => publishNutritionPlan(plan.id, currentPlanId, plan.updated_at),
     onSuccess: (result) => {
       closeConfirm();
       onPublished(result);
     },
     onError: (erro) => {
-      if (nutritionErrorCode(erro) === 'publish_conflict') onConflict?.();
+      const codigo = nutritionErrorCode(erro);
+      if (codigo === 'publish_conflict' || codigo === 'draft_changed') onConflict?.();
     },
   });
 
   const recomputeMutation = useMutation({
     mutationFn: (today: string) =>
       recomputeNutritionTargets({ user_id: plan.user_id, date_from: today, date_to: null }),
+    onSuccess: async () => {
+      // As metas mudaram: o plano em vigor, o diário e a semana lidos em cache ficam velhos.
+      await Promise.all(targetsChangedKeys().map((queryKey) => qc.invalidateQueries({ queryKey })));
+    },
   });
 
   if (previewQuery.isLoading) {
@@ -265,10 +273,12 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
       <NutritionLimitations items={preview.warnings} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
-        Semana atual
+        {isDraft ? 'Dias que o plano vai valer nesta semana' : 'Semana atual'}
       </Title>
       <WeekTargetsTable
-        rows={preview.week.map((target) => ({ local_date: target.local_date, target }))}
+        rows={preview.week
+          .filter((target) => !isDraft || preview.publish_days.includes(target.local_date))
+          .map((target) => ({ local_date: target.local_date, target }))}
         today={preview.today}
       />
       <NutritionLimitations items={preview.limitations} title="Avisos do motor nesta semana" />
@@ -278,7 +288,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
           justify="flex-end"
           style={{
             position: 'sticky',
-            bottom: 0,
+            bottom: 'calc(var(--m-bottom-nav, 0px) + env(safe-area-inset-bottom))',
             zIndex: 5,
             background: BRAND.bgElevated,
             paddingTop: 'var(--mantine-spacing-xs)',

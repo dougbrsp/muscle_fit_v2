@@ -6,6 +6,7 @@ import { useMutation } from '@tanstack/react-query';
 import { NutritionLimitations } from './NutritionLimitations';
 import { fetchCycleDaysFromTemplate, nutritionErrorInfo } from '@/lib/nutrition-api';
 import { DAY_KIND_OPTIONS, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
+import { applyTemplateProposal } from '@/lib/nutrition-plan-form';
 import { BRAND } from '@/theme';
 
 /** Dia da semana ("0" = segunda) -> tipo do dia (código de `DAY_KIND_OPTIONS`). */
@@ -16,7 +17,7 @@ type Props = {
   onEnabledChange: (enabled: boolean) => void;
   value: CycleDaysValue;
   onChange: (value: CycleDaysValue) => void;
-  /** Aluno do plano (admin/PT); sem valor, o próprio usuário. */
+  /** Dono do plano (admin/PT); sem valor, o próprio usuário. */
   userId?: number | null;
 };
 
@@ -35,7 +36,8 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, userI
   const templateMutation = useMutation({
     mutationFn: () => fetchCycleDaysFromTemplate(userId ?? null),
     onSuccess: (proposta) => {
-      if (proposta.cycle_days) onChange({ ...flatCycleDays(normal), ...proposta.cycle_days });
+      // Sem proposta (sem Modelo, Modelo parcial ou que treina todo dia) o que foi marcado fica como está.
+      onChange(applyTemplateProposal(value, proposta.cycle_days));
     },
   });
   const proposta = templateMutation.data;
@@ -47,7 +49,7 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, userI
     <Stack gap="xs">
       <Switch
         label="Dias de mais e menos gasto"
-        description="Marque os dias da semana com mais ou menos carboidrato. A média da semana não muda."
+        description="Marque os dias da semana com mais ou menos carboidrato. Em semana completa do mesmo plano, a média da semana não muda; publicando no meio da semana, os dias que já passaram não entram."
         checked={enabled}
         onChange={(event) => onEnabledChange(event.currentTarget.checked)}
       />
