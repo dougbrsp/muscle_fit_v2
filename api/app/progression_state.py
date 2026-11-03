@@ -660,7 +660,12 @@ def persist_result(
     mudou nas colunas de negocio em relacao a ele; o resto ja esta no banco e
     so reaproveita o id (custo proporcional ao tocado, nao ao historico: cada
     gravacao sao chamadas da RDS Data API). Sem baseline (replay, que apaga o
-    estado antes), grava tudo."""
+    estado antes), grava tudo.
+
+    Semantica da gravacao seletiva: `engine_version` (e `updated_at`) de uma
+    linha = a versao (e o instante) de quem a gravou POR ULTIMO; linha nao
+    tocada mantem os dela. Um `sets_count` legado acima do teto nao e mais
+    normalizado pelo `finish` (a leitura ja o limita); so o replay o regrava."""
     selective = baseline_groups is not None or baseline_tracks is not None
     group_ids: dict[int, int] = {}
     for muscle_group_id, state in sorted(result.group_states.items()):
