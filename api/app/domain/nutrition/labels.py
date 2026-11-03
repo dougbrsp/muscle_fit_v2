@@ -95,6 +95,22 @@ MACRO_PRIORITY_LABELS: Final[Mapping[MacroPriority, str]] = {
     MacroPriority.HIGH_FAT: "Gordura alta (carboidrato baixo)",
 }
 
+MANUAL_TRAINING_MODE_LABELS: Final[Mapping[manual_mod.ManualTrainingMode, str]] = {
+    manual_mod.ManualTrainingMode.FIXED: "Metas fixas todo dia",
+    manual_mod.ManualTrainingMode.ADD_TRAINING: "Somar o treino do dia em carboidrato",
+}
+
+# Explicação de cada modo (a tela mostra a do modo escolhido).
+MANUAL_TRAINING_MODE_HINTS: Final[Mapping[manual_mod.ManualTrainingMode, str]] = {
+    manual_mod.ManualTrainingMode.FIXED: (
+        "Os números que você digitou valem todos os dias; treino e estratégia não alteram essas metas."
+    ),
+    manual_mod.ManualTrainingMode.ADD_TRAINING: (
+        "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, "
+        "pela conversão de energia do motor. Só vale com o gasto do treino à parte."
+    ),
+}
+
 RANGE_STATUS_LABELS: Final[Mapping[RangeStatus, str]] = {
     RangeStatus.WITHIN_RANGE: "Dentro da faixa recomendada",
     RangeStatus.WARNING: "Fora da faixa recomendada (salva com aviso)",
@@ -344,6 +360,11 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     manual_mod.FIELD_CARB: "Carboidrato (g)",
     manual_mod.FIELD_FAT: "Gordura (g)",
     manual_mod.FIELD_KCAL: "Energia do dia (kcal)",
+    plan_mod.FIELD_MACRO_PRIORITY: "Prioridade de macros",
+    plan_mod.FIELD_MANUAL_TARGETS: "Gramas manuais",
+    plan_mod.FIELD_MANUAL_TRAINING_MODE: "Gramas manuais e treino",
+    "manual_macros": "Gramas manuais",
+    "cycle_kinds": "Dias de mais e menos gasto",
 }
 
 
@@ -419,7 +440,42 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     strategy_mod.CLAMP_MIN_INTAKE_BMR_MULTIPLE: "Ingestão elevada ao piso do cutting (TMB).",
     # Entrada do plano.
-    plan_mod.ERR_CARB_CYCLING_UNAVAILABLE: "Ciclo de carboidrato ainda indisponível (chega com o calendário de fases).",
+    plan_mod.NOTE_TEMPLATE_NOT_ASSIGNED: "Você não tem Modelo de treino atribuído: marque os dias à mão.",
+    plan_mod.NOTE_TEMPLATE_WITHOUT_WEEKDAYS: (
+        "O Modelo não define os dias da semana dos treinos: marque os dias à mão."
+    ),
+    plan_mod.NOTE_TEMPLATE_NO_CYCLE: (
+        "O Modelo treina todos os dias (ou nenhum): não há dia de mais ou menos gasto para marcar."
+    ),
+    dt_mod.LIMIT_MANUAL_TARGETS_IGNORE_PHASE: (
+        "Pausa ou refeed: as gramas manuais continuam as mesmas (a fase não as altera)."
+    ),
+    plan_mod.ERR_CYCLE_KCAL_BELOW_MIN: (
+        f"Num dia do ciclo a energia fica abaixo do mínimo seguro ({manual_mod.KCAL_BLOCK_MIN:.0f} kcal). Não pode ser salvo."
+    ),
+    plan_mod.ERR_CYCLE_KCAL_ABOVE_MAX: (
+        f"Num dia do ciclo a energia passa do máximo aceito ({manual_mod.KCAL_BLOCK_MAX:.0f} kcal). Não pode ser salvo."
+    ),
+    plan_mod.WARN_CYCLE_KCAL_BELOW_BMR: "Num dia do ciclo a energia fica abaixo da taxa metabólica basal. Salva, mas confira.",
+    plan_mod.WARN_CYCLE_PARTIAL_WEEK: (
+        "Publicando fora da segunda-feira, os dias que já passaram não entram e não há compensação: a média da "
+        "semana só fecha em semana completa do mesmo plano."
+    ),
+    plan_mod.REASON_MANUAL_AGAINST_STRATEGY: (
+        "As gramas manuais vão contra a estratégia (superávit no cutting ou déficit no bulking): sem projeção."
+    ),
+    plan_mod.REASON_MANUAL_MISSING_FAT_MASS: (
+        "Sem massa gorda (% de gordura) não dá para derivar o ritmo das gramas manuais: registre um % de gordura."
+    ),
+    plan_mod.REASON_TDEE_WITHOUT_TRAINING: (
+        "Sem treino registrado nos últimos dias, o gasto usado na projeção é o da base sem treino."
+    ),
+    plan_mod.REASON_MANUAL_MISSING_TDEE: "Sem o gasto total (TDEE) não dá para derivar o ritmo das gramas manuais.",
+    plan_mod.NOTE_TEMPLATE_PARTIAL_WEEKDAYS: (
+        "Só alguns slots do Modelo têm dia da semana: marque os dias à mão."
+    ),
+    plan_mod.ERR_DRAFT_LIMIT: "Você atingiu o limite de rascunhos: apague um para criar outro.",
+    plan_mod.ERR_MANUAL_REQUIRES_WEIGHT: "Para salvar gramas manuais, registre seu peso: sem ele o motor não confere as faixas em g/kg.",
     # Janelas de recálculo.
     dt_mod.ERR_DATE_FROM_FROZEN: (
         f"Dias com mais de {dt_mod.TARGET_FREEZE_LAG_DAYS - 1} dia(s) no passado já estão congelados e não são recalculados."
@@ -611,7 +667,6 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
 }
 
 # Avisos exibidos pelas telas (o FE lê do bloco `nutrition.notices`).
-NOTICE_CARB_CYCLING_UNAVAILABLE = plan_mod.ERR_CARB_CYCLING_UNAVAILABLE
 NOTICE_SCALE_BMR_DEVIATION = "scale_bmr_deviation"
 NOTICE_PHASE_SHOULD_STOP = "phase_should_stop"
 # Diário (L4): selos e dicas das telas com o MESMO texto das limitações do motor.
@@ -621,9 +676,6 @@ NOTICE_INCOMPLETE_INTAKE_DAYS = wb_mod.LIMIT_INCOMPLETE_INTAKE_DAYS
 NOTICE_TRAINING_UNKNOWN_FUTURE_DAY = dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY
 
 NOTICE_LABELS: Final[Mapping[str, str]] = {
-    NOTICE_CARB_CYCLING_UNAVAILABLE: (
-        "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana."
-    ),
     NOTICE_SCALE_BMR_DEVIATION: (
         f"A TMB da balança difere mais de {_percent(bmr_mod.SCALE_BMR_DEVIATION_WARN_SHARE)} da calculada pela fórmula."
     ),
@@ -689,6 +741,11 @@ _FIELD_LABELS: Final[Mapping[str, str]] = {
     **labels_by_code(BODY_FAT_METHOD_LABELS),
     **RDC429_FIELD_LABELS,
 }
+
+
+def field_label(code: str) -> str:
+    """Rótulo pt-BR de um campo (`protein_g`, `kcal`...); desconhecido volta como o próprio código."""
+    return _FIELD_LABELS.get(code, code)
 
 
 def limitation_label(code: str) -> str:

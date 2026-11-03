@@ -5,6 +5,7 @@ import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { MyPlanView } from '@/components/nutrition/MyPlanView';
+import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { PlanForm } from '@/components/nutrition/PlanForm';
 import { PlanHistory } from '@/components/nutrition/PlanHistory';
@@ -14,7 +15,8 @@ import { UserPicker } from '@/components/nutrition/UserPicker';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
-import type { NutritionPlan } from '@/lib/nutrition-types';
+import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
+import type { NutritionLimitation, NutritionPlan, NutritionPlanSaved } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -23,10 +25,14 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
 
-/** Admin/PT: escolhe o aluno, cria/edita o rascunho, vê o preview e publica. */
-function PlanManager() {
+/**
+ * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum
+ * opera o próprio plano (`fixedUserId`, D2). O acesso é decidido pela API.
+ */
+function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(fixedUserId ?? null);
+  const [warnings, setWarnings] = useState<NutritionLimitation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,6 +48,7 @@ function PlanManager() {
     mutationFn: (plan: NutritionPlan) => deleteNutritionPlan(plan.id),
     onSuccess: async (_resultado, plan) => {
       if (selectedId === plan.id) setSelectedId(null);
+      setWarnings([]);
       setNotice('Rascunho excluído.');
       await qc.invalidateQueries({ queryKey: nutritionKeys.plans(plan.user_id) });
     },
@@ -52,11 +59,13 @@ function PlanManager() {
     setSelectedId(null);
     setEditing(null);
     setNotice(null);
+    setWarnings([]);
   }
 
-  async function afterSave(plan: NutritionPlan) {
+  async function afterSave(plan: NutritionPlanSaved) {
     setEditing(null);
     setSelectedId(plan.id);
+    setWarnings(plan.warnings ?? []);
     setNotice('Rascunho salvo. Confira o preview antes de publicar.');
     await qc.invalidateQueries({ queryKey: nutritionKeys.preview(plan.id) });
     await qc.invalidateQueries({ queryKey: nutritionKeys.plans(plan.user_id) });
@@ -70,7 +79,7 @@ function PlanManager() {
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
-        <UserPicker value={userId} onChange={chooseUser} />
+        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} /> : <span />}
         {userId !== null && (
           <Button
             color="brand"
@@ -78,6 +87,7 @@ function PlanManager() {
             onClick={() => {
               setEditing({ mode: 'new' });
               setNotice(null);
+              setWarnings([]);
             }}
           >
             Novo rascunho
@@ -90,6 +100,7 @@ function PlanManager() {
           {notice}
         </Text>
       )}
+      <NutritionLimitations items={warnings} title="Avisos do motor sobre as gramas (o rascunho foi salvo)" />
       {deleteMutation.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {nutritionErrorInfo(deleteMutation.error, 'Não foi possível excluir o rascunho.').message}
@@ -99,7 +110,7 @@ function PlanManager() {
       {userId !== null && plansQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {plansQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-          {nutritionErrorInfo(plansQuery.error, 'Não foi possível carregar os planos do aluno.').message}
+          {nutritionErrorInfo(plansQuery.error, 'Não foi possível carregar os planos.').message}
         </Alert>
       )}
 
@@ -123,7 +134,9 @@ function PlanManager() {
       {plansQuery.isSuccess && (
         <Stack gap="xs">
           <Title order={3} c={BRAND.textPrimary}>
-            Planos de {plansQuery.data.user.full_name || plansQuery.data.user.username}
+            {fixedUserId === undefined
+              ? `Planos de ${plansQuery.data.user.full_name || plansQuery.data.user.username}`
+              : 'Seus planos'}
           </Title>
           <PlanHistory
             plans={plans}
@@ -131,10 +144,12 @@ function PlanManager() {
             onSelect={(plan) => {
               setSelectedId(plan.id);
               setNotice(null);
+              setWarnings([]);
             }}
             onEdit={(plan) => {
               setEditing({ mode: 'edit', plan });
               setNotice(null);
+              setWarnings([]);
             }}
             onDelete={(plan) => deleteMutation.mutate(plan)}
             deletingId={deleteMutation.isPending ? (deleteMutation.variables?.id ?? null) : null}
@@ -151,8 +166,11 @@ function PlanManager() {
             onConflict={() => qc.invalidateQueries({ queryKey: nutritionKeys.plans(selected.user_id) })}
             onPublished={async (result) => {
               setSelectedId(result.plan.id);
+              setWarnings([]);
               setNotice(`Plano publicado. ${result.targets.length} meta(s) diária(s) calculada(s) a partir de hoje.`);
               await qc.invalidateQueries({ queryKey: nutritionKeys.plans(result.plan.user_id) });
+              // O plano em vigor e o diário já lidos mostram as metas antigas: força a releitura.
+              await Promise.all(targetsChangedKeys().map((queryKey) => qc.invalidateQueries({ queryKey })));
             }}
           />
         </Stack>
@@ -162,10 +180,9 @@ function PlanManager() {
 }
 
 /**
- * `/nutricao/plano` — plano nutricional (Lote L2b). Admin e personal trainer
- * definem o plano de qualquer aluno; os demais veem o próprio, só leitura. O
- * backend decide o acesso (`nutrition_access.py`) e calcula tudo (motor
- * `domain/nutrition`); a tela só exibe.
+ * `/nutricao/plano` — plano nutricional. Cada usuário cria, edita e publica o próprio plano
+ * (N2, D2); admin e personal trainer fazem o mesmo para qualquer usuário. O backend decide o
+ * acesso (`nutrition_access.py`) e calcula tudo (motor `domain/nutrition`); a tela só exibe.
  */
 export function PlanoClient() {
   const currentUserQuery = useQuery({
@@ -186,12 +203,20 @@ export function PlanoClient() {
         </Title>
         <Text c={BRAND.textMuted} size="md">
           {canManage
-            ? 'Defina a estratégia e os parâmetros do aluno, confira a semana calculada pelo motor e publique.'
-            : 'Metas calculadas pelo motor a partir do plano definido para você.'}
+            ? 'Defina a estratégia e os parâmetros, confira a semana calculada pelo motor e publique.'
+            : 'Escolha sua estratégia, seu alvo e como distribuir as calorias; o motor calcula suas metas.'}
         </Text>
       </div>
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
-      {currentUserQuery.isSuccess && (canManage ? <PlanManager /> : <MyPlanView />)}
+      {currentUserQuery.isSuccess &&
+        (canManage ? (
+          <PlanManager />
+        ) : (
+          <>
+            <MyPlanView />
+            <PlanManager fixedUserId={currentUserQuery.data.id} />
+          </>
+        ))}
     </Stack>
   );
 }

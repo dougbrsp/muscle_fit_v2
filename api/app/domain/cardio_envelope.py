@@ -302,6 +302,12 @@ def _slot_weekday(slot: Mapping[str, Any]) -> Optional[int]:
     return weekday if ISO_WEEKDAY_MIN <= weekday <= ISO_WEEKDAY_MAX else None
 
 
+def slots_have_weekdays(slots: Sequence[Mapping[str, Any]]) -> bool:
+    """Todos os slots do Modelo têm dia da semana (ISO) e há ao menos um: o Modelo está desenhado por dia da
+    semana. É o predicado de `project_plan_slots` (modo por dia da semana), reaproveitado pela nutrição (N2)."""
+    return bool(slots) and all(_slot_weekday(slot) is not None for slot in slots)
+
+
 def project_plan_slots(
     slots: Sequence[Mapping[str, Any]],
     days: Sequence[date],
@@ -321,7 +327,7 @@ def project_plan_slots(
     ordered = sorted(slots or [], key=lambda slot: int(slot["sequence"]))
     by_sequence = {int(slot["sequence"]): slot for slot in ordered}
     plans_by_date = plans_by_date or {}
-    use_weekday = bool(ordered) and all(_slot_weekday(slot) is not None for slot in ordered)
+    use_weekday = slots_have_weekdays(ordered)
     position = 0
     if next_sequence is not None and int(next_sequence) in by_sequence:
         position = [int(slot["sequence"]) for slot in ordered].index(int(next_sequence))

@@ -138,15 +138,22 @@ class NutritionPlanSettingsIn(_StrictIn):
     meals_per_day: Optional[Number] = None
     goal_body_fat_percent: Optional[Number] = None
     goal_weight_kg: Optional[Number] = None
-    # Recusado pelo motor até o L8 (`carb_cycling_unavailable`).
+    # N2: prioridade de macros, gramas manuais (D6) e dias alto/normal/baixo (D5). O motor valida.
+    macro_priority: Optional[str] = Field(default=None, max_length=24)
+    manual_targets: Optional[dict[str, Any]] = None
+    # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
+    manual_training_mode: Optional[str] = Field(default=None, max_length=24)
+    cycle_days: Optional[dict[str, Any]] = None
+    # Legado: os clientes antigos ainda mandam; ignorado (o ciclo vem de `cycle_days`).
     carb_cycling_enabled: bool = False
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
 class NutritionPlanIn(NutritionPlanSettingsIn):
-    """POST /nutrition/plans (admin/PT): rascunho para o aluno `user_id`."""
+    """POST /nutrition/plans: rascunho para o aluno `user_id`; sem `user_id`, o próprio
+    usuário (D2). Para outro usuário exige admin/PT."""
 
-    user_id: int
+    user_id: Optional[int] = None
 
 
 class NutritionPlanPublishIn(_StrictIn):
@@ -155,12 +162,15 @@ class NutritionPlanPublishIn(_StrictIn):
     (pode ser null): divergir da vigente travada responde 409 `publish_conflict`."""
 
     expected_current_id: Optional[int]
+    # Versão do rascunho que a tela viu (`updated_at` do plano). Se mudou, 409 `draft_changed`; ausente = sem conferência
+    # (cliente antigo).
+    expected_updated_at: Optional[str] = Field(default=None, max_length=40)
 
 
 class NutritionTargetsRecomputeIn(_StrictIn):
-    """POST /nutrition/targets/recompute (admin/PT)."""
+    """POST /nutrition/targets/recompute: sem `user_id`, o próprio usuário; outro exige admin/PT."""
 
-    user_id: int
+    user_id: Optional[int] = None
     date_from: date
     date_to: Optional[date] = None
 

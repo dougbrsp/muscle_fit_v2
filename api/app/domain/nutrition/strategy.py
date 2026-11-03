@@ -77,10 +77,17 @@ BULK_SURPLUS_SHARE_RANGE: Final[tuple[float, float]] = (0.10, 0.20)
 BULK_SURPLUS_SHARE_DEFAULT: Final[float] = 0.10
 BULK_SURPLUS_SHARE_RANGE_ADVANCED: Final[tuple[float, float]] = (0.05, 0.10)
 BULK_SURPLUS_SHARE_DEFAULT_ADVANCED: Final[float] = 0.05
-BULK_WEEKLY_RATE_SHARE_RANGE: Final[tuple[float, float]] = (0.0025, 0.005)  # ganho esperado, monitoramento
-# Ritmo usado na projeção até o alvo (N1): o PISO da faixa de ganho, coerente com o
-# superávit pequeno do default (Iraki 2019; Slater 2019). Default de desenho.
-BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT: Final[float] = BULK_WEEKLY_RATE_SHARE_RANGE[0]
+# Faixa do ritmo de ganho TEÓRICO que o superávit do plano implica (superávit × TDEE na densidade energética da variação de
+# peso, `energy_density`), usada no aviso `projection_rate_outside_range`. DEFAULTS DE DESENHO (N2, rodada 4), não faixa de
+# literatura: o piso de 0,25 %/semana é o da faixa anterior (Iraki 2019, citado de memória); o teto e a faixa avançada vêm
+# da grade realista do mapa §81 (peso 55–110 kg, TDEE 1.800–3.500 kcal, %G 8–30), de modo que os defaults de superávit (10 %
+# e, avançado, 5 %) não saiam da faixa no caso típico (TDEE de 30 a 40 kcal/kg e %G de 10 a 25). O ganho OBSERVADO costuma ser
+# menor que o teórico; a faixa ainda depende do indivíduo fora desse caso típico (a razão TDEE/peso varia quase 4 vezes).
+BULK_WEEKLY_RATE_SHARE_RANGE: Final[tuple[float, float]] = (0.0025, 0.0065)
+BULK_WEEKLY_RATE_SHARE_RANGE_ADVANCED: Final[tuple[float, float]] = (0.0012, 0.0035)
+# Ritmo usado na projeção quando o superávit não pode ser convertido (sem TDEE, peso ou massa gorda): 0,25 %/semana, o
+# valor que o N1 gravou (antes, o piso da faixa). Literal próprio para a faixa poder mudar sem mexer em projeção existente.
+BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT: Final[float] = 0.0025
 BULK_PROTEIN_G_PER_KG_RANGE: Final[tuple[float, float]] = (1.6, 2.2)
 BULK_PROTEIN_G_PER_KG_DEFAULT: Final[float] = 2.0
 BULK_FAT_G_PER_KG_RANGE: Final[tuple[float, float]] = (0.5, 1.5)
@@ -122,13 +129,13 @@ def fat_share_range_for(strategy: Strategy) -> tuple[float, float]:
     return MAINT_FAT_KCAL_SHARE_RANGE
 
 
-def weekly_rate_share_range_for(strategy: Strategy) -> Optional[tuple[float, float]]:
-    """Faixa do ritmo semanal (fração do peso): perda no cutting, ganho no bulking;
-    manutenção não tem."""
+def weekly_rate_share_range_for(strategy: Strategy, advanced: bool = False) -> Optional[tuple[float, float]]:
+    """Faixa do ritmo semanal (fração do peso): perda no cutting, ganho no bulking (a do nível avançado, com
+    superávit menor, é mais baixa); manutenção não tem."""
     if strategy == Strategy.CUTTING:
         return CUT_WEEKLY_RATE_SHARE_RANGE
     if strategy == Strategy.BULKING:
-        return BULK_WEEKLY_RATE_SHARE_RANGE
+        return BULK_WEEKLY_RATE_SHARE_RANGE_ADVANCED if advanced else BULK_WEEKLY_RATE_SHARE_RANGE
     return None
 
 
@@ -138,7 +145,8 @@ def weekly_rate_share_for(
     """Ritmo semanal (fração do peso) da estratégia para projetar o alvo:
     cutting = o do plano ou o default; bulking = o implicado pelo superávit do plano
     (`surplus_share` × TDEE, na densidade energética da massa gorda atual) quando há
-    TDEE, peso e massa gorda; senão o piso da faixa de ganho; manutenção = None."""
+    TDEE, peso e massa gorda; senão `BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT` (0,25%/semana, literal próprio);
+    manutenção = None."""
     if params.strategy == Strategy.CUTTING:
         return params.weekly_rate_share if params.weekly_rate_share is not None else CUT_WEEKLY_RATE_SHARE_DEFAULT
     if params.strategy == Strategy.BULKING:

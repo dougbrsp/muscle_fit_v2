@@ -25,15 +25,29 @@ def test_o_proprio_usuario_sempre_passa(role):
 @pytest.mark.parametrize("role", ["admin", "personal_trainer"])
 def test_admin_e_pt_veem_qualquer_aluno(role):
     assert access.resolve_target_user(_ident(role), 99) == 99
-    assert access.require_plan_manager(_ident(role)).role == role
+    assert access.plan_actor(_ident(role)).role == role
+    assert access.resolve_plan_owner(_ident(role), 99) == 99
 
 
 def test_aluno_comum_nao_ve_terceiro():
     with pytest.raises(HTTPException) as erro:
         access.resolve_target_user(_ident("regular"), 99)
     assert erro.value.status_code == 403
-    with pytest.raises(HTTPException):
-        access.require_plan_manager(_ident("regular"))
+
+
+@pytest.mark.parametrize("role", ["regular", "admin", "personal_trainer"])
+def test_plan_actor_aceita_qualquer_usuario_logado(role):
+    """D2 (N2): o usuário comum passa a operar o PRÓPRIO plano; o plano alheio é decidido à parte."""
+    assert access.plan_actor(_ident(role)).user_id == 10
+
+
+def test_plano_proprio_passa_e_alheio_e_404_para_usuario_comum():
+    assert access.resolve_plan_owner(_ident("regular"), 10) == 10
+    with pytest.raises(HTTPException) as erro:
+        access.resolve_plan_owner(_ident("regular"), 99)
+    # 404 igual ao plano inexistente: o id alheio não revela que existe.
+    assert erro.value.status_code == 404
+    assert erro.value.detail["error"] == "plan_not_found"
 
 
 def test_aluno_inexistente_e_404():

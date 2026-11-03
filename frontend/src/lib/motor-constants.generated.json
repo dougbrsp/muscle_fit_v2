@@ -687,6 +687,28 @@
       "high_fat": "Gordura alta (carboidrato baixo)"
     },
     "default_macro_priority": "balanced",
+    "manual_training_modes": [
+      "fixed",
+      "add_training"
+    ],
+    "manual_training_mode_labels": {
+      "fixed": "Metas fixas todo dia",
+      "add_training": "Somar o treino do dia em carboidrato"
+    },
+    "manual_training_mode_hints": {
+      "fixed": "Os números que você digitou valem todos os dias; treino e estratégia não alteram essas metas.",
+      "add_training": "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, pela conversão de energia do motor. Só vale com o gasto do treino à parte."
+    },
+    "default_manual_training_mode": "fixed",
+    "manual_training_modes_by_tdee_mode": {
+      "explicit_training": [
+        "fixed",
+        "add_training"
+      ],
+      "included_in_factor": [
+        "fixed"
+      ]
+    },
     "range_statuses": [
       "within_range",
       "warning",
@@ -860,7 +882,6 @@
       "carb_min_g_per_kg": "bulking"
     },
     "notices": {
-      "carb_cycling_unavailable": "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana.",
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
       "phase_should_stop": "O % de gordura atual já chegou à meta desta fase.",
       "target_frozen": "Meta congelada: 2 dia(s) depois do dia ela não muda mais.",
