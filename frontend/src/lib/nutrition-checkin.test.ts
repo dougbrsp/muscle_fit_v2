@@ -80,6 +80,7 @@ describe('apresentação', () => {
     expect(formatChangeValue({ unit: 'share' }, 0.1)).toBe('10%');
     expect(formatChangeValue({ unit: 'g' }, 239.6)).toBe('240 g');
     expect(formatChangeValue({ unit: 'g' }, null)).toBe('-');
+    expect(formatChangeValue({ unit: 'kcal' }, -120.4)).toBe('-120 kcal');
   });
 
   it('o ajuste de kcal sai com sinal e arredondado; sem proposta é null', () => {

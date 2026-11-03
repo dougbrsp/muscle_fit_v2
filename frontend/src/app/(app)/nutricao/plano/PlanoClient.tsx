@@ -96,7 +96,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
         )}
       </Group>
 
-      {userId !== null && <CheckinDayField userId={userId} />}
+      {userId !== null && <CheckinDayField key={userId} userId={userId} />}
 
       {notice && (
         <Text size="sm" c="green">

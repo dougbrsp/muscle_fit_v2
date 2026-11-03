@@ -121,7 +121,7 @@ export function NutricaoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess && (
         <>
-          <CheckinCard userId={userId} />
+          <CheckinCard key={userId ?? 'me'} userId={userId} />
           <DayHeader
             canManage={canManage}
             userId={userId}

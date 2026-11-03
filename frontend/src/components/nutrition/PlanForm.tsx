@@ -227,6 +227,9 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
           modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
         ),
         cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
+        maintenance_kcal_adjust: fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy)
+          ? (plan?.maintenance_kcal_adjust ?? 0)
+          : null,
         notes: form.notes.trim() ? form.notes.trim() : null,
       };
       return plan
@@ -321,6 +324,12 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
               decimalScale={2}
               decimalSeparator=","
             />
+          )}
+          {fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy) && !!plan?.maintenance_kcal_adjust && (
+            <Text size="sm" c={BRAND.textMuted}>
+              Ajuste da manutenção em vigor: {plan.maintenance_kcal_adjust > 0 ? '+' : ''}
+              {plan.maintenance_kcal_adjust} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
+            </Text>
           )}
         </SimpleGrid>
       )}

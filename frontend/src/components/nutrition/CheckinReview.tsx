@@ -65,7 +65,7 @@ function weekRows(summary: Partial<CheckinSummary>, goal: Checkin['goal']): Row[
     {
       label: 'Massa muscular (bioimpedância)',
       week: summary.muscle_mass_kg != null ? `${NUMBER(summary.muscle_mass_kg)} kg` : '-',
-      reference: lean?.valid_for_bia ? `tendência: ${signed(lean.weekly_change, 'kg/sem')}` : 'sem tendência de 2 semanas',
+      reference: lean?.valid_for_bia ? `tendência: ${signed(lean.weekly_change, 'kg/sem')}` : 'sem tendência (veja os motivos)',
     },
   ];
 }
@@ -74,7 +74,7 @@ function MacroCell({ value, unit }: { value: number | null; unit: string }) {
   return <>{value == null ? '-' : `${Math.round(value)} ${unit}`}</>;
 }
 
-function MacrosTable({ before, after }: { before: CheckinDayMacros; after: CheckinDayMacros }) {
+function MacrosTable({ before, after, scopeLabel }: { before: CheckinDayMacros; after: CheckinDayMacros; scopeLabel: string }) {
   const linhas: Array<{ label: string; antes: number | null; depois: number | null; unit: string }> = [
     { label: 'Energia', antes: before.kcal, depois: after.kcal, unit: 'kcal' },
     { label: 'Proteína', antes: before.protein_g, depois: after.protein_g, unit: 'g' },
@@ -86,7 +86,7 @@ function MacrosTable({ before, after }: { before: CheckinDayMacros; after: Check
       <Table withRowBorders={false} verticalSpacing={6} aria-label="Metas de um dia sem treino, antes e depois">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Dia sem treino</Table.Th>
+            <Table.Th>{scopeLabel}</Table.Th>
             <Table.Th>Agora</Table.Th>
             <Table.Th>Proposta</Table.Th>
           </Table.Tr>
@@ -189,7 +189,7 @@ export function CheckinReview({ checkin, busy = false, error = null, onAccept, o
                 </Text>
               </Group>
             ))}
-            <MacrosTable before={proposta.before} after={proposta.after} />
+            <MacrosTable before={proposta.before} after={proposta.after} scopeLabel={proposta.scope_label ?? 'Dia sem treino'} />
             <Text size="xs" c={BRAND.textMuted}>
               O ciclo de dias, a prioridade de macros e o modo do treino do seu plano continuam como estão. Ao aceitar, uma nova
               versão do plano é publicada a partir de hoje; os dias já passados não mudam.
@@ -212,22 +212,24 @@ export function CheckinReview({ checkin, busy = false, error = null, onAccept, o
         <div
           style={{
             position: 'sticky',
-            bottom: 0,
+            // Acima da barra de navegação do celular e da área segura (mesmo padrão de PlanForm e PlanPreview).
+            bottom: 'calc(var(--m-bottom-nav, 0px) + env(safe-area-inset-bottom))',
             zIndex: 5,
             background: MOBILE_TOKENS.bg,
             borderTop: `1px solid ${MOBILE_TOKENS.border}`,
-            padding: `12px ${MOBILE_TOKENS.contentPadding}px calc(12px + env(safe-area-inset-bottom))`,
+            padding: `12px ${MOBILE_TOKENS.contentPadding}px 12px`,
             margin: `0 -${MOBILE_TOKENS.contentPadding}px`,
           }}
         >
-          <Group grow gap="xs">
-            <Button color="brand" loading={busy} onClick={onAccept} style={{ minHeight: MOBILE_TOKENS.touchTarget }}>
+          {/* Empilhados: dois botões lado a lado ficam apertados em 360 px. */}
+          <Stack gap="xs">
+            <Button color="brand" fullWidth loading={busy} onClick={onAccept} style={{ minHeight: MOBILE_TOKENS.touchTarget }}>
               Aceitar as novas metas
             </Button>
-            <Button variant="light" color="gray" disabled={busy} onClick={onDecline} style={{ minHeight: MOBILE_TOKENS.touchTarget }}>
+            <Button variant="light" color="gray" fullWidth disabled={busy} onClick={onDecline} style={{ minHeight: MOBILE_TOKENS.touchTarget }}>
               Manter as atuais
             </Button>
-          </Group>
+          </Stack>
         </div>
       )}
     </Stack>

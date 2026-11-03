@@ -12,6 +12,7 @@ import { BRAND } from '@/theme';
  * mas é uma preferência própria: salva na hora e não publica versão do plano. As opções e o dia vêm da API.
  */
 export function CheckinDayField({ userId }: { userId: number | null }) {
+  // O pai usa `key={userId}`: trocar de aluno remonta o campo e zera `salvar.data` (senão mostraria o dia do aluno anterior).
   const qc = useQueryClient();
   const consulta = useQuery({ queryKey: checkinKeys.settings(userId), queryFn: () => fetchCheckinSettings(userId), retry: false });
   const salvar = useMutation({

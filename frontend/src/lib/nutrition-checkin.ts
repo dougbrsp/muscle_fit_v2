@@ -52,7 +52,7 @@ export type CheckinSummary = {
 export type CheckinDayMacros = { kcal: number | null; protein_g: number | null; carb_g: number | null; fat_g: number | null };
 
 /** O que muda no plano, campo a campo (`unit`: `share` = fração para exibir em %, `g` = gramas). */
-export type CheckinChangeItem = { field: string; label: string; unit: 'share' | 'g'; before: number | null; after: number | null };
+export type CheckinChangeItem = { field: string; label: string; unit: 'share' | 'g' | 'kcal'; before: number | null; after: number | null };
 
 export type CheckinProposal = {
   before: CheckinDayMacros;
@@ -60,6 +60,9 @@ export type CheckinProposal = {
   delta_kcal: number;
   changes: Record<string, unknown>;
   change_items: CheckinChangeItem[];
+  /** O que `before`/`after` representam (`rest_day` ou `cycle_average`) e o rótulo pronto da API. */
+  scope?: string;
+  scope_label?: string;
 };
 
 export type CheckinFrozenDay = {
@@ -203,6 +206,7 @@ export function verdictTone(verdict: CheckinVerdict): VerdictTone {
 export function formatChangeValue(item: Pick<CheckinChangeItem, 'unit'>, value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '-';
   if (item.unit === 'g') return `${Math.round(value)} g`;
+  if (item.unit === 'kcal') return `${Math.round(value)} kcal`;
   const percent = shareToPercent(value);
   return percent == null ? '-' : `${percent.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
 }
