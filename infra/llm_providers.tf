@@ -6,8 +6,9 @@
 # NAO recebem nada daqui (nem o ARN, nem a permissao de leitura).
 #
 # Feature fora de `llm_provider_by_feature` fica em `openai`, sem modelo,
-# esforco nem fallback publicados (com LLM_PROVIDER_<FEATURE>=openai o codigo
-# nem le o resto).
+# provedor, modelo, esforco nem fallback publicados: sem LLM_PROVIDER_<FEATURE> o
+# codigo usa `llm_anthropic.DEFAULT_PROVIDER` (openai) e nem le o resto. Publicar
+# esse padrao gastava bytes do limite de 4 KB das envs da Lambda (nutricao L10).
 #
 # Virada de 2026-10-31 (decisao do usuario, eval em
 # docs/ia/EVAL_ANTHROPIC_2026-10-30.md): 6 features no claude-haiku-5-5, com
@@ -18,6 +19,15 @@
 # depois do prompt periodization-v15 (a IA escolhe a referencia do catalogo e
 # o motor monta o trio): 47/50 (94%) contra 26/30 (87%) da OpenAI v15, zero
 # saida cortada, zero timeout, p95 26 s (docs/ia/EVAL_PERIODIZACAO_V15_2026-10-31.md).
+#
+# meal_photo (foto do prato, nutricao L10, decisao D1 de 2026-11-02) nasce no Haiku
+# com o esforco da label_photo e fallback openai, ainda SEM eval pago proprio.
+#
+# plan_suggestion (sugestao de metas, nutricao N6, decisao D3) NAO publica env propria: le as de
+# meal_parse (`llm_anthropic.FEATURE_CONFIG_SOURCE`), porque o bloco de envs esta no limite do
+# orcamento (LLM_ENV_BUDGET_BYTES). Entrar em llm_features nao gera env: ela esta fora dos mapas.
+# CORTAR so a sugestao: plan_suggestion = "openai" em llm_provider_by_feature (a env propria vence;
+# entrada EXPLICITA e publicada mesmo com openai, porque sem ela valeria a de meal_parse).
 #
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
@@ -32,6 +42,7 @@ variable "llm_provider_by_feature" {
   default = {
     cardio_agent         = "anthropic"
     label_photo          = "anthropic"
+    meal_photo           = "anthropic"
     insights             = "anthropic"
     meal_parse           = "anthropic"
     exercise_description = "anthropic"
@@ -51,6 +62,7 @@ variable "anthropic_model_by_feature" {
   default = {
     cardio_agent         = "claude-haiku-5-5"
     label_photo          = "claude-haiku-5-5"
+    meal_photo           = "claude-haiku-5-5"
     insights             = "claude-haiku-5-5"
     meal_parse           = "claude-haiku-5-5"
     exercise_description = "claude-haiku-5-5"
@@ -67,6 +79,7 @@ variable "anthropic_effort_by_feature" {
   default = {
     cardio_agent         = "medium"
     label_photo          = "medium"
+    meal_photo           = "medium"
     insights             = "medium"
     meal_parse           = "medium"
     exercise_description = "medium"
@@ -118,6 +131,7 @@ variable "llm_fallback_provider_by_feature" {
   default = {
     cardio_agent         = "openai"
     label_photo          = "openai"
+    meal_photo           = "openai"
     insights             = "openai"
     meal_parse           = "openai"
     exercise_description = "openai"
@@ -143,11 +157,13 @@ locals {
     "periodization",
     "meal_parse",
     "label_photo",
+    "meal_photo",
+    "plan_suggestion",
     "workout_plan",
   ]
 
   llm_provider_env = merge(
-    { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") },
+    { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") if lookup(var.llm_provider_by_feature, f, "openai") != "openai" || contains(keys(var.llm_provider_by_feature), f) },
     { for f, m in var.anthropic_model_by_feature : "ANTHROPIC_MODEL_${upper(f)}" => m if contains(local.llm_features, f) },
     { for f, e in var.anthropic_effort_by_feature : "ANTHROPIC_EFFORT_${upper(f)}" => e if contains(local.llm_features, f) },
     { for f, t in var.anthropic_thinking_by_feature : "ANTHROPIC_THINKING_${upper(f)}" => t if contains(local.llm_features, f) },

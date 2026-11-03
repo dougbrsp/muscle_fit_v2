@@ -14,6 +14,8 @@ from app import (
     exercise_description_ai,
     nutrition_label_ai,
     nutrition_meal_parse_ai,
+    nutrition_meal_photo_ai,
+    nutrition_plan_suggestion_ai,
     prompt_store,
     rag_placeholders,
 )
@@ -90,6 +92,13 @@ TEMPLATES_DAS_FEATURES = {
     (nutrition_label_ai.PROMPT_FEATURE_DIR, nutrition_label_ai.PROMPT_VERSION): set(nutrition_label_ai.prompt_values())
     | {"campos"},
     (cardio_agent_ai.PROMPT_FEATURE_DIR, cardio_agent_ai.PROMPT_VERSION): set(cardio_agent_ai.prompt_values()),
+    (nutrition_meal_photo_ai.PROMPT_FEATURE_DIR, nutrition_meal_photo_ai.PROMPT_VERSION): set(
+        nutrition_meal_photo_ai.prompt_values()
+    ),
+    (nutrition_plan_suggestion_ai.PROMPT_FEATURE_DIR, nutrition_plan_suggestion_ai.PROMPT_VERSION): set(
+        nutrition_plan_suggestion_ai.prompt_values()
+    ),
+    (nutrition_plan_suggestion_ai.PROMPT_FEATURE_DIR, f"{nutrition_plan_suggestion_ai.PROMPT_VERSION}.pedido"): {"dados"},
     (nutrition_meal_parse_ai.PROMPT_FEATURE_DIR, nutrition_meal_parse_ai.PROMPT_VERSION): set(
         nutrition_meal_parse_ai.prompt_values()
     ),

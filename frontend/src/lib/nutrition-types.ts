@@ -28,7 +28,27 @@ export type NutritionPlanSettings = {
   goal_body_fat_percent: number | null;
   goal_weight_kg: number | null;
   carb_cycling_enabled: boolean;
+  /** Prioridade de macros (N2); código de `MACRO_PRIORITY_OPTIONS`. */
+  macro_priority: NutritionCode;
+  /** Gramas manuais do dia (D6) ou null. */
+  manual_targets: NutritionManualTargets | null;
+  /** Dias alto/normal/baixo (D5): chave = dia 0..6 (segunda = 0), valor = código de `DAY_KIND_OPTIONS`. */
+  cycle_days: Record<string, NutritionCode> | null;
+  /** Ajuste de kcal/dia da manutenção (N7; 0 = sem ajuste). Quem o muda é o check-in semanal. */
+  maintenance_kcal_adjust?: number;
 };
+
+/** Gramas manuais de proteína, carboidrato e gordura. */
+export type NutritionManualTargets = {
+  protein_g: number;
+  carb_g: number;
+  fat_g: number;
+  /** Código de `MANUAL_TRAINING_MODE_OPTIONS`: metas fixas todo dia ou somar o treino do dia em carboidrato. */
+  training_mode: NutritionCode;
+};
+
+/** Gramas manuais como o formulário envia: campo vazio vai `null` e a API recusa com o código do motor. */
+export type NutritionManualTargetsInput = { protein_g: number | null; carb_g: number | null; fat_g: number | null };
 
 /** `GET /nutrition/plans` (itens), `POST/PUT` e `plan` das demais respostas. */
 export type NutritionPlan = NutritionPlanSettings & {
@@ -52,6 +72,9 @@ export type NutritionPlanUser = { id: number; username: string; full_name: strin
 
 export type NutritionPlanListResponse = { user: NutritionPlanUser; items: NutritionPlan[] };
 
+/** `POST/PUT /nutrition/plans`: o plano e os avisos do motor (gramas manuais fora da faixa salvam com aviso, D6). */
+export type NutritionPlanSaved = NutritionPlan & { warnings: NutritionLimitation[] };
+
 /**
  * Corpo de `PUT /nutrition/plans/{id}` (`NutritionPlanSettingsIn`, `extra="forbid"`).
  * Campo `null` = default da estratégia no motor. Faixas e códigos são
@@ -71,21 +94,27 @@ export type NutritionPlanSettingsPayload = {
   meals_per_day: number | null;
   goal_body_fat_percent: number | null;
   goal_weight_kg: number | null;
-  carb_cycling_enabled: boolean;
+  macro_priority: NutritionCode;
+  manual_targets: NutritionManualTargetsInput | null;
+  /** Como as gramas manuais convivem com o treino; null quando não há gramas manuais. */
+  manual_training_mode: NutritionCode | null;
+  cycle_days: Record<string, NutritionCode> | null;
+  /** Preserva o ajuste da manutenção que o check-in gravou (a tela não o edita); null fora da manutenção. */
+  maintenance_kcal_adjust?: number | null;
   notes: string | null;
 };
 
-/** Corpo de `POST /nutrition/plans` (`NutritionPlanIn`). */
-export type NutritionPlanPayload = NutritionPlanSettingsPayload & { user_id: number };
+/** Corpo de `POST /nutrition/plans` (`NutritionPlanIn`); sem `user_id`, o próprio usuário. */
+export type NutritionPlanPayload = NutritionPlanSettingsPayload & { user_id?: number };
 
 /** Corpo de `POST /nutrition/plans/{id}/publish` (`NutritionPlanPublishIn`): obrigatório, pode ser null. */
-export type NutritionPlanPublishPayload = { expected_current_id: number | null };
+export type NutritionPlanPublishPayload = { expected_current_id: number | null; expected_updated_at?: string | null };
 
 /** Janela de materialização do motor (`daily_target.TargetWindow`). */
 export type NutritionTargetWindow = { date_from: string; date_to: string; create_until: string };
 
 /** Corpo de `POST /nutrition/targets/recompute` (`NutritionTargetsRecomputeIn`). */
-export type NutritionRecomputePayload = { user_id: number; date_from: string; date_to: string | null };
+export type NutritionRecomputePayload = { user_id?: number; date_from: string; date_to: string | null };
 
 /** Sujeito do dia (`subject.ResolvedSubject.to_dict`). */
 export type NutritionSubject = {
@@ -151,6 +180,8 @@ export type NutritionTargetDetail = NutritionDayTarget & {
     limitations: string[];
   };
   macros: Record<string, unknown>;
+  /** Diferença REAL entre a meta do dia e o gasto total (negativa = déficit), já com gramas manuais, ciclo e prioridade. */
+  kcal_delta: number | null;
   protein_per_meal_g: number | null;
 };
 
@@ -173,7 +204,74 @@ export type NutritionPlanPreview = {
   target: NutritionTargetDetail;
   goal: NutritionGoal;
   week: NutritionDayTarget[];
+  /** Dias (ISO) que a publicação de hoje de fato cria: do dia de hoje ao fim da semana. */
+  publish_days: string[];
   limitations: NutritionLimitation[];
+  /** Projeção até o alvo do plano (`phases.project_goal`), toda calculada pela API. */
+  projection: NutritionProjection;
+  /** Bloqueios do motor (salvar já os recusaria): a tela desabilita Publicar com o motivo. */
+  blocking: NutritionLimitation[];
+  can_publish: boolean;
+  /** Avisos que não impedem salvar nem publicar (ritmo derivado fora da faixa, gramas fora da faixa). */
+  warnings: NutritionLimitation[];
+  /** Checagem das gramas manuais contra o seu peso (null sem gramas manuais). */
+  manual_check: NutritionManualCheck | null;
+};
+
+/** `phases.GoalProjection.to_dict` + os motivos rotulados. */
+export type NutritionProjection = {
+  /** Código de `PROJECTION_STATUS_OPTIONS`. */
+  status: NutritionCode;
+  goal_kind: NutritionCode | null;
+  current: number | null;
+  target: number | null;
+  target_weight_kg: number | null;
+  weeks: number | null;
+  eta_date: string | null;
+  progress_percent: number | null;
+  weekly_rate_share: number | null;
+  reasons: string[];
+  reason_items: NutritionLimitation[];
+  /** Ritmo semanal em % do peso, pronto (calculado pela API). */
+  weekly_rate_percent: number | null;
+  /** Alvo de %G supõe a massa magra atual constante: o prazo é um limite inferior (otimista). */
+  is_minimum_estimate: boolean;
+};
+
+/** `manual_targets.FieldCheck.to_dict`. */
+export type NutritionManualField = {
+  field: string;
+  value: number | null;
+  /** Código de `RANGE_STATUS_OPTIONS`. */
+  status: NutritionCode;
+  metric: string | null;
+  metric_value: number | null;
+  recommended: number[] | null;
+  codes: string[];
+  /** Texto pt-BR de cada código (avisos e bloqueios do motor). */
+  code_items: NutritionLimitation[];
+  label: string;
+  base: string | null;
+};
+
+/** `manual_targets.ManualTargetsCheck.to_dict`. */
+export type NutritionManualCheck = {
+  kcal: number | null;
+  fields: NutritionManualField[];
+  status: NutritionCode;
+  can_save: boolean;
+  limitations: string[];
+};
+
+/** `GET /nutrition/cycle-days/from-template` ("puxar do Modelo", D5). */
+export type NutritionCycleFromTemplate = {
+  user_id: number;
+  template: { id: number; name: string | null } | null;
+  /** Dias 0..6 (segunda = 0) com treino no Modelo. */
+  training_weekdays: number[] | null;
+  cycle_days: Record<string, NutritionCode> | null;
+  cycles: boolean;
+  notes: NutritionLimitation[];
 };
 
 /** `detail` do 422 do preview/publish: dados do aluno que faltam. */
@@ -280,7 +378,12 @@ export type FoodItem = {
 };
 
 /** Item de `GET /nutrition/foods/search`: nota e pré-seleção do motor (`food_text`). */
-export type FoodSearchItem = FoodItem & { score: number; auto_accept: boolean };
+export type FoodSearchItem = FoodItem & {
+  score: number;
+  auto_accept: boolean;
+  /** Preferido do usuário (N3): a API já põe os preferidos primeiro, antes do corte da lista. */
+  is_favorite?: boolean;
+};
 
 export type FoodSearchResponse = { query: string; normalized: string; items: FoodSearchItem[] };
 
@@ -448,11 +551,17 @@ export type MealPayload = {
 export type MealCreatePayload = MealPayload & {
   user_id?: number | null;
   ai_job_id?: string | null;
+  /** Só a foto do prato (L10): `MEAL_PHOTO.meal_source`. */
+  ai_source?: string | null;
   description_raw?: string | null;
 };
 
 /** `POST /nutrition/meals/preview` (`MealPreviewIn`): `meal_id` = refeição em edição. */
-export type MealPreviewPayload = MealCreatePayload & { meal_id?: number | null };
+export type MealPreviewPayload = Omit<MealCreatePayload, 'meal_slot'> & {
+  /** Pode faltar: os macros do item não dependem da refeição. */
+  meal_slot: NutritionCode | null;
+  meal_id?: number | null;
+};
 
 // ---------------------------------------------------------------------------
 // Leitura da refeição por IA (Lote L5b): `POST /nutrition/meals/parse` (202) +
@@ -522,10 +631,29 @@ export type MealParseResult = {
   engine_version: string;
 };
 
+/** `POST /nutrition/meals/photo` (`MealPhotoUploadIn`, L10): foto reduzida em base64 sem padding. */
+export type MealPhotoPayload = {
+  image_base64: string;
+  local_date: string;
+  meal_slot: NutritionCode | null;
+  user_id?: number | null;
+};
+
+/** `POST /nutrition/meals/photo` (202): o job e o prazo do polling (em segundos). */
+export type MealPhotoDispatch = { job_id: string; status: string; poll_timeout_seconds: number | null };
+
+/** Resultado do job da foto: a forma da leitura por texto, com o que a IA viu. Sem itens
+ * (foto sem comida ou não identificada), o motivo vem em `limitations`. */
+export type MealPhotoResult = Omit<MealParseResult, 'items'> & { items: MealPhotoItem[]; plate_status: NutritionCode };
+
+/** Item da foto: a natureza da proposta (`MEAL_NATURE_OPTIONS`), `null` enquanto a pessoa não escolher. */
+export type MealPhotoItem = MealParseItem & { nature: NutritionCode | null };
+
 export type MealPreview = {
   user_id: number;
   local_date: string;
-  meal_slot: NutritionCode;
+  /** `null` quando o preview foi pedido antes de escolher a refeição. */
+  meal_slot: NutritionCode | null;
   items: MealItem[];
   totals: NutritionTotals;
   engine_version: string;
@@ -539,6 +667,10 @@ export type BalanceRow = {
   intake_complete: boolean;
   remaining: number | null;
   share: number | null;
+  /** Partes do gráfico "consumido × a consumir" (N5): ingerido até a meta, falta e excesso, prontos do motor. */
+  within_target: number | null;
+  to_consume: number | null;
+  excess: number | null;
 };
 
 export type DayBalance = {
@@ -585,7 +717,7 @@ export type DayTraining = {
   } | null;
 };
 
-export type DayLog = { water_ml: number | null; hunger: number | null; notes: string | null; updated_at: string | null };
+export type DayLog = { notes: string | null; updated_at: string | null };
 
 /** Decisão do motor sobre a meta do dia (`daily_target.TargetAction`). */
 export type DayTargetAction = 'read' | 'materialize' | 'backfill' | 'skip';
@@ -606,7 +738,7 @@ export type NutritionDay = {
 };
 
 /** Corpo de `PUT /nutrition/days/{date}` (`NutritionDayIn`): substitui a linha do dia. */
-export type DayLogPayload = { water_ml: number | null; hunger: number | null; notes: string | null };
+export type DayLogPayload = { notes: string | null };
 
 export type DayLogResponse = { user_id: number; local_date: string; day_log: DayLog | null };
 
@@ -615,6 +747,8 @@ export type WeekDay = {
   target: NutritionDayTarget | null;
   target_action: DayTargetAction;
   totals: NutritionTotals | null;
+  /** kcal do dia só quando a energia do total é completa (`null` se incompleto ou sem refeição): a tela não decide. */
+  intake_kcal: number | null;
   /** Dia com refeições de total completo (entra no banco e na aderência). */
   logged: boolean;
   /** Dia com refeição de total incompleto (fica fora do banco e da aderência). */
@@ -661,8 +795,8 @@ export type NutritionWeek = {
 // (`domain/nutrition/label_photo`); aqui só o formato.
 // ---------------------------------------------------------------------------
 
-/** Corpo de `POST /nutrition/foods` (`FoodItemCreateIn`): o de `FoodItemPayload` + a fonte do cadastro. */
-export type FoodItemCreatePayload = FoodItemPayload & { source?: NutritionCode | null };
+/** Corpo de `POST /nutrition/foods` (`FoodItemCreateIn`): o de `FoodItemPayload` + a fonte do cadastro e o EAN opcional (N3). */
+export type FoodItemCreatePayload = FoodItemPayload & { source?: NutritionCode | null; barcode?: string | null };
 
 /** Corpo de `POST /nutrition/foods/label-photo` (`LabelPhotoUploadIn`): a foto reduzida em base64, sem padding. */
 export type LabelPhotoUploadPayload = { image_base64: string };
@@ -689,3 +823,40 @@ export type LabelPhotoReading = {
   /** Observações livres da IA sobre o que não deu para ler. */
   ai_notes: string[];
 };
+
+// ---------------------------------------------------------------------------
+// Alimentos preferidos (Lote N3): respostas de `api/app/nutrition_favorites.py`.
+// Teto, porção padrão (conversão do diário, `meal_math`) e ordem são do motor
+// (`domain/nutrition/favorites`); aqui só o formato.
+// ---------------------------------------------------------------------------
+
+/** Porção padrão do favorito: a quantidade/unidade que entra no diário (a conta é do `meal_math`). */
+export type FavoriteDefault = {
+  quantity: number;
+  /** Código de `UNIT_OPTIONS` (`meal_math.Unit`). */
+  unit: NutritionCode;
+  portion_id: number | null;
+  portion_label: string | null;
+  portion_amount: number | null;
+};
+
+export type FavoriteItem = {
+  food: FoodItem;
+  position: number;
+  default: FavoriteDefault | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** `GET /nutrition/favorites` (e a resposta de `POST /reorder`): na ordem do usuário. */
+export type FavoritesResponse = { items: FavoriteItem[]; max_items: number };
+
+/** Corpo de `PUT /nutrition/favorites/{food_id}` (`FavoriteDefaultIn`); tudo `null` = sem porção padrão. */
+export type FavoriteDefaultPayload = {
+  default_quantity: number | null;
+  default_unit: NutritionCode | null;
+  default_portion_id: number | null;
+};
+
+/** Corpo de `POST /nutrition/favorites` (`FavoriteCreateIn`). */
+export type FavoriteCreatePayload = { food_id: number } & Partial<FavoriteDefaultPayload>;

@@ -5,10 +5,14 @@ import { formatNumberOrDash } from '@/lib/format';
 import {
   ACTIVITY_LEVEL_OPTIONS,
   BMR_FORMULA_OPTIONS,
+  DAY_KIND_OPTIONS,
+  MANUAL_TRAINING_MODE_OPTIONS,
+  MACRO_PRIORITY_OPTIONS,
   PLAN_STATE_OPTIONS,
   PROTEIN_BASIS_OPTIONS,
   STRATEGY_OPTIONS,
   TDEE_MODE_OPTIONS,
+  WEEKDAY_OPTIONS,
   nutritionLabel,
 } from '@/lib/nutrition-constants';
 import { formatShareAsPercent } from '@/lib/nutrition-format';
@@ -61,8 +65,32 @@ export function PlanSummary({
   if (plan.surplus_share != null) {
     linhas.push({ label: 'Superávit', value: `${formatShareAsPercent(plan.surplus_share)} do gasto${plan.advanced ? ' (avançado)' : ''}` });
   }
+  if (plan.maintenance_kcal_adjust) {
+    // Só aparece quando o check-in semanal moveu o ajuste (0 = a manutenção de sempre).
+    const ajuste = plan.maintenance_kcal_adjust;
+    linhas.push({ label: 'Ajuste da manutenção', value: `${ajuste > 0 ? '+' : ''}${formatNumberOrDash(ajuste, 0)} kcal por dia sobre o gasto` });
+  }
   if (plan.carb_min_g_per_kg != null) {
     linhas.push({ label: 'Carboidrato mínimo', value: `${formatNumberOrDash(plan.carb_min_g_per_kg, 2)} g por kg de peso` });
+  }
+  if (plan.manual_targets) {
+    const { protein_g: p, carb_g: c, fat_g: g } = plan.manual_targets;
+    linhas.push({
+      label: 'Gramas manuais',
+      value: `Proteína ${formatNumberOrDash(p, 0)} g · Carboidrato ${formatNumberOrDash(c, 0)} g · Gordura ${formatNumberOrDash(g, 0)} g (${nutritionLabel(MANUAL_TRAINING_MODE_OPTIONS, plan.manual_targets.training_mode) ?? '-'})`,
+    });
+  } else {
+    linhas.push({
+      label: 'Prioridade de macros',
+      value: nutritionLabel(MACRO_PRIORITY_OPTIONS, plan.macro_priority) ?? '-',
+    });
+  }
+  if (plan.cycle_days) {
+    const dias = plan.cycle_days;
+    linhas.push({
+      label: 'Dias de mais e menos gasto',
+      value: WEEKDAY_OPTIONS.map((dia) => `${dia.label.slice(0, 3)}: ${nutritionLabel(DAY_KIND_OPTIONS, dias[dia.value]) ?? '-'}`).join(' · '),
+    });
   }
   linhas.push(
     { label: 'Fórmula da TMB', value: nutritionLabel(BMR_FORMULA_OPTIONS, plan.bmr_formula) ?? '-' },

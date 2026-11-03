@@ -30,7 +30,9 @@ from app.domain.nutrition import daily_target as _dt
 from app.domain.nutrition import energy_expenditure as _ee
 from app.domain.nutrition import external_sources as _ext
 from app.domain.nutrition import label_photo as _lp
+from app.domain.nutrition import plan_suggestion as _ps
 from app.domain.nutrition import macros as _macros
+from app.domain.nutrition import manual_targets as _mt
 from app.domain.nutrition import diary as _diary
 from app.domain.nutrition import plan as _plan
 from app.domain.nutrition import strategy as _st
@@ -103,7 +105,9 @@ def test_export_for_frontend():
     # hunger_labels, water_ml_range, meal_max_items
     # L5b: + meal_parse (teto do texto e a decisão de cada item; a cota vem da API)
     # L6: + label_photo, label_legibilities, label_legibility_labels
-    assert len(bloco) == 64
+    # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
+    # N2 rodada 4: + manual_training_modes, manual_training_mode_labels, manual_training_mode_hints, default_manual_training_mode
+    assert len(bloco) == 77
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
@@ -112,6 +116,8 @@ def test_export_for_frontend():
         "match_status_labels": {s.value: lb.MEAL_PARSE_MATCH_STATUS_LABELS[s] for s in _mp.MatchStatus},
         "estimate_source": _cat.FoodSource.AI_ESTIMATE.value,
         "estimate_basis": _mp.ESTIMATE_BASIS.value,
+        "catalog_item_nature": _mp.CATALOG_ITEM_NATURE.value,
+        "estimate_item_nature": _mp.ESTIMATE_ITEM_NATURE.value,
         "quota_exceeded_label": lb.ai_quota_exceeded_label("meal_parse"),
     }
     assert bloco["energy_field"] == _mm.ENERGY_FIELD and bloco["item_nutrient_fields"][0] == bloco["energy_field"]
@@ -124,9 +130,8 @@ def test_export_for_frontend():
     assert set(bloco["unit_labels"]) == set(bloco["units"])
     assert bloco["portion_units"] == ["unit", "portion"] and set(bloco["portion_units"]) < set(bloco["units"])
     assert set(bloco["nutrient_fields"]) <= set(bloco["food_per_100_fields"])
-    assert bloco["hunger_levels"] == list(_diary.hunger_levels())
-    assert set(bloco["hunger_labels"]) == {str(n) for n in bloco["hunger_levels"]}
-    assert bloco["water_ml_range"] == list(_diary.WATER_ML_RANGE) and bloco["meal_max_items"] == _diary.MEAL_MAX_ITEMS
+    assert "hunger_levels" not in bloco and "water_ml_range" not in bloco  # água e fome saíram do produto
+    assert bloco["meal_max_items"] == _diary.MEAL_MAX_ITEMS
     for porcao in bloco["generic_portions"]:
         assert bloco["unit_labels"][porcao["code"]] == porcao["label"]  # mesmo rótulo da medida caseira
     rdc = {campo.code for campo in lb.RDC429_FIELDS}
@@ -188,12 +193,27 @@ _PREFIXADOS = {
     _lp.WARN_LABEL_DERIVED_FROM_SERVING,
     _lp.WARN_LABEL_SERVING_INCONSISTENT,
     _lp.WARN_LABEL_NOT_SIGNIFICANT,
+    # N1: gramas manuais (D6) e dias do ciclo de carbo (D5).
+    _mt.MANUAL_INVALID_VALUE,
+    _mt.MANUAL_BELOW_RANGE,
+    _mt.MANUAL_ABOVE_RANGE,
+    _mt.MANUAL_BLOCKED_BELOW,
+    _mt.MANUAL_BLOCKED_ABOVE,
+    _mt.MANUAL_BELOW_BMR,
+    _mt.MANUAL_DIFFERS_FROM_TARGET,
+    _mt.LIMIT_MISSING_BASE,
+    _cc.ERR_INVALID_WEEKDAY,
+    _cc.ERR_DUPLICATE_WEEKDAY,
+    _cc.ERR_INVALID_DAY_KIND,
+    _ps.ERR_SUGGESTION_FIELD_FORBIDDEN,
+    _ps.ERR_SUGGESTION_FIELD_MISSING,
+    _ps.ERR_SUGGESTION_FIELD_INVALID,
 }
 
 
 def _codigos_do_motor() -> set[str]:
     codigos: set[str] = set()
-    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp):
+    for modulo in (_bmr, _bc, _cc, _dt, _ee, _macros, _mt, _plan, _st, _cat, _ext, _mm, _wb, _diary, _ai, _lp, _ps):
         for nome, valor in vars(modulo).items():
             if nome.startswith(("LIMIT_", "CLAMP_", "ERR_", "WARN_")) and isinstance(valor, str):
                 codigos.add(valor)
@@ -222,7 +242,6 @@ def test_diario_rotula_os_codigos_com_campo_e_numeros_do_dono():
     assert f"{_diary.ITEM_AMOUNT_MAX:g}" in lb.limitation_label(_diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE)
     assert f"{_wb.MAX_DAILY_CARRYOVER_SHARE:.0%}" in lb.limitation_label(_wb.CLAMP_DAILY_CARRYOVER)
     assert f"{_wb.MAX_WEEKLY_BANK_SHARE:.0%}" in lb.limitation_label(_wb.CLAMP_WEEKLY_BANK)
-    assert lb.labels_by_code(lb.HUNGER_LABELS)["1"] == lb.HUNGER_LABELS[1]
 
 
 def test_numero_no_texto_vem_do_dono():

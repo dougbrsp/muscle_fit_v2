@@ -89,6 +89,8 @@ JOB_TYPE_LAMBDA: dict[str, str] = {
     # Nutricao: o job type e do dono (`domain/nutrition/ai_usage`, puro); a Lambda
     # e a da decisao E8 do plano (imagem na plan-generator).
     ai_usage.LABEL_PHOTO_JOB_TYPE: "musclefit-plan-generator",  # nutrition_label_photo.py
+    ai_usage.MEAL_PHOTO_JOB_TYPE: "musclefit-plan-generator",  # nutrition_meal_photo.py (L10)
+    ai_usage.PLAN_SUGGESTION_JOB_TYPE: "musclefit-workout-ai",  # nutrition_plan_suggestion.py (N6, texto: E8)
 }
 
 # Folga sobre o timeout da Lambda: cold start + atraso de entrega do invoke

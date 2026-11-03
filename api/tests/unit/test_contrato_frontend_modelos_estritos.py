@@ -20,6 +20,7 @@ from app.request_models import (
     MealBodyIn,
     MealIn,
     MealParseIn,
+    MealPhotoUploadIn,
     MealPreviewIn,
     NutritionDayIn,
     NutritionPlanIn,
@@ -305,6 +306,39 @@ def test_post_nutrition_meals_parse():
     MealParseIn.model_validate({"text": "arroz", "local_date": "2026-10-18", "meal_slot": "lunch", "user_id": 2})
 
 
+def test_post_nutrition_meals_photo():
+    # frontend/src/lib/nutrition-api.ts (uploadMealPhoto, L10): foto em base64 sem padding + dia.
+    MealPhotoUploadIn.model_validate({"image_base64": "/9j/4A", "local_date": "2026-11-02", "meal_slot": None})
+    MealPhotoUploadIn.model_validate({"image_base64": "/9j/4A", "local_date": "2026-11-02", "meal_slot": "lunch", "user_id": 2})
+
+
+def test_post_nutrition_meals_lida_pela_foto():
+    # nutrition-meal-form.ts (`mealCreatePayload`, L10): `ai_job_id` + `ai_source`.
+    MealIn.model_validate({**_REFEICAO, "ai_job_id": "job-1", "ai_source": "ai_photo", "description_raw": ""})
+
+
+def test_ai_source_so_aceita_a_origem_do_dono():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.domain.nutrition.diary import MealSource
+
+    assert MealIn.model_validate({**_REFEICAO, "ai_source": MealSource.AI_PHOTO.value}).ai_source == MealSource.AI_PHOTO.value
+    with pytest.raises(ValidationError):
+        MealIn.model_validate({**_REFEICAO, "ai_source": MealSource.AI_TEXT.value})
+
+
+def test_preview_aceita_refeicao_vazia_e_gravar_nao():
+    # nutrition-meal-form.ts (`mealPreviewPayload`, L10): macros antes de escolher a refeição.
+    import pytest
+    from pydantic import ValidationError
+
+    sem_refeicao = {chave: valor for chave, valor in _REFEICAO.items() if chave != "meal_slot"}
+    MealPreviewIn.model_validate({**sem_refeicao, "meal_slot": None})
+    with pytest.raises(ValidationError):
+        MealIn.model_validate(sem_refeicao)
+
+
 def test_post_nutrition_meals_lida_pela_ia():
     corpo = {
         **_REFEICAO,
@@ -324,9 +358,10 @@ def test_post_nutrition_meals_lida_pela_ia():
 
 
 def test_put_nutrition_days():
-    # WaterHungerInputs.tsx: saveNutritionDayLog(date, { water_ml, hunger, notes }, userId).
+    # DayNotesInput.tsx: saveNutritionDayLog(date, { notes }, userId); cliente antigo ainda manda water_ml/hunger.
+    NutritionDayIn.model_validate({"notes": None})
+    NutritionDayIn.model_validate({"notes": "ok"})
     NutritionDayIn.model_validate({"water_ml": 2000, "hunger": 3, "notes": None})
-    NutritionDayIn.model_validate({"water_ml": None, "hunger": None, "notes": "ok"})
 
 
 def test_post_cardio_recommendations_apply():

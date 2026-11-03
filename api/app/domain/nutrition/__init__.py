@@ -14,8 +14,11 @@ Módulos (um dono por regra):
 - `energy_density`: Hall 2008 / Forbes (kcal por kg de variação de peso).
 - `strategy`: cutting / bulking / manutenção, faixas, defaults, alvo calórico.
 - `macros`: Atwater, fibra, divisão em gramas, proteína por refeição.
-- `carb_cycling`: distribuição semanal do carbo com média preservada.
-- `phases`: calendário (MATADOR, ICECAP, refeeds, teto de semanas, %G de parada).
+- `carb_cycling`: distribuição semanal do carbo com média preservada; dias
+  escolhidos pelo usuário e proposta a partir do Modelo (N1).
+- `manual_targets`: gramas manuais validadas (dentro / aviso / bloqueio, N1).
+- `phases`: calendário (MATADOR, ICECAP, refeeds, teto de semanas, %G de parada)
+  e projeção até o alvo de peso ou de %G (N1).
 - `adaptive_tdee`: gasto observado; só SUGERE recálculo (D-J).
 - `weekly_budget`: orçamento, banco e aderência da semana.
 - `meal_math`: gramas por unidade/porção, macros de item/refeição, consistência.
@@ -27,6 +30,8 @@ Módulos (um dono por regra):
   de consultas ao OFF (L3b).
 - `diary`: diário de refeições — refeição (`MealSlot`), origem, entrada da
   refeição e do item, água e fome do dia (L4).
+- `favorites`: alimentos preferidos do usuário — teto da lista, porção padrão (pela
+  matemática do diário: `meal_math` + `diary`) e ordem (N3).
 - `labels`: rótulos pt-BR, vocabulário RDC 429 e texto das limitações.
 - `daily_target`: orquestrador `compute_daily_target`, `ENGINE_VERSION`,
   congelamento da meta materializada e contexto do dia (L2b).
@@ -62,7 +67,9 @@ L5b (mapa §55): `api/app/nutrition_meal_parse.py` (rota 202 + cota),
 `api/app/nutrition_meal_parse_worker.py` e o item estimado em `nutrition_meals.py`.
 L6 (mapa §56): `api/app/nutrition_label_photo.py` (upload e 202),
 `api/app/nutrition_label_storage.py` (S3) e o worker `api/app/nutrition_label_ai.py`
-(leitura pela IA + `label_photo.review_reading`).
+(leitura pela IA + `label_photo.review_reading`). L10 (mapa §80): a foto do prato,
+com o dono `meal_photo`, em `api/app/nutrition_meal_photo.py` (upload e 202),
+`api/app/nutrition_meal_photo_storage.py` (S3) e `api/app/nutrition_meal_photo_ai.py`.
 """
 
 from __future__ import annotations
@@ -84,8 +91,11 @@ from . import (  # noqa: F401  (reexport dos módulos do pacote)
     external_sources,
     food_text,
     label_photo,
+    meal_photo,
+    plan_suggestion,
     labels,
     macros,
+    manual_targets,
     meal_math,
     meal_parse,
     phases,
@@ -129,6 +139,24 @@ def export_for_frontend() -> dict[str, Any]:
         "strategy_labels": lb.labels_by_code(lb.STRATEGY_LABELS),
         "protein_bases": _codes(st.ProteinBasis),
         "protein_basis_labels": lb.labels_by_code(lb.PROTEIN_BASIS_LABELS),
+        "macro_priorities": _codes(strategy.MacroPriority),
+        "macro_priority_labels": lb.labels_by_code(lb.MACRO_PRIORITY_LABELS),
+        "default_macro_priority": strategy.DEFAULT_MACRO_PRIORITY.value,
+        "manual_training_modes": _codes(manual_targets.ManualTrainingMode),
+        "manual_training_mode_labels": lb.labels_by_code(lb.MANUAL_TRAINING_MODE_LABELS),
+        "manual_training_mode_hints": lb.labels_by_code(lb.MANUAL_TRAINING_MODE_HINTS),
+        "default_manual_training_mode": manual_targets.DEFAULT_MANUAL_TRAINING_MODE.value,
+        # Modos das gramas manuais que valem para cada modo de gasto do treino (a tela só oferece estes).
+        "manual_training_modes_by_tdee_mode": {
+            modo.value: [m.value for m in plan.manual_training_modes_for(modo)] for modo in energy_expenditure.TdeeMode
+        },
+        "range_statuses": _codes(manual_targets.RangeStatus),
+        "range_status_labels": lb.labels_by_code(lb.RANGE_STATUS_LABELS),
+        "goal_kinds": _codes(phases.GoalKind),
+        "goal_kind_labels": lb.labels_by_code(lb.GOAL_KIND_LABELS),
+        "projection_statuses": _codes(phases.ProjectionStatus),
+        "projection_status_labels": lb.labels_by_code(lb.PROJECTION_STATUS_LABELS),
+        "weekday_names": {str(indice): nome for indice, nome in lb.WEEKDAY_LABELS.items()},
         "day_kinds": _codes(carb_cycling.DayKind),
         "day_kind_labels": lb.labels_by_code(lb.DAY_KIND_LABELS),
         "meal_slots": _codes(lb.MealSlot),
@@ -193,6 +221,8 @@ def export_for_frontend() -> dict[str, Any]:
                 "fat_kcal_share": _range(st.MAINT_FAT_KCAL_SHARE_RANGE),
                 "fat_kcal_share_default": st.MAINT_FAT_KCAL_SHARE_DEFAULT,
                 "tolerance_share": st.MAINT_TOLERANCE_SHARE,
+                "maintenance_kcal_adjust": _range(st.MAINT_KCAL_ADJUST_RANGE),
+                "maintenance_kcal_adjust_default": st.MAINT_KCAL_ADJUST_DEFAULT,
             },
             "refeed_days_per_week_default": phases.REFEED_DAYS_PER_WEEK_DEFAULT,
             "max_cut_weeks_without_break": phases.MAX_CUT_WEEKS_WITHOUT_BREAK,
@@ -219,16 +249,13 @@ def export_for_frontend() -> dict[str, Any]:
         "food_licenses": {fonte.value: texto for fonte, texto in catalog.SOURCE_LICENSES.items()},
         "usda_data_types": _codes(external_sources.UsdaDataType),
         "usda_data_type_labels": lb.labels_by_code(lb.USDA_DATA_TYPE_LABELS),
-        # Diário (L4): rótulos das unidades, campos de nutriente exibidos, escala
-        # de fome e faixas do formulário; macros, totais e balanço vêm da API.
+        # Diário (L4): rótulos das unidades, campos de nutriente exibidos
+        # e faixas do formulário; macros, totais e balanço vêm da API.
         "unit_labels": lb.labels_by_code(lb.UNIT_LABELS),
         "portion_units": [unidade.value for unidade in meal_math.PORTION_UNITS],
         "nutrient_fields": list(meal_math.NUTRIENT_FIELDS),
         "energy_field": meal_math.ENERGY_FIELD,
         "item_nutrient_fields": [meal_math.ENERGY_FIELD, *meal_math.ATWATER_MACRO_FIELDS],
-        "hunger_levels": list(diary.hunger_levels()),
-        "hunger_labels": lb.labels_by_code(lb.HUNGER_LABELS),
-        "water_ml_range": _range(diary.WATER_ML_RANGE),
         "meal_max_items": diary.MEAL_MAX_ITEMS,
         # Leitura da refeição por IA (L5b): teto do texto e a decisão de cada item.
         # A cota do dia vem da API (`GET /nutrition/meals/parse/quota`), nunca daqui.
@@ -238,6 +265,9 @@ def export_for_frontend() -> dict[str, Any]:
             "match_status_labels": lb.labels_by_code(lb.MEAL_PARSE_MATCH_STATUS_LABELS),
             "estimate_source": meal_parse.ESTIMATE_SOURCE.value,
             "estimate_basis": meal_parse.ESTIMATE_BASIS.value,
+            # Natureza do item conforme a origem que a pessoa escolhe no editor.
+            "catalog_item_nature": meal_parse.CATALOG_ITEM_NATURE.value,
+            "estimate_item_nature": meal_parse.ESTIMATE_ITEM_NATURE.value,
             "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PARSE),
         },
         # Foto do rótulo (L6): parâmetros da redução por canvas e do upload (a API
@@ -250,6 +280,19 @@ def export_for_frontend() -> dict[str, Any]:
             "retention_days": label_photo.LABEL_PHOTO_RETENTION_DAYS,
             # Fonte com que o formulário da leitura é salvo (`POST /nutrition/foods`).
             "food_source": catalog.FoodSource.LABEL_PHOTO.value,
+        },
+        # Foto do prato (L10): redução por canvas e upload com os parâmetros do dono
+        # (a API confere de novo: 413/415). A cota do dia vem da API, nunca daqui.
+        "meal_photo": {
+            "max_bytes": meal_photo.MEAL_PHOTO_MAX_BYTES,
+            "content_type": meal_photo.MEAL_PHOTO_CONTENT_TYPE,
+            "resize_max_edge_px": label_photo.RESIZE_MAX_EDGE_PX,
+            "resize_quality": label_photo.RESIZE_JPEG_QUALITY,
+            "retention_days": meal_photo.MEAL_PHOTO_RETENTION_DAYS,
+            "retention_label": lb.days_label(meal_photo.MEAL_PHOTO_RETENTION_DAYS),
+            # Origem com que a refeição é gravada (`POST /nutrition/meals`, `ai_source`).
+            "meal_source": diary.MealSource.AI_PHOTO.value,
+            "quota_exceeded_label": lb.ai_quota_exceeded_label(ai_usage.AiFeature.MEAL_PHOTO),
         },
         "label_legibilities": _codes(label_photo.LabelLegibility),
         "label_legibility_labels": lb.labels_by_code(lb.LABEL_LEGIBILITY_LABELS),

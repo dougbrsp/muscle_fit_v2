@@ -1004,7 +1004,12 @@ PADROES: tuple[Padrao, ...] = (
             r"|\b(?:protein_g_per_kg|fat_kcal_share|surplus_share|weekly_rate_share|carb_min_g_per_kg|max_deficit_share"
             r"""|min_intake_bmr_multiple)\w*["']?\s*[:=]\s*[\d(\[]"""
         ),
-        donos=("api/app/domain/nutrition/strategy.py", "api/app/domain/nutrition/macros.py"),
+        # `manual_targets.py` (N1, D6) é dono dos limites de BLOQUEIO das gramas manuais, com fonte.
+        donos=(
+            "api/app/domain/nutrition/strategy.py",
+            "api/app/domain/nutrition/macros.py",
+            "api/app/domain/nutrition/manual_targets.py",
+        ),
         inventario="NUTRICAO-L1",
         linguagens=frozenset({"py", "ts", "md"}),
     ),
@@ -1043,6 +1048,21 @@ PADROES: tuple[Padrao, ...] = (
         ),
         donos=("api/app/domain/nutrition/labels.py",),
         inventario="NUTRICAO-L1",
+    ),
+    Padrao(
+        chave="rotulo_prioridade_macros",
+        regra='rótulo pt-BR da prioridade de macros escrito à mão ("Proteína fixa", "Carboidrato alto", "Gordura alta")',
+        # N1 (2026-11-02): o dono é `labels.MACRO_PRIORITY_LABELS`; o FE lê `macro_priority_labels`
+        # do JSON gerado. "Equilibrado" é genérico demais e fica de fora. Só o rótulo
+        # que ABRE a string ou o texto JSX (o rótulo completo continua casando).
+        regex=re.compile(
+            r"""["'`](?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)"""
+            r"|>\s*(?:Prote[ií]na fixa|Carbo(?:idrato)? alto|Gordura alta)[^<]*<"
+        ),
+        donos=("api/app/domain/nutrition/labels.py",),
+        inventario="NUTRICAO-N1",
+        linguagens=frozenset({"py", "ts", "md"}),
+        escopo=ESCOPO_NUTRICAO,
     ),
     Padrao(
         chave="kcal_treino_prioridade",
@@ -1348,6 +1368,69 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-L4",
     ),
     Padrao(
+        chave="favoritos_nutricao",
+        regra="teto da lista de preferidos ou as constantes de erro da porção padrão/ordem redefinidos com valor "
+        "fora do dono",
+        # 2026-11-02 (nutrição N3): dono `favorites` (teto, porção padrão pela matemática do diário,
+        # ordem). A rota `nutrition_favorites` importa o motor; a tela mostra o que a API devolve
+        # (`max_items`) e não repete o teto.
+        regex=re.compile(r"\b(?:MAX_FAVORITES|FAVORITES_LIMIT)\s*(?::[^=\n]+)?=\s*[\d(\[]"),
+        donos=("api/app/domain/nutrition/favorites.py",),
+        inventario="NUT-N3",
+    ),
+    Padrao(
+        chave="dashboard_nutricao",
+        regra="janela, janelas oferecidas, janela do TDEE observado ou limiar de poucos dias do dashboard de nutrição redefinidos com número fora do dono",
+        # 2026-11-02 (nutrição N5, §82): dono `dashboard` (janela de 28 dias e limites 7..90, janelas oferecidas, janela do TDEE observado
+        # e mínimo de dias registrados). A rota importa o motor e a tela só exibe o que a
+        # API devolve (aderência, médias, ritmo, projeção, estados vazios).
+        regex=re.compile(
+            r"\b(?:DASHBOARD_DEFAULT_DAYS|DASHBOARD_MIN_DAYS|DASHBOARD_MAX_DAYS|WINDOW_CHOICES_DAYS|ADAPTIVE_WINDOW_DAYS|FEW_LOGGED_DAYS)"
+            r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
+        ),
+        donos=("api/app/domain/nutrition/dashboard.py",),
+        inventario="NUT-N5",
+    ),
+    Padrao(
+        chave="checkin_semanal",
+        regra="mínimo de dias completos, janelas, tolerância do ritmo, passo máximo semanal, limite de massa magra/gordura da "
+        "bioimpedância, validade da proposta (3 dias) ou dia padrão do check-in redefinidos com número fora do dono",
+        # 2026-11-03 (nutrição N7, §83): dono `weekly_checkin` (veredito, ajuste de kcal, metas propostas, calendário e
+        # validade do check-in semanal). A rota `nutrition_checkins` chama o motor e grava o que ele devolveu; a tela
+        # só mostra (nenhum cálculo no frontend). Sem fonte bibliográfica: defaults de desenho nomeados no dono.
+        regex=re.compile(
+            r"\b(?:MIN_COMPLETE_DAYS|WEIGHT_WINDOW_DAYS|BODY_WINDOW_DAYS|MIN_WEIGHT_READINGS_FOR_TREND|MIN_WEIGHT_READINGS_IN_WEEK"
+            r"|MIN_BIA_READINGS|MIN_BIA_SPAN_DAYS|MIN_READINGS_FOR_GOAL|ON_TRACK_TOLERANCE_SHARE|RATE_NOISE_FLOOR_SHARE"
+            r"|CORRECTION_FRACTION|MAX_KCAL_STEP_SHARE|MIN_KCAL_STEP|BIA_CORRECTION_FRACTION|LEAN_LOSS_LIMIT_SHARE_PER_WEEK"
+            r"|BULK_FAT_SHARE_OF_GAIN_LIMIT|BULK_FAT_GAIN_NOISE_FLOOR_KG_PER_WEEK|PROPOSAL_VALIDITY_DAYS|DEFAULT_CHECKIN_WEEKDAY"
+            r"|HISTORY_LIMIT_DEFAULT|HISTORY_LIMIT_MAX|CHECKIN_WEEKDAY_RANGE|RATE_DECIMALS|MIN_DAYS_UNDER_CURRENT_PLAN"
+            r"|EXPIRY_TIME_OF_DAY)\s*(?::[^=\n]+)?=\s*(?:[\d(\[]|time\()"
+        ),
+        donos=("api/app/domain/nutrition/weekly_checkin.py",),
+        inventario="NUT-N7",
+    ),
+    Padrao(
+        chave="ajuste_manutencao",
+        regra="faixa ou padrão do ajuste de kcal da manutenção (`maintenance_kcal_adjust`) redefinidos com número fora do dono",
+        # 2026-11-03 (nutrição N7, §83): dono `strategy` (faixa `MAINT_KCAL_ADJUST_RANGE` e padrão 0 do parâmetro novo do plano da
+        # manutenção). O check-in (`weekly_checkin`) só importa a faixa para limitar a proposta; a tela não repete a faixa.
+        regex=re.compile(r"\b(?:MAINT_KCAL_ADJUST_RANGE|MAINT_KCAL_ADJUST_DEFAULT)\s*(?::[^=\n]+)?=\s*[\d(\[]"),
+        donos=("api/app/domain/nutrition/strategy.py",),
+        inventario="NUT-N7",
+    ),
+    Padrao(
+        chave="projecao_dashboard_nutricao",
+        regra="projeção até o alvo calculada no dashboard de nutrição fora do dono do plano: `project_goal(` direto "
+        "ou o TDEE próprio da projeção (`projection_tdee_kcal`) em `nutrition_dashboard.py`",
+        # 2026-11-03 (nutrição N5, §82): a projeção do painel é a do plano do N2 (`plan.project_plan_goal` com o TDEE
+        # estável `plan.projection_tdee`), a mesma da prévia, inclusive com gramas manuais; o painel só acrescenta o
+        # ponto de partida do caminho. Um `project_goal(` direto aqui voltaria a ignorar as gramas e o modo do treino.
+        regex=re.compile(r"(?<![\w.])project_goal\s*\(|\bphases\.project_goal\s*\(|\bprojection_tdee_kcal\b"),
+        donos=("api/app/domain/nutrition/phases.py", "api/app/domain/nutrition/plan.py"),
+        inventario="NUT-N5",
+        escopo=("api/app/nutrition_dashboard.py",),
+    ),
+    Padrao(
         chave="soma_nutrientes",
         regra="soma de nutrientes de itens, refeições ou dias (`sum(`/`SUM(`/`.reduce(`/`+=` sobre energy_kcal, "
         "protein_g, carbohydrates_g, total_fat_g, fiber_g, sodium_mg ou as metas da 079) ou escala por 100 g/ml "
@@ -1379,7 +1462,7 @@ PADROES: tuple[Padrao, ...] = (
         chave="cota_ia_nutricao",
         regra="cota, job type ou preço do uso de IA da nutrição fora do dono: constante de `ai_usage` redefinida "
         "(`*_DAILY_QUOTA`, `DAILY_QUOTA`, `FEATURE_JOB_TYPE`, tabela de preços, unidades do custo), job type "
-        "`nutrition-meal-parse`/`nutrition-label-ocr` em literal ou cota comparada com número",
+        "`nutrition-meal-parse`/`nutrition-label-ocr`/`nutrition-meal-photo`/`nutrition-plan-suggestion` em literal ou cota comparada com número",
         # 2026-10-18 (nutrição L5a): a rota do L5b/L6 reserva pela cota do dono
         # (`nutrition_ai_quota.open_usage` -> `ai_usage.quota_status`), importa o
         # nome do job type do dono (`from .domain.nutrition.ai_usage import
@@ -1388,11 +1471,11 @@ PADROES: tuple[Padrao, ...] = (
         # `async_jobs.JOB_TYPE_LAMBDA` é `ai_usage.MEAL_PARSE_JOB_TYPE`; o worker fecha
         # com o custo de `ai_usage.estimate_cost_usd`. O FE lê a cota da API.
         regex=re.compile(
-            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
+            r"\b(?:MEAL_PARSE_DAILY_QUOTA|LABEL_PHOTO_DAILY_QUOTA|MEAL_PHOTO_DAILY_QUOTA|PLAN_SUGGESTION_DAILY_QUOTA|DAILY_QUOTA|FEATURE_JOB_TYPE"
             r"|MODEL_PRICES_USD_CENTS_PER_MTOKEN|MODEL_LONG_PROMPT_PRICES|HAIKU_LONG_PROMPT_THRESHOLD_TOKENS"
             r"|TOKENS_PER_PRICE_UNIT|CENTS_PER_USD|COST_USD_DECIMAL_PLACES)"
             r"\s*(?::[^=\n]+)?=\s*(?:[\d({\[]|MappingProxyType|frozenset)"
-            r"""|["'`]nutrition-(?:meal-parse|label-ocr)["'`]"""
+            r"""|["'`]nutrition-(?:meal-parse|label-ocr|meal-photo|plan-suggestion)["'`]"""
             # Cota comparada ou atribuída a número (`cota_usada >= 30`, `remainingQuota === 0`,
             # `quota: int = 10`, `"quota": 30`). "cota"/"quota" como parte do nome (snake ou
             # camelCase), não dentro de outra palavra (`cotacao`).
@@ -1505,6 +1588,32 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/domain/nutrition/label_photo.py",),
         inventario="NUT-L6",
         escopo=(*ESCOPO_NUTRICAO, "frontend/src/lib/image-resize.ts"),
+    ),
+    Padrao(
+        chave="foto_prato_nutricao",
+        regra="foto do prato fora do dono: constante de `meal_photo` redefinida (limite de bytes, tipo, prefixo S3, "
+        "retenção, imagens por leitura, `detail`) ou o prefixo `nutrition-meals` em literal (com ou sem a barra)",
+        # 2026-11-02 (nutrição L10): a rota, o armazenamento, o worker e a tela consomem
+        # o dono `domain/nutrition/meal_photo`, que reaproveita o transporte de
+        # `label_photo`. O IAM e o lifecycle do prefixo (`.tf`, que a guarda não varre)
+        # têm teste de paridade; o id da regra (`nutrition-meals-expire-1d`) não casa.
+        regex=re.compile(
+            r"\b(?:MEAL_PHOTO_(?:MAX_BYTES|CONTENT_TYPE|S3_PREFIX|RETENTION_DAYS|IMAGES_PER_READING)|MEAL_IMAGE_DETAIL)"
+            r"""\s*(?::[^=\n]+)?=\s*(?:[\d(\[{"'`]|(?:int|float|Number)\(|frozenset|new Set|label_photo\.)"""
+            r"""|["'`]nutrition-meals(?=[/"'`])"""
+        ),
+        donos=("api/app/domain/nutrition/meal_photo.py",),
+        inventario="NUT-L10",
+    ),
+    Padrao(
+        chave="sugestao_plano_ia",
+        regra="sugestão de metas por IA fora do dono: lista fechada de campos, de motivos ou teto de motivos de "
+        "`plan_suggestion` redefinidos (a IA nunca devolve grama nem kcal como meta, decisão D3)",
+        # 2026-11-03 (nutrição N6): rota, worker e tela consomem o dono; a validação é `build_plan_settings`.
+        regex=re.compile(r"\b(?:SUGGESTION_FIELDS|REASONS_MAX|ALWAYS_NUMBER_FIELDS|OPTIONAL_NUMBER_FIELDS)\s*(?::[^=\n]+)?=\s*[\d(\[{]"),
+        donos=("api/app/domain/nutrition/plan_suggestion.py",),
+        inventario="NUT-N6",
+        escopo=ESCOPO_NUTRICAO,
     ),
     Padrao(
         chave="fallback_registro_serie",
@@ -2057,6 +2166,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
         "api/app/intelligence/report/markdown_renderer.py": 1,  # INTENT_LABELS["maintenance"]
         "frontend/src/lib/methodology-volume.ts": 2,  # METHODOLOGY_INTENT_OPTIONS (maintenance, cutting)
     },
+    "rotulo_prioridade_macros": {},  # N1 (2026-11-02): nasce vazia
     "kcal_treino_prioridade": {},
     "vocabulario_ia_serie": {},  # RPE 10 Lote 6/P9 (2026-10-11): nasce vazia (o FE saiu junto)
     # C13: rótulos de status de progressão com um dono só desde o Lote 3c
@@ -2084,12 +2194,19 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "kj_kcal": {},  # NUT-L3B (2026-10-17, revisão do guardião): nasce vazia (só `meal_math` converte)
     "bom_para_paralelo": {},  # BOM-PARA (2026-10-17): nasce vazia (a tela só formata `ready_at`)
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
+    "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
+    "dashboard_nutricao": {},  # NUT-N5 (2026-11-02): nasce vazia (a rota importa o dono; a tela só exibe)
+    "ajuste_manutencao": {},  # NUT-N7 (2026-11-03): nasce vazia (o check-in importa a faixa do `strategy`)
+    "checkin_semanal": {},  # NUT-N7 (2026-11-03): nasce vazia (a rota chama `weekly_checkin`; a tela só exibe)
+    "projecao_dashboard_nutricao": {},  # NUT-N5 (2026-11-03): nasce vazia (o painel chama `plan.project_plan_goal`)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
     "leitura_refeicao_ia": {},  # NUT-L5B (2026-10-18): nasce vazia (prompt, schema, worker e tela consomem o dono)
     "foto_rotulo_nutricao": {},  # NUT-L6 (2026-10-18): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
     "foto_rotulo_numeros": {},  # NUT-L6 (2026-10-18): nasce vazia (a tela lê o JSON gerado; o helper não tem default)
+    "foto_prato_nutricao": {},  # NUT-L10 (2026-11-02): nasce vazia (rota, armazenamento, worker e tela consomem o dono)
+    "sugestao_plano_ia": {},  # NUT-N6 (2026-11-03): nasce vazia (rota, worker e tela consomem o dono)
     # ZEPP-B2 (2026-10-19): nasce vazia (as 7 cópias de PlanExecutionScreen/FreeformScreen foram para o dono)
     "fallback_registro_serie": {},
     "fallback_registro_serie_cadeia": {},  # ZEPP-B2 (2026-10-19, revisão do guardião): nasce vazia
@@ -2184,6 +2301,8 @@ CONSUMIDOR_DO_PROMPT: dict[str, str] = {
     "api/privado/prompts/exercise_description/": "api/app/exercise_description_ai.py",
     "api/privado/prompts/nutrition_label/": "api/app/nutrition_label_ai.py",
     "api/privado/prompts/nutrition_meal_parse/": "api/app/nutrition_meal_parse_ai.py",
+    "api/privado/prompts/nutrition_meal_photo/": "api/app/nutrition_meal_photo_ai.py",
+    "api/privado/prompts/nutrition_plan_suggestion/": "api/app/nutrition_plan_suggestion_ai.py",
     # M103 P2: insights, "Análise por IA", resumos e os fragmentos compartilhados.
     "api/privado/prompts/insights/": "api/app/insights_prompt.py",
     "api/privado/prompts/workouts_analysis/": "api/app/report_ai.py",
@@ -2822,6 +2941,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "nutrition.strategy_labels[code]", "<Badge>{strategyLabel}</Badge>", "<Text>Cutting (definição)</Text>",
          "<Text>Fase de Bulking</Text>"),
     ),
+    "rotulo_prioridade_macros": (
+        ("label: 'Proteína fixa'", 'PRIORITY = "Carbo alto"', "`Gordura alta`", "<Badge>Carboidrato alto</Badge>",
+         "<Text> Gordura alta (carboidrato baixo) </Text>"),
+        ("MACRO_PRIORITY_LABELS[p]", "nutrition.macro_priority_labels[code]", "'high_carb'", "Meta de gordura alta no jantar",
+         "<Text>{priorityLabel}</Text>", "'Equilibrado'"),
+    ),
     "kcal_treino_prioridade": (
         ("kcal = activity.calories_kcal or estimativa_met", "const kcal = session.calories_kcal ?? estimate.kcal;",
          "x.calories_kcal || metKcal", 'row.get("calories_kcal") or met_kcal', "TRAINING_KCAL_NATURE_PRIORITY = (",
@@ -3011,6 +3136,36 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "dt_mod.TARGET_FREEZE_LAG_DAYS - 1", "const [WATER_MIN, WATER_MAX] = NUTRITION.water_ml_range;",
          "colher_sopa: GENERIC_PORTIONS[0]"),
     ),
+    "favoritos_nutricao": (
+        ("MAX_FAVORITES = 200", "const MAX_FAVORITES = 50;", "MAX_FAVORITES: Final[int] = 100"),
+        ("if not favorites_engine.can_add(total):", "max_items: favorites_engine.MAX_FAVORITES",
+         "from .domain.nutrition.favorites import MAX_FAVORITES"),
+    ),
+    "projecao_dashboard_nutricao": (
+        ("resultado = project_goal(params, peso)", "resultado = phases.project_goal(cfg.strategy_params(), 80)",
+         "tdee_kcal=dash.projection_tdee_kcal(dias, hoje, tdees)", "projection_tdee_kcal = 2800.0"),
+        ("project_plan_goal(configuracao, sujeito, tdee, hoje)", "projection_tdee(comp.target.tdee, passado, True)",
+         "dash.window_tdee_kcal(dias, hoje, tdees)", "from .domain.nutrition.plan import project_plan_goal"),
+    ),
+    "ajuste_manutencao": (
+        ("MAINT_KCAL_ADJUST_RANGE: Final[tuple[int, int]] = (-500, 500)", "MAINT_KCAL_ADJUST_DEFAULT = 0",
+         "const MAINT_KCAL_ADJUST_RANGE = [-300, 300];"),
+        ("from .strategy import MAINT_KCAL_ADJUST_RANGE", "MAINT_KCAL_ADJUST_RANGE[0]", "_range(st.MAINT_KCAL_ADJUST_RANGE)"),
+    ),
+    "checkin_semanal": (
+        ("MAX_KCAL_STEP_SHARE = 0.05", "const PROPOSAL_VALIDITY_DAYS = 3;", "MIN_COMPLETE_DAYS: Final[int] = 5",
+         "LEAN_LOSS_LIMIT_SHARE_PER_WEEK = 0.0025", "DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0",
+         "CHECKIN_WEEKDAY_RANGE: Final[tuple[int, int]] = (0, 6)", "RATE_DECIMALS = 4",
+         "EXPIRY_TIME_OF_DAY: Final[time] = time(23, 59, 59)"),
+        ("wc.evaluate_week(inputs)", "wc.PROPOSAL_VALIDITY_DAYS", "from .domain.nutrition.weekly_checkin import MIN_COMPLETE_DAYS",
+         "const dia = checkin.settings.weekday;"),
+    ),
+    "dashboard_nutricao": (
+        ("DASHBOARD_DEFAULT_DAYS = 28", "const WINDOW_CHOICES_DAYS = [7, 28];", "ADAPTIVE_WINDOW_DAYS: Final[int] = 28", "DASHBOARD_MAX_DAYS: Final[int] = 90",
+         "FEW_LOGGED_DAYS = 3"),
+        ("dash.normalize_window_days(days)", "window_days: dashboard.DASHBOARD_DEFAULT_DAYS",
+         "from .domain.nutrition.dashboard import ADAPTIVE_WINDOW_DAYS"),
+    ),
     "soma_nutrientes": (
         ("total = sum(item['energy_kcal'] for item in itens)", "SELECT SUM(m.protein_g) FROM meals m",
          "meals.reduce((acc, m) => acc + (m.totals.nutrients.energy_kcal ?? 0), 0)", "soma += item.fiber_g",
@@ -3097,6 +3252,20 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "ImageInput(imagem, label_photo.LABEL_PHOTO_CONTENT_TYPE, label_photo.LABEL_IMAGE_DETAIL)",
          "DayKind.HIGH", "contentType: LABEL_PHOTO.content_type", "MIN_DATA_QUALITY = 0.5",
          '"data_quality": 0.6', "DataQuality.MEDIUM: 0.5", "20971520"),
+    ),
+    "sugestao_plano_ia": (
+        ('SUGGESTION_FIELDS = ("strategy", "protein_g")', "REASONS_MAX: int = 3", "REASONS_MAX = 5",
+         'OPTIONAL_NUMBER_FIELDS = ["surplus_share"]'),
+        ("for campo in plan_suggestion.SUGGESTION_FIELDS:", "len(raw) > REASONS_MAX", "plan_suggestion.REASONS_MAX"),
+    ),
+    "foto_prato_nutricao": (
+        ('MEAL_PHOTO_S3_PREFIX = "nutrition-meals"', "MEAL_PHOTO_RETENTION_DAYS: int = 30",
+         "MEAL_PHOTO_MAX_BYTES = 1572864", "MEAL_PHOTO_MAX_BYTES = label_photo.LABEL_PHOTO_MAX_BYTES",
+         'MEAL_IMAGE_DETAIL = "high"', 'key = f"nutrition-meals/{user_id}/{uuid4().hex}.jpg"',
+         "const prefixo = `nutrition-meals/${id}`;", 'PREFIX = "nutrition-meals"'),
+        ("chave = meal_photo.meal_photo_key(usuario, uuid.uuid4().hex)", "if dados > meal_photo.MEAL_PHOTO_MAX_BYTES:",
+         "maxEdge: MEAL_PHOTO.resize_max_edge_px,", 'id = "nutrition-meals-expire-1d"', "/nutrition/meals/photo",
+         "ContentType=meal_photo.MEAL_PHOTO_CONTENT_TYPE"),
     ),
     "fallback_registro_serie": (
         ("const workingSetsTarget = adjusted ?? planExercise.sets_count ?? 1;",
@@ -3340,7 +3509,7 @@ def test_arquivos_das_fontes_externas_estao_no_escopo_de_nutricao(rel: str):
         "frontend/src/components/nutrition/MealList.tsx",
         "frontend/src/components/nutrition/TargetVsIntakeCard.tsx",
         "frontend/src/components/nutrition/TrainingKcalRow.tsx",
-        "frontend/src/components/nutrition/WaterHungerInputs.tsx",
+        "frontend/src/components/nutrition/DayNotesInput.tsx",
         "frontend/src/components/nutrition/WeekStrip.tsx",
         "frontend/src/lib/nutrition-meal-form.ts",
     ],
@@ -3401,6 +3570,39 @@ def test_arquivos_da_foto_do_rotulo_estao_no_escopo_de_nutricao(rel: str):
     assert (RAIZ / rel).is_file(), rel
     assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
     assert "frontend/src/lib/image-resize.ts" in PADROES_POR_CHAVE["foto_rotulo_numeros"].escopo
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "api/app/domain/nutrition/meal_photo.py",
+        "api/app/nutrition_meal_photo.py",
+        "api/app/nutrition_meal_photo_ai.py",
+        "api/app/nutrition_meal_photo_storage.py",
+        "frontend/src/components/nutrition/MealParseModal.tsx",
+    ],
+)
+def test_arquivos_da_foto_do_prato_estao_no_escopo_de_nutricao(rel: str):
+    """Nutrição L10: motor, rota, armazenamento, worker e tela da foto do prato ficam
+    sob `ESCOPO_NUTRICAO` (valem `foto_rotulo_numeros`, `soma_nutrientes`...)."""
+    assert (RAIZ / rel).is_file(), rel
+    assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "api/app/domain/nutrition/plan_suggestion.py",
+        "api/app/nutrition_plan_suggestion.py",
+        "api/app/nutrition_plan_suggestion_ai.py",
+        "frontend/src/components/nutrition/PlanSuggestionPanel.tsx",
+        "frontend/src/lib/nutrition-plan-suggestion.ts",
+    ],
+)
+def test_arquivos_da_sugestao_de_metas_estao_no_escopo_de_nutricao(rel: str):
+    """Nutrição N6: motor, rota, worker e tela da sugestão de metas ficam sob `ESCOPO_NUTRICAO`."""
+    assert (RAIZ / rel).is_file(), rel
+    assert any(_casa_escopo(item, rel) for item in ESCOPO_NUTRICAO), rel
 
 
 def test_comentario_e_docstring_nao_contam_mas_sql_e_prompt_contam():

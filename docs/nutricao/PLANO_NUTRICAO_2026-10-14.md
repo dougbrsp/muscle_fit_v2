@@ -274,7 +274,7 @@ Infra FE: `lib/nutrition-api.ts`, `lib/nutrition-types.ts`, `lib/nutrition-const
 | Modelos | `variables.tf`, `lambda_workout_ai.tf`, `lambda_ai_generators.tf` | `OPENAI_NUTRITION_PARSE_MODEL` (workout-ai); `OPENAI_NUTRITION_VISION_MODEL` (plan-generator) |
 | USDA | `secrets.tf`, `lambda_api_core.tf` | secret `musclefit/usda-api-key`, criado à mão pelo usuário em 2026-10-17 (com o valor) e **importado** no Terraform (`import {}`, sem `_version`; PR #562). Só a api-core recebe `USDA_API_KEY_SECRET_ARN`; `secrets_bootstrap.py` hidrata `USDA_API_KEY`, o mesmo nome que o código lê no DEV (`.env`) e na produção. Por isso as rotas do USDA do L3b ficam no app da api-core (`app/main.py`). O apply usa só permissões que a role de deploy já tem (`DescribeSecret`, `GetResourcePolicy`, `TagResource`): **sem exceção de IAM** |
 | OFF | `lambda_api_core.tf` | `OFF_USER_AGENT = "MuscleFit/1.0 (<contato>)"` |
-| S3 | `s3_uploads.tf` (lifecycle único) | regras `nutrition-labels-expire-30d` e (L10) `nutrition-meals-expire-30d`; conferir escopo do `Resource` da policy da api-core |
+| S3 | `s3_uploads.tf` (lifecycle único) | regras `nutrition-labels-expire-30d` e (L10) `nutrition-meals-expire-1d`; conferir escopo do `Resource` da policy da api-core |
 | IAM plan-generator | `lambda_ai_generators.tf` | `s3:GetObject` em `${bucket}/nutrition-labels/*` (hoje só `PutObject` em `exercise-card-drafts/*`) |
 | Lambda nova | — | **nenhuma** (parse cabe nos 60 s; vision nos 180 s do plan-generator, que já tem chave, bucket e `lambda_async_invoke_config`) |
 | Engines | — | 29 s: `build_nutrition` só agrega tabelas materializadas |
@@ -476,7 +476,7 @@ Tabelas de alimentos, rotulagem e APIs:
 | L7 Dashboard | não iniciado | — | — |
 | L8 Ciclos/fases/adaptativo | não iniciado | — | — |
 | L9 Relatório/insights | não iniciado | — | — |
-| L10 Foto de refeição | não iniciado (futuro) | — | — |
+| L10 Foto de refeição | implementado no lote N4 de 2026-11-02 (ver mapa §80), sem eval pago com fotos | — | — |
 | L11 Hardening | não iniciado (opcional) | — | — |
 
 L0 a L4 estão em produção desde a promoção #571 (17/10/2026, 23h10 UTC, deploy 39077773130), que aplicou as migrações 074–083 (25 statements) com o PR #562 (secret do USDA). A próxima promoção leva a 084 do M85 (3 statements) e a 085 do L5a (1 `CREATE TABLE`), 4 statements, com

@@ -9,9 +9,12 @@ chamando SÓ `compute_daily_target`; a meta de um dia passado fica congelada).
 materializada grava a versão com que foi calculada (E4).
 
 Fases: `DIET_BREAK` e `REFEED` levam o alvo calórico à manutenção (mesma
-proteína e gordura do plano; o carbo absorve a diferença). Ciclo de carbo: com
-`carb_cycling_enabled` e os 7 flags de treino da semana, o dia recebe o
-multiplicador do seu tipo (média semanal preservada).
+proteína e gordura do plano; o carbo absorve a diferença). Ciclo de carbo (N2, D5): com
+`PlanParams.cycle_kinds` (os 7 tipos de dia que o usuário escolheu) o dia recebe o
+multiplicador do seu tipo sobre a BASE do plano (a meta sem o treino do dia), então a
+soma semanal do que o ciclo move é zero sem conhecer os outros dias
+(`carb_cycling.apply_cycle_over_base`). Prioridade de macros e gramas manuais (N2) também
+vêm do `PlanParams`; o padrão é o comportamento anterior.
 
 Materialização (Lote L2b, mapa §47):
 - `TARGET_FREEZE_LAG_DAYS` / `is_target_frozen`: a meta de um dia CONGELA
@@ -57,7 +60,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O, sem relógio (o "hoje" é argumen
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any, Final, Iterable, Optional, Sequence
@@ -66,6 +69,7 @@ from . import bmr as bmr_mod
 from . import carb_cycling
 from . import energy_expenditure as ee
 from . import macros as macros_mod
+from . import manual_targets
 from . import strategy as strategy_mod
 from .anthropometrics import Subject, positive_number
 from .body_composition import resolved_fat_mass_kg, resolved_ffm_kg
@@ -79,6 +83,8 @@ LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycl
 # L8. A meta sai como dia sem treino e avisa (no modo explícito o treino do dia
 # entra no TDEE quando acontecer, até o dia congelar).
 LIMIT_TRAINING_UNKNOWN_FUTURE_DAY = "training_unknown_future_day"
+# Gramas manuais em dia de pausa/refeed: a fase leva a estratégia à manutenção, mas as gramas fixas do usuário não mudam.
+LIMIT_MANUAL_TARGETS_IGNORE_PHASE = "manual_targets_ignore_phase"
 
 # Congelamento da meta materializada (E2). 2 dias: o sync do Intervals.icu grava
 # a kcal do treino na madrugada do dia seguinte (cron 05:45 BRT), então ONTEM
@@ -110,9 +116,15 @@ class PlanParams:
     carb_cycling_enabled: bool = False
     meals_per_day: Optional[int] = None
     ffm_age_days: Optional[int] = None
+    # N2: prioridade de macros, gramas manuais (proteína, carboidrato, gordura) e os 7 tipos de
+    # dia escolhidos (segunda primeiro). Padrões = comportamento anterior, bit a bit.
+    macro_priority: strategy_mod.MacroPriority = strategy_mod.DEFAULT_MACRO_PRIORITY
+    manual_macros: Optional[tuple[float, float, float]] = None
+    manual_training_mode: manual_targets.ManualTrainingMode = manual_targets.DEFAULT_MANUAL_TRAINING_MODE
+    cycle_kinds: Optional[tuple[carb_cycling.DayKind, ...]] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "strategy_params": self.strategy_params.to_dict(),
             "bmr_formula": self.bmr_formula.value,
             "tdee_mode": self.tdee_mode.value,
@@ -120,6 +132,15 @@ class PlanParams:
             "meals_per_day": self.meals_per_day,
             "ffm_age_days": self.ffm_age_days,
         }
+        if self.macro_priority != strategy_mod.DEFAULT_MACRO_PRIORITY:
+            dados["macro_priority"] = self.macro_priority.value
+        if self.manual_macros is not None:
+            dados["manual_macros"] = list(self.manual_macros)
+            if self.manual_training_mode != manual_targets.DEFAULT_MANUAL_TRAINING_MODE:
+                dados["manual_training_mode"] = self.manual_training_mode.value
+        if self.cycle_kinds is not None:
+            dados["cycle_kinds"] = [k.value for k in self.cycle_kinds]
+        return dados
 
 
 @dataclass(frozen=True)
@@ -172,6 +193,14 @@ class DailyTarget:
     def computable(self) -> bool:
         return self.macros.computable
 
+    @property
+    def kcal_delta(self) -> Optional[float]:
+        """Diferença REAL entre a meta do dia e o gasto total (negativa = déficit): já com gramas manuais,
+        ciclo e prioridade. `kcal_target.delta_kcal` é só o da estratégia, antes de tudo isso."""
+        if self.macros.kcal is None or self.tdee.kcal is None:
+            return None
+        return float(self.macros.kcal) - float(self.tdee.kcal)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "day": self.day.isoformat(),
@@ -197,6 +226,69 @@ def _unique(*groups: tuple[str, ...]) -> tuple[str, ...]:
             if item not in vistos:
                 vistos.append(item)
     return tuple(vistos)
+
+
+def manual_adds_training(plan_params: "PlanParams") -> bool:
+    """As gramas manuais somam o treino do dia em carboidrato: modo `ADD_TRAINING` com o gasto do treino à parte
+    (com o treino já no fator do gasto não há treino para somar)."""
+    return (
+        plan_params.manual_macros is not None
+        and plan_params.manual_training_mode == manual_targets.ManualTrainingMode.ADD_TRAINING
+        and plan_params.tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING
+    )
+
+
+def _manual_targets(
+    plan_params: PlanParams,
+    params: strategy_mod.StrategyParams,
+    subject: Subject,
+    ffm_kg: Optional[float],
+    target_kcal: Optional[float],
+    bmr_kcal: Optional[float],
+) -> tuple[macros_mod.MacroTargets, tuple[str, ...]]:
+    """Metas do dia a partir das gramas manuais do plano, com os avisos do motor
+    (`manual_targets.check_manual_targets`) como limitações."""
+    proteina, carbo, gordura = plan_params.manual_macros or (0.0, 0.0, 0.0)
+    checagem = manual_targets.check_manual_targets(
+        proteina, carbo, gordura, params, subject.weight_kg, ffm_kg, target_kcal, bmr_kcal
+    )
+    kcal = macros_mod.kcal_from_macros(proteina, carbo, gordura)
+    base_kg = ffm_kg if params.protein_basis == strategy_mod.ProteinBasis.FAT_FREE_MASS else subject.weight_kg
+    metas = macros_mod.MacroTargets(
+        kcal=kcal,
+        protein_g=proteina,
+        carb_g=carbo,
+        fat_g=gordura,
+        fiber_g=macros_mod.fiber_target_g(kcal),
+        protein_basis=params.protein_basis,
+        protein_basis_kg=base_kg,
+        protein_g_per_kg=proteina / base_kg if base_kg else None,
+        limitations=(),
+    )
+    avisos: list[str] = []
+    for campo in checagem.fields:
+        avisos.extend(campo.codes)
+    avisos.extend(checagem.limitations)
+    return metas, _unique(tuple(avisos))
+
+
+def _cycle_base(
+    plan_params: PlanParams,
+    params: strategy_mod.StrategyParams,
+    subject: Subject,
+    ffm_kg: Optional[float],
+    day_macros: macros_mod.MacroTargets,
+    bmr_kcal: Optional[float],
+) -> macros_mod.MacroTargets:
+    """Meta de base do plano para o ciclo: a do dia sem o treino explícito. Com gramas
+    manuais ou gasto embutido no fator, a base é a própria meta do dia."""
+    if plan_params.manual_macros is not None or plan_params.tdee_mode != ee.TdeeMode.EXPLICIT_TRAINING:
+        return day_macros
+    gasto_base = ee.tdee(bmr_kcal, subject.activity_level, plan_params.tdee_mode, 0.0)
+    alvo_base = strategy_mod.kcal_target(params, gasto_base.kcal, bmr_kcal, subject.weight_kg, resolved_fat_mass_kg(subject))
+    return macros_mod.macro_split_for_priority(
+        alvo_base.kcal, params, plan_params.macro_priority, subject.weight_kg, ffm_kg
+    )
 
 
 def compute_daily_target(
@@ -236,11 +328,42 @@ def compute_daily_target(
     massa_gorda = resolved_fat_mass_kg(subject)
     alvo = strategy_mod.kcal_target(params, gasto.kcal, tmb.kcal, subject.weight_kg, massa_gorda)
 
-    metas = macros_mod.macro_split(alvo.kcal, params, subject.weight_kg, resolved_ffm_kg(subject))
+    mlg = resolved_ffm_kg(subject)
+    limitacoes_manual: tuple[str, ...] = ()
+    metas_repouso: Optional[macros_mod.MacroTargets] = None
+    if plan_params.manual_macros is not None:
+        # Gramas manuais (D6): o usuário fixou proteína, carboidrato e gordura; a kcal é a de Atwater das gramas. No
+        # modo `FIXED` não acompanha o treino do dia; no `ADD_TRAINING` as gramas valem para o dia sem treino e o gasto do
+        # treino do dia soma em carboidrato (4 kcal/g). Os avisos do motor viram limitações.
+        soma_treino = manual_adds_training(plan_params)
+        alvo_ref = alvo.kcal
+        if soma_treino:  # a referência dos avisos de energia é a meta do dia SEM o treino
+            gasto_repouso = ee.tdee(tmb.kcal, subject.activity_level, plan_params.tdee_mode, 0.0)
+            alvo_ref = strategy_mod.kcal_target(params, gasto_repouso.kcal, tmb.kcal, subject.weight_kg, massa_gorda).kcal
+        metas, limitacoes_manual = _manual_targets(plan_params, params, subject, mlg, alvo_ref, tmb.kcal)
+        metas_repouso = metas
+        if soma_treino and treino.kcal:
+            carbo = float(metas.carb_g) + float(treino.kcal) / macros_mod.KCAL_PER_G_CARB  # type: ignore[arg-type]
+            energia = macros_mod.kcal_from_macros(metas.protein_g, carbo, metas.fat_g)
+            metas = replace(metas, carb_g=carbo, kcal=energia, fiber_g=macros_mod.fiber_target_g(energia))
+        if fase is not None and fase in MAINTENANCE_KCAL_PHASES:
+            limitacoes_manual = _unique(limitacoes_manual, (LIMIT_MANUAL_TARGETS_IGNORE_PHASE,))
+    else:
+        metas = macros_mod.macro_split_for_priority(
+            alvo.kcal, params, plan_params.macro_priority, subject.weight_kg, mlg
+        )
 
     tipo_dia = carb_cycling.DayKind.NORMAL
     limitacoes_ciclo: tuple[str, ...] = ()
-    if plan_params.carb_cycling_enabled:
+    if plan_params.cycle_kinds is not None:
+        # Dias escolhidos (D5): o ciclo se aplica dia a dia sobre a BASE do plano (a meta do dia
+        # sem o treino dele), então a média semanal se preserva sem conhecer os outros dias.
+        tipo_dia = plan_params.cycle_kinds[day_context.day.weekday()]
+        base = metas_repouso if metas_repouso is not None else _cycle_base(plan_params, params, subject, mlg, metas, tmb.kcal)
+        metas, limitacoes_ciclo = carb_cycling.apply_cycle_over_base(
+            metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg
+        )
+    elif plan_params.carb_cycling_enabled:
         if day_context.week_training_days is None:
             limitacoes_ciclo = (LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE,)
         else:
@@ -269,6 +392,7 @@ def compute_daily_target(
             gasto.limitations,
             alvo.limitations,
             metas.limitations,
+            limitacoes_manual,
             limitacoes_ciclo,
             # Faixas do plano PUBLICADO: na pausa/refeed a proteína do cutting
             # segue valendo e não é "fora da faixa" da manutenção.

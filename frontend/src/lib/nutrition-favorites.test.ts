@@ -1,0 +1,152 @@
+import { describe, expect, it, vi } from 'vitest';
+import { barcodeConflict } from './nutrition-api';
+import { ApiError } from './api';
+import {
+  editorItemFromFavorite,
+  favoriteDefaultFormFrom,
+  favoriteDefaultPayload,
+  favoriteDefaultSummary,
+  favoriteErrorLines,
+  isFavoriteAlreadyGone,
+  removeFavoriteIfPresent,
+  moveFavorite,
+} from './nutrition-favorites';
+import type { FavoriteItem, FoodItem } from './nutrition-types';
+
+function food(id: number, name = `Alimento ${id}`): FoodItem {
+  return { id, name, basis: 'g' } as unknown as FoodItem;
+}
+
+function favorite(id: number, padrao: FavoriteItem['default'] = null): FavoriteItem {
+  return { food: food(id), position: id, default: padrao, created_at: null, updated_at: null };
+}
+
+describe('moveFavorite', () => {
+  it('sobe e desce uma posição', () => {
+    expect(moveFavorite([1, 2, 3], 2, -1)).toEqual([2, 1, 3]);
+    expect(moveFavorite([1, 2, 3], 2, 1)).toEqual([1, 3, 2]);
+  });
+
+  it('nos limites ou com id desconhecido não muda a lista', () => {
+    expect(moveFavorite([1, 2, 3], 1, -1)).toEqual([1, 2, 3]);
+    expect(moveFavorite([1, 2, 3], 3, 1)).toEqual([1, 2, 3]);
+    expect(moveFavorite([1, 2, 3], 99, 1)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('editorItemFromFavorite', () => {
+  it('sem porção padrão entra como um alimento qualquer (quantidade vazia, unidade da base)', () => {
+    const item = editorItemFromFavorite(favorite(7), 'novo-1');
+    expect(item).toMatchObject({ key: 'novo-1', food_id: 7, quantity: '', unit: 'g', portion_id: null });
+  });
+
+  it('com porção padrão leva quantidade, unidade e porção para o preview do motor', () => {
+    const item = editorItemFromFavorite(
+      favorite(7, { quantity: 2, unit: 'portion', portion_id: 5, portion_label: 'Concha', portion_amount: 140 }),
+      'novo-2',
+    );
+    expect(item).toMatchObject({ food_id: 7, quantity: 2, unit: 'portion', portion_id: 5 });
+  });
+});
+
+describe('porção padrão (formulário <-> corpo do PUT)', () => {
+  it('quantidade vazia e sem unidade limpa a porção padrão', () => {
+    expect(favoriteDefaultPayload({ quantity: '', unit: null, portionId: null })).toEqual({
+      default_quantity: null,
+      default_unit: null,
+      default_portion_id: null,
+    });
+  });
+
+  it('manda o que o usuário escolheu e deixa a validação para a API', () => {
+    expect(favoriteDefaultPayload({ quantity: '150', unit: 'g', portionId: null })).toEqual({
+      default_quantity: 150,
+      default_unit: 'g',
+      default_portion_id: null,
+    });
+    // quantidade sem unidade vai como está: a API responde 400 com o código do motor
+    expect(favoriteDefaultPayload({ quantity: 3, unit: null, portionId: null }).default_unit).toBeNull();
+  });
+
+  it('quantidade vazia limpa tudo, mesmo com unidade ou porção escolhidas (como a tela avisa)', () => {
+    expect(favoriteDefaultPayload({ quantity: '', unit: 'g', portionId: 4 })).toEqual({
+      default_quantity: null,
+      default_unit: null,
+      default_portion_id: null,
+    });
+  });
+
+  it('o formulário nasce do favorito', () => {
+    expect(favoriteDefaultFormFrom(favorite(1))).toEqual({ quantity: '', unit: null, portionId: null });
+    expect(
+      favoriteDefaultFormFrom(
+        favorite(1, { quantity: 1.5, unit: 'portion', portion_id: 9, portion_label: 'x', portion_amount: 10 }),
+      ),
+    ).toEqual({ quantity: 1.5, unit: 'portion', portionId: 9 });
+  });
+
+  it('resumo curto da porção padrão', () => {
+    expect(favoriteDefaultSummary(favorite(1))).toBeNull();
+    expect(
+      favoriteDefaultSummary(
+        favorite(1, { quantity: 2, unit: 'portion', portion_id: 9, portion_label: 'Concha', portion_amount: 140 }),
+      ),
+    ).toBe('2 × Concha');
+    expect(
+      favoriteDefaultSummary(favorite(1, { quantity: 150, unit: 'g', portion_id: null, portion_label: null, portion_amount: null })),
+    ).toContain('150');
+  });
+});
+
+describe('barcodeConflict', () => {
+  it('lê o alimento existente do 409', () => {
+    const erro = new ApiError('x', 409, {
+      error: 'barcode_already_registered',
+      message: 'm',
+      existing_food_id: 12,
+      existing_food_name: 'Barra',
+    });
+    expect(barcodeConflict(erro)).toEqual({ foodId: 12, foodName: 'Barra' });
+  });
+
+  it('ignora outros erros e corpos malformados', () => {
+    expect(barcodeConflict(new ApiError('x', 409, { error: 'outro', existing_food_id: 1 }))).toBeNull();
+    expect(barcodeConflict(new ApiError('x', 409, { error: 'barcode_already_registered' }))).toBeNull();
+    expect(barcodeConflict(new Error('x'))).toBeNull();
+  });
+});
+
+describe('favoriteErrorLines', () => {
+  it('mostra os textos do motor (ex.: teto da lista) e, sem eles, a mensagem', () => {
+    const comItens = new ApiError('x', 409, {
+      error: 'invalid_favorite',
+      message: 'Preferido fora das regras.',
+      errors: [{ code: 'too_many_favorites', label: 'A lista de preferidos aceita até 200 alimentos.' }],
+    });
+    expect(favoriteErrorLines(comItens, 'fallback')).toEqual(['A lista de preferidos aceita até 200 alimentos.']);
+    expect(favoriteErrorLines(new ApiError('Falhou', 500), 'fallback')).toEqual(['Falhou']);
+    expect(favoriteErrorLines(new Error('x'), 'fallback')).toEqual(['fallback']);
+  });
+});
+
+describe('DELETE com estrela defasada', () => {
+  it('"não é favorito" (404 favorite_not_found) não é erro para o usuário', () => {
+    expect(isFavoriteAlreadyGone(new ApiError('x', 404, { error: 'favorite_not_found', message: 'm' }))).toBe(true);
+    expect(isFavoriteAlreadyGone(new ApiError('x', 404, { error: 'food_not_found', message: 'm' }))).toBe(false);
+    expect(isFavoriteAlreadyGone(new Error('x'))).toBe(false);
+  });
+
+  it('removeFavoriteIfPresent engole só o 404 de favorito ausente', async () => {
+    const original = globalThis.fetch;
+    try {
+      const responder = (status: number, corpo: unknown) =>
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(corpo), { status, headers: { 'content-type': 'application/json' } }));
+      globalThis.fetch = responder(404, { detail: { error: 'favorite_not_found', message: 'm' } }) as typeof fetch;
+      await expect(removeFavoriteIfPresent(7)).resolves.toBeUndefined();
+      globalThis.fetch = responder(500, { detail: 'falhou' }) as typeof fetch;
+      await expect(removeFavoriteIfPresent(7)).rejects.toBeInstanceOf(ApiError);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

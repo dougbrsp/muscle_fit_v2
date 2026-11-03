@@ -9,6 +9,11 @@ import {
   BODY_FAT_METHOD_OPTIONS,
   BREAK_PROTOCOL_OPTIONS,
   DAY_KIND_OPTIONS,
+  GOAL_KIND_OPTIONS,
+  MACRO_PRIORITY_OPTIONS,
+  MANUAL_TRAINING_MODE_OPTIONS,
+  PROJECTION_STATUS_OPTIONS,
+  RANGE_STATUS_OPTIONS,
   DEFAULT_BMR_FORMULA,
   DEFAULT_FOOD_BASIS,
   DEFAULT_TDEE_MODE,
@@ -21,10 +26,10 @@ import {
   FOOD_SERVING_FIELDS,
   FOOD_SOURCE_OPTIONS,
   GENERIC_PORTIONS,
-  HUNGER_OPTIONS,
   ITEM_NUTRIENT_FIELDS,
   LABEL_LEGIBILITY_OPTIONS,
   LABEL_PHOTO,
+  MEAL_PHOTO,
   MEAL_ITEMS_LIMIT,
   MEAL_NATURE_OPTIONS,
   MEAL_PARSE_QUOTA_EXCEEDED_LABEL,
@@ -49,7 +54,6 @@ import {
   NUTRITION_NOTICES,
   STRATEGY_ONLY_FIELDS,
   UNIT_OPTIONS,
-  WATER_ML_LIMITS,
   fieldAppliesToStrategy,
   nutrientField,
   nutritionLabel,
@@ -71,6 +75,11 @@ const PARES: ReadonlyArray<Par> = [
   [STRATEGY_OPTIONS, N.strategies, N.strategy_labels],
   [PROTEIN_BASIS_OPTIONS, N.protein_bases, N.protein_basis_labels],
   [DAY_KIND_OPTIONS, N.day_kinds, N.day_kind_labels],
+  [MACRO_PRIORITY_OPTIONS, N.macro_priorities, N.macro_priority_labels],
+  [MANUAL_TRAINING_MODE_OPTIONS, N.manual_training_modes, N.manual_training_mode_labels],
+  [RANGE_STATUS_OPTIONS, N.range_statuses, N.range_status_labels],
+  [GOAL_KIND_OPTIONS, N.goal_kinds, N.goal_kind_labels],
+  [PROJECTION_STATUS_OPTIONS, N.projection_statuses, N.projection_status_labels],
   [MEAL_SLOT_OPTIONS, N.meal_slots, N.meal_slot_labels],
   [BMR_FORMULA_OPTIONS, N.bmr_formulas, N.bmr_formula_labels],
   [TDEE_MODE_OPTIONS, N.tdee_modes, N.tdee_mode_labels],
@@ -84,9 +93,8 @@ const PARES: ReadonlyArray<Par> = [
   [FOOD_SOURCE_OPTIONS, N.food_sources, N.food_source_labels],
   [FOOD_BASIS_OPTIONS, N.food_bases, N.food_basis_labels],
   [USDA_DATA_TYPE_OPTIONS, N.usda_data_types, N.usda_data_type_labels],
-  // Diário (L4): unidades do item e escala de fome (níveis numéricos viram texto no Select).
+  // Diário (L4): unidades do item.
   [UNIT_OPTIONS, N.units, N.unit_labels],
-  [HUNGER_OPTIONS, N.hunger_levels.map(String), N.hunger_labels],
   // Foto do rótulo (L6): legibilidade da leitura.
   [LABEL_LEGIBILITY_OPTIONS, N.label_legibilities, N.label_legibility_labels],
 ];
@@ -179,7 +187,6 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
     expect(fieldAppliesToStrategy('protein_g_per_kg', N.strategies[0])).toBe(true);
     expect(NUTRITION_NOTICES).toBe(N.notices);
     for (const codigo of [
-      'carb_cycling_unavailable',
       'scale_bmr_deviation',
       'phase_should_stop',
       // Diário (L4): selos e dicas com o texto das limitações do motor.
@@ -247,7 +254,6 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
     expect(nutrientField(ENERGY_NUTRIENT)?.unit).toBe('kcal');
     expect(ITEM_NUTRIENT_FIELDS.map((campo) => campo.code)).toEqual(N.item_nutrient_fields);
     expect(ITEM_NUTRIENT_FIELDS[0].code).toBe(ENERGY_NUTRIENT);
-    expect(WATER_ML_LIMITS).toEqual(N.water_ml_range);
     expect(PORTION_UNITS).toEqual(N.portion_units);
     expect(PORTION_UNITS.every((codigo) => MEAL_UNITS.includes(codigo))).toBe(true);
     expect(MEAL_ITEMS_LIMIT).toBe(N.meal_max_items);
@@ -272,6 +278,7 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
 
   it('foto do rótulo (L6): redução, upload, retenção e a fonte do cadastro vêm do dono', () => {
     expect(LABEL_PHOTO).toBe(N.label_photo);
+    expect(MEAL_PHOTO).toBe(N.meal_photo);
     expect(LABEL_PHOTO.resize_max_edge_px).toBeGreaterThan(0);
     expect(LABEL_PHOTO.resize_quality).toBeGreaterThan(0);
     expect(LABEL_PHOTO.resize_quality).toBeLessThanOrEqual(1);

@@ -40,7 +40,22 @@ export const SEX_OPTIONS = optionsOf(NUTRITION.sexes, NUTRITION.sex_labels);
 export const ACTIVITY_LEVEL_OPTIONS = optionsOf(NUTRITION.activity_levels, NUTRITION.activity_level_labels);
 export const STRATEGY_OPTIONS = optionsOf(NUTRITION.strategies, NUTRITION.strategy_labels);
 export const PROTEIN_BASIS_OPTIONS = optionsOf(NUTRITION.protein_bases, NUTRITION.protein_basis_labels);
+// N1 (2026-11-02): prioridade de macros e vocabulário da validação de gramas e da projeção (só exibição).
+export const MACRO_PRIORITY_OPTIONS = optionsOf(NUTRITION.macro_priorities, NUTRITION.macro_priority_labels);
+export const RANGE_STATUS_OPTIONS = optionsOf(NUTRITION.range_statuses, NUTRITION.range_status_labels);
+export const GOAL_KIND_OPTIONS = optionsOf(NUTRITION.goal_kinds, NUTRITION.goal_kind_labels);
+export const PROJECTION_STATUS_OPTIONS = optionsOf(NUTRITION.projection_statuses, NUTRITION.projection_status_labels);
 export const DAY_KIND_OPTIONS = optionsOf(NUTRITION.day_kinds, NUTRITION.day_kind_labels);
+/** Dias da semana do ciclo de carbo: código "0" (segunda) … "6" (domingo), rótulo do dono. */
+export const WEEKDAY_OPTIONS = optionsOf(Object.keys(NUTRITION.weekday_names), NUTRITION.weekday_names);
+export const DEFAULT_MACRO_PRIORITY: NutritionCode = NUTRITION.default_macro_priority;
+/** Gramas manuais e treino (N2 rodada 4): código, rótulo e explicação de cada modo, do dono. */
+export const MANUAL_TRAINING_MODE_OPTIONS = optionsOf(NUTRITION.manual_training_modes, NUTRITION.manual_training_mode_labels);
+export const MANUAL_TRAINING_MODE_HINTS: Readonly<Record<NutritionCode, string>> = NUTRITION.manual_training_mode_hints;
+export const DEFAULT_MANUAL_TRAINING_MODE: NutritionCode = NUTRITION.default_manual_training_mode;
+/** Modos das gramas manuais que valem para cada modo de gasto do treino (dono: `plan.manual_training_modes_for`). */
+export const MANUAL_TRAINING_MODES_BY_TDEE_MODE: Readonly<Record<NutritionCode, ReadonlyArray<NutritionCode>>> =
+  NUTRITION.manual_training_modes_by_tdee_mode;
 export const MEAL_SLOT_OPTIONS = optionsOf(NUTRITION.meal_slots, NUTRITION.meal_slot_labels);
 export const BMR_FORMULA_OPTIONS = optionsOf(NUTRITION.bmr_formulas, NUTRITION.bmr_formula_labels);
 export const TDEE_MODE_OPTIONS = optionsOf(NUTRITION.tdee_modes, NUTRITION.tdee_mode_labels);
@@ -153,13 +168,6 @@ export const PORTION_UNITS: ReadonlyArray<NutritionCode> = NUTRITION.portion_uni
 export const NUTRIENT_FIELDS: ReadonlyArray<Rdc429Field> = rdc429Fields(NUTRITION.nutrient_fields);
 /** Colunas por item da refeição (energia + os três macros de Atwater), na ordem do dono. */
 export const ITEM_NUTRIENT_FIELDS: ReadonlyArray<Rdc429Field> = rdc429Fields(NUTRITION.item_nutrient_fields);
-/** Escala de fome do diário (códigos `1`..`5` como texto, para o SegmentedControl). */
-export const HUNGER_OPTIONS: ReadonlyArray<NutritionOption> = NUTRITION.hunger_levels.map((nivel) => ({
-  value: String(nivel),
-  label: (NUTRITION.hunger_labels as Record<string, string>)[String(nivel)] ?? String(nivel),
-}));
-/** Faixa de água do dia em ml (a API confere de novo). */
-export const WATER_ML_LIMITS: ReadonlyArray<number> = NUTRITION.water_ml_range;
 /** Teto de itens de uma refeição (a API confere de novo). */
 export const MEAL_ITEMS_LIMIT: number = NUTRITION.meal_max_items;
 
@@ -188,6 +196,9 @@ export const AI_ESTIMATE_SOURCE: NutritionCode = MEAL_PARSE.estimate_source;
 export const AI_ESTIMATE_BASIS: NutritionCode = MEAL_PARSE.estimate_basis;
 /** Texto do dono para a cota do dia esgotada (com o número da cota). */
 export const MEAL_PARSE_QUOTA_EXCEEDED_LABEL: string = MEAL_PARSE.quota_exceeded_label;
+/** Natureza do item conforme a origem escolhida no editor (selo pelo `MEAL_NATURE_OPTIONS`). */
+export const CATALOG_ITEM_NATURE: NutritionCode = MEAL_PARSE.catalog_item_nature;
+export const ESTIMATE_ITEM_NATURE: NutritionCode = MEAL_PARSE.estimate_item_nature;
 
 /** Avisos das telas, com o texto do dono (`labels.NOTICE_LABELS`). */
 export const NUTRITION_NOTICES: Readonly<Record<string, string>> = NUTRITION.notices;
@@ -217,5 +228,10 @@ export function nutritionLabel(
 export type LabelPhotoParams = typeof NUTRITION.label_photo;
 
 export const LABEL_PHOTO: LabelPhotoParams = NUTRITION.label_photo;
+
+// Foto do prato (Lote L10): dono `domain/nutrition/meal_photo.py`. Mesma leitura do
+// JSON gerado: limite, redução, retenção e o texto da cota esgotada são do motor.
+export type MealPhotoParams = typeof NUTRITION.meal_photo;
+export const MEAL_PHOTO: MealPhotoParams = NUTRITION.meal_photo;
 /** Legibilidade que a leitura devolve (tabela legível, parcial, ilegível). */
 export const LABEL_LEGIBILITY_OPTIONS = optionsOf(NUTRITION.label_legibilities, NUTRITION.label_legibility_labels);

@@ -173,6 +173,7 @@ O cliente único continua sendo `openai_client.call_openai`, `call_openai_struct
   |---|---|---|---|---|---|
   | `cardio_agent` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | cardio-agent |
   | `label_photo` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | plan-generator |
+  | `meal_photo` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | plan-generator |
   | `exercise_description` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | plan-generator |
   | `insights` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | workout-ai |
   | `meal_parse` | Anthropic | `claude-haiku-5-5` | `medium` | OpenAI | workout-ai |

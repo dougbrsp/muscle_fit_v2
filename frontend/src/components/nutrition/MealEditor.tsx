@@ -19,10 +19,12 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { FavoriteShortcuts } from './FavoriteShortcuts';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
+import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
 import {
   chooseCandidate,
   chooseEstimate,
@@ -30,6 +32,7 @@ import {
   editorItemFromFood,
   itemHasSource,
   mealCreatePayload,
+  mealPreviewPayload,
   mealPayload,
   unitUsesPortion,
   type MealEditorForm,
@@ -41,8 +44,6 @@ import { BRAND } from '@/theme';
 const ATRASO_DO_PREVIEW_MS = 400;
 
 type Props = {
-  /** Aluno do diário (admin/PT) ou `null` (o próprio usuário). */
-  userId: number | null;
   date: string;
   /** Refeição em edição ou `null` (nova). */
   meal: Meal | null;
@@ -189,7 +190,7 @@ function ItemRow({
  * porção; o preview é uma chamada à API (motor `meal_math`, E9) e a gravação
  * congela os valores por item (E4). A tela não calcula nada.
  */
-export function MealEditor({ userId, date, meal, initialForm = null, onSaved, onCancel }: Props) {
+export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<MealEditorForm>(() =>
     meal
       ? editorFormFromMeal(meal)
@@ -197,8 +198,8 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
   );
   const proximaChave = useRef(0);
 
-  const corpo = mealCreatePayload(form, userId);
-  const corpoPreview: MealPreviewPayload | null = corpo ? { ...corpo, ...(meal ? { meal_id: meal.id } : {}) } : null;
+  const corpo = mealCreatePayload(form);
+  const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
   const [previewDebounced] = useDebouncedValue(corpoPreview ? JSON.stringify(corpoPreview) : null, ATRASO_DO_PREVIEW_MS);
   const preview = useQuery({
     queryKey: ['nutrition-meal-preview', previewDebounced],
@@ -227,7 +228,7 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
   const erroPreview = preview.isError ? nutritionErrorInfo(preview.error, 'Não foi possível calcular a refeição.') : null;
   const erroSalvar = salvar.isError ? nutritionErrorInfo(salvar.error, 'Não foi possível salvar a refeição.') : null;
   const semOrigem = form.items.some((item) => !itemHasSource(item));
-  const faltaQuantidade = form.items.length > 0 && corpo === null && form.meal_slot !== null && !semOrigem;
+  const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
@@ -277,6 +278,15 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
           />
         </Group>
 
+        <FavoriteShortcuts
+          disabled={form.items.length >= MEAL_ITEMS_LIMIT}
+          onPick={(favorito) => {
+            proximaChave.current += 1;
+            const novo = editorItemFromFavorite(favorito, `novo-${proximaChave.current}`);
+            setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
+          }}
+        />
+
         <FoodSearch
           isAdmin={false}
           selectedId={null}
@@ -319,6 +329,11 @@ export function MealEditor({ userId, date, meal, initialForm = null, onSaved, on
         {semOrigem && (
           <Text size="sm" c="yellow">
             Escolha o alimento de cada item marcado (ou a estimativa da IA, quando houver).
+          </Text>
+        )}
+        {form.meal_slot === null && corpoPreview !== null && (
+          <Text size="sm" c="yellow">
+            Escolha a refeição para salvar. O cálculo abaixo não depende dela.
           </Text>
         )}
         {faltaQuantidade && (

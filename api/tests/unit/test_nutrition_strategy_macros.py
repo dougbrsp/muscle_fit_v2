@@ -26,7 +26,7 @@ def test_faixas_e_defaults_das_fontes():
     assert st.CUT_PROTEIN_G_PER_KG_FFM_RANGE == (2.3, 3.1) and st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT == 2.6
     assert st.CUT_FAT_KCAL_SHARE_RANGE == (0.15, 0.30) and st.CUT_FAT_KCAL_SHARE_DEFAULT == 0.25
     assert st.BULK_SURPLUS_SHARE_RANGE == (0.10, 0.20) and st.BULK_SURPLUS_SHARE_RANGE_ADVANCED == (0.05, 0.10)
-    assert st.BULK_WEEKLY_RATE_SHARE_RANGE == (0.0025, 0.005)
+    assert st.BULK_WEEKLY_RATE_SHARE_RANGE == (0.0025, 0.0065) and st.BULK_WEEKLY_RATE_SHARE_RANGE_ADVANCED == (0.0012, 0.0035)
     assert st.BULK_PROTEIN_G_PER_KG_RANGE == (1.6, 2.2) and st.BULK_PROTEIN_G_PER_KG_DEFAULT == 2.0
     assert st.BULK_FAT_G_PER_KG_RANGE == (0.5, 1.5) and st.BULK_FAT_KCAL_SHARE_RANGE == (0.20, 0.35)
     assert st.BULK_CARB_MIN_G_PER_KG_RANGE == (3.0, 5.0) and st.BULK_CARB_MIN_G_PER_KG == 3.0

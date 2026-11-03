@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from app import migrate as m
-from app.domain.nutrition import diary
 from tests.support.safety_032_033 import SafetySnapshotDB
 
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "083_nutrition_days.py"
@@ -109,8 +108,6 @@ def test_ddl_um_dia_por_aluno_e_fk_so_para_users():
     assert re.findall(r"REFERENCES (\w+)", sql) == ["users"]
     assert "ON DELETE CASCADE" in sql and "exercise_catalog" not in sql
     assert "water_ml DECIMAL(7,1) NULL," in sql and "hunger TINYINT NULL," in sql
-    assert diary.WATER_ML_RANGE[1] < 10 ** 6  # DECIMAL(7,1) guarda o teto do motor
-    assert diary.HUNGER_SCALE[1] <= 127  # TINYINT
 
 
 def test_expected_columns_e_o_create_descrevem_as_mesmas_colunas():

@@ -7,12 +7,16 @@ import { apiFetch, ApiError } from './api';
 import { ASYNC_JOB_POLL_TIMEOUT_MS, dispatchAndPollJob, pollAsyncJob } from './async-job-poll';
 import { blobToBase64 } from './base64';
 import { resizeImageForUpload } from './image-resize';
-import { LABEL_PHOTO } from './nutrition-constants';
+import { LABEL_PHOTO, MEAL_PHOTO } from './nutrition-constants';
 import type {
   AiQuota,
   DayLogPayload,
   DayLogResponse,
   ExternalFoodResponse,
+  FavoriteCreatePayload,
+  FavoriteDefaultPayload,
+  FavoriteItem,
+  FavoritesResponse,
   FoodDetail,
   FoodItem,
   FoodItemCreatePayload,
@@ -28,6 +32,9 @@ import type {
   Meal,
   MealCreatePayload,
   MealParsePayload,
+  MealPhotoDispatch,
+  MealPhotoPayload,
+  MealPhotoResult,
   MealParseResult,
   MealPayload,
   MealPreview,
@@ -35,11 +42,13 @@ import type {
   NutritionDay,
   NutritionLimitation,
   NutritionMyPlan,
+  NutritionCycleFromTemplate,
   NutritionPlan,
   NutritionPlanListResponse,
   NutritionPlanPayload,
   NutritionPlanPreview,
   NutritionPlanPublishPayload,
+  NutritionPlanSaved,
   NutritionPlanSettingsPayload,
   NutritionPublishResponse,
   NutritionRecomputePayload,
@@ -49,21 +58,29 @@ import type {
 } from './nutrition-types';
 
 export const nutritionKeys = {
-  plans: (userId: number) => ['nutrition-plans', userId] as const,
+  plans: (userId: number | null) => ['nutrition-plans', userId] as const,
   preview: (planId: number) => ['nutrition-plan-preview', planId] as const,
   myPlan: ['nutrition-my-plan'] as const,
 };
 
-export function fetchNutritionPlans(userId: number): Promise<NutritionPlanListResponse> {
-  return apiFetch<NutritionPlanListResponse>(`/nutrition/plans?user_id=${encodeURIComponent(String(userId))}`);
+/** Planos do aluno; sem `userId`, os do próprio usuário (D2: cada um opera o seu plano). */
+export function fetchNutritionPlans(userId?: number | null): Promise<NutritionPlanListResponse> {
+  const query = userId == null ? '' : `?user_id=${encodeURIComponent(String(userId))}`;
+  return apiFetch<NutritionPlanListResponse>(`/nutrition/plans${query}`);
 }
 
-export function createNutritionPlan(payload: NutritionPlanPayload): Promise<NutritionPlan> {
-  return apiFetch<NutritionPlan>('/nutrition/plans', { method: 'POST', body: JSON.stringify(payload) });
+export function createNutritionPlan(payload: NutritionPlanPayload): Promise<NutritionPlanSaved> {
+  return apiFetch<NutritionPlanSaved>('/nutrition/plans', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export function updateNutritionPlan(planId: number, payload: NutritionPlanSettingsPayload): Promise<NutritionPlan> {
-  return apiFetch<NutritionPlan>(`/nutrition/plans/${planId}`, { method: 'PUT', body: JSON.stringify(payload) });
+export function updateNutritionPlan(planId: number, payload: NutritionPlanSettingsPayload): Promise<NutritionPlanSaved> {
+  return apiFetch<NutritionPlanSaved>(`/nutrition/plans/${planId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+/** "Puxar do Modelo" (D5): proposta de dias alto/normal/baixo; o usuário ajusta antes de salvar. */
+export function fetchCycleDaysFromTemplate(userId?: number | null): Promise<NutritionCycleFromTemplate> {
+  const query = userId == null ? '' : `?user_id=${encodeURIComponent(String(userId))}`;
+  return apiFetch<NutritionCycleFromTemplate>(`/nutrition/cycle-days/from-template${query}`);
 }
 
 export function deleteNutritionPlan(planId: number): Promise<{ status: string; id: number }> {
@@ -79,8 +96,16 @@ export function previewNutritionPlan(planId: number): Promise<NutritionPlanPrevi
  * (ou `null`): se outra publicação mudou a vigente no meio, a API responde 409
  * `publish_conflict` (concorrência otimista) e a tela pede para recarregar.
  */
-export function publishNutritionPlan(planId: number, expectedCurrentId: number | null): Promise<NutritionPublishResponse> {
-  const payload: NutritionPlanPublishPayload = { expected_current_id: expectedCurrentId };
+export function publishNutritionPlan(
+  planId: number,
+  expectedCurrentId: number | null,
+  expectedUpdatedAt?: string | null,
+): Promise<NutritionPublishResponse> {
+  // `expected_updated_at` = a versão do rascunho que a tela mostrou: se mudou, a API responde 409 `draft_changed`.
+  const payload: NutritionPlanPublishPayload = {
+    expected_current_id: expectedCurrentId,
+    expected_updated_at: expectedUpdatedAt ?? null,
+  };
   return apiFetch<NutritionPublishResponse>(`/nutrition/plans/${planId}/publish`, {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -126,6 +151,38 @@ export function fetchFood(foodId: number): Promise<FoodDetail> {
 
 export function createFood(payload: FoodItemCreatePayload): Promise<FoodSaveResponse> {
   return apiFetch<FoodSaveResponse>('/nutrition/foods', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// ---------------------------------------------------------------------------
+// Alimentos preferidos (Lote N3). A lista é pessoal (a API usa a sessão); teto,
+// porção padrão e ordem são do motor.
+// ---------------------------------------------------------------------------
+
+export const favoriteKeys = {
+  all: ['nutrition-favorites'] as const,
+};
+
+export function fetchFavorites(): Promise<FavoritesResponse> {
+  return apiFetch<FavoritesResponse>('/nutrition/favorites');
+}
+
+export function addFavorite(payload: FavoriteCreatePayload): Promise<FavoriteItem> {
+  return apiFetch<FavoriteItem>('/nutrition/favorites', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateFavoriteDefault(foodId: number, payload: FavoriteDefaultPayload): Promise<FavoriteItem> {
+  return apiFetch<FavoriteItem>(`/nutrition/favorites/${foodId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function removeFavorite(foodId: number): Promise<{ status: string; food_id: number }> {
+  return apiFetch(`/nutrition/favorites/${foodId}`, { method: 'DELETE' });
+}
+
+export function reorderFavorites(foodIds: number[]): Promise<FavoritesResponse> {
+  return apiFetch<FavoritesResponse>('/nutrition/favorites/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ food_ids: foodIds }),
+  });
 }
 
 export function updateFood(foodId: number, payload: FoodItemPayload): Promise<FoodSaveResponse> {
@@ -224,28 +281,23 @@ export async function readLabelPhoto(file: Blob, onStage?: (stage: LabelPhotoSta
 
 export const diaryKeys = {
   all: ['nutrition-diary'] as const,
-  day: (userId: number | null, date: string) => ['nutrition-diary', 'day', userId ?? 'me', date] as const,
-  week: (userId: number | null, start: string | null) => ['nutrition-diary', 'week', userId ?? 'me', start ?? 'today'] as const,
+  day: (date: string) => ['nutrition-diary', 'day', date] as const,
+  week: (start: string | null) => ['nutrition-diary', 'week', start ?? 'today'] as const,
 };
 
-function withUser(path: string, userId: number | null | undefined, extra: Record<string, string> = {}): string {
-  const params = new URLSearchParams(extra);
-  if (userId != null) params.set('user_id', String(userId));
-  const query = params.toString();
-  return query ? `${path}?${query}` : path;
-}
-
-export function fetchNutritionDay(date: string, userId: number | null): Promise<NutritionDay> {
-  return apiFetch<NutritionDay>(withUser(`/nutrition/days/${encodeURIComponent(date)}`, userId));
+// Diário, semana e anotação são SEMPRE do usuário logado: nenhuma chamada daqui leva parametro de aluno
+// (a escolha de aluno existe só na montagem do plano).
+export function fetchNutritionDay(date: string): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/days/${encodeURIComponent(date)}`);
 }
 
 /** A semana (segunda a domingo) que contém `start`; sem `start`, a de hoje do aluno. */
-export function fetchNutritionWeek(start: string | null, userId: number | null): Promise<NutritionWeek> {
-  return apiFetch<NutritionWeek>(withUser('/nutrition/weeks', userId, start ? { start } : {}));
+export function fetchNutritionWeek(start: string | null): Promise<NutritionWeek> {
+  return apiFetch<NutritionWeek>(start ? `/nutrition/weeks?start=${encodeURIComponent(start)}` : '/nutrition/weeks');
 }
 
-export function saveNutritionDayLog(date: string, payload: DayLogPayload, userId: number | null): Promise<DayLogResponse> {
-  return apiFetch<DayLogResponse>(withUser(`/nutrition/days/${encodeURIComponent(date)}`, userId), {
+export function saveNutritionDayLog(date: string, payload: DayLogPayload): Promise<DayLogResponse> {
+  return apiFetch<DayLogResponse>(`/nutrition/days/${encodeURIComponent(date)}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
@@ -292,6 +344,56 @@ export function parseMealText(payload: MealParsePayload): Promise<MealParseResul
   );
 }
 
+// ---------------------------------------------------------------------------
+// Foto do prato (Lote L10): mesmo caminho da foto do rótulo; itens, casamento, cota e
+// mensagens são da API. A tela reduz, envia e acompanha o job.
+// ---------------------------------------------------------------------------
+
+export const mealPhotoKeys = {
+  usage: ['nutrition-meal-photo-usage'] as const,
+};
+
+/** Cota de análises de foto do prato de hoje, de quem pede (N vem da API). */
+export function fetchMealPhotoUsage(): Promise<AiQuota> {
+  return apiFetch<AiQuota>('/nutrition/meals/photo/usage');
+}
+
+export type MealPhotoContext = Omit<MealPhotoPayload, 'image_base64'>;
+
+/** Envia a foto JÁ REDUZIDA como base64 sem padding (motivo em `uploadLabelPhoto`). */
+export async function uploadMealPhoto(photo: Blob, context: MealPhotoContext): Promise<MealPhotoDispatch> {
+  const payload: MealPhotoPayload = { ...context, image_base64: await blobToBase64(photo, { padding: false }) };
+  return apiFetch<MealPhotoDispatch>('/nutrition/meals/photo', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/**
+ * Foto escolhida -> redução por canvas (sempre; se o navegador não conseguir, NADA é
+ * enviado) -> upload -> polling do job até o prazo que a API devolveu. Resolve com os
+ * itens lidos; lista vazia = foto sem comida ou não identificada, com o motivo em
+ * `limitations`.
+ */
+export async function readMealPhoto(
+  file: Blob,
+  context: MealPhotoContext,
+  onStage?: (stage: LabelPhotoStage) => void,
+): Promise<MealPhotoResult> {
+  onStage?.('resizing');
+  const reduzida = await resizeImageForUpload(file, {
+    maxEdge: MEAL_PHOTO.resize_max_edge_px,
+    quality: MEAL_PHOTO.resize_quality,
+    contentType: MEAL_PHOTO.content_type,
+  });
+  onStage?.('uploading');
+  const despacho = await uploadMealPhoto(reduzida, context);
+  onStage?.('reading');
+  const prazo = despacho.poll_timeout_seconds;
+  return pollAsyncJob<MealPhotoResult>(despacho.job_id, {
+    timeoutMs: prazo ? prazo * MS_PER_SECOND : ASYNC_JOB_POLL_TIMEOUT_MS,
+    failedFallbackMessage: 'Não foi possível analisar a foto. Tente de novo.',
+    timeoutMessage: 'A análise da foto demorou demais. Tente de novo em instantes.',
+  });
+}
+
 type StructuredDetail = {
   error?: string;
   message?: string;
@@ -319,6 +421,15 @@ export function nutritionErrorInfo(
     return { message: detail.message || fallback, items: detail.errors ?? detail.missing ?? [] };
   }
   return { message: error instanceof ApiError ? error.message : fallback, items: [] };
+}
+
+/** Conflito de EAN no cadastro manual (409): o alimento que já tem o código, para a tela oferecê-lo. */
+export function barcodeConflict(error: unknown): { foodId: number; foodName: string | null } | null {
+  if (!(error instanceof ApiError) || nutritionErrorCode(error) !== 'barcode_already_registered') return null;
+  const detail = error.detail as { existing_food_id?: unknown; existing_food_name?: unknown };
+  const foodId = Number(detail.existing_food_id);
+  if (!Number.isInteger(foodId) || foodId <= 0) return null;
+  return { foodId, foodName: typeof detail.existing_food_name === 'string' ? detail.existing_food_name : null };
 }
 
 /**

@@ -765,6 +765,11 @@ nao define a variavel e usa a URL fixa `https://api.musclefit.com.br`
 (`resolveApiBaseUrl`/`getApiBaseUrl` em `frontend/src/lib/config.ts`). Depois
 de mudar o `.env.local`, reinicie o `next dev` (o valor e lido em build-time).
 
+`frontend/.env.development` e versionado e so tem `NEXT_PUBLIC_MOBILE_UI=1`: liga a
+interface mobile (barra inferior) no `next dev`, inclusive no iPhone pela rede local.
+`.env.local` tem prioridade sobre ele (ex.: `NEXT_PUBLIC_MOBILE_UI=0`); o build de
+producao nao carrega esse arquivo. Ver `docs/mobile/README.md`.
+
 ### "Esqueci minha senha" (M5): e-mail via SES emulado + captcha Turnstile
 
 O fluxo publico de redefinicao (`POST /auth/password-reset/request` e

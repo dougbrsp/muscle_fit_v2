@@ -722,6 +722,47 @@ except Exception as exc:
     )
 # END nutrition label photo router
 
+# BEGIN nutrition favorites router (nutricao N3, migracao 102)
+# Alimentos preferidos do usuario (lista pessoal: favoritar, porcao padrao,
+# reordenar). Regras em `domain/nutrition/favorites`; tabela ausente responde 503
+# citando a 102.
+try:
+    from app.nutrition_favorites import router as nutrition_favorites_router
+    app.include_router(nutrition_favorites_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_favorites").exception(
+        "Nutrition favorites router não foi carregado. Erro: %s", exc
+    )
+# END nutrition favorites router
+
+# BEGIN nutrition meal photo router (foto do prato, Lote L10; sem migracao)
+# Foto do prato: mesmo desenho da foto do rotulo, com o dono `meal_photo`, a cota
+# `meal_photo` (ai_usage_log, 085) e o prefixo nutrition-meals/. A refeicao continua
+# sendo gravada em POST /nutrition/meals (source=ai_photo) depois da conferencia.
+try:
+    from app.nutrition_meal_photo import router as nutrition_meal_photo_router
+    app.include_router(nutrition_meal_photo_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_meal_photo").exception(
+        "Nutrition meal photo router nao foi carregado. Erro: %s", exc
+    )
+# END nutrition meal photo router
+
+# BEGIN nutrition plan suggestion router (metas sugeridas pela IA, N6; sem migracao)
+# A IA so sugere parametros dentro das faixas do motor (D3), com a cota `plan_suggestion`
+# (ai_usage_log, 085). O plano continua sendo gravado em POST /nutrition/plans.
+try:
+    from app.nutrition_plan_suggestion import router as nutrition_plan_suggestion_router
+    app.include_router(nutrition_plan_suggestion_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_plan_suggestion").exception(
+        "Nutrition plan suggestion router nao foi carregado. Erro: %s", exc
+    )
+# END nutrition plan suggestion router
+
 # BEGIN nutrition diary routers (plano de nutricao, Lote L4, migracoes 082/083)
 # Diario de refeicoes: refeicoes com os nutrientes congelados por item (motor
 # `meal_math`/`diary`), preview sem gravar, dia (meta, totais, agua/fome, kcal
@@ -732,6 +773,12 @@ try:
     from app.nutrition_days import router as nutrition_days_router
     app.include_router(nutrition_meals_router)
     app.include_router(nutrition_days_router)
+    # Dashboard de nutricao (N5, mapa §82): agregacao da janela sobre os totais gravados.
+    from app.nutrition_dashboard import router as nutrition_dashboard_router
+    app.include_router(nutrition_dashboard_router)
+    # Check-in semanal (N7, mapa §83, migracao 103): avalia a semana fechada e propoe metas novas.
+    from app.nutrition_checkins import router as nutrition_checkins_router
+    app.include_router(nutrition_checkins_router)
 except Exception as exc:
     import logging
     logging.getLogger("fitness.nutrition_diary").exception(

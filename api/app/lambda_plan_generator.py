@@ -28,6 +28,11 @@ uma chamada a OpenAI com imagem (ate ~90 s) e a revisao do motor de nutricao,
 enfileirada por `POST /nutrition/foods/label-photo` - ver
 `app/nutrition_label_ai.py`. Nada e gravado no banco alem do `ai_usage_log`.
 
+E, com a foto do prato (nutricao L10), um SEXTO, com o mesmo formato mais o
+`payload` do diario ({"local_date", "meal_slot", "diary_user_id", "job_id"}), em
+`app/nutrition_meal_photo_ai.py`: visao + casamento com o catalogo, sem gravar nada
+alem do `ai_usage_log`; a refeicao so nasce quando o usuario confere e salva.
+
 E, com os cards ilustrados de exercicios, um QUARTO:
     {"job_id": "...", "job_kind": "exercise-card", "generation_id": 7, "exercise_id": 42}
 a imagem do card (OpenAI Images, ate ~2 min - por isso o timeout desta funcao
@@ -55,7 +60,7 @@ from .secrets_bootstrap import load_secrets
 load_secrets()
 
 from . import async_jobs
-from .domain.nutrition.ai_usage import LABEL_PHOTO_JOB_TYPE
+from .domain.nutrition.ai_usage import LABEL_PHOTO_JOB_TYPE, MEAL_PHOTO_JOB_TYPE
 from .logging_config import configure_logging
 from .models import WorkoutPlanGenerateIn
 from .plan_generation_core import dispatch_plan_generation
@@ -81,6 +86,8 @@ JOB_KIND_EXERCISE_CARD = "exercise-card"
 # Nutricao L6: leitura da foto do rotulo. O job type e o do dono
 # (`domain/nutrition/ai_usage`); a api-core o manda como `job_kind`.
 JOB_KIND_LABEL_PHOTO = LABEL_PHOTO_JOB_TYPE
+# Nutricao L10: foto do prato, mesmo dono do job type.
+JOB_KIND_MEAL_PHOTO = MEAL_PHOTO_JOB_TYPE
 
 
 def handler(event, context):
@@ -139,6 +146,11 @@ def _run(event) -> dict:
         from .nutrition_label_ai import run_label_job
 
         return run_label_job(event)
+
+    if job_kind == JOB_KIND_MEAL_PHOTO:
+        from .nutrition_meal_photo_ai import run_meal_photo_job
+
+        return run_meal_photo_job(event)
 
     if job_kind != JOB_KIND_PLAN:
         raise ValueError(f"job_kind desconhecido: {job_kind!r}")

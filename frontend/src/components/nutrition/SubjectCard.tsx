@@ -23,7 +23,7 @@ function withDate(texto: string, isoDate: string | null): string {
 }
 
 /** Quem recebe o plano, como o motor o montou para o dia (perfil + leituras). */
-export function SubjectCard({ subject, title = 'Aluno hoje' }: { subject: NutritionSubject; title?: string }) {
+export function SubjectCard({ subject, title = 'Perfil de hoje' }: { subject: NutritionSubject; title?: string }) {
   const gordura = formatNumberOrDash(subject.body_fat_percent, 1);
   const metodo = nutritionLabel(BODY_FAT_METHOD_OPTIONS, subject.body_fat_method);
   const linhas: { label: string; value: string }[] = [

@@ -229,6 +229,28 @@ resource "aws_iam_role_policy" "musclefit_ai_generators_nutrition_labels" {
   })
 }
 
+# Nutricao L10 (foto do prato, plano de 2026-11-02): o worker do job
+# `ai_usage.MEAL_PHOTO_JOB_TYPE` LE a foto que a api-core gravou em
+# nutrition-meals/<user_id>/<uuid>.jpg. So GetObject e so nesse prefixo (o mesmo de
+# `meal_photo.MEAL_PHOTO_S3_PREFIX`, teste de paridade); a gravacao e da api-core e a
+# foto expira em 1 dia pela regra nutrition-meals-expire-1d.
+resource "aws_iam_role_policy" "musclefit_ai_generators_nutrition_meals" {
+  name = "musclefit-ai-generators-nutrition-meals"
+  role = aws_iam_role.musclefit_ai_generators_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "NutritionMealPhotosRead"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.musclefit_uploads.arn}/nutrition-meals/*"
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "musclefit_plan_generator" {
   name              = "/aws/lambda/musclefit-plan-generator"
   retention_in_days = 14
@@ -329,7 +351,8 @@ resource "aws_lambda_function" "musclefit_plan_generator" {
       {
         # exercise_description_ai.py (job_kind exercise-description) roda aqui.
         OPENAI_EXERCISE_DESCRIPTION_MODEL = var.openai_model_exercise_description
-        # nutrition_label_ai.py (leitura da foto do rotulo, nutricao L6) roda aqui.
+        # nutrition_label_ai.py (foto do rotulo, L6) e nutrition_meal_photo_ai.py
+        # (foto do prato, L10; modelo do fallback) rodam aqui.
         OPENAI_NUTRITION_VISION_MODEL = var.openai_model_nutrition_vision
       },
     )

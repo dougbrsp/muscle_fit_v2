@@ -674,6 +674,80 @@
       "fat_free_mass": "g por kg de massa livre de gordura",
       "body_weight": "g por kg de peso corporal"
     },
+    "macro_priorities": [
+      "balanced",
+      "fixed_protein",
+      "high_carb",
+      "high_fat"
+    ],
+    "macro_priority_labels": {
+      "balanced": "Equilibrado",
+      "fixed_protein": "Proteína fixa (carboidrato e gordura equilibrados)",
+      "high_carb": "Carboidrato alto (gordura baixa)",
+      "high_fat": "Gordura alta (carboidrato baixo)"
+    },
+    "default_macro_priority": "balanced",
+    "manual_training_modes": [
+      "fixed",
+      "add_training"
+    ],
+    "manual_training_mode_labels": {
+      "fixed": "Metas fixas todo dia",
+      "add_training": "Somar o treino do dia em carboidrato"
+    },
+    "manual_training_mode_hints": {
+      "fixed": "Os números que você digitou valem todos os dias; treino e estratégia não alteram essas metas.",
+      "add_training": "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, pela conversão de energia do motor. Só vale com o gasto do treino à parte."
+    },
+    "default_manual_training_mode": "fixed",
+    "manual_training_modes_by_tdee_mode": {
+      "explicit_training": [
+        "fixed",
+        "add_training"
+      ],
+      "included_in_factor": [
+        "fixed"
+      ]
+    },
+    "range_statuses": [
+      "within_range",
+      "warning",
+      "blocked"
+    ],
+    "range_status_labels": {
+      "within_range": "Dentro da faixa recomendada",
+      "warning": "Fora da faixa recomendada (salva com aviso)",
+      "blocked": "Valor não permitido"
+    },
+    "goal_kinds": [
+      "weight",
+      "body_fat"
+    ],
+    "goal_kind_labels": {
+      "weight": "Peso-alvo",
+      "body_fat": "% de gordura alvo"
+    },
+    "projection_statuses": [
+      "projected",
+      "goal_reached",
+      "incoherent_with_strategy",
+      "insufficient_data"
+    ],
+    "projection_status_labels": {
+      "projected": "Projeção até o alvo",
+      "goal_reached": "Alvo alcançado",
+      "incoherent_with_strategy": "Alvo incoerente com a estratégia",
+      "insufficient_data": "Dados insuficientes para projetar"
+    },
+    "weekday_names": {
+      "0": "Segunda-feira",
+      "1": "Terça-feira",
+      "2": "Quarta-feira",
+      "3": "Quinta-feira",
+      "4": "Sexta-feira",
+      "5": "Sábado",
+      "6": "Domingo"
+    },
     "day_kinds": [
       "high",
       "normal",
@@ -805,10 +879,10 @@
     "strategy_only_fields": {
       "weekly_rate_share": "cutting",
       "surplus_share": "bulking",
-      "carb_min_g_per_kg": "bulking"
+      "carb_min_g_per_kg": "bulking",
+      "maintenance_kcal_adjust": "maintenance"
     },
     "notices": {
-      "carb_cycling_unavailable": "Ciclo de carboidrato: chega com o calendário de fases; por enquanto a meta é a mesma todos os dias da semana.",
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
       "phase_should_stop": "O % de gordura atual já chegou à meta desta fase.",
       "target_frozen": "Meta congelada: 2 dia(s) depois do dia ela não muda mais.",
@@ -903,7 +977,12 @@
           0.35
         ],
         "fat_kcal_share_default": 0.25,
-        "tolerance_share": 0.05
+        "tolerance_share": 0.05,
+        "maintenance_kcal_adjust": [
+          -500,
+          500
+        ],
+        "maintenance_kcal_adjust_default": 0
       },
       "refeed_days_per_week_default": 2,
       "max_cut_weeks_without_break": 8,
@@ -1123,24 +1202,6 @@
       "carbohydrates_g",
       "total_fat_g"
     ],
-    "hunger_levels": [
-      1,
-      2,
-      3,
-      4,
-      5
-    ],
-    "hunger_labels": {
-      "1": "Sem fome",
-      "2": "Pouca fome",
-      "3": "Fome moderada",
-      "4": "Muita fome",
-      "5": "Fome intensa"
-    },
-    "water_ml_range": [
-      0.0,
-      10000.0
-    ],
     "meal_max_items": 30,
     "meal_parse": {
       "text_max_chars": 1000,
@@ -1158,6 +1219,8 @@
       },
       "estimate_source": "ai_estimate",
       "estimate_basis": "g",
+      "catalog_item_nature": "DERIVED",
+      "estimate_item_nature": "ESTIMATED",
       "quota_exceeded_label": "Limite de 30 leituras de refeição por IA por dia atingido. Tente de novo amanhã."
     },
     "label_photo": {
@@ -1167,6 +1230,16 @@
       "resize_quality": 0.85,
       "retention_days": 30,
       "food_source": "label_photo"
+    },
+    "meal_photo": {
+      "max_bytes": 1572864,
+      "content_type": "image/jpeg",
+      "resize_max_edge_px": 1280,
+      "resize_quality": 0.85,
+      "retention_days": 1,
+      "retention_label": "1 dia",
+      "meal_source": "ai_photo",
+      "quota_exceeded_label": "Limite de 10 análises de foto do prato por dia atingido. Tente de novo amanhã."
     },
     "label_legibilities": [
       "ok",

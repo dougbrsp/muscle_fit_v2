@@ -1,6 +1,9 @@
 """Quem vê e quem define o plano nutricional de quem (plano de nutrição §5 D1,
 decisão D-L; Lote L2b).
 
+Planos (N2, decisão D2 de 2026-11-02): o usuário cria, edita e publica o PRÓPRIO plano (`plan_actor`);
+admin e personal trainer continuam podendo para qualquer aluno; usuário comum nunca alcança o plano de outro.
+
 Regra de hoje (decisão do usuário, 2026-10-14): o próprio usuário passa;
 TERCEIRO exige admin ou personal trainer (`security.require_admin_or_pt`), e o
 personal trainer vê/define para QUALQUER aluno — sem vínculo formal PT↔aluno,
@@ -23,14 +26,30 @@ from typing import Any, Optional
 from fastapi import Depends, HTTPException
 
 from .domain.nutrition import catalog
-from .security import Identity, get_current_identity, require_admin_or_pt
+from .security import Identity, get_current_identity, is_admin_or_pt, require_admin_or_pt
 
 _USER_SQL = "SELECT id, username, full_name FROM users WHERE id = %s"
 
 
-def require_plan_manager(identity: Identity = Depends(get_current_identity)) -> Identity:
-    """Dependência das rotas que criam/editam/publicam planos: admin ou PT."""
-    return require_admin_or_pt(identity)
+def plan_actor(identity: Identity = Depends(get_current_identity)) -> Identity:
+    """Dependência das rotas de plano (N2, D2): qualquer usuário logado cria, edita e publica o
+    PRÓPRIO plano; o plano de outro usuário exige admin ou PT, decidido em `resolve_target_user`
+    (por usuário) e `resolve_plan_owner` (por id de plano)."""
+    return identity
+
+
+def is_staff(identity: Identity) -> bool:
+    """Admin ou personal trainer (a regra de `security.require_admin_or_pt`, sem levantar)."""
+    return is_admin_or_pt(identity)
+
+
+def resolve_plan_owner(identity: Identity, owner_user_id: int) -> int:
+    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: o próprio
+    usuário, admin ou PT passam; qualquer outro recebe 404 `plan_not_found` (igual ao plano que
+    não existe), para o id de um plano alheio não revelar que ele existe."""
+    if int(owner_user_id) == int(identity.user_id) or is_staff(identity):
+        return int(owner_user_id)
+    raise HTTPException(status_code=404, detail={"error": "plan_not_found", "message": "Plano não encontrado."})
 
 
 def resolve_target_user(identity: Identity, user_id: Optional[int]) -> int:
@@ -159,6 +178,31 @@ def can_log_portion(identity: Identity, diary_user_id: int, portion: dict[str, A
     return dono is None or dono in (int(diary_user_id), int(identity.user_id))
 
 
+# ---------------------------------------------------------------------------
+# Alimentos preferidos (N3): a lista é PESSOAL. Nenhuma rota recebe `user_id`:
+# quem lê, cria, reordena ou apaga é sempre o dono da sessão, então um usuário
+# nunca alcança os preferidos de outro (nem admin/PT: não há vínculo formal que
+# justifique). O SQL sempre filtra por `user_id = favorites_owner(identity)`.
+# ---------------------------------------------------------------------------
+
+
+def favorites_owner(identity: Identity) -> int:
+    """Dono da lista de preferidos desta chamada: o próprio usuário logado."""
+    return int(identity.user_id)
+
+
+def can_favorite_food(identity: Identity, food: dict[str, Any]) -> bool:
+    """Favoritar/manter na lista: alimento ativo que o usuário pode usar no diário
+    (público ou dele)."""
+    return bool(food.get("is_active", 1)) and can_use_food(identity, food)
+
+
+def can_favorite_portion(identity: Identity, portion: dict[str, Any]) -> bool:
+    """Porção padrão do favorito: pública ou do próprio usuário."""
+    dono = _owner(portion)
+    return dono is None or dono == int(identity.user_id)
+
+
 def portions_visibility(identity: Identity, food: dict[str, Any]) -> tuple[str, tuple[Any, ...]]:
     """Porções visíveis de um alimento: as públicas, as do usuário e, num
     alimento PRIVADO, as do dono dele (o admin que vai promover vê o que será
@@ -174,6 +218,8 @@ __all__ = [
     "VISIBLE_PORTIONS_SQL",
     "can_add_portion",
     "can_edit_food",
+    "can_favorite_food",
+    "can_favorite_portion",
     "can_list_private_foods",
     "can_log_food",
     "can_log_portion",
@@ -181,12 +227,15 @@ __all__ = [
     "can_use_food",
     "can_view_food",
     "diary_foods_visibility",
+    "favorites_owner",
     "fetch_target_user",
     "foods_visibility",
     "is_admin",
+    "is_staff",
+    "plan_actor",
     "ownership",
     "portion_owner_for",
     "portions_visibility",
-    "require_plan_manager",
+    "resolve_plan_owner",
     "resolve_target_user",
 ]

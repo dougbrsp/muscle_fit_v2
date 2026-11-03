@@ -33,12 +33,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
-from .domain.nutrition import diary
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
 from .domain.nutrition.energy_expenditure import compare_training_kcal
 from .domain.nutrition.subject import resolve_subject
-from .domain.nutrition.weekly_budget import day_balance, target_macros, week_days, week_report
+from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_meals import day_totals, meals_public, read_meal_rows, totals_public
@@ -50,11 +49,10 @@ from .security import Identity, get_current_identity
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
 DAYS = "nutrition_days"
-DAY_LOG_SQL = f"SELECT local_date, water_ml, hunger, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
+DAY_LOG_SQL = f"SELECT local_date, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
 UPSERT_DAY_LOG_SQL = (
-    f"INSERT INTO {DAYS} (user_id, local_date, water_ml, hunger, notes, updated_by) VALUES (%s, %s, %s, %s, %s, %s) "
-    "ON DUPLICATE KEY UPDATE water_ml = VALUES(water_ml), hunger = VALUES(hunger), notes = VALUES(notes), "
-    "updated_by = VALUES(updated_by)"
+    f"INSERT INTO {DAYS} (user_id, local_date, notes, updated_by) VALUES (%s, %s, %s, %s) "
+    "ON DUPLICATE KEY UPDATE notes = VALUES(notes), updated_by = VALUES(updated_by)"
 )
 # Sessões CONCLUÍDAS do dia (mesma condição da materialização, `DONE_SESSION_STATUS`)
 # com a kcal do link do Intervals (a proveniência é resolvida por
@@ -96,7 +94,7 @@ def _require_tables(cur: Any) -> None:
     require_diary_tables(cur)
 
 
-def _target_of(row: Optional[dict[str, Any]]):
+def target_of(row: Optional[dict[str, Any]]):
     if row is None:
         return None
     return target_macros(row.get("kcal"), row.get("protein_g"), row.get("carbs_g"), row.get("fat_g"), row.get("fiber_g"))
@@ -106,8 +104,6 @@ def day_log_public(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     if not row:
         return None
     return {
-        "water_ml": _num(row.get("water_ml")),
-        "hunger": int(row["hunger"]) if row.get("hunger") is not None else None,
         "notes": row.get("notes"),
         "updated_at": _iso(row.get("updated_at")),
     }
@@ -155,7 +151,7 @@ def _training(cur: Any, user_id: int, day: date, today: date) -> dict[str, Any]:
     }
 
 
-def _balance_public(balanco) -> dict[str, Any]:
+def balance_public(balanco) -> dict[str, Any]:
     corpo = balanco.to_dict()
     corpo["limitations"] = nutrition_labels.limitation_items(balanco.limitations)
     return corpo
@@ -187,7 +183,7 @@ def get_day(
             diario = _read_day_log(cur, aluno, local_date)
             treino = _training(cur, aluno, local_date, hoje)
     totais = day_totals(linhas)
-    balanco = day_balance(_target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
+    balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
         "user": usuario,
         "local_date": local_date.isoformat(),
@@ -197,7 +193,7 @@ def get_day(
         "target_notices": nutrition_labels.limitation_items(diary_target_notice(acao)),
         "meals": refeicoes,
         "totals": totals_public(totais),
-        "balance": _balance_public(balanco),
+        "balance": balance_public(balanco),
         "day_log": day_log_public(diario),
         "training": treino,
     }
@@ -211,22 +207,13 @@ def put_day(
     identity: Identity = Depends(get_current_identity),
 ):
     aluno = resolve_target_user(identity, user_id)
-    erros = diary.validate_day_log(payload.water_ml, payload.hunger)
-    if erros:
-        raise _error(
-            400,
-            "invalid_day_log",
-            "Água ou fome fora das faixas do diário.",
-            errors=nutrition_labels.limitation_items(erros),
-        )
     with _connect() as conn:
         with conn.cursor() as cur:
             require_diary_tables(cur)
             fetch_target_user(cur, aluno)
-            fome = None if payload.hunger is None else int(payload.hunger)
             cur.execute(
                 UPSERT_DAY_LOG_SQL,
-                (aluno, local_date, payload.water_ml, fome, payload.notes, int(identity.user_id)),
+                (aluno, local_date, payload.notes, int(identity.user_id)),
             )
             linha = _read_day_log(cur, aluno, local_date)
     return {"user_id": aluno, "local_date": local_date.isoformat(), "day_log": day_log_public(linha)}
@@ -255,7 +242,7 @@ def get_week(
         dia = linha["local_date"] if isinstance(linha["local_date"], date) else date.fromisoformat(str(linha["local_date"])[:10])
         por_dia.setdefault(dia, []).append(linha)
     totais = [day_totals(por_dia.get(dia, [])) for dia in dias]
-    relatorio = week_report(dias, [_target_of(metas.rows.get(dia)) for dia in dias], totais)
+    relatorio = week_report(dias, [target_of(metas.rows.get(dia)) for dia in dias], totais)
     registrados = set(relatorio.logged_days)
     incompletos = set(relatorio.incomplete_days)
     corpo = relatorio.to_dict()
@@ -271,6 +258,8 @@ def get_week(
                 "target": metas.rows.get(dia),
                 "target_action": metas.actions[dia].value,
                 "totals": totals_public(total),
+                # kcal só de total completo (`None` se incompleto ou sem refeição): a tela não decide.
+                "intake_kcal": complete_energy_kcal(total),
                 "logged": dia in registrados,
                 "intake_incomplete": dia in incompletos,
             }

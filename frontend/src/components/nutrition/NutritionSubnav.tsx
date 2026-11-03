@@ -6,7 +6,10 @@ import Link from 'next/link';
 const SECOES = [
   { href: '/nutricao', label: 'Diário' },
   { href: '/nutricao/plano', label: 'Plano' },
+  { href: '/nutricao/checkin', label: 'Check-in' },
   { href: '/nutricao/alimentos', label: 'Alimentos' },
+  { href: '/nutricao/favoritos', label: 'Preferidos' },
+  { href: '/dashboard/nutricao', label: 'Painel' },
 ] as const;
 
 type Props = { active: (typeof SECOES)[number]['href'] };

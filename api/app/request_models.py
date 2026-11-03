@@ -15,9 +15,11 @@ handlers, com o mesmo 400 de antes.
 from __future__ import annotations
 
 from datetime import date, time
-from typing import Any, List, Optional, Union
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 
 NOTES_MAX = 2000
 SHORT_TEXT_MAX = 160
@@ -138,15 +140,59 @@ class NutritionPlanSettingsIn(_StrictIn):
     meals_per_day: Optional[Number] = None
     goal_body_fat_percent: Optional[Number] = None
     goal_weight_kg: Optional[Number] = None
-    # Recusado pelo motor até o L8 (`carb_cycling_unavailable`).
+    # N2: prioridade de macros, gramas manuais (D6) e dias alto/normal/baixo (D5). O motor valida.
+    macro_priority: Optional[str] = Field(default=None, max_length=24)
+    manual_targets: Optional[dict[str, Any]] = None
+    # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
+    manual_training_mode: Optional[str] = Field(default=None, max_length=24)
+    cycle_days: Optional[dict[str, Any]] = None
+    # N7: kcal/dia da manutencao (inteiro; faixa e regra do motor `strategy.MAINT_KCAL_ADJUST_RANGE`).
+    maintenance_kcal_adjust: Optional[int] = None
+    # Legado: os clientes antigos ainda mandam; ignorado (o ciclo vem de `cycle_days`).
     carb_cycling_enabled: bool = False
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
 class NutritionPlanIn(NutritionPlanSettingsIn):
-    """POST /nutrition/plans (admin/PT): rascunho para o aluno `user_id`."""
+    """POST /nutrition/plans: rascunho para o aluno `user_id`; sem `user_id`, o próprio
+    usuário (D2). Para outro usuário exige admin/PT."""
 
-    user_id: int
+    user_id: Optional[int] = None
+
+
+_FormNumber = Annotated[float, Field(ge=0, le=CURRENT_NUMBER_MAX)]
+
+
+class PlanSuggestionCurrentIn(_StrictIn):
+    """Estado do formulário do plano, para a sugestão por IA (N6): comparação, contexto e o que muda a conta (atividade,
+    gasto do treino, fórmula). Faixas e códigos são do motor (`plan_suggestion.normalize_current`); o que aqui não for
+    código conhecido é descartado lá. O limite dos números é só de sanidade (`CURRENT_NUMBER_MAX`)."""
+
+    strategy: Optional[str] = Field(default=None, max_length=16)
+    advanced: bool = False
+    protein_g_per_kg: Optional[_FormNumber] = None
+    fat_kcal_share: Optional[_FormNumber] = None
+    weekly_rate_share: Optional[_FormNumber] = None
+    surplus_share: Optional[_FormNumber] = None
+    carb_min_g_per_kg: Optional[_FormNumber] = None
+    macro_priority: Optional[str] = Field(default=None, max_length=24)
+    meals_per_day: Optional[_FormNumber] = None
+    goal_weight_kg: Optional[_FormNumber] = None
+    goal_body_fat_percent: Optional[_FormNumber] = None
+    activity_level: Optional[str] = Field(default=None, max_length=16)
+    tdee_mode: Optional[str] = Field(default=None, max_length=24)
+    bmr_formula: Optional[str] = Field(default=None, max_length=24)
+    # As gramas manuais estão ligadas? Só o sinal: as gramas não vão para a IA.
+    manual_targets: bool = False
+    # Ajuste de kcal da manutenção do formulário (N7): a sugestão o preserva ou mostra que deixa de valer. Não vai para a IA.
+    maintenance_kcal_adjust: Optional[Annotated[int, Field(ge=-CURRENT_NUMBER_MAX, le=CURRENT_NUMBER_MAX)]] = None
+
+
+class PlanSuggestionIn(_StrictIn):
+    """POST /nutrition/plan-suggestion (N6): sem `user_id`, o próprio usuário; outro exige admin/PT."""
+
+    user_id: Optional[int] = None
+    current: PlanSuggestionCurrentIn = Field(default_factory=PlanSuggestionCurrentIn)
 
 
 class NutritionPlanPublishIn(_StrictIn):
@@ -155,12 +201,23 @@ class NutritionPlanPublishIn(_StrictIn):
     (pode ser null): divergir da vigente travada responde 409 `publish_conflict`."""
 
     expected_current_id: Optional[int]
+    # Versão do rascunho que a tela viu (`updated_at` do plano). Se mudou, 409 `draft_changed`; ausente = sem conferência
+    # (cliente antigo).
+    expected_updated_at: Optional[str] = Field(default=None, max_length=40)
+
+
+class NutritionCheckinSettingsIn(_StrictIn):
+    """PUT /nutrition/checkin/settings: dia da semana do check-in (0 = segunda ... 6 = domingo; a faixa é do motor
+    `weekly_checkin.checkin_weekday_is_valid`). Sem `user_id`, o próprio usuário; outro exige admin/PT."""
+
+    weekday: int
+    user_id: Optional[int] = None
 
 
 class NutritionTargetsRecomputeIn(_StrictIn):
-    """POST /nutrition/targets/recompute (admin/PT)."""
+    """POST /nutrition/targets/recompute: sem `user_id`, o próprio usuário; outro exige admin/PT."""
 
-    user_id: int
+    user_id: Optional[int] = None
     date_from: date
     date_to: Optional[date] = None
 
@@ -199,6 +256,9 @@ class FoodItemCreateIn(FoodItemIn):
     `FoodItemIn`: a fonte não muda depois de criada."""
 
     source: Optional[str] = Field(default=None, max_length=16)
+    # N3: EAN/GTIN do produto (leitor de câmera ou digitado). Dígito verificador e forma
+    # canônica: `external_sources.normalize_gtin`; aqui só tipo e tamanho.
+    barcode: Optional[str] = Field(default=None, max_length=32)
 
 
 class LabelPhotoUploadIn(_StrictIn):
@@ -217,6 +277,30 @@ class FoodPortionIn(_StrictIn):
 
     label: str = Field(min_length=1, max_length=120)
     amount: Number
+
+
+class FavoriteDefaultIn(_StrictIn):
+    """Porção padrão de um alimento preferido (nutrição N3): quantidade e unidade
+    (código de `meal_math.Unit`) juntas, ou nenhuma. `default_portion_id` escolhe
+    uma porção cadastrada do alimento. Conversão e faixa NÃO são validadas aqui:
+    `domain/nutrition/favorites.default_errors` (que usa o `meal_math`) responde 400."""
+
+    default_quantity: Optional[Number] = None
+    default_unit: Optional[str] = Field(default=None, max_length=24)
+    default_portion_id: Optional[int] = None
+
+
+class FavoriteCreateIn(FavoriteDefaultIn):
+    """POST /nutrition/favorites: o alimento e a porção padrão opcional."""
+
+    food_id: int
+
+
+class FavoriteReorderIn(_StrictIn):
+    """POST /nutrition/favorites/reorder: a lista inteira na nova ordem (permutação
+    exata dos favoritos atuais, conferida por `favorites.order_errors`)."""
+
+    food_ids: list[int]
 
 
 class MealItemEstimateIn(_StrictIn):
@@ -267,10 +351,12 @@ class MealBodyIn(_StrictIn):
 class MealIn(MealBodyIn):
     """POST /nutrition/meals: `user_id` = aluno (admin/PT); ausente = o próprio.
     L5b: `ai_job_id` (o job da leitura por IA, a origem vira `ai_text`) e
-    `description_raw` (o texto descrito, só no nosso banco)."""
+    `description_raw` (o texto descrito, só no nosso banco). L10: `ai_source` =
+    `ai_photo` quando a leitura veio da foto do prato (`meal_parse.meal_source`)."""
 
     user_id: Optional[int] = None
     ai_job_id: Optional[str] = Field(default=None, max_length=64)
+    ai_source: Optional[Literal["ai_photo"]] = None
     description_raw: Optional[str] = Field(default=None, max_length=NOTES_MAX)
 
 
@@ -286,19 +372,35 @@ class MealParseIn(_StrictIn):
     meal_slot: Optional[str] = Field(default=None, max_length=24)
 
 
+class MealPhotoUploadIn(_StrictIn):
+    """POST /nutrition/meals/photo (nutrição L10): a foto do prato JÁ REDUZIDA pela
+    tela (JPEG do canvas) em base64 sem padding, o dia e a refeição (opcional).
+    Tamanho, alfabeto, tipo e slot NÃO são validados aqui: os códigos e os status
+    são do motor (`meal_photo.decode_upload`, `upload_error`, `diary`)."""
+
+    user_id: Optional[int] = None
+    image_base64: str
+    local_date: date
+    meal_slot: Optional[str] = Field(default=None, max_length=24)
+
+
 class MealPreviewIn(MealIn):
     """POST /nutrition/meals/preview (sem gravar). `meal_id` = refeição em
-    edição (os itens com `id` usam o snapshot congelado dela)."""
+    edição (os itens com `id` usam o snapshot congelado dela). `meal_slot`
+    pode faltar: os macros do item não dependem da refeição, e a tela mostra o
+    cálculo antes de a pessoa escolher (L10). Gravar continua exigindo."""
 
     meal_id: Optional[int] = None
+    meal_slot: Optional[str] = Field(default=None, min_length=1, max_length=24)
 
 
 class NutritionDayIn(_StrictIn):
-    """PUT /nutrition/days/{date}: água (ml), fome e anotação do dia; substitui
-    a linha inteira (ausente = não informado). Faixas: `diary.validate_day_log`."""
+    """PUT /nutrition/days/{date}: anotação do dia (substitui; ausente = sem nota).
+    Água e fome saíram do produto: `water_ml`/`hunger` de cliente antigo (PWA em
+    cache) são ACEITOS e ignorados, nunca 422; nada disso é gravado."""
 
-    water_ml: Optional[Number] = None
-    hunger: Optional[Number] = None
+    model_config = ConfigDict(extra="ignore")
+
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -318,6 +420,8 @@ __all__ = [
     "NutritionPlanIn",
     "NutritionPlanPublishIn",
     "NutritionPlanSettingsIn",
+    "PlanSuggestionCurrentIn",
+    "PlanSuggestionIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

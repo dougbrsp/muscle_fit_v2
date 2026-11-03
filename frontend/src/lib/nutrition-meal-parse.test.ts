@@ -78,14 +78,13 @@ describe('nutrition-meal-parse: a proposta é do motor, a tela só transporta', 
 
   it('sem escolha não há corpo; escolhida, o corpo leva o alimento ou a estimativa como a leitura entregou', () => {
     const form = editorFormFromParse(RESULTADO, { date: 'x', slot: null, text: 'arroz, frango e whey' });
-    expect(mealCreatePayload(form, null)).toBeNull();
+    expect(mealCreatePayload(form)).toBeNull();
     const escolhido = { ...form, items: [form.items[0], chooseCandidate(form.items[1], FRANGO), form.items[2]] };
-    expect(mealCreatePayload(escolhido, 2)).toEqual({
+    expect(mealCreatePayload(escolhido)).toEqual({
       local_date: '2026-10-18',
       meal_slot: 'lunch',
       eaten_at: null,
       notes: null,
-      user_id: 2,
       ai_job_id: 'job-1',
       description_raw: 'arroz, frango e whey',
       items: [

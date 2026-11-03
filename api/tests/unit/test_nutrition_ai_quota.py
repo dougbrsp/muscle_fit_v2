@@ -32,7 +32,12 @@ SP = "America/Sao_Paulo"  # UTC-3, sem horário de verão
 AGORA_UTC = datetime(2026, 10, 18, 2, 30)
 INICIO_DIA_SP = datetime(2026, 10, 17, 3, 0)
 # Lambdas da decisão E8 do plano (texto na workout-ai, imagem na plan-generator).
-E8 = {AiFeature.MEAL_PARSE: "musclefit-workout-ai", AiFeature.LABEL_PHOTO: "musclefit-plan-generator"}
+E8 = {
+    AiFeature.MEAL_PARSE: "musclefit-workout-ai",
+    AiFeature.LABEL_PHOTO: "musclefit-plan-generator",
+    AiFeature.MEAL_PHOTO: "musclefit-plan-generator",
+    AiFeature.PLAN_SUGGESTION: "musclefit-workout-ai",
+}
 
 
 class FakeDB:
@@ -293,7 +298,7 @@ def test_textos_sao_cortados_no_tamanho_da_coluna_e_contagem_invalida_recusa(db)
     with pytest.raises(ValueError):
         _reservar(db, image_count=-1)
     with pytest.raises(ValueError):
-        _reservar(db, feature="meal_photo")
+        _reservar(db, feature="foto_prato")
 
 
 def test_job_id_e_gravado_uma_vez(db):

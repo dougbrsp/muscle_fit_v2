@@ -16,23 +16,19 @@ que continua a reexportá-lo).
   `unit_without_conversion` ou `missing_quantity`) e ficar até
   `ITEM_AMOUNT_MAX` na base (a mesma faixa da porção do catálogo,
   `catalog.PORTION_AMOUNT_MAX`: 2 kg ou 2 L num item é erro de digitação).
-- Diário do dia (`validate_day_log`): fome na escala `HUNGER_SCALE` (1 a 5) e
-  água em `WATER_ML_RANGE` (ml).
 - Origem do item (L5b, `item_source_errors`): um alimento do catálogo OU a
   estimativa da IA (`meal_parse`, natureza ESTIMATED), nunca os dois nem nenhum.
 
 Defaults de desenho, SEM fonte bibliográfica: `MEAL_MAX_ITEMS` (uma refeição
-real não passa de algumas dezenas de itens; o teto protege o tamanho do lote) e
-`WATER_ML_RANGE` (10 L/dia é muito acima de qualquer ingestão plausível).
-A escala de fome de 1 a 5 é a escala ordinal de 5 pontos do diário (o rótulo
-de cada ponto está em `labels.HUNGER_LABELS`).
+real não passa de algumas dezenas de itens; o teto protege o tamanho do lote).
+Água e fome do dia saíram do produto (2026-11-03); as colunas de `nutrition_days`
+ficam, sem uso, até uma limpeza futura.
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
 
 from __future__ import annotations
 
-import math
 from enum import Enum
 from typing import Any, Final, Mapping, Optional
 
@@ -67,9 +63,10 @@ class MealSource(str, Enum):
 
 
 MEAL_MAX_ITEMS: Final[int] = 30
+# Slot com que o preview valida a refeição sem refeição escolhida: os macros do item
+# não dependem dele e o preview não grava nada (L10). Gravar continua exigindo o slot.
+PREVIEW_MEAL_SLOT: Final[MealSlot] = MealSlot.OTHER
 ITEM_AMOUNT_MAX: Final[float] = PORTION_AMOUNT_MAX
-HUNGER_SCALE: Final[tuple[int, int]] = (1, 5)
-WATER_ML_RANGE: Final[tuple[float, float]] = (0.0, 10000.0)
 
 # Ordem das refeições no dia = ordem do enum.
 MEAL_SLOT_ORDER: Final[Mapping[MealSlot, int]] = {slot: indice for indice, slot in enumerate(MealSlot)}
@@ -79,9 +76,7 @@ ERR_MEAL_WITHOUT_ITEMS = "meal_without_items"
 ERR_TOO_MANY_ITEMS = "too_many_meal_items"
 ERR_UNIT_WITHOUT_CONVERSION = "unit_without_conversion"
 ERR_ITEM_AMOUNT_OUT_OF_RANGE = "item_amount_out_of_range"
-ERR_INVALID_HUNGER = "invalid_hunger"
 ERR_ITEM_FOOD_OR_ESTIMATE = "item_food_or_estimate_required"
-ERR_INVALID_WATER = "invalid_water_ml"
 
 # Limitação da conversão -> erro da entrada (a quantidade ausente fica como está).
 _AMOUNT_ERRORS: Final[Mapping[str, str]] = {
@@ -138,31 +133,3 @@ def item_amount_errors(resolution: AmountResolution) -> tuple[str, ...]:
 def item_source_errors(has_food: bool, has_estimate: bool) -> tuple[str, ...]:
     """Origem de UM item (L5b): alimento do catálogo ou estimativa da IA, exatamente um."""
     return () if bool(has_food) != bool(has_estimate) else (ERR_ITEM_FOOD_OR_ESTIMATE,)
-
-
-def _finite(value: Any) -> Optional[float]:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        numero = float(value)
-    except (TypeError, ValueError):
-        return None
-    return numero if math.isfinite(numero) else None
-
-
-def validate_day_log(water_ml: Any, hunger: Any) -> tuple[str, ...]:
-    """Água e fome do dia (`None` = não informado, sempre aceito)."""
-    erros: list[str] = []
-    if water_ml is not None:
-        agua = _finite(water_ml)
-        if agua is None or not WATER_ML_RANGE[0] <= agua <= WATER_ML_RANGE[1]:
-            erros.append(ERR_INVALID_WATER)
-    if hunger is not None:
-        fome = _finite(hunger)
-        if fome is None or fome != int(fome) or not HUNGER_SCALE[0] <= fome <= HUNGER_SCALE[1]:
-            erros.append(ERR_INVALID_HUNGER)
-    return tuple(erros)
-
-
-def hunger_levels() -> tuple[int, ...]:
-    return tuple(range(HUNGER_SCALE[0], HUNGER_SCALE[1] + 1))
