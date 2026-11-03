@@ -117,11 +117,11 @@ export function CheckinCardView({ checkin, busy = false, error = null, onAccept,
  * seguintes são leituras leves. Aceitar publica a nova versão do plano e invalida o plano, o diário e o painel.
  * Sem check-in a mostrar (ou sem rede) o card não aparece.
  */
-export function CheckinCard({ userId = null }: { userId?: number | null }) {
+export function CheckinCard() {
   const qc = useQueryClient();
   const consulta = useQuery({
-    queryKey: checkinKeys.current(userId),
-    queryFn: () => fetchCheckin(userId),
+    queryKey: checkinKeys.current(),
+    queryFn: () => fetchCheckin(),
     staleTime: 60_000,
     retry: false,
   });

@@ -10,6 +10,8 @@ type Option = { value: string; label: string };
 type Props = {
   value: number | null;
   onChange: (userId: number | null) => void;
+  /** Usuário já escolhido na abertura (o rótulo aparece sem esperar a busca). */
+  initial?: { id: number; label: string };
 };
 
 /**
@@ -22,9 +24,9 @@ type Props = {
  * vai para a busca (senão a lista se esvaziaria) e a opção escolhida fica
  * guardada para continuar visível.
  */
-export function UserPicker({ value, onChange }: Props) {
+export function UserPicker({ value, onChange, initial }: Props) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Option | null>(null);
+  const [selected, setSelected] = useState<Option | null>(initial ? { value: String(initial.id), label: initial.label } : null);
   const termo = selected && search === selected.label ? '' : search;
 
   const usersQuery = useQuery({

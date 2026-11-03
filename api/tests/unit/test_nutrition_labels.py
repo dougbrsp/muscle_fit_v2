@@ -107,7 +107,7 @@ def test_export_for_frontend():
     # L6: + label_photo, label_legibilities, label_legibility_labels
     # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
     # N2 rodada 4: + manual_training_modes, manual_training_mode_labels, manual_training_mode_hints, default_manual_training_mode
-    assert len(bloco) == 80
+    assert len(bloco) == 77
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
@@ -130,9 +130,8 @@ def test_export_for_frontend():
     assert set(bloco["unit_labels"]) == set(bloco["units"])
     assert bloco["portion_units"] == ["unit", "portion"] and set(bloco["portion_units"]) < set(bloco["units"])
     assert set(bloco["nutrient_fields"]) <= set(bloco["food_per_100_fields"])
-    assert bloco["hunger_levels"] == list(_diary.hunger_levels())
-    assert set(bloco["hunger_labels"]) == {str(n) for n in bloco["hunger_levels"]}
-    assert bloco["water_ml_range"] == list(_diary.WATER_ML_RANGE) and bloco["meal_max_items"] == _diary.MEAL_MAX_ITEMS
+    assert "hunger_levels" not in bloco and "water_ml_range" not in bloco  # água e fome saíram do produto
+    assert bloco["meal_max_items"] == _diary.MEAL_MAX_ITEMS
     for porcao in bloco["generic_portions"]:
         assert bloco["unit_labels"][porcao["code"]] == porcao["label"]  # mesmo rótulo da medida caseira
     rdc = {campo.code for campo in lb.RDC429_FIELDS}
@@ -243,7 +242,6 @@ def test_diario_rotula_os_codigos_com_campo_e_numeros_do_dono():
     assert f"{_diary.ITEM_AMOUNT_MAX:g}" in lb.limitation_label(_diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE)
     assert f"{_wb.MAX_DAILY_CARRYOVER_SHARE:.0%}" in lb.limitation_label(_wb.CLAMP_DAILY_CARRYOVER)
     assert f"{_wb.MAX_WEEKLY_BANK_SHARE:.0%}" in lb.limitation_label(_wb.CLAMP_WEEKLY_BANK)
-    assert lb.labels_by_code(lb.HUNGER_LABELS)["1"] == lb.HUNGER_LABELS[1]
 
 
 def test_numero_no_texto_vem_do_dono():

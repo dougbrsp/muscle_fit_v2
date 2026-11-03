@@ -161,25 +161,22 @@ describe('bodyRows e hasSeries', () => {
 });
 
 describe('chamadas', () => {
-  it('monta a URL do painel com a janela e o aluno escolhido (sem janela = padrão da API)', async () => {
+  it('monta a URL do painel com a janela, nunca com user_id (sem janela = padrão da API)', async () => {
     vi.mocked(apiFetch).mockClear();
     vi.mocked(apiFetch).mockResolvedValue({} as never);
-    await fetchNutritionDashboard(null, null);
-    await fetchNutritionDashboard(28, null);
-    await fetchNutritionDashboard(7, 4);
+    await fetchNutritionDashboard(null);
+    await fetchNutritionDashboard(28);
     expect(vi.mocked(apiFetch).mock.calls.map((c) => c[0])).toEqual([
       '/nutrition/dashboard',
       '/nutrition/dashboard?days=28',
-      '/nutrition/dashboard?days=7&user_id=4',
     ]);
   });
 
   it('o card de hoje lê /nutrition/today e sua chave está sob a do diário (salvar refeição o invalida)', async () => {
     vi.mocked(apiFetch).mockClear();
     vi.mocked(apiFetch).mockResolvedValue({} as never);
-    await fetchNutritionToday(null);
-    await fetchNutritionToday(4);
-    expect(vi.mocked(apiFetch).mock.calls.map((c) => c[0])).toEqual(['/nutrition/today', '/nutrition/today?user_id=4']);
-    expect(todayKeys.one(null).slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
+    await fetchNutritionToday();
+    expect(vi.mocked(apiFetch).mock.calls.map((c) => c[0])).toEqual(['/nutrition/today']);
+    expect(todayKeys.one().slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
   });
 });

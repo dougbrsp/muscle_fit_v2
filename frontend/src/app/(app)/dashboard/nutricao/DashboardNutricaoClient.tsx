@@ -11,7 +11,6 @@ import { DashboardCardSkeleton, EmptyState, ErrorState } from '@/components/dash
 import { CheckinHistory } from '@/components/nutrition/CheckinHistory';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
-import { UserPicker } from '@/components/nutrition/UserPicker';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { fmtDate, fmtDecimal, fmtInt } from '@/lib/dashboard-format';
@@ -367,22 +366,18 @@ function AdaptiveSection({ data }: { data: NutritionDashboard }) {
 
 /** `/dashboard/nutricao` (N5): aderência, macros × meta, peso/%G × alvo, projeção e gasto observado. Tudo vem pronto de `GET /nutrition/dashboard`. */
 export function DashboardNutricaoClient() {
-  const [userId, setUserId] = useState<number | null>(null);
   // `null` = a janela padrão da API; as janelas oferecidas vêm na resposta (`window_choices`).
   const [days, setDays] = useState<number | null>(null);
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
-  const role = currentUserQuery.data?.role;
-  const canManage = role === 'admin' || role === 'personal_trainer';
 
   const consulta = useQuery({
-    queryKey: dashboardKeys.window(userId, days),
-    queryFn: () => fetchNutritionDashboard(days, userId),
+    queryKey: dashboardKeys.window(days),
+    queryFn: () => fetchNutritionDashboard(days),
     enabled: currentUserQuery.isSuccess,
     retry: false,
-    // Trocar o período mantém o painel anterior enquanto o novo carrega (só do mesmo aluno: nunca mostra o de outro).
-    placeholderData: (anterior, consultaAnterior) =>
-      consultaAnterior?.queryKey[1] === (userId ?? 'me') ? keepPreviousData(anterior) : undefined,
+    // Trocar o período mantém o painel anterior enquanto o novo carrega.
+    placeholderData: keepPreviousData,
   });
   const data = consulta.data;
   // O seletor guarda as janelas da última resposta: não some enquanto carrega nem depois de um erro.
@@ -392,12 +387,6 @@ export function DashboardNutricaoClient() {
       setJanelas({ choices: consulta.data.window_choices, atual: consulta.data.window_days });
     }
   }, [consulta.data, consulta.isPlaceholderData]);
-  const trocarAluno = (novo: number | null) => {
-    setUserId(novo);
-    setDays(null);
-    // A janela da resposta anterior era de outro aluno: o seletor espera a nova resposta para mostrar a atual.
-    setJanelas((anterior) => (anterior ? { ...anterior, atual: null } : anterior));
-  };
 
   return (
     <Stack gap="lg">
@@ -415,7 +404,6 @@ export function DashboardNutricaoClient() {
       </Stack>
 
       <Group align="flex-end" gap="md" wrap="wrap">
-        {canManage && <UserPicker value={userId} onChange={trocarAluno} />}
         {janelas && (
           <Select
             label="Período"
@@ -457,7 +445,7 @@ export function DashboardNutricaoClient() {
           <BodySection data={data} />
           <ProjectionSection data={data} />
           <AdaptiveSection data={data} />
-          <CheckinHistory userId={userId} />
+          <CheckinHistory />
         </Stack>
       )}
     </Stack>

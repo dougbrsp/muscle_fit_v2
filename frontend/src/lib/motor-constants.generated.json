@@ -1202,24 +1202,6 @@
       "carbohydrates_g",
       "total_fat_g"
     ],
-    "hunger_levels": [
-      1,
-      2,
-      3,
-      4,
-      5
-    ],
-    "hunger_labels": {
-      "1": "Sem fome",
-      "2": "Pouca fome",
-      "3": "Fome moderada",
-      "4": "Muita fome",
-      "5": "Fome intensa"
-    },
-    "water_ml_range": [
-      0.0,
-      10000.0
-    ],
     "meal_max_items": 30,
     "meal_parse": {
       "text_max_chars": 1000,

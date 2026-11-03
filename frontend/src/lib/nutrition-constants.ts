@@ -168,13 +168,6 @@ export const PORTION_UNITS: ReadonlyArray<NutritionCode> = NUTRITION.portion_uni
 export const NUTRIENT_FIELDS: ReadonlyArray<Rdc429Field> = rdc429Fields(NUTRITION.nutrient_fields);
 /** Colunas por item da refeição (energia + os três macros de Atwater), na ordem do dono. */
 export const ITEM_NUTRIENT_FIELDS: ReadonlyArray<Rdc429Field> = rdc429Fields(NUTRITION.item_nutrient_fields);
-/** Escala de fome do diário (códigos `1`..`5` como texto, para o SegmentedControl). */
-export const HUNGER_OPTIONS: ReadonlyArray<NutritionOption> = NUTRITION.hunger_levels.map((nivel) => ({
-  value: String(nivel),
-  label: (NUTRITION.hunger_labels as Record<string, string>)[String(nivel)] ?? String(nivel),
-}));
-/** Faixa de água do dia em ml (a API confere de novo). */
-export const WATER_ML_LIMITS: ReadonlyArray<number> = NUTRITION.water_ml_range;
 /** Teto de itens de uma refeição (a API confere de novo). */
 export const MEAL_ITEMS_LIMIT: number = NUTRITION.meal_max_items;
 

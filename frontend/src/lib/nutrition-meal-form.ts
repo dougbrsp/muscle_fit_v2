@@ -213,17 +213,16 @@ export function mealPayload(form: MealEditorForm): MealPayload | null {
   };
 }
 
-/** Corpo de `POST /nutrition/meals` (e do preview): `user_id` só quando admin/PT registra para um aluno;
+/** Corpo de `POST /nutrition/meals` (e do preview): sempre do usuário logado (sem `user_id`);
  * a leitura por IA vai junto (`ai_job_id`, `description_raw`). */
-export function mealCreatePayload(form: MealEditorForm, userId: number | null): MealCreatePayload | null {
+export function mealCreatePayload(form: MealEditorForm): MealCreatePayload | null {
   const corpo = mealPayload(form);
   if (corpo === null) return null;
-  return { ...corpo, ...origemDoCorpo(form, userId) };
+  return { ...corpo, ...origemDoCorpo(form) };
 }
 
-function origemDoCorpo(form: MealEditorForm, userId: number | null) {
+function origemDoCorpo(form: MealEditorForm) {
   return {
-    ...(userId != null ? { user_id: userId } : {}),
     ...(form.ai ? { ai_job_id: form.ai.job_id, description_raw: form.ai.description_raw } : {}),
     ...(form.ai?.ai_source ? { ai_source: form.ai.ai_source } : {}),
   };
@@ -232,7 +231,7 @@ function origemDoCorpo(form: MealEditorForm, userId: number | null) {
 /** Corpo do preview: os macros não dependem da refeição, então `meal_slot` pode faltar
  * (gravar continua exigindo, em `mealCreatePayload`). `null` sem item ou com item sem
  * quantidade/origem. */
-export function mealPreviewPayload(form: MealEditorForm, userId: number | null, mealId?: number): MealPreviewPayload | null {
+export function mealPreviewPayload(form: MealEditorForm, mealId?: number): MealPreviewPayload | null {
   const itens = itemsPayload(form.items);
   if (itens === null || itens.length === 0) return null;
   return {
@@ -241,7 +240,7 @@ export function mealPreviewPayload(form: MealEditorForm, userId: number | null, 
     eaten_at: form.eaten_at || null,
     notes: form.notes.trim() || null,
     items: itens,
-    ...origemDoCorpo(form, userId),
+    ...origemDoCorpo(form),
     ...(mealId != null ? { meal_id: mealId } : {}),
   };
 }

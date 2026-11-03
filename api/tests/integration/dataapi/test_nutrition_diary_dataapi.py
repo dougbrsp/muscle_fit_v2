@@ -227,10 +227,10 @@ def test_fluxo_do_diario_identico_nos_dois_backends(usuarios, raw, monkeypatch, 
         de_novo = aluno.get(f"/nutrition/days/{passado.isoformat()}").json()
         assert de_novo["target_action"] == "read" and de_novo["target"]["kcal"] == retro["target"]["kcal"]
 
-        # Água e fome.
-        anotado = aluno.put(f"/nutrition/days/{HOJE.isoformat()}", json={"water_ml": 2500, "hunger": 3})
-        assert anotado.status_code == 200 and anotado.json()["day_log"]["water_ml"] == 2500.0
-        assert aluno.put(f"/nutrition/days/{HOJE.isoformat()}", json={"water_ml": 1800, "hunger": 4}).status_code == 200
+        # Anotação do dia.
+        anotado = aluno.put(f"/nutrition/days/{HOJE.isoformat()}", json={"notes": "primeira"})
+        assert anotado.status_code == 200 and anotado.json()["day_log"]["notes"] == "primeira"
+        assert aluno.put(f"/nutrition/days/{HOJE.isoformat()}", json={"notes": "segunda"}).status_code == 200
 
         semana = aluno.get(f"/nutrition/weeks?start={HOJE.isoformat()}")
         assert semana.status_code == 200 and len(semana.json()["days"]) == 7, backend

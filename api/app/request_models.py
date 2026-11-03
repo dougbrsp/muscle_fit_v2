@@ -395,11 +395,12 @@ class MealPreviewIn(MealIn):
 
 
 class NutritionDayIn(_StrictIn):
-    """PUT /nutrition/days/{date}: água (ml), fome e anotação do dia; substitui
-    a linha inteira (ausente = não informado). Faixas: `diary.validate_day_log`."""
+    """PUT /nutrition/days/{date}: anotação do dia (substitui; ausente = sem nota).
+    Água e fome saíram do produto: `water_ml`/`hunger` de cliente antigo (PWA em
+    cache) são ACEITOS e ignorados, nunca 422; nada disso é gravado."""
 
-    water_ml: Optional[Number] = None
-    hunger: Optional[Number] = None
+    model_config = ConfigDict(extra="ignore")
+
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 

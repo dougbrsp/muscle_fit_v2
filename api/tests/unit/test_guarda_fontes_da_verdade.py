@@ -3509,7 +3509,7 @@ def test_arquivos_das_fontes_externas_estao_no_escopo_de_nutricao(rel: str):
         "frontend/src/components/nutrition/MealList.tsx",
         "frontend/src/components/nutrition/TargetVsIntakeCard.tsx",
         "frontend/src/components/nutrition/TrainingKcalRow.tsx",
-        "frontend/src/components/nutrition/WaterHungerInputs.tsx",
+        "frontend/src/components/nutrition/DayNotesInput.tsx",
         "frontend/src/components/nutrition/WeekStrip.tsx",
         "frontend/src/lib/nutrition-meal-form.ts",
     ],

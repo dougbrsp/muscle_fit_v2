@@ -717,7 +717,7 @@ export type DayTraining = {
   } | null;
 };
 
-export type DayLog = { water_ml: number | null; hunger: number | null; notes: string | null; updated_at: string | null };
+export type DayLog = { notes: string | null; updated_at: string | null };
 
 /** Decisão do motor sobre a meta do dia (`daily_target.TargetAction`). */
 export type DayTargetAction = 'read' | 'materialize' | 'backfill' | 'skip';
@@ -738,7 +738,7 @@ export type NutritionDay = {
 };
 
 /** Corpo de `PUT /nutrition/days/{date}` (`NutritionDayIn`): substitui a linha do dia. */
-export type DayLogPayload = { water_ml: number | null; hunger: number | null; notes: string | null };
+export type DayLogPayload = { notes: string | null };
 
 export type DayLogResponse = { user_id: number; local_date: string; day_log: DayLog | null };
 

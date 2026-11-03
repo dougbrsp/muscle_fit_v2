@@ -13,6 +13,7 @@ import { PlanHistory } from '@/components/nutrition/PlanHistory';
 import { PlanPreview } from '@/components/nutrition/PlanPreview';
 import { PlanSummary } from '@/components/nutrition/PlanSummary';
 import { UserPicker } from '@/components/nutrition/UserPicker';
+import { planoInicial } from '@/lib/nutrition-plan-user';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
@@ -30,9 +31,9 @@ type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
  * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum
  * opera o próprio plano (`fixedUserId`, D2). O acesso é decidido pela API.
  */
-function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
+function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initialUser?: { id: number; label: string } }) {
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<number | null>(fixedUserId ?? null);
+  const [userId, setUserId] = useState<number | null>(fixedUserId ?? initialUser?.id ?? null);
   const [warnings, setWarnings] = useState<NutritionLimitation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -80,7 +81,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
-        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} /> : <span />}
+        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
         {userId !== null && (
           <Button
             color="brand"
@@ -214,7 +215,7 @@ export function PlanoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess &&
         (canManage ? (
-          <PlanManager />
+          <PlanManager initialUser={planoInicial(currentUserQuery.data)} />
         ) : (
           <>
             <MyPlanView />

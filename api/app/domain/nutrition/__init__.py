@@ -249,16 +249,13 @@ def export_for_frontend() -> dict[str, Any]:
         "food_licenses": {fonte.value: texto for fonte, texto in catalog.SOURCE_LICENSES.items()},
         "usda_data_types": _codes(external_sources.UsdaDataType),
         "usda_data_type_labels": lb.labels_by_code(lb.USDA_DATA_TYPE_LABELS),
-        # Diário (L4): rótulos das unidades, campos de nutriente exibidos, escala
-        # de fome e faixas do formulário; macros, totais e balanço vêm da API.
+        # Diário (L4): rótulos das unidades, campos de nutriente exibidos
+        # e faixas do formulário; macros, totais e balanço vêm da API.
         "unit_labels": lb.labels_by_code(lb.UNIT_LABELS),
         "portion_units": [unidade.value for unidade in meal_math.PORTION_UNITS],
         "nutrient_fields": list(meal_math.NUTRIENT_FIELDS),
         "energy_field": meal_math.ENERGY_FIELD,
         "item_nutrient_fields": [meal_math.ENERGY_FIELD, *meal_math.ATWATER_MACRO_FIELDS],
-        "hunger_levels": list(diary.hunger_levels()),
-        "hunger_labels": lb.labels_by_code(lb.HUNGER_LABELS),
-        "water_ml_range": _range(diary.WATER_ML_RANGE),
         "meal_max_items": diary.MEAL_MAX_ITEMS,
         # Leitura da refeição por IA (L5b): teto do texto e a decisão de cada item.
         # A cota do dia vem da API (`GET /nutrition/meals/parse/quota`), nunca daqui.

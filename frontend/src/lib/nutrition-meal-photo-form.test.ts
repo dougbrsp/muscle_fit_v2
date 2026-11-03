@@ -100,14 +100,13 @@ describe('foto do prato: formulário', () => {
 
   it('sem refeição há preview, mas não há gravação', () => {
     const form = editorFormFromPhoto(resultado([item({})]), { date: 'x', slot: null });
-    expect(mealCreatePayload(form, null)).toBeNull();
-    expect(mealPreviewPayload(form, 12)).toMatchObject({
+    expect(mealCreatePayload(form)).toBeNull();
+    expect(mealPreviewPayload(form)).toMatchObject({
       meal_slot: null,
-      user_id: 12,
       ai_job_id: 'j1',
       ai_source: MEAL_PHOTO.meal_source,
     });
-    expect(mealPreviewPayload({ ...form, items: [] }, 12)).toBeNull();
-    expect(mealPreviewPayload({ ...form, meal_slot: 'lunch' }, null, 7)).toMatchObject({ meal_slot: 'lunch', meal_id: 7 });
+    expect(mealPreviewPayload({ ...form, items: [] })).toBeNull();
+    expect(mealPreviewPayload({ ...form, meal_slot: 'lunch' }, 7)).toMatchObject({ meal_slot: 'lunch', meal_id: 7 });
   });
 });

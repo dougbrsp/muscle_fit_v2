@@ -147,25 +147,21 @@ export type NutritionToday = {
 
 export const todayKeys = {
   // Sob `diaryKeys.all` (`['nutrition-diary']`): salvar ou apagar refeição invalida o card junto com o diário.
-  one: (userId: number | null) => ['nutrition-diary', 'today', userId ?? 'me'] as const,
+  one: () => ['nutrition-diary', 'today'] as const,
 };
 
-export function fetchNutritionToday(userId: number | null): Promise<NutritionToday> {
-  return apiFetch<NutritionToday>(userId != null ? `/nutrition/today?user_id=${userId}` : '/nutrition/today');
+export function fetchNutritionToday(): Promise<NutritionToday> {
+  return apiFetch<NutritionToday>('/nutrition/today');
 }
 
 export const dashboardKeys = {
   all: ['nutrition-dashboard'] as const,
-  window: (userId: number | null, days: number | null) => ['nutrition-dashboard', userId ?? 'me', days ?? 'padrao'] as const,
+  window: (days: number | null) => ['nutrition-dashboard', days ?? 'padrao'] as const,
 };
 
 /** `days` ausente = a janela padrão da API. */
-export function fetchNutritionDashboard(days: number | null, userId: number | null): Promise<NutritionDashboard> {
-  const params = new URLSearchParams();
-  if (days != null) params.set('days', String(days));
-  if (userId != null) params.set('user_id', String(userId));
-  const consulta = params.toString();
-  return apiFetch<NutritionDashboard>(consulta ? `/nutrition/dashboard?${consulta}` : '/nutrition/dashboard');
+export function fetchNutritionDashboard(days: number | null): Promise<NutritionDashboard> {
+  return apiFetch<NutritionDashboard>(days != null ? `/nutrition/dashboard?days=${days}` : '/nutrition/dashboard');
 }
 
 // ---------------------------------------------------------------------------

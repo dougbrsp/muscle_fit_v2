@@ -37,9 +37,11 @@ Precedência, da maior para a menor (`flags.ts`):
 2. `localStorage['musclefit.flag.mobile-ui']` = `on` ou `off`.
 3. `NEXT_PUBLIC_MOBILE_UI` no build. Ausente ou sem valor reconhecido = desligada.
 
-Estado atual, verificado no repositório: `NEXT_PUBLIC_MOBILE_UI` não aparece em nenhum workflow de `.github/` nem no restante do repositório. Portanto o build de produção a lê como ausente, ou seja, desligada. Não há configuração versionada que a ligue em DEV. O plano previa "ligada em DEV"; essa parte ainda não está implementada.
+Estado atual, verificado no repositório: `NEXT_PUBLIC_MOBILE_UI` não aparece em nenhum workflow de `.github/` nem no restante do repositório. Portanto o build de produção a lê como ausente, ou seja, desligada. (Desatualizado: o workflow de deploy já liga em produção e `frontend/.env.development` liga no `next dev`.)
 
-Como ligar em desenvolvimento local, sem alterar nada no repositório:
+`frontend/.env.development` (versionado, com exceção mínima no `.gitignore`) define `NEXT_PUBLIC_MOBILE_UI=1`: o Next só o carrega no `next dev`, e `frontend/.env.local` (ignorado pelo git) tem prioridade sobre ele. O build de produção não lê esse arquivo e usa a variável do deploy. Sem isso o iPhone no DEV caía no layout desktop, sem a barra inferior, sempre que o override do `localStorage` se perdia.
+
+Para desligar só na sua máquina: `NEXT_PUBLIC_MOBILE_UI=0` em `frontend/.env.local`. Outras formas de ligar:
 
 - PowerShell: `$env:NEXT_PUBLIC_MOBILE_UI='1'; npm run dev` (em `frontend/`).
 - Ou abrir a aplicação com `?mobile=1` uma vez. O override fica salvo no navegador.

@@ -8,7 +8,6 @@ import { useState } from 'react';
 import { CheckinReview } from '@/components/nutrition/CheckinReview';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
-import { UserPicker } from '@/components/nutrition/UserPicker';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { nutritionErrorInfo } from '@/lib/nutrition-api';
@@ -27,15 +26,13 @@ async function fetchCurrentUser(): Promise<SessionUser> {
  */
 export function CheckinClient() {
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<number | null>(null);
   const [resultado, setResultado] = useState<string | null>(null);
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
-  const canManage = currentUserQuery.data?.role === 'admin' || currentUserQuery.data?.role === 'personal_trainer';
 
   const consulta = useQuery({
-    queryKey: checkinKeys.current(userId),
-    queryFn: () => fetchCheckin(userId),
+    queryKey: checkinKeys.current(),
+    queryFn: () => fetchCheckin(),
     enabled: currentUserQuery.isSuccess,
     retry: false,
   });
@@ -72,13 +69,6 @@ export function CheckinClient() {
       ? nutritionErrorInfo(recusar.error, 'Não foi possível responder agora.').message
       : null;
 
-  function trocarAluno(novo: number | null) {
-    setUserId(novo);
-    setResultado(null);
-    aceitar.reset();
-    recusar.reset();
-  }
-
   return (
     <Stack gap="lg">
       <Stack gap="xs">
@@ -94,8 +84,6 @@ export function CheckinClient() {
           </Link>
         </Text>
       </Stack>
-
-      {canManage && <UserPicker value={userId} onChange={trocarAluno} />}
 
       {resultado && (
         <Alert color="green" icon={<IconCheck size={16} />} role="status">

@@ -48,8 +48,8 @@ export function CheckinHistoryTable({ items }: { items: readonly Checkin[] }) {
 }
 
 /** Histórico dos check-ins no `/dashboard/nutricao`. */
-export function CheckinHistory({ userId }: { userId: number | null }) {
-  const consulta = useQuery({ queryKey: checkinKeys.history(userId), queryFn: () => fetchCheckinHistory(userId), retry: false });
+export function CheckinHistory() {
+  const consulta = useQuery({ queryKey: checkinKeys.history(), queryFn: () => fetchCheckinHistory(), retry: false });
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>
       <Stack gap="sm">

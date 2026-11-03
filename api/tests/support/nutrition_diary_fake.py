@@ -195,8 +195,8 @@ class FakeDiaryCursor(FakeCursor):
             linha = db.day_logs.get((p[0], p[1]))
             return self._result([linha] if linha else [])
         if sql == days_mod.UPSERT_DAY_LOG_SQL:
-            uid, dia, agua, fome, notas, por = p
-            db.day_logs[(uid, dia)] = {"local_date": dia, "water_ml": _dec(agua, 1), "hunger": fome, "notes": notas,
+            uid, dia, notas, por = p
+            db.day_logs[(uid, dia)] = {"local_date": dia, "notes": notas,
                                        "updated_by": por, "updated_at": AGORA}
             db.writes.append(f"day log {dia.isoformat()}")
             return self._result([])

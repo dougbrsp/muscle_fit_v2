@@ -33,7 +33,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
-from .domain.nutrition import diary
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
 from .domain.nutrition.energy_expenditure import compare_training_kcal
@@ -50,11 +49,10 @@ from .security import Identity, get_current_identity
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
 DAYS = "nutrition_days"
-DAY_LOG_SQL = f"SELECT local_date, water_ml, hunger, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
+DAY_LOG_SQL = f"SELECT local_date, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
 UPSERT_DAY_LOG_SQL = (
-    f"INSERT INTO {DAYS} (user_id, local_date, water_ml, hunger, notes, updated_by) VALUES (%s, %s, %s, %s, %s, %s) "
-    "ON DUPLICATE KEY UPDATE water_ml = VALUES(water_ml), hunger = VALUES(hunger), notes = VALUES(notes), "
-    "updated_by = VALUES(updated_by)"
+    f"INSERT INTO {DAYS} (user_id, local_date, notes, updated_by) VALUES (%s, %s, %s, %s) "
+    "ON DUPLICATE KEY UPDATE notes = VALUES(notes), updated_by = VALUES(updated_by)"
 )
 # Sessões CONCLUÍDAS do dia (mesma condição da materialização, `DONE_SESSION_STATUS`)
 # com a kcal do link do Intervals (a proveniência é resolvida por
@@ -106,8 +104,6 @@ def day_log_public(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     if not row:
         return None
     return {
-        "water_ml": _num(row.get("water_ml")),
-        "hunger": int(row["hunger"]) if row.get("hunger") is not None else None,
         "notes": row.get("notes"),
         "updated_at": _iso(row.get("updated_at")),
     }
@@ -211,22 +207,13 @@ def put_day(
     identity: Identity = Depends(get_current_identity),
 ):
     aluno = resolve_target_user(identity, user_id)
-    erros = diary.validate_day_log(payload.water_ml, payload.hunger)
-    if erros:
-        raise _error(
-            400,
-            "invalid_day_log",
-            "Água ou fome fora das faixas do diário.",
-            errors=nutrition_labels.limitation_items(erros),
-        )
     with _connect() as conn:
         with conn.cursor() as cur:
             require_diary_tables(cur)
             fetch_target_user(cur, aluno)
-            fome = None if payload.hunger is None else int(payload.hunger)
             cur.execute(
                 UPSERT_DAY_LOG_SQL,
-                (aluno, local_date, payload.water_ml, fome, payload.notes, int(identity.user_id)),
+                (aluno, local_date, payload.notes, int(identity.user_id)),
             )
             linha = _read_day_log(cur, aluno, local_date)
     return {"user_id": aluno, "local_date": local_date.isoformat(), "day_log": day_log_public(linha)}
