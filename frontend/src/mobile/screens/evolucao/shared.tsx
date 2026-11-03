@@ -11,9 +11,7 @@ import {
   type DashboardFilters,
   type DashboardWindow,
 } from '@/lib/dashboard-filters';
-import { EM_DASH, fmtDecimal } from '@/lib/dashboard-format';
-import type { DataQuality, Metric } from '@/lib/dashboard-v3-types';
-import { isDesktopOnlyPath } from '@/lib/nav-items';
+import type { DataQuality } from '@/lib/dashboard-v3-types';
 import {
   ErrorState,
   FilterButton,
@@ -23,6 +21,9 @@ import {
   useOnlineStatus,
 } from '../../ui';
 import styles from './evolucao.module.css';
+import { metricText, metricLimitations, mobileSafeHref } from './pure';
+
+export { metricText, metricLimitations, mobileSafeHref };
 
 /** Esqueleto genérico de bloco (altura reservada, sem salto de layout). */
 export function BlockSkeleton({ rows = 3, label = 'Carregando' }: { rows?: number; label?: string }) {
@@ -75,18 +76,6 @@ export function QueryGate<T>({
   return <>{children(query.data)}</>;
 }
 
-/** Texto de uma `Metric` do backend: `null` vira traço, nunca zero. */
-export function metricText(metric: Metric | null | undefined, digits = 1): string {
-  if (!metric || metric.value == null) return EM_DASH;
-  return `${fmtDecimal(metric.value, digits)}${metric.unit ? ` ${metric.unit}` : ''}`;
-}
-
-/** Limitações (texto pronto do backend) das métricas exibidas, sem repetição. */
-export function metricLimitations(metrics: ReadonlyArray<Metric | null | undefined>): string[] {
-  const all = metrics.flatMap((m) => m?.limitations ?? []);
-  return Array.from(new Set(all));
-}
-
 /** Rodapé com o que os números NÃO permitem concluir (antes só em Tooltip). */
 export function LimitationsNote({ items }: { items: readonly string[] }) {
   if (items.length === 0) return null;
@@ -99,12 +88,6 @@ export function LimitationsNote({ items }: { items: readonly string[] }) {
       </ul>
     </div>
   );
-}
-
-/** Link interno que pode aparecer no celular (seções só do computador saem). */
-export function mobileSafeHref(href: string | null | undefined): string | null {
-  if (!href) return null;
-  return isDesktopOnlyPath(href.split('?')[0]) ? null : href;
 }
 
 /** `PartialState` do desktop (texto do backend), sem atalho para rota só-desktop. */
