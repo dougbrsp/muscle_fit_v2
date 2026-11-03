@@ -4,6 +4,7 @@ import { Alert, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { CheckinDayField } from '@/components/nutrition/CheckinDayField';
 import { MyPlanView } from '@/components/nutrition/MyPlanView';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
@@ -95,6 +96,8 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
         )}
       </Group>
 
+      {userId !== null && <CheckinDayField key={userId} userId={userId} />}
+
       {notice && (
         <Text size="sm" c="green">
           {notice}
@@ -124,6 +127,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
               key={editing.mode === 'new' ? 'novo' : editing.plan.id}
               userId={userId}
               plan={editing.mode === 'edit' ? editing.plan : null}
+              inheritedMaintenanceAdjust={plans.find((plano) => plano.state === 'current')?.maintenance_kcal_adjust ?? null}
               onSaved={afterSave}
               onCancel={() => setEditing(null)}
             />

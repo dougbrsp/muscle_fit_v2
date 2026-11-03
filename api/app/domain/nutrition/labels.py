@@ -40,11 +40,13 @@ from . import plan as plan_mod
 from . import plan_suggestion as ps_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
+from . import weekly_checkin as wc_mod
 from .ai_usage import AiFeature
 from .anthropometrics import ActivityLevel, Sex
 from .bmr import BmrFormula
 from .body_composition import BodyFatMethod
 from .carb_cycling import DayKind
+from .energy_density import DAYS_PER_WEEK
 from .catalog import FoodSource
 from .diary import MealSlot  # noqa: F401 - reexport (o enum mora no dono do diário desde o L4)
 from .energy_expenditure import SessionKind, TdeeMode, TrainingKcalNature
@@ -56,6 +58,7 @@ from .manual_targets import RangeStatus
 from .phases import BreakProtocol, GoalKind, PhaseKind, ProjectionStatus
 from .plan import PlanState
 from .strategy import MacroPriority, ProteinBasis, Strategy
+from .weekly_checkin import CheckinStatus, CheckinVerdict
 
 
 SEX_LABELS: Final[Mapping[Sex, str]] = {
@@ -344,6 +347,31 @@ PLAN_STATE_LABELS: Final[Mapping[PlanState, str]] = {
     PlanState.SUPERSEDED: "Substituído",
 }
 
+# Check-in semanal (N7): veredito e estado da proposta, com o texto que a tela mostra.
+CHECKIN_VERDICT_LABELS: Final[Mapping[CheckinVerdict, str]] = {
+    CheckinVerdict.ON_TRACK: "No ritmo",
+    CheckinVerdict.SLOW: "Abaixo do ritmo esperado",
+    CheckinVerdict.FAST: "Acima do ritmo esperado",
+    CheckinVerdict.ABOVE_BAND: "Peso acima da banda de manutenção",
+    CheckinVerdict.BELOW_BAND: "Peso abaixo da banda de manutenção",
+    CheckinVerdict.INCONCLUSIVE: "Inconclusivo",
+    CheckinVerdict.GOAL_REACHED: "Objetivo do plano atingido",
+}
+
+CHECKIN_STATUS_LABELS: Final[Mapping[CheckinStatus, str]] = {
+    CheckinStatus.PROPOSED: "Aguardando sua resposta",
+    CheckinStatus.ACCEPTED: "Aceito",
+    CheckinStatus.DECLINED: "Recusado",
+    CheckinStatus.EXPIRED: "Expirado",
+    CheckinStatus.INFORMATIVE: "Sem mudança de metas",
+}
+
+# O que as metas "antes e depois" da proposta representam (`weekly_checkin.SCOPE_*`).
+CHECKIN_SCOPE_LABELS: Final[Mapping[str, str]] = {
+    wc_mod.SCOPE_REST_DAY: "Dia sem treino",
+    wc_mod.SCOPE_CYCLE_AVERAGE: f"Média dos {DAYS_PER_WEEK} dias do ciclo",
+}
+
 # Campos do plano, para os códigos `<prefixo>:<campo>` (faixa, código inválido,
 # campo de outra estratégia).
 PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
@@ -367,6 +395,7 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     plan_mod.FIELD_MACRO_PRIORITY: "Prioridade de macros",
     plan_mod.FIELD_MANUAL_TARGETS: "Gramas manuais",
     plan_mod.FIELD_MANUAL_TRAINING_MODE: "Gramas manuais e treino",
+    "maintenance_kcal_adjust": "Ajuste da manutenção (kcal por dia)",
     "manual_macros": "Gramas manuais",
     "cycle_kinds": "Dias de mais e menos gasto",
 }
@@ -443,6 +472,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"Déficit limitado a {_percent(strategy_mod.CUT_MAX_DEFICIT_SHARE)} do gasto total."
     ),
     strategy_mod.CLAMP_MIN_INTAKE_BMR_MULTIPLE: "Ingestão elevada ao piso do cutting (TMB).",
+    strategy_mod.CLAMP_MIN_KCAL_BLOCK: "Ingestão elevada ao piso de energia (TMB).",
     # Entrada do plano.
     plan_mod.NOTE_TEMPLATE_NOT_ASSIGNED: "Você não tem Modelo de treino atribuído: marque os dias à mão.",
     plan_mod.NOTE_TEMPLATE_WITHOUT_WEEKDAYS: (
@@ -673,6 +703,52 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     atdee_mod.LIMIT_MISSING_FAT_MASS: "Sem massa gorda estimada para converter a variação do peso em energia.",
     atdee_mod.LIMIT_FORMULA_TDEE_MISSING: "Sem gasto calculado pela fórmula para comparar com o observado.",
+    # Check-in semanal (N7, `weekly_checkin`): o que faltou e por que o motor decidiu assim.
+    wc_mod.MISSING_FEW_COMPLETE_DAYS: (
+        f"Menos de {wc_mod.MIN_COMPLETE_DAYS} dias da semana com refeições de total completo."
+    ),
+    wc_mod.NONE_NO_PLAN: "Sem plano publicado: o check-in semanal começa depois que você publicar um plano.",
+    wc_mod.NONE_MIGRATION_PENDING: "O check-in semanal ainda não está disponível neste ambiente (atualização em andamento).",
+    wc_mod.MISSING_PLAN_CHANGED_IN_WEEK: (
+        f"O plano mudou durante a semana avaliada: só há menos de {wc_mod.MIN_DAYS_UNDER_CURRENT_PLAN} dias sob o plano "
+        "atual para julgá-lo. O próximo check-in avalia a semana inteira com ele."
+    ),
+    wc_mod.NONE_PLAN_AFTER_WEEK: "Seu plano começou depois da última semana fechada: o primeiro check-in vem na próxima semana.",
+    wc_mod.MISSING_NO_TARGETS: "Nenhum dia da semana com meta calculada.",
+    wc_mod.MISSING_FEW_WEIGHINGS: (
+        f"Pesagens insuficientes: a tendência pede ao menos {wc_mod.MIN_WEIGHT_READINGS_FOR_TREND} pesagens "
+        f"nos últimos {wc_mod.WEIGHT_WINDOW_DAYS} dias."
+    ),
+    wc_mod.MISSING_NO_WEIGHING_IN_WEEK: "Nenhuma pesagem dentro da semana avaliada.",
+    wc_mod.MISSING_WEIGHT_SPAN_SHORT: (
+        f"As pesagens cobrem menos de {atdee_mod.MIN_WEIGHT_SPAN_DAYS} dias: falta tempo entre a primeira e a última."
+    ),
+    wc_mod.MISSING_FAT_MASS: "Sem massa gorda estimada para converter a variação do peso em energia.",
+    wc_mod.MISSING_SUBJECT: "Faltam dados do perfil para avaliar a semana.",
+    wc_mod.REASON_ADHERENCE_OFF: (
+        f"A ingestão da semana ficou fora de {_percent(wb_mod.ADHERENCE_KCAL_TOLERANCE_SHARE)} da meta: baixa aderência "
+        "não vira corte de calorias, então as metas ficam como estão."
+    ),
+    wc_mod.REASON_ADJUSTMENT_BELOW_MIN: (
+        f"A correção calculada é menor que {wc_mod.MIN_KCAL_STEP:.0f} kcal por dia, dentro do ruído: nada muda."
+    ),
+    wc_mod.REASON_AT_STRATEGY_LIMIT: "O plano já está no limite da faixa da estratégia: não há como ajustar mais.",
+    wc_mod.REASON_BLOCKED_BY_CYCLE: "O ajuste faria algum dia do ciclo cair fora dos pisos de energia.",
+    wc_mod.REASON_BLOCKED_BY_MANUAL: "O ajuste violaria a checagem das gramas manuais.",
+    wc_mod.REASON_PROPOSAL_INVALID: "Não foi possível montar metas novas válidas para o plano.",
+    wc_mod.REASON_BIA_SHORT_TREND: (
+        f"A bioimpedância tem menos de {wc_mod.MIN_BIA_SPAN_DAYS // DAYS_PER_WEEK} semanas de tendência: ruidosa, foi "
+        "ignorada neste ajuste."
+    ),
+    wc_mod.REASON_LEAN_LOSS: (
+        "A massa magra estimada pela bioimpedância caiu acima do limite nas últimas semanas: o déficit é reduzido."
+    ),
+    wc_mod.REASON_FAT_GAIN: (
+        "A gordura estimada pela bioimpedância subiu acima do limite nas últimas semanas: o superávit é reduzido."
+    ),
+    wc_mod.REASON_BIA_HOLD: "O ritmo está lento, mas o corpo sinaliza perda de massa magra ou ganho de gordura: sem ajuste.",
+    wc_mod.REASON_GOAL_WEIGHT_REACHED: "O peso-alvo do plano foi atingido: revise o plano.",
+    wc_mod.REASON_GOAL_BODY_FAT_REACHED: "O % de gordura de parada foi atingido: revise o plano.",
     # Meta lida pelo diário (L4, `daily_target.diary_target_action`).
     dt_mod.LIMIT_TARGET_BACKFILLED: (
         "Meta calculada depois que o dia congelou (ninguém abriu o diário a tempo), com os dados disponíveis no dia "
@@ -794,6 +870,8 @@ def plan_suggestion_value_label(field: str, value: Any) -> str:
         return MACRO_PRIORITY_LABELS[strategy_mod.MacroPriority(value)]
     if field in (ps_mod.FIELD_ADVANCED, ps_mod.FIELD_MANUAL_ACTIVE):
         return "Sim" if value else "Não"
+    if field == ps_mod.FIELD_MAINTENANCE_ADJUST:
+        return f"{int(value):+d} kcal por dia" if value else "0 kcal por dia"
     if field.endswith("_share"):
         return f"{_decimal_text(round(float(value) * ps_mod.SHARE_TO_PERCENT, ps_mod.PERCENT_LABEL_DECIMALS))}%"
     if field.endswith("_g_per_kg"):

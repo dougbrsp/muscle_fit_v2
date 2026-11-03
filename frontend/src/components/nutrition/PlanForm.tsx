@@ -35,6 +35,7 @@ import {
   cycleDaysPayload,
   macroPriorityPayload,
   manualTargetsPayload,
+  maintenanceAdjustPayload,
   manualTrainingModePayload,
 } from '@/lib/nutrition-plan-form';
 import {
@@ -174,6 +175,8 @@ type Props = {
   /** Dono do plano (admin/PT); `null` = o próprio usuário (D2). */
   userId: number | null;
   plan: NutritionPlan | null;
+  /** Ajuste da manutenção do plano em vigor: um rascunho NOVO de manutenção o herda (o check-in o moveu). */
+  inheritedMaintenanceAdjust?: number | null;
   onSaved: (plan: NutritionPlanSaved) => void;
   onCancel: () => void;
 };
@@ -184,7 +187,7 @@ type Props = {
  * de novo e responde 400 com o código do motor. Frações (gordura, ritmo,
  * superávit) aparecem em % só para a tela.
  */
-export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
+export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FormState>(() => initialState(plan));
   // Os campos que a sugestão da IA preencheu, como estavam, para o "Desfazer".
   const [antesDaSugestao, setAntesDaSugestao] = useState<SuggestionFormSlice | null>(null);
@@ -195,6 +198,8 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
   const usaRitmo = fieldAppliesToStrategy('weekly_rate_share', form.strategy);
   const usaSuperavit = fieldAppliesToStrategy('surplus_share', form.strategy);
   const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
+  const usaAjusteManutencao = fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy);
+  const ajusteManutencao = maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust);
 
   // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
   const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
@@ -233,6 +238,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
       modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
     ),
     cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
+    maintenance_kcal_adjust: ajusteManutencao,
     notes: form.notes.trim() ? form.notes.trim() : null,
   };
 
@@ -347,6 +353,12 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
                   decimalScale={2}
                   decimalSeparator=","
                 />
+              )}
+              {usaAjusteManutencao && !!ajusteManutencao && (
+                <Text size="sm" c={BRAND.textMuted}>
+                  Ajuste da manutenção em vigor: {ajusteManutencao > 0 ? '+' : ''}
+                  {ajusteManutencao} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
+                </Text>
               )}
             </SimpleGrid>
           )}

@@ -57,6 +57,8 @@ export type PlanSuggestionCurrent = {
   tdee_mode: string | null;
   bmr_formula: string | null;
   manual_targets: boolean;
+  /** Ajuste da manutenção que o formulário carrega (N7): a sugestão o preserva ou mostra que deixa de valer. */
+  maintenance_kcal_adjust: number | null;
 };
 
 export type PlanSuggestionDispatch = { job_id: string; status: string; poll_timeout_seconds: number | null };
@@ -112,6 +114,7 @@ export function suggestionCurrentPayload(payload: NutritionPlanSettingsPayload, 
     tdee_mode: payload.tdee_mode ?? null,
     bmr_formula: payload.bmr_formula ?? null,
     manual_targets: manualOn,
+    maintenance_kcal_adjust: payload.maintenance_kcal_adjust ?? null,
   };
 }
 

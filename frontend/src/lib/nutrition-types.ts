@@ -34,6 +34,8 @@ export type NutritionPlanSettings = {
   manual_targets: NutritionManualTargets | null;
   /** Dias alto/normal/baixo (D5): chave = dia 0..6 (segunda = 0), valor = código de `DAY_KIND_OPTIONS`. */
   cycle_days: Record<string, NutritionCode> | null;
+  /** Ajuste de kcal/dia da manutenção (N7; 0 = sem ajuste). Quem o muda é o check-in semanal. */
+  maintenance_kcal_adjust?: number;
 };
 
 /** Gramas manuais de proteína, carboidrato e gordura. */
@@ -97,6 +99,8 @@ export type NutritionPlanSettingsPayload = {
   /** Como as gramas manuais convivem com o treino; null quando não há gramas manuais. */
   manual_training_mode: NutritionCode | null;
   cycle_days: Record<string, NutritionCode> | null;
+  /** Preserva o ajuste da manutenção que o check-in gravou (a tela não o edita); null fora da manutenção. */
+  maintenance_kcal_adjust?: number | null;
   notes: string | null;
 };
 

@@ -113,7 +113,7 @@ _PLAN_COLUMNS = (
     "id, user_id, created_by, published_by, status, strategy, advanced, bmr_formula, activity_level, "
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
-    "macro_priority, manual_targets_json, carb_cycling_json, "
+    "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, "
     "effective_from, superseded_at, published_at, created_at, updated_at"
 )
 
@@ -122,7 +122,7 @@ _SETTINGS_WRITE_COLUMNS = (
     "strategy", "advanced", "bmr_formula", "activity_level", "training_kcal_mode", "goal_body_fat_percent",
     "goal_weight_kg", "weekly_rate_share", "surplus_share", "protein_g_per_kg", "fat_kcal_share",
     "carb_min_g_per_kg", "meals_per_day", "macro_priority", "manual_targets_json", "carb_cycling_json", "notes",
-    "engine_version",
+    "engine_version", "maintenance_kcal_adjust",
 )
 
 _INSERT_SQL = (
@@ -209,6 +209,7 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         manual_targets=payload.manual_targets,
         cycle_days=payload.cycle_days,
         manual_training_mode=payload.manual_training_mode,
+        maintenance_kcal_adjust=payload.maintenance_kcal_adjust,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -235,6 +236,7 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.cycle_days,
         notes,
         ENGINE_VERSION,
+        settings.maintenance_kcal_adjust,
     )
 
 
@@ -531,6 +533,81 @@ def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     return _preview_payload(linha, usuario, semana, hoje, passado)
 
 
+def insert_draft(cur: Any, aluno: int, actor_id: int, settings: PlanSettings, notes: Optional[str]) -> dict[str, Any]:
+    """Grava `settings` como RASCUNHO do aluno e devolve a linha (o mesmo INSERT de `POST /plans`)."""
+    cur.execute(_INSERT_SQL, (int(aluno), int(actor_id), DRAFT, *_settings_write_values(settings, notes)))
+    novo_id = cur.lastrowid
+    if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
+        raise _error(500, "plan_insert_failed", "Plano não encontrado após gravar.")
+    return _fetch_plan(cur, int(novo_id))
+
+
+def publish_draft(
+    conn: Any,
+    linha: dict[str, Any],
+    aluno: int,
+    actor_id: int,
+    expected_current_id: Optional[int],
+    expected_updated_at: Optional[str] = None,
+) -> tuple[dict[str, Any], Any, list[dict[str, Any]]]:
+    """Rascunho -> vigente a partir de HOJE (dia civil de quem é dono do plano). Concorrência
+    otimista: a vigente é travada (`FOR UPDATE`) e comparada com `expected_current_id`; outra
+    publicação no meio -> 409 `publish_conflict`. Materializa a janela de publicação do motor
+    (`publication_window`): nenhuma meta futura não congelada fica com o plano antigo; o passado
+    fica intacto. É o MESMO caminho da rota `POST /plans/{id}/publish` e do aceite do check-in
+    semanal (N7). Devolve (plano publicado, janela, metas)."""
+    plan_id = int(linha["id"])
+    with conn.cursor() as cur:
+        _require_draft(linha)
+        if expected_updated_at is not None and expected_updated_at != _iso(linha.get("updated_at")):
+            raise _error(
+                409,
+                "draft_changed",
+                "O rascunho foi alterado depois que a tela o carregou; recarregue e confira antes de publicar.",
+                current_updated_at=_iso(linha.get("updated_at")),
+            )
+        cur.execute(_CURRENT_FOR_UPDATE_SQL, (aluno, PUBLISHED))
+        vigente = cur.fetchone()
+        vigente_id = int(vigente["id"]) if vigente else None
+        if vigente_id != expected_current_id:
+            raise _error(
+                409,
+                "publish_conflict",
+                "O plano vigente mudou desde que a tela carregou; recarregue antes de publicar.",
+                current_id=vigente_id,
+            )
+    hoje = _today_for(conn, aluno)
+    settings = settings_from_row(linha)
+    _plan_checks(conn, aluno, settings, hoje)
+    with conn.cursor() as cur:
+        janela = publication_window(hoje, last_target_date(cur, aluno))
+        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
+        comp_hoje = compute_day(entradas, settings, hoje, hoje)
+        if not comp_hoje.target.computable:
+            raise subject_incomplete_error(comp_hoje)
+        agora = db_now(cur)
+        try:
+            cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, plan_id))
+            parametros = (PUBLISHED, hoje, agora, int(actor_id), ENGINE_VERSION, plan_id, DRAFT)
+            if expected_updated_at is not None:
+                # A versão lida entra no WHERE: edição concorrente depois da conferência vira 0 linhas (409).
+                cur.execute(_PUBLISH_IF_UNCHANGED_SQL, (*parametros, linha.get("updated_at")))
+            else:
+                cur.execute(_PUBLISH_SQL, parametros)
+        except Exception as exc:  # noqa: BLE001 - corrida no UNIQUE da vigente vira 409, não 500
+            if is_duplicate_key_error(exc):
+                raise _error(409, "publish_conflict", "Outro plano foi publicado agora; recarregue.") from exc
+            raise
+        if int(cur.rowcount or 0) == 0:
+            if expected_updated_at is not None:
+                raise _error(409, "draft_changed", "O rascunho foi alterado, publicado ou apagado durante a publicação; recarregue.")
+            raise _error(409, "plan_not_draft", "O rascunho já foi publicado ou apagado; recarregue.")
+    metas = ensure_daily_targets(conn, aluno, janela, today=hoje, inputs=entradas)
+    with conn.cursor() as cur:
+        publicado = _fetch_plan(cur, plan_id)
+    return publicado, janela, metas
+
+
 @router.post("/plan-preview")
 def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_actor)):
     """Calcula a semana atual com o formulário ainda não salvo, sem gravar nada: mesma validação do
@@ -557,63 +634,16 @@ def publish_plan(
     payload: NutritionPlanPublishIn,
     identity: Identity = Depends(plan_actor),
 ):
-    """Rascunho -> vigente a partir de HOJE (dia civil de quem é dono do plano). Concorrência
-    otimista: a vigente é travada (`FOR UPDATE`) e comparada com
-    `expected_current_id`; outra publicação no meio -> 409 `publish_conflict`.
-    Materializa a janela de publicação do motor (`publication_window`): nenhuma
-    meta futura não congelada fica com o plano antigo; o passado fica intacto."""
+    """Rascunho -> vigente a partir de HOJE (`publish_draft`): concorrência otimista por
+    `expected_current_id` (409 `publish_conflict`) e janela de publicação do motor."""
     with _connect() as conn:
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
-            _require_draft(linha)
-            if payload.expected_updated_at is not None and payload.expected_updated_at != _iso(linha.get("updated_at")):
-                raise _error(
-                    409,
-                    "draft_changed",
-                    "O rascunho foi alterado depois que a tela o carregou; recarregue e confira antes de publicar.",
-                    current_updated_at=_iso(linha.get("updated_at")),
-                )
-            cur.execute(_CURRENT_FOR_UPDATE_SQL, (aluno, PUBLISHED))
-            vigente = cur.fetchone()
-            vigente_id = int(vigente["id"]) if vigente else None
-            if vigente_id != payload.expected_current_id:
-                raise _error(
-                    409,
-                    "publish_conflict",
-                    "O plano vigente mudou desde que a tela carregou; recarregue antes de publicar.",
-                    current_id=vigente_id,
-                )
-        hoje = _today_for(conn, aluno)
-        settings = settings_from_row(linha)
-        _plan_checks(conn, aluno, settings, hoje)
-        with conn.cursor() as cur:
-            janela = publication_window(hoje, last_target_date(cur, aluno))
-            entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
-            comp_hoje = compute_day(entradas, settings, hoje, hoje)
-            if not comp_hoje.target.computable:
-                raise subject_incomplete_error(comp_hoje)
-            agora = db_now(cur)
-            try:
-                cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, int(plan_id)))
-                parametros = (PUBLISHED, hoje, agora, identity.user_id, ENGINE_VERSION, int(plan_id), DRAFT)
-                if payload.expected_updated_at is not None:
-                    # A versão lida entra no WHERE: edição concorrente depois da conferência vira 0 linhas (409).
-                    cur.execute(_PUBLISH_IF_UNCHANGED_SQL, (*parametros, linha.get("updated_at")))
-                else:
-                    cur.execute(_PUBLISH_SQL, parametros)
-            except Exception as exc:  # noqa: BLE001 - corrida no UNIQUE da vigente vira 409, não 500
-                if is_duplicate_key_error(exc):
-                    raise _error(409, "publish_conflict", "Outro plano foi publicado agora; recarregue.") from exc
-                raise
-            if int(cur.rowcount or 0) == 0:
-                if payload.expected_updated_at is not None:
-                    raise _error(409, "draft_changed", "O rascunho foi alterado, publicado ou apagado durante a publicação; recarregue.")
-                raise _error(409, "plan_not_draft", "O rascunho já foi publicado ou apagado; recarregue.")
-        metas = ensure_daily_targets(conn, aluno, janela, today=hoje, inputs=entradas)
-        with conn.cursor() as cur:
-            publicado = _fetch_plan(cur, plan_id)
+        publicado, janela, metas = publish_draft(
+            conn, linha, aluno, identity.user_id, payload.expected_current_id, payload.expected_updated_at
+        )
     return {"plan": plan_public(publicado), "window": janela.to_dict(), "targets": metas}
 
 
@@ -737,4 +767,4 @@ def my_plan(identity: Identity = Depends(get_current_identity)):
     }
 
 
-__all__ = ["plan_public", "router"]
+__all__ = ["insert_draft", "plan_public", "publish_draft", "router"]

@@ -45,6 +45,7 @@ from .plan import ERR_PARAM_NOT_APPLICABLE, PlanSettings, build_plan_settings
 from .strategy import (
     BULK_CARB_MIN_G_PER_KG_RANGE,
     CUT_WEEKLY_RATE_SHARE_RANGE,
+    MAINT_KCAL_ADJUST_RANGE,
     MacroPriority,
     Strategy,
     fat_share_range_for,
@@ -93,6 +94,9 @@ REASONS_KEY: Final[str] = "reason_codes"
 REASONS_MAX: Final[int] = 3
 # Linha "gramas manuais" em "o que mudou": aplicar a sugestão desliga as gramas manuais (as gramas mandariam nela).
 FIELD_MANUAL_ACTIVE: Final[str] = "manual_targets"
+# Ajuste de kcal da manutenção (N7): a IA NÃO o sugere (fora de `SUGGESTION_FIELDS`), mas o formulário o carrega. A sugestão
+# em manutenção o PRESERVA; se ela troca de estratégia, o ajuste deixa de valer e isso aparece em "o que mudou".
+FIELD_MAINTENANCE_ADJUST: Final[str] = "maintenance_kcal_adjust"
 
 # O formulário manda o estado atual: os campos sugeríveis, os alvos e as gramas manuais ligadas ou não.
 CURRENT_GOAL_FIELDS: Final[tuple[str, str]] = ("goal_weight_kg", "goal_body_fat_percent")
@@ -289,6 +293,9 @@ def review_suggestion(raw: Any, *, subject: Optional[Subject] = None, current: O
         limite, _padrao = resolve_stop_body_fat(settings.strategy, subject.sex, alvo if body_fat_is_valid(alvo) else None)
         if should_stop(settings.strategy, subject.body_fat_percent, limite):
             return SuggestionReview(settings=None, errors=(ERR_SUGGESTION_STOP_REACHED,))
+    ajuste = int((current or {}).get(FIELD_MAINTENANCE_ADJUST) or 0)
+    if settings.strategy == Strategy.MAINTENANCE and MAINT_KCAL_ADJUST_RANGE[0] <= ajuste <= MAINT_KCAL_ADJUST_RANGE[1]:
+        settings = replace(settings, maintenance_kcal_adjust=ajuste)  # a sugestão não perde nem inventa o ajuste vigente
     return SuggestionReview(settings=_at_screen_resolution(settings), reasons=motivos)
 
 
@@ -321,6 +328,10 @@ def normalize_current(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
         valor = dados.get(campo)
         atual[campo] = float(valor) if _is_number(valor) and 0 <= valor <= CURRENT_NUMBER_MAX else None
     atual[FIELD_MANUAL_ACTIVE] = dados.get(FIELD_MANUAL_ACTIVE) is True
+    ajuste = dados.get(FIELD_MAINTENANCE_ADJUST)
+    atual[FIELD_MAINTENANCE_ADJUST] = (
+        int(ajuste) if _is_number(ajuste) and abs(ajuste) <= CURRENT_NUMBER_MAX and float(ajuste).is_integer() else 0
+    )
     return atual
 
 
@@ -350,6 +361,9 @@ def suggestion_changes(current: Mapping[str, Any], settings: PlanSettings) -> tu
     ]
     if current.get(FIELD_MANUAL_ACTIVE) is True:
         mudancas.append(SuggestionChange(FIELD_MANUAL_ACTIVE, True, False))
+    ajuste_atual = int(current.get(FIELD_MAINTENANCE_ADJUST) or 0)
+    if ajuste_atual != settings.maintenance_kcal_adjust:  # a sugestão sai da manutenção (ou o ajuste está fora da faixa)
+        mudancas.append(SuggestionChange(FIELD_MAINTENANCE_ADJUST, ajuste_atual, settings.maintenance_kcal_adjust))
     return tuple(mudancas)
 
 

@@ -65,6 +65,11 @@ export function PlanSummary({
   if (plan.surplus_share != null) {
     linhas.push({ label: 'Superávit', value: `${formatShareAsPercent(plan.surplus_share)} do gasto${plan.advanced ? ' (avançado)' : ''}` });
   }
+  if (plan.maintenance_kcal_adjust) {
+    // Só aparece quando o check-in semanal moveu o ajuste (0 = a manutenção de sempre).
+    const ajuste = plan.maintenance_kcal_adjust;
+    linhas.push({ label: 'Ajuste da manutenção', value: `${ajuste > 0 ? '+' : ''}${formatNumberOrDash(ajuste, 0)} kcal por dia sobre o gasto` });
+  }
   if (plan.carb_min_g_per_kg != null) {
     linhas.push({ label: 'Carboidrato mínimo', value: `${formatNumberOrDash(plan.carb_min_g_per_kg, 2)} g por kg de peso` });
   }

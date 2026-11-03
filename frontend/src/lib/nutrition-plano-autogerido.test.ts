@@ -15,6 +15,7 @@ const {
   updateNutritionPlan,
 } = await import('./nutrition-api');
 const { dashboardKeys, todayKeys } = await import('./nutrition-dashboard');
+const { checkinKeys } = await import('./nutrition-checkin');
 const { DAY_KIND_OPTIONS, DEFAULT_MACRO_PRIORITY, MACRO_PRIORITY_OPTIONS, NUTRITION_NOTICES, WEEKDAY_OPTIONS } =
   await import('./nutrition-constants');
 const {
@@ -118,7 +119,7 @@ describe('plano autogerido: rodada 1 de revisão', () => {
   });
 
   it('publicar e recalcular invalidam o plano em vigor, o diário (com o card de hoje) e o painel', () => {
-    expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all]);
+    expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all, checkinKeys.all]);
     // O card da home lê `/nutrition/today` sob a chave do diário: invalidar o diário o atualiza.
     expect(todayKeys.one(null).slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
   });

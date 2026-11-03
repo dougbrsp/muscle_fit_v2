@@ -76,6 +76,16 @@ FAVORITES_TABLE_MISSING_MESSAGE = (
     "Alimentos preferidos indisponíveis: a tabela `user_favorite_foods` (migração 102) ainda não existe neste banco."
 )
 
+CHECKINS_TABLE = "nutrition_checkins"
+CHECKIN_SETTINGS_TABLE = "nutrition_checkin_settings"
+CHECKIN_TABLES: tuple[str, ...] = (CHECKINS_TABLE, CHECKIN_SETTINGS_TABLE)
+CHECKIN_MIGRATION = "103"
+
+CHECKIN_TABLES_MISSING_MESSAGE = (
+    "Check-in semanal indisponível: as tabelas `nutrition_checkins` e `nutrition_checkin_settings` "
+    "(migração 103) ainda não existem neste banco."
+)
+
 
 def tables_sql(count: int) -> str:
     """COUNT das tabelas pedidas no schema atual (um `%s` por tabela)."""
@@ -235,6 +245,25 @@ def require_favorites_table(cursor: Any) -> None:
         raise favorites_table_missing_error()
 
 
+def has_checkin_tables(cursor: Any) -> bool:
+    """As tabelas do check-in semanal (103) existem NESTE schema? Sem DDL."""
+    return _has_tables(cursor, CHECKIN_TABLES)
+
+
+def checkin_tables_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={"error": "nutrition_checkin_tables_missing", "migration": CHECKIN_MIGRATION,
+                "message": CHECKIN_TABLES_MISSING_MESSAGE},
+    )
+
+
+def require_checkin_tables(cursor: Any) -> None:
+    """503 citando a 103 quando as tabelas do check-in semanal ainda não existem."""
+    if not has_checkin_tables(cursor):
+        raise checkin_tables_missing_error()
+
+
 def reset_nutrition_tables_cache() -> None:
     """Esquece a detecção (só para testes que desfazem as migrações)."""
     _present.clear()
@@ -243,6 +272,13 @@ def reset_nutrition_tables_cache() -> None:
 
 __all__ = [
     "AI_USAGE_MIGRATION",
+    "CHECKINS_TABLE",
+    "CHECKIN_MIGRATION",
+    "CHECKIN_SETTINGS_TABLE",
+    "CHECKIN_TABLES",
+    "checkin_tables_missing_error",
+    "has_checkin_tables",
+    "require_checkin_tables",
     "AI_USAGE_TABLE",
     "DIARY_MIGRATIONS",
     "DIARY_TABLES",

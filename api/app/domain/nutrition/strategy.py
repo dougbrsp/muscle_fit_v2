@@ -102,10 +102,16 @@ MAINT_PROTEIN_G_PER_KG_RANGE: Final[tuple[float, float]] = (1.6, 2.2)
 MAINT_PROTEIN_G_PER_KG_DEFAULT: Final[float] = 2.0
 MAINT_FAT_KCAL_SHARE_RANGE: Final[tuple[float, float]] = (0.20, 0.35)
 MAINT_FAT_KCAL_SHARE_DEFAULT: Final[float] = 0.25
+# Ajuste de kcal/dia da manutenção (N7, §83): a manutenção não tinha parâmetro de balanço; o check-in semanal o move
+# quando o peso sai da banda. DEFAULT DE DESENHO (sem fonte): ±500 kcal/dia é o teto que mantém a manutenção uma
+# manutenção (o cutting/bulking assumem ±5% a ±25% do gasto). 0 = o plano de sempre.
+MAINT_KCAL_ADJUST_RANGE: Final[tuple[int, int]] = (-500, 500)
+MAINT_KCAL_ADJUST_DEFAULT: Final[int] = 0
 
 # Códigos de clamp e de limitação (estáveis).
 CLAMP_MAX_DEFICIT_SHARE = "max_deficit_share"
 CLAMP_MIN_INTAKE_BMR_MULTIPLE = "min_intake_bmr_multiple"
+CLAMP_MIN_KCAL_BLOCK = "min_kcal_block"
 LIMIT_MISSING_TDEE = "missing_tdee"
 LIMIT_MISSING_BMR_FOR_FLOOR = "missing_bmr_for_floor"
 LIMIT_MISSING_WEIGHT = "missing_weight"
@@ -179,6 +185,7 @@ class StrategyParams:
     weekly_rate_share: Optional[float] = None  # cutting: % do PC a perder por semana
     surplus_share: Optional[float] = None  # bulking: % do TDEE acima da manutenção
     carb_min_g_per_kg: Optional[float] = None  # bulking: piso de carbo
+    maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # manutenção: kcal/dia somadas ao gasto (N7)
 
     @classmethod
     def defaults_for(cls, strategy: Strategy, advanced: bool = False) -> "StrategyParams":
@@ -211,7 +218,9 @@ class StrategyParams:
 
     def as_maintenance(self) -> "StrategyParams":
         """Mesma proteína/gordura, balanço zero (pausa de dieta, refeed)."""
-        return replace(self, strategy=Strategy.MAINTENANCE, weekly_rate_share=None, surplus_share=None)
+        return replace(
+            self, strategy=Strategy.MAINTENANCE, weekly_rate_share=None, surplus_share=None, maintenance_kcal_adjust=0
+        )
 
     def out_of_range(self) -> tuple[str, ...]:
         """Códigos dos parâmetros fora da faixa da fonte (aviso, não bloqueio)."""
@@ -222,6 +231,8 @@ class StrategyParams:
             avisos.append(f"{LIMIT_PARAM_OUT_OF_RANGE}:fat_kcal_share")
         if self.strategy == Strategy.CUTTING and not _within(self.weekly_rate_share, CUT_WEEKLY_RATE_SHARE_RANGE):
             avisos.append(f"{LIMIT_PARAM_OUT_OF_RANGE}:weekly_rate_share")
+        if self.strategy == Strategy.MAINTENANCE and not _within(self.maintenance_kcal_adjust, MAINT_KCAL_ADJUST_RANGE):
+            avisos.append(f"{LIMIT_PARAM_OUT_OF_RANGE}:maintenance_kcal_adjust")
         if self.strategy == Strategy.BULKING:
             if not _within(self.surplus_share, surplus_range_for(self.advanced)):
                 avisos.append(f"{LIMIT_PARAM_OUT_OF_RANGE}:surplus_share")
@@ -230,7 +241,7 @@ class StrategyParams:
         return tuple(avisos)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "strategy": self.strategy.value,
             "protein_g_per_kg": self.protein_g_per_kg,
             "protein_basis": self.protein_basis.value,
@@ -240,6 +251,9 @@ class StrategyParams:
             "surplus_share": self.surplus_share,
             "carb_min_g_per_kg": self.carb_min_g_per_kg,
         }
+        if self.maintenance_kcal_adjust != MAINT_KCAL_ADJUST_DEFAULT:  # plano antigo: dicionário idêntico
+            dados["maintenance_kcal_adjust"] = self.maintenance_kcal_adjust
+        return dados
 
 
 @dataclass(frozen=True)
@@ -322,7 +336,35 @@ def kcal_target(
             superavit = BULK_SURPLUS_SHARE_DEFAULT_ADVANCED if params.advanced else BULK_SURPLUS_SHARE_DEFAULT
         delta = superavit * tdee
         return KcalTarget(kcal=tdee + delta, delta_kcal=delta, rate_applied=None)
-    return KcalTarget(kcal=tdee, delta_kcal=0.0, rate_applied=None)
+    ajuste = float(params.maintenance_kcal_adjust)
+    if ajuste >= 0:  # ajuste 0 (o padrão) e positivo: o resultado de sempre, bit a bit
+        return KcalTarget(kcal=tdee + ajuste, delta_kcal=ajuste, rate_applied=None)
+    return _maintenance_with_cut(tdee, ajuste, positive_number(bmr_kcal))
+
+
+def _maintenance_with_cut(tdee: float, ajuste: float, bmr_kcal: Optional[float]) -> KcalTarget:
+    """Manutenção com ajuste NEGATIVO: a meta não desce abaixo de `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB nem do bloqueio de
+    energia (`manual_targets.KCAL_BLOCK_MIN`), e nunca acima do gasto por causa do piso. O limite aplicado fica em
+    `clamped_by`, como no cutting."""
+    from .manual_targets import KCAL_BLOCK_MIN  # import local: `manual_targets` já importa este módulo
+
+    ingestao = tdee + ajuste
+    clamps: list[str] = []
+    limitacoes: list[str] = []
+    if bmr_kcal is None:
+        limitacoes.append(LIMIT_MISSING_BMR_FOR_FLOOR)
+    else:
+        piso_tmb = min(CUT_MIN_INTAKE_BMR_MULTIPLE * bmr_kcal, tdee)
+        if ingestao < piso_tmb:
+            ingestao = piso_tmb
+            clamps.append(CLAMP_MIN_INTAKE_BMR_MULTIPLE)
+    piso_bloqueio = min(KCAL_BLOCK_MIN, tdee)
+    if ingestao < piso_bloqueio:
+        ingestao = piso_bloqueio
+        clamps.append(CLAMP_MIN_KCAL_BLOCK)
+    return KcalTarget(
+        kcal=ingestao, delta_kcal=ingestao - tdee, rate_applied=None, clamped_by=tuple(clamps), limitations=tuple(limitacoes)
+    )
 
 
 def maintenance_band(tdee_kcal: Any) -> Optional[tuple[float, float]]:

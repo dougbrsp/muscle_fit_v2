@@ -776,6 +776,9 @@ try:
     # Dashboard de nutricao (N5, mapa §82): agregacao da janela sobre os totais gravados.
     from app.nutrition_dashboard import router as nutrition_dashboard_router
     app.include_router(nutrition_dashboard_router)
+    # Check-in semanal (N7, mapa §83, migracao 103): avalia a semana fechada e propoe metas novas.
+    from app.nutrition_checkins import router as nutrition_checkins_router
+    app.include_router(nutrition_checkins_router)
 except Exception as exc:
     import logging
     logging.getLogger("fitness.nutrition_diary").exception(
