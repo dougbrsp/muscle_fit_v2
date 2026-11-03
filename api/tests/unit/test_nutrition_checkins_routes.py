@@ -482,3 +482,19 @@ def test_chamadas_ao_banco_da_leitura_leve_da_primeira_geracao_e_do_aceite(db):
     aceite = db.statements
     print(f"STATEMENTS geracao={geracao} leitura_leve={leve} aceite={aceite}")
     assert leve <= 10 and geracao <= 30 and aceite <= 60
+
+
+def test_aceite_da_manutencao_faz_a_meta_de_hoje_cair_abaixo_do_gasto(db):
+    """O ajuste aceito chega à meta materializada: kcal = gasto + ajuste (negativo) a partir de hoje."""
+    antigo = _publicar(db, strategy="maintenance")
+    _semana_completa(db, mudanca_kg_semana=0.6)  # subindo além da banda
+    ck = _client().get("/nutrition/checkin").json()["checkin"]
+    assert ck["verdict"] == "above_band" and ck["proposal"]["change_items"][0]["field"] == "maintenance_kcal_adjust"
+    novo = _client().post(f"/nutrition/checkins/{ck['id']}/accept").json()["plan"]["id"]
+    ajuste = int(db.plans[novo]["maintenance_kcal_adjust"])
+    assert ajuste < 0 and int(db.plans[antigo]["maintenance_kcal_adjust"]) == 0
+    hoje = db.targets[(ALUNO, HOJE)]
+    assert hoje["plan_id"] == novo
+    assert float(hoje["kcal_target"]) == pytest.approx(float(hoje["tdee_kcal"]) + ajuste, abs=0.5)
+    passado = db.targets[(ALUNO, HOJE - timedelta(days=1))]  # o passado fica com o plano antigo
+    assert float(passado["kcal_target"]) == pytest.approx(float(passado["tdee_kcal"]), abs=0.5)

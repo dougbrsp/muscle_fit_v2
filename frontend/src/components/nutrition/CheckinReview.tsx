@@ -83,7 +83,7 @@ function MacrosTable({ before, after, scopeLabel }: { before: CheckinDayMacros; 
   ];
   return (
     <Table.ScrollContainer minWidth={280}>
-      <Table withRowBorders={false} verticalSpacing={6} aria-label="Metas de um dia sem treino, antes e depois">
+      <Table withRowBorders={false} verticalSpacing={6} aria-label={`${scopeLabel}: metas agora e na proposta`}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{scopeLabel}</Table.Th>

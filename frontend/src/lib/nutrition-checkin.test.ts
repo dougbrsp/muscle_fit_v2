@@ -19,7 +19,7 @@ import {
 } from './nutrition-checkin';
 import { diaryKeys, nutritionKeys } from './nutrition-api';
 import { dashboardKeys } from './nutrition-dashboard';
-import { targetsChangedKeys } from './nutrition-plan-form';
+import { maintenanceAdjustPayload, targetsChangedKeys } from './nutrition-plan-form';
 
 const mock = vi.mocked(apiFetch);
 
@@ -94,5 +94,19 @@ describe('apresentação', () => {
     expect(shortDay('2026-11-01')).toBe('01/11');
     expect(shortDay(null)).toBe('-');
     expect(weekRangeLabel({ week_start: '2026-10-26', week_end: '2026-11-01' })).toBe('26/10 a 01/11');
+  });
+});
+
+describe('ajuste da manutenção no formulário do plano', () => {
+  it('rascunho novo de manutenção herda o ajuste do plano em vigor; edição mantém o do próprio rascunho', () => {
+    expect(maintenanceAdjustPayload(true, null, -150)).toBe(-150);
+    expect(maintenanceAdjustPayload(true, null, null)).toBe(0);
+    expect(maintenanceAdjustPayload(true, { maintenance_kcal_adjust: 80 }, -150)).toBe(80);
+    expect(maintenanceAdjustPayload(true, {}, -150)).toBe(0);
+  });
+
+  it('fora da manutenção não envia nada', () => {
+    expect(maintenanceAdjustPayload(false, null, -150)).toBeNull();
+    expect(maintenanceAdjustPayload(false, { maintenance_kcal_adjust: 80 }, null)).toBeNull();
   });
 });

@@ -33,6 +33,7 @@ import { inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutriti
 import {
   cycleDaysPayload,
   macroPriorityPayload,
+  maintenanceAdjustPayload,
   manualTargetsPayload,
   manualTrainingModePayload,
 } from '@/lib/nutrition-plan-form';
@@ -169,6 +170,8 @@ type Props = {
   /** Dono do plano (admin/PT); `null` = o próprio usuário (D2). */
   userId: number | null;
   plan: NutritionPlan | null;
+  /** Ajuste da manutenção do plano em vigor: um rascunho NOVO de manutenção o herda (o check-in o moveu). */
+  inheritedMaintenanceAdjust?: number | null;
   onSaved: (plan: NutritionPlanSaved) => void;
   onCancel: () => void;
 };
@@ -179,13 +182,15 @@ type Props = {
  * de novo e responde 400 com o código do motor. Frações (gordura, ritmo,
  * superávit) aparecem em % só para a tela.
  */
-export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
+export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FormState>(() => initialState(plan));
   const ranges = strategyFormRanges(form.strategy);
   const surplusRange = form.advanced ? ranges?.surplus_share_advanced : ranges?.surplus_share;
   // Quais campos a estratégia usa: `STRATEGY_ONLY_FIELDS` do motor (via JSON gerado).
   const usaRitmo = fieldAppliesToStrategy('weekly_rate_share', form.strategy);
   const usaSuperavit = fieldAppliesToStrategy('surplus_share', form.strategy);
+  const usaAjusteManutencao = fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy);
+  const ajusteManutencao = maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust);
   const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
 
   // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
@@ -227,9 +232,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
           modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
         ),
         cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
-        maintenance_kcal_adjust: fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy)
-          ? (plan?.maintenance_kcal_adjust ?? 0)
-          : null,
+        maintenance_kcal_adjust: maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust),
         notes: form.notes.trim() ? form.notes.trim() : null,
       };
       return plan
@@ -325,10 +328,10 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
               decimalSeparator=","
             />
           )}
-          {fieldAppliesToStrategy('maintenance_kcal_adjust', form.strategy) && !!plan?.maintenance_kcal_adjust && (
+          {usaAjusteManutencao && !!ajusteManutencao && (
             <Text size="sm" c={BRAND.textMuted}>
-              Ajuste da manutenção em vigor: {plan.maintenance_kcal_adjust > 0 ? '+' : ''}
-              {plan.maintenance_kcal_adjust} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
+              Ajuste da manutenção em vigor: {ajusteManutencao > 0 ? '+' : ''}
+              {ajusteManutencao} kcal por dia sobre o gasto. Quem o muda é o check-in semanal; salvar mantém o valor.
             </Text>
           )}
         </SimpleGrid>

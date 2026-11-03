@@ -64,6 +64,20 @@ export function applyTemplateProposal(
 }
 
 /**
+ * Ajuste da manutenção (N7) que o formulário envia: o do rascunho em edição, ou, num rascunho NOVO, o do plano em
+ * vigor (senão salvar um rascunho novo zeraria o que o check-in semanal já ajustou, e publicá-lo desfaria o ajuste).
+ * Fora da manutenção é `null`. A tela não edita o valor; ele é do check-in.
+ */
+export function maintenanceAdjustPayload(
+  applies: boolean,
+  editing: { maintenance_kcal_adjust?: number } | null,
+  inherited: number | null | undefined,
+): number | null {
+  if (!applies) return null;
+  return editing ? (editing.maintenance_kcal_adjust ?? 0) : (inherited ?? 0);
+}
+
+/**
  * Caches que ficam velhos quando as metas mudam (publicar ou recalcular): o plano em vigor, o diário
  * (que lê a meta de cada dia; o card de hoje, `/nutrition/today`, mora sob `diaryKeys.all`) e o painel
  * `/dashboard/nutricao` (N5). Chaves do React Query.

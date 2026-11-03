@@ -366,7 +366,7 @@ CHECKIN_STATUS_LABELS: Final[Mapping[CheckinStatus, str]] = {
 # O que as metas "antes e depois" da proposta representam (`weekly_checkin.SCOPE_*`).
 CHECKIN_SCOPE_LABELS: Final[Mapping[str, str]] = {
     wc_mod.SCOPE_REST_DAY: "Dia sem treino",
-    wc_mod.SCOPE_CYCLE_AVERAGE: "Média dos 7 dias do ciclo",
+    wc_mod.SCOPE_CYCLE_AVERAGE: f"Média dos {DAYS_PER_WEEK} dias do ciclo",
 }
 
 # Campos do plano, para os códigos `<prefixo>:<campo>` (faixa, código inválido,
@@ -468,6 +468,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"Déficit limitado a {_percent(strategy_mod.CUT_MAX_DEFICIT_SHARE)} do gasto total."
     ),
     strategy_mod.CLAMP_MIN_INTAKE_BMR_MULTIPLE: "Ingestão elevada ao piso do cutting (TMB).",
+    strategy_mod.CLAMP_MIN_KCAL_BLOCK: "Ingestão elevada ao piso de energia do motor.",
     # Entrada do plano.
     plan_mod.NOTE_TEMPLATE_NOT_ASSIGNED: "Você não tem Modelo de treino atribuído: marque os dias à mão.",
     plan_mod.NOTE_TEMPLATE_WITHOUT_WEEKDAYS: (

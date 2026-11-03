@@ -111,6 +111,7 @@ MAINT_KCAL_ADJUST_DEFAULT: Final[int] = 0
 # Códigos de clamp e de limitação (estáveis).
 CLAMP_MAX_DEFICIT_SHARE = "max_deficit_share"
 CLAMP_MIN_INTAKE_BMR_MULTIPLE = "min_intake_bmr_multiple"
+CLAMP_MIN_KCAL_BLOCK = "min_kcal_block"
 LIMIT_MISSING_TDEE = "missing_tdee"
 LIMIT_MISSING_BMR_FOR_FLOOR = "missing_bmr_for_floor"
 LIMIT_MISSING_WEIGHT = "missing_weight"
@@ -336,7 +337,34 @@ def kcal_target(
         delta = superavit * tdee
         return KcalTarget(kcal=tdee + delta, delta_kcal=delta, rate_applied=None)
     ajuste = float(params.maintenance_kcal_adjust)
-    return KcalTarget(kcal=tdee + ajuste, delta_kcal=ajuste, rate_applied=None)
+    if ajuste >= 0:  # ajuste 0 (o padrão) e positivo: o resultado de sempre, bit a bit
+        return KcalTarget(kcal=tdee + ajuste, delta_kcal=ajuste, rate_applied=None)
+    return _maintenance_with_cut(tdee, ajuste, positive_number(bmr_kcal))
+
+
+def _maintenance_with_cut(tdee: float, ajuste: float, bmr_kcal: Optional[float]) -> KcalTarget:
+    """Manutenção com ajuste NEGATIVO: a meta não desce abaixo de `CUT_MIN_INTAKE_BMR_MULTIPLE` × TMB nem do bloqueio de
+    energia (`manual_targets.KCAL_BLOCK_MIN`), e nunca acima do gasto por causa do piso. O limite aplicado fica em
+    `clamped_by`, como no cutting."""
+    from .manual_targets import KCAL_BLOCK_MIN  # import local: `manual_targets` já importa este módulo
+
+    ingestao = tdee + ajuste
+    clamps: list[str] = []
+    limitacoes: list[str] = []
+    if bmr_kcal is None:
+        limitacoes.append(LIMIT_MISSING_BMR_FOR_FLOOR)
+    else:
+        piso_tmb = min(CUT_MIN_INTAKE_BMR_MULTIPLE * bmr_kcal, tdee)
+        if ingestao < piso_tmb:
+            ingestao = piso_tmb
+            clamps.append(CLAMP_MIN_INTAKE_BMR_MULTIPLE)
+    piso_bloqueio = min(KCAL_BLOCK_MIN, tdee)
+    if ingestao < piso_bloqueio:
+        ingestao = piso_bloqueio
+        clamps.append(CLAMP_MIN_KCAL_BLOCK)
+    return KcalTarget(
+        kcal=ingestao, delta_kcal=ingestao - tdee, rate_applied=None, clamped_by=tuple(clamps), limitations=tuple(limitacoes)
+    )
 
 
 def maintenance_band(tdee_kcal: Any) -> Optional[tuple[float, float]]:

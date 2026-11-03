@@ -127,6 +127,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
               key={editing.mode === 'new' ? 'novo' : editing.plan.id}
               userId={userId}
               plan={editing.mode === 'edit' ? editing.plan : null}
+              inheritedMaintenanceAdjust={plans.find((plano) => plano.state === 'current')?.maintenance_kcal_adjust ?? null}
               onSaved={afterSave}
               onCancel={() => setEditing(null)}
             />

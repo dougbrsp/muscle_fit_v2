@@ -40,7 +40,7 @@ from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, is_staff, resolve_target_user
 from .nutrition_dashboard import MEAL_TOTALS_SQL, MUSCLE_WINDOW_SQL
 from .nutrition_meals import day_totals
-from .nutrition_plans import _CURRENT_FOR_UPDATE_SQL, _fetch_plan, insert_draft, publish_draft
+from .nutrition_plans import _CURRENT_FOR_UPDATE_SQL, PUBLISHED, TABLE as PLANS_TABLE, _fetch_plan, insert_draft, publish_draft
 from .nutrition_schema import (
     CHECKIN_SETTINGS_TABLE,
     CHECKINS_TABLE,
@@ -63,7 +63,7 @@ from .template_assignments import db_now
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
-PUBLISHED_PLAN = "published"
+PUBLISHED_PLAN = PUBLISHED  # `nutrition_plans.PUBLISHED`: o mesmo estado que a publicação grava
 PROPOSED = wc.CheckinStatus.PROPOSED.value
 ACCEPTED = wc.CheckinStatus.ACCEPTED.value
 DECLINED = wc.CheckinStatus.DECLINED.value
@@ -81,7 +81,7 @@ _LATEST_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s ORDER
 # abertura concorrente acabou de gravar (o INSERT vira no-op no UNIQUE); `FOR SHARE` é leitura corrente.
 _BY_WEEK_SHARE_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s AND week_start = %s FOR SHARE"
 # O plano vigente (sem trava): a proposta só vale para o plano que a gerou.
-_CURRENT_PLAN_SQL = "SELECT id FROM nutrition_plans WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
+_CURRENT_PLAN_SQL = f"SELECT id FROM {PLANS_TABLE} WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
 _BY_ID_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE id = %s"
 _BY_ID_FOR_UPDATE_SQL = _BY_ID_SQL + " FOR UPDATE"
 _HISTORY_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s ORDER BY week_start DESC, id DESC LIMIT %s"
@@ -416,8 +416,10 @@ def get_checkin(
     user_id: Optional[int] = Query(default=None),
     identity: Identity = Depends(get_current_identity),
 ):
-    """Sem as tabelas (janela do deploy: o código novo atende antes da migração 103) a leitura responde 200 com
-    `checkin: null` e o motivo `migration_pending`: a home nunca gera 5xx por causa do check-in. Escrever segue 503."""
+    """Sem as tabelas do check-in (o código novo atende antes da migração 103) a leitura responde 200 com
+    `checkin: null` e o motivo `migration_pending`; escrever segue 503. Isto vale SÓ para o check-in: sem a 103 o código
+    novo lê `nutrition_plans.maintenance_kcal_adjust` e o plano, o diário e `/nutrition/today` falham até a migração
+    rodar. A ordem do deploy (migração antes do código) é obrigatória, ver §83."""
     aluno = resolve_target_user(identity, user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
