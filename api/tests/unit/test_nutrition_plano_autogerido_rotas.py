@@ -70,10 +70,10 @@ def test_gramas_manuais_dentro_da_faixa_salvam_sem_aviso(db):
     resposta = _criar(_cliente(), manual_targets=MANUAL)
     assert resposta.status_code == 201, resposta.text
     plano = resposta.json()
-    assert plano["manual_targets"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0}
+    assert plano["manual_targets"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0, "training_mode": "fixed"}
     assert plano["macro_priority"] == "balanced" and plano["warnings"] == []
     gravado = db.plans[plano["id"]]
-    assert gravado["manual_targets_json"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0}
+    assert gravado["manual_targets_json"] == {"protein_g": 160.0, "carb_g": 280.0, "fat_g": 70.0, "training_mode": "fixed"}
 
 
 def test_gramas_fora_da_faixa_salvam_com_aviso_rotulado(db):
@@ -264,13 +264,17 @@ def test_preview_sem_alvo_explica_em_vez_de_inventar(db, hoje):
     assert projecao["reason_items"]
 
 
-def test_preview_do_bulking_avancado_avisa_o_ritmo_e_nao_recusa(db, hoje):
+def test_preview_do_bulking_avancado_nao_avisa_ritmo_e_o_superavit_alto_avisa_sem_recusar(db, hoje):
     db.composition.clear()
     db.add_weight(ALUNO, SEGUNDA - timedelta(days=3), 80, body_fat_percent=Decimal("15"), fat_free_mass_kg=Decimal("68"))
     cliente = _cliente()
-    criado = _criar(cliente, strategy="bulking", advanced=True)
-    assert criado.status_code == 201  # o default avançado do motor NÃO é recusado
-    resposta = cliente.post(f"/nutrition/plans/{criado.json()['id']}/preview")
+    avancado = _criar(cliente, strategy="bulking", advanced=True)
+    assert avancado.status_code == 201
+    avisos = cliente.post(f"/nutrition/plans/{avancado.json()['id']}/preview").json()["warnings"]
+    assert "projection_rate_outside_range" not in [item["code"] for item in avisos]  # o default do motor cabe na faixa
+    alto = _criar(cliente, strategy="bulking", surplus_share=0.20)  # 20% implica ~0,83%/semana neste usuário
+    assert alto.status_code == 201  # nunca recusa
+    resposta = cliente.post(f"/nutrition/plans/{alto.json()['id']}/preview")
     assert resposta.status_code == 200, resposta.text
     assert "projection_rate_outside_range" in [item["code"] for item in resposta.json()["warnings"]]
 

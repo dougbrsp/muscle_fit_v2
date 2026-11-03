@@ -2,7 +2,7 @@
 // nada; o motor valida na API (400 com o código) e devolve os avisos. Aqui ficam apenas as regras
 // de FORMULÁRIO: gramas manuais mandam sobre a prioridade, e dias desligados viram null.
 
-import { DEFAULT_MACRO_PRIORITY, type NutritionCode } from './nutrition-constants';
+import { DEFAULT_MACRO_PRIORITY, DEFAULT_MANUAL_TRAINING_MODE, type NutritionCode } from './nutrition-constants';
 import { diaryKeys, nutritionKeys } from './nutrition-api';
 import type { NutritionManualTargetsInput } from './nutrition-types';
 
@@ -31,6 +31,11 @@ export function manualTargetsPayload(
     carb_g: numberOrNull(carb),
     fat_g: numberOrNull(fat),
   };
+}
+
+/** Modo das gramas manuais com o treino; sem gramas manuais, `null` (o motor recusa o modo sem gramas). */
+export function manualTrainingModePayload(manualOn: boolean, mode: NutritionCode | null | undefined): NutritionCode | null {
+  return manualOn ? (mode ?? DEFAULT_MANUAL_TRAINING_MODE) : null;
 }
 
 /** Com gramas manuais a prioridade de macros não se aplica (o motor recusa as duas): manda o padrão. */

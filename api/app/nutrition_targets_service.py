@@ -177,6 +177,11 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     """`PlanSettings` de uma linha de `nutrition_plans`. Linha gravada já passou
     pela validação; se a faixa do motor mudar depois, o orquestrador avisa
     (`param_out_of_range`) em vez de recusar o plano publicado."""
+    manual = _json_value(row.get("manual_targets_json"))
+    modo_manual = None
+    if isinstance(manual, dict):  # o modo mora junto das gramas no JSON (sem coluna nova)
+        manual = dict(manual)
+        modo_manual = manual.pop("training_mode", None)
     validacao = build_plan_settings(
         strategy=row.get("strategy"),
         advanced=bool(int(row.get("advanced") or 0)),
@@ -192,7 +197,8 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         goal_body_fat_percent=_float(row.get("goal_body_fat_percent")),
         goal_weight_kg=_float(row.get("goal_weight_kg")),
         macro_priority=row.get("macro_priority"),
-        manual_targets=_json_value(row.get("manual_targets_json")),
+        manual_targets=manual,
+        manual_training_mode=modo_manual,
         cycle_days=_json_value(row.get("carb_cycling_json")),
     )
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor

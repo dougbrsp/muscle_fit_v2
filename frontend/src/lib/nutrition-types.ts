@@ -37,7 +37,13 @@ export type NutritionPlanSettings = {
 };
 
 /** Gramas manuais de proteína, carboidrato e gordura. */
-export type NutritionManualTargets = { protein_g: number; carb_g: number; fat_g: number };
+export type NutritionManualTargets = {
+  protein_g: number;
+  carb_g: number;
+  fat_g: number;
+  /** Código de `MANUAL_TRAINING_MODE_OPTIONS`: metas fixas todo dia ou somar o treino do dia em carboidrato. */
+  training_mode: NutritionCode;
+};
 
 /** Gramas manuais como o formulário envia: campo vazio vai `null` e a API recusa com o código do motor. */
 export type NutritionManualTargetsInput = { protein_g: number | null; carb_g: number | null; fat_g: number | null };
@@ -88,6 +94,8 @@ export type NutritionPlanSettingsPayload = {
   goal_weight_kg: number | null;
   macro_priority: NutritionCode;
   manual_targets: NutritionManualTargetsInput | null;
+  /** Como as gramas manuais convivem com o treino; null quando não há gramas manuais. */
+  manual_training_mode: NutritionCode | null;
   cycle_days: Record<string, NutritionCode> | null;
   notes: string | null;
 };

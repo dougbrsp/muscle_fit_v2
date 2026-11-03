@@ -93,6 +93,22 @@ MACRO_PRIORITY_LABELS: Final[Mapping[MacroPriority, str]] = {
     MacroPriority.HIGH_FAT: "Gordura alta (carboidrato baixo)",
 }
 
+MANUAL_TRAINING_MODE_LABELS: Final[Mapping[manual_mod.ManualTrainingMode, str]] = {
+    manual_mod.ManualTrainingMode.FIXED: "Metas fixas todo dia",
+    manual_mod.ManualTrainingMode.ADD_TRAINING: "Somar o treino do dia em carboidrato",
+}
+
+# Explicação de cada modo (a tela mostra a do modo escolhido).
+MANUAL_TRAINING_MODE_HINTS: Final[Mapping[manual_mod.ManualTrainingMode, str]] = {
+    manual_mod.ManualTrainingMode.FIXED: (
+        "Os números que você digitou valem todos os dias; treino e estratégia não alteram essas metas."
+    ),
+    manual_mod.ManualTrainingMode.ADD_TRAINING: (
+        "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, "
+        "pela conversão de energia do motor. Só vale com o gasto do treino à parte."
+    ),
+}
+
 RANGE_STATUS_LABELS: Final[Mapping[RangeStatus, str]] = {
     RangeStatus.WITHIN_RANGE: "Dentro da faixa recomendada",
     RangeStatus.WARNING: "Fora da faixa recomendada (salva com aviso)",
@@ -344,6 +360,7 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     manual_mod.FIELD_KCAL: "Energia do dia (kcal)",
     plan_mod.FIELD_MACRO_PRIORITY: "Prioridade de macros",
     plan_mod.FIELD_MANUAL_TARGETS: "Gramas manuais",
+    plan_mod.FIELD_MANUAL_TRAINING_MODE: "Gramas manuais e treino",
     "manual_macros": "Gramas manuais",
     "cycle_kinds": "Dias de mais e menos gasto",
 }

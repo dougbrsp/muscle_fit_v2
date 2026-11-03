@@ -12,6 +12,9 @@ import {
   DAY_KIND_OPTIONS,
   DEFAULT_BMR_FORMULA,
   DEFAULT_MACRO_PRIORITY,
+  DEFAULT_MANUAL_TRAINING_MODE,
+  MANUAL_TRAINING_MODE_HINTS,
+  MANUAL_TRAINING_MODE_OPTIONS,
   DEFAULT_TDEE_MODE,
   MACRO_PRIORITY_OPTIONS,
   NUTRITION_FORM_RANGES,
@@ -26,15 +29,17 @@ import {
   type StrategyFormRanges,
 } from '@/lib/nutrition-constants';
 import { inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
-import { cycleDaysPayload, macroPriorityPayload, manualTargetsPayload } from '@/lib/nutrition-plan-form';
+import {
+  cycleDaysPayload,
+  macroPriorityPayload,
+  manualTargetsPayload,
+  manualTrainingModePayload,
+} from '@/lib/nutrition-plan-form';
 import type { NutritionPlan, NutritionPlanSaved, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
 type NumberField = number | string;
 
-/** Com gramas manuais, treino e estratégia não alteram as metas (decisão a confirmar com o usuário: mudar aqui). */
-const MANUAL_TARGETS_HINT =
-  'Você fixa proteína, carboidrato e gordura. Treino e estratégia não alteram essas metas; o motor confere as faixas, avisa e precisa do seu peso registrado.';
 
 type FormState = {
   strategy: NutritionCode | null;
@@ -52,6 +57,7 @@ type FormState = {
   goalWeight: NumberField;
   macroPriority: NutritionCode;
   manualOn: boolean;
+  manualMode: NutritionCode;
   manualProtein: NumberField;
   manualCarb: NumberField;
   manualFat: NumberField;
@@ -98,6 +104,7 @@ function initialState(plan: NutritionPlan | null): FormState {
       goalWeight: asField(plan.goal_weight_kg),
       macroPriority: plan.macro_priority ?? DEFAULT_MACRO_PRIORITY,
       manualOn: plan.manual_targets != null,
+      manualMode: plan.manual_targets?.training_mode ?? DEFAULT_MANUAL_TRAINING_MODE,
       manualProtein: asField(plan.manual_targets?.protein_g),
       manualCarb: asField(plan.manual_targets?.carb_g),
       manualFat: asField(plan.manual_targets?.fat_g),
@@ -122,6 +129,7 @@ function initialState(plan: NutritionPlan | null): FormState {
     goalWeight: '',
     macroPriority: DEFAULT_MACRO_PRIORITY,
     manualOn: false,
+    manualMode: DEFAULT_MANUAL_TRAINING_MODE,
     manualProtein: '',
     manualCarb: '',
     manualFat: '',
@@ -210,6 +218,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         goal_weight_kg: inputNumberOrNull(form.goalWeight),
         macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
         manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
+        manual_training_mode: manualTrainingModePayload(form.manualOn, form.manualMode),
         cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
         notes: form.notes.trim() ? form.notes.trim() : null,
       };
@@ -377,10 +386,20 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
       <Stack gap="xs">
         <Switch
           label="Definir as gramas manualmente"
-          description={MANUAL_TARGETS_HINT}
+          description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas, avisa e precisa do seu peso registrado."
           checked={form.manualOn}
           onChange={(event) => update({ manualOn: event.currentTarget.checked })}
         />
+        {form.manualOn && (
+          <Select
+            label="Gramas manuais e treino"
+            description={MANUAL_TRAINING_MODE_HINTS[form.manualMode]}
+            data={[...MANUAL_TRAINING_MODE_OPTIONS]}
+            value={form.manualMode}
+            onChange={(manualMode) => update({ manualMode: manualMode ?? DEFAULT_MANUAL_TRAINING_MODE })}
+            allowDeselect={false}
+          />
+        )}
         {form.manualOn && (
           <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
             <NumberInput

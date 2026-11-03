@@ -403,7 +403,7 @@ def project_goal(
         return _result(ProjectionStatus.INCOHERENT, reasons=(REASON_TARGET_AGAINST_STRATEGY,))
 
     if weekly_rate_share is not None:
-        ritmo = _explicit_rate(weekly_rate_share, weekly_rate_share_range_for(strategy))
+        ritmo = _explicit_rate(weekly_rate_share, weekly_rate_share_range_for(strategy, params.advanced))
     else:
         ritmo = positive_number(weekly_rate_share_for(params, tdee_kcal, peso, fat_mass_kg))
     if ritmo is None or ritmo >= 1.0:
@@ -422,7 +422,7 @@ def project_goal(
         motivos.append(REASON_MISSING_START)
     elif progresso is None:
         motivos.append(REASON_START_WRONG_SIDE)
-    faixa_ritmo = weekly_rate_share_range_for(strategy)
+    faixa_ritmo = weekly_rate_share_range_for(strategy, params.advanced)
     if weekly_rate_share is None and faixa_ritmo is not None and not faixa_ritmo[0] <= ritmo <= faixa_ritmo[1]:
         motivos.append(REASON_RATE_OUTSIDE_RANGE)  # o ritmo do plano é projetado como está; só se avisa
     if kind == GoalKind.BODY_FAT:

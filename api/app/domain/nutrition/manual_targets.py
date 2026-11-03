@@ -92,6 +92,18 @@ MISSING_BASE = "manual_missing_base_for_field"  # `<código>:<campo>`: sem base 
 LIMIT_MISSING_BASE = MISSING_BASE
 
 
+class ManualTrainingMode(str, Enum):
+    """Como as gramas manuais convivem com o treino do dia (escolha do usuário por plano, N2 rodada 4):
+    `FIXED` = os números digitados valem todo dia (o padrão); `ADD_TRAINING` = valem para dia SEM treino e o
+    gasto do treino do dia soma em carboidrato (`daily_target`), só no modo de gasto com o treino à parte."""
+
+    FIXED = "fixed"
+    ADD_TRAINING = "add_training"
+
+
+DEFAULT_MANUAL_TRAINING_MODE: Final[ManualTrainingMode] = ManualTrainingMode.FIXED
+
+
 class RangeStatus(str, Enum):
     WITHIN_RANGE = "within_range"
     WARNING = "warning"

@@ -16,8 +16,15 @@ const {
 } = await import('./nutrition-api');
 const { DAY_KIND_OPTIONS, DEFAULT_MACRO_PRIORITY, MACRO_PRIORITY_OPTIONS, NUTRITION_NOTICES, WEEKDAY_OPTIONS } =
   await import('./nutrition-constants');
-const { applyTemplateProposal, cycleDaysPayload, macroPriorityPayload, manualTargetsPayload, targetsChangedKeys } =
-  await import('./nutrition-plan-form');
+const {
+  applyTemplateProposal,
+  cycleDaysPayload,
+  macroPriorityPayload,
+  manualTargetsPayload,
+  manualTrainingModePayload,
+  targetsChangedKeys,
+} = await import('./nutrition-plan-form');
+const { DEFAULT_MANUAL_TRAINING_MODE, MANUAL_TRAINING_MODE_HINTS, MANUAL_TRAINING_MODE_OPTIONS } = await import('./nutrition-constants');
 
 beforeEach(() => apiFetch.mockReset());
 
@@ -117,5 +124,22 @@ describe('plano autogerido: rodada 1 de revisão', () => {
     expect(applyTemplateProposal(marcado, null)).toEqual(marcado);
     expect(applyTemplateProposal(marcado, null)).not.toBe(marcado);
     expect(applyTemplateProposal(marcado, { '0': 'high' })).toEqual({ '0': 'high', '1': 'high' });
+  });
+});
+
+describe('plano autogerido: gramas manuais e treino (rodada 4)', () => {
+  it('o modo vai junto das gramas e some quando elas estão desligadas', () => {
+    const outro = MANUAL_TRAINING_MODE_OPTIONS.find((o) => o.value !== DEFAULT_MANUAL_TRAINING_MODE)?.value as string;
+    expect(manualTrainingModePayload(false, outro)).toBeNull();
+    expect(manualTrainingModePayload(true, outro)).toBe(outro);
+    expect(manualTrainingModePayload(true, null)).toBe(DEFAULT_MANUAL_TRAINING_MODE);
+  });
+
+  it('cada modo tem rótulo e explicação do dono', () => {
+    expect(MANUAL_TRAINING_MODE_OPTIONS).toHaveLength(2);
+    for (const opcao of MANUAL_TRAINING_MODE_OPTIONS) {
+      expect(opcao.label).not.toBe(opcao.value);
+      expect(MANUAL_TRAINING_MODE_HINTS[opcao.value].length).toBeGreaterThan(10);
+    }
   });
 });

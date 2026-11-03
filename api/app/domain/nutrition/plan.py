@@ -43,11 +43,19 @@ from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
 from .carb_cycling import CycleDays, DayKind, propose_day_kinds, validate_cycle_days
-from .daily_target import DayContext, PlanParams, compute_daily_target
+from .daily_target import DayContext, PlanParams, compute_daily_target, manual_adds_training
 from .macros import meals_per_day_is_valid
 from .energy_density import weekly_kg_for_daily_kcal
 from .macros import kcal_from_macros
-from .manual_targets import KCAL_BLOCK_MAX, KCAL_BLOCK_MIN, ManualTargetsCheck, RangeStatus, check_manual_targets
+from .manual_targets import (
+    DEFAULT_MANUAL_TRAINING_MODE,
+    KCAL_BLOCK_MAX,
+    KCAL_BLOCK_MIN,
+    ManualTargetsCheck,
+    ManualTrainingMode,
+    RangeStatus,
+    check_manual_targets,
+)
 from .phases import (
     GoalProjection,
     ProjectionStatus,
@@ -112,6 +120,7 @@ ERR_DRAFT_LIMIT = "draft_limit"
 # Dia de referência só para escolher o dia da semana ao conferir o ciclo (uma segunda-feira).
 _CYCLE_CHECK_MONDAY: Final[date] = date(2026, 1, 5)
 FIELD_MANUAL_TARGETS = "manual_targets"
+FIELD_MANUAL_TRAINING_MODE = "manual_training_mode"
 FIELD_MACRO_PRIORITY = "macro_priority"
 # Chaves das gramas manuais no payload e no JSON gravado.
 MANUAL_KEYS: Final[tuple[str, str, str]] = ("protein_g", "carb_g", "fat_g")
@@ -142,12 +151,13 @@ class ManualMacros:
     protein_g: float
     carb_g: float
     fat_g: float
+    training_mode: ManualTrainingMode = DEFAULT_MANUAL_TRAINING_MODE
 
     def as_tuple(self) -> tuple[float, float, float]:
         return (self.protein_g, self.carb_g, self.fat_g)
 
-    def to_dict(self) -> dict[str, float]:
-        return {"protein_g": self.protein_g, "carb_g": self.carb_g, "fat_g": self.fat_g}
+    def to_dict(self) -> dict[str, Any]:
+        return {"protein_g": self.protein_g, "carb_g": self.carb_g, "fat_g": self.fat_g, "training_mode": self.training_mode.value}
 
 
 @dataclass(frozen=True)
@@ -170,6 +180,11 @@ class PlanSettings:
     macro_priority: MacroPriority = DEFAULT_MACRO_PRIORITY
     manual_macros: Optional[ManualMacros] = None
     cycle_kinds: Optional[tuple[DayKind, ...]] = None
+
+    @property
+    def manual_adds_training(self) -> bool:
+        """Gramas manuais no modo que soma o treino do dia (e o gasto do treino à parte)."""
+        return manual_adds_training(self.plan_params())
 
     @property
     def carb_cycling_enabled(self) -> bool:
@@ -202,6 +217,7 @@ class PlanSettings:
             ffm_age_days=ffm_age_days,
             macro_priority=self.macro_priority,
             manual_macros=self.manual_macros.as_tuple() if self.manual_macros else None,
+            manual_training_mode=self.manual_macros.training_mode if self.manual_macros else DEFAULT_MANUAL_TRAINING_MODE,
             cycle_kinds=self.cycle_kinds,
         )
 
@@ -213,6 +229,8 @@ class PlanSettings:
             dados.pop("macro_priority")
         if self.manual_macros is None:
             dados.pop("manual_targets")
+        elif self.manual_macros.training_mode == DEFAULT_MANUAL_TRAINING_MODE:
+            dados["manual_targets"] = {k: v for k, v in dados["manual_targets"].items() if k != "training_mode"}
         if self.cycle_kinds is None:
             dados.pop("cycle_days")
         return dados
@@ -258,6 +276,16 @@ def normalize_priority(value: Any) -> Optional[MacroPriority]:
         return DEFAULT_MACRO_PRIORITY
     try:
         return MacroPriority(str(value).strip().lower())
+    except ValueError:
+        return None
+
+
+def _manual_training_mode(value: Any) -> Optional[ManualTrainingMode]:
+    """Modo das gramas manuais com o treino (vazio = padrão); código desconhecido = None."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return DEFAULT_MANUAL_TRAINING_MODE
+    try:
+        return ManualTrainingMode(str(value).strip().lower())
     except ValueError:
         return None
 
@@ -313,6 +341,7 @@ def build_plan_settings(
     macro_priority: Any = None,
     manual_targets: Any = None,
     cycle_days: Any = None,
+    manual_training_mode: Any = None,
 ) -> PlanValidation:
     """Normaliza e valida o plano. Campo ausente (None) recebe o default da
     estratégia; valor fora da faixa da fonte vira `param_out_of_range:<campo>`.
@@ -390,8 +419,16 @@ def build_plan_settings(
         prioridade = DEFAULT_MACRO_PRIORITY
 
     manual: Optional[ManualMacros] = None
+    modo_manual = _manual_training_mode(manual_training_mode)
+    if modo_manual is None:
+        erros.append(_code(ERR_INVALID_CODE, FIELD_MANUAL_TRAINING_MODE))
+        modo_manual = DEFAULT_MANUAL_TRAINING_MODE
+    elif manual_targets is None and modo_manual != DEFAULT_MANUAL_TRAINING_MODE:
+        erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_MANUAL_TRAINING_MODE))
     if manual_targets is not None:
         manual = _manual_macros(manual_targets, estrategia, avancado, erros)
+        if manual is not None:
+            manual = replace(manual, training_mode=modo_manual)
         if manual is not None and prioridade != DEFAULT_MACRO_PRIORITY:
             erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_MACRO_PRIORITY))
 
@@ -540,7 +577,7 @@ def plan_warnings(settings: PlanSettings, subject: Subject, tdee_kcal: Any = Non
     bulking fora de `strategy.weekly_rate_share_range_for` é só aviso: o default avançado do
     motor (superávit 5%, TDEE 2800, 12 kg de gordura, 80 kg) dá cerca de 0,21%/semana, abaixo do
     piso de 0,25% (a faixa de superávit e a de ritmo não são coerentes entre si; mapa §81)."""
-    faixa = weekly_rate_share_range_for(settings.strategy)
+    faixa = weekly_rate_share_range_for(settings.strategy, settings.advanced)
     if settings.strategy != Strategy.BULKING or faixa is None:
         return ()
     ritmo = weekly_rate_share_for(
@@ -561,7 +598,18 @@ def training_kcal_of_day(is_training_day: bool, resolved_kcal: Any) -> Optional[
     return None if is_training_day else 0.0
 
 
-def projection_tdee(tdee: ee.TdeeResult, past_training_kcal: Sequence[Optional[float]]) -> tuple[Optional[float], tuple[str, ...]]:
+def rest_day_strategy_kcal(
+    settings: PlanSettings, subject: Subject, day: date, scale_bmr: Any = None, ffm_age_days: Optional[int] = None
+) -> Optional[float]:
+    """Meta calórica da ESTRATÉGIA num dia sem treino (sem gramas manuais nem ciclo): a referência dos avisos de
+    energia das gramas manuais no modo que soma o treino."""
+    base = replace(settings.plan_params(ffm_age_days), manual_macros=None, cycle_kinds=None)
+    return compute_daily_target(subject, base, DayContext(day=day), scale_bmr=scale_bmr).kcal_target.kcal
+
+
+def projection_tdee(
+    tdee: ee.TdeeResult, past_training_kcal: Sequence[Optional[float]], training_in_targets: bool = False
+) -> tuple[Optional[float], tuple[str, ...]]:
     """TDEE ESTÁVEL da projeção (decisão do líder, N2 rodada 2): não pode depender do treino do dia em que a
     prévia é aberta. Modo explícito: a base sem treino do dia (TMB × fator) mais a média do gasto de treino dos
     dias passados conhecidos (`PROJECTION_TRAINING_WINDOW_DAYS`); sem histórico de treino, só a base, com a
@@ -572,6 +620,10 @@ def projection_tdee(tdee: ee.TdeeResult, past_training_kcal: Sequence[Optional[f
     if bmr is None or fator is None:
         return tdee.kcal, ()
     base = bmr * fator
+    if training_in_targets:
+        # Gramas manuais que SOMAM o treino em carbo: o saldo de todo dia é a meta de repouso contra a base sem treino,
+        # então o treino não entra no TDEE da projeção (contaria duas vezes).
+        return base, ()
     conhecidos = [kcal for kcal in past_training_kcal if kcal is not None]
     if not conhecidos or not any(kcal > 0 for kcal in conhecidos):
         return base, (REASON_TDEE_WITHOUT_TRAINING,)

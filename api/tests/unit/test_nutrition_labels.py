@@ -105,7 +105,8 @@ def test_export_for_frontend():
     # L5b: + meal_parse (teto do texto e a decisão de cada item; a cota vem da API)
     # L6: + label_photo, label_legibilities, label_legibility_labels
     # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
-    assert len(bloco) == 75
+    # N2 rodada 4: + manual_training_modes, manual_training_mode_labels, manual_training_mode_hints, default_manual_training_mode
+    assert len(bloco) == 79
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {

@@ -58,6 +58,7 @@ from .domain.nutrition.plan import (
     PLAN_LIST_MAX,
     PROJECTION_TRAINING_WINDOW_DAYS,
     projection_tdee,
+    rest_day_strategy_kcal,
     training_kcal_of_day,
     check_cycle_floors,
     partial_week_warnings,
@@ -205,6 +206,7 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         macro_priority=payload.macro_priority,
         manual_targets=payload.manual_targets,
         cycle_days=payload.cycle_days,
+        manual_training_mode=payload.manual_training_mode,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -279,7 +281,12 @@ def _plan_checks(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> t
         entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
     comp = compute_day(entradas, replace(settings, manual_macros=None), hoje, hoje)
     sujeito = comp.subject.subject
-    checagem = check_plan_manual_targets(settings, sujeito, comp.target.kcal_target.kcal, comp.target.bmr.kcal)
+    referencia = (
+        rest_day_strategy_kcal(settings, sujeito, hoje, comp.subject.scale_bmr_kcal, comp.subject.ffm_age_days)
+        if settings.manual_adds_training
+        else comp.target.kcal_target.kcal
+    )
+    checagem = check_plan_manual_targets(settings, sujeito, referencia, comp.target.bmr.kcal)
     erros = list(manual_save_errors(checagem, sujeito))
     erros_ciclo, avisos_ciclo = check_cycle_floors(settings, sujeito, comp.subject.scale_bmr_kcal, comp.subject.ffm_age_days)
     erros.extend(erros_ciclo)
@@ -393,8 +400,13 @@ def _preview_payload(
         limitacoes.extend(comp.target.limitations)
     sujeito = hoje.subject.subject
     # O TDEE estável (não o do treino de hoje) vale para o aviso de ritmo e para a projeção.
-    tdee_estavel, premissas = projection_tdee(hoje.target.tdee, past_training)
-    manual = check_plan_manual_targets(hoje.settings, sujeito, hoje.target.kcal_target.kcal, hoje.target.bmr.kcal)
+    tdee_estavel, premissas = projection_tdee(hoje.target.tdee, past_training, hoje.settings.manual_adds_training)
+    referencia = (
+        rest_day_strategy_kcal(hoje.settings, sujeito, today, hoje.subject.scale_bmr_kcal, hoje.subject.ffm_age_days)
+        if hoje.settings.manual_adds_training
+        else hoje.target.kcal_target.kcal
+    )
+    manual = check_plan_manual_targets(hoje.settings, sujeito, referencia, hoje.target.bmr.kcal)
     erros_ciclo, avisos_ciclo = check_cycle_floors(hoje.settings, sujeito, hoje.subject.scale_bmr_kcal, hoje.subject.ffm_age_days)
     avisos = (
         *plan_warnings(hoje.settings, sujeito, tdee_estavel),

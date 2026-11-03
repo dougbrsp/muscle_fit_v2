@@ -6,6 +6,7 @@ import {
   ACTIVITY_LEVEL_OPTIONS,
   BMR_FORMULA_OPTIONS,
   DAY_KIND_OPTIONS,
+  MANUAL_TRAINING_MODE_OPTIONS,
   MACRO_PRIORITY_OPTIONS,
   PLAN_STATE_OPTIONS,
   PROTEIN_BASIS_OPTIONS,
@@ -71,7 +72,7 @@ export function PlanSummary({
     const { protein_g: p, carb_g: c, fat_g: g } = plan.manual_targets;
     linhas.push({
       label: 'Gramas manuais',
-      value: `Proteína ${formatNumberOrDash(p, 0)} g · Carboidrato ${formatNumberOrDash(c, 0)} g · Gordura ${formatNumberOrDash(g, 0)} g`,
+      value: `Proteína ${formatNumberOrDash(p, 0)} g · Carboidrato ${formatNumberOrDash(c, 0)} g · Gordura ${formatNumberOrDash(g, 0)} g (${nutritionLabel(MANUAL_TRAINING_MODE_OPTIONS, plan.manual_targets.training_mode) ?? '-'})`,
     });
   } else {
     linhas.push({

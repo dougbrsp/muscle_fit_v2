@@ -49,6 +49,10 @@ export const DAY_KIND_OPTIONS = optionsOf(NUTRITION.day_kinds, NUTRITION.day_kin
 /** Dias da semana do ciclo de carbo: código "0" (segunda) … "6" (domingo), rótulo do dono. */
 export const WEEKDAY_OPTIONS = optionsOf(Object.keys(NUTRITION.weekday_names), NUTRITION.weekday_names);
 export const DEFAULT_MACRO_PRIORITY: NutritionCode = NUTRITION.default_macro_priority;
+/** Gramas manuais e treino (N2 rodada 4): código, rótulo e explicação de cada modo, do dono. */
+export const MANUAL_TRAINING_MODE_OPTIONS = optionsOf(NUTRITION.manual_training_modes, NUTRITION.manual_training_mode_labels);
+export const MANUAL_TRAINING_MODE_HINTS: Readonly<Record<NutritionCode, string>> = NUTRITION.manual_training_mode_hints;
+export const DEFAULT_MANUAL_TRAINING_MODE: NutritionCode = NUTRITION.default_manual_training_mode;
 export const MEAL_SLOT_OPTIONS = optionsOf(NUTRITION.meal_slots, NUTRITION.meal_slot_labels);
 export const BMR_FORMULA_OPTIONS = optionsOf(NUTRITION.bmr_formulas, NUTRITION.bmr_formula_labels);
 export const TDEE_MODE_OPTIONS = optionsOf(NUTRITION.tdee_modes, NUTRITION.tdee_mode_labels);

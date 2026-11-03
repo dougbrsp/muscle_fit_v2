@@ -283,23 +283,23 @@ def test_plano_sem_gramas_manuais_nao_tem_checagem():
 # ---------------------------------------------------------------------------
 
 
-def test_default_avancado_do_bulking_cai_abaixo_do_piso_do_ritmo_e_so_avisa():
-    """Superávit 5% (default avançado), TDEE 2800, 12 kg de gordura, 80 kg dá cerca de 0,21%/semana,
-    abaixo do piso de 0,25%: a incoerência entre as faixas de superávit e de ritmo existe e NÃO recusa o plano."""
+def test_default_avancado_do_bulking_cabe_na_faixa_do_ritmo_e_nao_avisa():
+    """Superávit 5% (default avançado), TDEE 2800, 12 kg de gordura, 80 kg dá cerca de 0,21%/semana: antes ficava abaixo do
+    piso de 0,25% da faixa única; a faixa avançada (N2 rodada 4, mapa §81) o contém."""
     validacao = pl.build_plan_settings(strategy="bulking", advanced=True)
-    assert validacao.ok  # o plano é aceito
+    assert validacao.ok
     sujeito = replace(SUJEITO, body_fat_percent=15.0)  # 80 kg, 12 kg de gordura
     ritmo = st.weekly_rate_share_for(validacao.settings.strategy_params(), 2800, 80, 12.0)
-    piso, _teto = st.weekly_rate_share_range_for(S.BULKING)
-    assert ritmo is not None and ritmo < piso
-    assert pl.plan_warnings(validacao.settings, sujeito, 2800) == (pl.REASON_RATE_OUTSIDE_RANGE,)
+    piso, teto = st.weekly_rate_share_range_for(S.BULKING, True)
+    assert piso <= ritmo <= teto
+    assert pl.plan_warnings(validacao.settings, sujeito, 2800) == ()
 
 
 def test_ritmo_dentro_da_faixa_ou_outra_estrategia_nao_avisa():
     sujeito = replace(SUJEITO, body_fat_percent=15.0)
     normal = pl.build_plan_settings(strategy="bulking", surplus_share=0.10).settings  # ~0,42%/semana
     assert pl.plan_warnings(normal, sujeito, 2800) == ()
-    # Do outro lado: o teto do superávit não avançado (20%) implica ~0,83%/semana, acima do teto de 0,5%.
+    # Do outro lado: o teto do superávit não avançado (20%) implica ~0,83%/semana, acima do teto de 0,65%.
     teto = pl.build_plan_settings(strategy="bulking", surplus_share=0.20)
     assert teto.ok and pl.plan_warnings(teto.settings, sujeito, 2800) == (pl.REASON_RATE_OUTSIDE_RANGE,)
     assert pl.plan_warnings(pl.build_plan_settings(strategy="cutting").settings, sujeito, 2800) == ()

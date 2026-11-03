@@ -687,6 +687,19 @@
       "high_fat": "Gordura alta (carboidrato baixo)"
     },
     "default_macro_priority": "balanced",
+    "manual_training_modes": [
+      "fixed",
+      "add_training"
+    ],
+    "manual_training_mode_labels": {
+      "fixed": "Metas fixas todo dia",
+      "add_training": "Somar o treino do dia em carboidrato"
+    },
+    "manual_training_mode_hints": {
+      "fixed": "Os números que você digitou valem todos os dias; treino e estratégia não alteram essas metas.",
+      "add_training": "Os números valem para o dia sem treino e o gasto do treino do dia soma em carboidrato, pela conversão de energia do motor. Só vale com o gasto do treino à parte."
+    },
+    "default_manual_training_mode": "fixed",
     "range_statuses": [
       "within_range",
       "warning",

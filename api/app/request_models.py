@@ -141,6 +141,8 @@ class NutritionPlanSettingsIn(_StrictIn):
     # N2: prioridade de macros, gramas manuais (D6) e dias alto/normal/baixo (D5). O motor valida.
     macro_priority: Optional[str] = Field(default=None, max_length=24)
     manual_targets: Optional[dict[str, Any]] = None
+    # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
+    manual_training_mode: Optional[str] = Field(default=None, max_length=24)
     cycle_days: Optional[dict[str, Any]] = None
     # Legado: os clientes antigos ainda mandam; ignorado (o ciclo vem de `cycle_days`).
     carb_cycling_enabled: bool = False
