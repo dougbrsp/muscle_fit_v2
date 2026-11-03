@@ -45,7 +45,7 @@ def test_recusa_por_falta_de_tdee_e_por_gramas_contra_a_estrategia_mantem_o_cami
     sem_tdee = pl.project_plan_goal(_plano(goal_weight_kg=75.0), COM_GORDURA, None, HOJE, start_weight_kg=82.0)
     assert sem_tdee.status == ProjectionStatus.INSUFFICIENT_DATA and sem_tdee.reasons == (pl.REASON_MANUAL_MISSING_TDEE,)
     assert sem_tdee.progress_percent == pytest.approx(100 * 3 / 7) and sem_tdee.goal_kind == GoalKind.WEIGHT
-    contra = pl.project_plan_goal(_plano(goal_weight_kg=75.0), COM_GORDURA, 1500, HOJE, start_weight_kg=82.0)  # gramas ≈ 1.900 > 1.500
+    contra = pl.project_plan_goal(_plano(goal_weight_kg=75.0), COM_GORDURA, 1500, HOJE, start_weight_kg=82.0)  # gramas = 2.150 kcal > 1.500
     assert contra.status == ProjectionStatus.INCOHERENT and contra.reasons == (pl.REASON_MANUAL_AGAINST_STRATEGY,)
     assert contra.progress_percent == pytest.approx(100 * 3 / 7) and contra.weeks is None and contra.weekly_rate_share is None
 
