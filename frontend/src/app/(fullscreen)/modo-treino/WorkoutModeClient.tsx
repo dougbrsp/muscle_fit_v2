@@ -3,15 +3,15 @@
 import { Alert, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RecoverableError } from '@/components/RecoverableError';
 import { apiFetch } from '@/lib/api';
 import { useOfflineUser } from '@/lib/offline/use-offline-user';
 import type { PlanCardioResponse } from '@/lib/analytics-types';
 import { type StoredWorkoutModeSession, type WorkoutAiSummaryResult } from '@/lib/workout-mode-types';
-import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
+import { fetchWorkoutSummary } from '@/lib/workout-mode-ai';
 import {
   clearParkedSession,
   clearStoredSession,
@@ -71,11 +71,15 @@ export function WorkoutModeClient() {
   // COD-14: o mapa corporal da execução vem sob demanda; começa a baixar já na montagem.
   useEffect(preloadMuscleBodyMap, []);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<StoredWorkoutModeSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [exitOpen, { open: openExit, close: closeExit }] = useDisclosure(false);
   const [perSetAiEnabled, setPerSetAiEnabled] = useState(false);
   const [completion, setCompletion] = useState<CompletionState>(initialCompletionState);
+  // Número da conclusão em curso; sair do modal o invalida, para o resumo que
+  // chegar depois não atualizar estado de um modal já fechado.
+  const completionRunRef = useRef(0);
   // Vaga na barra do topo onde a execução desenha a linha de progresso.
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
@@ -117,9 +121,19 @@ export function WorkoutModeClient() {
     clearParkedSession();
     setSession(null);
     setCompletion({ open: true, loading: true, error: false, summary: null, workoutPlanId });
-    fetchWorkoutAiResult<WorkoutAiSummaryResult>(`/activities/${sessionId}/ai-summary/generate`, { method: 'POST' })
-      .then((result) => setCompletion((prev) => ({ ...prev, loading: false, error: false, summary: result.summary })))
-      .catch(() => setCompletion((prev) => ({ ...prev, loading: false, error: true, summary: null })));
+    const run = ++completionRunRef.current;
+    fetchWorkoutSummary(sessionId)
+      .then((result) => {
+        // O resumo já está salvo no servidor: quem saiu do modal e abriu o
+        // treino antes de ele ficar pronto (cache de 60s) passa a vê-lo.
+        queryClient.invalidateQueries({ queryKey: ['activity-detail', sessionId] });
+        if (run !== completionRunRef.current) return;
+        setCompletion((prev) => ({ ...prev, loading: false, error: false, summary: result.summary }));
+      })
+      .catch(() => {
+        if (run !== completionRunRef.current) return;
+        setCompletion((prev) => ({ ...prev, loading: false, error: true, summary: null }));
+      });
   }
 
   // Cardio do slot da ficha encerrada. Falha = o bloco só não aparece (o
@@ -132,6 +146,7 @@ export function WorkoutModeClient() {
   });
 
   function closeCompletionAndReturn() {
+    completionRunRef.current += 1;
     setCompletion(initialCompletionState);
     router.push('/registro-exercicios');
   }
@@ -227,7 +242,6 @@ export function WorkoutModeClient() {
         size="sm"
         centered
         closeOnClickOutside={!completion.loading}
-        withCloseButton={!completion.loading}
       >
         <Stack gap="sm">
           {completion.loading && (
@@ -254,7 +268,7 @@ export function WorkoutModeClient() {
             </Group>
           )}
           <CardioAfterStrength cardio={cardioQuery.data} />
-          <Button fullWidth radius="xl" disabled={completion.loading} onClick={closeCompletionAndReturn}>
+          <Button fullWidth radius="xl" onClick={closeCompletionAndReturn}>
             Voltar aos treinos
           </Button>
         </Stack>
