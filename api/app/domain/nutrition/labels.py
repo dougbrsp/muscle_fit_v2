@@ -17,12 +17,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final, Mapping
 
+from . import adaptive_tdee as atdee_mod
 from . import ai_usage as ai_usage_mod
 from . import bmr as bmr_mod
 from . import body_composition as bc_mod
 from . import carb_cycling as cc_mod
 from . import catalog as catalog_mod
 from . import daily_target as dt_mod
+from . import dashboard as dash_mod
 from . import diary as diary_mod
 from . import energy_expenditure as ee_mod
 from . import external_sources as ext_mod
@@ -628,6 +630,34 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"Transferência para o dia seguinte limitada a {_percent(wb_mod.MAX_DAILY_CARRYOVER_SHARE)} do alvo diário."
     ),
     wb_mod.CLAMP_WEEKLY_BANK: f"Banco da semana limitado a {_percent(wb_mod.MAX_WEEKLY_BANK_SHARE)} do alvo semanal.",
+    # Dashboard de nutrição (N5, `dashboard`) e gasto observado (`adaptive_tdee`).
+    dash_mod.EMPTY_NO_PLAN: "Sem plano de nutrição publicado: não há meta para comparar com o que você comeu.",
+    dash_mod.EMPTY_NO_GOAL: "O plano não tem peso-alvo nem % de gordura alvo: sem projeção de chegada.",
+    dash_mod.EMPTY_NO_WEIGHT: (
+        "Nenhuma pesagem de balança ou bioimpedância (Indicadores físicos) no período. Este painel só lê essas "
+        "pesagens: peso que está só no relógio ou no Intervals.icu não aparece aqui."
+    ),
+    dash_mod.EMPTY_NO_BIOIMPEDANCE: "Nenhuma bioimpedância no período: sem % de gordura nem massa muscular.",
+    dash_mod.EMPTY_FEW_LOGGED_DAYS: (
+        f"Menos de {dash_mod.FEW_LOGGED_DAYS} dias fechados com refeições de total completo desde o início do plano "
+        "(dentro do período): a aderência ainda diz pouco."
+    ),
+    dash_mod.EMPTY_DAYS_WITHOUT_TARGET: (
+        "Há dia(s) com refeição registrada e sem meta calculada (a meta nasce ao abrir o diário do dia): "
+        "ficam fora da aderência."
+    ),
+    atdee_mod.LIMIT_WINDOW_TOO_SHORT: (
+        f"Período curto para o gasto observado (mínimo de {atdee_mod.MIN_WINDOW_DAYS} dias)."
+    ),
+    atdee_mod.LIMIT_TOO_FEW_LOGGED_DAYS: (
+        f"Menos de {_percent(atdee_mod.MIN_LOGGED_DAYS_SHARE)} dos dias com refeições de total completo."
+    ),
+    atdee_mod.LIMIT_TOO_FEW_WEIGHTS: "Pesagens insuficientes para a tendência do peso.",
+    atdee_mod.LIMIT_WEIGHT_SPAN_TOO_SHORT: (
+        f"As pesagens cobrem menos de {atdee_mod.MIN_WEIGHT_SPAN_DAYS} dias entre a primeira e a última."
+    ),
+    atdee_mod.LIMIT_MISSING_FAT_MASS: "Sem massa gorda estimada para converter a variação do peso em energia.",
+    atdee_mod.LIMIT_FORMULA_TDEE_MISSING: "Sem gasto calculado pela fórmula para comparar com o observado.",
     # Meta lida pelo diário (L4, `daily_target.diary_target_action`).
     dt_mod.LIMIT_TARGET_BACKFILLED: (
         "Meta calculada depois que o dia congelou (ninguém abriu o diário a tempo), com os dados disponíveis no dia "

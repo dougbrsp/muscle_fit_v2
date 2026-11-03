@@ -59,7 +59,12 @@ from .manual_targets import (
 from .phases import (
     GoalProjection,
     ProjectionStatus,
+    REASON_INVALID_TARGET,
+    REASON_MISSING_BODY_FAT,
+    REASON_MISSING_TARGET,
+    REASON_MISSING_WEIGHT,
     REASON_RATE_OUTSIDE_RANGE,
+    REASON_TWO_TARGETS,
     project_goal,
     resolve_stop_body_fat,
     should_stop,
@@ -652,13 +657,15 @@ def project_plan_goal(
     tdee_kcal: Any = None,
     as_of: Optional[date] = None,
     premises: Sequence[str] = (),
+    start_weight_kg: Any = None,
+    start_body_fat_percent: Any = None,
 ) -> GoalProjection:
     """Projeção do alvo do plano (`phases.project_goal`) para o sujeito de hoje: peso-alvo OU %G
     alvo do plano (os dois ou nenhum voltam como dados insuficientes, com o motivo). Com gramas
     manuais o ritmo vem das kcal manuais contra o TDEE (cutting: o déficit; bulking: o superávit,
     que `strategy.weekly_rate_share_for` converte em ritmo); gramas que vão contra a estratégia
     devolvem `incoherent_with_strategy` e sem TDEE, dados insuficientes, sempre com o motivo."""
-    projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of)
+    projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of, start_weight_kg, start_body_fat_percent)
     # A premissa do TDEE só aparece quando ele entrou no ritmo projetado (bulking ou gramas manuais fora da manutenção).
     bulking_deriva = (
         settings.strategy == Strategy.BULKING
@@ -675,44 +682,77 @@ def project_plan_goal(
     return replace(projecao, reasons=(*projecao.reasons, *(p for p in premises if p not in projecao.reasons)))
 
 
-def _project_plan_goal(settings: PlanSettings, subject: Subject, tdee_kcal: Any, as_of: Optional[date]) -> GoalProjection:
+# Motivos do `project_goal` que não dependem do ritmo (nem das gramas): faltam peso, % de gordura ou alvo, ou o alvo é inválido.
+_TARGET_OR_SUBJECT_REASONS: Final[frozenset[str]] = frozenset(
+    {REASON_MISSING_WEIGHT, REASON_MISSING_BODY_FAT, REASON_MISSING_TARGET, REASON_TWO_TARGETS, REASON_INVALID_TARGET}
+)
+
+
+def _project_plan_goal(
+    settings: PlanSettings,
+    subject: Subject,
+    tdee_kcal: Any,
+    as_of: Optional[date],
+    start_weight_kg: Any = None,
+    start_body_fat_percent: Any = None,
+) -> GoalProjection:
+    def _projetar(params: StrategyParams) -> GoalProjection:
+        return project_goal(
+            params,
+            subject.weight_kg,
+            goal_weight_kg=settings.goal_weight_kg,
+            goal_body_fat_percent=settings.goal_body_fat_percent,
+            current_body_fat_percent=subject.body_fat_percent,
+            start_weight_kg=start_weight_kg,
+            start_body_fat_percent=start_body_fat_percent,
+            as_of=as_of,
+            tdee_kcal=tdee_kcal,
+            fat_mass_kg=resolved_fat_mass_kg(subject),
+        )
+
     params = settings.strategy_params()
-    if settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE:
-        tdee = positive_number(tdee_kcal)
-        massa_gorda = resolved_fat_mass_kg(subject)
-        if massa_gorda is None:
-            # Sem massa gorda não há densidade do tecido nem ritmo derivado: nunca cair no ritmo padrão.
-            return GoalProjection(
-                status=ProjectionStatus.INSUFFICIENT_DATA, goal_kind=None, reasons=(REASON_MANUAL_MISSING_FAT_MASS,)
-            )
-        if tdee is None:
-            return GoalProjection(
-                status=ProjectionStatus.INSUFFICIENT_DATA, goal_kind=None, reasons=(REASON_MANUAL_MISSING_TDEE,)
-            )
-        kcal = kcal_from_macros(*settings.manual_macros.as_tuple())
-        saldo = (kcal or 0.0) - tdee  # negativo = déficit
-        contra = saldo >= 0 if settings.strategy == Strategy.CUTTING else saldo <= 0
-        if contra:
-            return GoalProjection(
-                status=ProjectionStatus.INCOHERENT, goal_kind=None, reasons=(REASON_MANUAL_AGAINST_STRATEGY,)
-            )
-        if settings.strategy == Strategy.CUTTING:
-            kg_semana = weekly_kg_for_daily_kcal(-saldo, massa_gorda)
-            peso = positive_number(subject.weight_kg)
-            ritmo = kg_semana / peso if kg_semana is not None and peso is not None else None
-            params = replace(params, weekly_rate_share=ritmo)
-        else:
-            params = replace(params, surplus_share=saldo / tdee)
-    return project_goal(
-        params,
-        subject.weight_kg,
-        goal_weight_kg=settings.goal_weight_kg,
-        goal_body_fat_percent=settings.goal_body_fat_percent,
-        current_body_fat_percent=subject.body_fat_percent,
-        as_of=as_of,
-        tdee_kcal=tdee_kcal,
-        fat_mass_kg=resolved_fat_mass_kg(subject),
-    )
+    # Sempre pelo ritmo do plano primeiro: alvo já alcançado, alvo incoerente ou dado do sujeito/alvo faltando não
+    # dependem das gramas e valem como estão (com o `goal_kind`, o atual e o alvo).
+    base = _projetar(params)
+    if settings.manual_macros is None or settings.strategy == Strategy.MAINTENANCE:
+        return base
+    if base.status in (ProjectionStatus.GOAL_REACHED, ProjectionStatus.INCOHERENT) or (
+        base.status == ProjectionStatus.INSUFFICIENT_DATA and _TARGET_OR_SUBJECT_REASONS.intersection(base.reasons)
+    ):
+        return base
+
+    def _recusada(status: ProjectionStatus, motivo: str) -> GoalProjection:
+        # Mantém o que não depende das gramas (tipo do alvo, atual, alvo, % do caminho) e tira o que dependeria delas.
+        return replace(
+            base,
+            status=status,
+            reasons=(motivo,),
+            weeks=None,
+            eta_date=None,
+            weekly_rate_share=None,
+            is_minimum_estimate=False,
+        )
+
+    tdee = positive_number(tdee_kcal)
+    massa_gorda = resolved_fat_mass_kg(subject)
+    if massa_gorda is None:
+        # Sem massa gorda não há densidade do tecido nem ritmo derivado: nunca cair no ritmo padrão.
+        return _recusada(ProjectionStatus.INSUFFICIENT_DATA, REASON_MANUAL_MISSING_FAT_MASS)
+    if tdee is None:
+        return _recusada(ProjectionStatus.INSUFFICIENT_DATA, REASON_MANUAL_MISSING_TDEE)
+    kcal = kcal_from_macros(*settings.manual_macros.as_tuple())
+    saldo = (kcal or 0.0) - tdee  # negativo = déficit
+    contra = saldo >= 0 if settings.strategy == Strategy.CUTTING else saldo <= 0
+    if contra:
+        return _recusada(ProjectionStatus.INCOHERENT, REASON_MANUAL_AGAINST_STRATEGY)
+    if settings.strategy == Strategy.CUTTING:
+        kg_semana = weekly_kg_for_daily_kcal(-saldo, massa_gorda)
+        peso = positive_number(subject.weight_kg)
+        ritmo = kg_semana / peso if kg_semana is not None and peso is not None else None
+        params = replace(params, weekly_rate_share=ritmo)
+    else:
+        params = replace(params, surplus_share=saldo / tdee)
+    return _projetar(params)
 
 
 def check_cycle_floors(

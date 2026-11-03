@@ -16,6 +16,7 @@ import { WaterHungerInputs } from '@/components/nutrition/WaterHungerInputs';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { dashboardKeys } from '@/lib/nutrition-dashboard';
 import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
@@ -67,9 +68,16 @@ export function NutricaoClient() {
     retry: false,
   });
 
+  // Registrar, editar ou apagar refeição muda o diário (inclui o card de hoje, sob `diaryKeys.all`) e o painel.
+  const invalidarDiario = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: diaryKeys.all }),
+      qc.invalidateQueries({ queryKey: dashboardKeys.all }),
+    ]);
+
   const remover = useMutation({
     mutationFn: (meal: Meal) => deleteMeal(meal.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: diaryKeys.all }),
+    onSuccess: () => invalidarDiario(),
   });
 
   function abrirLeitura(modo: 'text' | 'photo') {
@@ -89,7 +97,7 @@ export function NutricaoClient() {
   }
 
   async function atualizar() {
-    await qc.invalidateQueries({ queryKey: diaryKeys.all });
+    await invalidarDiario();
   }
 
   const dia = dayQuery.data;

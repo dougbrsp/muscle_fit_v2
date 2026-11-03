@@ -2,12 +2,21 @@
 
 import { ActionIcon, Badge, Group, Paper, SimpleGrid, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight, IconHistory } from '@tabler/icons-react';
+import dynamic from 'next/dynamic';
+import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { NutritionLimitations } from './NutritionLimitations';
 import { ENERGY_NUTRIENT, nutritionNotice } from '@/lib/nutrition-constants';
 import { formatKcal, formatShareAsPercent, formatSignedKcal, formatTotal, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
+import { hasValues, weekBarRows } from '@/lib/nutrition-dashboard';
 import type { NutritionWeek, WeekDay } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
+
+// COD-14: recharts sob demanda; o placeholder tem a altura do gráfico (200).
+const WeekBars = dynamic(() => import('./NutritionCharts').then((m) => m.WeekBars), {
+  ssr: false,
+  loading: () => <ChartPlaceholder height={200} />,
+});
 
 type Props = {
   week: NutritionWeek | undefined;
@@ -70,6 +79,8 @@ function DayPill({ day, selected, today, onSelect }: { day: WeekDay; selected: b
 export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
   if (!week) return null;
   const { report } = week;
+  const linhasBarras = weekBarRows(week, weekdayShort);
+  const barras = hasValues(linhasBarras, (l) => l.consumido) || hasValues(linhasBarras, (l) => l.meta);
   return (
     <Stack gap="xs">
       <Group justify="space-between" wrap="nowrap">
@@ -94,6 +105,18 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           />
         ))}
       </SimpleGrid>
+      <Text size="xs" fw={700} tt="uppercase" c={BRAND.textMuted}>
+        Energia da semana: consumido × meta (kcal)
+      </Text>
+      {barras ? (
+        <div role="img" aria-label="Barras da semana: kcal consumidas e meta de cada dia. Os mesmos números estão nos cartões acima.">
+          <WeekBars rows={linhasBarras} />
+        </div>
+      ) : (
+        <Text size="sm" c="dimmed">
+          Sem refeições nem metas nesta semana: o gráfico aparece quando houver o que mostrar.
+        </Text>
+      )}
       <Group gap="lg" wrap="wrap">
         <Text size="sm" c={BRAND.textMuted}>
           Orçamento da semana: <b>{formatKcal(report.budget.kcal)}</b>

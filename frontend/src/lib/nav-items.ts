@@ -50,6 +50,7 @@ export const DASHBOARD_NAV_ITEMS: readonly NavItem[] = [
   { href: '/dashboard/musculos', label: 'Grupos musculares', icon: IconBodyScan },
   { href: '/dashboard/corpo', label: 'Corpo', icon: IconScale },
   { href: '/dashboard/cardio', label: 'Cardio', icon: IconRun },
+  { href: '/dashboard/nutricao', label: 'Nutrição', icon: IconApple },
   { href: '/dashboard/ciclo', label: 'Ciclo de treino', icon: IconRepeat },
   { href: '/dashboard/contexto', label: 'Contexto', icon: IconCalendarEvent },
   { href: '/dashboard/checkin', label: 'Check-in diário', icon: IconMoodSmile },

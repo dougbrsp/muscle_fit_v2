@@ -760,6 +760,9 @@ try:
     from app.nutrition_days import router as nutrition_days_router
     app.include_router(nutrition_meals_router)
     app.include_router(nutrition_days_router)
+    # Dashboard de nutricao (N5, mapa §82): agregacao da janela sobre os totais gravados.
+    from app.nutrition_dashboard import router as nutrition_dashboard_router
+    app.include_router(nutrition_dashboard_router)
 except Exception as exc:
     import logging
     logging.getLogger("fitness.nutrition_diary").exception(
