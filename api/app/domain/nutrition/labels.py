@@ -37,6 +37,7 @@ from . import meal_parse as meal_parse_mod
 from . import meal_photo as mp_mod
 from . import phases as phases_mod
 from . import plan as plan_mod
+from . import plan_suggestion as ps_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
 from .ai_usage import AiFeature
@@ -250,6 +251,7 @@ AI_FEATURE_LABELS: Final[Mapping[AiFeature, str]] = {
     AiFeature.MEAL_PARSE: "Leitura da refeição por IA",
     AiFeature.LABEL_PHOTO: "Leitura do rótulo por foto",
     AiFeature.MEAL_PHOTO: "Leitura da foto do prato",
+    AiFeature.PLAN_SUGGESTION: "Sugestão de metas por IA",
 }
 
 # O que a cota conta, no plural, para o texto do 429.
@@ -257,6 +259,7 @@ _AI_QUOTA_NOUNS: Final[Mapping[AiFeature, str]] = {
     AiFeature.MEAL_PARSE: "leituras de refeição por IA",
     AiFeature.LABEL_PHOTO: "leituras de rótulo por foto",
     AiFeature.MEAL_PHOTO: "análises de foto do prato",
+    AiFeature.PLAN_SUGGESTION: "sugestões de metas por IA",
 }
 
 
@@ -345,6 +348,7 @@ PLAN_STATE_LABELS: Final[Mapping[PlanState, str]] = {
 # campo de outra estratégia).
 PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     "strategy": "Estratégia",
+    ps_mod.FIELD_ADVANCED: "Nível avançado",
     "protein_g_per_kg": "Proteína (g/kg)",
     "fat_kcal_share": "Gordura (% das kcal)",
     "weekly_rate_share": "Ritmo de perda semanal",
@@ -536,6 +540,15 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     lp_mod.WARN_LABEL_ENERGY_FROM_KJ: "Valor energético lido só em kJ e convertido para kcal.",
     lp_mod.WARN_LABEL_NAME_MISSING: "O nome do produto não foi lido: digite o nome antes de salvar.",
+    # Sugestão de metas por IA (N6, `plan_suggestion`).
+    ps_mod.ERR_SUGGESTION_SHAPE: "A resposta da IA não veio na forma esperada.",
+    ps_mod.ERR_SUGGESTION_REASON_INVALID: "A resposta da IA trouxe um motivo fora da lista.",
+    ps_mod.ERR_SUGGESTION_STOP_REACHED: "A estratégia sugerida já atingiu o % de gordura de parada.",
+    ps_mod.ERR_SUGGESTION_REFUSED: (
+        "A sugestão da IA ficou fora das regras do motor e foi descartada. Nada mudou no formulário. Tente de novo."
+    ),
+    ps_mod.ERR_SUGGESTION_FAILED: "Não foi possível gerar a sugestão agora. Tente de novo em instantes.",
+    ps_mod.ERR_SUGGESTION_DISPATCH_FAILED: "Não foi possível iniciar a sugestão agora. Tente de novo em instantes.",
     # Foto do prato (L10, `meal_photo`): upload, worker e revisão da leitura.
     mp_mod.ERR_MEAL_PHOTO_EMPTY: "A foto chegou vazia. Escolha a foto de novo.",
     mp_mod.ERR_MEAL_PHOTO_TOO_LARGE: (
@@ -706,6 +719,10 @@ PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     cc_mod.ERR_DUPLICATE_WEEKDAY: "Dia da semana repetido: {field}.",
     cc_mod.ERR_INVALID_DAY_KIND: "Tipo de dia inválido ({field}).",
     plan_mod.ERR_PARAM_NOT_APPLICABLE: "{field}: não se aplica a esta estratégia.",
+    # Sugestão de metas por IA (N6): o que a revisão do motor recusou.
+    ps_mod.ERR_SUGGESTION_FIELD_FORBIDDEN: "{field}: a IA não pode sugerir este campo.",
+    ps_mod.ERR_SUGGESTION_FIELD_MISSING: "{field}: faltou na resposta da IA.",
+    ps_mod.ERR_SUGGESTION_FIELD_INVALID: "{field}: valor inválido na resposta da IA.",
     bc_mod.LIMIT_BODY_FAT_OUT_OF_RANGE: "% de gordura fora da faixa plausível ({field}).",
     # Catálogo de alimentos (L3a): `<código>:<campo da RDC 429>`.
     catalog_mod.ERR_MISSING_FIELD: "{field}: obrigatório.",
@@ -741,6 +758,62 @@ _FIELD_LABELS: Final[Mapping[str, str]] = {
     **labels_by_code(BODY_FAT_METHOD_LABELS),
     **RDC429_FIELD_LABELS,
 }
+
+
+# Sugestão de metas por IA (N6): o único "texto" da IA que chega à tela é um destes rótulos.
+PLAN_SUGGESTION_REASON_LABELS: Final[Mapping[ps_mod.SuggestionReason, str]] = {
+    ps_mod.SuggestionReason.GOAL_WEIGHT_BELOW_CURRENT: "O peso-alvo está abaixo do peso atual.",
+    ps_mod.SuggestionReason.GOAL_WEIGHT_ABOVE_CURRENT: "O peso-alvo está acima do peso atual.",
+    ps_mod.SuggestionReason.BODY_FAT_ABOVE_GOAL: "O % de gordura está acima do alvo.",
+    ps_mod.SuggestionReason.BODY_FAT_BELOW_GOAL: "O % de gordura está abaixo do alvo.",
+    ps_mod.SuggestionReason.WEIGHT_TREND_DOWN: "O peso vem caindo nas últimas semanas.",
+    ps_mod.SuggestionReason.WEIGHT_TREND_UP: "O peso vem subindo nas últimas semanas.",
+    ps_mod.SuggestionReason.WEIGHT_TREND_STABLE: "O peso está estável nas últimas semanas.",
+    ps_mod.SuggestionReason.HIGH_TRAINING_LOAD: "O gasto de treino recente é alto.",
+    ps_mod.SuggestionReason.LOW_TRAINING_LOAD: "O gasto de treino recente é baixo.",
+    ps_mod.SuggestionReason.PRESERVE_LEAN_MASS: "Prioriza preservar a massa magra.",
+    ps_mod.SuggestionReason.CONSERVATIVE_PACE: "Ritmo conservador, mais fácil de sustentar.",
+    ps_mod.SuggestionReason.LIMITED_DATA: "Há poucos dados recentes: confira com atenção.",
+}
+PLAN_SUGGESTION_NO_VALUE: Final[str] = "—"
+
+
+def _decimal_text(value: float) -> str:
+    return f"{value:g}".replace(".", ",")
+
+
+def plan_suggestion_value_label(field: str, value: Any) -> str:
+    """Valor de um campo da sugestão como texto para a tela: a tela não converte nem formata regra."""
+    if value is None:
+        return PLAN_SUGGESTION_NO_VALUE
+    if field == "strategy":
+        return STRATEGY_LABELS[strategy_mod.Strategy(value)]
+    if field == plan_mod.FIELD_MACRO_PRIORITY:
+        return MACRO_PRIORITY_LABELS[strategy_mod.MacroPriority(value)]
+    if field in (ps_mod.FIELD_ADVANCED, ps_mod.FIELD_MANUAL_ACTIVE):
+        return "Sim" if value else "Não"
+    if field.endswith("_share"):
+        return f"{_decimal_text(round(float(value) * ps_mod.SHARE_TO_PERCENT, ps_mod.PERCENT_LABEL_DECIMALS))}%"
+    if field.endswith("_g_per_kg"):
+        return f"{_decimal_text(float(value))} g/kg"
+    return _decimal_text(float(value))
+
+
+def plan_suggestion_change_items(changes: Any) -> list[dict[str, Any]]:
+    """"O que mudou" para a tela: rótulo do campo e os dois valores já em texto."""
+    return [
+        {
+            "field": mudanca.field,
+            "label": field_label(mudanca.field),
+            "before_label": plan_suggestion_value_label(mudanca.field, mudanca.before),
+            "after_label": plan_suggestion_value_label(mudanca.field, mudanca.after),
+        }
+        for mudanca in changes
+    ]
+
+
+def plan_suggestion_reason_items(reasons: Any) -> list[dict[str, str]]:
+    return [{"code": motivo.value, "label": PLAN_SUGGESTION_REASON_LABELS[motivo]} for motivo in reasons]
 
 
 def field_label(code: str) -> str:

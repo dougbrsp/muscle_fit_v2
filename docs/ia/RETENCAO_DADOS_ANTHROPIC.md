@@ -12,6 +12,7 @@ para o provedor Anthropic, que entra **por feature** no cliente único (`api/app
 | `cardio_agent` | contexto compacto de cardio (plano, recuperação, wellness do Intervals, cardio realizado) + RAG |
 | `label_photo` | **foto** do rótulo nutricional (bloco `image` base64) + instruções |
 | `meal_photo` | **foto** do prato (bloco `image` base64, reencodada no aparelho, sem EXIF/XMP) + instruções |
+| `plan_suggestion` | perfil sem identificador (sexo, idade, altura, peso, % de gordura, atividade), TMB e gasto do motor, tendência do peso, treino agregado e o formulário do plano |
 | `insights` | pacote de visão geral montado pelo servidor + pergunta do usuário + RAG |
 | `meal_parse` | texto livre da refeição digitado pelo usuário (delimitado como dado) |
 | `exercise_description` | dados do exercício do catálogo (nome, equipamento, músculos) |

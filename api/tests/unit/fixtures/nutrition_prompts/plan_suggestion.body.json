@@ -1,0 +1,99 @@
+{
+  "_prompt_version": "nutrition-plan-suggestion-v1",
+  "input": "<<PROMPT 4288 chars, sha256 90c445c55c46d1d4>>",
+  "max_output_tokens": 16384,
+  "model": "gpt-5.4-mini",
+  "store": false,
+  "text": {
+    "format": {
+      "name": "nutrition_plan_suggestion",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "advanced": {
+            "type": "boolean"
+          },
+          "carb_min_g_per_kg": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fat_kcal_share": {
+            "type": "number"
+          },
+          "macro_priority": {
+            "enum": [
+              "balanced",
+              "fixed_protein",
+              "high_carb",
+              "high_fat"
+            ],
+            "type": "string"
+          },
+          "meals_per_day": {
+            "type": "integer"
+          },
+          "protein_g_per_kg": {
+            "type": "number"
+          },
+          "reason_codes": {
+            "items": {
+              "enum": [
+                "goal_weight_below_current",
+                "goal_weight_above_current",
+                "body_fat_above_goal",
+                "body_fat_below_goal",
+                "weight_trend_down",
+                "weight_trend_up",
+                "weight_trend_stable",
+                "high_training_load",
+                "low_training_load",
+                "preserve_lean_mass",
+                "conservative_pace",
+                "limited_data"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "strategy": {
+            "enum": [
+              "cutting",
+              "bulking",
+              "maintenance"
+            ],
+            "type": "string"
+          },
+          "surplus_share": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "weekly_rate_share": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "strategy",
+          "advanced",
+          "protein_g_per_kg",
+          "fat_kcal_share",
+          "weekly_rate_share",
+          "surplus_share",
+          "carb_min_g_per_kg",
+          "macro_priority",
+          "meals_per_day",
+          "reason_codes"
+        ],
+        "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+    }
+  }
+}

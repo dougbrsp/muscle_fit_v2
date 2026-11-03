@@ -156,6 +156,32 @@ class NutritionPlanIn(NutritionPlanSettingsIn):
     user_id: Optional[int] = None
 
 
+class PlanSuggestionCurrentIn(_StrictIn):
+    """Estado do formulário do plano, para a sugestão por IA (N6). Só comparação e contexto: faixas e códigos são
+    do motor (`plan_suggestion.normalize_current`); o que aqui não for código conhecido é descartado lá."""
+
+    strategy: Optional[str] = Field(default=None, max_length=16)
+    advanced: bool = False
+    protein_g_per_kg: Optional[Number] = None
+    fat_kcal_share: Optional[Number] = None
+    weekly_rate_share: Optional[Number] = None
+    surplus_share: Optional[Number] = None
+    carb_min_g_per_kg: Optional[Number] = None
+    macro_priority: Optional[str] = Field(default=None, max_length=24)
+    meals_per_day: Optional[Number] = None
+    goal_weight_kg: Optional[Number] = None
+    goal_body_fat_percent: Optional[Number] = None
+    # As gramas manuais estão ligadas? Só o sinal: as gramas não vão para a IA.
+    manual_targets: bool = False
+
+
+class PlanSuggestionIn(_StrictIn):
+    """POST /nutrition/plan-suggestion (N6): sem `user_id`, o próprio usuário; outro exige admin/PT."""
+
+    user_id: Optional[int] = None
+    current: PlanSuggestionCurrentIn = Field(default_factory=PlanSuggestionCurrentIn)
+
+
 class NutritionPlanPublishIn(_StrictIn):
     """POST /nutrition/plans/{id}/publish (admin/PT). Concorrência otimista: o
     id da vigente que a tela viu (ou null, se o aluno não tinha). Obrigatório
@@ -372,6 +398,8 @@ __all__ = [
     "NutritionPlanIn",
     "NutritionPlanPublishIn",
     "NutritionPlanSettingsIn",
+    "PlanSuggestionCurrentIn",
+    "PlanSuggestionIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

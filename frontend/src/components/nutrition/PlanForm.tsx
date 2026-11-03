@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
 import { PlanCycleDays, flatCycleDays, type CycleDaysValue } from './PlanCycleDays';
+import { PlanSuggestionPanel } from './PlanSuggestionPanel';
 import { createNutritionPlan, nutritionErrorInfo, updateNutritionPlan } from '@/lib/nutrition-api';
 import {
   ACTIVITY_LEVEL_OPTIONS,
@@ -36,6 +37,7 @@ import {
   manualTargetsPayload,
   manualTrainingModePayload,
 } from '@/lib/nutrition-plan-form';
+import { suggestionCurrentPayload, suggestionFormPatch, type PlanSuggestionFields } from '@/lib/nutrition-plan-suggestion';
 import type { NutritionPlan, NutritionPlanSaved, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
@@ -181,6 +183,8 @@ type Props = {
  */
 export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FormState>(() => initialState(plan));
+  // O formulário antes da sugestão da IA, para o "Desfazer".
+  const [antesDaSugestao, setAntesDaSugestao] = useState<FormState | null>(null);
   const ranges = strategyFormRanges(form.strategy);
   const surplusRange = form.advanced ? ranges?.surplus_share_advanced : ranges?.surplus_share;
   // Quais campos a estratégia usa: `STRATEGY_ONLY_FIELDS` do motor (via JSON gerado).
@@ -204,31 +208,42 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
     update({ advanced, surplusPercent: asField(shareToPercent(superavit ?? null)) });
   }
 
+  const payload: NutritionPlanSettingsPayload = {
+    strategy: form.strategy ?? '',
+    advanced: usaSuperavit ? form.advanced : false,
+    protein_g_per_kg: inputNumberOrNull(form.protein),
+    fat_kcal_share: percentToShare(form.fatPercent),
+    weekly_rate_share: usaRitmo ? percentToShare(form.ratePercent) : null,
+    surplus_share: usaSuperavit ? percentToShare(form.surplusPercent) : null,
+    carb_min_g_per_kg: usaCarboMinimo ? inputNumberOrNull(form.carbMin) : null,
+    bmr_formula: form.bmrFormula,
+    tdee_mode: form.tdeeMode,
+    activity_level: form.activityLevel,
+    meals_per_day: inputNumberOrNull(form.meals),
+    goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
+    goal_weight_kg: inputNumberOrNull(form.goalWeight),
+    macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
+    manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
+    manual_training_mode: manualTrainingModePayload(
+      form.manualOn,
+      modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
+    ),
+    cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
+    notes: form.notes.trim() ? form.notes.trim() : null,
+  };
+
+  function applySuggestion(fields: PlanSuggestionFields) {
+    setAntesDaSugestao(form);
+    update(suggestionFormPatch(fields));
+  }
+
+  function undoSuggestion() {
+    if (antesDaSugestao) setForm(antesDaSugestao);
+    setAntesDaSugestao(null);
+  }
+
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload: NutritionPlanSettingsPayload = {
-        strategy: form.strategy ?? '',
-        advanced: usaSuperavit ? form.advanced : false,
-        protein_g_per_kg: inputNumberOrNull(form.protein),
-        fat_kcal_share: percentToShare(form.fatPercent),
-        weekly_rate_share: usaRitmo ? percentToShare(form.ratePercent) : null,
-        surplus_share: usaSuperavit ? percentToShare(form.surplusPercent) : null,
-        carb_min_g_per_kg: usaCarboMinimo ? inputNumberOrNull(form.carbMin) : null,
-        bmr_formula: form.bmrFormula,
-        tdee_mode: form.tdeeMode,
-        activity_level: form.activityLevel,
-        meals_per_day: inputNumberOrNull(form.meals),
-        goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
-        goal_weight_kg: inputNumberOrNull(form.goalWeight),
-        macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
-        manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
-        manual_training_mode: manualTrainingModePayload(
-          form.manualOn,
-          modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
-        ),
-        cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
-        notes: form.notes.trim() ? form.notes.trim() : null,
-      };
       return plan
         ? updateNutritionPlan(plan.id, payload)
         : createNutritionPlan(userId == null ? payload : { ...payload, user_id: userId });
@@ -241,6 +256,14 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
 
   return (
     <Stack gap="md">
+      <PlanSuggestionPanel
+        userId={userId}
+        current={suggestionCurrentPayload(payload, form.manualOn)}
+        draft={form.strategy ? (userId == null ? payload : { ...payload, user_id: userId }) : null}
+        onApply={applySuggestion}
+        onUndo={undoSuggestion}
+      />
+
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
         <Select
           label="Estratégia"

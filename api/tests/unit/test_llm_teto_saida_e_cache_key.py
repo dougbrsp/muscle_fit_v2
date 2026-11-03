@@ -75,7 +75,8 @@ def test_toda_feature_com_eval_tem_teto():
     # nos casos do IA-11.
     # A foto do prato (L10) tem snapshot proprio pelo mesmo motivo; o eval pago dela
     # ainda nao existe (pendencia registrada no mapa, §80).
-    eval_proprio = {AiFeature.LABEL_PHOTO.value, AiFeature.MEAL_PHOTO.value}
+    # A sugestão de metas (N6) idem: snapshot próprio e eval pago pendente (mapa §84).
+    eval_proprio = {AiFeature.LABEL_PHOTO.value, AiFeature.MEAL_PHOTO.value, AiFeature.PLAN_SUGGESTION.value}
     assert set(LLM_MAX_OUTPUT_TOKENS) - eval_proprio == set(llm_casos.FEATURES)
 
 

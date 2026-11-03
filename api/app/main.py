@@ -750,6 +750,19 @@ except Exception as exc:
     )
 # END nutrition meal photo router
 
+# BEGIN nutrition plan suggestion router (metas sugeridas pela IA, N6; sem migracao)
+# A IA so sugere parametros dentro das faixas do motor (D3), com a cota `plan_suggestion`
+# (ai_usage_log, 085). O plano continua sendo gravado em POST /nutrition/plans.
+try:
+    from app.nutrition_plan_suggestion import router as nutrition_plan_suggestion_router
+    app.include_router(nutrition_plan_suggestion_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_plan_suggestion").exception(
+        "Nutrition plan suggestion router nao foi carregado. Erro: %s", exc
+    )
+# END nutrition plan suggestion router
+
 # BEGIN nutrition diary routers (plano de nutricao, Lote L4, migracoes 082/083)
 # Diario de refeicoes: refeicoes com os nutrientes congelados por item (motor
 # `meal_math`/`diary`), preview sem gravar, dia (meta, totais, agua/fome, kcal

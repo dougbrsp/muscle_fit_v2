@@ -70,7 +70,7 @@ from .exercise_set_evaluation_ai import (
 )
 from .exercise_summary_ai import ExerciseSummaryError, summarize_exercise
 from .goal_prompt_context import non_default_goals
-from .domain.nutrition.ai_usage import MEAL_PARSE_JOB_TYPE
+from .domain.nutrition.ai_usage import MEAL_PARSE_JOB_TYPE, PLAN_SUGGESTION_JOB_TYPE
 from .insights_core import JOB_TYPE_INSIGHTS, dispatch_insights
 from .observability import EVENT_AI_SET_EVAL_CLAMPED, EVENT_WORKOUT_SUMMARY_REUSED, log_event
 from .set_types import WORKING
@@ -115,6 +115,11 @@ def dispatch_workout_ai_generation(
         from .nutrition_meal_parse_worker import dispatch_meal_parse
 
         return dispatch_meal_parse(payload, user_id, ai_usage_id)
+    if job_type == PLAN_SUGGESTION_JOB_TYPE:
+        # Import tardio, pelo mesmo motivo (N6).
+        from .nutrition_plan_suggestion_ai import dispatch_plan_suggestion
+
+        return dispatch_plan_suggestion(payload, user_id, ai_usage_id)
     raise HTTPException(status_code=400, detail=f"job_type desconhecido: {job_type!r}")
 
 

@@ -22,6 +22,8 @@ Configuracao (env, lida A CADA chamada; `<FEATURE>` = rotulo `feature` do
   `EFFORTS_WITHOUT_THINKING`, ver `thinking_config`).
 - `LLM_FALLBACK_PROVIDER_<FEATURE>` ou `LLM_FALLBACK_PROVIDER` (global): `openai`
   liga o fallback (ver `fallback_eligible`). Vazio = sem fallback.
+- `FEATURE_CONFIG_SOURCE`: feature que usa as envs de OUTRA (o limite de 4 KB das envs da
+  Lambda nao comporta mais envs por feature); nenhuma env das demais muda.
 - `ANTHROPIC_API_KEY`: populada no cold start por `secrets_bootstrap` a partir
   de `ANTHROPIC_API_KEY_SECRET_ARN` (`musclefit/claude-api-key`).
 
@@ -34,7 +36,8 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Final, Optional, Sequence
+from types import MappingProxyType
+from typing import Any, Final, Mapping, Optional, Sequence
 
 from . import llm_anthropic_schema, openai_client
 from .observability import log_event
@@ -83,6 +86,13 @@ ANTHROPIC_MODEL_HAIKU: Final[str] = "claude-haiku-5-5"
 # Features de texto com rotulo `feature` (mesmas chaves do teto de saida, mais
 # o gerador legado `workout_plan`, que nao tem teto medido).
 LLM_FEATURES: Final[tuple[str, ...]] = (*LLM_MAX_OUTPUT_TOKENS.keys(), "workout_plan")
+
+# Feature que le as envs de outra (provedor, modelo, esforco, raciocinio e fallback): o bloco de
+# envs de LLM do Terraform esta no limite do orcamento (`LLM_ENV_BUDGET_BYTES`, teste de paridade
+# em `test_llm_provider_infra_paridade.py`). Custo da escolha: nao da para virar `plan_suggestion`
+# de provedor sem virar `meal_parse` junto; se isso for preciso, colapsar as envs em um JSON. O
+# rotulo `feature` do `llm.usage` e o teto de saida continuam os da propria feature.
+FEATURE_CONFIG_SOURCE: Final[Mapping[str, str]] = MappingProxyType({"plan_suggestion": "meal_parse"})
 
 # Features curtas e de alto volume: Haiku e esforco baixo. As demais
 # (raciocinio): Sonnet e esforco medio.
@@ -157,7 +167,8 @@ _BILLING_MESSAGE = re.compile(r"credit balance|usage limits?|billing", re.IGNORE
 
 
 def feature_env(prefix: str, feature: Optional[str]) -> str:
-    return prefix + re.sub(r"[^A-Z0-9]", "_", (feature or "").upper())
+    origem = FEATURE_CONFIG_SOURCE.get(feature or "", feature or "")
+    return prefix + re.sub(r"[^A-Z0-9]", "_", origem.upper())
 
 
 def _env(name: str) -> str:
@@ -668,6 +679,7 @@ __all__ = [
     "EFFORTS",
     "EFFORTS_WITHOUT_THINKING",
     "EVENT_LLM_FALLBACK",
+    "FEATURE_CONFIG_SOURCE",
     "LIGHT_FEATURES",
     "LLM_FEATURES",
     "PROVIDERS",

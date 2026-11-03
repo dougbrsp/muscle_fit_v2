@@ -9,7 +9,7 @@ rótulo) consomem; o acesso ao banco é de `api/app/nutrition_ai_quota.py`.
 
 Features (`AiFeature`): `meal_parse` (L5b, texto da refeição → itens),
 `label_photo` (L6, foto do rótulo → RDC 429) e `meal_photo` (L10, foto do prato →
-itens; cota D11 de 2026-11-02). O L5b/L6/L10 usa o mesmo código como rótulo `feature` do
+itens; cota D11 de 2026-11-02) e `plan_suggestion` (N6, sugestão de metas, mapa §84). O L5b/L6/L10 usa o mesmo código como rótulo `feature` do
 evento `llm.usage` e como chave de `openai_client.LLM_OUTPUT_OBSERVED_MAX_TOKENS`
 (um vocabulário só).
 
@@ -66,6 +66,7 @@ class AiFeature(str, Enum):
     MEAL_PARSE = "meal_parse"
     LABEL_PHOTO = "label_photo"
     MEAL_PHOTO = "meal_photo"
+    PLAN_SUGGESTION = "plan_suggestion"
 
 
 class AiUsageStatus(str, Enum):
@@ -90,11 +91,15 @@ MEAL_PARSE_DAILY_QUOTA: Final[int] = 30
 LABEL_PHOTO_DAILY_QUOTA: Final[int] = 10
 # Decisão D11 do usuário (2026-11-02, plano da reformulação da nutrição).
 MEAL_PHOTO_DAILY_QUOTA: Final[int] = 10
+# Sugestão de metas por IA (N6, mapa §84). Default de desenho: o plano muda poucas vezes; cinco tentativas dão
+# para comparar estratégias sem virar um laço de custo.
+PLAN_SUGGESTION_DAILY_QUOTA: Final[int] = 5
 DAILY_QUOTA: Final[Mapping[AiFeature, int]] = MappingProxyType(
     {
         AiFeature.MEAL_PARSE: MEAL_PARSE_DAILY_QUOTA,
         AiFeature.LABEL_PHOTO: LABEL_PHOTO_DAILY_QUOTA,
         AiFeature.MEAL_PHOTO: MEAL_PHOTO_DAILY_QUOTA,
+        AiFeature.PLAN_SUGGESTION: PLAN_SUGGESTION_DAILY_QUOTA,
     }
 )
 
@@ -110,11 +115,13 @@ DAILY_QUOTA: Final[Mapping[AiFeature, int]] = MappingProxyType(
 MEAL_PARSE_JOB_TYPE = "nutrition-meal-parse"
 LABEL_PHOTO_JOB_TYPE = "nutrition-label-ocr"
 MEAL_PHOTO_JOB_TYPE = "nutrition-meal-photo"
+PLAN_SUGGESTION_JOB_TYPE = "nutrition-plan-suggestion"
 FEATURE_JOB_TYPE: Final[Mapping[AiFeature, str]] = MappingProxyType(
     {
         AiFeature.MEAL_PARSE: MEAL_PARSE_JOB_TYPE,
         AiFeature.LABEL_PHOTO: LABEL_PHOTO_JOB_TYPE,
         AiFeature.MEAL_PHOTO: MEAL_PHOTO_JOB_TYPE,
+        AiFeature.PLAN_SUGGESTION: PLAN_SUGGESTION_JOB_TYPE,
     }
 )
 
@@ -388,6 +395,8 @@ __all__ = [
     "MODEL_LONG_PROMPT_PRICES",
     "MODEL_PRICES_USD_CENTS_PER_MTOKEN",
     "OPEN_STATUS",
+    "PLAN_SUGGESTION_DAILY_QUOTA",
+    "PLAN_SUGGESTION_JOB_TYPE",
     "PRICES_CHECKED_ON",
     "PRICE_SOURCE_URL",
     "SWEEP_PRESUMED_STATUS",

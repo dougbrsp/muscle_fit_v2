@@ -127,6 +127,9 @@ LLM_OUTPUT_CAP_ROUNDING_TOKENS = 1_024
 # `meal_photo` (nutricao L10, `ai_usage.AiFeature.MEAL_PHOTO`): SEM eval pago
 #   ainda; herda o observado do `meal_parse`, que tem o mesmo item por alimento.
 #   O teto efetivo e o piso, com folga para o teto de itens do diario.
+# `plan_suggestion` (nutricao N6, `ai_usage.AiFeature.PLAN_SUGGESTION`): SEM eval pago
+#   ainda; a saida e um objeto de poucos campos, menor que a de `label_photo`, que ela
+#   herda. O teto efetivo e o piso.
 LLM_OUTPUT_OBSERVED_MAX_TOKENS: dict[str, int] = {
     "set_evaluation": 600,
     "exercise_summary": 500,
@@ -139,6 +142,7 @@ LLM_OUTPUT_OBSERVED_MAX_TOKENS: dict[str, int] = {
     "meal_parse": 426,
     "label_photo": 256,
     "meal_photo": 426,
+    "plan_suggestion": 256,
 }
 
 

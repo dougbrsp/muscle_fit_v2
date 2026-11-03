@@ -24,7 +24,7 @@ DONO = Path(ai.__file__)
 
 
 def test_features_e_status_do_plano():
-    assert [f.value for f in AiFeature] == ["meal_parse", "label_photo", "meal_photo"]
+    assert [f.value for f in AiFeature] == ["meal_parse", "label_photo", "meal_photo", "plan_suggestion"]
     assert [s.value for s in AiUsageStatus] == ["pending", "succeeded", "failed"]
     assert ai.TERMINAL_STATUSES == {AiUsageStatus.SUCCEEDED, AiUsageStatus.FAILED}
     assert nutrition.ai_usage is ai  # reexportado pelo pacote
@@ -82,7 +82,12 @@ def test_count_or_none(valor, esperado):
 def test_cota_por_feature_vem_das_constantes_nomeadas_do_plano():
     # Plano §8.3: texto 30/dia, rótulo 10/dia (defaults de desenho).
     assert ai.MEAL_PARSE_DAILY_QUOTA == 30 and ai.LABEL_PHOTO_DAILY_QUOTA == 10
-    assert dict(ai.DAILY_QUOTA) == {AiFeature.MEAL_PARSE: 30, AiFeature.LABEL_PHOTO: 10, AiFeature.MEAL_PHOTO: 10}
+    assert dict(ai.DAILY_QUOTA) == {
+        AiFeature.MEAL_PARSE: 30,
+        AiFeature.LABEL_PHOTO: 10,
+        AiFeature.MEAL_PHOTO: 10,
+        AiFeature.PLAN_SUGGESTION: 5,
+    }
     assert set(ai.DAILY_QUOTA) == set(AiFeature)  # toda feature tem cota
     assert ai.daily_quota("label_photo") == ai.LABEL_PHOTO_DAILY_QUOTA
     with pytest.raises(TypeError):
@@ -119,6 +124,7 @@ def test_job_type_de_cada_feature_e_o_do_plano():
         AiFeature.MEAL_PARSE: "nutrition-meal-parse",
         AiFeature.LABEL_PHOTO: "nutrition-label-ocr",
         AiFeature.MEAL_PHOTO: "nutrition-meal-photo",
+        AiFeature.PLAN_SUGGESTION: "nutrition-plan-suggestion",
     }
     assert set(ai.FEATURE_JOB_TYPE) == set(AiFeature)
     assert len(set(ai.FEATURE_JOB_TYPE.values())) == len(AiFeature)
@@ -128,7 +134,7 @@ def test_job_type_de_cada_feature_e_o_do_plano():
     assert ai.feature_for_job_type("periodization") is None and ai.feature_for_job_type(None) is None
 
 
-@pytest.mark.parametrize("nome", ["MEAL_PARSE_JOB_TYPE", "LABEL_PHOTO_JOB_TYPE", "MEAL_PHOTO_JOB_TYPE"])
+@pytest.mark.parametrize("nome", ["MEAL_PARSE_JOB_TYPE", "LABEL_PHOTO_JOB_TYPE", "MEAL_PHOTO_JOB_TYPE", "PLAN_SUGGESTION_JOB_TYPE"])
 def test_job_type_e_constante_que_o_teste_do_m73_resolve(nome):
     """`test_m73_async_jobs_worker_lost` resolve `create_job(<CONSTANTE>)` lendo
     `NOME = "valor"` (sem anotação) dos módulos de `api/app`."""

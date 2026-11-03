@@ -23,6 +23,10 @@
 # meal_photo (foto do prato, nutricao L10, decisao D1 de 2026-11-02) nasce no Haiku
 # com o esforco da label_photo e fallback openai, ainda SEM eval pago proprio.
 #
+# plan_suggestion (sugestao de metas, nutricao N6, decisao D3) NAO publica env propria: le as de
+# meal_parse (`llm_anthropic.FEATURE_CONFIG_SOURCE`), porque o bloco de envs esta no limite do
+# orcamento (LLM_ENV_BUDGET_BYTES). Entrar em llm_features nao gera env: ela esta fora dos mapas.
+#
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
 # `anthropic`, o codigo nao as le. O apply so muda env das Lambdas.
@@ -152,6 +156,7 @@ locals {
     "meal_parse",
     "label_photo",
     "meal_photo",
+    "plan_suggestion",
     "workout_plan",
   ]
 
