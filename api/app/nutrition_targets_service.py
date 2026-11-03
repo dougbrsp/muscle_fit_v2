@@ -71,7 +71,8 @@ PUBLISHED = "published"
 # Colunas do plano que viram `PlanSettings` (nomes da 078).
 PLAN_SETTINGS_COLUMNS = (
     "strategy, advanced, bmr_formula, activity_level, training_kcal_mode, goal_body_fat_percent, goal_weight_kg, "
-    "weekly_rate_share, surplus_share, protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day"
+    "weekly_rate_share, surplus_share, protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, "
+    "macro_priority, manual_targets_json, carb_cycling_json"
 )
 
 # `FOR SHARE`: dentro da transação, a leitura dos planos espera uma publicação em
@@ -176,6 +177,11 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     """`PlanSettings` de uma linha de `nutrition_plans`. Linha gravada já passou
     pela validação; se a faixa do motor mudar depois, o orquestrador avisa
     (`param_out_of_range`) em vez de recusar o plano publicado."""
+    manual = _json_value(row.get("manual_targets_json"))
+    modo_manual = None
+    if isinstance(manual, dict):  # o modo mora junto das gramas no JSON (sem coluna nova)
+        manual = dict(manual)
+        modo_manual = manual.pop("training_mode", None)
     validacao = build_plan_settings(
         strategy=row.get("strategy"),
         advanced=bool(int(row.get("advanced") or 0)),
@@ -190,6 +196,10 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         meals_per_day=int(row["meals_per_day"]) if row.get("meals_per_day") is not None else None,
         goal_body_fat_percent=_float(row.get("goal_body_fat_percent")),
         goal_weight_kg=_float(row.get("goal_weight_kg")),
+        macro_priority=row.get("macro_priority"),
+        manual_targets=manual,
+        manual_training_mode=modo_manual,
+        cycle_days=_json_value(row.get("carb_cycling_json")),
     )
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")
@@ -319,7 +329,7 @@ def inputs_fingerprint(plan_id: int, comp: DayComputation) -> str:
         "plan_id": int(plan_id),
         "engine_version": ENGINE_VERSION,
         "subject": comp.subject.to_dict(),
-        "plan": comp.settings.to_dict(),
+        "plan": comp.settings.fingerprint_dict(),
         "day_context": comp.context.to_dict(),
     }
     texto = json.dumps(entradas, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":"))

@@ -84,22 +84,79 @@ def test_o_router_esta_no_app_real_da_api_core():
 # ---------------------------------------------------------------------------
 
 
+TERCEIRO = 9  # usuário comum que NÃO é dono do plano do ALUNO
+
+
 @pytest.mark.parametrize(
     ("metodo", "caminho", "corpo"),
     [
         ("get", f"/nutrition/plans?user_id={ALUNO}", None),
         ("post", "/nutrition/plans", {"user_id": ALUNO, "strategy": "maintenance"}),
-        ("put", "/nutrition/plans/1", {"strategy": "maintenance"}),
-        ("delete", "/nutrition/plans/1", None),
-        ("post", "/nutrition/plans/1/preview", None),
-        ("post", "/nutrition/plans/1/publish", {"expected_current_id": None}),
         ("post", "/nutrition/targets/recompute", {"user_id": ALUNO, "date_from": HOJE.isoformat()}),
+        ("get", f"/nutrition/cycle-days/from-template?user_id={ALUNO}", None),
     ],
 )
-def test_aluno_comum_nao_gerencia_planos(db, metodo, caminho, corpo):
-    cliente = _client("regular", user_id=ALUNO)
+def test_usuario_comum_nao_alcanca_o_plano_de_outro_por_user_id(db, metodo, caminho, corpo):
+    """D2: usuário comum opera só o próprio plano; `user_id` alheio é 403."""
+    cliente = _client("regular", user_id=TERCEIRO)
     kwargs = {"json": corpo} if corpo is not None else {}
     assert getattr(cliente, metodo)(caminho, **kwargs).status_code == 403
+    assert db.plans == {}
+
+
+@pytest.mark.parametrize(
+    ("metodo", "caminho", "corpo"),
+    [
+        ("put", "/nutrition/plans/{id}", {"strategy": "cutting"}),
+        ("delete", "/nutrition/plans/{id}", None),
+        ("post", "/nutrition/plans/{id}/preview", None),
+        ("post", "/nutrition/plans/{id}/publish", {"expected_current_id": None}),
+    ],
+)
+def test_usuario_comum_nao_alcanca_o_plano_de_outro_por_id(db, metodo, caminho, corpo):
+    """Por id de plano o alheio é 404, igual ao inexistente: o id não revela que existe."""
+    plano_id = db.add_plan(ALUNO)
+    antes = dict(db.plans[plano_id])
+    cliente = _client("regular", user_id=TERCEIRO)
+    kwargs = {"json": corpo} if corpo is not None else {}
+    resposta = getattr(cliente, metodo)(caminho.format(id=plano_id), **kwargs)
+    assert resposta.status_code == 404
+    assert resposta.json()["detail"]["error"] == "plan_not_found"
+    assert db.plans[plano_id] == antes and db.targets == {}
+
+
+def test_usuario_comum_cria_edita_e_publica_o_proprio_plano(db):
+    """D2: o próprio usuário passa por criar, editar, ver o preview e publicar."""
+    cliente = _client("regular", user_id=ALUNO)
+    criado = cliente.post("/nutrition/plans", json={"strategy": "maintenance"})  # sem user_id = o próprio
+    assert criado.status_code == 201, criado.text
+    plano = criado.json()
+    assert plano["user_id"] == ALUNO and plano["created_by"] == ALUNO
+    assert cliente.put(f"/nutrition/plans/{plano['id']}", json={"strategy": "maintenance", "protein_g_per_kg": 1.8}).status_code == 200
+    assert cliente.get("/nutrition/plans").json()["user"]["id"] == ALUNO
+    assert cliente.post(f"/nutrition/plans/{plano['id']}/preview").status_code == 200
+    publicado = _publicar(cliente, plano["id"], None)
+    assert publicado.status_code == 200, publicado.text
+    assert publicado.json()["plan"]["state"] == "current"
+    assert cliente.post("/nutrition/targets/recompute", json={"date_from": HOJE.isoformat()}).status_code == 200
+
+
+def test_usuario_comum_pode_apagar_o_proprio_rascunho(db):
+    cliente = _client("regular", user_id=ALUNO)
+    plano = cliente.post("/nutrition/plans", json={"strategy": "maintenance"}).json()
+    assert cliente.delete(f"/nutrition/plans/{plano['id']}").status_code == 200
+    assert db.plans == {}
+
+
+@pytest.mark.parametrize("papel", ["admin", "personal_trainer"])
+def test_admin_e_personal_continuam_operando_o_plano_do_aluno(db, papel):
+    cliente = _client(papel, user_id=1)
+    plano = _novo_rascunho(cliente)
+    assert plano["user_id"] == ALUNO and plano["created_by"] == 1
+    assert cliente.put(f"/nutrition/plans/{plano['id']}", json={"strategy": "maintenance", "protein_g_per_kg": 1.8}).status_code == 200
+    assert cliente.post(f"/nutrition/plans/{plano['id']}/preview").status_code == 200
+    assert _publicar(cliente, plano["id"], None).status_code == 200
+    assert cliente.get(f"/nutrition/plans?user_id={ALUNO}").status_code == 200
 
 
 def test_personal_trainer_gerencia_qualquer_aluno_sem_vinculo(db):
@@ -128,7 +185,9 @@ def test_cria_rascunho_com_os_defaults_do_motor(admin, db):
     [
         ({"protein_g_per_kg": st.MAINT_PROTEIN_G_PER_KG_RANGE[1] + 1}, "param_out_of_range:protein_g_per_kg"),
         ({"weekly_rate_share": st.CUT_WEEKLY_RATE_SHARE_DEFAULT}, "param_not_applicable:weekly_rate_share"),
-        ({"carb_cycling_enabled": True}, "carb_cycling_unavailable"),
+        ({"cycle_days": {str(i): "high" for i in range(7)}}, "carb_cycle_all_days_same_extreme"),
+        ({"macro_priority": "keto"}, "invalid_code:macro_priority"),
+        ({"manual_targets": {"protein_g": 10, "carb_g": 10, "fat_g": 1}}, "manual_blocked_below:kcal"),
         ({"strategy": "keto"}, "invalid_code:strategy"),
     ],
 )

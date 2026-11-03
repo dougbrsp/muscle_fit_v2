@@ -49,7 +49,7 @@ def test_bulking_usa_o_superavit_do_plano_quando_ha_tdee_e_massa_gorda():
     p = ph.project_goal(BULK, 80.0, goal_weight_kg=84.0, tdee_kcal=2800.0, fat_mass_kg=20.0)
     assert p.weekly_rate_share == pytest.approx(0.00360, abs=2e-5)
     sem_dados = ph.project_goal(BULK, 80.0, goal_weight_kg=84.0)
-    assert sem_dados.weekly_rate_share == st.BULK_WEEKLY_RATE_SHARE_RANGE[0]
+    assert sem_dados.weekly_rate_share == st.BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT == 0.0025
     assert p.weeks < sem_dados.weeks
 
 

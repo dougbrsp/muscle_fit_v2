@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -44,6 +44,8 @@ class FakeNutritionDB:
         self.writes: list[str] = []
         self.batches: list[int] = []
         self.locks: list[tuple[str, int]] = []
+        # Modelos de treino: id -> {"name", "slots": [(weekday | None, slot_type)]} (rota "puxar do Modelo").
+        self.templates: dict[int, dict[str, Any]] = {}
 
     # --- helpers de cenário -------------------------------------------------
     def add_weight(self, user_id: int, day: date, kg: float, **extra: Any) -> None:
@@ -70,6 +72,7 @@ class FakeNutritionDB:
             "training_kcal_mode": "explicit_training", "goal_body_fat_percent": None, "goal_weight_kg": None,
             "weekly_rate_share": None, "surplus_share": None, "protein_g_per_kg": Decimal("2.00"),
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
+            "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
             "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }
@@ -174,6 +177,12 @@ class FakeCursor:
         if sql == svc._UPSERT_SQL:
             self._upsert(p)
             return self._result([])
+        if sql == plans_mod._TEMPLATE_NAME_SQL:
+            modelo = db.templates.get(int(p[0]))
+            return self._result([{"name": modelo["name"]}] if modelo else [])
+        if sql == plans_mod._TEMPLATE_SLOTS_SQL:
+            modelo = db.templates.get(int(p[0]))
+            return self._result([{"weekday": dia, "slot_type": tipo} for dia, tipo in (modelo["slots"] if modelo else [])])
         if sql == "SELECT NOW() AS agora":
             return self._result([{"agora": db.now}])
         if sql == plans_mod._INSERT_SQL:
@@ -189,7 +198,10 @@ class FakeCursor:
             plano = db.plans.get(int(p[0]))
             return self._result([plano] if plano else [])
         if sql == plans_mod._BY_USER_SQL:
-            return self._result(sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"]))
+            linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"])
+            return self._result(linhas[: int(p[1])])
+        if sql == plans_mod._DRAFT_COUNT_SQL:
+            return self._result([{"n": sum(1 for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1])}])
         if sql == plans_mod._CURRENT_FOR_UPDATE_SQL:
             db.locks.append(("current", p[0]))
             return self._result([{"id": r["id"]} for r in db.plans.values()
@@ -199,6 +211,7 @@ class FakeCursor:
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == status:
                 plano.update(dict(zip(plans_mod._SETTINGS_WRITE_COLUMNS, valores)))
+                plano["updated_at"] = db.now + timedelta(seconds=len(db.writes) + 1)  # o banco atualiza updated_at
                 self.rowcount = 1
                 db.writes.append(f"update plan {plano_id}")
             return self._result([])
@@ -217,8 +230,14 @@ class FakeCursor:
                     self.rowcount += 1
                     db.writes.append(f"supersede plan {plano['id']}")
             return self._result([])
-        if sql == plans_mod._PUBLISH_SQL:
+        if sql in (plans_mod._PUBLISH_SQL, plans_mod._PUBLISH_IF_UNCHANGED_SQL):
+            versao_lida = None
+            if sql == plans_mod._PUBLISH_IF_UNCHANGED_SQL:
+                *p, versao_lida = p
+                p = tuple(p)
             status, inicio, publicado, por, versao, plano_id, rascunho = p
+            if versao_lida is not None and db.plans.get(int(plano_id), {}).get("updated_at") != versao_lida:
+                return self._result([])
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == rascunho:
                 vigentes = [r for r in db.plans.values() if r["user_id"] == plano["user_id"] and r["status"] == status

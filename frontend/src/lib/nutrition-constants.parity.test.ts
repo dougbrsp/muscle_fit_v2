@@ -11,6 +11,7 @@ import {
   DAY_KIND_OPTIONS,
   GOAL_KIND_OPTIONS,
   MACRO_PRIORITY_OPTIONS,
+  MANUAL_TRAINING_MODE_OPTIONS,
   PROJECTION_STATUS_OPTIONS,
   RANGE_STATUS_OPTIONS,
   DEFAULT_BMR_FORMULA,
@@ -77,6 +78,7 @@ const PARES: ReadonlyArray<Par> = [
   [PROTEIN_BASIS_OPTIONS, N.protein_bases, N.protein_basis_labels],
   [DAY_KIND_OPTIONS, N.day_kinds, N.day_kind_labels],
   [MACRO_PRIORITY_OPTIONS, N.macro_priorities, N.macro_priority_labels],
+  [MANUAL_TRAINING_MODE_OPTIONS, N.manual_training_modes, N.manual_training_mode_labels],
   [RANGE_STATUS_OPTIONS, N.range_statuses, N.range_status_labels],
   [GOAL_KIND_OPTIONS, N.goal_kinds, N.goal_kind_labels],
   [PROJECTION_STATUS_OPTIONS, N.projection_statuses, N.projection_status_labels],
@@ -188,7 +190,6 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
     expect(fieldAppliesToStrategy('protein_g_per_kg', N.strategies[0])).toBe(true);
     expect(NUTRITION_NOTICES).toBe(N.notices);
     for (const codigo of [
-      'carb_cycling_unavailable',
       'scale_bmr_deviation',
       'phase_should_stop',
       // Diário (L4): selos e dicas com o texto das limitações do motor.

@@ -28,7 +28,25 @@ export type NutritionPlanSettings = {
   goal_body_fat_percent: number | null;
   goal_weight_kg: number | null;
   carb_cycling_enabled: boolean;
+  /** Prioridade de macros (N2); código de `MACRO_PRIORITY_OPTIONS`. */
+  macro_priority: NutritionCode;
+  /** Gramas manuais do dia (D6) ou null. */
+  manual_targets: NutritionManualTargets | null;
+  /** Dias alto/normal/baixo (D5): chave = dia 0..6 (segunda = 0), valor = código de `DAY_KIND_OPTIONS`. */
+  cycle_days: Record<string, NutritionCode> | null;
 };
+
+/** Gramas manuais de proteína, carboidrato e gordura. */
+export type NutritionManualTargets = {
+  protein_g: number;
+  carb_g: number;
+  fat_g: number;
+  /** Código de `MANUAL_TRAINING_MODE_OPTIONS`: metas fixas todo dia ou somar o treino do dia em carboidrato. */
+  training_mode: NutritionCode;
+};
+
+/** Gramas manuais como o formulário envia: campo vazio vai `null` e a API recusa com o código do motor. */
+export type NutritionManualTargetsInput = { protein_g: number | null; carb_g: number | null; fat_g: number | null };
 
 /** `GET /nutrition/plans` (itens), `POST/PUT` e `plan` das demais respostas. */
 export type NutritionPlan = NutritionPlanSettings & {
@@ -52,6 +70,9 @@ export type NutritionPlanUser = { id: number; username: string; full_name: strin
 
 export type NutritionPlanListResponse = { user: NutritionPlanUser; items: NutritionPlan[] };
 
+/** `POST/PUT /nutrition/plans`: o plano e os avisos do motor (gramas manuais fora da faixa salvam com aviso, D6). */
+export type NutritionPlanSaved = NutritionPlan & { warnings: NutritionLimitation[] };
+
 /**
  * Corpo de `PUT /nutrition/plans/{id}` (`NutritionPlanSettingsIn`, `extra="forbid"`).
  * Campo `null` = default da estratégia no motor. Faixas e códigos são
@@ -71,21 +92,25 @@ export type NutritionPlanSettingsPayload = {
   meals_per_day: number | null;
   goal_body_fat_percent: number | null;
   goal_weight_kg: number | null;
-  carb_cycling_enabled: boolean;
+  macro_priority: NutritionCode;
+  manual_targets: NutritionManualTargetsInput | null;
+  /** Como as gramas manuais convivem com o treino; null quando não há gramas manuais. */
+  manual_training_mode: NutritionCode | null;
+  cycle_days: Record<string, NutritionCode> | null;
   notes: string | null;
 };
 
-/** Corpo de `POST /nutrition/plans` (`NutritionPlanIn`). */
-export type NutritionPlanPayload = NutritionPlanSettingsPayload & { user_id: number };
+/** Corpo de `POST /nutrition/plans` (`NutritionPlanIn`); sem `user_id`, o próprio usuário. */
+export type NutritionPlanPayload = NutritionPlanSettingsPayload & { user_id?: number };
 
 /** Corpo de `POST /nutrition/plans/{id}/publish` (`NutritionPlanPublishIn`): obrigatório, pode ser null. */
-export type NutritionPlanPublishPayload = { expected_current_id: number | null };
+export type NutritionPlanPublishPayload = { expected_current_id: number | null; expected_updated_at?: string | null };
 
 /** Janela de materialização do motor (`daily_target.TargetWindow`). */
 export type NutritionTargetWindow = { date_from: string; date_to: string; create_until: string };
 
 /** Corpo de `POST /nutrition/targets/recompute` (`NutritionTargetsRecomputeIn`). */
-export type NutritionRecomputePayload = { user_id: number; date_from: string; date_to: string | null };
+export type NutritionRecomputePayload = { user_id?: number; date_from: string; date_to: string | null };
 
 /** Sujeito do dia (`subject.ResolvedSubject.to_dict`). */
 export type NutritionSubject = {
@@ -151,6 +176,8 @@ export type NutritionTargetDetail = NutritionDayTarget & {
     limitations: string[];
   };
   macros: Record<string, unknown>;
+  /** Diferença REAL entre a meta do dia e o gasto total (negativa = déficit), já com gramas manuais, ciclo e prioridade. */
+  kcal_delta: number | null;
   protein_per_meal_g: number | null;
 };
 
@@ -173,7 +200,74 @@ export type NutritionPlanPreview = {
   target: NutritionTargetDetail;
   goal: NutritionGoal;
   week: NutritionDayTarget[];
+  /** Dias (ISO) que a publicação de hoje de fato cria: do dia de hoje ao fim da semana. */
+  publish_days: string[];
   limitations: NutritionLimitation[];
+  /** Projeção até o alvo do plano (`phases.project_goal`), toda calculada pela API. */
+  projection: NutritionProjection;
+  /** Bloqueios do motor (salvar já os recusaria): a tela desabilita Publicar com o motivo. */
+  blocking: NutritionLimitation[];
+  can_publish: boolean;
+  /** Avisos que não impedem salvar nem publicar (ritmo derivado fora da faixa, gramas fora da faixa). */
+  warnings: NutritionLimitation[];
+  /** Checagem das gramas manuais contra o seu peso (null sem gramas manuais). */
+  manual_check: NutritionManualCheck | null;
+};
+
+/** `phases.GoalProjection.to_dict` + os motivos rotulados. */
+export type NutritionProjection = {
+  /** Código de `PROJECTION_STATUS_OPTIONS`. */
+  status: NutritionCode;
+  goal_kind: NutritionCode | null;
+  current: number | null;
+  target: number | null;
+  target_weight_kg: number | null;
+  weeks: number | null;
+  eta_date: string | null;
+  progress_percent: number | null;
+  weekly_rate_share: number | null;
+  reasons: string[];
+  reason_items: NutritionLimitation[];
+  /** Ritmo semanal em % do peso, pronto (calculado pela API). */
+  weekly_rate_percent: number | null;
+  /** Alvo de %G supõe a massa magra atual constante: o prazo é um limite inferior (otimista). */
+  is_minimum_estimate: boolean;
+};
+
+/** `manual_targets.FieldCheck.to_dict`. */
+export type NutritionManualField = {
+  field: string;
+  value: number | null;
+  /** Código de `RANGE_STATUS_OPTIONS`. */
+  status: NutritionCode;
+  metric: string | null;
+  metric_value: number | null;
+  recommended: number[] | null;
+  codes: string[];
+  /** Texto pt-BR de cada código (avisos e bloqueios do motor). */
+  code_items: NutritionLimitation[];
+  label: string;
+  base: string | null;
+};
+
+/** `manual_targets.ManualTargetsCheck.to_dict`. */
+export type NutritionManualCheck = {
+  kcal: number | null;
+  fields: NutritionManualField[];
+  status: NutritionCode;
+  can_save: boolean;
+  limitations: string[];
+};
+
+/** `GET /nutrition/cycle-days/from-template` ("puxar do Modelo", D5). */
+export type NutritionCycleFromTemplate = {
+  user_id: number;
+  template: { id: number; name: string | null } | null;
+  /** Dias 0..6 (segunda = 0) com treino no Modelo. */
+  training_weekdays: number[] | null;
+  cycle_days: Record<string, NutritionCode> | null;
+  cycles: boolean;
+  notes: NutritionLimitation[];
 };
 
 /** `detail` do 422 do preview/publish: dados do aluno que faltam. */

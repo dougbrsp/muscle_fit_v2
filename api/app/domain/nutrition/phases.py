@@ -291,6 +291,8 @@ class GoalProjection:
             "eta_date": self.eta_date.isoformat() if self.eta_date else None,
             "progress_percent": self.progress_percent,
             "weekly_rate_share": self.weekly_rate_share,
+            # Ritmo em % do peso por semana, pronto para a tela.
+            "weekly_rate_percent": None if self.weekly_rate_share is None else self.weekly_rate_share * PERCENT,
             "reasons": list(self.reasons),
             "is_minimum_estimate": self.is_minimum_estimate,
         }
@@ -338,8 +340,8 @@ def project_goal(
     Exatamente um alvo (peso ou %G). O ritmo (fração do peso por semana) é o informado em
     `weekly_rate_share`, que precisa estar na faixa da estratégia (senão
     `REASON_MISSING_RATE`), ou o de `strategy.weekly_rate_share_for` (cutting: o do plano;
-    bulking: o do superávit do plano quando há `tdee_kcal`, peso e `fat_mass_kg`, senão o piso
-    da faixa de ganho). Manutenção não move o peso: só "atingido" (dentro da tolerância) ou
+    bulking: o do superávit do plano quando há `tdee_kcal`, peso e `fat_mass_kg`, senão
+    `BULK_WEEKLY_RATE_SHARE_PROJECTION_DEFAULT`, o literal próprio de 0,25%/semana). Manutenção não move o peso: só "atingido" (dentro da tolerância) ou
     incoerente. Alvo do lado errado da estratégia é incoerente, salvo se o ponto de partida mostra
     que o alvo já foi ultrapassado no sentido certo. Passa de `PROJECTION_MAX_WEEKS`: sem prazo."""
     strategy = params.strategy
@@ -401,7 +403,7 @@ def project_goal(
         return _result(ProjectionStatus.INCOHERENT, reasons=(REASON_TARGET_AGAINST_STRATEGY,))
 
     if weekly_rate_share is not None:
-        ritmo = _explicit_rate(weekly_rate_share, weekly_rate_share_range_for(strategy))
+        ritmo = _explicit_rate(weekly_rate_share, weekly_rate_share_range_for(strategy, params.advanced))
     else:
         ritmo = positive_number(weekly_rate_share_for(params, tdee_kcal, peso, fat_mass_kg))
     if ritmo is None or ritmo >= 1.0:
@@ -420,7 +422,7 @@ def project_goal(
         motivos.append(REASON_MISSING_START)
     elif progresso is None:
         motivos.append(REASON_START_WRONG_SIDE)
-    faixa_ritmo = weekly_rate_share_range_for(strategy)
+    faixa_ritmo = weekly_rate_share_range_for(strategy, params.advanced)
     if weekly_rate_share is None and faixa_ritmo is not None and not faixa_ritmo[0] <= ritmo <= faixa_ritmo[1]:
         motivos.append(REASON_RATE_OUTSIDE_RANGE)  # o ritmo do plano é projetado como está; só se avisa
     if kind == GoalKind.BODY_FAT:

@@ -330,3 +330,35 @@ def distribute_week_over_mean(
         return WeekDistribution(days=metas, kinds=tipos, multipliers=mult, limitations=mult.limitations)
     dias = tuple(_day_target(replace(meta, carb_g=media), mult.by_kind[kind]) for meta, kind in zip(metas, tipos))
     return WeekDistribution(days=dias, kinds=tipos, multipliers=mult, limitations=mult.limitations)
+
+
+# ---------------------------------------------------------------------------
+# Ciclo dia a dia sobre a base do plano (N2, D5)
+# ---------------------------------------------------------------------------
+
+
+def apply_cycle_over_base(
+    target: MacroTargets, base: MacroTargets, kind: DayKind, kinds: Sequence[DayKind], weight_kg: Any = None
+) -> tuple[MacroTargets, tuple[str, ...]]:
+    """Meta de UM dia do tipo `kind` quando o ciclo é aplicado dia a dia (a materialização).
+
+    `target` é a meta do dia sem ciclo (com o treino do dia, se o gasto é explícito) e `base`
+    é a meta do mesmo dia SEM o treino (a base do plano, igual em todos os dias da semana
+    enquanto o aluno e o plano são os mesmos). O carbo do dia é `target.carb_g` mais
+    `base.carb_g × (multiplicador do tipo − 1)`; proteína e gordura ficam como estão e a kcal
+    é recalculada por Atwater. Como os sete multiplicadores de `week_multipliers` somam 7, a
+    soma semanal do que o ciclo move é zero, qualquer que seja o treino de cada dia e mesmo
+    com dias futuros desconhecidos ou já congelados: cada dia só depende de si e do plano, e
+    o carbo do treino entra por cima, sem ser redistribuído. Se o piso de carbo muda o
+    multiplicador de um dia para outro (peso ou base diferentes), a soma da semana pode
+    desviar do exato (só quando o piso prende).
+
+    Atwater: a kcal do dia é RECALCULADA pelas gramas (`kcal_from_macros`), então a kcal da meta com ciclo é a
+    do dia sem ciclo mais 4 kcal por grama de carbo movido (a de uma meta que já não fechava por Atwater, como a
+    de `kcal_below_protein_and_fat`, passa a fechar). A invariante é a soma semanal do carbo, não a da kcal-alvo."""
+    if not target.computable or not base.computable:
+        return target, (LIMIT_TARGET_NOT_COMPUTABLE,)
+    mult = week_multipliers(tuple(kinds), base.carb_g, weight_kg)
+    carbo = max(float(target.carb_g) + float(base.carb_g) * (mult.by_kind[kind] - 1.0), 0.0)  # type: ignore[arg-type]
+    kcal = kcal_from_macros(target.protein_g, carbo, target.fat_g)
+    return replace(target, carb_g=carbo, kcal=kcal, fiber_g=fiber_target_g(kcal)), mult.limitations

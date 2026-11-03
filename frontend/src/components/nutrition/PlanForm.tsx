@@ -4,12 +4,20 @@ import { Button, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text, Te
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
+import { PlanCycleDays, flatCycleDays, type CycleDaysValue } from './PlanCycleDays';
 import { createNutritionPlan, nutritionErrorInfo, updateNutritionPlan } from '@/lib/nutrition-api';
 import {
   ACTIVITY_LEVEL_OPTIONS,
   BMR_FORMULA_OPTIONS,
+  DAY_KIND_OPTIONS,
   DEFAULT_BMR_FORMULA,
+  DEFAULT_MACRO_PRIORITY,
+  DEFAULT_MANUAL_TRAINING_MODE,
+  MANUAL_TRAINING_MODES_BY_TDEE_MODE,
+  MANUAL_TRAINING_MODE_HINTS,
+  MANUAL_TRAINING_MODE_OPTIONS,
   DEFAULT_TDEE_MODE,
+  MACRO_PRIORITY_OPTIONS,
   NUTRITION_FORM_RANGES,
   PROTEIN_BASIS_OPTIONS,
   SEX_OPTIONS,
@@ -17,16 +25,22 @@ import {
   TDEE_MODE_OPTIONS,
   fieldAppliesToStrategy,
   nutritionLabel,
-  nutritionNotice,
   strategyFormRanges,
   type NutritionCode,
   type StrategyFormRanges,
 } from '@/lib/nutrition-constants';
 import { inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
-import type { NutritionPlan, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
+import {
+  cycleDaysPayload,
+  macroPriorityPayload,
+  manualTargetsPayload,
+  manualTrainingModePayload,
+} from '@/lib/nutrition-plan-form';
+import type { NutritionPlan, NutritionPlanSaved, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
 type NumberField = number | string;
+
 
 type FormState = {
   strategy: NutritionCode | null;
@@ -42,8 +56,19 @@ type FormState = {
   meals: NumberField;
   goalBodyFat: NumberField;
   goalWeight: NumberField;
+  macroPriority: NutritionCode;
+  manualOn: boolean;
+  manualMode: NutritionCode;
+  manualProtein: NumberField;
+  manualCarb: NumberField;
+  manualFat: NumberField;
+  cycleOn: boolean;
+  cycleDays: CycleDaysValue;
   notes: string;
 };
+
+/** Tipo "normal" do dia (código do motor em `DAY_KIND_OPTIONS`). */
+const NORMAL_DAY_KIND: NutritionCode = DAY_KIND_OPTIONS.find((tipo) => tipo.value === 'normal')?.value ?? '';
 
 function asField(value: number | null | undefined): NumberField {
   return value == null ? '' : value;
@@ -78,6 +103,14 @@ function initialState(plan: NutritionPlan | null): FormState {
       meals: asField(plan.meals_per_day),
       goalBodyFat: asField(plan.goal_body_fat_percent),
       goalWeight: asField(plan.goal_weight_kg),
+      macroPriority: plan.macro_priority ?? DEFAULT_MACRO_PRIORITY,
+      manualOn: plan.manual_targets != null,
+      manualMode: plan.manual_targets?.training_mode ?? DEFAULT_MANUAL_TRAINING_MODE,
+      manualProtein: asField(plan.manual_targets?.protein_g),
+      manualCarb: asField(plan.manual_targets?.carb_g),
+      manualFat: asField(plan.manual_targets?.fat_g),
+      cycleOn: plan.cycle_days != null,
+      cycleDays: { ...flatCycleDays(NORMAL_DAY_KIND), ...(plan.cycle_days ?? {}) },
       notes: plan.notes ?? '',
     };
   }
@@ -95,6 +128,14 @@ function initialState(plan: NutritionPlan | null): FormState {
     meals: '',
     goalBodyFat: '',
     goalWeight: '',
+    macroPriority: DEFAULT_MACRO_PRIORITY,
+    manualOn: false,
+    manualMode: DEFAULT_MANUAL_TRAINING_MODE,
+    manualProtein: '',
+    manualCarb: '',
+    manualFat: '',
+    cycleOn: false,
+    cycleDays: flatCycleDays(NORMAL_DAY_KIND),
     notes: '',
   };
 }
@@ -125,14 +166,15 @@ function stopBodyFatHint(strategy: NutritionCode | null): string | undefined {
 }
 
 type Props = {
-  userId: number;
+  /** Dono do plano (admin/PT); `null` = o próprio usuário (D2). */
+  userId: number | null;
   plan: NutritionPlan | null;
-  onSaved: (plan: NutritionPlan) => void;
+  onSaved: (plan: NutritionPlanSaved) => void;
   onCancel: () => void;
 };
 
 /**
- * Formulário do rascunho (admin/PT). Opções, faixas e defaults vêm do motor
+ * Formulário do rascunho (o próprio usuário, ou admin/PT para outro usuário). Opções, faixas e defaults vêm do motor
  * (`motor-constants.generated.json` via `nutrition-constants.ts`); a API valida
  * de novo e responde 400 com o código do motor. Frações (gordura, ritmo,
  * superávit) aparecem em % só para a tela.
@@ -145,6 +187,9 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
   const usaRitmo = fieldAppliesToStrategy('weekly_rate_share', form.strategy);
   const usaSuperavit = fieldAppliesToStrategy('surplus_share', form.strategy);
   const usaCarboMinimo = fieldAppliesToStrategy('carb_min_g_per_kg', form.strategy);
+
+  // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
+  const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
 
   function update(patch: Partial<FormState>) {
     setForm((atual) => ({ ...atual, ...patch }));
@@ -175,10 +220,18 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         meals_per_day: inputNumberOrNull(form.meals),
         goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
         goal_weight_kg: inputNumberOrNull(form.goalWeight),
-        carb_cycling_enabled: false,
+        macro_priority: macroPriorityPayload(form.manualOn, form.macroPriority),
+        manual_targets: manualTargetsPayload(form.manualOn, form.manualProtein, form.manualCarb, form.manualFat),
+        manual_training_mode: manualTrainingModePayload(
+          form.manualOn,
+          modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
+        ),
+        cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
         notes: form.notes.trim() ? form.notes.trim() : null,
       };
-      return plan ? updateNutritionPlan(plan.id, payload) : createNutritionPlan({ ...payload, user_id: userId });
+      return plan
+        ? updateNutritionPlan(plan.id, payload)
+        : createNutritionPlan(userId == null ? payload : { ...payload, user_id: userId });
     },
     onSuccess: onSaved,
   });
@@ -201,7 +254,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         {ranges && usaSuperavit && (
           <Switch
             mt="xl"
-            label="Aluno avançado (superávit menor)"
+            label="Nível avançado (superávit menor)"
             checked={form.advanced}
             onChange={(event) => changeAdvanced(event.currentTarget.checked)}
           />
@@ -272,6 +325,16 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         </SimpleGrid>
       )}
 
+      <Select
+        label="Prioridade de macros"
+        description="Como o motor reparte as calorias que sobram depois da proteína."
+        data={[...MACRO_PRIORITY_OPTIONS]}
+        value={form.macroPriority}
+        onChange={(macroPriority) => update({ macroPriority: macroPriority ?? DEFAULT_MACRO_PRIORITY })}
+        disabled={form.manualOn}
+        allowDeselect={false}
+      />
+
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
         <Select
           label="Fórmula da TMB"
@@ -282,6 +345,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         />
         <Select
           label="Gasto do treino"
+          description="Como o gasto dos seus treinos entra na meta do dia."
           data={[...TDEE_MODE_OPTIONS]}
           value={form.tdeeMode}
           onChange={(tdeeMode) => update({ tdeeMode: tdeeMode ?? DEFAULT_TDEE_MODE })}
@@ -326,12 +390,59 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         />
       </SimpleGrid>
 
-      <Switch
-        label="Ciclo de carboidrato"
-        description={nutritionNotice('carb_cycling_unavailable')}
-        checked={false}
-        disabled
-        readOnly
+      <Stack gap="xs">
+        <Switch
+          label="Definir as gramas manualmente"
+          description="Você fixa proteína, carboidrato e gordura. O motor confere as faixas, avisa e precisa do seu peso registrado."
+          checked={form.manualOn}
+          onChange={(event) => update({ manualOn: event.currentTarget.checked })}
+        />
+        {form.manualOn && (
+          <Select
+            label="Gramas manuais e treino"
+            description={MANUAL_TRAINING_MODE_HINTS[modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE]}
+            data={MANUAL_TRAINING_MODE_OPTIONS.filter((opcao) => modosManuais.includes(opcao.value))}
+            value={modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE}
+            onChange={(manualMode) => update({ manualMode: manualMode ?? DEFAULT_MANUAL_TRAINING_MODE })}
+            allowDeselect={false}
+          />
+        )}
+        {form.manualOn && (
+          <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
+            <NumberInput
+              label="Proteína (g)"
+              value={form.manualProtein}
+              onChange={(manualProtein) => update({ manualProtein })}
+              min={0}
+              decimalScale={0}
+              inputMode="numeric"
+            />
+            <NumberInput
+              label="Carboidrato (g)"
+              value={form.manualCarb}
+              onChange={(manualCarb) => update({ manualCarb })}
+              min={0}
+              decimalScale={0}
+              inputMode="numeric"
+            />
+            <NumberInput
+              label="Gordura (g)"
+              value={form.manualFat}
+              onChange={(manualFat) => update({ manualFat })}
+              min={0}
+              decimalScale={0}
+              inputMode="numeric"
+            />
+          </SimpleGrid>
+        )}
+      </Stack>
+
+      <PlanCycleDays
+        enabled={form.cycleOn}
+        onEnabledChange={(cycleOn) => update({ cycleOn })}
+        value={form.cycleDays}
+        onChange={(cycleDays) => update({ cycleDays })}
+        userId={userId}
       />
 
       <Textarea
@@ -350,7 +461,18 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         </Text>
       )}
 
-      <Group justify="flex-end">
+      {/* Barra de ações presa ao rodapé do shell mobile, acima da safe-area do aparelho. */}
+      <Group
+        justify="flex-end"
+        style={{
+          position: 'sticky',
+          bottom: 'calc(var(--m-bottom-nav, 0px) + env(safe-area-inset-bottom))',
+          zIndex: 5,
+          background: BRAND.bgElevated,
+          paddingTop: 'var(--mantine-spacing-xs)',
+          paddingBottom: 'var(--mantine-spacing-xs)', // a safe-area já está no `bottom`
+        }}
+      >
         <Button variant="default" onClick={onCancel}>
           Cancelar
         </Button>
@@ -364,7 +486,7 @@ export function PlanForm({ userId, plan, onSaved, onCancel }: Props) {
         </Button>
       </Group>
       <Text size="xs" c={BRAND.textMuted}>
-        O rascunho não muda nada para o aluno até ser publicado.
+        O rascunho não muda nenhuma meta até ser publicado.
       </Text>
     </Stack>
   );

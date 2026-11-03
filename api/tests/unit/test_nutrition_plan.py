@@ -99,10 +99,62 @@ def test_superavit_fora_da_faixa_do_avancado():
     assert pl.build_plan_settings(strategy="bulking", surplus_share=st.BULK_SURPLUS_SHARE_RANGE[1]).ok
 
 
-def test_ciclo_de_carbo_recusado_ate_o_l8():
-    resultado = pl.build_plan_settings(strategy="maintenance", carb_cycling_enabled=True)
-    assert resultado.errors == (pl.ERR_CARB_CYCLING_UNAVAILABLE,)
-    assert resultado.settings.carb_cycling_enabled is False
+def test_ciclo_de_carbo_pelos_dias_escolhidos_e_aceito():
+    """N2 (D5): `carb_cycling_unavailable` saiu; o plano guarda os dias alto/normal/baixo."""
+    dias = {0: "high", 1: "low", 2: "high", 3: "low", 4: "high", 5: "low", 6: "low"}
+    resultado = pl.build_plan_settings(strategy="maintenance", cycle_days=dias)
+    assert resultado.ok
+    cfg = resultado.settings
+    assert cfg.carb_cycling_enabled is True
+    assert cfg.cycle_days == {str(k): v for k, v in dias.items()}
+    assert not hasattr(pl, "ERR_CARB_CYCLING_UNAVAILABLE")
+
+
+@pytest.mark.parametrize(
+    ("dias", "codigo"),
+    [
+        ({i: "high" for i in range(7)}, "carb_cycle_all_days_same_extreme"),
+        ({7: "high"}, "invalid_weekday:7"),
+        ({0: "meio"}, "invalid_day_kind:0"),
+        ([1, 2], "invalid_day_map"),
+    ],
+)
+def test_dias_do_ciclo_invalidos_viram_codigo_do_motor(dias, codigo):
+    assert codigo in pl.build_plan_settings(strategy="maintenance", cycle_days=dias).errors
+
+
+def test_semana_toda_normal_nao_ativa_o_ciclo():
+    cfg = pl.build_plan_settings(strategy="maintenance", cycle_days={i: "normal" for i in range(7)}).settings
+    assert cfg.carb_cycling_enabled is False and cfg.cycle_days is None
+
+
+def test_prioridade_de_macros_valida_e_default():
+    assert pl.build_plan_settings(strategy="cutting").settings.macro_priority.value == "balanced"
+    assert pl.build_plan_settings(strategy="cutting", macro_priority="high_carb").settings.macro_priority.value == "high_carb"
+    assert "invalid_code:macro_priority" in pl.build_plan_settings(strategy="cutting", macro_priority="keto").errors
+
+
+def test_gramas_manuais_validadas_pelo_motor_sem_o_peso():
+    ok = pl.build_plan_settings(strategy="maintenance", manual_targets={"protein_g": 150, "carb_g": 250, "fat_g": 70})
+    assert ok.ok and ok.settings.manual_macros.as_tuple() == (150.0, 250.0, 70.0)
+    # D6: valor absurdo/perigoso bloqueia (energia abaixo do piso; gordura acima do teto).
+    assert "manual_blocked_below:kcal" in pl.build_plan_settings(
+        strategy="maintenance", manual_targets={"protein_g": 50, "carb_g": 50, "fat_g": 10}
+    ).errors
+    assert "manual_invalid_value:protein_g" in pl.build_plan_settings(
+        strategy="maintenance", manual_targets={"protein_g": None, "carb_g": 250, "fat_g": 70}
+    ).errors
+    assert "invalid_code:manual_targets" in pl.build_plan_settings(strategy="maintenance", manual_targets=[1, 2, 3]).errors
+    assert "invalid_code:manual_targets" in pl.build_plan_settings(
+        strategy="maintenance", manual_targets={"protein_g": 1, "carb_g": 1, "fat_g": 1, "x": 1}
+    ).errors
+
+
+def test_prioridade_com_gramas_manuais_nao_se_aplica():
+    r = pl.build_plan_settings(
+        strategy="maintenance", macro_priority="high_fat", manual_targets={"protein_g": 150, "carb_g": 250, "fat_g": 70}
+    )
+    assert "param_not_applicable:macro_priority" in r.errors
 
 
 def test_refeicoes_precisam_ser_inteiras():

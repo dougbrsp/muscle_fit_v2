@@ -42,11 +42,13 @@ import type {
   NutritionDay,
   NutritionLimitation,
   NutritionMyPlan,
+  NutritionCycleFromTemplate,
   NutritionPlan,
   NutritionPlanListResponse,
   NutritionPlanPayload,
   NutritionPlanPreview,
   NutritionPlanPublishPayload,
+  NutritionPlanSaved,
   NutritionPlanSettingsPayload,
   NutritionPublishResponse,
   NutritionRecomputePayload,
@@ -56,21 +58,29 @@ import type {
 } from './nutrition-types';
 
 export const nutritionKeys = {
-  plans: (userId: number) => ['nutrition-plans', userId] as const,
+  plans: (userId: number | null) => ['nutrition-plans', userId] as const,
   preview: (planId: number) => ['nutrition-plan-preview', planId] as const,
   myPlan: ['nutrition-my-plan'] as const,
 };
 
-export function fetchNutritionPlans(userId: number): Promise<NutritionPlanListResponse> {
-  return apiFetch<NutritionPlanListResponse>(`/nutrition/plans?user_id=${encodeURIComponent(String(userId))}`);
+/** Planos do aluno; sem `userId`, os do próprio usuário (D2: cada um opera o seu plano). */
+export function fetchNutritionPlans(userId?: number | null): Promise<NutritionPlanListResponse> {
+  const query = userId == null ? '' : `?user_id=${encodeURIComponent(String(userId))}`;
+  return apiFetch<NutritionPlanListResponse>(`/nutrition/plans${query}`);
 }
 
-export function createNutritionPlan(payload: NutritionPlanPayload): Promise<NutritionPlan> {
-  return apiFetch<NutritionPlan>('/nutrition/plans', { method: 'POST', body: JSON.stringify(payload) });
+export function createNutritionPlan(payload: NutritionPlanPayload): Promise<NutritionPlanSaved> {
+  return apiFetch<NutritionPlanSaved>('/nutrition/plans', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export function updateNutritionPlan(planId: number, payload: NutritionPlanSettingsPayload): Promise<NutritionPlan> {
-  return apiFetch<NutritionPlan>(`/nutrition/plans/${planId}`, { method: 'PUT', body: JSON.stringify(payload) });
+export function updateNutritionPlan(planId: number, payload: NutritionPlanSettingsPayload): Promise<NutritionPlanSaved> {
+  return apiFetch<NutritionPlanSaved>(`/nutrition/plans/${planId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+/** "Puxar do Modelo" (D5): proposta de dias alto/normal/baixo; o usuário ajusta antes de salvar. */
+export function fetchCycleDaysFromTemplate(userId?: number | null): Promise<NutritionCycleFromTemplate> {
+  const query = userId == null ? '' : `?user_id=${encodeURIComponent(String(userId))}`;
+  return apiFetch<NutritionCycleFromTemplate>(`/nutrition/cycle-days/from-template${query}`);
 }
 
 export function deleteNutritionPlan(planId: number): Promise<{ status: string; id: number }> {
@@ -86,8 +96,16 @@ export function previewNutritionPlan(planId: number): Promise<NutritionPlanPrevi
  * (ou `null`): se outra publicação mudou a vigente no meio, a API responde 409
  * `publish_conflict` (concorrência otimista) e a tela pede para recarregar.
  */
-export function publishNutritionPlan(planId: number, expectedCurrentId: number | null): Promise<NutritionPublishResponse> {
-  const payload: NutritionPlanPublishPayload = { expected_current_id: expectedCurrentId };
+export function publishNutritionPlan(
+  planId: number,
+  expectedCurrentId: number | null,
+  expectedUpdatedAt?: string | null,
+): Promise<NutritionPublishResponse> {
+  // `expected_updated_at` = a versão do rascunho que a tela mostrou: se mudou, a API responde 409 `draft_changed`.
+  const payload: NutritionPlanPublishPayload = {
+    expected_current_id: expectedCurrentId,
+    expected_updated_at: expectedUpdatedAt ?? null,
+  };
   return apiFetch<NutritionPublishResponse>(`/nutrition/plans/${planId}/publish`, {
     method: 'POST',
     body: JSON.stringify(payload),
