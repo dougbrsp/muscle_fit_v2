@@ -186,7 +186,18 @@ const FIXTURES: Record<string, unknown> = {
   'GET /nutrition/weeks': NUTRITION_WEEK,
   'GET /nutrition/days/2026-10-14': NUTRITION_DAY,
   'GET /nutrition/foods/search': { query: 'arroz', normalized: 'arroz', items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')] },
-  'GET /nutrition/favorites': { items: [] },
+  'GET /nutrition/favorites': { items: [], max_items: 30 },
+  'GET /sleep-metrics': { items: [{ id: 1, local_date: '2026-10-13', duration_hours: 7.5, regularity_percent: 82, deep_sleep_hours: 1.5, rem_sleep_hours: 1.8, awake_count: 2, awake_hours: 0.4, notes: null }] },
+  'GET /effort-metrics': { items: [{ local_date: '2026-10-13', epoc_7d_estimated: 120, pai_7d_estimated: 35 }] },
+  'GET /integrations/intervals/wellness': { items: [{ wellness_date: '2026-10-13', fitness_ctl: 42.1, fatigue_atl: 50.2, form_tsb: -8.1, ramp_rate: 1.2, readiness_score: 68, daily_effort_load: 55, hrv_ms: 62, resting_hr_bpm: 52 }] },
+  'GET /body-measurements': { items: [{ id: 1, local_date: '2026-10-12', site: 'waist', site_label: 'Cintura', value_cm: 84.5, protocol_ok: true, notes: null }], limit: 50, offset: 0, has_more: false, limitations: [] },
+  'GET /me/training-preferences': {
+    ok: true, gym_id: 1, default_gym_id: 1, default_stars: 3,
+    items: [
+      { equipment_exercise_id: 1, exercise_id: 1, exercise_name: 'Supino reto com barra', muscle_group_id: 1, primary_group: 'Peitoral', equipment_id: 1, equipment_name: 'Banco reto', photo_url: null, stars: 4 },
+      { equipment_exercise_id: 2, exercise_id: 2, exercise_name: 'Rosca direta', muscle_group_id: 2, primary_group: 'Bíceps', equipment_id: 2, equipment_name: 'Halteres', photo_url: null, stars: null },
+    ],
+  },
   'GET /advanced-techniques': { items: [] },
   'GET /nutrition/checkin': {
     user: USER, today: '2026-10-14', settings: { weekday: 0, weekday_label: 'Segunda-feira', is_default: true }, weekday_options: [],
@@ -205,7 +216,6 @@ const FIXTURES: Record<string, unknown> = {
   'GET /body-composition': {
     items: [
       { id: 1, local_date: '2026-10-12', measured_at: null, weight_kg: 82.4, bmi: 25.1, body_fat_percent: 17.8, muscle_mass_kg: 36.2, body_water_percent: 56.1 },
-      { id: 2, local_date: '2026-09-28', measured_at: null, weight_kg: 83.1, bmi: 25.3, body_fat_percent: 18.4, muscle_mass_kg: 35.9, body_water_percent: 55.7 },
     ],
   },
 };

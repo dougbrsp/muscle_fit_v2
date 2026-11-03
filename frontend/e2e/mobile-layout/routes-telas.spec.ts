@@ -332,6 +332,7 @@ for (const vp of VIEWPORTS) {
       await page.getByLabel('Buscar alimento', { exact: true }).fill('arroz');
       await page.getByText('Arroz, integral, cozido').first().click();
       await expect(page.getByText('1 colher de servir')).toBeVisible();
+      await page.getByText('1 colher de servir').scrollIntoViewIfNeeded();
       await check(page, 'alimentos-porcoes', vp.name);
     });
 
@@ -347,7 +348,13 @@ for (const vp of VIEWPORTS) {
       test.setTimeout(120_000);
       await open(page, '/volume-grupamentos/');
       await expect(page.getByText('Peito').first()).toBeVisible();
+      await page.getByText(/Comparativo das últimas 4 sessões por/).first().scrollIntoViewIfNeeded();
+      await page.waitForTimeout(400);
       await check(page, 'volume-comparativo', vp.name);
+      await page.getByRole('button', { name: /Peito/ }).first().click();
+      await page.getByRole('dialog').waitFor();
+      await page.waitForTimeout(600);
+      await check(page, 'volume-comparativo-detalhe', vp.name);
     });
 
     test('plano nutricional: novo rascunho fixo', async ({ page }) => {

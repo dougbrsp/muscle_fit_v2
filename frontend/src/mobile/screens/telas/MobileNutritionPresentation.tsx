@@ -24,7 +24,10 @@ import { PortalFieldsStyle } from './PortalFieldsStyle';
 const FOOD_COLUMNS = FOOD_PER_100_FIELDS.filter((campo) => FOOD_REQUIRED_FIELDS.includes(campo.code));
 
 function per100Summary(per100: Record<string, number | null | undefined>): string {
-  return FOOD_COLUMNS.map((campo) => `${campo.label} ${formatWithUnit(per100[campo.code] as number | null, campo.unit, 1)}`).join(' · ');
+  // Só o que a fonte informa: sem traço para valor ausente.
+  return FOOD_COLUMNS.filter((campo) => per100[campo.code] != null)
+    .map((campo) => `${campo.label} ${formatWithUnit(per100[campo.code] as number, campo.unit, 1)}`)
+    .join(' · ');
 }
 
 const SLOTS: Partial<PresentationSlots> = {

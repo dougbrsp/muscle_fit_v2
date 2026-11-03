@@ -70,4 +70,6 @@ Duplicacao aceita entre as telas mobile e os clients do desktop (mesmas chaves e
 
 Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; edicao de exercicio sem catalogo manda `mapping_id` nulo; cancelar durante o reset de senha perde a senha temporaria.
 
-Visual pendente da rodada 1: Diario ("Quarta-feira" em caixa, data repetida); busca de Alimentos (nome + kcal + porcao sem separadores, estrela e chevron com 44 pt); Preferidos; "Novo rascunho" do Plano em `StickyAction`; Perfil e Preferencias com `StickyAction` (exige extrair o estado do formulario); grafico de 1 ponto sem marcador em Indicadores; Historico com menu "..."; confirmacao de descarte nas visoes de pagina inteira; `StickyAction` em Indicadores; fixtures realistas para Volume, Check-in com proposta, Perfil e Preferencias.
+Resolvido nas rodadas 1 e 2 da frente C (retirado do backlog): busca de Alimentos, Preferidos, Plano (Novo rascunho fixo), Diario (faixa da semana, dia da semana, data uma vez), Indicadores (marcador de 1 ponto, Novo lancamento em largura total, secoes que nao perdem o formulario), voltar fechando a visao de pagina inteira, e2e com payloads, goBack e fluxos com dados.
+
+Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); Perfil e Preferencias sem `StickyAction` (aceito: botao de largura total no fim do formulario); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
