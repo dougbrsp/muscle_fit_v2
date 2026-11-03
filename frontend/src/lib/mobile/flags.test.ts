@@ -8,7 +8,6 @@ import {
   clearMobileUiOverride,
   isMobileUiEnabled,
   parseBuildFlag,
-  resolveBuildFlag,
   parseQueryOverride,
   parseStoredOverride,
   resolveMobileUi,
@@ -128,20 +127,5 @@ describe('isMobileUiEnabled', () => {
     clearMobileUiOverride();
     expect(store.has(MOBILE_UI_STORAGE_KEY)).toBe(false);
     expect(isMobileUiEnabled()).toBe(false);
-  });
-});
-
-describe('resolveBuildFlag (regressao: iPhone no DEV sem barra inferior)', () => {
-  it('next dev sem a variavel liga a UI mobile', () => {
-    expect(resolveBuildFlag(undefined, 'development')).toBe(true);
-    expect(resolveBuildFlag('', 'development')).toBe(true);
-  });
-  it('build de producao e teste sem a variavel seguem desligados', () => {
-    expect(resolveBuildFlag(undefined, 'production')).toBe(false);
-    expect(resolveBuildFlag(undefined, 'test')).toBe(false);
-  });
-  it('variavel explicita sempre manda', () => {
-    expect(resolveBuildFlag('0', 'development')).toBe(false);
-    expect(resolveBuildFlag('1', 'production')).toBe(true);
   });
 });

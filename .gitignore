@@ -28,6 +28,7 @@ backups/
 .env
 .env.*
 !.env.example
+!frontend/.env.development
 
 # OS
 .DS_Store
