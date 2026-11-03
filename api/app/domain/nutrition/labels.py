@@ -449,7 +449,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "Sem massa gorda (% de gordura) não dá para derivar o ritmo das gramas manuais: registre um % de gordura."
     ),
     plan_mod.REASON_TDEE_WITHOUT_TRAINING: (
-        "Sem treino nos últimos dias, o gasto da projeção é o da base sem treino; treinar mais encurta o prazo."
+        "Sem treino registrado nos últimos dias, o gasto usado na projeção é o da base sem treino."
     ),
     plan_mod.REASON_MANUAL_MISSING_TDEE: "Sem o gasto total (TDEE) não dá para derivar o ritmo das gramas manuais.",
     plan_mod.NOTE_TEMPLATE_PARTIAL_WEEKDAYS: (

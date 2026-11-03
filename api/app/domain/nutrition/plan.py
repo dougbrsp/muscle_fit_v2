@@ -551,10 +551,11 @@ def plan_warnings(settings: PlanSettings, subject: Subject, tdee_kcal: Any = Non
     return ()
 
 
-def training_kcal_of_day(is_training_day: bool, reported_kcal: Any) -> Optional[float]:
-    """Gasto de treino de um dia PASSADO para a média da projeção: 0 em dia sem treino, a kcal do treino, ou
-    `None` (desconhecida) em dia de treino sem kcal."""
-    kcal = positive_number(reported_kcal)
+def training_kcal_of_day(is_training_day: bool, resolved_kcal: Any) -> Optional[float]:
+    """Gasto de treino de um dia PASSADO para a média da projeção. `resolved_kcal` é a kcal JÁ resolvida pelo
+    dono (`energy_expenditure.resolve_training_kcal`: informada > MET). 0 em dia sem treino; a kcal do treino; ou
+    `None` (desconhecida) só em dia de treino sem kcal e sem duração ou peso para estimar."""
+    kcal = positive_number(resolved_kcal)
     if kcal is not None:
         return kcal
     return None if is_training_day else 0.0
@@ -590,7 +591,11 @@ def project_plan_goal(
     que `strategy.weekly_rate_share_for` converte em ritmo); gramas que vão contra a estratégia
     devolvem `incoherent_with_strategy` e sem TDEE, dados insuficientes, sempre com o motivo."""
     projecao = _project_plan_goal(settings, subject, tdee_kcal, as_of)
-    if not premises:
+    # A premissa do TDEE só aparece quando ele entrou no ritmo projetado (bulking ou gramas manuais fora da manutenção).
+    tdee_no_ritmo = projecao.status == ProjectionStatus.PROJECTED and (
+        settings.strategy == Strategy.BULKING or (settings.manual_macros is not None and settings.strategy != Strategy.MAINTENANCE)
+    )
+    if not premises or not tdee_no_ritmo:
         return projecao
     return replace(projecao, reasons=(*projecao.reasons, *(p for p in premises if p not in projecao.reasons)))
 

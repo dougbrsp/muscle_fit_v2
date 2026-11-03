@@ -82,14 +82,22 @@ def test_tdee_com_o_treino_no_fator_e_o_do_fator():
 
 def test_treino_do_dia_e_dia_sem_treino_ou_sem_kcal():
     assert pl.training_kcal_of_day(False, None) == 0.0
-    assert pl.training_kcal_of_day(True, None) is None
+    assert pl.training_kcal_of_day(True, None) is None  # treino sem kcal, sem duração ou sem peso
     assert pl.training_kcal_of_day(True, 350) == 350.0
 
 
-def test_premissas_entram_nos_motivos_da_projecao():
-    cfg = pl.build_plan_settings(strategy="cutting", goal_weight_kg=80.0).settings
-    p = pl.project_plan_goal(cfg, GORDO, 2800, SEGUNDA, (pl.REASON_TDEE_WITHOUT_TRAINING,))
-    assert pl.REASON_TDEE_WITHOUT_TRAINING in p.reasons
+def test_premissa_do_tdee_so_aparece_quando_ele_entrou_no_ritmo_projetado():
+    premissa = (pl.REASON_TDEE_WITHOUT_TRAINING,)
+    manual = pl.build_plan_settings(strategy="cutting", goal_weight_kg=80.0, manual_targets=MANUAL_CUT).settings
+    assert pl.REASON_TDEE_WITHOUT_TRAINING in pl.project_plan_goal(manual, GORDO, 2800, SEGUNDA, premissa).reasons
+    bulking = pl.build_plan_settings(strategy="bulking", goal_weight_kg=100.0).settings
+    assert pl.REASON_TDEE_WITHOUT_TRAINING in pl.project_plan_goal(bulking, GORDO, 2800, SEGUNDA, premissa).reasons
+    # Cutting automático projeta com o ritmo do plano: o TDEE não entrou, sem premissa.
+    cutting = pl.build_plan_settings(strategy="cutting", goal_weight_kg=80.0).settings
+    assert pl.REASON_TDEE_WITHOUT_TRAINING not in pl.project_plan_goal(cutting, GORDO, 2800, SEGUNDA, premissa).reasons
+    # Nem quando a projeção não saiu (sem massa gorda).
+    sem_gordura = pl.project_plan_goal(manual, SO_PESO, 2800, SEGUNDA, premissa)
+    assert sem_gordura.reasons == (pl.REASON_MANUAL_MISSING_FAT_MASS,)
 
 
 def test_percentual_do_ritmo_vem_pronto_do_motor():
@@ -211,3 +219,45 @@ def test_sem_expected_updated_at_a_publicacao_segue_como_antes(db):
     cliente = _cliente()
     plano = _criar(cliente)
     assert cliente.post(f"/nutrition/plans/{plano['id']}/publish", json={"expected_current_id": None}).status_code == 200
+
+
+def test_sessao_so_com_duracao_na_janela_entra_na_media_e_nao_gera_a_premissa(db):
+    cliente = _cliente()
+    plano = _criar(cliente, strategy="cutting", goal_weight_kg=80, manual_targets=MANUAL_CUT)
+    sem = _projecao(cliente, plano["id"])
+    for dias in (1, 3):
+        db.add_session(ALUNO, SABADO - timedelta(days=dias), None, seconds=3600)  # sem kcal: o motor estima por MET
+    com = _projecao(cliente, plano["id"])
+    assert "projection_tdee_without_training" in [i["code"] for i in sem["reason_items"]]
+    assert "projection_tdee_without_training" not in [i["code"] for i in com["reason_items"]]
+    assert com["weekly_rate_percent"] > sem["weekly_rate_percent"]
+
+
+def test_aviso_de_ritmo_do_bulking_nao_varia_com_o_treino_de_hoje(db):
+    cliente = _cliente()
+    plano = _criar(cliente, strategy="bulking", advanced=True)
+    antes = cliente.post(f"/nutrition/plans/{plano['id']}/preview").json()["warnings"]
+    db.add_session(ALUNO, SABADO, 1500)
+    depois = cliente.post(f"/nutrition/plans/{plano['id']}/preview").json()["warnings"]
+    assert [i["code"] for i in antes] == [i["code"] for i in depois]
+
+
+def test_zero_linhas_na_publicacao_condicionada_desfaz_a_substituicao_do_vigente(db, monkeypatch):
+    cliente = _cliente()
+    vigente = _criar(cliente)
+    assert cliente.post(f"/nutrition/plans/{vigente['id']}/publish", json={"expected_current_id": None}).status_code == 200
+    novo = _criar(cliente)
+    real = plans_mod.db_now
+
+    def edicao_no_meio(cur):
+        db.plans[novo["id"]]["updated_at"] = db.now + timedelta(seconds=30)
+        return real(cur)
+
+    monkeypatch.setattr(plans_mod, "db_now", edicao_no_meio)
+    resposta = cliente.post(
+        f"/nutrition/plans/{novo['id']}/publish", json={"expected_current_id": vigente["id"], "expected_updated_at": novo["updated_at"]}
+    )
+    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "draft_changed"
+    # O SUPERSEDE executado antes foi desfeito: o vigente segue vigente e o novo segue rascunho.
+    assert db.plans[vigente["id"]]["superseded_at"] is None
+    assert db.plans[novo["id"]]["status"] == "draft"

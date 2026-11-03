@@ -6620,8 +6620,8 @@ os bloqueios e as constantes são as do N1.
 - **Rodada 2 de revisão**:
   - *TDEE estável da projeção* (`plan.projection_tdee`, `training_kcal_of_day`, `PROJECTION_TRAINING_WINDOW_DAYS` = 14, default de
     desenho): a projeção (com ou sem gramas manuais) não pode depender do dia em que a prévia é aberta. No modo explícito o TDEE é a
-    base sem treino (TMB × fator) mais a média do gasto de treino dos 14 dias ANTES de hoje (0 em dia sem treino; dia de treino sem kcal
-    fica fora da média); sem nenhum treino no histórico, só a base, com a premissa `projection_tdee_without_training` nos motivos. No
+    base sem treino (TMB × fator) mais a média do gasto de treino dos 14 dias ANTES de hoje (0 em dia sem treino; dia de treino sem kcal, sem duração ou sem peso para estimar
+    fica fora da média; a kcal é a já resolvida pelo dono, informada > MET, então sessão só com duração entra); sem nenhum treino no histórico, só a base, com a premissa `projection_tdee_without_training` nos motivos, e só quando o TDEE entrou no ritmo projetado (bulking ou gramas manuais, com a projeção feita). O aviso de ritmo do bulking (`plan_warnings`) usa o mesmo TDEE estável. No
     modo com o treino no fator, o TDEE do fator. A janela anda um dia por dia, então o prazo pode mudar de um dia para o outro com o
     histórico, mas nunca por causa do treino de hoje.
   - *Gramas manuais sem massa gorda*: a projeção devolve `insufficient_data` com `projection_manual_missing_fat_mass` (cutting e bulking),

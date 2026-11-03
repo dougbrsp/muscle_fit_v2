@@ -356,11 +356,10 @@ def _subject_incomplete(comp: DayComputation) -> HTTPException:
     )
 
 
-def _projection(comp: DayComputation, today: date, past_training: Sequence[Optional[float]]) -> dict[str, Any]:
+def _projection(comp: DayComputation, today: date, tdee: Optional[float], premissas: Sequence[str]) -> dict[str, Any]:
     """Projeção até o alvo do plano (`phases.project_goal` via `plan.project_plan_goal`), com a
     premissa `is_minimum_estimate` e os motivos rotulados. O TDEE é o ESTÁVEL do motor (`plan.projection_tdee`),
     que não depende do treino do dia em que a prévia é aberta."""
-    tdee, premissas = projection_tdee(comp.target.tdee, past_training)
     projecao = project_plan_goal(comp.settings, comp.subject.subject, tdee, today, premissas).to_dict()
     projecao["reason_items"] = nutrition_labels.limitation_items(projecao["reasons"])
     return projecao
@@ -368,7 +367,8 @@ def _projection(comp: DayComputation, today: date, past_training: Sequence[Optio
 
 def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) -> list[Optional[float]]:
     """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
-    treino; `None` em dia de treino sem kcal), para o TDEE estável da projeção."""
+    treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
+    (informada > MET), para o TDEE estável da projeção."""
     inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     fim = today - timedelta(days=1)
     entradas = load_user_inputs(cur, aluno, inicio, fim, today)
@@ -376,7 +376,7 @@ def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) ->
     resultado: list[Optional[float]] = []
     for dia in dias:
         comp = compute_day(entradas, settings, dia, today)
-        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.context.training_kcal_reported))
+        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
     return resultado
 
 
@@ -392,10 +392,12 @@ def _preview_payload(
     for comp in semana:
         limitacoes.extend(comp.target.limitations)
     sujeito = hoje.subject.subject
+    # O TDEE estável (não o do treino de hoje) vale para o aviso de ritmo e para a projeção.
+    tdee_estavel, premissas = projection_tdee(hoje.target.tdee, past_training)
     manual = check_plan_manual_targets(hoje.settings, sujeito, hoje.target.kcal_target.kcal, hoje.target.bmr.kcal)
     erros_ciclo, avisos_ciclo = check_cycle_floors(hoje.settings, sujeito, hoje.subject.scale_bmr_kcal, hoje.subject.ffm_age_days)
     avisos = (
-        *plan_warnings(hoje.settings, sujeito, hoje.target.tdee.kcal),
+        *plan_warnings(hoje.settings, sujeito, tdee_estavel),
         *manual_save_warnings(manual),
         *avisos_ciclo,
         *partial_week_warnings(hoje.settings, today),
@@ -414,7 +416,7 @@ def _preview_payload(
         # Os dias que a publicação de hoje de fato cria (do dia de hoje ao fim da semana): a tela só mostra estes.
         "publish_days": [dia.isoformat() for dia in publication_window(today, None).days()],
         "limitations": nutrition_labels.limitation_items(limitacoes),
-        "projection": _projection(hoje, today, past_training),
+        "projection": _projection(hoje, today, tdee_estavel, premissas),
         "warnings": nutrition_labels.limitation_items(avisos),
         "blocking": nutrition_labels.limitation_items(bloqueios),
         "can_publish": not bloqueios,

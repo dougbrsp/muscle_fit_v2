@@ -272,7 +272,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
         <ProjectionCard projection={preview.projection} />
         {preview.manual_check && <ManualCheckCard check={preview.manual_check} />}
       </SimpleGrid>
-      <NutritionLimitations items={preview.blocking} title="Este plano não pode ser publicado" tone="error" />
+      {isDraft && <NutritionLimitations items={preview.blocking} title="Este plano não pode ser publicado" tone="error" />}
       <NutritionLimitations items={preview.warnings} title="Avisos do plano (não impedem publicar)" />
 
       <Title order={4} c={BRAND.textPrimary}>
