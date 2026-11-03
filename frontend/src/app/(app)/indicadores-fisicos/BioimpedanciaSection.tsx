@@ -32,6 +32,7 @@ import {
   formatDateBR,
   formatNumberOrDash,
 } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura do gráfico.
@@ -140,6 +141,7 @@ function BioimpedanciaForm({
 
 export function BioimpedanciaSection() {
   const qc = useQueryClient();
+  const RecordList = usePresentationSlot('recordList');
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [editing, setEditing] = useState<BodyCompositionEntry | null>(null);
@@ -272,6 +274,36 @@ export function BioimpedanciaSection() {
 
       {!listQuery.isLoading && !listQuery.isError && (
         <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
+          {RecordList ? (
+            <RecordList
+              label="Lançamentos de bioimpedância"
+              emptyText='Nenhum lançamento encontrado. Toque em "Novo lançamento" para começar.'
+              rows={items.map((entry) => ({
+                key: entry.id,
+                title: formatDateBR(entry.local_date),
+                subtitle: `Gordura ${formatNumberOrDash(entry.body_fat_percent)}%`,
+                value: `${formatNumberOrDash(entry.weight_kg)} kg`,
+                details: [
+                  ['Peso', `${formatNumberOrDash(entry.weight_kg)} kg`],
+                  ['IMC', formatNumberOrDash(entry.bmi)],
+                  ['Gordura %', `${formatNumberOrDash(entry.body_fat_percent)}%`],
+                  ['G. subcut. %', `${formatNumberOrDash(entry.subcutaneous_fat_percent)}%`],
+                  ['Água %', `${formatNumberOrDash(entry.body_water_percent)}%`],
+                  ['Musc. esq. %', `${formatNumberOrDash(entry.skeletal_muscle_percent)}%`],
+                  ['Musc. (kg)', `${formatNumberOrDash(entry.muscle_mass_kg)} kg`],
+                  ['Gord. visc.', formatNumberOrDash(entry.visceral_fat_rating, 0)],
+                  ['Massa gord. (kg)', `${formatNumberOrDash(entry.fat_mass_kg)} kg`],
+                  ['Massa livre gord. (kg)', `${formatNumberOrDash(entry.fat_free_mass_kg)} kg`],
+                  ['Óssea (kg)', `${formatNumberOrDash(entry.bone_mass_kg)} kg`],
+                  ['TMB (kcal)', formatNumberOrDash(entry.bmr_kcal, 0)],
+                  ['Proteínas %', `${formatNumberOrDash(entry.protein_percent)}%`],
+                  ['Idade met.', String(entry.metabolic_age ?? '-')],
+                ],
+                onEdit: () => handleOpenEdit(entry),
+                onDelete: () => handleOpenDelete(entry),
+              }))}
+            />
+          ) : (
           <Table.ScrollContainer minWidth={1000}>
             <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
               <Table.Thead>
@@ -340,6 +372,7 @@ export function BioimpedanciaSection() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          )}
         </Paper>
       )}
 

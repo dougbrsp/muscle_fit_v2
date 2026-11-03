@@ -7,11 +7,13 @@ import { TablePager } from '@/components/TablePager';
 import { apiFetch, ApiError } from '@/lib/api';
 import { usePagination } from '@/lib/pagination';
 import { ApiListResponse, EffortEstimateEntry, formatDateBR } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // M99: só leitura. EPOC e PAI de 7 dias chegam PRONTOS do backend (motor
 // `cardio_load`); o lançamento manual saiu (a tabela antiga ficou como histórico).
 export function EffortMetricsSection() {
+  const RecordList = usePresentationSlot('recordList');
   const listQuery = useQuery({
     queryKey: ['effort-metrics'],
     queryFn: () => apiFetch<ApiListResponse<EffortEstimateEntry>>('/effort-metrics'),
@@ -47,6 +49,22 @@ export function EffortMetricsSection() {
 
       {!listQuery.isLoading && !listQuery.isError && (
         <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
+          {RecordList ? (
+            <RecordList
+              label="Esforço estimado"
+              emptyText="Sem atividades do Intervals.icu com tempo em zona de FC no período."
+              rows={pagination.pageItems.map((entry) => ({
+                key: entry.local_date,
+                title: formatDateBR(entry.local_date),
+                subtitle: `PAI 7 dias (estimado): ${entry.pai_7d_estimated ?? '-'}`,
+                value: `EPOC ${entry.epoc_7d_estimated ?? '-'}`,
+                details: [
+                  ['EPOC 7 dias (estimado)', String(entry.epoc_7d_estimated ?? '-')],
+                  ['PAI 7 dias (estimado)', String(entry.pai_7d_estimated ?? '-')],
+                ],
+              }))}
+            />
+          ) : (
           <Table.ScrollContainer minWidth={420}>
             <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
               <Table.Thead>
@@ -76,6 +94,7 @@ export function EffortMetricsSection() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          )}
           <TablePager
             page={pagination.page}
             totalPages={pagination.totalPages}

@@ -29,6 +29,7 @@ import { refreshAfterPasswordChange } from '@/lib/password-change';
 import { saveStoredWeightUnit } from '@/lib/use-weight-unit';
 import { normalizeTimezone, TIMEZONE_OPTIONS } from '@/lib/timezones';
 import { normalizeWeightUnit, type WeightUnit } from '@/lib/weight-units';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 import { DevicesCard } from './DevicesCard';
 import { PasswordChangeCard } from './PasswordChangeCard';
@@ -261,8 +262,13 @@ export function PerfilClient() {
     changePasswordMutation.mutate();
   }
 
+  const Header = usePresentationSlot('pageHeader');
+
   return (
     <Stack gap="xl" maw={640}>
+      {Header ? (
+        <Header title="Meu perfil" description="Dados pessoais, foto, integração com o Intervals.icu e dispositivos pareados." />
+      ) : (
       <div>
         <Title order={1} c={BRAND.textPrimary}>
           Meu perfil
@@ -271,6 +277,7 @@ export function PerfilClient() {
           Dados pessoais, foto, integração com o Intervals.icu e dispositivos pareados.
         </Text>
       </div>
+      )}
 
       {forcePasswordChange && !passwordSuccess && (
         <Alert color="yellow" icon={<IconLock />} title="Troca de senha obrigatória">

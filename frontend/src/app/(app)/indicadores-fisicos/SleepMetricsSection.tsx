@@ -35,6 +35,7 @@ import {
   sleepFormToApiPayload,
   SleepMetricsEntry,
 } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 function SleepForm({
@@ -113,6 +114,7 @@ function SleepForm({
 
 export function SleepMetricsSection() {
   const qc = useQueryClient();
+  const RecordList = usePresentationSlot('recordList');
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [editing, setEditing] = useState<SleepMetricsEntry | null>(null);
@@ -200,6 +202,29 @@ export function SleepMetricsSection() {
 
       {!listQuery.isLoading && !listQuery.isError && (
         <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
+          {RecordList ? (
+            <RecordList
+              label="Lançamentos de sono"
+              emptyText='Nenhum lançamento encontrado. Toque em "Novo lançamento" para começar.'
+              rows={pagination.pageItems.map((entry) => ({
+                key: entry.id,
+                title: formatDateBR(entry.local_date),
+                subtitle: `Regularidade ${formatNumberOrDash(entry.regularity_percent)}%`,
+                value: decimalHoursToHHMM(entry.duration_hours) || '-',
+                details: [
+                  ['Duração (hh:mm)', decimalHoursToHHMM(entry.duration_hours) || '-'],
+                  ['Regularidade (%)', formatNumberOrDash(entry.regularity_percent)],
+                  ['Sono profundo (hh:mm)', decimalHoursToHHMM(entry.deep_sleep_hours) || '-'],
+                  ['Sono REM (hh:mm)', decimalHoursToHHMM(entry.rem_sleep_hours) || '-'],
+                  ['Despertares', String(entry.awake_count ?? '-')],
+                  ['Tempo acordado (hh:mm)', decimalHoursToHHMM(entry.awake_hours) || '-'],
+                  ['Observações', entry.notes ?? '-'],
+                ],
+                onEdit: () => handleOpenEdit(entry),
+                onDelete: () => handleOpenDelete(entry),
+              }))}
+            />
+          ) : (
           <Table.ScrollContainer minWidth={900}>
             <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
               <Table.Thead>
@@ -254,6 +279,7 @@ export function SleepMetricsSection() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          )}
           <TablePager
             page={pagination.page}
             totalPages={pagination.totalPages}

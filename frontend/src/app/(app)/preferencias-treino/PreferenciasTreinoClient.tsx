@@ -31,6 +31,7 @@ import {
   type TrainingPreferencesResponse,
 } from '@/lib/equipment-recommend';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 const THUMB_SIZE = 56;
@@ -101,8 +102,13 @@ export function PreferenciasTreinoClient() {
     );
   }
 
+  const Header = usePresentationSlot('pageHeader');
+
   return (
     <Stack gap="lg">
+      {Header ? (
+        <Header title="Preferências de Treino" description={`Dê sua nota a cada exercício em cada equipamento da academia. ${PAIR_STARS_HELP}`} />
+      ) : (
       <div>
         <Title order={1} c={BRAND.textPrimary}>
           Preferências de Treino
@@ -111,6 +117,7 @@ export function PreferenciasTreinoClient() {
           Dê sua nota a cada exercício em cada equipamento da academia. {PAIR_STARS_HELP}
         </Text>
       </div>
+      )}
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
         <Select

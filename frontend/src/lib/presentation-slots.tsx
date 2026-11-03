@@ -13,7 +13,23 @@ import type { FoodPortion, FoodSearchItem, MealItem, UsdaSearchItem } from '@/li
  */
 export type CheckinWeekRow = { label: string; week: string; reference: string; note?: string };
 
+export type RecordListRow = {
+  key: string | number;
+  title: string;
+  subtitle?: string;
+  value?: string;
+  /** Todos os dados da linha (as colunas da tabela do desktop), para o detalhe por toque. */
+  details: ReadonlyArray<readonly [string, string]>;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
+};
+
 export type PresentationSlots = {
+  /** Cabeçalho de página genérico (título e descrição). */
+  pageHeader: ComponentType<{ title: string; description: ReactNode }>;
+  /** Lista de registros (bioimpedância, medidas, sono...) no lugar da tabela; detalhe e ações por toque. */
+  recordList: ComponentType<{ label: string; rows: RecordListRow[]; emptyText: string }>;
   /** Cabeçalho das páginas de Nutrição (título, descrição e troca de seção). */
   nutritionHeader: ComponentType<{ active: string; title: string; description: ReactNode }>;
   weekTargets: ComponentType<{ rows: WeekRow[]; today: string }>;

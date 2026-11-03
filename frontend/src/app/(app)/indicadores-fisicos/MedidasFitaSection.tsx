@@ -44,6 +44,7 @@ import {
 import { EM_DASH, fmtDate, fmtDecimal } from '@/lib/dashboard-format';
 import { usePagination } from '@/lib/pagination';
 import { localTodayIso } from '@/lib/report-markdown';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 /** Quantas medidas a lista busca de uma vez; a tabela pagina no cliente. */
@@ -59,6 +60,7 @@ const LIST_LIMIT = 200;
  * migração 047 `GET /body-measurements` devolve `limitations` preenchido).
  */
 export function MedidasFitaSection() {
+  const RecordList = usePresentationSlot('recordList');
   const qc = useQueryClient();
   const [form, setForm] = useState<MeasurementFormState>(() => emptyMeasurementForm(localTodayIso()));
   const [errors, setErrors] = useState<MeasurementFormErrors>({});
@@ -216,6 +218,27 @@ export function MedidasFitaSection() {
               )}
               {itens.length > 0 && (
                 <>
+                  {RecordList ? (
+                    <RecordList
+                      label="Últimas medidas"
+                      emptyText="Nenhuma medida registrada ainda."
+                      rows={pagination.pageItems.map((item) => ({
+                        key: item.id,
+                        title: item.site_label,
+                        subtitle: fmtDate(item.local_date),
+                        value: `${fmtDecimal(item.value_cm, 1)} cm`,
+                        details: [
+                          ['Data', fmtDate(item.local_date)],
+                          ['Local', item.site_label],
+                          ['cm', fmtDecimal(item.value_cm, 1)],
+                          ['Protocolo', item.protocol_ok ? 'Sim' : 'Fora'],
+                          ['Nota', item.notes ?? EM_DASH],
+                        ],
+                        onDelete: () => apagar.mutate(item.id),
+                        deleting: apagar.isPending && apagar.variables === item.id,
+                      }))}
+                    />
+                  ) : (
                   <Table.ScrollContainer minWidth={480}>
                     <Table striped highlightOnHover withTableBorder={false} verticalSpacing="xs">
                       <Table.Thead>
@@ -256,6 +279,7 @@ export function MedidasFitaSection() {
                       </Table.Tbody>
                     </Table>
                   </Table.ScrollContainer>
+                  )}
                   <TablePager
                     page={pagination.page}
                     totalPages={pagination.totalPages}
