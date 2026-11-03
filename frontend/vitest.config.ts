@@ -1,9 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-// Testes unitarios de libs puras (src/**/*.test.ts). Sem DOM: environment
-// "node" - componentes sao verificados por `renderToStaticMarkup` (SSR),
-// sem jsdom nem testing-library. Nao participa do `next build` (output export so gera rotas de
+// Testes unitarios de libs puras (src/**/*.test.ts). Por padrao sem DOM: environment
+// "node" - componentes sao verificados por `renderToStaticMarkup` (SSR). Quando o teste
+// precisa de efeitos rodando (ex.: UserPicker.test.ts), o arquivo opta por jsdom com o
+// docblock `// @vitest-environment jsdom` (sem testing-library). Nao participa do `next build` (output export so gera rotas de
 // src/app).
 export default defineConfig({
   // O tsconfig do Next usa `jsx: preserve` (o Next transforma). Aqui quem

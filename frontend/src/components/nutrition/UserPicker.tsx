@@ -37,8 +37,15 @@ export function UserPicker({ value, onChange, initial }: Props) {
     value: String(user.id),
     label: userLookupLabel(user),
   }));
-  if (selected && !options.some((option) => option.value === selected.value)) {
-    options.unshift(selected);
+  // A opção escolhida é SEMPRE a guardada (rótulo congelado no momento da escolha), nunca a da
+  // busca: o Select copia o rótulo da opção selecionada para a caixa de texto, e se esse rótulo
+  // mudasse com o resultado da busca (ex.: "Doug" inicial x "Doug (doug)" do lookup) a caixa e a
+  // busca se realimentariam sem fim (React #185).
+  // Mantém a ordem da API: o escolhido substitui a opção no mesmo lugar; só vai ao início se a busca não o trouxe.
+  if (selected) {
+    const posicao = options.findIndex((option) => option.value === selected.value);
+    if (posicao >= 0) options[posicao] = selected;
+    else options.unshift(selected);
   }
 
   return (
