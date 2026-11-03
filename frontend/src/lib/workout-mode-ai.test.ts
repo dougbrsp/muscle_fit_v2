@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Prazo de polling do Modo Treino: o padrao de 20s e preservado; um prazo
-// proprio (resumo do treino) segue consultando depois dos 20s.
+// Prazos de polling do Modo Treino: turnos curtos (por serie/exercicio) seguem
+// em 20s; o resumo do treino inteiro espera ate o teto de 90s do helper
+// generico (a Lambda tem timeout de 60s; um job real levou 22s).
 const apiFetch = vi.fn();
 vi.mock('./api', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api')>()), apiFetch }));
 
-const { fetchWorkoutAiResult, WORKOUT_AI_POLL_TIMEOUT_MS } = await import('./workout-mode-ai');
+const { fetchWorkoutAiResult, fetchWorkoutSummary } = await import('./workout-mode-ai');
 
 // Job que vira `done` apos `doneAfterMs` (null = nunca).
 function jobs(doneAfterMs: number | null) {
@@ -21,32 +22,50 @@ function jobs(doneAfterMs: number | null) {
   });
 }
 
-describe('fetchWorkoutAiResult', () => {
+// Observa se a promessa ja liquidou sem aguardar.
+function observar<T>(p: Promise<T>) {
+  const estado: { fim: boolean; valor?: unknown } = { fim: false };
+  p.then(
+    (v) => Object.assign(estado, { fim: true, valor: v }),
+    (e) => Object.assign(estado, { fim: true, valor: e }),
+  );
+  return estado;
+}
+
+describe('prazos de polling do Modo Treino', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     apiFetch.mockReset();
   });
   afterEach(() => vi.useRealTimers());
 
-  it('padrao: 20s e rejeita ao esgotar', async () => {
-    expect(WORKOUT_AI_POLL_TIMEOUT_MS).toBe(20000);
-    jobs(30000);
-    const p = fetchWorkoutAiResult('/x').catch((e: Error) => e);
-    await vi.advanceTimersByTimeAsync(21000);
-    expect(((await p) as Error).message).toMatch(/Tempo esgotado/);
+  it('fetchWorkoutAiResult: padrao segue em 20s', async () => {
+    jobs(null);
+    const estado = observar(fetchWorkoutAiResult('/x'));
+    await vi.advanceTimersByTimeAsync(19000);
+    expect(estado.fim).toBe(false);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(estado.fim).toBe(true);
+    expect((estado.valor as Error).message).toMatch(/Tempo esgotado/);
   });
 
-  it('prazo customizado segue consultando apos 20s e resolve quando done', async () => {
+  it('fetchWorkoutSummary: consulta depois dos 20s e resolve quando done', async () => {
     jobs(25000);
-    const p = fetchWorkoutAiResult<{ summary: string }>('/x', {}, 90000);
+    const p = fetchWorkoutSummary(261);
     await vi.advanceTimersByTimeAsync(26000);
     await expect(p).resolves.toEqual({ summary: 'ok' });
+    expect(apiFetch.mock.calls[0][0]).toBe('/activities/261/ai-summary/generate');
   });
 
-  it('prazo customizado esgotado rejeita', async () => {
+  it('fetchWorkoutSummary: continua pendente aos 29s e rejeita so no teto de 90s', async () => {
     jobs(null);
-    const p = fetchWorkoutAiResult('/x', {}, 30000).catch((e: Error) => e);
-    await vi.advanceTimersByTimeAsync(31000);
-    expect(((await p) as Error).message).toMatch(/Tempo esgotado/);
+    const estado = observar(fetchWorkoutSummary(261));
+    await vi.advanceTimersByTimeAsync(29000);
+    expect(estado.fim).toBe(false);
+    await vi.advanceTimersByTimeAsync(59000);
+    expect(estado.fim).toBe(false);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(estado.fim).toBe(true);
+    expect((estado.valor as Error).message).toMatch(/Tempo esgotado/);
   });
 });
