@@ -544,6 +544,8 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ps_mod.ERR_SUGGESTION_SHAPE: "A resposta da IA não veio na forma esperada.",
     ps_mod.ERR_SUGGESTION_REASON_INVALID: "A resposta da IA trouxe um motivo fora da lista.",
     ps_mod.ERR_SUGGESTION_STOP_REACHED: "A estratégia sugerida já atingiu o % de gordura de parada.",
+    ps_mod.ERR_SUGGESTION_NOT_COMPUTABLE: "O motor não calcula a meta desta estratégia com os dados atuais do perfil.",
+    ps_mod.ERR_SUGGESTION_TIMEOUT: "A IA demorou demais para responder. Nada mudou no formulário. Tente de novo em instantes.",
     ps_mod.ERR_SUGGESTION_REFUSED: (
         "A sugestão da IA ficou fora das regras do motor e foi descartada. Nada mudou no formulário. Tente de novo."
     ),

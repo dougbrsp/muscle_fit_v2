@@ -26,6 +26,8 @@
 # plan_suggestion (sugestao de metas, nutricao N6, decisao D3) NAO publica env propria: le as de
 # meal_parse (`llm_anthropic.FEATURE_CONFIG_SOURCE`), porque o bloco de envs esta no limite do
 # orcamento (LLM_ENV_BUDGET_BYTES). Entrar em llm_features nao gera env: ela esta fora dos mapas.
+# CORTAR so a sugestao: plan_suggestion = "openai" em llm_provider_by_feature (a env propria vence;
+# entrada EXPLICITA e publicada mesmo com openai, porque sem ela valeria a de meal_parse).
 #
 # REVERTER uma feature: apagar a linha dela em `llm_provider_by_feature` (ou
 # trocar para "openai"). As linhas de modelo/esforco/fallback podem ficar: sem
@@ -161,7 +163,7 @@ locals {
   ]
 
   llm_provider_env = merge(
-    { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") if lookup(var.llm_provider_by_feature, f, "openai") != "openai" },
+    { for f in local.llm_features : "LLM_PROVIDER_${upper(f)}" => lookup(var.llm_provider_by_feature, f, "openai") if lookup(var.llm_provider_by_feature, f, "openai") != "openai" || contains(keys(var.llm_provider_by_feature), f) },
     { for f, m in var.anthropic_model_by_feature : "ANTHROPIC_MODEL_${upper(f)}" => m if contains(local.llm_features, f) },
     { for f, e in var.anthropic_effort_by_feature : "ANTHROPIC_EFFORT_${upper(f)}" => e if contains(local.llm_features, f) },
     { for f, t in var.anthropic_thinking_by_feature : "ANTHROPIC_THINKING_${upper(f)}" => t if contains(local.llm_features, f) },

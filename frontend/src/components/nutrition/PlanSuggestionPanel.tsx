@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
 import { TodayTargetCard } from './PlanPreview';
+import { ApiError } from '@/lib/api';
 import { nutritionErrorInfo } from '@/lib/nutrition-api';
 import {
   fetchPlanSuggestionUsage,
@@ -30,25 +31,34 @@ type Props = {
   draft: (NutritionPlanSettingsPayload & { user_id?: number }) | null;
   onApply: (fields: PlanSuggestionFields) => void;
   onUndo: () => void;
+  onKeep: () => void;
+  /** O formulário fica travado enquanto o job roda: "o que mudou" é contra o estado enviado. */
+  onPendingChange: (pending: boolean) => void;
 };
+
+const MENSAGEM_DE_FALHA = 'Não foi possível gerar a sugestão.';
 
 /**
  * "Sugerir com IA" (N6, D3): a IA sugere só parâmetros dentro das faixas do motor. A sugestão preenche o formulário como
  * rascunho; aqui ficam o que mudou, os motivos (códigos do motor com rótulo) e o resultado do motor para o formulário
  * como está, recalculado a cada ajuste. Nada é gravado até "Salvar rascunho".
  */
-export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo }: Props) {
+export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo, onKeep, onPendingChange }: Props) {
   const queryClient = useQueryClient();
   const [resultado, setResultado] = useState<PlanSuggestionResult | null>(null);
 
   const uso = useQuery({ queryKey: planSuggestionKeys.usage, queryFn: fetchPlanSuggestionUsage });
   const sugestao = useMutation({
     mutationFn: () => requestPlanSuggestion(current, userId),
+    onMutate: () => onPendingChange(true),
     onSuccess: (dados) => {
       setResultado(dados);
       onApply(dados.fields);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: planSuggestionKeys.usage }),
+    onSettled: () => {
+      onPendingChange(false);
+      return queryClient.invalidateQueries({ queryKey: planSuggestionKeys.usage });
+    },
   });
 
   const [corpoDaPrevia] = useDebouncedValue(resultado && draft ? JSON.stringify(draft) : null, ATRASO_DA_PREVIA_MS);
@@ -60,7 +70,12 @@ export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo }:
   });
 
   const esgotada = uso.data != null && !uso.data.allowed;
-  const erro = sugestao.isError ? nutritionErrorInfo(sugestao.error, 'Não foi possível gerar a sugestão.') : null;
+  // Erro da API (403/422/429/503): texto e itens do motor. Falha ou prazo do job (`GET /jobs`): a mensagem já vem pronta.
+  const erro = sugestao.isError
+    ? sugestao.error instanceof ApiError
+      ? nutritionErrorInfo(sugestao.error, MENSAGEM_DE_FALHA)
+      : { message: sugestao.error.message || MENSAGEM_DE_FALHA, items: [] }
+    : null;
   const erroPrevia = previa.isError ? nutritionErrorInfo(previa.error, 'Não foi possível calcular o formulário.') : null;
 
   return (
@@ -148,7 +163,15 @@ export function PlanSuggestionPanel({ userId, current, draft, onApply, onUndo }:
               >
                 Desfazer
               </Button>
-              <Button variant="light" color="brand" leftSection={<IconCheck size={16} />} onClick={() => setResultado(null)}>
+              <Button
+                variant="light"
+                color="brand"
+                leftSection={<IconCheck size={16} />}
+                onClick={() => {
+                  setResultado(null);
+                  onKeep();
+                }}
+              >
                 Manter
               </Button>
             </Group>

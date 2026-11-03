@@ -22,8 +22,8 @@ Configuracao (env, lida A CADA chamada; `<FEATURE>` = rotulo `feature` do
   `EFFORTS_WITHOUT_THINKING`, ver `thinking_config`).
 - `LLM_FALLBACK_PROVIDER_<FEATURE>` ou `LLM_FALLBACK_PROVIDER` (global): `openai`
   liga o fallback (ver `fallback_eligible`). Vazio = sem fallback.
-- `FEATURE_CONFIG_SOURCE`: feature que usa as envs de OUTRA (o limite de 4 KB das envs da
-  Lambda nao comporta mais envs por feature); nenhuma env das demais muda.
+- `FEATURE_CONFIG_SOURCE`: feature que, na falta da env PROPRIA, usa a de OUTRA (o limite de 4 KB
+  das envs da Lambda nao comporta mais envs por feature); nenhuma env das demais muda.
 - `ANTHROPIC_API_KEY`: populada no cold start por `secrets_bootstrap` a partir
   de `ANTHROPIC_API_KEY_SECRET_ARN` (`musclefit/claude-api-key`).
 
@@ -87,11 +87,12 @@ ANTHROPIC_MODEL_HAIKU: Final[str] = "claude-haiku-5-5"
 # o gerador legado `workout_plan`, que nao tem teto medido).
 LLM_FEATURES: Final[tuple[str, ...]] = (*LLM_MAX_OUTPUT_TOKENS.keys(), "workout_plan")
 
-# Feature que le as envs de outra (provedor, modelo, esforco, raciocinio e fallback): o bloco de
-# envs de LLM do Terraform esta no limite do orcamento (`LLM_ENV_BUDGET_BYTES`, teste de paridade
-# em `test_llm_provider_infra_paridade.py`). Custo da escolha: nao da para virar `plan_suggestion`
-# de provedor sem virar `meal_parse` junto; se isso for preciso, colapsar as envs em um JSON. O
-# rotulo `feature` do `llm.usage` e o teto de saida continuam os da propria feature.
+# Feature que le as envs de outra (provedor, modelo, esforco, raciocinio e fallback) enquanto nao
+# tem a propria: o bloco de envs de LLM do Terraform esta no limite do orcamento
+# (`LLM_ENV_BUDGET_BYTES`, teste em `test_llm_provider_infra_paridade.py`). A env propria vence,
+# uma a uma: `LLM_PROVIDER_PLAN_SUGGESTION=openai` desliga o Claude so da sugestao, sem tocar em
+# `meal_parse`. Virar `meal_parse` sem a env propria leva a sugestao junto. O rotulo `feature` do
+# `llm.usage` e o teto de saida continuam os da propria feature.
 FEATURE_CONFIG_SOURCE: Final[Mapping[str, str]] = MappingProxyType({"plan_suggestion": "meal_parse"})
 
 # Features curtas e de alto volume: Haiku e esforco baixo. As demais
@@ -167,12 +168,22 @@ _BILLING_MESSAGE = re.compile(r"credit balance|usage limits?|billing", re.IGNORE
 
 
 def feature_env(prefix: str, feature: Optional[str]) -> str:
-    origem = FEATURE_CONFIG_SOURCE.get(feature or "", feature or "")
-    return prefix + re.sub(r"[^A-Z0-9]", "_", origem.upper())
+    return prefix + re.sub(r"[^A-Z0-9]", "_", (feature or "").upper())
 
 
 def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
+
+
+def _config_env(prefix: str, feature: Optional[str]) -> tuple[str, str]:
+    """`(nome, valor)` da env que vale para a feature: a propria; sem ela, a de `FEATURE_CONFIG_SOURCE`."""
+    name = feature_env(prefix, feature)
+    value = _env(name)
+    source = FEATURE_CONFIG_SOURCE.get(feature or "")
+    if value or source is None:
+        return name, value
+    name = feature_env(prefix, source)
+    return name, _env(name)
 
 
 def _invalid(name: str, value: str) -> None:
@@ -183,8 +194,8 @@ def provider_for(feature: Optional[str]) -> str:
     """Provedor da feature. Sem feature, sem env ou valor invalido: OpenAI."""
     if not feature:
         return DEFAULT_PROVIDER
-    name = feature_env(ENV_PROVIDER_PREFIX, feature)
-    value = _env(name).lower()
+    name, raw = _config_env(ENV_PROVIDER_PREFIX, feature)
+    value = raw.lower()
     if not value:
         return DEFAULT_PROVIDER
     if value not in PROVIDERS:
@@ -194,14 +205,14 @@ def provider_for(feature: Optional[str]) -> str:
 
 
 def anthropic_model_for(feature: Optional[str]) -> str:
-    return _env(feature_env(ENV_MODEL_PREFIX, feature)) or DEFAULT_ANTHROPIC_MODEL.get(
+    return _config_env(ENV_MODEL_PREFIX, feature)[1] or DEFAULT_ANTHROPIC_MODEL.get(
         feature or "", ANTHROPIC_MODEL_SONNET
     )
 
 
 def anthropic_effort_for(feature: Optional[str]) -> str:
-    name = feature_env(ENV_EFFORT_PREFIX, feature)
-    value = _env(name).lower()
+    name, raw = _config_env(ENV_EFFORT_PREFIX, feature)
+    value = raw.lower()
     if value in EFFORTS:
         return value
     if value:
@@ -211,8 +222,8 @@ def anthropic_effort_for(feature: Optional[str]) -> str:
 
 def anthropic_thinking_for(feature: Optional[str]) -> str:
     """Modo de raciocinio da feature. Sem env ou valor invalido: `adaptive`."""
-    name = feature_env(ENV_THINKING_PREFIX, feature)
-    value = _env(name).lower()
+    name, raw = _config_env(ENV_THINKING_PREFIX, feature)
+    value = raw.lower()
     if value in THINKING_MODES:
         return value
     if value:
@@ -222,8 +233,8 @@ def anthropic_thinking_for(feature: Optional[str]) -> str:
 
 def fallback_provider_for(feature: Optional[str]) -> Optional[str]:
     """`openai` quando o fallback esta ligado (env da feature vence a global)."""
-    name = feature_env(ENV_FALLBACK_PREFIX, feature)
-    value = _env(name).lower() or _env(ENV_FALLBACK_GLOBAL).lower()
+    name, raw = _config_env(ENV_FALLBACK_PREFIX, feature)
+    value = raw.lower() or _env(ENV_FALLBACK_GLOBAL).lower()
     if not value:
         return None
     if value != PROVIDER_OPENAI:

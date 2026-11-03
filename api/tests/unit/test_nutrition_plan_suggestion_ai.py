@@ -5,15 +5,19 @@ caminhos. Mais o pedido ao Claude: a mesma feature, com as envs de `meal_parse`.
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import pytest
 
 from app import llm_anthropic, llm_anthropic_schema, nutrition_plan_suggestion_ai as ai, openai_client
+from app.domain.nutrition import labels as lb
 from app.domain.nutrition import plan_suggestion as ps
 from app.domain.nutrition import strategy as st
 from app.domain.nutrition.ai_usage import PLAN_SUGGESTION_JOB_TYPE, AiFeature, AiUsageStatus
 from app.domain.nutrition.anthropometrics import ActivityLevel, Sex, Subject
 from app.domain.nutrition.macros import MEALS_PER_DAY_RANGE
+from app.domain.nutrition.subject import Reading, SubjectSeries
+from app.nutrition_targets_service import UserInputs
 from app.openai_client import OpenAIGenerationError, StructuredResult
 
 USUARIO = 7
@@ -23,6 +27,27 @@ SUJEITO = Subject(
     activity_level=ActivityLevel.MODERATE,
 )
 CONTEXTO = {"profile": {"age_years": 30}}
+HOJE = date(2026, 11, 3)
+
+
+def _entradas(gordura=20.0, nivel="moderate"):
+    """Entradas reais do cálculo: a meta passa pelo motor, sem dublê."""
+    return UserInputs(
+        series=SubjectSeries(
+            sex="male",
+            birth_date=date(1996, 1, 1),
+            height_cm=178.0,
+            activity_level=nivel,
+            weight=(Reading(80.0, HOJE),),
+            bioimpedance_body_fat=(Reading(gordura, HOJE),) if gordura is not None else (),
+        )
+    )
+
+
+def _preparado(sujeito=SUJEITO, entradas=None):
+    return ai.SuggestionInputs(context=CONTEXTO, subject=sujeito, inputs=entradas or _entradas(), today=HOJE)
+
+
 SUGESTAO = {
     "strategy": "cutting",
     "advanced": False,
@@ -50,7 +75,7 @@ class _Uso:
 
 @pytest.fixture
 def uso(monkeypatch):
-    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: (CONTEXTO, SUJEITO))
+    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: _preparado())
     return _Uso(monkeypatch)
 
 
@@ -111,22 +136,114 @@ def test_resposta_recusada_falha_o_job_com_a_mensagem_do_dono_e_guarda_o_codigo(
 
 def test_parada_atingida_recusa(monkeypatch, uso):
     magro = Subject(sex=Sex.MALE, age_years=30, height_cm=178.0, weight_kg=70.0, body_fat_percent=8.0)
-    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: (CONTEXTO, magro))
+    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: _preparado(magro))
     _ia(monkeypatch, SUGESTAO)
     with pytest.raises(ai.PlanSuggestionError):
         ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
     assert uso.fechamentos[0]["error_code"] == ps.ERR_SUGGESTION_STOP_REACHED
 
 
-def test_falha_da_ia_fecha_a_linha_e_propaga_a_mensagem_generica(monkeypatch, uso):
+@pytest.mark.parametrize(
+    ("codigo", "rotulo"),
+    [("OPENAI_5XX", ps.ERR_SUGGESTION_FAILED), (openai_client.OPENAI_TIMEOUT, ps.ERR_SUGGESTION_TIMEOUT)],
+)
+def test_falha_da_ia_mostra_o_rotulo_do_motor_nunca_o_texto_do_provedor(monkeypatch, uso, codigo, rotulo):
     def _falha(*a, **kw):
-        raise OpenAIGenerationError("IA indisponível", status=503, code="OPENAI_5XX", diagnostic="segredo")
+        raise OpenAIGenerationError("texto do provedor", status=503, code=codigo, diagnostic="segredo")
 
     monkeypatch.setattr(ai, "call_openai_structured", _falha)
     with pytest.raises(ai.PlanSuggestionError) as erro:
         ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
-    assert "segredo" not in str(erro.value)
-    assert uso.fechamentos[0]["error_code"] == "OPENAI_5XX"
+    assert str(erro.value) == lb.limitation_label(rotulo) != rotulo
+    assert uso.fechamentos[0]["error_code"] == codigo
+
+
+def test_cutting_sem_massa_gorda_o_motor_nao_calcula_e_a_sugestao_e_recusada(monkeypatch, uso):
+    sem_gordura = Subject(sex=Sex.MALE, age_years=30, height_cm=178.0, weight_kg=80.0, activity_level=ActivityLevel.MODERATE)
+    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: _preparado(sem_gordura, _entradas(gordura=None)))
+    _ia(monkeypatch, SUGESTAO)
+    with pytest.raises(ai.PlanSuggestionError) as erro:
+        ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)
+    assert "Nada mudou no formulário" in str(erro.value)
+    [fechou] = uso.fechamentos
+    assert fechou["status"] == AiUsageStatus.FAILED and fechou["error_code"] == ps.ERR_SUGGESTION_NOT_COMPUTABLE
+    assert lb.limitation_label(ps.ERR_SUGGESTION_NOT_COMPUTABLE) != ps.ERR_SUGGESTION_NOT_COMPUTABLE
+
+
+def test_manutencao_sem_massa_gorda_e_calculavel(monkeypatch, uso):
+    sem_gordura = Subject(sex=Sex.MALE, age_years=30, height_cm=178.0, weight_kg=80.0, activity_level=ActivityLevel.MODERATE)
+    monkeypatch.setattr(ai, "load_context", lambda aluno, atual: _preparado(sem_gordura, _entradas(gordura=None)))
+    manutencao = {
+        **SUGESTAO,
+        "strategy": "maintenance",
+        "protein_g_per_kg": st.MAINT_PROTEIN_G_PER_KG_DEFAULT,
+        "weekly_rate_share": None,
+    }
+    _ia(monkeypatch, manutencao)
+    assert ai.dispatch_plan_suggestion(PEDIDO, USUARIO, 55)["fields"]["strategy"] == "maintenance"
+
+
+def test_pedido_sem_current_nem_aluno_usa_quem_pede_e_formulario_vazio(monkeypatch, uso):
+    vistos = []
+
+    def _load(aluno, atual):
+        vistos.append((aluno, atual))
+        return _preparado()
+
+    monkeypatch.setattr(ai, "load_context", _load)
+    _ia(monkeypatch, SUGESTAO)
+    assert ai.dispatch_plan_suggestion({}, USUARIO, 55)["user_id"] == USUARIO
+    [(aluno, atual)] = vistos
+    assert aluno == USUARIO and atual["strategy"] is None and atual["manual_targets"] is False
+
+
+# ---------------------------------------------------------------------------
+# Referência: o que o formulário fixa muda a conta
+# ---------------------------------------------------------------------------
+
+
+class _Cursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _Conn(_Cursor):
+    def cursor(self):
+        return _Cursor()
+
+
+def _contexto_real(monkeypatch, entradas, **formulario):
+    monkeypatch.setattr(ai, "get_conn", lambda: _Conn())
+    monkeypatch.setattr(ai, "user_today_for", lambda conn, aluno: HOJE)
+    monkeypatch.setattr(ai, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje: entradas)
+    return ai.load_context(ALUNO, ps.normalize_current(formulario)).context
+
+
+def test_perfil_sem_nivel_com_nivel_no_formulario_tem_gasto(monkeypatch):
+    sem_nivel = _entradas(nivel=None)
+    assert _contexto_real(monkeypatch, sem_nivel)["energy"]["tdee_kcal"] is None
+    contexto = _contexto_real(monkeypatch, sem_nivel, activity_level="moderate")
+    assert contexto["energy"]["tdee_kcal"] > contexto["energy"]["bmr_kcal"]
+    assert contexto["profile"]["activity_level"] == "moderate"
+
+
+def test_nivel_do_formulario_vence_o_do_perfil(monkeypatch):
+    sedentario = _entradas(nivel="sedentary")
+    base = _contexto_real(monkeypatch, sedentario)
+    ativo = _contexto_real(monkeypatch, sedentario, activity_level="very_active")
+    assert base["profile"]["activity_level"] == "sedentary" and ativo["profile"]["activity_level"] == "very_active"
+    assert ativo["energy"]["tdee_kcal"] > base["energy"]["tdee_kcal"]
+
+
+def test_gasto_incluido_no_fator_muda_a_conta_e_chega_ao_contexto(monkeypatch):
+    entradas = _entradas()
+    explicito = _contexto_real(monkeypatch, entradas, tdee_mode="explicit_training")
+    incluido = _contexto_real(monkeypatch, entradas, tdee_mode="included_in_factor")
+    assert incluido["current_form"]["tdee_mode"] == "included_in_factor"
+    assert incluido["energy"]["tdee_kcal"] != explicito["energy"]["tdee_kcal"]
 
 
 def test_erro_inesperado_nao_chega_a_tela(monkeypatch, uso):
@@ -159,7 +276,7 @@ def test_estado_do_formulario_nao_confiavel_nao_chega_ao_contexto(monkeypatch, u
 
     def _load(aluno, atual):
         vistos.append((aluno, atual))
-        return CONTEXTO, SUJEITO
+        return _preparado()
 
     monkeypatch.setattr(ai, "load_context", _load)
     _ia(monkeypatch, SUGESTAO)
@@ -270,6 +387,7 @@ def test_schema_estrito_e_so_a_lista_fechada():
     assert esquema["properties"]["strategy"]["enum"] == [s.value for s in st.Strategy]
     assert esquema["properties"]["macro_priority"]["enum"] == [p.value for p in st.MacroPriority]
     assert esquema["properties"][ps.REASONS_KEY]["items"]["enum"] == [m.value for m in ps.SuggestionReason]
+    assert esquema["properties"][ps.REASONS_KEY]["maxItems"] == ps.REASONS_MAX
     # Cabe no subconjunto da Anthropic, e a volta tem a forma original.
     adaptado = llm_anthropic_schema.adapt_schema(esquema)
     assert llm_anthropic_schema.restore(dict(SUGESTAO), esquema, adaptado.optional_paths) == SUGESTAO

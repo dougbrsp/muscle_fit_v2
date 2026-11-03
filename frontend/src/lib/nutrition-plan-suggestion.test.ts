@@ -6,11 +6,14 @@ const apiFetch = vi.fn();
 vi.mock('./api', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api')>()), apiFetch }));
 
 const {
+  applySuggestion,
   fetchPlanSuggestionUsage,
+  keepSuggestion,
   previewPlanDraft,
   requestPlanSuggestion,
   suggestionCurrentPayload,
   suggestionFormPatch,
+  undoSuggestion,
 } = await import('./nutrition-plan-suggestion');
 import type { NutritionPlanSettingsPayload } from './nutrition-types';
 
@@ -141,5 +144,65 @@ describe('preenchimento do formulário', () => {
       meals: 4,
       manualOn: false,
     });
+  });
+});
+
+describe('aplicar, desfazer e manter', () => {
+  const CAMPOS = {
+    strategy: 'bulking',
+    advanced: false,
+    protein_g_per_kg: 2,
+    fat_kcal_share: 0.25,
+    weekly_rate_share: null,
+    surplus_share: 0.1,
+    carb_min_g_per_kg: 3,
+    macro_priority: 'high_carb',
+    meals_per_day: 5,
+  };
+  const FORM_INICIAL = {
+    strategy: 'cutting' as string | null,
+    advanced: false,
+    protein: 2.6 as number | string,
+    fatPercent: 25 as number | string,
+    ratePercent: 0.7 as number | string,
+    surplusPercent: '' as number | string,
+    carbMin: '' as number | string,
+    macroPriority: 'balanced',
+    meals: 4 as number | string,
+    manualOn: true,
+    goalWeight: 75,
+    notes: 'minha nota',
+  };
+
+  it('aplicar preenche só o que a IA sugere e guarda como estava', () => {
+    const { form, undo } = applySuggestion(FORM_INICIAL, CAMPOS);
+    expect(form.strategy).toBe('bulking');
+    expect(form.manualOn).toBe(false);
+    expect(form.goalWeight).toBe(75);
+    expect(undo?.strategy).toBe('cutting');
+    expect(undo).not.toHaveProperty('notes');
+  });
+
+  it('desfazer volta só as chaves da sugestão e não perde a edição de outro campo', () => {
+    const aplicado = applySuggestion(FORM_INICIAL, CAMPOS);
+    const editado = { ...aplicado, form: { ...aplicado.form, notes: 'editei depois', goalWeight: 70 } };
+    const { form, undo } = undoSuggestion(editado);
+    expect(form).toEqual({ ...FORM_INICIAL, notes: 'editei depois', goalWeight: 70 });
+    expect(undo).toBeNull();
+  });
+
+  it('manter fica com o formulário e não há mais o que desfazer', () => {
+    const aplicado = applySuggestion(FORM_INICIAL, CAMPOS);
+    const mantido = keepSuggestion(aplicado);
+    expect(mantido.form).toEqual(aplicado.form);
+    expect(mantido.undo).toBeNull();
+    expect(undoSuggestion(mantido).form).toEqual(aplicado.form);
+  });
+
+  it('o pedido leva o que muda a conta do motor', () => {
+    const atual = suggestionCurrentPayload({ ...FORM, activity_level: 'active' }, false);
+    expect(atual.activity_level).toBe('active');
+    expect(atual.tdee_mode).toBe('explicit_training');
+    expect(atual.bmr_formula).toBe('mifflin');
   });
 });

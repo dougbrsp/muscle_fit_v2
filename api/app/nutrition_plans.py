@@ -355,7 +355,7 @@ def _compute_week(cur: Any, user_id: int, settings: PlanSettings, today: date) -
     return [compute_day(entradas, settings, dia, today) for dia in janela.days()]
 
 
-def _subject_incomplete(comp: DayComputation) -> HTTPException:
+def subject_incomplete_error(comp: DayComputation) -> HTTPException:
     return _error(
         422,
         "nutrition_subject_incomplete",
@@ -527,7 +527,7 @@ def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
             passado = _past_training(cur, aluno, settings_from_row(linha), hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
-        raise _subject_incomplete(comp_hoje)
+        raise subject_incomplete_error(comp_hoje)
     return _preview_payload(linha, usuario, semana, hoje, passado)
 
 
@@ -547,7 +547,7 @@ def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(
             passado = _past_training(cur, aluno, settings, hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
-        raise _subject_incomplete(comp_hoje)
+        raise subject_incomplete_error(comp_hoje)
     return _preview_payload(None, usuario, semana, hoje, passado)
 
 
@@ -593,7 +593,7 @@ def publish_plan(
             entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
             comp_hoje = compute_day(entradas, settings, hoje, hoje)
             if not comp_hoje.target.computable:
-                raise _subject_incomplete(comp_hoje)
+                raise subject_incomplete_error(comp_hoje)
             agora = db_now(cur)
             try:
                 cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, int(plan_id)))

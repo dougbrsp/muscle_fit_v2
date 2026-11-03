@@ -2,7 +2,7 @@
 (`{proxy+}`); a IA roda no worker da `musclefit-workout-ai` (`nutrition_plan_suggestion_ai.py`).
 
 Rotas (prefixo `/nutrition/plan-suggestion`; `/plans/suggestion` colidiria com `/plans/{plan_id}`):
-- `POST ""`       `PlanSuggestionIn` -> **202** `{job_id, status, poll_timeout_seconds, quota}`. Ordem: acesso
+- `POST ""`       `PlanSuggestionIn` -> **202** `{job_id, status, poll_timeout_seconds}` (a cota é o `GET /usage`). Ordem: acesso
                   ao aluno (403/404) -> perfil suficiente para o motor (422, não gasta cota) -> reserva da cota
                   (429 `ai_quota_exceeded`) -> job no DynamoDB -> vínculo job × linha -> invoke assíncrono.
                   Falha ao despachar fecha a linha como `failed` e responde 503.
@@ -22,7 +22,7 @@ type de `ai_usage`; o prazo do polling é o do worker perdido do M73. Esta camad
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Mapping, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -32,10 +32,10 @@ from .db_helpers import connect_or_503
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition import plan_suggestion
 from .domain.nutrition.ai_usage import PLAN_SUGGESTION_JOB_TYPE, AiFeature, AiUsageStatus
-from .domain.nutrition.daily_target import missing_subject_data
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, plan_actor, resolve_target_user
 from .nutrition_plan_suggestion_ai import PROMPT_VERSION
+from .nutrition_plans import subject_incomplete_error
 from .nutrition_schema import require_nutrition_tables
 from .nutrition_targets_service import compute_day, load_user_inputs
 from .request_models import PlanSuggestionIn
@@ -55,11 +55,12 @@ def _error(status: int, code: str, **extra: Any) -> HTTPException:
     )
 
 
-def _missing_subject_codes(conn: Any, cur: Any, aluno: int) -> tuple[str, ...]:
-    """O que falta no perfil para o motor calcular (TMB, gasto): sem isso a IA não tem base, e não se gasta cota."""
+def _incomplete_subject(conn: Any, cur: Any, aluno: int, current: Mapping[str, Any]) -> Optional[HTTPException]:
+    """O 422 de quando falta dado para o motor calcular (TMB, gasto), com o que o formulário informa (nível de atividade,
+    modo do gasto, fórmula): sem isso a IA não tem base, e não se gasta cota. O mesmo erro da prévia."""
     hoje = user_today_for(conn, aluno)
-    comp = compute_day(load_user_inputs(cur, aluno, hoje, hoje, hoje), plan_suggestion.reference_settings(), hoje, hoje)
-    return missing_subject_data(comp.target)
+    comp = compute_day(load_user_inputs(cur, aluno, hoje, hoje, hoje), plan_suggestion.reference_settings(current), hoje, hoje)
+    return None if comp.target.computable else subject_incomplete_error(comp)
 
 
 @router.get("/usage")
@@ -78,16 +79,9 @@ def suggest_plan(payload: PlanSuggestionIn, identity: Identity = Depends(plan_ac
             require_nutrition_tables(cur)
             if aluno != solicitante:
                 fetch_target_user(cur, aluno)
-            faltas = _missing_subject_codes(conn, cur, aluno)
-    if faltas:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "nutrition_subject_incomplete",
-                "message": "Faltam dados do perfil para calcular a meta de hoje.",
-                "missing": nutrition_labels.limitation_items(faltas),
-            },
-        )
+            incompleto = _incomplete_subject(conn, cur, aluno, plan_suggestion.normalize_current(payload.current.model_dump()))
+    if incompleto is not None:
+        raise incompleto
 
     usage_id = nutrition_ai_quota.open_usage(user_id=solicitante, feature=FEATURE, prompt_version=PROMPT_VERSION)
     try:

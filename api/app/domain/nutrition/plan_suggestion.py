@@ -28,13 +28,17 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Final, Mapping, Optional, Sequence
 
 from .adaptive_tdee import PREFERRED_WINDOW_DAYS, weight_trend
-from .anthropometrics import Subject
+from .anthropometrics import ActivityLevel, Subject
+from .bmr import BmrFormula
+from .body_composition import body_fat_is_valid, resolved_fat_mass_kg
+from .energy_expenditure import TdeeMode
 from .macros import MEALS_PER_DAY_RANGE
 from .phases import resolve_stop_body_fat, should_stop
 from .plan import ERR_PARAM_NOT_APPLICABLE, PlanSettings, build_plan_settings
@@ -92,6 +96,26 @@ FIELD_MANUAL_ACTIVE: Final[str] = "manual_targets"
 
 # O formulário manda o estado atual: os campos sugeríveis, os alvos e as gramas manuais ligadas ou não.
 CURRENT_GOAL_FIELDS: Final[tuple[str, str]] = ("goal_weight_kg", "goal_body_fat_percent")
+# O que o formulário escolhe e a IA não sugere, mas muda a conta do motor: valem para a referência, para a revisão e
+# para o resultado (o código de cada um é conferido pelo enum do dono).
+CURRENT_ENGINE_FIELDS: Final[Mapping[str, Any]] = MappingProxyType(
+    {"activity_level": ActivityLevel, "tdee_mode": TdeeMode, "bmr_formula": BmrFormula}
+)
+# Teto de sanidade dos números do formulário: não é faixa de domínio (o formulário pode estar em edição, e a faixa é de
+# `build_plan_settings`); só impede `1e300` de chegar ao prompt. Default de desenho, acima de todo campo do plano.
+CURRENT_NUMBER_MAX: Final[float] = 1000.0
+# Resolução da sugestão: as casas que o formulário mostra e salva (fração = casas do % + 2; paridade com o `decimalScale`
+# do `PlanForm` em teste). O motor devolve o valor já nela, e o que aparece é o que salva. Todo limite de faixa cabe nestas
+# casas (teste), então arredondar um valor aceito não o tira da faixa.
+SUGGESTION_DECIMALS: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "protein_g_per_kg": 2,
+        "fat_kcal_share": 3,
+        "weekly_rate_share": 4,
+        "surplus_share": 3,
+        "carb_min_g_per_kg": 2,
+    }
+)
 
 ERR_SUGGESTION_SHAPE = "suggestion_shape_invalid"
 ERR_SUGGESTION_FIELD_FORBIDDEN = "suggestion_field_forbidden"  # f"suggestion_field_forbidden:<campo>"
@@ -99,9 +123,11 @@ ERR_SUGGESTION_FIELD_MISSING = "suggestion_field_missing"  # f"suggestion_field_
 ERR_SUGGESTION_FIELD_INVALID = "suggestion_field_invalid"  # f"suggestion_field_invalid:<campo>"
 ERR_SUGGESTION_REASON_INVALID = "suggestion_reason_invalid"
 ERR_SUGGESTION_STOP_REACHED = "suggestion_stop_reached"
+ERR_SUGGESTION_NOT_COMPUTABLE = "suggestion_not_computable"
 # O que a tela e o job veem (o detalhe fica nos códigos, no `ai_usage_log`).
 ERR_SUGGESTION_REFUSED = "plan_suggestion_refused"
 ERR_SUGGESTION_FAILED = "plan_suggestion_failed"
+ERR_SUGGESTION_TIMEOUT = "plan_suggestion_timeout"
 ERR_SUGGESTION_DISPATCH_FAILED = "plan_suggestion_dispatch_failed"
 
 # Contexto enviado: janela da tendência do peso (a preferida do TDEE adaptativo) e arredondamentos
@@ -151,10 +177,15 @@ def meals_range() -> tuple[int, int]:
     return MEALS_PER_DAY_RANGE
 
 
-def reference_settings() -> PlanSettings:
-    """Configuração só para resolver o sujeito e a energia antes da sugestão: manutenção, sem nenhum parâmetro do
-    formulário (a TMB e o gasto não dependem da estratégia). Sem parâmetros, `build_plan_settings` nunca recusa."""
-    settings = build_plan_settings(strategy=Strategy.MAINTENANCE.value).settings
+def _engine_fields(current: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    return {campo: (current or {}).get(campo) for campo in CURRENT_ENGINE_FIELDS}
+
+
+def reference_settings(current: Optional[Mapping[str, Any]] = None) -> PlanSettings:
+    """Configuração para resolver o sujeito e a energia antes da sugestão: manutenção, com o nível de atividade, o modo do
+    gasto do treino e a fórmula da TMB do formulário (`normalize_current`; ausente = o do perfil ou o padrão do motor), os
+    mesmos que a prévia e o plano salvo usam. Com códigos normalizados, `build_plan_settings` não recusa."""
+    settings = build_plan_settings(strategy=Strategy.MAINTENANCE.value, **_engine_fields(current)).settings
     assert settings is not None
     return settings
 
@@ -196,7 +227,9 @@ def _shape_errors(raw: Mapping[str, Any]) -> list[str]:
 
 
 def _reasons(raw: Any) -> Optional[tuple[SuggestionReason, ...]]:
-    """Motivos da resposta, sem repetir. Código desconhecido ou demais motivos: None (recusa)."""
+    """Motivos da resposta. Lista vazia vale: motivo é explicação, e a tela só não mostra a seção. Repetido sai sem recusa
+    (o mesmo rótulo duas vezes não diz nada a mais), mas o teto conta a lista como veio. Código desconhecido ou mais de
+    `REASONS_MAX`: None (recusa)."""
     if not isinstance(raw, list) or len(raw) > REASONS_MAX:
         return None
     try:
@@ -205,12 +238,24 @@ def _reasons(raw: Any) -> Optional[tuple[SuggestionReason, ...]]:
         return None
 
 
-def review_suggestion(
-    raw: Any, *, subject: Optional[Subject] = None, goal_body_fat_percent: Any = None
-) -> SuggestionReview:
-    """Revisa a resposta da IA. Qualquer problema recusa a sugestão inteira. Valida com
-    `build_plan_settings` (a mesma entrada do plano) e, com o `subject`, recusa a estratégia cuja
-    fase já deveria parar pelo % de gordura (`phases.should_stop`), com o alvo do plano ou o default."""
+def _at_screen_resolution(settings: PlanSettings) -> PlanSettings:
+    """A sugestão nas casas do formulário (`SUGGESTION_DECIMALS`). Só depois da validação: nada fora da faixa passa por aqui."""
+    return replace(
+        settings,
+        **{
+            campo: round(getattr(settings, campo), casas)
+            for campo, casas in SUGGESTION_DECIMALS.items()
+            if getattr(settings, campo) is not None
+        },
+    )
+
+
+def review_suggestion(raw: Any, *, subject: Optional[Subject] = None, current: Optional[Mapping[str, Any]] = None) -> SuggestionReview:
+    """Revisa a resposta da IA. Qualquer problema recusa a sugestão inteira. Valida com `build_plan_settings` (a mesma
+    entrada do plano), com o que o formulário fixa (`current`, de `normalize_current`: atividade, gasto do treino, fórmula).
+    Com o `subject`, recusa a estratégia cuja fase já deveria parar pelo % de gordura (`phases.should_stop`), com o alvo do
+    formulário, se válido, ou o default. Sem % de gordura medido não há o que comparar: `should_stop` não recusa, e quem
+    barra o cutting sem massa gorda é o cálculo (`target.computable`, no worker). O valor aceito volta na resolução da tela."""
     if not isinstance(raw, Mapping):
         return SuggestionReview(settings=None, errors=(ERR_SUGGESTION_SHAPE,))
     erros = _shape_errors(raw)
@@ -226,6 +271,7 @@ def review_suggestion(
         macro_priority=raw[FIELD_MACRO_PRIORITY],
         meals_per_day=raw[FIELD_MEALS],
         **{campo: raw[campo] for campo in (*ALWAYS_NUMBER_FIELDS, *OPTIONAL_NUMBER_FIELDS)},
+        **_engine_fields(current),
     )
     erros = list(validacao.errors)
     settings = validacao.settings
@@ -235,10 +281,11 @@ def review_suggestion(
     if erros or settings is None:
         return SuggestionReview(settings=None, errors=tuple(erros))
     if subject is not None:
-        limite, _padrao = resolve_stop_body_fat(settings.strategy, subject.sex, goal_body_fat_percent)
+        alvo = (current or {}).get("goal_body_fat_percent")
+        limite, _padrao = resolve_stop_body_fat(settings.strategy, subject.sex, alvo if body_fat_is_valid(alvo) else None)
         if should_stop(settings.strategy, subject.body_fat_percent, limite):
             return SuggestionReview(settings=None, errors=(ERR_SUGGESTION_STOP_REACHED,))
-    return SuggestionReview(settings=settings, reasons=motivos)
+    return SuggestionReview(settings=_at_screen_resolution(settings), reasons=motivos)
 
 
 def suggestion_fields(settings: PlanSettings) -> dict[str, Any]:
@@ -263,9 +310,12 @@ def normalize_current(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     prioridade = dados.get(FIELD_MACRO_PRIORITY)
     atual[FIELD_MACRO_PRIORITY] = prioridade if prioridade in {p.value for p in MacroPriority} else None
     atual[FIELD_ADVANCED] = dados.get(FIELD_ADVANCED) is True
+    for campo, enum_cls in CURRENT_ENGINE_FIELDS.items():
+        codigo = dados.get(campo)
+        atual[campo] = codigo if codigo in {item.value for item in enum_cls} else None
     for campo in (*ALWAYS_NUMBER_FIELDS, *OPTIONAL_NUMBER_FIELDS, FIELD_MEALS, *CURRENT_GOAL_FIELDS):
         valor = dados.get(campo)
-        atual[campo] = float(valor) if _is_number(valor) else None
+        atual[campo] = float(valor) if _is_number(valor) and 0 <= valor <= CURRENT_NUMBER_MAX else None
     atual[FIELD_MANUAL_ACTIVE] = dados.get(FIELD_MANUAL_ACTIVE) is True
     return atual
 
@@ -353,6 +403,8 @@ def build_context(
             "height_cm": _rounded(subject.height_cm, _ROUND_ONE_DECIMAL),
             "weight_kg": _rounded(subject.weight_kg, _ROUND_ONE_DECIMAL),
             "body_fat_percent": _rounded(subject.body_fat_percent, _ROUND_ONE_DECIMAL),
+            # Sem massa gorda o cutting não é calculável: a IA precisa saber antes de sugeri-lo.
+            "fat_mass_known": resolved_fat_mass_kg(subject) is not None,
             "activity_level": subject.activity_level.value if subject.activity_level else None,
         },
         "energy": {"bmr_kcal": _rounded(bmr_kcal, _ROUND_KCAL), "tdee_kcal": _rounded(tdee_kcal, _ROUND_KCAL)},
@@ -362,19 +414,23 @@ def build_context(
             "weekly_weight_change_share": _rounded(weekly_weight_change_share(weights, subject.weight_kg), _ROUND_SHARE),
             "training": training_summary(past_training_kcal),
         },
-        "current_form": {campo: current.get(campo) for campo in (*SUGGESTION_FIELDS, *CURRENT_GOAL_FIELDS)},
+        "current_form": {campo: current.get(campo) for campo in (*SUGGESTION_FIELDS, *CURRENT_GOAL_FIELDS, "tdee_mode")},
     }
 
 
 __all__ = [
     "ALWAYS_NUMBER_FIELDS",
+    "CURRENT_ENGINE_FIELDS",
     "CURRENT_GOAL_FIELDS",
+    "CURRENT_NUMBER_MAX",
     "ERR_SUGGESTION_DISPATCH_FAILED",
     "ERR_SUGGESTION_FAILED",
     "ERR_SUGGESTION_FIELD_FORBIDDEN",
     "ERR_SUGGESTION_FIELD_INVALID",
     "ERR_SUGGESTION_FIELD_MISSING",
+    "ERR_SUGGESTION_NOT_COMPUTABLE",
     "ERR_SUGGESTION_REASON_INVALID",
+    "ERR_SUGGESTION_TIMEOUT",
     "ERR_SUGGESTION_REFUSED",
     "ERR_SUGGESTION_SHAPE",
     "ERR_SUGGESTION_STOP_REACHED",
@@ -385,6 +441,7 @@ __all__ = [
     "SHARE_TO_PERCENT",
     "REASONS_KEY",
     "REASONS_MAX",
+    "SUGGESTION_DECIMALS",
     "SUGGESTION_FIELDS",
     "SuggestionChange",
     "SuggestionReason",

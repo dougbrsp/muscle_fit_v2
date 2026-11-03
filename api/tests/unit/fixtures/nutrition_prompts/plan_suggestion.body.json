@@ -1,6 +1,6 @@
 {
   "_prompt_version": "nutrition-plan-suggestion-v1",
-  "input": "<<PROMPT 4288 chars, sha256 90c445c55c46d1d4>>",
+  "input": "<<PROMPT 4585 chars, sha256 5934370ef709ef33>>",
   "max_output_tokens": 16384,
   "model": "gpt-5.4-mini",
   "store": false,
@@ -55,6 +55,7 @@
               ],
               "type": "string"
             },
+            "maxItems": 3,
             "type": "array"
           },
           "strategy": {

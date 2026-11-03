@@ -118,9 +118,10 @@ def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")
     assert llm_anthropic.DEFAULT_PROVIDER == llm_anthropic.PROVIDER_OPENAI  # o que nao e publicado
     envs = {
+        # Toda entrada explicita e publicada, inclusive com openai (`contains(keys(...), f)` no Terraform).
         f"LLM_PROVIDER_{f}".upper(): provedores[f]
         for f in llm_anthropic.LLM_FEATURES
-        if provedores.get(f, llm_anthropic.DEFAULT_PROVIDER) != llm_anthropic.DEFAULT_PROVIDER
+        if f in provedores
     }
     for variavel, prefixo in (
         ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
@@ -139,7 +140,8 @@ def _envs_publicadas(tf: str) -> dict[str, str]:
     """As envs de LLM que `local.llm_provider_env` publica com os padroes do Terraform (sem o ARN)."""
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")
     features = re.findall(r'"([a-z_]+)"', re.search(r"llm_features = \[(.*?)\]", tf, re.S).group(1))
-    envs = {f"LLM_PROVIDER_{f.upper()}": provedores[f] for f in features if provedores.get(f, "openai") != "openai"}
+    # Entrada explicita em llm_provider_by_feature e publicada, mesmo com openai (o modo de cortar so a sugestao).
+    envs = {f"LLM_PROVIDER_{f.upper()}": provedores[f] for f in features if f in provedores}
     for variavel, prefixo in (
         ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
         ("anthropic_effort_by_feature", "ANTHROPIC_EFFORT_"),
@@ -203,6 +205,48 @@ def test_sugestao_de_metas_le_a_config_de_meal_parse_sem_env_propria(monkeypatch
     # So ela le env de outra feature; as demais usam o proprio nome.
     for feature in CONFIG_EM_PRODUCAO_ANTES_DO_N6:
         assert llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, feature) == f"LLM_PROVIDER_{feature.upper()}"
+
+
+def _limpa_envs_llm(monkeypatch):
+    for nome in list(os.environ):
+        if nome.startswith(("LLM_", "ANTHROPIC_")):
+            monkeypatch.delenv(nome)
+    for nome, valor in _envs_publicadas(_tf("llm_providers.tf")).items():
+        monkeypatch.setenv(nome, valor)
+
+
+def test_env_propria_desliga_so_a_sugestao_e_meal_parse_nao_muda(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    antes = _config("meal_parse")
+    monkeypatch.setenv("LLM_PROVIDER_PLAN_SUGGESTION", "openai")
+    assert llm_anthropic.provider_for("plan_suggestion") == "openai"
+    assert _config("meal_parse") == antes
+
+
+def test_env_propria_vence_uma_a_uma(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_EFFORT_PLAN_SUGGESTION", "low")
+    assert _config("plan_suggestion") == ("anthropic", HAIKU, "low", "adaptive", "openai")
+    assert llm_anthropic.anthropic_effort_for("meal_parse") == "medium"
+
+
+def test_virar_meal_parse_leva_a_sugestao_salvo_com_env_propria(monkeypatch):
+    _limpa_envs_llm(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER_MEAL_PARSE", "openai")
+    assert llm_anthropic.provider_for("plan_suggestion") == "openai"
+    monkeypatch.setenv("LLM_PROVIDER_PLAN_SUGGESTION", "anthropic")
+    assert llm_anthropic.provider_for("plan_suggestion") == "anthropic"
+    assert llm_anthropic.provider_for("meal_parse") == "openai"
+
+
+def test_terraform_publica_entrada_explicita_e_nao_muda_as_envs_de_hoje():
+    tf = _tf("llm_providers.tf")
+    # Sem isto, `plan_suggestion = "openai"` nao publicaria nada e valeria a env de meal_parse.
+    assert 'contains(keys(var.llm_provider_by_feature), f)' in tf
+    # Nos padroes, nenhum mapa tem entrada openai: o filtro novo nao publica nada a mais.
+    assert "openai" not in _mapa_padrao(tf, "llm_provider_by_feature").values()
+    assert not [nome for nome in _envs_publicadas(tf) if "PLAN_SUGGESTION" in nome]
+    assert llm_anthropic.feature_env(llm_anthropic.ENV_PROVIDER_PREFIX, "plan_suggestion") == "LLM_PROVIDER_PLAN_SUGGESTION"
 
 
 def test_raciocinio_publicado_so_com_valores_e_esforcos_que_a_api_aceita():

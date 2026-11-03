@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any, Mapping, Optional
 
 from . import nutrition_ai_quota, nutrition_meal_parse_ai, prompt_store
@@ -35,10 +36,17 @@ from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.ai_usage import AiFeature, AiUsageStatus
 from .domain.nutrition.phases import BULK_STOP_BODY_FAT_PERCENT, CUT_STOP_BODY_FAT_PERCENT
 from .domain.nutrition.plan import PROJECTION_TRAINING_WINDOW_DAYS, projection_tdee
+from .domain.nutrition.anthropometrics import Subject
 from .domain.nutrition.strategy import MacroPriority, Strategy
 from .intelligence.dashboard.time_windows import user_today_for
-from .nutrition_targets_service import compute_day, load_user_inputs, past_training_kcal
-from .openai_client import LLM_TIMEOUT_LIVE_SECONDS, OpenAIGenerationError, StructuredResult, call_openai_structured
+from .nutrition_targets_service import UserInputs, compute_day, load_user_inputs, past_training_kcal
+from .openai_client import (
+    LLM_TIMEOUT_LIVE_SECONDS,
+    OPENAI_TIMEOUT,
+    OpenAIGenerationError,
+    StructuredResult,
+    call_openai_structured,
+)
 from .prompt_user_data import user_data_block, user_data_rule
 
 logger = logging.getLogger("musclefit.nutrition.plan_suggestion_ai")
@@ -88,6 +96,7 @@ def prompt_values() -> dict[str, str]:
         "regra_dados_usuario": user_data_rule(),
         "estrategias": ", ".join(f"`{s.value}`" for s in Strategy),
         "estrategia_avancado": f"`{Strategy.BULKING.value}`",
+        "estrategia_exige_massa_gorda": f"`{Strategy.CUTTING.value}`",
         "faixas": _ranges_text(),
         "paradas": "\n".join(
             (
@@ -129,6 +138,7 @@ def output_schema() -> dict[str, Any]:
         **{campo: {"type": ["number", "null"]} for campo in plan_suggestion.OPTIONAL_NUMBER_FIELDS},
         plan_suggestion.REASONS_KEY: {
             "type": "array",
+            "maxItems": plan_suggestion.REASONS_MAX,
             "items": {"type": "string", "enum": [motivo.value for motivo in plan_suggestion.SuggestionReason]},
         },
     }
@@ -159,9 +169,19 @@ def call_model(context: Mapping[str, Any], *, user_id: Optional[int] = None) -> 
 # ---------------------------------------------------------------------------
 
 
-def load_context(aluno: int, current: Mapping[str, Any]) -> tuple[dict[str, Any], Any]:
-    """Contexto mínimo do aluno, e o sujeito de hoje para a revisão do motor. Só leitura."""
-    settings = plan_suggestion.reference_settings()
+@dataclass(frozen=True)
+class SuggestionInputs:
+    """O contexto enviado à IA e o que a revisão usa depois: o sujeito de hoje e as entradas do cálculo."""
+
+    context: dict[str, Any]
+    subject: Subject
+    inputs: UserInputs
+    today: date
+
+
+def load_context(aluno: int, current: Mapping[str, Any]) -> SuggestionInputs:
+    """Contexto mínimo do aluno, com o nível de atividade, o modo do gasto e a fórmula do formulário. Só leitura."""
+    settings = plan_suggestion.reference_settings(current)
     with connect_or_503(get_conn) as conn:
         hoje = user_today_for(conn, aluno)
         with conn.cursor() as cur:
@@ -178,7 +198,7 @@ def load_context(aluno: int, current: Mapping[str, Any]) -> tuple[dict[str, Any]
         past_training_kcal=passado,
         current=current,
     )
-    return contexto, comp.subject.subject
+    return SuggestionInputs(context=contexto, subject=comp.subject.subject, inputs=entradas, today=hoje)
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +207,7 @@ def load_context(aluno: int, current: Mapping[str, Any]) -> tuple[dict[str, Any]
 
 
 class PlanSuggestionError(RuntimeError):
-    """Falha do job; a mensagem (o que a tela vê) é o texto pt-BR de `labels`."""
+    """Falha do job; a mensagem (o que a tela vê) é SEMPRE o texto pt-BR do código do motor em `labels`, nunca o do provedor."""
 
 
 def _public_message(code: str) -> str:
@@ -201,7 +221,7 @@ def dispatch_plan_suggestion(payload: dict[str, Any], user_id: Any, ai_usage_id:
     aluno = int(payload.get("target_user_id") or solicitante)
     atual = plan_suggestion.normalize_current(payload.get("current"))
     try:
-        contexto, sujeito = load_context(aluno, atual)
+        entradas = load_context(aluno, atual)
     except Exception as exc:
         logger.exception("Falha ao montar o contexto da sugestão de metas (ai_usage_id=%s)", ai_usage_id)
         nutrition_ai_quota.finish_usage(
@@ -210,7 +230,7 @@ def dispatch_plan_suggestion(payload: dict[str, Any], user_id: Any, ai_usage_id:
         raise PlanSuggestionError(_public_message(plan_suggestion.ERR_SUGGESTION_FAILED)) from exc
 
     try:
-        resposta = call_model(contexto, user_id=solicitante)
+        resposta = call_model(entradas.context, user_id=solicitante)
     except OpenAIGenerationError as exc:
         nutrition_ai_quota.finish_usage(
             ai_usage_id,
@@ -218,7 +238,8 @@ def dispatch_plan_suggestion(payload: dict[str, Any], user_id: Any, ai_usage_id:
             model=model_name(),
             error_code=exc.code or plan_suggestion.ERR_SUGGESTION_FAILED,
         )
-        raise PlanSuggestionError(str(exc)) from exc
+        codigo = plan_suggestion.ERR_SUGGESTION_TIMEOUT if exc.code == OPENAI_TIMEOUT else plan_suggestion.ERR_SUGGESTION_FAILED
+        raise PlanSuggestionError(_public_message(codigo)) from exc
     except Exception as exc:
         logger.exception("Falha inesperada na sugestão de metas (ai_usage_id=%s)", ai_usage_id)
         nutrition_ai_quota.finish_usage(
@@ -227,16 +248,19 @@ def dispatch_plan_suggestion(payload: dict[str, Any], user_id: Any, ai_usage_id:
         raise PlanSuggestionError(_public_message(plan_suggestion.ERR_SUGGESTION_FAILED)) from exc
 
     uso = {"model": resposta.model, "tokens_in": resposta.tokens_in, "tokens_out": resposta.tokens_out}
-    revisao = plan_suggestion.review_suggestion(
-        resposta.data, subject=sujeito, goal_body_fat_percent=atual.get("goal_body_fat_percent")
-    )
-    if not revisao.ok:
+    revisao = plan_suggestion.review_suggestion(resposta.data, subject=entradas.subject, current=atual)
+    erros = revisao.errors
+    if revisao.settings is not None and not erros:
+        # Válida na faixa, mas o motor precisa conseguir calcular (cutting sem massa gorda, por exemplo).
+        meta = compute_day(entradas.inputs, revisao.settings, entradas.today, entradas.today).target
+        if not meta.computable:
+            erros = (plan_suggestion.ERR_SUGGESTION_NOT_COMPUTABLE,)
+    if erros or revisao.settings is None:
         # Só os códigos, que passaram pelo alfabeto do motor: nunca o conteúdo da resposta.
-        logger.warning("Sugestão de metas recusada pelo motor (ai_usage_id=%s, códigos=%s)", ai_usage_id, revisao.errors)
-        nutrition_ai_quota.finish_usage(ai_usage_id, status=AiUsageStatus.FAILED, error_code=revisao.errors[0], **uso)
+        logger.warning("Sugestão de metas recusada pelo motor (ai_usage_id=%s, códigos=%s)", ai_usage_id, erros)
+        nutrition_ai_quota.finish_usage(ai_usage_id, status=AiUsageStatus.FAILED, error_code=erros[0], **uso)
         raise PlanSuggestionError(_public_message(plan_suggestion.ERR_SUGGESTION_REFUSED))
 
-    assert revisao.settings is not None
     nutrition_ai_quota.finish_usage(ai_usage_id, status=AiUsageStatus.SUCCEEDED, **uso)
     return {
         "fields": plan_suggestion.suggestion_fields(revisao.settings),
@@ -256,6 +280,7 @@ __all__ = [
     "PROMPT_VERSION",
     "PlanSuggestionError",
     "SCHEMA_NAME",
+    "SuggestionInputs",
     "build_prompt",
     "call_model",
     "dispatch_plan_suggestion",

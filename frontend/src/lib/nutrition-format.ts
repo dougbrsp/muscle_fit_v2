@@ -22,6 +22,11 @@ export function percentToShare(percent: number | string | null | undefined): num
 }
 
 /** Número do campo (`NumberInput` devolve `number | string`); vazio vira `null`. */
+/** Valor de um campo numérico do formulário a partir do número da API: sem valor, campo vazio. */
+export function asField(value: number | null | undefined): number | string {
+  return value == null ? '' : value;
+}
+
 export function inputNumberOrNull(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined || value === '') return null;
   const valor = Number(value);

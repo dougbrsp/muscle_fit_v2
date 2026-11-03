@@ -4,7 +4,7 @@
 
 import { apiFetch } from './api';
 import { ASYNC_JOB_POLL_TIMEOUT_MS, pollAsyncJob } from './async-job-poll';
-import { shareToPercent } from './nutrition-format';
+import { asField, shareToPercent } from './nutrition-format';
 import type {
   AiQuota,
   NutritionLimitation,
@@ -53,6 +53,9 @@ export type PlanSuggestionCurrent = {
   meals_per_day: number | null;
   goal_weight_kg: number | null;
   goal_body_fat_percent: number | null;
+  activity_level: string | null;
+  tdee_mode: string | null;
+  bmr_formula: string | null;
   manual_targets: boolean;
 };
 
@@ -105,26 +108,47 @@ export function suggestionCurrentPayload(payload: NutritionPlanSettingsPayload, 
     meals_per_day: payload.meals_per_day,
     goal_weight_kg: payload.goal_weight_kg,
     goal_body_fat_percent: payload.goal_body_fat_percent,
+    activity_level: payload.activity_level ?? null,
+    tdee_mode: payload.tdee_mode ?? null,
+    bmr_formula: payload.bmr_formula ?? null,
     manual_targets: manualOn,
   };
-}
-
-function field(value: number | null | undefined): number | string {
-  return value == null ? '' : value;
 }
 
 /** O que a sugestão preenche no formulário. Aplicar desliga as gramas manuais: com elas, os parâmetros não valeriam. */
 export function suggestionFormPatch(fields: PlanSuggestionFields) {
   return {
-    strategy: fields.strategy,
+    strategy: fields.strategy as string | null,
     advanced: fields.advanced,
-    protein: field(fields.protein_g_per_kg),
-    fatPercent: field(shareToPercent(fields.fat_kcal_share)),
-    ratePercent: field(shareToPercent(fields.weekly_rate_share)),
-    surplusPercent: field(shareToPercent(fields.surplus_share)),
-    carbMin: field(fields.carb_min_g_per_kg),
+    protein: asField(fields.protein_g_per_kg),
+    fatPercent: asField(shareToPercent(fields.fat_kcal_share)),
+    ratePercent: asField(shareToPercent(fields.weekly_rate_share)),
+    surplusPercent: asField(shareToPercent(fields.surplus_share)),
+    carbMin: asField(fields.carb_min_g_per_kg),
     macroPriority: fields.macro_priority,
-    meals: field(fields.meals_per_day),
+    meals: asField(fields.meals_per_day),
     manualOn: false,
   };
+}
+
+/** Só as chaves que a sugestão preenche: é o que "Desfazer" devolve, sem perder outra edição. */
+export type SuggestionFormSlice = ReturnType<typeof suggestionFormPatch>;
+
+/** O formulário e o que desfazer. `undo` = null: nada a desfazer. */
+export type SuggestionFormState<F extends SuggestionFormSlice> = { form: F; undo: SuggestionFormSlice | null };
+
+export function applySuggestion<F extends SuggestionFormSlice>(form: F, fields: PlanSuggestionFields): SuggestionFormState<F> {
+  const patch = suggestionFormPatch(fields);
+  const undo = Object.fromEntries(Object.keys(patch).map((chave) => [chave, form[chave as keyof SuggestionFormSlice]]));
+  return { form: { ...form, ...patch }, undo: undo as SuggestionFormSlice };
+}
+
+/** "Desfazer": volta só as chaves da sugestão; o que a pessoa mudou nos outros campos fica. */
+export function undoSuggestion<F extends SuggestionFormSlice>(state: SuggestionFormState<F>): SuggestionFormState<F> {
+  return { form: state.undo ? { ...state.form, ...state.undo } : state.form, undo: null };
+}
+
+/** "Manter": o formulário fica como está e não há mais o que desfazer. */
+export function keepSuggestion<F extends SuggestionFormSlice>(state: SuggestionFormState<F>): SuggestionFormState<F> {
+  return { form: state.form, undo: null };
 }

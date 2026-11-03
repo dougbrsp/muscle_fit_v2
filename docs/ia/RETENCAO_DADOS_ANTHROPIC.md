@@ -18,6 +18,8 @@ para o provedor Anthropic, que entra **por feature** no cliente único (`api/app
 | `exercise_description` | dados do exercício do catálogo (nome, equipamento, músculos) |
 | `workout_summary` | séries, notas e decisões do motor de um treino (delimitados como dado) |
 
+`plan_suggestion` não tem env própria: segue o provedor de `meal_parse` (`llm_anthropic.FEATURE_CONFIG_SOURCE`) e, com ele, vai à Anthropic. Para cortar o envio só dela: `plan_suggestion = "openai"` em `llm_provider_by_feature` (`infra/llm_providers.tf`), porque a env própria vence. Se `meal_parse` voltar à OpenAI sem isso, a sugestão vai junto.
+
 `periodization`, `set_evaluation`, `workouts_analysis`, `exercise_summary` e `workout_plan` seguem só na OpenAI. Os
 cards ilustrados (imagem) também.
 

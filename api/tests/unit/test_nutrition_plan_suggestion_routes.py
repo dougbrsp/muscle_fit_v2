@@ -5,18 +5,24 @@ incompleto antes da cota, ordem do despacho e o fechamento como `failed` quando 
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app import async_jobs, nutrition_plan_suggestion as rota, nutrition_plans
+from app import async_jobs, jobs, nutrition_plan_suggestion as rota, nutrition_plans
 from app.domain.nutrition import plan_suggestion as ps
 from app.domain.nutrition.ai_usage import PLAN_SUGGESTION_JOB_TYPE, AiFeature, AiUsageStatus, QuotaStatus
+from app.domain.nutrition.subject import Reading, SubjectSeries
 from app.nutrition_ai_quota import quota_exceeded_error
 from app.nutrition_plan_suggestion_ai import PROMPT_VERSION
+from app.nutrition_targets_service import UserInputs
 from app.security import Identity, get_current_identity
+from tests.unit.test_m65_jobs_dono import FakeTable
 
+INCOMPLETO_REAL = rota._incomplete_subject
+DIA = date(2026, 11, 3)
 USUARIO = 7
 ALUNO = 12
 URL = "/nutrition/plan-suggestion"
@@ -43,7 +49,7 @@ class _Conn:
 
 
 class _Despacho:
-    def __init__(self, monkeypatch, *, cota=True, falha_job=False, falha_invoke=False, faltas=()):
+    def __init__(self, monkeypatch, *, cota=True, falha_job=False, falha_invoke=False, incompleto=None):
         self.eventos: list[tuple] = []
         self.cota = cota
         self.falha_job = falha_job
@@ -51,7 +57,7 @@ class _Despacho:
         monkeypatch.setattr(rota, "get_conn", lambda: _Conn())
         monkeypatch.setattr(rota, "require_nutrition_tables", lambda cur: None)
         monkeypatch.setattr(rota, "fetch_target_user", self.fetch_user)
-        monkeypatch.setattr(rota, "_missing_subject_codes", lambda conn, cur, aluno: faltas)
+        monkeypatch.setattr(rota, "_incomplete_subject", lambda conn, cur, aluno, atual: incompleto)
         monkeypatch.setattr(rota.nutrition_ai_quota, "open_usage", self.open_usage)
         monkeypatch.setattr(rota.nutrition_ai_quota, "finish_usage", self.finish_usage)
         monkeypatch.setattr(rota.nutrition_ai_quota, "link_job", self.link_job)
@@ -150,12 +156,84 @@ def test_cota_esgotada_responde_429_sem_job(monkeypatch):
 
 
 def test_perfil_incompleto_responde_422_sem_gastar_cota(monkeypatch):
-    despacho = _Despacho(monkeypatch, faltas=("missing_weight",))
+    erro = HTTPException(status_code=422, detail={"error": "nutrition_subject_incomplete"})
+    despacho = _Despacho(monkeypatch, incompleto=erro)
     resposta = _cliente().post(URL, json=CORPO)
     assert resposta.status_code == 422
-    detalhe = resposta.json()["detail"]
-    assert detalhe["error"] == "nutrition_subject_incomplete" and detalhe["missing"][0]["code"] == "missing_weight"
+    assert resposta.json()["detail"]["error"] == "nutrition_subject_incomplete"
     assert despacho.eventos == []
+
+
+def _entradas_sem_nivel():
+    return UserInputs(
+        series=SubjectSeries(
+            sex="male", birth_date=date(1996, 1, 1), height_cm=178.0, activity_level=None, weight=(Reading(80.0, DIA),)
+        )
+    )
+
+
+def test_perfil_sem_nivel_com_nivel_no_formulario_passa_e_sem_ele_e_422(monkeypatch):
+    """Com o cálculo real: o nível do formulário vale na referência, como na prévia e no plano salvo."""
+    despacho = _Despacho(monkeypatch)
+    monkeypatch.setattr(rota, "_incomplete_subject", INCOMPLETO_REAL)
+    monkeypatch.setattr(rota, "user_today_for", lambda conn, aluno: DIA)
+    monkeypatch.setattr(rota, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje: _entradas_sem_nivel())
+
+    sem_nivel = _cliente().post(URL, json={"current": {}})
+    assert sem_nivel.status_code == 422
+    detalhe = sem_nivel.json()["detail"]
+    assert detalhe["error"] == "nutrition_subject_incomplete" and detalhe["missing"]
+    assert despacho.eventos == []
+
+    com_nivel = _cliente().post(URL, json={"current": {"activity_level": "moderate"}})
+    assert com_nivel.status_code == 202
+    [invoke] = [e for e in despacho.eventos if e[0] == "invoke"]
+    assert invoke[2]["payload"]["current"]["activity_level"] == "moderate"
+
+
+def test_pedido_persistido_nao_leva_o_formulario_nem_dados_do_aluno(monkeypatch):
+    despacho = _Despacho(monkeypatch)
+    _cliente().post(URL, json={"current": {"goal_weight_kg": 70, "activity_level": "moderate"}})
+    [(_, _, request, _)] = [e for e in despacho.eventos if e[0] == "job"]
+    assert set(request) == {"target_user_id", "ai_usage_id"}
+
+
+@pytest.mark.parametrize(
+    "atual",
+    [
+        {"protein_g_per_kg": 1e300},
+        {"goal_weight_kg": 1001},
+        {"fat_kcal_share": -0.1},
+        {"strategy": "x" * 17},
+        {"activity_level": "x" * 17},
+        {"bmr_formula": "x" * 25},
+    ],
+)
+def test_numero_absurdo_ou_texto_longo_no_formulario_e_recusado(monkeypatch, atual):
+    despacho = _Despacho(monkeypatch)
+    assert _cliente().post(URL, json={"current": atual}).status_code == 422
+    assert despacho.eventos == []
+
+
+def test_limite_de_sanidade_do_formulario_e_inclusivo(monkeypatch):
+    _Despacho(monkeypatch)
+    assert _cliente().post(URL, json={"current": {"goal_weight_kg": ps.CURRENT_NUMBER_MAX}}).status_code == 202
+
+
+def test_job_da_sugestao_so_e_lido_pelo_dono(monkeypatch):
+    tabela = FakeTable()
+    monkeypatch.setattr(async_jobs, "_table", lambda: tabela)
+    job_id = async_jobs.create_job(PLAN_SUGGESTION_JOB_TYPE, request={"target_user_id": ALUNO}, owner_user_id=USUARIO)
+
+    def _cliente_jobs(user_id, role="regular"):
+        app = FastAPI()
+        app.include_router(jobs.router)
+        app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=user_id, role=role, source="session")
+        return TestClient(app)
+
+    assert _cliente_jobs(USUARIO).get(f"/jobs/{job_id}").status_code == 200
+    assert _cliente_jobs(ALUNO).get(f"/jobs/{job_id}").status_code == 404
+    assert _cliente_jobs(1, "admin").get(f"/jobs/{job_id}").status_code == 404
 
 
 @pytest.mark.parametrize("falha", ["falha_job", "falha_invoke"])
@@ -258,7 +336,7 @@ def test_previa_com_perfil_incompleto_responde_422(monkeypatch):
     def _incompleto(comp):
         return HTTPException(status_code=422, detail={"error": "nutrition_subject_incomplete"})
 
-    monkeypatch.setattr(nutrition_plans, "_subject_incomplete", _incompleto)
+    monkeypatch.setattr(nutrition_plans, "subject_incomplete_error", _incompleto)
     resposta = _cliente().post("/nutrition/plan-preview", json={"strategy": "maintenance"})
     assert resposta.status_code == 422
     assert json.dumps(resposta.json())
