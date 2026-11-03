@@ -25,7 +25,6 @@ type Props = {
   opened: boolean;
   onClose: () => void;
   /** Aluno do diário (admin/PT) ou `null` (o próprio usuário). */
-  userId: number | null;
   date: string;
   /** A leitura terminou: o editor da refeição abre com os itens para confirmar. */
   onParsed: (form: MealEditorForm) => void;
@@ -65,7 +64,7 @@ function ErrorAlert({ erro }: { erro: ReadingError }) {
  * o rascunho sobrevive, e enquanto há envio o modal não fecha (nem por X, Esc ou clique
  * fora), para não permitir um segundo envio que gastaria a cota de novo.
  */
-export function MealParseModal({ opened, onClose, userId, date, onParsed, mode = 'text' }: Props) {
+export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' }: Props) {
   const qc = useQueryClient();
   const [texto, setTexto] = useState('');
   const [slotTexto, setSlotTexto] = useState<string | null>(null);
@@ -94,7 +93,6 @@ export function MealParseModal({ opened, onClose, userId, date, onParsed, mode =
         text: texto,
         local_date: date,
         meal_slot: slotTexto,
-        ...(userId != null ? { user_id: userId } : {}),
       }),
     onSuccess: (resultado) => {
       onParsed(editorFormFromParse(resultado, { date, slot: slotTexto, text: texto }));
@@ -106,7 +104,7 @@ export function MealParseModal({ opened, onClose, userId, date, onParsed, mode =
 
   const lerFoto = useMutation({
     mutationFn: (file: File) =>
-      readMealPhoto(file, { local_date: date, meal_slot: slotFoto, ...(userId != null ? { user_id: userId } : {}) }, setStage),
+      readMealPhoto(file, { local_date: date, meal_slot: slotFoto }, setStage),
     onSuccess: (resultado) => {
       if (resultado.items.length === 0) {
         setSemItens(resultado.limitations);

@@ -30,16 +30,14 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 type Editing = { mode: 'new' } | { mode: 'edit'; meal: Meal } | { mode: 'parsed'; form: MealEditorForm } | null;
 
 /**
- * `/nutricao` — diário de refeições (Lote L4). O aluno registra as próprias
- * refeições; admin e personal trainer escolhem o aluno (sem vínculo formal,
- * D-L). Meta do dia, totais, balanço, semana e kcal do treino vêm prontos da
+ * `/nutricao` — diário de refeições (Lote L4). Sempre do usuário logado, mesmo para
+ * admin e personal trainer: escolher aluno só existe na montagem do plano. Meta do dia, totais, balanço, semana e kcal do treino vêm prontos da
  * API (motor `domain/nutrition`); o preview da refeição é uma chamada (E9). A
  * refeição também pode ser descrita em texto (L5b) ou fotografada (L10) para a IA ler (`MealParseModal`):
  * o editor abre com os itens propostos para a pessoa confirmar. A tela só exibe.
  */
 export function NutricaoClient() {
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<number | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -48,12 +46,10 @@ export function NutricaoClient() {
   const [modoLeitura, setModoLeitura] = useState<'text' | 'photo'>('text');
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
-  const role = currentUserQuery.data?.role;
-  const canManage = role === 'admin' || role === 'personal_trainer';
 
   const weekQuery = useQuery({
-    queryKey: diaryKeys.week(userId, anchor),
-    queryFn: () => fetchNutritionWeek(anchor, userId),
+    queryKey: diaryKeys.week(anchor),
+    queryFn: () => fetchNutritionWeek(anchor),
     enabled: currentUserQuery.isSuccess,
     retry: false,
   });
@@ -63,8 +59,8 @@ export function NutricaoClient() {
   }, [date, weekQuery.data]);
 
   const dayQuery = useQuery({
-    queryKey: diaryKeys.day(userId, date ?? ''),
-    queryFn: () => fetchNutritionDay(date as string, userId),
+    queryKey: diaryKeys.day(date ?? ''),
+    queryFn: () => fetchNutritionDay(date as string),
     enabled: date !== null && currentUserQuery.isSuccess,
     retry: false,
   });
@@ -84,11 +80,6 @@ export function NutricaoClient() {
   function abrirLeitura(modo: 'text' | 'photo') {
     setModoLeitura(modo);
     setLendo(true);
-  }
-
-  function trocarAluno(novo: number | null) {
-    setUserId(novo);
-    setEditing(null);
   }
 
   function trocarDia(novo: string) {
@@ -121,12 +112,8 @@ export function NutricaoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess && (
         <>
-          <CheckinCard key={userId ?? 'me'} userId={userId} />
+          <CheckinCard />
           <DayHeader
-            canManage={canManage}
-            userId={userId}
-            onUserChange={trocarAluno}
-            studentName={canManage && userId !== null ? (dia?.user.full_name || dia?.user.username || null) : null}
             date={date}
             today={weekQuery.data?.today ?? dia?.today ?? null}
             onDateChange={trocarDia}
@@ -157,7 +144,7 @@ export function NutricaoClient() {
                 <TargetVsIntakeCard day={dia} />
                 <Stack gap="md">
                   <TrainingKcalRow training={dia.training} />
-                  <DayNotesInput key={`${userId ?? 'eu'}-${date}`} date={date} userId={userId} dayLog={dia.day_log} onSaved={atualizar} />
+                  <DayNotesInput key={date} date={date} dayLog={dia.day_log} onSaved={atualizar} />
                 </Stack>
               </SimpleGrid>
 
@@ -188,7 +175,6 @@ export function NutricaoClient() {
                   opened={lendo}
                   mode={modoLeitura}
                   onClose={() => setLendo(false)}
-                  userId={userId}
                   date={date}
                   onParsed={(form) => {
                     setLendo(false);
@@ -205,7 +191,6 @@ export function NutricaoClient() {
                           ? `ia-${editing.form.ai?.job_id ?? date}`
                           : `editar-${editing.meal.id}`
                     }
-                    userId={userId}
                     date={date}
                     meal={editing.mode === 'edit' ? editing.meal : null}
                     initialForm={editing.mode === 'parsed' ? editing.form : null}

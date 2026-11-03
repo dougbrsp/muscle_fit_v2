@@ -24,18 +24,14 @@ import { maintenanceAdjustPayload, targetsChangedKeys } from './nutrition-plan-f
 const mock = vi.mocked(apiFetch);
 
 describe('chamadas do check-in', () => {
-  it('lê o check-in, o histórico e o dia escolhido do próprio usuário ou de um aluno', async () => {
+  it('check-in e histórico são do usuário logado (sem user_id); só o dia do check-in leva o aluno do plano', async () => {
     mock.mockResolvedValue({});
-    await fetchCheckin(null);
-    await fetchCheckin(7);
-    await fetchCheckinHistory(null);
-    await fetchCheckinHistory(7);
+    await fetchCheckin();
+    await fetchCheckinHistory();
     await fetchCheckinSettings(7);
     expect(mock.mock.calls.map((c) => c[0])).toEqual([
       '/nutrition/checkin',
-      '/nutrition/checkin?user_id=7',
       '/nutrition/checkins',
-      '/nutrition/checkins?user_id=7',
       '/nutrition/checkin/settings?user_id=7',
     ]);
   });
@@ -57,8 +53,8 @@ describe('chamadas do check-in', () => {
 describe('chaves e invalidação', () => {
   it('as chaves ficam sob uma raiz própria, por usuário', () => {
     expect(checkinKeys.all).toEqual(['nutrition-checkin']);
-    expect(checkinKeys.current(null)).toEqual(['nutrition-checkin', 'current', 'me']);
-    expect(checkinKeys.history(3)).toEqual(['nutrition-checkin', 'history', 3]);
+    expect(checkinKeys.current()).toEqual(['nutrition-checkin', 'current']);
+    expect(checkinKeys.history()).toEqual(['nutrition-checkin', 'history']);
     expect(checkinKeys.settings(null)[2]).toBe('me');
   });
 

@@ -281,28 +281,23 @@ export async function readLabelPhoto(file: Blob, onStage?: (stage: LabelPhotoSta
 
 export const diaryKeys = {
   all: ['nutrition-diary'] as const,
-  day: (userId: number | null, date: string) => ['nutrition-diary', 'day', userId ?? 'me', date] as const,
-  week: (userId: number | null, start: string | null) => ['nutrition-diary', 'week', userId ?? 'me', start ?? 'today'] as const,
+  day: (date: string) => ['nutrition-diary', 'day', date] as const,
+  week: (start: string | null) => ['nutrition-diary', 'week', start ?? 'today'] as const,
 };
 
-function withUser(path: string, userId: number | null | undefined, extra: Record<string, string> = {}): string {
-  const params = new URLSearchParams(extra);
-  if (userId != null) params.set('user_id', String(userId));
-  const query = params.toString();
-  return query ? `${path}?${query}` : path;
-}
-
-export function fetchNutritionDay(date: string, userId: number | null): Promise<NutritionDay> {
-  return apiFetch<NutritionDay>(withUser(`/nutrition/days/${encodeURIComponent(date)}`, userId));
+// Diário, semana e anotação são SEMPRE do usuário logado: nenhuma chamada daqui leva parametro de aluno
+// (a escolha de aluno existe só na montagem do plano).
+export function fetchNutritionDay(date: string): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/days/${encodeURIComponent(date)}`);
 }
 
 /** A semana (segunda a domingo) que contém `start`; sem `start`, a de hoje do aluno. */
-export function fetchNutritionWeek(start: string | null, userId: number | null): Promise<NutritionWeek> {
-  return apiFetch<NutritionWeek>(withUser('/nutrition/weeks', userId, start ? { start } : {}));
+export function fetchNutritionWeek(start: string | null): Promise<NutritionWeek> {
+  return apiFetch<NutritionWeek>(start ? `/nutrition/weeks?start=${encodeURIComponent(start)}` : '/nutrition/weeks');
 }
 
-export function saveNutritionDayLog(date: string, payload: DayLogPayload, userId: number | null): Promise<DayLogResponse> {
-  return apiFetch<DayLogResponse>(withUser(`/nutrition/days/${encodeURIComponent(date)}`, userId), {
+export function saveNutritionDayLog(date: string, payload: DayLogPayload): Promise<DayLogResponse> {
+  return apiFetch<DayLogResponse>(`/nutrition/days/${encodeURIComponent(date)}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });

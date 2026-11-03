@@ -143,8 +143,8 @@ export type CheckinDeclineResponse = { checkin: Checkin; already_declined: boole
 
 export const checkinKeys = {
   all: ['nutrition-checkin'] as const,
-  current: (userId: number | null) => ['nutrition-checkin', 'current', userId ?? 'me'] as const,
-  history: (userId: number | null) => ['nutrition-checkin', 'history', userId ?? 'me'] as const,
+  current: () => ['nutrition-checkin', 'current'] as const,
+  history: () => ['nutrition-checkin', 'history'] as const,
   settings: (userId: number | null) => ['nutrition-checkin', 'settings', userId ?? 'me'] as const,
 };
 
@@ -152,12 +152,13 @@ function withUser(path: string, userId: number | null): string {
   return userId != null ? `${path}?user_id=${userId}` : path;
 }
 
-export function fetchCheckin(userId: number | null): Promise<CheckinResponse> {
-  return apiFetch<CheckinResponse>(withUser('/nutrition/checkin', userId));
+/** Check-in e histórico são SEMPRE do usuário logado (sem `user_id`). */
+export function fetchCheckin(): Promise<CheckinResponse> {
+  return apiFetch<CheckinResponse>('/nutrition/checkin');
 }
 
-export function fetchCheckinHistory(userId: number | null): Promise<CheckinHistoryResponse> {
-  return apiFetch<CheckinHistoryResponse>(withUser('/nutrition/checkins', userId));
+export function fetchCheckinHistory(): Promise<CheckinHistoryResponse> {
+  return apiFetch<CheckinHistoryResponse>('/nutrition/checkins');
 }
 
 export function acceptCheckin(checkinId: number): Promise<CheckinAcceptResponse> {
@@ -168,6 +169,7 @@ export function declineCheckin(checkinId: number): Promise<CheckinDeclineRespons
   return apiFetch<CheckinDeclineResponse>(`/nutrition/checkins/${checkinId}/decline`, { method: 'POST' });
 }
 
+/** O dia do check-in é do aluno escolhido na montagem do plano (`PlanoClient`): único uso com `user_id`. */
 export function fetchCheckinSettings(userId: number | null): Promise<CheckinSettingsResponse> {
   return apiFetch<CheckinSettingsResponse>(withUser('/nutrition/checkin/settings', userId));
 }

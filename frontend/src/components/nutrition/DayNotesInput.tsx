@@ -10,17 +10,16 @@ import { BRAND } from '@/theme';
 
 type Props = {
   date: string;
-  userId: number | null;
   dayLog: DayLog | null;
   onSaved: () => void;
 };
 
 /** Anotação do dia (água e fome saíram do produto em 2026-11-03). */
-export function DayNotesInput({ date, userId, dayLog, onSaved }: Props) {
+export function DayNotesInput({ date, dayLog, onSaved }: Props) {
   const [notas, setNotas] = useState(dayLog?.notes ?? '');
 
   const mutation = useMutation({
-    mutationFn: () => saveNutritionDayLog(date, { notes: notas.trim() || null }, userId),
+    mutationFn: () => saveNutritionDayLog(date, { notes: notas.trim() || null }),
     onSuccess: onSaved,
   });
   const erro = mutation.isError ? nutritionErrorInfo(mutation.error, 'Não foi possível salvar o dia.') : null;

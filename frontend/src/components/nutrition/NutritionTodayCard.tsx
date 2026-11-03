@@ -111,6 +111,6 @@ export function NutritionTodayView({ state, today, checkinSlot, className }: Vie
  * `GET /nutrition/today` (só hoje); nenhum cálculo na tela.
  */
 export function NutritionTodayCard({ checkinSlot, className }: Pick<ViewProps, 'checkinSlot' | 'className'>) {
-  const consulta = useQuery({ queryKey: todayKeys.one(null), queryFn: () => fetchNutritionToday(null), retry: false });
+  const consulta = useQuery({ queryKey: todayKeys.one(), queryFn: () => fetchNutritionToday(), retry: false });
   return <NutritionTodayView state={todayCardState(consulta)} today={consulta.data} checkinSlot={checkinSlot} className={className} />;
 }

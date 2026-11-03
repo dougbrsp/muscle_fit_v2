@@ -95,12 +95,12 @@ describe('foto do prato: editor', () => {
     const form = editorFormFromPhoto(RESULTADO, { date: 'x', slot: null });
     expect(form.ai).toMatchObject({ job_id: 'j1', description_raw: '', ai_source: MEAL_PHOTO.meal_source });
     expect(form.local_date).toBe('2026-11-02');
-    expect(mealCreatePayload(form, 12)).toMatchObject({ ai_job_id: 'j1', ai_source: MEAL_PHOTO.meal_source });
+    expect(mealCreatePayload(form)).toMatchObject({ ai_job_id: 'j1', ai_source: MEAL_PHOTO.meal_source });
   });
 
   it('a leitura por texto continua sem `ai_source`', async () => {
     const { editorFormFromParse } = await import('./nutrition-meal-parse');
     const form = editorFormFromParse(RESULTADO, { date: 'x', slot: null, text: 'arroz' });
-    expect(mealCreatePayload(form, 12)).not.toHaveProperty('ai_source');
+    expect(mealCreatePayload(form)).not.toHaveProperty('ai_source');
   });
 });

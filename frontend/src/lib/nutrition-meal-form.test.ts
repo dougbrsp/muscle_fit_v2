@@ -55,10 +55,10 @@ describe('nutrition-meal-form: só transporte, o FE nunca manda macro', () => {
     ]);
   });
 
-  it('user_id só quando admin/PT registra para um aluno; a refeição gravada volta ao formulário', () => {
+  it('o corpo nunca leva user_id (refeição é do usuário logado); a refeição gravada volta ao formulário', () => {
     const form = formulario({ eaten_at: '12:30', notes: '  ok ', items: [{ ...editorItemFromFood(ARROZ, 'k'), quantity: 100 }] });
-    expect(mealCreatePayload(form, null)).not.toHaveProperty('user_id');
-    expect(mealCreatePayload(form, 2)).toMatchObject({ user_id: 2, eaten_at: '12:30', notes: 'ok' });
+    expect(mealCreatePayload(form)).not.toHaveProperty('user_id');
+    expect(mealCreatePayload(form)).toMatchObject({ eaten_at: '12:30', notes: 'ok' });
     const refeicao = {
       id: 1, user_id: 2, local_date: '2026-10-17', meal_slot: 'dinner', eaten_at: null, source: 'manual', notes: null,
       totals: { nutrients: {}, incomplete_fields: [], complete: true, nature: 'DERIVED', item_count: 1, limitations: [] },

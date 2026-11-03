@@ -121,7 +121,7 @@ describe('plano autogerido: rodada 1 de revisão', () => {
   it('publicar e recalcular invalidam o plano em vigor, o diário (com o card de hoje) e o painel', () => {
     expect(targetsChangedKeys()).toEqual([nutritionKeys.myPlan, diaryKeys.all, dashboardKeys.all, checkinKeys.all]);
     // O card da home lê `/nutrition/today` sob a chave do diário: invalidar o diário o atualiza.
-    expect(todayKeys.one(null).slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
+    expect(todayKeys.one().slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
   });
 
   it('sem proposta do Modelo o que o usuário marcou fica; com proposta, ela vale', () => {
