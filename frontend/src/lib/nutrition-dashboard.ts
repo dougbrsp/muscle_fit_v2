@@ -8,14 +8,18 @@
 import { apiFetch } from './api';
 import { ENERGY_NUTRIENT, nutrientField } from './nutrition-constants';
 import { shareToPercent } from './nutrition-format';
-import type { BalanceRow, NutritionLimitation, NutritionWeek, WeekReport } from './nutrition-types';
+import type { BalanceRow, DayBalance, DayTargetAction, NutritionDayTarget, NutritionLimitation, NutritionTotals, NutritionWeek, WeekReport } from './nutrition-types';
 
 // ---------------------------------------------------------------------------
 // API
 // ---------------------------------------------------------------------------
 
+/** Estado do dia no dashboard (dono: `dashboard.DayState`). */
+export type DashboardDayState = 'out_of_plan' | 'open_today' | 'no_record' | 'incomplete' | 'logged';
+
 export type DashboardDay = {
   local_date: string;
+  state: DashboardDayState;
   has_target: boolean;
   logged: boolean;
   intake_incomplete: boolean;
@@ -29,11 +33,17 @@ export type DashboardDay = {
 
 export type DashboardAdherence = {
   window_days: number;
+  /** Dias fechados e dentro do plano (sem registro, incompletos e registrados). */
+  counted_days: number;
   logged_days: number;
-  days_with_target: number;
-  days_without_target: number;
+  /** Dias fechados sem nenhuma refeição: contados à parte, nunca "descumpridos". */
+  no_record_days: number;
+  /** Dias com refeição e sem meta calculada (sem backfill). */
+  meal_days_without_target: number;
   kcal_within_tolerance_days: number;
   protein_ok_days: number;
+  /** Hoje ainda não fechou: fica fora da aderência e do gasto observado. */
+  open_today: boolean;
   incomplete_days: string[];
 };
 
@@ -48,7 +58,7 @@ export type DashboardWeek = {
 export type BodyPoint = {
   local_date: string;
   weight_kg: number | null;
-  /** Média móvel do peso (dono: `dashboard.trailing_mean`). */
+  /** Média móvel do peso (dono: `body_service.moving_average_points`). */
   weight_trend_kg: number | null;
   body_fat_percent: number | null;
   muscle_mass_kg: number | null;
@@ -111,6 +121,8 @@ export type NutritionDashboard = {
   start: string;
   end: string;
   window_days: number;
+  /** Janelas oferecidas pela API (dias). */
+  window_choices: number[];
   plan: DashboardPlan | null;
   empty_states: NutritionLimitation[];
   days: DashboardDay[];
@@ -122,15 +134,38 @@ export type NutritionDashboard = {
   adaptive_tdee: { observed: ObservedTdee; suggestion: TdeeSuggestion; applied: false };
 };
 
-export const dashboardKeys = {
-  all: ['nutrition-dashboard'] as const,
-  window: (userId: number | null, days: number) => ['nutrition-dashboard', userId ?? 'me', days] as const,
+/** Balanço de hoje (`GET /nutrition/today`): o que o card da home mostra. */
+export type NutritionToday = {
+  user: { id: number; username: string; full_name: string | null };
+  local_date: string;
+  today: string;
+  target: NutritionDayTarget | null;
+  target_action: DayTargetAction;
+  totals: NutritionTotals | null;
+  balance: DayBalance;
 };
 
-export function fetchNutritionDashboard(days: number, userId: number | null): Promise<NutritionDashboard> {
-  const params = new URLSearchParams({ days: String(days) });
+export const todayKeys = {
+  // Sob `diaryKeys.all` (`['nutrition-diary']`): salvar ou apagar refeição invalida o card junto com o diário.
+  one: (userId: number | null) => ['nutrition-diary', 'today', userId ?? 'me'] as const,
+};
+
+export function fetchNutritionToday(userId: number | null): Promise<NutritionToday> {
+  return apiFetch<NutritionToday>(userId != null ? `/nutrition/today?user_id=${userId}` : '/nutrition/today');
+}
+
+export const dashboardKeys = {
+  all: ['nutrition-dashboard'] as const,
+  window: (userId: number | null, days: number | null) => ['nutrition-dashboard', userId ?? 'me', days ?? 'padrao'] as const,
+};
+
+/** `days` ausente = a janela padrão da API. */
+export function fetchNutritionDashboard(days: number | null, userId: number | null): Promise<NutritionDashboard> {
+  const params = new URLSearchParams();
+  if (days != null) params.set('days', String(days));
   if (userId != null) params.set('user_id', String(userId));
-  return apiFetch<NutritionDashboard>(`/nutrition/dashboard?${params.toString()}`);
+  const consulta = params.toString();
+  return apiFetch<NutritionDashboard>(consulta ? `/nutrition/dashboard?${consulta}` : '/nutrition/dashboard');
 }
 
 // ---------------------------------------------------------------------------
@@ -171,16 +206,14 @@ export type WeekBarRow = { date: string; label: string; consumido: number | null
 /** Barras da semana do diário: kcal consumida (só de dia com total completo) × meta, direto da semana da API. */
 export function weekBarRows(week: NutritionWeek | undefined, label: (isoDate: string) => string): WeekBarRow[] {
   if (!week) return [];
-  return week.days.map((dia) => {
-    const completo = dia.totals != null && !dia.totals.incomplete_fields.includes(ENERGY_NUTRIENT);
-    return {
-      date: dia.local_date,
-      label: label(dia.local_date),
-      consumido: completo ? (dia.totals?.nutrients[ENERGY_NUTRIENT] ?? null) : null,
-      meta: dia.target?.kcal ?? null,
-      incompleto: dia.intake_incomplete,
-    };
-  });
+  return week.days.map((dia) => ({
+    date: dia.local_date,
+    label: label(dia.local_date),
+    // `intake_kcal` já vem nulo quando o dia é incompleto ou não tem refeição (decisão do motor).
+    consumido: dia.intake_kcal,
+    meta: dia.target?.kcal ?? null,
+    incompleto: dia.intake_incomplete,
+  }));
 }
 
 export type ShareRow = { date: string; label: string; percent: number | null; registrado: boolean; incompleto: boolean };
@@ -202,6 +235,8 @@ export type WeekAdherenceRow = {
   kcal: number | null;
   proteina: number | null;
   parcial: boolean;
+  /** Semana com dias registrados suficientes (`adherence.valid_week` do motor); senão, semana incompleta. */
+  valida: boolean;
   diasRegistrados: number;
 };
 
@@ -213,6 +248,7 @@ export function weekAdherenceRows(weeks: readonly DashboardWeek[], label: (isoDa
     kcal: shareToPercent(semana.report.adherence.kcal_share),
     proteina: shareToPercent(semana.report.adherence.protein_share),
     parcial: semana.partial,
+    valida: semana.report.adherence.valid_week,
     diasRegistrados: semana.report.adherence.logged_days,
   }));
 }
@@ -250,4 +286,9 @@ export function macroTitle(field: string): string {
 
 export function macroUnit(field: string): string {
   return nutrientField(field)?.unit ?? '';
+}
+
+/** Há ao menos um valor numérico na série (o gráfico só desenha eixos quando há dado). */
+export function hasValues<T>(rows: readonly T[], pick: (row: T) => number | null | undefined): boolean {
+  return rows.some((linha) => pick(linha) != null);
 }

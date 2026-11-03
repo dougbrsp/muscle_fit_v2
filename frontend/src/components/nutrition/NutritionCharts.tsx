@@ -49,6 +49,9 @@ const RING_COLORS: Record<RingPart['key'], string> = {
 
 export const RING_SIZE = 132;
 
+// Semana com poucos dias registrados: barras esmaecidas (a tabela e o tooltip dizem "semana incompleta").
+const INCOMPLETE_WEEK_OPACITY = 0.4;
+
 export function MacroRing({ parts, unit }: { parts: RingPart[]; unit: string }) {
   return (
     <ResponsiveContainer width="100%" height={RING_SIZE}>
@@ -109,7 +112,7 @@ export function ShareBars({ rows, name }: { rows: ShareRow[]; name: string }) {
             return [`${fmtDecimal(Number(value), 0)}% da meta${linha.incompleto ? ' (dia incompleto)' : ''}`, name];
           }}
         />
-        <ReferenceLine y={100} stroke={CHART_COLORS.compare} strokeDasharray="4 4" />
+        <ReferenceLine y={100} stroke={CHART_COLORS.compare} strokeDasharray="4 4" ifOverflow="extendDomain" />
         <Bar dataKey="percent" name={name} fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} maxBarSize={14} />
       </BarChart>
     </ResponsiveContainer>
@@ -127,14 +130,24 @@ export function WeekAdherenceBars({ rows }: { rows: WeekAdherenceRow[] }) {
           {...TOOLTIP}
           labelFormatter={(label, items) => {
             const linha = items?.[0]?.payload as WeekAdherenceRow | undefined;
-            return linha ? `Semana de ${label}${linha.parcial ? ' (parcial)' : ''} · ${linha.diasRegistrados} dia(s) registrado(s)` : String(label);
+            return linha
+              ? `Semana de ${label}${linha.parcial ? ' (parcial)' : ''}${linha.valida ? '' : ' (semana incompleta)'} · ${linha.diasRegistrados} dia(s) registrado(s)`
+              : String(label);
           }}
           formatter={(value, name) => [`${fmtDecimal(Number(value), 0)}% da meta`, String(name)]}
         />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-        <ReferenceLine y={100} stroke={CHART_COLORS.compare} strokeDasharray="4 4" />
-        <Bar dataKey="kcal" name="Energia (kcal)" fill={CHART_COLORS.primary} radius={[4, 4, 0, 0]} maxBarSize={28} />
-        <Bar dataKey="proteina" name="Proteína" fill={CHART_COLORS.compare} radius={[4, 4, 0, 0]} maxBarSize={28} />
+        <ReferenceLine y={100} stroke={CHART_COLORS.compare} strokeDasharray="4 4" ifOverflow="extendDomain" />
+        <Bar dataKey="kcal" name="Energia (kcal)" fill={CHART_COLORS.primary} radius={[4, 4, 0, 0]} maxBarSize={28}>
+          {rows.map((linha) => (
+            <Cell key={linha.start} fillOpacity={linha.valida ? 1 : INCOMPLETE_WEEK_OPACITY} />
+          ))}
+        </Bar>
+        <Bar dataKey="proteina" name="Proteína" fill={CHART_COLORS.compare} radius={[4, 4, 0, 0]} maxBarSize={28}>
+          {rows.map((linha) => (
+            <Cell key={linha.start} fillOpacity={linha.valida ? 1 : INCOMPLETE_WEEK_OPACITY} />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -163,7 +176,7 @@ export function WeightChart({ rows, unit, goal, goalLabel }: BodyChartProps) {
         <ReTooltip {...TOOLTIP} formatter={(value, name) => [`${fmtDecimal(Number(value), 1)} ${unit}`, String(name)]} />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} />
         {goal != null && (
-          <ReferenceLine y={goal} stroke={CHART_COLORS.secondary} strokeDasharray="4 4" label={{ value: goalLabel ?? 'Alvo', fill: CHART_AXIS_TICK.fill, fontSize: 12, position: 'insideTopRight' }} />
+          <ReferenceLine y={goal} stroke={CHART_COLORS.secondary} strokeDasharray="4 4" ifOverflow="extendDomain" label={{ value: goalLabel ?? 'Alvo', fill: CHART_AXIS_TICK.fill, fontSize: 12, position: 'insideTopRight' }} />
         )}
         <Line type="monotone" dataKey="peso" name="Pesagem" stroke={CHART_COLORS.compare} strokeWidth={1} dot={{ r: 2 }} connectNulls />
         <Line type="monotone" dataKey="media" name="Média móvel" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} connectNulls />
@@ -182,7 +195,7 @@ export function SingleSeriesChart({ rows, unit, dataKey, name, goal, goalLabel }
         <BodyAxis unit={unit} />
         <ReTooltip {...TOOLTIP} formatter={(value) => [`${fmtDecimal(Number(value), 1)} ${unit} · estimado`, name]} />
         {goal != null && (
-          <ReferenceLine y={goal} stroke={CHART_COLORS.secondary} strokeDasharray="4 4" label={{ value: goalLabel ?? 'Alvo', fill: CHART_AXIS_TICK.fill, fontSize: 12, position: 'insideTopRight' }} />
+          <ReferenceLine y={goal} stroke={CHART_COLORS.secondary} strokeDasharray="4 4" ifOverflow="extendDomain" label={{ value: goalLabel ?? 'Alvo', fill: CHART_AXIS_TICK.fill, fontSize: 12, position: 'insideTopRight' }} />
         )}
         <Line type="monotone" dataKey={dataKey} name={name} stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 3 }} connectNulls />
       </LineChart>

@@ -584,7 +584,8 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "a aderência ainda diz pouco."
     ),
     dash_mod.EMPTY_DAYS_WITHOUT_TARGET: (
-        "Há dias do período sem meta calculada (a meta nasce ao abrir o diário do dia); eles ficam fora da aderência."
+        "Há dia(s) com refeição registrada e sem meta calculada (a meta nasce ao abrir o diário do dia): "
+        "ficam fora da aderência."
     ),
     atdee_mod.LIMIT_WINDOW_TOO_SHORT: (
         f"Período curto para o gasto observado (mínimo de {atdee_mod.MIN_WINDOW_DAYS} dias)."

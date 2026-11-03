@@ -1,9 +1,8 @@
 """Dashboard de nutrição (N5) contra MySQL real, nos DOIS backends (PyMySQL de
 dev e shim da RDS Data API de produção). Só o CI roda este arquivo.
 
-Prova o SQL novo de `app.nutrition_dashboard` (janela do corpo com
-`muscle_mass_kg`, primeira medida a partir do início do plano) e a leitura das
-metas e refeições gravadas: o payload é idêntico nos dois backends, o peso e a
+Prova o SQL novo de `app.nutrition_dashboard` (massa muscular da janela e os totais
+das refeições sem texto livre), `GET /nutrition/today` e a leitura das metas gravadas: o payload é idêntico nos dois backends, o peso e a
 massa muscular voltam como número, a projeção usa a primeira pesagem do plano
 como partida e o terceiro recebe 403.
 """
@@ -111,11 +110,14 @@ def test_dashboard_identico_nos_dois_backends(usuarios, raw, monkeypatch, fake_r
         assert corpo["plan"]["strategy"] == "cutting" and corpo["plan"]["goal_weight_kg"] == 75.0
         assert corpo["projection"]["goal_kind"] == "weight"
         assert corpo["projection"]["progress_percent"] is not None  # partida = primeira pesagem do plano
-        assert corpo["days"][-1]["has_target"] is True
+        assert corpo["days"][-1]["state"] == "open_today"  # hoje ainda não fechou
+        hoje = aluno.get("/nutrition/today")
+        assert hoje.status_code == 200, (backend, hoje.text)
+        assert hoje.json()["target"] is not None and hoje.json()["balance"]["rows"][0]["to_consume"] is not None
         assert corpo["adaptive_tdee"]["applied"] is False
         assert aluno.get("/nutrition/dashboard").status_code == 200
         assert _client(usuarios["outro"], "regular").get(f"/nutrition/dashboard?user_id={usuarios['aluno']}").status_code == 403
-        resultados[backend] = _sem_volateis(corpo)
+        resultados[backend] = _sem_volateis({**corpo, "today_target": hoje.json()["target"]})
     primeiro, *demais = resultados.values()
     for outro in demais:
         assert outro == primeiro

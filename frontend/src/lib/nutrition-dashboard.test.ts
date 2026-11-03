@@ -6,17 +6,21 @@ import { apiFetch } from './api';
 import {
   bodyRows,
   fetchNutritionDashboard,
+  fetchNutritionToday,
   hasSeries,
+  hasValues,
   macroRows,
   MACRO_ORDER,
   ringParts,
   shareRows,
   shortDateLabel,
+  todayKeys,
   weekAdherenceRows,
   weekBarRows,
   type DashboardDay,
   type DashboardWeek,
 } from './nutrition-dashboard';
+import { diaryKeys } from './nutrition-api';
 import type { BalanceRow, NutritionWeek } from './nutrition-types';
 
 function linha(field: string, extra: Partial<BalanceRow> = {}): BalanceRow {
@@ -60,6 +64,14 @@ describe('ringParts', () => {
     expect(partes?.[2].value).toBe(300);
   });
 
+  it('com meta e sem refeição a rosca é a meta toda a consumir', () => {
+    const partes = ringParts(linha('energy_kcal', { intake: null, share: null, remaining: null, within_target: 0, to_consume: 2000, excess: 0 }));
+    expect(partes?.map((p) => [p.key, p.value])).toEqual([
+      ['within', 0],
+      ['to_consume', 2000],
+    ]);
+  });
+
   it('sem meta ou com ingestão incompleta não há rosca', () => {
     expect(ringParts(linha('energy_kcal', { within_target: null, to_consume: null, excess: null }))).toBeNull();
   });
@@ -68,23 +80,13 @@ describe('ringParts', () => {
 describe('weekBarRows', () => {
   const semana = {
     days: [
-      {
-        local_date: '2026-10-12',
-        target: { kcal: 2000 },
-        totals: { nutrients: { energy_kcal: 1800 }, incomplete_fields: [] },
-        intake_incomplete: false,
-      },
-      {
-        local_date: '2026-10-13',
-        target: { kcal: 2100 },
-        totals: { nutrients: { energy_kcal: 900 }, incomplete_fields: ['energy_kcal'] },
-        intake_incomplete: true,
-      },
-      { local_date: '2026-10-14', target: null, totals: null, intake_incomplete: false },
+      { local_date: '2026-10-12', target: { kcal: 2000 }, intake_kcal: 1800, intake_incomplete: false },
+      { local_date: '2026-10-13', target: { kcal: 2100 }, intake_kcal: null, intake_incomplete: true },
+      { local_date: '2026-10-14', target: null, intake_kcal: null, intake_incomplete: false },
     ],
   } as unknown as NutritionWeek;
 
-  it('só leva a kcal de dia com total completo', () => {
+  it('usa o kcal que a API já decidiu (nulo quando incompleto ou sem refeição)', () => {
     const rows = weekBarRows(semana, (d) => d.slice(8));
     expect(rows).toEqual([
       { date: '2026-10-12', label: '12', consumido: 1800, meta: 2000, incompleto: false },
@@ -95,6 +97,14 @@ describe('weekBarRows', () => {
 
   it('semana ainda não carregada = sem barras', () => {
     expect(weekBarRows(undefined, shortDateLabel)).toEqual([]);
+  });
+});
+
+describe('hasValues', () => {
+  it('só há dado quando algum valor existe (zero conta)', () => {
+    expect(hasValues([{ v: null }, { v: 0 }], (r) => r.v)).toBe(true);
+    expect(hasValues([{ v: null }], (r) => r.v)).toBe(false);
+    expect(hasValues([], (r: { v: number | null }) => r.v)).toBe(false);
   });
 });
 
@@ -111,12 +121,22 @@ describe('shareRows', () => {
 });
 
 describe('weekAdherenceRows', () => {
-  it('usa a aderência de cada semana e marca a parcial', () => {
+  it('usa a aderência de cada semana e marca a parcial e a incompleta', () => {
     const semanas = [
-      { start: '2026-10-05', partial: true, report: { adherence: { kcal_share: 1.02, protein_share: 0.95, logged_days: 3 } } },
+      {
+        start: '2026-10-05',
+        partial: true,
+        report: { adherence: { kcal_share: 1.02, protein_share: 0.95, logged_days: 3, valid_week: false } },
+      },
+      {
+        start: '2026-10-12',
+        partial: false,
+        report: { adherence: { kcal_share: 0.9, protein_share: 1, logged_days: 6, valid_week: true } },
+      },
     ] as unknown as DashboardWeek[];
     expect(weekAdherenceRows(semanas, shortDateLabel)).toEqual([
-      { start: '2026-10-05', label: '05/10', kcal: 102, proteina: 95, parcial: true, diasRegistrados: 3 },
+      { start: '2026-10-05', label: '05/10', kcal: 102, proteina: 95, parcial: true, valida: false, diasRegistrados: 3 },
+      { start: '2026-10-12', label: '12/10', kcal: 90, proteina: 100, parcial: false, valida: true, diasRegistrados: 6 },
     ]);
   });
 });
@@ -140,14 +160,26 @@ describe('bodyRows e hasSeries', () => {
   });
 });
 
-describe('fetchNutritionDashboard', () => {
-  it('monta a URL com a janela e o aluno escolhido', async () => {
+describe('chamadas', () => {
+  it('monta a URL do painel com a janela e o aluno escolhido (sem janela = padrão da API)', async () => {
+    vi.mocked(apiFetch).mockClear();
     vi.mocked(apiFetch).mockResolvedValue({} as never);
+    await fetchNutritionDashboard(null, null);
     await fetchNutritionDashboard(28, null);
     await fetchNutritionDashboard(7, 4);
     expect(vi.mocked(apiFetch).mock.calls.map((c) => c[0])).toEqual([
+      '/nutrition/dashboard',
       '/nutrition/dashboard?days=28',
       '/nutrition/dashboard?days=7&user_id=4',
     ]);
+  });
+
+  it('o card de hoje lê /nutrition/today e sua chave está sob a do diário (salvar refeição o invalida)', async () => {
+    vi.mocked(apiFetch).mockClear();
+    vi.mocked(apiFetch).mockResolvedValue({} as never);
+    await fetchNutritionToday(null);
+    await fetchNutritionToday(4);
+    expect(vi.mocked(apiFetch).mock.calls.map((c) => c[0])).toEqual(['/nutrition/today', '/nutrition/today?user_id=4']);
+    expect(todayKeys.one(null).slice(0, diaryKeys.all.length)).toEqual([...diaryKeys.all]);
   });
 });

@@ -1380,12 +1380,12 @@ PADROES: tuple[Padrao, ...] = (
     ),
     Padrao(
         chave="dashboard_nutricao",
-        regra="janela, média móvel ou limiar de poucos dias do dashboard de nutrição redefinidos com número fora do dono",
-        # 2026-11-02 (nutrição N5, §82): dono `dashboard` (janela de 28 dias e limites 7..90, média móvel
-        # de 7 dias do peso, mínimo de dias registrados). A rota importa o motor e a tela só exibe o que a
+        regra="janela, janelas oferecidas, janela do TDEE observado ou limiar de poucos dias do dashboard de nutrição redefinidos com número fora do dono",
+        # 2026-11-02 (nutrição N5, §82): dono `dashboard` (janela de 28 dias e limites 7..90, janelas oferecidas, janela do TDEE observado
+        # e mínimo de dias registrados). A rota importa o motor e a tela só exibe o que a
         # API devolve (aderência, médias, ritmo, projeção, estados vazios).
         regex=re.compile(
-            r"\b(?:DASHBOARD_DEFAULT_DAYS|DASHBOARD_MIN_DAYS|DASHBOARD_MAX_DAYS|TREND_WINDOW_DAYS|FEW_LOGGED_DAYS)"
+            r"\b(?:DASHBOARD_DEFAULT_DAYS|DASHBOARD_MIN_DAYS|DASHBOARD_MAX_DAYS|WINDOW_CHOICES_DAYS|ADAPTIVE_WINDOW_DAYS|FEW_LOGGED_DAYS)"
             r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
         ),
         donos=("api/app/domain/nutrition/dashboard.py",),
@@ -3088,10 +3088,10 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "from .domain.nutrition.favorites import MAX_FAVORITES"),
     ),
     "dashboard_nutricao": (
-        ("DASHBOARD_DEFAULT_DAYS = 28", "const TREND_WINDOW_DAYS = 7;", "DASHBOARD_MAX_DAYS: Final[int] = 90",
+        ("DASHBOARD_DEFAULT_DAYS = 28", "const WINDOW_CHOICES_DAYS = [7, 28];", "ADAPTIVE_WINDOW_DAYS: Final[int] = 28", "DASHBOARD_MAX_DAYS: Final[int] = 90",
          "FEW_LOGGED_DAYS = 3"),
         ("dash.normalize_window_days(days)", "window_days: dashboard.DASHBOARD_DEFAULT_DAYS",
-         "from .domain.nutrition.dashboard import TREND_WINDOW_DAYS"),
+         "from .domain.nutrition.dashboard import ADAPTIVE_WINDOW_DAYS"),
     ),
     "soma_nutrientes": (
         ("total = sum(item['energy_kcal'] for item in itens)", "SELECT SUM(m.protein_g) FROM meals m",

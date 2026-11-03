@@ -84,7 +84,7 @@ function MacroTile({ row }: { row: BalanceRow }) {
           </Text>
         )}
         <Text size="xs" c={BRAND.textMuted}>
-          Consumido: <b>{formatTotal(row.intake, unidade, row.intake_complete)}</b>
+          Consumido: <b>{formatTotal(row.intake ?? row.within_target, unidade, row.intake == null || row.intake_complete)}</b>
         </Text>
         <Text size="xs" c={BRAND.textMuted}>
           Meta: <b>{formatWithUnit(row.target, unidade, 0)}</b>

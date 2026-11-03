@@ -1,20 +1,18 @@
 'use client';
 
-import { Alert, Badge, Card, Group, Progress, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Badge, Card, Group, Progress, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
-import { DashboardPeriodSelect } from '@/components/dashboard/DashboardPeriodSelect';
 import { DashboardCardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { UserPicker } from '@/components/nutrition/UserPicker';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { dashboardWindowDays, useDashboardFilters } from '@/lib/dashboard-filters';
 import { fmtDate, fmtDecimal, fmtInt } from '@/lib/dashboard-format';
 import { PROJECTION_STATUS_OPTIONS, STRATEGY_OPTIONS } from '@/lib/nutrition-constants';
 import {
@@ -22,6 +20,7 @@ import {
   dashboardKeys,
   fetchNutritionDashboard,
   hasSeries,
+  hasValues,
   MACRO_ORDER,
   macroTitle,
   shareRows,
@@ -50,9 +49,6 @@ const SingleSeriesChart = dynamic(() => import('@/components/nutrition/Nutrition
   ssr: false,
   loading: () => <ChartPlaceholder height={200} />,
 });
-
-// Janelas oferecidas (a API limita a janela; o dono é `domain/nutrition/dashboard`).
-const ALLOWED_WINDOWS = ['7d', '28d', '90d'] as const;
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
@@ -105,18 +101,22 @@ function AdherenceSection({ data }: { data: NutritionDashboard }) {
       hint="Dia a dia e semana a semana, só com dias de refeições de total completo e com meta calculada."
     >
       <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xs">
-        <Kpi label="Dias registrados" value={`${fmtInt(adherence.logged_days)} de ${fmtInt(adherence.window_days)}`} />
+        <Kpi
+          label="Dias registrados"
+          value={`${fmtInt(adherence.logged_days)} de ${fmtInt(adherence.counted_days)}`}
+          detail={adherence.open_today ? 'hoje ainda não conta' : undefined}
+        />
+        <Kpi label="Sem registro" value={fmtInt(adherence.no_record_days)} detail="dias sem nenhuma refeição" />
         <Kpi
           label="Energia na tolerância"
           value={fmtInt(adherence.kcal_within_tolerance_days)}
-          detail={`de ${fmtInt(adherence.days_with_target)} dia(s) com meta`}
+          detail={`de ${fmtInt(adherence.logged_days)} dia(s) registrado(s)`}
         />
         <Kpi
           label="Proteína no mínimo"
           value={fmtInt(adherence.protein_ok_days)}
-          detail={`de ${fmtInt(adherence.days_with_target)} dia(s) com meta`}
+          detail={`de ${fmtInt(adherence.logged_days)} dia(s) registrado(s)`}
         />
-        <Kpi label="Dias incompletos" value={fmtInt(adherence.incomplete_days.length)} detail="ficam fora da aderência" />
       </SimpleGrid>
       {adherence.incomplete_days.length > 0 && (
         <Group gap={6} wrap="wrap" aria-label="Dias incompletos">
@@ -130,7 +130,7 @@ function AdherenceSection({ data }: { data: NutritionDashboard }) {
           ))}
         </Group>
       )}
-      {semanas.length > 0 ? (
+      {semanas.length > 0 && hasValues(semanas, (l) => l.kcal ?? l.proteina) ? (
         <>
           <div role="img" aria-label="Barras da aderência por semana: energia e proteína em porcentagem da meta. A tabela abaixo traz os mesmos números.">
             <WeekAdherenceBars rows={semanas} />
@@ -151,6 +151,11 @@ function AdherenceSection({ data }: { data: NutritionDashboard }) {
                     <Table.Td>
                       {fmtDate(semana.start)}
                       {semana.partial ? ' (parcial)' : ''}
+                      {!semana.report.adherence.valid_week && (
+                        <Badge ml={6} size="xs" color="yellow" variant="light">
+                          semana incompleta
+                        </Badge>
+                      )}
                     </Table.Td>
                     <Table.Td>{fmtInt(semana.report.adherence.logged_days)}</Table.Td>
                     <Table.Td>{formatShareAsPercent(semana.report.adherence.kcal_share, 0)}</Table.Td>
@@ -161,7 +166,11 @@ function AdherenceSection({ data }: { data: NutritionDashboard }) {
             </Table>
           </Table.ScrollContainer>
         </>
-      ) : null}
+      ) : (
+        <Text size="sm" c="dimmed">
+          Ainda não há semana com refeições registradas no período: o gráfico aparece quando houver.
+        </Text>
+      )}
     </Section>
   );
 }
@@ -174,16 +183,25 @@ function MacrosSection({ data }: { data: NutritionDashboard }) {
       hint="Cada gráfico mostra a fração da meta atingida por dia; a linha tracejada é 100% da meta."
     >
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        {campos.map((campo) => (
-          <Stack key={campo} gap={4}>
-            <Text size="sm" fw={700} c={BRAND.textPrimary}>
-              {macroTitle(campo)} (% da meta)
-            </Text>
-            <div role="img" aria-label={`Barras de ${macroTitle(campo)} em porcentagem da meta, por dia`}>
-              <ShareBars rows={shareRows(data.days, campo, shortDateLabel)} name={macroTitle(campo)} />
-            </div>
-          </Stack>
-        ))}
+        {campos.map((campo) => {
+          const linhas = shareRows(data.days, campo, shortDateLabel);
+          return (
+            <Stack key={campo} gap={4}>
+              <Text size="sm" fw={700} c={BRAND.textPrimary}>
+                {macroTitle(campo)} (% da meta)
+              </Text>
+              {hasValues(linhas, (l) => l.percent) ? (
+                <div role="img" aria-label={`Barras de ${macroTitle(campo)} em porcentagem da meta, por dia`}>
+                  <ShareBars rows={linhas} name={macroTitle(campo)} />
+                </div>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  Sem dia fechado com meta e refeição de total completo no período.
+                </Text>
+              )}
+            </Stack>
+          );
+        })}
       </SimpleGrid>
     </Section>
   );
@@ -264,12 +282,21 @@ function ProjectionSection({ data }: { data: NutritionDashboard }) {
   if (!projecao) {
     return (
       <Section title="Projeção até o alvo">
-        <EmptyState
-          title="Sem alvo no plano"
-          description="Defina o peso-alvo ou o % de gordura alvo no plano para ver o prazo estimado."
-          actionHref="/nutricao/plano"
-          actionLabel="Abrir o plano"
-        />
+        {data.plan ? (
+          <EmptyState
+            title="Sem alvo no plano"
+            description="Defina o peso-alvo ou o % de gordura alvo no plano para ver o prazo estimado."
+            actionHref="/nutricao/plano"
+            actionLabel="Abrir o plano"
+          />
+        ) : (
+          <EmptyState
+            title="Sem plano publicado"
+            description="Crie e publique o seu plano de nutrição, com peso-alvo ou % de gordura alvo, para ver o prazo estimado."
+            actionHref="/nutricao/plano"
+            actionLabel="Abrir o plano"
+          />
+        )}
       </Section>
     );
   }
@@ -336,9 +363,9 @@ function AdaptiveSection({ data }: { data: NutritionDashboard }) {
 
 /** `/dashboard/nutricao` (N5): aderência, macros × meta, peso/%G × alvo, projeção e gasto observado. Tudo vem pronto de `GET /nutrition/dashboard`. */
 export function DashboardNutricaoClient() {
-  const { filters, setFilters, rangeError } = useDashboardFilters();
   const [userId, setUserId] = useState<number | null>(null);
-  const days = dashboardWindowDays(filters);
+  // `null` = a janela padrão da API; as janelas oferecidas vêm na resposta (`window_choices`).
+  const [days, setDays] = useState<number | null>(null);
 
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
   const role = currentUserQuery.data?.role;
@@ -351,6 +378,10 @@ export function DashboardNutricaoClient() {
     retry: false,
   });
   const data = consulta.data;
+  const trocarAluno = (novo: number | null) => {
+    setUserId(novo);
+    setDays(null);
+  };
 
   return (
     <Stack gap="lg">
@@ -368,10 +399,22 @@ export function DashboardNutricaoClient() {
       </Stack>
 
       <Group align="flex-end" gap="md" wrap="wrap">
-        {canManage && <UserPicker value={userId} onChange={setUserId} />}
-        <DashboardPeriodSelect filters={filters} onChange={setFilters} allowed={ALLOWED_WINDOWS} rangeError={rangeError} />
+        {canManage && <UserPicker value={userId} onChange={trocarAluno} />}
+        {data && (
+          <Select
+            label="Período"
+            w={200}
+            allowDeselect={false}
+            data={data.window_choices.map((n) => ({ value: String(n), label: `Últimos ${n} dias` }))}
+            value={String(data.window_days)}
+            onChange={(valor) => valor && setDays(Number(valor))}
+          />
+        )}
       </Group>
 
+      {currentUserQuery.isError && (
+        <ErrorState title="Não foi possível identificar o usuário" description="Entre de novo ou tente em instantes." />
+      )}
       {(consulta.isLoading || currentUserQuery.isLoading) && <DashboardCardSkeleton rows={6} />}
       {consulta.isError && (
         <ErrorState title="Não foi possível carregar o painel de nutrição" description={nutritionErrorInfo(consulta.error, 'Tente novamente em instantes.').message} />

@@ -1,21 +1,24 @@
-"""Dashboard de nutrição (reformulação N5, L7 do plano de nutrição). Vive na
-api-core (`{proxy+}`), junto do diário.
+"""Dashboard de nutrição (reformulação N5, L7 do plano de nutrição) e o balanço
+de hoje para a home. Vive na api-core (`{proxy+}`), junto do diário.
 
-Rota (prefixo `/nutrition`):
+Rotas (prefixo `/nutrition`):
 - `GET /dashboard?days=&user_id=`  janela de `days` dias corridos que termina hoje
-                                   (28 por padrão, 7 a 90): aderência por dia e
-                                   por semana, kcal e macros × meta, peso/%G/massa
-                                   muscular, projeção até o alvo do plano e o TDEE
-                                   adaptativo (só sugestão, `applied` sempre falso)
+                                   (28 por padrão; fora de 7 a 90 é limitado; valor
+                                   não inteiro = 422): aderência por dia e por semana,
+                                   kcal e macros × meta, peso/%G/massa muscular,
+                                   projeção até o alvo do plano e o TDEE adaptativo
+                                   (só sugestão, `applied` sempre falso)
+- `GET /today?user_id=`            só HOJE: materializa a meta de hoje (como o diário)
+                                   e devolve meta, total e balanço; é o que o card da
+                                   home mobile lê
 
 Regra dos motores (`docs/motores/FONTES_DA_VERDADE.md` §82): a agregação é de
 `domain/nutrition/dashboard` (compõe `weekly_budget`, `adaptive_tdee` e
 `phases.project_goal`); aqui só se leem as linhas gravadas (metas materializadas,
 totais gravados das refeições, composição corporal) e se monta a resposta. Não há
-soma de nutrientes nem regra de nutrição neste arquivo. A rota não materializa
-metas de dias passados (só a de hoje, como o diário): dia sem meta gravada fica
-fora da aderência e é avisado. Acesso: `nutrition_access` (D-L). Tabelas
-ausentes: 503 citando a migração.
+soma de nutrientes nem regra de nutrição neste arquivo. O dashboard NÃO materializa
+metas de dias passados (sem backfill): dia com refeição e sem meta gravada é avisado.
+Acesso: `nutrition_access` (D-L). Tabelas ausentes: 503 citando a migração.
 """
 
 from __future__ import annotations
@@ -31,12 +34,15 @@ from .domain.nutrition import dashboard as dash
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.body_composition import resolved_fat_mass_kg
 from .domain.nutrition.phases import project_goal
-from .domain.nutrition.plan import PlanSettings, plan_in_force
+from .domain.nutrition.plan import plan_in_force
 from .domain.nutrition.subject import resolve_subject
-from .domain.nutrition.weekly_budget import target_macros
+from .domain.nutrition.weekly_budget import day_balance, target_macros
+from .intelligence.dashboard.body_service import moving_average_points
+from .intelligence.dashboard.metrics_registry import threshold
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
-from .nutrition_meals import day_totals, read_meal_rows
+from .nutrition_days import _balance_public, _target_of
+from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
     ensure_diary_targets,
@@ -49,22 +55,16 @@ from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
-# Uma linha por dia e por local (a última do dia vale). `muscle_mass_kg` é da
-# bioimpedância (ESTIMATED); o peso e o %G seguem a mesma tabela do motor.
-BODY_WINDOW_SQL = (
-    "SELECT local_date, weight_kg, body_fat_percent, muscle_mass_kg FROM body_composition "
-    "WHERE user_id = %s AND local_date BETWEEN %s AND %s "
-    "AND (weight_kg IS NOT NULL OR body_fat_percent IS NOT NULL OR muscle_mass_kg IS NOT NULL) "
-    "ORDER BY local_date, id"
+# Só o que `stored_meal_totals` precisa (sem `description_raw`, `notes` nem JSON de itens: a
+# resposta da RDS Data API tem teto de 1 MiB e 90 dias de refeições passariam dele).
+MEAL_TOTALS_SQL = (
+    f"SELECT id, local_date, {', '.join(NUTRIENTS)}, totals_incomplete_json, totals_nature, item_count "
+    f"FROM {MEALS} WHERE user_id = %s AND local_date BETWEEN %s AND %s ORDER BY local_date, id"
 )
-# Ponto de partida do caminho até o alvo: a primeira medida a partir do início do plano.
-FIRST_WEIGHT_SQL = (
-    "SELECT weight_kg FROM body_composition WHERE user_id = %s AND local_date >= %s AND weight_kg IS NOT NULL "
-    "ORDER BY local_date, id LIMIT 1"
-)
-FIRST_BODY_FAT_SQL = (
-    "SELECT body_fat_percent FROM body_composition WHERE user_id = %s AND local_date >= %s "
-    "AND body_fat_percent IS NOT NULL ORDER BY local_date, id LIMIT 1"
+# Massa muscular da bioimpedância (ESTIMATED); peso e %G vêm das séries do motor (`load_user_inputs`).
+MUSCLE_WINDOW_SQL = (
+    "SELECT local_date, muscle_mass_kg FROM body_composition "
+    "WHERE user_id = %s AND local_date BETWEEN %s AND %s AND muscle_mass_kg IS NOT NULL ORDER BY local_date, id"
 )
 
 
@@ -87,19 +87,38 @@ def _num(value: Any) -> Optional[float]:
     return None if value is None else float(value)
 
 
-def _first_value(cur: Any, sql: str, user_id: int, since: date, column: str) -> Optional[float]:
-    cur.execute(sql, (int(user_id), since))
-    linha = cur.fetchone()
-    return _num(linha.get(column)) if linha else None
+def _require_tables(cur: Any) -> None:
+    require_nutrition_tables(cur)
+    require_diary_tables(cur)
 
 
-def _plan_public(plan_id: int, settings: PlanSettings, effective_from: date) -> dict[str, Any]:
+@router.get("/today")
+def get_today(
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    """Meta, total e balanço de HOJE do aluno (o `GET /nutrition/days/{date}` sem refeições, sem treino e sem semana)."""
+    aluno = resolve_target_user(identity, user_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+            usuario = fetch_target_user(cur, aluno)
+        hoje = _today_for(conn, aluno)
+        metas = ensure_diary_targets(conn, aluno, [hoje], today=hoje)
+        with conn.cursor() as cur:
+            cur.execute(MEAL_TOTALS_SQL, (aluno, hoje, hoje))
+            linhas = list(cur.fetchall() or [])
+    meta = metas.rows.get(hoje)
+    totais = day_totals(linhas)
+    balanco = day_balance(_target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
-        "id": plan_id,
-        "strategy": settings.strategy.value,
-        "effective_from": effective_from.isoformat(),
-        "goal_weight_kg": settings.goal_weight_kg,
-        "goal_body_fat_percent": settings.goal_body_fat_percent,
+        "user": usuario,
+        "local_date": hoje.isoformat(),
+        "today": hoje.isoformat(),
+        "target": meta,
+        "target_action": metas.actions[hoje].value,
+        "totals": totals_public(totais),
+        "balance": _balance_public(balanco),
     }
 
 
@@ -113,68 +132,101 @@ def get_dashboard(
     janela = dash.normalize_window_days(days)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
-            require_diary_tables(cur)
+            _require_tables(cur)
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
-        dias = dash.window_dates(hoje, janela)
-        inicio = dias[0]
+        dias_lidos = dash.window_dates(hoje, dash.fetch_days(janela))
+        inicio_lido = dias_lidos[0]
         ensure_diary_targets(conn, aluno, [hoje], today=hoje)
         with conn.cursor() as cur:
-            metas_linhas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio, hoje)]
-            refeicoes = read_meal_rows(cur, aluno, inicio, hoje)
-            cur.execute(BODY_WINDOW_SQL, (aluno, inicio, hoje))
-            corpo_linhas = list(cur.fetchall() or [])
+            metas_linhas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio_lido, hoje)]
+            cur.execute(MEAL_TOTALS_SQL, (aluno, inicio_lido, hoje))
+            refeicoes = list(cur.fetchall() or [])
+            cur.execute(MUSCLE_WINDOW_SQL, (aluno, inicio_lido, hoje))
+            musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
-            em_vigor = planos.for_day(hoje)
-            entradas = load_user_inputs(cur, aluno, inicio, hoje, hoje)
-            ref = plan_in_force(planos.refs, hoje)
-            partida_peso = partida_gordura = None
-            if ref is not None:
-                partida_peso = _first_value(cur, FIRST_WEIGHT_SQL, aluno, ref.effective_from, "weight_kg")
-                partida_gordura = _first_value(cur, FIRST_BODY_FAT_SQL, aluno, ref.effective_from, "body_fat_percent")
+            entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
 
-    # Metas e totais gravados, alinhados aos dias da janela.
-    metas_por_dia = {linha["local_date"]: linha for linha in metas_linhas}
-    metas = [metas_por_dia.get(dia.isoformat()) for dia in dias]
-    alvos = [
-        None
-        if meta is None
-        else target_macros(meta["kcal"], meta["protein_g"], meta["carbs_g"], meta["fat_g"], meta["fiber_g"])
-        for meta in metas
+    # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
+    metas_por_dia = dash.last_by_day(dias_lidos, ((_as_date(m["local_date"]), m) for m in metas_linhas))
+    alvos_lidos = [
+        None if m is None else target_macros(m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"], m["fiber_g"])
+        for m in metas_por_dia
     ]
-    refeicoes_por_dia: dict[date, list[dict[str, Any]]] = {}
-    for linha in refeicoes:
-        refeicoes_por_dia.setdefault(_as_date(linha["local_date"]), []).append(linha)  # type: ignore[arg-type]
-    totais = [day_totals(refeicoes_por_dia.get(dia, [])) for dia in dias]
+    totais_lidos = [
+        day_totals(grupo) for grupo in dash.group_by_day(dias_lidos, ((_as_date(r["local_date"]), r) for r in refeicoes))
+    ]
+    series = entradas.series
+    pesos_lidos = dash.last_by_day(dias_lidos, ((r.local_date, r.number) for r in series.weight))
+    gorduras_lidas = dash.positive_series(
+        dash.last_by_day(dias_lidos, ((r.local_date, r.value) for r in series.bioimpedance_body_fat))
+    )
+    musculos_lidos = dash.positive_series(
+        dash.last_by_day(dias_lidos, ((_as_date(r["local_date"]), _num(r["muscle_mass_kg"])) for r in musculos_linhas))
+    )
 
-    linhas_dia = dash.day_rows(dias, alvos, totais)
+    # --- janela da tela ----------------------------------------------------------------------------
+    recorte = slice(-janela, None)
+    dias = dias_lidos[recorte]
+    alvos, totais = alvos_lidos[recorte], totais_lidos[recorte]
+    pesos, gorduras, musculos = pesos_lidos[recorte], gorduras_lidas[recorte], musculos_lidos[recorte]
+
+    versoes = [
+        dash.PlanVersion(
+            plan_id=ref.plan_id,
+            effective_from=ref.effective_from,
+            published_at=ref.published_at,
+            strategy=planos.settings[ref.plan_id].strategy.value,
+            goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
+            goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent,
+        )
+        for ref in planos.refs
+    ]
+    estados = dash.day_states(dias, hoje, dash.first_plan_start(versoes), totais)
+    linhas_dia = dash.day_rows(dias, alvos, totais, estados)
     aderencia = dash.window_adherence(linhas_dia)
+    semanas = dash.week_blocks(dias, alvos, totais, estados)
+    for bloco in semanas:
+        bloco["report"]["limitations"] = nutrition_labels.limitation_items(bloco["report"]["limitations"])
 
-    # Corpo: a última leitura do dia vale (a consulta já vem ordenada).
-    por_data: dict[date, dict[str, Any]] = {}
-    for linha in corpo_linhas:
-        dia = _as_date(linha["local_date"])
-        atual = por_data.setdefault(dia, {})  # type: ignore[arg-type]
-        for coluna in ("weight_kg", "body_fat_percent", "muscle_mass_kg"):
-            if linha.get(coluna) is not None:
-                atual[coluna] = _num(linha[coluna])
-    pesos = dash.positive_series([por_data.get(dia, {}).get("weight_kg") for dia in dias])
-    gorduras = [por_data.get(dia, {}).get("body_fat_percent") for dia in dias]
-    musculos = dash.positive_series([por_data.get(dia, {}).get("muscle_mass_kg") for dia in dias])
-    pontos = dash.body_points(dias, pesos, gorduras, musculos)
+    # --- corpo: média móvel do dono do dashboard de corpo, olhando para trás do início da janela ----
+    pesados = [
+        {"local_date": dia, "weight_kg": peso, "source": "body_composition"}
+        for dia, peso in dash.daily_values((r.local_date, r.number) for r in series.weight)
+    ]
+    medias = moving_average_points(pesados, ma_days=int(threshold("weight_ma_days")), date_from=dias[0], date_to=hoje)
+    medias_por_dia = {ponto["local_date"]: ponto["ma7_kg"] for ponto in medias if ponto["ma7_kg"] is not None}
+    pontos = dash.body_points(dias, pesos, medias_por_dia, gorduras, musculos)
+    tendencia_peso = dash.weight_trend_public(pesos)
+    tendencia_peso["limitation_items"] = nutrition_labels.limitation_items(tendencia_peso["limitations"])
 
-    sujeito = resolve_subject(entradas.series.readings_on(hoje), hoje).subject
+    sujeito = resolve_subject(series.readings_on(hoje), hoje).subject
     massa_gorda = resolved_fat_mass_kg(sujeito)
 
-    # Projeção até o alvo do plano (dono: `phases.project_goal`).
+    # --- gasto: média do TDEE das metas dos últimos dias do TDEE observado ---------------------------
+    tdees = [None if m is None else m.get("tdee_kcal") for m in metas_por_dia]
+    gasto_formula = dash.window_tdee_kcal(tdees[-dash.ADAPTIVE_WINDOW_DAYS :])
+
+    # --- plano em vigor, projeção até o alvo (dono: `phases.project_goal`) --------------------------
     plano_publico = None
     projecao = None
-    if em_vigor is not None and ref is not None:
-        plano_id, configuracao = em_vigor
-        plano_publico = _plan_public(plano_id, configuracao, ref.effective_from)
+    ref = plan_in_force(planos.refs, hoje)
+    if ref is not None:
+        configuracao = planos.settings[ref.plan_id]
+        inicio_caminho = dash.goal_sequence_start(versoes, hoje) or ref.effective_from
+        plano_publico = {
+            "id": ref.plan_id,
+            "strategy": configuracao.strategy.value,
+            "effective_from": ref.effective_from.isoformat(),
+            "goal_weight_kg": configuracao.goal_weight_kg,
+            "goal_body_fat_percent": configuracao.goal_body_fat_percent,
+        }
         if configuracao.goal_weight_kg is not None or configuracao.goal_body_fat_percent is not None:
-            ultima_tdee = next((m["tdee_kcal"] for m in reversed(metas) if m and m.get("tdee_kcal") is not None), None)
+            partida_peso = next((r.number for r in series.weight if r.local_date and r.local_date >= inicio_caminho and r.number), None)
+            partida_gordura = next(
+                (r.number for r in series.bioimpedance_body_fat if r.local_date and r.local_date >= inicio_caminho and r.number),
+                None,
+            )
             resultado = project_goal(
                 configuracao.strategy_params(),
                 current_weight_kg=sujeito.weight_kg,
@@ -184,38 +236,34 @@ def get_dashboard(
                 start_weight_kg=partida_peso,
                 start_body_fat_percent=partida_gordura,
                 as_of=hoje,
-                tdee_kcal=ultima_tdee,
+                tdee_kcal=gasto_formula,
                 fat_mass_kg=massa_gorda,
             )
             projecao = resultado.to_dict()
             projecao["reason_items"] = nutrition_labels.limitation_items(resultado.reasons)
 
-    # TDEE adaptativo: só sugere (o bloco devolve `applied: false`).
-    formula_tdee = next((m["tdee_kcal"] for m in reversed(metas) if m and m.get("tdee_kcal") is not None), None)
-    adaptativo = dash.adaptive_block(dash.complete_intake_kcal(totais), pesos, massa_gorda, formula_tdee)
+    # --- TDEE adaptativo: só sugere (o bloco devolve `applied: false`) -------------------------------
+    adaptativo = dash.adaptive_block(
+        dash.adaptive_intake_kcal(dias_lidos, hoje, totais_lidos), pesos_lidos, massa_gorda, gasto_formula
+    )
     for bloco in (adaptativo["observed"], adaptativo["suggestion"]):
         bloco["limitation_items"] = nutrition_labels.limitation_items(bloco["limitations"])
-
-    tendencia_peso = dash.weight_trend_public(pesos)
-    tendencia_peso["limitation_items"] = nutrition_labels.limitation_items(tendencia_peso["limitations"])
-    semanas = dash.week_blocks(dias, alvos, totais)
-    for bloco in semanas:
-        bloco["report"]["limitations"] = nutrition_labels.limitation_items(bloco["report"]["limitations"])
 
     vazios = dash.empty_states(
         has_plan=plano_publico is not None,
         has_goal=projecao is not None,
-        weight_readings=sum(1 for p in pesos if p is not None),
-        bioimpedance_readings=sum(1 for g, m in zip(gorduras, musculos) if g is not None or m is not None),
+        weight_readings=dash.count_present(pesos),
+        bioimpedance_readings=dash.count_present(g if g is not None else m for g, m in zip(gorduras, musculos)),
         logged_days=aderencia.logged_days,
-        days_without_target=aderencia.days_without_target,
+        meal_days_without_target=aderencia.meal_days_without_target,
     )
     return {
         "user": usuario,
         "today": hoje.isoformat(),
-        "start": inicio.isoformat(),
+        "start": dias[0].isoformat(),
         "end": hoje.isoformat(),
         "window_days": janela,
+        "window_choices": list(dash.WINDOW_CHOICES_DAYS),
         "plan": plano_publico,
         "empty_states": nutrition_labels.limitation_items(vazios),
         "days": [linha.to_dict() for linha in linhas_dia],

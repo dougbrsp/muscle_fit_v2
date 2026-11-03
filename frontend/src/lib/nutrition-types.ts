@@ -649,6 +649,8 @@ export type WeekDay = {
   target: NutritionDayTarget | null;
   target_action: DayTargetAction;
   totals: NutritionTotals | null;
+  /** kcal do dia só quando a energia do total é completa (`null` se incompleto ou sem refeição): a tela não decide. */
+  intake_kcal: number | null;
   /** Dia com refeições de total completo (entra no banco e na aderência). */
   logged: boolean;
   /** Dia com refeição de total incompleto (fica fora do banco e da aderência). */

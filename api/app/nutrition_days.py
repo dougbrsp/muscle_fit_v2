@@ -38,7 +38,7 @@ from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
 from .domain.nutrition.energy_expenditure import compare_training_kcal
 from .domain.nutrition.subject import resolve_subject
-from .domain.nutrition.weekly_budget import day_balance, target_macros, week_days, week_report
+from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_meals import day_totals, meals_public, read_meal_rows, totals_public
@@ -271,6 +271,8 @@ def get_week(
                 "target": metas.rows.get(dia),
                 "target_action": metas.actions[dia].value,
                 "totals": totals_public(total),
+                # kcal só de total completo (`None` se incompleto ou sem refeição): a tela não decide.
+                "intake_kcal": complete_energy_kcal(total),
                 "logged": dia in registrados,
                 "intake_incomplete": dia in incompletos,
             }

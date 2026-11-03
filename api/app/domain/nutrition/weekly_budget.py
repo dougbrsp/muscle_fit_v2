@@ -244,6 +244,14 @@ def target_macros(
     )
 
 
+def complete_energy_kcal(totals: Optional[NutritionTotals]) -> Optional[float]:
+    """kcal do dia SÓ quando a energia do total é completa; incompleto ou sem refeição = `None`
+    (a tela não decide o que é "dia completo")."""
+    if totals is None:
+        return None
+    return totals.complete_nutrients().get(ENERGY_FIELD)
+
+
 def intake_macros(totals: Optional[NutritionTotals]) -> Optional[Macros]:
     """Ingestão do dia para a semana: só com energia e os três macros
     COMPLETOS (sem refeição ou com total incompleto -> `None`)."""
@@ -260,7 +268,8 @@ class BalanceRow:
     Partes para o gráfico "consumido × a consumir" (N5, mapa §82), prontas para a
     tela não calcular: `within_target` (ingerido até a meta), `to_consume` (o que
     falta, nunca negativo) e `excess` (o que passou da meta, nunca negativo);
-    `within_target + to_consume` = meta. Só com meta E ingestão completa."""
+    `within_target + to_consume` = meta. Com meta e ingestão completa, ou com meta e nenhuma
+    refeição (0 consumido, meta toda a consumir); ingestão incompleta fica sem partes."""
 
     field: str
     target: Optional[float]
@@ -311,6 +320,9 @@ def day_balance(target: Optional[MacroTargets], totals: Optional[NutritionTotals
         ingestao = None if totals is None else totals.nutrients.get(campo)
         completa = totals is not None and totals.is_complete(campo)
         calculavel = meta is not None and completa and ingestao is not None
+        # Dia com meta e SEM refeição: nada consumido, a meta inteira a consumir (as partes do gráfico).
+        # Ingestão incompleta continua sem partes (seria um mínimo, nunca um total fechado).
+        sem_refeicao = meta is not None and totals is None
         linhas.append(
             BalanceRow(
                 field=campo,
@@ -319,9 +331,9 @@ def day_balance(target: Optional[MacroTargets], totals: Optional[NutritionTotals
                 intake_complete=completa,
                 remaining=meta - ingestao if calculavel else None,  # type: ignore[operator]
                 share=ingestao / meta if calculavel and meta > 0 else None,  # type: ignore[operator]
-                within_target=min(ingestao, meta) if calculavel else None,  # type: ignore[type-var]
-                to_consume=max(meta - ingestao, 0.0) if calculavel else None,  # type: ignore[operator]
-                excess=max(ingestao - meta, 0.0) if calculavel else None,  # type: ignore[operator]
+                within_target=0.0 if sem_refeicao else (min(ingestao, meta) if calculavel else None),  # type: ignore[type-var]
+                to_consume=meta if sem_refeicao else (max(meta - ingestao, 0.0) if calculavel else None),  # type: ignore[operator]
+                excess=0.0 if sem_refeicao else (max(ingestao - meta, 0.0) if calculavel else None),  # type: ignore[operator]
             )
         )
     gasto = positive_number(tdee_kcal)
