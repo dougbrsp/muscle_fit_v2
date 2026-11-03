@@ -255,7 +255,12 @@ def intake_macros(totals: Optional[NutritionTotals]) -> Optional[Macros]:
 @dataclass(frozen=True)
 class BalanceRow:
     """Um nutriente do dia: meta, ingestão (mínimo, se incompleta), quanto
-    falta (meta − ingestão) e a fração da meta já ingerida."""
+    falta (meta − ingestão) e a fração da meta já ingerida.
+
+    Partes para o gráfico "consumido × a consumir" (N5, mapa §82), prontas para a
+    tela não calcular: `within_target` (ingerido até a meta), `to_consume` (o que
+    falta, nunca negativo) e `excess` (o que passou da meta, nunca negativo);
+    `within_target + to_consume` = meta. Só com meta E ingestão completa."""
 
     field: str
     target: Optional[float]
@@ -263,6 +268,9 @@ class BalanceRow:
     intake_complete: bool
     remaining: Optional[float]
     share: Optional[float]
+    within_target: Optional[float] = None
+    to_consume: Optional[float] = None
+    excess: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -272,6 +280,9 @@ class BalanceRow:
             "intake_complete": self.intake_complete,
             "remaining": self.remaining,
             "share": self.share,
+            "within_target": self.within_target,
+            "to_consume": self.to_consume,
+            "excess": self.excess,
         }
 
 
@@ -308,6 +319,9 @@ def day_balance(target: Optional[MacroTargets], totals: Optional[NutritionTotals
                 intake_complete=completa,
                 remaining=meta - ingestao if calculavel else None,  # type: ignore[operator]
                 share=ingestao / meta if calculavel and meta > 0 else None,  # type: ignore[operator]
+                within_target=min(ingestao, meta) if calculavel else None,  # type: ignore[type-var]
+                to_consume=max(meta - ingestao, 0.0) if calculavel else None,  # type: ignore[operator]
+                excess=max(ingestao - meta, 0.0) if calculavel else None,  # type: ignore[operator]
             )
         )
     gasto = positive_number(tdee_kcal)

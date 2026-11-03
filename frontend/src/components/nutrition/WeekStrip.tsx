@@ -2,12 +2,21 @@
 
 import { ActionIcon, Badge, Group, Paper, SimpleGrid, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight, IconHistory } from '@tabler/icons-react';
+import dynamic from 'next/dynamic';
+import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { NutritionLimitations } from './NutritionLimitations';
 import { ENERGY_NUTRIENT, nutritionNotice } from '@/lib/nutrition-constants';
 import { formatKcal, formatShareAsPercent, formatSignedKcal, formatTotal, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
+import { weekBarRows } from '@/lib/nutrition-dashboard';
 import type { NutritionWeek, WeekDay } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
+
+// COD-14: recharts sob demanda; o placeholder tem a altura do gráfico (200).
+const WeekBars = dynamic(() => import('./NutritionCharts').then((m) => m.WeekBars), {
+  ssr: false,
+  loading: () => <ChartPlaceholder height={200} />,
+});
 
 type Props = {
   week: NutritionWeek | undefined;
@@ -94,6 +103,12 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           />
         ))}
       </SimpleGrid>
+      <Text size="xs" fw={700} tt="uppercase" c={BRAND.textMuted}>
+        Energia da semana: consumido × meta (kcal)
+      </Text>
+      <div role="img" aria-label="Barras da semana: kcal consumidas e meta de cada dia. Os mesmos números estão nos cartões acima.">
+        <WeekBars rows={weekBarRows(week, weekdayShort)} />
+      </div>
       <Group gap="lg" wrap="wrap">
         <Text size="sm" c={BRAND.textMuted}>
           Orçamento da semana: <b>{formatKcal(report.budget.kcal)}</b>

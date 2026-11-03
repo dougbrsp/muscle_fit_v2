@@ -9,6 +9,7 @@ import { Suspense, type ReactNode } from 'react';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { AllClearState } from '@/components/dashboard/states';
+import { NutritionTodayCard } from '@/components/nutrition/NutritionTodayCard';
 import { dashboardKeys, fetchOverview } from '@/lib/dashboard-api';
 import { dashboardHref, useDashboardFilters, type DashboardFilters } from '@/lib/dashboard-filters';
 import { fmtInt } from '@/lib/dashboard-format';
@@ -147,6 +148,9 @@ function MobileHomeContent() {
           </Link>
         ) : null}
       </Section>
+
+      {/* D12: macros do dia e atalho de registro; o check-in semanal (N7) entra pelo `checkinSlot`. */}
+      <NutritionTodayCard className={styles.card} />
 
       <Button
         variant="subtle"

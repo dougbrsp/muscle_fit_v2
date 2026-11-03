@@ -1379,6 +1379,19 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-N3",
     ),
     Padrao(
+        chave="dashboard_nutricao",
+        regra="janela, média móvel ou limiar de poucos dias do dashboard de nutrição redefinidos com número fora do dono",
+        # 2026-11-02 (nutrição N5, §82): dono `dashboard` (janela de 28 dias e limites 7..90, média móvel
+        # de 7 dias do peso, mínimo de dias registrados). A rota importa o motor e a tela só exibe o que a
+        # API devolve (aderência, médias, ritmo, projeção, estados vazios).
+        regex=re.compile(
+            r"\b(?:DASHBOARD_DEFAULT_DAYS|DASHBOARD_MIN_DAYS|DASHBOARD_MAX_DAYS|TREND_WINDOW_DAYS|FEW_LOGGED_DAYS)"
+            r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
+        ),
+        donos=("api/app/domain/nutrition/dashboard.py",),
+        inventario="NUT-N5",
+    ),
+    Padrao(
         chave="soma_nutrientes",
         regra="soma de nutrientes de itens, refeições ou dias (`sum(`/`SUM(`/`.reduce(`/`+=` sobre energy_kcal, "
         "protein_g, carbohydrates_g, total_fat_g, fiber_g, sodium_mg ou as metas da 079) ou escala por 100 g/ml "
@@ -2133,6 +2146,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "bom_para_paralelo": {},  # BOM-PARA (2026-10-17): nasce vazia (a tela só formata `ready_at`)
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
     "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
+    "dashboard_nutricao": {},  # NUT-N5 (2026-11-02): nasce vazia (a rota importa o dono; a tela só exibe)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3072,6 +3086,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("MAX_FAVORITES = 200", "const MAX_FAVORITES = 50;", "MAX_FAVORITES: Final[int] = 100"),
         ("if not favorites_engine.can_add(total):", "max_items: favorites_engine.MAX_FAVORITES",
          "from .domain.nutrition.favorites import MAX_FAVORITES"),
+    ),
+    "dashboard_nutricao": (
+        ("DASHBOARD_DEFAULT_DAYS = 28", "const TREND_WINDOW_DAYS = 7;", "DASHBOARD_MAX_DAYS: Final[int] = 90",
+         "FEW_LOGGED_DAYS = 3"),
+        ("dash.normalize_window_days(days)", "window_days: dashboard.DASHBOARD_DEFAULT_DAYS",
+         "from .domain.nutrition.dashboard import TREND_WINDOW_DAYS"),
     ),
     "soma_nutrientes": (
         ("total = sum(item['energy_kcal'] for item in itens)", "SELECT SUM(m.protein_g) FROM meals m",

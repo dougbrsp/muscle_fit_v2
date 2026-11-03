@@ -569,6 +569,10 @@ export type BalanceRow = {
   intake_complete: boolean;
   remaining: number | null;
   share: number | null;
+  /** Partes do gráfico "consumido × a consumir" (N5): ingerido até a meta, falta e excesso, prontos do motor. */
+  within_target: number | null;
+  to_consume: number | null;
+  excess: number | null;
 };
 
 export type DayBalance = {
