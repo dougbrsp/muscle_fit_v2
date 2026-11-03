@@ -1,0 +1,136 @@
+{
+  "_prompt_version": "nutrition-photo-v1",
+  "input": [
+    {
+      "content": [
+        {
+          "text": "<<PROMPT 3231 chars, sha256 210ef64562610ba2>>",
+          "type": "input_text"
+        },
+        {
+          "detail": "high",
+          "image_url": "<<IMAGEM data URL, sha256 ea94887edad67525>>",
+          "type": "input_image"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 16384,
+  "model": "gpt-5.4-mini",
+  "store": false,
+  "text": {
+    "format": {
+      "name": "nutrition_meal_photo",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "confidence": {
+                  "type": "number"
+                },
+                "estimated_per_100g": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "carbohydrates_g": {
+                          "type": "number"
+                        },
+                        "energy_kcal": {
+                          "type": "number"
+                        },
+                        "fiber_g": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "protein_g": {
+                          "type": "number"
+                        },
+                        "total_fat_g": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "energy_kcal",
+                        "protein_g",
+                        "carbohydrates_g",
+                        "total_fat_g",
+                        "fiber_g"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "grams_estimate": {
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "preparation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "quantity": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "unit": {
+                  "enum": [
+                    "g",
+                    "ml",
+                    "unit",
+                    "colher_sopa",
+                    "colher_sobremesa",
+                    "colher_cha",
+                    "xicara"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "quantity",
+                "unit",
+                "grams_estimate",
+                "preparation",
+                "confidence",
+                "estimated_per_100g"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "plate_status": {
+            "enum": [
+              "recognized",
+              "no_food",
+              "unclear"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "plate_status",
+          "items"
+        ],
+        "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+    }
+  }
+}

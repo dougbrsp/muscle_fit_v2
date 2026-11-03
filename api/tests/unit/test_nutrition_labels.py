@@ -104,7 +104,8 @@ def test_export_for_frontend():
     # hunger_labels, water_ml_range, meal_max_items
     # L5b: + meal_parse (teto do texto e a decisão de cada item; a cota vem da API)
     # L6: + label_photo, label_legibilities, label_legibility_labels
-    assert len(bloco) == 74
+    # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
+    assert len(bloco) == 75
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
@@ -113,6 +114,8 @@ def test_export_for_frontend():
         "match_status_labels": {s.value: lb.MEAL_PARSE_MATCH_STATUS_LABELS[s] for s in _mp.MatchStatus},
         "estimate_source": _cat.FoodSource.AI_ESTIMATE.value,
         "estimate_basis": _mp.ESTIMATE_BASIS.value,
+        "catalog_item_nature": _mp.CATALOG_ITEM_NATURE.value,
+        "estimate_item_nature": _mp.ESTIMATE_ITEM_NATURE.value,
         "quota_exceeded_label": lb.ai_quota_exceeded_label("meal_parse"),
     }
     assert bloco["energy_field"] == _mm.ENERGY_FIELD and bloco["item_nutrient_fields"][0] == bloco["energy_field"]

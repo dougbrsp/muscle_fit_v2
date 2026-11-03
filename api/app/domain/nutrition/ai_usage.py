@@ -7,9 +7,9 @@ Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §5 (E7, E8), §6.2, §8.3 e
 §13. Nasceu no Lote L5a, a base que o L5b (texto da refeição) e o L6 (foto do
 rótulo) consomem; o acesso ao banco é de `api/app/nutrition_ai_quota.py`.
 
-Features (`AiFeature`): `meal_parse` (L5b, texto da refeição → itens) e
-`label_photo` (L6, foto do rótulo → RDC 429). A foto da refeição (L10) entra
-aqui quando o lote abrir. O L5b/L6 usa o mesmo código como rótulo `feature` do
+Features (`AiFeature`): `meal_parse` (L5b, texto da refeição → itens),
+`label_photo` (L6, foto do rótulo → RDC 429) e `meal_photo` (L10, foto do prato →
+itens; cota D11 de 2026-11-02). O L5b/L6/L10 usa o mesmo código como rótulo `feature` do
 evento `llm.usage` e como chave de `openai_client.LLM_OUTPUT_OBSERVED_MAX_TOKENS`
 (um vocabulário só).
 
@@ -65,6 +65,7 @@ from typing import Any, Final, Mapping, Optional
 class AiFeature(str, Enum):
     MEAL_PARSE = "meal_parse"
     LABEL_PHOTO = "label_photo"
+    MEAL_PHOTO = "meal_photo"
 
 
 class AiUsageStatus(str, Enum):
@@ -87,10 +88,13 @@ ERR_AI_QUOTA_EXCEEDED = "ai_quota_exceeded"
 
 MEAL_PARSE_DAILY_QUOTA: Final[int] = 30
 LABEL_PHOTO_DAILY_QUOTA: Final[int] = 10
+# Decisão D11 do usuário (2026-11-02, plano da reformulação da nutrição).
+MEAL_PHOTO_DAILY_QUOTA: Final[int] = 10
 DAILY_QUOTA: Final[Mapping[AiFeature, int]] = MappingProxyType(
     {
         AiFeature.MEAL_PARSE: MEAL_PARSE_DAILY_QUOTA,
         AiFeature.LABEL_PHOTO: LABEL_PHOTO_DAILY_QUOTA,
+        AiFeature.MEAL_PHOTO: MEAL_PHOTO_DAILY_QUOTA,
     }
 )
 
@@ -105,10 +109,12 @@ DAILY_QUOTA: Final[Mapping[AiFeature, int]] = MappingProxyType(
 # imagem na `musclefit-plan-generator`, decisão E8 do plano).
 MEAL_PARSE_JOB_TYPE = "nutrition-meal-parse"
 LABEL_PHOTO_JOB_TYPE = "nutrition-label-ocr"
+MEAL_PHOTO_JOB_TYPE = "nutrition-meal-photo"
 FEATURE_JOB_TYPE: Final[Mapping[AiFeature, str]] = MappingProxyType(
     {
         AiFeature.MEAL_PARSE: MEAL_PARSE_JOB_TYPE,
         AiFeature.LABEL_PHOTO: LABEL_PHOTO_JOB_TYPE,
+        AiFeature.MEAL_PHOTO: MEAL_PHOTO_JOB_TYPE,
     }
 )
 
@@ -376,6 +382,8 @@ __all__ = [
     "LABEL_PHOTO_JOB_TYPE",
     "MEAL_PARSE_DAILY_QUOTA",
     "MEAL_PARSE_JOB_TYPE",
+    "MEAL_PHOTO_DAILY_QUOTA",
+    "MEAL_PHOTO_JOB_TYPE",
     "HAIKU_LONG_PROMPT_THRESHOLD_TOKENS",
     "MODEL_LONG_PROMPT_PRICES",
     "MODEL_PRICES_USD_CENTS_PER_MTOKEN",

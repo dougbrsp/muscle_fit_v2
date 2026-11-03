@@ -67,6 +67,9 @@ class MealSource(str, Enum):
 
 
 MEAL_MAX_ITEMS: Final[int] = 30
+# Slot com que o preview valida a refeição sem refeição escolhida: os macros do item
+# não dependem dele e o preview não grava nada (L10). Gravar continua exigindo o slot.
+PREVIEW_MEAL_SLOT: Final[MealSlot] = MealSlot.OTHER
 ITEM_AMOUNT_MAX: Final[float] = PORTION_AMOUNT_MAX
 HUNGER_SCALE: Final[tuple[int, int]] = (1, 5)
 WATER_ML_RANGE: Final[tuple[float, float]] = (0.0, 10000.0)

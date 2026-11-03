@@ -736,6 +736,20 @@ except Exception as exc:
     )
 # END nutrition favorites router
 
+# BEGIN nutrition meal photo router (foto do prato, Lote L10; sem migracao)
+# Foto do prato: mesmo desenho da foto do rotulo, com o dono `meal_photo`, a cota
+# `meal_photo` (ai_usage_log, 085) e o prefixo nutrition-meals/. A refeicao continua
+# sendo gravada em POST /nutrition/meals (source=ai_photo) depois da conferencia.
+try:
+    from app.nutrition_meal_photo import router as nutrition_meal_photo_router
+    app.include_router(nutrition_meal_photo_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_meal_photo").exception(
+        "Nutrition meal photo router nao foi carregado. Erro: %s", exc
+    )
+# END nutrition meal photo router
+
 # BEGIN nutrition diary routers (plano de nutricao, Lote L4, migracoes 082/083)
 # Diario de refeicoes: refeicoes com os nutrientes congelados por item (motor
 # `meal_math`/`diary`), preview sem gravar, dia (meta, totais, agua/fome, kcal

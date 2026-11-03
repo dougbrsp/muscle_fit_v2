@@ -50,9 +50,6 @@ logger = logging.getLogger("musclefit.nutrition.label_photo")
 
 router = APIRouter(prefix="/nutrition/foods/label-photo", tags=["nutrition"])
 
-# Bytes que bastam para a assinatura da imagem (`gyms.sniff_image_content_type`).
-_SNIFF_BYTES = 16
-
 _STATUS_BY_UPLOAD_ERROR: dict[str, int] = {
     label_photo.ERR_LABEL_PHOTO_EMPTY: 400,
     label_photo.ERR_LABEL_PHOTO_INVALID_ENCODING: 400,
@@ -83,7 +80,7 @@ def upload_label_photo(payload: LabelPhotoUploadIn, identity: Identity = Depends
     usuario = int(identity.user_id)
     dados, erro = label_photo.decode_upload(payload.image_base64)
     dados = dados or b""
-    erro = erro or label_photo.upload_error(len(dados), sniff_image_content_type(dados[:_SNIFF_BYTES]))
+    erro = erro or label_photo.upload_error(len(dados), sniff_image_content_type(dados[:label_photo.PHOTO_SNIFF_BYTES]))
     if erro:
         raise _error(_STATUS_BY_UPLOAD_ERROR[erro], erro, max_bytes=label_photo.LABEL_PHOTO_MAX_BYTES)
 

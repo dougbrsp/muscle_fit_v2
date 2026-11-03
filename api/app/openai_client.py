@@ -124,6 +124,9 @@ LLM_OUTPUT_CAP_ROUNDING_TOKENS = 1_024
 #   paridade): maior `output_tokens` (com raciocinio) do eval pago da leitura
 #   do rotulo em 2026-10-18 (`tests/eval/casos/nutrition_label.json`, 4
 #   rodadas x 9 chamadas, prompts v1 e v2, gpt-5.4-mini: 213 a 256).
+# `meal_photo` (nutricao L10, `ai_usage.AiFeature.MEAL_PHOTO`): SEM eval pago
+#   ainda; herda o observado do `meal_parse`, que tem o mesmo item por alimento.
+#   O teto efetivo e o piso, com folga para o teto de itens do diario.
 LLM_OUTPUT_OBSERVED_MAX_TOKENS: dict[str, int] = {
     "set_evaluation": 600,
     "exercise_summary": 500,
@@ -135,6 +138,7 @@ LLM_OUTPUT_OBSERVED_MAX_TOKENS: dict[str, int] = {
     "periodization": 6_003,
     "meal_parse": 426,
     "label_photo": 256,
+    "meal_photo": 426,
 }
 
 

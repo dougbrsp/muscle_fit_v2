@@ -38,6 +38,7 @@ def test_features_do_terraform_sao_as_do_codigo():
 VIRADA_HAIKU = {
     "cardio_agent": "medium",
     "label_photo": "medium",
+    "meal_photo": "medium",
     "insights": "medium",
     "meal_parse": "medium",
     "exercise_description": "medium",
@@ -101,7 +102,9 @@ def test_dev_cria_o_mesmo_secret_no_localstack():
 # (leitura, 2026-10-31) antes da virada: a api-core, a maior, tinha 1718 bytes
 # (chave + valor) sem nenhuma env de LLM. O bloco de LLM tem de caber no que
 # sobra com folga; a proxima feature ligada deve colapsar as envs (por
-# exemplo, um JSON unico) se este orcamento estourar.
+# exemplo, um JSON unico) se este orcamento estourar. Desde a foto do prato
+# (nutricao L10), `LLM_PROVIDER_<FEATURE>=openai` nao e mais publicado: e o padrao
+# do codigo e so gastava orcamento.
 API_CORE_ENV_BYTES_SEM_LLM = 1718
 LAMBDA_ENV_LIMIT_BYTES = 4096
 LLM_ENV_BUDGET_BYTES = 1400
@@ -110,7 +113,12 @@ LLM_ENV_BUDGET_BYTES = 1400
 def test_bloco_de_envs_de_llm_cabe_no_limite_de_4kb_da_lambda():
     tf = _tf("llm_providers.tf")
     provedores = _mapa_padrao(tf, "llm_provider_by_feature")
-    envs = {f"LLM_PROVIDER_{f.upper()}": provedores.get(f, "openai") for f in llm_anthropic.LLM_FEATURES}
+    assert llm_anthropic.DEFAULT_PROVIDER == llm_anthropic.PROVIDER_OPENAI  # o que nao e publicado
+    envs = {
+        f"LLM_PROVIDER_{f}".upper(): provedores[f]
+        for f in llm_anthropic.LLM_FEATURES
+        if provedores.get(f, llm_anthropic.DEFAULT_PROVIDER) != llm_anthropic.DEFAULT_PROVIDER
+    }
     for variavel, prefixo in (
         ("anthropic_model_by_feature", "ANTHROPIC_MODEL_"),
         ("anthropic_effort_by_feature", "ANTHROPIC_EFFORT_"),

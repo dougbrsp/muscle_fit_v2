@@ -27,7 +27,7 @@ Nenhuma regra aqui: só leitura do catálogo e montagem do resultado.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from fastapi import HTTPException
 
@@ -91,6 +91,41 @@ def _public_message(code: str) -> str:
     return nutrition_labels.limitation_label(code)
 
 
+def match_items(
+    itens: Sequence[meal_parse.AiItem], *, registrant_user_id: int, diary_user_id: int
+) -> tuple[list[tuple[food_text.Match, ...]], dict[int, dict[str, Any]]]:
+    """A melhor busca de cada item no catálogo (na ordem dos itens) e as linhas
+    por id. Também é o casamento da foto do prato (`nutrition_meal_photo_ai`)."""
+    rankings: list[tuple[food_text.Match, ...]] = []
+    linhas: dict[int, dict[str, Any]] = {}
+    if not itens:
+        return rankings, linhas
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            require_food_tables(cur)
+            for item in itens:
+                buscas = []
+                for consulta in item.match_queries:
+                    ranking, por_id = search_candidates(
+                        cur, consulta, registrant_user_id=registrant_user_id, diary_user_id=diary_user_id
+                    )
+                    buscas.append(ranking)
+                    linhas.update(por_id)
+                rankings.append(meal_parse.best_ranking(buscas))
+    return rankings, linhas
+
+
+def result_public(resultado: meal_parse.MealParseResult, linhas: Mapping[int, dict[str, Any]]) -> dict[str, Any]:
+    """Resultado para a tela: candidatos com o que o editor mostra e as limitações
+    com o texto do dono."""
+    corpo = resultado.to_dict()
+    for item in corpo["items"]:
+        item["candidates"] = [_candidate_public(m, linhas.get(int(m["candidate_id"]))) for m in item["candidates"]]
+        item["limitations"] = nutrition_labels.limitation_items(item["limitations"])
+    corpo["limitations"] = nutrition_labels.limitation_items(corpo["limitations"])
+    return corpo
+
+
 def dispatch_meal_parse(payload: dict[str, Any], user_id: Any, ai_usage_id: Optional[int] = None) -> dict[str, Any]:
     """Resultado do job (`GET /jobs/{id}`): itens com a decisão do motor, os
     candidatos e a proposta de cada um, mais as limitações da leitura."""
@@ -117,21 +152,7 @@ def dispatch_meal_parse(payload: dict[str, Any], user_id: Any, ai_usage_id: Opti
     uso = {"model": resposta.model, "tokens_in": resposta.tokens_in, "tokens_out": resposta.tokens_out}
     try:
         itens, limitacoes = meal_parse.normalize_ai_items((resposta.data or {}).get("items"))
-        rankings: list[tuple[food_text.Match, ...]] = []
-        linhas: dict[int, dict[str, Any]] = {}
-        if itens:
-            with transaction() as conn:
-                with conn.cursor() as cur:
-                    require_food_tables(cur)
-                    for item in itens:
-                        buscas = []
-                        for consulta in item.match_queries:
-                            ranking, por_id = search_candidates(
-                                cur, consulta, registrant_user_id=solicitante, diary_user_id=aluno
-                            )
-                            buscas.append(ranking)
-                            linhas.update(por_id)
-                        rankings.append(meal_parse.best_ranking(buscas))
+        rankings, linhas = match_items(itens, registrant_user_id=solicitante, diary_user_id=aluno)
         resultado = meal_parse.build_result(itens, rankings, limitacoes, (resposta.data or {}).get("notes"))
     except Exception as exc:
         quota.finish_usage(ai_usage_id, status=AiUsageStatus.FAILED, error_code=meal_parse.ERR_MATCH_FAILED, **uso)
@@ -139,14 +160,8 @@ def dispatch_meal_parse(payload: dict[str, Any], user_id: Any, ai_usage_id: Opti
         raise MealParseError(_public_message(meal_parse.ERR_MATCH_FAILED)) from exc
 
     quota.finish_usage(ai_usage_id, status=AiUsageStatus.SUCCEEDED, **uso)
-    corpo = resultado.to_dict()
-    for item in corpo["items"]:
-        item["candidates"] = [_candidate_public(m, linhas.get(int(m["candidate_id"]))) for m in item["candidates"]]
-    corpo["limitations"] = nutrition_labels.limitation_items(corpo["limitations"])
-    for item in corpo["items"]:
-        item["limitations"] = nutrition_labels.limitation_items(item["limitations"])
     return {
-        **corpo,
+        **result_public(resultado, linhas),
         "job_id": payload.get("job_id"),
         "user_id": aluno,
         "local_date": payload.get("local_date"),
@@ -157,4 +172,4 @@ def dispatch_meal_parse(payload: dict[str, Any], user_id: Any, ai_usage_id: Opti
     }
 
 
-__all__ = ["MealParseError", "dispatch_meal_parse", "search_candidates"]
+__all__ = ["MealParseError", "dispatch_meal_parse", "match_items", "result_public", "search_candidates"]

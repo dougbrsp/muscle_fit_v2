@@ -95,6 +95,9 @@ LABEL_PHOTO_EXTENSION: Final[str] = ".jpg"
 LABEL_PHOTO_S3_PREFIX: Final[str] = "nutrition-labels"
 LABEL_PHOTO_RETENTION_DAYS: Final[int] = 30
 LABEL_PHOTO_IMAGES_PER_READING: Final[int] = 1
+# Bytes que bastam para a assinatura da imagem (`gyms.sniff_image_content_type`), nas
+# rotas das fotos do rótulo e do prato.
+PHOTO_SNIFF_BYTES: Final[int] = 16
 
 # Redução no navegador (canvas): maior borda e qualidade do JPEG reencodado. A
 # qualidade fica em % (a escala dos editores de imagem; o literal da fração em
@@ -183,27 +186,38 @@ def _user_id(value: Any) -> Optional[int]:
     return numero if numero > 0 and str(numero) == str(value).strip() else None
 
 
-def label_photo_key(user_id: Any, photo_id: str) -> str:
-    """`nutrition-labels/{user_id}/{uuid hex}.jpg` (só ids internos)."""
+def photo_key(prefix: str, user_id: Any, photo_id: str) -> str:
+    """`{prefix}/{user_id}/{uuid hex}.jpg` (só ids internos). A foto da refeição
+    (`meal_photo`) usa a mesma forma com o prefixo dela."""
     usuario = _user_id(user_id)
     if usuario is None:
         raise ValueError(f"user_id inválido para a chave da foto: {user_id!r}")
     if not isinstance(photo_id, str) or not _UUID_HEX.fullmatch(photo_id):
         raise ValueError(f"id da foto precisa ser um uuid em hex (32 caracteres): {photo_id!r}")
-    return f"{LABEL_PHOTO_S3_PREFIX}/{usuario}/{photo_id}{LABEL_PHOTO_EXTENSION}"
+    return f"{prefix}/{usuario}/{photo_id}{LABEL_PHOTO_EXTENSION}"
 
 
-def is_label_photo_key_of(key: Any, user_id: Any) -> bool:
-    """A chave tem a forma de `label_photo_key` E é do usuário?"""
+def is_photo_key_of(prefix: str, key: Any, user_id: Any) -> bool:
+    """A chave tem a forma de `photo_key` com este prefixo E é do usuário?"""
     usuario = _user_id(user_id)
     if usuario is None or not isinstance(key, str):
         return False
     prefixo, barra, resto = key.partition("/")
     dono, barra2, arquivo = resto.partition("/")
-    if prefixo != LABEL_PHOTO_S3_PREFIX or not barra or not barra2 or dono != str(usuario):
+    if prefixo != prefix or not barra or not barra2 or dono != str(usuario):
         return False
     nome, extensao = arquivo[: -len(LABEL_PHOTO_EXTENSION)], arquivo[-len(LABEL_PHOTO_EXTENSION):]
     return extensao == LABEL_PHOTO_EXTENSION and bool(_UUID_HEX.fullmatch(nome))
+
+
+def label_photo_key(user_id: Any, photo_id: str) -> str:
+    """`nutrition-labels/{user_id}/{uuid hex}.jpg` (só ids internos)."""
+    return photo_key(LABEL_PHOTO_S3_PREFIX, user_id, photo_id)
+
+
+def is_label_photo_key_of(key: Any, user_id: Any) -> bool:
+    """A chave tem a forma de `label_photo_key` E é do usuário?"""
+    return is_photo_key_of(LABEL_PHOTO_S3_PREFIX, key, user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +484,7 @@ __all__ = [
     "LABEL_PHOTO_MAX_MIB",
     "LABEL_PHOTO_RETENTION_DAYS",
     "LABEL_PHOTO_S3_PREFIX",
+    "PHOTO_SNIFF_BYTES",
     "PREFILL_DECIMALS",
     "RESIZE_JPEG_QUALITY",
     "RESIZE_JPEG_QUALITY_PERCENT",
@@ -487,7 +502,9 @@ __all__ = [
     "clean_ai_notes",
     "decode_upload",
     "is_label_photo_key_of",
+    "is_photo_key_of",
     "label_photo_key",
+    "photo_key",
     "normalize_legibility",
     "review_reading",
     "upload_error",

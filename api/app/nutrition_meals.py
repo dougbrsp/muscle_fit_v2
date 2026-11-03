@@ -21,7 +21,8 @@ Leitura por IA (Lote L5b, mapa §55): o item fora do catálogo chega sem
 ESTIMATED (`meal_parse.estimated_item_nutrition`), congelados no snapshot como
 qualquer item (fonte `ai_estimate`); na edição, o item estimado mantido (`id`,
 sem `food_id` nem `estimate`) reusa o snapshot. A refeição de uma leitura grava
-`source = ai_text` (`meal_parse.meal_source`), `ai_job_id` e `description_raw`.
+`source = ai_text` (`meal_parse.meal_source`), `ai_job_id` e `description_raw`; da
+foto do prato (L10), `source = ai_photo` e `ai_job_id`, sem `description_raw`.
 
 Regra dos motores (`docs/motores/FONTES_DA_VERDADE.md` §3.7 e §52): quantidade
 na base, porção, macro ausente (inferido × desconhecido), nutrientes do item,
@@ -552,7 +553,8 @@ def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_curren
                 if int(refeicao["user_id"]) != aluno:
                     raise _error(404, "meal_not_found", "Refeição não encontrada.")
                 existentes = {int(item["id"]): item for item in _meal_items(cur, payload.meal_id)}
-            itens = resolve_items(cur, identity, aluno, payload.meal_slot, payload.items, existentes)
+            slot = payload.meal_slot or diary.PREVIEW_MEAL_SLOT.value
+            itens = resolve_items(cur, identity, aluno, slot, payload.items, existentes)
     totais = meal_math.sum_items([item.nutrition for item in itens])
     return {
         "user_id": aluno,
@@ -574,7 +576,7 @@ def create_meal(payload: MealIn, identity: Identity = Depends(get_current_identi
             itens = resolve_items(cur, identity, aluno, payload.meal_slot, payload.items)
             totais = meal_math.sum_items([item.nutrition for item in itens])
             slot = diary.normalize_meal_slot(payload.meal_slot)
-            origem = meal_parse.meal_source(payload.ai_job_id)
+            origem = meal_parse.meal_source(payload.ai_job_id, payload.ai_source)
             leitura = origem is diary.MealSource.AI_TEXT
             cur.execute(
                 INSERT_MEAL_SQL,

@@ -128,6 +128,7 @@ def test_create_job_grava_created_at_e_pending(table, monkeypatch) -> None:
         ("insights", 120),
         ("workout-ai-evaluate-set", 120),
         ("nutrition-label-ocr", 240),  # nutricao L6: foto do rotulo na plan-generator (E8)
+        ("nutrition-meal-photo", 240),  # nutricao L10: foto do prato na plan-generator
     ],
 )
 def test_prazo_e_timeout_da_lambda_mais_folga(job_type: str, deadline: int) -> None:

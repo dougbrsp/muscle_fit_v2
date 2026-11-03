@@ -32,6 +32,7 @@ from . import macros as macros_mod
 from . import manual_targets as manual_mod
 from . import meal_math as meal_math_mod
 from . import meal_parse as meal_parse_mod
+from . import meal_photo as mp_mod
 from . import phases as phases_mod
 from . import plan as plan_mod
 from . import strategy as strategy_mod
@@ -230,12 +231,14 @@ FOOD_BASIS_LABELS: Final[Mapping[Unit, str]] = {
 AI_FEATURE_LABELS: Final[Mapping[AiFeature, str]] = {
     AiFeature.MEAL_PARSE: "Leitura da refeição por IA",
     AiFeature.LABEL_PHOTO: "Leitura do rótulo por foto",
+    AiFeature.MEAL_PHOTO: "Leitura da foto do prato",
 }
 
 # O que a cota conta, no plural, para o texto do 429.
 _AI_QUOTA_NOUNS: Final[Mapping[AiFeature, str]] = {
     AiFeature.MEAL_PARSE: "leituras de refeição por IA",
     AiFeature.LABEL_PHOTO: "leituras de rótulo por foto",
+    AiFeature.MEAL_PHOTO: "análises de foto do prato",
 }
 
 
@@ -256,6 +259,11 @@ MEAL_PARSE_MATCH_STATUS_LABELS: Final[Mapping[MatchStatus, str]] = {
     MatchStatus.ESTIMATED: "Estimado pela IA",
     MatchStatus.UNMATCHED: "Não encontrado no catálogo",
 }
+
+
+def days_label(days: int) -> str:
+    """`1 dia`, `30 dias`: o prazo do dono, no texto para a pessoa."""
+    return f"{days} dia" if days == 1 else f"{days} dias"
 
 
 def ai_quota_exceeded_label(feature: Any) -> str:
@@ -470,6 +478,28 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     ),
     lp_mod.WARN_LABEL_ENERGY_FROM_KJ: "Valor energético lido só em kJ e convertido para kcal.",
     lp_mod.WARN_LABEL_NAME_MISSING: "O nome do produto não foi lido: digite o nome antes de salvar.",
+    # Foto do prato (L10, `meal_photo`): upload, worker e revisão da leitura.
+    mp_mod.ERR_MEAL_PHOTO_EMPTY: "A foto chegou vazia. Escolha a foto de novo.",
+    mp_mod.ERR_MEAL_PHOTO_TOO_LARGE: (
+        f"Foto maior que {_decimal(lp_mod.LABEL_PHOTO_MAX_MIB)} MB mesmo depois de reduzida. Tire outra foto."
+    ),
+    mp_mod.ERR_MEAL_PHOTO_UNSUPPORTED_TYPE: "Formato de imagem não aceito: a tela envia a foto reduzida em JPEG.",
+    mp_mod.ERR_MEAL_PHOTO_INVALID_ENCODING: "A foto chegou corrompida. Escolha a foto de novo.",
+    mp_mod.ERR_MEAL_PHOTO_STORAGE_FAILED: "Não foi possível guardar a foto agora. Tente de novo em instantes.",
+    mp_mod.ERR_MEAL_PHOTO_DISPATCH_FAILED: "Não foi possível iniciar a análise da foto agora. Tente de novo em instantes.",
+    mp_mod.ERR_MEAL_PHOTO_KEY_INVALID: "Foto do prato inválida.",
+    mp_mod.ERR_MEAL_PHOTO_NOT_FOUND: (
+        f"A foto não está mais disponível (as fotos do prato expiram depois de {days_label(mp_mod.MEAL_PHOTO_RETENTION_DAYS)}). "
+        "Envie de novo."
+    ),
+    mp_mod.ERR_MEAL_READING_INVALID: "A IA devolveu a análise da foto fora do formato. Tente de novo.",
+    mp_mod.ERR_MEAL_READING_UNEXPECTED: "Não foi possível analisar a foto agora. Tente novamente.",
+    mp_mod.LIMIT_PHOTO_NO_FOOD: "Não encontramos comida nesta foto. Tire outra foto do prato ou registre a refeição à mão.",
+    mp_mod.LIMIT_PHOTO_UNCLEAR: (
+        "Não deu para identificar os alimentos nesta foto. Tire outra, de cima, com o prato inteiro e bem iluminado, "
+        "ou registre a refeição à mão."
+    ),
+    mp_mod.LIMIT_GRAMS_OUT_OF_RANGE: "O peso estimado pela IA ficou fora do limite do diário: informe a quantidade.",
     # Leitura da refeição por IA (L5b, `meal_parse`).
     meal_parse_mod.ERR_TEXT_EMPTY: "Descreva a refeição.",
     meal_parse_mod.ERR_TEXT_TOO_LONG: f"Descreva a refeição em até {meal_parse_mod.TEXT_MAX_CHARS} caracteres.",
@@ -500,7 +530,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"As kcal informadas diferem mais de {_percent(meal_math_mod.ATWATER_TOLERANCE_SHARE)} "
         "das kcal calculadas pelos macros (Atwater). Confira os valores."
     ),
-    catalog_mod.WARN_MACROS_ABOVE_BASIS: "Proteína, carboidrato e gordura somados passam da base da tabela.",
+    catalog_mod.WARN_MACROS_ABOVE_BASIS: "Proteína, carboidrato e gordura somados passam da base do alimento.",
     # Diário (L4): quantidade do item, macro ausente e totais.
     meal_math_mod.LIMIT_MISSING_QUANTITY: "Quantidade ausente ou inválida (precisa ser maior que zero).",
     meal_math_mod.LIMIT_UNKNOWN_UNIT: "Unidade desconhecida.",
