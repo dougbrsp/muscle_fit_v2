@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createElement, act } from 'react';
+import { createElement, act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserPicker } from './UserPicker';
@@ -72,7 +72,25 @@ const esperar = async (vezes = 5) => {
   for (let i = 0; i < vezes; i++) await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 };
 
-async function montar(initial: { id: number; label: string }, onChange = vi.fn()) {
+let valorDoPai: number | null = null;
+let onChangeDoPai: ReturnType<typeof vi.fn>;
+
+// Pai real: guarda o `value` em estado, como o PlanManager em producao.
+function Pai({ initial }: { initial: { id: number; label: string } }) {
+  const [value, setValue] = useState<number | null>(initial.id);
+  valorDoPai = value;
+  return createElement(UserPicker, {
+    value,
+    initial,
+    onChange: (id: number | null) => {
+      onChangeDoPai(id);
+      setValue(id);
+    },
+  });
+}
+
+async function montar(initial: { id: number; label: string }) {
+  onChangeDoPai = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(host);
   await act(async () => {
@@ -80,16 +98,43 @@ async function montar(initial: { id: number; label: string }, onChange = vi.fn()
       createElement(
         QueryClientProvider,
         { client },
-        createElement(MantineProvider, null, createElement(UserPicker, { value: initial.id, onChange, initial })),
+        createElement(MantineProvider, null, createElement(Pai, { initial })),
       ),
     );
   });
   await esperar();
-  return onChange;
 }
 
 const input = () => host.querySelector('input:not([type="hidden"])') as HTMLInputElement;
 const loop = () => erros.filter((e) => e.some((parte) => String(parte).includes('Maximum update depth')));
+const opcoes = () => Array.from(document.querySelectorAll('[role="option"]')).map((o) => o.textContent);
+const limparBotao = () => host.querySelector('[class*="ClearButton"], [class*="CloseButton"]') as HTMLElement | null;
+
+async function abrir() {
+  await act(async () => {
+    input().focus();
+    input().click();
+  });
+  await esperar(2);
+}
+
+async function escolher(rotulo: string) {
+  const alvo = Array.from(document.querySelectorAll('[role="option"]')).find((o) => o.textContent === rotulo) as HTMLElement | undefined;
+  expect(alvo, `opção "${rotulo}" na lista: ${JSON.stringify(opcoes())}`).toBeDefined();
+  await act(async () => {
+    alvo!.click();
+  });
+  await esperar(3);
+}
+
+async function limpar() {
+  const botao = limparBotao();
+  expect(botao).not.toBeNull();
+  await act(async () => {
+    botao!.click();
+  });
+  await esperar(3);
+}
 
 async function digitar(texto: string) {
   const el = input();
@@ -122,22 +167,52 @@ describe('UserPicker montado (efeitos rodando)', () => {
     expect(input().value).toBe('Doug (doug)');
   });
 
-  it('busca digitada consulta o servidor com o texto', async () => {
+  it('escolher outra opção atualiza o pai e a caixa', async () => {
     await montar({ id: 1, label: 'Doug' });
-    await digitar('ana');
-    expect(fetchUserLookup).toHaveBeenCalledWith('ana');
+    await abrir();
+    await escolher('Ana Souza (ana)');
+    expect(valorDoPai).toBe(2);
+    expect(onChangeDoPai).toHaveBeenLastCalledWith(2);
+    expect(input().value).toBe('Ana Souza (ana)');
     expect(loop()).toEqual([]);
   });
 
-  it('limpar devolve null', async () => {
-    const onChange = await montar({ id: 1, label: 'Doug' });
-    const limpar = host.querySelector('[class*="ClearButton"], [class*="CloseButton"]') as HTMLElement | null;
-    expect(limpar).not.toBeNull();
-    await act(async () => {
-      limpar!.click();
-    });
-    await esperar(2);
-    expect(onChange).toHaveBeenCalledWith(null);
+  it('limpar e escolher de novo: a lista não esvazia e o aluno volta', async () => {
+    await montar({ id: 1, label: 'Doug' });
+    await limpar();
+    expect(valorDoPai).toBeNull();
+    expect(input().value).toBe('');
+    await abrir();
+    expect(opcoes().length).toBeGreaterThan(0);
+    await escolher('Doug (doug)');
+    expect(valorDoPai).toBe(1);
+    expect(input().value).toBe('Doug (doug)');
+    expect(loop()).toEqual([]);
+  });
+
+  it('digitar e depois escolher consulta o servidor com o texto e fixa o escolhido', async () => {
+    await montar({ id: 1, label: 'Doug' });
+    await digitar('ana');
+    expect(fetchUserLookup).toHaveBeenCalledWith('ana');
+    await escolher('Ana Souza (ana)');
+    expect(valorDoPai).toBe(2);
+    expect(input().value).toBe('Ana Souza (ana)');
+    expect(loop()).toEqual([]);
+  });
+
+  it('preserva a ordem da API e não duplica o escolhido', async () => {
+    fetchUserLookup.mockImplementation(async () => ({ items: [ANA, DOUG], total: 2 }));
+    await montar({ id: 1, label: 'Doug' });
+    await abrir();
+    expect(opcoes()).toEqual(['Ana Souza (ana)', 'Doug']);
+    expect(loop()).toEqual([]);
+  });
+
+  it('escolhido fora do resultado da busca vai ao início', async () => {
+    fetchUserLookup.mockImplementation(async () => ({ items: [ANA], total: 1 }));
+    await montar({ id: 1, label: 'Doug' });
+    await abrir();
+    expect(opcoes()).toEqual(['Doug', 'Ana Souza (ana)']);
     expect(loop()).toEqual([]);
   });
 });
