@@ -26,13 +26,18 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
 
+/** Admin/PT abrem o plano com o PRÓPRIO usuário pré-selecionado (o seletor troca); assim o campo do dia do check-in aparece. */
+export function planoInicial(user: { id: number; username: string; full_name: string | null }): { id: number; label: string } {
+  return { id: user.id, label: user.full_name || user.username };
+}
+
 /**
  * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum
  * opera o próprio plano (`fixedUserId`, D2). O acesso é decidido pela API.
  */
-function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
+function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initialUser?: { id: number; label: string } }) {
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<number | null>(fixedUserId ?? null);
+  const [userId, setUserId] = useState<number | null>(fixedUserId ?? initialUser?.id ?? null);
   const [warnings, setWarnings] = useState<NutritionLimitation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -80,7 +85,7 @@ function PlanManager({ fixedUserId }: { fixedUserId?: number }) {
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
-        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} /> : <span />}
+        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
         {userId !== null && (
           <Button
             color="brand"
@@ -214,7 +219,7 @@ export function PlanoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess &&
         (canManage ? (
-          <PlanManager />
+          <PlanManager initialUser={planoInicial(currentUserQuery.data)} />
         ) : (
           <>
             <MyPlanView />

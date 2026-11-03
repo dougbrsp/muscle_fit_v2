@@ -39,7 +39,7 @@ Precedência, da maior para a menor (`flags.ts`):
 
 Estado atual, verificado no repositório: `NEXT_PUBLIC_MOBILE_UI` não aparece em nenhum workflow de `.github/` nem no restante do repositório. Portanto o build de produção a lê como ausente, ou seja, desligada. (Desatualizado: o workflow de deploy já liga em produção e `frontend/.env.development` liga no `next dev`.)
 
-`frontend/.env.development` (versionado) define `NEXT_PUBLIC_MOBILE_UI=1`: o Next só o carrega no `next dev`, e `frontend/.env.local` (ignorado pelo git) tem prioridade sobre ele. O build de produção não lê esse arquivo e usa a variável do deploy. Sem isso o iPhone no DEV caía no layout desktop, sem a barra inferior, sempre que o override do `localStorage` se perdia.
+`frontend/.env.development` (versionado, com exceção mínima no `.gitignore`) define `NEXT_PUBLIC_MOBILE_UI=1`: o Next só o carrega no `next dev`, e `frontend/.env.local` (ignorado pelo git) tem prioridade sobre ele. O build de produção não lê esse arquivo e usa a variável do deploy. Sem isso o iPhone no DEV caía no layout desktop, sem a barra inferior, sempre que o override do `localStorage` se perdia.
 
 Para desligar só na sua máquina: `NEXT_PUBLIC_MOBILE_UI=0` em `frontend/.env.local`. Outras formas de ligar:
 

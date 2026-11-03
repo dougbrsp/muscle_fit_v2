@@ -44,7 +44,6 @@ import { BRAND } from '@/theme';
 const ATRASO_DO_PREVIEW_MS = 400;
 
 type Props = {
-  /** Aluno do diário (admin/PT) ou `null` (o próprio usuário). */
   date: string;
   /** Refeição em edição ou `null` (nova). */
   meal: Meal | null;

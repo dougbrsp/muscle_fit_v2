@@ -24,7 +24,6 @@ import { BRAND } from '@/theme';
 type Props = {
   opened: boolean;
   onClose: () => void;
-  /** Aluno do diário (admin/PT) ou `null` (o próprio usuário). */
   date: string;
   /** A leitura terminou: o editor da refeição abre com os itens para confirmar. */
   onParsed: (form: MealEditorForm) => void;

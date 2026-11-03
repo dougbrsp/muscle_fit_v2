@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from app import migrate as m
-from app.domain.nutrition import diary
 from tests.support.safety_032_033 import SafetySnapshotDB
 
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "083_nutrition_days.py"

@@ -21,7 +21,6 @@ from app import nutrition_days as days_mod
 from app import nutrition_meals as meals_mod
 from app import nutrition_targets_service as svc
 from app.domain.nutrition import daily_target as dt
-from app.domain.nutrition import diary
 from app.domain.nutrition import weekly_budget as wb
 from app.domain.nutrition.energy_expenditure import training_kcal_met
 from app.nutrition_schema import diary_tables_missing_error
