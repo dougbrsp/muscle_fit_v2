@@ -4,6 +4,7 @@ import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/c
 import { IconAlertTriangle, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { CheckinCard } from '@/components/nutrition/CheckinCard';
 import { DayHeader } from '@/components/nutrition/DayHeader';
 import { MealEditor } from '@/components/nutrition/MealEditor';
 import { MealList } from '@/components/nutrition/MealList';
@@ -120,6 +121,7 @@ export function NutricaoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess && (
         <>
+          <CheckinCard userId={userId} />
           <DayHeader
             canManage={canManage}
             userId={userId}

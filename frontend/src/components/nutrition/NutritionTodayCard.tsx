@@ -31,7 +31,7 @@ type ViewProps = {
   /**
    * PONTO DE EXTENSÃO do lote N7: o card de check-in semanal entra aqui, acima dos macros do dia,
    * e a home só passa o nó pronto (a avaliação e as metas propostas são do motor; este card não
-   * calcula nada). Sem N7 fica vazio.
+   * calcula nada). Sem check-in a mostrar, o `CheckinCard` não renderiza e o slot fica vazio.
    */
   checkinSlot?: ReactNode;
   /** Classe do contêiner (a home usa o mesmo cartão das outras seções). */
