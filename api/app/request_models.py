@@ -167,6 +167,14 @@ class NutritionPlanPublishIn(_StrictIn):
     expected_updated_at: Optional[str] = Field(default=None, max_length=40)
 
 
+class NutritionCheckinSettingsIn(_StrictIn):
+    """PUT /nutrition/checkin/settings: dia da semana do check-in (0 = segunda ... 6 = domingo; a faixa é do motor
+    `weekly_checkin.checkin_weekday_is_valid`). Sem `user_id`, o próprio usuário; outro exige admin/PT."""
+
+    weekday: int
+    user_id: Optional[int] = None
+
+
 class NutritionTargetsRecomputeIn(_StrictIn):
     """POST /nutrition/targets/recompute: sem `user_id`, o próprio usuário; outro exige admin/PT."""
 

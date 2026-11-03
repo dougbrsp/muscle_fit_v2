@@ -1392,6 +1392,23 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-N5",
     ),
     Padrao(
+        chave="checkin_semanal",
+        regra="mínimo de dias completos, janelas, tolerância do ritmo, passo máximo semanal, limite de massa magra/gordura da "
+        "bioimpedância, validade da proposta (3 dias) ou dia padrão do check-in redefinidos com número fora do dono",
+        # 2026-11-03 (nutrição N7, §83): dono `weekly_checkin` (veredito, ajuste de kcal, metas propostas, calendário e
+        # validade do check-in semanal). A rota `nutrition_checkins` chama o motor e grava o que ele devolveu; a tela
+        # só mostra (nenhum cálculo no frontend). Sem fonte bibliográfica: defaults de desenho nomeados no dono.
+        regex=re.compile(
+            r"\b(?:MIN_COMPLETE_DAYS|WEIGHT_WINDOW_DAYS|BODY_WINDOW_DAYS|MIN_WEIGHT_READINGS_FOR_TREND|MIN_WEIGHT_READINGS_IN_WEEK"
+            r"|MIN_BIA_READINGS|MIN_BIA_SPAN_DAYS|MIN_READINGS_FOR_GOAL|ON_TRACK_TOLERANCE_SHARE|RATE_NOISE_FLOOR_SHARE"
+            r"|CORRECTION_FRACTION|MAX_KCAL_STEP_SHARE|MIN_KCAL_STEP|BIA_CORRECTION_FRACTION|LEAN_LOSS_LIMIT_SHARE_PER_WEEK"
+            r"|BULK_FAT_SHARE_OF_GAIN_LIMIT|BULK_FAT_GAIN_NOISE_FLOOR_KG_PER_WEEK|PROPOSAL_VALIDITY_DAYS|DEFAULT_CHECKIN_WEEKDAY"
+            r"|HISTORY_LIMIT_DEFAULT|HISTORY_LIMIT_MAX)\s*(?::[^=\n]+)?=\s*[\d(\[]"
+        ),
+        donos=("api/app/domain/nutrition/weekly_checkin.py",),
+        inventario="NUT-N7",
+    ),
+    Padrao(
         chave="projecao_dashboard_nutricao",
         regra="projeção até o alvo calculada no dashboard de nutrição fora do dono do plano: `project_goal(` direto "
         "ou o TDEE próprio da projeção (`projection_tdee_kcal`) em `nutrition_dashboard.py`",
@@ -2159,6 +2176,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
     "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
     "dashboard_nutricao": {},  # NUT-N5 (2026-11-02): nasce vazia (a rota importa o dono; a tela só exibe)
+    "checkin_semanal": {},  # NUT-N7 (2026-11-03): nasce vazia (a rota chama `weekly_checkin`; a tela só exibe)
     "projecao_dashboard_nutricao": {},  # NUT-N5 (2026-11-03): nasce vazia (o painel chama `plan.project_plan_goal`)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
@@ -3105,6 +3123,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "tdee_kcal=dash.projection_tdee_kcal(dias, hoje, tdees)", "projection_tdee_kcal = 2800.0"),
         ("project_plan_goal(configuracao, sujeito, tdee, hoje)", "projection_tdee(comp.target.tdee, passado, True)",
          "dash.window_tdee_kcal(dias, hoje, tdees)", "from .domain.nutrition.plan import project_plan_goal"),
+    ),
+    "checkin_semanal": (
+        ("MAX_KCAL_STEP_SHARE = 0.05", "const PROPOSAL_VALIDITY_DAYS = 3;", "MIN_COMPLETE_DAYS: Final[int] = 5",
+         "LEAN_LOSS_LIMIT_SHARE_PER_WEEK = 0.0025", "DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0"),
+        ("wc.evaluate_week(inputs)", "wc.PROPOSAL_VALIDITY_DAYS", "from .domain.nutrition.weekly_checkin import MIN_COMPLETE_DAYS",
+         "const dia = checkin.settings.weekday;"),
     ),
     "dashboard_nutricao": (
         ("DASHBOARD_DEFAULT_DAYS = 28", "const WINDOW_CHOICES_DAYS = [7, 28];", "ADAPTIVE_WINDOW_DAYS: Final[int] = 28", "DASHBOARD_MAX_DAYS: Final[int] = 90",
