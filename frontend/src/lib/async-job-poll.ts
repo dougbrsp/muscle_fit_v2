@@ -10,8 +10,9 @@
 //   - `fetchWorkoutAiResult`/`pollWorkoutAiJob` em `workout-mode-ai.ts`:
 //     mesma forma (dispara o POST, resolve o job_id, faz polling e devolve
 //     o `result` com o shape do endpoint síncrono antigo), mas com
-//     intervalo agressivo de 500ms e teto de 20s — específico do modo
-//     treino (ao vivo, turnos de IA curtos), não generalizado aqui.
+//     intervalo agressivo de 500ms e teto de 20s — específico dos turnos de
+//     IA curtos do modo treino (por série/exercício), não generalizado aqui.
+//     O resumo do treino inteiro (`fetchWorkoutSummary`) usa ESTE helper.
 //   - `agente-cardio/page.tsx`/`GenerateDraftModal.tsx` (planos-treino):
 //     usam `useQuery` com `refetchInterval` de 2s enquanto `status ===
 //     'pending'`, sem teto client-side explícito — o padrão de INTERVALO

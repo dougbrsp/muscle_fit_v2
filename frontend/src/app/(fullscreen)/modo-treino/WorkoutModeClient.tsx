@@ -3,7 +3,7 @@
 import { Alert, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { RecoverableError } from '@/components/RecoverableError';
@@ -11,8 +11,7 @@ import { apiFetch } from '@/lib/api';
 import { useOfflineUser } from '@/lib/offline/use-offline-user';
 import type { PlanCardioResponse } from '@/lib/analytics-types';
 import { type StoredWorkoutModeSession, type WorkoutAiSummaryResult } from '@/lib/workout-mode-types';
-import { ASYNC_JOB_POLL_TIMEOUT_MS } from '@/lib/async-job-poll';
-import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
+import { fetchWorkoutSummary } from '@/lib/workout-mode-ai';
 import {
   clearParkedSession,
   clearStoredSession,
@@ -68,16 +67,11 @@ const initialCompletionState: CompletionState = {
  *   resumo de IA do treino via `POST /activities/{id}/ai-summary/generate`,
  *   mostrar o modal de conclusão e navegar de volta).
  */
-// Prazo de espera do resumo de IA do treino: a Lambda `musclefit-workout-ai` tem
-// timeout de 60s e a partida a frio soma segundos (job de 22s medido em
-// produção, o padrão de 20s não bastava); os 90s de `ASYNC_JOB_POLL_TIMEOUT_MS`
-// cobrem os 60s com folga.
-const WORKOUT_SUMMARY_TIMEOUT_MS = ASYNC_JOB_POLL_TIMEOUT_MS;
-
 export function WorkoutModeClient() {
   // COD-14: o mapa corporal da execução vem sob demanda; começa a baixar já na montagem.
   useEffect(preloadMuscleBodyMap, []);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<StoredWorkoutModeSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [exitOpen, { open: openExit, close: closeExit }] = useDisclosure(false);
@@ -128,12 +122,11 @@ export function WorkoutModeClient() {
     setSession(null);
     setCompletion({ open: true, loading: true, error: false, summary: null, workoutPlanId });
     const run = ++completionRunRef.current;
-    fetchWorkoutAiResult<WorkoutAiSummaryResult>(
-      `/activities/${sessionId}/ai-summary/generate`,
-      { method: 'POST' },
-      WORKOUT_SUMMARY_TIMEOUT_MS,
-    )
+    fetchWorkoutSummary(sessionId)
       .then((result) => {
+        // O resumo já está salvo no servidor: quem saiu do modal e abriu o
+        // treino antes de ele ficar pronto (cache de 60s) passa a vê-lo.
+        queryClient.invalidateQueries({ queryKey: ['activity-detail', sessionId] });
         if (run !== completionRunRef.current) return;
         setCompletion((prev) => ({ ...prev, loading: false, error: false, summary: result.summary }));
       })
@@ -248,6 +241,7 @@ export function WorkoutModeClient() {
         title="Treino concluído"
         size="sm"
         centered
+        closeOnClickOutside={!completion.loading}
       >
         <Stack gap="sm">
           {completion.loading && (
