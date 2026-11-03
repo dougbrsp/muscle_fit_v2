@@ -16,18 +16,24 @@ import {
   newMeasuredSetFromLast,
   setEditFields,
   setFormFromRow,
-  setUpdatePayload,
 } from '@/lib/exercise-set-edit';
 import { formatNumberOrDash } from '@/lib/format';
 import { isWorkingSetType } from '@/lib/set-types';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
-import { headerMetaPayload, saveExerciseLog } from '@/lib/exercise-log-save';
+import {
+  appendSet,
+  defaultNewSet,
+  dropSet,
+  emptyExerciseForm,
+  headerMetaPayload,
+  saveExerciseLog,
+  updateSetField,
+} from '@/lib/exercise-log-save';
 import { finishWorkoutSession } from '@/lib/workout-session-finish';
 import {
   ActivityDetail,
-  buildStartedAt,
   conductedByOptions,
   ExerciseFormState,
   ExerciseLogRow,
@@ -56,18 +62,6 @@ import {
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 import { QueryGate, SheetButton } from './common';
 import { MuscleActivationList } from './MuscleActivationList';
-
-function emptyExerciseForm(): ExerciseFormState {
-  return {
-    exercise_name: '',
-    equipment_id: '',
-    muscle_group: null,
-    workout_plan_exercise_id: '',
-    muscle_pain: null,
-    joint_pain: false,
-    sets: [{ set_number: 1, reps: 10, weight_kg: 20, rpe: null }],
-  };
-}
 
 /**
  * Detalhe do treino (celular). Mesmas queries/chaves/payloads do
@@ -267,26 +261,11 @@ export function TreinoDetalheScreen() {
   }
 
   function addSet() {
-    setForm((current) => ({
-      ...current,
-      sets: [
-        ...current.sets,
-        newMeasuredSetFromLast(current.sets[current.sets.length - 1], current.sets.length + 1) ?? {
-          set_number: current.sets.length + 1,
-          reps: 10,
-          weight_kg: 20,
-          rpe: null,
-        },
-      ],
-    }));
+    setForm((current) => ({ ...current, sets: appendSet(current.sets) }));
   }
 
   function removeSet(index: number) {
-    setForm((current) => {
-      if (current.sets.length <= 1) return current;
-      const nextSets = current.sets.filter((_, i) => i !== index).map((set, i) => ({ ...set, set_number: i + 1 }));
-      return { ...current, sets: nextSets };
-    });
+    setForm((current) => ({ ...current, sets: dropSet(current.sets, index) }));
   }
 
   function updateSet(
@@ -294,19 +273,7 @@ export function TreinoDetalheScreen() {
     field: 'reps' | 'weight_kg' | 'rpe' | 'duration_seconds' | SideField,
     value: number | null,
   ) {
-    setForm((current) => ({
-      ...current,
-      sets: current.sets.map((set, i) => {
-        if (i !== index) return set;
-        if (field === 'rpe' || field === 'duration_seconds' || field.endsWith('_left') || field.endsWith('_right')) {
-          return { ...set, [field]: value == null || Number.isNaN(Number(value)) ? null : Number(value) };
-        }
-        if (field === 'reps' && setEditFields(set.measure).repsMin != null && (value == null || Number.isNaN(Number(value)))) {
-          return { ...set, reps: null };
-        }
-        return { ...set, [field]: Number(value) || 0 };
-      }),
-    }));
+    setForm((current) => ({ ...current, sets: updateSetField(current.sets, index, field, value) }));
   }
 
   function loadForEdit(row: ExerciseLogRow) {
@@ -350,7 +317,7 @@ export function TreinoDetalheScreen() {
         planExercise.workout_plan_exercise_id != null ? String(planExercise.workout_plan_exercise_id) : '',
       muscle_pain: null,
       joint_pain: false,
-      sets: [{ set_number: 1, reps: 10, weight_kg: 20, rpe: null }],
+      sets: [defaultNewSet()],
     });
     saveExerciseMutation.reset();
     setFormOpen(true);

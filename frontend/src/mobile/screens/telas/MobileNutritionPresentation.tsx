@@ -117,7 +117,7 @@ const SLOTS: Partial<PresentationSlots> = {
     </ListGroup>
   ),
 
-  usdaResults: ({ items, importing, importingId, onImport }) => (
+  usdaResults: ({ items, importing, onImport }) => (
     <ListGroup title="Resultados do USDA">
       {items.map((item) => (
         <ListBlock key={item.fdc_id}>
@@ -141,9 +141,9 @@ const SLOTS: Partial<PresentationSlots> = {
             fullWidth
             mih={44}
             leftSection={<IconDownload size={14} />}
-            loading={importing && importingId === item.fdc_id}
-            disabled={importing && importingId !== item.fdc_id}
-            onClick={() => onImport(item.fdc_id)}
+            loading={importing === item}
+            disabled={importing !== null && importing !== item}
+            onClick={() => onImport(item)}
           >
             Importar
           </Button>

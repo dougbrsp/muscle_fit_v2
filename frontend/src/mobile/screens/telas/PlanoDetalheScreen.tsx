@@ -17,7 +17,7 @@ import { indexSwapOptions, type ExerciseSwapOptionsResponse, type SwapEligibilit
 import { formatDateOrDash } from '@/lib/format';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
-import { toWorkoutPlanInput } from '@/lib/workout-plan-payload';
+import { buildPlanUpdatePayload } from '@/lib/workout-plan-payload';
 import {
   planTypeDisplayLabel,
   WORKOUT_PLAN_STATUS_OPTIONS,
@@ -171,25 +171,11 @@ export function PlanoDetalheScreen() {
   }
 
   function handleSave() {
-    const finalized = planQuery.data?.editable === false;
-    const payload = toWorkoutPlanInput(
-      {
-        name,
-        plan_type: planType,
-        split_day: splitDay || null,
-        goal: goal || null,
-        status,
-        plan_date: planDate || null,
-        plan_time: planTime || null,
-        gym_id: gymId ? Number(gymId) : null,
-        raw_payload: planQuery.data?.raw_payload || null,
-        template_id: planQuery.data?.template_id ?? null,
-        template_slot_sequence: planQuery.data?.template_slot_sequence ?? null,
-        template_version_id: planQuery.data?.template_version_id ?? null,
-      },
+    const payload = buildPlanUpdatePayload(
+      planQuery.data as WorkoutPlan,
+      { name, plan_type: planType, split_day: splitDay, goal, status, plan_date: planDate, plan_time: planTime, gym_id: gymId },
       exercises,
     );
-    if (finalized) delete payload.exercises;
     updateMutation.mutate(payload);
   }
 

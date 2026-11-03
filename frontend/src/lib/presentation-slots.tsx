@@ -61,9 +61,9 @@ export type PresentationSlots = {
   }>;
   usdaResults: ComponentType<{
     items: UsdaSearchItem[];
-    importingId: number | null;
-    importing: boolean;
-    onImport: (fdcId: number) => void;
+    /** Item em importação (o do clique), ou null. */
+    importing: UsdaSearchItem | null;
+    onImport: (item: UsdaSearchItem) => void;
   }>;
   portions: ComponentType<{ portions: FoodPortion[]; basis: string }>;
   checkinWeek: ComponentType<{ rows: CheckinWeekRow[] }>;

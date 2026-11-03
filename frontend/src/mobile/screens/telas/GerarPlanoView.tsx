@@ -16,7 +16,7 @@ import {
   REST_SECONDS_SANITY_MIN,
 } from '@/lib/prescription-defaults';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft } from '@/lib/workout-plan-generate-payload';
-import { buildDraftRawPayload, toWorkoutPlanInput } from '@/lib/workout-plan-payload';
+import { buildDraftCreatePayload } from '@/lib/workout-plan-payload';
 import type { AssignedTemplateSummary } from '@/lib/workout-plan-templates-types';
 import {
   WORKOUT_PLAN_STATUS_OPTIONS,
@@ -131,21 +131,9 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
   function handleSave() {
     if (!draft) return;
     createMutation.mutate(
-      toWorkoutPlanInput(
-        {
-          name: draftName,
-          plan_type: draft.plan_type,
-          split_day: draft.split_day || null,
-          goal: draft.goal || null,
-          status,
-          plan_date: planDate || null,
-          plan_time: planTime || null,
-          gym_id: gymId ? Number(gymId) : null,
-          template_id: draft.template_id ?? null,
-          template_slot_sequence: draft.template_slot_sequence ?? null,
-          template_version_id: draft.template_version_id ?? null,
-          raw_payload: buildDraftRawPayload(draft),
-        },
+      buildDraftCreatePayload(
+        draft,
+        { name: draftName, status, plan_date: planDate, plan_time: planTime, gym_id: gymId },
         draftExercises,
       ),
     );

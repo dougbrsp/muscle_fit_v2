@@ -23,7 +23,7 @@ import {
   type SuggestedProgressionResponse,
   type WorkoutPlanExercise,
 } from '@/lib/workout-plans-types';
-import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
 import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defaults';
 import { BRAND } from '@/theme';
 import { AdvancedConfigModal, type AdvancedConfigPatch } from './AdvancedConfigModal';
@@ -391,23 +391,11 @@ export function ExercisesTable({
   async function applySuggestedProgression(index: number, mappingId: number) {
     setSuggestionLoadingIndex(index);
     try {
-      const suggestion = await apiFetch<SuggestedProgressionResponse>(
-        `/exercises/suggested-progression?mapping_id=${mappingId}`,
-      );
+      const patch = await fetchSuggestedProgressionPatch(mappingId);
       const current = exercisesRef.current;
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      // Sem faixa do motor (grupo sem trabalho direto -> SKIP) o campo fica
-      // vazio, nunca null nem faixa inventada; a nota do motor explica o porquê.
-      const targets = suggestedProgressionTargets(suggestion);
-      next[index] = {
-        ...next[index],
-        reps_target: targets.reps_target,
-        load_target: targets.load_target,
-        rpe_target: targets.rpe_target,
-        progression_note: targets.progression_note,
-        progression: suggestion.progression ?? null,
-      };
+      next[index] = { ...next[index], ...patch };
       onChange(next);
     } catch {
       // silencioso: mantém os campos como estavam.

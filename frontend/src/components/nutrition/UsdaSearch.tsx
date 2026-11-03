@@ -107,9 +107,8 @@ export function UsdaSearch({ onImported }: Props) {
       {itens.length > 0 && Alternative && (
         <Alternative
           items={itens}
-          importing={importacao.isPending}
-          importingId={importacao.isPending ? (importacao.variables ?? null) : null}
-          onImport={(fdcId) => importacao.mutate(fdcId)}
+          importing={importacao.isPending ? (itens.find((i) => i.fdc_id === importacao.variables) ?? null) : null}
+          onImport={(item) => importacao.mutate(item.fdc_id)}
         />
       )}
 

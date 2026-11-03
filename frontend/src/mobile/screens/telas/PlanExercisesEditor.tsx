@@ -32,7 +32,7 @@ import type { MuscleActivationBreakdownItem } from '@/lib/analytics-types';
 import { filterBySwapEligibility, swapEligibilityFor, type SwapEligibilityIndex } from '@/lib/exercise-swap-options';
 import type { MappingCanonicalOptionsResponse } from '@/lib/mappings-types';
 import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defaults';
-import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { SuggestedProgressionResponse, WorkoutPlanExercise } from '@/lib/workout-plans-types';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
@@ -154,21 +154,11 @@ export function PlanExercisesEditor({
   async function applySuggestedProgression(index: number, mappingId: number) {
     setSuggestionLoading(true);
     try {
-      const suggestion = await apiFetch<SuggestedProgressionResponse>(
-        `/exercises/suggested-progression?mapping_id=${mappingId}`,
-      );
+      const patch = await fetchSuggestedProgressionPatch(mappingId);
       const current = exercisesRef.current;
-      if (index >= current.length) return;
+      if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      const targets = suggestedProgressionTargets(suggestion);
-      next[index] = {
-        ...next[index],
-        reps_target: targets.reps_target,
-        load_target: targets.load_target,
-        rpe_target: targets.rpe_target,
-        progression_note: targets.progression_note,
-        progression: suggestion.progression ?? null,
-      };
+      next[index] = { ...next[index], ...patch };
       onChange(next);
     } catch {
       // silencioso: os campos continuam como estavam (igual ao desktop).

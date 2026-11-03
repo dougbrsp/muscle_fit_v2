@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api';
-import { setUpdatePayload } from '@/lib/exercise-set-edit';
+import { newMeasuredSetFromLast, setEditFields, setUpdatePayload } from '@/lib/exercise-set-edit';
+import type { SideField } from '@/lib/set-sides';
 import {
   buildStartedAt,
   type ActivityDetail,
@@ -96,4 +97,53 @@ export function headerMetaPayload(headerForm: WorkoutHeaderForm) {
     conducted_by: headerForm.conducted_by || null,
     workout_plan_id: headerForm.workout_plan_id ? Number(headerForm.workout_plan_id) : null,
   };
+}
+
+/** Série inicial de um exercício novo (defaults de apresentação do formulário; o servidor valida). */
+export function defaultNewSet(setNumber = 1) {
+  return { set_number: setNumber, reps: 10, weight_kg: 20, rpe: null };
+}
+
+export function emptyExerciseForm(): ExerciseFormState {
+  return {
+    exercise_name: '',
+    equipment_id: '',
+    muscle_group: null,
+    workout_plan_exercise_id: '',
+    muscle_pain: null,
+    joint_pain: false,
+    sets: [defaultNewSet()],
+  };
+}
+
+type SetList = ExerciseFormState['sets'];
+
+/** Nova série copiando a última (ou o padrão). */
+export function appendSet(sets: SetList): SetList {
+  return [...sets, newMeasuredSetFromLast(sets[sets.length - 1], sets.length + 1) ?? defaultNewSet(sets.length + 1)];
+}
+
+/** Remove a série e renumera; nunca deixa o formulário sem série. */
+export function dropSet(sets: SetList, index: number): SetList {
+  if (sets.length <= 1) return sets;
+  return sets.filter((_, i) => i !== index).map((set, i) => ({ ...set, set_number: i + 1 }));
+}
+
+/** Edita um campo de uma série (lado vazio fica vazio; máximo de reps vazio fica vazio; demais: número ou 0). */
+export function updateSetField(
+  sets: SetList,
+  index: number,
+  field: 'reps' | 'weight_kg' | 'rpe' | 'duration_seconds' | SideField,
+  value: number | null,
+): SetList {
+  return sets.map((set, i) => {
+    if (i !== index) return set;
+    if (field === 'rpe' || field === 'duration_seconds' || field.endsWith('_left') || field.endsWith('_right')) {
+      return { ...set, [field]: value == null || Number.isNaN(Number(value)) ? null : Number(value) };
+    }
+    if (field === 'reps' && setEditFields(set.measure).repsMin != null && (value == null || Number.isNaN(Number(value)))) {
+      return { ...set, reps: null };
+    }
+    return { ...set, [field]: Number(value) || 0 };
+  });
 }

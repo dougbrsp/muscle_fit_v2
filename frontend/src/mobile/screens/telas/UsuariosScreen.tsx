@@ -203,6 +203,8 @@ export function UsuariosScreen() {
     mutationFn: (id: number) => apiFetch<{ status: string; id: number; is_active: boolean }>(`/users/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
       setDeactivateTarget(null);
+      // O formulário de edição ainda guarda `editActive=true`: salvar depois reativaria a conta. Volta à lista.
+      setView({ kind: 'list' });
       await qc.invalidateQueries({ queryKey: ['users-admin'] });
     },
   });
