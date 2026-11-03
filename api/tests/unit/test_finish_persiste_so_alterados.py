@@ -54,6 +54,7 @@ class FakeCursor:
         rows = self.conn.tables[table]
         if sql.startswith("UPDATE"):
             key = tuple(params[-key_len:])
+            self.conn.updates.append((table, key))
             if key in rows:
                 rows[key] = (rows[key][0], tuple(params[:-key_len]))
                 self.rowcount = 1
@@ -81,6 +82,7 @@ class FakeConn:
         self.ids = count(1000)
         self.statements: list[str] = []
         self.decisions: list[tuple] = []
+        self.updates: list[tuple] = []
 
     def cursor(self) -> FakeCursor:
         return FakeCursor(self)
@@ -228,7 +230,41 @@ def test_replay_sem_baseline_grava_tudo() -> None:
     assert counts == {"groups": N_GROUPS, "tracks": N_TRACKS, "decisions": 0}
     assert len(conn.tables[ps.GROUP_STATES_TABLE]) == N_GROUPS
     assert len(conn.tables[ps.TRACKS_TABLE]) == N_TRACKS
-    assert "baseline" not in ps.rebuild_for_user.__code__.co_names
+
+
+def test_rebuild_for_user_nao_passa_baseline(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(ps, "build_session_inputs", lambda *a, **k: object())
+    monkeypatch.setattr(ps, "evaluate_history_by_goal", lambda *a, **k: ev.GoalEvaluation(results={}))
+    monkeypatch.setattr(ps.request_memo, "forget", lambda name: None)
+
+    def fake_persist(conn: Any, user_id: int, result: Any, **kwargs: Any) -> dict[str, int]:
+        seen.update(kwargs)
+        return {"groups": 0, "tracks": 0, "decisions": 0}
+
+    monkeypatch.setattr(ps, "persist_goal_evaluation", fake_persist)
+
+    deletes: list[str] = []
+
+    class Cur:
+        def __enter__(self) -> "Cur":
+            return self
+
+        def __exit__(self, *exc: Any) -> None:
+            return None
+
+        def execute(self, sql: str, params: tuple = ()) -> None:
+            deletes.append(sql.split()[2])
+
+    class Conn:
+        def cursor(self) -> Cur:
+            return Cur()
+
+    ps.rebuild_for_user(Conn(), USER, sessions=[object()])
+    assert deletes == [ps.DECISIONS_TABLE, ps.TRACKS_TABLE, ps.GROUP_STATES_TABLE]  # apaga antes de gravar tudo
+    assert seen["per_session"] is True
+    assert "baseline_groups" not in seen
+    assert "baseline_tracks" not in seen
 
 
 def test_run_session_evaluation_entrega_o_estado_carregado_como_baseline(monkeypatch) -> None:
@@ -260,3 +296,101 @@ def test_run_session_evaluation_entrega_o_estado_carregado_como_baseline(monkeyp
     ps.run_session_evaluation(object(), USER, 55)
     assert seen["baseline_groups"] is groups
     assert seen["baseline_tracks"] is tracks
+
+
+def test_linha_nao_tocada_fica_como_esta_engine_version_antigo_e_sets_acima_do_teto() -> None:
+    """Semantica nova: `engine_version` e `updated_at` = quem gravou a linha por
+    ultimo; o `sets_count` legado acima do teto nao e normalizado pelo finish
+    (so pelo replay). A leitura ja o limita, entao a avaliacao nao muda."""
+    groups, tracks = _loaded()
+    conn = FakeConn()
+    _seed(conn, groups, tracks)
+    legado = replace(_track(1), sets_count=9)  # o banco tem 9; load_tracks devolve 4
+    key = (USER, legado.exercise_id, legado.equipment_id, legado.fatigue_context, legado.training_goal)
+    conn.tables[ps.TRACKS_TABLE][key] = (legado.id, ("legado",) + ps._track_values(legado)[1:] + ("progression-v1",))
+    antes = dict(conn.tables[ps.TRACKS_TABLE])
+    result = ev.EvaluationResult(group_states={}, tracks=dict(tracks))  # carregadas (limitadas), nada tocado
+    ps.persist_result(conn, USER, result, baseline_groups=groups, baseline_tracks=tracks)
+    assert conn.statements == []
+    assert conn.tables[ps.TRACKS_TABLE] == antes
+    assert conn.tables[ps.TRACKS_TABLE][key][1][-1] == "progression-v1"
+
+
+def test_estados_sao_imutaveis_porque_o_baseline_depende_disso() -> None:
+    import dataclasses
+
+    for cls in (pe.TrackState, pe.GroupState):
+        assert cls.__dataclass_params__.frozen is True
+    track = _track(1)
+    try:
+        track.working_load_kg = Decimal("1")  # type: ignore[misc]
+    except dataclasses.FrozenInstanceError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("TrackState deveria ser frozen")
+
+
+def test_dois_objetivos_avaliador_real_so_grava_as_trilhas_tocadas(monkeypatch) -> None:
+    from dataclasses import replace as rep
+
+    from app.domain import training_goal as tg
+    from tests.support import progression_fixtures as fx
+
+    hip_goal, forca = tg.TrainingGoal.HYPERTROPHY.value, tg.TrainingGoal.STRENGTH.value
+    peito, supino, banco = 10, 1, 100
+    inputs = fx.inputs(tracks=[fx.track(exercise_id=supino, equipment_id=banco, muscle_group_id=peito)])
+
+    def hip_exec(index: int):
+        return fx.execution(exercise_id=supino, equipment_id=banco, sequence=1, set_list=fx.sets(reps=12, rpe=9))
+
+    def forca_exec(index: int):
+        base = fx.execution(
+            exercise_id=supino, equipment_id=banco, sequence=2, set_list=fx.sets(reps=5, rpe=9, weight=70)
+        )
+        return rep(base, exercise_row_id=9000 + index, training_goal=forca)
+
+    days = ("2026-08-01", "2026-08-04", "2026-08-07", "2026-08-10")
+    sessions = [
+        fx.session(activity_id=100 + i, day=day, executions=[hip_exec(i), forca_exec(i)])
+        for i, day in enumerate(days[:3])
+    ]
+    # a ultima sessao tem SO hipertrofia: forca nao e avaliada nem gravada
+    sessions.append(fx.session(activity_id=103, day=days[3], executions=[hip_exec(3)]))
+
+    historico = ev.evaluate_history_by_goal(sessions[:3], inputs=inputs)
+    groups: dict = {}
+    tracks: dict = {}
+    next_id = count(1)
+    for result in historico.results.values():
+        for state in result.group_states.values():
+            groups[state.key] = rep(state, id=next(next_id))
+        for track in result.tracks.values():
+            tracks[track.key] = rep(track, id=next(next_id))
+    assert {t.training_goal for t in tracks.values()} == {hip_goal, forca}
+    conn = FakeConn()
+    _seed(conn, groups, tracks)
+
+    class History:
+        def __init__(self, conn: Any) -> None: ...
+
+        def fetch_last_completed_sessions(self, user_id: int, window: int) -> list:
+            return sessions
+
+    monkeypatch.setattr(ps, "TrainingHistoryRepository", History)
+    monkeypatch.setattr(ps, "build_session_inputs", lambda *a, **k: inputs)
+    monkeypatch.setattr(ps, "load_all_group_states", lambda c, u: groups)
+    monkeypatch.setattr(ps, "load_tracks", lambda c, u: tracks)
+    monkeypatch.setattr(ps.request_memo, "forget", lambda name: None)
+
+    summary = ps.run_session_evaluation(conn, USER, 103)
+
+    assert summary is not None and summary["decisions"] >= 1
+    atualizadas = [(table, key) for table, key in conn.updates]
+    assert atualizadas, "a trilha de hipertrofia foi tocada e deve ser gravada"
+    assert all(key[-1] == hip_goal for _, key in atualizadas)  # nenhuma linha de forca
+    assert "SELECT" not in conn.statements  # ids conhecidos
+    # as linhas de forca ficaram como estavam
+    for state in groups.values():
+        if state.training_goal == forca:
+            row = conn.tables[ps.GROUP_STATES_TABLE][(USER, state.muscle_group_id, forca)]
+            assert row == (state.id, ps._group_values(state) + (pe.ENGINE_VERSION,))
