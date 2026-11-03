@@ -37,18 +37,25 @@ export function BottomSheet({
       position="bottom"
       size="auto"
       title={title}
-      zIndex={400}
       transitionProps={{ duration: reduceMotion ? 0 : 220 }}
       styles={{
         content: {
           background: MOBILE_TOKENS.bg,
           borderRadius: `${MOBILE_TOKENS.radiusSheet}px ${MOBILE_TOKENS.radiusSheet}px 0 0`,
+          width: '100%',
+          height: 'auto',
+          flex: '0 0 auto',
           maxHeight: '85dvh',
         },
-        header: { background: MOBILE_TOKENS.bg, minHeight: 56 },
+        header: {
+          background: MOBILE_TOKENS.bg,
+          minHeight: 56,
+          paddingLeft: 'calc(16px + env(safe-area-inset-left))',
+          paddingRight: 'calc(8px + env(safe-area-inset-right))',
+        },
         title: { fontSize: 17, fontWeight: 700, color: MOBILE_TOKENS.text },
         close: { width: MOBILE_TOKENS.touchTarget, height: MOBILE_TOKENS.touchTarget },
-        body: { paddingTop: 0 },
+        body: { paddingTop: 0, paddingLeft: 0, paddingRight: 0 },
       }}
     >
       {/* o Drawer renderiza num portal fora do shell: reaplica as variaveis --m-* */}

@@ -12,6 +12,7 @@ import {
   backTargetFor,
   buildEvolucaoGroups,
   buildMoreGroups,
+  evolucaoHubHref,
   isEvolucaoHub,
   isMoreActive,
   isPrimaryTabActive,
@@ -180,6 +181,13 @@ describe('header de 2º nível', () => {
     for (const p of ['/dashboard/progressao/', '/dashboard/exercicios/5', '/insights', '/agente-cardio', '/intervals-icu']) {
       expect(backTargetFor(p), p).toEqual({ label: 'Evolução', href: EVOLUCAO_HUB_HREF });
     }
+  });
+  it('o voltar propaga o filtro global e preserva hub=evolucao', () => {
+    expect(backTargetFor('/dashboard/progressao/', '?window=90d')).toEqual({
+      label: 'Evolução',
+      href: '/dashboard/?hub=evolucao&window=90d',
+    });
+    expect(evolucaoHubHref('')).toBe(EVOLUCAO_HUB_HREF);
   });
   it('detalhes voltam para a raiz da seção; o resto volta para Mais', () => {
     expect(backTargetFor('/registro-exercicios/9')).toEqual({ label: 'Histórico', href: '/registro-exercicios/' });

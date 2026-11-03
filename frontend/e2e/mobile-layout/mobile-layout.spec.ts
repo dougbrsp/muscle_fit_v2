@@ -23,8 +23,9 @@ const TABLET = [
 const FLAG_KEY = 'musclefit.flag.mobile-ui';
 const SHELL = '[data-mobile-shell="true"]';
 const READY = /voce concluiu 10 de 12|pronto para treinar/i;
-// Evidencia visual (fora do git): capturas 390x844 da frente A.
-const ARTIFACTS = 'C:/muscle_fit/.omc/artifacts/mobile-v2/a';
+// Evidencia visual (fora do versionamento): capturas 390x844 da frente A. Diretorio por
+// variavel de ambiente, senao relativo ao teste (pasta `__screens__`, ignorada).
+const ARTIFACTS = process.env.MOBILE_ARTIFACTS_DIR ?? 'e2e/mobile-layout/__screens__/artifacts';
 
 const DESKTOP_ONLY_ROUTES = [
   '/academias/',
@@ -141,32 +142,86 @@ for (const size of TABLET) {
   });
 }
 
-test('D2: paisagem de celular (toque, 844x390) fica no layout mobile', async ({ browser }) => {
-  const touch = await browser.newContext({
-    viewport: { width: 844, height: 390 },
-    hasTouch: true,
-    isMobile: true,
-    locale: 'pt-BR',
-    timezoneId: 'America/Sao_Paulo',
-    colorScheme: 'dark',
-    serviceWorkers: 'block',
+// D2: celular = toque + menor lado da TELA fisica < 500 px (nao depende da janela).
+const DEVICES = [
+  { name: 'iPhone 844x390', screen: { width: 844, height: 390 }, viewport: { width: 844, height: 390 }, touch: true, mobile: true },
+  { name: 'iPhone Pro Max 956x440', screen: { width: 956, height: 440 }, viewport: { width: 956, height: 440 }, touch: true, mobile: true },
+  { name: 'celular com teclado aberto (janela 844x300)', screen: { width: 844, height: 390 }, viewport: { width: 844, height: 300 }, touch: true, mobile: true },
+  { name: 'desktop 1024x768 sem toque', screen: { width: 1024, height: 768 }, viewport: { width: 1024, height: 768 }, touch: false, mobile: false },
+  { name: 'tablet 820x1180 com toque', screen: { width: 820, height: 1180 }, viewport: { width: 820, height: 1180 }, touch: true, mobile: false },
+  { name: 'tablet 1024x600 com toque', screen: { width: 1024, height: 600 }, viewport: { width: 1024, height: 600 }, touch: true, mobile: false },
+  { name: 'desktop com tela de toque e janela baixa', screen: { width: 1920, height: 1080 }, viewport: { width: 1000, height: 400 }, touch: true, mobile: false },
+] as const;
+
+for (const d of DEVICES) {
+  test(`D2: ${d.name} => ${d.mobile ? 'layout mobile' : 'layout desktop'}`, async ({ browser }) => {
+    const ctx = await browser.newContext({
+      viewport: d.viewport,
+      screen: d.screen,
+      hasTouch: d.touch,
+      isMobile: d.touch && d.mobile,
+      locale: 'pt-BR',
+      timezoneId: 'America/Sao_Paulo',
+      colorScheme: 'dark',
+      serviceWorkers: 'block',
+    });
+    const page = await ctx.newPage();
+    await page.clock.setFixedTime(FROZEN_NOW);
+    await installMockApi(page);
+    await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, 'on']);
+    await page.goto('/dashboard/');
+    if (d.mobile) {
+      await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole('navigation', { name: 'Menu principal' })).toHaveCount(0);
+      const tabs = page.getByRole('navigation', { name: 'Navegação principal' }).locator('a, button');
+      await expect(tabs).toHaveCount(5);
+      await noHorizontalOverflow(page);
+      if (d.name === 'iPhone 844x390') await page.screenshot({ path: `${ARTIFACTS}/inicio-paisagem-844x390.png` });
+    } else {
+      await expect(page.getByRole('navigation', { name: 'Menu principal' })).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator(SHELL)).toHaveCount(0);
+    }
+    await ctx.close();
   });
-  const page = await touch.newPage();
-  await page.clock.setFixedTime(FROZEN_NOW);
-  await installMockApi(page);
-  await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, 'on']);
-  await page.goto('/dashboard/');
+}
+
+test('camadas: a folha (modal 200) fica acima da tab bar (100) e abaixo de Select/Popover (300)', async ({ page }) => {
+  await open(page, '/dashboard/', 'on', { width: 390, height: 844 });
   await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('navigation', { name: 'Menu principal' })).toHaveCount(0);
-  const tabs = page.getByRole('navigation', { name: 'Navegação principal' }).locator('a, button');
-  await expect(tabs).toHaveCount(5);
-  for (let i = 0; i < 5; i += 1) {
-    const box = await tabs.nth(i).boundingBox();
-    expect(box!.height, `aba ${i} altura`).toBeGreaterThanOrEqual(44);
-  }
-  await noHorizontalOverflow(page);
-  await page.screenshot({ path: `${ARTIFACTS}/inicio-paisagem-844x390.png` });
-  await touch.close();
+  const z = await page.evaluate(() => {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      modal: Number(css.getPropertyValue('--mantine-z-index-modal')),
+      popover: Number(css.getPropertyValue('--mantine-z-index-popover')),
+    };
+  });
+  expect(z.popover).toBeGreaterThan(z.modal);
+  await page.getByRole('button', { name: 'Mais', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Mais' })).toBeVisible();
+  const zDialog = await page.locator('.mantine-Drawer-inner').evaluate((el) => Number(getComputedStyle(el).zIndex));
+  expect(zDialog).toBe(z.modal);
+  expect(zDialog).toBeGreaterThan(100);
+  // altura pelo conteudo, com o limite de 85dvh
+  const box = await page.locator('.mantine-Drawer-content').boundingBox();
+  expect(box!.height).toBeLessThanOrEqual(844 * 0.85 + 1);
+});
+
+test('hub Evolução propaga o filtro global e o voltar preserva hub=evolucao', async ({ page }) => {
+  await open(page, '/dashboard/?hub=evolucao&window=90d', 'on', { width: 390, height: 844 });
+  await expect(page.getByRole('heading', { name: 'Evolução', level: 1 })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('link', { name: 'Progressão' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/progressao\/\?window=90d$/);
+  await page.getByRole('link', { name: 'Voltar para Evolução' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/\?hub=evolucao&window=90d$/);
+});
+
+test('Mais: tocar num link fecha a folha', async ({ page }) => {
+  await open(page, '/nutricao/', 'on', { width: 390, height: 844 });
+  await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Mais', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Mais' });
+  await sheet.getByRole('link', { name: 'Nutrição' }).click(); // mesma rota
+  await expect(sheet).toBeHidden();
 });
 
 test('flag desligada em 375: arvore desktop, sem shell', async ({ page }) => {

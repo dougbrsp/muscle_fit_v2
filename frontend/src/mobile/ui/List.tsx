@@ -48,6 +48,8 @@ export type ListRowProps = {
   trailing?: ReactNode;
   current?: boolean;
   destructive?: boolean;
+  /** Chamado ao tocar numa linha-link (ex.: fechar a folha que a contem). */
+  onNavigate?: () => void;
 };
 
 /**
@@ -64,6 +66,7 @@ export function ListRow({
   trailing,
   current,
   destructive,
+  onNavigate,
 }: ListRowProps) {
   const kind = rowKind({ href, onClick });
   const className = [
@@ -85,7 +88,7 @@ export function ListRow({
         <span className={styles.rowTitle}>{title}</span>
         {subtitle ? <span className={styles.rowSubtitle}>{subtitle}</span> : null}
       </span>
-      {value ? <span className={styles.rowValue}>{value}</span> : null}
+      {value !== undefined && value !== null && value !== false ? <span className={styles.rowValue}>{value}</span> : null}
       {trailing ??
         (kind !== 'static' && !destructive ? (
           <IconChevronRight size={18} className={styles.chevron} aria-hidden />
@@ -95,7 +98,7 @@ export function ListRow({
   const ariaCurrent = current ? ('page' as const) : undefined;
   if (kind === 'link') {
     return (
-      <Link href={href as string} className={className} aria-current={ariaCurrent}>
+      <Link href={href as string} className={className} aria-current={ariaCurrent} onClick={onNavigate}>
         {content}
       </Link>
     );

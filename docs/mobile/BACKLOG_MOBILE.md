@@ -13,7 +13,7 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 | MB-6 | Nutrição, Agente de Cardio, Insights | Estados de erro/vazio próprios de cada tela; os componentes `src/mobile/ui` (`LoadingState`, `EmptyState`, `ErrorState`, `OfflineState`) ainda não foram adotados por elas. | Adotar gradualmente ao criar variantes mobile. |
 | MB-7 | Shell | ~~Seis abas a 320 px.~~ **Resolvido (mobile v2, frente A)**: tab bar de 5 abas (Início, Treino, Histórico, Evolução, Mais). | Validar em iPhone SE real. |
 | MB-8 | Shell | ~~Sem tratamento de teclado virtual.~~ **Tratado (frente A)**: com campo de texto focado a tab bar se esconde e `StickyAction` desce (`layout/keyboard.ts`). | Validar em iPhone real (a decisão por foco não mede a altura do teclado). |
-| MB-9 | Paisagem >= 768 px (ex.: iPhone Pro Max 844 px) | ~~Caía no layout desktop.~~ **Resolvido para celular (D2)**: `(pointer: coarse) and (max-height: 31.25em)` mantém o layout mobile. | Validar em iPhone Pro Max real. |
+| MB-9 | Paisagem >= 768 px (ex.: iPhone Pro Max 844 px) | ~~Caía no layout desktop.~~ **Resolvido para celular (D2)**: toque e menor lado da tela física < 500 px (`max-device-width/height`, estável com teclado) mantém o layout mobile. | Validar em iPhone Pro Max real. |
 | MB-10 | Troca de viewport | Estado local de página (filtros digitados, abas) reinicia ao cruzar 768 px, pois a árvore muda. Dados do servidor ficam no cache do TanStack Query; a sessão de treino fica em storage. | Aceito; se incomodar, elevar filtros para a URL. |
 
 ## Decisão A2b (telas P1)

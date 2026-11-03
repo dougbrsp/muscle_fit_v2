@@ -45,11 +45,16 @@ describe('FilterSheet', () => {
 });
 
 describe('ResponsiveDataList', () => {
-  it('um único estado visível, na ordem carregando > erro > vazio > pronto', () => {
-    expect(listState({ isLoading: true, isError: true, count: 0 })).toBe('loading');
-    expect(listState({ isError: true, count: 5 })).toBe('error');
-    expect(listState({ count: 0 })).toBe('empty');
-    expect(listState({ count: 1 })).toBe('ready');
+  it('sem dado nunca é vazio: offline > carregando > erro; padrão carregando', () => {
+    expect(listState({ hasData: false, count: 0 })).toBe('loading');
+    expect(listState({ hasData: false, count: 0, isLoading: true, isError: true })).toBe('loading');
+    expect(listState({ hasData: false, count: 0, isError: true })).toBe('error');
+    expect(listState({ hasData: false, count: 0, isOffline: true, isLoading: true })).toBe('offline');
+  });
+  it('dado existente vence erro de refetch e offline', () => {
+    expect(listState({ hasData: true, count: 5, isError: true, isOffline: true })).toBe('ready');
+    expect(listState({ hasData: true, count: 0, isError: true })).toBe('empty');
+    expect(listState({ hasData: true, count: 1 })).toBe('ready');
   });
 });
 

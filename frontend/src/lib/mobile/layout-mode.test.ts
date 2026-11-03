@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
   MOBILE_BREAKPOINT_PX,
-  MOBILE_LANDSCAPE_QUERY,
   MOBILE_MEDIA_QUERY,
+  MOBILE_PHONE_QUERY,
   MOBILE_PORTRAIT_QUERY,
   layoutModeFromMatch,
   subscribeMediaQuery,
@@ -16,11 +16,13 @@ describe('layout-mode', () => {
     expect(MOBILE_BREAKPOINT_PX).toBe(768);
     expect(MOBILE_PORTRAIT_QUERY).toBe('(max-width: 47.99em)');
   });
-  it('paisagem de celular (D2): toque + altura baixa, sem User-Agent', () => {
-    expect(MOBILE_LANDSCAPE_QUERY).toBe('(pointer: coarse) and (max-height: 31.25em)');
-    expect(MOBILE_MEDIA_QUERY).toBe(
-      '(max-width: 47.99em), (pointer: coarse) and (max-height: 31.25em)',
+  it('D2: celular = toque e menor lado da TELA < 500 px (sem depender da janela)', () => {
+    expect(MOBILE_PHONE_QUERY).toBe(
+      '(pointer: coarse) and (max-device-width: 499.9px), (pointer: coarse) and (max-device-height: 499.9px)',
     );
+    expect(MOBILE_MEDIA_QUERY).toBe(`${MOBILE_PORTRAIT_QUERY}, ${MOBILE_PHONE_QUERY}`);
+    // sem altura/largura da janela (teclado e barras mudam) e sem User-Agent
+    expect(MOBILE_PHONE_QUERY).not.toMatch(/(?<!device-)(max|min)-(width|height)/);
     expect(MOBILE_MEDIA_QUERY.toLowerCase()).not.toContain('user-agent');
   });
   it('mapeia o resultado do matchMedia', () => {

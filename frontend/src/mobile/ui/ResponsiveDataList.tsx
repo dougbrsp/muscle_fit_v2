@@ -1,7 +1,7 @@
 import { Skeleton } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { limitColumns, listState } from './pure';
-import { EmptyState, ErrorState } from './StateViews';
+import { EmptyState, ErrorState, OfflineState } from './StateViews';
 import styles from './ui.module.css';
 
 export type DataColumn<T> = {
@@ -17,6 +17,8 @@ type Common<T> = {
   getKey: (item: T) => string | number;
   isLoading?: boolean;
   isError?: boolean;
+  /** Sem rede (ex.: `query.fetchStatus === 'paused'`). Só vale quando ainda não há dado. */
+  isOffline?: boolean;
   onRetry?: () => void;
   emptyTitle?: string;
   emptyDescription?: ReactNode;
@@ -41,9 +43,15 @@ export function ResponsiveDataList<T>(
       | { columns: readonly DataColumn<T>[]; renderItem?: undefined }
     ),
 ) {
-  const { items, getKey, isLoading, isError, onRetry } = props;
+  const { items, getKey, isLoading, isError, isOffline, onRetry } = props;
   const list = items ?? [];
-  const state = listState({ isLoading, isError, count: list.length });
+  const state = listState({
+    hasData: items !== undefined,
+    count: list.length,
+    isLoading,
+    isError,
+    isOffline,
+  });
 
   if (state === 'loading') {
     return (
@@ -54,6 +62,7 @@ export function ResponsiveDataList<T>(
       </div>
     );
   }
+  if (state === 'offline') return <OfflineState onRetry={onRetry} />;
   if (state === 'error') {
     return <ErrorState title={props.errorTitle ?? 'Não foi possível carregar'} onRetry={onRetry} />;
   }

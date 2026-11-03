@@ -26,6 +26,12 @@ describe('primitivos (marcação)', () => {
     expect(out).toContain('Resumo');
   });
 
+  it('ListRow: valor 0 aparece; vazio/null/undefined não', () => {
+    expect(html(h(ListRow, { title: 'A', value: 0 }))).toContain('>0<');
+    expect(html(h(ListRow, { title: 'A', value: null }))).not.toContain('rowValue');
+    expect(html(h(ListRow, { title: 'A' }))).not.toContain('rowValue');
+  });
+
   it('ListRow: link, botão e estática têm o elemento certo', () => {
     expect(html(h(ListRow, { title: 'A', href: '/a' }))).toMatch(/^<a /);
     expect(html(h(ListRow, { title: 'B', onClick: noop }))).toMatch(/^<button type="button"/);
@@ -111,6 +117,9 @@ describe('primitivos (marcação)', () => {
 
   it('ResponsiveDataList: estados vazio, erro e carregando', () => {
     const base = { getKey: (i: Item) => i.id, renderItem: () => null, 'aria-label': 'l' };
+    expect(themed(h(List, { ...base, items: undefined }))).toContain('aria-busy="true"');
+    expect(themed(h(List, { ...base, items: undefined, isOffline: true }))).toContain('Sem conexão');
+    expect(themed(h(List, { ...base, items, isError: true, renderItem: (i) => h('b', null, i.a) }))).toContain('<b>x</b>');
     expect(themed(h(List, { ...base, items: [], emptyTitle: 'Vazio' }))).toContain('Vazio');
     expect(
       themed(h(List, { ...base, items: undefined, isError: true, errorTitle: 'Falhou' })),

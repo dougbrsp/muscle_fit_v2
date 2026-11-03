@@ -168,11 +168,22 @@ export const SCREENS_B = {
 ```
 
 3. O desktop nunca passa pelo registry. Não altere CSS global; estilos ficam em módulo CSS em `src/mobile/`.
-4. Links para as seções só do computador (`isDesktopOnlyPath`, `@/lib/nav-items`) não devem aparecer como botão ou atalho na tela mobile; links vindos de componentes compartilhados caem na tela "Disponível no computador" (D1).
+4. **Tela registrada NÃO monta a página da rota.** Qualquer guarda que a página desktop faz (papel admin, 403, redirect, `enabled` da query depois de conhecer o usuário) precisa ser replicada na tela mobile. Exemplo: `UsuariosClient.tsx:96-108,309` só dispara `GET /users` depois de `/auth/me` e mostra acesso restrito para não admin ou 403; a tela mobile de Usuários faz o mesmo. `AdminOnlyRoute` continua valendo para o que a página usa, mas a tela nova precisa do próprio equivalente.
+5. **Rota dinâmica: use `useDynamicRouteParam`** (`@/lib/use-dynamic-route-param`), nunca o valor cru de `useParams()`. No export estático `useParams()` devolve o slug literal `placeholder`; o id real está na barra de endereços (ver `ExerciseProgressClient.tsx:105-106`):
+
+```tsx
+const params = useParams<{ exerciseId: string }>();
+const rawId = useDynamicRouteParam(params?.exerciseId); // string | null
+const exerciseId = rawId != null && /^\d+$/.test(rawId) ? Number(rawId) : null;
+```
+
+6. Início e hub Evolução são estáticos no shell (a PWA abre offline sem depender de chunk fora do precache). Só as telas de B e C usam `lazyScreen`, que já mostra "Sem conexão" com tentar de novo se o chunk falhar.
+7. Estados de lista: `ResponsiveDataList` nunca trata `items === undefined` como vazio; dado já carregado tem prioridade sobre erro de refetch; passe `isOffline` (ex.: `query.fetchStatus === 'paused'`) para o estado offline.
+8. Links para as seções só do computador (`isDesktopOnlyPath`, `@/lib/nav-items`) não devem aparecer como botão ou atalho na tela mobile; links vindos de componentes compartilhados caem na tela "Disponível no computador" (D1).
 
 ## 6. O que o shell já entrega
 
 - Tab bar de 5 abas (Início, Treino, Histórico, Evolução, Mais), com rolagem preservada ao voltar às raízes das abas.
 - Header de 2º nível com voltar e rótulo do destino (Evolução, Histórico, Mais...). Telas fora das raízes das abas ganham o voltar sozinhas.
 - Hub Evolução em `/dashboard/?hub=evolucao`; folha Mais agrupada por papel; tela "Disponível no computador".
-- Paisagem de celular (toque + altura baixa) continua no layout mobile, com barra e header compactos.
+- Celular em paisagem (toque e menor lado da tela física < 500 px, estável com teclado) continua no layout mobile, com barra e header compactos.

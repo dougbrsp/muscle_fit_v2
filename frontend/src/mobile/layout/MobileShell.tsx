@@ -71,17 +71,38 @@ function Shell({ children }: { children: ReactNode }) {
     closeMore();
   }, [pathname, search, closeMore]);
 
-  // Abas preservam a rolagem: guarda a posição ao sair e restaura ao voltar.
+  // Voltar/gesto do navegador: o navegador restaura a rolagem sozinho; a posicao
+  // guardada por toque em aba nao pode sobreviver a essa saida.
+  useEffect(() => {
+    const positions = scrollPositions.current;
+    const clear = () => positions.clear();
+    window.addEventListener('popstate', clear);
+    return () => window.removeEventListener('popstate', clear);
+  }, []);
+
+  // Abas preservam a rolagem: guarda a posicao ao sair (toque) e restaura ao
+  // voltar. Gesto do usuario (toque, roda, teclado) cancela a restauracao.
   const memoryKey = scrollMemoryKey(pathname, search);
   useEffect(() => {
     if (!memoryKey) return undefined;
     const saved = scrollPositions.current.get(memoryKey);
     if (!saved) return undefined;
-    const raf = requestAnimationFrame(() => window.scrollTo(0, saved));
-    const late = setTimeout(() => window.scrollTo(0, saved), 250);
+    let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+    };
+    const events = ['touchstart', 'wheel', 'keydown', 'pointerdown'] as const;
+    for (const name of events) window.addEventListener(name, cancel, { once: true, passive: true });
+    const restore = () => {
+      if (!cancelled) window.scrollTo(0, saved);
+    };
+    const raf = requestAnimationFrame(restore);
+    const late = setTimeout(restore, 250);
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(late);
+      for (const name of events) window.removeEventListener(name, cancel);
     };
   }, [memoryKey]);
 
@@ -95,7 +116,7 @@ function Shell({ children }: { children: ReactNode }) {
 
   const desktopOnly = isDesktopOnlyPath(pathname);
   const Screen = desktopOnly ? null : resolveMobileScreen(pathname, search);
-  const back = backTargetFor(pathname);
+  const back = backTargetFor(pathname, search);
   const displayName = userQuery.data?.full_name || userQuery.data?.username || '';
 
   return (

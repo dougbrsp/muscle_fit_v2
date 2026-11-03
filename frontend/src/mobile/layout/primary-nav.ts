@@ -7,6 +7,7 @@ import {
   IconUser,
   type Icon as TablerIcon,
 } from '@tabler/icons-react';
+import { parseDashboardFilters, serializeDashboardFilters } from '@/lib/dashboard-filters';
 import {
   DASHBOARD_NAV_ITEMS,
   isDesktopOnlyPath,
@@ -40,6 +41,16 @@ export const PRIMARY_TABS: readonly PrimaryTab[] = [
   { id: 'historico', href: '/registro-exercicios', label: 'Histórico', icon: IconClipboardList },
   { id: 'evolucao', href: EVOLUCAO_HUB_HREF, label: 'Evolução', icon: IconChartLine },
 ];
+
+/**
+ * Hub Evolução propagando o filtro global (`window`, datas, grupo...) que estiver
+ * na query atual e preservando `hub=evolucao`.
+ */
+export function evolucaoHubHref(search: string | null | undefined): string {
+  const filters = parseDashboardFilters(new URLSearchParams(search ?? ''));
+  const params = serializeDashboardFilters(filters, new URLSearchParams('hub=evolucao'));
+  return `/dashboard/?${params.toString()}`;
+}
 
 export const MORE_TAB = { id: 'mais', label: 'Mais', icon: IconDots } as const;
 
@@ -204,7 +215,10 @@ const BACK_LABELS: ReadonlyMap<string, string> = new Map([
  * telas, o destino do voltar: hub Evolução para o que é de Evolução, a raiz da
  * própria seção para detalhes, e "Mais" para o resto.
  */
-export function backTargetFor(pathname: string | null | undefined): BackTarget | null {
+export function backTargetFor(
+  pathname: string | null | undefined,
+  search: string | null | undefined = '',
+): BackTarget | null {
   const path = normalizePath(pathname);
   if (!path || path === '/dashboard') return null; // Início e hub
   if (path === '/modo-treino' || path === '/registro-exercicios') return null;
@@ -212,7 +226,7 @@ export function backTargetFor(pathname: string | null | undefined): BackTarget |
     path.startsWith('/dashboard/') ||
     EVOLUCAO_EXTRA_PATHS.some((prefix) => underPrefix(path, prefix))
   ) {
-    return { label: 'Evolução', href: EVOLUCAO_HUB_HREF };
+    return { label: 'Evolução', href: evolucaoHubHref(search) };
   }
   const segments = path.split('/').filter(Boolean);
   const root = `/${segments[0]}`;

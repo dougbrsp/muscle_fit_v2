@@ -11,18 +11,22 @@ import { useEffect, useState } from 'react';
  * `smallerThan="sm"` do Mantine, para os dois cortes coincidirem mesmo com
  * fonte raiz alterada. Sem fresta com larguras fracionárias. Tablet
  * (>= 768 px) recebe o layout desktop, exceto paisagem de celular (ver
- * `MOBILE_LANDSCAPE_QUERY`). Sem User-Agent.
+ * `MOBILE_PHONE_QUERY`). Sem User-Agent.
  */
 export const MOBILE_BREAKPOINT_PX = 768;
 export const MOBILE_PORTRAIT_QUERY = '(max-width: 47.99em)';
 /**
- * Paisagem de celular (mobile v2, D2): ponteiro de toque e altura baixa. O
- * iPhone Pro Max em paisagem passa de 768 px de largura mas tem ~430 px de
- * altura; tablet em paisagem (>= 768 px de altura) não casa e segue no
- * desktop. Sem User-Agent.
+ * Celular em qualquer orientacao (mobile v2, D2): ponteiro de toque E menor lado
+ * da TELA fisica (`screen`, nao a janela) abaixo de 500 px. `device-width` e
+ * `device-height` sao as dimensoes de `screen`: nao mudam com teclado virtual
+ * nem com barras do navegador, entao o layout nao troca de arvore ao digitar.
+ * iPhone (inclusive Pro Max, 956x440 deitado) casa; tablet pequeno (menor lado
+ * >= 600 px), tablet grande e desktop com tela sensivel ao toque nao casam.
+ * Sem User-Agent.
  */
-export const MOBILE_LANDSCAPE_QUERY = '(pointer: coarse) and (max-height: 31.25em)';
-export const MOBILE_MEDIA_QUERY = `${MOBILE_PORTRAIT_QUERY}, ${MOBILE_LANDSCAPE_QUERY}`;
+export const MOBILE_PHONE_QUERY =
+  '(pointer: coarse) and (max-device-width: 499.9px), (pointer: coarse) and (max-device-height: 499.9px)';
+export const MOBILE_MEDIA_QUERY = `${MOBILE_PORTRAIT_QUERY}, ${MOBILE_PHONE_QUERY}`;
 
 export type LayoutMode = 'mobile' | 'desktop';
 

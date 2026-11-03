@@ -21,8 +21,13 @@ export function isTextEntry(target: {
   tagName?: string;
   type?: string;
   isContentEditable?: boolean;
+  readOnly?: boolean;
+  disabled?: boolean;
+  inputMode?: string;
 } | null): boolean {
   if (!target) return false;
+  // readOnly (ex.: Select do Mantine), desabilitado e inputMode="none" nao abrem teclado.
+  if (target.readOnly || target.disabled || target.inputMode === 'none') return false;
   if (target.isContentEditable) return true;
   const tag = target.tagName?.toUpperCase();
   if (tag === 'TEXTAREA') return true;

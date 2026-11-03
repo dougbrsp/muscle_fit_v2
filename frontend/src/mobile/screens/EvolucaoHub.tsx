@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { mobileMainNavItems, navVisibilityFromUser } from '@/lib/nav-items';
+import { dashboardHref, useDashboardFilters } from '@/lib/dashboard-filters';
 import { buildEvolucaoGroups } from '../layout/primary-nav';
 import { ListGroup, ListRow, ScreenHeader } from '../ui';
 import { useCurrentUser } from '../use-current-user';
@@ -14,6 +15,7 @@ import { useCurrentUser } from '../use-current-user';
  */
 export function EvolucaoHub() {
   const userQuery = useCurrentUser();
+  const { filters } = useDashboardFilters();
   const groups = useMemo(
     () =>
       buildEvolucaoGroups(
@@ -28,7 +30,12 @@ export function EvolucaoHub() {
       {groups.map((group) => (
         <ListGroup key={group.title} title={group.title}>
           {group.items.map((item) => (
-            <ListRow key={item.href} icon={item.icon} title={item.label} href={item.href} />
+            <ListRow
+              key={item.href}
+              icon={item.icon}
+              title={item.label}
+              href={item.href.startsWith('/dashboard') ? dashboardHref(item.href, filters) : item.href}
+            />
           ))}
         </ListGroup>
       ))}

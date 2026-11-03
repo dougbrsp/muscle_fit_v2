@@ -24,7 +24,7 @@ Restrições: URL única (sem `/m/...`); desktop idêntico (goldens em `frontend
 - **"Mais"** é uma folha com lista agrupada (Treino, Corpo e nutrição, Conta, Outros) e "Sair". Itens fora de grupo caem em "Outros" para nenhuma rota ficar inacessível.
 - **Telas de 2º nível** ganham header com voltar e o rótulo do destino; as raízes das abas guardam a rolagem.
 - **Seções só do computador (D1):** atributo `desktopOnly` em `frontend/src/lib/nav-items.ts` (sem efeito no desktop) e `isDesktopOnlyPath`/`desktopOnlySectionLabel`, por prefixo de segmento. Cobrem `/academias`, `/equipamentos-exercicios`, `/dominio-exercicios`, `/regras-carga`, `/metas-ativacao` (+ `[id]`), `/modelos-treino` (+ `[id]`), `/diagnostico-volume/*` (parte de Modelos) e o redirect legado `/tipos-treinamento`. No iPhone, a rota mantém a URL e mostra "Disponível no computador" com ação para o Início; a página da rota não é montada, então não há chamada de API dela.
-- **Paisagem (D2):** `(max-width: 47.99em), (pointer: coarse) and (max-height: 31.25em)` em `layout-mode.ts`. iPhone deitado, inclusive Pro Max, fica no layout mobile; tablet e desktop seguem no desktop. Sem User-Agent. Resolve MB-9 para celular.
+- **Celular em qualquer orientação (D2):** `(max-width: 47.99em)` OU `(pointer: coarse) and (max-device-width: 499.9px), (pointer: coarse) and (max-device-height: 499.9px)` em `layout-mode.ts`. É característica fixa do aparelho (ponteiro de toque e menor lado da tela física abaixo de 500 px): não muda com teclado virtual nem com barras do navegador, então a árvore não troca ao digitar. iPhone deitado, inclusive Pro Max (956x440), fica no layout mobile; tablet pequeno de 1024x600, iPad e desktop com tela sensível ao toque seguem no desktop. Sem User-Agent; `useLayoutMode()` segue devolvendo `null` antes de montar. Resolve MB-9 para celular.
 - **Registry** de telas mobile carrega por `next/dynamic`, aceita rotas dinâmicas (`[id]`) e compõe `registry.b.ts` e `registry.c.ts`; o desktop nunca o consulta.
 - **Teclado (MB-8):** com campo de texto focado, a tab bar se esconde e a ação fixa desce.
 
@@ -33,7 +33,7 @@ Restrições: URL única (sem `/m/...`); desktop idêntico (goldens em `frontend
 - **Ganho:** navegação padrão do iOS, desktop intocado, fonte única da lista de seções só-desktop, nenhuma rota nova no desktop.
 - **Custo:** o hub compartilha a URL do Início (`/dashboard/`), diferenciado por query; quem abrir o link no desktop vê a visão geral normal.
 - **Custo:** `?mobile=0` (override de QA, P2-6) reabre o desktop no aparelho, inclusive as seis seções.
-- **Custo:** `(pointer: coarse)` pode casar com notebook touch em janela baixa (menos de 500 px de altura); aceito.
+- **Custo:** `device-width`/`device-height` são recursos de mídia marcados como obsoletos, mas suportados por Chrome, Safari e Firefox; um celular com menor lado de tela de 500 px ou mais seria tratado como tablet (desktop).
 - **Custo:** o iPhone perde acesso às seis seções; o usuário assume isso (D1).
 
 ## Consequências

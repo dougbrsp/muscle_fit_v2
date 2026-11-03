@@ -37,6 +37,7 @@ export function MoreSheet({
               title={item.label}
               subtitle={item.href === '/perfil' && displayName ? displayName : undefined}
               href={item.href}
+              onNavigate={onClose}
               current={isNavGroupItemActive(item.href, pathname)}
             />
           ))}

@@ -38,16 +38,26 @@ export function normalizeCount(n: number): number {
 }
 
 /** Estado visível de uma lista de dados: um e só um. */
-export type ListState = 'loading' | 'error' | 'empty' | 'ready';
+export type ListState = 'loading' | 'offline' | 'error' | 'empty' | 'ready';
 
+/**
+ * - `items === undefined` (sem dado) NUNCA é vazio: é carregando, offline ou erro;
+ * - dado existente tem prioridade sobre erro de refetch ou offline (mostra o dado);
+ * - sem dado: offline > carregando > erro; sem sinal nenhum, carregando.
+ * `count` é o tamanho de `items` (0 se indefinido).
+ */
 export function listState(input: {
+  hasData: boolean;
+  count: number;
   isLoading?: boolean;
   isError?: boolean;
-  count: number;
+  isOffline?: boolean;
 }): ListState {
+  if (input.hasData) return input.count === 0 ? 'empty' : 'ready';
+  if (input.isOffline) return 'offline';
   if (input.isLoading) return 'loading';
   if (input.isError) return 'error';
-  return input.count === 0 ? 'empty' : 'ready';
+  return 'loading';
 }
 
 /** Valida que o valor escolhido existe nas opções (senão cai na primeira). */

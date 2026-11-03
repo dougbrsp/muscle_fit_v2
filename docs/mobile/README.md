@@ -9,7 +9,7 @@ Os comandos abaixo vêm de `frontend/package.json` e das configs de teste. Nada 
 | Peça | Arquivo | Papel |
 |---|---|---|
 | Flag | `frontend/src/lib/mobile/flags.ts` | Fonte única da flag da UI mobile |
-| Seletor por largura | `frontend/src/lib/mobile/layout-mode.ts` | `useLayoutMode()`, corte `(max-width: 47.99em)` (menor que 768 px) ou paisagem de celular `(pointer: coarse) and (max-height: 31.25em)` (mobile v2, D2) |
+| Seletor por largura | `frontend/src/lib/mobile/layout-mode.ts` | `useLayoutMode()`, corte `(max-width: 47.99em)` (menor que 768 px) ou celular em qualquer orientação `(pointer: coarse) and (max-device-width: 499.9px), (pointer: coarse) and (max-device-height: 499.9px)` (menor lado da tela física; mobile v2, D2) |
 | Ponto de entrada | `frontend/src/components/AppShellLayout.tsx` | Flag desligada: `DesktopAppShell` direto (linhas 142–143) |
 | Seletor mobile | `frontend/src/mobile/MobileLayoutSelector.tsx` | Carregado com `lazy` só com a flag ligada |
 | Shell mobile | `frontend/src/mobile/layout/MobileShell.tsx` | Header (voltar nas telas de 2º nível), tab bar de 5 abas e folha "Mais" agrupada (`MoreSheet.tsx`); esconde a tab bar com o teclado aberto (`keyboard.ts`) |
@@ -24,7 +24,7 @@ Os comandos abaixo vêm de `frontend/package.json` e das configs de teste. Nada 
 
 Regras de comportamento:
 
-- **Desktop e tablet**: com a flag ligada, largura de 768 px ou mais cai no layout desktop atual. Paisagem de celular (ponteiro de toque e altura menor que 500 px), inclusive acima de 768 px de largura, continua no layout mobile (D2, resolve MB-9).
+- **Desktop e tablet**: com a flag ligada, largura de 768 px ou mais cai no layout desktop atual. Celular em paisagem (ponteiro de toque e menor lado da tela física menor que 500 px), inclusive acima de 768 px de largura, continua no layout mobile (D2, resolve MB-9).
 - **Seções só do computador**: Academias, Equipamentos x Exercícios, Domínio de Exercícios, Regras de carga, Metas de Ativação e Modelos de treino não aparecem no iPhone; a rota mostra "Disponível no computador" sem montar a página. É restrição de interface, não de segurança. O override `?mobile=0` reabre o desktop no aparelho, inclusive essas seções (P2-6).
 - **Mesma URL**: não há rota duplicada nem detecção por User-Agent.
 - **Remontagem**: cruzar 768 px remonta a página. URL, cache do TanStack Query e sessão de treino (storage) sobrevivem; estado local de página (filtros, abas) se perde (MB-10).
