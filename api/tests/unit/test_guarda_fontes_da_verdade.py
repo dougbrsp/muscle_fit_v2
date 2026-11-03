@@ -1404,9 +1404,18 @@ PADROES: tuple[Padrao, ...] = (
             r"|CORRECTION_FRACTION|MAX_KCAL_STEP_SHARE|MIN_KCAL_STEP|BIA_CORRECTION_FRACTION|LEAN_LOSS_LIMIT_SHARE_PER_WEEK"
             r"|BULK_FAT_SHARE_OF_GAIN_LIMIT|BULK_FAT_GAIN_NOISE_FLOOR_KG_PER_WEEK|PROPOSAL_VALIDITY_DAYS|DEFAULT_CHECKIN_WEEKDAY"
             r"|HISTORY_LIMIT_DEFAULT|HISTORY_LIMIT_MAX|CHECKIN_WEEKDAY_RANGE|RATE_DECIMALS|MIN_DAYS_UNDER_CURRENT_PLAN"
-            r"|MAINT_KCAL_ADJUST_RANGE|MAINT_KCAL_ADJUST_DEFAULT|EXPIRY_TIME_OF_DAY)\s*(?::[^=\n]+)?=\s*(?:[\d(\[]|time\()"
+            r"|EXPIRY_TIME_OF_DAY)\s*(?::[^=\n]+)?=\s*(?:[\d(\[]|time\()"
         ),
-        donos=("api/app/domain/nutrition/weekly_checkin.py", "api/app/domain/nutrition/strategy.py"),  # strategy: MAINT_KCAL_ADJUST_*
+        donos=("api/app/domain/nutrition/weekly_checkin.py",),
+        inventario="NUT-N7",
+    ),
+    Padrao(
+        chave="ajuste_manutencao",
+        regra="faixa ou padrão do ajuste de kcal da manutenção (`maintenance_kcal_adjust`) redefinidos com número fora do dono",
+        # 2026-11-03 (nutrição N7, §83): dono `strategy` (faixa `MAINT_KCAL_ADJUST_RANGE` e padrão 0 do parâmetro novo do plano da
+        # manutenção). O check-in (`weekly_checkin`) só importa a faixa para limitar a proposta; a tela não repete a faixa.
+        regex=re.compile(r"\b(?:MAINT_KCAL_ADJUST_RANGE|MAINT_KCAL_ADJUST_DEFAULT)\s*(?::[^=\n]+)?=\s*[\d(\[]"),
+        donos=("api/app/domain/nutrition/strategy.py",),
         inventario="NUT-N7",
     ),
     Padrao(
@@ -2177,6 +2186,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "diario_nutricao": {},  # NUT-L4 (2026-10-17): nasce vazia (rotas e tela importam do dono / leem o JSON)
     "favoritos_nutricao": {},  # NUT-N3 (2026-11-02): nasce vazia (rota importa o dono; a tela lê `max_items` da API)
     "dashboard_nutricao": {},  # NUT-N5 (2026-11-02): nasce vazia (a rota importa o dono; a tela só exibe)
+    "ajuste_manutencao": {},  # NUT-N7 (2026-11-03): nasce vazia (o check-in importa a faixa do `strategy`)
     "checkin_semanal": {},  # NUT-N7 (2026-11-03): nasce vazia (a rota chama `weekly_checkin`; a tela só exibe)
     "projecao_dashboard_nutricao": {},  # NUT-N5 (2026-11-03): nasce vazia (o painel chama `plan.project_plan_goal`)
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
@@ -3125,11 +3135,15 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("project_plan_goal(configuracao, sujeito, tdee, hoje)", "projection_tdee(comp.target.tdee, passado, True)",
          "dash.window_tdee_kcal(dias, hoje, tdees)", "from .domain.nutrition.plan import project_plan_goal"),
     ),
+    "ajuste_manutencao": (
+        ("MAINT_KCAL_ADJUST_RANGE: Final[tuple[int, int]] = (-500, 500)", "MAINT_KCAL_ADJUST_DEFAULT = 0",
+         "const MAINT_KCAL_ADJUST_RANGE = [-300, 300];"),
+        ("from .strategy import MAINT_KCAL_ADJUST_RANGE", "MAINT_KCAL_ADJUST_RANGE[0]", "_range(st.MAINT_KCAL_ADJUST_RANGE)"),
+    ),
     "checkin_semanal": (
         ("MAX_KCAL_STEP_SHARE = 0.05", "const PROPOSAL_VALIDITY_DAYS = 3;", "MIN_COMPLETE_DAYS: Final[int] = 5",
          "LEAN_LOSS_LIMIT_SHARE_PER_WEEK = 0.0025", "DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0",
          "CHECKIN_WEEKDAY_RANGE: Final[tuple[int, int]] = (0, 6)", "RATE_DECIMALS = 4",
-         "MAINT_KCAL_ADJUST_RANGE: Final[tuple[int, int]] = (-500, 500)", "MAINT_KCAL_ADJUST_DEFAULT = 0",
          "EXPIRY_TIME_OF_DAY: Final[time] = time(23, 59, 59)"),
         ("wc.evaluate_week(inputs)", "wc.PROPOSAL_VALIDITY_DAYS", "from .domain.nutrition.weekly_checkin import MIN_COMPLETE_DAYS",
          "const dia = checkin.settings.weekday;"),

@@ -468,7 +468,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         f"Déficit limitado a {_percent(strategy_mod.CUT_MAX_DEFICIT_SHARE)} do gasto total."
     ),
     strategy_mod.CLAMP_MIN_INTAKE_BMR_MULTIPLE: "Ingestão elevada ao piso do cutting (TMB).",
-    strategy_mod.CLAMP_MIN_KCAL_BLOCK: "Ingestão elevada ao piso de energia do motor.",
+    strategy_mod.CLAMP_MIN_KCAL_BLOCK: "Ingestão elevada ao piso de energia (TMB).",
     # Entrada do plano.
     plan_mod.NOTE_TEMPLATE_NOT_ASSIGNED: "Você não tem Modelo de treino atribuído: marque os dias à mão.",
     plan_mod.NOTE_TEMPLATE_WITHOUT_WEEKDAYS: (
