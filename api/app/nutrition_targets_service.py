@@ -79,7 +79,7 @@ PUBLISHED = "published"
 PLAN_SETTINGS_COLUMNS = (
     "strategy, advanced, bmr_formula, activity_level, training_kcal_mode, goal_body_fat_percent, goal_weight_kg, "
     "weekly_rate_share, surplus_share, protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, "
-    "macro_priority, manual_targets_json, carb_cycling_json"
+    "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust"
 )
 
 # `FOR SHARE`: dentro da transação, a leitura dos planos espera uma publicação em
@@ -207,6 +207,7 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         manual_targets=manual,
         manual_training_mode=modo_manual,
         cycle_days=_json_value(row.get("carb_cycling_json")),
+        maintenance_kcal_adjust=int(row["maintenance_kcal_adjust"]) if row.get("maintenance_kcal_adjust") else None,
     )
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")

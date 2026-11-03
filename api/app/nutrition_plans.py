@@ -111,7 +111,7 @@ _PLAN_COLUMNS = (
     "id, user_id, created_by, published_by, status, strategy, advanced, bmr_formula, activity_level, "
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
-    "macro_priority, manual_targets_json, carb_cycling_json, "
+    "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, "
     "effective_from, superseded_at, published_at, created_at, updated_at"
 )
 
@@ -120,7 +120,7 @@ _SETTINGS_WRITE_COLUMNS = (
     "strategy", "advanced", "bmr_formula", "activity_level", "training_kcal_mode", "goal_body_fat_percent",
     "goal_weight_kg", "weekly_rate_share", "surplus_share", "protein_g_per_kg", "fat_kcal_share",
     "carb_min_g_per_kg", "meals_per_day", "macro_priority", "manual_targets_json", "carb_cycling_json", "notes",
-    "engine_version",
+    "engine_version", "maintenance_kcal_adjust",
 )
 
 _INSERT_SQL = (
@@ -207,6 +207,7 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         manual_targets=payload.manual_targets,
         cycle_days=payload.cycle_days,
         manual_training_mode=payload.manual_training_mode,
+        maintenance_kcal_adjust=payload.maintenance_kcal_adjust,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -233,6 +234,7 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.cycle_days,
         notes,
         ENGINE_VERSION,
+        settings.maintenance_kcal_adjust,
     )
 
 

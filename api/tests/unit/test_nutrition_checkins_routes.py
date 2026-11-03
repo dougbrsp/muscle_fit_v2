@@ -40,6 +40,8 @@ def db(monkeypatch):
     for modulo in (dash_mod, days_mod, plans_mod, ck_mod):
         monkeypatch.setattr(modulo, "require_nutrition_tables", lambda cur: None)
     monkeypatch.setattr(ck_mod, "require_checkin_tables", lambda cur: None)
+    for existe in ("has_nutrition_tables", "has_diary_tables", "has_checkin_tables"):
+        monkeypatch.setattr(ck_mod, existe, lambda cur: True)
     monkeypatch.setattr(meals_mod, "require_food_tables", lambda cur: None)
     for modulo in (ck_mod, dash_mod, days_mod, plans_mod):
         monkeypatch.setattr(modulo, "_today_for", lambda conn, user_id: banco.hoje)
@@ -106,13 +108,24 @@ def test_o_router_esta_no_app_real_da_api_core():
     assert TestClient(app, raise_server_exceptions=False).get("/nutrition/checkin").status_code in (401, 403)
 
 
-def test_tabelas_ausentes_respondem_503(db, monkeypatch):
+def test_sem_as_tabelas_a_leitura_responde_200_sem_checkin_e_a_escrita_segue_503(db, monkeypatch):
+    """Janela do deploy: o código novo atende antes da migração 103. A home nunca pode gerar 5xx por isso."""
+    monkeypatch.setattr(ck_mod, "has_checkin_tables", lambda cur: False)
+
     def _sem(cur):
         raise checkin_tables_missing_error()
 
     monkeypatch.setattr(ck_mod, "require_checkin_tables", _sem)
-    resposta = _client().get("/nutrition/checkin")
-    assert resposta.status_code == 503 and resposta.json()["detail"]["migration"] == "103"
+    leitura = _client().get("/nutrition/checkin")
+    assert leitura.status_code == 200, leitura.text
+    corpo = leitura.json()
+    assert corpo["checkin"] is None and corpo["none_items"][0]["code"] == wc.NONE_MIGRATION_PENDING
+    assert corpo["none_items"][0]["label"] != wc.NONE_MIGRATION_PENDING and len(corpo["weekday_options"]) == 7
+    assert db.statements == 0 or db.checkin_inserts == 0
+    escrita = _client().put("/nutrition/checkin/settings", json={"weekday": 2})
+    assert escrita.status_code == 503 and escrita.json()["detail"]["migration"] == "103"
+    assert _client().post("/nutrition/checkins/1/accept").status_code == 503
+    assert _client().get("/nutrition/checkins").status_code == 503
 
 
 def test_sem_plano_explica_por_que_nao_ha_checkin(db):
@@ -314,3 +327,158 @@ def test_terceiro_nao_alcanca_o_checkin_de_outro_mas_admin_e_pt_sim(db):
 
 def test_check_in_inexistente_responde_404(db):
     assert _client().post("/nutrition/checkins/999/accept").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Rodada 1 de revisão: troca de dia, plano republicado, leitura corrente, goal_sequence_start, limites
+# ---------------------------------------------------------------------------
+
+
+def test_trocar_o_dia_com_proposta_pendente_nunca_volta_de_semana(db):
+    _publicar(db)
+    _semana_completa(db)
+    cliente = _client()
+    primeira = cliente.get("/nutrition/checkin").json()["checkin"]
+    assert primeira["status"] == "proposed" and primeira["week_start"] == SEMANA.isoformat()
+    db.hoje = HOJE + timedelta(days=1)  # terça
+    for dia in (2, 4, 6):  # quarta, sexta e domingo: o calendário apontaria para a semana ANTERIOR (19/10)
+        assert cliente.put("/nutrition/checkin/settings", json={"weekday": dia}).status_code == 200
+        lido = cliente.get("/nutrition/checkin").json()
+        assert lido["checkin"]["id"] == primeira["id"] and lido["week_start"] == SEMANA.isoformat()
+    assert db.checkin_inserts == 1 and lido["checkin"]["status"] == "proposed"
+
+
+def test_trocar_o_dia_depois_de_aceitar_nao_gera_outra_semana(db):
+    _publicar(db)
+    _semana_completa(db)
+    cliente = _client()
+    ck = cliente.get("/nutrition/checkin").json()["checkin"]
+    assert cliente.post(f"/nutrition/checkins/{ck['id']}/accept").status_code == 200
+    db.hoje = HOJE + timedelta(days=1)
+    cliente.put("/nutrition/checkin/settings", json={"weekday": 4})
+    lido = cliente.get("/nutrition/checkin").json()["checkin"]
+    assert lido["id"] == ck["id"] and lido["status"] == "accepted" and lido["show_card"] is False
+    assert db.checkin_inserts == 1
+
+
+def test_trocar_o_dia_no_outro_sentido_reaproveita_a_semana_ja_avaliada(db):
+    _publicar(db)
+    _semana_completa(db)
+    cliente = _client()
+    cliente.put("/nutrition/checkin/settings", json={"weekday": 2})
+    db.hoje = HOJE + timedelta(days=2)  # quarta: o check-in nasce hoje, da semana 26/10
+    ck = cliente.get("/nutrition/checkin").json()["checkin"]
+    assert ck["week_start"] == SEMANA.isoformat() and ck["due_date"] == (HOJE + timedelta(days=2)).isoformat()
+    cliente.put("/nutrition/checkin/settings", json={"weekday": 0})  # volta para a segunda (02/11, mesma semana)
+    outra = cliente.get("/nutrition/checkin").json()["checkin"]
+    assert outra["id"] == ck["id"] and db.checkin_inserts == 1
+
+
+def test_proposta_de_plano_que_nao_e_mais_o_vigente_expira_na_leitura_sem_oferecer_aceitar(db):
+    ck = _com_proposta(db)
+    outro = db.add_plan(ALUNO, status="draft", strategy="cutting")
+    assert _client().post(f"/nutrition/plans/{outro}/publish", json={"expected_current_id": _vigente(db)}).status_code == 200
+    lido = _client().get("/nutrition/checkin").json()["checkin"]
+    assert lido["id"] == ck["id"] and lido["status"] == "expired" and lido["can_respond"] is False and lido["show_card"] is False
+    assert db.checkins[ck["id"]]["status"] == "expired"  # gravado: o aceite responde 409 expirado, sem tentar publicar
+    resposta = _client().post(f"/nutrition/checkins/{ck['id']}/accept")
+    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "checkin_expired"
+
+
+def test_republicar_o_plano_antes_de_abrir_nao_diz_primeiro_check_in(db):
+    antigo = _publicar(db)
+    _semana_completa(db)
+    novo = db.add_plan(ALUNO, status="draft", strategy="cutting")
+    publicado = _client().post(f"/nutrition/plans/{novo}/publish", json={"expected_current_id": antigo})
+    assert publicado.status_code == 200, publicado.text
+    corpo = _client().get("/nutrition/checkin").json()
+    ck = corpo["checkin"]
+    assert ck is not None and corpo["none_items"] == []  # não é a mensagem de "o primeiro check-in vem na próxima semana"
+    assert ck["verdict"] == "inconclusive" and ck["proposal"] is None and ck["source_plan_id"] == novo
+    assert [m["code"] for m in ck["missing_items"]][0] == wc.MISSING_PLAN_CHANGED_IN_WEEK
+    assert ck["summary"]["days_with_target"] == 0  # nenhum dia da semana avaliada foi sob o plano vigente
+
+
+def test_plano_mudou_no_meio_da_semana_e_inconclusivo_com_motivo_proprio(db):
+    antigo = _publicar(db)
+    _semana_completa(db)
+    novo = db.add_plan(ALUNO, status="published", strategy="cutting", effective_from=SEMANA + timedelta(days=3),
+                       published_at=datetime.combine(SEMANA + timedelta(days=3), datetime.min.time()))
+    db.plans[antigo]["superseded_at"] = datetime.combine(SEMANA + timedelta(days=3), datetime.min.time())
+    for dia in wc.window_dates(SEMANA)[-4:]:  # quinta a domingo sob o plano novo (4 dias < mínimo)
+        db.targets[(ALUNO, dia)]["plan_id"] = novo
+    ck = _client().get("/nutrition/checkin").json()["checkin"]
+    assert ck["verdict"] == "inconclusive" and ck["summary"]["days_with_target"] == 4
+    assert wc.MISSING_PLAN_CHANGED_IN_WEEK in [m["code"] for m in ck["missing_items"]]
+
+
+def test_insert_absorvido_sob_snapshot_antigo_le_a_linha_com_leitura_corrente(db):
+    _publicar(db)
+    _semana_completa(db)
+    cliente = _client()
+    primeira = cliente.get("/nutrition/checkin").json()["checkin"]
+    db.invisible_to_snapshot.add(primeira["id"])  # outra abertura gravou e o snapshot desta transação não a enxerga
+    lido = cliente.get("/nutrition/checkin")
+    assert lido.status_code == 200 and lido.json()["checkin"] is not None, lido.text
+    assert lido.json()["checkin"]["id"] == primeira["id"] and db.checkin_inserts == 1
+    assert ("checkin-share", ALUNO) not in db.locks and any(trava[0] == "checkin-share" for trava in db.locks)
+
+
+def test_aceitar_mantem_o_inicio_do_caminho_do_painel_de_ponta_a_ponta(db):
+    from app.domain.nutrition import dashboard as dash
+
+    antigo = _publicar(db)
+    _semana_completa(db)
+    ck = _client().get("/nutrition/checkin").json()["checkin"]
+    novo = _client().post(f"/nutrition/checkins/{ck['id']}/accept").json()["plan"]["id"]
+    cur = db.conn().cursor()
+    planos = svc.load_published_plans(cur, ALUNO)
+    versoes = [
+        dash.PlanVersion(plan_id=ref.plan_id, effective_from=ref.effective_from, published_at=ref.published_at,
+                         strategy=planos.settings[ref.plan_id].strategy.value,
+                         goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
+                         goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent)
+        for ref in planos.refs
+    ]
+    assert {v.plan_id for v in versoes} == {antigo, novo}
+    # Mesma estratégia e mesmo alvo: o caminho continua desde a primeira versão, não recomeça no aceite.
+    assert dash.goal_sequence_start(versoes, HOJE) == INICIO_DO_PLANO
+
+
+def test_historico_respeita_o_limite_pedido_o_padrao_e_o_maximo(db):
+    _com_proposta(db)
+    base = dict(db.checkins[1])
+    for i in range(2, 2 + wc.HISTORY_LIMIT_MAX + 5):
+        db.checkins[i] = {**base, "id": i, "week_start": SEMANA - timedelta(days=7 * i)}
+    cliente = _client()
+    assert len(cliente.get("/nutrition/checkins").json()["items"]) == wc.HISTORY_LIMIT_DEFAULT
+    assert len(cliente.get("/nutrition/checkins?limit=2").json()["items"]) == 2
+    assert len(cliente.get("/nutrition/checkins?limit=0").json()["items"]) == 1
+    assert len(cliente.get("/nutrition/checkins?limit=9999").json()["items"]) == wc.HISTORY_LIMIT_MAX
+
+
+def test_o_aceite_trava_a_vigente_antes_de_ler_com_trava_compartilhada(db):
+    ck = _com_proposta(db)
+    db.locks.clear()
+    assert _client().post(f"/nutrition/checkins/{ck['id']}/accept").status_code == 200
+    ordem = [trava[0] for trava in db.locks]
+    assert ordem.index("current") < len(ordem) and ordem[0] == "checkin" and ordem[1] == "current"  # linha, depois a vigente
+
+
+def test_chamadas_ao_banco_da_leitura_leve_da_primeira_geracao_e_do_aceite(db):
+    """Contagem de statements (cada `execute` é uma chamada à Data API) no banco em memória, NÃO uma medida do DEV."""
+    _publicar(db)
+    _semana_completa(db)
+    cliente = _client()
+    db.statements = 0
+    cliente.get("/nutrition/checkin")
+    geracao = db.statements
+    db.statements = 0
+    cliente.get("/nutrition/checkin")
+    leve = db.statements
+    ck_id = next(iter(db.checkins))
+    db.statements = 0
+    assert cliente.post(f"/nutrition/checkins/{ck_id}/accept").status_code == 200
+    aceite = db.statements
+    print(f"STATEMENTS geracao={geracao} leitura_leve={leve} aceite={aceite}")
+    assert leve <= 10 and geracao <= 30 and aceite <= 60

@@ -259,3 +259,26 @@ def test_expirada_ou_plano_trocado_responde_409_sem_publicar(usuarios, raw, monk
             assert cur.fetchone() == {"n": 1}
             cur.execute("SELECT id, status FROM nutrition_checkins WHERE user_id = %s ORDER BY id", (usuarios["aluno"],))
             assert cur.fetchall() == [{"id": velha, "status": "expired"}, {"id": trocada, "status": "proposed"}]
+
+
+def test_ajuste_da_manutencao_grava_e_volta_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    """`nutrition_plans.maintenance_kcal_adjust` (103): INT NOT NULL DEFAULT 0, escrito e lido pelos dois backends."""
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        with raw.cursor() as cur:
+            cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+            cur.execute("TRUNCATE TABLE nutrition_plans")
+            cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+        raw.commit()
+        aluno = _client(usuarios["aluno"])
+        com = aluno.post("/nutrition/plans", json={"strategy": "maintenance", "maintenance_kcal_adjust": -150})
+        sem = aluno.post("/nutrition/plans", json={"strategy": "maintenance"})
+        fora = aluno.post("/nutrition/plans", json={"strategy": "cutting", "maintenance_kcal_adjust": 100})
+        assert (com.status_code, sem.status_code, fora.status_code) == (201, 201, 400), (backend, com.text, fora.text)
+        assert com.json()["maintenance_kcal_adjust"] == -150 and sem.json()["maintenance_kcal_adjust"] == 0
+        with raw.cursor() as cur:
+            cur.execute("SELECT id, maintenance_kcal_adjust FROM nutrition_plans ORDER BY id")
+            assert [(r["id"], int(r["maintenance_kcal_adjust"])) for r in cur.fetchall()] == [
+                (com.json()["id"], -150),
+                (sem.json()["id"], 0),
+            ]

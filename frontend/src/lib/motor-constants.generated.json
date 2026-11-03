@@ -879,7 +879,8 @@
     "strategy_only_fields": {
       "weekly_rate_share": "cutting",
       "surplus_share": "bulking",
-      "carb_min_g_per_kg": "bulking"
+      "carb_min_g_per_kg": "bulking",
+      "maintenance_kcal_adjust": "maintenance"
     },
     "notices": {
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
@@ -976,7 +977,12 @@
           0.35
         ],
         "fat_kcal_share_default": 0.25,
-        "tolerance_share": 0.05
+        "tolerance_share": 0.05,
+        "maintenance_kcal_adjust": [
+          -500,
+          500
+        ],
+        "maintenance_kcal_adjust_default": 0
       },
       "refeed_days_per_week_default": 2,
       "max_cut_weeks_without_break": 8,

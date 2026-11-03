@@ -4,7 +4,8 @@
       id                    BIGINT AUTO_INCREMENT PK
       user_id               BIGINT NOT NULL -> users(id) ON DELETE CASCADE
       week_start            DATE NOT NULL        segunda-feira da semana AVALIADA (fechada)
-      due_date              DATE NOT NULL        dia civil do aluno em que o check-in foi gerado
+      due_date              DATE NOT NULL        dia do check-in a que a semana avaliada se refere (o dia da semana
+                                                 escolhido); o dia em que foi gerado fica em inputs_json.generated_on
       status                VARCHAR(16) NOT NULL proposed | accepted | declined | expired | informative
       verdict               VARCHAR(24) NOT NULL `weekly_checkin.CheckinVerdict`
       inputs_json           JSON NOT NULL        entradas CONGELADAS (resumo da semana: consumo, gasto, peso, %G...)
@@ -12,7 +13,9 @@
       adjustment_kcal       DECIMAL(8,2) NULL    diferenca de kcal/dia da proposta (NULL = sem proposta)
       proposed_changes_json JSON NULL            parametros do plano que mudam se aceito
       proposed_targets_json JSON NULL            metas de um dia sem treino, antes e depois
-      expires_at            DATETIME NULL        so a proposta expira (relogio do banco)
+      expires_at            DATETIME NULL        fim do ultimo dia de validade da proposta (23:59:59, dia civil do
+                                                 aluno), de `weekly_checkin.proposal_expires_at`; so informa: a
+                                                 expiracao e decidida pela data civil, nao por este campo
       engine_version        VARCHAR(32) NOT NULL
       source_plan_id        BIGINT NOT NULL      referencia LOGICA ao plano vigente na hora (sem FK)
       generated_plan_id     BIGINT NULL          referencia LOGICA ao plano criado ao aceitar (sem FK)
@@ -26,11 +29,17 @@
       weekday     TINYINT NOT NULL   0 = segunda ... 6 = domingo (`date.weekday()`)
       updated_at
 
+    nutrition_plans.maintenance_kcal_adjust   INT NOT NULL DEFAULT 0
+      Ajuste de kcal/dia da MANUTENCAO (a manutencao nao tinha parametro de balanco): o check-in propoe mudar
+      este valor quando o peso sai da banda. 0 = o comportamento de sempre (plano antigo igual, bit a bit).
+
 Por que: o check-in avalia a semana fechada e PROPOE metas novas; o usuario confirma
 com um toque, recusa, ou deixa expirar em 3 dias (D7). E gerado ao abrir o app (D8),
 sem Lambda nem EventBridge novos, e precisa ser idempotente mesmo com aberturas
-concorrentes: o UNIQUE `(user_id, week_start)` e a barreira (a segunda insercao falha
-com chave duplicada e a rota le a linha da primeira).
+concorrentes: o UNIQUE `(user_id, week_start)` e a barreira. A geracao usa
+`INSERT ... ON DUPLICATE KEY UPDATE id = id` (a segunda insercao e no-op, sem erro) e RELE a linha com
+leitura corrente (`FOR SHARE`): sob REPEATABLE READ um SELECT comum enxergaria o snapshot antigo e nao
+veria a linha que a outra abertura acabou de gravar.
 
 --- Decisoes do DDL -------------------------------------------------------
 
@@ -45,9 +54,13 @@ com chave duplicada e a rota le a linha da primeira).
    inconclusivo, alvo atingido, baixa aderencia). Nao expira nem pede resposta.
 4. **Dia do check-in em tabela propria** (e nao em `nutrition_plans`): e preferencia do
    usuario, nao parametro de calculo; trocar o dia nao publica versao de plano.
-5. **Criacao idempotente**: `CREATE TABLE IF NOT EXISTS`; reexecucao em banco
-   convergido = 0 statements. Reversivel: `down` e um `DROP TABLE IF EXISTS` de cada
-   tabela (perde so o historico de check-ins e o dia escolhido; planos e metas ficam).
+5. **Coluna `maintenance_kcal_adjust`** em `nutrition_plans`: `INT NOT NULL DEFAULT 0`, `ADD COLUMN ... ALGORITHM=INSTANT`
+   (falha na hora se nao for elegivel; o migrate roda antes de as Lambdas receberem o codigo). O codigo novo le a
+   coluna em todo SELECT de plano, entao a ORDEM do deploy e: migracao 103, depois o codigo. O codigo antigo sobre o
+   schema novo segue funcionando (a coluna tem DEFAULT).
+6. **Criacao idempotente**: `CREATE TABLE IF NOT EXISTS`; reexecucao em banco
+   convergido = 0 statements. Reversivel: `down` solta a coluna do plano e faz `DROP TABLE IF EXISTS` de
+   cada tabela (perde so o historico de check-ins, o dia escolhido e o ajuste da manutencao; planos e metas ficam).
 
 --- Fluxo -----------------------------------------------------------------
 
@@ -72,7 +85,12 @@ import re
 CHECKINS_TABLE = "nutrition_checkins"
 SETTINGS_TABLE = "nutrition_checkin_settings"
 USERS_TABLE = "users"
+PLANS_TABLE = "nutrition_plans"
 TABLES = (CHECKINS_TABLE, SETTINGS_TABLE)
+ADJUST_COLUMN = "maintenance_kcal_adjust"
+ADJUST_DDL = "INT NOT NULL DEFAULT 0"
+ADD_ADJUST_SQL = f"ALTER TABLE {PLANS_TABLE} ADD COLUMN {ADJUST_COLUMN} {ADJUST_DDL}, ALGORITHM=INSTANT"
+DROP_ADJUST_SQL = f"ALTER TABLE {PLANS_TABLE} DROP COLUMN {ADJUST_COLUMN}"
 
 IDX_USER_WEEK = "uq_nci_user_week"
 IDX_USER_CREATED = "idx_nci_user_created"
@@ -178,7 +196,7 @@ def _normalize_type(column_type) -> str:
 
 
 def _read(db):
-    names = (*TABLES, USERS_TABLE)
+    names = (*TABLES, USERS_TABLE, PLANS_TABLE)
     placeholders = ", ".join(["%s"] * len(names))
     engines = {
         _text(row["TABLE_NAME"]): _text(row["ENGINE"])
@@ -191,7 +209,7 @@ def _read(db):
     columns = {
         (_text(row["TABLE_NAME"]), _text(row["COLUMN_NAME"])): row
         for row in db.query(
-            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY "
+            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT "
             f"FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({placeholders})",
             names,
         )
@@ -241,12 +259,31 @@ def _check_existing(table, engines, columns, indexes) -> None:
             _fail(f"{table}.{name} {'NAO e' if unique else 'e'} UNIQUE")
 
 
+def _adjust_statement(engines, columns, db) -> list[tuple[str, tuple | None]]:
+    """`ADD COLUMN` do ajuste da manutencao, ou nada se ja convergiu (forma divergente = erro)."""
+    if PLANS_TABLE not in engines:
+        if bool(getattr(db, "dry_run", False)):
+            return [(ADD_ADJUST_SQL, None)]
+        _fail(f"tabela {PLANS_TABLE} nao existe")
+    info = columns.get((PLANS_TABLE, ADJUST_COLUMN))
+    if info is None:
+        return [(ADD_ADJUST_SQL, None)]
+    if _normalize_type(info["COLUMN_TYPE"]) != "int":
+        _fail(f"{PLANS_TABLE}.{ADJUST_COLUMN} e {_text(info['COLUMN_TYPE'])}, esperado int")
+    if _text(info["IS_NULLABLE"]) != "NO":
+        _fail(f"{PLANS_TABLE}.{ADJUST_COLUMN} aceita NULL, esperado NOT NULL")
+    padrao = info.get("COLUMN_DEFAULT")
+    if padrao is None or _text(padrao) != "0":
+        _fail(f"{PLANS_TABLE}.{ADJUST_COLUMN} tem default {None if padrao is None else _text(padrao)!r}, esperado '0'")
+    return []
+
+
 def plan(db) -> list[tuple[str, tuple | None]]:
     """Somente leitura. Devolve [(sql, params)] a executar, na ordem."""
     engines, columns, indexes = _read(db)
     if USERS_TABLE not in engines:
         if bool(getattr(db, "dry_run", False)):
-            return [(CREATE_BY_TABLE[t], None) for t in TABLES if t not in engines]
+            return [*((CREATE_BY_TABLE[t], None) for t in TABLES if t not in engines), (ADD_ADJUST_SQL, None)]
         _fail(f"tabela {USERS_TABLE} nao existe")
     _check_users(engines, columns)
     statements: list[tuple[str, tuple | None]] = []
@@ -255,13 +292,18 @@ def plan(db) -> list[tuple[str, tuple | None]]:
             _check_existing(table, engines, columns, indexes)
         else:
             statements.append((CREATE_BY_TABLE[table], None))
+    statements.extend(_adjust_statement(engines, columns, db))
     return statements
 
 
 def plan_down(db) -> list[tuple[str, tuple | None]]:
-    """Inverso de `plan`: 1 `DROP TABLE` por tabela que existe, senao nada."""
-    engines, _columns, _indexes = _read(db)
-    return [(DROP_SQL[t], None) for t in TABLES if t in engines]
+    """Inverso de `plan`: solta a coluna do plano e 1 `DROP TABLE` por tabela que existe, senao nada."""
+    engines, columns, _indexes = _read(db)
+    statements: list[tuple[str, tuple | None]] = []
+    if PLANS_TABLE in engines and (PLANS_TABLE, ADJUST_COLUMN) in columns:
+        statements.append((DROP_ADJUST_SQL, None))
+    statements.extend((DROP_SQL[t], None) for t in TABLES if t in engines)
+    return statements
 
 
 def up(db):

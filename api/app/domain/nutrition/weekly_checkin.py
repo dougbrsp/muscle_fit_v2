@@ -47,7 +47,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 from typing import Any, Final, Optional, Sequence
 
@@ -74,17 +74,21 @@ from .strategy import (
     CUT_MAX_DEFICIT_SHARE,
     CUT_MIN_INTAKE_BMR_MULTIPLE,
     CUT_WEEKLY_RATE_SHARE_RANGE,
+    MAINT_KCAL_ADJUST_RANGE,
     MAINT_TOLERANCE_SHARE,
     Strategy,
     kcal_target,
     surplus_range_for,
 )
-from .weekly_budget import MIN_LOGGED_DAYS_FOR_WEEK, weekly_adherence
+from .weekly_budget import MIN_LOGGED_DAYS_FOR_WEEK, week_days, weekly_adherence
 
 # --- Janelas e mínimos de dados (D9, D10) -------------------------------------------------------------------------
 WEIGHT_WINDOW_DAYS: Final[int] = 14  # a semana fechada e a anterior: a inclinação precisa cobrir `MIN_WEIGHT_SPAN_DAYS`
 BODY_WINDOW_DAYS: Final[int] = PREFERRED_WINDOW_DAYS  # peso, %G, massa muscular e TDEE observado: 28 dias até o domingo
 MIN_COMPLETE_DAYS: Final[int] = MIN_LOGGED_DAYS_FOR_WEEK  # a "semana válida" do `weekly_budget`
+# Só os dias da semana avaliada sob o plano VIGENTE julgam o ritmo desse plano: se o plano mudou no meio da semana (ou foi
+# republicado antes de o app abrir), a semana é inconclusiva com motivo próprio. Default de desenho.
+MIN_DAYS_UNDER_CURRENT_PLAN: Final[int] = MIN_COMPLETE_DAYS
 MIN_WEIGHT_READINGS_FOR_TREND: Final[int] = 3  # default de desenho: nunca uma pesagem isolada
 MIN_WEIGHT_READINGS_IN_WEEK: Final[int] = 1
 MIN_BIA_READINGS: Final[int] = 3  # default de desenho: tendência, não um ponto
@@ -95,7 +99,7 @@ MIN_READINGS_FOR_GOAL: Final[int] = 2  # alvo de peso ou de %G só vale com 2 le
 ON_TRACK_TOLERANCE_SHARE: Final[float] = 0.25  # do ritmo esperado
 RATE_NOISE_FLOOR_SHARE: Final[float] = 0.002  # do peso por semana (~0,15 kg a 75 kg): menos que isso é ruído de balança
 CORRECTION_FRACTION: Final[float] = 0.5  # corrige metade da diferença por semana
-MAX_KCAL_STEP_SHARE: Final[float] = 0.05  # passo máximo semanal: 5% do gasto base (mesma ordem de `MAINT_TOLERANCE_SHARE`)
+MAX_KCAL_STEP_SHARE: Final[float] = MAINT_TOLERANCE_SHARE  # passo máximo semanal = a banda de manutenção do `strategy` (5% do gasto)
 MIN_KCAL_STEP: Final[float] = 50.0  # abaixo disso o ajuste é ruído e não se propõe
 BIA_CORRECTION_FRACTION: Final[float] = 0.5  # da fração do passo máximo usada na correção pela bioimpedância
 LEAN_LOSS_LIMIT_SHARE_PER_WEEK: Final[float] = 0.0025  # da massa magra por semana (cutting)
@@ -107,6 +111,7 @@ RATE_DECIMALS: Final[int] = 4  # `nutrition_plans.weekly_rate_share`/`surplus_sh
 PROPOSAL_VALIDITY_DAYS: Final[int] = 3  # D7: sem resposta em 3 dias a proposta expira e as metas atuais seguem
 DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0  # D8: segunda-feira (0 = segunda, como `date.weekday()`)
 CHECKIN_WEEKDAY_RANGE: Final[tuple[int, int]] = (0, 6)
+EXPIRY_TIME_OF_DAY: Final[time] = time(23, 59, 59)  # a proposta vale até o fim do último dia (dia civil do aluno)
 
 
 class CheckinVerdict(str, Enum):
@@ -135,6 +140,7 @@ MISSING_NO_WEIGHING_IN_WEEK = "checkin_no_weighing_in_week"
 MISSING_WEIGHT_SPAN_SHORT = "checkin_weight_span_short"
 MISSING_FAT_MASS = "checkin_missing_fat_mass"
 MISSING_SUBJECT = "checkin_missing_subject"
+MISSING_PLAN_CHANGED_IN_WEEK = "checkin_plan_changed_in_week"
 REASON_ADHERENCE_OFF = "checkin_adherence_off"
 REASON_ADJUSTMENT_BELOW_MIN = "checkin_adjustment_below_minimum"
 REASON_AT_STRATEGY_LIMIT = "checkin_at_strategy_limit"
@@ -147,11 +153,11 @@ REASON_FAT_GAIN = "checkin_fat_gain"
 REASON_BIA_HOLD = "checkin_bia_hold"
 REASON_GOAL_WEIGHT_REACHED = "checkin_goal_weight_reached"
 REASON_GOAL_BODY_FAT_REACHED = "checkin_goal_body_fat_reached"
-REASON_MAINTENANCE_REVIEW = "checkin_maintenance_review_plan"
 
 # Por que não há check-in a mostrar (a tela explica em vez de esconder).
 NONE_NO_PLAN = "checkin_no_plan"
 NONE_PLAN_AFTER_WEEK = "checkin_plan_after_week"
+NONE_MIGRATION_PENDING = "migration_pending"  # as tabelas da 103 ainda não existem: a leitura responde 200 sem check-in
 
 # Histórico: itens por página (default de desenho).
 HISTORY_LIMIT_DEFAULT: Final[int] = 12
@@ -161,6 +167,11 @@ HISTORY_LIMIT_MAX: Final[int] = 52
 CHANGE_WEEKLY_RATE_SHARE = "weekly_rate_share"
 CHANGE_SURPLUS_SHARE = "surplus_share"
 CHANGE_MANUAL_TARGETS = "manual_targets"
+CHANGE_MAINTENANCE_KCAL_ADJUST = "maintenance_kcal_adjust"
+
+# O que as metas "antes e depois" da proposta representam.
+SCOPE_REST_DAY = "rest_day"  # um dia sem treino (sem ciclo de dias)
+SCOPE_CYCLE_AVERAGE = "cycle_average"  # média dos 7 dias do ciclo (cada dia sem treino)
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +191,7 @@ class CheckinDay:
     weight_kg: Optional[float] = None
     body_fat_percent: Optional[float] = None
     muscle_mass_kg: Optional[float] = None
+    plan_id: Optional[int] = None  # plano da meta gravada nesse dia
 
 
 @dataclass(frozen=True)
@@ -193,6 +205,14 @@ class CheckinInputs:
     reference_day: date
     scale_bmr_kcal: Optional[float] = None
     ffm_age_days: Optional[int] = None
+    plan_id: Optional[int] = None  # plano VIGENTE (o que a proposta muda); None = não filtra os dias por plano
+
+    @property
+    def plan_days(self) -> tuple[CheckinDay, ...]:
+        """Os dias da semana sob o plano vigente: só eles julgam o ritmo do plano."""
+        if self.plan_id is None:
+            return self.week_days
+        return tuple(dia for dia in self.week_days if dia.plan_id == self.plan_id)
 
     @property
     def week_days(self) -> tuple[CheckinDay, ...]:
@@ -310,6 +330,7 @@ class CheckinProposal:
     after: DayMacros
     delta_kcal: float
     changes: dict[str, Any]
+    scope: str = SCOPE_REST_DAY
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -317,6 +338,7 @@ class CheckinProposal:
             "after": self.after.to_dict(),
             "delta_kcal": self.delta_kcal,
             "changes": self.changes,
+            "scope": self.scope,
         }
 
 
@@ -367,14 +389,18 @@ def body_trend(series: Sequence[Optional[float]]) -> BodyTrend:
 
 
 def _lean_series(days: Sequence[CheckinDay]) -> list[Optional[float]]:
-    """Massa magra por dia: a massa muscular da bioimpedância; sem ela, peso × (1 − %G) do mesmo dia."""
+    """Massa magra por dia, de UMA grandeza só por janela (misturar fontes inventaria tendência): a massa muscular da
+    bioimpedância se houver qualquer leitura dela na janela (D10); só sem nenhum dia dela, peso × (1 − %G) do mesmo dia."""
+    musculo = [positive_number(dia.muscle_mass_kg) for dia in days]
+    if any(valor is not None for valor in musculo):
+        return musculo
     saida: list[Optional[float]] = []
     for dia in days:
-        musculo = positive_number(dia.muscle_mass_kg)
-        if musculo is None and dia.weight_kg is not None and dia.body_fat_percent is not None:
+        derivada = None
+        if dia.weight_kg is not None and dia.body_fat_percent is not None:
             massa_gorda = fat_mass_kg(dia.weight_kg, dia.body_fat_percent)
-            musculo = positive_number(dia.weight_kg - massa_gorda) if massa_gorda is not None else None
-        saida.append(musculo)
+            derivada = positive_number(dia.weight_kg - massa_gorda) if massa_gorda is not None else None
+        saida.append(derivada)
     return saida
 
 
@@ -416,6 +442,7 @@ def _builder_args(settings: PlanSettings) -> dict[str, Any]:
         ),
         "manual_training_mode": manual.training_mode.value if manual else None,
         "cycle_days": settings.cycle_days,
+        "maintenance_kcal_adjust": settings.maintenance_kcal_adjust,
     }
 
 
@@ -435,14 +462,32 @@ def _base_tdee_kcal(settings: PlanSettings, subject: Subject, bmr_kcal: Optional
     return ee.tdee(bmr_kcal, subject.activity_level, settings.tdee_mode, 0.0).kcal
 
 
-def _day_macros(settings: PlanSettings, inputs: CheckinInputs) -> DayMacros:
+def _macros_of_day(settings: PlanSettings, inputs: CheckinInputs, day: date) -> DayMacros:
     meta = compute_daily_target(
-        inputs.subject,
-        settings.plan_params(inputs.ffm_age_days),
-        DayContext(day=inputs.reference_day),
-        scale_bmr=inputs.scale_bmr_kcal,
+        inputs.subject, settings.plan_params(inputs.ffm_age_days), DayContext(day=day), scale_bmr=inputs.scale_bmr_kcal
     ).macros
     return DayMacros(kcal=meta.kcal, protein_g=meta.protein_g, carb_g=meta.carb_g, fat_g=meta.fat_g)
+
+
+def _day_macros(settings: PlanSettings, inputs: CheckinInputs) -> tuple[DayMacros, str]:
+    """Metas de um dia sem treino; com ciclo de dias a média dos 7 dias do ciclo (um dia só mostraria alto OU baixo)."""
+    if settings.cycle_kinds is None:
+        return _macros_of_day(settings, inputs, inputs.reference_day), SCOPE_REST_DAY
+    dias = [_macros_of_day(settings, inputs, dia) for dia in week_days(inputs.reference_day)]
+
+    def media(pick: Any) -> Optional[float]:
+        valores = [float(pick(d)) for d in dias if pick(d) is not None]
+        return sum(valores) / len(valores) if valores else None
+
+    return (
+        DayMacros(
+            kcal=media(lambda d: d.kcal),
+            protein_g=media(lambda d: d.protein_g),
+            carb_g=media(lambda d: d.carb_g),
+            fat_g=media(lambda d: d.fat_g),
+        ),
+        SCOPE_CYCLE_AVERAGE,
+    )
 
 
 def _round_rate(value: float) -> float:
@@ -477,10 +522,12 @@ def _round_grams(value: float) -> float:
 
 
 def _manual_changes(
-    inputs: CheckinInputs, delta: float, tdee_base: float, bmr_kcal: Optional[float], fat_mass: Optional[float]
+    inputs: CheckinInputs, delta: float, tdee_ref: float, bmr_kcal: Optional[float], fat_mass: Optional[float]
 ) -> tuple[Optional[_Applied], tuple[str, ...]]:
-    """Gramas manuais: a proteína fica; a diferença de kcal divide entre carboidrato e gordura na proporção atual
-    (a mesma prioridade escolhida pelo usuário). Respeita os mesmos limites de energia da estratégia."""
+    """Gramas manuais: a proteína fica (sem arredondar); a diferença de kcal divide entre carboidrato e gordura na
+    proporção atual (a mesma prioridade escolhida pelo usuário). `tdee_ref` é o gasto contra o qual as gramas valem:
+    o de um dia sem treino se o modo soma o treino do dia, ou a MÉDIA de gasto da semana no modo fixo (as gramas fixas
+    cobrem também os dias de treino). Respeita os mesmos limites de energia da estratégia."""
     settings = inputs.settings
     manual: ManualMacros = settings.manual_macros  # type: ignore[assignment]
     atual = kcal_from_macros(manual.protein_g, manual.carb_g, manual.fat_g)
@@ -488,12 +535,15 @@ def _manual_changes(
         return None, (REASON_PROPOSAL_INVALID,)
     if settings.strategy == Strategy.CUTTING:
         peso = positive_number(inputs.subject.weight_kg)
-        teto = tdee_base - (daily_kcal_for_weekly_rate(peso * CUT_WEEKLY_RATE_SHARE_RANGE[0], fat_mass) or 0.0) if peso else tdee_base
-        piso = _kcal_floor(settings.strategy, bmr_kcal, tdee_base)
-    else:  # bulking
+        teto = tdee_ref - (daily_kcal_for_weekly_rate(peso * CUT_WEEKLY_RATE_SHARE_RANGE[0], fat_mass) or 0.0) if peso else tdee_ref
+        piso = _kcal_floor(settings.strategy, bmr_kcal, tdee_ref)
+    elif settings.strategy == Strategy.BULKING:
         faixa = surplus_range_for(settings.advanced)
-        piso, teto = tdee_base * (1.0 + faixa[0]), tdee_base * (1.0 + faixa[1])
+        piso, teto = tdee_ref * (1.0 + faixa[0]), tdee_ref * (1.0 + faixa[1])
         piso = max(piso, KCAL_BLOCK_MIN)
+    else:  # manutenção: o mesmo teto de ajuste do parâmetro da manutenção
+        piso = max(tdee_ref + MAINT_KCAL_ADJUST_RANGE[0], _kcal_floor(settings.strategy, bmr_kcal, tdee_ref))
+        teto = tdee_ref + MAINT_KCAL_ADJUST_RANGE[1]
     alvo = atual + delta
     # Só limita no sentido do movimento: quem já está fora da faixa por escolha própria não é puxado de volta.
     if delta > 0:
@@ -511,7 +561,7 @@ def _manual_changes(
     carbo = max(manual.carb_g + efetivo * parte_carbo / KCAL_PER_G_CARB, 0.0)
     gordura = max(manual.fat_g + efetivo * (1.0 - parte_carbo) / KCAL_PER_G_FAT, 0.0)
     novas = {
-        "protein_g": _round_grams(manual.protein_g),
+        "protein_g": manual.protein_g,
         "carb_g": _round_grams(carbo),
         "fat_g": _round_grams(gordura),
     }
@@ -524,8 +574,8 @@ def _manual_changes(
 def _parametric_changes(
     inputs: CheckinInputs, delta: float, tdee_base: float, bmr_kcal: Optional[float], fat_mass: Optional[float]
 ) -> tuple[Optional[_Applied], tuple[str, ...]]:
-    """Sem gramas manuais: o ajuste de kcal vira o parâmetro do plano que gera a meta (ritmo do cutting ou superávit
-    do bulking), dentro da faixa da estratégia."""
+    """Sem gramas manuais: o ajuste de kcal vira o parâmetro do plano que gera a meta (ritmo do cutting, superávit do
+    bulking ou ajuste da manutenção), dentro da faixa da estratégia."""
     settings = inputs.settings
     peso = positive_number(inputs.subject.weight_kg)
     antes = kcal_target(settings.strategy_params(), tdee_base, bmr_kcal, peso, fat_mass)
@@ -542,10 +592,15 @@ def _parametric_changes(
         faixa = CUT_WEEKLY_RATE_SHARE_RANGE
         ritmo = _round_rate(min(max(kg_semana / peso, faixa[0]), faixa[1]))
         mudanca = {CHANGE_WEEKLY_RATE_SHARE: ritmo}
-    else:
+    elif settings.strategy == Strategy.BULKING:
         faixa = surplus_range_for(settings.advanced)
         superavit = _round_rate(min(max((alvo - tdee_base) / tdee_base, faixa[0]), faixa[1]))
         mudanca = {CHANGE_SURPLUS_SHARE: superavit}
+    else:
+        alvo = max(alvo, _kcal_floor(settings.strategy, bmr_kcal, tdee_base))
+        faixa_manutencao = MAINT_KCAL_ADJUST_RANGE
+        ajuste = int(round(min(max(alvo - tdee_base, faixa_manutencao[0]), faixa_manutencao[1])))
+        mudanca = {CHANGE_MAINTENANCE_KCAL_ADJUST: ajuste}
     validacao = apply_changes(settings, mudanca)
     if not validacao.ok:
         return None, (REASON_PROPOSAL_INVALID,)
@@ -558,7 +613,9 @@ def _parametric_changes(
     return _Applied(mudanca, validacao.settings, efetivo), ()  # type: ignore[arg-type]
 
 
-def _propose(inputs: CheckinInputs, delta: float) -> tuple[Optional[CheckinProposal], tuple[str, ...]]:
+def _propose(
+    inputs: CheckinInputs, delta: float, mean_tdee_kcal: Optional[float] = None
+) -> tuple[Optional[CheckinProposal], tuple[str, ...]]:
     """Transforma o ajuste de kcal/dia em metas novas e confere os pisos. `(None, motivos)` = não propõe."""
     settings, subject = inputs.settings, inputs.subject
     bmr_kcal = positive_number(bmr_mod.bmr(subject, settings.bmr_formula, inputs.ffm_age_days).kcal)
@@ -567,7 +624,8 @@ def _propose(inputs: CheckinInputs, delta: float) -> tuple[Optional[CheckinPropo
     if tdee_base is None:
         return None, (REASON_PROPOSAL_INVALID,)
     if settings.manual_macros is not None:
-        aplicado, motivos = _manual_changes(inputs, delta, tdee_base, bmr_kcal, fat_mass)
+        tdee_ref = tdee_base if settings.manual_adds_training else (positive_number(mean_tdee_kcal) or tdee_base)
+        aplicado, motivos = _manual_changes(inputs, delta, tdee_ref, bmr_kcal, fat_mass)
     else:
         aplicado, motivos = _parametric_changes(inputs, delta, tdee_base, bmr_kcal, fat_mass)
     if aplicado is None:
@@ -585,11 +643,14 @@ def _propose(inputs: CheckinInputs, delta: float) -> tuple[Optional[CheckinPropo
     erros_ciclo, _ = check_cycle_floors(novo, subject, inputs.scale_bmr_kcal, inputs.ffm_age_days)
     if erros_ciclo:
         return None, (REASON_BLOCKED_BY_CYCLE,)
-    antes, depois = _day_macros(settings, inputs), _day_macros(novo, inputs)
+    antes, escopo = _day_macros(settings, inputs)
+    depois, _ = _day_macros(novo, inputs)
     if depois.kcal is None or antes.kcal is None:
         return None, (REASON_PROPOSAL_INVALID,)
     return (
-        CheckinProposal(before=antes, after=depois, delta_kcal=depois.kcal - antes.kcal, changes=aplicado.changes),
+        CheckinProposal(
+            before=antes, after=depois, delta_kcal=depois.kcal - antes.kcal, changes=aplicado.changes, scope=escopo
+        ),
         (),
     )
 
@@ -636,11 +697,12 @@ def _summary(
     fat_mass: Optional[float],
 ) -> tuple[WeekSummary, int, list[str]]:
     semana = inputs.week_days
-    metas = [dia.target for dia in semana]
-    ingestoes = [dia.intake for dia in semana]
+    sob_plano = inputs.plan_days  # só estes julgam o ritmo do plano vigente
+    metas = [dia.target for dia in sob_plano]
+    ingestoes = [dia.intake for dia in sob_plano]
     aderencia = weekly_adherence(metas, ingestoes)
-    completos = [dia for dia in semana if dia.target is not None and dia.target.computable and dia.intake is not None]
-    com_meta = [dia for dia in semana if dia.target is not None and dia.target.computable]
+    completos = [dia for dia in sob_plano if dia.target is not None and dia.target.computable and dia.intake is not None]
+    com_meta = [dia for dia in sob_plano if dia.target is not None and dia.target.computable]
     pares = [(float(dia.target.kcal), float(dia.tdee_kcal)) for dia in com_meta if dia.target.kcal is not None and positive_number(dia.tdee_kcal) is not None]  # type: ignore[union-attr, arg-type]
     media_meta = _mean([a for a, _ in pares])
     media_gasto = _mean([b for _, b in pares])
@@ -686,10 +748,16 @@ def _summary(
 
 def _missing(inputs: CheckinInputs, resumo: WeekSummary, weight: BodyTrend, fat_mass: Optional[float]) -> tuple[str, ...]:
     faltas: list[str] = []
-    if resumo.days_with_target == 0:
+    outro_plano = inputs.plan_id is not None and any(
+        dia.target is not None and dia.plan_id is not None and dia.plan_id != inputs.plan_id for dia in inputs.week_days
+    )
+    if outro_plano and resumo.days_with_target < MIN_DAYS_UNDER_CURRENT_PLAN:
+        faltas.append(MISSING_PLAN_CHANGED_IN_WEEK)  # motivo próprio: o plano mudou na semana avaliada
+    elif resumo.days_with_target == 0:
         faltas.append(MISSING_NO_TARGETS)
-    if resumo.complete_days < MIN_COMPLETE_DAYS:
+    elif resumo.complete_days < MIN_COMPLETE_DAYS:
         faltas.append(MISSING_FEW_COMPLETE_DAYS)
+
     na_semana = sum(1 for dia in inputs.week_days if dia.weight_kg is not None)
     if weight.readings < MIN_WEIGHT_READINGS_FOR_TREND:
         faltas.append(MISSING_FEW_WEIGHINGS)
@@ -727,41 +795,45 @@ def evaluate_week(inputs: CheckinInputs) -> CheckinResult:
     ruido = RATE_NOISE_FLOOR_SHARE * float(peso.mean or 0.0)
     folga = max(ON_TRACK_TOLERANCE_SHARE * abs(esperado), ruido)
 
+    motivos: list[str] = []
+    corrige = False
     if estrategia == Strategy.MAINTENANCE:
+        # Manutenção: a banda de peso decide; fora dela o ajuste (`maintenance_kcal_adjust`) traz o peso de volta ao centro
+        # (variação zero), com os mesmos passo máximo, pisos e tetos. Dentro da banda o motor mantém.
         banda = max(float(resumo.maintenance_band_kg or 0.0), ruido)
         if real > banda:
-            return CheckinResult(CheckinVerdict.ABOVE_BAND, resumo, reasons=(REASON_MAINTENANCE_REVIEW,))
-        if real < -banda:
-            return CheckinResult(CheckinVerdict.BELOW_BAND, resumo, reasons=(REASON_MAINTENANCE_REVIEW,))
-        return CheckinResult(CheckinVerdict.ON_TRACK, resumo)
-
-    direcao = -1.0 if estrategia == Strategy.CUTTING else 1.0
-    diferenca = direcao * (real - esperado)  # > 0: andou além do esperado; < 0: ficou aquém
-    if diferenca < -folga:
-        veredito = CheckinVerdict.SLOW
-    elif diferenca > folga:
-        veredito = CheckinVerdict.FAST
+            veredito = CheckinVerdict.ABOVE_BAND
+        elif real < -banda:
+            veredito = CheckinVerdict.BELOW_BAND
+        else:
+            veredito = CheckinVerdict.ON_TRACK
+        correcao = daily_kcal_for_weekly_rate(real, massa_gorda)
+        ajuste = 0.0 if veredito == CheckinVerdict.ON_TRACK or correcao is None else -CORRECTION_FRACTION * correcao
     else:
-        veredito = CheckinVerdict.ON_TRACK
+        direcao = -1.0 if estrategia == Strategy.CUTTING else 1.0
+        diferenca = direcao * (real - esperado)  # > 0: andou além do esperado; < 0: ficou aquém
+        if diferenca < -folga:
+            veredito = CheckinVerdict.SLOW
+        elif diferenca > folga:
+            veredito = CheckinVerdict.FAST
+        else:
+            veredito = CheckinVerdict.ON_TRACK
+        # Quanto comer a mais (+) ou a menos (-) por dia para corrigir a diferença, na densidade da massa gorda atual.
+        correcao = daily_kcal_for_weekly_rate(real - esperado, massa_gorda)
+        ajuste = 0.0 if veredito == CheckinVerdict.ON_TRACK or correcao is None else -CORRECTION_FRACTION * correcao
 
-    motivos: list[str] = []
-    # Quanto comer a mais (+) ou a menos (-) por dia para corrigir a diferença, na densidade da massa gorda atual.
-    correcao = daily_kcal_for_weekly_rate(real - esperado, massa_gorda)
-    ajuste = 0.0 if veredito == CheckinVerdict.ON_TRACK or correcao is None else -CORRECTION_FRACTION * correcao
-
-    # D10: a bioimpedância só corrige com tendência de 2+ semanas; uma semana isolada é ignorada.
-    corrige = False
-    if estrategia == Strategy.CUTTING:
-        massa_magra = float(magra.mean or 0.0)
-        if magra.valid_for_bia and (magra.weekly_change or 0.0) <= -LEAN_LOSS_LIMIT_SHARE_PER_WEEK * massa_magra:
-            motivos.append(REASON_LEAN_LOSS)
-            corrige = True
-    elif gorda.valid_for_bia and peso_longo.valid_for_bia:
-        if fat_gain_exceeds_limit(float(gorda.weekly_change or 0.0), float(peso_longo.weekly_change or 0.0)):
-            motivos.append(REASON_FAT_GAIN)
-            corrige = True
-    if not corrige and (magra.readings or gorda.readings) and not (magra.valid_for_bia or gorda.valid_for_bia):
-        motivos.append(REASON_BIA_SHORT_TREND)
+        # D10: a bioimpedância só corrige com tendência de 2+ semanas; uma semana isolada é ignorada.
+        if estrategia == Strategy.CUTTING:
+            massa_magra = float(magra.mean or 0.0)
+            if magra.valid_for_bia and (magra.weekly_change or 0.0) <= -LEAN_LOSS_LIMIT_SHARE_PER_WEEK * massa_magra:
+                motivos.append(REASON_LEAN_LOSS)
+                corrige = True
+        elif gorda.valid_for_bia and peso_longo.valid_for_bia:
+            if fat_gain_exceeds_limit(float(gorda.weekly_change or 0.0), float(peso_longo.weekly_change or 0.0)):
+                motivos.append(REASON_FAT_GAIN)
+                corrige = True
+        if not corrige and (magra.readings or gorda.readings) and not (magra.valid_for_bia or gorda.valid_for_bia):
+            motivos.append(REASON_BIA_SHORT_TREND)
 
     teto_passo = MAX_KCAL_STEP_SHARE * float(resumo.mean_tdee_kcal or 0.0)
     if corrige:
@@ -774,12 +846,20 @@ def evaluate_week(inputs: CheckinInputs) -> CheckinResult:
         else:
             ajuste = min(ajuste, -passo_bia)  # menos superávit
 
-    # D9: baixa aderência não vira corte. Só ajusta com a aderência calórica válida e dentro da tolerância; a única
-    # exceção é a correção que REDUZ o déficit/superávit pela bioimpedância (comer mais no cutting, menos no bulking
-    # só depende do corpo, não do que foi comido).
-    ajusta_sem_aderencia = corrige and veredito != CheckinVerdict.SLOW
+    # D9: baixa aderência não vira corte. Só ajusta com a aderência calórica válida e dentro da tolerância. Única exceção
+    # (com motivo): a correção da bioimpedância que ALIVIA o déficit/superávit quando o desvio da ingestão é justamente
+    # a causa (cutting: comeu ABAIXO da meta e perdeu massa magra; bulking: comeu ACIMA e ganhou gordura): aliviar não
+    # depende de a pessoa ter seguido o plano, e o contrário (comeu acima e perdeu massa magra) segue travado.
+    parte = resumo.kcal_share
+    causa_na_ingestao = (
+        corrige
+        and veredito != CheckinVerdict.SLOW
+        and resumo.adherence_valid
+        and parte is not None
+        and ((estrategia == Strategy.CUTTING and parte < 1.0) or (estrategia == Strategy.BULKING and parte > 1.0))
+    )
     aderencia_ok = resumo.adherence_valid and resumo.kcal_within_tolerance is True
-    if ajuste != 0.0 and not aderencia_ok and not ajusta_sem_aderencia:
+    if ajuste != 0.0 and not aderencia_ok and not causa_na_ingestao:
         motivos.append(REASON_ADHERENCE_OFF)
         ajuste = 0.0
 
@@ -789,7 +869,7 @@ def evaluate_week(inputs: CheckinInputs) -> CheckinResult:
             motivos.append(REASON_ADJUSTMENT_BELOW_MIN)
         return CheckinResult(veredito, resumo, reasons=tuple(dict.fromkeys(motivos)))
 
-    proposta, bloqueios = _propose(inputs, ajuste)
+    proposta, bloqueios = _propose(inputs, ajuste, resumo.mean_tdee_kcal)
     motivos.extend(bloqueios)
     return CheckinResult(veredito, resumo, reasons=tuple(dict.fromkeys(motivos)), proposal=proposta)
 
@@ -837,6 +917,17 @@ def proposal_expires_on(created_on: date) -> date:
     return created_on + timedelta(days=PROPOSAL_VALIDITY_DAYS)
 
 
+def proposal_expires_at(created_on: date) -> datetime:
+    """Fim do último dia de validade (só informativo: a expiração é decidida pela data civil, `is_proposal_expired`)."""
+    return datetime.combine(proposal_expires_on(created_on), EXPIRY_TIME_OF_DAY)
+
+
+def should_reuse_latest(latest_week_start: Optional[date], week_start: date) -> bool:
+    """Já existe check-in de semana igual ou MAIS NOVA que a que o calendário pede: devolve-o em vez de gerar outro.
+    Trocar o dia do check-in nunca faz o app voltar a uma semana mais antiga (nem repete a semana já avaliada)."""
+    return latest_week_start is not None and latest_week_start >= week_start
+
+
 def is_proposal_expired(created_on: date, today: date) -> bool:
     return today > proposal_expires_on(created_on)
 
@@ -857,7 +948,10 @@ __all__ = [
     "NONE_NO_PLAN",
     "NONE_PLAN_AFTER_WEEK",
     "is_card_visible",
+    "proposal_expires_at",
+    "should_reuse_latest",
     "BODY_WINDOW_DAYS",
+    "CHANGE_MAINTENANCE_KCAL_ADJUST",
     "CHANGE_MANUAL_TARGETS",
     "CHANGE_SURPLUS_SHARE",
     "CHANGE_WEEKLY_RATE_SHARE",

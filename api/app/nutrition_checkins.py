@@ -22,7 +22,7 @@ motor gravou na proposta e publica por `nutrition_plans.publish_draft`.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,8 +40,17 @@ from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, is_staff, resolve_target_user
 from .nutrition_dashboard import MEAL_TOTALS_SQL, MUSCLE_WINDOW_SQL
 from .nutrition_meals import day_totals
-from .nutrition_plans import _fetch_plan, insert_draft, publish_draft
-from .nutrition_schema import CHECKIN_SETTINGS_TABLE, CHECKINS_TABLE, require_checkin_tables, require_diary_tables, require_nutrition_tables
+from .nutrition_plans import _CURRENT_FOR_UPDATE_SQL, _fetch_plan, insert_draft, publish_draft
+from .nutrition_schema import (
+    CHECKIN_SETTINGS_TABLE,
+    CHECKINS_TABLE,
+    has_checkin_tables,
+    has_diary_tables,
+    has_nutrition_tables,
+    require_checkin_tables,
+    require_diary_tables,
+    require_nutrition_tables,
+)
 from .nutrition_targets_service import (
     load_published_plans,
     load_user_inputs,
@@ -54,6 +63,7 @@ from .template_assignments import db_now
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
+PUBLISHED_PLAN = "published"
 PROPOSED = wc.CheckinStatus.PROPOSED.value
 ACCEPTED = wc.CheckinStatus.ACCEPTED.value
 DECLINED = wc.CheckinStatus.DECLINED.value
@@ -65,7 +75,13 @@ _COLUMNS = (
     "proposed_changes_json, proposed_targets_json, expires_at, engine_version, source_plan_id, generated_plan_id, "
     "responded_at, created_at"
 )
-_BY_WEEK_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s AND week_start = %s"
+# O mais recente do usuário (D8: o dia do check-in pode mudar, mas nunca se volta a uma semana mais antiga).
+_LATEST_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s ORDER BY week_start DESC LIMIT 1"
+# Releitura DEPOIS do INSERT: sob REPEATABLE READ um SELECT comum enxerga o snapshot antigo e não veria a linha que outra
+# abertura concorrente acabou de gravar (o INSERT vira no-op no UNIQUE); `FOR SHARE` é leitura corrente.
+_BY_WEEK_SHARE_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s AND week_start = %s FOR SHARE"
+# O plano vigente (sem trava): a proposta só vale para o plano que a gerou.
+_CURRENT_PLAN_SQL = "SELECT id FROM nutrition_plans WHERE user_id = %s AND status = %s AND superseded_at IS NULL"
 _BY_ID_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE id = %s"
 _BY_ID_FOR_UPDATE_SQL = _BY_ID_SQL + " FOR UPDATE"
 _HISTORY_SQL = f"SELECT {_COLUMNS} FROM {CHECKINS_TABLE} WHERE user_id = %s ORDER BY week_start DESC, id DESC LIMIT %s"
@@ -207,7 +223,7 @@ def _read_weekday(cur: Any, aluno: int) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 
-def _build_inputs(cur: Any, aluno: int, settings: Any, week_start: date, hoje: date) -> wc.CheckinInputs:
+def _build_inputs(cur: Any, aluno: int, plan_id: int, settings: Any, week_start: date, hoje: date) -> wc.CheckinInputs:
     """Alinha por dia as leituras gravadas da janela (metas, totais das refeições, corpo) para o motor."""
     dias = wc.window_dates(week_start)
     entradas = load_user_inputs(cur, aluno, dias[0], hoje, hoje)
@@ -244,6 +260,7 @@ def _build_inputs(cur: Any, aluno: int, settings: Any, week_start: date, hoje: d
                 weight_kg=pesos[i],
                 body_fat_percent=gorduras[i],
                 muscle_mass_kg=massas[i],
+                plan_id=None if linha is None or linha.get("plan_id") is None else int(linha["plan_id"]),
             )
         )
     sujeito = resolve_subject(series.readings_on(hoje), hoje, settings.activity_level)
@@ -254,6 +271,7 @@ def _build_inputs(cur: Any, aluno: int, settings: Any, week_start: date, hoje: d
         reference_day=hoje,
         scale_bmr_kcal=sujeito.scale_bmr_kcal,
         ffm_age_days=sujeito.ffm_age_days,
+        plan_id=plan_id,
     )
 
 
@@ -282,16 +300,21 @@ def _change_items(settings: Any, changes: dict[str, Any]) -> list[dict[str, Any]
             for grama in ("protein_g", "carb_g", "fat_g"):
                 itens.append({"field": grama, "label": nutrition_labels.field_label(grama), "unit": "g",
                               "before": getattr(antigo, grama), "after": novo[grama]})
+        elif campo == wc.CHANGE_MAINTENANCE_KCAL_ADJUST:
+            itens.append({"field": campo, "label": nutrition_labels.field_label(campo), "unit": "kcal",
+                          "before": settings.maintenance_kcal_adjust, "after": novo})
         else:
             itens.append({"field": campo, "label": nutrition_labels.field_label(campo), "unit": "share",
                           "before": getattr(settings, campo, None), "after": novo})
     return itens
 
 
-def _insert_checkin(cur: Any, aluno: int, week_start: date, hoje: date, plan_id: int, settings: Any, inputs: wc.CheckinInputs) -> None:
+def _insert_checkin(
+    cur: Any, aluno: int, week_start: date, due: date, hoje: date, plan_id: int, settings: Any, inputs: wc.CheckinInputs
+) -> None:
     resultado = wc.evaluate_week(inputs)
     proposta = resultado.proposal
-    expira = datetime.combine(wc.proposal_expires_on(hoje), time(23, 59, 59)) if proposta is not None else None
+    expira = wc.proposal_expires_at(hoje) if proposta is not None else None
     congelado = {
         "generated_on": hoje.isoformat(),
         "week_start": week_start.isoformat(),
@@ -304,11 +327,15 @@ def _insert_checkin(cur: Any, aluno: int, week_start: date, hoje: date, plan_id:
     guardado = {"verdict": resultado.verdict.value, "missing": list(resultado.missing), "reasons": list(resultado.reasons)}
     alvo = None
     if proposta is not None:
-        alvo = {**proposta.to_dict(), "change_items": _change_items(settings, proposta.changes)}
+        alvo = {
+            **proposta.to_dict(),
+            "scope_label": nutrition_labels.CHECKIN_SCOPE_LABELS[proposta.scope],
+            "change_items": _change_items(settings, proposta.changes),
+        }
     cur.execute(
         _INSERT_ONCE_SQL,
         (
-            aluno, week_start, hoje, resultado.status.value, resultado.verdict.value,
+            aluno, week_start, due, resultado.status.value, resultado.verdict.value,
             json.dumps(congelado, default=str), json.dumps(guardado),
             None if proposta is None else proposta.delta_kcal,
             None if proposta is None else json.dumps(proposta.changes),
@@ -318,39 +345,64 @@ def _insert_checkin(cur: Any, aluno: int, week_start: date, hoje: date, plan_id:
     )
 
 
+def _expire(cur: Any, row: dict[str, Any]) -> dict[str, Any]:
+    cur.execute(_EXPIRE_SQL, (EXPIRED, db_now(cur), int(row["id"]), PROPOSED))
+    return {**row, "status": EXPIRED}
+
+
 def _expire_if_due(cur: Any, row: dict[str, Any], hoje: date) -> dict[str, Any]:
     """Proposta sem resposta depois da validade vira `expired` (metas atuais seguem, D7)."""
     entradas = _json(row.get("inputs_json")) or {}
     gerado_em = _as_date(entradas.get("generated_on")) or _as_date(row.get("due_date"))
     if row.get("status") == PROPOSED and gerado_em is not None and wc.is_proposal_expired(gerado_em, hoje):
-        cur.execute(_EXPIRE_SQL, (EXPIRED, db_now(cur), int(row["id"]), PROPOSED))
-        return {**row, "status": EXPIRED}
+        return _expire(cur, row)
     return row
+
+
+def _settle(cur: Any, row: dict[str, Any], aluno: int, hoje: date) -> dict[str, Any]:
+    """A linha pronta para mostrar: a proposta fora da validade ou de um plano que não é mais o vigente (publicado ou
+    aceito depois dela) expira, em vez de oferecer um "Aceitar" que só daria 409."""
+    row = _expire_if_due(cur, row, hoje)
+    if row.get("status") != PROPOSED:
+        return row
+    cur.execute(_CURRENT_PLAN_SQL, (int(aluno), PUBLISHED_PLAN))
+    vigente = cur.fetchone()
+    if vigente is None or int(vigente["id"]) != int(row["source_plan_id"]):
+        return _expire(cur, row)
+    return row
+
+
+def tables_ready(cur: Any) -> bool:
+    """Plano, diário e check-in (078/079, 082/083, 103) existem neste banco? Sem DDL."""
+    return has_nutrition_tables(cur) and has_diary_tables(cur) and has_checkin_tables(cur)
 
 
 def ensure_checkin(conn: Any, aluno: int, hoje: date) -> dict[str, Any]:
     """O check-in da semana fechada que já venceu: lê a linha ou, se não existe, avalia e grava UMA vez. Devolve
-    `{weekday, due_date, week_start, row, none_reason}`; sem plano publicado ou com plano mais novo que a semana,
-    `row` é None e `none_reason` diz por quê."""
+    `{weekday, due_date, week_start, row, none_reason}`. Se já existe um check-in de semana IGUAL OU MAIS NOVA que a do
+    calendário (o usuário trocou o dia), devolve esse, nunca volta a uma semana antiga. Sem plano publicado, ou sem
+    plano que já valesse na semana avaliada, `row` é None e `none_reason` diz por quê."""
     with conn.cursor() as cur:
         dia_escolhido = _read_weekday(cur, aluno)
         vencimento = wc.due_day(hoje, wc.DEFAULT_CHECKIN_WEEKDAY if dia_escolhido is None else dia_escolhido)
         semana = wc.closed_week_start(vencimento)
         base = {"weekday": dia_escolhido, "due_date": vencimento, "week_start": semana, "row": None, "none_reason": None}
-        cur.execute(_BY_WEEK_SQL, (aluno, semana))
-        linha = cur.fetchone()
-        if linha:
-            return {**base, "row": _expire_if_due(cur, linha, hoje)}
+        cur.execute(_LATEST_SQL, (aluno,))
+        ultimo = cur.fetchone()
+        if ultimo and wc.should_reuse_latest(_as_date(ultimo["week_start"]), semana):
+            return {**base, "week_start": _as_date(ultimo["week_start"]), "due_date": _as_date(ultimo["due_date"]) or vencimento,
+                    "row": _settle(cur, ultimo, aluno, hoje)}
         planos = load_published_plans(cur, aluno)
         ref = plan_in_force(planos.refs, hoje)
         if ref is None:
             return {**base, "none_reason": wc.NONE_NO_PLAN}
-        if ref.effective_from > semana + timedelta(days=6):
+        fim_da_semana = semana + timedelta(days=6)
+        if not any(r.effective_from <= fim_da_semana for r in planos.refs):  # nenhum plano valia nessa semana
             return {**base, "none_reason": wc.NONE_PLAN_AFTER_WEEK}
         configuracao = planos.settings[ref.plan_id]
-        entradas = _build_inputs(cur, aluno, configuracao, semana, hoje)
-        _insert_checkin(cur, aluno, semana, hoje, ref.plan_id, configuracao, entradas)
-        cur.execute(_BY_WEEK_SQL, (aluno, semana))
+        entradas = _build_inputs(cur, aluno, ref.plan_id, configuracao, semana, hoje)
+        _insert_checkin(cur, aluno, semana, vencimento, hoje, ref.plan_id, configuracao, entradas)
+        cur.execute(_BY_WEEK_SHARE_SQL, (aluno, semana))
         return {**base, "row": cur.fetchone()}
 
 
@@ -364,13 +416,22 @@ def get_checkin(
     user_id: Optional[int] = Query(default=None),
     identity: Identity = Depends(get_current_identity),
 ):
+    """Sem as tabelas (janela do deploy: o código novo atende antes da migração 103) a leitura responde 200 com
+    `checkin: null` e o motivo `migration_pending`: a home nunca gera 5xx por causa do check-in. Escrever segue 503."""
     aluno = resolve_target_user(identity, user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
-            _require_tables(cur)
+            pronto = tables_ready(cur)
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
-        achado = ensure_checkin(conn, aluno, hoje)
+        if pronto:
+            achado = ensure_checkin(conn, aluno, hoje)
+        else:
+            vencimento = wc.due_day(hoje)
+            achado = {
+                "weekday": None, "due_date": vencimento, "week_start": wc.closed_week_start(vencimento), "row": None,
+                "none_reason": wc.NONE_MIGRATION_PENDING,
+            }
     linha = achado["row"]
     return {
         "user": usuario,
@@ -442,7 +503,9 @@ def _owned_row(cur: Any, identity: Identity, checkin_id: int, *, lock: bool = Fa
 @router.post("/checkins/{checkin_id}/accept")
 def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_identity)):
     """Aceita a proposta: publica uma nova versão do plano com as mudanças que o motor gravou. A linha é travada
-    (`FOR UPDATE`), então duas chamadas simultâneas se enfileiram e a segunda só lê o aceite da primeira."""
+    (`FOR UPDATE`), então duas chamadas simultâneas se enfileiram e a segunda só lê o aceite da primeira. O plano
+    vigente também é travado com `FOR UPDATE` ANTES de qualquer leitura `FOR SHARE` (`load_published_plans`): ler com
+    trava compartilhada e depois pedir a exclusiva da publicação é o deadlock clássico (1213)."""
     expirou = False
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -454,8 +517,12 @@ def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_ide
                 return {"checkin": checkin_public(linha, hoje), "already_accepted": True, "plan": None}
             if linha["status"] in (DECLINED, INFORMATIVE):
                 raise _error(409, "checkin_not_acceptable", "Este check-in não tem proposta a aceitar.", current_status=linha["status"])
-            linha = _expire_if_due(cur, linha, hoje)
-            expirou = linha["status"] == EXPIRED
+            if linha["status"] == EXPIRED:
+                expirou = True  # já gravado como expirado: nada a escrever
+            else:
+                expirou = _expire_if_due(cur, linha, hoje)["status"] == EXPIRED
+            if not expirou:
+                cur.execute(_CURRENT_FOR_UPDATE_SQL, (aluno, PUBLISHED_PLAN))
         if not expirou:
             with conn.cursor() as cur:
                 planos = load_published_plans(cur, aluno)
@@ -477,7 +544,7 @@ def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_ide
             publicado, janela, metas = publish_draft(conn, rascunho, aluno, identity.user_id, vigente.plan_id)
             with conn.cursor() as cur:
                 cur.execute(_ACCEPT_SQL, (ACCEPTED, int(publicado["id"]), db_now(cur), int(checkin_id), PROPOSED))
-                if int(cur.rowcount or 0) == 0:  # pragma: no cover - a linha está travada: só se apagada no meio
+                if int(cur.rowcount or 0) == 0:  # a linha está travada: só se for apagada no meio
                     raise _error(409, "checkin_not_acceptable", "O check-in mudou durante o aceite; recarregue.")
                 cur.execute(_BY_ID_SQL, (int(checkin_id),))
                 aceita = cur.fetchone()

@@ -73,6 +73,7 @@ from .strategy import (
     CUT_MIN_INTAKE_BMR_MULTIPLE,
     DEFAULT_MACRO_PRIORITY,
     LIMIT_PARAM_OUT_OF_RANGE,
+    MAINT_KCAL_ADJUST_DEFAULT,
     MacroPriority,
     Strategy,
     StrategyParams,
@@ -135,6 +136,7 @@ STRATEGY_ONLY_FIELDS: Final[dict[str, Strategy]] = {
     "weekly_rate_share": Strategy.CUTTING,
     "surplus_share": Strategy.BULKING,
     "carb_min_g_per_kg": Strategy.BULKING,
+    "maintenance_kcal_adjust": Strategy.MAINTENANCE,
 }
 
 
@@ -185,6 +187,7 @@ class PlanSettings:
     macro_priority: MacroPriority = DEFAULT_MACRO_PRIORITY
     manual_macros: Optional[ManualMacros] = None
     cycle_kinds: Optional[tuple[DayKind, ...]] = None
+    maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # N7: kcal/dia da manutenção (0 = como sempre)
 
     @property
     def manual_adds_training(self) -> bool:
@@ -211,6 +214,7 @@ class PlanSettings:
             weekly_rate_share=self.weekly_rate_share,
             surplus_share=self.surplus_share,
             carb_min_g_per_kg=self.carb_min_g_per_kg,
+            maintenance_kcal_adjust=self.maintenance_kcal_adjust,
         )
 
     def plan_params(self, ffm_age_days: Optional[int] = None) -> PlanParams:
@@ -238,6 +242,8 @@ class PlanSettings:
             dados["manual_targets"] = {k: v for k, v in dados["manual_targets"].items() if k != "training_mode"}
         if self.cycle_kinds is None:
             dados.pop("cycle_days")
+        if self.maintenance_kcal_adjust == MAINT_KCAL_ADJUST_DEFAULT:
+            dados.pop("maintenance_kcal_adjust")  # plano antigo mantém o hash das entradas
         return dados
 
     def to_dict(self) -> dict[str, Any]:
@@ -260,6 +266,7 @@ class PlanSettings:
             "macro_priority": self.macro_priority.value,
             "manual_targets": self.manual_macros.to_dict() if self.manual_macros else None,
             "cycle_days": self.cycle_days,
+            "maintenance_kcal_adjust": self.maintenance_kcal_adjust,
         }
 
 
@@ -355,6 +362,7 @@ def build_plan_settings(
     manual_targets: Any = None,
     cycle_days: Any = None,
     manual_training_mode: Any = None,
+    maintenance_kcal_adjust: Any = None,
 ) -> PlanValidation:
     """Normaliza e valida o plano. Campo ausente (None) recebe o default da
     estratégia; valor fora da faixa da fonte vira `param_out_of_range:<campo>`.
@@ -372,6 +380,8 @@ def build_plan_settings(
         "weekly_rate_share": weekly_rate_share,
         "surplus_share": surplus_share,
         "carb_min_g_per_kg": carb_min_g_per_kg,
+        # 0 (o padrão gravado em todo plano) não conta como "informado" fora da manutenção.
+        "maintenance_kcal_adjust": maintenance_kcal_adjust if maintenance_kcal_adjust not in (None, 0) else None,
     }
     for campo, dono in STRATEGY_ONLY_FIELDS.items():
         if informados[campo] is not None and estrategia != dono:
@@ -396,6 +406,14 @@ def build_plan_settings(
     if estrategia == Strategy.BULKING:
         superavit = _ou_default(surplus_share, base.surplus_share, "surplus_share")
         carbo_minimo = _ou_default(carb_min_g_per_kg, base.carb_min_g_per_kg, "carb_min_g_per_kg")
+
+    ajuste_manutencao = MAINT_KCAL_ADJUST_DEFAULT
+    if informados["maintenance_kcal_adjust"] is not None and estrategia == Strategy.MAINTENANCE:
+        bruto = informados["maintenance_kcal_adjust"]
+        if isinstance(bruto, bool) or not isinstance(bruto, (int, float)) or int(bruto) != bruto:
+            erros.append(_code(LIMIT_PARAM_OUT_OF_RANGE, "maintenance_kcal_adjust"))  # só inteiro (kcal/dia)
+        else:
+            ajuste_manutencao = int(bruto)
 
     formula = _enum_or_error(BmrFormula, bmr_formula, DEFAULT_BMR_FORMULA, "bmr_formula", erros)
     modo = _enum_or_error(ee.TdeeMode, tdee_mode, ee.DEFAULT_TDEE_MODE, "tdee_mode", erros)
@@ -471,6 +489,7 @@ def build_plan_settings(
         macro_priority=prioridade,
         manual_macros=manual,
         cycle_kinds=ciclo,
+        maintenance_kcal_adjust=ajuste_manutencao,
     )
     for codigo in settings.strategy_params().out_of_range():
         if codigo not in erros:

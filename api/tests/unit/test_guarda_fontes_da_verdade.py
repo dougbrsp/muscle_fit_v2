@@ -1403,7 +1403,7 @@ PADROES: tuple[Padrao, ...] = (
             r"|MIN_BIA_READINGS|MIN_BIA_SPAN_DAYS|MIN_READINGS_FOR_GOAL|ON_TRACK_TOLERANCE_SHARE|RATE_NOISE_FLOOR_SHARE"
             r"|CORRECTION_FRACTION|MAX_KCAL_STEP_SHARE|MIN_KCAL_STEP|BIA_CORRECTION_FRACTION|LEAN_LOSS_LIMIT_SHARE_PER_WEEK"
             r"|BULK_FAT_SHARE_OF_GAIN_LIMIT|BULK_FAT_GAIN_NOISE_FLOOR_KG_PER_WEEK|PROPOSAL_VALIDITY_DAYS|DEFAULT_CHECKIN_WEEKDAY"
-            r"|HISTORY_LIMIT_DEFAULT|HISTORY_LIMIT_MAX)\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|HISTORY_LIMIT_DEFAULT|HISTORY_LIMIT_MAX|CHECKIN_WEEKDAY_RANGE|RATE_DECIMALS|MIN_DAYS_UNDER_CURRENT_PLAN)\s*(?::[^=\n]+)?=\s*[\d(\[]"
         ),
         donos=("api/app/domain/nutrition/weekly_checkin.py",),
         inventario="NUT-N7",
@@ -3126,7 +3126,8 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "checkin_semanal": (
         ("MAX_KCAL_STEP_SHARE = 0.05", "const PROPOSAL_VALIDITY_DAYS = 3;", "MIN_COMPLETE_DAYS: Final[int] = 5",
-         "LEAN_LOSS_LIMIT_SHARE_PER_WEEK = 0.0025", "DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0"),
+         "LEAN_LOSS_LIMIT_SHARE_PER_WEEK = 0.0025", "DEFAULT_CHECKIN_WEEKDAY: Final[int] = 0",
+         "CHECKIN_WEEKDAY_RANGE: Final[tuple[int, int]] = (0, 6)", "RATE_DECIMALS = 4"),
         ("wc.evaluate_week(inputs)", "wc.PROPOSAL_VALIDITY_DAYS", "from .domain.nutrition.weekly_checkin import MIN_COMPLETE_DAYS",
          "const dia = checkin.settings.weekday;"),
     ),

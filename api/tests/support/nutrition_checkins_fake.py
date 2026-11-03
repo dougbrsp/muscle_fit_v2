@@ -2,7 +2,9 @@
 `app.nutrition_checkins` (despacho pela constante SQL do módulo; SQL novo sem o fake acompanhar falha alto).
 
 Simula o que importa do MySQL para estas rotas: o UNIQUE `(user_id, week_start)` com `ON DUPLICATE KEY UPDATE id = id`
-(a primeira inserção fica), `FOR UPDATE` (registrado em `locks`) e o rollback da conexão quando a rota levanta."""
+(a primeira inserção fica), `FOR UPDATE`/`FOR SHARE` (registrados em `locks`), o snapshot do REPEATABLE READ
+(`invisible_to_snapshot`: linhas que um SELECT comum não enxerga mas a leitura corrente `FOR SHARE` sim) e o rollback da
+conexão quando a rota levanta. `statements` conta cada `execute` (uma chamada à Data API cada)."""
 
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ class FakeCheckinDB(FakeDashboardDB):
         self.checkin_settings: dict[int, int] = {}
         self.next_checkin_id = 1
         self.checkin_inserts = 0
+        self.invisible_to_snapshot: set[int] = set()
+        self.statements = 0
 
     def conn(self) -> "FakeCheckinConn":
         return FakeCheckinConn(self)
@@ -44,9 +48,17 @@ class FakeCheckinConn(FakeDashboardConn):
 class FakeCheckinCursor(FakeDashboardCursor):
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement
         db: FakeCheckinDB = self.db  # type: ignore[assignment]
+        db.statements += 1
         p = tuple(params or ())
-        if sql == ck._BY_WEEK_SQL:
+        if sql == ck._LATEST_SQL:
+            visiveis = [r for r in db.checkins.values() if r["user_id"] == p[0] and r["id"] not in db.invisible_to_snapshot]
+            return self._result(sorted(visiveis, key=lambda r: (r["week_start"], r["id"]), reverse=True)[:1])
+        if sql == ck._BY_WEEK_SHARE_SQL:
+            db.locks.append(("checkin-share", p[1]))
             return self._result([r for r in db.checkins.values() if r["user_id"] == p[0] and r["week_start"] == p[1]])
+        if sql == ck._CURRENT_PLAN_SQL:
+            return self._result([{"id": r["id"]} for r in db.plans.values()
+                                 if r["user_id"] == p[0] and r["status"] == p[1] and r["superseded_at"] is None])
         if sql in (ck._BY_ID_SQL, ck._BY_ID_FOR_UPDATE_SQL):
             if sql == ck._BY_ID_FOR_UPDATE_SQL:
                 db.locks.append(("checkin", p[0]))

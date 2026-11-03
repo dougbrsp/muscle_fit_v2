@@ -72,7 +72,7 @@ class FakeNutritionDB:
             "training_kcal_mode": "explicit_training", "goal_body_fat_percent": None, "goal_weight_kg": None,
             "weekly_rate_share": None, "surplus_share": None, "protein_g_per_kg": Decimal("2.00"),
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
-            "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None,
+            "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None, "maintenance_kcal_adjust": 0,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
             "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }

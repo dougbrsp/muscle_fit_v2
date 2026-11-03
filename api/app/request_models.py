@@ -144,6 +144,8 @@ class NutritionPlanSettingsIn(_StrictIn):
     # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
     manual_training_mode: Optional[str] = Field(default=None, max_length=24)
     cycle_days: Optional[dict[str, Any]] = None
+    # N7: kcal/dia da manutencao (inteiro; faixa e regra do motor `strategy.MAINT_KCAL_ADJUST_RANGE`).
+    maintenance_kcal_adjust: Optional[int] = None
     # Legado: os clientes antigos ainda mandam; ignorado (o ciclo vem de `cycle_days`).
     carb_cycling_enabled: bool = False
     notes: Optional[str] = Field(default=None, max_length=1000)

@@ -22,6 +22,8 @@ from tests.support.safety_032_033 import SafetySnapshotDB
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "103_nutrition_checkins.py"
 SNAPSHOT_PATH = Path(__file__).resolve().parents[1] / "unit" / "data" / "aurora_schema_2026_09_17_035.json"
 CHECKINS, SETTINGS = "nutrition_checkins", "nutrition_checkin_settings"
+AJUSTE = {"TABLE_NAME": "nutrition_plans", "COLUMN_NAME": "maintenance_kcal_adjust", "COLUMN_TYPE": "int", "IS_NULLABLE": "NO",
+          "COLUMN_KEY": "", "COLUMN_DEFAULT": "0"}
 
 
 @functools.lru_cache(maxsize=1)
@@ -42,8 +44,11 @@ def _indices_ok() -> dict:
 
 
 class FakeDB:
-    def __init__(self, *, tabelas=(CHECKINS, SETTINGS), users=True, colunas=None, indices=None, dry_run=False):
+    def __init__(self, *, tabelas=(CHECKINS, SETTINGS), users=True, colunas=None, indices=None, dry_run=False,
+                 plans=True, ajuste=AJUSTE):
         self.tabelas = tuple(tabelas)
+        self.plans = plans
+        self.ajuste = ajuste
         self.users = users
         self.colunas = {t: dict(c) for t, c in (_module()["EXPECTED_COLUMNS"] if colunas is None else colunas).items()}
         self.indices = _indices_ok() if indices is None else indices
@@ -51,12 +56,16 @@ class FakeDB:
 
     def query(self, sql, params=None):
         if "information_schema.TABLES" in sql:
-            return [{"TABLE_NAME": t, "ENGINE": "InnoDB"} for t in self.tabelas] + (
-                [{"TABLE_NAME": "users", "ENGINE": "InnoDB"}] if self.users else []
+            return (
+                [{"TABLE_NAME": t, "ENGINE": "InnoDB"} for t in self.tabelas]
+                + ([{"TABLE_NAME": "users", "ENGINE": "InnoDB"}] if self.users else [])
+                + ([{"TABLE_NAME": "nutrition_plans", "ENGINE": "InnoDB"}] if self.plans else [])
             )
         if "information_schema.COLUMNS" in sql:
             linhas = [{"TABLE_NAME": "users", "COLUMN_NAME": "id", "COLUMN_TYPE": "bigint", "IS_NULLABLE": "NO",
                        "COLUMN_KEY": "PRI"}] if self.users else []
+            if self.plans and self.ajuste is not None:
+                linhas.append(dict(self.ajuste))
             for t in self.tabelas:
                 linhas += [{"TABLE_NAME": t, "COLUMN_NAME": n, "COLUMN_TYPE": tipo, "IS_NULLABLE": nu, "COLUMN_KEY": ""}
                            for n, (tipo, nu) in self.colunas[t].items()]
@@ -74,16 +83,34 @@ class FakeDB:
         raise AssertionError(f"escrita no plano: {sql}")
 
 
-def test_aurora_hoje_cria_as_duas_tabelas_com_um_statement_cada():
+def test_aurora_hoje_cria_as_duas_tabelas_e_acrescenta_a_coluna_do_plano():
     snap = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
     existentes = {t["table_name"] for t in snap["tables"]}
     assert CHECKINS not in existentes and SETTINGS not in existentes
     db = SafetySnapshotDB(snap)
-    assert [(_sql(s), p) for s, p in _module()["plan"](db)] == [
-        (_sql(_module()["CREATE_CHECKINS_SQL"]), None),
-        (_sql(_module()["CREATE_SETTINGS_SQL"]), None),
-    ]
+    db.dry_run = True  # o recorte de 2026-09-17 é anterior à 078: sem `nutrition_plans` só vale em dry-run
+    sql = [_sql(s_) for s_, _ in _module()["plan"](db)]
+    assert sql == [_sql(_module()["CREATE_CHECKINS_SQL"]), _sql(_module()["CREATE_SETTINGS_SQL"]), _sql(_module()["ADD_ADJUST_SQL"])]
     assert all("information_schema" in q for q in db.queries)
+
+
+def test_aurora_com_o_plano_e_sem_a_coluna_so_acrescenta_a_coluna():
+    assert [_sql(s_) for s_, _ in _module()["plan"](FakeDB(ajuste=None))] == [_sql(_module()["ADD_ADJUST_SQL"])]
+    assert "ALGORITHM=INSTANT" in _module()["ADD_ADJUST_SQL"] and "DEFAULT 0" in _module()["ADD_ADJUST_SQL"]
+
+
+@pytest.mark.parametrize(
+    "coluna",
+    [
+        {**AJUSTE, "COLUMN_TYPE": "bigint"},
+        {**AJUSTE, "IS_NULLABLE": "YES"},
+        {**AJUSTE, "COLUMN_DEFAULT": "5"},
+        {**AJUSTE, "COLUMN_DEFAULT": None},
+    ],
+)
+def test_coluna_do_plano_divergente_falha_antes_do_primeiro_statement(coluna):
+    with pytest.raises(_module()["NutritionCheckinsError"], match="Nenhum statement executado"):
+        _module()["up"](FakeDB(ajuste=coluna))
 
 
 def test_convergido_nao_faz_nada_mesmo_com_largura_do_int():
@@ -128,9 +155,13 @@ def test_forma_divergente_falha_antes_do_primeiro_statement(ajuste):
 def test_users_ausente_e_down_reversivel():
     with pytest.raises(_module()["NutritionCheckinsError"]):
         _module()["plan"](FakeDB(tabelas=(), users=False))
-    assert len(_module()["plan"](FakeDB(tabelas=(), users=False, dry_run=True))) == 2
-    assert [s for s, _ in _module()["plan_down"](FakeDB())] == [_module()["DROP_SQL"][CHECKINS], _module()["DROP_SQL"][SETTINGS]]
-    assert _module()["plan_down"](FakeDB(tabelas=())) == []
+    assert len(_module()["plan"](FakeDB(tabelas=(), users=False, dry_run=True, plans=False, ajuste=None))) == 3
+    with pytest.raises(_module()["NutritionCheckinsError"]):
+        _module()["plan"](FakeDB(plans=False, ajuste=None))  # sem `nutrition_plans` numa execução real
+    # `down`: solta a coluna do plano e as duas tabelas; banco já revertido = nada.
+    assert [s for s, _ in _module()["plan_down"](FakeDB())] == [
+        _module()["DROP_ADJUST_SQL"], _module()["DROP_SQL"][CHECKINS], _module()["DROP_SQL"][SETTINGS]]
+    assert _module()["plan_down"](FakeDB(tabelas=(), ajuste=None)) == []
 
 
 def test_ddl_unico_por_usuario_e_semana_fk_so_para_users():

@@ -220,6 +220,8 @@ def export_for_frontend() -> dict[str, Any]:
                 "fat_kcal_share": _range(st.MAINT_FAT_KCAL_SHARE_RANGE),
                 "fat_kcal_share_default": st.MAINT_FAT_KCAL_SHARE_DEFAULT,
                 "tolerance_share": st.MAINT_TOLERANCE_SHARE,
+                "maintenance_kcal_adjust": _range(st.MAINT_KCAL_ADJUST_RANGE),
+                "maintenance_kcal_adjust_default": st.MAINT_KCAL_ADJUST_DEFAULT,
             },
             "refeed_days_per_week_default": phases.REFEED_DAYS_PER_WEEK_DEFAULT,
             "max_cut_weeks_without_break": phases.MAX_CUT_WEEKS_WITHOUT_BREAK,
