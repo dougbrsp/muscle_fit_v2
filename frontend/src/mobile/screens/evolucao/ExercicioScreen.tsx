@@ -158,7 +158,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
       <ListGroup>
         <ListBlock>
           <StatGrid>
-            <StatTile label="1RM estimado (última)" value={fmtKg(ultima?.e1rm)} hint={ultima?.local_date ? fmtDate(ultima.local_date) : undefined} />
+            <StatTile label="1RM estimado (última)" value={fmtKg(ultima?.e1rm)} hint={ultima?.e1rm != null && ultima.e1rm_reliable === false ? 'pouco confiável' : ultima?.local_date ? fmtDate(ultima.local_date) : undefined} />
             <StatTile label="Melhor carga (período)" value={fmtKg(data.records.best_load_kg?.value)} hint={data.records.best_load_kg?.local_date ? fmtDate(data.records.best_load_kg.local_date) : undefined} />
           </StatGrid>
         </ListBlock>

@@ -262,7 +262,7 @@ export function CheckinScreen() {
           mih={48}
           leftSection={<IconCheck size={18} />}
           loading={salvar.isPending}
-          disabled={!tabelaDisponivel || !online}
+          disabled={!query.data || !tabelaDisponivel || !online}
           onClick={submit}
         >
           {doDia ? 'Salvar correção' : 'Registrar'}

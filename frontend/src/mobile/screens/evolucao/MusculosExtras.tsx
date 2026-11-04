@@ -370,7 +370,11 @@ function Ativacao7d() {
 // Tendência por grupo muscular (ranking: top 3 + o resto por toque)
 // ---------------------------------------------------------------------------
 
+const LINE_COLORS = [CHART_COLORS.primary, CHART_COLORS.secondary, '#4DA3FF'];
+const MAX_LINES = 3;
+
 function Tendencia() {
+  const [selected, setSelected] = useState<string[]>([]);
   const [filters, setFilters] = useState<MuscleGroupTrendFilters>(DEFAULT_MUSCLE_GROUP_TREND_FILTERS);
   const [sheet, { open, close }] = useDisclosure(false);
   const update = (patch: Partial<MuscleGroupTrendFilters>) => setFilters((c) => ({ ...c, ...patch }));
@@ -385,6 +389,11 @@ function Tendencia() {
   const periods = useMemo(() => buildTrendPeriods(trendRows), [trendRows]);
   const index = useMemo(() => trendValueIndex(trendRows), [trendRows]);
   const ranking = useMemo(() => buildPressureRows(periods, index, totals, groupOptions), [periods, index, totals, groupOptions]);
+  const chosen = useMemo(() => {
+    const valid = keepAvailableGroups(selected, groupOptions);
+    return (valid.length > 0 ? valid : groupOptions).slice(0, MAX_LINES);
+  }, [selected, groupOptions]);
+  const points = useMemo(() => pivotTrend(periods, index, chosen), [periods, index, chosen]);
   const isDefault =
     period === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.period &&
     metric === DEFAULT_MUSCLE_GROUP_TREND_FILTERS.metric &&
@@ -447,6 +456,43 @@ function Tendencia() {
               footer="Ranking dos grupos e variação contra o período anterior."
             >
               {ranking.slice(0, 3).map(linha)}
+              <SheetRow title="Gráfico por período" subtitle={`Até ${MAX_LINES} grupos: ${chosen.join(', ')}`} sheetTitle="Tendência por período">
+                <ListGroup footer={`Escolha até ${MAX_LINES} grupos (o padrão são os ${MAX_LINES} com maior pressão acumulada).`}>
+                  <ListBlock>
+                    {groupOptions.map((g) => {
+                      const on = chosen.includes(g);
+                      return (
+                        <Checkbox
+                          key={g}
+                          label={g}
+                          checked={on}
+                          disabled={!on && chosen.length >= MAX_LINES}
+                          onChange={(e) => setSelected(e.currentTarget.checked ? [...chosen, g] : chosen.filter((v) => v !== g))}
+                          styles={{ root: { minHeight: 44, display: 'flex', alignItems: 'center' } }}
+                        />
+                      );
+                    })}
+                  </ListBlock>
+                </ListGroup>
+                <div className={styles.chartBlock}>
+                  <MobileChart summary={`Pressão por ${TREND_PERIOD_DESCRIPTION[period] || 'período'}, grupos escolhidos.`} label="Tendência por grupo muscular" height={220}>
+                    <LineChart data={points} margin={MOBILE_CHART_MARGIN}>
+                      <XAxis dataKey="period" {...MOBILE_CHART_AXIS} />
+                      <YAxis {...MOBILE_CHART_AXIS} width={44} />
+                      <Tooltip
+                        contentStyle={CHART_TOOLTIP_CONTENT_STYLE}
+                        labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+                        itemStyle={CHART_TOOLTIP_ITEM_STYLE}
+                        formatter={(v) => formatTrendMetric(Number(v), metric)}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {chosen.map((g, i) => (
+                        <Line key={g} type="monotone" dataKey={g} name={g} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} dot={false} connectNulls />
+                      ))}
+                    </LineChart>
+                  </MobileChart>
+                </div>
+              </SheetRow>
               {ranking.length > 3 ? (
                 <SheetRow title={`Ver os outros ${ranking.length - 3} grupos`} sheetTitle="Pressão por grupo">
                   <ListGroup>{ranking.map(linha)}</ListGroup>

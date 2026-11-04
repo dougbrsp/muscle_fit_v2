@@ -83,7 +83,11 @@ export function NutricaoScreen() {
     <>
       <ScreenHeader title="Nutrição: painel" subtitle="Como a alimentação está indo em relação ao plano e ao corpo." />
       <ListGroup>
-        <ListRow title="Abrir o diário" href="/nutricao" />
+        <ListRow title="Diário" href="/nutricao" />
+        <ListRow title="Plano" href="/nutricao/plano" />
+        <ListRow title="Check-in" href="/nutricao/checkin" />
+        <ListRow title="Alimentos" href="/nutricao/alimentos" />
+        <ListRow title="Preferidos" href="/nutricao/favoritos" />
       </ListGroup>
       {janelas ? (
         <ListGroup>

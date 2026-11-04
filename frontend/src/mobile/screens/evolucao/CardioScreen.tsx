@@ -250,7 +250,7 @@ function CardioBody({ payload }: { payload: CardioResponse }) {
                 <ListRow
                   key={w.week_start}
                   title={`Semana de ${fmtDate(w.week_start)}`}
-                  subtitle={`${fmtInt(w.sessions)} sessões · contínuo ${fmtInt(w.continuous_minutes)} min · intensa ${fmtInt(w.high_intensity_minutes)} min · ${w.calories_kcal == null ? EM_DASH : fmtInt(w.calories_kcal)} kcal`}
+                  subtitle={`${plural(w.sessions, 'sessão', 'sessões')} · contínuo ${fmtInt(w.continuous_sessions)} (${fmtInt(w.continuous_minutes)} min) · intensa ${fmtInt(w.high_intensity_sessions)} (${fmtInt(w.high_intensity_minutes)} min) · sem zona ${fmtInt(w.unclassified_sessions)} (${fmtInt(w.unclassified_minutes)} min) · ${w.calories_kcal == null ? EM_DASH : fmtInt(w.calories_kcal)} kcal`}
                   value={`${fmtInt(w.minutes)} min`}
                 />
               ))}
@@ -297,29 +297,32 @@ function CardioBody({ payload }: { payload: CardioResponse }) {
           >
             <SmallLine data={wellness} dataKey="fcRepouso" name="FC de repouso" unit="bpm" summary={`Último: ${num(latest.resting_hr_bpm, 'bpm')}`} color={CHART_COLORS.secondary} />
           </SheetRow>
-          {pai && pai.points.length > 0 ? (
-            <SheetRow
-              title="PAI 7 dias (estimado)"
-              subtitle={`${pai.latest_below_target == null ? '' : pai.latest_below_target ? 'Abaixo da meta' : 'Na meta'}${pai.latest_below_target == null ? '' : ' · '}meta ${fmtInt(pai.target_min)}`}
-              value={pai.latest == null ? EM_DASH : fmtInt(pai.latest)}
-              sheetTitle="PAI de 7 dias (estimado)"
-            >
-              <div className={styles.chartBlock}>
-                <MobileChart
-                  summary={`Acumulado de 7 dias estimado do tempo em zona de FC do Intervals.icu (não é a leitura do relógio). Linha tracejada: meta ${fmtInt(pai.target_min)}.`}
-                  label="PAI de 7 dias estimado"
-                >
-                  <LineChart data={paiLinhas} margin={MOBILE_CHART_MARGIN}>
-                    <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
-                    <YAxis {...MOBILE_CHART_AXIS} width={36} domain={[0, 'auto']} />
-                    <Tooltip {...TOOLTIP} formatter={(v, n) => [fmtInt(Number(v)), String(n)]} />
-                    <ReferenceLine y={pai.target_min} stroke={CHART_COLORS.compare} strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="pai" name="PAI 7 dias (estimado)" stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 2 }} />
-                  </LineChart>
-                </MobileChart>
-              </div>
-            </SheetRow>
-          ) : null}
+        </ListGroup>
+      ) : null}
+
+      {pai && pai.points.length > 0 ? (
+        <ListGroup title="PAI 7 dias (estimado)" footer="Acumulado de 7 dias estimado do tempo em zona de FC das atividades do Intervals.icu (não é a leitura do relógio); não depende do wellness.">
+          <SheetRow
+            title="PAI 7 dias (estimado)"
+            subtitle={`${pai.latest_below_target == null ? '' : pai.latest_below_target ? 'Abaixo da meta' : 'Na meta'}${pai.latest_below_target == null ? '' : ' · '}meta ${fmtInt(pai.target_min)}${pai.latest_date ? ` · último em ${fmtDate(pai.latest_date)}` : ''}`}
+            value={pai.latest == null ? EM_DASH : fmtInt(pai.latest)}
+            sheetTitle="PAI de 7 dias (estimado)"
+          >
+            <div className={styles.chartBlock}>
+              <MobileChart
+                summary={`Acumulado de 7 dias estimado do tempo em zona de FC do Intervals.icu (não é a leitura do relógio). Linha tracejada: meta ${fmtInt(pai.target_min)}.`}
+                label="PAI de 7 dias estimado"
+              >
+                <LineChart data={paiLinhas} margin={MOBILE_CHART_MARGIN}>
+                  <XAxis dataKey="data" {...MOBILE_CHART_AXIS} />
+                  <YAxis {...MOBILE_CHART_AXIS} width={36} domain={[0, 'auto']} />
+                  <Tooltip {...TOOLTIP} formatter={(v, n) => [fmtInt(Number(v)), String(n)]} />
+                  <ReferenceLine y={pai.target_min} stroke={CHART_COLORS.compare} strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="pai" name="PAI 7 dias (estimado)" stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 2 }} />
+                </LineChart>
+              </MobileChart>
+            </div>
+          </SheetRow>
         </ListGroup>
       ) : null}
 
@@ -403,6 +406,9 @@ function CardioBody({ payload }: { payload: CardioResponse }) {
                 <StatTile label="FC média das sessões" value={num(bloco.avg_hr_bpm, 'bpm')} />
                 <StatTile label="FC máxima registrada" value={num(bloco.max_hr_bpm, 'bpm')} />
               </StatGrid>
+              {bloco.from_activity_total > 0 ? (
+                <p className={styles.meta}>{plural(bloco.from_activity_total, 'medida no treino', 'medidas no treino')}: FC medida na própria sessão (importada do relógio), não depende do casamento com o Intervals.icu.</p>
+              ) : null}
               {bloco.ambiguous_in_use_total > 0 ? (
                 <p className={styles.meta}>{plural(bloco.ambiguous_in_use_total, 'associação', 'associações')} ambígua(s): mais de uma atividade caiu na janela; vale a mais próxima no tempo.</p>
               ) : null}

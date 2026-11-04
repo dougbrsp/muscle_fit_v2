@@ -209,18 +209,34 @@ function MusculosContent() {
             )}
             {data.comparatives ? <MusculosExtras comparatives={data.comparatives} /> : <MusculosExtras comparatives={null} />}
             <BottomSheet
-              opened={selected !== null}
+              opened={selectedId != null}
               onClose={() => setFilters({ muscleGroupId: null })}
               title={selected?.muscle_group ?? 'Grupo'}
             >
               {selected ? (
                 <GrupoDetalhe item={selected} readiness={readinessById.get(selected.muscle_group_id) ?? null} showReadiness={showReadiness} />
+              ) : selectedId != null ? (
+                <GrupoPorId id={selectedId} showReadiness={showReadiness} />
               ) : null}
             </BottomSheet>
           </>
         )}
       </QueryGate>
     </>
+  );
+}
+
+/** Id da URL fora da lista (como no desktop): o detalhe vem da própria resposta do drill-down. */
+function GrupoPorId({ id, showReadiness }: { id: number; showReadiness: boolean }) {
+  const { windowQuery } = useDashboardFilters();
+  const query = useQuery({
+    queryKey: dashboardKeys.muscleDetail(id, windowQuery),
+    queryFn: () => fetchMuscleDetail(id, windowQuery),
+  });
+  return (
+    <QueryGate query={query} title="grupo muscular" rows={3}>
+      {(d) => <GrupoDetalhe item={d.item} readiness={d.item.readiness} showReadiness={showReadiness} />}
+    </QueryGate>
   );
 }
 
