@@ -233,6 +233,9 @@ class FoodItemIn(_StrictIn):
     brand: Optional[str] = Field(default=None, max_length=120)
     category: Optional[str] = Field(default=None, max_length=120)
     basis: Optional[str] = Field(default=None, max_length=8)
+    # D1 (2026-11-04): os valores abaixo foram digitados POR esta quantidade (g ou ml, conforme `basis`); ausente =
+    # por 100. Faixa (> 0) e conversão para o canônico por 100: `catalog.validate_food_values(table_base=...)`.
+    table_base_amount: Optional[Number] = None
     energy_kcal: Optional[Number] = None
     carbohydrates_g: Optional[Number] = None
     total_sugars_g: Optional[Number] = None
@@ -316,6 +319,19 @@ class MealItemEstimateIn(_StrictIn):
     fiber_g: Optional[Number] = None
 
 
+class MealItemQuickEntryIn(_StrictIn):
+    """Lançamento rápido (nutrição D2, 2026-11-04): item sem alimento do catálogo, com o NOME, o PESO em g e os
+    valores ABSOLUTOS desse peso (kcal, proteína, carboidrato e gordura). Obrigatoriedade e faixas não são
+    validadas aqui: o motor (`diary.validate_quick_entry`) responde 400 com os códigos. Não é a `estimate` da IA."""
+
+    name: str = Field(min_length=1, max_length=255)
+    weight_g: Optional[Number] = None
+    energy_kcal: Optional[Number] = None
+    protein_g: Optional[Number] = None
+    carbohydrates_g: Optional[Number] = None
+    total_fat_g: Optional[Number] = None
+
+
 class MealItemIn(_StrictIn):
     """Item de uma refeição do diário (nutrição L4): alimento do catálogo,
     quantidade e unidade (códigos de `meal_math.Unit`); `portion_id` escolhe
@@ -326,13 +342,19 @@ class MealItemIn(_StrictIn):
     L5b: o item estimado pela IA vem sem `food_id` e com `estimate` (ou, na
     edição, só com o `id` do item estimado gravado); exatamente um dos dois é
     regra do motor (`diary.item_source_errors`). `match_confidence` = nota do
-    casamento que a leitura entregou (auditoria)."""
+    casamento que a leitura entregou (auditoria).
+
+    D2: o lançamento rápido vem sem `food_id` e com `quick_entry` (peso e valores absolutos); `quantity` e `unit`
+    são então dispensados (o peso em g é a quantidade). Item mantido na edição (`id`, sem `food_id`, `estimate`
+    nem `quick_entry`) reusa o snapshot congelado. Origem do item: exatamente uma (`diary.item_source_errors`)."""
 
     id: Optional[int] = None
     food_id: Optional[int] = None
     estimate: Optional[MealItemEstimateIn] = None
-    quantity: Number
-    unit: str = Field(min_length=1, max_length=24)
+    quick_entry: Optional[MealItemQuickEntryIn] = None
+    # Dispensados só no lançamento rápido e no item mantido; nos demais, ausentes -> 400 do motor (`missing_quantity`).
+    quantity: Optional[Number] = None
+    unit: Optional[str] = Field(default=None, min_length=1, max_length=24)
     portion_id: Optional[int] = None
     match_confidence: Optional[Number] = None
 
@@ -413,6 +435,7 @@ __all__ = [
     "MealIn",
     "MealItemEstimateIn",
     "MealItemIn",
+    "MealItemQuickEntryIn",
     "MealParseIn",
     "MealPreviewIn",
     "MuscleGroupBodyMapIn",

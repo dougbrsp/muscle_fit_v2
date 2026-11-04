@@ -144,7 +144,7 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
 
   it('natureza e qualidade comuns não são do bloco de nutrição (dono: domain/data_nature.py)', () => {
     expect(Object.keys(N).filter((chave) => /^(natures|nature_labels|qualities|quality_labels)$/.test(chave))).toEqual([]);
-    expect(N.meal_natures).toEqual(['DERIVED', 'ESTIMATED', 'MIXED']);
+    expect(N.meal_natures).toEqual(['DERIVED', 'ESTIMATED', 'USER_ENTERED', 'MIXED']);
   });
 
   it('faixas de formulário são [mín, máx] e o default de cada estratégia fica dentro', () => {

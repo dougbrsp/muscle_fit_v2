@@ -257,6 +257,23 @@ def export_for_frontend() -> dict[str, Any]:
         "energy_field": meal_math.ENERGY_FIELD,
         "item_nutrient_fields": [meal_math.ENERGY_FIELD, *meal_math.ATWATER_MACRO_FIELDS],
         "meal_max_items": diary.MEAL_MAX_ITEMS,
+        # Lançamento rápido (D2, 2026-11-04): campos, teto e natureza do item lançado à mão. A tela só
+        # rotula e limita a digitação; obrigatoriedade e faixas são da API (`diary.validate_quick_entry`).
+        "quick_entry": {
+            "weight_field": diary.QUICK_ENTRY_WEIGHT_FIELD,
+            "nutrient_fields": list(diary.QUICK_ENTRY_NUTRIENT_FIELDS),
+            "weight_max": diary.ITEM_AMOUNT_MAX,
+            "name_max_chars": diary.QUICK_ENTRY_NAME_MAX_CHARS,
+            "nature": diary.QUICK_ENTRY_NATURE.value,
+            "source": diary.QUICK_ENTRY_SOURCE,
+            "unit": diary.QUICK_ENTRY_UNIT.value,
+        },
+        # Base da tabela do alimento (D1): digitada por esta quantidade; o motor converte para por 100.
+        "table_base": {
+            "default": catalog.TABLE_BASE_DEFAULT,
+            "max": catalog.TABLE_BASE_AMOUNT_MAX,
+            "display_decimals": catalog.TABLE_BASE_DISPLAY_DECIMALS,
+        },
         # Leitura da refeição por IA (L5b): teto do texto e a decisão de cada item.
         # A cota do dia vem da API (`GET /nutrition/meals/parse/quota`), nunca daqui.
         "meal_parse": {

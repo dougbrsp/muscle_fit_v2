@@ -18,7 +18,7 @@ Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §4, §5 (D2, E4, E9) e §7.
   formato da tabela (por 100 g/ml e por porção) e os campos, NÃO essa
   tolerância: os 10% são da checagem de leitura do rótulo, não da norma.
 - 1 kcal = 4,184 kJ.
-- Natureza dos totais (`MealNature`): DERIVED/ESTIMATED de `DataNature` + MIXED.
+- Natureza dos totais (`MealNature`): DERIVED/ESTIMATED de `DataNature` + USER_ENTERED (lançamento rápido) + MIXED.
 
 Defaults de desenho, SEM fonte bibliográfica (a confirmar pelo usuário):
 `ATWATER_TOLERANCE_SHARE` e `LABEL_SERVING_TOLERANCE_SHARE`.
@@ -107,12 +107,15 @@ class MealNature(str, Enum):
     """Natureza dos totais de um item ou refeição.
 
     DERIVED e ESTIMATED são os MESMOS valores de `DataNature` (dono:
-    `domain/data_nature.py`). MIXED é próprio da refeição (itens derivados e
-    estimados somados) e não existe no vocabulário comum, por isso o enum é
+    `domain/data_nature.py`). MIXED é próprio da refeição (itens de naturezas
+    diferentes somados) e não existe no vocabulário comum, por isso o enum é
     deste módulo e não um `DataNature`."""
 
     DERIVED = DataNature.DERIVED.value  # calculado do catálogo
     ESTIMATED = DataNature.ESTIMATED.value  # estimado (IA, sem casamento)
+    # Lançamento rápido (D2, 2026-11-04): o próprio usuário digitou peso e valores absolutos (rótulo, balança);
+    # nem calculado do catálogo nem estimado pela IA. Cabe em `meal_items.nature`/`meals.totals_nature` (VARCHAR(16)).
+    USER_ENTERED = "USER_ENTERED"
     MIXED = "MIXED"
 
 
@@ -185,7 +188,7 @@ def sum_macros(items: Iterable[Optional[Macros]]) -> Macros:
 
 
 def meal_nature(natures: Sequence[MealNature]) -> Optional[MealNature]:
-    """Refeição toda derivada -> DERIVED; toda estimada -> ESTIMATED; mistura -> MIXED."""
+    """Refeição toda de uma natureza -> ela mesma; naturezas diferentes -> MIXED."""
     distintas = set(natures)
     if not distintas:
         return None

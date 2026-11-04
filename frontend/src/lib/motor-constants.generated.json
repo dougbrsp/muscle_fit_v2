@@ -827,11 +827,13 @@
     "meal_natures": [
       "DERIVED",
       "ESTIMATED",
+      "USER_ENTERED",
       "MIXED"
     ],
     "meal_nature_labels": {
       "DERIVED": "Calculado do catálogo",
       "ESTIMATED": "Estimado",
+      "USER_ENTERED": "Informado por você",
       "MIXED": "Misto"
     },
     "body_fat_methods": [
@@ -1203,6 +1205,25 @@
       "total_fat_g"
     ],
     "meal_max_items": 30,
+    "quick_entry": {
+      "weight_field": "weight_g",
+      "nutrient_fields": [
+        "energy_kcal",
+        "protein_g",
+        "carbohydrates_g",
+        "total_fat_g"
+      ],
+      "weight_max": 2000.0,
+      "name_max_chars": 255,
+      "nature": "USER_ENTERED",
+      "source": "quick_entry",
+      "unit": "g"
+    },
+    "table_base": {
+      "default": 100.0,
+      "max": 10000.0,
+      "display_decimals": 2
+    },
     "meal_parse": {
       "text_max_chars": 1000,
       "match_statuses": [

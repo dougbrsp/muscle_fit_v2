@@ -61,7 +61,7 @@ from enum import Enum
 from typing import Any, Final, Mapping, Optional, Sequence
 
 from .macros import KCAL_PER_G_FAT, Macros
-from .meal_math import PER_100G_REFERENCE, AtwaterCheck, Unit, atwater_check
+from .meal_math import PER_100G_REFERENCE, AtwaterCheck, Unit, atwater_check, per_reference_from_serving
 
 
 class FoodSource(str, Enum):
@@ -154,6 +154,16 @@ MACRO_MASS_FIELDS: Final[tuple[str, ...]] = ("protein_g", "carbohydrates_g", "to
 ML_BASIS_MAX_DENSITY_G_PER_ML: Final[float] = 2.0
 PORTION_AMOUNT_MAX: Final[float] = 2000.0
 
+# Base da tabela informada na digitação (D1, 2026-11-04): o usuário digita os valores como o rótulo traz ("3,3 g de
+# proteína em 30 g"); o motor converte para o canônico por 100 g/ml (`PER_100G_REFERENCE`) e a base digitada fica em
+# `food_items.table_base_amount` só para reabrir a edição como foi digitada. Ausente ou igual à referência = por 100.
+# Teto = default de desenho (sem fonte bibliográfica): 10 kg ou 10 L numa tabela só é erro de digitação.
+TABLE_BASE_DEFAULT: Final[float] = PER_100G_REFERENCE
+TABLE_BASE_AMOUNT_MAX: Final[float] = 10000.0
+# Casas decimais dos valores devolvidos na base da tabela (a precisão de `food_items`, DECIMAL(7,2)).
+TABLE_BASE_DISPLAY_DECIMALS: Final[int] = 2
+
+ERR_INVALID_TABLE_BASE = "invalid_table_base"
 ERR_INVALID_BASIS = "invalid_basis"
 ERR_INVALID_SOURCE = "invalid_food_source"
 ERR_INVALID_NAME = "invalid_food_name"
@@ -221,6 +231,57 @@ def _number(value: Any) -> tuple[Optional[float], bool]:
     return numero, True
 
 
+def table_base_amount(raw: Any) -> tuple[Optional[float], bool]:
+    """Base da tabela informada: (quantidade em g/ml, válida). Ausente -> (None, True) = por 100;
+    precisa ser número finito > 0 e até `TABLE_BASE_AMOUNT_MAX`."""
+    if raw is None:
+        return None, True
+    if isinstance(raw, bool):
+        return None, False
+    try:
+        numero = float(raw)
+    except (TypeError, ValueError):
+        return None, False
+    if not math.isfinite(numero) or numero <= 0 or numero > TABLE_BASE_AMOUNT_MAX:
+        return None, False
+    return numero, True
+
+
+def storable_table_base(amount: Optional[float]) -> Optional[float]:
+    """Valor de `food_items.table_base_amount`: NULL quando a base é a referência (100)."""
+    return None if amount is None or amount == TABLE_BASE_DEFAULT else amount
+
+
+def effective_table_base(stored: Any) -> float:
+    """Base da tabela do alimento: a gravada, ou `TABLE_BASE_DEFAULT` (NULL, alimento antigo)."""
+    numero, valido = table_base_amount(stored)
+    return TABLE_BASE_DEFAULT if numero is None or not valido else numero
+
+
+def per_100_from_table_base(values: Mapping[str, Any], base_amount: Optional[float]) -> dict[str, Any]:
+    """Valores digitados na base da tabela -> por 100 g/ml (`meal_math.per_reference_from_serving`).
+    Só os campos de `PER_100_FIELDS`; o que não é número >= 0 passa como veio (a validação o recusa)."""
+    saida = {campo: values.get(campo) for campo in PER_100_FIELDS}
+    if base_amount is None:
+        return saida
+    for campo, bruto in list(saida.items()):
+        numero, valido = _number(bruto)
+        if valido and numero is not None:
+            saida[campo] = per_reference_from_serving(numero, base_amount)
+    return saida
+
+
+def values_at_base(per_100: Mapping[str, Any], base_amount: Any) -> dict[str, Optional[float]]:
+    """Inversa de `per_100_from_table_base`: valores por 100 g/ml -> na base da tabela, com
+    `TABLE_BASE_DISPLAY_DECIMALS` casas. `None` fica `None`."""
+    base = effective_table_base(base_amount)
+    saida: dict[str, Optional[float]] = {}
+    for campo in PER_100_FIELDS:
+        numero, valido = _number(per_100.get(campo))
+        saida[campo] = round(numero * base / PER_100G_REFERENCE, TABLE_BASE_DISPLAY_DECIMALS) if valido and numero is not None else None
+    return saida
+
+
 @dataclass(frozen=True)
 class FoodValidation:
     """Valores numéricos normalizados (float/None: os por 100 e os da porção do
@@ -231,6 +292,8 @@ class FoodValidation:
     errors: tuple[str, ...]
     warnings: tuple[str, ...]
     atwater: Optional[AtwaterCheck]
+    # Base da tabela em que os valores foram digitados (g/ml); `None` = por 100. `values` é SEMPRE por 100.
+    table_base: Optional[float] = None
 
     @property
     def ok(self) -> bool:
@@ -243,6 +306,7 @@ class FoodValidation:
             "errors": list(self.errors),
             "warnings": list(self.warnings),
             "atwater": self.atwater.to_dict() if self.atwater else None,
+            "table_base": self.table_base,
         }
 
 
@@ -251,13 +315,22 @@ def validate_food_values(
     basis: Any = None,
     *,
     required: tuple[str, ...] = REQUIRED_PER_100_FIELDS,
+    table_base: Any = None,
 ) -> FoodValidation:
     """Regras de entrada de um alimento (por 100 g/ml). Campos fora de
     `PER_100_FIELDS` são ignorados. `required`: obrigatórios do cadastro
     (`REQUIRED_PER_100_FIELDS`) ou da importação externa
-    (`EXTERNAL_REQUIRED_PER_100_FIELDS`); o Atwater só roda com os quatro."""
+    (`EXTERNAL_REQUIRED_PER_100_FIELDS`); o Atwater só roda com os quatro.
+    `table_base` (D1): os valores de `PER_100_FIELDS` foram digitados nesta base (g/ml, > 0);
+    o motor os converte para por 100 antes de validar e `FoodValidation.values` já sai por 100.
+    A porção do rótulo (`serving_size`) não é convertida."""
     base = normalize_basis(basis)
     erros: list[str] = []
+    base_tabela, base_valida = table_base_amount(table_base)
+    if not base_valida:
+        erros.append(ERR_INVALID_TABLE_BASE)
+    elif base_tabela is not None:
+        values = {**values, **per_100_from_table_base(values, base_tabela)}
     avisos: list[str] = []
     numeros: dict[str, Optional[float]] = {}
     for campo in PER_100_FIELDS:
@@ -268,7 +341,7 @@ def validate_food_values(
         elif numero is None and campo in required:
             erros.append(f"{ERR_MISSING_FIELD}:{campo}")
     if base is None:
-        return FoodValidation(None, numeros, (ERR_INVALID_BASIS, *erros), (), None)
+        return FoodValidation(None, numeros, (ERR_INVALID_BASIS, *erros), (), None, storable_table_base(base_tabela))
 
     massa_max = max_basis_mass_g(base)
     tetos = {campo: massa_max for campo in GRAM_FIELDS}
@@ -309,7 +382,7 @@ def validate_food_values(
         )
         if checagem is not None and not checagem.consistent:
             avisos.append(WARN_ATWATER)
-    return FoodValidation(base, numeros, tuple(erros), tuple(avisos), checagem)
+    return FoodValidation(base, numeros, tuple(erros), tuple(avisos), checagem, storable_table_base(base_tabela))
 
 
 def validate_portion_amount(amount: Any) -> Optional[str]:
