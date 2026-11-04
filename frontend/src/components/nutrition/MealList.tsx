@@ -11,7 +11,7 @@ type Props = {
   deletingId: number | null;
 };
 
-/** Refeições do dia na ordem do motor (slot, hora; `diary.meal_sort_key`, já ordenadas pela API). */
+/** Refeições do dia na ordem da API (cronológica, sem hora por último: `diary.meal_sort_key`); a tela não reordena. */
 export function MealList({ meals, onEdit, onDelete, deletingId }: Props) {
   if (meals.length === 0) {
     return (

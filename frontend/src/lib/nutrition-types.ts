@@ -364,6 +364,10 @@ export type FoodItem = {
   /** Base da tabela: código de `FOOD_BASIS_OPTIONS` (g | ml). */
   basis: NutritionCode;
   per_100: FoodPer100;
+  /** Quantidade (g/ml) a que a tabela digitada se refere; 100 em alimento antigo ou por 100. Vem da API. */
+  table_base_amount: number;
+  /** Os mesmos campos de `per_100` na base digitada (pronto do motor); a edição reabre com ele. */
+  per_table_base: FoodPer100;
   serving: FoodServing;
   license: string | null;
   citation: string | null;
@@ -463,7 +467,7 @@ export type NutritionTotals = {
   nutrients: NutrientValues;
   incomplete_fields: string[];
   complete: boolean;
-  /** Código de `MEAL_NATURE_OPTIONS` (DERIVED, ESTIMATED, MIXED). */
+  /** Código de `MEAL_NATURE_OPTIONS` (DERIVED, ESTIMATED, USER_ENTERED, MIXED). */
   nature: NutritionCode | null;
   item_count: number;
   limitations: NutritionLimitation[];
@@ -492,7 +496,29 @@ export type MealItem = {
   field_sources: FoodFieldSource[];
   /** Nota do casamento da leitura por IA (L5b); `null` no item manual ou estimado. */
   match_confidence?: number | null;
+  /** Lançamento rápido: nome, peso e os valores informados (absolutos do peso); `null` nos demais itens. */
+  quick_entry?: QuickEntrySnapshot | null;
 };
+
+/** Lançamento rápido gravado (`item.quick_entry`): valores ABSOLUTOS do peso informado. */
+export type QuickEntrySnapshot = {
+  name: string;
+  weight_g: number;
+  nutrients: NutrientValues;
+};
+
+/** Corpo do lançamento rápido (`MealItemIn.quick_entry`): os 6 campos, valores absolutos do peso. */
+export type QuickEntryPayload = {
+  name: string;
+  weight_g: number;
+  energy_kcal: number;
+  protein_g: number;
+  carbohydrates_g: number;
+  total_fat_g: number;
+};
+
+/** `GET /nutrition/meals/slot-for-time?time=HH:MM`: a refeição da hora, decidida pelo motor. */
+export type SlotForTime = { time: string; meal_slot: NutritionCode; meal_slot_label: string };
 
 export type Meal = {
   id: number;
@@ -529,10 +555,12 @@ export type MealItemEstimatePayload = {
 export type MealItemPayload = {
   /** Item já gravado da refeição (edição): reusa os valores congelados. */
   id?: number | null;
-  food_id: number | null;
+  food_id?: number | null;
   estimate?: MealItemEstimatePayload | null;
-  quantity: number;
-  unit: NutritionCode;
+  /** Lançamento rápido: sem `food_id`, `quantity` nem `unit` (o peso é a quantidade). */
+  quick_entry?: QuickEntryPayload | null;
+  quantity?: number;
+  unit?: NutritionCode;
   portion_id?: number | null;
   match_confidence?: number | null;
 };
@@ -816,6 +844,10 @@ export type LabelPhotoReading = {
   food: FoodItemPayload;
   /** Valores da coluna da porção, como lidos. */
   per_serving: FoodPer100;
+  /** Base (g/ml) a que `per_table_base` se refere, decidida pelo motor; leitura antiga sem o campo = 100. */
+  table_base_amount?: number;
+  /** Valores na base `table_base_amount`, prontos do motor; leitura antiga sem o campo = `food`. */
+  per_table_base?: FoodPer100;
   /** Bloqueiam o cadastro até o usuário corrigir (regras do catálogo). */
   errors: NutritionLimitation[];
   /** Conferir antes de salvar (Atwater, porção × por 100, kJ, valor derivado da porção...). */

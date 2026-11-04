@@ -78,7 +78,7 @@ _NUMERIC_FIELDS: tuple[str, ...] = (*catalog.PER_100_FIELDS, "serving_size", "se
 
 FOOD_COLUMNS: tuple[str, ...] = (
     "id", "source", "source_id", "source_version", "barcode", "name", "brand", "category", "basis",
-    *catalog.PER_100_FIELDS, *catalog.SERVING_FIELDS,
+    "table_base_amount", *catalog.PER_100_FIELDS, *catalog.SERVING_FIELDS,
     "license", "citation", "field_sources_json", "owner_user_id", "is_active", "created_by", "created_at", "updated_at",
 )
 _SELECT_FOODS = f"SELECT {', '.join(FOOD_COLUMNS)} FROM {FOODS}"
@@ -86,8 +86,9 @@ FOOD_BY_ID_SQL = f"{_SELECT_FOODS} WHERE id = %s"
 MATCH_EXPR = "MATCH(name_normalized) AGAINST (%s IN BOOLEAN MODE)"
 
 # Colunas gravadas pelo cadastro do usuário (POST) e pela edição (PUT), na ordem.
-_WRITE_COLUMNS: tuple[str, ...] = ("name", "name_normalized", "brand", "category", "basis", *catalog.PER_100_FIELDS,
-                                   "serving_size", "household_measure", "servings_per_package")
+_WRITE_COLUMNS: tuple[str, ...] = ("name", "name_normalized", "brand", "category", "basis", "table_base_amount",
+                                   *catalog.PER_100_FIELDS, "serving_size", "household_measure",
+                                   "servings_per_package")
 INSERT_FOOD_SQL = (
     f"INSERT INTO {FOODS} (source, barcode, {', '.join(_WRITE_COLUMNS)}, owner_user_id, is_active, created_by) "
     f"VALUES (%s, %s, {', '.join(['%s'] * len(_WRITE_COLUMNS))}, %s, 1, %s)"
@@ -161,6 +162,7 @@ def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
     rótulo, citação/licença da linha, a origem dos valores que vieram de outra
     fonte (`field_sources`, com a nota pronta do motor; M85) e o que ESTE
     usuário pode fazer com ele."""
+    per_100 = {campo: _num(row.get(campo)) for campo in catalog.PER_100_FIELDS}
     return {
         "id": int(row["id"]),
         "source": row.get("source"),
@@ -171,7 +173,11 @@ def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
         "brand": row.get("brand"),
         "category": row.get("category"),
         "basis": row.get("basis"),
-        "per_100": {campo: _num(row.get(campo)) for campo in catalog.PER_100_FIELDS},
+        "per_100": per_100,
+        # D1: base em que o alimento foi digitado (100 = por 100, alimento antigo) e os mesmos valores nessa base,
+        # calculados pelo motor, para a edição reabrir como foi digitada.
+        "table_base_amount": catalog.effective_table_base(row.get("table_base_amount")),
+        "per_table_base": catalog.values_at_base(per_100, row.get("table_base_amount")),
         "serving": {
             "serving_size": _num(row.get("serving_size")),
             "household_measure": row.get("household_measure"),
@@ -250,7 +256,7 @@ def _barcode_conflict(existente: dict[str, Any]) -> HTTPException:
 
 def _validated_write_values(payload: FoodItemIn) -> tuple[tuple[Any, ...], catalog.FoodValidation]:
     """Valida no motor e devolve os valores na ordem de `_WRITE_COLUMNS`."""
-    validacao = catalog.validate_food_values(payload.model_dump(), payload.basis)
+    validacao = catalog.validate_food_values(payload.model_dump(), payload.basis, table_base=payload.table_base_amount)
     nome = " ".join(payload.name.split())
     normalizado = food_text.normalize_name(nome)
     erros = list(validacao.errors)
@@ -265,6 +271,7 @@ def _validated_write_values(payload: FoodItemIn) -> tuple[tuple[Any, ...], catal
         "brand": _text_or_none(payload.brand),
         "category": _text_or_none(payload.category),
         "basis": validacao.basis.value,  # type: ignore[union-attr]
+        "table_base_amount": validacao.table_base,  # None = por 100 (o valor já veio convertido do motor)
         "household_measure": _text_or_none(payload.household_measure),
         **{campo: numeros.get(campo) for campo in _NUMERIC_FIELDS},
     }

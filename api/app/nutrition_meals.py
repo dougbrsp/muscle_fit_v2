@@ -41,7 +41,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .db import get_conn
 from .db_helpers import connect_or_503
@@ -214,6 +214,7 @@ def _item_row_public(row: dict[str, Any]) -> dict[str, Any]:
         "food_source": alimento.get("source"),
         "citation": alimento.get("citation"),
         "field_sources": nutrition_labels.field_sources_public(alimento.get("field_sources")),
+        "quick_entry": alimento.get("quick_entry") if diary.snapshot_is_quick_entry(alimento) else None,
     }
 
 
@@ -237,7 +238,7 @@ def meal_row_public(row: dict[str, Any], items: Sequence[dict[str, Any]]) -> dic
 
 
 def sort_meals(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Ordem do dia pelo motor (`diary.meal_sort_key`: slot, hora, id)."""
+    """Ordem do dia pelo motor (`diary.meal_sort_key`: hora, sem hora por último, slot, id)."""
     return sorted(rows, key=lambda r: diary.meal_sort_key(r.get("meal_slot"), _hhmm(r.get("eaten_at")), r.get("id")))
 
 
@@ -327,6 +328,9 @@ class ResolvedItem:
             "food_source": self.snapshot["food"].get("source"),
             "citation": self.snapshot["food"].get("citation"),
             "field_sources": nutrition_labels.field_sources_public(self.snapshot["food"].get("field_sources")),
+            "quick_entry": self.snapshot["food"].get("quick_entry")
+            if diary.snapshot_is_quick_entry(self.snapshot["food"])
+            else None,
         }
 
 
@@ -350,14 +354,17 @@ def _fetch_by_ids(cur: Any, sql_for: Any, ids: Sequence[int]) -> dict[int, dict[
 
 def _reusable_snapshot(item: MealItemIn, stored: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Snapshot congelado (E4) que o item mantido na edição reusa: o mesmo
-    alimento do catálogo, ou o item estimado pela IA mantido sem estimativa nova."""
+    alimento do catálogo, o item estimado pela IA mantido sem estimativa nova ou o
+    lançamento rápido mantido sem valores novos."""
     snapshot = _json_value(stored.get("catalog_snapshot_json")) or {}
-    if not snapshot.get("food") or item.estimate is not None:
+    if not snapshot.get("food") or item.estimate is not None or item.quick_entry is not None:
         return None
     gravado = stored.get("food_id")
     if item.food_id is not None:
         return snapshot if gravado is not None and int(gravado) == int(item.food_id) else None
-    if gravado is None and meal_parse.snapshot_is_estimate(snapshot["food"]):
+    if gravado is None and (
+        meal_parse.snapshot_is_estimate(snapshot["food"]) or diary.snapshot_is_quick_entry(snapshot["food"])
+    ):
         return snapshot
     return None
 
@@ -390,12 +397,14 @@ def resolve_items(
         if snapshot is not None:
             snapshots[indice] = snapshot
 
-    # Origem de cada item (motor): alimento do catálogo OU estimativa da IA (o
-    # estimado mantido na edição conta como estimativa).
+    # Origem de cada item (motor): alimento do catálogo, estimativa da IA OU lançamento rápido (o
+    # estimado ou lançado mantido na edição conta como a origem do snapshot reusado).
     erros_origem: list[dict[str, Any]] = []
     for indice, item in enumerate(items):
-        tem_estimativa = item.estimate is not None or (indice in snapshots and item.food_id is None)
-        erros = diary.item_source_errors(item.food_id is not None, tem_estimativa)
+        mantido = snapshots[indice]["food"] if indice in snapshots and item.food_id is None else None
+        tem_rapido = item.quick_entry is not None or (mantido is not None and diary.snapshot_is_quick_entry(mantido))
+        tem_estimativa = item.estimate is not None or (mantido is not None and not tem_rapido)
+        erros = diary.item_source_errors(item.food_id is not None, tem_estimativa, tem_rapido)
         if erros:
             erros_origem.append({"index": indice, "errors": nutrition_labels.limitation_items(erros)})
     if erros_origem:
@@ -427,6 +436,12 @@ def resolve_items(
         snapshot = snapshots.get(indice)
         if snapshot is None and item.food_id is not None:
             snapshot = {"food": food_snapshot(alimentos[int(item.food_id)]), "portion": None}
+        elif snapshot is None and item.quick_entry is not None:
+            lancamento = diary.validate_quick_entry(item.quick_entry.model_dump())
+            if lancamento.entry is None:
+                erros_itens.append({"index": indice, "errors": nutrition_labels.limitation_items(lancamento.errors)})
+                continue
+            snapshot = diary.quick_entry_snapshot(lancamento.entry)
         elif snapshot is None:
             estimativa = meal_parse.validate_estimate(item.estimate.model_dump() if item.estimate else None)
             if estimativa.nutrients is None:
@@ -445,6 +460,28 @@ def resolve_items(
                 raise _error(404, "portion_not_found", "Porção não encontrada para este alimento.", index=indice)
             snapshot["portion"] = portion_snapshot(porcao)
         alimento = snapshot["food"]
+        if diary.snapshot_is_quick_entry(alimento):
+            # Lançamento rápido (D2): os valores digitados valem como estão; nada de catálogo, porção nem conversão.
+            entrada = diary.quick_entry_from_snapshot(alimento)
+            if entrada is None:
+                erros_itens.append(
+                    {"index": indice, "errors": nutrition_labels.limitation_items([diary.ERR_ITEM_FOOD_OR_ESTIMATE])}
+                )
+                continue
+            resolvidos.append(
+                ResolvedItem(
+                    position=indice,
+                    food_id=None,
+                    portion_id=None,
+                    label=entrada.name,
+                    quantity=entrada.weight_g,
+                    unit=diary.QUICK_ENTRY_UNIT.value,
+                    snapshot={"food": snapshot["food"], "portion": None},
+                    nutrition=diary.quick_entry_item_nutrition(entrada),
+                    match_confidence=meal_parse.normalize_confidence(item.match_confidence),
+                )
+            )
+            continue
         quantidade_porcao = meal_math.portion_amount_for(
             item.unit, (snapshot["portion"] or {}).get("amount"), alimento.get("serving_size")
         )
@@ -540,6 +577,26 @@ def _read_back(cur: Any, meal_id: int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _suggested_slot(eaten_at: Any) -> Optional[str]:
+    slot = diary.meal_slot_for_time(eaten_at) if eaten_at is not None else None
+    return slot.value if slot else None
+
+
+@router.get("/slot-for-time")
+def slot_for_time(time_of_day: str = Query(..., alias="time", min_length=3, max_length=8),
+                  identity: Identity = Depends(get_current_identity)):
+    """Refeição sugerida pela hora local `HH:MM` (D3, `diary.meal_slot_for_time`). Só sugere: a tela
+    mostra e deixa o usuário trocar. Hora inválida -> 400 `invalid_clock_time`."""
+    slot = diary.meal_slot_for_time(time_of_day)
+    if slot is None:
+        raise _error(400, diary.ERR_INVALID_CLOCK_TIME, nutrition_labels.limitation_label(diary.ERR_INVALID_CLOCK_TIME))
+    return {
+        "time": time_of_day,
+        "meal_slot": slot.value,
+        "meal_slot_label": nutrition_labels.MEAL_SLOT_LABELS[slot],
+    }
+
+
 @router.post("/preview")
 def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_current_identity)):
     """Itens e totais pelo motor, sem gravar nada."""
@@ -560,6 +617,8 @@ def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_curren
         "user_id": aluno,
         "local_date": payload.local_date.isoformat(),
         "meal_slot": payload.meal_slot,
+        # D3: refeição sugerida pela hora (`eaten_at`) segundo o motor; null sem hora. A tela não calcula.
+        "suggested_meal_slot": _suggested_slot(payload.eaten_at),
         "items": [item.public() for item in itens],
         "totals": totals_public(totais),
         "engine_version": ENGINE_VERSION,

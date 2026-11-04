@@ -413,6 +413,8 @@ for (const vp of VIEWPORTS) {
     test('alimentos: usda e porcoes em lista, sem tabela', async ({ page }) => {
       test.setTimeout(120_000);
       await open(page, '/nutricao/alimentos/');
+      // O cadastro e um fluxo em abas (Digitacao, Codigo de barras, Rotulo, USDA): a busca do USDA fica na ultima.
+      await page.getByRole('tab', { name: 'USDA' }).click();
       await page.getByLabel('Buscar no USDA (em inglês)').fill('rice');
       await page.getByRole('button', { name: 'Buscar no USDA' }).click();
       await expect(page.getByText('Rice, white, cooked')).toBeVisible();

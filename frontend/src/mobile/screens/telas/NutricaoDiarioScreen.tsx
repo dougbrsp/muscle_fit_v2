@@ -1,7 +1,7 @@
 'use client';
 
 import { Alert, Button, Stack, Text } from '@mantine/core';
-import { IconAlertTriangle, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBolt, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { CheckinCard } from '@/components/nutrition/CheckinCard';
@@ -9,6 +9,7 @@ import { DayHeader } from '@/components/nutrition/DayHeader';
 import { DayNotesInput } from '@/components/nutrition/DayNotesInput';
 import { MealEditor } from '@/components/nutrition/MealEditor';
 import { MealParseModal } from '@/components/nutrition/MealParseModal';
+import { QuickEntryForm } from '@/components/nutrition/QuickEntryForm';
 import { quantidade, TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
 import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
@@ -17,6 +18,7 @@ import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import { MEAL_SLOT_OPTIONS, ITEM_NUTRIENT_FIELDS, nutritionLabel } from '@/lib/nutrition-constants';
+import { mealHeadline, mealMacrosLine } from '@/lib/nutrition-meal-list';
 import { dashboardKeys } from '@/lib/nutrition-dashboard';
 import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
@@ -39,6 +41,7 @@ function NutricaoDiarioContent() {
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [lendo, setLendo] = useState(false);
+  const [lancando, setLancando] = useState(false);
   const [modoLeitura, setModoLeitura] = useState<'text' | 'photo'>('text');
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
 
@@ -77,6 +80,8 @@ function NutricaoDiarioContent() {
   });
 
   useBackToClose(editing !== null, () => setEditing(null));
+  // Folha do lançamento rápido: o voltar fecha só a folha, não sai do diário.
+  useBackToClose(lancando, () => setLancando(false));
 
   function abrirLeitura(modo: 'text' | 'photo') {
     setModoLeitura(modo);
@@ -106,6 +111,7 @@ function NutricaoDiarioContent() {
                 : `editar-${editing.meal.id}`
           }
           date={date}
+          today={weekQuery.data?.today ?? dia?.today ?? null}
           meal={editing.mode === 'edit' ? editing.meal : null}
           initialForm={editing.mode === 'parsed' ? editing.form : null}
           onSaved={async () => {
@@ -164,16 +170,15 @@ function NutricaoDiarioContent() {
               <ListGroup title="Refeições" footer={dia.meals.length === 0 ? 'Nenhuma refeição registrada neste dia.' : undefined}>
                 {dia.totals ? (
                   <ListBlock>
-                    <TotalsBadges totals={dia.totals} />
+                    <TotalsBadges totals={dia.totals} items={dia.meals.flatMap((meal) => meal.items)} />
                     <TotalsLine totals={dia.totals} />
                   </ListBlock>
                 ) : null}
                 {dia.meals.map((meal) => (
                   <ListRow
                     key={meal.id}
-                    title={nutritionLabel(MEAL_SLOT_OPTIONS, meal.meal_slot) ?? meal.meal_slot}
-                    subtitle={[meal.eaten_at, `${meal.items.length} itens`].filter(Boolean).join(' · ')}
-                    value={formatWithUnit(meal.totals.nutrients[ITEM_NUTRIENT_FIELDS[0].code], ITEM_NUTRIENT_FIELDS[0].unit, 0)}
+                    title={mealHeadline(meal)}
+                    subtitle={mealMacrosLine(meal.totals)}
                     onClick={() => setSelectedMeal(meal)}
                   />
                 ))}
@@ -185,6 +190,7 @@ function NutricaoDiarioContent() {
               ) : null}
 
               <ListGroup title="Registrar de outro jeito">
+                <ListRow icon={IconBolt} title="Lançamento rápido" subtitle="Nome, peso e macros" onClick={() => setLancando(true)} />
                 <ListRow icon={IconCamera} title="Foto do prato" onClick={() => abrirLeitura('photo')} />
                 <ListRow icon={IconSparkles} title="Descrever com IA" onClick={() => abrirLeitura('text')} />
               </ListGroup>
@@ -206,6 +212,21 @@ function NutricaoDiarioContent() {
           }}
         />
       ) : null}
+
+      <BottomSheet opened={lancando && date !== null} onClose={() => setLancando(false)} title="Lançamento rápido">
+        {date !== null ? (
+          <QuickEntryForm
+            date={date}
+            today={weekQuery.data?.today ?? dia?.today ?? null}
+            touch
+            onSaved={async () => {
+              setLancando(false);
+              await invalidarDiario();
+            }}
+            onCancel={() => setLancando(false)}
+          />
+        ) : null}
+      </BottomSheet>
 
       {dia && date !== null ? (
         <StickyAction>
@@ -263,7 +284,7 @@ function NutricaoDiarioContent() {
                 />
               ))}
             </ListGroup>
-            <TotalsBadges totals={selectedMeal.totals} />
+            <TotalsBadges totals={selectedMeal.totals} items={selectedMeal.items} />
             {!selectedMeal.totals.complete ? (
               <Text size="sm" c="dimmed">
                 {selectedMeal.totals.limitations.map((item) => item.label).join(' ')}

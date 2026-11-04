@@ -4,6 +4,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   Group,
   Paper,
   Select,
@@ -16,7 +17,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconAlertTriangle, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { IconAlertTriangle, IconPlus, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
@@ -46,13 +47,16 @@ type Props = {
   isAdmin: boolean;
   selectedId: number | null;
   onSelect: (item: FoodSearchItem) => void;
+  /** Quando dado, mostra "Cadastrar novo alimento" sempre, com o termo buscado (pode ser vazio). */
+  onRegister?: (term: string) => void;
+  registerDisabled?: boolean;
 };
 
 /**
  * Busca no catálogo. A API filtra (FULLTEXT), ordena pela nota do motor
  * (`food_text`) e diz de que fonte é cada item, com a citação; a tela só exibe.
  */
-export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
+export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false }: Props) {
   const [texto, setTexto] = useState('');
   const [fonte, setFonte] = useState<string | null>(null);
   const [privados, setPrivados] = useState(false);
@@ -118,6 +122,19 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
         )}
       </Group>
 
+      {onRegister && (
+        <Button
+          variant="light"
+          color="brand"
+          leftSection={<IconPlus size={16} />}
+          onClick={() => onRegister(texto.trim())}
+          disabled={registerDisabled}
+          style={{ minHeight: 44, alignSelf: 'flex-start' }}
+        >
+          Cadastrar novo alimento
+        </Button>
+      )}
+
       {query.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {nutritionErrorInfo(query.error, 'Não foi possível buscar alimentos.').message}
@@ -134,7 +151,7 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
       )}
       {busca.length > 0 && query.isSuccess && itens.length === 0 && (
         <Text c={BRAND.textMuted} size="sm">
-          Nenhum alimento encontrado. Cadastre um alimento novo abaixo.
+          Nenhum alimento encontrado. Você pode cadastrar um alimento novo.
         </Text>
       )}
 

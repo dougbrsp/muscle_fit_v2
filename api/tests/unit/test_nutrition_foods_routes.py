@@ -177,7 +177,7 @@ def test_food_item_in_tem_exatamente_os_campos_do_catalogo():
     from app.request_models import FoodItemIn
 
     assert set(FoodItemIn.model_fields) == {
-        "name", "brand", "category", "basis", *catalog.PER_100_FIELDS, *catalog.SERVING_FIELDS}
+        "name", "brand", "category", "basis", "table_base_amount", *catalog.PER_100_FIELDS, *catalog.SERVING_FIELDS}
 
 
 def test_privado_de_outro_e_404_e_o_admin_ve(db):

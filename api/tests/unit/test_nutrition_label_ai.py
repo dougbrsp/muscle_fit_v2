@@ -380,3 +380,15 @@ def test_criterio_do_eval_aprova_a_leitura_certa_e_aponta_cada_erro():
     inventado = {**LEITURA, "per_100": {"energy_kcal": 999}, "per_serving": {}}
     problemas = avaliar_rotulo({"bruto": inventado, "resultado": resultado}, borrado)
     assert any("999" in p for p in problemas) and any("legibilidade" in p for p in problemas)
+
+
+def test_job_result_leva_a_base_da_tabela_do_motor_para_a_tela():
+    """D1: o resultado do job (o que a tela le) traz `table_base_amount` e `per_table_base` do motor."""
+    antigo = {**LEITURA, "per_100": {}}  # rotulo antigo: so por porcao
+    resultado = ai.job_result(label_photo.review_reading(antigo), ai.LabelReading(antigo, "m", 1, 1))
+    assert resultado["table_base_amount"] == 30
+    assert resultado["per_table_base"]["energy_kcal"] == 135 and resultado["per_table_base"]["protein_g"] == 2.4
+    assert resultado["food"]["energy_kcal"] == 450  # `food` segue por 100
+    impresso = ai.job_result(label_photo.review_reading(LEITURA), ai.LabelReading(LEITURA, "m", 1, 1))
+    assert impresso["table_base_amount"] == 100
+    assert impresso["per_table_base"]["energy_kcal"] == impresso["food"]["energy_kcal"]

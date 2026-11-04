@@ -18,7 +18,7 @@ Plano: `docs/nutricao/PLANO_NUTRICAO_2026-10-14.md` §4, §5 (D2, E4, E9) e §7.
   formato da tabela (por 100 g/ml e por porção) e os campos, NÃO essa
   tolerância: os 10% são da checagem de leitura do rótulo, não da norma.
 - 1 kcal = 4,184 kJ.
-- Natureza dos totais (`MealNature`): DERIVED/ESTIMATED de `DataNature` + MIXED.
+- Natureza dos totais (`MealNature`): DERIVED/ESTIMATED de `DataNature` + USER_ENTERED (lançamento rápido) + MIXED.
 
 Defaults de desenho, SEM fonte bibliográfica (a confirmar pelo usuário):
 `ATWATER_TOLERANCE_SHARE` e `LABEL_SERVING_TOLERANCE_SHARE`.
@@ -107,12 +107,15 @@ class MealNature(str, Enum):
     """Natureza dos totais de um item ou refeição.
 
     DERIVED e ESTIMATED são os MESMOS valores de `DataNature` (dono:
-    `domain/data_nature.py`). MIXED é próprio da refeição (itens derivados e
-    estimados somados) e não existe no vocabulário comum, por isso o enum é
+    `domain/data_nature.py`). MIXED é próprio da refeição (itens de naturezas
+    diferentes somados) e não existe no vocabulário comum, por isso o enum é
     deste módulo e não um `DataNature`."""
 
     DERIVED = DataNature.DERIVED.value  # calculado do catálogo
     ESTIMATED = DataNature.ESTIMATED.value  # estimado (IA, sem casamento)
+    # Lançamento rápido (D2, 2026-11-04): o próprio usuário digitou peso e valores absolutos (rótulo, balança);
+    # nem calculado do catálogo nem estimado pela IA. Cabe em `meal_items.nature`/`meals.totals_nature` (VARCHAR(16)).
+    USER_ENTERED = "USER_ENTERED"
     MIXED = "MIXED"
 
 
@@ -185,7 +188,7 @@ def sum_macros(items: Iterable[Optional[Macros]]) -> Macros:
 
 
 def meal_nature(natures: Sequence[MealNature]) -> Optional[MealNature]:
-    """Refeição toda derivada -> DERIVED; toda estimada -> ESTIMATED; mistura -> MIXED."""
+    """Refeição toda de uma natureza -> ela mesma; naturezas diferentes -> MIXED."""
     distintas = set(natures)
     if not distintas:
         return None
@@ -497,6 +500,9 @@ class ItemNutrition:
     inferred_zero: tuple[str, ...] = ()
     unknown: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
+    # Campos que a origem do item nunca pede (lançamento rápido: fibra e sódio): `None` neles NÃO marca o total da
+    # refeição nem do dia como incompleto (2026-11-04). O campo segue sem número no total (`is_complete` falso).
+    not_requested: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -565,13 +571,23 @@ class NutritionTotals:
         }
 
 
-def _sum_parts(parts: Sequence[tuple[Nutrients, tuple[str, ...]]]) -> tuple[Nutrients, tuple[str, ...]]:
+def _sum_parts(
+    parts: Sequence[tuple[Nutrients, tuple[str, ...], tuple[str, ...]]],
+) -> tuple[Nutrients, tuple[str, ...]]:
+    """Cada parte: (nutrientes, campos incompletos, campos não pedidos). Um `None` num campo não pedido da parte
+    só deixa o total de fora da pendência quando TODAS as partes têm `None` nele (nada foi somado: o total fica
+    `None`, sem número falso). Se alguma parte tem valor conhecido e outra tem `None`, o total é um mínimo e o campo
+    fica incompleto, pedido ou não. Fora isso, `None` ou campo incompleto da parte sempre marca."""
     somas: dict[str, Optional[float]] = {}
     incompletos: list[str] = []
     for campo in NUTRIENT_FIELDS:
-        conhecidos = [valor for nutrientes, _ in parts if (valor := nutrientes.get(campo)) is not None]
+        conhecidos = [valor for nutrientes, _, _ in parts if (valor := nutrientes.get(campo)) is not None]
         somas[campo] = float(sum(conhecidos)) if conhecidos else None
-        if not parts or any(nutrientes.get(campo) is None or campo in faltam for nutrientes, faltam in parts):
+        if not parts or any(
+            campo in faltam
+            or (nutrientes.get(campo) is None and (campo not in nao_pedidos or bool(conhecidos)))
+            for nutrientes, faltam, nao_pedidos in parts
+        ):
             incompletos.append(campo)
     return Nutrients(**somas), tuple(incompletos)
 
@@ -579,7 +595,7 @@ def _sum_parts(parts: Sequence[tuple[Nutrients, tuple[str, ...]]]) -> tuple[Nutr
 def sum_items(items: Sequence[ItemNutrition]) -> NutritionTotals:
     """Total da refeição. Sem item, tudo `None` e incompleto (refeição vazia
     não é zero)."""
-    nutrientes, incompletos = _sum_parts([(item.nutrients, ()) for item in items])
+    nutrientes, incompletos = _sum_parts([(item.nutrients, (), item.not_requested) for item in items])
     return NutritionTotals(
         nutrients=nutrientes,
         incomplete_fields=incompletos,
@@ -593,7 +609,15 @@ def combine_totals(parts: Sequence[NutritionTotals]) -> Optional[NutritionTotals
     (dia sem registro, nunca 0)."""
     if not parts:
         return None
-    nutrientes, incompletos = _sum_parts([(parte.nutrients, parte.incomplete_fields) for parte in parts])
+    # Total gravado: `None` sem o campo em `incomplete_fields` é campo não pedido (o total de uma refeição marca todo
+    # `None` que não é não pedido). Só não torna o dia incompleto se NENHUMA refeição tem valor conhecido nele; com
+    # mistura de conhecido e `None`, o campo é marcado (`_sum_parts`).
+    nutrientes, incompletos = _sum_parts(
+        [
+            (parte.nutrients, parte.incomplete_fields, tuple(c for c in NUTRIENT_FIELDS if c not in parte.incomplete_fields))
+            for parte in parts
+        ]
+    )
     return NutritionTotals(
         nutrients=nutrientes,
         incomplete_fields=incompletos,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import motorConstants from './motor-constants.generated.json';
-import { emptyFoodForm, foodFormFromItem, foodFormFromPrefill, foodPayloadFromForm } from './nutrition-food-form';
-import type { FoodItem } from './nutrition-types';
+import { emptyFoodForm, foodFormFromItem, foodFormFromPrefill, foodPayloadFromForm, tableBaseError } from './nutrition-food-form';
+import type { FoodItem, LabelPhotoReading } from './nutrition-types';
 
 const N = motorConstants.nutrition;
 
@@ -17,6 +17,9 @@ const ITEM: FoodItem = {
   category: null,
   basis: 'g',
   per_100: Object.fromEntries(N.food_per_100_fields.map((codigo, i) => [codigo, i === 1 ? null : i + 0.5])),
+  table_base_amount: 30,
+  // Valores na base digitada: pronto da API (o front nao converte), diferentes do por 100 de proposito.
+  per_table_base: Object.fromEntries(N.food_per_100_fields.map((codigo, i) => [codigo, i === 1 ? null : i + 0.25])),
   serving: { serving_size: 50, household_measure: '1 colher', servings_per_package: null },
   license: null,
   citation: null,
@@ -36,12 +39,50 @@ describe('nutrition-food-form: formulário <-> FoodItemIn (só transporte)', () 
     expect(vazio.basis).toBe(N.default_food_basis);
   });
 
+  it('base da tabela: o padrao e o do dono (JSON gerado), nao um numero escrito na tela', () => {
+    expect(emptyFoodForm().tableBaseAmount).toBe(N.table_base.default);
+    expect(foodPayloadFromForm(emptyFoodForm()).table_base_amount).toBe(N.table_base.default);
+  });
+
+  it('envia table_base_amount com os valores como digitados (30 g com 3,3 g de proteina), sem converter', () => {
+    const form = { ...emptyFoodForm(), name: 'Iogurte', tableBaseAmount: 30 };
+    form.values = { ...form.values, [N.food_per_100_fields[0]]: 66 };
+    const payload = foodPayloadFromForm(form);
+    expect(payload.table_base_amount).toBe(30);
+    expect(payload[N.food_per_100_fields[0]]).toBe(66);
+  });
+
+  it('base vazia nunca vira payload com null: a tela bloqueia e o payload recusa', () => {
+    expect(tableBaseError('')).toMatch(/Informe/);
+    expect(() => foodPayloadFromForm({ ...emptyFoodForm(), tableBaseAmount: '' })).toThrow();
+  });
+
+  it('base fora da faixa do dono (minimo e maximo do JSON gerado) tem erro; dentro, nao', () => {
+    expect(tableBaseError(N.table_base.min)).toBeNull();
+    expect(tableBaseError(N.table_base.max)).toBeNull();
+    expect(tableBaseError(N.table_base.min / 10)).not.toBeNull();
+    expect(tableBaseError(N.table_base.max + 1)).not.toBeNull();
+    expect(tableBaseError(30)).toBeNull();
+  });
+
+  it('a edicao reabre com table_base_amount e per_table_base, nao com o por 100', () => {
+    const form = foodFormFromItem(ITEM);
+    expect(form.tableBaseAmount).toBe(30);
+    for (const codigo of N.food_per_100_fields) {
+      expect(form.values[codigo]).toBe(ITEM.per_table_base[codigo] ?? '');
+      if (ITEM.per_100[codigo] !== null) expect(form.values[codigo]).not.toBe(ITEM.per_100[codigo]);
+    }
+    const payload = foodPayloadFromForm(form);
+    expect(payload.table_base_amount).toBe(30);
+    for (const codigo of N.food_per_100_fields) expect(payload[codigo]).toBe(ITEM.per_table_base[codigo]);
+  });
+
   it('vazio vira null (nunca 0) e o payload tem exatamente as chaves do FoodItemIn', () => {
     const payload = foodPayloadFromForm({ ...emptyFoodForm(), name: '  Pão  ' });
     expect(payload.name).toBe('Pão');
     for (const codigo of N.food_per_100_fields) expect(payload[codigo]).toBeNull();
     expect(Object.keys(payload).sort()).toEqual(
-      ['name', 'brand', 'category', 'basis', ...N.food_per_100_fields, 'serving_size', 'household_measure', 'servings_per_package'].sort(),
+      ['name', 'brand', 'category', 'basis', 'table_base_amount', ...N.food_per_100_fields, 'serving_size', 'household_measure', 'servings_per_package'].sort(),
     );
   });
 
@@ -51,7 +92,7 @@ describe('nutrition-food-form: formulário <-> FoodItemIn (só transporte)', () 
     expect(payload.category).toBeNull();
     expect(payload.serving_size).toBe(50);
     expect(payload.household_measure).toBe('1 colher');
-    for (const codigo of N.food_per_100_fields) expect(payload[codigo]).toBe(ITEM.per_100[codigo]);
+    for (const codigo of N.food_per_100_fields) expect(payload[codigo]).toBe(ITEM.per_table_base[codigo]);
   });
 });
 
@@ -80,5 +121,45 @@ describe('nutrition-food-form: leitura da foto do rótulo (L6) pré-preenche o f
 
   it('sem base lida, a base padrão do dono', () => {
     expect(foodFormFromPrefill({ ...LIDO, basis: null }).basis).toBe(N.default_food_basis);
+  });
+});
+
+describe('nutrition-food-form: rotulo pre-preenche com a base e os valores da leitura (motor, sem conta no front)', () => {
+  const CODIGOS = N.food_per_100_fields;
+  const POR_100: Record<string, number | null> = Object.fromEntries(CODIGOS.map((codigo, i) => [codigo, i + 10]));
+  const NA_BASE: Record<string, number | null> = Object.fromEntries(CODIGOS.map((codigo, i) => [codigo, i + 1]));
+  const FOOD = { name: 'Barra', basis: 'g', ...POR_100, serving_size: 30, household_measure: null, servings_per_package: null };
+
+  function leitura(over: Partial<LabelPhotoReading>): LabelPhotoReading {
+    return {
+      prompt_version: 'v',
+      model: 'm',
+      legibility: 'good',
+      readable: true,
+      barcode: null,
+      food: FOOD,
+      per_serving: NA_BASE,
+      errors: [],
+      warnings: [],
+      ai_notes: [],
+      ...over,
+    };
+  }
+
+  it('leitura com table_base_amount e per_table_base: base e valores como vieram', () => {
+    const form = foodFormFromPrefill(FOOD, leitura({ table_base_amount: 30, per_table_base: NA_BASE }));
+    expect(form.tableBaseAmount).toBe(30);
+    for (const codigo of CODIGOS) expect(form.values[codigo]).toBe(NA_BASE[codigo]);
+    expect(foodPayloadFromForm(form).table_base_amount).toBe(30);
+  });
+
+  it('leitura antiga sem os campos: base padrao do dono e valores de food', () => {
+    const form = foodFormFromPrefill(FOOD, leitura({}));
+    expect(form.tableBaseAmount).toBe(N.table_base.default);
+    for (const codigo of CODIGOS) expect(form.values[codigo]).toBe(POR_100[codigo]);
+  });
+
+  it('sem a leitura (chamada antiga), segue por 100', () => {
+    expect(foodFormFromPrefill(FOOD).tableBaseAmount).toBe(N.table_base.default);
   });
 });
