@@ -134,6 +134,8 @@ export const FOOD_SOURCE_OPTIONS = optionsOf(NUTRITION.food_sources, NUTRITION.f
 /** Base da tabela do alimento: por 100 g ou por 100 ml. */
 export const FOOD_BASIS_OPTIONS = optionsOf(NUTRITION.food_bases, NUTRITION.food_basis_labels);
 export const DEFAULT_FOOD_BASIS: NutritionCode = NUTRITION.default_food_basis;
+/** Base da tabela informada no cadastro (quantidade em g/ml): padrão, teto e casas, do dono (`catalog`). A API valida. */
+export const FOOD_TABLE_BASE: { default: number; max: number; display_decimals: number } = NUTRITION.table_base;
 
 function rdc429Fields(codes: ReadonlyArray<string>): ReadonlyArray<Rdc429Field> {
   return codes

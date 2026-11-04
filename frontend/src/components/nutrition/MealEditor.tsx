@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Group,
+  Modal,
   NumberInput,
   Paper,
   Select,
@@ -17,14 +18,16 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { FavoriteShortcuts } from './FavoriteShortcuts';
+import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
+import { addRegisteredFood } from '@/lib/nutrition-food-registration';
 import {
   chooseCandidate,
   chooseEstimate,
@@ -39,6 +42,8 @@ import {
   type MealEditorItem,
 } from '@/lib/nutrition-meal-form';
 import type { Meal, MealPreviewPayload } from '@/lib/nutrition-types';
+import { usePresentationActive } from '@/lib/presentation-slots';
+import { BottomSheet } from '@/mobile/ui/Sheets';
 import { BRAND } from '@/theme';
 
 const ATRASO_DO_PREVIEW_MS = 400;
@@ -197,6 +202,11 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
       : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: '', notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
+  // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só
+  // desmonta o fluxo ao fechar. Fechar sem salvar não muda nada; salvar acrescenta o item.
+  const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
+  const noCelular = usePresentationActive();
+  const queryClient = useQueryClient();
 
   const corpo = mealCreatePayload(form);
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
@@ -221,6 +231,23 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     onSuccess: onSaved,
   });
 
+  function adicionarCadastrado(alimento: { id: number; name: string; basis: string }) {
+    proximaChave.current += 1;
+    const chave = `novo-${proximaChave.current}`;
+    setForm((atual) => addRegisteredFood(atual, alimento, chave, MEAL_ITEMS_LIMIT));
+    setCadastro(null);
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+
+  /** EAN já cadastrado (409): busca o alimento existente e o adiciona. */
+  async function usarExistente(foodId: number) {
+    try {
+      adicionarCadastrado(await queryClient.fetchQuery({ queryKey: foodKeys.detail(foodId), queryFn: () => fetchFood(foodId) }));
+    } catch {
+      // Sem o alimento não há o que adicionar: o fluxo segue aberto com o aviso de código já cadastrado.
+    }
+  }
+
   function atualizarItem(chave: string, item: MealEditorItem) {
     setForm((atual) => ({ ...atual, items: atual.items.map((existente) => (existente.key === chave ? item : existente)) }));
   }
@@ -230,8 +257,33 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const semOrigem = form.items.some((item) => !itemHasSource(item));
   const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
+  const fluxoDeCadastro = (
+    <FoodRegistrationFlow
+      initialName={cadastro?.nome}
+      onSaved={adicionarCadastrado}
+      onFound={adicionarCadastrado}
+      onUseExisting={usarExistente}
+      onCancel={() => setCadastro(null)}
+    />
+  );
+
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+      {noCelular ? (
+        <BottomSheet opened={cadastro !== null} onClose={() => setCadastro(null)} title="Cadastrar novo alimento">
+          {cadastro !== null ? fluxoDeCadastro : null}
+        </BottomSheet>
+      ) : (
+        <Modal
+          opened={cadastro !== null}
+          onClose={() => setCadastro(null)}
+          title="Cadastrar novo alimento"
+          size="lg"
+          centered
+        >
+          {cadastro !== null ? fluxoDeCadastro : null}
+        </Modal>
+      )}
       <Stack gap="sm">
         <Title order={4} c={BRAND.textPrimary}>
           {meal ? 'Editar refeição' : form.ai ? 'Refeição lida pela IA' : 'Nova refeição'}
@@ -290,6 +342,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
         <FoodSearch
           isAdmin={false}
           selectedId={null}
+          onRegister={(termo) => setCadastro({ nome: termo })}
+          registerDisabled={form.items.length >= MEAL_ITEMS_LIMIT}
           onSelect={(alimento) => {
             if (form.items.length >= MEAL_ITEMS_LIMIT) return;
             proximaChave.current += 1;

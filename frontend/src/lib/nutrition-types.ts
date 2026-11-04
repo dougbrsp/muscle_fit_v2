@@ -364,6 +364,10 @@ export type FoodItem = {
   /** Base da tabela: código de `FOOD_BASIS_OPTIONS` (g | ml). */
   basis: NutritionCode;
   per_100: FoodPer100;
+  /** Quantidade (g/ml) a que a tabela digitada se refere; 100 em alimento antigo ou por 100. Vem da API. */
+  table_base_amount: number;
+  /** Os mesmos campos de `per_100` na base digitada (pronto do motor); a edição reabre com ele. */
+  per_table_base: FoodPer100;
   serving: FoodServing;
   license: string | null;
   citation: string | null;
