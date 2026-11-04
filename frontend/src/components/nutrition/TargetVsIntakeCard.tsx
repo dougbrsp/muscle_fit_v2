@@ -23,7 +23,7 @@ const MacroRing = dynamic(() => import('./NutritionCharts').then((m) => m.MacroR
 // Mesmas cores das fatias de `NutritionCharts` (consumido, a consumir, acima da meta): legenda do cartão.
 const LEGEND: ReadonlyArray<{ key: RingPart['key']; label: string; color: string }> = [
   { key: 'within', label: 'Consumido', color: CHART_COLORS.primary },
-  { key: 'to_consume', label: 'A consumir', color: CHART_COLORS.compare },
+  { key: 'to_consume', label: 'Restante', color: CHART_COLORS.compare },
   { key: 'excess', label: 'Acima da meta', color: CHART_COLORS.secondary },
 ];
 
@@ -87,16 +87,24 @@ function MacroTile({ row }: { row: BalanceRow }) {
         <Text size="xs" c={BRAND.textMuted}>
           Consumido: <b>{formatTotal(row.intake ?? row.within_target, unidade, row.intake == null || row.intake_complete)}</b>
         </Text>
-        <Text size="xs" c={BRAND.textMuted}>
-          Meta: <b>{formatWithUnit(row.target, unidade, 0)}</b>
-        </Text>
-        {row.excess != null && row.excess > 0 ? (
-          <Text size="xs" c={BRAND.textMuted}>
-            Acima da meta: <b>{formatWithUnit(row.excess, unidade, 0)}</b>
-          </Text>
+        {row.target != null ? (
+          <>
+            <Text size="xs" c={BRAND.textMuted}>
+              Meta: <b>{formatWithUnit(row.target, unidade, 0)}</b>
+            </Text>
+            {row.excess != null && row.excess > 0 ? (
+              <Text size="xs" c={BRAND.textMuted}>
+                Acima da meta: <b>{formatWithUnit(row.excess, unidade, 0)}</b>
+              </Text>
+            ) : (
+              <Text size="xs" c={BRAND.textMuted}>
+                Restante: <b>{formatWithUnit(row.to_consume, unidade, 0)}</b>
+              </Text>
+            )}
+          </>
         ) : (
-          <Text size="xs" c={BRAND.textMuted}>
-            Falta: <b>{formatWithUnit(row.to_consume, unidade, 0)}</b>
+          <Text size="xs" c="dimmed">
+            Sem meta para este dia.
           </Text>
         )}
       </Stack>

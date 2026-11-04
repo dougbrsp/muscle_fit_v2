@@ -37,35 +37,47 @@ function dia(rows: BalanceRow[]): NutritionDay {
 }
 
 describe('TargetVsIntakeCard', () => {
-  it('mostra os quatro macros com consumido, meta e falta, e a legenda do gráfico', () => {
+  it('mostra os quatro macros com consumido, meta e restante, e a legenda do gráfico', () => {
     const markup = html(
       createElement(TargetVsIntakeCard, {
         day: dia([linha('energy_kcal'), linha('protein_g', { target: 150, intake: 100, within_target: 100, to_consume: 50 }), linha('carbohydrates_g'), linha('total_fat_g')]),
       }),
     );
-    expect(markup.match(/Falta:/g)?.length).toBe(4);
-    for (const trecho of ['Consumido:', 'Meta:', 'Consumido', 'A consumir', 'Acima da meta']) expect(markup).toContain(trecho);
+    expect(markup.match(/Restante:/g)?.length).toBe(4);
+    for (const trecho of ['Consumido:', 'Meta:', 'Consumido', 'Restante', 'Acima da meta']) expect(markup).toContain(trecho);
   });
 
-  it('passou da meta mostra "Acima da meta" em vez de falta', () => {
+  it('passou da meta mostra "Acima da meta" em vez de restante', () => {
     const markup = html(
       createElement(TargetVsIntakeCard, {
         day: dia([linha('energy_kcal', { intake: 2300, within_target: 2000, to_consume: 0, excess: 300, remaining: -300, share: 1.15 })]),
       }),
     );
-    expect(markup).not.toContain('Falta:');
+    expect(markup).not.toContain('Restante:');
     expect(markup).toMatch(/Acima da meta: <b>[^<]*300/);
   });
 
-  it('com meta e sem refeição mostra 0 consumido e a meta toda como falta (e o gráfico existe)', () => {
+  it('com meta e sem refeição mostra 0 consumido e a meta toda como restante (e o gráfico existe)', () => {
     const markup = html(
       createElement(TargetVsIntakeCard, {
         day: dia([linha('energy_kcal', { intake: null, share: null, remaining: null, within_target: 0, to_consume: 2000, excess: 0 })]),
       }),
     );
     expect(markup).toMatch(/Consumido: <b>0 kcal/);
-    expect(markup).toMatch(/Falta: <b>2[. ]?000 kcal/);
+    expect(markup).toMatch(/Restante: <b>2[. ]?000 kcal/);
     expect(markup).not.toContain('Sem gráfico');
+  });
+
+  it('sem meta mostra só o consumido, sem meta nem restante', () => {
+    const markup = html(
+      createElement(TargetVsIntakeCard, {
+        day: dia([linha('energy_kcal', { target: null, share: null, remaining: null, within_target: null, to_consume: null, excess: null })]),
+      }),
+    );
+    expect(markup).toMatch(/Consumido: <b>1[. ]?500 kcal/);
+    expect(markup).toContain('Sem meta para este dia');
+    expect(markup).not.toContain('Meta:');
+    expect(markup).not.toContain('Restante:');
   });
 
   it('ingestão incompleta continua sem gráfico e diz o motivo', () => {

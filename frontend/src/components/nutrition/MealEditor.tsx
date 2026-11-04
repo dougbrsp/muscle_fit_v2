@@ -24,6 +24,7 @@ import { FavoriteShortcuts } from './FavoriteShortcuts';
 import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
+import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
@@ -130,6 +131,7 @@ function ItemRow({
   onChange: (item: MealEditorItem) => void;
   onRemove: () => void;
 }) {
+  if (item.quick) return <QuickEntryItemRow item={item} draft={item.quick} onChange={onChange} onRemove={onRemove} />;
   const daLeitura = item.choices.length > 0 || (item.id === null && item.estimate !== null);
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
   const unidades = item.food_id == null ? UNIT_OPTIONS.filter((opcao) => !unitUsesPortion(opcao.value)) : UNIT_OPTIONS;
@@ -411,7 +413,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
               <Text size="sm" fw={600} c={BRAND.textPrimary}>
                 Calculado pelo motor
               </Text>
-              <TotalsBadges totals={preview.data.totals} />
+              <TotalsBadges totals={preview.data.totals} items={preview.data.items} />
             </Group>
             <MealItemsTable items={preview.data.items} />
             <TotalsLine totals={preview.data.totals} />
