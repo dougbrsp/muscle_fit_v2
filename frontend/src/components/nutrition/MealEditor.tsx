@@ -209,6 +209,8 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
       : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: newMealClockTime(date, today), notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
+  // A hora ainda é a automática (do relógio, refeição nova)? Trocar o Dia a recalcula; hora digitada pela pessoa (mesmo apagada) nunca muda.
+  const horaAutomatica = useRef(meal === null && initialForm === null && form.eaten_at !== '');
   // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só
   // desmonta o fluxo ao fechar. Fechar sem salvar não muda nada; salvar acrescenta o item.
   const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
@@ -351,6 +353,7 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
             value={form.eaten_at}
             onChange={(e) => {
               const valor = e.currentTarget.value;
+              horaAutomatica.current = false;
               setForm((atual) => ({ ...atual, eaten_at: valor }));
             }}
             w={140}
@@ -361,7 +364,12 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
             value={form.local_date}
             onChange={(e) => {
               const valor = e.currentTarget.value;
-              if (valor) setForm((atual) => ({ ...atual, local_date: valor }));
+              if (!valor) return;
+              setForm((atual) => ({
+                ...atual,
+                local_date: valor,
+                eaten_at: horaAutomatica.current ? newMealClockTime(valor, today) : atual.eaten_at,
+              }));
             }}
             w={170}
           />

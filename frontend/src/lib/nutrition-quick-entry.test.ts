@@ -169,3 +169,10 @@ describe('newMealClockTime: hora inicial da refeição nova', () => {
     expect(newMealClockTime('2026-11-04', undefined, agora)).toBe('');
   });
 });
+
+describe('clockTime: ciclo de 24 horas', () => {
+  it('meia-noite é 00:xx, nunca 24:xx', () => {
+    expect(clockTime(new Date(2026, 10, 4, 0, 7))).toBe('00:07');
+    expect(clockTime(new Date(2026, 10, 4, 23, 59))).toBe('23:59');
+  });
+});

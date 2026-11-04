@@ -245,4 +245,31 @@ describe('MealEditor: hora inicial da refeição nova', () => {
     await montar(false, { today: '2026-11-04', meal });
     expect(hora().value).toBe('');
   });
+
+  const dia = () => host.querySelector('input[type="date"]') as HTMLInputElement;
+
+  it('trocar o Dia recalcula a hora automática: ontem esvazia, voltar para hoje preenche de novo', async () => {
+    await montar(false, { today: '2026-11-04' });
+    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
+    await digitar(dia(), '2026-11-03');
+    expect(hora().value).toBe('');
+    await digitar(dia(), '2026-11-04');
+    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it('hora digitada pela pessoa não muda ao trocar o Dia, nem a apagada', async () => {
+    await montar(false, { today: '2026-11-04' });
+    await digitar(hora(), '07:10');
+    await digitar(dia(), '2026-11-03');
+    expect(hora().value).toBe('07:10');
+    await digitar(hora(), '');
+    await digitar(dia(), '2026-11-04');
+    expect(hora().value).toBe('');
+  });
+
+  it('refeição com initialForm (IA) mantém a hora que veio ao trocar o Dia', async () => {
+    await montar(false, { today: '2026-11-04', initialForm: { ...RASCUNHO, local_date: '2026-11-04' } });
+    await digitar(dia(), '2026-11-03');
+    expect(hora().value).toBe('12:30');
+  });
 });

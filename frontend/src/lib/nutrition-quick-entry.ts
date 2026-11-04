@@ -120,7 +120,7 @@ export function fetchSlotForTime(time: string): Promise<SlotForTime> {
 
 /** Hora do relógio do aparelho como `HH:MM` (apenas o valor inicial do campo; a refeição vem da API). */
 export function clockTime(agora: Date = new Date()): string {
-  return agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 /**
