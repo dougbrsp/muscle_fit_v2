@@ -48,6 +48,8 @@ export function AlimentosClient() {
     if (editing) editorRef.current?.scrollIntoView?.({ block: 'start' });
   }, [editing]);
   const detailRef = useRef<HTMLDivElement>(null);
+  // Sobe a cada alimento aberto (busca, cadastro, produto achado, existente), mesmo o que já estava aberto.
+  const [scrollTick, setScrollTick] = useState(0);
   const [saved, setSaved] = useState<FoodSaveResponse | null>(null);
   const [external, setExternal] = useState<ExternalFoodResponse | null>(null);
   // Muda depois de salvar/abrir um produto: o fluxo de cadastro volta limpo.
@@ -83,6 +85,7 @@ export function AlimentosClient() {
     setSaved(food);
     setExternal(null);
     setSelectedId(food.id);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
     await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
   }
@@ -93,6 +96,7 @@ export function AlimentosClient() {
     setSaved(null);
     setExternal(food);
     setSelectedId(food.id);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
     await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
   }
@@ -105,6 +109,7 @@ export function AlimentosClient() {
     setSaved(null);
     setExternal(null);
     setSelectedId(selecao.selectedId);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(foodId) });
   }
 
@@ -112,8 +117,8 @@ export function AlimentosClient() {
   // O detalhe fica abaixo do cadastro: ao escolher um alimento na busca, leva a vista até ele.
   const detailId = detail?.id ?? null;
   useEffect(() => {
-    if (detailId !== null && !editing) detailRef.current?.scrollIntoView?.({ block: 'start' });
-  }, [detailId, editing]);
+    if (!editing) detailRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [detailId, editing, scrollTick]);
 
   return (
     <Stack gap="xl">
@@ -142,24 +147,12 @@ export function AlimentosClient() {
         selectedId={selectedId}
         onSelect={(item) => {
           setSelectedId(item.id);
+          setScrollTick((n) => n + 1);
           setEditing(false);
           setSaved(null);
           setExternal(null);
         }}
       />
-
-      {external && external.warnings.length > 0 && (
-        <NutritionLimitations items={external.warnings} title={`Avisos sobre ${external.name}`} tone="warning" />
-      )}
-
-      {saved && saved.warnings.length > 0 && (
-        <NutritionLimitations items={saved.warnings} title={`Alimento salvo, com avisos: ${saved.name}`} tone="warning" />
-      )}
-      {saved && saved.warnings.length === 0 && (
-        <Text size="sm" c="green">
-          Alimento salvo: {saved.name}.
-        </Text>
-      )}
 
       {detailQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -204,20 +197,33 @@ export function AlimentosClient() {
         </Stack>
       </Paper>
 
-      {detail && !editing && (
-        <div ref={detailRef}>
-        <FoodDetailCard
-          food={detail}
-          onEdit={() => {
-            setEditing(true);
-            setSaved(null);
-            setExternal(null);
-          }}
-          onPromote={() => promoteMutation.mutate(detail.id)}
-          promoting={promoteMutation.isPending}
-          onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
-        />
-        </div>
+      {!editing && (detail || saved || external) && (
+        <Stack ref={detailRef} gap="md">
+          {external && external.warnings.length > 0 && (
+            <NutritionLimitations items={external.warnings} title={`Avisos sobre ${external.name}`} tone="warning" />
+          )}
+          {saved && saved.warnings.length > 0 && (
+            <NutritionLimitations items={saved.warnings} title={`Alimento salvo, com avisos: ${saved.name}`} tone="warning" />
+          )}
+          {saved && saved.warnings.length === 0 && (
+            <Text size="sm" c="green">
+              Alimento salvo: {saved.name}.
+            </Text>
+          )}
+          {detail && (
+            <FoodDetailCard
+              food={detail}
+              onEdit={() => {
+                setEditing(true);
+                setSaved(null);
+                setExternal(null);
+              }}
+              onPromote={() => promoteMutation.mutate(detail.id)}
+              promoting={promoteMutation.isPending}
+              onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
+            />
+          )}
+        </Stack>
       )}
 
       <FoodCitationFooter />

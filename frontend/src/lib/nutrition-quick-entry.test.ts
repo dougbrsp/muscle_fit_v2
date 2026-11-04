@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
 import { editorFormFromMeal, itemsPayload } from './nutrition-meal-form';
 import {
+  clockTime,
   draftFromSnapshot,
   emptyQuickDraft,
+  newMealClockTime,
   quickEntryChanged,
   quickEntryErrors,
   quickEntryPayload,
@@ -155,5 +157,15 @@ describe('lançamento rápido: erros da API no campo certo', () => {
 
   it('erro sem estrutura mostra a mensagem geral', () => {
     expect(quickEntryErrors(new Error('rede'), 'Não foi possível salvar.')).toEqual({ byField: {}, general: ['Não foi possível salvar.'] });
+  });
+});
+
+describe('newMealClockTime: hora inicial da refeição nova', () => {
+  const agora = new Date(2026, 10, 4, 9, 5);
+  it('só no dia de hoje usa o relógio', () => {
+    expect(newMealClockTime('2026-11-04', '2026-11-04', agora)).toBe(clockTime(agora));
+    expect(newMealClockTime('2026-11-03', '2026-11-04', agora)).toBe('');
+    expect(newMealClockTime('2026-11-04', null, agora)).toBe('');
+    expect(newMealClockTime('2026-11-04', undefined, agora)).toBe('');
   });
 });

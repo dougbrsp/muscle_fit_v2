@@ -9,7 +9,7 @@ import { AlimentosClient } from './AlimentosClient';
 // Editar + Salvar não pode apagar o cadastro em andamento: só o salvamento vindo do fluxo de cadastro
 // incrementa o sinal de reset. A busca, o formulário de edição e o detalhe são trocados por botões/marcas.
 
-const ALIMENTO = { id: 7, name: 'Arroz', basis: 'g', warnings: [] };
+let alimento: { id: number; name: string; basis: string; warnings: { code: string; label: string }[] } = { id: 7, name: 'Arroz', basis: 'g', warnings: [] };
 const sinais: number[] = [];
 
 vi.mock('@/lib/api', () => ({ apiFetch: vi.fn(async () => ({ role: 'regular' })), ApiError: class extends Error {} }));
@@ -36,7 +36,7 @@ vi.mock('@/components/nutrition/FoodForm', async () => {
   const { createElement: h } = await import('react');
   return {
     FoodForm: ({ onSaved }: { onSaved: (f: unknown) => void }) =>
-      h('button', { type: 'button', 'data-testid': 'salvar-edicao', onClick: () => onSaved(ALIMENTO) }, 'salvar-edicao'),
+      h('button', { type: 'button', 'data-testid': 'salvar-edicao', onClick: () => onSaved(alimento) }, 'salvar-edicao'),
   };
 });
 vi.mock('@/components/nutrition/FoodRegistrationFlow', async () => {
@@ -44,7 +44,7 @@ vi.mock('@/components/nutrition/FoodRegistrationFlow', async () => {
   return {
     FoodRegistrationFlow: ({ resetSignal, onSaved }: { resetSignal?: number; onSaved: (f: unknown) => void }) => {
       sinais.push(resetSignal ?? 0);
-      return h('button', { type: 'button', 'data-testid': 'salvar-cadastro', onClick: () => onSaved(ALIMENTO) }, 'salvar-cadastro');
+      return h('button', { type: 'button', 'data-testid': 'salvar-cadastro', onClick: () => onSaved(alimento) }, 'salvar-cadastro');
     },
   };
 });
@@ -65,6 +65,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sinais.length = 0;
+  alimento = { id: 7, name: 'Arroz', basis: 'g', warnings: [] };
   rolou = vi.fn();
   window.HTMLElement.prototype.scrollIntoView = rolou as unknown as typeof window.HTMLElement.prototype.scrollIntoView;
   host = document.createElement('div');
@@ -112,5 +113,29 @@ describe('AlimentosClient: cadastro em andamento e rolagem', () => {
     await clicar('escolher');
     expect(rolou).toHaveBeenCalled();
     expect(q('editar')).not.toBeNull();
+  });
+
+  it('a confirmação e os avisos do salvamento ficam dentro do bloco que rola, acima do detalhe', async () => {
+    await montar();
+    await clicar('salvar-cadastro');
+    const bloco = q('editar')!.parentElement!;
+    expect(bloco.textContent).toContain('Alimento salvo: Arroz.');
+    expect(bloco.firstElementChild!.textContent).toContain('Alimento salvo');
+    expect(rolou).toHaveBeenCalled();
+
+    alimento = { id: 8, name: 'Pão', basis: 'g', warnings: [{ code: 'atwater', label: 'Aviso de Atwater' }] };
+    await clicar('salvar-cadastro');
+    const bloco2 = q('editar')!.parentElement!;
+    expect(bloco2.textContent).toContain('Alimento salvo, com avisos: Pão');
+    expect(bloco2.textContent).toContain('Aviso de Atwater');
+    expect(bloco2.contains(q('editar'))).toBe(true);
+  });
+
+  it('escolher na busca o alimento que já está aberto também rola', async () => {
+    await montar();
+    await clicar('escolher');
+    rolou.mockClear();
+    await clicar('escolher');
+    expect(rolou).toHaveBeenCalled();
   });
 });

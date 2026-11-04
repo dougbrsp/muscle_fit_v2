@@ -29,6 +29,7 @@ import { useScannerOpen } from '@/lib/barcode-scanner-open';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
+import { newMealClockTime } from '@/lib/nutrition-quick-entry';
 import { addRegisteredFood } from '@/lib/nutrition-food-registration';
 import {
   chooseCandidate,
@@ -53,6 +54,8 @@ const ATRASO_DO_PREVIEW_MS = 400;
 
 type Props = {
   date: string;
+  /** Hoje segundo a API: refeição nova nesse dia abre com a hora atual (editável). */
+  today?: string | null;
   /** Refeição em edição ou `null` (nova). */
   meal: Meal | null;
   /** Formulário inicial de uma refeição nova (leitura por IA, L5b). */
@@ -199,11 +202,11 @@ function ItemRow({
  * porção; o preview é uma chamada à API (motor `meal_math`, E9) e a gravação
  * congela os valores por item (E4). A tela não calcula nada.
  */
-export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }: Props) {
+export function MealEditor({ date, today = null, meal, initialForm = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<MealEditorForm>(() =>
     meal
       ? editorFormFromMeal(meal)
-      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: '', notes: '', items: [], ai: null }),
+      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: newMealClockTime(date, today), notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
   // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só

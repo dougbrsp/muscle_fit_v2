@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createElement, act } from 'react';
+import { createElement, act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { editorItemFromFood, type MealEditorForm } from '@/lib/nutrition-meal-form';
@@ -102,9 +102,9 @@ const esperar = async (vezes = 4) => {
   for (let i = 0; i < vezes; i++) await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
 };
 
-async function montar(celular: boolean) {
+async function montar(celular: boolean, props: Partial<ComponentProps<typeof MealEditor>> = { initialForm: RASCUNHO }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const editor = createElement(MealEditor, { date: '2026-11-04', meal: null, initialForm: RASCUNHO, onSaved: vi.fn(), onCancel: vi.fn() });
+  const editor = createElement(MealEditor, { date: '2026-11-04', meal: null, onSaved: vi.fn(), onCancel: vi.fn(), ...props });
   const slots = { nutritionHeader: () => null } as unknown as Partial<PresentationSlots>;
   const arvore = celular ? createElement(PresentationProvider, { value: slots }, editor) : editor;
   root = createRoot(host);
@@ -214,5 +214,35 @@ describe('MealEditor no celular: o voltar fecha só a folha do cadastro', () => 
     await clicar('salvo');
     await esperar();
     expect(back).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('MealEditor: hora inicial da refeição nova', () => {
+  it('nova, sem initialForm e no dia de hoje: abre com a hora do relógio, editável', async () => {
+    await montar(false, { today: '2026-11-04' });
+    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
+    await digitar(hora(), '07:10');
+    expect(hora().value).toBe('07:10');
+  });
+
+  it('nova em dia passado, ou sem saber o dia de hoje: hora vazia (não inventa)', async () => {
+    await montar(false, { today: '2026-11-05' });
+    expect(hora().value).toBe('');
+    await act(async () => { root?.unmount(); });
+    root = null;
+    host.innerHTML = '';
+    await montar(false, {});
+    expect(hora().value).toBe('');
+  });
+
+  it('leitura por IA (initialForm) e edição mantêm a hora que já têm, mesmo hoje', async () => {
+    await montar(false, { today: '2026-11-04', initialForm: { ...RASCUNHO, eaten_at: '' } });
+    expect(hora().value).toBe('');
+    await act(async () => { root?.unmount(); });
+    root = null;
+    host.innerHTML = '';
+    const meal = { id: 9, local_date: '2026-11-04', meal_slot: 'lunch', eaten_at: null, notes: null, items: [] } as unknown as ComponentProps<typeof MealEditor>['meal'];
+    await montar(false, { today: '2026-11-04', meal });
+    expect(hora().value).toBe('');
   });
 });
