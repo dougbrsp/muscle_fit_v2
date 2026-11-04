@@ -73,10 +73,8 @@ export type BarcodeDetectorCtor = {
 
 type ZxingControls = { stop: () => void };
 type ZxingReaderLike = {
-  // O stream é aberto por nós (`getUserMedia` + `play()`): `decodeFromConstraints` do zxing deixava a
-  // promessa pendente para sempre se o `play()` rejeitasse depois do `canplay` (sem varredura, câmera ligada).
-  decodeFromStream: (
-    stream: MediaStream,
+  decodeFromConstraints: (
+    constraints: MediaStreamConstraints,
     video: HTMLVideoElement,
     callback: (result: { getText: () => string } | undefined, error: unknown, controls: ZxingControls) => void,
   ) => Promise<ZxingControls>;
@@ -158,7 +156,6 @@ async function startNative(
   ctor: BarcodeDetectorCtor,
   mediaDevices: Pick<MediaDevices, 'getUserMedia'>,
   onCode: (code: string) => void,
-  onHandle?: (handle: ScanHandle) => void,
 ): Promise<ScanHandle> {
   const stream = await mediaDevices.getUserMedia(CONSTRAINTS);
   let parado = false;
@@ -168,7 +165,6 @@ async function startNative(
     if (timer !== null) clearTimeout(timer);
     stopStream(video, stream);
   };
-  onHandle?.({ stop });
   try {
     video.srcObject = stream;
     await video.play();
@@ -219,66 +215,47 @@ export function isZxingFrameError(error: unknown): boolean {
 async function startZxing(
   video: HTMLVideoElement,
   loadZxing: ZxingLoader,
-  mediaDevices: Pick<MediaDevices, 'getUserMedia'>,
   onCode: (code: string) => void,
   onFatal?: (error: CameraError) => void,
-  onHandle?: (handle: ScanHandle) => void,
 ): Promise<ScanHandle> {
   const reader = await loadZxing();
   let parado = false;
-  let stream: MediaStream | null = null;
   let controles: ZxingControls | null = null;
   let attempts = 0;
   let lastError: string | null = null;
+  // Tamanho do vídeo no primeiro quadro tentado (o canvas de captura do zxing nasce com o tamanho do início
+  // da varredura e não muda; ver `formatDiagnostics`).
   let startWidth = 0;
   let startHeight = 0;
   const stop = () => {
     parado = true;
-    // Os controles do zxing já param as faixas; `stopStream` cobre a abertura ainda incompleta. Repetir é inofensivo.
     controles?.stop();
-    stopStream(video, stream);
   };
-  const handle: ScanHandle = { stop, diagnostics: () => ({ attempts, lastError, startWidth, startHeight }) };
-  try {
-    stream = await mediaDevices.getUserMedia(CONSTRAINTS);
-    if (parado) {
-      stopStream(video, stream);
-      return handle;
+  controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, error, controls) => {
+    controles = controls;
+    if (parado) return;
+    if (attempts === 0) {
+      startWidth = video.videoWidth;
+      startHeight = video.videoHeight;
     }
-    onHandle?.(handle);
-    video.srcObject = stream;
-    await video.play(); // com o vídeo já tocando, o zxing não depende do evento `canplay`
-    if (parado) {
-      stopStream(video, stream);
-      return handle;
-    }
-    startWidth = video.videoWidth;
-    startHeight = video.videoHeight;
-    controles = await reader.decodeFromStream(stream, video, (result, error, controls) => {
-      controles = controls;
-      if (parado) return;
-      attempts += 1;
-      if (!result && error) lastError = zxingErrorKind(error) ?? (error instanceof Error ? error.name : 'erro');
-      if (!result) {
-        if (error && !isZxingFrameError(error)) {
-          // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
-          stop();
-          onFatal?.(new CameraError(classifyCameraError(error)));
-        }
-        return;
-      }
-      const codigo = digitsOnly(result.getText());
-      if (codigo) {
+    attempts += 1;
+    if (!result && error) lastError = zxingErrorKind(error) ?? (error instanceof Error ? error.name : 'erro');
+    if (!result) {
+      if (error && !isZxingFrameError(error)) {
+        // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
         stop();
-        onCode(codigo);
+        onFatal?.(new CameraError(classifyCameraError(error)));
       }
-    });
-    if (parado) controles.stop(); // leu (ou parou) antes de `decodeFromStream` resolver
-  } catch (error) {
-    stop();
-    throw error;
-  }
-  return handle;
+      return;
+    }
+    const codigo = digitsOnly(result.getText());
+    if (codigo) {
+      stop();
+      onCode(codigo);
+    }
+  });
+  if (parado) controles.stop(); // leu antes de `decodeFromConstraints` resolver
+  return { stop, diagnostics: () => ({ attempts, lastError, startWidth, startHeight }) };
 }
 
 /**
@@ -292,8 +269,6 @@ export async function startBarcodeScan(
   deps: ScannerDeps = browserDeps(),
   /** Falha DEPOIS de aberta (leitor de reserva): a câmera já foi liberada; a tela mostra e oferece digitar. */
   onFatal?: (error: CameraError) => void,
-  /** Chamado assim que a câmera abre (antes do `play()`), para a tela poder parar/diagnosticar durante a abertura. */
-  onHandle?: (handle: ScanHandle) => void,
 ): Promise<ScanHandle> {
   const mediaDevices = deps.mediaDevices;
   if (!mediaDevices?.getUserMedia) {
@@ -301,9 +276,9 @@ export async function startBarcodeScan(
   }
   try {
     if (deps.detectorCtor && (await nativeFormatsSupported(deps.detectorCtor))) {
-      return await startNative(video, deps.detectorCtor, mediaDevices, onCode, onHandle);
+      return await startNative(video, deps.detectorCtor, mediaDevices, onCode);
     }
-    return await startZxing(video, deps.loadZxing ?? loadZxingReader, mediaDevices, onCode, onFatal, onHandle);
+    return await startZxing(video, deps.loadZxing ?? loadZxingReader, onCode, onFatal);
   } catch (error) {
     throw error instanceof CameraError ? error : new CameraError(classifyCameraError(error));
   }

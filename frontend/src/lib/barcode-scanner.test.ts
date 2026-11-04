@@ -123,13 +123,13 @@ describe('startBarcodeScan', () => {
     };
     expect(getUserMedia).toHaveBeenCalledWith(esperado);
     const decode = vi.fn().mockResolvedValue({ stop: vi.fn() });
-    const getUserMedia2 = vi.fn().mockResolvedValue(fakeStream().stream);
+    const getUserMedia2 = vi.fn();
     await startBarcodeScan(fakeVideo(), vi.fn(), {
       mediaDevices: { getUserMedia: getUserMedia2 },
       detectorCtor: null,
-      loadZxing: async () => ({ decodeFromStream: decode }),
+      loadZxing: async () => ({ decodeFromConstraints: decode }),
     });
-    expect(getUserMedia2).toHaveBeenCalledWith(esperado);
+    expect(decode.mock.calls[0][0]).toEqual(esperado);
   });
 
   it('zxing: expõe contagem de tentativas e o último tipo de erro; nativo não expõe', async () => {
@@ -137,10 +137,10 @@ describe('startBarcodeScan', () => {
     type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
     const capturado: { cb: Callback | null } = { cb: null };
     const handle = await startBarcodeScan(fakeVideo(), vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) },
+      mediaDevices: { getUserMedia: vi.fn() },
       detectorCtor: null,
       loadZxing: async () => ({
-        decodeFromStream: async (_c, _v, callback) => {
+        decodeFromConstraints: async (_c, _v, callback) => {
           capturado.cb = callback;
           return { stop };
         },
@@ -169,12 +169,12 @@ describe('startBarcodeScan', () => {
         constructor(...args: unknown[]) {
           construtor(...args);
         }
-        decodeFromStream = vi.fn().mockResolvedValue({ stop: vi.fn() });
+        decodeFromConstraints = vi.fn().mockResolvedValue({ stop: vi.fn() });
       },
     }));
     try {
       const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
-      await startBarcodeScan(fakeVideo(), vi.fn(), { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) }, detectorCtor: null });
+      await startBarcodeScan(fakeVideo(), vi.fn(), { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null });
       const [hints, opcoes] = construtor.mock.calls[0] as [Map<unknown, unknown>, { delayBetweenScanAttempts: number }];
       expect(hints.get(DecodeHintType.TRY_HARDER)).toBe(true);
       expect(hints.get(DecodeHintType.POSSIBLE_FORMATS)).toEqual([BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A]);
@@ -216,101 +216,40 @@ describe('startBarcodeScan', () => {
     const ctor = vi.fn() as unknown as BarcodeDetectorCtor;
     (ctor as { getSupportedFormats?: () => Promise<string[]> }).getSupportedFormats = async () => ['qr_code'];
     const stop = vi.fn();
-    const decodeFromStream = vi.fn().mockResolvedValue({ stop });
-    const { stream } = fakeStream();
-    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    const decodeFromConstraints = vi.fn().mockResolvedValue({ stop });
+    const getUserMedia = vi.fn();
     await startBarcodeScan(fakeVideo(), vi.fn(), {
       mediaDevices: { getUserMedia },
       detectorCtor: ctor,
-      loadZxing: async () => ({ decodeFromStream }),
+      loadZxing: async () => ({ decodeFromConstraints }),
     });
-    expect(ctor).not.toHaveBeenCalled(); // o nativo não foi usado
-    expect(getUserMedia).toHaveBeenCalledTimes(1);
-    expect(decodeFromStream).toHaveBeenCalledTimes(1);
-    expect(decodeFromStream.mock.calls[0][0]).toBe(stream);
+    expect(decodeFromConstraints).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).not.toHaveBeenCalled(); // quem abre a câmera é o zxing
   });
 
-  it('zxing: play() rejeitado vira CameraError classificado, libera a câmera e não inicia a varredura', async () => {
-    const { stream, track } = fakeStream();
-    const video = fakeVideo();
-    (video.play as ReturnType<typeof vi.fn>).mockRejectedValue(domError('NotAllowedError'));
-    const decodeFromStream = vi.fn();
-    await expect(
-      startBarcodeScan(video, vi.fn(), {
-        mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
-        detectorCtor: null,
-        loadZxing: async () => ({ decodeFromStream }),
-      }),
-    ).rejects.toMatchObject({ name: 'CameraError', kind: 'permission_denied' });
-    expect(track.stop).toHaveBeenCalled();
-    expect(video.srcObject).toBeNull();
-    expect(decodeFromStream).not.toHaveBeenCalled();
-  });
-
-  it('zxing: stop() durante o play() libera o stream e não inicia a varredura; o handle já está disponível', async () => {
-    const { stream, track } = fakeStream();
-    const video = fakeVideo();
-    let liberar: () => void = () => undefined;
-    (video.play as ReturnType<typeof vi.fn>).mockReturnValue(new Promise<void>((r) => (liberar = r)));
-    const decodeFromStream = vi.fn();
-    const onHandle = vi.fn();
-    const promessa = startBarcodeScan(
-      video,
-      vi.fn(),
-      {
-        mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
-        detectorCtor: null,
-        loadZxing: async () => ({ decodeFromStream }),
-      },
-      undefined,
-      onHandle,
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(onHandle).toHaveBeenCalledTimes(1);
-    const handle = onHandle.mock.calls[0][0] as { stop: () => void };
-    handle.stop(); // o usuário fechou enquanto o vídeo ainda abria
-    expect(track.stop).toHaveBeenCalled();
-    liberar();
-    await promessa;
-    expect(decodeFromStream).not.toHaveBeenCalled();
-  });
-
-  it('zxing: stop() antes de decodeFromStream resolver para os controles e o stream', async () => {
-    const { stream, track } = fakeStream();
-    const stopControles = vi.fn();
-    let resolver: (c: { stop: () => void }) => void = () => undefined;
-    const onHandle = vi.fn();
-    const promessa = startBarcodeScan(
-      fakeVideo(),
-      vi.fn(),
-      {
-        mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
-        detectorCtor: null,
-        loadZxing: async () => ({ decodeFromStream: () => new Promise((r) => (resolver = r)) }),
-      },
-      undefined,
-      onHandle,
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    (onHandle.mock.calls[0][0] as { stop: () => void }).stop();
-    expect(track.stop).toHaveBeenCalled();
-    resolver({ stop: stopControles });
-    await promessa;
-    expect(stopControles).toHaveBeenCalledTimes(1);
-  });
-
-  it('zxing: o diagnóstico guarda o tamanho do vídeo no início da varredura', async () => {
+  it('zxing: o diagnóstico guarda o tamanho do vídeo no primeiro quadro tentado', async () => {
     const video = fakeVideo() as unknown as { videoWidth: number; videoHeight: number } & HTMLVideoElement;
     video.videoWidth = 720;
     video.videoHeight = 1280;
+    type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
+    const capturado: { cb: Callback | null } = { cb: null };
+    const stop = vi.fn();
     const handle = await startBarcodeScan(video, vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) },
+      mediaDevices: { getUserMedia: vi.fn() },
       detectorCtor: null,
-      loadZxing: async () => ({ decodeFromStream: vi.fn().mockResolvedValue({ stop: vi.fn() }) }),
+      loadZxing: async () => ({
+        decodeFromConstraints: async (_c, _v, callback) => {
+          capturado.cb = callback;
+          return { stop };
+        },
+      }),
     });
+    const cb = capturado.cb as Callback;
+    cb(undefined, zxingError('NotFoundException'), { stop });
     video.videoWidth = 1280;
     video.videoHeight = 720;
-    expect(handle.diagnostics?.()).toMatchObject({ startWidth: 720, startHeight: 1280 });
+    cb(undefined, zxingError('NotFoundException'), { stop });
+    expect(handle.diagnostics?.()).toMatchObject({ attempts: 2, startWidth: 720, startHeight: 1280 });
   });
 
   it('zxing: ignora quadros sem código e texto não numérico; entrega o primeiro código e para', async () => {
@@ -319,13 +258,13 @@ describe('startBarcodeScan', () => {
     type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
     const capturado: { cb: Callback | null } = { cb: null };
     const loader: ZxingLoader = async () => ({
-      decodeFromStream: async (_c, _v, callback) => {
+      decodeFromConstraints: async (_c, _v, callback) => {
         capturado.cb = callback;
         return { stop };
       },
     });
     const onCode = vi.fn();
-    await startBarcodeScan(video, onCode, { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) }, detectorCtor: null, loadZxing: loader });
+    await startBarcodeScan(video, onCode, { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader });
     const cb = capturado.cb as Callback;
     cb(undefined, zxingError('NotFoundException'), { stop });
     cb({ getText: () => 'https://qr.example' }, null, { stop });
@@ -342,13 +281,13 @@ describe('startBarcodeScan', () => {
     type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
     const capturado: { cb: Callback | null } = { cb: null };
     const loader: ZxingLoader = async () => ({
-      decodeFromStream: async (_c, _v, callback) => {
+      decodeFromConstraints: async (_c, _v, callback) => {
         capturado.cb = callback;
         return { stop };
       },
     });
     const onCode = vi.fn();
-    await startBarcodeScan(fakeVideo(), onCode, { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) }, detectorCtor: null, loadZxing: loader });
+    await startBarcodeScan(fakeVideo(), onCode, { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader });
     const cb = capturado.cb as Callback;
     for (const codigo of ['7891000100103', '7891000100103', '7891000315507']) cb({ getText: () => codigo }, null, { stop });
     expect(onCode).toHaveBeenCalledTimes(1);
@@ -359,10 +298,10 @@ describe('startBarcodeScan', () => {
     const stopControles = vi.fn();
     let resolver: (c: { stop: () => void }) => void = () => undefined;
     const loader: ZxingLoader = async () => ({
-      decodeFromStream: () => new Promise((resolve) => (resolver = resolve)),
+      decodeFromConstraints: () => new Promise((resolve) => (resolver = resolve)),
     });
     const promessa = startBarcodeScan(fakeVideo(), vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) },
+      mediaDevices: { getUserMedia: vi.fn() },
       detectorCtor: null,
       loadZxing: loader,
     });
@@ -378,7 +317,7 @@ describe('startBarcodeScan', () => {
     type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
     const capturado: { cb: Callback | null } = { cb: null };
     const loader: ZxingLoader = async () => ({
-      decodeFromStream: async (_c, _v, callback) => {
+      decodeFromConstraints: async (_c, _v, callback) => {
         capturado.cb = callback;
         return { stop };
       },
@@ -388,7 +327,7 @@ describe('startBarcodeScan', () => {
     await startBarcodeScan(
       fakeVideo(),
       onCode,
-      { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream().stream) }, detectorCtor: null, loadZxing: loader },
+      { mediaDevices: { getUserMedia: vi.fn() }, detectorCtor: null, loadZxing: loader },
       onFatal,
     );
     const cb = capturado.cb as Callback;

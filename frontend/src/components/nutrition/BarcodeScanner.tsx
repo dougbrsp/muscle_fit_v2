@@ -77,9 +77,6 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
       },
       undefined,
       falhou,
-      (aberto) => {
-        handle = aberto; // disponível desde a abertura da câmera: fechar durante o `play()` já libera
-      },
     )
       .then((started) => {
         if (cancelled) {
