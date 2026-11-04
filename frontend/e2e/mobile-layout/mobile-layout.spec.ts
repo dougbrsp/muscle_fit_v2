@@ -159,7 +159,7 @@ for (const d of DEVICES) {
       viewport: d.viewport,
       screen: d.screen,
       hasTouch: d.touch,
-      isMobile: d.touch && d.mobile,
+      isMobile: d.touch,
       locale: 'pt-BR',
       timezoneId: 'America/Sao_Paulo',
       colorScheme: 'dark',
@@ -170,6 +170,8 @@ for (const d of DEVICES) {
     await installMockApi(page);
     await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, 'on']);
     await page.goto('/dashboard/');
+    // prova que o contexto emula o que o caso diz: toque => pointer coarse
+    expect(await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches), 'pointer coarse').toBe(d.touch);
     if (d.mobile) {
       await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole('navigation', { name: 'Menu principal' })).toHaveCount(0);

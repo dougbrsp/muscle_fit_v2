@@ -195,4 +195,46 @@ test.describe('evolucao: escrita, filtros e erro (390)', () => {
     await open(page, '/dashboard/ciclo/');
     await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible({ timeout: 30_000 });
   });
+  test('Cardio: PAI aparece sem wellness; semanas por classe e medidas no treino existem', async ({ page }) => {
+    await prepare(page, 390, 844);
+    const cardio = JSON.parse(JSON.stringify(resolveFixture('GET /analytics/dashboard/cardio')));
+    cardio.wellness.points = [];
+    await page.route(`${MOCK_API_ORIGIN}/analytics/dashboard/cardio`, (route) => fulfillJson(route, cardio));
+    await open(page, '/dashboard/cardio/');
+    await expect(page.getByText('PAI 7 dias (estimado)').first()).toBeVisible();
+    await expect(page.getByText(/último em/)).toBeVisible();
+    await page.getByRole('button', { name: /Todas as semanas/ }).click();
+    await expect(page.getByText(/sem zona \d+ \(\d+ min\)/).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /FC por sessão de treino/ }).click();
+    await expect(page.getByText(/medidas? no treino/).first()).toBeVisible();
+  });
+
+  test('Grupos musculares: gráfico por período com escolha de até 3 grupos', async ({ page }) => {
+    await prepare(page, 390, 844);
+    await open(page, '/dashboard/musculos/');
+    await page.getByRole('button', { name: /Gráfico por período/ }).click();
+    await expect(page.getByRole('checkbox').first()).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Tendência por grupo muscular' })).toBeVisible();
+    expect(await page.getByRole('checkbox', { checked: true }).count()).toBe(3);
+  });
+
+  test('Motor: folha da geração traz limites, trocas, IA, modo e origem, inclusive rascunho sem ficha', async ({ page }) => {
+    await prepare(page, 390, 844);
+    await open(page, '/dashboard/engine/');
+    await page.getByRole('button', { name: /Rascunho não salvo/ }).click();
+    for (const t of ['Limites de segurança aplicados', 'Trocas', 'Caminhos alternativos', 'IA usada', 'Modo de volume', 'Origem do registro', 'Esta geração não virou ficha']) {
+      await expect(page.getByText(t).first()).toBeVisible();
+    }
+    await expect(page.getByText('Orçamento por grupo muscular').first()).toBeVisible();
+  });
+
+  test('Exercício: 1RM não confiável mostra o aviso no destaque', async ({ page }) => {
+    await prepare(page, 390, 844);
+    const ex = JSON.parse(JSON.stringify(resolveFixture('GET /analytics/dashboard/exercises/1/progress')));
+    ex.exposures[ex.exposures.length - 1].e1rm_reliable = false;
+    await page.route(new RegExp(`${MOCK_API_ORIGIN}/analytics/dashboard/exercises/1/progress`), (route) => fulfillJson(route, ex));
+    await open(page, '/dashboard/exercicios/1/');
+    await expect(page.getByText('pouco confiável').first()).toBeVisible();
+  });
 });

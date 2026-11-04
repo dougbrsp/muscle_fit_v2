@@ -17,7 +17,7 @@ import {
   runOptionLabel,
   runTimestampLabel,
 } from '@/lib/dashboard-engine';
-import type { EngineItem } from '@/lib/dashboard-engine-types';
+import type { EngineItem, EngineRun } from '@/lib/dashboard-engine-types';
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDecimal, fmtInt } from '@/lib/dashboard-format';
 import { versionLabel } from '@/lib/template-versions';
@@ -38,6 +38,14 @@ import { BlockSkeleton, PartialNote, PeriodFilter, QueryGate } from './shared';
 
 const STALE_TIME = 60_000;
 
+/** Rótulo legível do modo de volume (apresentação; valor desconhecido aparece como veio). */
+function volumeModeLabel(mode: string | null): string {
+  if (!mode) return EM_DASH;
+  if (mode === 'percent_budget') return 'Orçamento por grupo muscular';
+  if (mode === 'equipment_series') return 'Séries por equipamento';
+  return mode;
+}
+
 export function EngineScreen() {
   return (
     <Suspense fallback={<BlockSkeleton rows={4} label="Carregando motor de geração" />}>
@@ -51,6 +59,7 @@ function EngineContent() {
   const planId = filters.planId;
   const [picker, { open, close }] = useDisclosure(false);
   const [item, setItem] = useState<EngineItem | null>(null);
+  const [run, setRun] = useState<EngineRun | null>(null);
 
   const runsQuery = useQuery({
     queryKey: dashboardKeys.engineRuns(windowQuery),
@@ -108,7 +117,7 @@ function EngineContent() {
                   title={r.workout_plan_id == null ? 'Rascunho não salvo' : (r.plan_name ?? `Ficha ${r.workout_plan_id}`)}
                   subtitle={runTimestampLabel(r)}
                   value={r.workout_plan_id == null ? 'sem ficha' : undefined}
-                  onClick={r.workout_plan_id != null ? () => pick(r.workout_plan_id as number) : undefined}
+                  onClick={() => setRun(r)}
                 />
               )}
             />
@@ -136,6 +145,7 @@ function EngineContent() {
                       {versionLabel(p.template_version_number) ? ` ${versionLabel(p.template_version_number)}` : ''}
                       {p.template_slot_name ? ` · slot ${p.template_slot_name}` : ''}
                     </p>
+                    <p className={styles.meta}>Modo de volume: {volumeModeLabel(p.volume_mode)}</p>
                     <p className={styles.meta}>Gerada em: {runTimestampLabel(p.run)} · {plural(p.sessions_count, 'sessão', 'sessões')} registrada(s)</p>
                     <p className={styles.meta}>
                       Itens: {c.completed} concluído(s) · {c.interrupted} interrompido(s) · {c.skipped} pulado(s) · {c.substituted} substituído(s) · {c.extra} extra(s)
@@ -198,6 +208,51 @@ function EngineContent() {
       ) : runs && runs.length > 0 ? (
         <p className={styles.note}>Selecione uma ficha para ver planejado × gerado × executado, item a item.</p>
       ) : null}
+
+      <BottomSheet
+        opened={run !== null}
+        onClose={() => setRun(null)}
+        title={run ? (run.workout_plan_id == null ? 'Rascunho não salvo' : (run.plan_name ?? `Ficha ${run.workout_plan_id}`)) : 'Geração'}
+      >
+        {run ? (
+          <>
+            <ListGroup footer={AUDIT_SOURCE_META[run.source].hint}>
+              <ListRow title="Gerada em" value={runTimestampLabel(run)} />
+              <ListRow title="Origem do registro" value={AUDIT_SOURCE_META[run.source].label} />
+              <ListRow title="Motor" value={run.engine_version ?? EM_DASH} />
+              <ListRow title="IA usada" value={run.llm_used == null ? EM_DASH : run.llm_used ? 'Sim' : 'Não'} />
+              <ListRow title="Modo de volume" value={volumeModeLabel(run.volume_mode)} />
+              <ListRow title="Exercícios selecionados" value={run.selection_count == null ? EM_DASH : fmtInt(run.selection_count)} />
+              <ListRow title="Limites de segurança aplicados" value={run.safety_clamp_count == null ? EM_DASH : fmtInt(run.safety_clamp_count)} />
+              <ListRow title="Trocas" value={run.substitution_count == null ? EM_DASH : fmtInt(run.substitution_count)} />
+              <ListRow title="Caminhos alternativos" value={run.fallback_count == null ? EM_DASH : fmtInt(run.fallback_count)} />
+              {run.workout_plan_id == null ? <ListRow title="Esta geração não virou ficha" subtitle="Só existe o registro da geração" /> : null}
+            </ListGroup>
+            {run.limitations.length > 0 ? (
+              <ListGroup title="Ressalvas">
+                <ListBlock>
+                  {run.limitations.map((l) => (
+                    <p key={l} className={styles.meta} style={{ marginTop: 0 }}>{l}</p>
+                  ))}
+                </ListBlock>
+              </ListGroup>
+            ) : null}
+            {run.workout_plan_id != null ? (
+              <ListGroup>
+                <ListRow
+                  title="Ver auditoria da ficha"
+                  subtitle="Planejado × gerado × executado, item a item"
+                  onClick={() => {
+                    const id = run.workout_plan_id as number;
+                    setRun(null);
+                    pick(id);
+                  }}
+                />
+              </ListGroup>
+            ) : null}
+          </>
+        ) : null}
+      </BottomSheet>
 
       <BottomSheet opened={picker} onClose={close} title="Ficha gerada">
         <ListGroup>
