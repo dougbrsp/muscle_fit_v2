@@ -233,7 +233,7 @@ function CorpoBody({ payload }: { payload: BodyResponse }) {
             </p>
           </ListBlock>
         ) : (
-          <MedidaGrafico rows={cinturaRows} dominio={dominio} label="Cintura" />
+          <MedidaGrafico rows={cinturaRows} dominio={dominio} label={MEASUREMENT_SITE_LABELS[WAIST_SITE]} />
         )}
       </ListGroup>
       <PartialNote quality={cintura.data_quality} limitations={cintura.available ? cintura.limitations : []} fixHref={null} />
