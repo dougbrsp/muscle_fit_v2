@@ -9,7 +9,7 @@ export type SegmentOption<V extends string> = { value: V; label: string };
 /**
  * Controle segmentado (2 a 4 opções curtas): o filtro principal da tela. Os
  * demais filtros vão para a FilterSheet. Semântica de radiogroup, setas
- * movem a seleção, alvo de 40 pt de altura com folga de 4 pt no grupo.
+ * movem a seleção, alvo de 44 pt de altura.
  */
 export function SegmentedFilter<V extends string>({
   options,

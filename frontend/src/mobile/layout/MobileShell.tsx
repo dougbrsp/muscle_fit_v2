@@ -27,6 +27,7 @@ import {
   PRIMARY_TABS,
   backTargetFor,
   buildMoreGroups,
+  evolucaoHubHref,
   isMoreActive,
   isPrimaryTabActive,
 } from './primary-nav';
@@ -189,7 +190,7 @@ function Shell({ children }: { children: ReactNode }) {
           return (
             <Link
               key={tab.id}
-              href={tab.href}
+              href={tab.id === 'evolucao' ? evolucaoHubHref(search) : tab.href}
               className={styles.tab}
               aria-current={active ? 'page' : undefined}
             >

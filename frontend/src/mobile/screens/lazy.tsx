@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { LoadingState, OfflineState } from '../ui';
+import { isChunkLoadError } from './chunk-error';
 
 /**
  * Falha ao baixar o chunk de uma tela (tipicamente sem rede, rota nunca
@@ -17,12 +18,12 @@ import { LoadingState, OfflineState } from '../ui';
  */
 class ChunkBoundary extends Component<
   { children: ReactNode; onRetry: () => void },
-  { failed: boolean }
+  { error: unknown; failed: boolean }
 > {
-  state = { failed: false };
+  state: { error: unknown; failed: boolean } = { error: null, failed: false };
 
-  static getDerivedStateFromError() {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown) {
+    return { error, failed: true };
   }
 
   componentDidCatch(_error: Error, _info: ErrorInfo) {
@@ -30,7 +31,11 @@ class ChunkBoundary extends Component<
   }
 
   render() {
-    if (this.state.failed) return <OfflineState onRetry={this.props.onRetry} />;
+    if (this.state.failed) {
+      // so falha de chunk vira "Sem conexao"; o resto sobe para o error.tsx do app
+      if (!isChunkLoadError(this.state.error)) throw this.state.error;
+      return <OfflineState onRetry={this.props.onRetry} />;
+    }
     return this.props.children;
   }
 }
