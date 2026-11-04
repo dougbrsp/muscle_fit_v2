@@ -47,6 +47,15 @@ FOOD_FIELD_SOURCES_MISSING_MESSAGE = (
     "dos valores da TACO em reavaliação) ainda não existe neste banco."
 )
 
+# Coluna da base da tabela digitada (104, nutrição D1): toda leitura e escrita de `food_items` a usa.
+FOOD_TABLE_BASE_COLUMN = "table_base_amount"
+FOOD_TABLE_BASE_MIGRATION = "104"
+
+FOOD_TABLE_BASE_MISSING_MESSAGE = (
+    "Catálogo de alimentos indisponível: a coluna `food_items.table_base_amount` (migração 104, base da tabela "
+    "digitada pelo usuário) ainda não existe neste banco."
+)
+
 MEALS_TABLE = "meals"
 MEAL_ITEMS_TABLE = "meal_items"
 DAYS_TABLE = "nutrition_days"
@@ -179,13 +188,32 @@ def food_field_sources_missing_error() -> HTTPException:
     )
 
 
+def has_food_table_base(cursor: Any) -> bool:
+    """A coluna da base da tabela (104) existe NESTE schema? Sem DDL."""
+    return _has_column(cursor, FOOD_ITEMS_TABLE, FOOD_TABLE_BASE_COLUMN)
+
+
+def food_table_base_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "food_catalog_migration_pending",
+            "migration": FOOD_TABLE_BASE_MIGRATION,
+            "message": FOOD_TABLE_BASE_MISSING_MESSAGE,
+        },
+    )
+
+
 def require_food_tables(cursor: Any) -> None:
     """503 citando a 080/081 quando o catálogo ainda não existe, ou a 084
-    quando a coluna da proveniência (que toda leitura seleciona) ainda falta."""
+    quando a coluna da proveniência (que toda leitura seleciona) ainda falta, ou a 104 quando falta a
+    base da tabela."""
     if not has_food_tables(cursor):
         raise food_tables_missing_error()
     if not has_food_field_sources(cursor):
         raise food_field_sources_missing_error()
+    if not has_food_table_base(cursor):
+        raise food_table_base_missing_error()
 
 
 def has_diary_tables(cursor: Any) -> bool:

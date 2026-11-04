@@ -85,15 +85,15 @@ def test_sum_macros_ignora_item_sem_macros():
 
 def test_natureza_da_refeicao_reusa_o_vocabulario_comum():
     """DERIVED/ESTIMATED são os valores de `DataNature` (dono `domain/data_nature.py`);
-    só MIXED é da refeição."""
+    USER_ENTERED (lançamento rápido) e MIXED são da refeição."""
     assert D.value == DataNature.DERIVED.value and E.value == DataNature.ESTIMATED.value
     assert M.value == "MIXED" and M.value not in {n.value for n in DataNature}
-    assert [n.value for n in mm.MealNature] == ["DERIVED", "ESTIMATED", "MIXED"]
+    assert [n.value for n in mm.MealNature] == ["DERIVED", "ESTIMATED", "USER_ENTERED", "MIXED"]
 
 
 @pytest.mark.parametrize(
     ("naturezas", "esperado"),
-    [((), None), ((D, D), D), ((E,), E), ((D, E), M), ((D, D, E), M), ((M,), M)],
+    [((), None), ((D, D), D), ((E,), E), ((D, E), M), ((D, D, E), M), ((M,), M), ((mm.MealNature.USER_ENTERED,), mm.MealNature.USER_ENTERED), ((D, mm.MealNature.USER_ENTERED), M)],
 )
 def test_meal_nature(naturezas, esperado):
     assert mm.meal_nature(naturezas) == esperado

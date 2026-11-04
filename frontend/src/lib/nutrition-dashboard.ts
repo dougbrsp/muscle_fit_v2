@@ -182,7 +182,7 @@ export type RingPart = { key: 'within' | 'to_consume' | 'excess'; label: string;
 
 const RING_LABELS: Record<RingPart['key'], string> = {
   within: 'Consumido',
-  to_consume: 'A consumir',
+  to_consume: 'Restante',
   excess: 'Acima da meta',
 };
 

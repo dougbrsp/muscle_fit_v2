@@ -312,6 +312,10 @@ class LabelReview:
     warnings: tuple[str, ...]
     atwater: Optional[AtwaterCheck]
     label_check: Optional[LabelCheck]
+    # Base da tabela que a tela pré-preenche (D1): a porção do rótulo quando os valores vieram por porção
+    # (`table_base_for_reading`); `None` = por 100. `per_table_base` = os valores nessa base.
+    table_base_amount: Optional[float] = None
+    per_table_base: Optional[Mapping[str, Optional[float]]] = None
 
     @property
     def readable(self) -> bool:
@@ -336,12 +340,35 @@ class LabelReview:
             "readable": self.readable,
             "barcode": self.barcode,
             "food": self.food_prefill(),
+            # Base da tabela do pré-preenchimento (D1): sempre número (100 = por 100) e os valores NESSA base; a tela
+            # só pré-preenche, não decide. `food` segue por 100.
+            "table_base_amount": catalog.effective_table_base(self.table_base_amount),
+            "per_table_base": dict(self.per_table_base)
+            if self.per_table_base is not None
+            else {campo: self.per_100.get(campo) for campo in catalog.PER_100_FIELDS},
             "per_serving": dict(self.per_serving),
             "errors": list(self.errors),
             "warnings": list(self.warnings),
             "atwater": self.atwater.to_dict() if self.atwater else None,
             "label_check": self.label_check.to_dict() if self.label_check else None,
         }
+
+
+def table_base_for_reading(
+    per_100: Mapping[str, Optional[float]],
+    per_serving: Mapping[str, Optional[float]],
+    serving_size: Optional[float],
+    derived_from_serving: bool,
+) -> Optional[float]:
+    """Base da tabela do pré-preenchimento: a porção do rótulo, só quando algum valor por 100 foi DERIVADO da
+    porção (rótulo antigo, só por porção), a porção é uma base válida e todo campo com valor por 100 também tem
+    valor por porção (senão um campo ficaria perdido). Do contrário `None` = por 100."""
+    base, valida = catalog.table_base_amount(serving_size)
+    if not derived_from_serving or not valida or base is None:
+        return None
+    if any(per_100.get(campo) is not None and per_serving.get(campo) is None for campo in catalog.PER_100_FIELDS):
+        return None
+    return catalog.storable_table_base(base)
 
 
 def _nutrients(raw: Any) -> dict[str, Any]:
@@ -438,6 +465,12 @@ def review_reading(reading: Mapping[str, Any]) -> LabelReview:
     if nome is None:
         avisos.append(WARN_LABEL_NAME_MISSING)
 
+    valores_100 = {campo: validacao.values.get(campo) for campo in catalog.PER_100_FIELDS}
+    valores_porcao = {campo: non_negative_number(por_porcao.get(campo)) for campo in catalog.PER_100_FIELDS}
+    base_tabela = table_base_for_reading(
+        valores_100, valores_porcao, validacao.values.get("serving_size"),
+        any(aviso.startswith(WARN_LABEL_DERIVED_FROM_SERVING) for aviso in avisos),
+    )
     return LabelReview(
         legibility=legibilidade,
         name=nome,
@@ -453,6 +486,8 @@ def review_reading(reading: Mapping[str, Any]) -> LabelReview:
         warnings=tuple(dict.fromkeys(avisos)),
         atwater=validacao.atwater,
         label_check=checagem,
+        table_base_amount=base_tabela,
+        per_table_base=valores_porcao if base_tabela is not None else None,
     )
 
 

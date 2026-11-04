@@ -317,8 +317,9 @@ def test_refeicao_antiga_sem_proveniencia_no_snapshot_continua_igual():
 
 
 class _Cursor:
-    def __init__(self, *, coluna: bool):
+    def __init__(self, *, coluna: bool, base_104: bool = True):
         self.coluna = coluna
+        self.base_104 = base_104
         self.sql: list[str] = []
         self._linha = None
 
@@ -327,8 +328,9 @@ class _Cursor:
         if "information_schema.TABLES" in sql:
             self._linha = {"n": len(params)}
         elif "information_schema.COLUMNS" in sql:
-            assert params == ("food_items", "field_sources_json")
-            self._linha = {"n": 1 if self.coluna else 0}
+            assert params in (("food_items", "field_sources_json"), ("food_items", "table_base_amount"))
+            presente = self.coluna if params[1] == "field_sources_json" else self.base_104
+            self._linha = {"n": 1 if presente else 0}
         elif sql.startswith("SELECT DATABASE()"):
             self._linha = {"db": "schema_m85"}
         else:
@@ -350,4 +352,16 @@ def test_sem_a_coluna_da_084_o_catalogo_responde_503_citando_a_084():
     depois = _Cursor(coluna=False)
     nutrition_schema.require_food_tables(depois)
     assert not any("information_schema" in sql for sql in depois.sql)
+    nutrition_schema.reset_nutrition_tables_cache()
+
+
+def test_sem_a_coluna_da_104_o_catalogo_responde_503_citando_a_104():
+    """Janela de deploy: código novo antes da migração 104 (`table_base_amount`) não vira 500."""
+    nutrition_schema.reset_nutrition_tables_cache()
+    with pytest.raises(Exception) as erro:
+        nutrition_schema.require_food_tables(_Cursor(coluna=True, base_104=False))
+    assert erro.value.status_code == 503
+    assert erro.value.detail["error"] == "food_catalog_migration_pending" and erro.value.detail["migration"] == "104"
+    assert "table_base_amount" in erro.value.detail["message"]
+    nutrition_schema.require_food_tables(_Cursor(coluna=True, base_104=True))
     nutrition_schema.reset_nutrition_tables_cache()

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from app import nutrition_access as access
@@ -100,6 +100,19 @@ class FakeConn:
         return False
 
 
+DECIMAL_2 = Decimal("0.01")
+# Colunas DECIMAL(n,2) de `food_items` (080 e 104): o MySQL arredonda para 2 casas ao gravar.
+_DECIMAL_2_COLUMNS = (*catalog.PER_100_FIELDS, "serving_size", "servings_per_package", "table_base_amount")
+
+
+def _como_decimal_2(linha: dict[str, Any]) -> None:
+    """Simula a precisao das colunas: valor numerico gravado vira DECIMAL com 2 casas (meio para cima)."""
+    for coluna in _DECIMAL_2_COLUMNS:
+        valor = linha.get(coluna)
+        if isinstance(valor, (int, float, Decimal)) and not isinstance(valor, bool):
+            linha[coluna] = Decimal(str(valor)).quantize(DECIMAL_2, rounding=ROUND_HALF_UP)
+
+
 def _publico(linha: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in linha.items() if not k.startswith("_")}
 
@@ -179,6 +192,7 @@ class FakeCursor:
             colunas = ("source", "barcode", *foods._WRITE_COLUMNS, "owner_user_id", "created_by")
             linha = {coluna: None for coluna in foods.FOOD_COLUMNS}
             linha.update(dict(zip(colunas, p)), id=food_id, is_active=1, created_at=AGORA, updated_at=AGORA)
+            _como_decimal_2(linha)
             linha["_normalized"] = linha["name_normalized"]
             db.foods[food_id] = linha
             self.lastrowid, self.rowcount = food_id, 1
@@ -193,6 +207,7 @@ class FakeCursor:
         elif sql == foods.UPDATE_FOOD_SQL:
             linha = db.foods[int(p[-1])]
             linha.update(dict(zip(foods._WRITE_COLUMNS, p[:-1])))
+            _como_decimal_2(linha)
             linha["_normalized"] = linha["name_normalized"]
             self.rowcount = 1
         elif sql == foods.PROMOTE_FOOD_SQL:

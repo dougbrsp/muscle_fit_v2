@@ -186,6 +186,7 @@ TRAINING_KCAL_NATURE_LABELS: Final[Mapping[TrainingKcalNature, str]] = {
 MEAL_NATURE_LABELS: Final[Mapping[MealNature, str]] = {
     MealNature.DERIVED: "Calculado do catálogo",
     MealNature.ESTIMATED: "Estimado",
+    MealNature.USER_ENTERED: "Informado por você",
     MealNature.MIXED: "Misto",
 }
 
@@ -234,6 +235,9 @@ USDA_DATA_TYPE_LABELS: Final[Mapping[UsdaDataType, str]] = {
     UsdaDataType.FOUNDATION: "Foundation Foods",
     UsdaDataType.SR_LEGACY: "SR Legacy (Standard Reference)",
 }
+
+# Unidade da base da tabela digitada (seletor "valores por ___ g/ml"): só o código, sem "por 100".
+TABLE_BASE_UNIT_LABELS: Final[Mapping[Unit, str]] = {Unit.GRAM: "g", Unit.MILLILITER: "ml"}
 
 FOOD_BASIS_LABELS: Final[Mapping[Unit, str]] = {
     Unit.GRAM: f"por {meal_math_mod.PER_100G_REFERENCE:g} g",
@@ -614,7 +618,17 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     meal_parse_mod.ERR_PARSE_FAILED: "Não foi possível ler a refeição agora. Tente novamente.",
     meal_parse_mod.ERR_MATCH_FAILED: "A IA leu a refeição, mas a busca no catálogo falhou. Tente novamente.",
     meal_parse_mod.ERR_DISPATCH_FAILED: "Não foi possível iniciar a leitura da refeição. Tente novamente em instantes.",
-    diary_mod.ERR_ITEM_FOOD_OR_ESTIMATE: "Cada item precisa de um alimento do catálogo ou da estimativa da IA.",
+    diary_mod.ERR_ITEM_FOOD_OR_ESTIMATE: (
+        "Cada item precisa de uma origem só: um alimento do catálogo, a estimativa da IA ou o lançamento rápido."
+    ),
+    diary_mod.ERR_QUICK_ENTRY_WEIGHT: (
+        f"O peso precisa ser maior que zero e até {diary_mod.ITEM_AMOUNT_MAX:g} g."
+    ),
+    diary_mod.ERR_INVALID_CLOCK_TIME: "Hora inválida: use o formato HH:MM (00:00 a 23:59).",
+    catalog_mod.ERR_INVALID_TABLE_BASE: (
+        f"A quantidade a que os valores se referem precisa estar entre {catalog_mod.TABLE_BASE_AMOUNT_MIN:g} e "
+        f"{catalog_mod.TABLE_BASE_AMOUNT_MAX:g} (g ou ml)."
+    ),
     ext_mod.ERR_USDA_DATA_TYPE: (
         "Só alimentos "
         + " e ".join(USDA_DATA_TYPE_LABELS[tipo] for tipo in ext_mod.USDA_DATA_TYPES)
@@ -793,6 +807,7 @@ PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     catalog_mod.ERR_MISSING_FIELD: "{field}: obrigatório.",
     catalog_mod.ERR_INVALID_VALUE: "{field}: valor inválido (número maior ou igual a zero).",
     catalog_mod.ERR_ABOVE_BASIS: "{field}: acima do máximo possível para a base da tabela.",
+    diary_mod.ERR_QUICK_ABOVE_WEIGHT: "{field}: acima do que o peso informado comporta.",
     catalog_mod.WARN_SUBTOTAL_ABOVE_TOTAL: "{field}: maior que o total que o contém.",
     # Diário (L4): `<código>:<campo da RDC 429>` (regra do macro ausente, `meal_math`).
     meal_math_mod.LIMIT_MACRO_INFERRED_ZERO: (
@@ -822,6 +837,7 @@ _FIELD_LABELS: Final[Mapping[str, str]] = {
     **{str(indice): nome for indice, nome in WEEKDAY_LABELS.items()},
     **labels_by_code(BODY_FAT_METHOD_LABELS),
     **RDC429_FIELD_LABELS,
+    diary_mod.QUICK_ENTRY_WEIGHT_FIELD: "Peso (g)",
 }
 
 

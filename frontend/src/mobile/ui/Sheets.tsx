@@ -21,6 +21,8 @@ export function BottomSheet({
   title,
   children,
   footer,
+  closeOnClickOutside = true,
+  closeOnEscape = true,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -28,12 +30,18 @@ export function BottomSheet({
   children: ReactNode;
   /** Ação fixa no rodapé da folha (ex.: Aplicar). */
   footer?: ReactNode;
+  /** `false` quando a folha guarda um rascunho que um toque fora não pode descartar. */
+  closeOnClickOutside?: boolean;
+  /** `false` enquanto outra camada (ex.: o leitor de código) por cima deve tratar o Esc sozinha. */
+  closeOnEscape?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   return (
     <Drawer
       opened={opened}
       onClose={onClose}
+      closeOnClickOutside={closeOnClickOutside}
+      closeOnEscape={closeOnEscape}
       position="bottom"
       size="auto"
       title={title}

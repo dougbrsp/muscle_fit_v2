@@ -208,6 +208,20 @@ def test_coluna_por_100_ausente_sai_da_porcao_com_aviso_por_campo():
     derivados = [a for a in revisao.warnings if a.startswith(lp.WARN_LABEL_DERIVED_FROM_SERVING)]
     assert len(derivados) == len(catalog.PER_100_FIELDS)
     assert revisao.errors == ()
+    # D1: valores vieram por porcao -> a resposta devolve a base (a porcao) e os valores NESSA base, pelo motor.
+    corpo = revisao.to_dict()
+    assert corpo["table_base_amount"] == revisao.serving_size and corpo["table_base_amount"] != 100
+    assert corpo["per_table_base"] == dict(revisao.per_serving)
+    assert corpo["food"]["energy_kcal"] == 450  # `food` segue por 100
+
+
+def test_leitura_com_por_100_impresso_ou_campo_perdido_segue_por_100():
+    impresso = lp.review_reading(_leitura()).to_dict()
+    assert impresso["table_base_amount"] == 100
+    assert impresso["per_table_base"]["energy_kcal"] == impresso["food"]["energy_kcal"]
+    sem_um_campo = lp.review_reading(_leitura(per_100={"protein_g": 8}, per_serving={**POR_PORCAO, "protein_g": None})).to_dict()
+    assert sem_um_campo["table_base_amount"] == 100  # protein_g seria perdido na base da porcao
+    assert lp.review_reading(_leitura(per_100={}, basis="g", serving_size=None)).to_dict()["table_base_amount"] == 100
 
 
 def test_sem_quantidade_significativa_vira_zero_do_motor_com_aviso():

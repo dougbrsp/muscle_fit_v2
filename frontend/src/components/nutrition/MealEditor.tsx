@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Group,
+  Modal,
   NumberInput,
   Paper,
   Select,
@@ -17,14 +18,19 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { FavoriteShortcuts } from './FavoriteShortcuts';
+import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
+import { QuickEntryItemRow } from './QuickEntryItemRow';
+import { useScannerOpen } from '@/lib/barcode-scanner-open';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
+import { newMealClockTime } from '@/lib/nutrition-quick-entry';
+import { addRegisteredFood } from '@/lib/nutrition-food-registration';
 import {
   chooseCandidate,
   chooseEstimate,
@@ -38,13 +44,18 @@ import {
   type MealEditorForm,
   type MealEditorItem,
 } from '@/lib/nutrition-meal-form';
-import type { Meal, MealPreviewPayload } from '@/lib/nutrition-types';
+import type { Meal, MealPreviewPayload, NutritionLimitation } from '@/lib/nutrition-types';
+import { usePresentationActive } from '@/lib/presentation-slots';
+import { BackToCloseHere } from '@/mobile/screens/telas/BackToCloseHere';
+import { BottomSheet } from '@/mobile/ui/Sheets';
 import { BRAND } from '@/theme';
 
 const ATRASO_DO_PREVIEW_MS = 400;
 
 type Props = {
   date: string;
+  /** Hoje segundo a API: refeição nova nesse dia abre com a hora atual (editável). */
+  today?: string | null;
   /** Refeição em edição ou `null` (nova). */
   meal: Meal | null;
   /** Formulário inicial de uma refeição nova (leitura por IA, L5b). */
@@ -125,6 +136,7 @@ function ItemRow({
   onChange: (item: MealEditorItem) => void;
   onRemove: () => void;
 }) {
+  if (item.quick) return <QuickEntryItemRow item={item} draft={item.quick} onChange={onChange} onRemove={onRemove} />;
   const daLeitura = item.choices.length > 0 || (item.id === null && item.estimate !== null);
   // Item estimado não tem porção: só g, ml e medidas caseiras (a API confere de novo).
   const unidades = item.food_id == null ? UNIT_OPTIONS.filter((opcao) => !unitUsesPortion(opcao.value)) : UNIT_OPTIONS;
@@ -190,13 +202,25 @@ function ItemRow({
  * porção; o preview é uma chamada à API (motor `meal_math`, E9) e a gravação
  * congela os valores por item (E4). A tela não calcula nada.
  */
-export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }: Props) {
+export function MealEditor({ date, today = null, meal, initialForm = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<MealEditorForm>(() =>
     meal
       ? editorFormFromMeal(meal)
-      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: '', notes: '', items: [], ai: null }),
+      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: newMealClockTime(date, today), notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
+  // A hora ainda é a automática (do relógio, refeição nova)? Trocar o Dia a recalcula; hora digitada pela pessoa (mesmo apagada) nunca muda.
+  const horaAutomatica = useRef(meal === null && initialForm === null && form.eaten_at !== '');
+  // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só
+  // desmonta o fluxo ao fechar. Fechar sem salvar não muda nada; salvar acrescenta o item.
+  const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
+  // Avisos do cadastro (Atwater, Open Food Facts) e erro de "usar o existente" ficam na tela depois de o fluxo fechar.
+  const [avisosCadastro, setAvisosCadastro] = useState<NutritionLimitation[]>([]);
+  const [erroExistente, setErroExistente] = useState<string | null>(null);
+  const noCelular = usePresentationActive();
+  // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.
+  const leitorAberto = useScannerOpen();
+  const queryClient = useQueryClient();
 
   const corpo = mealCreatePayload(form);
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
@@ -221,6 +245,26 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     onSuccess: onSaved,
   });
 
+  function adicionarCadastrado(alimento: { id: number; name: string; basis: string; warnings?: NutritionLimitation[] }) {
+    setAvisosCadastro(alimento.warnings ?? []);
+    setErroExistente(null);
+    proximaChave.current += 1;
+    const chave = `novo-${proximaChave.current}`;
+    setForm((atual) => addRegisteredFood(atual, alimento, chave, MEAL_ITEMS_LIMIT));
+    setCadastro(null);
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+
+  /** EAN já cadastrado (409): busca o alimento existente e o adiciona. */
+  async function usarExistente(foodId: number) {
+    try {
+      adicionarCadastrado(await queryClient.fetchQuery({ queryKey: foodKeys.detail(foodId), queryFn: () => fetchFood(foodId) }));
+    } catch (erro) {
+      // Sem o alimento não há o que adicionar: o fluxo segue aberto, agora com o motivo.
+      setErroExistente(nutritionErrorInfo(erro, 'Não foi possível abrir o alimento existente.').message);
+    }
+  }
+
   function atualizarItem(chave: string, item: MealEditorItem) {
     setForm((atual) => ({ ...atual, items: atual.items.map((existente) => (existente.key === chave ? item : existente)) }));
   }
@@ -230,8 +274,55 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const semOrigem = form.items.some((item) => !itemHasSource(item));
   const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
+  function fecharCadastro() {
+    setCadastro(null);
+    setErroExistente(null);
+  }
+
+  const fluxoDeCadastro = (
+    <Stack gap="sm">
+      {erroExistente && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
+          {erroExistente}
+        </Alert>
+      )}
+      <FoodRegistrationFlow
+        initialName={cadastro?.nome}
+        onSaved={adicionarCadastrado}
+        onFound={adicionarCadastrado}
+        onUseExisting={usarExistente}
+        onCancel={fecharCadastro}
+      />
+    </Stack>
+  );
+
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+      {/* Voltar do celular fecha só a folha (o editor e o rascunho continuam); montado sempre, para fechar por código desfazer a entrada do histórico. */}
+      {noCelular ? <BackToCloseHere open={cadastro !== null} onClose={fecharCadastro} /> : null}
+      {noCelular ? (
+        <BottomSheet
+          opened={cadastro !== null}
+          onClose={fecharCadastro}
+          title="Cadastrar novo alimento"
+          closeOnClickOutside={false}
+          closeOnEscape={!leitorAberto}
+        >
+          {cadastro !== null ? fluxoDeCadastro : null}
+        </BottomSheet>
+      ) : (
+        <Modal
+          opened={cadastro !== null}
+          onClose={fecharCadastro}
+          title="Cadastrar novo alimento"
+          size="lg"
+          centered
+          closeOnClickOutside={false}
+          closeOnEscape={!leitorAberto}
+        >
+          {cadastro !== null ? fluxoDeCadastro : null}
+        </Modal>
+      )}
       <Stack gap="sm">
         <Title order={4} c={BRAND.textPrimary}>
           {meal ? 'Editar refeição' : form.ai ? 'Refeição lida pela IA' : 'Nova refeição'}
@@ -262,6 +353,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             value={form.eaten_at}
             onChange={(e) => {
               const valor = e.currentTarget.value;
+              horaAutomatica.current = false;
               setForm((atual) => ({ ...atual, eaten_at: valor }));
             }}
             w={140}
@@ -272,7 +364,12 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             value={form.local_date}
             onChange={(e) => {
               const valor = e.currentTarget.value;
-              if (valor) setForm((atual) => ({ ...atual, local_date: valor }));
+              if (!valor) return;
+              setForm((atual) => ({
+                ...atual,
+                local_date: valor,
+                eaten_at: horaAutomatica.current ? newMealClockTime(valor, today) : atual.eaten_at,
+              }));
             }}
             w={170}
           />
@@ -290,6 +387,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
         <FoodSearch
           isAdmin={false}
           selectedId={null}
+          onRegister={(termo) => setCadastro({ nome: termo })}
+          registerDisabled={form.items.length >= MEAL_ITEMS_LIMIT}
           onSelect={(alimento) => {
             if (form.items.length >= MEAL_ITEMS_LIMIT) return;
             proximaChave.current += 1;
@@ -297,6 +396,24 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
           }}
         />
+
+        {avisosCadastro.length > 0 && (
+          <Alert
+            color="yellow"
+            variant="light"
+            icon={<IconAlertTriangle size={16} />}
+            title="Confira o alimento cadastrado"
+            withCloseButton
+            closeButtonLabel="Dispensar avisos"
+            onClose={() => setAvisosCadastro([])}
+          >
+            {avisosCadastro.map((aviso) => (
+              <Text key={aviso.code} size="sm">
+                {aviso.label}
+              </Text>
+            ))}
+          </Alert>
+        )}
 
         <Stack gap="xs">
           {form.items.length === 0 && (
@@ -357,7 +474,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
               <Text size="sm" fw={600} c={BRAND.textPrimary}>
                 Calculado pelo motor
               </Text>
-              <TotalsBadges totals={preview.data.totals} />
+              <TotalsBadges totals={preview.data.totals} items={preview.data.items} />
             </Group>
             <MealItemsTable items={preview.data.items} />
             <TotalsLine totals={preview.data.totals} />

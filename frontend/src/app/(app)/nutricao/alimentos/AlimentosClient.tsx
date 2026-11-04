@@ -1,33 +1,27 @@
 'use client';
 
-import { Alert, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
+import { Alert, Paper, Stack, Text, Title } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
-import { BarcodeLookup } from '@/components/nutrition/BarcodeLookup';
+import { useEffect, useRef, useState } from 'react';
 import { FoodCitationFooter } from '@/components/nutrition/FoodCitationFooter';
 import { FoodDetailCard } from '@/components/nutrition/FoodDetailCard';
 import { FoodForm } from '@/components/nutrition/FoodForm';
+import { FoodRegistrationFlow } from '@/components/nutrition/FoodRegistrationFlow';
 import { FoodSearch } from '@/components/nutrition/FoodSearch';
-import { LabelPhotoUpload } from '@/components/nutrition/LabelPhotoUpload';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
-import { UsdaSearch } from '@/components/nutrition/UsdaSearch';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { existingFoodSelection, newFoodFromBarcode, shouldOpenRegistration } from '@/lib/nutrition-barcode-flow';
+import { existingFoodSelection } from '@/lib/nutrition-barcode-flow';
 import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
-import { LABEL_LEGIBILITY_OPTIONS, LABEL_PHOTO, nutritionLabel } from '@/lib/nutrition-constants';
-import { foodFormFromPrefill } from '@/lib/nutrition-food-form';
-import type { ExternalFoodResponse, FoodSaveResponse, LabelPhotoReading } from '@/lib/nutrition-types';
+import type { ExternalFoodResponse, FoodSaveResponse } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
 }
-
-type Editing = { mode: 'new'; barcode?: string } | { mode: 'edit' } | { mode: 'label'; reading: LabelPhotoReading } | null;
 
 /**
  * `/nutricao/alimentos` — catálogo de alimentos (Lote L3a). Busca na TACO 4ª
@@ -46,15 +40,20 @@ export function AlimentosClient() {
   const qc = useQueryClient();
   const Header = usePresentationSlot('nutritionHeader');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<Editing>(null);
+  // Edição de um alimento já aberto no detalhe; o cadastro novo é o fluxo único (`FoodRegistrationFlow`).
+  const [editing, setEditing] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+  // O detalhe (onde fica o botão Editar) some ao editar: leva a vista até o formulário de edição.
+  useEffect(() => {
+    if (editing) editorRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [editing]);
+  const detailRef = useRef<HTMLDivElement>(null);
+  // Sobe a cada alimento aberto (busca, cadastro, produto achado, existente), mesmo o que já estava aberto.
+  const [scrollTick, setScrollTick] = useState(0);
   const [saved, setSaved] = useState<FoodSaveResponse | null>(null);
   const [external, setExternal] = useState<ExternalFoodResponse | null>(null);
-  const [unreadable, setUnreadable] = useState<LabelPhotoReading | null>(null);
-  // Cada leitura nova remonta o formulário (o estado inicial vem da leitura).
-  const [labelReads, setLabelReads] = useState(0);
-  const formRef = useRef<HTMLDivElement>(null);
-  // Muda depois de salvar/abrir um produto: o leitor de código de barras limpa o código e o resultado.
-  const [lookupResets, setLookupResets] = useState(0);
+  // Muda depois de salvar/abrir um produto: o fluxo de cadastro volta limpo.
+  const [resets, setResets] = useState(0);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user'],
@@ -79,65 +78,47 @@ export function AlimentosClient() {
     },
   });
 
-  /** Leitura da foto do rótulo: legível abre o formulário pré-preenchido; ilegível mostra o porquê. */
-  function afterLabelRead(reading: LabelPhotoReading) {
-    setSaved(null);
-    setExternal(null);
-    if (reading.readable) {
-      setUnreadable(null);
-      setLabelReads((n) => n + 1);
-      setEditing({ mode: 'label', reading });
-    } else {
-      setEditing(null);
-      setUnreadable(reading);
-    }
-  }
-
-  async function afterSave(food: FoodSaveResponse) {
-    setLookupResets((n) => n + 1);
-    setEditing(null);
-    setUnreadable(null);
+  /** `doCadastro`: veio do fluxo de cadastro (que volta limpo); a edição não mexe no cadastro em andamento. */
+  async function afterSave(food: FoodSaveResponse, doCadastro: boolean) {
+    if (doCadastro) setResets((n) => n + 1);
+    setEditing(false);
     setSaved(food);
     setExternal(null);
     setSelectedId(food.id);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
     await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
   }
 
   /** Código de barras ou importação do USDA: abre o item (já gravado pela API) no detalhe. */
   async function afterExternal(food: ExternalFoodResponse) {
-    setEditing(null);
+    setEditing(false);
     setSaved(null);
     setExternal(food);
     setSelectedId(food.id);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
     await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
   }
 
-  /** Código lido/digitado sem produto no OFF: abre o cadastro manual com o EAN e leva a tela até ele. */
-  function registerWithBarcode(ean: string, force: boolean): boolean {
-    const novo = newFoodFromBarcode(ean);
-    if (!novo || !shouldOpenRegistration(editing !== null, force)) return false;
-    setSaved(null);
-    setExternal(null);
-    setUnreadable(null);
-    setEditing(novo);
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-    return true;
-  }
-
   /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */
-  async function useExisting(foodId: number) {
+  async function openExisting(foodId: number, doCadastro: boolean) {
     const selecao = existingFoodSelection(foodId);
-    setLookupResets((n) => n + 1);
-    setEditing(selecao.editing);
+    if (doCadastro) setResets((n) => n + 1);
+    setEditing(selecao.editing !== null);
     setSaved(null);
     setExternal(null);
     setSelectedId(selecao.selectedId);
+    setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(foodId) });
   }
 
   const detail = detailQuery.data ?? null;
+  // O detalhe fica abaixo do cadastro: ao escolher um alimento na busca, leva a vista até ele.
+  const detailId = detail?.id ?? null;
+  useEffect(() => {
+    if (!editing) detailRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [detailId, editing, scrollTick]);
 
   return (
     <Stack gap="xl">
@@ -166,59 +147,12 @@ export function AlimentosClient() {
         selectedId={selectedId}
         onSelect={(item) => {
           setSelectedId(item.id);
-          setEditing(null);
+          setScrollTick((n) => n + 1);
+          setEditing(false);
           setSaved(null);
           setExternal(null);
         }}
       />
-
-      <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
-          <Stack gap="xs">
-            <Title order={4} c={BRAND.textPrimary}>
-              Foto do rótulo
-            </Title>
-            <LabelPhotoUpload onRead={afterLabelRead} />
-          </Stack>
-        </Paper>
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
-          <Stack gap="xs">
-            <Title order={4} c={BRAND.textPrimary}>
-              Código de barras
-            </Title>
-            <BarcodeLookup onFound={afterExternal} onNotFound={registerWithBarcode} resetSignal={lookupResets} />
-          </Stack>
-        </Paper>
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
-          <Stack gap="xs">
-            <Title order={4} c={BRAND.textPrimary}>
-              USDA FoodData Central
-            </Title>
-            <UsdaSearch onImported={afterExternal} />
-          </Stack>
-        </Paper>
-      </SimpleGrid>
-
-      {unreadable && (
-        <NutritionLimitations
-          items={unreadable.errors}
-          title={nutritionLabel(LABEL_LEGIBILITY_OPTIONS, unreadable.legibility) ?? 'Foto do rótulo'}
-          tone="error"
-        />
-      )}
-
-      {external && external.warnings.length > 0 && (
-        <NutritionLimitations items={external.warnings} title={`Avisos sobre ${external.name}`} tone="warning" />
-      )}
-
-      {saved && saved.warnings.length > 0 && (
-        <NutritionLimitations items={saved.warnings} title={`Alimento salvo, com avisos: ${saved.name}`} tone="warning" />
-      )}
-      {saved && saved.warnings.length === 0 && (
-        <Text size="sm" c="green">
-          Alimento salvo: {saved.name}.
-        </Text>
-      )}
 
       {detailQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -231,75 +165,65 @@ export function AlimentosClient() {
         </Alert>
       )}
 
-      {editing ? (
-        <Paper ref={formRef} withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+      {editing && (
+        <Paper ref={editorRef} withBorder radius="md" p="md" bg={BRAND.bgElevated}>
           <Stack gap="sm">
             <Title order={3} c={BRAND.textPrimary}>
-              {editing.mode === 'edit' ? 'Editar alimento' : editing.mode === 'label' ? 'Alimento da foto do rótulo' : 'Novo alimento'}
+              Editar alimento
             </Title>
-            {editing.mode === 'label' && (
-              <>
-                <Text size="sm" c={BRAND.textMuted}>
-                  {nutritionLabel(LABEL_LEGIBILITY_OPTIONS, editing.reading.legibility)}. Confira cada valor com a
-                  embalagem antes de salvar: a leitura pode errar.
-                </Text>
-                <NutritionLimitations items={editing.reading.errors} title="Corrija antes de salvar" tone="error" />
-                <NutritionLimitations items={editing.reading.warnings} title="Confira" tone="warning" />
-                {editing.reading.ai_notes.length > 0 && (
-                  <NutritionLimitations
-                    items={editing.reading.ai_notes.map((nota, i) => ({ code: `ai_note_${i}`, label: nota }))}
-                    title="Observações da leitura"
-                    tone="info"
-                  />
-                )}
-              </>
-            )}
             <FoodForm
-              key={
-                editing.mode === 'edit'
-                  ? (detail?.id ?? 'editar')
-                  : editing.mode === 'label'
-                    ? `rotulo-${labelReads}`
-                    : `novo-${editing.barcode ?? ''}`
-              }
-              food={editing.mode === 'edit' ? detail : null}
-              barcode={editing.mode === 'new' ? editing.barcode : undefined}
-              onUseExisting={useExisting}
-              initial={editing.mode === 'label' ? foodFormFromPrefill(editing.reading.food) : undefined}
-              createSource={editing.mode === 'label' ? LABEL_PHOTO.food_source : undefined}
-              onSaved={afterSave}
-              onCancel={() => setEditing(null)}
+              key={detail?.id ?? 'editar'}
+              food={detail}
+              onUseExisting={(id) => openExisting(id, false)}
+              onSaved={(food) => afterSave(food, false)}
+              onCancel={() => setEditing(false)}
             />
           </Stack>
         </Paper>
-      ) : (
-        <Group>
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => {
-              setEditing({ mode: 'new' });
-              setSaved(null);
-              setExternal(null);
-            }}
-          >
-            Cadastrar alimento
-          </Button>
-        </Group>
       )}
+      {/* Fica montado (só oculto) durante a edição: o cadastro em andamento não se perde ao abrir "Editar". */}
+      <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated} display={editing ? 'none' : undefined}>
+        <Stack gap="sm">
+          <Title order={3} c={BRAND.textPrimary}>
+            Cadastrar alimento
+          </Title>
+          <FoodRegistrationFlow
+            withUsda
+            onSaved={(food) => afterSave(food, true)}
+            onFound={afterExternal}
+            onUseExisting={(id) => openExisting(id, true)}
+            resetSignal={resets}
+          />
+        </Stack>
+      </Paper>
 
-      {detail && !editing && (
-        <FoodDetailCard
-          food={detail}
-          onEdit={() => {
-            setEditing({ mode: 'edit' });
-            setSaved(null);
-            setExternal(null);
-          }}
-          onPromote={() => promoteMutation.mutate(detail.id)}
-          promoting={promoteMutation.isPending}
-          onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
-        />
+      {!editing && (detail || saved || external) && (
+        <Stack ref={detailRef} gap="md">
+          {external && external.warnings.length > 0 && (
+            <NutritionLimitations items={external.warnings} title={`Avisos sobre ${external.name}`} tone="warning" />
+          )}
+          {saved && saved.warnings.length > 0 && (
+            <NutritionLimitations items={saved.warnings} title={`Alimento salvo, com avisos: ${saved.name}`} tone="warning" />
+          )}
+          {saved && saved.warnings.length === 0 && (
+            <Text size="sm" c="green">
+              Alimento salvo: {saved.name}.
+            </Text>
+          )}
+          {detail && (
+            <FoodDetailCard
+              food={detail}
+              onEdit={() => {
+                setEditing(true);
+                setSaved(null);
+                setExternal(null);
+              }}
+              onPromote={() => promoteMutation.mutate(detail.id)}
+              promoting={promoteMutation.isPending}
+              onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
+            />
+          )}
+        </Stack>
       )}
 
       <FoodCitationFooter />

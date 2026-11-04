@@ -19,6 +19,7 @@ import {
   nutritionLabel,
   type NutritionCode,
 } from './nutrition-constants';
+import { draftFromSnapshot, quickEntryChanged, quickEntryPayload, type QuickEntryDraft } from './nutrition-quick-entry';
 import type {
   FoodItem,
   Meal,
@@ -58,6 +59,8 @@ export type MealEditorItem = {
   originLabel: string | null;
   /** Avisos da leitura (quantidade estimada, alimento fora do catálogo...). */
   notices: NutritionLimitation[];
+  /** Lançamento rápido gravado: os 6 valores editáveis (sem busca, porção nem unidade). */
+  quick?: QuickEntryDraft | null;
 };
 
 export type MealEditorForm = {
@@ -123,8 +126,9 @@ export function editorFormFromMeal(meal: Meal): MealEditorForm {
       unit: item.unit,
       portion_id: item.portion_id,
       ...SEM_LEITURA,
-      usesEstimate: item.food_id == null,
+      usesEstimate: item.food_id == null && !item.quick_entry,
       originLabel: item.food_id == null ? nutritionLabel(MEAL_NATURE_OPTIONS, item.nature) : null,
+      ...(item.quick_entry ? { quick: draftFromSnapshot(item.quick_entry) } : {}),
     })),
     ai: null,
   };
@@ -137,7 +141,7 @@ export function unitUsesPortion(unit: NutritionCode): boolean {
 
 /** O item tem origem definida (alimento do catálogo ou estimativa da IA)? */
 export function itemHasSource(item: MealEditorItem): boolean {
-  if (item.food_id != null) return true;
+  if (item.food_id != null || item.quick) return true;
   return item.usesEstimate && (item.estimate !== null || item.id !== null);
 }
 
@@ -182,6 +186,15 @@ function quantidade(valor: number | string): number | null {
 export function itemsPayload(items: MealEditorItem[]): MealItemPayload[] | null {
   const corpo: MealItemPayload[] = [];
   for (const item of items) {
+    if (item.quick) {
+      // Lançamento rápido: o peso é a quantidade. Mantido = só `id` (a API reusa o gravado);
+      // alterado = os 6 valores com o `id` (seção 2 do contrato).
+      const valores = quickEntryPayload(item.quick);
+      if (valores === null) return null;
+      const mudou = item.id == null || quickEntryChanged(item.quick);
+      corpo.push({ ...(item.id != null ? { id: item.id } : {}), ...(mudou ? { quick_entry: valores } : {}) });
+      continue;
+    }
     const valor = quantidade(item.quantity);
     if (valor === null || !itemHasSource(item)) return null;
     const base = {
