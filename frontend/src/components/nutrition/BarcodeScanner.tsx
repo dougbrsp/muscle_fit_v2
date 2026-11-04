@@ -58,7 +58,7 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
     let handle: ScanHandle | null = null;
     // Depois de um tempo sem ler, mostra a linha de diagnóstico e a mantém atualizada.
     const cancelarDiagnostico = scheduleDiagnostics(
-      () => formatDiagnostics(video, handle?.diagnostics?.() ?? null),
+      () => formatDiagnostics(video, handle ? (handle.diagnostics?.() ?? 'nativo') : null),
       (linha) => {
         if (!cancelled) setDiagnostico(linha);
       },
@@ -77,6 +77,9 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
       },
       undefined,
       falhou,
+      (aberto) => {
+        handle = aberto; // disponível desde a abertura da câmera: fechar durante o `play()` já libera
+      },
     )
       .then((started) => {
         if (cancelled) {

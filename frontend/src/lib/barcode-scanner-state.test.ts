@@ -33,20 +33,33 @@ describe('scannerReducer', () => {
 describe('formatDiagnostics', () => {
   const video = { videoWidth: 1280, videoHeight: 720, readyState: 4 };
 
+  const zxing = { attempts: 42, lastError: 'NotFoundException', startWidth: 1280, startHeight: 720 };
+
   it('mostra dimensões, estado, tentativas e último erro do zxing', () => {
-    expect(formatDiagnostics(video, { attempts: 42, lastError: 'NotFoundException' })).toBe(
-      'Diagnóstico: 1280x720, estado 4, 42 tentativas, NotFoundException',
+    expect(formatDiagnostics(video, zxing)).toBe('Diagnóstico: 1280x720, estado 4, 42 tentativas, NotFoundException');
+  });
+
+  it('vídeo que girou depois do início mostra início e agora (o canvas do zxing fica com o tamanho velho)', () => {
+    expect(formatDiagnostics(video, { ...zxing, startWidth: 720, startHeight: 1280 })).toBe(
+      'Diagnóstico: início 720x1280, agora 1280x720, estado 4, 42 tentativas, NotFoundException',
     );
   });
 
-  it('sem erro ainda e vídeo com largura 0 (hipótese do standalone) ficam visíveis', () => {
-    expect(formatDiagnostics({ videoWidth: 0, videoHeight: 0, readyState: 1 }, { attempts: 0, lastError: null })).toBe(
-      'Diagnóstico: 0x0, estado 1, 0 tentativas, sem erro',
+  it('vídeo com 0x0 durante toda a varredura (hipótese do standalone) fica visível, sem erro de quadro', () => {
+    const zero = { attempts: 12, lastError: null, startWidth: 0, startHeight: 0 };
+    expect(formatDiagnostics({ videoWidth: 0, videoHeight: 0, readyState: 2 }, zero)).toBe(
+      'Diagnóstico: 0x0, estado 2, 12 tentativas, sem erro',
+    );
+  });
+
+  it('sem handle ainda: diz que a câmera está iniciando, não que é o leitor nativo', () => {
+    expect(formatDiagnostics({ videoWidth: 0, videoHeight: 0, readyState: 0 }, null)).toBe(
+      'Diagnóstico: 0x0, estado 0, câmera iniciando',
     );
   });
 
   it('leitor nativo não tem contagem', () => {
-    expect(formatDiagnostics(video, null)).toBe('Diagnóstico: 1280x720, estado 4, leitor nativo');
+    expect(formatDiagnostics(video, 'nativo')).toBe('Diagnóstico: 1280x720, estado 4, leitor nativo');
   });
 });
 
