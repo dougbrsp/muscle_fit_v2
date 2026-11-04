@@ -65,6 +65,11 @@ export type MainNavItem = NavItem & {
   prefixes?: readonly string[];
   /** Regra de permissão/configuração; ausente = sempre visível. */
   visible?: boolean;
+  /**
+   * Seção só do computador (mobile v2, D1): o shell do iPhone não lista o item
+   * e mostra a tela "Disponível no computador" na rota. Sem efeito no desktop.
+   */
+  desktopOnly?: boolean;
 };
 
 export function isNavItemActive(item: MainNavItem, pathname: string | null): boolean {
@@ -125,7 +130,7 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
     { href: '/exercicios', label: 'Exercícios', icon: IconBarbell },
     { href: '/volume-grupamentos', label: 'Volume por grupamento', icon: IconChartBar },
     { href: '/planos-treino', label: 'Planos de treino', icon: IconNotes },
-    { href: '/academias', label: 'Academias', icon: IconBuildingWarehouse },
+    { href: '/academias', label: 'Academias', icon: IconBuildingWarehouse, desktopOnly: true },
     { href: '/preferencias-treino', label: 'Preferências de Treino', icon: IconStars },
     // Catálogo de exercícios/equipamentos: só admin (decisão de 2026-10-13).
     {
@@ -133,15 +138,23 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
       label: 'Equipamentos x Exercícios',
       icon: IconPlugConnected,
       visible: isAdmin,
+      desktopOnly: true,
     },
-    { href: '/dominio-exercicios', label: 'Domínio de Exercícios', icon: IconDatabase, visible: isAdmin },
+    {
+      href: '/dominio-exercicios',
+      label: 'Domínio de Exercícios',
+      icon: IconDatabase,
+      visible: isAdmin,
+      desktopOnly: true,
+    },
     // Regras de carga da próxima série (R4): só admin.
-    { href: '/regras-carga', label: 'Regras de carga', icon: IconWeight, visible: isAdmin },
+    { href: '/regras-carga', label: 'Regras de carga', icon: IconWeight, visible: isAdmin, desktopOnly: true },
     {
       href: '/metas-ativacao',
       label: 'Metas de Ativação',
       icon: IconTarget,
       visible: canManageTrainingTypes,
+      desktopOnly: true,
     },
     {
       href: '/modelos-treino',
@@ -149,6 +162,7 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
       icon: IconTemplate,
       prefixes: ['/modelos-treino', '/diagnostico-volume'],
       visible: canManageWorkoutPlanTemplates,
+      desktopOnly: true,
     },
     { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: isAdmin },
   ];
@@ -156,4 +170,51 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
 
 export function visibleMainNavItems(visibility: NavVisibility): readonly MainNavItem[] {
   return buildMainNavItems(visibility).filter((item) => item.visible ?? true);
+}
+
+/** Itens do menu que o iPhone mostra (sem as seções só do computador). */
+export function mobileMainNavItems(visibility: NavVisibility): readonly MainNavItem[] {
+  return visibleMainNavItems(visibility).filter((item) => !item.desktopOnly);
+}
+
+/**
+ * Rotas que existem só como redirecionamento legado de uma seção só-desktop
+ * (`/tipos-treinamento` -> `/metas-ativacao`): não são item de menu, mas no
+ * iPhone caem na mesma tela "Disponível no computador".
+ */
+const DESKTOP_ONLY_LEGACY: readonly { prefix: string; label: string }[] = [
+  { prefix: '/tipos-treinamento', label: 'Metas de Ativação' },
+];
+
+/**
+ * Prefixos (de segmento) das rotas só-desktop com o nome da seção, derivados de
+ * `desktopOnly` (inclui `[id]` e `/diagnostico-volume/*`, que pertencem a
+ * "Modelos de treino"). Independe de papel: o papel só decide o que o menu
+ * desktop lista.
+ */
+const DESKTOP_ONLY_ENTRIES: readonly { prefix: string; label: string }[] = [
+  ...buildMainNavItems({
+    canManageTrainingTypes: true,
+    canManageWorkoutPlanTemplates: true,
+    isAdmin: true,
+    hasIntervalsConfigured: true,
+  })
+    .filter((item) => item.desktopOnly)
+    .flatMap((item) => (item.prefixes ?? [item.href]).map((prefix) => ({ prefix, label: item.label }))),
+  ...DESKTOP_ONLY_LEGACY,
+];
+
+/** Nome da seção só-desktop a que a rota pertence, ou `null`. Casa por segmento. */
+export function desktopOnlySectionLabel(pathname: string | null | undefined): string | null {
+  if (!pathname) return null;
+  const path = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  const hit = DESKTOP_ONLY_ENTRIES.find(
+    ({ prefix }) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+  return hit?.label ?? null;
+}
+
+/** Pertence a uma seção só-desktop? (`/academias2` não casa com `/academias`.) */
+export function isDesktopOnlyPath(pathname: string | null | undefined): boolean {
+  return desktopOnlySectionLabel(pathname) !== null;
 }

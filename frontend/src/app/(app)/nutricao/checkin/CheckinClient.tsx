@@ -13,6 +13,7 @@ import type { SessionUser } from '@/lib/auth';
 import { nutritionErrorInfo } from '@/lib/nutrition-api';
 import { acceptCheckin, checkinKeys, declineCheckin, fetchCheckin } from '@/lib/nutrition-checkin';
 import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -25,6 +26,7 @@ async function fetchCurrentUser(): Promise<SessionUser> {
  * publica uma nova versão do plano; por isso invalida o plano, o diário e o painel (`targetsChangedKeys`).
  */
 export function CheckinClient() {
+  const Header = usePresentationSlot('nutritionHeader');
   const qc = useQueryClient();
   const [resultado, setResultado] = useState<string | null>(null);
 
@@ -71,6 +73,13 @@ export function CheckinClient() {
 
   return (
     <Stack gap="lg">
+      {Header ? (
+        <Header
+          active="/nutricao/checkin"
+          title="Check-in semanal"
+          description="Uma vez por semana a semana fechada é avaliada com o seu gasto, o que você comeu, o peso e a bioimpedância. Se as metas precisarem mudar, você confirma com um toque."
+        />
+      ) : (
       <Stack gap="xs">
         <NutritionSubnav active="/nutricao/checkin" />
         <Title order={1} c={BRAND.textPrimary}>
@@ -84,6 +93,7 @@ export function CheckinClient() {
           </Link>
         </Text>
       </Stack>
+      )}
 
       {resultado && (
         <Alert color="green" icon={<IconCheck size={16} />} role="status">

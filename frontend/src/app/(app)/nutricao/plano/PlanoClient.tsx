@@ -19,6 +19,7 @@ import type { SessionUser } from '@/lib/auth';
 import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
 import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type { NutritionLimitation, NutritionPlan, NutritionPlanSaved } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
@@ -33,6 +34,7 @@ type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
  */
 function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initialUser?: { id: number; label: string } }) {
   const qc = useQueryClient();
+  const PrimaryAction = usePresentationSlot('primaryAction');
   const [userId, setUserId] = useState<number | null>(fixedUserId ?? initialUser?.id ?? null);
   const [warnings, setWarnings] = useState<NutritionLimitation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -82,19 +84,31 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
         {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
-        {userId !== null && (
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => {
-              setEditing({ mode: 'new' });
-              setNotice(null);
-              setWarnings([]);
-            }}
-          >
-            Novo rascunho
-          </Button>
-        )}
+        {userId !== null &&
+          (PrimaryAction ? (
+            editing !== null ? null : (
+            <PrimaryAction
+              label="Novo rascunho"
+              onClick={() => {
+                setEditing({ mode: 'new' });
+                setNotice(null);
+                setWarnings([]);
+              }}
+            />
+            )
+          ) : (
+            <Button
+              color="brand"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => {
+                setEditing({ mode: 'new' });
+                setNotice(null);
+                setWarnings([]);
+              }}
+            >
+              Novo rascunho
+            </Button>
+          ))}
       </Group>
 
       {userId !== null && <CheckinDayField key={userId} userId={userId} />}
@@ -190,6 +204,7 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
  * acesso (`nutrition_access.py`) e calcula tudo (motor `domain/nutrition`); a tela só exibe.
  */
 export function PlanoClient() {
+  const Header = usePresentationSlot('nutritionHeader');
   const currentUserQuery = useQuery({
     queryKey: ['current-user'],
     queryFn: fetchCurrentUser,
@@ -201,6 +216,17 @@ export function PlanoClient() {
 
   return (
     <Stack gap="xl">
+      {Header ? (
+        <Header
+          active="/nutricao/plano"
+          title="Plano nutricional"
+          description={
+            canManage
+              ? 'Defina a estratégia e os parâmetros, confira a semana calculada pelo motor e publique.'
+              : 'Escolha sua estratégia, seu alvo e como distribuir as calorias; o motor calcula suas metas.'
+          }
+        />
+      ) : (
       <div>
         <NutritionSubnav active="/nutricao/plano" />
         <Title order={1} c={BRAND.textPrimary} mt="xs">
@@ -212,6 +238,7 @@ export function PlanoClient() {
             : 'Escolha sua estratégia, seu alvo e como distribuir as calorias; o motor calcula suas metas.'}
         </Text>
       </div>
+      )}
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess &&
         (canManage ? (

@@ -31,6 +31,7 @@ import { favoriteErrorLines, removeFavoriteIfPresent } from '@/lib/nutrition-fav
 import { FOOD_PER_100_FIELDS, FOOD_REQUIRED_FIELDS, FOOD_SOURCE_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import type { FoodSearchItem, FoodSearchScope } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // Colunas resumidas da tabela de resultados: os campos que o dono exige no
@@ -82,6 +83,7 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
       await queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
     },
   });
+  const Alternative = usePresentationSlot('foodResults');
   const itens = query.data?.items ?? [];
   const comEstrela = favoritos.isSuccess && scope === 'visible';
 
@@ -136,7 +138,18 @@ export function FoodSearch({ isAdmin, selectedId, onSelect }: Props) {
         </Text>
       )}
 
-      {itens.length > 0 && (
+      {itens.length > 0 && Alternative && (
+        <Alternative
+          items={itens}
+          selectedId={selectedId}
+          withStar={comEstrela}
+          onSelect={onSelect}
+          onToggleFavorite={(item) => alternar.mutate(item)}
+          togglingId={alternar.isPending ? (alternar.variables?.id ?? null) : null}
+        />
+      )}
+
+      {itens.length > 0 && !Alternative && (
         <Paper withBorder radius="md" bg={BRAND.bgElevated} style={{ overflowX: 'auto' }}>
           <Table highlightOnHover verticalSpacing="xs" miw={640}>
             <Table.Thead>

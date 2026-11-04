@@ -1,24 +1,51 @@
+/* Cartão do NutritionTodayCard (componente compartilhado): mesma superfície
+   agrupada dos ListGroup, sem contorno. */
 .card {
   padding: 16px;
-  border-radius: 16px;
+  border-radius: var(--m-radius);
   background: var(--m-surface);
-  border: 1px solid var(--m-border);
+  border: 0;
 }
 
-.link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--m-touch);
-  margin-top: 4px;
-  color: var(--m-accent);
+.slot {
+  margin: 0;
+  font-size: 20px;
+  line-height: 25px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.answer {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--m-text-2);
+}
+
+.meta {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--m-text-2);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.headline {
+  margin: 0;
+  font-size: 17px;
+  line-height: 22px;
   font-weight: 600;
-  text-decoration: none;
+  color: var(--m-text);
 }
 
-/* Sticky dentro do fluxo da pagina: gruda acima do bottom nav (altura + safe-area). */
-.cta {
-  position: sticky;
-  bottom: calc(var(--m-bottom-nav) + env(safe-area-inset-bottom) + 8px);
-  z-index: 50;
-  padding-top: 8px;
+.gap {
+  margin-bottom: var(--m-group-gap);
 }

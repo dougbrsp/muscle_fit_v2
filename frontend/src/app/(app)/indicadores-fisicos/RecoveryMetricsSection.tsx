@@ -14,6 +14,7 @@ import {
   formatNumberOrDash,
   IntervalsWellnessResponse,
 } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura do gráfico.
@@ -48,6 +49,7 @@ const DAY_OPTIONS = [
 ];
 
 export function RecoveryMetricsSection() {
+  const RecordList = usePresentationSlot('recordList');
   const [days, setDays] = useState('90');
   // GET /integrations/intervals/wellness aceita days em [1,3650] e limit em
   // [1,1000] (ver api/app/intervals_integration.py) — days*2 cobre o pior
@@ -161,6 +163,28 @@ export function RecoveryMetricsSection() {
               {items.length} dias sincronizados
             </Badge>
           </Group>
+          {RecordList ? (
+            <RecordList
+              label="Histórico do Intervals.icu"
+              emptyText="Nenhum dado sincronizado do Intervals.icu ainda."
+              rows={pagination.pageItems.map((entry) => ({
+                key: entry.wellness_date,
+                title: formatDateBR(entry.wellness_date),
+                subtitle: `CTL ${formatNumberOrDash(entry.fitness_ctl)} · ATL ${formatNumberOrDash(entry.fatigue_atl)}`,
+                value: `TSB ${formatNumberOrDash(entry.form_tsb)}`,
+                details: [
+                  ['CTL', formatNumberOrDash(entry.fitness_ctl)],
+                  ['ATL', formatNumberOrDash(entry.fatigue_atl)],
+                  ['TSB', formatNumberOrDash(entry.form_tsb)],
+                  ['Rampa', formatNumberOrDash(entry.ramp_rate)],
+                  ['Preparo', formatNumberOrDash(entry.readiness_score, 0)],
+                  ['Carga diária', formatNumberOrDash(entry.daily_effort_load, 0)],
+                  ['HRV', formatNumberOrDash(entry.hrv_ms, 0)],
+                  ['FC repouso', formatNumberOrDash(entry.resting_hr_bpm, 0)],
+                ],
+              }))}
+            />
+          ) : (
           <Table.ScrollContainer minWidth={800}>
             <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
               <Table.Thead>
@@ -202,6 +226,7 @@ export function RecoveryMetricsSection() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          )}
           <TablePager
             page={pagination.page}
             totalPages={pagination.totalPages}

@@ -1,0 +1,25 @@
+/* Estilos compartilhados das telas de Evolução (mobile v2, frente B).
+   Só layout/tipografia; cores vêm das variáveis --m-* do shell. */
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.toolbar { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; min-width: 0; }
+.toolbarGrow { flex: 1; min-width: 0; }
+.gap { margin-bottom: var(--m-group-gap); }
+.headline { margin: 0; font-size: 17px; line-height: 22px; font-weight: 600; color: var(--m-text); overflow-wrap: anywhere; }
+.body { margin: 0; font-size: 15px; line-height: 20px; color: var(--m-text); overflow-wrap: anywhere; }
+.meta { margin: 6px 0 0; font-size: 13px; line-height: 18px; color: var(--m-text-2); overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.note { margin: 0 0 var(--m-group-gap); padding: 0 16px; font-size: 13px; line-height: 18px; color: var(--m-text-2); overflow-wrap: anywhere; }
+.noteList { margin: 0; padding: 0 0 0 16px; }
+.err { color: #ff8787; font-size: 13px; line-height: 18px; margin: 4px 0 0; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.fieldLabel { font-size: 13px; color: var(--m-text-2); }
+.dateInput { font: inherit; font-size: 16px; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--m-sep); background: var(--m-surface); color: var(--m-text); color-scheme: dark; width: 100%; box-sizing: border-box; }
+.pager { display: flex; gap: 8px; margin: 12px 0 var(--m-group-gap); }
+.pager > * { flex: 1; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.md { padding: 14px 16px; font-size: 15px; line-height: 21px; overflow-wrap: anywhere; }
+.jump { appearance: none; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--m-sep); background: var(--m-surface); color: var(--m-text); font: inherit; font-size: 14px; }
+.scrollEnd { height: 96px; }
+.chartBlock { padding: 12px 12px 8px; }
+.sectionTitle { margin: 0 0 6px; padding: 0 16px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--m-text-2); }

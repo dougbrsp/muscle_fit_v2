@@ -40,7 +40,7 @@ import {
   type WorkoutPlanExercise,
   type WorkoutPlanInput,
 } from '@/lib/workout-plans-types';
-import { toWorkoutPlanInput } from '@/lib/workout-plan-payload';
+import { buildPlanUpdatePayload } from '@/lib/workout-plan-payload';
 import { indexSwapOptions, type ExerciseSwapOptionsResponse, type SwapEligibilityIndex } from '@/lib/exercise-swap-options';
 import { ExercisesTable } from '../ExercisesTable';
 import { MuscleActivationPreview } from '../MuscleActivationPreview';
@@ -225,27 +225,11 @@ export function PlanDetailClient() {
     // não toca nos exercícios — e recusaria com 409 se viessem). Só com
     // `editable === false` EXPLÍCITO: um backend anterior a esta regra não
     // manda o campo e trataria a lista ausente como vazia (apagaria tudo).
-    const finalized = planQuery.data?.editable === false;
-    const payload = toWorkoutPlanInput(
-      {
-        name,
-        plan_type: planType,
-        split_day: splitDay || null,
-        goal: goal || null,
-        status,
-        plan_date: planDate || null,
-        plan_time: planTime || null,
-        gym_id: gymId ? Number(gymId) : null,
-        raw_payload: planQuery.data?.raw_payload || null,
-        // O UPDATE grava template_id/template_slot_sequence — sem reenviá-los
-        // o PUT desvincularia a ficha do modelo de origem.
-        template_id: planQuery.data?.template_id ?? null,
-        template_slot_sequence: planQuery.data?.template_slot_sequence ?? null,
-        template_version_id: planQuery.data?.template_version_id ?? null,
-      },
+    const payload = buildPlanUpdatePayload(
+      planQuery.data as WorkoutPlan,
+      { name, plan_type: planType, split_day: splitDay, goal, status, plan_date: planDate, plan_time: planTime, gym_id: gymId },
       exercises,
     );
-    if (finalized) delete payload.exercises;
     updateMutation.mutate(payload);
   }
 

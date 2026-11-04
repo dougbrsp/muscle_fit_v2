@@ -3,6 +3,7 @@
 import { ActionIcon, Button, Group, Stack, Text, TextInput, Title, Tooltip } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { formatDayLong, shiftIsoDate } from '@/lib/nutrition-format';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
 
 /** Data do diário (dia anterior/seguinte, calendário, voltar para hoje); o diário é sempre do usuário logado. */
 export function DayHeader({ date, today, onDateChange }: Props) {
+  const Alternative = usePresentationSlot('dayHeader');
+  if (Alternative) return <Alternative date={date} today={today} onDateChange={onDateChange} />;
   return (
     <Stack gap="xs">
       <Group gap="xs" align="flex-end" wrap="wrap">

@@ -10,6 +10,7 @@ import { nutrientField, nutritionNotice } from '@/lib/nutrition-constants';
 import { formatKcal, formatSignedKcal, formatTotal, formatWithUnit, shareToPercent } from '@/lib/nutrition-format';
 import { macroRows, ringParts, type RingPart } from '@/lib/nutrition-dashboard';
 import type { BalanceRow, NutritionDay } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura da rosca (`RING_SIZE` de NutritionCharts).
@@ -109,6 +110,8 @@ function MacroTile({ row }: { row: BalanceRow }) {
  * sem refeição, total incompleto) vem nas limitações rotuladas pela API.
  */
 export function TargetVsIntakeCard({ day }: { day: NutritionDay }) {
+  const MobileView = usePresentationSlot('targetVsIntake');
+  if (MobileView) return <MobileView day={day} />;
   const meta = day.target;
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>

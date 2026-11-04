@@ -9,12 +9,14 @@ Os comandos abaixo vêm de `frontend/package.json` e das configs de teste. Nada 
 | Peça | Arquivo | Papel |
 |---|---|---|
 | Flag | `frontend/src/lib/mobile/flags.ts` | Fonte única da flag da UI mobile |
-| Seletor por largura | `frontend/src/lib/mobile/layout-mode.ts` | `useLayoutMode()`, corte `(max-width: 47.99em)` (menor que 768 px) |
+| Seletor por largura | `frontend/src/lib/mobile/layout-mode.ts` | `useLayoutMode()`, corte `(max-width: 47.99em)` (menor que 768 px) ou celular em qualquer orientação `(pointer: coarse) and (max-device-width: 499.9px), (pointer: coarse) and (max-device-height: 499.9px)` (menor lado da tela física; mobile v2, D2) |
 | Ponto de entrada | `frontend/src/components/AppShellLayout.tsx` | Flag desligada: `DesktopAppShell` direto (linhas 142–143) |
 | Seletor mobile | `frontend/src/mobile/MobileLayoutSelector.tsx` | Carregado com `lazy` só com a flag ligada |
-| Shell mobile | `frontend/src/mobile/layout/MobileShell.tsx` | Bottom nav e folha "Mais" (`MoreSheet.tsx`) |
-| Abas | `frontend/src/mobile/layout/primary-nav.ts` | Abas fixas; o resto vai para "Mais" |
-| Telas próprias | `frontend/src/mobile/screens/registry.ts` | Hoje só `/dashboard` (`MobileHome.tsx`) |
+| Shell mobile | `frontend/src/mobile/layout/MobileShell.tsx` | Header (voltar nas telas de 2º nível), tab bar de 5 abas e folha "Mais" agrupada (`MoreSheet.tsx`); esconde a tab bar com o teclado aberto (`keyboard.ts`) |
+| Abas | `frontend/src/mobile/layout/primary-nav.ts` | Início, Treino, Histórico, Evolução (hub em `/dashboard/?hub=evolucao`) e Mais; grupos da folha e do hub |
+| Seções só-desktop | `frontend/src/lib/nav-items.ts` | `desktopOnly`, `isDesktopOnlyPath`; tela `screens/DesktopOnlyScreen.tsx` (ADR 0004) |
+| Primitivos e tokens | `frontend/src/mobile/ui/`, `frontend/src/mobile/tokens.ts` | Linguagem de interface: [DESIGN_IPHONE.md](DESIGN_IPHONE.md) |
+| Telas próprias | `frontend/src/mobile/screens/registry.ts` | Carregamento sob demanda, rotas dinâmicas; compõe `registry.b.ts` e `registry.c.ts`. Hoje `/dashboard` (`MobileHome.tsx`) e o hub Evolução (`EvolucaoHub.tsx`) |
 | Modo Treino | `frontend/src/app/(fullscreen)/modo-treino/` | Layout próprio, sem `AppShellLayout` |
 | Fila offline | `frontend/src/lib/offline/` | IndexedDB, fila, purge, lock entre abas |
 | Service worker | `frontend/public/sw.js`, `frontend/scripts/build-sw.mjs` | Cache com allowlist; carimbo e kill switch |
@@ -22,7 +24,8 @@ Os comandos abaixo vêm de `frontend/package.json` e das configs de teste. Nada 
 
 Regras de comportamento:
 
-- **Desktop e tablet**: com a flag ligada, largura de 768 px ou mais cai no layout desktop atual. Paisagem de celular acima de 768 px também cai no desktop (MB-9).
+- **Desktop e tablet**: com a flag ligada, largura de 768 px ou mais cai no layout desktop atual. Celular em paisagem (ponteiro de toque e menor lado da tela física menor que 500 px), inclusive acima de 768 px de largura, continua no layout mobile (D2, resolve MB-9).
+- **Seções só do computador**: Academias, Equipamentos x Exercícios, Domínio de Exercícios, Regras de carga, Metas de Ativação e Modelos de treino não aparecem no iPhone; a rota mostra "Disponível no computador" sem montar a página. É restrição de interface, não de segurança. O override `?mobile=0` reabre o desktop no aparelho, inclusive essas seções (P2-6).
 - **Mesma URL**: não há rota duplicada nem detecção por User-Agent.
 - **Remontagem**: cruzar 768 px remonta a página. URL, cache do TanStack Query e sessão de treino (storage) sobrevivem; estado local de página (filtros, abas) se perde (MB-10).
 - **Modo Treino**: não passa pelo seletor. Já é a experiência de celular do produto (plano, seção 3.4); não há segunda implementação de treino.
@@ -114,7 +117,7 @@ Checklist de validação manual (todo item segue pendente até ser executado em 
 - [ ] Abre em modo standalone, sem a barra do Safari; nome "MuscleFit"; ícone oficial.
 - [ ] Safe areas: entalhe no topo e barra inferior do home indicator não cobrem o conteúdo.
 - [ ] Teclado: campos de formulário visíveis. A bottom nav pode cobrir campos em formulários longos (MB-8).
-- [ ] Rotação: retrato e paisagem. Paisagem acima de 768 px cai no layout desktop (MB-9).
+- [ ] Rotação: retrato e paisagem. Paisagem de celular segue no layout mobile (D2); validar no aparelho real.
 - [ ] Treino offline: entrar em modo avião, registrar série, ver "salvo no aparelho" (não "sincronizado"). Voltar à rede e ver a série sincronizada uma única vez, sem duplicata.
 - [ ] Segundo plano: no descanso, sair do app por alguns minutos e voltar. O cronômetro deve estar correto ou mostrar "expirado".
 - [ ] Reabertura: fechar o app com treino em andamento e reabrir. O estado recuperável deve voltar.
@@ -207,7 +210,7 @@ Limites funcionais:
 
 - Navegação offline entre rotas nunca visitadas cai no shell.
 - Cruzar 768 px remonta a página (MB-10).
-- Paisagem acima de 768 px cai no desktop (MB-9).
-- Bottom nav sem tratamento de teclado virtual (MB-8).
+- Paisagem de celular segue no layout mobile (D2); falta validar em aparelho real.
+- Teclado: a tab bar se esconde com campo focado (MB-8); falta validar em iPhone real.
 
 Riscos de dados, por política de armazenamento do sistema: IndexedDB pode ser apagado pelo iOS. O app mostra indicador de pendências, mas não há garantia de persistência.

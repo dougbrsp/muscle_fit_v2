@@ -15,6 +15,7 @@ import {
 } from '@/lib/nutrition-checkin';
 import { formatKcal, formatShareAsPercent } from '@/lib/nutrition-format';
 import { MOBILE_TOKENS } from '@/mobile/tokens';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 import { NutritionLimitations } from './NutritionLimitations';
 
@@ -75,6 +76,8 @@ function MacroCell({ value, unit }: { value: number | null; unit: string }) {
 }
 
 function MacrosTable({ before, after, scopeLabel }: { before: CheckinDayMacros; after: CheckinDayMacros; scopeLabel: string }) {
+  const Alternative = usePresentationSlot('checkinMacros');
+  if (Alternative) return <Alternative before={before} after={after} scopeLabel={scopeLabel} />;
   const linhas: Array<{ label: string; antes: number | null; depois: number | null; unit: string }> = [
     { label: 'Energia', antes: before.kcal, depois: after.kcal, unit: 'kcal' },
     { label: 'Proteína', antes: before.protein_g, depois: after.protein_g, unit: 'g' },
@@ -118,6 +121,7 @@ export function CheckinReview({ checkin, busy = false, error = null, onAccept, o
   const resumo = checkin.summary ?? {};
   const proposta = checkin.proposal;
   const ajuste = formatAdjustment(proposta?.delta_kcal ?? checkin.adjustment_kcal);
+  const WeekAlternative = usePresentationSlot('checkinWeek');
   return (
     <Stack gap="md">
       <Stack gap={4}>
@@ -142,6 +146,9 @@ export function CheckinReview({ checkin, busy = false, error = null, onAccept, o
           <Title order={4} c={BRAND.textPrimary}>
             Semana × alvo
           </Title>
+          {WeekAlternative ? (
+            <WeekAlternative rows={weekRows(resumo, checkin.goal)} />
+          ) : (
           <Table.ScrollContainer minWidth={300}>
             <Table verticalSpacing={6} aria-label="A semana contra o alvo">
               <Table.Tbody>
@@ -170,6 +177,7 @@ export function CheckinReview({ checkin, busy = false, error = null, onAccept, o
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          )}
         </Stack>
       </Card>
 

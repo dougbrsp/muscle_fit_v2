@@ -58,6 +58,7 @@ import { TrainingGoalBadge } from '@/components/TrainingGoalBadge';
 import { ALL_GOALS, goalQueryParam, sessionGoalFilterOptions } from '@/lib/training-goal-filter';
 import { useTrainingGoals } from '@/lib/training-goals';
 import { recentExerciseVolumePath, volumeGrupamentosKeys, type RecentVolumeRange } from '@/lib/volume-grupamentos-queries';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 import { formatFixed, formatKgFixed, formatSetsCount } from '@/lib/format';
 
@@ -386,6 +387,9 @@ async function fetchRecentExerciseVolume(
 }
 
 export function VolumeGrupamentosClient() {
+  const PeriodList = usePresentationSlot('periodComparison');
+  const RecordList = usePresentationSlot('recordList');
+  const PageHeader = usePresentationSlot('pageHeader');
   const [granularity, setGranularity] = useState<TrainingVolumeGranularity>('d7');
   const [expandedEquipmentGroups, setExpandedEquipmentGroups] = useState<Set<string>>(new Set());
   const [heatmapViewMode, setHeatmapViewMode] = useState<HeatmapViewMode>('session');
@@ -861,6 +865,12 @@ export function VolumeGrupamentosClient() {
   return (
     <Stack gap="xl">
       <Group justify="space-between" align="flex-end">
+        {PageHeader ? (
+          <PageHeader
+            title="Volume por grupamento"
+            description="Comparativo de volume e RPE médio nas últimas 4 sessões (T-3 a T-0), com indicação de tendência."
+          />
+        ) : (
         <div>
           <Title order={1} c={BRAND.textPrimary}>
             Volume por grupamento
@@ -869,6 +879,7 @@ export function VolumeGrupamentosClient() {
             Comparativo de volume e RPE médio nas últimas 4 sessões (T-3 a T-0), com indicação de tendência.
           </Text>
         </div>
+        )}
         <Group gap="md" align="flex-end" wrap="wrap">
           {goals && (
             <Stack gap={4}>
@@ -988,6 +999,50 @@ export function VolumeGrupamentosClient() {
           (identificado pelo ID, não pelo nome). “-” = sem treino anterior nesse slot; nunca é completado com outro
           slot. Setas: verde subiu, vermelho caiu, laranja estável.
         </Text>
+        {PeriodList ? (
+          <PeriodList
+            groupingLabel={groupingLabel}
+            periodLabels={['T-3', 'T-2', 'T-1', 'T-0']}
+            metricLabels={['Volume', 'RPE médio']}
+            emptyText={comparativeRows.length === 0 && !slotComparisonQuery.isLoading ? 'Sem dados de treino recentes para montar o comparativo.' : ''}
+            rows={comparativeRows.map((row) => {
+              const t3 = row.byPeriod.t3;
+              const t2 = row.byPeriod.t2;
+              const t1 = row.byPeriod.t1;
+              const t0 = row.byPeriod.t0;
+              return {
+                key: row.group.key,
+                label: <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>,
+                caption: (
+                  <>
+                    {t0 && (
+                      <Text size="xs" c={BRAND.textMuted}>
+                        Última sessão: {formatSessionDate(t0.local_date)}
+                      </Text>
+                    )}
+                    <SlotCaption row={row} sessionsPerSlot={sessionsPerSlot} />
+                  </>
+                ),
+                periods: [
+                  [formatKgFixed(t3?.volume_kg ?? null, 0), formatFixed(t3?.avg_rpe ?? null, 1)],
+                  [
+                    <TrendValue key="v" current={t2?.volume_kg ?? null} previous={t3?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={t2?.avg_rpe ?? null} previous={t3?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                  [
+                    <TrendValue key="v" current={t1?.volume_kg ?? null} previous={t2?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={t1?.avg_rpe ?? null} previous={t2?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                  [
+                    <TrendValue key="v" current={t0?.volume_kg ?? null} previous={t1?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={t0?.avg_rpe ?? null} previous={t1?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                ],
+                evolution: <Sparkline values={sparklineSeriesFromVolume(row)} />,
+              };
+            })}
+          />
+        ) : (
         <Table.ScrollContainer minWidth={900}>
           <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
             <Table.Thead>
@@ -1068,6 +1123,7 @@ export function VolumeGrupamentosClient() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
+        )}
       </Paper>
 
       <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
@@ -1087,6 +1143,32 @@ export function VolumeGrupamentosClient() {
             {errorMessage(slotComparisonQuery.error, 'Não foi possível carregar o comparativo por slot.')}
           </Alert>
         )}
+        {PeriodList ? (
+          <PeriodList
+            groupingLabel={groupingLabel}
+            periodLabels={['T-3', 'T-2', 'T-1', 'T-0']}
+            metricLabels={['Séries equivalentes']}
+            emptyText={comparativeSetsRows.length === 0 && !slotComparisonQuery.isLoading ? 'Sem dados suficientes para o comparativo.' : ''}
+            rows={comparativeSetsRows.map((row) => {
+              const t3 = row.byPeriod.t3;
+              const t2 = row.byPeriod.t2;
+              const t1 = row.byPeriod.t1;
+              const t0 = row.byPeriod.t0;
+              return {
+                key: row.group.key,
+                label: <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>,
+                caption: <SlotCaption row={row} sessionsPerSlot={sessionsPerSlot} />,
+                periods: [
+                  [formatSetsCount(t3?.sets_count ?? null)],
+                  [<TrendValue key="s" current={t2?.sets_count ?? null} previous={t3?.sets_count ?? null} formatter={formatSetsCount} />],
+                  [<TrendValue key="s" current={t1?.sets_count ?? null} previous={t2?.sets_count ?? null} formatter={formatSetsCount} />],
+                  [<TrendValue key="s" current={t0?.sets_count ?? null} previous={t1?.sets_count ?? null} formatter={formatSetsCount} />],
+                ],
+                evolution: <Sparkline values={sparklineSeriesFromSets(row)} />,
+              };
+            })}
+          />
+        ) : (
         <Table.ScrollContainer minWidth={700}>
           <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
             <Table.Thead>
@@ -1130,6 +1212,7 @@ export function VolumeGrupamentosClient() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
+        )}
       </Paper>
 
       <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
@@ -1142,6 +1225,40 @@ export function VolumeGrupamentosClient() {
           Mesma agregação do comparativo por sessão, com bucket semanal (segunda-feira da semana) em vez de por
           treino — sessões da mesma semana somam no mesmo ponto (S-3 mais antiga, S-0 atual).
         </Text>
+        {PeriodList ? (
+          <PeriodList
+            groupingLabel={groupingLabel}
+            periodLabels={['S-3', 'S-2', 'S-1', 'S-0']}
+            metricLabels={['Volume', 'RPE médio']}
+            emptyText={comparativeWeekRows.length === 0 && !recentVolumeQuery.isLoading ? 'Sem dados suficientes para o comparativo semanal.' : ''}
+            rows={comparativeWeekRows.map((row) => {
+              const s3 = row.byPeriod.t3;
+              const s2 = row.byPeriod.t2;
+              const s1 = row.byPeriod.t1;
+              const s0 = row.byPeriod.t0;
+              return {
+                key: row.group.key,
+                label: <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>,
+                periods: [
+                  [formatKgFixed(s3?.volume_kg ?? null, 0), formatFixed(s3?.avg_rpe ?? null, 1)],
+                  [
+                    <TrendValue key="v" current={s2?.volume_kg ?? null} previous={s3?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={s2?.avg_rpe ?? null} previous={s3?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                  [
+                    <TrendValue key="v" current={s1?.volume_kg ?? null} previous={s2?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={s1?.avg_rpe ?? null} previous={s2?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                  [
+                    <TrendValue key="v" current={s0?.volume_kg ?? null} previous={s1?.volume_kg ?? null} formatter={formatKgNoDecimals} />,
+                    <TrendValue key="r" current={s0?.avg_rpe ?? null} previous={s1?.avg_rpe ?? null} formatter={formatRpeOneDecimal} epsilon={0.05} />,
+                  ],
+                ],
+                evolution: <Sparkline values={sparklineSeriesFromVolume(row)} color={BRAND.red} />,
+              };
+            })}
+          />
+        ) : (
         <Table.ScrollContainer minWidth={900}>
           <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
             <Table.Thead>
@@ -1200,6 +1317,7 @@ export function VolumeGrupamentosClient() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
+        )}
       </Paper>
 
       <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
@@ -1212,6 +1330,54 @@ export function VolumeGrupamentosClient() {
           Mesma fonte agregada por equipamento dentro de cada {groupingLabelLower} e semana — expanda o bloco para
           ver se a carga está concentrada num único equipamento.
         </Text>
+        {PeriodList ? (
+          <PeriodList
+            groupingLabel={groupingLabel}
+            periodLabels={['S-3', 'S-2', 'S-1', 'S-0']}
+            metricLabels={['Séries', 'Peso na última série']}
+            emptyText={equipmentComparativeRows.length === 0 && !recentVolumeQuery.isLoading ? 'Sem dados suficientes para o comparativo por equipamento.' : ''}
+            rows={equipmentComparativeRows
+              .filter((row) => row.isTotal || expandedEquipmentGroups.has(row.group.key))
+              .map((row, index) => {
+                const s3 = row.byWeek.t3;
+                const s2 = row.byWeek.t2;
+                const s1 = row.byWeek.t1;
+                const s0 = row.byWeek.t0;
+                const isExpanded = expandedEquipmentGroups.has(row.group.key);
+                return {
+                  key: `${row.group.key}-${row.equipment_label}-${index}`,
+                  label: (
+                    <>
+                      <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>
+                      <Text fw={row.isTotal ? 700 : 400} size="sm" c={row.isTotal ? BRAND.textPrimary : BRAND.textMuted}>
+                        {row.equipment_label}
+                      </Text>
+                    </>
+                  ),
+                  periods: [
+                    [formatSetsCount(s3?.sets_count ?? null), formatKgFixed(s3?.last_weight ?? null, 0)],
+                    [
+                      <TrendValue key="s" current={s2?.sets_count ?? null} previous={s3?.sets_count ?? null} formatter={formatSetsCount} />,
+                      <TrendValue key="w" current={s2?.last_weight ?? null} previous={s3?.last_weight ?? null} formatter={formatKgNoDecimals} />,
+                    ],
+                    [
+                      <TrendValue key="s" current={s1?.sets_count ?? null} previous={s2?.sets_count ?? null} formatter={formatSetsCount} />,
+                      <TrendValue key="w" current={s1?.last_weight ?? null} previous={s2?.last_weight ?? null} formatter={formatKgNoDecimals} />,
+                    ],
+                    [
+                      <TrendValue key="s" current={s0?.sets_count ?? null} previous={s1?.sets_count ?? null} formatter={formatSetsCount} />,
+                      <TrendValue key="w" current={s0?.last_weight ?? null} previous={s1?.last_weight ?? null} formatter={formatKgNoDecimals} />,
+                    ],
+                  ],
+                  evolution: <Sparkline values={sparklineSeriesFromEquipment(row)} color="#8B93A6" />,
+                  toggle:
+                    row.isTotal && row.groupSize > 1
+                      ? { expanded: isExpanded, onToggle: () => toggleEquipmentGroup(row.group.key) }
+                      : undefined,
+                };
+              })}
+          />
+        ) : (
         <Table.ScrollContainer minWidth={950}>
           <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
             <Table.Thead>
@@ -1299,6 +1465,7 @@ export function VolumeGrupamentosClient() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
+        )}
       </Paper>
       </Stack>
         </Tabs.Panel>
@@ -1350,6 +1517,30 @@ export function VolumeGrupamentosClient() {
                     GET /analytics/training-volume?days={queryDays} — janelas de {window.title.toLowerCase()}{' '}
                     calculadas no cliente ({window.currentLabel.toLowerCase()} vs {window.previousLabel.toLowerCase()}).
                   </Text>
+                  {RecordList ? (
+                    <RecordList
+                      label="Variação por grupamento"
+                      emptyText="Sem dados para o período selecionado."
+                      rows={repsComparison.map((item) => {
+                        const trend = getTrendBadge(item.volume_delta);
+                        return {
+                          key: item.group.key,
+                          title: item.group.label,
+                          subtitle: trend.label,
+                          value: `${item.volume_delta >= 0 ? '+' : ''}${formatKgFixed(item.volume_delta, 0)}`,
+                          details: [
+                            ['Volume atual', formatKgFixed(item.current_volume, 0)],
+                            ['Volume anterior', formatKgFixed(item.previous_volume, 0)],
+                            ['Variação de volume', `${item.volume_delta >= 0 ? '+' : ''}${formatKgFixed(item.volume_delta, 0)}`],
+                            ['Leitura', trend.label],
+                            ['Repetições atuais', formatFixed(item.current_reps, 0)],
+                            ['Repetições anteriores', formatFixed(item.previous_reps, 0)],
+                            ['Variação de repetições', `${item.reps_delta >= 0 ? '+' : ''}${formatFixed(item.reps_delta, 0)}`],
+                          ],
+                        };
+                      })}
+                    />
+                  ) : (
                   <Table.ScrollContainer minWidth={800}>
                     <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
                       <Table.Thead>
@@ -1390,6 +1581,7 @@ export function VolumeGrupamentosClient() {
                       </Table.Tbody>
                     </Table>
                   </Table.ScrollContainer>
+                  )}
                 </Paper>
               </>
             )}

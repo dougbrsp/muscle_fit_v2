@@ -30,6 +30,8 @@ type Props = {
   /** `prompt_version` da recomendação: sem ele (antiga), só o markdown, sem buscar o detalhe. */
   promptVersion?: string | null;
   markdownComponents?: MarkdownComponents;
+  /** Esconde "Aplicar no Modelo" (o editor de Modelos é só do computador no iPhone). Padrão: falso. */
+  hideApplyToTemplate?: boolean;
 };
 
 /**
@@ -39,7 +41,7 @@ type Props = {
  * no RASCUNHO do Modelo, nunca publica. Antiga (JSON nulo): o markdown de
  * sempre. Tudo vem pronto do backend (`recommendation_view`).
  */
-export function CardioRecommendationPanel({ recommendationId, markdown, promptVersion, markdownComponents }: Props) {
+export function CardioRecommendationPanel({ recommendationId, markdown, promptVersion, markdownComponents, hideApplyToTemplate = false }: Props) {
   const structured = Boolean(promptVersion);
   const detailQuery = useQuery({
     queryKey: ['cardio-recommendation', recommendationId],
@@ -59,10 +61,18 @@ export function CardioRecommendationPanel({ recommendationId, markdown, promptVe
   }
   const view = detailQuery.data?.recommendation_view;
   if (!view) return fallback;
-  return <StructuredRecommendation recommendationId={recommendationId} view={view} />;
+  return <StructuredRecommendation recommendationId={recommendationId} view={view} hideApplyToTemplate={hideApplyToTemplate} />;
 }
 
-export function StructuredRecommendation({ recommendationId, view }: { recommendationId: number; view: CardioRecommendationView }) {
+export function StructuredRecommendation({
+  recommendationId,
+  view,
+  hideApplyToTemplate = false,
+}: {
+  recommendationId: number;
+  view: CardioRecommendationView;
+  hideApplyToTemplate?: boolean;
+}) {
   const qc = useQueryClient();
   const allDates = applicableDates(view);
   const applyMutation = useMutation({
@@ -97,7 +107,7 @@ export function StructuredRecommendation({ recommendationId, view }: { recommend
         <Title order={4} c={BRAND.textPrimary}>
           Sessões recomendadas
         </Title>
-        {view.can_apply && allDates.length > 1 && (
+        {!hideApplyToTemplate && view.can_apply && allDates.length > 1 && (
           <Button
             size="xs"
             color="brand"
@@ -121,6 +131,7 @@ export function StructuredRecommendation({ recommendationId, view }: { recommend
           key={session.date}
           session={session}
           applying={applyMutation.isPending}
+          canApply={!hideApplyToTemplate}
           onApply={() => applyMutation.mutate([session.date])}
         />
       ))}
@@ -186,10 +197,12 @@ export function StructuredRecommendation({ recommendationId, view }: { recommend
 function SessionCard({
   session,
   applying,
+  canApply,
   onApply,
 }: {
   session: CardioRecommendationSessionView;
   applying: boolean;
+  canApply: boolean;
   onApply: () => void;
 }) {
   const link = planActionLabel(session.plan_action, session.slot_name);
@@ -208,7 +221,7 @@ function SessionCard({
               </Text>
             </Group>
           </Group>
-          {session.applicable && (
+          {canApply && session.applicable && (
             <Button size="xs" variant="subtle" color="brand" loading={applying} onClick={onApply}>
               Aplicar no Modelo
             </Button>

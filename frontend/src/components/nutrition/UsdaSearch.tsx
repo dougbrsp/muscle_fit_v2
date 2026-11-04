@@ -14,6 +14,7 @@ import {
 } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import type { ExternalFoodResponse } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 // Colunas resumidas: os campos que o dono exige no cadastro (`catalog.REQUIRED_PER_100_FIELDS`),
@@ -54,6 +55,7 @@ export function UsdaSearch({ onImported }: Props) {
     setBusca(texto.trim());
   }
 
+  const Alternative = usePresentationSlot('usdaResults');
   const itens = query.data?.items ?? [];
   const erroDaImportacao = importacao.isError
     ? nutritionErrorInfo(importacao.error, 'Não foi possível importar o alimento do USDA.')
@@ -102,7 +104,15 @@ export function UsdaSearch({ onImported }: Props) {
         </Text>
       )}
 
-      {itens.length > 0 && (
+      {itens.length > 0 && Alternative && (
+        <Alternative
+          items={itens}
+          importing={importacao.isPending ? (itens.find((i) => i.fdc_id === importacao.variables) ?? null) : null}
+          onImport={(item) => importacao.mutate(item.fdc_id)}
+        />
+      )}
+
+      {itens.length > 0 && !Alternative && (
         <Paper withBorder radius="md" bg={BRAND.bgElevated} style={{ overflowX: 'auto' }}>
           <Table verticalSpacing="xs" miw={720}>
             <Table.Thead>

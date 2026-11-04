@@ -9,18 +9,18 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 | MB-2 | `registro-exercicios` | Filtros (busca, período, academia, condutor) em quatro colunas apertadas; rótulo "Buscar treino" quebra em duas linhas. | Empilhar filtros em 1-2 colunas abaixo de 768 px (muda a página compartilhada: exige prova de desktop idêntico com `npm run e2e`). |
 | MB-3 | `dashboard/*` (gráficos Recharts) | Gráficos mantêm a altura de desktop e eixos densos em 320 px. | Altura/ticks responsivos por prop, sem alterar dados. |
 | MB-4 | `modelos-treino/[id]` (builder) | Painéis flutuantes e grade de slots são desktop-heavy (`APP_HEADER_HEIGHT = 64` assume o header do desktop; no mobile o header tem 56 px + safe-area). | Tela mobile própria só de leitura/ajuste simples, ou manter desktop-only com aviso. Não verificado com usuário admin (os mocks do e2e usam role `user`). |
-| MB-5 | Páginas admin (`usuarios`, `equipamentos-exercicios`, `dominio-exercicios`, `regras-carga`, `metas-ativacao`) | Não exercitadas com role admin no e2e; só a rota abrir foi provada pela sonda como `user`. | Mock de admin no e2e e repetir a sonda. |
+| MB-5 | Páginas admin (**tratado pela frente A**: as 6 seções só-desktop somem no iPhone, e o e2e usa mock de admin/PT; restam `usuarios` e as demais para as frentes B/C) (`usuarios`, `equipamentos-exercicios`, `dominio-exercicios`, `regras-carga`, `metas-ativacao`) | Não exercitadas com role admin no e2e; só a rota abrir foi provada pela sonda como `user`. | Mock de admin no e2e e repetir a sonda. |
 | MB-6 | Nutrição, Agente de Cardio, Insights | Estados de erro/vazio próprios de cada tela; os componentes `src/mobile/ui` (`LoadingState`, `EmptyState`, `ErrorState`, `OfflineState`) ainda não foram adotados por elas. | Adotar gradualmente ao criar variantes mobile. |
-| MB-7 | Shell | Seis abas a 320 px deixam ~53 px por aba (rótulos 11 px). Passa o alvo de 44 px, mas é justo. | Validar em iPhone SE real; se apertar, mover "Perfil" para "Mais". |
-| MB-8 | Shell | Sem tratamento de teclado virtual (`visualViewport`): o bottom nav fixo pode cobrir campos em formulários longos. | Ocultar o bottom nav com campo focado, validar em iPhone real. |
-| MB-9 | Paisagem >= 768 px (ex.: iPhone Pro Max 844 px) | Cai no layout desktop por decisão do plano (3.1). | Reavaliar após validar em aparelho real. |
+| MB-7 | Shell | ~~Seis abas a 320 px.~~ **Resolvido (mobile v2, frente A)**: tab bar de 5 abas (Início, Treino, Histórico, Evolução, Mais). | Validar em iPhone SE real. |
+| MB-8 | Shell | ~~Sem tratamento de teclado virtual.~~ **Tratado (frente A)**: com campo de texto focado a tab bar se esconde e `StickyAction` desce (`layout/keyboard.ts`). | Validar em iPhone real (a decisão por foco não mede a altura do teclado). |
+| MB-9 | Paisagem >= 768 px (ex.: iPhone Pro Max 844 px) | ~~Caía no layout desktop.~~ **Resolvido para celular (D2)**: toque e menor lado da tela física < 500 px (`max-device-width/height`, estável com teclado) mantém o layout mobile. | Validar em iPhone Pro Max real. |
 | MB-10 | Troca de viewport | Estado local de página (filtros digitados, abas) reinicia ao cruzar 768 px, pois a árvore muda. Dados do servidor ficam no cache do TanStack Query; a sessão de treino fica em storage. | Aceito; se incomodar, elevar filtros para a URL. |
 
 ## Decisão A2b (telas P1)
 
 - **Início**: tela mobile própria (`src/mobile/screens/MobileHome.tsx`), escolhida pelo shell via `screens/registry.ts` só com flag ON + largura de celular. Mesmos hooks/queries da visão geral (`useDashboardFilters`, `fetchOverview`, mesma chave de cache); todo texto e número vem do backend. O painel completo continua disponível, recolhido ("Ver visão geral completa").
 - **Histórico** (`registro-exercicios`, `dashboard/treinos`) e **Biblioteca** (`exercicios`): mantidos como estão no shell. Já são colunas empilhadas e não rolam a página; o único ponto fraco é a tabela larga e o filtro em 4 colunas do registro (MB-1/MB-2), que exigem mexer em página compartilhada e ficam para PR próprio com prova de desktop idêntico.
-- **Perfil**: formulário em coluna única, bom com os alvos de 44 px e fonte de 16 px do shell.
+- **Perfil**: (v1) coluna única; reformulado no mobile v2, acabamento dos formulários (seções por assunto e "Salvar perfil" fixo).
 - **Safe-area**: `viewportFit: 'cover'` no layout raiz e `env(safe-area-inset-*)` no header/navbar do AppShell desktop (celular com flag OFF, PWA, paisagem com notch) e no shell mobile. No desktop `env()` vale 0 e o e2e Chromium 1280/1440 segue idêntico. Falta validar o efeito real em iPhone.
 
 ## Registros da revisão
@@ -46,3 +46,43 @@ Pendente fora do código: validação em iPhone real (PWA instalada, teclado, sa
 | P1-1 | Validação em iPhone real: PWA instalada, teclado, safe areas e segundo plano. | Pendente fora do código |
 | P1-2 | Troca de conta confirmada apaga séries não sincronizadas da conta anterior. Confirmar a política com o usuário antes de produção. | `frontend/src/lib/offline/session-store.ts:157-163` |
 | P1-3 | Ligar `NEXT_PUBLIC_MOBILE_UI` em DEV: não há configuração versionada. | Verificado por busca no repositório |
+
+## Mobile v2 (2026-11-03): frente A, fundações e navegação
+
+Entregue: ADR [0004](../adr/0004-navegacao-iphone-e-secoes-so-desktop.md), [DESIGN_IPHONE.md](DESIGN_IPHONE.md), tab bar de 5 abas, hub Evolução (`/dashboard/?hub=evolucao`), folha Mais agrupada, header de 2º nível, tela "Disponível no computador" (D1), paisagem de celular (D2), teclado (MB-8), primitivos em `src/mobile/ui`, registry com carregamento sob demanda e rotas dinâmicas.
+
+| # | Item | Situação |
+|---|---|---|
+| MB-11 | Hub Evolução compartilha a URL do Início (`/dashboard/?hub=evolucao`). No desktop o parâmetro é ignorado. | Aceito (nenhuma rota nova no desktop) |
+| MB-12 | MB-1 a MB-3 e MB-6 (tabelas, filtros, gráficos, estados) | Frentes B e C, com os primitivos novos |
+| MB-13 | Teclado decidido por foco, não por `visualViewport` | Validar em iPhone real |
+| MB-14 | Rotas só-desktop abertas por link compartilhado (`InsightCard`, `DataQuality`, `SafeMarkdown`, `CardioRecommendationPanel`) caem na tela D1; o CTA existe nesses componentes | Aceito (D1); esconder o CTA exigiria mexer em componente do desktop |
+
+## Mobile v2: frente C (treino, corpo, nutricao e conta)
+
+Duplicacao aceita entre as telas mobile e os clients do desktop (mesmas chaves e endpoints; extraido so o mecanico em `lib/exercise-log-save.ts`, `lib/workout-plan-payload.ts` e `lib/suggested-progression-apply.ts`):
+
+| # | Item |
+|---|---|
+| C-1 | Queries de catalogo/grupos/equipamento e estado do formulario de lancamento em `TreinoDetalheScreen` vs `WorkoutDetailClient`. |
+| C-2 | Mutations de PUT/refresh/cardio/delete em `PlanoDetalheScreen` vs `PlanDetailClient`; job de geracao em `GerarPlanoView` vs `GenerateDraftModal`. |
+| C-3 | Catalogo canonico, swap eligibility e breakdown em `PlanExercisesEditor` vs `ExercisesTable`. |
+
+Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; edicao de exercicio sem catalogo manda `mapping_id` nulo; cancelar durante o reset de senha perde a senha temporaria.
+
+Resolvido nas rodadas 1 e 2 da frente C (retirado do backlog): busca de Alimentos, Preferidos, Plano (Novo rascunho fixo), Diario (faixa da semana, dia da semana, data uma vez), Indicadores (marcador de 1 ponto, Novo lancamento em largura total, secoes que nao perdem o formulario), voltar fechando a visao de pagina inteira, e2e com payloads, goBack e fluxos com dados.
+
+Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
+
+Resolvido no acabamento dos formularios (retirado do backlog): Perfil em secoes (identidade, dados, preferencias, plano nutricional, cardio, Intervals.icu) com "Trocar foto" separado do selo e "Salvar perfil" fixo; Lancar exercicio com seletores em folha e series com stepper de 44 pt (primeira serie visivel sem rolar em 390x844); Preferencias de treino sem icone-placeholder, estrelas e limpar de 44 pt e ajuda em rodape; "Meta x ingestao" do Diario so com o que tem valor e estado vazio unico; folga inferior de toda tela com `StickyAction` coberta por teste (`forms-telas.spec.ts`). Slots novos em `lib/presentation-slots.tsx`: `formSection`, `saveAction`, `pairPreferences`, `targetVsIntake` (sem provider = desktop igual).
+
+## Mobile v2 (2026-11-03): frente B, Evolução e dashboards
+
+| # | Item | Situação |
+|---|---|---|
+| MB-B1 | Download do relatório em Markdown (`lib/report-markdown.ts:132-134`, âncora com blob) no iPhone/PWA: validar em aparelho real; arquivo compartilhado com o desktop, não alterado. | Validar em iPhone real |
+| MB-B2 | Textos de janela escritos à mão ("14 dias", "28 dias", "60 dias", "Últimas N semanas") no desktop e no mobile deveriam vir do backend junto com o valor. | Backlog (backend). O desktop `DashboardProgressaoClient.tsx:395` também escreve o número "12" à mão em "pouco confiável (>12 reps)"; no mobile o texto ficou só "pouco confiável" (decisão de `isSessionE1rmReliable`). |
+| MB-B3 | Cor de consistência (>=80/>=50 em `/dashboard/treinos`), de variação por grupo (>5/<-5 em `MuscleGroupTrend`) e de delta (`betterWhen` em `ExerciseProgressClient`) no desktop deveriam virar status do backend. O mobile não replica (usa texto neutro). | Backlog (motores) |
+| MB-B4 | Duplicação aceita entre telas mobile e páginas desktop: séries/consultas do Agente de Cardio (`agente-cardio/page.tsx` x `AgenteCardioScreen.tsx`), montagem do patch de `WellnessManualCell` x `IntervalsScreen.tsx`, `DAY_OPTIONS` e `CONTEUDO` de Relatórios. Extrair exige editar arquivos do desktop. | Backlog (refatoração com prova comparativa) |
+| MB-B5 | `ExerciseProgressionSummaryCard`, `MetricValue` e `InsightCard` (desktop) têm contorno/Tooltip como único acesso a parte da informação; no mobile há versão própria. Unificar depois. | Backlog |
+| MB-B6 | `StatGrid`/`StatTile` (primitivo da Frente A) têm respiro grande em blocos densos. | Pedido à Frente A |
