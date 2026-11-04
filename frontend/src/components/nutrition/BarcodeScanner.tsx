@@ -81,6 +81,9 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
   }, [opened, video]);
 
   return (
+    <>
+    {/* Fora do Modal e sempre montado: fechar por código desfaz a entrada do histórico. */}
+    {noCelular ? <BackToCloseHere open={opened} onClose={onClose} /> : null}
     <Modal
       opened={opened}
       onClose={onClose}
@@ -95,7 +98,6 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
         body: { display: 'flex', flexDirection: 'column', gap: 'var(--mantine-spacing-sm)' },
       }}
     >
-      {noCelular && opened ? <BackToCloseHere onClose={onClose} /> : null}
       <Stack gap="sm">
         {error ? (
           <Alert color="yellow" icon={<IconCameraOff size={18} />} title="Câmera indisponível">
@@ -151,5 +153,6 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
         </Button>
       </Stack>
     </Modal>
+    </>
   );
 }

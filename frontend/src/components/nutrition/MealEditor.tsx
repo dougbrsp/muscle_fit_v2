@@ -293,6 +293,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
 
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+      {/* Voltar do celular fecha só a folha (o editor e o rascunho continuam); montado sempre, para fechar por código desfazer a entrada do histórico. */}
+      {noCelular ? <BackToCloseHere open={cadastro !== null} onClose={fecharCadastro} /> : null}
       {noCelular ? (
         <BottomSheet
           opened={cadastro !== null}
@@ -301,13 +303,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           closeOnClickOutside={false}
           closeOnEscape={!leitorAberto}
         >
-          {cadastro !== null ? (
-            <>
-              {/* Voltar do celular fecha só a folha: o editor e o rascunho continuam. */}
-              <BackToCloseHere onClose={fecharCadastro} />
-              {fluxoDeCadastro}
-            </>
-          ) : null}
+          {cadastro !== null ? fluxoDeCadastro : null}
         </BottomSheet>
       ) : (
         <Modal

@@ -201,4 +201,18 @@ describe('MealEditor no celular: o voltar fecha só a folha do cadastro', () => 
     expect(hora().value).toBe('13:45');
     expect(host.textContent).toContain('Arroz');
   });
+
+  it('fechar a folha por código (cancelar ou salvar) desfaz a entrada do histórico, sem deixar toque morto', async () => {
+    await montar(true);
+    const back = vi.spyOn(window.history, 'back');
+    back.mockClear();
+    await clicar('abrir-cadastro');
+    await clicar('cancelar');
+    await esperar();
+    expect(back).toHaveBeenCalledTimes(1);
+    await clicar('abrir-cadastro');
+    await clicar('salvo');
+    await esperar();
+    expect(back).toHaveBeenCalledTimes(2);
+  });
 });

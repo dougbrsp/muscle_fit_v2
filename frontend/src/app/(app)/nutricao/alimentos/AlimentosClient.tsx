@@ -47,6 +47,7 @@ export function AlimentosClient() {
   useEffect(() => {
     if (editing) editorRef.current?.scrollIntoView?.({ block: 'start' });
   }, [editing]);
+  const detailRef = useRef<HTMLDivElement>(null);
   const [saved, setSaved] = useState<FoodSaveResponse | null>(null);
   const [external, setExternal] = useState<ExternalFoodResponse | null>(null);
   // Muda depois de salvar/abrir um produto: o fluxo de cadastro volta limpo.
@@ -75,8 +76,9 @@ export function AlimentosClient() {
     },
   });
 
-  async function afterSave(food: FoodSaveResponse) {
-    setResets((n) => n + 1);
+  /** `doCadastro`: veio do fluxo de cadastro (que volta limpo); a edição não mexe no cadastro em andamento. */
+  async function afterSave(food: FoodSaveResponse, doCadastro: boolean) {
+    if (doCadastro) setResets((n) => n + 1);
     setEditing(false);
     setSaved(food);
     setExternal(null);
@@ -96,9 +98,9 @@ export function AlimentosClient() {
   }
 
   /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */
-  async function useExisting(foodId: number) {
+  async function openExisting(foodId: number, doCadastro: boolean) {
     const selecao = existingFoodSelection(foodId);
-    setResets((n) => n + 1);
+    if (doCadastro) setResets((n) => n + 1);
     setEditing(selecao.editing !== null);
     setSaved(null);
     setExternal(null);
@@ -107,6 +109,11 @@ export function AlimentosClient() {
   }
 
   const detail = detailQuery.data ?? null;
+  // O detalhe fica abaixo do cadastro: ao escolher um alimento na busca, leva a vista até ele.
+  const detailId = detail?.id ?? null;
+  useEffect(() => {
+    if (detailId !== null && !editing) detailRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [detailId, editing]);
 
   return (
     <Stack gap="xl">
@@ -174,8 +181,8 @@ export function AlimentosClient() {
             <FoodForm
               key={detail?.id ?? 'editar'}
               food={detail}
-              onUseExisting={useExisting}
-              onSaved={afterSave}
+              onUseExisting={(id) => openExisting(id, false)}
+              onSaved={(food) => afterSave(food, false)}
               onCancel={() => setEditing(false)}
             />
           </Stack>
@@ -189,15 +196,16 @@ export function AlimentosClient() {
           </Title>
           <FoodRegistrationFlow
             withUsda
-            onSaved={afterSave}
+            onSaved={(food) => afterSave(food, true)}
             onFound={afterExternal}
-            onUseExisting={useExisting}
+            onUseExisting={(id) => openExisting(id, true)}
             resetSignal={resets}
           />
         </Stack>
       </Paper>
 
       {detail && !editing && (
+        <div ref={detailRef}>
         <FoodDetailCard
           food={detail}
           onEdit={() => {
@@ -209,6 +217,7 @@ export function AlimentosClient() {
           promoting={promoteMutation.isPending}
           onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
         />
+        </div>
       )}
 
       <FoodCitationFooter />
