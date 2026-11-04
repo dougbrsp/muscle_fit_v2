@@ -79,7 +79,7 @@ Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inte
 | # | Item | Situação |
 |---|---|---|
 | MB-B1 | Download do relatório em Markdown (`lib/report-markdown.ts:132-134`, âncora com blob) no iPhone/PWA: validar em aparelho real; arquivo compartilhado com o desktop, não alterado. | Validar em iPhone real |
-| MB-B2 | Textos de janela escritos à mão ("14 dias", "28 dias", "60 dias", "Últimas N semanas") no desktop e no mobile deveriam vir do backend junto com o valor. | Backlog (backend) |
+| MB-B2 | Textos de janela escritos à mão ("14 dias", "28 dias", "60 dias", "Últimas N semanas") no desktop e no mobile deveriam vir do backend junto com o valor. | Backlog (backend). O desktop `DashboardProgressaoClient.tsx:395` também escreve o número "12" à mão em "pouco confiável (>12 reps)"; no mobile o texto ficou só "pouco confiável" (decisão de `isSessionE1rmReliable`). |
 | MB-B3 | Cor de consistência (>=80/>=50 em `/dashboard/treinos`), de variação por grupo (>5/<-5 em `MuscleGroupTrend`) e de delta (`betterWhen` em `ExerciseProgressClient`) no desktop deveriam virar status do backend. O mobile não replica (usa texto neutro). | Backlog (motores) |
 | MB-B4 | Duplicação aceita entre telas mobile e páginas desktop: séries/consultas do Agente de Cardio (`agente-cardio/page.tsx` x `AgenteCardioScreen.tsx`), montagem do patch de `WellnessManualCell` x `IntervalsScreen.tsx`, `DAY_OPTIONS` e `CONTEUDO` de Relatórios. Extrair exige editar arquivos do desktop. | Backlog (refatoração com prova comparativa) |
 | MB-B5 | `ExerciseProgressionSummaryCard`, `MetricValue` e `InsightCard` (desktop) têm contorno/Tooltip como único acesso a parte da informação; no mobile há versão própria. Unificar depois. | Backlog |
