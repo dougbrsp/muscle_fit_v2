@@ -3,7 +3,7 @@
 import { Alert, Button, Group, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { IconBarcode } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NutritionLimitations } from './NutritionLimitations';
 import { barcodeConflict, createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
 import { selectionAfterBarcodeConflict } from '@/lib/nutrition-barcode-flow';
@@ -12,7 +12,7 @@ import {
   FOOD_PER_100_FIELDS,
   FOOD_REQUIRED_FIELDS,
   FOOD_SERVING_FIELDS,
-  nutritionLabel,
+  FOOD_TABLE_BASE,
   type NutritionCode,
   type Rdc429Field,
 } from '@/lib/nutrition-constants';
@@ -47,7 +47,10 @@ function servingField(code: string): Rdc429Field | undefined {
 export function FoodForm({ food, initial, createSource, barcode, onUseExisting, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FoodFormState>(() => (food ? foodFormFromItem(food) : (initial ?? emptyFoodForm())));
   const [codigo, setCodigo] = useState(barcode ?? '');
-  const base = nutritionLabel(FOOD_BASIS_OPTIONS, form.basis);
+  // Código lido depois de o formulário abrir (leitor sem produto): preenche sem descartar o que foi digitado.
+  useEffect(() => {
+    if (barcode) setCodigo(barcode);
+  }, [barcode]);
   const porcao = servingField('serving_size');
   const medida = servingField('household_measure');
   const embalagem = servingField('servings_per_package');
@@ -88,13 +91,30 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
           required
           maxLength={255}
         />
-        <Select
-          label="Valores da tabela"
-          data={[...FOOD_BASIS_OPTIONS]}
-          value={form.basis}
-          onChange={(basis) => basis && update({ basis })}
-          allowDeselect={false}
-        />
+        <Group gap="sm" align="flex-end" wrap="nowrap" role="group" aria-label="Base da tabela nutricional">
+          <NumberInput
+            label="Valores da tabela por"
+            description="Quantidade a que a tabela se refere (ex.: 30 para uma tabela por 30 g)."
+            value={form.tableBaseAmount}
+            onChange={(tableBaseAmount) => update({ tableBaseAmount })}
+            min={0}
+            max={FOOD_TABLE_BASE.max}
+            decimalScale={FOOD_TABLE_BASE.display_decimals}
+            decimalSeparator=","
+            hideControls
+            required
+            inputMode="decimal"
+            style={{ flex: '1 1 auto' }}
+          />
+          <Select
+            label="Unidade"
+            data={[...FOOD_BASIS_OPTIONS]}
+            value={form.basis}
+            onChange={(basis) => basis && update({ basis })}
+            allowDeselect={false}
+            w={90}
+          />
+        </Group>
         <TextInput
           label="Marca"
           value={form.brand}
@@ -123,10 +143,11 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
 
       <div>
         <Text fw={600} c={BRAND.textPrimary}>
-          Tabela nutricional {base ? `(${base})` : ''}
+          Tabela nutricional (por {form.tableBaseAmount === '' ? '…' : form.tableBaseAmount} {form.basis})
         </Text>
         <Text size="xs" c={BRAND.textMuted}>
-          Campos da RDC 429/2020. Os marcados com * são obrigatórios; vazio = não informado.
+          Digite os valores exatamente como estão na embalagem, na base acima. Campos da RDC 429/2020. Os marcados com *
+          são obrigatórios; vazio = não informado.
         </Text>
       </div>
       <SimpleGrid cols={{ base: 1, xs: 2, md: 3 }} spacing="md">
