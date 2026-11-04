@@ -248,12 +248,12 @@ for (const vp of VIEWPORTS) {
       await open(page, '/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
       await expect(page.getByText('Séries', { exact: true })).toBeVisible();
-      await page.getByLabel('Repetições').fill('12');
+      await page.getByRole('textbox', { name: 'Repetições' }).fill('12');
       await page.goBack();
       await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
       expect(new URL(page.url()).pathname).toBe('/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
-      await expect(page.getByLabel('Repetições')).toHaveValue('12');
+      await expect(page.getByRole('textbox', { name: 'Repetições' })).toHaveValue('12');
     });
 
     test('voltar (goBack) fecha a linha do plano; fechar por codigo nao deixa entrada presa', async ({ page }) => {
@@ -350,17 +350,17 @@ for (const vp of VIEWPORTS) {
       test.setTimeout(120_000);
       await open(page, '/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
-      await page.getByLabel('Repetições').fill('12');
+      await page.getByRole('textbox', { name: 'Repetições' }).fill('12');
       await page.getByRole('link', { name: /Voltar para/ }).click();
       await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
       expect(new URL(page.url()).pathname).toBe('/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
-      await expect(page.getByLabel('Repetições')).toHaveValue('12');
+      await expect(page.getByRole('textbox', { name: 'Repetições' })).toHaveValue('12');
       await page.getByText('Descartar rascunho').click();
       await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
       await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
-      await expect(page.getByLabel('Repetições')).toHaveValue('10');
+      await expect(page.getByRole('textbox', { name: 'Repetições' })).toHaveValue('10');
     });
 
     test('plano nutricional: Novo rascunho some durante a edicao', async ({ page }) => {
