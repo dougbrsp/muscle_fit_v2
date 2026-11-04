@@ -88,9 +88,20 @@ export type ScannerDeps = {
   loadZxing?: ZxingLoader;
 };
 
-export type ScanHandle = { stop: () => void };
+/** Contagem do leitor de reserva, para a tela de diagnóstico (leitor nativo não tem). */
+export type ScanDiagnostics = { attempts: number; lastError: string | null };
 
-const CONSTRAINTS: MediaStreamConstraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
+export type ScanHandle = { stop: () => void; diagnostics?: () => ScanDiagnostics };
+
+// Tudo `ideal`, nunca `exact`: o aparelho que não oferecer 1280x720 ou a traseira abre a câmera mesmo assim.
+// Resolução maior dá mais pixels por módulo ao código (abaixo de ~2 px por módulo o zxing falha).
+const CONSTRAINTS: MediaStreamConstraints = {
+  video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+  audio: false,
+};
+
+/** Pausa entre tentativas do zxing (padrão da biblioteca: 500 ms). */
+export const ZXING_SCAN_INTERVAL_MS = 150;
 
 /** Carrega o `@zxing/browser` (chunk separado) só quando o leitor de reserva é necessário. */
 const loadZxingReader: ZxingLoader = async () => {
@@ -100,8 +111,12 @@ const loadZxingReader: ZxingLoader = async () => {
   ]);
   const hints = new Map<unknown, unknown>([
     [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A]],
+    // Sem isto a leitura levava 1 a 3 s e falhava com o código girado; com ele, ~0,1 s (medido em Chromium).
+    [DecodeHintType.TRY_HARDER, true],
   ]);
-  return new BrowserMultiFormatReader(hints as never) as unknown as ZxingReaderLike;
+  return new BrowserMultiFormatReader(hints as never, {
+    delayBetweenScanAttempts: ZXING_SCAN_INTERVAL_MS,
+  } as never) as unknown as ZxingReaderLike;
 };
 
 function browserDeps(): ScannerDeps {
@@ -199,6 +214,8 @@ async function startZxing(
   const reader = await loadZxing();
   let parado = false;
   let controles: ZxingControls | null = null;
+  let attempts = 0;
+  let lastError: string | null = null;
   const stop = () => {
     parado = true;
     controles?.stop();
@@ -206,6 +223,8 @@ async function startZxing(
   controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, error, controls) => {
     controles = controls;
     if (parado) return;
+    attempts += 1;
+    if (!result && error) lastError = zxingErrorKind(error) ?? (error instanceof Error ? error.name : 'erro');
     if (!result) {
       if (error && !isZxingFrameError(error)) {
         // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
@@ -221,7 +240,7 @@ async function startZxing(
     }
   });
   if (parado) controles.stop(); // leu antes de `decodeFromConstraints` resolver
-  return { stop };
+  return { stop, diagnostics: () => ({ attempts, lastError }) };
 }
 
 /**
