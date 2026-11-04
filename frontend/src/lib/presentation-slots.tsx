@@ -28,6 +28,8 @@ export type RecordListRow = {
 export type PeriodComparisonRow = {
   key: string;
   label: ReactNode;
+  /** Texto longo (slot, última sessão): só no detalhe por toque no celular. */
+  caption?: ReactNode;
   /** [período][métrica], já desenhados (valores e setas de tendência prontos). */
   periods: ReactNode[][];
   evolution?: ReactNode;

@@ -108,7 +108,7 @@ function PeriodComparison({
         {selected ? (
           <>
             <ListGroup>
-              <ListRow title={selected.label} />
+              <ListRow title={selected.label} subtitle={selected.caption} />
             </ListGroup>
             {periodLabels.map((period, p) => (
               <ListGroup key={period} title={period}>

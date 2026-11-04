@@ -166,6 +166,14 @@ for (const vp of VIEWPORTS) {
       expect(body.gym_id).toBe(1);
     });
 
+    test('plano: cardio vinculado sem "Aplicar no Modelo" (editor de Modelos e so do computador)', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/planos-treino/1/');
+      await expect(page.getByText('Zona 2 por 30 min')).toBeVisible();
+      await expect(page.getByText(/Aplicar (todas )?no Modelo/)).toHaveCount(0);
+      await check(page, 'plano-cardio', vp.name);
+    });
+
     test('plano: PUT da ficha com os exercicios', async ({ page }) => {
       test.setTimeout(120_000);
       await open(page, '/planos-treino/1/');

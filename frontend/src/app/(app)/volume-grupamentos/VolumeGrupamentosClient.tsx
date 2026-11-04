@@ -1012,9 +1012,9 @@ export function VolumeGrupamentosClient() {
               const t0 = row.byPeriod.t0;
               return {
                 key: row.group.key,
-                label: (
+                label: <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>,
+                caption: (
                   <>
-                    <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>
                     {t0 && (
                       <Text size="xs" c={BRAND.textMuted}>
                         Última sessão: {formatSessionDate(t0.local_date)}
@@ -1156,12 +1156,8 @@ export function VolumeGrupamentosClient() {
               const t0 = row.byPeriod.t0;
               return {
                 key: row.group.key,
-                label: (
-                  <>
-                    <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>
-                    <SlotCaption row={row} sessionsPerSlot={sessionsPerSlot} />
-                  </>
-                ),
+                label: <Text fw={600} c={BRAND.textPrimary}>{row.group.label}</Text>,
+                caption: <SlotCaption row={row} sessionsPerSlot={sessionsPerSlot} />,
                 periods: [
                   [formatSetsCount(t3?.sets_count ?? null)],
                   [<TrendValue key="s" current={t2?.sets_count ?? null} previous={t3?.sets_count ?? null} formatter={formatSetsCount} />],

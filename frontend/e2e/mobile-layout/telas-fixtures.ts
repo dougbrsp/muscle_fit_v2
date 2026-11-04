@@ -180,7 +180,20 @@ const FIXTURES: Record<string, unknown> = {
   'GET /exercise-mapping-catalog': { items: [{ id: 1, exercise_name: 'Supino reto com barra', amazfit_name: 'Bench press', primary_group: 'Peitoral', secondary_group: 'Tríceps' }] },
   'GET /exercise-mapping-catalog/groups': { items: [{ primary_group: 'Peitoral' }, { primary_group: 'Bíceps' }] },
   'GET /gym-equipment': { items: [{ id: 1, equipment_id: 1, equipment_name: 'Banco reto', mapping_exercise_name: 'Supino reto com barra', photo_url: null }] },
-  'GET /cardio-recommendations': { items: [] },
+  'GET /cardio-recommendations': {
+    items: [{ id: 3, reference_date: '2026-10-14', recommendation_markdown: 'Cardio leve nos dias de descanso.', prompt_version: 'cardio-agent-v5' }],
+  },
+  'GET /cardio-recommendations/3': {
+    recommendation_view: {
+      summary: 'Duas sessões leves de cardio na semana.',
+      objective: 'Base aeróbica',
+      can_apply: true,
+      sessions: [
+        { date: '2026-10-15', date_label: 'qui 15/10', total_minutes_label: '30 min', prescription_text: 'Zona 2 por 30 min', rationale: null, applicable: true, plan_action: 'add', slot_name: 'A' },
+        { date: '2026-10-17', date_label: 'sáb 17/10', total_minutes_label: '40 min', prescription_text: 'Zona 2 por 40 min', rationale: null, applicable: true, plan_action: 'add', slot_name: 'B' },
+      ],
+    },
+  },
   'POST /analytics/muscle-activation-breakdown': { items: [] },
   'POST /analytics/muscle-activation-preview': { items: [] },
   'GET /nutrition/weeks': NUTRITION_WEEK,

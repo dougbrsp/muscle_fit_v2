@@ -73,3 +73,14 @@ Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; ed
 Resolvido nas rodadas 1 e 2 da frente C (retirado do backlog): busca de Alimentos, Preferidos, Plano (Novo rascunho fixo), Diario (faixa da semana, dia da semana, data uma vez), Indicadores (marcador de 1 ponto, Novo lancamento em largura total, secoes que nao perdem o formulario), voltar fechando a visao de pagina inteira, e2e com payloads, goBack e fluxos com dados.
 
 Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); Perfil e Preferencias sem `StickyAction` (aceito: botao de largura total no fim do formulario); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
+
+## Mobile v2 (2026-11-03): frente B, Evolução e dashboards
+
+| # | Item | Situação |
+|---|---|---|
+| MB-B1 | Download do relatório em Markdown (`lib/report-markdown.ts:132-134`, âncora com blob) no iPhone/PWA: validar em aparelho real; arquivo compartilhado com o desktop, não alterado. | Validar em iPhone real |
+| MB-B2 | Textos de janela escritos à mão ("14 dias", "28 dias", "60 dias", "Últimas N semanas") no desktop e no mobile deveriam vir do backend junto com o valor. | Backlog (backend) |
+| MB-B3 | Cor de consistência (>=80/>=50 em `/dashboard/treinos`), de variação por grupo (>5/<-5 em `MuscleGroupTrend`) e de delta (`betterWhen` em `ExerciseProgressClient`) no desktop deveriam virar status do backend. O mobile não replica (usa texto neutro). | Backlog (motores) |
+| MB-B4 | Duplicação aceita entre telas mobile e páginas desktop: séries/consultas do Agente de Cardio (`agente-cardio/page.tsx` x `AgenteCardioScreen.tsx`), montagem do patch de `WellnessManualCell` x `IntervalsScreen.tsx`, `DAY_OPTIONS` e `CONTEUDO` de Relatórios. Extrair exige editar arquivos do desktop. | Backlog (refatoração com prova comparativa) |
+| MB-B5 | `ExerciseProgressionSummaryCard`, `MetricValue` e `InsightCard` (desktop) têm contorno/Tooltip como único acesso a parte da informação; no mobile há versão própria. Unificar depois. | Backlog |
+| MB-B6 | `StatGrid`/`StatTile` (primitivo da Frente A) têm respiro grande em blocos densos. | Pedido à Frente A |

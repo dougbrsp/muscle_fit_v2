@@ -314,6 +314,7 @@ export function PlanoDetalheScreen() {
                   recommendationId={cardioRecommendation.id}
                   markdown={cardioRecommendation.recommendation_markdown}
                   promptVersion={cardioRecommendation.prompt_version}
+                  hideApplyToTemplate
                 />
               </ListBlock>
             ) : null}
