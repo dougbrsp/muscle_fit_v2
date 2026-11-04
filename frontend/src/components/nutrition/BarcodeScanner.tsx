@@ -6,7 +6,12 @@ import { IconCameraOff } from '@tabler/icons-react';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { CAMERA_ERROR_MESSAGES, CameraError, startBarcodeScan, type ScanHandle } from '@/lib/barcode-scanner';
 import { registerOpenScanner } from '@/lib/barcode-scanner-open';
-import { SCANNER_INITIAL_STATE, scannerReducer } from '@/lib/barcode-scanner-state';
+import {
+  SCANNER_INITIAL_STATE,
+  formatDiagnostics,
+  scannerReducer,
+  scheduleDiagnostics,
+} from '@/lib/barcode-scanner-state';
 import { usePresentationActive } from '@/lib/presentation-slots';
 import { BackToCloseHere } from '@/mobile/screens/telas/BackToCloseHere';
 import { BRAND } from '@/theme';
@@ -33,6 +38,7 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
   const fullScreen = useMediaQuery(MOBILE_QUERY) ?? false;
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [{ starting, error }, dispatch] = useReducer(scannerReducer, SCANNER_INITIAL_STATE);
+  const [diagnostico, setDiagnostico] = useState<string | null>(null);
   const onDetectedRef = useRef(onDetected);
   onDetectedRef.current = onDetected;
   const noCelular = usePresentationActive();
@@ -50,6 +56,13 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
     if (!opened || !video) return undefined;
     let cancelled = false;
     let handle: ScanHandle | null = null;
+    // Depois de um tempo sem ler, mostra a linha de diagnóstico e a mantém atualizada.
+    const cancelarDiagnostico = scheduleDiagnostics(
+      () => formatDiagnostics(video, handle ? (handle.diagnostics?.() ?? 'nativo') : null),
+      (linha) => {
+        if (!cancelled) setDiagnostico(linha);
+      },
+    );
     const falhou = (falha: unknown) => {
       if (cancelled) return;
       dispatch({
@@ -76,6 +89,8 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
       .catch(falhou);
     return () => {
       cancelled = true;
+      cancelarDiagnostico();
+      setDiagnostico(null);
       handle?.stop(); // libera a câmera ao fechar ou desmontar
     };
   }, [opened, video]);
@@ -141,6 +156,11 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
             <Text size="sm" c={BRAND.textMuted} role="status" aria-live="polite">
               Aponte a câmera para o código de barras da embalagem e mantenha o produto parado.
             </Text>
+            {diagnostico ? (
+              <Text size="xs" c={BRAND.textMuted} data-testid="scanner-diagnostico" style={{ wordBreak: 'break-word' }}>
+                {diagnostico}
+              </Text>
+            ) : null}
           </>
         )}
         <Button
