@@ -2,7 +2,7 @@
 
 import { Group, Progress, Stack, Text } from '@mantine/core';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
-import { macroRows } from '@/lib/nutrition-dashboard';
+import { macroRows, ringParts } from '@/lib/nutrition-dashboard';
 import { nutrientField, nutritionNotice } from '@/lib/nutrition-constants';
 import { formatKcal, formatSignedKcal, formatTotal, formatWithUnit, shareToPercent } from '@/lib/nutrition-format';
 import type { BalanceRow, NutritionDay } from '@/lib/nutrition-types';
@@ -41,6 +41,8 @@ function MacroBar({ row }: { row: BalanceRow }) {
   const acima = row.excess != null && row.excess > 0;
   const percentual = shareToPercent(row.share);
   const temMeta = row.target != null;
+  // Mesmo critério do gráfico do desktop: sem as partes do motor (sem meta ou total incompleto) não há barra.
+  const temGrafico = ringParts(row) !== null;
   const consumidoTexto = consumido == null ? '-' : formatTotal(consumido, unidade, row.intake == null || row.intake_complete);
   return (
     <ListBlock>
@@ -49,14 +51,22 @@ function MacroBar({ row }: { row: BalanceRow }) {
           <Text fw={600}>{nome}</Text>
           <Text size="sm">Consumido: <b>{consumidoTexto}</b></Text>
         </Group>
+        {!temGrafico ? (
+          <Text size="sm" c="dimmed">
+            Sem gráfico: falta meta ou o total do dia está incompleto.
+          </Text>
+        ) : null}
         {temMeta ? (
           <>
-            <Progress
-              value={acima ? BARRA_CHEIA : Math.min(percentual ?? 0, BARRA_CHEIA)}
-              color={acima ? 'red' : 'brand'}
-              size="md"
-              aria-label={`${nome}: ${consumidoTexto} de ${formatWithUnit(row.target, unidade, 0)}${acima ? ', acima da meta' : ''}`}
-            />
+            {temGrafico ? (
+              <Progress
+                value={acima ? BARRA_CHEIA : Math.min(percentual ?? 0, BARRA_CHEIA)}
+                // A tela não julga passar da meta (como no desktop): mesma cor, o excesso vai em texto.
+                color="brand"
+                size="md"
+                aria-label={`${nome}: ${consumidoTexto} de ${formatWithUnit(row.target, unidade, 0)}${acima ? ', acima da meta' : ''}`}
+              />
+            ) : null}
             <Text size="sm" c="dimmed">
               Meta {formatWithUnit(row.target, unidade, 0)}
               {acima

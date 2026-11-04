@@ -844,6 +844,10 @@ export type LabelPhotoReading = {
   food: FoodItemPayload;
   /** Valores da coluna da porção, como lidos. */
   per_serving: FoodPer100;
+  /** Base (g/ml) a que `per_table_base` se refere, decidida pelo motor; leitura antiga sem o campo = 100. */
+  table_base_amount?: number;
+  /** Valores na base `table_base_amount`, prontos do motor; leitura antiga sem o campo = `food`. */
+  per_table_base?: FoodPer100;
   /** Bloqueiam o cadastro até o usuário corrigir (regras do catálogo). */
   errors: NutritionLimitation[];
   /** Conferir antes de salvar (Atwater, porção × por 100, kJ, valor derivado da porção...). */

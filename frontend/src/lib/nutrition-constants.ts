@@ -135,7 +135,18 @@ export const FOOD_SOURCE_OPTIONS = optionsOf(NUTRITION.food_sources, NUTRITION.f
 export const FOOD_BASIS_OPTIONS = optionsOf(NUTRITION.food_bases, NUTRITION.food_basis_labels);
 export const DEFAULT_FOOD_BASIS: NutritionCode = NUTRITION.default_food_basis;
 /** Base da tabela informada no cadastro (quantidade em g/ml): padrão, teto e casas, do dono (`catalog`). A API valida. */
-export const FOOD_TABLE_BASE: { default: number; max: number; display_decimals: number } = NUTRITION.table_base;
+export const FOOD_TABLE_BASE: {
+  default: number;
+  min: number;
+  max: number;
+  display_decimals: number;
+  units: ReadonlyArray<NutritionCode>;
+  unit_labels: Readonly<Record<NutritionCode, string>>;
+} = NUTRITION.table_base;
+/** Unidades da base da tabela (g/ml) com o rótulo do dono. */
+export const FOOD_TABLE_BASE_UNIT_OPTIONS = optionsOf(FOOD_TABLE_BASE.units, FOOD_TABLE_BASE.unit_labels);
+/** Natureza das refeições que misturam origens (código do dono). */
+export const MIXED_MEAL_NATURE: NutritionCode = NUTRITION.meal_nature_mixed;
 
 function rdc429Fields(codes: ReadonlyArray<string>): ReadonlyArray<Rdc429Field> {
   return codes

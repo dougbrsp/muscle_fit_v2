@@ -8,15 +8,21 @@ import { NutritionLimitations } from './NutritionLimitations';
 import { barcodeConflict, createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
 import { selectionAfterBarcodeConflict } from '@/lib/nutrition-barcode-flow';
 import {
-  FOOD_BASIS_OPTIONS,
   FOOD_PER_100_FIELDS,
   FOOD_REQUIRED_FIELDS,
   FOOD_SERVING_FIELDS,
   FOOD_TABLE_BASE,
+  FOOD_TABLE_BASE_UNIT_OPTIONS,
   type NutritionCode,
   type Rdc429Field,
 } from '@/lib/nutrition-constants';
-import { emptyFoodForm, foodFormFromItem, foodPayloadFromForm, type FoodFormState } from '@/lib/nutrition-food-form';
+import {
+  emptyFoodForm,
+  foodFormFromItem,
+  foodPayloadFromForm,
+  tableBaseError,
+  type FoodFormState,
+} from '@/lib/nutrition-food-form';
 import type { FoodItem, FoodSaveResponse } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
@@ -28,6 +34,8 @@ type Props = {
   createSource?: NutritionCode;
   /** EAN do cadastro novo (leitor de câmera/digitação quando o Open Food Facts não achou); a API valida e grava em `food_items.barcode`. */
   barcode?: string;
+  /** Contador de leituras do código: muda a cada leitura, mesmo do mesmo EAN, para repreencher o campo. */
+  barcodeRead?: number;
   /** EAN já cadastrado (409): a tela oferece abrir o alimento existente. */
   onUseExisting?: (foodId: number) => void;
   onSaved: (food: FoodSaveResponse) => void;
@@ -44,13 +52,14 @@ function servingField(code: string): Rdc429Field | undefined {
  * valida (400 com o código do motor) e devolve os avisos (Atwater, subtotal),
  * que não bloqueiam. O alimento novo é privado do usuário (D-G).
  */
-export function FoodForm({ food, initial, createSource, barcode, onUseExisting, onSaved, onCancel }: Props) {
+export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0, onUseExisting, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<FoodFormState>(() => (food ? foodFormFromItem(food) : (initial ?? emptyFoodForm())));
   const [codigo, setCodigo] = useState(barcode ?? '');
   // Código lido depois de o formulário abrir (leitor sem produto): preenche sem descartar o que foi digitado.
+  // O contador entra nas dependências: reler o mesmo EAN depois de apagar o campo repreenche o código.
   useEffect(() => {
     if (barcode) setCodigo(barcode);
-  }, [barcode]);
+  }, [barcode, barcodeRead]);
   const porcao = servingField('serving_size');
   const medida = servingField('household_measure');
   const embalagem = servingField('servings_per_package');
@@ -62,6 +71,9 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
   function updateValue(code: string, value: number | string) {
     setForm((atual) => ({ ...atual, values: { ...atual.values, [code]: value } }));
   }
+
+  // Base vazia ou fora da faixa do dono: não salva (a API trataria o vazio como por 100, errado para uma tabela por 30 g).
+  const erroBase = tableBaseError(form.tableBaseAmount);
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -97,8 +109,9 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
             description="Quantidade a que a tabela se refere (ex.: 30 para uma tabela por 30 g)."
             value={form.tableBaseAmount}
             onChange={(tableBaseAmount) => update({ tableBaseAmount })}
-            min={0}
+            min={FOOD_TABLE_BASE.min}
             max={FOOD_TABLE_BASE.max}
+            error={erroBase ?? undefined}
             decimalScale={FOOD_TABLE_BASE.display_decimals}
             decimalSeparator=","
             hideControls
@@ -108,7 +121,7 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
           />
           <Select
             label="Unidade"
-            data={[...FOOD_BASIS_OPTIONS]}
+            data={[...FOOD_TABLE_BASE_UNIT_OPTIONS]}
             value={form.basis}
             onChange={(basis) => basis && update({ basis })}
             allowDeselect={false}
@@ -231,7 +244,12 @@ export function FoodForm({ food, initial, createSource, barcode, onUseExisting, 
         <Button variant="default" onClick={onCancel} disabled={saveMutation.isPending}>
           Cancelar
         </Button>
-        <Button color="brand" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+        <Button
+          color="brand"
+          onClick={() => saveMutation.mutate()}
+          loading={saveMutation.isPending}
+          disabled={erroBase !== null}
+        >
           {food ? 'Salvar alterações' : 'Cadastrar alimento'}
         </Button>
       </Group>

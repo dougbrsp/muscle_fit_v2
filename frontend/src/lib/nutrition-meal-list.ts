@@ -4,12 +4,17 @@
 // (`diary.meal_sort_key`).
 
 import { DASH, formatNumberOrDash } from './format';
-import { CATALOG_ITEM_NATURE, ESTIMATE_ITEM_NATURE, MEAL_SLOT_OPTIONS, nutritionLabel, type NutritionCode } from './nutrition-constants';
+import {
+  CATALOG_ITEM_NATURE,
+  ESTIMATE_ITEM_NATURE,
+  ITEM_NUTRIENT_FIELDS,
+  MEAL_SLOT_OPTIONS,
+  MIXED_MEAL_NATURE,
+  nutritionLabel,
+  type NutritionCode,
+} from './nutrition-constants';
 import { QUICK_ENTRY_NATURE, QUICK_ENTRY_NUTRIENT_FIELDS } from './nutrition-quick-entry';
 import type { Meal, MealItem, NutritionTotals } from './nutrition-types';
-
-/** Natureza das refeições que misturam origens (código do motor, `MealNature.MIXED`). */
-const MIXED_NATURE: NutritionCode = 'MIXED';
 
 /** Hora e nome da refeição: `12:30 - Almoço (3 itens)`; 1 item = nome do item; sem hora = só o nome. */
 export function mealHeadline(meal: Pick<Meal, 'meal_slot' | 'eaten_at' | 'items'>): string {
@@ -18,14 +23,16 @@ export function mealHeadline(meal: Pick<Meal, 'meal_slot' | 'eaten_at' | 'items'
   return meal.eaten_at ? `${meal.eaten_at} - ${nome}` : nome;
 }
 
-// Rótulo de cada valor da segunda linha, por campo do dono (energia abre a linha).
+// Rótulo curto de cada valor da segunda linha (energia abre a linha). Os rótulos do motor são os da tabela
+// (`Valor energético`, `Proteínas`...), longos demais para a linha da lista: o texto curto é só apresentação
+// e a UNIDADE vem do motor (`ITEM_NUTRIENT_FIELDS`).
 const MACRO_LINE_LABELS: Record<string, string> = {
   energy_kcal: 'Macros',
   protein_g: 'Proteína',
   carbohydrates_g: 'Carbo',
   total_fat_g: 'Gordura',
 };
-const MACRO_LINE_UNITS: Record<string, string> = { energy_kcal: 'kcal', protein_g: 'g', carbohydrates_g: 'g', total_fat_g: 'g' };
+const MACRO_LINE_UNITS: Record<string, string> = Object.fromEntries(ITEM_NUTRIENT_FIELDS.map((campo) => [campo.code, campo.unit]));
 
 function macroPart(totals: NutritionTotals, code: string): string {
   const unit = MACRO_LINE_UNITS[code] ?? '';
@@ -50,7 +57,7 @@ export type NatureTone = 'brand' | 'gray' | 'yellow';
 export function natureTone(nature: NutritionCode, items: ReadonlyArray<Pick<MealItem, 'nature'>>): NatureTone {
   if (nature === CATALOG_ITEM_NATURE) return 'brand';
   if (nature === ESTIMATE_ITEM_NATURE) return 'yellow';
-  if (nature === MIXED_NATURE) return items.some((item) => item.nature === ESTIMATE_ITEM_NATURE) ? 'yellow' : 'gray';
+  if (nature === MIXED_MEAL_NATURE) return items.some((item) => item.nature === ESTIMATE_ITEM_NATURE) ? 'yellow' : 'gray';
   return 'gray';
 }
 

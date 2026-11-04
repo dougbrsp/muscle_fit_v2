@@ -59,6 +59,7 @@ export function FoodRegistrationFlow({
 }: Props) {
   const [tab, setTab] = useState<RegistrationTab>(initialTab);
   const [barcode, setBarcode] = useState(initialBarcode ?? '');
+  const [barcodeReads, setBarcodeReads] = useState(0);
   const [formKey, setFormKey] = useState(0);
   const [lookupResets, setLookupResets] = useState(0);
   const [labelReading, setLabelReading] = useState<LabelPhotoReading | null>(null);
@@ -96,6 +97,7 @@ export function FoodRegistrationFlow({
     const destino = registrationAfterBarcodeNotFound(ean);
     if (!destino) return false;
     setBarcode(destino.barcode);
+    setBarcodeReads((n) => n + 1);
     setTab(destino.tab);
     return true;
   }
@@ -140,6 +142,7 @@ export function FoodRegistrationFlow({
           food={null}
           initial={manualFormWithName(initialName)}
           barcode={barcode || undefined}
+          barcodeRead={barcodeReads}
           onUseExisting={onUseExisting}
           onSaved={saved}
           onCancel={cancel}

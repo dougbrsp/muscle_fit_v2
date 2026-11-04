@@ -80,6 +80,8 @@ function NutricaoDiarioContent() {
   });
 
   useBackToClose(editing !== null, () => setEditing(null));
+  // Folha do lançamento rápido: o voltar fecha só a folha, não sai do diário.
+  useBackToClose(lancando, () => setLancando(false));
 
   function abrirLeitura(modo: 'text' | 'photo') {
     setModoLeitura(modo);

@@ -71,4 +71,35 @@ describe('MobileTargetVsIntake: consumido e restante das 4 linhas', () => {
     const markup = html(createElement(MobileTargetVsIntake, { day: dia([linha('energy_kcal'), linha('fiber_g', { target: 25, intake: 10, to_consume: 15 })]) }));
     expect(markup.match(/role="progressbar"/g)?.length).toBe(1);
   });
+
+  it('excesso mantém a cor da marca (a tela não julga passar da meta, como no desktop) e o texto do excesso', () => {
+    const markup = html(
+      createElement(MobileTargetVsIntake, {
+        day: dia([linha('energy_kcal', { intake: 2300, within_target: 2000, to_consume: 0, excess: 300, share: 1.15 })]),
+      }),
+    );
+    expect(markup).not.toContain('--mantine-color-red');
+    expect(markup).toMatch(/Acima da meta: [^<]*300/);
+    expect(markup).toContain('role="progressbar"');
+  });
+
+  it('total incompleto (partes do motor nulas): texto do desktop em vez de barra em 0%', () => {
+    const markup = html(
+      createElement(MobileTargetVsIntake, {
+        day: dia([linha('energy_kcal', { intake: null, intake_complete: false, share: null, within_target: null, to_consume: null, excess: null })]),
+      }),
+    );
+    expect(markup).toContain('Sem gráfico: falta meta ou o total do dia está incompleto.');
+    expect(markup).not.toContain('progressbar');
+  });
+
+  it('sem meta: o mesmo texto de sem gráfico, sem barra', () => {
+    const markup = html(
+      createElement(MobileTargetVsIntake, {
+        day: dia([linha('energy_kcal', { target: null, share: null, within_target: null, to_consume: null, excess: null })]),
+      }),
+    );
+    expect(markup).toContain('Sem gráfico: falta meta ou o total do dia está incompleto.');
+    expect(markup).not.toContain('progressbar');
+  });
 });

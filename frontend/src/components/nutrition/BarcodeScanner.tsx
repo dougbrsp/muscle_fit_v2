@@ -5,7 +5,10 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconCameraOff } from '@tabler/icons-react';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { CAMERA_ERROR_MESSAGES, CameraError, startBarcodeScan, type ScanHandle } from '@/lib/barcode-scanner';
+import { registerOpenScanner } from '@/lib/barcode-scanner-open';
 import { SCANNER_INITIAL_STATE, scannerReducer } from '@/lib/barcode-scanner-state';
+import { usePresentationActive } from '@/lib/presentation-slots';
+import { BackToCloseHere } from '@/mobile/screens/telas/BackToCloseHere';
 import { BRAND } from '@/theme';
 
 type Props = {
@@ -32,6 +35,10 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
   const [{ starting, error }, dispatch] = useReducer(scannerReducer, SCANNER_INITIAL_STATE);
   const onDetectedRef = useRef(onDetected);
   onDetectedRef.current = onDetected;
+  const noCelular = usePresentationActive();
+
+  // Avisa o cadastro por baixo que há leitor aberto (Esc fecha só o leitor).
+  useEffect(() => (opened ? registerOpenScanner() : undefined), [opened]);
 
   // Cada abertura recomeça limpa: sem isto, a mensagem de uma falha anterior impedia o vídeo de
   // montar e a câmera nunca mais abria (o efeito de baixo depende do elemento <video>).
@@ -88,6 +95,7 @@ export function BarcodeScanner({ opened, onClose, onDetected }: Props) {
         body: { display: 'flex', flexDirection: 'column', gap: 'var(--mantine-spacing-sm)' },
       }}
     >
+      {noCelular && opened ? <BackToCloseHere onClose={onClose} /> : null}
       <Stack gap="sm">
         {error ? (
           <Alert color="yellow" icon={<IconCameraOff size={18} />} title="Câmera indisponível">

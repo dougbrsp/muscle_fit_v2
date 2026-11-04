@@ -3,7 +3,7 @@
 import { Alert, Paper, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FoodCitationFooter } from '@/components/nutrition/FoodCitationFooter';
 import { FoodDetailCard } from '@/components/nutrition/FoodDetailCard';
 import { FoodForm } from '@/components/nutrition/FoodForm';
@@ -42,6 +42,11 @@ export function AlimentosClient() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // Edição de um alimento já aberto no detalhe; o cadastro novo é o fluxo único (`FoodRegistrationFlow`).
   const [editing, setEditing] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+  // O detalhe (onde fica o botão Editar) some ao editar: leva a vista até o formulário de edição.
+  useEffect(() => {
+    if (editing) editorRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [editing]);
   const [saved, setSaved] = useState<FoodSaveResponse | null>(null);
   const [external, setExternal] = useState<ExternalFoodResponse | null>(null);
   // Muda depois de salvar/abrir um produto: o fluxo de cadastro volta limpo.
@@ -160,8 +165,8 @@ export function AlimentosClient() {
         </Alert>
       )}
 
-      {editing ? (
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
+      {editing && (
+        <Paper ref={editorRef} withBorder radius="md" p="md" bg={BRAND.bgElevated}>
           <Stack gap="sm">
             <Title order={3} c={BRAND.textPrimary}>
               Editar alimento
@@ -175,22 +180,22 @@ export function AlimentosClient() {
             />
           </Stack>
         </Paper>
-      ) : (
-        <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
-          <Stack gap="sm">
-            <Title order={3} c={BRAND.textPrimary}>
-              Cadastrar alimento
-            </Title>
-            <FoodRegistrationFlow
-              withUsda
-              onSaved={afterSave}
-              onFound={afterExternal}
-              onUseExisting={useExisting}
-              resetSignal={resets}
-            />
-          </Stack>
-        </Paper>
       )}
+      {/* Fica montado (só oculto) durante a edição: o cadastro em andamento não se perde ao abrir "Editar". */}
+      <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated} display={editing ? 'none' : undefined}>
+        <Stack gap="sm">
+          <Title order={3} c={BRAND.textPrimary}>
+            Cadastrar alimento
+          </Title>
+          <FoodRegistrationFlow
+            withUsda
+            onSaved={afterSave}
+            onFound={afterExternal}
+            onUseExisting={useExisting}
+            resetSignal={resets}
+          />
+        </Stack>
+      </Paper>
 
       {detail && !editing && (
         <FoodDetailCard

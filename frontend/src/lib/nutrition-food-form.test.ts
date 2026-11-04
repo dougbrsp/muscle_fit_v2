@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import motorConstants from './motor-constants.generated.json';
-import { emptyFoodForm, foodFormFromItem, foodFormFromPrefill, foodPayloadFromForm } from './nutrition-food-form';
+import { emptyFoodForm, foodFormFromItem, foodFormFromPrefill, foodPayloadFromForm, tableBaseError } from './nutrition-food-form';
 import type { FoodItem, LabelPhotoReading } from './nutrition-types';
 
 const N = motorConstants.nutrition;
@@ -52,8 +52,17 @@ describe('nutrition-food-form: formulário <-> FoodItemIn (só transporte)', () 
     expect(payload[N.food_per_100_fields[0]]).toBe(66);
   });
 
-  it('base vazia vai null (a API recusa; a tela nao inventa 100)', () => {
-    expect(foodPayloadFromForm({ ...emptyFoodForm(), tableBaseAmount: '' }).table_base_amount).toBeNull();
+  it('base vazia nunca vira payload com null: a tela bloqueia e o payload recusa', () => {
+    expect(tableBaseError('')).toMatch(/Informe/);
+    expect(() => foodPayloadFromForm({ ...emptyFoodForm(), tableBaseAmount: '' })).toThrow();
+  });
+
+  it('base fora da faixa do dono (minimo e maximo do JSON gerado) tem erro; dentro, nao', () => {
+    expect(tableBaseError(N.table_base.min)).toBeNull();
+    expect(tableBaseError(N.table_base.max)).toBeNull();
+    expect(tableBaseError(N.table_base.min / 10)).not.toBeNull();
+    expect(tableBaseError(N.table_base.max + 1)).not.toBeNull();
+    expect(tableBaseError(30)).toBeNull();
   });
 
   it('a edicao reabre com table_base_amount e per_table_base, nao com o por 100', () => {
@@ -115,10 +124,10 @@ describe('nutrition-food-form: leitura da foto do rótulo (L6) pré-preenche o f
   });
 });
 
-describe('nutrition-food-form: rotulo por porcao pre-preenche a base = porcao (L6 + base da tabela)', () => {
+describe('nutrition-food-form: rotulo pre-preenche com a base e os valores da leitura (motor, sem conta no front)', () => {
   const CODIGOS = N.food_per_100_fields;
   const POR_100: Record<string, number | null> = Object.fromEntries(CODIGOS.map((codigo, i) => [codigo, i + 10]));
-  const POR_PORCAO: Record<string, number | null> = Object.fromEntries(CODIGOS.map((codigo, i) => [codigo, i + 1]));
+  const NA_BASE: Record<string, number | null> = Object.fromEntries(CODIGOS.map((codigo, i) => [codigo, i + 1]));
   const FOOD = { name: 'Barra', basis: 'g', ...POR_100, serving_size: 30, household_measure: null, servings_per_package: null };
 
   function leitura(over: Partial<LabelPhotoReading>): LabelPhotoReading {
@@ -129,36 +138,25 @@ describe('nutrition-food-form: rotulo por porcao pre-preenche a base = porcao (L
       readable: true,
       barcode: null,
       food: FOOD,
-      per_serving: POR_PORCAO,
+      per_serving: NA_BASE,
       errors: [],
       warnings: [],
       ai_notes: [],
       ...over,
     };
   }
-  const DERIVADO = [{ code: 'label_derived_from_serving:energy_kcal', label: 'x' }];
 
-  it('derivado da porcao: base = porcao e valores por porcao, como lidos', () => {
-    const form = foodFormFromPrefill(FOOD, leitura({ warnings: DERIVADO }));
+  it('leitura com table_base_amount e per_table_base: base e valores como vieram', () => {
+    const form = foodFormFromPrefill(FOOD, leitura({ table_base_amount: 30, per_table_base: NA_BASE }));
     expect(form.tableBaseAmount).toBe(30);
-    for (const codigo of CODIGOS) expect(form.values[codigo]).toBe(POR_PORCAO[codigo]);
+    for (const codigo of CODIGOS) expect(form.values[codigo]).toBe(NA_BASE[codigo]);
     expect(foodPayloadFromForm(form).table_base_amount).toBe(30);
   });
 
-  it('sem sinal de derivacao, mantem por 100 e a base padrao', () => {
+  it('leitura antiga sem os campos: base padrao do dono e valores de food', () => {
     const form = foodFormFromPrefill(FOOD, leitura({}));
     expect(form.tableBaseAmount).toBe(N.table_base.default);
     for (const codigo of CODIGOS) expect(form.values[codigo]).toBe(POR_100[codigo]);
-  });
-
-  it('sem porcao positiva ou perdendo campo por 100, mantem por 100', () => {
-    expect(foodFormFromPrefill({ ...FOOD, serving_size: null }, leitura({ warnings: DERIVADO })).tableBaseAmount).toBe(
-      N.table_base.default,
-    );
-    const semUm = { ...POR_PORCAO, [CODIGOS[0]]: null };
-    expect(foodFormFromPrefill(FOOD, leitura({ warnings: DERIVADO, per_serving: semUm })).tableBaseAmount).toBe(
-      N.table_base.default,
-    );
   });
 
   it('sem a leitura (chamada antiga), segue por 100', () => {

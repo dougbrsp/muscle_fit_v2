@@ -25,6 +25,7 @@ import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
+import { useScannerOpen } from '@/lib/barcode-scanner-open';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
 import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
@@ -42,8 +43,9 @@ import {
   type MealEditorForm,
   type MealEditorItem,
 } from '@/lib/nutrition-meal-form';
-import type { Meal, MealPreviewPayload } from '@/lib/nutrition-types';
+import type { Meal, MealPreviewPayload, NutritionLimitation } from '@/lib/nutrition-types';
 import { usePresentationActive } from '@/lib/presentation-slots';
+import { BackToCloseHere } from '@/mobile/screens/telas/BackToCloseHere';
 import { BottomSheet } from '@/mobile/ui/Sheets';
 import { BRAND } from '@/theme';
 
@@ -207,7 +209,12 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só
   // desmonta o fluxo ao fechar. Fechar sem salvar não muda nada; salvar acrescenta o item.
   const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
+  // Avisos do cadastro (Atwater, Open Food Facts) e erro de "usar o existente" ficam na tela depois de o fluxo fechar.
+  const [avisosCadastro, setAvisosCadastro] = useState<NutritionLimitation[]>([]);
+  const [erroExistente, setErroExistente] = useState<string | null>(null);
   const noCelular = usePresentationActive();
+  // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.
+  const leitorAberto = useScannerOpen();
   const queryClient = useQueryClient();
 
   const corpo = mealCreatePayload(form);
@@ -233,7 +240,9 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     onSuccess: onSaved,
   });
 
-  function adicionarCadastrado(alimento: { id: number; name: string; basis: string }) {
+  function adicionarCadastrado(alimento: { id: number; name: string; basis: string; warnings?: NutritionLimitation[] }) {
+    setAvisosCadastro(alimento.warnings ?? []);
+    setErroExistente(null);
     proximaChave.current += 1;
     const chave = `novo-${proximaChave.current}`;
     setForm((atual) => addRegisteredFood(atual, alimento, chave, MEAL_ITEMS_LIMIT));
@@ -245,8 +254,9 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   async function usarExistente(foodId: number) {
     try {
       adicionarCadastrado(await queryClient.fetchQuery({ queryKey: foodKeys.detail(foodId), queryFn: () => fetchFood(foodId) }));
-    } catch {
-      // Sem o alimento não há o que adicionar: o fluxo segue aberto com o aviso de código já cadastrado.
+    } catch (erro) {
+      // Sem o alimento não há o que adicionar: o fluxo segue aberto, agora com o motivo.
+      setErroExistente(nutritionErrorInfo(erro, 'Não foi possível abrir o alimento existente.').message);
     }
   }
 
@@ -259,29 +269,55 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const semOrigem = form.items.some((item) => !itemHasSource(item));
   const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
+  function fecharCadastro() {
+    setCadastro(null);
+    setErroExistente(null);
+  }
+
   const fluxoDeCadastro = (
-    <FoodRegistrationFlow
-      initialName={cadastro?.nome}
-      onSaved={adicionarCadastrado}
-      onFound={adicionarCadastrado}
-      onUseExisting={usarExistente}
-      onCancel={() => setCadastro(null)}
-    />
+    <Stack gap="sm">
+      {erroExistente && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
+          {erroExistente}
+        </Alert>
+      )}
+      <FoodRegistrationFlow
+        initialName={cadastro?.nome}
+        onSaved={adicionarCadastrado}
+        onFound={adicionarCadastrado}
+        onUseExisting={usarExistente}
+        onCancel={fecharCadastro}
+      />
+    </Stack>
   );
 
   return (
     <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
       {noCelular ? (
-        <BottomSheet opened={cadastro !== null} onClose={() => setCadastro(null)} title="Cadastrar novo alimento">
-          {cadastro !== null ? fluxoDeCadastro : null}
+        <BottomSheet
+          opened={cadastro !== null}
+          onClose={fecharCadastro}
+          title="Cadastrar novo alimento"
+          closeOnClickOutside={false}
+          closeOnEscape={!leitorAberto}
+        >
+          {cadastro !== null ? (
+            <>
+              {/* Voltar do celular fecha só a folha: o editor e o rascunho continuam. */}
+              <BackToCloseHere onClose={fecharCadastro} />
+              {fluxoDeCadastro}
+            </>
+          ) : null}
         </BottomSheet>
       ) : (
         <Modal
           opened={cadastro !== null}
-          onClose={() => setCadastro(null)}
+          onClose={fecharCadastro}
           title="Cadastrar novo alimento"
           size="lg"
           centered
+          closeOnClickOutside={false}
+          closeOnEscape={!leitorAberto}
         >
           {cadastro !== null ? fluxoDeCadastro : null}
         </Modal>
@@ -353,6 +389,24 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
           }}
         />
+
+        {avisosCadastro.length > 0 && (
+          <Alert
+            color="yellow"
+            variant="light"
+            icon={<IconAlertTriangle size={16} />}
+            title="Confira o alimento cadastrado"
+            withCloseButton
+            closeButtonLabel="Dispensar avisos"
+            onClose={() => setAvisosCadastro([])}
+          >
+            {avisosCadastro.map((aviso) => (
+              <Text key={aviso.code} size="sm">
+                {aviso.label}
+              </Text>
+            ))}
+          </Alert>
+        )}
 
         <Stack gap="xs">
           {form.items.length === 0 && (

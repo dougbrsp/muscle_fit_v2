@@ -76,54 +76,47 @@ function prefillText(value: string | number | null | undefined): string {
 }
 
 /**
- * Código do aviso do motor (`label_photo.WARN_LABEL_DERIVED_FROM_SERVING`) que diz que a tabela do rótulo
- * veio por porção e o "por 100" foi derivado dela. Não está no JSON gerado ainda: pendência de exportação.
- */
-const LABEL_DERIVED_FROM_SERVING_CODE = 'label_derived_from_serving';
-
-/**
- * Rótulo lido por porção: usa a base = porção e os valores por porção como a leitura os trouxe, sem conta no
- * front. Só quando a API sinalizou a derivação, a porção é um número positivo e todo campo preenchido por 100
- * também veio por porção (senão ficaria campo perdido); do contrário `null` e mantém por 100.
- */
-function labelServingBase(
-  food: FoodItemPayload,
-  reading: LabelPhotoReading,
-): { amount: number; values: Record<string, number | null> } | null {
-  const veioPorPorcao = reading.warnings.some((aviso) => aviso.code.startsWith(LABEL_DERIVED_FROM_SERVING_CODE));
-  const porcao = food.serving_size;
-  if (!veioPorPorcao || typeof porcao !== 'number' || !(porcao > 0)) return null;
-  const perdeCampo = FOOD_PER_100_FIELDS.some(
-    (campo) => typeof food[campo.code] === 'number' && reading.per_serving[campo.code] == null,
-  );
-  if (perdeCampo) return null;
-  return { amount: porcao, values: reading.per_serving };
-}
-
-/**
  * Formulário pré-preenchido pela leitura da foto do rótulo (Lote L6): os campos
  * do cadastro que a API devolveu (`LabelPhotoReading.food`, já revisados pelo
  * motor). Campo não lido fica vazio, nunca 0; a base desconhecida fica a padrão.
  */
 export function foodFormFromPrefill(food: FoodItemPayload, reading?: LabelPhotoReading): FoodFormState {
   const base = prefillText(food.basis);
-  const porPorcao = reading ? labelServingBase(food, reading) : null;
+  // A base e os valores nela vêm prontos da leitura (motor); leitura antiga sem eles = por 100 de `food`.
+  const baseLida = reading?.table_base_amount;
+  const valoresNaBase = baseLida != null ? reading?.per_table_base : undefined;
   return {
     name: prefillText(food.name),
     brand: prefillText(food.brand),
     category: prefillText(food.category),
     basis: base || DEFAULT_FOOD_BASIS,
     values: Object.fromEntries(
-      FOOD_PER_100_FIELDS.map((campo) => [campo.code, prefillNumber(porPorcao ? porPorcao.values[campo.code] : food[campo.code])]),
+      FOOD_PER_100_FIELDS.map((campo) => [campo.code, prefillNumber(valoresNaBase ? valoresNaBase[campo.code] : food[campo.code])]),
     ),
-    tableBaseAmount: porPorcao ? porPorcao.amount : FOOD_TABLE_BASE.default,
+    tableBaseAmount: valoresNaBase && baseLida != null ? baseLida : FOOD_TABLE_BASE.default,
     servingSize: prefillNumber(food.serving_size),
     householdMeasure: prefillText(food.household_measure),
     servingsPerPackage: prefillNumber(food.servings_per_package),
   };
 }
 
+/**
+ * Base vazia ou fora da faixa do dono (`nutrition.table_base`): a tela bloqueia salvar e mostra o erro no
+ * campo; a API confere de novo (400 `invalid_table_base`). Devolve a mensagem ou `null` se a base serve.
+ */
+export function tableBaseError(value: FoodFormNumber): string | null {
+  const numero = inputNumberOrNull(value);
+  if (numero == null) return 'Informe a quantidade a que os valores da tabela se referem.';
+  if (numero < FOOD_TABLE_BASE.min || numero > FOOD_TABLE_BASE.max) {
+    return `A base precisa estar entre ${FOOD_TABLE_BASE.min} e ${FOOD_TABLE_BASE.max}.`;
+  }
+  return null;
+}
+
+/** Corpo do cadastro. `table_base_amount` nunca é `null`: a tela só chama depois de `tableBaseError` = `null`. */
 export function foodPayloadFromForm(form: FoodFormState): FoodItemPayload {
+  const base = inputNumberOrNull(form.tableBaseAmount);
+  if (base == null) throw new Error(tableBaseError(form.tableBaseAmount) ?? 'Base da tabela vazia.');
   const porCem = Object.fromEntries(
     FOOD_PER_100_FIELDS.map((campo) => [campo.code, inputNumberOrNull(form.values[campo.code])]),
   );
@@ -132,7 +125,7 @@ export function foodPayloadFromForm(form: FoodFormState): FoodItemPayload {
     brand: textOrNull(form.brand),
     category: textOrNull(form.category),
     basis: form.basis,
-    table_base_amount: inputNumberOrNull(form.tableBaseAmount),
+    table_base_amount: base,
     ...porCem,
     serving_size: inputNumberOrNull(form.servingSize),
     household_measure: textOrNull(form.householdMeasure),
