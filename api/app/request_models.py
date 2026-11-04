@@ -345,14 +345,15 @@ class MealItemIn(_StrictIn):
     casamento que a leitura entregou (auditoria).
 
     D2: o lançamento rápido vem sem `food_id` e com `quick_entry` (peso e valores absolutos); `quantity` e `unit`
-    são então dispensados (o peso em g é a quantidade). Item mantido na edição (`id`, sem `food_id`, `estimate`
-    nem `quick_entry`) reusa o snapshot congelado. Origem do item: exatamente uma (`diary.item_source_errors`)."""
+    são então dispensados (o peso em g é a quantidade). Lançamento rápido mantido na edição (`id`, sem `food_id`,
+    `estimate` nem `quick_entry`) reusa o snapshot congelado. Origem do item: exatamente uma (`diary.item_source_errors`)."""
 
     id: Optional[int] = None
     food_id: Optional[int] = None
     estimate: Optional[MealItemEstimateIn] = None
     quick_entry: Optional[MealItemQuickEntryIn] = None
-    # Dispensados só no lançamento rápido e no item mantido; nos demais, ausentes -> 400 do motor (`missing_quantity`).
+    # Dispensados só no lançamento rápido, novo ou mantido (o peso em g é a quantidade). Nos demais itens o motor
+    # responde 400: `quantity` ausente -> `missing_quantity`; `unit` ausente -> `unit_without_conversion`.
     quantity: Optional[Number] = None
     unit: Optional[str] = Field(default=None, min_length=1, max_length=24)
     portion_id: Optional[int] = None

@@ -836,6 +836,7 @@
       "USER_ENTERED": "Informado por você",
       "MIXED": "Misto"
     },
+    "meal_nature_mixed": "MIXED",
     "body_fat_methods": [
       "bioimpedance",
       "navy"
@@ -1221,6 +1222,15 @@
     },
     "table_base": {
       "default": 100.0,
+      "min": 0.01,
+      "units": [
+        "g",
+        "ml"
+      ],
+      "unit_labels": {
+        "g": "g",
+        "ml": "ml"
+      },
       "max": 10000.0,
       "display_decimals": 2
     },

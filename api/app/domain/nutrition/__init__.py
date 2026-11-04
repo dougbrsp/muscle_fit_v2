@@ -173,6 +173,7 @@ def export_for_frontend() -> dict[str, Any]:
         "training_kcal_nature_labels": lb.labels_by_code(lb.TRAINING_KCAL_NATURE_LABELS),
         "meal_natures": _codes(meal_math.MealNature),
         "meal_nature_labels": lb.labels_by_code(lb.MEAL_NATURE_LABELS),
+        "meal_nature_mixed": meal_math.MealNature.MIXED.value,
         "body_fat_methods": _codes(body_composition.BodyFatMethod),
         "body_fat_method_labels": lb.labels_by_code(lb.BODY_FAT_METHOD_LABELS),
         "phase_kinds": _codes(phases.PhaseKind),
@@ -271,6 +272,9 @@ def export_for_frontend() -> dict[str, Any]:
         # Base da tabela do alimento (D1): digitada por esta quantidade; o motor converte para por 100.
         "table_base": {
             "default": catalog.TABLE_BASE_DEFAULT,
+            "min": catalog.TABLE_BASE_AMOUNT_MIN,
+            "units": [base.value for base in catalog.FOOD_BASES],
+            "unit_labels": lb.labels_by_code(lb.TABLE_BASE_UNIT_LABELS),
             "max": catalog.TABLE_BASE_AMOUNT_MAX,
             "display_decimals": catalog.TABLE_BASE_DISPLAY_DECIMALS,
         },

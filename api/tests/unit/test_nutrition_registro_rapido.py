@@ -54,7 +54,7 @@ def test_sem_base_ou_base_100_o_alimento_segue_por_100_e_nada_e_gravado():
     assert sem.values == cem.values and sem.values["protein_g"] == 3.3
 
 
-@pytest.mark.parametrize("base", [0, -5, 10000.01, float("inf"), float("nan"), "abc", True])
+@pytest.mark.parametrize("base", [0, -5, 0.004, 0.0099, 10000.01, float("inf"), float("nan"), "abc", True])
 def test_base_invalida_e_erro_do_motor(base):
     validacao = catalog.validate_food_values(_valores(), "g", table_base=base)
     assert catalog.ERR_INVALID_TABLE_BASE in validacao.errors and not validacao.ok
@@ -182,7 +182,10 @@ def test_lancamento_rapido_valido_guarda_os_valores_absolutos_sem_conversao():
     assert item.nature is mm.MealNature.USER_ENTERED and item.amount == 45 and item.basis is mm.Unit.GRAM
     assert (item.nutrients.energy_kcal, item.nutrients.protein_g) == (180, 15)
     assert item.nutrients.fiber_g is None and item.nutrients.sodium_mg is None
-    assert item.unknown == ("fiber_g", "sodium_mg") and item.limitations == ()
+    assert item.not_requested == ("fiber_g", "sodium_mg") and item.limitations == ()
+    # Fibra e sodio nao pedidos: nao tornam o total da refeicao incompleto, mas seguem sem numero.
+    total = mm.sum_items([item])
+    assert total.incomplete_fields == () and total.nutrients.fiber_g is None and not total.is_complete("fiber_g")
 
 
 @pytest.mark.parametrize("campo", list(diary.QUICK_ENTRY_REQUIRED_FIELDS))
@@ -206,7 +209,8 @@ def test_nome_vazio_peso_e_valores_invalidos():
 
 def test_macro_acima_do_peso_e_kcal_acima_do_possivel_sao_erro():
     erros = diary.validate_quick_entry({**RAPIDO, "weight_g": 10, "protein_g": 11, "energy_kcal": 91}).errors
-    assert f"{catalog.ERR_ABOVE_BASIS}:protein_g" in erros and f"{catalog.ERR_ABOVE_BASIS}:energy_kcal" in erros
+    assert f"{diary.ERR_QUICK_ABOVE_WEIGHT}:protein_g" in erros and f"{diary.ERR_QUICK_ABOVE_WEIGHT}:energy_kcal" in erros
+    assert "base da tabela" not in labels.limitation_label(f"{diary.ERR_QUICK_ABOVE_WEIGHT}:protein_g")
 
 
 def test_origem_do_item_exatamente_uma_das_tres():
@@ -329,7 +333,7 @@ def test_grava_o_lancamento_rapido_sem_catalogo_sem_aviso_de_ia(db):
     assert refeicao["source"] == "manual" and refeicao["ai_job_id"] is None
     assert refeicao["totals"]["nature"] == "USER_ENTERED"
     assert refeicao["totals"]["nutrients"]["protein_g"] == 15
-    assert "fiber_g" in refeicao["totals"]["incomplete_fields"]
+    assert refeicao["totals"]["incomplete_fields"] == [] and refeicao["totals"]["complete"] is True
     assert db.foods == antes  # nenhum alimento criado no catalogo
     [gravado] = db.items.values()
     assert gravado["food_id"] is None and gravado["nature"] == "USER_ENTERED"
@@ -466,6 +470,8 @@ def test_dia_lista_as_refeicoes_em_ordem_cronologica_e_o_balanco_cobre_kcal_e_3_
     assert set(linhas) == {"energy_kcal", "protein_g", "carbohydrates_g", "total_fat_g", "fiber_g"}
     # Fibra nao e informada no lancamento rapido: ingestao incompleta, sem partes e sem quebrar os demais.
     assert linhas["fiber_g"]["intake_complete"] is False and linhas["fiber_g"]["within_target"] is None
+    assert linhas["fiber_g"]["intake"] is None  # sem numero falso
+    assert corpo["totals"]["complete"] is True and corpo["totals"]["incomplete_fields"] == []
     assert linhas["energy_kcal"]["intake"] == 720 and linhas["energy_kcal"]["target"] is None
     assert linhas["protein_g"]["intake"] == 60
     assert linhas["energy_kcal"]["within_target"] is None and linhas["energy_kcal"]["to_consume"] is None
@@ -481,7 +487,11 @@ def test_motor_expoe_constantes_do_lancamento_e_da_base_para_o_front():
         "weight_max": diary.ITEM_AMOUNT_MAX, "name_max_chars": diary.QUICK_ENTRY_NAME_MAX_CHARS,
         "nature": "USER_ENTERED", "source": "quick_entry", "unit": "g",
     }
-    assert bloco["table_base"] == {"default": 100.0, "max": catalog.TABLE_BASE_AMOUNT_MAX, "display_decimals": 2}
+    assert bloco["table_base"] == {
+        "default": 100.0, "min": 0.01, "max": catalog.TABLE_BASE_AMOUNT_MAX, "display_decimals": 2,
+        "units": ["g", "ml"], "unit_labels": {"g": "g", "ml": "ml"},
+    }
+    assert bloco["meal_nature_mixed"] == "MIXED"
     assert "USER_ENTERED" in bloco["meal_natures"] and "USER_ENTERED" in bloco["meal_nature_labels"]
     gerado = json.loads((__import__("pathlib").Path(__file__).resolve().parents[3] / "frontend" / "src" / "lib"
                          / "motor-constants.generated.json").read_text(encoding="utf-8"))
@@ -493,3 +503,69 @@ def test_motor_da_hora_nao_le_o_relogio():
     import inspect
 
     assert "datetime.now" not in inspect.getsource(diary)  # a hora vem do usuario
+
+
+# ---------------------------------------------------------------------------
+# Correcoes da rodada 1
+# ---------------------------------------------------------------------------
+
+
+def test_base_minima_e_valida_e_exportada():
+    assert catalog.TABLE_BASE_AMOUNT_MIN == 0.01
+    zeros = {"energy_kcal": 0, "carbohydrates_g": 0, "protein_g": 0, "total_fat_g": 0}
+    assert catalog.validate_food_values(zeros, "g", table_base=0.01).errors == ()
+    assert catalog.ERR_INVALID_TABLE_BASE in catalog.validate_food_values(zeros, "g", table_base=0.0049).errors
+
+
+def test_dia_misto_com_alimento_sem_macro_continua_incompleto(db):
+    """O alimento do catalogo que realmente nao tem o macro segue marcando o total; o lancamento rapido nao."""
+    sem_gordura = db.add_food("Caldo sem gordura informada", energy_kcal=50, protein_g=2, carbohydrates_g=8)
+    cliente = _client()
+    so_rapido = cliente.post("/nutrition/meals", json=_refeicao(db, [_item_rapido()])).json()
+    assert so_rapido["totals"]["incomplete_fields"] == []
+    mista = cliente.post("/nutrition/meals", json=_refeicao(db, [
+        {"food_id": sem_gordura, "quantity": 100, "unit": "g"}, _item_rapido()], meal_slot="dinner")).json()
+    assert "total_fat_g" in mista["totals"]["incomplete_fields"] or mista["totals"]["complete"] is False
+    dia = cliente.get(f"/nutrition/days/{DIA.isoformat()}").json()
+    assert dia["totals"]["complete"] is False
+    # Dia so com lancamento rapido: completo.
+    cliente.delete(f"/nutrition/meals/{mista['id']}")
+    dia2 = cliente.get(f"/nutrition/days/{DIA.isoformat()}").json()
+    assert dia2["totals"]["complete"] is True and dia2["totals"]["incomplete_fields"] == []
+
+
+def test_lancamento_rapido_nao_cria_alimento_e_excluir_tira_do_diario_e_do_balanco(db):
+    cliente = _client()
+    antes = len(db.foods)
+    criada = cliente.post("/nutrition/meals", json=_refeicao(db, [_item_rapido()])).json()
+    assert len(db.foods) == antes
+    dia = cliente.get(f"/nutrition/days/{DIA.isoformat()}").json()
+    assert len(dia["meals"]) == 1 and dia["balance"]["rows"][0]["intake"] == 180
+    assert cliente.delete(f"/nutrition/meals/{criada['id']}").status_code == 200
+    dia = cliente.get(f"/nutrition/days/{DIA.isoformat()}").json()
+    assert dia["meals"] == [] and dia["totals"] is None
+    assert all(r["intake"] is None for r in dia["balance"]["rows"]) and len(db.foods) == antes
+
+
+def test_alimento_com_base_200_ml_lancado_em_100_ml_pelas_rotas(monkeypatch, db):
+    """200 ml com 20 g de proteina: por 100 ml = 10 g; lancar 100 ml da 10 g (conta do diario, nada na tela)."""
+    from app import nutrition_foods as foods_mod
+
+    banco = FakeFoodsDB()
+    monkeypatch.setattr(foods_mod, "get_conn", banco.conn)
+    monkeypatch.setattr(foods_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(foods_mod, "has_favorites_table", lambda cur: True)
+    app = FastAPI()
+    app.include_router(foods_mod.router)
+    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=ALUNO, role="regular", source="session")
+    criado = TestClient(app).post("/nutrition/foods", json={
+        "name": "Bebida lactea", "basis": "ml", "table_base_amount": 200, "energy_kcal": 160, "protein_g": 20,
+        "carbohydrates_g": 16, "total_fat_g": 4})
+    assert criado.status_code == 201, criado.text
+    assert criado.json()["per_100"]["protein_g"] == 10.0 and criado.json()["per_table_base"]["protein_g"] == 20.0
+    alimento = db.add_food("Bebida lactea", basis="ml", **{k: v for k, v in criado.json()["per_100"].items() if v is not None})
+    refeicao = _client().post("/nutrition/meals", json=_refeicao(db, [{"food_id": alimento, "quantity": 100, "unit": "ml"}]))
+    assert refeicao.status_code == 201, refeicao.text
+    item = refeicao.json()["items"][0]
+    assert item["basis"] == "ml" and item["amount"] == 100 and item["nutrients"]["protein_g"] == pytest.approx(10.0)
+    assert item["nutrients"]["energy_kcal"] == pytest.approx(80.0)

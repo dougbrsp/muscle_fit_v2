@@ -160,6 +160,9 @@ PORTION_AMOUNT_MAX: Final[float] = 2000.0
 # Teto = default de desenho (sem fonte bibliográfica): 10 kg ou 10 L numa tabela só é erro de digitação.
 TABLE_BASE_DEFAULT: Final[float] = PER_100G_REFERENCE
 TABLE_BASE_AMOUNT_MAX: Final[float] = 10000.0
+# Piso = uma casa da coluna `DECIMAL(7,2)`: base abaixo de 0,005 gravaria 0,00 e base entre 0,005 e 0,01 perderia
+# precisão demais. Abaixo disso é `invalid_table_base`.
+TABLE_BASE_AMOUNT_MIN: Final[float] = 0.01
 # Casas decimais dos valores devolvidos na base da tabela (a precisão de `food_items`, DECIMAL(7,2)).
 TABLE_BASE_DISPLAY_DECIMALS: Final[int] = 2
 
@@ -233,7 +236,7 @@ def _number(value: Any) -> tuple[Optional[float], bool]:
 
 def table_base_amount(raw: Any) -> tuple[Optional[float], bool]:
     """Base da tabela informada: (quantidade em g/ml, válida). Ausente -> (None, True) = por 100;
-    precisa ser número finito > 0 e até `TABLE_BASE_AMOUNT_MAX`."""
+    precisa ser número finito de `TABLE_BASE_AMOUNT_MIN` até `TABLE_BASE_AMOUNT_MAX`."""
     if raw is None:
         return None, True
     if isinstance(raw, bool):
@@ -242,7 +245,7 @@ def table_base_amount(raw: Any) -> tuple[Optional[float], bool]:
         numero = float(raw)
     except (TypeError, ValueError):
         return None, False
-    if not math.isfinite(numero) or numero <= 0 or numero > TABLE_BASE_AMOUNT_MAX:
+    if not math.isfinite(numero) or numero < TABLE_BASE_AMOUNT_MIN or numero > TABLE_BASE_AMOUNT_MAX:
         return None, False
     return numero, True
 

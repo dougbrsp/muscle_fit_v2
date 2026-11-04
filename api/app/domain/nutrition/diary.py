@@ -46,7 +46,6 @@ from enum import Enum
 from typing import Any, Final, Mapping, Optional
 
 from .catalog import (
-    ERR_ABOVE_BASIS,
     ERR_INVALID_NAME,
     ERR_INVALID_VALUE,
     ERR_MISSING_FIELD,
@@ -57,11 +56,13 @@ from .meal_math import (
     CARB_FIELD,
     ENERGY_FIELD,
     FAT_FIELD,
+    FIBER_FIELD,
     LIMIT_MISSING_QUANTITY,
     LIMIT_MISSING_PORTION_G,
     LIMIT_UNKNOWN_BASIS,
     LIMIT_UNKNOWN_UNIT,
     PROTEIN_FIELD,
+    SODIUM_FIELD,
     AmountResolution,
     ItemNutrition,
     MealNature,
@@ -106,12 +107,16 @@ ERR_UNIT_WITHOUT_CONVERSION = "unit_without_conversion"
 ERR_ITEM_AMOUNT_OUT_OF_RANGE = "item_amount_out_of_range"
 ERR_ITEM_FOOD_OR_ESTIMATE = "item_food_or_estimate_required"
 ERR_QUICK_ENTRY_WEIGHT = "quick_entry_weight_invalid"
+ERR_QUICK_ABOVE_WEIGHT = "quick_entry_above_weight"  # `quick_entry_above_weight:<campo>`
 ERR_INVALID_CLOCK_TIME = "invalid_clock_time"
 
 # Lançamento rápido (D2). Campos com os códigos do catálogo (RDC 429) + o peso, em g.
 QUICK_ENTRY_WEIGHT_FIELD: Final[str] = "weight_g"
 QUICK_ENTRY_NUTRIENT_FIELDS: Final[tuple[str, ...]] = (ENERGY_FIELD, PROTEIN_FIELD, CARB_FIELD, FAT_FIELD)
 QUICK_ENTRY_REQUIRED_FIELDS: Final[tuple[str, ...]] = (QUICK_ENTRY_WEIGHT_FIELD, *QUICK_ENTRY_NUTRIENT_FIELDS)
+# Fibra e sódio não são pedidos no lançamento rápido: não tornam a refeição nem o dia incompletos (decisão do líder,
+# 2026-11-04). A linha `fiber_g` do balanço continua sem número e com `intake_complete: false`.
+QUICK_ENTRY_UNREQUESTED_FIELDS: Final[tuple[str, ...]] = (FIBER_FIELD, SODIUM_FIELD)
 QUICK_ENTRY_NAME_MAX_CHARS: Final[int] = 255
 QUICK_ENTRY_SOURCE: Final[str] = "quick_entry"  # `source` do alimento no snapshot do item (não é `catalog.FoodSource`)
 QUICK_ENTRY_NATURE: Final[MealNature] = MealNature.USER_ENTERED
@@ -257,7 +262,7 @@ def _quick_number(raw: Any) -> tuple[Optional[float], bool]:
 def validate_quick_entry(raw: Any) -> QuickEntryValidation:
     """Regras do lançamento rápido: nome; peso em g > 0 e até `ITEM_AMOUNT_MAX`; kcal, proteína,
     carboidrato e gordura >= 0 e todos obrigatórios; cada macro até o peso e as kcal até o que o
-    peso comportaria em gordura (a mesma régua `above_basis` do catálogo)."""
+    peso comportaria em gordura (código próprio `quick_entry_above_weight`)."""
     dados: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
     nome = " ".join(str(dados.get("name") or "").split())
     erros: list[str] = []
@@ -281,9 +286,9 @@ def validate_quick_entry(raw: Any) -> QuickEntryValidation:
         else:
             for campo in (PROTEIN_FIELD, CARB_FIELD, FAT_FIELD):
                 if campo in valores and valores[campo] > peso:
-                    erros.append(f"{ERR_ABOVE_BASIS}:{campo}")
+                    erros.append(f"{ERR_QUICK_ABOVE_WEIGHT}:{campo}")
             if ENERGY_FIELD in valores and valores[ENERGY_FIELD] > peso * KCAL_PER_G_FAT:
-                erros.append(f"{ERR_ABOVE_BASIS}:{ENERGY_FIELD}")
+                erros.append(f"{ERR_QUICK_ABOVE_WEIGHT}:{ENERGY_FIELD}")
     if erros:
         return QuickEntryValidation(None, tuple(dict.fromkeys(erros)))
     return QuickEntryValidation(
@@ -298,13 +303,13 @@ def validate_quick_entry(raw: Any) -> QuickEntryValidation:
 
 def quick_entry_item_nutrition(entry: QuickEntry) -> ItemNutrition:
     """Nutrientes do item lançado: os valores digitados, sem conversão. Fibra e sódio ficam
-    desconhecidos (entram em `unknown`; o total os marca incompletos, como no catálogo)."""
+    `None` e não pedidos (`QUICK_ENTRY_UNREQUESTED_FIELDS`): não marcam o total como incompleto."""
     return ItemNutrition(
         amount=entry.weight_g,
         basis=QUICK_ENTRY_UNIT,
         nutrients=entry.nutrients,
         nature=QUICK_ENTRY_NATURE,
-        unknown=entry.nutrients.unknown_fields(),
+        not_requested=QUICK_ENTRY_UNREQUESTED_FIELDS,
     )
 
 
