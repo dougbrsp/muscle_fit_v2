@@ -242,7 +242,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByText('Séries', { exact: true })).toBeVisible();
       await page.getByLabel('Repetições').fill('12');
       await page.goBack();
-      await expect(page.getByText('Treino', { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
       expect(new URL(page.url()).pathname).toBe('/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
       await expect(page.getByLabel('Repetições')).toHaveValue('12');
