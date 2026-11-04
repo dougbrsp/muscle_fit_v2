@@ -1,7 +1,7 @@
 'use client';
 
 import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { IconAlertTriangle, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBolt, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { CheckinCard } from '@/components/nutrition/CheckinCard';
@@ -9,6 +9,7 @@ import { DayHeader } from '@/components/nutrition/DayHeader';
 import { MealEditor } from '@/components/nutrition/MealEditor';
 import { MealList } from '@/components/nutrition/MealList';
 import { MealParseModal } from '@/components/nutrition/MealParseModal';
+import { QuickEntryDialog } from '@/components/nutrition/QuickEntryDialog';
 import { TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
@@ -42,6 +43,7 @@ export function NutricaoClient() {
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [lendo, setLendo] = useState(false);
+  const [lancando, setLancando] = useState(false);
   // Fica com o último modo depois de fechar: o título não pisca na animação de saída.
   const [modoLeitura, setModoLeitura] = useState<'text' | 'photo'>('text');
 
@@ -154,7 +156,7 @@ export function NutricaoClient() {
                     <Title order={3} c={BRAND.textPrimary}>
                       Refeições
                     </Title>
-                    {dia.totals && <TotalsBadges totals={dia.totals} />}
+                    {dia.totals && <TotalsBadges totals={dia.totals} items={dia.meals.flatMap((meal) => meal.items)} />}
                   </Group>
                   {editing === null && (
                     <Group gap="xs">
@@ -163,6 +165,9 @@ export function NutricaoClient() {
                       </Button>
                       <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => abrirLeitura('text')}>
                         Descrever com IA
+                      </Button>
+                      <Button variant="light" color="brand" leftSection={<IconBolt size={16} />} onClick={() => setLancando(true)}>
+                        Lançamento rápido
                       </Button>
                       <Button color="brand" leftSection={<IconPlus size={16} />} onClick={() => setEditing({ mode: 'new' })}>
                         Adicionar refeição
@@ -180,6 +185,16 @@ export function NutricaoClient() {
                     setLendo(false);
                     // Nunca por cima de um formulário aberto: a pessoa perderia o que digitou.
                     setEditing((atual) => atual ?? { mode: 'parsed', form });
+                  }}
+                />
+                <QuickEntryDialog
+                  opened={lancando}
+                  onClose={() => setLancando(false)}
+                  date={date}
+                  today={weekQuery.data?.today ?? dia.today ?? null}
+                  onSaved={async () => {
+                    setLancando(false);
+                    await atualizar();
                   }}
                 />
                 {editing && (

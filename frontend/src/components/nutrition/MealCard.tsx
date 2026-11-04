@@ -1,7 +1,8 @@
 'use client';
 
-import { ActionIcon, Badge, Card, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
-import { IconAlertTriangle, IconPencil, IconTrash } from '@tabler/icons-react';
+import { ActionIcon, Badge, Card, Collapse, Group, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { IconAlertTriangle, IconChevronDown, IconPencil, IconTrash } from '@tabler/icons-react';
+import { useState } from 'react';
 import { FieldSourcesIcon } from './FieldSourcesNote';
 import {
   AI_ESTIMATE_SOURCE,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/nutrition-constants';
 import { formatNumberOrDash } from '@/lib/format';
 import { formatTotal, formatWithUnit } from '@/lib/nutrition-format';
+import { isQuickEntryItem, mealHeadline, mealMacrosLine, natureTone } from '@/lib/nutrition-meal-list';
 import type { Meal, MealItem, NutritionTotals } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
@@ -21,12 +23,15 @@ import { BRAND } from '@/theme';
 // Colunas da tabela de itens: energia e os três macros do dono (`item_nutrient_fields`); fibra e sódio ficam no total.
 const COLUNAS = ITEM_NUTRIENT_FIELDS;
 
-/** Selos da natureza dos totais (calculado do catálogo, estimado, misto) e de total incompleto. */
-export function TotalsBadges({ totals }: { totals: NutritionTotals }) {
+/**
+ * Selos da natureza dos totais e de total incompleto. Amarelo só com valor estimado
+ * (`natureTone`, pelos `items`); informado pela pessoa e mistura sem estimativa ficam neutros.
+ */
+export function TotalsBadges({ totals, items = [] }: { totals: NutritionTotals; items?: ReadonlyArray<Pick<MealItem, 'nature'>> }) {
   return (
     <Group gap={4}>
       {totals.nature && (
-        <Badge size="xs" variant="light" color={totals.nature === 'DERIVED' ? 'brand' : 'yellow'}>
+        <Badge size="xs" variant="light" color={natureTone(totals.nature, items)}>
           {nutritionLabel(MEAL_NATURE_OPTIONS, totals.nature)}
         </Badge>
       )}
@@ -100,6 +105,11 @@ export function MealItemsTable({ items }: { items: MealItem[] }) {
                       {nutritionLabel(MEAL_NATURE_OPTIONS, item.nature)}
                     </Badge>
                   )}
+                  {isQuickEntryItem(item) && (
+                    <Badge size="xs" variant="light" color="gray">
+                      {nutritionLabel(MEAL_NATURE_OPTIONS, item.nature)}
+                    </Badge>
+                  )}
                   {item.limitations.length > 0 && (
                     <Tooltip label={item.limitations.map((l) => l.label).join(' ')} multiline w={340} withArrow>
                       <IconAlertTriangle size={14} color="var(--mantine-color-yellow-5)" aria-label="Avisos do item" />
@@ -133,23 +143,39 @@ type Props = {
   deleting: boolean;
 };
 
-/** Uma refeição do diário: slot, hora, itens e totais (natureza e incompleto). */
+/**
+ * Uma refeição do diário em duas linhas (`Hora - Nome` e `Macros: ...`, valores do motor).
+ * Tocar na linha abre o detalhe (selos, itens, totais, anotação); editar e excluir ficam ao lado.
+ */
 export function MealCard({ meal, onEdit, onDelete, deleting }: Props) {
+  const [aberta, setAberta] = useState(false);
+  const idDetalhe = `refeicao-${meal.id}-detalhe`;
   return (
-    <Card withBorder radius="md" bg={BRAND.bgElevated}>
+    <Card withBorder radius="md" bg={BRAND.bgElevated} p="sm">
       <Stack gap="xs">
-        <Group justify="space-between" wrap="nowrap">
-          <Group gap="xs">
-            <Text fw={700} c={BRAND.textPrimary}>
-              {nutritionLabel(MEAL_SLOT_OPTIONS, meal.meal_slot)}
-            </Text>
-            {meal.eaten_at && (
-              <Text size="sm" c={BRAND.textMuted}>
-                {meal.eaten_at}
-              </Text>
-            )}
-            <TotalsBadges totals={meal.totals} />
-          </Group>
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
+          <UnstyledButton
+            onClick={() => setAberta((atual) => !atual)}
+            aria-expanded={aberta}
+            aria-controls={idDetalhe}
+            style={{ flex: 1, minWidth: 0 }}
+          >
+            <Group gap="xs" wrap="nowrap" align="flex-start">
+              <IconChevronDown
+                size={16}
+                aria-hidden
+                style={{ marginTop: 5, flex: '0 0 auto', transform: aberta ? 'none' : 'rotate(-90deg)', transition: 'transform 120ms' }}
+              />
+              <Stack gap={2} style={{ minWidth: 0 }}>
+                <Text fw={700} size="md" c={BRAND.textPrimary}>
+                  {mealHeadline(meal)}
+                </Text>
+                <Text size="xs" c={BRAND.textMuted}>
+                  {mealMacrosLine(meal.totals)}
+                </Text>
+              </Stack>
+            </Group>
+          </UnstyledButton>
           <Group gap={4} wrap="nowrap">
             <Tooltip label="Editar refeição">
               <ActionIcon variant="subtle" color="brand" aria-label="Editar refeição" onClick={onEdit}>
@@ -163,13 +189,18 @@ export function MealCard({ meal, onEdit, onDelete, deleting }: Props) {
             </Tooltip>
           </Group>
         </Group>
-        <MealItemsTable items={meal.items} />
-        <TotalsLine totals={meal.totals} />
-        {meal.notes && (
-          <Text size="xs" c="dimmed">
-            {meal.notes}
-          </Text>
-        )}
+        <Collapse in={aberta} id={idDetalhe}>
+          <Stack gap="xs">
+            <TotalsBadges totals={meal.totals} items={meal.items} />
+            <MealItemsTable items={meal.items} />
+            <TotalsLine totals={meal.totals} />
+            {meal.notes && (
+              <Text size="xs" c="dimmed">
+                {meal.notes}
+              </Text>
+            )}
+          </Stack>
+        </Collapse>
       </Stack>
     </Card>
   );
