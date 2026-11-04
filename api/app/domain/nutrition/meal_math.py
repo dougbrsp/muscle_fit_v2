@@ -575,14 +575,17 @@ def _sum_parts(
     parts: Sequence[tuple[Nutrients, tuple[str, ...], tuple[str, ...]]],
 ) -> tuple[Nutrients, tuple[str, ...]]:
     """Cada parte: (nutrientes, campos incompletos, campos não pedidos). Um `None` num campo não pedido da parte
-    não torna o total incompleto; fora disso, `None` ou campo incompleto da parte sim."""
+    só deixa o total de fora da pendência quando TODAS as partes têm `None` nele (nada foi somado: o total fica
+    `None`, sem número falso). Se alguma parte tem valor conhecido e outra tem `None`, o total é um mínimo e o campo
+    fica incompleto, pedido ou não. Fora isso, `None` ou campo incompleto da parte sempre marca."""
     somas: dict[str, Optional[float]] = {}
     incompletos: list[str] = []
     for campo in NUTRIENT_FIELDS:
         conhecidos = [valor for nutrientes, _, _ in parts if (valor := nutrientes.get(campo)) is not None]
         somas[campo] = float(sum(conhecidos)) if conhecidos else None
         if not parts or any(
-            campo in faltam or (nutrientes.get(campo) is None and campo not in nao_pedidos)
+            campo in faltam
+            or (nutrientes.get(campo) is None and (campo not in nao_pedidos or bool(conhecidos)))
             for nutrientes, faltam, nao_pedidos in parts
         ):
             incompletos.append(campo)
@@ -607,7 +610,8 @@ def combine_totals(parts: Sequence[NutritionTotals]) -> Optional[NutritionTotals
     if not parts:
         return None
     # Total gravado: `None` sem o campo em `incomplete_fields` é campo não pedido (o total de uma refeição marca todo
-    # `None` que não é não pedido), então não torna o dia incompleto.
+    # `None` que não é não pedido). Só não torna o dia incompleto se NENHUMA refeição tem valor conhecido nele; com
+    # mistura de conhecido e `None`, o campo é marcado (`_sum_parts`).
     nutrientes, incompletos = _sum_parts(
         [
             (parte.nutrients, parte.incomplete_fields, tuple(c for c in NUTRIENT_FIELDS if c not in parte.incomplete_fields))

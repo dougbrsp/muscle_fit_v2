@@ -510,6 +510,41 @@ def test_motor_da_hora_nao_le_o_relogio():
 # ---------------------------------------------------------------------------
 
 
+def _item_catalogo_com_fibra():
+    por_100 = mm.nutrients_from_values({"energy_kcal": 100, "protein_g": 10, "carbohydrates_g": 10,
+                                        "total_fat_g": 1, "fiber_g": 3, "sodium_mg": 50})
+    return mm.item_nutrition(por_100, mm.resolve_amount(100, "g", "g"))
+
+
+def _item_rapido_motor():
+    return diary.quick_entry_item_nutrition(diary.validate_quick_entry(RAPIDO).entry)
+
+
+def _reler(total):
+    """Gravar e reler: so os valores e `incomplete_fields` persistem."""
+    return mm.totals_from_stored(total.nutrients.to_dict(), list(total.incomplete_fields), total.nature.value,
+                                 total.item_count)
+
+
+def test_refeicao_com_rapido_e_catalogo_com_fibra_marca_fibra_e_sodio_incompletos():
+    total = mm.sum_items([_item_catalogo_com_fibra(), _item_rapido_motor()])
+    assert total.nutrients.fiber_g == 3 and set(total.incomplete_fields) == {"fiber_g", "sodium_mg"}
+    assert not total.is_complete("fiber_g")
+    assert mm.sum_items([_item_rapido_motor(), _item_rapido_motor()]).incomplete_fields == ()
+
+
+def test_dia_mistura_refeicoes_e_sobrevive_a_gravar_e_reler_os_totais():
+    cheia = mm.sum_items([_item_catalogo_com_fibra()])
+    rapida = mm.sum_items([_item_rapido_motor()])
+    assert cheia.incomplete_fields == () and rapida.incomplete_fields == ()
+    dia = mm.combine_totals([_reler(cheia), _reler(rapida)])
+    assert dia.nutrients.fiber_g == 3 and {"fiber_g", "sodium_mg"} <= set(dia.incomplete_fields)
+    so_rapido = mm.combine_totals([_reler(rapida), _reler(rapida)])
+    assert so_rapido.incomplete_fields == () and so_rapido.nutrients.fiber_g is None
+    mista = mm.sum_items([_item_catalogo_com_fibra(), _item_rapido_motor()])
+    assert {"fiber_g", "sodium_mg"} <= set(mm.combine_totals([_reler(mista)]).incomplete_fields)
+
+
 def test_base_minima_e_valida_e_exportada():
     assert catalog.TABLE_BASE_AMOUNT_MIN == 0.01
     zeros = {"energy_kcal": 0, "carbohydrates_g": 0, "protein_g": 0, "total_fat_g": 0}

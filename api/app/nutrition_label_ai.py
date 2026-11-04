@@ -266,6 +266,9 @@ def job_result(review: label_photo.LabelReview, reading: LabelReading) -> dict[s
         "barcode": revisada["barcode"],
         "food": alimento,
         "per_serving": revisada["per_serving"],
+        # D1: base da tabela do pré-preenchimento e os valores nela (decisão do motor; a tela só pré-preenche).
+        "table_base_amount": revisada["table_base_amount"],
+        "per_table_base": revisada["per_table_base"],
         "errors": nutrition_labels.limitation_items(revisada["errors"]),
         "warnings": nutrition_labels.limitation_items(revisada["warnings"]),
         "ai_notes": list(label_photo.clean_ai_notes(reading.data.get("warnings"))),
