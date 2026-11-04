@@ -1,6 +1,7 @@
 """Plano da migração 104 (`food_items.table_base_amount`, nutrição D1).
 
-- Coluna ausente -> 1 `ALTER TABLE ... ADD COLUMN` (INSTANT, nullable, sem default).
+- Coluna ausente -> 1 `ALTER TABLE ... ADD COLUMN ... AFTER basis` (nullable, sem default), SEM `ALGORITHM=INSTANT`:
+  `food_items` tem FULLTEXT (080) e o INSTANT falha com o erro 1846 (como a 084, que usa `AFTER`).
 - Convergido -> 0 statements; forma divergente -> erro antes do primeiro statement.
 - Reversível (`down` solta a coluna), sem FK, sem `exercise_catalog`, só LEITURA no plano.
 
@@ -48,11 +49,11 @@ class FakeDB:
         self.executados.append(sql)
 
 
-def test_coluna_ausente_cria_com_um_statement_aditivo_e_instantaneo():
+def test_coluna_ausente_cria_com_um_statement_aditivo():
     db = FakeDB(coluna=None)
     plano = _module()["plan"](db)
     assert [(_sql(s), p) for s, p in plano] == [
-        ("ALTER TABLE food_items ADD COLUMN table_base_amount DECIMAL(7,2) NULL, ALGORITHM=INSTANT", None)
+        ("ALTER TABLE food_items ADD COLUMN table_base_amount DECIMAL(7,2) NULL AFTER basis", None)
     ]
     assert db.executados == []  # o plano so le
 
@@ -94,4 +95,9 @@ def test_ddl_sem_fk_e_sem_exercise_catalog_e_um_statement_por_chamada():
     for sql in (_module()["ADD_SQL"], _module()["DROP_SQL"]):
         assert "exercise_catalog" not in sql and "REFERENCES" not in sql and ";" not in sql
         assert ":" not in sql  # a Data API leria como parametro nomeado
+    # `food_items` tem FULLTEXT (080): INSTANT falha (1846 no CI). Nenhum ALGORITHM no ALTER, igual a 084.
+    assert "ALGORITHM" not in _module()["ADD_SQL"] and "INSTANT" not in _module()["ADD_SQL"]
+    assert "ft_fi_name" in (m.DEFAULT_MIGRATIONS_DIR / "080_food_catalog.py").read_text(encoding="utf-8")
+    assert "ADD COLUMN {COLUMN} JSON NULL AFTER citation" in (
+        m.DEFAULT_MIGRATIONS_DIR / "084_food_items_taco_usda_reavaliacao.py").read_text(encoding="utf-8")
     assert _module()["EXPECTED_TYPE"] == "decimal(7,2)" and _module()["EXPECTED_NULLABLE"] == "YES"

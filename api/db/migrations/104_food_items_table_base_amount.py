@@ -20,7 +20,11 @@ congelado (E4) e não mudam.
    (`catalog.TABLE_BASE_AMOUNT_MAX`).
 3. **Sem FK e sem índice**: é atributo de exibição do próprio alimento. Nenhuma FK para `exercise_catalog` (a 028
    recusa).
-4. **Idempotente**: `ADD COLUMN ... ALGORITHM=INSTANT` só se a coluna não existe; reexecução em banco convergido = 0
+4. **ALTER como a 084, sem `ALGORITHM=INSTANT`**: `food_items` tem o FULLTEXT `ft_fi_name` (080) e, com índice FULLTEXT, o
+   InnoDB não faz ADD COLUMN INSTANT (erro 1846 no CI: "ALGORITHM=INSTANT is not supported ... one FULLTEXT index
+   creation at a time"). Segue o precedente da 084 na mesma tabela: `ADD COLUMN ... AFTER <coluna>` sem cláusula de
+   algoritmo, o servidor escolhe INPLACE e reconstrói a tabela (~600 linhas), com lock curto de metadados.
+5. **Idempotente**: o `ADD COLUMN` só roda se a coluna não existe; reexecução em banco convergido = 0
    statements. Reversível: `down` solta a coluna (perde só a base digitada; os valores por 100 ficam).
 
 --- Fluxo -----------------------------------------------------------------
@@ -45,7 +49,7 @@ COLUMN_DDL = "DECIMAL(7,2) NULL"
 EXPECTED_TYPE = "decimal(7,2)"
 EXPECTED_NULLABLE = "YES"
 
-ADD_SQL = f"ALTER TABLE {TABLE} ADD COLUMN {COLUMN} {COLUMN_DDL}, ALGORITHM=INSTANT"
+ADD_SQL = f"ALTER TABLE {TABLE} ADD COLUMN {COLUMN} {COLUMN_DDL} AFTER basis"
 DROP_SQL = f"ALTER TABLE {TABLE} DROP COLUMN {COLUMN}"
 
 # `int(11)` -> `int`; `tinyint(1)` (booleano) fica como esta.
