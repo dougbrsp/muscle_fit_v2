@@ -188,9 +188,10 @@ const FIXTURES: Record<string, unknown> = {
       summary: 'Duas sessões leves de cardio na semana.',
       objective: 'Base aeróbica',
       can_apply: true,
+      notes: [],
       sessions: [
-        { date: '2026-10-15', date_label: 'qui 15/10', total_minutes_label: '30 min', prescription_text: 'Zona 2 por 30 min', rationale: null, applicable: true, plan_action: 'add', slot_name: 'A' },
-        { date: '2026-10-17', date_label: 'sáb 17/10', total_minutes_label: '40 min', prescription_text: 'Zona 2 por 40 min', rationale: null, applicable: true, plan_action: 'add', slot_name: 'B' },
+        { date: '2026-10-15', date_label: 'qui 15/10', total_minutes_label: '30 min', prescription_text: 'Zona 2 por 30 min', prescription_short: 'Z2 30 min', rationale: null, signals: [], adjustment_labels: [], applicable: true, plan_action: 'add', slot_name: 'A' },
+        { date: '2026-10-17', date_label: 'sáb 17/10', total_minutes_label: '40 min', prescription_text: 'Zona 2 por 40 min', prescription_short: 'Z2 40 min', rationale: null, signals: [], adjustment_labels: [], applicable: true, plan_action: 'add', slot_name: 'B' },
       ],
     },
   },
