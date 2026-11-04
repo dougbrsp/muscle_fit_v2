@@ -3,7 +3,8 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 import type { WeekRow } from '@/components/nutrition/WeekTargetsTable';
 import type { Checkin, CheckinDayMacros } from '@/lib/nutrition-checkin';
-import type { FoodPortion, NutritionWeek, WeekReport, FoodSearchItem, MealItem, UsdaSearchItem } from '@/lib/nutrition-types';
+import type { TrainingPreferenceGroup, TrainingPreferenceItem } from '@/lib/equipment-recommend';
+import type { FoodPortion, NutritionDay, NutritionWeek, WeekReport, FoodSearchItem, MealItem, UsdaSearchItem } from '@/lib/nutrition-types';
 
 /**
  * Pontos de apresentação alternativa (celular). Componentes compartilhados que
@@ -59,6 +60,19 @@ export type PresentationSlots = {
   recordList: ComponentType<{ label: string; rows: RecordListRow[]; emptyText: string }>;
   /** Cabeçalho das páginas de Nutrição (título, descrição e troca de seção). */
   nutritionHeader: ComponentType<{ active: string; title: string; description: ReactNode }>;
+  /** Seção visual de formulário (celular): título, campos e rodapé explicativo numa superfície. */
+  formSection: ComponentType<{ title?: string; footer?: ReactNode; children: ReactNode }>;
+  /** Ação de salvar fixa acima da tab bar (celular), com espaço reservado no fim da página. */
+  saveAction: ComponentType<{ label: string; onClick: () => void; loading?: boolean }>;
+  /** Notas por par exercício+equipamento (celular), no lugar dos cartões. */
+  pairPreferences: ComponentType<{
+    groups: TrainingPreferenceGroup[];
+    starsOf: (pair: TrainingPreferenceItem) => number | null;
+    onChange: (pair: TrainingPreferenceItem, stars: number | null) => void;
+    onOpenPhoto: (photo: { src: string; alt: string }) => void;
+  }>;
+  /** Meta do dia × ingestão (celular): linhas só com o que tem valor, no lugar dos cartões. */
+  targetVsIntake: ComponentType<{ day: NutritionDay }>;
   weekTargets: ComponentType<{ rows: WeekRow[]; today: string }>;
   mealItems: ComponentType<{ items: MealItem[] }>;
   foodResults: ComponentType<{
@@ -93,5 +107,6 @@ export function usePresentationActive(): boolean {
 
 /** Slot de apresentação alternativa, ou `undefined` (desktop: desenha o padrão). */
 export function usePresentationSlot<K extends keyof PresentationSlots>(name: K): PresentationSlots[K] | undefined {
-  return useContext(PresentationContext)[name] as PresentationSlots[K] | undefined;
+  const slots: { [key: string]: unknown } = useContext(PresentationContext);
+  return slots[name] as PresentationSlots[K] | undefined;
 }

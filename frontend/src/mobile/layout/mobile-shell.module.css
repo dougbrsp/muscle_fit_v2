@@ -129,6 +129,13 @@
   padding-bottom: calc(var(--m-nav-offset) + var(--m-pad));
 }
 
+/* Tela com ação fixa (`StickyAction`): o fim do conteúdo sobe a altura da barra (botão de
+   48 pt + respiro), onde quer que a ação esteja na árvore. Sem `:has` (iOS < 15.4) a
+   folga é só a de sempre. */
+.main:has([data-sticky-action]) {
+  padding-bottom: calc(var(--m-nav-offset) + var(--m-pad) + var(--m-touch) + 28px);
+}
+
 /* A2: refinos de apresentacao das paginas dentro do shell mobile. Escopo
    `.main`: nada disso afeta o desktop (o shell so monta em < 768 px). */
 .main h1 {

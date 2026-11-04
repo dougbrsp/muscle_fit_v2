@@ -1,0 +1,60 @@
+/* Formulário de exercício no celular: só layout; cores vêm das variáveis do shell. */
+.placeholder {
+  color: var(--m-text-2);
+}
+
+.check {
+  color: var(--m-accent);
+}
+
+.withPhoto {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search {
+  padding: 4px 16px 12px;
+}
+
+.empty {
+  margin: 0;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--m-text-2);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 52px;
+}
+
+.fieldLabel {
+  flex: 1 1 auto;
+  min-width: 5.6em;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--m-text);
+  overflow-wrap: break-word;
+}
+
+.fieldControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.fieldInput {
+  width: 62px;
+}
+
+.field + .field {
+  border-top: 1px solid var(--m-sep);
+  padding-top: 4px;
+  margin-top: 4px;
+}

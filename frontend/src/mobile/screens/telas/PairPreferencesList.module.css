@@ -1,0 +1,94 @@
+/* Preferências de treino no celular: só layout; cores vêm das variáveis do shell. */
+.block + .block {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--m-sep);
+}
+
+.exercise {
+  margin: 0 0 6px;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.pair + .pair {
+  margin-top: 8px;
+}
+
+.pairHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.equipment {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 19px;
+  color: var(--m-text-2);
+  overflow-wrap: anywhere;
+}
+
+.thumb {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+}
+
+.thumb img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.stars {
+  display: flex;
+  align-items: center;
+  margin-left: -10px;
+}
+
+.star,
+.clear {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--m-text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.clear {
+  margin-left: auto;
+}
+
+.clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.starOn {
+  color: var(--m-accent);
+}
+
+.starOff {
+  color: var(--m-text-2);
+}
+
+.star:focus-visible,
+.clear:focus-visible {
+  outline: 2px solid var(--m-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}

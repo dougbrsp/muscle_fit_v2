@@ -169,10 +169,14 @@ export function PerfilClient() {
     },
   });
 
-  function handleSaveProfile(event: FormEvent) {
-    event.preventDefault();
+  function saveProfile() {
     setProfileSaved(false);
     saveProfileMutation.mutate();
+  }
+
+  function handleSaveProfile(event: FormEvent) {
+    event.preventDefault();
+    saveProfile();
   }
 
   // --- Foto de perfil ---------------------------------------------------
@@ -263,9 +267,120 @@ export function PerfilClient() {
   }
 
   const Header = usePresentationSlot('pageHeader');
+  const Section = usePresentationSlot('formSection');
+  const SaveAction = usePresentationSlot('saveAction');
+
+  // Campos do formulário: os MESMOS elementos no desktop (Card único) e no celular
+  // (uma seção por assunto, via slot `formSection`). Fragmentos não criam DOM.
+  const personalFields = (
+    <>
+      <TextInput label="Nome completo" value={fullName} onChange={(event) => setFullName(event.currentTarget.value)} />
+      <TextInput label="Email" type="email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} />
+      <TextInput
+        label="Data de nascimento"
+        type="date"
+        value={birthDate}
+        onChange={(event) => setBirthDate(event.currentTarget.value)}
+      />
+    </>
+  );
+  const preferenceFields = (
+    <>
+      <Select
+        label="Unidade da carga"
+        description="Como você anota o peso no Modo Treino. O histórico é sempre guardado em quilos e convertido na tela."
+        data={weightUnitOptions}
+        value={weightUnit}
+        onChange={(value) => setWeightUnit(normalizeWeightUnit(value))}
+        allowDeselect={false}
+      />
+      <Select
+        label="Fuso horário"
+        description="Define em que dia os treinos e as janelas do dashboard (7 dias, ciclo) são contados."
+        data={TIMEZONE_OPTIONS}
+        value={timezone}
+        onChange={(value) => setTimezone(normalizeTimezone(value))}
+        allowDeselect={false}
+        searchable
+      />
+    </>
+  );
+  const nutritionHelp =
+    'Sexo, altura, nível de atividade e data de nascimento são necessários para calcular o plano nutricional.';
+  const nutritionFields = (
+    <>
+      <Select label="Sexo" data={SEX_OPTIONS} value={sex} onChange={setSex} clearable />
+      <NumberInput
+        label="Altura (cm)"
+        min={HEIGHT_MIN_CM}
+        max={HEIGHT_MAX_CM}
+        decimalScale={1}
+        value={heightCm}
+        onChange={(value) => setHeightCm(value === '' ? '' : Number(value))}
+      />
+      <Select
+        label="Nível de atividade"
+        description="Quanto você se movimenta no dia a dia."
+        data={ACTIVITY_LEVEL_OPTIONS}
+        value={activityLevel}
+        onChange={setActivityLevel}
+        clearable
+      />
+    </>
+  );
+  const cardioFields = (
+    <NumberInput
+      label="FCmáx (bpm)"
+      description="Usada para mostrar a faixa de bpm de cada zona (Z1–Z5) no cardio do Modelo. Deixe em branco se não souber."
+      min={MANUAL_MAX_HR_LIMITS.min}
+      max={MANUAL_MAX_HR_LIMITS.max}
+      allowDecimal={false}
+      allowNegative={false}
+      value={maxHr}
+      onChange={(value) => setMaxHr(value === '' ? '' : Number(value))}
+    />
+  );
+  const intervalsFields = (
+    <>
+      <TextInput
+        label="Athlete ID"
+        placeholder="ex.: i123456"
+        value={intervalsAthleteId}
+        onChange={(event) => setIntervalsAthleteId(event.currentTarget.value)}
+      />
+      <PasswordInput
+        label={item?.intervals_configured ? 'API Key (configurado ✓ — deixe em branco para manter)' : 'API Key'}
+        placeholder={item?.intervals_configured ? '••••••••' : 'Cole sua API Key do Intervals.icu'}
+        value={intervalsApiKey}
+        onChange={(event) => setIntervalsApiKey(event.currentTarget.value)}
+      />
+    </>
+  );
+  const saveFeedback = (
+    <>
+      {saveProfileMutation.isError && (
+        <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar">
+          {saveProfileMutation.error instanceof ApiError
+            ? saveProfileMutation.error.message
+            : 'Não foi possível salvar o perfil.'}
+        </Alert>
+      )}
+      {profileSaved && !saveProfileMutation.isPending && (
+        <Alert color="green" icon={<IconCheck />}>
+          Perfil atualizado.
+        </Alert>
+      )}
+    </>
+  );
+  const photoError = uploadPhotoMutation.isError && (
+    <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao enviar foto">
+      {uploadPhotoMutation.error instanceof ApiError ? uploadPhotoMutation.error.message : 'Não foi possível enviar a foto.'}
+    </Alert>
+  );
+  const photoInput = <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={handlePhotoSelected} />;
 
   return (
-    <Stack gap="xl" maw={640}>
+    <Stack gap={Section ? 'xs' : 'xl'} maw={640}>
       {Header ? (
         <Header title="Meu perfil" description="Dados pessoais, foto, integração com o Intervals.icu e dispositivos pareados." />
       ) : (
@@ -301,6 +416,61 @@ export function PerfilClient() {
 
       {item && (
         <>
+          {Section ? (
+            <>
+              <Section>
+                <Stack gap="sm" align="center">
+                  <Avatar size={88} radius="xl" src={photoUrl ?? undefined} color="brand">
+                    {!photoUrl && <IconUser size={36} />}
+                  </Avatar>
+                  <Stack gap={6} align="center">
+                    <Text fw={700} size="lg" c={BRAND.textPrimary}>
+                      {item.username}
+                    </Text>
+                    <Badge variant="light" color="brand" size="sm">
+                      {item.role === 'admin' ? 'Administrador' : 'Usuário'}
+                    </Badge>
+                  </Stack>
+                  <Button
+                    variant="light"
+                    color="brand"
+                    fullWidth
+                    mih={44}
+                    leftSection={<IconUpload size={16} />}
+                    onClick={() => photoInputRef.current?.click()}
+                    loading={uploadPhotoMutation.isPending}
+                  >
+                    Trocar foto
+                  </Button>
+                  {photoInput}
+                </Stack>
+                {photoError}
+              </Section>
+              <form onSubmit={handleSaveProfile}>
+                <Section title="Dados pessoais">
+                  <Stack gap="md">{personalFields}</Stack>
+                </Section>
+                <Section title="Preferências">
+                  <Stack gap="md">{preferenceFields}</Stack>
+                </Section>
+                <Section title="Plano nutricional" footer={nutritionHelp}>
+                  <Stack gap="md">{nutritionFields}</Stack>
+                </Section>
+                <Section title="Cardio">
+                  <Stack gap="md">{cardioFields}</Stack>
+                </Section>
+                <Section title="Intervals.icu">
+                  <Stack gap="md">{intervalsFields}</Stack>
+                </Section>
+                <Stack gap="md" mb="md">
+                  {saveFeedback}
+                </Stack>
+              </form>
+              {SaveAction ? (
+                <SaveAction label="Salvar perfil" onClick={saveProfile} loading={saveProfileMutation.isPending} />
+              ) : null}
+            </>
+          ) : (
           <Card withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
             <Stack gap="md">
               <Group>
@@ -324,129 +494,39 @@ export function PerfilClient() {
                   >
                     Trocar foto
                   </Button>
-                  <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={handlePhotoSelected} />
+                  {photoInput}
                 </Stack>
               </Group>
 
-              {uploadPhotoMutation.isError && (
-                <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao enviar foto">
-                  {uploadPhotoMutation.error instanceof ApiError
-                    ? uploadPhotoMutation.error.message
-                    : 'Não foi possível enviar a foto.'}
-                </Alert>
-              )}
+              {photoError}
 
               <form onSubmit={handleSaveProfile}>
                 <Stack gap="md">
-                  <TextInput
-                    label="Nome completo"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.currentTarget.value)}
-                  />
-                  <TextInput
-                    label="Email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.currentTarget.value)}
-                  />
-                  <TextInput
-                    label="Data de nascimento"
-                    type="date"
-                    value={birthDate}
-                    onChange={(event) => setBirthDate(event.currentTarget.value)}
-                  />
-                  <Select
-                    label="Unidade da carga"
-                    description="Como você anota o peso no Modo Treino. O histórico é sempre guardado em quilos e convertido na tela."
-                    data={weightUnitOptions}
-                    value={weightUnit}
-                    onChange={(value) => setWeightUnit(normalizeWeightUnit(value))}
-                    allowDeselect={false}
-                  />
-                  <Select
-                    label="Fuso horário"
-                    description="Define em que dia os treinos e as janelas do dashboard (7 dias, ciclo) são contados."
-                    data={TIMEZONE_OPTIONS}
-                    value={timezone}
-                    onChange={(value) => setTimezone(normalizeTimezone(value))}
-                    allowDeselect={false}
-                    searchable
-                  />
+                  {personalFields}
+                  {preferenceFields}
 
                   <Divider label="Plano nutricional" labelPosition="left" color={BRAND.border} />
                   <Text size="sm" c={BRAND.textMuted}>
-                    Sexo, altura, nível de atividade e data de nascimento são necessários para calcular o plano
-                    nutricional.
+                    {nutritionHelp}
                   </Text>
-                  <Select label="Sexo" data={SEX_OPTIONS} value={sex} onChange={setSex} clearable />
-                  <NumberInput
-                    label="Altura (cm)"
-                    min={HEIGHT_MIN_CM}
-                    max={HEIGHT_MAX_CM}
-                    decimalScale={1}
-                    value={heightCm}
-                    onChange={(value) => setHeightCm(value === '' ? '' : Number(value))}
-                  />
-                  <Select
-                    label="Nível de atividade"
-                    description="Quanto você se movimenta no dia a dia."
-                    data={ACTIVITY_LEVEL_OPTIONS}
-                    value={activityLevel}
-                    onChange={setActivityLevel}
-                    clearable
-                  />
+                  {nutritionFields}
 
                   <Divider label="Cardio" labelPosition="left" color={BRAND.border} />
-                  <NumberInput
-                    label="FCmáx (bpm)"
-                    description="Usada para mostrar a faixa de bpm de cada zona (Z1–Z5) no cardio do Modelo. Deixe em branco se não souber."
-                    min={MANUAL_MAX_HR_LIMITS.min}
-                    max={MANUAL_MAX_HR_LIMITS.max}
-                    allowDecimal={false}
-                    allowNegative={false}
-                    value={maxHr}
-                    onChange={(value) => setMaxHr(value === '' ? '' : Number(value))}
-                  />
+                  {cardioFields}
 
                   <Divider label="Intervals.icu" labelPosition="left" color={BRAND.border} />
+                  {intervalsFields}
 
-                  <TextInput
-                    label="Athlete ID"
-                    placeholder="ex.: i123456"
-                    value={intervalsAthleteId}
-                    onChange={(event) => setIntervalsAthleteId(event.currentTarget.value)}
-                  />
-                  <PasswordInput
-                    label={
-                      item.intervals_configured
-                        ? 'API Key (configurado ✓ — deixe em branco para manter)'
-                        : 'API Key'
-                    }
-                    placeholder={item.intervals_configured ? '••••••••' : 'Cole sua API Key do Intervals.icu'}
-                    value={intervalsApiKey}
-                    onChange={(event) => setIntervalsApiKey(event.currentTarget.value)}
-                  />
+                  {saveFeedback}
 
-                  {saveProfileMutation.isError && (
-                    <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar">
-                      {saveProfileMutation.error instanceof ApiError
-                        ? saveProfileMutation.error.message
-                        : 'Não foi possível salvar o perfil.'}
-                    </Alert>
-                  )}
-                  {profileSaved && !saveProfileMutation.isPending && (
-                    <Alert color="green" icon={<IconCheck />}>
-                      Perfil atualizado.
-                    </Alert>
-                  )}
-
-                  <Button type="submit" color="brand" loading={saveProfileMutation.isPending} fullWidth={!!Header} {...(Header ? { 'data-mf-sticky': 'true' } : {})}>
+                  <Button type="submit" color="brand" loading={saveProfileMutation.isPending}>
                     Salvar perfil
                   </Button>
                 </Stack>
               </form>
             </Stack>
           </Card>
+          )}
 
           <DevicesCard />
 

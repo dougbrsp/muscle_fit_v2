@@ -222,6 +222,9 @@ const FIXTURES: Record<string, unknown> = {
     ],
   },
   'GET /advanced-techniques': { items: [] },
+  'GET /me/equipment-exercise-preferences': { items: [] },
+  'PUT /me/equipment-exercise-preferences/2': { ok: true },
+  'PUT /users/me': { status: 'ok', item: {} },
   'GET /nutrition/checkin': {
     user: USER, today: '2026-10-14', settings: { weekday: 0, weekday_label: 'Segunda-feira', is_default: true }, weekday_options: [],
     due_date: '2026-10-19', week_start: '2026-10-12', week_end: '2026-10-18', checkin: null, none_items: [],

@@ -19,6 +19,7 @@ import { formatDateBR } from '@/lib/physical-indicators-types';
 import { PresentationProvider, type PresentationSlots } from '@/lib/presentation-slots';
 import { ListBlock, ListGroup, ListRow, ScreenHeader, StatGrid, StatTile, StickyAction } from '../../ui';
 import { NutricaoNav, type NutricaoSecao } from './NutricaoNav';
+import { MobileTargetVsIntake } from './MobileTargetVsIntake';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 
 const FOOD_COLUMNS = FOOD_PER_100_FIELDS.filter((campo) => FOOD_REQUIRED_FIELDS.includes(campo.code));
@@ -31,6 +32,7 @@ function per100Summary(per100: Record<string, number | null | undefined>): strin
 }
 
 const SLOTS: Partial<PresentationSlots> = {
+  targetVsIntake: MobileTargetVsIntake,
   weekReport: ({ report }) => {
     const tiles: { label: string; value: string }[] = [];
     if (report.budget.kcal != null) tiles.push({ label: 'Orçamento', value: formatKcal(report.budget.kcal) });

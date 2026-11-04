@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@mantine/core';
 import { useState, type ReactNode } from 'react';
 import {
   PresentationProvider,
@@ -7,8 +8,9 @@ import {
   type PresentationSlots,
   type RecordListRow,
 } from '@/lib/presentation-slots';
-import { BottomSheet, EmptyState, ListGroup, ListRow, ScreenHeader } from '../../ui';
+import { BottomSheet, EmptyState, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
 import { SheetButton } from './common';
+import { PairPreferencesList } from './PairPreferencesList';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 
 /**
@@ -143,6 +145,19 @@ function PeriodComparison({
 
 const SLOTS: Partial<PresentationSlots> = {
   recordList: RecordList,
+  formSection: ({ title, footer, children }) => (
+    <ListGroup title={title} footer={footer}>
+      <ListBlock>{children}</ListBlock>
+    </ListGroup>
+  ),
+  saveAction: ({ label, onClick, loading }) => (
+    <StickyAction>
+      <Button fullWidth size="lg" color="brand" mih={48} loading={loading} onClick={onClick}>
+        {label}
+      </Button>
+    </StickyAction>
+  ),
+  pairPreferences: PairPreferencesList,
   periodComparison: PeriodComparison,
   pageHeader: ({ title, description }) => <ScreenHeader title={title} subtitle={typeof description === 'string' ? description : undefined} />,
 };

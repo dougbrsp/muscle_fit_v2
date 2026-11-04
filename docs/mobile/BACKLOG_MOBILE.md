@@ -20,7 +20,7 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 
 - **Início**: tela mobile própria (`src/mobile/screens/MobileHome.tsx`), escolhida pelo shell via `screens/registry.ts` só com flag ON + largura de celular. Mesmos hooks/queries da visão geral (`useDashboardFilters`, `fetchOverview`, mesma chave de cache); todo texto e número vem do backend. O painel completo continua disponível, recolhido ("Ver visão geral completa").
 - **Histórico** (`registro-exercicios`, `dashboard/treinos`) e **Biblioteca** (`exercicios`): mantidos como estão no shell. Já são colunas empilhadas e não rolam a página; o único ponto fraco é a tabela larga e o filtro em 4 colunas do registro (MB-1/MB-2), que exigem mexer em página compartilhada e ficam para PR próprio com prova de desktop idêntico.
-- **Perfil**: formulário em coluna única, bom com os alvos de 44 px e fonte de 16 px do shell.
+- **Perfil**: (v1) coluna única; reformulado no mobile v2, acabamento dos formulários (seções por assunto e "Salvar perfil" fixo).
 - **Safe-area**: `viewportFit: 'cover'` no layout raiz e `env(safe-area-inset-*)` no header/navbar do AppShell desktop (celular com flag OFF, PWA, paisagem com notch) e no shell mobile. No desktop `env()` vale 0 e o e2e Chromium 1280/1440 segue idêntico. Falta validar o efeito real em iPhone.
 
 ## Registros da revisão
@@ -72,7 +72,9 @@ Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; ed
 
 Resolvido nas rodadas 1 e 2 da frente C (retirado do backlog): busca de Alimentos, Preferidos, Plano (Novo rascunho fixo), Diario (faixa da semana, dia da semana, data uma vez), Indicadores (marcador de 1 ponto, Novo lancamento em largura total, secoes que nao perdem o formulario), voltar fechando a visao de pagina inteira, e2e com payloads, goBack e fluxos com dados.
 
-Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); Perfil e Preferencias sem `StickyAction` (aceito: botao de largura total no fim do formulario); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
+Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
+
+Resolvido no acabamento dos formularios (retirado do backlog): Perfil em secoes (identidade, dados, preferencias, plano nutricional, cardio, Intervals.icu) com "Trocar foto" separado do selo e "Salvar perfil" fixo; Lancar exercicio com seletores em folha e series com stepper de 44 pt (primeira serie visivel sem rolar em 390x844); Preferencias de treino sem icone-placeholder, estrelas e limpar de 44 pt e ajuda em rodape; "Meta x ingestao" do Diario so com o que tem valor e estado vazio unico; folga inferior de toda tela com `StickyAction` coberta por teste (`forms-telas.spec.ts`). Slots novos em `lib/presentation-slots.tsx`: `formSection`, `saveAction`, `pairPreferences`, `targetVsIntake` (sem provider = desktop igual).
 
 ## Mobile v2 (2026-11-03): frente B, Evolução e dashboards
 

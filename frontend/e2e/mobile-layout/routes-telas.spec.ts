@@ -374,12 +374,12 @@ for (const vp of VIEWPORTS) {
       test.setTimeout(120_000);
       await open(page, '/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
-      await page.getByRole('textbox', { name: 'Grupo muscular' }).click();
-      await page.getByRole('option', { name: 'Peitoral' }).click();
-      await page.getByRole('textbox', { name: 'Equipamento' }).click();
-      await page.getByRole('option', { name: 'Banco reto' }).click();
-      await page.getByRole('textbox', { name: 'Exercício canônico' }).click();
-      await page.getByRole('option', { name: 'Supino reto com barra' }).click();
+      await page.getByRole('button', { name: /Grupo muscular/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Peitoral' }).click();
+      await page.getByRole('button', { name: /Equipamento/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Banco reto' }).click();
+      await page.getByRole('button', { name: /Exercício canônico/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Supino reto com barra' }).click();
       const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises'));
       const setPost = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises/21/sets'));
       await page.getByRole('button', { name: 'Lançar exercício' }).click();

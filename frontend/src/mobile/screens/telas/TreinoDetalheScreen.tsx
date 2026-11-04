@@ -59,7 +59,8 @@ import {
   StickyAction,
 } from '../../ui';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
-import { QueryGate, SheetButton, blurActive, useBackToClose } from './common';
+import { QueryGate, SheetButton, useBackToClose } from './common';
+import { OptionPickerRow, StepperField } from './ExerciseFormParts';
 import { MuscleActivationList } from './MuscleActivationList';
 
 /**
@@ -416,90 +417,58 @@ export function TreinoDetalheScreen() {
           subtitle={editingExerciseId ? `Editando ID ${editingExerciseId}` : activity.name}
         />
         <Stack gap="md" pb="md">
-          <Select
-            searchable
-            size="md"
-            label="Grupo muscular"
-            placeholder="Selecione o grupo"
-            data={groupOptions}
-            value={form.muscle_group}
-            onChange={(value) => {
-              setForm((c) => ({ ...c, muscle_group: value || null, equipment_id: '', exercise_name: '' }));
-              blurActive();
-            }}
-            nothingFoundMessage="Nenhum grupo muscular encontrado"
-          />
-          <Select
-            searchable
-            size="md"
-            label="Equipamento"
-            placeholder={
-              !activity.gym_id
-                ? 'Sem academia definida'
-                : !form.muscle_group
-                  ? 'Escolha o grupo primeiro'
-                  : 'Selecione o equipamento'
-            }
-            data={equipmentOptions}
-            value={form.equipment_id || null}
-            onChange={(value) => {
-              setForm((c) => ({ ...c, equipment_id: value || '', exercise_name: '' }));
-              blurActive();
-            }}
-            clearable
-            disabled={!activity.gym_id || !form.muscle_group}
-            nothingFoundMessage="Nenhum equipamento cadastrado para esse grupo muscular nessa academia"
-            leftSection={
-              selectedEquipmentOption ? (
-                <EquipmentPhoto photoUrl={selectedEquipmentOption.photo_url} alt={selectedEquipmentOption.label} size={24} />
-              ) : undefined
-            }
-            renderOption={({ option }) => {
-              const o = option as (typeof equipmentOptions)[number];
-              return (
-                <Group gap="xs" wrap="nowrap">
-                  <EquipmentPhoto photoUrl={o.photo_url} alt={o.label} size={28} />
-                  <Text size="sm">{o.label}</Text>
-                </Group>
-              );
-            }}
-          />
-          <Select
-            searchable
-            size="md"
-            label="Exercício canônico"
-            placeholder={selectedEquipmentLink ? 'Selecione o exercício' : 'Escolha o equipamento primeiro'}
-            data={exerciseOptionsForEquipment}
-            value={form.exercise_name || null}
-            disabled={!selectedEquipmentLink}
-            onChange={(value) => {
-              if (!value || !selectedEquipmentLink) return;
-              const exactLink = (gymEquipmentQuery.data?.items || []).find(
-                (link) => link.equipment_id === selectedEquipmentLink.equipment_id && link.mapping_exercise_name === value,
-              );
-              setForm((c) => ({
-                ...c,
-                exercise_name: value,
-                equipment_id: exactLink ? String(exactLink.id) : c.equipment_id,
-              }));
-              blurActive();
-            }}
-            nothingFoundMessage="Nenhum exercício encontrado para este equipamento"
-          />
-
-          {activity.workout_plan_id && planQuery.data ? (
-            <Select
-              searchable
-              clearable
-              size="md"
-              label="Associar a exercício da ficha"
-              placeholder="Nenhum (exercício avulso)"
-              data={planExerciseOptions}
-              value={form.workout_plan_exercise_id || null}
-              onChange={(value) => setForm((c) => ({ ...c, workout_plan_exercise_id: value || '' }))}
-              nothingFoundMessage="Nenhum exercício encontrado na ficha"
+          <ListGroup title="Exercício">
+            <OptionPickerRow
+              label="Grupo muscular"
+              placeholder="Selecione o grupo"
+              options={groupOptions}
+              value={form.muscle_group}
+              onSelect={(value) => setForm((c) => ({ ...c, muscle_group: value || null, equipment_id: '', exercise_name: '' }))}
+              emptyText="Nenhum grupo muscular encontrado"
             />
-          ) : null}
+            <OptionPickerRow
+              label="Equipamento"
+              placeholder={
+                !activity.gym_id ? 'Sem academia definida' : !form.muscle_group ? 'Escolha o grupo primeiro' : 'Selecione o equipamento'
+              }
+              options={equipmentOptions}
+              value={form.equipment_id || null}
+              onSelect={(value) => setForm((c) => ({ ...c, equipment_id: value || '', exercise_name: '' }))}
+              disabled={!activity.gym_id || !form.muscle_group}
+              clearLabel="Nenhum equipamento"
+              emptyText="Nenhum equipamento cadastrado para esse grupo muscular nessa academia"
+            />
+            <OptionPickerRow
+              label="Exercício canônico"
+              placeholder={selectedEquipmentLink ? 'Selecione o exercício' : 'Escolha o equipamento primeiro'}
+              options={exerciseOptionsForEquipment}
+              value={form.exercise_name || null}
+              disabled={!selectedEquipmentLink}
+              onSelect={(value) => {
+                if (!value || !selectedEquipmentLink) return;
+                const exactLink = (gymEquipmentQuery.data?.items || []).find(
+                  (link) => link.equipment_id === selectedEquipmentLink.equipment_id && link.mapping_exercise_name === value,
+                );
+                setForm((c) => ({
+                  ...c,
+                  exercise_name: value,
+                  equipment_id: exactLink ? String(exactLink.id) : c.equipment_id,
+                }));
+              }}
+              emptyText="Nenhum exercício encontrado para este equipamento"
+            />
+            {activity.workout_plan_id && planQuery.data ? (
+              <OptionPickerRow
+                label="Associar a exercício da ficha"
+                placeholder="Nenhum (exercício avulso)"
+                options={planExerciseOptions}
+                value={form.workout_plan_exercise_id || null}
+                onSelect={(value) => setForm((c) => ({ ...c, workout_plan_exercise_id: value || '' }))}
+                clearLabel="Nenhum (exercício avulso)"
+                emptyText="Nenhum exercício encontrado na ficha"
+              />
+            ) : null}
+          </ListGroup>
 
           <Text fw={600}>Séries</Text>
           {form.sets.map((set, index) => {
@@ -533,29 +502,27 @@ export function TreinoDetalheScreen() {
                       Remover
                     </Button>
                   </Group>
-                  <SimpleGrid cols={2} spacing="sm">
-                    {hasSides(set) && fields.showReps ? (
-                      <>
-                        <NumberInput size="md" hideControls label="Reps E" inputMode="numeric" min={0} max={100} value={set.reps_left ?? undefined} onChange={(v) => updateSet(index, 'reps_left', v === '' ? null : Number(v))} />
-                        <NumberInput size="md" hideControls label="Reps D" inputMode="numeric" min={0} max={100} value={set.reps_right ?? undefined} onChange={(v) => updateSet(index, 'reps_right', v === '' ? null : Number(v))} />
-                      </>
-                    ) : null}
-                    {!hasSides(set) && fields.showReps ? (
-                      <NumberInput size="md" hideControls label="Repetições" inputMode="numeric" min={fields.repsMin ?? 1} max={100} value={set.reps ?? undefined} onChange={(v) => updateSet(index, 'reps', v === '' ? null : Number(v))} />
-                    ) : null}
-                    {fields.showDuration ? (
-                      <NumberInput size="md" hideControls label="Tempo (s)" inputMode="numeric" min={fields.durationMin} max={fields.durationMax} step={1} allowDecimal={false} value={set.duration_seconds ?? undefined} onChange={(v) => updateSet(index, 'duration_seconds', v === '' || v == null ? null : Number(v))} />
-                    ) : null}
-                    <NumberInput size="md" hideControls label="Carga (kg)" inputMode="decimal" min={0} max={1000} step={0.5} decimalScale={2} value={set.weight_kg} onChange={(v) => updateSet(index, 'weight_kg', Number(v))} />
-                    {hasSides(set) ? (
-                      <>
-                        <NumberInput size="md" hideControls label="RPE E" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_left ?? undefined} onChange={(v) => updateSet(index, 'rpe_left', v === '' ? null : Number(v))} />
-                        <NumberInput size="md" hideControls label="RPE D" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_right ?? undefined} onChange={(v) => updateSet(index, 'rpe_right', v === '' ? null : Number(v))} />
-                      </>
-                    ) : (
-                      <NumberInput size="md" hideControls label="RPE" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe ?? undefined} onChange={(v) => updateSet(index, 'rpe', v == null ? null : Number(v))} />
-                    )}
-                  </SimpleGrid>
+                  {hasSides(set) && fields.showReps ? (
+                    <>
+                      <StepperField label="Reps E" min={0} max={100} step={1} value={set.reps_left} onChange={(v) => updateSet(index, 'reps_left', v)} />
+                      <StepperField label="Reps D" min={0} max={100} step={1} value={set.reps_right} onChange={(v) => updateSet(index, 'reps_right', v)} />
+                    </>
+                  ) : null}
+                  {!hasSides(set) && fields.showReps ? (
+                    <StepperField label="Repetições" min={fields.repsMin ?? 1} max={100} step={1} value={set.reps} onChange={(v) => updateSet(index, 'reps', v)} />
+                  ) : null}
+                  {fields.showDuration ? (
+                    <StepperField label="Tempo (s)" min={fields.durationMin} max={fields.durationMax} step={1} value={set.duration_seconds} onChange={(v) => updateSet(index, 'duration_seconds', v)} />
+                  ) : null}
+                  <StepperField label="Carga (kg)" inputMode="decimal" min={0} max={1000} step={0.5} decimalScale={2} value={set.weight_kg} onChange={(v) => updateSet(index, 'weight_kg', Number(v ?? 0))} />
+                  {hasSides(set) ? (
+                    <>
+                      <StepperField stepper={false} label="RPE E" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_left} onChange={(v) => updateSet(index, 'rpe_left', v)} />
+                      <StepperField stepper={false} label="RPE D" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_right} onChange={(v) => updateSet(index, 'rpe_right', v)} />
+                    </>
+                  ) : (
+                    <StepperField stepper={false} label="RPE" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe} onChange={(v) => updateSet(index, 'rpe', v)} />
+                  )}
                 </ListBlock>
               </ListGroup>
             );
