@@ -22,11 +22,12 @@ function NeutralScreen() {
 }
 
 /**
- * Escolhe a apresentação pela largura (`useLayoutMode`, sem User-Agent).
+ * Escolhe a apresentação pela largura da janela ou pelo aparelho (`useLayoutMode`, sem User-Agent).
  * Montado só com a flag mobile ligada. Estado de domínio NÃO vive aqui nem no
  * shell: cache de dados é do TanStack Query (acima) e a sessão de treino fica
  * em storage; trocar de viewport desmonta apenas a apresentação.
- * Tablet (>= 768 px) cai no layout desktop atual.
+ * Tablet (>= 768 px) cai no layout desktop atual; celular em paisagem (toque e
+ * menor lado da tela física < 500 px, ver `layout-mode.ts`) segue no mobile.
  *
  * Cruzar 768 px REMONTA a página (children): as duas árvores (AppShell do
  * Mantine x shell mobile) têm tipos diferentes na mesma posição, e manter

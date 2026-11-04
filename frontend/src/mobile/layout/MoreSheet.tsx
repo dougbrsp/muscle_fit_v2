@@ -1,103 +1,59 @@
 'use client';
 
-import { Divider, Drawer, Stack, Text } from '@mantine/core';
-import { useReducedMotion } from '@mantine/hooks';
 import { IconLogout } from '@tabler/icons-react';
-import Link from 'next/link';
-import { Suspense } from 'react';
-import {
-  DashboardNavLinks,
-  DashboardNavLinksFallback,
-} from '@/components/dashboard/DashboardNavLinks';
-import { isNavItemActive } from '@/lib/nav-items';
-import { MOBILE_TOKENS } from '@/mobile/tokens';
-import type { MoreSections } from './primary-nav';
-import styles from './mobile-shell.module.css';
+import { ListGroup, ListRow } from '../ui';
+import { BottomSheet } from '../ui/Sheets';
+import { isNavGroupItemActive } from './nav-active';
+import type { NavGroup } from './primary-nav';
 
 /**
- * Folha "Mais": todas as rotas do menu desktop que não são aba fixa, mais
- * "Sair". Sub-rotas do Dashboard reutilizam `DashboardNavLinks` (carregam o
- * filtro global na query string, igual ao desktop).
+ * Folha "Mais": lista agrupada com as telas que não são aba nem Evolução (as
+ * seções só do computador não aparecem) e "Sair". Os grupos já chegam
+ * filtrados por papel.
  */
 export function MoreSheet({
   opened,
   onClose,
-  sections,
+  groups,
   pathname,
+  displayName,
   onLogout,
 }: {
   opened: boolean;
   onClose: () => void;
-  sections: MoreSections;
+  groups: readonly NavGroup[];
   pathname: string | null;
+  displayName: string;
   onLogout: () => void;
 }) {
-  const reduceMotion = useReducedMotion();
   return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      position="bottom"
-      size="85%"
-      title="Menu"
-      transitionProps={{ duration: reduceMotion ? 0 : 200 }}
-      styles={{
-        content: { background: MOBILE_TOKENS.surface, borderRadius: '16px 16px 0 0' },
-        header: { background: MOBILE_TOKENS.surface },
-        close: { width: MOBILE_TOKENS.touchTarget, height: MOBILE_TOKENS.touchTarget },
-      }}
-    >
-      <Stack gap={4} className={styles.sheetBody} onClick={onClose}>
-        <Text size="xs" fw={700} tt="uppercase" c={MOBILE_TOKENS.textMuted} px="xs">
-          Dashboard
-        </Text>
-        <div
-          className={styles.dash}
-          onClick={(event) => event.stopPropagation()}
-          role="presentation"
-        >
-          <Suspense fallback={<DashboardNavLinksFallback items={sections.dashboard} />}>
-            <DashboardNavLinks items={sections.dashboard} />
-          </Suspense>
-        </div>
-        <Divider my="xs" color={MOBILE_TOKENS.border} />
-        <Text size="xs" fw={700} tt="uppercase" c={MOBILE_TOKENS.textMuted} px="xs">
-          Mais telas
-        </Text>
-        {sections.main.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={styles.moreLink}
-            aria-current={isNavItemActive(item, pathname) ? 'page' : undefined}
-          >
-            <item.icon size={20} aria-hidden />
-            {item.label}
-          </Link>
-        ))}
-        <Divider my="xs" color={MOBILE_TOKENS.border} />
-        <button
-          type="button"
-          className={styles.moreLink}
-          style={{
-            background: 'transparent',
-            border: 0,
-            font: 'inherit',
-            fontWeight: 600,
-            cursor: 'pointer',
-            width: '100%',
-            textAlign: 'left',
-            color: MOBILE_TOKENS.danger,
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
+    <BottomSheet opened={opened} onClose={onClose} title="Mais">
+      {groups.map((group) => (
+        <ListGroup key={group.title} title={group.title}>
+          {group.items.map((item) => (
+            <ListRow
+              key={item.href}
+              icon={item.icon}
+              title={item.label}
+              subtitle={item.href === '/perfil' && displayName ? displayName : undefined}
+              href={item.href}
+              onNavigate={onClose}
+              current={isNavGroupItemActive(item.href, pathname)}
+            />
+          ))}
+        </ListGroup>
+      ))}
+      <ListGroup>
+        <ListRow
+          icon={IconLogout}
+          title="Sair"
+          destructive
+          onClick={() => {
+            onClose();
             onLogout();
           }}
-        >
-          <IconLogout size={20} aria-hidden />
-          Sair
-        </button>
-      </Stack>
-    </Drawer>
+        />
+      </ListGroup>
+    </BottomSheet>
   );
 }
