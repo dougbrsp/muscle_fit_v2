@@ -6809,7 +6809,7 @@ Dono: `api/app/domain/nutrition/` (`catalog.py`, `diary.py`, `meal_math.py`, `la
 - **Guarda.** Nenhum padrão novo; allowlist inalterada (as janelas usam `_clock(h, m)`, sem `n * 60` escrito à mão).
 
 **Impacto em produção.**
-- Migração 104 (`food_items.table_base_amount`, aditiva; `ADD COLUMN ... AFTER basis` sem `ALGORITHM`, como a 084, porque `food_items` tem FULLTEXT e o INSTANT falha com o erro 1846; o servidor reconstrói a tabela, ~600 linhas, em milissegundos a poucos segundos, com lock curto de metadados, o mesmo custo já pago pela 084 em produção): exige `RUN_DB_MIGRATIONS=true` na promoção; a ordem é migrar e só depois publicar o código (todo SELECT de alimento lê a coluna). Código antigo sobre o schema novo segue funcionando.
+- Migração 104 (`food_items.table_base_amount`, aditiva; `ADD COLUMN ... AFTER basis` sem `ALGORITHM`, como a 084. Medido no CI: erro 1846 com INSTANT (FULLTEXT `ft_fi_name`). Inferido: reconstrução INPLACE em ~600 linhas, mesmo mecanismo da 084 (precedente, tempo em produção não medido neste PR), com lock curto de metadados; o algoritmo não é declarado, e se o servidor escolher COPY há lock de escrita por pouco tempo): exige `RUN_DB_MIGRATIONS=true` na promoção; a ordem é migrar e só depois publicar o código (todo SELECT de alimento lê a coluna). Código antigo sobre o schema novo segue funcionando.
 - Dado: nenhum backfill; alimento existente fica com NULL (= por 100) e volta com `table_base_amount = 100` e os mesmos valores. Refeições gravadas não mudam.
 - Ordenação: de exibição; o dia passa a listar por hora.
 - `meal_items.nature` / `meals.totals_nature` ganham o valor `USER_ENTERED` (VARCHAR(16), sem migração); selos de tela que só conheciam DERIVED/ESTIMATED/MIXED precisam tratá-lo (frente de frontend).
