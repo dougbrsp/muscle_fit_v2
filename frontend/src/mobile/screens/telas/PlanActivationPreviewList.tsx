@@ -6,7 +6,7 @@ import { toActivationPayloadItem } from '@/lib/activation-payload';
 import { apiFetch } from '@/lib/api';
 import type { MuscleActivationRow } from '@/lib/analytics-types';
 import type { MuscleActivationPreviewInput, WorkoutPlanExercise } from '@/lib/workout-plans-types';
-import { EmptyState, ErrorState, ListGroup, ListRow, LoadingState } from '../../ui';
+import { ErrorState, ListBlock, ListGroup, ListRow, LoadingState } from '../../ui';
 
 function fmt(value: number) {
   return value.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -32,12 +32,22 @@ export function PlanActivationPreviewList({ exercises }: { exercises: WorkoutPla
   });
 
   if (payload.exercises.length === 0) {
-    return <EmptyState title="Sem exercícios vinculados ao catálogo canônico ainda para calcular a ativação muscular." />;
+    return (
+      <ListGroup title="Ativação muscular">
+        <ListBlock>Sem exercícios vinculados ao catálogo canônico ainda para calcular a ativação muscular.</ListBlock>
+      </ListGroup>
+    );
   }
   if (query.isLoading) return <LoadingState label="Calculando ativação..." />;
   if (query.isError) return <ErrorState title="Não foi possível calcular a ativação" onRetry={() => void query.refetch()} />;
   const items = query.data?.items || [];
-  if (items.length === 0) return <EmptyState title="Nenhum dado de ativação calculado." />;
+  if (items.length === 0) {
+    return (
+      <ListGroup title="Ativação muscular">
+        <ListBlock>Nenhum dado de ativação calculado.</ListBlock>
+      </ListGroup>
+    );
+  }
   return (
     <ListGroup title="Prévia de ativação muscular">
       {items.map((row) => (

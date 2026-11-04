@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
-import { installTelasFixtures } from './telas-fixtures';
+import { installTelasFixtures, installTimedSession } from './telas-fixtures';
 
 /**
  * Mobile v2, acabamento dos formularios (Perfil, Lancar exercicio, Preferencias
@@ -75,6 +75,12 @@ for (const vp of VIEWPORTS) {
       expect(tb.height).toBeGreaterThanOrEqual(44);
       await shot(page, 'perfil_topo', vp.name);
       await expect(page.getByLabel('Nome completo')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Salvar perfil' }), 'um unico Salvar perfil').toHaveCount(1);
+      // Um so primario laranja: Trocar senha e Novo dispositivo em estilo secundario.
+      const bg = (name: string) => page.getByRole('button', { name }).evaluate((el) => getComputedStyle(el).backgroundColor);
+      const primario = await bg('Salvar perfil');
+      expect(await bg('Trocar senha')).not.toBe(primario);
+      expect(await bg('Novo dispositivo')).not.toBe(primario);
       await expectEndClearOfSticky(page, 'perfil');
       await shot(page, 'perfil_fim', vp.name);
       const put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/users/me'));
@@ -111,7 +117,7 @@ for (const vp of VIEWPORTS) {
       const serie = page.getByRole('region', { name: 'Série 1' });
       await expect(serie).toBeVisible();
       const bar = page.getByRole('button', { name: 'Lançar exercício' });
-      const rpe = serie.getByLabel('RPE', { exact: true });
+      const rpe = serie.getByRole('textbox', { name: 'RPE (esforço)' });
       const sb = (await serie.boundingBox())!;
       const barBox = (await bar.boundingBox())!;
       if (vp.height >= 844) {
@@ -128,6 +134,8 @@ for (const vp of VIEWPORTS) {
       await serie.getByRole('button', { name: 'Aumentar Repetições' }).click();
       await serie.getByRole('button', { name: 'Aumentar Carga (kg)' }).click();
       await shot(page, 'lancar_serie', vp.name);
+      const mais = page.getByRole('button', { name: /Dor muscular e articular/ });
+      await expect(mais.locator('svg'), 'chevron de expandir').toHaveCount(1);
       await expectEndClearOfSticky(page, 'lancar');
 
       const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises'));
@@ -140,10 +148,126 @@ for (const vp of VIEWPORTS) {
       expect(setBody).toMatchObject({ set_number: 1, reps: 11, weight_kg: 20.5 });
     });
 
+    test('limpar campos numericos: a tela fica vazia e o payload vai null (RPE, RPE E/D, Reps E/D, Tempo, Repetições)', async ({ page }) => {
+      test.setTimeout(120_000);
+      // A barra fixa muda de lugar quando o teclado "fecha" (foco): so toca depois disso.
+      const esperarTecladoFechado = () =>
+        expect(page.locator('[data-mobile-shell="true"]')).toHaveAttribute('data-keyboard', 'closed');
+      const limpar = async (campo: ReturnType<Page['getByRole']>) => {
+        await campo.fill('');
+        await campo.blur();
+        await expect(campo).toHaveValue('');
+        await esperarTecladoFechado();
+      };
+      // Series unilaterais (Reps E/D, RPE E/D).
+      await open(page, '/registro-exercicios/1/');
+      await page.getByText('Rosca unilateral com halter', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await page.getByRole('button', { name: 'Editar', exact: true }).click();
+      let serie = page.getByRole('region', { name: 'Série 1' });
+      // Limpar todos os lados some com o layout E/D (`hasSides`): RPE D fica preenchido.
+      for (const nome of ['Reps E', 'Reps D', 'RPE E']) await limpar(serie.getByRole('textbox', { name: nome }));
+      let put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/exercises/logs/12'));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      let body = JSON.parse((await put).postData() ?? '{}');
+      await expect(page.getByRole('heading', { name: 'Editar exercício' })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Editar exercício' })).toHaveCount(0);
+      expect(body.sets[0]).toMatchObject({ reps_left: null, reps_right: null, rpe_left: null });
+
+      // Serie comum: RPE e Repeticoes.
+      await open(page, '/registro-exercicios/1/');
+      await page.getByText('Supino reto com barra', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await page.getByRole('button', { name: 'Editar', exact: true }).click();
+      serie = page.getByRole('region', { name: 'Série 1' });
+      await limpar(serie.getByRole('textbox', { name: 'RPE (esforço)' }));
+      // Repetições tem piso (min 1): o campo pode voltar ao piso ao sair; o que importa e a tela e o payload concordarem.
+      const reps = serie.getByRole('textbox', { name: 'Repetições' });
+      await reps.fill('');
+      await reps.blur();
+      const mostrado = await reps.inputValue();
+      await esperarTecladoFechado();
+      put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/exercises/logs/11'));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      body = JSON.parse((await put).postData() ?? '{}');
+      await expect(page.getByRole('heading', { name: 'Editar exercício' })).toHaveCount(0);
+      expect(body.sets[0].rpe).toBeNull();
+      expect(body.sets[0].reps ?? null, 'reps no payload = o que a tela mostrava').toBe(mostrado === '' ? null : Number(mostrado));
+
+      // Serie por tempo e maximo de reps (Tempo e Repeticoes com piso).
+      await installTimedSession(page);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByText('Prancha isometrica', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await page.getByRole('button', { name: 'Editar', exact: true }).click();
+      serie = page.getByRole('region', { name: 'Série 1' });
+      await limpar(serie.getByRole('textbox', { name: 'Tempo (s)' }));
+      put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/exercises/logs/13'));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      body = JSON.parse((await put).postData() ?? '{}');
+      await expect(page.getByRole('heading', { name: 'Editar exercício' })).toHaveCount(0);
+      expect(body.sets[0].duration_seconds ?? null).toBeNull();
+
+      await open(page, '/registro-exercicios/1/');
+      await page.getByText('Flexao maximo', { exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+      await page.getByRole('button', { name: 'Editar', exact: true }).click();
+      serie = page.getByRole('region', { name: 'Série 1' });
+      const maxReps = serie.getByRole('textbox', { name: 'Repetições' });
+      await maxReps.fill('');
+      await maxReps.blur();
+      // Piso do maximo de reps (dono: MEASURE_LIMITS): nunca fica um valor que o payload nao leva.
+      const piso = await maxReps.inputValue();
+      await esperarTecladoFechado();
+      put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/exercises/logs/14'));
+      await limpar(serie.getByRole('textbox', { name: 'Tempo (s)' }));
+      await page.getByRole('button', { name: 'Salvar alterações' }).click();
+      body = JSON.parse((await put).postData() ?? '{}');
+      await expect(page.getByRole('heading', { name: 'Editar exercício' })).toHaveCount(0);
+      expect(body.sets[0].reps ?? null).toBe(piso === '' ? null : Number(piso));
+      expect(body.sets[0].duration_seconds ?? null).toBeNull();
+    });
+
+    test('folha de busca: campo de 16 px (sem zoom no iOS) e linhas desabilitadas com cadeado', async ({ page }) => {
+      test.setTimeout(90_000);
+      // 9 grupos: a folha passa do limiar e mostra a busca.
+      await page.route('**/exercise-mapping-catalog/groups', async (route) => {
+        if (route.request().method() === 'OPTIONS') return route.fallback();
+        await route.fulfill({
+          status: 200,
+          headers: { 'access-control-allow-origin': route.request().headers()['origin'] ?? '*', 'access-control-allow-credentials': 'true' },
+          contentType: 'application/json',
+          body: JSON.stringify({ items: ['Peitoral', 'Costas', 'Ombros', 'Bíceps', 'Tríceps', 'Quadríceps', 'Posterior', 'Glúteos', 'Panturrilha'].map((g) => ({ primary_group: g })) }),
+        });
+      });
+      await open(page, '/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      // Sem grupo escolhido, equipamento e exercicio sao linhas estaticas com cadeado.
+      await expect(page.getByLabel('Indisponível')).toHaveCount(2);
+      await expect(page.getByRole('button', { name: /Equipamento/ })).toHaveCount(0);
+      await page.getByRole('button', { name: /Grupo muscular/ }).click();
+      const busca = page.getByRole('dialog').getByRole('textbox', { name: /Buscar em/ });
+      await expect(busca).toBeVisible();
+      const fz = await busca.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+      expect(fz).toBeGreaterThanOrEqual(16);
+    });
+
+    test('voltar com campo focado: o estado de teclado nao fica preso (a barra nao muda de lugar no proximo toque)', async ({ page }) => {
+      test.setTimeout(90_000);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await page.getByRole('textbox', { name: 'Repetições' }).click();
+      await expect(page.locator('[data-mobile-shell="true"]')).toHaveAttribute('data-keyboard', 'open');
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
+      await expect(page.locator('[data-mobile-shell="true"]')).toHaveAttribute('data-keyboard', 'closed');
+    });
+
     test('plano de treino: o fim da ficha fica acima de "Salvar alteracoes"', async ({ page }) => {
       test.setTimeout(90_000);
       await open(page, '/planos-treino/1/');
       await expect(page.getByText('3. Tríceps na polia')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Ativação muscular' })).toBeVisible();
       await expectEndClearOfSticky(page, 'plano');
       await page.getByText('3. Tríceps na polia').scrollIntoViewIfNeeded();
       const item = (await page.getByText('3. Tríceps na polia').boundingBox())!;
@@ -157,6 +281,12 @@ for (const vp of VIEWPORTS) {
       await open(page, '/preferencias-treino/');
       await expect(page.getByText('Rosca direta')).toBeVisible();
       expect(await page.locator('.tabler-icon-photo').count(), 'sem placeholder de foto por linha').toBe(0);
+      for (const n of [1, 2, 3, 4, 5]) {
+        const b = (await page.getByRole('button', { name: new RegExp(`^${n} ${n === 1 ? 'estrela' : 'estrelas'} para Rosca direta em Halteres`) }).boundingBox())!;
+        expect(b.width, `estrela ${n}`).toBeGreaterThanOrEqual(44);
+        expect(b.height, `estrela ${n}`).toBeGreaterThanOrEqual(44);
+      }
+      await expect(page.getByRole('button', { name: /Limpar minha nota para Rosca direta/ })).toBeVisible();
       const estrela = page.getByRole('button', { name: /^5 estrelas para Rosca direta em Halteres/ });
       const box = (await estrela.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
@@ -178,11 +308,17 @@ for (const vp of VIEWPORTS) {
       await open(page, '/nutricao/');
       await expect(page.getByRole('heading', { name: 'Meta × ingestão' })).toBeVisible();
       await expect(page.getByText('Sem meta nem refeições neste dia.')).toBeVisible();
+      await expect(page.getByText('Energia da semana')).toBeHidden();
+      await expect(page.getByText('Nenhum dia registrado')).toHaveCount(0);
+      await expect(page.getByText('Semana sem registros')).toBeVisible();
       await expect(page.getByText('Gasto do dia (TDEE)')).toHaveCount(0);
       await expect(page.getByText('Balanço (ingestão − gasto)')).toHaveCount(0);
       const traco = await page.locator('main').getByText(/^-$/).count();
       expect(traco, 'nenhum traco solto no bloco').toBe(0);
       await shot(page, 'diario_meta_vazia', vp.name);
+      // A barra fixa nao cobre o fim do Diario ("Treino do dia" e o que vem depois).
+      await expectEndClearOfSticky(page, 'diario');
+      await shot(page, 'diario_fim', vp.name);
     });
   });
 }

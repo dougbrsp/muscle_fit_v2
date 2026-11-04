@@ -17,7 +17,7 @@ import {
 import { formatDayLong, formatGrams, formatKcal, formatShareAsPercent, formatSignedKcal, formatWithUnit, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { PresentationProvider, type PresentationSlots } from '@/lib/presentation-slots';
-import { ListBlock, ListGroup, ListRow, ScreenHeader, StatGrid, StatTile, StickyAction } from '../../ui';
+import { EmptyState, ListBlock, ListGroup, ListRow, ScreenHeader, StatGrid, StatTile, StickyAction } from '../../ui';
 import { NutricaoNav, type NutricaoSecao } from './NutricaoNav';
 import { MobileTargetVsIntake } from './MobileTargetVsIntake';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
@@ -44,6 +44,11 @@ const SLOTS: Partial<PresentationSlots> = {
     }
     if (report.bank.balance_kcal != null) tiles.push({ label: 'Banco', value: formatSignedKcal(report.bank.balance_kcal) });
     const dias = report.adherence.logged_days;
+    // Semana sem nada: um estado vazio único (o título e o aviso do gráfico, do componente
+    // do desktop, são escondidos por CSS na tela do Diário).
+    if (tiles.length === 0 && dias === 0) {
+      return <EmptyState title="Semana sem registros" description="As refeições e a meta da semana aparecem aqui." />;
+    }
     return (
       <div>
         {tiles.length > 0 ? (
@@ -105,7 +110,7 @@ const SLOTS: Partial<PresentationSlots> = {
   ),
 
   weekDays: ({ days, today, selected, onSelect }) => (
-    <div role="group" aria-label="Dias da semana" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+    <div data-mf-weekdays role="group" aria-label="Dias da semana" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
       {days.map((dia) => {
         const ativo = dia.local_date === selected;
         return (
@@ -303,10 +308,16 @@ const SLOTS: Partial<PresentationSlots> = {
  * Provê a apresentação em lista dos componentes de nutrição que no desktop
  * desenham tabela, e o estilo de 16 px para os campos de modais portalados.
  */
+// Semana sem dados: o título "Energia da semana" e o aviso do gráfico (WeekStrip, do desktop)
+// somem; o estado vazio único vem do slot weekReport. Com gráfico, o título é seguido por
+// um <div>, então nada disto casa.
+const WEEK_EMPTY_CSS = `[data-mf-weekdays] + p:has(+ p), [data-mf-weekdays] + p + p { display: none; }`;
+
 export function MobileNutritionPresentation({ children, active }: { children: ReactNode; active?: NutricaoSecao }) {
   return (
     <PresentationProvider value={SLOTS}>
       <PortalFieldsStyle />
+      <style>{WEEK_EMPTY_CSS}</style>
       {children}
       {active ? <NutricaoNav active={active} /> : null}
     </PresentationProvider>

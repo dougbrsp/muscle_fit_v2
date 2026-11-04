@@ -2,7 +2,7 @@
 
 import { Alert, Badge, Button, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertTriangle, IconCheck, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconChevronDown, IconChevronUp, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -521,7 +521,7 @@ export function TreinoDetalheScreen() {
                       <StepperField stepper={false} label="RPE D" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_right} onChange={(v) => updateSet(index, 'rpe_right', v)} />
                     </>
                   ) : (
-                    <StepperField stepper={false} label="RPE" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe} onChange={(v) => updateSet(index, 'rpe', v)} />
+                    <StepperField stepper={false} label="RPE (esforço)" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe} onChange={(v) => updateSet(index, 'rpe', v)} />
                   )}
                 </ListBlock>
               </ListGroup>
@@ -530,8 +530,16 @@ export function TreinoDetalheScreen() {
           <Button variant="default" mih={48} leftSection={<IconPlus size={16} />} onClick={addSet}>
             Adicionar série
           </Button>
-          <Button variant="subtle" color="gray" mih={44} onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen}>
-            {moreOpen ? 'Ocultar detalhes' : 'Mais detalhes (dor muscular e articular)'}
+          <Button
+            variant="default"
+            fullWidth
+            mih={48}
+            justify="space-between"
+            rightSection={moreOpen ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+          >
+            {moreOpen ? 'Ocultar dor muscular e articular' : 'Dor muscular e articular (opcional)'}
           </Button>
           <Collapse in={moreOpen} transitionDuration={0}>
             <Stack gap="md">

@@ -49,6 +49,24 @@ const ACTIVITY_DETAIL = {
   ],
 };
 
+// Mesma sessao 1 com series por tempo e por maximo de reps (campos Tempo e Repeticoes com piso);
+// so entra via installTimedSession, para nao mudar os demais testes.
+const ACTIVITY_DETAIL_TIMED = {
+  ...ACTIVITY_DETAIL,
+  exercises: [
+    {
+      id: 13, activity_id: 1, sequence: 1, original_name: 'Prancha isometrica', mapped_name: 'Prancha', mapping_id: 5, muscle_primary: 'Abdomen',
+      equipment_name: 'Solo', workout_plan_exercise_id: null, planned_mapping_id: null,
+      sets: sets([{ reps: null, weight_kg: 0, rpe: 7, measure: 'duration', duration_seconds: 45 }]),
+    },
+    {
+      id: 14, activity_id: 1, sequence: 2, original_name: 'Flexao maximo', mapped_name: 'Flexao', mapping_id: 6, muscle_primary: 'Peitoral',
+      equipment_name: 'Solo', workout_plan_exercise_id: null, planned_mapping_id: null,
+      sets: sets([{ reps: 20, weight_kg: 0, rpe: 9, measure: 'max_reps', duration_seconds: 60 }]),
+    },
+  ],
+};
+
 const PLAN_EXERCISES = [
   { workout_plan_exercise_id: 101, sequence: 1, exercise_name: 'Supino reto com barra', mapping_id: 1, muscle_primary: 'Peitoral', equipment_name: 'Banco reto', sets_count: 4, reps_target: '8-10', load_target: '80 kg', rpe_target: '8', rest_seconds: 120, warmup: false, progression: 'increased', progression_note: 'Carga subiu em relação à sessão anterior.' },
   { workout_plan_exercise_id: 102, sequence: 2, exercise_name: 'Crucifixo inclinado', mapping_id: 4, muscle_primary: 'Peitoral', equipment_name: 'Halteres', sets_count: 3, reps_target: '10-12', load_target: '18 kg', rpe_target: '8', rest_seconds: 90, warmup: false, advanced_technique: null },
@@ -175,6 +193,9 @@ const FIXTURES: Record<string, unknown> = {
 
   'GET /activities': ACTIVITY_LIST,
   'GET /activities/1': ACTIVITY_DETAIL,
+  'PUT /exercises/logs/12': { ok: true },
+  'PUT /exercises/logs/13': { ok: true },
+  'PUT /exercises/logs/14': { ok: true },
   'GET /analytics/muscle-activation-by-activity': {
     items: [
       { muscle_group: 'Peitoral', primary_series: 3, primary_equivalent: 3, secondary_series: 0, secondary_equivalent: 0, stabilizer_series: 0, stabilizer_equivalent: 0, total_equivalent: 3 },
@@ -294,6 +315,21 @@ export async function installAdminSession(page: Page) {
       headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' },
       contentType: 'application/json',
       body: JSON.stringify({ id: 1, username: 'ana', full_name: 'Ana Teste', role: 'admin', must_change_password: false, intervals_configured: false, timezone: 'America/Sao_Paulo', features: { exercise_cards: false } }),
+    });
+  });
+}
+
+export async function installTimedSession(page: Page) {
+  await page.route(`${MOCK_API_ORIGIN}/activities/1`, async (route: Route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': route.request().headers()['origin'] ?? '*', 'access-control-allow-credentials': 'true' },
+      contentType: 'application/json',
+      body: JSON.stringify(ACTIVITY_DETAIL_TIMED),
     });
   });
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionIcon, NumberInput, TextInput } from '@mantine/core';
-import { IconCheck, IconMinus, IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconCheck, IconLock, IconMinus, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useId, useState, type ReactNode } from 'react';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { BottomSheet, ListGroup, ListRow } from '../../ui';
@@ -58,11 +58,17 @@ export function OptionPickerRow({
 
   return (
     <>
-      <ListRow title={title} subtitle={label} onClick={disabled ? undefined : () => setOpened(true)} />
+      <ListRow
+        title={title}
+        subtitle={label}
+        trailing={disabled ? <IconLock size={16} className={styles.lock} aria-label="Indisponível" /> : undefined}
+        onClick={disabled ? undefined : () => setOpened(true)}
+      />
       <BottomSheet opened={opened} onClose={close} title={label}>
         {options.length >= SEARCH_FROM_OPTIONS ? (
           <div className={styles.search}>
             <TextInput
+              size="md"
               aria-label={`Buscar em ${label}`}
               placeholder="Buscar"
               leftSection={<IconSearch size={16} />}
@@ -173,7 +179,7 @@ export function StepperField({
           max={max}
           step={step}
           decimalScale={decimalScale}
-          value={current ?? undefined}
+          value={current ?? ''}
           onChange={(v) => onChange(v === '' || v == null ? null : Number(v))}
           styles={{ input: { textAlign: 'center', fontSize: 18, fontWeight: 700, height: 44, paddingInline: 4 } }}
           className={styles.fieldInput}
