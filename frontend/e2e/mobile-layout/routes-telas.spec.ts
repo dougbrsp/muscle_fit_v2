@@ -290,6 +290,86 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByLabel('Objetivo (opcional)')).toHaveValue('foco em peito');
     });
 
+    async function gerarRascunho(page: Page) {
+      await open(page, '/planos-treino/');
+      await page.getByRole('button', { name: 'Gerar novo plano' }).click();
+      await page.getByRole('textbox', { name: /Modelo de treino/ }).click();
+      await page.getByRole('option', { name: 'ABC Hipertrofia' }).click();
+      await page.getByRole('button', { name: 'Gerar rascunho' }).click();
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+    }
+
+    test('voltar aninhado: goBack fecha so o topo (linha do rascunho, depois a geracao)', async ({ page }) => {
+      test.setTimeout(120_000);
+      await gerarRascunho(page);
+      await page.getByText('1. Supino reto com barra').click();
+      await expect(page.getByRole('heading', { name: 'Supino reto com barra' })).toBeVisible();
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Supino reto com barra' })).toHaveCount(0);
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      expect(new URL(page.url()).pathname).toMatch(/^\/planos-treino\/?$/);
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Planos de treino' })).toBeVisible();
+      expect(new URL(page.url()).pathname).toMatch(/^\/planos-treino\/?$/);
+    });
+
+    test('voltar aninhado: Concluir na linha nao fecha a geracao; depois goBack fecha a geracao', async ({ page }) => {
+      test.setTimeout(120_000);
+      await gerarRascunho(page);
+      await page.getByText('1. Supino reto com barra').click();
+      await page.getByRole('button', { name: 'Concluir' }).click();
+      await expect(page.getByText('1. Supino reto com barra')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Revisar rascunho' })).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(page.getByRole('heading', { name: 'Revisar rascunho' })).toBeVisible();
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Planos de treino' })).toBeVisible();
+      expect(new URL(page.url()).pathname).toMatch(/^\/planos-treino\/?$/);
+    });
+
+    test('salvar rascunho: 1 POST, abre a ficha e o rascunho velho nao volta', async ({ page }) => {
+      test.setTimeout(120_000);
+      const posts: string[] = [];
+      page.on('request', (r) => {
+        if (r.method() === 'POST' && new URL(r.url()).pathname === '/workout-plans') posts.push(r.url());
+      });
+      await gerarRascunho(page);
+      await page.getByRole('button', { name: 'Salvar ficha' }).click();
+      await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/planos-treino\/1\/?$/);
+      await expect(page.getByRole('heading', { name: 'Ficha A - Peito e tríceps' })).toBeVisible();
+      expect(posts).toHaveLength(1);
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Planos de treino' })).toBeVisible();
+      await page.getByRole('button', { name: 'Gerar novo plano' }).click();
+      await expect(page.getByRole('heading', { name: 'Gerar plano' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Revisar rascunho' })).toHaveCount(0);
+      expect(posts).toHaveLength(1);
+    });
+
+    test('voltar do cabecalho fecha o lancamento (nao sai da rota); Descartar apaga o rascunho', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await page.getByLabel('Repetições').fill('12');
+      await page.getByRole('link', { name: /Voltar para/ }).click();
+      await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
+      expect(new URL(page.url()).pathname).toBe('/registro-exercicios/1/');
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await expect(page.getByLabel('Repetições')).toHaveValue('12');
+      await page.getByText('Descartar rascunho').click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
+      await expect(page.getByRole('heading', { name: 'Lançar exercício' })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Lançar exercício' }).click();
+      await expect(page.getByLabel('Repetições')).toHaveValue('10');
+    });
+
+    test('plano nutricional: Novo rascunho some durante a edicao', async ({ page }) => {
+      test.setTimeout(120_000);
+      await open(page, '/nutricao/plano/');
+      await page.getByRole('button', { name: 'Novo rascunho' }).click();
+      await expect(page.getByRole('button', { name: 'Novo rascunho' })).toHaveCount(0);
+    });
+
     test('lancamento novo: POST do exercicio e da serie', async ({ page }) => {
       test.setTimeout(120_000);
       await open(page, '/registro-exercicios/1/');

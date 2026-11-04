@@ -6,7 +6,7 @@ import { MobileNutritionPresentation } from './MobileNutritionPresentation';
 /** Check-in semanal (celular): mesmo fluxo e mutações do desktop, com a semana e as metas em lista. */
 export function NutricaoCheckinScreen() {
   return (
-    <MobileNutritionPresentation>
+    <MobileNutritionPresentation active="/nutricao/checkin">
       <CheckinClient />
     </MobileNutritionPresentation>
   );

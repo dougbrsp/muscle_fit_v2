@@ -440,7 +440,7 @@ export function PerfilClient() {
                     </Alert>
                   )}
 
-                  <Button type="submit" color="brand" loading={saveProfileMutation.isPending} fullWidth={!!Header}>
+                  <Button type="submit" color="brand" loading={saveProfileMutation.isPending} fullWidth={!!Header} {...(Header ? { 'data-mf-sticky': 'true' } : {})}>
                     Salvar perfil
                   </Button>
                 </Stack>

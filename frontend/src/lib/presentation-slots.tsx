@@ -3,7 +3,7 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 import type { WeekRow } from '@/components/nutrition/WeekTargetsTable';
 import type { Checkin, CheckinDayMacros } from '@/lib/nutrition-checkin';
-import type { FoodPortion, NutritionWeek, FoodSearchItem, MealItem, UsdaSearchItem } from '@/lib/nutrition-types';
+import type { FoodPortion, NutritionWeek, WeekReport, FoodSearchItem, MealItem, UsdaSearchItem } from '@/lib/nutrition-types';
 
 /**
  * Pontos de apresentação alternativa (celular). Componentes compartilhados que
@@ -37,6 +37,8 @@ export type PeriodComparisonRow = {
 };
 
 export type PresentationSlots = {
+  /** Resumo da semana do diário (orçamento, aderência, banco) em tiles, sem os campos sem dado. */
+  weekReport: ComponentType<{ report: WeekReport }>;
   /** Cabeçalho do dia do diário (celular): dia da semana uma vez, data no campo. */
   dayHeader: ComponentType<{ date: string | null; today: string | null; onDateChange: (date: string) => void }>;
   /** Ação principal da página (celular: fixa acima da tab bar). */

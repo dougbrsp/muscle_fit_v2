@@ -36,7 +36,6 @@ import { apiFetch } from '@/lib/api';
 import {
   describeSets,
   formatLoggedSets,
-  newMeasuredSetFromLast,
   setEditFields,
   setFormFromRow,
 } from '@/lib/exercise-set-edit';

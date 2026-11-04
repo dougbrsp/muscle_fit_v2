@@ -86,6 +86,7 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
         {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
         {userId !== null &&
           (PrimaryAction ? (
+            editing !== null ? null : (
             <PrimaryAction
               label="Novo rascunho"
               onClick={() => {
@@ -94,6 +95,7 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
                 setWarnings([]);
               }}
             />
+            )
           ) : (
             <Button
               color="brand"

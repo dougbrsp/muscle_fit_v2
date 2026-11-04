@@ -14,10 +14,10 @@ import {
   USDA_DATA_TYPE_OPTIONS,
   nutritionLabel,
 } from '@/lib/nutrition-constants';
-import { formatDayLong, formatGrams, formatKcal, formatWithUnit, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
+import { formatDayLong, formatGrams, formatKcal, formatShareAsPercent, formatSignedKcal, formatWithUnit, shiftIsoDate, weekdayShort } from '@/lib/nutrition-format';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { PresentationProvider, type PresentationSlots } from '@/lib/presentation-slots';
-import { ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../../ui';
+import { ListBlock, ListGroup, ListRow, ScreenHeader, StatGrid, StatTile, StickyAction } from '../../ui';
 import { NutricaoNav, type NutricaoSecao } from './NutricaoNav';
 import { PortalFieldsStyle } from './PortalFieldsStyle';
 
@@ -31,6 +31,34 @@ function per100Summary(per100: Record<string, number | null | undefined>): strin
 }
 
 const SLOTS: Partial<PresentationSlots> = {
+  weekReport: ({ report }) => {
+    const tiles: { label: string; value: string }[] = [];
+    if (report.budget.kcal != null) tiles.push({ label: 'Orçamento', value: formatKcal(report.budget.kcal) });
+    if (report.adherence.kcal_share != null) {
+      tiles.push({ label: 'Aderência (kcal)', value: `${formatShareAsPercent(report.adherence.kcal_share)}${report.adherence.kcal_within_tolerance === true ? ' ✓' : ''}` });
+    }
+    if (report.adherence.protein_share != null) {
+      tiles.push({ label: 'Proteína', value: `${formatShareAsPercent(report.adherence.protein_share)}${report.adherence.protein_ok === true ? ' ✓' : ''}` });
+    }
+    if (report.bank.balance_kcal != null) tiles.push({ label: 'Banco', value: formatSignedKcal(report.bank.balance_kcal) });
+    const dias = report.adherence.logged_days;
+    return (
+      <div>
+        {tiles.length > 0 ? (
+          <StatGrid>
+            {tiles.map((t) => (
+              <StatTile key={t.label} label={t.label} value={t.value} />
+            ))}
+          </StatGrid>
+        ) : null}
+        <Text size="sm" c="dimmed" mt="xs">
+          {dias === 0 ? 'Nenhum dia registrado' : `${dias} ${dias === 1 ? 'dia registrado' : 'dias registrados'}`}
+          {report.adherence.valid_week ? ' · semana válida' : ''}
+        </Text>
+      </div>
+    );
+  },
+
   dayHeader: ({ date, today, onDateChange }) => {
     const weekday = date ? formatDayLong(date).split(',')[0] : '';
     return (
@@ -104,11 +132,9 @@ const SLOTS: Partial<PresentationSlots> = {
     </div>
   ),
 
-  nutritionHeader: ({ active, title, description }) => (
-    <>
-      <ScreenHeader title={title} subtitle={typeof description === 'string' ? description : undefined} />
-      <NutricaoNav active={active as NutricaoSecao} />
-    </>
+  // Introdução de uma linha; as demais seções da Nutrição ficam no fim da página.
+  nutritionHeader: ({ title, description }) => (
+    <ScreenHeader title={title} subtitle={typeof description === 'string' ? description.split('. ')[0].replace(/\.$/, '') : undefined} />
   ),
 
   weekTargets: ({ rows, today }) => (
@@ -275,11 +301,12 @@ const SLOTS: Partial<PresentationSlots> = {
  * Provê a apresentação em lista dos componentes de nutrição que no desktop
  * desenham tabela, e o estilo de 16 px para os campos de modais portalados.
  */
-export function MobileNutritionPresentation({ children }: { children: ReactNode }) {
+export function MobileNutritionPresentation({ children, active }: { children: ReactNode; active?: NutricaoSecao }) {
   return (
     <PresentationProvider value={SLOTS}>
       <PortalFieldsStyle />
       {children}
+      {active ? <NutricaoNav active={active} /> : null}
     </PresentationProvider>
   );
 }

@@ -28,6 +28,7 @@ import {
 } from '@/lib/workout-plans-types';
 import { ErrorState, LoadingState, ScreenHeader, StickyAction } from '../../ui';
 import { PlanActivationPreviewList } from './PlanActivationPreviewList';
+import { blurActive } from './common';
 import { PlanExercisesEditor } from './PlanExercisesEditor';
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -56,6 +57,7 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
   const [draftExercises, setDraftExercises] = useState<WorkoutPlanExercise[]>([]);
   const [status, setStatus] = useState('planned');
   const [editingRow, setEditingRow] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const gymsQuery = useQuery({
     queryKey: ['gyms'],
@@ -104,8 +106,11 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
     mutationFn: (payload: WorkoutPlanInput) => apiFetch<WorkoutPlan>('/workout-plans', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: (plan) => {
       qc.invalidateQueries({ queryKey: ['workout-plans'] });
-      onClose();
-      router.push(`/planos-treino/${plan.id}`);
+      // Salvou: some com o rascunho (não dá para salvar de novo e duplicar a ficha) e troca a entrada
+      // da visão pela da ficha (`replace`): fechar a visão aqui dispararia `history.back()` e cancelaria a navegação.
+      setSaved(true);
+      resetDraft();
+      router.replace(`/planos-treino/${plan.id}`);
     },
   });
 
@@ -129,7 +134,7 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
   }
 
   function handleSave() {
-    if (!draft) return;
+    if (!draft || saved || createMutation.isPending) return;
     createMutation.mutate(
       buildDraftCreatePayload(
         draft,
@@ -182,7 +187,7 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
                 mih={48}
                 style={{ flex: 1 }}
                 loading={createMutation.isPending}
-                disabled={!draftName.trim()}
+                disabled={!draftName.trim() || saved}
                 onClick={handleSave}
               >
                 Salvar ficha
@@ -227,6 +232,7 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
               value={templateId || null}
               onChange={(v) => {
                 setTemplateId(v || '');
+                blurActive();
                 setTemplateSlotSequence(AUTO_SLOT_VALUE);
               }}
               searchable
@@ -241,11 +247,17 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
                   ...selectedTemplate.slots.map((s) => ({ value: String(s.sequence), label: s.name })),
                 ]}
                 value={templateSlotSequence}
-                onChange={(v) => setTemplateSlotSequence(v || AUTO_SLOT_VALUE)}
+                onChange={(v) => {
+                  setTemplateSlotSequence(v || AUTO_SLOT_VALUE);
+                  blurActive();
+                }}
                 allowDeselect={false}
               />
             ) : null}
-            <Select size="md" label="Academia" placeholder="Nenhuma" data={gymOptions} value={gymId} onChange={setGymId} clearable searchable />
+            <Select size="md" label="Academia" placeholder="Nenhuma" data={gymOptions} value={gymId} onChange={(v) => {
+                setGymId(v);
+                blurActive();
+              }} clearable searchable />
             <Group grow align="flex-start">
               <TextInput size="md" label="Data do plano" type="date" value={planDate} onChange={(e) => setPlanDate(e.currentTarget.value)} />
               <TextInput size="md" label="Hora pretendida" type="time" value={planTime} onChange={(e) => setPlanTime(e.currentTarget.value)} />

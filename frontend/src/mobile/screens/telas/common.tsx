@@ -2,6 +2,7 @@
 
 import { Button, type ButtonProps } from '@mantine/core';
 import { useEffect, useRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { registerView } from './view-stack';
 import { ErrorState, LoadingState, OfflineState, useOnlineStatus } from '../../ui';
 
 /**
@@ -64,17 +65,8 @@ export function useBackToClose(open: boolean, onClose: () => void) {
   }, []);
   useEffect(() => {
     if (!open) return;
-    let ownEntry = true;
-    window.history.pushState(window.history.state, '');
-    const onPop = () => {
-      ownEntry = false;
-      closeRef.current();
-    };
-    window.addEventListener('popstate', onPop);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-      if (ownEntry && !unmounting.current) window.history.back();
-    };
+    const view = registerView(() => closeRef.current());
+    return () => view.release(unmounting.current);
   }, [open]);
 }
 

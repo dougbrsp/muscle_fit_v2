@@ -6,7 +6,7 @@ import { MobileNutritionPresentation } from './MobileNutritionPresentation';
 /** Alimentos (celular): busca, código de barras, USDA e cadastro como no desktop; resultados em lista. */
 export function NutricaoAlimentosScreen() {
   return (
-    <MobileNutritionPresentation>
+    <MobileNutritionPresentation active="/nutricao/alimentos">
       <AlimentosClient />
     </MobileNutritionPresentation>
   );

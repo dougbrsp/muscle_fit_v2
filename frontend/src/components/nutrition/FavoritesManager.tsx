@@ -40,6 +40,7 @@ import {
   type FavoriteDefaultForm,
 } from '@/lib/nutrition-favorites';
 import type { FavoriteItem, FavoritesResponse } from '@/lib/nutrition-types';
+import { usePresentationActive } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 const TOUCH_TARGET_PX = 44;
@@ -138,6 +139,7 @@ function DefaultPortionModal({ favorite, onClose }: { favorite: FavoriteItem; on
  * mostra o que a API devolve.
  */
 export function FavoritesManager() {
+  const mobile = usePresentationActive();
   const queryClient = useQueryClient();
   const [editando, setEditando] = useState<FavoriteItem | null>(null);
   const favoritos = useQuery({ queryKey: favoriteKeys.all, queryFn: fetchFavorites, retry: false });
@@ -217,13 +219,13 @@ export function FavoritesManager() {
 
       <Paper withBorder radius="md" p="md" bg={BRAND.bgElevated}>
         <Stack gap="sm">
-          <Group gap={6} wrap="nowrap">
+          <Group gap={6} wrap={mobile ? 'nowrap' : 'wrap'}>
             <IconStarFilled size={16} color="var(--mantine-color-yellow-5)" />
             <Title order={4} c={BRAND.textPrimary}>
               Meus preferidos
             </Title>
             {favoritos.data && (
-              <Text size="xs" c={BRAND.textMuted} style={{ whiteSpace: 'nowrap' }}>
+              <Text size="xs" c={BRAND.textMuted} style={mobile ? { whiteSpace: 'nowrap' } : undefined}>
                 {itens.length} de {favoritos.data.max_items}
               </Text>
             )}

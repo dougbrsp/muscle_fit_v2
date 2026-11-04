@@ -140,13 +140,22 @@ const SETS_ROW = (key: string, label: string) => ({
 });
 const LEVEL = { volume: [VOL_ROW('peito', 'Peito'), VOL_ROW('costas', 'Costas')], equivalent_sets: [SETS_ROW('peito', 'Peito'), SETS_ROW('costas', 'Costas')] };
 const NUTRITION_PLAN = {
-  id: 1, user_id: 1, status: 'published', state: 'current', notes: null, engine_version: 'x', effective_from: '2026-10-01', superseded_at: null, published_at: '2026-10-01T10:00:00',
-  created_by: 1, published_by: 1, created_at: null, updated_at: '2026-10-01T10:00:00', strategy: 'maintenance', advanced: false, protein_g_per_kg: null, fat_kcal_share: 0.25,
+  id: 1, user_id: 1, status: 'draft', state: 'draft', notes: null, engine_version: 'x', effective_from: null, superseded_at: null, published_at: null,
+  created_by: 1, published_by: null, created_at: '2026-10-10T09:00:00', updated_at: '2026-10-10T09:00:00', strategy: 'maintenance', advanced: false, protein_g_per_kg: null, fat_kcal_share: 0.25,
   weekly_rate_share: null, surplus_share: null, carb_min_g_per_kg: null, bmr_formula: 'mifflin', tdee_mode: 'activity_factor', activity_level: null, meals_per_day: 4,
   goal_body_fat_percent: null, goal_weight_kg: null, carb_cycling_enabled: false, macro_priority: 'protein', manual_targets: null, cycle_days: null, maintenance_kcal_adjust: 0,
 };
 
+const PLAN_DRAFT = {
+  name: 'Ficha rascunho - Peito', plan_type: 'abc', split_day: 'A', goal: null, template_id: 7, template_slot_sequence: 1, template_version_id: null,
+  generation_summary: null, excluded_due_to_recovery: [],
+  exercises: [{ sequence: 1, exercise_name: 'Supino reto com barra', mapping_id: 1, muscle_primary: 'Peitoral', equipment_name: 'Banco reto', sets_count: 3, reps_target: '8-10', load_target: '80 kg', rpe_target: '8', warmup: false }],
+};
+
 const FIXTURES: Record<string, unknown> = {
+  'POST /workout-plans/generate': { job_id: 'j1', status: 'pending' },
+  'GET /jobs/j1': { status: 'done', result: PLAN_DRAFT },
+  'POST /workout-plans': PLAN_DETAIL,
   'GET /training-goals': { default: 'hypertrophy', items: [] },
   'GET /analytics/muscle-groups-recent-exercise-volume': { items: [] },
   'GET /analytics/muscle-groups-slot-comparison': { limit: 400, sessions_per_slot: 4, period_keys: ['t3', 't2', 't1', 't0'], levels: { volume_class: LEVEL, parent_group: LEVEL, muscle_group: LEVEL } },

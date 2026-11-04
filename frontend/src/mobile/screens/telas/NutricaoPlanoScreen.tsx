@@ -10,7 +10,7 @@ import { MobileNutritionPresentation } from './MobileNutritionPresentation';
  */
 export function NutricaoPlanoScreen() {
   return (
-    <MobileNutritionPresentation>
+    <MobileNutritionPresentation active="/nutricao/plano">
       <PlanoClient />
     </MobileNutritionPresentation>
   );

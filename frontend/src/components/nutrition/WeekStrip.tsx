@@ -79,6 +79,7 @@ function DayPill({ day, selected, today, onSelect }: { day: WeekDay; selected: b
 /** A semana do diário (segunda a domingo): ingestão × meta por dia e o resumo do motor (`weekly_budget`). */
 export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
   const WeekDays = usePresentationSlot('weekDays');
+  const WeekReportView = usePresentationSlot('weekReport');
   if (!week) return null;
   const { report } = week;
   const linhasBarras = weekBarRows(week, weekdayShort);
@@ -123,6 +124,9 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           Sem refeições nem metas nesta semana: o gráfico aparece quando houver o que mostrar.
         </Text>
       )}
+      {WeekReportView ? (
+        <WeekReportView report={report} />
+      ) : (
       <Group gap="lg" wrap="wrap">
         <Text size="sm" c={BRAND.textMuted}>
           Orçamento da semana: <b>{formatKcal(report.budget.kcal)}</b>
@@ -142,6 +146,7 @@ export function WeekStrip({ week, selected, onSelect, onWeekChange }: Props) {
           {report.adherence.logged_days} dia(s) registrado(s){report.adherence.valid_week ? ' · semana válida' : ''}
         </Badge>
       </Group>
+      )}
       <NutritionLimitations items={report.limitations} title="Sobre a semana" tone="info" />
     </Stack>
   );

@@ -13,6 +13,7 @@ const CSS = `
 .mantine-Drawer-content textarea,
 .mantine-Popover-dropdown input,
 .mantine-Select-dropdown input { font-size: 16px !important; }
+[data-mobile-shell] .mantine-Input-input::placeholder { color: rgba(245, 245, 245, 0.64); opacity: 1; }
 `;
 
 export function PortalFieldsStyle() {

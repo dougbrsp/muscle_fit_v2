@@ -13,7 +13,6 @@ import { apiFetch } from '@/lib/api';
 import {
   describeSets,
   formatLoggedSets,
-  newMeasuredSetFromLast,
   setEditFields,
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
@@ -78,6 +77,7 @@ export function TreinoDetalheScreen() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
   const [selectedRow, setSelectedRow] = useState<ExerciseLogRow | null>(null);
@@ -420,7 +420,7 @@ export function TreinoDetalheScreen() {
             searchable
             size="md"
             label="Grupo muscular"
-            placeholder="Selecione o grupo trabalhado"
+            placeholder="Selecione o grupo"
             data={groupOptions}
             value={form.muscle_group}
             onChange={(value) => {
@@ -437,8 +437,8 @@ export function TreinoDetalheScreen() {
               !activity.gym_id
                 ? 'Sem academia definida'
                 : !form.muscle_group
-                  ? 'Selecione o grupo muscular primeiro'
-                  : 'Selecione o equipamento usado'
+                  ? 'Escolha o grupo primeiro'
+                  : 'Selecione o equipamento'
             }
             data={equipmentOptions}
             value={form.equipment_id || null}
@@ -468,7 +468,7 @@ export function TreinoDetalheScreen() {
             searchable
             size="md"
             label="Exercício canônico"
-            placeholder={selectedEquipmentLink ? 'Selecione o exercício' : 'Selecione o equipamento primeiro'}
+            placeholder={selectedEquipmentLink ? 'Selecione o exercício' : 'Escolha o equipamento primeiro'}
             data={exerciseOptionsForEquipment}
             value={form.exercise_name || null}
             disabled={!selectedEquipmentLink}
@@ -536,24 +536,24 @@ export function TreinoDetalheScreen() {
                   <SimpleGrid cols={2} spacing="sm">
                     {hasSides(set) && fields.showReps ? (
                       <>
-                        <NumberInput size="md" label="Reps E" inputMode="numeric" min={0} max={100} value={set.reps_left ?? undefined} onChange={(v) => updateSet(index, 'reps_left', v === '' ? null : Number(v))} />
-                        <NumberInput size="md" label="Reps D" inputMode="numeric" min={0} max={100} value={set.reps_right ?? undefined} onChange={(v) => updateSet(index, 'reps_right', v === '' ? null : Number(v))} />
+                        <NumberInput size="md" hideControls label="Reps E" inputMode="numeric" min={0} max={100} value={set.reps_left ?? undefined} onChange={(v) => updateSet(index, 'reps_left', v === '' ? null : Number(v))} />
+                        <NumberInput size="md" hideControls label="Reps D" inputMode="numeric" min={0} max={100} value={set.reps_right ?? undefined} onChange={(v) => updateSet(index, 'reps_right', v === '' ? null : Number(v))} />
                       </>
                     ) : null}
                     {!hasSides(set) && fields.showReps ? (
-                      <NumberInput size="md" label="Repetições" inputMode="numeric" min={fields.repsMin ?? 1} max={100} value={set.reps ?? undefined} onChange={(v) => updateSet(index, 'reps', v === '' ? null : Number(v))} />
+                      <NumberInput size="md" hideControls label="Repetições" inputMode="numeric" min={fields.repsMin ?? 1} max={100} value={set.reps ?? undefined} onChange={(v) => updateSet(index, 'reps', v === '' ? null : Number(v))} />
                     ) : null}
                     {fields.showDuration ? (
-                      <NumberInput size="md" label="Tempo (s)" inputMode="numeric" min={fields.durationMin} max={fields.durationMax} step={1} allowDecimal={false} value={set.duration_seconds ?? undefined} onChange={(v) => updateSet(index, 'duration_seconds', v === '' || v == null ? null : Number(v))} />
+                      <NumberInput size="md" hideControls label="Tempo (s)" inputMode="numeric" min={fields.durationMin} max={fields.durationMax} step={1} allowDecimal={false} value={set.duration_seconds ?? undefined} onChange={(v) => updateSet(index, 'duration_seconds', v === '' || v == null ? null : Number(v))} />
                     ) : null}
-                    <NumberInput size="md" label="Carga (kg)" inputMode="decimal" min={0} max={1000} step={0.5} decimalScale={2} value={set.weight_kg} onChange={(v) => updateSet(index, 'weight_kg', Number(v))} />
+                    <NumberInput size="md" hideControls label="Carga (kg)" inputMode="decimal" min={0} max={1000} step={0.5} decimalScale={2} value={set.weight_kg} onChange={(v) => updateSet(index, 'weight_kg', Number(v))} />
                     {hasSides(set) ? (
                       <>
-                        <NumberInput size="md" label="RPE E" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_left ?? undefined} onChange={(v) => updateSet(index, 'rpe_left', v === '' ? null : Number(v))} />
-                        <NumberInput size="md" label="RPE D" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_right ?? undefined} onChange={(v) => updateSet(index, 'rpe_right', v === '' ? null : Number(v))} />
+                        <NumberInput size="md" hideControls label="RPE E" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_left ?? undefined} onChange={(v) => updateSet(index, 'rpe_left', v === '' ? null : Number(v))} />
+                        <NumberInput size="md" hideControls label="RPE D" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe_right ?? undefined} onChange={(v) => updateSet(index, 'rpe_right', v === '' ? null : Number(v))} />
                       </>
                     ) : (
-                      <NumberInput size="md" label="RPE" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe ?? undefined} onChange={(v) => updateSet(index, 'rpe', v == null ? null : Number(v))} />
+                      <NumberInput size="md" hideControls label="RPE" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe ?? undefined} onChange={(v) => updateSet(index, 'rpe', v == null ? null : Number(v))} />
                     )}
                   </SimpleGrid>
                 </ListBlock>
@@ -594,12 +594,39 @@ export function TreinoDetalheScreen() {
             </Stack>
           </Collapse>
 
+          <ListGroup>
+            <ListRow destructive title="Descartar rascunho" onClick={() => setDiscardOpen(true)} />
+          </ListGroup>
           {saveExerciseMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
               {saveExerciseMutation.error instanceof Error ? saveExerciseMutation.error.message : String(saveExerciseMutation.error)}
             </Alert>
           ) : null}
         </Stack>
+        <BottomSheet
+          opened={discardOpen}
+          onClose={() => setDiscardOpen(false)}
+          title="Descartar rascunho?"
+          footer={
+            <>
+              <SheetButton variant="default" onClick={() => setDiscardOpen(false)}>
+                Continuar editando
+              </SheetButton>
+              <SheetButton
+                color="red"
+                onClick={() => {
+                  setDiscardOpen(false);
+                  resetForm();
+                  setFormOpen(false);
+                }}
+              >
+                Descartar
+              </SheetButton>
+            </>
+          }
+        >
+          <Text>O que você digitou neste lançamento será apagado.</Text>
+        </BottomSheet>
         <StickyAction>
           <Button
             fullWidth
