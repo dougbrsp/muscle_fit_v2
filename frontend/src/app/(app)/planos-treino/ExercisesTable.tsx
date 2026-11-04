@@ -23,7 +23,7 @@ import {
   type SuggestedProgressionResponse,
   type WorkoutPlanExercise,
 } from '@/lib/workout-plans-types';
-import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
 import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defaults';
 import { BRAND } from '@/theme';
 import { AdvancedConfigModal, type AdvancedConfigPatch } from './AdvancedConfigModal';
@@ -84,14 +84,14 @@ const showAllOptions: OptionsFilter = ({ options }) => options;
 
 // Linha já salva na ficha: o grupamento muscular dela é travado (o servidor
 // recusa a mudança com 422). Linha nova escolhe o grupo livremente.
-function isSavedRow(exercise: WorkoutPlanExercise): boolean {
+export function isSavedRow(exercise: WorkoutPlanExercise): boolean {
   return exercise.workout_plan_exercise_id != null;
 }
 
 // Badges da prescrição CONGELADA (PR-11): o que foi prescrito, o que a
 // segurança cortou e o que exige decisão do usuário. Nada aqui é editável —
 // a prescrição é read-only e o servidor a preserva no PUT.
-function prescriptionBadges(exercise: WorkoutPlanExercise) {
+export function prescriptionBadges(exercise: WorkoutPlanExercise) {
   const badges: { key: string; color: string; label: string; tooltip: string }[] = [];
   const prescription = exercise.prescription;
   const overlayClamps = exercise.safety_overlay?.clamps || [];
@@ -168,7 +168,7 @@ function prescriptionBadges(exercise: WorkoutPlanExercise) {
   return badges;
 }
 
-function progressionBadge(progression?: WorkoutPlanExercise['progression']) {
+export function progressionBadge(progression?: WorkoutPlanExercise['progression']) {
   if (progression === 'increased') return <Badge color="green" variant="light">Carga subiu</Badge>;
   if (progression === 'decreased') return <Badge color="red" variant="light">Carga caiu</Badge>;
   if (progression === 'same') return <Badge color="gray" variant="light">Mantida</Badge>;
@@ -179,7 +179,7 @@ function progressionBadge(progression?: WorkoutPlanExercise['progression']) {
 // aquecimento/série de ajuste/pico de contração — configurados no builder de
 // modelos (item_kind='equipment', modo 'equipment_series') e persistidos em
 // workout_plan_exercises, mas até agora invisíveis na ficha salva.
-function advancedConfigBadges(exercise: WorkoutPlanExercise) {
+export function advancedConfigBadges(exercise: WorkoutPlanExercise) {
   const badges: { key: string; color: string; label: string; tooltip: string }[] = [];
 
   if (exercise.warmup_sets_count) {
@@ -218,7 +218,7 @@ function advancedConfigBadges(exercise: WorkoutPlanExercise) {
   return badges;
 }
 
-function formatActivationList(items: { muscle_group_name: string; activation: number }[]): string {
+export function formatActivationList(items: { muscle_group_name: string; activation: number }[]): string {
   return items
     .map((item) => `${item.muscle_group_name} (${item.activation.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`)
     .join(', ');
@@ -391,23 +391,11 @@ export function ExercisesTable({
   async function applySuggestedProgression(index: number, mappingId: number) {
     setSuggestionLoadingIndex(index);
     try {
-      const suggestion = await apiFetch<SuggestedProgressionResponse>(
-        `/exercises/suggested-progression?mapping_id=${mappingId}`,
-      );
+      const patch = await fetchSuggestedProgressionPatch(mappingId);
       const current = exercisesRef.current;
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      // Sem faixa do motor (grupo sem trabalho direto -> SKIP) o campo fica
-      // vazio, nunca null nem faixa inventada; a nota do motor explica o porquê.
-      const targets = suggestedProgressionTargets(suggestion);
-      next[index] = {
-        ...next[index],
-        reps_target: targets.reps_target,
-        load_target: targets.load_target,
-        rpe_target: targets.rpe_target,
-        progression_note: targets.progression_note,
-        progression: suggestion.progression ?? null,
-      };
+      next[index] = { ...next[index], ...patch };
       onChange(next);
     } catch {
       // silencioso: mantém os campos como estavam.

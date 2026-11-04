@@ -8,6 +8,7 @@ import { NutritionLimitations } from './NutritionLimitations';
 import { addFoodPortion, nutritionErrorInfo } from '@/lib/nutrition-api';
 import { formatWithUnit, inputNumberOrNull } from '@/lib/nutrition-format';
 import type { FoodDetail, FoodPortion } from '@/lib/nutrition-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 type Props = {
@@ -21,6 +22,7 @@ type Props = {
  * público) e valida a quantidade com a faixa do motor.
  */
 export function PortionsEditor({ food, onAdded }: Props) {
+  const Alternative = usePresentationSlot('portions');
   const [rotulo, setRotulo] = useState('');
   const [quantidade, setQuantidade] = useState<number | string>('');
 
@@ -43,6 +45,8 @@ export function PortionsEditor({ food, onAdded }: Props) {
         <Text size="sm" c={BRAND.textMuted}>
           Nenhuma porção cadastrada.
         </Text>
+      ) : Alternative ? (
+        <Alternative portions={food.portions} basis={food.basis} />
       ) : (
         <Table verticalSpacing={4}>
           <Table.Tbody>

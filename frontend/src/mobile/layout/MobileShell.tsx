@@ -19,6 +19,7 @@ import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
 import { DesktopOnlyScreen } from '../screens/DesktopOnlyScreen';
 import { resolveMobileScreen } from '../screens/registry';
+import { hasOpenView } from '../screens/telas/view-stack';
 import { useKeyboardOpen } from './keyboard';
 import { scrollMemoryKey } from './nav-active';
 import { MoreSheet } from './MoreSheet';
@@ -136,7 +137,18 @@ function Shell({ children }: { children: ReactNode }) {
         <div className={styles.headerInner}>
           {back ? (
             back.href ? (
-              <Link href={back.href} className={styles.back} aria-label={`Voltar para ${back.label}`}>
+              <Link
+                href={back.href}
+                className={styles.back}
+                aria-label={`Voltar para ${back.label}`}
+                onClick={(event) => {
+                  // Visão de página inteira aberta (formulário, editor): o voltar só a fecha, na mesma rota.
+                  if (hasOpenView()) {
+                    event.preventDefault();
+                    router.back();
+                  }
+                }}
+              >
                 <IconChevronLeft size={26} aria-hidden />
                 <span>{back.label}</span>
               </Link>
@@ -145,7 +157,10 @@ function Shell({ children }: { children: ReactNode }) {
                 type="button"
                 className={styles.back}
                 aria-label={`Voltar para ${back.label}`}
-                onClick={openMore}
+                onClick={() => {
+                  if (hasOpenView()) router.back();
+                  else openMore();
+                }}
               >
                 <IconChevronLeft size={26} aria-hidden />
                 <span>{back.label}</span>

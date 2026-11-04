@@ -20,7 +20,7 @@ Estado: todas as rotas do menu são alcançáveis (bottom nav + "Mais") e nenhum
 
 - **Início**: tela mobile própria (`src/mobile/screens/MobileHome.tsx`), escolhida pelo shell via `screens/registry.ts` só com flag ON + largura de celular. Mesmos hooks/queries da visão geral (`useDashboardFilters`, `fetchOverview`, mesma chave de cache); todo texto e número vem do backend. O painel completo continua disponível, recolhido ("Ver visão geral completa").
 - **Histórico** (`registro-exercicios`, `dashboard/treinos`) e **Biblioteca** (`exercicios`): mantidos como estão no shell. Já são colunas empilhadas e não rolam a página; o único ponto fraco é a tabela larga e o filtro em 4 colunas do registro (MB-1/MB-2), que exigem mexer em página compartilhada e ficam para PR próprio com prova de desktop idêntico.
-- **Perfil**: formulário em coluna única, bom com os alvos de 44 px e fonte de 16 px do shell.
+- **Perfil**: (v1) coluna única; reformulado no mobile v2, acabamento dos formulários (seções por assunto e "Salvar perfil" fixo).
 - **Safe-area**: `viewportFit: 'cover'` no layout raiz e `env(safe-area-inset-*)` no header/navbar do AppShell desktop (celular com flag OFF, PWA, paisagem com notch) e no shell mobile. No desktop `env()` vale 0 e o e2e Chromium 1280/1440 segue idêntico. Falta validar o efeito real em iPhone.
 
 ## Registros da revisão
@@ -57,6 +57,24 @@ Entregue: ADR [0004](../adr/0004-navegacao-iphone-e-secoes-so-desktop.md), [DESI
 | MB-12 | MB-1 a MB-3 e MB-6 (tabelas, filtros, gráficos, estados) | Frentes B e C, com os primitivos novos |
 | MB-13 | Teclado decidido por foco, não por `visualViewport` | Validar em iPhone real |
 | MB-14 | Rotas só-desktop abertas por link compartilhado (`InsightCard`, `DataQuality`, `SafeMarkdown`, `CardioRecommendationPanel`) caem na tela D1; o CTA existe nesses componentes | Aceito (D1); esconder o CTA exigiria mexer em componente do desktop |
+
+## Mobile v2: frente C (treino, corpo, nutricao e conta)
+
+Duplicacao aceita entre as telas mobile e os clients do desktop (mesmas chaves e endpoints; extraido so o mecanico em `lib/exercise-log-save.ts`, `lib/workout-plan-payload.ts` e `lib/suggested-progression-apply.ts`):
+
+| # | Item |
+|---|---|
+| C-1 | Queries de catalogo/grupos/equipamento e estado do formulario de lancamento em `TreinoDetalheScreen` vs `WorkoutDetailClient`. |
+| C-2 | Mutations de PUT/refresh/cardio/delete em `PlanoDetalheScreen` vs `PlanDetailClient`; job de geracao em `GerarPlanoView` vs `GenerateDraftModal`. |
+| C-3 | Catalogo canonico, swap eligibility e breakdown em `PlanExercisesEditor` vs `ExercisesTable`. |
+
+Herdados do desktop (sem mudar a semantica do backend): limpar o RPE grava 0; edicao de exercicio sem catalogo manda `mapping_id` nulo; cancelar durante o reset de senha perde a senha temporaria.
+
+Resolvido nas rodadas 1 e 2 da frente C (retirado do backlog): busca de Alimentos, Preferidos, Plano (Novo rascunho fixo), Diario (faixa da semana, dia da semana, data uma vez), Indicadores (marcador de 1 ponto, Novo lancamento em largura total, secoes que nao perdem o formulario), voltar fechando a visao de pagina inteira, e2e com payloads, goBack e fluxos com dados.
+
+Pendente (frente C): confirmacao de descarte ao sair de uma visao de pagina inteira com alteracao (hoje o voltar fecha a visao e o rascunho fica); faixa de 7 dias da semana do Diario com 37 px de largura em 320 px.
+
+Resolvido no acabamento dos formularios (retirado do backlog): Perfil em secoes (identidade, dados, preferencias, plano nutricional, cardio, Intervals.icu) com "Trocar foto" separado do selo e "Salvar perfil" fixo; Lancar exercicio com seletores em folha e series com stepper de 44 pt (primeira serie visivel sem rolar em 390x844); Preferencias de treino sem icone-placeholder, estrelas e limpar de 44 pt e ajuda em rodape; "Meta x ingestao" do Diario so com o que tem valor e estado vazio unico; folga inferior de toda tela com `StickyAction` coberta por teste (`forms-telas.spec.ts`). Slots novos em `lib/presentation-slots.tsx`: `formSection`, `saveAction`, `pairPreferences`, `targetVsIntake` (sem provider = desktop igual).
 
 ## Mobile v2 (2026-11-03): frente B, Evolução e dashboards
 

@@ -500,10 +500,6 @@ button.card:active {
 }
 
 /* ---------- StickyAction ---------- */
-.stickySpacer {
-  height: calc(var(--m-touch) + 28px);
-}
-
 .sticky {
   position: fixed;
   left: 0;

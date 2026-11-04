@@ -4,6 +4,7 @@
 // ModeSelectScreen) que descartavam os campos avançados do modo
 // 'equipment_series' — ao adicionar um campo no backend, adicione-o AQUI.
 import type {
+  WorkoutPlan,
   WorkoutPlanDraft,
   WorkoutPlanExercise,
   WorkoutPlanExerciseInput,
@@ -101,4 +102,72 @@ export function toWorkoutPlanInput(
   options?: { sequenceFromIndex?: boolean },
 ): WorkoutPlanInput {
   return { ...fields, exercises: toWorkoutPlanExercisesInput(exercises, options) };
+}
+
+type PlanHeaderFields = {
+  name: string;
+  plan_type: string;
+  split_day: string;
+  goal: string;
+  status: string;
+  plan_date: string;
+  plan_time: string;
+  gym_id: string | null;
+};
+
+/**
+ * Payload do `PUT /workout-plans/{id}` (tela de detalhe, desktop e celular).
+ * Ficha finalizada (`editable === false` EXPLÍCITO) salva só o cabeçalho: sem
+ * `exercises` o servidor não toca neles. O PUT reenvia template/versão/slot,
+ * senão desvincularia a ficha do Modelo de origem.
+ */
+export function buildPlanUpdatePayload(
+  plan: WorkoutPlan,
+  fields: PlanHeaderFields,
+  exercises: WorkoutPlanExercise[],
+): WorkoutPlanInput {
+  const payload = toWorkoutPlanInput(
+    {
+      name: fields.name,
+      plan_type: fields.plan_type,
+      split_day: fields.split_day || null,
+      goal: fields.goal || null,
+      status: fields.status,
+      plan_date: fields.plan_date || null,
+      plan_time: fields.plan_time || null,
+      gym_id: fields.gym_id ? Number(fields.gym_id) : null,
+      raw_payload: plan.raw_payload || null,
+      template_id: plan.template_id ?? null,
+      template_slot_sequence: plan.template_slot_sequence ?? null,
+      template_version_id: plan.template_version_id ?? null,
+    },
+    exercises,
+  );
+  if (plan.editable === false) delete payload.exercises;
+  return payload;
+}
+
+/** Payload do `POST /workout-plans` ao salvar um rascunho gerado (desktop e celular). */
+export function buildDraftCreatePayload(
+  draft: WorkoutPlanDraft,
+  fields: { name: string; status: string; plan_date: string; plan_time: string; gym_id: string | null },
+  exercises: WorkoutPlanExercise[],
+): WorkoutPlanInput {
+  return toWorkoutPlanInput(
+    {
+      name: fields.name,
+      plan_type: draft.plan_type,
+      split_day: draft.split_day || null,
+      goal: draft.goal || null,
+      status: fields.status,
+      plan_date: fields.plan_date || null,
+      plan_time: fields.plan_time || null,
+      gym_id: fields.gym_id ? Number(fields.gym_id) : null,
+      template_id: draft.template_id ?? null,
+      template_slot_sequence: draft.template_slot_sequence ?? null,
+      template_version_id: draft.template_version_id ?? null,
+      raw_payload: buildDraftRawPayload(draft),
+    },
+    exercises,
+  );
 }

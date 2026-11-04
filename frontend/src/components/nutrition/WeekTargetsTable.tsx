@@ -6,11 +6,12 @@ import { TRAINING_KCAL_NATURE_OPTIONS, nutritionLabel, nutritionNotice } from '@
 import { formatGrams, formatKcal, weekdayShort } from '@/lib/nutrition-format';
 import type { NutritionDayTarget } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 export type WeekRow = { local_date: string; target: NutritionDayTarget | null };
 
-function trainingText(target: NutritionDayTarget): string {
+export function trainingText(target: NutritionDayTarget): string {
   if (!target.training_known) return 'A definir';
   if (!target.is_training_day) return 'Sem treino';
   const natureza = nutritionLabel(TRAINING_KCAL_NATURE_OPTIONS, target.training_kcal_nature);
@@ -19,6 +20,8 @@ function trainingText(target: NutritionDayTarget): string {
 
 /** Metas dos 7 dias (segunda primeiro), como o motor calculou ou materializou. */
 export function WeekTargetsTable({ rows, today }: { rows: WeekRow[]; today: string }) {
+  const Alternative = usePresentationSlot('weekTargets');
+  if (Alternative) return <Alternative rows={rows} today={today} />;
   return (
     <Table.ScrollContainer minWidth={640}>
       <Table verticalSpacing="xs" striped highlightOnHover>

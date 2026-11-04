@@ -26,7 +26,7 @@ describe('escolha de aluno só na montagem do plano', () => {
       .filter((p) => !p.endsWith('UserPicker.tsx') && /\bUserPicker\b/.test(readFileSync(p, 'utf8')))
       .map(rel);
     expect(usam).toEqual(['app/(app)/nutricao/plano/PlanoClient.tsx']);
-  });
+  }, 30_000); // varre todo o `src` (centenas de arquivos): o limite padrão de 5 s estoura em máquina lenta
 
   it('o diário e os componentes de refeição não falam user_id (URLs de check-in/painel: testes de chamada)', () => {
     const diario = readFileSync(join(SRC, 'lib/nutrition-api.ts'), 'utf8');

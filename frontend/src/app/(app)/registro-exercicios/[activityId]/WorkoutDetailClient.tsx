@@ -36,14 +36,21 @@ import { apiFetch } from '@/lib/api';
 import {
   describeSets,
   formatLoggedSets,
-  newMeasuredSetFromLast,
   setEditFields,
   setFormFromRow,
-  setUpdatePayload,
 } from '@/lib/exercise-set-edit';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
+import {
+  appendSet,
+  defaultNewSet,
+  dropSet,
+  emptyExerciseForm,
+  headerMetaPayload,
+  saveExerciseLog,
+  updateSetField,
+} from '@/lib/exercise-log-save';
 import { finishWorkoutSession } from '@/lib/workout-session-finish';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
@@ -51,7 +58,6 @@ import { MuscleActivationTable } from '@/components/MuscleActivationTable';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import {
   ActivityDetail,
-  buildStartedAt,
   conductedByOptions,
   ExerciseFormState,
   ExerciseLogRow,
@@ -69,18 +75,6 @@ import {
 import { isWorkingSetType } from '@/lib/set-types';
 import { BRAND } from '@/theme';
 import { formatNumberOrDash } from '@/lib/format';
-
-function emptyExerciseForm(): ExerciseFormState {
-  return {
-    exercise_name: '',
-    equipment_id: '',
-    muscle_group: null,
-    workout_plan_exercise_id: '',
-    muscle_pain: null,
-    joint_pain: false,
-    sets: [{ set_number: 1, reps: 10, weight_kg: 20, rpe: null }],
-  };
-}
 
 type StatusCardProps = {
   activity: ActivityDetail;
@@ -395,69 +389,7 @@ export function WorkoutDetailClient() {
   }
 
   const saveExerciseMutation = useMutation({
-    mutationFn: async () => {
-      if (!form.exercise_name) {
-        throw new Error('Selecione um exercício.');
-      }
-
-      if (editingExerciseId) {
-        return apiFetch(`/exercises/logs/${editingExerciseId}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            local_date: activity?.local_date,
-            started_at: activity?.started_at || null,
-            original_name: form.exercise_name,
-            mapping_id: selectedMap?.id ?? null,
-            mapped_name: selectedMap?.amazfit_name || form.exercise_name,
-            muscle_primary: selectedMap?.primary_group || null,
-            muscle_secondary: selectedMap?.secondary_group || null,
-            gym_id: activity?.gym_id ?? null,
-            conducted_by: activity?.conducted_by ?? null,
-            equipment_id: form.equipment_id ? Number(form.equipment_id) : null,
-            workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
-            muscle_pain: form.muscle_pain,
-            joint_pain: form.joint_pain,
-            sets: form.sets.map(setUpdatePayload),
-          }),
-        });
-      }
-
-      const exerciseResult = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${activityId}/exercises`, {
-        method: 'POST',
-        body: JSON.stringify({
-          original_name: form.exercise_name,
-          mapping_id: selectedMap?.id ?? null,
-          equipment_id: form.equipment_id ? Number(form.equipment_id) : null,
-          workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
-          muscle_pain: form.muscle_pain,
-          joint_pain: form.joint_pain,
-        }),
-      });
-
-      for (let index = 0; index < form.sets.length; index += 1) {
-        const set = form.sets[index];
-        try {
-          await apiFetch(`/workout-sessions/${activityId}/exercises/${exerciseResult.exercise_id}/sets`, {
-            method: 'POST',
-            body: JSON.stringify({
-              set_number: index + 1,
-              reps: set.reps,
-              weight_kg: set.weight_kg,
-              rpe: set.rpe,
-            }),
-          });
-        } catch (error) {
-          throw new Error(
-            `Exercício criado (série ${index + 1} de ${form.sets.length} falhou ao salvar). ` +
-              `Edite o registro na lista abaixo para completar as séries restantes. Detalhe: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-          );
-        }
-      }
-
-      return exerciseResult;
-    },
+    mutationFn: () => saveExerciseLog({ activityId, activity, form, editingExerciseId, selectedMap }),
     onSuccess: async () => {
       setEditingExerciseId(null);
       setForm(emptyExerciseForm());
@@ -479,15 +411,7 @@ export function WorkoutDetailClient() {
     mutationFn: async (headerForm: WorkoutHeaderForm) =>
       apiFetch(`/workout-sessions/${activityId}/meta`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          name: headerForm.name,
-          local_date: headerForm.local_date,
-          started_at: buildStartedAt(headerForm.local_date, headerForm.started_at_time),
-          gym_id: headerForm.gym_id ? Number(headerForm.gym_id) : null,
-          training_type_id: headerForm.training_type_id ? Number(headerForm.training_type_id) : null,
-          conducted_by: headerForm.conducted_by || null,
-          workout_plan_id: headerForm.workout_plan_id ? Number(headerForm.workout_plan_id) : null,
-        }),
+        body: JSON.stringify(headerMetaPayload(headerForm)),
       }),
     onSuccess: async () => {
       closeHeaderEdit();
@@ -514,26 +438,11 @@ export function WorkoutDetailClient() {
   });
 
   function addSet() {
-    setForm((current) => ({
-      ...current,
-      sets: [
-        ...current.sets,
-        newMeasuredSetFromLast(current.sets[current.sets.length - 1], current.sets.length + 1) ?? {
-          set_number: current.sets.length + 1,
-          reps: 10,
-          weight_kg: 20,
-          rpe: null,
-        },
-      ],
-    }));
+    setForm((current) => ({ ...current, sets: appendSet(current.sets) }));
   }
 
   function removeSet(index: number) {
-    setForm((current) => {
-      if (current.sets.length <= 1) return current;
-      const nextSets = current.sets.filter((_, i) => i !== index).map((set, i) => ({ ...set, set_number: i + 1 }));
-      return { ...current, sets: nextSets };
-    });
+    setForm((current) => ({ ...current, sets: dropSet(current.sets, index) }));
   }
 
   function updateSet(
@@ -541,21 +450,7 @@ export function WorkoutDetailClient() {
     field: 'reps' | 'weight_kg' | 'rpe' | 'duration_seconds' | SideField,
     value: number | null,
   ) {
-    setForm((current) => ({
-      ...current,
-      sets: current.sets.map((set, i) => {
-        if (i !== index) return set;
-        // M102: lado vazio fica vazio (o servidor ignora o lado vazio).
-        if (field === 'rpe' || field === 'duration_seconds' || field.endsWith('_left') || field.endsWith('_right')) {
-          return { ...set, [field]: value == null || Number.isNaN(Number(value)) ? null : Number(value) };
-        }
-        // Máximo de reps (Lote T5): vazio fica vazio (o piso é do dono), não 0.
-        if (field === 'reps' && setEditFields(set.measure).repsMin != null && (value == null || Number.isNaN(Number(value)))) {
-          return { ...set, reps: null };
-        }
-        return { ...set, [field]: Number(value) || 0 };
-      }),
-    }));
+    setForm((current) => ({ ...current, sets: updateSetField(current.sets, index, field, value) }));
   }
 
   function loadForEdit(row: ExerciseLogRow) {
@@ -594,7 +489,7 @@ export function WorkoutDetailClient() {
         planExercise.workout_plan_exercise_id != null ? String(planExercise.workout_plan_exercise_id) : '',
       muscle_pain: null,
       joint_pain: false,
-      sets: [{ set_number: 1, reps: 10, weight_kg: 20, rpe: null }],
+      sets: [defaultNewSet()],
     });
   }
 

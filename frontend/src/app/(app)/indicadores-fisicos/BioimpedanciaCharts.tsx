@@ -13,6 +13,7 @@ import {
   CHART_TOOLTIP_LABEL_STYLE,
   type ChartRows,
 } from '@/components/charts/chartTheme';
+import { usePresentationActive } from '@/lib/presentation-slots';
 
 function formatKgTick(value: number | null | undefined) {
   const n = Number(value);
@@ -25,6 +26,7 @@ function formatPercentTick(value: number | null | undefined) {
 }
 
 export function MassChart({ massChartData }: { massChartData: ChartRows }) {
+  const singlePoint = usePresentationActive() && massChartData.length === 1;
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={massChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
@@ -38,14 +40,15 @@ export function MassChart({ massChartData }: { massChartData: ChartRows }) {
           formatter={(value) => formatKgTick(Number(value))}
         />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-        <Line type="monotone" dataKey="peso" name="Peso" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
-        <Line type="monotone" dataKey="massaMuscular" name="Massa muscular" stroke={CHART_COLORS.compare} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
+        <Line type="monotone" dataKey="peso" name="Peso" stroke={CHART_COLORS.primary} strokeWidth={2} dot={singlePoint} activeDot={{ r: 5 }} connectNulls />
+        <Line type="monotone" dataKey="massaMuscular" name="Massa muscular" stroke={CHART_COLORS.compare} strokeWidth={2} dot={singlePoint} activeDot={{ r: 5 }} connectNulls />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
 export function PercentChart({ percentChartData }: { percentChartData: ChartRows }) {
+  const singlePoint = usePresentationActive() && percentChartData.length === 1;
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={percentChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
@@ -59,8 +62,8 @@ export function PercentChart({ percentChartData }: { percentChartData: ChartRows
           formatter={(value) => formatPercentTick(Number(value))}
         />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-        <Line type="monotone" dataKey="gordura" name="Gordura" stroke={CHART_COLORS.secondary} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
-        <Line type="monotone" dataKey="agua" name="Água" stroke={CHART_COLORS.compare} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
+        <Line type="monotone" dataKey="gordura" name="Gordura" stroke={CHART_COLORS.secondary} strokeWidth={2} dot={singlePoint} activeDot={{ r: 5 }} connectNulls />
+        <Line type="monotone" dataKey="agua" name="Água" stroke={CHART_COLORS.compare} strokeWidth={2} dot={singlePoint} activeDot={{ r: 5 }} connectNulls />
       </LineChart>
     </ResponsiveContainer>
   );

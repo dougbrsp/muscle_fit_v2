@@ -31,6 +31,7 @@ import {
   type TrainingPreferencesResponse,
 } from '@/lib/equipment-recommend';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
+import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 const THUMB_SIZE = 56;
@@ -101,8 +102,37 @@ export function PreferenciasTreinoClient() {
     );
   }
 
+  const Header = usePresentationSlot('pageHeader');
+  const Section = usePresentationSlot('formSection');
+  const PairList = usePresentationSlot('pairPreferences');
+
+  const filters = (
+    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+      <Select
+        label="Academia"
+        placeholder={gymsQuery.isLoading ? 'Carregando academias...' : 'Escolha a academia'}
+        data={gyms.map((gym) => ({ value: String(gym.id), label: gym.name }))}
+        value={activeGymId ? String(activeGymId) : null}
+        onChange={(value) => setSelectedGymId(value ? Number(value) : null)}
+        allowDeselect={false}
+        searchable
+        nothingFoundMessage="Nenhuma academia"
+      />
+      <TextInput
+        label="Buscar"
+        placeholder={Section ? 'Exercício ou equipamento' : 'Exercício, equipamento ou grupo muscular'}
+        leftSection={<IconSearch size={16} />}
+        value={search}
+        onChange={(event) => setSearch(event.currentTarget.value)}
+      />
+    </SimpleGrid>
+  );
+
   return (
     <Stack gap="lg">
+      {Header ? (
+        <Header title="Preferências de Treino" description={Section ? 'Dê sua nota a cada exercício em cada equipamento da academia.' : `Dê sua nota a cada exercício em cada equipamento da academia. ${PAIR_STARS_HELP}`} />
+      ) : (
       <div>
         <Title order={1} c={BRAND.textPrimary}>
           Preferências de Treino
@@ -111,26 +141,9 @@ export function PreferenciasTreinoClient() {
           Dê sua nota a cada exercício em cada equipamento da academia. {PAIR_STARS_HELP}
         </Text>
       </div>
+      )}
 
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-        <Select
-          label="Academia"
-          placeholder={gymsQuery.isLoading ? 'Carregando academias...' : 'Escolha a academia'}
-          data={gyms.map((gym) => ({ value: String(gym.id), label: gym.name }))}
-          value={activeGymId ? String(activeGymId) : null}
-          onChange={(value) => setSelectedGymId(value ? Number(value) : null)}
-          allowDeselect={false}
-          searchable
-          nothingFoundMessage="Nenhuma academia"
-        />
-        <TextInput
-          label="Buscar"
-          placeholder="Exercício, equipamento ou grupo muscular"
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-        />
-      </SimpleGrid>
+      {Section ? <Section footer={PAIR_STARS_HELP}>{filters}</Section> : filters}
 
       {gymsQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -157,6 +170,13 @@ export function PreferenciasTreinoClient() {
         <Text c={BRAND.textMuted}>Esta academia ainda não tem equipamentos vinculados a exercícios.</Text>
       ) : groups.length === 0 ? (
         <Text c={BRAND.textMuted}>Nada encontrado para &quot;{search}&quot;.</Text>
+      ) : PairList ? (
+        <PairList
+          groups={groups}
+          starsOf={(pair) => displayedPairStars(pair, starsCache)}
+          onChange={changeStars}
+          onOpenPhoto={lightbox.open}
+        />
       ) : (
         groups.map((group) => (
           <Stack key={group.group} gap="sm">

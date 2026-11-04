@@ -55,9 +55,18 @@ export function useKeyboardOpen(): boolean {
       clearTimeout(timer);
       timer = setTimeout(sync, 60);
     };
+    // Campo focado que SAI da tela (visão fechada pelo voltar, rota trocada): o navegador não
+    // avisa o foco, e o estado "teclado aberto" ficaria preso até o próximo foco, que seria o
+    // PRÓPRIO toque seguinte (a barra fixa mudaria de lugar entre o toque e a soltura e o
+    // toque se perderia). Reconcilia com o foco real quando a árvore muda.
+    const observer = new MutationObserver(() => {
+      if (!isTextEntry(document.activeElement as HTMLElement | null)) setOpen(false);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
     return () => {
+      observer.disconnect();
       clearTimeout(timer);
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
