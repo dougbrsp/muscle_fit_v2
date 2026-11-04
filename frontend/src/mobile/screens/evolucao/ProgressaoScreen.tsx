@@ -504,7 +504,7 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
       <ListRow title="Séries" value={fmtInt(item.sets_count)} />
       <ListRow
         title="1RM estimado"
-        subtitle={item.e1rm != null && !isSessionE1rmReliable(item) ? 'pouco confiável (>12 reps)' : undefined}
+        subtitle={item.e1rm != null && !isSessionE1rmReliable(item) ? 'pouco confiável' : undefined}
         value={fmtKg(item.e1rm)}
       />
       <ListBlock>
