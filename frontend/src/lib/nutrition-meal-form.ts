@@ -94,15 +94,19 @@ const SEM_LEITURA: Pick<
   notices: [],
 };
 
-export function editorItemFromFood(food: Pick<FoodItem, 'id' | 'name' | 'basis'>, key: string): MealEditorItem {
+/** Item novo a partir do alimento: com a porção padrão que a API manda (`default_portion`, do motor), senão vazio. */
+export function editorItemFromFood(
+  food: Pick<FoodItem, 'id' | 'name' | 'basis' | 'default_portion'>,
+  key: string,
+): MealEditorItem {
   return {
     key,
     id: null,
     food_id: food.id,
     label: food.name,
     basis: food.basis,
-    quantity: '',
-    unit: food.basis,
+    quantity: food.default_portion?.quantity ?? '',
+    unit: food.default_portion?.unit ?? food.basis,
     portion_id: null,
     ...SEM_LEITURA,
   };

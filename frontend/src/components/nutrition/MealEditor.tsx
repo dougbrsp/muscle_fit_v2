@@ -19,7 +19,7 @@ import {
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FavoriteShortcuts } from './FavoriteShortcuts';
 import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { FoodSearch } from './FoodSearch';
@@ -27,9 +27,17 @@ import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { useScannerOpen } from '@/lib/barcode-scanner-open';
 import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
-import { createMeal, fetchFood, foodKeys, nutritionErrorInfo, previewMeal, updateMeal } from '@/lib/nutrition-api';
+import {
+  createMeal,
+  fetchFood,
+  fetchLastMealTime,
+  foodKeys,
+  lastMealTimeKey,
+  nutritionErrorInfo,
+  previewMeal,
+  updateMeal,
+} from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
-import { newMealClockTime } from '@/lib/nutrition-quick-entry';
 import { addRegisteredFood } from '@/lib/nutrition-food-registration';
 import {
   chooseCandidate,
@@ -54,8 +62,6 @@ const ATRASO_DO_PREVIEW_MS = 400;
 
 type Props = {
   date: string;
-  /** Hoje segundo a API: refeição nova nesse dia abre com a hora atual (editável). */
-  today?: string | null;
   /** Refeição em edição ou `null` (nova). */
   meal: Meal | null;
   /** Formulário inicial de uma refeição nova (leitura por IA, L5b). */
@@ -202,21 +208,27 @@ function ItemRow({
  * porção; o preview é uma chamada à API (motor `meal_math`, E9) e a gravação
  * congela os valores por item (E4). A tela não calcula nada.
  */
-export function MealEditor({ date, today = null, meal, initialForm = null, onSaved, onCancel }: Props) {
+export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }: Props) {
   const [form, setForm] = useState<MealEditorForm>(() =>
     meal
       ? editorFormFromMeal(meal)
-      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: newMealClockTime(date, today), notes: '', items: [], ai: null }),
+      : (initialForm ?? { local_date: date, meal_slot: null, eaten_at: '', notes: '', items: [], ai: null }),
   );
   const proximaChave = useRef(0);
-  // A hora ainda é a automática (do relógio, refeição nova)? Trocar o Dia a recalcula; hora digitada pela pessoa (mesmo apagada) nunca muda.
-  const horaAutomatica = useRef(meal === null && initialForm === null && form.eaten_at !== '');
+  // Refeição nova (sem edição nem leitura por IA) abre com a ÚLTIMA hora registrada pela pessoa, quando a API
+  // responde. A hora digitada (mesmo apagada) nunca é sobrescrita; trocar o Dia não mexe na hora.
+  const horaTocada = useRef(false);
+  const querHoraAnterior = meal === null && initialForm === null;
   // Cadastro de alimento sem sair do registro: o rascunho (`form`) mora AQUI, fora do modal/folha, que só
   // desmonta o fluxo ao fechar. Fechar sem salvar não muda nada; salvar acrescenta o item.
   const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
   // Avisos do cadastro (Atwater, Open Food Facts) e erro de "usar o existente" ficam na tela depois de o fluxo fechar.
   const [avisosCadastro, setAvisosCadastro] = useState<NutritionLimitation[]>([]);
   const [erroExistente, setErroExistente] = useState<string | null>(null);
+  // Entrega (de uso único) do alimento salvo que está na etapa final do cadastro; nula fora dela.
+  const entregaPendente = useRef<(() => void) | null>(null);
+  // Estrela marcada com a refeição no teto de itens: favoritou, mas não coube na lista.
+  const [avisoTeto, setAvisoTeto] = useState<string | null>(null);
   const noCelular = usePresentationActive();
   // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.
   const leitorAberto = useScannerOpen();
@@ -232,6 +244,20 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
     retry: false,
   });
 
+  const ultimaHora = useQuery({
+    queryKey: lastMealTimeKey,
+    queryFn: fetchLastMealTime,
+    enabled: querHoraAnterior,
+    retry: false, // falhou: o campo fica vazio, sem erro na tela
+    staleTime: 0,
+  });
+  // Só vale a resposta buscada DEPOIS de montar: o valor em cache pode ser de antes da última gravação.
+  const horaAnterior = ultimaHora.isFetchedAfterMount && !ultimaHora.isError ? (ultimaHora.data?.time ?? null) : null;
+  useEffect(() => {
+    if (!querHoraAnterior || horaAnterior === null || horaTocada.current) return;
+    setForm((atual) => (atual.eaten_at === '' ? { ...atual, eaten_at: horaAnterior } : atual));
+  }, [querHoraAnterior, horaAnterior]);
+
   const salvar = useMutation({
     mutationFn: () => {
       if (meal) {
@@ -242,7 +268,10 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
       if (!corpo) throw new Error('Refeição incompleta.');
       return createMeal(corpo);
     },
-    onSuccess: onSaved,
+    onSuccess: (salva) => {
+      void queryClient.invalidateQueries({ queryKey: lastMealTimeKey });
+      onSaved(salva);
+    },
   });
 
   function adicionarCadastrado(alimento: { id: number; name: string; basis: string; warnings?: NutritionLimitation[] }) {
@@ -275,6 +304,11 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
   const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
   function fecharCadastro() {
+    // Fechou (X, Esc, voltar) na etapa final: o alimento já foi salvo, então entra na refeição como em "Concluir",
+    // só sem favoritar nem promover.
+    const entregar = entregaPendente.current;
+    entregaPendente.current = null;
+    entregar?.();
     setCadastro(null);
     setErroExistente(null);
   }
@@ -291,6 +325,9 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
         onSaved={adicionarCadastrado}
         onFound={adicionarCadastrado}
         onUseExisting={usarExistente}
+        onPendingDelivery={(entregar) => {
+          entregaPendente.current = entregar;
+        }}
         onCancel={fecharCadastro}
       />
     </Stack>
@@ -353,7 +390,7 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
             value={form.eaten_at}
             onChange={(e) => {
               const valor = e.currentTarget.value;
-              horaAutomatica.current = false;
+              horaTocada.current = true;
               setForm((atual) => ({ ...atual, eaten_at: valor }));
             }}
             w={140}
@@ -365,11 +402,7 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
             onChange={(e) => {
               const valor = e.currentTarget.value;
               if (!valor) return;
-              setForm((atual) => ({
-                ...atual,
-                local_date: valor,
-                eaten_at: horaAutomatica.current ? newMealClockTime(valor, today) : atual.eaten_at,
-              }));
+              setForm((atual) => ({ ...atual, local_date: valor }));
             }}
             w={170}
           />
@@ -389,6 +422,21 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
           selectedId={null}
           onRegister={(termo) => setCadastro({ nome: termo })}
           registerDisabled={form.items.length >= MEAL_ITEMS_LIMIT}
+          onFavorited={(alimento) => {
+            // Estrela marcada na busca: o alimento já é favorito e entra na refeição com a porção padrão.
+            // Já está na lista (selecionado antes): não duplica.
+            if (form.items.some((i) => i.food_id === alimento.id)) return;
+            if (form.items.length >= MEAL_ITEMS_LIMIT) {
+              setAvisoTeto(alimento.name);
+              return;
+            }
+            setAvisoTeto(null);
+            proximaChave.current += 1;
+            const novo = editorItemFromFood(alimento, `novo-${proximaChave.current}`);
+            setForm((atual) =>
+              atual.items.some((i) => i.food_id === alimento.id) ? atual : { ...atual, items: [...atual.items, novo] },
+            );
+          }}
           onSelect={(alimento) => {
             if (form.items.length >= MEAL_ITEMS_LIMIT) return;
             proximaChave.current += 1;
@@ -396,6 +444,21 @@ export function MealEditor({ date, today = null, meal, initialForm = null, onSav
             setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
           }}
         />
+
+        {avisoTeto && (
+          <Alert
+            color="yellow"
+            variant="light"
+            icon={<IconAlertTriangle size={16} />}
+            withCloseButton
+            closeButtonLabel="Dispensar aviso"
+            onClose={() => setAvisoTeto(null)}
+          >
+            <Text size="sm">
+              {`${avisoTeto} foi adicionado aos preferidos, mas a refeição já tem o máximo de ${MEAL_ITEMS_LIMIT} itens.`}
+            </Text>
+          </Alert>
+        )}
 
         {avisosCadastro.length > 0 && (
           <Alert

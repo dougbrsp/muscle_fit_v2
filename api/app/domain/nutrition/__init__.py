@@ -166,6 +166,15 @@ def export_for_frontend() -> dict[str, Any]:
         "default_bmr_formula": bmr.DEFAULT_BMR_FORMULA.value,
         "tdee_modes": _codes(energy_expenditure.TdeeMode),
         "tdee_mode_labels": lb.labels_by_code(lb.TDEE_MODE_LABELS),
+        "tdee_mode_hints": lb.labels_by_code(lb.TDEE_MODE_HINTS),
+        "routine_levels": _codes(anthropometrics.ActivityLevel),
+        "routine_level_labels": lb.labels_by_code(lb.ROUTINE_LEVEL_LABELS),
+        "routine_level_factors": {
+            nivel.value: fator for nivel, fator in anthropometrics.NON_EXERCISE_ACTIVITY_FACTORS.items()
+        },
+        "default_routine_level": energy_expenditure.ROUTINE_ACTIVITY_LEVEL_DEFAULT.value,
+        "auto_tdee_mode": energy_expenditure.TdeeMode.AUTO_INTERVALS.value,
+        "intervals_sync_max_age_minutes": energy_expenditure.INTERVALS_SYNC_MAX_AGE_MINUTES,
         "default_tdee_mode": energy_expenditure.DEFAULT_TDEE_MODE.value,
         "session_kinds": _codes(energy_expenditure.SessionKind),
         "session_kind_labels": lb.labels_by_code(lb.SESSION_KIND_LABELS),

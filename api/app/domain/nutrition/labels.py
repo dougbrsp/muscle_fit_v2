@@ -165,8 +165,41 @@ BMR_FORMULA_LABELS: Final[Mapping[BmrFormula, str]] = {
 }
 
 TDEE_MODE_LABELS: Final[Mapping[TdeeMode, str]] = {
-    TdeeMode.EXPLICIT_TRAINING: "Treino somado à parte",
-    TdeeMode.INCLUDED_IN_FACTOR: "Treino embutido no fator",
+    TdeeMode.EXPLICIT_TRAINING: "Treino somado à parte (fator SEM exercício)",
+    TdeeMode.INCLUDED_IN_FACTOR: "Treino embutido no fator (fator COM exercício)",
+    TdeeMode.AUTO_INTERVALS: "Automático pelo Intervals (rotina + treino e cardio medidos)",
+}
+
+# Frase curta sob o seletor, por modo: deixa claro se o fator da conta inclui ou não o exercício.
+TDEE_MODE_HINTS: Final[Mapping[TdeeMode, str]] = {
+    TdeeMode.EXPLICIT_TRAINING: (
+        "O fator de atividade cobre só a sua rotina, sem exercício; o gasto do treino do dia é somado à parte."
+    ),
+    TdeeMode.INCLUDED_IN_FACTOR: (
+        "O fator de atividade já inclui o seu exercício; o treino do dia não é somado de novo."
+    ),
+    TdeeMode.AUTO_INTERVALS: (
+        "Com o Intervals conectado e sincronizado: rotina fora do exercício + treino de força + cardio e caminhadas "
+        "medidos. Sem conexão ou com a sincronização parada, usa o fator que inclui exercício, do seu nível de "
+        "atividade do perfil."
+    ),
+}
+
+# Como o gasto do dia foi montado, por base (`ee.TdeeBasis`): o aviso só existe no fallback do modo automático.
+TDEE_BASIS_NOTES: Final[Mapping[str, str]] = {
+    "auto_fallback": (
+        "Estimado pelo fator: Intervals sem sincronizar. O treino e o cardio deste dia não foram somados ao gasto."
+    ),
+}
+
+# "Rotina fora do exercício" (modo automático): o que a pessoa faz no dia sem contar o treino. Os códigos são os de
+# `ActivityLevel` (a coluna `activity_level` do plano guarda a rotina) e o fator vem da tabela de NÃO-exercício.
+ROUTINE_LEVEL_LABELS: Final[Mapping[ActivityLevel, str]] = {
+    ActivityLevel.SEDENTARY: "Quase sempre sentado(a)",
+    ActivityLevel.LIGHT: "Leve: em pé ou andando um pouco",
+    ActivityLevel.MODERATE: "Moderada: em pé ou andando boa parte do dia",
+    ActivityLevel.ACTIVE: "Intensa: muito tempo em pé ou andando",
+    ActivityLevel.VERY_ACTIVE: "Muito intensa: trabalho físico pesado",
 }
 
 SESSION_KIND_LABELS: Final[Mapping[SessionKind, str]] = {
@@ -228,6 +261,18 @@ FOOD_SOURCE_LABELS: Final[Mapping[FoodSource, str]] = {
     FoodSource.USER: "Cadastro próprio",
     FoodSource.LABEL_PHOTO: "Foto do rótulo",
     FoodSource.AI_ESTIMATE: "Estimativa da IA",
+}
+
+# Origem do alimento na lista (`catalog.food_origin`).
+FOOD_ORIGIN_LABELS: Final[Mapping[catalog_mod.FoodOrigin, str]] = {
+    catalog_mod.FoodOrigin.LABEL_PHOTO: "Rótulo (IA)",
+    catalog_mod.FoodOrigin.BARCODE_OFF: "Código de barras (Open Food Facts)",
+    catalog_mod.FoodOrigin.BARCODE: "Código de barras",
+    catalog_mod.FoodOrigin.TYPED: "Digitado",
+    catalog_mod.FoodOrigin.USDA: "USDA",
+    catalog_mod.FoodOrigin.TACO: "TACO",
+    catalog_mod.FoodOrigin.TBCA_MANUAL: "TBCA",
+    catalog_mod.FoodOrigin.AI: "IA",
 }
 
 # Tipos de dado do USDA FoodData Central importados (L3b; códigos do FDC em `external_sources`).
@@ -429,6 +474,11 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     macros_mod.LIMIT_CARB_BELOW_MIN: "Carboidrato abaixo do mínimo do bulking.",
     # Treino do dia.
     ee_mod.LIMIT_NO_TRAINING_KCAL: "Dia de treino sem kcal nem duração: o treino não entrou no gasto.",
+    ee_mod.LIMIT_AUTO_REQUIRES_PROFILE_LEVEL: (
+        "O modo automático precisa do nível de atividade no seu perfil: é com ele que o gasto é estimado quando o "
+        "Intervals não está sincronizado. Preencha o nível no perfil e salve o plano de novo."
+    ),
+    ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
     dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY: "Dia futuro: o treino ainda não aconteceu e não entrou no gasto.",
     # Ciclo de carbo (L8).
     dt_mod.LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE: "O ciclo de carbo precisa dos dias de treino da semana.",

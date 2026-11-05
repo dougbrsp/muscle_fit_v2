@@ -222,10 +222,77 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     db.add_activity(ALUNO, ontem, None, 1800)
     treino = _client().get(f"/nutrition/days/{ontem.isoformat()}").json()["training"]
     assert [s["calories_source"] for s in treino["sessions"]] == ["manual", None]
-    # Uma sessão sem kcal: a soma informada cai (regra de `day_context_for`) e o motor usa a MET das durações.
-    assert treino["comparison"]["reported"]["kcal"] is None
-    assert treino["comparison"]["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
-    assert treino["comparison"]["used"]["kcal_nature"] == "met"
+    # Uma sessão sem kcal (comportamento antigo: derrubava o dia para MET): agora soma por sessão. A informada (300)
+    # vale, a MET entra só na duração da sem kcal (30 min) e o dia fica identificável como parcialmente estimado.
+    comparacao = treino["comparison"]
+    assert comparacao["reported"]["kcal"] == pytest.approx(300)
+    assert comparacao["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
+    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30))
+    assert comparacao["used"]["kcal_nature"] == "met" and comparacao["partial"] is True
+    assert comparacao["used"]["limitations"] == ["training_kcal_partially_estimated"]
+    assert not any(lado["is_used"] for lado in comparacao["sides"])
+
+
+def _plano_automatico(db):
+    db.plans[db.plano]["training_kcal_mode"] = "auto_intervals"
+    db.intervals_connected, db.intervals_minutes_since_sync = True, 60
+
+
+def test_dia_expoe_forca_extra_e_total_pelo_motor(db):
+    _plano_automatico(db)
+    db.add_activity(ALUNO, HOJE, 428, 3600, intervals_kcal=428, name="Treino A")
+    for esporte, kcal in (("Walk", 51), ("Walk", 79), ("VirtualRun", 265)):
+        db.add_intervals_activity(ALUNO, HOJE, esporte, kcal)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}
+    assert treino["extra_activity"]["kcal"] == 395.0 and treino["extra_activity"]["kcal_nature"] == "reported"
+    assert [i["label"] for i in treino["extra_activity"]["items"]] == ["Walk", "Walk", "VirtualRun"]
+    assert treino["is_training_day"] is True
+
+
+def test_dia_so_com_cardio_nao_e_dia_de_treino_e_o_total_e_o_extra(db):
+    _plano_automatico(db)
+    ontem = HOJE - timedelta(days=1)
+    db.add_intervals_activity(ALUNO, ontem, "VirtualRun", 427)
+    treino = _client().get(f"/nutrition/days/{ontem.isoformat()}").json()["training"]
+    assert treino["is_training_day"] is False and treino["sessions"] == [] and treino["comparison"] is None
+    assert treino["activity_kcal"] == {"training_kcal": None, "extra_kcal": 427.0, "total_kcal": 427.0}
+
+
+def test_dia_de_fallback_avisa_que_treino_e_cardio_nao_foram_somados(db):
+    db.plans[db.plano]["training_kcal_mode"] = "auto_intervals"
+    db.intervals_connected, db.intervals_minutes_since_sync = True, 10_000  # sincronização parada
+    db.add_activity(ALUNO, HOJE, 428, 3600)
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["tdee_basis"] == "auto_fallback"
+    assert "Intervals sem sincronizar" in treino["tdee_basis_note"] and treino["extra_activity"]["kcal"] == 0.0
+
+
+def test_dia_sincronizado_e_dia_classico_nao_trazem_aviso(db):
+    _plano_automatico(db)
+    sincronizado = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert sincronizado["tdee_basis"] == "auto_synced" and sincronizado["tdee_basis_note"] is None
+    db.plans[db.plano]["training_kcal_mode"] = "explicit_training"
+    db.targets.clear()
+    classico = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert classico["tdee_basis"] == "classic" and classico["tdee_basis_note"] is None
+
+
+def test_plano_classico_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["extra_activity"]["kcal"] == 0.0 and treino["activity_kcal"]["total_kcal"] == 410.0
+
+
+def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
+    _plano_automatico(db)
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": []}
+    assert treino["activity_kcal"]["total_kcal"] == 410.0
 
 
 # ---------------------------------------------------------------------------

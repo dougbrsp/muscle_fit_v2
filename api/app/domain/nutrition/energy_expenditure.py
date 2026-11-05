@@ -99,16 +99,141 @@ QUALITY_BY_TRAINING_KCAL_NATURE: Final[Mapping[TrainingKcalNature, DataQuality]]
 }
 
 LIMIT_NO_TRAINING_KCAL = "training_kcal_unavailable"
+# Dia com sessão informada e outra sem kcal: o total soma a informada e a MET só da duração da que não tem kcal.
+LIMIT_TRAINING_PARTIALLY_ESTIMATED = "training_kcal_partially_estimated"
+# Plano `auto_intervals` sem nível de atividade no PERFIL: o fallback (fator com exercício) não tem de onde vir e
+# não se inventa fator; bloqueia salvar/publicar (a API devolve este código com o rótulo do motor).
+LIMIT_AUTO_REQUIRES_PROFILE_LEVEL = "auto_intervals_requires_profile_activity_level"
 LIMIT_MISSING_BMR = "missing_bmr"
 LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
+
+
+# --- Atividades extras do Intervals (cardio, caminhada, outras) -----------------------------------------------
+# Decisão do usuário (2026-11-05): o gasto do dia inclui o cardio e as caminhadas do Intervals, além do treino de
+# força. O SERVIÇO classifica a atividade em `app/intervals_activity_kind.py` (dono de "o que é cardio/força") e
+# entrega a classe; aqui se decide o que soma (cardio e outras; só as classes listadas). Força nunca entra por esta via (já é o treino de `activities`;
+# somar de novo duplicaria). Atividade sem kcal informada não soma e não é estimada.
+EXTRA_ACTIVITY_KINDS: Final[frozenset[str]] = frozenset({"cardio", "other"})  # = `intervals_activity_kind.CARDIO/OTHER` (teste de paridade)
+EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPORTED
+# O rótulo (nome da atividade) vem do Intervals, texto livre: o motor limita o tamanho que a API devolve e grava.
+EXTRA_ACTIVITY_LABEL_MAX_CHARS: Final[int] = 60
+
+
+@dataclass(frozen=True)
+class ExtraActivity:
+    """Uma atividade do Intervals do dia que NÃO é o treino de `activities`: classe (do dono da classificação),
+    kcal informada (pode faltar) e o rótulo para a tela (nome ou tipo)."""
+
+    kind: str
+    calories_kcal: Any = None
+    label: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        rotulo = None if self.label is None else str(self.label).strip()[:EXTRA_ACTIVITY_LABEL_MAX_CHARS] or None
+        return {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": rotulo}
+
+
+@dataclass(frozen=True)
+class ExtraActivityKcal:
+    """kcal das atividades extras do dia, a lista do que somou e a natureza (informada = observada)."""
+
+    kcal: float = 0.0
+    items: tuple[ExtraActivity, ...] = ()
+    kcal_nature: Optional[TrainingKcalNature] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kcal": self.kcal,
+            "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
+            "items": [item.to_dict() for item in self.items],
+        }
+
+
+NO_EXTRA_ACTIVITY_KCAL: Final[ExtraActivityKcal] = ExtraActivityKcal()
+
+
+def extra_activity_kcal(activities: Any = ()) -> ExtraActivityKcal:
+    """Soma a kcal informada das atividades que não são força. Sem kcal (None, 0, inválida) não soma."""
+    somadas = tuple(
+        item
+        for item in activities
+        if item.kind in EXTRA_ACTIVITY_KINDS and positive_number(item.calories_kcal) is not None
+    )
+    if not somadas:
+        return NO_EXTRA_ACTIVITY_KCAL
+    total = float(sum(positive_number(item.calories_kcal) or 0.0 for item in somadas))
+    return ExtraActivityKcal(kcal=total, items=somadas, kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE)
+
+
+def activity_total_kcal(training_kcal: Any, extra_kcal: Any) -> Optional[float]:
+    """Gasto de atividade do dia: treino + extras. Treino desconhecido (`None`, dia de treino sem kcal nem duração)
+    continua desconhecido; sem extra devolve o treino como está."""
+    treino = non_negative_number(training_kcal)
+    if treino is None:
+        return None
+    return treino + (non_negative_number(extra_kcal) or 0.0)
 
 
 class TdeeMode(str, Enum):
     EXPLICIT_TRAINING = "explicit_training"
     INCLUDED_IN_FACTOR = "included_in_factor"
+    # Automático pelo Intervals (2026-11-05): com a conta do Intervals conectada e sincronizada, TMB × fator de rotina
+    # fora do exercício + treino de força + cardio/caminhadas medidos; sem conexão ou com a sincronização parada,
+    # cai no fator que INCLUI exercício (`INCLUDED_IN_FACTOR`), ignorando treino e extras. Só este modo soma os extras.
+    AUTO_INTERVALS = "auto_intervals"
 
 
 DEFAULT_TDEE_MODE: Final[TdeeMode] = TdeeMode.EXPLICIT_TRAINING
+
+
+# Rotina fora do exercício (modo automático): nível padrão do plano que não escolheu; é o fator de NÃO-exercício
+# (`NON_EXERCISE_ACTIVITY_FACTORS`) de "leve" (default de desenho, o mais baixo que ainda cobre uma rotina comum).
+ROUTINE_ACTIVITY_LEVEL_DEFAULT: Final[ActivityLevel] = ActivityLevel.LIGHT
+
+# Frescor da sincronização do Intervals: a Lambda roda 1x por dia (05:45 BRT, `infra/lambda_intervals_sync.tf`);
+# 36 h = 1 ciclo diário + 12 h de folga para um atraso ou uma falha isolada. Além disso, o dia é tratado como
+# "sem sincronização" (fallback no fator com exercício): zero atividade só significa descanso se o dado é recente.
+INTERVALS_SYNC_MAX_AGE_MINUTES: Final[int] = 36 * 60
+
+
+def intervals_in_sync(connected: Any, minutes_since_sync: Any) -> bool:
+    """Intervals conectado E última sincronização dentro de `INTERVALS_SYNC_MAX_AGE_MINUTES` (sem sincronização
+    registrada ou idade inválida = fora de dia)."""
+    if not connected:
+        return False
+    idade = non_negative_number(minutes_since_sync)
+    return idade is not None and idade <= INTERVALS_SYNC_MAX_AGE_MINUTES
+
+
+class TdeeBasis(str, Enum):
+    """Como o gasto do dia foi montado (para a tela dizer a verdade): modo clássico, automático com o Intervals em dia ou
+    automático em fallback (fator com exercício; treino e extras NÃO somados)."""
+
+    CLASSIC = "classic"
+    AUTO_SYNCED = "auto_synced"
+    AUTO_FALLBACK = "auto_fallback"
+
+
+def tdee_basis_of(mode: "TdeeMode", in_sync: Optional[bool]) -> TdeeBasis:
+    if mode != TdeeMode.AUTO_INTERVALS:
+        return TdeeBasis.CLASSIC
+    return TdeeBasis.AUTO_SYNCED if in_sync else TdeeBasis.AUTO_FALLBACK
+
+
+def effective_tdee_basis(
+    mode: "TdeeMode",
+    profile_level: Optional[ActivityLevel],
+    routine_level: Optional[ActivityLevel],
+    in_sync: Optional[bool],
+) -> tuple["TdeeMode", Optional[ActivityLevel]]:
+    """Modo e nível de atividade que valem NESTE dia. Os modos clássicos seguem como estão (nível do perfil/plano). No
+    automático: sincronizado = explícito com a rotina (`routine_level` ou o padrão); não sincronizado (ou desconhecido) =
+    fator com exercício do perfil, sem treino nem extras."""
+    if mode != TdeeMode.AUTO_INTERVALS:
+        return mode, profile_level
+    if in_sync:
+        return TdeeMode.EXPLICIT_TRAINING, routine_level or ROUTINE_ACTIVITY_LEVEL_DEFAULT
+    return TdeeMode.INCLUDED_IN_FACTOR, profile_level
 
 
 def met_for_session(kind: Optional[SessionKind | str]) -> float:
@@ -183,6 +308,62 @@ def resolve_training_kcal(
     return NO_TRAINING_KCAL
 
 
+@dataclass(frozen=True)
+class SessionKcal:
+    """Uma sessão de treino concluída do dia: kcal informada (pode faltar) e duração em minutos (pode faltar)."""
+
+    calories_kcal: Any = None
+    duration_min: Any = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
+
+
+def _session_parts(
+    sessions: Any, weight_kg: Any, met: Any
+) -> list[tuple[TrainingKcalNature, float]]:
+    """kcal de cada sessão que tem como entrar: a informada onde houver; MET só da duração da sem kcal; a sem kcal e
+    sem duração (ou sem peso para a MET) não soma e não derruba as outras."""
+    partes: list[tuple[TrainingKcalNature, float]] = []
+    for sessao in sessions:
+        informada = positive_number(sessao.calories_kcal)
+        if informada is not None:
+            partes.append((TrainingKcalNature.REPORTED, informada))
+            continue
+        estimada = training_kcal_met(weight_kg, sessao.duration_min, met)
+        if estimada is not None:
+            partes.append((TrainingKcalNature.MET, estimada))
+    return partes
+
+
+def resolve_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcal:
+    """kcal do treino do dia SOMANDO POR SESSÃO (prioridade `TRAINING_KCAL_NATURE_PRIORITY` em cada uma). Todas
+    informadas: `reported`. Nenhuma informada: `met` (MET das durações). Mistas: a soma, natureza `met` (estimada) e a
+    limitação `LIMIT_TRAINING_PARTIALLY_ESTIMATED`; o dia só é `reported` se tudo for informado. Nada utilizável:
+    `NO_TRAINING_KCAL`."""
+    sessoes = tuple(sessions)
+    partes = _session_parts(sessoes, weight_kg, met)
+    if not partes:
+        return NO_TRAINING_KCAL
+    total = float(sum(kcal for _, kcal in partes))
+    # O dia é "parcialmente estimado" pelas SESSÕES (não pelo que deu para somar): há sessão sem kcal informada junto de
+    # uma informada, ou alguma sessão ficou de fora da soma (sem kcal e sem duração/peso).
+    informadas = sum(1 for sessao in sessoes if positive_number(sessao.calories_kcal) is not None)
+    todas_informadas = informadas == len(sessoes)
+    ficou_de_fora = len(partes) < len(sessoes)
+    if todas_informadas:
+        return _training_kcal_of(TrainingKcalNature.REPORTED, total)
+    if informadas == 0 and not ficou_de_fora:
+        return _training_kcal_of(TrainingKcalNature.MET, total)
+    return TrainingKcal(
+        kcal=total,
+        kcal_nature=TrainingKcalNature.MET,
+        nature=DataNature.ESTIMATED,
+        quality=DataQuality.MEDIUM,
+        limitations=(LIMIT_TRAINING_PARTIALLY_ESTIMATED,),
+    )
+
+
 def _training_kcal_of(natureza: TrainingKcalNature, kcal: Optional[float]) -> TrainingKcal:
     if kcal is None:
         return NO_TRAINING_KCAL
@@ -204,6 +385,11 @@ class TrainingKcalComparison:
     estimated: TrainingKcal
     used: TrainingKcal
 
+    @property
+    def partial(self) -> bool:
+        """O dia mistura sessão informada e estimada: o usado não é nenhum dos dois lados."""
+        return LIMIT_TRAINING_PARTIALLY_ESTIMATED in self.used.limitations
+
     def sides(self) -> tuple[tuple[TrainingKcalNature, TrainingKcal], ...]:
         """As naturezas na ordem da prioridade (`TRAINING_KCAL_NATURE_PRIORITY`) com o valor de cada uma."""
         valores = {TrainingKcalNature.REPORTED: self.reported, TrainingKcalNature.MET: self.estimated}
@@ -214,16 +400,32 @@ class TrainingKcalComparison:
             "reported": self.reported.to_dict(),
             "estimated": self.estimated.to_dict(),
             "used": self.used.to_dict(),
+            "partial": self.partial,
             # Lista pronta para a tela: código da natureza, valor e se é a usada pela prioridade.
             "sides": [
                 {
                     "kcal_nature": natureza.value,
                     "value": valor.to_dict(),
-                    "is_used": valor.kcal is not None and self.used.kcal_nature == natureza,
+                    "is_used": valor.kcal is not None and not self.partial and self.used.kcal_nature == natureza,
                 }
                 for natureza, valor in self.sides()
             ],
         }
+
+
+def compare_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcalComparison:
+    """As duas naturezas do dia por sessão e a usada (`resolve_sessions_kcal`): informada = soma das kcal informadas;
+    estimada = MET das durações de todas as sessões; usada = a soma por sessão (mista = parcialmente estimada)."""
+    sessoes = tuple(sessions)
+    informadas = [positive_number(s.calories_kcal) for s in sessoes]
+    informadas = [kcal for kcal in informadas if kcal is not None]
+    estimadas = [training_kcal_met(weight_kg, s.duration_min, met) for s in sessoes]
+    estimadas = [kcal for kcal in estimadas if kcal is not None]
+    return TrainingKcalComparison(
+        reported=_training_kcal_of(TrainingKcalNature.REPORTED, float(sum(informadas)) if informadas else None),
+        estimated=_training_kcal_of(TrainingKcalNature.MET, float(sum(estimadas)) if estimadas else None),
+        used=resolve_sessions_kcal(sessoes, weight_kg, met),
+    )
 
 
 def compare_training_kcal(
@@ -265,8 +467,22 @@ class TdeeResult:
 def activity_factor_for(level: Optional[ActivityLevel], mode: TdeeMode) -> Optional[float]:
     if level is None:
         return None
-    tabela = NON_EXERCISE_ACTIVITY_FACTORS if mode == TdeeMode.EXPLICIT_TRAINING else ACTIVITY_FACTORS
+    explicito = mode in (TdeeMode.EXPLICIT_TRAINING, TdeeMode.AUTO_INTERVALS)
+    tabela = NON_EXERCISE_ACTIVITY_FACTORS if explicito else ACTIVITY_FACTORS
     return tabela.get(level)
+
+
+def rest_tdee(
+    bmr_kcal: Any,
+    profile_level: Optional[ActivityLevel],
+    mode: TdeeMode = DEFAULT_TDEE_MODE,
+    routine_level: Optional[ActivityLevel] = None,
+) -> TdeeResult:
+    """Gasto-base de um dia SEM atividade medida (o que o ritmo e o superávit multiplicam): no automático, a rotina
+    fora do exercício; nos clássicos, o TDEE sem treino."""
+    if mode == TdeeMode.AUTO_INTERVALS:
+        return tdee(bmr_kcal, routine_level or ROUTINE_ACTIVITY_LEVEL_DEFAULT, TdeeMode.EXPLICIT_TRAINING, 0.0)
+    return tdee(bmr_kcal, profile_level, mode, 0.0)
 
 
 def tdee(
@@ -276,7 +492,10 @@ def tdee(
     training_kcal: Any = None,
 ) -> TdeeResult:
     """TDEE do dia. No modo explícito, o treino entra em kcal (0 em dia sem
-    treino); no modo embutido, o treino é ignorado (já está no fator)."""
+    treino); no modo embutido, o treino é ignorado (já está no fator). O modo automático NÃO é resolvido aqui:
+    quem chama usa `effective_tdee_basis` (aqui valeria como o explícito, com o nível dado)."""
+    if mode == TdeeMode.AUTO_INTERVALS:
+        mode = TdeeMode.EXPLICIT_TRAINING
     tmb = positive_number(bmr_kcal)
     fator = activity_factor_for(activity_level, mode)
     limitacoes: list[str] = []

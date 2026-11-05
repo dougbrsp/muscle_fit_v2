@@ -148,7 +148,9 @@ def get_dashboard(
             musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
             # Cobre também os dias de treino da projeção (TDEE estável do plano, N2).
-            entradas = load_user_inputs(cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje)
+            entradas = load_user_inputs(
+                cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos.settings.values()
+            )
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
     metas_por_dia = dash.last_by_day(dias_lidos, ((_as_date(m["local_date"]), m) for m in metas_linhas))

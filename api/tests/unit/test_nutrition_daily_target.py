@@ -226,14 +226,58 @@ def test_kcal_informada_soma_as_sessoes_quando_todas_tem_kcal():
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO + 450.5)
 
 
-def test_sessao_sem_kcal_derruba_a_soma_para_met_pela_duracao():
+def test_sessao_sem_kcal_nao_derruba_mais_a_informada_soma_por_sessao_e_o_dia_e_parcialmente_estimado():
+    # Antes (comportamento antigo): uma sessão sem kcal fazia o dia inteiro virar MET da soma das durações (300 kcal
+    # informadas se perdiam). Agora: informada onde houver + MET só da duração da sessão sem kcal.
     sessoes = [dt.SessionFacts(calories_kcal=300, duration_seconds=1800), dt.SessionFacts(duration_seconds=1800)]
     contexto = dt.day_context_for(HOJE, HOJE, sessoes)
-    assert contexto.training_kcal_reported is None
+    assert contexto.training_kcal_reported is None  # campo legado: só soma quando TODAS têm kcal
     assert contexto.training_duration_min == pytest.approx(60.0)
     meta = compute_daily_target(SUJEITO, _plano(), contexto)
-    assert meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
-    assert meta.training_kcal.kcal == pytest.approx(ee.training_kcal_met(80, 60))
+    assert meta.training_kcal.kcal == pytest.approx(300 + ee.training_kcal_met(80, 30))
+    assert meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET  # `reported` só se tudo for informado
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
+    assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO + meta.training_kcal.kcal)
+
+
+def test_caso_de_31_10_848_kcal_em_6474_s_mais_treino_avulso_de_345_s_sem_kcal():
+    sessoes = [dt.SessionFacts(calories_kcal=848, duration_seconds=6474), dt.SessionFacts(duration_seconds=345)]
+    meta = compute_daily_target(SUJEITO, _plano(), dt.day_context_for(HOJE, HOJE, sessoes))
+    avulso = ee.training_kcal_met(80, 345 / 60)
+    assert meta.training_kcal.kcal == pytest.approx(848 + avulso) and 848 < meta.training_kcal.kcal < 900
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
+
+
+def test_sessao_sem_kcal_e_sem_duracao_nao_soma_nem_derruba_as_outras_mas_marca_o_dia_como_parcial():
+    # O dia é parcial pelas SESSÕES: 300 informadas + uma sessão sem nada não pode sair `reported` sem limitação.
+    sessoes = [dt.SessionFacts(calories_kcal=300, duration_seconds=1800), dt.SessionFacts()]
+    contexto = dt.day_context_for(HOJE, HOJE, sessoes)
+    meta = compute_daily_target(SUJEITO, _plano(), contexto)
+    assert meta.training_kcal.kcal == pytest.approx(300) and meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
+    assert "training_sessions" in contexto.to_dict()  # o valor mudou: entra no hash
+    so_met = [dt.SessionFacts(duration_seconds=1800), dt.SessionFacts()]
+    met = compute_daily_target(SUJEITO, _plano(), dt.day_context_for(HOJE, HOJE, so_met))
+    assert met.training_kcal.kcal == pytest.approx(ee.training_kcal_met(80, 30)) and met.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in met.limitations  # uma sessão ficou de fora da soma
+    assert "training_sessions" in dt.day_context_for(HOJE, HOJE, so_met).to_dict()
+
+
+def test_hash_nao_muda_quando_o_valor_nao_muda():
+    todas = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(calories_kcal=300), dt.SessionFacts(calories_kcal=100, duration_seconds=60)])
+    sem_kcal_com_duracao = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(duration_seconds=60), dt.SessionFacts(duration_seconds=120)])
+    assert "training_sessions" not in todas.to_dict() and "training_sessions" not in sem_kcal_com_duracao.to_dict()
+
+
+def test_o_hash_do_dia_so_muda_no_dia_misto():
+    todas = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(calories_kcal=300, duration_seconds=60), dt.SessionFacts(calories_kcal=100)])
+    nenhuma = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(duration_seconds=60)])
+    misto = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(calories_kcal=300), dt.SessionFacts(duration_seconds=60)])
+    assert "training_sessions" not in todas.to_dict() and "training_sessions" not in nenhuma.to_dict()
+    assert misto.to_dict()["training_sessions"] == [
+        {"calories_kcal": 300.0, "duration_min": None},
+        {"calories_kcal": None, "duration_min": 1.0},
+    ]
 
 
 def test_sessao_sem_kcal_nem_duracao_avisa_treino_indisponivel():

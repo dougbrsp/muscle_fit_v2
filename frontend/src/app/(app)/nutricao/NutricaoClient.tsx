@@ -19,7 +19,7 @@ import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { dashboardKeys } from '@/lib/nutrition-dashboard';
-import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
+import { deleteMeal, diaryKeys, fetchNutritionDay, lastMealTimeKey, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
@@ -72,6 +72,7 @@ export function NutricaoClient() {
     Promise.all([
       qc.invalidateQueries({ queryKey: diaryKeys.all }),
       qc.invalidateQueries({ queryKey: dashboardKeys.all }),
+      qc.invalidateQueries({ queryKey: lastMealTimeKey }),
     ]);
 
   const remover = useMutation({
@@ -207,7 +208,6 @@ export function NutricaoClient() {
                           : `editar-${editing.meal.id}`
                     }
                     date={date}
-                    today={weekQuery.data?.today ?? dia.today ?? null}
                     meal={editing.mode === 'edit' ? editing.meal : null}
                     initialForm={editing.mode === 'parsed' ? editing.form : null}
                     onSaved={async () => {

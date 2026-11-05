@@ -30,6 +30,18 @@ describe('nutrition-meal-form: só transporte, o FE nunca manda macro', () => {
     });
   });
 
+  it('com porção padrão do motor, o item entra com a quantidade e a unidade dela, editáveis; sem, vazio', () => {
+    const comPadrao = editorItemFromFood({ ...ARROZ, default_portion: { quantity: 30, unit: 'g' } }, 'k1');
+    expect(comPadrao).toMatchObject({ quantity: 30, unit: 'g', portion_id: null });
+    expect(editorItemFromFood({ ...ARROZ, default_portion: null }, 'k2')).toMatchObject({ quantity: '', unit: 'g' });
+    expect(editorItemFromFood({ ...ARROZ, basis: 'ml', default_portion: { quantity: 200, unit: 'ml' } }, 'k3')).toMatchObject({
+      quantity: 200,
+      unit: 'ml',
+    });
+    // a quantidade preenchida já gera corpo para o preview/gravação
+    expect(itemsPayload([comPadrao])).not.toBeNull();
+  });
+
   it('sem quantidade não há corpo; com quantidade, o corpo leva só os campos do contrato', () => {
     const item = editorItemFromFood(ARROZ, 'k1');
     expect(itemsPayload([item])).toBeNull();

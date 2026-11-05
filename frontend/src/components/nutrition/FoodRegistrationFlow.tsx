@@ -2,9 +2,11 @@
 
 import { Button, Stack, Tabs, Text, Title } from '@mantine/core';
 import { IconBarcode, IconCamera, IconPencil, IconWorld } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BarcodeLookup } from './BarcodeLookup';
 import { FoodForm } from './FoodForm';
+import { FoodRegistrationFinish } from './FoodRegistrationFinish';
 import { LabelPhotoUpload } from './LabelPhotoUpload';
 import { NutritionLimitations } from './NutritionLimitations';
 import { UsdaSearch } from './UsdaSearch';
@@ -35,6 +37,8 @@ type Props = {
   onUseExisting: (foodId: number) => void;
   /** Cancelar na digitação ou na revisão do rótulo. O fluxo volta ao estado limpo. */
   onCancel?: () => void;
+  /** Entrar na etapa final entrega aqui o que Concluir entregaria (alimento já salvo); null ao sair dela. */
+  onPendingDelivery?: (deliver: (() => void) | null) => void;
   /** Muda quando a tela quer o fluxo limpo (ex.: depois de abrir um produto na página). */
   resetSignal?: number;
 };
@@ -55,8 +59,10 @@ export function FoodRegistrationFlow({
   onFound,
   onUseExisting,
   onCancel,
+  onPendingDelivery,
   resetSignal = 0,
 }: Props) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<RegistrationTab>(initialTab);
   const [barcode, setBarcode] = useState(initialBarcode ?? '');
   const [barcodeReads, setBarcodeReads] = useState(0);
@@ -66,6 +72,8 @@ export function FoodRegistrationFlow({
   const [labelReads, setLabelReads] = useState(0);
   const [unreadable, setUnreadable] = useState<LabelPhotoReading | null>(null);
   const [lastResetSignal, setLastResetSignal] = useState(resetSignal);
+  // Etapa final (favoritar/público): no lugar das abas, só depois de o alimento estar salvo/achado.
+  const [finish, setFinish] = useState<{ food: FoodSaveResponse; entregar: () => void; titulo: string } | null>(null);
 
   function clear() {
     setBarcode('');
@@ -73,6 +81,7 @@ export function FoodRegistrationFlow({
     setLookupResets((n) => n + 1);
     setLabelReading(null);
     setUnreadable(null);
+    setFinish(null);
   }
 
   // Reset pedido de fora (ajuste de estado durante a renderização, sem efeito).
@@ -102,19 +111,47 @@ export function FoodRegistrationFlow({
     return true;
   }
 
-  function saved(food: FoodSaveResponse) {
-    onSaved(food);
+  function enterFinish(food: FoodSaveResponse, entregarBruto: () => void, titulo: string) {
+    // Uso único: fechar a etapa (X, Esc, voltar) e um Concluir ainda em andamento não entregam duas vezes, e a
+    // conclusão tardia não mexe na entrega pendente de um cadastro reaberto.
+    let feito = false;
+    const entregar = () => {
+      if (feito) return;
+      feito = true;
+      onPendingDelivery?.(null);
+      entregarBruto();
+    };
     clear();
+    setFinish({ food, entregar, titulo });
+    onPendingDelivery?.(entregar);
+    // O alimento já está gravado: a busca precisa vê-lo mesmo se a pessoa sair da etapa sem concluir.
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+
+  function saved(food: FoodSaveResponse) {
+    enterFinish(food, () => onSaved(food), 'Alimento salvo');
   }
 
   function found(food: ExternalFoodResponse) {
-    onFound(food);
-    clear();
+    enterFinish(food, () => onFound(food), food.from_cache ? 'Alimento encontrado' : 'Alimento salvo');
   }
 
   function cancel() {
     clear();
     onCancel?.();
+  }
+
+  if (finish) {
+    return (
+      <FoodRegistrationFinish
+        food={finish.food}
+        title={finish.titulo}
+        onConclude={() => {
+          finish.entregar();
+          setFinish(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -177,6 +214,8 @@ export function FoodRegistrationFlow({
                 key={`rotulo-${labelReads}`}
                 food={null}
                 initial={foodFormFromPrefill(labelReading.food, labelReading)}
+                barcode={labelReading.barcode ?? undefined}
+                barcodeRead={labelReads}
                 createSource={LABEL_PHOTO.food_source}
                 onUseExisting={onUseExisting}
                 onSaved={saved}

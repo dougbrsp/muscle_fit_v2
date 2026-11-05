@@ -56,7 +56,7 @@ from . import energy_expenditure as ee
 from .adaptive_tdee import MIN_WEIGHT_SPAN_DAYS, PREFERRED_WINDOW_DAYS, AdaptiveTdee, observed_tdee, weight_trend
 from .anthropometrics import Subject, positive_number
 from .body_composition import fat_mass_kg, resolved_fat_mass_kg
-from .daily_target import DayContext, compute_daily_target
+from .daily_target import compute_daily_target, rest_day_context
 from .energy_density import DAYS_PER_WEEK, daily_kcal_for_weekly_rate, weekly_kg_for_daily_kcal
 from .macros import KCAL_PER_G_CARB, KCAL_PER_G_FAT, Macros, MacroTargets, kcal_from_macros
 from .manual_targets import KCAL_BLOCK_MAX, KCAL_BLOCK_MIN, RangeStatus
@@ -459,12 +459,12 @@ def apply_changes(settings: PlanSettings, changes: dict[str, Any]) -> PlanValida
 
 def _base_tdee_kcal(settings: PlanSettings, subject: Subject, bmr_kcal: Optional[float]) -> Optional[float]:
     """Gasto de um dia SEM treino (a base do plano): é o que o ritmo e o superávit multiplicam."""
-    return ee.tdee(bmr_kcal, subject.activity_level, settings.tdee_mode, 0.0).kcal
+    return ee.rest_tdee(bmr_kcal, subject.activity_level, settings.tdee_mode, settings.activity_level).kcal
 
 
 def _macros_of_day(settings: PlanSettings, inputs: CheckinInputs, day: date) -> DayMacros:
     meta = compute_daily_target(
-        inputs.subject, settings.plan_params(inputs.ffm_age_days), DayContext(day=day), scale_bmr=inputs.scale_bmr_kcal
+        inputs.subject, settings.plan_params(inputs.ffm_age_days), rest_day_context(settings.tdee_mode, day), scale_bmr=inputs.scale_bmr_kcal
     ).macros
     return DayMacros(kcal=meta.kcal, protein_g=meta.protein_g, carb_g=meta.carb_g, fat_g=meta.fat_g)
 

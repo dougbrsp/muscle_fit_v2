@@ -351,12 +351,16 @@ export type FoodFieldSource = {
   detail: string;
 };
 
+export type FoodOrigin = { code: string; label: string };
+
 export type FoodItem = {
   id: number;
   /** Código de `FOOD_SOURCE_OPTIONS` (taco, user...). */
   source: NutritionCode;
   source_id: string | null;
   source_version: string | null;
+  /** Origem para a lista (IA, rótulo, código de barras, digitado...): decidida pelo motor; a tela só exibe. */
+  origin?: FoodOrigin | null;
   barcode: string | null;
   name: string;
   brand: string | null;
@@ -369,6 +373,8 @@ export type FoodItem = {
   /** Os mesmos campos de `per_100` na base digitada (pronto do motor); a edição reabre com ele. */
   per_table_base: FoodPer100;
   serving: FoodServing;
+  /** Porção que a tela traz preenchida (editável) ao adicionar à refeição; decidida pelo motor. `null` = campo vazio. */
+  default_portion?: { quantity: number; unit: NutritionCode } | null;
   license: string | null;
   citation: string | null;
   /** Valores que vieram de outra fonte (ex.: USDA nos campos "em reavaliação" da TACO); `[]` = todos da linha. */
@@ -732,6 +738,13 @@ export type TrainingSession = {
 /** Uma natureza da kcal do treino na ordem da prioridade do motor, com o valor e se é a usada. */
 export type TrainingKcalSide = { kcal_nature: NutritionCode; value: TrainingKcalValue; is_used: boolean };
 
+/** Cardio, caminhada e outras atividades do Intervals (fora do treino de força) somadas ao gasto do dia; pronto do motor. */
+export type DayExtraActivity = {
+  kcal: number;
+  kcal_nature: NutritionCode | null;
+  items: { kind: string; calories_kcal: number | null; label: string | null }[];
+};
+
 export type DayTraining = {
   is_training_day: boolean;
   training_known: boolean;
@@ -742,7 +755,16 @@ export type DayTraining = {
     estimated: TrainingKcalValue;
     used: TrainingKcalValue;
     sides: TrainingKcalSide[];
+    /** Dia misto (sessão informada + sessão sem kcal): o usado é a soma por sessão e nenhum lado sozinho. */
+    partial?: boolean;
   } | null;
+  /** Como o gasto do dia foi montado (`classic`, `auto_synced`, `auto_fallback`) e o aviso do motor, quando há. */
+  tdee_basis?: string;
+  tdee_basis_note?: string | null;
+  /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
+  extra_activity?: DayExtraActivity;
+  /** Treino + extra = total de atividade do dia, somado pelo motor (`total_kcal` nulo se o treino é desconhecido). */
+  activity_kcal?: { training_kcal: number | null; extra_kcal: number; total_kcal: number | null };
 };
 
 export type DayLog = { notes: string | null; updated_at: string | null };

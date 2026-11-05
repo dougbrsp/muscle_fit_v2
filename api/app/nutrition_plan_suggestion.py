@@ -59,7 +59,8 @@ def _incomplete_subject(conn: Any, cur: Any, aluno: int, current: Mapping[str, A
     """O 422 de quando falta dado para o motor calcular (TMB, gasto), com o que o formulário informa (nível de atividade,
     modo do gasto, fórmula): sem isso a IA não tem base, e não se gasta cota. O mesmo erro da prévia."""
     hoje = user_today_for(conn, aluno)
-    comp = compute_day(load_user_inputs(cur, aluno, hoje, hoje, hoje), plan_suggestion.reference_settings(current), hoje, hoje)
+    referencia = plan_suggestion.reference_settings(current)
+    comp = compute_day(load_user_inputs(cur, aluno, hoje, hoje, hoje, [referencia]), referencia, hoje, hoje)
     return None if comp.target.computable else subject_incomplete_error(comp)
 
 

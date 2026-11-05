@@ -14,6 +14,7 @@ import {
 import { formatWithUnit } from '@/lib/nutrition-format';
 import type { FoodDetail, FoodPortion } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
+import { FoodOriginBadge } from './FoodOriginBadge';
 
 type Props = {
   food: FoodDetail;
@@ -37,9 +38,7 @@ export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAd
               {food.name}
             </Title>
             <Group gap={6} mt={4}>
-              <Badge variant="light" color={food.is_public ? 'brand' : 'gray'}>
-                {nutritionLabel(FOOD_SOURCE_OPTIONS, food.source)}
-              </Badge>
+              <FoodOriginBadge origin={food.origin} fallback={nutritionLabel(FOOD_SOURCE_OPTIONS, food.source)} isPublic={food.is_public} />
               {!food.is_public && (
                 <Badge variant="outline" color="gray">
                   {food.is_own ? 'Meu (privado)' : 'Privado de outro usuário'}

@@ -123,14 +123,6 @@ export function clockTime(agora: Date = new Date()): string {
   return agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
-/**
- * Hora inicial da refeição NOVA: a do relógio só quando o dia é o de hoje (`today` vem da API, como no
- * lançamento rápido); dia passado ou hoje desconhecido fica vazio, sem inventar hora. O campo segue opcional e editável.
- */
-export function newMealClockTime(date: string, today: string | null | undefined, agora: Date = new Date()): string {
-  return today != null && date === today ? clockTime(agora) : '';
-}
-
 // ---------------------------------------------------------------------------
 // Erros da API ({code, label}) no campo certo
 // ---------------------------------------------------------------------------

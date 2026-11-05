@@ -189,6 +189,52 @@ def normalize_source(raw: Any) -> Optional[FoodSource]:
         return None
 
 
+# Publicação automática no cadastro (2026-11-05, decisão do usuário): só o ADMIN, e só quando o alimento vem de
+# leitura (foto do rótulo ou código de barras). Usuário comum continua privado (D-G); cadastro digitado sem EAN
+# continua privado para todos (o admin publica pela etapa final ou pelo botão).
+AUTO_PUBLIC_SOURCES: Final[frozenset[FoodSource]] = frozenset({FoodSource.LABEL_PHOTO})
+
+
+def is_born_public(is_admin: bool, source: Any, barcode: Any) -> bool:
+    """O alimento recém-cadastrado nasce público (`owner_user_id` NULL)? Admin + (fonte `AUTO_PUBLIC_SOURCES`
+    ou código de barras informado)."""
+    if not is_admin:
+        return False
+    fonte = normalize_source(source)
+    return (fonte is not None and fonte in AUTO_PUBLIC_SOURCES) or bool(barcode)
+
+
+class FoodOrigin(str, Enum):
+    """Origem do alimento exibida na lista, derivada de `source` e `barcode` (sem coluna nem valor novo)."""
+
+    LABEL_PHOTO = "label_photo"
+    BARCODE_OFF = "barcode_off"
+    BARCODE = "barcode"
+    TYPED = "typed"
+    USDA = "usda"
+    TACO = "taco"
+    TBCA_MANUAL = "tbca_manual"
+    AI = "ai"
+
+
+def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
+    """Origem do alimento: foto do rótulo; OFF (código de barras); usuário com EAN (código de barras) ou
+    sem (digitado); USDA, TACO, TBCA e IA pelo nome. Fonte desconhecida -> None."""
+    fonte = normalize_source(source)
+    if fonte is None:
+        return None
+    if fonte == FoodSource.USER:
+        return FoodOrigin.BARCODE if barcode else FoodOrigin.TYPED
+    return {
+        FoodSource.LABEL_PHOTO: FoodOrigin.LABEL_PHOTO,
+        FoodSource.OFF: FoodOrigin.BARCODE_OFF,
+        FoodSource.USDA: FoodOrigin.USDA,
+        FoodSource.TACO: FoodOrigin.TACO,
+        FoodSource.TBCA_MANUAL: FoodOrigin.TBCA_MANUAL,
+        FoodSource.AI_ESTIMATE: FoodOrigin.AI,
+    }.get(fonte)
+
+
 def user_entry_source(raw: Any) -> Optional[FoodSource]:
     """Fonte do cadastro do usuário: ausente -> `USER_ENTRY_SOURCE`; uma de
     `USER_ENTRY_SOURCES` -> ela; qualquer outra (TACO, USDA, OFF...) -> None."""
@@ -259,6 +305,33 @@ def effective_table_base(stored: Any) -> float:
     """Base da tabela do alimento: a gravada, ou `TABLE_BASE_DEFAULT` (NULL, alimento antigo)."""
     numero, valido = table_base_amount(stored)
     return TABLE_BASE_DEFAULT if numero is None or not valido else numero
+
+
+@dataclass(frozen=True)
+class DefaultPortion:
+    """Porção que a tela já traz preenchida (editável) ao adicionar o alimento à refeição."""
+
+    quantity: float
+    unit: Unit
+
+    def public(self) -> dict[str, Any]:
+        return {"quantity": self.quantity, "unit": self.unit.value}
+
+
+def default_portion(serving_size: Any, table_base: Any, basis: Any) -> Optional[DefaultPortion]:
+    """Porção padrão do alimento (2026-11-05): `serving_size` (porção do rótulo) se > 0 e até `PORTION_AMOUNT_MAX`; senão a base
+    digitada da tabela (`table_base_amount` gravado, não NULL, também até `PORTION_AMOUNT_MAX`); senão nenhuma. A unidade é a base
+    (g/ml) do alimento. Valor inválido ou base desconhecida -> nenhuma (a tela deixa o campo vazio)."""
+    unidade = normalize_basis(basis)
+    if unidade is None:
+        return None
+    porcao, valida = _number(serving_size)
+    if valida and porcao is not None and porcao > 0 and porcao <= PORTION_AMOUNT_MAX:
+        return DefaultPortion(porcao, unidade)
+    base, base_valida = table_base_amount(table_base)
+    if base_valida and base is not None and base <= PORTION_AMOUNT_MAX:
+        return DefaultPortion(base, unidade)
+    return None
 
 
 def per_100_from_table_base(values: Mapping[str, Any], base_amount: Optional[float]) -> dict[str, Any]:

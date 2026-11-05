@@ -707,6 +707,10 @@
       ],
       "included_in_factor": [
         "fixed"
+      ],
+      "auto_intervals": [
+        "fixed",
+        "add_training"
       ]
     },
     "range_statuses": [
@@ -797,12 +801,43 @@
     "default_bmr_formula": "auto",
     "tdee_modes": [
       "explicit_training",
-      "included_in_factor"
+      "included_in_factor",
+      "auto_intervals"
     ],
     "tdee_mode_labels": {
-      "explicit_training": "Treino somado à parte",
-      "included_in_factor": "Treino embutido no fator"
+      "explicit_training": "Treino somado à parte (fator SEM exercício)",
+      "included_in_factor": "Treino embutido no fator (fator COM exercício)",
+      "auto_intervals": "Automático pelo Intervals (rotina + treino e cardio medidos)"
     },
+    "tdee_mode_hints": {
+      "explicit_training": "O fator de atividade cobre só a sua rotina, sem exercício; o gasto do treino do dia é somado à parte.",
+      "included_in_factor": "O fator de atividade já inclui o seu exercício; o treino do dia não é somado de novo.",
+      "auto_intervals": "Com o Intervals conectado e sincronizado: rotina fora do exercício + treino de força + cardio e caminhadas medidos. Sem conexão ou com a sincronização parada, usa o fator que inclui exercício, do seu nível de atividade do perfil."
+    },
+    "routine_levels": [
+      "sedentary",
+      "light",
+      "moderate",
+      "active",
+      "very_active"
+    ],
+    "routine_level_labels": {
+      "sedentary": "Quase sempre sentado(a)",
+      "light": "Leve: em pé ou andando um pouco",
+      "moderate": "Moderada: em pé ou andando boa parte do dia",
+      "active": "Intensa: muito tempo em pé ou andando",
+      "very_active": "Muito intensa: trabalho físico pesado"
+    },
+    "routine_level_factors": {
+      "sedentary": 1.2,
+      "light": 1.3,
+      "moderate": 1.4,
+      "active": 1.5,
+      "very_active": 1.6
+    },
+    "default_routine_level": "light",
+    "auto_tdee_mode": "auto_intervals",
+    "intervals_sync_max_age_minutes": 2160,
     "default_tdee_mode": "explicit_training",
     "session_kinds": [
       "vigorous",

@@ -57,7 +57,10 @@ def test_natureza_nao_e_proveniencia():
     """O pacote não cria vocabulário de proveniência (manual × Intervals): isso é
     de `domain/calories_source.py` (L0). Aqui só a natureza observada × estimada."""
     nomes = [nome.lower() for nome in dir(ee)]
-    assert not [nome for nome in nomes if "source" in nome or "intervals" in nome or "manual" in nome]
+    # Exceção documentada (2026-11-05): o modo automático e o frescor da sincronização do Intervals são do motor
+    # (`effective_tdee_basis`, `intervals_in_sync`); não são proveniência da kcal do treino.
+    permitidos = {"intervals_in_sync", "intervals_sync_max_age_minutes"}
+    assert not [nome for nome in nomes if ("source" in nome or "intervals" in nome or "manual" in nome) and nome not in permitidos]
     assert ee.NATURE_BY_TRAINING_KCAL_NATURE == {
         ee.TrainingKcalNature.REPORTED: DataNature.OBSERVED,
         ee.TrainingKcalNature.MET: DataNature.ESTIMATED,
@@ -144,3 +147,47 @@ def test_comparacao_sem_kcal_informada_usa_a_estimativa_e_sem_nada_fica_vazia():
     assert sem_peso.estimated == ee.NO_TRAINING_KCAL and sem_peso.used.kcal == 300
     nada = ee.compare_training_kcal()
     assert nada.reported == nada.estimated == nada.used == ee.NO_TRAINING_KCAL
+
+
+# --- soma por sessão (2026-11-05) -----------------------------------------------------------------------
+
+
+def _s(kcal=None, minutos=None):
+    return ee.SessionKcal(calories_kcal=kcal, duration_min=minutos)
+
+
+def test_todas_informadas_somam_como_antes_e_sao_reported():
+    resultado = ee.resolve_sessions_kcal([_s(300, 30), _s(150.5)], weight_kg=80)
+    assert resultado.kcal == pytest.approx(450.5) and resultado.kcal_nature == ee.TrainingKcalNature.REPORTED
+    assert resultado.limitations == ()
+
+
+def test_nenhuma_informada_e_met_das_duracoes_como_antes():
+    resultado = ee.resolve_sessions_kcal([_s(None, 30), _s(None, 30)], weight_kg=80)
+    assert resultado.kcal == pytest.approx(ee.training_kcal_met(80, 60)) and resultado.kcal_nature == ee.TrainingKcalNature.MET
+    assert resultado.limitations == ()
+
+
+def test_dia_misto_soma_a_informada_mais_a_met_so_da_sessao_sem_kcal_e_fica_parcialmente_estimado():
+    resultado = ee.resolve_sessions_kcal([_s(848, 6474 / 60), _s(None, 345 / 60)], weight_kg=80)
+    assert resultado.kcal == pytest.approx(848 + ee.training_kcal_met(80, 345 / 60))
+    assert resultado.kcal_nature == ee.TrainingKcalNature.MET and resultado.nature == DataNature.ESTIMATED
+    assert resultado.limitations == (ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED,)
+
+
+def test_sessao_sem_kcal_nem_duracao_nao_soma_e_sem_nada_utilizavel_e_indisponivel():
+    assert ee.resolve_sessions_kcal([_s(300), _s()], weight_kg=80).kcal == pytest.approx(300)
+    assert ee.resolve_sessions_kcal([_s(), _s()], weight_kg=80) is ee.NO_TRAINING_KCAL
+    assert ee.resolve_sessions_kcal([_s(None, 30)], weight_kg=None) is ee.NO_TRAINING_KCAL  # sem peso, sem MET
+    assert ee.resolve_sessions_kcal([]) is ee.NO_TRAINING_KCAL
+
+
+def test_comparacao_por_sessao_marca_o_dia_misto_e_nenhum_lado_e_o_usado():
+    comparacao = ee.compare_sessions_kcal([_s(300, 30), _s(None, 30)], weight_kg=80)
+    assert comparacao.partial is True
+    assert comparacao.reported.kcal == pytest.approx(300) and comparacao.estimated.kcal == pytest.approx(ee.training_kcal_met(80, 60))
+    assert comparacao.used.kcal == pytest.approx(300 + ee.training_kcal_met(80, 30))
+    corpo = comparacao.to_dict()
+    assert corpo["partial"] is True and not any(lado["is_used"] for lado in corpo["sides"])
+    todas = ee.compare_sessions_kcal([_s(300, 30)], weight_kg=80).to_dict()
+    assert todas["partial"] is False and [lado["is_used"] for lado in todas["sides"]] == [True, False]
