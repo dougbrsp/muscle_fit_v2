@@ -45,7 +45,12 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
-from .domain.nutrition.energy_expenditure import ExtraActivity, activity_total_kcal
+from .domain.nutrition.energy_expenditure import (
+    NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
+    ExtraActivity,
+    activity_total_kcal,
+    intervals_in_sync,
+)
 from .domain.nutrition.daily_target import (
     DailyTarget,
     DayContext,
@@ -160,6 +165,17 @@ EXTRA_ACTIVITIES_SQL = (
 )
 
 
+# Conexão e frescor da sincronização do Intervals (modo automático): conectado = athlete id e chave gravados (a chave
+# nunca sai daqui, só se existe); idade em MINUTOS da última sincronização (atividades ou wellness) no relógio do banco.
+# Quem decide "em dia" é `energy_expenditure.intervals_in_sync` (limite `INTERVALS_SYNC_MAX_AGE_MINUTES`).
+INTERVALS_CONNECTION_SQL = "SELECT intervals_athlete_id, intervals_api_key_encrypted FROM users WHERE id = %s"
+INTERVALS_SYNC_AGE_SQL = (
+    "SELECT TIMESTAMPDIFF(MINUTE, MAX(s.synced_at), CURRENT_TIMESTAMP) AS minutes_since_sync FROM ("
+    "SELECT synced_at FROM intervals_activities WHERE user_id = %s "
+    "UNION ALL SELECT synced_at FROM intervals_wellness WHERE user_id = %s) s"
+)
+
+
 def _float(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -265,6 +281,8 @@ class UserInputs:
     series: SubjectSeries = field(default_factory=SubjectSeries)
     sessions: dict[date, list[SessionFacts]] = field(default_factory=dict)
     extra_activities: dict[date, list[ExtraActivity]] = field(default_factory=dict)
+    # Intervals conectado e sincronizado (decisão do motor, lida UMA vez por carga); só vale no modo automático.
+    intervals_in_sync: bool = False
 
 
 def _decimal_free(row: dict[str, Any]) -> dict[str, Any]:
@@ -331,7 +349,19 @@ def load_user_inputs(cur: Any, user_id: int, date_from: date, date_to: date, tod
                         label=row.get("name") or row.get("sport_type"),
                     )
                 )
-    return UserInputs(series=series, sessions=sessoes, extra_activities=extras)
+    cur.execute(INTERVALS_CONNECTION_SQL, (uid,))
+    conexao = cur.fetchone() or {}
+    conectado = bool(conexao.get("intervals_athlete_id")) and bool(conexao.get("intervals_api_key_encrypted"))
+    idade = None
+    if conectado:
+        cur.execute(INTERVALS_SYNC_AGE_SQL, (uid, uid))
+        idade = (cur.fetchone() or {}).get("minutes_since_sync")
+    return UserInputs(
+        series=series,
+        sessions=sessoes,
+        extra_activities=extras,
+        intervals_in_sync=intervals_in_sync(conectado, idade),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +380,14 @@ class DayComputation:
 
 def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: date) -> DayComputation:
     """Meta de UM dia pelo motor (sem gravar)."""
-    sujeito = resolve_subject(inputs.series.readings_on(day), day, settings.activity_level)
-    contexto = day_context_for(day, today, inputs.sessions.get(day, ()), inputs.extra_activities.get(day, ()))
+    sujeito = resolve_subject(inputs.series.readings_on(day), day, settings.subject_activity_level)
+    # Só o plano automático leva os extras e o estado da sincronização ao contexto (os modos clássicos ficam como
+    # sempre, hash inclusive). Sem sincronização os extras não valem e nem entram no contexto.
+    automatico = settings.is_auto_intervals
+    extras = inputs.extra_activities.get(day, ()) if automatico and inputs.intervals_in_sync else ()
+    contexto = day_context_for(
+        day, today, inputs.sessions.get(day, ()), extras, intervals_in_sync=inputs.intervals_in_sync if automatico else None
+    )
     meta = compute_daily_target(
         sujeito.subject, settings.plan_params(sujeito.ffm_age_days), contexto, scale_bmr=sujeito.scale_bmr_kcal
     )
@@ -407,6 +443,7 @@ def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
         "tdee_kcal": meta.tdee.kcal,
         "training_kcal": meta.training_kcal.kcal,
         "training_kcal_nature": meta.training_kcal.kcal_nature.value if meta.training_kcal.kcal_nature else None,
+        "extra_activity": meta.extra_activity.to_dict(),
         "limitations": nutrition_labels.limitation_items(meta.limitations),
         "engine_version": meta.engine_version,
         "computed_at": None,
@@ -438,6 +475,8 @@ def target_row_public(row: dict[str, Any], today: date) -> dict[str, Any]:
         "bmr_formula": row.get("bmr_formula"),
         "tdee_kcal": _float(row.get("tdee_kcal")),
         "training_kcal": _float(row.get("training_kcal")),
+        # Cardio/caminhada somados ao gasto (modo automático): o dicionário que o motor gravou em `inputs_json`.
+        "extra_activity": (_json_value(row.get("inputs_json")) or {}).get("extra_activity") or NO_EXTRA_ACTIVITY.to_dict(),
         "training_kcal_nature": row.get("training_kcal_nature"),
         "limitations": nutrition_labels.limitation_items(limitacoes),
         "engine_version": row.get("engine_version"),

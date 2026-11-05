@@ -169,9 +169,48 @@ def activity_total_kcal(training_kcal: Any, extra_kcal: Any) -> Optional[float]:
 class TdeeMode(str, Enum):
     EXPLICIT_TRAINING = "explicit_training"
     INCLUDED_IN_FACTOR = "included_in_factor"
+    # Automático pelo Intervals (2026-11-05): com a conta do Intervals conectada e sincronizada, TMB × fator de rotina
+    # fora do exercício + treino de força + cardio/caminhadas medidos; sem conexão ou com a sincronização parada,
+    # cai no fator que INCLUI exercício (`INCLUDED_IN_FACTOR`), ignorando treino e extras. Só este modo soma os extras.
+    AUTO_INTERVALS = "auto_intervals"
 
 
 DEFAULT_TDEE_MODE: Final[TdeeMode] = TdeeMode.EXPLICIT_TRAINING
+
+
+# Rotina fora do exercício (modo automático): nível padrão do plano que não escolheu; é o fator de NÃO-exercício
+# (`NON_EXERCISE_ACTIVITY_FACTORS`) de "leve" (default de desenho, o mais baixo que ainda cobre uma rotina comum).
+ROUTINE_ACTIVITY_LEVEL_DEFAULT: Final[ActivityLevel] = ActivityLevel.LIGHT
+
+# Frescor da sincronização do Intervals: a Lambda roda 1x por dia (05:45 BRT, `infra/lambda_intervals_sync.tf`);
+# 36 h = 1 ciclo diário + 12 h de folga para um atraso ou uma falha isolada. Além disso, o dia é tratado como
+# "sem sincronização" (fallback no fator com exercício): zero atividade só significa descanso se o dado é recente.
+INTERVALS_SYNC_MAX_AGE_MINUTES: Final[int] = 36 * 60
+
+
+def intervals_in_sync(connected: Any, minutes_since_sync: Any) -> bool:
+    """Intervals conectado E última sincronização dentro de `INTERVALS_SYNC_MAX_AGE_MINUTES` (sem sincronização
+    registrada ou idade inválida = fora de dia)."""
+    if not connected:
+        return False
+    idade = non_negative_number(minutes_since_sync)
+    return idade is not None and idade <= INTERVALS_SYNC_MAX_AGE_MINUTES
+
+
+def effective_tdee_basis(
+    mode: "TdeeMode",
+    profile_level: Optional[ActivityLevel],
+    routine_level: Optional[ActivityLevel],
+    in_sync: Optional[bool],
+) -> tuple["TdeeMode", Optional[ActivityLevel]]:
+    """Modo e nível de atividade que valem NESTE dia. Os modos clássicos seguem como estão (nível do perfil/plano). No
+    automático: sincronizado = explícito com a rotina (`routine_level` ou o padrão); não sincronizado (ou desconhecido) =
+    fator com exercício do perfil, sem treino nem extras."""
+    if mode != TdeeMode.AUTO_INTERVALS:
+        return mode, profile_level
+    if in_sync:
+        return TdeeMode.EXPLICIT_TRAINING, routine_level or ROUTINE_ACTIVITY_LEVEL_DEFAULT
+    return TdeeMode.INCLUDED_IN_FACTOR, profile_level
 
 
 def met_for_session(kind: Optional[SessionKind | str]) -> float:
@@ -328,8 +367,22 @@ class TdeeResult:
 def activity_factor_for(level: Optional[ActivityLevel], mode: TdeeMode) -> Optional[float]:
     if level is None:
         return None
-    tabela = NON_EXERCISE_ACTIVITY_FACTORS if mode == TdeeMode.EXPLICIT_TRAINING else ACTIVITY_FACTORS
+    explicito = mode in (TdeeMode.EXPLICIT_TRAINING, TdeeMode.AUTO_INTERVALS)
+    tabela = NON_EXERCISE_ACTIVITY_FACTORS if explicito else ACTIVITY_FACTORS
     return tabela.get(level)
+
+
+def rest_tdee(
+    bmr_kcal: Any,
+    profile_level: Optional[ActivityLevel],
+    mode: TdeeMode = DEFAULT_TDEE_MODE,
+    routine_level: Optional[ActivityLevel] = None,
+) -> TdeeResult:
+    """Gasto-base de um dia SEM atividade medida (o que o ritmo e o superávit multiplicam): no automático, a rotina
+    fora do exercício; nos clássicos, o TDEE sem treino."""
+    if mode == TdeeMode.AUTO_INTERVALS:
+        return tdee(bmr_kcal, routine_level or ROUTINE_ACTIVITY_LEVEL_DEFAULT, TdeeMode.EXPLICIT_TRAINING, 0.0)
+    return tdee(bmr_kcal, profile_level, mode, 0.0)
 
 
 def tdee(
@@ -339,7 +392,10 @@ def tdee(
     training_kcal: Any = None,
 ) -> TdeeResult:
     """TDEE do dia. No modo explícito, o treino entra em kcal (0 em dia sem
-    treino); no modo embutido, o treino é ignorado (já está no fator)."""
+    treino); no modo embutido, o treino é ignorado (já está no fator). O modo automático NÃO é resolvido aqui:
+    quem chama usa `effective_tdee_basis` (aqui valeria como o explícito, com o nível dado)."""
+    if mode == TdeeMode.AUTO_INTERVALS:
+        mode = TdeeMode.EXPLICIT_TRAINING
     tmb = positive_number(bmr_kcal)
     fator = activity_factor_for(activity_level, mode)
     limitacoes: list[str] = []

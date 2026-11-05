@@ -459,7 +459,7 @@ def apply_changes(settings: PlanSettings, changes: dict[str, Any]) -> PlanValida
 
 def _base_tdee_kcal(settings: PlanSettings, subject: Subject, bmr_kcal: Optional[float]) -> Optional[float]:
     """Gasto de um dia SEM treino (a base do plano): é o que o ritmo e o superávit multiplicam."""
-    return ee.tdee(bmr_kcal, subject.activity_level, settings.tdee_mode, 0.0).kcal
+    return ee.rest_tdee(bmr_kcal, subject.activity_level, settings.tdee_mode, settings.activity_level).kcal
 
 
 def _macros_of_day(settings: PlanSettings, inputs: CheckinInputs, day: date) -> DayMacros:

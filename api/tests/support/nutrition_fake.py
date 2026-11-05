@@ -41,6 +41,9 @@ class FakeNutritionDB:
         self.activities: list[dict[str, Any]] = []
         # `intervals_activities` SEM vínculo com um treino (a SQL do serviço já exclui as vinculadas).
         self.intervals_extras: list[dict[str, Any]] = []
+        # Conexão e idade (min) da última sincronização do Intervals: padrão = desconectado.
+        self.intervals_connected = False
+        self.intervals_minutes_since_sync: Optional[int] = None
         self.now = datetime(2026, 10, 17, 15, 0, 0)
         self.next_plan_id = 1
         self.writes: list[str] = []
@@ -176,6 +179,11 @@ class FakeCursor:
             return self._result(sorted(linhas, key=lambda r: r["local_date"]))
         if sql == svc._SESSIONS_SQL:
             return self._result([r for r in db.activities if r["user_id"] == p[0] and r["session_status"] == "done" and p[1] <= r["local_date"] <= p[2]])
+        if sql == svc.INTERVALS_CONNECTION_SQL:
+            return self._result([{"intervals_athlete_id": "i1" if db.intervals_connected else None,
+                                  "intervals_api_key_encrypted": "k" if db.intervals_connected else None}])
+        if sql == svc.INTERVALS_SYNC_AGE_SQL:
+            return self._result([{"minutes_since_sync": db.intervals_minutes_since_sync}])
         if sql == svc.EXTRA_ACTIVITIES_SQL:
             return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
         if sql == svc._PUBLISHED_PLANS_SQL:

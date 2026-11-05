@@ -9,6 +9,10 @@ import { PlanSuggestionPanel } from './PlanSuggestionPanel';
 import { createNutritionPlan, nutritionErrorInfo, updateNutritionPlan } from '@/lib/nutrition-api';
 import {
   ACTIVITY_LEVEL_OPTIONS,
+  AUTO_TDEE_MODE,
+  DEFAULT_ROUTINE_LEVEL,
+  ROUTINE_LEVEL_OPTIONS,
+  TDEE_MODE_HINTS,
   BMR_FORMULA_OPTIONS,
   DAY_KIND_OPTIONS,
   DEFAULT_BMR_FORMULA,
@@ -202,6 +206,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
   const ajusteManutencao = maintenanceAdjustPayload(usaAjusteManutencao, plan, inheritedMaintenanceAdjust);
 
   // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
+  const automatico = form.tdeeMode === AUTO_TDEE_MODE;
   const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
 
   function update(patch: Partial<FormState>) {
@@ -227,7 +232,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
     carb_min_g_per_kg: usaCarboMinimo ? inputNumberOrNull(form.carbMin) : null,
     bmr_formula: form.bmrFormula,
     tdee_mode: form.tdeeMode,
-    activity_level: form.activityLevel,
+    activity_level: automatico ? (form.activityLevel ?? DEFAULT_ROUTINE_LEVEL) : form.activityLevel,
     meals_per_day: inputNumberOrNull(form.meals),
     goal_body_fat_percent: inputNumberOrNull(form.goalBodyFat),
     goal_weight_kg: inputNumberOrNull(form.goalWeight),
@@ -383,20 +388,36 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
             />
             <Select
               label="Gasto do treino"
-              description="Como o gasto dos seus treinos entra na meta do dia."
+              description={TDEE_MODE_HINTS[form.tdeeMode]}
               data={[...TDEE_MODE_OPTIONS]}
               value={form.tdeeMode}
-              onChange={(tdeeMode) => update({ tdeeMode: tdeeMode ?? DEFAULT_TDEE_MODE })}
+              onChange={(tdeeMode) => {
+                const novo = tdeeMode ?? DEFAULT_TDEE_MODE;
+                // O nível guardado muda de sentido entre o automático (rotina) e os outros (nível de atividade): recomeça.
+                update({ tdeeMode: novo, activityLevel: (novo === AUTO_TDEE_MODE) === automatico ? form.activityLevel : null });
+              }}
               allowDeselect={false}
             />
-            <Select
-              label="Nível de atividade"
-              placeholder="Usar o do perfil"
-              data={[...ACTIVITY_LEVEL_OPTIONS]}
-              value={form.activityLevel}
-              onChange={(activityLevel) => update({ activityLevel })}
-              clearable
-            />
+            {automatico ? (
+              <Select
+                label="Rotina fora do exercício"
+                description="Como é o seu dia sem contar o treino. O treino e o cardio medidos pelo Intervals entram à parte."
+                data={[...ROUTINE_LEVEL_OPTIONS]}
+                value={form.activityLevel ?? DEFAULT_ROUTINE_LEVEL}
+                onChange={(activityLevel) => update({ activityLevel: activityLevel ?? DEFAULT_ROUTINE_LEVEL })}
+                allowDeselect={false}
+              />
+            ) : (
+              <Select
+                label="Nível de atividade"
+                description="Usado na conta do gasto do dia (o fator já considera se o exercício está incluído)."
+                placeholder="Usar o do perfil"
+                data={[...ACTIVITY_LEVEL_OPTIONS]}
+                value={form.activityLevel}
+                onChange={(activityLevel) => update({ activityLevel })}
+                clearable
+              />
+            )}
           </SimpleGrid>
 
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">

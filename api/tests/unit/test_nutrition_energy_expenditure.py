@@ -57,7 +57,10 @@ def test_natureza_nao_e_proveniencia():
     """O pacote não cria vocabulário de proveniência (manual × Intervals): isso é
     de `domain/calories_source.py` (L0). Aqui só a natureza observada × estimada."""
     nomes = [nome.lower() for nome in dir(ee)]
-    assert not [nome for nome in nomes if "source" in nome or "intervals" in nome or "manual" in nome]
+    # Exceção documentada (2026-11-05): o modo automático e o frescor da sincronização do Intervals são do motor
+    # (`effective_tdee_basis`, `intervals_in_sync`); não são proveniência da kcal do treino.
+    permitidos = {"intervals_in_sync", "intervals_sync_max_age_minutes"}
+    assert not [nome for nome in nomes if ("source" in nome or "intervals" in nome or "manual" in nome) and nome not in permitidos]
     assert ee.NATURE_BY_TRAINING_KCAL_NATURE == {
         ee.TrainingKcalNature.REPORTED: DataNature.OBSERVED,
         ee.TrainingKcalNature.MET: DataNature.ESTIMATED,

@@ -190,6 +190,16 @@ class PlanSettings:
     maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # N7: kcal/dia da manutenção (0 = como sempre)
 
     @property
+    def is_auto_intervals(self) -> bool:
+        return self.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
+
+    @property
+    def subject_activity_level(self) -> Optional[ActivityLevel]:
+        """Nível que sobrescreve o do perfil no sujeito. No modo automático `activity_level` é a ROTINA fora do
+        exercício (outro eixo): o fator com exercício do fallback continua vindo do nível do perfil."""
+        return None if self.is_auto_intervals else self.activity_level
+
+    @property
     def manual_adds_training(self) -> bool:
         """Gramas manuais no modo que soma o treino do dia (e o gasto do treino à parte)."""
         return manual_adds_training(self.plan_params())
@@ -222,6 +232,7 @@ class PlanSettings:
             strategy_params=self.strategy_params(),
             bmr_formula=self.bmr_formula,
             tdee_mode=self.tdee_mode,
+            routine_level=self.activity_level if self.is_auto_intervals else None,
             meals_per_day=self.meals_per_day,
             ffm_age_days=ffm_age_days,
             macro_priority=self.macro_priority,
@@ -295,7 +306,8 @@ def normalize_priority(value: Any) -> Optional[MacroPriority]:
 def manual_training_modes_for(tdee_mode: ee.TdeeMode) -> tuple[ManualTrainingMode, ...]:
     """Modos das gramas manuais que valem para o modo de gasto do treino: `add_training` só com o treino à parte
     (explícito); com o treino já no fator do gasto só o `fixed`. A tela só oferece estes."""
-    if tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING:
+    if tdee_mode in (ee.TdeeMode.EXPLICIT_TRAINING, ee.TdeeMode.AUTO_INTERVALS):
+        # No automático, `add_training` soma o treino e os extras no dia sincronizado; no dia de fallback vale como `fixed`.
         return (ManualTrainingMode.FIXED, ManualTrainingMode.ADD_TRAINING)
     return (ManualTrainingMode.FIXED,)
 

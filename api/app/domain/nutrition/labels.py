@@ -165,8 +165,34 @@ BMR_FORMULA_LABELS: Final[Mapping[BmrFormula, str]] = {
 }
 
 TDEE_MODE_LABELS: Final[Mapping[TdeeMode, str]] = {
-    TdeeMode.EXPLICIT_TRAINING: "Treino somado à parte",
-    TdeeMode.INCLUDED_IN_FACTOR: "Treino embutido no fator",
+    TdeeMode.EXPLICIT_TRAINING: "Treino somado à parte (fator SEM exercício)",
+    TdeeMode.INCLUDED_IN_FACTOR: "Treino embutido no fator (fator COM exercício)",
+    TdeeMode.AUTO_INTERVALS: "Automático pelo Intervals (rotina + treino e cardio medidos)",
+}
+
+# Frase curta sob o seletor, por modo: deixa claro se o fator da conta inclui ou não o exercício.
+TDEE_MODE_HINTS: Final[Mapping[TdeeMode, str]] = {
+    TdeeMode.EXPLICIT_TRAINING: (
+        "O fator de atividade cobre só a sua rotina, sem exercício; o gasto do treino do dia é somado à parte."
+    ),
+    TdeeMode.INCLUDED_IN_FACTOR: (
+        "O fator de atividade já inclui o seu exercício; o treino do dia não é somado de novo."
+    ),
+    TdeeMode.AUTO_INTERVALS: (
+        "Com o Intervals conectado e sincronizado: rotina fora do exercício + treino de força + cardio e caminhadas "
+        "medidos. Sem conexão ou com a sincronização parada, usa o fator que inclui exercício, do seu nível de "
+        "atividade do perfil."
+    ),
+}
+
+# "Rotina fora do exercício" (modo automático): o que a pessoa faz no dia sem contar o treino. Os códigos são os de
+# `ActivityLevel` (a coluna `activity_level` do plano guarda a rotina) e o fator vem da tabela de NÃO-exercício.
+ROUTINE_LEVEL_LABELS: Final[Mapping[ActivityLevel, str]] = {
+    ActivityLevel.SEDENTARY: "Quase sempre sentado(a)",
+    ActivityLevel.LIGHT: "Leve: em pé ou andando um pouco",
+    ActivityLevel.MODERATE: "Moderada: em pé ou andando boa parte do dia",
+    ActivityLevel.ACTIVE: "Intensa: muito tempo em pé ou andando",
+    ActivityLevel.VERY_ACTIVE: "Muito intensa: trabalho físico pesado",
 }
 
 SESSION_KIND_LABELS: Final[Mapping[SessionKind, str]] = {

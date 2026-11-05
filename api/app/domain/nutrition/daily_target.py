@@ -71,7 +71,7 @@ from . import energy_expenditure as ee
 from . import macros as macros_mod
 from . import manual_targets
 from . import strategy as strategy_mod
-from .anthropometrics import Subject, positive_number
+from .anthropometrics import ActivityLevel, Subject, positive_number
 from .body_composition import resolved_fat_mass_kg, resolved_ffm_kg
 from .phases import MAINTENANCE_KCAL_PHASES, PhaseKind
 from .weekly_budget import week_days
@@ -113,6 +113,8 @@ class PlanParams:
     strategy_params: strategy_mod.StrategyParams
     bmr_formula: bmr_mod.BmrFormula = bmr_mod.DEFAULT_BMR_FORMULA
     tdee_mode: ee.TdeeMode = ee.DEFAULT_TDEE_MODE
+    # Modo automático: nível da rotina fora do exercício (None = `ee.ROUTINE_ACTIVITY_LEVEL_DEFAULT`).
+    routine_level: Optional[ActivityLevel] = None
     carb_cycling_enabled: bool = False
     meals_per_day: Optional[int] = None
     ffm_age_days: Optional[int] = None
@@ -132,6 +134,8 @@ class PlanParams:
             "meals_per_day": self.meals_per_day,
             "ffm_age_days": self.ffm_age_days,
         }
+        if self.routine_level is not None:
+            dados["routine_level"] = self.routine_level.value
         if self.macro_priority != strategy_mod.DEFAULT_MACRO_PRIORITY:
             dados["macro_priority"] = self.macro_priority.value
         if self.manual_macros is not None:
@@ -160,9 +164,13 @@ class DayContext:
     # Atividades do Intervals que não são o treino de `activities` (cardio, caminhada...). Não mudam
     # `is_training_day` nem a regra de MET; só somam ao gasto (`ee.extra_activity_kcal`).
     extra_activities: tuple[ee.ExtraActivity, ...] = ()
+    # Só no modo automático: Intervals conectado e sincronizado (`ee.intervals_in_sync`); None = não se aplica.
+    intervals_in_sync: Optional[bool] = None
 
     def to_dict(self) -> dict[str, Any]:
         extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
+        if self.intervals_in_sync is not None:
+            extras["intervals_in_sync"] = self.intervals_in_sync
         return {
             **extras,
             "day": self.day.isoformat(),
@@ -242,7 +250,7 @@ def manual_adds_training(plan_params: "PlanParams") -> bool:
     return (
         plan_params.manual_macros is not None
         and plan_params.manual_training_mode == manual_targets.ManualTrainingMode.ADD_TRAINING
-        and plan_params.tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING
+        and plan_params.tdee_mode in (ee.TdeeMode.EXPLICIT_TRAINING, ee.TdeeMode.AUTO_INTERVALS)
     )
 
 
@@ -287,12 +295,14 @@ def _cycle_base(
     ffm_kg: Optional[float],
     day_macros: macros_mod.MacroTargets,
     bmr_kcal: Optional[float],
+    mode: ee.TdeeMode,
+    level: Optional[ActivityLevel],
 ) -> macros_mod.MacroTargets:
     """Meta de base do plano para o ciclo: a do dia sem o treino explícito. Com gramas
-    manuais ou gasto embutido no fator, a base é a própria meta do dia."""
-    if plan_params.manual_macros is not None or plan_params.tdee_mode != ee.TdeeMode.EXPLICIT_TRAINING:
+    manuais ou gasto embutido no fator, a base é a própria meta do dia. `mode` e `level` são os EFETIVOS do dia."""
+    if plan_params.manual_macros is not None or mode != ee.TdeeMode.EXPLICIT_TRAINING:
         return day_macros
-    gasto_base = ee.tdee(bmr_kcal, subject.activity_level, plan_params.tdee_mode, 0.0)
+    gasto_base = ee.tdee(bmr_kcal, level, mode, 0.0)
     alvo_base = strategy_mod.kcal_target(params, gasto_base.kcal, bmr_kcal, subject.weight_kg, resolved_fat_mass_kg(subject))
     return macros_mod.macro_split_for_priority(
         alvo_base.kcal, params, plan_params.macro_priority, subject.weight_kg, ffm_kg
@@ -323,15 +333,25 @@ def compute_daily_target(
     # Dia de treino sem kcal nem duração: o TDEE sai sem o treino e a limitação
     # precisa aparecer (no modo embutido o treino já está no fator; em dia de
     # descanso não há o que avisar).
-    limitacoes_treino = treino.limitations if dia_de_treino and plan_params.tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING else ()
+    # Modo e nível que valem NESTE dia: nos clássicos os do plano; no automático, rotina (sincronizado) ou fator
+    # com exercício do perfil (sem sincronização), este último ignora treino e extras como o embutido.
+    modo_efetivo, nivel_efetivo = ee.effective_tdee_basis(
+        plan_params.tdee_mode, subject.activity_level, plan_params.routine_level, day_context.intervals_in_sync
+    )
+    limitacoes_treino = treino.limitations if dia_de_treino and modo_efetivo == ee.TdeeMode.EXPLICIT_TRAINING else ()
     if not day_context.training_known:
         limitacoes_treino = (*limitacoes_treino, LIMIT_TRAINING_UNKNOWN_FUTURE_DAY)
 
-    # Atividades extras (cardio, caminhada) entram no gasto como o treino: só no modo explícito (no embutido o
-    # fator já as cobre) e nunca em dia futuro.
-    extra = ee.extra_activity_kcal(day_context.extra_activities) if day_context.training_known else ee.NO_EXTRA_ACTIVITY_KCAL
+    # Atividades extras (cardio, caminhada do Intervals) somam SÓ no modo automático sincronizado (os modos clássicos
+    # ficam como sempre) e nunca em dia futuro.
+    soma_extras = (
+        plan_params.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
+        and modo_efetivo == ee.TdeeMode.EXPLICIT_TRAINING
+        and day_context.training_known
+    )
+    extra = ee.extra_activity_kcal(day_context.extra_activities) if soma_extras else ee.NO_EXTRA_ACTIVITY_KCAL
     atividade_kcal = (treino.kcal or 0.0) + extra.kcal
-    gasto = ee.tdee(tmb.kcal, subject.activity_level, plan_params.tdee_mode, atividade_kcal)
+    gasto = ee.tdee(tmb.kcal, nivel_efetivo, modo_efetivo, atividade_kcal)
 
     params = plan_params.strategy_params
     fase = day_context.phase_kind
@@ -347,10 +367,10 @@ def compute_daily_target(
         # Gramas manuais (D6): o usuário fixou proteína, carboidrato e gordura; a kcal é a de Atwater das gramas. No
         # modo `FIXED` não acompanha o treino do dia; no `ADD_TRAINING` as gramas valem para o dia sem treino e o gasto do
         # treino do dia soma em carboidrato (4 kcal/g). Os avisos do motor viram limitações.
-        soma_treino = manual_adds_training(plan_params)
+        soma_treino = manual_adds_training(plan_params) and modo_efetivo == ee.TdeeMode.EXPLICIT_TRAINING
         alvo_ref = alvo.kcal
         if soma_treino:  # a referência dos avisos de energia é a meta do dia SEM o treino
-            gasto_repouso = ee.tdee(tmb.kcal, subject.activity_level, plan_params.tdee_mode, 0.0)
+            gasto_repouso = ee.tdee(tmb.kcal, nivel_efetivo, modo_efetivo, 0.0)
             alvo_ref = strategy_mod.kcal_target(params, gasto_repouso.kcal, tmb.kcal, subject.weight_kg, massa_gorda).kcal
         metas, limitacoes_manual = _manual_targets(plan_params, params, subject, mlg, alvo_ref, tmb.kcal)
         metas_repouso = metas
@@ -371,7 +391,7 @@ def compute_daily_target(
         # Dias escolhidos (D5): o ciclo se aplica dia a dia sobre a BASE do plano (a meta do dia
         # sem o treino dele), então a média semanal se preserva sem conhecer os outros dias.
         tipo_dia = plan_params.cycle_kinds[day_context.day.weekday()]
-        base = metas_repouso if metas_repouso is not None else _cycle_base(plan_params, params, subject, mlg, metas, tmb.kcal)
+        base = metas_repouso if metas_repouso is not None else _cycle_base(plan_params, params, subject, mlg, metas, tmb.kcal, modo_efetivo, nivel_efetivo)
         metas, limitacoes_ciclo = carb_cycling.apply_cycle_over_base(
             metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg
         )
@@ -536,6 +556,7 @@ def day_context_for(
     today: date,
     sessions: Sequence[SessionFacts] = (),
     extra_activities: Sequence[ee.ExtraActivity] = (),
+    intervals_in_sync: Optional[bool] = None,
 ) -> DayContext:
     """Contexto do dia para a materialização.
 
@@ -550,10 +571,10 @@ def day_context_for(
       kcal/duração do treino; só somam ao gasto (`compute_daily_target`). Dia futuro não as tem.
     """
     if day > today:
-        return DayContext(day=day, is_training_day=False, training_known=False)
+        return DayContext(day=day, is_training_day=False, training_known=False, intervals_in_sync=intervals_in_sync)
     extras = tuple(extra_activities)
     if not sessions:
-        return DayContext(day=day, extra_activities=extras)
+        return DayContext(day=day, extra_activities=extras, intervals_in_sync=intervals_in_sync)
     kcal = _sum_if_all([positive_number(sessao.calories_kcal) for sessao in sessions])
     segundos = _sum_if_all([positive_number(sessao.duration_seconds) for sessao in sessions])
     return DayContext(
@@ -562,6 +583,7 @@ def day_context_for(
         training_kcal_reported=kcal,
         training_duration_min=None if segundos is None else segundos / SECONDS_PER_MINUTE,
         extra_activities=extras,
+        intervals_in_sync=intervals_in_sync,
     )
 
 

@@ -263,7 +263,7 @@ def _build_inputs(cur: Any, aluno: int, plan_id: int, settings: Any, week_start:
                 plan_id=None if linha is None or linha.get("plan_id") is None else int(linha["plan_id"]),
             )
         )
-    sujeito = resolve_subject(series.readings_on(hoje), hoje, settings.activity_level)
+    sujeito = resolve_subject(series.readings_on(hoje), hoje, settings.subject_activity_level)
     return wc.CheckinInputs(
         settings=settings,
         subject=sujeito.subject,
