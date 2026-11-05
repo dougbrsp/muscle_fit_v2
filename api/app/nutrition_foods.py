@@ -157,6 +157,11 @@ def _text_or_none(value: Optional[str]) -> Optional[str]:
     return texto or None
 
 
+def _default_portion_public(row: dict[str, Any]) -> Optional[dict[str, Any]]:
+    porcao = catalog.default_portion(row.get("serving_size"), row.get("table_base_amount"), row.get("basis"))
+    return porcao.public() if porcao else None
+
+
 def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
     """Alimento para a API: valores por 100 g/ml (códigos da RDC 429), porção do
     rótulo, citação/licença da linha, a origem dos valores que vieram de outra
@@ -183,6 +188,8 @@ def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
             "household_measure": row.get("household_measure"),
             "servings_per_package": _num(row.get("servings_per_package")),
         },
+        # Porção que a tela traz preenchida (editável), decidida pelo motor; null = campo vazio.
+        "default_portion": _default_portion_public(row),
         "license": row.get("license"),
         "citation": row.get("citation"),
         "field_sources": nutrition_labels.field_sources_public(row.get("field_sources_json")),

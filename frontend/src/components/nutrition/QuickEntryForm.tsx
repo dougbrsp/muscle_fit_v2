@@ -2,10 +2,10 @@
 
 import { Alert, Button, Collapse, Group, NumberInput, Select, Stack, Text, TextInput } from '@mantine/core';
 import { IconAlertTriangle, IconChevronDown } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { MEAL_SLOT_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
-import { createMeal } from '@/lib/nutrition-api';
+import { createMeal, lastMealTimeKey } from '@/lib/nutrition-api';
 import {
   QUICK_ENTRY_NAME_MAX_CHARS,
   QUICK_ENTRY_NUMERIC_FIELDS,
@@ -56,13 +56,17 @@ export function QuickEntryForm({ date, today, touch = false, onSaved, onCancel }
   const forcado = (today !== null && date !== today) || falhouSugestao;
   const visivel = aberto || forcado;
 
+  const queryClient = useQueryClient();
   const corpo = quickMealPayload({ date, slot, eatenAt, draft });
   const salvar = useMutation({
     mutationFn: () => {
       if (!corpo) throw new Error('Preencha os 6 campos e escolha a refeição.');
       return createMeal(corpo);
     },
-    onSuccess: onSaved,
+    onSuccess: (salva) => {
+      void queryClient.invalidateQueries({ queryKey: lastMealTimeKey });
+      onSaved(salva);
+    },
   });
   const erros = salvar.isError ? quickEntryErrors(salvar.error, 'Não foi possível salvar o lançamento.') : null;
 

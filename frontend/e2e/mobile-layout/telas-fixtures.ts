@@ -186,6 +186,7 @@ const FIXTURES: Record<string, unknown> = {
     items: [{ fdc_id: 1, name: 'Rice, white, cooked', data_type: 'foundation', category: 'Cereal Grains', basis: 'g', per_100: { energy_kcal: 130, protein_g: 2.7, carbohydrate_g: 28, lipid_g: 0.3 }, energy_origin: null }],
   },
   'POST /nutrition/meals/preview': { items: [MEAL_ITEM], totals: MEAL_TOTALS, warnings: [] },
+  'GET /nutrition/meals/last-time': { time: null },
   'POST /nutrition/meals': MEAL,
   'POST /workout-sessions/1/exercises': { exercise_id: 21 },
   'POST /workout-sessions/1/exercises/21/sets': { ok: true },

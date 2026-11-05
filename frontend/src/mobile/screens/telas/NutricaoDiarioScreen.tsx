@@ -20,7 +20,7 @@ import { formatWithUnit } from '@/lib/nutrition-format';
 import { MEAL_SLOT_OPTIONS, ITEM_NUTRIENT_FIELDS, nutritionLabel } from '@/lib/nutrition-constants';
 import { mealHeadline, mealMacrosLine } from '@/lib/nutrition-meal-list';
 import { dashboardKeys } from '@/lib/nutrition-dashboard';
-import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
+import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, lastMealTimeKey, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
 import { BottomSheet, ListBlock, ListGroup, ListRow, LoadingState, ScreenHeader, StickyAction } from '../../ui';
@@ -69,7 +69,7 @@ function NutricaoDiarioContent() {
   });
 
   const invalidarDiario = () =>
-    Promise.all([qc.invalidateQueries({ queryKey: diaryKeys.all }), qc.invalidateQueries({ queryKey: dashboardKeys.all })]);
+    Promise.all([qc.invalidateQueries({ queryKey: diaryKeys.all }), qc.invalidateQueries({ queryKey: dashboardKeys.all }), qc.invalidateQueries({ queryKey: lastMealTimeKey })]);
 
   const remover = useMutation({
     mutationFn: (meal: Meal) => deleteMeal(meal.id),
@@ -111,7 +111,6 @@ function NutricaoDiarioContent() {
                 : `editar-${editing.meal.id}`
           }
           date={date}
-          today={weekQuery.data?.today ?? dia?.today ?? null}
           meal={editing.mode === 'edit' ? editing.meal : null}
           initialForm={editing.mode === 'parsed' ? editing.form : null}
           onSaved={async () => {
