@@ -103,6 +103,69 @@ LIMIT_MISSING_BMR = "missing_bmr"
 LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
 
 
+# --- Atividades extras do Intervals (cardio, caminhada, outras) -----------------------------------------------
+# Decisão do usuário (2026-11-05): o gasto do dia inclui o cardio e as caminhadas do Intervals, além do treino de
+# força. O SERVIÇO classifica a atividade em `app/intervals_activity_kind.py` (dono de "o que é cardio/força") e
+# entrega a classe; aqui se decide o que soma (cardio e outras; só as classes listadas). Força nunca entra por esta via (já é o treino de `activities`;
+# somar de novo duplicaria). Atividade sem kcal informada não soma e não é estimada.
+EXTRA_ACTIVITY_KINDS: Final[frozenset[str]] = frozenset({"cardio", "other"})  # = `intervals_activity_kind.CARDIO/OTHER` (teste de paridade)
+EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPORTED
+
+
+@dataclass(frozen=True)
+class ExtraActivity:
+    """Uma atividade do Intervals do dia que NÃO é o treino de `activities`: classe (do dono da classificação),
+    kcal informada (pode faltar) e o rótulo para a tela (nome ou tipo)."""
+
+    kind: str
+    calories_kcal: Any = None
+    label: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": self.label}
+
+
+@dataclass(frozen=True)
+class ExtraActivityKcal:
+    """kcal das atividades extras do dia, a lista do que somou e a natureza (informada = observada)."""
+
+    kcal: float = 0.0
+    items: tuple[ExtraActivity, ...] = ()
+    kcal_nature: Optional[TrainingKcalNature] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kcal": self.kcal,
+            "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
+            "items": [item.to_dict() for item in self.items],
+        }
+
+
+NO_EXTRA_ACTIVITY_KCAL: Final[ExtraActivityKcal] = ExtraActivityKcal()
+
+
+def extra_activity_kcal(activities: Any = ()) -> ExtraActivityKcal:
+    """Soma a kcal informada das atividades que não são força. Sem kcal (None, 0, inválida) não soma."""
+    somadas = tuple(
+        item
+        for item in activities
+        if item.kind in EXTRA_ACTIVITY_KINDS and positive_number(item.calories_kcal) is not None
+    )
+    if not somadas:
+        return NO_EXTRA_ACTIVITY_KCAL
+    total = float(sum(positive_number(item.calories_kcal) or 0.0 for item in somadas))
+    return ExtraActivityKcal(kcal=total, items=somadas, kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE)
+
+
+def activity_total_kcal(training_kcal: Any, extra_kcal: Any) -> Optional[float]:
+    """Gasto de atividade do dia: treino + extras. Treino desconhecido (`None`, dia de treino sem kcal nem duração)
+    continua desconhecido; sem extra devolve o treino como está."""
+    treino = non_negative_number(training_kcal)
+    if treino is None:
+        return None
+    return treino + (non_negative_number(extra_kcal) or 0.0)
+
+
 class TdeeMode(str, Enum):
     EXPLICIT_TRAINING = "explicit_training"
     INCLUDED_IN_FACTOR = "included_in_factor"

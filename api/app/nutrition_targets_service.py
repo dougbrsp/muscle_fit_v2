@@ -45,6 +45,7 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.energy_expenditure import ExtraActivity, activity_total_kcal
 from .domain.nutrition.daily_target import (
     DailyTarget,
     DayContext,
@@ -70,6 +71,7 @@ from .domain.nutrition.plan import (
 )
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
+from .intervals_activity_kind import classify
 
 PLANS_TABLE = "nutrition_plans"
 TARGETS_TABLE = "nutrition_daily_targets"
@@ -143,6 +145,18 @@ DONE_SESSION_STATUS = "done"
 _SESSIONS_SQL = (
     "SELECT local_date, calories_kcal, duration_seconds FROM activities "
     f"WHERE user_id = %s AND session_status = '{DONE_SESSION_STATUS}' AND local_date BETWEEN %s AND %s"
+)
+
+
+# Atividades do Intervals do dia que NÃO são o treino de `activities` (sem vínculo `activity_intervals_link`: a
+# vinculada já é a sessão de força). A CLASSE (cardio/força/outra) vem de `intervals_activity_kind` (dono), em
+# Python; quem decide o que soma é `energy_expenditure.extra_activity_kcal`. Sem LIKE de classificação aqui.
+EXTRA_ACTIVITIES_SQL = (
+    "SELECT ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal "
+    "FROM intervals_activities ia "
+    "LEFT JOIN activity_intervals_link l ON l.intervals_activity_id = ia.id AND l.user_id = ia.user_id "
+    "WHERE ia.user_id = %s AND ia.activity_date BETWEEN %s AND %s AND l.id IS NULL "
+    "ORDER BY ia.activity_date, ia.id"
 )
 
 
@@ -250,6 +264,7 @@ class UserInputs:
 
     series: SubjectSeries = field(default_factory=SubjectSeries)
     sessions: dict[date, list[SessionFacts]] = field(default_factory=dict)
+    extra_activities: dict[date, list[ExtraActivity]] = field(default_factory=dict)
 
 
 def _decimal_free(row: dict[str, Any]) -> dict[str, Any]:
@@ -303,7 +318,20 @@ def load_user_inputs(cur: Any, user_id: int, date_from: date, date_to: date, tod
                 sessoes.setdefault(dia, []).append(
                     SessionFacts(calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"))
                 )
-    return UserInputs(series=series, sessions=sessoes)
+    extras: dict[date, list[ExtraActivity]] = {}
+    if fim_sessoes >= date_from:
+        cur.execute(EXTRA_ACTIVITIES_SQL, (uid, date_from, fim_sessoes))
+        for row in cur.fetchall() or []:
+            dia = _as_date(row.get("activity_date"))
+            if dia is not None:
+                extras.setdefault(dia, []).append(
+                    ExtraActivity(
+                        kind=classify(row.get("sport_type"), row.get("name")),
+                        calories_kcal=_float(row.get("calories_kcal")),
+                        label=row.get("name") or row.get("sport_type"),
+                    )
+                )
+    return UserInputs(series=series, sessions=sessoes, extra_activities=extras)
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +351,7 @@ class DayComputation:
 def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: date) -> DayComputation:
     """Meta de UM dia pelo motor (sem gravar)."""
     sujeito = resolve_subject(inputs.series.readings_on(day), day, settings.activity_level)
-    contexto = day_context_for(day, today, inputs.sessions.get(day, ()))
+    contexto = day_context_for(day, today, inputs.sessions.get(day, ()), inputs.extra_activities.get(day, ()))
     meta = compute_daily_target(
         sujeito.subject, settings.plan_params(sujeito.ffm_age_days), contexto, scale_bmr=sujeito.scale_bmr_kcal
     )
@@ -331,15 +359,16 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
 
 
 def past_training_kcal(inputs: UserInputs, settings: PlanSettings, today: date) -> list[Optional[float]]:
-    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
-    treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
+    """Gasto de atividade dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino MAIS o cardio e as
+    caminhadas do Intervals, `energy_expenditure.activity_total_kcal`; 0 em dia sem treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
     (informada > MET), para o TDEE estável da projeção (`plan.projection_tdee`). As entradas precisam cobrir a
     janela. Usada pela prévia do plano e pelo dashboard de nutrição, que projetam com o MESMO TDEE."""
     inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     resultado: list[Optional[float]] = []
     for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
         comp = compute_day(inputs, settings, dia, today)
-        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
+        treino = training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal)
+        resultado.append(activity_total_kcal(treino, comp.target.extra_activity.kcal))
     return resultado
 
 

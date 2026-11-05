@@ -6841,3 +6841,19 @@ Dono: `api/app/domain/nutrition/catalog.py` (`is_born_public`, `AUTO_PUBLIC_SOUR
 **Impacto em produção.**
 - Migração: nenhuma. Dado: nenhum backfill; alimento antigo ganha `origin` calculada na leitura (campo aditivo em `food_public`).
 - Comportamento: alimentos novos de admin por rótulo/EAN passam a ser públicos e visíveis a todos (intencional; medir o uso: só há admin criando). Sem mudança de infra, workflow ou Lambda.
+
+## 89. Nutrição: cardio e caminhadas do Intervals no gasto do dia (2026-11-05)
+
+Dono: `api/app/domain/nutrition/energy_expenditure.py` (`ExtraActivity`, `extra_activity_kcal`, `activity_total_kcal`, `EXTRA_ACTIVITY_KINDS`); a CLASSE da atividade (cardio/força/outra) continua só em `api/app/intervals_activity_kind.py` (guarda `cardio_paralelo`: sem `LIKE` em `app/`). `daily_target.py` só consome (`DayContext.extra_activities`, `DailyTarget.extra_activity`); `nutrition_targets_service.py` só carrega (`EXTRA_ACTIVITIES_SQL`); `nutrition_days.py` expõe `training.extra_activity` e `training.activity_kcal` pelo motor; a tela só exibe (`TrainingKcalRow`). Guarda: `kcal_treino_prioridade` e `cardio_paralelo` verdes, allowlists inalteradas.
+
+- **Regra (decisão do usuário).** O gasto do dia inclui a kcal informada das atividades de `intervals_activities` do dia (`activity_date`) que NÃO são força e NÃO estão em `activity_intervals_link` (a vinculada já é o treino de `activities`). Inclui cardio, caminhada e OTHER (escalada). Força nunca entra por esta via, mesmo sem vínculo (evita dupla contagem). Sem kcal: não soma e não estima. Natureza `reported`.
+- **Onde entra.** TDEE no modo `explicit_training` = TMB × fator + treino + extras; no modo `included_in_factor` é ignorado (como o treino). Gramas manuais com `add_training` somam o total em carboidrato; `fixed` mantém a meta e muda só o gasto do balanço. `is_training_day` e a regra de MET continuam só com a força (dia só com cardio não vira "Treino"). Dia futuro não tem extra. `past_training_kcal` (projeção, dashboard e IA) passa a ser o total (`activity_total_kcal`), pelo mesmo dono.
+- **Congelamento e hash.** A regra de congelamento (`daily_target.py`) não muda; sem backfill. O extra entra em `inputs_json.day_context.extra_activities` só quando há atividade (dia sem extra mantém o hash de antes); mudou, hoje e ontem recalculam. Sem migração e sem coluna nova: `tdee_kcal` gravado já traz o total; `training_kcal` segue sendo só a força.
+
+**Impacto em produção.**
+- Medido em 05/11: força 428 + extra 395 (Walk 51 e 79, VirtualRun 265) = 823; 30/10 extra 255; 01/11 só VirtualRun 427 (`is_training_day` falso); 02/11 extra 242; 04/11 zero. Com fator 1,5 e TMB 2020,24, o TDEE de 05/11 vai de 3458,36 para 3853,36 e a meta sobe na mesma medida (salvo teto do motor).
+- Média de +228 kcal/dia nos últimos 7 dias, até +427 kcal em dia só com cardio: metas de manutenção/superávit sobem; em cutting o déficit relativo ao gasto se mantém, mas a meta absoluta sobe.
+- Retroatividade: só dias não congelados (hoje e ontem); dias com 2 dias ou mais ficam como gravados.
+- Efeitos: dashboard e check-in leem `tdee_kcal` (já total, sem mudança de código); `WeekTargetsTable` mostra "Treino" da força apenas; projeção e IA do plano passam a receber o gasto de atividade total.
+- Risco, decisão do usuário: dupla contagem com o fator de não-exercício (que já embute alguma caminhada do cotidiano). Mitigação: cardio só com kcal informada; reavaliar com o TDEE observado.
+- Dado: 1 consulta nova por materialização (`intervals_activities LEFT JOIN activity_intervals_link`, parametrizada, filtrada por `user_id`; faixa por `idx_intervals_activities_date`, filtro por `user_id` e junção por `idx_ail_intervals`; volume pequeno: dezenas de atividades por janela).

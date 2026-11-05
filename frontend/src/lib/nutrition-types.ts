@@ -738,6 +738,13 @@ export type TrainingSession = {
 /** Uma natureza da kcal do treino na ordem da prioridade do motor, com o valor e se é a usada. */
 export type TrainingKcalSide = { kcal_nature: NutritionCode; value: TrainingKcalValue; is_used: boolean };
 
+/** Cardio, caminhada e outras atividades do Intervals (fora do treino de força) somadas ao gasto do dia; pronto do motor. */
+export type DayExtraActivity = {
+  kcal: number;
+  kcal_nature: NutritionCode | null;
+  items: { kind: string; calories_kcal: number | null; label: string | null }[];
+};
+
 export type DayTraining = {
   is_training_day: boolean;
   training_known: boolean;
@@ -749,6 +756,10 @@ export type DayTraining = {
     used: TrainingKcalValue;
     sides: TrainingKcalSide[];
   } | null;
+  /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
+  extra_activity?: DayExtraActivity;
+  /** Treino + extra = total de atividade do dia, somado pelo motor (`total_kcal` nulo se o treino é desconhecido). */
+  activity_kcal?: { training_kcal: number | null; extra_kcal: number; total_kcal: number | null };
 };
 
 export type DayLog = { notes: string | null; updated_at: string | null };

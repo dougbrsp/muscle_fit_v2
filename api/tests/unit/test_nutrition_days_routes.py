@@ -228,6 +228,33 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     assert treino["comparison"]["used"]["kcal_nature"] == "met"
 
 
+def test_dia_expoe_forca_extra_e_total_pelo_motor(db):
+    db.add_activity(ALUNO, HOJE, 428, 3600, intervals_kcal=428, name="Treino A")
+    for esporte, kcal in (("Walk", 51), ("Walk", 79), ("VirtualRun", 265)):
+        db.add_intervals_activity(ALUNO, HOJE, esporte, kcal)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}
+    assert treino["extra_activity"]["kcal"] == 395.0 and treino["extra_activity"]["kcal_nature"] == "reported"
+    assert [i["label"] for i in treino["extra_activity"]["items"]] == ["Walk", "Walk", "VirtualRun"]
+    assert treino["is_training_day"] is True
+
+
+def test_dia_so_com_cardio_nao_e_dia_de_treino_e_o_total_e_o_extra(db):
+    ontem = HOJE - timedelta(days=1)
+    db.add_intervals_activity(ALUNO, ontem, "VirtualRun", 427)
+    treino = _client().get(f"/nutrition/days/{ontem.isoformat()}").json()["training"]
+    assert treino["is_training_day"] is False and treino["sessions"] == [] and treino["comparison"] is None
+    assert treino["activity_kcal"] == {"training_kcal": None, "extra_kcal": 427.0, "total_kcal": 427.0}
+
+
+def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": []}
+    assert treino["activity_kcal"]["total_kcal"] == 410.0
+
+
 # ---------------------------------------------------------------------------
 # Água e fome
 # ---------------------------------------------------------------------------

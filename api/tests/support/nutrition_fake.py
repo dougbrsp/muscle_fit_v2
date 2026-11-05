@@ -39,6 +39,8 @@ class FakeNutritionDB:
         self.composition: list[dict[str, Any]] = []
         self.measurements: list[dict[str, Any]] = []
         self.activities: list[dict[str, Any]] = []
+        # `intervals_activities` SEM vínculo com um treino (a SQL do serviço já exclui as vinculadas).
+        self.intervals_extras: list[dict[str, Any]] = []
         self.now = datetime(2026, 10, 17, 15, 0, 0)
         self.next_plan_id = 1
         self.writes: list[str] = []
@@ -60,6 +62,14 @@ class FakeNutritionDB:
             {"user_id": user_id, "local_date": day, "session_status": "done",
              "calories_kcal": Decimal(str(kcal)) if kcal is not None else None, "duration_seconds": seconds}
         )
+
+    def add_intervals_activity(self, user_id: int, day: date, sport_type: str, kcal: Optional[float],
+                               name: Optional[str] = None, linked: bool = False) -> None:
+        if not linked:  # a vinculada não chega à lista (LEFT JOIN ... l.id IS NULL)
+            self.intervals_extras.append(
+                {"user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
+                 "calories_kcal": Decimal(str(kcal)) if kcal is not None else None}
+            )
 
     def add_plan(self, user_id: int, *, status: str = "draft", strategy: str = "maintenance",
                  effective_from: Optional[date] = None, superseded_at: Optional[datetime] = None,
@@ -166,6 +176,8 @@ class FakeCursor:
             return self._result(sorted(linhas, key=lambda r: r["local_date"]))
         if sql == svc._SESSIONS_SQL:
             return self._result([r for r in db.activities if r["user_id"] == p[0] and r["session_status"] == "done" and p[1] <= r["local_date"] <= p[2]])
+        if sql == svc.EXTRA_ACTIVITIES_SQL:
+            return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
         if sql == svc._PUBLISHED_PLANS_SQL:
             return self._result([r for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None])
         if sql == svc._TARGETS_SQL:

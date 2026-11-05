@@ -35,7 +35,12 @@ from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
-from .domain.nutrition.energy_expenditure import compare_training_kcal
+from .domain.nutrition.energy_expenditure import (
+    NO_EXTRA_ACTIVITY_KCAL,
+    activity_total_kcal,
+    compare_training_kcal,
+    extra_activity_kcal,
+)
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
@@ -136,18 +141,27 @@ def _training(cur: Any, user_id: int, day: date, today: date) -> dict[str, Any]:
     cur.execute(SESSIONS_OF_DAY_SQL, (int(user_id), day))
     sessoes = list(cur.fetchall() or [])
     entradas = load_user_inputs(cur, user_id, day, day, today)
-    contexto = day_context_for(day, today, entradas.sessions.get(day, ()))
+    contexto = day_context_for(day, today, entradas.sessions.get(day, ()), entradas.extra_activities.get(day, ()))
+    extra = extra_activity_kcal(contexto.extra_activities) if contexto.training_known else NO_EXTRA_ACTIVITY_KCAL
     comparacao = None
     if contexto.is_training_day:
         sujeito = resolve_subject(entradas.series.readings_on(day), day)
         comparacao = compare_training_kcal(
             contexto.training_kcal_reported, sujeito.subject.weight_kg, contexto.training_duration_min
         )
+    # Treino de força (o usado pelo motor) + cardio/caminhada do Intervals = gasto de atividade do dia, tudo pelo motor.
+    treino_kcal = comparacao.used.kcal if comparacao is not None else None
     return {
         "is_training_day": contexto.is_training_day,
         "training_known": contexto.training_known,
         "sessions": [_session_public(sessao) for sessao in sessoes],
         "comparison": comparacao.to_dict() if comparacao is not None else None,
+        "extra_activity": extra.to_dict(),
+        "activity_kcal": {
+            "training_kcal": treino_kcal,
+            "extra_kcal": extra.kcal,
+            "total_kcal": activity_total_kcal(treino_kcal if contexto.is_training_day else 0.0, extra.kcal),
+        },
     }
 
 

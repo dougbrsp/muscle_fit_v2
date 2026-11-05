@@ -157,9 +157,14 @@ class DayContext:
     week_training_days: Optional[tuple[bool, ...]] = None
     # False = dia futuro: ainda não se sabe se haverá treino (vira limitação).
     training_known: bool = True
+    # Atividades do Intervals que não são o treino de `activities` (cardio, caminhada...). Não mudam
+    # `is_training_day` nem a regra de MET; só somam ao gasto (`ee.extra_activity_kcal`).
+    extra_activities: tuple[ee.ExtraActivity, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
         return {
+            **extras,
             "day": self.day.isoformat(),
             "is_training_day": self.is_training_day,
             "training_known": self.training_known,
@@ -188,6 +193,8 @@ class DailyTarget:
     phase_kind: Optional[PhaseKind]
     protein_per_meal_g: Optional[float]
     limitations: tuple[str, ...] = ()
+    # Cardio/caminhada do Intervals somados ao gasto do dia (já dentro de `tdee.kcal`).
+    extra_activity: ee.ExtraActivityKcal = ee.NO_EXTRA_ACTIVITY_KCAL
 
     @property
     def computable(self) -> bool:
@@ -209,6 +216,7 @@ class DailyTarget:
             "bmr": self.bmr.to_dict(),
             "scale_comparison": self.scale_comparison.to_dict() if self.scale_comparison else None,
             "training_kcal": self.training_kcal.to_dict(),
+            "extra_activity": self.extra_activity.to_dict(),
             "tdee": self.tdee.to_dict(),
             "kcal_target": self.kcal_target.to_dict(),
             "macros": self.macros.to_dict(),
@@ -319,7 +327,11 @@ def compute_daily_target(
     if not day_context.training_known:
         limitacoes_treino = (*limitacoes_treino, LIMIT_TRAINING_UNKNOWN_FUTURE_DAY)
 
-    gasto = ee.tdee(tmb.kcal, subject.activity_level, plan_params.tdee_mode, treino.kcal)
+    # Atividades extras (cardio, caminhada) entram no gasto como o treino: só no modo explícito (no embutido o
+    # fator já as cobre) e nunca em dia futuro.
+    extra = ee.extra_activity_kcal(day_context.extra_activities) if day_context.training_known else ee.NO_EXTRA_ACTIVITY_KCAL
+    atividade_kcal = (treino.kcal or 0.0) + extra.kcal
+    gasto = ee.tdee(tmb.kcal, subject.activity_level, plan_params.tdee_mode, atividade_kcal)
 
     params = plan_params.strategy_params
     fase = day_context.phase_kind
@@ -342,8 +354,8 @@ def compute_daily_target(
             alvo_ref = strategy_mod.kcal_target(params, gasto_repouso.kcal, tmb.kcal, subject.weight_kg, massa_gorda).kcal
         metas, limitacoes_manual = _manual_targets(plan_params, params, subject, mlg, alvo_ref, tmb.kcal)
         metas_repouso = metas
-        if soma_treino and treino.kcal:
-            carbo = float(metas.carb_g) + float(treino.kcal) / macros_mod.KCAL_PER_G_CARB  # type: ignore[arg-type]
+        if soma_treino and atividade_kcal:
+            carbo = float(metas.carb_g) + float(atividade_kcal) / macros_mod.KCAL_PER_G_CARB  # type: ignore[arg-type]
             energia = macros_mod.kcal_from_macros(metas.protein_g, carbo, metas.fat_g)
             metas = replace(metas, carb_g=carbo, kcal=energia, fiber_g=macros_mod.fiber_target_g(energia))
         if fase is not None and fase in MAINTENANCE_KCAL_PHASES:
@@ -386,6 +398,7 @@ def compute_daily_target(
         day_kind=tipo_dia,
         phase_kind=fase,
         protein_per_meal_g=por_refeicao,
+        extra_activity=extra,
         limitations=_unique(
             tmb.limitations,
             limitacoes_treino,
@@ -518,7 +531,12 @@ def _sum_if_all(values: Sequence[Optional[float]]) -> Optional[float]:
     return float(sum(valor for valor in values if valor is not None))
 
 
-def day_context_for(day: date, today: date, sessions: Sequence[SessionFacts] = ()) -> DayContext:
+def day_context_for(
+    day: date,
+    today: date,
+    sessions: Sequence[SessionFacts] = (),
+    extra_activities: Sequence[ee.ExtraActivity] = (),
+) -> DayContext:
     """Contexto do dia para a materialização.
 
     - Dia FUTURO (`day > today`): treino desconhecido -> dia sem treino com
@@ -528,11 +546,14 @@ def day_context_for(day: date, today: date, sessions: Sequence[SessionFacts] = (
       com a soma das durações (só quando todas têm duração). Misturar informada
       com estimada no mesmo dia criaria uma terceira natureza que o motor não
       tem; a prioridade continua em `energy_expenditure.resolve_training_kcal`.
+    - `extra_activities` (cardio, caminhada do Intervals): vão no contexto sem mexer em `is_training_day` nem na
+      kcal/duração do treino; só somam ao gasto (`compute_daily_target`). Dia futuro não as tem.
     """
     if day > today:
         return DayContext(day=day, is_training_day=False, training_known=False)
+    extras = tuple(extra_activities)
     if not sessions:
-        return DayContext(day=day)
+        return DayContext(day=day, extra_activities=extras)
     kcal = _sum_if_all([positive_number(sessao.calories_kcal) for sessao in sessions])
     segundos = _sum_if_all([positive_number(sessao.duration_seconds) for sessao in sessions])
     return DayContext(
@@ -540,6 +561,7 @@ def day_context_for(day: date, today: date, sessions: Sequence[SessionFacts] = (
         is_training_day=True,
         training_kcal_reported=kcal,
         training_duration_min=None if segundos is None else segundos / SECONDS_PER_MINUTE,
+        extra_activities=extras,
     )
 
 
