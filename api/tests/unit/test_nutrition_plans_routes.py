@@ -426,3 +426,19 @@ def test_tabelas_ausentes_respondem_503(admin, db, monkeypatch):
     resposta = admin.get(f"/nutrition/plans?user_id={ALUNO}")
     assert resposta.status_code == 503 and resposta.json()["detail"]["migration"] == "078/079"
     assert _client("regular", user_id=ALUNO).get("/nutrition/me/plan").status_code == 503
+
+
+def test_plano_automatico_sem_nivel_no_perfil_nao_salva_nem_publica(admin, db):
+    db.profiles[ALUNO]["activity_level"] = None
+    resposta = admin.post("/nutrition/plans", json={"user_id": ALUNO, "strategy": "maintenance", "tdee_mode": "auto_intervals"})
+    assert resposta.status_code == 400, resposta.text
+    corpo = resposta.json()["detail"]
+    assert corpo["error"] == "invalid_plan"
+    assert [e["code"] for e in corpo["errors"]] == ["auto_intervals_requires_profile_activity_level"]
+    assert all(e["label"] and "perfil" in e["label"] for e in corpo["errors"])
+
+
+def test_plano_automatico_com_nivel_no_perfil_salva_com_a_rotina(admin, db):
+    resposta = admin.post("/nutrition/plans", json={"user_id": ALUNO, "strategy": "maintenance", "tdee_mode": "auto_intervals", "activity_level": "light"})
+    assert resposta.status_code == 201, resposta.text
+    assert resposta.json()["tdee_mode"] == "auto_intervals" and resposta.json()["activity_level"] == "light"

@@ -59,6 +59,12 @@ export const MANUAL_TRAINING_MODES_BY_TDEE_MODE: Readonly<Record<NutritionCode, 
 export const MEAL_SLOT_OPTIONS = optionsOf(NUTRITION.meal_slots, NUTRITION.meal_slot_labels);
 export const BMR_FORMULA_OPTIONS = optionsOf(NUTRITION.bmr_formulas, NUTRITION.bmr_formula_labels);
 export const TDEE_MODE_OPTIONS = optionsOf(NUTRITION.tdee_modes, NUTRITION.tdee_mode_labels);
+/** Frase sob o seletor do gasto: diz se o fator da conta inclui ou não o exercício (dono: `labels.TDEE_MODE_HINTS`). */
+export const TDEE_MODE_HINTS: Readonly<Record<NutritionCode, string>> = NUTRITION.tdee_mode_hints;
+/** "Rotina fora do exercício" do modo automático (dono: `labels.ROUTINE_LEVEL_LABELS`; o fator é o de não-exercício). */
+export const ROUTINE_LEVEL_OPTIONS = optionsOf(NUTRITION.routine_levels, NUTRITION.routine_level_labels);
+export const DEFAULT_ROUTINE_LEVEL: NutritionCode = NUTRITION.default_routine_level;
+export const AUTO_TDEE_MODE: NutritionCode = NUTRITION.auto_tdee_mode;
 export const SESSION_KIND_OPTIONS = optionsOf(NUTRITION.session_kinds, NUTRITION.session_kind_labels);
 /** Natureza da kcal do treino (informada × estimada por MET). A proveniência
  * (manual × Intervals) não é deste bloco: é de `domain/calories_source.py` (L0). */

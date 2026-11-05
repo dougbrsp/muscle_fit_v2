@@ -33,18 +33,44 @@ function Valor({ lado }: { lado: TrainingKcalSide }) {
  * (`energy_expenditure.compare_training_kcal`). A tela só exibe.
  */
 export function TrainingKcalRow({ training }: { training: DayTraining }) {
+  const extra = training.extra_activity;
+  const temExtra = extra !== undefined && extra.kcal > 0;
+  const soCardio = temExtra && !training.is_training_day;
+  const total = training.activity_kcal;
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>
       <Stack gap="xs">
         <Title order={4} c={BRAND.textPrimary}>
-          Treino do dia
+          {soCardio ? 'Atividades do dia' : 'Treino do dia'}
         </Title>
+        {training.tdee_basis_note && (
+          <Text size="sm" c="yellow" data-testid="gasto-fallback" role="status">
+            {training.tdee_basis_note}
+          </Text>
+        )}
+        {temExtra && total && (
+          <Text size="sm" fw={600} c={BRAND.textPrimary} data-testid="gasto-atividade">
+            {soCardio
+              ? `Cardio e caminhadas ${formatKcal(total.extra_kcal)}`
+              : total.training_kcal != null && total.total_kcal != null
+                ? `Treino ${formatKcal(total.training_kcal)} + Cardio e caminhadas ${formatKcal(total.extra_kcal)} = ${formatKcal(total.total_kcal)}`
+                : `Cardio e caminhadas ${formatKcal(total.extra_kcal)}`}
+          </Text>
+        )}
+        {temExtra &&
+          extra.items.map((item, i) => (
+            <Group key={`${item.label}-${i}`} gap="xs" wrap="wrap">
+              <Text size="sm" c={BRAND.textMuted}>
+                {item.label ?? 'Atividade'} · {formatKcal(item.calories_kcal)}
+              </Text>
+            </Group>
+          ))}
         {!training.training_known && (
           <Text size="sm" c="dimmed">
             {nutritionNotice('training_unknown_future_day')}
           </Text>
         )}
-        {training.training_known && !training.is_training_day && (
+        {training.training_known && !training.is_training_day && !temExtra && (
           <Text size="sm" c="dimmed">
             Nenhum treino concluído neste dia.
           </Text>
@@ -70,6 +96,11 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
               <Valor key={lado.kcal_nature} lado={lado} />
             ))}
           </Group>
+        )}
+        {training.comparison?.partial && (
+          <Text size="sm" c={BRAND.textMuted} data-testid="treino-parcial">
+            {`Usado pelo motor: ${formatKcal(training.comparison.used.kcal)} (informado onde houve kcal e estimado pela duração nas sessões sem kcal).`}
+          </Text>
         )}
       </Stack>
     </Card>

@@ -177,7 +177,7 @@ def test_perfil_sem_nivel_com_nivel_no_formulario_passa_e_sem_ele_e_422(monkeypa
     despacho = _Despacho(monkeypatch)
     monkeypatch.setattr(rota, "_incomplete_subject", INCOMPLETO_REAL)
     monkeypatch.setattr(rota, "user_today_for", lambda conn, aluno: DIA)
-    monkeypatch.setattr(rota, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje: _entradas_sem_nivel())
+    monkeypatch.setattr(rota, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje, plans=(): _entradas_sem_nivel())
 
     sem_nivel = _cliente().post(URL, json={"current": {}})
     assert sem_nivel.status_code == 422

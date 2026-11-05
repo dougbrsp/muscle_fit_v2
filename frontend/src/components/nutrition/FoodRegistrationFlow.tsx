@@ -214,6 +214,8 @@ export function FoodRegistrationFlow({
                 key={`rotulo-${labelReads}`}
                 food={null}
                 initial={foodFormFromPrefill(labelReading.food, labelReading)}
+                barcode={labelReading.barcode ?? undefined}
+                barcodeRead={labelReads}
                 createSource={LABEL_PHOTO.food_source}
                 onUseExisting={onUseExisting}
                 onSaved={saved}

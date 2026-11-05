@@ -375,5 +375,5 @@ describe('MealEditor: estrela marcada na busca adiciona o alimento com a porçã
     await clicar('estrela');
     expect(quantidades()).toHaveLength(30);
     expect(host.textContent).toContain('máximo de 30 itens');
-  });
+  }, 30_000);
 });

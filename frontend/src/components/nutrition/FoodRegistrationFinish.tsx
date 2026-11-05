@@ -9,9 +9,10 @@ import { canOfferPublic, runFinishActions, type FinishDone } from '@/lib/nutriti
 import { favoriteErrorLines } from '@/lib/nutrition-favorites';
 import type { FoodItem } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
+import { FoodOriginBadge } from './FoodOriginBadge';
 
 type Props = {
-  food: Pick<FoodItem, 'id' | 'name' | 'permissions'>;
+  food: Pick<FoodItem, 'id' | 'name' | 'permissions' | 'origin'> & { is_public?: boolean };
   /** Título da etapa: Alimento salvo ou, se já estava no catálogo, Alimento encontrado. */
   title?: string;
   /** Tudo o que foi marcado deu certo (ou nada foi marcado): o fluxo entrega o alimento ao registro/à página. */
@@ -43,9 +44,8 @@ export function FoodRegistrationFinish({ food, title = 'Alimento salvo', onConcl
     );
     feito.current = resultado.done;
     if (resultado.done.favorite) void queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
-    if (resultado.done.favorite || resultado.done.promote) {
-      void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
-    }
+    // Sempre: o alimento (e o selo de origem/público) pode ter mudado mesmo sem ação marcada.
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
     setEnviando(false);
     if (resultado.error !== null) {
       const falhouFavorito = favorito && !resultado.done.favorite;
@@ -67,9 +67,17 @@ export function FoodRegistrationFinish({ food, title = 'Alimento salvo', onConcl
           {title}
         </Title>
       </Group>
-      <Text fw={600} c={BRAND.textPrimary}>
-        {food.name}
-      </Text>
+      <Group gap="xs">
+        <Text fw={600} c={BRAND.textPrimary}>
+          {food.name}
+        </Text>
+        <FoodOriginBadge origin={food.origin} isPublic={food.is_public} />
+      </Group>
+      {food.is_public && (
+        <Text size="sm" c={BRAND.textMuted}>
+          Já está no cadastro público.
+        </Text>
+      )}
       <Checkbox
         label="Adicionar aos favoritos"
         checked={favorito}

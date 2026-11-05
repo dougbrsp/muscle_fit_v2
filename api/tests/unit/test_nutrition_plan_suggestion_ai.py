@@ -236,7 +236,7 @@ class _Conn(_Cursor):
 def _contexto_real(monkeypatch, entradas, **formulario):
     monkeypatch.setattr(ai, "get_conn", lambda: _Conn())
     monkeypatch.setattr(ai, "user_today_for", lambda conn, aluno: HOJE)
-    monkeypatch.setattr(ai, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje: entradas)
+    monkeypatch.setattr(ai, "load_user_inputs", lambda cur, aluno, inicio, fim, hoje, plans=(): entradas)
     return ai.load_context(ALUNO, ps.normalize_current(formulario)).context
 
 

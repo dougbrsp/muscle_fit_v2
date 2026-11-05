@@ -22,8 +22,12 @@ const FOOD = { id: 41, name: 'Iogurte', basis: 'g', default_portion: null, permi
 vi.mock('./FoodForm', async () => {
   const { createElement: h } = await import('react');
   return {
-    FoodForm: (p: { onSaved: (f: unknown) => void }) =>
-      h('button', { type: 'button', 'data-testid': 'salvar-digitacao', onClick: () => p.onSaved(FOOD) }, 'Salvar'),
+    FoodForm: (p: { onSaved: (f: unknown) => void; barcode?: string; createSource?: string }) =>
+      h(
+        'button',
+        { type: 'button', 'data-testid': p.createSource ? 'salvar-rotulo' : 'salvar-digitacao', 'data-barcode': p.barcode ?? '', onClick: () => p.onSaved(FOOD) },
+        'Salvar',
+      ),
   };
 });
 vi.mock('./BarcodeLookup', async () => {
@@ -33,7 +37,17 @@ vi.mock('./BarcodeLookup', async () => {
       h('button', { type: 'button', 'data-testid': 'achar-codigo', onClick: () => p.onFound(FOOD) }, 'Achar'),
   };
 });
-vi.mock('./LabelPhotoUpload', () => ({ LabelPhotoUpload: () => null }));
+vi.mock('./LabelPhotoUpload', async () => {
+  const { createElement: h } = await import('react');
+  const leitura = {
+    readable: true, legibility: 'good', barcode: '7891000100103', food: { name: 'Barra' }, per_serving: {},
+    errors: [], warnings: [], ai_notes: [],
+  };
+  return {
+    LabelPhotoUpload: (p: { onRead: (r: unknown) => void }) =>
+      h('button', { type: 'button', 'data-testid': 'ler-rotulo', onClick: () => p.onRead(leitura) }, 'Ler'),
+  };
+});
 vi.mock('./UsdaSearch', () => ({ UsdaSearch: () => null }));
 
 let root: Root | null = null;
@@ -97,6 +111,19 @@ async function montar() {
   return props;
 }
 const concluir = () => clicar(Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.includes('Concluir')) ?? null);
+
+describe('FoodRegistrationFlow: EAN lido no rótulo', () => {
+  it('o código lido pela IA chega ao formulário do rótulo (editável), em vez de ser descartado', async () => {
+    const props = await montar();
+    const aba = Array.from(host.querySelectorAll('[role="tab"]')).find((t) => t.textContent?.includes('Rótulo')) as HTMLElement;
+    await clicar(aba);
+    await clicar(q('ler-rotulo'));
+    expect(q('salvar-rotulo')?.getAttribute('data-barcode')).toBe('7891000100103');
+    await clicar(q('salvar-rotulo'));
+    expect(q('etapa-final')).not.toBeNull();
+    expect(props.onSaved).not.toHaveBeenCalled();
+  });
+});
 
 describe('FoodRegistrationFlow: etapa final', () => {
   it('digitação/rótulo: salvar abre a etapa final no lugar das abas; só Concluir entrega o alimento', async () => {

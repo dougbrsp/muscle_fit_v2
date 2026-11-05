@@ -59,6 +59,7 @@ from .domain.nutrition.plan import (
     NOTE_TEMPLATE_PARTIAL_WEEKDAYS,
     PLAN_LIST_MAX,
     PROJECTION_TRAINING_WINDOW_DAYS,
+    auto_intervals_blockers,
     projection_tdee,
     rest_day_strategy_kcal,
     check_cycle_floors,
@@ -279,10 +280,17 @@ def _plan_checks(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> t
     ciclo (menor e maior dia, com e sem gramas manuais). Levanta 400 `invalid_plan` quando falta o peso ou o
     motor bloqueia; devolve (checagem das gramas, avisos). Sem gramas manuais nem ciclo não consulta nada. A
     meta da ESTRATÉGIA (sem as gramas) e a TMB servem só aos avisos de energia."""
+    if settings.is_auto_intervals:
+        # O fallback do automático usa o nível do PERFIL: sem ele não há fator e não se inventa um (bloqueia o plano).
+        with conn.cursor() as cur:
+            perfil = compute_day(load_user_inputs(cur, aluno, hoje, hoje, hoje), replace(settings, manual_macros=None, cycle_kinds=None), hoje, hoje)
+        bloqueios = auto_intervals_blockers(settings, perfil.subject.subject.activity_level)
+        if bloqueios:
+            raise _invalid_plan(bloqueios)
     if settings.manual_macros is None and settings.cycle_kinds is None:
         return None, ()
     with conn.cursor() as cur:
-        entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje)
+        entradas = load_user_inputs(cur, aluno, hoje, hoje, hoje, [settings])
     comp = compute_day(entradas, replace(settings, manual_macros=None), hoje, hoje)
     sujeito = comp.subject.subject
     referencia = (
@@ -300,7 +308,7 @@ def _plan_checks(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> t
 
 
 def _needs_checks(settings: PlanSettings) -> bool:
-    return settings.manual_macros is not None or settings.cycle_kinds is not None
+    return settings.manual_macros is not None or settings.cycle_kinds is not None or settings.is_auto_intervals
 
 
 def _manual_check_public(check: Any) -> Optional[dict[str, Any]]:
@@ -353,7 +361,7 @@ def _goal(comp: DayComputation) -> dict[str, Any]:
 
 def _compute_week(cur: Any, user_id: int, settings: PlanSettings, today: date) -> list[DayComputation]:
     janela = week_window(today)
-    entradas = load_user_inputs(cur, user_id, janela.date_from, janela.date_to, today)
+    entradas = load_user_inputs(cur, user_id, janela.date_from, janela.date_to, today, [settings])
     return [compute_day(entradas, settings, dia, today) for dia in janela.days()]
 
 
@@ -382,7 +390,7 @@ def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) ->
     (informada > MET), para o TDEE estável da projeção."""
     inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     fim = today - timedelta(days=1)
-    return past_training_kcal(load_user_inputs(cur, aluno, inicio, fim, today), settings, today)
+    return past_training_kcal(load_user_inputs(cur, aluno, inicio, fim, today, [settings]), settings, today)
 
 
 
@@ -581,7 +589,7 @@ def publish_draft(
     _plan_checks(conn, aluno, settings, hoje)
     with conn.cursor() as cur:
         janela = publication_window(hoje, last_target_date(cur, aluno))
-        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
+        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje, [settings])
         comp_hoje = compute_day(entradas, settings, hoje, hoje)
         if not comp_hoje.target.computable:
             raise subject_incomplete_error(comp_hoje)
@@ -730,7 +738,7 @@ def cycle_days_from_template(
 def _my_week(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> tuple[UserInputs, DayComputation]:
     janela = week_window(hoje)
     with conn.cursor() as cur:
-        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje)
+        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje, [settings])
     return entradas, compute_day(entradas, settings, hoje, hoje)
 
 

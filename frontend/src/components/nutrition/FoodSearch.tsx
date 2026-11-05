@@ -31,6 +31,7 @@ import {
 import { favoriteErrorLines, removeFavoriteIfPresent } from '@/lib/nutrition-favorites';
 import { FOOD_PER_100_FIELDS, FOOD_REQUIRED_FIELDS, FOOD_SOURCE_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
+import { FoodOriginBadge } from './FoodOriginBadge';
 import type { FoodSearchItem, FoodSearchScope } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
@@ -231,9 +232,11 @@ export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, register
                       withArrow
                     >
                       <Group gap={4} wrap="nowrap">
-                        <Badge size="sm" variant="light" color={item.is_public ? 'brand' : 'gray'}>
-                          {nutritionLabel(FOOD_SOURCE_OPTIONS, item.source)}
-                        </Badge>
+                        <FoodOriginBadge
+                          origin={item.origin}
+                          fallback={nutritionLabel(FOOD_SOURCE_OPTIONS, item.source)}
+                          isPublic={item.is_public}
+                        />
                         {!item.is_public && (
                           <Badge size="sm" variant="outline" color="gray">
                             {item.is_own ? 'Meu' : 'Privado'}

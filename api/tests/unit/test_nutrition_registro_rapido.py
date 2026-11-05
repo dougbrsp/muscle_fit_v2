@@ -654,3 +654,45 @@ def test_alimento_com_base_200_ml_lancado_em_100_ml_pelas_rotas(monkeypatch, db)
     item = refeicao.json()["items"][0]
     assert item["basis"] == "ml" and item["amount"] == 100 and item["nutrients"]["protein_g"] == pytest.approx(10.0)
     assert item["nutrients"]["energy_kcal"] == pytest.approx(80.0)
+
+
+@pytest.mark.parametrize("admin,source,barcode,esperado", [
+    (True, "label_photo", None, True),
+    (True, "user", "7891000100103", True),
+    (True, "label_photo", "7891000100103", True),
+    (True, "user", None, False),
+    (True, "user", "", False),
+    (False, "label_photo", None, False),
+    (False, "user", "7891000100103", False),
+    (False, "label_photo", "7891000100103", False),
+    (False, "user", None, False),
+    (True, "xyz", None, False),
+])
+def test_publicacao_automatica_so_para_admin_com_rotulo_ou_ean(admin, source, barcode, esperado):
+    assert catalog.is_born_public(admin, source, barcode) is esperado
+
+
+@pytest.mark.parametrize("source,barcode,codigo,rotulo", [
+    ("label_photo", None, "label_photo", "Rótulo (IA)"),
+    ("label_photo", "7891000100103", "label_photo", "Rótulo (IA)"),
+    ("off", "7891000100103", "barcode_off", "Código de barras (Open Food Facts)"),
+    ("user", "7891000100103", "barcode", "Código de barras"),
+    ("user", None, "typed", "Digitado"),
+    ("usda", None, "usda", "USDA"),
+    ("taco", None, "taco", "TACO"),
+    ("tbca_manual", None, "tbca_manual", "TBCA"),
+    ("ai_estimate", None, "ai", "IA"),
+])
+def test_origem_do_alimento_pelo_motor(source, barcode, codigo, rotulo):
+    origem = catalog.food_origin(source, barcode)
+    assert origem.value == codigo and labels.FOOD_ORIGIN_LABELS[origem] == rotulo
+    linha = {"id": 1, "source": source, "barcode": barcode, "is_active": 1}
+    identidade = Identity(user_id=2, role="regular", source="session")
+    assert foods_mod.food_public(linha, identidade)["origin"] == {"code": codigo, "label": rotulo}
+
+
+def test_origem_de_fonte_desconhecida_e_nula_e_todo_codigo_tem_rotulo():
+    assert catalog.food_origin("xyz", None) is None and catalog.food_origin(None, None) is None
+    assert set(labels.FOOD_ORIGIN_LABELS) == set(catalog.FoodOrigin)
+    linha = {"id": 1, "source": "xyz", "is_active": 1}
+    assert foods_mod.food_public(linha, Identity(user_id=2, role="regular", source="session"))["origin"] is None

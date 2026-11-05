@@ -189,6 +189,52 @@ def normalize_source(raw: Any) -> Optional[FoodSource]:
         return None
 
 
+# Publicação automática no cadastro (2026-11-05, decisão do usuário): só o ADMIN, e só quando o alimento vem de
+# leitura (foto do rótulo ou código de barras). Usuário comum continua privado (D-G); cadastro digitado sem EAN
+# continua privado para todos (o admin publica pela etapa final ou pelo botão).
+AUTO_PUBLIC_SOURCES: Final[frozenset[FoodSource]] = frozenset({FoodSource.LABEL_PHOTO})
+
+
+def is_born_public(is_admin: bool, source: Any, barcode: Any) -> bool:
+    """O alimento recém-cadastrado nasce público (`owner_user_id` NULL)? Admin + (fonte `AUTO_PUBLIC_SOURCES`
+    ou código de barras informado)."""
+    if not is_admin:
+        return False
+    fonte = normalize_source(source)
+    return (fonte is not None and fonte in AUTO_PUBLIC_SOURCES) or bool(barcode)
+
+
+class FoodOrigin(str, Enum):
+    """Origem do alimento exibida na lista, derivada de `source` e `barcode` (sem coluna nem valor novo)."""
+
+    LABEL_PHOTO = "label_photo"
+    BARCODE_OFF = "barcode_off"
+    BARCODE = "barcode"
+    TYPED = "typed"
+    USDA = "usda"
+    TACO = "taco"
+    TBCA_MANUAL = "tbca_manual"
+    AI = "ai"
+
+
+def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
+    """Origem do alimento: foto do rótulo; OFF (código de barras); usuário com EAN (código de barras) ou
+    sem (digitado); USDA, TACO, TBCA e IA pelo nome. Fonte desconhecida -> None."""
+    fonte = normalize_source(source)
+    if fonte is None:
+        return None
+    if fonte == FoodSource.USER:
+        return FoodOrigin.BARCODE if barcode else FoodOrigin.TYPED
+    return {
+        FoodSource.LABEL_PHOTO: FoodOrigin.LABEL_PHOTO,
+        FoodSource.OFF: FoodOrigin.BARCODE_OFF,
+        FoodSource.USDA: FoodOrigin.USDA,
+        FoodSource.TACO: FoodOrigin.TACO,
+        FoodSource.TBCA_MANUAL: FoodOrigin.TBCA_MANUAL,
+        FoodSource.AI_ESTIMATE: FoodOrigin.AI,
+    }.get(fonte)
+
+
 def user_entry_source(raw: Any) -> Optional[FoodSource]:
     """Fonte do cadastro do usuário: ausente -> `USER_ENTRY_SOURCE`; uma de
     `USER_ENTRY_SOURCES` -> ela; qualquer outra (TACO, USDA, OFF...) -> None."""

@@ -39,6 +39,11 @@ class FakeNutritionDB:
         self.composition: list[dict[str, Any]] = []
         self.measurements: list[dict[str, Any]] = []
         self.activities: list[dict[str, Any]] = []
+        # `intervals_activities` SEM vínculo com um treino (a SQL do serviço já exclui as vinculadas).
+        self.intervals_extras: list[dict[str, Any]] = []
+        # Conexão e idade (min) da última sincronização do Intervals: padrão = desconectado.
+        self.intervals_connected = False
+        self.intervals_minutes_since_sync: Optional[int] = None
         self.now = datetime(2026, 10, 17, 15, 0, 0)
         self.next_plan_id = 1
         self.writes: list[str] = []
@@ -60,6 +65,14 @@ class FakeNutritionDB:
             {"user_id": user_id, "local_date": day, "session_status": "done",
              "calories_kcal": Decimal(str(kcal)) if kcal is not None else None, "duration_seconds": seconds}
         )
+
+    def add_intervals_activity(self, user_id: int, day: date, sport_type: str, kcal: Optional[float],
+                               name: Optional[str] = None, linked: bool = False) -> None:
+        if not linked:  # a vinculada não chega à lista (LEFT JOIN ... l.id IS NULL)
+            self.intervals_extras.append(
+                {"user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
+                 "calories_kcal": Decimal(str(kcal)) if kcal is not None else None}
+            )
 
     def add_plan(self, user_id: int, *, status: str = "draft", strategy: str = "maintenance",
                  effective_from: Optional[date] = None, superseded_at: Optional[datetime] = None,
@@ -166,11 +179,29 @@ class FakeCursor:
             return self._result(sorted(linhas, key=lambda r: r["local_date"]))
         if sql == svc._SESSIONS_SQL:
             return self._result([r for r in db.activities if r["user_id"] == p[0] and r["session_status"] == "done" and p[1] <= r["local_date"] <= p[2]])
+        if sql == svc.INTERVALS_CONNECTION_SQL:
+            return self._result([{"intervals_athlete_id": "i1" if db.intervals_connected else None,
+                                  "intervals_api_key_encrypted": "k" if db.intervals_connected else None}])
+        if sql == svc.INTERVALS_SYNC_AGE_SQL:
+            return self._result([{"minutes_since_sync": db.intervals_minutes_since_sync}])
+        if sql == svc.EXTRA_ACTIVITIES_SQL:
+            return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
         if sql == svc._PUBLISHED_PLANS_SQL:
             return self._result([r for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None])
         if sql == svc._TARGETS_SQL:
             linhas = [r for (uid, dia), r in db.targets.items() if uid == p[0] and p[1] <= dia <= p[2]]
-            return self._result(sorted(linhas, key=lambda r: r["local_date"]))
+            # Projeta SÓ as colunas que a SQL pede (como o banco): coluna não selecionada não existe na linha, e o JSON
+            # extraído (`JSON_EXTRACT(inputs_json, '$.x') AS alias`) vira texto JSON.
+            pedidas = [c.strip() for c in svc._TARGET_COLUMNS.split(",")]
+            projetadas = []
+            for r in sorted(linhas, key=lambda r: r["local_date"]):
+                linha = {c: r.get(c) for c in pedidas}
+                entradas = r.get("inputs_json") or {}
+                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json")):
+                    if f"AS {alias}" in svc._TARGET_JSON_COLUMNS:
+                        linha[alias] = json.dumps(entradas[chave]) if chave in entradas else None
+                projetadas.append(linha)
+            return self._result(projetadas)
         if sql == svc._LAST_TARGET_DATE_SQL:
             dias = [dia for (uid, dia) in db.targets if uid == p[0]]
             return self._result([{"ultimo": max(dias) if dias else None}])

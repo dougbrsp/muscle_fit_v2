@@ -199,6 +199,7 @@ const SLOTS: Partial<PresentationSlots> = {
             <ListRow
               title={item.name}
               subtitle={[
+                item.origin?.label,
                 `${formatWithUnit(item.per_100[ENERGY_NUTRIENT], 'kcal', 0)} por 100 ${item.basis}`,
                 item.serving.household_measure || item.brand || item.category,
               ]

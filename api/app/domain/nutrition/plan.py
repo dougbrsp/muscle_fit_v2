@@ -43,7 +43,7 @@ from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
 from .carb_cycling import CycleDays, DayKind, propose_day_kinds, validate_cycle_days
-from .daily_target import DayContext, PlanParams, compute_daily_target, manual_adds_training
+from .daily_target import PlanParams, compute_daily_target, manual_adds_training, rest_day_context
 from .macros import meals_per_day_is_valid
 from .energy_density import weekly_kg_for_daily_kcal
 from .macros import kcal_from_macros
@@ -190,6 +190,16 @@ class PlanSettings:
     maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # N7: kcal/dia da manutenção (0 = como sempre)
 
     @property
+    def is_auto_intervals(self) -> bool:
+        return self.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
+
+    @property
+    def subject_activity_level(self) -> Optional[ActivityLevel]:
+        """Nível que sobrescreve o do perfil no sujeito. No modo automático `activity_level` é a ROTINA fora do
+        exercício (outro eixo): o fator com exercício do fallback continua vindo do nível do perfil."""
+        return None if self.is_auto_intervals else self.activity_level
+
+    @property
     def manual_adds_training(self) -> bool:
         """Gramas manuais no modo que soma o treino do dia (e o gasto do treino à parte)."""
         return manual_adds_training(self.plan_params())
@@ -222,6 +232,7 @@ class PlanSettings:
             strategy_params=self.strategy_params(),
             bmr_formula=self.bmr_formula,
             tdee_mode=self.tdee_mode,
+            routine_level=self.activity_level if self.is_auto_intervals else None,
             meals_per_day=self.meals_per_day,
             ffm_age_days=ffm_age_days,
             macro_priority=self.macro_priority,
@@ -295,7 +306,8 @@ def normalize_priority(value: Any) -> Optional[MacroPriority]:
 def manual_training_modes_for(tdee_mode: ee.TdeeMode) -> tuple[ManualTrainingMode, ...]:
     """Modos das gramas manuais que valem para o modo de gasto do treino: `add_training` só com o treino à parte
     (explícito); com o treino já no fator do gasto só o `fixed`. A tela só oferece estes."""
-    if tdee_mode == ee.TdeeMode.EXPLICIT_TRAINING:
+    if tdee_mode in (ee.TdeeMode.EXPLICIT_TRAINING, ee.TdeeMode.AUTO_INTERVALS):
+        # No automático, `add_training` soma o treino e os extras no dia sincronizado; no dia de fallback vale como `fixed`.
         return (ManualTrainingMode.FIXED, ManualTrainingMode.ADD_TRAINING)
     return (ManualTrainingMode.FIXED,)
 
@@ -638,13 +650,21 @@ def training_kcal_of_day(is_training_day: bool, resolved_kcal: Any) -> Optional[
     return None if is_training_day else 0.0
 
 
+def auto_intervals_blockers(settings: PlanSettings, profile_level: Optional[ActivityLevel]) -> tuple[str, ...]:
+    """Bloqueios do plano `auto_intervals`: sem nível de atividade no PERFIL o fallback (fator com exercício) não tem
+    fator, e não se inventa um. Os outros modos não dependem disto."""
+    if settings.is_auto_intervals and profile_level is None:
+        return (ee.LIMIT_AUTO_REQUIRES_PROFILE_LEVEL,)
+    return ()
+
+
 def rest_day_strategy_kcal(
     settings: PlanSettings, subject: Subject, day: date, scale_bmr: Any = None, ffm_age_days: Optional[int] = None
 ) -> Optional[float]:
     """Meta calórica da ESTRATÉGIA num dia sem treino (sem gramas manuais nem ciclo): a referência dos avisos de
     energia das gramas manuais no modo que soma o treino."""
     base = replace(settings.plan_params(ffm_age_days), manual_macros=None, cycle_kinds=None)
-    return compute_daily_target(subject, base, DayContext(day=day), scale_bmr=scale_bmr).kcal_target.kcal
+    return compute_daily_target(subject, base, rest_day_context(base.tdee_mode, day), scale_bmr=scale_bmr).kcal_target.kcal
 
 
 def projection_tdee(
@@ -788,7 +808,7 @@ def check_cycle_floors(
     for tipo in dict.fromkeys(settings.cycle_kinds):
         indice = settings.cycle_kinds.index(tipo)
         meta = compute_daily_target(
-            subject, params, DayContext(day=_CYCLE_CHECK_MONDAY + timedelta(days=indice)), scale_bmr=scale_bmr
+            subject, params, rest_day_context(params.tdee_mode, _CYCLE_CHECK_MONDAY + timedelta(days=indice)), scale_bmr=scale_bmr
         )
         kcal = meta.macros.kcal
         if kcal is None:

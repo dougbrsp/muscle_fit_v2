@@ -45,6 +45,13 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.energy_expenditure import (
+    NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
+    ExtraActivity,
+    TdeeBasis,
+    activity_total_kcal,
+    intervals_in_sync,
+)
 from .domain.nutrition.daily_target import (
     DailyTarget,
     DayContext,
@@ -70,6 +77,7 @@ from .domain.nutrition.plan import (
 )
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
+from .intervals_activity_kind import classify
 
 PLANS_TABLE = "nutrition_plans"
 TARGETS_TABLE = "nutrition_daily_targets"
@@ -95,8 +103,14 @@ _TARGET_COLUMNS = (
     "fat_g, fiber_g, water_ml, bmr_kcal, bmr_formula, tdee_kcal, training_kcal, training_kcal_nature, "
     "limitations_json, inputs_hash, engine_version, computed_at"
 )
+# O que o motor gravou em `inputs_json` e a tela precisa (cardio/caminhada somados e como o gasto foi montado): extraído
+# no banco, sem trazer o JSON inteiro. `target_row_public` lê só estes aliases.
+_TARGET_JSON_COLUMNS = (
+    "JSON_EXTRACT(inputs_json, '$.extra_activity') AS extra_activity_json, "
+    "JSON_EXTRACT(inputs_json, '$.tdee_basis') AS tdee_basis_json"
+)
 _TARGETS_SQL = (
-    f"SELECT {_TARGET_COLUMNS} FROM {TARGETS_TABLE} "
+    f"SELECT {_TARGET_COLUMNS}, {_TARGET_JSON_COLUMNS} FROM {TARGETS_TABLE} "
     "WHERE user_id = %s AND local_date BETWEEN %s AND %s ORDER BY local_date"
 )
 _LAST_TARGET_DATE_SQL = f"SELECT MAX(local_date) AS ultimo FROM {TARGETS_TABLE} WHERE user_id = %s"
@@ -143,6 +157,31 @@ DONE_SESSION_STATUS = "done"
 _SESSIONS_SQL = (
     "SELECT local_date, calories_kcal, duration_seconds FROM activities "
     f"WHERE user_id = %s AND session_status = '{DONE_SESSION_STATUS}' AND local_date BETWEEN %s AND %s"
+)
+
+
+# Atividades do Intervals do dia que NÃO são o treino de `activities` (sem vínculo `activity_intervals_link`: a
+# vinculada já é a sessão de força). A CLASSE (cardio/força/outra) vem de `intervals_activity_kind` (dono), em
+# Python; quem decide o que soma é `energy_expenditure.extra_activity_kcal`. Sem LIKE de classificação aqui.
+EXTRA_ACTIVITIES_SQL = (
+    "SELECT ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal "
+    "FROM intervals_activities ia "
+    "LEFT JOIN activity_intervals_link l ON l.intervals_activity_id = ia.id AND l.user_id = ia.user_id "
+    "WHERE ia.user_id = %s AND ia.activity_date BETWEEN %s AND %s AND l.id IS NULL "
+    "ORDER BY ia.activity_date, ia.id"
+)
+
+
+# Conexão e frescor da sincronização do Intervals (modo automático): conectado = athlete id e chave gravados (a chave
+# nunca sai daqui, só se existe). A PROVA de que o job rodou é só o `synced_at` das ATIVIDADES: o job (e o botão
+# "Sincronizar") regrava `synced_at = CURRENT_TIMESTAMP` de TODA atividade da janela a cada execução bem-sucedida,
+# com a chave válida; o wellness NÃO prova (edição manual e refresh só de wellness também o tocam, mesmo com a chave
+# revogada). Sem atividade na janela do job não há prova: o resultado é fallback (na dúvida, nunca "em dia"). Idade em
+# MINUTOS no relógio do banco; quem decide "em dia" é `energy_expenditure.intervals_in_sync`.
+INTERVALS_CONNECTION_SQL = "SELECT intervals_athlete_id, intervals_api_key_encrypted FROM users WHERE id = %s"
+INTERVALS_SYNC_AGE_SQL = (
+    "SELECT TIMESTAMPDIFF(MINUTE, MAX(synced_at), CURRENT_TIMESTAMP) AS minutes_since_sync "
+    "FROM intervals_activities WHERE user_id = %s"
 )
 
 
@@ -250,6 +289,12 @@ class UserInputs:
 
     series: SubjectSeries = field(default_factory=SubjectSeries)
     sessions: dict[date, list[SessionFacts]] = field(default_factory=dict)
+    extra_activities: dict[date, list[ExtraActivity]] = field(default_factory=dict)
+    # Intervals conectado e sincronizado (decisão do motor, lida UMA vez por carga); só vale no modo automático.
+    intervals_in_sync: bool = False
+    # False = o Intervals NÃO foi consultado nesta carga (nenhum plano automático em jogo): os modos clássicos não pagam
+    # as consultas novas.
+    intervals_loaded: bool = False
 
 
 def _decimal_free(row: dict[str, Any]) -> dict[str, Any]:
@@ -264,7 +309,9 @@ def _series(rows: Iterable[dict[str, Any]], column: str) -> tuple[Reading, ...]:
     )
 
 
-def load_user_inputs(cur: Any, user_id: int, date_from: date, date_to: date, today: date) -> UserInputs:
+def load_user_inputs(
+    cur: Any, user_id: int, date_from: date, date_to: date, today: date, plans: Iterable[PlanSettings] = ()
+) -> UserInputs:
     """Perfil e séries cruas até `date_to` e as sessões concluídas de
     `[date_from, min(date_to, hoje)]`."""
     uid = int(user_id)
@@ -303,7 +350,39 @@ def load_user_inputs(cur: Any, user_id: int, date_from: date, date_to: date, tod
                 sessoes.setdefault(dia, []).append(
                     SessionFacts(calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"))
                 )
-    return UserInputs(series=series, sessions=sessoes)
+    # Conexão, frescor e atividades do Intervals só quando algum plano em jogo é o automático (planos clássicos não
+    # fazem nenhum SELECT novo). `plans` = as configurações que vão usar estas entradas.
+    com_intervals = any(plano.is_auto_intervals for plano in plans)
+    extras: dict[date, list[ExtraActivity]] = {}
+    if com_intervals and fim_sessoes >= date_from:
+        cur.execute(EXTRA_ACTIVITIES_SQL, (uid, date_from, fim_sessoes))
+        for row in cur.fetchall() or []:
+            dia = _as_date(row.get("activity_date"))
+            if dia is not None:
+                extras.setdefault(dia, []).append(
+                    ExtraActivity(
+                        kind=classify(row.get("sport_type"), row.get("name")),
+                        calories_kcal=_float(row.get("calories_kcal")),
+                        label=row.get("name") or row.get("sport_type"),
+                    )
+                )
+    em_dia = False
+    if com_intervals:
+        cur.execute(INTERVALS_CONNECTION_SQL, (uid,))
+        conexao = cur.fetchone() or {}
+        conectado = bool(conexao.get("intervals_athlete_id")) and bool(conexao.get("intervals_api_key_encrypted"))
+        idade = None
+        if conectado:
+            cur.execute(INTERVALS_SYNC_AGE_SQL, (uid,))
+            idade = (cur.fetchone() or {}).get("minutes_since_sync")
+        em_dia = intervals_in_sync(conectado, idade)
+    return UserInputs(
+        series=series,
+        sessions=sessoes,
+        extra_activities=extras,
+        intervals_in_sync=em_dia,
+        intervals_loaded=com_intervals,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -322,8 +401,14 @@ class DayComputation:
 
 def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: date) -> DayComputation:
     """Meta de UM dia pelo motor (sem gravar)."""
-    sujeito = resolve_subject(inputs.series.readings_on(day), day, settings.activity_level)
-    contexto = day_context_for(day, today, inputs.sessions.get(day, ()))
+    sujeito = resolve_subject(inputs.series.readings_on(day), day, settings.subject_activity_level)
+    # Só o plano automático leva os extras e o estado da sincronização ao contexto (os modos clássicos ficam como
+    # sempre, hash inclusive). Sem sincronização os extras não valem e nem entram no contexto.
+    automatico = settings.is_auto_intervals
+    extras = inputs.extra_activities.get(day, ()) if automatico and inputs.intervals_in_sync else ()
+    contexto = day_context_for(
+        day, today, inputs.sessions.get(day, ()), extras, intervals_in_sync=inputs.intervals_in_sync if automatico else None
+    )
     meta = compute_daily_target(
         sujeito.subject, settings.plan_params(sujeito.ffm_age_days), contexto, scale_bmr=sujeito.scale_bmr_kcal
     )
@@ -331,15 +416,16 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
 
 
 def past_training_kcal(inputs: UserInputs, settings: PlanSettings, today: date) -> list[Optional[float]]:
-    """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
-    treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
+    """Gasto de atividade dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino MAIS o cardio e as
+    caminhadas do Intervals, `energy_expenditure.activity_total_kcal`; 0 em dia sem treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
     (informada > MET), para o TDEE estável da projeção (`plan.projection_tdee`). As entradas precisam cobrir a
     janela. Usada pela prévia do plano e pelo dashboard de nutrição, que projetam com o MESMO TDEE."""
     inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
     resultado: list[Optional[float]] = []
     for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
         comp = compute_day(inputs, settings, dia, today)
-        resultado.append(training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal))
+        treino = training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal)
+        resultado.append(activity_total_kcal(treino, comp.target.extra_activity.kcal))
     return resultado
 
 
@@ -378,6 +464,8 @@ def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
         "tdee_kcal": meta.tdee.kcal,
         "training_kcal": meta.training_kcal.kcal,
         "training_kcal_nature": meta.training_kcal.kcal_nature.value if meta.training_kcal.kcal_nature else None,
+        "extra_activity": meta.extra_activity.to_dict(),
+        "tdee_basis": meta.tdee_basis.value,
         "limitations": nutrition_labels.limitation_items(meta.limitations),
         "engine_version": meta.engine_version,
         "computed_at": None,
@@ -409,6 +497,9 @@ def target_row_public(row: dict[str, Any], today: date) -> dict[str, Any]:
         "bmr_formula": row.get("bmr_formula"),
         "tdee_kcal": _float(row.get("tdee_kcal")),
         "training_kcal": _float(row.get("training_kcal")),
+        # Cardio/caminhada somados ao gasto (modo automático): o dicionário que o motor gravou em `inputs_json`.
+        "extra_activity": _json_value(row.get("extra_activity_json")) or NO_EXTRA_ACTIVITY.to_dict(),
+        "tdee_basis": _json_value(row.get("tdee_basis_json")) or TdeeBasis.CLASSIC.value,
         "training_kcal_nature": row.get("training_kcal_nature"),
         "limitations": nutrition_labels.limitation_items(limitacoes),
         "engine_version": row.get("engine_version"),
@@ -511,7 +602,13 @@ def ensure_daily_targets(
         ]
         lote: list[tuple[Any, ...]] = []
         if dias:
-            entradas = inputs if inputs is not None else load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje)
+            planos_dos_dias = [settings for _, _, settings in dias]
+            entradas = inputs
+            # Entradas trazidas de fora podem ter sido carregadas só com o plano NOVO; se algum dia a gravar usa o plano
+            # automático (ex.: ontem era automático e hoje é clássico) e o Intervals não foi lido, recarrega: senão
+            # esse dia seria regravado no fallback.
+            if entradas is None or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded):
+                entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, planos_dos_dias)
             for dia, plano_id, settings in dias:
                 comp = compute_day(entradas, settings, dia, hoje)
                 impressao = inputs_fingerprint(plano_id, comp)
@@ -539,7 +636,7 @@ def _backfill_frozen_days(cur: Any, user_id: int, days: Sequence[date], today: d
     dias = [(dia, *em_vigor) for dia in sorted(days) if (em_vigor := planos.for_day(dia)) is not None]
     if not dias:
         return 0
-    entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], today)
+    entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], today, [settings for _, _, settings in dias])
     lote = []
     for dia, plano_id, settings in dias:
         comp = compute_day(entradas, settings, dia, today)

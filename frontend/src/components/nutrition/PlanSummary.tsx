@@ -4,6 +4,9 @@ import { Badge, Card, Group, SimpleGrid, Stack, Text, Title } from '@mantine/cor
 import { formatNumberOrDash } from '@/lib/format';
 import {
   ACTIVITY_LEVEL_OPTIONS,
+  AUTO_TDEE_MODE,
+  DEFAULT_ROUTINE_LEVEL,
+  ROUTINE_LEVEL_OPTIONS,
   BMR_FORMULA_OPTIONS,
   DAY_KIND_OPTIONS,
   MANUAL_TRAINING_MODE_OPTIONS,
@@ -95,10 +98,15 @@ export function PlanSummary({
   linhas.push(
     { label: 'Fórmula da TMB', value: nutritionLabel(BMR_FORMULA_OPTIONS, plan.bmr_formula) ?? '-' },
     { label: 'Gasto do treino', value: nutritionLabel(TDEE_MODE_OPTIONS, plan.tdee_mode) ?? '-' },
-    {
-      label: 'Nível de atividade',
-      value: nutritionLabel(ACTIVITY_LEVEL_OPTIONS, plan.activity_level) ?? 'O do perfil',
-    },
+    plan.tdee_mode === AUTO_TDEE_MODE
+      ? {
+          label: 'Rotina fora do exercício',
+          value: nutritionLabel(ROUTINE_LEVEL_OPTIONS, plan.activity_level ?? DEFAULT_ROUTINE_LEVEL) ?? '-',
+        }
+      : {
+          label: 'Nível de atividade',
+          value: nutritionLabel(ACTIVITY_LEVEL_OPTIONS, plan.activity_level) ?? 'O do perfil',
+        },
     { label: 'Refeições por dia', value: plan.meals_per_day == null ? '-' : String(plan.meals_per_day) },
     { label: '% de gordura alvo', value: goalBodyFatText(plan, goal) },
     { label: 'Peso-alvo', value: plan.goal_weight_kg == null ? '-' : `${formatNumberOrDash(plan.goal_weight_kg, 1)} kg` },
