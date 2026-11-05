@@ -49,6 +49,7 @@ vi.mock('./FoodRegistrationFlow', async () => {
     onFound: (f: unknown) => void;
     onUseExisting: (id: number) => void;
     onCancel: () => void;
+    onPendingDelivery?: (deliver: (() => void) | null) => void;
   };
   const botao = (id: string, onClick: () => void) => h('button', { type: 'button', 'data-testid': id, onClick }, id);
   return {
@@ -60,6 +61,8 @@ vi.mock('./FoodRegistrationFlow', async () => {
         botao('achado', () => p.onFound({ id: 42, name: 'Produto achado', basis: 'g', warnings: [{ code: 'off', label: 'Aviso do Open Food Facts' }] })),
         botao('existente', () => p.onUseExisting(43)),
         botao('cancelar', () => p.onCancel()),
+        botao('etapa-final', () => p.onPendingDelivery?.(() => p.onSaved({ id: 44, name: 'Salvo na etapa final', basis: 'g' }))),
+        botao('concluir-etapa', () => { p.onPendingDelivery?.(null); p.onSaved({ id: 45, name: 'Concluído', basis: 'g' }); }),
       ),
   };
 });
@@ -205,6 +208,41 @@ for (const celular of [false, true]) {
   });
 }
 
+describe('MealEditor: sair da etapa final entrega o alimento já salvo', () => {
+  it('desktop: fechar o modal (X) com a etapa final aberta adiciona o item', async () => {
+    await montar(false);
+    await clicar('abrir-cadastro');
+    await clicar('etapa-final');
+    const fechar = document.querySelector('.mantine-Modal-close') as HTMLElement | null;
+    expect(fechar).not.toBeNull();
+    await act(async () => { fechar!.click(); });
+    await esperar();
+    expect(q('fluxo')).toBeNull();
+    expect(host.textContent).toContain('Salvo na etapa final');
+  });
+
+  it('celular: history.back() com a etapa final aberta adiciona o item', async () => {
+    await montar(true);
+    await clicar('abrir-cadastro');
+    await clicar('etapa-final');
+    await act(async () => { window.history.back(); });
+    await esperar(6);
+    expect(q('fluxo')).toBeNull();
+    expect(host.textContent).toContain('Salvo na etapa final');
+  });
+
+  it('concluir entrega uma vez só e fechar depois não duplica; fechar sem etapa final não adiciona nada', async () => {
+    await montar(false);
+    await clicar('abrir-cadastro');
+    await clicar('concluir-etapa');
+    expect(host.textContent).toContain('Concluído');
+    await clicar('abrir-cadastro');
+    await clicar('cancelar');
+    expect(host.textContent).not.toContain('Salvo na etapa final');
+    expect(host.textContent?.match(/Concluído/g)?.length).toBe(1);
+  });
+});
+
 describe('MealEditor no celular: o voltar fecha só a folha do cadastro', () => {
   it('history.back() com a folha aberta fecha a folha e mantém o editor e o rascunho', async () => {
     await montar(true);
@@ -251,6 +289,27 @@ describe('MealEditor: hora da refeição nova vem da última registrada', () => 
     expect(hora().value).toBe('12:30');
     await digitar(hora(), '07:10');
     expect(hora().value).toBe('07:10');
+  });
+
+  it('valor antigo no cache não vence a resposta nova', async () => {
+    fetchLastMealTime.mockResolvedValue({ time: '19:05' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['nutrition-last-meal-time'], { time: '12:30' });
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(
+        createElement(QueryClientProvider, { client }, createElement(MantineProvider, { env: 'test' },
+          createElement(MealEditor, { date: '2026-11-04', meal: null, onSaved: vi.fn(), onCancel: vi.fn() }))),
+      );
+    });
+    await esperar(6);
+    expect(hora().value).toBe('19:05');
+  });
+
+  it('estrela depois de selecionar o mesmo alimento não duplica', async () => {
+    await montar(false, { initialForm: { ...RASCUNHO, items: [{ ...editorItemFromFood({ id: 7, name: 'Aveia', basis: 'g' }, 'k-7'), quantity: 10 }] } });
+    await clicar('estrela');
+    expect(quantidades()).toEqual(['10']);
   });
 
   it('a consulta falha: campo vazio, sem erro na tela', async () => {
@@ -311,7 +370,7 @@ describe('MealEditor: estrela marcada na busca adiciona o alimento com a porçã
   });
 
   it('no teto de itens favorita sem adicionar e avisa', async () => {
-    const itens = Array.from({ length: 30 }, (_, i) => ({ ...editorItemFromFood({ id: i + 1, name: `Alimento ${i + 1}`, basis: 'g' }, `k-${i}`), quantity: 10 }));
+    const itens = Array.from({ length: 30 }, (_, i) => ({ ...editorItemFromFood({ id: i + 100, name: `Alimento ${i + 1}`, basis: 'g' }, `k-${i}`), quantity: 10 }));
     await montar(false, { initialForm: { ...RASCUNHO, items: itens } });
     await clicar('estrela');
     expect(quantidades()).toHaveLength(30);

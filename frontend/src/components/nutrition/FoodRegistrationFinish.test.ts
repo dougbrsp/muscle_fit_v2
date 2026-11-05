@@ -95,6 +95,20 @@ const concluir = async () => {
   await esperar();
 };
 
+describe('FoodRegistrationFinish: título', () => {
+  it('já no catálogo: título neutro, sem dizer que salvou', async () => {
+    const client = new QueryClient();
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(createElement(QueryClientProvider, { client }, createElement(MantineProvider, { env: 'test' },
+        createElement(FoodRegistrationFinish, { food: alimento(false), title: 'Alimento encontrado', onConclude: vi.fn() }))));
+    });
+    await esperar();
+    expect(host.textContent).toContain('Alimento encontrado');
+    expect(host.textContent).not.toContain('Alimento salvo');
+  });
+});
+
 describe('FoodRegistrationFinish', () => {
   it('mostra o nome e só chama as ações em Concluir; nada marcado conclui sem chamar a API', async () => {
     const onConclude = await montar(true);

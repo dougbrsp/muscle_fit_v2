@@ -2,6 +2,7 @@
 
 import { Button, Stack, Tabs, Text, Title } from '@mantine/core';
 import { IconBarcode, IconCamera, IconPencil, IconWorld } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BarcodeLookup } from './BarcodeLookup';
 import { FoodForm } from './FoodForm';
@@ -36,6 +37,8 @@ type Props = {
   onUseExisting: (foodId: number) => void;
   /** Cancelar na digitação ou na revisão do rótulo. O fluxo volta ao estado limpo. */
   onCancel?: () => void;
+  /** Entrar na etapa final entrega aqui o que Concluir entregaria (alimento já salvo); null ao sair dela. */
+  onPendingDelivery?: (deliver: (() => void) | null) => void;
   /** Muda quando a tela quer o fluxo limpo (ex.: depois de abrir um produto na página). */
   resetSignal?: number;
 };
@@ -56,8 +59,10 @@ export function FoodRegistrationFlow({
   onFound,
   onUseExisting,
   onCancel,
+  onPendingDelivery,
   resetSignal = 0,
 }: Props) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<RegistrationTab>(initialTab);
   const [barcode, setBarcode] = useState(initialBarcode ?? '');
   const [barcodeReads, setBarcodeReads] = useState(0);
@@ -68,7 +73,7 @@ export function FoodRegistrationFlow({
   const [unreadable, setUnreadable] = useState<LabelPhotoReading | null>(null);
   const [lastResetSignal, setLastResetSignal] = useState(resetSignal);
   // Etapa final (favoritar/público): no lugar das abas, só depois de o alimento estar salvo/achado.
-  const [finish, setFinish] = useState<{ food: FoodSaveResponse; entregar: () => void } | null>(null);
+  const [finish, setFinish] = useState<{ food: FoodSaveResponse; entregar: () => void; titulo: string } | null>(null);
 
   function clear() {
     setBarcode('');
@@ -106,14 +111,20 @@ export function FoodRegistrationFlow({
     return true;
   }
 
-  function saved(food: FoodSaveResponse) {
+  function enterFinish(food: FoodSaveResponse, entregar: () => void, titulo: string) {
     clear();
-    setFinish({ food, entregar: () => onSaved(food) });
+    setFinish({ food, entregar, titulo });
+    onPendingDelivery?.(entregar);
+    // O alimento já está gravado: a busca precisa vê-lo mesmo se a pessoa sair da etapa sem concluir.
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+
+  function saved(food: FoodSaveResponse) {
+    enterFinish(food, () => onSaved(food), 'Alimento salvo');
   }
 
   function found(food: ExternalFoodResponse) {
-    clear();
-    setFinish({ food, entregar: () => onFound(food) });
+    enterFinish(food, () => onFound(food), food.from_cache ? 'Alimento encontrado' : 'Alimento salvo');
   }
 
   function cancel() {
@@ -125,7 +136,9 @@ export function FoodRegistrationFlow({
     return (
       <FoodRegistrationFinish
         food={finish.food}
+        title={finish.titulo}
         onConclude={() => {
+          onPendingDelivery?.(null);
           finish.entregar();
           setFinish(null);
         }}

@@ -12,6 +12,8 @@ import { BRAND } from '@/theme';
 
 type Props = {
   food: Pick<FoodItem, 'id' | 'name' | 'permissions'>;
+  /** Título da etapa: Alimento salvo ou, se já estava no catálogo, Alimento encontrado. */
+  title?: string;
   /** Tudo o que foi marcado deu certo (ou nada foi marcado): o fluxo entrega o alimento ao registro/à página. */
   onConclude: () => void;
 };
@@ -21,7 +23,7 @@ type Props = {
  * (`permissions.can_promote`, regra D-G: só admin), ao cadastro público. As ações só rodam em "Concluir".
  * Se uma falhar, a etapa fica aberta com o erro; o que já deu certo não é refeito.
  */
-export function FoodRegistrationFinish({ food, onConclude }: Props) {
+export function FoodRegistrationFinish({ food, title = 'Alimento salvo', onConclude }: Props) {
   const queryClient = useQueryClient();
   const [favorito, setFavorito] = useState(false);
   const [publico, setPublico] = useState(false);
@@ -62,7 +64,7 @@ export function FoodRegistrationFinish({ food, onConclude }: Props) {
       <Group gap="xs" wrap="nowrap">
         <IconCircleCheck size={20} color="var(--mantine-color-green-6)" />
         <Title order={5} c={BRAND.textPrimary}>
-          Alimento salvo
+          {title}
         </Title>
       </Group>
       <Text fw={600} c={BRAND.textPrimary}>

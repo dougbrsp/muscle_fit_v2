@@ -226,6 +226,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const [avisosCadastro, setAvisosCadastro] = useState<NutritionLimitation[]>([]);
   const [erroExistente, setErroExistente] = useState<string | null>(null);
   // Estrela marcada com a refeição no teto de itens: favoritou, mas não coube na lista.
+  // Entrega do alimento salvo que está na etapa final do cadastro (nula fora dela).
+  const entregaPendente = useRef<(() => void) | null>(null);
   const [avisoTeto, setAvisoTeto] = useState<string | null>(null);
   const noCelular = usePresentationActive();
   // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.
@@ -249,7 +251,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     retry: false, // falhou: o campo fica vazio, sem erro na tela
     staleTime: 0,
   });
-  const horaAnterior = ultimaHora.data?.time ?? null;
+  // Só vale a resposta buscada DEPOIS de montar: o valor em cache pode ser de antes da última gravação.
+  const horaAnterior = ultimaHora.isFetchedAfterMount && !ultimaHora.isError ? (ultimaHora.data?.time ?? null) : null;
   useEffect(() => {
     if (!querHoraAnterior || horaAnterior === null || horaTocada.current) return;
     setForm((atual) => (atual.eaten_at === '' ? { ...atual, eaten_at: horaAnterior } : atual));
@@ -301,6 +304,11 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   const faltaQuantidade = form.items.length > 0 && corpoPreview === null && !semOrigem;
 
   function fecharCadastro() {
+    // Fechou (X, Esc, voltar) na etapa final: o alimento já foi salvo, então entra na refeição como em "Concluir",
+    // só sem favoritar nem promover.
+    const entregar = entregaPendente.current;
+    entregaPendente.current = null;
+    entregar?.();
     setCadastro(null);
     setErroExistente(null);
   }
@@ -317,6 +325,9 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
         onSaved={adicionarCadastrado}
         onFound={adicionarCadastrado}
         onUseExisting={usarExistente}
+        onPendingDelivery={(entregar) => {
+          entregaPendente.current = entregar;
+        }}
         onCancel={fecharCadastro}
       />
     </Stack>
@@ -413,6 +424,8 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           registerDisabled={form.items.length >= MEAL_ITEMS_LIMIT}
           onFavorited={(alimento) => {
             // Estrela marcada na busca: o alimento já é favorito e entra na refeição com a porção padrão.
+            // Já está na lista (selecionado antes): não duplica.
+            if (form.items.some((i) => i.food_id === alimento.id)) return;
             if (form.items.length >= MEAL_ITEMS_LIMIT) {
               setAvisoTeto(alimento.name);
               return;
@@ -420,7 +433,9 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
             setAvisoTeto(null);
             proximaChave.current += 1;
             const novo = editorItemFromFood(alimento, `novo-${proximaChave.current}`);
-            setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
+            setForm((atual) =>
+              atual.items.some((i) => i.food_id === alimento.id) ? atual : { ...atual, items: [...atual.items, novo] },
+            );
           }}
           onSelect={(alimento) => {
             if (form.items.length >= MEAL_ITEMS_LIMIT) return;

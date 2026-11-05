@@ -85,7 +85,7 @@ const clicar = async (el: HTMLElement | null) => {
 };
 
 async function montar() {
-  const props = { onSaved: vi.fn(), onFound: vi.fn(), onUseExisting: vi.fn(), onCancel: vi.fn() };
+  const props = { onSaved: vi.fn(), onFound: vi.fn(), onUseExisting: vi.fn(), onCancel: vi.fn(), onPendingDelivery: vi.fn() };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(host);
   await act(async () => {
@@ -117,10 +117,12 @@ describe('FoodRegistrationFlow: etapa final', () => {
     await clicar(aba);
     await clicar(q('achar-codigo'));
     expect(q('etapa-final')).not.toBeNull();
+    expect(props.onPendingDelivery).toHaveBeenCalledWith(expect.any(Function));
     const favorito = Array.from(host.querySelectorAll('label')).find((l) => l.textContent?.includes('favoritos'))!;
     await clicar(document.getElementById(favorito.htmlFor));
     await concluir();
     expect(addFavorite).toHaveBeenCalledWith({ food_id: 41 });
     expect(props.onFound).toHaveBeenCalledWith(FOOD);
+    expect(props.onPendingDelivery).toHaveBeenLastCalledWith(null);
   });
 });

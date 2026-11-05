@@ -478,6 +478,8 @@ def test_ultima_hora_e_isolada_por_usuario_e_exige_autenticacao(db):
     (30, None, "kg", None),  # base desconhecida
     (99999, None, "g", None),  # acima do teto da porcao
     (True, None, "g", None),
+    (None, 5000, "g", None),  # base digitada acima do teto da porcao
+    (None, 2000, "g", {"quantity": 2000.0, "unit": "g"}),
 ])
 def test_porcao_padrao_do_motor(serving, base, basis, esperado):
     porcao = catalog.default_portion(serving, base, basis)

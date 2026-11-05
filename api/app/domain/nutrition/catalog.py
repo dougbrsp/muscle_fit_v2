@@ -273,8 +273,8 @@ class DefaultPortion:
 
 
 def default_portion(serving_size: Any, table_base: Any, basis: Any) -> Optional[DefaultPortion]:
-    """Porção padrão do alimento (2026-11-05): `serving_size` (porção do rótulo) se > 0; senão a base
-    digitada da tabela (`table_base_amount` gravado, não NULL); senão nenhuma. A unidade é a base
+    """Porção padrão do alimento (2026-11-05): `serving_size` (porção do rótulo) se > 0 e até `PORTION_AMOUNT_MAX`; senão a base
+    digitada da tabela (`table_base_amount` gravado, não NULL, também até `PORTION_AMOUNT_MAX`); senão nenhuma. A unidade é a base
     (g/ml) do alimento. Valor inválido ou base desconhecida -> nenhuma (a tela deixa o campo vazio)."""
     unidade = normalize_basis(basis)
     if unidade is None:
@@ -283,7 +283,7 @@ def default_portion(serving_size: Any, table_base: Any, basis: Any) -> Optional[
     if valida and porcao is not None and porcao > 0 and porcao <= PORTION_AMOUNT_MAX:
         return DefaultPortion(porcao, unidade)
     base, base_valida = table_base_amount(table_base)
-    if base_valida and base is not None:
+    if base_valida and base is not None and base <= PORTION_AMOUNT_MAX:
         return DefaultPortion(base, unidade)
     return None
 
