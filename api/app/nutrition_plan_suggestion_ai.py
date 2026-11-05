@@ -186,7 +186,7 @@ def load_context(aluno: int, current: Mapping[str, Any]) -> SuggestionInputs:
         hoje = user_today_for(conn, aluno)
         with conn.cursor() as cur:
             inicio = hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
-            entradas = load_user_inputs(cur, aluno, inicio, hoje, hoje)
+            entradas = load_user_inputs(cur, aluno, inicio, hoje, hoje, [settings])
     comp = compute_day(entradas, settings, hoje, hoje)
     passado = past_training_kcal(entradas, settings, hoje)
     tdee, _premissas = projection_tdee(comp.target.tdee, passado)

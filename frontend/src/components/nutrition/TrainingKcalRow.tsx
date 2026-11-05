@@ -43,6 +43,11 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
         <Title order={4} c={BRAND.textPrimary}>
           {soCardio ? 'Atividades do dia' : 'Treino do dia'}
         </Title>
+        {training.tdee_basis_note && (
+          <Text size="sm" c="yellow" data-testid="gasto-fallback" role="status">
+            {training.tdee_basis_note}
+          </Text>
+        )}
         {temExtra && total && (
           <Text size="sm" fw={600} c={BRAND.textPrimary} data-testid="gasto-atividade">
             {soCardio

@@ -101,6 +101,9 @@ QUALITY_BY_TRAINING_KCAL_NATURE: Final[Mapping[TrainingKcalNature, DataQuality]]
 LIMIT_NO_TRAINING_KCAL = "training_kcal_unavailable"
 # Dia com sessão informada e outra sem kcal: o total soma a informada e a MET só da duração da que não tem kcal.
 LIMIT_TRAINING_PARTIALLY_ESTIMATED = "training_kcal_partially_estimated"
+# Plano `auto_intervals` sem nível de atividade no PERFIL: o fallback (fator com exercício) não tem de onde vir e
+# não se inventa fator; bloqueia salvar/publicar (a API devolve este código com o rótulo do motor).
+LIMIT_AUTO_REQUIRES_PROFILE_LEVEL = "auto_intervals_requires_profile_activity_level"
 LIMIT_MISSING_BMR = "missing_bmr"
 LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
 
@@ -112,6 +115,8 @@ LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
 # somar de novo duplicaria). Atividade sem kcal informada não soma e não é estimada.
 EXTRA_ACTIVITY_KINDS: Final[frozenset[str]] = frozenset({"cardio", "other"})  # = `intervals_activity_kind.CARDIO/OTHER` (teste de paridade)
 EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPORTED
+# O rótulo (nome da atividade) vem do Intervals, texto livre: o motor limita o tamanho que a API devolve e grava.
+EXTRA_ACTIVITY_LABEL_MAX_CHARS: Final[int] = 60
 
 
 @dataclass(frozen=True)
@@ -124,7 +129,8 @@ class ExtraActivity:
     label: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": self.label}
+        rotulo = None if self.label is None else str(self.label).strip()[:EXTRA_ACTIVITY_LABEL_MAX_CHARS] or None
+        return {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": rotulo}
 
 
 @dataclass(frozen=True)
@@ -197,6 +203,21 @@ def intervals_in_sync(connected: Any, minutes_since_sync: Any) -> bool:
         return False
     idade = non_negative_number(minutes_since_sync)
     return idade is not None and idade <= INTERVALS_SYNC_MAX_AGE_MINUTES
+
+
+class TdeeBasis(str, Enum):
+    """Como o gasto do dia foi montado (para a tela dizer a verdade): modo clássico, automático com o Intervals em dia ou
+    automático em fallback (fator com exercício; treino e extras NÃO somados)."""
+
+    CLASSIC = "classic"
+    AUTO_SYNCED = "auto_synced"
+    AUTO_FALLBACK = "auto_fallback"
+
+
+def tdee_basis_of(mode: "TdeeMode", in_sync: Optional[bool]) -> TdeeBasis:
+    if mode != TdeeMode.AUTO_INTERVALS:
+        return TdeeBasis.CLASSIC
+    return TdeeBasis.AUTO_SYNCED if in_sync else TdeeBasis.AUTO_FALLBACK
 
 
 def effective_tdee_basis(
@@ -320,13 +341,20 @@ def resolve_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = 
     informadas: `reported`. Nenhuma informada: `met` (MET das durações). Mistas: a soma, natureza `met` (estimada) e a
     limitação `LIMIT_TRAINING_PARTIALLY_ESTIMATED`; o dia só é `reported` se tudo for informado. Nada utilizável:
     `NO_TRAINING_KCAL`."""
-    partes = _session_parts(sessions, weight_kg, met)
+    sessoes = tuple(sessions)
+    partes = _session_parts(sessoes, weight_kg, met)
     if not partes:
         return NO_TRAINING_KCAL
     total = float(sum(kcal for _, kcal in partes))
-    naturezas = {natureza for natureza, _ in partes}
-    if len(naturezas) == 1:
-        return _training_kcal_of(next(iter(naturezas)), total)
+    # O dia é "parcialmente estimado" pelas SESSÕES (não pelo que deu para somar): há sessão sem kcal informada junto de
+    # uma informada, ou alguma sessão ficou de fora da soma (sem kcal e sem duração/peso).
+    informadas = sum(1 for sessao in sessoes if positive_number(sessao.calories_kcal) is not None)
+    todas_informadas = informadas == len(sessoes)
+    ficou_de_fora = len(partes) < len(sessoes)
+    if todas_informadas:
+        return _training_kcal_of(TrainingKcalNature.REPORTED, total)
+    if informadas == 0 and not ficou_de_fora:
+        return _training_kcal_of(TrainingKcalNature.MET, total)
     return TrainingKcal(
         kcal=total,
         kcal_nature=TrainingKcalNature.MET,

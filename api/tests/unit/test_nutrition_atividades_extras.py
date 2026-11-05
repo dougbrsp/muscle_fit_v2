@@ -259,7 +259,9 @@ def test_as_consultas_sao_parametrizadas_filtram_usuario_e_nao_classificam_com_l
     assert sql.count("%s") == 3 and "ia.user_id = %s" in sql
     assert "LEFT JOIN activity_intervals_link" in sql and "l.id IS NULL" in sql and "LIKE" not in sql.upper()
     assert svc.INTERVALS_CONNECTION_SQL.count("%s") == 1 and "WHERE id = %s" in svc.INTERVALS_CONNECTION_SQL
-    assert svc.INTERVALS_SYNC_AGE_SQL.count("%s") == 2 and svc.INTERVALS_SYNC_AGE_SQL.count("user_id = %s") == 2
+    # A prova de que o job rodou é só a de ATIVIDADES; wellness (manual, refresh) não prova nada.
+    assert svc.INTERVALS_SYNC_AGE_SQL.count("%s") == 1 and "FROM intervals_activities WHERE user_id = %s" in svc.INTERVALS_SYNC_AGE_SQL
+    assert "wellness" not in svc.INTERVALS_SYNC_AGE_SQL
 
 
 def test_projecao_e_ia_usam_o_mesmo_total_pelo_mesmo_dono_no_automatico():
@@ -269,7 +271,7 @@ def test_projecao_e_ia_usam_o_mesmo_total_pelo_mesmo_dono_no_automatico():
     db.add_intervals_activity(ALUNO, HOJE - timedelta(days=3), "VirtualRun", 427)
     settings = svc.settings_from_row(db.plans[1])
     with db.conn() as conn, conn.cursor() as cur:
-        entradas = svc.load_user_inputs(cur, ALUNO, HOJE - timedelta(days=ee_window()), HOJE, HOJE)
+        entradas = svc.load_user_inputs(cur, ALUNO, HOJE - timedelta(days=ee_window()), HOJE, HOJE, [settings])
     passado = svc.past_training_kcal(entradas, settings, HOJE)
     assert passado[-2] == pytest.approx(558)
     assert passado[-3] == pytest.approx(427)
@@ -281,3 +283,99 @@ def ee_window() -> int:
     from app.domain.nutrition.plan import PROJECTION_TRAINING_WINDOW_DAYS
 
     return PROJECTION_TRAINING_WINDOW_DAYS
+
+
+# --- rodada de correção: P2, P3, P4, P6, P7, P9 ----------------------------------------------------------
+
+
+def _consultas(db, plans):
+    visto: list[str] = []
+    with db.conn() as conn, conn.cursor() as cur:
+        original = cur.execute
+
+        def espiar(sql, params=None):
+            visto.append(sql)
+            return original(sql, params)
+
+        cur.execute = espiar
+        entradas = svc.load_user_inputs(cur, ALUNO, HOJE - timedelta(days=3), HOJE, HOJE, plans)
+    return entradas, visto
+
+
+def test_plano_classico_nao_faz_nenhuma_consulta_nova_e_o_automatico_faz():
+    novas = (svc.INTERVALS_CONNECTION_SQL, svc.INTERVALS_SYNC_AGE_SQL, svc.EXTRA_ACTIVITIES_SQL)
+    classico = _db(modo="explicit_training")
+    entradas, visto = _consultas(classico, [svc.settings_from_row(classico.plans[1])])
+    assert not [sql for sql in visto if sql in novas] and entradas.intervals_loaded is False
+    assert not [sql for sql in _consultas(classico, [])[1] if sql in novas]  # sem plano nenhum, idem
+    automatico = _db()
+    entradas, visto = _consultas(automatico, [svc.settings_from_row(automatico.plans[1])])
+    assert set(novas) <= set(visto) and entradas.intervals_loaded is True and entradas.intervals_in_sync is True
+
+
+def test_so_a_sincronizacao_de_atividades_prova_frescor_wellness_nao():
+    # Conectado, mas a última sincronização de ATIVIDADES passou do limite: fallback, mesmo que haja wellness recente.
+    db = _db()
+    db.intervals_minutes_since_sync = ee.INTERVALS_SYNC_MAX_AGE_MINUTES + 60
+    entradas, _ = _consultas(db, [svc.settings_from_row(db.plans[1])])
+    assert entradas.intervals_in_sync is False
+    sem_atividade = _db()
+    sem_atividade.intervals_minutes_since_sync = None  # nenhuma atividade na janela do job: sem prova
+    entradas, _ = _consultas(sem_atividade, [svc.settings_from_row(sem_atividade.plans[1])])
+    assert entradas.intervals_in_sync is False
+
+
+def test_referencias_do_plano_automatico_usam_a_rotina_e_nao_o_fallback_com_exercicio():
+    from app.domain.nutrition import weekly_checkin as wc
+    from app.domain.nutrition.daily_target import rest_day_context
+
+    assert rest_day_context(AUTO, HOJE).intervals_in_sync is True
+    assert rest_day_context(ee.TdeeMode.EXPLICIT_TRAINING, HOJE).intervals_in_sync is None
+    perfil_active = Subject(sex=Sex.MALE, age_years=30, height_cm=180, weight_kg=80, activity_level=ActivityLevel.ACTIVE)
+    sem_nivel = Subject(sex=Sex.MALE, age_years=30, height_cm=180, weight_kg=80, activity_level=None)
+    settings = svc.settings_from_row(_db().plans[1])
+    for sujeito in (perfil_active, sem_nivel):
+        macros = wc._macros_of_day(settings, type("I", (), {"subject": sujeito, "ffm_age_days": None, "scale_bmr_kcal": None})(), HOJE)
+        assert macros.kcal == pytest.approx(TMB * 1.3)  # rotina leve (1,3), nunca 1,725 nem sem kcal
+    base = wc._base_tdee_kcal(settings, perfil_active, TMB)
+    assert base == pytest.approx(TMB * 1.3)
+
+
+def test_plano_automatico_sem_nivel_no_perfil_e_bloqueado_com_erro_do_motor():
+    from app.domain.nutrition.plan import auto_intervals_blockers
+
+    settings = svc.settings_from_row(_db().plans[1])
+    assert auto_intervals_blockers(settings, None) == (ee.LIMIT_AUTO_REQUIRES_PROFILE_LEVEL,)
+    assert auto_intervals_blockers(settings, ActivityLevel.MODERATE) == ()
+    classico = svc.settings_from_row(_db(modo="explicit_training").plans[1])
+    assert auto_intervals_blockers(classico, None) == ()
+
+
+def test_base_do_dia_expoe_o_modo_para_a_tela_dizer_a_verdade():
+    sincronizado = compute_daily_target(SUJEITO, _plano(), _dia(FORCA, sincronizado=True))
+    fallback = compute_daily_target(SUJEITO, _plano(), _dia(FORCA, sincronizado=False))
+    classico = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), day_context_for(HOJE, HOJE, FORCA))
+    assert [m.tdee_basis for m in (sincronizado, fallback, classico)] == [
+        ee.TdeeBasis.AUTO_SYNCED, ee.TdeeBasis.AUTO_FALLBACK, ee.TdeeBasis.CLASSIC
+    ]
+    assert fallback.to_dict()["tdee_basis"] == "auto_fallback"
+
+
+def test_rotulo_da_atividade_extra_tem_limite_de_tamanho_no_motor():
+    longo = ee.ExtraActivity(kind="cardio", calories_kcal=10, label="x" * 500)
+    assert len(longo.to_dict()["label"]) == ee.EXTRA_ACTIVITY_LABEL_MAX_CHARS
+    assert ee.ExtraActivity(kind="cardio", calories_kcal=10, label="   ").to_dict()["label"] is None
+
+
+def test_alvo_do_servico_gravado_traz_a_base_e_o_extra_no_json_que_a_rota_le():
+    com = _db()
+    com.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 427)
+    _linha(com)
+    gravado = com.targets[(ALUNO, HOJE)]["inputs_json"]
+    assert gravado["extra_activity"]["kcal"] == pytest.approx(427) and gravado["tdee_basis"] == "auto_synced"
+    # a leitura pública usa SÓ as colunas projetadas pela SQL (o fake projeta como o banco)
+    with com.conn() as conn, conn.cursor() as cur:
+        [linha] = svc.read_targets(cur, ALUNO, HOJE, HOJE)
+    publico = svc.target_row_public(linha, HOJE)
+    assert publico["extra_activity"]["kcal"] == pytest.approx(427) and publico["tdee_basis"] == "auto_synced"
+    assert "inputs_json" not in linha

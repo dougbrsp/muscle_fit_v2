@@ -248,13 +248,25 @@ def test_caso_de_31_10_848_kcal_em_6474_s_mais_treino_avulso_de_345_s_sem_kcal()
     assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
 
 
-def test_sessao_sem_kcal_e_sem_duracao_nao_soma_nem_derruba_as_outras():
+def test_sessao_sem_kcal_e_sem_duracao_nao_soma_nem_derruba_as_outras_mas_marca_o_dia_como_parcial():
+    # O dia é parcial pelas SESSÕES: 300 informadas + uma sessão sem nada não pode sair `reported` sem limitação.
     sessoes = [dt.SessionFacts(calories_kcal=300, duration_seconds=1800), dt.SessionFacts()]
-    meta = compute_daily_target(SUJEITO, _plano(), dt.day_context_for(HOJE, HOJE, sessoes))
-    assert meta.training_kcal.kcal == pytest.approx(300) and meta.training_kcal.kcal_nature == ee.TrainingKcalNature.REPORTED
+    contexto = dt.day_context_for(HOJE, HOJE, sessoes)
+    meta = compute_daily_target(SUJEITO, _plano(), contexto)
+    assert meta.training_kcal.kcal == pytest.approx(300) and meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
+    assert "training_sessions" in contexto.to_dict()  # o valor mudou: entra no hash
     so_met = [dt.SessionFacts(duration_seconds=1800), dt.SessionFacts()]
     met = compute_daily_target(SUJEITO, _plano(), dt.day_context_for(HOJE, HOJE, so_met))
     assert met.training_kcal.kcal == pytest.approx(ee.training_kcal_met(80, 30)) and met.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
+    assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in met.limitations  # uma sessão ficou de fora da soma
+    assert "training_sessions" in dt.day_context_for(HOJE, HOJE, so_met).to_dict()
+
+
+def test_hash_nao_muda_quando_o_valor_nao_muda():
+    todas = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(calories_kcal=300), dt.SessionFacts(calories_kcal=100, duration_seconds=60)])
+    sem_kcal_com_duracao = dt.day_context_for(HOJE, HOJE, [dt.SessionFacts(duration_seconds=60), dt.SessionFacts(duration_seconds=120)])
+    assert "training_sessions" not in todas.to_dict() and "training_sessions" not in sem_kcal_com_duracao.to_dict()
 
 
 def test_o_hash_do_dia_so_muda_no_dia_misto():

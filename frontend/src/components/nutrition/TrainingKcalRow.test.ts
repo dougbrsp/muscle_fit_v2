@@ -62,6 +62,19 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     expect(host.textContent).toContain('Nenhum treino concluído neste dia.');
   });
 
+  it('dia de fallback do modo automático: diz que o gasto foi estimado pelo fator, sem sugerir soma', async () => {
+    await montar({
+      ...BASE,
+      sessions: [sessao],
+      tdee_basis: 'auto_fallback',
+      tdee_basis_note: 'Estimado pelo fator: Intervals sem sincronizar. O treino e o cardio deste dia não foram somados ao gasto.',
+      extra_activity: { kcal: 0, kcal_nature: null, items: [] },
+      activity_kcal: { training_kcal: 428, extra_kcal: 0, total_kcal: 428 },
+    });
+    expect(host.querySelector('[data-testid="gasto-fallback"]')?.textContent).toContain('Intervals sem sincronizar');
+    expect(host.querySelector('[data-testid="gasto-atividade"]')).toBeNull();
+  });
+
   it('dia misto: mostra o usado pelo motor e que é parcialmente estimado', async () => {
     const valor = (kcal: number | null) => ({ kcal, kcal_nature: null, nature: null, quality: null, limitations: [] }) as never;
     await montar({

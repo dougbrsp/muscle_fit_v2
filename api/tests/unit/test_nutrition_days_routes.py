@@ -259,6 +259,26 @@ def test_dia_so_com_cardio_nao_e_dia_de_treino_e_o_total_e_o_extra(db):
     assert treino["activity_kcal"] == {"training_kcal": None, "extra_kcal": 427.0, "total_kcal": 427.0}
 
 
+def test_dia_de_fallback_avisa_que_treino_e_cardio_nao_foram_somados(db):
+    db.plans[db.plano]["training_kcal_mode"] = "auto_intervals"
+    db.intervals_connected, db.intervals_minutes_since_sync = True, 10_000  # sincronização parada
+    db.add_activity(ALUNO, HOJE, 428, 3600)
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["tdee_basis"] == "auto_fallback"
+    assert "Intervals sem sincronizar" in treino["tdee_basis_note"] and treino["extra_activity"]["kcal"] == 0.0
+
+
+def test_dia_sincronizado_e_dia_classico_nao_trazem_aviso(db):
+    _plano_automatico(db)
+    sincronizado = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert sincronizado["tdee_basis"] == "auto_synced" and sincronizado["tdee_basis_note"] is None
+    db.plans[db.plano]["training_kcal_mode"] = "explicit_training"
+    db.targets.clear()
+    classico = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert classico["tdee_basis"] == "classic" and classico["tdee_basis_note"] is None
+
+
 def test_plano_classico_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)

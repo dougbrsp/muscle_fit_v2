@@ -226,7 +226,7 @@ def _read_weekday(cur: Any, aluno: int) -> Optional[int]:
 def _build_inputs(cur: Any, aluno: int, plan_id: int, settings: Any, week_start: date, hoje: date) -> wc.CheckinInputs:
     """Alinha por dia as leituras gravadas da janela (metas, totais das refeições, corpo) para o motor."""
     dias = wc.window_dates(week_start)
-    entradas = load_user_inputs(cur, aluno, dias[0], hoje, hoje)
+    entradas = load_user_inputs(cur, aluno, dias[0], hoje, hoje, [settings])
     fim = dias[-1]
     metas = {
         _as_date(linha["local_date"]): linha for linha in read_targets(cur, aluno, dias[0], fim)

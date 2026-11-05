@@ -190,7 +190,18 @@ class FakeCursor:
             return self._result([r for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None])
         if sql == svc._TARGETS_SQL:
             linhas = [r for (uid, dia), r in db.targets.items() if uid == p[0] and p[1] <= dia <= p[2]]
-            return self._result(sorted(linhas, key=lambda r: r["local_date"]))
+            # Projeta SÓ as colunas que a SQL pede (como o banco): coluna não selecionada não existe na linha, e o JSON
+            # extraído (`JSON_EXTRACT(inputs_json, '$.x') AS alias`) vira texto JSON.
+            pedidas = [c.strip() for c in svc._TARGET_COLUMNS.split(",")]
+            projetadas = []
+            for r in sorted(linhas, key=lambda r: r["local_date"]):
+                linha = {c: r.get(c) for c in pedidas}
+                entradas = r.get("inputs_json") or {}
+                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json")):
+                    if f"AS {alias}" in svc._TARGET_JSON_COLUMNS:
+                        linha[alias] = json.dumps(entradas[chave]) if chave in entradas else None
+                projetadas.append(linha)
+            return self._result(projetadas)
         if sql == svc._LAST_TARGET_DATE_SQL:
             dias = [dia for (uid, dia) in db.targets if uid == p[0]]
             return self._result([{"ultimo": max(dias) if dias else None}])

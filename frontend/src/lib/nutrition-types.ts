@@ -758,6 +758,9 @@ export type DayTraining = {
     /** Dia misto (sessão informada + sessão sem kcal): o usado é a soma por sessão e nenhum lado sozinho. */
     partial?: boolean;
   } | null;
+  /** Como o gasto do dia foi montado (`classic`, `auto_synced`, `auto_fallback`) e o aviso do motor, quando há. */
+  tdee_basis?: string;
+  tdee_basis_note?: string | null;
   /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
   extra_activity?: DayExtraActivity;
   /** Treino + extra = total de atividade do dia, somado pelo motor (`total_kcal` nulo se o treino é desconhecido). */

@@ -185,6 +185,13 @@ TDEE_MODE_HINTS: Final[Mapping[TdeeMode, str]] = {
     ),
 }
 
+# Como o gasto do dia foi montado, por base (`ee.TdeeBasis`): o aviso só existe no fallback do modo automático.
+TDEE_BASIS_NOTES: Final[Mapping[str, str]] = {
+    "auto_fallback": (
+        "Estimado pelo fator: Intervals sem sincronizar. O treino e o cardio deste dia não foram somados ao gasto."
+    ),
+}
+
 # "Rotina fora do exercício" (modo automático): o que a pessoa faz no dia sem contar o treino. Os códigos são os de
 # `ActivityLevel` (a coluna `activity_level` do plano guarda a rotina) e o fator vem da tabela de NÃO-exercício.
 ROUTINE_LEVEL_LABELS: Final[Mapping[ActivityLevel, str]] = {
@@ -467,6 +474,10 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     macros_mod.LIMIT_CARB_BELOW_MIN: "Carboidrato abaixo do mínimo do bulking.",
     # Treino do dia.
     ee_mod.LIMIT_NO_TRAINING_KCAL: "Dia de treino sem kcal nem duração: o treino não entrou no gasto.",
+    ee_mod.LIMIT_AUTO_REQUIRES_PROFILE_LEVEL: (
+        "O modo automático precisa do nível de atividade no seu perfil: é com ele que o gasto é estimado quando o "
+        "Intervals não está sincronizado. Preencha o nível no perfil e salve o plano de novo."
+    ),
     ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
     dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY: "Dia futuro: o treino ainda não aconteceu e não entrou no gasto.",
     # Ciclo de carbo (L8).

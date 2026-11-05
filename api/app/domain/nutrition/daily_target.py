@@ -147,10 +147,22 @@ class PlanParams:
         return dados
 
 
-def _is_mixed(sessions: Sequence[ee.SessionKcal]) -> bool:
-    """Há sessão com kcal informada E sessão sem (o caso que antes derrubava o dia inteiro para MET)."""
+def _sessions_change_the_value(sessions: Sequence[ee.SessionKcal]) -> bool:
+    """A soma por sessão dá um valor DIFERENTE do caminho antigo (soma só quando todas têm kcal; senão MET só quando todas
+    têm duração)? Só então as sessões entram no hash do dia (o resto mantém as entradas, e o hash, de antes): dia misto
+    (informada + sem kcal) e dia sem kcal nenhuma em que alguma sessão não tem duração."""
     informadas = [positive_number(sessao.calories_kcal) is not None for sessao in sessions]
-    return any(informadas) and not all(informadas)
+    if all(informadas):
+        return False
+    if any(informadas):
+        return True
+    return any(positive_number(sessao.duration_min) is None for sessao in sessions)
+
+
+def rest_day_context(tdee_mode: "ee.TdeeMode", day: date) -> "DayContext":
+    """Contexto de um dia de DESCANSO para as contas de referência (check-in, pisos do ciclo, avisos das gramas): no
+    plano automático vale a rotina (`intervals_in_sync=True`), como `ee.rest_tdee`, e não o fallback com exercício."""
+    return DayContext(day=day, intervals_in_sync=True if tdee_mode == ee.TdeeMode.AUTO_INTERVALS else None)
 
 
 @dataclass(frozen=True)
@@ -178,7 +190,7 @@ class DayContext:
 
     def to_dict(self) -> dict[str, Any]:
         extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
-        if _is_mixed(self.training_sessions):  # só o dia misto entra no hash: os demais mantêm as entradas de antes
+        if _sessions_change_the_value(self.training_sessions):  # só estes dias entram no hash: os demais mantêm as entradas de antes
             extras["training_sessions"] = [sessao.to_dict() for sessao in self.training_sessions]
         if self.intervals_in_sync is not None:
             extras["intervals_in_sync"] = self.intervals_in_sync
@@ -214,6 +226,8 @@ class DailyTarget:
     limitations: tuple[str, ...] = ()
     # Cardio/caminhada do Intervals somados ao gasto do dia (já dentro de `tdee.kcal`).
     extra_activity: ee.ExtraActivityKcal = ee.NO_EXTRA_ACTIVITY_KCAL
+    # Como o gasto do dia foi montado: clássico, automático em dia ou automático em fallback (tela diz a verdade).
+    tdee_basis: ee.TdeeBasis = ee.TdeeBasis.CLASSIC
 
     @property
     def computable(self) -> bool:
@@ -236,6 +250,7 @@ class DailyTarget:
             "scale_comparison": self.scale_comparison.to_dict() if self.scale_comparison else None,
             "training_kcal": self.training_kcal.to_dict(),
             "extra_activity": self.extra_activity.to_dict(),
+            "tdee_basis": self.tdee_basis.value,
             "tdee": self.tdee.to_dict(),
             "kcal_target": self.kcal_target.to_dict(),
             "macros": self.macros.to_dict(),
@@ -435,6 +450,7 @@ def compute_daily_target(
         phase_kind=fase,
         protein_per_meal_g=por_refeicao,
         extra_activity=extra,
+        tdee_basis=ee.tdee_basis_of(plan_params.tdee_mode, day_context.intervals_in_sync),
         limitations=_unique(
             tmb.limitations,
             limitacoes_treino,

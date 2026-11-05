@@ -35,7 +35,13 @@ from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
-from .domain.nutrition.energy_expenditure import NO_EXTRA_ACTIVITY_KCAL, activity_total_kcal, compare_sessions_kcal, met_for_session
+from .domain.nutrition.energy_expenditure import (
+    NO_EXTRA_ACTIVITY_KCAL,
+    TdeeBasis,
+    activity_total_kcal,
+    compare_sessions_kcal,
+    met_for_session,
+)
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
@@ -130,7 +136,9 @@ def _session_public(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _training(cur: Any, user_id: int, day: date, today: date, extra: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def _training(
+    cur: Any, user_id: int, day: date, today: date, extra: Optional[dict[str, Any]] = None, basis: Optional[str] = None
+) -> dict[str, Any]:
     """Linha "informado × estimado": sessões concluídas (com a proveniência do
     dono), contexto do dia e a comparação de naturezas do motor."""
     cur.execute(SESSIONS_OF_DAY_SQL, (int(user_id), day))
@@ -154,6 +162,10 @@ def _training(cur: Any, user_id: int, day: date, today: date, extra: Optional[di
         "training_known": contexto.training_known,
         "sessions": [_session_public(sessao) for sessao in sessoes],
         "comparison": comparacao.to_dict() if comparacao is not None else None,
+        # Como o gasto do dia foi montado (o motor gravou): no fallback do automático a tela avisa que treino e cardio
+        # NÃO foram somados.
+        "tdee_basis": basis or TdeeBasis.CLASSIC.value,
+        "tdee_basis_note": nutrition_labels.TDEE_BASIS_NOTES.get(basis or ""),
         "extra_activity": extra,
         "activity_kcal": {
             "training_kcal": treino_kcal,
@@ -193,7 +205,7 @@ def get_day(
             linhas = read_meal_rows(cur, aluno, local_date, local_date)
             refeicoes = meals_public(cur, linhas)
             diario = _read_day_log(cur, aluno, local_date)
-            treino = _training(cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"))
+            treino = _training(cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"))
     totais = day_totals(linhas)
     balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
