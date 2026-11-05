@@ -467,6 +467,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     macros_mod.LIMIT_CARB_BELOW_MIN: "Carboidrato abaixo do mínimo do bulking.",
     # Treino do dia.
     ee_mod.LIMIT_NO_TRAINING_KCAL: "Dia de treino sem kcal nem duração: o treino não entrou no gasto.",
+    ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
     dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY: "Dia futuro: o treino ainda não aconteceu e não entrou no gasto.",
     # Ciclo de carbo (L8).
     dt_mod.LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE: "O ciclo de carbo precisa dos dias de treino da semana.",

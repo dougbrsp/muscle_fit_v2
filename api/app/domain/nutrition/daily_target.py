@@ -147,6 +147,12 @@ class PlanParams:
         return dados
 
 
+def _is_mixed(sessions: Sequence[ee.SessionKcal]) -> bool:
+    """Há sessão com kcal informada E sessão sem (o caso que antes derrubava o dia inteiro para MET)."""
+    informadas = [positive_number(sessao.calories_kcal) is not None for sessao in sessions]
+    return any(informadas) and not all(informadas)
+
+
 @dataclass(frozen=True)
 class DayContext:
     """O que o dia tem: treino (kcal informada / duração / tipo), fase e a
@@ -166,9 +172,14 @@ class DayContext:
     extra_activities: tuple[ee.ExtraActivity, ...] = ()
     # Só no modo automático: Intervals conectado e sincronizado (`ee.intervals_in_sync`); None = não se aplica.
     intervals_in_sync: Optional[bool] = None
+    # Sessões do dia (kcal e minutos de cada uma): o motor soma POR SESSÃO (`ee.resolve_sessions_kcal`). Vazio = o
+    # contexto veio só com `training_kcal_reported`/`training_duration_min` (caminho antigo).
+    training_sessions: tuple[ee.SessionKcal, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
+        if _is_mixed(self.training_sessions):  # só o dia misto entra no hash: os demais mantêm as entradas de antes
+            extras["training_sessions"] = [sessao.to_dict() for sessao in self.training_sessions]
         if self.intervals_in_sync is not None:
             extras["intervals_in_sync"] = self.intervals_in_sync
         return {
@@ -322,12 +333,17 @@ def compute_daily_target(
 
     dia_de_treino = day_context.is_training_day or day_context.training_kcal_reported is not None
     if dia_de_treino:
-        treino = ee.resolve_training_kcal(
-            reported_kcal=day_context.training_kcal_reported,
-            weight_kg=subject.weight_kg,
-            duration_min=day_context.training_duration_min,
-            met=ee.met_for_session(day_context.session_kind),
-        )
+        if day_context.training_sessions:
+            treino = ee.resolve_sessions_kcal(
+                day_context.training_sessions, subject.weight_kg, ee.met_for_session(day_context.session_kind)
+            )
+        else:
+            treino = ee.resolve_training_kcal(
+                reported_kcal=day_context.training_kcal_reported,
+                weight_kg=subject.weight_kg,
+                duration_min=day_context.training_duration_min,
+                met=ee.met_for_session(day_context.session_kind),
+            )
     else:
         treino = ee.NO_TRAINING_KCAL
     # Dia de treino sem kcal nem duração: o TDEE sai sem o treino e a limitação
@@ -562,11 +578,10 @@ def day_context_for(
 
     - Dia FUTURO (`day > today`): treino desconhecido -> dia sem treino com
       `training_known=False` (limitação `LIMIT_TRAINING_UNKNOWN_FUTURE_DAY`).
-    - Até hoje: há treino quando há sessão concluída no dia. A kcal informada é
-      a SOMA das sessões só quando TODAS têm kcal; senão a natureza cai para MET
-      com a soma das durações (só quando todas têm duração). Misturar informada
-      com estimada no mesmo dia criaria uma terceira natureza que o motor não
-      tem; a prioridade continua em `energy_expenditure.resolve_training_kcal`.
+    - Até hoje: há treino quando há sessão concluída no dia. A kcal do dia é somada POR SESSÃO
+      (`energy_expenditure.resolve_sessions_kcal`): informada onde houver e MET só da duração das sessões sem kcal
+      (dia misto = parcialmente estimado). Os campos `training_kcal_reported`/`training_duration_min` seguem com a
+      regra antiga (soma só quando TODAS têm) para quem ainda os lê.
     - `extra_activities` (cardio, caminhada do Intervals): vão no contexto sem mexer em `is_training_day` nem na
       kcal/duração do treino; só somam ao gasto (`compute_daily_target`). Dia futuro não as tem.
     """
@@ -577,9 +592,17 @@ def day_context_for(
         return DayContext(day=day, extra_activities=extras, intervals_in_sync=intervals_in_sync)
     kcal = _sum_if_all([positive_number(sessao.calories_kcal) for sessao in sessions])
     segundos = _sum_if_all([positive_number(sessao.duration_seconds) for sessao in sessions])
+    por_sessao = tuple(
+        ee.SessionKcal(
+            calories_kcal=sessao.calories_kcal,
+            duration_min=None if positive_number(sessao.duration_seconds) is None else positive_number(sessao.duration_seconds) / SECONDS_PER_MINUTE,
+        )
+        for sessao in sessions
+    )
     return DayContext(
         day=day,
         is_training_day=True,
+        training_sessions=por_sessao,
         training_kcal_reported=kcal,
         training_duration_min=None if segundos is None else segundos / SECONDS_PER_MINUTE,
         extra_activities=extras,

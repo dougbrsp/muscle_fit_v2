@@ -6859,3 +6859,16 @@ Dono: `api/app/domain/nutrition/energy_expenditure.py` (`TdeeMode.AUTO_INTERVALS
 - No modo automático com rotina leve: média medida de 3315 kcal de gasto e cerca de 2990 de meta.
 - Risco, não medido: sobreposição das kcal brutas do relógio (o relógio pode contar a atividade de rotina junto com o exercício), cerca de 185 kcal/dia.
 - Dado: consultas novas por carga (conexão, idade da sincronização e atividades sem vínculo), parametrizadas, por `user_id`, válidas nos dois backends. Sem escrita em produção.
+
+## 90. Nutrição: kcal do treino somada por sessão (2026-11-05)
+
+Dono: `api/app/domain/nutrition/energy_expenditure.py` (`SessionKcal`, `resolve_sessions_kcal`, `compare_sessions_kcal`, `LIMIT_TRAINING_PARTIALLY_ESTIMATED`); guarda `kcal_treino_prioridade` verde (allowlist inalterada). `daily_target.day_context_for` só monta as sessões; `compute_daily_target` e `GET /nutrition/days/{date}` chamam a MESMA função do motor; `past_training_kcal` e a projeção herdam o valor da meta.
+
+- **Defeito corrigido.** Se UMA sessão do dia não tinha kcal, o dia inteiro virava MET pela soma das durações. Em 31/10 o relógio registrou 848 kcal num treino de 6474 s e um "Treino avulso" de 345 s sem kcal derrubou o dia para 633,46 kcal.
+- **Regra.** Soma por sessão: kcal informada onde houver e MET só da duração das sessões sem kcal. Todas informadas: soma (`reported`, como antes). Nenhuma informada: MET das durações (como antes). Mistas: a soma, natureza `met` (estimada), qualidade média e a limitação `training_kcal_partially_estimated` (com rótulo); o dia só é `reported` se tudo for informado. Sessão sem kcal e sem duração (ou sem peso para a MET) não soma e não derruba as outras. Natureza: sem valor novo (a coluna `training_kcal_nature` é VARCHAR e os códigos são os existentes); a tela (`comparison.partial`) mostra o "usado" do dia misto e nenhum lado do comparativo fica marcado como o usado.
+- **Escopo.** Vale em todos os modos de gasto, inclusive `explicit_training`. Esta correção é a única parte do lote que pode alterar uma meta sem publicar plano novo, e só em dia ainda não congelado que tenha sessão mista. O hash do dia só muda no dia misto (`training_sessions` entra no contexto apenas nele).
+
+**Impacto em produção.**
+- Dia misto (informada + sem kcal), ainda não congelado: a meta sobe pelo que antes se perdia (31/10: de 633,46 para cerca de 876 kcal de treino com 80 kg; o valor real sai do motor). Dias só informados ou só sem kcal não mudam. Dia congelado (2 dias ou mais) não é recalculado.
+- Dia com várias sessões sem kcal, algumas sem duração: antes ficava sem treino (`training_kcal_unavailable`); agora soma a MET das que têm duração.
+- Sem migração e sem escrita em produção.

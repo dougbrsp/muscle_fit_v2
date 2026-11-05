@@ -62,6 +62,24 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     expect(host.textContent).toContain('Nenhum treino concluído neste dia.');
   });
 
+  it('dia misto: mostra o usado pelo motor e que é parcialmente estimado', async () => {
+    const valor = (kcal: number | null) => ({ kcal, kcal_nature: null, nature: null, quality: null, limitations: [] }) as never;
+    await montar({
+      ...BASE,
+      sessions: [sessao],
+      comparison: {
+        reported: valor(848),
+        estimated: valor(900),
+        used: valor(880),
+        sides: [],
+        partial: true,
+      },
+    });
+    const texto = (host.querySelector('[data-testid="treino-parcial"]')?.textContent ?? '').replace(/ /g, ' ');
+    expect(texto).toContain('Usado pelo motor: 880 kcal');
+    expect(texto).toContain('estimado pela duração');
+  });
+
   it('treino + cardio: mostra a separação e o total', async () => {
     await montar({
       ...BASE,

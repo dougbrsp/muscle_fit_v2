@@ -222,10 +222,15 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     db.add_activity(ALUNO, ontem, None, 1800)
     treino = _client().get(f"/nutrition/days/{ontem.isoformat()}").json()["training"]
     assert [s["calories_source"] for s in treino["sessions"]] == ["manual", None]
-    # Uma sessão sem kcal: a soma informada cai (regra de `day_context_for`) e o motor usa a MET das durações.
-    assert treino["comparison"]["reported"]["kcal"] is None
-    assert treino["comparison"]["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
-    assert treino["comparison"]["used"]["kcal_nature"] == "met"
+    # Uma sessão sem kcal (comportamento antigo: derrubava o dia para MET): agora soma por sessão. A informada (300)
+    # vale, a MET entra só na duração da sem kcal (30 min) e o dia fica identificável como parcialmente estimado.
+    comparacao = treino["comparison"]
+    assert comparacao["reported"]["kcal"] == pytest.approx(300)
+    assert comparacao["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
+    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30))
+    assert comparacao["used"]["kcal_nature"] == "met" and comparacao["partial"] is True
+    assert comparacao["used"]["limitations"] == ["training_kcal_partially_estimated"]
+    assert not any(lado["is_used"] for lado in comparacao["sides"])
 
 
 def _plano_automatico(db):

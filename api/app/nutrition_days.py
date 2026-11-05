@@ -35,7 +35,7 @@ from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.daily_target import day_context_for, diary_target_notice
-from .domain.nutrition.energy_expenditure import NO_EXTRA_ACTIVITY_KCAL, activity_total_kcal, compare_training_kcal
+from .domain.nutrition.energy_expenditure import NO_EXTRA_ACTIVITY_KCAL, activity_total_kcal, compare_sessions_kcal, met_for_session
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
@@ -140,8 +140,9 @@ def _training(cur: Any, user_id: int, day: date, today: date, extra: Optional[di
     comparacao = None
     if contexto.is_training_day:
         sujeito = resolve_subject(entradas.series.readings_on(day), day)
-        comparacao = compare_training_kcal(
-            contexto.training_kcal_reported, sujeito.subject.weight_kg, contexto.training_duration_min
+        # A MESMA função do motor que a meta do dia usa (soma por sessão; dia misto = parcialmente estimado).
+        comparacao = compare_sessions_kcal(
+            contexto.training_sessions, sujeito.subject.weight_kg, met_for_session(contexto.session_kind)
         )
     # Treino de força (o usado pelo motor) + cardio/caminhada do Intervals = gasto de atividade do dia, tudo pelo motor.
     # `extra` é o que o motor gravou na meta do dia (só o plano automático sincronizado tem); os modos clássicos não

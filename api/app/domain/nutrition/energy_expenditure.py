@@ -99,6 +99,8 @@ QUALITY_BY_TRAINING_KCAL_NATURE: Final[Mapping[TrainingKcalNature, DataQuality]]
 }
 
 LIMIT_NO_TRAINING_KCAL = "training_kcal_unavailable"
+# Dia com sessão informada e outra sem kcal: o total soma a informada e a MET só da duração da que não tem kcal.
+LIMIT_TRAINING_PARTIALLY_ESTIMATED = "training_kcal_partially_estimated"
 LIMIT_MISSING_BMR = "missing_bmr"
 LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
 
@@ -285,6 +287,55 @@ def resolve_training_kcal(
     return NO_TRAINING_KCAL
 
 
+@dataclass(frozen=True)
+class SessionKcal:
+    """Uma sessão de treino concluída do dia: kcal informada (pode faltar) e duração em minutos (pode faltar)."""
+
+    calories_kcal: Any = None
+    duration_min: Any = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
+
+
+def _session_parts(
+    sessions: Any, weight_kg: Any, met: Any
+) -> list[tuple[TrainingKcalNature, float]]:
+    """kcal de cada sessão que tem como entrar: a informada onde houver; MET só da duração da sem kcal; a sem kcal e
+    sem duração (ou sem peso para a MET) não soma e não derruba as outras."""
+    partes: list[tuple[TrainingKcalNature, float]] = []
+    for sessao in sessions:
+        informada = positive_number(sessao.calories_kcal)
+        if informada is not None:
+            partes.append((TrainingKcalNature.REPORTED, informada))
+            continue
+        estimada = training_kcal_met(weight_kg, sessao.duration_min, met)
+        if estimada is not None:
+            partes.append((TrainingKcalNature.MET, estimada))
+    return partes
+
+
+def resolve_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcal:
+    """kcal do treino do dia SOMANDO POR SESSÃO (prioridade `TRAINING_KCAL_NATURE_PRIORITY` em cada uma). Todas
+    informadas: `reported`. Nenhuma informada: `met` (MET das durações). Mistas: a soma, natureza `met` (estimada) e a
+    limitação `LIMIT_TRAINING_PARTIALLY_ESTIMATED`; o dia só é `reported` se tudo for informado. Nada utilizável:
+    `NO_TRAINING_KCAL`."""
+    partes = _session_parts(sessions, weight_kg, met)
+    if not partes:
+        return NO_TRAINING_KCAL
+    total = float(sum(kcal for _, kcal in partes))
+    naturezas = {natureza for natureza, _ in partes}
+    if len(naturezas) == 1:
+        return _training_kcal_of(next(iter(naturezas)), total)
+    return TrainingKcal(
+        kcal=total,
+        kcal_nature=TrainingKcalNature.MET,
+        nature=DataNature.ESTIMATED,
+        quality=DataQuality.MEDIUM,
+        limitations=(LIMIT_TRAINING_PARTIALLY_ESTIMATED,),
+    )
+
+
 def _training_kcal_of(natureza: TrainingKcalNature, kcal: Optional[float]) -> TrainingKcal:
     if kcal is None:
         return NO_TRAINING_KCAL
@@ -306,6 +357,11 @@ class TrainingKcalComparison:
     estimated: TrainingKcal
     used: TrainingKcal
 
+    @property
+    def partial(self) -> bool:
+        """O dia mistura sessão informada e estimada: o usado não é nenhum dos dois lados."""
+        return LIMIT_TRAINING_PARTIALLY_ESTIMATED in self.used.limitations
+
     def sides(self) -> tuple[tuple[TrainingKcalNature, TrainingKcal], ...]:
         """As naturezas na ordem da prioridade (`TRAINING_KCAL_NATURE_PRIORITY`) com o valor de cada uma."""
         valores = {TrainingKcalNature.REPORTED: self.reported, TrainingKcalNature.MET: self.estimated}
@@ -316,16 +372,32 @@ class TrainingKcalComparison:
             "reported": self.reported.to_dict(),
             "estimated": self.estimated.to_dict(),
             "used": self.used.to_dict(),
+            "partial": self.partial,
             # Lista pronta para a tela: código da natureza, valor e se é a usada pela prioridade.
             "sides": [
                 {
                     "kcal_nature": natureza.value,
                     "value": valor.to_dict(),
-                    "is_used": valor.kcal is not None and self.used.kcal_nature == natureza,
+                    "is_used": valor.kcal is not None and not self.partial and self.used.kcal_nature == natureza,
                 }
                 for natureza, valor in self.sides()
             ],
         }
+
+
+def compare_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcalComparison:
+    """As duas naturezas do dia por sessão e a usada (`resolve_sessions_kcal`): informada = soma das kcal informadas;
+    estimada = MET das durações de todas as sessões; usada = a soma por sessão (mista = parcialmente estimada)."""
+    sessoes = tuple(sessions)
+    informadas = [positive_number(s.calories_kcal) for s in sessoes]
+    informadas = [kcal for kcal in informadas if kcal is not None]
+    estimadas = [training_kcal_met(weight_kg, s.duration_min, met) for s in sessoes]
+    estimadas = [kcal for kcal in estimadas if kcal is not None]
+    return TrainingKcalComparison(
+        reported=_training_kcal_of(TrainingKcalNature.REPORTED, float(sum(informadas)) if informadas else None),
+        estimated=_training_kcal_of(TrainingKcalNature.MET, float(sum(estimadas)) if estimadas else None),
+        used=resolve_sessions_kcal(sessoes, weight_kg, met),
+    )
 
 
 def compare_training_kcal(

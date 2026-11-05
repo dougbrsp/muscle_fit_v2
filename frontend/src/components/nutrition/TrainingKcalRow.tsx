@@ -92,6 +92,11 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
             ))}
           </Group>
         )}
+        {training.comparison?.partial && (
+          <Text size="sm" c={BRAND.textMuted} data-testid="treino-parcial">
+            {`Usado pelo motor: ${formatKcal(training.comparison.used.kcal)} (informado onde houve kcal e estimado pela duração nas sessões sem kcal).`}
+          </Text>
+        )}
       </Stack>
     </Card>
   );

@@ -755,6 +755,8 @@ export type DayTraining = {
     estimated: TrainingKcalValue;
     used: TrainingKcalValue;
     sides: TrainingKcalSide[];
+    /** Dia misto (sessão informada + sessão sem kcal): o usado é a soma por sessão e nenhum lado sozinho. */
+    partial?: boolean;
   } | null;
   /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
   extra_activity?: DayExtraActivity;
