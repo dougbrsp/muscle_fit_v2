@@ -351,12 +351,16 @@ export type FoodFieldSource = {
   detail: string;
 };
 
+export type FoodOrigin = { code: string; label: string };
+
 export type FoodItem = {
   id: number;
   /** Código de `FOOD_SOURCE_OPTIONS` (taco, user...). */
   source: NutritionCode;
   source_id: string | null;
   source_version: string | null;
+  /** Origem para a lista (IA, rótulo, código de barras, digitado...): decidida pelo motor; a tela só exibe. */
+  origin?: FoodOrigin | null;
   barcode: string | null;
   name: string;
   brand: string | null;

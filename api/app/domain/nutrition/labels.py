@@ -230,6 +230,18 @@ FOOD_SOURCE_LABELS: Final[Mapping[FoodSource, str]] = {
     FoodSource.AI_ESTIMATE: "Estimativa da IA",
 }
 
+# Origem do alimento na lista (`catalog.food_origin`).
+FOOD_ORIGIN_LABELS: Final[Mapping[catalog_mod.FoodOrigin, str]] = {
+    catalog_mod.FoodOrigin.LABEL_PHOTO: "Rótulo (IA)",
+    catalog_mod.FoodOrigin.BARCODE_OFF: "Código de barras (Open Food Facts)",
+    catalog_mod.FoodOrigin.BARCODE: "Código de barras",
+    catalog_mod.FoodOrigin.TYPED: "Digitado",
+    catalog_mod.FoodOrigin.USDA: "USDA",
+    catalog_mod.FoodOrigin.TACO: "TACO",
+    catalog_mod.FoodOrigin.TBCA_MANUAL: "TBCA",
+    catalog_mod.FoodOrigin.AI: "IA",
+}
+
 # Tipos de dado do USDA FoodData Central importados (L3b; códigos do FDC em `external_sources`).
 USDA_DATA_TYPE_LABELS: Final[Mapping[UsdaDataType, str]] = {
     UsdaDataType.FOUNDATION: "Foundation Foods",

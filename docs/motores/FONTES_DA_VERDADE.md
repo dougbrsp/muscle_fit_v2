@@ -2871,6 +2871,7 @@ obrigatórios, fontes e citações do JSON gerado; nota, ordem e permissões da 
 
 **Decisões.**
 1. **D-G**: o cadastro do usuário nasce privado; o admin promove (o alimento e as porções do dono viram públicos).
+   Exceção (2026-11-05, §88): o admin que cadastra por rótulo ou com EAN já nasce público (`catalog.is_born_public`).
    O admin vê os privados de todos só na busca `scope=private_all`; a busca normal de qualquer um mostra públicos +
    os próprios.
 2. **TACO somente leitura** pela API, inclusive para o admin (409 `food_source_read_only`): é tabela publicada,
@@ -6828,3 +6829,15 @@ Dono: `api/app/domain/nutrition/catalog.py` (`default_portion`, `DefaultPortion`
 - Migração: nenhuma. Dado: nenhum; alimento existente passa a ter `default_portion` calculada na leitura (sem `serving_size` nem base gravada = `null`, comportamento anterior).
 - API: campo novo aditivo em `food_public` (todas as respostas de alimento) e rota nova `GET /nutrition/meals/last-time` (leitura, autenticada, uma linha por `user_id` com `ORDER BY id DESC LIMIT 1`; usa o prefixo `user_id` de `idx_meals_user_date` e ordena por `id` só na fatia de um usuário; mesma conexão/cursor nos backends `db_dataapi` e `db_pymysql`, SQL com `%s` já traduzido pelo shim). Sem alteração de infra, workflow ou Lambda.
 - Frontend: remove a hora automática do relógio no registro por refeição (comportamento intencional pedido pelo usuário).
+
+## 88. Nutrição: publicação automática pelo admin e origem do alimento (2026-11-05)
+
+Dono: `api/app/domain/nutrition/catalog.py` (`is_born_public`, `AUTO_PUBLIC_SOURCES`, `FoodOrigin`, `food_origin`) e `labels.py` (`FOOD_ORIGIN_LABELS`); chave da guarda: `catalogo_alimentos` (§48; allowlist inalterada). Rota e tela só consomem.
+
+- **Publicação automática (decisão do usuário).** `POST /nutrition/foods` grava `owner_user_id` NULL quando `is_born_public(is_admin, source, barcode)`: o criador é admin E (fonte `label_photo` ou EAN informado). Usuário comum segue privado nos três casos (D-G e `promote` só por admin, inalterados); digitado sem EAN segue privado para todos (o admin publica na etapa final ou pelo botão). `_barcode_conflict` (409) continua antes do INSERT. Sem migração e sem backfill: alimentos privados existentes seguem como estão.
+- **Origem.** `food_origin(source, barcode)`: `label_photo` = "Rótulo (IA)"; `off` = "Código de barras (Open Food Facts)"; `user` com EAN = "Código de barras"; `user` sem EAN = "Digitado"; `usda`, `taco`, `tbca_manual` pelo nome; `ai_estimate` = "IA". Derivada de `source`/`barcode` existentes (sem coluna nem valor novo de `source`); `food_public` expõe `origin: {code, label}`. A tela só exibe (busca desktop e celular, atalhos de favorito, detalhe e etapa final).
+- **EAN do rótulo.** O EAN lido pela IA (já normalizado por `normalize_gtin`) agora pré-preenche o formulário do rótulo (editável); antes era descartado.
+
+**Impacto em produção.**
+- Migração: nenhuma. Dado: nenhum backfill; alimento antigo ganha `origin` calculada na leitura (campo aditivo em `food_public`).
+- Comportamento: alimentos novos de admin por rótulo/EAN passam a ser públicos e visíveis a todos (intencional; medir o uso: só há admin criando). Sem mudança de infra, workflow ou Lambda.

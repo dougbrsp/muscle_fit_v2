@@ -55,6 +55,7 @@ from .nutrition_access import (
     can_promote_food,
     can_view_food,
     foods_visibility,
+    is_admin,
     favorites_owner,
     ownership,
     portion_owner_for,
@@ -162,6 +163,11 @@ def _default_portion_public(row: dict[str, Any]) -> Optional[dict[str, Any]]:
     return porcao.public() if porcao else None
 
 
+def _origin_public(row: dict[str, Any]) -> Optional[dict[str, str]]:
+    origem = catalog.food_origin(row.get("source"), row.get("barcode"))
+    return {"code": origem.value, "label": nutrition_labels.FOOD_ORIGIN_LABELS[origem]} if origem else None
+
+
 def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
     """Alimento para a API: valores por 100 g/ml (códigos da RDC 429), porção do
     rótulo, citação/licença da linha, a origem dos valores que vieram de outra
@@ -173,6 +179,8 @@ def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
         "source": row.get("source"),
         "source_id": row.get("source_id"),
         "source_version": row.get("source_version"),
+        # Origem para a lista (IA, rótulo, código de barras, digitado...), decidida pelo motor; a tela só exibe.
+        "origin": _origin_public(row),
         "barcode": row.get("barcode"),
         "name": row.get("name"),
         "brand": row.get("brand"),
@@ -399,9 +407,11 @@ def create_food(payload: FoodItemCreateIn, identity: Identity = Depends(get_curr
                 existente = food_by_barcode(cur, codigo, int(identity.user_id))
                 if existente is not None:
                     raise _barcode_conflict(existente)
+            # Admin + (rótulo ou EAN): nasce público (`owner_user_id` NULL, regra do motor); os demais, privado (D-G).
+            dono = None if catalog.is_born_public(is_admin(identity), fonte, codigo) else int(identity.user_id)
             cur.execute(
                 INSERT_FOOD_SQL,
-                (fonte.value, codigo, *valores, int(identity.user_id), int(identity.user_id)),
+                (fonte.value, codigo, *valores, dono, int(identity.user_id)),
             )
             novo_id = cur.lastrowid
             if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado

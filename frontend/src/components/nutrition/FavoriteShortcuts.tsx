@@ -50,6 +50,9 @@ export function FavoriteShortcuts({ onPick, disabled = false }: Props) {
               >
                 {favorito.food.name}
                 {resumo ? ` · ${resumo}` : ''}
+                {favorito.food.origin ? (
+                  <span style={{ marginLeft: 6, opacity: 0.7, fontSize: '0.75em' }}>({favorito.food.origin.label})</span>
+                ) : null}
               </Button>
             );
           })}
