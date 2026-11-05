@@ -43,7 +43,7 @@ from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
 from .carb_cycling import CycleDays, DayKind, propose_day_kinds, validate_cycle_days
-from .daily_target import DayContext, PlanParams, compute_daily_target, manual_adds_training, rest_day_context
+from .daily_target import PlanParams, compute_daily_target, manual_adds_training, rest_day_context
 from .macros import meals_per_day_is_valid
 from .energy_density import weekly_kg_for_daily_kcal
 from .macros import kcal_from_macros
