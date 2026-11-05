@@ -5,6 +5,7 @@ import { IconBarcode, IconCamera, IconPencil, IconWorld } from '@tabler/icons-re
 import { useState } from 'react';
 import { BarcodeLookup } from './BarcodeLookup';
 import { FoodForm } from './FoodForm';
+import { FoodRegistrationFinish } from './FoodRegistrationFinish';
 import { LabelPhotoUpload } from './LabelPhotoUpload';
 import { NutritionLimitations } from './NutritionLimitations';
 import { UsdaSearch } from './UsdaSearch';
@@ -66,6 +67,8 @@ export function FoodRegistrationFlow({
   const [labelReads, setLabelReads] = useState(0);
   const [unreadable, setUnreadable] = useState<LabelPhotoReading | null>(null);
   const [lastResetSignal, setLastResetSignal] = useState(resetSignal);
+  // Etapa final (favoritar/público): no lugar das abas, só depois de o alimento estar salvo/achado.
+  const [finish, setFinish] = useState<{ food: FoodSaveResponse; entregar: () => void } | null>(null);
 
   function clear() {
     setBarcode('');
@@ -73,6 +76,7 @@ export function FoodRegistrationFlow({
     setLookupResets((n) => n + 1);
     setLabelReading(null);
     setUnreadable(null);
+    setFinish(null);
   }
 
   // Reset pedido de fora (ajuste de estado durante a renderização, sem efeito).
@@ -103,18 +107,30 @@ export function FoodRegistrationFlow({
   }
 
   function saved(food: FoodSaveResponse) {
-    onSaved(food);
     clear();
+    setFinish({ food, entregar: () => onSaved(food) });
   }
 
   function found(food: ExternalFoodResponse) {
-    onFound(food);
     clear();
+    setFinish({ food, entregar: () => onFound(food) });
   }
 
   function cancel() {
     clear();
     onCancel?.();
+  }
+
+  if (finish) {
+    return (
+      <FoodRegistrationFinish
+        food={finish.food}
+        onConclude={() => {
+          finish.entregar();
+          setFinish(null);
+        }}
+      />
+    );
   }
 
   return (

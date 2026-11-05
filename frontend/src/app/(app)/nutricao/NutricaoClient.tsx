@@ -207,7 +207,6 @@ export function NutricaoClient() {
                           : `editar-${editing.meal.id}`
                     }
                     date={date}
-                    today={weekQuery.data?.today ?? dia.today ?? null}
                     meal={editing.mode === 'edit' ? editing.meal : null}
                     initialForm={editing.mode === 'parsed' ? editing.form : null}
                     onSaved={async () => {

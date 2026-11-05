@@ -50,13 +50,15 @@ type Props = {
   /** Quando dado, mostra "Cadastrar novo alimento" sempre, com o termo buscado (pode ser vazio). */
   onRegister?: (term: string) => void;
   registerDisabled?: boolean;
+  /** Chamado só depois de o favorito ser gravado com sucesso (marcar a estrela, nunca ao desmarcar). */
+  onFavorited?: (item: FoodSearchItem) => void;
 };
 
 /**
  * Busca no catálogo. A API filtra (FULLTEXT), ordena pela nota do motor
  * (`food_text`) e diz de que fonte é cada item, com a citação; a tela só exibe.
  */
-export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false }: Props) {
+export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false, onFavorited }: Props) {
   const [texto, setTexto] = useState('');
   const [fonte, setFonte] = useState<string | null>(null);
   const [privados, setPrivados] = useState(false);
@@ -81,6 +83,9 @@ export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, register
     mutationFn: async (item: FoodSearchItem) => {
       if (item.is_favorite) await removeFavoriteIfPresent(item.id);
       else await addFavorite({ food_id: item.id });
+    },
+    onSuccess: (_, item) => {
+      if (!item.is_favorite) onFavorited?.(item);
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: favoriteKeys.all });

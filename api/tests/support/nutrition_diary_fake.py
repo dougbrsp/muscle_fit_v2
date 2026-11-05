@@ -161,6 +161,9 @@ class FakeDiaryCursor(FakeCursor):
         if sql == meals_mod.MEALS_OF_RANGE_SQL:
             linhas = [r for r in db.meals.values() if r["user_id"] == p[0] and p[1] <= r["local_date"] <= p[2]]
             return self._result(sorted(linhas, key=lambda r: (r["local_date"], r["id"])))
+        if sql == meals_mod.LAST_TIME_SQL:
+            linhas = [r for r in db.meals.values() if r["user_id"] == p[0] and r.get("eaten_at") is not None]
+            return self._result([{"eaten_at": max(linhas, key=lambda r: r["id"])["eaten_at"]}] if linhas else [])
         if sql == meals_mod.INSERT_MEAL_SQL:
             colunas = (*meals_mod._MEAL_HEADER_COLUMNS, *meals_mod._TOTAL_COLUMNS, "created_by", "updated_by")
             linha = self._meal_values(colunas, p)

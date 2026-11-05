@@ -123,43 +123,12 @@ describe('startBarcodeScan', () => {
     };
     expect(getUserMedia).toHaveBeenCalledWith(esperado);
     const decode = vi.fn().mockResolvedValue({ stop: vi.fn() });
-    const getUserMedia2 = vi.fn();
     await startBarcodeScan(fakeVideo(), vi.fn(), {
-      mediaDevices: { getUserMedia: getUserMedia2 },
+      mediaDevices: { getUserMedia: vi.fn() },
       detectorCtor: null,
       loadZxing: async () => ({ decodeFromConstraints: decode }),
     });
     expect(decode.mock.calls[0][0]).toEqual(esperado);
-  });
-
-  it('zxing: expõe contagem de tentativas e o último tipo de erro; nativo não expõe', async () => {
-    const stop = vi.fn();
-    type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
-    const capturado: { cb: Callback | null } = { cb: null };
-    const handle = await startBarcodeScan(fakeVideo(), vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn() },
-      detectorCtor: null,
-      loadZxing: async () => ({
-        decodeFromConstraints: async (_c, _v, callback) => {
-          capturado.cb = callback;
-          return { stop };
-        },
-      }),
-    });
-    expect(handle.diagnostics?.()).toMatchObject({ attempts: 0, lastError: null });
-    const cb = capturado.cb as Callback;
-    cb(undefined, zxingError('NotFoundException'), { stop });
-    cb(undefined, zxingError('ChecksumException', 'e'), { stop });
-    cb(undefined, zxingError('NotFoundException'), { stop });
-    expect(handle.diagnostics?.()).toMatchObject({ attempts: 3, lastError: 'NotFoundException' });
-    const { stream } = fakeStream();
-    const ctor = vi.fn().mockImplementation(() => ({ detect: vi.fn().mockResolvedValue([]) })) as unknown as BarcodeDetectorCtor;
-    const nativo = await startBarcodeScan(fakeVideo(), vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
-      detectorCtor: ctor,
-    });
-    expect(nativo.diagnostics).toBeUndefined();
-    nativo.stop();
   });
 
   it('o leitor de reserva real nasce com TRY_HARDER, os 3 formatos e pausa curta entre tentativas', async () => {
@@ -225,31 +194,6 @@ describe('startBarcodeScan', () => {
     });
     expect(decodeFromConstraints).toHaveBeenCalledTimes(1);
     expect(getUserMedia).not.toHaveBeenCalled(); // quem abre a câmera é o zxing
-  });
-
-  it('zxing: o diagnóstico guarda o tamanho do vídeo no primeiro quadro tentado', async () => {
-    const video = fakeVideo() as unknown as { videoWidth: number; videoHeight: number } & HTMLVideoElement;
-    video.videoWidth = 720;
-    video.videoHeight = 1280;
-    type Callback = (result: { getText: () => string } | undefined, error: unknown, controls: { stop: () => void }) => void;
-    const capturado: { cb: Callback | null } = { cb: null };
-    const stop = vi.fn();
-    const handle = await startBarcodeScan(video, vi.fn(), {
-      mediaDevices: { getUserMedia: vi.fn() },
-      detectorCtor: null,
-      loadZxing: async () => ({
-        decodeFromConstraints: async (_c, _v, callback) => {
-          capturado.cb = callback;
-          return { stop };
-        },
-      }),
-    });
-    const cb = capturado.cb as Callback;
-    cb(undefined, zxingError('NotFoundException'), { stop });
-    video.videoWidth = 1280;
-    video.videoHeight = 720;
-    cb(undefined, zxingError('NotFoundException'), { stop });
-    expect(handle.diagnostics?.()).toMatchObject({ attempts: 2, startWidth: 720, startHeight: 1280 });
   });
 
   it('zxing: ignora quadros sem código e texto não numérico; entrega o primeiro código e para', async () => {

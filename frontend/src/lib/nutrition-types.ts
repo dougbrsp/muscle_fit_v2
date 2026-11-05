@@ -369,6 +369,8 @@ export type FoodItem = {
   /** Os mesmos campos de `per_100` na base digitada (pronto do motor); a edição reabre com ele. */
   per_table_base: FoodPer100;
   serving: FoodServing;
+  /** Porção que a tela traz preenchida (editável) ao adicionar à refeição; decidida pelo motor. `null` = campo vazio. */
+  default_portion?: { quantity: number; unit: NutritionCode } | null;
   license: string | null;
   citation: string | null;
   /** Valores que vieram de outra fonte (ex.: USDA nos campos "em reavaliação" da TACO); `[]` = todos da linha. */

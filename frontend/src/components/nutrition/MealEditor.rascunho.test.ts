@@ -14,17 +14,32 @@ import { MealEditor } from './MealEditor';
 // No celular o cadastro é uma folha na pilha de visões: o voltar fecha só a folha.
 
 const fetchFood = vi.hoisted(() => vi.fn());
+const fetchLastMealTime = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/nutrition-api')>()),
   fetchFood,
+  fetchLastMealTime,
   previewMeal: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./FavoriteShortcuts', () => ({ FavoriteShortcuts: () => null }));
 vi.mock('./FoodSearch', async () => {
   const { createElement: h } = await import('react');
   return {
-    FoodSearch: ({ onRegister }: { onRegister?: (termo: string) => void }) =>
-      h('button', { type: 'button', 'data-testid': 'abrir-cadastro', onClick: () => onRegister?.('iogurte') }, 'Cadastrar'),
+    FoodSearch: ({ onRegister, onFavorited }: { onRegister?: (termo: string) => void; onFavorited?: (item: unknown) => void }) =>
+      h(
+        'div',
+        null,
+        h('button', { type: 'button', 'data-testid': 'abrir-cadastro', onClick: () => onRegister?.('iogurte') }, 'Cadastrar'),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'estrela',
+            onClick: () => onFavorited?.({ id: 7, name: 'Aveia', basis: 'g', default_portion: { quantity: 30, unit: 'g' } }),
+          },
+          'Estrela',
+        ),
+      ),
   };
 });
 vi.mock('./FoodRegistrationFlow', async () => {
@@ -86,6 +101,7 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.appendChild(host);
   fetchFood.mockResolvedValue({ id: 43, name: 'Já cadastrado', basis: 'g' });
+  fetchLastMealTime.mockResolvedValue({ time: null });
 });
 
 afterEach(async () => {
@@ -217,59 +233,88 @@ describe('MealEditor no celular: o voltar fecha só a folha do cadastro', () => 
   });
 });
 
-describe('MealEditor: hora inicial da refeição nova', () => {
-  it('nova, sem initialForm e no dia de hoje: abre com a hora do relógio, editável', async () => {
-    await montar(false, { today: '2026-11-04' });
-    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
+const MEAL_EDICAO = { id: 9, local_date: '2026-11-04', meal_slot: 'lunch', eaten_at: null, notes: null, items: [] } as unknown as ComponentProps<typeof MealEditor>['meal'];
+
+describe('MealEditor: hora da refeição nova vem da última registrada', () => {
+  const dia = () => host.querySelector('input[type="date"]') as HTMLInputElement;
+
+  it('sem histórico: hora vazia, sem erro na tela', async () => {
+    fetchLastMealTime.mockResolvedValue({ time: null });
+    await montar(false, {});
+    expect(hora().value).toBe('');
+    expect(host.textContent).not.toContain('Não foi possível');
+  });
+
+  it('com histórico: abre com a última hora (12:30), editável', async () => {
+    fetchLastMealTime.mockResolvedValue({ time: '12:30' });
+    await montar(false, {});
+    expect(hora().value).toBe('12:30');
     await digitar(hora(), '07:10');
     expect(hora().value).toBe('07:10');
   });
 
-  it('nova em dia passado, ou sem saber o dia de hoje: hora vazia (não inventa)', async () => {
-    await montar(false, { today: '2026-11-05' });
+  it('a consulta falha: campo vazio, sem erro na tela', async () => {
+    fetchLastMealTime.mockRejectedValue(new Error('503'));
+    await montar(false, {});
     expect(hora().value).toBe('');
+    expect(host.textContent).not.toContain('503');
+  });
+
+  it('digitar antes da resposta não é sobrescrito, nem a hora apagada', async () => {
+    let responder: (v: { time: string | null }) => void = () => undefined;
+    fetchLastMealTime.mockImplementation(() => new Promise((r) => { responder = r; }));
+    await montar(false, {});
+    await digitar(hora(), '07:10');
+    await act(async () => { responder({ time: '12:30' }); });
+    await esperar();
+    expect(hora().value).toBe('07:10');
     await act(async () => { root?.unmount(); });
     root = null;
     host.innerHTML = '';
     await montar(false, {});
+    await digitar(hora(), '08:00');
+    await digitar(hora(), '');
+    await act(async () => { responder({ time: '12:30' }); });
+    await esperar();
     expect(hora().value).toBe('');
   });
 
-  it('leitura por IA (initialForm) e edição mantêm a hora que já têm, mesmo hoje', async () => {
-    await montar(false, { today: '2026-11-04', initialForm: { ...RASCUNHO, eaten_at: '' } });
+  it('leitura por IA (initialForm) e edição não consultam nem trocam a hora', async () => {
+    fetchLastMealTime.mockResolvedValue({ time: '12:30' });
+    await montar(false, { initialForm: { ...RASCUNHO, eaten_at: '' } });
     expect(hora().value).toBe('');
     await act(async () => { root?.unmount(); });
     root = null;
     host.innerHTML = '';
-    const meal = { id: 9, local_date: '2026-11-04', meal_slot: 'lunch', eaten_at: null, notes: null, items: [] } as unknown as ComponentProps<typeof MealEditor>['meal'];
-    await montar(false, { today: '2026-11-04', meal });
+    await montar(false, { meal: MEAL_EDICAO });
     expect(hora().value).toBe('');
+    expect(fetchLastMealTime).not.toHaveBeenCalled();
   });
 
-  const dia = () => host.querySelector('input[type="date"]') as HTMLInputElement;
-
-  it('trocar o Dia recalcula a hora automática: ontem esvazia, voltar para hoje preenche de novo', async () => {
-    await montar(false, { today: '2026-11-04' });
-    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
-    await digitar(dia(), '2026-11-03');
-    expect(hora().value).toBe('');
-    await digitar(dia(), '2026-11-04');
-    expect(hora().value).toMatch(/^\d{2}:\d{2}$/);
-  });
-
-  it('hora digitada pela pessoa não muda ao trocar o Dia, nem a apagada', async () => {
-    await montar(false, { today: '2026-11-04' });
-    await digitar(hora(), '07:10');
-    await digitar(dia(), '2026-11-03');
-    expect(hora().value).toBe('07:10');
-    await digitar(hora(), '');
-    await digitar(dia(), '2026-11-04');
-    expect(hora().value).toBe('');
-  });
-
-  it('refeição com initialForm (IA) mantém a hora que veio ao trocar o Dia', async () => {
-    await montar(false, { today: '2026-11-04', initialForm: { ...RASCUNHO, local_date: '2026-11-04' } });
+  it('trocar o Dia não mexe na hora', async () => {
+    fetchLastMealTime.mockResolvedValue({ time: '12:30' });
+    await montar(false, {});
     await digitar(dia(), '2026-11-03');
     expect(hora().value).toBe('12:30');
+    await digitar(hora(), '07:10');
+    await digitar(dia(), '2026-11-04');
+    expect(hora().value).toBe('07:10');
+  });
+});
+
+describe('MealEditor: estrela marcada na busca adiciona o alimento com a porção padrão', () => {
+  it('entra na refeição com 30 g já preenchido e editável', async () => {
+    await montar(false, {});
+    await clicar('estrela');
+    expect(host.textContent).toContain('Aveia');
+    expect(quantidades()).toEqual(['30']);
+  });
+
+  it('no teto de itens favorita sem adicionar e avisa', async () => {
+    const itens = Array.from({ length: 30 }, (_, i) => ({ ...editorItemFromFood({ id: i + 1, name: `Alimento ${i + 1}`, basis: 'g' }, `k-${i}`), quantity: 10 }));
+    await montar(false, { initialForm: { ...RASCUNHO, items: itens } });
+    await clicar('estrela');
+    expect(quantidades()).toHaveLength(30);
+    expect(host.textContent).toContain('máximo de 30 itens');
   });
 });

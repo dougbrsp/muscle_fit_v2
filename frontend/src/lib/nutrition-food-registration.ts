@@ -31,10 +31,57 @@ export function registrationAfterBarcodeNotFound(ean: string): { tab: Registrati
  */
 export function addRegisteredFood(
   form: MealEditorForm,
-  food: Pick<FoodItem, 'id' | 'name' | 'basis'>,
+  food: Pick<FoodItem, 'id' | 'name' | 'basis' | 'default_portion'>,
   key: string,
   limit: number,
 ): MealEditorForm {
   if (form.items.length >= limit) return form;
   return { ...form, items: [...form.items, editorItemFromFood(food, key)] };
+}
+
+// ---------------------------------------------------------------------------
+// Etapa final do cadastro: favoritar e/ou tornar público
+// ---------------------------------------------------------------------------
+
+/** O que a pessoa marcou na etapa final. */
+export type FinishChoices = { favorite: boolean; promote: boolean };
+
+/** O que já deu certo (não se refaz ao tentar de novo). */
+export type FinishDone = { favorite: boolean; promote: boolean };
+
+export type FinishActions = {
+  addFavorite: (foodId: number) => Promise<unknown>;
+  promote: (foodId: number) => Promise<unknown>;
+};
+
+/** A opção "cadastro público" só aparece quando a API diz que o usuário pode promover (D-G: só admin). */
+export function canOfferPublic(food: Pick<FoodItem, 'permissions'>): boolean {
+  return food.permissions.can_promote === true;
+}
+
+/**
+ * Executa as ações marcadas, uma de cada vez, pulando as que já deram certo. A primeira que falhar para
+ * o fluxo e devolve o erro; o que deu certo fica em `done` para a próxima tentativa não repetir.
+ * O alimento já foi salvo: falha aqui nunca o desfaz.
+ */
+export async function runFinishActions(
+  foodId: number,
+  choices: FinishChoices,
+  done: FinishDone,
+  actions: FinishActions,
+): Promise<{ done: FinishDone; error: unknown }> {
+  const atual = { ...done };
+  try {
+    if (choices.favorite && !atual.favorite) {
+      await actions.addFavorite(foodId);
+      atual.favorite = true;
+    }
+    if (choices.promote && !atual.promote) {
+      await actions.promote(foodId);
+      atual.promote = true;
+    }
+  } catch (error) {
+    return { done: atual, error: error ?? new Error('falhou') };
+  }
+  return { done: atual, error: null };
 }

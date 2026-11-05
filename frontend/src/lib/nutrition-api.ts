@@ -311,6 +311,13 @@ export function createMeal(payload: MealCreatePayload): Promise<Meal> {
   return apiFetch<Meal>('/nutrition/meals', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export const lastMealTimeKey = ['nutrition-last-meal-time'] as const;
+
+/** Hora (`HH:MM`) da última refeição gravada com hora, do usuário logado; `null` sem histórico. */
+export function fetchLastMealTime(): Promise<{ time: string | null }> {
+  return apiFetch<{ time: string | null }>('/nutrition/meals/last-time');
+}
+
 export function updateMeal(mealId: number, payload: MealPayload): Promise<Meal> {
   return apiFetch<Meal>(`/nutrition/meals/${mealId}`, { method: 'PUT', body: JSON.stringify(payload) });
 }

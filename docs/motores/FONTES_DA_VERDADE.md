@@ -6814,3 +6814,17 @@ Dono: `api/app/domain/nutrition/` (`catalog.py`, `diary.py`, `meal_math.py`, `la
 - Ordenação: de exibição; o dia passa a listar por hora.
 - `meal_items.nature` / `meals.totals_nature` ganham o valor `USER_ENTERED` (VARCHAR(16), sem migração); selos de tela que só conheciam DERIVED/ESTIMATED/MIXED precisam tratá-lo (frente de frontend).
 - Precisão: ver "Limitação de arredondamento" acima (30 g com 3,3 g de proteína volta 3,3; lançar 60 g dá 6,6).
+
+## 87. Nutrição: ajustes do registro de refeições (2026-11-05)
+
+Dono: `api/app/domain/nutrition/catalog.py` (`default_portion`, `DefaultPortion`); chave da guarda: `catalogo_alimentos` (§48; allowlist inalterada, nenhum padrão novo). Rotas e tela só consomem.
+
+- **Porção padrão do alimento.** `catalog.default_portion(serving_size, table_base_amount, basis)`: a porção do rótulo (`serving_size` > 0 e até `PORTION_AMOUNT_MAX`); senão a base digitada da tabela (`table_base_amount` gravado, não NULL); senão nenhuma. Unidade = a base (g/ml) do alimento, sem `portion_id`. Valor inválido ou base desconhecida = nenhuma. Consumidor: `nutrition_foods.food_public` expõe `default_portion: {quantity, unit} | null`; o front (`editorItemFromFood`) só preenche o campo, editável. O padrão do favorito (`default_*`) continua com prioridade. Edição de refeição existente não muda.
+- **Hora da refeição nova.** Sem regra de cálculo: `GET /nutrition/meals/last-time` devolve a hora (`HH:MM`) da refeição gravada mais recentemente COM hora do usuário logado (`WHERE user_id = %s AND eaten_at IS NOT NULL ORDER BY id DESC LIMIT 1`), ou `null`. A tela só pré-preenche (editável, sem sobrescrever o digitado). O lançamento rápido segue com a hora atual (dela depende a refeição sugerida, §86).
+- **Estrela e etapa final do cadastro.** Só fluxo de tela: a estrela do registro favorita e adiciona o alimento à refeição (só ao marcar); a etapa final do cadastro chama `POST /nutrition/favorites` e `POST /nutrition/foods/{id}/promote`. Promoção segue só por admin (regra D-G inalterada; a opção aparece só com `permissions.can_promote`).
+- **Leitor de código.** Removida a linha de diagnóstico temporária (sem mudança na leitura).
+
+**Impacto em produção.**
+- Migração: nenhuma. Dado: nenhum; alimento existente passa a ter `default_portion` calculada na leitura (sem `serving_size` nem base gravada = `null`, comportamento anterior).
+- API: campo novo aditivo em `food_public` (todas as respostas de alimento) e rota nova `GET /nutrition/meals/last-time` (leitura, autenticada, uma linha por `user_id` com `ORDER BY id DESC LIMIT 1`; usa o prefixo `user_id` de `idx_meals_user_date` e ordena por `id` só na fatia de um usuário; mesma conexão/cursor nos backends `db_dataapi` e `db_pymysql`, SQL com `%s` já traduzido pelo shim). Sem alteração de infra, workflow ou Lambda.
+- Frontend: remove a hora automática do relógio no registro por refeição (comportamento intencional pedido pelo usuário).

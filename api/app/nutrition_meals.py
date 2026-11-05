@@ -69,6 +69,7 @@ ITEM_COLUMNS: tuple[str, ...] = (
     "id", "meal_id", "position", "food_id", "portion_id", "item_label", "quantity", "unit", "amount", "basis",
     *NUTRIENTS, "nature", "match_confidence", "limitations_json", "catalog_snapshot_json", "engine_version",
 )
+LAST_TIME_SQL = f"SELECT eaten_at FROM {MEALS} WHERE user_id = %s AND eaten_at IS NOT NULL ORDER BY id DESC LIMIT 1"
 _SELECT_MEALS = f"SELECT {', '.join(MEAL_COLUMNS)} FROM {MEALS}"
 MEAL_BY_ID_SQL = f"{_SELECT_MEALS} WHERE id = %s"
 MEALS_OF_RANGE_SQL = f"{_SELECT_MEALS} WHERE user_id = %s AND local_date BETWEEN %s AND %s ORDER BY local_date, id"
@@ -595,6 +596,18 @@ def slot_for_time(time_of_day: str = Query(..., alias="time", min_length=3, max_
         "meal_slot": slot.value,
         "meal_slot_label": nutrition_labels.MEAL_SLOT_LABELS[slot],
     }
+
+
+@router.get("/last-time")
+def last_meal_time(identity: Identity = Depends(get_current_identity)):
+    """Hora (`HH:MM`) da refeição gravada mais recentemente COM hora, do usuário logado; `null` sem
+    histórico. A tela só pré-preenche o campo (editável); não calcula nada."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+            cur.execute(LAST_TIME_SQL, (identity.user_id,))
+            linha = cur.fetchone()
+    return {"time": _hhmm(linha.get("eaten_at")) if linha else None}
 
 
 @router.post("/preview")

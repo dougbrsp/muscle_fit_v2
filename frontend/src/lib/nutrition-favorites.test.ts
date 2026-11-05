@@ -40,6 +40,16 @@ describe('editorItemFromFavorite', () => {
     expect(item).toMatchObject({ key: 'novo-1', food_id: 7, quantity: '', unit: 'g', portion_id: null });
   });
 
+  it('sem padrão do favorito usa a porção padrão do alimento (motor); o padrão do favorito tem prioridade', () => {
+    const comPadraoDoAlimento = { ...favorite(7), food: { ...food(7), default_portion: { quantity: 30, unit: 'g' } } } as FavoriteItem;
+    expect(editorItemFromFavorite(comPadraoDoAlimento, 'k')).toMatchObject({ quantity: 30, unit: 'g' });
+    const comAmbos = {
+      ...favorite(7, { quantity: 2, unit: 'portion', portion_id: 5, portion_label: 'Concha', portion_amount: 140 }),
+      food: { ...food(7), default_portion: { quantity: 30, unit: 'g' } },
+    } as FavoriteItem;
+    expect(editorItemFromFavorite(comAmbos, 'k')).toMatchObject({ quantity: 2, unit: 'portion', portion_id: 5 });
+  });
+
   it('com porção padrão leva quantidade, unidade e porção para o preview do motor', () => {
     const item = editorItemFromFavorite(
       favorite(7, { quantity: 2, unit: 'portion', portion_id: 5, portion_label: 'Concha', portion_amount: 140 }),

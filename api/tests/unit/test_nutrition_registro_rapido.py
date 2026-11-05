@@ -443,6 +443,54 @@ def test_endpoint_hora_para_refeicao_e_hora_invalida(db):
     assert ruim.status_code == 400 and ruim.json()["detail"]["error"] == diary.ERR_INVALID_CLOCK_TIME
 
 
+def test_ultima_hora_registrada_sem_historico_e_null_e_depois_traz_a_ultima_com_hora(db):
+    cliente = _client()
+    assert cliente.get("/nutrition/meals/last-time").json() == {"time": None}
+    base = _refeicao(db, [{"food_id": db.arroz, "quantity": 100, "unit": "g"}])
+    assert cliente.post("/nutrition/meals", json={**base, "eaten_at": "12:30"}).status_code == 201
+    assert cliente.get("/nutrition/meals/last-time").json() == {"time": "12:30"}
+    sem_hora = {k: v for k, v in base.items() if k != "eaten_at"}
+    assert cliente.post("/nutrition/meals", json=sem_hora).status_code == 201
+    assert cliente.get("/nutrition/meals/last-time").json() == {"time": "12:30"}  # sem hora nao apaga a referencia
+    assert cliente.post("/nutrition/meals", json={**base, "eaten_at": "19:05"}).status_code == 201
+    assert cliente.get("/nutrition/meals/last-time").json() == {"time": "19:05"}
+
+
+def test_ultima_hora_e_isolada_por_usuario_e_exige_autenticacao(db):
+    cliente = _client()
+    outra = {"id": 999, "user_id": 4, "eaten_at": time(23, 10), "local_date": DIA}
+    db.meals[999] = outra  # refeicao de OUTRO usuario, mais recente
+    assert cliente.get("/nutrition/meals/last-time").json() == {"time": None}
+    app = FastAPI()
+    app.include_router(meals_mod.router)
+    anonimo = TestClient(app, raise_server_exceptions=False)
+    assert anonimo.get("/nutrition/meals/last-time").status_code in (401, 403)
+
+
+@pytest.mark.parametrize("serving,base,basis,esperado", [
+    (30, None, "g", {"quantity": 30.0, "unit": "g"}),
+    (30, 50, "g", {"quantity": 30.0, "unit": "g"}),  # a porcao do rotulo vence a base digitada
+    (None, 50, "ml", {"quantity": 50.0, "unit": "ml"}),
+    (None, None, "g", None),
+    (0, None, "g", None),
+    (-5, None, "g", None),
+    ("abc", 30, "g", {"quantity": 30.0, "unit": "g"}),  # porcao invalida cai na base
+    (30, None, "kg", None),  # base desconhecida
+    (99999, None, "g", None),  # acima do teto da porcao
+    (True, None, "g", None),
+])
+def test_porcao_padrao_do_motor(serving, base, basis, esperado):
+    porcao = catalog.default_portion(serving, base, basis)
+    assert (porcao.public() if porcao else None) == esperado
+
+
+def test_food_public_expoe_a_porcao_padrao_do_motor():
+    linha = {"id": 1, "serving_size": Decimal("30"), "basis": "g", "table_base_amount": None, "is_active": 1}
+    identidade = Identity(user_id=2, role="regular", source="session")
+    assert foods_mod.food_public(linha, identidade)["default_portion"] == {"quantity": 30.0, "unit": "g"}
+    assert foods_mod.food_public({**linha, "serving_size": None}, identidade)["default_portion"] is None
+
+
 def test_o_endpoint_esta_no_app_real_da_api_core():
     from app.main import app
 

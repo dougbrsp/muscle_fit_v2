@@ -88,16 +88,7 @@ export type ScannerDeps = {
   loadZxing?: ZxingLoader;
 };
 
-/** Contagem do leitor de reserva, para a tela de diagnóstico (leitor nativo não tem). */
-export type ScanDiagnostics = {
-  attempts: number;
-  lastError: string | null;
-  /** Tamanho do vídeo quando a varredura começou (o canvas de captura do zxing nasce com ele e não muda). */
-  startWidth: number;
-  startHeight: number;
-};
-
-export type ScanHandle = { stop: () => void; diagnostics?: () => ScanDiagnostics };
+export type ScanHandle = { stop: () => void };
 
 // Tudo `ideal`, nunca `exact`: o aparelho que não oferecer 1280x720 ou a traseira abre a câmera mesmo assim.
 // Resolução maior dá mais pixels por módulo ao código (abaixo de ~2 px por módulo o zxing falha).
@@ -221,12 +212,6 @@ async function startZxing(
   const reader = await loadZxing();
   let parado = false;
   let controles: ZxingControls | null = null;
-  let attempts = 0;
-  let lastError: string | null = null;
-  // Tamanho do vídeo no primeiro quadro tentado (o canvas de captura do zxing nasce com o tamanho do início
-  // da varredura e não muda; ver `formatDiagnostics`).
-  let startWidth = 0;
-  let startHeight = 0;
   const stop = () => {
     parado = true;
     controles?.stop();
@@ -234,12 +219,6 @@ async function startZxing(
   controles = await reader.decodeFromConstraints(CONSTRAINTS, video, (result, error, controls) => {
     controles = controls;
     if (parado) return;
-    if (attempts === 0) {
-      startWidth = video.videoWidth;
-      startHeight = video.videoHeight;
-    }
-    attempts += 1;
-    if (!result && error) lastError = zxingErrorKind(error) ?? (error instanceof Error ? error.name : 'erro');
     if (!result) {
       if (error && !isZxingFrameError(error)) {
         // Erro que não é de quadro (câmera caiu, stream encerrado): para, libera e avisa a tela.
@@ -255,7 +234,7 @@ async function startZxing(
     }
   });
   if (parado) controles.stop(); // leu antes de `decodeFromConstraints` resolver
-  return { stop, diagnostics: () => ({ attempts, lastError, startWidth, startHeight }) };
+  return { stop };
 }
 
 /**
