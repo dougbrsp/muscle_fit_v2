@@ -602,11 +602,13 @@ def ensure_daily_targets(
         ]
         lote: list[tuple[Any, ...]] = []
         if dias:
-            entradas = (
-                inputs
-                if inputs is not None
-                else load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, [settings for _, _, settings in dias])
-            )
+            planos_dos_dias = [settings for _, _, settings in dias]
+            entradas = inputs
+            # Entradas trazidas de fora podem ter sido carregadas só com o plano NOVO; se algum dia a gravar usa o plano
+            # automático (ex.: ontem era automático e hoje é clássico) e o Intervals não foi lido, recarrega: senão
+            # esse dia seria regravado no fallback.
+            if entradas is None or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded):
+                entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, planos_dos_dias)
             for dia, plano_id, settings in dias:
                 comp = compute_day(entradas, settings, dia, hoje)
                 impressao = inputs_fingerprint(plano_id, comp)

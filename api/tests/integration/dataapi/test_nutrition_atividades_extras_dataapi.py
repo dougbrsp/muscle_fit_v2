@@ -149,7 +149,7 @@ def test_dia_sincronizado_soma_forca_e_extras_e_fallback_nao_nos_dois_backends(u
             else:
                 assert treino["tdee_basis"] == "auto_fallback" and treino["extra_activity"]["kcal"] == 0.0, (backend, treino)
                 assert "Intervals sem sincronizar" in treino["tdee_basis_note"]
-                assert corpo["target"]["tdee_kcal"] == pytest.approx(corpo["target"]["bmr_kcal"] * 1.725, abs=0.01)  # perfil `active`
+                assert corpo["target"]["tdee_kcal"] == pytest.approx(corpo["target"]["bmr_kcal"] * 1.725, abs=0.05)  # perfil `active`; tolerância do DECIMAL(.,2) de bmr_kcal e tdee_kcal
             resultados[(backend, em_dia)] = (treino["tdee_basis"], treino["extra_activity"]["kcal"], corpo["target"]["tdee_kcal"])
     por_backend = {}
     for (backend, em_dia), valor in resultados.items():

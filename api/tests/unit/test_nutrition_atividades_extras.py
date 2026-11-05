@@ -379,3 +379,24 @@ def test_alvo_do_servico_gravado_traz_a_base_e_o_extra_no_json_que_a_rota_le():
     publico = svc.target_row_public(linha, HOJE)
     assert publico["extra_activity"]["kcal"] == pytest.approx(427) and publico["tdee_basis"] == "auto_synced"
     assert "inputs_json" not in linha
+
+
+def test_dia_do_plano_automatico_nao_e_regravado_no_fallback_quando_as_entradas_vieram_so_com_o_plano_novo():
+    # Ontem valia o plano automático; hoje o clássico. As entradas trazidas de fora foram carregadas só com o plano novo
+    # (sem o Intervals): `ensure_daily_targets` recarrega para o dia de ontem não cair no fallback.
+    db = _db()
+    antigo = next(iter(db.plans))
+    db.plans[antigo]["superseded_at"] = datetime(2026, 11, 5, 10)
+    db.add_plan(ALUNO, status="published", effective_from=HOJE, published_at=datetime(2026, 11, 5, 10),
+                training_kcal_mode="explicit_training")
+    ontem = HOJE - timedelta(days=1)
+    db.add_intervals_activity(ALUNO, ontem, "VirtualRun", 200)
+    classico = svc.settings_from_row(db.plans[2])
+    with db.conn() as conn, conn.cursor() as cur:
+        entradas = svc.load_user_inputs(cur, ALUNO, ontem, HOJE, HOJE, [classico])
+    assert entradas.intervals_loaded is False
+    janela = svc.TargetWindow(date_from=ontem, date_to=HOJE, create_until=HOJE)
+    linhas = {l["local_date"]: l for l in svc.ensure_daily_targets(db.conn(), ALUNO, janela, today=HOJE, inputs=entradas)}
+    assert linhas[ontem.isoformat()]["tdee_basis"] == "auto_synced"
+    assert linhas[ontem.isoformat()]["extra_activity"]["kcal"] == pytest.approx(200)
+    assert linhas[HOJE.isoformat()]["tdee_basis"] == "classic"
