@@ -42,6 +42,7 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, OfflineNote, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 const STALE_TIME = 60_000;
 const today = () => localTodayIso();
@@ -55,6 +56,7 @@ export function ContextoScreen() {
 }
 
 function ContextoContent() {
+  const isAdmin = useIsAdmin();
   const online = useOnlineStatus();
   const qc = useQueryClient();
   const { filters, setFilters, windowQuery, rangeError } = useDashboardFilters();
@@ -100,7 +102,7 @@ function ContextoContent() {
                   <Badge color="blue" variant="light" size="lg">{plural(p.manual_total, 'registrado', 'registrados')}</Badge>
                   <Badge color="grape" variant="light" size="lg">{plural(p.derived_total, 'derivado', 'derivados')}</Badge>
                   <StatusBadge domain="dataNature" code={p.nature} size="sm" />
-                  <StatusBadge domain="dataQuality" code={p.data_quality} size="sm" />
+                  {isAdmin && <StatusBadge domain="dataQuality" code={p.data_quality} size="sm" />}
                 </div>
                 <p className={styles.meta} style={{ marginTop: 0 }}>
                   Derivado: troca de ficha e de academia, deduzidas do histórico. Não é editável.

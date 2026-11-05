@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from ...domain.nutrition.labels import TDEE_BASIS_LABELS
 from ...domain.set_measures import SetMeasure, format_set_measure
 from ...domain.set_sides import WORST_SIDE_RULE_TEXT
 from ...domain.training_goal import goal_label, is_default
@@ -1025,8 +1026,138 @@ def _cycles(data: Mapping[str, Any]) -> str:
     return "\n\n".join(out)
 
 
+_NUTRITION_ROWS = (
+    ("kcal", "Energia", "kcal", 0),
+    ("protein_g", "Proteína", "g", 0),
+    ("carbs_g", "Carboidrato", "g", 0),
+    ("fat_g", "Gordura", "g", 0),
+    ("fiber_g", "Fibra", "g", 0),
+)
+
+
+def _nutrition_basis(bases: Mapping[str, Any]) -> str:
+    if not bases:
+        return TRACO
+    return "; ".join(f"{TDEE_BASIS_LABELS.get(code, code)}: {fmt_int(n)} dia(s)" for code, n in bases.items())
+
+
+def _nutrition(data: Mapping[str, Any]) -> str:
+    out = ["## 7. Nutrição"]
+    section = _section(data, "nutrition")
+    if section is None:
+        out.append(_unavailable_or_empty(data, "nutrition"))
+        return "\n\n".join(out)
+    if not section.get("has_records"):
+        out.append("_Sem registros de nutrição no período._")
+        return "\n\n".join(out)
+
+    window_days = section.get("window_days")
+    logged = section.get("logged_days") or 0
+    out.append(
+        f"- **Dias registrados:** {fmt_int(logged)} de {fmt_int(window_days)} dias do período"
+        f" ({fmt_int(section.get('no_record_days'))} sem registro; {fmt_int(section.get('incomplete_days'))}"
+        " com refeição incompleta, fora das médias)"
+        + ("; hoje ainda aberto, fora das médias" if section.get("open_today") else "")
+    )
+    if not logged:
+        out.append(
+            "_Há refeições no período, mas nenhum dia fechado com total completo dentro de um plano "
+            "publicado; sem médias para mostrar._"
+        )
+        return "\n\n".join(out)
+
+    summary = section.get("summary") or {}
+    nutrients = summary.get("nutrients") or {}
+    out.append("### Resumo do período (média dos dias registrados)")
+    out.append(
+        table(
+            ["Nutriente", "Meta", "Consumido"],
+            [
+                [
+                    label,
+                    fmt_unit((nutrients.get(key) or {}).get("target_avg"), unit, dec),
+                    fmt_unit((nutrients.get(key) or {}).get("intake_avg"), unit, dec),
+                ]
+                for key, label, unit, dec in _NUTRITION_ROWS
+            ],
+            ["l", "r", "r"],
+        )
+    )
+    out.append(
+        "\n".join(
+            [
+                f"- **Gasto calórico médio:** {fmt_unit(summary.get('tdee_avg_kcal'), 'kcal', 0)} "
+                "(da meta gravada do dia; inclui treino e atividades conforme a base do gasto)",
+                f"- **Base do gasto:** {_nutrition_basis(summary.get('tdee_basis_days') or {})}",
+                f"- **Balanço médio (consumido − gasto):** {fmt_signed(summary.get('balance_avg_kcal'), 0, 'kcal/dia')}"
+                f" em {fmt_int(summary.get('balance_days'))} dia(s)",
+                f"- **Balanço total no período:** {fmt_signed(summary.get('balance_total_kcal'), 0, 'kcal')}"
+                " (negativo = déficit)",
+            ]
+        )
+    )
+
+    weeks = section.get("weeks") or []
+    out.append("### Por semana (segunda a domingo)")
+    if weeks:
+        out.append(
+            table(
+                [
+                    "Semana",
+                    "Dias registrados",
+                    "Meta kcal",
+                    "Consumido kcal",
+                    "Proteína (meta/consumido)",
+                    "Carbo (meta/consumido)",
+                    "Gordura (meta/consumido)",
+                    "Fibra (meta/consumido)",
+                    "Gasto kcal",
+                    "Balanço médio kcal",
+                ],
+                [
+                    [
+                        f"{fmt_date(w.get('start'))} a {fmt_date(w.get('end'))}" + (" (parcial)" if w.get("partial") else ""),
+                        f"{fmt_int(w.get('logged_days'))}/{fmt_int(w.get('days_in_window'))}",
+                        fmt_int(((w.get("nutrients") or {}).get("kcal") or {}).get("target_avg")),
+                        fmt_int(((w.get("nutrients") or {}).get("kcal") or {}).get("intake_avg")),
+                        *[
+                            f"{fmt_int(((w.get('nutrients') or {}).get(key) or {}).get('target_avg'))} / "
+                            f"{fmt_int(((w.get('nutrients') or {}).get(key) or {}).get('intake_avg'))} g"
+                            for key in ("protein_g", "carbs_g", "fat_g", "fiber_g")
+                        ],
+                        fmt_int(w.get("tdee_avg_kcal")),
+                        fmt_signed(w.get("balance_avg_kcal"), 0),
+                    ]
+                    for w in weeks
+                ],
+                ["l", "r", "r", "r", "r", "r", "r", "r", "r", "r"],
+            )
+        )
+    else:
+        out.append(SEM_DADOS)
+
+    out.append("### Detalhamento diário (dias registrados)")
+    out.append(
+        _daily_table(
+            [
+                ("Data", "l", lambda d: fmt_date(d.get("local_date"))),
+                ("Meta kcal", "r", lambda d: fmt_int((d.get("target") or {}).get("kcal"))),
+                ("Consumido kcal", "r", lambda d: fmt_int((d.get("intake") or {}).get("kcal"))),
+                ("Proteína g", "r", lambda d: fmt_int((d.get("intake") or {}).get("protein_g"))),
+                ("Carbo g", "r", lambda d: fmt_int((d.get("intake") or {}).get("carbs_g"))),
+                ("Gordura g", "r", lambda d: fmt_int((d.get("intake") or {}).get("fat_g"))),
+                ("Fibra g", "r", lambda d: fmt_int((d.get("intake") or {}).get("fiber_g"))),
+                ("Gasto kcal", "r", lambda d: fmt_int(d.get("tdee_kcal"))),
+                ("Balanço kcal", "r", lambda d: fmt_signed(d.get("energy_balance_kcal"), 0)),
+            ],
+            section.get("days") or [],
+        )
+    )
+    return "\n\n".join(out)
+
+
 def _quality(data: Mapping[str, Any]) -> str:
-    out = ["## 7. Qualidade dos dados"]
+    out = ["## 8. Qualidade dos dados"]
     quality = data.get("quality") or {}
     lines: list[str] = []
 
@@ -1088,6 +1219,7 @@ def render_markdown(data: Mapping[str, Any]) -> str:
         _body(data),
         _cardio(data),
         _cycles(data),
+        _nutrition(data),
         _quality(data),
     ]
     return "\n\n".join(parts).rstrip() + "\n"

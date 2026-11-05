@@ -48,6 +48,7 @@ import type {
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { fmtDate, fmtDecimal } from '@/lib/dashboard-format';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura do gráfico.
 const PesoChart = dynamic(() => import('./CorpoCharts').then((m) => m.PesoChart), {
@@ -187,6 +188,7 @@ function NumberRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function RecomposicaoCard({ sinal }: { sinal: RecompositionSignal }) {
+  const isAdmin = useIsAdmin();
   const visual = RECOMPOSITION_VISUAL[sinal.status];
   return (
     <CardBase
@@ -200,7 +202,7 @@ function RecomposicaoCard({ sinal }: { sinal: RecompositionSignal }) {
           </Badge>
         </Tooltip>
         <StatusBadge domain="dataNature" code={sinal.nature} size="sm" />
-        <StatusBadge domain="dataQuality" code={sinal.data_quality} size="sm" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={sinal.data_quality} size="sm" />}
       </Group>
       <Text size="sm" c={BRAND.textPrimary}>
         {sinal.answer}
@@ -378,6 +380,7 @@ function MedidasCard({ series, dominio }: { series: BodyMeasurementSeries[]; dom
 }
 
 function BioimpedanciaCard({ bio }: { bio: BodyBioimpedance }) {
+  const isAdmin = useIsAdmin();
   return (
     <CardBase
       title="Bioimpedância"
@@ -385,7 +388,7 @@ function BioimpedanciaCard({ bio }: { bio: BodyBioimpedance }) {
     >
       <Group gap="xs">
         <StatusBadge domain="dataNature" code="ESTIMATED" size="sm" />
-        <StatusBadge domain="dataQuality" code={bio.data_quality} size="sm" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={bio.data_quality} size="sm" />}
       </Group>
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
         <NumberRow label="Gordura corporal">

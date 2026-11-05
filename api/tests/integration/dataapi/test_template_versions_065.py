@@ -43,9 +43,13 @@ MIGRATION_065 = m.DEFAULT_MIGRATIONS_DIR / "065_workout_plan_template_versions.p
 # (objetivo de treino) tambem cria coluna na tabela de versoes: sem ela aqui, a
 # 065 recriada volta sem `training_goal` e as leituras de versao dao 1054
 # (`test_template_versions_historico_pr4.py` roda depois, no mesmo schema).
+# A 105 (`archived_at`) repete o caso: sem ela aqui, o historico de versoes dava
+# `Unknown column 'v.archived_at'` (1054). O unitario
+# `test_cobertura_migracoes_schema_de_teste.py` vigia esta lista.
 MIGRATIONS_SOBRE_A_065 = (
     m.DEFAULT_MIGRATIONS_DIR / "073_modo_contagem_volume.py",
     m.DEFAULT_MIGRATIONS_DIR / "093_training_goal.py",
+    m.DEFAULT_MIGRATIONS_DIR / "105_archived_at_versoes_e_planos.py",
 )
 PEITORAL = 52
 

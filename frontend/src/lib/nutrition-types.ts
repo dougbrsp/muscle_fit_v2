@@ -61,6 +61,11 @@ export type NutritionPlan = NutritionPlanSettings & {
   engine_version: string | null;
   effective_from: string | null;
   superseded_at: string | null;
+  /** Arquivar só oculta da lista (migração 105). Ausente em backend anterior = não arquivado. */
+  archived?: boolean;
+  archived_at?: string | null;
+  /** Regra do backend (`plan.is_archivable_plan`): só o plano substituído e ainda visível. */
+  can_archive?: boolean;
   published_at: string | null;
   created_by: number | null;
   published_by: number | null;

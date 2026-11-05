@@ -817,6 +817,37 @@ def _collect_cycles(conn: Any, *, user_id: int, window: WindowInfo) -> dict[str,
     }
 
 
+def _collect_nutrition(conn: Any, *, user_id: int, window: WindowInfo) -> dict[str, Any]:
+    """Nutricao na janela: so CONSOME o dashboard de nutricao (mesma carga e alinhamento de
+    `GET /nutrition/dashboard`) e o resumo do dono (`domain.nutrition.report_window`). Sem
+    conta de meta, gasto ou balanco aqui. Leitura apenas: nao materializa metas."""
+    from ... import nutrition_dashboard as nd
+    from ...domain.nutrition import dashboard as dash
+    from ...domain.nutrition import report_window
+    from ...nutrition_schema import require_diary_tables, require_nutrition_tables
+    from ...nutrition_targets_service import load_published_plans
+    from ..dashboard.time_windows import user_today_for
+
+    today = user_today_for(conn, user_id)
+    days = dash.window_dates(window.date_to, (window.date_to - window.date_from).days + 1)
+    with conn.cursor() as cur:
+        require_nutrition_tables(cur)
+        require_diary_tables(cur)
+        target_rows, meal_rows = nd.read_window_rows(cur, user_id, days[0], window.date_to, today)
+        plans = load_published_plans(cur, user_id)
+    rows_by_day, targets, totals = nd.align_window(days, target_rows, meal_rows)
+    report = report_window.window_report(
+        days,
+        today,
+        dash.first_plan_start(nd.plan_versions(plans)),
+        targets,
+        totals,
+        [None if r is None else r.get("tdee_kcal") for r in rows_by_day],
+        [None if r is None else r.get("tdee_basis") for r in rows_by_day],
+    )
+    return {"available": True, **report}
+
+
 # ---------------------------------------------------------------------------
 # Orquestracao
 # ---------------------------------------------------------------------------
@@ -828,6 +859,7 @@ SECTION_LABELS: Mapping[str, str] = {
     "body": "Corpo",
     "cardio": "Cardio",
     "cycles": "Ciclos de treino",
+    "nutrition": "Nutrição",
 }
 
 
@@ -855,6 +887,9 @@ def _empty_sources(data: Mapping[str, Any]) -> list[str]:
     cardio = data.get("cardio") or {}
     if cardio.get("available") and not (cardio.get("totals") or {}).get("sessions"):
         out.append("Cardio (Intervals.icu)")
+    nutrition = data.get("nutrition") or {}
+    if nutrition.get("available") and not nutrition.get("has_records"):
+        out.append("Refeições (nutrição)")
     return out
 
 
@@ -890,6 +925,7 @@ def collect_report_data(
         "body": lambda: _collect_body(conn, user_id=owner, window=window),
         "cardio": lambda: _collect_cardio(conn, user_id=owner, window=window),
         "cycles": lambda: _collect_cycles(conn, user_id=owner, window=window),
+        "nutrition": lambda: _collect_nutrition(conn, user_id=owner, window=window),
     }
     unavailable: list[str] = []
     timings: dict[str, float] = {}

@@ -8,6 +8,7 @@ import type { DataQuality } from '@/lib/dashboard-v3-types';
 import { BRAND } from '@/theme';
 import { PartialState } from './states';
 import { StatusBadge } from './StatusBadge';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * Cartão de UM bloco da visão geral (F1.6): título, a PERGUNTA que o bloco
@@ -39,6 +40,7 @@ export function OverviewBlockCard({
   drilldownLabel?: string;
   children?: ReactNode;
 }) {
+  const isAdmin = useIsAdmin();
   return (
     <Paper
       withBorder
@@ -59,7 +61,7 @@ export function OverviewBlockCard({
                 {question}
               </Text>
             </div>
-            <StatusBadge domain="dataQuality" code={quality} size="xs" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={quality} size="xs" />}
           </Group>
 
           <Text size="md" fw={600}>

@@ -151,6 +151,12 @@ def plan_state(status: Any, superseded_at: Any) -> PlanState:
     return PlanState.CURRENT if superseded_at is None else PlanState.SUPERSEDED
 
 
+def is_archivable_plan(status: Any, superseded_at: Any) -> bool:
+    """Arquivar (só ocultar da lista, reversível) vale SÓ para plano substituído: o rascunho tem DELETE e o vigente
+    governa a meta de hoje. Arquivado continua alimentando o histórico de metas (`load_published_plans`)."""
+    return plan_state(status, superseded_at) is PlanState.SUPERSEDED
+
+
 @dataclass(frozen=True)
 class ManualMacros:
     """Gramas manuais do dia (D6): proteína, carboidrato e gordura."""

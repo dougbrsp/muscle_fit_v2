@@ -50,6 +50,7 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, PartialNote, PeriodFilter, QueryGate, SheetRow } from './shared';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 const STALE_TIME = 60_000;
 const ZONE_COLORS: Record<(typeof ZONE_KEYS)[number], string> = {
@@ -122,6 +123,7 @@ function SmallLine({
 }
 
 function CardioBody({ payload }: { payload: CardioResponse }) {
+  const isAdmin = useIsAdmin();
   const limitacoes = useMemo(() => collectCardioLimitations(payload), [payload]);
   const { totals } = payload;
   const zonas = useMemo(() => weeklyZoneRows(payload.weeks), [payload.weeks]);
@@ -158,7 +160,7 @@ function CardioBody({ payload }: { payload: CardioResponse }) {
         <ListBlock>
           <div className={styles.badges}>
             <StatusBadge domain="dataNature" code={payload.nature} size="sm" />
-            <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />}
           </div>
           <p className={styles.meta} style={{ marginTop: 0 }}>
             {fmtDate(payload.window.date_from)} a {fmtDate(payload.window.date_to)} · carga (Intervals) {num(totals.training_load)} · sincronizado em{' '}

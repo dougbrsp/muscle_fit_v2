@@ -52,6 +52,7 @@ import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtDateTime, fmtDecimal, fmtInt, fmtPercent } from '@/lib/dashboard-format';
 import type { AthleteHrZones } from '@/lib/hr-zones';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 // COD-14: recharts sob demanda; o placeholder tem a altura do gráfico (240).
 const chartLoading = () => <ChartPlaceholder height={240} />;
@@ -236,6 +237,7 @@ function Numero({ label, value, unit }: { label: string; value: number | null; u
 }
 
 function ResumoCard({ payload }: { payload: CardioResponse }) {
+  const isAdmin = useIsAdmin();
   const { totals } = payload;
   return (
     <CardBase
@@ -244,7 +246,7 @@ function ResumoCard({ payload }: { payload: CardioResponse }) {
     >
       <Group gap="sm" wrap="wrap">
         <StatusBadge domain="dataNature" code={payload.nature} size="sm" />
-        <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />}
         <Tooltip
           label="Os números vêm do cache mantido pelo sincronismo automático, não de uma consulta ao vivo."
           withArrow

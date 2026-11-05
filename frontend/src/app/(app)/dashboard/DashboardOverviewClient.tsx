@@ -36,6 +36,7 @@ import type {
 } from '@/lib/dashboard-overview-types';
 import { exerciseProgressHref, fatigueContextLabel, statusWithContextLabel } from '@/lib/exercise-progress';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * `/dashboard` — a visão geral do hub (plano §7, §8.1 do brief, §11; F1.6).
@@ -380,6 +381,7 @@ function PriorityMusclesCard({ block, filters }: { block: PriorityMusclesBlock; 
 // ---------------------------------------------------------------------------
 
 function RecoveryCard({ block, filters }: { block: RecoveryBlock; filters: DashboardFilters }) {
+  const isAdmin = useIsAdmin();
   const reavaliar = reassessHoursLabel(block.reassess_after_hours);
   return (
     <OverviewBlockCard
@@ -393,7 +395,7 @@ function RecoveryCard({ block, filters }: { block: RecoveryBlock; filters: Dashb
     >
       <Group gap={6} wrap="wrap">
         <StatusBadge domain="severity" code={block.level} size="xs" />
-        <StatusBadge domain="dataQuality" code={block.uncertainty} size="xs" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={block.uncertainty} size="xs" />}
         {!block.allow_intensification && (
           <Text size="xs" c={BRAND.textMuted}>
             Intensificação não recomendada{block.intensification_blocked_reason ? `: ${block.intensification_blocked_reason}` : ''}

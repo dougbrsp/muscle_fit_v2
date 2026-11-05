@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import type { DataQuality } from '@/lib/dashboard-v3-types';
 import { BRAND } from '@/theme';
 import { statusVisual } from '@/lib/dashboard-status';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * Os quatro estados não-felizes de um bloco do dashboard (plano §11):
@@ -129,7 +130,10 @@ export function PartialState({
   fixHref?: string | null;
   fixLabel?: string;
 }) {
+  // Alerta de confiança é só para admin; não-admin (e loading) não vê nada.
+  const isAdmin = useIsAdmin();
   const degraded = quality != null && quality !== 'HIGH';
+  if (!isAdmin) return null;
   if (!degraded && limitations.length === 0) return null;
 
   const visual = quality ? statusVisual('dataQuality', quality) : null;

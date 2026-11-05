@@ -1,15 +1,19 @@
 'use client';
 
-import { Alert, Badge, Button, Group, List, Modal, Paper, Stack, Text, Title } from '@mantine/core';
-import { IconAlertTriangle, IconEye, IconHistory, IconRotate } from '@tabler/icons-react';
+import { Alert, Badge, Button, Group, List, Modal, Paper, Stack, Switch, Text, Title } from '@mantine/core';
+import { IconAlertTriangle, IconArchive, IconArchiveOff, IconEye, IconHistory, IconRotate } from '@tabler/icons-react';
 import { useMediaQuery } from '@mantine/hooks';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
+  readArchiveError,
   readRevertError,
+  versionArchivePath,
   versionHistoryRows,
+  versionsListPath,
   type RevertError,
+  type TemplateVersionListItem,
   type TemplateVersionListResponse,
   type VersionHistoryRow,
 } from '@/lib/template-versions';
@@ -35,11 +39,25 @@ type ListProps = {
   canManage: boolean;
   onView: (versionId: number) => void;
   onRevert: (row: VersionHistoryRow) => void;
+  /** Arquivar/desarquivar (migração 105); ausentes = sem as ações. A regra "pode arquivar" vem do backend. */
+  onArchive?: (row: VersionHistoryRow) => void;
+  onUnarchive?: (row: VersionHistoryRow) => void;
+  /** Versão com a ação em andamento (o botão mostra o carregando). */
+  archivingId?: number | null;
   /** M97 F3: objetivos de `GET /training-goals` para o badge (ausente = sem badge). */
   trainingGoals?: TrainingGoalsResponse;
 };
 
-export function TemplateVersionHistoryList({ rows, canManage, onView, onRevert, trainingGoals }: ListProps) {
+export function TemplateVersionHistoryList({
+  rows,
+  canManage,
+  onView,
+  onRevert,
+  onArchive,
+  onUnarchive,
+  archivingId = null,
+  trainingGoals,
+}: ListProps) {
   if (rows.length === 0) {
     return (
       <Text size="sm" c={BRAND.textMuted}>
@@ -55,8 +73,9 @@ export function TemplateVersionHistoryList({ rows, canManage, onView, onRevert, 
           withBorder
           radius="md"
           p="sm"
-          style={row.isCurrent ? { borderColor: BRAND.orange, borderWidth: 2 } : undefined}
+          style={row.isCurrent ? { borderColor: BRAND.orange, borderWidth: 2 } : row.archived ? { opacity: 0.6 } : undefined}
           data-current={row.isCurrent ? 'true' : undefined}
+          data-archived={row.archived ? 'true' : undefined}
         >
           <Stack gap={6}>
             <Group gap={8} wrap="wrap">
@@ -66,6 +85,11 @@ export function TemplateVersionHistoryList({ rows, canManage, onView, onRevert, 
               {row.isCurrent && (
                 <Badge variant="light" color="green">
                   Vigente
+                </Badge>
+              )}
+              {row.archived && (
+                <Badge variant="outline" color="gray" data-testid="version-archived-badge">
+                  Arquivada
                 </Badge>
               )}
               {row.revertedFrom && (
@@ -110,6 +134,30 @@ export function TemplateVersionHistoryList({ rows, canManage, onView, onRevert, 
                   onClick={() => onRevert(row)}
                 >
                   Reverter para esta versão
+                </Button>
+              )}
+              {canManage && onArchive && row.canArchive && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  leftSection={<IconArchive size={14} />}
+                  loading={archivingId === row.id}
+                  onClick={() => onArchive(row)}
+                >
+                  Arquivar
+                </Button>
+              )}
+              {canManage && onUnarchive && row.archived && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  leftSection={<IconArchiveOff size={14} />}
+                  loading={archivingId === row.id}
+                  onClick={() => onUnarchive(row)}
+                >
+                  Desarquivar
                 </Button>
               )}
             </Group>
@@ -158,11 +206,25 @@ export function TemplateVersionHistoryPanel({ templateId, canManage, hasDraft = 
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [confirming, setConfirming] = useState<VersionHistoryRow | null>(null);
   const [revertError, setRevertError] = useState<RevertError | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const trainingGoalsQuery = useTrainingGoals();
+  // A chave entra depois do prefixo `versionsQueryKey`: invalidar o prefixo (builder, reversão) atualiza as duas listas.
   const versionsQuery = useQuery({
-    queryKey: versionsQueryKey(templateId),
-    queryFn: () => apiFetch<TemplateVersionListResponse>(`/workout-plan-templates/${templateId}/versions`),
+    queryKey: [...versionsQueryKey(templateId), { includeArchived: showArchived }],
+    queryFn: () => apiFetch<TemplateVersionListResponse>(versionsListPath(templateId, showArchived)),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: ({ versionId, archive }: { versionId: number; archive: boolean }) =>
+      apiFetch<TemplateVersionListItem>(versionArchivePath(templateId, versionId, archive), { method: 'POST' }),
+    onSuccess: async () => {
+      setArchiveError(null);
+      await queryClient.invalidateQueries({ queryKey: versionsQueryKey(templateId) });
+    },
+    onError: (error: unknown) => setArchiveError(readArchiveError(error)),
   });
 
   const versionQuery = useQuery({
@@ -201,6 +263,20 @@ export function TemplateVersionHistoryPanel({ templateId, canManage, hasDraft = 
           Cada mudança estrutural (slots, itens, modo, tipo de treino, grade ou intenção) gera uma versão nova; as
           anteriores ficam guardadas e o histórico do aluno continua sendo lido com a versão da época.
         </Text>
+        {canManage && (
+          <Switch
+            size="sm"
+            label="Mostrar arquivadas"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.currentTarget.checked)}
+            data-testid="show-archived-versions"
+          />
+        )}
+        {archiveError && (
+          <Alert color="red" icon={<IconAlertTriangle size={16} />} withCloseButton onClose={() => setArchiveError(null)}>
+            {archiveError}
+          </Alert>
+        )}
         {versionsQuery.isLoading && <Text size="sm">Carregando histórico...</Text>}
         {versionsQuery.isError && (
           <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -212,6 +288,9 @@ export function TemplateVersionHistoryPanel({ templateId, canManage, hasDraft = 
             rows={rows}
             trainingGoals={trainingGoalsQuery.data}
             canManage={canManage}
+            archivingId={archiveMutation.isPending ? archiveMutation.variables.versionId : null}
+            onArchive={(row) => archiveMutation.mutate({ versionId: row.id, archive: true })}
+            onUnarchive={(row) => archiveMutation.mutate({ versionId: row.id, archive: false })}
             onView={setViewingId}
             onRevert={(row) => {
               setRevertError(null);
