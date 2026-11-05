@@ -94,6 +94,40 @@ def _require_tables(cur: Any) -> None:
     require_diary_tables(cur)
 
 
+def read_window_rows(cur: Any, aluno: int, inicio: date, fim: date, hoje: date) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Linhas GRAVADAS da janela: metas materializadas (forma pública) e totais das refeições. Compartilhada
+    com o relatório Markdown (`intelligence/report`), que consome a mesma composição do dashboard."""
+    metas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio, fim)]
+    cur.execute(MEAL_TOTALS_SQL, (aluno, inicio, fim))
+    return metas, list(cur.fetchall() or [])
+
+
+def align_window(dias: Any, metas_linhas: Any, refeicoes: Any) -> tuple[list[Any], list[Any], list[Any]]:
+    """Metas (linha, `MacroTargets`) e total do dia (motor) alinhados a `dias`; sem dado = `None`."""
+    metas_por_dia = dash.last_by_day(dias, ((_as_date(m["local_date"]), m) for m in metas_linhas))
+    alvos = [
+        None if m is None else target_macros(m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"], m["fiber_g"])
+        for m in metas_por_dia
+    ]
+    totais = [day_totals(grupo) for grupo in dash.group_by_day(dias, ((_as_date(r["local_date"]), r) for r in refeicoes))]
+    return metas_por_dia, alvos, totais
+
+
+def plan_versions(planos: Any) -> list[dash.PlanVersion]:
+    """Versões publicadas do plano na forma que o `dashboard` usa (início, estratégia e alvo)."""
+    return [
+        dash.PlanVersion(
+            plan_id=ref.plan_id,
+            effective_from=ref.effective_from,
+            published_at=ref.published_at,
+            strategy=planos.settings[ref.plan_id].strategy.value,
+            goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
+            goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent,
+        )
+        for ref in planos.refs
+    ]
+
+
 @router.get("/today")
 def get_today(
     user_id: Optional[int] = Query(default=None),
@@ -141,9 +175,7 @@ def get_dashboard(
         inicio_lido = dias_lidos[0]
         ensure_diary_targets(conn, aluno, [hoje], today=hoje)
         with conn.cursor() as cur:
-            metas_linhas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio_lido, hoje)]
-            cur.execute(MEAL_TOTALS_SQL, (aluno, inicio_lido, hoje))
-            refeicoes = list(cur.fetchall() or [])
+            metas_linhas, refeicoes = read_window_rows(cur, aluno, inicio_lido, hoje, hoje)
             cur.execute(MUSCLE_WINDOW_SQL, (aluno, inicio_lido, hoje))
             musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
@@ -153,14 +185,7 @@ def get_dashboard(
             )
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
-    metas_por_dia = dash.last_by_day(dias_lidos, ((_as_date(m["local_date"]), m) for m in metas_linhas))
-    alvos_lidos = [
-        None if m is None else target_macros(m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"], m["fiber_g"])
-        for m in metas_por_dia
-    ]
-    totais_lidos = [
-        day_totals(grupo) for grupo in dash.group_by_day(dias_lidos, ((_as_date(r["local_date"]), r) for r in refeicoes))
-    ]
+    metas_por_dia, alvos_lidos, totais_lidos = align_window(dias_lidos, metas_linhas, refeicoes)
     series = entradas.series
     pesos_lidos = dash.last_by_day(dias_lidos, ((r.local_date, r.number) for r in series.weight))
     gorduras_lidas = dash.positive_series(
@@ -176,17 +201,7 @@ def get_dashboard(
     alvos, totais = alvos_lidos[recorte], totais_lidos[recorte]
     pesos, gorduras, musculos = pesos_lidos[recorte], gorduras_lidas[recorte], musculos_lidos[recorte]
 
-    versoes = [
-        dash.PlanVersion(
-            plan_id=ref.plan_id,
-            effective_from=ref.effective_from,
-            published_at=ref.published_at,
-            strategy=planos.settings[ref.plan_id].strategy.value,
-            goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
-            goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent,
-        )
-        for ref in planos.refs
-    ]
+    versoes = plan_versions(planos)
     estados = dash.day_states(dias, hoje, dash.first_plan_start(versoes), totais)
     linhas_dia = dash.day_rows(dias, alvos, totais, estados)
     aderencia = dash.window_adherence(linhas_dia)
@@ -282,4 +297,4 @@ def get_dashboard(
     }
 
 
-__all__ = ["router"]
+__all__ = ["align_window", "plan_versions", "read_window_rows", "router"]

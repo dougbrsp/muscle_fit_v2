@@ -57,6 +57,7 @@ import type {
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtInt } from '@/lib/dashboard-format';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * `/dashboard/contexto` — "o que mais estava acontecendo?" (plano §7, §11;
@@ -170,6 +171,7 @@ function CardBase({ title, hint, children }: { title: string; hint?: string; chi
 }
 
 function ResumoCard({ payload }: { payload: ContextResponse }) {
+  const isAdmin = useIsAdmin();
   const dias = payload.days_since_last_session;
   return (
     <CardBase
@@ -191,7 +193,7 @@ function ResumoCard({ payload }: { payload: ContextResponse }) {
           </Badge>
         </Tooltip>
         <StatusBadge domain="dataNature" code={payload.nature} size="sm" />
-        <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={payload.data_quality} size="sm" />}
       </Group>
 
       <Group gap="xs" wrap="wrap">

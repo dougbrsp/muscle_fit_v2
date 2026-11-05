@@ -9,6 +9,7 @@ import { fmtDateTime } from '@/lib/dashboard-format';
 import { insightHref, insightSections } from '@/lib/dashboard-overview';
 import type { Insight } from '@/lib/dashboard-overview-types';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 import { StatusBadge } from './StatusBadge';
 
 /**
@@ -36,7 +37,8 @@ export function InsightCard({
   /** Na home mostra Observação + Ação abertos e o resto em lista curta. */
   compact?: boolean;
 }) {
-  const sections = insightSections(insight);
+  const isAdmin = useIsAdmin();
+  const sections = insightSections(insight).filter((s) => isAdmin || s.key !== 'confidence');
   const href = insightHref(insight, filters);
   const cooldown = insight.cooldown;
   const selo = cooldownBadge(cooldown);
@@ -57,7 +59,7 @@ export function InsightCard({
           </Text>
           <Group gap={6}>
             <StatusBadge domain="severity" code={insight.severity} size="xs" />
-            <StatusBadge domain="dataQuality" code={insight.data_quality} size="xs" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={insight.data_quality} size="xs" />}
             {selo && cooldown && (
               <Tooltip
                 label={

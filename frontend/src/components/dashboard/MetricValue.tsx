@@ -4,6 +4,7 @@ import { Group, Text, Tooltip } from '@mantine/core';
 import type { MantineSize } from '@mantine/core';
 import { EM_DASH, fmtDecimal } from '@/lib/dashboard-format';
 import type { Metric } from '@/lib/dashboard-v3-types';
+import { useIsAdmin } from '@/lib/use-is-admin';
 import { StatusBadge } from './StatusBadge';
 import { statusVisual } from '@/lib/dashboard-status';
 
@@ -42,6 +43,7 @@ export function MetricValue({
   showQuality?: boolean;
   emptyHint?: string;
 }) {
+  const isAdmin = useIsAdmin();
   if (!metric) {
     return (
       <Tooltip label={emptyHint} withArrow multiline w={280}>
@@ -60,7 +62,7 @@ export function MetricValue({
   const natureVisual = statusVisual('dataNature', metric.nature);
   const showNatureBadge =
     showNature && metric.nature !== 'OBSERVED' && metric.nature !== 'DERIVED';
-  const showQualityBadge = showQuality && metric.data_quality !== 'HIGH';
+  const showQualityBadge = isAdmin && showQuality && metric.data_quality !== 'HIGH';
 
   // `title` além do Tooltip: cobre leitura por teclado/leitor de tela e a
   // exportação estática, onde o hover do Mantine pode não estar disponível.

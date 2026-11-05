@@ -192,6 +192,13 @@ TDEE_BASIS_NOTES: Final[Mapping[str, str]] = {
     ),
 }
 
+# Nome curto da base do gasto (`ee.TdeeBasis`), para o relatório Markdown (a tela usa `TDEE_BASIS_NOTES`).
+TDEE_BASIS_LABELS: Final[Mapping[str, str]] = {
+    "classic": "Clássico (fator de atividade e treino do dia)",
+    "auto_synced": "Automático, Intervals sincronizado (treino e atividades somados)",
+    "auto_fallback": "Automático sem sincronizar (estimado pelo fator; treino e cardio não somados)",
+}
+
 # "Rotina fora do exercício" (modo automático): o que a pessoa faz no dia sem contar o treino. Os códigos são os de
 # `ActivityLevel` (a coluna `activity_level` do plano guarda a rotina) e o fator vem da tabela de NÃO-exercício.
 ROUTINE_LEVEL_LABELS: Final[Mapping[ActivityLevel, str]] = {

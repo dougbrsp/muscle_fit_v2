@@ -42,6 +42,7 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 export function CorpoScreen() {
   return (
@@ -71,6 +72,7 @@ function CorpoContent() {
 }
 
 function CorpoBody({ payload }: { payload: BodyResponse }) {
+  const isAdmin = useIsAdmin();
   const limitacoes = useMemo(() => collectBodyLimitations(payload), [payload]);
   const dominio = useMemo(() => sharedTimeDomain(payload.window.date_from, payload.window.date_to), [payload]);
   const marcos = useMemo(
@@ -97,7 +99,7 @@ function CorpoBody({ payload }: { payload: BodyResponse }) {
           <div className={styles.badges}>
             <Badge color={visual.color} variant="light" size="lg">{visual.label}</Badge>
             <StatusBadge domain="dataNature" code={sinal.nature} size="sm" />
-            <StatusBadge domain="dataQuality" code={sinal.data_quality} size="sm" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={sinal.data_quality} size="sm" />}
           </div>
           <p className={styles.meta} style={{ marginTop: 0 }}>{visual.description}</p>
           <p className={styles.body} style={{ marginTop: 8 }}>{sinal.answer}</p>
@@ -247,7 +249,7 @@ function CorpoBody({ payload }: { payload: BodyResponse }) {
         <ListBlock>
           <div className={styles.badges} style={{ margin: 0 }}>
             <StatusBadge domain="dataNature" code="ESTIMATED" size="sm" />
-            <StatusBadge domain="dataQuality" code={bio.data_quality} size="sm" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={bio.data_quality} size="sm" />}
           </div>
         </ListBlock>
         <ListRow title="Gordura corporal" value={metricText(bio.body_fat_percent)} />

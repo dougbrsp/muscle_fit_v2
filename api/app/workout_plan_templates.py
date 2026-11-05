@@ -65,12 +65,15 @@ from .template_safety_validation import (
     split_report_by_authorship,
 )
 from .template_versions import (
+    ARCHIVE_VERSION_SQL,
+    UNARCHIVE_VERSION_SQL,
     TemplateVersionConflict,
     canonical_header,
     canonical_intent,
     canonical_slots,
     counting_mode_of,
     current_version,
+    is_archivable,
     load_version_tree,
     resolve_version_now,
     revert_to_version,
@@ -1277,7 +1280,7 @@ def delete_template(template_id: int, identity: Identity = Depends(require_admin
 # ---------------------------------------------------------------------------
 
 VERSIONS_LIST_SQL = """
-SELECT v.id, v.version_number, v.effective_from, v.superseded_at, v.change_summary, v.training_goal,
+SELECT v.id, v.version_number, v.effective_from, v.superseded_at, v.archived_at, v.change_summary, v.training_goal,
        v.created_by_user_id, u.username AS author_username, u.full_name AS author_full_name,
        r.version_number AS reverted_from_number
 FROM workout_plan_template_versions v
@@ -1286,6 +1289,12 @@ LEFT JOIN workout_plan_template_versions r ON r.id = v.reverted_from_version_id
 WHERE v.template_id = %s
 ORDER BY v.version_number DESC
 """
+# Lista padrao do historico: sem as arquivadas (migracao 105); `include_archived=true` usa `VERSIONS_LIST_SQL`.
+VERSIONS_LIST_VISIBLE_SQL = VERSIONS_LIST_SQL.replace(
+    "WHERE v.template_id = %s\n", "WHERE v.template_id = %s AND v.archived_at IS NULL\n"
+)
+# Uma versao no formato da lista (resposta de arquivar/desarquivar).
+VERSION_ITEM_SQL = VERSIONS_LIST_SQL.replace("WHERE v.template_id = %s\n", "WHERE v.template_id = %s AND v.id = %s\n")
 
 LIVE_TEMPLATE_SQL = (
     "SELECT id, name, description, is_active FROM workout_plan_templates WHERE id = %s AND deleted_at IS NULL"
@@ -1311,34 +1320,91 @@ def _author_name(row: dict[str, Any]) -> Optional[str]:
     return (row.get("author_full_name") or row.get("author_username") or None)
 
 
+def _version_item(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "number": int(row["version_number"]),
+        "effective_from": row.get("effective_from"),
+        "superseded_at": row.get("superseded_at"),
+        "author_user_id": row.get("created_by_user_id"),
+        "author_name": _author_name(row),
+        "reverted_from_number": row.get("reverted_from_number"),
+        "change_summary": row.get("change_summary"),
+        "is_current": row.get("superseded_at") is None,
+        # M97 F3: objetivo da versao (badge do historico; dono `training_goal`).
+        "training_goal": training_goal_of(row),
+        # Arquivar so oculta (migracao 105). `can_archive` e a regra do backend (`template_versions.is_archivable`).
+        "archived": row.get("archived_at") is not None,
+        "archived_at": row.get("archived_at"),
+        "can_archive": is_archivable(row.get("superseded_at"), row.get("archived_at")),
+    }
+
+
 @router.get("/{template_id}/versions")
-def list_template_versions(template_id: int):
+def list_template_versions(template_id: int, include_archived: bool = Query(default=False)):
     """Historico de versoes, da mais nova para a mais antiga. Lista LEVE:
-    sem slots nem itens (o detalhe e `GET /{id}/versions/{vid}`)."""
+    sem slots nem itens (o detalhe e `GET /{id}/versions/{vid}`). Sem as
+    arquivadas; `include_archived=true` traz todas."""
     with transaction() as conn:
         with conn.cursor() as cur:
             _live_template_or_404(cur, template_id)
-            cur.execute(VERSIONS_LIST_SQL, (template_id,))
+            cur.execute(VERSIONS_LIST_SQL if include_archived else VERSIONS_LIST_VISIBLE_SQL, (template_id,))
             rows = list(cur.fetchall() or [])
-    return {
-        "template_id": template_id,
-        "items": [
-            {
-                "id": int(row["id"]),
-                "number": int(row["version_number"]),
-                "effective_from": row.get("effective_from"),
-                "superseded_at": row.get("superseded_at"),
-                "author_user_id": row.get("created_by_user_id"),
-                "author_name": _author_name(row),
-                "reverted_from_number": row.get("reverted_from_number"),
-                "change_summary": row.get("change_summary"),
-                "is_current": row.get("superseded_at") is None,
-                # M97 F3: objetivo da versao (badge do historico; dono `training_goal`).
-                "training_goal": training_goal_of(row),
-            }
-            for row in rows
-        ],
-    }
+    return {"template_id": template_id, "items": [_version_item(row) for row in rows]}
+
+
+def _version_item_or_404(cur, template_id: int, version_id: int) -> dict[str, Any]:
+    cur.execute(VERSION_ITEM_SQL, (template_id, version_id))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Versão não encontrada neste modelo.")
+    return dict(row)
+
+
+@router.post("/{template_id}/versions/{version_id}/archive")
+def archive_template_version(template_id: int, version_id: int):
+    """Oculta do historico uma versao NAO vigente (reversivel; nada e apagado e
+    nada muda no revert, na resolucao por data nem nas fichas geradas).
+
+    - 404: versao de outro Modelo, inexistente, ou Modelo excluido;
+    - 409: a versao e a vigente (so versoes antigas se arquivam);
+    - ja arquivada: 200 sem mudar nada (idempotente).
+    Permissao: a do router (admin ou personal_trainer; 403 para os demais)."""
+    from .template_assignments import db_now
+
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            _live_template_or_404(cur, template_id)
+            item = _version_item_or_404(cur, template_id, version_id)
+            if item.get("archived_at") is None:
+                if not is_archivable(item.get("superseded_at"), item.get("archived_at")):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"A v{item['version_number']} é a versão vigente e não pode ser arquivada.",
+                    )
+                cur.execute(ARCHIVE_VERSION_SQL, (db_now(cur), version_id, template_id))
+                if int(cur.rowcount or 0) == 0:
+                    # Corrida: outra chamada pode já ter arquivado (idempotente, 200); senão, 409.
+                    if _version_item_or_404(cur, template_id, version_id).get("archived_at") is None:
+                        raise HTTPException(
+                            status_code=409, detail="O modelo foi alterado ao mesmo tempo; recarregue e tente de novo."
+                        )
+                item = _version_item_or_404(cur, template_id, version_id)
+    return _version_item(item)
+
+
+@router.post("/{template_id}/versions/{version_id}/unarchive")
+def unarchive_template_version(template_id: int, version_id: int):
+    """Volta a versao arquivada para o historico. Nao arquivada: 200 sem mudar nada.
+    404 como no `archive`."""
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            _live_template_or_404(cur, template_id)
+            item = _version_item_or_404(cur, template_id, version_id)
+            if item.get("archived_at") is not None:
+                cur.execute(UNARCHIVE_VERSION_SQL, (version_id, template_id))
+                item = _version_item_or_404(cur, template_id, version_id)
+    return _version_item(item)
 
 
 # Nomes para o RESUMO somente leitura de uma versao (exercicio, equipamento,

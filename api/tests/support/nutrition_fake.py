@@ -87,7 +87,7 @@ class FakeNutritionDB:
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
             "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None, "maintenance_kcal_adjust": 0,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
-            "published_at": published_at, "created_at": self.now, "updated_at": self.now,
+            "archived_at": None, "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }
         base.update(settings)
         self.plans[plano_id] = base
@@ -231,6 +231,25 @@ class FakeCursor:
         if sql == plans_mod._BY_USER_SQL:
             linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"])
             return self._result(linhas[: int(p[1])])
+        if sql == plans_mod._BY_USER_VISIBLE_SQL:
+            linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0] and r["archived_at"] is None),
+                            key=lambda r: -r["id"])
+            return self._result(linhas[: int(p[1])])
+        if sql == plans_mod._ARCHIVE_SQL:
+            agora, plano_id, status = p
+            plano = db.plans.get(int(plano_id))
+            if plano and plano["archived_at"] is None and plano["status"] == status and plano["superseded_at"] is not None:
+                plano["archived_at"] = agora
+                self.rowcount = 1
+                db.writes.append(f"archive plan {plano_id}")
+            return self._result([])
+        if sql == plans_mod._UNARCHIVE_SQL:
+            plano = db.plans.get(int(p[0]))
+            if plano and plano["archived_at"] is not None:
+                plano["archived_at"] = None
+                self.rowcount = 1
+                db.writes.append(f"unarchive plan {p[0]}")
+            return self._result([])
         if sql == plans_mod._DRAFT_COUNT_SQL:
             return self._result([{"n": sum(1 for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1])}])
         if sql == plans_mod._CURRENT_FOR_UPDATE_SQL:

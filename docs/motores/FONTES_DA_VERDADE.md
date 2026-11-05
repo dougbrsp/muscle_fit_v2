@@ -6882,3 +6882,26 @@ Dono: `api/app/domain/nutrition/energy_expenditure.py` (`SessionKcal`, `resolve_
 - Dia com várias sessões sem kcal, algumas sem duração: antes ficava sem treino (`training_kcal_unavailable`); agora soma a MET das que têm duração.
 - Medido em produção em 05/11 (só leitura): em 60 dias, 2 usuários com treino e 46 dias com treino; 1 dia misto (31/10, já congelado) e 0 dias sem kcal com sessão sem duração. Hoje e ontem: 1 dia com treino, nenhum misto e nenhum sem duração. O deploy não muda a meta de nenhum usuário.
 - Sem migração e sem escrita em produção.
+
+## 91. Nutrição no relatório Markdown (2026-11-05)
+
+Dono: `api/app/domain/nutrition/report_window.py` (`window_report`), Python puro. Compõe `dashboard.day_states`, `weekly_budget.day_balance` (meta × consumido e balanço = consumido − gasto) e `weekly_budget.week_start`; rótulo da base do gasto em `labels.TDEE_BASIS_LABELS`. Consumidor: `intelligence/report/markdown_report_service._collect_nutrition` (seção "7. Nutrição" do `GET /reports/markdown`; "Qualidade dos dados" passou a ser a 8) e o renderer, que só formata. A carga é a do dashboard de nutrição: `nutrition_dashboard.read_window_rows`, `align_window` e `plan_versions` (extraídas da rota `GET /nutrition/dashboard`, sem mudar o contrato).
+
+- **Regra.** Médias sobre os dias REGISTRADOS (fechado, dentro do plano, total completo). Meta e gasto são médias dos dias registrados que os têm gravados (dia sem meta não vira zero); o gasto é o `tdee_kcal` da meta gravada do dia, que já inclui treino e atividade conforme a base (`classic`, `auto_synced`, `auto_fallback`, contada por dia). Balanço total = soma dos balanços diários (negativo = déficit). Sem dado = `None`, mostrado como "—". Semanas de segunda a domingo, ponta parcial marcada. Dia incompleto e hoje (aberto) ficam fora das médias e são contados à parte.
+- **Fora de escopo.** TDEE adaptativo (gasto observado pelo peso) não entra: segue só no dashboard.
+- **Leitura apenas.** O relatório não materializa metas (o dashboard materializa só a de hoje, que é dia aberto e fora das médias).
+
+**Impacto em produção.** Só o conteúdo do relatório baixado: uma seção a mais e a renumeração da seção de qualidade. Sem migração, sem escrita e sem mudança no contrato de `/nutrition/dashboard`. Custo: 2 SELECTs a mais (metas e totais das refeições da janela, só colunas dos totais) e a leitura dos planos publicados por relatório; falha da seção vira "indisponível" sem derrubar o relatório.
+
+## 92. Estado "arquivável" de plano de nutrição e de versão de Modelo (2026-11-05)
+
+Registrado nas seções de nutrição (planos, §3.7) e de Modelos/versionamento. Migração 105 (`archived_at`).
+
+| Regra | Dono | Consumidores | Proibido fora do dono |
+|---|---|---|---|
+| Plano de nutrição arquivável = `SUPERSEDED` (rascunho tem DELETE; o vigente governa a meta de hoje) | `api/app/domain/nutrition/plan.py::is_archivable_plan` (ao lado de `plan_state`) | `nutrition_plans.py` (rota de arquivar e `can_archive` da listagem); frontend só lê `can_archive`/`archived` | repetir a condição de status/`superseded_at` em rota, SQL ou frontend. Exceção: o `UPDATE` de arquivar (`nutrition_plans.py::_ARCHIVE_SQL`, `template_versions.py::ARCHIVE_VERSION_SQL`) pode repetir a condição só como trava de concorrência; o dono decide antes (`is_archivable_plan`/`is_archivable`) |
+| Versão de Modelo arquivável = não vigente (`superseded_at` preenchido) e ainda não arquivada | `api/app/template_versions.py::is_archivable` | rotas de versões de Modelo (`can_archive`/`archived`); frontend só consome | idem |
+
+- **Efeito.** Arquivar só OCULTA da listagem (`archived_at`); é reversível. Não afeta as metas por dia (`load_published_plans` continua lendo arquivado), nem `revert` (reverter para versão arquivada cria a n+1, visível), nem `resolve_version_at/now`, nem `workout_plans.template_version_id`.
+
+**Impacto em produção.** Aditivo: coluna nova e rotas novas, sem mudança de cálculo, de meta, de prescrição ou de contrato existente (campos novos nas listagens). Exige a migração 105 na promoção.

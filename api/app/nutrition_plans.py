@@ -4,7 +4,12 @@
 Rotas (prefixo `/nutrition`). Plano autogerido (N2, D2): o usuário opera o PRÓPRIO plano;
 admin e PT operam o de qualquer aluno; usuário comum nunca alcança o plano de outro (403 por
 `user_id`, 404 por id de plano). Sem `user_id`, o alvo é o próprio usuário.
-- `GET    /plans?user_id=`          versões do aluno (vigente, histórico, rascunhos)
+- `GET    /plans?user_id=`          versões do aluno (vigente, histórico, rascunhos); sem os arquivados,
+                                    `include_archived=true` traz todos (cada plano leva `archived`,
+                                    `archived_at` e `can_archive`)
+- `POST   /plans/{id}/archive`      oculta um plano SUBSTITUÍDO (409 `plan_not_archivable` em rascunho/vigente;
+                                    reversível, idempotente); `.../unarchive` desfaz. Só oculta: as metas por
+                                    dia (`load_published_plans`) seguem lendo os arquivados
 - `POST   /plans`                   `NutritionPlanIn` -> rascunho (201); gramas manuais fora da faixa
                                     salvam com `warnings`, bloqueadas ou sem peso do aluno dão 400
 - `PUT    /plans/{id}`              só rascunho (409 se publicado)
@@ -74,6 +79,7 @@ from .domain.nutrition.plan import (
     goal_summary,
     manual_save_errors,
     manual_save_warnings,
+    is_archivable_plan,
     plan_state,
     plan_warnings,
     project_plan_goal,
@@ -115,7 +121,7 @@ _PLAN_COLUMNS = (
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
     "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, "
-    "effective_from, superseded_at, published_at, created_at, updated_at"
+    "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
 
 # Ordem das colunas de configuração na escrita (INSERT/UPDATE).
@@ -159,6 +165,18 @@ _TEMPLATE_SLOTS_SQL = (
 _PUBLISH_IF_UNCHANGED_SQL = _PUBLISH_SQL + " AND updated_at = %s"
 _BY_ID_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE id = %s"
 _BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT %s"
+# Lista padrão: sem os arquivados (migração 105). `include_archived=true` usa `_BY_USER_SQL`.
+_BY_USER_VISIBLE_SQL = (
+    f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s AND archived_at IS NULL "
+    "ORDER BY created_at DESC, id DESC LIMIT %s"
+)
+# Arquivar só oculta: o guarda de estado (`is_archivable_plan`) é conferido na rota; o UPDATE repete a condição
+# (publicado e substituído) para uma publicação concorrente não arquivar o plano que acabou de virar vigente.
+_ARCHIVE_SQL = (
+    f"UPDATE {TABLE} SET archived_at = %s WHERE id = %s AND archived_at IS NULL "
+    "AND status = %s AND superseded_at IS NOT NULL"
+)
+_UNARCHIVE_SQL = f"UPDATE {TABLE} SET archived_at = NULL WHERE id = %s AND archived_at IS NOT NULL"
 _DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
 
 DRAFT = PlanStatus.DRAFT.value
@@ -254,6 +272,9 @@ def plan_public(row: dict[str, Any]) -> dict[str, Any]:
         "engine_version": row.get("engine_version"),
         "effective_from": _iso(row.get("effective_from")),
         "superseded_at": _iso(row.get("superseded_at")),
+        "archived_at": _iso(row.get("archived_at")),
+        "archived": row.get("archived_at") is not None,
+        "can_archive": row.get("archived_at") is None and is_archivable_plan(row.get("status"), row.get("superseded_at")),
         "published_at": _iso(row.get("published_at")),
         "created_by": row.get("created_by"),
         "published_by": row.get("published_by"),
@@ -451,6 +472,7 @@ def _preview_payload(
 @router.get("/plans")
 def list_plans(
     user_id: Optional[int] = Query(default=None),
+    include_archived: bool = Query(default=False),
     identity: Identity = Depends(plan_actor),
 ):
     alvo = resolve_target_user(identity, user_id)
@@ -458,7 +480,7 @@ def list_plans(
         with conn.cursor() as cur:
             require_nutrition_tables(cur)
             usuario = fetch_target_user(cur, alvo)
-            cur.execute(_BY_USER_SQL, (alvo, PLAN_LIST_MAX))
+            cur.execute(_BY_USER_SQL if include_archived else _BY_USER_VISIBLE_SQL, (alvo, PLAN_LIST_MAX))
             linhas = cur.fetchall() or []
     return {"user": usuario, "items": [plan_public(linha) for linha in linhas]}
 
@@ -520,6 +542,43 @@ def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
             if int(cur.rowcount or 0) == 0:
                 raise _error(409, "plan_not_draft", "O rascunho mudou durante a exclusão; recarregue.")
     return {"status": "deleted", "id": int(plan_id)}
+
+
+@router.post("/plans/{plan_id}/archive")
+def archive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+    """Oculta da lista um plano SUBSTITUÍDO (reversível). Rascunho (tem DELETE) e vigente: 409
+    `plan_not_archivable`. Já arquivado: 200 sem mudar nada (idempotente)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_nutrition_tables(cur)
+            linha = _fetch_plan(cur, plan_id)
+            resolve_plan_owner(identity, int(linha["user_id"]))
+            if linha.get("archived_at") is None:
+                if not is_archivable_plan(linha.get("status"), linha.get("superseded_at")):
+                    raise _error(
+                        409, "plan_not_archivable", "Só um plano substituído pode ser arquivado (rascunho se exclui; o vigente fica)."
+                    )
+                cur.execute(_ARCHIVE_SQL, (db_now(cur), int(plan_id), PUBLISHED))
+                if int(cur.rowcount or 0) == 0:
+                    # Corrida: outra chamada pode já ter arquivado (idempotente, 200) ou publicado/alterado (409).
+                    if _fetch_plan(cur, plan_id).get("archived_at") is None:
+                        raise _error(409, "plan_not_archivable", "O plano mudou durante o pedido; recarregue.")
+            linha = _fetch_plan(cur, plan_id)
+    return plan_public(linha)
+
+
+@router.post("/plans/{plan_id}/unarchive")
+def unarchive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+    """Volta o plano arquivado para a lista. Não arquivado: 200 sem mudar nada (idempotente)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_nutrition_tables(cur)
+            linha = _fetch_plan(cur, plan_id)
+            resolve_plan_owner(identity, int(linha["user_id"]))
+            if linha.get("archived_at") is not None:
+                cur.execute(_UNARCHIVE_SQL, (int(plan_id),))
+                linha = _fetch_plan(cur, plan_id)
+    return plan_public(linha)
 
 
 @router.post("/plans/{plan_id}/preview")

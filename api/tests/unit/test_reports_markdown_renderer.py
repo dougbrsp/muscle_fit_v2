@@ -208,6 +208,7 @@ def full_report_data() -> dict:
                 ],
             },
         },
+        "nutrition": NUTRICAO,
         "quality": {
             "unattributed_sets": 4,
             "tonnage_excluded_sets": 6,
@@ -220,6 +221,50 @@ def full_report_data() -> dict:
     }
 
 
+def _stats_nutricao(logged, kcal_meta, kcal_ing, gasto, balanco):
+    return {
+        "logged_days": logged,
+        "nutrients": {
+            "kcal": {"target_avg": kcal_meta, "intake_avg": kcal_ing},
+            "protein_g": {"target_avg": 160.0, "intake_avg": 150.0},
+            "carbs_g": {"target_avg": 260.0, "intake_avg": 250.0},
+            "fat_g": {"target_avg": 70.0, "intake_avg": 60.0},
+            "fiber_g": {"target_avg": 30.0, "intake_avg": None},
+        },
+        "tdee_avg_kcal": gasto,
+        "tdee_basis_days": {"auto_synced": 2, "auto_fallback": 1},
+        "balance_days": logged,
+        "balance_avg_kcal": balanco,
+        "balance_total_kcal": None if balanco is None else balanco * logged,
+    }
+
+
+NUTRICAO = {
+    "available": True,
+    "has_records": True,
+    "window_days": 90,
+    "logged_days": 3,
+    "no_record_days": 80,
+    "incomplete_days": 1,
+    "open_today": True,
+    "summary": _stats_nutricao(3, 2400.0, 2300.4, 2800.0, -499.6),
+    "weeks": [
+        {
+            "start": date(2026, 9, 28), "end": date(2026, 10, 4), "partial": True, "days_in_window": 4,
+            **_stats_nutricao(3, 2400.0, 2300.4, 2800.0, -499.6),
+        }
+    ],
+    "days": [
+        {
+            "local_date": date(2026, 9, 30),
+            "target": {"kcal": 2400.0},
+            "intake": {"kcal": 2300.4, "protein_g": 150.0, "carbs_g": 250.0, "fat_g": 60.0, "fiber_g": None},
+            "tdee_kcal": 2800.0, "tdee_basis": "auto_synced", "energy_balance_kcal": -499.6,
+        }
+    ],
+}
+
+
 def empty_report_data() -> dict:
     return {
         "generated_at": datetime(2026, 10, 1, 8, 0),
@@ -230,11 +275,12 @@ def empty_report_data() -> dict:
         "body": {"available": True, "weight": {"count": 0}, "bioimpedance": {"count": 0}, "measurements": []},
         "cardio": {"available": False},
         "cycles": {"available": True, "segments": [], "adherence": {"has_template": False}, "current_template": None},
+        "nutrition": {"available": True, "has_records": False},
         "quality": {"empty_sources": ["Séries de musculação", "Pesagens"], "unavailable_sections": ["Cardio"]},
     }
 
 
-def test_fixture_completa_monta_as_sete_secoes_em_ordem():
+def test_fixture_completa_monta_as_oito_secoes_em_ordem():
     md = render_markdown(full_report_data())
     titulos = [
         "# Relatório MuscleFit",
@@ -244,7 +290,8 @@ def test_fixture_completa_monta_as_sete_secoes_em_ordem():
         "## 4. Corpo",
         "## 5. Cardio",
         "## 6. Ciclos de treino",
-        "## 7. Qualidade dos dados",
+        "## 7. Nutrição",
+        "## 8. Qualidade dos dados",
     ]
     posicoes = [md.index(t) for t in titulos]
     assert posicoes == sorted(posicoes)
@@ -323,7 +370,8 @@ def test_fixture_vazia_nao_quebra_e_diz_sem_dados():
         "## 4. Corpo",
         "## 5. Cardio",
         "## 6. Ciclos de treino",
-        "## 7. Qualidade dos dados",
+        "## 7. Nutrição",
+        "## 8. Qualidade dos dados",
     ):
         assert titulo in md
     assert md.count(SEM_DADOS) >= 4
@@ -337,7 +385,7 @@ def test_fixture_vazia_nao_quebra_e_diz_sem_dados():
 
 def test_dicionario_quase_vazio_tambem_renderiza():
     md = render_markdown({})
-    assert md.count(SEM_DADOS) == 6
+    assert md.count(SEM_DADOS) == 7
     assert "Nenhuma lacuna encontrada" in md
 
 
@@ -431,3 +479,31 @@ def test_item_de_cardio_usa_o_texto_canonico_do_dono():
     assert _item_label({"kind": "cardio", "cardio_text": texto, "cardio_minutes": 26}) == f"Cardio — {texto}"
     assert _item_label({"kind": "cardio", "cardio_minutes": 20}) == "Cardio — 20 min"
     assert _item_label({"kind": "cardio"}) == "Cardio"
+
+
+def test_secao_7_nutricao_resumo_semana_e_dia():
+    md = render_markdown(full_report_data())
+    trecho = md.split("## 7. Nutrição")[1].split("## 8.")[0]
+    assert "**Dias registrados:** 3 de 90 dias do período (80 sem registro; 1 com refeição incompleta" in trecho
+    assert "| Energia | 2.400 kcal | 2.300 kcal |" in trecho
+    assert "| Fibra | 30 g | — |" in trecho
+    assert "**Gasto calórico médio:** 2.800 kcal" in trecho
+    assert "Intervals sincronizado" in trecho and "estimado pelo fator" in trecho
+    assert "**Balanço médio (consumido − gasto):** -500 kcal/dia em 3 dia(s)" in trecho
+    assert "28/09/2026 a 04/10/2026 (parcial)" in trecho
+    assert "| 30/09/2026 | 2.400 | 2.300 |" in trecho
+
+
+def test_secao_7_nutricao_sem_registros_e_indisponivel():
+    vazio = render_markdown(empty_report_data()).split("## 7. Nutrição")[1].split("## 8.")[0]
+    assert "Sem registros de nutrição no período" in vazio
+    dados = full_report_data()
+    dados["nutrition"] = {"available": False}
+    assert "Seção indisponível" in render_markdown(dados).split("## 7. Nutrição")[1].split("## 8.")[0]
+
+
+def test_secao_7_nutricao_com_refeicao_mas_sem_dia_registrado():
+    dados = full_report_data()
+    dados["nutrition"] = {"available": True, "has_records": True, "window_days": 30, "logged_days": 0, "no_record_days": 5}
+    trecho = render_markdown(dados).split("## 7. Nutrição")[1].split("## 8.")[0]
+    assert "nenhum dia fechado com total completo" in trecho and "| Energia |" not in trecho
