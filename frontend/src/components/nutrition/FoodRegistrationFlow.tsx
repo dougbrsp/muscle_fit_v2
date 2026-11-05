@@ -111,7 +111,16 @@ export function FoodRegistrationFlow({
     return true;
   }
 
-  function enterFinish(food: FoodSaveResponse, entregar: () => void, titulo: string) {
+  function enterFinish(food: FoodSaveResponse, entregarBruto: () => void, titulo: string) {
+    // Uso único: fechar a etapa (X, Esc, voltar) e um Concluir ainda em andamento não entregam duas vezes, e a
+    // conclusão tardia não mexe na entrega pendente de um cadastro reaberto.
+    let feito = false;
+    const entregar = () => {
+      if (feito) return;
+      feito = true;
+      onPendingDelivery?.(null);
+      entregarBruto();
+    };
     clear();
     setFinish({ food, entregar, titulo });
     onPendingDelivery?.(entregar);
@@ -138,7 +147,6 @@ export function FoodRegistrationFlow({
         food={finish.food}
         title={finish.titulo}
         onConclude={() => {
-          onPendingDelivery?.(null);
           finish.entregar();
           setFinish(null);
         }}

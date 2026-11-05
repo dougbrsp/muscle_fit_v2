@@ -225,9 +225,9 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   // Avisos do cadastro (Atwater, Open Food Facts) e erro de "usar o existente" ficam na tela depois de o fluxo fechar.
   const [avisosCadastro, setAvisosCadastro] = useState<NutritionLimitation[]>([]);
   const [erroExistente, setErroExistente] = useState<string | null>(null);
-  // Estrela marcada com a refeição no teto de itens: favoritou, mas não coube na lista.
-  // Entrega do alimento salvo que está na etapa final do cadastro (nula fora dela).
+  // Entrega (de uso único) do alimento salvo que está na etapa final do cadastro; nula fora dela.
   const entregaPendente = useRef<(() => void) | null>(null);
+  // Estrela marcada com a refeição no teto de itens: favoritou, mas não coube na lista.
   const [avisoTeto, setAvisoTeto] = useState<string | null>(null);
   const noCelular = usePresentationActive();
   // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.

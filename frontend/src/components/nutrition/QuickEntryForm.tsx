@@ -2,10 +2,9 @@
 
 import { Alert, Button, Collapse, Group, NumberInput, Select, Stack, Text, TextInput } from '@mantine/core';
 import { IconAlertTriangle, IconChevronDown } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { MEAL_SLOT_OPTIONS, nutritionLabel } from '@/lib/nutrition-constants';
-import { useQueryClient } from '@tanstack/react-query';
 import { createMeal, lastMealTimeKey } from '@/lib/nutrition-api';
 import {
   QUICK_ENTRY_NAME_MAX_CHARS,
