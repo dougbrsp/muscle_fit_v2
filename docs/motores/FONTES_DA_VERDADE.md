@@ -2430,11 +2430,13 @@ leituras de banco:**
   avaliação.
 
 **Margem na Lambda:**
-- Orçamento: a Lambda de IA tem 180 s (`infra/lambda_ai_generators.tf`). A OpenAI podia consumir
+- Orçamento: a Lambda de IA tem 420 s (`infra/lambda_ai_generators.tf`, desde os cards V3). A OpenAI podia consumir
   até 90 s (o antigo `core.OPENAI_TIMEOUT_SECONDS`), então sobravam ~90 s para validar. A Lambda é a `plan-generator`, que roda a Periodização.
   Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`, constante presa
   `PERIODIZATION_LLM_TIMEOUT_SECONDS`, independente do timeout da Lambda, que é 420 s desde os cards V3) e a folga de
   30 s (`core.LAMBDA_RESERVED_SECONDS`) cobre contexto, validação e log.
+  Consequência da Lambda maior: o encolhimento da chamada por contexto lento (`core.llm_timeout_for`) passa a agir só
+  com contexto acima de 255 s (antes, acima de 15 s). O teto da LLM segue inalterado em 150 s.
 - Pior resposta medida: 2,18 s, cerca de 41x abaixo daqueles 90 s e 14x abaixo dos 30 s de hoje.
 - Mesmo somando o pior caso do corte (+1,6 s), o validador fica abaixo de 4 s.
 - Risco residual, não tratado aqui: o acréscimo tem `MAX_STEPS` = 500 passos aceitos, mas não tem
@@ -3794,7 +3796,7 @@ ganhou `label_photo` (`max_bytes`, `content_type`, `resize_max_edge_px`, `resize
   chave `ai_usage.LABEL_PHOTO_JOB_TYPE`): chave do próprio usuário (senão `label_photo_key_invalid`, sem ler o S3) →
   foto (`label_photo_not_found` quando o objeto não existe; em produção a role do worker não tem `s3:ListBucket`, então
   o S3 responde 403 e o código fica `label_photo_storage_failed` — o job lê a foto segundos depois do upload, e o caso
-  não ocorre no fluxo normal) → `nutrition_label_ai.read_label` (uma chamada, timeout de 90 s < 180 s da Lambda,
+  não ocorre no fluxo normal) → `nutrition_label_ai.read_label` (uma chamada, timeout de 90 s < 420 s da Lambda,
   paridade) → Pydantic → `review_reading` → `job_result` (`food` pré-preenchido na escala de `PREFILL_DECIMALS`,
   `per_serving`, `errors`, `warnings` com o texto do dono, `ai_notes`, `atwater`, `label_check`; ~3 KB no DynamoDB).
   `finish_usage` em TODOS os caminhos: sucesso (modelo e tokens), falha da OpenAI (código `OPENAI_*`), forma inválida

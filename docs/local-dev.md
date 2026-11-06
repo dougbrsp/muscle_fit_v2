@@ -309,45 +309,47 @@ handler quando o job falha.
 ### Cards ilustrados: checkpoint de calibracao visual (so DEV)
 
 Antes de ligar a feature em producao, o prompt e o layout sao calibrados com
-imagens reais. Estrategia B (2026-10-03): a OpenAI gera SO a ilustracao (duas
-cenas, sem texto, fundo transparente) e o worker compoe o card final
-(`api/app/exercise_card_composer.py`: titulo, rotulos, musculos, silhueta do
-mapa corporal v1 no rodape e logo, com as fontes de `api/app/assets/fonts/` e
-o mapa de `api/app/assets/bodymap/v1/`) logo depois; o preview que o admin revisa
-ja e o card final, e a aprovacao so publica. O script
+imagens reais. V3 (2026-11-06): a OpenAI gera DUAS fotos por card (cena 1 e cena 2, sem texto,
+fundo opaco; com as fotos de referencia do admin quando houver) e o worker
+compoe o card final (`api/app/exercise_card_composer.py`: dois paineis
+fotograficos lado a lado, titulo, rotulos, musculos, mapa corporal v1 no rodape
+e logo, com as fontes de `api/app/assets/fonts/` e o mapa de
+`api/app/assets/bodymap/v1/`) logo depois; o preview que o admin revisa ja e o
+card final, e a aprovacao so publica. O script
 `api/scripts/exercise_card_calibration.py` roda o fluxo REAL (cria a geracao
 pelo mesmo servico da rota -> executa o worker do `job_kind="exercise-card"`
-em processo -> baixa ilustracao e card do LocalStack), um exercicio por vez,
-com a OpenAI DE VERDADE (~US$ 0,05 por imagem em `gpt-image-1.5`/`medium`).
+em processo -> baixa as cenas e o card do LocalStack), um exercicio por vez,
+com a OpenAI DE VERDADE (cobranca por token de `gpt-image-2.5-sunburst`/`high`,
+por card, com duas chamadas; o custo real e medido pela propria calibracao).
 Nao aprova nada.
 
 ```
 # OPENAI_API_KEY real no .env; compose no ar
-docker compose exec api python scripts/exercise_card_calibration.py --exercises 53 22 18 112 58 1 --background transparent
-docker compose exec api python scripts/exercise_card_calibration.py --exercises 12 --instruction "pegada mais aberta"
-# Iterar o LAYOUT de graca: recompoe a partir das ilustracoes ja pagas (sem OpenAI, sem gravar nada)
+docker compose exec api python scripts/exercise_card_calibration.py --exercises 53 22 18 112 58 1
+docker compose exec api python scripts/exercise_card_calibration.py --exercises 12 --instruction "pegada mais aberta" --references ./fotos/posicao.jpg
+# Iterar o LAYOUT de graca: recompoe a partir das cenas ja pagas (sem OpenAI, sem gravar nada)
 docker compose exec api python scripts/exercise_card_calibration.py --compose-only 41 42 43 44
 ```
 
 - **Onde ficam as imagens:** `api/scripts/calibration-out/<AAAAMMDD-HHMMSS>/`
   no host (fora do controle de versao), por geracao:
-  `...-g<gid>-illustration.png` (a ilustracao crua da OpenAI) e
+  `...-g<gid>-scene1.png` e `...-g<gid>-scene2.png` (as duas cenas cruas da OpenAI) e
   `...-g<gid>-card.png` (o card composto, igual ao preview); `prancha.png` com
   os cards lado a lado; no modo de geracao tambem o prompt usado
   (`.prompt.txt`) e `summary.csv` (exercicio, status, latencia, custo, bytes,
   erro). A mesma tabela, com p50/p95 de latencia e custo total, sai no
   terminal.
-- **`--compose-only <gids>`:** le `exercise-card-drafts/{gid}/illustration.png`
-  do LocalStack e o catalogo atual (musculos e slugs do mapa corporal) e
-  recompoe com o compositor do checkout, no layout atual (`CARD_LAYOUT_V2`,
-  com a silhueta) - e assim que os cards do checkpoint passam do V1 para o V2
+- **`--compose-only <gids>`:** le `exercise-card-drafts/{gid}/scene1.png` e
+  `scene2.png` do LocalStack e o catalogo atual (musculos e slugs do mapa
+  corporal) e recompoe com o compositor do checkout, no layout atual
+  (`CARD_LAYOUT_V3_PHOTO`, dois paineis lado a lado) - assim se itera o layout
   sem pagar a OpenAI de novo. Edite medidas/cores/fontes em
   `exercise_card_composer.py` (secao LAYOUT) e rode de novo - custo zero.
-  Geracoes anteriores a Estrategia B nao tem ilustracao guardada
-  (`NO_ILLUSTRATION`).
-- **`--background transparent|opaque`:** fundo pedido a OpenAI (padrao
-  `transparent`, o mesmo do worker; `opaque` so para comparar - o compositor
-  recorta por distancia de cor, pior nas bordas).
+  Geracoes sem as duas cenas guardadas (anteriores ao V3) nao podem ser
+  recompostas.
+- **`--references <arquivos>`:** fotos de referencia locais, usadas so em
+  memoria na geracao (nao sao gravadas). Sem a flag, a cena 1 vai por
+  `generations`. O fundo e fixo em `opaque` (`exercise_card_jobs.SCENE_BACKGROUND`).
 - **Recusa rodar fora do DEV:** exige `DB_BACKEND=pymysql`, `AWS_ENDPOINT_URL`
   apontando para o LocalStack, nenhuma variavel de runtime Lambda e (so para
   gerar) `OPENAI_API_KEY` configurada. Nada disso existe em `infra/`.
@@ -357,7 +359,7 @@ docker compose exec api python scripts/exercise_card_calibration.py --compose-on
   `docker compose up -d api`. Com a flag desligada as rotas
   `/exercises/{id}/card-generations*` respondem 503 e o script lista cada
   exercicio como `NOT_CREATED` / `exercise_card_generation_disabled`, sem custo.
-- **Limites valem aqui tambem:** 100 geracoes/dia por admin e 2 em andamento
+- **Limites valem aqui tambem:** 40 geracoes/dia e 2 em andamento
   (`EXERCISE_CARD_MAX_GENERATIONS_PER_DAY`, `EXERCISE_CARD_MAX_IN_FLIGHT` no
   `.env` para ajustar em DEV).
 - **Revisar/aprovar:** pela API (`POST /exercises/{id}/card-generations/{gid}/approve`
@@ -953,7 +955,7 @@ locks, `.dockerignore`, `infra/lambda_*.tf`, `.github/scripts/*`; ver
   glifo `.notdef`, que o mapa corporal v1 (`app/assets/bodymap/v1/`) esta
   inteiro (sha256 de cada arquivo = `manifest.json`) e renderiza
   (`app.body_map_render` e o `muscle-map.png`), e que o compositor monta um
-  card de verdade, com a silhueta do rodape;
+  card de verdade, com os dois paineis e o mapa do rodape;
 - so `Dockerfile.ai`: `/var/task/db/migrations` identico a `api/db/migrations`,
   `app.migrate` resolvendo esse diretorio e validando as migracoes nao-baseline,
   e `app.migrate.handler` invocado pelo Lambda Runtime Interface Emulator com

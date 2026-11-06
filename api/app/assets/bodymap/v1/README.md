@@ -4,7 +4,7 @@ Arte e regiões musculares usadas pelo backend para destacar músculos de forma
 **determinística** (só Pillow, `app/body_map_render.py`):
 
 - rodapé do card ilustrado de exercício (`app/exercise_card_composer.py`,
-  `CARD_LAYOUT_V2`): principais em laranja forte com brilho, secundários em
+  `CARD_LAYOUT_V3_PHOTO`): principais em laranja forte com brilho, secundários em
   tom fraco;
 - `GET /workout-plans/{id}/muscle-map.png` (`app/muscle_map.py`).
 
