@@ -1146,7 +1146,15 @@ def _http_error_detail(exc: urllib.error.HTTPError) -> str:
 def _post_image(url: str, data: bytes, content_type: str, timeout: float) -> dict:
     """UMA tentativa em `generations` (JSON) ou `edits` (multipart). Toda
     falha sai como `OpenAIGenerationError` ja classificada (`status`/`code`);
-    o diagnostico nunca carrega o corpo enviado."""
+    o diagnostico nunca carrega o corpo enviado.
+
+    `timeout` e o do socket do `urllib`: vale POR OPERACAO (conectar, cada
+    leitura), nao como prazo total da chamada. A resposta das Images chega
+    num bloco so depois da geracao (sem streaming), entao na pratica e a
+    espera pela resposta; um servidor que pingasse bytes devagar passaria
+    dele. O teto real e o timeout da Lambda (420 s) e o orcamento do job
+    (`exercise_card_jobs.JOB_TIME_BUDGET_SECONDS`), que mede o tempo de
+    verdade antes de comecar a 2a chamada."""
     request = urllib.request.Request(
         url,
         data=data,
@@ -1194,10 +1202,25 @@ def _post_image(url: str, data: bytes, content_type: str, timeout: float) -> dic
     return data
 
 
+# Formatos de imagem de entrada aceitos no edits, pela ASSINATURA dos bytes:
+# (content-type, extensao do filename). A referencia oficial aceita PNG, JPEG e
+# WebP; o worker manda a cena 1 em JPEG e as fotos do admin ja vem em JPEG.
+def _image_part_type(image: bytes) -> Optional[tuple[str, str]]:
+    head = bytes(image[:12])
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
+
 def _multipart_body(fields: dict, images: Sequence[bytes]) -> tuple[bytes, str]:
     """Corpo `multipart/form-data` do edits: campos de texto + cada imagem como
-    `image[]` (formato do exemplo oficial `-F "image[]=@arquivo.png"`), CRLF
-    explicito. Devolve (corpo, content-type com o boundary)."""
+    `image[]` (formato do exemplo oficial `-F "image[]=@arquivo.png"`) com o
+    content-type da propria assinatura, CRLF explicito. Devolve (corpo,
+    content-type com o boundary). O chamador ja validou os formatos."""
     boundary = f"musclefit-{uuid.uuid4().hex}"
     dash = f"--{boundary}".encode("ascii")
     parts: list[bytes] = []
@@ -1211,11 +1234,12 @@ def _multipart_body(fields: dict, images: Sequence[bytes]) -> tuple[bytes, str]:
             + b"\r\n"
         )
     for index, image in enumerate(images):
+        content_type, extension = _image_part_type(image) or ("image/png", "png")
         parts.append(
             dash
             + b"\r\n"
-            + f'Content-Disposition: form-data; name="image[]"; filename="ref{index}.png"'.encode("ascii")
-            + b"\r\nContent-Type: image/png\r\n\r\n"
+            + f'Content-Disposition: form-data; name="image[]"; filename="ref{index}.{extension}"'.encode("ascii")
+            + f"\r\nContent-Type: {content_type}\r\n\r\n".encode("ascii")
             + bytes(image)
             + b"\r\n"
         )
@@ -1285,6 +1309,10 @@ def generate_image(
         )
     if any(not isinstance(item, (bytes, bytearray)) or not item for item in references):
         raise OpenAIGenerationError("Imagem de referencia vazia ou invalida.", code=OPENAI_INVALID_REQUEST)
+    if any(_image_part_type(item) is None for item in references):
+        raise OpenAIGenerationError(
+            "Imagem de referencia fora de PNG/JPEG/WebP.", code=OPENAI_INVALID_REQUEST
+        )
     settings = image_settings()
     chosen_model = model or settings.model
     chosen_quality = quality or settings.quality

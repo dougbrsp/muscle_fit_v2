@@ -72,7 +72,9 @@ def _parse_multipart(raw: bytes, content_type: str) -> tuple[dict, list[tuple[st
         nome = disposicao.split('name="', 1)[1].split('"', 1)[0]
         if nome == "image[]":
             arquivo = disposicao.split('filename="', 1)[1].split('"', 1)[0]
-            assert linhas[1:] == ["Content-Type: image/png"]
+            extensao = arquivo.rsplit(".", 1)[1]
+            tipo = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[extensao]
+            assert linhas[1:] == [f"Content-Type: {tipo}"]
             imagens.append((nome, arquivo, corpo))
         else:
             assert len(linhas) == 1 and nome not in campos
@@ -506,8 +508,23 @@ def test_limite_de_referencias_recusado_sem_rede(openai):
     assert len(openai.chamadas) == 1
 
 
+REF_JPEG = b"\xff\xd8\xff\xe0" + b"jpeg-de-teste" * 4
+REF_WEBP = b"RIFF\x10\x00\x00\x00WEBP" + b"webp-de-teste" * 2
+
+
+def test_cada_imagem_declara_o_proprio_tipo(openai):
+    """A cena 1 vai em JPEG e as fotos do admin tambem: o content-type e o
+    filename de cada parte vem da assinatura dos bytes."""
+    openai.fila = [_ok()]
+    oc.generate_image(PROMPT, reference_images=[REF_JPEG, REF_A, REF_WEBP])
+    assert openai.chamadas[0]["images"] == [
+        ("image[]", "ref0.jpg", REF_JPEG), ("image[]", "ref1.png", REF_A), ("image[]", "ref2.webp", REF_WEBP)]
+
+
 @pytest.mark.parametrize(
-    "referencias", [[b""], [REF_A, b""], ["texto"], [None]], ids=["vazia", "uma_vazia", "str", "none"]
+    "referencias",
+    [[b""], [REF_A, b""], ["texto"], [None], [b"GIF89a-nao-aceito"], [REF_A, b"nao e imagem"]],
+    ids=["vazia", "uma_vazia", "str", "none", "gif", "texto_cru"],
 )
 def test_referencia_vazia_ou_invalida_nem_chama(openai, referencias):
     with pytest.raises(oc.OpenAIGenerationError) as exc:

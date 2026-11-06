@@ -4,9 +4,10 @@ publicacao) e worker (`run_generation_job`), sem rede e sem MySQL.
 Banco: `tests/support/cards_sqlite.py` (SQLite em memoria executando o SQL
 real do servico). S3: `tests/support/fake_s3.py`. OpenAI: `generate_image`
 falso que conta as chamadas - e o que prova "redelivery nao cobra de novo" -
-e devolve uma ilustracao SINTETICA (`tests/support/card_illustrations.py`,
-duas cenas em fundo transparente); o compositor e o REAL (Estrategia B: o
-worker compoe o card logo depois da OpenAI).
+e devolve fotos SINTETICAS (`tests/support/card_illustrations.py`, uma por
+cena, V3); o compositor e o REAL (Estrategia B: o worker compoe o card logo
+depois das duas chamadas). Os testes so do worker V3 (orcamento de tempo,
+somas, paridade com a Lambda) estao em `test_exercise_card_jobs_v3.py`.
 Relogio: `exercise_card_service.utcnow` congelado (o sweep e os limites
 comparam carimbos gravados pelo proprio codigo; `isolamento_v3.congelar_relogio`
 congela so os modulos do dashboard, entao aqui o ponto de injecao e o
@@ -50,10 +51,14 @@ def _png(width: int = 768, height: int = 1152) -> bytes:
     return buffer.getvalue()
 
 
-# O que a OpenAI "devolve": a ilustracao (duas cenas, fundo transparente).
-PNG = ill.illustration_png()
-# Ilustracao sem primeiro plano nenhum: a composicao falha.
-EMPTY_ILLUSTRATION = ill.empty_png()
+# O que a OpenAI "devolve": uma foto opaca por cena (V3).
+SCENE1 = ill.scene_photo_png(1024, 1536, ill.START_COLOR)
+SCENE2 = ill.scene_photo_png(1024, 1536, ill.END_COLOR)
+# Foto crua que a "OpenAI" devolve (nome importado por test_exercise_cards_routes.py).
+PNG = SCENE1
+# Bytes que nao sao imagem: a composicao (ou o JPEG da cena 1) falha.
+BROKEN = SCENE2[:200]
+JPEG_SIGNATURE = b"\xff\xd8\xff"
 V1 = "MUSCLEFIT_EXERCISE_CARD_V1"
 
 
@@ -127,10 +132,18 @@ def s3(monkeypatch):
 def openai(monkeypatch):
     chamadas: list[dict] = []
 
-    def fake_generate(prompt, *, model=None, quality=None, size=None, timeout=None, moderation=None, background=None):
-        chamadas.append({"prompt": prompt, "model": model, "quality": quality, "size": size, "background": background})
+    def fake_generate(
+        prompt, *, model=None, quality=None, size=None, timeout=None, moderation=None, background=None,
+        reference_images=(),
+    ):
+        # Chamadas impares = cena 1, pares = cena 2 (o worker faz as duas em ordem).
+        cena = 1 if len(chamadas) % 2 == 0 else 2
+        chamadas.append({
+            "prompt": prompt, "model": model, "quality": quality, "size": size, "background": background,
+            "timeout": timeout, "reference_images": list(reference_images), "cena": cena,
+        })
         return openai_client.ImageResult(
-            image=PNG,
+            image=SCENE1 if cena == 1 else SCENE2,
             model=model,
             quality=quality,
             size=size,
@@ -148,7 +161,7 @@ def openai(monkeypatch):
 @pytest.fixture
 def prompts(monkeypatch):
     """Contexto do catalogo falso (o SQL real de `load_context` usa FIELD(),
-    so do MySQL) e espiao do `build_prompt` REAL."""
+    so do MySQL) e espiao do `build_scene_prompts` REAL."""
     vistos: list[dict] = []
 
     def fake_context(cursor, exercise_id):
@@ -156,14 +169,17 @@ def prompts(monkeypatch):
             return None
         return card_prompt.ExerciseCardContext(exercise_id=int(exercise_id), name="Supino reto")
 
-    real_build = card_prompt.build_prompt
+    real_build = card_prompt.build_scene_prompts
 
-    def spy_build(ctx, text_level=card_prompt.DEFAULT_TEXT_LEVEL, instruction=None, parent_reject_reason=None):
-        vistos.append({"text_level": text_level, "instruction": instruction, "parent_reject_reason": parent_reject_reason})
-        return real_build(ctx, text_level, instruction, parent_reject_reason)
+    def spy_build(ctx, text_level=card_prompt.DEFAULT_TEXT_LEVEL, *, reference_count=0, instruction=None,
+                  parent_reject_reason=None):
+        vistos.append({"text_level": text_level, "instruction": instruction,
+                       "parent_reject_reason": parent_reject_reason, "reference_count": reference_count})
+        return real_build(ctx, text_level, reference_count=reference_count, instruction=instruction,
+                          parent_reject_reason=parent_reject_reason)
 
     monkeypatch.setattr(card_prompt, "load_context", fake_context)
-    monkeypatch.setattr(card_prompt, "build_prompt", spy_build)
+    monkeypatch.setattr(card_prompt, "build_scene_prompts", spy_build)
     return vistos
 
 
@@ -205,7 +221,7 @@ def test_criar_grava_pending_com_configuracao_e_autoria(db, clock, monkeypatch):
     assert created is True
     gravada = db.generation(row["id"])
     assert gravada["status"] == svc.STATUS_PENDING
-    assert (gravada["model"], gravada["quality"], gravada["size"]) == ("gpt-image-1.5", "high", "1024x1536")
+    assert (gravada["model"], gravada["quality"], gravada["size"]) == ("gpt-image-2.5-sunburst", "high", "1024x1536")
     assert gravada["prompt_version"] == card_prompt.PROMPT_VERSION
     assert gravada["text_level"] == "minimal"
     assert gravada["request_instruction"] == "braço mais estendido"
@@ -362,7 +378,7 @@ def test_limites_invalidos_no_ambiente_voltam_ao_padrao(monkeypatch):
     monkeypatch.setenv(svc.ENV_MAX_PER_DAY, "abc")
     monkeypatch.setenv(svc.ENV_MAX_IN_FLIGHT, "0")
     monkeypatch.setenv(svc.ENV_STALE_MINUTES, "-5")
-    assert (svc.max_generations_per_day(), svc.max_in_flight(), svc.stale_minutes()) == (100, 2, 10)
+    assert (svc.max_generations_per_day(), svc.max_in_flight(), svc.stale_minutes()) == (40, 2, 10)
 
 
 # ---------------------------------------------------------------------------
@@ -432,58 +448,123 @@ def test_sweep_emite_evento_sem_texto_livre(db, clock, caplog):
 # ---------------------------------------------------------------------------
 
 
-def test_worker_gera_compoe_e_grava_generated(worker, db, s3, openai, prompts, dispatched):
+def _seed_reference(db, s3, exercise_id: int = 42, color: tuple[int, int, int] = (90, 90, 90)) -> tuple[int, bytes]:
+    """Foto de referencia ativa: linha no fake + objeto JPEG no S3."""
+    ref_id = db.add_reference(exercise_id)
+    foto = ill.jpeg_photo(color=color)
+    s3.put_object(Bucket=BUCKET, Key=db.reference(ref_id)["s3_key"], Body=foto, ContentType="image/jpeg")
+    return ref_id, foto
+
+
+def _eventos(caplog, nome: str) -> list[dict]:
+    return [json.loads(r.getMessage()) for r in caplog.records if f'"{nome}"' in r.getMessage()]
+
+
+def test_worker_gera_as_duas_cenas_compoe_e_grava_generated(worker, db, s3, openai, prompts, dispatched):
     gid = worker(instruction="pegada mais aberta")
     row = db.generation(gid)
     assert row["status"] == "GENERATED"
-    assert row["prompt_version"] == card_prompt.PROMPT_VERSION == "MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION"
+    assert row["prompt_version"] == card_prompt.PROMPT_VERSION == "MUSCLEFIT_EXERCISE_CARD_V3_PHOTO"
     assert row["preview_s3_key"] == f"exercise-card-drafts/{gid}/preview.png"
-    # A ilustracao paga fica guardada ao lado; o preview e o card COMPOSTO.
-    ilustracao = s3.body(BUCKET, storage.illustration_key(gid))
+    # As duas fotos pagas ficam guardadas ao lado; o preview e o card COMPOSTO.
+    assert s3.body(BUCKET, storage.scene_key(gid, 1)) == SCENE1
+    assert s3.body(BUCKET, storage.scene_key(gid, 2)) == SCENE2
     preview = s3.body(BUCKET, row["preview_s3_key"])
-    assert ilustracao == PNG
     assert _image(preview).size == (composer.CARD_WIDTH, composer.CARD_HEIGHT)
     assert _image(preview).mode == "RGB" and _image(preview).info == {}
-    # Largura/altura/bytes gravados sao os do card composto, nao os da ilustracao.
     assert (row["width"], row["height"], row["bytes"]) == (1024, 1536, len(preview))
-    assert (row["tokens_in"], row["tokens_out"], row["cost_usd"]) == (11, 22, Decimal("0.05"))
-    exigir(bool(row["prompt_text"]) and "Supino reto" in row["prompt_text"], "prompt gravado com o exercício")
+    # Custo e tokens = SOMA das duas chamadas.
+    assert (row["tokens_in"], row["tokens_out"], row["cost_usd"]) == (22, 44, Decimal("0.10"))
+    exigir(card_prompt.SCENE_PROMPT_SEPARATOR in row["prompt_text"], "os dois prompts gravados juntos")
+    exigir("Supino reto" in row["prompt_text"], "prompt gravado com o exercício")
     assert row["started_at"] == T0 and row["generated_at"] == T0
     assert row["job_id"] == "job-1"
-    # Usa model/quality/size GRAVADOS na linha, nao o ambiente do worker; fundo transparente.
-    assert openai[0]["model"] == "gpt-image-1.5" and openai[0]["size"] == "1024x1536"
-    assert openai[0]["background"] == "transparent" == jobs.ILLUSTRATION_BACKGROUND
-    assert prompts[0] == {"text_level": "minimal", "instruction": "pegada mais aberta", "parent_reject_reason": None}
-    for key in (row["preview_s3_key"], storage.illustration_key(gid)):
+    # Duas chamadas, com model/quality/size GRAVADOS na linha e fundo opaco.
+    assert [c["cena"] for c in openai] == [1, 2]
+    for chamada in openai:
+        assert (chamada["model"], chamada["quality"], chamada["size"]) == (
+            row["model"], row["quality"], row["size"]) == ("gpt-image-2.5-sunburst", "high", "1024x1536")
+        assert chamada["background"] == "opaque" == jobs.SCENE_BACKGROUND
+        assert chamada["timeout"] == openai_client.DEFAULT_IMAGE_TIMEOUT_SECONDS
+    prompts_v3 = card_prompt.build_scene_prompts(
+        card_prompt.ExerciseCardContext(exercise_id=42, name="Supino reto"), instruction="pegada mais aberta"
+    )
+    exigir(openai[0]["prompt"] == prompts_v3.start and openai[1]["prompt"] == prompts_v3.end, "um prompt por cena")
+    # Sem fotos do admin: cena 1 sem referencia; cena 2 so com a cena 1 (JPEG).
+    assert openai[0]["reference_images"] == []
+    (cena1_jpeg,) = openai[1]["reference_images"]
+    assert cena1_jpeg.startswith(JPEG_SIGNATURE)
+    assert prompts[0] == {"text_level": "minimal", "instruction": "pegada mais aberta", "parent_reject_reason": None,
+                          "reference_count": 0}
+    for key in (row["preview_s3_key"], storage.scene_key(gid, 1), storage.scene_key(gid, 2)):
         assert s3.objects[(BUCKET, key)].cache_control == storage.DRAFT_CACHE_CONTROL
     assert dispatched[0]["job_kind"] == "exercise-card" and dispatched[0]["generation_id"] == gid
     assert dispatched[0]["env"] == "PLAN_GENERATOR_FUNCTION_NAME"
 
 
-def test_preview_e_o_card_composto_com_o_conteudo_do_catalogo(worker, db, s3, monkeypatch):
-    """O preview e exatamente `compose_card(ilustracao, conteudo do contexto,
-    assets oficiais)` - o mesmo card que o admin vai aprovar."""
+def test_cena_1_vai_como_jpeg_sem_metadados(worker, openai):
+    worker()
+    cena1_jpeg = openai[1]["reference_images"][0]
+    imagem = _image(cena1_jpeg)
+    assert imagem.format == "JPEG" and imagem.mode == "RGB" and imagem.size == (1024, 1536)
+    assert "exif" not in imagem.info and "icc_profile" not in imagem.info
+
+
+def test_fotos_de_referencia_vao_nas_duas_cenas_e_no_evento(db, clock, s3, openai, prompts, dispatched, caplog):
+    ref_a, foto_a = _seed_reference(db, s3, color=(80, 80, 80))
+    ref_b, foto_b = _seed_reference(db, s3, color=(30, 30, 30))
+    apagada = db.add_reference(42, deleted=True)
+    db.add_reference(43)  # de outro exercicio
+    gid = db.insert_generation(exercise_id=42, status="PENDING", model="gpt-image-2.5-sunburst", quality="high",
+                               size="1024x1536")
+    with caplog.at_level(logging.INFO):
+        jobs.run_generation_job({"generation_id": gid, "job_id": "j-1"})
+    assert db.generation(gid)["status"] == "GENERATED"
+    # Cena 1: so as fotos ativas do exercicio, na ordem; cena 2: cena 1 primeiro.
+    assert openai[0]["reference_images"] == [foto_a, foto_b]
+    assert openai[1]["reference_images"][0].startswith(JPEG_SIGNATURE)
+    assert openai[1]["reference_images"][1:] == [foto_a, foto_b]
+    assert prompts[0]["reference_count"] == 2
+    [gerado] = _eventos(caplog, "exercise_card.generated")
+    assert gerado["reference_count"] == 2 and gerado["reference_ids"] == [ref_a, ref_b]
+    assert apagada not in gerado["reference_ids"]
+    assert gerado["scene_count"] == 2 and gerado["layout_version"] == composer.LAYOUT_VERSION
+    assert gerado["latency_ms"] == gerado["latency_ms_scene1"] + gerado["latency_ms_scene2"]
+    texto = "\n".join(r.getMessage() for r in caplog.records)
+    assert "Supino reto" not in texto  # nunca logar o prompt
+
+
+def test_preview_e_o_card_composto_das_duas_fotos(worker, db, s3):
+    """O preview e exatamente `compose_card_v3(cena 1, cena 2, conteudo do
+    contexto, assets oficiais)` - o mesmo card que o admin vai aprovar."""
     gid = worker()
     preview = s3.body(BUCKET, storage.draft_key(gid))
     contexto = card_prompt.ExerciseCardContext(exercise_id=42, name="Supino reto")
-    esperado = composer.compose_card(PNG, composer.content_from_context(contexto), composer.load_card_assets())
+    esperado = composer.compose_card_v3(
+        SCENE1, SCENE2, composer.content_from_context(contexto), composer.load_card_assets()
+    )
     assert preview == esperado
 
 
-def test_ordem_do_worker_ilustracao_composicao_preview(db, clock, s3, openai, prompts, monkeypatch):
+def test_ordem_do_worker_cena1_cena2_composicao_preview(db, clock, s3, openai, prompts, monkeypatch):
     passos: list[str] = []
-    real_put, real_compose = storage.put_draft, composer.compose_card
+    real_put, real_scene, real_compose = storage.put_draft, storage.put_draft_scene, composer.compose_card_v3
 
     def put_espiao(generation_id, png, *, filename=storage.DRAFT_PREVIEW, client=None, bucket=None):
         passos.append(f"put:{filename}")
         return real_put(generation_id, png, filename=filename, client=client, bucket=bucket)
+
+    def scene_espiao(generation_id, index, png, *, client=None, bucket=None):
+        passos.append(f"put:scene{index}")
+        return real_scene(generation_id, index, png, client=client, bucket=bucket)
 
     def compose_espiao(*args, **kwargs):
         passos.append("compose")
         return real_compose(*args, **kwargs)
 
     monkeypatch.setattr(storage, "put_draft", put_espiao)
-    monkeypatch.setattr(composer, "compose_card", compose_espiao)
+    monkeypatch.setattr(storage, "put_draft_scene", scene_espiao)
+    monkeypatch.setattr(composer, "compose_card_v3", compose_espiao)
     original_generate = openai_client.generate_image
 
     def generate_espiao(prompt, **kwargs):
@@ -493,22 +574,24 @@ def test_ordem_do_worker_ilustracao_composicao_preview(db, clock, s3, openai, pr
     monkeypatch.setattr(openai_client, "generate_image", generate_espiao)
     gid = db.insert_generation(exercise_id=42, status="PENDING")
     jobs.run_generation_job({"generation_id": gid})
-    assert passos == ["openai", "put:illustration.png", "compose", "put:preview.png"]
+    assert passos == ["openai", "put:scene1", "openai", "put:scene2", "compose", "put:preview.png"]
     assert db.generation(gid)["status"] == "GENERATED"
 
 
-@pytest.mark.parametrize(
-    "quebra",
-    ["sem_primeiro_plano", "bug_no_compositor", "asset_ausente"],
-)
-def test_falha_de_composicao_vira_failed_e_guarda_a_ilustracao(db, clock, s3, prompts, monkeypatch, caplog, quebra):
+@pytest.mark.parametrize("quebra", ["cena_ilegivel", "bug_no_compositor", "asset_ausente"])
+def test_falha_de_composicao_vira_failed_com_custo_e_guarda_as_cenas(
+    db, clock, s3, prompts, monkeypatch, caplog, quebra
+):
+    imagens = iter([SCENE1, BROKEN if quebra == "cena_ilegivel" else SCENE2])
+
     def gera(prompt, **kwargs):
-        imagem = EMPTY_ILLUSTRATION if quebra == "sem_primeiro_plano" else PNG
-        return openai_client.ImageResult(imagem, "gpt-image-1.5", "medium", "1024x1536", 1, 2, Decimal("0.05"), 1, 1.0)
+        return openai_client.ImageResult(
+            next(imagens), "gpt-image-2.5-sunburst", "high", "1024x1536", 10, 20, Decimal("0.2"), 1, 1.0, "edits"
+        )
 
     monkeypatch.setattr(openai_client, "generate_image", gera)
     if quebra == "bug_no_compositor":
-        monkeypatch.setattr(composer, "compose_card", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("bug")))
+        monkeypatch.setattr(composer, "compose_card_v3", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("bug")))
     if quebra == "asset_ausente":
         def sem_assets():
             raise composer.CardCompositionError("Fonte ausente", reason="assets_missing")
@@ -520,12 +603,16 @@ def test_falha_de_composicao_vira_failed_e_guarda_a_ilustracao(db, clock, s3, pr
     assert str(exc.value) == f"Card generation {gid} falhou: CARD_COMPOSITION_FAILED"
     row = db.generation(gid)
     assert (row["status"], row["error_code"], row["failed_at"]) == ("FAILED", "CARD_COMPOSITION_FAILED", T0)
-    assert row["prompt_text"]  # o prompt usado fica para diagnostico (no banco)
+    assert row["prompt_text"]  # os prompts usados ficam para diagnostico (no banco)
     assert row["preview_s3_key"] is None
-    # A ilustracao (paga) ficou guardada; o preview nao existe.
-    assert s3.keys(BUCKET) == [storage.illustration_key(gid)]
-    falhas = [json.loads(r.getMessage()) for r in caplog.records if "exercise_card.failed" in r.getMessage()]
-    assert falhas and falhas[-1]["stage"] == "compose" and falhas[-1]["error_code"] == "CARD_COMPOSITION_FAILED"
+    # As duas chamadas foram pagas: custo e tokens somados ficam gravados.
+    assert (row["cost_usd"], row["tokens_in"], row["tokens_out"]) == (Decimal("0.4"), 20, 40)
+    assert row["model"] == "gpt-image-2.5-sunburst"
+    # As fotos (pagas) ficaram guardadas; o preview nao existe.
+    assert sorted(s3.keys(BUCKET)) == sorted([storage.scene_key(gid, 1), storage.scene_key(gid, 2)])
+    [falha] = _eventos(caplog, "exercise_card.failed")
+    assert falha["stage"] == "compose" and falha["error_code"] == "CARD_COMPOSITION_FAILED"
+    assert falha["scene_count"] == 2
     texto = "\n".join(r.getMessage() for r in caplog.records)
     assert "INSTRUCAO-SECRETA" not in texto and "Supino reto" not in texto  # nunca logar o prompt
 
@@ -534,24 +621,76 @@ def test_codigo_de_falha_de_composicao_e_o_mesmo_nos_dois_modulos():
     assert svc.ERROR_CARD_COMPOSITION_FAILED == composer.CARD_COMPOSITION_FAILED == "CARD_COMPOSITION_FAILED"
 
 
-def test_falha_ao_guardar_a_ilustracao_nem_compoe(db, clock, s3, openai, prompts, monkeypatch):
-    chamadas: list = []
-    monkeypatch.setattr(composer, "compose_card", lambda *a, **k: chamadas.append(1))
+def test_falha_na_cena_2_grava_failed_com_o_custo_da_cena_1(db, clock, s3, prompts, monkeypatch):
+    chamadas: list[int] = []
+
+    def gera(prompt, **kwargs):
+        chamadas.append(1)
+        if len(chamadas) == 2:
+            raise openai_client.OpenAIGenerationError("moderacao", status=400)
+        return openai_client.ImageResult(SCENE1, "gpt-image-2.5-sunburst", "high", "1024x1536", 7, 6000,
+                                         Decimal("0.1805"), 1, 30.0)
+
+    monkeypatch.setattr(openai_client, "generate_image", gera)
     gid = db.insert_generation(exercise_id=42, status="PENDING")
-    s3.fail_put_keys.add(storage.illustration_key(gid))
     with pytest.raises(jobs.ExerciseCardJobError):
         jobs.run_generation_job({"generation_id": gid})
-    assert db.generation(gid)["error_code"] == storage.S3_UPLOAD_FAILED
+    row = db.generation(gid)
+    assert (row["status"], row["error_code"]) == ("FAILED", "OPENAI_INVALID_REQUEST")
+    assert (row["cost_usd"], row["tokens_in"], row["tokens_out"]) == (Decimal("0.1805"), 7, 6000)
+    assert (row["model"], row["quality"], row["size"]) == ("gpt-image-2.5-sunburst", "high", "1024x1536")
+    assert s3.keys(BUCKET) == [storage.scene_key(gid, 1)]  # a cena 1 paga ficou
+
+
+def test_cena_1_ilegivel_nem_chama_a_cena_2(db, clock, s3, prompts, monkeypatch):
+    chamadas: list[int] = []
+
+    def gera(prompt, **kwargs):
+        chamadas.append(1)
+        return openai_client.ImageResult(BROKEN, "gpt-image-2.5-sunburst", "high", "1024x1536", 1, 2,
+                                         Decimal("0.2"), 1, 1.0)
+
+    monkeypatch.setattr(openai_client, "generate_image", gera)
+    gid = db.insert_generation(exercise_id=42, status="PENDING")
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    row = db.generation(gid)
+    assert row["error_code"] == openai_client.OPENAI_GENERATION_FAILED
+    assert row["cost_usd"] == Decimal("0.2")
+    assert chamadas == [1]
+
+
+def test_falha_ao_guardar_a_cena_1_nem_chama_a_cena_2(db, clock, s3, openai, prompts, monkeypatch):
+    chamadas: list = []
+    monkeypatch.setattr(composer, "compose_card_v3", lambda *a, **k: chamadas.append(1))
+    gid = db.insert_generation(exercise_id=42, status="PENDING")
+    s3.fail_put_keys.add(storage.scene_key(gid, 1))
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    row = db.generation(gid)
+    assert row["error_code"] == storage.S3_UPLOAD_FAILED
+    assert row["cost_usd"] == Decimal("0.05")  # a cena 1 foi paga mesmo sem ser guardada
     assert chamadas == [] and len(openai) == 1
+
+
+def test_falha_ao_ler_as_fotos_de_referencia_nao_chama_a_openai(db, clock, s3, openai, prompts):
+    ref_id = db.add_reference(42)  # linha ativa sem objeto no S3
+    gid = db.insert_generation(exercise_id=42, status="PENDING")
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    row = db.generation(gid)
+    assert row["error_code"] == storage.S3_READ_FAILED
+    assert row["cost_usd"] is None
+    assert openai == [] and ref_id
 
 
 def test_redelivery_nao_chama_a_openai(worker, db, openai, dispatched):
     gid = worker()
-    assert len(openai) == 1
+    assert len(openai) == 2
     resultado = jobs.run_generation_job(dispatched[-1])  # o mesmo evento, entregue de novo
     assert resultado["status"] == "skipped"
     assert resultado["generation_status"] == "GENERATED"
-    assert len(openai) == 1
+    assert len(openai) == 2
     assert db.generation(gid)["status"] == "GENERATED"
 
 
@@ -570,12 +709,21 @@ def test_reserva_e_um_update_condicional_atomico(db, clock):
     assert any("WHERE id = %s AND status = %s" in sql for sql in [s.replace("?", "%s") for s in db.statements])
 
 
-def test_resultado_descartado_se_o_sweep_fechou_a_linha_no_meio(db, clock, s3, prompts, monkeypatch):
-    gid = db.insert_generation(exercise_id=42, status="PENDING", model="gpt-image-1.5", quality="medium", size="1024x1536")
+@pytest.mark.parametrize("cena_do_sweep", [1, 2])
+def test_resultado_descartado_se_o_sweep_fechou_a_linha_no_meio(db, clock, s3, prompts, monkeypatch, cena_do_sweep):
+    gid = db.insert_generation(exercise_id=42, status="PENDING", model="gpt-image-2.5-sunburst", quality="high",
+                               size="1024x1536")
+    chamadas: list[int] = []
 
     def lenta(prompt, **kwargs):
-        db.raw.execute("UPDATE exercise_card_generations SET status = 'FAILED', error_code = 'WORKER_LOST' WHERE id = ?", (gid,))
-        return openai_client.ImageResult(PNG, "gpt-image-1.5", "medium", "1024x1536", None, None, None, 1, 1.0)
+        chamadas.append(1)
+        if len(chamadas) == cena_do_sweep:
+            db.raw.execute(
+                "UPDATE exercise_card_generations SET status = 'FAILED', error_code = 'WORKER_LOST' WHERE id = ?",
+                (gid,),
+            )
+        imagem = SCENE1 if len(chamadas) == 1 else SCENE2
+        return openai_client.ImageResult(imagem, "gpt-image-2.5-sunburst", "high", "1024x1536", None, None, None, 1, 1.0)
 
     monkeypatch.setattr(openai_client, "generate_image", lenta)
     assert jobs.run_generation_job({"generation_id": gid})["status"] == "discarded"
@@ -591,7 +739,7 @@ def test_resultado_descartado_se_o_sweep_fechou_a_linha_no_meio(db, clock, s3, p
         (RuntimeError("bug"), "INTERNAL_ERROR"),
     ],
 )
-def test_falha_da_openai_vira_failed_com_codigo(db, clock, s3, prompts, monkeypatch, erro, code):
+def test_falha_da_openai_na_cena_1_vira_failed_com_codigo(db, clock, s3, prompts, monkeypatch, erro, code):
     gid = db.insert_generation(exercise_id=42, status="PENDING")
 
     def explode(prompt, **kwargs):
@@ -603,18 +751,19 @@ def test_falha_da_openai_vira_failed_com_codigo(db, clock, s3, prompts, monkeypa
     assert str(exc.value) == f"Card generation {gid} falhou: {code}"
     row = db.generation(gid)
     assert (row["status"], row["error_code"], row["failed_at"]) == ("FAILED", code, T0)
-    assert row["prompt_text"]  # o prompt usado fica para diagnostico
+    assert row["prompt_text"]  # os prompts usados ficam para diagnostico
+    assert row["cost_usd"] is None  # nada foi pago
     assert s3.keys() == []
 
 
-def test_falha_do_s3_no_rascunho_vira_failed_com_codigo_proprio(db, clock, s3, openai, prompts):
+def test_falha_do_s3_no_preview_vira_failed_com_codigo_proprio(db, clock, s3, openai, prompts):
     gid = db.insert_generation(exercise_id=42, status="PENDING")
     s3.fail_put_keys.add(storage.draft_key(gid))
     with pytest.raises(jobs.ExerciseCardJobError):
         jobs.run_generation_job({"generation_id": gid})
     assert db.generation(gid)["error_code"] == storage.S3_UPLOAD_FAILED
-    assert len(openai) == 1
-    assert s3.keys(BUCKET) == [storage.illustration_key(gid)]  # a ilustracao paga ficou
+    assert len(openai) == 2
+    assert sorted(s3.keys(BUCKET)) == sorted([storage.scene_key(gid, 1), storage.scene_key(gid, 2)])
 
 
 def test_exercicio_apagado_falha_sem_chamar_a_openai(db, clock, openai, prompts):
@@ -1137,6 +1286,6 @@ def test_evento_de_falha_tem_so_codigo_e_etapa(db, clock, prompts, monkeypatch, 
     falhas = [json.loads(r.getMessage()) for r in caplog.records if "exercise_card.failed" in r.getMessage()]
     assert falhas == [
         {"event": "exercise_card.failed", "generation_id": gid, "exercise_id": 42, "job_id": "j-1",
-         "stage": "openai", "error_code": "OPENAI_INVALID_REQUEST"}
+         "stage": "openai_scene1", "error_code": "OPENAI_INVALID_REQUEST", "scene_count": 0, "reference_ids": []}
     ]
     assert "moderation_blocked" in db.generation(gid)["error_message"]  # o detalhe fica no banco

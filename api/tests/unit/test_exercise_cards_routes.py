@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from app import auth
 from app import exercise_card_jobs as jobs
+from app import exercise_card_prompt as card_prompt
 from app import exercise_card_processor as processor
 from app import exercise_card_service as svc
 from app import exercise_card_storage as storage
@@ -51,7 +52,7 @@ def _client(identity: Identity | None) -> TestClient:
 
 
 @pytest.fixture
-def admin(db, clock, s3, openai, dispatched) -> TestClient:  # noqa: F811 - fixture do pytest importada (falso positivo)
+def admin(db, clock, s3, openai, prompts, dispatched) -> TestClient:  # noqa: F811 - fixture do pytest importada (falso positivo)
     return _client(Identity(user_id=ADMIN, role="admin", source="session"))
 
 
@@ -125,7 +126,7 @@ def test_criar_responde_202_e_replay_200(admin, dispatched):  # noqa: F811 - fix
     assert criada.status_code == 202, criada.text
     generation = criada.json()["generation"]
     assert (generation["status"], generation["text_level"], generation["job_id"]) == ("PENDING", "minimal", "job-1")
-    assert generation["prompt_version"] == "MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION"
+    assert generation["prompt_version"] == card_prompt.PROMPT_VERSION == "MUSCLEFIT_EXERCISE_CARD_V3_PHOTO"
     assert generation["preview_url"] is None and generation["card"] is None
     replay = admin.post("/exercises/42/card-generations", json={"idempotency_key": key})
     assert replay.status_code == 200
