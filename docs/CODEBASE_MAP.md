@@ -138,7 +138,7 @@ muscle_fit/
 | `progression.py`, `progression_state.py` | Leitura de trilhas/decisões; fronteira entre o motor puro e as tabelas da 036 |
 | `gyms.py`, `equipment_exercises.py`, `gym_equipment_sync.py`, `equipment_recommender.py`, `equipment_exercise_preferences.py`, `load_conventions.py` | Academias, equipamentos, relação canônica equipamento×exercício, recomendador, estrelas por usuário, convenção de carga (NULL = total) |
 | `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `exercise_mapping_canonical.py`, `advanced_techniques.py` | Admin do catálogo, aliases, grupos musculares, contribuições, mapeamentos, técnicas avançadas |
-| `exercise_card*.py`, `body_map_render.py`, `muscle_map.py` | Cards ilustrados (máquina de estados, prompt, job, composição Pillow, S3 rascunho/final) e PNG do mapa corporal |
+| `exercise_card*.py`, `body_map_render.py`, `muscle_map.py` | Cards ilustrados V3: máquina de estados (`exercise_card_service.py`), prompt por cena (`exercise_card_prompt.py`), worker de duas chamadas à OpenAI (`exercise_card_jobs.py`: cena 1 por `generations` ou `edits` com referências, cena 2 por `edits` com a cena 1 em JPEG), compositor de dois painéis (`exercise_card_composer.py`, `CARD_LAYOUT_V3_PHOTO`), S3 rascunho/final (`exercise_card_storage.py`), publicação (`exercise_card_processor.py`). Fotos de referência do admin em `exercise_card_references.py` (tabela `exercise_card_references`, migração 109, rotas em `exercise_cards.py`). Calibração em `scripts/exercise_card_calibration.py`. PNG do mapa corporal |
 | `exercise_briefing.py`, `exercise_description_*.py` | Briefing pré-exercício e descrição de execução por IA (gera uma vez, autogen em segundo plano) |
 | `set_types.py`, `weight_units.py` | Vocabulário canônico de `set_type`; kg no banco, lb só na borda |
 | `intervals_*.py` | Intervals.icu: cliente urllib, store, rotas `/integrations/intervals`, sync agendado, classificação e match por horário |
@@ -158,7 +158,7 @@ Padrão: rota cria job (202) → Lambda assíncrona reivindica o job (`async_job
 | Cardio | `cardio_agent_ai.py`, `cardio_generation_core.py`, `cardio_recommendations.py` | `OPENAI_MODEL_CARDIO` |
 | Ficha por IA (legado) | `workout_plan_ai.py`, `workout_plan_templates_engine.py` | `OPENAI_MODEL_PLAN` |
 | Periodização (Modelo) | `periodization/*` | `OPENAI_MODEL_PERIODIZATION` (sem default) |
-| Cards ilustrados | `exercise_card_*` | config de imagem |
+| Cards ilustrados (V3) | `exercise_card_*` | `OPENAI_IMAGE_MODEL` (padrão `gpt-image-2.5-sunburst`), `OPENAI_IMAGE_QUALITY`, `OPENAI_IMAGE_SIZE`, `OPENAI_IMAGE_TIMEOUT_SECONDS` |
 | RAG | `rag_chunking.py` (seletivo por grupo), `rag_storage.py` (hidrata do S3) | `RAG_MARKDOWN_DIR`, `RAG_S3_BUCKET` |
 
 #### Provedor LLM por feature (OpenAI × Anthropic)
@@ -257,7 +257,7 @@ Cada módulo é dono único de uma regra (ver FONTES_DA_VERDADE). Sem I/O, excet
 | Lambdas | `lambda_api_core.tf`, `lambda_engines.tf`, `lambda_ai_generators.tf`, `lambda_workout_ai.tf`, `lambda_intervals_sync.tf`, `lambda_migrations.tf`, `lambda_async_invoke_config.tf` (retry 0) | 3 ECR, tags imutáveis por SHA; `image_uri` com `ignore_changes` |
 | API Gateway + WAF + logs | `api_gateway.tf`, `api_gateway_borda.tf` | Roteamento por path api-core × engines (`local.engines_*_path_parts`) |
 | CloudFront + OAC + CF Functions | `cloudfront.tf`, `cloudfront_uploads.tf`, `cloudfront-functions/` | |
-| S3 | `s3_frontend.tf`, `s3_uploads.tf`, `s3_rag.tf` | `exercise-card-drafts/` com lifecycle 7 d, não público |
+| S3 | `s3_frontend.tf`, `s3_uploads.tf`, `s3_rag.tf` | `exercise-card-drafts/` com lifecycle 7 d, não público; `exercise-card-references/` privado, fora da CDN |
 | DynamoDB, Route 53, SES, Secrets | `dynamodb.tf`, `route53.tf`, `ses.tf`, `secrets.tf` | Valores de segredo fora do Terraform |
 | Observabilidade/custos | `monitoring.tf`, `budgets.tf`, `cloudtrail.tf`, `alerta_root.tf` | SNS `musclefit-alerts` |
 | IAM do pipeline | `iam-policies/consolidacao/`, `iam-policies/gha-plan/` | Role de deploy com 5 policies v2; ampliar é manual |
