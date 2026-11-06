@@ -1,7 +1,7 @@
 """Fotos de referencia dos cards de exercicios (V3 fotorrealista).
 
 O admin anexa ate `MAX_ACTIVE_REFERENCES` fotos reais do aparelho/movimento a
-um exercicio; o worker as le (`active_reference_keys` -> S3) e as envia a
+um exercicio; o worker as le (`active_reference_rows` -> S3) e as envia a
 OpenAI junto do prompt das duas cenas. Este modulo e o dono da regra: limites,
 validacao e normalizacao da imagem, SQL da tabela `exercise_card_references`
 (migracao 109) e a serializacao. As rotas (`exercise_cards.py`) so chamam
@@ -239,17 +239,6 @@ def active_reference_rows(cursor, exercise_id: int) -> list[dict[str, Any]]:
     return [dict(row) for row in (cursor.fetchall() or [])]
 
 
-def active_reference_keys(cursor, exercise_id: int) -> list[str]:
-    """Chaves S3 das fotos ativas (mesma ordem de `active_reference_rows`):
-    o contrato com o worker, que le os bytes com
-    `exercise_card_storage.get_reference_bytes`."""
-    cursor.execute(
-        f"SELECT s3_key FROM {TABLE} WHERE exercise_id = %s AND deleted_at IS NULL ORDER BY id LIMIT %s",
-        (int(exercise_id), MAX_ACTIVE_REFERENCES),
-    )
-    return [str(row["s3_key"]) for row in (cursor.fetchall() or [])]
-
-
 def count_active(cursor, exercise_id: int) -> int:
     cursor.execute(
         f"SELECT COUNT(*) AS n FROM {TABLE} WHERE exercise_id = %s AND deleted_at IS NULL",
@@ -320,6 +309,7 @@ def create_reference(*, exercise_id: int, user_id: int, image_base64: Any, note:
     jpeg, width, height = normalize_reference_image(decode_upload(image_base64))
     now = svc.utcnow()
     uploaded_key: Optional[str] = None
+    uploaded_ref_id: Optional[int] = None
     try:
         with svc.transaction() as conn:
             with conn.cursor() as cursor:
@@ -344,12 +334,13 @@ def create_reference(*, exercise_id: int, user_id: int, image_base64: Any, note:
                 except storage.ExerciseCardStorageError as exc:
                     raise _storage_failed(exc) from None
                 uploaded_key = key
+                uploaded_ref_id = ref_id
                 row = {
                     "id": ref_id, "s3_key": key, "width": width, "height": height, "bytes": len(jpeg),
                     "note": clean_note, "created_at": now,
                 }
     except Exception:
-        _discard_object(uploaded_key)
+        _discard_object(uploaded_key, exercise_id=exercise_id, ref_id=uploaded_ref_id)
         raise
     return serialize_reference(row, _sign(key))
 
@@ -376,11 +367,12 @@ def delete_reference(*, exercise_id: int, ref_id: int, user_id: int) -> None:
                 (svc.utcnow(), int(ref_id), int(exercise_id)),
             )
     logger.info("Foto de referencia %s do exercicio %s excluida pelo usuario %s", ref_id, exercise_id, user_id)
-    _discard_object(key)
+    _discard_object(key, exercise_id=exercise_id, ref_id=ref_id)
 
 
-def _discard_object(key: Optional[str]) -> None:
-    """Remove o objeto do S3 sem nunca levantar (a linha ja mudou de estado)."""
+def _discard_object(key: Optional[str], *, exercise_id: int, ref_id: Optional[int]) -> None:
+    """Remove o objeto do S3 sem nunca levantar (a linha ja mudou de estado).
+    O evento de falha leva ids, nunca a chave S3."""
     if not key:
         return
     try:
@@ -389,7 +381,8 @@ def _discard_object(key: Optional[str]) -> None:
         # Evento estruturado (alarmavel): o objeto orfao nao fica invisivel.
         log_event(
             EVENT_REFERENCE_OBJECT_DELETE_FAILED,
-            s3_key=key,
+            exercise_id=int(exercise_id),
+            ref_id=ref_id,
             error=type(exc).__name__,
             error_code=getattr(exc, "code", None),
         )

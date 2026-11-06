@@ -334,7 +334,7 @@ def _criar(exercise_id=42, raw=None, **kwargs):
 def _ativas(db, exercise_id=42):
     with db.transaction() as conn:
         with conn.cursor() as cursor:
-            return refs.active_reference_keys(cursor, exercise_id)
+            return [row["s3_key"] for row in refs.active_reference_rows(cursor, exercise_id)]
 
 
 def test_cria_grava_jpeg_privado_no_s3_e_devolve_a_referencia(db, s3):
@@ -503,12 +503,13 @@ def test_falha_do_s3_ao_excluir_nao_desfaz_o_soft_delete(db, s3, monkeypatch):
     refs.delete_reference(exercise_id=42, ref_id=ref["id"], user_id=ADMIN)  # nao levanta
     assert db.reference(ref["id"])["deleted_at"] == T0
     assert _ativas(db) == []
-    # O orfao nao fica invisivel: evento estruturado com a chave e o erro.
+    # O orfao nao fica invisivel: evento estruturado com ids e o erro, sem a chave S3.
     assert eventos == [(
         "exercise_card.reference_object_delete_failed",
-        {"s3_key": f"exercise-card-references/42/{ref['id']}.jpg", "error": "ExerciseCardStorageError",
+        {"exercise_id": 42, "ref_id": ref["id"], "error": "ExerciseCardStorageError",
          "error_code": "S3_UPLOAD_FAILED"},
     )]
+    assert "exercise-card-references" not in repr(eventos)
 
 
 def test_worker_so_ve_as_tres_mais_antigas_ativas_em_ordem(db, s3):

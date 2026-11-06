@@ -278,7 +278,11 @@ def put_reference(
 _REFERENCE_KEY_RE = re.compile(rf"{re.escape(REFERENCE_PREFIX)}/[0-9]+/[0-9]+\.jpg")
 
 # `Error.Code` de objeto ausente OU sem permissao: sem `s3:ListBucket` na role do
-# worker, o S3 responde AccessDenied (403) para chave inexistente.
+# worker, o S3 responde AccessDenied (403) para chave inexistente. Efeito
+# colateral aceito: um AccessDenied "de verdade" (permissao removida do IAM) tambem
+# vira "ausente" e as fotos de referencia somem em silencio da geracao; o
+# worker (`_read_references`) loga um aviso com os ids das fotos puladas para que
+# a divergencia apareca nos logs.
 _ABSENT_OR_DENIED_CODES = _MISSING_OBJECT_CODES | frozenset({"AccessDenied", "403", "Forbidden"})
 
 
@@ -323,7 +327,7 @@ def get_reference_bytes_present(
             if code in _ABSENT_OR_DENIED_CODES or type(exc).__name__ == "NoSuchKey":
                 continue
             raise ExerciseCardStorageError(
-                f"Falha ao ler {key} do S3: {type(exc).__name__}", code=S3_READ_FAILED
+                f"Falha ao ler uma foto de referencia do S3: {type(exc).__name__}", code=S3_READ_FAILED
             ) from exc
     return out
 
@@ -350,7 +354,7 @@ def get_reference_bytes(
                 body.close()
         except Exception as exc:  # noqa: BLE001 - ausente ou qualquer falha: leitura falhou
             raise ExerciseCardStorageError(
-                f"Falha ao ler {key} do S3: {type(exc).__name__}", code=S3_READ_FAILED
+                f"Falha ao ler uma foto de referencia do S3: {type(exc).__name__}", code=S3_READ_FAILED
             ) from exc
     return out
 
@@ -363,7 +367,7 @@ def delete_reference(key: str, *, client=None, bucket: Optional[str] = None) -> 
     try:
         (client or s3_client()).delete_object(Bucket=bucket or bucket_name(), Key=checked)
     except Exception as exc:  # noqa: BLE001
-        raise ExerciseCardStorageError(f"Falha ao remover {checked} do S3: {type(exc).__name__}") from exc
+        raise ExerciseCardStorageError(f"Falha ao remover a foto de referencia do S3: {type(exc).__name__}") from exc
 
 
 def is_missing_object_error(exc: BaseException) -> bool:

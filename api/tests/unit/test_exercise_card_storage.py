@@ -527,6 +527,10 @@ def test_get_reference_bytes_present_outras_falhas_continuam_erro():
     with pytest.raises(st.ExerciseCardStorageError) as exc:
         st.get_reference_bytes_present([key], client=s3)
     assert exc.value.code == "S3_READ_FAILED"
+    assert "exercise-card-references" not in str(exc.value)  # a mensagem pode chegar ao admin
+    with pytest.raises(st.ExerciseCardStorageError) as estrito:
+        st.get_reference_bytes([key], client=s3)
+    assert "exercise-card-references" not in str(estrito.value)
     with pytest.raises(ValueError):
         st.get_reference_bytes_present(["exercise-card-drafts/1/preview.png"], client=s3)
 

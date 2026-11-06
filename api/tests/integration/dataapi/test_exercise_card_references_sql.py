@@ -8,7 +8,7 @@ SQL. O que so o banco prova:
 1. INSERT com `lastrowid` e UPDATE da `s3_key` derivada do id (Data API inclusa);
 2. `SELECT ... FOR UPDATE` do exercicio + contagem de ativas (limite de 3);
 3. soft-delete com `deleted_at` (DATETIME ida e volta) e `rowcount` confiavel;
-4. `active_reference_keys`/`active_reference_rows`: so ativas, por `id`, no
+4. `active_reference_rows`: so ativas, por `id`, no
    maximo 3, usando o indice `idx_ecr_exercise_active`;
 5. nota com acento ida e volta (utf8mb4) e o tipo `BIGINT UNSIGNED` do
    `exercise_id` sem FK (apagar o exercicio nao e bloqueado pela tabela).
@@ -115,7 +115,7 @@ def test_ciclo_completo_nos_dois_backends(seed, backend, raw, fakes):
 
     with svc.transaction() as conn:
         with conn.cursor() as cursor:
-            assert refs.active_reference_keys(cursor, SUPINO) == [linha["s3_key"]]
+            assert [r["s3_key"] for r in refs.active_reference_rows(cursor, SUPINO)] == [linha["s3_key"]]
 
     assert api.delete(f"{base}/{ref['id']}").status_code == 204
     (apagada,) = _rows(raw, SUPINO)
@@ -123,7 +123,7 @@ def test_ciclo_completo_nos_dois_backends(seed, backend, raw, fakes):
     assert fakes["s3"].keys() == []
     with svc.transaction() as conn:
         with conn.cursor() as cursor:
-            assert refs.active_reference_keys(cursor, SUPINO) == []
+            assert refs.active_reference_rows(cursor, SUPINO) == []
     assert api.get(base).json()["items"] == []
     assert api.delete(f"{base}/{ref['id']}").status_code == 404
 

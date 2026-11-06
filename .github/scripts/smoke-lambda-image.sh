@@ -293,7 +293,8 @@ renderizados["set_evaluation"] = "".join(
 _card = exercise_card_prompt.ExerciseCardContext
 renderizados["exercise_card"] = "".join(
     exercise_card_prompt.build_scene_prompts(
-        ctx, "minimal", instruction=instrucao, parent_reject_reason=motivo, reference_count=fotos
+        ctx, "minimal", instruction=instrucao, parent_reject_reason=motivo, reference_count=fotos,
+        reference_notes=("nota",) * fotos,
     ).joined()
     for fotos in (0, 3)
     for ctx in (_card(exercise_id=1, name="smoke"),
