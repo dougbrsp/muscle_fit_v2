@@ -2,7 +2,7 @@
 
 import { Alert, Box, Button, FileButton, Group, Image, Loader, Skeleton, Stack, Text, Textarea } from '@mantine/core';
 import { IconAlertTriangle, IconPhotoOff, IconTrash, IconUpload } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { blobToBase64 } from '@/lib/base64';
 import {
   exerciseCardErrorText,
@@ -73,6 +73,8 @@ export type ExerciseCardReferencesViewProps = {
   actionError: string | null;
   onNoteChange: (value: string) => void;
   onPick: (file: File | null) => void;
+  /** Ref do `FileButton`: `resetRef.current?.()` limpa o input para o mesmo arquivo disparar `onChange` de novo. */
+  resetRef?: RefObject<() => void>;
   onAskDelete: (reference: ExerciseCardReference) => void;
   onRetry: () => void;
 };
@@ -88,6 +90,7 @@ export function ExerciseCardReferencesView({
   actionError,
   onNoteChange,
   onPick,
+  resetRef,
   onAskDelete,
   onRetry,
 }: ExerciseCardReferencesViewProps) {
@@ -159,8 +162,8 @@ export function ExerciseCardReferencesView({
       {limits != null && canUpload && (
         <Stack gap="xs" data-card-references-upload>
           <Textarea
-            label="Nota da foto (opcional)"
-            description="Ex.: ajuste do banco, ângulo da câmera."
+            label="Nota (opcional) — vai para a IA junto com a foto"
+            description="Ex.: rolo atrás dos tornozelos, polia abaixo dos ombros."
             value={note}
             maxLength={limits.note_max_chars}
             autosize
@@ -170,7 +173,7 @@ export function ExerciseCardReferencesView({
             onChange={(event) => onNoteChange(event.currentTarget.value)}
           />
           <Group gap="xs">
-            <FileButton onChange={onPick} accept={referenceAcceptAttribute(limits.accepted_types)} disabled={uploading}>
+            <FileButton resetRef={resetRef} onChange={onPick} accept={referenceAcceptAttribute(limits.accepted_types)} disabled={uploading}>
               {(props) => (
                 <Button
                   {...props}
@@ -198,6 +201,7 @@ export function ExerciseCardReferencesView({
 /** Fotos de referência do exercício (admin): lista, envio reduzido no navegador e exclusão com confirmação. */
 export function ExerciseCardReferences({ exerciseId }: { exerciseId: number }) {
   const { query, createMutation, deleteMutation } = useExerciseCardReferences({ exerciseId, enabled: true });
+  const resetRef = useRef<() => void>(null);
   const [note, setNote] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExerciseCardReference | null>(null);
@@ -207,6 +211,8 @@ export function ExerciseCardReferences({ exerciseId }: { exerciseId: number }) {
 
   async function handlePick(file: File | null) {
     if (!file || !limits) return;
+    // Limpa o input já: após erro (400/409) o mesmo arquivo precisa poder ser escolhido de novo.
+    resetRef.current?.();
     setLocalError(null);
     createMutation.reset();
     let imageBase64: string;
@@ -243,6 +249,7 @@ export function ExerciseCardReferences({ exerciseId }: { exerciseId: number }) {
         actionError={actionError}
         onNoteChange={setNote}
         onPick={(file) => void handlePick(file)}
+        resetRef={resetRef}
         onAskDelete={(reference) => {
           deleteMutation.reset();
           setDeleteTarget(reference);

@@ -85,6 +85,7 @@ describe('ExerciseCardReferences (SSR)', () => {
   it('vazio: mensagem e botão de enviar; nota limitada por limits.note_max_chars', () => {
     const html = renderContainer([]);
     expect(html).toContain('data-card-references-empty');
+    expect(html).toContain('vai para a IA junto com a foto');
     expect(html).toContain('Enviar foto de referência');
     expect(html).toContain(`maxLength="${LIMITS.note_max_chars}"`);
     expect(html).toContain(`accept="${(LIMITS.accepted_types ?? []).join(',')}"`);
