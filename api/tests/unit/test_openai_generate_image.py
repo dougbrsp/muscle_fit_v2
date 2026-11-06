@@ -1,4 +1,5 @@
-"""`openai_client.generate_image` (POST /v1/images/generations) e a
+"""`openai_client.generate_image` (POST /v1/images/generations sem
+referencias; POST /v1/images/edits multipart com referencias) e a
 classificacao de erro de `OpenAIGenerationError`.
 
 Sem rede: `urllib.request.urlopen` e substituido por um duble que devolve uma
@@ -49,6 +50,36 @@ def _http_error(code: int, body: dict | str = "") -> urllib.error.HTTPError:
     return urllib.error.HTTPError(oc._IMAGES_URL, code, "erro", {}, io.BytesIO(raw))
 
 
+def _parse_multipart(raw: bytes, content_type: str) -> tuple[dict, list[tuple[str, str, bytes]]]:
+    """Parser independente do corpo multipart: split pelo boundary do header,
+    cada parte conferida (CRLF, cabecalhos, terminador final)."""
+    assert content_type.startswith("multipart/form-data; boundary=")
+    boundary = content_type.split("boundary=", 1)[1].encode()
+    dash = b"--" + boundary
+    fim = dash + b"--\r\n"
+    assert raw.endswith(fim)
+    pedacos = raw[: -len(fim)].split(dash + b"\r\n")
+    assert pedacos[0] == b""
+    campos: dict = {}
+    imagens: list[tuple[str, str, bytes]] = []
+    for parte in pedacos[1:]:
+        cabecalho, corpo = parte.split(b"\r\n\r\n", 1)
+        assert corpo.endswith(b"\r\n")
+        corpo = corpo[:-2]
+        linhas = cabecalho.decode().split("\r\n")
+        disposicao = linhas[0]
+        assert disposicao.startswith("Content-Disposition: form-data; name=")
+        nome = disposicao.split('name="', 1)[1].split('"', 1)[0]
+        if nome == "image[]":
+            arquivo = disposicao.split('filename="', 1)[1].split('"', 1)[0]
+            assert linhas[1:] == ["Content-Type: image/png"]
+            imagens.append((nome, arquivo, corpo))
+        else:
+            assert len(linhas) == 1 and nome not in campos
+            campos[nome] = corpo.decode("utf-8")
+    return campos, imagens
+
+
 class _Relogio:
     def __init__(self):
         self.agora = 1000.0
@@ -79,14 +110,14 @@ def openai(monkeypatch):
         duracao = 5.0
 
     def _fake(request, timeout=None):
-        Duble.chamadas.append(
-            {
-                "url": request.full_url,
-                "body": json.loads(request.data.decode("utf-8")),
-                "headers": dict(request.header_items()),
-                "timeout": timeout,
-            }
-        )
+        headers = dict(request.header_items())
+        content_type = headers.get("Content-type", "")
+        chamada = {"url": request.full_url, "headers": headers, "timeout": timeout, "raw": request.data}
+        if content_type == "application/json":
+            chamada["body"] = json.loads(request.data.decode("utf-8"))
+        else:
+            chamada["body"], chamada["images"] = _parse_multipart(request.data, content_type)
+        Duble.chamadas.append(chamada)
         relogio.agora += Duble.duracao
         item = Duble.fila.pop(0)
         if isinstance(item, BaseException):
@@ -111,10 +142,10 @@ def test_corpo_enviado_com_os_defaults_e_sem_response_format(openai):
     (chamada,) = openai.chamadas
     assert chamada["url"] == "https://api.openai.com/v1/images/generations"
     assert chamada["body"] == {
-        "model": "gpt-image-1.5",
+        "model": "gpt-image-2.5-sunburst",
         "prompt": PROMPT,
         "size": "1024x1536",
-        "quality": "medium",
+        "quality": "high",
         "n": 1,
         "output_format": "png",
     }
@@ -174,10 +205,11 @@ def test_parametros_explicitos_vencem_o_ambiente(openai, monkeypatch):
     assert openai.chamadas[0]["timeout"] == 60
 
 
-def test_defaults_sao_o_contrato_de_envs_do_pr1():
+def test_defaults_sao_o_contrato_de_envs_v3():
     assert (oc.DEFAULT_IMAGE_MODEL, oc.DEFAULT_IMAGE_QUALITY, oc.DEFAULT_IMAGE_SIZE) == (
-        "gpt-image-1.5", "medium", "1024x1536")
+        "gpt-image-2.5-sunburst", "high", "1024x1536")
     assert oc.DEFAULT_IMAGE_TIMEOUT_SECONDS == 150
+    assert oc.IMAGE_MAX_REFERENCE_IMAGES == 16
 
 
 # ---------------------------------------------------------------------------
@@ -188,13 +220,48 @@ def test_defaults_sao_o_contrato_de_envs_do_pr1():
 def test_decodifica_b64_json_e_devolve_usage_e_custo(openai):
     openai.fila = [_ok(usage={"input_tokens": 1234, "output_tokens": 4160, "total_tokens": 5394},
                        quality="medium", size="1024x1536")]
-    result = oc.generate_image(PROMPT)
+    result = oc.generate_image(PROMPT, model="gpt-image-1.5", quality="medium")
     assert result.image == PNG
     assert (result.model, result.quality, result.size) == ("gpt-image-1.5", "medium", "1024x1536")
     assert (result.tokens_in, result.tokens_out) == (1234, 4160)
     assert result.cost_usd == Decimal("0.05")
     assert result.attempts == 1
     assert result.elapsed_seconds == 5.0
+    assert result.endpoint == oc.IMAGE_ENDPOINT_GENERATIONS == "generations"
+
+
+USAGE_SUNBURST = {
+    "input_tokens": 1500,
+    "input_tokens_details": {"text_tokens": 500, "image_tokens": 1000},
+    "output_tokens": 6000,
+    "output_tokens_details": {"image_tokens": 6000, "text_tokens": 0},
+    "total_tokens": 7500,
+}
+
+
+def test_custo_do_sunburst_sai_do_usage_pelas_taxas_por_token(openai):
+    openai.fila = [_ok(usage=USAGE_SUNBURST)]
+    result = oc.generate_image(PROMPT)
+    precos = oc.IMAGE_TOKEN_PRICES_USD_PER_MILLION["gpt-image-2.5-sunburst"]
+    assert (precos.text_input, precos.image_input, precos.image_output) == (
+        Decimal("5.00"), Decimal("8.00"), Decimal("30.00"))
+    # 500 x 5 + 1000 x 8 + 6000 x 30 = 190500 por 1M
+    assert result.cost_usd == Decimal("0.1905")
+    assert (result.tokens_in, result.tokens_out) == (1500, 6000)
+
+
+def test_custo_do_sunburst_sem_usage_e_none(openai):
+    openai.fila = [_ok()]
+    assert oc.generate_image(PROMPT).cost_usd is None
+
+
+def test_custo_do_sunburst_sem_detalhe_de_entrada(openai):
+    """Sem `input_tokens_details`: no generations toda a entrada e texto; no
+    edits nao da para separar texto de imagem -> None (sem chute)."""
+    usage = {"input_tokens": 400, "output_tokens": 1000}
+    openai.fila = [_ok(usage=usage), _ok(usage=usage)]
+    assert oc.generate_image(PROMPT).cost_usd == Decimal("0.032")  # 400 x 5 + 1000 x 30
+    assert oc.generate_image(PROMPT, reference_images=[PNG]).cost_usd is None
 
 
 def test_sem_usage_tokens_ficam_none(openai):
@@ -209,17 +276,23 @@ def test_sem_usage_tokens_ficam_none(openai):
         ("gpt-image-1.5", "low", "1024x1536", Decimal("0.013")),
         ("gpt-image-1.5", "medium", "1024x1536", Decimal("0.05")),
         ("gpt-image-1.5", "high", "1024x1536", Decimal("0.20")),
+        ("gpt-image-1-mini", "high", "1024x1536", Decimal("0.052")),
         ("gpt-image-1.5", "medium", "1024x1024", None),
         ("gpt-image-9", "medium", "1024x1536", None),
+        ("gpt-image-2.5-sunburst", "high", "1024x1536", None),  # por token: sem usage, sem custo
     ],
 )
 def test_tabela_de_custo(modelo, qualidade, tamanho, custo):
     assert oc.image_cost_usd(modelo, qualidade, tamanho) == custo
 
 
+def test_sunburst_nao_tem_preco_fixo_por_imagem():
+    assert not any(modelo.startswith("gpt-image-2.5") for modelo, _, _ in oc.IMAGE_PRICES_USD)
+
+
 def test_custo_desconhecido_e_none_no_resultado(openai):
     openai.fila = [_ok(size="1024x1024")]
-    assert oc.generate_image(PROMPT, size="1024x1024").cost_usd is None
+    assert oc.generate_image(PROMPT, model="gpt-image-1.5", size="1024x1024").cost_usd is None
 
 
 @pytest.mark.parametrize(
@@ -364,9 +437,127 @@ def test_mensagens_de_erro_nao_vazam_prompt_nem_chave(openai):
     assert len(texto) < 400
 
 
-def test_orcamento_de_tempo_cabe_na_lambda_de_180s():
-    pior_inicio = oc.IMAGE_RETRY_WINDOW_SECONDS + max(oc.IMAGE_RETRY_BACKOFF_SECONDS)
-    assert pior_inicio + oc.DEFAULT_IMAGE_TIMEOUT_SECONDS < 180
+def test_pior_caso_de_uma_chamada():
+    assert oc.image_call_worst_case_seconds(150) == 20 + 1 + 2 + 150
+    assert oc.image_call_worst_case_seconds(60.0) == 83.0
+
+
+def test_duas_chamadas_no_pior_caso_cabem_na_lambda_de_420s():
+    # V3: 2 chamadas sequenciais por card (cena 1 e cena 2) no worker.
+    assert 2 * oc.image_call_worst_case_seconds(oc.DEFAULT_IMAGE_TIMEOUT_SECONDS) < 420
+
+
+# ---------------------------------------------------------------------------
+# Edits (multipart) com imagens de referencia
+# ---------------------------------------------------------------------------
+
+# REF_A contem CRLF e algo parecido com boundary: o parser so separa pelo boundary real.
+REF_A = b"\x89PNG\r\n\x1a\n" + b"referencia-a\r\n--nao-e-boundary" * 3
+REF_B = b"\x89PNG\r\n\x1a\n" + b"referencia-b" * 5
+
+
+def test_uma_referencia_vai_para_o_edits_em_multipart(openai):
+    openai.fila = [_ok(usage=USAGE_SUNBURST)]
+    result = oc.generate_image(PROMPT, reference_images=[REF_A])
+    (chamada,) = openai.chamadas
+    assert chamada["url"] == "https://api.openai.com/v1/images/edits" == oc._IMAGE_EDITS_URL
+    assert chamada["headers"]["Authorization"] == f"Bearer {KEY}"
+    assert chamada["body"] == {
+        "model": "gpt-image-2.5-sunburst",
+        "prompt": PROMPT,
+        "size": "1024x1536",
+        "quality": "high",
+        "n": "1",
+        "output_format": "png",
+    }
+    assert chamada["images"] == [("image[]", "ref0.png", REF_A)]
+    assert result.endpoint == oc.IMAGE_ENDPOINT_EDITS == "edits"
+    assert result.cost_usd == Decimal("0.1905")
+
+
+def test_n_referencias_na_ordem_e_campos_opcionais(openai):
+    openai.fila = [_ok()]
+    oc.generate_image(PROMPT, reference_images=[REF_A, REF_B, REF_A], moderation="low", background="opaque")
+    (chamada,) = openai.chamadas
+    assert chamada["images"] == [
+        ("image[]", "ref0.png", REF_A), ("image[]", "ref1.png", REF_B), ("image[]", "ref2.png", REF_A)]
+    assert chamada["body"]["moderation"] == "low"
+    assert chamada["body"]["background"] == "opaque"
+    for proibido in ("input_fidelity", "response_format", "image", "images", "mask"):
+        assert proibido not in chamada["body"]
+    assert b"input_fidelity" not in chamada["raw"] and b"response_format" not in chamada["raw"]
+
+
+def test_boundary_e_unico_por_pedido(openai):
+    openai.fila = [_ok(), _ok()]
+    oc.generate_image(PROMPT, reference_images=[REF_B])
+    oc.generate_image(PROMPT, reference_images=[REF_B])
+    tipos = [c["headers"]["Content-type"] for c in openai.chamadas]
+    assert tipos[0] != tipos[1]
+
+
+def test_limite_de_referencias_recusado_sem_rede(openai):
+    openai.fila = [_ok()]
+    oc.generate_image(PROMPT, reference_images=[REF_B] * oc.IMAGE_MAX_REFERENCE_IMAGES)
+    assert len(openai.chamadas[0]["images"]) == 16
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=[REF_B] * (oc.IMAGE_MAX_REFERENCE_IMAGES + 1))
+    assert exc.value.code == oc.OPENAI_INVALID_REQUEST
+    assert len(openai.chamadas) == 1
+
+
+@pytest.mark.parametrize(
+    "referencias", [[b""], [REF_A, b""], ["texto"], [None]], ids=["vazia", "uma_vazia", "str", "none"]
+)
+def test_referencia_vazia_ou_invalida_nem_chama(openai, referencias):
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=referencias)
+    assert exc.value.code == oc.OPENAI_INVALID_REQUEST
+    assert openai.chamadas == []
+
+
+def test_edits_retry_429_5xx_igual_ao_generations(openai):
+    openai.fila = [_http_error(429), _http_error(502), _ok()]
+    result = oc.generate_image(PROMPT, reference_images=[REF_A])
+    assert result.attempts == 3 and result.endpoint == "edits"
+    assert openai.relogio.esperas == [1.0, 2.0]
+    assert all(c["url"] == oc._IMAGE_EDITS_URL for c in openai.chamadas)
+    assert openai.chamadas[0]["raw"] == openai.chamadas[2]["raw"]  # mesmo corpo reenviado
+
+
+def test_edits_sem_retry_depois_da_janela(openai):
+    openai.duracao = 21.0
+    openai.fila = [_http_error(500), _ok()]
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=[REF_A])
+    assert exc.value.status == 500
+    assert len(openai.chamadas) == 1
+
+
+def test_edits_timeout_nunca_tenta_de_novo(openai):
+    openai.fila = [TimeoutError("read timed out"), _ok()]
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=[REF_A], timeout=150)
+    assert exc.value.code == oc.OPENAI_TIMEOUT
+    assert len(openai.chamadas) == 1
+    assert openai.chamadas[0]["timeout"] == 150
+
+
+@pytest.mark.parametrize("status", [400, 413, 422])
+def test_edits_4xx_e_invalid_request_sem_retry(openai, status):
+    openai.fila = [_http_error(status, {"error": {"code": "invalid_image", "message": "recusado"}})]
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=[REF_A])
+    assert (exc.value.code, exc.value.status) == (oc.OPENAI_INVALID_REQUEST, status)
+    assert str(exc.value) == oc.USER_MESSAGE_UNAVAILABLE
+    assert len(openai.chamadas) == 1
+
+
+def test_edits_resposta_sem_imagem_e_generation_failed(openai):
+    openai.fila = [{"data": []}]
+    with pytest.raises(oc.OpenAIGenerationError) as exc:
+        oc.generate_image(PROMPT, reference_images=[REF_A])
+    assert exc.value.code == oc.OPENAI_GENERATION_FAILED
 
 
 # ---------------------------------------------------------------------------

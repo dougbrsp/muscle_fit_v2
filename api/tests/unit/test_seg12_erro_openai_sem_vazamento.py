@@ -161,6 +161,43 @@ def test_erro_do_card_nao_tem_o_corpo_da_openai(monkeypatch, caplog):
     assert erro["feature"] == "exercise_card" and erro["request_id"] == REQUEST_ID
 
 
+def test_erro_do_edits_com_referencias_nao_vaza_corpo_prompt_nem_chave(monkeypatch, caplog):
+    """Cards V3: o edits (multipart com as fotos de referencia) falha. O log
+    tem o diagnostico da OpenAI e o endpoint, nunca o prompt, os bytes das
+    referencias nem a chave; a mensagem ao usuario segue generica."""
+    monkeypatch.setenv("OPENAI_API_KEY", CHAVE)
+    prompt = "PROMPT-SECRETO-DA-CENA-2"
+    referencia = b"\x89PNG\r\n\x1a\nBYTES-DA-FOTO-DE-REFERENCIA"
+    urls: list[str] = []
+
+    def _falha(request, timeout=None):
+        urls.append(request.full_url)
+        raise urllib.error.HTTPError(
+            request.full_url,
+            400,
+            "erro",
+            {"x-request-id": REQUEST_ID},
+            io.BytesIO(
+                json.dumps({"error": {"code": "invalid_image", "message": f"{CORPO_OPENAI} chave {CHAVE}"}}).encode()
+            ),
+        )
+
+    monkeypatch.setattr(openai_client.urllib.request, "urlopen", _falha)
+    with caplog.at_level(logging.INFO, logger="musclefit.events"):
+        with pytest.raises(openai_client.OpenAIGenerationError) as exc:
+            openai_client.generate_image(prompt, reference_images=[referencia])
+
+    assert urls == [openai_client._IMAGE_EDITS_URL]
+    assert exc.value.code == openai_client.OPENAI_INVALID_REQUEST
+    assert str(exc.value) == openai_client.USER_MESSAGE_UNAVAILABLE
+    assert CORPO_OPENAI not in str(exc.value)
+    [erro] = _eventos(caplog, openai_client.EVENT_LLM_ERROR)
+    assert erro["feature"] == "exercise_card" and erro["endpoint"] == "edits"
+    assert erro["request_id"] == REQUEST_ID and CORPO_OPENAI in erro["diagnostic"]
+    for segredo in (CHAVE, prompt, "BYTES-DA-FOTO-DE-REFERENCIA", "form-data"):
+        assert segredo not in caplog.text
+
+
 def test_diagnostico_mascara_chave_e_trunca():
     texto = openai_client.redact_diagnostic(f"Incorrect API key provided: {CHAVE}. Bearer abc.def " + "x" * 2000)
     assert CHAVE not in texto and "abc.def" not in texto
