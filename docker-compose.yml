@@ -135,15 +135,16 @@ services:
       #     calibracao visual roda aqui, com OPENAI_API_KEY real no .env);
       #     "false" em producao ate o fim do checkpoint. Sobrescreva no .env
       #     para desligar.
-      #   - Limites e OPENAI_IMAGE_*: mesmos defaults de producao.
+      #   - Limites e OPENAI_IMAGE_* (gpt-image-2.5-sunburst, high, 40/dia):
+      #     mesmos valores de producao.
       PUBLIC_ASSETS_BASE_URL: http://localhost:${MUSCLEFIT_LOCALSTACK_HOST_PORT:-4566}/musclefit-uploads
       S3_PRESIGN_ENDPOINT_URL: http://localhost:${MUSCLEFIT_LOCALSTACK_HOST_PORT:-4566}
       EXERCISE_CARD_GENERATION_ENABLED: ${EXERCISE_CARD_GENERATION_ENABLED:-true}
-      EXERCISE_CARD_MAX_GENERATIONS_PER_DAY: ${EXERCISE_CARD_MAX_GENERATIONS_PER_DAY:-100}
+      EXERCISE_CARD_MAX_GENERATIONS_PER_DAY: ${EXERCISE_CARD_MAX_GENERATIONS_PER_DAY:-40}
       EXERCISE_CARD_MAX_IN_FLIGHT: ${EXERCISE_CARD_MAX_IN_FLIGHT:-2}
       EXERCISE_CARD_STALE_MINUTES: ${EXERCISE_CARD_STALE_MINUTES:-10}
-      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
-      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-medium}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2.5-sunburst}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-high}
       OPENAI_IMAGE_SIZE: ${OPENAI_IMAGE_SIZE:-1024x1536}
       OPENAI_IMAGE_TIMEOUT_SECONDS: ${OPENAI_IMAGE_TIMEOUT_SECONDS:-150}
     # Sem publicacao de porta no host: quem fala com a API de fora do compose
@@ -280,14 +281,15 @@ services:
       # flags acima: aqui valem para o processo inteiro do emulador; em
       # producao so a `musclefit-plan-generator` recebe.
       EQUIPMENT_PHOTOS_BUCKET: musclefit-uploads
-      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
-      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-medium}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2.5-sunburst}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-high}
       OPENAI_IMAGE_SIZE: ${OPENAI_IMAGE_SIZE:-1024x1536}
       OPENAI_IMAGE_TIMEOUT_SECONDS: ${OPENAI_IMAGE_TIMEOUT_SECONDS:-150}
-      # plan-generator: 180 s, igual a `infra/lambda_ai_generators.tf` (era
-      # 120; o card ilustrado pode levar ate ~2 min na OpenAI).
+      # plan-generator: 420 s, igual a `infra/lambda_ai_generators.tf` (era
+      # 120; o card ilustrado V3 faz 2 chamadas a OpenAI, ate ~230 s no pior
+      # observado; conta completa no .tf).
       LAMBDA_LOCAL_FUNCTIONS: >-
-        musclefit-plan-generator=app.lambda_plan_generator.handler:180,
+        musclefit-plan-generator=app.lambda_plan_generator.handler:420,
         musclefit-cardio-agent=app.lambda_cardio_agent.handler:120,
         musclefit-workout-ai=app.lambda_workout_ai.handler:120
     entrypoint: ["python", "/opt/lambda-local/lambda_invoke_emulator.py", "--port", "9001"]
