@@ -1,13 +1,13 @@
-"""Compositor do card ilustrado (`app/exercise_card_composer.py`) -
-Estrategia B: a IA entrega so a ilustracao; a aplicacao escreve titulo,
-rotulos, musculos, desenha a silhueta do mapa corporal v1 no rodape
-(`CARD_LAYOUT_V2`) e cola o logo.
+"""Compositor do card fotorrealista V3 (`app/exercise_card_composer.py`): a IA
+entrega duas fotos (cena 1 = posicao inicial, cena 2 = movimento); a aplicacao
+escreve titulo, rotulos, musculos, desenha a silhueta do mapa corporal v1 no
+rodape (`CARD_LAYOUT_V3_PHOTO`) e cola o logo.
 
-Ilustracoes sinteticas (`tests/support/card_illustrations.py`: dois bonecos
-com barra, fundo transparente ou opaco); fontes e logo REAIS do repositorio
-(`load_card_assets`). Os testes provam propriedades (caixas, pixels por
-regiao, mesma escala, bytes iguais), nunca comparam com uma imagem de
-referencia - o Pillow do CI (12.3, FreeType 2.14) e o local podem rasterizar diferente.
+Fotos sinteticas (`tests/support/card_illustrations.py: scene_photo_png`);
+fontes e logo REAIS do repositorio (`load_card_assets`). Os testes provam
+propriedades (caixas, pixels por regiao, cover sem borda vazia, bytes iguais),
+nunca comparam com uma imagem de referencia - o Pillow do CI e o local podem
+rasterizar diferente.
 
 Rodar: cd api && python -m pytest tests/unit/test_exercise_card_composer.py
 """
@@ -28,7 +28,9 @@ LONGEST = "Rosca inversa com controle de punho (variação Lalá)"  # nome real 
 CONTENT = c.CardContent(
     "Supino reto com barra", ("Peitoral",), ("Tríceps", "Ombros"), ("chest",), ("triceps", "front-deltoids")
 )
-PAD_TOLERANCE = 3  # px: abertura morfologica e espessura das linhas sinteticas
+START_COLOR = (150, 60, 60)
+END_COLOR = (60, 60, 150)
+MIN_VISIBLE_WIDTH = 0.70  # literal; A2 troca pela constante do prompt
 
 
 @pytest.fixture(scope="module")
@@ -37,13 +39,24 @@ def assets() -> c.CardAssets:
 
 
 @pytest.fixture(scope="module")
-def illustration() -> bytes:
-    return ill.illustration_png()
+def start_png() -> bytes:
+    return ill.scene_photo_png(1024, 1536, START_COLOR)
 
 
 @pytest.fixture(scope="module")
-def card(illustration, assets) -> Image.Image:
-    return _open(c.compose_card(illustration, CONTENT, assets))
+def end_png() -> bytes:
+    return ill.scene_photo_png(1024, 1536, END_COLOR)
+
+
+@pytest.fixture(scope="module")
+def card(start_png, end_png, assets) -> Image.Image:
+    return _open(c.compose_card_v3(start_png, end_png, CONTENT, assets))
+
+
+def compose(content: c.CardContent, assets: c.CardAssets, start=None, end=None) -> bytes:
+    start = start if start is not None else ill.scene_photo_png(1024, 1536, START_COLOR)
+    end = end if end is not None else ill.scene_photo_png(1024, 1536, END_COLOR)
+    return c.compose_card_v3(start, end, content, assets)
 
 
 def _open(data: bytes) -> Image.Image:
@@ -71,7 +84,6 @@ def _is_solid(image: Image.Image, color) -> bool:
 
 
 def test_versao_do_layout_e_cores_da_marca():
-    assert c.LAYOUT_VERSION == "CARD_LAYOUT_V2"
     assert c.COLOR_BACKGROUND == (0x0A, 0x0A, 0x0A)
     assert c.COLOR_PANEL == (0x14, 0x14, 0x14)
     assert c.COLOR_BORDER == (0x2A, 0x2A, 0x2A)
@@ -90,21 +102,26 @@ def test_logo_box_e_a_posicao_oficial_do_logo(assets):
 
 @pytest.mark.parametrize("has_muscles, has_silhouette", [(True, True), (True, False), (False, False)])
 def test_caixas_do_layout_sem_sobreposicao(has_muscles, has_silhouette):
-    layout = c.card_layout(has_muscles, has_silhouette)
+    layout = c.card_layout_v3(has_muscles, has_silhouette)
     card_box = c.Box(0, 0, c.CARD_WIDTH, c.CARD_HEIGHT)
     assert not c.LOGO_BOX.intersects(c.TITLE_BOX)
     assert c.TITLE_BOX.left - c.LOGO_BOX.right == c.TITLE_GAP
     assert (c.TITLE_BOX.top, c.TITLE_BOX.bottom) == (c.LOGO_BOX.top, c.LOGO_BOX.bottom)
     assert c.TITLE_BOX.bottom <= c.DIVIDER_Y < layout.panels[0].top
-    assert layout.panels[0].bottom < layout.panels[1].top
+    # Lado a lado: mesma faixa vertical, esquerda = cena 1, direita = cena 2.
+    left, right = layout.panels
+    assert (left.top, left.bottom) == (right.top, right.bottom)
+    assert left.right + c.PANEL_GAP == right.left
+    assert (left.left, right.right) == (c.CONTENT_LEFT, c.CONTENT_RIGHT)
     for panel, row, scene in zip(layout.panels, layout.label_rows, layout.scenes):
         assert card_box.contains(panel)
         assert panel.contains(row) and panel.contains(scene)
         assert not row.intersects(scene)
         assert row.bottom <= scene.top
-    assert layout.scenes[0].width == layout.scenes[1].width and layout.scenes[0].height == layout.scenes[1].height
+        assert scene.height > scene.width  # retrato
+    assert (layout.scenes[0].width, layout.scenes[0].height) == (layout.scenes[1].width, layout.scenes[1].height)
     if has_muscles:
-        assert layout.panels[1].bottom < layout.footer.top
+        assert layout.panels[0].bottom < layout.footer.top
         assert layout.footer.contains(layout.footer_text)
         assert layout.footer.bottom == c.CONTENT_BOTTOM
         if has_silhouette:
@@ -116,20 +133,21 @@ def test_caixas_do_layout_sem_sobreposicao(has_muscles, has_silhouette):
             assert layout.footer_text.left == layout.footer.left + c.FOOTER_TEXT_PADDING_X
     else:
         assert layout.footer is None and layout.silhouette is None
-        assert layout.panels[1].bottom == c.CONTENT_BOTTOM
 
 
-def test_sem_musculos_os_paineis_crescem():
-    com, sem = c.card_layout(True), c.card_layout(False)
-    assert sem.scenes[0].height > com.scenes[0].height
+def test_altura_dos_paineis_e_fixa_com_ou_sem_musculos():
+    """O rodape e sempre reservado: as caixas de cena nao mudam sem musculos."""
+    com, sem = c.card_layout_v3(True), c.card_layout_v3(False)
+    assert com.panels == sem.panels
+    assert com.scenes == sem.scenes
+    assert sem.panels[0].bottom + c.FOOTER_GAP + c.FOOTER_HEIGHT == c.CONTENT_BOTTOM
 
 
-def test_medidas_do_layout_v2():
-    """As medidas documentadas no modulo (rodape com silhueta; paineis um
-    pouco menores que no V1 - 498 -> 436)."""
-    layout = c.card_layout(True)
-    assert [(p.top, p.bottom) for p in layout.panels] == [(317, 753), (773, 1209)]
-    assert all((s.width, s.height) == (886, 342) for s in layout.scenes)
+def test_medidas_do_layout_v3():
+    layout = c.card_layout_v3(True)
+    assert [(p.left, p.right) for p in layout.panels] == [(51, 502), (522, 973)]
+    assert all((p.top, p.bottom) == (317, 1209) for p in layout.panels)
+    assert all((s.width, s.height) == (415, 798) for s in layout.scenes)  # 892 - 76 - 18
     assert (layout.footer.left, layout.footer.top, layout.footer.right, layout.footer.bottom) == (51, 1229, 973, 1485)
     assert (layout.silhouette.width, layout.silhouette.height) == (244, 228)
     assert (layout.footer_text.left, layout.footer_text.right) == (343, 949)
@@ -139,9 +157,15 @@ def test_medidas_do_layout_v2():
     assert layout.silhouette.height * largura / altura >= layout.silhouette.width - 8
 
 
+def test_versao_e_constantes_do_v3():
+    assert c.LAYOUT_VERSION == "CARD_LAYOUT_V3_PHOTO"
+    assert c.PANEL_LABELS == ("Posição inicial", "Movimento")
+    assert c.PHOTO_RADIUS == 16
+
+
 @pytest.mark.parametrize("has_muscles", [True, False])
 def test_rotulos_ficam_fora_das_areas_de_cena(assets, has_muscles):
-    layout = c.card_layout(has_muscles)
+    layout = c.card_layout_v3(has_muscles)
     for ink, row in zip(c.label_ink_boxes(layout, assets), layout.label_rows):
         assert row.contains(ink)
         for scene in layout.scenes:
@@ -182,27 +206,27 @@ def test_nome_absurdo_ainda_cabe_na_caixa_com_reticencias():
 
 
 @pytest.mark.parametrize("titulo", ["", "   "])
-def test_titulo_vazio_e_erro_tipado(illustration, assets, titulo):
+def test_titulo_vazio_e_erro_tipado(assets, titulo):
     with pytest.raises(c.CardCompositionError) as exc:
-        c.compose_card(illustration, c.CardContent(titulo), assets)
+        compose(c.CardContent(titulo), assets)
     assert (exc.value.code, exc.value.reason) == ("CARD_COMPOSITION_FAILED", "empty_title")
 
 
-def test_cabecalho_so_tem_logo_titulo_e_fundo(illustration, assets):
+def test_cabecalho_so_tem_logo_titulo_e_fundo(assets):
     """Com o nome mais longo: no cabecalho (acima do divisor), fora do
     retangulo do logo e da caixa do titulo, so o fundo da marca."""
-    image = _open(c.compose_card(illustration, c.CardContent(LONGEST, ("Bíceps",)), assets))
+    image = _open(compose(c.CardContent(LONGEST, ("Bíceps",)), assets))
     header = image.crop((0, 0, c.CARD_WIDTH, c.DIVIDER_Y))
     assert not _is_solid(header.crop((c.TITLE_BOX.left, c.TITLE_BOX.top, c.TITLE_BOX.right, c.TITLE_BOX.bottom)),
                          c.COLOR_BACKGROUND)
     assert _is_solid(_blank_outside(header, [c.LOGO_BOX, c.TITLE_BOX], c.COLOR_BACKGROUND), c.COLOR_BACKGROUND)
 
 
-def test_acentos_sao_desenhados_no_card(illustration, assets):
+def test_acentos_sao_desenhados_no_card(assets):
     """Mesmo card com e sem acento no titulo: a diferenca existe e fica so
     na caixa do titulo."""
-    com = _open(c.compose_card(illustration, c.CardContent("Elevação"), assets))
-    sem = _open(c.compose_card(illustration, c.CardContent("Elevacao"), assets))
+    com = _open(compose(c.CardContent("Elevação"), assets))
+    sem = _open(compose(c.CardContent("Elevacao"), assets))
     diff = ImageChops.difference(com, sem).getbbox()
     assert diff is not None
     assert c.TITLE_BOX.contains(c.Box(*diff))
@@ -225,147 +249,171 @@ def test_dentro_do_retangulo_do_logo_so_ha_logo_e_fundo(card, assets):
 # Cenas
 # ---------------------------------------------------------------------------
 
-
-def _expected_box(scene: ill.SceneBox, cut: int, top_half: bool) -> c.Box:
-    low, high = (0, cut) if top_half else (cut, ill.HEIGHT)
-    return c.Box(
-        max(0, scene.left - c.SCENE_PAD),
-        max(low, scene.top - c.SCENE_PAD),
-        min(ill.WIDTH, scene.right + c.SCENE_PAD),
-        min(high, scene.bottom + c.SCENE_PAD),
-    )
+SCENE_SIZES = [(1024, 1536), (1536, 1024), (800, 800), (400, 300)]
 
 
-def _assert_close(got: c.Box, want: c.Box) -> None:
-    for attr in ("left", "top", "right", "bottom"):
-        assert abs(getattr(got, attr) - getattr(want, attr)) <= PAD_TOLERANCE, (attr, got, want)
+def _scene_crop(image: Image.Image, box: c.Box) -> Image.Image:
+    return image.crop((box.left, box.top, box.right, box.bottom))
 
 
-@pytest.mark.parametrize(
-    "background, transparente",
-    [(None, True), ((235, 235, 235), False), ((20, 20, 20), False)],
-    ids=["transparente", "opaco-claro", "opaco-escuro"],
-)
-def test_extrai_as_duas_cenas_e_corta_no_vao(background, transparente):
-    extraidas = c.extract_scenes(ill.illustration(background=background))
-    assert extraidas.transparent is transparente
-    # O vao entre as cenas (620..900) esta todo dentro de 40-60 % da altura.
-    assert ill.DEFAULT_TOP.bottom <= extraidas.cut_y < ill.DEFAULT_BOTTOM.top
-    assert 0.40 * ill.HEIGHT <= extraidas.cut_y <= 0.60 * ill.HEIGHT
-    esperadas = (
-        _expected_box(ill.DEFAULT_TOP, extraidas.cut_y, True),
-        _expected_box(ill.DEFAULT_BOTTOM, extraidas.cut_y, False),
-    )
-    for got, want in zip(extraidas.boxes, esperadas):
-        if background == (20, 20, 20):
-            # Fundo escuro opaco: as anilhas (quase da cor do fundo) viram
-            # fundo - a caixa encolhe, mas nunca passa da cena desenhada.
-            assert want.contains(got) and got.width > want.width // 2
-        else:
-            _assert_close(got, want)
-    for cena, box in zip(extraidas.scenes, extraidas.boxes):
-        assert cena.mode == "RGBA" and cena.size == (box.width, box.height)
+def _count_color(image: Image.Image, color) -> int:
+    """Quantos pixels sao EXATAMENTE `color`."""
+    diff = ImageChops.difference(image.convert("RGB"), Image.new("RGB", image.size, color))
+    red, green, blue = diff.split()
+    return ImageChops.lighter(ImageChops.lighter(red, green), blue).histogram()[0]
 
 
-def test_corta_na_linha_mais_vazia_mesmo_com_algo_cruzando():
-    """Um "cabo" fino cruza o meio inteiro: nao ha linha vazia, o corte cai
-    na linha com menos tinta (dentro de 40-60 %)."""
-    image = ill.illustration(top=ill.SceneBox(150, 140, 880, 690), bottom=ill.SceneBox(260, 760, 760, 1420))
-    from PIL import ImageDraw
-
-    ImageDraw.Draw(image).rectangle((500, 600, 505, 900), fill=(150, 155, 160, 255))
-    extraidas = c.extract_scenes(image)
-    assert 690 <= extraidas.cut_y < 760
+def _inside_rounded(box: c.Box) -> c.Box:
+    """Caixa da foto sem os cantos arredondados (para provar cobertura total)."""
+    m = c.PHOTO_RADIUS
+    return c.Box(box.left + m, box.top + m, box.right - m, box.bottom - m)
 
 
-def test_cenas_desalinhadas_e_de_tamanhos_diferentes_na_mesma_escala():
-    pequena = ill.SceneBox(60, 300, 330, 520)  # 270x220, encostada a esquerda
-    grande = ill.SceneBox(380, 820, 990, 1500)  # 610x680, a direita
-    extraidas = c.extract_scenes(ill.illustration(top=pequena, bottom=grande))
-    layout = c.card_layout(True)
-    sizes = [scene.size for scene in extraidas.scenes]
-    placements = c.plan_scenes(sizes, layout.scenes)
-    escala = min(
-        [c.MAX_SCENE_SCALE] + [a.width / w for (w, _), a in zip(sizes, layout.scenes)]
-        + [a.height / h for (_, h), a in zip(sizes, layout.scenes)]
-    )
-    for (w, h), placement, area in zip(sizes, placements, layout.scenes):
-        assert placement.scale == pytest.approx(escala)
-        assert abs(placement.box.width - w * escala) <= 1 and abs(placement.box.height - h * escala) <= 1
-        assert area.contains(placement.box)
-        # Centralizada na area.
-        assert abs((placement.box.left - area.left) - (area.right - placement.box.right)) <= 1
-        assert abs((placement.box.top - area.top) - (area.bottom - placement.box.bottom)) <= 1
-    # A grande limita a escala (preenche a altura da area); a pequena fica menor.
-    assert placements[1].box.height == layout.scenes[1].height
-    assert placements[0].box.width < placements[1].box.width
+@pytest.mark.parametrize("size", SCENE_SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
+def test_cena_de_qualquer_proporcao_preenche_a_caixa_sem_borda_vazia(assets, size):
+    png = ill.scene_photo_png(*size, START_COLOR)
+    image = _open(compose(CONTENT, assets, start=png))
+    box = c.card_layout_v3(True).scenes[0]
+    inner = _scene_crop(image, _inside_rounded(box))
+    # Nenhum pixel do miolo da caixa e o do painel: a foto cobre tudo (cover).
+    assert ImageChops.difference(inner, Image.new("RGB", inner.size, c.COLOR_PANEL)).getbbox() is not None
+    assert _count_color(inner, c.COLOR_PANEL) == 0
+    # Faixas nas 4 bordas (fora dos cantos) tambem sao foto.
+    for strip in (
+        c.Box(box.left + c.PHOTO_RADIUS, box.top, box.right - c.PHOTO_RADIUS, box.top + 2),
+        c.Box(box.left + c.PHOTO_RADIUS, box.bottom - 2, box.right - c.PHOTO_RADIUS, box.bottom),
+        c.Box(box.left, box.top + c.PHOTO_RADIUS, box.left + 2, box.bottom - c.PHOTO_RADIUS),
+        c.Box(box.right - 2, box.top + c.PHOTO_RADIUS, box.right, box.bottom - c.PHOTO_RADIUS),
+    ):
+        pixels = _scene_crop(image, strip)
+        assert ImageChops.difference(pixels, Image.new("RGB", pixels.size, c.COLOR_PANEL)).getbbox() is not None
+        assert _count_color(pixels, c.COLOR_PANEL) == 0
 
 
-def test_escala_limitada_para_nao_borrar():
-    placements = c.plan_scenes([(100, 80), (120, 90)], c.card_layout(True).scenes)
-    assert all(p.scale == c.MAX_SCENE_SCALE for p in placements)
-    assert (placements[0].box.width, placements[0].box.height) == (150, 120)
+def test_cada_cena_no_seu_painel_cena1_esquerda_cena2_direita(card):
+    layout = c.card_layout_v3(True)
+    centro = lambda box: (box.left + box.width // 2, box.top + box.height // 4)  # noqa: E731 - fora do bloco claro
+    esq, dir_ = card.getpixel(centro(layout.scenes[0])), card.getpixel(centro(layout.scenes[1]))
+    assert esq[0] > esq[2] and dir_[2] > dir_[0]  # vermelho a esquerda, azul a direita
 
 
-def test_cena_so_altera_pixels_dentro_das_areas_de_cena(card, assets):
-    outra = ill.illustration_png(top=ill.SceneBox(100, 200, 600, 600), bottom=ill.SceneBox(500, 950, 950, 1300))
-    diferente = _open(c.compose_card(outra, CONTENT, assets))
-    diff = ImageChops.difference(card, diferente)
-    assert diff.getbbox() is not None
-    layout = c.card_layout(True)
-    assert _blank_outside(diff, list(layout.scenes), (0, 0, 0)).getbbox() is None
+def test_cantos_da_foto_sao_arredondados(card):
+    box = c.card_layout_v3(True).scenes[0]
+    # O pixel de canto e do painel; o centro da aresta (fora do raio) e foto.
+    assert card.getpixel((box.left, box.top)) == c.COLOR_PANEL
+    assert card.getpixel((box.left + box.width // 2, box.top)) != c.COLOR_PANEL
+    assert card.getpixel((box.left + c.PHOTO_RADIUS + 4, box.top + c.PHOTO_RADIUS + 4)) != c.COLOR_PANEL
 
 
-@pytest.mark.parametrize("background", [None, (235, 235, 235)], ids=["transparente", "opaco"])
-def test_sem_emenda_retangular_em_volta_da_cena(assets, background):
-    """O fundo da ilustracao (mesmo opaco e claro) nao vira um retangulo
-    sobre o painel: em volta da figura, dentro da caixa colada, so #141414."""
-    png = ill.illustration_png(background=background)
-    image = _open(c.compose_card(png, CONTENT, assets))
-    layout = c.card_layout(True)
-    extraidas = c.extract_scenes(_open(png))
-    placements = c.plan_scenes([s.size for s in extraidas.scenes], layout.scenes)
-    for placement in placements:
-        box = placement.box
-        faixa_de_cima = image.crop((box.left, box.top, box.right, box.top + 3))
-        assert _is_solid(faixa_de_cima, c.COLOR_PANEL)
-        cantos = image.crop((box.left, box.bottom - 3, box.left + 3, box.bottom))
-        assert _is_solid(cantos, c.COLOR_PANEL)
+def test_so_ha_foto_dentro_das_caixas_de_cena_e_o_resto_e_painel(card):
+    layout = c.card_layout_v3(True)
+    # Fora das caixas de cena e do restante do conteudo, o painel e o fundo continuam como antes: o diff entre
+    # dois cards com fotos DIFERENTES fica so dentro das caixas de cena.
+    outro = _open(compose(CONTENT, c.load_card_assets(), start=ill.scene_photo_png(1024, 1536, (20, 160, 20))))
+    diff = ImageChops.difference(card, outro).getbbox()
+    assert diff is not None and layout.scenes[0].contains(c.Box(*diff))
 
 
-@pytest.mark.parametrize(
-    "png",
-    [
-        ill.empty_png(transparent=True),
-        ill.empty_png(transparent=False),
-        ill.illustration_png(bottom=None),
-        ill.illustration_png(top=None),
-        ill.illustration_png(background=(40, 40, 40), top=None, bottom=None),
-    ],
-    ids=["transparente-vazia", "opaca-vazia", "so-cena-de-cima", "so-cena-de-baixo", "opaca-lisa"],
-)
-def test_sem_primeiro_plano_e_erro_tipado(assets, png):
-    with pytest.raises(c.CardCompositionError) as exc:
-        c.compose_card(png, CONTENT, assets)
-    assert (exc.value.code, exc.value.reason) == ("CARD_COMPOSITION_FAILED", "no_foreground")
+def test_rotulos_ficam_fora_das_fotos(card, assets):
+    layout = c.card_layout_v3(True)
+    for ink, scene in zip(c.label_ink_boxes(layout, assets), layout.scenes):
+        assert not ink.intersects(scene)
+    # E fora da foto desenhada: a linha de rotulo tem selo/texto, a foto nao.
+    for row in layout.label_rows:
+        assert not _is_solid(_scene_crop(card, c.Box(row.left + c.PANEL_BORDER, row.top, row.right - c.PANEL_BORDER, row.bottom)), c.COLOR_PANEL)
+
+
+def test_rotulos_tem_os_textos_do_v3_e_aparecem_acentuados(assets):
+    com = _open(compose(CONTENT, assets))
+    layout = c.card_layout_v3(True)
+    primeiro = _scene_crop(com, layout.label_rows[0])
+    segundo = _scene_crop(com, layout.label_rows[1])
+    assert not _is_solid(primeiro, c.COLOR_PANEL) and not _is_solid(segundo, c.COLOR_PANEL)
+    # O selo laranja existe em cada linha de rotulo.
+    assert _orange(primeiro) > 0 and _orange(segundo) > 0
+
+
+@pytest.mark.parametrize("size", [(1024, 1536), (1536, 1024), (800, 800)], ids=lambda s: f"{s[0]}x{s[1]}")
+def test_cena_de_outro_tamanho_vira_card_1024x1536(assets, size):
+    png = ill.scene_photo_png(*size)
+    assert _open(compose(CONTENT, assets, start=png, end=png)).size == (1024, 1536)
+
+
+def test_fracao_visivel_da_largura_na_foto_padrao():
+    box = c.card_layout_v3(True).scenes[0]
+    fracao = c.scene_visible_width_fraction(1024, 1536, box)
+    assert fracao >= MIN_VISIBLE_WIDTH
+    assert fracao < 1.0  # o cover corta as laterais (caixa mais estreita que 2:3)
+    # Mesma conta do cover: fracao = largura da caixa / largura da foto ampliada.
+    escala = max(box.width / 1024, box.height / 1536)
+    assert fracao == pytest.approx(box.width / (1024 * escala))
+
+
+def test_fracao_visivel_foto_mais_estreita_que_a_caixa_nao_perde_largura():
+    box = c.card_layout_v3(True).scenes[0]
+    assert c.scene_visible_width_fraction(200, 800, box) == pytest.approx(1.0)  # mais estreita: corta a altura, nao a largura
+    assert c.scene_visible_width_fraction(1536, 1024, box) < c.scene_visible_width_fraction(1024, 1536, box)
+    with pytest.raises(ValueError):
+        c.scene_visible_width_fraction(0, 10, box)
+
+
+def test_cover_centraliza_o_corte(assets):
+    """Foto com o 'sujeito' (bloco claro) no centro: o centro da caixa e claro,
+    e o corte e simetrico (esquerda e direita da caixa iguais)."""
+    png = ill.scene_photo_png(1024, 1536, START_COLOR)
+    image = _open(compose(CONTENT, assets, start=png))
+    box = c.card_layout_v3(True).scenes[0]
+    assert image.getpixel((box.left + box.width // 2, box.top + box.height // 2)) == (235, 235, 235)
+    esquerda = image.getpixel((box.left + 40, box.top + box.height // 2))
+    direita = image.getpixel((box.right - 41, box.top + box.height // 2))
+    assert esquerda == direita
 
 
 @pytest.mark.parametrize(
     "data",
-    [b"", b"nao e imagem" * 20, ill.to_png(Image.new("RGBA", (100, 150), (0, 0, 0, 0)))],
-    ids=["vazio", "lixo", "pequena-demais"],
+    [
+        b"",
+        b"nao e imagem" * 20,
+        ill.scene_photo_png(255, 1536),
+        ill.scene_photo_png(1024, 100),
+        ill.scene_photo_png(4097, 300),
+    ],
+    ids=["vazio", "lixo", "menor-lado-255", "menor-lado-100", "maior-lado-4097"],
 )
-def test_ilustracao_invalida_e_erro_tipado(assets, data):
+@pytest.mark.parametrize("posicao", ["inicial", "final"])
+def test_cena_invalida_e_erro_tipado(assets, data, posicao):
+    valida = ill.scene_photo_png(1024, 1536)
+    start, end = (data, valida) if posicao == "inicial" else (valida, data)
     with pytest.raises(c.CardCompositionError) as exc:
-        c.compose_card(data, CONTENT, assets)
-    assert exc.value.reason == "invalid_illustration"
+        c.compose_card_v3(start, end, CONTENT, assets)
+    assert (exc.value.code, exc.value.reason) == ("CARD_COMPOSITION_FAILED", "invalid_scene")
 
 
-def test_ilustracao_em_outro_tamanho_vira_card_1024x1536(assets):
-    png = ill.illustration_png(
-        size=(1024, 1024), top=ill.SceneBox(150, 80, 880, 400), bottom=ill.SceneBox(260, 600, 760, 960)
-    )
-    assert _open(c.compose_card(png, CONTENT, assets)).size == (1024, 1536)
+def test_png_truncado_e_cena_invalida(assets):
+    truncado = ill.scene_photo_png(1024, 1536)[:200]
+    with pytest.raises(c.CardCompositionError) as exc:
+        compose(CONTENT, assets, start=truncado)
+    assert exc.value.reason == "invalid_scene"
+
+
+def test_limites_de_lado_aceitos_nas_bordas(assets):
+    # 256 de menor lado e aceito; so o que esta fora da faixa e recusado.
+    png = ill.scene_photo_png(256, 300)
+    assert _open(compose(CONTENT, assets, start=png)).size == (1024, 1536)
+
+
+def test_titulo_vazio_vem_antes_da_validacao_das_cenas(assets):
+    with pytest.raises(c.CardCompositionError) as exc:
+        c.compose_card_v3(b"", b"", c.CardContent(" "), assets)
+    assert exc.value.reason == "empty_title"
+
+
+def test_codigo_v2_foi_removido():
+    for nome in (
+        "compose_card", "extract_scenes", "_foreground", "find_cut_row", "plan_scenes", "_load_illustration",
+        "ExtractedScenes", "ScenePlacement", "CUT_RANGE", "ALPHA_THRESHOLD", "SCENE_GAP_RANGE", "card_layout",
+    ):
+        assert not hasattr(c, nome), nome
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +452,7 @@ def _orange(image: Image.Image) -> int:
 def test_texto_do_rodape_maior_que_no_v1_e_nunca_abaixo_de_30px(assets):
     assert c.FOOTER_LINE_MIN_SIZE >= 30 and c.FOOTER_HEADING_SIZE >= 30
     assert c.FOOTER_LINE_MIN_SIZE > 28  # o maximo do V1 (20-28 px) ficou pequeno no celular
-    layout = c.card_layout(True)
+    layout = c.card_layout_v3(True)
     for conteudo in (CONTENT, LONGO, PIOR_CASO):
         footer = c.layout_footer(conteudo, assets, layout.footer_text)
         assert footer.heading_size == c.FOOTER_HEADING_SIZE
@@ -417,7 +465,7 @@ def test_texto_do_rodape_maior_que_no_v1_e_nunca_abaixo_de_30px(assets):
 @pytest.mark.parametrize("conteudo", [CONTENT, LONGO, PIOR_CASO], ids=["curto", "longo", "pior-caso"])
 @pytest.mark.parametrize("has_silhouette", [True, False])
 def test_texto_do_rodape_cabe_na_coluna_sem_tocar_a_silhueta(assets, conteudo, has_silhouette):
-    layout = c.card_layout(True, has_silhouette)
+    layout = c.card_layout_v3(True, has_silhouette)
     footer = c.layout_footer(conteudo, assets, layout.footer_text)
     assert layout.footer_text.contains(footer.ink)
     if has_silhouette:
@@ -431,7 +479,7 @@ def test_texto_do_rodape_cabe_na_coluna_sem_tocar_a_silhueta(assets, conteudo, h
 
 
 def test_musculos_longos_quebram_com_recuo_pendurado_sem_cortar(assets):
-    layout = c.card_layout(True)
+    layout = c.card_layout_v3(True)
     footer = c.layout_footer(LONGO, assets, layout.footer_text)
     labels = [line.label for line in footer.lines]
     assert labels[0] == "Principais:" and "Secundários:" in labels
@@ -444,19 +492,19 @@ def test_musculos_longos_quebram_com_recuo_pendurado_sem_cortar(assets):
 
 
 def test_pior_caso_corta_com_reticencias_em_ate_4_linhas(assets):
-    layout = c.card_layout(True)
+    layout = c.card_layout_v3(True)
     footer = c.layout_footer(PIOR_CASO, assets, layout.footer_text)
     assert len(footer.lines) == c.FOOTER_MAX_LINES
     assert footer.lines[-1].value.endswith(c.ELLIPSIS)
     assert {line.size for line in footer.lines} == {c.FOOTER_LINE_MIN_SIZE}
 
 
-def test_sem_secundarios_so_a_linha_dos_principais(illustration, assets):
-    layout = c.card_layout(True)
+def test_sem_secundarios_so_a_linha_dos_principais(assets):
+    layout = c.card_layout_v3(True)
     conteudo = c.CardContent("Supino reto com barra", ("Peitoral",), (), ("chest",))
     footer = c.layout_footer(conteudo, assets, layout.footer_text)
     assert [(line.label, line.value) for line in footer.lines] == [("Principais:", "Peitoral")]
-    image = _open(c.compose_card(illustration, conteudo, assets))
+    image = _open(compose(conteudo, assets))
     # Na coluna do texto, fora da tinta do bloco, so o fundo do painel.
     texto = layout.footer_text
     coluna = _blank_outside(image, [footer.ink], c.COLOR_PANEL).crop((texto.left, texto.top, texto.right, texto.bottom))
@@ -464,20 +512,23 @@ def test_sem_secundarios_so_a_linha_dos_principais(illustration, assets):
     assert not _is_solid(image.crop((footer.ink.left, footer.ink.top, footer.ink.right, footer.ink.bottom)), c.COLOR_PANEL)
 
 
-def test_sem_musculos_nao_ha_rodape(illustration, assets):
+def test_sem_musculos_nao_ha_rodape(assets):
     # Slug sem nome de musculo nao cria rodape (nem silhueta).
-    image = _open(c.compose_card(illustration, c.CardContent("Prancha", primary_slugs=("abs",)), assets))
+    image = _open(compose(c.CardContent("Prancha", primary_slugs=("abs",)), assets))
+    reservado = c.Box(c.CONTENT_LEFT, c.CONTENT_BOTTOM - c.FOOTER_HEIGHT, c.CONTENT_RIGHT, c.CONTENT_BOTTOM)
+    assert _is_solid(_scene_crop(image, reservado), c.COLOR_BACKGROUND)  # espaco reservado, vazio
     assert _is_solid(image.crop((0, c.CONTENT_BOTTOM + 1, c.CARD_WIDTH, c.CARD_HEIGHT)), c.COLOR_BACKGROUND)
-    # O 2o painel desce ate onde o rodape estaria.
-    painel = c.card_layout(False).panels[1]
-    assert not _is_solid(image.crop((painel.left, painel.bottom - 4, painel.right, painel.bottom)), c.COLOR_BACKGROUND)
+    # Os paineis NAO crescem: terminam onde terminam com musculos.
+    painel = c.card_layout_v3(False).panels[0]
+    assert painel.bottom == c.card_layout_v3(True).panels[0].bottom
+    assert _is_solid(image.crop((painel.left, painel.bottom + 1, painel.right, reservado.top)), c.COLOR_BACKGROUND)
 
 
-def test_silhueta_acende_os_slugs_e_fica_dentro_da_caixa(card, illustration, assets):
+def test_silhueta_acende_os_slugs_e_fica_dentro_da_caixa(card, assets):
     """Trocar so os slugs muda so a caixa da silhueta; em volta dela (ate o
     texto) so o painel."""
-    layout = c.card_layout(True)
-    perna = _open(c.compose_card(illustration, c.CardContent(
+    layout = c.card_layout_v3(True)
+    perna = _open(compose(c.CardContent(
         CONTENT.title, CONTENT.primary_muscles, CONTENT.secondary_muscles, ("quadriceps",), ("calves",)), assets))
     diff = ImageChops.difference(card, perna).getbbox()
     assert diff is not None and layout.silhouette.contains(c.Box(*diff))
@@ -490,12 +541,12 @@ def test_silhueta_acende_os_slugs_e_fica_dentro_da_caixa(card, illustration, ass
     assert _is_solid(card.crop((left, box.bottom, box.right, layout.footer.bottom - c.PANEL_BORDER)), c.COLOR_PANEL)
 
 
-def test_silhueta_principal_laranja_forte_secundario_fraco(illustration, assets):
-    box = c.card_layout(True).silhouette
+def test_silhueta_principal_laranja_forte_secundario_fraco(assets):
+    box = c.card_layout_v3(True).silhouette
 
     def laranja(primary_slugs, secondary_slugs):
         conteudo = c.CardContent("Supino reto com barra", ("Peitoral",), (), primary_slugs, secondary_slugs)
-        image = _open(c.compose_card(illustration, conteudo, assets))
+        image = _open(compose(conteudo, assets))
         return _orange(image.crop((box.left, box.top, box.right, box.bottom)))
 
     nada = laranja(("neck",), ())  # o pescoco quase nao aparece: base de comparacao
@@ -504,37 +555,37 @@ def test_silhueta_principal_laranja_forte_secundario_fraco(illustration, assets)
     assert nada < secundario < principal
 
 
-def test_sem_slug_com_regiao_o_texto_ocupa_o_painel(illustration, assets):
-    caixa = c.card_layout(True).silhouette
-    sem = c.card_layout(True, has_silhouette=False)
+def test_sem_slug_com_regiao_o_texto_ocupa_o_painel(assets):
+    caixa = c.card_layout_v3(True).silhouette
+    sem = c.card_layout_v3(True, has_silhouette=False)
     for conteudo in (c.CardContent("Prancha", ("Core",)), c.CardContent("Prancha", ("Core",), (), ("knees", "xyz"))):
-        image = _open(c.compose_card(illustration, conteudo, assets))
+        image = _open(compose(conteudo, assets))
         footer = c.layout_footer(conteudo, assets, sem.footer_text)
         assert footer.ink.left < caixa.right  # o texto comeca onde a silhueta estaria
         regiao = _blank_outside(image, [footer.ink], c.COLOR_PANEL).crop((caixa.left, caixa.top, caixa.right, caixa.bottom))
         assert _is_solid(regiao, c.COLOR_PANEL)
 
 
-def test_acentos_do_rodape_sao_desenhados(illustration, assets):
-    com = _open(c.compose_card(illustration, c.CardContent("Supino", ("Tríceps",), (), ("triceps",)), assets))
-    sem = _open(c.compose_card(illustration, c.CardContent("Supino", ("Triceps",), (), ("triceps",)), assets))
+def test_acentos_do_rodape_sao_desenhados(assets):
+    com = _open(compose(c.CardContent("Supino", ("Tríceps",), (), ("triceps",)), assets))
+    sem = _open(compose(c.CardContent("Supino", ("Triceps",), (), ("triceps",)), assets))
     diff = ImageChops.difference(com, sem).getbbox()
     assert diff is not None
-    assert c.card_layout(True).footer_text.contains(c.Box(*diff))
+    assert c.card_layout_v3(True).footer_text.contains(c.Box(*diff))
     assert (c.FOOTER_HEADING, c.FOOTER_SECONDARY_LABEL) == ("MÚSCULOS", "Secundários")
 
 
-def test_mapa_corporal_ausente_e_erro_tipado(illustration, assets, monkeypatch):
+def test_mapa_corporal_ausente_e_erro_tipado(assets, monkeypatch):
     def quebrado():
         raise c.bodymap.BodyMapError("sem assets")
 
     monkeypatch.setattr(c.bodymap, "load_body_map_assets", quebrado)
     sem_mapa = c.CardAssets(logo=assets.logo)
     with pytest.raises(c.CardCompositionError) as exc:
-        c.compose_card(illustration, CONTENT, sem_mapa)
+        compose(CONTENT, sem_mapa)
     assert exc.value.reason == "assets_missing"
     # Sem slug o card nem precisa do mapa.
-    assert c.compose_card(illustration, c.CardContent("Prancha", ("Core",)), sem_mapa)
+    assert compose(c.CardContent("Prancha", ("Core",)), sem_mapa)
 
 
 def test_conteudo_do_contexto_usa_as_regras_do_prompt():
@@ -562,28 +613,35 @@ def test_conteudo_do_contexto_usa_as_regras_do_prompt():
 # ---------------------------------------------------------------------------
 
 
-def test_saida_png_rgb_1024x1536_sem_metadados(illustration, assets):
-    data = c.compose_card(illustration, CONTENT, assets)
+def test_saida_png_rgb_1024x1536_sem_metadados(assets):
+    data = compose(CONTENT, assets)
     image = _open(data)
     assert (image.format, image.mode, image.size) == ("PNG", "RGB", (1024, 1536))
     assert image.info == {}
     assert len(image.getexif()) == 0
 
 
-def test_deterministico_mesma_entrada_mesmos_bytes(illustration, assets):
-    assert c.compose_card(illustration, CONTENT, assets) == c.compose_card(illustration, CONTENT, assets)
+def test_deterministico_mesma_entrada_mesmos_bytes(assets):
+    assert compose(CONTENT, assets) == compose(CONTENT, assets)
 
 
-def test_ilustracao_com_metadados_nao_vaza_nada(assets):
+def test_cena_com_metadados_nao_vaza_nada(assets):
     from PIL.PngImagePlugin import PngInfo
 
     info = PngInfo()
-    info.add_text("Comment", "segredo da ilustracao")
+    info.add_text("Comment", "segredo da cena")
     buffer = io.BytesIO()
-    ill.illustration().save(buffer, format="PNG", pnginfo=info, dpi=(300, 300))
-    data = c.compose_card(buffer.getvalue(), CONTENT, assets)
+    Image.open(io.BytesIO(ill.scene_photo_png(1024, 1536))).save(buffer, format="PNG", pnginfo=info, dpi=(300, 300))
+    data = compose(CONTENT, assets, start=buffer.getvalue(), end=buffer.getvalue())
     assert b"segredo" not in data
     assert _open(data).info == {}
+
+
+def test_cena_jpeg_e_aceita_e_vira_png_sem_metadados(assets):
+    buffer = io.BytesIO()
+    Image.open(io.BytesIO(ill.scene_photo_png(1024, 1536))).save(buffer, format="JPEG")
+    data = compose(CONTENT, assets, start=buffer.getvalue())
+    assert (_open(data).format, _open(data).size) == ("PNG", (1024, 1536))
 
 
 def test_assets_carregados_uma_vez_por_processo():
@@ -602,8 +660,8 @@ def test_logo_ausente_e_erro_tipado(monkeypatch, tmp_path):
         c.load_card_assets.cache_clear()
 
 
-def test_fonte_ausente_e_erro_tipado(illustration, assets, tmp_path):
+def test_fonte_ausente_e_erro_tipado(assets, tmp_path):
     sem_fonte = c.CardAssets(logo=assets.logo, oswald_bold=tmp_path / "nao-existe.ttf")
     with pytest.raises(c.CardCompositionError) as exc:
-        c.compose_card(illustration, CONTENT, sem_fonte)
+        compose(CONTENT, sem_fonte)
     assert exc.value.code == "CARD_COMPOSITION_FAILED"

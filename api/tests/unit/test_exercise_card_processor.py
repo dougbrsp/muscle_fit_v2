@@ -170,8 +170,11 @@ def test_encode_nao_recompoe_nada_o_png_publicado_e_o_preview(card_png, processe
 def test_encode_de_card_composto_de_verdade_preserva_os_pixels():
     from tests.support import card_illustrations as ill
 
-    preview = composer.compose_card(
-        ill.illustration_png(), composer.CardContent("Supino reto com barra", ("Peitoral",)), composer.load_card_assets()
+    preview = composer.compose_card_v3(
+        ill.scene_photo_png(1024, 1536, (110, 80, 60)),
+        ill.scene_photo_png(1024, 1536, (60, 80, 110)),
+        composer.CardContent("Supino reto com barra", ("Peitoral",)),
+        composer.load_card_assets(),
     )
     publicado = proc.encode_card(preview)
     assert _open(publicado.card_png).tobytes() == _open(preview).tobytes()
