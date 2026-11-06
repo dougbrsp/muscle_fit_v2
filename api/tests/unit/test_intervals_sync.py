@@ -28,8 +28,12 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from app import intervals_store
 from app import intervals_sync as sync
 from app import lambda_intervals_sync
+from app import nutrition_schema
+from app.domain.nutrition import activity_energy
+from app.load_conventions import _CURRENT_SCHEMA_SQL
 from tests.support.fake_db import LoopingExecuteMany
 
 API_KEY = "chave-super-secreta-do-intervals-1234567890"
@@ -75,6 +79,12 @@ class FakeCursor(LoopingExecuteMany):
             self.db.upsert_link(params)
         elif text.startswith("UPDATE activities"):
             self.db.fill_activity_hr(params)
+        elif text == " ".join(_CURRENT_SCHEMA_SQL.split()):
+            self._rows = [{"db": "sync_test"}]
+        elif text.startswith("INSERT INTO intervals_sync_runs"):
+            self.db.insert_sync_run(params)
+        elif text.startswith("DELETE FROM intervals_sync_runs"):
+            self.db.prune_sync_runs(params)
         elif text.startswith("INSERT INTO intervals_athlete_hr_zones"):
             self.db.athlete_zones[(int(params[0]), int(params[1]))] = params
         elif text.startswith("DELETE FROM intervals_athlete_hr_zones"):
@@ -136,10 +146,26 @@ class FakeDB:
         self.intervals_wellness: dict[tuple[int, str], dict] = {}
         self.links: dict[int, dict] = {}
         self.athlete_zones: dict[tuple[int, int], tuple] = {}
+        self.sync_runs: list[dict] = []
+        self.sync_runs_table = True
+        self.fail_sync_runs_insert = False
         self.statements: list[str] = []
         self.commits = 0
         self.rollbacks = 0
         self._next_intervals_id = 1
+
+    # --- registro de execucoes (107) --------------------------------------
+    def insert_sync_run(self, params) -> None:
+        if not self.sync_runs_table:
+            raise RuntimeError("1146 Table 'intervals_sync_runs' doesn't exist")
+        if self.fail_sync_runs_insert:
+            raise RuntimeError("falha simulada ao gravar o registro")
+        colunas = ("user_id", "started_at", "finished_at", "window_start", "window_end", "status", "activities_count", "source")
+        self.sync_runs.append(dict(zip(colunas, params)))
+
+    def prune_sync_runs(self, params) -> None:
+        user_id, corte = int(params[0]), params[1]
+        self.sync_runs = [r for r in self.sync_runs if not (r["user_id"] == user_id and r["finished_at"] < corte)]
 
     # --- conexao ---------------------------------------------------------
     def connect(self) -> FakeConn:
@@ -360,6 +386,14 @@ def intervals_api(monkeypatch):
     return state
 
 
+@pytest.fixture(autouse=True)
+def _cache_da_deteccao_de_tabelas():
+    """O cache POSITIVO da detecção de tabelas é global: cada teste começa sem ele."""
+    nutrition_schema.reset_nutrition_tables_cache()
+    yield
+    nutrition_schema.reset_nutrition_tables_cache()
+
+
 def _run(db, **kwargs):
     return sync.sync_users(conn_factory=db.connect, **kwargs)
 
@@ -501,7 +535,11 @@ def test_resposta_vazia_do_intervals_nao_apaga_cache_nem_link(db, intervals_api)
     assert db.snapshot() == estado
     assert db.links[10]["intervals_external_id"] == "ext-1"
     assert report.totals["users_failed"] == 0
-    assert not any(statement.strip().upper().startswith("DELETE") for statement in db.statements)
+    # o unico DELETE permitido e a poda do registro de execucoes (107), nunca do cache de atividades/link
+    assert not any(
+        statement.strip().upper().startswith("DELETE") and "intervals_sync_runs" not in statement
+        for statement in db.statements
+    )
 
 
 def test_dry_run_nao_comita(db, intervals_api):
@@ -703,3 +741,95 @@ def test_atleta_sem_esporte_valido_nao_apaga_as_zonas_gravadas(db, intervals_api
     intervals_api["athlete"] = {"sportSettings": [{"id": 12, "types": ["Swim"], "hr_zones": None}]}
     _run(db)
     assert db.athlete_zones[(1, 11)] == ("antigo",)
+
+
+# ---------------------------------------------------------------------------
+# Registro de execucoes (migracao 107, Lote F)
+# ---------------------------------------------------------------------------
+
+
+def test_cada_usuario_sincronizado_grava_uma_linha_ok_com_a_janela_buscada(db, intervals_api):
+    db.users[2] = {"intervals_athlete_id": "i2", "intervals_api_key_encrypted": "enc-2", "is_active": 1}
+    intervals_api["activities"] = [_intervals_activity("ext-1", TREINO_MANHA), _intervals_activity("ext-2", TREINO_MANHA)]
+
+    report = _run(db, days=14)
+
+    assert sorted(r["user_id"] for r in db.sync_runs) == [1, 2]
+    for linha in db.sync_runs:
+        assert linha["status"] == "ok" and linha["source"] == "scheduled" and linha["activities_count"] == 2
+        assert linha["window_end"] == date.fromisoformat(report.newest)
+        assert linha["window_start"] == date.fromisoformat(report.oldest)
+        assert linha["started_at"] <= linha["finished_at"] and linha["finished_at"].tzinfo is None  # UTC naive
+    # o registro vem DEPOIS do commit do usuario (autocommit por statement, sem transacao aberta)
+    assert db.commits >= 4
+
+
+def test_falha_do_usuario_grava_linha_error_e_o_outro_segue_ok(db, intervals_api):
+    db.users[2] = {"intervals_athlete_id": "i2", "intervals_api_key_encrypted": "enc-2", "is_active": 1}
+    intervals_api["errors"]["i1"] = sync.IntervalsClientError("401 nao autorizado", status_code=401)
+
+    _run(db)
+
+    por_usuario = {r["user_id"]: r for r in db.sync_runs}
+    assert por_usuario[1]["status"] == "error" and por_usuario[1]["activities_count"] == 0
+    assert por_usuario[2]["status"] == "ok"
+
+
+def test_dry_run_nao_grava_registro(db, intervals_api):
+    _run(db, dry_run=True)
+    assert db.sync_runs == []
+
+
+def test_sem_a_tabela_o_sync_funciona_e_nao_registra(db, intervals_api):
+    db.sync_runs_table = False
+    intervals_api["activities"] = [_intervals_activity("ext-1", TREINO_MANHA)]
+
+    report = _run(db)
+
+    assert report.failures == [] and len(report.results) == 1
+    assert db.sync_runs == [] and db.links[10]["match_status"] == "MATCHED"  # o sync gravou normalmente
+    assert not any("information_schema" in s for s in db.statements)  # sem DDL nem leitura do schema no sync
+
+
+def test_depois_que_a_tabela_aparece_o_proximo_sync_ja_registra(db, intervals_api):
+    db.sync_runs_table = False
+    _run(db)
+    db.sync_runs_table = True  # a migracao rodou: "nao existe" nunca foi cacheado
+    _run(db)
+    assert len(db.sync_runs) == 1
+
+
+def test_falha_ao_registrar_nunca_derruba_o_sync(db, intervals_api, caplog):
+    db.fail_sync_runs_insert = True
+    intervals_api["activities"] = [_intervals_activity("ext-1", TREINO_MANHA)]
+
+    report = _run(db)
+
+    assert report.failures == [] and len(report.results) == 1
+    assert db.links[10]["match_status"] == "MATCHED"
+    assert db.sync_runs == []
+    assert "registro da execucao do sync nao gravado" in caplog.text and "RuntimeError" in caplog.text
+    assert "falha simulada" not in caplog.text  # so o tipo da excecao vai para o log
+
+
+def test_poda_apaga_so_as_linhas_antigas_do_proprio_usuario(db, intervals_api):
+    agora = sync._utc_now()
+    velho = agora - timedelta(days=activity_energy.SYNC_RUN_RETENTION_DAYS + 5)
+    recente = agora - timedelta(days=2)
+    modelo = {"started_at": velho, "window_start": HOJE, "window_end": HOJE, "status": "ok", "activities_count": 0,
+              "source": "scheduled"}
+    db.sync_runs = [
+        {**modelo, "user_id": 1, "finished_at": velho},
+        {**modelo, "user_id": 1, "finished_at": recente},
+        {**modelo, "user_id": 2, "finished_at": velho},  # outro usuario: nao e do job (sem Intervals), fica
+    ]
+
+    _run(db)
+
+    restantes = sorted((r["user_id"], r["finished_at"] == velho) for r in db.sync_runs)
+    assert restantes == [(1, False), (1, False), (2, True)]  # velho do usuario 1 saiu; novo e recente ficaram
+
+
+def test_o_registro_usa_as_constantes_do_dono():
+    assert intervals_store.SYNC_RUN_STATUS_OK == "ok" and intervals_store.SYNC_RUN_STATUS_ERROR == "error"
+    assert intervals_store.SYNC_RUN_SOURCE_SCHEDULED == "scheduled" and intervals_store.SYNC_RUN_SOURCE_MANUAL == "manual"

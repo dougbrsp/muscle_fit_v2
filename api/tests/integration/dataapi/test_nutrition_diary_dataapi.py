@@ -44,7 +44,7 @@ from tests.support.relogio_usuario import hoje_do_usuario
 HOJE = hoje_do_usuario()
 MIGRACOES = ("082_meals.py", "083_nutrition_days.py")
 TABELAS = ("meal_items", "meals", "nutrition_days", "nutrition_daily_targets", "nutrition_plans", "body_composition",
-           "activities")
+           "activities", "intervals_activities", "intervals_sync_runs")
 USUARIOS = ("admin_diario", "aluno_diario", "outro_diario")
 # Linhas da TACO 4ª ed. (seed da 081) pelo `source_id` (o id muda ao recarregar).
 TACO_ARROZ, TACO_OLEO_SOJA, TACO_SAL_GROSSO = "3", "272", "517"
@@ -202,6 +202,12 @@ def test_fluxo_do_diario_identico_nos_dois_backends(usuarios, raw, monkeypatch, 
         dia = primeiro.json()
         assert dia["target"]["local_date"] == HOJE.isoformat() and isinstance(dia["target"]["kcal"], float)
         assert dia["training"]["sessions"][0]["calories_source"] == "manual"
+        # Lote F (D1): composição relida do `inputs_json.tdee` gravado (JSON_EXTRACT real) e sem Intervals nada de atividades.
+        explicacao = dia["energy_detail"]
+        assert explicacao["activities"] is None and explicacao["energy"] is None
+        assert explicacao["breakdown"]["parts"], backend
+        assert sum(p["kcal"] for p in explicacao["breakdown"]["parts"]) == pytest.approx(
+            explicacao["breakdown"]["total_kcal"], abs=1.0)
         assert dia["training"]["comparison"]["reported"]["kcal"] == 410.0
         assert dia["training"]["comparison"]["estimated"]["kcal"] == pytest.approx(294.0)
         with raw.cursor() as cur:
@@ -212,8 +218,30 @@ def test_fluxo_do_diario_identico_nos_dois_backends(usuarios, raw, monkeypatch, 
             cur.execute("SELECT local_date, computed_at FROM nutrition_daily_targets ORDER BY local_date")
             assert cur.fetchall() == antes  # nada regravado na segunda leitura
 
+        # Lote F (E1 + D1): atividade do Intervals no dia passado + duas execuções registradas do sync (a regra exata vale a
+        # partir do dia da primeira; a segunda termina depois do fim do dia, com folga): o dia sai confirmado pelo registro.
+        with raw.cursor() as cur:
+            cur.execute(
+                "INSERT INTO intervals_activities (user_id, external_id, activity_date, start_time, name, sport_type, "
+                "moving_time_seconds, elapsed_time_seconds, calories_kcal, raw_json) "
+                "VALUES (%s, 'lote-f-1', %s, %s, 'Corrida', 'Run', 1800, 1800, 300, CAST('{}' AS JSON))",
+                (usuarios["aluno"], passado, _dt.datetime.combine(passado, _dt.time(7, 0))),
+            )
+            for fim in (_dt.datetime.combine(passado, _dt.time(12, 0)),
+                        _dt.datetime.combine(passado + _dt.timedelta(days=2), _dt.time(12, 0))):
+                cur.execute(
+                    "INSERT INTO intervals_sync_runs (user_id, started_at, finished_at, window_start, window_end, status, "
+                    "activities_count, source) VALUES (%s, %s, %s, %s, %s, 'ok', 1, 'scheduled')",
+                    (usuarios["aluno"], fim - _dt.timedelta(minutes=1), fim, passado - _dt.timedelta(days=30), HOJE),
+                )
+        raw.commit()
+
         # Dia que congelou sem meta: gravado UMA vez, marcado pelo motor.
         retro = aluno.get(f"/nutrition/days/{passado.isoformat()}").json()
+        atividades = retro["energy_detail"]["activities"]
+        assert atividades["confirmed"] is True and atividades["confirmation_source"] == "sync_run", backend
+        assert atividades["counted_activities"] == 1 and atividades["activities"][0]["kind"] != "strength"
+        assert retro["energy_detail"]["breakdown"]["parts"], backend
         assert retro["target_action"] == "backfill" and retro["target"]["backfilled"] is True
         with raw.cursor() as cur:
             cur.execute(

@@ -175,9 +175,10 @@ def coleta(monkeypatch):
     monkeypatch.setattr(nutrition_schema, "require_nutrition_tables", lambda cur: None)
     monkeypatch.setattr(nutrition_schema, "require_diary_tables", lambda cur: None)
     plano = SimpleNamespace(plan_id=1, effective_from=INICIO_PLANO, published_at=None)
-    config = SimpleNamespace(strategy=SimpleNamespace(value="cut"), goal_weight_kg=None, goal_body_fat_percent=None)
+    config = SimpleNamespace(strategy=SimpleNamespace(value="cut"), goal_weight_kg=None, goal_body_fat_percent=None,
+                             is_adaptive=False)
     monkeypatch.setattr(
-        nutrition_targets_service, "load_published_plans", lambda cur, uid: SimpleNamespace(refs=(plano,), settings={1: config})
+        nutrition_targets_service, "load_published_plans", lambda cur, uid: nutrition_targets_service.PublishedPlans(refs=(plano,), settings={1: config})
     )
     monkeypatch.setattr(time_windows, "user_today_for", lambda conn, uid: HOJE)
 

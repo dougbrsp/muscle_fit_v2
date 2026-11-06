@@ -153,6 +153,7 @@ def test_fluxo_completo_identico_nos_dois_backends(usuarios, raw, monkeypatch, f
         corpo = primeiro.json()
         hoje = corpo["today_target"]
         assert hoje["local_date"] == HOJE.isoformat()
+        assert "energy" in corpo and corpo["energy"] == hoje["energy"], backend  # Lote F: retrato de hoje (None no legado)
         assert isinstance(hoje["kcal"], float) and isinstance(hoje["limitations"], list)
         assert hoje["training_known"] is True
 

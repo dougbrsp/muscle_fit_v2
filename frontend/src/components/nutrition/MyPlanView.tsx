@@ -45,7 +45,7 @@ export function MyPlanView() {
         tone="error"
       />
       <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
-        <PlanSummary plan={dados.plan} goal={dados.goal} title="Seu plano" />
+        <PlanSummary plan={dados.plan} goal={dados.goal} title="Seu plano" energy={dados.energy} />
         <SubjectCard subject={dados.subject} title="Você hoje" />
         <Stack gap="md">
           <Card withBorder radius="md" bg={BRAND.bgSurface}>

@@ -2043,6 +2043,33 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-ADAPT (§95)",
     ),
     Padrao(
+        chave="registro_execucoes_sync",
+        regra="retenção do registro de execuções do sync, códigos de estado do dia (`confirmed`/`pending`) ou de origem da confirmação "
+        "(`sync_run`/`last_sync`) redefinidos fora do dono",
+        # 2026-11-06 (nutrição adaptativa, lote F, §98): dono `activity_energy` (`SyncRun`, `day_confirmation_source`). O
+        # serviço só lê as execuções e entrega `SyncRun`; a tela lê os rótulos do JSON gerado.
+        regex=re.compile(
+            r"\bSYNC_RUN_RETENTION_DAYS\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|\bDAY_(?:SYNC_STATUS|CONFIRMATION_SOURCE)_\w+\s*(?::[^=\n]+)?=\s*[\"']"
+        ),
+        donos=("api/app/domain/nutrition/activity_energy.py",),
+        inventario="NUT-ADAPT (§98)",
+    ),
+    Padrao(
+        chave="fechamento_dia_correcao_atividade",
+        regra="códigos da origem da completude do dia (`intake_rule`/`manual_close`), da correção manual de atividade "
+        "(`exclude`/`reclassify`) ou da base do gasto no relatório (`adaptive`/`bootstrap`) redefinidos fora do dono",
+        # 2026-11-06 (nutrição adaptativa, lote G, §99): donos `adaptive_energy` (completude, base do relatório) e
+        # `activity_energy` (correção). Serviço e rotas só gravam/leem e entregam ao motor; a tela lê os rótulos do JSON.
+        regex=re.compile(
+            r"\bCOMPLETENESS_SOURCE_\w+\s*(?::[^=\n]+)?=\s*[\"']"
+            r"|\bCORRECTION_ACTION_\w+\s*(?::[^=\n]+)?=\s*[\"']"
+            r"|\bREPORT_BASIS_\w+\s*(?::[^=\n]+)?=\s*[\"']"
+        ),
+        donos=("api/app/domain/nutrition/adaptive_energy.py", "api/app/domain/nutrition/activity_energy.py"),
+        inventario="NUT-ADAPT (§99)",
+    ),
+    Padrao(
         chave="composicao_gasto_previa",
         regra="arredondamento (`BREAKDOWN_KCAL_ROUNDING_STEP`) ou códigos das parcelas da composição do gasto (`BREAKDOWN_BASE`, "
         "`BREAKDOWN_STRENGTH`, `BREAKDOWN_EXTRAS`) redefinidos fora do dono",
@@ -2283,8 +2310,10 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "gasto_adaptativo_sombra": {},  # NUT-ADAPT (2026-11-05): nasce vazia (o serviço monta entradas e lê `to_public_dict`)
     "peso_tendencia": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "atividades_normalizadas": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "registro_execucoes_sync": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
+    "fechamento_dia_correcao_atividade": {},  # NUT-ADAPT (2026-11-06, lote G): nasce vazia
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3258,6 +3287,19 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "INTERVALS_SYNC_WINDOW_DAYS = 30", "SHADOW_DISPLAY_DAYS: Final[int] = 7"),
         ("from .activity_energy import DAY_CONFIRMATION_LAG_HOURS", "bmr / MINUTES_PER_DAY", "x / 14400",
          "if streak > ae.MAX_CONFIRMED_REST_STREAK_DAYS", "dias = SHADOW_DISPLAY_DAYS"),
+    ),
+    "registro_execucoes_sync": (
+        ("SYNC_RUN_RETENTION_DAYS: Final[int] = 120", "SYNC_RUN_RETENTION_DAYS = 90",
+         'DAY_SYNC_STATUS_PENDING: Final[str] = "pending"', "DAY_CONFIRMATION_SOURCE_RUN = 'sync_run'"),
+        ("activity_mod.SYNC_RUN_RETENTION_DAYS", "timedelta(days=activity_energy.SYNC_RUN_RETENTION_DAYS)",
+         "DAY_SYNC_STATUS_LABELS: Final[Mapping[str, str]] = {", "status = ae.DAY_SYNC_STATUS_PENDING"),
+    ),
+    "fechamento_dia_correcao_atividade": (
+        ('COMPLETENESS_SOURCE_MANUAL_CLOSE: Final[str] = "manual_close"', "COMPLETENESS_SOURCE_INTAKE_RULE = 'intake_rule'",
+         'CORRECTION_ACTION_EXCLUDE: Final[str] = "exclude"', 'REPORT_BASIS_BOOTSTRAP: Final[str] = "bootstrap"'),
+        ("adaptive_energy_mod.COMPLETENESS_SOURCE_MANUAL_CLOSE: \"Fechado por você\",",
+         "activity_mod.CORRECTION_ACTION_EXCLUDE: \"Excluída\",",
+         "origem = adaptive_mod.COMPLETENESS_SOURCE_INTAKE_RULE", "if acao == activity_energy.CORRECTION_ACTION_RECLASSIFY:"),
     ),
     "modo_adaptativo_literal": (
         ('tdee_mode = "adaptive_balance"', "if modo === 'adaptive_balance'", "{'tdee_mode': 'adaptive_balance'}"),

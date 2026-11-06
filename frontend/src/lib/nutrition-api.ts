@@ -347,6 +347,29 @@ export function updateMeal(mealId: number, payload: MealPayload): Promise<Meal> 
   return apiFetch<Meal>(`/nutrition/meals/${mealId}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 
+/** "Fechei o dia": o backend valida (data futura = 422) e devolve o dia atualizado. */
+export function closeNutritionDay(date: string): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/days/${encodeURIComponent(date)}/close`, { method: 'PUT' });
+}
+
+export function reopenNutritionDay(date: string): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/days/${encodeURIComponent(date)}/close`, { method: 'DELETE' });
+}
+
+export type ActivityCorrectionPayload = { action: string; energy_kind?: string };
+
+/** Corrige uma atividade importada (excluir/reclassificar); devolve o dia da atividade atualizado. */
+export function putActivityCorrection(activityId: string | number, payload: ActivityCorrectionPayload): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/activities/${encodeURIComponent(String(activityId))}/correction`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteActivityCorrection(activityId: string | number): Promise<NutritionDay> {
+  return apiFetch<NutritionDay>(`/nutrition/activities/${encodeURIComponent(String(activityId))}/correction`, { method: 'DELETE' });
+}
+
 export function deleteMeal(mealId: number): Promise<{ status: string; id: number }> {
   return apiFetch(`/nutrition/meals/${mealId}`, { method: 'DELETE' });
 }

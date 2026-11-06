@@ -689,6 +689,64 @@ def tdee_breakdown(tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis
     return TdeeBreakdown(parts=tuple(partes), base=BreakdownBase.ROUTINE, notes=(), total_kcal=total_pub)
 
 
+def _stored_number(value: Any) -> Optional[float]:
+    """Número gravado -> float; texto, bool, NaN e infinito viram `None` (dado gravado ausente ou corrompido)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
+
+
+def tdee_result_from_stored(tdee: Mapping[str, Any]) -> Optional[TdeeResult]:
+    """Reconstrói o `TdeeResult` a partir do dict gravado em `inputs_json.tdee` (chaves de `TdeeResult.to_dict()`),
+    sem recalcular TMB nem fator: só relê o que foi gravado. `None` se o dict não for utilizável (sem `kcal` ou
+    `mode` válidos; adaptativo com `adaptive` incompleto)."""
+    if not isinstance(tdee, Mapping):
+        return None
+    try:
+        modo = TdeeMode(tdee.get("mode"))
+    except ValueError:
+        return None
+    kcal = _stored_number(tdee.get("kcal"))
+    if kcal is None:
+        return None
+    adaptativo = None
+    bruto = tdee.get("adaptive")
+    if modo == TdeeMode.ADAPTIVE_BALANCE or bruto is not None:
+        if not isinstance(bruto, Mapping):
+            return None
+        base = _stored_number(bruto.get("base_kcal"))
+        ajuste = _stored_number(bruto.get("adjustment_kcal"))
+        confianca = _stored_number(bruto.get("confidence"))
+        if base is None or ajuste is None or confianca is None:
+            return None
+        adaptativo = AdaptiveParts(
+            base_kcal=base,
+            adjustment_kcal=ajuste,
+            confidence=confianca,
+            confidence_level=str(bruto.get("confidence_level") or ""),
+            bootstrap=bool(bruto.get("bootstrap")),
+            activity_pending=bool(bruto.get("activity_pending")),
+            day_open=bool(bruto.get("day_open")),
+            history_unavailable=bool(bruto.get("history_unavailable")),
+        )
+    return TdeeResult(
+        kcal=kcal,
+        mode=modo,
+        activity_factor=_stored_number(tdee.get("activity_factor")),
+        bmr_kcal=_stored_number(tdee.get("bmr_kcal")),
+        training_kcal=_stored_number(tdee.get("training_kcal")),
+        adaptive=adaptativo,
+    )
+
+
+def tdee_breakdown_from_stored(tdee: Mapping[str, Any], extra_kcal: Any, basis: "TdeeBasis") -> Optional[TdeeBreakdown]:
+    """Composição do gasto do DIA a partir do que está GRAVADO na meta (`inputs_json.tdee`), para todos os modos.
+    Mesma saída de `tdee_breakdown` (é a mesma função por baixo: nada de regra duplicada); soma das parcelas == total.
+    `None` se o dict gravado estiver incompleto."""
+    resultado = tdee_result_from_stored(tdee)
+    return None if resultado is None else tdee_breakdown(resultado, extra_kcal, basis)
+
+
 def _adaptive_breakdown(partes: AdaptiveParts, total_pub: float) -> TdeeBreakdown:
     """Adaptativo: parcela-base (gasto adaptativo médio ou estimativa inicial) + ajuste pela atividade (com sinal,
     omitido se zero) = total. A BASE absorve a diferença de arredondamento, como nos outros modos."""

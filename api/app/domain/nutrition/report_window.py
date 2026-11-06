@@ -25,6 +25,15 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Final, Mapping, Optional, Sequence
 
+from . import labels as nutrition_labels
+from .adaptive_energy import (
+    COMPLETENESS_SOURCE_MANUAL_CLOSE,
+    REPORT_BASIS_ADAPTIVE,
+    REPORT_BASIS_BOOTSTRAP,
+    AdaptiveEnergyState,
+    DayStatus,
+    confidence_level,
+)
 from .dashboard import DayState, day_states
 from .energy_density import DAYS_PER_WEEK
 from .macros import MacroTargets
@@ -113,6 +122,42 @@ def _report_day(
     )
 
 
+def adaptive_report_summary(days: Sequence[date], states: Sequence[AdaptiveEnergyState]) -> Optional[dict[str, Any]]:
+    """Resumo do modo adaptativo para a seção "7. Nutrição" (Lote G): valores PRONTOS do motor, sem conta no relatório.
+
+    `states` são os estados do `replay` (um por dia). Usa os dias de `days` que têm estado; sem nenhum, `None`.
+    - `base_kcal`, `base_source` (+ rótulo), `adaptive_kcal`, `activity_adjustment_kcal`, `activity_average_kcal`,
+      `confidence` e `confidence_level` vêm do ÚLTIMO estado da janela do relatório;
+    - `confidence_avg`: média da confiança dos dias com estado;
+    - `complete_days`: dias do relatório COMPLETE (regra ou fechamento); `manually_closed_days`: os que são completos
+      pelo fechamento manual (`completeness_source` = `manual_close`); `days_with_state`: base dessas contagens."""
+    por_dia = {estado.day: estado for estado in states}
+    do_relatorio = [por_dia[d] for d in days if d in por_dia]
+    if not do_relatorio:
+        return None
+    ultimo = do_relatorio[-1]
+    ultimos_dias = [e.window[-1] for e in do_relatorio if e.window]
+    confianca_media = sum(e.confidence for e in do_relatorio) / len(do_relatorio)
+    base_source = REPORT_BASIS_ADAPTIVE if ultimo.adaptive_kcal is not None else REPORT_BASIS_BOOTSTRAP
+    publico = ultimo.to_public_dict()
+    return {
+        "as_of": ultimo.day,
+        "base_kcal": publico["base_tdee"],
+        "base_source": base_source,
+        "base_source_label": nutrition_labels.REPORT_ADAPTIVE_BASIS_LABELS[base_source],
+        "adaptive_kcal": publico["adaptive_tdee"],
+        "confidence": publico["confidence"],
+        "confidence_level": publico["confidence_level"],
+        "confidence_avg": round(confianca_media, 2),
+        "confidence_avg_level": confidence_level(confianca_media).value,
+        "days_with_state": len(do_relatorio),
+        "complete_days": sum(1 for w in ultimos_dias if w.status is DayStatus.COMPLETE),
+        "manually_closed_days": sum(1 for w in ultimos_dias if w.completeness_source == COMPLETENESS_SOURCE_MANUAL_CLOSE),
+        "activity_adjustment_kcal": publico["activity_adjustment"],
+        "activity_average_kcal": publico["average_activity_calories"],
+    }
+
+
 def window_report(
     days: Sequence[date],
     today: date,
@@ -121,6 +166,7 @@ def window_report(
     day_totals: Sequence[Optional[NutritionTotals]],
     day_tdee_kcal: Sequence[Any],
     day_tdee_basis: Sequence[Optional[str]],
+    adaptive_states: Sequence[AdaptiveEnergyState] = (),
 ) -> dict[str, Any]:
     """Resumo da janela, quadro por semana e linhas dos dias registrados. As listas vêm alinhadas a `days`.
 
@@ -161,7 +207,8 @@ def window_report(
         "summary": _stats(linhas),
         "weeks": semanas,
         "days": [r.to_dict() for r in linhas],
+        "adaptive": adaptive_report_summary(days, adaptive_states),
     }
 
 
-__all__ = ["REPORT_NUTRIENTS", "ReportDay", "window_report"]
+__all__ = ["REPORT_NUTRIENTS", "ReportDay", "adaptive_report_summary", "window_report"]

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ...domain.nutrition.labels import TDEE_BASIS_LABELS
+from ...domain.nutrition.labels import CONFIDENCE_LEVEL_LABELS, TDEE_BASIS_LABELS
 from ...domain.set_measures import SetMeasure, format_set_measure
 from ...domain.set_sides import WORST_SIDE_RULE_TEXT
 from ...domain.training_goal import goal_label, is_default
@@ -1041,6 +1041,24 @@ def _nutrition_basis(bases: Mapping[str, Any]) -> str:
     return "; ".join(f"{TDEE_BASIS_LABELS.get(code, code)}: {fmt_int(n)} dia(s)" for code, n in bases.items())
 
 
+def _nutrition_adaptive(adaptive: Mapping[str, Any]) -> str:
+    """Bloco do gasto adaptativo (Lote G): só apresenta o resumo PRONTO de `report_window.adaptive_report_summary`."""
+    com_estado = adaptive.get("days_with_state")
+    return "\n".join(
+        [
+            f"- **Base do gasto adaptativo:** {adaptive.get('base_source_label') or TRACO}"
+            f" ({fmt_unit(adaptive.get('base_kcal'), 'kcal', 0)} em {fmt_date(adaptive.get('as_of'))})",
+            f"- **Confiança:** {CONFIDENCE_LEVEL_LABELS.get(adaptive.get('confidence_level'), TRACO)}"
+            f" ({fmt_pct(adaptive.get('confidence'))} no fim do período;"
+            f" média {fmt_pct(adaptive.get('confidence_avg'))} em {fmt_int(com_estado)} dia(s))",
+            f"- **Dias completos:** {fmt_int(adaptive.get('complete_days'))} de {fmt_int(com_estado)} dia(s) com estado;"
+            f" {fmt_int(adaptive.get('manually_closed_days'))} fechado(s) manualmente (\"Fechei o dia\")",
+            f"- **Ajuste pela atividade:** {fmt_signed(adaptive.get('activity_adjustment_kcal'), 0, 'kcal/dia')}"
+            f" (média de atividade {fmt_unit(adaptive.get('activity_average_kcal'), 'kcal', 0)})",
+        ]
+    )
+
+
 def _nutrition(data: Mapping[str, Any]) -> str:
     out = ["## 7. Nutrição"]
     section = _section(data, "nutrition")
@@ -1096,6 +1114,11 @@ def _nutrition(data: Mapping[str, Any]) -> str:
             ]
         )
     )
+
+    adaptive = section.get("adaptive")
+    if adaptive:
+        out.append("### Gasto adaptativo")
+        out.append(_nutrition_adaptive(adaptive))
 
     weeks = section.get("weeks") or []
     out.append("### Por semana (segunda a domingo)")

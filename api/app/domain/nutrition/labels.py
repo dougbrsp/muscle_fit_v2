@@ -322,6 +322,7 @@ ACTIVITY_FLAG_LABELS: Final[Mapping[activity_mod.ActivityFlag, str]] = {
     activity_mod.ActivityFlag.MISSING_DURATION: "Sem duração: não dá para descontar o repouso; fora do total.",
     activity_mod.ActivityFlag.MISSING_BMR: "Sem taxa metabólica basal: não dá para descontar o repouso; fora do total.",
     activity_mod.ActivityFlag.REDUCED_PRECISION: "Precisão reduzida: não se sabe se as calorias são ativas ou totais.",
+    activity_mod.ActivityFlag.EXCLUDED_BY_USER: "Excluída por você: fora do total.",
     activity_mod.ActivityFlag.DUPLICATE_EXTERNAL_ID: "Duplicata (mesmo identificador): fora do total.",
     activity_mod.ActivityFlag.DUPLICATE_FINGERPRINT: "Duplicata (mesmos horário, duração e calorias): fora do total.",
     activity_mod.ActivityFlag.POSSIBLE_DUPLICATE: "Possível duplicata: contada, confira.",
@@ -333,6 +334,35 @@ ADAPTIVE_UNAVAILABLE_ERROR = "error"
 ADAPTIVE_UNAVAILABLE_LABELS: Final[Mapping[str, str]] = {
     ADAPTIVE_UNAVAILABLE_NO_DATA: "Ainda não há refeições nem pesagens suficientes para estimar.",
     ADAPTIVE_UNAVAILABLE_ERROR: "Não foi possível calcular agora.",
+}
+
+
+# Diário explicável (Lote F): estado do dia quanto à sincronização e de onde veio a confirmação.
+DAY_SYNC_STATUS_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.DAY_SYNC_STATUS_CONFIRMED: "Atividade do dia confirmada",
+    activity_mod.DAY_SYNC_STATUS_PENDING: "Pendente de sincronização",
+}
+DAY_CONFIRMATION_SOURCE_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.DAY_CONFIRMATION_SOURCE_RUN: "Confirmado por uma sincronização que cobre o dia",
+    activity_mod.DAY_CONFIRMATION_SOURCE_LAST_SYNC: "Confirmado pela última sincronização (dia anterior ao registro de execuções)",
+}
+
+# Fechamento do dia e correção de atividades (Lote G).
+COMPLETENESS_SOURCE_LABELS: Final[Mapping[str, str]] = {
+    adaptive_energy_mod.COMPLETENESS_SOURCE_INTAKE_RULE: "Completo pela regra",
+    adaptive_energy_mod.COMPLETENESS_SOURCE_MANUAL_CLOSE: "Fechado por você",
+}
+REPORT_ADAPTIVE_BASIS_LABELS: Final[Mapping[str, str]] = {
+    adaptive_energy_mod.REPORT_BASIS_ADAPTIVE: "Gasto adaptativo (aprendido com ingestão e peso)",
+    adaptive_energy_mod.REPORT_BASIS_BOOTSTRAP: "Estimativa inicial (ainda sem gasto adaptativo)",
+}
+ACTIVITY_CORRECTION_ACTION_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.CORRECTION_ACTION_EXCLUDE: "Excluída (duplicada ou errada)",
+    activity_mod.CORRECTION_ACTION_RECLASSIFY: "Reclassificada",
+}
+ACTIVITY_CORRECTION_ENERGY_KIND_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.CalorieMode.ACTIVE.value: "Calorias ativas",
+    activity_mod.CalorieMode.GROSS.value: "Calorias totais",
 }
 
 
