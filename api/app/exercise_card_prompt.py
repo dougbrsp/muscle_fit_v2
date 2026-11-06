@@ -8,8 +8,8 @@ prompt (e decidir o que o card mostra do catalogo: `card_title`,
 modulos.
 
     load_context(cursor, exercise_id) -> ExerciseCardContext | None
-    build_scene_prompts(ctx, text_level, *, reference_count=0, instruction=None,
-                        parent_reject_reason=None) -> ScenePrompts
+    build_scene_prompts(ctx, text_level, *, reference_count=0, reference_notes=(),
+                        instruction=None, parent_reject_reason=None) -> ScenePrompts
     card_title(ctx) -> str
     card_muscles(ctx) -> (principais, secundarios)
 
@@ -31,7 +31,8 @@ foto retrato `SCENE_ASPECT_RATIO` com fundo OPACO (academia) e o corpo +
 aparelho inteiros na faixa central `SCENE_SUBJECT_WIDTH_FRACTION` da largura:
 o compositor encaixa cada foto num painel retrato (cover centralizado) que
 corta as laterais. O bloco de fotos de referencia so entra com
-`reference_count > 0`; o feedback do revisor entra nas DUAS cenas.
+`reference_count > 0`, com a nota que o admin escreveu em cada foto (texto
+livre, entre aspas); o feedback do revisor e as notas entram nas DUAS cenas.
 
 `text_level`: so `minimal` existe (o texto do card e da aplicacao). A coluna
 continua na tabela e o parametro na API; outros valores respondem 422.
@@ -86,7 +87,10 @@ TEXT_LEVEL_MINIMAL = "minimal"
 TEXT_LEVELS = (TEXT_LEVEL_MINIMAL,)
 DEFAULT_TEXT_LEVEL = TEXT_LEVEL_MINIMAL
 
-MAX_PROMPT_CHARS = 8000  # por cena
+# Por cena. Pior caso medido (todos os campos no teto + 3 notas de foto no
+# teto + revisao) = 8335 caracteres (`test_pior_caso_cabe_no_limite`); a Images
+# API aceita ate 32 mil e as duas cenas juntas cabem em `prompt_text` (TEXT).
+MAX_PROMPT_CHARS = 9000
 
 # Forma pedida a cada foto (fonte unica; o prompt interpola daqui).
 SCENE_ASPECT_RATIO = "2:3"  # retrato, = OPENAI_IMAGE_SIZE 1024x1536
@@ -465,8 +469,24 @@ def _block_scene(scene: int) -> str:
     return _text(_SCENE_PARTS[scene][1], {"titulo": BLOCK_SCENE})
 
 
-def _block_reference_photos(scene: int) -> str:
-    return _text(_SCENE_PARTS[scene][4], {"titulo": BLOCK_REFERENCE_PHOTOS})
+def _max_note_chars() -> int:
+    """Teto da nota da foto = o da rota (`exercise_card_references`). Import
+    tardio: aquele modulo importa o servico, que importa este (ciclo)."""
+    from .exercise_card_references import MAX_NOTE_CHARS
+
+    return MAX_NOTE_CHARS
+
+
+def _block_reference_photos(scene: int, notes: Sequence[str] = ()) -> str:
+    """Bloco das fotos de referencia + uma linha por nota NAO vazia, numerada
+    pela posicao da foto (1, 2...) na ordem em que entra em `image[]`. A nota
+    e texto livre do admin: vai entre aspas, limpa e cortada (`_clean`)."""
+    lines = "".join(
+        "\n" + _text(".fotos_referencia_nota", {"numero": str(index), "nota": note})
+        for index, note in enumerate(notes, start=1)
+        if note
+    )
+    return _text(_SCENE_PARTS[scene][4], {"titulo": BLOCK_REFERENCE_PHOTOS, "notas": lines})
 
 
 # Convenções de carga do catálogo que viram dica (a prosa de cada uma é o
@@ -590,12 +610,13 @@ def _scene_prompt(
     ctx: ExerciseCardContext,
     scene: int,
     reference_count: int,
+    notes: Sequence[str],
     instruction: Optional[str],
     parent_reject_reason: Optional[str],
 ) -> str:
     blocks = [_block_intro(ctx, scene), _block_format(), _block_scene(scene)]
     if reference_count > 0:
-        blocks.append(_block_reference_photos(scene))
+        blocks.append(_block_reference_photos(scene, notes))
     blocks += [_block_reference(ctx, scene), _block_biomechanics(scene), _block_style(), _block_avoid()]
     if _clean(instruction, MAX_INSTRUCTION_CHARS) or _clean(parent_reject_reason, MAX_REJECT_REASON_CHARS):
         blocks.append(_block_revision(instruction, parent_reject_reason))
@@ -613,23 +634,36 @@ def build_scene_prompts(
     text_level: Optional[str] = DEFAULT_TEXT_LEVEL,
     *,
     reference_count: int = 0,
+    reference_notes: Sequence[Optional[str]] = (),
     instruction: Optional[str] = None,
     parent_reject_reason: Optional[str] = None,
 ) -> ScenePrompts:
     """Prompts da cena 1 (posicao inicial) e da cena 2 (posicao final).
 
     `reference_count` = fotos de referencia do admin que o worker anexa (o
-    bloco REFERENCE PHOTOS so entra se > 0). Erro se o exercicio nao tem nome,
-    se o nivel nao e `minimal`, se `reference_count < 0` ou se uma cena passa
-    de `MAX_PROMPT_CHARS`. `text_level` continua na assinatura (coluna e API
-    existentes) - so `minimal` e aceito."""
+    bloco REFERENCE PHOTOS so entra se > 0). `reference_notes` = a nota de
+    cada foto, na MESMA ordem de `image[]` (`None`/vazia = sem nota); quando
+    informadas, uma por foto. As notas nao vazias entram, limpas e cortadas em
+    `exercise_card_references.MAX_NOTE_CHARS`, no bloco de fotos das DUAS
+    cenas. Erro se o exercicio nao tem nome, se o nivel nao e `minimal`, se
+    `reference_count < 0`, se ha notas e o numero delas difere de
+    `reference_count`, ou se uma cena passa de `MAX_PROMPT_CHARS`.
+    `text_level` continua na assinatura (coluna e API existentes) - so
+    `minimal` e aceito."""
     if not _clean(ctx.name, MAX_NAME_CHARS):
         raise ExerciseCardPromptError("Exercicio sem nome: nao ha o que fotografar.")
     normalize_text_level(text_level)
     count = int(reference_count)
     if count < 0:
         raise ExerciseCardPromptError(f"reference_count invalido: {reference_count!r}.")
+    raw_notes = list(reference_notes or ())
+    if raw_notes and len(raw_notes) != count:
+        raise ExerciseCardPromptError(
+            f"reference_notes com {len(raw_notes)} entrada(s) para {count} foto(s) de referencia."
+        )
+    limit = _max_note_chars()
+    notes = [_clean(note, limit) for note in raw_notes]
     return ScenePrompts(
-        start=_scene_prompt(ctx, SCENE_START, count, instruction, parent_reject_reason),
-        end=_scene_prompt(ctx, SCENE_END, count, instruction, parent_reject_reason),
+        start=_scene_prompt(ctx, SCENE_START, count, notes, instruction, parent_reject_reason),
+        end=_scene_prompt(ctx, SCENE_END, count, notes, instruction, parent_reject_reason),
     )

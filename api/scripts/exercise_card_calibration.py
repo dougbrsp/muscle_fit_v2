@@ -225,16 +225,16 @@ def local_references(images: Sequence[bytes]) -> Iterator[None]:
     keys = [f"{jobs.storage.REFERENCE_PREFIX}/local/{index}.jpg" for index in range(len(images))]
     by_key = dict(zip(keys, images))
     original_rows = jobs.refs.active_reference_rows
-    original_bytes = jobs.storage.get_reference_bytes
+    original_bytes = jobs.storage.get_reference_bytes_present
     jobs.refs.active_reference_rows = lambda cursor, exercise_id: [
-        {"id": -(index + 1), "s3_key": key} for index, key in enumerate(keys)
+        {"id": -(index + 1), "s3_key": key, "note": None} for index, key in enumerate(keys)
     ]
-    jobs.storage.get_reference_bytes = lambda wanted, **_: [by_key[key] for key in wanted]
+    jobs.storage.get_reference_bytes_present = lambda wanted, **_: [(key, by_key[key]) for key in wanted]
     try:
         yield
     finally:
         jobs.refs.active_reference_rows = original_rows
-        jobs.storage.get_reference_bytes = original_bytes
+        jobs.storage.get_reference_bytes_present = original_bytes
 
 
 def _save_drafts(generation_id: int, stem: str, out_dir: Path, summary: dict[str, Any]) -> Optional[bytes]:

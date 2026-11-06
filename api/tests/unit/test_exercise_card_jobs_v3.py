@@ -10,6 +10,8 @@ Rodar: cd api && python -m pytest tests/unit/test_exercise_card_jobs_v3.py
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
 from decimal import Decimal
 
@@ -23,6 +25,7 @@ from app import exercise_card_storage as storage
 from tests.support import card_illustrations as ill
 from tests.support.cards_sqlite import CardsSqlite
 from tests.support.fake_s3 import FakeS3
+from tests.support.privado import exigir
 
 BUCKET = "musclefit-uploads"
 T0 = datetime(2026, 11, 6, 12, 0, 0)
@@ -166,3 +169,86 @@ def test_timeout_por_chamada_vem_do_ambiente_e_entra_no_orcamento(ambiente, monk
         jobs.run_generation_job({"generation_id": gid})
     assert [c["timeout"] for c in chamadas] == [300.0]
     assert banco.generation(gid)["error_code"] == svc.ERROR_TIME_BUDGET_EXCEEDED
+
+
+# ---------------------------------------------------------------------------
+# Foto de referencia excluida durante a geracao (sumiu do S3)
+# ---------------------------------------------------------------------------
+
+
+def _foto(banco, s3, nota=None, *, no_s3: bool = True) -> tuple[int, bytes]:
+    ref_id = banco.add_reference(42, note=nota)
+    foto = ill.jpeg_photo(color=(20 + ref_id, 40, 60))
+    if no_s3:
+        s3.put_object(Bucket=BUCKET, Key=banco.reference(ref_id)["s3_key"], Body=foto, ContentType="image/jpeg")
+    return ref_id, foto
+
+
+def _openai_rapido(monkeypatch, chamadas: list):
+    def gera(prompt, **kwargs):
+        chamadas.append({"prompt": prompt, **kwargs})
+        return _result(Decimal("0.18"))
+
+    monkeypatch.setattr(openai_client, "generate_image", gera)
+
+
+def test_foto_ausente_no_s3_e_pulada_e_o_card_sai_com_as_presentes(ambiente, monkeypatch, caplog):
+    banco, s3, _relogio = ambiente
+    ref_a, foto_a = _foto(banco, s3, "NOTA-A")
+    ref_b, _ = _foto(banco, s3, "NOTA-B", no_s3=False)  # excluida no meio: linha lida, objeto ja removido
+    ref_c, foto_c = _foto(banco, s3, None)
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    with caplog.at_level(logging.INFO):
+        jobs.run_generation_job({"generation_id": gid})
+    assert banco.generation(gid)["status"] == "GENERATED"
+    assert chamadas[0]["reference_images"] == [foto_a, foto_c]
+    assert chamadas[1]["reference_images"][1:] == [foto_a, foto_c]
+    # Notas alinhadas as fotos LIDAS: a da foto ausente nao entra.
+    exigir("NOTA-A" in chamadas[0]["prompt"] and "NOTA-B" not in chamadas[0]["prompt"], "notas das fotos lidas")
+    gerado = next(
+        json.loads(r.getMessage()) for r in caplog.records if '"exercise_card.generated"' in r.getMessage()
+    )
+    assert gerado["reference_ids"] == [ref_a, ref_c] and gerado["reference_count"] == 2
+    aviso = next(r for r in caplog.records if r.levelno == logging.WARNING and "ausentes" in r.getMessage())
+    assert f"ids_ausentes=[{ref_b}]" in aviso.getMessage()
+    assert storage.REFERENCE_PREFIX not in caplog.text  # nunca a key S3
+
+
+def test_nenhuma_foto_lida_falha_sem_chamar_a_openai(ambiente, monkeypatch):
+    banco, s3, _relogio = ambiente
+    _foto(banco, s3, no_s3=False)
+    _foto(banco, s3, no_s3=False)
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    row = banco.generation(gid)
+    assert (row["status"], row["error_code"]) == ("FAILED", storage.S3_READ_FAILED)
+    assert row["cost_usd"] is None and chamadas == []
+
+
+def test_erro_de_leitura_que_nao_e_ausencia_falha_a_geracao(ambiente, monkeypatch):
+    banco, s3, _relogio = ambiente
+    _foto(banco, s3)
+    ref_b, _ = _foto(banco, s3)
+    s3.fail_get_keys.add(banco.reference(ref_b)["s3_key"])
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    assert banco.generation(gid)["error_code"] == storage.S3_READ_FAILED
+    assert chamadas == []
+
+
+def test_sem_fotos_cadastradas_nem_le_o_s3(ambiente, monkeypatch):
+    banco, s3, _relogio = ambiente
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    jobs.run_generation_job({"generation_id": gid})
+    assert chamadas[0]["reference_images"] == []
+    assert s3.calls_of("get_object") == []

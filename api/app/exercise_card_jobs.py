@@ -279,6 +279,39 @@ def _compose(scene_start: bytes, scene_end: bytes, context: card_prompt.Exercise
         raise _StepFailure(svc.ERROR_CARD_COMPOSITION_FAILED, f"Composicao do card falhou: {type(exc).__name__}") from exc
 
 
+def _read_references(
+    generation_id: int, rows: Sequence[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[bytes]]:
+    """Bytes das fotos de referencia ATIVAS lidas no banco, pulando as que
+    sumiram do S3 entre a leitura das linhas e agora (admin excluiu a foto
+    durante a geracao: soft-delete + remocao em melhor esforco). Devolve as
+    linhas EFETIVAS (alinhadas aos bytes: ids e notas so das fotos lidas).
+
+    Havia fotos e NENHUMA foi lida -> `ExerciseCardStorageError(S3_READ_FAILED)`:
+    IAM ou bucket quebrado nao pode virar uma geracao silenciosa sem as fotos.
+    Algumas faltaram -> segue com as encontradas e loga um aviso so com ids e
+    contagens (nunca a key S3)."""
+    if not rows:
+        return [], []
+    by_key = {str(ref["s3_key"]): ref for ref in rows}
+    present = storage.get_reference_bytes_present(list(by_key))
+    if not present:
+        raise storage.ExerciseCardStorageError(
+            f"Nenhuma das {len(rows)} foto(s) de referência pôde ser lida do S3.", code=storage.S3_READ_FAILED
+        )
+    effective = [by_key[key] for key, _image in present]
+    if len(effective) < len(rows):
+        found = {int(ref["id"]) for ref in effective}
+        logger.warning(
+            "Fotos de referencia ausentes no S3 puladas: generation_id=%s lidas=%s esperadas=%s ids_ausentes=%s",
+            generation_id,
+            len(effective),
+            len(rows),
+            [int(ref["id"]) for ref in rows if int(ref["id"]) not in found],
+        )
+    return effective, [image for _key, image in present]
+
+
 def _budget_allows_second_call(job_started: float, timeout: float) -> bool:
     elapsed = _monotonic() - job_started
     needed = openai_client.image_call_worst_case_seconds(timeout) + POST_PROCESS_RESERVE_SECONDS
@@ -329,10 +362,9 @@ def run_generation_job(payload: dict[str, Any]) -> dict[str, Any]:
                 reference_rows = refs.active_reference_rows(cursor, exercise_id)
         if context is None:
             raise _StepFailure(svc.ERROR_EXERCISE_NOT_FOUND, f"Exercício {exercise_id} não existe mais no catálogo.")
-        reference_ids = [int(ref["id"]) for ref in reference_rows]
-
         stage = "reference_read"
-        reference_images = storage.get_reference_bytes([str(ref["s3_key"]) for ref in reference_rows])
+        reference_rows, reference_images = _read_references(generation_id, reference_rows)
+        reference_ids = [int(ref["id"]) for ref in reference_rows]
 
         stage = "prompt"
         try:
@@ -340,6 +372,7 @@ def run_generation_job(payload: dict[str, Any]) -> dict[str, Any]:
                 context,
                 row.get("text_level") or card_prompt.DEFAULT_TEXT_LEVEL,
                 reference_count=len(reference_images),
+                reference_notes=[ref.get("note") for ref in reference_rows],
                 instruction=row.get("request_instruction"),
                 parent_reject_reason=parent_reason,
             )

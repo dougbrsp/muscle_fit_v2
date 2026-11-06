@@ -229,13 +229,13 @@ def test_referencias_locais_invalidas_sao_recusadas(calibracao, tmp_path):
 def test_referencias_locais_entram_no_worker_so_durante_o_bloco(calibracao):
     from app import exercise_card_jobs as jobs
 
-    original_rows, original_bytes = jobs.refs.active_reference_rows, jobs.storage.get_reference_bytes
+    original_rows, original_bytes = jobs.refs.active_reference_rows, jobs.storage.get_reference_bytes_present
     with calibracao.local_references([b"A", b"B"]):
         linhas = jobs.refs.active_reference_rows(None, 21)
         assert [linha["id"] for linha in linhas] == [-1, -2]
-        assert jobs.storage.get_reference_bytes([linha["s3_key"] for linha in linhas]) == [b"A", b"B"]
+        assert [b for _k, b in jobs.storage.get_reference_bytes_present([linha["s3_key"] for linha in linhas])] == [b"A", b"B"]
     assert jobs.refs.active_reference_rows is original_rows
-    assert jobs.storage.get_reference_bytes is original_bytes
+    assert jobs.storage.get_reference_bytes_present is original_bytes
     with calibracao.local_references([]):
         assert jobs.refs.active_reference_rows is original_rows
 

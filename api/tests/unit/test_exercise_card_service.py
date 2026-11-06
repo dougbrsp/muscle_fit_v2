@@ -171,12 +171,13 @@ def prompts(monkeypatch):
 
     real_build = card_prompt.build_scene_prompts
 
-    def spy_build(ctx, text_level=card_prompt.DEFAULT_TEXT_LEVEL, *, reference_count=0, instruction=None,
-                  parent_reject_reason=None):
+    def spy_build(ctx, text_level=card_prompt.DEFAULT_TEXT_LEVEL, *, reference_count=0, reference_notes=(),
+                  instruction=None, parent_reject_reason=None):
         vistos.append({"text_level": text_level, "instruction": instruction,
-                       "parent_reject_reason": parent_reject_reason, "reference_count": reference_count})
-        return real_build(ctx, text_level, reference_count=reference_count, instruction=instruction,
-                          parent_reject_reason=parent_reject_reason)
+                       "parent_reject_reason": parent_reject_reason, "reference_count": reference_count,
+                       "reference_notes": list(reference_notes)})
+        return real_build(ctx, text_level, reference_count=reference_count, reference_notes=reference_notes,
+                          instruction=instruction, parent_reject_reason=parent_reject_reason)
 
     monkeypatch.setattr(card_prompt, "load_context", fake_context)
     monkeypatch.setattr(card_prompt, "build_scene_prompts", spy_build)
@@ -448,9 +449,11 @@ def test_sweep_emite_evento_sem_texto_livre(db, clock, caplog):
 # ---------------------------------------------------------------------------
 
 
-def _seed_reference(db, s3, exercise_id: int = 42, color: tuple[int, int, int] = (90, 90, 90)) -> tuple[int, bytes]:
+def _seed_reference(
+    db, s3, exercise_id: int = 42, color: tuple[int, int, int] = (90, 90, 90), note: str | None = None
+) -> tuple[int, bytes]:
     """Foto de referencia ativa: linha no fake + objeto JPEG no S3."""
-    ref_id = db.add_reference(exercise_id)
+    ref_id = db.add_reference(exercise_id, note=note)
     foto = ill.jpeg_photo(color=color)
     s3.put_object(Bucket=BUCKET, Key=db.reference(ref_id)["s3_key"], Body=foto, ContentType="image/jpeg")
     return ref_id, foto
@@ -495,7 +498,7 @@ def test_worker_gera_as_duas_cenas_compoe_e_grava_generated(worker, db, s3, open
     (cena1_jpeg,) = openai[1]["reference_images"]
     assert cena1_jpeg.startswith(JPEG_SIGNATURE)
     assert prompts[0] == {"text_level": "minimal", "instruction": "pegada mais aberta", "parent_reject_reason": None,
-                          "reference_count": 0}
+                          "reference_count": 0, "reference_notes": []}
     for key in (row["preview_s3_key"], storage.scene_key(gid, 1), storage.scene_key(gid, 2)):
         assert s3.objects[(BUCKET, key)].cache_control == storage.DRAFT_CACHE_CONTROL
     assert dispatched[0]["job_kind"] == "exercise-card" and dispatched[0]["generation_id"] == gid
@@ -511,7 +514,7 @@ def test_cena_1_vai_como_jpeg_sem_metadados(worker, openai):
 
 
 def test_fotos_de_referencia_vao_nas_duas_cenas_e_no_evento(db, clock, s3, openai, prompts, dispatched, caplog):
-    ref_a, foto_a = _seed_reference(db, s3, color=(80, 80, 80))
+    ref_a, foto_a = _seed_reference(db, s3, color=(80, 80, 80), note="NOTA-DO-ADMIN rolo atrás do tornozelo")
     ref_b, foto_b = _seed_reference(db, s3, color=(30, 30, 30))
     apagada = db.add_reference(42, deleted=True)
     db.add_reference(43)  # de outro exercicio
@@ -525,13 +528,17 @@ def test_fotos_de_referencia_vao_nas_duas_cenas_e_no_evento(db, clock, s3, opena
     assert openai[1]["reference_images"][0].startswith(JPEG_SIGNATURE)
     assert openai[1]["reference_images"][1:] == [foto_a, foto_b]
     assert prompts[0]["reference_count"] == 2
+    # A nota de cada foto vai ao prompt, na ordem das fotos, nas duas cenas.
+    assert prompts[0]["reference_notes"] == ["NOTA-DO-ADMIN rolo atrás do tornozelo", None]
+    for chamada in openai:
+        exigir("NOTA-DO-ADMIN rolo atrás do tornozelo" in chamada["prompt"], "nota no prompt das duas cenas")
     [gerado] = _eventos(caplog, "exercise_card.generated")
     assert gerado["reference_count"] == 2 and gerado["reference_ids"] == [ref_a, ref_b]
     assert apagada not in gerado["reference_ids"]
     assert gerado["scene_count"] == 2 and gerado["layout_version"] == composer.LAYOUT_VERSION
     assert gerado["latency_ms"] == gerado["latency_ms_scene1"] + gerado["latency_ms_scene2"]
     texto = "\n".join(r.getMessage() for r in caplog.records)
-    assert "Supino reto" not in texto  # nunca logar o prompt
+    assert "Supino reto" not in texto and "NOTA-DO-ADMIN" not in texto  # nunca logar o prompt nem a nota
 
 
 def test_preview_e_o_card_composto_das_duas_fotos(worker, db, s3):

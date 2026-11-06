@@ -82,16 +82,19 @@ _SO_TAGS = p.ExerciseCardContext(
     exercise_id=4, name="Remada", body_position="Sentado", primary_joint="Ombro", execution_steps=("Solte o ar.",)
 )
 
-# caso -> (contexto, instrução do admin, motivo da rejeição do pai, fotos de referência)
+# caso -> (contexto, instrução do admin, motivo da rejeição do pai, fotos de referência, notas das fotos)
 CARD = {
-    "minimo": (_MINIMO, None, None, 0),
-    "completo": (_COMPLETO, None, None, 0),
-    "alternativas_so_pedido": (_ALTERNATIVAS, 'Mostrar melhor "pés"', None, 0),
-    "so_tags_so_motivo": (_SO_TAGS, None, "Barra deformada", 0),
-    "completo_revisao_longa": (_COMPLETO, "x" * 400, "y" * 300, 0),
-    "minimo_feedback_vazio": (_MINIMO, "  ", "   ", 0),
-    "completo_com_referencias": (_COMPLETO, None, None, 3),
-    "minimo_referencia_e_motivo": (_MINIMO, None, "Rolo na canela", 1),
+    "minimo": (_MINIMO, None, None, 0, ()),
+    "completo": (_COMPLETO, None, None, 0, ()),
+    "alternativas_so_pedido": (_ALTERNATIVAS, 'Mostrar melhor "pés"', None, 0, ()),
+    "so_tags_so_motivo": (_SO_TAGS, None, "Barra deformada", 0, ()),
+    "completo_revisao_longa": (_COMPLETO, "x" * 400, "y" * 300, 0, ()),
+    "minimo_feedback_vazio": (_MINIMO, "  ", "   ", 0, ()),
+    "completo_com_referencias": (_COMPLETO, None, None, 3, ()),
+    "minimo_referencia_e_motivo": (_MINIMO, None, "Rolo na canela", 1, ()),
+    "completo_referencias_com_notas": (
+        _COMPLETO, None, None, 3, ('Rolo atrás dos "tornozelos"', None, "  pegada\n neutra ")
+    ),
 }
 
 # sha256 dos DOIS prompts (`ScenePrompts.joined()`) do V3 (cards fotorrealistas,
@@ -99,20 +102,22 @@ CARD = {
 CARD_SHA = {
     "alternativas_so_pedido": "721ceecb349fd42871a960b4bc551293d48f9286d41b0b6aa17be6b91fc35c8d",
     "completo": "47a5ca8db80668af6fb5be64551cf6fda705e80ec1945d568de895048a9e4ee8",
-    "completo_com_referencias": "4b8274cf21c2620001ac68e663f088fe5a3fdfe34a7bfd43bfe677dad624872d",
+    "completo_com_referencias": "a4417d6ecaa92fc292a57a8f913981ef366942391f48c9bc2591ad39f5831853",
+    "completo_referencias_com_notas": "48159d94b032d22a0ffa1a313e8de87db6f214a2b2f646a3e4b349015552f745",
     "completo_revisao_longa": "1e182789a1c9ca34fcf7300cb1688cb96bb9defdd09fb21de4dc85440b57b6ea",
     "minimo": "b66f3c9cdc10c57143191e17cd6b9ee48d60dc89ceeddaeabff08465a9787aa0",
     "minimo_feedback_vazio": "b66f3c9cdc10c57143191e17cd6b9ee48d60dc89ceeddaeabff08465a9787aa0",
-    "minimo_referencia_e_motivo": "7683a1c2490f44ce0cac00f71188fa879c114a73103152305c61df9773514d00",
+    "minimo_referencia_e_motivo": "d08c8b35dec3eef740047ed0b4c18855dbfdfd452b4f45ab31a157c1d0083147",
     "so_tags_so_motivo": "ea0105cea79768900f6d9aa250b1bd47f66d1f6ad460f1cf12949a47b51229ce",
 }
 
 
 @pytest.mark.parametrize("caso", sorted(CARD))
 def test_prompt_do_card_nao_mudou(caso):
-    ctx, instrucao, motivo, referencias = CARD[caso]
+    ctx, instrucao, motivo, referencias, notas = CARD[caso]
     prompts = p.build_scene_prompts(
-        ctx, "minimal", reference_count=referencias, instruction=instrucao, parent_reject_reason=motivo
+        ctx, "minimal", reference_count=referencias, reference_notes=notas, instruction=instrucao,
+        parent_reject_reason=motivo,
     )
     assert _sha(prompts.joined()) == CARD_SHA[caso]
 
