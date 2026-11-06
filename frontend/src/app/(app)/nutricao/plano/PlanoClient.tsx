@@ -22,6 +22,7 @@ import {
   fetchNutritionPlans,
   nutritionErrorInfo,
   nutritionKeys,
+  planPreviewQuery,
 } from '@/lib/nutrition-api';
 import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type { NutritionLimitation, NutritionPlan, NutritionPlanSaved } from '@/lib/nutrition-types';
@@ -30,6 +31,12 @@ import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
+}
+
+/** Card Plano do selecionado; a confiança do adaptativo vem do retrato (`target.energy`) da MESMA prévia que a tela mostra abaixo. */
+function SelectedPlanSummary({ plan }: { plan: NutritionPlan }) {
+  const previewQuery = useQuery(planPreviewQuery(plan));
+  return <PlanSummary plan={plan} energy={previewQuery.data?.target.energy ?? null} />;
 }
 
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
@@ -211,7 +218,7 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
 
       {selected && (
         <Stack gap="md">
-          <PlanSummary plan={selected} />
+          <SelectedPlanSummary plan={selected} />
           <PlanPreview
             plan={selected}
             currentPlanId={currentPlanId}

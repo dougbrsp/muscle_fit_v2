@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -78,6 +79,10 @@ from .domain.nutrition.plan import (
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
 from .intervals_activity_kind import classify
+from .nutrition_energy_service import EnergyHistory, energy_key, load_history
+from .nutrition_schema import has_plan_energy_columns
+
+logger = logging.getLogger(__name__)
 
 PLANS_TABLE = "nutrition_plans"
 TARGETS_TABLE = "nutrition_daily_targets"
@@ -87,14 +92,22 @@ PUBLISHED = "published"
 PLAN_SETTINGS_COLUMNS = (
     "strategy, advanced, bmr_formula, activity_level, training_kcal_mode, goal_body_fat_percent, goal_weight_kg, "
     "weekly_rate_share, surplus_share, protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, "
-    "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust"
+    "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, energy_params_json"
 )
+# Sem a migração 106 a coluna `energy_params_json` não existe: a leitura dos planos publicados usa a lista SEM ela (planos
+# legados seguem funcionando como antes); as rotas de PLANO é que respondem 503 `nutrition_plan_migration_pending`.
+PLAN_SETTINGS_COLUMNS_WITHOUT_ENERGY = PLAN_SETTINGS_COLUMNS.replace(", energy_params_json", "")
 
 # `FOR SHARE`: dentro da transação, a leitura dos planos espera uma publicação em
 # andamento (que tem os planos travados para escrita) e trava a publicação
 # seguinte até este cálculo terminar.
 _PUBLISHED_PLANS_SQL = (
     f"SELECT id, effective_from, published_at, {PLAN_SETTINGS_COLUMNS} FROM {PLANS_TABLE} "
+    "WHERE user_id = %s AND status = %s AND effective_from IS NOT NULL FOR SHARE"
+)
+
+_PUBLISHED_PLANS_WITHOUT_ENERGY_SQL = (
+    f"SELECT id, effective_from, published_at, {PLAN_SETTINGS_COLUMNS_WITHOUT_ENERGY} FROM {PLANS_TABLE} "
     "WHERE user_id = %s AND status = %s AND effective_from IS NOT NULL FOR SHARE"
 )
 
@@ -107,7 +120,8 @@ _TARGET_COLUMNS = (
 # no banco, sem trazer o JSON inteiro. `target_row_public` lê só estes aliases.
 _TARGET_JSON_COLUMNS = (
     "JSON_EXTRACT(inputs_json, '$.extra_activity') AS extra_activity_json, "
-    "JSON_EXTRACT(inputs_json, '$.tdee_basis') AS tdee_basis_json"
+    "JSON_EXTRACT(inputs_json, '$.tdee_basis') AS tdee_basis_json, "
+    "JSON_EXTRACT(inputs_json, '$.energy') AS energy_json"
 )
 _TARGETS_SQL = (
     f"SELECT {_TARGET_COLUMNS}, {_TARGET_JSON_COLUMNS} FROM {TARGETS_TABLE} "
@@ -247,6 +261,7 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         manual_training_mode=modo_manual,
         cycle_days=_json_value(row.get("carb_cycling_json")),
         maintenance_kcal_adjust=int(row["maintenance_kcal_adjust"]) if row.get("maintenance_kcal_adjust") else None,
+        energy_params=_json_value(row.get("energy_params_json")),
     )
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")
@@ -265,7 +280,8 @@ class PublishedPlans:
 
 
 def load_published_plans(cur: Any, user_id: int) -> PublishedPlans:
-    cur.execute(_PUBLISHED_PLANS_SQL, (int(user_id), PUBLISHED))
+    # `has_plan_energy_columns` tem cache SÓ do positivo: depois da 106 não custa SELECT; antes dela checa a cada leitura.
+    cur.execute(_PUBLISHED_PLANS_SQL if has_plan_energy_columns(cur) else _PUBLISHED_PLANS_WITHOUT_ENERGY_SQL, (int(user_id), PUBLISHED))
     refs: list[PublishedPlanRef] = []
     settings: dict[int, PlanSettings] = {}
     for row in cur.fetchall() or []:
@@ -295,6 +311,16 @@ class UserInputs:
     # False = o Intervals NÃO foi consultado nesta carga (nenhum plano automático em jogo): os modos clássicos não pagam
     # as consultas novas.
     intervals_loaded: bool = False
+    # Plano ADAPTATIVO em jogo (Lote C): o histórico processado por `watch_calorie_mode` (uma leitura e um `replay` por
+    # carga). Vazio nos planos legados, que não pagam nenhuma consulta nova.
+    energy: dict[tuple[str, str], EnergyHistory] = field(default_factory=dict)
+    # Modos cuja leitura do histórico FALHOU nesta carga (sem entrada em `energy`): a meta do dia desse modo não pode ser
+    # regravada com a estimativa inicial por causa de uma falha transitória (`ensure_daily_targets`).
+    energy_failed: frozenset[tuple[str, str]] = frozenset()
+
+    def covers(self, plans: Iterable[PlanSettings]) -> bool:
+        """As entradas têm o histórico (ou a falha registrada) de TODO modo adaptativo dos `plans`?"""
+        return all(energy_key(p) in self.energy or energy_key(p) in self.energy_failed for p in plans if p.is_adaptive)
 
 
 def _decimal_free(row: dict[str, Any]) -> dict[str, Any]:
@@ -382,7 +408,25 @@ def load_user_inputs(
         extra_activities=extras,
         intervals_in_sync=em_dia,
         intervals_loaded=com_intervals,
+        **_load_energy(cur, uid, today, series, plans),
     )
+
+
+def _load_energy(cur: Any, user_id: int, today: date, series: SubjectSeries, plans: Iterable[PlanSettings]) -> dict[str, Any]:
+    """Histórico do gasto adaptativo, UMA vez por (`watch_calorie_mode`, fórmula da TMB) dos planos adaptativos em jogo (gate como
+    `is_auto_intervals`: sem plano adaptativo, nenhuma consulta). Devolve `energy` (modo -> histórico) e `energy_failed`
+    (modos cuja leitura ou `replay` falhou: NÃO derrubam o cálculo; o log traz só o tipo da exceção). Dia de plano de um modo
+    que falhou sai com a estimativa inicial, SEM sobrescrever meta já gravada (`ensure_daily_targets`)."""
+    chaves = list(dict.fromkeys(energy_key(p) for p in plans if p.is_adaptive))
+    historicos: dict[tuple[str, str], EnergyHistory] = {}
+    falhas: set[tuple[str, str]] = set()
+    for chave in chaves:
+        try:
+            historicos[chave] = load_history(cur, user_id, today, series, chave[0], bmr_formula=chave[1])
+        except Exception as erro:  # noqa: BLE001 - isolamento deliberado: a meta nunca devolve 500 por causa do histórico
+            logger.warning("nutrition.adaptive_history_failed error=%s", type(erro).__name__)
+            falhas.add(chave)
+    return {"energy": historicos, "energy_failed": frozenset(falhas)}
 
 
 # ---------------------------------------------------------------------------
@@ -406,8 +450,21 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
     # sempre, hash inclusive). Sem sincronização os extras não valem e nem entram no contexto.
     automatico = settings.is_auto_intervals
     extras = inputs.extra_activities.get(day, ()) if automatico and inputs.intervals_in_sync else ()
+    estimativa = None
+    historico_indisponivel = False
+    if settings.is_adaptive:  # a estimativa do dia vem do `replay` do histórico (dono: `adaptive_energy.estimate_for_day`)
+        chave = energy_key(settings)
+        historico = inputs.energy.get(chave)
+        if historico is not None:
+            estimativa = historico.estimate_for_day(day, today)
+        elif chave in inputs.energy_failed:
+            # A leitura do histórico falhou: o motor usa a estimativa inicial MARCADA (`history_unavailable`); o dia que já
+            # tem meta gravada nem chega aqui. O serviço só passa o sinal (nenhuma TMB aqui).
+            historico_indisponivel = True
     contexto = day_context_for(
-        day, today, inputs.sessions.get(day, ()), extras, intervals_in_sync=inputs.intervals_in_sync if automatico else None
+        day, today, inputs.sessions.get(day, ()), extras,
+        intervals_in_sync=inputs.intervals_in_sync if automatico else None, energy_estimate=estimativa,
+        energy_history_unavailable=historico_indisponivel,
     )
     meta = compute_daily_target(
         sujeito.subject, settings.plan_params(sujeito.ffm_age_days), contexto, scale_bmr=sujeito.scale_bmr_kcal
@@ -466,6 +523,7 @@ def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
         "training_kcal_nature": meta.training_kcal.kcal_nature.value if meta.training_kcal.kcal_nature else None,
         "extra_activity": meta.extra_activity.to_dict(),
         "tdee_basis": meta.tdee_basis.value,
+        "energy": meta.energy,
         "limitations": nutrition_labels.limitation_items(meta.limitations),
         "engine_version": meta.engine_version,
         "computed_at": None,
@@ -500,6 +558,8 @@ def target_row_public(row: dict[str, Any], today: date) -> dict[str, Any]:
         # Cardio/caminhada somados ao gasto (modo automático): o dicionário que o motor gravou em `inputs_json`.
         "extra_activity": _json_value(row.get("extra_activity_json")) or NO_EXTRA_ACTIVITY.to_dict(),
         "tdee_basis": _json_value(row.get("tdee_basis_json")) or TdeeBasis.CLASSIC.value,
+        # Retrato público da estimativa adaptativa do dia (gravado pelo motor em `inputs_json.energy`); `None` nos legados.
+        "energy": _json_value(row.get("energy_json")),
         "training_kcal_nature": row.get("training_kcal_nature"),
         "limitations": nutrition_labels.limitation_items(limitacoes),
         "engine_version": row.get("engine_version"),
@@ -548,6 +608,25 @@ def _upsert_params(
         "engine_version": meta.engine_version,
     }
     return tuple(valores[coluna] for coluna in UPSERT_COLUMNS)
+
+
+def _history_failed(entradas: "UserInputs", settings: PlanSettings) -> bool:
+    """O histórico da chave deste dia adaptativo falhou nesta carga?"""
+    return settings.is_adaptive and energy_key(settings) in entradas.energy_failed
+
+
+def _history_failed_and_stored(
+    entradas: "UserInputs", settings: PlanSettings, plan_id: int, existente: Optional[dict[str, Any]]
+) -> bool:
+    """O histórico falhou E o dia já tem meta gravada DO MESMO PLANO? Então não se regrava (a estimativa inicial a
+    degradaria). Meta de OUTRO plano (acabou de publicar o adaptativo ou republicou com outros parâmetros) é regravada
+    com a estimativa inicial marcada: nenhuma meta não congelada pode ficar com o plano antigo."""
+    return (
+        _history_failed(entradas, settings)
+        and existente is not None
+        and existente.get("plan_id") is not None
+        and int(existente["plan_id"]) == int(plan_id)
+    )
 
 
 def _unchanged(existing: Optional[dict[str, Any]], plan_id: int, fingerprint: str) -> bool:
@@ -607,9 +686,17 @@ def ensure_daily_targets(
             # Entradas trazidas de fora podem ter sido carregadas só com o plano NOVO; se algum dia a gravar usa o plano
             # automático (ex.: ontem era automático e hoje é clássico) e o Intervals não foi lido, recarrega: senão
             # esse dia seria regravado no fallback.
-            if entradas is None or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded):
+            # O mesmo vale para o ADAPTATIVO: se algum dia a gravar é de um plano adaptativo (ou de outro `watch_calorie_mode`)
+            # cujo histórico as entradas não trazem, recarrega; nenhum caminho grava meta adaptativa sem o histórico do modo certo.
+            if (
+                entradas is None
+                or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded)
+                or not entradas.covers(planos_dos_dias)
+            ):
                 entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, planos_dos_dias)
             for dia, plano_id, settings in dias:
+                if _history_failed_and_stored(entradas, settings, plano_id, existentes.get(dia)):
+                    continue  # falha transitória do histórico: mantém a meta gravada (a estimativa inicial a degradaria)
                 comp = compute_day(entradas, settings, dia, hoje)
                 impressao = inputs_fingerprint(plano_id, comp)
                 if not _unchanged(existentes.get(dia), plano_id, impressao):
@@ -639,9 +726,12 @@ def _backfill_frozen_days(cur: Any, user_id: int, days: Sequence[date], today: d
     entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], today, [settings for _, _, settings in dias])
     lote = []
     for dia, plano_id, settings in dias:
+        if _history_failed(entradas, settings):
+            continue  # gravaria PARA SEMPRE a estimativa inicial (`id = id`); a próxima leitura tenta de novo
         comp = compute_day(entradas, settings, dia, today)
         lote.append(_upsert_params(user_id, plano_id, comp, inputs_fingerprint(plano_id, comp), backfilled_on=today))
-    cur.executemany(_INSERT_ONCE_SQL, lote)
+    if lote:
+        cur.executemany(_INSERT_ONCE_SQL, lote)
     return len(lote)
 
 

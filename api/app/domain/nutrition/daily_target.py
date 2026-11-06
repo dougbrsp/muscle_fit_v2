@@ -68,6 +68,7 @@ from typing import Any, Final, Iterable, Optional, Sequence
 from . import bmr as bmr_mod
 from . import carb_cycling
 from . import energy_expenditure as ee
+from . import adaptive_energy
 from . import macros as macros_mod
 from . import manual_targets
 from . import strategy as strategy_mod
@@ -187,6 +188,12 @@ class DayContext:
     # Sessões do dia (kcal e minutos de cada uma): o motor soma POR SESSÃO (`ee.resolve_sessions_kcal`). Vazio = o
     # contexto veio só com `training_kcal_reported`/`training_duration_min` (caminho antigo).
     training_sessions: tuple[ee.SessionKcal, ...] = ()
+    # Só no plano `adaptive_balance`: a estimativa de gasto do dia, montada pelo motor a partir do `replay`
+    # (`adaptive_energy.estimate_for_day`). Sem ela o plano adaptativo usa a estimativa inicial por fórmula.
+    energy_estimate: Optional[adaptive_energy.DayEnergyEstimate] = None
+    # A leitura do histórico do plano adaptativo FALHOU: sem `energy_estimate`, a meta usa a estimativa inicial marcada
+    # com `history_unavailable` (o serviço não conhece a TMB). Só entra no `to_dict`/hash quando verdadeiro.
+    energy_history_unavailable: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
@@ -194,6 +201,10 @@ class DayContext:
             extras["training_sessions"] = [sessao.to_dict() for sessao in self.training_sessions]
         if self.intervals_in_sync is not None:
             extras["intervals_in_sync"] = self.intervals_in_sync
+        if self.energy_estimate is not None:  # só o plano adaptativo: os hashes dos planos legados não mudam
+            extras["energy_estimate"] = self.energy_estimate.to_dict()
+        if self.energy_history_unavailable:
+            extras["energy_history_unavailable"] = True
         return {
             **extras,
             "day": self.day.isoformat(),
@@ -228,6 +239,9 @@ class DailyTarget:
     extra_activity: ee.ExtraActivityKcal = ee.NO_EXTRA_ACTIVITY_KCAL
     # Como o gasto do dia foi montado: clássico, automático em dia ou automático em fallback (tela diz a verdade).
     tdee_basis: ee.TdeeBasis = ee.TdeeBasis.CLASSIC
+    # Só no plano adaptativo: retrato público da estimativa do dia (`DayEnergyEstimate.snapshot_dict`), gravado em
+    # `inputs_json.energy`. Nos demais modos fica `None` e NÃO entra no `to_dict`.
+    energy: Optional[dict[str, Any]] = None
 
     @property
     def computable(self) -> bool:
@@ -242,7 +256,9 @@ class DailyTarget:
         return float(self.macros.kcal) - float(self.tdee.kcal)
 
     def to_dict(self) -> dict[str, Any]:
+        energia = {"energy": self.energy} if self.energy is not None else {}
         return {
+            **energia,
             "day": self.day.isoformat(),
             "engine_version": self.engine_version,
             "subject": self.subject.to_dict(),
@@ -382,7 +398,18 @@ def compute_daily_target(
     )
     extra = ee.extra_activity_kcal(day_context.extra_activities) if soma_extras else ee.NO_EXTRA_ACTIVITY_KCAL
     atividade_kcal = (treino.kcal or 0.0) + extra.kcal
-    gasto = ee.tdee(tmb.kcal, nivel_efetivo, modo_efetivo, atividade_kcal)
+    estimativa: Optional[adaptive_energy.DayEnergyEstimate] = None
+    if plan_params.tdee_mode == ee.TdeeMode.ADAPTIVE_BALANCE:
+        # O gasto vem da estimativa pronta do dia (ou da inicial por fórmula, sem histórico); TODO o resto da meta
+        # (déficit, teto, piso, macros, ciclo, refeições) segue igual: só o `gasto` que entra em `kcal_target` troca.
+        modo_efetivo, nivel_efetivo = ee.TdeeMode.ADAPTIVE_BALANCE, None
+        limitacoes_treino = (LIMIT_TRAINING_UNKNOWN_FUTURE_DAY,) if not day_context.training_known else ()
+        estimativa = day_context.energy_estimate or adaptive_energy.bootstrap_only_estimate(
+            day_context.day, tmb.kcal, history_unavailable=day_context.energy_history_unavailable
+        )
+        gasto = ee.adaptive_tdee_result(estimativa, tmb.kcal)
+    else:
+        gasto = ee.tdee(tmb.kcal, nivel_efetivo, modo_efetivo, atividade_kcal)
 
     params = plan_params.strategy_params
     fase = day_context.phase_kind
@@ -450,7 +477,10 @@ def compute_daily_target(
         phase_kind=fase,
         protein_per_meal_g=por_refeicao,
         extra_activity=extra,
-        tdee_basis=ee.tdee_basis_of(plan_params.tdee_mode, day_context.intervals_in_sync),
+        tdee_basis=ee.tdee_basis_of(
+            plan_params.tdee_mode, day_context.intervals_in_sync, None if estimativa is None else estimativa.bootstrap
+        ),
+        energy=estimativa.snapshot_dict() if estimativa is not None else None,
         limitations=_unique(
             tmb.limitations,
             limitacoes_treino,
@@ -589,8 +619,11 @@ def day_context_for(
     sessions: Sequence[SessionFacts] = (),
     extra_activities: Sequence[ee.ExtraActivity] = (),
     intervals_in_sync: Optional[bool] = None,
+    energy_estimate: Optional[adaptive_energy.DayEnergyEstimate] = None,
+    energy_history_unavailable: bool = False,
 ) -> DayContext:
-    """Contexto do dia para a materialização.
+    """Contexto do dia para a materialização. `energy_estimate` só vale no plano adaptativo (o serviço a monta com
+    `adaptive_energy.estimate_for_day` e passa aqui; fica fora do `to_dict`/hash dos demais).
 
     - Dia FUTURO (`day > today`): treino desconhecido -> dia sem treino com
       `training_known=False` (limitação `LIMIT_TRAINING_UNKNOWN_FUTURE_DAY`).
@@ -602,10 +635,16 @@ def day_context_for(
       kcal/duração do treino; só somam ao gasto (`compute_daily_target`). Dia futuro não as tem.
     """
     if day > today:
-        return DayContext(day=day, is_training_day=False, training_known=False, intervals_in_sync=intervals_in_sync)
+        return DayContext(
+            day=day, is_training_day=False, training_known=False, intervals_in_sync=intervals_in_sync,
+            energy_estimate=energy_estimate, energy_history_unavailable=energy_history_unavailable,
+        )
     extras = tuple(extra_activities)
     if not sessions:
-        return DayContext(day=day, extra_activities=extras, intervals_in_sync=intervals_in_sync)
+        return DayContext(
+            day=day, extra_activities=extras, intervals_in_sync=intervals_in_sync, energy_estimate=energy_estimate,
+            energy_history_unavailable=energy_history_unavailable,
+        )
     kcal = _sum_if_all([positive_number(sessao.calories_kcal) for sessao in sessions])
     segundos = _sum_if_all([positive_number(sessao.duration_seconds) for sessao in sessions])
     por_sessao = tuple(
@@ -623,6 +662,8 @@ def day_context_for(
         training_duration_min=None if segundos is None else segundos / SECONDS_PER_MINUTE,
         extra_activities=extras,
         intervals_in_sync=intervals_in_sync,
+        energy_estimate=energy_estimate,
+        energy_history_unavailable=energy_history_unavailable,
     )
 
 

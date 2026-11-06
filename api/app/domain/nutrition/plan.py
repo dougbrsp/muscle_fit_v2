@@ -38,6 +38,8 @@ from enum import Enum
 from typing import Any, Final, Mapping, Optional, Sequence
 
 from . import energy_expenditure as ee
+from . import adaptive_energy
+from .activity_energy import CalorieMode
 from .anthropometrics import ActivityLevel, Subject, normalize_activity_level, positive_number, weight_is_valid
 from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_ffm_kg, target_weight_for_body_fat
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
@@ -128,6 +130,7 @@ _CYCLE_CHECK_MONDAY: Final[date] = date(2026, 1, 5)
 FIELD_MANUAL_TARGETS = "manual_targets"
 FIELD_MANUAL_TRAINING_MODE = "manual_training_mode"
 FIELD_MACRO_PRIORITY = "macro_priority"
+FIELD_ENERGY_PARAMS = "energy_params"
 # Chaves das gramas manuais no payload e no JSON gravado.
 MANUAL_KEYS: Final[tuple[str, str, str]] = ("protein_g", "carb_g", "fat_g")
 
@@ -173,6 +176,45 @@ class ManualMacros:
         return {"protein_g": self.protein_g, "carb_g": self.carb_g, "fat_g": self.fat_g, "training_mode": self.training_mode.value}
 
 
+ENERGY_PARAM_WATCH_CALORIE_MODE: Final[str] = "watch_calorie_mode"
+DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = CalorieMode.UNKNOWN
+
+
+@dataclass(frozen=True)
+class EnergyParams:
+    """Parâmetros de energia do plano adaptativo (hoje só o que a kcal do relógio significa: `active` = só as ativas,
+    `gross` = total do exercício com o repouso dentro, `unknown` = não informado, tratada como bruta, D4). Só entra no
+    `to_dict`/hash quando sai do padrão."""
+
+    watch_calorie_mode: CalorieMode = DEFAULT_WATCH_CALORIE_MODE
+
+    @property
+    def is_default(self) -> bool:
+        return self.watch_calorie_mode == DEFAULT_WATCH_CALORIE_MODE
+
+    def to_dict(self) -> dict[str, Any]:
+        return {ENERGY_PARAM_WATCH_CALORIE_MODE: self.watch_calorie_mode.value}
+
+
+def parse_energy_params(raw: Any, errors: list[str]) -> Optional[EnergyParams]:
+    """`energy_params` do payload (`None`/vazio = padrão). Chave desconhecida ou valor fora de
+    active/gross/unknown vira `invalid_code:energy_params` (e `None`)."""
+    if raw is None or raw == {}:
+        return EnergyParams()
+    if not isinstance(raw, Mapping) or set(raw) - {ENERGY_PARAM_WATCH_CALORIE_MODE}:
+        errors.append(_code(ERR_INVALID_CODE, FIELD_ENERGY_PARAMS))
+        return None
+    bruto = raw.get(ENERGY_PARAM_WATCH_CALORIE_MODE)
+    if bruto is None:
+        return EnergyParams()
+    try:
+        modo = CalorieMode(str(bruto).strip().lower())
+    except ValueError:
+        errors.append(_code(ERR_INVALID_CODE, FIELD_ENERGY_PARAMS))
+        return None
+    return EnergyParams(watch_calorie_mode=modo)
+
+
 @dataclass(frozen=True)
 class PlanSettings:
     """Parâmetros do plano já normalizados, com os defaults da estratégia."""
@@ -194,10 +236,22 @@ class PlanSettings:
     manual_macros: Optional[ManualMacros] = None
     cycle_kinds: Optional[tuple[DayKind, ...]] = None
     maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # N7: kcal/dia da manutenção (0 = como sempre)
+    energy_params: EnergyParams = EnergyParams()  # Lote C: só entra no to_dict/hash quando sai do padrão
 
     @property
     def is_auto_intervals(self) -> bool:
         return self.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
+
+    @property
+    def is_adaptive(self) -> bool:
+        """Plano `adaptive_balance`: o gasto do dia vem da estimativa adaptativa (`adaptive_energy`)."""
+        return self.tdee_mode == ee.TdeeMode.ADAPTIVE_BALANCE
+
+    @property
+    def energy_model_version(self) -> Optional[str]:
+        """Versão do algoritmo adaptativo gravada na PUBLICAÇÃO (`nutrition_plans.energy_model_version`): a do
+        `adaptive_energy` no plano adaptativo; `None` nos legados. O serviço só persiste o que o motor devolve."""
+        return adaptive_energy.ALGORITHM_VERSION if self.is_adaptive else None
 
     @property
     def subject_activity_level(self) -> Optional[ActivityLevel]:
@@ -261,7 +315,7 @@ class PlanSettings:
             dados.pop("cycle_days")
         if self.maintenance_kcal_adjust == MAINT_KCAL_ADJUST_DEFAULT:
             dados.pop("maintenance_kcal_adjust")  # plano antigo mantém o hash das entradas
-        return dados
+        return dados  # `energy_params` já só está no `to_dict` quando sai do padrão
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -284,6 +338,7 @@ class PlanSettings:
             "manual_targets": self.manual_macros.to_dict() if self.manual_macros else None,
             "cycle_days": self.cycle_days,
             "maintenance_kcal_adjust": self.maintenance_kcal_adjust,
+            **({} if self.energy_params.is_default else {FIELD_ENERGY_PARAMS: self.energy_params.to_dict()}),
         }
 
 
@@ -381,6 +436,7 @@ def build_plan_settings(
     cycle_days: Any = None,
     manual_training_mode: Any = None,
     maintenance_kcal_adjust: Any = None,
+    energy_params: Any = None,
 ) -> PlanValidation:
     """Normaliza e valida o plano. Campo ausente (None) recebe o default da
     estratégia; valor fora da faixa da fonte vira `param_out_of_range:<campo>`.
@@ -435,6 +491,9 @@ def build_plan_settings(
 
     formula = _enum_or_error(BmrFormula, bmr_formula, DEFAULT_BMR_FORMULA, "bmr_formula", erros)
     modo = _enum_or_error(ee.TdeeMode, tdee_mode, ee.DEFAULT_TDEE_MODE, "tdee_mode", erros)
+    parametros_energia = parse_energy_params(energy_params, erros)
+    if parametros_energia is not None and not parametros_energia.is_default and modo != ee.TdeeMode.ADAPTIVE_BALANCE:
+        erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_ENERGY_PARAMS))  # só o adaptativo usa a kcal do relógio
     nivel: Optional[ActivityLevel] = None
     if activity_level is not None:
         nivel = normalize_activity_level(activity_level)
@@ -508,6 +567,7 @@ def build_plan_settings(
         manual_macros=manual,
         cycle_kinds=ciclo,
         maintenance_kcal_adjust=ajuste_manutencao,
+        energy_params=parametros_energia or EnergyParams(),
     )
     for codigo in settings.strategy_params().out_of_range():
         if codigo not in erros:
@@ -664,6 +724,12 @@ def auto_intervals_blockers(settings: PlanSettings, profile_level: Optional[Acti
     return ()
 
 
+def history_bmr_formula(settings: Optional["PlanSettings"]) -> BmrFormula:
+    """Fórmula da TMB do histórico adaptativo e da estimativa inicial (`adaptive_energy.resolve_day_bmr`): a do PLANO em
+    jogo; sem plano, a padrão. Regra única: o `replay` e `bootstrap_only_estimate` usam a mesma TMB."""
+    return settings.bmr_formula if settings is not None else DEFAULT_BMR_FORMULA
+
+
 def rest_day_strategy_kcal(
     settings: PlanSettings, subject: Subject, day: date, scale_bmr: Any = None, ffm_age_days: Optional[int] = None
 ) -> Optional[float]:
@@ -680,6 +746,9 @@ def projection_tdee(
     prévia é aberta. Modo explícito: a base sem treino do dia (TMB × fator) mais a média do gasto de treino dos
     dias passados conhecidos (`PROJECTION_TRAINING_WINDOW_DAYS`); sem histórico de treino, só a base, com a
     premissa `projection_tdee_without_training`. Modo com o treino no fator: o TDEE do fator."""
+    if tdee.mode == ee.TdeeMode.ADAPTIVE_BALANCE:
+        # Adaptativo: a BASE adaptativa do dia (sem o ajuste pela atividade, que oscila dia a dia); sem estimativa, nada.
+        return (tdee.base_kcal if tdee.kcal is not None else None), ()
     if tdee.kcal is None or tdee.mode != ee.TdeeMode.EXPLICIT_TRAINING:
         return tdee.kcal, ()
     bmr, fator = positive_number(tdee.bmr_kcal), positive_number(tdee.activity_factor)

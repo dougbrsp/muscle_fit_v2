@@ -197,3 +197,57 @@ def test_recalculo_e_janela_do_motor(usuarios, raw, db_backend):
         "user_id": usuarios["aluno"], "date_from": HOJE.isoformat(), "date_to": ate.isoformat()})
     assert ok.status_code == 200, (db_backend, ok.text)
     assert [m["local_date"] for m in ok.json()["targets"]][-1] == ate.isoformat()
+
+
+def _json_coluna(valor):
+    """Coluna JSON do MySQL volta como texto (PyMySQL) ou já decodificada (shim): aceita as duas formas."""
+    if valor is None:
+        return None
+    return json.loads(valor) if isinstance(valor, (str, bytes, bytearray)) else valor
+
+
+def test_106_converge_e_as_colunas_do_modo_adaptativo_fazem_ida_e_volta(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    """Migração 106 (`energy_params_json`, `energy_model_version`, `published_preview_json`) convergida no schema real; o
+    plano legado publica com a prévia gravada e versão NULL; o adaptativo grava params, versão e retrato da estimativa na
+    meta (os SELECTs do histórico rodam no banco real); o resultado é o mesmo nos dois backends."""
+    modulo = m.load_python_migration(m.DEFAULT_MIGRATIONS_DIR / "106_nutrition_plans_energia_adaptativa.py").__globals__
+    assert modulo["plan"](m.MigrationDB(raw)) == []
+    resultados = {}
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        _limpar(raw)
+        _semear_aluno(raw, usuarios["aluno"])
+        admin = _client(usuarios["admin"], "admin")
+
+        legado = admin.post("/nutrition/plans", json={"user_id": usuarios["aluno"], "strategy": "maintenance"}).json()
+        assert legado["energy_params"] == {"watch_calorie_mode": "unknown"} and legado["energy_model_version"] is None
+        assert admin.post(f"/nutrition/plans/{legado['id']}/publish", json={"expected_current_id": None}).status_code == 200, backend
+        with raw.cursor() as cur:
+            cur.execute("SELECT energy_params_json, energy_model_version, published_preview_json FROM nutrition_plans WHERE id = %s",
+                        (legado["id"],))
+            linha = cur.fetchone()
+        previa = _json_coluna(linha["published_preview_json"])
+        assert linha["energy_params_json"] is None and linha["energy_model_version"] is None, backend
+        assert previa["target"]["kcal"] > 0 and "plan" not in previa and "user" not in previa, backend
+
+        adaptativo = admin.post("/nutrition/plans", json={
+            "user_id": usuarios["aluno"], "strategy": "maintenance", "tdee_mode": "adaptive_balance",
+            "energy_params": {"watch_calorie_mode": "gross"}})
+        assert adaptativo.status_code == 201, (backend, adaptativo.text)
+        assert adaptativo.json()["energy_params"] == {"watch_calorie_mode": "gross"}
+        publicado = admin.post(f"/nutrition/plans/{adaptativo.json()['id']}/publish", json={"expected_current_id": legado["id"]})
+        assert publicado.status_code == 200, (backend, publicado.text)
+        assert publicado.json()["plan"]["energy_model_version"] == "adaptive-v1"
+        with raw.cursor() as cur:
+            cur.execute("SELECT energy_params_json, energy_model_version, published_preview_json FROM nutrition_plans WHERE id = %s",
+                        (adaptativo.json()["id"],))
+            linha = cur.fetchone()
+            cur.execute("SELECT inputs_json FROM nutrition_daily_targets WHERE local_date = %s AND plan_id = %s",
+                        (HOJE, adaptativo.json()["id"]))
+            meta = _json_coluna(cur.fetchone()["inputs_json"])
+        assert _json_coluna(linha["energy_params_json"]) == {"watch_calorie_mode": "gross"}, backend
+        assert linha["energy_model_version"] == "adaptive-v1", backend
+        assert _json_coluna(linha["published_preview_json"])["target"]["energy"] is not None, backend
+        assert meta["energy"]["algorithm_version"] == "adaptive-v1" and meta["tdee_basis"].startswith("adaptive"), backend
+        resultados[backend] = (meta["tdee_basis"], meta["energy"]["algorithm_version"], linha["energy_model_version"])
+    assert resultados["pymysql"] == resultados["data-api"]

@@ -4,6 +4,7 @@ import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NutritionTargetDetail } from '@/lib/nutrition-types';
+import { planPreviewQuery } from '@/lib/nutrition-api';
 import { TodayTargetCard } from './PlanPreview';
 
 // Composição do gasto no card "Meta de hoje": a tela só exibe as parcelas prontas do motor.
@@ -153,5 +154,42 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
     });
     expect(botao.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById(painel)?.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('adaptativo: parcela de ajuste negativa mantém o sinal e a confiança/última atualização/pendências aparecem', async () => {
+    await montar(
+      alvo({
+        tdee_breakdown: {
+          parts: [parte('base', 'Gasto adaptativo médio', 2400), parte('activity_adjustment', 'Ajuste pela atividade', -120)],
+          notes: [],
+          total_kcal: 2280,
+        },
+        energy: {
+          confidence_level: 'medium',
+          valid_days: 12,
+          window_days: 21,
+          last_update_date: '2026-11-04',
+          suspension_reasons: [{ code: 'weighins_below_min', have: 3, need: 7 }],
+          data_quality_flags: [],
+        },
+      }),
+    );
+    const texto = await abrir();
+    expect(texto).toMatch(/Ajuste pela atividade-120 kcal/);
+    expect(texto).toContain('Gasto total2.280 kcal');
+    expect(host.querySelector('[data-testid="adaptativo-confianca"]')?.textContent).toBe('Média (12 de 21 dias válidos)');
+    expect(host.textContent).toContain('04/11/2026');
+    expect(host.querySelector('[data-testid="adaptativo-falta"]')?.textContent).toContain('(3 de 7)');
+  });
+
+  it('legado: sem `energy`, nada de confiança', async () => {
+    await montar(alvo({}));
+    expect(host.querySelector('[data-testid="adaptativo-confianca"]')).toBeNull();
+  });
+
+  it('o card Plano e a prévia compartilham a mesma queryKey (um só POST)', () => {
+    const plano = { id: 7, updated_at: '2026-11-05T10:00:00', state: 'draft' };
+    expect(planPreviewQuery(plano).queryKey).toEqual(planPreviewQuery({ ...plano }).queryKey);
+    expect(planPreviewQuery(plano).queryKey).not.toEqual(planPreviewQuery({ ...plano, updated_at: '2026-11-05T11:00:00' }).queryKey);
   });
 });

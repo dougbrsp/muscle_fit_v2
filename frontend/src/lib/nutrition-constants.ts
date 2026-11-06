@@ -65,6 +65,8 @@ export const TDEE_MODE_HINTS: Readonly<Record<NutritionCode, string>> = NUTRITIO
 export const ROUTINE_LEVEL_OPTIONS = optionsOf(NUTRITION.routine_levels, NUTRITION.routine_level_labels);
 export const DEFAULT_ROUTINE_LEVEL: NutritionCode = NUTRITION.default_routine_level;
 export const AUTO_TDEE_MODE: NutritionCode = NUTRITION.auto_tdee_mode;
+/** Como o relógio informa as calorias dos exercícios no modo adaptativo (dono: `energy_params.watch_calorie_mode`). */
+export const WATCH_CALORIE_MODE_OPTIONS = optionsOf(NUTRITION.watch_calorie_modes, NUTRITION.watch_calorie_mode_labels);
 export const SESSION_KIND_OPTIONS = optionsOf(NUTRITION.session_kinds, NUTRITION.session_kind_labels);
 /** Natureza da kcal do treino (informada × estimada por MET). A proveniência
  * (manual × Intervals) não é deste bloco: é de `domain/calories_source.py` (L0). */

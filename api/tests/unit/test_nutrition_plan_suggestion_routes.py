@@ -292,15 +292,15 @@ class _Previa:
         comp.target = type("T", (), {"computable": computable, "limitations": ("missing_weight",)})()
         monkeypatch.setattr(nutrition_plans, "get_conn", lambda: _Conn())
         monkeypatch.setattr(nutrition_plans, "require_nutrition_tables", lambda cur: None)
+        monkeypatch.setattr(nutrition_plans, "require_plan_energy_columns", lambda cur: None)
         monkeypatch.setattr(nutrition_plans, "fetch_target_user", lambda cur, uid: {"id": uid})
         monkeypatch.setattr(nutrition_plans, "_today_for", lambda conn, uid: "hoje")
-        monkeypatch.setattr(nutrition_plans, "_past_training", lambda cur, uid, settings, hoje: [])
 
         def _semana(cur, aluno, settings, hoje):
             self.calculados.append((aluno, settings))
-            return [comp]
+            return [comp], []
 
-        monkeypatch.setattr(nutrition_plans, "_compute_week", _semana)
+        monkeypatch.setattr(nutrition_plans, "_week_and_past", _semana)
         monkeypatch.setattr(
             nutrition_plans, "_preview_payload", lambda row, user, semana, hoje, passado: {"plan": row, "user": user}
         )

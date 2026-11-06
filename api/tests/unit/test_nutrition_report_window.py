@@ -152,7 +152,7 @@ def _linha_meta(dia, basis='"auto_synced"'):
         "phase_kind": "cut", "kcal_target": 2400, "protein_g": 160, "carbs_g": 260, "fat_g": 70, "fiber_g": 30,
         "water_ml": 3000, "bmr_kcal": 1700, "bmr_formula": "x", "tdee_kcal": 2800, "training_kcal": 300,
         "training_kcal_nature": None, "limitations_json": "[]", "inputs_hash": "h", "engine_version": "v",
-        "computed_at": datetime(2026, 11, 1), "extra_activity_json": None, "tdee_basis_json": basis,
+        "computed_at": datetime(2026, 11, 1), "extra_activity_json": None, "tdee_basis_json": basis, "energy_json": None,
     }
 
 

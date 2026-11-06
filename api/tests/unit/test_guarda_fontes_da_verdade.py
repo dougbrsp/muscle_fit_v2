@@ -2055,6 +2055,15 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/domain/nutrition/energy_expenditure.py",),
         inventario="NUT-ADAPT (§96)",
     ),
+    Padrao(
+        chave="modo_adaptativo_literal",
+        regra="o código do modo de gasto adaptativo (`adaptive_balance`) escrito como literal fora do dono",
+        # 2026-11-06 (nutrição adaptativa, lote C, §97): o dono é `energy_expenditure.TdeeMode`. O serviço usa o enum e a
+        # tela lê `nutrition.adaptive_tdee_mode` do JSON gerado; ninguém repete a string nem decide o modo por ela.
+        regex=re.compile(r"[\"']adaptive_balance[\"']"),
+        donos=("api/app/domain/nutrition/energy_expenditure.py",),
+        inventario="NUT-ADAPT (§97)",
+    ),
 )
 
 PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
@@ -2275,6 +2284,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "peso_tendencia": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "atividades_normalizadas": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3248,6 +3258,10 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "INTERVALS_SYNC_WINDOW_DAYS = 30", "SHADOW_DISPLAY_DAYS: Final[int] = 7"),
         ("from .activity_energy import DAY_CONFIRMATION_LAG_HOURS", "bmr / MINUTES_PER_DAY", "x / 14400",
          "if streak > ae.MAX_CONFIRMED_REST_STREAK_DAYS", "dias = SHADOW_DISPLAY_DAYS"),
+    ),
+    "modo_adaptativo_literal": (
+        ('tdee_mode = "adaptive_balance"', "if modo === 'adaptive_balance'", "{'tdee_mode': 'adaptive_balance'}"),
+        ("TdeeMode.ADAPTIVE_BALANCE", "nutrition.adaptive_tdee_mode", "adaptive_balance_x", "adaptive_balanced"),
     ),
     "composicao_gasto_previa": (
         ("BREAKDOWN_KCAL_ROUNDING_STEP: Final[float] = 1.0", "BREAKDOWN_STRENGTH = 'training'", 'BREAKDOWN_BASE: Final[str] = "base"',

@@ -19,6 +19,8 @@ import {
   nutritionLabel,
 } from '@/lib/nutrition-constants';
 import { formatShareAsPercent } from '@/lib/nutrition-format';
+import { ADAPTIVE_TDEE_MODE, DEFAULT_WATCH_CALORIE_MODE, adaptiveLabel, type AdaptiveEnergyState } from '@/lib/nutrition-dashboard';
+import { fmtInt } from '@/lib/dashboard-format';
 import type { NutritionGoal, NutritionPlan } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
@@ -48,10 +50,13 @@ export function PlanSummary({
   plan,
   goal,
   title = 'Plano',
+  energy = null,
 }: {
   plan: NutritionPlan;
   goal?: NutritionGoal | null;
   title?: string;
+  /** Retrato do gasto adaptativo (`target.energy`), quando a tela o tem; só exibe a confiança no adaptativo. */
+  energy?: AdaptiveEnergyState | null;
 }) {
   const proteinBasis = nutritionLabel(PROTEIN_BASIS_OPTIONS, plan.protein_basis);
   const linhas: { label: string; value: string }[] = [
@@ -107,6 +112,24 @@ export function PlanSummary({
           label: 'Nível de atividade',
           value: nutritionLabel(ACTIVITY_LEVEL_OPTIONS, plan.activity_level) ?? 'O do perfil',
         },
+    // Modo adaptativo: como o relógio informa as calorias e a versão do modelo gravada na publicação.
+    ...(plan.tdee_mode === ADAPTIVE_TDEE_MODE
+      ? [
+          {
+            label: 'Calorias do relógio',
+            value: adaptiveLabel('calorie_mode', plan.energy_params?.watch_calorie_mode ?? DEFAULT_WATCH_CALORIE_MODE),
+          },
+          { label: 'Modelo energético', value: plan.energy_model_version ?? 'Definido ao publicar' },
+          ...(energy
+            ? [
+                {
+                  label: 'Confiança do gasto',
+                  value: `${adaptiveLabel('confidence_level', energy.confidence_level)} (${fmtInt(energy.valid_days)} de ${fmtInt(energy.window_days)} dias válidos)`,
+                },
+              ]
+            : []),
+        ]
+      : []),
     { label: 'Refeições por dia', value: plan.meals_per_day == null ? '-' : String(plan.meals_per_day) },
     { label: '% de gordura alvo', value: goalBodyFatText(plan, goal) },
     { label: 'Peso-alvo', value: plan.goal_weight_kg == null ? '-' : `${formatNumberOrDash(plan.goal_weight_kg, 1)} kg` },

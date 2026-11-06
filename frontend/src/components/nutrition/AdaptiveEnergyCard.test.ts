@@ -152,6 +152,13 @@ describe('AdaptiveEnergyCard', () => {
     expect(host.querySelector('[data-testid="adaptativo-dia-pendente"]')?.textContent).toContain('Pendente de sincronização');
   });
 
+  it('em uso no plano (applied=true): o selo deixa de dizer "em sombra"', async () => {
+    await montar({ available: true, applied: true, state: ESTADO, days: [] });
+    const selo = host.querySelector('[data-testid="adaptativo-selo"]')?.textContent ?? '';
+    expect(selo).toBe('Em uso no seu plano');
+    expect(selo).not.toContain('sombra');
+  });
+
   it('rótulos conhecidos vêm do JSON gerado, nunca do código cru', () => {
     expect(adaptiveLabel('confidence_level', 'high')).not.toBe('high');
     expect(adaptiveLabel('suspension_reason', 'complete_days_below_min')).not.toBe('complete_days_below_min');
