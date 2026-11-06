@@ -220,7 +220,7 @@ def test_106_converge_e_as_colunas_do_modo_adaptativo_fazem_ida_e_volta(usuarios
         admin = _client(usuarios["admin"], "admin")
 
         legado = admin.post("/nutrition/plans", json={"user_id": usuarios["aluno"], "strategy": "maintenance"}).json()
-        assert legado["energy_params"] == {"watch_calorie_mode": "unknown"} and legado["energy_model_version"] is None
+        assert legado["energy_params"] is None and legado["energy_model_version"] is None  # padrão/legado: null (e NULL no banco)
         assert admin.post(f"/nutrition/plans/{legado['id']}/publish", json={"expected_current_id": None}).status_code == 200, backend
         with raw.cursor() as cur:
             cur.execute("SELECT energy_params_json, energy_model_version, published_preview_json FROM nutrition_plans WHERE id = %s",
