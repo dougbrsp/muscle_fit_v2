@@ -168,3 +168,33 @@ def test_falha_do_s3_desfaz_a_linha(seed, backend, raw, fakes, monkeypatch):
     assert resposta.status_code == 502, (backend, resposta.text)
     assert resposta.json()["detail"]["error"] == "exercise_card_reference_storage_failed"
     assert _rows(raw, SUPINO) == []
+
+
+def test_excluir_duas_vezes_e_404_no_mysql(seed, backend, raw, fakes):
+    """O UPDATE condicional (`deleted_at IS NULL`) e o SELECT de ativas valem nos
+    dois backends: a 2a exclusao e 404 e a contagem de ativas reflete o fluxo real."""
+    api = _client(seed["admin"])
+    base = f"/exercises/{SUPINO}/card-references"
+    ids = [api.post(base, json={"image_base64": _foto()}).json()["reference"]["id"] for _ in range(3)]
+
+    primeira = api.delete(f"{base}/{ids[0]}")
+    assert primeira.status_code == 204, (backend, primeira.text)
+    segunda = api.delete(f"{base}/{ids[0]}")
+    assert segunda.status_code == 404, (backend, segunda.text)
+    assert segunda.json()["detail"]["error"] == "exercise_card_reference_not_found"
+
+    # Tres enviadas, uma excluida: duas ativas; a linha excluida continua (soft-delete).
+    assert [i["id"] for i in api.get(base).json()["items"]] == [ids[1], ids[2]]
+    assert len(_rows(raw, SUPINO)) == 3
+    with svc.transaction() as conn:
+        with conn.cursor() as cursor:
+            assert refs.count_active(cursor, SUPINO) == 2
+
+    # Reenviar uma (volta a 3 ativas) e a 4a e recusada pelo limite.
+    reenviada = api.post(base, json={"image_base64": _foto()})
+    assert reenviada.status_code == 201, (backend, reenviada.text)
+    with svc.transaction() as conn:
+        with conn.cursor() as cursor:
+            assert refs.count_active(cursor, SUPINO) == 3
+    assert api.post(base, json={"image_base64": _foto()}).status_code == 409
+    assert api.delete(f"{base}/{ids[0]}").status_code == 404  # a ja excluida segue 404
