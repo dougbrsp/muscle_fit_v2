@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 from app import intervals_store
 from app import nutrition_access as access
+from app import nutrition_adjustments as adj
 from app import nutrition_energy_service as energy_svc
 from app import nutrition_schema as schema_mod
 from app.load_conventions import _CURRENT_SCHEMA_SQL
@@ -53,6 +54,12 @@ class FakeNutritionDB:
         # `reset_nutrition_tables_cache()`.
         self.sync_runs: list[dict[str, Any]] = []
         self.sync_runs_table = True
+        # Fechamento do dia e correção de atividade (108): `closures` = {(user, dia): closed_at}; `corrections` =
+        # {(user, activity_id): {action, energy_kind}}; `adjustment_tables` False = código novo sobre o schema antigo
+        # (lembrete: o cache positivo de `nutrition_schema` é global, `reset_nutrition_tables_cache()` o limpa).
+        self.closures: dict[tuple[int, date], datetime] = {}
+        self.corrections: dict[tuple[int, str], dict[str, Any]] = {}
+        self.adjustment_tables = True
         # As colunas da 106 existem neste banco? (False simula o código novo sobre o schema antigo.)
         self.plan_energy_columns = True
         self.timezone = "America/Sao_Paulo"  # `users.timezone` (a sombra e a meta adaptativa convertem a sincronização por ele)
@@ -203,6 +210,30 @@ class FakeCursor:
             self._upsert(params)
         self.rowcount = -1
 
+    def _adjustments(self, sql: str, p: tuple[Any, ...]) -> None:
+        db = self.db
+        if sql == adj.CLOSURES_SQL:
+            return self._result([{"day": d, "closed_at": t} for (uid, d), t in sorted(db.closures.items(), key=lambda i: i[0][1])
+                                 if uid == p[0] and p[1] <= d <= p[2]])
+        if sql == adj.CLOSURE_ONE_SQL:
+            return self._result([{"day": p[1], "closed_at": db.closures[(p[0], p[1])]}] if (p[0], p[1]) in db.closures else [])
+        if sql == adj.CLOSE_SQL:
+            db.closures.setdefault((p[0], p[1]), db.now)  # ON DUPLICATE KEY ... closed_at = closed_at
+            db.writes.append(f"close {p[1].isoformat()}")
+        elif sql == adj.REOPEN_SQL:
+            db.closures.pop((p[0], p[1]), None)
+            db.writes.append(f"reopen {p[1].isoformat()}")
+        elif sql == adj.CORRECTIONS_SQL:
+            return self._result([{"activity_id": a, "action": c["action"], "energy_kind": c["energy_kind"]}
+                                 for (uid, a), c in sorted(db.corrections.items(), key=lambda i: i[0][1]) if uid == p[0]])
+        elif sql == adj.UPSERT_CORRECTION_SQL:
+            db.corrections[(p[0], p[1])] = {"action": p[2], "energy_kind": p[3]}
+            db.writes.append(f"correct {p[1]}")
+        elif sql == adj.CLEAR_CORRECTION_SQL:
+            db.corrections.pop((p[0], p[1]), None)
+            db.writes.append(f"uncorrect {p[1]}")
+        return self._result([])
+
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement
         db = self.db
         p = tuple(params or ())
@@ -213,6 +244,16 @@ class FakeCursor:
             return self._result([{"n": 1 if db.plan_energy_columns else 0}])
         if sql == schema_mod.tables_sql(1) and p == (schema_mod.SYNC_RUNS_TABLE,):  # tabela da 107
             return self._result([{"n": 1 if db.sync_runs_table else 0}])
+        if sql == schema_mod.tables_sql(2) and p == schema_mod.ADJUSTMENT_TABLES:  # tabelas da 108
+            return self._result([{"n": 2 if db.adjustment_tables else 0}])
+        if sql in (adj.CLOSURES_SQL, adj.CLOSURE_ONE_SQL, adj.CLOSE_SQL, adj.REOPEN_SQL, adj.CORRECTIONS_SQL,
+                   adj.UPSERT_CORRECTION_SQL, adj.CLEAR_CORRECTION_SQL):
+            if not db.adjustment_tables:
+                raise AssertionError("SQL da 108 sem as tabelas (a guarda deveria ter impedido)")
+            return self._adjustments(sql, p)
+        if sql == adj.ACTIVITY_OWNER_SQL:
+            linha = next((r for r in db.intervals_rows if r["user_id"] == p[0] and r["id"] == p[1]), None)
+            return self._result([{"id": linha["id"], "activity_date": linha["activity_date"]}] if linha else [])
         if sql == energy_svc.SYNC_RUNS_SQL:
             if not db.sync_runs_table:
                 raise AssertionError("SELECT em intervals_sync_runs sem a tabela (a guarda deveria ter impedido)")

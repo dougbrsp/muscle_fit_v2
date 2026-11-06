@@ -13,6 +13,7 @@ import { QuickEntryDialog } from '@/components/nutrition/QuickEntryDialog';
 import { TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
+import { DayClosureControl } from '@/components/nutrition/DayClosureControl';
 import { DayEnergySection } from '@/components/nutrition/DayEnergySection';
 import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
 import { DayNotesInput } from '@/components/nutrition/DayNotesInput';
@@ -148,6 +149,12 @@ export function NutricaoClient() {
                 <TargetVsIntakeCard day={dia} />
                 <Stack gap="md">
                   <TrainingKcalRow training={dia.training} />
+                  <DayClosureControl
+                    date={date}
+                    today={weekQuery.data?.today ?? dia.today ?? null}
+                    closure={dia.closure}
+                    completenessSource={dia.completeness_source}
+                  />
                   <DayEnergySection detail={dia.energy_detail} />
                   <DayNotesInput key={date} date={date} dayLog={dia.day_log} onSaved={atualizar} />
                 </Stack>

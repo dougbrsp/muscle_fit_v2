@@ -241,7 +241,7 @@ def test_falha_na_explicacao_nao_derruba_o_diario(db, monkeypatch, caplog):
         raise RuntimeError("valor-sigiloso")
 
     monkeypatch.setattr(days_mod, "read_stored_tdee", quebra)
-    monkeypatch.setattr(days_mod, "load_day_activity", quebra)
+    monkeypatch.setattr(days_mod, "load_day_energy", quebra)
     resposta = _dia(_client())
     assert resposta.status_code == 200
     detalhe = resposta.json()["energy_detail"]

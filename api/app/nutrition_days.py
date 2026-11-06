@@ -48,9 +48,10 @@ from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
-from .nutrition_energy_service import DEFAULT_BMR_FORMULA_VALUE, DEFAULT_CALORIE_MODE, load_day_activity
+from . import nutrition_adjustments as adjustments
+from .nutrition_energy_service import DEFAULT_BMR_FORMULA_VALUE, DEFAULT_CALORIE_MODE, horizon_days, load_day_energy
 from .nutrition_meals import day_totals, meals_public, read_meal_rows, totals_public
-from .nutrition_schema import require_diary_tables, require_nutrition_tables
+from .nutrition_schema import require_adjustment_tables, require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
     DONE_SESSION_STATUS,
     history_key_for_day,
@@ -59,13 +60,15 @@ from .nutrition_targets_service import (
     load_user_inputs,
     read_stored_tdee,
 )
-from .request_models import NutritionDayIn
+from .request_models import ActivityCorrectionIn, NutritionDayIn
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 logger = logging.getLogger(__name__)
 
 DAYS = "nutrition_days"
+# Chave interna de `energy_detail`: a origem da completude sobe para o topo do dia (`completeness_source`).
+COMPLETENESS_KEY = "completeness_source"
 DAY_LOG_SQL = f"SELECT local_date, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
 UPSERT_DAY_LOG_SQL = (
     f"INSERT INTO {DAYS} (user_id, local_date, notes, updated_by) VALUES (%s, %s, %s, %s) "
@@ -200,7 +203,7 @@ def energy_detail(
     da composição; sem Intervals +1 (plano) +1 (prova de sincronização); com Intervals, além disso, a carga do histórico
     SEM perfil/medidas (reaproveita `entradas`, já lidas pela rota): refeições, TMB gravada, atividades do horizonte,
     execuções e fuso."""
-    detalhe: dict[str, Any] = {"breakdown": None, "activities": None, "energy": None}
+    detalhe: dict[str, Any] = {"breakdown": None, "activities": None, "energy": None, COMPLETENESS_KEY: None}
     if meta is None:
         return detalhe
     detalhe["energy"] = meta.get("energy")
@@ -216,14 +219,18 @@ def energy_detail(
         # O selo vem do MESMO histórico da meta (`nutrition_energy_service.load_history`): modo da kcal e fórmula da TMB do
         # plano que vale no dia (a chave do histórico); sem plano, os padrões do dono. Fora do horizonte: `null`.
         modo, formula = history_key_for_day(cur, user_id, day) or (DEFAULT_CALORIE_MODE, DEFAULT_BMR_FORMULA_VALUE)
-        dia = load_day_activity(
+        # Plano adaptativo (a meta traz o retrato `energy`): o histórico é lido mesmo sem Intervals, porque o fechamento do
+        # dia muda a completude (origem `completeness_source`).
+        visao = load_day_energy(
             cur, user_id, day, today,
             # Série ATÉ HOJE (a rota a carrega assim): a mesma do histórico da meta/dashboard, de que a TMB recente do
             # desconto do repouso depende.
             entradas.series if entradas is not None else (lambda: load_user_inputs(cur, user_id, today, today, today).series),
-            modo, None, formula
+            modo, None, formula, need_history=meta.get("energy") is not None,
         )
-        detalhe["activities"] = dia.to_dict() if dia is not None else None
+        detalhe["activities"] = visao.activity.to_dict() if visao.activity is not None else None
+        if meta.get("energy") is not None:  # só plano adaptativo: no legado a origem da completude não existe
+            detalhe[COMPLETENESS_KEY] = visao.completeness_source
     except Exception as erro:  # noqa: BLE001
         logger.warning("nutrition.day_activities_failed error=%s", type(erro).__name__)
     return detalhe
@@ -240,33 +247,34 @@ def balance_public(balanco) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/days/{local_date}")
-def get_day(
-    local_date: date,
-    user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
-):
-    aluno = resolve_target_user(identity, user_id)
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            _require_tables(cur)
-            usuario = fetch_target_user(cur, aluno)
-        hoje = _today_for(conn, aluno)
-        metas = ensure_diary_targets(conn, aluno, [local_date], today=hoje)
-        meta = metas.rows.get(local_date)
-        acao = metas.actions[local_date]
-        with conn.cursor() as cur:
-            linhas = read_meal_rows(cur, aluno, local_date, local_date)
-            refeicoes = meals_public(cur, linhas)
-            diario = _read_day_log(cur, aluno, local_date)
-            # UMA carga de perfil, medidas e sessões, usada pelo treino e pela explicação do gasto.
-            # Medidas e série até HOJE (ou até o dia, se futuro): o histórico da explicação usa a mesma série da meta; o
-            # treino do dia só consulta o próprio dia (`readings_on`, `sessions.get(dia)`).
-            entradas = load_user_inputs(cur, aluno, local_date, max(local_date, hoje), hoje)
-            treino = _training(
-                cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas
-            )
-            detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas)
+def completeness_label(code: Optional[str]) -> Optional[str]:
+    """Rótulo pt-BR da origem da completude (dono: `domain/nutrition/labels.py`); `None` sem origem."""
+    return nutrition_labels.COMPLETENESS_SOURCE_LABELS.get(code) if code else None
+
+
+def build_day(conn: Any, aluno: int, local_date: date) -> dict[str, Any]:
+    """O dia do diário (corpo de `GET /days/{date}`), reaproveitado pelas rotas de fechamento e correção, que devolvem o
+    dia JÁ atualizado pelo mesmo caminho de leitura e recomputação (`ensure_diary_targets` + histórico do motor)."""
+    with conn.cursor() as cur:
+        usuario = fetch_target_user(cur, aluno)
+    hoje = _today_for(conn, aluno)
+    metas = ensure_diary_targets(conn, aluno, [local_date], today=hoje)
+    meta = metas.rows.get(local_date)
+    acao = metas.actions[local_date]
+    with conn.cursor() as cur:
+        linhas = read_meal_rows(cur, aluno, local_date, local_date)
+        refeicoes = meals_public(cur, linhas)
+        diario = _read_day_log(cur, aluno, local_date)
+        # UMA carga de perfil, medidas e sessões, usada pelo treino e pela explicação do gasto.
+        # Medidas e série até HOJE (ou até o dia, se futuro): o histórico da explicação usa a mesma série da meta; o
+        # treino do dia só consulta o próprio dia (`readings_on`, `sessions.get(dia)`).
+        entradas = load_user_inputs(cur, aluno, local_date, max(local_date, hoje), hoje)
+        treino = _training(
+            cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas
+        )
+        detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas)
+        fechamento = adjustments.read_closure(cur, aluno, local_date)
+    origem = detalhe_gasto.pop(COMPLETENESS_KEY, None)
     totais = day_totals(linhas)
     balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
@@ -282,7 +290,102 @@ def get_day(
         "day_log": day_log_public(diario),
         "training": treino,
         "energy_detail": detalhe_gasto,
+        # Lote G: fechamento manual do dia e origem da completude (`intake_rule` | `manual_close` | null; só plano adaptativo).
+        "closure": fechamento,
+        "completeness_source": origem,
+        "completeness_source_label": completeness_label(origem),
     }
+
+
+@router.get("/days/{local_date}")
+def get_day(
+    local_date: date,
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    aluno = resolve_target_user(identity, user_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+        return build_day(conn, aluno, local_date)
+
+
+@router.put("/days/{local_date}/close")
+def close_day(
+    local_date: date,
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    """"Fechei o dia": o dia conta como completo para o gasto adaptativo (o motor decide; reversível). Dia futuro: 422."""
+    return _set_closure(local_date, user_id, identity, closed=True)
+
+
+@router.delete("/days/{local_date}/close")
+def reopen_day(
+    local_date: date,
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    """Reabre o dia (volta à regra da ingestão). Idempotente."""
+    return _set_closure(local_date, user_id, identity, closed=False)
+
+
+def _set_closure(local_date: date, user_id: Optional[int], identity: Identity, *, closed: bool) -> dict[str, Any]:
+    aluno = resolve_target_user(identity, user_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+            require_adjustment_tables(cur)
+            fetch_target_user(cur, aluno)
+        hoje = _today_for(conn, aluno)
+        if closed and local_date > hoje:  # só reabrir é permitido em dia futuro (no-op); fechar o que não aconteceu não
+            raise _error(422, "future_day_cannot_be_closed", "Só dias até hoje podem ser fechados.")
+        if closed and local_date < horizon_days(hoje)[0]:  # a janela do motor (`REPLAY_HISTORY_DAYS`): antes dela não vale
+            raise _error(422, "day_outside_window", "Esse dia está fora da janela em que o fechamento vale.")
+        with conn.cursor() as cur:
+            (adjustments.close_day if closed else adjustments.reopen_day)(cur, aluno, local_date)
+        return build_day(conn, aluno, local_date)
+
+
+@router.put("/activities/{activity_id}/correction")
+def put_activity_correction(
+    activity_id: str,
+    payload: ActivityCorrectionIn,
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    """Corrige uma atividade importada do Intervals (excluir ou reclassificar); o motor aplica a correção antes de normalizar."""
+    return _set_correction(activity_id, user_id, identity, payload)
+
+
+@router.delete("/activities/{activity_id}/correction")
+def delete_activity_correction(
+    activity_id: str,
+    user_id: Optional[int] = Query(default=None),
+    identity: Identity = Depends(get_current_identity),
+):
+    """Desfaz a correção (idempotente). Só atividade do próprio aluno (404 caso contrário)."""
+    return _set_correction(activity_id, user_id, identity, None)
+
+
+def _set_correction(
+    activity_id: str, user_id: Optional[int], identity: Identity, payload: Optional[ActivityCorrectionIn]
+) -> dict[str, Any]:
+    aluno = resolve_target_user(identity, user_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+            require_adjustment_tables(cur)
+            fetch_target_user(cur, aluno)
+            dia = adjustments.activity_day(cur, aluno, activity_id)
+            if dia is None:
+                raise _error(404, "activity_not_found", "Atividade não encontrada.")
+            chave = adjustments.canonical_activity_id(activity_id)  # `007` e `7` são a mesma atividade
+            if payload is None:
+                adjustments.clear_correction(cur, aluno, chave)
+            else:
+                adjustments.set_correction(cur, aluno, chave, payload.action, payload.energy_kind)
+        return build_day(conn, aluno, dia)
 
 
 @router.put("/days/{local_date}")

@@ -959,6 +959,7 @@
         "missing_duration": "Sem duração: não dá para descontar o repouso; fora do total.",
         "missing_bmr": "Sem taxa metabólica basal: não dá para descontar o repouso; fora do total.",
         "reduced_precision": "Precisão reduzida: não se sabe se as calorias são ativas ou totais.",
+        "excluded_by_user": "Excluída por você: fora do total.",
         "duplicate_external_id": "Duplicata (mesmo identificador): fora do total.",
         "duplicate_fingerprint": "Duplicata (mesmos horário, duração e calorias): fora do total.",
         "possible_duplicate": "Possível duplicata: contada, confira."
@@ -1003,7 +1004,31 @@
       "day_confirmation_source": {
         "sync_run": "Confirmado por uma sincronização que cobre o dia",
         "last_sync": "Confirmado pela última sincronização (dia anterior ao registro de execuções)"
+      },
+      "completeness_source": {
+        "intake_rule": "Completo pela regra",
+        "manual_close": "Fechado por você"
+      },
+      "report_adaptive_basis": {
+        "adaptive": "Gasto adaptativo (aprendido com ingestão e peso)",
+        "bootstrap": "Estimativa inicial (ainda sem gasto adaptativo)"
+      },
+      "activity_correction_action": {
+        "exclude": "Excluída (duplicada ou errada)",
+        "reclassify": "Reclassificada"
+      },
+      "activity_correction_energy_kind": {
+        "active": "Calorias ativas",
+        "gross": "Calorias totais"
       }
+    },
+    "adaptive_codes": {
+      "completeness_source_manual_close": "manual_close",
+      "completeness_source_intake_rule": "intake_rule",
+      "correction_action_exclude": "exclude",
+      "correction_action_reclassify": "reclassify",
+      "correction_energy_kind_active": "active",
+      "correction_energy_kind_gross": "gross"
     },
     "notices": {
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",

@@ -52,7 +52,7 @@ export function DayEnergySection({ detail }: { detail: NutritionDayEnergyDetail 
                   <Text size="sm" fw={600} c={BRAND.textPrimary}>
                     Atividades do dia
                   </Text>
-                  <ActivityDayList day={atividades} showDate={false} />
+                  <ActivityDayList day={atividades} showDate={false} editable />
                 </Stack>
               )}
             </Stack>

@@ -833,7 +833,14 @@ export type NutritionDay = {
   training: DayTraining;
   /** Ausente em backend antigo; a tela do dia fica como antes sem ele. */
   energy_detail?: NutritionDayEnergyDetail | null;
+  /** Fechamento manual do dia (Lote G); ausente em backend antigo. */
+  closure?: DayClosure | null;
+  /** Origem da completude do dia (`intake_rule` | `manual_close`); null se o dia não é completo. */
+  completeness_source?: string | null;
 };
+
+/** `closure` do dia: fechado manualmente ("Fechei o dia") e quando. */
+export type DayClosure = { closed: boolean; closed_at: string | null };
 
 /** Corpo de `PUT /nutrition/days/{date}` (`NutritionDayIn`): substitui a linha do dia. */
 export type DayLogPayload = { notes: string | null };

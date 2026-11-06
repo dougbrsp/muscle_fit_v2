@@ -17,8 +17,9 @@ from __future__ import annotations
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 
 NOTES_MAX = 2000
@@ -430,7 +431,27 @@ class NutritionDayIn(_StrictIn):
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
+class ActivityCorrectionIn(_StrictIn):
+    """PUT /nutrition/activities/{id}/correction (Lote G): `exclude` (duplicata/erro) ou `reclassify` com o tipo da kcal.
+    Os valores aceitos são do motor (`activity_energy.CORRECTION_ACTIONS`/`CORRECTION_ENERGY_KINDS`); aqui só se valida
+    a forma (422). `energy_kind` em `exclude` é ignorado (vira `None`)."""
+
+    action: str = Field(max_length=16)
+    energy_kind: Optional[str] = Field(default=None, max_length=16)
+
+    @model_validator(mode="after")
+    def _forma(self) -> "ActivityCorrectionIn":
+        if self.action not in _activity_energy.CORRECTION_ACTIONS:
+            raise ValueError(f"action deve ser um de {list(_activity_energy.CORRECTION_ACTIONS)}")
+        if self.action == _activity_energy.CORRECTION_ACTION_EXCLUDE:
+            self.energy_kind = None
+        elif self.energy_kind not in _activity_energy.CORRECTION_ENERGY_KINDS:
+            raise ValueError(f"energy_kind deve ser um de {list(_activity_energy.CORRECTION_ENERGY_KINDS)} em reclassify")
+        return self
+
+
 __all__ = [
+    "ActivityCorrectionIn",
     "BodyCompositionUpdateIn",
     "FoodItemIn",
     "FoodPortionIn",

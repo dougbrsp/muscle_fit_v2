@@ -17,6 +17,8 @@ Regras (todas as constantes abaixo são nomeadas; nada é escrito na conta):
   da TMB (decisão D3 do plano). Dia PARCIAL nunca entra na média de ingestão.
   `OUT_OF_PLAN` e `OPEN_TODAY` contam como MISSING (a sombra não classifica o
   que o dashboard não classifica).
+  Fechamento manual (Lote G, "Fechei o dia"): COMPLEMENTA a regra. Dia fechado com registro e energia conhecida é
+  COMPLETE sem exigir a fração da TMB; `completeness_source` diz a origem (`intake_rule` ou `manual_close`).
 - Janela válida (spec §10): >= `MIN_COMPLETE_DAYS_IN_WINDOW` COMPLETE em `WINDOW_DAYS`,
   peso suficiente (`weight_trend.assess_window`), inclinação plausível
   (`MAX_PLAUSIBLE_WEEKLY_CHANGE_KG`), densidade calculável (massa gorda
@@ -129,6 +131,15 @@ FLAG_ADAPTIVE_UNAVAILABLE = "adaptive_unavailable"
 FLAG_ADJUSTMENT_CLAMPED = "activity_adjustment_clamped"
 FLAG_UPDATE_CLAMPED = "adaptive_update_clamped"
 
+# Origem da completude do dia (Lote G; rótulos em `labels.py`, grupo `completeness_source`): a regra da ingestão
+# (>= `COMPLETE_MIN_INTAKE_BMR_SHARE` da TMB) ou o fechamento manual do dia ("Fechei o dia"). Dia não completo = None.
+COMPLETENESS_SOURCE_INTAKE_RULE: Final[str] = "intake_rule"
+COMPLETENESS_SOURCE_MANUAL_CLOSE: Final[str] = "manual_close"
+
+# Base do gasto no resumo do relatório (Lote G): com gasto adaptativo aprendido ou só a estimativa inicial por fórmula.
+REPORT_BASIS_ADAPTIVE: Final[str] = "adaptive"
+REPORT_BASIS_BOOTSTRAP: Final[str] = "bootstrap"
+
 REASON_COMPLETE_DAYS_BELOW_MIN = "complete_days_below_min"
 REASON_WEIGHT_HISTORY_SHORT = "weight_history_short"
 REASON_WEIGHINS_BELOW_MIN = "weighins_below_min"
@@ -186,6 +197,7 @@ class DayInput:
     fat_mass_kg: Optional[float] = None
     active_kcal: Optional[float] = None
     activity_confirmed: Optional[bool] = None
+    manually_closed: bool = False  # "Fechei o dia" (migração 108): o dia fechado conta como completo
 
 
 @dataclass(frozen=True)
@@ -196,6 +208,7 @@ class WindowDay:
     active_kcal: Optional[float]
     bootstrap_kcal: Optional[float]
     weight: TrendPoint
+    completeness_source: Optional[str] = None  # `COMPLETENESS_SOURCE_*`; None = dia não completo
 
 
 @dataclass(frozen=True)
@@ -249,6 +262,16 @@ class AdaptiveEnergyState:
     flags: tuple[str, ...] = ()
     suspension_reasons: tuple[Shortfall, ...] = ()
     algorithm_version: str = ALGORITHM_VERSION
+
+    @property
+    def complete_days(self) -> int:
+        """Dias COMPLETE da janela (o mesmo número de `valid_days`)."""
+        return sum(1 for w in self.window if w.status is DayStatus.COMPLETE)
+
+    @property
+    def manually_closed_days(self) -> int:
+        """Dias da janela que contam como completos POR causa do fechamento manual."""
+        return sum(1 for w in self.window if w.completeness_source == COMPLETENESS_SOURCE_MANUAL_CLOSE)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -324,28 +347,50 @@ def latest_bmr(bmrs: Iterable[Any]) -> Optional[float]:
     return ultima
 
 
-def shadow_day_state(day: date, today: date, has_record: bool, is_complete: bool) -> DayState:
+def shadow_day_state(
+    day: date, today: date, has_record: bool, is_complete: bool, manually_closed: bool = False
+) -> DayState:
     """Estado do dia para a sombra, INDEPENDENTE de haver plano: hoje/futuro = `OPEN_TODAY` (MISSING);
     registro completo (energia + 3 macros, `weekly_budget.intake_macros`) = `LOGGED`; registro sem
-    completude = `INCOMPLETE`; sem registro = `NO_RECORD`."""
+    completude = `INCOMPLETE`; sem registro = `NO_RECORD`.
+
+    Fechamento manual (Lote G): dia PASSADO fechado com registro vale `LOGGED` mesmo sem as 3 macros (a energia é o
+    que o gasto adaptativo usa); sem registro, fechar não inventa ingestão: `NO_RECORD`. Fechar HOJE não muda nada
+    para o próprio dia (continua `OPEN_TODAY`, a meta de hoje não se move): o fechamento passa a valer quando o dia
+    vira passado, isto é, a partir de amanhã."""
     if day >= today:
         return DayState.OPEN_TODAY
     if not has_record:
         return DayState.NO_RECORD
-    return DayState.LOGGED if is_complete else DayState.INCOMPLETE
+    return DayState.LOGGED if (is_complete or manually_closed) else DayState.INCOMPLETE
 
 
-def classify_day(day_state: DayState, intake_kcal: Any, bmr_kcal: Any) -> DayStatus:
-    """COMPLETE só para dia LOGGED com ingestão >= fração da TMB (decisão D3)."""
-    if day_state is DayState.INCOMPLETE:
-        return DayStatus.PARTIAL
-    if day_state is not DayState.LOGGED:
-        return DayStatus.MISSING
+def classify_day_with_source(
+    day_state: DayState, intake_kcal: Any, bmr_kcal: Any, manually_closed: bool = False
+) -> tuple[DayStatus, Optional[str]]:
+    """Status do dia e origem da completude (`COMPLETENESS_SOURCE_*`; None se não é COMPLETE).
+
+    Sem fechamento: COMPLETE só para dia LOGGED com ingestão >= fração da TMB (decisão D3), origem `intake_rule`.
+    Fechamento manual (Lote G): dia com registro (LOGGED ou INCOMPLETE) e ingestão de energia conhecida é COMPLETE
+    sem exigir a fração da TMB, origem `manual_close` (vale também quando a regra já o completaria: a origem diz o que
+    o usuário fez, e reabrir o dia volta à regra). Sem ingestão conhecida, o fechamento não completa o dia."""
     ingestao = non_negative_number(intake_kcal)
+    if manually_closed and day_state in (DayState.LOGGED, DayState.INCOMPLETE) and ingestao is not None:
+        return DayStatus.COMPLETE, COMPLETENESS_SOURCE_MANUAL_CLOSE
+    if day_state is DayState.INCOMPLETE:
+        return DayStatus.PARTIAL, None
+    if day_state is not DayState.LOGGED:
+        return DayStatus.MISSING, None
     tmb = positive_number(bmr_kcal)
     if ingestao is None or tmb is None or ingestao < COMPLETE_MIN_INTAKE_BMR_SHARE * tmb:
-        return DayStatus.PARTIAL
-    return DayStatus.COMPLETE
+        return DayStatus.PARTIAL, None
+    return DayStatus.COMPLETE, COMPLETENESS_SOURCE_INTAKE_RULE
+
+
+def classify_day(day_state: DayState, intake_kcal: Any, bmr_kcal: Any, manually_closed: bool = False) -> DayStatus:
+    """COMPLETE só para dia LOGGED com ingestão >= fração da TMB (decisão D3), ou dia fechado à mão (Lote G).
+    Ver `classify_day_with_source`."""
+    return classify_day_with_source(day_state, intake_kcal, bmr_kcal, manually_closed)[0]
 
 
 def _mean(values: Sequence[float]) -> Optional[float]:
@@ -398,7 +443,7 @@ def _advance(prev: Optional[AdaptiveEnergyState], entry: DayInput) -> AdaptiveEn
     if massa_gorda is None and prev is not None:
         massa_gorda = prev.fat_mass_kg
     estado_peso, ponto = trend_step(prev.trend if prev else TrendState(), entry.day, entry.weights_kg)
-    status = classify_day(entry.day_state, entry.intake_kcal, tmb)
+    status, origem_completude = classify_day_with_source(entry.day_state, entry.intake_kcal, tmb, entry.manually_closed)
     ativas = _confirmed_activity(entry)
     flags: list[str] = []
 
@@ -415,7 +460,7 @@ def _advance(prev: Optional[AdaptiveEnergyState], entry: DayInput) -> AdaptiveEn
             bootstrap += usada
 
     ingestao = non_negative_number(entry.intake_kcal) if status is DayStatus.COMPLETE else None
-    novo = WindowDay(entry.day, status, ingestao, ativas, bootstrap, ponto)
+    novo = WindowDay(entry.day, status, ingestao, ativas, bootstrap, ponto, origem_completude)
     janela = (tuple(janela_anterior) + (novo,))[-WINDOW_DAYS:]
 
     completos = [w for w in janela if w.status is DayStatus.COMPLETE]
