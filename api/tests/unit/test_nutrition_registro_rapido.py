@@ -363,7 +363,6 @@ def test_preview_do_lancamento_nao_grava_e_sugere_a_refeicao_pela_hora(db):
 @pytest.mark.parametrize(
     ("ajuste", "codigo"),
     [
-        ({"weight_g": None}, "missing_field:weight_g"),
         ({"protein_g": None}, "missing_field:protein_g"),
         ({"weight_g": 0}, diary.ERR_QUICK_ENTRY_WEIGHT),
         ({"energy_kcal": -1}, "invalid_value:energy_kcal"),
@@ -533,8 +532,8 @@ def test_motor_expoe_constantes_do_lancamento_e_da_base_para_o_front():
 
     bloco = nutrition.export_for_frontend()
     assert bloco["quick_entry"] == {
-        "weight_field": "weight_g", "nutrient_fields": ["energy_kcal", "protein_g", "carbohydrates_g", "total_fat_g"],
-        "weight_max": diary.ITEM_AMOUNT_MAX, "name_max_chars": diary.QUICK_ENTRY_NAME_MAX_CHARS,
+        "nutrient_fields": ["energy_kcal", "protein_g", "carbohydrates_g", "total_fat_g"],
+        "name_max_chars": diary.QUICK_ENTRY_NAME_MAX_CHARS,
         "nature": "USER_ENTERED", "source": "quick_entry", "unit": "g",
     }
     assert bloco["table_base"] == {
@@ -696,3 +695,51 @@ def test_origem_de_fonte_desconhecida_e_nula_e_todo_codigo_tem_rotulo():
     assert set(labels.FOOD_ORIGIN_LABELS) == set(catalog.FoodOrigin)
     linha = {"id": 1, "source": "xyz", "is_active": 1}
     assert foods_mod.food_public(linha, Identity(user_id=2, role="regular", source="session"))["origin"] is None
+
+
+# ---------------------------------------------------------------------------
+# Lançamento rápido SEM peso (2026-11-06): só nome, kcal e macros; nada no catálogo
+# ---------------------------------------------------------------------------
+
+SEM_PESO = {"name": "Marmita da firma", "energy_kcal": 650, "protein_g": 40, "carbohydrates_g": 70, "total_fat_g": 20}
+
+
+def test_sem_peso_e_valido_e_nao_exige_nem_guarda_peso():
+    validacao = diary.validate_quick_entry(SEM_PESO)
+    assert validacao.errors == () and validacao.entry is not None and validacao.entry.weight_g is None
+    assert "weight_g" not in validacao.entry.to_dict()
+    item = diary.quick_entry_item_nutrition(validacao.entry)
+    assert item.amount == 0 and item.nutrients.energy_kcal == 650 and item.nature is mm.MealNature.USER_ENTERED
+    assert diary.quick_entry_from_snapshot(diary.quick_entry_snapshot(validacao.entry)["food"]) == validacao.entry
+
+
+def test_sem_peso_tem_teto_proprio_por_macro_e_kcal():
+    erros = diary.validate_quick_entry(
+        {**SEM_PESO, "protein_g": diary.QUICK_ENTRY_MACRO_MAX_G + 1,
+         "energy_kcal": diary.QUICK_ENTRY_MACRO_MAX_G * diary.KCAL_PER_G_FAT + 1}).errors
+    assert f"{diary.ERR_QUICK_VALUE_TOO_HIGH}:protein_g" in erros and f"{diary.ERR_QUICK_VALUE_TOO_HIGH}:energy_kcal" in erros
+    assert "máximo" in labels.limitation_label(f"{diary.ERR_QUICK_VALUE_TOO_HIGH}:protein_g")
+    assert f"{catalog.ERR_INVALID_VALUE}:weight_g" in diary.validate_quick_entry({**SEM_PESO, "weight_g": -3}).errors
+
+
+def test_grava_sem_peso_expoe_quantidade_nula_nao_cria_alimento_e_entra_nos_totais(db):
+    antes = dict(db.foods)
+    resposta = _client().post("/nutrition/meals", json=_refeicao(db, [{"quick_entry": SEM_PESO}]))
+    assert resposta.status_code == 201, resposta.text
+    refeicao = resposta.json()
+    [item] = refeicao["items"]
+    assert item["food_id"] is None and item["quantity"] is None and item["amount"] is None
+    assert item["nutrients"]["protein_g"] == 40 and item["quick_entry"]["name"] == "Marmita da firma"
+    assert "weight_g" not in item["quick_entry"]
+    assert refeicao["totals"]["nutrients"]["energy_kcal"] == 650 and refeicao["totals"]["nature"] == "USER_ENTERED"
+    assert db.foods == antes
+    [gravado] = db.items.values()
+    assert float(gravado["quantity"]) == 0 and float(gravado["amount"]) == 0 and gravado["food_id"] is None
+    # A edição que mantém o item reusa o snapshot gravado: continua sem quantidade e com os mesmos valores.
+    editada = _client().put(
+        f"/nutrition/meals/{refeicao['id']}",
+        json={"local_date": DIA.isoformat(), "meal_slot": "lunch", "items": [{"id": item["id"]}]},
+    )
+    assert editada.status_code == 200, editada.text
+    [mantido] = editada.json()["items"]
+    assert mantido["quantity"] is None and mantido["nutrients"]["energy_kcal"] == 650

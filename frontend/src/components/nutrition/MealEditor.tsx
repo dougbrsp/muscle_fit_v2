@@ -44,6 +44,7 @@ import {
   chooseEstimate,
   editorFormFromMeal,
   editorItemFromFood,
+  editorItemQuick,
   itemHasSource,
   mealCreatePayload,
   mealPreviewPayload,
@@ -422,6 +423,11 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
           selectedId={null}
           onRegister={(termo) => setCadastro({ nome: termo })}
           registerDisabled={form.items.length >= MEAL_ITEMS_LIMIT}
+          onQuickEntry={() => {
+            proximaChave.current += 1;
+            const novo = editorItemQuick(`novo-${proximaChave.current}`);
+            setForm((atual) => ({ ...atual, items: [...atual.items, novo] }));
+          }}
           onFavorited={(alimento) => {
             // Estrela marcada na busca: o alimento já é favorito e entra na refeição com a porção padrão.
             // Já está na lista (selecionado antes): não duplica.

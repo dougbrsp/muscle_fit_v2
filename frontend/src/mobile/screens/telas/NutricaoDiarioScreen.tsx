@@ -199,7 +199,7 @@ function NutricaoDiarioContent() {
               ) : null}
 
               <ListGroup title="Registrar de outro jeito">
-                <ListRow icon={IconBolt} title="Lançamento rápido" subtitle="Nome, peso e macros" onClick={() => setLancando(true)} />
+                <ListRow icon={IconBolt} title="Lançamento rápido" subtitle="Nome e macros, sem salvar alimento" onClick={() => setLancando(true)} />
                 <ListRow icon={IconCamera} title="Foto do prato" onClick={() => abrirLeitura('photo')} />
                 <ListRow icon={IconSparkles} title="Descrever com IA" onClick={() => abrirLeitura('text')} />
               </ListGroup>

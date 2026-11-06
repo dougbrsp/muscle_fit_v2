@@ -240,6 +240,13 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
         </Text>
       )}
 
+      {!food && (
+        <Text size="xs" c="dimmed">
+          Isto salva um alimento reutilizável no catálogo. Para registrar uma refeição em que você já sabe os macros, sem
+          salvar alimento, use o lançamento rápido.
+        </Text>
+      )}
+
       <Group justify="flex-end" gap="sm">
         <Button variant="default" onClick={onCancel} disabled={saveMutation.isPending}>
           Cancelar

@@ -17,7 +17,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconAlertTriangle, IconPlus, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBolt, IconPlus, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
@@ -51,6 +51,8 @@ type Props = {
   /** Quando dado, mostra "Cadastrar novo alimento" sempre, com o termo buscado (pode ser vazio). */
   onRegister?: (term: string) => void;
   registerDisabled?: boolean;
+  /** Quando dado, mostra "Lançamento rápido (só macros)" ao lado do cadastro: item sem alimento no catálogo. */
+  onQuickEntry?: () => void;
   /** Chamado só depois de o favorito ser gravado com sucesso (marcar a estrela, nunca ao desmarcar). */
   onFavorited?: (item: FoodSearchItem) => void;
 };
@@ -59,7 +61,7 @@ type Props = {
  * Busca no catálogo. A API filtra (FULLTEXT), ordena pela nota do motor
  * (`food_text`) e diz de que fonte é cada item, com a citação; a tela só exibe.
  */
-export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false, onFavorited }: Props) {
+export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false, onQuickEntry, onFavorited }: Props) {
   const [texto, setTexto] = useState('');
   const [fonte, setFonte] = useState<string | null>(null);
   const [privados, setPrivados] = useState(false);
@@ -128,17 +130,41 @@ export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, register
         )}
       </Group>
 
-      {onRegister && (
-        <Button
-          variant="light"
-          color="brand"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => onRegister(texto.trim())}
-          disabled={registerDisabled}
-          style={{ minHeight: 44, alignSelf: 'flex-start' }}
-        >
-          Cadastrar novo alimento
-        </Button>
+      {(onQuickEntry || onRegister) && (
+        <Stack gap={4}>
+          <Group gap="xs">
+            {onQuickEntry && (
+              <Button
+                variant="filled"
+                color="brand"
+                leftSection={<IconBolt size={16} />}
+                onClick={onQuickEntry}
+                disabled={registerDisabled}
+                style={{ minHeight: 44 }}
+              >
+                Lançamento rápido (só macros)
+              </Button>
+            )}
+            {onRegister && (
+              <Button
+                variant="light"
+                color="brand"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => onRegister(texto.trim())}
+                disabled={registerDisabled}
+                style={{ minHeight: 44 }}
+              >
+                Cadastrar novo alimento
+              </Button>
+            )}
+          </Group>
+          {onQuickEntry && (
+            <Text size="xs" c={BRAND.textMuted}>
+              Já sabe os macros? Use o lançamento rápido: não salva alimento nem pede peso. Cadastrar cria um alimento
+              reutilizável no catálogo.
+            </Text>
+          )}
+        </Stack>
       )}
 
       {query.isError && (

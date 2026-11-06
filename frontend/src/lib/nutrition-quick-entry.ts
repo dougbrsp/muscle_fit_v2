@@ -1,7 +1,7 @@
 // Lançamento rápido de refeição (nutricao-melhorias, Frente C). Só transporte e
 // apresentação: o motor (`api/app/domain/nutrition/diary.py`) valida, congela os
 // valores e decide a refeição de uma hora (`GET /nutrition/meals/slot-for-time`).
-// Nomes dos campos, peso máximo e tamanho do nome vêm do bloco `nutrition.quick_entry`
+// Nomes dos campos e tamanho do nome vêm do bloco `nutrition.quick_entry`
 // de `motor-constants.generated.json`; a tela não escreve limite nem regra.
 
 import { ApiError, apiFetch } from './api';
@@ -17,8 +17,7 @@ import type {
 
 const QUICK = motorConstants.nutrition.quick_entry;
 
-/** Campo do peso informado (g) e campos de nutriente, na ordem do dono. */
-export const QUICK_ENTRY_WEIGHT_FIELD: string = QUICK.weight_field;
+/** Campos de nutriente, na ordem do dono. */
 export const QUICK_ENTRY_NUTRIENT_FIELDS: ReadonlyArray<string> = QUICK.nutrient_fields;
 export const QUICK_ENTRY_NAME_MAX_CHARS: number = QUICK.name_max_chars;
 /** Fonte do item gravado (`food_source`) e natureza própria do lançamento rápido. */
@@ -26,20 +25,21 @@ export const QUICK_ENTRY_SOURCE: NutritionCode = QUICK.source;
 export const QUICK_ENTRY_NATURE: NutritionCode = QUICK.nature;
 export const QUICK_ENTRY_UNIT: string = QUICK.unit;
 
-/** Rótulo e unidade de cada campo numérico (peso e nutrientes), com o rótulo do dono para os nutrientes. */
+/** Rótulo e unidade de cada campo numérico, com o rótulo do dono. */
 export const QUICK_ENTRY_NUMERIC_FIELDS: ReadonlyArray<{ code: string; label: string; unit: string }> = [
-  { code: QUICK_ENTRY_WEIGHT_FIELD, label: 'Peso', unit: QUICK_ENTRY_UNIT },
   ...QUICK_ENTRY_NUTRIENT_FIELDS.map((code) => {
     const campo = ITEM_NUTRIENT_FIELDS.find((item) => item.code === code);
     return { code, label: campo?.label ?? code, unit: campo?.unit ?? '' };
   }),
 ];
 
-/** Rascunho dos 6 campos. `''` enquanto o campo está vazio. `saved` = valores já gravados (edição). */
+/** Rascunho dos 5 campos. `''` enquanto o campo está vazio. `saved` = valores já gravados (edição). */
 export type QuickEntryDraft = {
   name: string;
   values: Record<string, number | string>;
   saved: QuickEntryPayload | null;
+  /** Peso de item antigo (sem campo na tela): vai de volta como veio, para a edição não zerá-lo. */
+  weight?: number | null;
 };
 
 export function emptyQuickDraft(): QuickEntryDraft {
@@ -56,7 +56,7 @@ function toNumber(valor: number | string | null | undefined): number | null {
   return Number.isFinite(numero) ? numero : null;
 }
 
-/** Os 6 campos no formato da API; `null` enquanto o nome ou algum número está vazio (o motor confere o resto). */
+/** Os 5 campos no formato da API; `null` enquanto o nome ou algum número está vazio (o motor confere o resto). */
 export function quickEntryPayload(draft: QuickEntryDraft): QuickEntryPayload | null {
   const nome = draft.name.trim();
   if (nome === '') return null;
@@ -66,6 +66,7 @@ export function quickEntryPayload(draft: QuickEntryDraft): QuickEntryPayload | n
     if (valor === null) return null;
     corpo[campo.code] = valor;
   }
+  if (draft.weight != null) corpo.weight_g = draft.weight;
   return corpo as unknown as QuickEntryPayload;
 }
 
@@ -73,9 +74,9 @@ export function quickEntryPayload(draft: QuickEntryDraft): QuickEntryPayload | n
 export function draftFromSnapshot(snapshot: QuickEntrySnapshot): QuickEntryDraft {
   const values: Record<string, number | string> = {};
   for (const campo of QUICK_ENTRY_NUMERIC_FIELDS) {
-    values[campo.code] = campo.code === QUICK_ENTRY_WEIGHT_FIELD ? snapshot.weight_g : (snapshot.nutrients[campo.code] ?? '');
+    values[campo.code] = snapshot.nutrients[campo.code] ?? '';
   }
-  const draft: QuickEntryDraft = { name: snapshot.name, values, saved: null };
+  const draft: QuickEntryDraft = { name: snapshot.name, values, saved: null, weight: snapshot.weight_g ?? null };
   return { ...draft, saved: quickEntryPayload(draft) };
 }
 
@@ -136,8 +137,6 @@ export type QuickEntryErrors = {
 
 // Códigos sem sufixo de campo, mapeados pelo campo do dono.
 const CODE_TO_FIELD: Record<string, string> = {
-  quick_entry_weight_invalid: QUICK_ENTRY_WEIGHT_FIELD,
-  item_amount_out_of_range: QUICK_ENTRY_WEIGHT_FIELD,
   invalid_food_name: 'name',
 };
 

@@ -304,9 +304,7 @@ def export_for_frontend() -> dict[str, Any]:
         # Lançamento rápido (D2, 2026-11-04): campos, teto e natureza do item lançado à mão. A tela só
         # rotula e limita a digitação; obrigatoriedade e faixas são da API (`diary.validate_quick_entry`).
         "quick_entry": {
-            "weight_field": diary.QUICK_ENTRY_WEIGHT_FIELD,
             "nutrient_fields": list(diary.QUICK_ENTRY_NUTRIENT_FIELDS),
-            "weight_max": diary.ITEM_AMOUNT_MAX,
             "name_max_chars": diary.QUICK_ENTRY_NAME_MAX_CHARS,
             "nature": diary.QUICK_ENTRY_NATURE.value,
             "source": diary.QUICK_ENTRY_SOURCE,
