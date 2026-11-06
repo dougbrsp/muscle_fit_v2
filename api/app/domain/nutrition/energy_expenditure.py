@@ -40,6 +40,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Final, Mapping, Optional
@@ -453,6 +454,16 @@ class TdeeResult:
     training_kcal: Optional[float]
     limitations: tuple[str, ...] = ()
 
+    @property
+    def base_kcal(self) -> Optional[float]:
+        """Parcela-base de rotina (TMB × fator do modo; `None` se faltar TMB ou fator). Só property: NÃO está no
+        `to_dict` (que vai para `inputs_json`), então nada novo é gravado nas metas; a tela a recebe por
+        `tdee_breakdown`. O gasto total se reconstrói por `base_kcal + (training_kcal or 0)` nos três modos (no
+        embutido o treino é ignorado e a base é o total)."""
+        if self.bmr_kcal is None or self.activity_factor is None:
+            return None
+        return self.bmr_kcal * self.activity_factor
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "kcal": self.kcal,
@@ -510,3 +521,71 @@ def tdee(
         )
     total = tmb * fator + (treino or 0.0)
     return TdeeResult(kcal=total, mode=mode, activity_factor=fator, bmr_kcal=tmb, training_kcal=treino)
+
+
+# --- Composição do gasto para a tela (prévia do plano): parcelas prontas, sem conta no front -------------------------
+BREAKDOWN_BASE: Final[str] = "base"
+BREAKDOWN_STRENGTH: Final[str] = "training"  # a força (nome alinhado a `training_kcal`)
+BREAKDOWN_EXTRAS: Final[str] = "extras"
+BREAKDOWN_NOTE_INCLUDED: Final[str] = "training_included_in_factor"
+BREAKDOWN_NOTE_AUTO_FALLBACK: Final[str] = "auto_fallback"
+# As parcelas saem em kcal inteiras (a tela mostra inteiros): cada uma é arredondada e a BASE absorve a diferença, de
+# modo que a soma das parcelas emitidas é EXATAMENTE o total emitido.
+BREAKDOWN_KCAL_ROUNDING_STEP: Final[float] = 1.0
+
+
+class BreakdownBase(str, Enum):
+    """De onde vem a parcela-base: rotina (treino somado à parte), fator com exercício (embutido) ou o fallback do automático."""
+
+    ROUTINE = "routine"
+    FACTOR_WITH_EXERCISE = "factor_with_exercise"
+    AUTO_FALLBACK = "auto_fallback"
+
+
+@dataclass(frozen=True)
+class BreakdownPart:
+    code: str
+    kcal: float
+
+
+@dataclass(frozen=True)
+class TdeeBreakdown:
+    """Parcelas do gasto total do dia: base (sempre), força e extras (só as que somam), notas e o total. Saída pública
+    da prévia: NÃO entra em `inputs_json`, no hash nem no `to_dict` gravado."""
+
+    parts: tuple[BreakdownPart, ...]
+    base: BreakdownBase
+    notes: tuple[str, ...]
+    total_kcal: float
+
+
+def _round_step(value: float) -> float:
+    return math.floor(value / BREAKDOWN_KCAL_ROUNDING_STEP + 0.5) * BREAKDOWN_KCAL_ROUNDING_STEP
+
+
+def tdee_breakdown(tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis") -> Optional[TdeeBreakdown]:
+    """Decompõe o gasto do dia em parcelas que fecham o total. `tdee_result` é o do dia (modo EFETIVO: o automático
+    sincronizado vem como explícito, com `training_kcal` = força + extras; o embutido e o fallback ignoram o treino);
+    `extra_kcal` são as atividades extras já somadas; `basis` diz se é clássico, automático ou fallback. `None` sem
+    TMB ou fator (gasto desconhecido). Parcela zero (força ou extras) é omitida; a base sempre entra."""
+    total = tdee_result.kcal
+    if total is None or tdee_result.base_kcal is None:
+        return None
+    total_pub = _round_step(total)
+    if tdee_result.mode == TdeeMode.INCLUDED_IN_FACTOR:
+        fallback = basis == TdeeBasis.AUTO_FALLBACK
+        return TdeeBreakdown(
+            parts=(BreakdownPart(BREAKDOWN_BASE, total_pub),),
+            base=BreakdownBase.AUTO_FALLBACK if fallback else BreakdownBase.FACTOR_WITH_EXERCISE,
+            notes=(BREAKDOWN_NOTE_AUTO_FALLBACK if fallback else BREAKDOWN_NOTE_INCLUDED,),
+            total_kcal=total_pub,
+        )
+    extras = _round_step(non_negative_number(extra_kcal) or 0.0)
+    atividade = non_negative_number(tdee_result.training_kcal) or 0.0
+    forca = _round_step(max(0.0, atividade - (non_negative_number(extra_kcal) or 0.0)))
+    partes = [BreakdownPart(BREAKDOWN_BASE, total_pub - forca - extras)]
+    if forca > 0:
+        partes.append(BreakdownPart(BREAKDOWN_STRENGTH, forca))
+    if extras > 0:
+        partes.append(BreakdownPart(BREAKDOWN_EXTRAS, extras))
+    return TdeeBreakdown(parts=tuple(partes), base=BreakdownBase.ROUTINE, notes=(), total_kcal=total_pub)

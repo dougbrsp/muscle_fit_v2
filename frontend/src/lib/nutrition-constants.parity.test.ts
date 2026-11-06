@@ -122,7 +122,11 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
   });
 
   it('todo bloco de rótulos exportado pelo dono tem lista de opções aqui', () => {
-    const chavesDeRotulo = Object.keys(N).filter((chave) => chave.endsWith('_labels'));
+    // `adaptive_energy_labels` é aninhado (grupo -> código -> rótulo), sem lista de opções
+    // de formulário; é consumido por AdaptiveEnergyCard (coberto em AdaptiveEnergyCard.test.ts).
+    const chavesDeRotulo = Object.keys(N).filter(
+      (chave) => chave.endsWith('_labels') && chave !== 'adaptive_energy_labels',
+    );
     expect(chavesDeRotulo).toHaveLength(PARES.length);
   });
 

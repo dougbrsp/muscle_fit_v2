@@ -171,11 +171,25 @@ export type NutritionDayTarget = {
   backfilled?: boolean;
 };
 
+export type NutritionTdeeBreakdown = {
+  parts: Array<{ code: string; label: string; kcal: number }>;
+  notes: Array<{ code: string; label: string }>;
+  total_kcal: number;
+};
+
 /** Meta de hoje com o detalhe de cada etapa do motor (preview). */
 export type NutritionTargetDetail = NutritionDayTarget & {
   bmr: { kcal: number | null; formula: NutritionCode; requested_formula: NutritionCode; ffm_kg: number | null };
   scale_comparison: { formula_kcal: number; scale_kcal: number; deviation_share: number; warn: boolean } | null;
-  tdee: { kcal: number | null; mode: NutritionCode; activity_factor: number | null; bmr_kcal: number | null; training_kcal: number | null };
+  tdee: {
+    kcal: number | null;
+    mode: NutritionCode;
+    activity_factor: number | null;
+    bmr_kcal: number | null;
+    training_kcal: number | null;
+  };
+  /** Composição do gasto total pronta do motor (soma das parcelas = total); ausente em backend antigo. */
+  tdee_breakdown?: NutritionTdeeBreakdown | null;
   training: { kcal: number | null; kcal_nature: NutritionCode | null; nature: string | null; quality: string | null };
   kcal_target: {
     kcal: number | null;

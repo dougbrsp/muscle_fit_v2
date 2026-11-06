@@ -77,6 +77,8 @@ from __future__ import annotations
 from typing import Any
 
 from . import (  # noqa: F401  (reexport dos módulos do pacote)
+    activity_energy,
+    adaptive_energy,
     adaptive_tdee,
     ai_usage,
     anthropometrics,
@@ -103,6 +105,7 @@ from . import (  # noqa: F401  (reexport dos módulos do pacote)
     strategy,
     subject,
     weekly_budget,
+    weight_trend,
 )
 from .daily_target import ENGINE_VERSION, DailyTarget, DayContext, PlanParams, compute_daily_target  # noqa: F401
 
@@ -193,6 +196,16 @@ def export_for_frontend() -> dict[str, Any]:
         "plan_state_labels": lb.labels_by_code(lb.PLAN_STATE_LABELS),
         # Campo do formulário -> a única estratégia em que ele vale (L2b).
         "strategy_only_fields": {campo: estrategia.value for campo, estrategia in plan.STRATEGY_ONLY_FIELDS.items()},
+        # Gasto adaptativo em sombra (Lote A): só exibição; o frontend não recalcula nem classifica.
+        # Rótulos pt-BR por grupo e código (`adaptive_energy_labels[grupo][codigo]`); o frontend só exibe.
+        "adaptive_energy_labels": {
+            "confidence_level": lb.labels_by_code(lb.CONFIDENCE_LEVEL_LABELS),
+            "calorie_mode": lb.labels_by_code(lb.CALORIE_MODE_LABELS),
+            "activity_flag": lb.labels_by_code(lb.ACTIVITY_FLAG_LABELS),
+            "data_quality_flag": dict(lb.DATA_QUALITY_FLAG_LABELS),
+            "suspension_reason": dict(lb.SUSPENSION_REASON_LABELS),
+            "unavailable_reason": dict(lb.ADAPTIVE_UNAVAILABLE_LABELS),
+        },
         "notices": dict(lb.NOTICE_LABELS),
         "units": _codes(meal_math.Unit),
         "form_ranges": {

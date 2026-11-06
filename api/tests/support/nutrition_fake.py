@@ -17,6 +17,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from app import nutrition_access as access
+from app import nutrition_energy_service as energy_svc
 from app import nutrition_plans as plans_mod
 from app import nutrition_targets_service as svc
 
@@ -41,6 +42,9 @@ class FakeNutritionDB:
         self.activities: list[dict[str, Any]] = []
         # `intervals_activities` SEM vínculo com um treino (a SQL do serviço já exclui as vinculadas).
         self.intervals_extras: list[dict[str, Any]] = []
+        # `intervals_activities` COMPLETAS (com id, id externo, hora e durações) para a sombra do gasto adaptativo; o fake
+        # projeta só as colunas que a SQL pede, como o banco. `synced_at` de cada linha prova a sincronização.
+        self.intervals_rows: list[dict[str, Any]] = []
         # Conexão e idade (min) da última sincronização do Intervals: padrão = desconectado.
         self.intervals_connected = False
         self.intervals_minutes_since_sync: Optional[int] = None
@@ -73,6 +77,20 @@ class FakeNutritionDB:
                 {"user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
                  "calories_kcal": Decimal(str(kcal)) if kcal is not None else None}
             )
+
+    def add_intervals_row(self, user_id: int, day: date, sport_type: str, kcal: Optional[float], *,
+                          start: Optional[datetime] = None, name: Optional[str] = None, elapsed: Optional[int] = 3600,
+                          moving: Optional[int] = None, external_id: Optional[str] = None,
+                          synced_at: Optional[datetime] = None) -> int:
+        """Linha de `intervals_activities` COMPLETA (sombra do gasto adaptativo); devolve o id."""
+        linha_id = len(self.intervals_rows) + 1
+        self.intervals_rows.append(
+            {"id": linha_id, "user_id": user_id, "external_id": external_id or f"ext-{linha_id}", "activity_date": day,
+             "start_time": start, "name": name, "sport_type": sport_type, "moving_time_seconds": moving,
+             "elapsed_time_seconds": elapsed, "calories_kcal": Decimal(str(kcal)) if kcal is not None else None,
+             "synced_at": synced_at or self.now, "raw_json": "{\"nao\": \"deve sair\"}"}
+        )
+        return linha_id
 
     def add_plan(self, user_id: int, *, status: str = "draft", strategy: str = "maintenance",
                  effective_from: Optional[date] = None, superseded_at: Optional[datetime] = None,
@@ -186,6 +204,19 @@ class FakeCursor:
             return self._result([{"minutes_since_sync": db.intervals_minutes_since_sync}])
         if sql == svc.EXTRA_ACTIVITIES_SQL:
             return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
+        if sql == energy_svc.TARGET_BMR_SQL:
+            linhas = [{"local_date": dia, "bmr_kcal": r.get("bmr_kcal")} for (uid, dia), r in sorted(db.targets.items(), key=lambda i: i[0][1])
+                      if uid == p[0] and p[1] <= dia <= p[2]]
+            return self._result(linhas)
+        if sql == energy_svc.INTERVALS_SYNC_SQL:
+            minhas = [r for r in db.intervals_rows if r["user_id"] == p[0]]
+            return self._result([{"last_sync_at": max((r["synced_at"] for r in minhas), default=None),
+                                  "first_activity_date": min((r["activity_date"] for r in minhas), default=None)}])
+        if sql == energy_svc.SHADOW_ACTIVITIES_SQL:
+            pedidas = [c.strip() for c in sql.split(" FROM ")[0].removeprefix("SELECT ").split(",")]
+            linhas = [r for r in db.intervals_rows if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]]
+            ordenadas = sorted(linhas, key=lambda r: (r["activity_date"], r["start_time"] or datetime.min, r["id"]))
+            return self._result([{c: r[c] for c in pedidas} for r in ordenadas])
         if sql == svc._PUBLISHED_PLANS_SQL:
             return self._result([r for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None])
         if sql == svc._TARGETS_SQL:

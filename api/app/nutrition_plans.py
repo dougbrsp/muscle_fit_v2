@@ -51,6 +51,7 @@ from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
     missing_subject_data,
@@ -368,6 +369,10 @@ def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
         "bmr": meta.bmr.to_dict(),
         "scale_comparison": meta.scale_comparison.to_dict() if meta.scale_comparison else None,
         "tdee": meta.tdee.to_dict(),
+        # Composição do gasto pronta para a tela (dono: `energy_expenditure.tdee_breakdown`; só saída pública).
+        "tdee_breakdown": nutrition_labels.tdee_breakdown_public(
+            tdee_breakdown(meta.tdee, meta.extra_activity.kcal, meta.tdee_basis)
+        ),
         "training": meta.training_kcal.to_dict(),
         "kcal_target": alvo,
         "macros": meta.macros.to_dict(),

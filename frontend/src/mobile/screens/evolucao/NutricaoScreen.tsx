@@ -3,6 +3,7 @@
 import { Badge, Progress } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { AdaptiveEnergyCard } from '@/components/nutrition/AdaptiveEnergyCard';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import {
   ShareBars,
@@ -137,6 +138,9 @@ function Painel({ data }: { data: NutritionDashboard }) {
       <Corpo data={data} />
       <Projecao data={data} />
       <Adaptativo data={data} />
+      <div className={styles.gap}>
+        <AdaptiveEnergyCard energy={data.adaptive_energy} />
+      </div>
       <Checkins />
     </>
   );

@@ -108,7 +108,7 @@ def test_export_for_frontend():
     # L10: + meal_photo (redução, upload, retenção e o texto da cota; a cota vem da API)
     # N2 rodada 4: + manual_training_modes, manual_training_mode_labels, manual_training_mode_hints, default_manual_training_mode
     # D1/D2 (2026-11-04): + quick_entry, table_base
-    assert len(bloco) == 87  # 2026-11-05: + tdee_mode_hints, routine_levels/labels/factors, default_routine_level, auto_tdee_mode, intervals_sync_max_age_minutes
+    assert len(bloco) == 88  # 2026-11-05: + tdee_mode_hints, routine_levels/labels/factors, default_routine_level, auto_tdee_mode, intervals_sync_max_age_minutes; + adaptive_energy_labels (grupos confidence_level, calorie_mode, activity_flag, data_quality_flag, suspension_reason, unavailable_reason)
     from app.domain.nutrition import meal_parse as _mp
 
     assert bloco["meal_parse"] == {
