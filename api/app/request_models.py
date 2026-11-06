@@ -324,8 +324,9 @@ class MealItemEstimateIn(_StrictIn):
 
 
 class MealItemQuickEntryIn(_StrictIn):
-    """Lançamento rápido (nutrição D2, 2026-11-04): item sem alimento do catálogo, com o NOME, o PESO em g e os
-    valores ABSOLUTOS desse peso (kcal, proteína, carboidrato e gordura). Obrigatoriedade e faixas não são
+    """Lançamento rápido (nutrição D2, 2026-11-04): item sem alimento do catálogo, com o NOME e os valores
+    ABSOLUTOS (kcal, proteína, carboidrato e gordura), sem peso. `weight_g` segue aceito só por compatibilidade
+    com clientes antigos. Obrigatoriedade e faixas não são
     validadas aqui: o motor (`diary.validate_quick_entry`) responde 400 com os códigos. Não é a `estimate` da IA."""
 
     name: str = Field(min_length=1, max_length=255)
@@ -348,8 +349,8 @@ class MealItemIn(_StrictIn):
     regra do motor (`diary.item_source_errors`). `match_confidence` = nota do
     casamento que a leitura entregou (auditoria).
 
-    D2: o lançamento rápido vem sem `food_id` e com `quick_entry` (peso e valores absolutos); `quantity` e `unit`
-    são então dispensados (o peso em g é a quantidade). Lançamento rápido mantido na edição (`id`, sem `food_id`,
+    D2: o lançamento rápido vem sem `food_id` e com `quick_entry` (valores absolutos, sem peso); `quantity` e `unit`
+    são então dispensados. Lançamento rápido mantido na edição (`id`, sem `food_id`,
     `estimate` nem `quick_entry`) reusa o snapshot congelado. Origem do item: exatamente uma (`diary.item_source_errors`)."""
 
     id: Optional[int] = None

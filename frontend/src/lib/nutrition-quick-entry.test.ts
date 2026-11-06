@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
-import { editorFormFromMeal, itemsPayload } from './nutrition-meal-form';
+import { editorFormFromMeal, editorItemQuick, itemsPayload } from './nutrition-meal-form';
 import {
   clockTime,
   draftFromSnapshot,
@@ -18,7 +18,7 @@ function preenchido(extra: Partial<QuickEntryDraft['values']> = {}): QuickEntryD
   return {
     ...base,
     name: ' Barra de proteína ',
-    values: { weight_g: 45, energy_kcal: 180, protein_g: '15', carbohydrates_g: 17, total_fat_g: 6, ...extra },
+    values: { energy_kcal: 180, protein_g: '15', carbohydrates_g: 17, total_fat_g: 6, ...extra },
   };
 }
 
@@ -36,9 +36,9 @@ const REFEICAO_RAPIDA = {
       portion_id: null,
       portion_label: null,
       label: 'Barra de proteína',
-      quantity: 45,
+      quantity: null,
       unit: 'g',
-      amount: 45,
+      amount: null,
       basis: 'g',
       nature: 'USER_ENTERED',
       nutrients: { energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6, fiber_g: null, sodium_mg: null },
@@ -48,7 +48,6 @@ const REFEICAO_RAPIDA = {
       field_sources: [],
       quick_entry: {
         name: 'Barra de proteína',
-        weight_g: 45,
         nutrients: { energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6, fiber_g: null, sodium_mg: null },
       },
     },
@@ -56,10 +55,10 @@ const REFEICAO_RAPIDA = {
 } as unknown as Meal;
 
 describe('lançamento rápido: payload', () => {
-  it('vazio não gera corpo; completo leva só os 6 campos, número como digitado', () => {
+  it('vazio não gera corpo; completo leva só os 5 campos, número como digitado', () => {
     expect(quickEntryPayload(emptyQuickDraft())).toBeNull();
     expect(quickEntryPayload(preenchido())).toEqual({
-      name: 'Barra de proteína', weight_g: 45, energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6,
+      name: 'Barra de proteína', energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6,
     });
     expect(quickEntryPayload(preenchido({ total_fat_g: '' }))).toBeNull();
   });
@@ -75,7 +74,7 @@ describe('lançamento rápido: payload', () => {
       meal_slot: 'breakfast',
       eaten_at: '07:45',
       notes: null,
-      items: [{ quick_entry: { name: 'Barra de proteína', weight_g: 45, energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6 } }],
+      items: [{ quick_entry: { name: 'Barra de proteína', energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6 } }],
     });
     expect(Object.keys(corpo?.items[0] ?? {})).toEqual(['quick_entry']);
   });
@@ -86,14 +85,51 @@ describe('lançamento rápido: payload', () => {
   });
 });
 
+describe('lançamento rápido: sem peso', () => {
+  it('nenhum campo de peso no rascunho nem no corpo; o editor mostra o item antigo (com peso) sem exigir peso', () => {
+    expect(Object.keys(emptyQuickDraft().values)).toEqual(['energy_kcal', 'protein_g', 'carbohydrates_g', 'total_fat_g']);
+    const antigo = structuredClone(REFEICAO_RAPIDA) as Meal;
+    (antigo.items[0] as unknown as { quick_entry: { weight_g: number } }).quick_entry.weight_g = 45;
+    const form = editorFormFromMeal(antigo);
+    expect(form.items[0].quick?.values).not.toHaveProperty('weight_g');
+    expect(itemsPayload(form.items)).toEqual([{ id: 301 }]);
+  });
+});
+
+describe('lançamento rápido: item antigo com peso', () => {
+  it('editar só a proteína reenvia o peso gravado; sem alteração manda só o id', () => {
+    const antigo = structuredClone(REFEICAO_RAPIDA) as Meal;
+    (antigo.items[0] as unknown as { quick_entry: { weight_g: number } }).quick_entry.weight_g = 45;
+    const form = editorFormFromMeal(antigo);
+    expect(itemsPayload(form.items)).toEqual([{ id: 301 }]);
+    const quick = form.items[0].quick as QuickEntryDraft;
+    const alterado = { ...form.items[0], quick: { ...quick, values: { ...quick.values, protein_g: 20 } } };
+    expect(itemsPayload([alterado])).toEqual([
+      { id: 301, quick_entry: { name: 'Barra de proteína', energy_kcal: 180, protein_g: 20, carbohydrates_g: 17, total_fat_g: 6, weight_g: 45 } },
+    ]);
+  });
+});
+
+describe('lançamento rápido dentro do editor de refeição', () => {
+  it('item novo nasce vazio (sem corpo) e, preenchido, vai como quick_entry sem food_id', () => {
+    const item = editorItemQuick('novo-1');
+    expect(item.food_id).toBeNull();
+    expect(itemsPayload([item])).toBeNull();
+    const quick = { ...(item.quick as QuickEntryDraft), name: 'Marmita', values: { energy_kcal: 650, protein_g: 40, carbohydrates_g: 70, total_fat_g: 20 } };
+    expect(itemsPayload([{ ...item, quick }])).toEqual([
+      { quick_entry: { name: 'Marmita', energy_kcal: 650, protein_g: 40, carbohydrates_g: 70, total_fat_g: 20 } },
+    ]);
+  });
+});
+
 describe('lançamento rápido: edição de item gravado', () => {
-  it('o editor abre com os 6 valores do item e sem busca/porção', () => {
+  it('o editor abre com os 5 valores do item e sem busca/porção', () => {
     const form = editorFormFromMeal(REFEICAO_RAPIDA);
     const item = form.items[0];
     expect(item.food_id).toBeNull();
     expect(item.usesEstimate).toBe(false);
     expect(item.quick?.name).toBe('Barra de proteína');
-    expect(item.quick?.values).toMatchObject({ weight_g: 45, energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6 });
+    expect(item.quick?.values).toMatchObject({ energy_kcal: 180, protein_g: 15, carbohydrates_g: 17, total_fat_g: 6 });
   });
 
   it('sem mudança manda só {id}', () => {
@@ -107,7 +143,7 @@ describe('lançamento rápido: edição de item gravado', () => {
     const alterado = { ...form.items[0], quick: { ...quick, values: { ...quick.values, protein_g: 20 } } };
     expect(quickEntryChanged(alterado.quick)).toBe(true);
     expect(itemsPayload([alterado])).toEqual([
-      { id: 301, quick_entry: { name: 'Barra de proteína', weight_g: 45, energy_kcal: 180, protein_g: 20, carbohydrates_g: 17, total_fat_g: 6 } },
+      { id: 301, quick_entry: { name: 'Barra de proteína', energy_kcal: 180, protein_g: 20, carbohydrates_g: 17, total_fat_g: 6 } },
     ]);
   });
 
@@ -136,7 +172,7 @@ describe('lançamento rápido: erros da API no campo certo', () => {
             index: 0,
             errors: [
               { code: 'missing_field:energy_kcal', label: 'Informe as calorias.' },
-              { code: 'quick_entry_weight_invalid', label: 'O peso deve ser maior que zero.' },
+              { code: 'quick_entry_value_too_high:total_fat_g', label: 'Gordura acima do máximo.' },
               { code: 'invalid_food_name', label: 'Nome inválido.' },
               { code: 'above_basis:protein_g', label: 'Proteína acima do peso.' },
             ],
@@ -147,7 +183,7 @@ describe('lançamento rápido: erros da API no campo certo', () => {
     );
     expect(resultado.byField).toEqual({
       energy_kcal: 'Informe as calorias.',
-      weight_g: 'O peso deve ser maior que zero.',
+      total_fat_g: 'Gordura acima do máximo.',
       name: 'Nome inválido.',
       protein_g: 'Proteína acima do peso.',
     });

@@ -68,6 +68,7 @@ export function TotalsLine({ totals }: { totals: NutritionTotals }) {
 }
 
 export function quantidade(item: MealItem): string {
+  if (item.quantity == null || item.amount == null) return '-'; // lançamento rápido: sem quantidade
   const unidade = nutritionLabel(UNIT_OPTIONS, item.unit) ?? item.unit;
   const porcao = item.portion_label ? ` (${item.portion_label})` : '';
   return `${formatNumberOrDash(item.quantity, 2)} × ${unidade}${porcao} = ${formatWithUnit(item.amount, item.basis, 0)}`;

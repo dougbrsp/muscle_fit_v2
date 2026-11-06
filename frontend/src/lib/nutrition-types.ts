@@ -523,11 +523,12 @@ export type MealItem = {
   portion_id: number | null;
   portion_label: string | null;
   label: string;
-  quantity: number;
+  /** `null` no lançamento rápido (não tem quantidade). */
+  quantity: number | null;
   /** Código de `UNIT_OPTIONS`. */
   unit: NutritionCode;
-  /** Quantidade na base do alimento (g ou ml), resolvida pelo motor. */
-  amount: number;
+  /** Quantidade na base do alimento (g ou ml), resolvida pelo motor; `null` no lançamento rápido. */
+  amount: number | null;
   basis: NutritionCode;
   nutrients: NutrientValues;
   nature: NutritionCode;
@@ -538,21 +539,22 @@ export type MealItem = {
   field_sources: FoodFieldSource[];
   /** Nota do casamento da leitura por IA (L5b); `null` no item manual ou estimado. */
   match_confidence?: number | null;
-  /** Lançamento rápido: nome, peso e os valores informados (absolutos do peso); `null` nos demais itens. */
+  /** Lançamento rápido: nome e os valores informados; `null` nos demais itens. */
   quick_entry?: QuickEntrySnapshot | null;
 };
 
-/** Lançamento rápido gravado (`item.quick_entry`): valores ABSOLUTOS do peso informado. */
+/** Lançamento rápido gravado (`item.quick_entry`): valores informados, sem peso (`weight_g` só em item antigo). */
 export type QuickEntrySnapshot = {
   name: string;
-  weight_g: number;
+  weight_g?: number;
   nutrients: NutrientValues;
 };
 
-/** Corpo do lançamento rápido (`MealItemIn.quick_entry`): os 6 campos, valores absolutos do peso. */
+/** Corpo do lançamento rápido (`MealItemIn.quick_entry`): nome e os 4 valores informados, sem peso. */
 export type QuickEntryPayload = {
   name: string;
-  weight_g: number;
+  /** Só reenvio do peso de item antigo; a tela não pede peso. */
+  weight_g?: number;
   energy_kcal: number;
   protein_g: number;
   carbohydrates_g: number;
@@ -599,7 +601,7 @@ export type MealItemPayload = {
   id?: number | null;
   food_id?: number | null;
   estimate?: MealItemEstimatePayload | null;
-  /** Lançamento rápido: sem `food_id`, `quantity` nem `unit` (o peso é a quantidade). */
+  /** Lançamento rápido: sem `food_id`, `quantity` nem `unit`. */
   quick_entry?: QuickEntryPayload | null;
   quantity?: number;
   unit?: NutritionCode;

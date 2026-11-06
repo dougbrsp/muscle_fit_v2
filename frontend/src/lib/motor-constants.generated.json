@@ -1352,14 +1352,12 @@
     ],
     "meal_max_items": 30,
     "quick_entry": {
-      "weight_field": "weight_g",
       "nutrient_fields": [
         "energy_kcal",
         "protein_g",
         "carbohydrates_g",
         "total_fat_g"
       ],
-      "weight_max": 2000.0,
       "name_max_chars": 255,
       "nature": "USER_ENTERED",
       "source": "quick_entry",
