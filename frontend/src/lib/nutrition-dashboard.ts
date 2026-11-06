@@ -6,6 +6,7 @@
 // exibir (fração -> %, via `shareToPercent`) e se escolhe o rótulo/ordem.
 
 import { apiFetch } from './api';
+import motorConstants from './motor-constants.generated.json';
 import { ENERGY_NUTRIENT, nutrientField } from './nutrition-constants';
 import { shareToPercent } from './nutrition-format';
 import type { BalanceRow, DayBalance, DayTargetAction, NutritionDayTarget, NutritionLimitation, NutritionTotals, NutritionWeek, WeekReport } from './nutrition-types';
@@ -115,6 +116,75 @@ export type TdeeSuggestion = {
   limitation_items: NutritionLimitation[];
 };
 
+/** Atividade importada do Intervals com a kcal normalizada pelo motor (`adaptive_energy.days[].activities`). */
+export type AdaptiveActivity = {
+  id?: number | string | null;
+  external_id?: string | null;
+  start?: string | null;
+  local_date?: string | null;
+  duration_minutes?: number | null;
+  kind?: string | null;
+  name?: string | null;
+  reported_kcal?: number | null;
+  calorie_mode?: string | null;
+  active_kcal?: number | null;
+  counts_in_total?: boolean | null;
+  flags?: string[] | null;
+  duplicate_of?: string | number | null;
+  possible_duplicate_of?: Array<string | number> | null;
+  source?: string | null;
+};
+
+export type AdaptiveEnergyDay = {
+  day: string;
+  confirmed?: boolean | null;
+  active_kcal?: number | null;
+  counted_activities?: number | null;
+  has_possible_duplicates?: boolean | null;
+  reduced_precision?: boolean | null;
+  activities?: AdaptiveActivity[] | null;
+};
+
+/** `have`/`need` só vêm numéricos nos motivos de contagem; `unit` é informativo (a tela não o exibe sem rótulo do backend). */
+export type AdaptiveSuspensionReason = { code: string; have: number | null; need: number | null; unit?: string | null };
+
+export type AdaptiveEnergyState = {
+  date?: string | null;
+  bmr?: number | null;
+  bootstrap_tdee?: number | null;
+  bootstrap_mean_tdee?: number | null;
+  observed_tdee?: number | null;
+  adaptive_tdee?: number | null;
+  base_tdee?: number | null;
+  activity_calories_today?: number | null;
+  average_activity_calories?: number | null;
+  activity_adjustment?: number | null;
+  estimated_tdee_today?: number | null;
+  confidence?: number | null;
+  confidence_level?: string | null;
+  valid_days?: number | null;
+  window_days?: number | null;
+  last_update_date?: string | null;
+  trend_weight_kg?: number | null;
+  weight_slope_kg_per_day?: number | null;
+  weight_slope_kg_per_week?: number | null;
+  suspension_reasons?: AdaptiveSuspensionReason[] | null;
+  algorithm_version?: string | null;
+  data_quality_flags?: string[] | null;
+};
+
+/** Gasto adaptativo em sombra: só calculado e exibido, nenhuma meta usa (`applied: false`). */
+export type AdaptiveEnergy = {
+  available: boolean;
+  applied: false;
+  algorithm_version?: string | null;
+  unavailable_reason?: string | null;
+  /** Texto pronto do motivo (dono: backend). */
+  unavailable_reason_label?: string | null;
+  state?: AdaptiveEnergyState | null;
+  days?: AdaptiveEnergyDay[] | null;
+};
+
 export type NutritionDashboard = {
   user: { id: number; username: string; full_name: string | null };
   today: string;
@@ -132,7 +202,19 @@ export type NutritionDashboard = {
   projection: GoalProjection | null;
   /** Sempre `applied: false`: o dashboard só sugere, nunca altera o plano. */
   adaptive_tdee: { observed: ObservedTdee; suggestion: TdeeSuggestion; applied: false };
+  /** Gasto adaptativo em sombra; ausente em backend antigo. */
+  adaptive_energy?: AdaptiveEnergy | null;
 };
+
+// Rótulos do cartão de gasto adaptativo: o dono é o motor (`nutrition.adaptive_energy_labels[grupo][código]` do
+// JSON gerado). Código sem rótulo (payload mais novo que o JSON) cai no próprio código.
+export function adaptiveLabel(group: string, code: string | null | undefined): string {
+  if (!code) return '-';
+  const blocos = (motorConstants.nutrition as unknown as Record<string, unknown>).adaptive_energy_labels as
+    | Record<string, Record<string, string> | undefined>
+    | undefined;
+  return blocos?.[group]?.[code] ?? code;
+}
 
 /** Balanço de hoje (`GET /nutrition/today`): o que o card da home mostra. */
 export type NutritionToday = {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { Alert, Button, Card, Group, Modal, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react';
@@ -34,6 +35,7 @@ import type {
   NutritionProjection,
   NutritionPublishResponse,
   NutritionTargetDetail,
+  NutritionTdeeBreakdown,
 } from '@/lib/nutrition-types';
 import { formatDateBR } from '@/lib/physical-indicators-types';
 import { BRAND } from '@/theme';
@@ -48,6 +50,47 @@ function Line({ label, value }: { label: string; value: string }) {
         {value}
       </Text>
     </Group>
+  );
+}
+
+/**
+ * Composição do gasto total: só renderiza o que o motor mandou em `tdee_breakdown` (parcelas com rótulo,
+ * observações e total; a soma das parcelas é garantida pelo backend). A tela não decide parcelas por modo.
+ * Sem `tdee_breakdown` (backend antigo) não há botão e a linha de gasto total permanece como está.
+ */
+function TdeeBreakdown({ breakdown }: { breakdown: NutritionTdeeBreakdown | null | undefined }) {
+  const [aberto, { toggle }] = useDisclosure(false);
+  const painelId = useId();
+  if (!breakdown || breakdown.parts.length === 0) return null;
+  return (
+    <Stack gap={4} data-testid="gasto-composicao">
+      <Button
+        variant="subtle"
+        size="compact-xs"
+        onClick={toggle}
+        style={{ alignSelf: 'flex-start' }}
+        data-testid="gasto-composicao-toggle"
+        aria-expanded={aberto}
+        aria-controls={painelId}
+      >
+        {aberto ? 'Ocultar composição do gasto' : 'Ver composição do gasto'}
+      </Button>
+      <div id={painelId} hidden={!aberto}>
+        {aberto && (
+          <Stack gap={4} pl="sm">
+            {breakdown.parts.map((parte) => (
+              <Line key={parte.code} label={parte.label} value={formatKcal(parte.kcal)} />
+            ))}
+            {breakdown.notes.map((nota) => (
+              <Text key={nota.code} size="xs" c="dimmed" data-testid="gasto-nota">
+                {nota.label}
+              </Text>
+            ))}
+            <Line label="Gasto total" value={formatKcal(breakdown.total_kcal)} />
+          </Stack>
+        )}
+      </div>
+    </Stack>
   );
 }
 
@@ -75,6 +118,7 @@ export function TodayTargetCard({ target }: { target: NutritionTargetDetail }) {
           label={`Gasto total (${nutritionLabel(TDEE_MODE_OPTIONS, target.tdee.mode) ?? '-'} · fator ${fator})`}
           value={formatKcal(target.tdee.kcal)}
         />
+        <TdeeBreakdown breakdown={target.tdee_breakdown} />
         <Line
           label="Alvo calórico"
           value={`${formatKcal(target.kcal)}${delta == null ? '' : ` (${delta > 0 ? '+' : ''}${formatNumberOrDash(delta, 0)})`}`}

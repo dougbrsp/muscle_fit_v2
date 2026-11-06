@@ -8,6 +8,8 @@ Rotas (prefixo `/nutrition`):
                                    kcal e macros × meta, peso/%G/massa muscular,
                                    projeção até o alvo do plano e o TDEE adaptativo
                                    (só sugestão, `applied` sempre falso)
+- `GET /dashboard` também traz `adaptive_energy`: o gasto adaptativo em sombra (`nutrition_energy_service`, só leitura,
+                                   `applied` sempre falso, indisponível sem derrubar o dashboard)
 - `GET /today?user_id=`            só HOJE: materializa a meta de hoje (como o diário)
                                    e devolve meta, total e balanço; é o que o card da
                                    home mobile lê
@@ -39,9 +41,10 @@ from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import day_balance, target_macros
 from .intelligence.dashboard.body_service import moving_average_points
 from .intelligence.dashboard.metrics_registry import threshold
-from .intelligence.dashboard.time_windows import user_today_for
+from .intelligence.dashboard.time_windows import user_timezone, user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_days import balance_public, target_of
+from .nutrition_energy_service import shadow_block
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
@@ -77,6 +80,11 @@ def _connect():
 def _today_for(conn: Any, user_id: int) -> date:
     """Dia civil do ALUNO (fuso do perfil). Isolado para os testes congelarem."""
     return user_today_for(conn, user_id)
+
+
+def _timezone_for(conn: Any, user_id: int) -> str:
+    """Fuso do ALUNO (perfil). Isolado para os testes congelarem."""
+    return user_timezone(conn, user_id)
 
 
 def _as_date(value: Any) -> Optional[date]:
@@ -183,6 +191,8 @@ def get_dashboard(
             entradas = load_user_inputs(
                 cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos.settings.values()
             )
+            # Gasto adaptativo em SOMBRA (só leitura, `applied: false`); falha dele nunca derruba o dashboard.
+            energia_adaptativa = shadow_block(cur, aluno, hoje, entradas.series, _timezone_for(conn, aluno))
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
     metas_por_dia, alvos_lidos, totais_lidos = align_window(dias_lidos, metas_linhas, refeicoes)
@@ -294,6 +304,7 @@ def get_dashboard(
         "body": {"points": pontos, "weight_trend": tendencia_peso},
         "projection": projecao,
         "adaptive_tdee": adaptativo,
+        "adaptive_energy": energia_adaptativa,
     }
 
 

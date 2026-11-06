@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final, Mapping
 
+from . import activity_energy as activity_mod
+from . import adaptive_energy as adaptive_energy_mod
 from . import adaptive_tdee as atdee_mod
 from . import ai_usage as ai_usage_mod
 from . import bmr as bmr_mod
@@ -41,6 +43,7 @@ from . import plan_suggestion as ps_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
 from . import weekly_checkin as wc_mod
+from . import weight_trend as weight_trend_mod
 from .ai_usage import AiFeature
 from .anthropometrics import ActivityLevel, Sex
 from .bmr import BmrFormula
@@ -198,6 +201,108 @@ TDEE_BASIS_LABELS: Final[Mapping[str, str]] = {
     "auto_synced": "Automático, Intervals sincronizado (treino e atividades somados)",
     "auto_fallback": "Automático sem sincronizar (estimado pelo fator; treino e cardio não somados)",
 }
+
+# --- Composição do gasto da prévia (`energy_expenditure.tdee_breakdown`): rótulos das parcelas e notas ---------------
+TDEE_BREAKDOWN_BASE_LABELS: Final[Mapping[ee_mod.BreakdownBase, str]] = {
+    ee_mod.BreakdownBase.ROUTINE: "Gasto-base de rotina (TMB × fator sem exercício)",
+    ee_mod.BreakdownBase.FACTOR_WITH_EXERCISE: "Gasto total pelo fator com exercício (TMB × fator, treino já incluso)",
+    ee_mod.BreakdownBase.AUTO_FALLBACK: "Estimado pelo fator com exercício (Intervals sem sincronizar)",
+}
+TDEE_BREAKDOWN_PART_LABELS: Final[Mapping[str, str]] = {
+    ee_mod.BREAKDOWN_STRENGTH: "Treino de força",
+    ee_mod.BREAKDOWN_EXTRAS: "Cardio e caminhadas do Intervals",
+}
+TDEE_BREAKDOWN_NOTE_LABELS: Final[Mapping[str, str]] = {
+    ee_mod.BREAKDOWN_NOTE_INCLUDED: "O fator de atividade já inclui o seu exercício; o treino do dia não é somado de novo.",
+    ee_mod.BREAKDOWN_NOTE_AUTO_FALLBACK: TDEE_BASIS_NOTES["auto_fallback"],
+}
+
+
+def tdee_breakdown_public(breakdown: Any) -> Any:
+    """Composição do gasto pronta para a tela (`None` se o motor não montou): o motor entrega códigos e kcal; aqui só
+    entram os rótulos pt-BR."""
+    if breakdown is None:
+        return None
+    partes = []
+    for parte in breakdown.parts:
+        rotulo = (
+            TDEE_BREAKDOWN_BASE_LABELS[breakdown.base] if parte.code == ee_mod.BREAKDOWN_BASE
+            else TDEE_BREAKDOWN_PART_LABELS[parte.code]
+        )
+        partes.append({"code": parte.code, "label": rotulo, "kcal": parte.kcal})
+    notas = [{"code": codigo, "label": TDEE_BREAKDOWN_NOTE_LABELS[codigo]} for codigo in breakdown.notes]
+    return {"parts": partes, "notes": notas, "total_kcal": breakdown.total_kcal}
+
+
+# --- Gasto adaptativo em sombra (Lote A): a tela só exibe estes textos; os códigos são dos donos ---------------------
+# Nível de confiança (`adaptive_energy.ConfidenceLevel`).
+CONFIDENCE_LEVEL_LABELS: Final[Mapping[adaptive_energy_mod.ConfidenceLevel, str]] = {
+    adaptive_energy_mod.ConfidenceLevel.LOW: "Baixa",
+    adaptive_energy_mod.ConfidenceLevel.MEDIUM: "Média",
+    adaptive_energy_mod.ConfidenceLevel.HIGH: "Alta",
+}
+
+# Por que a janela não atualizou o gasto adaptativo (`Shortfall.code` de `suspension_reasons`).
+SUSPENSION_REASON_LABELS: Final[Mapping[str, str]] = {
+    adaptive_energy_mod.REASON_COMPLETE_DAYS_BELOW_MIN: "Poucos dias com registro alimentar completo na janela.",
+    adaptive_energy_mod.REASON_WEIGHT_HISTORY_SHORT: "Histórico de peso curto demais.",
+    adaptive_energy_mod.REASON_WEIGHINS_BELOW_MIN: "Poucas pesagens por semana.",
+    adaptive_energy_mod.REASON_SLOPE_UNAVAILABLE: "Não foi possível calcular a tendência do peso.",
+    adaptive_energy_mod.REASON_SLOPE_IMPLAUSIBLE: "A variação de peso na janela é grande demais para ser confiável.",
+    adaptive_energy_mod.REASON_FAT_MASS_MISSING: "Falta a massa gorda (bioimpedância) para estimar a energia do peso.",
+    adaptive_energy_mod.REASON_OBSERVED_IMPLAUSIBLE: "O gasto observado ficou fora de uma faixa plausível.",
+}
+
+# Marcas de qualidade dos dados (`data_quality_flags` do estado): do estimador e da tendência de peso.
+DATA_QUALITY_FLAG_LABELS: Final[Mapping[str, str]] = {
+    adaptive_energy_mod.FLAG_ACTIVITY_PENDING: "Atividades de hoje ainda não sincronizadas.",
+    adaptive_energy_mod.FLAG_BOOTSTRAP_ACTIVITY_UNKNOWN: "Sem atividade confirmada recente para a estimativa inicial.",
+    adaptive_energy_mod.FLAG_BMR_MISSING: "Sem taxa metabólica basal calculável.",
+    adaptive_energy_mod.FLAG_PARTIAL_DAYS_EXCLUDED: "Dias com registro parcial ficaram fora da média.",
+    adaptive_energy_mod.FLAG_UPDATE_SUSPENDED: "Atualização do gasto adaptativo suspensa (veja os motivos).",
+    adaptive_energy_mod.FLAG_ADAPTIVE_UNAVAILABLE: "Gasto adaptativo ainda indisponível; usando a estimativa inicial.",
+    adaptive_energy_mod.FLAG_ADJUSTMENT_CLAMPED: "Ajuste diário pelas atividades limitado ao máximo permitido.",
+    adaptive_energy_mod.FLAG_UPDATE_CLAMPED: "Atualização do gasto limitada ao passo máximo permitido.",
+    weight_trend_mod.FLAG_WEIGHT_MISSING: "Sem pesagem no período.",
+    weight_trend_mod.FLAG_WEIGHT_INVALID_READINGS: "Pesagens inválidas foram ignoradas.",
+    weight_trend_mod.FLAG_WEIGHT_OUTLIER: "Uma pesagem atípica foi desconsiderada.",
+    weight_trend_mod.FLAG_WEIGHT_LEVEL_SHIFT: "O peso mudou de patamar e a tendência foi reajustada.",
+    weight_trend_mod.FLAG_WEIGHT_HISTORY_SHORT: "Histórico de peso curto.",
+    weight_trend_mod.FLAG_WEIGHT_HISTORY_BELOW_IDEAL: "Histórico de peso abaixo do ideal.",
+    weight_trend_mod.FLAG_WEIGHINS_BELOW_MIN: "Poucas pesagens por semana.",
+    weight_trend_mod.FLAG_WEIGHINS_BELOW_RECOMMENDED: "Pesagens abaixo do recomendado (cerca de 5 por semana).",
+}
+
+# Modo da kcal do relógio (`activity_energy.CalorieMode`).
+CALORIE_MODE_LABELS: Final[Mapping[activity_mod.CalorieMode, str]] = {
+    activity_mod.CalorieMode.ACTIVE: "Calorias ativas",
+    activity_mod.CalorieMode.GROSS: "Calorias totais do exercício",
+    activity_mod.CalorieMode.UNKNOWN: "Não informado (tratado como total)",
+}
+
+# Marcas por atividade (`activity_energy.ActivityFlag`).
+ACTIVITY_FLAG_LABELS: Final[Mapping[activity_mod.ActivityFlag, str]] = {
+    activity_mod.ActivityFlag.INVALID_KCAL: "Calorias ausentes ou inválidas: fora do total.",
+    activity_mod.ActivityFlag.MISSING_DURATION: "Sem duração: não dá para descontar o repouso; fora do total.",
+    activity_mod.ActivityFlag.MISSING_BMR: "Sem taxa metabólica basal: não dá para descontar o repouso; fora do total.",
+    activity_mod.ActivityFlag.REDUCED_PRECISION: "Precisão reduzida: não se sabe se as calorias são ativas ou totais.",
+    activity_mod.ActivityFlag.DUPLICATE_EXTERNAL_ID: "Duplicata (mesmo identificador): fora do total.",
+    activity_mod.ActivityFlag.DUPLICATE_FINGERPRINT: "Duplicata (mesmos horário, duração e calorias): fora do total.",
+    activity_mod.ActivityFlag.POSSIBLE_DUPLICATE: "Possível duplicata: contada, confira.",
+}
+
+# Por que o bloco do gasto adaptativo não veio (`unavailable_reason` do dashboard).
+ADAPTIVE_UNAVAILABLE_NO_DATA = "no_data"
+ADAPTIVE_UNAVAILABLE_ERROR = "error"
+ADAPTIVE_UNAVAILABLE_LABELS: Final[Mapping[str, str]] = {
+    ADAPTIVE_UNAVAILABLE_NO_DATA: "Ainda não há refeições nem pesagens suficientes para estimar.",
+    ADAPTIVE_UNAVAILABLE_ERROR: "Não foi possível calcular agora.",
+}
+
+
+def adaptive_unavailable_label(code: str) -> str:
+    return ADAPTIVE_UNAVAILABLE_LABELS.get(code, code)
+
 
 # "Rotina fora do exercício" (modo automático): o que a pessoa faz no dia sem contar o treino. Os códigos são os de
 # `ActivityLevel` (a coluna `activity_level` do plano guarda a rotina) e o fator vem da tabela de NÃO-exercício.
