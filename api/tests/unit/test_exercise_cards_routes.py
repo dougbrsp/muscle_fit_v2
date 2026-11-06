@@ -51,7 +51,7 @@ def _client(identity: Identity | None) -> TestClient:
 
 
 @pytest.fixture
-def admin(db, clock, s3, openai, prompts, dispatched) -> TestClient:  # noqa: F811 - fixture do pytest importada (falso positivo)
+def admin(db, clock, s3, openai, dispatched) -> TestClient:  # noqa: F811 - fixture do pytest importada (falso positivo)
     return _client(Identity(user_id=ADMIN, role="admin", source="session"))
 
 
@@ -355,3 +355,219 @@ def test_auth_me_expoe_a_flag_em_features(monkeypatch, valor, esperado):
     corpo = TestClient(app).get("/auth/me").json()
     assert corpo["features"] == {"exercise_cards": esperado}
     assert corpo["role"] == "admin" and corpo["source"] == "session"  # o resto do contrato intacto
+
+
+# ---------------------------------------------------------------------------
+# Fotos de referencia (V3): /exercises/{id}/card-references
+# ---------------------------------------------------------------------------
+#
+# Fixtures proprias (`ref_*`): so banco, relogio e S3 falsos - nada de OpenAI,
+# prompt nem dispatch, que pertencem ao fluxo de geracao.
+
+REF_BASE = "/exercises/42/card-references"
+
+
+def _foto(w: int = 640, h: int = 480) -> str:
+    import base64
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (w, h), (90, 120, 150)).save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii").rstrip("=")
+
+
+@pytest.fixture
+def ref_admin(db, clock, s3) -> TestClient:  # noqa: F811 - fixtures do pytest importadas (falso positivo)
+    return _client(Identity(user_id=ADMIN, role="admin", source="session"))
+
+
+@pytest.fixture
+def ref_regular(db, clock, s3) -> TestClient:  # noqa: F811
+    return _client(Identity(user_id=REGULAR, role="regular", source="session"))
+
+
+def _rotas_de_referencia(ref_id: int = 1):
+    return [
+        ("post", REF_BASE, {"image_base64": _foto()}),
+        ("get", REF_BASE, None),
+        ("delete", f"{REF_BASE}/{ref_id}", None),
+    ]
+
+
+def _chamar_ref(client: TestClient, metodo: str, path: str, body):
+    if metodo == "get":
+        return client.get(path)
+    if metodo == "delete":
+        return client.delete(path)
+    return client.post(path, json=body)
+
+
+def test_referencias_nao_admin_403_em_toda_rota(ref_regular, db, s3):  # noqa: F811
+    ref_id = db.add_reference(42)
+    for metodo, path, body in _rotas_de_referencia(ref_id):
+        resposta = _chamar_ref(ref_regular, metodo, path, body)
+        assert resposta.status_code == 403, (metodo, path, resposta.text)
+    assert db.reference(ref_id)["deleted_at"] is None and s3.keys() == []
+
+
+def test_referencias_sem_credencial_401(db):  # noqa: F811
+    cliente = _client(None)
+    for metodo, path, body in _rotas_de_referencia():
+        assert _chamar_ref(cliente, metodo, path, body).status_code == 401, (metodo, path)
+
+
+def test_referencias_flag_desligada_503_em_toda_rota(ref_admin, db, monkeypatch):  # noqa: F811
+    monkeypatch.setenv(svc.ENV_ENABLED, "false")
+    ref_id = db.add_reference(42)
+    for metodo, path, body in _rotas_de_referencia(ref_id):
+        resposta = _chamar_ref(ref_admin, metodo, path, body)
+        assert resposta.status_code == 503, (metodo, path, resposta.text)
+        assert resposta.json()["detail"]["error"] == "exercise_card_generation_disabled"
+    assert db.reference(ref_id)["deleted_at"] is None
+
+
+def test_referencias_ciclo_completo_contrato_http(ref_admin, db, s3):  # noqa: F811
+    vazio = ref_admin.get(REF_BASE)
+    assert vazio.status_code == 200
+    assert vazio.json() == {
+        "items": [],
+        "limits": {
+            "max_active": 3,
+            "max_upload_bytes": 2097152,
+            "resize_max_edge_px": 1536,
+            "resize_jpeg_quality_percent": 90,
+            "note_max_chars": 160,
+            "accepted_types": ["image/png", "image/jpeg", "image/webp"],
+        },
+    }
+
+    criada = ref_admin.post(REF_BASE, json={"image_base64": _foto(700, 500), "note": " banco  inclinado "})
+    assert criada.status_code == 201
+    ref = criada.json()["reference"]
+    assert set(ref) == {"id", "url", "url_expires_at", "width", "height", "bytes", "note", "created_at"}
+    assert (ref["width"], ref["height"], ref["note"]) == (700, 500, "banco inclinado")
+    assert ref["url"].startswith("https://fake-s3.local/") and ref["url_expires_at"].endswith("Z")
+
+    lista = ref_admin.get(REF_BASE).json()
+    assert [item["id"] for item in lista["items"]] == [ref["id"]]
+    assert lista["items"][0]["note"] == "banco inclinado"
+
+    excluida = ref_admin.delete(f"{REF_BASE}/{ref['id']}")
+    assert excluida.status_code == 204 and excluida.content == b""
+    assert ref_admin.get(REF_BASE).json()["items"] == []
+    assert s3.keys() == []  # o objeto saiu do S3
+
+
+def test_referencias_base64_com_padding_tambem_e_aceito(ref_admin):  # noqa: F811
+    texto = _foto(300, 300)
+    texto += "=" * (-len(texto) % 4)
+    assert ref_admin.post(REF_BASE, json={"image_base64": texto}).status_code == 201
+
+
+@pytest.mark.parametrize(
+    "corpo, status, codigo",
+    [
+        ({}, 400, "reference_invalid_encoding"),
+        ({"image_base64": ""}, 400, "reference_invalid_encoding"),
+        ({"image_base64": "$$$"}, 400, "reference_invalid_encoding"),
+        ({"image_base64": "aGVsbG8gd29ybGQ"}, 400, "reference_unsupported_type"),  # base64 valido, nao e imagem
+        ({"image_base64": "A" * 4_200_000}, 400, "reference_too_large"),
+        ({"image_base64": _foto(200, 600)}, 400, "reference_too_small"),
+        ({"image_base64": _foto(), "note": "x" * 161}, 422, "reference_note_too_long"),
+    ],
+    ids=["ausente", "vazio", "fora-do-alfabeto", "nao-e-imagem", "texto-grande", "pequena", "nota-longa"],
+)
+def test_referencias_erros_do_post(ref_admin, db, s3, corpo, status, codigo):  # noqa: F811
+    resposta = ref_admin.post(REF_BASE, json=corpo)
+    assert resposta.status_code == status, resposta.text
+    detalhe = resposta.json()["detail"]
+    assert detalhe["error"] == codigo and detalhe["message"]
+    assert s3.keys() == []
+    assert db.raw.execute("SELECT COUNT(*) FROM exercise_card_references").fetchone()[0] == 0
+
+
+def test_referencias_pixels_demais_400(ref_admin, monkeypatch):  # noqa: F811
+    from app import exercise_card_references as refs
+
+    monkeypatch.setattr(refs, "MAX_SOURCE_PIXELS", 100 * 100)
+    resposta = ref_admin.post(REF_BASE, json={"image_base64": _foto(400, 400)})
+    assert resposta.status_code == 400
+    assert resposta.json()["detail"]["error"] == "reference_too_many_pixels"
+
+
+def test_referencias_nunca_busca_url_externa(ref_admin, s3, monkeypatch):  # noqa: F811
+    import socket
+    import urllib.request
+
+    def sem_rede(*args, **kwargs):
+        raise AssertionError("o servidor tentou acessar a rede")
+
+    monkeypatch.setattr(urllib.request, "urlopen", sem_rede)
+    monkeypatch.setattr(socket, "create_connection", sem_rede)
+    for corpo in (
+        {"image_url": "http://127.0.0.1/foto.png"},
+        {"image_base64": "http://169.254.169.254/latest/meta-data"},
+        {"url": "https://exemplo.com/a.png", "image_base64": None},
+    ):
+        resposta = ref_admin.post(REF_BASE, json=corpo)
+        assert resposta.status_code == 400 and resposta.json()["detail"]["error"] == "reference_invalid_encoding"
+    assert s3.keys() == []
+
+
+def test_referencias_corpo_que_nao_e_objeto_e_422(ref_admin):  # noqa: F811
+    assert ref_admin.post(REF_BASE, json=["x"]).status_code == 422
+
+
+def test_referencias_limite_de_tres_409(ref_admin, s3):  # noqa: F811
+    for _ in range(3):
+        assert ref_admin.post(REF_BASE, json={"image_base64": _foto()}).status_code == 201
+    resposta = ref_admin.post(REF_BASE, json={"image_base64": _foto()})
+    assert resposta.status_code == 409
+    assert resposta.json()["detail"]["error"] == "exercise_card_reference_limit"
+    assert len(s3.keys()) == 3
+    assert len(ref_admin.get(REF_BASE).json()["items"]) == 3
+
+
+def test_referencias_exercicio_inexistente_404(ref_admin):  # noqa: F811
+    for metodo, path, body in (
+        ("post", "/exercises/999/card-references", {"image_base64": _foto()}),
+        ("get", "/exercises/999/card-references", None),
+        ("delete", "/exercises/999/card-references/1", None),
+    ):
+        resposta = _chamar_ref(ref_admin, metodo, path, body)
+        assert resposta.status_code == 404, (metodo, resposta.text)
+        assert resposta.json()["detail"]["error"] == "exercise_not_found"
+
+
+def test_referencias_anti_idor_404_igual_a_inexistente(ref_admin, db, s3):  # noqa: F811
+    de_outro = ref_admin.post("/exercises/43/card-references", json={"image_base64": _foto()}).json()["reference"]
+    cruzada = ref_admin.delete(f"{REF_BASE}/{de_outro['id']}")
+    inexistente = ref_admin.delete(f"{REF_BASE}/99999")
+    for resposta in (cruzada, inexistente):
+        assert resposta.status_code == 404
+        assert resposta.json()["detail"]["error"] == "exercise_card_reference_not_found"
+    assert cruzada.json() == inexistente.json()  # indistinguiveis
+    assert db.reference(de_outro["id"])["deleted_at"] is None
+    assert [i["id"] for i in ref_admin.get("/exercises/43/card-references").json()["items"]] == [de_outro["id"]]
+    assert ref_admin.get(REF_BASE).json()["items"] == []  # a de 43 nao aparece em 42
+
+
+def test_referencias_excluir_duas_vezes_404(ref_admin):  # noqa: F811
+    ref = ref_admin.post(REF_BASE, json={"image_base64": _foto()}).json()["reference"]
+    assert ref_admin.delete(f"{REF_BASE}/{ref['id']}").status_code == 204
+    segunda = ref_admin.delete(f"{REF_BASE}/{ref['id']}")
+    assert segunda.status_code == 404 and segunda.json()["detail"]["error"] == "exercise_card_reference_not_found"
+
+
+def test_referencias_falha_do_s3_502_sem_vazar_detalhe(ref_admin, db, s3):  # noqa: F811
+    s3.fail_put_keys.add("exercise-card-references/42/1.jpg")
+    resposta = ref_admin.post(REF_BASE, json={"image_base64": _foto()})
+    assert resposta.status_code == 502
+    assert resposta.json()["detail"]["error"] == "exercise_card_reference_storage_failed"
+    assert "exercise-card-references" not in resposta.text and "simulado" not in resposta.text
+    assert db.raw.execute("SELECT COUNT(*) FROM exercise_card_references").fetchone()[0] == 0
+
+
+def test_referencias_nao_colidem_com_as_outras_rotas_do_exercicio(ref_admin, db):  # noqa: F811
+    assert ref_admin.get("/exercises/42/card").status_code == 200
+    assert ref_admin.get("/exercises/42/card-generations").status_code == 200
+    assert ref_admin.get(REF_BASE).status_code == 200
