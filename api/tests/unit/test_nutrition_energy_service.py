@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app import nutrition_adjustments as adj
 from app import nutrition_dashboard as dash_mod
 from app import nutrition_days as days_mod
 from app import nutrition_energy_service as svc_energy
@@ -158,9 +159,9 @@ def test_usa_so_as_linhas_do_aluno_alvo(db):
 
 
 def _sem_registro_do_sync(consultas: list[str]) -> list[str]:
-    """Tira as consultas da 107 (detecção da tabela, schema atual e execuções do sync): a contagem do núcleo não muda."""
+    """Tira as consultas da 107 e da 108 (tabelas, schema, execuções do sync, fechamentos e correções): o núcleo não muda."""
     return [c for c in consultas if c != svc_energy.SYNC_RUNS_SQL and "information_schema" not in c
-            and c != _CURRENT_SCHEMA_SQL]
+            and c != _CURRENT_SCHEMA_SQL and c not in (adj.CLOSURES_SQL, adj.CORRECTIONS_SQL)]
 
 
 def test_sem_atividade_importada_o_dia_nao_e_confirmado_e_so_ha_tres_selects(db):
@@ -173,6 +174,8 @@ def test_sem_atividade_importada_o_dia_nao_e_confirmado_e_so_ha_tres_selects(db)
     # refeições, TMB gravada e prova de sincronização (sem atividades, sem 4ª consulta); fora a leitura das execuções do sync
     assert len(_sem_registro_do_sync(consultas)) == 3
     assert sum(1 for c in consultas if c == svc_energy.SYNC_RUNS_SQL) == 1
+    # Lote G (108): 1 SELECT de fechamentos e 1 de correções por carga do histórico
+    assert [consultas.count(adj.CLOSURES_SQL), consultas.count(adj.CORRECTIONS_SQL)] == [1, 1]
     assert all(not d["confirmed"] for d in bloco["days"])
     assert svc_energy.SHADOW_ACTIVITIES_SQL not in consultas
 
@@ -253,7 +256,9 @@ def test_export_para_o_frontend_traz_os_rotulos_por_grupo_e_codigo():
 
     rotulos = nutrition.export_for_frontend()["adaptive_energy_labels"]
     assert set(rotulos) == {"confidence_level", "calorie_mode", "activity_flag", "data_quality_flag",
-                            "suspension_reason", "unavailable_reason", "day_sync_status", "day_confirmation_source"}
+                            "suspension_reason", "unavailable_reason", "day_sync_status", "day_confirmation_source",
+                            "completeness_source", "activity_correction_action", "activity_correction_energy_kind",
+                            "report_adaptive_basis"}
     assert rotulos["confidence_level"]["high"] == "Alta"
     assert set(rotulos["activity_flag"]) == {f.value for f in ae.ActivityFlag}
     assert set(rotulos["calorie_mode"]) == {m.value for m in ae.CalorieMode}

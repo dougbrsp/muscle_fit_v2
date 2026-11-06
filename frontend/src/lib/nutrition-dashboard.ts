@@ -133,7 +133,16 @@ export type AdaptiveActivity = {
   duplicate_of?: string | number | null;
   possible_duplicate_of?: Array<string | number> | null;
   source?: string | null;
+  /** Correção manual aplicada pelo motor (Lote G); null/ausente = sem correção. */
+  correction?: ActivityCorrection | null;
+  /** Atividade excluída pelo usuário: continua listada, mas não soma. */
+  excluded?: boolean | null;
 };
+
+export type ActivityCorrectionAction = string;
+/** Natureza da energia na reclassificação; códigos em `ADAPTIVE_CODES`, rótulo do backend. */
+export type ActivityEnergyKind = string;
+export type ActivityCorrection = { action: ActivityCorrectionAction; energy_kind?: ActivityEnergyKind | string | null };
 
 export type AdaptiveEnergyDay = {
   day: string;
@@ -213,6 +222,17 @@ export type NutritionDashboard = {
 
 // Rótulos do cartão de gasto adaptativo: o dono é o motor (`nutrition.adaptive_energy_labels[grupo][código]` do
 // JSON gerado). Código sem rótulo (payload mais novo que o JSON) cai no próprio código.
+/** Códigos do motor exportados (`nutrition.adaptive_codes`): a tela não repete esses literais. */
+const ADAPTIVE_CODES_JSON = (motorConstants.nutrition as unknown as { adaptive_codes: Record<string, string> }).adaptive_codes;
+export const ADAPTIVE_CODES = {
+  manualClose: ADAPTIVE_CODES_JSON.completeness_source_manual_close,
+  intakeRule: ADAPTIVE_CODES_JSON.completeness_source_intake_rule,
+  exclude: ADAPTIVE_CODES_JSON.correction_action_exclude,
+  reclassify: ADAPTIVE_CODES_JSON.correction_action_reclassify,
+  kindActive: ADAPTIVE_CODES_JSON.correction_energy_kind_active,
+  kindGross: ADAPTIVE_CODES_JSON.correction_energy_kind_gross,
+} as const;
+
 export function adaptiveLabel(group: string, code: string | null | undefined): string {
   if (!code) return '-';
   const blocos = (motorConstants.nutrition as unknown as Record<string, unknown>).adaptive_energy_labels as

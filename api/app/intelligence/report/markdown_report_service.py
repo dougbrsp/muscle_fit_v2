@@ -825,7 +825,8 @@ def _collect_nutrition(conn: Any, *, user_id: int, window: WindowInfo) -> dict[s
     from ...domain.nutrition import dashboard as dash
     from ...domain.nutrition import report_window
     from ...nutrition_schema import require_diary_tables, require_nutrition_tables
-    from ...nutrition_targets_service import load_published_plans
+    from ...nutrition_energy_service import adaptive_states_for_report
+    from ...nutrition_targets_service import load_published_plans, load_user_inputs
     from ..dashboard.time_windows import user_today_for
 
     today = user_today_for(conn, user_id)
@@ -835,6 +836,13 @@ def _collect_nutrition(conn: Any, *, user_id: int, window: WindowInfo) -> dict[s
         require_diary_tables(cur)
         target_rows, meal_rows = nd.read_window_rows(cur, user_id, days[0], window.date_to, today)
         plans = load_published_plans(cur, user_id)
+        # Modo adaptativo (Lote G): estados do histórico do motor (com fechamentos e correções) do plano que vale no fim da
+        # janela; plano legado ou falha de leitura = vazio (o resumo do dono vira `null`).
+        em_vigor = plans.for_day(window.date_to)
+        adaptive_states = adaptive_states_for_report(
+            cur, user_id, today, em_vigor[1] if em_vigor is not None else None,
+            lambda: load_user_inputs(cur, user_id, today, today, today).series,
+        )
     rows_by_day, targets, totals = nd.align_window(days, target_rows, meal_rows)
     report = report_window.window_report(
         days,
@@ -844,6 +852,7 @@ def _collect_nutrition(conn: Any, *, user_id: int, window: WindowInfo) -> dict[s
         totals,
         [None if r is None else r.get("tdee_kcal") for r in rows_by_day],
         [None if r is None else r.get("tdee_basis") for r in rows_by_day],
+        adaptive_states,
     )
     return {"available": True, **report}
 

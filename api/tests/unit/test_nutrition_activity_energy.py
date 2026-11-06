@@ -213,6 +213,7 @@ def test_to_dict_e_serializavel_e_traz_o_contrato():
     assert set(dados["activities"][0]) == {
         "id", "external_id", "start", "local_date", "duration_minutes", "kind", "name", "reported_kcal",
         "calorie_mode", "active_kcal", "counts_in_total", "flags", "duplicate_of", "possible_duplicate_of", "source",
+        "correction", "excluded",
     }
     assert dados["activities"][1]["flags"][-1] == "duplicate_external_id"
 

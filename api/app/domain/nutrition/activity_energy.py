@@ -28,6 +28,12 @@ ausência de dado, spec §19). Critério por dia (`day_confirmed`): o usuário j
 houve sincronização depois do fim do dia local mais a folga `DAY_CONFIRMATION_LAG_HOURS`. Dia em andamento nunca é
 confirmado, porque ainda não houve sincronização depois do seu fim.
 
+Correção manual (Lote G). O usuário pode EXCLUIR uma atividade (duplicata ou erro) ou RECLASSIFICAR o que a kcal do
+relógio representa (`energy_kind` ativa ou total/bruta, o atributo `calorie_mode` que a normalização já usa).
+`apply_activity_corrections` roda ANTES de normalizar e deduplicar: a excluída continua listada (`excluded`,
+`correction`), não soma e não participa da deduplicação; a reclassificada é normalizada com o modo corrigido. Correção
+de id inexistente é ignorada; `reclassify` sem `energy_kind` válido não tem efeito. Desfazer = remover a correção.
+
 Registro de execuções (Lote F). Com `runs` (execuções OK do sync, uma por rodada) o dia é confirmado EXATAMENTE: a partir
 da data da primeira execução registrada, o dia só vale se uma execução cuja janela cobre o dia terminou depois do fim
 do dia mais a folga. O que isso corrige é a AUSÊNCIA de execução (conexão caída, job parado): ela deixa o dia pendente
@@ -46,7 +52,7 @@ import math
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Any, Final, Iterable, Mapping, Optional, Sequence
+from typing import Any, Final, Iterable, Literal, Mapping, Optional, Sequence
 
 from .anthropometrics import positive_number
 
@@ -99,6 +105,11 @@ DAY_CONFIRMATION_SOURCE_LAST_SYNC: Final[str] = "last_sync"  # regra antiga: úl
 # 90) mais 30 dias de folga. Espelho com teste de paridade (`adaptive_energy` importa este módulo, não o contrário).
 SYNC_RUN_RETENTION_DAYS: Final[int] = 120
 
+# Correção manual de atividade (Lote G): códigos estáveis (rótulos em `labels.py`, grupo `activity_correction`).
+CORRECTION_ACTION_EXCLUDE: Final[str] = "exclude"
+CORRECTION_ACTION_RECLASSIFY: Final[str] = "reclassify"
+CORRECTION_ACTIONS: Final[tuple[str, ...]] = (CORRECTION_ACTION_EXCLUDE, CORRECTION_ACTION_RECLASSIFY)
+
 ROUNDING_DIGITS_PUBLIC: Final[int] = 1
 
 # Dias de atividade que a API devolve para exibição (o mais recente primeiro). Contrato com o frontend: 7.
@@ -112,6 +123,9 @@ class CalorieMode(str, Enum):
     GROSS = "gross"
     UNKNOWN = "unknown"
 
+
+# Valores de `CalorieMode` aceitos na reclassificação (sem literais repetidos).
+CORRECTION_ENERGY_KINDS: Final[tuple[str, ...]] = (CalorieMode.ACTIVE.value, CalorieMode.GROSS.value)
 
 _CALORIE_MODE_ALIASES: Final[Mapping[str, CalorieMode]] = {
     "active": CalorieMode.ACTIVE,
@@ -135,9 +149,23 @@ class ActivityFlag(str, Enum):
     MISSING_DURATION = "missing_duration"  # kcal bruta sem duração: não dá para descontar o repouso; fora do total
     MISSING_BMR = "missing_bmr"  # kcal bruta sem TMB: não dá para descontar o repouso; fora do total
     REDUCED_PRECISION = "reduced_precision"  # modo da kcal desconhecido (D4): tratada como bruta
+    EXCLUDED_BY_USER = "excluded_by_user"  # correção manual (Lote G): fora do total
     DUPLICATE_EXTERNAL_ID = "duplicate_external_id"  # duplicata certa (mesmo id externo): fora do total
     DUPLICATE_FINGERPRINT = "duplicate_fingerprint"  # duplicata certa (mesmo fingerprint): fora do total
     POSSIBLE_DUPLICATE = "possible_duplicate"  # só sinalizada: CONTA no total
+
+
+@dataclass(frozen=True)
+class ActivityCorrection:
+    """Correção manual de UMA atividade (`activity_id` como o serviço a identifica, igual a `RawActivity.id`).
+    `action` ∈ `CORRECTION_ACTIONS`; `energy_kind` ('active' | 'gross') só vale em `reclassify`."""
+
+    activity_id: str
+    action: Literal["exclude", "reclassify"]
+    energy_kind: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"action": self.action, "energy_kind": self.energy_kind}
 
 
 @dataclass(frozen=True)
@@ -156,6 +184,7 @@ class RawActivity:
     calorie_mode: Any = None
     external_id: Optional[str] = None
     source: str = FINGERPRINT_SOURCE_DEFAULT
+    correction: Optional[ActivityCorrection] = None  # preenchido por `apply_activity_corrections`
 
 
 @dataclass(frozen=True)
@@ -176,6 +205,12 @@ class NormalizedActivity:
     duplicate_of: Optional[str] = None
     possible_duplicate_of: tuple[str, ...] = ()
     source: str = FINGERPRINT_SOURCE_DEFAULT
+    correction: Optional[ActivityCorrection] = None
+
+    @property
+    def excluded(self) -> bool:
+        """Excluída à mão pelo usuário: listada, mas fora do total e da deduplicação."""
+        return self.correction is not None and self.correction.action == CORRECTION_ACTION_EXCLUDE
 
     @property
     def local_date(self) -> date:
@@ -188,7 +223,7 @@ class NormalizedActivity:
 
     @property
     def counts_in_total(self) -> bool:
-        return self.active_kcal is not None and not self.is_certain_duplicate
+        return self.active_kcal is not None and not self.is_certain_duplicate and not self.excluded
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -207,6 +242,8 @@ class NormalizedActivity:
             "duplicate_of": self.duplicate_of,
             "possible_duplicate_of": list(self.possible_duplicate_of),
             "source": self.source,
+            "correction": None if self.correction is None else self.correction.to_dict(),
+            "excluded": self.excluded,
         }
 
 
@@ -240,6 +277,30 @@ def activity_duration_seconds(elapsed_seconds: Any, moving_seconds: Any) -> Opti
     return decorrido if decorrido is not None else positive_number(moving_seconds)
 
 
+def apply_activity_corrections(
+    activities: Iterable[RawActivity], corrections: Iterable[ActivityCorrection]
+) -> tuple[RawActivity, ...]:
+    """Aplica as correções manuais às atividades cruas, ANTES de normalizar e deduplicar (ordem preservada).
+
+    `exclude` marca a atividade (`correction`); `reclassify` com `energy_kind` válido troca o `calorie_mode` e marca
+    `correction`; `reclassify` sem tipo válido, ação desconhecida e id sem atividade são ignorados. Com mais de uma
+    correção para o mesmo id vale a última. Nunca levanta."""
+    por_id: dict[str, ActivityCorrection] = {}
+    for correcao in corrections:
+        por_id[str(correcao.activity_id)] = correcao
+    resultado: list[RawActivity] = []
+    for atividade in activities:
+        correcao = por_id.get(str(atividade.id))
+        if correcao is not None and correcao.action == CORRECTION_ACTION_EXCLUDE:
+            atividade = replace(atividade, correction=correcao)
+        elif correcao is not None and correcao.action == CORRECTION_ACTION_RECLASSIFY:
+            tipo = str(correcao.energy_kind or "").strip().lower()
+            if tipo in CORRECTION_ENERGY_KINDS:
+                atividade = replace(atividade, calorie_mode=tipo, correction=correcao)
+        resultado.append(atividade)
+    return tuple(resultado)
+
+
 def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActivity:
     """Uma atividade crua -> normalizada. Nunca levanta: kcal inválida ou impossível de normalizar vira
     `active_kcal=None` com a marca do motivo. A deduplicação é um passo à parte (`deduplicate`)."""
@@ -249,6 +310,8 @@ def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActi
     informada = positive_number(raw.calories_kcal)
     marcas: list[ActivityFlag] = []
     ativa: Optional[float] = None
+    if raw.correction is not None and raw.correction.action == CORRECTION_ACTION_EXCLUDE:
+        marcas.append(ActivityFlag.EXCLUDED_BY_USER)
     if informada is None or informada > MAX_PLAUSIBLE_ACTIVITY_KCAL:
         marcas.append(ActivityFlag.INVALID_KCAL)
     elif modo == CalorieMode.ACTIVE:
@@ -273,6 +336,7 @@ def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActi
         active_kcal=ativa,
         flags=tuple(marcas),
         source=_clean_text(raw.source) or FINGERPRINT_SOURCE_DEFAULT,
+        correction=raw.correction,
     )
 
 
@@ -318,7 +382,7 @@ def deduplicate(activities: Iterable[NormalizedActivity]) -> tuple[NormalizedAct
     2. Mesmo fingerprint e o par não tem dois ids externos distintos (dois ids diferentes são atividades diferentes) ->
        duplicata CERTA (`DUPLICATE_FINGERPRINT`): fora do total.
     3. Mesmo tipo, início próximo e duração semelhante -> `POSSIBLE_DUPLICATE` nas DUAS (`possible_duplicate_of`): só
-       sinaliza, CONTA no total (excluir sem certeza esconderia treino real; a exclusão manual é do Lote E)."""
+       sinaliza, CONTA no total (excluir sem certeza esconderia treino real; a exclusão manual é `apply_activity_corrections`, Lote G)."""
     ordenadas = sorted(enumerate(activities), key=lambda par: (par[1].start, par[0]))
     mantidas: list[NormalizedActivity] = []
     resultado: list[NormalizedActivity] = []
@@ -327,6 +391,9 @@ def deduplicate(activities: Iterable[NormalizedActivity]) -> tuple[NormalizedAct
     indice_resultado: dict[str, int] = {}
 
     for _, atividade in ordenadas:
+        if atividade.excluded:  # excluída à mão: listada, fora da deduplicação (não vira "original" de ninguém)
+            resultado.append(atividade)
+            continue
         original = None
         marca = None
         if atividade.external_id is not None and atividade.external_id in por_id_externo:
@@ -491,6 +558,7 @@ def summarize_days(
     last_sync_at: Optional[datetime],
     tracking_started_on: Optional[date] = None,
     runs: Sequence[SyncRun] = (),
+    corrections: Sequence[ActivityCorrection] = (),
 ) -> tuple[DayActivity, ...]:
     """Normaliza, deduplica e agrega por dia local, na ordem de `days`. Atividade fora de `days` é ignorada. O total do
     dia soma só `counts_in_total`; a lista de exibição traz TODAS (inclusive duplicatas e inválidas, com as marcas).
@@ -500,14 +568,18 @@ def summarize_days(
     máximo `MAX_CONFIRMED_REST_STREAK_DAYS`; senão fica não confirmado (None). Limite: no começo do horizonte lido a
     sequência é medida a partir do primeiro dia lido (a atividade anterior não foi carregada). Com execução registrada
     (`runs`) a mesma trava vale também DENTRO da janela de 30 dias, e a sequência termina no último dia confirmável
-    do horizonte (em geral ontem; hoje não conta)."""
+    do horizonte (em geral ontem; hoje não conta).
+
+    `corrections` (Lote G): aplicadas por `apply_activity_corrections` antes de normalizar e deduplicar. Dia cujas
+    atividades foram TODAS excluídas à mão vale como dia sem atividade (descanso confirmado, com a mesma trava da lacuna)."""
     lista = tuple(days)
-    normalizadas = deduplicate(normalize_activity(item, bmr_kcal) for item in activities)
+    corrigidas = apply_activity_corrections(activities, corrections) if corrections else tuple(activities)
+    normalizadas = deduplicate(normalize_activity(item, bmr_kcal) for item in corrigidas)
     por_dia: dict[date, list[NormalizedActivity]] = {}
     for atividade in normalizadas:
         por_dia.setdefault(atividade.local_date, []).append(atividade)
     resumo: list[DayActivity] = []
-    dias_com_atividade = sorted(por_dia)
+    dias_com_atividade = sorted(d for d, itens in por_dia.items() if any(not a.excluded for a in itens))
     dia_do_sync = last_sync_at.date() if last_sync_at is not None else None
     limite_da_janela = None if dia_do_sync is None else dia_do_sync - timedelta(days=INTERVALS_SYNC_WINDOW_DAYS)
     inicio_horizonte = min(lista) if lista else None
@@ -532,7 +604,7 @@ def summarize_days(
         fora_da_janela = limite_da_janela is not None and dia < limite_da_janela
         if (
             confirmado
-            and not do_dia
+            and not any(not a.excluded for a in do_dia)
             and inicio_horizonte is not None
             and (origem == DAY_CONFIRMATION_SOURCE_RUN or (fora_da_janela and dia_do_sync is not None))
             and _rest_gap_too_long(dia, dias_com_atividade, inicio_horizonte, fim_da_sequencia(origem))
@@ -550,10 +622,11 @@ def active_kcal_by_day(
     last_sync_at: Optional[datetime],
     tracking_started_on: Optional[date] = None,
     runs: Sequence[SyncRun] = (),
+    corrections: Sequence[ActivityCorrection] = (),
 ) -> dict[date, Optional[float]]:
     """Saída simples para o gasto adaptativo: dia local -> kcal ativa (float; 0.0 = descanso confirmado) ou None
     quando o dia não está confirmado. Mesma regra de `summarize_days`."""
     return {
         item.day: item.active_kcal
-        for item in summarize_days(activities, bmr_kcal, days, last_sync_at, tracking_started_on, runs)
+        for item in summarize_days(activities, bmr_kcal, days, last_sync_at, tracking_started_on, runs, corrections)
     }

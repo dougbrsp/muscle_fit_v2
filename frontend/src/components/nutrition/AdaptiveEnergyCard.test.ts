@@ -166,7 +166,20 @@ describe('AdaptiveEnergyCard', () => {
     // Todo código do JSON resolve para o texto do próprio JSON.
     const blocos = (motorConstants.nutrition as unknown as { adaptive_energy_labels: Record<string, Record<string, string>> }).adaptive_energy_labels;
     expect(Object.keys(blocos).sort()).toEqual(
-      ['activity_flag', 'calorie_mode', 'confidence_level', 'data_quality_flag', 'day_confirmation_source', 'day_sync_status', 'suspension_reason', 'unavailable_reason'],
+      [
+        'activity_correction_action',
+        'activity_correction_energy_kind',
+        'activity_flag',
+        'calorie_mode',
+        'completeness_source',
+        'confidence_level',
+        'data_quality_flag',
+        'day_confirmation_source',
+        'day_sync_status',
+        'report_adaptive_basis',
+        'suspension_reason',
+        'unavailable_reason',
+      ],
     );
     for (const [grupo, codigos] of Object.entries(blocos)) {
       for (const [codigo, texto] of Object.entries(codigos)) {

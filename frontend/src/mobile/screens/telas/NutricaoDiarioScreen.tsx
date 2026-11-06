@@ -12,6 +12,7 @@ import { MealParseModal } from '@/components/nutrition/MealParseModal';
 import { QuickEntryForm } from '@/components/nutrition/QuickEntryForm';
 import { quantidade, TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
+import { DayClosureControl } from '@/components/nutrition/DayClosureControl';
 import { DayEnergySection } from '@/components/nutrition/DayEnergySection';
 import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
@@ -165,6 +166,13 @@ function NutricaoDiarioContent() {
             <>
               <TargetVsIntakeCard day={dia} />
               <TrainingKcalRow training={dia.training} />
+              <DayClosureControl
+                date={date}
+                today={weekQuery.data?.today ?? dia.today ?? null}
+                closure={dia.closure}
+                completenessSource={dia.completeness_source}
+                minHeight={44}
+              />
               <DayEnergySection detail={dia.energy_detail} />
               <DayNotesInput key={date} date={date} dayLog={dia.day_log} onSaved={invalidarDiario} />
 
