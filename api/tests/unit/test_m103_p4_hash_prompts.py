@@ -1,8 +1,8 @@
 """M103 P4: trava de bytes do prompt do card e dos ramos da avaliação de série
 que os snapshots não cobrem.
 
-- `exercise_card_prompt.build_prompt` (ilustração do card, OpenAI Images) não
-  tem snapshot em `fixtures/llm_prompts`.
+- `exercise_card_prompt.build_scene_prompts` (as duas fotos do card V3,
+  OpenAI Images) não tem snapshot em `fixtures/llm_prompts`.
 - `exercise_set_evaluation_ai.build_prompt` tem snapshot
   (`set_evaluation` em `index.json`), mas todos os casos congelados têm motor e
   regra da próxima série; os ramos sem motor, sem decisão, sem regra da
@@ -82,31 +82,39 @@ _SO_TAGS = p.ExerciseCardContext(
     exercise_id=4, name="Remada", body_position="Sentado", primary_joint="Ombro", execution_steps=("Solte o ar.",)
 )
 
-# caso -> (contexto, instrução do admin, motivo da rejeição do pai)
+# caso -> (contexto, instrução do admin, motivo da rejeição do pai, fotos de referência)
 CARD = {
-    "minimo": (_MINIMO, None, None),
-    "completo": (_COMPLETO, None, None),
-    "alternativas_so_pedido": (_ALTERNATIVAS, 'Mostrar melhor "pés"', None),
-    "so_tags_so_motivo": (_SO_TAGS, None, "Barra deformada"),
-    "completo_revisao_longa": (_COMPLETO, "x" * 400, "y" * 300),
-    "minimo_feedback_vazio": (_MINIMO, "  ", "   "),
+    "minimo": (_MINIMO, None, None, 0),
+    "completo": (_COMPLETO, None, None, 0),
+    "alternativas_so_pedido": (_ALTERNATIVAS, 'Mostrar melhor "pés"', None, 0),
+    "so_tags_so_motivo": (_SO_TAGS, None, "Barra deformada", 0),
+    "completo_revisao_longa": (_COMPLETO, "x" * 400, "y" * 300, 0),
+    "minimo_feedback_vazio": (_MINIMO, "  ", "   ", 0),
+    "completo_com_referencias": (_COMPLETO, None, None, 3),
+    "minimo_referencia_e_motivo": (_MINIMO, None, "Rolo na canela", 1),
 }
 
-# sha256 calculado com o código de ANTES do M103 P4.
+# sha256 dos DOIS prompts (`ScenePrompts.joined()`) do V3 (cards fotorrealistas,
+# 2026-11-06); o V2 (ilustração única) foi travado antes do M103 P4.
 CARD_SHA = {
-    "alternativas_so_pedido": "1e815b62c0b43f219b0aa89cd93e39f6ac9c03c8e243a3cac631d8fdc6e09c2e",
-    "completo": "9760a9be9f6701fb5ee81fb20cf740ed3e5c1d6a1c4d832f6d362596bb9b3f14",
-    "completo_revisao_longa": "be64c9eddfba403c103d50739e4bf4c7cc153f209ad63ba6534e96740ab4923a",
-    "minimo": "2b3f94d3ed60f6b39f476f495e4c61d7576099ab28efc3d2370ffd30879bd52e",
-    "minimo_feedback_vazio": "2b3f94d3ed60f6b39f476f495e4c61d7576099ab28efc3d2370ffd30879bd52e",
-    "so_tags_so_motivo": "2819f8e446f0e65ec534217d5abb9df876eb50fa11858bc8a3021c1b30923ff0",
+    "alternativas_so_pedido": "721ceecb349fd42871a960b4bc551293d48f9286d41b0b6aa17be6b91fc35c8d",
+    "completo": "47a5ca8db80668af6fb5be64551cf6fda705e80ec1945d568de895048a9e4ee8",
+    "completo_com_referencias": "4b8274cf21c2620001ac68e663f088fe5a3fdfe34a7bfd43bfe677dad624872d",
+    "completo_revisao_longa": "1e182789a1c9ca34fcf7300cb1688cb96bb9defdd09fb21de4dc85440b57b6ea",
+    "minimo": "b66f3c9cdc10c57143191e17cd6b9ee48d60dc89ceeddaeabff08465a9787aa0",
+    "minimo_feedback_vazio": "b66f3c9cdc10c57143191e17cd6b9ee48d60dc89ceeddaeabff08465a9787aa0",
+    "minimo_referencia_e_motivo": "7683a1c2490f44ce0cac00f71188fa879c114a73103152305c61df9773514d00",
+    "so_tags_so_motivo": "ea0105cea79768900f6d9aa250b1bd47f66d1f6ad460f1cf12949a47b51229ce",
 }
 
 
 @pytest.mark.parametrize("caso", sorted(CARD))
 def test_prompt_do_card_nao_mudou(caso):
-    ctx, instrucao, motivo = CARD[caso]
-    assert _sha(p.build_prompt(ctx, "minimal", instrucao, motivo)) == CARD_SHA[caso]
+    ctx, instrucao, motivo, referencias = CARD[caso]
+    prompts = p.build_scene_prompts(
+        ctx, "minimal", reference_count=referencias, instruction=instrucao, parent_reject_reason=motivo
+    )
+    assert _sha(prompts.joined()) == CARD_SHA[caso]
 
 
 # ---------------------------------------------------------------------------

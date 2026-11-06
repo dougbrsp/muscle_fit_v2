@@ -1,4 +1,4 @@
-"""Prompt da ILUSTRACAO do card de exercicio (OpenAI Images) - versionado.
+"""Prompts das FOTOS do card de exercicio (OpenAI Images) - versionado.
 
 Separacao igual a da descricao de execucao (`exercise_description_ai.py` /
 `exercise_description_service.py`): ESTE modulo so sabe montar o contexto do
@@ -8,69 +8,57 @@ prompt (e decidir o que o card mostra do catalogo: `card_title`,
 modulos.
 
     load_context(cursor, exercise_id) -> ExerciseCardContext | None
-    build_prompt(ctx, text_level, instruction=None, parent_reject_reason=None) -> str
+    build_scene_prompts(ctx, text_level, *, reference_count=0, instruction=None,
+                        parent_reject_reason=None) -> ScenePrompts
     card_title(ctx) -> str
     card_muscles(ctx) -> (principais, secundarios)
 
-Estrategia B (decisao do usuario em 2026-10-03, depois do checkpoint rodada 1
-- Anexo D do plano dos cards): **a IA gera SO a ilustracao**. Nada de texto,
-numero, rotulo, logo, moldura, painel ou silhueta anatomica na imagem: na
-rodada 1 o modelo ignorou a area reservada ao logo em 4/4 cards e errou acento
-em portugues em 4/4. Titulo, rotulos "1 Posicao inicial"/"2 Movimento",
-musculos e o logo oficial sao compostos pela APLICACAO
-(`exercise_card_composer.py`) logo depois da OpenAI, com fontes versionadas.
+Estrategia B (decisao do usuario em 2026-10-03): **a IA nunca escreve
+texto**. Titulo, rotulos "1 Posicao inicial"/"2 Movimento", musculos e o logo
+oficial sao compostos pela APLICACAO (`exercise_card_composer.py`).
 
-O que a ilustracao precisa entregar ao compositor:
+V3 (decisao do usuario em 2026-11-06): **duas fotos realistas**, uma por
+chamada a OpenAI (`exercise_card_jobs`):
 
-- **duas cenas empilhadas** (inicio em cima, movimento embaixo) com uma faixa
-  VAZIA entre elas perto da metade da altura - o compositor corta na linha
-  mais vazia entre 40 % e 60 % da altura e encaixa cada cena no seu painel;
-- **fundo transparente** (`background="transparent"` no pedido, ver
-  `exercise_card_jobs.ILLUSTRATION_BACKGROUND`) - com fundo opaco o compositor
-  recorta por distancia de cor, pior nas bordas;
-- **uma seta laranja** (#FF9500) so na cena 2, unico elemento grafico.
+- cena 1 (`ScenePrompts.start`): SO a posicao inicial; vai ao `generations`
+  ou, com fotos de referencia do admin, ao `edits` com elas anexadas;
+- cena 2 (`ScenePrompts.end`): SO a posicao final; vai ao `edits` com a foto
+  da cena 1 como PRIMEIRA imagem (continuidade: mesma pessoa, camera,
+  enquadramento, academia e luz) + as fotos de referencia.
 
-`text_level`: so `minimal` existe nesta versao (o texto do card e fixo e
-escrito pela aplicacao). A coluna continua na tabela e o parametro na API;
-outros valores respondem 422 `invalid_text_level`.
+Cada prompt descreve so a sua posicao (passos e biomecanica da posicao), pede
+foto retrato `SCENE_ASPECT_RATIO` com fundo OPACO (academia) e o corpo +
+aparelho inteiros na faixa central `SCENE_SUBJECT_WIDTH_FRACTION` da largura:
+o compositor encaixa cada foto num painel retrato (cover centralizado) que
+corta as laterais. O bloco de fotos de referencia so entra com
+`reference_count > 0`; o feedback do revisor entra nas DUAS cenas.
 
-Qualidade dos dados do catalogo (medida no DEV em 2026-10-03, revisao do
-ai_engineer) - o prompt so repassa ao modelo o que ajuda a desenhar certo:
+`text_level`: so `minimal` existe (o texto do card e da aplicacao). A coluna
+continua na tabela e o parametro na API; outros valores respondem 422.
+
+Qualidade dos dados do catalogo (medida no DEV em 2026-10-03) - o prompt so
+repassa ao modelo o que ajuda a mostrar certo:
 
 - **Nada de `external_name` do AMAZFIT como "nome em ingles"**: e o tipo de
-  exercicio do relogio, nao uma traducao, e muitas vezes outro exercicio
-  ("Leg press 45°" -> "Hack Squat", "Supino reto com barra" -> "Supino com
-  halteres", "Stiff no Smith" -> "Dumbell Romanian Deadlift") ou so um grupo
-  muscular ("Músculos traseiros do antebraço"). `load_context` nao consulta
-  mais o mapeamento; `name_en` fica no contexto para uma fonte CURADA futura
-  e, se vier preenchido, o prompt usa.
-- **Apelidos sao palavras-chave de busca**: ficam fora os cortados
-  ("braqui..."), com parenteses (marca/modelo), de uma palavra so ("barra",
-  "corda", "quadriceps") e os contidos no proprio nome.
+  exercicio do relogio, nao uma traducao, e muitas vezes outro exercicio.
+  `name_en` fica no contexto para uma fonte CURADA futura.
+- **Apelidos sao palavras-chave de busca**: ficam fora os cortados, com
+  parenteses (marca/modelo), de uma palavra so e os contidos no nome.
 - **Equipamentos cadastrados sao ALTERNATIVAS** (marcas/modelos da mesma
-  maquina), nao um conjunto: o prompt pede UM equipamento generico do tipo.
+  maquina): o prompt pede UM equipamento generico do tipo.
 - **Atributos (`body_position` etc.) sao legados e as vezes contradizem o
-  nome** (id 1 "Supino reto na maquina" = "Deitado"; id 25 "... sentada ..."
-  = "Em pe"): vao como tags secundarias, abaixo de nome, equipamento e passos.
-- **Respiracao nao se desenha**: "Expire durante a puxada" sai dos passos.
-
-Consistencia da colecao: `_block_style` fixa estilo de ilustracao, luz e o
-MESMO atleta (roupa neutra de treino, rosto simplificado, ninguem real) em
-todas as imagens; `_block_final_check` repete no fim as regras que o modelo
-mais esquece (zero texto, sem logo/moldura, fundo transparente, duas cenas
-separadas) e vale inclusive sobre o pedido de revisao do admin.
+  nome**: vao como tags secundarias, abaixo de nome, equipamento e passos.
+- **Respiracao nao se fotografa**: "Expire durante a puxada" sai dos passos.
 
 ONDE MEXER NO TEXTO (M103 P4): a prosa de cada bloco e um fragmento em
-ingles (modelos de imagem seguem melhor instrucoes em ingles) no repositorio
-privado, `api/privado/prompts/exercise_card/<PROMPT_TEMPLATE_VERSION>.<parte>.md`;
-cada funcao `_block_*` abaixo escolhe os fragmentos, a ordem e os dados (nome,
-cores de `BRAND_COLORS`, forma da ilustracao das constantes deste modulo).
-Nenhuma string e para ser escrita na imagem. Os testes publicos conferem a
-ESTRUTURA (blocos, ordem, cores, ausencia de strings para renderizar,
-limites); os que citam a redacao moram no privado. O sha256 do prompt e
-travado por `tests/unit/test_m103_p4_hash_prompts.py`. Mudou a FORMA da
-ilustracao (o que aparece, onde)? Suba `PROMPT_VERSION` e
-`PROMPT_TEMPLATE_VERSION` (e confira se o compositor ainda extrai as cenas).
+ingles no repositorio privado,
+`api/privado/prompts/exercise_card/<PROMPT_TEMPLATE_VERSION>.<parte>.md`;
+cada funcao `_block_*` abaixo escolhe os fragmentos, a ordem e os dados
+(nome, proporcao e faixa central das constantes deste modulo - nenhum numero
+escrito a mao nos templates). Os testes publicos conferem a ESTRUTURA; os que
+citam a redacao moram no privado. O sha256 dos prompts e travado por
+`tests/unit/test_m103_p4_hash_prompts.py`. Mudou a FORMA das fotos? Suba
+`PROMPT_VERSION` e `PROMPT_TEMPLATE_VERSION` (e confira o compositor).
 """
 
 from __future__ import annotations
@@ -82,14 +70,14 @@ from typing import Any, Iterable, Optional, Sequence
 
 from . import prompt_store
 
-PROMPT_VERSION = "MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION"
+PROMPT_VERSION = "MUSCLEFIT_EXERCISE_CARD_V3_PHOTO"  # <= 40 (prompt_version VARCHAR(40)); identifica o layout V3
 # M103 P4: a PROSA do prompt mora no repositorio privado,
 # `api/privado/prompts/exercise_card/<PROMPT_TEMPLATE_VERSION>.<parte>.md`
 # (`prompt_store`); aqui ficam os blocos, a ordem, os ramos e os dados. A
 # versao dos templates so nomeia os arquivos (a `PROMPT_VERSION` acima, gravada
 # no job, nao cabe no formato do nome) e nao entra no texto.
 PROMPT_FEATURE_DIR = "exercise_card"
-PROMPT_TEMPLATE_VERSION = "exercise-card-v2"
+PROMPT_TEMPLATE_VERSION = "exercise-card-v3"
 CARD_TYPE = "exercise_execution"  # secao 46 da especificacao; o unico por ora
 
 TEXT_LEVEL_MINIMAL = "minimal"
@@ -98,13 +86,18 @@ TEXT_LEVEL_MINIMAL = "minimal"
 TEXT_LEVELS = (TEXT_LEVEL_MINIMAL,)
 DEFAULT_TEXT_LEVEL = TEXT_LEVEL_MINIMAL
 
-MAX_PROMPT_CHARS = 8000
+MAX_PROMPT_CHARS = 8000  # por cena
 
-# Forma pedida a ilustracao (fonte unica; o prompt interpola daqui e o
-# compositor le `SCENE_GAP_RANGE` para achar o corte entre as cenas).
-ILLUSTRATION_ASPECT_RATIO = "2:3"  # retrato; o card final e 1024x1536
-SCENE_GAP_RANGE = (0.40, 0.60)  # faixa da altura com o vao vazio entre as cenas
-SCENE_EDGE_MARGIN = 0.05  # margem vazia de cada cena ate a borda da imagem
+# Forma pedida a cada foto (fonte unica; o prompt interpola daqui).
+SCENE_ASPECT_RATIO = "2:3"  # retrato, = OPENAI_IMAGE_SIZE 1024x1536
+# Corpo + aparelho dentro da faixa central desta fracao da largura: o painel
+# do compositor (cover centralizado) mostra pelo menos isso da largura - teste
+# `scene_visible_width_fraction(...) >= SCENE_SUBJECT_WIDTH_FRACTION`.
+SCENE_SUBJECT_WIDTH_FRACTION = 0.70
+SCENE_START = 1
+SCENE_END = 2
+# Junta os dois prompts em `exercise_card_generations.prompt_text`.
+SCENE_PROMPT_SEPARATOR = "=== SCENE 2 ==="
 
 # Tokens de `frontend/src/theme.ts` (`BRAND`) - um teste compara os dois
 # lados. Fonte unica das cores do card: o compositor tambem le daqui.
@@ -135,15 +128,17 @@ MAX_REFERENCE_ATTENTION = 3
 MAX_INSTRUCTION_CHARS = 300
 MAX_REJECT_REASON_CHARS = 160
 
-# Blocos (titulos). Os testes localizam os blocos por estes titulos. Ordem no
-# prompt: assunto (paragrafo sem titulo) -> FORMAT -> SCENES -> REFERENCE ->
-# BIOMECHANICS -> STYLE -> AVOID -> [REVISION] -> FINAL CHECK. O FINAL CHECK
-# repete as regras fixas no fim, onde o modelo menos as esquece.
+# Blocos (titulos). Os testes localizam os blocos por estes titulos. Ordem em
+# cada cena: assunto (paragrafo sem titulo) -> FORMAT -> SCENE ->
+# [REFERENCE PHOTOS] -> EXERCISE REFERENCE -> BIOMECHANICS -> PHOTO STYLE ->
+# AVOID -> [REVISION] -> FINAL CHECK. O FINAL CHECK repete as regras fixas no
+# fim, onde o modelo menos as esquece.
 BLOCK_FORMAT = "## FORMAT"
-BLOCK_SCENES = "## SCENES"
+BLOCK_SCENE = "## THIS PHOTO"
+BLOCK_REFERENCE_PHOTOS = "## REFERENCE PHOTOS"
 BLOCK_REFERENCE = "## EXERCISE REFERENCE"
 BLOCK_BIOMECHANICS = "## BIOMECHANICS"
-BLOCK_STYLE = "## VISUAL STYLE"
+BLOCK_STYLE = "## PHOTO STYLE"
 BLOCK_AVOID = "## AVOID"
 BLOCK_REVISION = "## REVISION REQUEST"
 BLOCK_FINAL_CHECK = "## FINAL CHECK"
@@ -436,12 +431,23 @@ def _text(part: str, values: Optional[dict[str, str]] = None) -> str:
 
 
 def _percent(fraction: float) -> str:
-    """`0.4` -> `40%` (fração da altura/largura da ilustração)."""
+    """`0.7` -> `70%` (fracao da largura da foto)."""
     return f"{round(fraction * 100)}%"
 
 
-def _block_intro(ctx: ExerciseCardContext) -> str:
-    return _text(".intro", {"nome": _clean(ctx.name, MAX_NAME_CHARS)})
+# Fragmentos por cena: (nome da posicao, cena, biomecanica, passos, fotos).
+_SCENE_PARTS = {
+    SCENE_START: (".posicao_inicial", ".cena_inicial", ".biomecanica_inicial", ".passos_inicio", ".fotos_referencia"),
+    SCENE_END: (".posicao_final", ".cena_final", ".biomecanica_final", ".passos_movimento", ".fotos_referencia_final"),
+}
+
+
+def _position(scene: int) -> str:
+    return _text(_SCENE_PARTS[scene][0])
+
+
+def _block_intro(ctx: ExerciseCardContext, scene: int) -> str:
+    return _text(".intro", {"nome": _clean(ctx.name, MAX_NAME_CHARS), "posicao": _position(scene)})
 
 
 def _block_format() -> str:
@@ -449,20 +455,22 @@ def _block_format() -> str:
         ".formato",
         {
             "titulo": BLOCK_FORMAT,
-            "proporcao": ILLUSTRATION_ASPECT_RATIO,
-            "vao_min": _percent(SCENE_GAP_RANGE[0]),
-            "vao_max": _percent(SCENE_GAP_RANGE[1]),
-            "margem": _percent(SCENE_EDGE_MARGIN),
+            "proporcao": SCENE_ASPECT_RATIO,
+            "largura_sujeito": _percent(SCENE_SUBJECT_WIDTH_FRACTION),
         },
     )
 
 
-def _block_scenes() -> str:
-    return _text(".cenas", {"titulo": BLOCK_SCENES, "cor_seta": BRAND_COLORS["accent"]})
+def _block_scene(scene: int) -> str:
+    return _text(_SCENE_PARTS[scene][1], {"titulo": BLOCK_SCENE})
 
 
-# Convenções de carga do catálogo que viram dica de desenho (a prosa de cada
-# uma é o fragmento `.carga_<convenção>`).
+def _block_reference_photos(scene: int) -> str:
+    return _text(_SCENE_PARTS[scene][4], {"titulo": BLOCK_REFERENCE_PHOTOS})
+
+
+# Convenções de carga do catálogo que viram dica (a prosa de cada uma é o
+# fragmento `.carga_<convenção>`).
 _LOAD_HINT_CONVENTIONS = ("bodyweight", "bodyweight_plus", "assisted")
 
 
@@ -477,7 +485,10 @@ def _equipment_line(ctx: ExerciseCardContext) -> str:
     return _text(".equipamento_alternativas", {"equipamentos": "; ".join(equipment), "regra": rule})
 
 
-def _block_reference(ctx: ExerciseCardContext) -> str:
+def _block_reference(ctx: ExerciseCardContext, scene: int) -> str:
+    """Referencia do exercicio. Os passos sao SO os da posicao da cena:
+    preparacao na cena 1, execucao (caminho ate a posicao final) na cena 2;
+    os pontos de atencao valem para as duas."""
     # O nome ja abre o prompt (`_block_intro`); aqui so os outros nomes.
     name_en = _clean(ctx.name_en, MAX_SHORT_CHARS)
     other = [_text(".nome_ingles", {"nome": name_en})] if name_en else []
@@ -491,9 +502,12 @@ def _block_reference(ctx: ExerciseCardContext) -> str:
         lines.append(_text(".carga", {"dicas": "; ".join(dict.fromkeys(hints))}))
     if ctx.is_unilateral:
         lines.append(_text(".unilateral"))
+    steps_part = _SCENE_PARTS[scene][3]
+    steps, steps_limit = (
+        (ctx.setup_steps, MAX_REFERENCE_SETUP) if scene == SCENE_START else (ctx.execution_steps, MAX_REFERENCE_EXECUTION)
+    )
     for part, items, limit in (
-        (".passos_inicio", ctx.setup_steps, MAX_REFERENCE_SETUP),
-        (".passos_movimento", ctx.execution_steps, MAX_REFERENCE_EXECUTION),
+        (steps_part, steps, steps_limit),
         (".passos_forma", ctx.attention_points, MAX_REFERENCE_ATTENTION),
     ):
         cleaned = _clean_list(_drawable(items), limit, MAX_ITEM_CHARS)
@@ -516,13 +530,12 @@ def _block_reference(ctx: ExerciseCardContext) -> str:
     return "\n".join(lines)
 
 
-def _block_biomechanics() -> str:
-    return _text(".biomecanica", {"titulo": BLOCK_BIOMECHANICS})
+def _block_biomechanics(scene: int) -> str:
+    return _text(_SCENE_PARTS[scene][2], {"titulo": BLOCK_BIOMECHANICS})
 
 
 def _block_style() -> str:
-    c = BRAND_COLORS
-    return _text(".estilo", {"titulo": BLOCK_STYLE, "cor_luz": c["accent"], "cor_painel": c["panel"]})
+    return _text(".estilo", {"titulo": BLOCK_STYLE})
 
 
 def _block_avoid() -> str:
@@ -532,9 +545,8 @@ def _block_avoid() -> str:
 def _block_revision(instruction: Optional[str], parent_reject_reason: Optional[str]) -> str:
     """Bloco SEPARADO, so quando ha feedback do revisor. O feedback e texto
     livre do admin: vai entre aspas, limpo e cortado. O modelo NAO ve a
-    tentativa anterior (geracao nova, sem imagem de referencia): o feedback
-    vira requisito desta geracao. Vem antes do FINAL CHECK, que continua
-    valendo sobre ele."""
+    tentativa rejeitada: o feedback vira requisito desta geracao (nas duas
+    cenas). Vem antes do FINAL CHECK, que continua valendo sobre ele."""
     lines = [_text(".revisao", {"titulo": BLOCK_REVISION})]
     reason = _clean(parent_reject_reason, MAX_REJECT_REASON_CHARS)
     if reason:
@@ -546,8 +558,8 @@ def _block_revision(instruction: Optional[str], parent_reject_reason: Optional[s
     return "\n".join(lines)
 
 
-def _block_final_check() -> str:
-    return _text(".verificacao_final", {"titulo": BLOCK_FINAL_CHECK})
+def _block_final_check(scene: int) -> str:
+    return _text(".verificacao_final", {"titulo": BLOCK_FINAL_CHECK, "posicao": _position(scene)})
 
 
 # ---------------------------------------------------------------------------
@@ -562,32 +574,62 @@ def normalize_text_level(text_level: Optional[str]) -> str:
     return level
 
 
-def build_prompt(
+@dataclass(frozen=True)
+class ScenePrompts:
+    """Os dois prompts de uma geracao V3 (cena 1 e cena 2)."""
+
+    start: str
+    end: str
+
+    def joined(self) -> str:
+        """Texto unico gravado em `exercise_card_generations.prompt_text`."""
+        return f"{self.start}\n\n{SCENE_PROMPT_SEPARATOR}\n\n{self.end}"
+
+
+def _scene_prompt(
     ctx: ExerciseCardContext,
-    text_level: Optional[str] = DEFAULT_TEXT_LEVEL,
-    instruction: Optional[str] = None,
-    parent_reject_reason: Optional[str] = None,
+    scene: int,
+    reference_count: int,
+    instruction: Optional[str],
+    parent_reject_reason: Optional[str],
 ) -> str:
-    """Prompt final (`PROMPT_VERSION`). Erro se o exercicio nao tem nome, se
-    o nivel nao e `minimal` ou se o texto passa de `MAX_PROMPT_CHARS`.
-    `text_level` continua na assinatura (coluna e API existentes) - so
-    `minimal` e aceito."""
-    if not _clean(ctx.name, MAX_NAME_CHARS):
-        raise ExerciseCardPromptError("Exercicio sem nome: nao ha o que ilustrar.")
-    normalize_text_level(text_level)
-    blocks = [
-        _block_intro(ctx),
-        _block_format(),
-        _block_scenes(),
-        _block_reference(ctx),
-        _block_biomechanics(),
-        _block_style(),
-        _block_avoid(),
-    ]
+    blocks = [_block_intro(ctx, scene), _block_format(), _block_scene(scene)]
+    if reference_count > 0:
+        blocks.append(_block_reference_photos(scene))
+    blocks += [_block_reference(ctx, scene), _block_biomechanics(scene), _block_style(), _block_avoid()]
     if _clean(instruction, MAX_INSTRUCTION_CHARS) or _clean(parent_reject_reason, MAX_REJECT_REASON_CHARS):
         blocks.append(_block_revision(instruction, parent_reject_reason))
-    blocks.append(_block_final_check())
+    blocks.append(_block_final_check(scene))
     prompt = "\n\n".join(blocks)
     if len(prompt) > MAX_PROMPT_CHARS:
-        raise ExerciseCardPromptError(f"Prompt com {len(prompt)} caracteres, acima de {MAX_PROMPT_CHARS}.")
+        raise ExerciseCardPromptError(
+            f"Prompt da cena {scene} com {len(prompt)} caracteres, acima de {MAX_PROMPT_CHARS}."
+        )
     return prompt
+
+
+def build_scene_prompts(
+    ctx: ExerciseCardContext,
+    text_level: Optional[str] = DEFAULT_TEXT_LEVEL,
+    *,
+    reference_count: int = 0,
+    instruction: Optional[str] = None,
+    parent_reject_reason: Optional[str] = None,
+) -> ScenePrompts:
+    """Prompts da cena 1 (posicao inicial) e da cena 2 (posicao final).
+
+    `reference_count` = fotos de referencia do admin que o worker anexa (o
+    bloco REFERENCE PHOTOS so entra se > 0). Erro se o exercicio nao tem nome,
+    se o nivel nao e `minimal`, se `reference_count < 0` ou se uma cena passa
+    de `MAX_PROMPT_CHARS`. `text_level` continua na assinatura (coluna e API
+    existentes) - so `minimal` e aceito."""
+    if not _clean(ctx.name, MAX_NAME_CHARS):
+        raise ExerciseCardPromptError("Exercicio sem nome: nao ha o que fotografar.")
+    normalize_text_level(text_level)
+    count = int(reference_count)
+    if count < 0:
+        raise ExerciseCardPromptError(f"reference_count invalido: {reference_count!r}.")
+    return ScenePrompts(
+        start=_scene_prompt(ctx, SCENE_START, count, instruction, parent_reject_reason),
+        end=_scene_prompt(ctx, SCENE_END, count, instruction, parent_reject_reason),
+    )
