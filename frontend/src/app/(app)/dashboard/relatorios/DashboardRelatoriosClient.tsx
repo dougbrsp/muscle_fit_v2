@@ -38,6 +38,7 @@ const CONTEUDO = [
   'Corpo: peso (início, fim e média móvel), bioimpedância e medidas, com cada pesagem e medição.',
   'Cardio do período inteiro: totais, por modalidade, cada sessão e a frequência cardíaca nos treinos.',
   'Ciclos de treino: Modelos vigentes em cada trecho, adesão, a linha do tempo dos treinos e o Modelo atual com os dias.',
+  'Nutrição: meta calórica, macros (meta × consumido), gasto calórico e balanço, com o resumo do período e o detalhe por semana.',
   'Qualidade dos dados: o que ficou de fora e por quê.',
 ];
 

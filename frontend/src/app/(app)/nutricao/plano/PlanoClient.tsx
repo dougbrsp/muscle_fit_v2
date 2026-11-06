@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Button, Group, Paper, Stack, Switch, Text, Title } from '@mantine/core';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -16,7 +16,14 @@ import { UserPicker } from '@/components/nutrition/UserPicker';
 import { planoInicial } from '@/lib/nutrition-plan-user';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { deleteNutritionPlan, fetchNutritionPlans, nutritionErrorInfo, nutritionKeys } from '@/lib/nutrition-api';
+import {
+  archiveNutritionPlan,
+  deleteNutritionPlan,
+  fetchNutritionPlans,
+  nutritionErrorInfo,
+  nutritionKeys,
+  planPreviewQuery,
+} from '@/lib/nutrition-api';
 import { targetsChangedKeys } from '@/lib/nutrition-plan-form';
 import type { NutritionLimitation, NutritionPlan, NutritionPlanSaved } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
@@ -24,6 +31,12 @@ import { BRAND } from '@/theme';
 
 async function fetchCurrentUser(): Promise<SessionUser> {
   return apiFetch<SessionUser>('/auth/me');
+}
+
+/** Card Plano do selecionado; a confiança do adaptativo vem do retrato (`target.energy`) da MESMA prévia que a tela mostra abaixo. */
+function SelectedPlanSummary({ plan }: { plan: NutritionPlan }) {
+  const previewQuery = useQuery(planPreviewQuery(plan));
+  return <PlanSummary plan={plan} energy={previewQuery.data?.target.energy ?? null} />;
 }
 
 type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
@@ -41,11 +54,23 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
   const [editing, setEditing] = useState<Editing>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const [showArchived, setShowArchived] = useState(false);
+
   const plansQuery = useQuery({
-    queryKey: nutritionKeys.plans(userId ?? 0),
-    queryFn: () => fetchNutritionPlans(userId as number),
+    queryKey: nutritionKeys.plansList(userId ?? 0, showArchived),
+    queryFn: () => fetchNutritionPlans(userId as number, showArchived),
     enabled: userId !== null,
     retry: false,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: ({ plan, archive }: { plan: NutritionPlan; archive: boolean }) => archiveNutritionPlan(plan.id, archive),
+    onSuccess: async (_resultado, { plan, archive }) => {
+      // Arquivado some da lista padrão: se estava aberto, fecha o resumo.
+      if (archive && !showArchived && selectedId === plan.id) setSelectedId(null);
+      setNotice(archive ? 'Plano arquivado.' : 'Plano desarquivado.');
+      await qc.invalidateQueries({ queryKey: nutritionKeys.plans(plan.user_id) });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -119,6 +144,11 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
         </Text>
       )}
       <NutritionLimitations items={warnings} title="Avisos do motor sobre as gramas (o rascunho foi salvo)" />
+      {archiveMutation.isError && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+          {nutritionErrorInfo(archiveMutation.error, 'Não foi possível arquivar o plano.').message}
+        </Alert>
+      )}
       {deleteMutation.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {nutritionErrorInfo(deleteMutation.error, 'Não foi possível excluir o rascunho.').message}
@@ -157,6 +187,13 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
               ? `Planos de ${plansQuery.data.user.full_name || plansQuery.data.user.username}`
               : 'Seus planos'}
           </Title>
+          <Switch
+            size="sm"
+            label="Mostrar arquivados"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.currentTarget.checked)}
+            data-testid="show-archived-plans"
+          />
           <PlanHistory
             plans={plans}
             selectedId={selectedId}
@@ -172,13 +209,16 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
             }}
             onDelete={(plan) => deleteMutation.mutate(plan)}
             deletingId={deleteMutation.isPending ? (deleteMutation.variables?.id ?? null) : null}
+            onArchive={(plan) => archiveMutation.mutate({ plan, archive: true })}
+            onUnarchive={(plan) => archiveMutation.mutate({ plan, archive: false })}
+            archivingId={archiveMutation.isPending ? (archiveMutation.variables?.plan.id ?? null) : null}
           />
         </Stack>
       )}
 
       {selected && (
         <Stack gap="md">
-          <PlanSummary plan={selected} />
+          <SelectedPlanSummary plan={selected} />
           <PlanPreview
             plan={selected}
             currentPlanId={currentPlanId}

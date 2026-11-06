@@ -203,6 +203,25 @@ def _com_proposta(db):
     return _client().get("/nutrition/checkin").json()["checkin"]
 
 
+def test_aceitar_sem_a_106_responde_503_citando_a_migracao_e_nao_grava_nada(db):
+    """Janela de deploy (código novo sem a 106): o aceite lê e grava as colunas novas do plano; sem elas, 503 e nada gravado."""
+    from app import nutrition_schema
+
+    ck = _com_proposta(db)
+    antes = {pid: dict(p) for pid, p in db.plans.items()}
+    escritas = len(db.writes)
+    db.plan_energy_columns = False
+    nutrition_schema.reset_nutrition_tables_cache()
+    resposta = _client().post(f"/nutrition/checkins/{ck['id']}/accept")
+    assert resposta.status_code == 503, resposta.text
+    assert resposta.json()["detail"]["error"] == "nutrition_plan_migration_pending" and resposta.json()["detail"]["migration"] == "106"
+    assert {pid: dict(p) for pid, p in db.plans.items()} == antes and len(db.writes) == escritas
+    leitura = _client().get("/nutrition/checkin")  # a leitura do check-in NÃO exige a 106
+    assert leitura.status_code == 200 and leitura.json()["checkin"]["status"] == "proposed"
+    db.plan_energy_columns = True
+    nutrition_schema.reset_nutrition_tables_cache()
+
+
 def test_aceitar_publica_nova_versao_do_plano_e_regrava_so_as_metas_nao_congeladas(db):
     antigo = _publicar(db)
     _semana_completa(db)
@@ -274,6 +293,36 @@ def test_check_in_sem_proposta_nao_tem_o_que_aceitar(db):
     ck = _client().get("/nutrition/checkin").json()["checkin"]
     assert _client().post(f"/nutrition/checkins/{ck['id']}/accept").status_code == 409
     assert _client().post(f"/nutrition/checkins/{ck['id']}/decline").status_code == 409
+
+
+def test_plano_adaptativo_o_checkin_e_informativo_sem_proposta_e_nao_aceita(db):
+    """Sem dois corretores: o gasto adaptativo governa a meta, então o check-in só informa (mesmo no cenário que no
+    plano legado gera proposta) e aceitar/recusar respondem 409."""
+    _publicar(db, strategy="maintenance", training_kcal_mode="adaptive_balance", activity_level="light")
+    _semana_completa(db, mudanca_kg_semana=0.0)
+    corpo = _client().get("/nutrition/checkin").json()
+    ck = corpo["checkin"]
+    assert ck["status"] == "informative" and ck["proposal"] is None and ck["can_respond"] is False
+    assert wc.REASON_ADAPTIVE_INFORMATIVE in str(ck)
+    assert _client().post(f"/nutrition/checkins/{ck['id']}/accept").status_code == 409
+    assert _client().post(f"/nutrition/checkins/{ck['id']}/decline").status_code == 409
+    assert db.plans[_vigente(db)]["training_kcal_mode"] == "adaptive_balance"  # nada foi publicado em cima
+
+
+def test_check_in_de_plano_adaptativo_nao_le_o_historico_do_gasto(db, monkeypatch):
+    """O check-in só usa as séries do aluno (o gasto vem gravado nas metas): não paga a leitura nem o `replay` do histórico."""
+    _publicar(db, strategy="maintenance", training_kcal_mode="adaptive_balance", activity_level="light")
+    _semana_completa(db)
+    cargas: list[str] = []
+
+    def contado(*args, **kwargs):  # pragma: no cover - só roda se o check-in carregar o histórico
+        cargas.append("carga")
+        raise AssertionError("o check-in não deve carregar o histórico do gasto")
+
+    monkeypatch.setattr(svc, "load_history", contado)
+    resposta = _client().get("/nutrition/checkin")
+    assert resposta.status_code == 200, resposta.text
+    assert cargas == [] and resposta.json()["checkin"]["status"] == "informative"
 
 
 # ---------------------------------------------------------------------------

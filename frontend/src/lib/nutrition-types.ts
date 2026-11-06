@@ -7,9 +7,16 @@
 // calculável ou não informado — nunca 0.
 
 import type { NutritionCode } from './nutrition-constants';
+import type { AdaptiveEnergyState } from './nutrition-dashboard';
 
 /** Código + texto pt-BR de uma limitação/erro do motor (a API já rotula). */
 export type NutritionLimitation = { code: string; label: string };
+
+/** Como o relógio informa as calorias do exercício (`adaptive_energy_labels.calorie_mode`); só no modo adaptativo. */
+export type NutritionWatchCalorieMode = 'active' | 'gross' | 'unknown';
+
+/** Parâmetros do modelo energético do plano; só existem no modo adaptativo. */
+export type NutritionEnergyParams = { watch_calorie_mode: NutritionWatchCalorieMode };
 
 /** Configuração do plano no vocabulário do motor (`PlanSettings.to_dict`). */
 export type NutritionPlanSettings = {
@@ -36,6 +43,10 @@ export type NutritionPlanSettings = {
   cycle_days: Record<string, NutritionCode> | null;
   /** Ajuste de kcal/dia da manutenção (N7; 0 = sem ajuste). Quem o muda é o check-in semanal. */
   maintenance_kcal_adjust?: number;
+  /** `null` nos legados e no adaptativo com o padrão do motor (`default_watch_calorie_mode`); o formulário usa o padrão. */
+  energy_params?: NutritionEnergyParams | null;
+  /** Versão do algoritmo gravada na publicação do adaptativo; null nos legados e nos rascunhos. */
+  energy_model_version?: string | null;
 };
 
 /** Gramas manuais de proteína, carboidrato e gordura. */
@@ -61,6 +72,11 @@ export type NutritionPlan = NutritionPlanSettings & {
   engine_version: string | null;
   effective_from: string | null;
   superseded_at: string | null;
+  /** Arquivar só oculta da lista (migração 105). Ausente em backend anterior = não arquivado. */
+  archived?: boolean;
+  archived_at?: string | null;
+  /** Regra do backend (`plan.is_archivable_plan`): só o plano substituído e ainda visível. */
+  can_archive?: boolean;
   published_at: string | null;
   created_by: number | null;
   published_by: number | null;
@@ -101,6 +117,8 @@ export type NutritionPlanSettingsPayload = {
   cycle_days: Record<string, NutritionCode> | null;
   /** Preserva o ajuste da manutenção que o check-in gravou (a tela não o edita); null fora da manutenção. */
   maintenance_kcal_adjust?: number | null;
+  /** Só no modo adaptativo: legados NÃO enviam a chave. */
+  energy_params?: NutritionEnergyParams | null;
   notes: string | null;
 };
 
@@ -166,11 +184,27 @@ export type NutritionDayTarget = {
   backfilled?: boolean;
 };
 
+export type NutritionTdeeBreakdown = {
+  parts: Array<{ code: string; label: string; kcal: number }>;
+  notes: Array<{ code: string; label: string }>;
+  total_kcal: number;
+};
+
 /** Meta de hoje com o detalhe de cada etapa do motor (preview). */
 export type NutritionTargetDetail = NutritionDayTarget & {
   bmr: { kcal: number | null; formula: NutritionCode; requested_formula: NutritionCode; ffm_kg: number | null };
   scale_comparison: { formula_kcal: number; scale_kcal: number; deviation_share: number; warn: boolean } | null;
-  tdee: { kcal: number | null; mode: NutritionCode; activity_factor: number | null; bmr_kcal: number | null; training_kcal: number | null };
+  tdee: {
+    kcal: number | null;
+    mode: NutritionCode;
+    activity_factor: number | null;
+    bmr_kcal: number | null;
+    training_kcal: number | null;
+  };
+  /** Composição do gasto total pronta do motor (soma das parcelas = total); ausente em backend antigo. */
+  tdee_breakdown?: NutritionTdeeBreakdown | null;
+  /** Retrato do gasto adaptativo do dia; só no plano adaptativo (mesmo formato do `state` do cartão do dashboard). */
+  energy?: AdaptiveEnergyState | null;
   training: { kcal: number | null; kcal_nature: NutritionCode | null; nature: string | null; quality: string | null };
   kcal_target: {
     kcal: number | null;

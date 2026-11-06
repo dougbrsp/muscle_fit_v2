@@ -89,6 +89,15 @@ MAX_VERSION_NUMBER_SQL = f"SELECT COALESCE(MAX(version_number), 0) AS n FROM {TA
 
 SUPERSEDE_SQL = f"UPDATE {TABLE} SET superseded_at = %s WHERE id = %s AND superseded_at IS NULL"
 
+# Arquivar (migracao 105) so OCULTA a versao do historico: nao mexe em `superseded_at`, no revert, em
+# `resolve_version_at/now` nem em `workout_plans.template_version_id`. A regra vive em `is_archivable`; o UPDATE
+# repete a condicao (`superseded_at IS NOT NULL`) para uma edicao concorrente nao arquivar a vigente.
+ARCHIVE_VERSION_SQL = (
+    f"UPDATE {TABLE} SET archived_at = %s WHERE id = %s AND template_id = %s "
+    "AND archived_at IS NULL AND superseded_at IS NOT NULL"
+)
+UNARCHIVE_VERSION_SQL = f"UPDATE {TABLE} SET archived_at = NULL WHERE id = %s AND template_id = %s AND archived_at IS NOT NULL"
+
 INSERT_VERSION_SQL = f"""
 INSERT INTO {TABLE} (
     template_id, version_number, training_type_id, volume_mode, template_type,
@@ -230,6 +239,12 @@ def _target_ids(value: Any) -> tuple[int, ...]:
     if isinstance(value, str):
         value = json.loads(value)
     return tuple(sorted({int(v) for v in (value or [])}))
+
+
+def is_archivable(superseded_at: Any, archived_at: Any = None) -> bool:
+    """So uma versao NAO vigente (`superseded_at` preenchido) e ainda nao arquivada pode ser arquivada. A vigente
+    governa o Modelo; reverter para uma arquivada continua permitido (cria a versao n+1, que nasce visivel)."""
+    return superseded_at is not None and archived_at is None
 
 
 @dataclass(frozen=True)

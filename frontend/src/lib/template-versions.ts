@@ -20,6 +20,11 @@ export type TemplateVersionListItem = {
   is_current: boolean;
   /** Objetivo de treino da versão (M97 F3; ausente em backend anterior = default). */
   training_goal?: string;
+  /** Arquivar só oculta do histórico (migração 105). Ausente em backend anterior = não arquivada. */
+  archived?: boolean;
+  archived_at?: string | null;
+  /** Regra do backend (`template_versions.is_archivable`): versão não vigente e ainda visível. */
+  can_archive?: boolean;
 };
 
 export type TemplateVersionListResponse = {
@@ -91,6 +96,9 @@ export type VersionHistoryRow = {
   summary: string | null;
   /** Objetivo da versão (M97 F3); null = backend sem o campo. */
   trainingGoal: string | null;
+  archived: boolean;
+  /** O backend decide (nunca recalculado aqui): só a versão não vigente e não arquivada. */
+  canArchive: boolean;
 };
 
 /** Linhas prontas para o painel, na ordem da API (mais nova primeiro). */
@@ -104,7 +112,26 @@ export function versionHistoryRows(items: readonly TemplateVersionListItem[]): V
     revertedFrom: item.reverted_from_number != null ? `revertida da v${item.reverted_from_number}` : null,
     summary: versionSummaryText(item),
     trainingGoal: item.training_goal ?? null,
+    archived: item.archived === true,
+    canArchive: item.can_archive === true,
   }));
+}
+
+/** Caminho da lista do histórico; `include_archived` só entra quando a chave "Mostrar arquivadas" está ligada. */
+export function versionsListPath(templateId: number, includeArchived: boolean): string {
+  const base = `/workout-plan-templates/${templateId}/versions`;
+  return includeArchived ? `${base}?include_archived=true` : base;
+}
+
+/** `POST /{id}/versions/{vid}/archive` ou `/unarchive`. */
+export function versionArchivePath(templateId: number, versionId: number, archive: boolean): string {
+  return `/workout-plan-templates/${templateId}/versions/${versionId}/${archive ? 'archive' : 'unarchive'}`;
+}
+
+/** Mensagem do erro de arquivar/desarquivar (409 da vigente, 403, 404, rede). */
+export function readArchiveError(error: unknown): string {
+  if (error instanceof ApiError) return error.message || 'Não foi possível arquivar a versão.';
+  return error instanceof Error ? error.message : 'Não foi possível arquivar a versão.';
 }
 
 export type RevertError = { message: string; errors: string[] };

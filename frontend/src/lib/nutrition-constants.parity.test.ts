@@ -49,6 +49,7 @@ import {
   SEX_OPTIONS,
   STRATEGY_OPTIONS,
   TDEE_MODE_OPTIONS,
+  WATCH_CALORIE_MODE_OPTIONS,
   ROUTINE_LEVEL_OPTIONS,
   TRAINING_KCAL_NATURE_OPTIONS,
   USDA_DATA_TYPE_OPTIONS,
@@ -84,6 +85,7 @@ const PARES: ReadonlyArray<Par> = [
   [MEAL_SLOT_OPTIONS, N.meal_slots, N.meal_slot_labels],
   [BMR_FORMULA_OPTIONS, N.bmr_formulas, N.bmr_formula_labels],
   [TDEE_MODE_OPTIONS, N.tdee_modes, N.tdee_mode_labels],
+  [WATCH_CALORIE_MODE_OPTIONS, N.watch_calorie_modes, N.watch_calorie_mode_labels],
   [ROUTINE_LEVEL_OPTIONS, N.routine_levels, N.routine_level_labels],
   [SESSION_KIND_OPTIONS, N.session_kinds, N.session_kind_labels],
   [TRAINING_KCAL_NATURE_OPTIONS, N.training_kcal_natures, N.training_kcal_nature_labels],
@@ -122,7 +124,11 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
   });
 
   it('todo bloco de rótulos exportado pelo dono tem lista de opções aqui', () => {
-    const chavesDeRotulo = Object.keys(N).filter((chave) => chave.endsWith('_labels'));
+    // `adaptive_energy_labels` é aninhado (grupo -> código -> rótulo), sem lista de opções
+    // de formulário; é consumido por AdaptiveEnergyCard (coberto em AdaptiveEnergyCard.test.ts).
+    const chavesDeRotulo = Object.keys(N).filter(
+      (chave) => chave.endsWith('_labels') && chave !== 'adaptive_energy_labels',
+    );
     expect(chavesDeRotulo).toHaveLength(PARES.length);
   });
 

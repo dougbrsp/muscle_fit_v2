@@ -40,10 +40,12 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Final, Mapping, Optional
 
+from . import adaptive_energy
 from ..data_nature import DataNature, DataQuality  # vocabulário comum (dono: domain/data_nature.py)
 from .anthropometrics import ACTIVITY_FACTORS, NON_EXERCISE_ACTIVITY_FACTORS, ActivityLevel, non_negative_number, positive_number
 
@@ -106,6 +108,8 @@ LIMIT_TRAINING_PARTIALLY_ESTIMATED = "training_kcal_partially_estimated"
 LIMIT_AUTO_REQUIRES_PROFILE_LEVEL = "auto_intervals_requires_profile_activity_level"
 LIMIT_MISSING_BMR = "missing_bmr"
 LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
+# Plano adaptativo sem a estimativa do dia (nem a de fórmula, por falta de TMB): o gasto não é calculável.
+LIMIT_ADAPTIVE_ESTIMATE_MISSING = "adaptive_estimate_missing"
 
 
 # --- Atividades extras do Intervals (cardio, caminhada, outras) -----------------------------------------------
@@ -181,6 +185,9 @@ class TdeeMode(str, Enum):
     # fora do exercício + treino de força + cardio/caminhadas medidos; sem conexão ou com a sincronização parada,
     # cai no fator que INCLUI exercício (`INCLUDED_IN_FACTOR`), ignorando treino e extras. Só este modo soma os extras.
     AUTO_INTERVALS = "auto_intervals"
+    # Balanço energético adaptativo (2026-11-06, Lote C): o gasto do dia vem da estimativa pronta de
+    # `adaptive_energy.DayEnergyEstimate` (alimentação + peso de tendência + Intervals como delta), NÃO de fator × TMB.
+    ADAPTIVE_BALANCE = "adaptive_balance"
 
 
 DEFAULT_TDEE_MODE: Final[TdeeMode] = TdeeMode.EXPLICIT_TRAINING
@@ -212,9 +219,14 @@ class TdeeBasis(str, Enum):
     CLASSIC = "classic"
     AUTO_SYNCED = "auto_synced"
     AUTO_FALLBACK = "auto_fallback"
+    # Adaptativo: estimativa inicial por fórmula (confiança 0, sem gasto adaptativo ainda) ou gasto adaptativo.
+    ADAPTIVE_BOOTSTRAP = "adaptive_bootstrap"
+    ADAPTIVE = "adaptive"
 
 
-def tdee_basis_of(mode: "TdeeMode", in_sync: Optional[bool]) -> TdeeBasis:
+def tdee_basis_of(mode: "TdeeMode", in_sync: Optional[bool], adaptive_bootstrap: Optional[bool] = None) -> TdeeBasis:
+    if mode == TdeeMode.ADAPTIVE_BALANCE:
+        return TdeeBasis.ADAPTIVE_BOOTSTRAP if adaptive_bootstrap else TdeeBasis.ADAPTIVE
     if mode != TdeeMode.AUTO_INTERVALS:
         return TdeeBasis.CLASSIC
     return TdeeBasis.AUTO_SYNCED if in_sync else TdeeBasis.AUTO_FALLBACK
@@ -443,6 +455,35 @@ def compare_training_kcal(
 
 
 @dataclass(frozen=True)
+class AdaptiveParts:
+    """Decomposição do gasto do dia no modo adaptativo (a estimativa pronta de `adaptive_energy.DayEnergyEstimate`):
+    base (adaptativa ou inicial) + ajuste pela atividade (com sinal) = gasto do dia."""
+
+    base_kcal: float
+    adjustment_kcal: float
+    confidence: float
+    confidence_level: str
+    bootstrap: bool
+    activity_pending: bool
+    day_open: bool
+    history_unavailable: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        dados = {
+            "base_kcal": self.base_kcal,
+            "adjustment_kcal": self.adjustment_kcal,
+            "confidence": self.confidence,
+            "confidence_level": self.confidence_level,
+            "bootstrap": self.bootstrap,
+            "activity_pending": self.activity_pending,
+            "day_open": self.day_open,
+        }
+        if self.history_unavailable:
+            dados["history_unavailable"] = True
+        return dados
+
+
+@dataclass(frozen=True)
 class TdeeResult:
     """Gasto total do dia (None = TMB ou nível de atividade ausentes)."""
 
@@ -452,9 +493,23 @@ class TdeeResult:
     bmr_kcal: Optional[float]
     training_kcal: Optional[float]
     limitations: tuple[str, ...] = ()
+    # Só no modo adaptativo; nos outros fica `None` e NÃO entra no `to_dict` (o `inputs_json` legado não muda).
+    adaptive: Optional[AdaptiveParts] = None
+
+    @property
+    def base_kcal(self) -> Optional[float]:
+        """Parcela-base de rotina (TMB × fator do modo; `None` se faltar TMB ou fator). Só property: NÃO está no
+        `to_dict` (que vai para `inputs_json`), então nada novo é gravado nas metas; a tela a recebe por
+        `tdee_breakdown`. O gasto total se reconstrói por `base_kcal + (training_kcal or 0)` nos três modos (no
+        embutido o treino é ignorado e a base é o total)."""
+        if self.adaptive is not None:
+            return self.adaptive.base_kcal
+        if self.bmr_kcal is None or self.activity_factor is None:
+            return None
+        return self.bmr_kcal * self.activity_factor
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "kcal": self.kcal,
             "mode": self.mode.value,
             "activity_factor": self.activity_factor,
@@ -462,10 +517,13 @@ class TdeeResult:
             "training_kcal": self.training_kcal,
             "limitations": list(self.limitations),
         }
+        if self.adaptive is not None:
+            dados["adaptive"] = self.adaptive.to_dict()
+        return dados
 
 
 def activity_factor_for(level: Optional[ActivityLevel], mode: TdeeMode) -> Optional[float]:
-    if level is None:
+    if level is None or mode == TdeeMode.ADAPTIVE_BALANCE:  # o adaptativo não usa fator × TMB
         return None
     explicito = mode in (TdeeMode.EXPLICIT_TRAINING, TdeeMode.AUTO_INTERVALS)
     tabela = NON_EXERCISE_ACTIVITY_FACTORS if explicito else ACTIVITY_FACTORS
@@ -482,7 +540,42 @@ def rest_tdee(
     fora do exercício; nos clássicos, o TDEE sem treino."""
     if mode == TdeeMode.AUTO_INTERVALS:
         return tdee(bmr_kcal, routine_level or ROUTINE_ACTIVITY_LEVEL_DEFAULT, TdeeMode.EXPLICIT_TRAINING, 0.0)
+    if mode == TdeeMode.ADAPTIVE_BALANCE:
+        # Sem estimativa do dia (referências do check-in e dos pisos): a estimativa inicial (mesmo fator da estimativa
+        # do `adaptive_energy`: uma fonte só).
+        tmb = positive_number(bmr_kcal)
+        fator = adaptive_energy.BOOTSTRAP_ACTIVITY_FACTOR
+        if tmb is None:
+            return TdeeResult(None, TdeeMode.ADAPTIVE_BALANCE, fator, None, None, (LIMIT_MISSING_BMR,))
+        return TdeeResult(tmb * fator, TdeeMode.ADAPTIVE_BALANCE, fator, tmb, None)
     return tdee(bmr_kcal, profile_level, mode, 0.0)
+
+
+def adaptive_tdee_result(estimate: Any, bmr_kcal: Any) -> TdeeResult:
+    """Gasto do dia no modo adaptativo a partir da estimativa PRONTA (`adaptive_energy.DayEnergyEstimate`, lida por
+    duck typing: `estimated_kcal`, `base_kcal`, `adjustment_kcal`, `confidence`, `confidence_level`, `bootstrap`,
+    `activity_pending`, `day_open`). Sem estimativa: gasto desconhecido + `LIMIT_ADAPTIVE_ESTIMATE_MISSING`. Não usa
+    fator × TMB; a TMB só acompanha o resultado (plausibilidade, piso do plano)."""
+    tmb = positive_number(bmr_kcal)
+    if estimate is None:
+        return TdeeResult(
+            kcal=None, mode=TdeeMode.ADAPTIVE_BALANCE, activity_factor=None, bmr_kcal=tmb, training_kcal=None,
+            limitations=(LIMIT_ADAPTIVE_ESTIMATE_MISSING,),
+        )
+    partes = AdaptiveParts(
+        base_kcal=float(estimate.base_kcal),
+        adjustment_kcal=float(estimate.adjustment_kcal),
+        confidence=float(estimate.confidence),
+        confidence_level=str(estimate.confidence_level),
+        bootstrap=bool(estimate.bootstrap),
+        activity_pending=bool(estimate.activity_pending),
+        day_open=bool(estimate.day_open),
+        history_unavailable=bool(getattr(estimate, "history_unavailable", False)),
+    )
+    return TdeeResult(
+        kcal=float(estimate.estimated_kcal), mode=TdeeMode.ADAPTIVE_BALANCE, activity_factor=None, bmr_kcal=tmb,
+        training_kcal=None, adaptive=partes,
+    )
 
 
 def tdee(
@@ -490,10 +583,14 @@ def tdee(
     activity_level: Optional[ActivityLevel],
     mode: TdeeMode = DEFAULT_TDEE_MODE,
     training_kcal: Any = None,
+    adaptive_estimate: Any = None,
 ) -> TdeeResult:
     """TDEE do dia. No modo explícito, o treino entra em kcal (0 em dia sem
     treino); no modo embutido, o treino é ignorado (já está no fator). O modo automático NÃO é resolvido aqui:
-    quem chama usa `effective_tdee_basis` (aqui valeria como o explícito, com o nível dado)."""
+    quem chama usa `effective_tdee_basis` (aqui valeria como o explícito, com o nível dado). O modo adaptativo NÃO
+    usa fator × TMB: recebe `adaptive_estimate` pronta (`adaptive_tdee_result`)."""
+    if mode == TdeeMode.ADAPTIVE_BALANCE:
+        return adaptive_tdee_result(adaptive_estimate, bmr_kcal)
     if mode == TdeeMode.AUTO_INTERVALS:
         mode = TdeeMode.EXPLICIT_TRAINING
     tmb = positive_number(bmr_kcal)
@@ -510,3 +607,107 @@ def tdee(
         )
     total = tmb * fator + (treino or 0.0)
     return TdeeResult(kcal=total, mode=mode, activity_factor=fator, bmr_kcal=tmb, training_kcal=treino)
+
+
+# --- Composição do gasto para a tela (prévia do plano): parcelas prontas, sem conta no front -------------------------
+BREAKDOWN_BASE: Final[str] = "base"
+BREAKDOWN_STRENGTH: Final[str] = "training"  # a força (nome alinhado a `training_kcal`)
+BREAKDOWN_EXTRAS: Final[str] = "extras"
+BREAKDOWN_NOTE_INCLUDED: Final[str] = "training_included_in_factor"
+BREAKDOWN_NOTE_AUTO_FALLBACK: Final[str] = "auto_fallback"
+# Adaptativo: parcela com sinal do ajuste pela atividade e notas (confiança, estimativa inicial, pendências).
+BREAKDOWN_ACTIVITY_ADJUSTMENT: Final[str] = "activity_adjustment"
+BREAKDOWN_NOTE_ADAPTIVE_BOOTSTRAP: Final[str] = "adaptive_bootstrap"
+BREAKDOWN_NOTE_ADAPTIVE_CONFIDENCE_LOW: Final[str] = "adaptive_confidence_low"
+BREAKDOWN_NOTE_ADAPTIVE_CONFIDENCE_MEDIUM: Final[str] = "adaptive_confidence_medium"
+BREAKDOWN_NOTE_ADAPTIVE_ACTIVITY_PENDING: Final[str] = "adaptive_activity_pending"
+BREAKDOWN_NOTE_ADAPTIVE_DAY_OPEN: Final[str] = "adaptive_day_open"
+BREAKDOWN_NOTE_ADAPTIVE_HISTORY_UNAVAILABLE: Final[str] = "adaptive_history_unavailable"
+# As parcelas saem em kcal inteiras (a tela mostra inteiros): cada uma é arredondada e a BASE absorve a diferença, de
+# modo que a soma das parcelas emitidas é EXATAMENTE o total emitido.
+BREAKDOWN_KCAL_ROUNDING_STEP: Final[float] = 1.0
+
+
+class BreakdownBase(str, Enum):
+    """De onde vem a parcela-base: rotina (treino somado à parte), fator com exercício (embutido) ou o fallback do automático."""
+
+    ROUTINE = "routine"
+    FACTOR_WITH_EXERCISE = "factor_with_exercise"
+    AUTO_FALLBACK = "auto_fallback"
+    ADAPTIVE = "adaptive"  # "Gasto adaptativo médio"
+    ADAPTIVE_BOOTSTRAP = "adaptive_bootstrap"  # "Estimativa inicial"
+
+
+@dataclass(frozen=True)
+class BreakdownPart:
+    code: str
+    kcal: float
+
+
+@dataclass(frozen=True)
+class TdeeBreakdown:
+    """Parcelas do gasto total do dia: base (sempre), força e extras (só as que somam), notas e o total. Saída pública
+    da prévia: NÃO entra em `inputs_json`, no hash nem no `to_dict` gravado."""
+
+    parts: tuple[BreakdownPart, ...]
+    base: BreakdownBase
+    notes: tuple[str, ...]
+    total_kcal: float
+
+
+def _round_step(value: float) -> float:
+    return math.floor(value / BREAKDOWN_KCAL_ROUNDING_STEP + 0.5) * BREAKDOWN_KCAL_ROUNDING_STEP
+
+
+def tdee_breakdown(tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis") -> Optional[TdeeBreakdown]:
+    """Decompõe o gasto do dia em parcelas que fecham o total. `tdee_result` é o do dia (modo EFETIVO: o automático
+    sincronizado vem como explícito, com `training_kcal` = força + extras; o embutido e o fallback ignoram o treino);
+    `extra_kcal` são as atividades extras já somadas; `basis` diz se é clássico, automático ou fallback. `None` sem
+    TMB ou fator (gasto desconhecido). Parcela zero (força ou extras) é omitida; a base sempre entra."""
+    total = tdee_result.kcal
+    if total is None or tdee_result.base_kcal is None:
+        return None  # inclui o adaptativo sem estimativa (sem `adaptive` e sem fator)
+    total_pub = _round_step(total)
+    if tdee_result.adaptive is not None:
+        return _adaptive_breakdown(tdee_result.adaptive, total_pub)
+    if tdee_result.mode == TdeeMode.INCLUDED_IN_FACTOR:
+        fallback = basis == TdeeBasis.AUTO_FALLBACK
+        return TdeeBreakdown(
+            parts=(BreakdownPart(BREAKDOWN_BASE, total_pub),),
+            base=BreakdownBase.AUTO_FALLBACK if fallback else BreakdownBase.FACTOR_WITH_EXERCISE,
+            notes=(BREAKDOWN_NOTE_AUTO_FALLBACK if fallback else BREAKDOWN_NOTE_INCLUDED,),
+            total_kcal=total_pub,
+        )
+    extras = _round_step(non_negative_number(extra_kcal) or 0.0)
+    atividade = non_negative_number(tdee_result.training_kcal) or 0.0
+    forca = _round_step(max(0.0, atividade - (non_negative_number(extra_kcal) or 0.0)))
+    partes = [BreakdownPart(BREAKDOWN_BASE, total_pub - forca - extras)]
+    if forca > 0:
+        partes.append(BreakdownPart(BREAKDOWN_STRENGTH, forca))
+    if extras > 0:
+        partes.append(BreakdownPart(BREAKDOWN_EXTRAS, extras))
+    return TdeeBreakdown(parts=tuple(partes), base=BreakdownBase.ROUTINE, notes=(), total_kcal=total_pub)
+
+
+def _adaptive_breakdown(partes: AdaptiveParts, total_pub: float) -> TdeeBreakdown:
+    """Adaptativo: parcela-base (gasto adaptativo médio ou estimativa inicial) + ajuste pela atividade (com sinal,
+    omitido se zero) = total. A BASE absorve a diferença de arredondamento, como nos outros modos."""
+    ajuste = _round_step(partes.adjustment_kcal)
+    codigo_base = BreakdownBase.ADAPTIVE_BOOTSTRAP if partes.bootstrap else BreakdownBase.ADAPTIVE
+    lista = [BreakdownPart(BREAKDOWN_BASE, total_pub - ajuste)]
+    if ajuste != 0:
+        lista.append(BreakdownPart(BREAKDOWN_ACTIVITY_ADJUSTMENT, ajuste))
+    notas: list[str] = []
+    if partes.bootstrap:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_BOOTSTRAP)
+    elif partes.confidence_level == adaptive_energy.ConfidenceLevel.LOW.value:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_CONFIDENCE_LOW)
+    elif partes.confidence_level == adaptive_energy.ConfidenceLevel.MEDIUM.value:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_CONFIDENCE_MEDIUM)
+    if partes.history_unavailable:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_HISTORY_UNAVAILABLE)
+    if partes.day_open:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_DAY_OPEN)
+    elif partes.activity_pending:
+        notas.append(BREAKDOWN_NOTE_ADAPTIVE_ACTIVITY_PENDING)
+    return TdeeBreakdown(parts=tuple(lista), base=codigo_base, notes=tuple(notas), total_kcal=total_pub)

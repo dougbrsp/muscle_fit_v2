@@ -42,6 +42,7 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, LimitationsNote, metricLimitations, metricText, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 const RECOVERY_WINDOWS = ['7d', 'cycle', '28d', 'custom'] as const satisfies readonly DashboardWindow[];
 const BODY_MAP_LEGEND = statusLegend('readiness');
@@ -55,6 +56,7 @@ export function RecoveryScreen() {
 }
 
 function RecoveryContent() {
+  const isAdmin = useIsAdmin();
   useEffect(preloadMuscleBodyMap, []);
   const { filters, setFilters, windowQuery, rangeError } = useDashboardFilters();
   const [grupo, setGrupo] = useState<RecoveryGroup | null>(null);
@@ -81,7 +83,7 @@ function RecoveryContent() {
               <ListBlock>
                 <div className={styles.badges}>
                   <StatusBadge domain="severity" code={p.assessment.level} />
-                  <StatusBadge domain="dataQuality" code={p.assessment.uncertainty} suffix="de certeza" />
+                  {isAdmin && <StatusBadge domain="dataQuality" code={p.assessment.uncertainty} suffix="de certeza" />}
                   {!p.assessment.allow_intensification ? (
                     <Badge color="red" variant="light" leftSection={<IconLock size={14} />}>
                       Não é hora de intensificar

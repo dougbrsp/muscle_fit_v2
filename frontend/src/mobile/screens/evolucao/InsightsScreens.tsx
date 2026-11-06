@@ -28,12 +28,14 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, mobileSafeHref, OfflineNote, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 const PAGE_SIZE = 20;
 
 /** Um insight (os sete campos do contrato) como bloco de lista; cooldown escrito, sem Tooltip. */
 export function MobileInsightBlock({ insight, filters }: { insight: Insight; filters: DashboardFilters }) {
-  const sections = insightSections(insight);
+  const isAdmin = useIsAdmin();
+  const sections = insightSections(insight).filter((s) => isAdmin || s.key !== 'confidence');
   const href = mobileSafeHref(insightHref(insight, filters));
   const cooldown = insight.cooldown;
   const selo = cooldownBadge(cooldown);
@@ -41,7 +43,7 @@ export function MobileInsightBlock({ insight, filters }: { insight: Insight; fil
     <ListBlock>
       <div className={styles.badges}>
         <StatusBadge domain="severity" code={insight.severity} size="xs" />
-        <StatusBadge domain="dataQuality" code={insight.data_quality} size="xs" />
+        {isAdmin && <StatusBadge domain="dataQuality" code={insight.data_quality} size="xs" />}
         {selo && cooldown ? (
           <Badge size="xs" variant="light" color={selo.color}>
             {selo.label}

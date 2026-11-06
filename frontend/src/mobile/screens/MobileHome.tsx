@@ -20,6 +20,7 @@ import { DashboardOverviewClient } from '@/app/(app)/dashboard/DashboardOverview
 import { ErrorState, ListBlock, ListGroup, ListRow, ScreenHeader, StickyAction } from '../ui';
 import { safeInternalHref } from './safe-href';
 import styles from './mobile-home.module.css';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * Início mobile (A2b). Mesmos hooks e queries da visão geral do desktop
@@ -58,6 +59,7 @@ function HomeSkeleton() {
 }
 
 function MobileHomeContent() {
+  const isAdmin = useIsAdmin();
   const { filters, windowQuery } = useDashboardFilters();
   const [detailsOpened, { toggle: toggleDetails }] = useDisclosure(false);
 
@@ -106,7 +108,7 @@ function MobileHomeContent() {
         <ListBlock>
           <div className={styles.badges}>
             <StatusBadge domain="severity" code={recovery.level} size="sm" />
-            <StatusBadge domain="dataQuality" code={recovery.uncertainty} size="sm" />
+            {isAdmin && <StatusBadge domain="dataQuality" code={recovery.uncertainty} size="sm" />}
           </div>
           <p className={styles.headline}>{recovery.headline}</p>
           <p className={styles.meta}>

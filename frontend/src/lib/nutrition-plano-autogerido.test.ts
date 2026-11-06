@@ -156,6 +156,6 @@ describe('plano autogerido: combinações de gramas manuais e gasto do treino', 
       expect(modos).toContain(DEFAULT_MANUAL_TRAINING_MODE);
     }
     const tamanhos = TDEE_MODE_OPTIONS.map((t) => MANUAL_TRAINING_MODES_BY_TDEE_MODE[t.value].length).sort();
-    expect(tamanhos).toEqual([1, 2, 2]); // o embutido aceita só o fixo; o explícito e o automático (que soma no dia sincronizado) os dois
+    expect(tamanhos).toEqual([1, 1, 2, 2]); // o embutido e o adaptativo aceitam só o fixo; o explícito e o automático (que soma no dia sincronizado) os dois
   });
 });

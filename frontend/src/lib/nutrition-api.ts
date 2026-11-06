@@ -59,14 +59,30 @@ import type {
 
 export const nutritionKeys = {
   plans: (userId: number | null) => ['nutrition-plans', userId] as const,
+  /** Lista com/sem arquivados: começa pelo prefixo `plans`, então invalidar `plans(userId)` atualiza as duas. */
+  plansList: (userId: number | null, includeArchived: boolean) =>
+    ['nutrition-plans', userId, { includeArchived }] as const,
   preview: (planId: number) => ['nutrition-plan-preview', planId] as const,
   myPlan: ['nutrition-my-plan'] as const,
 };
 
 /** Planos do aluno; sem `userId`, os do próprio usuário (D2: cada um opera o seu plano). */
-export function fetchNutritionPlans(userId?: number | null): Promise<NutritionPlanListResponse> {
-  const query = userId == null ? '' : `?user_id=${encodeURIComponent(String(userId))}`;
+export function fetchNutritionPlans(
+  userId?: number | null,
+  includeArchived = false,
+): Promise<NutritionPlanListResponse> {
+  const params: string[] = [];
+  if (userId != null) params.push(`user_id=${encodeURIComponent(String(userId))}`);
+  if (includeArchived) params.push('include_archived=true');
+  const query = params.length > 0 ? `?${params.join('&')}` : '';
   return apiFetch<NutritionPlanListResponse>(`/nutrition/plans${query}`);
+}
+
+/** Arquivar (oculta da lista) ou desarquivar um plano SUBSTITUÍDO; quem decide se pode é o backend. */
+export function archiveNutritionPlan(planId: number, archive: boolean): Promise<NutritionPlan> {
+  return apiFetch<NutritionPlan>(`/nutrition/plans/${planId}/${archive ? 'archive' : 'unarchive'}`, {
+    method: 'POST',
+  });
 }
 
 export function createNutritionPlan(payload: NutritionPlanPayload): Promise<NutritionPlanSaved> {
@@ -89,6 +105,15 @@ export function deleteNutritionPlan(planId: number): Promise<{ status: string; i
 
 export function previewNutritionPlan(planId: number): Promise<NutritionPlanPreview> {
   return apiFetch<NutritionPlanPreview>(`/nutrition/plans/${planId}/preview`, { method: 'POST' });
+}
+
+/** Consulta da prévia do plano exibido; o card Plano e a prévia compartilham a mesma queryKey (um só POST, mesmo cache). */
+export function planPreviewQuery(plan: { id: number; updated_at: string | null; state: string }) {
+  return {
+    queryKey: [...nutritionKeys.preview(plan.id), plan.updated_at, plan.state] as const,
+    queryFn: () => previewNutritionPlan(plan.id),
+    retry: false as const,
+  };
 }
 
 /**

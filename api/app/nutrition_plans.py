@@ -4,7 +4,12 @@
 Rotas (prefixo `/nutrition`). Plano autogerido (N2, D2): o usuário opera o PRÓPRIO plano;
 admin e PT operam o de qualquer aluno; usuário comum nunca alcança o plano de outro (403 por
 `user_id`, 404 por id de plano). Sem `user_id`, o alvo é o próprio usuário.
-- `GET    /plans?user_id=`          versões do aluno (vigente, histórico, rascunhos)
+- `GET    /plans?user_id=`          versões do aluno (vigente, histórico, rascunhos); sem os arquivados,
+                                    `include_archived=true` traz todos (cada plano leva `archived`,
+                                    `archived_at` e `can_archive`)
+- `POST   /plans/{id}/archive`      oculta um plano SUBSTITUÍDO (409 `plan_not_archivable` em rascunho/vigente;
+                                    reversível, idempotente); `.../unarchive` desfaz. Só oculta: as metas por
+                                    dia (`load_published_plans`) seguem lendo os arquivados
 - `POST   /plans`                   `NutritionPlanIn` -> rascunho (201); gramas manuais fora da faixa
                                     salvam com `warnings`, bloqueadas ou sem peso do aluno dão 400
 - `PUT    /plans/{id}`              só rascunho (409 se publicado)
@@ -36,16 +41,20 @@ o cálculo da meta são do pacote `domain/nutrition`. Esta camada valida com
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 
 from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
     missing_subject_data,
@@ -74,6 +83,7 @@ from .domain.nutrition.plan import (
     goal_summary,
     manual_save_errors,
     manual_save_warnings,
+    is_archivable_plan,
     plan_state,
     plan_warnings,
     project_plan_goal,
@@ -83,7 +93,7 @@ from .domain.nutrition.plan import (
 from .intelligence.dashboard.time_windows import user_today_for
 from .intelligence.methodology_volume import is_training_slot_type
 from .nutrition_access import fetch_target_user, plan_actor, resolve_plan_owner, resolve_target_user
-from .nutrition_schema import require_nutrition_tables
+from .nutrition_schema import require_nutrition_tables, require_plan_energy_columns
 from .nutrition_targets_service import (
     DayComputation,
     UserInputs,
@@ -107,6 +117,7 @@ from .security import Identity, get_current_identity
 from .template_assignments import db_now, resolve_active_template_id
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
+logger = logging.getLogger(__name__)
 
 TABLE = "nutrition_plans"
 
@@ -115,15 +126,18 @@ _PLAN_COLUMNS = (
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
     "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, "
-    "effective_from, superseded_at, published_at, created_at, updated_at"
+    "energy_params_json, energy_model_version, "
+    "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
+# `published_preview_json` (106) fica FORA de `_PLAN_COLUMNS` de propósito: é a prévia gravada na publicação (dezenas de KB
+# por plano) e nenhuma leitura de plano a usa; as listas de planos não pagam o peso (teto de 1 MiB da Data API).
 
 # Ordem das colunas de configuração na escrita (INSERT/UPDATE).
 _SETTINGS_WRITE_COLUMNS = (
     "strategy", "advanced", "bmr_formula", "activity_level", "training_kcal_mode", "goal_body_fat_percent",
     "goal_weight_kg", "weekly_rate_share", "surplus_share", "protein_g_per_kg", "fat_kcal_share",
     "carb_min_g_per_kg", "meals_per_day", "macro_priority", "manual_targets_json", "carb_cycling_json", "notes",
-    "engine_version", "maintenance_kcal_adjust",
+    "engine_version", "maintenance_kcal_adjust", "energy_params_json",
 )
 
 _INSERT_SQL = (
@@ -145,9 +159,15 @@ _SUPERSEDE_SQL = (
     "WHERE user_id = %s AND status = %s AND superseded_at IS NULL AND id <> %s"
 )
 _PUBLISH_SQL = (
-    f"UPDATE {TABLE} SET status = %s, effective_from = %s, published_at = %s, published_by = %s, engine_version = %s "
+    f"UPDATE {TABLE} SET status = %s, effective_from = %s, published_at = %s, published_by = %s, engine_version = %s, "
+    "energy_model_version = %s "
     "WHERE id = %s AND status = %s"
 )
+# A prévia da publicação (auditoria) vai num UPDATE à parte e protegido: uma falha ao gravá-la nunca derruba a publicação.
+_PUBLISHED_PREVIEW_SQL = f"UPDATE {TABLE} SET published_preview_json = %s WHERE id = %s"
+# Teto do JSON da prévia gravada (bytes); acima dele grava NULL e registra só o tamanho. A Data API aceita 4 MiB por
+# requisição; 256 KiB deixa folga enorme e a prévia real tem poucos KB (medida no teste).
+PUBLISHED_PREVIEW_MAX_BYTES = 256 * 1024
 _TEMPLATE_NAME_SQL = "SELECT name FROM workout_plan_templates WHERE id = %s"
 # Slots da versão VIGENTE do Modelo (desde a 065 os leitores só enxergam a versão vigente).
 _TEMPLATE_SLOTS_SQL = (
@@ -159,6 +179,18 @@ _TEMPLATE_SLOTS_SQL = (
 _PUBLISH_IF_UNCHANGED_SQL = _PUBLISH_SQL + " AND updated_at = %s"
 _BY_ID_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE id = %s"
 _BY_USER_SQL = f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT %s"
+# Lista padrão: sem os arquivados (migração 105). `include_archived=true` usa `_BY_USER_SQL`.
+_BY_USER_VISIBLE_SQL = (
+    f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s AND archived_at IS NULL "
+    "ORDER BY created_at DESC, id DESC LIMIT %s"
+)
+# Arquivar só oculta: o guarda de estado (`is_archivable_plan`) é conferido na rota; o UPDATE repete a condição
+# (publicado e substituído) para uma publicação concorrente não arquivar o plano que acabou de virar vigente.
+_ARCHIVE_SQL = (
+    f"UPDATE {TABLE} SET archived_at = %s WHERE id = %s AND archived_at IS NULL "
+    "AND status = %s AND superseded_at IS NOT NULL"
+)
+_UNARCHIVE_SQL = f"UPDATE {TABLE} SET archived_at = NULL WHERE id = %s AND archived_at IS NOT NULL"
 _DRAFT_COUNT_SQL = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE user_id = %s AND status = %s"
 
 DRAFT = PlanStatus.DRAFT.value
@@ -167,6 +199,12 @@ PUBLISHED = PlanStatus.PUBLISHED.value
 
 def _connect():
     return connect_or_503(get_conn)
+
+
+def _require_plan_tables(cur: Any) -> None:
+    """503 citando a migração quando as tabelas do plano (078/079) ou as colunas do modo adaptativo (106) faltam."""
+    require_nutrition_tables(cur)
+    require_plan_energy_columns(cur)
 
 
 def _today_for(conn: Any, user_id: int) -> date:
@@ -211,6 +249,7 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         cycle_days=payload.cycle_days,
         manual_training_mode=payload.manual_training_mode,
         maintenance_kcal_adjust=payload.maintenance_kcal_adjust,
+        energy_params=payload.energy_params,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -238,6 +277,8 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         notes,
         ENGINE_VERSION,
         settings.maintenance_kcal_adjust,
+        # Só o que sai do padrão (a coluna fica NULL nos planos legados e nos adaptativos com o padrão).
+        None if settings.energy_params.is_default else settings.energy_params.to_dict(),
     )
 
 
@@ -252,8 +293,15 @@ def plan_public(row: dict[str, Any]) -> dict[str, Any]:
         **settings.to_dict(),
         "notes": row.get("notes"),
         "engine_version": row.get("engine_version"),
+        # Lote C: parâmetros do modelo de gasto (sempre presentes; o padrão é `unknown`) e a versão do algoritmo gravada
+        # na publicação do plano adaptativo (`None` nos legados e nos rascunhos).
+        "energy_params": None if settings.energy_params.is_default else settings.energy_params.to_dict(),
+        "energy_model_version": row.get("energy_model_version"),
         "effective_from": _iso(row.get("effective_from")),
         "superseded_at": _iso(row.get("superseded_at")),
+        "archived_at": _iso(row.get("archived_at")),
+        "archived": row.get("archived_at") is not None,
+        "can_archive": row.get("archived_at") is None and is_archivable_plan(row.get("status"), row.get("superseded_at")),
         "published_at": _iso(row.get("published_at")),
         "created_by": row.get("created_by"),
         "published_by": row.get("published_by"),
@@ -347,6 +395,10 @@ def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
         "bmr": meta.bmr.to_dict(),
         "scale_comparison": meta.scale_comparison.to_dict() if meta.scale_comparison else None,
         "tdee": meta.tdee.to_dict(),
+        # Composição do gasto pronta para a tela (dono: `energy_expenditure.tdee_breakdown`; só saída pública).
+        "tdee_breakdown": nutrition_labels.tdee_breakdown_public(
+            tdee_breakdown(meta.tdee, meta.extra_activity.kcal, meta.tdee_basis)
+        ),
         "training": meta.training_kcal.to_dict(),
         "kcal_target": alvo,
         "macros": meta.macros.to_dict(),
@@ -359,10 +411,27 @@ def _goal(comp: DayComputation) -> dict[str, Any]:
     return goal_summary(comp.settings, comp.subject.subject).to_dict()
 
 
-def _compute_week(cur: Any, user_id: int, settings: PlanSettings, today: date) -> list[DayComputation]:
+def _compute_week(
+    cur: Any, user_id: int, settings: PlanSettings, today: date, entradas: Optional[UserInputs] = None
+) -> list[DayComputation]:
     janela = week_window(today)
-    entradas = load_user_inputs(cur, user_id, janela.date_from, janela.date_to, today, [settings])
+    if entradas is None:
+        entradas = load_user_inputs(cur, user_id, janela.date_from, janela.date_to, today, [settings])
     return [compute_day(entradas, settings, dia, today) for dia in janela.days()]
+
+
+def _week_and_past(
+    cur: Any, aluno: int, settings: PlanSettings, today: date
+) -> tuple[list[DayComputation], list[Optional[float]]]:
+    """A semana atual e o gasto de treino dos dias anteriores com UMA carga de entradas (a janela cobre as duas): no plano
+    adaptativo isso evita ler e reprocessar o histórico duas vezes na prévia e na publicação."""
+    janela = week_window(today)
+    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
+    entradas = load_user_inputs(cur, aluno, min(janela.date_from, inicio), janela.date_to, today, [settings])
+    return (
+        _compute_week(cur, aluno, settings, today, entradas),
+        _past_training(cur, aluno, settings, today, entradas),
+    )
 
 
 def subject_incomplete_error(comp: DayComputation) -> HTTPException:
@@ -384,13 +453,17 @@ def _projection(comp: DayComputation, today: date, tdee: Optional[float], premis
     return projecao
 
 
-def _past_training(cur: Any, aluno: int, settings: PlanSettings, today: date) -> list[Optional[float]]:
+def _past_training(
+    cur: Any, aluno: int, settings: PlanSettings, today: date, entradas: Optional[UserInputs] = None
+) -> list[Optional[float]]:
     """Gasto de treino dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino; 0 em dia sem
     treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
     (informada > MET), para o TDEE estável da projeção."""
-    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
-    fim = today - timedelta(days=1)
-    return past_training_kcal(load_user_inputs(cur, aluno, inicio, fim, today, [settings]), settings, today)
+    if entradas is None:
+        inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
+        fim = today - timedelta(days=1)
+        entradas = load_user_inputs(cur, aluno, inicio, fim, today, [settings])
+    return past_training_kcal(entradas, settings, today)
 
 
 
@@ -451,14 +524,15 @@ def _preview_payload(
 @router.get("/plans")
 def list_plans(
     user_id: Optional[int] = Query(default=None),
+    include_archived: bool = Query(default=False),
     identity: Identity = Depends(plan_actor),
 ):
     alvo = resolve_target_user(identity, user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             usuario = fetch_target_user(cur, alvo)
-            cur.execute(_BY_USER_SQL, (alvo, PLAN_LIST_MAX))
+            cur.execute(_BY_USER_SQL if include_archived else _BY_USER_VISIBLE_SQL, (alvo, PLAN_LIST_MAX))
             linhas = cur.fetchall() or []
     return {"user": usuario, "items": [plan_public(linha) for linha in linhas]}
 
@@ -469,7 +543,7 @@ def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_acto
     alvo = resolve_target_user(identity, payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             fetch_target_user(cur, alvo)
             cur.execute(_DRAFT_COUNT_SQL, (alvo, DRAFT))
             if int((cur.fetchone() or {}).get("n") or 0) >= MAX_DRAFTS_PER_USER:
@@ -494,7 +568,7 @@ def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identi
     settings = _validate_payload(payload)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
@@ -512,7 +586,7 @@ def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identi
 def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             resolve_plan_owner(identity, int(linha["user_id"]))
             _require_draft(linha)
@@ -522,23 +596,89 @@ def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     return {"status": "deleted", "id": int(plan_id)}
 
 
+@router.post("/plans/{plan_id}/archive")
+def archive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+    """Oculta da lista um plano SUBSTITUÍDO (reversível). Rascunho (tem DELETE) e vigente: 409
+    `plan_not_archivable`. Já arquivado: 200 sem mudar nada (idempotente)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_plan_tables(cur)
+            linha = _fetch_plan(cur, plan_id)
+            resolve_plan_owner(identity, int(linha["user_id"]))
+            if linha.get("archived_at") is None:
+                if not is_archivable_plan(linha.get("status"), linha.get("superseded_at")):
+                    raise _error(
+                        409, "plan_not_archivable", "Só um plano substituído pode ser arquivado (rascunho se exclui; o vigente fica)."
+                    )
+                cur.execute(_ARCHIVE_SQL, (db_now(cur), int(plan_id), PUBLISHED))
+                if int(cur.rowcount or 0) == 0:
+                    # Corrida: outra chamada pode já ter arquivado (idempotente, 200) ou publicado/alterado (409).
+                    if _fetch_plan(cur, plan_id).get("archived_at") is None:
+                        raise _error(409, "plan_not_archivable", "O plano mudou durante o pedido; recarregue.")
+            linha = _fetch_plan(cur, plan_id)
+    return plan_public(linha)
+
+
+@router.post("/plans/{plan_id}/unarchive")
+def unarchive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+    """Volta o plano arquivado para a lista. Não arquivado: 200 sem mudar nada (idempotente)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_plan_tables(cur)
+            linha = _fetch_plan(cur, plan_id)
+            resolve_plan_owner(identity, int(linha["user_id"]))
+            if linha.get("archived_at") is not None:
+                cur.execute(_UNARCHIVE_SQL, (int(plan_id),))
+                linha = _fetch_plan(cur, plan_id)
+    return plan_public(linha)
+
+
 @router.post("/plans/{plan_id}/preview")
 def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
     """Calcula a semana atual com ESTE plano, sem gravar nada."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
         with conn.cursor() as cur:
-            semana = _compute_week(cur, aluno, settings_from_row(linha), hoje)
-            passado = _past_training(cur, aluno, settings_from_row(linha), hoje)
+            semana, passado = _week_and_past(cur, aluno, settings_from_row(linha), hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
         raise subject_incomplete_error(comp_hoje)
     return _preview_payload(linha, usuario, semana, hoje, passado)
+
+
+def published_preview(cur: Any, aluno: int, linha: dict[str, Any], settings: PlanSettings, hoje: date) -> Optional[dict[str, Any]]:
+    """Prévia aprovada na publicação (`nutrition_plans.published_preview_json`, 106): a MESMA do `POST /plans/{id}/preview`
+    (`_preview_payload` sobre a semana atual), calculada no servidor no instante da publicação e jsonável. Sem os campos
+    `plan` (o rascunho, ainda não publicado) e `user` (dado pessoal, redundante): fica só o que foi calculado.
+
+    Roda em TODA publicação (todos os modos): o custo extra (uma carga de entradas e o cálculo da semana) é só da publicação,
+    nunca de leitura. É registro de auditoria: se montá-lo falhar, a publicação NÃO é bloqueada (`None` e log só com o tipo
+    do erro)."""
+    try:
+        semana, passado = _week_and_past(cur, aluno, settings, hoje)
+        corpo = _preview_payload(linha, {}, semana, hoje, passado)
+    except Exception as erro:  # noqa: BLE001 - auditoria best-effort: nunca impede publicar
+        logger.warning("nutrition.published_preview_failed error=%s", type(erro).__name__)
+        return None
+    corpo.pop("plan", None)
+    corpo.pop("user", None)
+    return jsonable_encoder(corpo)
+
+
+def _preview_within_cap(previa: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """A prévia só vai para o banco dentro de `PUBLISHED_PREVIEW_MAX_BYTES`; acima, `None` e o log leva só o tamanho."""
+    if previa is None:
+        return None
+    tamanho = len(json.dumps(previa, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8"))
+    if tamanho > PUBLISHED_PREVIEW_MAX_BYTES:
+        logger.warning("nutrition.published_preview_too_large bytes=%s cap=%s", tamanho, PUBLISHED_PREVIEW_MAX_BYTES)
+        return None
+    return previa
 
 
 def insert_draft(cur: Any, aluno: int, actor_id: int, settings: PlanSettings, notes: Optional[str]) -> dict[str, Any]:
@@ -594,9 +734,13 @@ def publish_draft(
         if not comp_hoje.target.computable:
             raise subject_incomplete_error(comp_hoje)
         agora = db_now(cur)
+        # Registro de auditoria da publicação (106): a prévia aprovada (todos os modos) e a versão do algoritmo (só no adaptativo).
+        previa = _preview_within_cap(published_preview(cur, aluno, linha, settings, hoje))
         try:
             cur.execute(_SUPERSEDE_SQL, (agora, aluno, PUBLISHED, plan_id))
-            parametros = (PUBLISHED, hoje, agora, int(actor_id), ENGINE_VERSION, plan_id, DRAFT)
+            parametros = (
+                PUBLISHED, hoje, agora, int(actor_id), ENGINE_VERSION, settings.energy_model_version, plan_id, DRAFT
+            )
             if expected_updated_at is not None:
                 # A versão lida entra no WHERE: edição concorrente depois da conferência vira 0 linhas (409).
                 cur.execute(_PUBLISH_IF_UNCHANGED_SQL, (*parametros, linha.get("updated_at")))
@@ -612,6 +756,11 @@ def publish_draft(
             raise _error(409, "plan_not_draft", "O rascunho já foi publicado ou apagado; recarregue.")
     metas = ensure_daily_targets(conn, aluno, janela, today=hoje, inputs=entradas)
     with conn.cursor() as cur:
+        if previa is not None:  # auditoria: gravação à parte e protegida (nunca derruba a publicação)
+            try:
+                cur.execute(_PUBLISHED_PREVIEW_SQL, (previa, plan_id))
+            except Exception as erro:  # noqa: BLE001
+                logger.warning("nutrition.published_preview_write_failed error=%s", type(erro).__name__)
         publicado = _fetch_plan(cur, plan_id)
     return publicado, janela, metas
 
@@ -624,12 +773,11 @@ def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(
     aluno = resolve_target_user(identity, payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
         with conn.cursor() as cur:
-            semana = _compute_week(cur, aluno, settings, hoje)
-            passado = _past_training(cur, aluno, settings, hoje)
+            semana, passado = _week_and_past(cur, aluno, settings, hoje)
     comp_hoje = next(comp for comp in semana if comp.day == hoje)
     if not comp_hoje.target.computable:
         raise subject_incomplete_error(comp_hoje)
@@ -646,7 +794,7 @@ def publish_plan(
     `expected_current_id` (409 `publish_conflict`) e janela de publicação do motor."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, int(linha["user_id"]))
         publicado, janela, metas = publish_draft(
@@ -662,7 +810,7 @@ def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity =
     aluno = resolve_target_user(identity, payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
         resultado = recompute_window(payload.date_from, payload.date_to, hoje)
@@ -704,7 +852,7 @@ def cycle_days_from_template(
     else:
         with _connect() as conn:
             with conn.cursor() as cur:
-                require_nutrition_tables(cur)
+                _require_plan_tables(cur)
                 cur.execute(_TEMPLATE_NAME_SQL, (int(modelo_id),))
                 nome = cur.fetchone() or {}
                 cur.execute(_TEMPLATE_SLOTS_SQL, (int(modelo_id),))
@@ -735,10 +883,17 @@ def cycle_days_from_template(
 # ---------------------------------------------------------------------------
 
 
-def _my_week(conn: Any, aluno: int, settings: PlanSettings, hoje: date) -> tuple[UserInputs, DayComputation]:
+def _my_week(
+    conn: Any, aluno: int, settings: PlanSettings, hoje: date, planos: Optional[Any] = None
+) -> tuple[UserInputs, DayComputation]:
+    """Entradas da semana + a meta de hoje. Com `planos`, as entradas já cobrem TODOS os planos que valem em algum dia da
+    semana (na semana da troca de plano, `ensure_daily_targets` não precisa recarregar o histórico)."""
     janela = week_window(hoje)
+    da_semana = [settings]
+    if planos is not None:
+        da_semana += [em_vigor[1] for dia in janela.days() if (em_vigor := planos.for_day(dia)) is not None]
     with conn.cursor() as cur:
-        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje, [settings])
+        entradas = load_user_inputs(cur, aluno, janela.date_from, janela.date_to, hoje, da_semana)
     return entradas, compute_day(entradas, settings, hoje, hoje)
 
 
@@ -750,7 +905,7 @@ def my_plan(identity: Identity = Depends(get_current_identity)):
     aluno = resolve_target_user(identity, None)
     with _connect() as conn:
         with conn.cursor() as cur:
-            require_nutrition_tables(cur)
+            _require_plan_tables(cur)
             planos = load_published_plans(cur, aluno)
         hoje = _today_for(conn, aluno)
         em_vigor = planos.for_day(hoje)
@@ -760,7 +915,7 @@ def my_plan(identity: Identity = Depends(get_current_identity)):
         with conn.cursor() as cur:
             vigente = _fetch_plan(cur, plano_id)
         janela = week_window(hoje)
-        entradas, comp_hoje = _my_week(conn, aluno, settings, hoje)
+        entradas, comp_hoje = _my_week(conn, aluno, settings, hoje, planos)
         linhas = ensure_daily_targets(conn, aluno, janela, today=hoje, inputs=entradas)
     dias = list(janela.days())
     semana = week_rows(linhas, dias)

@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { DashboardCardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
+import { AdaptiveEnergyCard } from '@/components/nutrition/AdaptiveEnergyCard';
 import { CheckinHistory } from '@/components/nutrition/CheckinHistory';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
@@ -445,6 +446,7 @@ export function DashboardNutricaoClient() {
           <BodySection data={data} />
           <ProjectionSection data={data} />
           <AdaptiveSection data={data} />
+          <AdaptiveEnergyCard energy={data.adaptive_energy} />
           <CheckinHistory />
         </Stack>
       )}

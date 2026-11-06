@@ -58,6 +58,7 @@ import type {
 } from '@/lib/dashboard-recovery-types';
 import { READINESS_ORDER, statusLegend, statusVisual } from '@/lib/dashboard-status';
 import { BRAND } from '@/theme';
+import { useIsAdmin } from '@/lib/use-is-admin';
 
 /**
  * `/dashboard/recovery` — "estou recuperando bem?" (plano §7, §11; etapa F1.5).
@@ -230,6 +231,7 @@ function AvaliacaoCombinada({
   payload: RecoverySignalsResponse;
   contagem: Record<string, number>;
 }) {
+  const isAdmin = useIsAdmin();
   const { assessment } = payload;
   const visual = statusVisual('severity', assessment.level);
 
@@ -243,12 +245,12 @@ function AvaliacaoCombinada({
       <Stack gap="sm">
         <Group gap="sm" wrap="wrap">
           <StatusBadge domain="severity" code={assessment.level} />
-          <StatusBadge
+          {isAdmin && <StatusBadge
             domain="dataQuality"
             code={assessment.uncertainty}
             tooltip="Confiança da leitura combinada: quantos sinais tinham baseline pessoal para comparar."
             suffix="de certeza"
-          />
+          />}
           {!assessment.allow_intensification && (
             <Tooltip label={assessment.intensification_blocked_reason ?? ''} multiline w={280}>
               <Badge color="red" variant="light" leftSection={<IconLock size={14} />}>

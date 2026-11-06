@@ -79,3 +79,31 @@ def test_todo_motivo_de_exclusao_e_uma_frase_de_verdade():
         nome for nome, motivo in PY_MIGRATIONS_FORA_DO_SCHEMA_DE_TESTE.items() if len(motivo.strip()) < 20
     )
     assert not curtos, f"Motivo insuficiente para: {curtos}"
+
+
+# Migracoes posteriores a 065 que citam a tabela de versoes mas NAO a alteram
+# (066 so cria a FK de `workout_plans.template_version_id` para ela).
+_NAO_ALTERAM_A_TABELA_DE_VERSOES = {"066_template_version_on_plans.py"}
+
+
+def test_migracoes_que_alteram_a_tabela_de_versoes_estao_na_lista_do_teste_065():
+    """Regressao da 105 (CI do PR #75): `test_template_versions_065.py` faz down/up da 065 (que RECRIA
+    `workout_plan_template_versions`) e reaplica so as migracoes listadas em `MIGRATIONS_SOBRE_A_065`.
+    Coluna nova na tabela de versoes que ficar fora da lista some do schema compartilhado e quebra os
+    testes seguintes com 1054 (`Unknown column`)."""
+    from pathlib import Path
+
+    teste = (
+        Path(__file__).resolve().parents[1] / "integration" / "dataapi" / "test_template_versions_065.py"
+    ).read_text(encoding="utf-8")
+    exigidas = {
+        path.name
+        for path in MIGRATIONS_DIR.glob("*.py")
+        if int(path.name[:3]) > 65
+        and path.name not in _NAO_ALTERAM_A_TABELA_DE_VERSOES
+        and "workout_plan_template_versions" in (src := path.read_text(encoding="utf-8"))
+        and "ADD COLUMN" in src.upper()
+    }
+    assert {"073_modo_contagem_volume.py", "093_training_goal.py", "105_archived_at_versoes_e_planos.py"} <= exigidas
+    faltando = sorted(nome for nome in exigidas if f'"{nome}"' not in teste)
+    assert not faltando, f"Fora de MIGRATIONS_SOBRE_A_065 em test_template_versions_065.py: {faltando}"

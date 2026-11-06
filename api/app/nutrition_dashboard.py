@@ -8,6 +8,8 @@ Rotas (prefixo `/nutrition`):
                                    kcal e macros × meta, peso/%G/massa muscular,
                                    projeção até o alvo do plano e o TDEE adaptativo
                                    (só sugestão, `applied` sempre falso)
+- `GET /dashboard` também traz `adaptive_energy`: o gasto adaptativo em sombra (`nutrition_energy_service`, só leitura,
+                                   `applied` sempre falso, indisponível sem derrubar o dashboard)
 - `GET /today?user_id=`            só HOJE: materializa a meta de hoje (como o diário)
                                    e devolve meta, total e balanço; é o que o card da
                                    home mobile lê
@@ -39,9 +41,11 @@ from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import day_balance, target_macros
 from .intelligence.dashboard.body_service import moving_average_points
 from .intelligence.dashboard.metrics_registry import threshold
-from .intelligence.dashboard.time_windows import user_today_for
+from .intelligence.dashboard.time_windows import user_timezone, user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_days import balance_public, target_of
+from .nutrition_energy_service import UNAVAILABLE_ERROR, energy_key, shadow_block, unavailable_block
+from .domain.nutrition.plan import DEFAULT_WATCH_CALORIE_MODE
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
@@ -56,6 +60,9 @@ from .nutrition_targets_service import (
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
+
+# Modo da kcal do relógio quando o plano vigente não é adaptativo (a sombra): o PADRÃO do dono do plano.
+SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value
 
 # Só o que `stored_meal_totals` precisa (sem `description_raw`, `notes` nem JSON de itens: a
 # resposta da RDS Data API tem teto de 1 MiB e 90 dias de refeições passariam dele).
@@ -79,6 +86,11 @@ def _today_for(conn: Any, user_id: int) -> date:
     return user_today_for(conn, user_id)
 
 
+def _timezone_for(conn: Any, user_id: int) -> str:
+    """Fuso do ALUNO (perfil). Isolado para os testes congelarem."""
+    return user_timezone(conn, user_id)
+
+
 def _as_date(value: Any) -> Optional[date]:
     if isinstance(value, date):
         return value
@@ -92,6 +104,40 @@ def _num(value: Any) -> Optional[float]:
 def _require_tables(cur: Any) -> None:
     require_nutrition_tables(cur)
     require_diary_tables(cur)
+
+
+def read_window_rows(cur: Any, aluno: int, inicio: date, fim: date, hoje: date) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Linhas GRAVADAS da janela: metas materializadas (forma pública) e totais das refeições. Compartilhada
+    com o relatório Markdown (`intelligence/report`), que consome a mesma composição do dashboard."""
+    metas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio, fim)]
+    cur.execute(MEAL_TOTALS_SQL, (aluno, inicio, fim))
+    return metas, list(cur.fetchall() or [])
+
+
+def align_window(dias: Any, metas_linhas: Any, refeicoes: Any) -> tuple[list[Any], list[Any], list[Any]]:
+    """Metas (linha, `MacroTargets`) e total do dia (motor) alinhados a `dias`; sem dado = `None`."""
+    metas_por_dia = dash.last_by_day(dias, ((_as_date(m["local_date"]), m) for m in metas_linhas))
+    alvos = [
+        None if m is None else target_macros(m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"], m["fiber_g"])
+        for m in metas_por_dia
+    ]
+    totais = [day_totals(grupo) for grupo in dash.group_by_day(dias, ((_as_date(r["local_date"]), r) for r in refeicoes))]
+    return metas_por_dia, alvos, totais
+
+
+def plan_versions(planos: Any) -> list[dash.PlanVersion]:
+    """Versões publicadas do plano na forma que o `dashboard` usa (início, estratégia e alvo)."""
+    return [
+        dash.PlanVersion(
+            plan_id=ref.plan_id,
+            effective_from=ref.effective_from,
+            published_at=ref.published_at,
+            strategy=planos.settings[ref.plan_id].strategy.value,
+            goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
+            goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent,
+        )
+        for ref in planos.refs
+    ]
 
 
 @router.get("/today")
@@ -141,26 +187,36 @@ def get_dashboard(
         inicio_lido = dias_lidos[0]
         ensure_diary_targets(conn, aluno, [hoje], today=hoje)
         with conn.cursor() as cur:
-            metas_linhas = [target_row_public(linha, hoje) for linha in read_targets(cur, aluno, inicio_lido, hoje)]
-            cur.execute(MEAL_TOTALS_SQL, (aluno, inicio_lido, hoje))
-            refeicoes = list(cur.fetchall() or [])
+            metas_linhas, refeicoes = read_window_rows(cur, aluno, inicio_lido, hoje, hoje)
             cur.execute(MUSCLE_WINDOW_SQL, (aluno, inicio_lido, hoje))
             musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
+            # Só o plano que vale HOJE entra nas entradas (a projeção e a meta de hoje usam só ele): planos já substituídos
+            # (inclusive um adaptativo antigo) não custam leitura nem carga de histórico a cada dashboard.
+            ref_hoje = plan_in_force(planos.refs, hoje)
+            planos_em_jogo = [planos.settings[ref_hoje.plan_id]] if ref_hoje is not None else []
             # Cobre também os dias de treino da projeção (TDEE estável do plano, N2).
             entradas = load_user_inputs(
-                cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos.settings.values()
+                cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos_em_jogo
             )
+            # Gasto adaptativo: em SOMBRA (`applied: false`) nos planos legados; com o plano VIGENTE adaptativo é o MESMO
+            # histórico e o mesmo `watch_calorie_mode` da meta (`applied: true`, sem leitura nova). Falha nunca derruba o dashboard.
+            ref_vigente = plan_in_force(planos.refs, hoje)
+            config_vigente = planos.settings[ref_vigente.plan_id] if ref_vigente is not None else None
+            adaptativo_vigente = config_vigente is not None and config_vigente.is_adaptive
+            modo_kcal = config_vigente.energy_params.watch_calorie_mode.value if adaptativo_vigente else SHADOW_CALORIE_MODE
+            chave_energia = energy_key(config_vigente) if adaptativo_vigente else None
+            if adaptativo_vigente and chave_energia in entradas.energy_failed:  # a leitura falhou: o cartão mostra `error`, não `no_data`
+                energia_adaptativa = unavailable_block(UNAVAILABLE_ERROR, applied=True)
+            else:
+                energia_adaptativa = shadow_block(
+                    cur, aluno, hoje, entradas.series, _timezone_for(conn, aluno),
+                    calorie_mode=modo_kcal, applied=adaptativo_vigente,
+                    history=entradas.energy.get(chave_energia) if adaptativo_vigente else None,
+                )
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
-    metas_por_dia = dash.last_by_day(dias_lidos, ((_as_date(m["local_date"]), m) for m in metas_linhas))
-    alvos_lidos = [
-        None if m is None else target_macros(m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"], m["fiber_g"])
-        for m in metas_por_dia
-    ]
-    totais_lidos = [
-        day_totals(grupo) for grupo in dash.group_by_day(dias_lidos, ((_as_date(r["local_date"]), r) for r in refeicoes))
-    ]
+    metas_por_dia, alvos_lidos, totais_lidos = align_window(dias_lidos, metas_linhas, refeicoes)
     series = entradas.series
     pesos_lidos = dash.last_by_day(dias_lidos, ((r.local_date, r.number) for r in series.weight))
     gorduras_lidas = dash.positive_series(
@@ -176,17 +232,7 @@ def get_dashboard(
     alvos, totais = alvos_lidos[recorte], totais_lidos[recorte]
     pesos, gorduras, musculos = pesos_lidos[recorte], gorduras_lidas[recorte], musculos_lidos[recorte]
 
-    versoes = [
-        dash.PlanVersion(
-            plan_id=ref.plan_id,
-            effective_from=ref.effective_from,
-            published_at=ref.published_at,
-            strategy=planos.settings[ref.plan_id].strategy.value,
-            goal_weight_kg=planos.settings[ref.plan_id].goal_weight_kg,
-            goal_body_fat_percent=planos.settings[ref.plan_id].goal_body_fat_percent,
-        )
-        for ref in planos.refs
-    ]
+    versoes = plan_versions(planos)
     estados = dash.day_states(dias, hoje, dash.first_plan_start(versoes), totais)
     linhas_dia = dash.day_rows(dias, alvos, totais, estados)
     aderencia = dash.window_adherence(linhas_dia)
@@ -279,7 +325,8 @@ def get_dashboard(
         "body": {"points": pontos, "weight_trend": tendencia_peso},
         "projection": projecao,
         "adaptive_tdee": adaptativo,
+        "adaptive_energy": energia_adaptativa,
     }
 
 
-__all__ = ["router"]
+__all__ = ["align_window", "plan_versions", "read_window_rows", "router"]

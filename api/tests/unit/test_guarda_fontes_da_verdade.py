@@ -1983,6 +1983,87 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/intelligence/dashboard/comparability.py",),
         inventario="C12",
     ),
+    Padrao(
+        chave="gasto_adaptativo_sombra",
+        regra="constante do gasto adaptativo (suavização 0,20 e passo de 75 kcal, ajuste diário 0,60 com limites -250/+300, "
+        "confiança 7/14 dias, mínimo de dias completos, fração 0,70 da TMB, limites de plausibilidade, horizonte do replay) "
+        "ou a conta (`× 0,60` na atividade, `anterior ± 75`, `TMB × 1,20`) redefinidas fora do dono",
+        # 2026-11-05 (nutrição adaptativa, lote A, §94): dono `adaptive_energy` (estimador com estado, em sombra). O serviço
+        # só monta as entradas e lê `to_public_dict`; a tela só exibe `confidence_level` e os kcal prontos. Defaults de
+        # desenho nomeados no dono, sem fonte bibliográfica. A forma `nome = número` exige o NOME da constante, então
+        # `opacity: 0.6` e afins no CSS não casam; as formas de conta exigem a palavra do domínio ao lado do número.
+        regex=re.compile(
+            r"\b(?:EXPENDITURE_ALPHA|EXPENDITURE_MAX_STEP_KCAL|ACTIVITY_ADJUSTMENT_COEFFICIENT|ACTIVITY_ADJUSTMENT_MIN_KCAL"
+            r"|ACTIVITY_ADJUSTMENT_MAX_KCAL|CONFIDENCE_FLOOR_DAYS|CONFIDENCE_RAMP_DAYS|MIN_COMPLETE_DAYS_IN_WINDOW"
+            r"|COMPLETE_MIN_INTAKE_BMR_SHARE|MAX_PLAUSIBLE_WEEKLY_CHANGE_KG|OBSERVED_BMR_SHARE_RANGE|SUSPENDED_CONFIDENCE_CAP"
+            r"|CONFIDENCE_MEDIUM_FROM|CONFIDENCE_HIGH_FROM|REPLAY_HISTORY_DAYS|BOOTSTRAP_ACTIVITY_FACTOR)"
+            r"\s*(?::[^=\n]+)?=\s*[\d(\[\-]"
+            r"|\b(?:smoothed|adaptive|previous)\w*\s*[-+]\s*75\b"
+            r"|-250(?:\.0)?\s*,\s*\+?300(?:\.0)?\b"
+            r"|\b\w*(?:adaptive|observed|observado|adaptativo)\w*\s*\*\s*0[.,]20?\b"
+            r"|\b0[.,]20?\s*\*\s*\w*(?:observed|observado|adaptive|adaptativo)"
+            r"|\b\w*(?:activity|atividade)\w*\s*\*\s*0[.,]60?\b"
+            r"|\b0[.,]60?\s*\*\s*\w*(?:activity|atividade|delta)"
+            r"|\b(?:bmr|tmb)\w*\s*\*\s*1[.,]20?\b"
+        ),
+        donos=("api/app/domain/nutrition/adaptive_energy.py",),
+        inventario="NUT-ADAPT (§94)",
+    ),
+    Padrao(
+        chave="peso_tendencia",
+        regra="constante do peso de tendência (meia-vida de 7 dias, janela de 21, histórico mínimo/ideal, pesagens por semana, "
+        "faixa plausível, outlier) ou o alfa da EMA (`1 - exp(...)`) redefinidos fora do dono",
+        # 2026-11-05 (nutrição adaptativa, lote A, §93): dono `weight_trend`. O alfa é DERIVADO da meia-vida; ninguém
+        # repete o 0,0943 nem refaz a EMA. `adaptive_tdee.py` (inclinação por mínimos quadrados) segue o dono da regressão.
+        regex=re.compile(
+            r"\b(?:WEIGHT_HALF_LIFE_DAYS|WEIGHT_ALPHA|TREND_WINDOW_DAYS|MIN_HISTORY_DAYS|IDEAL_HISTORY_DAYS"
+            r"|RECOMMENDED_WEIGHINS_PER_WEEK|MIN_WEIGHINS_PER_WEEK|OUTLIER_DEVIATION_KG|OUTLIER_ACCEPT_STREAK"
+            r"|WEIGHT_PLAUSIBLE_RANGE_KG)\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|\b1(?:\.0)?\s*-\s*(?:Math|math)\.exp\("
+            r"|\b(?:half_?life|halfLife)\w*\s*(?::[^=\n]+)?=\s*7\b"
+        ),
+        donos=("api/app/domain/nutrition/weight_trend.py",),
+        inventario="NUT-ADAPT (§93)",
+    ),
+    Padrao(
+        chave="atividades_normalizadas",
+        regra="teto de kcal por atividade, tolerâncias de duplicata (fingerprint, 10 min, 20%), atraso de confirmação do dia, janela do sync, "
+        "sequência máxima de descanso confirmado, dias exibidos ou "
+        "o desconto do repouso (`TMB / 1440`) redefinidos fora do dono",
+        # 2026-11-05 (nutrição adaptativa, lote A, §95): dono `activity_energy` (kcal ativa × bruta, deduplicação e dia
+        # confirmado do modo adaptativo). Os três modos legados seguem em `energy_expenditure` e não usam este módulo.
+        regex=re.compile(
+            r"\b(?:MAX_PLAUSIBLE_ACTIVITY_KCAL|FINGERPRINT_START_ROUND_MINUTES|FINGERPRINT_DURATION_ROUND_MINUTES"
+            r"|FINGERPRINT_KCAL_ROUND|POSSIBLE_DUPLICATE_START_TOLERANCE_MINUTES|POSSIBLE_DUPLICATE_DURATION_TOLERANCE_RATIO"
+            r"|DAY_CONFIRMATION_LAG_HOURS|INTERVALS_SYNC_WINDOW_DAYS|MAX_CONFIRMED_REST_STREAK_DAYS|SHADOW_DISPLAY_DAYS)"
+            r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|\b(?:bmr|tmb)\w*\s*/\s*1440\b"
+        ),
+        donos=("api/app/domain/nutrition/activity_energy.py",),
+        inventario="NUT-ADAPT (§95)",
+    ),
+    Padrao(
+        chave="composicao_gasto_previa",
+        regra="arredondamento (`BREAKDOWN_KCAL_ROUNDING_STEP`) ou códigos das parcelas da composição do gasto (`BREAKDOWN_BASE`, "
+        "`BREAKDOWN_STRENGTH`, `BREAKDOWN_EXTRAS`) redefinidos fora do dono",
+        # 2026-11-05 (nutrição adaptativa, lote A, §96): dono `energy_expenditure.tdee_breakdown`. A prévia só rotula
+        # (`labels.tdee_breakdown_public`) e a tela renderiza; nenhuma decide parcela por modo nem refaz a soma.
+        regex=re.compile(
+            r"\bBREAKDOWN_KCAL_ROUNDING_STEP\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|\bBREAKDOWN_(?:BASE|STRENGTH|EXTRAS)\s*(?::[^=\n]+)?=\s*[\"']"
+        ),
+        donos=("api/app/domain/nutrition/energy_expenditure.py",),
+        inventario="NUT-ADAPT (§96)",
+    ),
+    Padrao(
+        chave="modo_adaptativo_literal",
+        regra="o código do modo de gasto adaptativo (`adaptive_balance`) escrito como literal fora do dono",
+        # 2026-11-06 (nutrição adaptativa, lote C, §97): o dono é `energy_expenditure.TdeeMode`. O serviço usa o enum e a
+        # tela lê `nutrition.adaptive_tdee_mode` do JSON gerado; ninguém repete a string nem decide o modo por ela.
+        regex=re.compile(r"[\"']adaptive_balance[\"']"),
+        donos=("api/app/domain/nutrition/energy_expenditure.py",),
+        inventario="NUT-ADAPT (§97)",
+    ),
 )
 
 PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
@@ -2199,6 +2280,11 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "ajuste_manutencao": {},  # NUT-N7 (2026-11-03): nasce vazia (o check-in importa a faixa do `strategy`)
     "checkin_semanal": {},  # NUT-N7 (2026-11-03): nasce vazia (a rota chama `weekly_checkin`; a tela só exibe)
     "projecao_dashboard_nutricao": {},  # NUT-N5 (2026-11-03): nasce vazia (o painel chama `plan.project_plan_goal`)
+    "gasto_adaptativo_sombra": {},  # NUT-ADAPT (2026-11-05): nasce vazia (o serviço monta entradas e lê `to_public_dict`)
+    "peso_tendencia": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "atividades_normalizadas": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
     "cota_ia_copia_nutricao": {},  # NUT-L5A (2026-10-18, revisão do guardião): nasce vazia (proibição pura)
@@ -3151,6 +3237,36 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("MAINT_KCAL_ADJUST_RANGE: Final[tuple[int, int]] = (-500, 500)", "MAINT_KCAL_ADJUST_DEFAULT = 0",
          "const MAINT_KCAL_ADJUST_RANGE = [-300, 300];"),
         ("from .strategy import MAINT_KCAL_ADJUST_RANGE", "MAINT_KCAL_ADJUST_RANGE[0]", "_range(st.MAINT_KCAL_ADJUST_RANGE)"),
+    ),
+    "gasto_adaptativo_sombra": (
+        ("EXPENDITURE_ALPHA: Final[float] = 0.20", "ACTIVITY_ADJUSTMENT_COEFFICIENT = 0.6", "const EXPENDITURE_MAX_STEP_KCAL = 75;",
+         "ACTIVITY_ADJUSTMENT_MIN_KCAL: Final[float] = -250.0", "CONFIDENCE_RAMP_DAYS = 14", "REPLAY_HISTORY_DAYS = 90",
+         "adj = clamp(x, -250, 300)", "novo = previous_adaptive + 75", "suave = 0.2 * observed + y",
+         "ajuste = delta_activity * 0.60", "gasto = tmb * 1.2", "COMPLETE_MIN_INTAKE_BMR_SHARE = 0.7"),
+        ("opacity: 0.6", "const alpha = 0.2;", "from .adaptive_energy import EXPENDITURE_ALPHA", "EXPENDITURE_ALPHA * observado_kcal",
+         "BOOTSTRAP_ACTIVITY_FACTOR = NON_EXERCISE_ACTIVITY_FACTORS[x]", "margin: 0.6em", "adaptive_kcal + estimate"),
+    ),
+    "peso_tendencia": (
+        ("WEIGHT_HALF_LIFE_DAYS: Final[float] = 7.0", "TREND_WINDOW_DAYS = 21", "OUTLIER_DEVIATION_KG: Final[float] = 3.0",
+         "alpha = 1 - math.exp(math.log(0.5) / 7)", "const alpha = 1 - Math.exp(x);", "half_life_days = 7"),
+        ("from .weight_trend import TREND_WINDOW_DAYS", "WEIGHT_ALPHA * medida", "const w = 21;", "half_life = days"),
+    ),
+    "atividades_normalizadas": (
+        ("MAX_PLAUSIBLE_ACTIVITY_KCAL: Final[float] = 5000.0", "FINGERPRINT_KCAL_ROUND = 5.0",
+         "POSSIBLE_DUPLICATE_DURATION_TOLERANCE_RATIO = 0.20", "DAY_CONFIRMATION_LAG_HOURS: Final[float] = 5.0",
+         "repouso = bmr_kcal / 1440 * minutos", "MAX_CONFIRMED_REST_STREAK_DAYS: Final[int] = 7",
+         "INTERVALS_SYNC_WINDOW_DAYS = 30", "SHADOW_DISPLAY_DAYS: Final[int] = 7"),
+        ("from .activity_energy import DAY_CONFIRMATION_LAG_HOURS", "bmr / MINUTES_PER_DAY", "x / 14400",
+         "if streak > ae.MAX_CONFIRMED_REST_STREAK_DAYS", "dias = SHADOW_DISPLAY_DAYS"),
+    ),
+    "modo_adaptativo_literal": (
+        ('tdee_mode = "adaptive_balance"', "if modo === 'adaptive_balance'", "{'tdee_mode': 'adaptive_balance'}"),
+        ("TdeeMode.ADAPTIVE_BALANCE", "nutrition.adaptive_tdee_mode", "adaptive_balance_x", "adaptive_balanced"),
+    ),
+    "composicao_gasto_previa": (
+        ("BREAKDOWN_KCAL_ROUNDING_STEP: Final[float] = 1.0", "BREAKDOWN_STRENGTH = 'training'", 'BREAKDOWN_BASE: Final[str] = "base"',
+         "const BREAKDOWN_EXTRAS = 'extras';"),
+        ("ee_mod.BREAKDOWN_STRENGTH", "from .energy_expenditure import BREAKDOWN_BASE", "breakdown.parts", "BREAKDOWN_NOTE_INCLUDED = x"),
     ),
     "checkin_semanal": (
         ("MAX_KCAL_STEP_SHARE = 0.05", "const PROPOSAL_VALIDITY_DAYS = 3;", "MIN_COMPLETE_DAYS: Final[int] = 5",
