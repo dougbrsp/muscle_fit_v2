@@ -235,7 +235,7 @@ def test_107_aplicada_pelo_runner_tem_a_forma_e_a_fk_em_cascata(env, raw):
         )
         cur.execute("DELETE FROM users WHERE id = %s", (efemero,))
     raw.commit()
-    assert _runs(raw, efemero) == []
+    assert not _runs(raw, efemero)  # fetchall do pymysql devolve tupla vazia, nao lista
 
 
 def test_tabela_de_link_existe_com_a_unique_por_treino(raw):
