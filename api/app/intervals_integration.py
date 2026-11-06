@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
@@ -205,10 +205,24 @@ def intervals_sync(
     Se em algum momento o job agendado ganhar um caminho proprio de
     diagnostico, esta rota pode ser removida sem nada quebrar no frontend."""
     started = time.monotonic()
-    activities, wellness, (oldest, newest) = _fetch_live_activities_and_wellness(identity.user_id, days)
-
-    activities_result = _upsert_activities(identity.user_id, activities)
-    wellness_result = _upsert_wellness(identity.user_id, wellness)
+    run_started = _utc_now()
+    try:
+        activities, wellness, (oldest, newest) = _fetch_live_activities_and_wellness(identity.user_id, days)
+        activities_result = _upsert_activities(identity.user_id, activities)
+        wellness_result = _upsert_wellness(identity.user_id, wellness)
+    except Exception as exc:
+        # Registro da execucao (migracao 107): so falha REAL da sincronizacao fica registrada (rede, 5xx, banco); recusa
+        # de requisicao (HTTPException < 500, ex.: 400 sem Intervals configurado) nao e execucao e nao grava `error`.
+        if isinstance(exc, HTTPException) and exc.status_code < 500:
+            raise
+        failed_oldest, failed_newest = _date_range(days)
+        _record_manual_run(
+            identity.user_id, run_started, failed_oldest, failed_newest, intervals_store.SYNC_RUN_STATUS_ERROR, 0
+        )
+        raise
+    _record_manual_run(
+        identity.user_id, run_started, oldest, newest, intervals_store.SYNC_RUN_STATUS_OK, len(activities)
+    )
     athlete_zones = _sync_athlete_hr_zones(identity.user_id, elapsed_seconds=time.monotonic() - started)
 
     return {
@@ -224,6 +238,32 @@ def intervals_sync(
             "athlete_hr_zones": athlete_zones,
         },
     }
+
+
+def _utc_now() -> datetime:
+    """Relogio do registro de execucoes: UTC, naive (como as colunas DATETIME do banco)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _record_manual_run(user_id: int, started_at: datetime, oldest: date, newest: date, status: str, count: int) -> None:
+    """Registra a execucao MANUAL (migracao 107) numa conexao propria, depois do upsert (autocommit por statement, sem
+    transacao aberta). Tolerante: sem a tabela ou
+    com qualquer falha so nao registra (nunca derruba o refresh nem troca o erro original)."""
+    try:
+        with _connect() as conn:
+            intervals_store.record_sync_run(
+                conn,
+                user_id,
+                started_at=started_at,
+                finished_at=_utc_now(),
+                window_start=oldest,
+                window_end=newest,
+                status=status,
+                activities_count=count,
+                source=intervals_store.SYNC_RUN_SOURCE_MANUAL,
+            )
+    except Exception as exc:  # noqa: BLE001 - registrar nao pode derrubar o refresh manual
+        logger.warning("registro da execucao manual do sync falhou para user_id=%s (%s)", user_id, type(exc).__name__)
 
 
 # Orcamento do sync manual (api-core atras do API Gateway, teto de 29 s): a

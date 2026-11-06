@@ -7,7 +7,7 @@
 // calculável ou não informado — nunca 0.
 
 import type { NutritionCode } from './nutrition-constants';
-import type { AdaptiveEnergyState } from './nutrition-dashboard';
+import type { AdaptiveEnergyDay, AdaptiveEnergyState } from './nutrition-dashboard';
 
 /** Código + texto pt-BR de uma limitação/erro do motor (a API já rotula). */
 export type NutritionLimitation = { code: string; label: string };
@@ -341,6 +341,8 @@ export type NutritionMyPlan = {
   today_target: NutritionDayTarget | null;
   week: { local_date: string; target: NutritionDayTarget | null }[];
   missing: NutritionLimitation[];
+  /** Retrato do gasto adaptativo de hoje (só no plano adaptativo); ausente em backend antigo. */
+  energy?: AdaptiveEnergyState | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -806,6 +808,16 @@ export type DayLog = { notes: string | null; updated_at: string | null };
 /** Decisão do motor sobre a meta do dia (`daily_target.TargetAction`). */
 export type DayTargetAction = 'read' | 'materialize' | 'backfill' | 'skip';
 
+/** Detalhe explicável do gasto do dia (`GET /nutrition/days/{date}` → `energy_detail`); cada bloco pode vir null. */
+export type NutritionDayEnergyDetail = {
+  /** Composição do gasto do dia montada pelo motor (mesmo formato de `tdee_breakdown`). */
+  breakdown?: NutritionTdeeBreakdown | null;
+  /** Atividades do dia normalizadas pelo motor, com o estado confirmado/pendente (mesmo formato de `adaptive_energy.days[]`). */
+  activities?: AdaptiveEnergyDay | null;
+  /** Retrato do gasto adaptativo do dia; só no plano adaptativo. */
+  energy?: AdaptiveEnergyState | null;
+};
+
 /** `GET /nutrition/days/{date}`. */
 export type NutritionDay = {
   user: NutritionPlanUser;
@@ -819,6 +831,8 @@ export type NutritionDay = {
   balance: DayBalance;
   day_log: DayLog | null;
   training: DayTraining;
+  /** Ausente em backend antigo; a tela do dia fica como antes sem ele. */
+  energy_detail?: NutritionDayEnergyDetail | null;
 };
 
 /** Corpo de `PUT /nutrition/days/{date}` (`NutritionDayIn`): substitui a linha do dia. */

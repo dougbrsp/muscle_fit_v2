@@ -127,6 +127,11 @@ _TARGETS_SQL = (
     f"SELECT {_TARGET_COLUMNS}, {_TARGET_JSON_COLUMNS} FROM {TARGETS_TABLE} "
     "WHERE user_id = %s AND local_date BETWEEN %s AND %s ORDER BY local_date"
 )
+# Gasto gravado pelo motor na meta do dia (`inputs_json.tdee`): a composição do dia relê isto, nada se recalcula.
+_STORED_TDEE_SQL = (
+    f"SELECT JSON_EXTRACT(inputs_json, '$.tdee') AS tdee_json FROM {TARGETS_TABLE} "
+    "WHERE user_id = %s AND local_date = %s"
+)
 _LAST_TARGET_DATE_SQL = f"SELECT MAX(local_date) AS ultimo FROM {TARGETS_TABLE} WHERE user_id = %s"
 
 UPSERT_COLUMNS = (
@@ -644,6 +649,22 @@ def _unchanged(existing: Optional[dict[str, Any]], plan_id: int, fingerprint: st
 # ---------------------------------------------------------------------------
 
 
+def read_stored_tdee(cur: Any, user_id: int, day: date) -> Optional[dict[str, Any]]:
+    """O `tdee` que o motor gravou na meta do dia (`TdeeResult.to_dict()`), ou `None` sem meta/sem o campo. 1 SELECT."""
+    cur.execute(_STORED_TDEE_SQL, (int(user_id), day))
+    valor = _json_value((cur.fetchone() or {}).get("tdee_json"))
+    return valor if isinstance(valor, dict) else None
+
+
+def history_key_for_day(cur: Any, user_id: int, day: date) -> Optional[tuple[str, str]]:
+    """(`watch_calorie_mode`, fórmula da TMB) do plano que VALE no dia (motor: `plan_in_force`), a MESMA chave do histórico
+    da meta (`energy_key`); plano não adaptativo usa o modo padrão do dono. `None` sem plano em vigor. 1 SELECT."""
+    em_vigor = load_published_plans(cur, user_id).for_day(day)
+    if em_vigor is None:
+        return None
+    return energy_key(em_vigor[1])
+
+
 def last_target_date(cur: Any, user_id: int) -> Optional[date]:
     cur.execute(_LAST_TARGET_DATE_SQL, (int(user_id),))
     row = cur.fetchone() or {}
@@ -772,7 +793,9 @@ __all__ = [
     "UserInputs",
     "compute_day",
     "day_public",
+    "history_key_for_day",
     "ensure_daily_targets",
+    "read_stored_tdee",
     "ensure_diary_targets",
     "inputs_fingerprint",
     "past_training_kcal",

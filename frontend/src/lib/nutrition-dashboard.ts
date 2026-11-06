@@ -138,6 +138,10 @@ export type AdaptiveActivity = {
 export type AdaptiveEnergyDay = {
   day: string;
   confirmed?: boolean | null;
+  /** Estado do dia pronto do motor (`confirmed` | `pending`); ausente em backend antigo (cai em `confirmed`). */
+  sync_status?: string | null;
+  /** De onde veio a confirmação (`sync_run` | `last_sync`); null se o dia não está confirmado. */
+  confirmation_source?: string | null;
   active_kcal?: number | null;
   counted_activities?: number | null;
   has_possible_duplicates?: boolean | null;

@@ -29,7 +29,8 @@ admin e PT operam o de qualquer aluno; usuário comum nunca alcança o plano de 
 - `POST   /targets/recompute`       `{user_id?, date_from, date_to?}` na janela de
                                     recálculo do motor (400 com o código do motor)
 - `GET    /me/plan`                 qualquer usuário: o plano em vigor hoje (só leitura),
-                                    o resumo do sujeito e a semana; 404 `no_published_plan`
+                                    o resumo do sujeito, o retrato do gasto de hoje (`energy`) e a semana;
+                                    404 `no_published_plan`
 
 Regra dos motores (`docs/motores/FONTES_DA_VERDADE.md` §3.7 e §47): faixas,
 defaults, vocabulário, rótulos, congelamento, janelas, vigência, %G de parada e
@@ -925,6 +926,8 @@ def my_plan(identity: Identity = Depends(get_current_identity)):
         "subject": comp_hoje.subject.to_dict(),
         "goal": _goal(comp_hoje),
         "today_target": semana[dias.index(hoje)],
+        # Retrato de hoje GRAVADO na meta (só plano adaptativo; `null` nos demais): confiança do card "Seu plano".
+        "energy": (semana[dias.index(hoje)] or {}).get("energy"),
         "week": [{"local_date": dia.isoformat(), "target": meta} for dia, meta in zip(dias, semana)],
         "missing": nutrition_labels.limitation_items(missing_subject_data(comp_hoje.target)),
     }

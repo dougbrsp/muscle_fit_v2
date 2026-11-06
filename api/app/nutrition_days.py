@@ -24,6 +24,7 @@ ausentes: 503 citando a migração.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
@@ -41,18 +42,28 @@ from .domain.nutrition.energy_expenditure import (
     activity_total_kcal,
     compare_sessions_kcal,
     met_for_session,
+    tdee_breakdown_from_stored,
 )
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, day_balance, target_macros, week_days, week_report
 from .intelligence.dashboard.time_windows import user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
+from .nutrition_energy_service import DEFAULT_BMR_FORMULA_VALUE, DEFAULT_CALORIE_MODE, load_day_activity
 from .nutrition_meals import day_totals, meals_public, read_meal_rows, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
-from .nutrition_targets_service import DONE_SESSION_STATUS, ensure_diary_targets, load_user_inputs
+from .nutrition_targets_service import (
+    DONE_SESSION_STATUS,
+    history_key_for_day,
+    ensure_diary_targets,
+    UserInputs,
+    load_user_inputs,
+    read_stored_tdee,
+)
 from .request_models import NutritionDayIn
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
+logger = logging.getLogger(__name__)
 
 DAYS = "nutrition_days"
 DAY_LOG_SQL = f"SELECT local_date, notes, updated_by, updated_at FROM {DAYS} WHERE user_id = %s AND local_date = %s"
@@ -137,13 +148,14 @@ def _session_public(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _training(
-    cur: Any, user_id: int, day: date, today: date, extra: Optional[dict[str, Any]] = None, basis: Optional[str] = None
+    cur: Any, user_id: int, day: date, today: date, extra: Optional[dict[str, Any]] = None, basis: Optional[str] = None,
+    entradas: Optional[UserInputs] = None,
 ) -> dict[str, Any]:
     """Linha "informado × estimado": sessões concluídas (com a proveniência do
     dono), contexto do dia e a comparação de naturezas do motor."""
     cur.execute(SESSIONS_OF_DAY_SQL, (int(user_id), day))
     sessoes = list(cur.fetchall() or [])
-    entradas = load_user_inputs(cur, user_id, day, day, today)
+    entradas = entradas if entradas is not None else load_user_inputs(cur, user_id, day, day, today)
     contexto = day_context_for(day, today, entradas.sessions.get(day, ()))
     comparacao = None
     if contexto.is_training_day:
@@ -173,6 +185,48 @@ def _training(
             "total_kcal": activity_total_kcal(treino_kcal if contexto.is_training_day else 0.0, extra["kcal"]),
         },
     }
+
+
+def energy_detail(
+    cur: Any, user_id: int, day: date, today: date, meta: Optional[dict[str, Any]], entradas: Optional[UserInputs] = None
+) -> dict[str, Any]:
+    """Explicação do gasto do dia (só leitura; nada é recalculado nem gravado). `breakdown` = composição do gasto relida
+    do que o motor GRAVOU na meta (`energy_expenditure.tdee_breakdown_from_stored` + rótulos do dono); `activities` = o
+    `DayActivity` do dia tirado do MESMO histórico que a meta usa (`nutrition_energy_service.load_day_activity`: mesmas
+    execuções do sync, TMB recente, trava de descanso e modo da kcal do plano que vale no dia), com o selo
+    confirmado/pendente; `energy` = o retrato do dia já gravado (só plano adaptativo). Sem meta no dia: tudo `null`.
+    Dia fora do horizonte do histórico (`adaptive_energy.REPLAY_HISTORY_DAYS` dias terminando hoje) ou sem Intervals
+    importado: `activities` é `null`. Cada parte falha sozinha (vira `null`, log só com o tipo da exceção). Custo: 1 SELECT
+    da composição; sem Intervals +1 (plano) +1 (prova de sincronização); com Intervals, além disso, a carga do histórico
+    SEM perfil/medidas (reaproveita `entradas`, já lidas pela rota): refeições, TMB gravada, atividades do horizonte,
+    execuções e fuso."""
+    detalhe: dict[str, Any] = {"breakdown": None, "activities": None, "energy": None}
+    if meta is None:
+        return detalhe
+    detalhe["energy"] = meta.get("energy")
+    try:
+        gravado = read_stored_tdee(cur, user_id, day)
+        base = TdeeBasis(meta.get("tdee_basis") or TdeeBasis.CLASSIC.value)
+        extra = (meta.get("extra_activity") or {}).get("kcal")
+        if gravado is not None:
+            detalhe["breakdown"] = nutrition_labels.tdee_breakdown_public(tdee_breakdown_from_stored(gravado, extra, base))
+    except Exception as erro:  # noqa: BLE001 - seção aditiva: o diário não cai por causa dela
+        logger.warning("nutrition.day_breakdown_failed error=%s", type(erro).__name__)
+    try:
+        # O selo vem do MESMO histórico da meta (`nutrition_energy_service.load_history`): modo da kcal e fórmula da TMB do
+        # plano que vale no dia (a chave do histórico); sem plano, os padrões do dono. Fora do horizonte: `null`.
+        modo, formula = history_key_for_day(cur, user_id, day) or (DEFAULT_CALORIE_MODE, DEFAULT_BMR_FORMULA_VALUE)
+        dia = load_day_activity(
+            cur, user_id, day, today,
+            # Série ATÉ HOJE (a rota a carrega assim): a mesma do histórico da meta/dashboard, de que a TMB recente do
+            # desconto do repouso depende.
+            entradas.series if entradas is not None else (lambda: load_user_inputs(cur, user_id, today, today, today).series),
+            modo, None, formula
+        )
+        detalhe["activities"] = dia.to_dict() if dia is not None else None
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("nutrition.day_activities_failed error=%s", type(erro).__name__)
+    return detalhe
 
 
 def balance_public(balanco) -> dict[str, Any]:
@@ -205,7 +259,14 @@ def get_day(
             linhas = read_meal_rows(cur, aluno, local_date, local_date)
             refeicoes = meals_public(cur, linhas)
             diario = _read_day_log(cur, aluno, local_date)
-            treino = _training(cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"))
+            # UMA carga de perfil, medidas e sessões, usada pelo treino e pela explicação do gasto.
+            # Medidas e série até HOJE (ou até o dia, se futuro): o histórico da explicação usa a mesma série da meta; o
+            # treino do dia só consulta o próprio dia (`readings_on`, `sessions.get(dia)`).
+            entradas = load_user_inputs(cur, aluno, local_date, max(local_date, hoje), hoje)
+            treino = _training(
+                cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas
+            )
+            detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas)
     totais = day_totals(linhas)
     balanco = day_balance(target_of(meta), totais, meta.get("tdee_kcal") if meta else None)
     return {
@@ -220,6 +281,7 @@ def get_day(
         "balance": balance_public(balanco),
         "day_log": day_log_public(diario),
         "training": treino,
+        "energy_detail": detalhe_gasto,
     }
 
 

@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
+from app import intervals_store
 from app import nutrition_access as access
 from app import nutrition_energy_service as energy_svc
 from app import nutrition_schema as schema_mod
@@ -47,6 +48,11 @@ class FakeNutritionDB:
         # `intervals_activities` COMPLETAS (com id, id externo, hora e durações) para a sombra do gasto adaptativo; o fake
         # projeta só as colunas que a SQL pede, como o banco. `synced_at` de cada linha prova a sincronização.
         self.intervals_rows: list[dict[str, Any]] = []
+        # Registro de execuções do sync (107): linhas gravadas e se a tabela existe (False = código novo sobre o schema
+        # antigo). Lembrete: o cache POSITIVO de `nutrition_schema` é global; testes que tiram a tabela chamam
+        # `reset_nutrition_tables_cache()`.
+        self.sync_runs: list[dict[str, Any]] = []
+        self.sync_runs_table = True
         # As colunas da 106 existem neste banco? (False simula o código novo sobre o schema antigo.)
         self.plan_energy_columns = True
         self.timezone = "America/Sao_Paulo"  # `users.timezone` (a sombra e a meta adaptativa convertem a sincronização por ele)
@@ -205,6 +211,31 @@ class FakeCursor:
             return self._result([{"db": "nutrition_test"}])
         if sql == schema_mod.column_sql():  # colunas do plano (106): presentes, salvo se o teste as tirar
             return self._result([{"n": 1 if db.plan_energy_columns else 0}])
+        if sql == schema_mod.tables_sql(1) and p == (schema_mod.SYNC_RUNS_TABLE,):  # tabela da 107
+            return self._result([{"n": 1 if db.sync_runs_table else 0}])
+        if sql == energy_svc.SYNC_RUNS_SQL:
+            if not db.sync_runs_table:
+                raise AssertionError("SELECT em intervals_sync_runs sem a tabela (a guarda deveria ter impedido)")
+            pedidas = self._selected(sql)
+            linhas = [r for r in db.sync_runs if r["user_id"] == p[0] and r["status"] == p[1] and r["window_end"] >= p[2]]
+            return self._result([{c: r[c] for c in pedidas}
+                                 for r in sorted(linhas, key=lambda r: (r["finished_at"], r["id"]))])
+        if sql == intervals_store._INSERT_SYNC_RUN_SQL:
+            if not db.sync_runs_table:
+                raise AssertionError("INSERT em intervals_sync_runs sem a tabela (a guarda deveria ter impedido)")
+            colunas = ("user_id", "started_at", "finished_at", "window_start", "window_end", "status", "activities_count", "source")
+            db.sync_runs.append({"id": len(db.sync_runs) + 1, **dict(zip(colunas, p))})
+            db.writes.append("sync_run")
+            return self._result([])
+        if sql == intervals_store._PRUNE_SYNC_RUNS_SQL:
+            antes = len(db.sync_runs)
+            db.sync_runs = [r for r in db.sync_runs if not (r["user_id"] == p[0] and r["finished_at"] < p[1])]
+            self.rowcount = antes - len(db.sync_runs)
+            return self._result([])
+        if sql == svc._STORED_TDEE_SQL:
+            alvo = db.targets.get((p[0], p[1]))
+            tdee = ((alvo or {}).get("inputs_json") or {}).get("tdee")
+            return self._result([{"tdee_json": json.dumps(tdee) if tdee is not None else None}] if alvo else [])
         if sql == access._USER_SQL:
             user = db.users.get(int(p[0]))
             return self._result([user] if user else [])

@@ -336,6 +336,17 @@ ADAPTIVE_UNAVAILABLE_LABELS: Final[Mapping[str, str]] = {
 }
 
 
+# Diário explicável (Lote F): estado do dia quanto à sincronização e de onde veio a confirmação.
+DAY_SYNC_STATUS_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.DAY_SYNC_STATUS_CONFIRMED: "Atividade do dia confirmada",
+    activity_mod.DAY_SYNC_STATUS_PENDING: "Pendente de sincronização",
+}
+DAY_CONFIRMATION_SOURCE_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.DAY_CONFIRMATION_SOURCE_RUN: "Confirmado por uma sincronização que cobre o dia",
+    activity_mod.DAY_CONFIRMATION_SOURCE_LAST_SYNC: "Confirmado pela última sincronização (dia anterior ao registro de execuções)",
+}
+
+
 def adaptive_unavailable_label(code: str) -> str:
     return ADAPTIVE_UNAVAILABLE_LABELS.get(code, code)
 

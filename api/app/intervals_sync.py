@@ -51,7 +51,7 @@ import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional, Sequence
 
 from . import intervals_client, intervals_hr_match, intervals_store
@@ -451,6 +451,7 @@ def sync_users(
 
     for user_id in eligible:
         conn = None
+        run_started = _utc_now()
         try:
             conn = factory()
             result = _sync_one_user(conn, user_id, oldest, newest)
@@ -458,6 +459,8 @@ def sync_users(
                 conn.rollback()
             else:
                 conn.commit()
+                _record_run(conn, user_id, run_started, oldest, newest, intervals_store.SYNC_RUN_STATUS_OK,
+                            result.activities_received)
             report.results.append(result)
             log_event(
                 EVENT_USER_DONE,
@@ -476,6 +479,8 @@ def sync_users(
                     conn.rollback()
                 except Exception:  # noqa: BLE001
                     logger.warning("rollback falhou para user_id=%s", user_id)
+                if not dry_run:
+                    _record_run(conn, user_id, run_started, oldest, newest, intervals_store.SYNC_RUN_STATUS_ERROR, 0)
             failure = UserSyncFailure(
                 user_id=user_id,
                 reason_code=_reason_code(exc),
@@ -496,6 +501,40 @@ def sync_users(
     report.duration_ms = int((time.monotonic() - job_started) * 1000)
     log_event(EVENT_FINISHED, days=window, dry_run=dry_run, duration_ms=report.duration_ms, **report.totals)
     return report
+
+
+def _utc_now() -> datetime:
+    """Relogio do registro de execucoes: UTC, naive (como as colunas DATETIME do banco)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _record_run(conn, user_id: int, started_at: datetime, oldest: date, newest: date, status: str, count: int) -> None:
+    """Registra a execucao (migracao 107) DEPOIS do commit/rollback do usuario: sem transacao aberta, cada statement
+    (INSERT e DELETE da poda) vai em autocommit (na Data API o `transaction_id` fica None); o registro nunca entra na
+    transacao do sync nem a derruba (`record_sync_run` ja e tolerante; o try cobre o commit).
+
+    Janela: `window_start`/`window_end` sao os MESMOS `oldest`/`newest` enviados ao Intervals.icu (datas locais do atleta,
+    inclusivas), calculados com `date.today()` do servidor (UTC na Lambda). Perto da meia-noite local a data do servidor
+    pode ser a de amanha: a janela registrada e sempre a realmente buscada, e o motor a compara com o dia LOCAL do usuario
+    (`activity_energy.SyncRun`, `finished_at` convertido ao fuso local)."""
+    try:
+        recorded = intervals_store.record_sync_run(
+            conn,
+            user_id,
+            started_at=started_at,
+            finished_at=_utc_now(),
+            window_start=oldest,
+            window_end=newest,
+            status=status,
+            activities_count=count,
+            source=intervals_store.SYNC_RUN_SOURCE_SCHEDULED,
+        )
+        if recorded:
+            conn.commit()
+        else:
+            conn.rollback()
+    except Exception as exc:  # noqa: BLE001 - registrar nunca derruba o sync
+        logger.warning("registro da execucao do sync falhou para user_id=%s (%s)", user_id, type(exc).__name__)
 
 
 def _reason_code(exc: BaseException) -> str:

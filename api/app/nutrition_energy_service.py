@@ -39,7 +39,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence, Union
 
 from .domain.nutrition import activity_energy as activity_mod
 from .domain.nutrition import adaptive_energy as adaptive_mod
@@ -55,7 +55,9 @@ from .domain.nutrition.subject import SubjectSeries, resolve_subject
 from .domain.nutrition.weekly_budget import complete_energy_kcal, intake_macros
 from .intelligence.dashboard.time_windows import user_now
 from .intervals_activity_kind import classify
+from .intervals_store import SYNC_RUN_STATUS_OK
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals
+from .nutrition_schema import SYNC_RUNS_TABLE, has_sync_runs_table
 from .timezones import normalize_timezone
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,12 @@ TARGET_BMR_SQL = (
 INTERVALS_SYNC_SQL = (
     "SELECT MAX(synced_at) AS last_sync_at, MIN(activity_date) AS first_activity_date "
     "FROM intervals_activities WHERE user_id = %s"
+)
+# Execuções `ok` do sync cuja janela alcança o horizonte (migração 107; 1 SELECT, só com a tabela). A regra de "dia
+# confirmado" é do motor (`activity_energy.SyncRun`); aqui só se entregam as linhas, com `finished_at` em UTC.
+SYNC_RUNS_SQL = (
+    f"SELECT finished_at, window_start, window_end FROM {SYNC_RUNS_TABLE} "
+    "WHERE user_id = %s AND status = %s AND window_end >= %s ORDER BY finished_at, id"
 )
 # Atividades do horizonte, SEM `raw_json` (teto de 1 MiB da Data API) e SEM o vínculo com o treino do app: no
 # adaptativo a fonte da força é o Intervals, uma vez só (ver o cabeçalho). A classe vem de `intervals_activity_kind`.
@@ -133,6 +141,8 @@ class ShadowRows:
     activities: tuple[RawActivity, ...] = ()
     last_sync_at: Optional[datetime] = None  # relógio do banco (UTC), naive
     first_activity_day: Optional[date] = None
+    # Execuções `ok` do sync (migração 107), `finished_at` em UTC naive; vazio sem a tabela (regra antiga do motor).
+    sync_runs: tuple[activity_mod.SyncRun, ...] = ()
 
 
 def raw_activity_of(row: dict[str, Any], calorie_mode: str = DEFAULT_CALORIE_MODE) -> Optional[RawActivity]:
@@ -157,11 +167,44 @@ def raw_activity_of(row: dict[str, Any], calorie_mode: str = DEFAULT_CALORIE_MOD
     )
 
 
+def load_sync_runs(cur: Any, user_id: int, first_day: date) -> tuple[activity_mod.SyncRun, ...]:
+    """Execuções `ok` do sync do Intervals que alcançam o horizonte (1 SELECT; sem a tabela da 107 devolve vazio SEM
+    consultar mais nada). Falha na leitura degrada para a regra antiga do motor (log só com o tipo da exceção)."""
+    try:
+        if not has_sync_runs_table(cur):
+            return ()
+        cur.execute(SYNC_RUNS_SQL, (int(user_id), SYNC_RUN_STATUS_OK, first_day))
+        linhas = cur.fetchall() or []
+    except Exception as erro:  # noqa: BLE001 - o registro é um refinamento: sem ele vale a regra antiga
+        logger.warning("nutrition.sync_runs_read_failed error=%s", type(erro).__name__)
+        return ()
+    execucoes = []
+    for linha in linhas:
+        fim, inicio_janela, fim_janela = (
+            _as_datetime(linha.get("finished_at")), _as_date(linha.get("window_start")), _as_date(linha.get("window_end"))
+        )
+        if fim is not None and inicio_janela is not None and fim_janela is not None:
+            execucoes.append(activity_mod.SyncRun(finished_at=fim, window_start=inicio_janela, window_end=fim_janela))
+    return tuple(execucoes)
+
+
+def local_sync_runs(runs: Sequence[activity_mod.SyncRun], timezone_name: str) -> tuple[activity_mod.SyncRun, ...]:
+    """Execuções do sync com o término no fuso LOCAL do usuário (naive), do mesmo jeito que `last_sync_at`."""
+    return tuple(
+        activity_mod.SyncRun(
+            finished_at=user_now(timezone_name, r.finished_at), window_start=r.window_start, window_end=r.window_end
+        )
+        for r in runs
+    )
+
+
 def load_shadow_rows(
-    cur: Any, user_id: int, first_day: date, today: date, calorie_mode: str = DEFAULT_CALORIE_MODE
+    cur: Any, user_id: int, first_day: date, today: date, calorie_mode: str = DEFAULT_CALORIE_MODE,
+    sync_row: Optional[dict[str, Any]] = None,
 ) -> ShadowRows:
-    """Consultas de leitura da sombra (todas escopadas pelo `user_id` do alvo). 3 a 4 SELECTs por chamada:
-    refeições, TMB gravada, prova de sincronização e, só se há atividade importada, as atividades."""
+    """Consultas de leitura da sombra (todas escopadas pelo `user_id` do alvo). 3 a 5 SELECTs por chamada:
+    refeições, TMB gravada, prova de sincronização, as execuções do sync (1; 0 se a tabela da 107 ainda não existe,
+    +1 de detecção até ela aparecer) e, só se há atividade importada, as atividades."""
     uid = int(user_id)
     cur.execute(MEAL_TOTALS_SQL, (uid, first_day, today))
     refeicoes = tuple(cur.fetchall() or [])
@@ -172,16 +215,18 @@ def load_shadow_rows(
         for dia, valor in ((_as_date(r.get("local_date")), _float(r.get("bmr_kcal"))) for r in cur.fetchall() or [])
         if dia is not None
     }
-    cur.execute(INTERVALS_SYNC_SQL, (uid,))
-    sync = cur.fetchone() or {}
-    ultimo = _as_datetime(sync.get("last_sync_at"))
-    primeiro = _as_date(sync.get("first_activity_date"))
+    if sync_row is None:  # quem já leu a prova de sincronização (a rota do dia) a entrega e poupa o SELECT
+        cur.execute(INTERVALS_SYNC_SQL, (uid,))
+        sync_row = cur.fetchone() or {}
+    ultimo = _as_datetime(sync_row.get("last_sync_at"))
+    primeiro = _as_date(sync_row.get("first_activity_date"))
     atividades: tuple[RawActivity, ...] = ()
     if ultimo is not None:
         cur.execute(SHADOW_ACTIVITIES_SQL, (uid, first_day, today))
         atividades = tuple(a for a in (raw_activity_of(r, calorie_mode) for r in cur.fetchall() or []) if a is not None)
     return ShadowRows(
-        meals=refeicoes, target_bmr=tmbs, activities=atividades, last_sync_at=ultimo, first_activity_day=primeiro
+        meals=refeicoes, target_bmr=tmbs, activities=atividades, last_sync_at=ultimo, first_activity_day=primeiro,
+        sync_runs=load_sync_runs(cur, uid, first_day),
     )
 
 
@@ -249,7 +294,11 @@ def compute_history(
     }
     tmb_recente = adaptive_mod.latest_bmr(tmb_do_dia[dia] for dia in dias)
 
-    atividades = activity_mod.summarize_days(rows.activities, tmb_recente, dias, sync_local, rows.first_activity_day)
+    # Execuções registradas do sync (107): o horário de término vai para o fuso local, como `last_sync_at`.
+    execucoes = local_sync_runs(rows.sync_runs, timezone_name)
+    atividades = activity_mod.summarize_days(
+        rows.activities, tmb_recente, dias, sync_local, rows.first_activity_day, runs=execucoes
+    )
     por_dia = {item.day: item for item in atividades}
 
     entradas = []
@@ -293,12 +342,36 @@ def user_timezone_name(cur: Any, user_id: int) -> str:
 def load_history(
     cur: Any, user_id: int, today: date, series: SubjectSeries,
     calorie_mode: str = DEFAULT_CALORIE_MODE, timezone_name: Optional[str] = None,
-    bmr_formula: str = DEFAULT_BMR_FORMULA_VALUE,
+    bmr_formula: str = DEFAULT_BMR_FORMULA_VALUE, sync_row: Optional[dict[str, Any]] = None,
 ) -> EnergyHistory:
-    """Lê o histórico (3 a 4 SELECTs, mais 1 do fuso se `timezone_name` não vier) e processa. Só leitura, escopado pelo `user_id`."""
+    """Lê o histórico (3 a 4 SELECTs, mais 1 do fuso se `timezone_name` não vier) e processa. Só leitura, escopado pelo
+    `user_id`. `sync_row` = a prova de sincronização já lida por quem chama (poupa 1 SELECT)."""
     fuso = timezone_name if timezone_name is not None else user_timezone_name(cur, user_id)
-    linhas = load_shadow_rows(cur, user_id, horizon_days(today)[0], today, calorie_mode)
+    linhas = load_shadow_rows(cur, user_id, horizon_days(today)[0], today, calorie_mode, sync_row)
     return compute_history(linhas, series, today, fuso, calorie_mode, bmr_formula)
+
+
+def load_day_activity(
+    cur: Any, user_id: int, day: date, today: date, series: Union[SubjectSeries, Callable[[], SubjectSeries]],
+    calorie_mode: str = DEFAULT_CALORIE_MODE, timezone_name: Optional[str] = None,
+    bmr_formula: str = DEFAULT_BMR_FORMULA_VALUE,
+) -> Optional[activity_mod.DayActivity]:
+    """O `DayActivity` de UM dia, tirado do MESMO histórico que a meta e o dashboard usam (`load_history`, mesmo corte do
+    horizonte, mesmas execuções do sync, mesma TMB recente, mesma trava de descanso): o selo do diário é, por construção,
+    o do histórico (teste de paridade). `None` quando o usuário não tem atividade importada (sem Intervals; só 1 SELECT de
+    prova) ou quando `day` está FORA do horizonte atual (`REPLAY_HISTORY_DAYS` dias terminando hoje, hoje incluído): dia
+    mais antigo ou futuro não tem confirmação calculada. Custo com Intervals: a carga completa do histórico (ver
+    `load_history`) mais a prova."""
+    if day not in horizon_days(today):
+        return None
+    cur.execute(INTERVALS_SYNC_SQL, (int(user_id),))
+    prova = cur.fetchone() or {}
+    if _as_datetime(prova.get("last_sync_at")) is None:
+        return None
+    # `series` pode vir como função: o perfil e as medidas só são lidos quando há Intervals.
+    serie = series() if callable(series) else series
+    historico = load_history(cur, user_id, today, serie, calorie_mode, timezone_name, bmr_formula, sync_row=prova)
+    return next((item for item in historico.days if item.day == day), None)
 
 
 def block_of(
