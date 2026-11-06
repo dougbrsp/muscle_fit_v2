@@ -3,8 +3,9 @@
 import { useId } from 'react';
 import { Badge, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { fmtDate, fmtDateTime, fmtDecimal, fmtInt } from '@/lib/dashboard-format';
-import { adaptiveLabel, type AdaptiveActivity, type AdaptiveEnergy, type AdaptiveEnergyDay, type AdaptiveEnergyState } from '@/lib/nutrition-dashboard';
+import { ActivityDayList } from './ActivityDayList';
+import { fmtDate, fmtDecimal, fmtInt } from '@/lib/dashboard-format';
+import { adaptiveLabel, type AdaptiveEnergy, type AdaptiveEnergyState } from '@/lib/nutrition-dashboard';
 import { formatKcal } from '@/lib/nutrition-format';
 import { BRAND } from '@/theme';
 
@@ -18,81 +19,6 @@ export function Linha({ label, value, testId }: { label: string; value: string; 
         {value}
       </Text>
     </Group>
-  );
-}
-
-function ActivityRow({ activity }: { activity: AdaptiveActivity }) {
-  const duplicata = (activity.possible_duplicate_of?.length ?? 0) > 0 || activity.duplicate_of != null;
-  const foraDoTotal = activity.counts_in_total === false;
-  const duracao = activity.duration_minutes == null ? null : `${fmtDecimal(activity.duration_minutes, 0)} min`;
-  const horario = activity.start ? fmtDateTime(activity.start) : null;
-  return (
-    <Stack gap={2} data-testid="adaptativo-atividade">
-      <Group gap="xs" wrap="wrap">
-        <Text size="sm" fw={500} c={BRAND.textPrimary}>
-          {activity.name || activity.kind || 'Atividade'}
-        </Text>
-        {duplicata && (
-          <Badge size="xs" color="yellow" variant="light" data-testid="adaptativo-duplicata">
-            Possível duplicata
-          </Badge>
-        )}
-        {foraDoTotal && (
-          <Badge size="xs" color="gray" variant="light" data-testid="adaptativo-fora-total">
-            Fora do total
-          </Badge>
-        )}
-        {(activity.flags ?? []).map((flag) => (
-          <Badge key={flag} size="xs" color="gray" variant="outline">
-            {adaptiveLabel('activity_flag', flag)}
-          </Badge>
-        ))}
-      </Group>
-      <Text size="xs" c="dimmed">
-        {[horario, duracao].filter(Boolean).join(' · ') || '-'}
-      </Text>
-      <Text size="xs" c="dimmed">
-        Informada: {formatKcal(activity.reported_kcal)} · Ativa normalizada: {formatKcal(activity.active_kcal)}
-        {activity.calorie_mode ? ` · ${adaptiveLabel('calorie_mode', activity.calorie_mode)}` : ''}
-      </Text>
-    </Stack>
-  );
-}
-
-function DayBlock({ day }: { day: AdaptiveEnergyDay }) {
-  const atividades = day.activities ?? [];
-  return (
-    <Stack gap={6} data-testid="adaptativo-dia">
-      <Group gap="xs" justify="space-between" wrap="wrap">
-        <Text size="sm" fw={600} c={BRAND.textPrimary}>
-          {fmtDate(day.day)}
-        </Text>
-        <Group gap={4}>
-          {day.confirmed === false && (
-            <Badge size="xs" color="yellow" variant="light" data-testid="adaptativo-dia-pendente">
-              Pendente de sincronização
-            </Badge>
-          )}
-          {day.confirmed === true && (
-            <Badge size="xs" color="green" variant="light">
-              Confirmado
-            </Badge>
-          )}
-          {day.reduced_precision && (
-            <Badge size="xs" color="gray" variant="light">
-              Precisão reduzida
-            </Badge>
-          )}
-        </Group>
-      </Group>
-      {atividades.length === 0 ? (
-        <Text size="xs" c="dimmed">
-          Nenhuma atividade importada.
-        </Text>
-      ) : (
-        atividades.map((a, i) => <ActivityRow key={String(a.id ?? a.external_id ?? i)} activity={a} />)
-      )}
-    </Stack>
   );
 }
 
@@ -190,7 +116,7 @@ export function AdaptiveEnergyCard({ energy }: { energy: AdaptiveEnergy | null |
               {aberto && (
                 <Stack gap="sm" data-testid="adaptativo-atividades">
                   {dias.map((d) => (
-                    <DayBlock key={d.day} day={d} />
+                    <ActivityDayList key={d.day} day={d} />
                   ))}
                 </Stack>
               )}

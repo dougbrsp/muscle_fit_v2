@@ -113,7 +113,7 @@ describe('AdaptiveEnergyCard', () => {
     expect(a).toContain('45 min');
     expect(a).toContain('Informada: 500 kcal');
     expect(a).toContain('Ativa normalizada: 420 kcal');
-    expect(a).toContain('Confirmado');
+    expect(a).toContain(adaptiveLabel('day_sync_status', 'confirmed'));
   });
 
   it('com pendências: lista o que falta com have/need', async () => {
@@ -149,7 +149,7 @@ describe('AdaptiveEnergyCard', () => {
     });
     expect(host.querySelector('[data-testid="adaptativo-duplicata"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="adaptativo-fora-total"]')).not.toBeNull();
-    expect(host.querySelector('[data-testid="adaptativo-dia-pendente"]')?.textContent).toContain('Pendente de sincronização');
+    expect(host.querySelector('[data-testid="adaptativo-dia-pendente"]')?.textContent).toContain(adaptiveLabel('day_sync_status', 'pending'));
   });
 
   it('em uso no plano (applied=true): o selo deixa de dizer "em sombra"', async () => {
@@ -166,7 +166,7 @@ describe('AdaptiveEnergyCard', () => {
     // Todo código do JSON resolve para o texto do próprio JSON.
     const blocos = (motorConstants.nutrition as unknown as { adaptive_energy_labels: Record<string, Record<string, string>> }).adaptive_energy_labels;
     expect(Object.keys(blocos).sort()).toEqual(
-      ['activity_flag', 'calorie_mode', 'confidence_level', 'data_quality_flag', 'suspension_reason', 'unavailable_reason'],
+      ['activity_flag', 'calorie_mode', 'confidence_level', 'data_quality_flag', 'day_confirmation_source', 'day_sync_status', 'suspension_reason', 'unavailable_reason'],
     );
     for (const [grupo, codigos] of Object.entries(blocos)) {
       for (const [codigo, texto] of Object.entries(codigos)) {

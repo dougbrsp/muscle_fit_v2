@@ -23,6 +23,7 @@ from app import nutrition_meals as meals_mod
 from app import nutrition_plans as plans_mod
 from app import nutrition_targets_service as svc
 from app.domain.nutrition import activity_energy as ae
+from app.load_conventions import _CURRENT_SCHEMA_SQL
 from app.domain.nutrition import adaptive_energy as adaptive
 from app.domain.nutrition import labels as nutrition_labels
 from app.domain.nutrition.subject import Reading, SubjectSeries
@@ -156,6 +157,12 @@ def test_usa_so_as_linhas_do_aluno_alvo(db):
     assert outro["days"][1]["counted_activities"] == 1 if outro["available"] else True
 
 
+def _sem_registro_do_sync(consultas: list[str]) -> list[str]:
+    """Tira as consultas da 107 (detecção da tabela, schema atual e execuções do sync): a contagem do núcleo não muda."""
+    return [c for c in consultas if c != svc_energy.SYNC_RUNS_SQL and "information_schema" not in c
+            and c != _CURRENT_SCHEMA_SQL]
+
+
 def test_sem_atividade_importada_o_dia_nao_e_confirmado_e_so_ha_tres_selects(db):
     _historico(db)
     consultas: list[str] = []
@@ -163,7 +170,9 @@ def test_sem_atividade_importada_o_dia_nao_e_confirmado_e_so_ha_tres_selects(db)
     original = cursor.execute
     cursor.execute = lambda sql, params=None: (consultas.append(sql), original(sql, params))[1]  # type: ignore[method-assign]
     bloco = svc_energy.shadow_block(cursor, ALUNO, HOJE, _series(db), FUSO)
-    assert len(consultas) == 3  # refeições, TMB gravada e prova de sincronização (sem atividades, sem 4ª consulta)
+    # refeições, TMB gravada e prova de sincronização (sem atividades, sem 4ª consulta); fora a leitura das execuções do sync
+    assert len(_sem_registro_do_sync(consultas)) == 3
+    assert sum(1 for c in consultas if c == svc_energy.SYNC_RUNS_SQL) == 1
     assert all(not d["confirmed"] for d in bloco["days"])
     assert svc_energy.SHADOW_ACTIVITIES_SQL not in consultas
 
@@ -176,7 +185,7 @@ def test_com_atividades_sao_quatro_selects(db):
     original = cursor.execute
     cursor.execute = lambda sql, params=None: (consultas.append(sql), original(sql, params))[1]  # type: ignore[method-assign]
     svc_energy.shadow_block(cursor, ALUNO, HOJE, _series(db), FUSO)
-    assert len(consultas) == 4
+    assert len(_sem_registro_do_sync(consultas)) == 4
 
 
 def test_tmb_gravada_na_meta_do_dia_tem_prioridade_sobre_a_do_sujeito():
@@ -244,7 +253,7 @@ def test_export_para_o_frontend_traz_os_rotulos_por_grupo_e_codigo():
 
     rotulos = nutrition.export_for_frontend()["adaptive_energy_labels"]
     assert set(rotulos) == {"confidence_level", "calorie_mode", "activity_flag", "data_quality_flag",
-                            "suspension_reason", "unavailable_reason"}
+                            "suspension_reason", "unavailable_reason", "day_sync_status", "day_confirmation_source"}
     assert rotulos["confidence_level"]["high"] == "Alta"
     assert set(rotulos["activity_flag"]) == {f.value for f in ae.ActivityFlag}
     assert set(rotulos["calorie_mode"]) == {m.value for m in ae.CalorieMode}

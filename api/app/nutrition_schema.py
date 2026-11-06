@@ -106,6 +106,12 @@ CHECKIN_TABLES_MISSING_MESSAGE = (
     "(migração 103) ainda não existem neste banco."
 )
 
+# Registro de execuções do sync do Intervals (107, Lote F): ESCRITO pelo sync e LIDO pela confirmação do dia. Aditiva: o
+# código tolera a ausência (o sync não falha, só não registra; a leitura cai na regra antiga).
+SYNC_RUNS_TABLE = "intervals_sync_runs"
+SYNC_RUNS_TABLES: tuple[str, ...] = (SYNC_RUNS_TABLE,)
+SYNC_RUNS_MIGRATION = "107"
+
 
 def tables_sql(count: int) -> str:
     """COUNT das tabelas pedidas no schema atual (um `%s` por tabela)."""
@@ -325,6 +331,11 @@ def require_checkin_tables(cursor: Any) -> None:
         raise checkin_tables_missing_error()
 
 
+def has_sync_runs_table(cursor: Any) -> bool:
+    """O registro de execuções do sync (107) existe NESTE schema? Sem DDL; cache só do positivo."""
+    return _has_tables(cursor, SYNC_RUNS_TABLES)
+
+
 def reset_nutrition_tables_cache() -> None:
     """Esquece a detecção (só para testes que desfazem as migrações)."""
     _present.clear()
@@ -363,6 +374,9 @@ __all__ = [
     "has_food_field_sources",
     "has_food_tables",
     "has_nutrition_tables",
+    "has_sync_runs_table",
+    "SYNC_RUNS_MIGRATION",
+    "SYNC_RUNS_TABLE",
     "require_ai_usage_table",
     "require_diary_tables",
     "require_favorites_table",

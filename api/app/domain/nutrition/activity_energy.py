@@ -27,6 +27,16 @@ Dia confirmado. Dia sem atividade só é descanso (zero) se a sincronização o 
 ausência de dado, spec §19). Critério por dia (`day_confirmed`): o usuário já acompanhava (`tracking_started_on`) e
 houve sincronização depois do fim do dia local mais a folga `DAY_CONFIRMATION_LAG_HOURS`. Dia em andamento nunca é
 confirmado, porque ainda não houve sincronização depois do seu fim.
+
+Registro de execuções (Lote F). Com `runs` (execuções OK do sync, uma por rodada) o dia é confirmado EXATAMENTE: a partir
+da data da primeira execução registrada, o dia só vale se uma execução cuja janela cobre o dia terminou depois do fim
+do dia mais a folga. O que isso corrige é a AUSÊNCIA de execução (conexão caída, job parado): ela deixa o dia pendente
+(None), nunca zero. Execução OK que cobriu o dia e não trouxe atividade NÃO prova que o relógio estava ativo: até
+`MAX_CONFIRMED_REST_STREAK_DAYS` dias seguidos sem atividade contam como descanso confirmado (0.0), porque são
+indistinguíveis de descanso real; acima disso a sequência fica pendente (None), qualquer que seja a origem da
+confirmação (relógio parado ou cadeia relógio -> Intervals interrompida não vira zero em massa). Dias anteriores à
+primeira execução registrada e `runs` vazio seguem a regra antiga (último sync + janela de 30 dias; a trava só fora
+da janela).
 """
 
 from __future__ import annotations
@@ -76,6 +86,18 @@ INTERVALS_SYNC_WINDOW_DAYS: Final[int] = 30
 # confirmado. Limitação a fechar no Lote C (registro de execuções do sync, com migração).
 # Default de desenho (Tech Lead): 7 dias cobre folga e viagem curtas e é raro como descanso real de quem treina.
 MAX_CONFIRMED_REST_STREAK_DAYS: Final[int] = 7
+
+# Estado do dia e origem da confirmação (códigos estáveis; rótulos em `labels.py`, grupos `day_sync_status` e
+# `day_confirmation_source` de `adaptive_energy_labels`).
+DAY_SYNC_STATUS_CONFIRMED: Final[str] = "confirmed"
+DAY_SYNC_STATUS_PENDING: Final[str] = "pending"
+DAY_CONFIRMATION_SOURCE_RUN: Final[str] = "sync_run"  # execução do sync que cobre o dia (exato)
+DAY_CONFIRMATION_SOURCE_LAST_SYNC: Final[str] = "last_sync"  # regra antiga: último sync + janela (dias antes do registro)
+
+# Retenção do registro de execuções do sync (`intervals_sync_runs`): a poda apaga as execuções do usuário com
+# `finished_at` mais velho que isto. Cobre o horizonte do replay do gasto adaptativo (`adaptive_energy.REPLAY_HISTORY_DAYS`,
+# 90) mais 30 dias de folga. Espelho com teste de paridade (`adaptive_energy` importa este módulo, não o contrário).
+SYNC_RUN_RETENTION_DAYS: Final[int] = 120
 
 ROUNDING_DIGITS_PUBLIC: Final[int] = 1
 
@@ -351,15 +373,64 @@ def deduplicate(activities: Iterable[NormalizedActivity]) -> tuple[NormalizedAct
 # ---------------------------------------------------------------------------
 
 
-def day_confirmed(day: date, last_sync_at: Optional[datetime], tracking_started_on: Optional[date] = None) -> bool:
-    """O dia local `day` está coberto pela sincronização? Verdadeiro quando o usuário já acompanhava
-    (`tracking_started_on` <= `day`; sem a data informada não se afirma nada) e a última sincronização é de pelo menos
-    `DAY_CONFIRMATION_LAG_HOURS` depois do fim do dia. `last_sync_at` e `day` estão no MESMO fuso (o chamador
-    converte). Função pura: dia de hoje ou futuro dá sempre falso."""
+@dataclass(frozen=True)
+class SyncRun:
+    """Uma execução OK do sync do Intervals. `finished_at` já no fuso local do usuário (naive, como `last_sync_at`);
+    `window_start`/`window_end` são os dias locais que a execução reprocessou (inclusive)."""
+
+    finished_at: datetime
+    window_start: date
+    window_end: date
+
+
+def _day_end_plus_lag(day: date, tzinfo: Any) -> datetime:
+    fim_do_dia = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=tzinfo)
+    return fim_do_dia + timedelta(hours=DAY_CONFIRMATION_LAG_HOURS)
+
+
+def _covering_run_exists(day: date, runs: Sequence[SyncRun]) -> bool:
+    return any(
+        run.window_start <= day <= run.window_end and run.finished_at >= _day_end_plus_lag(day, run.finished_at.tzinfo)
+        for run in runs
+    )
+
+
+def _legacy_day_confirmed(day: date, last_sync_at: Optional[datetime], tracking_started_on: Optional[date]) -> bool:
     if last_sync_at is None or tracking_started_on is None or day < tracking_started_on:
         return False
-    fim_do_dia = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=last_sync_at.tzinfo)
-    return last_sync_at >= fim_do_dia + timedelta(hours=DAY_CONFIRMATION_LAG_HOURS)
+    return last_sync_at >= _day_end_plus_lag(day, last_sync_at.tzinfo)
+
+
+def day_confirmation_source(
+    day: date,
+    last_sync_at: Optional[datetime],
+    tracking_started_on: Optional[date] = None,
+    runs: Sequence[SyncRun] = (),
+) -> Optional[str]:
+    """Origem da confirmação do dia (`DAY_CONFIRMATION_SOURCE_*`) ou `None` se não confirmado.
+
+    Com `runs`: a partir da data da PRIMEIRA execução registrada (`min(finished_at).date()`), só confirma se existe
+    execução cujo intervalo [window_start, window_end] cobre o dia E que terminou em ou depois do fim do dia +
+    `DAY_CONFIRMATION_LAG_HOURS`; sem ela, `None` mesmo havendo atividade posterior. Antes da primeira execução (ou
+    sem `runs`), a regra antiga. Em ambos os casos exige `tracking_started_on` <= dia. Hoje e futuro nunca confirmam."""
+    if tracking_started_on is None or day < tracking_started_on:
+        return None
+    if runs:
+        primeira = min(run.finished_at for run in runs).date()
+        if day >= primeira:
+            return DAY_CONFIRMATION_SOURCE_RUN if _covering_run_exists(day, runs) else None
+    return DAY_CONFIRMATION_SOURCE_LAST_SYNC if _legacy_day_confirmed(day, last_sync_at, tracking_started_on) else None
+
+
+def day_confirmed(
+    day: date,
+    last_sync_at: Optional[datetime],
+    tracking_started_on: Optional[date] = None,
+    runs: Sequence[SyncRun] = (),
+) -> bool:
+    """O dia local `day` está coberto pela sincronização? Ver `day_confirmation_source`. `last_sync_at`, `runs` e `day`
+    estão no MESMO fuso (o chamador converte). Função pura: dia de hoje ou futuro dá sempre falso."""
+    return day_confirmation_source(day, last_sync_at, tracking_started_on, runs) is not None
 
 
 @dataclass(frozen=True)
@@ -371,6 +442,11 @@ class DayActivity:
     confirmed: bool
     active_kcal: Optional[float]
     activities: tuple[NormalizedActivity, ...] = ()
+    confirmation_source: Optional[str] = None  # `DAY_CONFIRMATION_SOURCE_*`; None = pendente
+
+    @property
+    def sync_status(self) -> str:
+        return DAY_SYNC_STATUS_CONFIRMED if self.confirmed else DAY_SYNC_STATUS_PENDING
 
     @property
     def counted(self) -> tuple[NormalizedActivity, ...]:
@@ -388,6 +464,8 @@ class DayActivity:
         return {
             "day": self.day.isoformat(),
             "confirmed": self.confirmed,
+            "sync_status": self.sync_status,
+            "confirmation_source": self.confirmation_source,
             "active_kcal": _rounded(self.active_kcal),
             "counted_activities": len(self.counted),
             "has_possible_duplicates": self.has_possible_duplicates,
@@ -412,6 +490,7 @@ def summarize_days(
     days: Iterable[date],
     last_sync_at: Optional[datetime],
     tracking_started_on: Optional[date] = None,
+    runs: Sequence[SyncRun] = (),
 ) -> tuple[DayActivity, ...]:
     """Normaliza, deduplica e agrega por dia local, na ordem de `days`. Atividade fora de `days` é ignorada. O total do
     dia soma só `counts_in_total`; a lista de exibição traz TODAS (inclusive duplicatas e inválidas, com as marcas).
@@ -419,7 +498,9 @@ def summarize_days(
     Trava da lacuna (spec §19, nunca zero por ausência): dia SEM atividade fora da janela do último sync
     (`INTERVALS_SYNC_WINDOW_DAYS`) só é descanso confirmado se a sequência de dias sem atividade que o contém é de no
     máximo `MAX_CONFIRMED_REST_STREAK_DAYS`; senão fica não confirmado (None). Limite: no começo do horizonte lido a
-    sequência é medida a partir do primeiro dia lido (a atividade anterior não foi carregada)."""
+    sequência é medida a partir do primeiro dia lido (a atividade anterior não foi carregada). Com execução registrada
+    (`runs`) a mesma trava vale também DENTRO da janela de 30 dias, e a sequência termina no último dia confirmável
+    do horizonte (em geral ontem; hoje não conta)."""
     lista = tuple(days)
     normalizadas = deduplicate(normalize_activity(item, bmr_kcal) for item in activities)
     por_dia: dict[date, list[NormalizedActivity]] = {}
@@ -430,20 +511,35 @@ def summarize_days(
     dia_do_sync = last_sync_at.date() if last_sync_at is not None else None
     limite_da_janela = None if dia_do_sync is None else dia_do_sync - timedelta(days=INTERVALS_SYNC_WINDOW_DAYS)
     inicio_horizonte = min(lista) if lista else None
+    # Último dia CONFIRMÁVEL do horizonte (hoje e futuro nunca confirmam, então em geral é o dia anterior a hoje). A
+    # sequência de dias sem atividade de um dia coberto por execução termina aí: `last_sync_at` vem das ATIVIDADES e fica
+    # para trás com o relógio parado, e contar hoje (que nunca confirma) faria o teto oscilar ao longo do dia.
+    confirmaveis = [d for d in lista if day_confirmation_source(d, last_sync_at, tracking_started_on, runs) == DAY_CONFIRMATION_SOURCE_RUN]
+    ultimo_dia_confirmavel = max(confirmaveis) if confirmaveis else None
+
+    def fim_da_sequencia(origem: Optional[str]) -> date:
+        if origem == DAY_CONFIRMATION_SOURCE_RUN and ultimo_dia_confirmavel is not None:
+            return ultimo_dia_confirmavel
+        return dia_do_sync  # type: ignore[return-value]
+
     for dia in lista:
         do_dia = tuple(por_dia.get(dia, ()))
-        confirmado = day_confirmed(dia, last_sync_at, tracking_started_on)
+        origem = day_confirmation_source(dia, last_sync_at, tracking_started_on, runs)
+        confirmado = origem is not None
+        # Trava da lacuna: vale para QUALQUER origem. Na regra antiga só fora da janela de 30 dias (dentro dela o dia foi
+        # reprocessado); com execução registrada vale sempre, porque execução ok com lista vazia é indistinguível de
+        # descanso real (relógio parado, cadeia relógio -> Intervals interrompida).
+        fora_da_janela = limite_da_janela is not None and dia < limite_da_janela
         if (
             confirmado
             and not do_dia
-            and dia_do_sync is not None
             and inicio_horizonte is not None
-            and dia < limite_da_janela  # type: ignore[operator]
-            and _rest_gap_too_long(dia, dias_com_atividade, inicio_horizonte, dia_do_sync)
+            and (origem == DAY_CONFIRMATION_SOURCE_RUN or (fora_da_janela and dia_do_sync is not None))
+            and _rest_gap_too_long(dia, dias_com_atividade, inicio_horizonte, fim_da_sequencia(origem))
         ):
-            confirmado = False
+            confirmado, origem = False, None
         total = float(sum(a.active_kcal or 0.0 for a in do_dia if a.counts_in_total)) if confirmado else None
-        resumo.append(DayActivity(day=dia, confirmed=confirmado, active_kcal=total, activities=do_dia))
+        resumo.append(DayActivity(day=dia, confirmed=confirmado, active_kcal=total, activities=do_dia, confirmation_source=origem))
     return tuple(resumo)
 
 
@@ -453,10 +549,11 @@ def active_kcal_by_day(
     days: Iterable[date],
     last_sync_at: Optional[datetime],
     tracking_started_on: Optional[date] = None,
+    runs: Sequence[SyncRun] = (),
 ) -> dict[date, Optional[float]]:
     """Saída simples para o gasto adaptativo: dia local -> kcal ativa (float; 0.0 = descanso confirmado) ou None
     quando o dia não está confirmado. Mesma regra de `summarize_days`."""
     return {
         item.day: item.active_kcal
-        for item in summarize_days(activities, bmr_kcal, days, last_sync_at, tracking_started_on)
+        for item in summarize_days(activities, bmr_kcal, days, last_sync_at, tracking_started_on, runs)
     }

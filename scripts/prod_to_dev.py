@@ -119,6 +119,7 @@ USER_TABLES: tuple[str, ...] = (
     "devices",
     "generation_runs",
     "intervals_activities",
+    "intervals_sync_runs",
     "intervals_wellness",
     "manual_effort_metrics",
     "muscle_recovery_coefficients",

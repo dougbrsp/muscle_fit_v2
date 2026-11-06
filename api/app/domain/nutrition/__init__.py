@@ -211,6 +211,8 @@ def export_for_frontend() -> dict[str, Any]:
             "data_quality_flag": dict(lb.DATA_QUALITY_FLAG_LABELS),
             "suspension_reason": dict(lb.SUSPENSION_REASON_LABELS),
             "unavailable_reason": dict(lb.ADAPTIVE_UNAVAILABLE_LABELS),
+            "day_sync_status": dict(lb.DAY_SYNC_STATUS_LABELS),
+            "day_confirmation_source": dict(lb.DAY_CONFIRMATION_SOURCE_LABELS),
         },
         "notices": dict(lb.NOTICE_LABELS),
         "units": _codes(meal_math.Unit),

@@ -2043,6 +2043,19 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-ADAPT (§95)",
     ),
     Padrao(
+        chave="registro_execucoes_sync",
+        regra="retenção do registro de execuções do sync, códigos de estado do dia (`confirmed`/`pending`) ou de origem da confirmação "
+        "(`sync_run`/`last_sync`) redefinidos fora do dono",
+        # 2026-11-06 (nutrição adaptativa, lote F, §98): dono `activity_energy` (`SyncRun`, `day_confirmation_source`). O
+        # serviço só lê as execuções e entrega `SyncRun`; a tela lê os rótulos do JSON gerado.
+        regex=re.compile(
+            r"\bSYNC_RUN_RETENTION_DAYS\s*(?::[^=\n]+)?=\s*[\d(\[]"
+            r"|\bDAY_(?:SYNC_STATUS|CONFIRMATION_SOURCE)_\w+\s*(?::[^=\n]+)?=\s*[\"']"
+        ),
+        donos=("api/app/domain/nutrition/activity_energy.py",),
+        inventario="NUT-ADAPT (§98)",
+    ),
+    Padrao(
         chave="composicao_gasto_previa",
         regra="arredondamento (`BREAKDOWN_KCAL_ROUNDING_STEP`) ou códigos das parcelas da composição do gasto (`BREAKDOWN_BASE`, "
         "`BREAKDOWN_STRENGTH`, `BREAKDOWN_EXTRAS`) redefinidos fora do dono",
@@ -2283,6 +2296,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "gasto_adaptativo_sombra": {},  # NUT-ADAPT (2026-11-05): nasce vazia (o serviço monta entradas e lê `to_public_dict`)
     "peso_tendencia": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "atividades_normalizadas": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "registro_execucoes_sync": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
@@ -3258,6 +3272,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "INTERVALS_SYNC_WINDOW_DAYS = 30", "SHADOW_DISPLAY_DAYS: Final[int] = 7"),
         ("from .activity_energy import DAY_CONFIRMATION_LAG_HOURS", "bmr / MINUTES_PER_DAY", "x / 14400",
          "if streak > ae.MAX_CONFIRMED_REST_STREAK_DAYS", "dias = SHADOW_DISPLAY_DAYS"),
+    ),
+    "registro_execucoes_sync": (
+        ("SYNC_RUN_RETENTION_DAYS: Final[int] = 120", "SYNC_RUN_RETENTION_DAYS = 90",
+         'DAY_SYNC_STATUS_PENDING: Final[str] = "pending"', "DAY_CONFIRMATION_SOURCE_RUN = 'sync_run'"),
+        ("activity_mod.SYNC_RUN_RETENTION_DAYS", "timedelta(days=activity_energy.SYNC_RUN_RETENTION_DAYS)",
+         "DAY_SYNC_STATUS_LABELS: Final[Mapping[str, str]] = {", "status = ae.DAY_SYNC_STATUS_PENDING"),
     ),
     "modo_adaptativo_literal": (
         ('tdee_mode = "adaptive_balance"', "if modo === 'adaptive_balance'", "{'tdee_mode': 'adaptive_balance'}"),

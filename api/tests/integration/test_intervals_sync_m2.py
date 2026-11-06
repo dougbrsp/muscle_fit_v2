@@ -194,6 +194,50 @@ def test_041_aplicada_pelo_runner_e_convergida(schema):
         conn.close()
 
 
+def test_107_aplicada_pelo_runner_tem_a_forma_e_a_fk_em_cascata(env, raw):
+    """Forma lida do `information_schema` real (nada de reflexao no modulo da migracao): colunas, indice e FK."""
+    colunas = {
+        r["COLUMN_NAME"]: (r["COLUMN_TYPE"].lower(), r["IS_NULLABLE"])
+        for r in _rows(
+            raw,
+            "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'intervals_sync_runs'",
+        )
+    }
+    assert set(colunas) == {"id", "user_id", "started_at", "finished_at", "window_start", "window_end", "status",
+                            "activities_count", "source"}
+    assert colunas["status"] == ("varchar(16)", "NO") and colunas["window_end"] == ("date", "NO")
+    indice = [
+        r["COLUMN_NAME"]
+        for r in _rows(
+            raw,
+            "SELECT COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+            "AND TABLE_NAME = 'intervals_sync_runs' AND INDEX_NAME = 'idx_isr_user_finished' ORDER BY SEQ_IN_INDEX",
+        )
+    ]
+    assert indice == ["user_id", "finished_at"]
+    fks = _rows(
+        raw,
+        "SELECT REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'intervals_sync_runs'",
+    )
+    assert [(r["REFERENCED_TABLE_NAME"], r["DELETE_RULE"]) for r in fks] == [("users", "CASCADE")]
+    with raw.cursor() as cur:  # apagar o usuario leva o registro junto
+        cur.execute(
+            "INSERT INTO users (username, password_hash, role, is_active) VALUES (%s, 'x', 'regular', 1)",
+            (f"m2-107-{env['user']}",),
+        )
+        efemero = cur.lastrowid
+        cur.execute(
+            "INSERT INTO intervals_sync_runs (user_id, started_at, finished_at, window_start, window_end, status, "
+            "activities_count, source) VALUES (%s, NOW(), NOW(), CURDATE(), CURDATE(), 'ok', 0, 'manual')",
+            (efemero,),
+        )
+        cur.execute("DELETE FROM users WHERE id = %s", (efemero,))
+    raw.commit()
+    assert _runs(raw, efemero) == []
+
+
 def test_tabela_de_link_existe_com_a_unique_por_treino(raw):
     indexes = _rows(
         raw,
@@ -303,3 +347,55 @@ def test_falha_da_api_nao_deixa_escrita_parcial(env, raw, intervals_api, schema,
     assert report.results == []
     assert _rows(raw, "SELECT id FROM intervals_activities WHERE user_id = %s", (env["user"],)) == ()
     assert _rows(raw, "SELECT id FROM activity_intervals_link WHERE user_id = %s", (env["user"],)) == ()
+
+
+# ---------------------------------------------------------------------------
+# Registro de execucoes (migracao 107, Lote F)
+# ---------------------------------------------------------------------------
+
+
+def _runs(raw, user_id):
+    return _rows(
+        raw,
+        "SELECT user_id, started_at, finished_at, window_start, window_end, status, activities_count, source "
+        "FROM intervals_sync_runs WHERE user_id = %s ORDER BY id",
+        (user_id,),
+    )
+
+
+def test_sync_registra_a_execucao_e_poda_so_as_antigas_do_proprio_usuario(env, raw, intervals_api, schema):
+    intervals_api["activities"] = [_payload("wt-1", INICIO_TREINO + timedelta(minutes=8))]
+    with raw.cursor() as cur:
+        for dono, dias in ((env["user"], 400), (env["outro_user"], 400)):
+            cur.execute(
+                "INSERT INTO intervals_sync_runs (user_id, started_at, finished_at, window_start, window_end, status, "
+                "activities_count, source) VALUES (%s, NOW() - INTERVAL %s DAY, NOW() - INTERVAL %s DAY, "
+                "CURDATE() - INTERVAL %s DAY, CURDATE() - INTERVAL %s DAY, 'ok', 0, 'scheduled')",
+                (dono, dias, dias, dias + 30, dias),
+            )
+    raw.commit()
+
+    relatorio = sync.sync_users(conn_factory=_factory(schema), days=30)
+
+    assert relatorio.totals["users_failed"] == 0
+    do_usuario = _runs(raw, env["user"])
+    assert len(do_usuario) == 1  # a antiga (400 dias) foi podada; a nova ficou
+    nova = do_usuario[0]
+    assert nova["status"] == "ok" and nova["source"] == "scheduled" and nova["activities_count"] == 1
+    assert nova["window_end"] == date.fromisoformat(relatorio.newest)
+    assert nova["window_start"] == date.fromisoformat(relatorio.oldest)
+    assert nova["started_at"] <= nova["finished_at"]
+    assert len(_runs(raw, env["outro_user"])) == 1  # usuario fora do job: a poda nao toca
+
+
+def test_falha_do_usuario_fica_registrada_como_error(env, raw, intervals_api, schema, monkeypatch):
+    def quebra(*a, **k):
+        raise sync.IntervalsClientError("401 nao autorizado", status_code=401)
+
+    monkeypatch.setattr(sync.intervals_client, "fetch_activities_and_wellness", quebra)
+
+    relatorio = sync.sync_users(conn_factory=_factory(schema))
+
+    assert relatorio.totals["users_failed"] == 1
+    linhas = _runs(raw, env["user"])
+    assert [(r["status"], r["activities_count"], r["source"]) for r in linhas] == [("error", 0, "scheduled")]

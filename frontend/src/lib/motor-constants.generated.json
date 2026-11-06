@@ -995,6 +995,14 @@
       "unavailable_reason": {
         "no_data": "Ainda não há refeições nem pesagens suficientes para estimar.",
         "error": "Não foi possível calcular agora."
+      },
+      "day_sync_status": {
+        "confirmed": "Atividade do dia confirmada",
+        "pending": "Pendente de sincronização"
+      },
+      "day_confirmation_source": {
+        "sync_run": "Confirmado por uma sincronização que cobre o dia",
+        "last_sync": "Confirmado pela última sincronização (dia anterior ao registro de execuções)"
       }
     },
     "notices": {

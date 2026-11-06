@@ -12,6 +12,7 @@ import { MealParseModal } from '@/components/nutrition/MealParseModal';
 import { QuickEntryForm } from '@/components/nutrition/QuickEntryForm';
 import { quantidade, TotalsBadges, TotalsLine } from '@/components/nutrition/MealCard';
 import { TargetVsIntakeCard } from '@/components/nutrition/TargetVsIntakeCard';
+import { DayEnergySection } from '@/components/nutrition/DayEnergySection';
 import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
@@ -164,6 +165,7 @@ function NutricaoDiarioContent() {
             <>
               <TargetVsIntakeCard day={dia} />
               <TrainingKcalRow training={dia.training} />
+              <DayEnergySection detail={dia.energy_detail} />
               <DayNotesInput key={date} date={date} dayLog={dia.day_log} onSaved={invalidarDiario} />
 
               <ListGroup title="Refeições" footer={dia.meals.length === 0 ? 'Nenhuma refeição registrada neste dia.' : undefined}>

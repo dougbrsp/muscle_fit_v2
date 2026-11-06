@@ -25,12 +25,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from .crypto_utils import decrypt_secret
 from .domain import hr_zones
+from .domain.nutrition import activity_energy
+from .nutrition_schema import SYNC_RUNS_TABLE
+
+logger = logging.getLogger(__name__)
 
 
 class IntervalsCredentialsError(Exception):
@@ -490,6 +495,56 @@ def set_manual_wellness(
 # ---------------------------------------------------------------------------
 # Credenciais do usuario
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Registro de execucoes do sync (migracao 107, Lote F da nutricao adaptativa)
+# ---------------------------------------------------------------------------
+
+SYNC_RUN_STATUS_OK = "ok"
+SYNC_RUN_STATUS_ERROR = "error"
+SYNC_RUN_SOURCE_SCHEDULED = "scheduled"
+SYNC_RUN_SOURCE_MANUAL = "manual"
+
+_INSERT_SYNC_RUN_SQL = (
+    f"INSERT INTO {SYNC_RUNS_TABLE} (user_id, started_at, finished_at, window_start, window_end, status, "
+    "activities_count, source) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+)
+_PRUNE_SYNC_RUNS_SQL = f"DELETE FROM {SYNC_RUNS_TABLE} WHERE user_id = %s AND finished_at < %s"
+
+
+def record_sync_run(
+    conn,
+    user_id: int,
+    *,
+    started_at: datetime,
+    finished_at: datetime,
+    window_start: date,
+    window_end: date,
+    status: str,
+    activities_count: int,
+    source: str,
+) -> bool:
+    """Grava UMA linha da execucao do sync e poda as antigas do usuario (retencao do motor:
+    `activity_energy.SYNC_RUN_RETENTION_DAYS`). `started_at`/`finished_at` em UTC (naive). TOLERANTE: sem a tabela
+    (codigo novo antes da 107) o INSERT falha e vira log (so o tipo da excecao) e False - registrar NUNCA derruba o
+    sync, e "nao existe" nunca e cacheado (o proximo sync tenta de novo). Sem consulta a `information_schema` de
+    proposito: o refresh manual roda na api-core, cuja suite proibe essa leitura, e o job agendado e Lambda fria.
+    Quem chama commita; o job chama depois do commit do usuario, entao cada statement vai em autocommit."""
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                _INSERT_SYNC_RUN_SQL,
+                (int(user_id), started_at, finished_at, window_start, window_end, status, int(activities_count), source),
+            )
+            cursor.execute(
+                _PRUNE_SYNC_RUNS_SQL,
+                (int(user_id), finished_at - timedelta(days=activity_energy.SYNC_RUN_RETENTION_DAYS)),
+            )
+        return True
+    except Exception as exc:  # noqa: BLE001 - registrar nao pode derrubar o sync
+        logger.warning("registro da execucao do sync nao gravado para user_id=%s (%s)", user_id, type(exc).__name__)
+        return False
 
 
 def users_with_intervals_configured(conn, user_ids: Optional[List[int]] = None) -> List[int]:
