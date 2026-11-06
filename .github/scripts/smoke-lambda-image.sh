@@ -292,7 +292,10 @@ renderizados["set_evaluation"] = "".join(
 )
 _card = exercise_card_prompt.ExerciseCardContext
 renderizados["exercise_card"] = "".join(
-    exercise_card_prompt.build_prompt(ctx, "minimal", instrucao, motivo)
+    exercise_card_prompt.build_scene_prompts(
+        ctx, "minimal", instruction=instrucao, parent_reject_reason=motivo, reference_count=fotos
+    ).joined()
+    for fotos in (0, 3)
     for ctx in (_card(exercise_id=1, name="smoke"),
                 _card(exercise_id=2, name="smoke", name_en="smoke en", aliases=("um apelido",), equipment=("a", "b"),
                       load_conventions=("bodyweight", "bodyweight_plus", "assisted"), body_position="x", is_unilateral=True,
@@ -429,25 +432,33 @@ with Image.open(io.BytesIO(mm)) as im:
     assert (im.format, im.mode, im.width) == ("PNG", "RGB", 420), (im.format, im.mode, im.size)
 print("ok: mapa corporal renderiza (", figure.size, ") e muscle-map.png", len(mm), "bytes")
 
-# O compositor de verdade, com os assets da imagem e uma ilustracao sintetica
-# (duas figuras em fundo transparente) - com slugs, para desenhar a silhueta
-# do rodape (CARD_LAYOUT_V2).
+# O compositor de verdade, com os assets da imagem e duas cenas sinteticas
+# opacas (fotos retrato 1024x1536: posicao inicial e movimento) - com slugs,
+# para desenhar a silhueta do rodape (CARD_LAYOUT_V3_PHOTO).
 from app import exercise_card_composer as composer
-illustration = Image.new("RGBA", (1024, 1536), (0, 0, 0, 0))
-draw = ImageDraw.Draw(illustration)
-draw.rectangle((200, 200, 820, 560), fill=(120, 120, 128, 255))
-draw.ellipse((380, 950, 640, 1380), fill=(205, 150, 120, 255))
-png = io.BytesIO()
-illustration.save(png, format="PNG")
+
+
+def scene_png(background, figure):
+    scene = Image.new("RGB", (1024, 1536), background)
+    draw = ImageDraw.Draw(scene)
+    draw.rectangle((300, 300, 720, 1200), fill=figure)
+    draw.ellipse((420, 160, 600, 340), fill=(205, 150, 120))
+    buffer = io.BytesIO()
+    scene.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 assets = composer.load_card_assets()
 content = composer.CardContent(
     "Extensão de tríceps na máquina (variação)", ("Tríceps",), ("Ombros",), ("triceps",), ("front-deltoids",)
 )
-card = composer.compose_card(png.getvalue(), content, assets)
+card = composer.compose_card_v3(
+    scene_png((90, 100, 110), (120, 120, 128)), scene_png((110, 100, 90), (128, 120, 120)), content, assets
+)
 with Image.open(io.BytesIO(card)) as im:
     assert (im.format, im.mode, im.size) == ("PNG", "RGB", (1024, 1536)), (im.format, im.mode, im.size)
     assert im.info == {}, im.info
-    box = composer.card_layout(True).silhouette
+    box = composer.card_layout_v3(True).silhouette
     silhouette = im.crop((box.left, box.top, box.right, box.bottom))
     assert len(silhouette.getcolors(1 << 16) or ()) > 50, "silhueta do rodape nao foi desenhada"
 print("ok: compositor", composer.LAYOUT_VERSION, "monta o card com a silhueta na imagem (", len(card), "bytes )")

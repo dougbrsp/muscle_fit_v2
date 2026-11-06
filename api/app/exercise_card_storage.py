@@ -42,6 +42,7 @@ endpoint S3 padrao da regiao.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Sequence
@@ -274,11 +275,57 @@ def put_reference(
     return key
 
 
+_REFERENCE_KEY_RE = re.compile(rf"{re.escape(REFERENCE_PREFIX)}/[0-9]+/[0-9]+\.jpg")
+
+# `Error.Code` de objeto ausente OU sem permissao: sem `s3:ListBucket` na role do
+# worker, o S3 responde AccessDenied (403) para chave inexistente.
+_ABSENT_OR_DENIED_CODES = _MISSING_OBJECT_CODES | frozenset({"AccessDenied", "403", "Forbidden"})
+
+
 def _check_reference_key(key: Any) -> str:
+    """So `exercise-card-references/{exercise_id}/{ref_id}.jpg` (ids inteiros)."""
     text = str(key or "")
-    if not text.startswith(f"{REFERENCE_PREFIX}/") or ".." in text:
+    if not _REFERENCE_KEY_RE.fullmatch(text):
         raise ValueError(f"Key fora da area de referencias: {key!r}.")
     return text
+
+
+def _read_object(s3, target: str, key: str) -> bytes:
+    response = s3.get_object(Bucket=target, Key=key)
+    body = response["Body"]
+    try:
+        return body.read()
+    finally:
+        body.close()
+
+
+def get_reference_bytes_present(
+    keys: Sequence[str], *, client=None, bucket: Optional[str] = None
+) -> list[tuple[str, bytes]]:
+    """Como `get_reference_bytes`, mas PULA as fotos ausentes: devolve
+    `[(key, bytes)]` so das encontradas, na ordem de `keys`. Ausente =
+    NoSuchKey/404 ou AccessDenied/403 (sem `s3:ListBucket`, objeto inexistente
+    volta como AccessDenied). Qualquer outra falha (rede, throttling) ->
+    `ExerciseCardStorageError(code="S3_READ_FAILED")`. Key fora do formato ->
+    `ValueError`."""
+    checked = [_check_reference_key(key) for key in keys]
+    if not checked:
+        return []
+    s3 = client or s3_client()
+    target = bucket or bucket_name()
+    out: list[tuple[str, bytes]] = []
+    for key in checked:
+        try:
+            out.append((key, _read_object(s3, target, key)))
+        except Exception as exc:  # noqa: BLE001
+            response = getattr(exc, "response", None)
+            code = str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
+            if code in _ABSENT_OR_DENIED_CODES or type(exc).__name__ == "NoSuchKey":
+                continue
+            raise ExerciseCardStorageError(
+                f"Falha ao ler {key} do S3: {type(exc).__name__}", code=S3_READ_FAILED
+            ) from exc
+    return out
 
 
 def get_reference_bytes(

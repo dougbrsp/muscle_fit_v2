@@ -462,10 +462,17 @@ def test_get_reference_bytes_ausente_ou_falha_e_s3_read_failed():
         "uploads/foto.png",
         "exercise-card-references/../exercise-card-drafts/7/preview.jpg",
         "exercise-card-references-x/1/1.png",
+        "exercise-card-references/42/7.png",  # extensao antiga
+        "exercise-card-references/42/7.jpg/extra",
+        "exercise-card-references/42/abc.jpg",
+        "exercise-card-references/x/7.jpg",
+        "exercise-card-references/42/7.jpg\n",
+        "exercise-card-references/42/-7.jpg",
         "",
         None,
     ],
-    ids=["rascunho", "publicado", "uploads", "traversal", "prefixo-parecido", "vazio", "none"],
+    ids=["rascunho", "publicado", "uploads", "traversal", "prefixo-parecido", "png", "extra", "ref-nao-numerica",
+         "exercicio-nao-numerico", "quebra-de-linha", "negativo", "vazio", "none"],
 )
 def test_referencias_so_no_proprio_prefixo(key):
     s3 = FakeS3()
@@ -476,6 +483,52 @@ def test_referencias_so_no_proprio_prefixo(key):
     with pytest.raises(ValueError):
         st.presign_reference_url(key, client=s3)
     assert s3.calls == []  # nenhuma chamada ao S3 com chave fora do prefixo
+
+
+def test_chave_valida_so_com_o_formato_fechado():
+    assert st._check_reference_key("exercise-card-references/42/7.jpg") == "exercise-card-references/42/7.jpg"
+
+
+class _S3Negado(FakeS3):
+    """Sem `s3:ListBucket`, objeto inexistente volta como AccessDenied (403)."""
+
+    def get_object(self, *, Bucket, Key):
+        if (Bucket, Key) not in self.objects:
+            self.calls.append(("get_object", {"Bucket": Bucket, "Key": Key}))
+            erro = RuntimeError("AccessDenied")
+            erro.response = {"Error": {"Code": "AccessDenied"}}
+            raise erro
+        return super().get_object(Bucket=Bucket, Key=Key)
+
+
+def test_get_reference_bytes_present_devolve_so_as_encontradas_com_a_chave():
+    s3 = FakeS3()
+    st.put_reference(42, 1, b"um", client=s3)
+    st.put_reference(42, 3, b"tres", client=s3)
+    keys = [st.reference_key(42, 1), st.reference_key(42, 2), st.reference_key(42, 3)]
+    assert st.get_reference_bytes_present(keys, client=s3) == [(keys[0], b"um"), (keys[2], b"tres")]
+    assert st.get_reference_bytes_present([], client=s3) == []
+    with pytest.raises(st.ExerciseCardStorageError):  # o modo estrito segue igual
+        st.get_reference_bytes(keys, client=s3)
+
+
+def test_get_reference_bytes_present_pula_access_denied_de_objeto_ausente():
+    s3 = _S3Negado()
+    st.put_reference(42, 2, b"dois", client=s3)
+    keys = [st.reference_key(42, 1), st.reference_key(42, 2)]
+    assert st.get_reference_bytes_present(keys, client=s3) == [(keys[1], b"dois")]
+    assert st.get_reference_bytes_present([keys[0]], client=s3) == []
+
+
+def test_get_reference_bytes_present_outras_falhas_continuam_erro():
+    s3 = FakeS3()
+    key = st.put_reference(42, 1, b"um", client=s3)
+    s3.fail_get_keys.add(key)  # erro generico (rede/throttling), nao ausencia
+    with pytest.raises(st.ExerciseCardStorageError) as exc:
+        st.get_reference_bytes_present([key], client=s3)
+    assert exc.value.code == "S3_READ_FAILED"
+    with pytest.raises(ValueError):
+        st.get_reference_bytes_present(["exercise-card-drafts/1/preview.png"], client=s3)
 
 
 def test_delete_reference_remove_o_objeto_e_falha_vira_erro_tipado():

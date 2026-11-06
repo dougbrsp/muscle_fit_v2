@@ -90,7 +90,7 @@ def test_limites_do_contrato():
     assert refs.MAX_ACTIVE_REFERENCES == 3
     assert refs.MAX_NOTE_CHARS == 160
     assert refs.MAX_UPLOAD_BYTES == 2 * 1024 * 1024
-    assert (refs.MAX_EDGE_PX, refs.MIN_EDGE_PX, refs.MAX_SOURCE_PIXELS) == (1536, 256, 40_000_000)
+    assert (refs.MAX_EDGE_PX, refs.MIN_EDGE_PX, refs.MAX_SOURCE_PIXELS) == (1536, 256, 20_000_000)
     assert refs.CLIENT_RESIZE_JPEG_QUALITY_PERCENT == 90
     assert refs.ACCEPTED_TYPES == ("image/png", "image/jpeg", "image/webp")
     assert refs.limits() == {
@@ -213,12 +213,25 @@ def test_pixels_acima_do_limite_sao_recusados_antes_de_decodificar(monkeypatch):
 
 
 def test_pixels_no_limite_exato_nao_sao_recusados_pelo_limite():
-    assert refs.MAX_SOURCE_PIXELS == 40_000_000
-    erro = _erro(refs.normalize_reference_image, _png_com_cabecalho(8000, 5001))  # 40.008.000
+    assert refs.MAX_SOURCE_PIXELS == 20_000_000  # um PNG de 2 MiB com 40 Mpx daria OOM
+    erro = _erro(refs.normalize_reference_image, _png_com_cabecalho(5000, 4001))  # 20.005.000
     assert erro.code == "reference_too_many_pixels"
-    # 8000 x 5000 = limite exato: passa o limite e so falha depois (sem pixels no arquivo).
-    erro = _erro(refs.normalize_reference_image, _png_com_cabecalho(8000, 5000))
+    # 5000 x 4000 = limite exato: passa o limite e so falha depois (sem pixels no arquivo).
+    erro = _erro(refs.normalize_reference_image, _png_com_cabecalho(5000, 4000))
     assert erro.code == "reference_unsupported_type"
+
+
+def test_copias_decodificadas_sao_liberadas_antes_do_tobytes(monkeypatch):
+    fechadas = []
+    original = Image.Image.close
+
+    def fecha(self):
+        fechadas.append(self.size)
+        return original(self)
+
+    monkeypatch.setattr(Image.Image, "close", fecha)
+    refs.normalize_reference_image(_jpeg_com_exif(600, 400, orientation=6))
+    assert fechadas  # a copia girada pelo exif_transpose foi fechada
 
 
 @pytest.mark.parametrize(
@@ -485,9 +498,17 @@ def test_falha_do_s3_ao_excluir_nao_desfaz_o_soft_delete(db, s3, monkeypatch):
         raise storage.ExerciseCardStorageError("S3 fora")
 
     monkeypatch.setattr(storage, "delete_reference", quebra)
+    eventos = []
+    monkeypatch.setattr(refs, "log_event", lambda event, **fields: eventos.append((event, fields)))
     refs.delete_reference(exercise_id=42, ref_id=ref["id"], user_id=ADMIN)  # nao levanta
     assert db.reference(ref["id"])["deleted_at"] == T0
     assert _ativas(db) == []
+    # O orfao nao fica invisivel: evento estruturado com a chave e o erro.
+    assert eventos == [(
+        "exercise_card.reference_object_delete_failed",
+        {"s3_key": f"exercise-card-references/42/{ref['id']}.jpg", "error": "ExerciseCardStorageError",
+         "error_code": "S3_UPLOAD_FAILED"},
+    )]
 
 
 def test_worker_so_ve_as_tres_mais_antigas_ativas_em_ordem(db, s3):

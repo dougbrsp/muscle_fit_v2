@@ -50,10 +50,15 @@ from PIL import Image, ImageOps
 
 from . import exercise_card_service as svc
 from . import exercise_card_storage as storage
+from .observability import log_event
 
 logger = logging.getLogger("musclefit.exercise_cards")
 
 TABLE = "exercise_card_references"
+
+# Falha ao remover o objeto do S3 depois do soft-delete (ou do rollback de um
+# upload): evento estruturado para alarme, o orfao privado nao fica invisivel.
+EVENT_REFERENCE_OBJECT_DELETE_FAILED = "exercise_card.reference_object_delete_failed"
 
 MAX_ACTIVE_REFERENCES = 3
 MAX_NOTE_CHARS = 160
@@ -65,7 +70,10 @@ MAX_NOTE_CHARS = 160
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 MAX_EDGE_PX = 1536
 MIN_EDGE_PX = 256
-MAX_SOURCE_PIXELS = 40_000_000  # conferido no cabecalho, antes de decodificar
+# Conferido no cabecalho, antes de decodificar. 20 Mpx: um PNG de 2 MiB com 40 Mpx
+# decodifica em 120-160 MB (mais as copias do exif_transpose/convert/tobytes):
+# risco de OOM na api-core.
+MAX_SOURCE_PIXELS = 20_000_000
 CLIENT_RESIZE_JPEG_QUALITY_PERCENT = 90  # exposto ao front em `limits`
 ACCEPTED_TYPES = ("image/png", "image/jpeg", "image/webp")  # pela assinatura, nunca pelo declarado
 
@@ -194,6 +202,11 @@ def normalize_reference_image(raw: bytes) -> tuple[bytes, int, int]:
             probe.load()
             oriented = ImageOps.exif_transpose(probe)
             rgb = _flatten_to_rgb(oriented)
+            # Memoria: libera as copias decodificadas que nao serao mais usadas
+            # antes do `tobytes` (uma foto grande ocupa dezenas de MB por copia).
+            if oriented is not probe:
+                oriented.close()
+            del oriented
     except svc.ExerciseCardError:
         raise
     except Image.DecompressionBombError:
@@ -304,7 +317,7 @@ def create_reference(*, exercise_id: int, user_id: int, image_base64: Any, note:
     falha depois do upload apaga o objeto (melhor esforco)."""
     svc.require_enabled()
     clean_note = normalize_note(note)
-    png, width, height = normalize_reference_image(decode_upload(image_base64))
+    jpeg, width, height = normalize_reference_image(decode_upload(image_base64))
     now = svc.utcnow()
     uploaded_key: Optional[str] = None
     try:
@@ -321,18 +334,18 @@ def create_reference(*, exercise_id: int, user_id: int, image_base64: Any, note:
                 cursor.execute(
                     f"INSERT INTO {TABLE} (exercise_id, s3_key, content_type, width, height, bytes, note, created_by, "
                     "created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                    (int(exercise_id), "", storage.CONTENT_TYPE_JPEG, width, height, len(png), clean_note, int(user_id), now),
+                    (int(exercise_id), "", storage.CONTENT_TYPE_JPEG, width, height, len(jpeg), clean_note, int(user_id), now),
                 )
                 ref_id = int(cursor.lastrowid)
                 key = storage.reference_key(exercise_id, ref_id)
                 cursor.execute(f"UPDATE {TABLE} SET s3_key = %s WHERE id = %s", (key, ref_id))
                 try:
-                    storage.put_reference(exercise_id, ref_id, png)
+                    storage.put_reference(exercise_id, ref_id, jpeg)
                 except storage.ExerciseCardStorageError as exc:
                     raise _storage_failed(exc) from None
                 uploaded_key = key
                 row = {
-                    "id": ref_id, "s3_key": key, "width": width, "height": height, "bytes": len(png),
+                    "id": ref_id, "s3_key": key, "width": width, "height": height, "bytes": len(jpeg),
                     "note": clean_note, "created_at": now,
                 }
     except Exception:
@@ -372,5 +385,12 @@ def _discard_object(key: Optional[str]) -> None:
         return
     try:
         storage.delete_reference(key)
-    except Exception:  # noqa: BLE001 - melhor esforco: orfao privado e inofensivo
+    except Exception as exc:  # noqa: BLE001 - melhor esforco: orfao privado e inofensivo
+        # Evento estruturado (alarmavel): o objeto orfao nao fica invisivel.
+        log_event(
+            EVENT_REFERENCE_OBJECT_DELETE_FAILED,
+            s3_key=key,
+            error=type(exc).__name__,
+            error_code=getattr(exc, "code", None),
+        )
         logger.warning("Nao foi possivel remover o objeto da foto de referencia", exc_info=True)

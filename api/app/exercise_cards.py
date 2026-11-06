@@ -173,7 +173,7 @@ def create_card_reference(
 ):
     """`{image_base64, note?}` -> 201 `{reference}`. A foto vai no corpo como
     base64 sem padding (nunca URL externa); o servidor valida pela assinatura,
-    confere os pixels antes de decodificar e re-encoda em PNG sem metadados."""
+    confere os pixels antes de decodificar e re-encoda em JPEG q90 sem metadados."""
     try:
         reference = refs.create_reference(
             exercise_id=exercise_id,
