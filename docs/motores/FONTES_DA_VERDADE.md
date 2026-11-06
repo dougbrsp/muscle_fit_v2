@@ -2432,8 +2432,9 @@ leituras de banco:**
 **Margem na Lambda:**
 - Orçamento: a Lambda de IA tem 180 s (`infra/lambda_ai_generators.tf`). A OpenAI podia consumir
   até 90 s (o antigo `core.OPENAI_TIMEOUT_SECONDS`), então sobravam ~90 s para validar. A Lambda é a `plan-generator`, que roda a Periodização.
-  Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`) e sobram 30 s
-  (`core.LAMBDA_RESERVED_SECONDS`) para contexto, validação e log.
+  Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`, constante presa
+  `PERIODIZATION_LLM_TIMEOUT_SECONDS`, independente do timeout da Lambda, que é 420 s desde os cards V3) e a folga de
+  30 s (`core.LAMBDA_RESERVED_SECONDS`) cobre contexto, validação e log.
 - Pior resposta medida: 2,18 s, cerca de 41x abaixo daqueles 90 s e 14x abaixo dos 30 s de hoje.
 - Mesmo somando o pior caso do corte (+1,6 s), o validador fica abaixo de 4 s.
 - Risco residual, não tratado aqui: o acréscimo tem `MAX_STEPS` = 500 passos aceitos, mas não tem
@@ -6309,7 +6310,7 @@ Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização seg
 
 | Regra | Dono | Consumidores |
 |---|---|---|
-| Teto da chamada à LLM da Periodização: timeout da `musclefit-plan-generator` menos a folga (hoje 180 − 30 = 150 s); teto efetivo encolhido pelo tempo já gasto no contexto, preservando a folga pós-chamada (metade da folga) | `periodization/core.py` (`LLM_TIMEOUT_SECONDS`, `LAMBDA_RESERVED_SECONDS`, `POST_LLM_RESERVED_SECONDS`, `llm_timeout_for`; `OPENAI_TIMEOUT_SECONDS` é alias) sobre `async_jobs.LAMBDA_TIMEOUT_SECONDS` (paridade com o Terraform em `test_m73_async_jobs_worker_lost.py`) | `core.run_periodization_draft`; espelho gerado `motor-constants.generated.json` → `periodization_job.llm_timeout_seconds` |
+| Teto da chamada à LLM da Periodização: constante presa em 150 s (`PERIODIZATION_LLM_TIMEOUT_SECONDS`), independente do timeout da `musclefit-plan-generator` (420 s desde os cards V3), com o teste exigindo que teto + folga caibam na Lambda; teto efetivo encolhido pelo tempo já gasto no contexto, preservando a folga pós-chamada (metade da folga) | `periodization/core.py` (`LLM_TIMEOUT_SECONDS`, `LAMBDA_RESERVED_SECONDS`, `POST_LLM_RESERVED_SECONDS`, `llm_timeout_for`; `OPENAI_TIMEOUT_SECONDS` é alias) sobre `async_jobs.LAMBDA_TIMEOUT_SECONDS` (paridade com o Terraform em `test_m73_async_jobs_worker_lost.py`) | `core.run_periodization_draft`; espelho gerado `motor-constants.generated.json` → `periodization_job.llm_timeout_seconds` |
 | Prazo do job da Periodização (`pending` vira `failed`/`worker_lost`) | `async_jobs.worker_lost_deadline_seconds` (timeout da Lambda + `WORKER_LOST_GRACE_SECONDS`), exportado por `core.export_for_frontend` | `periodization_job.job_deadline_seconds` → `frontend/src/lib/periodization.ts` (`PERIODIZATION_POLL_TIMEOUT_MS` = prazo + um intervalo de polling) |
 | Quais anuláveis do schema da Periodização viram opcionais primeiro no caminho Anthropic | `periodization/output_schema.py` (`ANTHROPIC_OPTIONAL_FIRST`, derivado de `cardio_prescription.ZERO_WHEN_MISSING_FIELDS`; ficam obrigatórios os de `REQUIRED_FIELDS`). Usa o sentinela `ITEMS` do adaptador para os caminhos | `llm_anthropic_schema.adapt_schema(optional_first)` via `call_openai_structured(anthropic_optional_first=...)` |
 

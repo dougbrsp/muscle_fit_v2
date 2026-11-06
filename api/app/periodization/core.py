@@ -100,15 +100,20 @@ ENGINE_VERSION = "periodization-v8.0.0"
 # Lambda que roda o job, de proposito - o estouro precisa virar job `failed`
 # com mensagem, nao Lambda morta (com 0 retries, `lambda_async_invoke_config.tf`,
 # a Lambda morta so vira `worker_lost` no poll, timeout + 60 s depois).
-# Derivado do timeout da `musclefit-plan-generator` (`async_jobs`, fonte unica
-# com paridade contra o Terraform) menos a folga reservada para o resto do
-# job: contexto (RAG + leituras no Aurora, inclusive a retomada do auto-pause),
+# Preso em 150 s (abaixo); deve caber no timeout da `musclefit-plan-generator`
+# (`async_jobs`, fonte unica com paridade contra o Terraform) com a folga
+# reservada para o resto do job: contexto (RAG + leituras no Aurora, inclusive a retomada do auto-pause),
 # validacao deterministica (pior caso medido < 4 s) e gravacao do log/job.
 # Era 90 s: o Claude Haiku 5.5 com raciocinio passa disso nos Modelos de 6
 # dias (eval de 2026-10-30 e docs/ia/EVAL_PERIODIZACAO_2026-10-31.md).
 PLAN_GENERATOR_FUNCTION = "musclefit-plan-generator"
 LAMBDA_RESERVED_SECONDS = 30
-LLM_TIMEOUT_SECONDS = LAMBDA_TIMEOUT_SECONDS[PLAN_GENERATOR_FUNCTION] - LAMBDA_RESERVED_SECONDS
+# Teto da chamada PRESO em 150 s (orcamento medido na eval de 2026-10-31),
+# desacoplado do timeout da Lambda: ela subiu para 420 s por causa dos cards V3
+# (2 chamadas de imagem) e a periodizacao mantem o orcamento medido. O teste
+# `test_periodizacao_orcamento_tempo` garante que ele + a folga cabem na Lambda.
+PERIODIZATION_LLM_TIMEOUT_SECONDS = 150
+LLM_TIMEOUT_SECONDS = PERIODIZATION_LLM_TIMEOUT_SECONDS
 # Parte da folga que fica para DEPOIS da chamada (validacao + log + escrita do
 # job). O teto efetivo da chamada e o menor entre `LLM_TIMEOUT_SECONDS` e o
 # que sobra da Lambda descontado o tempo ja gasto no contexto

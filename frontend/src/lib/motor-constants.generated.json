@@ -210,7 +210,7 @@
   },
   "periodization_job": {
     "llm_timeout_seconds": 150,
-    "job_deadline_seconds": 240
+    "job_deadline_seconds": 480
   },
   "intensity": {
     "intensity_status_labels": {
