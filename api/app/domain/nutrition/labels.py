@@ -1041,6 +1041,7 @@ PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     catalog_mod.ERR_INVALID_VALUE: "{field}: valor inválido (número maior ou igual a zero).",
     catalog_mod.ERR_ABOVE_BASIS: "{field}: acima do máximo possível para a base da tabela.",
     diary_mod.ERR_QUICK_ABOVE_WEIGHT: "{field}: acima do que o peso informado comporta.",
+    diary_mod.ERR_QUICK_VALUE_TOO_HIGH: "{field}: acima do máximo aceito num lançamento rápido.",
     catalog_mod.WARN_SUBTOTAL_ABOVE_TOTAL: "{field}: maior que o total que o contém.",
     # Diário (L4): `<código>:<campo da RDC 429>` (regra do macro ausente, `meal_math`).
     meal_math_mod.LIMIT_MACRO_INFERRED_ZERO: (

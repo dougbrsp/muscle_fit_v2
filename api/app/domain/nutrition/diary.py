@@ -20,8 +20,8 @@ que continua a reexportá-lo).
   estimativa da IA (`meal_parse`, natureza ESTIMATED) OU o lançamento rápido
   (2026-11-04, abaixo), exatamente uma.
 - Lançamento rápido (D2, `validate_quick_entry`, `quick_entry_item_nutrition`): item sem
-  `food_id` com nome, peso em g e kcal/proteína/carboidrato/gordura ABSOLUTOS desse peso,
-  todos obrigatórios. Natureza própria (`MealNature.USER_ENTERED`), sem aviso de IA e sem
+  `food_id` com nome e kcal/proteína/carboidrato/gordura ABSOLUTOS da refeição, todos
+  obrigatórios; SEM peso (2026-11-06; o peso só existe em itens antigos). Natureza própria (`MealNature.USER_ENTERED`), sem aviso de IA e sem
   alimento no catálogo; fibra e sódio ficam desconhecidos (`None`). Nada a ver com o
   `estimate` da IA (`meal_parse`).
 - Hora -> refeição (D3, `meal_slot_for_time`): a refeição sugerida pela hora local, por
@@ -107,13 +107,17 @@ ERR_UNIT_WITHOUT_CONVERSION = "unit_without_conversion"
 ERR_ITEM_AMOUNT_OUT_OF_RANGE = "item_amount_out_of_range"
 ERR_ITEM_FOOD_OR_ESTIMATE = "item_food_or_estimate_required"
 ERR_QUICK_ENTRY_WEIGHT = "quick_entry_weight_invalid"
-ERR_QUICK_ABOVE_WEIGHT = "quick_entry_above_weight"  # `quick_entry_above_weight:<campo>`
+ERR_QUICK_ABOVE_WEIGHT = "quick_entry_above_weight"  # `quick_entry_above_weight:<campo>` (item antigo, com peso)
+ERR_QUICK_VALUE_TOO_HIGH = "quick_entry_value_too_high"  # `quick_entry_value_too_high:<campo>` (sem peso)
 ERR_INVALID_CLOCK_TIME = "invalid_clock_time"
 
 # Lançamento rápido (D2). Campos com os códigos do catálogo (RDC 429) + o peso, em g.
+# Peso: não é mais pedido (2026-11-06). Só aparece em itens gravados antes e em clientes antigos (aceito e validado).
 QUICK_ENTRY_WEIGHT_FIELD: Final[str] = "weight_g"
 QUICK_ENTRY_NUTRIENT_FIELDS: Final[tuple[str, ...]] = (ENERGY_FIELD, PROTEIN_FIELD, CARB_FIELD, FAT_FIELD)
-QUICK_ENTRY_REQUIRED_FIELDS: Final[tuple[str, ...]] = (QUICK_ENTRY_WEIGHT_FIELD, *QUICK_ENTRY_NUTRIENT_FIELDS)
+QUICK_ENTRY_REQUIRED_FIELDS: Final[tuple[str, ...]] = QUICK_ENTRY_NUTRIENT_FIELDS
+# Sem peso, o teto de cada macro (g) é o do item (`ITEM_AMOUNT_MAX`) e o da kcal é o que esse teto comporta em gordura.
+QUICK_ENTRY_MACRO_MAX_G: Final[float] = ITEM_AMOUNT_MAX
 # Fibra e sódio não são pedidos no lançamento rápido: não tornam a refeição nem o dia incompletos (decisão do líder,
 # 2026-11-04). A linha `fiber_g` do balanço continua sem número e com `intake_complete: false`.
 QUICK_ENTRY_UNREQUESTED_FIELDS: Final[tuple[str, ...]] = (FIBER_FIELD, SODIUM_FIELD)
@@ -230,14 +234,17 @@ def item_source_errors(has_food: bool, has_estimate: bool, has_quick_entry: bool
 
 @dataclass(frozen=True)
 class QuickEntry:
-    """Item lançado à mão: nome, peso (g) e nutrientes ABSOLUTOS desse peso (fibra e sódio `None`)."""
+    """Item lançado à mão: nome e nutrientes ABSOLUTOS (fibra e sódio `None`). `weight_g` só em item antigo."""
 
     name: str
-    weight_g: float
     nutrients: Nutrients
+    weight_g: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, QUICK_ENTRY_WEIGHT_FIELD: self.weight_g, "nutrients": self.nutrients.to_dict()}
+        corpo: dict[str, Any] = {"name": self.name, "nutrients": self.nutrients.to_dict()}
+        if self.weight_g is not None:
+            corpo[QUICK_ENTRY_WEIGHT_FIELD] = self.weight_g
+        return corpo
 
 
 @dataclass(frozen=True)
@@ -260,9 +267,10 @@ def _quick_number(raw: Any) -> tuple[Optional[float], bool]:
 
 
 def validate_quick_entry(raw: Any) -> QuickEntryValidation:
-    """Regras do lançamento rápido: nome; peso em g > 0 e até `ITEM_AMOUNT_MAX`; kcal, proteína,
-    carboidrato e gordura >= 0 e todos obrigatórios; cada macro até o peso e as kcal até o que o
-    peso comportaria em gordura (código próprio `quick_entry_above_weight`)."""
+    """Regras do lançamento rápido: nome; kcal, proteína, carboidrato e gordura >= 0 e todos
+    obrigatórios; cada macro até `QUICK_ENTRY_MACRO_MAX_G` e as kcal até o que esse teto comporta em
+    gordura (`quick_entry_value_too_high`). Peso é opcional (item antigo/cliente antigo): se vier, é
+    > 0 e até `ITEM_AMOUNT_MAX`, e os valores não passam do que ele comporta (`quick_entry_above_weight`)."""
     dados: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
     nome = " ".join(str(dados.get("name") or "").split())
     erros: list[str] = []
@@ -277,8 +285,16 @@ def validate_quick_entry(raw: Any) -> QuickEntryValidation:
             erros.append(f"{ERR_MISSING_FIELD}:{campo}")
         else:
             valores[campo] = numero
-    peso = valores.get(QUICK_ENTRY_WEIGHT_FIELD)
-    if peso is not None:
+    peso, peso_valido = _quick_number(dados.get(QUICK_ENTRY_WEIGHT_FIELD))
+    if not peso_valido:
+        erros.append(f"{ERR_INVALID_VALUE}:{QUICK_ENTRY_WEIGHT_FIELD}")
+    if peso is None:
+        for campo in (PROTEIN_FIELD, CARB_FIELD, FAT_FIELD):
+            if campo in valores and valores[campo] > QUICK_ENTRY_MACRO_MAX_G:
+                erros.append(f"{ERR_QUICK_VALUE_TOO_HIGH}:{campo}")
+        if ENERGY_FIELD in valores and valores[ENERGY_FIELD] > QUICK_ENTRY_MACRO_MAX_G * KCAL_PER_G_FAT:
+            erros.append(f"{ERR_QUICK_VALUE_TOO_HIGH}:{ENERGY_FIELD}")
+    else:
         if peso <= 0:
             erros.append(ERR_QUICK_ENTRY_WEIGHT)
         elif peso > ITEM_AMOUNT_MAX:
@@ -294,18 +310,34 @@ def validate_quick_entry(raw: Any) -> QuickEntryValidation:
     return QuickEntryValidation(
         QuickEntry(
             name=nome,
-            weight_g=valores[QUICK_ENTRY_WEIGHT_FIELD],
             nutrients=Nutrients(**{campo: valores[campo] for campo in QUICK_ENTRY_NUTRIENT_FIELDS}),
+            weight_g=peso,
         ),
         (),
     )
+
+
+QUICK_ENTRY_NO_WEIGHT_AMOUNT: Final[float] = 0.0  # `amount`/`quantity` são NOT NULL: 0 = sem peso (a API expõe `null`)
+
+
+def quick_entry_amount(entry: QuickEntry) -> float:
+    """Quantidade gravada do item lançado: o peso (item antigo) ou `QUICK_ENTRY_NO_WEIGHT_AMOUNT`."""
+    return QUICK_ENTRY_NO_WEIGHT_AMOUNT if entry.weight_g is None else entry.weight_g
+
+
+def quick_entry_has_weight(food_snapshot: Any) -> bool:
+    """O snapshot é de lançamento rápido COM peso (item antigo)? Sem peso, a API expõe quantidade `null`."""
+    if not snapshot_is_quick_entry(food_snapshot):
+        return True  # não é lançamento rápido: a quantidade é a do item
+    bruto = food_snapshot.get("quick_entry")
+    return isinstance(bruto, Mapping) and bool(bruto.get(QUICK_ENTRY_WEIGHT_FIELD))
 
 
 def quick_entry_item_nutrition(entry: QuickEntry) -> ItemNutrition:
     """Nutrientes do item lançado: os valores digitados, sem conversão. Fibra e sódio ficam
     `None` e não pedidos (`QUICK_ENTRY_UNREQUESTED_FIELDS`): não marcam o total como incompleto."""
     return ItemNutrition(
-        amount=entry.weight_g,
+        amount=quick_entry_amount(entry),
         basis=QUICK_ENTRY_UNIT,
         nutrients=entry.nutrients,
         nature=QUICK_ENTRY_NATURE,

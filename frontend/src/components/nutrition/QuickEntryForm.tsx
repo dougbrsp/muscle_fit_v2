@@ -31,7 +31,7 @@ type Props = {
 };
 
 /**
- * Lançamento rápido: 6 campos obrigatórios (nome, peso, kcal, proteína, carbo, gordura).
+ * Lançamento rápido: 5 campos obrigatórios (nome, kcal, proteína, carbo, gordura), sem peso.
  * Hora (atual) e refeição ficam num bloco recolhido; a refeição da hora vem da API
  * (`/nutrition/meals/slot-for-time`) e muda ao trocar a hora, salvo escolha manual.
  * Sem cálculo na tela: os valores vão como digitados e o motor valida e grava.
@@ -60,7 +60,7 @@ export function QuickEntryForm({ date, today, touch = false, onSaved, onCancel }
   const corpo = quickMealPayload({ date, slot, eatenAt, draft });
   const salvar = useMutation({
     mutationFn: () => {
-      if (!corpo) throw new Error('Preencha os 6 campos e escolha a refeição.');
+      if (!corpo) throw new Error('Preencha os 5 campos e escolha a refeição.');
       return createMeal(corpo);
     },
     onSuccess: (salva) => {

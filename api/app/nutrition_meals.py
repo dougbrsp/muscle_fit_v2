@@ -197,6 +197,7 @@ def _item_row_public(row: dict[str, Any]) -> dict[str, Any]:
     snapshot = _json_value(row.get("catalog_snapshot_json")) or {}
     alimento = snapshot.get("food") or {}
     porcao = snapshot.get("portion") or None
+    sem_peso = not diary.quick_entry_has_weight(alimento)
     return {
         "id": int(row["id"]),
         "position": int(row["position"]),
@@ -204,9 +205,10 @@ def _item_row_public(row: dict[str, Any]) -> dict[str, Any]:
         "portion_id": int(row["portion_id"]) if row.get("portion_id") is not None else None,
         "portion_label": porcao.get("label") if porcao else None,
         "label": row.get("item_label"),
-        "quantity": _num(row.get("quantity")),
+        # Lançamento rápido sem peso: a coluna guarda 0 (NOT NULL); a API expõe `null` (não há quantidade).
+        "quantity": None if sem_peso else _num(row.get("quantity")),
         "unit": row.get("unit"),
-        "amount": _num(row.get("amount")),
+        "amount": None if sem_peso else _num(row.get("amount")),
         "basis": row.get("basis"),
         "nutrients": {campo: _num(row.get(campo)) for campo in NUTRIENTS},
         "nature": row.get("nature"),
@@ -311,6 +313,7 @@ class ResolvedItem:
 
     def public(self) -> dict[str, Any]:
         porcao = self.snapshot.get("portion")
+        sem_peso = not diary.quick_entry_has_weight(self.snapshot["food"])
         return {
             "id": None,
             "position": self.position,
@@ -318,9 +321,9 @@ class ResolvedItem:
             "portion_id": self.portion_id,
             "portion_label": porcao.get("label") if porcao else None,
             "label": self.label,
-            "quantity": self.quantity,
+            "quantity": None if sem_peso else self.quantity,
             "unit": self.unit,
-            "amount": self.nutrition.amount,
+            "amount": None if sem_peso else self.nutrition.amount,
             "basis": self.nutrition.basis.value,
             "nutrients": self.nutrition.nutrients.to_dict(),
             "nature": self.nutrition.nature.value,
@@ -475,7 +478,7 @@ def resolve_items(
                     food_id=None,
                     portion_id=None,
                     label=entrada.name,
-                    quantity=entrada.weight_g,
+                    quantity=diary.quick_entry_amount(entrada),
                     unit=diary.QUICK_ENTRY_UNIT.value,
                     snapshot={"food": snapshot["food"], "portion": None},
                     nutrition=diary.quick_entry_item_nutrition(entrada),

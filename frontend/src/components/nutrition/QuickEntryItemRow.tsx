@@ -8,8 +8,8 @@ import { QUICK_ENTRY_NAME_MAX_CHARS, QUICK_ENTRY_NATURE, QUICK_ENTRY_NUMERIC_FIE
 import { BRAND } from '@/theme';
 
 /**
- * Item de lançamento rápido no editor: os 6 valores editáveis (nome, peso e os 4 nutrientes),
- * sem busca, porção nem unidade. Mantido = o editor manda só o `id`; alterado = `quick_entry` com o `id`.
+ * Item de lançamento rápido no editor: os 5 valores editáveis (nome e os 4 nutrientes),
+ * sem peso, busca, porção nem unidade. Mantido = o editor manda só o `id`; alterado = `quick_entry` com o `id`.
  */
 export function QuickEntryItemRow({
   item,

@@ -19,7 +19,7 @@ import {
   nutritionLabel,
   type NutritionCode,
 } from './nutrition-constants';
-import { draftFromSnapshot, quickEntryChanged, quickEntryPayload, type QuickEntryDraft } from './nutrition-quick-entry';
+import { QUICK_ENTRY_UNIT, draftFromSnapshot, emptyQuickDraft, quickEntryChanged, quickEntryPayload, type QuickEntryDraft } from './nutrition-quick-entry';
 import type {
   FoodItem,
   Meal,
@@ -59,7 +59,7 @@ export type MealEditorItem = {
   originLabel: string | null;
   /** Avisos da leitura (quantidade estimada, alimento fora do catálogo...). */
   notices: NutritionLimitation[];
-  /** Lançamento rápido gravado: os 6 valores editáveis (sem busca, porção nem unidade). */
+  /** Lançamento rápido gravado: os 5 valores editáveis (sem busca, porção, unidade nem peso). */
   quick?: QuickEntryDraft | null;
 };
 
@@ -112,6 +112,22 @@ export function editorItemFromFood(
   };
 }
 
+/** Item novo de lançamento rápido (já sei os macros): rascunho vazio, sem alimento no catálogo. */
+export function editorItemQuick(key: string): MealEditorItem {
+  return {
+    key,
+    id: null,
+    food_id: null,
+    label: '',
+    basis: QUICK_ENTRY_UNIT,
+    quantity: '',
+    unit: QUICK_ENTRY_UNIT,
+    portion_id: null,
+    ...SEM_LEITURA,
+    quick: emptyQuickDraft(),
+  };
+}
+
 /** Editor a partir da refeição gravada. O item estimado pela IA (sem `food_id`)
  * fica com a origem `estimativa` e é reenviado só com o `id` (a API reusa o snapshot). */
 export function editorFormFromMeal(meal: Meal): MealEditorForm {
@@ -126,7 +142,7 @@ export function editorFormFromMeal(meal: Meal): MealEditorForm {
       food_id: item.food_id,
       label: item.label,
       basis: item.basis,
-      quantity: item.quantity,
+      quantity: item.quantity ?? '',
       unit: item.unit,
       portion_id: item.portion_id,
       ...SEM_LEITURA,
@@ -191,8 +207,8 @@ export function itemsPayload(items: MealEditorItem[]): MealItemPayload[] | null 
   const corpo: MealItemPayload[] = [];
   for (const item of items) {
     if (item.quick) {
-      // Lançamento rápido: o peso é a quantidade. Mantido = só `id` (a API reusa o gravado);
-      // alterado = os 6 valores com o `id` (seção 2 do contrato).
+      // Lançamento rápido, sem quantidade. Mantido = só `id` (a API reusa o gravado);
+      // alterado = os 5 valores com o `id` (seção 2 do contrato).
       const valores = quickEntryPayload(item.quick);
       if (valores === null) return null;
       const mudou = item.id == null || quickEntryChanged(item.quick);
