@@ -8,6 +8,7 @@ import {
   exerciseCardGenerationsQueryKey,
   exerciseCardQueryKey,
   EXERCISE_CARD_FAILURE_MESSAGES,
+  EXERCISE_CARD_TYPICAL_SECONDS,
 } from '@/lib/exercise-cards';
 import { EXERCISE_CARD_CONTRACT } from '@/lib/exercise-cards-fixtures';
 import type { ExerciseCardGeneration, PublishedExerciseCard } from '@/lib/exercise-cards-types';
@@ -17,7 +18,7 @@ import { ExerciseCardSection } from './ExerciseCardSection';
 import { RegenerateCardForm } from './RegenerateCardModal';
 
 /**
- * Render da seção de card ilustrado (PR4) pelo `react-dom/server`, sem jsdom:
+ * Render da seção de card com fotos (PR4) pelo `react-dom/server`, sem jsdom:
  * o cache do React Query é pré-carregado (card publicado, listagem e o
  * recurso da geração), então o SSR já mostra cada estado. Os dados saem da
  * fixture de contrato (gerada pelo `serialize` real do backend).
@@ -99,7 +100,7 @@ describe('ExerciseCardSection (SSR) — estados', () => {
     const html = render({});
     expect(state(html)).toBe('empty');
     expect(html).toContain('sem card publicado');
-    expect(html).toContain('ainda não tem card ilustrado');
+    expect(html).toContain('ainda não tem card com fotos');
     expect(isDisabled(html, 'Gerar card do exercício')).toBe(false);
   });
 
@@ -111,7 +112,8 @@ describe('ExerciseCardSection (SSR) — estados', () => {
     expect(html).toContain('Gerando o card…');
     expect(html).toContain('data-elapsed-seconds="15"');
     expect(html).toContain('15 s decorridos');
-    expect(html).toContain('Costuma levar ~20 s (até 2 min).');
+    expect(html).toContain(`Costuma levar cerca de ${EXERCISE_CARD_TYPICAL_SECONDS} s, mas pode levar alguns minutos: são duas fotos.`);
+    expect(html).not.toContain('até 2 min');
     expect(isDisabled(html, 'Gerar card do exercício')).toBe(true);
   });
 
@@ -128,9 +130,9 @@ describe('ExerciseCardSection (SSR) — estados', () => {
   it('GENERATED: preview do card final + aviso de revisão + aprovar / gerar novamente / descartar', () => {
     const html = render({ items: [DETAIL] });
     expect(state(html)).toBe('review');
-    expect(html).toContain('Revise a execução ilustrada antes de publicar.');
+    expect(html).toContain('Revise as fotos da execução antes de publicar.');
     expect(html).toContain(`src="${DETAIL.preview_url!.replace(/&/g, '&amp;')}"`);
-    expect(html).toContain('aria-label="Ampliar Card ilustrado — Supino reto na máquina"');
+    expect(html).toContain('aria-label="Ampliar Card com fotos — Supino reto na máquina"');
     expect(html).toContain('Aguardando revisão');
     expect(html).toContain('gpt-image-1.5 · MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION');
     expect(html).toContain('Custo da geração: US$ 0,05');
@@ -161,7 +163,7 @@ describe('ExerciseCardSection (SSR) — estados', () => {
     expect(html).toContain('Rascunho expirado — gere de novo');
     expect(html).not.toContain('Prévia indisponível');
     expect(html).not.toContain('Recarregar prévia');
-    expect(html).not.toContain('Revise a execução ilustrada antes de publicar.');
+    expect(html).not.toContain('Revise as fotos da execução antes de publicar.');
     expect(html).not.toContain('Aprovar e publicar');
     expect(isDisabled(html, 'Gerar novamente')).toBe(false);
     expect(isDisabled(html, 'Descartar')).toBe(false);

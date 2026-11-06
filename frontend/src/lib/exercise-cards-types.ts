@@ -149,3 +149,42 @@ export interface ExerciseCardErrorDetail {
   message: string;
   generation_id?: number;
 }
+
+/** Foto de referência do aparelho/movimento (`exercise_card_references.serialize_reference`). */
+export interface ExerciseCardReference {
+  id: number;
+  /** Pré-assinada (15 min); null se a assinatura falhou. */
+  url: string | null;
+  url_expires_at: string | null;
+  width: number;
+  height: number;
+  bytes: number;
+  note: string | null;
+  created_at: string | null;
+}
+
+/** Limites que o front usa (`exercise_card_references.limits`); o front não escreve esses números. */
+export interface ExerciseCardReferenceLimits {
+  max_active: number;
+  max_upload_bytes: number;
+  resize_max_edge_px: number;
+  resize_jpeg_quality_percent: number;
+  note_max_chars: number;
+  /** Tipos MIME aceitos; ausente em backend antigo (sem filtro de tipo). */
+  accepted_types?: string[];
+}
+
+export interface ExerciseCardReferenceListResponse {
+  items: ExerciseCardReference[];
+  limits: ExerciseCardReferenceLimits;
+}
+
+export interface ExerciseCardReferenceCreateResponse {
+  reference: ExerciseCardReference;
+}
+
+export interface ExerciseCardReferenceCreatePayload {
+  /** Base64 sem padding (o WAF não vê `=`). */
+  image_base64: string;
+  note: string | null;
+}
