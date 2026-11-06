@@ -106,6 +106,23 @@ describe('CheckinCardView', () => {
     expect(html).toContain('Ver a semana');
   });
 
+  it('plano adaptativo (informative + checkin_adaptive_informative, can_respond false): rótulo do backend e sem aceitar', () => {
+    const adaptativo = checkin({
+      status: 'informative',
+      can_respond: false, // payload real: o backend só libera responder em `proposed`
+      proposal: null,
+      adjustment_kcal: null,
+      reason_items: [{ code: 'checkin_adaptive_informative', label: 'No plano adaptativo o gasto se corrige sozinho; o check-in só informa.' }],
+    });
+    const card = envolver(createElement(CheckinCardView, { checkin: adaptativo }));
+    expect(card).toContain('No plano adaptativo o gasto se corrige sozinho; o check-in só informa.');
+    expect(card).not.toContain('Aceitar as novas metas');
+    expect(card).not.toContain('Manter as atuais');
+    const revisao = envolver(createElement(CheckinReview, { checkin: adaptativo }));
+    expect(revisao).toContain('No plano adaptativo o gasto se corrige sozinho; o check-in só informa.');
+    expect(revisao).not.toContain('Aceitar as novas metas');
+  });
+
   it('erro da mutação aparece como alerta', () => {
     const html = envolver(createElement(CheckinCardView, { checkin: checkin(), error: 'A proposta expirou.' }));
     expect(html).toContain('A proposta expirou.');

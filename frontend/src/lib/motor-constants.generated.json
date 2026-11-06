@@ -711,6 +711,9 @@
       "auto_intervals": [
         "fixed",
         "add_training"
+      ],
+      "adaptive_balance": [
+        "fixed"
       ]
     },
     "range_statuses": [
@@ -802,17 +805,20 @@
     "tdee_modes": [
       "explicit_training",
       "included_in_factor",
-      "auto_intervals"
+      "auto_intervals",
+      "adaptive_balance"
     ],
     "tdee_mode_labels": {
       "explicit_training": "Treino somado à parte (fator SEM exercício)",
       "included_in_factor": "Treino embutido no fator (fator COM exercício)",
-      "auto_intervals": "Automático pelo Intervals (rotina + treino e cardio medidos)"
+      "auto_intervals": "Automático pelo Intervals (rotina + treino e cardio medidos)",
+      "adaptive_balance": "Adaptativo (alimentação + peso de tendência + Intervals)"
     },
     "tdee_mode_hints": {
       "explicit_training": "O fator de atividade cobre só a sua rotina, sem exercício; o gasto do treino do dia é somado à parte.",
       "included_in_factor": "O fator de atividade já inclui o seu exercício; o treino do dia não é somado de novo.",
-      "auto_intervals": "Com o Intervals conectado e sincronizado: rotina fora do exercício + treino de força + cardio e caminhadas medidos. Sem conexão ou com a sincronização parada, usa o fator que inclui exercício, do seu nível de atividade do perfil."
+      "auto_intervals": "Com o Intervals conectado e sincronizado: rotina fora do exercício + treino de força + cardio e caminhadas medidos. Sem conexão ou com a sincronização parada, usa o fator que inclui exercício, do seu nível de atividade do perfil.",
+      "adaptive_balance": "O gasto vem do que você come e de como o peso de tendência varia; o Intervals só ajusta o dia pela diferença em relação à sua rotina média. Começa por uma estimativa inicial e ganha confiança com os dias registrados (a partir de 14 dias completos de refeições e pesagens regulares)."
     },
     "routine_levels": [
       "sedentary",
@@ -837,6 +843,23 @@
     },
     "default_routine_level": "light",
     "auto_tdee_mode": "auto_intervals",
+    "adaptive_tdee_mode": "adaptive_balance",
+    "adaptive_field_hints": {
+      "activity_level": "No modo adaptativo este nível não entra na conta: a estimativa inicial usa o fator de rotina sedentária do motor e o gasto adaptativo vem dos seus registros.",
+      "bmr_formula": "Usado apenas na estimativa inicial e para conferir se o gasto observado é plausível.",
+      "watch_calorie_mode": "Diz o que as calorias do relógio significam. Ativas: entram como vieram. Totais do exercício: o motor desconta o repouso que a sua TMB já contém. Não sei: são tratadas como totais (desconta o repouso) e o ajuste do dia fica com precisão reduzida."
+    },
+    "watch_calorie_modes": [
+      "active",
+      "gross",
+      "unknown"
+    ],
+    "watch_calorie_mode_labels": {
+      "active": "Calorias ativas",
+      "gross": "Calorias totais do exercício",
+      "unknown": "Não informado (tratado como total)"
+    },
+    "default_watch_calorie_mode": "unknown",
     "intervals_sync_max_age_minutes": 2160,
     "default_tdee_mode": "explicit_training",
     "session_kinds": [
@@ -949,6 +972,8 @@
         "adaptive_unavailable": "Gasto adaptativo ainda indisponível; usando a estimativa inicial.",
         "activity_adjustment_clamped": "Ajuste diário pelas atividades limitado ao máximo permitido.",
         "adaptive_update_clamped": "Atualização do gasto limitada ao passo máximo permitido.",
+        "history_unavailable": "Não foi possível ler o histórico: estimativa inicial no lugar do gasto adaptativo.",
+        "day_in_progress": "Dia em andamento: o ajuste pela atividade só entra quando o dia fechar e sincronizar.",
         "weight_missing": "Sem pesagem no período.",
         "weight_invalid_readings_ignored": "Pesagens inválidas foram ignoradas.",
         "weight_outlier": "Uma pesagem atípica foi desconsiderada.",

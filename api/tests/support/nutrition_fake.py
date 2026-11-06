@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 from app import nutrition_access as access
 from app import nutrition_energy_service as energy_svc
+from app import nutrition_schema as schema_mod
+from app.load_conventions import _CURRENT_SCHEMA_SQL
 from app import nutrition_plans as plans_mod
 from app import nutrition_targets_service as svc
 
@@ -45,6 +47,9 @@ class FakeNutritionDB:
         # `intervals_activities` COMPLETAS (com id, id externo, hora e durações) para a sombra do gasto adaptativo; o fake
         # projeta só as colunas que a SQL pede, como o banco. `synced_at` de cada linha prova a sincronização.
         self.intervals_rows: list[dict[str, Any]] = []
+        # As colunas da 106 existem neste banco? (False simula o código novo sobre o schema antigo.)
+        self.plan_energy_columns = True
+        self.timezone = "America/Sao_Paulo"  # `users.timezone` (a sombra e a meta adaptativa convertem a sincronização por ele)
         # Conexão e idade (min) da última sincronização do Intervals: padrão = desconectado.
         self.intervals_connected = False
         self.intervals_minutes_since_sync: Optional[int] = None
@@ -105,6 +110,7 @@ class FakeNutritionDB:
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
             "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None, "maintenance_kcal_adjust": 0,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
+            "energy_params_json": None, "energy_model_version": None, "published_preview_json": None,
             "archived_at": None, "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }
         base.update(settings)
@@ -155,6 +161,20 @@ class FakeCursor:
     def _result(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
 
+    @staticmethod
+    def _selected(sql: str) -> list[str]:
+        """Colunas que o SELECT pede (`SELECT a, b FROM ...`): o fake projeta SÓ elas, como o banco."""
+        return [c.strip() for c in sql.split(" FROM ")[0].removeprefix("SELECT ").split(",")]
+
+    def _project(self, sql: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        pedidas = self._selected(sql)
+        return [{c: r.get(c) for c in pedidas} for r in rows]
+
+    @staticmethod
+    def _json_column(valor: Any) -> Any:
+        """Coluna JSON do MySQL: grava o objeto e devolve TEXTO JSON (o leitor tem de decodificar)."""
+        return json.dumps(valor) if valor is not None and not isinstance(valor, str) else valor
+
     def _upsert(self, p: tuple[Any, ...]) -> None:
         db = self.db
         linha = dict(zip(TARGET_COLUMNS, p))
@@ -181,6 +201,10 @@ class FakeCursor:
         db = self.db
         p = tuple(params or ())
         self.rowcount = 0
+        if sql == _CURRENT_SCHEMA_SQL:
+            return self._result([{"db": "nutrition_test"}])
+        if sql == schema_mod.column_sql():  # colunas do plano (106): presentes, salvo se o teste as tirar
+            return self._result([{"n": 1 if db.plan_energy_columns else 0}])
         if sql == access._USER_SQL:
             user = db.users.get(int(p[0]))
             return self._result([user] if user else [])
@@ -204,6 +228,8 @@ class FakeCursor:
             return self._result([{"minutes_since_sync": db.intervals_minutes_since_sync}])
         if sql == svc.EXTRA_ACTIVITIES_SQL:
             return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
+        if sql == energy_svc.USER_TIMEZONE_SQL:
+            return self._result([{"timezone": db.timezone}])
         if sql == energy_svc.TARGET_BMR_SQL:
             linhas = [{"local_date": dia, "bmr_kcal": r.get("bmr_kcal")} for (uid, dia), r in sorted(db.targets.items(), key=lambda i: i[0][1])
                       if uid == p[0] and p[1] <= dia <= p[2]]
@@ -217,8 +243,16 @@ class FakeCursor:
             linhas = [r for r in db.intervals_rows if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]]
             ordenadas = sorted(linhas, key=lambda r: (r["activity_date"], r["start_time"] or datetime.min, r["id"]))
             return self._result([{c: r[c] for c in pedidas} for r in ordenadas])
-        if sql == svc._PUBLISHED_PLANS_SQL:
-            return self._result([r for r in db.plans.values() if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None])
+        if sql == plans_mod._PUBLISHED_PREVIEW_SQL:
+            plano = db.plans.get(int(p[1]))
+            if plano:
+                plano["published_preview_json"] = self._json_column(p[0])
+                self.rowcount = 1
+                db.writes.append(f"preview plan {p[1]}")
+            return self._result([])
+        if sql in (svc._PUBLISHED_PLANS_SQL, svc._PUBLISHED_PLANS_WITHOUT_ENERGY_SQL):
+            return self._result(self._project(sql, [r for r in db.plans.values()
+                                                    if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None]))
         if sql == svc._TARGETS_SQL:
             linhas = [r for (uid, dia), r in db.targets.items() if uid == p[0] and p[1] <= dia <= p[2]]
             # Projeta SÓ as colunas que a SQL pede (como o banco): coluna não selecionada não existe na linha, e o JSON
@@ -228,7 +262,7 @@ class FakeCursor:
             for r in sorted(linhas, key=lambda r: r["local_date"]):
                 linha = {c: r.get(c) for c in pedidas}
                 entradas = r.get("inputs_json") or {}
-                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json")):
+                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json"), ("energy", "energy_json")):
                     if f"AS {alias}" in svc._TARGET_JSON_COLUMNS:
                         linha[alias] = json.dumps(entradas[chave]) if chave in entradas else None
                 projetadas.append(linha)
@@ -250,6 +284,7 @@ class FakeCursor:
         if sql == plans_mod._INSERT_SQL:
             cols = ("user_id", "created_by", "status", *plans_mod._SETTINGS_WRITE_COLUMNS)
             valores = dict(zip(cols, p))
+            valores["energy_params_json"] = self._json_column(valores["energy_params_json"])
             plano_id = db.add_plan(valores["user_id"])
             db.plans[plano_id].update(valores)
             self.lastrowid = plano_id
@@ -258,14 +293,14 @@ class FakeCursor:
             return self._result([])
         if sql == plans_mod._BY_ID_SQL:
             plano = db.plans.get(int(p[0]))
-            return self._result([plano] if plano else [])
+            return self._result(self._project(sql, [plano]) if plano else [])
         if sql == plans_mod._BY_USER_SQL:
             linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"])
-            return self._result(linhas[: int(p[1])])
+            return self._result(self._project(sql, linhas[: int(p[1])]))
         if sql == plans_mod._BY_USER_VISIBLE_SQL:
             linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0] and r["archived_at"] is None),
                             key=lambda r: -r["id"])
-            return self._result(linhas[: int(p[1])])
+            return self._result(self._project(sql, linhas[: int(p[1])]))
         if sql == plans_mod._ARCHIVE_SQL:
             agora, plano_id, status = p
             plano = db.plans.get(int(plano_id))
@@ -291,7 +326,9 @@ class FakeCursor:
             *valores, plano_id, status = p
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == status:
-                plano.update(dict(zip(plans_mod._SETTINGS_WRITE_COLUMNS, valores)))
+                escritos = dict(zip(plans_mod._SETTINGS_WRITE_COLUMNS, valores))
+                escritos["energy_params_json"] = self._json_column(escritos["energy_params_json"])
+                plano.update(escritos)
                 plano["updated_at"] = db.now + timedelta(seconds=len(db.writes) + 1)  # o banco atualiza updated_at
                 self.rowcount = 1
                 db.writes.append(f"update plan {plano_id}")
@@ -316,7 +353,7 @@ class FakeCursor:
             if sql == plans_mod._PUBLISH_IF_UNCHANGED_SQL:
                 *p, versao_lida = p
                 p = tuple(p)
-            status, inicio, publicado, por, versao, plano_id, rascunho = p
+            status, inicio, publicado, por, versao, versao_energia, plano_id, rascunho = p
             if versao_lida is not None and db.plans.get(int(plano_id), {}).get("updated_at") != versao_lida:
                 return self._result([])
             plano = db.plans.get(int(plano_id))
@@ -326,7 +363,8 @@ class FakeCursor:
                 if vigentes:
                     raise RuntimeError(f"Duplicate entry '{plano['user_id']}' for key 'nutrition_plans.uq_np_current_user'")
                 plano.update({"status": status, "effective_from": inicio, "published_at": publicado,
-                              "published_by": por, "engine_version": versao})
+                              "published_by": por, "engine_version": versao, "energy_model_version": versao_energia,
+                              })
                 self.rowcount = 1
                 db.writes.append(f"publish plan {plano_id}")
             return self._result([])

@@ -153,6 +153,8 @@ REASON_FAT_GAIN = "checkin_fat_gain"
 REASON_BIA_HOLD = "checkin_bia_hold"
 REASON_GOAL_WEIGHT_REACHED = "checkin_goal_weight_reached"
 REASON_GOAL_BODY_FAT_REACHED = "checkin_goal_body_fat_reached"
+# Plano `adaptive_balance`: o gasto já se corrige com a alimentação e o peso de tendência, então o check-in só informa.
+REASON_ADAPTIVE_INFORMATIVE = "checkin_adaptive_informative"
 
 # Por que não há check-in a mostrar (a tela explica em vez de esconder).
 NONE_NO_PLAN = "checkin_no_plan"
@@ -443,6 +445,8 @@ def _builder_args(settings: PlanSettings) -> dict[str, Any]:
         "manual_training_mode": manual.training_mode.value if manual else None,
         "cycle_days": settings.cycle_days,
         "maintenance_kcal_adjust": settings.maintenance_kcal_adjust,
+        # Só fora do padrão (None = padrão): o modo da kcal do relógio do plano adaptativo não pode voltar a `unknown`.
+        "energy_params": None if settings.energy_params.is_default else settings.energy_params.to_dict(),
     }
 
 
@@ -834,6 +838,11 @@ def evaluate_week(inputs: CheckinInputs) -> CheckinResult:
                 corrige = True
         if not corrige and (magra.readings or gorda.readings) and not (magra.valid_for_bia or gorda.valid_for_bia):
             motivos.append(REASON_BIA_SHORT_TREND)
+
+    if inputs.settings.is_adaptive:
+        # Sem dois corretores: o gasto adaptativo governa a meta; o veredito e a semana seguem informativos, sem proposta.
+        motivos.append(REASON_ADAPTIVE_INFORMATIVE)
+        return CheckinResult(veredito, resumo, reasons=tuple(dict.fromkeys(motivos)))
 
     teto_passo = MAX_KCAL_STEP_SHARE * float(resumo.mean_tdee_kcal or 0.0)
     if corrige:

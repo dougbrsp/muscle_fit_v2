@@ -50,6 +50,7 @@ from .nutrition_schema import (
     require_checkin_tables,
     require_diary_tables,
     require_nutrition_tables,
+    require_plan_energy_columns,
 )
 from .nutrition_targets_service import (
     load_published_plans,
@@ -226,7 +227,9 @@ def _read_weekday(cur: Any, aluno: int) -> Optional[int]:
 def _build_inputs(cur: Any, aluno: int, plan_id: int, settings: Any, week_start: date, hoje: date) -> wc.CheckinInputs:
     """Alinha por dia as leituras gravadas da janela (metas, totais das refeições, corpo) para o motor."""
     dias = wc.window_dates(week_start)
-    entradas = load_user_inputs(cur, aluno, dias[0], hoje, hoje, [settings])
+    # Só as séries do aluno (peso, %G, perfil) entram aqui: sem passar o plano, o plano adaptativo não carrega o histórico
+    # do gasto nem o automático o Intervals (o check-in lê o gasto gravado nas metas).
+    entradas = load_user_inputs(cur, aluno, dias[0], hoje, hoje)
     fim = dias[-1]
     metas = {
         _as_date(linha["local_date"]): linha for linha in read_targets(cur, aluno, dias[0], fim)
@@ -512,6 +515,8 @@ def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_ide
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
+            # O aceite lê (`_fetch_plan`) e grava (`insert_draft`) as colunas da 106: sem ela, 503 e nada gravado (não 500).
+            require_plan_energy_columns(cur)
             linha = _owned_row(cur, identity, checkin_id, lock=True)
             aluno = int(linha["user_id"])
             hoje = _today_for(conn, aluno)

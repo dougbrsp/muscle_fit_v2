@@ -5,6 +5,7 @@ import { Alert, Button, Card, Group, Modal, SimpleGrid, Stack, Text, Title } fro
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AdaptiveEnergyStatus } from './AdaptiveEnergyCard';
 import { NutritionLimitations } from './NutritionLimitations';
 import { SubjectCard } from './SubjectCard';
 import { WeekTargetsTable } from './WeekTargetsTable';
@@ -12,8 +13,7 @@ import { formatNumberOrDash } from '@/lib/format';
 import {
   nutritionErrorCode,
   nutritionErrorInfo,
-  nutritionKeys,
-  previewNutritionPlan,
+  planPreviewQuery,
   publishNutritionPlan,
   recomputeNutritionTargets,
 } from '@/lib/nutrition-api';
@@ -119,6 +119,7 @@ export function TodayTargetCard({ target }: { target: NutritionTargetDetail }) {
           value={formatKcal(target.tdee.kcal)}
         />
         <TdeeBreakdown breakdown={target.tdee_breakdown} />
+        {target.energy && <AdaptiveEnergyStatus state={target.energy} />}
         <Line
           label="Alvo calórico"
           value={`${formatKcal(target.kcal)}${delta == null ? '' : ` (${delta > 0 ? '+' : ''}${formatNumberOrDash(delta, 0)})`}`}
@@ -253,11 +254,7 @@ export function PlanPreview({ plan, currentPlanId, onPublished, onConflict }: Pr
   const isDraft = plan.state === 'draft';
   const isCurrent = plan.state === 'current';
 
-  const previewQuery = useQuery({
-    queryKey: [...nutritionKeys.preview(plan.id), plan.updated_at, plan.state],
-    queryFn: () => previewNutritionPlan(plan.id),
-    retry: false,
-  });
+  const previewQuery = useQuery(planPreviewQuery(plan));
 
   const publishMutation = useMutation({
     mutationFn: () => publishNutritionPlan(plan.id, currentPlanId, plan.updated_at),

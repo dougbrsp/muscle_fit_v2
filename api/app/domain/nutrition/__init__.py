@@ -177,6 +177,12 @@ def export_for_frontend() -> dict[str, Any]:
         },
         "default_routine_level": energy_expenditure.ROUTINE_ACTIVITY_LEVEL_DEFAULT.value,
         "auto_tdee_mode": energy_expenditure.TdeeMode.AUTO_INTERVALS.value,
+        # Modo adaptativo (Lote C): o frontend usa o código para mostrar os campos e as dicas; sem regra numérica.
+        "adaptive_tdee_mode": energy_expenditure.TdeeMode.ADAPTIVE_BALANCE.value,
+        "adaptive_field_hints": dict(lb.ADAPTIVE_FIELD_HINTS),
+        "watch_calorie_modes": _codes(activity_energy.CalorieMode),
+        "watch_calorie_mode_labels": lb.labels_by_code(lb.CALORIE_MODE_LABELS),
+        "default_watch_calorie_mode": plan.DEFAULT_WATCH_CALORIE_MODE.value,
         "intervals_sync_max_age_minutes": energy_expenditure.INTERVALS_SYNC_MAX_AGE_MINUTES,
         "default_tdee_mode": energy_expenditure.DEFAULT_TDEE_MODE.value,
         "session_kinds": _codes(energy_expenditure.SessionKind),

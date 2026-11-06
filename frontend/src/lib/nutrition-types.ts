@@ -7,9 +7,16 @@
 // calculável ou não informado — nunca 0.
 
 import type { NutritionCode } from './nutrition-constants';
+import type { AdaptiveEnergyState } from './nutrition-dashboard';
 
 /** Código + texto pt-BR de uma limitação/erro do motor (a API já rotula). */
 export type NutritionLimitation = { code: string; label: string };
+
+/** Como o relógio informa as calorias do exercício (`adaptive_energy_labels.calorie_mode`); só no modo adaptativo. */
+export type NutritionWatchCalorieMode = 'active' | 'gross' | 'unknown';
+
+/** Parâmetros do modelo energético do plano; só existem no modo adaptativo. */
+export type NutritionEnergyParams = { watch_calorie_mode: NutritionWatchCalorieMode };
 
 /** Configuração do plano no vocabulário do motor (`PlanSettings.to_dict`). */
 export type NutritionPlanSettings = {
@@ -36,6 +43,10 @@ export type NutritionPlanSettings = {
   cycle_days: Record<string, NutritionCode> | null;
   /** Ajuste de kcal/dia da manutenção (N7; 0 = sem ajuste). Quem o muda é o check-in semanal. */
   maintenance_kcal_adjust?: number;
+  /** `null` nos legados e no adaptativo com o padrão do motor (`default_watch_calorie_mode`); o formulário usa o padrão. */
+  energy_params?: NutritionEnergyParams | null;
+  /** Versão do algoritmo gravada na publicação do adaptativo; null nos legados e nos rascunhos. */
+  energy_model_version?: string | null;
 };
 
 /** Gramas manuais de proteína, carboidrato e gordura. */
@@ -106,6 +117,8 @@ export type NutritionPlanSettingsPayload = {
   cycle_days: Record<string, NutritionCode> | null;
   /** Preserva o ajuste da manutenção que o check-in gravou (a tela não o edita); null fora da manutenção. */
   maintenance_kcal_adjust?: number | null;
+  /** Só no modo adaptativo: legados NÃO enviam a chave. */
+  energy_params?: NutritionEnergyParams | null;
   notes: string | null;
 };
 
@@ -190,6 +203,8 @@ export type NutritionTargetDetail = NutritionDayTarget & {
   };
   /** Composição do gasto total pronta do motor (soma das parcelas = total); ausente em backend antigo. */
   tdee_breakdown?: NutritionTdeeBreakdown | null;
+  /** Retrato do gasto adaptativo do dia; só no plano adaptativo (mesmo formato do `state` do cartão do dashboard). */
+  energy?: AdaptiveEnergyState | null;
   training: { kcal: number | null; kcal_nature: NutritionCode | null; nature: string | null; quality: string | null };
   kcal_target: {
     kcal: number | null;

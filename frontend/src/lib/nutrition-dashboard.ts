@@ -176,7 +176,8 @@ export type AdaptiveEnergyState = {
 /** Gasto adaptativo em sombra: só calculado e exibido, nenhuma meta usa (`applied: false`). */
 export type AdaptiveEnergy = {
   available: boolean;
-  applied: false;
+  /** `true` quando o plano do usuário usa o gasto adaptativo (modo `adaptive_balance`). */
+  applied: boolean;
   algorithm_version?: string | null;
   unavailable_reason?: string | null;
   /** Texto pronto do motivo (dono: backend). */
@@ -369,4 +370,18 @@ export function macroUnit(field: string): string {
 /** Há ao menos um valor numérico na série (o gráfico só desenha eixos quando há dado). */
 export function hasValues<T>(rows: readonly T[], pick: (row: T) => number | null | undefined): boolean {
   return rows.some((linha) => pick(linha) != null);
+}
+
+type NutritionJson = Record<string, unknown>;
+const NUTRITION_JSON = motorConstants.nutrition as unknown as NutritionJson;
+
+/** Código do 4º modo de gasto, do dono (`nutrition.adaptive_tdee_mode` do JSON gerado). */
+export const ADAPTIVE_TDEE_MODE: string = NUTRITION_JSON.adaptive_tdee_mode as string;
+
+/** Padrão do modo da kcal do relógio no adaptativo (`nutrition.default_watch_calorie_mode`). */
+export const DEFAULT_WATCH_CALORIE_MODE = NUTRITION_JSON.default_watch_calorie_mode as 'active' | 'gross' | 'unknown';
+
+/** Dica de um campo do plano no modo adaptativo (`nutrition.adaptive_field_hints[campo]`); sem texto do dono, sem dica. */
+export function adaptiveFieldHint(field: string): string | undefined {
+  return (NUTRITION_JSON.adaptive_field_hints as Record<string, string | undefined> | undefined)?.[field];
 }

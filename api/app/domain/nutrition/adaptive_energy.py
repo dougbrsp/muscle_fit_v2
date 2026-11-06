@@ -114,6 +114,12 @@ CONFIDENCE_HIGH_FROM: Final[float] = 0.80
 # ~40 atualizações suavizadas para o adaptativo convergir sem o limite de passo.
 REPLAY_HISTORY_DAYS: Final[int] = 90
 
+# Retrato do dia para a META (modo `adaptive_balance`): kcal arredondadas em `ROUNDING_DIGITS_PUBLIC`, e a soma
+# base + ajuste = gasto estimado usa os valores JÁ arredondados (o que a meta consome é o que o retrato mostra).
+FLAG_DAY_IN_PROGRESS = "day_in_progress"
+# A leitura do histórico FALHOU: a estimativa gravada/mostrada é só a inicial por fórmula (nunca regrava meta existente).
+FLAG_HISTORY_UNAVAILABLE = "history_unavailable"
+
 FLAG_ACTIVITY_PENDING = "activity_pending"
 FLAG_BOOTSTRAP_ACTIVITY_UNKNOWN = "bootstrap_activity_unknown"
 FLAG_BMR_MISSING = "bmr_missing"
@@ -296,11 +302,15 @@ class AdaptiveEnergyState:
         return d
 
 
-def resolve_day_bmr(recorded_bmr_kcal: Any, fallback_bmr_kcal: Any) -> Optional[float]:
-    """TMB do dia para a sombra (decisão de desenho): a gravada na meta do dia, se válida (> 0); senão a
-    calculada (`fallback`), se válida; senão `None`. Dono da precedência: o serviço só entrega os dois valores."""
-    gravada = positive_number(recorded_bmr_kcal)
-    return gravada if gravada is not None else positive_number(fallback_bmr_kcal)
+def resolve_day_bmr(recorded_bmr_kcal: Any, fallback_bmr_kcal: Any, default_bmr_kcal: Any = None) -> Optional[float]:
+    """TMB do dia no histórico e na estimativa inicial (regra ÚNICA, decisão de desenho): a gravada na meta do dia, se
+    válida (> 0); senão a da fórmula do PLANO em jogo (`fallback`); senão a da fórmula PADRÃO (`default`, para dia sem
+    plano); senão `None`. O serviço só entrega os valores calculados (`bmr.bmr` com `plan.history_bmr_formula`)."""
+    for candidata in (recorded_bmr_kcal, fallback_bmr_kcal, default_bmr_kcal):
+        valida = positive_number(candidata)
+        if valida is not None:
+            return valida
+    return None
 
 
 def latest_bmr(bmrs: Iterable[Any]) -> Optional[float]:
@@ -517,4 +527,145 @@ def _advance(prev: Optional[AdaptiveEnergyState], entry: DayInput) -> AdaptiveEn
         weight=peso,
         flags=tuple(dict.fromkeys(flags)),
         suspension_reasons=tuple(motivos),
+    )
+
+
+@dataclass(frozen=True)
+class DayEnergyEstimate:
+    """Gasto estimado de UM dia, pronto para a meta (`daily_target`, modo `adaptive_balance`) e para a tela.
+
+    `estimated_kcal` = `base_kcal` + `adjustment_kcal` (todos em `ROUNDING_DIGITS_PUBLIC`). `bootstrap` = sem gasto
+    adaptativo ainda (confiança 0; base = estimativa inicial por fórmula). `day_open` = hoje ou dia futuro: o ajuste
+    pela atividade NUNCA é aplicado (spec §13); passados sem atividade confirmada ficam com `activity_pending`.
+    `snapshot` é o retrato público do estado (`to_public_dict`) já com o ajuste que valeu para o dia."""
+
+    day: date
+    estimated_kcal: float
+    base_kcal: float
+    adjustment_kcal: float
+    confidence: float
+    confidence_level: str
+    bootstrap: bool
+    activity_pending: bool
+    day_open: bool
+    algorithm_version: str
+    snapshot: Mapping[str, Any]
+    history_unavailable: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """O que entra no hash das entradas do dia (`DayContext.to_dict`): o necessário para reproduzir a meta."""
+        dados: dict[str, Any] = {
+            "day": self.day.isoformat(),
+            "estimated_kcal": self.estimated_kcal,
+            "base_kcal": self.base_kcal,
+            "adjustment_kcal": self.adjustment_kcal,
+            "confidence": self.confidence,
+            "bootstrap": self.bootstrap,
+            "algorithm_version": self.algorithm_version,
+        }
+        if self.history_unavailable:
+            dados["history_unavailable"] = True
+        return dados
+
+    def snapshot_dict(self) -> dict[str, Any]:
+        """Retrato público do dia, gravado em `inputs_json.energy` e mostrado no cartão."""
+        return dict(self.snapshot)
+
+
+def _round_kcal(value: float) -> float:
+    return round(float(value), ROUNDING_DIGITS_PUBLIC)
+
+
+def _estimate_from(
+    day: date, base_raw: float, adjustment_raw: float, confidence: float, bootstrap: bool, pending: bool, open_day: bool,
+    snapshot: dict[str, Any], history_unavailable: bool = False,
+) -> DayEnergyEstimate:
+    base = _round_kcal(base_raw)
+    ajuste = _round_kcal(adjustment_raw)
+    estimado = _round_kcal(base + ajuste)
+    nivel = confidence_level(confidence).value
+    snapshot = {
+        **snapshot,
+        "date": day.isoformat(),
+        "base_tdee": base,
+        "activity_adjustment": ajuste,
+        "estimated_tdee_today": estimado,
+        "confidence": round(confidence, CONFIDENCE_PUBLIC_DECIMALS),
+        "confidence_level": nivel,
+    }
+    return DayEnergyEstimate(
+        day=day,
+        estimated_kcal=estimado,
+        base_kcal=base,
+        adjustment_kcal=ajuste,
+        confidence=round(confidence, CONFIDENCE_PUBLIC_DECIMALS),
+        confidence_level=nivel,
+        bootstrap=bootstrap,
+        activity_pending=pending,
+        day_open=open_day,
+        algorithm_version=ALGORITHM_VERSION,
+        snapshot=snapshot,
+        history_unavailable=history_unavailable,
+    )
+
+
+def estimate_for_day(states: Sequence[AdaptiveEnergyState], day: date, today: date) -> Optional[DayEnergyEstimate]:
+    """Gasto estimado de `day` a partir dos estados do `replay` (um por dia, em ordem).
+
+    - Dia PASSADO (`day < today`): o estado DAQUELE dia (a janela que terminava nele), com o ajuste pela atividade
+      que valeu (0 + `activity_pending` se o dia não foi confirmado). Sem estado para o dia: `None`.
+    - Hoje e dia futuro: a BASE do estado mais recente até hoje, SEM ajuste (`day_open`), flag `day_in_progress`.
+    - Sem base (sem TMB): `None` (a meta já não é calculável sem TMB)."""
+    por_dia = {estado.day: estado for estado in states}
+    aberto = day >= today
+    if aberto:
+        candidatos = [d for d in por_dia if d <= today]
+        if not candidatos:
+            return None
+        estado = por_dia[max(candidatos)]
+    else:
+        estado = por_dia.get(day)
+        if estado is None:
+            return None
+    if estado.base_kcal is None:
+        return None
+    retrato = estado.to_public_dict()
+    retrato["state_date"] = estado.day.isoformat()
+    flags = list(retrato["data_quality_flags"])
+    if aberto:
+        ajuste = 0.0
+        if FLAG_DAY_IN_PROGRESS not in flags:
+            flags.append(FLAG_DAY_IN_PROGRESS)
+        flags = [f for f in flags if f != FLAG_ACTIVITY_PENDING]
+        pendente = False
+    else:
+        ajuste = estado.activity_adjustment_kcal
+        pendente = FLAG_ACTIVITY_PENDING in flags
+    retrato["data_quality_flags"] = flags
+    return _estimate_from(
+        day, estado.base_kcal, ajuste, estado.confidence, estado.adaptive_kcal is None, pendente, aberto, retrato
+    )
+
+
+def bootstrap_only_estimate(day: date, bmr_kcal: Any, history_unavailable: bool = False) -> Optional[DayEnergyEstimate]:
+    """Estimativa inicial SEM histórico (plano adaptativo recém-publicado, prévia do rascunho, referências do
+    check-in): TMB × fator sedentário (`BOOTSTRAP_ACTIVITY_FACTOR`), sem atividade nem ajuste, confiança 0. `None`
+    sem TMB. `history_unavailable=True` marca que a leitura do histórico falhou (flag `history_unavailable`)."""
+    tmb = positive_number(bmr_kcal)
+    if tmb is None:
+        return None
+    retrato: dict[str, Any] = {
+        "bmr": _round_kcal(tmb),
+        "bootstrap_tdee": _round_kcal(tmb * BOOTSTRAP_ACTIVITY_FACTOR),
+        "observed_tdee": None,
+        "adaptive_tdee": None,
+        "valid_days": 0,
+        "window_days": 0,
+        "last_update_date": None,
+        "algorithm_version": ALGORITHM_VERSION,
+        "data_quality_flags": [FLAG_ADAPTIVE_UNAVAILABLE, *([FLAG_HISTORY_UNAVAILABLE] if history_unavailable else [])],
+        "suspension_reasons": [],
+    }
+    return _estimate_from(
+        day, tmb * BOOTSTRAP_ACTIVITY_FACTOR, 0.0, 0.0, True, False, False, retrato, history_unavailable=history_unavailable
     )

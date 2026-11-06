@@ -107,6 +107,15 @@ export function previewNutritionPlan(planId: number): Promise<NutritionPlanPrevi
   return apiFetch<NutritionPlanPreview>(`/nutrition/plans/${planId}/preview`, { method: 'POST' });
 }
 
+/** Consulta da prévia do plano exibido; o card Plano e a prévia compartilham a mesma queryKey (um só POST, mesmo cache). */
+export function planPreviewQuery(plan: { id: number; updated_at: string | null; state: string }) {
+  return {
+    queryKey: [...nutritionKeys.preview(plan.id), plan.updated_at, plan.state] as const,
+    queryFn: () => previewNutritionPlan(plan.id),
+    retry: false as const,
+  };
+}
+
 /**
  * Publica o rascunho. `expectedCurrentId` é o id da vigente que a tela mostrou
  * (ou `null`): se outra publicação mudou a vigente no meio, a API responde 409

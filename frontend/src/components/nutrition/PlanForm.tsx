@@ -28,6 +28,7 @@ import {
   SEX_OPTIONS,
   STRATEGY_OPTIONS,
   TDEE_MODE_OPTIONS,
+  WATCH_CALORIE_MODE_OPTIONS,
   fieldAppliesToStrategy,
   nutritionLabel,
   strategyFormRanges,
@@ -50,7 +51,13 @@ import {
   type PlanSuggestionFields,
   type SuggestionFormSlice,
 } from '@/lib/nutrition-plan-suggestion';
-import type { NutritionPlan, NutritionPlanSaved, NutritionPlanSettingsPayload } from '@/lib/nutrition-types';
+import { ADAPTIVE_TDEE_MODE, DEFAULT_WATCH_CALORIE_MODE, adaptiveFieldHint } from '@/lib/nutrition-dashboard';
+import {
+  type NutritionPlan,
+  type NutritionPlanSaved,
+  type NutritionPlanSettingsPayload,
+  type NutritionWatchCalorieMode,
+} from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
 type NumberField = number | string;
@@ -66,6 +73,7 @@ type FormState = {
   carbMin: NumberField;
   bmrFormula: NutritionCode;
   tdeeMode: NutritionCode;
+  watchCalorieMode: NutritionWatchCalorieMode;
   activityLevel: NutritionCode | null;
   meals: NumberField;
   goalBodyFat: NumberField;
@@ -109,6 +117,7 @@ function initialState(plan: NutritionPlan | null): FormState {
       carbMin: asField(plan.carb_min_g_per_kg),
       bmrFormula: plan.bmr_formula,
       tdeeMode: plan.tdee_mode,
+      watchCalorieMode: plan.energy_params?.watch_calorie_mode ?? DEFAULT_WATCH_CALORIE_MODE,
       activityLevel: plan.activity_level,
       meals: asField(plan.meals_per_day),
       goalBodyFat: asField(plan.goal_body_fat_percent),
@@ -134,6 +143,7 @@ function initialState(plan: NutritionPlan | null): FormState {
     carbMin: '',
     bmrFormula: DEFAULT_BMR_FORMULA,
     tdeeMode: DEFAULT_TDEE_MODE,
+    watchCalorieMode: DEFAULT_WATCH_CALORIE_MODE,
     activityLevel: null,
     meals: '',
     goalBodyFat: '',
@@ -207,6 +217,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
 
   // Modos das gramas manuais que valem para o gasto do treino escolhido (`add_training` só com o treino à parte).
   const automatico = form.tdeeMode === AUTO_TDEE_MODE;
+  const adaptativo = form.tdeeMode === ADAPTIVE_TDEE_MODE;
   const modosManuais = MANUAL_TRAINING_MODES_BY_TDEE_MODE[form.tdeeMode] ?? [DEFAULT_MANUAL_TRAINING_MODE];
 
   function update(patch: Partial<FormState>) {
@@ -244,6 +255,8 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
     ),
     cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
     maintenance_kcal_adjust: ajusteManutencao,
+    // Só o modo adaptativo envia `energy_params`: o payload dos planos legados não muda.
+    ...(adaptativo ? { energy_params: { watch_calorie_mode: form.watchCalorieMode } } : {}),
     notes: form.notes.trim() ? form.notes.trim() : null,
   };
 
@@ -381,6 +394,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
             <Select
               label="Fórmula da TMB"
+              description={adaptativo ? adaptiveFieldHint('bmr_formula') : undefined}
               data={[...BMR_FORMULA_OPTIONS]}
               value={form.bmrFormula}
               onChange={(bmrFormula) => update({ bmrFormula: bmrFormula ?? DEFAULT_BMR_FORMULA })}
@@ -410,7 +424,11 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
             ) : (
               <Select
                 label="Nível de atividade"
-                description="Usado na conta do gasto do dia (o fator já considera se o exercício está incluído)."
+                description={
+                  adaptativo
+                    ? adaptiveFieldHint('activity_level')
+                    : 'Usado na conta do gasto do dia (o fator já considera se o exercício está incluído).'
+                }
                 placeholder="Usar o do perfil"
                 data={[...ACTIVITY_LEVEL_OPTIONS]}
                 value={form.activityLevel}
@@ -419,6 +437,18 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
               />
             )}
           </SimpleGrid>
+
+          {adaptativo && (
+            <Select
+              label="Calorias do relógio"
+              description={adaptiveFieldHint('watch_calorie_mode')}
+              data={[...WATCH_CALORIE_MODE_OPTIONS]}
+              value={form.watchCalorieMode}
+              onChange={(modo) => update({ watchCalorieMode: (modo as NutritionWatchCalorieMode | null) ?? DEFAULT_WATCH_CALORIE_MODE })}
+              allowDeselect={false}
+              data-testid="plano-calorias-relogio"
+            />
+          )}
 
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
             <NumberInput

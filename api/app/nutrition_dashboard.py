@@ -44,7 +44,8 @@ from .intelligence.dashboard.metrics_registry import threshold
 from .intelligence.dashboard.time_windows import user_timezone, user_today_for
 from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_days import balance_public, target_of
-from .nutrition_energy_service import shadow_block
+from .nutrition_energy_service import UNAVAILABLE_ERROR, energy_key, shadow_block, unavailable_block
+from .domain.nutrition.plan import DEFAULT_WATCH_CALORIE_MODE
 from .nutrition_meals import MEALS, NUTRIENTS, day_totals, totals_public
 from .nutrition_schema import require_diary_tables, require_nutrition_tables
 from .nutrition_targets_service import (
@@ -59,6 +60,9 @@ from .nutrition_targets_service import (
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
+
+# Modo da kcal do relógio quando o plano vigente não é adaptativo (a sombra): o PADRÃO do dono do plano.
+SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value
 
 # Só o que `stored_meal_totals` precisa (sem `description_raw`, `notes` nem JSON de itens: a
 # resposta da RDS Data API tem teto de 1 MiB e 90 dias de refeições passariam dele).
@@ -187,12 +191,29 @@ def get_dashboard(
             cur.execute(MUSCLE_WINDOW_SQL, (aluno, inicio_lido, hoje))
             musculos_linhas = list(cur.fetchall() or [])
             planos = load_published_plans(cur, aluno)
+            # Só o plano que vale HOJE entra nas entradas (a projeção e a meta de hoje usam só ele): planos já substituídos
+            # (inclusive um adaptativo antigo) não custam leitura nem carga de histórico a cada dashboard.
+            ref_hoje = plan_in_force(planos.refs, hoje)
+            planos_em_jogo = [planos.settings[ref_hoje.plan_id]] if ref_hoje is not None else []
             # Cobre também os dias de treino da projeção (TDEE estável do plano, N2).
             entradas = load_user_inputs(
-                cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos.settings.values()
+                cur, aluno, hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS), hoje, hoje, planos_em_jogo
             )
-            # Gasto adaptativo em SOMBRA (só leitura, `applied: false`); falha dele nunca derruba o dashboard.
-            energia_adaptativa = shadow_block(cur, aluno, hoje, entradas.series, _timezone_for(conn, aluno))
+            # Gasto adaptativo: em SOMBRA (`applied: false`) nos planos legados; com o plano VIGENTE adaptativo é o MESMO
+            # histórico e o mesmo `watch_calorie_mode` da meta (`applied: true`, sem leitura nova). Falha nunca derruba o dashboard.
+            ref_vigente = plan_in_force(planos.refs, hoje)
+            config_vigente = planos.settings[ref_vigente.plan_id] if ref_vigente is not None else None
+            adaptativo_vigente = config_vigente is not None and config_vigente.is_adaptive
+            modo_kcal = config_vigente.energy_params.watch_calorie_mode.value if adaptativo_vigente else SHADOW_CALORIE_MODE
+            chave_energia = energy_key(config_vigente) if adaptativo_vigente else None
+            if adaptativo_vigente and chave_energia in entradas.energy_failed:  # a leitura falhou: o cartão mostra `error`, não `no_data`
+                energia_adaptativa = unavailable_block(UNAVAILABLE_ERROR, applied=True)
+            else:
+                energia_adaptativa = shadow_block(
+                    cur, aluno, hoje, entradas.series, _timezone_for(conn, aluno),
+                    calorie_mode=modo_kcal, applied=adaptativo_vigente,
+                    history=entradas.energy.get(chave_energia) if adaptativo_vigente else None,
+                )
 
     # --- alinhamento por dia (lido = janela da tela ou a do TDEE observado, a maior) ---------------
     metas_por_dia, alvos_lidos, totais_lidos = align_window(dias_lidos, metas_linhas, refeicoes)

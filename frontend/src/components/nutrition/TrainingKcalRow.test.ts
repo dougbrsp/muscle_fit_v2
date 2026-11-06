@@ -75,6 +75,19 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     expect(host.querySelector('[data-testid="gasto-atividade"]')).toBeNull();
   });
 
+  it('dia de plano adaptativo (sem aviso de fallback): mostra treino e cardio como atividade, sem rótulo de modo legado', async () => {
+    await montar({
+      ...BASE,
+      sessions: [sessao],
+      tdee_basis: 'adaptive',
+      tdee_basis_note: null,
+      extra_activity: { kcal: 0, kcal_nature: null, items: [] },
+      activity_kcal: { training_kcal: 428, extra_kcal: 0, total_kcal: 428 },
+    });
+    expect(host.querySelector('[data-testid="gasto-fallback"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/fator|embutido|somado à parte/i);
+  });
+
   it('dia misto: mostra o usado pelo motor e que é parcialmente estimado', async () => {
     const valor = (kcal: number | null) => ({ kcal, kcal_nature: null, nature: null, quality: null, limitations: [] }) as never;
     await montar({

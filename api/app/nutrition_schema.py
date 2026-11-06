@@ -56,6 +56,17 @@ FOOD_TABLE_BASE_MISSING_MESSAGE = (
     "digitada pelo usuário) ainda não existe neste banco."
 )
 
+# Colunas do modo de gasto adaptativo em `nutrition_plans` (106, Lote C): toda leitura e escrita do plano nas rotas de
+# plano as usa. Aditivas: o código ANTIGO sobre o schema novo segue funcionando; o código novo exige a 106 (ordem do
+# deploy: migração, depois o código).
+PLAN_ENERGY_COLUMNS: tuple[str, ...] = ("energy_params_json", "energy_model_version", "published_preview_json")
+PLAN_ENERGY_MIGRATION = "106"
+
+PLAN_ENERGY_MISSING_MESSAGE = (
+    "Plano nutricional indisponível: as colunas `energy_params_json`, `energy_model_version` e "
+    "`published_preview_json` de `nutrition_plans` (migração 106, modo de gasto adaptativo) ainda não existem neste banco."
+)
+
 MEALS_TABLE = "meals"
 MEAL_ITEMS_TABLE = "meal_items"
 DAYS_TABLE = "nutrition_days"
@@ -158,6 +169,28 @@ def require_nutrition_tables(cursor: Any) -> None:
     """503 citando as migrações quando as tabelas ainda não existem."""
     if not has_nutrition_tables(cursor):
         raise tables_missing_error()
+
+
+def has_plan_energy_columns(cursor: Any) -> bool:
+    """As colunas do modo de gasto adaptativo (106) existem NESTE schema? Sem DDL."""
+    return all(_has_column(cursor, PLANS_TABLE, coluna) for coluna in PLAN_ENERGY_COLUMNS)
+
+
+def plan_energy_columns_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "nutrition_plan_migration_pending",
+            "migration": PLAN_ENERGY_MIGRATION,
+            "message": PLAN_ENERGY_MISSING_MESSAGE,
+        },
+    )
+
+
+def require_plan_energy_columns(cursor: Any) -> None:
+    """503 citando a 106 quando as colunas novas do plano ainda faltam (janela de deploy)."""
+    if not has_plan_energy_columns(cursor):
+        raise plan_energy_columns_missing_error()
 
 
 def has_food_tables(cursor: Any) -> bool:
