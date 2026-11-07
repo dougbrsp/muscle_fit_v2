@@ -274,7 +274,8 @@
       "NEXT_SET_RULE_MATCHED",
       "NEXT_SET_HOLD_EFFORT_BELOW_TARGET",
       "NEXT_SET_HOLD_ABOVE_SAFE_CEILING",
-      "NEXT_SET_DELOAD"
+      "NEXT_SET_DELOAD",
+      "NEXT_SET_AT_EQUIPMENT_CEILING"
     ],
     "reason_labels": {
       "NEXT_SET_PAIN": "Dor articular ou dor muscular acima de 6/10",
@@ -286,7 +287,8 @@
       "NEXT_SET_RULE_MATCHED": "Regra de carga cadastrada",
       "NEXT_SET_HOLD_EFFORT_BELOW_TARGET": "Esforço abaixo do alvo: mantenha a carga e busque o RPE-alvo",
       "NEXT_SET_HOLD_ABOVE_SAFE_CEILING": "RPE acima do teto seguro: mantenha a carga e pare antes da falha",
-      "NEXT_SET_DELOAD": "Sessão de deload: 60% da carga de trabalho, RPE-alvo 6"
+      "NEXT_SET_DELOAD": "Sessão de deload: 60% da carga de trabalho, RPE-alvo 6",
+      "NEXT_SET_AT_EQUIPMENT_CEILING": "Carga máxima do equipamento atingida: mantenha a carga"
     },
     "load_adjustment_reason_rule": "NEXT_SET_LOAD_RULE",
     "reason_rule_matched": "NEXT_SET_RULE_MATCHED",

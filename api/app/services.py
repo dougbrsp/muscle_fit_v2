@@ -1988,6 +1988,8 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
         "suggested_reps": legacy_indicators(suggestion)["suggested_reps"],
         "load_source": suggestion.load_source,
         "load_increment_kg": suggestion.load_increment_kg,
+        # Teto de carga do par marcado pelo usuario (migracao 110; None = sem teto).
+        "max_load_kg": suggestion.max_load_kg,
         "equipment_id": suggestion.equipment_id,
         "decision": decision.get("decision"),
         "effective_rpe_ceiling": decision.get("effective_rpe_ceiling"),
@@ -2525,7 +2527,7 @@ def get_workout_plan(plan_id: int, user_id: int | None = None) -> dict[str, Any]
         # o motor legado aqui). Abrir o mesmo plano
         # duas vezes devolve exatamente a mesma prescricao. Fora do `with` do
         # cursor de cima: abre os proprios cursores, um de cada vez.
-        _expose_frozen_prescriptions(conn, exercises)
+        _expose_frozen_prescriptions(conn, exercises, user_id=user_id)
 
     return plan
 
@@ -2620,6 +2622,53 @@ def _safety_by_exercise_row(conn, exercises: list[dict[str, Any]]) -> dict[int, 
     return {row_id: safety[key] for row_id, key in pairs.items() if key in safety}
 
 
+def _ceilings_by_row(conn, user_id: int | None, exercises: list[dict[str, Any]]) -> dict[int, tuple[Any, Any]]:
+    """`workout_plan_exercise_id` -> (teto de carga do usuario, carga de trabalho
+    atual da trilha do par ou None) para o par da linha (migracao 110; ausente =
+    sem teto). O `mapping_id` da linha pode ser legado: canonicaliza por
+    `exercise_legacy_id_map` antes de olhar o teto (as chaves sao canonicas).
+    Sem teto marcado, nenhuma query extra."""
+    from . import progression_state as ps
+    from .equipment_load_ceiling import load_user_ceilings
+
+    if user_id is None:
+        return {}
+    ceilings = load_user_ceilings(conn, int(user_id))
+    wanted = sorted({int(ex["preferred_equipment_id"]) for ex in exercises if ex.get("preferred_equipment_id")})
+    if not ceilings or not wanted:
+        return {}
+    placeholders = ", ".join(["%s"] * len(wanted))
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id, equipment_id FROM gym_equipment WHERE id IN ({placeholders})", tuple(wanted))
+        equipment_by_gym_equipment = {int(row["id"]): int(row["equipment_id"]) for row in cur.fetchall() or []}
+        mappings = sorted({int(ex["mapping_id"]) for ex in exercises if ex.get("mapping_id")})
+        canonical_by_old: dict[int, int] = {}
+        if mappings:
+            marks = ", ".join(["%s"] * len(mappings))
+            cur.execute(
+                "SELECT old_exercise_id, canonical_exercise_id FROM exercise_legacy_id_map "
+                f"WHERE old_exercise_id IN ({marks})",
+                tuple(mappings),
+            )
+            canonical_by_old = {
+                int(row["old_exercise_id"]): int(row["canonical_exercise_id"]) for row in cur.fetchall() or []
+            }
+    tracks = list(ps.load_tracks(conn, int(user_id)).values())
+    result: dict[int, tuple[Any, Any]] = {}
+    for ex in exercises:
+        equipment_id = equipment_by_gym_equipment.get(int(ex["preferred_equipment_id"] or 0))
+        if not (ex.get("mapping_id") and equipment_id):
+            continue
+        exercise_id = canonical_by_old.get(int(ex["mapping_id"]), int(ex["mapping_id"]))
+        if (exercise_id, equipment_id) not in ceilings:
+            continue
+        pair_tracks = [t for t in tracks if t.exercise_id == exercise_id and t.equipment_id == equipment_id]
+        pair_tracks.sort(key=lambda t: (t.last_executed_at or datetime.min, t.id or 0))
+        current = pair_tracks[-1].working_load_kg if pair_tracks else None
+        result[int(ex["workout_plan_exercise_id"])] = (ceilings[(exercise_id, equipment_id)], current)
+    return result
+
+
 def _load_steps_by_row(conn, exercises: list[dict[str, Any]]) -> dict[int, Any]:
     """`workout_plan_exercise_id` -> `equipment.load_increment_kg` (pode ser
     NULL) do equipamento da linha, numa query so."""
@@ -2653,7 +2702,7 @@ def _load_anchor_kg(shown: dict[str, Any] | None, ex: dict[str, Any]) -> Any:
     return value if value is not None and value > 0 else None
 
 
-def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
+def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]], *, user_id: int | None = None) -> None:
     """Le o snapshot congelado de cada exercicio e aplica o overlay de
     seguranca ao vivo (secao 6.3: so restringe, nunca amplia, e e auditado).
 
@@ -2669,6 +2718,7 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
     `load_anchor_kg`, `warmup_loads_kg`, `feeler_load_kg`, `feeler_loads_kg`,
     `application_loads_kg`) - calculado no backend pelo dono, para o Modo
     Treino so ler."""
+    from .domain.progression_engine import cap_load_to_ceiling
     from .domain.session_loads import load_step, session_load_plan
 
     if not exercises:
@@ -2685,6 +2735,12 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
     except Exception:
         logger.exception("Falha ao ler o passo de carga dos equipamentos da ficha")
         steps_by_row = {}
+
+    try:
+        ceilings_by_row = _ceilings_by_row(conn, user_id, exercises)
+    except Exception:
+        logger.exception("Falha ao ler o teto de carga dos equipamentos da ficha; segue sem teto")
+        ceilings_by_row = {}
 
     for ex in exercises:
         row_id = int(ex["workout_plan_exercise_id"])
@@ -2708,6 +2764,20 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
                     application_loads_kg=params.get("application_loads_kg"),
                 )
             )
+        # Teto de carga do usuario para o par (migracao 110) e a carga de
+        # trabalho da ficha JA limitada pelo dono (`cap_load_to_ceiling`): o
+        # Modo Treino so le, nao calcula. Sem teto, ambos None.
+        ceiling, current_load = ceilings_by_row.get(row_id, (None, None))
+        ex["max_load_kg"] = float(ceiling) if ceiling is not None else None
+        anchor = _load_anchor_kg(shown, ex)
+        # Sem carga atual conhecida nao ha como saber se a ancora e AUMENTO: nao limita
+        # (devolve a propria ancora). O teto nunca reduz.
+        capped = (
+            cap_load_to_ceiling(Decimal(str(anchor)), ceiling, current=current_load)
+            if ceiling is not None and anchor is not None and current_load is not None
+            else (Decimal(str(anchor)) if ceiling is not None and anchor is not None else None)
+        )
+        ex["load_within_ceiling"] = float(capped) if capped is not None else None
         ex["prescription"] = shown
         ex["prescription_status"] = (
             prescription_domain.STATUS_FROZEN if frozen else prescription_domain.STATUS_LEGACY

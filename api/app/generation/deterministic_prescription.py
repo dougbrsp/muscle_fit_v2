@@ -147,6 +147,7 @@ def _track_for(
     stimulus_weight: float,
     is_compound: bool,
     load_step: Optional[Decimal],
+    max_load_kg: Optional[Decimal] = None,
 ) -> TrackState:
     """Trilha persistida do par NO CONTEXTO DE FADIGA pedido
     (`progression_engine.resolve_track`: sem historico no contexto, parte da
@@ -180,6 +181,7 @@ def _track_for(
         stimulus_weight=stimulus_weight,
         is_compound=is_compound,
         load_increment_kg=load_step,
+        max_load_kg=max_load_kg,
         sequence=request.sequence,
     )
 
@@ -332,6 +334,8 @@ def prescribe_pairs(
     # fase e a trilha do SEU objetivo.
     group_states = ps.load_all_group_states(conn, user_id)
     tracks = ps.load_tracks(conn, user_id)
+    # Teto de carga do equipamento (migracao 110): por par, sem teto = {}.
+    ceilings = ps.load_user_load_ceilings(conn, user_id)
     # Fix M97 (2026-10-26): e1RM atual SO dos pares de objetivo com carga por
     # %1RM (forca); hipertrofia nao faz leitura nova.
     e1rm_by_pair = current_e1rm_for_requests(conn, user_id, requests, now)
@@ -363,6 +367,7 @@ def prescribe_pairs(
             stimulus_weight=float(stimulus_weight.get(exercise_id, 0.0)),
             is_compound=bool(is_compound.get(exercise_id)),
             load_step=load_steps.get(int(request.equipment_id)) if request.equipment_id is not None else None,
+            max_load_kg=ceilings.get(request.key),
         )
 
         decision = prescribe(

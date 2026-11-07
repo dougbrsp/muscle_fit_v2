@@ -238,6 +238,13 @@ def load_laboral_ids(conn: Any, exercise_ids: Sequence[int]) -> frozenset[int]:
     return _load_laboral_ids(conn, exercise_ids)
 
 
+def load_user_load_ceilings(conn: Any, user_id: int) -> dict[tuple[int, int], Decimal]:
+    """Tetos de carga do usuario por par (migracao 110); dono: `equipment_load_ceiling`."""
+    from .equipment_load_ceiling import load_user_ceilings
+
+    return load_user_ceilings(conn, user_id)
+
+
 def load_equipment_steps(conn: Any, equipment_ids: Sequence[int]) -> dict[int, Decimal]:
     """`equipment.load_increment_kg` - menor incremento TOTAL (D12)."""
     ids = sorted({int(value) for value in equipment_ids})
@@ -311,6 +318,7 @@ def build_session_inputs(
         stimulus_weight=stimulus_weight,
         is_compound=load_exercise_flags(conn, exercise_ids),
         load_increment_kg=load_equipment_steps(conn, equipment_ids),
+        max_load_kg=load_user_load_ceilings(conn, user_id),
         is_advanced_user=load_user_flags(conn, user_id),
         activation_probe=load_activation_ceiling(conn, exercise_ids, sessions),
     )

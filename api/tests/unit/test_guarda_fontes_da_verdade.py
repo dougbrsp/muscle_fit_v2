@@ -819,6 +819,27 @@ PADROES: tuple[Padrao, ...] = (
         excluir=("frontend/src/app/(app)/regras-carga/", "frontend/src/lib/next-set-load-rules*.ts"),
     ),
     Padrao(
+        chave="teto_carga_equipamento",
+        regra="comparação ou min/max com o teto de carga do equipamento (`max_load_kg`, `maxLoadKg`, `*_load_ceiling`) fora do dono",
+        # 2026-11-07 (migração 110): o teto marcado pelo usuário só limita carga
+        # em `progression_engine.cap_load_to_ceiling` (aumentos; nunca reduz);
+        # next_set_load e a rota do teto o chamam. Consumidor, SQL e tela só
+        # repassam o valor pronto (`max_load_kg`, `load_within_ceiling`).
+        # Proibição pura. `is not None`/`!= null` e atribuição não casam.
+        regex=re.compile(
+            r"\b(?:Math\.)?(?:min|max)\(\s*[^)\n]*\b(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\b"
+            r"|\b(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\s*(?:<=?|>=?)\s*[\w(]"
+            r"|[\w)\]]\s*(?:<=?|>=?)\s*(?:[\w.]+\.)?(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\b"
+        ),
+        donos=(
+            "api/app/domain/progression_engine.py",
+            "api/app/domain/next_set_load.py",
+            "api/app/equipment_load_ceiling.py",
+        ),
+        inventario="TETO-CARGA",
+        escopo=("api/app/", "frontend/src/"),
+    ),
+    Padrao(
         chave="intensidade_densidade",
         regra="calibração da Intensidade × Densidade escrita à mão (pontos de RPE 10/9/8, faixas 6..15 reps, 0..5 s de pico, 180..45 s de descanso, 2..5 séries, banda 0,1)",
         # E13 (2026-10-13): o dono é `domain/intensity_density.py` (constantes
@@ -2244,6 +2265,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "rotulo_status_serie": {},  # set-eval-v5 (2026-10-12): nasce vazia
     "carga_proxima_serie": {},  # set-eval-v6 (2026-10-12): nasce vazia
     "regra_carga_cadastrada": {},  # regras de carga R1 (2026-10-20): nasce vazia
+    "teto_carga_equipamento": {},  # teto de carga do equipamento (2026-11-07): nasce vazia
     # E13 (2026-10-13): `intensity-density.ts` tinha a calibração inteira (era o
     # dono); desde este PR lê o JSON gerado por `domain/intensity_density.py`.
     "intensidade_densidade": {},
@@ -2945,6 +2967,13 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "const value = magnitude.value;", "items.map((reps_condition) => reps_condition.label)",
          "ruleset.reps_floor >= 1", "rule.magnitude.value / 2", "label: rule.reps.op,",
          "value={rule.reps.value}"),
+    ),
+    "teto_carga_equipamento": (
+        ("if carga > max_load_kg:", "const alvo = Math.min(stepMax, maxLoadKg);", "if (weight >= loadCeiling.maxLoadKg) {",
+         "load = min(load, ceiling_load_ceiling)", "return value <= max_load_kg", "x = Math.max(a, maxLoadKg)"),
+        ("max_load_kg=ceilings.get(request.key),", "if loadCeiling?.maxLoadKg != null", "ex[\"max_load_kg\"] = float(ceiling)",
+         "const loadCeiling = useEquipmentLoadCeiling(pair);", "stepMax={loadCeilingMax}",
+         "capped = cap_load_to_ceiling(value, track.max_load_kg)", "max_load_kg: number | null;"),
     ),
     "intensidade_densidade": (
         ("export const REPS_DENSITY_RANGE = { min: 6, max: 15 } as const;", "{ minRpe: 10, points: 1.0 },",
@@ -3853,6 +3882,7 @@ def test_a_guarda_enxerga_a_regra_no_dono():
         # proibição pura: o dono compara pela função genérica (`_compare`), sem `rule.reps.op ==` nem
         # `magnitude.value / 100` escritos à mão fora dele.
         "regra_carga_cadastrada",
+        "teto_carga_equipamento",  # proibição pura: o dono é `cap_load_to_ceiling`, ninguém compara/limita com o teto
         "fatores_carga_sessao",  # o dono usa constantes nomeadas (WARMUP_LOAD_FACTORS, DROP_SET_LOAD_FACTOR...)
         "dose_reduzida_texto",  # o dono GERA o texto (reduction_policy/reduced_dose_prompt_rule), sem "1-2"
         "sinais_expiram",  # proibição pura: o dono tem SIGNALS_POLICY, sem reset

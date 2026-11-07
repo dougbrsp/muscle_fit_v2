@@ -34,11 +34,17 @@ from .progression_engine import (
     ADD_SET,
     APPLY_TECHNIQUE,
     DECREASE_LOAD,
+    EQUIPMENT_CEILING_LIMITED,
+    EQUIPMENT_CEILING_REACHED,
+    EQUIPMENT_LOAD_CEILING_LIMITED_NOTE,
+    EQUIPMENT_LOAD_CEILING_NOTE,
+    EVIDENCE_EQUIPMENT_LOAD_CEILING,
     EVIDENCE_TRANSITION_DEFERRED,
     INCREASE_LOAD,
     LOAD_NOT_APPLICABLE,
     SET_REP_RANGE_10_12,
     SKIP,
+    cap_load_to_ceiling,
     ReadinessContract,
     classify_sets,
     resolve_track,
@@ -103,6 +109,8 @@ class PairSuggestion:
     load_increment_kg: float
     last_execution: Optional[LastExecution] = None
     track_load_status: Optional[str] = None
+    # Teto de carga do par marcado pelo usuario (migracao 110; None = sem teto).
+    max_load_kg: Optional[float] = None
 
     @property
     def reps_target(self) -> Optional[str]:
@@ -232,6 +240,10 @@ def progression_note(suggestion: PairSuggestion) -> str:
     partes: list[str] = []
     if evidence.get(EVIDENCE_TRANSITION_DEFERRED):
         partes.append("Dose reduzida pela recuperação: manter a carga e adiar a progressão.")
+    elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_REACHED and code != DECREASE_LOAD:
+        partes.append(EQUIPMENT_LOAD_CEILING_NOTE)
+    elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_LIMITED and code == INCREASE_LOAD:
+        partes.append(EQUIPMENT_LOAD_CEILING_LIMITED_NOTE)
     elif code == INCREASE_LOAD and evidence.get("load_increment_kg") is not None:
         partes.append(f"Aumentar carga: +{_kg(evidence['load_increment_kg'])} kg (passo do equipamento).")
     elif code == DECREASE_LOAD and evidence.get("load_increment_kg") is not None:
@@ -338,6 +350,7 @@ def suggest_for_pairs(
     ]
     prescriptions = prescribe_pairs(conn, int(user_id), requests, readiness=readiness, now=now)
     steps = ps.load_equipment_steps(conn, [equipment for _, equipment in resolved if equipment is not None])
+    ceilings = ps.load_user_load_ceilings(conn, int(user_id))
 
     result: dict[tuple[int, Optional[int]], PairSuggestion] = {}
     for (query, equipment_id), request in zip(resolved, requests):
@@ -361,6 +374,11 @@ def suggest_for_pairs(
             # (secao 5.10) adota o minimo das series de trabalho executadas.
             load, source = last.working_load_kg, LOAD_SOURCE_LAST_EXECUTION
         step = steps.get(int(equipment_id)) if equipment_id is not None else None
+        ceiling = ceilings.get((int(query.exercise_id), int(equipment_id))) if equipment_id is not None else None
+        if ceiling is not None and load is not None and source == LOAD_SOURCE_LAST_EXECUTION:
+            # calibracao pela ultima execucao: o teto so limita aumento (a carga
+            # e a ultima executada, entao nunca ha reducao por causa do teto)
+            load = float(cap_load_to_ceiling(Decimal(str(load)), ceiling, current=Decimal(str(last.working_load_kg))))
         result[query.key] = PairSuggestion(
             exercise_id=int(query.exercise_id),
             equipment_id=equipment_id,
@@ -370,6 +388,7 @@ def suggest_for_pairs(
             load_increment_kg=float(load_step(step)),
             last_execution=last,
             track_load_status=track.load_status if track is not None else None,
+            max_load_kg=float(ceiling) if ceiling is not None else None,
         )
     return result
 
