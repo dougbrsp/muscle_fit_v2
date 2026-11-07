@@ -103,8 +103,8 @@ def test_ciclo_completo_nos_dois_backends(seed, backend, raw, fakes):
     ref = criada.json()["reference"]
     (linha,) = _rows(raw, SUPINO)
     assert linha["id"] == ref["id"]
-    assert linha["s3_key"] == f"exercise-card-references/{SUPINO}/{ref['id']}.png"
-    assert (linha["content_type"], linha["width"], linha["height"], linha["created_by"]) == ("image/png", 700, 500, seed["admin"])
+    assert linha["s3_key"] == f"exercise-card-references/{SUPINO}/{ref['id']}.jpg"
+    assert (linha["content_type"], linha["width"], linha["height"], linha["created_by"]) == ("image/jpeg", 700, 500, seed["admin"])
     assert linha["note"] == "Banco inclinado — 30° (ângulo)" and linha["deleted_at"] is None
     assert linha["bytes"] == len(fakes["s3"].body(BUCKET, linha["s3_key"]))
 
