@@ -72,7 +72,7 @@ export function RegenerateCardForm({ description, confirmLabel, onCancel, onConf
 }
 
 /**
- * "Gerar novamente" / "Gerar nova versão" do card ilustrado: pede (opcional)
+ * "Gerar novamente" / "Gerar nova versão" do card com fotos: pede (opcional)
  * o que mudar e devolve a instrução (≤ 300 caracteres, mesmo teto do backend).
  */
 export function RegenerateCardModal({

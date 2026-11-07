@@ -10,6 +10,9 @@ import type {
   ExerciseCardGenerationListResponse,
   ExerciseCardGenerationResponse,
   ExerciseCardGenerationStatus,
+  ExerciseCardReferenceCreatePayload,
+  ExerciseCardReferenceCreateResponse,
+  ExerciseCardReferenceListResponse,
   ExerciseCardRegenerateResponse,
   ExerciseCardRejectPayload,
   ExerciseCardResponse,
@@ -17,7 +20,7 @@ import type {
 } from './exercise-cards-types';
 
 /**
- * Cards ilustrados de exercícios — helpers puros + hooks React Query da seção
+ * Cards com fotos de exercícios — helpers puros + hooks React Query da seção
  * de admin (`dominio-exercicios/components/ExerciseCardSection.tsx`).
  * Contrato em `exercise-cards-types.ts`.
  *
@@ -36,9 +39,14 @@ export const EXERCISE_CARD_POLL_INTERVAL_MS = 2500;
 export const EXERCISE_CARD_INSTRUCTION_MAX_CHARS = 300;
 export const EXERCISE_CARD_REASON_MAX_CHARS = 160;
 export const EXERCISE_CARD_HISTORY_LIMIT = 20;
-/** Medido no checkpoint (rodada 2): p50 ~20 s; a OpenAI documenta até 2 min. */
-export const EXERCISE_CARD_TYPICAL_SECONDS = 20;
-export const EXERCISE_CARD_SLOW_AFTER_SECONDS = 120;
+/**
+ * Dica de UX (não é regra de treino): a geração faz 2 chamadas de imagem.
+ * ESPELHO MANUAL da fonte `JOB_TIME_BUDGET_SECONDS = 400` em
+ * `api/app/exercise_card_jobs.py` e do briefing §12 (típico ~75 s; "lento"
+ * bem antes do orçamento de tempo do job).
+ */
+export const EXERCISE_CARD_TYPICAL_SECONDS = 75;
+export const EXERCISE_CARD_SLOW_AFTER_SECONDS = 240;
 /**
  * O `preview_url` é pré-assinado por 15 min a cada GET. Refaz o GET um pouco
  * antes disso, contado a partir da última resposta (não do `preview_expires_at`,
@@ -140,7 +148,7 @@ export class IdempotencyKeyKeeper {
 
 /** Mensagens por `detail.error` das rotas (`exercise_card_service.CODE_*`). */
 export const EXERCISE_CARD_API_ERROR_MESSAGES: Record<string, string> = {
-  exercise_card_generation_disabled: 'A geração de cards ilustrados está desativada neste ambiente.',
+  exercise_card_generation_disabled: 'A geração de cards com fotos está desativada neste ambiente.',
   exercise_not_found: 'Exercício não encontrado — ele pode ter sido removido. Feche e abra a lista de novo.',
   exercise_card_generation_not_found: 'Esta geração não existe mais para este exercício. A seção foi atualizada.',
   exercise_card_generation_in_progress:
@@ -162,6 +170,15 @@ export const EXERCISE_CARD_API_ERROR_MESSAGES: Record<string, string> = {
   s3_read_failed: 'Não foi possível ler a imagem gerada no armazenamento. Tente aprovar de novo em instantes.',
   exercise_card_dispatch_failed: 'Não foi possível acionar o gerador de imagens. Tente de novo em instantes.',
   DRAFT_EXPIRED: 'O rascunho expirou (mais de 7 dias). Gere o card de novo.',
+  reference_invalid_encoding: 'A foto não pôde ser lida (codificação inválida). Escolha outra imagem.',
+  reference_unsupported_type: 'Tipo de imagem não aceito. Escolha outra foto.',
+  reference_too_large: 'A foto é grande demais mesmo depois de reduzida. Escolha outra.',
+  reference_too_small: 'A foto é pequena demais para servir de referência. Escolha outra.',
+  reference_too_many_pixels: 'A foto tem pixels demais. Escolha outra.',
+  reference_note_too_long: 'A nota é longa demais. Encurte e tente de novo.',
+  exercise_card_reference_not_found: 'Esta foto de referência não existe mais. A lista foi atualizada.',
+  exercise_card_reference_limit: 'O exercício já tem o máximo de fotos de referência. Exclua uma para enviar outra.',
+  exercise_card_reference_storage_failed: 'Falha ao gravar a foto no armazenamento. Tente de novo em instantes.',
 };
 
 /** Mensagens por `error_code` gravado na geração (worker / publicação). */
@@ -170,8 +187,8 @@ export const EXERCISE_CARD_FAILURE_MESSAGES: Record<string, string> = {
   OPENAI_RATE_LIMIT: 'A OpenAI recusou por excesso de pedidos (limite de taxa). Aguarde um minuto antes de tentar.',
   OPENAI_INVALID_REQUEST:
     'A OpenAI recusou o pedido (conteúdo ou configuração). Se havia uma instrução, tente reformulá-la.',
-  OPENAI_GENERATION_FAILED: 'A OpenAI não conseguiu gerar a ilustração.',
-  CARD_COMPOSITION_FAILED: 'A ilustração foi gerada, mas a montagem do card (logo, nome e músculos) falhou.',
+  OPENAI_GENERATION_FAILED: 'A OpenAI não conseguiu gerar as fotos.',
+  CARD_COMPOSITION_FAILED: 'As fotos foram geradas, mas a montagem do card (logo, nome e músculos) falhou.',
   WORKER_LOST: 'A geração ficou mais de 10 minutos sem resposta e foi encerrada.',
   DISPATCH_FAILED: 'Não foi possível acionar o gerador de imagens.',
   EXERCISE_NOT_FOUND: 'O exercício não foi encontrado pelo gerador.',
@@ -183,6 +200,7 @@ export const EXERCISE_CARD_FAILURE_MESSAGES: Record<string, string> = {
   IMAGE_PROCESSING_FAILED: 'A imagem foi recusada no processamento.',
   PUBLISH_INTERRUPTED: 'A publicação foi interrompida no meio.',
   DRAFT_EXPIRED: 'O rascunho expirou (mais de 7 dias) e não pode mais ser publicado.',
+  TIME_BUDGET_EXCEEDED: 'A geração passou do tempo limite; tente novamente.',
 };
 
 /** `detail.error` / `error_code` do rascunho expirado (410 na aprovação). */
@@ -392,6 +410,7 @@ export function generationLabel(generation: Pick<ExerciseCardGeneration, 'id' | 
 
 export const exerciseCardQueryKey = (exerciseId: number) => ['exercise-card', exerciseId] as const;
 export const exerciseCardGenerationsQueryKey = (exerciseId: number) => ['exercise-card-generations', exerciseId] as const;
+export const exerciseCardReferencesQueryKey = (exerciseId: number) => ['exercise-card-references', exerciseId] as const;
 export const exerciseCardGenerationQueryKey = (exerciseId: number, generationId: number) =>
   ['exercise-card-generation', exerciseId, generationId] as const;
 
@@ -570,6 +589,64 @@ export function useExerciseCardManager({
     approveMutation,
     rejectMutation,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fotos de referência (admin)
+// ---------------------------------------------------------------------------
+
+/** O `url` é pré-assinado por 15 min a cada GET; refaz o GET um pouco antes. */
+export const EXERCISE_CARD_REFERENCES_REFRESH_MS = 14 * 60_000;
+
+/** Cliente das rotas `…/card-references` (erros já traduzidos). */
+export const exerciseCardReferencesApi = {
+  list: (exerciseId: number) =>
+    cardFetch<ExerciseCardReferenceListResponse>(`/exercises/${exerciseId}/card-references`),
+  create: (exerciseId: number, payload: ExerciseCardReferenceCreatePayload) =>
+    cardFetch<ExerciseCardReferenceCreateResponse>(`/exercises/${exerciseId}/card-references`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  remove: (exerciseId: number, referenceId: number) =>
+    cardFetch<void>(`/exercises/${exerciseId}/card-references/${referenceId}`, { method: 'DELETE' }),
+};
+
+/**
+ * Atributo `accept` do seletor de arquivo a partir de `limits.accepted_types`.
+ * Sem a lista (backend antigo), não filtra: o backend valida pela assinatura.
+ */
+export function referenceAcceptAttribute(acceptedTypes: readonly string[] | null | undefined): string | undefined {
+  return acceptedTypes && acceptedTypes.length > 0 ? acceptedTypes.join(',') : undefined;
+}
+
+/** Opções do `resizeImageForUpload` a partir de `limits` (nenhum número escrito aqui). */
+export function referenceResizeOptions(limits: { resize_max_edge_px: number; resize_jpeg_quality_percent: number }) {
+  return {
+    maxEdge: limits.resize_max_edge_px,
+    quality: limits.resize_jpeg_quality_percent / 100,
+    contentType: 'image/jpeg',
+  };
+}
+
+export function useExerciseCardReferences({ exerciseId, enabled }: { exerciseId: number; enabled: boolean }) {
+  const qc = useQueryClient();
+  const key = exerciseCardReferencesQueryKey(exerciseId);
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => exerciseCardReferencesApi.list(exerciseId),
+    enabled,
+    staleTime: 5_000,
+    refetchInterval: EXERCISE_CARD_REFERENCES_REFRESH_MS,
+  });
+  const createMutation = useMutation({
+    mutationFn: (payload: ExerciseCardReferenceCreatePayload) => exerciseCardReferencesApi.create(exerciseId, payload),
+    onSettled: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (referenceId: number) => exerciseCardReferencesApi.remove(exerciseId, referenceId),
+    onSettled: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+  return { query, createMutation, deleteMutation };
 }
 
 /** `Date.now()` que avança a cada `intervalMs` enquanto `active` (contador de segundos). */

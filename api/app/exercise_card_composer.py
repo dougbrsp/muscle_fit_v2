@@ -1,7 +1,7 @@
-"""Compositor do card ilustrado (Estrategia B) - Pillow puro, SEM rede.
+"""Compositor do card fotorrealista V3 - Pillow puro, SEM rede.
 
-    ilustracao da IA (PNG; duas cenas empilhadas, sem texto, de preferencia
-    com fundo transparente)
+    duas fotos geradas pela IA (cena 1 = posicao inicial, cena 2 = movimento;
+    PNG retrato, sem texto, fundo opaco)
     + conteudo do catalogo (`CardContent`: titulo, musculos e os slugs do
       mapa corporal de cada papel)
     + assets versionados (`CardAssets`: logo oficial, fontes Oswald e Inter,
@@ -13,39 +13,35 @@ exatamente o que e publicado**. O worker compoe logo depois da OpenAI e grava
 o card composto como preview; a aprovacao so codifica
 (`exercise_card_processor.encode_card`), sem recompor nada.
 
-Layout (`LAYOUT_VERSION` = CARD_LAYOUT_V2; todas as medidas em pixels do card
-1024x1536, numa secao so, abaixo):
+Layout (`LAYOUT_VERSION` = CARD_LAYOUT_V3_PHOTO; medidas em pixels do card
+1024x1536):
 
-    y   0-291  cabecalho (igual ao V1): logo oficial em LOGO_BOX (51,77 -
-               225x186, mesma posicao de `exercise_card_processor.logo_placement`);
-               titulo em CAIXA ALTA (Oswald Bold, #F5F5F5) em TITLE_BOX
-               (x 300-973), centrado na altura do logo, 1-3 linhas com tamanho
-               decrescente ate caber; divisor #2A2A2A em y=291
-    y 317-1209 dois paineis empilhados de 436 px (#141414, borda #2A2A2A,
-               cantos 24): linha de rotulo (selo laranja "1"/"2" + "Posicao
-               inicial" / "Movimento", Oswald, igual ao V1) ACIMA da area da
-               cena (886x342); a cena (recortada da ilustracao) centrada na
-               area, as duas na MESMA escala
-    y 1229-1485 rodape (painel de 922x256, mesmo estilo): a esquerda a
-               silhueta do mapa corporal v1 (frente + costas, cada vista
-               recortada pela caixa do manifest; principais em laranja forte
-               com brilho, secundarios em tom fraco - `app/body_map_render.py`)
+    y   0-291  cabecalho: logo oficial em LOGO_BOX (51,77 - 225x186, mesma
+               posicao de `exercise_card_processor.logo_placement`); titulo em
+               CAIXA ALTA (Oswald Bold, #F5F5F5) em TITLE_BOX (x 300-973),
+               centrado na altura do logo, 1-3 linhas com tamanho decrescente
+               ate caber; divisor #2A2A2A em y=291
+    y 317-1209 dois paineis RETRATO LADO A LADO (451x892, #141414, borda
+               #2A2A2A, cantos 24): linha de rotulo (selo laranja "1"/"2" +
+               "Posicao inicial" / "Movimento", Oswald) ACIMA da foto, FORA
+               dela; a foto (415x798) preenche a area inteira por "cover"
+               (escala que cobre a caixa, corte centralizado, sem borda
+               vazia) com cantos arredondados (`PHOTO_RADIUS`)
+    y 1229-1485 rodape (painel de 922x256): a esquerda a silhueta do mapa
+               corporal v1 (frente + costas; principais em laranja forte com
+               brilho, secundarios em tom fraco - `app/body_map_render.py`)
                numa caixa de 244x228; a direita "MUSCULOS" (Oswald SemiBold
                40, laranja) + "Principais: ..." / "Secundarios: ..." (Inter
                34 -> 30, nunca menor; quebra com recuo pendurado, ate 4
-               linhas), bloco centrado na altura. Sem slug com regiao no
-               mapa: sem silhueta, o texto ocupa o painel todo. Sem musculos:
-               sem rodape, e os paineis ocupam a altura toda.
+               linhas). Sem slug com regiao no mapa: sem silhueta, o texto
+               ocupa o painel todo. Sem musculos: o rodape nao e desenhado,
+               mas a altura dos paineis e FIXA (o espaco fica vazio) para a
+               garantia de enquadramento valer sempre.
 
-V1 -> V2 (2026-10-03): o texto do rodape do V1 (20-28 px) ficou pequeno no
-celular e a area da silhueta estava vazia; o V2 poe a silhueta e sobe o texto
-para >= 30 px. Os paineis encolheram de 498 para 436 px (cena 404 -> 342).
-
-Extracao das cenas (`extract_scenes`): primeiro plano pelo alfa (fundo
-transparente) ou pela distancia de cor ao fundo estimado nas bordas (fundo
-opaco, com mascara suave - sem emenda retangular sobre o painel); corte na
-linha mais vazia entre 40 % e 60 % da altura; caixa de cada cena com folga.
-Sem primeiro plano em alguma metade -> `CardCompositionError`.
+Enquadramento (cover): a foto da IA e 2:3 (1024x1536); a caixa de cena e mais
+estreita (415x798), entao o cover corta as laterais e mantem ~76 % da
+largura (`scene_visible_width_fraction`). O prompt pede corpo + aparelho
+dentro da faixa central da largura; um teste garante a fracao visivel.
 
 Determinismo: mesma entrada -> mesmos bytes (mesma versao do Pillow). Texto
 com `ImageFont.Layout.BASIC` (nao depende de libraqm existir na imagem),
@@ -53,7 +49,7 @@ formas com supersampling e reducao `BOX`, nada aleatorio. Fontes, logo e mapa
 corporal sao carregados uma vez por processo (`load_card_assets`, cache de
 modulo).
 
-Mudou a aparencia (medidas, cores, fontes, regras de extracao)? Suba
+Mudou a aparencia (medidas, cores, fontes, regras de enquadramento)? Suba
 `LAYOUT_VERSION`.
 """
 
@@ -67,21 +63,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from . import body_map_render as bodymap
 from . import exercise_card_processor as processor
-from .exercise_card_prompt import BRAND_COLORS, SCENE_GAP_RANGE, ExerciseCardContext, card_muscles, card_title
+from .exercise_card_prompt import BRAND_COLORS, ExerciseCardContext, card_muscles, card_title
 
-LAYOUT_VERSION = "CARD_LAYOUT_V2"
+LAYOUT_VERSION = "CARD_LAYOUT_V3_PHOTO"
 
 CARD_COMPOSITION_FAILED = "CARD_COMPOSITION_FAILED"
 
 
 class CardCompositionError(ValueError):
     """Falha ao compor o card. `code` vai para o `error_code` da geracao;
-    `reason` diz qual regra falhou (`invalid_illustration`, `no_foreground`,
-    `empty_title`, `assets_missing`, `processing`)."""
+    `reason` diz qual regra falhou (`invalid_scene`, `empty_title`,
+    `assets_missing`, `processing`)."""
 
     def __init__(self, message: str, *, reason: str):
         super().__init__(message)
@@ -157,14 +153,15 @@ TITLE_LINE_PITCH = 1.14  # distancia entre linhas de base, em multiplos do taman
 DIVIDER_Y = 291
 DIVIDER_THICKNESS = 2
 
-# Paineis
+# Paineis (dois, retrato, lado a lado)
 CONTENT_TOP = DIVIDER_Y + DIVIDER_THICKNESS + 24  # 317
 CONTENT_BOTTOM = CARD_HEIGHT - MARGIN_BOTTOM  # 1485
-PANEL_GAP = 20
+PANEL_GAP = 20  # entre os dois paineis e entre os paineis e o rodape
 PANEL_RADIUS = 24
 PANEL_BORDER = 2
-PANEL_PADDING = 18  # entre a borda do painel e a area da cena (lados e base)
-LABEL_ROW_HEIGHT = 76  # do topo do painel ao topo da area da cena
+PANEL_PADDING = 18  # entre a borda do painel e a foto (lados e base)
+LABEL_ROW_HEIGHT = 76  # do topo do painel ao topo da foto
+PHOTO_RADIUS = 16  # cantos arredondados da foto
 BADGE_DIAMETER = 44
 BADGE_INSET_X = 20  # do lado esquerdo do painel ao selo
 BADGE_INSET_Y = 18  # do topo do painel ao selo
@@ -196,20 +193,9 @@ FOOTER_SILHOUETTE_INSET_Y = 14
 FOOTER_SILHOUETTE_WIDTH = 244
 FOOTER_SILHOUETTE_GAP = 32  # silhueta -> texto
 
-# Extracao das cenas
-ALPHA_THRESHOLD = 24  # alfa acima disto = primeiro plano (fundo transparente)
-TRANSPARENT_MIN_FRACTION = 0.10  # >= 10 % dos pixels transparentes = usar o alfa
-BACKGROUND_BORDER = 8  # faixa das bordas usada para estimar o fundo opaco
-COLOR_DISTANCE_LOW = 16  # distancia (maior diferenca por canal) <= isto = fundo
-COLOR_DISTANCE_HIGH = 48  # >= isto = primeiro plano; entre os dois, alfa suave
-NOISE_FILTER_SIZE = 3  # abertura morfologica: some com pontos isolados < 3 px
-# Faixa da altura onde procurar a linha mais vazia: a MESMA que o prompt pede
-# vazia entre as cenas (`exercise_card_prompt.SCENE_GAP_RANGE`, fonte unica).
-CUT_RANGE = SCENE_GAP_RANGE
-SCENE_PAD = 12  # folga em volta da caixa de cada cena (px da ilustracao)
-MAX_SCENE_SCALE = 1.5  # ampliar mais que isso borra a ilustracao
-MIN_ILLUSTRATION_SIDE = 256
-MAX_ILLUSTRATION_SIDE = 4096
+# Cenas (fotos da IA)
+MIN_SCENE_SIDE = 256  # menor lado aceito (px)
+MAX_SCENE_SIDE = 4096  # maior lado aceito (px)
 
 SUPERSAMPLE = 4  # formas (cantos, selos) desenhadas 4x maiores e reduzidas
 
@@ -325,19 +311,22 @@ class CardLayout:
     silhouette: Optional[Box]  # onde a silhueta do mapa corporal e encaixada
 
 
-def card_layout(has_muscles: bool, has_silhouette: Optional[bool] = None) -> CardLayout:
-    """Caixas do card. `has_silhouette` (padrao = `has_muscles`): reserva a
-    caixa da silhueta a esquerda do rodape; sem ela o texto ocupa o painel."""
+def card_layout_v3(has_muscles: bool, has_silhouette: Optional[bool] = None) -> CardLayout:
+    """Caixas do card V3. Altura dos paineis FIXA: o rodape e SEMPRE
+    reservado (`has_muscles=False` so deixa de desenha-lo). `has_silhouette`
+    (padrao = `has_muscles`): reserva a caixa da silhueta a esquerda do rodape;
+    sem ela o texto ocupa o painel."""
     if has_silhouette is None:
         has_silhouette = has_muscles
-    panels_bottom = CONTENT_BOTTOM - (FOOTER_HEIGHT + FOOTER_GAP if has_muscles else 0)
-    panel_height = (panels_bottom - CONTENT_TOP - PANEL_GAP) // 2
+    footer_box = Box(CONTENT_LEFT, CONTENT_BOTTOM - FOOTER_HEIGHT, CONTENT_RIGHT, CONTENT_BOTTOM)
+    panels_bottom = footer_box.top - FOOTER_GAP
+    panel_width = (CONTENT_RIGHT - CONTENT_LEFT - PANEL_GAP) // 2
     panels = []
     label_rows = []
     scenes = []
     for index in range(2):
-        top = CONTENT_TOP + index * (panel_height + PANEL_GAP)
-        panel = Box(CONTENT_LEFT, top, CONTENT_RIGHT, top + panel_height)
+        left = CONTENT_LEFT + index * (panel_width + PANEL_GAP)
+        panel = Box(left, CONTENT_TOP, left + panel_width, panels_bottom)
         panels.append(panel)
         label_rows.append(Box(panel.left, panel.top, panel.right, panel.top + LABEL_ROW_HEIGHT))
         scenes.append(
@@ -350,7 +339,7 @@ def card_layout(has_muscles: bool, has_silhouette: Optional[bool] = None) -> Car
         )
     footer = footer_text = silhouette = None
     if has_muscles:
-        footer = Box(CONTENT_LEFT, CONTENT_BOTTOM - FOOTER_HEIGHT, CONTENT_RIGHT, CONTENT_BOTTOM)
+        footer = footer_box
         text_left = footer.left + FOOTER_TEXT_PADDING_X
         if has_silhouette:
             left = footer.left + FOOTER_SILHOUETTE_INSET_X
@@ -382,175 +371,55 @@ def _round(value: float) -> int:
 
 
 # ===========================================================================
-# Extracao das cenas
+# Cenas (fotos)
 # ===========================================================================
 
 
-@dataclass(frozen=True)
-class ExtractedScenes:
-    """As duas cenas recortadas (RGBA, alfa = primeiro plano), a linha do
-    corte e as caixas na ilustracao original."""
+def scene_visible_width_fraction(src_w: int, src_h: int, box: Box) -> float:
+    """Fracao da LARGURA da foto que o cover mantem dentro de `box` (1.0 =
+    nenhuma lateral cortada). O cover usa a maior escala entre largura e
+    altura da caixa; se a foto e mais larga que a caixa, as laterais saem."""
+    if src_w <= 0 or src_h <= 0 or box.width <= 0 or box.height <= 0:
+        raise ValueError("Dimensoes invalidas.")
+    scale = max(box.width / src_w, box.height / src_h)
+    return min(1.0, box.width / (src_w * scale))
 
-    scenes: tuple[Image.Image, Image.Image]
-    boxes: tuple[Box, Box]
-    cut_y: int
-    transparent: bool
 
-
-def _load_illustration(data: bytes) -> Image.Image:
+def _load_scene(data: bytes, index: int) -> Image.Image:
+    """Foto da cena `index` (1/2) como RGB. Ilegivel, vazia, acima do limite
+    de bytes ou fora de `MIN_SCENE_SIDE`..`MAX_SCENE_SIDE` -> `invalid_scene`.
+    As dimensoes sao lidas do cabecalho ANTES de decodificar os pixels."""
     if not data:
-        raise CardCompositionError("Ilustracao vazia.", reason="invalid_illustration")
+        raise CardCompositionError(f"Cena {index} vazia.", reason="invalid_scene")
     if len(data) > processor.MAX_BYTES:
-        raise CardCompositionError(f"Ilustracao com {len(data)} bytes, acima do limite.", reason="invalid_illustration")
+        raise CardCompositionError(f"Cena {index} com {len(data)} bytes, acima do limite.", reason="invalid_scene")
     try:
         with Image.open(io.BytesIO(data)) as probe:
+            width, height = probe.size
+            if min(width, height) < MIN_SCENE_SIDE or max(width, height) > MAX_SCENE_SIDE:
+                raise CardCompositionError(
+                    f"Cena {index} {width}x{height} fora da faixa aceita.", reason="invalid_scene"
+                )
             probe.verify()
         image = Image.open(io.BytesIO(data))
         image.load()
+        return image.convert("RGB")
+    except CardCompositionError:
+        raise
     except Exception as exc:  # noqa: BLE001 - fronteira de parser: qualquer falha = arquivo ruim
-        raise CardCompositionError(
-            f"Ilustracao ilegivel: {type(exc).__name__}.", reason="invalid_illustration"
-        ) from exc
-    width, height = image.size
-    if min(width, height) < MIN_ILLUSTRATION_SIDE or max(width, height) > MAX_ILLUSTRATION_SIDE:
-        raise CardCompositionError(f"Ilustracao {width}x{height} fora da faixa aceita.", reason="invalid_illustration")
-    return image
+        raise CardCompositionError(f"Cena {index} ilegivel: {type(exc).__name__}.", reason="invalid_scene") from exc
 
 
-def _border_color(rgb: Image.Image) -> tuple[int, int, int]:
-    """Cor do fundo opaco: mediana, por canal, de uma faixa das 4 bordas."""
-    width, height = rgb.size
-    band = min(BACKGROUND_BORDER, width // 4, height // 4)
-    strips = [
-        rgb.crop((0, 0, width, band)),
-        rgb.crop((0, height - band, width, height)),
-        rgb.crop((0, band, band, height - band)),
-        rgb.crop((width - band, band, width, height - band)),
-    ]
-    color = []
-    for channel in range(3):
-        histogram = [0] * 256
-        for strip in strips:
-            for value, count in enumerate(strip.getchannel(channel).histogram()):
-                histogram[value] += count
-        half = (sum(histogram) + 1) // 2
-        running = 0
-        for value, count in enumerate(histogram):
-            running += count
-            if running >= half:
-                color.append(value)
-                break
-    return color[0], color[1], color[2]
-
-
-def _ramp_lut(low: int, high: int) -> list[int]:
-    return [0 if v <= low else 255 if v >= high else _round(255 * (v - low) / (high - low)) for v in range(256)]
-
-
-def _foreground(image: Image.Image) -> tuple[Image.Image, Image.Image, bool]:
-    """(ilustracao RGBA com alfa = primeiro plano suave, mascara binaria
-    limpa para medir, fundo_transparente?)."""
-    rgba = image.convert("RGBA")
-    alpha = rgba.getchannel("A")
-    histogram = alpha.histogram()
-    transparent_pixels = sum(histogram[: ALPHA_THRESHOLD + 1])
-    transparent = transparent_pixels >= TRANSPARENT_MIN_FRACTION * rgba.width * rgba.height
-    if transparent:
-        soft = alpha
-        binary = alpha.point([0 if v <= ALPHA_THRESHOLD else 255 for v in range(256)])
-    else:
-        rgb = rgba.convert("RGB")
-        background = Image.new("RGB", rgb.size, _border_color(rgb))
-        red, green, blue = ImageChops.difference(rgb, background).split()
-        distance = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-        soft = distance.point(_ramp_lut(COLOR_DISTANCE_LOW, COLOR_DISTANCE_HIGH))
-        if image.mode in ("RGBA", "LA", "PA"):
-            soft = ImageChops.multiply(soft, alpha)
-        threshold = (COLOR_DISTANCE_LOW + COLOR_DISTANCE_HIGH) // 2
-        binary = ImageChops.multiply(
-            distance.point([0 if v < threshold else 255 for v in range(256)]),
-            alpha.point([0 if v <= ALPHA_THRESHOLD else 255 for v in range(256)]),
-        )
-    cleaned = binary.filter(ImageFilter.MinFilter(NOISE_FILTER_SIZE)).filter(ImageFilter.MaxFilter(NOISE_FILTER_SIZE))
-    out = rgba.copy()
-    out.putalpha(soft)
-    return out, cleaned, transparent
-
-
-def _row_count(mask: Image.Image, y: int) -> int:
-    return mask.crop((0, y, mask.width, y + 1)).histogram()[255]
-
-
-def find_cut_row(mask: Image.Image) -> int:
-    """Linha mais vazia (menos pixels de primeiro plano) entre 40 % e 60 % da
-    altura. Empate: a sequencia mais longa de linhas com o minimo; empate de
-    novo, a mais perto do meio. Corta no centro da sequencia."""
-    height = mask.height
-    low = int(math.floor(height * CUT_RANGE[0]))
-    high = max(low + 1, int(math.ceil(height * CUT_RANGE[1])))
-    counts = [_row_count(mask, y) for y in range(low, high)]
-    minimum = min(counts)
-    runs: list[tuple[int, int]] = []
-    start: Optional[int] = None
-    for offset, count in enumerate(counts + [minimum + 1]):
-        if count == minimum and start is None:
-            start = offset
-        elif count != minimum and start is not None:
-            runs.append((low + start, low + offset))
-            start = None
-    middle = height / 2
-    best = min(runs, key=lambda run: (-(run[1] - run[0]), abs((run[0] + run[1]) / 2 - middle), run[0]))
-    return (best[0] + best[1]) // 2
-
-
-def extract_scenes(image: Image.Image) -> ExtractedScenes:
-    """Recorta a cena de cima (inicio) e a de baixo (movimento)."""
-    foreground, mask, transparent = _foreground(image)
-    width, height = foreground.size
-    cut = find_cut_row(mask)
-    halves = (Box(0, 0, width, cut), Box(0, cut, width, height))
-    boxes = []
-    for index, half in enumerate(halves, start=1):
-        found = mask.crop((half.left, half.top, half.right, half.bottom)).getbbox()
-        if not found:
-            raise CardCompositionError(
-                f"Nenhum primeiro plano detectavel na cena {index} da ilustracao.", reason="no_foreground"
-            )
-        left, top, right, bottom = found
-        boxes.append(
-            Box(
-                max(half.left, left - SCENE_PAD),
-                max(half.top, half.top + top - SCENE_PAD),
-                min(half.right, right + SCENE_PAD),
-                min(half.bottom, half.top + bottom + SCENE_PAD),
-            )
-        )
-    crops = tuple(foreground.crop((b.left, b.top, b.right, b.bottom)) for b in boxes)
-    return ExtractedScenes(scenes=(crops[0], crops[1]), boxes=(boxes[0], boxes[1]), cut_y=cut, transparent=transparent)
-
-
-@dataclass(frozen=True)
-class ScenePlacement:
-    box: Box  # onde a cena redimensionada fica no card
-    scale: float
-
-
-def plan_scenes(sizes: Sequence[tuple[int, int]], areas: Sequence[Box]) -> tuple[ScenePlacement, ...]:
-    """A MESMA escala para as duas cenas: a maior que faz as duas caberem nas
-    suas areas (limitada a `MAX_SCENE_SCALE`); cada uma centralizada."""
-    scale = min(
-        [MAX_SCENE_SCALE]
-        + [area.width / w for (w, _), area in zip(sizes, areas)]
-        + [area.height / h for (_, h), area in zip(sizes, areas)]
-    )
-    placements = []
-    for (w, h), area in zip(sizes, areas):
-        target_w = max(1, min(area.width, _round(w * scale)))
-        target_h = max(1, min(area.height, _round(h * scale)))
-        left = area.left + (area.width - target_w) // 2
-        top = area.top + (area.height - target_h) // 2
-        placements.append(ScenePlacement(box=Box(left, top, left + target_w, top + target_h), scale=scale))
-    return tuple(placements)
+def _cover(image: Image.Image, box: Box) -> Image.Image:
+    """Foto do tamanho exato de `box`: escala que cobre a caixa e corte
+    centralizado (sem borda vazia)."""
+    scale = max(box.width / image.width, box.height / image.height)
+    width = max(box.width, _round(image.width * scale))
+    height = max(box.height, _round(image.height * scale))
+    resized = image.resize((width, height), Image.Resampling.LANCZOS)
+    left = (width - box.width) // 2
+    top = (height - box.height) // 2
+    return resized.crop((left, top, left + box.width, top + box.height))
 
 
 # ===========================================================================
@@ -935,11 +804,13 @@ def _draw_silhouette(card: Image.Image, box: Box, styles, body_map_assets: bodym
     card.paste(figure.convert("RGB"), (left, top), figure.getchannel("A"))
 
 
-def _paste_scene(card: Image.Image, scene: Image.Image, placement: ScenePlacement) -> None:
-    target = (placement.box.width, placement.box.height)
-    # RGBA: o Pillow redimensiona com alfa pre-multiplicado (sem franja).
-    resized = scene if scene.size == target else scene.resize(target, Image.Resampling.LANCZOS)
-    card.paste(resized.convert("RGB"), (placement.box.left, placement.box.top), resized.getchannel("A"))
+def _paste_scene(card: Image.Image, photo: Image.Image, box: Box) -> None:
+    """Cola a foto (ja do tamanho de `box`) com os cantos arredondados."""
+
+    def shape(draw: ImageDraw.ImageDraw, k: int) -> None:
+        draw.rounded_rectangle((0, 0, box.width * k - 1, box.height * k - 1), radius=PHOTO_RADIUS * k, fill=255)
+
+    card.paste(photo, (box.left, box.top), _aa_mask((box.width, box.height), shape))
 
 
 def _encode_png(image: Image.Image) -> bytes:
@@ -949,21 +820,22 @@ def _encode_png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def compose_card(illustration_png: bytes, content: CardContent, assets: CardAssets) -> bytes:
-    """Card final (PNG RGB 1024x1536, sem metadados). Erros:
-    `CardCompositionError` (nunca outra excecao do Pillow)."""
+def compose_card_v3(scene_start_png: bytes, scene_end_png: bytes, content: CardContent, assets: CardAssets) -> bytes:
+    """Card final (PNG RGB 1024x1536, sem metadados) com a cena 1 (posicao
+    inicial) a esquerda e a cena 2 (movimento) a direita. Erros:
+    `CardCompositionError` com `reason` em `empty_title`, `invalid_scene`,
+    `assets_missing` ou `processing` (nunca outra excecao do Pillow)."""
     if not str(content.title or "").strip():
         raise CardCompositionError("Titulo vazio.", reason="empty_title")
-    illustration = _load_illustration(illustration_png)
+    scenes = (_load_scene(scene_start_png, 1), _load_scene(scene_end_png, 2))
     try:
-        extracted = extract_scenes(illustration)
         has_muscles = bool(content.primary_muscles or content.secondary_muscles)
         styles: dict[str, bodymap.RegionStyle] = {}
         body_map_assets: Optional[bodymap.BodyMapAssets] = None
         if has_muscles and (content.primary_slugs or content.secondary_slugs):
             body_map_assets = assets.body_map or _load_body_map()
             styles = bodymap.resolve_styles(silhouette_styles(content), body_map_assets)
-        layout = card_layout(has_muscles, has_silhouette=bool(styles))
+        layout = card_layout_v3(has_muscles, has_silhouette=bool(styles))
         title = layout_title(content.title, assets.oswald_bold, TITLE_BOX)
 
         card = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), COLOR_BACKGROUND)
@@ -971,9 +843,8 @@ def compose_card(illustration_png: bytes, content: CardContent, assets: CardAsse
         draw.rectangle((CONTENT_LEFT, DIVIDER_Y, CONTENT_RIGHT - 1, DIVIDER_Y + DIVIDER_THICKNESS - 1), fill=COLOR_BORDER)
         for panel in layout.panels:
             _draw_panel(card, panel)
-        placements = plan_scenes([scene.size for scene in extracted.scenes], layout.scenes)
-        for scene, placement in zip(extracted.scenes, placements):
-            _paste_scene(card, scene, placement)
+        for scene, box in zip(scenes, layout.scenes):
+            _paste_scene(card, _cover(scene, box), box)
         for number, (row, text) in enumerate(zip(layout.label_rows, PANEL_LABELS), start=1):
             _draw_label(card, draw, row, number, text, assets)
         _draw_title(draw, title, assets)

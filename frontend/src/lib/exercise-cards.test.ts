@@ -8,6 +8,9 @@ import {
   EXERCISE_CARD_POLL_INTERVAL_MS,
   EXERCISE_CARD_PREVIEW_REFRESH_MS,
   ExerciseCardApiError,
+  EXERCISE_CARD_SLOW_AFTER_SECONDS,
+  EXERCISE_CARD_TYPICAL_SECONDS,
+  exerciseCardReferencesApi,
   exerciseCardsFeatureEnabled,
   formatCostUsd,
   formatElapsed,
@@ -19,11 +22,13 @@ import {
   isLiveStatus,
   newIdempotencyKey,
   parentForNewGeneration,
+  referenceAcceptAttribute,
+  referenceResizeOptions,
   rejectReasonLabel,
   toExerciseCardError,
   totalCostUsd,
 } from './exercise-cards';
-import { EXERCISE_CARD_CONTRACT } from './exercise-cards-fixtures';
+import { EXERCISE_CARD_CONTRACT, EXERCISE_CARD_REFERENCES_CONTRACT } from './exercise-cards-fixtures';
 import type { ExerciseCardGeneration } from './exercise-cards-types';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -157,6 +162,15 @@ const BACKEND_API_CODES: Array<[string, number]> = [
   ['s3_read_failed', 502],
   ['exercise_card_dispatch_failed', 502],
   ['DRAFT_EXPIRED', 410],
+  ['reference_invalid_encoding', 400],
+  ['reference_unsupported_type', 400],
+  ['reference_too_large', 400],
+  ['reference_too_small', 400],
+  ['reference_too_many_pixels', 400],
+  ['reference_note_too_long', 422],
+  ['exercise_card_reference_not_found', 404],
+  ['exercise_card_reference_limit', 409],
+  ['exercise_card_reference_storage_failed', 502],
 ];
 
 /** `error_code` que o backend grava na geração (worker, storage, processador, sweep). */
@@ -176,6 +190,7 @@ const BACKEND_FAILURE_CODES = [
   'S3_READ_FAILED',
   'IMAGE_PROCESSING_FAILED',
   'DRAFT_EXPIRED',
+  'TIME_BUDGET_EXCEEDED',
 ];
 
 describe('mensagens por código de erro', () => {
@@ -351,5 +366,73 @@ describe('helpers', () => {
     expect(exerciseCardsFeatureEnabled({ features: { exercise_cards: false } })).toBe(false);
     expect(exerciseCardsFeatureEnabled({})).toBe(false);
     expect(exerciseCardsFeatureEnabled(undefined)).toBe(false);
+  });
+});
+
+describe('fotos de referência (cliente)', () => {
+  const limits = EXERCISE_CARD_REFERENCES_CONTRACT.list_response.limits;
+
+  function stubFetch(response: Response) {
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('contrato: limites e Ref com os campos que o front usa', () => {
+    expect(Object.keys(limits).sort()).toEqual(
+      ['accepted_types', 'max_active', 'max_upload_bytes', 'note_max_chars', 'resize_jpeg_quality_percent', 'resize_max_edge_px'],
+    );
+    const [first, second] = EXERCISE_CARD_REFERENCES_CONTRACT.list_response.items;
+    expect(Object.keys(first).sort()).toEqual(
+      ['bytes', 'created_at', 'height', 'id', 'note', 'url', 'url_expires_at', 'width'],
+    );
+    expect(second.url).toBeNull();
+  });
+
+  it('opções de redução e accept saem dos limites, sem número no front', () => {
+    expect(referenceResizeOptions(limits)).toEqual({
+      maxEdge: limits.resize_max_edge_px,
+      quality: limits.resize_jpeg_quality_percent / 100,
+      contentType: 'image/jpeg',
+    });
+    expect(referenceAcceptAttribute(limits.accepted_types)).toBe(limits.accepted_types.join(','));
+    expect(referenceAcceptAttribute(undefined)).toBeUndefined();
+    expect(referenceAcceptAttribute([])).toBeUndefined();
+  });
+
+  it('list/create/remove chamam as rotas certas', async () => {
+    const list = stubFetch(new Response(JSON.stringify(EXERCISE_CARD_REFERENCES_CONTRACT.list_response), { status: 200 }));
+    const listed = await exerciseCardReferencesApi.list(5);
+    expect(listed.items).toHaveLength(2);
+    expect(String(list.mock.calls[0][0])).toMatch(/\/exercises\/5\/card-references$/);
+
+    const create = stubFetch(new Response(JSON.stringify(EXERCISE_CARD_REFERENCES_CONTRACT.create_response), { status: 201 }));
+    await exerciseCardReferencesApi.create(5, { image_base64: 'QUJD', note: null });
+    expect(create.mock.calls[0][1]).toMatchObject({ method: 'POST', body: JSON.stringify({ image_base64: 'QUJD', note: null }) });
+
+    const remove = stubFetch(new Response(null, { status: 204 }));
+    await exerciseCardReferencesApi.remove(5, 7);
+    expect(String(remove.mock.calls[0][0])).toMatch(/\/exercises\/5\/card-references\/7$/);
+    expect(remove.mock.calls[0][1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('erro 409 e 400 do backend viram a mensagem em PT', async () => {
+    stubFetch(
+      new Response(JSON.stringify({ detail: { error: 'exercise_card_reference_limit', message: 'x' } }), { status: 409 }),
+    );
+    await expect(exerciseCardReferencesApi.create(5, { image_base64: 'QUJD', note: null })).rejects.toThrow(
+      EXERCISE_CARD_API_ERROR_MESSAGES.exercise_card_reference_limit,
+    );
+    stubFetch(
+      new Response(JSON.stringify({ detail: { error: 'reference_unsupported_type', message: 'x' } }), { status: 400 }),
+    );
+    await expect(exerciseCardReferencesApi.create(5, { image_base64: 'QUJD', note: null })).rejects.toThrow(
+      EXERCISE_CARD_API_ERROR_MESSAGES.reference_unsupported_type,
+    );
+  });
+
+  it('dica de espera cobre duas chamadas e o lento vem depois do típico', () => {
+    expect(EXERCISE_CARD_SLOW_AFTER_SECONDS).toBeGreaterThan(EXERCISE_CARD_TYPICAL_SECONDS);
+    expect(EXERCISE_CARD_FAILURE_MESSAGES.TIME_BUDGET_EXCEEDED).toBe('A geração passou do tempo limite; tente novamente.');
   });
 });

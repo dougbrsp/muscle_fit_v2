@@ -8,6 +8,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, Sequence
@@ -17,6 +18,7 @@ from .observability import log_event
 
 _RESPONSES_URL = "https://api.openai.com/v1/responses"
 _IMAGES_URL = "https://api.openai.com/v1/images/generations"
+_IMAGE_EDITS_URL = "https://api.openai.com/v1/images/edits"
 
 # Classificacao do erro (secao 56 da especificacao dos cards ilustrados). E o
 # `error_code` gravado na geracao e o que decide se vale tentar de novo.
@@ -947,33 +949,47 @@ def _as_int(value) -> Optional[int]:
 
 
 # ---------------------------------------------------------------------------
-# Imagens (cards ilustrados de exercicios) - POST /v1/images/generations
+# Imagens (cards de exercicios) - POST /v1/images/generations e /v1/images/edits
 # ---------------------------------------------------------------------------
 #
 # Irma de `call_openai`: mesmo `urllib`, mesma chave, sem SDK. Quem chama e o
-# worker assincrono da Lambda `musclefit-plan-generator` (timeout 180 s), nunca
-# a api-core (API Gateway corta em 29 s e a OpenAI documenta "ate 2 minutos").
+# worker assincrono da Lambda `musclefit-plan-generator`, nunca a api-core
+# (API Gateway corta em 29 s). Sem imagens de referencia -> `generations`
+# (JSON); com referencias -> `edits` (multipart/form-data montado aqui).
 #
-# Nada aqui loga o prompt nem a chave.
+# Referencia oficial (lida em 2026-11-06):
+#   https://developers.openai.com/api/reference/resources/images/methods/edit
+#   https://developers.openai.com/api/reference/resources/images/methods/generate
+#   https://developers.openai.com/api/docs/guides/image-generation
+#   https://developers.openai.com/api/docs/pricing
+#
+# Nada aqui loga o prompt, o corpo multipart nem a chave.
 
-# Defaults = contrato de envs do PR1 (infra/lambda_*.tf, docker-compose.yml).
-DEFAULT_IMAGE_MODEL = "gpt-image-1.5"
-DEFAULT_IMAGE_QUALITY = "medium"
+# Defaults = contrato de envs (infra/lambda_*.tf, docker-compose.yml, .env.example).
+DEFAULT_IMAGE_MODEL = "gpt-image-2.5-sunburst"
+DEFAULT_IMAGE_QUALITY = "high"
 DEFAULT_IMAGE_SIZE = "1024x1536"
 DEFAULT_IMAGE_TIMEOUT_SECONDS = 150.0
 
+# Limite de imagens de entrada do edits: "For GPT image models, you can
+# provide up to 16 images" (referencia oficial do edits, `maxItems 16`).
+IMAGE_MAX_REFERENCE_IMAGES = 16
+
 # Retry SO em 429/5xx, SO enquanto o tempo decorrido desde a 1a tentativa for
 # menor que esta janela, e NUNCA depois de timeout - cada tentativa que chega
-# a gerar e cobrada. Orcamento: a ultima tentativa comeca antes de
-# 20 s + 2 s de espera e dura no maximo o timeout (150 s) -> < 172 s, abaixo
-# dos 180 s da Lambda, que entao sempre consegue gravar a falha.
+# a gerar e cobrada. Pior caso de UMA chamada: `image_call_worst_case_seconds`.
 IMAGE_RETRY_WINDOW_SECONDS = 20.0
 IMAGE_MAX_ATTEMPTS = 3
 IMAGE_RETRY_BACKOFF_SECONDS = (1.0, 2.0)
 
-# Preco por imagem em USD, por (modelo, qualidade, tamanho) - tabela publica
-# da OpenAI verificada em 2026-10-03 (Anexo A do plano dos cards). Combinacao
-# fora da tabela -> custo desconhecido (None), nunca um chute.
+# Endpoints, como gravados em `ImageResult.endpoint`.
+IMAGE_ENDPOINT_GENERATIONS = "generations"
+IMAGE_ENDPOINT_EDITS = "edits"
+
+# Preco POR IMAGEM em USD, por (modelo, qualidade, tamanho): tabela "Historical
+# output costs" do guia oficial (image-generation, acima), que vale para os
+# modelos anteriores ao gpt-image-2. So a saida; tokens de entrada nao entram.
+# Combinacao fora da tabela -> custo desconhecido (None), nunca um chute.
 IMAGE_PRICES_USD: dict[tuple[str, str, str], Decimal] = {
     ("gpt-image-1.5", "low", "1024x1536"): Decimal("0.013"),
     ("gpt-image-1.5", "medium", "1024x1536"): Decimal("0.05"),
@@ -983,8 +999,32 @@ IMAGE_PRICES_USD: dict[tuple[str, str, str], Decimal] = {
     ("gpt-image-1-mini", "high", "1024x1536"): Decimal("0.052"),
 }
 
-# `background` aceito por `generate_image` (parametro da OpenAI Images; o
-# transparente exige PNG/WebP - aqui e sempre PNG).
+
+@dataclass(frozen=True)
+class ImageTokenPrices:
+    """USD por 1M de tokens. O preco de cache NAO se aplica a `/v1/images/*`
+    (guia oficial, "Cached input pricing")."""
+
+    text_input: Decimal
+    image_input: Decimal
+    image_output: Decimal
+
+
+# GPT Image 2.5 e cobrado POR TOKEN, sem preco fixo por imagem (o guia avisa
+# que o consumo de tokens varia por modelo e qualidade): pagina oficial de
+# precos e secao "GPT Image 2.5 costs" do guia - texto de entrada US$ 5,
+# imagem de entrada US$ 8, imagem de saida US$ 30 por 1M. O custo sai do
+# `usage` da resposta: entrada de texto + entrada de imagem (inclui as
+# referencias) + saida.
+IMAGE_TOKEN_PRICES_USD_PER_MILLION: dict[str, ImageTokenPrices] = {
+    "gpt-image-2.5-sunburst": ImageTokenPrices(Decimal("5.00"), Decimal("8.00"), Decimal("30.00")),
+    "gpt-image-2.5-flare": ImageTokenPrices(Decimal("5.00"), Decimal("8.00"), Decimal("30.00")),
+}
+_TOKENS_PER_MILLION = Decimal(1_000_000)
+_COST_QUANTUM = Decimal("0.000001")
+
+# `background` aceito por `generate_image`. A referencia oficial do edits
+# confirma `opaque`/`transparent` para gpt-image-2.5-sunburst/-flare.
 IMAGE_BACKGROUNDS = ("transparent", "opaque", "auto")
 
 # Pontos de injecao para os testes (relogio e espera sem dormir de verdade).
@@ -1014,6 +1054,7 @@ class ImageResult:
     cost_usd: Optional[Decimal]
     attempts: int
     elapsed_seconds: float
+    endpoint: str = IMAGE_ENDPOINT_GENERATIONS
 
 
 def _env_text(name: str, default: str) -> str:
@@ -1035,7 +1076,52 @@ def image_settings() -> ImageSettings:
     )
 
 
-def image_cost_usd(model: str, quality: str, size: str) -> Optional[Decimal]:
+def image_call_worst_case_seconds(timeout: float) -> float:
+    """Pior caso de UMA chamada de `generate_image`: a ultima tentativa comeca
+    antes do fim da janela de retry + toda a espera e dura no maximo `timeout`."""
+    return IMAGE_RETRY_WINDOW_SECONDS + sum(IMAGE_RETRY_BACKOFF_SECONDS) + float(timeout)
+
+
+def _token_count(details: object, key: str) -> Optional[int]:
+    return _as_int(details.get(key)) if isinstance(details, dict) else None
+
+
+def _token_cost(prices: ImageTokenPrices, usage: dict, *, has_input_images: bool) -> Optional[Decimal]:
+    output = _token_count(usage.get("output_tokens_details"), "image_tokens")
+    if output is None:
+        output = _as_int(usage.get("output_tokens"))
+    details = usage.get("input_tokens_details")
+    text_in = _token_count(details, "text_tokens")
+    image_in = _token_count(details, "image_tokens")
+    if text_in is None and image_in is None:
+        # Sem o detalhamento so da para separar quando nao houve imagem de entrada.
+        if has_input_images:
+            return None
+        text_in, image_in = _as_int(usage.get("input_tokens")), 0
+    if output is None or text_in is None:
+        return None
+    total = (
+        Decimal(text_in) * prices.text_input
+        + Decimal(image_in or 0) * prices.image_input
+        + Decimal(output) * prices.image_output
+    ) / _TOKENS_PER_MILLION
+    return total.quantize(_COST_QUANTUM)
+
+
+def image_cost_usd(
+    model: str,
+    quality: str,
+    size: str,
+    usage: Optional[dict] = None,
+    *,
+    has_input_images: bool = False,
+) -> Optional[Decimal]:
+    """Custo de UMA imagem gerada. Modelo cobrado por token (GPT Image 2.5):
+    calculado do `usage` da resposta (None se ele faltar ou vier incompleto).
+    Demais: tabela por imagem. Fora das duas -> None, nunca um chute."""
+    prices = IMAGE_TOKEN_PRICES_USD_PER_MILLION.get(model)
+    if prices is not None:
+        return _token_cost(prices, usage or {}, has_input_images=has_input_images)
     return IMAGE_PRICES_USD.get((model, quality, size))
 
 
@@ -1057,16 +1143,25 @@ def _http_error_detail(exc: urllib.error.HTTPError) -> str:
     return detail[:300]
 
 
-def _post_image(body: dict, timeout: float) -> dict:
-    """UMA tentativa. Toda falha sai como `OpenAIGenerationError` ja
-    classificada (`status`/`code`)."""
+def _post_image(url: str, data: bytes, content_type: str, timeout: float) -> dict:
+    """UMA tentativa em `generations` (JSON) ou `edits` (multipart). Toda
+    falha sai como `OpenAIGenerationError` ja classificada (`status`/`code`);
+    o diagnostico nunca carrega o corpo enviado.
+
+    `timeout` e o do socket do `urllib`: vale POR OPERACAO (conectar, cada
+    leitura), nao como prazo total da chamada. A resposta das Images chega
+    num bloco so depois da geracao (sem streaming), entao na pratica e a
+    espera pela resposta; um servidor que pingasse bytes devagar passaria
+    dele. O teto real e o timeout da Lambda (420 s) e o orcamento do job
+    (`exercise_card_jobs.JOB_TIME_BUDGET_SECONDS`), que mede o tempo de
+    verdade antes de comecar a 2a chamada."""
     request = urllib.request.Request(
-        _IMAGES_URL,
-        data=json.dumps(body).encode("utf-8"),
+        url,
+        data=data,
         method="POST",
         headers={
             "Authorization": f"Bearer {_api_key()}",
-            "Content-Type": "application/json",
+            "Content-Type": content_type,
         },
     )
     try:
@@ -1107,6 +1202,51 @@ def _post_image(body: dict, timeout: float) -> dict:
     return data
 
 
+# Formatos de imagem de entrada aceitos no edits, pela ASSINATURA dos bytes:
+# (content-type, extensao do filename). A referencia oficial aceita PNG, JPEG e
+# WebP; o worker manda a cena 1 em JPEG e as fotos do admin ja vem em JPEG.
+def _image_part_type(image: bytes) -> Optional[tuple[str, str]]:
+    head = bytes(image[:12])
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
+
+def _multipart_body(fields: dict, images: Sequence[bytes]) -> tuple[bytes, str]:
+    """Corpo `multipart/form-data` do edits: campos de texto + cada imagem como
+    `image[]` (formato do exemplo oficial `-F "image[]=@arquivo.png"`) com o
+    content-type da propria assinatura, CRLF explicito. Devolve (corpo,
+    content-type com o boundary). O chamador ja validou os formatos."""
+    boundary = f"musclefit-{uuid.uuid4().hex}"
+    dash = f"--{boundary}".encode("ascii")
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(
+            dash
+            + b"\r\n"
+            + f'Content-Disposition: form-data; name="{name}"'.encode("ascii")
+            + b"\r\n\r\n"
+            + str(value).encode("utf-8")
+            + b"\r\n"
+        )
+    for index, image in enumerate(images):
+        content_type, extension = _image_part_type(image) or ("image/png", "png")
+        parts.append(
+            dash
+            + b"\r\n"
+            + f'Content-Disposition: form-data; name="image[]"; filename="ref{index}.{extension}"'.encode("ascii")
+            + f"\r\nContent-Type: {content_type}\r\n\r\n".encode("ascii")
+            + bytes(image)
+            + b"\r\n"
+        )
+    body = b"".join(parts) + dash + b"--\r\n"
+    return body, f"multipart/form-data; boundary={boundary}"
+
+
 def _decode_image(data: dict) -> bytes:
     items = data.get("data")
     first = items[0] if isinstance(items, list) and items else None
@@ -1135,16 +1275,21 @@ def generate_image(
     timeout: Optional[float] = None,
     moderation: Optional[str] = None,
     background: Optional[str] = None,
+    reference_images: Sequence[bytes] = (),
 ) -> ImageResult:
     """Gera UMA imagem PNG (`n=1`, `output_format="png"`).
 
+    Sem `reference_images` -> `POST /v1/images/generations` (JSON). Com elas
+    (1..`IMAGE_MAX_REFERENCE_IMAGES` PNGs) -> `POST /v1/images/edits`
+    (multipart, cada uma em `image[]`, na ordem dada). Mesmas regras de
+    retry/timeout/classificacao nos dois.
+
     Parametros omitidos vem de `image_settings()` (envs `OPENAI_IMAGE_*`).
-    NAO envia `response_format`: os modelos gpt-image sempre devolvem
-    `b64_json` e recusam esse parametro com 400. `moderation` so vai no corpo
-    quando informado (`"auto"`/`"low"`); `background` tambem
-    (`"transparent"`/`"opaque"`/`"auto"` - os cards pedem `"transparent"`,
-    ver `exercise_card_jobs.ILLUSTRATION_BACKGROUND`). Valor fora da lista
-    nem chama a API (`OPENAI_INVALID_REQUEST`).
+    NAO envia `response_format` (os modelos gpt-image sempre devolvem
+    `b64_json`) nem `input_fidelity` (a referencia oficial manda omiti-lo a
+    partir do gpt-image-2). `moderation` (`"auto"`/`"low"`) e `background`
+    (`"transparent"`/`"opaque"`/`"auto"`) so vao quando informados. Entrada
+    invalida nem chama a API (`OPENAI_INVALID_REQUEST`).
 
     Erros: `OpenAIGenerationError` com `code` em `OPENAI_TIMEOUT`,
     `OPENAI_RATE_LIMIT`, `OPENAI_INVALID_REQUEST` ou
@@ -1156,13 +1301,25 @@ def generate_image(
         raise OpenAIGenerationError(
             f"background invalido: {background!r} (use {', '.join(IMAGE_BACKGROUNDS)}).", code=OPENAI_INVALID_REQUEST
         )
+    references = list(reference_images or ())
+    if len(references) > IMAGE_MAX_REFERENCE_IMAGES:
+        raise OpenAIGenerationError(
+            f"Imagens de referencia demais: {len(references)} (maximo {IMAGE_MAX_REFERENCE_IMAGES}).",
+            code=OPENAI_INVALID_REQUEST,
+        )
+    if any(not isinstance(item, (bytes, bytearray)) or not item for item in references):
+        raise OpenAIGenerationError("Imagem de referencia vazia ou invalida.", code=OPENAI_INVALID_REQUEST)
+    if any(_image_part_type(item) is None for item in references):
+        raise OpenAIGenerationError(
+            "Imagem de referencia fora de PNG/JPEG/WebP.", code=OPENAI_INVALID_REQUEST
+        )
     settings = image_settings()
     chosen_model = model or settings.model
     chosen_quality = quality or settings.quality
     chosen_size = size or settings.size
     chosen_timeout = float(timeout) if timeout else settings.timeout_seconds
 
-    body: dict = {
+    fields: dict = {
         "model": chosen_model,
         "prompt": prompt,
         "size": chosen_size,
@@ -1171,33 +1328,45 @@ def generate_image(
         "output_format": "png",
     }
     if moderation:
-        body["moderation"] = moderation
+        fields["moderation"] = moderation
     if background:
-        body["background"] = background
+        fields["background"] = background
+    if references:
+        endpoint = IMAGE_ENDPOINT_EDITS
+        url = _IMAGE_EDITS_URL
+        data, content_type = _multipart_body(fields, references)
+    else:
+        endpoint = IMAGE_ENDPOINT_GENERATIONS
+        url = _IMAGES_URL
+        data, content_type = json.dumps(fields).encode("utf-8"), "application/json"
 
     started = _monotonic()
     attempt = 0
     while True:
         attempt += 1
         try:
-            data = _post_image(body, chosen_timeout)
+            response = _post_image(url, data, content_type, chosen_timeout)
             break
         except OpenAIGenerationError as exc:
             elapsed = _monotonic() - started
             will_retry = exc.retryable and attempt < IMAGE_MAX_ATTEMPTS and elapsed < IMAGE_RETRY_WINDOW_SECONDS
-            log_failure(exc, feature="exercise_card", model=chosen_model, attempt=attempt, will_retry=will_retry)
+            log_failure(
+                exc, feature="exercise_card", model=chosen_model, endpoint=endpoint, attempt=attempt,
+                will_retry=will_retry,
+            )
             if not will_retry:
                 raise
             _sleep(IMAGE_RETRY_BACKOFF_SECONDS[min(attempt, len(IMAGE_RETRY_BACKOFF_SECONDS)) - 1])
 
     try:
-        image = _decode_image(data)
+        image = _decode_image(response)
     except OpenAIGenerationError as exc:
-        log_failure(exc, feature="exercise_card", model=chosen_model, attempt=attempt, will_retry=False)
+        log_failure(exc, feature="exercise_card", model=chosen_model, endpoint=endpoint, attempt=attempt,
+                    will_retry=False)
         raise
-    effective_quality = str(data.get("quality") or chosen_quality)
-    effective_size = str(data.get("size") or chosen_size)
-    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    effective_quality = str(response.get("quality") or chosen_quality)
+    effective_size = str(response.get("size") or chosen_size)
+    usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
     return ImageResult(
         image=image,
         model=chosen_model,
@@ -1205,7 +1374,10 @@ def generate_image(
         size=effective_size,
         tokens_in=_as_int(usage.get("input_tokens")),
         tokens_out=_as_int(usage.get("output_tokens")),
-        cost_usd=image_cost_usd(chosen_model, effective_quality, effective_size),
+        cost_usd=image_cost_usd(
+            chosen_model, effective_quality, effective_size, usage, has_input_images=bool(references)
+        ),
         attempts=attempt,
         elapsed_seconds=round(_monotonic() - started, 3),
+        endpoint=endpoint,
     )

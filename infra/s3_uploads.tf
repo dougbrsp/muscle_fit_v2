@@ -87,9 +87,18 @@ resource "aws_iam_role_policy" "musclefit_api_core_cloudfront_invalidation" {
 
 # M69 - rascunhos de card ilustrado expiram em 7 dias.
 #
-# `exercise-card-drafts/<generation_id>/` guarda `illustration.png` (crua da
-# OpenAI) e `preview.png` (card composto, o que o admin revisa), ~2-3 MB cada,
-# gravados por api/app/exercise_card_jobs.py. A aprovacao NAO depende do
+# `exercise-card-drafts/<generation_id>/` guarda `scene1.png` e `scene2.png`
+# (as duas cenas cruas da OpenAI) e `preview.png` (card composto lado a lado,
+# o que o admin revisa), ~2-3 MB cada, gravados por
+# api/app/exercise_card_jobs.py.
+#
+# O prefixo `exercise-card-references/<exercise_id>/<ref_id>.jpg` guarda as
+# fotos de referencia enviadas pelo admin (o worker so le, ver
+# ExerciseCardReferencesRead em infra/lambda_ai_generators.tf). NAO tem regra
+# de lifecycle (nao expira, ao contrario dos rascunhos) e fica fora da CDN
+# (o behavior publico so serve exercise-cards/*).
+#
+# A aprovacao NAO depende do
 # rascunho depois de publicar: ela le o `preview.png`, recodifica e grava uma
 # copia imutavel em `exercise-cards/<exercise_id>/v<n>/` (fora deste prefixo,
 # nunca expira). Rascunho com mais de 7 dias ainda nao aprovado vira

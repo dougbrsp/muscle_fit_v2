@@ -2,7 +2,7 @@
 
 Gera, **uma vez e offline**, a arte do mapa corporal (frente + costas) e as
 regiões por slug que o app usa para destacar músculos de forma determinística:
-rodapé do card ilustrado (`CARD_LAYOUT_V2`), `GET /workout-plans/{id}/muscle-map.png`
+rodapé do card ilustrado (`CARD_LAYOUT_V3_PHOTO`), `GET /workout-plans/{id}/muscle-map.png`
 e a web (`frontend/public/bodymap/v1/regions.json`). Em tempo de execução nada
 daqui roda: o backend compõe só com o Pillow (`api/app/body_map_render.py`).
 

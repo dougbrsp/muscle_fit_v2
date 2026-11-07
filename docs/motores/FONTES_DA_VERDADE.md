@@ -2430,10 +2430,13 @@ leituras de banco:**
   avaliação.
 
 **Margem na Lambda:**
-- Orçamento: a Lambda de IA tem 180 s (`infra/lambda_ai_generators.tf`). A OpenAI podia consumir
+- Orçamento: a Lambda de IA tem 420 s (`infra/lambda_ai_generators.tf`, desde os cards V3). A OpenAI podia consumir
   até 90 s (o antigo `core.OPENAI_TIMEOUT_SECONDS`), então sobravam ~90 s para validar. A Lambda é a `plan-generator`, que roda a Periodização.
-  Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`) e sobram 30 s
-  (`core.LAMBDA_RESERVED_SECONDS`) para contexto, validação e log.
+  Desde 2026-10-31 (§76) a chamada pode consumir até 150 s (`core.LLM_TIMEOUT_SECONDS`, constante presa
+  `PERIODIZATION_LLM_TIMEOUT_SECONDS`, independente do timeout da Lambda, que é 420 s desde os cards V3) e a folga de
+  30 s (`core.LAMBDA_RESERVED_SECONDS`) cobre contexto, validação e log.
+  Consequência da Lambda maior: o encolhimento da chamada por contexto lento (`core.llm_timeout_for`) passa a agir só
+  com contexto acima de 255 s (antes, acima de 15 s). O teto da LLM segue inalterado em 150 s.
 - Pior resposta medida: 2,18 s, cerca de 41x abaixo daqueles 90 s e 14x abaixo dos 30 s de hoje.
 - Mesmo somando o pior caso do corte (+1,6 s), o validador fica abaixo de 4 s.
 - Risco residual, não tratado aqui: o acréscimo tem `MAX_STEPS` = 500 passos aceitos, mas não tem
@@ -3793,7 +3796,7 @@ ganhou `label_photo` (`max_bytes`, `content_type`, `resize_max_edge_px`, `resize
   chave `ai_usage.LABEL_PHOTO_JOB_TYPE`): chave do próprio usuário (senão `label_photo_key_invalid`, sem ler o S3) →
   foto (`label_photo_not_found` quando o objeto não existe; em produção a role do worker não tem `s3:ListBucket`, então
   o S3 responde 403 e o código fica `label_photo_storage_failed` — o job lê a foto segundos depois do upload, e o caso
-  não ocorre no fluxo normal) → `nutrition_label_ai.read_label` (uma chamada, timeout de 90 s < 180 s da Lambda,
+  não ocorre no fluxo normal) → `nutrition_label_ai.read_label` (uma chamada, timeout de 90 s < 420 s da Lambda,
   paridade) → Pydantic → `review_reading` → `job_result` (`food` pré-preenchido na escala de `PREFILL_DECIMALS`,
   `per_serving`, `errors`, `warnings` com o texto do dono, `ai_notes`, `atwater`, `label_check`; ~3 KB no DynamoDB).
   `finish_usage` em TODOS os caminhos: sucesso (modelo e tokens), falha da OpenAI (código `OPENAI_*`), forma inválida
@@ -6190,15 +6193,15 @@ todo número vem do dono pela tabela de valores. A prosa gerada pelos motores (p
 | Consumidor | Template(s) (`api/privado/prompts/`) | Valores (código público) |
 |---|---|---|
 | `exercise_set_evaluation_ai.py` | `set_evaluation/set-eval-v8.md` + 31 fragmentos: séries anteriores e sinais vazios, `.anotacao`, decisão do motor (`.motor`, `.motor_sessao`, `.motor_sem_decisao`, `.nenhuma_decisao`, `.motor_limite`, `.motor_sem_limite`, `.passo`), status (`.status`, `.status_sem_alvo`, `.status_explicar`, `.evento`, `.evento_alerta`, `.evento_informativo`), próxima série (`.proxima_serie`, `.proxima_serie_sem_passo`, `.proxima_serie_uso_carga`, `.proxima_serie_uso_sem_carga`, `.rampa`), `.dor_alta`, regra crítica (`.regra_intensidade`, `.regra_intensidade_proxima_serie`, `.ultima_serie_*`, `.falha_permitida`, `.falha_negada_par`) e escopo (`.escopo_motor`, `.escopo_proxima_serie`). Versão = `PROMPT_VERSION` (`set-eval-v8`, inalterada) | `MUSCLE_PAIN_BLOCK_ABOVE` (motor de recuperação), `FAILURE_RPE` e o teto composto (`training_safety`), `next_set_load` (`describe_*`, `reason_label`, carga e passo), `set_evaluation_categories` (códigos, rótulos, `category_rule_text`), `intensity_status_labels`, `format_kg`/`format_decision`, `goal_prompt_context`, `user_data_rule` |
-| `exercise_card_prompt.py` | `exercise_card/exercise-card-v2.*`: um fragmento por bloco (`.intro`, `.formato`, `.cenas`, `.referencia`, `.biomecanica`, `.estilo`, `.evitar`, `.revisao`, `.verificacao_final`) e as linhas de ramo da referência e da revisão (nome em inglês, outros nomes, equipamento ausente/um/alternativas e a regra, carga por convenção `.carga_<convenção>`, lado único, passos, tags, motivo, pedido, fecho) | `BRAND_COLORS` (cores), `BLOCK_*` (títulos), `ILLUSTRATION_ASPECT_RATIO`, `SCENE_GAP_RANGE` e `SCENE_EDGE_MARGIN` (forma da ilustração; o compositor passou a ler `CUT_RANGE = SCENE_GAP_RANGE`, o mesmo `(0.40, 0.60)`), os tetos `MAX_*` e `MAX_PROMPT_CHARS` |
+| `exercise_card_prompt.py` | `exercise_card/exercise-card-v3.*` (34 partes): um fragmento por bloco (`.intro`, `.formato`, `.cena_inicial`, `.cena_final`, `.posicao_inicial`, `.posicao_final`, `.fotos_referencia`, `.fotos_referencia_final`, `.fotos_referencia_nota` (a nota é por foto e entra via placeholder `{{notas}}` nas partes `.fotos_referencia` e `.fotos_referencia_final`), `.referencia`, `.biomecanica_inicial`, `.biomecanica_final`, `.estilo`, `.evitar`, `.revisao`, `.verificacao_final`) e as linhas de ramo da referência, da revisão (`.revisao_pedido`, `.revisao_motivo`, `.revisao_fim`), do nome (`.nome_ingles`, `.outros_nomes`), do equipamento (`.equipamento_regra`, `.equipamento_alternativas`, `.equipamento_um`, `.equipamento_ausente`), da carga (`.carga`, `.carga_bodyweight`, `.carga_bodyweight_plus`, `.carga_assisted`), do lado único (`.unilateral`), das tags e dos passos (`.tags`, `.passos_inicio`, `.passos_movimento`, `.passos_forma`) | `BRAND_COLORS` (cores), `BLOCK_*` (títulos), `SCENE_ASPECT_RATIO`, `SCENE_SUBJECT_WIDTH_FRACTION`, `SCENE_START`, `SCENE_END` e `SCENE_PROMPT_SEPARATOR` (forma das duas cenas e separador dos prompts), os tetos `MAX_*` (`MAX_PROMPT_CHARS` = 9000 por cena) e o teto da nota da foto, `exercise_card_references.MAX_NOTE_CHARS` (dono, importado por `exercise_card_prompt.py`; o número não é recriado no prompt) |
 | `workout_plan_ai.py` (achado na varredura) | `intervals_wellness/intervals-wellness-v1.md` + `.sem_dados` (seção do Intervals.icu da ficha legada) | data e valores do wellness; o ramo "dado velho omite a seção" (`wellness_freshness`) |
 
-- **Versões**: `exercise_card_prompt.PROMPT_TEMPLATE_VERSION` (`exercise-card-v2`) e
+- **Versões**: `exercise_card_prompt.PROMPT_TEMPLATE_VERSION` (`exercise-card-v3`) e
   `workout_plan_ai.INTERVALS_PROMPT_TEMPLATE_VERSION` (`intervals-wellness-v1`) só nomeiam os templates. A
-  `PROMPT_VERSION` do card (`MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION`, gravada no job) não cabe no formato do nome
+  `PROMPT_VERSION` do card (`MUSCLEFIT_EXERCISE_CARD_V3_PHOTO`, gravada no job) não cabe no formato do nome
   e não muda; nenhuma das duas entra no texto.
-- **Números no template**: nenhum. As percentagens e a proporção do card, que antes estavam escritas no `.py`,
-  agora vêm de constantes nomeadas no próprio módulo, que é o dono da forma pedida à ilustração. Restam "1 a 3
+- **Números no template**: nenhum. As percentagens e a proporção das cenas, que antes estavam escritas no `.py`,
+  agora vêm de constantes nomeadas no próprio módulo, que é o dono da forma pedida às fotos. Restam "1 a 3
   frases" na tarefa da avaliação de série (formato da resposta, não regra de domínio, como o "2 a 4 frases" do
   P2) e a escala "/10" da dor.
 - **Hashes fixados ANTES da extração** (`tests/unit/test_m103_p4_hash_prompts.py`, commits anteriores à
@@ -6309,7 +6312,7 @@ Eval e decisão: `docs/ia/EVAL_PERIODIZACAO_2026-10-31.md`. A periodização seg
 
 | Regra | Dono | Consumidores |
 |---|---|---|
-| Teto da chamada à LLM da Periodização: timeout da `musclefit-plan-generator` menos a folga (hoje 180 − 30 = 150 s); teto efetivo encolhido pelo tempo já gasto no contexto, preservando a folga pós-chamada (metade da folga) | `periodization/core.py` (`LLM_TIMEOUT_SECONDS`, `LAMBDA_RESERVED_SECONDS`, `POST_LLM_RESERVED_SECONDS`, `llm_timeout_for`; `OPENAI_TIMEOUT_SECONDS` é alias) sobre `async_jobs.LAMBDA_TIMEOUT_SECONDS` (paridade com o Terraform em `test_m73_async_jobs_worker_lost.py`) | `core.run_periodization_draft`; espelho gerado `motor-constants.generated.json` → `periodization_job.llm_timeout_seconds` |
+| Teto da chamada à LLM da Periodização: constante presa em 150 s (`PERIODIZATION_LLM_TIMEOUT_SECONDS`), independente do timeout da `musclefit-plan-generator` (420 s desde os cards V3), com o teste exigindo que teto + folga caibam na Lambda; teto efetivo encolhido pelo tempo já gasto no contexto, preservando a folga pós-chamada (metade da folga) | `periodization/core.py` (`LLM_TIMEOUT_SECONDS`, `LAMBDA_RESERVED_SECONDS`, `POST_LLM_RESERVED_SECONDS`, `llm_timeout_for`; `OPENAI_TIMEOUT_SECONDS` é alias) sobre `async_jobs.LAMBDA_TIMEOUT_SECONDS` (paridade com o Terraform em `test_m73_async_jobs_worker_lost.py`) | `core.run_periodization_draft`; espelho gerado `motor-constants.generated.json` → `periodization_job.llm_timeout_seconds` |
 | Prazo do job da Periodização (`pending` vira `failed`/`worker_lost`) | `async_jobs.worker_lost_deadline_seconds` (timeout da Lambda + `WORKER_LOST_GRACE_SECONDS`), exportado por `core.export_for_frontend` | `periodization_job.job_deadline_seconds` → `frontend/src/lib/periodization.ts` (`PERIODIZATION_POLL_TIMEOUT_MS` = prazo + um intervalo de polling) |
 | Quais anuláveis do schema da Periodização viram opcionais primeiro no caminho Anthropic | `periodization/output_schema.py` (`ANTHROPIC_OPTIONAL_FIRST`, derivado de `cardio_prescription.ZERO_WHEN_MISSING_FIELDS`; ficam obrigatórios os de `REQUIRED_FIELDS`). Usa o sentinela `ITEMS` do adaptador para os caminhos | `llm_anthropic_schema.adapt_schema(optional_first)` via `call_openai_structured(anthropic_optional_first=...)` |
 

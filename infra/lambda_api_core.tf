@@ -140,8 +140,9 @@ locals {
 #   execucoes Lambda concorrentes para todas as funcoes), STALE_MINUTES
 #   (geracao PENDING/GENERATING mais velha que isso vira FAILED WORKER_LOST).
 # - exercise_card_image_env: modelo/qualidade/tamanho da OpenAI Images e o
-#   timeout da chamada (150 s, ABAIXO dos 180 s da musclefit-plan-generator -
-#   ver infra/lambda_ai_generators.tf). Vai para a api-core (grava o que foi
+#   timeout da chamada (150 s por chamada; o card V3 faz 2 chamadas, e as duas
+#   cabem nos 420 s da musclefit-plan-generator - conta em
+#   infra/lambda_ai_generators.tf). Vai para a api-core (grava o que foi
 #   pedido na linha da geracao) e para o worker na plan-generator (quem chama
 #   a OpenAI), via local.exercise_card_worker_env.
 # - public_assets_base_url: base da URL publica dos arquivos servidos pela
@@ -153,8 +154,8 @@ locals {
   exercise_card_generation_enabled = "true"
 
   exercise_card_image_env = {
-    OPENAI_IMAGE_MODEL           = "gpt-image-1.5"
-    OPENAI_IMAGE_QUALITY         = "medium"
+    OPENAI_IMAGE_MODEL           = "gpt-image-2.5-sunburst"
+    OPENAI_IMAGE_QUALITY         = "high"
     OPENAI_IMAGE_SIZE            = "1024x1536"
     OPENAI_IMAGE_TIMEOUT_SECONDS = "150"
   }
@@ -261,7 +262,7 @@ resource "aws_lambda_function" "musclefit_api_core" {
       # Cards ilustrados de exercicios - ver o bloco de locals acima. Os
       # OPENAI_IMAGE_* entram pelo merge() com local.exercise_card_image_env.
       EXERCISE_CARD_GENERATION_ENABLED      = local.exercise_card_generation_enabled
-      EXERCISE_CARD_MAX_GENERATIONS_PER_DAY = "100"
+      EXERCISE_CARD_MAX_GENERATIONS_PER_DAY = "40"
       EXERCISE_CARD_MAX_IN_FLIGHT           = "2"
       EXERCISE_CARD_STALE_MINUTES           = "10"
       PUBLIC_ASSETS_BASE_URL                = local.public_assets_base_url

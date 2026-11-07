@@ -5,7 +5,7 @@ Dois papeis, ambos sem desenho de texto:
 - **Logo oficial** (`logo_placement`, `compose_logo`, `load_brand_logo`):
   coordenadas deterministicas do logo e a colagem do asset oficial, pixel a
   pixel, sempre no mesmo lugar. Quem chama e o COMPOSITOR
-  (`exercise_card_composer.compose_card`, no worker, logo depois da OpenAI) -
+  (`exercise_card_composer.compose_card_v3`, no worker, logo depois da OpenAI) -
   o logo entra uma vez so, no card que o admin revisa.
 - **Publicacao** (`encode_card`, na aprovacao, api-core):
 
@@ -192,7 +192,7 @@ def _encode(image: Image.Image, fmt: str, **options) -> bytes:
 def encode_card(png: bytes) -> ProcessedCard:
     """Publicacao do card ja COMPOSTO (preview aprovado): valida, tira
     metadados e codifica WebP q85 + PNG master + thumbnail 400 px. NAO
-    compoe logo nem nada: o logo ja esta no preview (`compose_card`), e
+    compoe logo nem nada: o logo ja esta no preview (`compose_card_v3`), e
     compor de novo duplicaria o logo. Erros: `ImageProcessingError`."""
     source = validate_png(png)
     try:

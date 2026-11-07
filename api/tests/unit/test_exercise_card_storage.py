@@ -43,12 +43,29 @@ def test_chave_do_rascunho():
     assert st.draft_key("7") == "exercise-card-drafts/7/preview.png"
 
 
-def test_chave_da_ilustracao_deriva_do_gid():
-    """Estrategia B: a ilustracao crua da OpenAI fica ao lado do preview
-    (card composto), sem coluna nova - a chave sai so do generation_id."""
-    assert st.illustration_key(7) == "exercise-card-drafts/7/illustration.png"
-    assert st.draft_key(7, st.DRAFT_ILLUSTRATION) == st.illustration_key(7)
-    assert st.illustration_key(7).startswith(st.DRAFT_PREFIX + "/")
+def test_chaves_das_cenas_derivam_do_gid():
+    """V3: as duas fotos cruas da OpenAI ficam ao lado do preview (card
+    composto), sem coluna nova - as chaves saem so do generation_id."""
+    assert st.scene_key(7, 1) == "exercise-card-drafts/7/scene1.png"
+    assert st.scene_key(7, 2) == "exercise-card-drafts/7/scene2.png"
+    assert st.draft_key(7, st.DRAFT_SCENE_START) == st.scene_key(7, 1)
+    assert st.draft_key(7, st.DRAFT_SCENE_END) == st.scene_key(7, 2)
+    assert st.scene_key(7, 1).startswith(st.DRAFT_PREFIX + "/")
+    assert st.DRAFT_FILENAMES == ("preview.png", "scene1.png", "scene2.png")
+
+
+@pytest.mark.parametrize("index", [0, 3, -1, "1", None])
+def test_cena_fora_de_1_e_2_e_recusada(index):
+    with pytest.raises(ValueError):
+        st.scene_key(7, index)
+    with pytest.raises(ValueError):
+        st.put_draft_scene(7, index, b"x", client=FakeS3())
+
+
+def test_ilustracao_v2_nao_existe_mais():
+    assert not hasattr(st, "illustration_key") and not hasattr(st, "DRAFT_ILLUSTRATION")
+    with pytest.raises(ValueError):
+        st.draft_key(7, "illustration.png")
 
 
 @pytest.mark.parametrize("nome", ["card.png", "../preview.png", "preview.png/../x", ""])
@@ -59,16 +76,34 @@ def test_arquivo_de_rascunho_fora_da_lista_e_recusado(nome):
         st.put_draft(7, b"x", filename=nome, client=FakeS3())
 
 
-def test_put_draft_grava_ilustracao_e_preview_lado_a_lado():
+def test_put_draft_scene_grava_as_duas_cenas_e_o_preview_lado_a_lado():
     s3 = FakeS3()
-    ilustracao = st.put_draft(9, b"crua", filename=st.DRAFT_ILLUSTRATION, client=s3)
+    cena1 = st.put_draft_scene(9, 1, b"foto1", client=s3)
+    cena2 = st.put_draft_scene(9, 2, b"foto2", client=s3)
     preview = st.put_draft(9, b"composto", client=s3)
-    assert (ilustracao, preview) == ("exercise-card-drafts/9/illustration.png", "exercise-card-drafts/9/preview.png")
-    for key in (ilustracao, preview):
+    assert (cena1, cena2, preview) == (
+        "exercise-card-drafts/9/scene1.png",
+        "exercise-card-drafts/9/scene2.png",
+        "exercise-card-drafts/9/preview.png",
+    )
+    for key in (cena1, cena2, preview):
         obj = s3.objects[(BUCKET, key)]
         assert obj.content_type == "image/png" and obj.cache_control == st.DRAFT_CACHE_CONTROL
-    assert st.read_draft(ilustracao, client=s3) == b"crua"
+    assert st.read_draft(cena1, client=s3) == b"foto1"
+    assert st.read_draft(cena2, client=s3) == b"foto2"
     assert st.read_draft(preview, client=s3) == b"composto"
+    assert [name for name, _ in s3.calls if name == "put_object"] == ["put_object"] * 3
+
+
+def test_put_draft_scene_falha_vira_erro_tipado_e_corpo_vazio_e_recusado():
+    s3 = FakeS3()
+    s3.fail_put_keys.add("exercise-card-drafts/9/scene2.png")
+    with pytest.raises(st.ExerciseCardStorageError) as exc:
+        st.put_draft_scene(9, 2, b"x", client=s3)
+    assert exc.value.code == "S3_UPLOAD_FAILED"
+    with pytest.raises(st.ExerciseCardStorageError):
+        st.put_draft_scene(9, 1, b"", client=s3)
+    assert s3.keys(BUCKET) == []
 
 
 def test_chaves_da_versao_publicada():
@@ -354,3 +389,178 @@ def test_sem_ponteiro_valido_nao_ha_card_e_nunca_levanta(exercise_id, version):
     """`None` = a UI nao mostra nada. Valor torto tambem vira `None`: a
     leitura da ficha no meio do treino nao pode quebrar por causa do card."""
     assert st.training_card(exercise_id, version) is None
+
+
+# ---------------------------------------------------------------------------
+# Fotos de referencia (V3)
+# ---------------------------------------------------------------------------
+
+
+def test_chave_da_referencia_so_com_ids():
+    assert st.REFERENCE_PREFIX == "exercise-card-references"
+    assert st.reference_key(42, 7) == "exercise-card-references/42/7.jpg"
+    assert st.reference_key("42", "7") == "exercise-card-references/42/7.jpg"
+    for args in ((0, 1), (1, 0), (-1, 5), ("abc", 1), (1, "../x")):
+        with pytest.raises(ValueError):
+            st.reference_key(*args)
+
+
+def test_referencia_fora_da_cdn_e_do_lifecycle_de_rascunho():
+    key = st.reference_key(42, 7)
+    assert not key.startswith(st.PUBLISHED_PREFIX + "/")  # o OAC so libera exercise-cards/*
+    assert not key.startswith(st.DRAFT_PREFIX + "/")  # lifecycle de 7 dias e so do rascunho
+    assert "exercise-cards/" not in key.replace("exercise-card-references/", "")
+
+
+def test_put_reference_privado_sem_cache():
+    s3 = FakeS3()
+    key = st.put_reference(42, 7, b"\xff\xd8\xff...", client=s3)
+    obj = s3.objects[(BUCKET, key)]
+    assert key == "exercise-card-references/42/7.jpg"
+    assert obj.content_type == "image/jpeg"
+    assert "no-store" in obj.cache_control and "public" not in obj.cache_control
+
+
+def test_put_reference_falha_e_corpo_vazio():
+    s3 = FakeS3()
+    s3.fail_put_keys.add("exercise-card-references/42/7.jpg")
+    with pytest.raises(st.ExerciseCardStorageError) as exc:
+        st.put_reference(42, 7, b"x", client=s3)
+    assert exc.value.code == "S3_UPLOAD_FAILED"
+    with pytest.raises(st.ExerciseCardStorageError):
+        st.put_reference(42, 8, b"", client=s3)
+
+
+def test_get_reference_bytes_na_ordem_das_chaves():
+    s3 = FakeS3()
+    st.put_reference(42, 1, b"um", client=s3)
+    st.put_reference(42, 2, b"dois", client=s3)
+    st.put_reference(43, 3, b"tres", client=s3)
+    keys = [st.reference_key(43, 3), st.reference_key(42, 1), st.reference_key(42, 2)]
+    assert st.get_reference_bytes(keys, client=s3) == [b"tres", b"um", b"dois"]
+    assert st.get_reference_bytes([], client=s3) == []
+    assert s3.calls_of("get_object") and all(c["Bucket"] == BUCKET for c in s3.calls_of("get_object"))
+
+
+def test_get_reference_bytes_ausente_ou_falha_e_s3_read_failed():
+    s3 = FakeS3()
+    st.put_reference(42, 1, b"um", client=s3)
+    with pytest.raises(st.ExerciseCardStorageError) as ausente:
+        st.get_reference_bytes([st.reference_key(42, 1), st.reference_key(42, 2)], client=s3)
+    assert ausente.value.code == "S3_READ_FAILED"
+    s3.fail_get_keys.add(st.reference_key(42, 1))
+    with pytest.raises(st.ExerciseCardStorageError) as falha:
+        st.get_reference_bytes([st.reference_key(42, 1)], client=s3)
+    assert falha.value.code == "S3_READ_FAILED"
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "exercise-card-drafts/7/preview.png",
+        "exercise-cards/1/v1/card.png",
+        "uploads/foto.png",
+        "exercise-card-references/../exercise-card-drafts/7/preview.jpg",
+        "exercise-card-references-x/1/1.png",
+        "exercise-card-references/42/7.png",  # extensao antiga
+        "exercise-card-references/42/7.jpg/extra",
+        "exercise-card-references/42/abc.jpg",
+        "exercise-card-references/x/7.jpg",
+        "exercise-card-references/42/7.jpg\n",
+        "exercise-card-references/42/-7.jpg",
+        "",
+        None,
+    ],
+    ids=["rascunho", "publicado", "uploads", "traversal", "prefixo-parecido", "png", "extra", "ref-nao-numerica",
+         "exercicio-nao-numerico", "quebra-de-linha", "negativo", "vazio", "none"],
+)
+def test_referencias_so_no_proprio_prefixo(key):
+    s3 = FakeS3()
+    with pytest.raises(ValueError):
+        st.get_reference_bytes([key], client=s3)
+    with pytest.raises(ValueError):
+        st.delete_reference(key, client=s3)
+    with pytest.raises(ValueError):
+        st.presign_reference_url(key, client=s3)
+    assert s3.calls == []  # nenhuma chamada ao S3 com chave fora do prefixo
+
+
+def test_chave_valida_so_com_o_formato_fechado():
+    assert st._check_reference_key("exercise-card-references/42/7.jpg") == "exercise-card-references/42/7.jpg"
+
+
+class _S3Negado(FakeS3):
+    """Sem `s3:ListBucket`, objeto inexistente volta como AccessDenied (403)."""
+
+    def get_object(self, *, Bucket, Key):
+        if (Bucket, Key) not in self.objects:
+            self.calls.append(("get_object", {"Bucket": Bucket, "Key": Key}))
+            erro = RuntimeError("AccessDenied")
+            erro.response = {"Error": {"Code": "AccessDenied"}}
+            raise erro
+        return super().get_object(Bucket=Bucket, Key=Key)
+
+
+def test_get_reference_bytes_present_devolve_so_as_encontradas_com_a_chave():
+    s3 = FakeS3()
+    st.put_reference(42, 1, b"um", client=s3)
+    st.put_reference(42, 3, b"tres", client=s3)
+    keys = [st.reference_key(42, 1), st.reference_key(42, 2), st.reference_key(42, 3)]
+    assert st.get_reference_bytes_present(keys, client=s3) == [(keys[0], b"um"), (keys[2], b"tres")]
+    assert st.get_reference_bytes_present([], client=s3) == []
+    with pytest.raises(st.ExerciseCardStorageError):  # o modo estrito segue igual
+        st.get_reference_bytes(keys, client=s3)
+
+
+def test_get_reference_bytes_present_pula_access_denied_de_objeto_ausente():
+    s3 = _S3Negado()
+    st.put_reference(42, 2, b"dois", client=s3)
+    keys = [st.reference_key(42, 1), st.reference_key(42, 2)]
+    assert st.get_reference_bytes_present(keys, client=s3) == [(keys[1], b"dois")]
+    assert st.get_reference_bytes_present([keys[0]], client=s3) == []
+
+
+def test_get_reference_bytes_present_outras_falhas_continuam_erro():
+    s3 = FakeS3()
+    key = st.put_reference(42, 1, b"um", client=s3)
+    s3.fail_get_keys.add(key)  # erro generico (rede/throttling), nao ausencia
+    with pytest.raises(st.ExerciseCardStorageError) as exc:
+        st.get_reference_bytes_present([key], client=s3)
+    assert exc.value.code == "S3_READ_FAILED"
+    assert "exercise-card-references" not in str(exc.value)  # a mensagem pode chegar ao admin
+    with pytest.raises(st.ExerciseCardStorageError) as estrito:
+        st.get_reference_bytes([key], client=s3)
+    assert "exercise-card-references" not in str(estrito.value)
+    with pytest.raises(ValueError):
+        st.get_reference_bytes_present(["exercise-card-drafts/1/preview.png"], client=s3)
+
+
+def test_delete_reference_remove_o_objeto_e_falha_vira_erro_tipado():
+    s3 = FakeS3()
+    key = st.put_reference(42, 1, b"um", client=s3)
+    st.delete_reference(key, client=s3)
+    assert s3.keys(BUCKET) == []
+
+    class Quebrado(FakeS3):
+        def delete_object(self, **kwargs):
+            raise RuntimeError("sem permissao")
+
+    with pytest.raises(st.ExerciseCardStorageError):
+        st.delete_reference(key, client=Quebrado())
+
+
+def test_presign_da_referencia_15_minutos():
+    s3 = FakeS3(endpoint_url="http://localhost:4566")
+    agora = datetime(2026, 11, 6, 12, 0, 0, tzinfo=timezone.utc)
+    signed = st.presign_reference_url(st.reference_key(42, 7), client=s3, now=agora)
+    assert signed.url == "http://localhost:4566/musclefit-uploads/exercise-card-references/42/7.jpg?X-Fake-Expires=900"
+    assert signed.expires_at == datetime(2026, 11, 6, 12, 15, 0, tzinfo=timezone.utc)
+    (chamada,) = s3.calls_of("generate_presigned_url")
+    assert chamada["ClientMethod"] == "get_object" and chamada["ExpiresIn"] == 900
+
+
+def test_presign_de_referencia_nao_assina_rascunho_nem_publicado():
+    with pytest.raises(ValueError):
+        st.presign_reference_url("exercise-card-drafts/3/preview.png", client=FakeS3())
+    with pytest.raises(ValueError):
+        st.presign_draft_url(st.reference_key(42, 7), client=FakeS3())  # e o inverso
