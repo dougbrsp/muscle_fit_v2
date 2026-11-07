@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import type { WeightUnit } from '@/lib/weight-units';
 import type { IntensiveBlockState, IntensiveProfile, IntensiveSetRecord } from '@/lib/workout-mode-intensive';
-import { pendingRepsRecords } from '@/lib/workout-mode-intensive';
+import { clampReducedReps, pendingRepsRecords, reducibleRecord } from '@/lib/workout-mode-intensive';
 import { parseRepsInput } from './IntensiveSetEntry';
 import { RestTimerHero } from './RestTimer';
 import type { WorkoutIconAction } from './ui/IconAction';
@@ -19,15 +19,23 @@ export const INTENSIVE_READY_CTA = 'Iniciar próxima série';
 export function IntensiveSyncNotice({
   records,
   onRetry,
+  correctionError = null,
 }: {
   records: ReadonlyArray<IntensiveSetRecord>;
   onRetry: (clientKey: string) => void;
+  /** Falha ao corrigir reps (PATCH): fica na tela mesmo quando o stepper some com o fim do descanso. */
+  correctionError?: string | null;
 }) {
   const failed = records.filter((record) => record.sync === 'error');
   const saving = records.filter((record) => record.sync === 'saving');
-  if (failed.length === 0 && saving.length === 0) return null;
+  if (failed.length === 0 && saving.length === 0 && !correctionError) return null;
   return (
     <>
+      {correctionError && (
+        <div className={styles.errorBox} role="alert" data-testid="intensive-correction-error">
+          <span>{correctionError}</span>
+        </div>
+      )}
       {failed.map((record) => (
         <div key={record.clientKey} className={styles.errorBox} role="alert" data-testid="intensive-sync-error">
           <span>
@@ -110,6 +118,65 @@ export function PendingRepsChip({
   );
 }
 
+/**
+ * Relógio contínuo: a série recém-gravada foi assumida no topo das reps; aqui
+ * o usuário só REDUZ (ou volta até o topo). Corrige por PATCH, sem tocar no
+ * cronômetro.
+ */
+export function ReduceRepsStepper({
+  state,
+  onReduce,
+}: {
+  state: IntensiveBlockState;
+  onReduce: (record: IntensiveSetRecord, reps: number) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const record = reducibleRecord(state);
+  if (!record || record.reps == null) return null;
+  const current = record.reps;
+  const lower = clampReducedReps(state, current - 1);
+  const higher = clampReducedReps(state, current + 1);
+
+  async function change(next: number | null) {
+    if (next == null || !record) return;
+    setBusy(true);
+    try {
+      await onReduce(record, next);
+    } catch {
+      // O aviso vem do bloco (`correctionError`), que sobrevive ao fim do descanso.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Em `saving` a série ainda está na fila offline: a redução edita a operação pendente.
+  const disabled = busy;
+  return (
+    <div className={styles.inlineRow} data-testid="intensive-reduce-reps">
+      <span>Série {record.index}: repetições feitas</span>
+      <button
+        type="button"
+        className={styles.editButton}
+        aria-label="Menos uma repetição"
+        disabled={disabled || lower == null}
+        onClick={() => change(lower)}
+      >
+        −
+      </button>
+      <strong data-testid="intensive-reduce-reps-value">{current}</strong>
+      <button
+        type="button"
+        className={styles.editButton}
+        aria-label="Mais uma repetição"
+        disabled={disabled || higher == null}
+        onClick={() => change(higher)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 type Props = {
   state: IntensiveBlockState;
   profile: IntensiveProfile;
@@ -120,9 +187,12 @@ type Props = {
   onRestAdjusted: (endsAt: number, totalSeconds: number) => void;
   onRestExpired: () => void;
   /** Pular o descanso (contando) ou iniciar a próxima série (zerado). */
-  onContinue: () => void;
+  onContinue: (skipped?: boolean) => void;
   onRetry: (clientKey: string) => void;
   onConfirmReps: (record: IntensiveSetRecord, reps: number) => Promise<void>;
+  /** Relógio contínuo: reduz as reps da série recém-gravada (PATCH). */
+  onReduceReps?: (record: IntensiveSetRecord, reps: number) => Promise<void>;
+  correctionError?: string | null;
 };
 
 /**
@@ -141,22 +211,29 @@ export function IntensiveRest({
   onContinue,
   onRetry,
   onConfirmReps,
+  onReduceReps,
+  correctionError = null,
 }: Props) {
   const rest = state.rest;
   if (!rest) return null;
+  const continuous = state.continuous != null;
+  const lastIndex = state.records[state.records.length - 1]?.index ?? 0;
   return (
     <>
-      <IntensiveSyncNotice records={state.records} onRetry={onRetry} />
+      <IntensiveSyncNotice records={state.records} onRetry={onRetry} correctionError={correctionError} />
       <RestTimerHero
         restKey={rest.key}
         initialSeconds={rest.totalSeconds}
         getStored={() => ({ rest_key: rest.key, rest_ends_at: rest.endsAt, total_seconds: rest.totalSeconds })}
         onEndsAtChange={onRestAdjusted}
         onExpired={onRestExpired}
-        onFinish={() => onContinue()}
+        onFinish={(skipped) => onContinue(skipped)}
         isExerciseTransition={false}
         hasNextExercise
-        readyOnZero={{ note: INTENSIVE_READY_NOTE, ctaLabel: INTENSIVE_READY_CTA }}
+        readyOnZero={continuous ? null : { note: INTENSIVE_READY_NOTE, ctaLabel: INTENSIVE_READY_CTA }}
+        phaseBadge={
+          continuous ? { eyebrow: 'Descanso', progress: `${lastIndex}/${state.totalSets}`, ctaLabel: 'Pular descanso' } : null
+        }
         nextSet={{ label: `Série ${state.currentSet} de ${state.totalSets}`, weightKg: state.planned.kg }}
         weightUnit={weightUnit}
         iconActions={iconActions}
@@ -167,6 +244,7 @@ export function IntensiveRest({
               {profile.stretchGuidance}
             </span>
           )}
+          {continuous && onReduceReps && <ReduceRepsStepper state={state} onReduce={onReduceReps} />}
           {adjustSlot}
           <PendingRepsChip records={pendingRepsRecords(state)} onConfirm={onConfirmReps} />
         </section>
