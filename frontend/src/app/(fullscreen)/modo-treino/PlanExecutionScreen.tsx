@@ -662,6 +662,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       catalog: techniqueCatalogItems,
       parameters: planExercise.prescription?.advanced_technique_parameters ?? null,
       plannedSetsCount,
+      repsTarget: planExercise.reps_target ?? null,
+      peakContractionSeconds: planExercise.peak_contraction_seconds ?? null,
       itemRestSeconds:
         planExercise.rest_seconds ?? goalDefaultRestSeconds(trainingGoals, planExercise.training_goal, DEFAULT_REST_SECONDS),
       techniqueDurationSeconds: planExercise.advanced_technique_duration_seconds ?? null,
@@ -2456,7 +2458,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     }
   }
 
-  function handleIntensiveComplete(reps: number | null, rpe: number | null, extraReps: number | null = null) {
+  function handleIntensiveComplete(
+    reps: number | null,
+    rpe: number | null,
+    extraReps: number | null = null,
+    now: number = Date.now(),
+  ) {
     if (!intensiveBlock || !intensiveProfile || currentWorkoutPlanExerciseId == null) return;
     // Trava síncrona por série (toque duplo no mesmo quadro).
     const guard = `${session.session_id}#${currentWorkoutPlanExerciseId}#${intensiveBlock.currentSet}#${intensiveBlock.records.length}`;
@@ -2470,7 +2477,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       rpe,
       clientKey,
       setNumber: nextIntensiveSetNumber(intensiveBlock, intensiveServerSets),
-      now: Date.now(),
+      now,
       restSeconds,
       ...(extraReps != null && extraReps > 0 ? { extraReps, extraClientKey: newIdempotencyKey() } : {}),
     };

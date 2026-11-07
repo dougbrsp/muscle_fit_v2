@@ -2,8 +2,9 @@
 
 import { IconArrowsExchange, IconPlayerSkipForward, IconPlayerStop } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
-import type { WeightUnit } from '@/lib/weight-units';
+import { formatWeight, type WeightUnit } from '@/lib/weight-units';
 import {
+  clampReducedReps,
   intensiveExtraRepsEnabled,
   type IntensiveBlockState,
   type IntensiveEvent,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/workout-mode-intensive';
 import { IntensiveBriefing } from './IntensiveBriefing';
 import { IntensiveRest, IntensiveSyncNotice } from './IntensiveRest';
+import { RestTimerHero } from './RestTimer';
 import { IntensiveReview, type IntensiveSetCorrection } from './IntensiveReview';
 import { IntensiveSetEntry } from './IntensiveSetEntry';
 import { QuickLoadAdjustment } from './QuickLoadAdjustment';
@@ -30,7 +32,7 @@ export type IntensiveBlockProps = {
   /** Linha "Próximo exercício" antes do rodapé da série. */
   nextExerciseLine?: ReactNode;
   dispatch: (event: IntensiveEvent) => void;
-  onCompleteSet: (reps: number | null, rpe: number | null, extraReps: number | null) => void;
+  onCompleteSet: (reps: number | null, rpe: number | null, extraReps: number | null, now?: number) => void;
   onRetry: (clientKey: string) => void;
   onCorrect: (record: IntensiveSetRecord, correction: IntensiveSetCorrection) => Promise<void>;
   onFinish: () => void;
@@ -108,6 +110,12 @@ export function IntensiveBlock({
     await onCorrect(record, { reps });
   }
 
+  // Relógio contínuo: só reduz (ou volta até o topo das reps do item).
+  async function reduceReps(record: IntensiveSetRecord, reps: number) {
+    if (clampReducedReps(state, reps) == null) return;
+    await onCorrect(record, { reps });
+  }
+
   switch (state.phase) {
     case 'BRIEFING':
       return (
@@ -125,6 +133,42 @@ export function IntensiveBlock({
         />
       );
     case 'SERIE_EM_EXECUCAO':
+      if (state.continuous && state.setClock) {
+        const clock = state.setClock;
+        // Fim da fase SÉRIE (relógio zerado ou "Concluir série agora"): grava no topo das reps.
+        const completeSeries = (skipped: boolean) =>
+          onCompleteSet(state.continuous?.repsTop ?? null, profile.targetRpe, null, skipped ? Date.now() : clock.endsAt);
+        return (
+          <RestTimerHero
+            restKey={clock.key}
+            initialSeconds={clock.totalSeconds}
+            getStored={() => ({ rest_key: clock.key, rest_ends_at: clock.endsAt, total_seconds: clock.totalSeconds })}
+            onEndsAtChange={(endsAt, totalSeconds) => dispatch({ type: 'SET_CLOCK_ADJUSTED', endsAt, totalSeconds })}
+            onFinish={completeSeries}
+            isExerciseTransition={false}
+            hasNextExercise
+            phaseBadge={{
+              eyebrow: 'Série',
+              progress: `${state.currentSet}/${state.totalSets}`,
+              ctaLabel: 'Concluir série agora',
+            }}
+            nextSet={null}
+            weightUnit={weightUnit}
+            iconActions={[...swapAction, skipAction, endAction]}
+          >
+            <section className={styles.card} aria-label="Durante a série" data-testid="intensive-series-panel">
+              <IntensiveSyncNotice records={state.records} onRetry={onRetry} />
+              {state.planned.kg != null && (
+                <span className={styles.info} data-testid="intensive-series-load">
+                  Carga: {formatWeight(state.planned.kg, weightUnit)}
+                  {loadSuffix ? ` ${loadSuffix}` : ''}
+                </span>
+              )}
+              {adjust}
+            </section>
+          </RestTimerHero>
+        );
+      }
       return (
         <>
           <IntensiveSyncNotice records={state.records} onRetry={onRetry} />
@@ -158,9 +202,16 @@ export function IntensiveBlock({
           iconActions={[...swapAction, endAction]}
           onRestAdjusted={(endsAt, totalSeconds) => dispatch({ type: 'REST_ADJUSTED', endsAt, totalSeconds })}
           onRestExpired={() => dispatch({ type: 'REST_EXPIRED' })}
-          onContinue={() => dispatch({ type: state.phase === 'DESCANSO' ? 'SKIP_REST' : 'START_NEXT' })}
+          onContinue={(skipped = true) =>
+            dispatch({
+              type: state.phase === 'DESCANSO' ? 'SKIP_REST' : 'START_NEXT',
+              // Relógio contínuo: o descanso que zerou passa a série no instante do fim, sem perder tempo.
+              now: skipped || !state.rest ? Date.now() : state.rest.endsAt,
+            })
+          }
           onRetry={onRetry}
           onConfirmReps={confirmReps}
+          onReduceReps={reduceReps}
         />
       );
     case 'REGISTRO_PENDENTE':

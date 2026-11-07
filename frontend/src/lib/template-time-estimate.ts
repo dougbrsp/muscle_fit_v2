@@ -93,6 +93,23 @@ export function parseRepsTarget(value: string | null | undefined): number | null
   return (valid[0] + valid[1]) / 2;
 }
 
+/** Topo (maior número) de um alvo de reps textual: "8-12" -> 12, "10" -> 10; vazio/ilegível = null. */
+export function parseRepsTargetTop(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const numbers = (value.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => Number(n.replace(',', '.')));
+  const valid = numbers.filter((n) => Number.isFinite(n) && n > 0);
+  return valid.length === 0 ? null : Math.max(...valid);
+}
+
+/**
+ * Segundos de execução de uma série por repetições: `reps x (s/rep + pico de
+ * contração)`, a mesma conta de `estimateSlotTime` e do dono
+ * `time_estimate.py` (premissa `EXEC_SECONDS_PER_REP`).
+ */
+export function repsExecutionSeconds(reps: number, peakContractionSeconds?: number | null): number {
+  return reps * (EXEC_SECONDS_PER_REP + positive(peakContractionSeconds));
+}
+
 function positive(value: number | null | undefined): number {
   return value != null && Number.isFinite(value) && value > 0 ? value : 0;
 }
@@ -143,7 +160,7 @@ export function estimateSlotTime(
           reps = DEFAULT_ESTIMATED_REPS;
           hasEstimatedReps = true;
         }
-        setExec = reps * perRep;
+        setExec = repsExecutionSeconds(reps, item.peak_contraction_seconds);
       }
       workExec = workSets * setExec;
       workRest = workSets * (item.rest_seconds == null ? positive(defaultRestSeconds) : positive(item.rest_seconds));
