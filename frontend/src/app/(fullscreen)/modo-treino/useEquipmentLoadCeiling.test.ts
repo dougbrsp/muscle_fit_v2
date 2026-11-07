@@ -38,6 +38,16 @@ async function mount(pair: typeof PAIR | null = PAIR) {
   });
 }
 
+// Espera deterministica: cede o laco de eventos dentro de `act` ate o estado refletir.
+async function until(predicate: () => boolean, tries = 100) {
+  for (let i = 0; i < tries && !predicate(); i += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  }
+  expect(predicate()).toBe(true);
+}
+
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
@@ -61,6 +71,7 @@ describe('useEquipmentLoadCeiling', () => {
     apiFetch.mockResolvedValueOnce({ ok: true, max_load_kg: 100 });
     await mount();
     expect(apiFetch).toHaveBeenCalledWith('/me/equipment-load-ceiling?mapping_id=5&gym_equipment_id=9');
+    await until(() => control.maxLoadKg === 100);
     expect(control.maxLoadKg).toBe(100);
   });
 
@@ -78,6 +89,7 @@ describe('useEquipmentLoadCeiling', () => {
     apiFetch.mockResolvedValueOnce({ ok: true, max_load_kg: 80 });
     apiFetch.mockResolvedValue({ ok: true, max_load_kg: 80 }); // refetch pós-invalidação
     await act(async () => control.onMark(80));
+    await until(() => control.maxLoadKg === 80);
     const put = apiFetch.mock.calls.find((call) => call[1]?.method === 'PUT');
     expect(put?.[0]).toBe('/me/equipment-load-ceiling');
     expect(JSON.parse(put?.[1].body)).toEqual({ mapping_id: 5, gym_equipment_id: 9, max_load_kg: 80 });
@@ -93,6 +105,7 @@ describe('useEquipmentLoadCeiling', () => {
     await mount();
     apiFetch.mockResolvedValue({ ok: true, max_load_kg: null });
     await act(async () => control.onClear());
+    await until(() => control.maxLoadKg === null);
     const del = apiFetch.mock.calls.find((call) => call[1]?.method === 'DELETE');
     expect(del?.[0]).toBe('/me/equipment-load-ceiling?mapping_id=5&gym_equipment_id=9');
     expect(control.maxLoadKg).toBeNull();
@@ -103,6 +116,7 @@ describe('useEquipmentLoadCeiling', () => {
     await mount();
     apiFetch.mockRejectedValue({ transient: true });
     await act(async () => control.onMark(80));
+    await until(() => notify.mock.calls.length === 1);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(String(notify.mock.calls[0][0].message)).toContain('Sem conexão');
     expect(control.maxLoadKg).toBeNull();
