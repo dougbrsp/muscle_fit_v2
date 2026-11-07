@@ -978,6 +978,11 @@ from app.equipment_exercise_preferences import training_preferences_router
 app.include_router(equipment_exercise_preferences_router)
 app.include_router(training_preferences_router)
 
+# Teto de carga do equipamento (migração 110): /me/equipment-load-ceiling,
+# sempre do usuário corrente.
+from app.equipment_load_ceiling import router as equipment_load_ceiling_router
+app.include_router(equipment_load_ceiling_router)
+
 # Estado do Motor de Progressão v2 (migração 036, PR-10), somente leitura e
 # sempre do usuário corrente: GET /progression/tracks e
 # GET /progression/tracks/{id}/decisions. Em modo sombra (PROGRESSION_ENGINE)

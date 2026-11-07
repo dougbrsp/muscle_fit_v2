@@ -1988,6 +1988,8 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
         "suggested_reps": legacy_indicators(suggestion)["suggested_reps"],
         "load_source": suggestion.load_source,
         "load_increment_kg": suggestion.load_increment_kg,
+        # Teto de carga do par marcado pelo usuario (migracao 110; None = sem teto).
+        "max_load_kg": suggestion.max_load_kg,
         "equipment_id": suggestion.equipment_id,
         "decision": decision.get("decision"),
         "effective_rpe_ceiling": decision.get("effective_rpe_ceiling"),

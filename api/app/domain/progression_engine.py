@@ -369,6 +369,10 @@ STRENGTH_LOAD_SUGGESTED_FRACTION = Decimal("0.5")
 # Regime de carga gravado na evidencia das decisoes de forca.
 LOAD_REGIME_PCT_1RM = "pct_1rm"
 LOAD_REGIME_DOUBLE_PROGRESSION = "double_progression"
+# Teto de carga do equipamento (migracao 110): o usuario marcou a carga maxima
+# do par; nenhuma carga prescrita passa dela e o aumento de carga nao e armado.
+EVIDENCE_EQUIPMENT_LOAD_CEILING = "equipment_load_ceiling"
+EQUIPMENT_LOAD_CEILING_NOTE = "Carga máxima do equipamento atingida: a progressão segue por repetições e volume."
 EVIDENCE_LOAD_REGIME = "load_regime"
 EVIDENCE_STRENGTH_E1RM_LOAD = "strength_e1rm_load"
 # Evidencia/motivo/bloqueio do ramo de forca.
@@ -833,6 +837,9 @@ class TrackState:
     stimulus_weight: float = 0.0
     is_compound: bool = False
     load_increment_kg: Optional[Decimal] = None
+    # Teto de carga do par marcado pelo usuario (kg TOTAIS; None = sem teto;
+    # metadado, nao persistido na trilha - vem de `user_equipment_load_ceilings`).
+    max_load_kg: Optional[Decimal] = None
     sequence: int = 0
     # faixa de `domain/prior_fatigue.py` (persistida, migracao 068)
     fatigue_context: str = DEFAULT_FATIGUE_CONTEXT
@@ -1656,12 +1663,34 @@ def load_increment(*, is_compound: bool, load_increment_kg: Any = None) -> LoadI
     return LoadIncrement(delta_kg=delta, step_kg=step, evidence=evidence)
 
 
+def at_equipment_ceiling(track: TrackState) -> bool:
+    """A carga de trabalho da trilha ja esta no teto do equipamento?"""
+    return (
+        track.max_load_kg is not None
+        and track.working_load_kg is not None
+        and Decimal(track.working_load_kg) >= Decimal(track.max_load_kg)
+    )
+
+
+def _cap_to_ceiling(value: Decimal, track: TrackState) -> Decimal:
+    """`value` limitado ao teto do equipamento, sem ficar abaixo da carga de
+    trabalho (teto menor que a carga atual nao vira reducao aqui)."""
+    if track.max_load_kg is None or Decimal(track.max_load_kg) <= 0:
+        return value
+    capped = min(value, Decimal(track.max_load_kg))
+    if track.working_load_kg is not None:
+        capped = max(capped, Decimal(track.working_load_kg))
+    return capped
+
+
 def next_load(track: TrackState, *, direction: int = 1) -> tuple[Optional[Decimal], LoadIncrement]:
     """Carga da trilha + (ou -) um incremento. Trilha sem carga -> None."""
     increment = load_increment(is_compound=track.is_compound, load_increment_kg=track.load_increment_kg)
     if track.working_load_kg is None:
         return None, increment
     value = Decimal(track.working_load_kg) + (increment.delta_kg * direction)
+    if direction > 0:
+        value = _cap_to_ceiling(value, track)
     return (value if value > 0 else Decimal(track.working_load_kg)), increment
 
 
@@ -2174,7 +2203,10 @@ def track_pending_load(track: TrackState, *, now: Optional[datetime] = None) -> 
     since = track.pending_load_since
     if now is not None and since is not None and now >= since + timedelta(days=GROUP_EFFECTIVATION_DAYS):
         return None
-    return Decimal(track.pending_load_kg)
+    target = _cap_to_ceiling(Decimal(track.pending_load_kg), track)
+    if track.working_load_kg is not None and target <= Decimal(track.working_load_kg):
+        return None
+    return target
 
 
 def track_applied_plateau_load(track: TrackState, group: GroupState) -> bool:
@@ -2521,6 +2553,36 @@ def _apply_e1rm_load_regime(
     return new_load, new_decision
 
 
+def _clamp_to_equipment_ceiling(
+    track: TrackState,
+    load: Optional[Decimal],
+    decision: str,
+    evidence_out: dict[str, Any],
+    reasons: list[str],
+) -> tuple[Optional[Decimal], str]:
+    """Teto de carga do equipamento (migracao 110), ultima palavra sobre a
+    carga prescrita: nenhuma carga passa do teto; carga de trabalho ja no teto
+    nao sobe (INCREASE_LOAD vira HOLD e a progressao segue por reps/volume).
+    Sem teto: identidade (comportamento anterior)."""
+    if track.max_load_kg is None or Decimal(track.max_load_kg) <= 0 or not track.load_applicable:
+        return load, decision
+    ceiling = Decimal(track.max_load_kg)
+    base = Decimal(track.working_load_kg) if track.working_load_kg is not None else None
+    if load is not None and load > ceiling and (base is None or base <= ceiling):
+        load = ceiling
+        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = True
+        if base is not None:
+            evidence_out["load_increment_kg"] = float(load - base)
+    if base is not None and base >= ceiling and decision != DECREASE_LOAD:
+        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = True
+        if decision == INCREASE_LOAD and (load is None or load <= base):
+            decision = HOLD
+            evidence_out.pop("load_increment_kg", None)
+    if evidence_out.get(EVIDENCE_EQUIPMENT_LOAD_CEILING):
+        reasons.append(EQUIPMENT_LOAD_CEILING_NOTE)
+    return load, decision
+
+
 def _reduced_sets(sets_count: int, readiness_status: str) -> int:
     """Series da dose reduzida: a regra UNICA do modelo de recuperacao
     (`MuscleRecoveryService.reduced_sets`, M76 B2 - `ceil(S x 0,75)`, minimo
@@ -2731,6 +2793,8 @@ def prescribe(
         load, decision = _apply_e1rm_load_regime(
             track, ladder, current_e1rm_kg, load, decision, evidence_out, reasons, blocked
         )
+
+    load, decision = _clamp_to_equipment_ceiling(track, load, decision, evidence_out, reasons)
 
     if not reasons:
         reasons.append("Criterios nao satisfeitos: mantem a prescricao (HOLD).")

@@ -209,6 +209,41 @@ describe('SetLoggerCard — execução (novo visual)', () => {
   });
 });
 
+describe('SetLoggerCard — teto de carga do equipamento (migração 110)', () => {
+  const control = (overrides: Partial<NonNullable<CardProps['loadCeiling']>> = {}) => ({
+    maxLoadKg: null,
+    busy: false,
+    onMark: () => {},
+    onClear: () => {},
+    ...overrides,
+  });
+
+  it('sem o controle: nenhuma ação nem badge (comportamento de antes)', () => {
+    expect(render({})).not.toContain('data-testid="load-ceiling"');
+  });
+
+  it('sem teto: mostra a ação "Carga máxima do equipamento"', () => {
+    const html = render({ loadCeiling: control() });
+    expect(html).toContain('data-testid="load-ceiling-mark"');
+    expect(html).toContain('Carga máxima do equipamento');
+    expect(html).not.toContain('data-testid="load-ceiling-badge"');
+    expect(html).not.toContain('data-testid="load-ceiling-undo"');
+  });
+
+  it('com teto: badge com o valor do servidor e botão de desfazer', () => {
+    const html = render({ loadCeiling: control({ maxLoadKg: 100 }) });
+    expect(html).toContain('data-testid="load-ceiling-badge"');
+    expect(html).toContain('Carga máxima do equipamento: 100 kg');
+    expect(html).toContain('data-testid="load-ceiling-undo"');
+    expect(html).not.toContain('data-testid="load-ceiling-mark"');
+  });
+
+  it('o teto aparece na unidade escolhida (lb)', () => {
+    const html = render({ loadCeiling: control({ maxLoadKg: 45.36 }), weightUnit: 'lb' });
+    expect(html).toContain('Carga máxima do equipamento: 100 lb');
+  });
+});
+
 describe('M102: série unilateral (E/D)', () => {
   it('trabalho de exercício unilateral mostra reps e RPE por lado, carga única', () => {
     const html = render({ unilateral: true });

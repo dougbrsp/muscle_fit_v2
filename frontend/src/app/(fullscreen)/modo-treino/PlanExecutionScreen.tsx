@@ -65,6 +65,8 @@ import {
 } from '@/lib/workout-mode-exercise-card';
 import { buildSafetyEventBannerText, isSafetyAlertEvent, safetyEventColor } from '@/lib/intensity-status';
 import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { displayLoadWithinCeiling } from '@/lib/equipment-load-ceiling';
+import { useEquipmentLoadCeiling } from './useEquipmentLoadCeiling';
 import { resolveNextSetPreview } from '@/lib/workout-mode-next-set';
 import {
   measureLoggerDefaults,
@@ -1042,6 +1044,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     : null;
   const effectiveRpeCeiling = pairLimits?.rpeCeiling ?? null;
   const loadIncrementKg = pairLimits?.loadIncrementKg ?? null;
+  // Teto de carga do equipamento (migração 110): valor pronto do servidor.
+  const loadCeiling = useEquipmentLoadCeiling(
+    effectiveMappingId != null && effectiveEquipmentLinkId != null
+      ? { mappingId: Number(effectiveMappingId), gymEquipmentId: Number(effectiveEquipmentLinkId) }
+      : null,
+  );
   // Cargas de aquecimento/ajuste/técnica: as da API quando a âncora é a
   // prescrita; espelho do backend para âncora dinâmica (C7).
   const sessionLoadContext: SessionLoadContext = { plan: pairLimits?.loadPlan ?? null, step: loadIncrementKg };
@@ -2184,7 +2192,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           ? Number(lastSet.weight_kg)
           : (parseNumericTarget(effectiveLoadTarget) ?? SET_LOGGER_FALLBACK_LOAD_KG);
   const measuredDefaultWeight = lastSet?.weight_kg != null ? Number(lastSet.weight_kg) : null;
-  const defaultWeight = measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight;
+  const defaultWeight = displayLoadWithinCeiling(
+    measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight,
+    loadCeiling.maxLoadKg,
+  );
   // Sugestão da IA (já clampada no servidor) > RPE da última série desta
   // sessão > alvo da prescrição. `clampRpeSuggestion` garante que nem o RPE
   // repetido da última série ofereça um valor acima do teto de hoje (§5.7: o
@@ -2949,6 +2960,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           weightUnit={weightUnit}
           onWeightUnitChange={setWeightUnit}
           loadIncrementKg={loadIncrementKg}
+          loadCeiling={loadCeiling}
           saving={saveSetMutation.isPending || ensureExerciseMutation.isPending}
           onSave={(values) =>
             submitSet({
@@ -3035,6 +3047,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           weightUnit={weightUnit}
           onWeightUnitChange={setWeightUnit}
           loadIncrementKg={loadIncrementKg}
+          loadCeiling={loadCeiling}
           saving={
             advancedStage.kind === 'technique'
               ? saveSetMutation.isPending || ensureExerciseMutation.isPending
@@ -3123,6 +3136,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             weightUnit={weightUnit}
             onWeightUnitChange={setWeightUnit}
             loadIncrementKg={loadIncrementKg}
+            loadCeiling={loadCeiling}
             progression={
               workingSetNumber === 1 ? current.planExercise.progression : undefined
             }

@@ -79,6 +79,7 @@ logger = logging.getLogger(__name__)
 # segurança" (SetLoggerCard.tsx).
 REASON_EQUIPMENT_STEP = "EQUIPMENT_STEP"
 REASON_ENGINE_TARGET = "ENGINE_TARGET_LOAD"
+REASON_EQUIPMENT_CEILING = "EQUIPMENT_LOAD_CEILING"
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +141,9 @@ class PairEngineContext:
     # deload (dono `domain/deload.py`); None = sessao normal. Com ela, a carga
     # da proxima serie e a do deload (`next_set_load_for`).
     deload: Optional[DeloadPrescription] = None
+    # Teto de carga do par marcado pelo usuario (migracao 110; kg TOTAIS; None
+    # = sem teto). Lido de `equipment_load_ceiling`; so reexposto aos motores.
+    max_load_kg: Optional[Decimal] = None
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +234,10 @@ def bound_ai_load(
         if value > limit:
             adjustments.append({"field": "load_kg", "from": value, "to": limit, "reason": REASON_ENGINE_TARGET})
             value = limit
+    ceiling = context.max_load_kg if context is not None else None
+    if ceiling is not None and ceiling > 0 and value is not None and Decimal(str(value)) > ceiling:
+        adjustments.append({"field": "load_kg", "from": value, "to": float(ceiling), "reason": REASON_EQUIPMENT_CEILING})
+        value = float(ceiling)
     return value, adjustments
 
 
@@ -444,6 +452,7 @@ def load_pair_context(conn: Any, user_id: Any, mapping_id: Any, gym_equipment_id
         training_goal=training_goal,
         load_convention=read_pair_load_convention(conn, mapping_id, gym_equipment_id),
         deload=deload,
+        max_load_kg=read_pair_load_ceiling(conn, user_id, mapping_id, gym_equipment_id),
     )
 
 
@@ -496,6 +505,22 @@ def load_deload_prescription(
         plan_row={"reps_target": plan_reps_target, "training_goal": goal},
         step_kg=step_kg,
     )
+
+
+def read_pair_load_ceiling(conn: Any, user_id: Any, mapping_id: Any, gym_equipment_id: Any) -> Optional[Decimal]:
+    """Teto de carga do par (migracao 110) ou None. Falha de leitura: None +
+    log (opcional: nunca derruba a serie nem a IA; sem teto = comportamento
+    anterior)."""
+    from .equipment_load_ceiling import pair_ceiling
+
+    if None in (_int(user_id), _int(mapping_id), _int(gym_equipment_id)):
+        return None
+    try:
+        with conn.cursor() as cur:
+            return pair_ceiling(cur, int(user_id), int(mapping_id), int(gym_equipment_id))
+    except Exception:  # noqa: BLE001 - contexto opcional
+        logger.exception("engine_decision_context.load_ceiling_failed")
+        return None
 
 
 def read_pair_load_convention(conn: Any, mapping_id: Any, gym_equipment_id: Any) -> Optional[str]:
@@ -590,6 +615,7 @@ def next_set_load_for(
         muscle_pain=values.get("muscle_pain"),
         measure=values.get("measure"),
         intensity_status=intensity_status,
+        max_load_kg=context.max_load_kg if context else None,
     )
     return evaluate_ruleset(facts, ruleset or DEFAULT_RULESET)
 

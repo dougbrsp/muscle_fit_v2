@@ -148,6 +148,9 @@ REASON_HOLD_ABOVE_SAFE_CEILING = "NEXT_SET_HOLD_ABOVE_SAFE_CEILING"
 # M97 D: sessao de deload - a carga da proxima serie vem do dono
 # `domain/deload.py` (`deload_next_set_load`), nao das regras abaixo.
 REASON_DELOAD = "NEXT_SET_DELOAD"
+# Teto de carga do equipamento (usuario marcou "carga maxima do equipamento",
+# migracao 110): a regra pediria aumento, mas a carga ja esta no teto.
+REASON_AT_EQUIPMENT_CEILING = "NEXT_SET_AT_EQUIPMENT_CEILING"
 NEXT_SET_REASONS: Final[tuple[str, ...]] = (
     REASON_PAIN,
     REASON_REPS_ABOVE_LIMIT,
@@ -159,6 +162,7 @@ NEXT_SET_REASONS: Final[tuple[str, ...]] = (
     REASON_HOLD_EFFORT_BELOW_TARGET,
     REASON_HOLD_ABOVE_SAFE_CEILING,
     REASON_DELOAD,
+    REASON_AT_EQUIPMENT_CEILING,
 )
 
 # Status de esforço da série (código do dono `progression_engine`) -> motivo
@@ -226,6 +230,7 @@ def reason_labels() -> Mapping[str, str]:
         ),
         # M97 D: rotulo do dono do deload (numeros interpolados de la).
         REASON_DELOAD: _deload_reason_label(),
+        REASON_AT_EQUIPMENT_CEILING: "Carga máxima do equipamento atingida: mantenha a carga",
     }
 
 
@@ -432,6 +437,9 @@ class SetFacts:
     # set_intensity_status`, o que o card mostra). Só escolhe o motivo do
     # MANTER; None = desconhecido (motivo de sempre).
     intensity_status: Optional[str] = None
+    # Teto de carga do par exercicio+equipamento marcado pelo usuario (kg
+    # TOTAIS; None = sem teto, comportamento anterior). Nenhuma sugestao passa dele.
+    max_load_kg: Any = None
 
 
 @dataclass(frozen=True)
@@ -856,10 +864,18 @@ def evaluate_ruleset(facts: SetFacts, ruleset: RuleSet) -> Optional[NextSetLoad]
         return None
     step = load_increment(is_compound=False, load_increment_kg=_decimal(facts.step_kg)).step_kg
     planned = _decimal(facts.planned_rpe)
+    direction, reason = match.direction, match.reason
+    load_kg = _load_for(match, executed, step)
+    ceiling = _decimal(facts.max_load_kg)
+    if ceiling is not None and ceiling > 0 and direction == INCREASE_LOAD:
+        if executed >= ceiling:
+            direction, reason, load_kg = HOLD, REASON_AT_EQUIPMENT_CEILING, float(executed)
+        elif load_kg is not None and Decimal(str(load_kg)) > ceiling:
+            load_kg = float(ceiling)
     return NextSetLoad(
-        direction=match.direction,
-        load_kg=_load_for(match, executed, step),
-        reason=match.reason,
+        direction=direction,
+        load_kg=load_kg,
+        reason=reason,
         executed_kg=float(executed),
         step_kg=float(step),
         planned_rpe=float(planned) if planned is not None else None,
@@ -897,6 +913,7 @@ def suggest_next_set_load(
     fatigue_band: Any = None,
     rpe_ceiling: Any = None,
     ruleset: Optional[RuleSet] = None,
+    max_load_kg: Any = None,
 ) -> Optional[NextSetLoad]:
     """Sugestão da próxima série, ou None quando a regra não se aplica
     (série que não é `working`, sem carga/reps, convenção excluída).
@@ -916,6 +933,7 @@ def suggest_next_set_load(
         load_convention=load_convention,
         joint_pain=joint_pain,
         muscle_pain=muscle_pain,
+        max_load_kg=max_load_kg,
     )
     return evaluate_ruleset(facts, ruleset or DEFAULT_RULESET)
 
