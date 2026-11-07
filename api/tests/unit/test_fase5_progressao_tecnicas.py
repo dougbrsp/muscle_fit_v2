@@ -505,3 +505,29 @@ def test_relogio_continuo_e_flag_pronto_do_dono_so_para_o_fst7():
         params = technique_parameters(code, source="model", catalog=CATALOG)
         assert params is not None
         assert params["continuous_clock"] is (code == "fst7")
+
+
+def test_exposicao_deriva_o_relogio_continuo_de_prescricao_congelada_antiga(monkeypatch):
+    """Ficha congelada ANTES do flag: a exposicao preenche `continuous_clock` pelo dono."""
+    from app import services
+    from app.domain.progression_engine import with_continuous_clock
+
+    assert with_continuous_clock(None) is None
+    assert with_continuous_clock({"technique_code": "fst7", "target_rpe": 10})["continuous_clock"] is True
+    assert with_continuous_clock({"technique_code": "gvt"})["continuous_clock"] is False
+    # Congelado que ja traz o campo vale como esta.
+    assert with_continuous_clock({"technique_code": "fst7", "continuous_clock": False})["continuous_clock"] is False
+
+    monkeypatch.setattr(services, "_safety_by_exercise_row", lambda conn, exercises: {})
+    monkeypatch.setattr(services, "_load_steps_by_row", lambda conn, exercises: {})
+
+    def exposta(code):
+        ex = {
+            "workout_plan_exercise_id": 1,
+            "prescription_json": {"advanced_technique_parameters": {"technique_code": code, "sets_only": True}},
+        }
+        services._expose_frozen_prescriptions(None, [ex])
+        return ex["prescription"]["advanced_technique_parameters"]["continuous_clock"]
+
+    assert exposta("fst7") is True
+    assert exposta("gvt") is False

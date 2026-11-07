@@ -2410,6 +2410,19 @@ REST_PAUSE_DEFAULT_PAUSE_SECONDS = 15
 CONTINUOUS_CLOCK_TECHNIQUE_CODES: frozenset[str] = frozenset({"fst7"})
 
 
+def with_continuous_clock(params: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
+    """`advanced_technique_parameters` EXPOSTOS ao frontend com `continuous_clock`
+    derivado do dono quando a prescricao congelada e anterior ao flag (ficha
+    antiga): o codigo da tecnica decide, nunca o frontend. Congelado que ja traz
+    o campo vale como esta. Sem parametros -> None."""
+    if not params:
+        return None
+    exposed = dict(params)
+    if "continuous_clock" not in exposed:
+        exposed["continuous_clock"] = (str(exposed.get("technique_code") or "").strip() in CONTINUOUS_CLOCK_TECHNIQUE_CODES)
+    return exposed
+
+
 def technique_pause_seconds(code: Optional[str], duration_seconds: Any) -> Optional[int]:
     """Pausa entre as aplicacoes da tecnica: a duracao da linha (> 0) ou, so no
     rest-pause sem duracao, `REST_PAUSE_DEFAULT_PAUSE_SECONDS`. None = sem

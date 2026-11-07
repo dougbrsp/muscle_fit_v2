@@ -5,6 +5,8 @@ import { EXEC_SECONDS_PER_REP, repsExecutionSeconds } from './template-time-esti
 import { createRestCountdown } from './workout-mode-rest-timer';
 import {
   clampReducedReps,
+  correctQueuedIntensiveRecord,
+  INTENSIVE_SET_IN_FLIGHT_ERROR,
   createIntensiveBlock,
   intensivePhaseEndedAt,
   intensiveReducer,
@@ -401,5 +403,34 @@ describe.each(['gvt', 'drop_set', 'rest_pause'])('M2: %s segue o fluxo com toque
     const s2 = run(s1, { type: 'COMPLETE_SET', reps: 10, rpe: 9, clientKey: 'k1', setNumber: 1, now: T0, restSeconds: 30 });
     expect(s2.phase).toBe('DESCANSO');
     expect(run(s2, { type: 'REST_EXPIRED' }).phase).toBe('PROXIMA_SERIE_PRONTA');
+  });
+});
+
+describe('correção de série ainda na fila offline (P1-2)', () => {
+  it("'edited': envia o corpo à fila e aplica a correção ao registro", async () => {
+    const bodies: Record<string, number>[] = [];
+    const applied: unknown[] = [];
+    await correctQueuedIntensiveRecord({
+      correction: { reps: 9, weightKg: 35 },
+      editPending: async (body) => {
+        bodies.push(body);
+        return 'edited';
+      },
+      apply: (patch) => applied.push(patch),
+    });
+    expect(bodies).toEqual([{ reps: 9, weight_kg: 35 }]);
+    expect(applied).toEqual([{ reps: 9, weightKg: 35 }]);
+  });
+
+  it.each(['in_flight', 'none'] as const)("'%s': recusa com a mensagem de sempre e não altera o registro", async (outcome) => {
+    const applied: unknown[] = [];
+    await expect(
+      correctQueuedIntensiveRecord({
+        correction: { reps: 8 },
+        editPending: async () => outcome,
+        apply: (patch) => applied.push(patch),
+      }),
+    ).rejects.toThrow(INTENSIVE_SET_IN_FLIGHT_ERROR);
+    expect(applied).toEqual([]);
   });
 });

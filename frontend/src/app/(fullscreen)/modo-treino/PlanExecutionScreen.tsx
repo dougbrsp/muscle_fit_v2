@@ -162,6 +162,7 @@ import {
   intensiveApplicationKey,
   intensiveApplicationLabel,
   intensiveApplicationPayload,
+  correctQueuedIntensiveRecord,
   intensiveApplicationPlannedLoad,
   intensiveExtraRepsPayload,
   intensiveItemDone,
@@ -475,7 +476,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // gravada leva a carga e a origem; a pausa recarregada volta como "pronta".
   const [applicationAdjust, setApplicationAdjust] = useState<IntensiveApplicationAdjustment | null>(null);
   const [techniquePause, setTechniquePause] = useState<IntensivePause | null>(null);
-  const [intensiveCorrectionError, setIntensiveCorrectionError] = useState<string | null>(null);
+  // Erro do último PATCH de reps, preso ao exercício (wpe) em que ocorreu.
+  const [intensiveCorrectionError, setIntensiveCorrectionError] = useState<{ wpeId: number; message: string } | null>(null);
   // "Finalizar treino" com séries de reps pendentes: confirmação antes do fim.
   const [pendingFinishOpen, setPendingFinishOpen] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<number>>(() => new Set(session.skipped_exercise_ids || []));
@@ -917,6 +919,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }, [progress, currentIndex, upcomingExcludeKey]);
 
   const currentWorkoutPlanExerciseId = current?.planExercise.workout_plan_exercise_id ?? null;
+  // O aviso de correção de reps é do exercício em que ocorreu: trocar de exercício o limpa.
+  useEffect(() => {
+    setIntensiveCorrectionError(null);
+  }, [currentWorkoutPlanExerciseId]);
   const override =
     currentWorkoutPlanExerciseId != null ? overrides[currentWorkoutPlanExerciseId] : undefined;
 
@@ -2504,7 +2510,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       setIntensiveCorrectionError(null);
     } catch (error) {
       // A mensagem fica no bloco (some só na próxima correção que der certo).
-      setIntensiveCorrectionError(errorMessage(error, 'Não foi possível corrigir a série.'));
+      if (currentWorkoutPlanExerciseId != null) {
+        setIntensiveCorrectionError({ wpeId: currentWorkoutPlanExerciseId, message: errorMessage(error, 'Não foi possível corrigir a série.') });
+      }
       throw error;
     }
   }
@@ -2512,15 +2520,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   async function correctIntensiveRecord(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
     if (record.sync === 'saving') {
       // A série ainda está na fila offline: edita a operação pendente (mesma client_key).
-      const body: Record<string, number> = {};
-      if (correction.reps != null) body.reps = correction.reps;
-      if (correction.weightKg != null) body.weight_kg = correction.weightKg;
       const exerciseId = await ensureIntensiveExerciseId();
-      const pending = await opQueue.editPendingSet(session.session_id, exerciseId, record.setNumber, body);
-      if (pending !== 'edited') {
-        throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
-      }
-      intensiveDispatch({ type: 'UPDATE_RECORD', clientKey: record.clientKey, reps: correction.reps, weightKg: correction.weightKg });
+      await correctQueuedIntensiveRecord({
+        correction,
+        editPending: (body) => opQueue.editPendingSet(session.session_id, exerciseId, record.setNumber, body),
+        apply: (patch) => intensiveDispatch({ type: 'UPDATE_RECORD', clientKey: record.clientKey, ...patch }),
+      });
       return;
     }
     if (record.sync !== 'saved') {
@@ -2549,6 +2554,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   function handleIntensiveFinish() {
     if (!intensiveBlock || current == null) return;
     const hadRecords = intensiveBlock.records.length > 0;
+    setIntensiveCorrectionError(null);
     intensiveDispatch({ type: 'FINISH' });
     if (!hadRecords) return;
     setEvaluation(IDLE_EVALUATION);
@@ -2776,7 +2782,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       ) : showIntensive && intensiveBlock && intensiveProfile ? (
         <IntensiveBlock
           state={intensiveBlock}
-          correctionError={intensiveCorrectionError}
+          correctionError={
+            intensiveCorrectionError?.wpeId === currentWorkoutPlanExerciseId ? intensiveCorrectionError.message : null
+          }
           profile={intensiveProfile}
           exerciseName={effectiveExerciseName}
           equipmentName={effectiveEquipmentName}

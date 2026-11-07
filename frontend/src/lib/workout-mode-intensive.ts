@@ -826,6 +826,28 @@ export function nextIntensiveSetNumber(
   return max + 1;
 }
 
+export const INTENSIVE_SET_IN_FLIGHT_ERROR = 'A série está sendo enviada agora. Tente corrigir de novo em instantes.';
+
+/**
+ * Correção de uma série que ainda está na fila offline (`sync === 'saving'`):
+ * edita a operação pendente (mesma `client_key`). 'edited' aplica a correção ao
+ * registro; 'in_flight' (envio em curso) e 'none' (já saiu da fila) recusam com
+ * a mensagem de sempre, sem tocar no registro.
+ */
+export async function correctQueuedIntensiveRecord(params: {
+  correction: { reps?: number; weightKg?: number };
+  editPending: (body: Record<string, number>) => Promise<'edited' | 'in_flight' | 'none'>;
+  apply: (patch: { reps?: number; weightKg?: number }) => void;
+}): Promise<void> {
+  const { correction } = params;
+  const body: Record<string, number> = {};
+  if (correction.reps != null) body.reps = correction.reps;
+  if (correction.weightKg != null) body.weight_kg = correction.weightKg;
+  const outcome = await params.editPending(body);
+  if (outcome !== 'edited') throw new Error(INTENSIVE_SET_IN_FLIGHT_ERROR);
+  params.apply({ reps: correction.reps, weightKg: correction.weightKg });
+}
+
 /** Corpo do `POST .../sets` de uma série do bloco (contrato do PR #617). */
 export function intensiveSetPayload(record: IntensiveSetRecord, restSeconds: number | null): Record<string, unknown> {
   return {

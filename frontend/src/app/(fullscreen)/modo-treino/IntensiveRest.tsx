@@ -131,7 +131,6 @@ export function ReduceRepsStepper({
   onReduce: (record: IntensiveSetRecord, reps: number) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const record = reducibleRecord(state);
   if (!record || record.reps == null) return null;
   const current = record.reps;
@@ -141,11 +140,10 @@ export function ReduceRepsStepper({
   async function change(next: number | null) {
     if (next == null || !record) return;
     setBusy(true);
-    setError(null);
     try {
       await onReduce(record, next);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível ajustar as repetições.');
+    } catch {
+      // O aviso vem do bloco (`correctionError`), que sobrevive ao fim do descanso.
     } finally {
       setBusy(false);
     }
@@ -175,11 +173,6 @@ export function ReduceRepsStepper({
       >
         +
       </button>
-      {error && (
-        <span className={styles.statusError} role="alert">
-          {error}
-        </span>
-      )}
     </div>
   );
 }
