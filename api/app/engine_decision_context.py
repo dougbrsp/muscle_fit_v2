@@ -235,8 +235,9 @@ def bound_ai_load(
             adjustments.append({"field": "load_kg", "from": value, "to": limit, "reason": REASON_ENGINE_TARGET})
             value = limit
     ceiling = context.max_load_kg if context is not None else None
-    if ceiling is not None and value is not None:
-        # So limita AUMENTO sobre a carga recem-executada (teto abaixo dela = nao reduz).
+    if ceiling is not None and value is not None and executed is not None:
+        # So limita AUMENTO sobre a carga recem-executada (teto abaixo dela = nao
+        # reduz). Sem carga executada nao ha como saber se e aumento: nao limita.
         capped = cap_load_to_ceiling(Decimal(str(value)), ceiling, current=executed)
         if capped != Decimal(str(value)):
             adjustments.append(

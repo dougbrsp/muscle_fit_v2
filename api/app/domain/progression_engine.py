@@ -253,6 +253,10 @@ EXCESS_REPS_FAST_TRACK = 3
 # (`track_pending_load_status`).
 PENDING_LOAD_APPLIED = "applied"
 PENDING_LOAD_EXPIRED = "expired"
+# Teto do equipamento: o alvo limitado fica <= a carga de trabalho (teto ja atingido).
+# O pendente e LIMPO sem contar como aumento aplicado (nao grava `plateau_load_applied_at`,
+# nao conta para a fase do grupo) e sem expirar.
+PENDING_LOAD_CANCELED_BY_CEILING = "canceled_by_ceiling"
 # Lote 4/P6 (2026-10-11, decisao do usuario, reabre a D2): o PLATO que sobe a
 # carga e POR TRILHA. Nas fases de carga (`TRACK_LOAD_PHASES`), cada trilha
 # com `PLATEAU_MIN_SESSIONS` sessoes QUALIFY consecutivas DELA em
@@ -2200,6 +2204,13 @@ def track_pending_load_status(
     target = cap_load_to_ceiling(
         Decimal(track.pending_load_kg), track.max_load_kg, current=track.working_load_kg
     )
+    if (
+        track.max_load_kg is not None
+        and track.working_load_kg is not None
+        and target <= Decimal(track.working_load_kg)
+        and Decimal(track.pending_load_kg) > target
+    ):
+        return PENDING_LOAD_CANCELED_BY_CEILING
     if executed_load is not None and Decimal(executed_load) >= target:
         return PENDING_LOAD_APPLIED
     since = track.pending_load_since
@@ -2731,11 +2742,22 @@ def prescribe(
                     and new_load < Decimal(track.working_load_kg) + increment.delta_kg
                 ):
                     evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_LIMITED  # so o teto corta o passo
-                evidence_out["load_increment_kg"] = float(increment.delta_kg)
+                evidence_out["load_increment_kg"] = (
+                    float(new_load - Decimal(track.working_load_kg))  # o incremento efetivo (ja limitado pelo teto)
+                    if new_load is not None and track.working_load_kg is not None
+                    else float(increment.delta_kg)
+                )
                 evidence_out["load_step_kg"] = float(increment.step_kg)
                 for item in increment.evidence:
                     evidence_out[item] = True
-                reasons.append(f"Carga +{increment.delta_kg} kg (step {increment.step_kg} kg, total).")
+                effective_delta = increment.delta_kg
+                if (
+                    new_load is not None
+                    and track.working_load_kg is not None
+                    and new_load != Decimal(track.working_load_kg) + increment.delta_kg
+                ):
+                    effective_delta = new_load - Decimal(track.working_load_kg)  # limitado pelo teto
+                reasons.append(f"Carga +{effective_delta} kg (step {increment.step_kg} kg, total).")
         elif decision == DECREASE_LOAD:
             if applies_to_track and track.load_applicable:
                 new_load, increment = next_load(track, direction=-1)

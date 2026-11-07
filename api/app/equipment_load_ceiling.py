@@ -52,7 +52,13 @@ _PAIR_JOIN = (
     "LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = ge.mapping_id\n"
     + equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, ge.mapping_id)")
 )
-_PAIR_WHERE = "(ge.mapping_id = %s OR COALESCE(elm.canonical_exercise_id, ge.mapping_id) = %s) AND ge.id = %s"
+# Canonico com canonico (como `equipment_pair.is_pair_coherent`): o exercicio do
+# `gym_equipment` (id legado ou canonico) e o do `mapping_id` pedido (idem).
+_PAIR_WHERE = (
+    "COALESCE(elm.canonical_exercise_id, ge.mapping_id) = "
+    "COALESCE((SELECT m2.canonical_exercise_id FROM exercise_legacy_id_map m2 WHERE m2.old_exercise_id = %s LIMIT 1), %s) "
+    "AND ge.id = %s"
+)
 
 
 class LoadCeilingIn(BaseModel):

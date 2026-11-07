@@ -104,16 +104,46 @@ def test_hipertrofia_sobe_ate_o_teto_95_passo_5_teto_97_5():
     assert pe.EQUIPMENT_LOAD_CEILING_LIMITED_NOTE in d.reason
 
 
-def test_aumento_pendente_acima_do_teto_vira_aplicado_e_nao_expira():
+def test_aumento_pendente_acima_do_teto_real_ate_o_teto_e_aplicado_nao_expira():
     base = replace(fx.track(load=40), pending_load_kg=D("45"), pending_load_since=NOW)
     com_teto = replace(base, max_load_kg=D("42.5"))
-    # executou o teto (42,5): aplicado (conta para o plato), nao EXPIRED
-    assert pe.track_pending_load_status(com_teto, D("42.5"), now=NOW + timedelta(days=1)) == pe.PENDING_LOAD_APPLIED
+    depois = NOW + timedelta(days=1)
+    # aumento REAL ate o teto (42,5): aplicado (conta para o plato), nao EXPIRED
+    assert pe.track_pending_load_status(com_teto, D("42.5"), now=depois) == pe.PENDING_LOAD_APPLIED
+    # ainda nao executou o teto: segue pendente
+    assert pe.track_pending_load_status(com_teto, D("40"), now=depois) is None
     # sem teto, o mesmo 42,5 nao cumpre o alvo 45 e segue pendente
-    assert pe.track_pending_load_status(base, D("42.5"), now=NOW + timedelta(days=1)) is None
-    # no teto da trilha (carga de trabalho = teto): nada para subir
+    assert pe.track_pending_load_status(base, D("42.5"), now=depois) is None
+
+
+def test_aumento_pendente_com_teto_ja_atingido_e_cancelado_sem_marca_de_plato():
+    from app.domain import progression_evaluator as ev
+    from app.domain.training_history import PrescribedSpec
+
+    base = replace(fx.track(load=40), pending_load_kg=D("45"), pending_load_since=NOW)
     no_teto = replace(base, max_load_kg=D("40"))
-    assert pe.track_pending_load_status(no_teto, D("40"), now=NOW + timedelta(days=1)) == pe.PENDING_LOAD_APPLIED
+    depois = NOW + timedelta(days=1)
+    assert pe.track_pending_load_status(no_teto, D("40"), now=depois) == pe.PENDING_LOAD_CANCELED_BY_CEILING
+    # a decisao tambem nao expira: cancelado antes do prazo e depois dele
+    muito_depois = NOW + timedelta(days=pe.GROUP_EFFECTIVATION_DAYS + 5)
+    assert pe.track_pending_load_status(no_teto, D("40"), now=muito_depois) == pe.PENDING_LOAD_CANCELED_BY_CEILING
+    # origem plato: o cancelamento limpa o pendente e NAO grava `plateau_load_applied_at`
+    plato = replace(no_teto, pending_load_source=pe.PENDING_LOAD_SOURCE_PLATEAU)
+    execucao = fx.execution(
+        set_list=fx.sets(reps=[10, 10, 10], rpe=8), prescribed=PrescribedSpec(sets=3, reps_min=10, reps_max=12, rpe_target=8)
+    )
+    novo = ev.update_track_execution(plato, execucao, now=depois, reps_min=10, group=fx.group(phase=pe.F2))
+    assert novo.pending_load_kg is None and novo.pending_load_source is None
+    assert novo.plateau_load_applied_at is None
+
+
+def test_incremento_efetivo_do_caminho_next_load_reflete_o_limite():
+    grupo = replace(fx.group(phase=pe.F2), pending_action=pe.INCREASE_LOAD, pending_payload={})
+    track = replace(fx.track(load=95), max_load_kg=D("97"), load_increment_kg=D("5"))
+    d = pe.prescribe(track, grupo, SAFETY, now=NOW)
+    assert d.decision == pe.INCREASE_LOAD and d.suggested_load_kg == 97.0
+    assert d.evidence["load_increment_kg"] == 2.0
+    assert "Carga +2" in d.reason
 
 
 # ---------------------------------------------------------------------------
@@ -207,20 +237,139 @@ def test_calibracao_pela_ultima_execucao_nao_reduz_por_causa_do_teto(monkeypatch
 # ---------------------------------------------------------------------------
 
 
-def test_plano_expoe_teto_e_carga_ja_limitada(monkeypatch):
+@pytest.mark.parametrize(
+    ("teto", "atual", "esperado"),
+    [
+        (90, 80, 90.0),  # ancora 100 e AUMENTO sobre 80: sobe so ate o teto
+        (90, 100, 100.0),  # ja trabalha em 100: ancora nao e aumento, nao reduz
+        (80, 85, 85.0),  # teto abaixo da carga atual: nao reduz (limita a ancora a carga atual)
+        (90, None, 100.0),  # sem carga atual conhecida: na duvida, a propria ancora
+    ],
+)
+def test_plano_expoe_teto_e_carga_limitada_so_em_aumento(monkeypatch, teto, atual, esperado):
     from app import services
 
     monkeypatch.setattr(services, "_safety_by_exercise_row", lambda conn, exercises: {})
     monkeypatch.setattr(services, "_load_steps_by_row", lambda conn, exercises: {})
-    monkeypatch.setattr(services, "_ceilings_by_row", lambda conn, user_id, exercises: {7: D("90")})
+    par = (D(str(teto)), None if atual is None else D(str(atual)))
+    monkeypatch.setattr(services, "_ceilings_by_row", lambda conn, user_id, exercises: {7: par})
     exercicios = [
         {"workout_plan_exercise_id": 7, "load_target": "100kg", "prescription_json": None},
         {"workout_plan_exercise_id": 8, "load_target": "100kg", "prescription_json": None},
     ]
     services._expose_frozen_prescriptions(object(), exercicios, user_id=1)
     com, sem = exercicios
-    assert (com["max_load_kg"], com["load_within_ceiling"]) == (90.0, 90.0)
+    assert (com["max_load_kg"], com["load_within_ceiling"]) == (float(teto), esperado)
     assert (sem["max_load_kg"], sem["load_within_ceiling"]) == (None, None)
+
+
+def test_ceilings_by_row_canonicaliza_o_mapping_id_legado(monkeypatch):
+    from app import progression_state as ps
+    from app import services
+
+    class Cur(NullContext):
+        def execute(self, sql, params=None):
+            self._sql = sql
+
+        def fetchall(self):
+            if "FROM gym_equipment" in self._sql:
+                return [{"id": 9, "equipment_id": 33}]
+            return [{"old_exercise_id": 50, "canonical_exercise_id": 5}, {"old_exercise_id": 51, "canonical_exercise_id": 5}]
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+    monkeypatch.setattr(elc, "load_user_ceilings", lambda conn, user_id: {(5, 33): D("90")})
+    track = replace(fx.track(exercise_id=5, equipment_id=33, load=80), last_executed_at=NOW)
+    monkeypatch.setattr(ps, "load_tracks", lambda conn, user_id: {track.key: track})
+    linhas = [
+        {"workout_plan_exercise_id": i, "mapping_id": m, "preferred_equipment_id": 9}
+        for i, m in ((1, 50), (2, 51), (3, 5), (4, 77))
+    ]
+    resultado = services._ceilings_by_row(Conn(), 1, linhas)
+    assert resultado == {1: (D("90"), D("80")), 2: (D("90"), D("80")), 3: (D("90"), D("80"))}
+
+
+# ---------------------------------------------------------------------------
+# P2-1: par canonico x canonico no SQL real (sqlite com o mesmo SQL do modulo)
+# ---------------------------------------------------------------------------
+
+
+class _SqliteCursor:
+    def __init__(self, conn):
+        self._cur = conn.cursor()
+
+    def execute(self, sql, params=None):
+        self._cur.execute(sql.replace("%s", "?"), tuple(params or ()))
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        return None if row is None else dict(zip([c[0] for c in self._cur.description], row))
+
+
+def _banco(mapping_do_ge):
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.executescript(
+        f"""
+        CREATE TABLE gym_equipment (id INTEGER, equipment_id INTEGER, mapping_id INTEGER);
+        CREATE TABLE exercise_legacy_id_map (old_exercise_id INTEGER, canonical_exercise_id INTEGER);
+        CREATE TABLE equipment_exercises (id INTEGER, equipment_id INTEGER, exercise_id INTEGER, is_active INTEGER);
+        CREATE TABLE {elc.CEILINGS_TABLE} (user_id INTEGER, equipment_exercise_id INTEGER, max_load_kg REAL);
+        INSERT INTO exercise_legacy_id_map VALUES (50, 5), (51, 5);
+        INSERT INTO gym_equipment VALUES (9, 33, {mapping_do_ge});
+        INSERT INTO equipment_exercises VALUES (7, 33, 5, 1);
+        INSERT INTO {elc.CEILINGS_TABLE} VALUES (1, 7, 90.0);
+        """
+    )
+    return _SqliteCursor(conn)
+
+
+@pytest.mark.parametrize("mapping_do_ge", [5, 51])  # ge.mapping_id = C, ou L2 -> C
+@pytest.mark.parametrize("pedido", [50, 5, 51])  # id legado L, canonico C, outro legado L2
+def test_par_resolve_com_ids_legado_e_canonico(mapping_do_ge, pedido):
+    cur = _banco(mapping_do_ge)
+    assert elc.resolve_pair_link(cur, pedido, 9) == 7
+    assert elc.pair_ceiling(cur, 1, pedido, 9) == D("90.0")
+    assert elc.pair_ceiling(cur, 2, pedido, 9) is None  # outro usuario nao ve
+
+
+def test_par_de_outro_exercicio_nao_resolve():
+    cur = _banco(5)
+    assert elc.resolve_pair_link(cur, 99, 9) is None
+    assert elc.pair_ceiling(cur, 1, 99, 9) is None
+
+
+def test_put_com_id_legado_grava_no_vinculo_canonico(monkeypatch):
+    cur = _banco(5)
+
+    class Tx(NullContext):
+        rowcount = 1
+
+        def cursor(self):
+            return self
+
+        def execute(self, sql, params=None):
+            if "INSERT INTO" in sql:
+                self.inserido = params
+                return None
+            return cur.execute(sql, params)
+
+        def fetchone(self):
+            return cur.fetchone()
+
+    tx = Tx()
+    monkeypatch.setattr(elc, "transaction", fake_transaction(tx))
+    app = FastAPI()
+    app.include_router(elc.router)
+    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=1, role="regular", source="session")
+    r = TestClient(app).put(
+        "/me/equipment-load-ceiling", json={"mapping_id": 50, "gym_equipment_id": 9, "max_load_kg": 100}
+    )
+    assert r.status_code == 200
+    assert tx.inserido[:2] == (1, 7)
 
 
 # ---------------------------------------------------------------------------
@@ -347,4 +496,4 @@ def test_vinculo_confere_o_exercicio_do_equipamento():
             return None
 
     assert elc.resolve_pair_link(Cur(), 5, 9) is None
-    assert "ge.mapping_id = %s" in sql_executado[0]
+    assert "m2.canonical_exercise_id" in sql_executado[0]  # canonico x canonico

@@ -90,9 +90,12 @@ def test_teto_abaixo_da_carga_atual_mantem_sem_reduzir():
 
 def test_bound_ai_load_limita_a_ia_ao_teto_sem_regra():
     ctx = PairEngineContext(step_kg=PASSO, max_load_kg=Decimal("50"))
-    carga, ajustes = bound_ai_load(60, ctx, executed_kg=None)
+    carga, ajustes = bound_ai_load(60, ctx, executed_kg=45)
     assert carga == 50.0
     assert ajustes[-1]["reason"] == "EQUIPMENT_LOAD_CEILING"
+    # sem carga executada nao ha como saber se e aumento: o teto nao reduz
+    sem_executada, _ = bound_ai_load(60, ctx, executed_kg=None)
+    assert sem_executada == 60.0
     sem_teto, _ = bound_ai_load(60, PairEngineContext(step_kg=PASSO), executed_kg=None)
     assert sem_teto == 60.0
 
