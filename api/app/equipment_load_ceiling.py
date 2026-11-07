@@ -28,6 +28,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import request_memo
 from .db import transaction
 from .load_conventions import equipment_exercises_join_sql
 from .security import Identity, get_current_identity
@@ -35,16 +36,23 @@ from .security import Identity, get_current_identity
 logger = logging.getLogger(__name__)
 
 CEILINGS_TABLE = "user_equipment_load_ceilings"
-# Limite da coluna DECIMAL(6,2) da migracao 110 (validacao de entrada, nao regra de carga).
-MAX_CEILING_COLUMN_KG = 9999.99
+# Limite da coluna DECIMAL(6,2) da migracao 110 (validacao de entrada, nao regra
+# de carga). Um centesimo abaixo do maximo da coluna: o `quantize(0.01)` nunca
+# arredonda para fora do DECIMAL(6,2).
+MAX_CEILING_COLUMN_KG = 9999.98
+CEILINGS_MEMO = "equipment_load_ceilings"
 
 router = APIRouter(prefix="/me/equipment-load-ceiling", tags=["equipment-load-ceiling"])
 
+# O par parte do `gym_equipment` (que e do exercicio `ge.mapping_id`) e confere
+# que o `mapping_id` pedido e o dele (cru ou canonico): equipamento de outro
+# exercicio nao resolve vinculo. Parametros do WHERE: (mapping_id, mapping_id, ge.id).
 _PAIR_JOIN = (
     "FROM gym_equipment ge\n"
-    "LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = %s\n"
-    + equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, %s)")
+    "LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = ge.mapping_id\n"
+    + equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, ge.mapping_id)")
 )
+_PAIR_WHERE = "(ge.mapping_id = %s OR COALESCE(elm.canonical_exercise_id, ge.mapping_id) = %s) AND ge.id = %s"
 
 
 class LoadCeilingIn(BaseModel):
@@ -74,7 +82,7 @@ def resolve_pair_link(cursor: Any, mapping_id: int, gym_equipment_id: int) -> Op
     """`equipment_exercises.id` do par (exercicio do catalogo + equipamento da
     academia), ou None quando o par nao existe."""
     cursor.execute(
-        f"SELECT eqex.id AS link_id\n{_PAIR_JOIN}WHERE ge.id = %s",
+        f"SELECT eqex.id AS link_id\n{_PAIR_JOIN}WHERE {_PAIR_WHERE}",
         (int(mapping_id), int(mapping_id), int(gym_equipment_id)),
     )
     row = cursor.fetchone() or {}
@@ -87,8 +95,8 @@ def pair_ceiling(cursor: Any, user_id: int, mapping_id: int, gym_equipment_id: i
         cursor.execute(
             f"SELECT c.max_load_kg AS max_load_kg\n{_PAIR_JOIN}"
             f"JOIN {CEILINGS_TABLE} c ON c.equipment_exercise_id = eqex.id AND c.user_id = %s\n"
-            "WHERE ge.id = %s",
-            (int(mapping_id), int(mapping_id), int(user_id), int(gym_equipment_id)),
+            f"WHERE {_PAIR_WHERE}",
+            (int(user_id), int(mapping_id), int(mapping_id), int(gym_equipment_id)),
         )
     except Exception as exc:  # noqa: BLE001 - so o 1146 desta tabela e tolerado
         if not is_missing_ceilings_table_error(exc):
@@ -101,8 +109,15 @@ def pair_ceiling(cursor: Any, user_id: int, mapping_id: int, gym_equipment_id: i
 
 def load_user_ceilings(conn: Any, user_id: int) -> dict[tuple[int, int], Decimal]:
     """(exercise_id, equipment_id) -> teto do usuario. UM SELECT por chamada,
-    qualquer que seja o numero de pares (mesma chave das trilhas). Tabela
-    ausente ou falha de leitura = {} (sem teto; nunca derruba a prescricao)."""
+    qualquer que seja o numero de pares (mesma chave das trilhas). Memo por
+    requisicao GET (`prescribe_pairs` e `suggest_for_pairs` leem na mesma
+    chamada). So o 1146 desta tabela (migracao 110 pendente) e esperado; qualquer
+    outra falha de leitura = {} (sem teto, para nao derrubar a prescricao) com
+    `logger.error` registrando que o teto foi IGNORADO."""
+    return request_memo.memoize((CEILINGS_MEMO, int(user_id)), lambda: _read_user_ceilings(conn, user_id))
+
+
+def _read_user_ceilings(conn: Any, user_id: int) -> dict[tuple[int, int], Decimal]:
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -117,7 +132,7 @@ def load_user_ceilings(conn: Any, user_id: int) -> dict[tuple[int, int], Decimal
         if is_missing_ceilings_table_error(exc):
             logger.warning("%s ausente (migracao 110 pendente): sem teto de carga", CEILINGS_TABLE)
         else:
-            logger.exception("equipment_load_ceiling.load_failed")
+            logger.error("equipment_load_ceiling.load_failed: teto ignorado (sem teto)", exc_info=exc)
         return {}
     result: dict[tuple[int, int], Decimal] = {}
     for row in rows:

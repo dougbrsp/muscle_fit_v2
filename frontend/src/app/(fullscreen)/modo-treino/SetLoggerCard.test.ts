@@ -238,6 +238,25 @@ describe('SetLoggerCard — teto de carga do equipamento (migração 110)', () =
     expect(html).not.toContain('data-testid="load-ceiling-mark"');
   });
 
+  it('só em série de trabalho: aquecimento, sensação, técnica e série não-trabalho ficam sem a ação', () => {
+    for (const variant of ['advancedWarmup', 'advancedFeeler', 'techniqueApplication'] as const) {
+      expect(render({ variant, loadCeiling: control() })).not.toContain('data-testid="load-ceiling"');
+    }
+    expect(render({ setType: 'warmup', loadCeiling: control() })).not.toContain('data-testid="load-ceiling"');
+    expect(render({ variant: 'advancedWorking', loadCeiling: control() })).toContain('data-testid="load-ceiling-mark"');
+    expect(render({ setType: 'working', loadCeiling: control() })).toContain('data-testid="load-ceiling-mark"');
+  });
+
+  it('com teto: o "+" da carga desabilita quando o próximo passo passa do limite do servidor', () => {
+    // carga 40, passo 2,5, limite 40 => "+" desabilitado; "-" segue habilitado.
+    const noTeto = render({ loadCeiling: control({ maxLoadKg: 40 }), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(noTeto).toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+    const abaixo = render({ loadCeiling: control({ maxLoadKg: 100 }), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(abaixo).not.toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+    const semTeto = render({ loadCeiling: control(), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(semTeto).not.toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+  });
+
   it('o teto aparece na unidade escolhida (lb)', () => {
     const html = render({ loadCeiling: control({ maxLoadKg: 45.36 }), weightUnit: 'lb' });
     expect(html).toContain('Carga máxima do equipamento: 100 lb');

@@ -60,7 +60,8 @@ import {
   WEIGHT_UNITS,
   type WeightUnit,
 } from '@/lib/weight-units';
-import { LOAD_CEILING_ACTION_LABEL, LOAD_CEILING_UNDO_LABEL } from '@/lib/equipment-load-ceiling';
+import { isWorkingSetType } from '@/lib/set-types';
+import { LOAD_CEILING_ACTION_LABEL, LOAD_CEILING_UNDO_LABEL, stepUpAllowed } from '@/lib/equipment-load-ceiling';
 import { ExerciseCardViewer } from './ExerciseCardViewer';
 import type { LoadCeilingControl } from './useEquipmentLoadCeiling';
 import { MuscleMapDisclosure } from './MuscleMapDisclosure';
@@ -125,9 +126,9 @@ type SteppedFieldProps = {
   step: number;
   min?: number;
   max?: number;
-  // Limite SÓ do botão "+" (o campo aceita digitar acima: o teto é um aviso do
-  // servidor, não um bloqueio do que a pessoa realmente levantou).
-  stepMax?: number;
+  // Limite PRONTO do servidor, na unidade do campo, SÓ para habilitar o "+"
+  // (`stepUpAllowed`): o campo aceita digitar acima e nada é recortado.
+  plusLimit?: number;
   decimalScale?: number;
   suffix?: string;
   placeholder?: string;
@@ -148,7 +149,7 @@ function SteppedField({
   step,
   min = 0,
   max,
-  stepMax,
+  plusLimit,
   decimalScale = 0,
   suffix,
   placeholder,
@@ -197,10 +198,10 @@ function SteppedField({
           color="brand"
           className={`${styles.stepButton} ${styles.fieldPlus}`}
           aria-label={`Aumentar ${name}`}
+          disabled={!stepUpAllowed(value, step, plusLimit)}
           onClick={() => {
             const next = Number(((value ?? 0) + step).toFixed(2));
-            const capped = max != null ? Math.min(max, next) : next;
-            onChange(stepMax != null ? Math.max(value ?? 0, Math.min(stepMax, capped)) : capped);
+            onChange(max != null ? Math.min(max, next) : next);
           }}
         >
           <IconPlus size={18} />
@@ -840,7 +841,9 @@ export function SetLoggerCard({
   // Teto de carga do equipamento (migração 110): o servidor entrega o valor
   // pronto; aqui só o limite visual do "+" e o estado (badge + desfazer).
   const loadCeilingMax = loadCeiling?.maxLoadKg != null ? fromKg(loadCeiling.maxLoadKg, weightUnit) : undefined;
-  const loadCeilingBlock = loadCeiling ? (
+  // Só em série de TRABALHO: aquecimento, sensação e técnica não marcam o teto.
+  const canMarkCeiling = (variant === 'default' || variant === 'advancedWorking') && (setType == null || isWorkingSetType(setType));
+  const loadCeilingBlock = loadCeiling && canMarkCeiling ? (
     <Group gap={8} wrap="wrap" align="center" data-testid="load-ceiling">
       {loadCeiling.maxLoadKg != null ? (
         <>
@@ -1120,7 +1123,7 @@ export function SetLoggerCard({
                 value={weightField.display}
                 onChange={editWeight}
                 step={loadStepperStep(weightUnit, loadIncrementKg)}
-                stepMax={loadCeilingMax}
+                plusLimit={loadCeilingMax}
                 min={0}
                 decimalScale={DISPLAY_DECIMALS[weightUnit]}
                 suffix=""
@@ -1185,7 +1188,7 @@ export function SetLoggerCard({
                 value={weightField.display}
                 onChange={editWeight}
                 step={loadStepperStep(weightUnit, loadIncrementKg)}
-                stepMax={loadCeilingMax}
+                plusLimit={loadCeilingMax}
                 min={0}
                 decimalScale={DISPLAY_DECIMALS[weightUnit]}
                 suffix=""
@@ -1203,7 +1206,7 @@ export function SetLoggerCard({
               value={weightField.display}
               onChange={editWeight}
               step={variant === 'advancedWorking' ? WEIGHT_STEP[weightUnit].fine : loadStepperStep(weightUnit, loadIncrementKg)}
-              stepMax={loadCeilingMax}
+              plusLimit={loadCeilingMax}
               min={0}
               decimalScale={DISPLAY_DECIMALS[weightUnit]}
               suffix=""

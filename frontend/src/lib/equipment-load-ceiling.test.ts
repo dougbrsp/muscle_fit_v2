@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  displayLoadWithinCeiling,
-  equipmentLoadCeilingPath,
-  equipmentLoadCeilingQueryKey,
-} from './equipment-load-ceiling';
+import { equipmentLoadCeilingPath, equipmentLoadCeilingQueryKey, stepUpAllowed } from './equipment-load-ceiling';
+import { fromKg, loadStepperStep } from './weight-units';
 
 describe('equipment-load-ceiling', () => {
   it('monta o caminho do par e a chave de cache', () => {
@@ -13,10 +10,23 @@ describe('equipment-load-ceiling', () => {
     expect(equipmentLoadCeilingQueryKey(null)).toEqual(['equipment-load-ceiling', null, null]);
   });
 
-  it('a carga mostrada nunca passa do teto do servidor; sem teto, não muda', () => {
-    expect(displayLoadWithinCeiling(110, 100)).toBe(100);
-    expect(displayLoadWithinCeiling(90, 100)).toBe(90);
-    expect(displayLoadWithinCeiling(110, null)).toBe(110);
-    expect(displayLoadWithinCeiling(null, 100)).toBeNull();
+  it('sem limite do servidor o "+" sempre pode', () => {
+    expect(stepUpAllowed(500, 2.5, null)).toBe(true);
+    expect(stepUpAllowed(null, 2.5, undefined)).toBe(true);
+  });
+
+  it('kg: o "+" só habilita se o próximo passo inteiro cabe no limite', () => {
+    expect(stepUpAllowed(97.5, 2.5, 100)).toBe(true); // 100 <= 100
+    expect(stepUpAllowed(100, 2.5, 100)).toBe(false);
+    expect(stepUpAllowed(99, 2.5, 100)).toBe(false); // 101,5 passaria do teto
+    expect(stepUpAllowed(null, 2.5, 100)).toBe(true);
+  });
+
+  it('lb: o limite do servidor é convertido e o passo da unidade é respeitado', () => {
+    const limit = fromKg(100, 'lb'); // 220,5 lb
+    const step = loadStepperStep('lb', 2.5);
+    expect(stepUpAllowed(limit - step, step, limit)).toBe(true);
+    expect(stepUpAllowed(limit - step + 0.5, step, limit)).toBe(false);
+    expect(stepUpAllowed(limit, step, limit)).toBe(false);
   });
 });

@@ -109,6 +109,7 @@ from .progression_engine import (
     INTENSITY_BELOW_TARGET,
     EXCESS_REPS_FAST_TRACK,
     STRENGTH_REPS,
+    cap_load_to_ceiling,
     load_increment,
     round_to_equipment_step,
 )
@@ -867,11 +868,14 @@ def evaluate_ruleset(facts: SetFacts, ruleset: RuleSet) -> Optional[NextSetLoad]
     direction, reason = match.direction, match.reason
     load_kg = _load_for(match, executed, step)
     ceiling = _decimal(facts.max_load_kg)
-    if ceiling is not None and ceiling > 0 and direction == INCREASE_LOAD:
-        if executed >= ceiling:
+    if ceiling is not None and ceiling > 0 and direction == INCREASE_LOAD and load_kg is not None:
+        # Dono unico do teto: `progression_engine.cap_load_to_ceiling`. So limita
+        # AUMENTO; teto abaixo da carga executada = manter (nunca reduz).
+        capped = cap_load_to_ceiling(Decimal(str(load_kg)), ceiling, current=executed)
+        if capped <= executed:
             direction, reason, load_kg = HOLD, REASON_AT_EQUIPMENT_CEILING, float(executed)
-        elif load_kg is not None and Decimal(str(load_kg)) > ceiling:
-            load_kg = float(ceiling)
+        else:
+            load_kg = float(capped)
     return NextSetLoad(
         direction=direction,
         load_kg=load_kg,

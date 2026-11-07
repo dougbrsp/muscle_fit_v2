@@ -83,6 +83,11 @@ def test_contexto_do_par_leva_o_teto_para_a_regra():
     assert (r.direction, r.reason) == (nsl.HOLD, nsl.REASON_AT_EQUIPMENT_CEILING)
 
 
+def test_teto_abaixo_da_carga_atual_mantem_sem_reduzir():
+    r = _sobe(max_load_kg=30, weight=40)
+    assert (r.direction, r.load_kg, r.reason) == (nsl.HOLD, 40.0, nsl.REASON_AT_EQUIPMENT_CEILING)
+
+
 def test_bound_ai_load_limita_a_ia_ao_teto_sem_regra():
     ctx = PairEngineContext(step_kg=PASSO, max_load_kg=Decimal("50"))
     carga, ajustes = bound_ai_load(60, ctx, executed_kg=None)
@@ -90,6 +95,16 @@ def test_bound_ai_load_limita_a_ia_ao_teto_sem_regra():
     assert ajustes[-1]["reason"] == "EQUIPMENT_LOAD_CEILING"
     sem_teto, _ = bound_ai_load(60, PairEngineContext(step_kg=PASSO), executed_kg=None)
     assert sem_teto == 60.0
+
+
+def test_bound_ai_load_nunca_reduz_por_causa_do_teto():
+    # executou 55 com teto 50: a IA propoe 60 -> mantem 55 (nem sobe, nem desce ate o teto).
+    ctx = PairEngineContext(step_kg=PASSO, max_load_kg=Decimal("50"))
+    carga, _ = bound_ai_load(60, ctx, executed_kg=55)
+    assert carga == 55.0
+    # proposta que ja e reducao nao e tocada pelo teto
+    reduz, _ = bound_ai_load(52.5, ctx, executed_kg=55)
+    assert reduz == 52.5
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +129,6 @@ def test_next_load_respeita_o_teto():
 
 def test_trilha_no_teto_nao_arma_aumento_de_carga():
     track = _trilha(teto=40)
-    assert pe.at_equipment_ceiling(track)
     assert pe.arm_track_load_increase(track, now=NOW, source=pe.PENDING_LOAD_SOURCE_EXCESS) == track
     sem_teto = pe.arm_track_load_increase(_trilha(), now=NOW, source=pe.PENDING_LOAD_SOURCE_EXCESS)
     assert sem_teto.pending_load_kg == Decimal("42.5")
@@ -130,7 +144,7 @@ def test_prescribe_no_teto_segue_sem_aumentar_e_explica():
     d = pe.prescribe(track, fx.group(phase=pe.F2), SAFETY, now=NOW)
     assert d.decision != pe.INCREASE_LOAD
     assert d.suggested_load_kg == 40.0
-    assert d.evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] is True
+    assert d.evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_REACHED
     assert pe.EQUIPMENT_LOAD_CEILING_NOTE in d.reason
 
 

@@ -66,7 +66,7 @@ from .domain.next_set_load import (
     planned_ramp_rpe,
 )
 from .domain.progression_engine import round_to_equipment_step  # noqa: F401 - helper público único (reexportado)
-from .domain.progression_engine import load_increment
+from .domain.progression_engine import cap_load_to_ceiling, load_increment
 from .domain.training_goal import DEFAULT_GOAL
 from .domain.training_history import parse_reps_range
 from .db_helpers import rows as _fetchall
@@ -235,9 +235,14 @@ def bound_ai_load(
             adjustments.append({"field": "load_kg", "from": value, "to": limit, "reason": REASON_ENGINE_TARGET})
             value = limit
     ceiling = context.max_load_kg if context is not None else None
-    if ceiling is not None and ceiling > 0 and value is not None and Decimal(str(value)) > ceiling:
-        adjustments.append({"field": "load_kg", "from": value, "to": float(ceiling), "reason": REASON_EQUIPMENT_CEILING})
-        value = float(ceiling)
+    if ceiling is not None and value is not None:
+        # So limita AUMENTO sobre a carga recem-executada (teto abaixo dela = nao reduz).
+        capped = cap_load_to_ceiling(Decimal(str(value)), ceiling, current=executed)
+        if capped != Decimal(str(value)):
+            adjustments.append(
+                {"field": "load_kg", "from": value, "to": float(capped), "reason": REASON_EQUIPMENT_CEILING}
+            )
+            value = float(capped)
     return value, adjustments
 
 
@@ -519,7 +524,7 @@ def read_pair_load_ceiling(conn: Any, user_id: Any, mapping_id: Any, gym_equipme
         with conn.cursor() as cur:
             return pair_ceiling(cur, int(user_id), int(mapping_id), int(gym_equipment_id))
     except Exception:  # noqa: BLE001 - contexto opcional
-        logger.exception("engine_decision_context.load_ceiling_failed")
+        logger.error("engine_decision_context.load_ceiling_failed: teto ignorado (sem teto)", exc_info=True)
         return None
 
 

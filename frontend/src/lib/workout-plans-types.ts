@@ -409,6 +409,10 @@ export type WorkoutPlanExercise = {
   // NULL no cadastro vira o default do backend). Usado pelo stepper de carga
   // do Modo Treino. Ausente em continuações sintéticas antigas.
   load_increment_kg?: number | null;
+  // Teto de carga do usuário para o par da linha (migração 110) e a carga da
+  // ficha JÁ limitada pelo servidor (`cap_load_to_ceiling`). Null = sem teto.
+  max_load_kg?: number | null;
+  load_within_ceiling?: number | null;
   // Exercício que exige uma escolha do usuário antes de executar (ex.:
   // técnica prescrita inválida para o equipamento).
   requires_user_choice?: boolean;
@@ -668,6 +672,8 @@ export type SuggestedProgressionResponse = {
   load_source?: 'engine' | 'last_execution' | null;
   // Passo do equipamento da trilha usada (stepper e arredondamento).
   load_increment_kg?: number | null;
+  // Teto de carga do usuário para o par (migração 110); null = sem teto.
+  max_load_kg?: number | null;
   equipment_id?: number | null;
   decision?: string | null;
   // Teto e falha FINAIS do par (segurança + recuperação projetada).

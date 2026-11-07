@@ -1,10 +1,11 @@
 // Teto de carga do equipamento (migração 110, `api/app/equipment_load_ceiling.py`).
 //
 // Só transporte e apresentação. A REGRA (nenhuma carga sugerida passa do teto;
-// no teto o motor não arma aumento e a progressão segue por reps/volume) é dos
-// motores (`domain/next_set_load.py`, `domain/progression_engine.py`); aqui a
-// tela só lê o `max_load_kg` pronto da API, mostra o estado e deixa marcar ou
-// desfazer. Sem número de regra neste arquivo.
+// no teto o motor não arma aumento e a progressão segue por reps/volume) e todo
+// cálculo com o teto são do dono (`progression_engine.cap_load_to_ceiling`).
+// A tela lê valores PRONTOS da API: `max_load_kg` (o teto, para mostrar) e
+// `load_within_ceiling` (a carga da ficha já limitada pelo dono) e deixa marcar
+// ou desfazer. Nenhuma carga é calculada, limitada ou arredondada aqui.
 
 export const EQUIPMENT_LOAD_CEILING_PATH = '/me/equipment-load-ceiling';
 export const EQUIPMENT_LOAD_CEILING_QUERY_ROOT = 'equipment-load-ceiling';
@@ -33,11 +34,14 @@ export const LOAD_CEILING_OFFLINE_MESSAGE =
 export const LOAD_CEILING_ERROR_MESSAGE = 'Não foi possível salvar a carga máxima do equipamento. Tente de novo.';
 
 /**
- * Carga mostrada no campo, limitada ao teto que o servidor devolveu (ambos em
- * kg). Só apresentação: o valor sugerido já sai limitado dos motores; isto cobre
- * uma sugestão congelada ANTES de o teto ser marcado. Sem teto, devolve a carga.
+ * O botão "+" do stepper da carga pode dar mais um passo? `serverLimit` é o
+ * limite PRONTO do servidor, já na unidade do campo (só conversão de unidade,
+ * feita por quem chama). Só HABILITA/DESABILITA o botão: nunca recorta o valor
+ * digitado nem a carga sugerida. Respeita o passo da unidade (kg ou lb): o
+ * próximo passo inteiro não pode ultrapassar o limite. Sem limite, sempre pode.
  */
-export function displayLoadWithinCeiling(loadKg: number | null, maxLoadKg: number | null | undefined): number | null {
-  if (loadKg == null || maxLoadKg == null) return loadKg;
-  return loadKg > maxLoadKg ? maxLoadKg : loadKg;
+export function stepUpAllowed(valueDisplay: number | null, stepDisplay: number, serverLimit: number | null | undefined): boolean {
+  if (serverLimit == null) return true;
+  const next = Number(((valueDisplay ?? 0) + stepDisplay).toFixed(2));
+  return next <= serverLimit;
 }

@@ -65,7 +65,6 @@ import {
 } from '@/lib/workout-mode-exercise-card';
 import { buildSafetyEventBannerText, isSafetyAlertEvent, safetyEventColor } from '@/lib/intensity-status';
 import { suggestedProgressionTargets } from '@/lib/suggested-progression';
-import { displayLoadWithinCeiling } from '@/lib/equipment-load-ceiling';
 import { useEquipmentLoadCeiling } from './useEquipmentLoadCeiling';
 import { resolveNextSetPreview } from '@/lib/workout-mode-next-set';
 import {
@@ -2190,12 +2189,13 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         ? engineNextLoad
         : lastSet?.weight_kg != null
           ? Number(lastSet.weight_kg)
-          : (parseNumericTarget(effectiveLoadTarget) ?? SET_LOGGER_FALLBACK_LOAD_KG);
+          : // Teto do equipamento: a carga da ficha já limitada pelo servidor
+            // (`load_within_ceiling`); sem teto vem null e vale o alvo de sempre.
+            ((pairChanged ? null : (current.planExercise.load_within_ceiling ?? null)) ??
+            parseNumericTarget(effectiveLoadTarget) ??
+            SET_LOGGER_FALLBACK_LOAD_KG);
   const measuredDefaultWeight = lastSet?.weight_kg != null ? Number(lastSet.weight_kg) : null;
-  const defaultWeight = displayLoadWithinCeiling(
-    measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight,
-    loadCeiling.maxLoadKg,
-  );
+  const defaultWeight = measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight;
   // Sugestão da IA (já clampada no servidor) > RPE da última série desta
   // sessão > alvo da prescrição. `clampRpeSuggestion` garante que nem o RPE
   // repetido da última série ofereça um valor acima do teto de hoje (§5.7: o

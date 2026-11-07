@@ -373,6 +373,10 @@ LOAD_REGIME_DOUBLE_PROGRESSION = "double_progression"
 # do par; nenhuma carga prescrita passa dela e o aumento de carga nao e armado.
 EVIDENCE_EQUIPMENT_LOAD_CEILING = "equipment_load_ceiling"
 EQUIPMENT_LOAD_CEILING_NOTE = "Carga máxima do equipamento atingida: a progressão segue por repetições e volume."
+EQUIPMENT_LOAD_CEILING_LIMITED_NOTE = "Aumento de carga limitado ao teto do equipamento."
+# Valor da evidencia: carga de trabalho ja no teto ("reached") ou aumento so ate o teto ("limited").
+EQUIPMENT_CEILING_REACHED = "reached"
+EQUIPMENT_CEILING_LIMITED = "limited"
 EVIDENCE_LOAD_REGIME = "load_regime"
 EVIDENCE_STRENGTH_E1RM_LOAD = "strength_e1rm_load"
 # Evidencia/motivo/bloqueio do ramo de forca.
@@ -1663,24 +1667,30 @@ def load_increment(*, is_compound: bool, load_increment_kg: Any = None) -> LoadI
     return LoadIncrement(delta_kg=delta, step_kg=step, evidence=evidence)
 
 
-def at_equipment_ceiling(track: TrackState) -> bool:
-    """A carga de trabalho da trilha ja esta no teto do equipamento?"""
-    return (
-        track.max_load_kg is not None
-        and track.working_load_kg is not None
-        and Decimal(track.working_load_kg) >= Decimal(track.max_load_kg)
-    )
+def cap_load_to_ceiling(
+    value: Optional[Decimal], max_load_kg: Any, current: Optional[Decimal] = None
+) -> Optional[Decimal]:
+    """Funcao PUBLICA UNICA do teto de carga do equipamento (migracao 110):
+    limita uma carga PROPOSTA ao teto marcado pelo usuario. Teto None ou <= 0 =
+    sem teto (identidade).
 
-
-def _cap_to_ceiling(value: Decimal, track: TrackState) -> Decimal:
-    """`value` limitado ao teto do equipamento, sem ficar abaixo da carga de
-    trabalho (teto menor que a carga atual nao vira reducao aqui)."""
-    if track.max_load_kg is None or Decimal(track.max_load_kg) <= 0:
+    `current` = a carga atual (de trabalho/executada): o teto so limita
+    AUMENTOS. Proposta <= `current` passa como veio (o teto nunca reduz sozinho)
+    e um teto abaixo de `current` nunca leva a proposta abaixo dela (o motor
+    nunca aumenta e nunca reduz por causa do teto). Sem `current`, e o minimo
+    simples entre a proposta e o teto."""
+    if value is None or max_load_kg is None:
         return value
-    capped = min(value, Decimal(track.max_load_kg))
-    if track.working_load_kg is not None:
-        capped = max(capped, Decimal(track.working_load_kg))
-    return capped
+    ceiling = Decimal(str(max_load_kg))
+    if ceiling <= 0:
+        return value
+    proposed = Decimal(str(value))
+    if current is None:
+        return min(proposed, ceiling)
+    base = Decimal(str(current))
+    if proposed <= base:
+        return proposed
+    return max(min(proposed, ceiling), base)
 
 
 def next_load(track: TrackState, *, direction: int = 1) -> tuple[Optional[Decimal], LoadIncrement]:
@@ -1690,7 +1700,7 @@ def next_load(track: TrackState, *, direction: int = 1) -> tuple[Optional[Decima
         return None, increment
     value = Decimal(track.working_load_kg) + (increment.delta_kg * direction)
     if direction > 0:
-        value = _cap_to_ceiling(value, track)
+        value = cap_load_to_ceiling(value, track.max_load_kg, current=track.working_load_kg)
     return (value if value > 0 else Decimal(track.working_load_kg)), increment
 
 
@@ -2184,7 +2194,13 @@ def track_pending_load_status(
     (`GROUP_EFFECTIVATION_DAYS` sem subir) ou None (segue pendente / nao ha)."""
     if track.pending_load_kg is None:
         return None
-    if executed_load is not None and Decimal(executed_load) >= Decimal(track.pending_load_kg):
+    # Teto do equipamento: o alvo efetivo e o limitado ao teto (senao um aumento
+    # armado acima do teto nunca seria "aplicado" e expiraria como EXPIRED, e o
+    # aumento por plato nao contaria para a fase do grupo).
+    target = cap_load_to_ceiling(
+        Decimal(track.pending_load_kg), track.max_load_kg, current=track.working_load_kg
+    )
+    if executed_load is not None and Decimal(executed_load) >= target:
         return PENDING_LOAD_APPLIED
     since = track.pending_load_since
     if since is None or now >= since + timedelta(days=GROUP_EFFECTIVATION_DAYS):
@@ -2203,7 +2219,7 @@ def track_pending_load(track: TrackState, *, now: Optional[datetime] = None) -> 
     since = track.pending_load_since
     if now is not None and since is not None and now >= since + timedelta(days=GROUP_EFFECTIVATION_DAYS):
         return None
-    target = _cap_to_ceiling(Decimal(track.pending_load_kg), track)
+    target = cap_load_to_ceiling(Decimal(track.pending_load_kg), track.max_load_kg, current=track.working_load_kg)
     if track.working_load_kg is not None and target <= Decimal(track.working_load_kg):
         return None
     return target
@@ -2561,25 +2577,33 @@ def _clamp_to_equipment_ceiling(
     reasons: list[str],
 ) -> tuple[Optional[Decimal], str]:
     """Teto de carga do equipamento (migracao 110), ultima palavra sobre a
-    carga prescrita: nenhuma carga passa do teto; carga de trabalho ja no teto
-    nao sobe (INCREASE_LOAD vira HOLD e a progressao segue por reps/volume).
-    Sem teto: identidade (comportamento anterior)."""
-    if track.max_load_kg is None or Decimal(track.max_load_kg) <= 0 or not track.load_applicable:
+    carga prescrita (inclusive o regime e1RM/forca): so AUMENTOS sao limitados
+    (`cap_load_to_ceiling` com a carga de trabalho como `current`). Carga de
+    trabalho ja no teto ou acima dele: INCREASE_LOAD vira HOLD e a progressao
+    segue por reps/volume; reducao nunca e criada nem desfeita pelo teto.
+    Evidencia: `reached` (carga de trabalho >= teto) ou `limited` (subiu, mas so
+    ate o teto). Sem teto: identidade (comportamento anterior)."""
+    if track.max_load_kg is None or Decimal(str(track.max_load_kg)) <= 0 or not track.load_applicable:
         return load, decision
-    ceiling = Decimal(track.max_load_kg)
+    ceiling = Decimal(str(track.max_load_kg))
     base = Decimal(track.working_load_kg) if track.working_load_kg is not None else None
-    if load is not None and load > ceiling and (base is None or base <= ceiling):
-        load = ceiling
-        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = True
-        if base is not None:
-            evidence_out["load_increment_kg"] = float(load - base)
+    if load is not None:
+        capped = cap_load_to_ceiling(load, ceiling, current=base)
+        if capped != load:
+            load = capped
+            evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_LIMITED
+            if base is not None:
+                evidence_out["load_increment_kg"] = float(load - base)
     if base is not None and base >= ceiling and decision != DECREASE_LOAD:
-        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = True
+        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_REACHED
         if decision == INCREASE_LOAD and (load is None or load <= base):
             decision = HOLD
             evidence_out.pop("load_increment_kg", None)
-    if evidence_out.get(EVIDENCE_EQUIPMENT_LOAD_CEILING):
+    state = evidence_out.get(EVIDENCE_EQUIPMENT_LOAD_CEILING)
+    if state == EQUIPMENT_CEILING_REACHED:
         reasons.append(EQUIPMENT_LOAD_CEILING_NOTE)
+    elif state == EQUIPMENT_CEILING_LIMITED:
+        reasons.append(EQUIPMENT_LOAD_CEILING_LIMITED_NOTE)
     return load, decision
 
 
@@ -2701,6 +2725,12 @@ def prescribe(
             else:
                 new_load, increment = next_load(track, direction=1)
                 load = new_load if new_load is not None else load
+                if (
+                    new_load is not None
+                    and track.working_load_kg is not None
+                    and new_load < Decimal(track.working_load_kg) + increment.delta_kg
+                ):
+                    evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_LIMITED  # so o teto corta o passo
                 evidence_out["load_increment_kg"] = float(increment.delta_kg)
                 evidence_out["load_step_kg"] = float(increment.step_kg)
                 for item in increment.evidence:
@@ -2776,6 +2806,8 @@ def prescribe(
             "since": track.pending_load_since.isoformat() if track.pending_load_since else None,
         }
         evidence_out["load_increment_kg"] = float(track_load - base)
+        if Decimal(track.pending_load_kg) > track_load:
+            evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_LIMITED  # alvo cortado pelo teto
         if pending_load_source(track) == PENDING_LOAD_SOURCE_PLATEAU:
             evidence_out[EVIDENCE_TRACK_PLATEAU_LOAD] = detail
             reasons.append(

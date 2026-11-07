@@ -34,6 +34,9 @@ from .progression_engine import (
     ADD_SET,
     APPLY_TECHNIQUE,
     DECREASE_LOAD,
+    EQUIPMENT_CEILING_LIMITED,
+    EQUIPMENT_CEILING_REACHED,
+    EQUIPMENT_LOAD_CEILING_LIMITED_NOTE,
     EQUIPMENT_LOAD_CEILING_NOTE,
     EVIDENCE_EQUIPMENT_LOAD_CEILING,
     EVIDENCE_TRANSITION_DEFERRED,
@@ -41,6 +44,7 @@ from .progression_engine import (
     LOAD_NOT_APPLICABLE,
     SET_REP_RANGE_10_12,
     SKIP,
+    cap_load_to_ceiling,
     ReadinessContract,
     classify_sets,
     resolve_track,
@@ -236,8 +240,10 @@ def progression_note(suggestion: PairSuggestion) -> str:
     partes: list[str] = []
     if evidence.get(EVIDENCE_TRANSITION_DEFERRED):
         partes.append("Dose reduzida pela recuperação: manter a carga e adiar a progressão.")
-    elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) and code != DECREASE_LOAD:
+    elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_REACHED and code != DECREASE_LOAD:
         partes.append(EQUIPMENT_LOAD_CEILING_NOTE)
+    elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_LIMITED and code == INCREASE_LOAD:
+        partes.append(EQUIPMENT_LOAD_CEILING_LIMITED_NOTE)
     elif code == INCREASE_LOAD and evidence.get("load_increment_kg") is not None:
         partes.append(f"Aumentar carga: +{_kg(evidence['load_increment_kg'])} kg (passo do equipamento).")
     elif code == DECREASE_LOAD and evidence.get("load_increment_kg") is not None:
@@ -369,8 +375,10 @@ def suggest_for_pairs(
             load, source = last.working_load_kg, LOAD_SOURCE_LAST_EXECUTION
         step = steps.get(int(equipment_id)) if equipment_id is not None else None
         ceiling = ceilings.get((int(query.exercise_id), int(equipment_id))) if equipment_id is not None else None
-        if ceiling is not None and load is not None and Decimal(str(load)) > ceiling:
-            load = float(ceiling)  # a calibracao pela ultima execucao tambem respeita o teto
+        if ceiling is not None and load is not None and source == LOAD_SOURCE_LAST_EXECUTION:
+            # calibracao pela ultima execucao: o teto so limita aumento (a carga
+            # e a ultima executada, entao nunca ha reducao por causa do teto)
+            load = float(cap_load_to_ceiling(Decimal(str(load)), ceiling, current=Decimal(str(last.working_load_kg))))
         result[query.key] = PairSuggestion(
             exercise_id=int(query.exercise_id),
             equipment_id=equipment_id,

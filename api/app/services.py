@@ -2527,7 +2527,7 @@ def get_workout_plan(plan_id: int, user_id: int | None = None) -> dict[str, Any]
         # o motor legado aqui). Abrir o mesmo plano
         # duas vezes devolve exatamente a mesma prescricao. Fora do `with` do
         # cursor de cima: abre os proprios cursores, um de cada vez.
-        _expose_frozen_prescriptions(conn, exercises)
+        _expose_frozen_prescriptions(conn, exercises, user_id=user_id)
 
     return plan
 
@@ -2622,6 +2622,29 @@ def _safety_by_exercise_row(conn, exercises: list[dict[str, Any]]) -> dict[int, 
     return {row_id: safety[key] for row_id, key in pairs.items() if key in safety}
 
 
+def _ceilings_by_row(conn, user_id: int | None, exercises: list[dict[str, Any]]) -> dict[int, Any]:
+    """`workout_plan_exercise_id` -> teto de carga do usuario para o par da linha
+    (migracao 110; ausente = sem teto). Sem teto marcado, nenhuma query extra."""
+    from .equipment_load_ceiling import load_user_ceilings
+
+    if user_id is None:
+        return {}
+    ceilings = load_user_ceilings(conn, int(user_id))
+    wanted = sorted({int(ex["preferred_equipment_id"]) for ex in exercises if ex.get("preferred_equipment_id")})
+    if not ceilings or not wanted:
+        return {}
+    placeholders = ", ".join(["%s"] * len(wanted))
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id, equipment_id FROM gym_equipment WHERE id IN ({placeholders})", tuple(wanted))
+        equipment_by_gym_equipment = {int(row["id"]): int(row["equipment_id"]) for row in cur.fetchall() or []}
+    result: dict[int, Any] = {}
+    for ex in exercises:
+        equipment_id = equipment_by_gym_equipment.get(int(ex["preferred_equipment_id"] or 0))
+        if ex.get("mapping_id") and equipment_id and (int(ex["mapping_id"]), equipment_id) in ceilings:
+            result[int(ex["workout_plan_exercise_id"])] = ceilings[(int(ex["mapping_id"]), equipment_id)]
+    return result
+
+
 def _load_steps_by_row(conn, exercises: list[dict[str, Any]]) -> dict[int, Any]:
     """`workout_plan_exercise_id` -> `equipment.load_increment_kg` (pode ser
     NULL) do equipamento da linha, numa query so."""
@@ -2655,7 +2678,7 @@ def _load_anchor_kg(shown: dict[str, Any] | None, ex: dict[str, Any]) -> Any:
     return value if value is not None and value > 0 else None
 
 
-def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
+def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]], *, user_id: int | None = None) -> None:
     """Le o snapshot congelado de cada exercicio e aplica o overlay de
     seguranca ao vivo (secao 6.3: so restringe, nunca amplia, e e auditado).
 
@@ -2671,6 +2694,7 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
     `load_anchor_kg`, `warmup_loads_kg`, `feeler_load_kg`, `feeler_loads_kg`,
     `application_loads_kg`) - calculado no backend pelo dono, para o Modo
     Treino so ler."""
+    from .domain.progression_engine import cap_load_to_ceiling
     from .domain.session_loads import load_step, session_load_plan
 
     if not exercises:
@@ -2687,6 +2711,12 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
     except Exception:
         logger.exception("Falha ao ler o passo de carga dos equipamentos da ficha")
         steps_by_row = {}
+
+    try:
+        ceilings_by_row = _ceilings_by_row(conn, user_id, exercises)
+    except Exception:
+        logger.exception("Falha ao ler o teto de carga dos equipamentos da ficha; segue sem teto")
+        ceilings_by_row = {}
 
     for ex in exercises:
         row_id = int(ex["workout_plan_exercise_id"])
@@ -2705,6 +2735,14 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]]) -> None:
                     application_loads_kg=params.get("application_loads_kg"),
                 )
             )
+        # Teto de carga do usuario para o par (migracao 110) e a carga de
+        # trabalho da ficha JA limitada pelo dono (`cap_load_to_ceiling`): o
+        # Modo Treino so le, nao calcula. Sem teto, ambos None.
+        ceiling = ceilings_by_row.get(row_id)
+        ex["max_load_kg"] = float(ceiling) if ceiling is not None else None
+        anchor = _load_anchor_kg(shown, ex)
+        capped = cap_load_to_ceiling(Decimal(str(anchor)), ceiling) if ceiling is not None and anchor is not None else None
+        ex["load_within_ceiling"] = float(capped) if capped is not None else None
         ex["prescription"] = shown
         ex["prescription_status"] = (
             prescription_domain.STATUS_FROZEN if frozen else prescription_domain.STATUS_LEGACY
