@@ -12,7 +12,7 @@ from .db import transaction
 from .domain import effective_intensity, equipment_pair
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain import prescription as prescription_domain
-from .domain import technique_accounting
+from .domain import progression_engine, technique_accounting
 from .domain.equipment_pair import is_pair_coherent
 from .domain.recovery_signal_summary import summarize_signals
 from .domain.set_measures import normalize_measure
@@ -2750,6 +2750,11 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]], *, user_
         step = steps_by_row.get(row_id)
         ex["load_increment_kg"] = float(load_step(step))
         if shown is not None:
+            # Ficha congelada antes do `continuous_clock`: o flag sai do dono na exposicao.
+            if shown.get("advanced_technique_parameters"):
+                shown["advanced_technique_parameters"] = progression_engine.with_continuous_clock(
+                    shown["advanced_technique_parameters"]
+                )
             params = shown.get("advanced_technique_parameters") or {}
             shown.update(
                 session_load_plan(

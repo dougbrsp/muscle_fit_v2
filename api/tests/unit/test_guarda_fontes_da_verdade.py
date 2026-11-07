@@ -271,6 +271,15 @@ PADROES: tuple[Padrao, ...] = (
         inventario="E7",
     ),
     Padrao(
+        chave="relogio_continuo",
+        regra="lista de técnicas com relógio contínuo no Modo Intensivo (FST-7) escrita fora do dono",
+        # 2026-11-07: o dono exporta `continuous_clock` pronto em
+        # `advanced_technique_parameters`; o frontend só lê o flag.
+        regex=re.compile(r"\bCONTINUOUS_CLOCK_TECHNIQ\w*\s*(?::[^=\n]+)?=\s*(?:new\s+Set|frozenset|set\(|\{|\[)"),
+        donos=("api/app/domain/progression_engine.py",),
+        inventario="E7",
+    ),
+    Padrao(
         chave="numeros_prompt_volume",
         regra='faixa de volume escrita à mão em prompt/RAG ("9 a 10 séries semanais", "entre 90 e 110", "pede 4-5 exercicios", "{alvo}-9")',
         # Lote 4c (E10): o prompt da Periodização interpola a TABELA da
@@ -2174,6 +2183,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "descanso_default": {},
     "tetos_sessao": {},  # E9: Lote 4c - todo teto nomeado em `periodization/limits.py`
     "premissas_tempo": {},  # E7: Lote 4c - dono no backend, TS lê o JSON
+    "relogio_continuo": {},  # E7: 2026-11-07 - o dono exporta `continuous_clock`, o frontend só lê
     "numeros_prompt_volume": {},  # E10: Lote 4c - prompt interpolado, RAG sem "9 a 10 séries semanais"
     "limiar_fadiga": {},  # B4/D3: `dashboard_alert_service.py` apagado no Lote 2c
     "meta_fallback": {},
@@ -2735,6 +2745,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "REST_WHEN_UNDEFINED_SECONDS: Final[int] = 0"),
         ("export const EXEC_SECONDS_PER_REP: number = PREMISES.exec_seconds_per_rep;",
          "per_rep = EXEC_SECONDS_PER_REP + x"),
+    ),
+    "relogio_continuo": (
+        ("export const CONTINUOUS_CLOCK_TECHNIQUES: ReadonlySet<string> = new Set(['fst7']);",
+         "CONTINUOUS_CLOCK_TECHNIQUE_CODES: frozenset[str] = frozenset({'fst7'})"),
+        ("technique?.continuous_clock === true", "if code in CONTINUOUS_CLOCK_TECHNIQUE_CODES:",
+         "\"continuous_clock\": code in CONTINUOUS_CLOCK_TECHNIQUE_CODES"),
     ),
     "numeros_prompt_volume": (
         ("aproximadamente 9 a 10 séries semanais", "**9 a 10 séries semanais**", "12-24 series por semana",

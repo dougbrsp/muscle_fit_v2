@@ -93,6 +93,33 @@ export function parseRepsTarget(value: string | null | undefined): number | null
   return (valid[0] + valid[1]) / 2;
 }
 
+/**
+ * Topo das reps do alvo: o MAIOR dos DOIS primeiros números ("8-12" -> 12,
+ * "3x10" -> 10), truncado. Espelho de `parse_reps_target_top` (dono
+ * `time_estimate.py`, paridade em `template-time-estimate.parity.json`).
+ */
+export function parseRepsTargetTop(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const numbers = (value.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => Number(n.replace(',', '.')));
+  const valid = numbers.filter((n) => Number.isFinite(n) && n > 0).slice(0, 2);
+  if (valid.length === 0) return null;
+  const top = Math.floor(Math.max(...valid));
+  return top > 0 ? top : null;
+}
+
+function repsExecutionExact(reps: number, peakContractionSeconds?: number | null): number {
+  return reps * (EXEC_SECONDS_PER_REP + positive(peakContractionSeconds));
+}
+
+/**
+ * Segundos de execução de UMA série por repetições, arredondado (meio para
+ * cima). Espelho de `reps_execution_seconds` (dono `time_estimate.py`); a
+ * estimativa do slot soma a mesma conta sem arredondar e arredonda a parcela.
+ */
+export function repsExecutionSeconds(reps: number, peakContractionSeconds?: number | null): number {
+  return Math.round(repsExecutionExact(reps, peakContractionSeconds));
+}
+
 function positive(value: number | null | undefined): number {
   return value != null && Number.isFinite(value) && value > 0 ? value : 0;
 }
@@ -143,7 +170,7 @@ export function estimateSlotTime(
           reps = DEFAULT_ESTIMATED_REPS;
           hasEstimatedReps = true;
         }
-        setExec = reps * perRep;
+        setExec = repsExecutionExact(reps, item.peak_contraction_seconds);
       }
       workExec = workSets * setExec;
       workRest = workSets * (item.rest_seconds == null ? positive(defaultRestSeconds) : positive(item.rest_seconds));
