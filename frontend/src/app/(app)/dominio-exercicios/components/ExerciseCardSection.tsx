@@ -51,6 +51,7 @@ import type { ExerciseCardGeneration, PublishedExerciseCard } from '@/lib/exerci
 import { BRAND } from '@/theme';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ExerciseCardHistoryList } from './ExerciseCardHistoryList';
+import { ExerciseCardReferences } from './ExerciseCardReferences';
 import { RegenerateCardModal } from './RegenerateCardModal';
 
 const PREVIEW_WIDTH = 240;
@@ -122,7 +123,7 @@ function GeneratingBlock({ generation, now }: { generation: ExerciseCardGenerati
           {formatElapsed(seconds)} decorridos
         </Text>
         <Text size="xs" c={BRAND.textMuted}>
-          Costuma levar ~{EXERCISE_CARD_TYPICAL_SECONDS} s (até 2 min).
+          Costuma levar cerca de {EXERCISE_CARD_TYPICAL_SECONDS} s, mas pode levar alguns minutos: são duas fotos.
         </Text>
         {seconds >= EXERCISE_CARD_SLOW_AFTER_SECONDS && (
           <Text size="xs" c="yellow.4">
@@ -212,7 +213,7 @@ function ReviewBlock({
 
   return (
     <Stack gap="sm">
-      <Alert color="yellow" variant="light" icon={<IconEye size={16} />} title="Revise a execução ilustrada antes de publicar.">
+      <Alert color="yellow" variant="light" icon={<IconEye size={16} />} title="Revise as fotos da execução antes de publicar.">
         Confira posição inicial, movimento, equipamento e músculos. A imagem já é o card final — com logo, nome e
         músculos — e é exatamente o que será publicado.
       </Alert>
@@ -319,7 +320,7 @@ function PublishedBlock({
 type RegenerateTarget = { parentId: number | null; title: string; description: string };
 
 /**
- * Card ilustrado do exercício (PR4 dos cards; Estratégia B #349): gerar por IA
+ * Card com fotos do exercício (PR4 dos cards; Estratégia B #349): gerar por IA
  * → revisar o card final → aprovar e publicar, com regeneração por instrução,
  * descarte com motivo e histórico. Espelha `ExecutionDescriptionSection`
  * (badges de estado, Tooltip admin-only, seção própria abaixo de `Divider`).
@@ -352,7 +353,7 @@ export function ExerciseCardSection({
   const [discardReason, setDiscardReason] = useState('');
   const [brokenPreviewUrl, setBrokenPreviewUrl] = useState<string | null>(null);
 
-  const alt = `Card ilustrado — ${exerciseName}`;
+  const alt = `Card com fotos — ${exerciseName}`;
 
   if (view === 'disabled') {
     return (
@@ -363,7 +364,7 @@ export function ExerciseCardSection({
         title="Recurso desativado neste ambiente"
         data-card-state="disabled"
       >
-        A geração de cards ilustrados não está ligada aqui. Quando estiver, esta seção permite gerar, revisar e publicar
+        A geração de cards com fotos não está ligada aqui. Quando estiver, esta seção permite gerar, revisar e publicar
         o card do exercício.
       </Alert>
     );
@@ -374,7 +375,7 @@ export function ExerciseCardSection({
     return (
       <Alert color="red" icon={<IconAlertTriangle size={16} />} data-card-state="error">
         <Stack gap="xs" align="flex-start">
-          <Text size="sm">{exerciseCardErrorText(initialError, 'Não foi possível carregar o card ilustrado.')}</Text>
+          <Text size="sm">{exerciseCardErrorText(initialError, 'Não foi possível carregar o card com fotos.')}</Text>
           <Button
             size="xs"
             variant="light"
@@ -395,7 +396,7 @@ export function ExerciseCardSection({
     return (
       <Group data-card-state="loading">
         <Loader size="sm" color="brand" />
-        <Text c={BRAND.textMuted}>Carregando card ilustrado...</Text>
+        <Text c={BRAND.textMuted}>Carregando card com fotos...</Text>
       </Group>
     );
   }
@@ -497,8 +498,8 @@ export function ExerciseCardSection({
       {view === 'empty' && (
         <Text size="sm" c={BRAND.textMuted}>
           {canManage
-            ? 'Este exercício ainda não tem card ilustrado. A IA desenha a execução e o app monta o card com logo, nome e músculos; nada é publicado sem a sua revisão.'
-            : 'Este exercício ainda não tem card ilustrado.'}
+            ? 'Este exercício ainda não tem card com fotos. A IA gera duas fotos da execução e o app monta o card com logo, nome e músculos; nada é publicado sem a sua revisão.'
+            : 'Este exercício ainda não tem card com fotos.'}
         </Text>
       )}
 
@@ -536,6 +537,8 @@ export function ExerciseCardSection({
         </Text>
       )}
 
+      {canManage && <ExerciseCardReferences exerciseId={exerciseId} />}
+
       <Group gap="sm" wrap="wrap">
         {(view === 'review' || view === 'approving') && current ? (
           <>
@@ -565,7 +568,7 @@ export function ExerciseCardSection({
                   openRegenerate({
                     parentId: current.id,
                     title: 'Gerar novamente',
-                    description: `Esta prévia vai para o histórico como substituída e uma nova ilustração é gerada.${
+                    description: `Esta prévia vai para o histórico como substituída e novas fotos são geradas.${
                       costHint ? ` Cada geração custa cerca de ${costHint}.` : ''
                     }`,
                   })

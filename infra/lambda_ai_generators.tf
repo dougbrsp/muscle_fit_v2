@@ -174,8 +174,10 @@ resource "aws_iam_role_policy" "musclefit_ai_generators_rag" {
 
 # Cards ilustrados de exercicios: o worker (job_kind "exercise-card" da
 # musclefit-plan-generator) grava o RASCUNHO gerado pela OpenAI em
-# exercise-card-drafts/<generation_id>/preview.png no bucket de uploads. So
-# PutObject e so nesse prefixo: nada de Get/Delete/List, nada de
+# exercise-card-drafts/<generation_id>/ (cena 1, cena 2 e preview.png) no
+# bucket de uploads. Escrita so PutObject nesse prefixo (nada de Delete/List) e,
+# no card V3, LEITURA (GetObject) so das fotos de referencia em
+# exercise-card-references/* (ver statement ExerciseCardReferencesRead). Nada de
 # exercise-cards/* (a PUBLICACAO - composicao do logo, WebP, thumbnail e upload
 # da versao aprovada - roda na api-core, que ja tem leitura/escrita no bucket
 # via musclefit-api-core-uploads em infra/s3_uploads.tf). O rascunho fica fora
@@ -196,6 +198,15 @@ resource "aws_iam_role_policy" "musclefit_ai_generators_exercise_card_drafts" {
         Effect   = "Allow"
         Action   = ["s3:PutObject"]
         Resource = "${aws_s3_bucket.musclefit_uploads.arn}/exercise-card-drafts/*"
+      },
+      {
+        # Fotos de referencia do equipamento/exercicio que o admin envia pela
+        # api-core (que ja tem o bucket inteiro). O worker so LE, e so nesse
+        # prefixo: sem Put/Delete/List e sem outro prefixo.
+        Sid      = "ExerciseCardReferencesRead"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.musclefit_uploads.arn}/exercise-card-references/*"
       }
     ]
   })
@@ -323,14 +334,19 @@ resource "aws_lambda_function" "musclefit_plan_generator" {
   # 29s do API Gateway (por isso o padrao assincrono) - teto generoso aqui,
   # nao ha timeout de API Gateway neste caminho (invocacao Event direta).
   #
-  # 180 s (era 120) por causa do card ilustrado de exercicio: a OpenAI
-  # documenta "ate 2 minutos" para imagem com prompt complexo. A chamada usa
-  # OPENAI_IMAGE_TIMEOUT_SECONDS=150, de proposito ABAIXO deste teto: o
-  # worker precisa ter tempo de marcar a geracao como FAILED e sair limpo. Se
-  # a Lambda fosse morta por timeout, o invoke assincrono seria reentregue e
-  # a imagem cobrada de novo. Ficha/periodizacao nao mudam de comportamento
-  # (so ganham folga). A cardio-agent continua em 120 s.
-  timeout     = 180
+  # 420 s (era 180; 120 antes do card) por causa do card ilustrado V3, que
+  # faz DUAS chamadas sequenciais a OpenAI Images (cena 1 e cena 2) com o
+  # gpt-image-2.5-sunburst em qualidade high (24-48 s tipico por imagem, pior
+  # observado 115 s; card tipico 60-90 s, ate ~230 s). A conta do pior caso:
+  # por chamada 20 s (janela de retry) + 3 s (backoff) + 150 s
+  # (OPENAI_IMAGE_TIMEOUT_SECONDS) = 173 s; duas = 346 s + reserva de 25 s =
+  # 371 s <= JOB_TIME_BUDGET_SECONDS (400 s) < 420 s desta Lambda. Assim o
+  # worker sempre tem tempo de marcar a geracao como FAILED e sair limpo: se a
+  # Lambda fosse morta por timeout, o invoke assincrono seria reentregue e a
+  # imagem cobrada de novo. STALE_MINUTES=10 (600 s) >= 420 s. Ficha e
+  # periodizacao nao mudam de comportamento (so ganham folga). A cardio-agent
+  # continua em 120 s.
+  timeout     = 420
   memory_size = 1024
   # Teto por funcao (AWS-01); valores e justificativa em variables.tf.
   reserved_concurrent_executions = var.lambda_reserved_concurrency["plan-generator"]

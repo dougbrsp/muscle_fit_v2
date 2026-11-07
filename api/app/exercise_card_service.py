@@ -113,7 +113,7 @@ REJECT_REASON_REGENERATED = "regenerated"
 # ---------------------------------------------------------------------------
 
 # Worker: a composicao do card (`exercise_card_composer`) falhou depois da
-# OpenAI - a ilustracao paga fica em `exercise-card-drafts/{gid}/illustration.png`.
+# OpenAI - as fotos pagas ficam em `exercise-card-drafts/{gid}/scene{1,2}.png`.
 # Mesmo valor de `exercise_card_composer.CARD_COMPOSITION_FAILED` (teste),
 # repetido aqui para nao importar Pillow na api-core.
 ERROR_CARD_COMPOSITION_FAILED = "CARD_COMPOSITION_FAILED"
@@ -123,6 +123,10 @@ ERROR_DISPATCH_FAILED = "DISPATCH_FAILED"
 ERROR_EXERCISE_NOT_FOUND = "EXERCISE_NOT_FOUND"
 ERROR_PROMPT_INVALID = "PROMPT_INVALID"
 ERROR_INTERNAL = "INTERNAL_ERROR"
+# Worker V3: depois da cena 1, o pior caso da cena 2 + composicao/upload nao
+# cabe mais no orcamento do job (`exercise_card_jobs.JOB_TIME_BUDGET_SECONDS`)
+# - FAILED com o custo da cena 1 gravado, em vez de morrer pelo timeout.
+ERROR_TIME_BUDGET_EXCEEDED = "TIME_BUDGET_EXCEEDED"
 
 # ---------------------------------------------------------------------------
 # Codigos HTTP (`detail.error` da resposta)
@@ -161,7 +165,9 @@ ENV_MAX_PER_DAY = "EXERCISE_CARD_MAX_GENERATIONS_PER_DAY"
 ENV_MAX_IN_FLIGHT = "EXERCISE_CARD_MAX_IN_FLIGHT"
 ENV_STALE_MINUTES = "EXERCISE_CARD_STALE_MINUTES"
 
-DEFAULT_MAX_PER_DAY = 100
+# V3 (decisao do usuario em 2026-11-06): 2 chamadas em `high` por card; o
+# mesmo valor da env em infra/lambda_api_core.tf (coerencia dev/prod).
+DEFAULT_MAX_PER_DAY = 40
 DEFAULT_MAX_IN_FLIGHT = 2
 DEFAULT_STALE_MINUTES = 10
 # Uma aprovacao e um request so (codificacao + 3 uploads, poucos segundos, dentro
@@ -594,18 +600,34 @@ def mark_failed(
     message: Any,
     prompt_text: Optional[str] = None,
     from_statuses: Sequence[str] = IN_FLIGHT_STATUSES,
+    model: Optional[str] = None,
+    quality: Optional[str] = None,
+    size: Optional[str] = None,
+    tokens_in: Optional[int] = None,
+    tokens_out: Optional[int] = None,
+    cost_usd: Optional[Decimal] = None,
 ) -> bool:
     """-> FAILED, so a partir de `from_statuses` (nunca sobrescreve uma linha
     que outro caminho ja levou adiante). `prompt_text` fica gravado quando ja
-    existia (diagnostico de moderacao/recusa)."""
+    existia (diagnostico de moderacao/recusa). V3: o que ja foi PAGO antes da
+    falha (cena 1 quando a cena 2 ou a composicao falha) - modelo, tokens e
+    custo - tambem fica gravado; `None` preserva o valor da linha (COALESCE)."""
     cursor.execute(
         f"""
         UPDATE {TABLE}
         SET status = %s, error_code = %s, error_message = %s,
-            prompt_text = COALESCE(%s, prompt_text), failed_at = %s, updated_at = %s
+            prompt_text = COALESCE(%s, prompt_text),
+            model = COALESCE(%s, model), quality = COALESCE(%s, quality), size = COALESCE(%s, size),
+            tokens_in = COALESCE(%s, tokens_in), tokens_out = COALESCE(%s, tokens_out),
+            cost_usd = COALESCE(%s, cost_usd),
+            failed_at = %s, updated_at = %s
         WHERE id = %s AND status IN ({_in(from_statuses)})
         """,
-        (STATUS_FAILED, str(code)[:40], _clip(message), prompt_text, now, now, int(generation_id), *from_statuses),
+        (
+            STATUS_FAILED, str(code)[:40], _clip(message), prompt_text,
+            model, quality, size, tokens_in, tokens_out, cost_usd,
+            now, now, int(generation_id), *from_statuses,
+        ),
     )
     return int(cursor.rowcount or 0) > 0
 

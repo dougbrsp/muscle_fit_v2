@@ -1,13 +1,14 @@
-"""Cards ilustrados de exercicios ponta a ponta contra MySQL real, nos DOIS
+"""Cards de exercicios (V3, duas fotos) ponta a ponta contra MySQL real, nos DOIS
 backends (PyMySQL de DEV e o shim da RDS Data API de producao), num schema
 com todas as migracoes (064 inclusa).
 
-OpenAI e S3 sao falsos (nada sai do processo; a "OpenAI" devolve uma
-ilustracao sintetica de duas cenas em fundo transparente); o resto e o
+OpenAI e S3 sao falsos (nada sai do processo; a "OpenAI" devolve uma foto
+sintetica opaca por cena, duas chamadas por geracao); o resto e o
 caminho real: rotas -> servico -> SQL (`FOR UPDATE`, UPDATE condicional com
 `rowcount`, UNIQUE, DECIMAL/DATETIME ida e volta) -> worker em processo
-(`run_generation_job`, com `load_context` + `build_prompt` reais lendo o
-catalogo) -> compositor real (fontes + logo oficiais, musculos do catalogo)
+(`run_generation_job`, com `load_context`, as fotos de referencia
+(`exercise_card_references`) e `build_scene_prompts` reais lendo o banco) ->
+compositor real (fontes + logo oficiais, musculos do catalogo)
 -> preview composto -> aprovacao que so codifica -> ponteiro no catalogo.
 
 O que so o banco prova:
@@ -55,8 +56,9 @@ SUPINO = 42
 AGACHAMENTO = 43
 
 
-# O que a "OpenAI" devolve: a ilustracao (Estrategia B, prompt V2).
-PNG = ill.illustration_png()
+# O que a "OpenAI" devolve: uma foto opaca por cena (V3).
+SCENE1 = ill.scene_photo_png(color=ill.START_COLOR)
+SCENE2 = ill.scene_photo_png(color=ill.END_COLOR)
 
 
 def _image(data: bytes) -> Image.Image:
@@ -71,7 +73,7 @@ def _key() -> str:
 
 @pytest.fixture
 def seed(raw):
-    truncar(raw, extras=("exercise_card_generations",))
+    truncar(raw, extras=("exercise_card_generations", "exercise_card_references"))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_cards', 'x', 'admin')")
         admin_id = cur.lastrowid
@@ -112,12 +114,19 @@ def fakes(monkeypatch):
     monkeypatch.setattr(storage, "presign_client", lambda: s3)
 
     prompts: list[str] = []
+    references: list[list[bytes]] = []
 
-    def fake_generate(prompt, *, model=None, quality=None, size=None, timeout=None, moderation=None, background=None):
-        assert background == "transparent"
+    def fake_generate(
+        prompt, *, model=None, quality=None, size=None, timeout=None, moderation=None, background=None,
+        reference_images=(),
+    ):
+        assert background == "opaque"
         prompts.append(prompt)
+        references.append(list(reference_images))
+        # Chamadas impares = cena 1; pares = cena 2 (que recebe a cena 1 primeiro).
+        image = SCENE1 if len(prompts) % 2 == 1 else SCENE2
         return openai_client.ImageResult(
-            image=PNG, model=model, quality=quality, size=size, tokens_in=100, tokens_out=200,
+            image=image, model=model, quality=quality, size=size, tokens_in=100, tokens_out=200,
             cost_usd=Decimal("0.05"), attempts=1, elapsed_seconds=2.0,
         )
 
@@ -126,7 +135,7 @@ def fakes(monkeypatch):
     events: list[dict] = []
     monkeypatch.setattr(async_jobs, "create_job", lambda job_type, request=None, *, owner_user_id: f"job-{len(events) + 1}")
     monkeypatch.setattr(async_jobs, "invoke_async", lambda env_var, payload: events.append(payload))
-    return {"s3": s3, "prompts": prompts, "events": events}
+    return {"s3": s3, "prompts": prompts, "references": references, "events": events}
 
 
 @pytest.fixture
@@ -180,31 +189,34 @@ def test_gerar_aprovar_publica_v1_e_redelivery_nao_cobra(seed, backend, raw, fak
     jobs.run_generation_job(fakes["events"][-1])
     row = _row(raw, gid)
     assert row["status"] == "GENERATED", (backend, row["error_code"], row["error_message"])
-    assert row["prompt_version"] == "MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION"
-    # Ilustracao crua guardada; preview = card composto com o conteudo do catalogo.
-    ilustracao = fakes["s3"].body(BUCKET, storage.illustration_key(gid))
+    assert row["prompt_version"] == "MUSCLEFIT_EXERCISE_CARD_V3_PHOTO"
+    # Fotos cruas guardadas; preview = card composto com o conteudo do catalogo.
+    assert fakes["s3"].body(BUCKET, storage.scene_key(gid, 1)) == SCENE1
+    assert fakes["s3"].body(BUCKET, storage.scene_key(gid, 2)) == SCENE2
     preview = fakes["s3"].body(BUCKET, row["preview_s3_key"])
-    assert ilustracao == PNG
     # Slug do mapa corporal veio do MESMO SELECT dos musculos (LEFT JOIN em
     # muscle_group_body_map) nos dois backends: a silhueta acende o peitoral.
-    esperado = composer.compose_card(
-        PNG,
+    esperado = composer.compose_card_v3(
+        SCENE1,
+        SCENE2,
         composer.CardContent("Supino reto com barra", ("Peitoral",), primary_slugs=("chest",)),
         composer.load_card_assets(),
     )
     assert preview == esperado, backend
     assert (row["width"], row["height"], row["bytes"]) == (1024, 1536, len(preview))
-    assert row["cost_usd"] == Decimal("0.0500")
+    # Custo e tokens SOMADOS das duas chamadas, DECIMAL ida e volta.
+    assert row["cost_usd"] == Decimal("0.1000")
+    assert (row["tokens_in"], row["tokens_out"]) == (200, 400)
     assert "Supino reto com barra" in row["prompt_text"] and "barra reta" in row["prompt_text"]
     assert row["started_at"] is not None and row["generated_at"] is not None
 
     # Redelivery: o UPDATE condicional devolve rowcount=0 no backend real.
     assert jobs.run_generation_job(fakes["events"][-1])["status"] == "skipped"
-    assert len(fakes["prompts"]) == 1
+    assert len(fakes["prompts"]) == 2
 
     lida = api.get(f"/exercises/{SUPINO}/card-generations/{gid}").json()["generation"]
     assert lida["status"] == "GENERATED" and lida["preview_url"], backend
-    assert lida["cost_usd"] == 0.05 and lida["created_at"].endswith("Z")
+    assert lida["cost_usd"] == 0.1 and lida["created_at"].endswith("Z")
 
     aprovada = api.post(f"/exercises/{SUPINO}/card-generations/{gid}/approve")
     assert aprovada.status_code == 200, (backend, aprovada.text)
@@ -302,8 +314,37 @@ def test_geracao_v1_nao_e_aprovavel_e_regenera_em_v2(seed, backend, raw, fakes):
     filha = api.post(f"/exercises/{SUPINO}/card-generations/{v1}/regenerate", json={"idempotency_key": _key()})
     assert filha.status_code == 202, (backend, filha.text)
     corpo = filha.json()["generation"]
-    assert (corpo["text_level"], corpo["prompt_version"]) == ("minimal", "MUSCLEFIT_EXERCISE_CARD_V2_ILLUSTRATION")
+    assert (corpo["text_level"], corpo["prompt_version"]) == ("minimal", "MUSCLEFIT_EXERCISE_CARD_V3_PHOTO")
     assert _row(raw, v1)["status"] == "REJECTED"
+
+
+def test_fotos_de_referencia_ativas_vao_para_as_duas_cenas(seed, backend, raw, fakes):
+    """O worker le as fotos ATIVAS do exercicio no banco real (soft-delete e
+    outro exercicio ficam fora) e as manda nas duas chamadas; a cena 2 recebe
+    a cena 1 (JPEG) primeiro."""
+    fotos: list[bytes] = []
+    with raw.cursor() as cur:
+        for exercicio, apagada, cor in ((SUPINO, False, (80, 80, 80)), (SUPINO, True, (10, 10, 10)),
+                                        (AGACHAMENTO, False, (30, 30, 30)), (SUPINO, False, (50, 50, 50))):
+            apagada_em = "UTC_TIMESTAMP()" if apagada else "NULL"
+            cur.execute(
+                "INSERT INTO exercise_card_references (exercise_id, s3_key, content_type, width, height, bytes, "
+                f"created_by, created_at, deleted_at) VALUES (%s, '', 'image/jpeg', 1024, 768, 1, %s, "
+                f"UTC_TIMESTAMP(), {apagada_em})",
+                (exercicio, seed["admin"]),
+            )
+            ref_id = cur.lastrowid
+            key = storage.reference_key(exercicio, ref_id)
+            cur.execute("UPDATE exercise_card_references SET s3_key = %s WHERE id = %s", (key, ref_id))
+            foto = ill.jpeg_photo(color=cor)
+            fakes["s3"].put_object(Bucket=BUCKET, Key=key, Body=foto, ContentType="image/jpeg")
+            if exercicio == SUPINO and not apagada:
+                fotos.append(foto)
+    raw.commit()
+    gid = _gerar(_client(seed["admin"]), fakes)
+    assert _row(raw, gid)["status"] == "GENERATED", backend
+    assert fakes["references"][0] == fotos, backend
+    assert fakes["references"][1][0].startswith(b"\xff\xd8\xff") and fakes["references"][1][1:] == fotos
 
 
 def test_409_com_geracao_viva_e_replay_200(seed, backend, raw, fakes):

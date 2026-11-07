@@ -66,7 +66,10 @@ _JOB_TTL_SECONDS = 60 * 60 * 6  # 6h - tempo generoso para o usuario dar poll, s
 # FONTE UNICA dos timeouts (segundos) - espelho de `timeout` em infra/*.tf;
 # tests/unit/test_m73_async_jobs_worker_lost.py le os .tf e falha se divergir.
 LAMBDA_TIMEOUT_SECONDS: dict[str, int] = {
-    "musclefit-plan-generator": 180,  # infra/lambda_ai_generators.tf
+    # 420 s desde os cards V3 (2 chamadas de imagem por job); o prazo worker_lost
+    # dos jobs desta Lambda passa a 480 s. A periodizacao nao herda: o teto da
+    # LLM dela e fixo (`periodization.core.PERIODIZATION_LLM_TIMEOUT_SECONDS`).
+    "musclefit-plan-generator": 420,  # infra/lambda_ai_generators.tf
     "musclefit-cardio-agent": 120,  # infra/lambda_ai_generators.tf
     "musclefit-workout-ai": 60,  # infra/lambda_workout_ai.tf
 }

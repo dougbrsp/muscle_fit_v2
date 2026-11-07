@@ -16,9 +16,11 @@ from app.periodization import core
 from app.periodization.output_schema import ANTHROPIC_OPTIONAL_FIRST
 
 
-def test_teto_da_chamada_e_o_timeout_da_lambda_menos_a_folga():
+def test_teto_da_chamada_e_preso_e_cabe_na_lambda_com_a_folga():
     lambda_s = async_jobs.LAMBDA_TIMEOUT_SECONDS[core.PLAN_GENERATOR_FUNCTION]
-    assert core.LLM_TIMEOUT_SECONDS == lambda_s - core.LAMBDA_RESERVED_SECONDS
+    assert core.PERIODIZATION_LLM_TIMEOUT_SECONDS == 150  # medido na eval de 2026-10-31
+    assert core.LLM_TIMEOUT_SECONDS == core.PERIODIZATION_LLM_TIMEOUT_SECONDS
+    assert core.LLM_TIMEOUT_SECONDS + core.LAMBDA_RESERVED_SECONDS <= lambda_s
     assert 0 < core.LLM_TIMEOUT_SECONDS < lambda_s
     assert core.OPENAI_TIMEOUT_SECONDS == core.LLM_TIMEOUT_SECONDS  # nome antigo
     assert async_jobs.JOB_TYPE_LAMBDA[core.JOB_TYPE] == core.PLAN_GENERATOR_FUNCTION
@@ -27,7 +29,8 @@ def test_teto_da_chamada_e_o_timeout_da_lambda_menos_a_folga():
 def test_contexto_lento_encolhe_a_chamada_para_caber_na_lambda():
     lambda_s = async_jobs.LAMBDA_TIMEOUT_SECONDS[core.PLAN_GENERATOR_FUNCTION]
     assert core.llm_timeout_for(0) == core.LLM_TIMEOUT_SECONDS  # contexto rapido: teto cheio
-    lento = core.LAMBDA_RESERVED_SECONDS + 10
+    # Contexto lento o bastante para a chamada nao caber mais com o teto cheio.
+    lento = lambda_s - core.POST_LLM_RESERVED_SECONDS - core.LLM_TIMEOUT_SECONDS + 10
     assert core.llm_timeout_for(lento) == lambda_s - core.POST_LLM_RESERVED_SECONDS - lento
     assert lento + core.llm_timeout_for(lento) + core.POST_LLM_RESERVED_SECONDS == lambda_s
     assert 0 < core.POST_LLM_RESERVED_SECONDS < core.LAMBDA_RESERVED_SECONDS

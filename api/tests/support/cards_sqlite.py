@@ -84,6 +84,20 @@ _SCHEMA = (
       UNIQUE (exercise_id, idempotency_key)
     )
     """,
+    # Migracao 109: fotos de referencia (sem FK; soft-delete por `deleted_at`).
+    """
+    CREATE TABLE exercise_card_references (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      exercise_id INTEGER NOT NULL,
+      s3_key TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      width INTEGER NOT NULL, height INTEGER NOT NULL, bytes INTEGER NOT NULL,
+      note TEXT NULL,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at DATETIME NULL
+    )
+    """,
 )
 
 _FOR_UPDATE_RE = re.compile(r"\s+FOR\s+UPDATE\s*$", re.IGNORECASE)
@@ -178,6 +192,27 @@ class CardsSqlite:
 
     def catalog(self, exercise_id: int) -> dict[str, Any]:
         return dict(self.raw.execute("SELECT * FROM exercise_catalog WHERE id = ?", (exercise_id,)).fetchone())
+
+    def add_reference(self, exercise_id: int = 42, *, s3_key: Optional[str] = None, deleted: bool = False,
+                      created_by: int = 7, note: Optional[str] = None) -> int:
+        """Linha crua de `exercise_card_references` (e a chave derivada do id,
+        como o servico grava)."""
+        cursor = self.raw.execute(
+            "INSERT INTO exercise_card_references (exercise_id, s3_key, content_type, width, height, bytes, note, "
+            "created_by, created_at, deleted_at) VALUES (?, '', 'image/jpeg', 800, 1200, 1000, ?, ?, ?, ?)",
+            (exercise_id, note, created_by, datetime(2026, 11, 6, 12, 0, 0), datetime(2026, 11, 6, 13, 0, 0) if deleted else None),
+        )
+        ref_id = int(cursor.lastrowid)
+        self.raw.execute(
+            "UPDATE exercise_card_references SET s3_key = ? WHERE id = ?",
+            (s3_key or f"exercise-card-references/{exercise_id}/{ref_id}.jpg", ref_id),
+        )
+        return ref_id
+
+    def reference(self, ref_id: int) -> dict[str, Any]:
+        row = self.raw.execute("SELECT * FROM exercise_card_references WHERE id = ?", (ref_id,)).fetchone()
+        assert row is not None, f"referencia {ref_id} nao existe"
+        return dict(row)
 
     def insert_generation(self, **fields: Any) -> int:
         """Linha crua (estado arbitrario) para testes de sweep/limites."""

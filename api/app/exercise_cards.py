@@ -7,10 +7,17 @@
     POST /exercises/{id}/card-generations/{gid}/reject      admin  {generation}
     POST /exercises/{id}/card-generations/{gid}/regenerate  admin  202 {generation, parent} (replay: 200)
     GET  /exercises/{id}/card                               autenticado  {exercise_id, exercise_card | null}
+    POST   /exercises/{id}/card-references                  admin  201 {reference}  (corpo: {image_base64, note?})
+    GET    /exercises/{id}/card-references                  admin  {items, limits}
+    DELETE /exercises/{id}/card-references/{ref_id}         admin  204
+
+As fotos de referencia (regras e codigos de erro em `exercise_card_references.py`)
+chegam como JSON base64 sem padding - nunca URL externa - e sao re-encodadas
+no servidor; referencia de outro exercicio responde 404 (anti-IDOR).
 
 Regras (detalhes em `exercise_card_service.py`):
 
-- toda rota `card-generations` exige admin (403) e a flag
+- toda rota `card-generations` e `card-references` exige admin (403) e a flag
   `EXERCISE_CARD_GENERATION_ENABLED` (503 `exercise_card_generation_disabled`
   - em producao, ate o fim do checkpoint, e o que todas respondem);
 - `GET /card` (o card publicado) e de qualquer usuario autenticado e NAO
@@ -20,18 +27,19 @@ Regras (detalhes em `exercise_card_service.py`):
 - anti-IDOR: `{gid}` de outro exercicio responde 404, igual a inexistente.
 
 Sem colisao com `exercise_catalog_admin.py` (mesmo prefixo): todas as rotas
-daqui tem o segmento fixo `card-generations`/`card` depois de `{id}`, que la
-nao existe.
+daqui tem o segmento fixo `card-generations`/`card-references`/`card` depois
+de `{id}`, que la nao existe.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 
 from . import exercise_card_jobs as jobs
+from . import exercise_card_references as refs
 from . import exercise_card_service as svc
 from .security import Identity, get_current_identity, require_admin
 
@@ -155,6 +163,53 @@ def regenerate_card_generation(
         status_code=202 if created else 200,
         content={"generation": svc.serialize(child), "parent": svc.serialize(parent) if parent else None},
     )
+
+
+@router.post("/{exercise_id}/card-references")
+def create_card_reference(
+    exercise_id: int,
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    identity: Identity = Depends(require_admin),
+):
+    """`{image_base64, note?}` -> 201 `{reference}`. A foto vai no corpo como
+    base64 sem padding (nunca URL externa); o servidor valida pela assinatura,
+    confere os pixels antes de decodificar e re-encoda em JPEG q90 sem metadados."""
+    try:
+        reference = refs.create_reference(
+            exercise_id=exercise_id,
+            user_id=identity.user_id,
+            image_base64=payload.get("image_base64"),
+            note=payload.get("note"),
+        )
+    except svc.ExerciseCardError as exc:
+        raise _http_error(exc) from None
+    return JSONResponse(status_code=201, content={"reference": reference})
+
+
+@router.get("/{exercise_id}/card-references")
+def list_card_references(
+    exercise_id: int,
+    identity: Identity = Depends(require_admin),
+):
+    """`{items, limits}`: as fotos ativas (URL pre-assinada de 15 min) e os
+    limites que o front usa (nenhum numero escrito la)."""
+    try:
+        return refs.list_references(exercise_id=exercise_id)
+    except svc.ExerciseCardError as exc:
+        raise _http_error(exc) from None
+
+
+@router.delete("/{exercise_id}/card-references/{ref_id}", status_code=204)
+def delete_card_reference(
+    exercise_id: int,
+    ref_id: int,
+    identity: Identity = Depends(require_admin),
+):
+    try:
+        refs.delete_reference(exercise_id=exercise_id, ref_id=ref_id, user_id=identity.user_id)
+    except svc.ExerciseCardError as exc:
+        raise _http_error(exc) from None
+    return Response(status_code=204)
 
 
 @router.get("/{exercise_id}/card")

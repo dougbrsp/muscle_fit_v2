@@ -1,28 +1,34 @@
-"""Checkpoint de calibracao visual dos cards ilustrados - SO DEV.
+"""Checkpoint de calibracao visual dos cards de exercicio (V3) - SO DEV.
 
 Dois modos:
 
-1. **Gerar** (`--exercises`, custa ~US$ 0,05 por imagem em
-   `gpt-image-1.5`/`medium`): roda o fluxo REAL, um exercicio por vez, contra
-   o MySQL do DEV, o S3 do LocalStack e a OpenAI DE VERDADE:
+1. **Gerar** (`--exercises`, CUSTA: duas chamadas por card ao
+   `OPENAI_IMAGE_MODEL`/`OPENAI_IMAGE_QUALITY` do ambiente; o custo real de
+   cada uma sai do `usage` e fica em `cost_usd`): roda o fluxo REAL, um
+   exercicio por vez, contra o MySQL do DEV, o S3 do LocalStack e a OpenAI DE
+   VERDADE:
 
        cria a geracao (mesmo servico da rota: flag, limites, idempotencia)
        -> executa o worker EM PROCESSO (`exercise_card_jobs.run_generation_job`,
-          o mesmo codigo do `job_kind="exercise-card"` da plan-generator: OpenAI
-          -> ilustracao no S3 -> composicao do card -> preview no S3)
-       -> baixa a ilustracao crua e o card composto do LocalStack
+          o mesmo codigo do `job_kind="exercise-card"` da plan-generator:
+          cena 1 -> `scene1.png` -> cena 2 -> `scene2.png` -> composicao ->
+          preview no S3)
+       -> baixa as duas fotos cruas e o card composto do LocalStack
        -> resumo (exercicio, status, latencia, custo, tamanho, erro)
 
+   `--references <arquivos>`: fotos de referencia LOCAIS (PNG/JPEG/WebP),
+   normalizadas pelo mesmo `exercise_card_references.normalize_reference_image`
+   da rota e entregues ao worker SO em memoria, no lugar das fotos cadastradas
+   do exercicio (nada vai para o banco nem para o S3).
+
 2. **So recompor** (`--compose-only <generation_ids>`, SEM custo e sem gravar
-   nada no banco nem no S3): le a ilustracao ja paga de cada geracao
-   (`exercise-card-drafts/{gid}/illustration.png` no LocalStack) e o catalogo
-   atual (musculos E slugs do mapa corporal, `load_context`), e recompoe o
-   card localmente com o `exercise_card_composer` do checkout - no layout
-   atual (`LAYOUT_VERSION`, hoje CARD_LAYOUT_V2: rodape com a silhueta do
-   mapa corporal v1). E assim que os cards do checkpoint passam do V1 para o
-   V2 sem pagar a OpenAI de novo; tambem serve para iterar o LAYOUT (medidas,
-   fontes, extracao das cenas) de graca: edite `app/exercise_card_composer.py`
-   e rode de novo.
+   nada no banco nem no S3): le as fotos ja pagas de cada geracao V3
+   (`exercise-card-drafts/{gid}/scene1.png` e `scene2.png` no LocalStack) e o
+   catalogo atual (musculos e slugs do mapa corporal, `load_context`), e
+   recompoe o card localmente com o `exercise_card_composer` do checkout
+   (`LAYOUT_VERSION`). Serve para iterar o LAYOUT de graca: edite
+   `app/exercise_card_composer.py` e rode de novo. Geracoes V2 (ilustracao
+   unica) respondem `NO_V3_SCENES`.
 
 NAO aprova nada: a revisao e humana (tela de admin ou
 `POST /exercises/{id}/card-generations/{gid}/approve`). Cada geracao do modo 1
@@ -32,7 +38,9 @@ limite diario do admin (`EXERCISE_CARD_MAX_GENERATIONS_PER_DAY`).
 Uso (host, com o compose de DEV no ar e OPENAI_API_KEY real no .env):
 
     docker compose exec api python scripts/exercise_card_calibration.py \\
-        --exercises 53 22 18 112 58 1 --background transparent
+        --exercises 21 138 133 30
+    docker compose exec api python scripts/exercise_card_calibration.py \\
+        --exercises 21 --references scripts/refs/flexora-1.jpg scripts/refs/flexora-2.jpg
     docker compose exec api python scripts/exercise_card_calibration.py \\
         --exercises 12 --instruction "pegada mais aberta"
     docker compose exec api python scripts/exercise_card_calibration.py \\
@@ -40,14 +48,10 @@ Uso (host, com o compose de DEV no ar e OPENAI_API_KEY real no .env):
 
 Saida: `api/scripts/calibration-out/<AAAAMMDD-HHMMSS>/` no host (o container
 monta `./api/scripts` em `/app/scripts`), por geracao:
-`<id>-<nome>-g<geracao>-illustration.png` (crua da OpenAI) e
+`<id>-<nome>-g<geracao>-scene1.png` e `-scene2.png` (cruas da OpenAI) e
 `<id>-<nome>-g<geracao>-card.png` (o card composto = o preview que o admin
-revisa); `prancha.png` (os cards lado a lado, reduzidos); no modo 1 tambem o
-prompt (`.prompt.txt`) e `summary.csv` (a mesma tabela sai no terminal).
-
-`--background transparent|opaque` (modo 1): fundo pedido a OpenAI. O worker
-usa `exercise_card_jobs.ILLUSTRATION_BACKGROUND` ("transparent"); o script
-troca essa constante SO neste processo, para comparar.
+revisa); `prancha.png` (os cards lado a lado, reduzidos); no modo 1 tambem os
+prompts (`.prompt.txt`) e `summary.csv` (a mesma tabela sai no terminal).
 
 Guarda de ambiente - recusa rodar se QUALQUER condicao falhar:
 - `DB_BACKEND=pymysql` (producao e `data-api`; a Lambda recusa `pymysql`);
@@ -67,6 +71,7 @@ compose de DEV). Para desligar, `EXERCISE_CARD_GENERATION_ENABLED=false` no
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import io
 import os
@@ -78,14 +83,13 @@ import unicodedata
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Iterator, Optional, Sequence
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "calibration-out"
 LOCAL_HOSTS = ("localstack", "localhost", "127.0.0.1")
-BACKGROUNDS = ("transparent", "opaque")
 SUMMARY_FIELDS = (
     "exercise_id",
     "exercise_name",
@@ -101,7 +105,9 @@ SUMMARY_FIELDS = (
     "tokens_out",
     "error_code",
     "error_message",
-    "illustration_file",
+    "reference_count",
+    "scene1_file",
+    "scene2_file",
     "card_file",
 )
 
@@ -186,13 +192,59 @@ def _exercise_name(exercise_id: int) -> str:
     return str(row["name"]) if row else ""
 
 
+def load_local_references(paths: Sequence[Path]) -> list[bytes]:
+    """Fotos de referencia locais normalizadas como a rota faz (JPEG RGB sem
+    metadados, borda maxima da regra). Arquivo invalido -> `ValueError` com o
+    codigo da regra violada."""
+    from app import exercise_card_references as refs
+    from app import exercise_card_service as svc
+
+    if len(paths) > refs.MAX_ACTIVE_REFERENCES:
+        raise ValueError(f"no maximo {refs.MAX_ACTIVE_REFERENCES} fotos de referencia")
+    images: list[bytes] = []
+    for path in paths:
+        try:
+            image, _width, _height = refs.normalize_reference_image(Path(path).read_bytes())
+        except svc.ExerciseCardError as exc:
+            raise ValueError(f"{path}: {exc.code}") from exc
+        images.append(image)
+    return images
+
+
+@contextlib.contextmanager
+def local_references(images: Sequence[bytes]) -> Iterator[None]:
+    """Durante o bloco, o worker EM PROCESSO usa `images` como as fotos de
+    referencia do exercicio (no lugar das cadastradas), sem banco nem S3. Os
+    ids sao negativos (`-1`, `-2`...) para o evento deixar claro que eram
+    locais. Sem imagens, nada muda."""
+    if not images:
+        yield
+        return
+    from app import exercise_card_jobs as jobs
+
+    keys = [f"{jobs.storage.REFERENCE_PREFIX}/local/{index}.jpg" for index in range(len(images))]
+    by_key = dict(zip(keys, images))
+    original_rows = jobs.refs.active_reference_rows
+    original_bytes = jobs.storage.get_reference_bytes_present
+    jobs.refs.active_reference_rows = lambda cursor, exercise_id: [
+        {"id": -(index + 1), "s3_key": key, "note": None} for index, key in enumerate(keys)
+    ]
+    jobs.storage.get_reference_bytes_present = lambda wanted, **_: [(key, by_key[key]) for key in wanted]
+    try:
+        yield
+    finally:
+        jobs.refs.active_reference_rows = original_rows
+        jobs.storage.get_reference_bytes_present = original_bytes
+
+
 def _save_drafts(generation_id: int, stem: str, out_dir: Path, summary: dict[str, Any]) -> Optional[bytes]:
-    """Baixa ilustracao e card do LocalStack; devolve os bytes do card."""
+    """Baixa as duas fotos e o card do LocalStack; devolve os bytes do card."""
     from app import exercise_card_storage as storage
 
     card: Optional[bytes] = None
     for field, key, suffix in (
-        ("illustration_file", storage.illustration_key(generation_id), "illustration"),
+        ("scene1_file", storage.scene_key(generation_id, 1), "scene1"),
+        ("scene2_file", storage.scene_key(generation_id, 2), "scene2"),
         ("card_file", storage.draft_key(generation_id), "card"),
     ):
         try:
@@ -214,12 +266,16 @@ def run_one(
     text_level: str,
     instruction: Optional[str],
     out_dir: Path,
+    references: Sequence[bytes] = (),
 ) -> dict[str, Any]:
     from app import exercise_card_jobs as jobs
     from app import exercise_card_service as svc
 
     name = _exercise_name(exercise_id)
-    summary: dict[str, Any] = {"exercise_id": exercise_id, "exercise_name": name, "text_level": text_level}
+    summary: dict[str, Any] = {
+        "exercise_id": exercise_id, "exercise_name": name, "text_level": text_level,
+        "reference_count": len(references),
+    }
     try:
         row, _ = svc.create_generation(
             exercise_id=exercise_id,
@@ -236,7 +292,8 @@ def run_one(
     summary["generation_id"] = generation_id
     started = time.monotonic()
     try:
-        jobs.run_generation_job({"generation_id": generation_id, "exercise_id": exercise_id})
+        with local_references(references):
+            jobs.run_generation_job({"generation_id": generation_id, "exercise_id": exercise_id})
     except jobs.ExerciseCardJobError:
         pass  # a linha ja esta FAILED com error_code/error_message
     summary["latency_s"] = round(time.monotonic() - started, 1)
@@ -256,14 +313,14 @@ def run_one(
     stem = _stem(exercise_id, name, generation_id)
     if row.get("prompt_text"):
         (out_dir / f"{stem}.prompt.txt").write_text(row["prompt_text"], encoding="utf-8")
-    # FAILED por composicao tambem tem a ilustracao paga: baixa o que houver.
+    # FAILED depois da cena 1 tambem tem foto paga: baixa o que houver.
     summary["_card"] = _save_drafts(generation_id, stem, out_dir, summary)
     return summary
 
 
 def compose_one(generation_id: int, *, out_dir: Path) -> dict[str, Any]:
-    """Recompoe o card de uma geracao a partir da ilustracao guardada, SEM
-    OpenAI e sem gravar no banco/S3 (so le)."""
+    """Recompoe o card de uma geracao V3 a partir das duas fotos guardadas,
+    SEM OpenAI e sem gravar no banco/S3 (so le)."""
     from app import exercise_card_composer as composer
     from app import exercise_card_prompt as card_prompt
     from app import exercise_card_service as svc
@@ -285,16 +342,21 @@ def compose_one(generation_id: int, *, out_dir: Path) -> dict[str, Any]:
         summary.update(status="EXERCISE_NOT_FOUND")
         return summary
     stem = _stem(exercise_id, name, generation_id)
-    try:
-        illustration = storage.read_draft(storage.illustration_key(generation_id))
-    except storage.ExerciseCardStorageError as exc:
-        summary.update(status="NO_ILLUSTRATION", error_message=f"{exc} (geracao anterior a Estrategia B?)")
-        return summary
-    (out_dir / f"{stem}-illustration.png").write_bytes(illustration)
-    summary["illustration_file"] = f"{stem}-illustration.png"
+    scenes: list[bytes] = []
+    for index in (card_prompt.SCENE_START, card_prompt.SCENE_END):
+        try:
+            scene = storage.read_draft(storage.scene_key(generation_id, index))
+        except storage.ExerciseCardStorageError as exc:
+            summary.update(status="NO_V3_SCENES", error_message=f"{exc} (geracao anterior ao V3?)")
+            return summary
+        (out_dir / f"{stem}-scene{index}.png").write_bytes(scene)
+        summary[f"scene{index}_file"] = f"{stem}-scene{index}.png"
+        scenes.append(scene)
     started = time.monotonic()
     try:
-        card = composer.compose_card(illustration, composer.content_from_context(context), composer.load_card_assets())
+        card = composer.compose_card_v3(
+            scenes[0], scenes[1], composer.content_from_context(context), composer.load_card_assets()
+        )
     except composer.CardCompositionError as exc:
         summary.update(status="COMPOSITION_FAILED", error_code=exc.code, error_message=f"{exc.reason}: {exc}")
         return summary
@@ -340,11 +402,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     mode.add_argument("--exercises", type=int, nargs="+", help="ids de exercise_catalog (gera: CUSTA)")
     mode.add_argument(
         "--compose-only", type=int, nargs="+", metavar="GENERATION_ID",
-        help="so recompoe o card das geracoes a partir da ilustracao guardada (sem custo)",
+        help="so recompoe o card das geracoes V3 a partir das fotos guardadas (sem custo)",
     )
     parser.add_argument("--text-level", default=card_prompt.DEFAULT_TEXT_LEVEL, choices=card_prompt.TEXT_LEVELS)
-    parser.add_argument("--background", default="transparent", choices=BACKGROUNDS,
-                        help="fundo pedido a OpenAI para a ilustracao (so ao gerar)")
+    parser.add_argument("--references", type=Path, nargs="+", default=(), metavar="ARQUIVO",
+                        help="fotos de referencia locais, so em memoria (so ao gerar)")
     parser.add_argument("--instruction", default=None, help="pedido de revisao (vai ao prompt como o do admin)")
     parser.add_argument("--user-id", type=int, default=None, help="admin dono das geracoes (padrao: 1o admin ativo)")
     parser.add_argument("--out", type=Path, default=None, help=f"pasta de saida (padrao: {DEFAULT_OUT_ROOT}/<timestamp>)")
@@ -382,13 +444,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("Nenhum admin ativo no banco; informe --user-id.", file=sys.stderr)
         return 2
 
-    from app import exercise_card_jobs as jobs
-
-    jobs.ILLUSTRATION_BACKGROUND = args.background  # so neste processo de DEV
+    try:
+        references = load_local_references(args.references)
+    except (OSError, ValueError) as exc:
+        print(f"Foto de referencia invalida: {exc}", file=sys.stderr)
+        return 2
     for exercise_id in args.exercises:
-        print(f"-> exercicio {exercise_id} (fundo {args.background})...", flush=True)
+        print(f"-> exercicio {exercise_id} ({len(references)} foto(s) de referencia)...", flush=True)
         result = run_one(
-            exercise_id, user_id=user_id, text_level=args.text_level, instruction=args.instruction, out_dir=out_dir
+            exercise_id, user_id=user_id, text_level=args.text_level, instruction=args.instruction, out_dir=out_dir,
+            references=references,
         )
         print(f"   {result.get('status')} em {result.get('latency_s', '-')}s {result.get('error_code') or ''}", flush=True)
         rows.append(result)

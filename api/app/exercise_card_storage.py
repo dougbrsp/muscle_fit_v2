@@ -1,18 +1,25 @@
-"""Armazenamento dos cards ilustrados de exercicios no bucket de uploads
+"""Armazenamento dos cards de exercicios no bucket de uploads
 (`EQUIPMENT_PHOTOS_BUCKET` = `musclefit-uploads`, o mesmo das fotos).
 
-Duas areas, com regras opostas:
+Tres areas, com regras distintas:
 
 - **Rascunho** (`exercise-card-drafts/{generation_id}/`): imagem paga e
-  AINDA NAO APROVADA, dois arquivos por geracao:
-  `illustration.png` (a ilustracao crua da OpenAI, guardada para recompor
-  sem pagar de novo - `illustration_key`) e `preview.png` (o card COMPOSTO,
-  exatamente o que o admin revisa e o que a aprovacao publica -
-  `draft_key`). A chave da ilustracao deriva do `generation_id`: nenhuma
-  coluna nova. Fica FORA da CDN (a bucket policy do OAC so libera
-  `exercise-cards/*`), sem cache publico, e chega ao admin por URL
+  AINDA NAO APROVADA, tres arquivos por geracao (V3, duas fotos):
+  `scene1.png` e `scene2.png` (as fotos cruas da OpenAI - posicao inicial e
+  movimento -, guardadas para recompor sem pagar de novo - `scene_key`) e
+  `preview.png` (o card COMPOSTO, exatamente o que o admin revisa e o que a
+  aprovacao publica - `draft_key`). As chaves derivam do `generation_id`:
+  nenhuma coluna nova. Ficam FORA da CDN (a bucket policy do OAC so libera
+  `exercise-cards/*`), sem cache publico, e chegam ao admin por URL
   PRE-ASSINADA de 15 minutos gerada pela api-core. O IAM do worker ja
-  permite `PutObject` em `exercise-card-drafts/*`.
+  permite `PutObject` em `exercise-card-drafts/*`; o lifecycle de 7 dias
+  vale para a area toda.
+- **Fotos de referencia** (`exercise-card-references/{exercise_id}/
+  {ref_id}.jpg`): fotos reais do aparelho/movimento enviadas pelo admin
+  (ja normalizadas: JPEG q90 sem metadados) para guiar a geracao. Fora da CDN (o
+  OAC so libera `exercise-cards/*`), `private, no-store`, SEM lifecycle (valem
+  ate o admin excluir), lidas pelo worker (`get_reference_bytes`) e mostradas
+  ao admin por URL pre-assinada (`presign_reference_url`).
 - **Publicado** (`exercise-cards/{exercise_id}/v{n}/card.webp|card.png|
   thumb.webp`): imutavel por versao - uma versao nova e um PATH novo, nunca
   sobrescrita -, entao vai com `Cache-Control: public, max-age=31536000,
@@ -35,19 +42,23 @@ endpoint S3 padrao da regiao.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from . import public_assets
 
 DRAFT_PREFIX = "exercise-card-drafts"
 PUBLISHED_PREFIX = "exercise-cards"
+REFERENCE_PREFIX = "exercise-card-references"
 
 # Arquivos do rascunho de uma geracao (lista fechada: nada de nome livre no path).
 DRAFT_PREVIEW = "preview.png"  # card composto (o que o admin revisa)
-DRAFT_ILLUSTRATION = "illustration.png"  # ilustracao crua da OpenAI
-DRAFT_FILENAMES = (DRAFT_PREVIEW, DRAFT_ILLUSTRATION)
+DRAFT_SCENE_START = "scene1.png"  # foto 1 crua da OpenAI (posicao inicial)
+DRAFT_SCENE_END = "scene2.png"  # foto 2 crua da OpenAI (movimento)
+DRAFT_FILENAMES = (DRAFT_PREVIEW, DRAFT_SCENE_START, DRAFT_SCENE_END)
+SCENE_FILENAMES = {1: DRAFT_SCENE_START, 2: DRAFT_SCENE_END}
 
 IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 # Rascunho: nunca em cache compartilhado (e nem passa pela CDN).
@@ -66,6 +77,7 @@ PRESIGN_EXPIRES_SECONDS = 15 * 60
 DRAFT_TTL_DAYS = 7
 
 CONTENT_TYPE_PNG = "image/png"
+CONTENT_TYPE_JPEG = "image/jpeg"
 CONTENT_TYPE_WEBP = "image/webp"
 
 S3_UPLOAD_FAILED = "S3_UPLOAD_FAILED"
@@ -118,9 +130,18 @@ def draft_key(generation_id: int, filename: str = DRAFT_PREVIEW) -> str:
     return f"{DRAFT_PREFIX}/{_positive_int(generation_id, 'generation_id')}/{filename}"
 
 
-def illustration_key(generation_id: int) -> str:
-    """Ilustracao crua da OpenAI (base para recompor o card sem custo)."""
-    return draft_key(generation_id, DRAFT_ILLUSTRATION)
+def scene_key(generation_id: int, index: int) -> str:
+    """Foto crua da OpenAI da cena `index` (1 = inicial, 2 = movimento): base
+    para recompor o card sem custo."""
+    if index not in SCENE_FILENAMES:
+        raise ValueError(f"Cena invalida: {index!r} (use 1 ou 2).")
+    return draft_key(generation_id, SCENE_FILENAMES[index])
+
+
+def reference_key(exercise_id: int, ref_id: int) -> str:
+    """`exercise-card-references/{exercise_id}/{ref_id}.jpg` - so ids inteiros
+    positivos (nada de texto livre no path)."""
+    return f"{REFERENCE_PREFIX}/{_positive_int(exercise_id, 'exercise_id')}/{_positive_int(ref_id, 'ref_id')}.jpg"
 
 
 def published_keys(exercise_id: int, version: int) -> PublishedKeys:
@@ -229,10 +250,124 @@ def put_draft(
     bucket: Optional[str] = None,
 ) -> str:
     """Grava um PNG do rascunho (`preview.png` = card composto, padrao;
-    `illustration.png` = ilustracao crua) e devolve a key."""
+    `scene1.png`/`scene2.png` = fotos cruas) e devolve a key."""
     key = draft_key(generation_id, filename)
     _put(client or s3_client(), bucket or bucket_name(), key, png, CONTENT_TYPE_PNG, DRAFT_CACHE_CONTROL)
     return key
+
+
+def put_draft_scene(
+    generation_id: int, index: int, png: bytes, *, client=None, bucket: Optional[str] = None
+) -> str:
+    """Grava a foto crua da cena `index` (1 ou 2) no rascunho e devolve a key."""
+    key = scene_key(generation_id, index)
+    _put(client or s3_client(), bucket or bucket_name(), key, png, CONTENT_TYPE_PNG, DRAFT_CACHE_CONTROL)
+    return key
+
+
+def put_reference(
+    exercise_id: int, ref_id: int, png: bytes, *, client=None, bucket: Optional[str] = None
+) -> str:
+    """Grava a foto de referencia (JPEG ja normalizado) - privada, sem cache - e
+    devolve a key."""
+    key = reference_key(exercise_id, ref_id)
+    _put(client or s3_client(), bucket or bucket_name(), key, png, CONTENT_TYPE_JPEG, DRAFT_CACHE_CONTROL)
+    return key
+
+
+_REFERENCE_KEY_RE = re.compile(rf"{re.escape(REFERENCE_PREFIX)}/[0-9]+/[0-9]+\.jpg")
+
+# `Error.Code` de objeto ausente OU sem permissao: sem `s3:ListBucket` na role do
+# worker, o S3 responde AccessDenied (403) para chave inexistente. Efeito
+# colateral aceito: um AccessDenied "de verdade" (permissao removida do IAM) tambem
+# vira "ausente" e as fotos de referencia somem em silencio da geracao; o
+# worker (`_read_references`) loga um aviso com os ids das fotos puladas para que
+# a divergencia apareca nos logs.
+_ABSENT_OR_DENIED_CODES = _MISSING_OBJECT_CODES | frozenset({"AccessDenied", "403", "Forbidden"})
+
+
+def _check_reference_key(key: Any) -> str:
+    """So `exercise-card-references/{exercise_id}/{ref_id}.jpg` (ids inteiros)."""
+    text = str(key or "")
+    if not _REFERENCE_KEY_RE.fullmatch(text):
+        raise ValueError(f"Key fora da area de referencias: {key!r}.")
+    return text
+
+
+def _read_object(s3, target: str, key: str) -> bytes:
+    response = s3.get_object(Bucket=target, Key=key)
+    body = response["Body"]
+    try:
+        return body.read()
+    finally:
+        body.close()
+
+
+def get_reference_bytes_present(
+    keys: Sequence[str], *, client=None, bucket: Optional[str] = None
+) -> list[tuple[str, bytes]]:
+    """Como `get_reference_bytes`, mas PULA as fotos ausentes: devolve
+    `[(key, bytes)]` so das encontradas, na ordem de `keys`. Ausente =
+    NoSuchKey/404 ou AccessDenied/403 (sem `s3:ListBucket`, objeto inexistente
+    volta como AccessDenied). Qualquer outra falha (rede, throttling) ->
+    `ExerciseCardStorageError(code="S3_READ_FAILED")`. Key fora do formato ->
+    `ValueError`."""
+    checked = [_check_reference_key(key) for key in keys]
+    if not checked:
+        return []
+    s3 = client or s3_client()
+    target = bucket or bucket_name()
+    out: list[tuple[str, bytes]] = []
+    for key in checked:
+        try:
+            out.append((key, _read_object(s3, target, key)))
+        except Exception as exc:  # noqa: BLE001
+            response = getattr(exc, "response", None)
+            code = str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
+            if code in _ABSENT_OR_DENIED_CODES or type(exc).__name__ == "NoSuchKey":
+                continue
+            raise ExerciseCardStorageError(
+                f"Falha ao ler uma foto de referencia do S3: {type(exc).__name__}", code=S3_READ_FAILED
+            ) from exc
+    return out
+
+
+def get_reference_bytes(
+    keys: Sequence[str], *, client=None, bucket: Optional[str] = None
+) -> list[bytes]:
+    """Bytes das fotos de referencia, na ordem de `keys`. So keys do prefixo de
+    referencias (`ValueError` para qualquer outra). Objeto ausente ou qualquer
+    falha de leitura -> `ExerciseCardStorageError(code="S3_READ_FAILED")`."""
+    checked = [_check_reference_key(key) for key in keys]
+    if not checked:
+        return []
+    s3 = client or s3_client()
+    target = bucket or bucket_name()
+    out: list[bytes] = []
+    for key in checked:
+        try:
+            response = s3.get_object(Bucket=target, Key=key)
+            body = response["Body"]
+            try:
+                out.append(body.read())
+            finally:
+                body.close()
+        except Exception as exc:  # noqa: BLE001 - ausente ou qualquer falha: leitura falhou
+            raise ExerciseCardStorageError(
+                f"Falha ao ler uma foto de referencia do S3: {type(exc).__name__}", code=S3_READ_FAILED
+            ) from exc
+    return out
+
+
+def delete_reference(key: str, *, client=None, bucket: Optional[str] = None) -> None:
+    """Remove a foto de referencia do S3 (o chamador trata como melhor
+    esforco). So keys do prefixo de referencias; falha do S3 ->
+    `ExerciseCardStorageError`."""
+    checked = _check_reference_key(key)
+    try:
+        (client or s3_client()).delete_object(Bucket=bucket or bucket_name(), Key=checked)
+    except Exception as exc:  # noqa: BLE001
+        raise ExerciseCardStorageError(f"Falha ao remover a foto de referencia do S3: {type(exc).__name__}") from exc
 
 
 def is_missing_object_error(exc: BaseException) -> bool:
@@ -249,7 +384,7 @@ def is_missing_object_error(exc: BaseException) -> bool:
 
 def read_draft(key: str, *, client=None, bucket: Optional[str] = None) -> bytes:
     """Bytes de um arquivo do rascunho (a aprovacao publica o preview; o
-    script de calibracao recompoe a partir da ilustracao). Objeto inexistente
+    script de calibracao recompoe a partir das fotos). Objeto inexistente
     -> `DRAFT_EXPIRED` (o lifecycle de `DRAFT_TTL_DAYS` apagou); qualquer outra
     falha -> `S3_READ_FAILED`."""
     if not str(key or "").startswith(f"{DRAFT_PREFIX}/"):
@@ -306,6 +441,27 @@ def presign_draft_url(
     url = signer.generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket or bucket_name(), "Key": key},
+        ExpiresIn=int(expires_in),
+    )
+    issued = (now or datetime.now(timezone.utc)).replace(microsecond=0)
+    return PresignedUrl(url=url, expires_at=issued + timedelta(seconds=int(expires_in)))
+
+
+def presign_reference_url(
+    key: str,
+    *,
+    client=None,
+    bucket: Optional[str] = None,
+    expires_in: int = PRESIGN_EXPIRES_SECONDS,
+    now: Optional[datetime] = None,
+) -> PresignedUrl:
+    """URL pre-assinada de GET da foto de referencia (15 min). So o prefixo de
+    referencias: a area e privada e fora da CDN."""
+    checked = _check_reference_key(key)
+    signer = client or presign_client()
+    url = signer.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket or bucket_name(), "Key": checked},
         ExpiresIn=int(expires_in),
     )
     issued = (now or datetime.now(timezone.utc)).replace(microsecond=0)

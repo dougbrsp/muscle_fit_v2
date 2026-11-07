@@ -3,6 +3,8 @@ import type {
   ExerciseCardErrorDetail,
   ExerciseCardGenerationListResponse,
   ExerciseCardGenerationResponse,
+  ExerciseCardReferenceCreateResponse,
+  ExerciseCardReferenceListResponse,
   ExerciseCardRegenerateResponse,
   ExerciseCardResponse,
 } from '@/lib/exercise-cards-types';
@@ -499,3 +501,63 @@ export const EXERCISE_CARD_CONTRACT = {
     }
   }
 } satisfies ExerciseCardContractFixture;
+
+/**
+ * Fixture de CONTRATO das fotos de referência: saiu do `serialize_reference` e
+ * do `limits()` reais de `api/app/exercise_card_references.py` (linhas no
+ * formato da tabela `exercise_card_references` e uma URL pré-assinada falsa).
+ * O `satisfies` prende os dois lados, como na fixture dos cards.
+ */
+export const EXERCISE_CARD_REFERENCES_CONTRACT = {
+  "list_response": {
+    "items": [
+      {
+        "id": 7,
+        "url": "https://exemplo.s3.sa-east-1.amazonaws.com/ref-7.jpg?X-Amz-Signature=fake",
+        "url_expires_at": "2026-11-06T12:15:00Z",
+        "width": 1024,
+        "height": 768,
+        "bytes": 183422,
+        "note": "Banco a 30 graus",
+        "created_at": "2026-11-06T12:00:00Z"
+      },
+      {
+        "id": 8,
+        "url": null,
+        "url_expires_at": null,
+        "width": 1024,
+        "height": 768,
+        "bytes": 183422,
+        "note": null,
+        "created_at": "2026-11-06T12:00:00Z"
+      }
+    ],
+    "limits": {
+      "max_active": 3,
+      "max_upload_bytes": 2097152,
+      "resize_max_edge_px": 1536,
+      "resize_jpeg_quality_percent": 90,
+      "accepted_types": [
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+      ],
+      "note_max_chars": 160
+    }
+  },
+  "create_response": {
+    "reference": {
+      "id": 7,
+      "url": "https://exemplo.s3.sa-east-1.amazonaws.com/ref-7.jpg?X-Amz-Signature=fake",
+      "url_expires_at": "2026-11-06T12:15:00Z",
+      "width": 1024,
+      "height": 768,
+      "bytes": 183422,
+      "note": "Banco a 30 graus",
+      "created_at": "2026-11-06T12:00:00Z"
+    }
+  }
+} satisfies {
+  list_response: ExerciseCardReferenceListResponse;
+  create_response: ExerciseCardReferenceCreateResponse;
+};

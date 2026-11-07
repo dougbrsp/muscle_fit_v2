@@ -122,13 +122,13 @@ def test_create_job_grava_created_at_e_pending(table, monkeypatch) -> None:
 @pytest.mark.parametrize(
     ("job_type", "deadline"),
     [
-        ("plan-generator", 240),
-        ("periodization", 240),
+        ("plan-generator", 480),
+        ("periodization", 480),
         ("cardio-agent", 180),
         ("insights", 120),
         ("workout-ai-evaluate-set", 120),
-        ("nutrition-label-ocr", 240),  # nutricao L6: foto do rotulo na plan-generator (E8)
-        ("nutrition-meal-photo", 240),  # nutricao L10: foto do prato na plan-generator
+        ("nutrition-label-ocr", 480),  # nutricao L6: foto do rotulo na plan-generator (E8)
+        ("nutrition-meal-photo", 480),  # nutricao L10: foto do prato na plan-generator
         ("nutrition-plan-suggestion", 120),  # nutricao N6: sugestao de metas na workout-ai
     ],
 )
@@ -327,7 +327,7 @@ def test_mark_done_depois_de_claim_grava_done(table) -> None:
 
 def test_prazo_conta_de_started_at_quando_presente(table) -> None:
     """Job que esperou na fila (criado ha 500 s) e comecou ha 100 s: a
-    plan-generator tem 240 s a partir do inicio real - ainda em andamento."""
+    plan-generator tem 480 s a partir do inicio real - ainda em andamento."""
     job_id = _job(table, "plan-generator", age=500)
     table.items[job_id]["started_at"] = NOW - 100
     assert async_jobs.worker_lost_reference_seconds(table.items[job_id]) == NOW - 100
@@ -335,7 +335,7 @@ def test_prazo_conta_de_started_at_quando_presente(table) -> None:
     assert table.updates == []
 
     # Passado o prazo contado do inicio real: perdido.
-    assert async_jobs.get_job(job_id, now=NOW - 100 + 241, owner_user_id=OWNER)["error_code"] == "worker_lost"
+    assert async_jobs.get_job(job_id, now=NOW - 100 + 481, owner_user_id=OWNER)["error_code"] == "worker_lost"
 
 
 def test_prazo_sem_started_at_conta_de_created_at(table) -> None:
@@ -413,7 +413,7 @@ def test_sweep_logs_fecha_pending_antigas_como_failed_worker_lost() -> None:
     status, report, only_status, seconds = params
     assert status == periodization_logs.STATUS_FAILED == "failed"
     assert only_status == periodization_logs.STATUS_PENDING  # nunca toca succeeded/failed
-    assert seconds == async_jobs.worker_lost_deadline_seconds("periodization") == 240
+    assert seconds == async_jobs.worker_lost_deadline_seconds("periodization") == 480
     parsed = json.loads(report)
     assert parsed["errors"][0]["code"] == "WORKER_LOST"
     assert parsed["warnings"] == [] and parsed["auto_fixes"] == []

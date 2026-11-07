@@ -53,11 +53,14 @@ TEMPLATES = (
         exercise_card_prompt.PROMPT_FEATURE_DIR,
         exercise_card_prompt.PROMPT_TEMPLATE_VERSION,
         (
-            ".intro", ".formato", ".cenas", ".referencia", ".nome_ingles", ".outros_nomes",
+            ".intro", ".posicao_inicial", ".posicao_final", ".formato", ".cena_inicial", ".cena_final",
+            ".fotos_referencia", ".fotos_referencia_final", ".fotos_referencia_nota", ".referencia",
+            ".nome_ingles", ".outros_nomes",
             ".equipamento_ausente", ".equipamento_regra", ".equipamento_um", ".equipamento_alternativas",
             ".carga", ".carga_bodyweight", ".carga_bodyweight_plus", ".carga_assisted", ".unilateral",
-            ".passos_inicio", ".passos_movimento", ".passos_forma", ".tags", ".biomecanica", ".estilo",
-            ".evitar", ".revisao", ".revisao_motivo", ".revisao_pedido", ".revisao_fim", ".verificacao_final",
+            ".passos_inicio", ".passos_movimento", ".passos_forma", ".tags", ".biomecanica_inicial",
+            ".biomecanica_final", ".estilo", ".evitar", ".revisao", ".revisao_motivo", ".revisao_pedido",
+            ".revisao_fim", ".verificacao_final",
         ),
     ),
     # Achada na varredura final: seção do Intervals.icu da ficha legada.
@@ -98,8 +101,11 @@ def test_dicas_de_carga_do_card_tem_um_fragmento_por_convencao():
 
 
 def test_versao_dos_templates_do_card_nao_entra_no_prompt():
-    for ctx, instrucao, motivo in hashes.CARD.values():
-        prompt = exercise_card_prompt.build_prompt(ctx, "minimal", instrucao, motivo)
+    for ctx, instrucao, motivo, referencias, notas in hashes.CARD.values():
+        prompt = exercise_card_prompt.build_scene_prompts(
+            ctx, "minimal", reference_count=referencias, reference_notes=notas, instruction=instrucao,
+            parent_reject_reason=motivo,
+        ).joined()
         exigir(exercise_card_prompt.PROMPT_TEMPLATE_VERSION not in prompt, "versão dos templates fora do prompt")
         exigir(exercise_card_prompt.PROMPT_VERSION not in prompt, "PROMPT_VERSION fora do prompt")
         exigir(not rag_placeholders.placeholders_in(prompt), "nenhum placeholder sobrando")
