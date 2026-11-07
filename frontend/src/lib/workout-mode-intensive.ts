@@ -96,6 +96,8 @@ export type AdvancedTechniqueParameters = {
   pause_seconds?: number | null;
   planned_equivalent?: number | null;
   target_rpe?: number | null;
+  /** Protocolo com relógio contínuo (dono `progression_engine.CONTINUOUS_CLOCK_TECHNIQUE_CODES`); o frontend só consome. */
+  continuous_clock?: boolean | null;
   load_factor_per_application?: number | null;
   application_loads_kg?: number[] | null;
 };
@@ -111,12 +113,6 @@ export const INTENSIVE_MODE_TECHNIQUES: ReadonlySet<string> = new Set([
   'partial_reps',
   'cheat_reps',
 ]);
-/**
- * Técnicas com relógio contínuo (recorte de entrega, não regra): SÉRIE e
- * DESCANSO alternam sozinhos, a série é gravada no topo das reps e o usuário
- * só reduz as reps durante o descanso.
- */
-export const CONTINUOUS_CLOCK_TECHNIQUES: ReadonlySet<string> = new Set(['fst7']);
 /** Famílias que a tela desenha. */
 export const INTENSIVE_SUPPORTED_STAGE_KINDS: ReadonlySet<IntensiveStageKind> = new Set([
   'working_block',
@@ -209,8 +205,8 @@ export function resolveIntensiveProfile(params: {
 
   const repsTop = parseRepsTargetTop(params.repsTarget);
   const continuous: IntensiveContinuous | null =
-    CONTINUOUS_CLOCK_TECHNIQUES.has(code) && stageKind === 'working_block' && repsTop != null
-      ? { repsTop: Math.floor(repsTop), setSeconds: Math.round(repsExecutionSeconds(Math.floor(repsTop), params.peakContractionSeconds)) }
+    technique?.continuous_clock === true && stageKind === 'working_block' && repsTop != null
+      ? { repsTop, setSeconds: repsExecutionSeconds(repsTop, params.peakContractionSeconds) }
       : null;
 
   return {
@@ -389,12 +385,39 @@ export function createIntensiveBlock(
 function startSetClock(state: IntensiveBlockState, startAt: number): IntensiveRest | null {
   if (!state.continuous) return null;
   const seconds = state.continuous.setSeconds;
-  return { key: `${state.techniqueCode}#serie${state.currentSet}`, endsAt: startAt + seconds * 1000, totalSeconds: seconds };
+  return {
+    key: `${state.techniqueCode}#serie${state.currentSet}@${startAt}`,
+    endsAt: startAt + seconds * 1000,
+    totalSeconds: seconds,
+  };
 }
 
 /** Série nova no relógio contínuo (ou no fluxo normal, sem relógio de série). */
 function enterSet(state: IntensiveBlockState, startAt: number): IntensiveBlockState {
   return { ...state, phase: 'SERIE_EM_EXECUCAO', rest: null, setClock: startSetClock(state, startAt) };
+}
+
+/**
+ * Instante efetivo do fim de uma fase do relógio contínuo: o previsto, nunca
+ * no futuro (adiantar a fase ou o "-15 s" que zera usam o agora; o fim natural
+ * ou um catch-up usam o `endsAt` real, que é o `completed_at` da série).
+ */
+export function intensivePhaseEndedAt(endsAt: number, now: number = Date.now()): number {
+  return Math.min(endsAt, now);
+}
+
+/**
+ * Registro automático ao fim da fase SÉRIE (relógio contínuo): reps no topo do
+ * item, RPE-alvo do protocolo e a hora real do fim da série. null = o bloco
+ * não está numa série com relógio contínuo.
+ */
+export function intensiveSeriesCompletion(
+  state: Pick<IntensiveBlockState, 'continuous' | 'setClock' | 'phase'>,
+  targetRpe: number | null,
+  now: number = Date.now(),
+): { reps: number; rpe: number | null; now: number } | null {
+  if (!state.continuous || !state.setClock || state.phase !== 'SERIE_EM_EXECUCAO') return null;
+  return { reps: state.continuous.repsTop, rpe: targetRpe, now: intensivePhaseEndedAt(state.setClock.endsAt, now) };
 }
 
 /**
@@ -542,7 +565,10 @@ export function intensiveReducer(state: IntensiveBlockState, event: IntensiveEve
 
     case 'UPDATE_RECORD': {
       const patch: Partial<IntensiveSetRecord> = {};
-      if (event.reps !== undefined) patch.reps = event.reps;
+      // Relógio contínuo: a série foi assumida no topo; só 1..topo é aceito (null = pendente).
+      if (event.reps !== undefined && (event.reps === null || !state.continuous || clampReducedReps(state, event.reps) != null)) {
+        patch.reps = event.reps;
+      }
       if (event.weightKg !== undefined) patch.weightKg = event.weightKg;
       if (event.rpe !== undefined) patch.rpe = event.rpe;
       return patchRecord(state, event.clientKey, patch);
@@ -1036,7 +1062,7 @@ export const INTENSIVE_INTERRUPTED_SAVE = 'envio interrompido; toque em "Tentar 
  * servidor já tinha gravado). Se o servidor tiver a série, a reconciliação a
  * marca como gravada antes mesmo de o usuário ver o erro.
  */
-export function restoreIntensiveBlocks(raw: unknown, now: number = Date.now()): Record<number, IntensiveBlockState> {
+export function restoreIntensiveBlocks(raw: unknown): Record<number, IntensiveBlockState> {
   if (!raw || typeof raw !== 'object') return {};
   const result: Record<number, IntensiveBlockState> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
@@ -1044,15 +1070,8 @@ export function restoreIntensiveBlocks(raw: unknown, now: number = Date.now()): 
     if (!Number.isFinite(id) || !value || typeof value !== 'object') continue;
     const state = value as IntensiveBlockState;
     if (state.version !== 1 || !Array.isArray(state.records)) continue;
-    // Relógio contínuo: reabrir a tela é uma descontinuidade; a série vencida
-    // fora da tela recomeça agora em vez de gravar séries que não foram vistas.
-    const staleSetClock =
-      state.continuous && state.phase === 'SERIE_EM_EXECUCAO' && state.setClock && state.setClock.endsAt <= now;
     result[id] = {
       ...state,
-      ...(staleSetClock && state.setClock
-        ? { setClock: { ...state.setClock, endsAt: now + state.setClock.totalSeconds * 1000 } }
-        : {}),
       records: state.records.map((record) =>
         record.sync === 'saving' ? { ...record, sync: 'error' as const, error: INTENSIVE_INTERRUPTED_SAVE } : record,
       ),

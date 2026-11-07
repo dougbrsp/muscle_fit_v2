@@ -421,7 +421,7 @@ describe('IntensiveBlock: FST-7 com relógio contínuo', () => {
   const continuousProfile = resolveIntensiveProfile({
     techniqueCode: 'fst7',
     catalog: FALLBACK_ADVANCED_TECHNIQUES,
-    parameters: { technique_code: 'fst7', target_rpe: 10 },
+    parameters: { technique_code: 'fst7', target_rpe: 10, continuous_clock: true },
     plannedSetsCount: 7,
     itemRestSeconds: 30,
     repsTarget: '8-12',
@@ -474,5 +474,32 @@ describe('IntensiveBlock: FST-7 com relógio contínuo', () => {
     expect(plus).toContain('disabled');
     expect(html).not.toContain('Iniciar próxima série');
     expect(html).toContain('Pular descanso');
+  });
+
+  it('com a série ainda na fila (saving) o stepper segue habilitado para reduzir', () => {
+    const state = run(
+      createIntensiveBlock(continuousProfile, 40),
+      { type: 'START', now: T0 },
+      { type: 'COMPLETE_SET', reps: 12, rpe: 10, clientKey: 'k1', setNumber: 1, now: T0, restSeconds: 30 },
+      { type: 'UPDATE_RECORD', clientKey: 'k1', reps: 10 },
+    );
+    expect(state.records[0].sync).toBe('saving');
+    const html = render(createElement(IntensiveBlock, { ...base, state }));
+    const minus = html.match(/<button[^>]*aria-label="Menos uma repetição"[^>]*>/)?.[0] ?? '';
+    expect(minus).not.toBe('');
+    expect(minus).not.toContain('disabled');
+  });
+
+  it('erro da correção fica no bloco (descanso e série), não só no stepper', () => {
+    const resting = run(
+      createIntensiveBlock(continuousProfile, 40),
+      { type: 'START', now: T0 },
+      { type: 'COMPLETE_SET', reps: 12, rpe: 10, clientKey: 'k1', setNumber: 1, now: T0, restSeconds: 30 },
+    );
+    const message = 'Série não encontrada no servidor.';
+    expect(render(createElement(IntensiveBlock, { ...base, state: resting, correctionError: message }))).toContain(message);
+    const executing = run(resting, { type: 'REST_EXPIRED' });
+    expect(executing.phase).toBe('SERIE_EM_EXECUCAO');
+    expect(render(createElement(IntensiveBlock, { ...base, state: executing, correctionError: message }))).toContain(message);
   });
 });

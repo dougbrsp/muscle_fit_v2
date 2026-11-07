@@ -721,5 +721,85 @@
         "has_estimated_reps": false
       }
     }
-  ]
+  ],
+  "reps_helpers": {
+    "top": [
+      {
+        "input": "8-12",
+        "expected": 12
+      },
+      {
+        "input": "12",
+        "expected": 12
+      },
+      {
+        "input": "8–12",
+        "expected": 12
+      },
+      {
+        "input": "3x10",
+        "expected": 10
+      },
+      {
+        "input": "10-12 por lado",
+        "expected": 12
+      },
+      {
+        "input": "12-15 + 3 parciais",
+        "expected": 15
+      },
+      {
+        "input": "12,5",
+        "expected": 12
+      },
+      {
+        "input": "AMRAP",
+        "expected": null
+      },
+      {
+        "input": "",
+        "expected": null
+      },
+      {
+        "input": null,
+        "expected": null
+      },
+      {
+        "input": "0",
+        "expected": null
+      }
+    ],
+    "execution_seconds": [
+      {
+        "reps": 12,
+        "peak": null,
+        "expected": 36
+      },
+      {
+        "reps": 12,
+        "peak": 1,
+        "expected": 48
+      },
+      {
+        "reps": 12,
+        "peak": 2,
+        "expected": 60
+      },
+      {
+        "reps": 5,
+        "peak": null,
+        "expected": 15
+      },
+      {
+        "reps": 7,
+        "peak": 0.5,
+        "expected": 25
+      },
+      {
+        "reps": 1,
+        "peak": null,
+        "expected": 3
+      }
+    ]
+  }
 }

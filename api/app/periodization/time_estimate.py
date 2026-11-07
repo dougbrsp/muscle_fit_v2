@@ -108,6 +108,33 @@ def parse_reps_target(value: Optional[str]) -> Optional[float]:
     return (valid[0] + valid[1]) / 2
 
 
+def parse_reps_target_top(value: Optional[str]) -> Optional[int]:
+    """Topo das reps do alvo: o MAIOR dos DOIS primeiros numeros ("8-12" -> 12,
+    "3x10" -> 10, "12-15 + 3 parciais" -> 15), truncado para inteiro. Vazio,
+    ilegivel ou 0 -> None. Dono unico do "topo": o Modo Intensivo (FST-7
+    continuo) so consome."""
+    if value is None:
+        return None
+    numbers = [float(match.replace(",", ".")) for match in _NUMBER_RE.findall(str(value))]
+    valid = [n for n in numbers if math.isfinite(n) and n > 0][:2]
+    if not valid:
+        return None
+    top = int(math.floor(max(valid)))
+    return top if top > 0 else None
+
+
+def _reps_execution_exact(reps: float, peak_contraction_seconds: Any = None) -> float:
+    return reps * (EXEC_SECONDS_PER_REP + _positive(peak_contraction_seconds))
+
+
+def reps_execution_seconds(reps: float, peak_contraction_seconds: Any = None) -> int:
+    """Segundos de execucao de UMA serie por repeticoes: `reps x (s/rep + pico de
+    contracao)`, arredondado (meio para cima). Mesma conta de `estimate_slot_time`
+    (que soma sem arredondar e arredonda a parcela). Dono da duracao da fase
+    SERIE do Modo Intensivo."""
+    return _js_round(_reps_execution_exact(reps, peak_contraction_seconds))
+
+
 def _js_round(value: float) -> int:
     """Meio para cima (o `Math.round` do espelho), não o arredondamento
     bancário do `round()` do Python - senão 2,5 s dariam 2 aqui e 3 na tela."""
@@ -168,7 +195,7 @@ def estimate_slot_time(
                 if reps is None:
                     reps = DEFAULT_ESTIMATED_REPS
                     has_estimated_reps = True
-                set_exec = reps * per_rep
+                set_exec = _reps_execution_exact(reps, _field(item, "peak_contraction_seconds"))
             rest = _field(item, "rest_seconds")
             if rest is not None:
                 rest_value = _positive(rest)
@@ -235,4 +262,6 @@ __all__ = [
     "estimate_slot_time",
     "export_for_frontend",
     "parse_reps_target",
+    "parse_reps_target_top",
+    "reps_execution_seconds",
 ]

@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import { formatWeight, type WeightUnit } from '@/lib/weight-units';
 import {
   clampReducedReps,
+  intensivePhaseEndedAt,
+  intensiveSeriesCompletion,
   intensiveExtraRepsEnabled,
   type IntensiveBlockState,
   type IntensiveEvent,
@@ -39,6 +41,8 @@ export type IntensiveBlockProps = {
   /** Trocar exercício/equipamento (fluxo de sempre); ausente = sem a ação. */
   onSwap?: () => void;
   onSkipExercise: () => void;
+  /** Falha do último PATCH de reps; vive no bloco, não no stepper (que some com o descanso). */
+  correctionError?: string | null;
 };
 
 /**
@@ -64,6 +68,7 @@ export function IntensiveBlock({
   onFinish,
   onSwap,
   onSkipExercise,
+  correctionError = null,
 }: IntensiveBlockProps) {
   const swapAction: WorkoutIconAction[] = onSwap
     ? [
@@ -112,8 +117,15 @@ export function IntensiveBlock({
 
   // Relógio contínuo: só reduz (ou volta até o topo das reps do item).
   async function reduceReps(record: IntensiveSetRecord, reps: number) {
-    if (clampReducedReps(state, reps) == null) return;
-    await onCorrect(record, { reps });
+    await correct(record, { reps });
+  }
+
+  // Relógio contínuo: reps só de 1 até o topo, no stepper do descanso e na revisão final.
+  async function correct(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
+    if (state.continuous && correction.reps != null && clampReducedReps(state, correction.reps) == null) {
+      throw new Error(`Informe de 1 até ${state.continuous.repsTop} repetições.`);
+    }
+    await onCorrect(record, correction);
   }
 
   switch (state.phase) {
@@ -136,8 +148,11 @@ export function IntensiveBlock({
       if (state.continuous && state.setClock) {
         const clock = state.setClock;
         // Fim da fase SÉRIE (relógio zerado ou "Concluir série agora"): grava no topo das reps.
-        const completeSeries = (skipped: boolean) =>
-          onCompleteSet(state.continuous?.repsTop ?? null, profile.targetRpe, null, skipped ? Date.now() : clock.endsAt);
+        // A hora é a do fim real da série (catch-up) ou o agora (adiantada / -15 s que zera).
+        const completeSeries = () => {
+          const completion = intensiveSeriesCompletion(state, profile.targetRpe);
+          if (completion) onCompleteSet(completion.reps, completion.rpe, null, completion.now);
+        };
         return (
           <RestTimerHero
             restKey={clock.key}
@@ -157,7 +172,7 @@ export function IntensiveBlock({
             iconActions={[...swapAction, skipAction, endAction]}
           >
             <section className={styles.card} aria-label="Durante a série" data-testid="intensive-series-panel">
-              <IntensiveSyncNotice records={state.records} onRetry={onRetry} />
+              <IntensiveSyncNotice records={state.records} onRetry={onRetry} correctionError={correctionError} />
               {state.planned.kg != null && (
                 <span className={styles.info} data-testid="intensive-series-load">
                   Carga: {formatWeight(state.planned.kg, weightUnit)}
@@ -202,16 +217,17 @@ export function IntensiveBlock({
           iconActions={[...swapAction, endAction]}
           onRestAdjusted={(endsAt, totalSeconds) => dispatch({ type: 'REST_ADJUSTED', endsAt, totalSeconds })}
           onRestExpired={() => dispatch({ type: 'REST_EXPIRED' })}
-          onContinue={(skipped = true) =>
+          onContinue={() =>
             dispatch({
               type: state.phase === 'DESCANSO' ? 'SKIP_REST' : 'START_NEXT',
               // Relógio contínuo: o descanso que zerou passa a série no instante do fim, sem perder tempo.
-              now: skipped || !state.rest ? Date.now() : state.rest.endsAt,
+              now: state.rest ? intensivePhaseEndedAt(state.rest.endsAt) : Date.now(),
             })
           }
           onRetry={onRetry}
           onConfirmReps={confirmReps}
           onReduceReps={reduceReps}
+          correctionError={correctionError}
         />
       );
     case 'REGISTRO_PENDENTE':
@@ -229,7 +245,7 @@ export function IntensiveBlock({
           profile={profile}
           weightUnit={weightUnit}
           loadSuffix={loadSuffix}
-          onCorrect={onCorrect}
+          onCorrect={correct}
           onRetry={onRetry}
           onFinish={onFinish}
         />

@@ -19,15 +19,23 @@ export const INTENSIVE_READY_CTA = 'Iniciar próxima série';
 export function IntensiveSyncNotice({
   records,
   onRetry,
+  correctionError = null,
 }: {
   records: ReadonlyArray<IntensiveSetRecord>;
   onRetry: (clientKey: string) => void;
+  /** Falha ao corrigir reps (PATCH): fica na tela mesmo quando o stepper some com o fim do descanso. */
+  correctionError?: string | null;
 }) {
   const failed = records.filter((record) => record.sync === 'error');
   const saving = records.filter((record) => record.sync === 'saving');
-  if (failed.length === 0 && saving.length === 0) return null;
+  if (failed.length === 0 && saving.length === 0 && !correctionError) return null;
   return (
     <>
+      {correctionError && (
+        <div className={styles.errorBox} role="alert" data-testid="intensive-correction-error">
+          <span>{correctionError}</span>
+        </div>
+      )}
       {failed.map((record) => (
         <div key={record.clientKey} className={styles.errorBox} role="alert" data-testid="intensive-sync-error">
           <span>
@@ -143,7 +151,8 @@ export function ReduceRepsStepper({
     }
   }
 
-  const disabled = busy || record.sync === 'saving';
+  // Em `saving` a série ainda está na fila offline: a redução edita a operação pendente.
+  const disabled = busy;
   return (
     <div className={styles.inlineRow} data-testid="intensive-reduce-reps">
       <span>Série {record.index}: repetições feitas</span>
@@ -190,6 +199,7 @@ type Props = {
   onConfirmReps: (record: IntensiveSetRecord, reps: number) => Promise<void>;
   /** Relógio contínuo: reduz as reps da série recém-gravada (PATCH). */
   onReduceReps?: (record: IntensiveSetRecord, reps: number) => Promise<void>;
+  correctionError?: string | null;
 };
 
 /**
@@ -209,6 +219,7 @@ export function IntensiveRest({
   onRetry,
   onConfirmReps,
   onReduceReps,
+  correctionError = null,
 }: Props) {
   const rest = state.rest;
   if (!rest) return null;
@@ -216,7 +227,7 @@ export function IntensiveRest({
   const lastIndex = state.records[state.records.length - 1]?.index ?? 0;
   return (
     <>
-      <IntensiveSyncNotice records={state.records} onRetry={onRetry} />
+      <IntensiveSyncNotice records={state.records} onRetry={onRetry} correctionError={correctionError} />
       <RestTimerHero
         restKey={rest.key}
         initialSeconds={rest.totalSeconds}

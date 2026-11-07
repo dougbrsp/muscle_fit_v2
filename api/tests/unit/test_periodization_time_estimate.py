@@ -15,6 +15,8 @@ Trava aqui:
 from __future__ import annotations
 
 import re
+
+import pytest
 from pathlib import Path
 
 from app.domain import prescription_defaults as pd
@@ -118,3 +120,33 @@ def test_tecnica_rest_pause_sem_duracao_usa_a_pausa_padrao_do_dono():
     assert tecnica("rest_pause", 20) == 40
     assert tecnica("drop_set", None) == 0
     assert time_estimate.export_for_frontend()["rest_pause_default_pause_seconds"] == REST_PAUSE_DEFAULT_PAUSE_SECONDS
+
+
+@pytest.mark.parametrize(
+    "texto, topo",
+    [
+        ("8-12", 12),
+        ("12", 12),
+        ("8–12", 12),
+        ("3x10", 10),
+        ("10-12 por lado", 12),
+        ("12-15 + 3 parciais", 15),
+        ("12,5", 12),
+        ("AMRAP", None),
+        ("", None),
+        (None, None),
+        ("0", None),
+    ],
+)
+def test_topo_das_reps_do_alvo_e_do_dono(texto, topo):
+    assert time_estimate.parse_reps_target_top(texto) == topo
+
+
+def test_duracao_da_serie_por_reps_e_do_dono_e_a_mesma_da_estimativa():
+    per_rep = time_estimate.EXEC_SECONDS_PER_REP
+    assert time_estimate.reps_execution_seconds(12) == 12 * per_rep
+    assert time_estimate.reps_execution_seconds(12, 1) == 12 * (per_rep + 1)
+    assert time_estimate.reps_execution_seconds(5, None) == 5 * per_rep
+    # A estimativa do slot soma a MESMA conta (1 serie, sem descanso).
+    item = {"item_kind": "equipment", "sets_count": 1, "reps_target": "12", "peak_contraction_seconds": 1}
+    assert time_estimate.estimate_slot_time([item])["breakdown"]["exec_seconds"] == time_estimate.reps_execution_seconds(12, 1)

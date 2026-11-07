@@ -475,6 +475,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // gravada leva a carga e a origem; a pausa recarregada volta como "pronta".
   const [applicationAdjust, setApplicationAdjust] = useState<IntensiveApplicationAdjustment | null>(null);
   const [techniquePause, setTechniquePause] = useState<IntensivePause | null>(null);
+  const [intensiveCorrectionError, setIntensiveCorrectionError] = useState<string | null>(null);
   // "Finalizar treino" com séries de reps pendentes: confirmação antes do fim.
   const [pendingFinishOpen, setPendingFinishOpen] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<number>>(() => new Set(session.skipped_exercise_ids || []));
@@ -2498,8 +2499,32 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // gravada. Série ainda não gravada (erro) é corrigida localmente e
   // reenviada com a mesma chave.
   async function handleIntensiveCorrect(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
+    try {
+      await correctIntensiveRecord(record, correction);
+      setIntensiveCorrectionError(null);
+    } catch (error) {
+      // A mensagem fica no bloco (some só na próxima correção que der certo).
+      setIntensiveCorrectionError(errorMessage(error, 'Não foi possível corrigir a série.'));
+      throw error;
+    }
+  }
+
+  async function correctIntensiveRecord(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
+    if (record.sync === 'saving') {
+      // A série ainda está na fila offline: edita a operação pendente (mesma client_key).
+      const body: Record<string, number> = {};
+      if (correction.reps != null) body.reps = correction.reps;
+      if (correction.weightKg != null) body.weight_kg = correction.weightKg;
+      const exerciseId = await ensureIntensiveExerciseId();
+      const pending = await opQueue.editPendingSet(session.session_id, exerciseId, record.setNumber, body);
+      if (pending !== 'edited') {
+        throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
+      }
+      intensiveDispatch({ type: 'UPDATE_RECORD', clientKey: record.clientKey, reps: correction.reps, weightKg: correction.weightKg });
+      return;
+    }
     if (record.sync !== 'saved') {
-      if (record.sync === 'saving' || !intensiveProfile) return;
+      if (!intensiveProfile) return;
       const updated: IntensiveSetRecord = {
         ...record,
         reps: correction.reps ?? record.reps,
@@ -2751,6 +2776,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       ) : showIntensive && intensiveBlock && intensiveProfile ? (
         <IntensiveBlock
           state={intensiveBlock}
+          correctionError={intensiveCorrectionError}
           profile={intensiveProfile}
           exerciseName={effectiveExerciseName}
           equipmentName={effectiveEquipmentName}

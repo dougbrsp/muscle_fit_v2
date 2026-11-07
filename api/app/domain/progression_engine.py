@@ -2402,6 +2402,14 @@ REST_PAUSE_TECHNIQUE_CODE = "rest_pause"
 REST_PAUSE_DEFAULT_PAUSE_SECONDS = 15
 
 
+# Tecnicas cujo protocolo roda com relogio continuo no Modo Intensivo (decisao
+# do usuario, 2026-11-07): SERIE e DESCANSO alternam sozinhos, a serie e
+# gravada no topo das reps e o usuario so reduz as reps no descanso. Dono
+# unico: `technique_parameters` exporta o flag `continuous_clock` pronto; o
+# frontend so consome.
+CONTINUOUS_CLOCK_TECHNIQUE_CODES: frozenset[str] = frozenset({"fst7"})
+
+
 def technique_pause_seconds(code: Optional[str], duration_seconds: Any) -> Optional[int]:
     """Pausa entre as aplicacoes da tecnica: a duracao da linha (> 0) ou, so no
     rest-pause sem duracao, `REST_PAUSE_DEFAULT_PAUSE_SECONDS`. None = sem
@@ -2454,6 +2462,7 @@ def technique_parameters(
             "pause_seconds": None,
             "planned_equivalent": 0.0,
             "target_rpe": target_rpe,
+            "continuous_clock": code in CONTINUOUS_CLOCK_TECHNIQUE_CODES,
         }
     count = int(applications) if applications and int(applications) > 0 else PROGRESSION_TECHNIQUE_APPLICATIONS
     pause = technique_pause_seconds(code, pause_seconds)
@@ -2467,6 +2476,7 @@ def technique_parameters(
         "anchor": TECHNIQUE_ANCHOR_LAST_WORKING_SET,
         "planned_equivalent": round(planned_equivalent(code, count, coef_catalog), 2),
         "target_rpe": target_rpe,
+        "continuous_clock": code in CONTINUOUS_CLOCK_TECHNIQUE_CODES,
     }
     if code == "drop_set":
         params["load_factor_per_application"] = float(DROP_SET_LOAD_FACTOR)

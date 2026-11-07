@@ -291,6 +291,7 @@ def _prescribe(track, **kwargs):
                 "application_loads_kg": [40.0, 40.0],
                 # Modo Intensivo: RPE-alvo do protocolo pelo teto do par (fx.safety: teto 10).
                 "target_rpe": 10,
+                "continuous_clock": False,
             },
         ),
         (
@@ -311,6 +312,7 @@ def _prescribe(track, **kwargs):
                 "application_loads_kg": [32.5],
                 # Modo Intensivo: RPE-alvo do protocolo pelo teto do par (fx.safety: teto 10).
                 "target_rpe": 10,
+                "continuous_clock": False,
             },
         ),
         (
@@ -328,6 +330,7 @@ def _prescribe(track, **kwargs):
                 "planned_equivalent": 0.0,
                 # Modo Intensivo: RPE-alvo do protocolo pelo teto do par (fx.safety: teto 10).
                 "target_rpe": 10,
+                "continuous_clock": True,
             },
         ),
     ],
@@ -491,3 +494,14 @@ def test_rascunho_usa_aplicacoes_so_da_tecnica_da_progressao():
     assert _progression_technique_applications(by_model) is None  # o Modelo manda
     assert _progression_technique_applications(without) is None
     assert _progression_technique_applications(None) is None
+
+
+def test_relogio_continuo_e_flag_pronto_do_dono_so_para_o_fst7():
+    """O frontend so consome `continuous_clock`; a lista de tecnicas e do dono."""
+    from app.domain.progression_engine import CONTINUOUS_CLOCK_TECHNIQUE_CODES, technique_parameters
+
+    assert CONTINUOUS_CLOCK_TECHNIQUE_CODES == frozenset({"fst7"})
+    for code in ("fst7", "gvt", "drop_set", "rest_pause"):
+        params = technique_parameters(code, source="model", catalog=CATALOG)
+        assert params is not None
+        assert params["continuous_clock"] is (code == "fst7")
