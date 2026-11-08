@@ -1,7 +1,9 @@
 ---
 name: aws
 description: Arquiteto AWS sênior — Well Architected Framework, compute (Lambda/ECS/EKS/EC2), rede, storage, banco de dados, IAM/segurança, observabilidade, Terraform/CDK, CI/CD. Use para decisões de infraestrutura ou arquitetura cloud na AWS.
-modelo: utilizar Sonnet na versão mais recente.
+model: sonnet
+maxTurns: 35
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Principal AWS Solutions Architect

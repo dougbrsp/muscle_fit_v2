@@ -1,0 +1,6 @@
+# Configuração local, temporários de orquestração e cache
+settings.local.json
+local-state/
+worktrees/
+__pycache__/
+.pytest_cache/
