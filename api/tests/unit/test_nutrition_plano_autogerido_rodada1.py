@@ -83,8 +83,14 @@ def test_prioridade_com_ciclo_preserva_a_soma_e_a_prioridade(estrategia, priorid
     sem = _semana(_plano(estrategia, macro_priority=prioridade))
     com = _semana(_plano(estrategia, macro_priority=prioridade, cycle_kinds=kinds))
     assert _soma(com, "carb_g") == pytest.approx(_soma(sem, "carb_g"))
-    for a, b in zip(sem, com):  # a prioridade mexe na gordura; o ciclo não
-        assert a.macros.fat_g == b.macros.fat_g and a.macros.protein_g == b.macros.protein_g
+    # O ciclo move kcal entre os dias e a gordura acompanha a kcal final do dia na MESMA fração que a prioridade
+    # aplicou (fix da gordura percentual): a proteína não muda, a fração do dia fica a do plano e a soma semanal de
+    # gordura e de kcal se preserva.
+    for a, b in zip(sem, com):
+        assert a.macros.protein_g == b.macros.protein_g
+        assert b.macros.fat_g * 9 / b.macros.kcal == pytest.approx(a.macros.fat_g * 9 / a.macros.kcal)
+    assert _soma(com, "fat_g") == pytest.approx(_soma(sem, "fat_g"))
+    assert _soma(com, "kcal") == pytest.approx(_soma(sem, "kcal"))
 
 
 # ---------------------------------------------------------------------------

@@ -41,8 +41,18 @@ from typing import Any, Final, Mapping, Optional, Sequence
 
 from .anthropometrics import positive_number
 from .energy_density import DAYS_PER_WEEK
-from .macros import MIN_CARB_G_PER_KG, MacroTargets, fiber_target_g, kcal_from_macros
+from .macros import (
+    KCAL_PER_G_CARB,
+    KCAL_PER_G_FAT,
+    KCAL_PER_G_PROTEIN,
+    MIN_CARB_G_PER_KG,
+    MacroTargets,
+    fiber_target_g,
+    kcal_from_macros,
+)
 
+# Oscilação em kcal-equivalente de carbo sobre a base (±25% do carbo base × 4 kcal). Com `keep_fat_share` (plano por g/kg) a
+# gordura acompanha a kcal do dia na fração do plano, então o carbo se move por (1 − fração) desse delta (~±20% com 20% de gordura).
 CARB_CYCLE_SWING_SHARE: Final[float] = 0.25
 HIGH_CARB_MULTIPLIER: Final[float] = 1.0 + CARB_CYCLE_SWING_SHARE  # 1,25
 LOW_CARB_MULTIPLIER: Final[float] = 1.0 - CARB_CYCLE_SWING_SHARE  # 0,75
@@ -338,7 +348,12 @@ def distribute_week_over_mean(
 
 
 def apply_cycle_over_base(
-    target: MacroTargets, base: MacroTargets, kind: DayKind, kinds: Sequence[DayKind], weight_kg: Any = None
+    target: MacroTargets,
+    base: MacroTargets,
+    kind: DayKind,
+    kinds: Sequence[DayKind],
+    weight_kg: Any = None,
+    keep_fat_share: bool = False,
 ) -> tuple[MacroTargets, tuple[str, ...]]:
     """Meta de UM dia do tipo `kind` quando o ciclo é aplicado dia a dia (a materialização).
 
@@ -353,12 +368,46 @@ def apply_cycle_over_base(
     multiplicador de um dia para outro (peso ou base diferentes), a soma da semana pode
     desviar do exato (só quando o piso prende).
 
+    `keep_fat_share=True` (plano com macros por g/kg e fração de gordura, nunca gramas manuais): o delta de carbo
+    vira delta de kcal (4 kcal/g) e a gordura acompanha a kcal final do dia na fração efetiva do `target`
+    (`_day_with_fat_share`): o aumento do dia alto vai majoritariamente ao carbo, a redução do dia baixo sai do carbo
+    e da gordura na mesma proporção do plano, a proteína não muda e a média semanal de kcal se preserva (e a de carbo,
+    pois o delta soma zero). O piso de carbo (`MIN_LOW_CARB_G_PER_KG`) continua decidindo o multiplicador do dia baixo;
+    como a gordura também cede, o carbo do dia baixo cai menos que no modo antigo (o piso fica mais folgado).
+
     Atwater: a kcal do dia é RECALCULADA pelas gramas (`kcal_from_macros`), então a kcal da meta com ciclo é a
     do dia sem ciclo mais 4 kcal por grama de carbo movido (a de uma meta que já não fechava por Atwater, como a
     de `kcal_below_protein_and_fat`, passa a fechar). A invariante é a soma semanal do carbo, não a da kcal-alvo."""
     if not target.computable or not base.computable:
         return target, (LIMIT_TARGET_NOT_COMPUTABLE,)
     mult = week_multipliers(tuple(kinds), base.carb_g, weight_kg)
-    carbo = max(float(target.carb_g) + float(base.carb_g) * (mult.by_kind[kind] - 1.0), 0.0)  # type: ignore[arg-type]
+    delta_carbo = float(base.carb_g) * (mult.by_kind[kind] - 1.0)  # type: ignore[arg-type]
+    if keep_fat_share:
+        dia, cortou = _day_with_fat_share(target, delta_carbo)
+        lim = mult.limitations + ((LIMIT_CARB_FLOOR_PREVENTS_CYCLE,) if cortou and LIMIT_CARB_FLOOR_PREVENTS_CYCLE not in mult.limitations else ())
+        return dia, lim
+    carbo = max(float(target.carb_g) + delta_carbo, 0.0)  # type: ignore[arg-type]
     kcal = kcal_from_macros(target.protein_g, carbo, target.fat_g)
     return replace(target, carb_g=carbo, kcal=kcal, fiber_g=fiber_target_g(kcal)), mult.limitations
+
+
+def _day_with_fat_share(target: MacroTargets, delta_carb_g: float) -> tuple[MacroTargets, bool]:
+    """Meta do dia com o delta do ciclo e a fração de gordura EFETIVA do dia preservada.
+
+    kcal final = kcal do dia (Atwater) + 4 × delta de carbo (a soma semanal do delta é zero, então a média
+    semanal de kcal se preserva). Proteína fixa; gordura = kcal final × fração ÷ 9, com a fração do `target`
+    (a que o motor aplicou antes do ciclo: a configurada em BALANCED/FIXED_PROTEIN, a do preset em HIGH_CARB/
+    HIGH_FAT); carboidrato = o resto ÷ 4 (nunca negativo). Sem arredondamento: quem exibe arredonda."""
+    proteina = float(target.protein_g)  # type: ignore[arg-type]
+    kcal_antes = kcal_from_macros(target.protein_g, target.carb_g, target.fat_g)
+    if not kcal_antes or kcal_antes <= 0:
+        return target, False
+    fracao = float(target.fat_g) * KCAL_PER_G_FAT / kcal_antes  # type: ignore[arg-type]
+    kcal_dia = kcal_antes + delta_carb_g * KCAL_PER_G_CARB
+    gordura = max(fracao * kcal_dia, 0.0) / KCAL_PER_G_FAT
+    carbo_bruto = (kcal_dia - proteina * KCAL_PER_G_PROTEIN - gordura * KCAL_PER_G_FAT) / KCAL_PER_G_CARB
+    carbo = max(carbo_bruto, 0.0)
+    kcal = kcal_from_macros(proteina, carbo, gordura)
+    # `True` quando o carbo teve de ser cortado em zero (a proteína + gordura já passam da kcal do dia): nesse dia a fração
+    # e a média semanal deixam de valer e o chamador avisa com `carb_floor_prevents_cycle`.
+    return replace(target, carb_g=carbo, fat_g=gordura, kcal=kcal, fiber_g=fiber_target_g(kcal)), carbo_bruto < 0

@@ -54,7 +54,7 @@ class MacroPriority(str, Enum):
     ao N1, inalterado. Os presets vivem em `macros.macro_split_for_priority`."""
 
     BALANCED = "balanced"
-    FIXED_PROTEIN = "fixed_protein"  # proteína fixa; carboidrato e gordura em partes iguais das kcal restantes
+    FIXED_PROTEIN = "fixed_protein"  # proteína fixa; gordura pela fração configurada (igual a BALANCED); carboidrato com o resto
     HIGH_CARB = "high_carb"  # mais carboidrato, gordura no piso da faixa da estratégia
     HIGH_FAT = "high_fat"  # mais gordura (teto da faixa), menos carboidrato
 

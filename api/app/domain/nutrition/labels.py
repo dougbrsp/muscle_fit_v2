@@ -97,7 +97,7 @@ DAY_KIND_LABELS: Final[Mapping[DayKind, str]] = {
 
 MACRO_PRIORITY_LABELS: Final[Mapping[MacroPriority, str]] = {
     MacroPriority.BALANCED: "Equilibrado",
-    MacroPriority.FIXED_PROTEIN: "Proteína fixa (carboidrato e gordura equilibrados)",
+    MacroPriority.FIXED_PROTEIN: "Proteína fixa (gordura pela % configurada, carboidrato com o resto)",
     MacroPriority.HIGH_CARB: "Carboidrato alto (gordura baixa)",
     MacroPriority.HIGH_FAT: "Gordura alta (carboidrato baixo)",
 }

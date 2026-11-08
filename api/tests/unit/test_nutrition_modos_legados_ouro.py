@@ -40,33 +40,33 @@ EXTRAS = [
 # (estrategia, modo, sessoes, extras, sincronizado) -> gasto, treino no gasto, fator, meta kcal, proteína, carbo, gordura, hash
 _CENARIOS = {
     "maintenance/explicit_treino": (("maintenance", "explicit_training", FORCA, [], False),
-        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "e682e6683cfca56d626a503b05ee21dff7012be9799b6b70e38daeb479bfe7fd")),
+        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "13de47c99cdb92628fd6d216a77c189dba5646f24a92c5c652f57560b047118e")),
     "maintenance/explicit_descanso": (("maintenance", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "c4ce04eb68f9696b21b55b99b97c74a3cf435335519943d539475b5c63656198")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "5beed08cb2cff7d61eaae57b5df7567a0d9165e6e848831e957aeb6ae7a6eff6")),
     "maintenance/embutido_treino": (("maintenance", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "e3aa28f349d02d1327190dcbbe7c11d4826f326f614061a3b68d9108998acb36")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "a6320b9c2df80b6d0e71843c25fbbe05ca1adb31cb77d5c3541f372bdd105e0b")),
     "maintenance/embutido_descanso": (("maintenance", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "9d4b861886ba35ddbd2bcbdc111cdefa74c62e7b86a8c2d7ddf0fd82c4e2708b")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "21f4e12f7d352fbeb84b1afdfcdb0faf91e531c8a2d793c34d6981cdaf0f23ed")),
     "maintenance/auto_sync_extras": (("maintenance", "auto_intervals", FORCA, EXTRAS, True),
-        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "f1a01c3622cbf53b8790cda66daa2ef22e70bf04f641e2aa0dde62d0c4b2a87c")),
+        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "e1ed0d0008f5cb41d2071fd12f35034eea0ce524bc2c885681738ed1270e67f1")),
     "maintenance/auto_sync_descanso": (("maintenance", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "e7f678657ac3b251380f9b3ada5b737c0006fe9e86dff899ccf339c866dbefb2")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "efe4172a5eff1f0b11914f62e36c8431048f2d6b123c7dadcbc9f8ba4b88ba83")),
     "maintenance/auto_fallback": (("maintenance", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "c3c42943eb437ebf0ba49f094d820f124090f7694ee303f4aa4c6105388c4033")),
+        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "71d538e35ccf20a477f6f683b90a976697cd3271bec3be977d596ab43a11c0f2")),
     "bulking/explicit_treino": (("bulking", "explicit_training", FORCA, [], False),
-        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "444757b2209dab3151f833fbbb167f60dfa494fce0cb322e6957591ee193a480")),
+        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "151b7784d62380055c49ef75c8c913cddf9c0288e2e1abca5ff35aeb051e6605")),
     "bulking/explicit_descanso": (("bulking", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "2e855d092b79e9a51ec6a2325c8a3e22d0a105e12491d6931152d02b5d2e1968")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "7f7dab412488ec33e591263073dc8806139927834686bbc5f24cd509f879e0bc")),
     "bulking/embutido_treino": (("bulking", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "8a27adf72683af0c97e34efe8837e20139eb8b61f5d811322ea48b9dc059f16d")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "28d6e3bf2e3bdbcf99646048d5013828bb48a4a88e005882da3594f97289d760")),
     "bulking/embutido_descanso": (("bulking", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "8984321bff5bb87cb487eaa16a391cfed4173da4212de42d315df1e4b001d284")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "76903aadf659d4979c4b064eb5e8bd3ee33bd56d2acd8efb5af9253d18ce7986")),
     "bulking/auto_sync_extras": (("bulking", "auto_intervals", FORCA, EXTRAS, True),
-        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "fc768c5314310642242c7e6c603e2c9de172a19e05aa59f15c50f3d0491cc1c1")),
+        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "78531d84eacb784edbce113445bb5e3852c1bb9c8d2b29495bd89662311dcd78")),
     "bulking/auto_sync_descanso": (("bulking", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "9abbb003de4a369350a8713ae4cd483185a09fbb6adb344b19cb7ef76257ec64")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "6097ff16ab13d399c50be80189a8ed43676289bec4e6e256c0a9a29ce3e3799a")),
     "bulking/auto_fallback": (("bulking", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "96bb29ab0dbe30e05bcced0b83a942aa1f0a8fb9c1ef2b08f79396bb61225bcd")),
+        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "263e8cda28735fe681633bb0307c23e5a998ddf9d5a3919fba25389e4d89b491")),
 }
 
 
@@ -97,7 +97,7 @@ def test_modo_legado_mantem_gasto_meta_macros_e_hash(nome):
     assert alvo.macros.fat_g == pytest.approx(gordura, rel=1e-12)
     # Trava do hash: `inputs_fingerprint` só olha as ENTRADAS (sujeito, plano, contexto do dia) e a versão do motor.
     assert svc.inputs_fingerprint(PLANO_ID, comp) == hash_esperado
-    assert alvo.engine_version == "nutrition-v1"
+    assert alvo.engine_version == "nutrition-v2"
 
 
 def test_embutido_tmb_2020_fator_1725_da_3485_sem_somar_o_treino_de_novo():

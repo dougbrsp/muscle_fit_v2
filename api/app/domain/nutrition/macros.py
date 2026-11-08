@@ -13,10 +13,13 @@ Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7; guarda
 - Prioridade de macros (N1): `macro_split_for_priority`. BALANCED é o `macro_split`
   de sempre. Os outros presets mantêm a proteína (g/kg do plano) e só mexem na
   fração de gordura DENTRO da faixa da estratégia (Helms 2014 no cutting, 15–30%;
-  Iraki 2019 no bulking e ISSN 2017 na manutenção, 20–35%): FIXED_PROTEIN divide o
-  que sobra das kcal em partes iguais entre carboidrato e gordura; HIGH_CARB põe a
-  gordura no piso da faixa; HIGH_FAT põe a gordura no teto, sem deixar o carboidrato
-  abaixo do piso (carbo mínimo do bulking, senão `MIN_CARB_G_PER_KG`).
+  Iraki 2019 no bulking e ISSN 2017 na manutenção, 20–35%): FIXED_PROTEIN (proteína
+  fixa; carboidrato e gordura pelo plano) RESPEITA a `fat_kcal_share` configurada, ou
+  seja, dá o mesmo split de BALANCED (o código do enum fica porque há planos persistidos
+  com ele); HIGH_CARB põe a gordura no piso da faixa; HIGH_FAT põe a gordura no teto, sem
+  deixar o carboidrato abaixo do piso (carbo mínimo do bulking, senão `MIN_CARB_G_PER_KG`).
+- Ciclo de carbo: a fração de gordura EFETIVA do dia vale também depois do ciclo (a gordura
+  acompanha a kcal final do dia; ver `carb_cycling.apply_cycle_over_base`).
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
@@ -50,8 +53,6 @@ MEALS_PER_DAY_RANGE: Final[tuple[int, int]] = (3, 6)
 # Piso de carboidrato por kg de peso: o mesmo do dia baixo do ciclo de carbo
 # (`carb_cycling.MIN_LOW_CARB_G_PER_KG` aponta para cá). Default de desenho.
 MIN_CARB_G_PER_KG: Final[float] = 1.0
-# FIXED_PROTEIN: fração do que sobra das kcal (depois da proteína) que vai para a gordura.
-FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER: Final[float] = 0.5
 
 ERR_INVALID_MACRO_PRIORITY = "invalid_macro_priority"
 
@@ -163,8 +164,20 @@ class MacroTargets:
             "protein_basis": self.protein_basis.value if self.protein_basis else None,
             "protein_basis_kg": self.protein_basis_kg,
             "protein_g_per_kg": self.protein_g_per_kg,
+            "fat_kcal_share_effective": self.fat_kcal_share_effective,
             "limitations": list(self.limitations),
         }
+
+    @property
+    def fat_kcal_share_effective(self) -> Optional[float]:
+        """Fração de gordura EFETIVAMENTE aplicada no dia (gordura em kcal ÷ kcal do dia), pronta do motor para a tela
+        não recalcular. Difere da `fat_kcal_share` do plano só nos presets HIGH_CARB/HIGH_FAT (e em gramas manuais)."""
+        if not self.computable:
+            return None
+        energia = kcal_from_macros(self.protein_g, self.carb_g, self.fat_g)  # Atwater das gramas: bate com as gramas
+        if not energia or energia <= 0:
+            return None
+        return float(self.fat_g) * KCAL_PER_G_FAT / energia  # type: ignore[arg-type]
 
 
 def _not_computable(params: StrategyParams, basis_kg: Optional[float], limitations: tuple[str, ...]) -> MacroTargets:
@@ -252,14 +265,12 @@ def _fat_share_for_priority(
     proteina_kcal = params.protein_g_per_kg * base_kg * KCAL_PER_G_PROTEIN
     if priority == MacroPriority.HIGH_CARB:
         return piso
-    cap = _fat_cap_by_carb_floor(params, energia, proteina_kcal, weight_kg)
     if priority == MacroPriority.FIXED_PROTEIN:
-        restante = energia - proteina_kcal
-        if restante <= 0:
-            return params.fat_kcal_share
-        share = min(max(FIXED_PROTEIN_FAT_SHARE_OF_REMAINDER * restante / energia, piso), teto)
-        # O piso de carboidrato vale também aqui; a gordura não desce abaixo do piso da faixa.
-        return share if cap is None else max(piso, min(share, cap))
+        # Proteína fixa pela base e gordura pela fração CONFIGURADA do plano (decisão do usuário):
+        # o preset não troca a fração silenciosamente. Igual a BALANCED; se o carbo ficar abaixo do
+        # piso, `macro_split` avisa (`carb_below_min_g_per_kg`) em vez de mudar a fração.
+        return params.fat_kcal_share
+    cap = _fat_cap_by_carb_floor(params, energia, proteina_kcal, weight_kg)
     # HIGH_FAT: teto da faixa, mas o carboidrato não cai abaixo do piso e a gordura nunca
     # fica abaixo da fração do próprio plano (o que o EQUILIBRADO usaria).
     base = params.fat_kcal_share
