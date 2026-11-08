@@ -377,7 +377,7 @@ def test_ciclo_de_dias_e_prioridade_sao_preservados_na_proposta():
 def test_plano_publicado_fora_da_faixa_de_hoje_ainda_recebe_proposta():
     # A faixa pode mudar depois da publicação (o orquestrador só avisa): o que já estava fora não bloqueia o ajuste.
     base = _settings()
-    fora = build_plan_settings(strategy="cutting", activity_level="moderate", protein_g_per_kg=2.0)
+    fora = build_plan_settings(strategy="cutting", activity_level="moderate", protein_g_per_kg=1.5)
     assert fora.errors and wc.apply_changes(base, {wc.CHANGE_WEEKLY_RATE_SHARE: 0.008}).ok
     antigo = fora.settings
     assert wc.apply_changes(antigo, {wc.CHANGE_WEEKLY_RATE_SHARE: 0.008}).ok

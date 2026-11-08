@@ -150,6 +150,41 @@ def test_dia_congelado_com_meta_fica_intacto(db):
     assert corpo["target"]["kcal"] == 1234.0 and db.writes == []
 
 
+def _trocar_base_da_proteina(no, nova):
+    """Percorre o `inputs_json` gravado e troca todo `protein_basis`; devolve quantas trocas fez."""
+    trocas = 0
+    if isinstance(no, dict):
+        for chave, valor in list(no.items()):
+            if chave == "protein_basis":
+                no[chave] = nova
+                trocas += 1
+            else:
+                trocas += _trocar_base_da_proteina(valor, nova)
+    elif isinstance(no, list):
+        for item in no:
+            trocas += _trocar_base_da_proteina(item, nova)
+    return trocas
+
+
+def test_meta_congelada_v3_com_base_massa_livre_e_lida_sem_recalcular(db):
+    """nutrition-v4 (ADR 0009): meta de corte gravada na v3 (proteína pela MLG, `protein_basis: fat_free_mass`) continua
+    sendo lida como está, sem recalcular nem regravar, mesmo com a base do corte agora sendo o peso."""
+    passado = HOJE - timedelta(days=5)
+    _client().get(f"/nutrition/days/{passado.isoformat()}")  # grava a retroativa
+    gravada = db.targets[(ALUNO, passado)]
+    gravada["protein_g"] = 198.64  # 2,6 g/kg × MLG 76,4 (como a v3 gravou)
+    gravada["engine_version"] = "nutrition-v3"
+    gravada["inputs_json"] = json.loads(json.dumps(gravada["inputs_json"], default=str))
+    assert _trocar_base_da_proteina(gravada["inputs_json"], "fat_free_mass") >= 1
+    db.writes.clear()
+    corpo = _client().get(f"/nutrition/days/{passado.isoformat()}").json()
+    assert corpo["target_action"] == dt.TargetAction.READ.value
+    assert corpo["target"]["protein_g"] == pytest.approx(198.64) and corpo["target"]["frozen"] is True
+    assert db.writes == []
+    assert db.targets[(ALUNO, passado)]["protein_g"] == 198.64
+    assert db.targets[(ALUNO, passado)]["engine_version"] == "nutrition-v3"
+
+
 def test_meta_retroativa_nao_sobrescreve_quem_gravou_no_meio(db, monkeypatch):
     """Corrida: outra requisição gravou a meta entre a leitura e o INSERT -> a primeira fica."""
     passado = HOJE - timedelta(days=9)

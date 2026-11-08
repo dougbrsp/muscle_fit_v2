@@ -51,7 +51,7 @@ def _preparado(sujeito=SUJEITO, entradas=None):
 SUGESTAO = {
     "strategy": "cutting",
     "advanced": False,
-    "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT,
+    "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_DEFAULT,
     "fat_kcal_share": st.CUT_FAT_KCAL_SHARE_DEFAULT,
     "weekly_rate_share": st.CUT_WEEKLY_RATE_SHARE_DEFAULT,
     "surplus_share": None,
@@ -115,7 +115,7 @@ def test_sucesso_devolve_campos_motivos_e_o_que_mudou_sem_gramas(monkeypatch, us
 @pytest.mark.parametrize(
     ("data", "codigo"),
     [
-        ({**SUGESTAO, "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_FFM_RANGE[1] * 2}, "param_out_of_range:protein_g_per_kg"),
+        ({**SUGESTAO, "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_RANGE[1] * 2}, "param_out_of_range:protein_g_per_kg"),
         ({**SUGESTAO, "kcal": 2000}, "suggestion_field_forbidden:kcal"),
         ({**SUGESTAO, "protein_g": 180}, "suggestion_field_forbidden:protein_g"),
         ({**SUGESTAO, "notes": "coma menos"}, "suggestion_field_forbidden:notes"),

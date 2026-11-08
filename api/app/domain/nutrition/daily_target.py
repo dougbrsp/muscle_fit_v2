@@ -82,7 +82,8 @@ from .weekly_budget import week_days
 # (`activity_energy.net_of_resting_kcal`) e soma TODA atividade do Intervals sem vínculo (deduplicada e com teto pelo
 # dono). A troca de versão faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (D-1, hoje e
 # futuras); congeladas ficam como estão.
-ENGINE_VERSION: Final[str] = "nutrition-v3"
+# v4 (ADR 0009): a proteína do corte passa a g/kg de PESO TOTAL (antes massa livre de gordura), faixa 1,8 a 2,7, padrão 2,6.
+ENGINE_VERSION: Final[str] = "nutrition-v4"
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no

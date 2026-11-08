@@ -30,7 +30,7 @@ def _manutencao(**extra):
 def _cutting():
     return _manutencao(
         strategy="cutting",
-        protein_g_per_kg=st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT,
+        protein_g_per_kg=st.CUT_PROTEIN_G_PER_KG_DEFAULT,
         fat_kcal_share=st.CUT_FAT_KCAL_SHARE_DEFAULT,
         weekly_rate_share=st.CUT_WEEKLY_RATE_SHARE_DEFAULT,
     )

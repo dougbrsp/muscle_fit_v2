@@ -156,7 +156,7 @@ def test_automatico_desconta_treino_e_extras_com_duracao_e_avisa_o_extra_sem_dur
 def test_adaptativo_nao_muda_e_a_versao_do_motor_e_v3():
     from app.domain.nutrition import ENGINE_VERSION
 
-    assert ENGINE_VERSION == "nutrition-v3"
+    assert ENGINE_VERSION == "nutrition-v4"
     contexto = DayContext(day=HOJE, is_training_day=True, training_kcal_reported=500.0, training_duration_min=60.0)
     meta = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.ADAPTIVE_BALANCE), contexto)
     assert meta.tdee.adaptive is not None and meta.tdee.training_kcal is None  # o treino não entra pela via explícita

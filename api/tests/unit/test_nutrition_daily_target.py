@@ -42,7 +42,7 @@ def _dia(**extra) -> DayContext:
 def test_referencia_manutencao_em_dia_de_descanso():
     meta = compute_daily_target(SUJEITO, _plano(), _dia())
     assert isinstance(meta, DailyTarget) and meta.computable
-    assert meta.engine_version == ENGINE_VERSION == "nutrition-v3"
+    assert meta.engine_version == ENGINE_VERSION == "nutrition-v4"
     assert meta.bmr.kcal == pytest.approx(TMB) and meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO)
     assert meta.kcal_target.kcal == pytest.approx(TDEE_DESCANSO)
@@ -130,10 +130,10 @@ def test_mlg_velha_volta_para_mifflin():
     assert meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR and meta.bmr.kcal == pytest.approx(TMB)
 
 
-def test_cutting_fica_abaixo_do_tdee_e_proteina_pela_mlg():
+def test_cutting_fica_abaixo_do_tdee_e_proteina_pelo_peso_total():
     meta = compute_daily_target(COM_MLG, _plano(S.CUTTING), _dia())
     assert meta.kcal_target.kcal < meta.tdee.kcal
-    assert meta.macros.protein_g == pytest.approx(2.6 * 68)
+    assert meta.macros.protein_g == pytest.approx(2.6 * 80)
     assert meta.limitations == ()
 
 
@@ -304,7 +304,7 @@ def test_dado_faltante_do_sujeito_lista_so_o_que_preencher():
     assert dt.missing_subject_data(compute_daily_target(SUJEITO, _plano(), _dia())) == ()
     sem_nivel = replace(SUJEITO, activity_level=None)
     assert dt.missing_subject_data(compute_daily_target(sem_nivel, _plano(), _dia())) == (ee.LIMIT_MISSING_ACTIVITY_LEVEL,)
-    # Cutting sem %G: falta a massa gorda (e a base da proteína, que é a MLG).
+    # Cutting sem %G: falta a massa gorda (a proteína do corte usa o peso desde nutrition-v4, então não depende da MLG).
     faltas = dt.missing_subject_data(compute_daily_target(SUJEITO, _plano(S.CUTTING), _dia()))
     assert st.LIMIT_MISSING_FAT_MASS in faltas
 

@@ -1,7 +1,7 @@
 # Cálculos de nutrição: como a meta do dia é montada
 
 - **Data de referência**: 08/11/2026.
-- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v3"` (`daily_target.py`, L85).
+- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v4"` (`daily_target.py`, L85).
 - **Código lido**: worktree `agent-a9b5f1502049a983d`, branch `fix/tdee-desconta-repouso-sessao`. A leitura não usou git, então o commit `a091ddb3` informado pelo líder não foi conferido aqui. As linhas citadas foram conferidas nesta leitura e podem deslocar com novos commits; onde não há linha, a referência é o nome da função.
 - **Fontes**: ADR 0005 (gasto adaptativo), ADR 0007 (gordura pela fração configurada), ADR 0008 (desconto do repouso, atividades do Intervals e dedup), `docs/motores/FONTES_DA_VERDADE.md` (§3.7 e §100).
 - **Convenção**: todo número abaixo vem de uma constante nomeada ou de uma fórmula do código, com o arquivo indicado. Os valores do exemplo da seção 6 são os medidos em produção pela ADR 0008 (só leitura), salvo quando marcados como derivados.
@@ -54,7 +54,7 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 
 - Atividade do Intervals que não é treino do app não faz o dia virar dia de treino. `is_training_day` e o tipo de dia do ciclo de carbo não mudam.
 - Dia de treino é definido pela existência de sessão concluída do app, não pela kcal líquida. Uma sessão com kcal líquida igual a zero continua sendo dia de treino (`training_kcal_of_day` trata zero como valor conhecido).
-- `ENGINE_VERSION` é `nutrition-v3`.
+- `ENGINE_VERSION` é `nutrition-v4`.
 - A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia.
 
 ### 3.1 Modo explícito (`explicit_training`)
@@ -162,7 +162,7 @@ Dono: `api/app/domain/nutrition/carb_cycling.py`. Vale quando o plano tem `cycle
 Dono: `api/app/domain/nutrition/macros.py`.
 
 - Atwater: proteína 4 kcal/g, carboidrato 4 kcal/g, gordura 9 kcal/g.
-- **Proteína**: g/kg × base. A base é a MLG no cutting (`FAT_FREE_MASS`) e o peso nas demais estratégias (`ProteinBasis`). Padrão do cutting: 2,6 g/kg de MLG (`CUT_PROTEIN_G_PER_KG_FFM_DEFAULT`, `strategy.py`), faixa 2,3 a 3,1.
+- **Proteína**: g/kg × base. A base é o peso corporal total em todas as estratégias (`ProteinBasis.BODY_WEIGHT`, desde nutrition-v4, ADR 0009). Padrão do cutting: 2,6 g/kg de peso (`CUT_PROTEIN_G_PER_KG_DEFAULT`, `strategy.py`), faixa 1,8 a 2,7.
 - **Gordura**: fração configurada das kcal finais do dia. Em `fixed_protein` e `balanced`, vale `params.fat_kcal_share`. Em `high_carb`, vale o piso da faixa da estratégia. Em `high_fat`, vale o teto, sem deixar o carboidrato abaixo do piso (`_fat_share_for_priority`).
 - **Carboidrato**: resto das kcal, nunca negativo. Se faltar energia, zera e marca `kcal_below_protein_and_fat`.
 - **Fibra**: 14 g por 1.000 kcal.
@@ -262,7 +262,7 @@ Os valores abaixo são calculados com as constantes do código. Nenhum é medido
 
 | Fonte de erro | Variação | Efeito no plano 10 |
 |---|---|---|
-| MLG de bioimpedância | ±1 kg | TMB ±21,6 kcal; gasto ±28,1 kcal (× 1,3); proteína ±2,6 g (cutting) |
+| MLG de bioimpedância | ±1 kg | TMB ±21,6 kcal; gasto ±28,1 kcal (× 1,3); proteína 0 g (a base é o peso) |
 | %G quando a MLG vem de peso × (1 − %G) | ±1 ponto percentual | MLG ±0,01 × peso. TMB ±0,216 kcal por kg de peso corporal; por exemplo, 80 kg dão ±17 kcal de TMB e ±22 kcal de gasto |
 | Fator de rotina | leve 1,3 para moderado 1,4 | +202 kcal/dia (0,1 × TMB) |
 | Kcal do relógio em musculação | cada kcal | 1 para 1, depois de descontar 1,403 kcal/min do repouso |
@@ -284,7 +284,7 @@ Registro incompleto de ingestão afeta só o adaptativo: dia parcial sai da méd
 
 ### 6.1 Entradas
 
-- Plano 10: cutting, `fixed_protein`, proteína 2,6 g/kg de MLG, gordura 20% das kcal, ciclo por dias, modo explícito, nível leve (fator 1,3).
+- Plano 10: cutting, `fixed_protein`, proteína 2,6 g/kg de peso (v4; até a v3 era de MLG), gordura 20% das kcal, ciclo por dias, modo explícito, nível leve (fator 1,3).
 - MLG 76,4 kg, TMB 2.020,24 (Katch-McArdle).
 - Ritmo 0,7% do peso por semana.
 - Ciclo: `{"0":"normal","1":"high","2":"low","3":"normal","4":"normal","5":"high","6":"low"}`. Ou seja: segunda normal, terça alta, quarta baixa, quinta normal, sexta normal, sábado alto, domingo baixo. Ver seção 8 sobre a descrição divergente.

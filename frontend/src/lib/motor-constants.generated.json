@@ -633,7 +633,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v3",
+    "engine_version": "nutrition-v4",
     "sexes": [
       "male",
       "female",
@@ -1068,15 +1068,15 @@
         6
       ],
       "cutting": {
-        "protein_basis": "fat_free_mass",
+        "protein_basis": "body_weight",
         "weekly_rate_share": [
           0.005,
           0.01
         ],
         "weekly_rate_share_default": 0.007,
         "protein_g_per_kg": [
-          2.3,
-          3.1
+          1.8,
+          2.7
         ],
         "protein_g_per_kg_default": 2.6,
         "fat_kcal_share": [
