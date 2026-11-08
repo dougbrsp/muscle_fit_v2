@@ -136,7 +136,7 @@ def test_kcal_do_treino_vem_da_sessao_concluida_e_dia_futuro_avisa():
     linhas = {linha["local_date"]: linha for linha in _ensure(db, HOJE - timedelta(days=1), HOJE + timedelta(days=1))}
     ontem = linhas[(HOJE - timedelta(days=1)).isoformat()]
     assert ontem["is_training_day"] is True and ontem["training_known"] is True
-    assert ontem["training_kcal"] == pytest.approx(412.37)
+    assert ontem["training_kcal"] == pytest.approx(412.37 - 1750.0 / 1440 * 60, abs=0.01)  # líquida do repouso da sessão (60 min)
     assert ontem["training_kcal_nature"] == ee.TrainingKcalNature.REPORTED.value
     amanha = linhas[(HOJE + timedelta(days=1)).isoformat()]
     assert amanha["training_kcal"] is None and amanha["training_known"] is False
@@ -152,7 +152,7 @@ def test_gravacao_copia_o_motor_e_guarda_as_entradas():
     assert entradas["subject"]["sex"] == "male" and entradas["subject"]["weight_kg"] == 80.0
     assert entradas["plan"]["strategy"] == "maintenance"
     assert entradas["day_context"]["training_known"] is True
-    assert linha["engine_version"] == "nutrition-v2" and linha["training_known"] == 1
+    assert linha["engine_version"] == "nutrition-v4" and linha["training_known"] == 1
     assert len(linha["inputs_hash"]) == 64
     assert json.loads(linha["limitations_json"]) == []
 

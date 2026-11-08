@@ -398,7 +398,7 @@ def _target_detail(comp: DayComputation, today: date) -> dict[str, Any]:
         "tdee": meta.tdee.to_dict(),
         # Composição do gasto pronta para a tela (dono: `energy_expenditure.tdee_breakdown`; só saída pública).
         "tdee_breakdown": nutrition_labels.tdee_breakdown_public(
-            tdee_breakdown(meta.tdee, meta.extra_activity.kcal, meta.tdee_basis)
+            tdee_breakdown(meta.tdee, meta.extra_activity.kcal, meta.tdee_basis, meta.extra_activity.to_dict()["items"])
         ),
         "training": meta.training_kcal.to_dict(),
         "kcal_target": alvo,

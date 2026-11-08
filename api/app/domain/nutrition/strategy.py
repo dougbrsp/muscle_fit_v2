@@ -42,7 +42,8 @@ class Strategy(str, Enum):
 
 
 class ProteinBasis(str, Enum):
-    """Base da proteína em g/kg: massa livre de gordura ou peso corporal."""
+    """Base da proteína em g/kg. Desde nutrition-v4 TODAS as estratégias usam `BODY_WEIGHT`; `FAT_FREE_MASS` é mantido
+    só para ler/rotular metas antigas gravadas com `protein_basis: fat_free_mass` e para o ramo legado de `manual_targets`."""
 
     FAT_FREE_MASS = "fat_free_mass"
     BODY_WEIGHT = "body_weight"
@@ -67,8 +68,10 @@ CUT_WEEKLY_RATE_SHARE_RANGE: Final[tuple[float, float]] = (0.005, 0.010)  # % do
 CUT_WEEKLY_RATE_SHARE_DEFAULT: Final[float] = 0.007
 CUT_MAX_DEFICIT_SHARE: Final[float] = 0.25  # do TDEE
 CUT_MIN_INTAKE_BMR_MULTIPLE: Final[float] = 1.0
-CUT_PROTEIN_G_PER_KG_FFM_RANGE: Final[tuple[float, float]] = (2.3, 3.1)
-CUT_PROTEIN_G_PER_KG_FFM_DEFAULT: Final[float] = 2.6
+# Proteína no corte: g/kg de PESO CORPORAL TOTAL (decisão do usuário, 2026-11-08; antes era g/kg de massa livre de gordura,
+# 2,3 a 3,1). Faixa de peso total em déficit (Phillips & Van Loon 2011; Helms 2014: 1,8 a 2,7 g/kg). Padrão 2,6 mantido.
+CUT_PROTEIN_G_PER_KG_RANGE: Final[tuple[float, float]] = (1.8, 2.7)
+CUT_PROTEIN_G_PER_KG_DEFAULT: Final[float] = 2.6
 CUT_FAT_KCAL_SHARE_RANGE: Final[tuple[float, float]] = (0.15, 0.30)
 CUT_FAT_KCAL_SHARE_DEFAULT: Final[float] = 0.25
 
@@ -121,7 +124,7 @@ LIMIT_PARAM_OUT_OF_RANGE = "param_out_of_range"
 
 def protein_range_for(strategy: Strategy) -> tuple[float, float]:
     if strategy == Strategy.CUTTING:
-        return CUT_PROTEIN_G_PER_KG_FFM_RANGE
+        return CUT_PROTEIN_G_PER_KG_RANGE
     if strategy == Strategy.BULKING:
         return BULK_PROTEIN_G_PER_KG_RANGE
     return MAINT_PROTEIN_G_PER_KG_RANGE
@@ -192,8 +195,8 @@ class StrategyParams:
         if strategy == Strategy.CUTTING:
             return cls(
                 strategy=strategy,
-                protein_g_per_kg=CUT_PROTEIN_G_PER_KG_FFM_DEFAULT,
-                protein_basis=ProteinBasis.FAT_FREE_MASS,
+                protein_g_per_kg=CUT_PROTEIN_G_PER_KG_DEFAULT,
+                protein_basis=ProteinBasis.BODY_WEIGHT,
                 fat_kcal_share=CUT_FAT_KCAL_SHARE_DEFAULT,
                 advanced=advanced,
                 weekly_rate_share=CUT_WEEKLY_RATE_SHARE_DEFAULT,

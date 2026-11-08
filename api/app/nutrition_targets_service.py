@@ -46,6 +46,7 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.activity_energy import activity_duration_seconds
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -79,7 +80,7 @@ from .domain.nutrition.plan import (
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
 from .intervals_activity_kind import classify
-from .nutrition_energy_service import EnergyHistory, energy_key, load_history
+from .nutrition_energy_service import EnergyHistory, _as_datetime, energy_key, load_history
 from .nutrition_schema import has_plan_energy_columns
 
 logger = logging.getLogger(__name__)
@@ -174,16 +175,18 @@ _SITES_SQL = (
 # lista de sessões do diário (`nutrition_days`), para a lista bater com a kcal usada.
 DONE_SESSION_STATUS = "done"
 _SESSIONS_SQL = (
-    "SELECT local_date, calories_kcal, duration_seconds FROM activities "
+    "SELECT local_date, calories_kcal, duration_seconds, started_at FROM activities "
     f"WHERE user_id = %s AND session_status = '{DONE_SESSION_STATUS}' AND local_date BETWEEN %s AND %s"
 )
 
 
 # Atividades do Intervals do dia que NÃO são o treino de `activities` (sem vínculo `activity_intervals_link`: a
-# vinculada já é a sessão de força). A CLASSE (cardio/força/outra) vem de `intervals_activity_kind` (dono), em
-# Python; quem decide o que soma é `energy_expenditure.extra_activity_kcal`. Sem LIKE de classificação aqui.
+# vinculada já é a sessão do app e soma pela sessão). NENHUM tipo filtra: toda atividade sem vínculo é entregue (a classe
+# de `intervals_activity_kind` só rotula a atividade para a tela). Quem decide o que soma (kcal, desconto do repouso,
+# duplicata, teto) é `energy_expenditure.extra_activity_kcal`. Sem LIKE de classificação aqui.
 EXTRA_ACTIVITIES_SQL = (
-    "SELECT ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal "
+    "SELECT ia.id, ia.external_id, ia.start_time, ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal, "
+    "ia.elapsed_time_seconds, ia.moving_time_seconds "
     "FROM intervals_activities ia "
     "LEFT JOIN activity_intervals_link l ON l.intervals_activity_id = ia.id AND l.user_id = ia.user_id "
     "WHERE ia.user_id = %s AND ia.activity_date BETWEEN %s AND %s AND l.id IS NULL "
@@ -316,6 +319,9 @@ class UserInputs:
     # False = o Intervals NÃO foi consultado nesta carga (nenhum plano automático em jogo): os modos clássicos não pagam
     # as consultas novas.
     intervals_loaded: bool = False
+    # As atividades do Intervals (extras) foram lidas nesta carga: há plano em jogo que as soma (explícito ou automático).
+    # Separado de `intervals_loaded` (conexão e frescor da sincronização, só do automático).
+    extras_loaded: bool = False
     # Plano ADAPTATIVO em jogo (Lote C): o histórico processado por `watch_calorie_mode` (uma leitura e um `replay` por
     # carga). Vazio nos planos legados, que não pagam nenhuma consulta nova.
     energy: dict[tuple[str, str], EnergyHistory] = field(default_factory=dict)
@@ -379,13 +385,18 @@ def load_user_inputs(
             dia = _as_date(row.get("local_date"))
             if dia is not None:
                 sessoes.setdefault(dia, []).append(
-                    SessionFacts(calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"))
+                    SessionFacts(
+                        calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"),
+                        start=_as_datetime(row.get("started_at")),
+                    )
                 )
-    # Conexão, frescor e atividades do Intervals só quando algum plano em jogo é o automático (planos clássicos não
+    # Atividades do Intervals só quando algum plano em jogo soma extras (explícito/automático); conexão e frescor só no automático (o embutido não
     # fazem nenhum SELECT novo). `plans` = as configurações que vão usar estas entradas.
-    com_intervals = any(plano.is_auto_intervals for plano in plans)
+    planos = list(plans)
+    com_intervals = any(plano.is_auto_intervals for plano in planos)
+    com_extras = any(plano.sums_extra_activities for plano in planos)
     extras: dict[date, list[ExtraActivity]] = {}
-    if com_intervals and fim_sessoes >= date_from:
+    if com_extras and fim_sessoes >= date_from:
         cur.execute(EXTRA_ACTIVITIES_SQL, (uid, date_from, fim_sessoes))
         for row in cur.fetchall() or []:
             dia = _as_date(row.get("activity_date"))
@@ -395,6 +406,9 @@ def load_user_inputs(
                         kind=classify(row.get("sport_type"), row.get("name")),
                         calories_kcal=_float(row.get("calories_kcal")),
                         label=row.get("name") or row.get("sport_type"),
+                        duration_seconds=activity_duration_seconds(row.get("elapsed_time_seconds"), row.get("moving_time_seconds")),
+                        start=_as_datetime(row.get("start_time")),
+                        external_id=None if row.get("external_id") is None else str(row.get("external_id")),
                     )
                 )
     em_dia = False
@@ -413,7 +427,8 @@ def load_user_inputs(
         extra_activities=extras,
         intervals_in_sync=em_dia,
         intervals_loaded=com_intervals,
-        **_load_energy(cur, uid, today, series, plans),
+        extras_loaded=com_extras,
+        **_load_energy(cur, uid, today, series, planos),
     )
 
 
@@ -454,7 +469,9 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
     # Só o plano automático leva os extras e o estado da sincronização ao contexto (os modos clássicos ficam como
     # sempre, hash inclusive). Sem sincronização os extras não valem e nem entram no contexto.
     automatico = settings.is_auto_intervals
-    extras = inputs.extra_activities.get(day, ()) if automatico and inputs.intervals_in_sync else ()
+    extras = ()
+    if settings.sums_extra_activities and (not automatico or inputs.intervals_in_sync):
+        extras = inputs.extra_activities.get(day, ())
     estimativa = None
     historico_indisponivel = False
     if settings.is_adaptive:  # a estimativa do dia vem do `replay` do histórico (dono: `adaptive_energy.estimate_for_day`)
@@ -477,18 +494,29 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
     return DayComputation(day=day, target=meta, subject=sujeito, context=contexto, settings=settings)
 
 
+def past_training_window(
+    inputs: UserInputs, settings: PlanSettings, today: date
+) -> tuple[list[Optional[float]], list[bool]]:
+    """(gasto de atividade, dia de treino?) de cada um dos `PROJECTION_TRAINING_WINDOW_DAYS` dias antes de hoje. O
+    segundo vem da EXISTÊNCIA da sessão (`DayContext.is_training_day`), não da kcal: uma sessão curta que fica líquida 0
+    continua sendo dia de treino."""
+    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
+    kcal: list[Optional[float]] = []
+    dias_de_treino: list[bool] = []
+    for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
+        comp = compute_day(inputs, settings, dia, today)
+        treino = training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal)
+        kcal.append(activity_total_kcal(treino, comp.target.extra_activity.kcal))
+        dias_de_treino.append(comp.context.is_training_day)
+    return kcal, dias_de_treino
+
+
 def past_training_kcal(inputs: UserInputs, settings: PlanSettings, today: date) -> list[Optional[float]]:
     """Gasto de atividade dos `PROJECTION_TRAINING_WINDOW_DAYS` dias ANTES de hoje (kcal do treino MAIS o cardio e as
     caminhadas do Intervals, `energy_expenditure.activity_total_kcal`; 0 em dia sem treino; `None` em dia de treino sem kcal e sem duração ou peso), com a kcal já resolvida pelo motor
     (informada > MET), para o TDEE estável da projeção (`plan.projection_tdee`). As entradas precisam cobrir a
     janela. Usada pela prévia do plano e pelo dashboard de nutrição, que projetam com o MESMO TDEE."""
-    inicio = today - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
-    resultado: list[Optional[float]] = []
-    for dia in (inicio + timedelta(days=i) for i in range(PROJECTION_TRAINING_WINDOW_DAYS)):
-        comp = compute_day(inputs, settings, dia, today)
-        treino = training_kcal_of_day(comp.context.is_training_day, comp.target.training_kcal.kcal)
-        resultado.append(activity_total_kcal(treino, comp.target.extra_activity.kcal))
-    return resultado
+    return past_training_window(inputs, settings, today)[0]
 
 
 def inputs_fingerprint(plan_id: int, comp: DayComputation) -> str:
@@ -712,6 +740,7 @@ def ensure_daily_targets(
             if (
                 entradas is None
                 or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded)
+                or (any(p.sums_extra_activities for p in planos_dos_dias) and not entradas.extras_loaded)
                 or not entradas.covers(planos_dos_dias)
             ):
                 entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, planos_dos_dias)
@@ -799,6 +828,7 @@ __all__ = [
     "ensure_diary_targets",
     "inputs_fingerprint",
     "past_training_kcal",
+    "past_training_window",
     "last_target_date",
     "load_published_plans",
     "load_user_inputs",

@@ -4,9 +4,11 @@ e agregação por dia local.
 Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7; guarda `api/tests/unit/test_guarda_fontes_da_verdade.py`).
 Spec: `.omc/research/NUTRICAO-spec-2026-11-05.md` §3.3, §4, §5, §13 e §19; plano `.omc/plans/nutricao-adaptativo-2026-11-05.md`.
 
-Escopo. Este módulo vale SÓ para o modo adaptativo futuro. Os três modos legados (`explicit_training`,
-`included_in_factor`, `auto_intervals`) continuam com `energy_expenditure.extra_activity_kcal`/`resolve_training_kcal`
-e NÃO usam nada daqui (testes-ouro em `tests/unit/test_nutrition_modos_legados_ouro.py`).
+Escopo. Este módulo é do modo adaptativo e é a fonte das regras de energia de atividade que os modos explícito e
+automático sincronizado reaproveitam (ADR 0008, `nutrition-v3`): `energy_expenditure` usa `net_of_resting_kcal` (desconto
+do repouso da janela), `normalize_activity` e `deduplicate` (duplicata e possível duplicata) e `MAX_PLAUSIBLE_ACTIVITY_KCAL`
+(teto) para somar a kcal das sessões e das atividades do Intervals. O embutido (`included_in_factor`) NÃO usa nada daqui.
+Testes-ouro: `tests/unit/test_nutrition_modos_legados_ouro.py`.
 
 Fronteiras:
 - A CLASSIFICAÇÃO da atividade (força, cardio, outra) é de `app/intervals_activity_kind.py`; aqui o tipo chega como texto
@@ -270,6 +272,21 @@ def resting_kcal(bmr_kcal: Any, duration_minutes: Any) -> Optional[float]:
     return tmb / MINUTES_PER_DAY * minutos
 
 
+def net_of_resting_kcal(kcal: Any, calorie_mode: Any, resting: Optional[float]) -> Optional[float]:
+    """Regra ÚNICA do desconto do repouso da janela (decisão D4): `active` entra como veio; `gross`/`unknown` descontam
+    `resting` (de `resting_kcal`) com piso 0. `kcal` ausente ou <= 0 -> None; `resting` None (sem TMB ou duração) em
+    modo que desconta -> None (quem chama decide: marca a limitação e mantém a bruta). Consumida por `normalize_activity`
+    (adaptativo) e por `energy_expenditure` (gasto do modo explícito/automático)."""
+    informada = positive_number(kcal)
+    if informada is None:
+        return None
+    if normalize_calorie_mode(calorie_mode) == CalorieMode.ACTIVE:
+        return informada
+    if resting is None:
+        return None
+    return max(0.0, informada - resting)
+
+
 def activity_duration_seconds(elapsed_seconds: Any, moving_seconds: Any) -> Optional[float]:
     """Duração da atividade para o desconto do repouso: o tempo DECORRIDO; se faltar (ausente ou <= 0), o tempo em
     movimento; sem nenhum, `None`. O serviço de leitura só entrega as duas colunas e chama esta função."""
@@ -323,7 +340,7 @@ def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActi
         if repouso is None:
             marcas.append(ActivityFlag.MISSING_DURATION if minutos is None else ActivityFlag.MISSING_BMR)
         else:
-            ativa = max(0.0, informada - repouso)
+            ativa = net_of_resting_kcal(informada, modo, repouso)
     return NormalizedActivity(
         id=str(raw.id),
         external_id=_clean_text(raw.external_id),

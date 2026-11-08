@@ -391,10 +391,16 @@ def weekly_weight_change_share(weights: Sequence[Optional[float]], weight_kg: An
     return inclinacao * _DAYS_PER_WEEK / float(weight_kg)
 
 
-def training_summary(past_training_kcal: Sequence[Optional[float]]) -> dict[str, Any]:
-    """Treino dos dias passados (`plan.training_kcal_of_day`): dias com treino e a média diária dos dias conhecidos."""
+def training_summary(
+    past_training_kcal: Sequence[Optional[float]], training_day_flags: Optional[Sequence[bool]] = None
+) -> dict[str, Any]:
+    """Treino dos dias passados (`plan.training_kcal_of_day`): dias com treino e a média diária dos dias conhecidos.
+    Com `training_day_flags` (existência da sessão por dia) a contagem de dias de treino NÃO depende da kcal líquida."""
     conhecidos = [kcal for kcal in past_training_kcal if kcal is not None]
-    dias = sum(1 for kcal in past_training_kcal if kcal is None or kcal > 0)
+    if training_day_flags is not None and len(training_day_flags) == len(past_training_kcal):
+        dias = sum(1 for sessao, kcal in zip(training_day_flags, past_training_kcal) if sessao or (kcal or 0) > 0)
+    else:
+        dias = sum(1 for kcal in past_training_kcal if kcal is None or kcal > 0)
     media = sum(conhecidos) / len(conhecidos) if conhecidos else None
     return {
         "window_days": len(past_training_kcal),
@@ -411,6 +417,7 @@ def build_context(
     weights: Sequence[Optional[float]],
     past_training_kcal: Sequence[Optional[float]],
     current: Mapping[str, Any],
+    training_day_flags: Optional[Sequence[bool]] = None,
 ) -> dict[str, Any]:
     """O que a IA recebe: perfil sem identificador direto, energia do motor, agregados do histórico e o
     formulário (`normalize_current`). Lista explícita, para um campo novo do `Subject` não vazar sozinho."""
@@ -430,7 +437,7 @@ def build_context(
             "weight_trend_window_days": len(weights),
             "weight_readings": sum(1 for peso in weights if peso is not None),
             "weekly_weight_change_share": _rounded(weekly_weight_change_share(weights, subject.weight_kg), _ROUND_SHARE),
-            "training": training_summary(past_training_kcal),
+            "training": training_summary(past_training_kcal, training_day_flags),
         },
         "current_form": {campo: current.get(campo) for campo in (*SUGGESTION_FIELDS, *CURRENT_GOAL_FIELDS, "tdee_mode")},
     }

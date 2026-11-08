@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from app.domain.nutrition import labels as lb
@@ -17,6 +19,14 @@ def _check(proteina, carbo, gordura, estrategia=S.MAINTENANCE, **kwargs):
     kwargs.setdefault("weight_kg", PESO)
     kwargs.setdefault("ffm_kg", MLG)
     return mt.check_manual_targets(proteina, carbo, gordura, st.StrategyParams.defaults_for(estrategia), **kwargs)
+
+
+def _check_legado_mlg(proteina, carbo, gordura, **kwargs):
+    """Cutting com a base antiga (massa livre de gordura): só metas/planos antigos a carregam (nutrition-v4 usa o peso)."""
+    kwargs.setdefault("weight_kg", PESO)
+    kwargs.setdefault("ffm_kg", MLG)
+    params = replace(st.StrategyParams.defaults_for(S.CUTTING), protein_basis=st.ProteinBasis.FAT_FREE_MASS)
+    return mt.check_manual_targets(proteina, carbo, gordura, params, **kwargs)
 
 
 def _campo(resultado: mt.ManualTargetsCheck, nome: str) -> mt.FieldCheck:
@@ -54,9 +64,12 @@ def test_limites_exatos_de_proteina_nao_bloqueiam():
     assert _campo(_check(0.8 * PESO, 300, 70), "protein_g").status == R.WARNING
     assert _campo(_check(3.5 * PESO, 300, 70), "protein_g").status == R.WARNING
     assert _campo(_check(3.5 * PESO + 1, 300, 70), "protein_g").status == R.BLOCKED
-    # Cutting (base = MLG 64 kg): teto 3,5 × 64.
-    assert _campo(_check(3.5 * MLG, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.WARNING
-    assert _campo(_check(3.5 * MLG + 1, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.BLOCKED
+    # Cutting (v4, base = peso 80 kg): teto 3,5 × 80.
+    assert _campo(_check(3.5 * PESO, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.WARNING
+    assert _campo(_check(3.5 * PESO + 1, 200, 55, estrategia=S.CUTTING), "protein_g").status == R.BLOCKED
+    # Legado (base = MLG 64 kg): teto 3,5 × 64.
+    assert _campo(_check_legado_mlg(3.5 * MLG, 200, 55), "protein_g").status == R.WARNING
+    assert _campo(_check_legado_mlg(3.5 * MLG + 1, 200, 55), "protein_g").status == R.BLOCKED
 
 
 def test_teto_de_proteina_usa_a_base_da_estrategia():
@@ -64,13 +77,17 @@ def test_teto_de_proteina_usa_a_base_da_estrategia():
     # MLG. Dentro da faixa recomendada, não pode bloquear.
     r = _check(154, 300, 70, weight_kg=70.0, ffm_kg=42.0)
     assert _campo(r, "protein_g").status == R.WITHIN_RANGE and r.can_save
-    # No cutting o teto é por MLG: 3,6 g/kg de 64 kg = 230,4 g bloqueia (e passaria por peso: 2,88 g/kg).
-    cut = _campo(_check(230.4, 200, 55, estrategia=S.CUTTING), "protein_g")
-    assert cut.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",) and cut.base == "fat_free_mass"
-    # No cutting sem MLG o teto usa o peso (3,6 g/kg × 80 = 288 g), e a faixa não é comparada (bases diferentes).
+    # No cutting (v4) o teto é por peso: 3,6 g/kg de 80 kg = 288 g bloqueia, com ou sem MLG.
+    cut = _campo(_check(290, 200, 55, estrategia=S.CUTTING), "protein_g")
+    assert cut.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",) and cut.base == "body_weight"
     semmlg = _campo(_check(290, 200, 55, estrategia=S.CUTTING, ffm_kg=None), "protein_g")
-    assert semmlg.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",)
-    assert semmlg.base == "body_weight" and semmlg.recommended is None
+    assert semmlg.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",) and semmlg.base == "body_weight"
+    # Legado (MLG): 3,6 g/kg de 64 kg = 230,4 g bloqueia (e passaria por peso: 2,88 g/kg).
+    legado = _campo(_check_legado_mlg(230.4, 200, 55), "protein_g")
+    assert legado.codes == (f"{mt.MANUAL_BLOCKED_ABOVE}:protein_g",) and legado.base == "fat_free_mass"
+    # Legado sem MLG: o teto usa o peso e a faixa não é comparada (bases diferentes).
+    legado_sem = _campo(_check_legado_mlg(290, 200, 55, ffm_kg=None), "protein_g")
+    assert legado_sem.base == "body_weight" and legado_sem.recommended is None
 
 
 @pytest.mark.parametrize("estrategia", list(S))
@@ -91,8 +108,11 @@ def test_nada_dentro_da_faixa_recomendada_e_bloqueado(estrategia, gordura_corpor
 
 
 def test_field_check_nao_mistura_bases_no_bloqueio_do_piso():
-    # Cutting com 20 g de proteína: o piso é sobre o peso (0,25 g/kg), a faixa é em MLG: sem faixa no resultado.
-    campo = _campo(_check(20, 200, 55, estrategia=S.CUTTING), "protein_g")
+    # Cutting v4: piso e faixa na mesma base (peso), então a faixa acompanha o valor.
+    novo = _campo(_check(20, 200, 55, estrategia=S.CUTTING), "protein_g")
+    assert novo.base == "body_weight" and novo.recommended == st.CUT_PROTEIN_G_PER_KG_RANGE
+    # Legado com 20 g de proteína: o piso é sobre o peso (0,25 g/kg), a faixa é em MLG: sem faixa no resultado.
+    campo = _campo(_check_legado_mlg(20, 200, 55), "protein_g")
     assert campo.codes == (f"{mt.MANUAL_BLOCKED_BELOW}:protein_g",)
     assert campo.base == "body_weight" and campo.metric_value == pytest.approx(0.25) and campo.recommended is None
     assert campo.to_dict()["base"] == "body_weight"
@@ -118,8 +138,8 @@ def test_sem_nenhuma_base_o_campo_nunca_sai_dentro_da_faixa():
         assert _campo(r, campo).codes == (f"{mt.MISSING_BASE}:{campo}",)
     assert r.status == R.WARNING and r.can_save
     assert lb.limitation_label(f"{mt.MISSING_BASE}:protein_g").startswith("Prote")
-    # Cutting com peso mas sem %G: a faixa da proteína (por MLG) não é conferida, e 0 g ainda bloqueia pelo piso.
-    sem_mlg = _check(160, 200, 55, estrategia=S.CUTTING, ffm_kg=None)
+    # Legado com peso mas sem %G: a faixa da proteína (por MLG) não é conferida, e 0 g ainda bloqueia pelo piso.
+    sem_mlg = _check_legado_mlg(160, 200, 55, ffm_kg=None)
     assert _campo(sem_mlg, "protein_g").status == R.WARNING and _campo(sem_mlg, "carb_g").status != R.WARNING
 
 
@@ -138,10 +158,15 @@ def test_texto_numerico_e_aceito_como_numero():
     assert _check("160", "300", "70").kcal == pytest.approx(_check(160, 300, 70).kcal)
 
 
-def test_proteina_do_cutting_usa_a_base_de_massa_livre_de_gordura():
-    r = _check(2.6 * MLG, 200, 55, estrategia=S.CUTTING)
+def test_proteina_do_cutting_usa_a_base_de_peso_total():
+    r = _check(2.6 * PESO, 200, 55, estrategia=S.CUTTING)
     assert _campo(r, "protein_g").status == R.WITHIN_RANGE
     assert _campo(r, "protein_g").metric_value == pytest.approx(2.6)
+    assert _campo(r, "protein_g").base == "body_weight"
+    # Legado: a base antiga (MLG) continua lendo.
+    legado = _check_legado_mlg(2.6 * MLG, 200, 55)
+    assert _campo(legado, "protein_g").status == R.WITHIN_RANGE
+    assert _campo(legado, "protein_g").metric_value == pytest.approx(2.6)
 
 
 def test_gordura_por_fracao_das_kcal():

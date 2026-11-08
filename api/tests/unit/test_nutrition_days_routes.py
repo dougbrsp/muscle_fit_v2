@@ -150,6 +150,41 @@ def test_dia_congelado_com_meta_fica_intacto(db):
     assert corpo["target"]["kcal"] == 1234.0 and db.writes == []
 
 
+def _trocar_base_da_proteina(no, nova):
+    """Percorre o `inputs_json` gravado e troca todo `protein_basis`; devolve quantas trocas fez."""
+    trocas = 0
+    if isinstance(no, dict):
+        for chave, valor in list(no.items()):
+            if chave == "protein_basis":
+                no[chave] = nova
+                trocas += 1
+            else:
+                trocas += _trocar_base_da_proteina(valor, nova)
+    elif isinstance(no, list):
+        for item in no:
+            trocas += _trocar_base_da_proteina(item, nova)
+    return trocas
+
+
+def test_meta_congelada_v3_com_base_massa_livre_e_lida_sem_recalcular(db):
+    """nutrition-v4 (ADR 0009): meta de corte gravada na v3 (proteína pela MLG, `protein_basis: fat_free_mass`) continua
+    sendo lida como está, sem recalcular nem regravar, mesmo com a base do corte agora sendo o peso."""
+    passado = HOJE - timedelta(days=5)
+    _client().get(f"/nutrition/days/{passado.isoformat()}")  # grava a retroativa
+    gravada = db.targets[(ALUNO, passado)]
+    gravada["protein_g"] = 198.64  # 2,6 g/kg × MLG 76,4 (como a v3 gravou)
+    gravada["engine_version"] = "nutrition-v3"
+    gravada["inputs_json"] = json.loads(json.dumps(gravada["inputs_json"], default=str))
+    assert _trocar_base_da_proteina(gravada["inputs_json"], "fat_free_mass") >= 1
+    db.writes.clear()
+    corpo = _client().get(f"/nutrition/days/{passado.isoformat()}").json()
+    assert corpo["target_action"] == dt.TargetAction.READ.value
+    assert corpo["target"]["protein_g"] == pytest.approx(198.64) and corpo["target"]["frozen"] is True
+    assert db.writes == []
+    assert db.targets[(ALUNO, passado)]["protein_g"] == 198.64
+    assert db.targets[(ALUNO, passado)]["engine_version"] == "nutrition-v3"
+
+
 def test_meta_retroativa_nao_sobrescreve_quem_gravou_no_meio(db, monkeypatch):
     """Corrida: outra requisição gravou a meta entre a leitura e o INSERT -> a primeira fica."""
     passado = HOJE - timedelta(days=9)
@@ -227,7 +262,7 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     comparacao = treino["comparison"]
     assert comparacao["reported"]["kcal"] == pytest.approx(300)
     assert comparacao["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
-    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30))
+    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30) - 1750.0 / 1440 * 75)  # líquida do repouso
     assert comparacao["used"]["kcal_nature"] == "met" and comparacao["partial"] is True
     assert comparacao["used"]["limitations"] == ["training_kcal_partially_estimated"]
     assert not any(lado["is_used"] for lado in comparacao["sides"])
@@ -244,7 +279,7 @@ def test_dia_expoe_forca_extra_e_total_pelo_motor(db):
     for esporte, kcal in (("Walk", 51), ("Walk", 79), ("VirtualRun", 265)):
         db.add_intervals_activity(ALUNO, HOJE, esporte, kcal)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}
+    assert treino["activity_kcal"] == {"training_kcal": 428.0 - 1750.0 / 1440 * 60, "extra_kcal": 395.0, "total_kcal": 823.0 - 1750.0 / 1440 * 60}
     assert treino["extra_activity"]["kcal"] == 395.0 and treino["extra_activity"]["kcal_nature"] == "reported"
     assert [i["label"] for i in treino["extra_activity"]["items"]] == ["Walk", "Walk", "VirtualRun"]
     assert treino["is_training_day"] is True
@@ -279,11 +314,21 @@ def test_dia_sincronizado_e_dia_classico_nao_trazem_aviso(db):
     assert classico["tdee_basis"] == "classic" and classico["tdee_basis_note"] is None
 
 
-def test_plano_classico_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
+def test_plano_explicito_mostra_o_extra(db):
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)  # sem duração: entra como veio
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["extra_activity"]["kcal"] == 300.0
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60 + 300.0)
+
+
+def test_plano_embutido_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
+    db.plans[db.plano]["training_kcal_mode"] = "included_in_factor"
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["extra_activity"]["kcal"] == 0.0 and treino["activity_kcal"]["total_kcal"] == 410.0
+    assert treino["extra_activity"]["kcal"] == 0.0
+    assert treino["activity_kcal"]["total_kcal"] == 410.0  # embutido: o treino segue BRUTO (sem desconto do repouso)
 
 
 def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
@@ -291,8 +336,8 @@ def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db)
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": []}
-    assert treino["activity_kcal"]["total_kcal"] == 410.0
+    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": [], "gross_kcal": 0.0, "resting_discount_kcal": 0.0}
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
 
 
 # ---------------------------------------------------------------------------
@@ -380,3 +425,20 @@ def test_admin_e_pt_veem_e_anotam_o_dia_do_aluno(db, papel):
     assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"notes": "x"}).status_code == 200
     assert db.day_logs[(ALUNO, HOJE)]["updated_by"] == ADMIN
     assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}?user_id=999").status_code == 404
+
+
+def test_training_block_liquido_no_explicito_e_sem_desconto_no_embutido_e_nulo_sem_treino(db):
+    sem_treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert sem_treino["training_block"] is None
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    explicito = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    desconto = 1750.0 / 1440 * 60
+    assert explicito["training_block"] == {
+        "gross_kcal": 410.0, "resting_discount_kcal": pytest.approx(desconto), "kcal": pytest.approx(410.0 - desconto)
+    }
+    assert explicito["comparison"]["used_net_kcal"] == pytest.approx(410.0 - desconto)
+    assert explicito["comparison"]["used"]["kcal"] == explicito["comparison"]["used_net_kcal"]  # `used.kcal` já é o líquido
+    assert explicito["comparison"]["used"]["gross_kcal"] == 410.0
+    db.plans[db.plano]["training_kcal_mode"] = "included_in_factor"
+    embutido = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert embutido["training_block"] == {"gross_kcal": 410.0, "resting_discount_kcal": 0.0, "kcal": 410.0}

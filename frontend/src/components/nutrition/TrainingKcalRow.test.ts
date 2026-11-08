@@ -122,7 +122,7 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
       activity_kcal: { training_kcal: 428, extra_kcal: 395, total_kcal: 823 },
     });
     const linha = (host.querySelector('[data-testid="gasto-atividade"]')?.textContent ?? '').replace(/ /g, ' ');
-    expect(linha).toBe('Treino 428 kcal + Cardio e caminhadas 395 kcal = 823 kcal');
+    expect(linha).toBe('Treino 428 kcal + Atividades do Intervals 395 kcal = 823 kcal');
     expect(host.textContent).toContain('VirtualRun');
     expect(host.textContent).toContain('Treino do dia');
   });
@@ -138,9 +138,40 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     });
     const texto = (host.textContent ?? '').replace(/ /g, ' ');
     expect(texto).toContain('Atividades do dia');
-    expect(texto).toContain('Cardio e caminhadas 427 kcal');
+    expect(texto).toContain('Atividades do Intervals 427 kcal');
     expect(texto).not.toContain('Treino do dia');
     expect(texto).not.toContain('Nenhum treino');
     expect(texto).not.toMatch(/Treino \d/);
+  });
+
+  it('itens mostram o líquido, o desconto em texto secundário e a excluída riscada com o motivo', async () => {
+    await montar({
+      ...BASE,
+      sessions: [sessao],
+      labels: { activities_title: 'Atividades do Intervals', net_suffix: 'líquido do repouso da sessão', excluded_reasons: { duplicate: 'duplicada' } },
+      comparison: {
+        reported: { kcal: 428, kcal_nature: 'reported', nature: null, quality: null, limitations: [] },
+        estimated: { kcal: 400, kcal_nature: 'met', nature: null, quality: null, limitations: [] },
+        used: { kcal: 428, kcal_nature: 'reported', nature: null, quality: null, limitations: [] },
+        used_net_kcal: 354,
+        sides: [{ kcal_nature: 'reported', is_used: true, value: { kcal: 428, kcal_nature: 'reported', nature: null, quality: null, limitations: [] } }],
+      },
+      extra_activity: {
+        kcal: 90,
+        kcal_nature: 'reported',
+        items: [
+          { kind: 'cardio', calories_kcal: 100, label: 'Walk', gross_kcal: 100, resting_discount_kcal: 10, net_kcal: 90, excluded_reason: null },
+          { kind: 'cardio', calories_kcal: 50, label: 'Run', gross_kcal: 50, resting_discount_kcal: 0, net_kcal: 0, excluded_reason: 'duplicate' },
+        ],
+      },
+      activity_kcal: { training_kcal: 354, extra_kcal: 90, total_kcal: 444 },
+    });
+    const itens = Array.from(host.querySelectorAll('[data-testid="extra-item"]')).map((e) => (e.textContent ?? '').replace(/ /g, ' '));
+    expect(itens[0]).toContain('Walk · 90 kcal');
+    expect(itens[0]).toContain('bruto 100 kcal − repouso 10 kcal');
+    expect(itens[1]).toContain('não somada: duplicada');
+    const usado = (host.querySelector('[data-testid="treino-usado-liquido"]')?.textContent ?? '').replace(/ /g, ' ');
+    expect(usado).toContain('354 kcal');
+    expect(usado).toContain('líquido do repouso da sessão');
   });
 });

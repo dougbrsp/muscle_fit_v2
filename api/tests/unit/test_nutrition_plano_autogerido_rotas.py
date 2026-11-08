@@ -195,7 +195,7 @@ def test_gasto_do_treino_embutido_ignora_a_sessao_e_o_explicito_soma(db, hoje):
     vigente = next(p for p in db.plans if db.plans[p]["superseded_at"] is None and db.plans[p]["status"] == "published")
     plano = _criar(cliente, tdee_mode="explicit_training").json()
     cliente.post(f"/nutrition/plans/{plano['id']}/publish", json={"expected_current_id": vigente})
-    assert float(db.targets[(ALUNO, SEGUNDA)]["kcal_target"]) - float(db.targets[(ALUNO, terca)]["kcal_target"]) == pytest.approx(500, abs=1.0)
+    assert float(db.targets[(ALUNO, SEGUNDA)]["kcal_target"]) - float(db.targets[(ALUNO, terca)]["kcal_target"]) == pytest.approx(500 - 1750.0 / 1440 * 60, abs=1.0)  # líquido do repouso da sessão (60 min)
 
 
 # ---------------------------------------------------------------------------

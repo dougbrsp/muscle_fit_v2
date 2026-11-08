@@ -780,7 +780,20 @@ export type TrainingKcalSide = { kcal_nature: NutritionCode; value: TrainingKcal
 export type DayExtraActivity = {
   kcal: number;
   kcal_nature: NutritionCode | null;
-  items: { kind: string; calories_kcal: number | null; label: string | null }[];
+  items: DayExtraActivityItem[];
+};
+
+/** Item de atividade extra. Os campos de líquido vêm prontos do motor (opcionais por compatibilidade com payload antigo). */
+export type DayExtraActivityItem = {
+  kind: string;
+  calories_kcal: number | null;
+  label: string | null;
+  gross_kcal?: number | null;
+  resting_discount_kcal?: number | null;
+  /** O que somou ao gasto (0 se excluída). */
+  net_kcal?: number | null;
+  /** Código da exclusão (duplicada, acima do teto, sem kcal) ou null. */
+  excluded_reason?: string | null;
 };
 
 export type DayTraining = {
@@ -792,6 +805,8 @@ export type DayTraining = {
     reported: TrainingKcalValue;
     estimated: TrainingKcalValue;
     used: TrainingKcalValue;
+    /** kcal líquida do repouso da sessão que o motor somou (pronta do motor). */
+    used_net_kcal?: number | null;
     sides: TrainingKcalSide[];
     /** Dia misto (sessão informada + sessão sem kcal): o usado é a soma por sessão e nenhum lado sozinho. */
     partial?: boolean;
@@ -799,6 +814,10 @@ export type DayTraining = {
   /** Como o gasto do dia foi montado (`classic`, `auto_synced`, `auto_fallback`) e o aviso do motor, quando há. */
   tdee_basis?: string;
   tdee_basis_note?: string | null;
+  /** Bloco do treino: bruto, desconto de repouso e líquido usado (`kcal`), prontos do motor. */
+  training_block?: { gross_kcal?: number | null; resting_discount_kcal?: number | null; kcal?: number | null };
+  /** Rótulos prontos do motor (título do bloco e sufixo do líquido). */
+  labels?: { activities_title: string; net_suffix: string; excluded_reasons: Record<string, string> };
   /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
   extra_activity?: DayExtraActivity;
   /** Treino + extra = total de atividade do dia, somado pelo motor (`total_kcal` nulo se o treino é desconhecido). */
