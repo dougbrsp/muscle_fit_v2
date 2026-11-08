@@ -21,9 +21,11 @@ def evaluate(event):
         lower = command.casefold()
         if agent in REVIEWERS:
             return "Revisores usam Read/Grep/Glob e o diff congelado."
+        if re.search(r"(?<![\w-])ship_confirmation\.py\b", lower):
+            return "A confirmação é registrada pelo Claude Code. Apresente o formulário nativo."
         if "ship.py" in lower and (agent != "tech-lead" or event.get("agent_id") or
-                                   re.search(r"\b(decide|cancel|archive)\b", lower)):
-            return "Apenas o Tech Lead opera o grafo. Decide, cancel e archive são do usuário."
+                                   re.search(r"\b(decide|cancel)\b", lower)):
+            return "Apenas o Tech Lead opera o grafo. Confirme escolhas e encerramento na conversa."
         state_path = root / ".claude/local-state/ship/state.json"
         if state_path.is_file():
             state = json.loads(state_path.read_text(encoding="utf-8"))

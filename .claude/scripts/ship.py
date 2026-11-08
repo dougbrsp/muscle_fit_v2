@@ -190,12 +190,40 @@ def wait_for_human(state, gate):
     state["phase"] = "waiting"
 
 
+def confirmation_forms(state):
+    forms = {}
+    if state["phase"] == "waiting":
+        gate = state["gate"]
+        forms["gate"] = {"questions": [{
+            "question": f"[ship:{gate['id']}] {gate['question']}",
+            "header": "Decisão",
+            "multiSelect": False,
+            "options": [{"label": option, "description": text} for option, text in gate["options"].items()],
+        }]}
+    if state["active"] is None and state["phase"] not in {"blocked", "verified", "cancelled"}:
+        forms["cancel"] = {"questions": [{
+            "question": f"[ship-cancel:{state['id']}] Encerrar a execução do /ship?",
+            "header": "Encerrar",
+            "multiSelect": False,
+            "options": [
+                {"label": "encerrar", "description": "Encerra a execução e preserva os arquivos locais."},
+                {"label": "continuar", "description": "Mantém a execução e o checkpoint atuais."},
+            ],
+        }]}
+    return forms
+
+
+def record_choice(state, option, **provenance):
+    state["decisions"].append({**state["gate"], "selected": option, **provenance})
+    state.update(gate=None, phase="execute")
+
+
 def show(state, tasks):
     ready = []
     if state["phase"] == "execute" and state["active"] is None:
         ready = [i for i, task in tasks.items()
                  if i not in state["done"] and set(task["deps"]) <= set(state["done"])]
-    data = {**state, "ready_tasks": ready}
+    data = {**state, "ready_tasks": ready, "confirmations": confirmation_forms(state)}
     if state["phase"] == "review":
         prefix = f'{state["id"]}-{state["round"]}-'
         data["receipts"] = [json_file(file) for file in sorted((STATE / "receipts").glob(prefix + "*.json"))]
@@ -256,9 +284,7 @@ def advance(state, tasks, args):
                 "Gate ou opção inválida para a execução pendente.")
         require(sys.stdin.isatty(), "Responda em um terminal interativo do usuário.")
         require(input(f'Confirme digitando o ID {args.id}: ').strip() == args.id, "Decisão cancelada.")
-        state["decisions"].append({**gate, "selected": args.option})
-        state["gate"] = None
-        state["phase"] = "execute"
+        record_choice(state, args.option, source="terminal")
     elif command == "claim":
         require(phase == "execute" and state["active"] is None, "Aguarde a fase de execução sem autor ativo.")
         task = tasks.get(args.id)

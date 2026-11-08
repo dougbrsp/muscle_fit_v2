@@ -77,22 +77,18 @@ Opcionalmente inclua `gate` no plano ou registre depois com `gate <arquivo>`. A 
 }
 ```
 
-A resposta vem do terminal interativo do usuário, confirmando o ID exibido. Depois, use `/ship retomar`. A confirmação é operacional e local, sujeita às permissões da máquina.
-
-```powershell
-python .claude/scripts/ship.py decide ID_DA_DECISAO estavel
-```
+O Tech Lead apresenta `confirmations.gate` com o formulário nativo `AskUserQuestion`. Selecione e envie uma opção na própria conversa. O hook associa a resposta à sessão, à chamada e ao gate pendente. A execução continua quando o checkpoint registrar a escolha. Cancelar o formulário, responder em texto livre ou deixar a pergunta expirar mantém a decisão pendente. Para encerrar a execução, peça ao Tech Lead e confirme no formulário de encerramento.
 
 | Comando do grafo | O que registra ou confere |
 |---|---|
 | `start plano.json` | DAG válido, branch e base limpas. Só um run por checkout |
-| `status` | Estado, tarefas prontas, decisões, revisores, recibos e evidências |
+| `status` | Estado, tarefas prontas, formulários, decisões, revisores, recibos e evidências |
 | `claim ID` e `report ID resultado.json` | Início e fim do autor. Resultado contém `status` (`done` ou `blocked`) e `evidence` |
 | `review` e `verdict REVISOR parecer.json` | Parecer sobre a revisão congelada. Informe `revision`, `agent_id` observado em recibo, `status` (`pass`, `changes`, `blocked`) e `evidence` |
 | `verify testes.json` | Roda `verify.py` e registra exit code e log. O manifesto contém `backend_tests` e `frontend_tests` como listas de caminhos relativos |
 | `rework ID [ID ...]` | Reabre apenas os autores afetados. Revisa e verifica o diff inteiro novamente |
 | `ready` | Compara a versão pronta com a revisão aprovada e validada |
-| `cancel` e `archive` | Uso manual. Pare agentes antes de cancelar. Arquive estado terminal sem apagar o diff ou reverter arquivos |
+| `archive` | Arquiva um estado terminal após a conclusão ou o encerramento confirmado, preservando os arquivos |
 
 Todos os comandos usam o prefixo `python .claude/scripts/ship.py`. Use status após interrupção e procure um autor ainda ativo em `/tasks`. Se `origin/develop` mudar, preserve o diff, encerre a execução e monte um novo plano após integrar a base. Se a máquina cair deixando a pasta `lock`, confirme que nenhum processo do grafo está ativo antes de removê-la. O checkpoint também guarda decisões humanas. Para conhecimento durável, use ADRs e o mapa de motores, sem transferir automaticamente transcrições para memória compartilhada.
 
