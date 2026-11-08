@@ -209,6 +209,60 @@ describe('SetLoggerCard — execução (novo visual)', () => {
   });
 });
 
+describe('SetLoggerCard — teto de carga do equipamento (migração 110)', () => {
+  const control = (overrides: Partial<NonNullable<CardProps['loadCeiling']>> = {}) => ({
+    maxLoadKg: null,
+    busy: false,
+    onMark: () => {},
+    onClear: () => {},
+    ...overrides,
+  });
+
+  it('sem o controle: nenhuma ação nem badge (comportamento de antes)', () => {
+    expect(render({})).not.toContain('data-testid="load-ceiling"');
+  });
+
+  it('sem teto: mostra a ação "Carga máxima do equipamento"', () => {
+    const html = render({ loadCeiling: control() });
+    expect(html).toContain('data-testid="load-ceiling-mark"');
+    expect(html).toContain('Carga máxima do equipamento');
+    expect(html).not.toContain('data-testid="load-ceiling-badge"');
+    expect(html).not.toContain('data-testid="load-ceiling-undo"');
+  });
+
+  it('com teto: badge com o valor do servidor e botão de desfazer', () => {
+    const html = render({ loadCeiling: control({ maxLoadKg: 100 }) });
+    expect(html).toContain('data-testid="load-ceiling-badge"');
+    expect(html).toContain('Carga máxima do equipamento: 100 kg');
+    expect(html).toContain('data-testid="load-ceiling-undo"');
+    expect(html).not.toContain('data-testid="load-ceiling-mark"');
+  });
+
+  it('só em série de trabalho: aquecimento, sensação, técnica e série não-trabalho ficam sem a ação', () => {
+    for (const variant of ['advancedWarmup', 'advancedFeeler', 'techniqueApplication'] as const) {
+      expect(render({ variant, loadCeiling: control() })).not.toContain('data-testid="load-ceiling"');
+    }
+    expect(render({ setType: 'warmup', loadCeiling: control() })).not.toContain('data-testid="load-ceiling"');
+    expect(render({ variant: 'advancedWorking', loadCeiling: control() })).toContain('data-testid="load-ceiling-mark"');
+    expect(render({ setType: 'working', loadCeiling: control() })).toContain('data-testid="load-ceiling-mark"');
+  });
+
+  it('com teto: o "+" da carga desabilita quando o próximo passo passa do limite do servidor', () => {
+    // carga 40, passo 2,5, limite 40 => "+" desabilitado; "-" segue habilitado.
+    const noTeto = render({ loadCeiling: control({ maxLoadKg: 40 }), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(noTeto).toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+    const abaixo = render({ loadCeiling: control({ maxLoadKg: 100 }), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(abaixo).not.toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+    const semTeto = render({ loadCeiling: control(), defaultWeight: 40, loadIncrementKg: 2.5 });
+    expect(semTeto).not.toMatch(/<button[^>]*aria-label="Aumentar Carga \(kg\)"[^>]*disabled/);
+  });
+
+  it('o teto aparece na unidade escolhida (lb)', () => {
+    const html = render({ loadCeiling: control({ maxLoadKg: 45.36 }), weightUnit: 'lb' });
+    expect(html).toContain('Carga máxima do equipamento: 100 lb');
+  });
+});
+
 describe('M102: série unilateral (E/D)', () => {
   it('trabalho de exercício unilateral mostra reps e RPE por lado, carga única', () => {
     const html = render({ unilateral: true });

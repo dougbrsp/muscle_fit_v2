@@ -571,7 +571,34 @@ def casos_tempo() -> dict[str, Any]:
             "Não edite à mão."
         ),
         "cases": lista,
+        # Modo Intensivo (FST-7 continuo): topo das reps e duracao da serie por reps.
+        "reps_helpers": {
+            "top": [
+                {"input": texto, "expected": te.parse_reps_target_top(texto)}
+                for texto in _TEXTOS_TOPO_DE_REPS
+            ],
+            "execution_seconds": [
+                {"reps": reps, "peak": pico, "expected": te.reps_execution_seconds(reps, pico)}
+                for reps, pico in _CASOS_DURACAO_DA_SERIE
+            ],
+        },
     }
+
+
+_TEXTOS_TOPO_DE_REPS = (
+    "8-12",
+    "12",
+    "8\u201312",
+    "3x10",
+    "10-12 por lado",
+    "12-15 + 3 parciais",
+    "12,5",
+    "AMRAP",
+    "",
+    None,
+    "0",
+)
+_CASOS_DURACAO_DA_SERIE = ((12, None), (12, 1), (12, 2), (5, None), (7, 0.5), (1, None))
 
 
 # ---------------------------------------------------------------------------

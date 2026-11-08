@@ -7,6 +7,8 @@ import {
   EXEC_SECONDS_PER_REP,
   estimateSlotTime,
   formatRestSeconds, parseRepsTarget,
+  parseRepsTargetTop,
+  repsExecutionSeconds,
   REST_WHEN_UNDEFINED_SECONDS,
   type TimeEstimateItem,
 } from './template-time-estimate';
@@ -164,4 +166,19 @@ describe('premissas lidas do dono', () => {
     expect(DEFAULT_ESTIMATED_REPS).toBe(motorConstants.time_estimate.default_estimated_reps);
     expect(REST_WHEN_UNDEFINED_SECONDS).toBe(motorConstants.time_estimate.rest_when_undefined_seconds);
   });
+});
+
+// Topo das reps e duração da série (Modo Intensivo, FST-7 contínuo): dono em
+// `time_estimate.py`; os casos vêm do JSON gerado por ele (sem arredondamento próprio aqui).
+describe('paridade dos helpers de reps com o dono (topo e duração da série)', () => {
+  it.each(parity.reps_helpers.top.map((c) => [String(c.input), c] as const))('topo de %j', (_name, c) => {
+    expect(parseRepsTargetTop(c.input as string | null)).toBe(c.expected);
+  });
+
+  it.each(parity.reps_helpers.execution_seconds.map((c) => [`${c.reps} reps, pico ${c.peak}`, c] as const))(
+    'duração de %s',
+    (_name, c) => {
+      expect(repsExecutionSeconds(c.reps, c.peak)).toBe(c.expected);
+    },
+  );
 });

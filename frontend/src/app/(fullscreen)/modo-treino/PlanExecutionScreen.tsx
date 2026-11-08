@@ -65,6 +65,7 @@ import {
 } from '@/lib/workout-mode-exercise-card';
 import { buildSafetyEventBannerText, isSafetyAlertEvent, safetyEventColor } from '@/lib/intensity-status';
 import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { useEquipmentLoadCeiling } from './useEquipmentLoadCeiling';
 import { resolveNextSetPreview } from '@/lib/workout-mode-next-set';
 import {
   measureLoggerDefaults,
@@ -162,6 +163,7 @@ import {
   intensiveApplicationKey,
   intensiveApplicationLabel,
   intensiveApplicationPayload,
+  correctQueuedIntensiveRecord,
   intensiveApplicationPlannedLoad,
   intensiveExtraRepsPayload,
   intensiveItemDone,
@@ -475,6 +477,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // gravada leva a carga e a origem; a pausa recarregada volta como "pronta".
   const [applicationAdjust, setApplicationAdjust] = useState<IntensiveApplicationAdjustment | null>(null);
   const [techniquePause, setTechniquePause] = useState<IntensivePause | null>(null);
+  // Erro do último PATCH de reps, preso ao exercício (wpe) em que ocorreu.
+  const [intensiveCorrectionError, setIntensiveCorrectionError] = useState<{ wpeId: number; message: string } | null>(null);
   // "Finalizar treino" com séries de reps pendentes: confirmação antes do fim.
   const [pendingFinishOpen, setPendingFinishOpen] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<number>>(() => new Set(session.skipped_exercise_ids || []));
@@ -662,6 +666,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       catalog: techniqueCatalogItems,
       parameters: planExercise.prescription?.advanced_technique_parameters ?? null,
       plannedSetsCount,
+      repsTarget: planExercise.reps_target ?? null,
+      peakContractionSeconds: planExercise.peak_contraction_seconds ?? null,
       itemRestSeconds:
         planExercise.rest_seconds ?? goalDefaultRestSeconds(trainingGoals, planExercise.training_goal, DEFAULT_REST_SECONDS),
       techniqueDurationSeconds: planExercise.advanced_technique_duration_seconds ?? null,
@@ -914,6 +920,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }, [progress, currentIndex, upcomingExcludeKey]);
 
   const currentWorkoutPlanExerciseId = current?.planExercise.workout_plan_exercise_id ?? null;
+  // O aviso de correção de reps é do exercício em que ocorreu: trocar de exercício o limpa.
+  useEffect(() => {
+    setIntensiveCorrectionError(null);
+  }, [currentWorkoutPlanExerciseId]);
   const override =
     currentWorkoutPlanExerciseId != null ? overrides[currentWorkoutPlanExerciseId] : undefined;
 
@@ -1042,6 +1052,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     : null;
   const effectiveRpeCeiling = pairLimits?.rpeCeiling ?? null;
   const loadIncrementKg = pairLimits?.loadIncrementKg ?? null;
+  // Teto de carga do equipamento (migração 110): valor pronto do servidor.
+  const loadCeiling = useEquipmentLoadCeiling(
+    effectiveMappingId != null && effectiveEquipmentLinkId != null
+      ? { mappingId: Number(effectiveMappingId), gymEquipmentId: Number(effectiveEquipmentLinkId) }
+      : null,
+  );
   // Cargas de aquecimento/ajuste/técnica: as da API quando a âncora é a
   // prescrita; espelho do backend para âncora dinâmica (C7).
   const sessionLoadContext: SessionLoadContext = { plan: pairLimits?.loadPlan ?? null, step: loadIncrementKg };
@@ -2182,7 +2198,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         ? engineNextLoad
         : lastSet?.weight_kg != null
           ? Number(lastSet.weight_kg)
-          : (parseNumericTarget(effectiveLoadTarget) ?? SET_LOGGER_FALLBACK_LOAD_KG);
+          : // Teto do equipamento: a carga da ficha já limitada pelo servidor
+            // (`load_within_ceiling`); sem teto vem null e vale o alvo de sempre.
+            ((pairChanged ? null : (current.planExercise.load_within_ceiling ?? null)) ??
+            parseNumericTarget(effectiveLoadTarget) ??
+            SET_LOGGER_FALLBACK_LOAD_KG);
   const measuredDefaultWeight = lastSet?.weight_kg != null ? Number(lastSet.weight_kg) : null;
   const defaultWeight = measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight;
   // Sugestão da IA (já clampada no servidor) > RPE da última série desta
@@ -2456,7 +2476,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     }
   }
 
-  function handleIntensiveComplete(reps: number | null, rpe: number | null, extraReps: number | null = null) {
+  function handleIntensiveComplete(
+    reps: number | null,
+    rpe: number | null,
+    extraReps: number | null = null,
+    now: number = Date.now(),
+  ) {
     if (!intensiveBlock || !intensiveProfile || currentWorkoutPlanExerciseId == null) return;
     // Trava síncrona por série (toque duplo no mesmo quadro).
     const guard = `${session.session_id}#${currentWorkoutPlanExerciseId}#${intensiveBlock.currentSet}#${intensiveBlock.records.length}`;
@@ -2470,7 +2495,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       rpe,
       clientKey,
       setNumber: nextIntensiveSetNumber(intensiveBlock, intensiveServerSets),
-      now: Date.now(),
+      now,
       restSeconds,
       ...(extraReps != null && extraReps > 0 ? { extraReps, extraClientKey: newIdempotencyKey() } : {}),
     };
@@ -2491,8 +2516,31 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // gravada. Série ainda não gravada (erro) é corrigida localmente e
   // reenviada com a mesma chave.
   async function handleIntensiveCorrect(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
+    try {
+      await correctIntensiveRecord(record, correction);
+      setIntensiveCorrectionError(null);
+    } catch (error) {
+      // A mensagem fica no bloco (some só na próxima correção que der certo).
+      if (currentWorkoutPlanExerciseId != null) {
+        setIntensiveCorrectionError({ wpeId: currentWorkoutPlanExerciseId, message: errorMessage(error, 'Não foi possível corrigir a série.') });
+      }
+      throw error;
+    }
+  }
+
+  async function correctIntensiveRecord(record: IntensiveSetRecord, correction: IntensiveSetCorrection) {
+    if (record.sync === 'saving') {
+      // A série ainda está na fila offline: edita a operação pendente (mesma client_key).
+      const exerciseId = await ensureIntensiveExerciseId();
+      await correctQueuedIntensiveRecord({
+        correction,
+        editPending: (body) => opQueue.editPendingSet(session.session_id, exerciseId, record.setNumber, body),
+        apply: (patch) => intensiveDispatch({ type: 'UPDATE_RECORD', clientKey: record.clientKey, ...patch }),
+      });
+      return;
+    }
     if (record.sync !== 'saved') {
-      if (record.sync === 'saving' || !intensiveProfile) return;
+      if (!intensiveProfile) return;
       const updated: IntensiveSetRecord = {
         ...record,
         reps: correction.reps ?? record.reps,
@@ -2517,6 +2565,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   function handleIntensiveFinish() {
     if (!intensiveBlock || current == null) return;
     const hadRecords = intensiveBlock.records.length > 0;
+    setIntensiveCorrectionError(null);
     intensiveDispatch({ type: 'FINISH' });
     if (!hadRecords) return;
     setEvaluation(IDLE_EVALUATION);
@@ -2744,6 +2793,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       ) : showIntensive && intensiveBlock && intensiveProfile ? (
         <IntensiveBlock
           state={intensiveBlock}
+          correctionError={
+            intensiveCorrectionError?.wpeId === currentWorkoutPlanExerciseId ? intensiveCorrectionError.message : null
+          }
           profile={intensiveProfile}
           exerciseName={effectiveExerciseName}
           equipmentName={effectiveEquipmentName}
@@ -2949,6 +3001,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           weightUnit={weightUnit}
           onWeightUnitChange={setWeightUnit}
           loadIncrementKg={loadIncrementKg}
+          loadCeiling={loadCeiling}
           saving={saveSetMutation.isPending || ensureExerciseMutation.isPending}
           onSave={(values) =>
             submitSet({
@@ -3035,6 +3088,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           weightUnit={weightUnit}
           onWeightUnitChange={setWeightUnit}
           loadIncrementKg={loadIncrementKg}
+          loadCeiling={loadCeiling}
           saving={
             advancedStage.kind === 'technique'
               ? saveSetMutation.isPending || ensureExerciseMutation.isPending
@@ -3123,6 +3177,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             weightUnit={weightUnit}
             onWeightUnitChange={setWeightUnit}
             loadIncrementKg={loadIncrementKg}
+            loadCeiling={loadCeiling}
             progression={
               workingSetNumber === 1 ? current.planExercise.progression : undefined
             }

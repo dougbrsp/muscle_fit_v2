@@ -271,6 +271,15 @@ PADROES: tuple[Padrao, ...] = (
         inventario="E7",
     ),
     Padrao(
+        chave="relogio_continuo",
+        regra="lista de técnicas com relógio contínuo no Modo Intensivo (FST-7) escrita fora do dono",
+        # 2026-11-07: o dono exporta `continuous_clock` pronto em
+        # `advanced_technique_parameters`; o frontend só lê o flag.
+        regex=re.compile(r"\bCONTINUOUS_CLOCK_TECHNIQ\w*\s*(?::[^=\n]+)?=\s*(?:new\s+Set|frozenset|set\(|\{|\[)"),
+        donos=("api/app/domain/progression_engine.py",),
+        inventario="E7",
+    ),
+    Padrao(
         chave="numeros_prompt_volume",
         regra='faixa de volume escrita à mão em prompt/RAG ("9 a 10 séries semanais", "entre 90 e 110", "pede 4-5 exercicios", "{alvo}-9")',
         # Lote 4c (E10): o prompt da Periodização interpola a TABELA da
@@ -808,6 +817,27 @@ PADROES: tuple[Padrao, ...] = (
         inventario="R1",
         escopo=("api/app/", "frontend/src/"),
         excluir=("frontend/src/app/(app)/regras-carga/", "frontend/src/lib/next-set-load-rules*.ts"),
+    ),
+    Padrao(
+        chave="teto_carga_equipamento",
+        regra="comparação ou min/max com o teto de carga do equipamento (`max_load_kg`, `maxLoadKg`, `*_load_ceiling`) fora do dono",
+        # 2026-11-07 (migração 110): o teto marcado pelo usuário só limita carga
+        # em `progression_engine.cap_load_to_ceiling` (aumentos; nunca reduz);
+        # next_set_load e a rota do teto o chamam. Consumidor, SQL e tela só
+        # repassam o valor pronto (`max_load_kg`, `load_within_ceiling`).
+        # Proibição pura. `is not None`/`!= null` e atribuição não casam.
+        regex=re.compile(
+            r"\b(?:Math\.)?(?:min|max)\(\s*[^)\n]*\b(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\b"
+            r"|\b(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\s*(?:<=?|>=?)\s*[\w(]"
+            r"|[\w)\]]\s*(?:<=?|>=?)\s*(?:[\w.]+\.)?(?:max_load_kg|maxLoadKg|\w*load_ceiling\w*|\w*loadCeiling\w*)\b"
+        ),
+        donos=(
+            "api/app/domain/progression_engine.py",
+            "api/app/domain/next_set_load.py",
+            "api/app/equipment_load_ceiling.py",
+        ),
+        inventario="TETO-CARGA",
+        escopo=("api/app/", "frontend/src/"),
     ),
     Padrao(
         chave="intensidade_densidade",
@@ -2153,6 +2183,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "descanso_default": {},
     "tetos_sessao": {},  # E9: Lote 4c - todo teto nomeado em `periodization/limits.py`
     "premissas_tempo": {},  # E7: Lote 4c - dono no backend, TS lê o JSON
+    "relogio_continuo": {},  # E7: 2026-11-07 - o dono exporta `continuous_clock`, o frontend só lê
     "numeros_prompt_volume": {},  # E10: Lote 4c - prompt interpolado, RAG sem "9 a 10 séries semanais"
     "limiar_fadiga": {},  # B4/D3: `dashboard_alert_service.py` apagado no Lote 2c
     "meta_fallback": {},
@@ -2234,6 +2265,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "rotulo_status_serie": {},  # set-eval-v5 (2026-10-12): nasce vazia
     "carga_proxima_serie": {},  # set-eval-v6 (2026-10-12): nasce vazia
     "regra_carga_cadastrada": {},  # regras de carga R1 (2026-10-20): nasce vazia
+    "teto_carga_equipamento": {},  # teto de carga do equipamento (2026-11-07): nasce vazia
     # E13 (2026-10-13): `intensity-density.ts` tinha a calibração inteira (era o
     # dono); desde este PR lê o JSON gerado por `domain/intensity_density.py`.
     "intensidade_densidade": {},
@@ -2714,6 +2746,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("export const EXEC_SECONDS_PER_REP: number = PREMISES.exec_seconds_per_rep;",
          "per_rep = EXEC_SECONDS_PER_REP + x"),
     ),
+    "relogio_continuo": (
+        ("export const CONTINUOUS_CLOCK_TECHNIQUES: ReadonlySet<string> = new Set(['fst7']);",
+         "CONTINUOUS_CLOCK_TECHNIQUE_CODES: frozenset[str] = frozenset({'fst7'})"),
+        ("technique?.continuous_clock === true", "if code in CONTINUOUS_CLOCK_TECHNIQUE_CODES:",
+         "\"continuous_clock\": code in CONTINUOUS_CLOCK_TECHNIQUE_CODES"),
+    ),
     "numeros_prompt_volume": (
         ("aproximadamente 9 a 10 séries semanais", "**9 a 10 séries semanais**", "12-24 series por semana",
          "perto de 100% (entre 90 e 110);", "se a celula do macro-grupo em 1x pede 4-5 exercicios e 15-20 series",
@@ -2929,6 +2967,13 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "const value = magnitude.value;", "items.map((reps_condition) => reps_condition.label)",
          "ruleset.reps_floor >= 1", "rule.magnitude.value / 2", "label: rule.reps.op,",
          "value={rule.reps.value}"),
+    ),
+    "teto_carga_equipamento": (
+        ("if carga > max_load_kg:", "const alvo = Math.min(stepMax, maxLoadKg);", "if (weight >= loadCeiling.maxLoadKg) {",
+         "load = min(load, ceiling_load_ceiling)", "return value <= max_load_kg", "x = Math.max(a, maxLoadKg)"),
+        ("max_load_kg=ceilings.get(request.key),", "if loadCeiling?.maxLoadKg != null", "ex[\"max_load_kg\"] = float(ceiling)",
+         "const loadCeiling = useEquipmentLoadCeiling(pair);", "stepMax={loadCeilingMax}",
+         "capped = cap_load_to_ceiling(value, track.max_load_kg)", "max_load_kg: number | null;"),
     ),
     "intensidade_densidade": (
         ("export const REPS_DENSITY_RANGE = { min: 6, max: 15 } as const;", "{ minRpe: 10, points: 1.0 },",
@@ -3837,6 +3882,7 @@ def test_a_guarda_enxerga_a_regra_no_dono():
         # proibição pura: o dono compara pela função genérica (`_compare`), sem `rule.reps.op ==` nem
         # `magnitude.value / 100` escritos à mão fora dele.
         "regra_carga_cadastrada",
+        "teto_carga_equipamento",  # proibição pura: o dono é `cap_load_to_ceiling`, ninguém compara/limita com o teto
         "fatores_carga_sessao",  # o dono usa constantes nomeadas (WARMUP_LOAD_FACTORS, DROP_SET_LOAD_FACTOR...)
         "dose_reduzida_texto",  # o dono GERA o texto (reduction_policy/reduced_dose_prompt_rule), sem "1-2"
         "sinais_expiram",  # proibição pura: o dono tem SIGNALS_POLICY, sem reset

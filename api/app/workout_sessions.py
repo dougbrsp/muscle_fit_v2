@@ -65,6 +65,7 @@ from .engine_decision_context import (
     equipment_step_kg,
     load_deload_prescription,
     load_pair_step_context,
+    read_pair_load_ceiling,
     next_set_load_for,
     safe_read,
 )
@@ -996,6 +997,14 @@ def _evaluate_set(
         exercise_row.get("gym_equipment_id"),
         event="add_session_set.next_set_context_failed",
     )
+    if pair is not None:
+        # Teto de carga do equipamento (migracao 110): a regra nao sugere acima.
+        pair = replace(
+            pair,
+            max_load_kg=read_pair_load_ceiling(
+                conn, user_id, exercise_row.get("mapping_id"), exercise_row.get("gym_equipment_id")
+            ),
+        )
     if deload:
         # M97 D: a carga da proxima serie vem do dono do deload (60% da trilha).
         # Falha ao ler o par -> passo default (como a regra normal).

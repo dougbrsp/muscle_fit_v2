@@ -124,6 +124,8 @@ class SessionInputs:
     stimulus_weight: Mapping[int, float] = field(default_factory=dict)  # exercise_id -> peso PRIMARY
     is_compound: Mapping[int, bool] = field(default_factory=dict)  # exercise_catalog.is_compound
     load_increment_kg: Mapping[int, Decimal] = field(default_factory=dict)  # equipment_id -> step
+    # (exercise_id, equipment_id) -> teto de carga do usuario (migracao 110); ausente = sem teto.
+    max_load_kg: Mapping[tuple[int, int], Decimal] = field(default_factory=dict)
     is_advanced_user: bool = False
     model_fixed_sets: bool = False
     activation_max_reached: Mapping[int, bool] = field(default_factory=dict)
@@ -284,6 +286,7 @@ def track_for(
         "stimulus_weight": inputs.stimulus_weight.get(key[0], 0.0),
         "is_compound": bool(inputs.is_compound.get(key[0], False)),
         "load_increment_kg": inputs.load_increment_kg.get(key[1]),
+        "max_load_kg": inputs.max_load_kg.get((key[0], key[1])),
     }
     if existing is not None:
         return replace(existing, **metadata)

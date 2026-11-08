@@ -152,6 +152,9 @@ type HeroProps = Omit<CountdownInput, 'autoAdvanceOnZero'> & {
   // Modo Intensivo: zerar NÃO avança; o hero mostra `note` ("Pronto para a
   // próxima série") e o CTA vira `ctaLabel` ("Iniciar próxima série").
   readyOnZero?: { note: string; ctaLabel: string } | null;
+  // Relógio contínuo (FST-7): o mesmo hero serve às duas fases; o rótulo em
+  // destaque diz se é SÉRIE ou DESCANSO e `progress` o "n/N" da série.
+  phaseBadge?: { eyebrow: string; progress: string; ctaLabel: string; skipAriaSuffix?: string } | null;
 };
 
 /**
@@ -170,6 +173,7 @@ export function RestTimerHero({
   notice,
   children,
   readyOnZero = null,
+  phaseBadge = null,
   ...countdownInput
 }: HeroProps) {
   const { remaining, total, expired, overdue, adjust, finish } = useRestCountdown({
@@ -180,7 +184,12 @@ export function RestTimerHero({
 
   return (
     <>
-      <section className={styles.restHero} aria-label="Descanso" data-testid="rest-timer-hero">
+      <section
+        className={styles.restHero}
+        aria-label={phaseBadge ? phaseBadge.eyebrow : 'Descanso'}
+        data-testid="rest-timer-hero"
+        data-phase={phaseBadge ? phaseBadge.eyebrow : undefined}
+      >
         <div className={styles.restClockRow}>
           <button
             type="button"
@@ -192,9 +201,18 @@ export function RestTimerHero({
             <span aria-hidden="true">−{REST_ADJUST_STEP_SECONDS}s</span>
           </button>
           <div className={styles.restClockBox}>
-            <span className={styles.eyebrow} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span
+              className={styles.eyebrow}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                ...(phaseBadge ? { fontSize: 20, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' as const } : {}),
+              }}
+              data-testid={phaseBadge ? 'intensive-phase-badge' : undefined}
+            >
               <IconHourglass size={14} color={BRAND.orange} aria-hidden="true" />
-              Descanso
+              {phaseBadge ? `${phaseBadge.eyebrow} ${phaseBadge.progress}` : 'Descanso'}
             </span>
             <div
               className={styles.restClock}
@@ -268,9 +286,11 @@ export function RestTimerHero({
 
       <WorkoutActionBar
         primaryLabel={
-          readyOnZero && expired
-            ? readyOnZero.ctaLabel
-            : restPrimaryLabel({ expired, isExerciseTransition, hasNextExercise })
+          phaseBadge
+            ? phaseBadge.ctaLabel
+            : readyOnZero && expired
+              ? readyOnZero.ctaLabel
+              : restPrimaryLabel({ expired, isExerciseTransition, hasNextExercise })
         }
         primaryIcon={<IconPlayerSkipForward size={20} />}
         onPrimary={() => {
