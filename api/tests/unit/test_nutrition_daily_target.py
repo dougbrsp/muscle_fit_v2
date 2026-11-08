@@ -42,7 +42,7 @@ def _dia(**extra) -> DayContext:
 def test_referencia_manutencao_em_dia_de_descanso():
     meta = compute_daily_target(SUJEITO, _plano(), _dia())
     assert isinstance(meta, DailyTarget) and meta.computable
-    assert meta.engine_version == ENGINE_VERSION == "nutrition-v3"
+    assert meta.engine_version == ENGINE_VERSION == "nutrition-v4"
     assert meta.bmr.kcal == pytest.approx(TMB) and meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO)
     assert meta.kcal_target.kcal == pytest.approx(TDEE_DESCANSO)
@@ -130,10 +130,10 @@ def test_mlg_velha_volta_para_mifflin():
     assert meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR and meta.bmr.kcal == pytest.approx(TMB)
 
 
-def test_cutting_fica_abaixo_do_tdee_e_proteina_pela_mlg():
+def test_cutting_fica_abaixo_do_tdee_e_proteina_pelo_peso_total():
     meta = compute_daily_target(COM_MLG, _plano(S.CUTTING), _dia())
     assert meta.kcal_target.kcal < meta.tdee.kcal
-    assert meta.macros.protein_g == pytest.approx(2.6 * 68)
+    assert meta.macros.protein_g == pytest.approx(2.6 * 80)
     assert meta.limitations == ()
 
 

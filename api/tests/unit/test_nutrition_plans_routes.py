@@ -175,7 +175,7 @@ def test_cria_rascunho_com_os_defaults_do_motor(admin, db):
     assert plano["state"] == "draft" and plano["status"] == "draft"
     assert plano["protein_g_per_kg"] == base.protein_g_per_kg
     assert plano["weekly_rate_share"] == base.weekly_rate_share
-    assert plano["protein_basis"] == "fat_free_mass"
+    assert plano["protein_basis"] == "body_weight"
     assert plano["effective_from"] is None
     assert db.targets == {}
 

@@ -152,7 +152,7 @@ def test_gravacao_copia_o_motor_e_guarda_as_entradas():
     assert entradas["subject"]["sex"] == "male" and entradas["subject"]["weight_kg"] == 80.0
     assert entradas["plan"]["strategy"] == "maintenance"
     assert entradas["day_context"]["training_known"] is True
-    assert linha["engine_version"] == "nutrition-v3" and linha["training_known"] == 1
+    assert linha["engine_version"] == "nutrition-v4" and linha["training_known"] == 1
     assert len(linha["inputs_hash"]) == 64
     assert json.loads(linha["limitations_json"]) == []
 

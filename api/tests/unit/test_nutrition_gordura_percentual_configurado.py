@@ -1,6 +1,6 @@
 """Gordura = fração configurada das kcal FINAIS do dia, também no ciclo de carbo e em `fixed_protein`.
 
-Bug (plano Cutting, proteína 2,6 g/kg de MLG, gordura 20%, `fixed_protein`, ciclo por dias): sábado
+Bug (plano Cutting, proteína 2,6 g/kg de peso, gordura 20%, `fixed_protein`, ciclo por dias): sábado
 (alto) saía com 28,5% de gordura. Causas: (1) `FIXED_PROTEIN` ignorava `fat_kcal_share`
 (partes iguais do que sobra, preso na faixa 15-30%); (2) o ciclo mantinha a gordura em gramas e
 somava só carbo. Regra corrigida (dono `macros.py` + `carb_cycling.apply_cycle_over_base`):
@@ -73,7 +73,7 @@ def _share_g(m: mc.MacroTargets) -> float:
 def test_proteina_fixa_respeita_a_fracao_de_gordura_configurada():
     alvo = mc.macro_split_for_priority(2940.0, _params(0.20), P.FIXED_PROTEIN, PESO, MLG_ALVO)
     assert _share_g(alvo) == pytest.approx(0.20)  # antes: 0,30 (metade do que sobra, preso no teto)
-    assert alvo.protein_g == pytest.approx(2.6 * MLG_ALVO)
+    assert alvo.protein_g == pytest.approx(2.6 * PESO)
 
 
 @pytest.mark.parametrize("share", [0.20, 0.25, 0.30])
@@ -94,11 +94,11 @@ def test_caso_do_sabado_alto_gordura_20_por_cento():
     assert sabado.day_kind == D.HIGH and sabado.day.weekday() == 5
     m = sabado.macros
     assert _share_g(m) == pytest.approx(0.20)  # antes: 28,5%
-    assert m.protein_g == pytest.approx(2.6 * MLG_ALVO)
+    assert m.protein_g == pytest.approx(2.6 * PESO)
     assert m.protein_g * 4 + m.carb_g * 4 + m.fat_g * 9 == pytest.approx(m.kcal)
-    # Caso de referência do relato: 3094 kcal -> ~199 P / ~419 C / ~69 G.
+    # Caso de referência do relato: 3094 kcal -> ~247 P (2,6 × 95 kg de peso) / ~372 C / ~69 G (v4; na v3, pela MLG, 199 P / 420 C).
     ref = mc.macro_split(3094.0, _params(0.20), PESO, MLG_ALVO)
-    assert (round(ref.protein_g), round(ref.carb_g), round(ref.fat_g)) == (199, 420, 69)
+    assert (round(ref.protein_g), round(ref.carb_g), round(ref.fat_g)) == (247, 372, 69)
 
 
 @pytest.mark.parametrize("share", [0.20, 0.25, 0.30])
@@ -107,7 +107,7 @@ def test_todos_os_dias_com_a_fracao_configurada_e_atwater_fechado(share, priorid
     for meta in _semana(_plano(share, prioridade)):
         m = meta.macros
         assert _share_g(m) == pytest.approx(share, abs=1e-9)
-        assert m.protein_g == pytest.approx(2.6 * MLG_ALVO)  # proteína fixa pela base
+        assert m.protein_g == pytest.approx(2.6 * PESO)  # proteína fixa pela base
         assert mc.kcal_from_macros(m.protein_g, m.carb_g, m.fat_g) == pytest.approx(m.kcal)
 
 
@@ -184,5 +184,5 @@ def test_fracao_efetiva_vem_pronta_do_motor():
     alvo = mc.macro_split_for_priority(3094.0, _params(0.20), P.FIXED_PROTEIN, PESO, MLG_ALVO)
     assert alvo.fat_kcal_share_effective == pytest.approx(0.20)
     assert alvo.to_dict()["fat_kcal_share_effective"] == pytest.approx(0.20)
-    nao = mc.macro_split_for_priority(3094.0, _params(0.20), P.FIXED_PROTEIN, PESO, None)
+    nao = mc.macro_split_for_priority(3094.0, _params(0.20), P.FIXED_PROTEIN, None, MLG_ALVO)
     assert nao.fat_kcal_share_effective is None

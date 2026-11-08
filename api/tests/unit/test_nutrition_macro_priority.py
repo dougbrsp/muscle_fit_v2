@@ -28,11 +28,11 @@ def _share_gordura(alvo: mc.MacroTargets) -> float:
 
 
 def test_default_retrocompativel_valores_de_referencia():
-    # Cutting 2000 kcal, MLG 64: proteína 2,6 × 64; gordura 25% das kcal; carbo = resto.
+    # Cutting 2000 kcal, peso 80: proteína 2,6 × 80; gordura 25% das kcal; carbo = resto.
     alvo = _split(S.CUTTING, 2000.0)
-    assert alvo.protein_g == pytest.approx(166.4)
+    assert alvo.protein_g == pytest.approx(208.0)
     assert alvo.fat_g == pytest.approx(0.25 * 2000 / 9)
-    assert alvo.carb_g == pytest.approx((2000 - 166.4 * 4 - 500) / 4)
+    assert alvo.carb_g == pytest.approx((2000 - 208.0 * 4 - 500) / 4)
 
 
 @pytest.mark.parametrize(("estrategia", "kcal"), CASOS)
@@ -116,7 +116,7 @@ def test_proteina_fixa_com_kcal_que_nao_cobre_a_proteina_usa_o_padrao():
 
 def test_sem_dados_o_preset_devolve_o_nao_calculavel_do_macro_split():
     params = st.StrategyParams.defaults_for(S.CUTTING)
-    alvo = mc.macro_split_for_priority(2000.0, params, P.HIGH_CARB, PESO, None)  # cutting sem MLG
+    alvo = mc.macro_split_for_priority(2000.0, params, P.HIGH_CARB, None, 64.0)  # cutting sem peso
     assert not alvo.computable and mc.LIMIT_MISSING_PROTEIN_BASIS in alvo.limitations
 
 

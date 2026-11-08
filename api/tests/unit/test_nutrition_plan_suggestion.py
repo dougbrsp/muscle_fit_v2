@@ -23,7 +23,7 @@ def _sugestao(**extra):
     base = {
         "strategy": "cutting",
         "advanced": False,
-        "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT,
+        "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_DEFAULT,
         "fat_kcal_share": st.CUT_FAT_KCAL_SHARE_DEFAULT,
         "weekly_rate_share": st.CUT_WEEKLY_RATE_SHARE_DEFAULT,
         "surplus_share": None,
@@ -61,7 +61,7 @@ def test_dentro_da_faixa_vira_as_configuracoes_do_motor():
 @pytest.mark.parametrize(
     ("alteracao", "codigo"),
     [
-        ({"protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_FFM_RANGE[1] + 1}, "param_out_of_range:protein_g_per_kg"),
+        ({"protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_RANGE[1] + 1}, "param_out_of_range:protein_g_per_kg"),
         ({"fat_kcal_share": st.CUT_FAT_KCAL_SHARE_RANGE[0] / 2}, "param_out_of_range:fat_kcal_share"),
         ({"weekly_rate_share": st.CUT_WEEKLY_RATE_SHARE_RANGE[1] * 2}, "param_out_of_range:weekly_rate_share"),
         ({"meals_per_day": MEALS_PER_DAY_RANGE[1] + 1}, "param_out_of_range:meals_per_day"),
@@ -182,7 +182,7 @@ def test_changes_mostra_so_o_que_muda_e_desliga_gramas_manuais():
     atual = ps.normalize_current(
         {
             "strategy": "maintenance",
-            "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT,
+            "protein_g_per_kg": st.CUT_PROTEIN_G_PER_KG_DEFAULT,
             # A tela passa por %: 25/100 pode diferir no último bit.
             "fat_kcal_share": st.CUT_FAT_KCAL_SHARE_DEFAULT + 1e-12,
             "weekly_rate_share": None,

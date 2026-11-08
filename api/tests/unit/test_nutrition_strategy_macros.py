@@ -5,6 +5,7 @@ e a divisão em gramas."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -23,7 +24,7 @@ TDEE = TMB * 1.4 + 294.0  # 2751
 def test_faixas_e_defaults_das_fontes():
     assert st.CUT_WEEKLY_RATE_SHARE_RANGE == (0.005, 0.010) and st.CUT_WEEKLY_RATE_SHARE_DEFAULT == 0.007
     assert st.CUT_MAX_DEFICIT_SHARE == 0.25 and st.CUT_MIN_INTAKE_BMR_MULTIPLE == 1.0
-    assert st.CUT_PROTEIN_G_PER_KG_FFM_RANGE == (2.3, 3.1) and st.CUT_PROTEIN_G_PER_KG_FFM_DEFAULT == 2.6
+    assert st.CUT_PROTEIN_G_PER_KG_RANGE == (1.8, 2.7) and st.CUT_PROTEIN_G_PER_KG_DEFAULT == 2.6
     assert st.CUT_FAT_KCAL_SHARE_RANGE == (0.15, 0.30) and st.CUT_FAT_KCAL_SHARE_DEFAULT == 0.25
     assert st.BULK_SURPLUS_SHARE_RANGE == (0.10, 0.20) and st.BULK_SURPLUS_SHARE_RANGE_ADVANCED == (0.05, 0.10)
     assert st.BULK_WEEKLY_RATE_SHARE_RANGE == (0.0025, 0.0065) and st.BULK_WEEKLY_RATE_SHARE_RANGE_ADVANCED == (0.0012, 0.0035)
@@ -36,7 +37,7 @@ def test_faixas_e_defaults_das_fontes():
 @pytest.mark.parametrize(
     ("estrategia", "avancado", "proteina", "base", "gordura", "ritmo", "superavit"),
     [
-        (S.CUTTING, False, 2.6, P.FAT_FREE_MASS, 0.25, 0.007, None),
+        (S.CUTTING, False, 2.6, P.BODY_WEIGHT, 0.25, 0.007, None),
         (S.BULKING, False, 2.0, P.BODY_WEIGHT, 0.25, None, 0.10),
         (S.BULKING, True, 2.0, P.BODY_WEIGHT, 0.25, None, 0.05),
         (S.MAINTENANCE, False, 2.0, P.BODY_WEIGHT, 0.25, None, None),
@@ -116,7 +117,7 @@ def test_bulking_e_manutencao():
 
 def test_as_maintenance_preserva_proteina_e_gordura():
     params = st.StrategyParams.defaults_for(S.CUTTING).as_maintenance()
-    assert params.strategy == S.MAINTENANCE and params.protein_g_per_kg == 2.6 and params.protein_basis == P.FAT_FREE_MASS
+    assert params.strategy == S.MAINTENANCE and params.protein_g_per_kg == 2.6 and params.protein_basis == P.BODY_WEIGHT
     assert params.weekly_rate_share is None
 
 
@@ -138,12 +139,12 @@ def test_macro_split_cutting_fecha_a_conta():
     kcal = 2281.29
     metas = mc.macro_split(kcal, params, weight_kg=PESO, ffm_kg=MLG)
     assert metas.computable
-    assert metas.protein_g == pytest.approx(2.6 * MLG)
+    assert metas.protein_g == pytest.approx(2.6 * PESO)
     assert metas.fat_g == pytest.approx(0.25 * kcal / 9)
-    assert metas.carb_g == pytest.approx((kcal - 4 * 2.6 * MLG - 0.25 * kcal) / 4)
+    assert metas.carb_g == pytest.approx((kcal - 4 * 2.6 * PESO - 0.25 * kcal) / 4)
     assert mc.kcal_from_macros(metas.protein_g, metas.carb_g, metas.fat_g) == pytest.approx(kcal)
     assert metas.fiber_g == pytest.approx(14 * kcal / 1000)
-    assert metas.protein_basis == P.FAT_FREE_MASS and metas.protein_basis_kg == MLG
+    assert metas.protein_basis == P.BODY_WEIGHT and metas.protein_basis_kg == PESO
     assert metas.limitations == ()
     json.dumps(metas.to_dict())
 
@@ -166,9 +167,13 @@ def test_macro_split_none_sem_kcal_ou_sem_base():
     params = st.StrategyParams.defaults_for(S.CUTTING)
     sem_kcal = mc.macro_split(None, params, weight_kg=PESO, ffm_kg=MLG)
     assert not sem_kcal.computable and sem_kcal.limitations == (mc.LIMIT_MISSING_KCAL,)
-    sem_mlg = mc.macro_split(2200, params, weight_kg=PESO, ffm_kg=None)
-    assert not sem_mlg.computable and sem_mlg.limitations == (mc.LIMIT_MISSING_PROTEIN_BASIS,)
-    assert sem_mlg.as_macros() is None
+    sem_peso = mc.macro_split(2200, params, weight_kg=None, ffm_kg=MLG)
+    assert not sem_peso.computable and sem_peso.limitations == (mc.LIMIT_MISSING_PROTEIN_BASIS,)
+    assert sem_peso.as_macros() is None
+    # Legado: metas antigas com base na massa livre de gordura ainda se leem (e sem MLG não calculam).
+    legado = replace(params, protein_basis=P.FAT_FREE_MASS)
+    assert mc.macro_split(2200, legado, weight_kg=PESO, ffm_kg=MLG).protein_g == pytest.approx(2.6 * MLG)
+    assert not mc.macro_split(2200, legado, weight_kg=PESO, ffm_kg=None).computable
 
 
 def test_proteina_por_refeicao():

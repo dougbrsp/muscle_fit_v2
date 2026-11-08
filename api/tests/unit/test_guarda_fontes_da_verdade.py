@@ -3078,8 +3078,8 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "surplus_share_default = 0.1", "weekly_rate_share=(0.005, 0.01)", "carb_min_g_per_kg: 3",
          "max_deficit_share: 0.25", "min_intake_bmr_multiple = 1.0"),
         ("params.protein_g_per_kg * base_kg", "4.5 g/kg", "1.5 kg", "MIN_LOW_CARB_G_PER_KG = 1.0",
-         "st.CUT_PROTEIN_G_PER_KG_FFM_RANGE", "5 g/kg", "12 g/kg", "protein_g_per_kg: Optional[float] = None",
-         '"protein_g_per_kg": _range(st.CUT_PROTEIN_G_PER_KG_FFM_RANGE),', "weekly_rate_share=CUT_WEEKLY_RATE_SHARE_DEFAULT",
+         "st.CUT_PROTEIN_G_PER_KG_RANGE", "5 g/kg", "12 g/kg", "protein_g_per_kg: Optional[float] = None",
+         '"protein_g_per_kg": _range(st.CUT_PROTEIN_G_PER_KG_RANGE),', "weekly_rate_share=CUT_WEEKLY_RATE_SHARE_DEFAULT",
          "fat_kcal_share: float"),
     ),
     "ffmi_normalizado": (

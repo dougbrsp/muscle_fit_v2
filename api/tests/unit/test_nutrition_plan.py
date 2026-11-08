@@ -41,7 +41,7 @@ def test_bulking_avancado_usa_o_default_avancado():
 def test_valores_informados_dentro_da_faixa_sao_mantidos():
     resultado = pl.build_plan_settings(
         strategy="cutting",
-        protein_g_per_kg=st.CUT_PROTEIN_G_PER_KG_FFM_RANGE[1],
+        protein_g_per_kg=st.CUT_PROTEIN_G_PER_KG_RANGE[1],
         fat_kcal_share=st.CUT_FAT_KCAL_SHARE_RANGE[0],
         weekly_rate_share=st.CUT_WEEKLY_RATE_SHARE_RANGE[1],
         bmr_formula="katch_mcardle",
@@ -53,21 +53,21 @@ def test_valores_informados_dentro_da_faixa_sao_mantidos():
     )
     assert resultado.ok, resultado.errors
     s = resultado.settings
-    assert s.protein_g_per_kg == st.CUT_PROTEIN_G_PER_KG_FFM_RANGE[1]
+    assert s.protein_g_per_kg == st.CUT_PROTEIN_G_PER_KG_RANGE[1]
     assert s.weekly_rate_share == st.CUT_WEEKLY_RATE_SHARE_RANGE[1]
     assert s.bmr_formula == bm.BmrFormula.KATCH_MCARDLE
     assert s.tdee_mode == ee.TdeeMode.INCLUDED_IN_FACTOR
     assert s.activity_level == ActivityLevel.VERY_ACTIVE
     assert s.meals_per_day == MEALS_PER_DAY_RANGE[1]
     params = s.plan_params(ffm_age_days=10)
-    assert params.ffm_age_days == 10 and params.strategy_params.protein_basis == st.ProteinBasis.FAT_FREE_MASS
-    assert s.to_dict()["protein_basis"] == st.ProteinBasis.FAT_FREE_MASS.value
+    assert params.ffm_age_days == 10 and params.strategy_params.protein_basis == st.ProteinBasis.BODY_WEIGHT
+    assert s.to_dict()["protein_basis"] == st.ProteinBasis.BODY_WEIGHT.value
 
 
 @pytest.mark.parametrize(
     ("campo", "valor", "codigo"),
     [
-        ("protein_g_per_kg", st.CUT_PROTEIN_G_PER_KG_FFM_RANGE[1] + 1, "param_out_of_range:protein_g_per_kg"),
+        ("protein_g_per_kg", st.CUT_PROTEIN_G_PER_KG_RANGE[1] + 1, "param_out_of_range:protein_g_per_kg"),
         ("protein_g_per_kg", 0, "param_out_of_range:protein_g_per_kg"),
         ("fat_kcal_share", st.CUT_FAT_KCAL_SHARE_RANGE[0] / 2, "param_out_of_range:fat_kcal_share"),
         ("weekly_rate_share", st.CUT_WEEKLY_RATE_SHARE_RANGE[1] * 2, "param_out_of_range:weekly_rate_share"),

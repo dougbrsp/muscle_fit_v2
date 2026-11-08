@@ -8,8 +8,8 @@ Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7; guarda
   7 kcal/g álcool.
 - Fibra: 14 g por 1.000 kcal (referência dietética).
 - Proteína por refeição: 0,40–0,55 g/kg; 3–6 refeições/dia.
-- Divisão: proteína pela base da estratégia (g/kg de MLG no cutting, de peso no
-  resto), gordura como fração das kcal, carboidrato com o resto.
+- Divisão: proteína pela base da estratégia (g/kg de peso corporal em todas as estratégias desde nutrition-v4;
+  `FAT_FREE_MASS` só legado), gordura como fração das kcal, carboidrato com o resto.
 - Prioridade de macros (N1): `macro_split_for_priority`. BALANCED é o `macro_split`
   de sempre. Os outros presets mantêm a proteína (g/kg do plano) e só mexem na
   fração de gordura DENTRO da faixa da estratégia (Helms 2014 no cutting, 15–30%;
