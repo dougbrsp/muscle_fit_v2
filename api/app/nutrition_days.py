@@ -178,6 +178,9 @@ def _training(
         "training_known": contexto.training_known,
         "sessions": [_session_public(sessao) for sessao in sessoes],
         "comparison": comparacao.to_dict() if comparacao is not None else None,
+        # Treino de força do dia, valores prontos do motor (`TrainingKcal.block`): `kcal` líquido usado, bruto e desconto
+        # (0 no embutido, fallback e adaptativo). `null` fora de dia de treino.
+        "training_block": comparacao.used.block() if comparacao is not None else None,
         # Como o gasto do dia foi montado (o motor gravou): no fallback do automático a tela avisa que treino e cardio
         # NÃO foram somados.
         # Rótulos prontos do motor para o bloco de atividades (a tela não escreve texto de regra).

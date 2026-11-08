@@ -390,3 +390,20 @@ def test_admin_e_pt_veem_e_anotam_o_dia_do_aluno(db, papel):
     assert cliente.put(f"/nutrition/days/{HOJE.isoformat()}?user_id={ALUNO}", json={"notes": "x"}).status_code == 200
     assert db.day_logs[(ALUNO, HOJE)]["updated_by"] == ADMIN
     assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}?user_id=999").status_code == 404
+
+
+def test_training_block_liquido_no_explicito_e_sem_desconto_no_embutido_e_nulo_sem_treino(db):
+    sem_treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert sem_treino["training_block"] is None
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    explicito = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    desconto = 1750.0 / 1440 * 60
+    assert explicito["training_block"] == {
+        "gross_kcal": 410.0, "resting_discount_kcal": pytest.approx(desconto), "kcal": pytest.approx(410.0 - desconto)
+    }
+    assert explicito["comparison"]["used_net_kcal"] == pytest.approx(410.0 - desconto)
+    assert explicito["comparison"]["used"]["kcal"] == explicito["comparison"]["used_net_kcal"]  # `used.kcal` já é o líquido
+    assert explicito["comparison"]["used"]["gross_kcal"] == 410.0
+    db.plans[db.plano]["training_kcal_mode"] = "included_in_factor"
+    embutido = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert embutido["training_block"] == {"gross_kcal": 410.0, "resting_discount_kcal": 0.0, "kcal": 410.0}

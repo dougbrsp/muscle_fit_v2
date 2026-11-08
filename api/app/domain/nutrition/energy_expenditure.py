@@ -461,6 +461,15 @@ class TrainingKcal:
     gross_kcal: Optional[float] = field(default=None, compare=False)
     resting_discount_kcal: float = field(default=0.0, compare=False)
 
+    def block(self) -> dict[str, Any]:
+        """Bloco do treino de força para a tela: `kcal` = líquido usado, `gross_kcal` = bruto usado e
+        `resting_discount_kcal` (0 quando o modo não desconta)."""
+        return {
+            "gross_kcal": self.gross_kcal if self.gross_kcal is not None else self.kcal,
+            "resting_discount_kcal": self.resting_discount_kcal,
+            "kcal": self.kcal,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "kcal": self.kcal,
@@ -634,7 +643,9 @@ class TrainingKcalComparison:
             "reported": self.reported.to_dict(),
             "estimated": self.estimated.to_dict(),
             "used": self.used.to_dict(),
-            "used_net_kcal": self.used.kcal,  # o valor usado, LÍQUIDO do repouso (quando o modo desconta)
+            # `used.kcal` JÁ é o líquido do repouso (igual a `used_net_kcal`); o bruto está em `used.gross_kcal`. Sem desconto
+            # (modo que não desconta, sem TMB ou sem duração) líquido == bruto e `resting_discount_kcal` == 0.
+            "used_net_kcal": self.used.kcal,
             "partial": self.partial,
             # Lista pronta para a tela: código da natureza, valor e se é a usada pela prioridade.
             "sides": [
