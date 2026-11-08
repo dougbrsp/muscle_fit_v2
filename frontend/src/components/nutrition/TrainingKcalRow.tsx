@@ -6,7 +6,10 @@ import { formatDurationMinutes, formatKcal } from '@/lib/nutrition-format';
 import type { DayTraining, TrainingKcalSide } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 
-function Valor({ lado }: { lado: TrainingKcalSide }) {
+const TITULO_EXTRA_PADRAO = 'Atividades do Intervals';
+const SUFIXO_LIQUIDO_PADRAO = 'líquido do repouso da sessão';
+
+function Valor({ lado, liquido, sufixo }: { lado: TrainingKcalSide; liquido?: number | null; sufixo: string }) {
   return (
     <Stack gap={0}>
       <Text size="xs" c="dimmed">
@@ -22,6 +25,11 @@ function Valor({ lado }: { lado: TrainingKcalSide }) {
           </Badge>
         )}
       </Group>
+      {lado.is_used && liquido != null && (
+        <Text size="xs" c="dimmed" data-testid="treino-usado-liquido">
+          {`usado: ${formatKcal(liquido)} (${sufixo})`}
+        </Text>
+      )}
     </Stack>
   );
 }
@@ -37,6 +45,8 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
   const temExtra = extra !== undefined && extra.kcal > 0;
   const soCardio = temExtra && !training.is_training_day;
   const total = training.activity_kcal;
+  const tituloExtra = training.labels?.activities_title ?? TITULO_EXTRA_PADRAO;
+  const sufixo = training.labels?.net_suffix ?? SUFIXO_LIQUIDO_PADRAO;
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>
       <Stack gap="xs">
@@ -51,20 +61,39 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
         {temExtra && total && (
           <Text size="sm" fw={600} c={BRAND.textPrimary} data-testid="gasto-atividade">
             {soCardio
-              ? `Cardio e caminhadas ${formatKcal(total.extra_kcal)}`
+              ? `${tituloExtra} ${formatKcal(total.extra_kcal)}`
               : total.training_kcal != null && total.total_kcal != null
-                ? `Treino ${formatKcal(total.training_kcal)} + Cardio e caminhadas ${formatKcal(total.extra_kcal)} = ${formatKcal(total.total_kcal)}`
-                : `Cardio e caminhadas ${formatKcal(total.extra_kcal)}`}
+                ? `Treino ${formatKcal(total.training_kcal)} + ${tituloExtra} ${formatKcal(total.extra_kcal)} = ${formatKcal(total.total_kcal)}`
+                : `${tituloExtra} ${formatKcal(total.extra_kcal)}`}
           </Text>
         )}
         {temExtra &&
-          extra.items.map((item, i) => (
-            <Group key={`${item.label}-${i}`} gap="xs" wrap="wrap">
-              <Text size="sm" c={BRAND.textMuted}>
-                {item.label ?? 'Atividade'} · {formatKcal(item.calories_kcal)}
-              </Text>
-            </Group>
-          ))}
+          extra.items.map((item, i) => {
+            const excluida = item.excluded_reason != null;
+            const desconto = item.resting_discount_kcal ?? 0;
+            return (
+              <Group key={`${item.label}-${i}`} gap="xs" wrap="wrap" data-testid="extra-item" opacity={excluida ? 0.55 : 1}>
+                <Text size="sm" c={BRAND.textMuted} td={excluida ? 'line-through' : undefined}>
+                  {item.label ?? 'Atividade'} · {formatKcal(item.net_kcal ?? item.calories_kcal)}
+                </Text>
+                {!excluida && desconto > 0 && (
+                  <Text size="xs" c="dimmed">
+                    {`bruto ${formatKcal(item.gross_kcal ?? item.calories_kcal)} − repouso ${formatKcal(desconto)}`}
+                  </Text>
+                )}
+                {excluida && (
+                  <Text size="xs" c="dimmed" data-testid="extra-excluida">
+                    {`não somada: ${training.labels?.excluded_reasons?.[item.excluded_reason!] ?? item.excluded_reason}`}
+                  </Text>
+                )}
+              </Group>
+            );
+          })}
+        {training.training_block && (training.training_block.resting_discount_kcal ?? 0) > 0 && (
+          <Text size="xs" c="dimmed" data-testid="treino-desconto">
+            {`Treino: bruto ${formatKcal(training.training_block.gross_kcal ?? null)} − repouso ${formatKcal(training.training_block.resting_discount_kcal ?? null)} = ${formatKcal(training.training_block.kcal ?? null)} (${sufixo})`}
+          </Text>
+        )}
         {!training.training_known && (
           <Text size="sm" c="dimmed">
             {nutritionNotice('training_unknown_future_day')}
@@ -93,13 +122,13 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
         {training.comparison && (
           <Group gap="xl" wrap="wrap">
             {training.comparison.sides.map((lado) => (
-              <Valor key={lado.kcal_nature} lado={lado} />
+              <Valor key={lado.kcal_nature} lado={lado} liquido={training.comparison?.used_net_kcal} sufixo={sufixo} />
             ))}
           </Group>
         )}
         {training.comparison?.partial && (
           <Text size="sm" c={BRAND.textMuted} data-testid="treino-parcial">
-            {`Usado pelo motor: ${formatKcal(training.comparison.used.kcal)} (informado onde houve kcal e estimado pela duração nas sessões sem kcal).`}
+            {`Usado pelo motor: ${formatKcal(training.comparison.used_net_kcal ?? training.comparison.used.kcal)} (informado onde houve kcal e estimado pela duração nas sessões sem kcal).`}
           </Text>
         )}
       </Stack>

@@ -44,7 +44,8 @@ class FakeNutritionDB:
         self.composition: list[dict[str, Any]] = []
         self.measurements: list[dict[str, Any]] = []
         self.activities: list[dict[str, Any]] = []
-        # `intervals_activities` SEM vínculo com um treino (a SQL do serviço já exclui as vinculadas).
+        # `intervals_activities` do aluno (vinculadas ou não); a consulta do serviço simula o LEFT JOIN de
+        # `activity_intervals_link` (`l.id IS NULL`): a vinculada sai da lista por AQUI, não por omissão à mão.
         self.intervals_extras: list[dict[str, Any]] = []
         # `intervals_activities` COMPLETAS (com id, id externo, hora e durações) para a sombra do gasto adaptativo; o fake
         # projeta só as colunas que a SQL pede, como o banco. `synced_at` de cada linha prova a sincronização.
@@ -82,19 +83,26 @@ class FakeNutritionDB:
              "bmr_kcal": extra.get("bmr_kcal")}
         )
 
-    def add_session(self, user_id: int, day: date, kcal: Optional[float], seconds: Optional[int] = 3600) -> None:
+    def add_session(self, user_id: int, day: date, kcal: Optional[float], seconds: Optional[int] = 3600,
+                    started_at: Optional[datetime] = None) -> None:
         self.activities.append(
             {"user_id": user_id, "local_date": day, "session_status": "done",
-             "calories_kcal": Decimal(str(kcal)) if kcal is not None else None, "duration_seconds": seconds}
+             "calories_kcal": Decimal(str(kcal)) if kcal is not None else None, "duration_seconds": seconds,
+             "started_at": started_at}
         )
 
     def add_intervals_activity(self, user_id: int, day: date, sport_type: str, kcal: Optional[float],
-                               name: Optional[str] = None, linked: bool = False) -> None:
-        if not linked:  # a vinculada não chega à lista (LEFT JOIN ... l.id IS NULL)
-            self.intervals_extras.append(
-                {"user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
-                 "calories_kcal": Decimal(str(kcal)) if kcal is not None else None}
-            )
+                               name: Optional[str] = None, linked: bool = False, elapsed: Optional[int] = None,
+                               moving: Optional[int] = None, external_id: Optional[str] = None,
+                               start: Optional[datetime] = None) -> None:
+        linha_id = len(self.intervals_extras) + 1
+        self.intervals_extras.append(
+            {"id": linha_id, "external_id": external_id or f"ext-{linha_id}", "start_time": start,
+             "user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
+             "calories_kcal": Decimal(str(kcal)) if kcal is not None else None,
+             "elapsed_time_seconds": elapsed, "moving_time_seconds": moving,
+             "linked": linked, "raw_json": "{\"nao\": \"deve sair\"}"}
+        )
 
     def add_intervals_row(self, user_id: int, day: date, sport_type: str, kcal: Optional[float], *,
                           start: Optional[datetime] = None, name: Optional[str] = None, elapsed: Optional[int] = 3600,
@@ -292,14 +300,19 @@ class FakeCursor:
             linhas = [r for r in db.measurements if r["user_id"] == uid and r["site"] in sites and r["local_date"] <= ate]
             return self._result(sorted(linhas, key=lambda r: r["local_date"]))
         if sql == svc._SESSIONS_SQL:
-            return self._result([r for r in db.activities if r["user_id"] == p[0] and r["session_status"] == "done" and p[1] <= r["local_date"] <= p[2]])
+            colunas = ("local_date", "calories_kcal", "duration_seconds", "started_at")
+            return self._result([{c: r.get(c) for c in colunas} for r in db.activities
+                                 if r["user_id"] == p[0] and r["session_status"] == "done" and p[1] <= r["local_date"] <= p[2]])
         if sql == svc.INTERVALS_CONNECTION_SQL:
             return self._result([{"intervals_athlete_id": "i1" if db.intervals_connected else None,
                                   "intervals_api_key_encrypted": "k" if db.intervals_connected else None}])
         if sql == svc.INTERVALS_SYNC_AGE_SQL:
             return self._result([{"minutes_since_sync": db.intervals_minutes_since_sync}])
         if sql == svc.EXTRA_ACTIVITIES_SQL:
-            return self._result([r for r in db.intervals_extras if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2]])
+            colunas = ("id", "external_id", "start_time", "activity_date", "sport_type", "name", "calories_kcal",
+                       "elapsed_time_seconds", "moving_time_seconds")
+            return self._result([{c: r.get(c) for c in colunas} for r in db.intervals_extras
+                                 if r["user_id"] == p[0] and p[1] <= r["activity_date"] <= p[2] and not r["linked"]])
         if sql == energy_svc.USER_TIMEZONE_SQL:
             return self._result([{"timezone": db.timezone}])
         if sql == energy_svc.TARGET_BMR_SQL:

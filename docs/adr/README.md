@@ -26,5 +26,7 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0004](0004-navegacao-iphone-e-secoes-so-desktop.md) | Navegação do iPhone (tab bar de 5 abas, hub Evolução) e seções só do computador | Aceita | 2026-11-03 |
 | [0005](0005-gasto-energetico-adaptativo-quarto-modo-em-sombra.md) | Gasto energético adaptativo como 4º modo, em sombra primeiro | Aceita | 2026-11-05 |
 | [0006](0006-cards-fotorrealistas-v3.md) | Cards de exercício fotorrealistas (V3), com duas cenas e fotos de referência do admin | Aceita | 2026-11-06 |
+| [0007](0007-gordura-percentual-configurado-no-ciclo.md) | Gordura segue a fração configurada das kcal finais do dia (inclusive no ciclo de carbo) | Aceita | 2026-11-08 |
+| [0008](0008-gasto-explicito-desconta-repouso-da-sessao.md) | O gasto explícito/automático desconta o repouso da janela do treino | Aceita | 2026-11-08 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

@@ -39,7 +39,7 @@ from .domain.nutrition.plan import PROJECTION_TRAINING_WINDOW_DAYS, projection_t
 from .domain.nutrition.anthropometrics import Subject
 from .domain.nutrition.strategy import MacroPriority, Strategy
 from .intelligence.dashboard.time_windows import user_today_for
-from .nutrition_targets_service import UserInputs, compute_day, load_user_inputs, past_training_kcal
+from .nutrition_targets_service import UserInputs, compute_day, load_user_inputs, past_training_window
 from .openai_client import (
     LLM_TIMEOUT_LIVE_SECONDS,
     OPENAI_TIMEOUT,
@@ -188,7 +188,7 @@ def load_context(aluno: int, current: Mapping[str, Any]) -> SuggestionInputs:
             inicio = hoje - timedelta(days=PROJECTION_TRAINING_WINDOW_DAYS)
             entradas = load_user_inputs(cur, aluno, inicio, hoje, hoje, [settings])
     comp = compute_day(entradas, settings, hoje, hoje)
-    passado = past_training_kcal(entradas, settings, hoje)
+    passado, dias_de_treino = past_training_window(entradas, settings, hoje)
     tdee, _premissas = projection_tdee(comp.target.tdee, passado)
     contexto = plan_suggestion.build_context(
         comp.subject.subject,
@@ -197,6 +197,7 @@ def load_context(aluno: int, current: Mapping[str, Any]) -> SuggestionInputs:
         weights=plan_suggestion.daily_weights(entradas.series.weight, hoje),
         past_training_kcal=passado,
         current=current,
+        training_day_flags=dias_de_treino,
     )
     return SuggestionInputs(context=contexto, subject=comp.subject.subject, inputs=entradas, today=hoje)
 

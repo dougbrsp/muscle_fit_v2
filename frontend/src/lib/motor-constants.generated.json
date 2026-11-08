@@ -633,7 +633,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v2",
+    "engine_version": "nutrition-v3",
     "sexes": [
       "male",
       "female",

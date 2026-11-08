@@ -5,7 +5,8 @@ O que este arquivo prova (o SQL novo só tinha rodado contra o banco em memória
 - `JSON_EXTRACT(inputs_json, ...)` de `_TARGETS_SQL` devolve o extra e a base gravados pelo motor e `/nutrition/days`
   os expõe (a leitura anterior não selecionava `inputs_json` e a tela via sempre extra 0);
 - `EXTRA_ACTIVITIES_SQL` (`intervals_activities` + `LEFT JOIN activity_intervals_link`): a força vinculada não soma, o
-  cardio/caminhada sem vínculo soma, `WeightTraining` sem vínculo não soma e atividade sem kcal não soma;
+  cardio/caminhada e QUALQUER outra atividade sem vínculo (inclusive `WeightTraining`) somam, e atividade sem kcal não soma
+  (ADR 0008, `nutrition-v3`: toda atividade do Intervals conta; a sessão do app entra líquida do repouso da janela);
 - `INTERVALS_CONNECTION_SQL` e `INTERVALS_SYNC_AGE_SQL` (só `intervals_activities.synced_at`): sincronizado = rotina +
   treino + extras; sincronização parada = fallback (`auto_fallback`), sem extras;
 - o payload é idêntico nos dois backends.
@@ -115,7 +116,7 @@ def _cenario(raw, usuarios, *, minutos_desde_a_sincronizacao: int) -> None:
             "match_status, match_delta_seconds, calories_kcal) VALUES (%s, %s, %s, 'f1', 'MATCHED', 0, 428)",
             (aluno, treino_id, forca),
         )
-        _atividade_intervals(cur, aluno, "f2", "WeightTraining", 300)  # sem vínculo: força não soma por esta via
+        _atividade_intervals(cur, aluno, "f2", "WeightTraining", 300)  # sem vínculo, sem horário/duração: outra atividade, SOMA (bruta)
         _atividade_intervals(cur, aluno, "w1", "Walk", 51)
         _atividade_intervals(cur, aluno, "w2", "Walk", 79)
         _atividade_intervals(cur, aluno, "r1", "VirtualRun", 265)
@@ -143,9 +144,15 @@ def test_dia_sincronizado_soma_forca_e_extras_e_fallback_nao_nos_dois_backends(u
             treino = corpo["training"]
             if em_dia == "sincronizado":
                 assert treino["tdee_basis"] == "auto_synced", (backend, treino)
-                assert treino["extra_activity"]["kcal"] == pytest.approx(395), (backend, treino)  # 51 + 79 + 265
-                assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}
-                assert corpo["target"]["tdee_kcal"] > corpo["target"]["bmr_kcal"] * 1.3 + 823 - 1
+                # 51 + 79 + 265 + 300 (WeightTraining sem vínculo); as do fixture não têm duração: entram como vieram
+                assert treino["extra_activity"]["kcal"] == pytest.approx(695), (backend, treino)
+                # a sessão do app (428 kcal, 3600 s) entra LÍQUIDA do repouso da janela: kcal − TMB/1440 × 60
+                forca = 428.0 - corpo["target"]["bmr_kcal"] / 1440 * 60
+                assert treino["activity_kcal"]["training_kcal"] == pytest.approx(forca, abs=0.1)
+                assert treino["activity_kcal"]["extra_kcal"] == 695.0
+                assert treino["activity_kcal"]["total_kcal"] == pytest.approx(forca + 695, abs=0.1)
+                assert treino["training_block"]["gross_kcal"] == 428.0
+                assert corpo["target"]["tdee_kcal"] == pytest.approx(corpo["target"]["bmr_kcal"] * 1.3 + forca + 695, abs=0.2)
             else:
                 assert treino["tdee_basis"] == "auto_fallback" and treino["extra_activity"]["kcal"] == 0.0, (backend, treino)
                 assert "Intervals sem sincronizar" in treino["tdee_basis_note"]
