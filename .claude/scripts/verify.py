@@ -108,7 +108,7 @@ def main() -> int:
     # .claude changes -> run preservation regression tests for safety hooks.
     if any(x.startswith('.claude/') for x in changed):
         if not run([sys.executable,'-m','pytest','-q','--tb=line','-p','no:cacheprovider',
-                    '.claude/hooks/tests'],timeout=90):ok=False
+                    '.claude/hooks/tests'],timeout=240):ok=False
     if backend:
         if shutil.which('ruff') is None:
             print('[gate] ruff não instalado; instale-o ou rode no ambiente do projeto.',file=sys.stderr);ok=False

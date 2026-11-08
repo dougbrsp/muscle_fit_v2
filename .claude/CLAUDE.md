@@ -61,7 +61,7 @@ Para a arquitetura detalhada, veja [docs/CODEBASE_MAP.md](../docs/CODEBASE_MAP.m
 
 ## Fluxo do Tech Lead
 
-- Entrada de planejamento ou execução: `/ship` na sessão principal iniciada por `python .claude/scripts/lead.py`. Contrato em `.claude/harness/OPERACAO.md`.
+- Planejamento e execução acontecem na sessão principal do Tech Lead, por pedido direto ou `/ship`. O Tech Lead roda as ferramentas internas e apresenta decisões no formulário da conversa. Contrato em `.claude/harness/OPERACAO.md`.
 - Use agentes locais pelo nome, uma escrita por vez, revisões independentes e validação dirigida na branch de trabalho. O /ship não promove produção.
 - Preserve `/atualizar-dev` e `/promover-producao` como comandos manuais separados. Execute-os na sessão apropriada e fora de uma entrega /ship ativa. Promoção requer autorização específica.
 - Registre ADRs em `docs/adr/` quando o trabalho mudar um contrato ou uma decisão de arquitetura, além do mapa dos motores quando afetado. Os checkpoints de execução ficam locais e fora do Git.
