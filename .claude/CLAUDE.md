@@ -30,7 +30,7 @@ Regra permanente (decisões do usuário de 2026-09-19, 2026-10-10 e 2026-10-17).
 - Integração com MySQL e smoke do compose não rodam em PR para `develop`. Rodam só com o rótulo `ci-completo` e sempre no PR de promoção `develop` → `main`.
 - O rótulo `ci-completo` é obrigatório em PR que mexe em SQL, migração ou `db_dataapi`/`db_pymysql`.
 - O rótulo entra só no último push, logo antes do merge. Nunca na abertura do PR: depois dele, cada push roda a suíte inteira de novo.
-- O agente especialista roda os revisores (`guardiao-motores`, `revisor-impacto-producao`) antes do primeiro push, para o PR já nascer revisado. As correções de uma rodada de revisão vão num push só.
+- O Tech Lead aciona os revisores (`guardiao-motores`, `revisor-impacto-producao`) antes do primeiro push, para o PR já nascer revisado. As correções de uma rodada de revisão vão num push só.
 - Os agentes rodam só os testes unitários antes de publicar. A integração nunca roda localmente; quem roda é o CI.
 - Merge na `develop` só com todos os checks em `pass` ou `skipping`. Decida pelo exit status de `gh pr checks <n> --json bucket`, nunca com pipe no mesmo comando do merge.
 - A promoção para `main` é em lote e só com aval do usuário, porque cada promoção roda o deploy completo.
@@ -57,3 +57,11 @@ Para a arquitetura detalhada, veja [docs/CODEBASE_MAP.md](../docs/CODEBASE_MAP.m
 - Logs de CI só com `gh run view <id> --log-failed | tail -n 80`.
 - `gh` sempre com `--json`/`--jq`, nunca listagens completas.
 - Não releia arquivos já lidos nem cole saídas longas na resposta.
+
+
+## Fluxo do Tech Lead
+
+- Entrada de planejamento ou execução: `/ship` na sessão principal iniciada por `python .claude/scripts/lead.py`. Contrato em `.claude/harness/OPERACAO.md`.
+- Use agentes locais pelo nome, uma escrita por vez, revisões independentes e validação dirigida na branch de trabalho. O /ship não promove produção.
+- Preserve `/atualizar-dev` e `/promover-producao` como comandos manuais separados. Execute-os na sessão apropriada e fora de uma entrega /ship ativa. Promoção requer autorização específica.
+- Registre ADRs em `docs/adr/` quando o trabalho mudar um contrato ou uma decisão de arquitetura, além do mapa dos motores quando afetado. Os checkpoints de execução ficam locais e fora do Git.

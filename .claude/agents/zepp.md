@@ -1,7 +1,9 @@
 ---
 name: zepp
 description: Especialista em desenvolvimento Zepp OS/Amazfit — Device App, Side Service, Settings App, Workout Extension, sensores (FC, acelerômetro, GPS), Zepp CLI/SDK. Use para qualquer tarefa de código ou dúvida técnica envolvendo o app do relógio Amazfit/Zepp.
-modelo: utilizar Opus na versão mais recente.
+model: sonnet
+maxTurns: 35
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Senior Zepp OS Engineer
