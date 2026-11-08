@@ -79,7 +79,7 @@ from .weekly_budget import week_days
 
 # v2: gordura = fração efetiva das kcal FINAIS do dia (fixed_protein respeita a fração; ciclo preserva o %). A troca de versão
 # faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (hoje e futuras); congeladas ficam como estão.
-ENGINE_VERSION: Final[str] = "nutrition-v2"
+ENGINE_VERSION: Final[str] = "nutrition-v3"
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no
@@ -368,7 +368,7 @@ def compute_daily_target(
     if dia_de_treino:
         if day_context.training_sessions:
             treino = ee.resolve_sessions_kcal(
-                day_context.training_sessions, subject.weight_kg, ee.met_for_session(day_context.session_kind)
+                day_context.training_sessions, subject.weight_kg, ee.met_for_session(day_context.session_kind), tmb.kcal
             )
         else:
             treino = ee.resolve_training_kcal(
@@ -376,6 +376,7 @@ def compute_daily_target(
                 weight_kg=subject.weight_kg,
                 duration_min=day_context.training_duration_min,
                 met=ee.met_for_session(day_context.session_kind),
+                bmr_kcal=tmb.kcal,
             )
     else:
         treino = ee.NO_TRAINING_KCAL
@@ -398,7 +399,8 @@ def compute_daily_target(
         and modo_efetivo == ee.TdeeMode.EXPLICIT_TRAINING
         and day_context.training_known
     )
-    extra = ee.extra_activity_kcal(day_context.extra_activities) if soma_extras else ee.NO_EXTRA_ACTIVITY_KCAL
+    extra = ee.extra_activity_kcal(day_context.extra_activities, tmb.kcal) if soma_extras else ee.NO_EXTRA_ACTIVITY_KCAL
+    limitacoes_treino = (*limitacoes_treino, *extra.limitations)
     atividade_kcal = (treino.kcal or 0.0) + extra.kcal
     estimativa: Optional[adaptive_energy.DayEnergyEstimate] = None
     if plan_params.tdee_mode == ee.TdeeMode.ADAPTIVE_BALANCE:

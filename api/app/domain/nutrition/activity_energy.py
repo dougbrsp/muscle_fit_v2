@@ -270,6 +270,21 @@ def resting_kcal(bmr_kcal: Any, duration_minutes: Any) -> Optional[float]:
     return tmb / MINUTES_PER_DAY * minutos
 
 
+def net_of_resting_kcal(kcal: Any, calorie_mode: Any, resting: Optional[float]) -> Optional[float]:
+    """Regra ÚNICA do desconto do repouso da janela (decisão D4): `active` entra como veio; `gross`/`unknown` descontam
+    `resting` (de `resting_kcal`) com piso 0. `kcal` ausente ou <= 0 -> None; `resting` None (sem TMB ou duração) em
+    modo que desconta -> None (quem chama decide: marca a limitação e mantém a bruta). Consumida por `normalize_activity`
+    (adaptativo) e por `energy_expenditure` (gasto do modo explícito/automático)."""
+    informada = positive_number(kcal)
+    if informada is None:
+        return None
+    if normalize_calorie_mode(calorie_mode) == CalorieMode.ACTIVE:
+        return informada
+    if resting is None:
+        return None
+    return max(0.0, informada - resting)
+
+
 def activity_duration_seconds(elapsed_seconds: Any, moving_seconds: Any) -> Optional[float]:
     """Duração da atividade para o desconto do repouso: o tempo DECORRIDO; se faltar (ausente ou <= 0), o tempo em
     movimento; sem nenhum, `None`. O serviço de leitura só entrega as duas colunas e chama esta função."""
@@ -323,7 +338,7 @@ def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActi
         if repouso is None:
             marcas.append(ActivityFlag.MISSING_DURATION if minutos is None else ActivityFlag.MISSING_BMR)
         else:
-            ativa = max(0.0, informada - repouso)
+            ativa = net_of_resting_kcal(informada, modo, repouso)
     return NormalizedActivity(
         id=str(raw.id),
         external_id=_clean_text(raw.external_id),

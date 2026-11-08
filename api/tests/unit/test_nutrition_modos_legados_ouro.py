@@ -6,6 +6,11 @@ São a trava de que os modos legados não mudam nos próximos lotes: gasto (`tde
 alterou o resultado de planos publicados e o hash das metas gravadas (regravaria hoje/ontem de todos os usuários):
 pare e reavalie, não atualize o literal.
 
+Exceção documentada (ADR 0008, `nutrition-v3`, 2026-11-08): o modo explícito e o automático sincronizado passaram a
+descontar o repouso da janela do treino (kcal informada 428 em 60 min, TMB 1.780: 428 − 74,17 = 353,83). Mudaram de
+propósito `tdee`, `training_kcal`, meta e macros desses cenários e o hash de TODOS (versão do motor no hash). Os extras
+destes cenários não têm duração: entram como vieram. Embutido, fallback e descanso mantêm os valores de antes.
+
 Não há regra nesta suíte: só literais. O dono dos cálculos segue sendo `energy_expenditure.py`/`daily_target.py`
 (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7)."""
 
@@ -40,33 +45,33 @@ EXTRAS = [
 # (estrategia, modo, sessoes, extras, sincronizado) -> gasto, treino no gasto, fator, meta kcal, proteína, carbo, gordura, hash
 _CENARIOS = {
     "maintenance/explicit_treino": (("maintenance", "explicit_training", FORCA, [], False),
-        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "13de47c99cdb92628fd6d216a77c189dba5646f24a92c5c652f57560b047118e")),
+        (2845.8333333333335, 353.8333333333333, 1.4, 2845.8333333333335, 160.0, 373.59375000000006, 79.05092592592592, "4e8ec0fc87c18d0975a3c588fb35aa0d24165c65ca11ac6829dc78f22dd65a9b")),
     "maintenance/explicit_descanso": (("maintenance", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "5beed08cb2cff7d61eaae57b5df7567a0d9165e6e848831e957aeb6ae7a6eff6")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "5155b1ec273a8253dd82dfa51bada6ae585b8d1923efd46ae34fa3c3d04da563")),
     "maintenance/embutido_treino": (("maintenance", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "a6320b9c2df80b6d0e71843c25fbbe05ca1adb31cb77d5c3541f372bdd105e0b")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "21e8914e029f87b0afa0e369c298a666692b506d74a8b25eecec831ddc5b7dbd")),
     "maintenance/embutido_descanso": (("maintenance", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "21f4e12f7d352fbeb84b1afdfcdb0faf91e531c8a2d793c34d6981cdaf0f23ed")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "892502dfb287f38af3e09eaf9c5eaac3392fb6f8e059d08b91d524ebbef07f43")),
     "maintenance/auto_sync_extras": (("maintenance", "auto_intervals", FORCA, EXTRAS, True),
-        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "e1ed0d0008f5cb41d2071fd12f35034eea0ce524bc2c885681738ed1270e67f1")),
+        (3165.833333333333, 673.8333333333333, 1.4, 3165.833333333333, 160.0, 433.59374999999994, 87.93981481481481, "23dbd2f769f9689952fc353d014ad1267eac8dca1b1f8e9b3b4bfe8609676bce")),
     "maintenance/auto_sync_descanso": (("maintenance", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "efe4172a5eff1f0b11914f62e36c8431048f2d6b123c7dadcbc9f8ba4b88ba83")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "9ddee2bba5ee2380fb70be0fe8a7ccbb0bbc036583d4544e9f171b0165fe6efc")),
     "maintenance/auto_fallback": (("maintenance", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "71d538e35ccf20a477f6f683b90a976697cd3271bec3be977d596ab43a11c0f2")),
+        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "95aef43ebfb0f2aa471a76266506e29d9cf743eaab1204cc77b3337c24f0c7d4")),
     "bulking/explicit_treino": (("bulking", "explicit_training", FORCA, [], False),
-        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "151b7784d62380055c49ef75c8c913cddf9c0288e2e1abca5ff35aeb051e6605")),
+        (2845.8333333333335, 353.8333333333333, 1.4, 3130.416666666667, 160.0, 426.95312500000006, 86.95601851851853, "ebd9b0da93f7175823fae742d923ae8e42a2e225221a99dbc3f0258748cc2734")),
     "bulking/explicit_descanso": (("bulking", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "7f7dab412488ec33e591263073dc8806139927834686bbc5f24cd509f879e0bc")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "d9f1f258c07602a195c948d07ae5a96c7e888b3c2b882201de55c9fec15fb045")),
     "bulking/embutido_treino": (("bulking", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "28d6e3bf2e3bdbcf99646048d5013828bb48a4a88e005882da3594f97289d760")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "16f4a2e21e99dcb3dc2008302cdf2ab5d2e6c5f741612bc4891ee30a84cb6e60")),
     "bulking/embutido_descanso": (("bulking", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "76903aadf659d4979c4b064eb5e8bd3ee33bd56d2acd8efb5af9253d18ce7986")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "6558d4fe163230a531d468b870e302ecbad67ba1a643961f486d7b8e68894e81")),
     "bulking/auto_sync_extras": (("bulking", "auto_intervals", FORCA, EXTRAS, True),
-        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "78531d84eacb784edbce113445bb5e3852c1bb9c8d2b29495bd89662311dcd78")),
+        (3165.833333333333, 673.8333333333333, 1.4, 3482.4166666666665, 160.0, 492.953125, 96.73379629629629, "0bf55b98b6c9dc0cf87ee2663ef3c0e02f46590b6bc4fbd6fa85eafdc1740f8e")),
     "bulking/auto_sync_descanso": (("bulking", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "6097ff16ab13d399c50be80189a8ed43676289bec4e6e256c0a9a29ce3e3799a")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "90f72c63cd184ccf5268459de423c55d47917012b933283e31d607eeca34a5b7")),
     "bulking/auto_fallback": (("bulking", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "263e8cda28735fe681633bb0307c23e5a998ddf9d5a3919fba25389e4d89b491")),
+        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "5bfb9adc9430fc27a5bae15095cf6d7af42a41f7c5c79ff6d3326db696449764")),
 }
 
 
@@ -97,7 +102,7 @@ def test_modo_legado_mantem_gasto_meta_macros_e_hash(nome):
     assert alvo.macros.fat_g == pytest.approx(gordura, rel=1e-12)
     # Trava do hash: `inputs_fingerprint` só olha as ENTRADAS (sujeito, plano, contexto do dia) e a versão do motor.
     assert svc.inputs_fingerprint(PLANO_ID, comp) == hash_esperado
-    assert alvo.engine_version == "nutrition-v2"
+    assert alvo.engine_version == "nutrition-v3"
 
 
 def test_embutido_tmb_2020_fator_1725_da_3485_sem_somar_o_treino_de_novo():
@@ -167,7 +172,7 @@ def test_tdee_breakdown_da_previa_fecha_o_total_exatamente(nome):
         assert ("extras" in codigos) == bool(entrada[3] and sincronizado)
         if modo == "auto_intervals" and treino:  # força e extras separados: o `training_kcal` do tdee soma os dois
             partes = {p["code"]: p["kcal"] for p in comp_dict["parts"]}
-            assert partes["training"] == 428 and partes["extras"] == 320 and partes["base"] == 2492
+            assert partes["training"] == 354 and partes["extras"] == 320 and partes["base"] == 2492  # força líquida do repouso (60 min)
     # o `to_dict` gravado (inputs_json) e o hash não levam a composição
     assert "tdee_breakdown" not in comp.target.to_dict() and "tdee_breakdown" not in comp.target.tdee.to_dict()
 

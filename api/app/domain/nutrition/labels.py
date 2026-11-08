@@ -236,8 +236,8 @@ TDEE_BREAKDOWN_BASE_LABELS: Final[Mapping[ee_mod.BreakdownBase, str]] = {
     ee_mod.BreakdownBase.ADAPTIVE_BOOTSTRAP: "Estimativa inicial (TMB × fator de rotina)",
 }
 TDEE_BREAKDOWN_PART_LABELS: Final[Mapping[str, str]] = {
-    ee_mod.BREAKDOWN_STRENGTH: "Treino de força",
-    ee_mod.BREAKDOWN_EXTRAS: "Cardio e caminhadas do Intervals",
+    ee_mod.BREAKDOWN_STRENGTH: "Treino de força (sem o repouso da sessão)",
+    ee_mod.BREAKDOWN_EXTRAS: "Cardio e caminhadas do Intervals (sem o repouso)",
     ee_mod.BREAKDOWN_ACTIVITY_ADJUSTMENT: "Ajuste pela atividade",
 }
 TDEE_BREAKDOWN_NOTE_LABELS: Final[Mapping[str, str]] = {
@@ -659,6 +659,9 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "Intervals não está sincronizado. Preencha o nível no perfil e salve o plano de novo."
     ),
     ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
+    ee_mod.LIMIT_REST_NOT_DISCOUNTED: (
+        "Treino ou atividade sem duração: o repouso da sessão não foi descontado e a kcal entrou como veio."
+    ),
     dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY: "Dia futuro: o treino ainda não aconteceu e não entrou no gasto.",
     # Ciclo de carbo (L8).
     dt_mod.LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE: "O ciclo de carbo precisa dos dias de treino da semana.",

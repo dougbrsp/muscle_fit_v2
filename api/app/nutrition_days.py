@@ -152,7 +152,7 @@ def _session_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def _training(
     cur: Any, user_id: int, day: date, today: date, extra: Optional[dict[str, Any]] = None, basis: Optional[str] = None,
-    entradas: Optional[UserInputs] = None,
+    entradas: Optional[UserInputs] = None, bmr_kcal: Optional[float] = None,
 ) -> dict[str, Any]:
     """Linha "informado × estimado": sessões concluídas (com a proveniência do
     dono), contexto do dia e a comparação de naturezas do motor."""
@@ -165,7 +165,7 @@ def _training(
         sujeito = resolve_subject(entradas.series.readings_on(day), day)
         # A MESMA função do motor que a meta do dia usa (soma por sessão; dia misto = parcialmente estimado).
         comparacao = compare_sessions_kcal(
-            contexto.training_sessions, sujeito.subject.weight_kg, met_for_session(contexto.session_kind)
+            contexto.training_sessions, sujeito.subject.weight_kg, met_for_session(contexto.session_kind), bmr_kcal
         )
     # Treino de força (o usado pelo motor) + cardio/caminhada do Intervals = gasto de atividade do dia, tudo pelo motor.
     # `extra` é o que o motor gravou na meta do dia (só o plano automático sincronizado tem); os modos clássicos não
@@ -270,7 +270,8 @@ def build_day(conn: Any, aluno: int, local_date: date) -> dict[str, Any]:
         # treino do dia só consulta o próprio dia (`readings_on`, `sessions.get(dia)`).
         entradas = load_user_inputs(cur, aluno, local_date, max(local_date, hoje), hoje)
         treino = _training(
-            cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas
+            cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas,
+            (meta or {}).get("bmr_kcal"),
         )
         detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas)
         fechamento = adjustments.read_closure(cur, aluno, local_date)

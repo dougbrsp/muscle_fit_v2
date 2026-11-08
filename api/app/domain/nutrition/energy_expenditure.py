@@ -31,9 +31,16 @@ em 2026-10-15 tinham kcal); "FC sem kcal" não ocorre, e a fórmula foi validada
 em aeróbio. Fallback único = MET. Se um dia a natureza disponível mudar, a
 prioridade muda AQUI e em nenhum consumidor.
 
-TDEE (`tdee`): `EXPLICIT_TRAINING` = TMB × fator de NÃO-exercício + kcal do
-treino do dia (padrão; evita dupla contagem); `INCLUDED_IN_FACTOR` = TMB ×
-fator clássico (treino embutido). TEF já embutido nos fatores.
+TDEE (`tdee`): `EXPLICIT_TRAINING` = TMB × fator de NÃO-exercício + kcal LÍQUIDA do
+treino do dia; `INCLUDED_IN_FACTOR` = TMB × fator clássico (treino embutido). TEF já
+embutido nos fatores.
+
+Desconto do repouso da sessão (ADR 0008, `nutrition-v3`): o fator de rotina já cobre a TMB das 24 h, então a kcal do
+treino (informada ou MET, ambas brutas: incluem o repouso da janela) entra LÍQUIDA, `kcal − TMB/1440 × minutos`, piso 0.
+A regra é a mesma do motor adaptativo (decisão D4) e vive em `activity_energy.net_of_resting_kcal`: `active` entra como
+veio; `gross`/`unknown` descontam; a MET é sempre bruta. Sem duração: a kcal fica como está (não se inventa nem se
+descarta o treino) e sai a limitação `LIMIT_REST_NOT_DISCOUNTED`. O modo do relógio do modo explícito/automático é o
+`DEFAULT_TDEE_CALORIE_MODE` (`unknown`: o plano só guarda `watch_calorie_mode` no adaptativo).
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
@@ -41,11 +48,11 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Final, Mapping, Optional
 
-from . import adaptive_energy
+from . import activity_energy, adaptive_energy
 from ..data_nature import DataNature, DataQuality  # vocabulário comum (dono: domain/data_nature.py)
 from .anthropometrics import ACTIVITY_FACTORS, NON_EXERCISE_ACTIVITY_FACTORS, ActivityLevel, non_negative_number, positive_number
 
@@ -101,6 +108,8 @@ QUALITY_BY_TRAINING_KCAL_NATURE: Final[Mapping[TrainingKcalNature, DataQuality]]
 }
 
 LIMIT_NO_TRAINING_KCAL = "training_kcal_unavailable"
+# Treino ou atividade extra sem duração: o repouso da janela não pôde ser descontado e a kcal entrou como está.
+LIMIT_REST_NOT_DISCOUNTED = "training_rest_not_discounted"
 # Dia com sessão informada e outra sem kcal: o total soma a informada e a MET só da duração da que não tem kcal.
 LIMIT_TRAINING_PARTIALLY_ESTIMATED = "training_kcal_partially_estimated"
 # Plano `auto_intervals` sem nível de atividade no PERFIL: o fallback (fator com exercício) não tem de onde vir e
@@ -122,6 +131,23 @@ EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPOR
 # O rótulo (nome da atividade) vem do Intervals, texto livre: o motor limita o tamanho que a API devolve e grava.
 EXTRA_ACTIVITY_LABEL_MAX_CHARS: Final[int] = 60
 
+# O que o número de kcal do relógio representa no modo explícito/automático: o plano só guarda `watch_calorie_mode` no
+# adaptativo; ausente = `unknown` = bruta (desconta o repouso, como o adaptativo).
+DEFAULT_TDEE_CALORIE_MODE: Final[activity_energy.CalorieMode] = activity_energy.CalorieMode.UNKNOWN
+# A kcal por MET (`training_kcal_met`) é sempre bruta (inclui 1 MET de repouso).
+MET_KCAL_CALORIE_MODE: Final[activity_energy.CalorieMode] = activity_energy.CalorieMode.GROSS
+
+
+def _net_kcal(kcal: float, calorie_mode: Any, duration_min: Any, bmr_kcal: Any) -> tuple[float, float, bool]:
+    """(kcal líquida, desconto aplicado, repouso_não_descontado). Regra em `activity_energy.net_of_resting_kcal`. Sem
+    duração (ou sem TMB em modo que desconta) mantém a bruta; o aviso só sai com TMB presente (sem TMB o gasto já é
+    desconhecido e tem a própria limitação)."""
+    repouso = activity_energy.resting_kcal(bmr_kcal, duration_min)
+    liquida = activity_energy.net_of_resting_kcal(kcal, calorie_mode, repouso)
+    if liquida is None:
+        return kcal, 0.0, positive_number(bmr_kcal) is not None
+    return liquida, kcal - liquida, False
+
 
 @dataclass(frozen=True)
 class ExtraActivity:
@@ -131,10 +157,21 @@ class ExtraActivity:
     kind: str
     calories_kcal: Any = None
     label: Optional[str] = None
+    # Duração em segundos (decorrido, com o movimento de reserva: `activity_energy.activity_duration_seconds`); sem ela
+    # o repouso não é descontado.
+    duration_seconds: Any = None
+
+    @property
+    def duration_min(self) -> Optional[float]:
+        segundos = positive_number(self.duration_seconds)
+        return None if segundos is None else segundos / activity_energy.SECONDS_PER_MINUTE
 
     def to_dict(self) -> dict[str, Any]:
         rotulo = None if self.label is None else str(self.label).strip()[:EXTRA_ACTIVITY_LABEL_MAX_CHARS] or None
-        return {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": rotulo}
+        dados: dict[str, Any] = {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": rotulo}
+        if self.duration_min is not None:
+            dados["duration_min"] = self.duration_min
+        return dados
 
 
 @dataclass(frozen=True)
@@ -144,20 +181,32 @@ class ExtraActivityKcal:
     kcal: float = 0.0
     items: tuple[ExtraActivity, ...] = ()
     kcal_nature: Optional[TrainingKcalNature] = None
+    # Bruta somada e repouso descontado (`kcal` é a LÍQUIDA); só vão ao `to_dict` quando houve desconto.
+    gross_kcal: Optional[float] = None
+    resting_discount_kcal: float = 0.0
+    limitations: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "kcal": self.kcal,
             "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
             "items": [item.to_dict() for item in self.items],
         }
+        if self.resting_discount_kcal > 0:
+            dados["gross_kcal"] = self.gross_kcal
+            dados["resting_discount_kcal"] = self.resting_discount_kcal
+        return dados
 
 
 NO_EXTRA_ACTIVITY_KCAL: Final[ExtraActivityKcal] = ExtraActivityKcal()
 
 
-def extra_activity_kcal(activities: Any = ()) -> ExtraActivityKcal:
-    """Soma a kcal informada das atividades que não são força. Sem kcal (None, 0, inválida) não soma."""
+def extra_activity_kcal(
+    activities: Any = (), bmr_kcal: Any = None, calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE
+) -> ExtraActivityKcal:
+    """Soma a kcal informada das atividades que não são força, LÍQUIDA do repouso da janela de cada uma (mesma regra do
+    treino: `_net_kcal`). Sem kcal (None, 0, inválida) não soma; sem duração entra como está, com
+    `LIMIT_REST_NOT_DISCOUNTED`."""
     somadas = tuple(
         item
         for item in activities
@@ -165,8 +214,23 @@ def extra_activity_kcal(activities: Any = ()) -> ExtraActivityKcal:
     )
     if not somadas:
         return NO_EXTRA_ACTIVITY_KCAL
-    total = float(sum(positive_number(item.calories_kcal) or 0.0 for item in somadas))
-    return ExtraActivityKcal(kcal=total, items=somadas, kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE)
+    liquido = 0.0
+    bruto = 0.0
+    sem_desconto = False
+    for item in somadas:
+        informada = positive_number(item.calories_kcal) or 0.0
+        kcal, _, faltou = _net_kcal(informada, calorie_mode, item.duration_min, bmr_kcal)
+        liquido += kcal
+        bruto += informada
+        sem_desconto = sem_desconto or faltou
+    return ExtraActivityKcal(
+        kcal=liquido,
+        items=somadas,
+        kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE,
+        gross_kcal=bruto if bruto > liquido else None,
+        resting_discount_kcal=bruto - liquido,
+        limitations=(LIMIT_REST_NOT_DISCOUNTED,) if sem_desconto else (),
+    )
 
 
 def activity_total_kcal(training_kcal: Any, extra_kcal: Any) -> Optional[float]:
@@ -280,15 +344,22 @@ class TrainingKcal:
     nature: Optional[DataNature]
     quality: Optional[DataQuality]
     limitations: tuple[str, ...] = ()
+    # `kcal` é a LÍQUIDA do repouso da sessão; a bruta e o desconto só vão ao `to_dict` quando houve desconto.
+    gross_kcal: Optional[float] = None
+    resting_discount_kcal: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "kcal": self.kcal,
             "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
             "nature": self.nature.value if self.nature else None,
             "quality": self.quality.value if self.quality else None,
             "limitations": list(self.limitations),
         }
+        if self.resting_discount_kcal > 0:
+            dados["gross_kcal"] = self.gross_kcal
+            dados["resting_discount_kcal"] = self.resting_discount_kcal
+        return dados
 
 
 NO_TRAINING_KCAL: Final[TrainingKcal] = TrainingKcal(
@@ -301,8 +372,11 @@ def resolve_training_kcal(
     weight_kg: Any = None,
     duration_min: Any = None,
     met: Any = None,
+    bmr_kcal: Any = None,
+    calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE,
 ) -> TrainingKcal:
-    """Primeira natureza disponível na ordem de `TRAINING_KCAL_NATURE_PRIORITY`.
+    """Primeira natureza disponível na ordem de `TRAINING_KCAL_NATURE_PRIORITY`, LÍQUIDA do repouso da sessão (`bmr_kcal`
+    e `duration_min`; sem `bmr_kcal` nada é descontado, como antes).
     `reported_kcal` é o número de `activities.calories_kcal`, seja qual for a
     proveniência. Sem kcal informada e sem duração -> `NO_TRAINING_KCAL`."""
     for natureza in TRAINING_KCAL_NATURE_PRIORITY:
@@ -311,11 +385,16 @@ def resolve_training_kcal(
         else:
             kcal = training_kcal_met(weight_kg, duration_min, met)
         if kcal is not None:
+            modo = calorie_mode if natureza == TrainingKcalNature.REPORTED else MET_KCAL_CALORIE_MODE
+            liquida, desconto, faltou = _net_kcal(kcal, modo, duration_min, bmr_kcal)
             return TrainingKcal(
-                kcal=kcal,
+                kcal=liquida,
                 kcal_nature=natureza,
                 nature=NATURE_BY_TRAINING_KCAL_NATURE[natureza],
                 quality=QUALITY_BY_TRAINING_KCAL_NATURE[natureza],
+                limitations=(LIMIT_REST_NOT_DISCOUNTED,) if faltou else (),
+                gross_kcal=kcal if desconto > 0 else None,
+                resting_discount_kcal=desconto,
             )
     return NO_TRAINING_KCAL
 
@@ -331,48 +410,75 @@ class SessionKcal:
         return {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
 
 
+@dataclass(frozen=True)
+class _SessionPart:
+    """Uma sessão que entrou na soma: natureza, kcal LÍQUIDA, bruta e se o repouso ficou sem descontar."""
+
+    nature: TrainingKcalNature
+    kcal: float
+    gross_kcal: float
+    rest_missing: bool = False
+
+
 def _session_parts(
-    sessions: Any, weight_kg: Any, met: Any
-) -> list[tuple[TrainingKcalNature, float]]:
-    """kcal de cada sessão que tem como entrar: a informada onde houver; MET só da duração da sem kcal; a sem kcal e
-    sem duração (ou sem peso para a MET) não soma e não derruba as outras."""
-    partes: list[tuple[TrainingKcalNature, float]] = []
+    sessions: Any, weight_kg: Any, met: Any, bmr_kcal: Any = None, calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE
+) -> list[_SessionPart]:
+    """kcal de cada sessão que tem como entrar, LÍQUIDA do repouso da janela dela (`_net_kcal`): a informada onde houver
+    (no `calorie_mode` do relógio); MET (sempre bruta) só da duração da sem kcal; a sem kcal e sem duração (ou sem peso
+    para a MET) não soma e não derruba as outras."""
+    partes: list[_SessionPart] = []
     for sessao in sessions:
         informada = positive_number(sessao.calories_kcal)
         if informada is not None:
-            partes.append((TrainingKcalNature.REPORTED, informada))
+            liquida, _, faltou = _net_kcal(informada, calorie_mode, sessao.duration_min, bmr_kcal)
+            partes.append(_SessionPart(TrainingKcalNature.REPORTED, liquida, informada, faltou))
             continue
         estimada = training_kcal_met(weight_kg, sessao.duration_min, met)
         if estimada is not None:
-            partes.append((TrainingKcalNature.MET, estimada))
+            liquida, _, faltou = _net_kcal(estimada, MET_KCAL_CALORIE_MODE, sessao.duration_min, bmr_kcal)
+            partes.append(_SessionPart(TrainingKcalNature.MET, liquida, estimada, faltou))
     return partes
 
 
-def resolve_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcal:
+def resolve_sessions_kcal(
+    sessions: Any = (), weight_kg: Any = None, met: Any = None, bmr_kcal: Any = None,
+    calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE,
+) -> TrainingKcal:
     """kcal do treino do dia SOMANDO POR SESSÃO (prioridade `TRAINING_KCAL_NATURE_PRIORITY` em cada uma). Todas
     informadas: `reported`. Nenhuma informada: `met` (MET das durações). Mistas: a soma, natureza `met` (estimada) e a
     limitação `LIMIT_TRAINING_PARTIALLY_ESTIMATED`; o dia só é `reported` se tudo for informado. Nada utilizável:
-    `NO_TRAINING_KCAL`."""
+    `NO_TRAINING_KCAL`. A kcal de cada sessão é LÍQUIDA do repouso da janela (`bmr_kcal`; ver o topo do módulo)."""
     sessoes = tuple(sessions)
-    partes = _session_parts(sessoes, weight_kg, met)
+    partes = _session_parts(sessoes, weight_kg, met, bmr_kcal, calorie_mode)
     if not partes:
         return NO_TRAINING_KCAL
-    total = float(sum(kcal for _, kcal in partes))
+    total = float(sum(parte.kcal for parte in partes))
+    bruto = float(sum(parte.gross_kcal for parte in partes))
+    sem_desconto = (LIMIT_REST_NOT_DISCOUNTED,) if any(parte.rest_missing for parte in partes) else ()
     # O dia é "parcialmente estimado" pelas SESSÕES (não pelo que deu para somar): há sessão sem kcal informada junto de
     # uma informada, ou alguma sessão ficou de fora da soma (sem kcal e sem duração/peso).
     informadas = sum(1 for sessao in sessoes if positive_number(sessao.calories_kcal) is not None)
     todas_informadas = informadas == len(sessoes)
     ficou_de_fora = len(partes) < len(sessoes)
     if todas_informadas:
-        return _training_kcal_of(TrainingKcalNature.REPORTED, total)
-    if informadas == 0 and not ficou_de_fora:
-        return _training_kcal_of(TrainingKcalNature.MET, total)
-    return TrainingKcal(
-        kcal=total,
-        kcal_nature=TrainingKcalNature.MET,
-        nature=DataNature.ESTIMATED,
-        quality=DataQuality.MEDIUM,
-        limitations=(LIMIT_TRAINING_PARTIALLY_ESTIMATED,),
+        natureza = TrainingKcalNature.REPORTED
+    elif informadas == 0 and not ficou_de_fora:
+        natureza = TrainingKcalNature.MET
+    else:
+        return TrainingKcal(
+            kcal=total,
+            kcal_nature=TrainingKcalNature.MET,
+            nature=DataNature.ESTIMATED,
+            quality=DataQuality.MEDIUM,
+            limitations=(LIMIT_TRAINING_PARTIALLY_ESTIMATED, *sem_desconto),
+            gross_kcal=bruto if bruto > total else None,
+            resting_discount_kcal=bruto - total,
+        )
+    return replace(
+        _training_kcal_of(natureza, total),
+        limitations=sem_desconto,
+        gross_kcal=bruto if bruto > total else None,
+        resting_discount_kcal=bruto - total,
     )
 
 
@@ -425,9 +531,13 @@ class TrainingKcalComparison:
         }
 
 
-def compare_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = None) -> TrainingKcalComparison:
+def compare_sessions_kcal(
+    sessions: Any = (), weight_kg: Any = None, met: Any = None, bmr_kcal: Any = None,
+    calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE,
+) -> TrainingKcalComparison:
     """As duas naturezas do dia por sessão e a usada (`resolve_sessions_kcal`): informada = soma das kcal informadas;
-    estimada = MET das durações de todas as sessões; usada = a soma por sessão (mista = parcialmente estimada)."""
+    estimada = MET das durações de todas as sessões; usada = a soma por sessão (mista = parcialmente estimada), LÍQUIDA
+    do repouso (`bmr_kcal`); informada e estimada ficam brutas, para comparar com o que o relógio mostra."""
     sessoes = tuple(sessions)
     informadas = [positive_number(s.calories_kcal) for s in sessoes]
     informadas = [kcal for kcal in informadas if kcal is not None]
@@ -436,7 +546,7 @@ def compare_sessions_kcal(sessions: Any = (), weight_kg: Any = None, met: Any = 
     return TrainingKcalComparison(
         reported=_training_kcal_of(TrainingKcalNature.REPORTED, float(sum(informadas)) if informadas else None),
         estimated=_training_kcal_of(TrainingKcalNature.MET, float(sum(estimadas)) if estimadas else None),
-        used=resolve_sessions_kcal(sessoes, weight_kg, met),
+        used=resolve_sessions_kcal(sessoes, weight_kg, met, bmr_kcal, calorie_mode),
     )
 
 
@@ -445,12 +555,17 @@ def compare_training_kcal(
     weight_kg: Any = None,
     duration_min: Any = None,
     met: Any = None,
+    bmr_kcal: Any = None,
+    calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE,
 ) -> TrainingKcalComparison:
-    """As duas naturezas lado a lado e a escolhida por `resolve_training_kcal`."""
+    """As duas naturezas lado a lado (brutas) e a escolhida por `resolve_training_kcal` (líquida do repouso)."""
     return TrainingKcalComparison(
         reported=_training_kcal_of(TrainingKcalNature.REPORTED, positive_number(reported_kcal)),
         estimated=_training_kcal_of(TrainingKcalNature.MET, training_kcal_met(weight_kg, duration_min, met)),
-        used=resolve_training_kcal(reported_kcal=reported_kcal, weight_kg=weight_kg, duration_min=duration_min, met=met),
+        used=resolve_training_kcal(
+            reported_kcal=reported_kcal, weight_kg=weight_kg, duration_min=duration_min, met=met, bmr_kcal=bmr_kcal,
+            calorie_mode=calorie_mode,
+        ),
     )
 
 
@@ -611,7 +726,7 @@ def tdee(
 
 # --- Composição do gasto para a tela (prévia do plano): parcelas prontas, sem conta no front -------------------------
 BREAKDOWN_BASE: Final[str] = "base"
-BREAKDOWN_STRENGTH: Final[str] = "training"  # a força (nome alinhado a `training_kcal`)
+BREAKDOWN_STRENGTH: Final[str] = "training"  # a força, já LÍQUIDA do repouso da sessão (nome alinhado a `training_kcal`)
 BREAKDOWN_EXTRAS: Final[str] = "extras"
 BREAKDOWN_NOTE_INCLUDED: Final[str] = "training_included_in_factor"
 BREAKDOWN_NOTE_AUTO_FALLBACK: Final[str] = "auto_fallback"

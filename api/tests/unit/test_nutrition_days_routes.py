@@ -227,7 +227,7 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     comparacao = treino["comparison"]
     assert comparacao["reported"]["kcal"] == pytest.approx(300)
     assert comparacao["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
-    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30))
+    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30) - 1750.0 / 1440 * 75)  # líquida do repouso
     assert comparacao["used"]["kcal_nature"] == "met" and comparacao["partial"] is True
     assert comparacao["used"]["limitations"] == ["training_kcal_partially_estimated"]
     assert not any(lado["is_used"] for lado in comparacao["sides"])
@@ -244,7 +244,7 @@ def test_dia_expoe_forca_extra_e_total_pelo_motor(db):
     for esporte, kcal in (("Walk", 51), ("Walk", 79), ("VirtualRun", 265)):
         db.add_intervals_activity(ALUNO, HOJE, esporte, kcal)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}
+    assert treino["activity_kcal"] == {"training_kcal": 428.0 - 1750.0 / 1440 * 60, "extra_kcal": 395.0, "total_kcal": 823.0 - 1750.0 / 1440 * 60}
     assert treino["extra_activity"]["kcal"] == 395.0 and treino["extra_activity"]["kcal_nature"] == "reported"
     assert [i["label"] for i in treino["extra_activity"]["items"]] == ["Walk", "Walk", "VirtualRun"]
     assert treino["is_training_day"] is True
@@ -283,7 +283,7 @@ def test_plano_classico_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["extra_activity"]["kcal"] == 0.0 and treino["activity_kcal"]["total_kcal"] == 410.0
+    assert treino["extra_activity"]["kcal"] == 0.0 and treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
 
 
 def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
@@ -292,7 +292,7 @@ def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db)
     db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
     assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": []}
-    assert treino["activity_kcal"]["total_kcal"] == 410.0
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
 
 
 # ---------------------------------------------------------------------------

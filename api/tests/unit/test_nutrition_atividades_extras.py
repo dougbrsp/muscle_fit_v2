@@ -13,6 +13,7 @@ import pytest
 from app import intervals_activity_kind as kind
 from app import nutrition_targets_service as svc
 from app.domain.nutrition import DayContext, PlanParams, compute_daily_target
+from app.domain.nutrition import activity_energy
 from app.domain.nutrition import energy_expenditure as ee
 from app.domain.nutrition import strategy as st
 from app.domain.nutrition.anthropometrics import ActivityLevel, Sex, Subject
@@ -22,6 +23,7 @@ from tests.support.nutrition_fake import FakeNutritionDB
 HOJE = date(2026, 11, 5)
 ALUNO = 2
 AUTO = ee.TdeeMode.AUTO_INTERVALS
+TMB_FAKE = 1750.0  # TMB do aluno do `FakeNutritionDB` (Mifflin do perfil e do peso dele)
 
 
 def _extras(*atividades: tuple[str, float | None]) -> tuple[ee.ExtraActivity, ...]:
@@ -121,7 +123,30 @@ def test_automatico_sincronizado_soma_rotina_forca_e_extras():
     meta = compute_daily_target(SUJEITO, _plano(routine_level=ActivityLevel.LIGHT), _dia(FORCA, _extras(("Walk", 130), ("VirtualRun", 265))))
     assert meta.tdee.mode == ee.TdeeMode.EXPLICIT_TRAINING and meta.tdee.activity_factor == pytest.approx(1.3)
     assert meta.extra_activity.kcal == pytest.approx(395)
-    assert meta.tdee.kcal == pytest.approx(TMB * 1.3 + 428 + 395)
+    # Força líquida do repouso (60 min); os extras do exemplo não têm duração e entram como vieram (com a limitação).
+    forca_liquida = 428 - TMB / 1440 * 60
+    assert meta.training_kcal.kcal == pytest.approx(forca_liquida)
+    assert meta.tdee.kcal == pytest.approx(TMB * 1.3 + forca_liquida + 395)
+    assert ee.LIMIT_REST_NOT_DISCOUNTED in meta.limitations
+
+
+def test_extras_com_duracao_descontam_o_repouso_da_janela_e_sem_duracao_entram_como_vieram():
+    com_duracao = (
+        ee.ExtraActivity(kind="cardio", calories_kcal=300.0, duration_seconds=1800),
+        ee.ExtraActivity(kind="other", calories_kcal=100.0, duration_seconds=600),
+    )
+    soma = ee.extra_activity_kcal(com_duracao, TMB)
+    desconto = TMB / 1440 * 40
+    assert soma.kcal == pytest.approx(400 - desconto) and soma.gross_kcal == 400.0
+    assert soma.resting_discount_kcal == pytest.approx(desconto) and soma.limitations == ()
+    assert soma.to_dict()["gross_kcal"] == 400.0
+    misto = ee.extra_activity_kcal((*com_duracao, ee.ExtraActivity(kind="other", calories_kcal=50.0)), TMB)
+    assert misto.kcal == pytest.approx(450 - desconto) and misto.limitations == (ee.LIMIT_REST_NOT_DISCOUNTED,)
+    pequena = ee.extra_activity_kcal((ee.ExtraActivity(kind="cardio", calories_kcal=20.0, duration_seconds=3600),), TMB)
+    assert pequena.kcal == 0.0  # piso 0
+    ativa = ee.extra_activity_kcal(com_duracao, TMB, activity_energy.CalorieMode.ACTIVE)
+    assert ativa.kcal == 400.0 and ativa.resting_discount_kcal == 0.0
+    assert "gross_kcal" not in ativa.to_dict()
 
 
 def test_automatico_sincronizado_sem_atividade_e_descanso_com_a_rotina():
@@ -179,7 +204,7 @@ def test_gramas_manuais_add_training_somam_o_total_so_no_dia_sincronizado_e_fixe
 
     base = compute_daily_target(SUJEITO, _manual(M.ADD_TRAINING), _dia()).macros.carb_g
     com = compute_daily_target(SUJEITO, _manual(M.ADD_TRAINING), _dia(FORCA, _extras(("Walk", 200)))).macros.carb_g
-    assert com == pytest.approx(base + (428 + 200) / 4)
+    assert com == pytest.approx(base + (428 - TMB / 1440 * 60 + 200) / 4)
     fallback = compute_daily_target(SUJEITO, _manual(M.ADD_TRAINING), _dia(FORCA, _extras(("Walk", 200)), sincronizado=False)).macros.carb_g
     assert fallback == pytest.approx(base)  # sem sincronização vale como `fixed`
     fixo = compute_daily_target(SUJEITO, _manual(M.FIXED), _dia(FORCA, _extras(("Walk", 200)))).macros.carb_g
@@ -273,7 +298,7 @@ def test_projecao_e_ia_usam_o_mesmo_total_pelo_mesmo_dono_no_automatico():
     with db.conn() as conn, conn.cursor() as cur:
         entradas = svc.load_user_inputs(cur, ALUNO, HOJE - timedelta(days=ee_window()), HOJE, HOJE, [settings])
     passado = svc.past_training_kcal(entradas, settings, HOJE)
-    assert passado[-2] == pytest.approx(558)
+    assert passado[-2] == pytest.approx(558 - TMB_FAKE / 1440 * 60)  # força líquida do repouso; o extra sem duração, como veio
     assert passado[-3] == pytest.approx(427)
     classico = svc.settings_from_row({**db.plans[1], "training_kcal_mode": "explicit_training"})
     assert svc.past_training_kcal(entradas, classico, HOJE)[-3] == pytest.approx(0.0)  # o clássico não vê o cardio

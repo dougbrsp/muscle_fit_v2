@@ -89,11 +89,13 @@ class FakeNutritionDB:
         )
 
     def add_intervals_activity(self, user_id: int, day: date, sport_type: str, kcal: Optional[float],
-                               name: Optional[str] = None, linked: bool = False) -> None:
+                               name: Optional[str] = None, linked: bool = False, elapsed: Optional[int] = None,
+                               moving: Optional[int] = None) -> None:
         if not linked:  # a vinculada não chega à lista (LEFT JOIN ... l.id IS NULL)
             self.intervals_extras.append(
                 {"user_id": user_id, "activity_date": day, "sport_type": sport_type, "name": name,
-                 "calories_kcal": Decimal(str(kcal)) if kcal is not None else None}
+                 "calories_kcal": Decimal(str(kcal)) if kcal is not None else None,
+                 "elapsed_time_seconds": elapsed, "moving_time_seconds": moving}
             )
 
     def add_intervals_row(self, user_id: int, day: date, sport_type: str, kcal: Optional[float], *,

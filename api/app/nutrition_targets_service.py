@@ -46,6 +46,7 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.activity_energy import activity_duration_seconds
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -183,7 +184,7 @@ _SESSIONS_SQL = (
 # vinculada já é a sessão de força). A CLASSE (cardio/força/outra) vem de `intervals_activity_kind` (dono), em
 # Python; quem decide o que soma é `energy_expenditure.extra_activity_kcal`. Sem LIKE de classificação aqui.
 EXTRA_ACTIVITIES_SQL = (
-    "SELECT ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal "
+    "SELECT ia.activity_date, ia.sport_type, ia.name, ia.calories_kcal, ia.elapsed_time_seconds, ia.moving_time_seconds "
     "FROM intervals_activities ia "
     "LEFT JOIN activity_intervals_link l ON l.intervals_activity_id = ia.id AND l.user_id = ia.user_id "
     "WHERE ia.user_id = %s AND ia.activity_date BETWEEN %s AND %s AND l.id IS NULL "
@@ -395,6 +396,7 @@ def load_user_inputs(
                         kind=classify(row.get("sport_type"), row.get("name")),
                         calories_kcal=_float(row.get("calories_kcal")),
                         label=row.get("name") or row.get("sport_type"),
+                        duration_seconds=activity_duration_seconds(row.get("elapsed_time_seconds"), row.get("moving_time_seconds")),
                     )
                 )
     em_dia = False
