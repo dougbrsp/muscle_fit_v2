@@ -817,7 +817,7 @@ export type DayTraining = {
   /** Bloco do treino: bruto, desconto de repouso e líquido usado (`kcal`), prontos do motor. */
   training_block?: { gross_kcal?: number | null; resting_discount_kcal?: number | null; kcal?: number | null };
   /** Rótulos prontos do motor (título do bloco e sufixo do líquido). */
-  labels?: { extra_title?: string; net_suffix?: string };
+  labels?: { activities_title: string; net_suffix: string; excluded_reasons: Record<string, string> };
   /** Atividades extras do dia (motor `extra_activity_kcal`); ausente em resposta antiga. */
   extra_activity?: DayExtraActivity;
   /** Treino + extra = total de atividade do dia, somado pelo motor (`total_kcal` nulo se o treino é desconhecido). */

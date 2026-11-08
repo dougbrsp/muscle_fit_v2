@@ -148,6 +148,7 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     await montar({
       ...BASE,
       sessions: [sessao],
+      labels: { activities_title: 'Atividades do Intervals', net_suffix: 'líquido do repouso da sessão', excluded_reasons: { duplicate: 'duplicada' } },
       comparison: {
         reported: { kcal: 428, kcal_nature: 'reported', nature: null, quality: null, limitations: [] },
         estimated: { kcal: 400, kcal_nature: 'met', nature: null, quality: null, limitations: [] },
@@ -160,7 +161,7 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
         kcal_nature: 'reported',
         items: [
           { kind: 'cardio', calories_kcal: 100, label: 'Walk', gross_kcal: 100, resting_discount_kcal: 10, net_kcal: 90, excluded_reason: null },
-          { kind: 'cardio', calories_kcal: 50, label: 'Run', gross_kcal: 50, resting_discount_kcal: 0, net_kcal: 0, excluded_reason: 'duplicada' },
+          { kind: 'cardio', calories_kcal: 50, label: 'Run', gross_kcal: 50, resting_discount_kcal: 0, net_kcal: 0, excluded_reason: 'duplicate' },
         ],
       },
       activity_kcal: { training_kcal: 354, extra_kcal: 90, total_kcal: 444 },

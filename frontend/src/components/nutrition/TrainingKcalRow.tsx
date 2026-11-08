@@ -45,7 +45,7 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
   const temExtra = extra !== undefined && extra.kcal > 0;
   const soCardio = temExtra && !training.is_training_day;
   const total = training.activity_kcal;
-  const tituloExtra = training.labels?.extra_title ?? TITULO_EXTRA_PADRAO;
+  const tituloExtra = training.labels?.activities_title ?? TITULO_EXTRA_PADRAO;
   const sufixo = training.labels?.net_suffix ?? SUFIXO_LIQUIDO_PADRAO;
   return (
     <Card withBorder radius="md" bg={BRAND.bgSurface}>
@@ -83,7 +83,7 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
                 )}
                 {excluida && (
                   <Text size="xs" c="dimmed" data-testid="extra-excluida">
-                    {`não somada: ${item.excluded_reason}`}
+                    {`não somada: ${training.labels?.excluded_reasons?.[item.excluded_reason!] ?? item.excluded_reason}`}
                   </Text>
                 )}
               </Group>
