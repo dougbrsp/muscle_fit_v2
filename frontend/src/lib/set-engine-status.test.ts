@@ -213,9 +213,17 @@ describe('nextSetLoadView (carga da próxima série pelo motor)', () => {
       'pre_fatigued',
       'heavily_fatigued',
     ]);
-    expect(block.rule_vocabulary.actions.map((item) => item.label)).toEqual(
-      block.rule_vocabulary.actions.map((item) => PROGRESSION_DECISION_LABELS[item.value]),
-    );
+    const actions = block.rule_vocabulary.actions;
+    for (const action of actions) {
+      if (action.value in PROGRESSION_DECISION_LABELS) {
+        expect(action.label).toBe(PROGRESSION_DECISION_LABELS[action.value as keyof typeof PROGRESSION_DECISION_LABELS]);
+      }
+    }
+    const engineTarget = actions.find((item) => item.value === 'ENGINE_TARGET');
+    expect(engineTarget).toBeDefined();
+    expect(typeof engineTarget?.label).toBe('string');
+    expect(engineTarget?.label.length).toBeGreaterThan(0);
+    expect(engineTarget?.magnitude).toBe('optional');
     expect(block.rule_limits.max_rules).toBeGreaterThan(0);
     expect(block.default_ruleset.version).toBe(0);
     expect(block.default_ruleset.rules).toHaveLength(3);

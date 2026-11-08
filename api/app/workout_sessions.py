@@ -58,10 +58,13 @@ from .domain.next_set_load import (
     planned_ramp_rpe,
     ruleset_for_goal,
     ruleset_uses_fatigue,
+    ruleset_uses_previous_set,
     ruleset_uses_published,
 )
+from .domain.progression_engine import set_effort_target
 from .engine_decision_context import (
     PairEngineContext,
+    decision_from_snapshot,
     equipment_step_kg,
     load_deload_prescription,
     load_pair_step_context,
@@ -873,6 +876,13 @@ def _session_fatigue_band(conn, user_id: Any, session_id: int, exercise_id: int)
     return item.band if item is not None else None
 
 
+def _engine_target_kg(exercise_row: dict[str, Any]) -> Optional[float]:
+    """Carga que o motor prescreveu para o par (`prescription_json`; None sem
+    decisao do motor)."""
+    decision = decision_from_snapshot(exercise_row.get("prescription_json"))
+    return decision.load_kg if decision is not None else None
+
+
 def _evaluate_set(
     conn,
     cur,
@@ -926,6 +936,7 @@ def _evaluate_set(
     working_set_index = None
     planned_rpe = None
     fatigue_band = None
+    previous_set = None
     ruleset = DEFAULT_RULESET
     # Modo Intensivo: serie com reps PENDENTES nao alimenta motor nenhum ate
     # a confirmacao - sem reps nao ha carga da proxima serie a decidir.
@@ -960,6 +971,18 @@ def _evaluate_set(
             planned_rpe = planned_ramp_rpe(plan_rpe, previous_working)
         if ruleset_uses_fatigue(ruleset):
             fatigue_band = _session_fatigue_band(conn, user_id, session_id, exercise_id)
+        # Arvore v2: a serie de trabalho ANTERIOR (escopo `previous`) so e lida
+        # se alguma regra do conjunto a exige (`ruleset_uses_previous_set`, do
+        # dono); o padrao nao exige: nenhuma leitura extra no POST da serie.
+        if ruleset_uses_previous_set(ruleset):
+            cur.execute(
+                "SELECT reps, rpe, weight_kg FROM exercise_sets "
+                f"WHERE exercise_id = %s AND set_number < %s AND {sql_is_working('set_type')} "
+                f"AND {sql_set_confirmed('reps_pending')} "
+                "ORDER BY set_number DESC LIMIT 1",
+                (exercise_id, set_number),
+            )
+            previous_set = cur.fetchone() or None
     # RPE 10 Lote 6/P9: status da serie pelo motor (mesma regra da
     # sessao), devolvido ao Modo Treino junto do evento. Nao e
     # persistido: e derivavel do que ja fica gravado na serie
@@ -1039,6 +1062,15 @@ def _evaluate_set(
         rpe_ceiling=intensity.ceiling,
         ruleset=ruleset,
         intensity_status=reading.status,
+        previous_set=previous_set,
+        engine_target_kg=_engine_target_kg(exercise_row),
+        # RPE alvo EFETIVO desta serie (token `target` da regra): o do protocolo
+        # (Modo Intensivo) ou o alvo da ficha restringido pelo degrau da rampa.
+        rpe_target=(
+            protocol_target
+            if protocol_target is not None
+            else set_effort_target(intensity.rpe_target_effective, planned_rpe)
+        ),
     )
     return reading, next_set
 

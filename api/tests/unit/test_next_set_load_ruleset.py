@@ -46,11 +46,16 @@ def _facts(**kwargs):
     return nsl.SetFacts(**{**base, **kwargs})
 
 
+def regra_v1(position=1, **kw):
+    """Regra no formato v1 (campos fixos) convertida para a árvore: paridade v1 -> v2."""
+    return nsl.rule_from_v1(position, **kw)
+
+
 def _ruleset(*rules, reps_floor=6, reps_ceiling=12):
     return nsl.RuleSet(
         reps_floor=reps_floor,
         reps_ceiling=reps_ceiling,
-        rules=tuple(nsl.Rule(**{"position": index, **rule}) for index, rule in enumerate(rules, start=1)),
+        rules=tuple(regra_v1(index, **rule) for index, rule in enumerate(rules, start=1)),
         version=7,
         source="teste",
     )
@@ -126,8 +131,14 @@ def test_conjunto_padrao_e_a_regra_de_2026_10_12():
         nsl.REASON_LOW_RPE_AT_REPS,
         nsl.REASON_FAILURE_BEFORE_MIN_REPS,
     ]
-    assert all(rule.set_position is nsl.SetPosition.ANY and rule.fatigue is nsl.FatigueCondition.ANY for rule in padrao.rules)
-    assert [rule.respect_planned_ramp for rule in padrao.rules] == [False, True, False]
+    # a árvore do padrão é a conversão v1 das mesmas condições (paridade)
+    esperado = [
+        nsl.when_from_v1(reps=nsl.Condition(GT, Decimal(15))),
+        nsl.when_from_v1(reps=nsl.Condition(GTE, Decimal(12)), rpe=nsl.Condition(LT, Decimal(9)), respect_planned_ramp=True),
+        nsl.when_from_v1(reps=nsl.Condition(LT, Decimal(6)), rpe=nsl.Condition(GTE, Decimal(10))),
+    ]
+    assert [rule.when for rule in padrao.rules] == esperado
+    assert padrao.rules[1].when.children[1].ramp_cap is True
     assert all(rule.magnitude == nsl.ONE_STEP for rule in padrao.rules)
     assert nsl.validate_ruleset(padrao) == []
 
@@ -375,7 +386,7 @@ def test_validate_ruleset_limites_nomeados():
     assert nsl.REPS_FLOOR_BELOW_MIN in nsl.validate_ruleset(_ruleset(_regra(), reps_floor=nsl.REPS_FLOOR_MIN - 1))
     assert nsl.REPS_CEILING_ABOVE_MAX in nsl.validate_ruleset(_ruleset(_regra(), reps_ceiling=nsl.REPS_CEILING_MAX + 1))
     assert nsl.REPS_FLOOR_NOT_BELOW_CEILING in nsl.validate_ruleset(_ruleset(_regra(), reps_floor=12, reps_ceiling=12))
-    fora_de_ordem = nsl.RuleSet(reps_floor=6, reps_ceiling=12, rules=(nsl.Rule(position=2, **_regra()),))
+    fora_de_ordem = nsl.RuleSet(reps_floor=6, reps_ceiling=12, rules=(regra_v1(2, **_regra()),))
     assert nsl.RULESET_POSITIONS_NOT_SEQUENTIAL in nsl.validate_ruleset(fora_de_ordem)
 
 
@@ -433,10 +444,10 @@ def test_describe_rule_em_pt_br():
     )
     textos = [nsl.describe_rule(rule, conjunto) for rule in conjunto.rules]
     assert textos == [
-        "2ª série · músculo descansado · reps > teto (12) · RPE < máximo · respeita a rampa → Aumentar 25% (no passo do equipamento)",
-        "reps entre piso (6) e 10 · RPE ≥ 8,5 → Reduzir 2 passos",
-        "3ª série em diante · músculo muito fatigado → Manter a carga",
-        "sempre → Manter a carga",
+        "SE série = 2 E fadiga = descansado E reps > teto E RPE < máximo (limitado à rampa planejada) ENTÃO carga = carga executada + 25%",
+        "SE reps entre piso e 10 E RPE ≥ 8,5 ENTÃO carga = carga executada − 2 passos",
+        "SE série ≥ 3 E fadiga = muito fatigado ENTÃO carga = carga executada",
+        "SE sempre ENTÃO carga = carga executada",
     ]
     assert nsl.describe_ruleset(conjunto).splitlines()[:2] == ["piso 6 reps · teto 12 reps", f"1. {textos[0]}"]
     assert nsl.describe_ruleset(nsl.DEFAULT_RULESET).splitlines()[1:] == [
@@ -472,15 +483,19 @@ def test_round_trip_do_json():
     json.dumps(dados)  # serializável
     assert dados["rules"][0] == {
         "position": 1,
-        "set_position": "first",
-        "fatigue": "rested",
-        "reps": {"op": ">", "value": "ceiling"},
-        "rpe": {"op": "<", "value": "max"},
-        "respect_planned_ramp": True,
+        "when": {
+            "logic": "and",
+            "children": [
+                {"variable": "set_index", "scope": "current", "op": "=", "value": 1},
+                {"variable": "fatigue_band", "scope": "current", "op": "=", "value": "rested"},
+                {"variable": "reps", "scope": "current", "op": ">", "value": "ceiling"},
+                {"variable": "rpe", "scope": "current", "op": "<", "value": "max", "ramp_cap": True},
+            ],
+        },
         "action": pe.INCREASE_LOAD,
         "magnitude": {"kind": "percent", "value": 25},
     }
-    assert dados["rules"][1]["reps"] == {"op": "between", "value": 8, "value_to": 12.5}
+    assert dados["rules"][1]["when"]["children"][0] == {"variable": "reps", "scope": "current", "op": "between", "value": 8, "value_to": 12.5}
     assert dados["rules"][2]["magnitude"] is None and "reason_code" not in dados["rules"][2]
     assert nsl.ruleset_from_dict(dados) == conjunto
     assert nsl.ruleset_to_dict(nsl.ruleset_from_dict(json.loads(json.dumps(dados)))) == dados
@@ -518,13 +533,23 @@ def test_export_para_o_fe_tem_vocabulario_limites_e_conjunto_padrao():
     assert [item["value"] for item in vocabulario["set_positions"]] == [item.value for item in nsl.SetPosition]
     assert [item["value"] for item in vocabulario["fatigue_conditions"]] == ["any", *(band.value for band in PriorFatigueBand)]
     assert {item["value"]: item["label"] for item in vocabulario["fatigue_conditions"]} == nsl.fatigue_condition_labels()
-    assert [item["value"] for item in vocabulario["condition_ops"]] == [">", ">=", "<", "<=", "between"]
+    assert [item["value"] for item in vocabulario["condition_ops"]] == [">", ">=", "<", "<=", "between", "=", "!="]
     assert [item["value"] for item in vocabulario["reps_tokens"]] == list(nsl.REPS_TOKENS)
     assert [item["value"] for item in vocabulario["rpe_tokens"]] == list(nsl.RPE_TOKENS)
-    assert {item["value"]: item["label"] for item in vocabulario["actions"]} == {a: DECISION_LABELS[a] for a in nsl.RULE_ACTIONS}
+    assert {item["value"]: item["label"] for item in vocabulario["actions"]} == {
+        a: DECISION_LABELS.get(a, nsl.ENGINE_TARGET_LABEL) for a in nsl.RULE_ACTIONS
+    }
+    assert {item["value"]: item["magnitude"] for item in vocabulario["actions"]} == dict(nsl.ACTION_MAGNITUDE_RULE)
+    assert {item["value"] for item in vocabulario["variables"]} == set(nsl.VARIABLES)
+    assert [item["value"] for item in vocabulario["scopes"]] == list(nsl.SCOPES)
+    assert [item["value"] for item in vocabulario["logic_ops"]] == list(nsl.LOGIC_OPS)
+    assert nsl.RULESET_ENGINE_VERSION == "next-set-load-rules-v2"
     assert [item["value"] for item in vocabulario["magnitude_kinds"]] == ["steps", "percent"]
     assert bloco["rule_limits"] == {
         "max_rules": nsl.RULESET_MAX_RULES,
+        "max_depth": nsl.RULESET_MAX_DEPTH,
+        "max_leaves_per_rule": nsl.RULESET_MAX_LEAVES_PER_RULE,
+        "set_index_max": nsl.RULE_SET_INDEX_MAX,
         "magnitude_percent_min": nsl.MAGNITUDE_PERCENT_MIN,
         "magnitude_percent_max": nsl.MAGNITUDE_PERCENT_MAX,
         "magnitude_steps_min": nsl.MAGNITUDE_STEPS_MIN,
@@ -550,3 +575,219 @@ def test_suggest_next_set_load_aceita_os_fatos_novos():
         ruleset=conjunto,
     )
     assert (resultado.direction, resultado.load_kg, resultado.rule_position, resultado.ruleset_version) == (pe.INCREASE_LOAD, 25.0, 1, 7)
+
+
+# ---------------------------------------------------------------------------
+# 5. Árvore v2: OR, aninhamento, limites, escopo previous, ENGINE_TARGET, ramp_cap, alvo
+# ---------------------------------------------------------------------------
+
+VR, VP = nsl.VAR_REPS, nsl.VAR_RPE
+EQ = nsl.ConditionOp.EQ
+
+
+def _arvore(when, *, action=pe.INCREASE_LOAD, magnitude=nsl.ONE_STEP):
+    return nsl.RuleSet(
+        reps_floor=6,
+        reps_ceiling=12,
+        rules=(nsl.Rule(position=1, when=when, action=action, magnitude=magnitude),),
+        version=9,
+        source="teste",
+    )
+
+
+def _dir(when, facts, **kw):
+    return nsl.evaluate_ruleset(facts, _arvore(when, **kw))
+
+
+def test_or_basta_um_filho():
+    when = nsl.any_of(nsl.leaf(VR, GT, Decimal(14)), nsl.leaf(VP, LTE, Decimal(6)))
+    assert _dir(when, _facts(reps=15, rpe=9)).direction == pe.INCREASE_LOAD
+    assert _dir(when, _facts(reps=8, rpe=6)).direction == pe.INCREASE_LOAD
+    assert _dir(when, _facts(reps=8, rpe=9)).direction == pe.HOLD
+
+
+def test_aninhamento_ate_a_profundidade_3_e_falha_na_4():
+    folha = nsl.leaf(VR, GT, Decimal(12))
+    d3 = nsl.all_of(nsl.any_of(nsl.all_of(folha)))
+    d4 = nsl.all_of(nsl.any_of(nsl.all_of(nsl.any_of(folha))))
+    assert nsl.RULESET_MAX_DEPTH == 3
+    assert f"{nsl.RULE_DEPTH_EXCEEDED}:1" not in nsl.validate_ruleset(_arvore(d3))
+    assert f"{nsl.RULE_DEPTH_EXCEEDED}:1" in nsl.validate_ruleset(_arvore(d4))
+    assert _dir(d3, _facts(reps=13)).direction == pe.INCREASE_LOAD
+
+
+def test_limite_de_8_folhas_por_regra():
+    folhas = [nsl.leaf(VR, GT, Decimal(i)) for i in range(1, 10)]
+    assert nsl.RULESET_MAX_LEAVES_PER_RULE == 8
+    assert f"{nsl.RULE_TOO_MANY_LEAVES}:1" not in nsl.validate_ruleset(_arvore(nsl.all_of(*folhas[:8])))
+    assert f"{nsl.RULE_TOO_MANY_LEAVES}:1" in nsl.validate_ruleset(_arvore(nsl.all_of(*folhas)))
+
+
+def test_codigos_de_validacao_da_arvore():
+    def codigos(when):
+        return nsl.validate_ruleset(_arvore(when))
+
+    assert f"{nsl.RULE_GROUP_EMPTY}:1" in codigos(nsl.all_of(nsl.all_of()))
+    assert f"{nsl.RULE_VARIABLE_UNKNOWN}:1" in codigos(nsl.all_of(nsl.leaf("peso", GT, 1)))
+    assert f"{nsl.RULE_SCOPE_INVALID}:1" in codigos(nsl.all_of(nsl.leaf(nsl.VAR_FATIGUE_BAND, EQ, "rested", scope=nsl.SCOPE_PREVIOUS)))
+    assert f"{nsl.RULE_OP_INVALID_FOR_VARIABLE}:1" in codigos(nsl.all_of(nsl.leaf(nsl.VAR_FATIGUE_BAND, GT, "rested")))
+    assert f"{nsl.RULE_RAMP_CAP_INVALID}:1" in codigos(nsl.all_of(nsl.leaf(VR, GT, Decimal(1), ramp_cap=True)))
+    assert f"{nsl.RULE_SET_INDEX_OUT_OF_RANGE}:1" in codigos(nsl.all_of(nsl.leaf(nsl.VAR_SET_INDEX, EQ, nsl.RULE_SET_INDEX_MAX + 1)))
+    assert f"{nsl.RULE_ENUM_VALUE_UNKNOWN}:1" in codigos(nsl.all_of(nsl.leaf(nsl.VAR_FATIGUE_BAND, EQ, "tired")))
+    assert f"{nsl.RULE_LOGIC_UNKNOWN}:1" in codigos(nsl.ConditionGroup("xor", (nsl.leaf(VR, GT, Decimal(1)),)))
+
+
+def test_escopo_previous_com_fato_ausente_nao_casa():
+    when = nsl.all_of(nsl.leaf(VP, GTE, Decimal(9), scope=nsl.SCOPE_PREVIOUS))
+    assert _dir(when, _facts()).direction == pe.HOLD  # 1ª série: sem anterior
+    assert _dir(when, _facts(previous=nsl.PreviousSetFacts(reps=10, rpe=9.5, weight_kg=20))).direction == pe.INCREASE_LOAD
+    assert _dir(when, _facts(previous=nsl.PreviousSetFacts(reps=10, rpe=None))).direction == pe.HOLD
+    assert _dir(when, _facts(previous=nsl.PreviousSetFacts(reps=10, rpe=8))).direction == pe.HOLD
+
+
+def test_token_target_e_o_rpe_alvo_da_serie():
+    when = nsl.all_of(nsl.leaf(VP, LT, nsl.RPE_TOKEN_TARGET))
+    assert _dir(when, _facts(rpe=7, rpe_target=8)).direction == pe.INCREASE_LOAD
+    assert _dir(when, _facts(rpe=8, rpe_target=8)).direction == pe.HOLD
+    assert _dir(when, _facts(rpe=7, rpe_target=None)).direction == pe.HOLD  # sem alvo não casa
+    igual = nsl.all_of(nsl.leaf(VP, EQ, nsl.RPE_TOKEN_TARGET))
+    assert _dir(igual, _facts(rpe=8, rpe_target=8)).direction == pe.INCREASE_LOAD
+    assert _dir(igual, _facts(rpe=8, rpe_target=None)).direction == pe.HOLD
+
+
+@pytest.mark.parametrize(
+    ("alvo", "magnitude", "executada", "direcao", "carga"),
+    [
+        (30, None, 20, pe.INCREASE_LOAD, 30.0),
+        (30, STEPS_2, 20, pe.INCREASE_LOAD, 35.0),
+        (30, nsl.Magnitude(nsl.MagnitudeKind.STEPS, Decimal(-2)), 20, pe.INCREASE_LOAD, 25.0),
+        (30, nsl.Magnitude(nsl.MagnitudeKind.PERCENT, Decimal(10)), 20, pe.INCREASE_LOAD, 32.5),  # 33 -> 32,5
+        (30, nsl.Magnitude(nsl.MagnitudeKind.PERCENT, Decimal(-10)), 20, pe.INCREASE_LOAD, 27.5),  # 27 -> 27,5
+        (20, None, 20, pe.HOLD, 20.0),
+        (15, None, 20, pe.DECREASE_LOAD, 15.0),
+    ],
+)
+def test_engine_target_com_alvo_e_direcao_derivada(alvo, magnitude, executada, direcao, carga):
+    when = nsl.all_of(nsl.leaf(VR, GT, Decimal(1)))
+    r = _dir(when, _facts(weight_kg=executada, engine_target_kg=alvo), action=nsl.ACTION_ENGINE_TARGET, magnitude=magnitude)
+    assert (r.direction, r.load_kg, r.reason, r.rule_position) == (direcao, carga, nsl.REASON_RULE_MATCHED, 1)
+
+
+def test_engine_target_e_limitado_pelo_teto_do_equipamento():
+    when = nsl.all_of(nsl.leaf(VR, GT, Decimal(1)))
+    r = _dir(when, _facts(weight_kg=20, engine_target_kg=40, max_load_kg=30), action=nsl.ACTION_ENGINE_TARGET, magnitude=None)
+    assert (r.direction, r.load_kg) == (pe.INCREASE_LOAD, 30.0)
+    topo = _dir(when, _facts(weight_kg=30, engine_target_kg=40, max_load_kg=30), action=nsl.ACTION_ENGINE_TARGET, magnitude=None)
+    assert (topo.direction, topo.reason, topo.load_kg) == (pe.HOLD, nsl.REASON_AT_EQUIPMENT_CEILING, 30.0)
+
+
+def test_engine_target_sem_alvo_cai_na_proxima_regra():
+    when = nsl.all_of(nsl.leaf(VR, GT, Decimal(1)))
+    conjunto = nsl.RuleSet(
+        reps_floor=6,
+        reps_ceiling=12,
+        rules=(
+            nsl.Rule(position=1, when=when, action=nsl.ACTION_ENGINE_TARGET),
+            nsl.Rule(position=2, when=when, action=pe.INCREASE_LOAD, magnitude=nsl.ONE_STEP),
+        ),
+    )
+    assert nsl.evaluate_ruleset(_facts(engine_target_kg=None), conjunto).rule_position == 2
+    assert nsl.evaluate_ruleset(_facts(engine_target_kg=0), conjunto).rule_position == 2
+    assert nsl.evaluate_ruleset(_facts(engine_target_kg=30), conjunto).rule_position == 1
+    assert nsl.ruleset_uses_engine_target(conjunto) is True
+
+
+def test_ramp_cap_preserva_o_motivo_de_rampa_quando_so_o_cap_barrou():
+    when = nsl.all_of(nsl.leaf(VR, GTE, Decimal(12)), nsl.leaf(VP, LT, Decimal(9), ramp_cap=True))
+    barrada = _dir(when, _facts(reps=12, rpe=8, planned_rpe=8))
+    assert (barrada.direction, barrada.reason) == (pe.HOLD, nsl.REASON_WITHIN_PLANNED_RAMP)
+    assert _dir(when, _facts(reps=12, rpe=7, planned_rpe=8)).direction == pe.INCREASE_LOAD
+    # barrada por outra folha (reps) não é motivo de rampa
+    assert _dir(when, _facts(reps=10, rpe=8, planned_rpe=8)).reason == nsl.REASON_WITHIN_RULE
+    # ramp_cap dentro de OR: outro ramo que casa vence
+    ou = nsl.any_of(nsl.leaf(VP, LT, Decimal(9), ramp_cap=True), nsl.leaf(VR, GT, Decimal(14)))
+    assert _dir(ou, _facts(reps=15, rpe=8, planned_rpe=8)).direction == pe.INCREASE_LOAD
+    assert _dir(ou, _facts(reps=10, rpe=8, planned_rpe=8)).reason == nsl.REASON_WITHIN_PLANNED_RAMP
+
+
+def test_to_dict_do_resultado_e_aditivo_e_traz_as_chaves_antigas():
+    dados = nsl.evaluate_ruleset(_facts(reps=16), nsl.DEFAULT_RULESET).to_dict()
+    for chave in ("direction", "load_kg", "reason", "reason_label", "executed_kg", "step_kg", "planned_rpe", "rule_position", "rule_text", "ruleset_version"):
+        assert chave in dados, chave
+    json.dumps(dados, ensure_ascii=False)
+
+
+def test_json_v1_le_e_escreve_v2_com_when():
+    v1 = {
+        "reps_floor": 6,
+        "reps_ceiling": 12,
+        "rules": [
+            {
+                "set_position": "first",
+                "fatigue": "rested",
+                "reps": {"op": ">", "value": "ceiling"},
+                "rpe": {"op": "<", "value": "max"},
+                "respect_planned_ramp": True,
+                "action": "INCREASE_LOAD",
+                "magnitude": {"kind": "percent", "value": 25},
+            },
+            {"action": "DECREASE_LOAD", "magnitude": {"kind": "steps", "value": 1}, "reps": {"op": "<", "value": "floor"}},
+        ],
+    }
+    lido = nsl.ruleset_from_dict(v1)
+    assert lido.rules[0] == regra_v1(
+        1,
+        set_position=nsl.SetPosition.FIRST,
+        fatigue=nsl.FatigueCondition.RESTED,
+        reps=nsl.Condition(GT, nsl.REPS_TOKEN_CEILING),
+        rpe=nsl.Condition(LT, nsl.RPE_TOKEN_MAX),
+        respect_planned_ramp=True,
+        action=pe.INCREASE_LOAD,
+        magnitude=PERCENT_25,
+    )
+    escrito = nsl.ruleset_to_dict(lido)
+    assert all("when" in rule and "set_position" not in rule and "reps" not in rule for rule in escrito["rules"])
+    assert nsl.ruleset_from_dict(json.loads(json.dumps(escrito))) == lido
+    fatos = _facts(reps=13, rpe=8, working_set_index=1, fatigue_band=PriorFatigueBand.RESTED, rpe_ceiling=10)
+    r = nsl.evaluate_ruleset(fatos, lido)
+    assert (r.direction, r.load_kg, r.rule_position) == (pe.INCREASE_LOAD, 25.0, 1)
+
+
+def test_conjunto_padrao_em_arvore_nos_limites_da_regra_de_2026_10_12():
+    casos = [(16, 8, pe.INCREASE_LOAD), (15, 8, pe.INCREASE_LOAD), (12, 8.5, pe.INCREASE_LOAD), (12, 9, pe.HOLD), (5, 10, pe.DECREASE_LOAD), (5, 9, pe.HOLD)]
+    for reps, rpe, esperado in casos:
+        assert nsl.evaluate_ruleset(_facts(reps=reps, rpe=rpe), nsl.DEFAULT_RULESET).direction == esperado, (reps, rpe)
+
+
+def test_v1_com_rampa_e_rpe_maior_ou_igual_continua_valido_e_ignora_a_rampa():
+    def conjunto(rampa):
+        return nsl.ruleset_from_dict(
+            {
+                "reps_floor": 6,
+                "reps_ceiling": 12,
+                "rules": [
+                    {"rpe": {"op": ">=", "value": 8}, "respect_planned_ramp": rampa, "action": "HOLD"},
+                    {"action": "DECREASE_LOAD", "magnitude": {"kind": "steps", "value": 1}, "reps": {"op": "<", "value": "floor"}},
+                ],
+            }
+        )
+
+    com, sem = conjunto(True), conjunto(False)
+    assert not [c for c in nsl.validate_ruleset(com) if c.startswith("RULE_RAMP")]
+    folha = com.rules[0].when.children[0]
+    assert folha.ramp_cap is False
+    for rpe in (7, 8, 9):
+        fatos = _facts(reps=10, rpe=rpe, planned_rpe=8)
+        assert nsl.evaluate_ruleset(fatos, com).reason == nsl.evaluate_ruleset(fatos, sem).reason
+
+
+def test_engine_target_sem_alvo_nao_vira_motivo_de_rampa():
+    when = nsl.all_of(nsl.leaf(VR, GTE, Decimal(12)), nsl.leaf(VP, LT, Decimal(9), ramp_cap=True))
+    conjunto = nsl.RuleSet(
+        reps_floor=6,
+        reps_ceiling=12,
+        rules=(nsl.Rule(position=1, when=when, action=nsl.ACTION_ENGINE_TARGET),),
+    )
+    for alvo in (None, 0):
+        r = nsl.evaluate_ruleset(_facts(reps=12, rpe=8, planned_rpe=8, engine_target_kg=alvo), conjunto)
+        assert (r.direction, r.reason) == (pe.HOLD, nsl.REASON_WITHIN_RULE), alvo

@@ -349,6 +349,14 @@
         {
           "value": "between",
           "label": "entre"
+        },
+        {
+          "value": "=",
+          "label": "="
+        },
+        {
+          "value": "!=",
+          "label": "≠"
         }
       ],
       "reps_tokens": [
@@ -365,20 +373,32 @@
         {
           "value": "max",
           "label": "máximo"
+        },
+        {
+          "value": "target",
+          "label": "alvo"
         }
       ],
       "actions": [
         {
           "value": "HOLD",
-          "label": "Manter"
+          "label": "Manter",
+          "magnitude": "none"
         },
         {
           "value": "INCREASE_LOAD",
-          "label": "Aumentar carga"
+          "label": "Aumentar carga",
+          "magnitude": "required"
         },
         {
           "value": "DECREASE_LOAD",
-          "label": "Reduzir carga"
+          "label": "Reduzir carga",
+          "magnitude": "required"
+        },
+        {
+          "value": "ENGINE_TARGET",
+          "label": "Recomendação do motor",
+          "magnitude": "optional"
         }
       ],
       "magnitude_kinds": [
@@ -390,10 +410,133 @@
           "value": "percent",
           "label": "percentual da carga"
         }
+      ],
+      "variables": [
+        {
+          "value": "set_index",
+          "label": "série",
+          "kind": "number",
+          "scopes": [
+            "current"
+          ],
+          "ops": [
+            "=",
+            "!=",
+            ">=",
+            "<=",
+            "between"
+          ],
+          "tokens": []
+        },
+        {
+          "value": "fatigue_band",
+          "label": "fadiga",
+          "kind": "enum",
+          "scopes": [
+            "current"
+          ],
+          "ops": [
+            "=",
+            "!="
+          ],
+          "enum_values": [
+            {
+              "value": "rested",
+              "label": "descansado"
+            },
+            {
+              "value": "pre_fatigued",
+              "label": "pré-fatigado"
+            },
+            {
+              "value": "heavily_fatigued",
+              "label": "muito fatigado"
+            }
+          ]
+        },
+        {
+          "value": "reps",
+          "label": "reps",
+          "kind": "number",
+          "scopes": [
+            "current",
+            "previous"
+          ],
+          "ops": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "=",
+            "!=",
+            "between"
+          ],
+          "tokens": [
+            {
+              "value": "floor",
+              "label": "piso"
+            },
+            {
+              "value": "ceiling",
+              "label": "teto"
+            }
+          ]
+        },
+        {
+          "value": "rpe",
+          "label": "RPE",
+          "kind": "number",
+          "scopes": [
+            "current",
+            "previous"
+          ],
+          "ops": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "=",
+            "!=",
+            "between"
+          ],
+          "tokens": [
+            {
+              "value": "max",
+              "label": "máximo"
+            },
+            {
+              "value": "target",
+              "label": "alvo"
+            }
+          ]
+        }
+      ],
+      "scopes": [
+        {
+          "value": "current",
+          "label": "série executada"
+        },
+        {
+          "value": "previous",
+          "label": "série anterior"
+        }
+      ],
+      "logic_ops": [
+        {
+          "value": "and",
+          "label": "E"
+        },
+        {
+          "value": "or",
+          "label": "OU"
+        }
       ]
     },
     "rule_limits": {
       "max_rules": 20,
+      "max_depth": 3,
+      "max_leaves_per_rule": 8,
+      "set_index_max": 20,
       "magnitude_percent_min": 1,
       "magnitude_percent_max": 50,
       "magnitude_steps_min": 1,
@@ -411,14 +554,17 @@
       "rules": [
         {
           "position": 1,
-          "set_position": "any",
-          "fatigue": "any",
-          "reps": {
-            "op": ">",
-            "value": 15
+          "when": {
+            "logic": "and",
+            "children": [
+              {
+                "variable": "reps",
+                "scope": "current",
+                "op": ">",
+                "value": 15
+              }
+            ]
           },
-          "rpe": null,
-          "respect_planned_ramp": false,
           "action": "INCREASE_LOAD",
           "magnitude": {
             "kind": "steps",
@@ -428,17 +574,24 @@
         },
         {
           "position": 2,
-          "set_position": "any",
-          "fatigue": "any",
-          "reps": {
-            "op": ">=",
-            "value": 12
+          "when": {
+            "logic": "and",
+            "children": [
+              {
+                "variable": "reps",
+                "scope": "current",
+                "op": ">=",
+                "value": 12
+              },
+              {
+                "variable": "rpe",
+                "scope": "current",
+                "op": "<",
+                "value": 9,
+                "ramp_cap": true
+              }
+            ]
           },
-          "rpe": {
-            "op": "<",
-            "value": 9
-          },
-          "respect_planned_ramp": true,
           "action": "INCREASE_LOAD",
           "magnitude": {
             "kind": "steps",
@@ -448,17 +601,23 @@
         },
         {
           "position": 3,
-          "set_position": "any",
-          "fatigue": "any",
-          "reps": {
-            "op": "<",
-            "value": 6
+          "when": {
+            "logic": "and",
+            "children": [
+              {
+                "variable": "reps",
+                "scope": "current",
+                "op": "<",
+                "value": 6
+              },
+              {
+                "variable": "rpe",
+                "scope": "current",
+                "op": ">=",
+                "value": 10
+              }
+            ]
           },
-          "rpe": {
-            "op": ">=",
-            "value": 10
-          },
-          "respect_planned_ramp": false,
           "action": "DECREASE_LOAD",
           "magnitude": {
             "kind": "steps",

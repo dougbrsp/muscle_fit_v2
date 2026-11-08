@@ -13,7 +13,7 @@ import {
 import type { PublishedRuleSetResponse, StoredRuleSet } from '@/lib/next-set-load-rules-types';
 import { theme } from '@/theme';
 import { RegrasCargaClient } from './RegrasCargaClient';
-import { RuleSetTable } from './components/RuleSetTable';
+import { RuleCard } from './components/RuleCard';
 import { VersionsList } from './components/VersionsList';
 
 /**
@@ -83,15 +83,20 @@ describe('RegrasCargaClient', () => {
   });
 });
 
-describe('RuleSetTable', () => {
-  it('mostra o texto do servidor por regra, ou "gerando" enquanto não chega', () => {
-    const rules = draftFromRuleSet(MOTOR_DEFAULT_RULESET).rules;
-    const html = render(
-      createElement(RuleSetTable, { rules, texts: ['texto A', null, 'texto C'], onChange: () => undefined }),
-    );
+describe('RuleCard', () => {
+  it('bloco SE/ENTÃO com a árvore e o texto do servidor, ou "gerando" enquanto não chega', () => {
+    const rule = draftFromRuleSet(MOTOR_DEFAULT_RULESET).rules[1];
+    const props = { rule, index: 1, canDuplicate: true, onPatch: () => undefined, onDuplicate: () => undefined, onRemove: () => undefined };
+    const html = render(createElement(RuleCard, { ...props, text: 'texto A' }));
     expect(html).toContain('texto A');
-    expect(html).toContain('texto C');
-    expect(html).toContain('Gerando o texto da regra');
+    expect(html).toContain('SE');
+    expect(html).toContain('ENTÃO');
+    expect(html).toContain('Regra 2');
+    expect(html).toContain('Adicionar condição');
+    expect(html).toContain('Adicionar grupo (parênteses)');
+    expect(html).toContain('série executada');
+    const pending = render(createElement(RuleCard, { ...props, text: null }));
+    expect(pending).toContain('Gerando o texto da regra');
   });
 });
 

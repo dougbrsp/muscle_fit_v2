@@ -60,13 +60,15 @@ from .domain.next_set_load import (
     DEFAULT_RULESET,
     REASON_NEXT_SET_RULE,
     NextSetLoad,
+    PreviousSetFacts,
     RuleSet,
     SetFacts,
     evaluate_ruleset,
     planned_ramp_rpe,
 )
 from .domain.progression_engine import round_to_equipment_step  # noqa: F401 - helper público único (reexportado)
-from .domain.progression_engine import cap_load_to_ceiling, load_increment
+from .domain.prescription import parse_rpe
+from .domain.progression_engine import cap_load_to_ceiling, load_increment, set_effort_target
 from .domain.training_goal import DEFAULT_GOAL
 from .domain.training_history import parse_reps_range
 from .db_helpers import rows as _fetchall
@@ -557,6 +559,21 @@ def payload_working_set_index(values: Mapping[str, Any]) -> int:
     return sum(1 for item in previous if normalize_set_type((item or {}).get("set_type")) == WORKING)
 
 
+def last_working_previous_set(values: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+    """Última série de TRABALHO de `previous_sets_this_session` (a anterior à
+    avaliada; escopo `previous` da regra) como `{reps, rpe, weight_kg}`; None
+    sem nenhuma. Só monta o fato: a regra é do dono."""
+    for item in reversed(values.get("previous_sets_this_session") or []):
+        item = item or {}
+        if normalize_set_type(item.get("set_type")) == WORKING:
+            return {"reps": item.get("reps"), "rpe": item.get("rpe"), "weight_kg": item.get("weight_kg")}
+    return None
+
+
+_NO_ENGINE_TARGET: Any = object()
+_NO_RPE_TARGET: Any = object()
+
+
 def next_set_load_for(
     values: Mapping[str, Any],
     context: Optional[PairEngineContext],
@@ -567,6 +584,9 @@ def next_set_load_for(
     rpe_ceiling: Any = None,
     ruleset: Optional[RuleSet] = None,
     intensity_status: Optional[str] = None,
+    previous_set: Optional[Mapping[str, Any]] = None,
+    engine_target_kg: Any = _NO_ENGINE_TARGET,
+    rpe_target: Any = _NO_RPE_TARGET,
 ) -> Optional[NextSetLoad]:
     """Regra da próxima série (`domain/next_set_load.py`) para a série em
     `values` (payload da avaliação ou do salvamento: `set_type`, `reps`,
@@ -591,6 +611,13 @@ def next_set_load_for(
     (`SetIntensityReading.status`, dono `progression_engine`); o dono da
     regra o usa só para o motivo do MANTER (veredito único no card).
 
+    Árvore v2: `previous_set` (`reps`/`rpe`/`weight_kg` da última série de
+    trabalho anterior do exercício na sessão; None = não lida/inexistente),
+    `engine_target_kg` (carga do motor para o par; sem ele, a da
+    `context.decision`) e `rpe_target` (RPE alvo efetivo da série; sem ele, o
+    alvo da ficha em `values["rpe_target"]` restringido pelo degrau da rampa,
+    `set_effort_target`) só são repassados aos fatos.
+
     M97 D: com `context.deload` (sessão de deload), a carga da próxima série
     é a do dono do deload (`deload_next_set_load`), não a do conjunto."""
     if context is not None and context.deload is not None:
@@ -606,6 +633,17 @@ def next_set_load_for(
         planned_rpe = planned_ramp_rpe(values.get("rpe_target"), payload_index)
     if working_set_index is _NO_SET_INDEX:
         working_set_index = payload_index + 1
+    if engine_target_kg is _NO_ENGINE_TARGET:
+        engine_target_kg = context.decision.load_kg if context and context.decision else None
+    if rpe_target is _NO_RPE_TARGET:
+        rpe_target = set_effort_target(parse_rpe(values.get("rpe_target")), planned_rpe)
+    previous = (
+        PreviousSetFacts(
+            reps=previous_set.get("reps"), rpe=previous_set.get("rpe"), weight_kg=previous_set.get("weight_kg")
+        )
+        if previous_set
+        else None
+    )
     facts = SetFacts(
         set_type=values.get("set_type") or WORKING,
         working_set_index=working_set_index,
@@ -622,6 +660,9 @@ def next_set_load_for(
         measure=values.get("measure"),
         intensity_status=intensity_status,
         max_load_kg=context.max_load_kg if context else None,
+        engine_target_kg=engine_target_kg,
+        rpe_target=rpe_target,
+        previous=previous,
     )
     return evaluate_ruleset(facts, ruleset or DEFAULT_RULESET)
 
