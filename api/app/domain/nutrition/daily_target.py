@@ -77,7 +77,9 @@ from .body_composition import resolved_fat_mass_kg, resolved_ffm_kg
 from .phases import MAINTENANCE_KCAL_PHASES, PhaseKind
 from .weekly_budget import week_days
 
-ENGINE_VERSION: Final[str] = "nutrition-v1"
+# v2: gordura = fração efetiva das kcal FINAIS do dia (fixed_protein respeita a fração; ciclo preserva o %). A troca de versão
+# faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (hoje e futuras); congeladas ficam como estão.
+ENGINE_VERSION: Final[str] = "nutrition-v2"
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no
@@ -450,8 +452,11 @@ def compute_daily_target(
         # sem o treino dele), então a média semanal se preserva sem conhecer os outros dias.
         tipo_dia = plan_params.cycle_kinds[day_context.day.weekday()]
         base = metas_repouso if metas_repouso is not None else _cycle_base(plan_params, params, subject, mlg, metas, tmb.kcal, modo_efetivo, nivel_efetivo)
+        # Sem gramas manuais a gordura segue a fração efetiva da meta do dia sobre a kcal FINAL (com o ciclo);
+        # com gramas manuais (D6) ela fica em gramas, como o usuário fixou.
         metas, limitacoes_ciclo = carb_cycling.apply_cycle_over_base(
-            metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg
+            metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg,
+            keep_fat_share=plan_params.manual_macros is None,
         )
     elif plan_params.carb_cycling_enabled:
         if day_context.week_training_days is None:

@@ -90,23 +90,23 @@ def test_gordura_alta_sem_folga_de_carbo_cai_para_o_padrao_da_estrategia():
     assert mc.LIMIT_CARB_BELOW_MIN in alvo.limitations
 
 
-def test_proteina_fixa_divide_o_restante_em_partes_iguais_de_kcal():
-    # Maintenance 2000, 80 kg: proteína 2,0 × 80 = 160 g (640 kcal); sobram 1360 kcal -> 680 / 680 (34% de gordura).
+def test_proteina_fixa_respeita_a_fracao_de_gordura_configurada_do_plano():
+    # Maintenance 2000, 80 kg: proteína 2,0 × 80 = 160 g; gordura = 25% (a do plano) das kcal, não "partes iguais".
     alvo = _split(S.MAINTENANCE, 2000.0, P.FIXED_PROTEIN)
-    assert alvo.fat_g * mc.KCAL_PER_G_FAT == pytest.approx(680.0)
-    assert alvo.carb_g * mc.KCAL_PER_G_CARB == pytest.approx(680.0)
+    assert alvo.fat_g * mc.KCAL_PER_G_FAT == pytest.approx(0.25 * 2000.0)
+    assert alvo == _split(S.MAINTENANCE, 2000.0)
 
 
-def test_proteina_fixa_com_sobra_grande_prende_a_gordura_no_teto_da_manutencao():
-    # 2600 kcal: metade de 1960 seria 37,7% das kcal; o teto da faixa é 35%.
-    alvo = _split(S.MAINTENANCE, 2600.0, P.FIXED_PROTEIN)
-    assert _share_gordura(alvo) == pytest.approx(st.MAINT_FAT_KCAL_SHARE_RANGE[1])
+def test_proteina_fixa_com_plano_fora_do_default_usa_a_fracao_do_plano():
+    params = replace(st.StrategyParams.defaults_for(S.MAINTENANCE), fat_kcal_share=0.30)
+    alvo = mc.macro_split_for_priority(2600.0, params, P.FIXED_PROTEIN, PESO, MLG)
+    assert _share_gordura(alvo) == pytest.approx(0.30)
 
 
-def test_proteina_fixa_prende_a_gordura_no_teto_da_faixa():
-    # Cutting 2000 kcal: sobram 1334 kcal; metade seria 33% das kcal, acima do teto de 30%.
-    alvo = _split(S.CUTTING, 2000.0, P.FIXED_PROTEIN)
-    assert _share_gordura(alvo) == pytest.approx(st.CUT_FAT_KCAL_SHARE_RANGE[1])
+def test_proteina_fixa_no_cutting_usa_a_fracao_configurada_e_nao_30_por_cento():
+    params = replace(st.StrategyParams.defaults_for(S.CUTTING), fat_kcal_share=0.20)
+    alvo = mc.macro_split_for_priority(2000.0, params, P.FIXED_PROTEIN, PESO, MLG)
+    assert _share_gordura(alvo) == pytest.approx(0.20)
 
 
 def test_proteina_fixa_com_kcal_que_nao_cobre_a_proteina_usa_o_padrao():
@@ -148,13 +148,14 @@ def test_gordura_alta_com_plano_fora_do_default_sobe_ate_o_teto_quando_cabe():
     assert _share_gordura(alta) == pytest.approx(st.MAINT_FAT_KCAL_SHARE_RANGE[1])
 
 
-def test_proteina_fixa_respeita_o_piso_de_carbo_do_bulking():
-    # 80 kg, 2200 kcal: proteína 640 kcal; metade do resto seria 35% de gordura e deixaria o carbo em
-    # 2,47 g/kg (< 3,0). O piso de 3 g/kg = 960 kcal limita a gordura a (2200 - 640 - 960) / 2200 = 27,3%.
-    alvo = _split(S.BULKING, 2200.0, P.FIXED_PROTEIN)
-    assert alvo.carb_g / PESO == pytest.approx(st.BULK_CARB_MIN_G_PER_KG)
-    assert _share_gordura(alvo) == pytest.approx(600.0 / 2200.0)
-    assert mc.LIMIT_CARB_BELOW_MIN not in alvo.limitations
+def test_proteina_fixa_nao_troca_a_fracao_para_proteger_o_piso_de_carbo_do_bulking():
+    # 80 kg, 2200 kcal, gordura 30%: carbo abaixo de 3 g/kg. A fração configurada vale e o motor AVISA
+    # (`carb_below_min_g_per_kg`), igual a BALANCED, em vez de mudar a fração silenciosamente.
+    params = replace(st.StrategyParams.defaults_for(S.BULKING), fat_kcal_share=0.30)
+    alvo = mc.macro_split_for_priority(2200.0, params, P.FIXED_PROTEIN, PESO, MLG)
+    assert _share_gordura(alvo) == pytest.approx(0.30)
+    assert alvo.carb_g / PESO < st.BULK_CARB_MIN_G_PER_KG
+    assert mc.LIMIT_CARB_BELOW_MIN in alvo.limitations
 
 
 def test_proteina_fixa_nao_leva_a_gordura_abaixo_do_piso_da_faixa():

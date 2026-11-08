@@ -633,7 +633,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v1",
+    "engine_version": "nutrition-v2",
     "sexes": [
       "male",
       "female",
@@ -684,7 +684,7 @@
     ],
     "macro_priority_labels": {
       "balanced": "Equilibrado",
-      "fixed_protein": "Proteína fixa (carboidrato e gordura equilibrados)",
+      "fixed_protein": "Proteína fixa (gordura pela % configurada, carboidrato com o resto)",
       "high_carb": "Carboidrato alto (gordura baixa)",
       "high_fat": "Gordura alta (carboidrato baixo)"
     },
