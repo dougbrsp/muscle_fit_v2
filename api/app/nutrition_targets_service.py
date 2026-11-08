@@ -382,11 +382,13 @@ def load_user_inputs(
                 sessoes.setdefault(dia, []).append(
                     SessionFacts(calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"))
                 )
-    # Conexão, frescor e atividades do Intervals só quando algum plano em jogo é o automático (planos clássicos não
+    # Atividades do Intervals só quando algum plano em jogo soma extras (explícito/automático); conexão e frescor só no automático (o embutido não
     # fazem nenhum SELECT novo). `plans` = as configurações que vão usar estas entradas.
-    com_intervals = any(plano.is_auto_intervals for plano in plans)
+    planos = list(plans)
+    com_intervals = any(plano.is_auto_intervals for plano in planos)
+    com_extras = any(plano.sums_extra_activities for plano in planos)
     extras: dict[date, list[ExtraActivity]] = {}
-    if com_intervals and fim_sessoes >= date_from:
+    if com_extras and fim_sessoes >= date_from:
         cur.execute(EXTRA_ACTIVITIES_SQL, (uid, date_from, fim_sessoes))
         for row in cur.fetchall() or []:
             dia = _as_date(row.get("activity_date"))
@@ -414,8 +416,8 @@ def load_user_inputs(
         sessions=sessoes,
         extra_activities=extras,
         intervals_in_sync=em_dia,
-        intervals_loaded=com_intervals,
-        **_load_energy(cur, uid, today, series, plans),
+        intervals_loaded=com_extras,
+        **_load_energy(cur, uid, today, series, planos),
     )
 
 
@@ -456,7 +458,9 @@ def compute_day(inputs: UserInputs, settings: PlanSettings, day: date, today: da
     # Só o plano automático leva os extras e o estado da sincronização ao contexto (os modos clássicos ficam como
     # sempre, hash inclusive). Sem sincronização os extras não valem e nem entram no contexto.
     automatico = settings.is_auto_intervals
-    extras = inputs.extra_activities.get(day, ()) if automatico and inputs.intervals_in_sync else ()
+    extras = ()
+    if settings.sums_extra_activities and (not automatico or inputs.intervals_in_sync):
+        extras = inputs.extra_activities.get(day, ())
     estimativa = None
     historico_indisponivel = False
     if settings.is_adaptive:  # a estimativa do dia vem do `replay` do histórico (dono: `adaptive_energy.estimate_for_day`)
@@ -713,7 +717,7 @@ def ensure_daily_targets(
             # cujo histórico as entradas não trazem, recarrega; nenhum caminho grava meta adaptativa sem o histórico do modo certo.
             if (
                 entradas is None
-                or (any(p.is_auto_intervals for p in planos_dos_dias) and not entradas.intervals_loaded)
+                or (any(p.sums_extra_activities for p in planos_dos_dias) and not entradas.intervals_loaded)
                 or not entradas.covers(planos_dos_dias)
             ):
                 entradas = load_user_inputs(cur, user_id, dias[0][0], dias[-1][0], hoje, planos_dos_dias)

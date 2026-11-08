@@ -33,9 +33,13 @@ def _extras(*atividades: tuple[str, float | None]) -> tuple[ee.ExtraActivity, ..
 # --- motor: soma dos extras ------------------------------------------------------------------------
 
 
-def test_o_vocabulario_do_motor_bate_com_o_dono_da_classificacao():
-    assert ee.EXTRA_ACTIVITY_KINDS == {kind.CARDIO, kind.OTHER}
-    assert kind.STRENGTH not in ee.EXTRA_ACTIVITY_KINDS
+def test_o_tipo_so_rotula_e_nao_filtra_o_que_soma():
+    """2026-11-08: tudo que entra pelo Intervals conta; a classe do dono da classificação é só exibição."""
+    assert not hasattr(ee, "EXTRA_ACTIVITY_KINDS")
+    tipos = {kind.classify(esporte) for esporte in ("Walk", "WeightTraining", "RockClimbing")}
+    assert tipos == {kind.CARDIO, kind.STRENGTH, kind.OTHER}
+    resultado = ee.extra_activity_kcal(_extras(("Walk", 100), ("WeightTraining", 200), ("RockClimbing", 50), ("TipoNovoXYZ", 30)))
+    assert resultado.kcal == pytest.approx(380)
 
 
 @pytest.mark.parametrize(
@@ -46,7 +50,8 @@ def test_o_vocabulario_do_motor_bate_com_o_dono_da_classificacao():
         ("01/11: só VirtualRun 427", (("VirtualRun", 427),), 427),
         ("02/11: VirtualRun 36 + RockClimbing 206 (OTHER entra)", (("VirtualRun", 36), ("RockClimbing", 206)), 242),
         ("04/11: sem atividades", (), 0),
-        ("WeightTraining sem vínculo não soma", (("WeightTraining", 428), ("StrengthTraining", 300)), 0),
+        ("musculação do Intervals sem vínculo com sessão do app conta", (("WeightTraining", 428), ("StrengthTraining", 300)), 728),
+        ("Morning Walk e tipo desconhecido contam", (("Morning Walk", 60), ("TipoNovoXYZ", 25)), 85),
         ("sem kcal não soma nem estima", (("VirtualRun", None), ("Walk", 0), ("Walk", 40)), 40),
     ],
 )
@@ -169,11 +174,39 @@ def test_automatico_sem_sincronizacao_usa_o_fator_com_exercicio_do_perfil_e_igno
     assert sem_info.tdee.kcal == pytest.approx(TMB * 1.725)
 
 
-@pytest.mark.parametrize("modo", [ee.TdeeMode.EXPLICIT_TRAINING, ee.TdeeMode.INCLUDED_IN_FACTOR])
-def test_modos_classicos_nao_somam_extras_nem_com_o_extra_no_contexto(modo):
+def test_embutido_nao_soma_extras_nem_com_o_extra_no_contexto():
+    modo = ee.TdeeMode.INCLUDED_IN_FACTOR
     com = compute_daily_target(SUJEITO, _plano(modo), day_context_for(HOJE, HOJE, FORCA, _extras(("Walk", 395))))
     sem = compute_daily_target(SUJEITO, _plano(modo), day_context_for(HOJE, HOJE, FORCA))
     assert com.tdee.kcal == pytest.approx(sem.tdee.kcal) and com.extra_activity.kcal == 0
+
+
+def test_explicito_soma_os_extras_como_o_automatico_sincronizado():
+    """2026-11-08: o fator de não-exercício não cobre exercício; o explícito soma o cardio do Intervals (ADR 0008)."""
+    extras = (ee.ExtraActivity(kind="cardio", calories_kcal=436, duration_seconds=2601),)
+    contexto = day_context_for(HOJE, HOJE, FORCA, extras)  # sem `intervals_in_sync`: não se aplica ao explícito
+    explicito = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), contexto)
+    liquido = 436 - TMB / 1440 * 2601 / 60
+    assert explicito.extra_activity.kcal == pytest.approx(liquido)
+    forca = 428 - TMB / 1440 * 60
+    assert explicito.tdee.kcal == pytest.approx(explicito.bmr.kcal * explicito.tdee.activity_factor + forca + liquido)
+    auto = compute_daily_target(SUJEITO, _plano(), day_context_for(HOJE, HOJE, FORCA, extras, intervals_in_sync=True))
+    assert auto.extra_activity.kcal == pytest.approx(explicito.extra_activity.kcal)
+    assert explicito.training_kcal.kcal == pytest.approx(forca)  # força só pelas sessões: não duplica
+
+
+def test_explicito_dia_so_de_cardio_inclui_o_gasto_sem_virar_dia_de_treino():
+    extras = (ee.ExtraActivity(kind="cardio", calories_kcal=436, duration_seconds=2601),)
+    contexto = day_context_for(HOJE, HOJE, (), extras)
+    meta = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), contexto)
+    liquido = 436 - meta.bmr.kcal / 1440 * 2601 / 60
+    assert contexto.is_training_day is False and meta.training_kcal is ee.NO_TRAINING_KCAL
+    assert meta.tdee.kcal == pytest.approx(meta.bmr.kcal * meta.tdee.activity_factor + liquido)
+    assert meta.day_kind == compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), day_context_for(HOJE, HOJE)).day_kind
+    quebra = ee.tdee_breakdown(meta.tdee, meta.extra_activity.kcal, ee.TdeeBasis.CLASSIC)
+    partes = {p.code: p.kcal for p in quebra.parts}
+    assert "training" not in partes and partes["extras"] == round(liquido)
+    assert sum(partes.values()) == quebra.total_kcal == round(meta.tdee.kcal)
 
 
 def test_dia_futuro_nao_tem_extra():
@@ -238,12 +271,14 @@ def test_servico_automatico_soma_o_extra_e_nao_cria_coluna_nova():
     sem = _db()
     com = _db()
     com.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 427)
-    com.add_intervals_activity(ALUNO, HOJE, "WeightTraining", 500)  # sem vínculo: força não soma por esta via
-    com.add_intervals_activity(ALUNO, HOJE, "Walk", None)  # sem kcal: não soma
+    com.add_intervals_activity(ALUNO, HOJE, "WeightTraining", 500)  # sem vínculo com sessão do app: conta (qualquer tipo)
+    com.add_intervals_activity(ALUNO, HOJE, "WeightTraining", 700, linked=True)  # vinculada: é a sessão do app, não vem aqui
+    com.add_intervals_activity(ALUNO, HOJE, "Walk", None)  # sem kcal: não soma e não é estimada
     base, linha = _linha(sem), _linha(com)
     assert linha["is_training_day"] is False and linha["training_kcal"] is None
-    assert linha["tdee_kcal"] == pytest.approx(base["tdee_kcal"] + 427)
-    assert linha["extra_activity"]["kcal"] == pytest.approx(427)
+    assert linha["tdee_kcal"] == pytest.approx(base["tdee_kcal"] + 927)
+    assert linha["extra_activity"]["kcal"] == pytest.approx(927)
+    assert ee.LIMIT_ACTIVITY_WITHOUT_KCAL in [i["code"] for i in linha["limitations"]]
     gravada = com.targets[(ALUNO, HOJE)]
     assert gravada["inputs_json"]["day_context"]["extra_activities"][0]["calories_kcal"] == 427.0
     assert gravada["inputs_hash"] != sem.targets[(ALUNO, HOJE)]["inputs_hash"]  # a mudança recalcula o dia
@@ -261,10 +296,10 @@ def test_servico_automatico_sem_conexao_ou_com_sincronizacao_parada_cai_no_fator
     assert desconectado.targets[(ALUNO, HOJE)]["inputs_json"]["day_context"]["intervals_in_sync"] is False
 
 
-def test_servico_plano_classico_ignora_o_intervals_inteiro_e_mantem_o_hash():
-    com = _db(modo="explicit_training")
+def test_servico_plano_embutido_ignora_o_intervals_inteiro_e_mantem_o_hash():
+    com = _db(modo="included_in_factor")
     com.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 427)
-    sem = _db(modo="explicit_training", sincronizado=False)
+    sem = _db(modo="included_in_factor", sincronizado=False)
     a, b = _linha(com), _linha(sem)
     assert a["tdee_kcal"] == pytest.approx(b["tdee_kcal"]) and a["extra_activity"]["kcal"] == 0
     contexto = com.targets[(ALUNO, HOJE)]["inputs_json"]["day_context"]
@@ -300,8 +335,10 @@ def test_projecao_e_ia_usam_o_mesmo_total_pelo_mesmo_dono_no_automatico():
     passado = svc.past_training_kcal(entradas, settings, HOJE)
     assert passado[-2] == pytest.approx(558 - TMB_FAKE / 1440 * 60)  # força líquida do repouso; o extra sem duração, como veio
     assert passado[-3] == pytest.approx(427)
-    classico = svc.settings_from_row({**db.plans[1], "training_kcal_mode": "explicit_training"})
-    assert svc.past_training_kcal(entradas, classico, HOJE)[-3] == pytest.approx(0.0)  # o clássico não vê o cardio
+    embutido = svc.settings_from_row({**db.plans[1], "training_kcal_mode": "included_in_factor"})
+    assert svc.past_training_kcal(entradas, embutido, HOJE)[-3] == pytest.approx(0.0)  # o embutido não vê o cardio
+    explicito = svc.settings_from_row({**db.plans[1], "training_kcal_mode": "explicit_training"})
+    assert svc.past_training_kcal(entradas, explicito, HOJE)[-3] == pytest.approx(427)  # o explícito soma o cardio
 
 
 def ee_window() -> int:
@@ -327,9 +364,13 @@ def _consultas(db, plans):
     return entradas, visto
 
 
-def test_plano_classico_nao_faz_nenhuma_consulta_nova_e_o_automatico_faz():
+def test_plano_explicito_so_le_os_extras_o_embutido_nada_e_o_automatico_tudo():
     novas = (svc.INTERVALS_CONNECTION_SQL, svc.INTERVALS_SYNC_AGE_SQL, svc.EXTRA_ACTIVITIES_SQL)
-    classico = _db(modo="explicit_training")
+    explicito = _db(modo="explicit_training")
+    entradas, visto = _consultas(explicito, [svc.settings_from_row(explicito.plans[1])])
+    assert svc.EXTRA_ACTIVITIES_SQL in visto and entradas.intervals_loaded is True
+    assert svc.INTERVALS_CONNECTION_SQL not in visto and svc.INTERVALS_SYNC_AGE_SQL not in visto  # sem prova de sync
+    classico = _db(modo="included_in_factor")
     entradas, visto = _consultas(classico, [svc.settings_from_row(classico.plans[1])])
     assert not [sql for sql in visto if sql in novas] and entradas.intervals_loaded is False
     assert not [sql for sql in _consultas(classico, [])[1] if sql in novas]  # sem plano nenhum, idem
@@ -413,7 +454,7 @@ def test_dia_do_plano_automatico_nao_e_regravado_no_fallback_quando_as_entradas_
     antigo = next(iter(db.plans))
     db.plans[antigo]["superseded_at"] = datetime(2026, 11, 5, 10)
     db.add_plan(ALUNO, status="published", effective_from=HOJE, published_at=datetime(2026, 11, 5, 10),
-                training_kcal_mode="explicit_training")
+                training_kcal_mode="included_in_factor")
     ontem = HOJE - timedelta(days=1)
     db.add_intervals_activity(ALUNO, ontem, "VirtualRun", 200)
     classico = svc.settings_from_row(db.plans[2])
@@ -425,3 +466,49 @@ def test_dia_do_plano_automatico_nao_e_regravado_no_fallback_quando_as_entradas_
     assert linhas[ontem.isoformat()]["tdee_basis"] == "auto_synced"
     assert linhas[ontem.isoformat()]["extra_activity"]["kcal"] == pytest.approx(200)
     assert linhas[HOJE.isoformat()]["tdee_basis"] == "classic"
+
+
+def test_explicito_dia_so_de_cardio_no_servico_soma_e_recalcula_quando_a_atividade_chega_depois():
+    """Caso 08/11: a meta de hoje saiu antes do sync (só TMB × fator); a atividade nova muda o hash das entradas e a
+    meta de hoje é recalculada na leitura seguinte, sem virar dia de treino nem trocar o tipo de dia do ciclo."""
+    db = _db(modo="explicit_training")
+    antes = dict(_linha(db))
+    hash_antes = db.targets[(ALUNO, HOJE)]["inputs_hash"]
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 436, elapsed=2601)
+    depois = _linha(db)
+    liquido = 436 - TMB_FAKE / 1440 * 2601 / 60
+    assert depois["is_training_day"] is False and depois["training_kcal"] is None
+    assert depois["extra_activity"]["kcal"] == pytest.approx(liquido, abs=0.01)
+    assert depois["tdee_kcal"] == pytest.approx(antes["tdee_kcal"] + liquido, abs=0.01)
+    assert depois["day_kind"] == antes["day_kind"] and depois["tdee_basis"] == "classic"
+    assert db.targets[(ALUNO, HOJE)]["inputs_hash"] != hash_antes
+
+
+def test_sessao_do_app_sem_intervals_conta_e_a_vinculada_conta_uma_vez():
+    """Sessão do app sem atividade no Intervals conta (liquida); com a atividade VINCULADA (a lista de extras não a
+    traz) segue contando uma vez só."""
+    sem_intervals = _db(modo="explicit_training")
+    sem_intervals.add_session(ALUNO, HOJE, 428)
+    vinculada = _db(modo="explicit_training")
+    vinculada.add_session(ALUNO, HOJE, 428)
+    vinculada.add_intervals_activity(ALUNO, HOJE, "WeightTraining", 428, linked=True)
+    a, b = _linha(sem_intervals), _linha(vinculada)
+    assert a["training_kcal"] == pytest.approx(428 - TMB_FAKE / 1440 * 60, abs=0.01)
+    assert a["tdee_kcal"] == pytest.approx(b["tdee_kcal"]) and b["extra_activity"]["kcal"] == 0
+
+
+def test_breakdown_traz_uma_parcela_por_atividade_com_o_nome_do_intervals_e_soma_o_total():
+    extras = (
+        ee.ExtraActivity(kind="cardio", calories_kcal=436, label="Morning Walk", duration_seconds=2601),
+        ee.ExtraActivity(kind="strength", calories_kcal=300, label="Weight Training", duration_seconds=1800),
+    )
+    soma = ee.extra_activity_kcal(extras, TMB)
+    resultado = ee.tdee(TMB, ActivityLevel.LIGHT, ee.TdeeMode.EXPLICIT_TRAINING, soma.kcal)
+    quebra = ee.tdee_breakdown(resultado, soma.kcal, ee.TdeeBasis.CLASSIC, soma.to_dict()["items"])
+    assert [p.label for p in quebra.parts[1:]] == ["Morning Walk", "Weight Training"]
+    assert sum(p.kcal for p in quebra.parts) == quebra.total_kcal == round(resultado.kcal)
+    from app.domain.nutrition import labels as lb
+
+    publico = lb.tdee_breakdown_public(quebra)
+    assert [p["label"] for p in publico["parts"][1:]] == ["Morning Walk", "Weight Training"]
+    assert publico["parts"][1]["kcal"] == round(436 - TMB / 1440 * 2601 / 60)

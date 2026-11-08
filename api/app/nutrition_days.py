@@ -211,8 +211,9 @@ def energy_detail(
         gravado = read_stored_tdee(cur, user_id, day)
         base = TdeeBasis(meta.get("tdee_basis") or TdeeBasis.CLASSIC.value)
         extra = (meta.get("extra_activity") or {}).get("kcal")
+        itens_extra = (meta.get("extra_activity") or {}).get("items")
         if gravado is not None:
-            detalhe["breakdown"] = nutrition_labels.tdee_breakdown_public(tdee_breakdown_from_stored(gravado, extra, base))
+            detalhe["breakdown"] = nutrition_labels.tdee_breakdown_public(tdee_breakdown_from_stored(gravado, extra, base, itens_extra))
     except Exception as erro:  # noqa: BLE001 - seção aditiva: o diário não cai por causa dela
         logger.warning("nutrition.day_breakdown_failed error=%s", type(erro).__name__)
     try:

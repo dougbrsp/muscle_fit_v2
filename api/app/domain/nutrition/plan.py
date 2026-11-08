@@ -243,6 +243,11 @@ class PlanSettings:
         return self.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
 
     @property
+    def sums_extra_activities(self) -> bool:
+        """O gasto do plano soma as atividades extras do Intervals (`ee.TDEE_MODES_WITH_EXTRA_ACTIVITIES`)."""
+        return self.tdee_mode in ee.TDEE_MODES_WITH_EXTRA_ACTIVITIES
+
+    @property
     def is_adaptive(self) -> bool:
         """Plano `adaptive_balance`: o gasto do dia vem da estimativa adaptativa (`adaptive_energy`)."""
         return self.tdee_mode == ee.TdeeMode.ADAPTIVE_BALANCE

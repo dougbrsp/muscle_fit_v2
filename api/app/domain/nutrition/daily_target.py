@@ -392,10 +392,11 @@ def compute_daily_target(
     if not day_context.training_known:
         limitacoes_treino = (*limitacoes_treino, LIMIT_TRAINING_UNKNOWN_FUTURE_DAY)
 
-    # Atividades extras (cardio, caminhada do Intervals) somam SÓ no modo automático sincronizado (os modos clássicos
-    # ficam como sempre) e nunca em dia futuro.
+    # Atividades extras (cardio, caminhada do Intervals) somam no explícito e no automático sincronizado (o embutido já
+    # as tem no fator; o fallback do automático ignora) e nunca em dia futuro. Dia só de cardio: o gasto as inclui, mas
+    # `is_training_day` e o tipo de dia do ciclo não mudam.
     soma_extras = (
-        plan_params.tdee_mode == ee.TdeeMode.AUTO_INTERVALS
+        plan_params.tdee_mode in ee.TDEE_MODES_WITH_EXTRA_ACTIVITIES
         and modo_efetivo == ee.TdeeMode.EXPLICIT_TRAINING
         and day_context.training_known
     )

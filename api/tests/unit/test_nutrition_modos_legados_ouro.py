@@ -169,10 +169,12 @@ def test_tdee_breakdown_da_previa_fecha_o_total_exatamente(nome):
         assert comp_dict["notes"] == []
         treino = bool(entrada[2])
         assert ("training" in codigos) == treino
-        assert ("extras" in codigos) == bool(entrada[3] and sincronizado)
+        # uma parcela por atividade do Intervals (`activity_<n>`), com o nome do Intervals
+        assert any(c.startswith("activity_") for c in codigos) == bool(entrada[3] and sincronizado)
         if modo == "auto_intervals" and treino:  # força e extras separados: o `training_kcal` do tdee soma os dois
             partes = {p["code"]: p["kcal"] for p in comp_dict["parts"]}
-            assert partes["training"] == 354 and partes["extras"] == 320 and partes["base"] == 2492  # força líquida do repouso (60 min)
+            assert partes["training"] == 354 and partes["activity_0"] + partes["activity_1"] == 320 and partes["base"] == 2492
+            assert [p["label"] for p in comp_dict["parts"][2:]] == ["Esteira", "Caminhada"]  # força líquida do repouso (60 min)
     # o `to_dict` gravado (inputs_json) e o hash não levam a composição
     assert "tdee_breakdown" not in comp.target.to_dict() and "tdee_breakdown" not in comp.target.tdee.to_dict()
 

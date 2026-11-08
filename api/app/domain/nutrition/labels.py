@@ -237,7 +237,7 @@ TDEE_BREAKDOWN_BASE_LABELS: Final[Mapping[ee_mod.BreakdownBase, str]] = {
 }
 TDEE_BREAKDOWN_PART_LABELS: Final[Mapping[str, str]] = {
     ee_mod.BREAKDOWN_STRENGTH: "Treino de força (sem o repouso da sessão)",
-    ee_mod.BREAKDOWN_EXTRAS: "Cardio e caminhadas do Intervals (sem o repouso)",
+    ee_mod.BREAKDOWN_EXTRAS: "Atividades do Intervals (sem o repouso)",
     ee_mod.BREAKDOWN_ACTIVITY_ADJUSTMENT: "Ajuste pela atividade",
 }
 TDEE_BREAKDOWN_NOTE_LABELS: Final[Mapping[str, str]] = {
@@ -259,10 +259,12 @@ def tdee_breakdown_public(breakdown: Any) -> Any:
         return None
     partes = []
     for parte in breakdown.parts:
-        rotulo = (
-            TDEE_BREAKDOWN_BASE_LABELS[breakdown.base] if parte.code == ee_mod.BREAKDOWN_BASE
-            else TDEE_BREAKDOWN_PART_LABELS[parte.code]
-        )
+        if parte.label:  # atividade do Intervals: o nome vem do Intervals
+            rotulo = parte.label
+        elif parte.code == ee_mod.BREAKDOWN_BASE:
+            rotulo = TDEE_BREAKDOWN_BASE_LABELS[breakdown.base]
+        else:
+            rotulo = TDEE_BREAKDOWN_PART_LABELS[parte.code]
         partes.append({"code": parte.code, "label": rotulo, "kcal": parte.kcal})
     notas = [{"code": codigo, "label": TDEE_BREAKDOWN_NOTE_LABELS[codigo]} for codigo in breakdown.notes]
     return {"parts": partes, "notes": notas, "total_kcal": breakdown.total_kcal}
@@ -659,6 +661,7 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "Intervals não está sincronizado. Preencha o nível no perfil e salve o plano de novo."
     ),
     ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
+    ee_mod.LIMIT_ACTIVITY_WITHOUT_KCAL: "Atividade do Intervals sem kcal: não entrou no gasto (a kcal não é estimada).",
     ee_mod.LIMIT_REST_NOT_DISCOUNTED: (
         "Treino ou atividade sem duração: o repouso da sessão não foi descontado e a kcal entrou como veio."
     ),

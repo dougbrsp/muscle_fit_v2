@@ -121,12 +121,14 @@ LIMIT_MISSING_ACTIVITY_LEVEL = "missing_activity_level"
 LIMIT_ADAPTIVE_ESTIMATE_MISSING = "adaptive_estimate_missing"
 
 
-# --- Atividades extras do Intervals (cardio, caminhada, outras) -----------------------------------------------
-# Decisão do usuário (2026-11-05): o gasto do dia inclui o cardio e as caminhadas do Intervals, além do treino de
-# força. O SERVIÇO classifica a atividade em `app/intervals_activity_kind.py` (dono de "o que é cardio/força") e
-# entrega a classe; aqui se decide o que soma (cardio e outras; só as classes listadas). Força nunca entra por esta via (já é o treino de `activities`;
-# somar de novo duplicaria). Atividade sem kcal informada não soma e não é estimada.
-EXTRA_ACTIVITY_KINDS: Final[frozenset[str]] = frozenset({"cardio", "other"})  # = `intervals_activity_kind.CARDIO/OTHER` (teste de paridade)
+# --- Atividades do Intervals que NÃO são a sessão do app ------------------------------------------------------
+# Decisão do usuário (2026-11-08): TUDO que entra pelo Intervals, com o respectivo tipo ("Morning Walk", "Weight
+# Training"...), é gasto de atividade. A classe de `app/intervals_activity_kind.py` só dá o tipo para a tela e o
+# breakdown: NÃO filtra o que soma. A dupla contagem com o treino do app é evitada na ORIGEM: o serviço só entrega aqui
+# as atividades SEM vínculo (`activity_intervals_link`) com uma sessão de `activities`; a vinculada já é a sessão (que
+# soma uma vez, com a kcal do Intervals). Atividade sem kcal informada não soma e não é estimada (limitação).
+LIMIT_ACTIVITY_WITHOUT_KCAL = "extra_activity_without_kcal"
+EXTRA_ACTIVITY_FALLBACK_LABEL: Final[str] = "Atividade do Intervals"
 EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPORTED
 # O rótulo (nome da atividade) vem do Intervals, texto livre: o motor limita o tamanho que a API devolve e grava.
 EXTRA_ACTIVITY_LABEL_MAX_CHARS: Final[int] = 60
@@ -154,7 +156,7 @@ class ExtraActivity:
     """Uma atividade do Intervals do dia que NÃO é o treino de `activities`: classe (do dono da classificação),
     kcal informada (pode faltar) e o rótulo para a tela (nome ou tipo)."""
 
-    kind: str
+    kind: str  # tipo para exibição (classe do dono da classificação); não decide o que soma
     calories_kcal: Any = None
     label: Optional[str] = None
     # Duração em segundos (decorrido, com o movimento de reserva: `activity_energy.activity_duration_seconds`); sem ela
@@ -185,12 +187,18 @@ class ExtraActivityKcal:
     gross_kcal: Optional[float] = None
     resting_discount_kcal: float = 0.0
     limitations: tuple[str, ...] = ()
+    # kcal LÍQUIDA de cada item de `items` (mesma ordem): base das parcelas do breakdown.
+    net_by_item: tuple[float, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        itens = [item.to_dict() for item in self.items]
+        if len(self.net_by_item) == len(itens) and self.resting_discount_kcal > 0:
+            for dados_item, liquido in zip(itens, self.net_by_item):
+                dados_item["net_kcal"] = liquido
         dados: dict[str, Any] = {
             "kcal": self.kcal,
             "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
-            "items": [item.to_dict() for item in self.items],
+            "items": itens,
         }
         if self.resting_discount_kcal > 0:
             dados["gross_kcal"] = self.gross_kcal
@@ -204,24 +212,24 @@ NO_EXTRA_ACTIVITY_KCAL: Final[ExtraActivityKcal] = ExtraActivityKcal()
 def extra_activity_kcal(
     activities: Any = (), bmr_kcal: Any = None, calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE
 ) -> ExtraActivityKcal:
-    """Soma a kcal informada das atividades que não são força, LÍQUIDA do repouso da janela de cada uma (mesma regra do
-    treino: `_net_kcal`). Sem kcal (None, 0, inválida) não soma; sem duração entra como está, com
-    `LIMIT_REST_NOT_DISCOUNTED`."""
-    somadas = tuple(
-        item
-        for item in activities
-        if item.kind in EXTRA_ACTIVITY_KINDS and positive_number(item.calories_kcal) is not None
-    )
+    """Soma a kcal informada de TODA atividade do Intervals recebida (qualquer tipo), LÍQUIDA do repouso da janela de cada
+    uma (mesma regra do treino: `_net_kcal`). Sem kcal (None, 0, inválida) não soma e não é estimada
+    (`LIMIT_ACTIVITY_WITHOUT_KCAL`); sem duração entra como está, com `LIMIT_REST_NOT_DISCOUNTED`."""
+    todas = tuple(activities)
+    somadas = tuple(item for item in todas if positive_number(item.calories_kcal) is not None)
+    sem_kcal = (LIMIT_ACTIVITY_WITHOUT_KCAL,) if len(somadas) < len(todas) else ()
     if not somadas:
-        return NO_EXTRA_ACTIVITY_KCAL
+        return replace(NO_EXTRA_ACTIVITY_KCAL, limitations=sem_kcal)
     liquido = 0.0
     bruto = 0.0
     sem_desconto = False
+    por_item: list[float] = []
     for item in somadas:
         informada = positive_number(item.calories_kcal) or 0.0
         kcal, _, faltou = _net_kcal(informada, calorie_mode, item.duration_min, bmr_kcal)
         liquido += kcal
         bruto += informada
+        por_item.append(kcal)
         sem_desconto = sem_desconto or faltou
     return ExtraActivityKcal(
         kcal=liquido,
@@ -229,7 +237,8 @@ def extra_activity_kcal(
         kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE,
         gross_kcal=bruto if bruto > liquido else None,
         resting_discount_kcal=bruto - liquido,
-        limitations=(LIMIT_REST_NOT_DISCOUNTED,) if sem_desconto else (),
+        limitations=(*sem_kcal, *((LIMIT_REST_NOT_DISCOUNTED,) if sem_desconto else ())),
+        net_by_item=tuple(por_item),
     )
 
 
@@ -255,6 +264,9 @@ class TdeeMode(str, Enum):
 
 
 DEFAULT_TDEE_MODE: Final[TdeeMode] = TdeeMode.EXPLICIT_TRAINING
+# Modos cujo gasto SOMA as atividades extras do Intervals (cardio, caminhada, outras): o fator de não-exercício não cobre
+# exercício, então excluí-las subconta (decisão do usuário, 2026-11-08). No automático só com o Intervals sincronizado.
+TDEE_MODES_WITH_EXTRA_ACTIVITIES: Final[frozenset[TdeeMode]] = frozenset({TdeeMode.EXPLICIT_TRAINING, TdeeMode.AUTO_INTERVALS})
 
 
 # Rotina fora do exercício (modo automático): nível padrão do plano que não escolheu; é o fator de NÃO-exercício
@@ -728,6 +740,7 @@ def tdee(
 BREAKDOWN_BASE: Final[str] = "base"
 BREAKDOWN_STRENGTH: Final[str] = "training"  # a força, já LÍQUIDA do repouso da sessão (nome alinhado a `training_kcal`)
 BREAKDOWN_EXTRAS: Final[str] = "extras"
+BREAKDOWN_ACTIVITY_PREFIX: Final[str] = "activity_"  # `activity_<n>`: uma parcela por atividade do Intervals
 BREAKDOWN_NOTE_INCLUDED: Final[str] = "training_included_in_factor"
 BREAKDOWN_NOTE_AUTO_FALLBACK: Final[str] = "auto_fallback"
 # Adaptativo: parcela com sinal do ajuste pela atividade e notas (confiança, estimativa inicial, pendências).
@@ -757,6 +770,8 @@ class BreakdownBase(str, Enum):
 class BreakdownPart:
     code: str
     kcal: float
+    # Rótulo dinâmico (nome da atividade do Intervals); sem ele a tela usa o rótulo do código.
+    label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -774,11 +789,27 @@ def _round_step(value: float) -> float:
     return math.floor(value / BREAKDOWN_KCAL_ROUNDING_STEP + 0.5) * BREAKDOWN_KCAL_ROUNDING_STEP
 
 
-def tdee_breakdown(tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis") -> Optional[TdeeBreakdown]:
+def _activity_parts(extra_items: Any) -> list[tuple[str, float]]:
+    """(rótulo, kcal líquida) das atividades do Intervals a partir de `ExtraActivityKcal.to_dict()["items"]` (ou dos
+    itens gravados na meta). Item sem `net_kcal` (nada descontado) vale a própria kcal informada; sem kcal é ignorado."""
+    partes: list[tuple[str, float]] = []
+    for item in extra_items or ():
+        liquido = non_negative_number(item.get("net_kcal"))
+        kcal = liquido if liquido is not None else non_negative_number(item.get("calories_kcal"))
+        if kcal is None:
+            continue
+        partes.append((str(item.get("label") or EXTRA_ACTIVITY_FALLBACK_LABEL), kcal))
+    return partes
+
+
+def tdee_breakdown(
+    tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis", extra_items: Any = ()
+) -> Optional[TdeeBreakdown]:
     """Decompõe o gasto do dia em parcelas que fecham o total. `tdee_result` é o do dia (modo EFETIVO: o automático
     sincronizado vem como explícito, com `training_kcal` = força + extras; o embutido e o fallback ignoram o treino);
-    `extra_kcal` são as atividades extras já somadas; `basis` diz se é clássico, automático ou fallback. `None` sem
-    TMB ou fator (gasto desconhecido). Parcela zero (força ou extras) é omitida; a base sempre entra."""
+    `extra_kcal` são as atividades do Intervals já somadas; `extra_items` (opcional, `ExtraActivityKcal.to_dict()["items"]`)
+    quebra os extras em UMA parcela por atividade, com o nome do Intervals; `basis` diz se é clássico, automático ou
+    fallback. `None` sem TMB ou fator (gasto desconhecido). Parcela zero é omitida; a base sempre entra e fecha o total."""
     total = tdee_result.kcal
     if total is None or tdee_result.base_kcal is None:
         return None  # inclui o adaptativo sem estimativa (sem `adaptive` e sem fator)
@@ -793,14 +824,22 @@ def tdee_breakdown(tdee_result: "TdeeResult", extra_kcal: Any, basis: "TdeeBasis
             notes=(BREAKDOWN_NOTE_AUTO_FALLBACK if fallback else BREAKDOWN_NOTE_INCLUDED,),
             total_kcal=total_pub,
         )
-    extras = _round_step(non_negative_number(extra_kcal) or 0.0)
     atividade = non_negative_number(tdee_result.training_kcal) or 0.0
     forca = _round_step(max(0.0, atividade - (non_negative_number(extra_kcal) or 0.0)))
-    partes = [BreakdownPart(BREAKDOWN_BASE, total_pub - forca - extras)]
+    por_atividade = [(rotulo, _round_step(kcal)) for rotulo, kcal in _activity_parts(extra_items)]
+    por_atividade = [(rotulo, kcal) for rotulo, kcal in por_atividade if kcal > 0]
+    if por_atividade:
+        extras_parcelas = [
+            BreakdownPart(f"{BREAKDOWN_ACTIVITY_PREFIX}{i}", kcal, rotulo) for i, (rotulo, kcal) in enumerate(por_atividade)
+        ]
+    else:
+        agregado = _round_step(non_negative_number(extra_kcal) or 0.0)
+        extras_parcelas = [BreakdownPart(BREAKDOWN_EXTRAS, agregado)] if agregado > 0 else []
+    soma_extras = sum(parte.kcal for parte in extras_parcelas)
+    partes = [BreakdownPart(BREAKDOWN_BASE, total_pub - forca - soma_extras)]
     if forca > 0:
         partes.append(BreakdownPart(BREAKDOWN_STRENGTH, forca))
-    if extras > 0:
-        partes.append(BreakdownPart(BREAKDOWN_EXTRAS, extras))
+    partes.extend(extras_parcelas)
     return TdeeBreakdown(parts=tuple(partes), base=BreakdownBase.ROUTINE, notes=(), total_kcal=total_pub)
 
 
@@ -854,12 +893,14 @@ def tdee_result_from_stored(tdee: Mapping[str, Any]) -> Optional[TdeeResult]:
     )
 
 
-def tdee_breakdown_from_stored(tdee: Mapping[str, Any], extra_kcal: Any, basis: "TdeeBasis") -> Optional[TdeeBreakdown]:
+def tdee_breakdown_from_stored(
+    tdee: Mapping[str, Any], extra_kcal: Any, basis: "TdeeBasis", extra_items: Any = ()
+) -> Optional[TdeeBreakdown]:
     """Composição do gasto do DIA a partir do que está GRAVADO na meta (`inputs_json.tdee`), para todos os modos.
     Mesma saída de `tdee_breakdown` (é a mesma função por baixo: nada de regra duplicada); soma das parcelas == total.
     `None` se o dict gravado estiver incompleto."""
     resultado = tdee_result_from_stored(tdee)
-    return None if resultado is None else tdee_breakdown(resultado, extra_kcal, basis)
+    return None if resultado is None else tdee_breakdown(resultado, extra_kcal, basis, extra_items)
 
 
 def _adaptive_breakdown(partes: AdaptiveParts, total_pub: float) -> TdeeBreakdown:

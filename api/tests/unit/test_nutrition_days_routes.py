@@ -279,11 +279,20 @@ def test_dia_sincronizado_e_dia_classico_nao_trazem_aviso(db):
     assert classico["tdee_basis"] == "classic" and classico["tdee_basis_note"] is None
 
 
-def test_plano_classico_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
+def test_plano_explicito_mostra_o_extra(db):
+    db.add_activity(ALUNO, HOJE, 410, 3600)
+    db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)  # sem duração: entra como veio
+    treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
+    assert treino["extra_activity"]["kcal"] == 300.0
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60 + 300.0)
+
+
+def test_plano_embutido_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
+    db.plans[db.plano]["training_kcal_mode"] = "included_in_factor"
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["extra_activity"]["kcal"] == 0.0 and treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
+    assert treino["extra_activity"]["kcal"] == 0.0
 
 
 def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
