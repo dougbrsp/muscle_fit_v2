@@ -304,7 +304,7 @@ def test_dado_faltante_do_sujeito_lista_so_o_que_preencher():
     assert dt.missing_subject_data(compute_daily_target(SUJEITO, _plano(), _dia())) == ()
     sem_nivel = replace(SUJEITO, activity_level=None)
     assert dt.missing_subject_data(compute_daily_target(sem_nivel, _plano(), _dia())) == (ee.LIMIT_MISSING_ACTIVITY_LEVEL,)
-    # Cutting sem %G: falta a massa gorda (e a base da proteína, que é a MLG).
+    # Cutting sem %G: falta a massa gorda (a proteína do corte usa o peso desde nutrition-v4, então não depende da MLG).
     faltas = dt.missing_subject_data(compute_daily_target(SUJEITO, _plano(S.CUTTING), _dia()))
     assert st.LIMIT_MISSING_FAT_MASS in faltas
 

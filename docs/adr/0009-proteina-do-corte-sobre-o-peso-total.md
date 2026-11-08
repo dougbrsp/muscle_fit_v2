@@ -33,3 +33,12 @@ Só motor, rótulo e espelho do frontend; sem migração e sem escrita nova. Só
 | dia baixo sem treino (base 2.058,3) | 1.845,3 | 1.883,2 | 198,6 | 236,6 | 170,4 | 140,0 | 41,0 | 41,8 |
 
 O dia baixo mais restrito (1.883 kcal, sem treino) fica com 140 g de carbo (1,54 g/kg): não bate o piso de carbo do ciclo e não zera. O carbo do dia alto cai ~45 g e o do baixo 30 a 45 g. Sensibilidade (motor puro, dia baixo sem treino, base = alvo): com alvo de 1.500 kcal o piso prende o ciclo (`carb_floor_prevents_cycle`, carbo 63 g, dia sem swing); com 1.700 kcal o carbo é 93,5 g. Nenhum dia do plano 10 está nessa faixa. Metas congeladas (até D-2) não mudam; D-1, hoje e futuras são regravadas na primeira leitura após o deploy.
+
+**Prova lida em produção (08/11/2026, só SELECT:** `SELECT id, user_id, status, strategy, protein_g_per_kg, archived_at, superseded_at FROM nutrition_plans`**).** 5 planos, todos do usuário 1, todos `cutting` e `published`: 2 (2,60), 3 (2,70), 4 (2,30) e 5 (2,70) arquivados e substituídos; 10 (2,60) vigente. Nenhum rascunho e nenhum fora de 1,8 a 2,7 (o limite superior é inclusivo: `_within` usa `piso <= valor <= teto`, então 2,70 está dentro). Logo "só o plano 10" está provado.
+
+**Validade da tabela.** Os dias acima valem na data da medição (08/11). Se a promoção atrasar, os dias não congelados mudam de situação e os números mudam junto.
+
+## Limitações
+
+- Rascunho de corte com proteína entre 2,7 e 3,1 g/kg (válido antes) passa a receber HTTP 400 na criação/edição (`api/app/nutrition_plans.py`, `_validate_payload`/`_invalid_plan`, ~L223-233) até o usuário ajustar. O usuário vê o erro `invalid_plan`, "Parâmetros do plano fora das regras do motor de nutrição.", com o item `param_out_of_range:protein_g_per_kg` ("fora da faixa da fonte"). Hoje não há nenhum rascunho.
+- Plano publicado fora da faixa só gera o aviso `param_out_of_range:protein_g_per_kg` no motor; não bloqueia.

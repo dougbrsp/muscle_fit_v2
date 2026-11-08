@@ -2555,7 +2555,7 @@ materialização (`compute_daily_target`, E2), as telas e os prompts chegam do L
   virava "ovo frango inteiro cozido", e uma busca por "ovo de galinha cozido" dava 0,77 para "Frango
   cozido" (agora 0,38, abaixo do mínimo).
 - `daily_target`: a pausa de dieta e o refeed avisavam `param_out_of_range:protein_g_per_kg` falso: a
-  proteína do cutting (2,6 g/kg de MLG) era comparada com a faixa da manutenção. O aviso agora usa os
+  proteína do cutting (2,6 g/kg de MLG; histórico, desde nutrition-v4 a base é o peso total, ver §101) era comparada com a faixa da manutenção. O aviso agora usa os
   parâmetros publicados do plano.
 - `daily_target`: dia de treino sem kcal nem duração somava 0 ao TDEE em silêncio. Agora leva
   `training_kcal_unavailable`, só no modo explícito (no modo embutido o treino já está no fator).

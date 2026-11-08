@@ -216,8 +216,8 @@ _BASE_FFM: Final[str] = "fat_free_mass"
 
 def _protein_check(proteina: float, params: StrategyParams, peso: Optional[float], mlg: Optional[float]) -> FieldCheck:
     """Proteína. Aviso pela faixa da estratégia, na base dela (peso em todas as estratégias desde nutrition-v4; MLG só se um plano legado trouxer `FAT_FREE_MASS`).
-    Bloqueio: piso sobre o PESO (se há; senão a MLG) e teto na base da estratégia (no cutting sem
-    MLG, o peso). Cada FieldCheck só leva a faixa quando o valor e a faixa estão na mesma base."""
+    Bloqueio: piso sobre o PESO (se há; senão a MLG) e teto na base da estratégia, que desde nutrition-v4 é sempre o
+    peso. O ramo de MLG (e o "sem MLG, o peso") só existe para parâmetros legados com `FAT_FREE_MASS`. Cada FieldCheck só leva a faixa quando o valor e a faixa estão na mesma base."""
     usa_mlg = params.protein_basis == ProteinBasis.FAT_FREE_MASS
     base_estrategia, nome_estrategia = (mlg, _BASE_FFM) if usa_mlg else (peso, _BASE_WEIGHT)
     faixa = protein_range_for(params.strategy)
