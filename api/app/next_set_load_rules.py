@@ -13,8 +13,11 @@ enums do dono) e a SEMÂNTICA (limites, posições, magnitude, tokens) só por
   recusa -> `DEFAULT_RULESET` (logado), nunca exceção. Um SELECT por
   avaliação, sem cache (Lambdas multi-instância: uma publicação vale na
   próxima série de qualquer instância).
-- o chamador só lê a faixa de fadiga prévia quando alguma regra a exige
-  (`next_set_load.ruleset_uses_fatigue`, do dono).
+- o chamador só lê a faixa de fadiga prévia / a série anterior quando alguma
+  regra a exige (`next_set_load.ruleset_uses_fatigue` / `ruleset_uses_previous_set`,
+  do dono).
+- v2 (árvore `when`): linhas v1 em `rules_json` são lidas pelo dono (conversão
+  em memória, sem regravar) e gravadas em v2 no próximo save.
 - `save_draft`, `publish`, `list_versions`, `load_draft`: a rota de cadastro
   (`next_set_load_rules_admin.py`). Publicar encerra o vigente e promove o
   rascunho NA MESMA TRANSAÇÃO; concorrência (versão esperada diferente,
@@ -28,7 +31,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, model_validator
 
 from .db import fetch_rows, is_duplicate_key_error
 from .domain import next_set_load as nsl
@@ -82,7 +85,47 @@ _PUBLISH_SQL = (
 NumberOrTokenIn = Union[StrictInt, StrictFloat, StrictStr]
 
 
+# Profundidade só para proteger o parser/recursão do Pydantic; o limite de
+# negócio (`max_depth`) e o código de erro (RULE_DEPTH_EXCEEDED) são do dono.
+_PARSE_DEPTH_GUARD = int(nsl.rule_limits()["max_depth"]) + 4
+
+
+class ConditionLeafIn(BaseModel):
+    """Folha da árvore `when`: {variable, scope, op, value, value_to?, ramp_cap?}.
+    Vocabulário, escopo e valores são validados pelo dono (`ruleset_errors`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    variable: StrictStr = Field(max_length=_TOKEN_MAX_LENGTH * 2)
+    scope: StrictStr = Field(default=nsl.SCOPE_CURRENT, max_length=_TOKEN_MAX_LENGTH)
+    op: nsl.ConditionOp
+    value: Optional[NumberOrTokenIn] = None
+    value_to: Optional[NumberOrTokenIn] = None
+    ramp_cap: StrictBool = False
+
+
+class ConditionGroupIn(BaseModel):
+    """Grupo recursivo {logic, children}; `logic` e a profundidade/folhas
+    máximas são validadas pelo dono (RULE_LOGIC_UNKNOWN, RULE_DEPTH_EXCEEDED,
+    RULE_TOO_MANY_LEAVES, RULE_GROUP_EMPTY)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    logic: StrictStr = Field(default=nsl.LOGIC_AND, max_length=_TOKEN_MAX_LENGTH)
+    children: list[Union[ConditionLeafIn, "ConditionGroupIn"]]
+
+
+ConditionGroupIn.model_rebuild()
+
+
+def _group_depth(group: Any) -> int:
+    depths = [_group_depth(child) for child in group.children if isinstance(child, ConditionGroupIn)]
+    return 1 + (max(depths) if depths else 0)
+
+
 class ConditionIn(BaseModel):
+    """Condição do formato v1 (aceita por compatibilidade; a tela nova envia `when`)."""
+
     model_config = ConfigDict(extra="forbid")
 
     op: nsl.ConditionOp
@@ -98,21 +141,33 @@ class MagnitudeIn(BaseModel):
 
 
 class RuleIn(BaseModel):
-    """Uma regra. `position` e `text` são aceitos e IGNORADOS (a ordem é a da
-    lista; o texto é sempre gerado pelo dono), para a tela poder devolver o que
-    leu. `reason_code` não é aceito: regra cadastrada usa o motivo genérico."""
+    """Uma regra v2: `when` (árvore) + `action` + `magnitude` opcional (a ação
+    ENGINE_TARGET aceita ausente). `position` e `text` são aceitos e IGNORADOS
+    (a ordem é a da lista; o texto é sempre gerado pelo dono). `reason_code` não
+    é aceito. Os campos v1 (`set_position`, `fatigue`, `reps`, `rpe`,
+    `respect_planned_ramp`) seguem aceitos só quando `when` está ausente."""
 
     model_config = ConfigDict(extra="forbid")
 
     position: Optional[StrictInt] = None
     text: Optional[StrictStr] = None
-    set_position: nsl.SetPosition = nsl.SetPosition.ANY
-    fatigue: nsl.FatigueCondition = nsl.FatigueCondition.ANY
+    when: Optional[ConditionGroupIn] = None
+    set_position: Optional[nsl.SetPosition] = None
+    fatigue: Optional[nsl.FatigueCondition] = None
     reps: Optional[ConditionIn] = None
     rpe: Optional[ConditionIn] = None
-    respect_planned_ramp: StrictBool = False
+    respect_planned_ramp: Optional[StrictBool] = None
     action: StrictStr = Field(max_length=_ACTION_MAX_LENGTH)
     magnitude: Optional[MagnitudeIn] = None
+
+    @model_validator(mode="after")
+    def _one_format(self) -> "RuleIn":
+        legacy = (self.set_position, self.fatigue, self.reps, self.rpe, self.respect_planned_ramp)
+        if self.when is not None and any(item is not None for item in legacy):
+            raise ValueError("use `when` OU os campos v1, nunca os dois")
+        if self.when is not None and _group_depth(self.when) > _PARSE_DEPTH_GUARD:
+            raise ValueError("árvore de condições profunda demais")
+        return self
 
 
 class RuleSetIn(BaseModel):
@@ -135,6 +190,16 @@ class PublishIn(BaseModel):
     expected_published_version: StrictInt = Field(ge=0)
 
 
+class PreviousSetFactsIn(BaseModel):
+    """Série de trabalho anterior (escopo `previous`) para `/simulate`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reps: Optional[Union[StrictInt, StrictFloat]] = None
+    rpe: Optional[Union[StrictInt, StrictFloat]] = None
+    weight_kg: Optional[Union[StrictInt, StrictFloat]] = None
+
+
 class SetFactsIn(BaseModel):
     """Fatos de uma série para `/simulate` (os de `next_set_load.SetFacts`)."""
 
@@ -152,9 +217,14 @@ class SetFactsIn(BaseModel):
     load_convention: Optional[StrictStr] = None
     joint_pain: Optional[StrictBool] = None
     muscle_pain: Optional[Union[StrictInt, StrictFloat]] = None
+    engine_target_kg: Optional[Union[StrictInt, StrictFloat]] = None
+    rpe_target: Optional[Union[StrictInt, StrictFloat]] = None
+    previous: Optional[PreviousSetFactsIn] = None
 
     def to_facts(self) -> nsl.SetFacts:
-        return nsl.SetFacts(**self.model_dump())
+        data = self.model_dump(exclude={"previous"})
+        previous = nsl.PreviousSetFacts(**self.previous.model_dump()) if self.previous is not None else None
+        return nsl.SetFacts(**data, previous=previous)
 
 
 def ruleset_from_input(
@@ -162,7 +232,7 @@ def ruleset_from_input(
 ) -> RuleSet:
     """Pydantic -> `RuleSet` do dono (ordem da lista = posição 1..n). Valor que
     o dono não converte (texto que não é token nem número) -> `ValueError`."""
-    data = payload.model_dump(mode="json", include={"reps_floor", "reps_ceiling", "rules"})
+    data = payload.model_dump(mode="json", include={"reps_floor", "reps_ceiling", "rules"}, exclude_none=True)
     for rule in data["rules"]:
         rule.pop("position", None)
         rule.pop("text", None)

@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Badge, Loader, Paper, Stack, Table, Text, Title, Tooltip } from '@mantine/core';
+import { Alert, Badge, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { formatDateTimeOrDash } from '@/lib/format';
 import type { StoredRuleSet } from '@/lib/next-set-load-rules-types';
 import { BRAND } from '@/theme';
@@ -59,11 +59,19 @@ export function VersionsList({
                     </Table.Td>
                     <Table.Td>{userName(item.status === 'draft' ? item.created_by : item.published_by)}</Table.Td>
                     <Table.Td>
-                      <Tooltip label={<span style={{ whiteSpace: 'pre-line' }}>{item.summary}</span>} multiline w={420} withArrow disabled={!item.summary}>
-                        <Text size="sm" style={{ cursor: item.summary ? 'help' : undefined }} data-summary>
-                          {item.ruleset.rules.length}
-                        </Text>
-                      </Tooltip>
+                      <Stack gap={4}>
+                        <Text size="sm">{item.ruleset.rules.length}</Text>
+                        {item.ruleset.rules.map((rule, index) => (
+                          <Text size="xs" key={`${item.id}-${rule.position ?? index}`} data-summary>
+                            {rule.text ?? ''}
+                          </Text>
+                        ))}
+                        {item.summary && !item.ruleset.rules.some((rule) => rule.text) ? (
+                          <Text size="xs" c={BRAND.textMuted} style={{ whiteSpace: 'pre-line' }}>
+                            {item.summary}
+                          </Text>
+                        ) : null}
+                      </Stack>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm" c={item.notes ? undefined : BRAND.textMuted}>

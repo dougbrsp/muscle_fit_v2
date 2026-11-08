@@ -1,9 +1,18 @@
 'use client';
 
-import { Alert, Badge, Button, Group, List, Loader, Modal, Paper, Stack, Text, Title } from '@mantine/core';
+import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
+import { ActionIcon, Alert, Badge, Button, Group, List, Loader, Modal, Paper, Stack, Text, Title } from '@mantine/core';
 import { useDebouncedValue, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconArrowBackUp, IconDeviceFloppy, IconRestore, IconSend } from '@tabler/icons-react';
+import {
+  IconAlertTriangle,
+  IconArrowBackUp,
+  IconDeviceFloppy,
+  IconGripVertical,
+  IconPlus,
+  IconRestore,
+  IconSend,
+} from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
@@ -13,15 +22,22 @@ import {
   MOTOR_DEFAULT_RULESET,
   NEXT_SET_LOAD_RULES_QUERY_KEY,
   PUBLISHED_RULES_QUERY_KEY,
+  RULE_LIMITS,
   VERSIONS_RULES_QUERY_KEY,
+  addRule,
   codeMessage,
   draftFromRuleSet,
   draftToPayload,
+  duplicateRule,
   isPublishConflict,
+  removeRule,
+  reorderRules,
   ruleSetErrorDetail,
   ruleSetErrorMessages,
   sameRuleSet,
   shapeIssues,
+  updateRule,
+  type RuleDraft,
   type RuleSetDraft,
 } from '@/lib/next-set-load-rules';
 import type {
@@ -36,11 +52,91 @@ import type {
 import type { UserAdminListResponse } from '@/lib/users-admin-types';
 import { BRAND } from '@/theme';
 import { GlobalParamsCard } from './components/GlobalParamsCard';
-import { RuleSetTable } from './components/RuleSetTable';
+import { RuleCard } from './components/RuleCard';
 import { SimulatePanel } from './components/SimulatePanel';
 import { VersionsList } from './components/VersionsList';
 
 const DESCRIBE_DEBOUNCE_MS = 500;
+
+/**
+ * Regras em ordem (arrastar para reordenar): a primeira que casa vence. Cada
+ * cartão monta os campos com o vocabulário do dono; o texto vem do servidor.
+ */
+export function RuleList({
+  rules,
+  texts,
+  onChange,
+}: {
+  rules: RuleDraft[];
+  /** Texto do servidor por regra, na ordem (null = ainda gerando). */
+  texts: (string | null)[];
+  onChange: (rules: RuleDraft[]) => void;
+}) {
+  const canAdd = rules.length < RULE_LIMITS.max_rules;
+
+  function handleDragEnd(result: DropResult) {
+    if (!result.destination) return;
+    onChange(reorderRules(rules, result.source.index, result.destination.index));
+  }
+
+  return (
+    <>
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <Droppable droppableId="next-set-load-rules">
+          {(droppableProvided) => (
+            <Stack gap="sm" ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+              {rules.map((rule, index) => (
+                <Draggable key={rule.localId} draggableId={rule.localId} index={index}>
+                  {(draggableProvided) => (
+                    <div ref={draggableProvided.innerRef} {...draggableProvided.draggableProps}>
+                      <RuleCard
+                        rule={rule}
+                        index={index}
+                        text={texts[index] ?? null}
+                        canDuplicate={canAdd}
+                        dragHandle={
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            size="sm"
+                            {...draggableProvided.dragHandleProps}
+                            aria-label="Arrastar para reordenar"
+                          >
+                            <IconGripVertical size={14} />
+                          </ActionIcon>
+                        }
+                        onPatch={(patch) => onChange(updateRule(rules, rule.localId, patch))}
+                        onDuplicate={() => onChange(duplicateRule(rules, rule.localId))}
+                        onRemove={() => onChange(removeRule(rules, rule.localId))}
+                      />
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {droppableProvided.placeholder}
+              {rules.length === 0 && (
+                <Text c={BRAND.textMuted} ta="center" size="sm">
+                  Nenhuma regra: adicione ao menos uma.
+                </Text>
+              )}
+            </Stack>
+          )}
+        </Droppable>
+      </DragDropContext>
+      <Button
+        variant="light"
+        color="brand"
+        size="xs"
+        mt="sm"
+        leftSection={<IconPlus size={14} />}
+        onClick={() => onChange(addRule(rules))}
+        disabled={!canAdd}
+      >
+        Adicionar regra
+      </Button>
+    </>
+  );
+}
 
 const fetchPublished = () => apiFetch<PublishedRuleSetResponse>('/next-set-load-rules/published');
 const fetchDraft = () => apiFetch<DraftResponse>('/next-set-load-rules/draft');
@@ -237,6 +333,10 @@ export function RegrasCargaClient() {
           <List size="sm" spacing={2} c={BRAND.textMuted}>
             <List.Item>As regras valem só para a carga da próxima série, dentro da sessão.</List.Item>
             <List.Item>Dor articular ou dor muscular alta sempre reduz a carga, antes de qualquer regra.</List.Item>
+            <List.Item>
+              Série, reps e RPE sem qualificador são os da série que acabou de ser registrada; &quot;série anterior&quot;
+              é a que veio antes dela. O resultado é a carga da próxima série.
+            </List.Item>
             <List.Item>As regras são avaliadas em ordem: a primeira que casa vence; nenhuma casa = manter.</List.Item>
             <List.Item>Publicar vale na hora para todos os usuários.</List.Item>
           </List>
@@ -262,7 +362,7 @@ export function RegrasCargaClient() {
           <Paper withBorder radius="md" p="md">
             <Stack gap="sm">
               <Title order={4}>Regras (arraste para mudar a ordem)</Title>
-              <RuleSetTable
+              <RuleList
                 rules={editor.rules}
                 texts={texts}
                 onChange={(rules) => setEditor((current) => (current ? { ...current, rules } : current))}

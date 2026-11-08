@@ -89,10 +89,10 @@ def test_conjunto_do_usuario_e_valido_e_descrito_em_pt_br():
     assert nsl.validate_ruleset(CONJUNTO) == []
     assert (CONJUNTO.version, CONJUNTO.source) == (1, "usuario")
     assert [nsl.describe_rule(rule, CONJUNTO) for rule in CONJUNTO.rules] == [
-        "1ª série · músculo descansado · reps > teto (12) · RPE < máximo → Aumentar 25% (no passo do equipamento)",
-        "1ª série · músculo descansado · reps > teto (12) → Manter a carga",
-        "2ª série · músculo descansado · reps > teto (12) → Aumentar 25% (no passo do equipamento)",
-        "1ª série · músculo muito fatigado · reps < piso (6) · RPE ≥ 10 → Reduzir 20% (no passo do equipamento)",
+        "SE série = 1 E fadiga = descansado E reps > teto E RPE < máximo ENTÃO carga = carga executada + 25%",
+        "SE série = 1 E fadiga = descansado E reps > teto ENTÃO carga = carga executada",
+        "SE série = 2 E fadiga = descansado E reps > teto ENTÃO carga = carga executada + 25%",
+        "SE série = 1 E fadiga = muito fatigado E reps < piso E RPE ≥ 10 ENTÃO carga = carga executada − 20%",
     ]
     assert nsl.ruleset_to_dict(nsl.ruleset_from_dict(nsl.ruleset_to_dict(CONJUNTO))) == nsl.ruleset_to_dict(CONJUNTO)
 
