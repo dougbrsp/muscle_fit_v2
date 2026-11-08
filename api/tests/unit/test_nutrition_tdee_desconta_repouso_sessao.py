@@ -62,8 +62,8 @@ def test_met_desconta_porque_e_bruta():
 
 def test_active_entra_como_veio():
     t = ee.resolve_sessions_kcal(_sessao(500, 60), 80, None, TMB, ae.CalorieMode.ACTIVE)
-    assert t.kcal == 500 and t.resting_discount_kcal == 0 and t.gross_kcal is None
-    assert "gross_kcal" not in t.to_dict()  # o formato de antes
+    assert t.kcal == 500 and t.resting_discount_kcal == 0 and t.gross_kcal == 500
+    assert t.to_dict()["gross_kcal"] == 500 and t.to_dict()["resting_discount_kcal"] == 0  # contrato: sempre presentes
     sem_duracao = ee.resolve_sessions_kcal(_sessao(500, None), 80, None, TMB, ae.CalorieMode.ACTIVE)
     assert sem_duracao.kcal == 500 and sem_duracao.limitations == ()  # active não precisa de duração
 

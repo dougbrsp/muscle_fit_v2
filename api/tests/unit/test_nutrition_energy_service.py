@@ -337,7 +337,7 @@ def test_previa_traz_tdee_breakdown_extra_activity_e_tdee_basis_no_modo_automati
     assert corpo.status_code == 200, corpo.text
     alvo = corpo.json()["target"]
     assert alvo["tdee_basis"] in {"auto_synced", "auto_fallback"}
-    assert set(alvo["extra_activity"]) == {"kcal", "kcal_nature", "items"}
+    assert set(alvo["extra_activity"]) == {"kcal", "kcal_nature", "items", "gross_kcal", "resting_discount_kcal"}
     assert "base_kcal" not in alvo["tdee"]  # nada novo no dict que vai para `inputs_json`
     quebra = alvo["tdee_breakdown"]
     assert quebra["parts"][0]["code"] == "base"

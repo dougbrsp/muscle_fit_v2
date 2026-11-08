@@ -48,11 +48,13 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Final, Mapping, Optional
 
 from . import activity_energy, adaptive_energy
+from ...intervals_activity_kind import STRENGTH as STRENGTH_ACTIVITY_KIND  # classe do dono (módulo puro)
 from ..data_nature import DataNature, DataQuality  # vocabulário comum (dono: domain/data_nature.py)
 from .anthropometrics import ACTIVITY_FACTORS, NON_EXERCISE_ACTIVITY_FACTORS, ActivityLevel, non_negative_number, positive_number
 
@@ -151,10 +153,25 @@ def _net_kcal(kcal: float, calorie_mode: Any, duration_min: Any, bmr_kcal: Any) 
     return liquida, kcal - liquida, False
 
 
+# Motivos de uma atividade do Intervals não somar (`ExtraLine.excluded_reason`; rótulos em `labels.py`).
+EXCLUDED_DUPLICATE: Final[str] = "duplicate"  # duplicata certa (mesmo id externo/impressão) ou mesmo treino da sessão do app
+EXCLUDED_ABOVE_CEILING: Final[str] = "above_ceiling"  # kcal acima de `activity_energy.MAX_PLAUSIBLE_ACTIVITY_KCAL`
+EXCLUDED_NO_KCAL: Final[str] = "no_kcal"  # sem kcal informada: não soma e não é estimada
+# Treino que cruza com outro do Intervals por horário/duração (`activity_energy.deduplicate`, só sinaliza): CONTA e avisa.
+LIMIT_POSSIBLE_DOUBLE_COUNT = "possible_double_count"
+# A sessão do app entra na deduplicação como atividade de FORÇA, a classe do dono da classificação (módulo puro).
+SESSION_ACTIVITY_KIND: Final[str] = STRENGTH_ACTIVITY_KIND
+_SESSION_ID_PREFIX: Final[str] = "session:"
+_ITEM_ID_PREFIX: Final[str] = "item:"
+# Atividade sem horário (contexto antigo/testes): início sintético distinto por posição, para a deduplicação não casar.
+_NO_START_EPOCH: Final[datetime] = datetime(1970, 1, 1)
+
+
 @dataclass(frozen=True)
 class ExtraActivity:
-    """Uma atividade do Intervals do dia que NÃO é o treino de `activities`: classe (do dono da classificação),
-    kcal informada (pode faltar) e o rótulo para a tela (nome ou tipo)."""
+    """Uma atividade do Intervals do dia que NÃO é a sessão do app (sem vínculo): classe (do dono da classificação, só
+    para exibição), kcal informada (pode faltar), o rótulo para a tela (nome ou tipo) e, para a deduplicação do dono
+    (`activity_energy.deduplicate`), o id, o id externo e o início (todos opcionais)."""
 
     kind: str  # tipo para exibição (classe do dono da classificação); não decide o que soma
     calories_kcal: Any = None
@@ -162,6 +179,8 @@ class ExtraActivity:
     # Duração em segundos (decorrido, com o movimento de reserva: `activity_energy.activity_duration_seconds`); sem ela
     # o repouso não é descontado.
     duration_seconds: Any = None
+    start: Optional[datetime] = None
+    external_id: Optional[str] = None
 
     @property
     def duration_min(self) -> Optional[float]:
@@ -173,72 +192,153 @@ class ExtraActivity:
         dados: dict[str, Any] = {"kind": self.kind, "calories_kcal": positive_number(self.calories_kcal), "label": rotulo}
         if self.duration_min is not None:
             dados["duration_min"] = self.duration_min
+        if self.start is not None:
+            dados["start"] = self.start.isoformat()
+        if self.external_id is not None:
+            dados["external_id"] = str(self.external_id)
         return dados
 
 
 @dataclass(frozen=True)
+class ExtraLine:
+    """O que o motor decidiu de UMA atividade do Intervals: kcal bruta informada, desconto do repouso, kcal LÍQUIDA que
+    somou (0 se excluída) e o motivo da exclusão (`None` = somou)."""
+
+    item: ExtraActivity
+    gross_kcal: float = 0.0
+    resting_discount_kcal: float = 0.0
+    net_kcal: float = 0.0
+    excluded_reason: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.item.to_dict(),
+            "gross_kcal": self.gross_kcal,
+            "resting_discount_kcal": self.resting_discount_kcal,
+            "net_kcal": self.net_kcal,
+            "excluded_reason": self.excluded_reason,
+        }
+
+
+@dataclass(frozen=True)
 class ExtraActivityKcal:
-    """kcal das atividades extras do dia, a lista do que somou e a natureza (informada = observada)."""
+    """kcal das atividades do Intervals do dia (LÍQUIDAS do repouso), cada atividade com a decisão do motor e a natureza
+    (informada = observada). `gross_kcal`/`resting_discount_kcal` são da soma do que contou."""
 
     kcal: float = 0.0
     items: tuple[ExtraActivity, ...] = ()
     kcal_nature: Optional[TrainingKcalNature] = None
-    # Bruta somada e repouso descontado (`kcal` é a LÍQUIDA); só vão ao `to_dict` quando houve desconto.
     gross_kcal: Optional[float] = None
     resting_discount_kcal: float = 0.0
     limitations: tuple[str, ...] = ()
-    # kcal LÍQUIDA de cada item de `items` (mesma ordem): base das parcelas do breakdown.
-    net_by_item: tuple[float, ...] = ()
+    lines: tuple[ExtraLine, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        itens = [item.to_dict() for item in self.items]
-        if len(self.net_by_item) == len(itens) and self.resting_discount_kcal > 0:
-            for dados_item, liquido in zip(itens, self.net_by_item):
-                dados_item["net_kcal"] = liquido
-        dados: dict[str, Any] = {
+        itens = [linha.to_dict() for linha in self.lines] if self.lines else [item.to_dict() for item in self.items]
+        return {
             "kcal": self.kcal,
             "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
+            "gross_kcal": self.gross_kcal if self.gross_kcal is not None else self.kcal,
+            "resting_discount_kcal": self.resting_discount_kcal,
             "items": itens,
         }
-        if self.resting_discount_kcal > 0:
-            dados["gross_kcal"] = self.gross_kcal
-            dados["resting_discount_kcal"] = self.resting_discount_kcal
-        return dados
 
 
 NO_EXTRA_ACTIVITY_KCAL: Final[ExtraActivityKcal] = ExtraActivityKcal()
 
 
+def _session_activities(sessions: Any) -> list[activity_energy.RawActivity]:
+    """Sessões do app COM horário, como atividades cruas para a deduplicação do dono contra as do Intervals."""
+    cruas: list[activity_energy.RawActivity] = []
+    for indice, sessao in enumerate(sessions):
+        inicio = getattr(sessao, "start", None)
+        if inicio is None:
+            continue
+        minutos = positive_number(sessao.duration_min)
+        cruas.append(
+            activity_energy.RawActivity(
+                id=f"{_SESSION_ID_PREFIX}{indice}",
+                start=inicio,
+                duration_seconds=None if minutos is None else minutos * activity_energy.SECONDS_PER_MINUTE,
+                kind=SESSION_ACTIVITY_KIND,
+                calories_kcal=sessao.calories_kcal,
+                calorie_mode=DEFAULT_TDEE_CALORIE_MODE,
+                source="app",
+            )
+        )
+    return cruas
+
+
 def extra_activity_kcal(
-    activities: Any = (), bmr_kcal: Any = None, calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE
+    activities: Any = (), bmr_kcal: Any = None, calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE, sessions: Any = ()
 ) -> ExtraActivityKcal:
-    """Soma a kcal informada de TODA atividade do Intervals recebida (qualquer tipo), LÍQUIDA do repouso da janela de cada
-    uma (mesma regra do treino: `_net_kcal`). Sem kcal (None, 0, inválida) não soma e não é estimada
-    (`LIMIT_ACTIVITY_WITHOUT_KCAL`); sem duração entra como está, com `LIMIT_REST_NOT_DISCOUNTED`."""
-    todas = tuple(activities)
-    somadas = tuple(item for item in todas if positive_number(item.calories_kcal) is not None)
-    sem_kcal = (LIMIT_ACTIVITY_WITHOUT_KCAL,) if len(somadas) < len(todas) else ()
-    if not somadas:
-        return replace(NO_EXTRA_ACTIVITY_KCAL, limitations=sem_kcal)
+    """Soma a kcal de TODA atividade do Intervals recebida (qualquer tipo), LÍQUIDA do repouso da janela de cada uma
+    (mesma regra do treino: `_net_kcal`). Usa a normalização e a deduplicação do dono (`activity_energy`):
+    - sem kcal: não soma e não é estimada (`EXCLUDED_NO_KCAL`, `LIMIT_ACTIVITY_WITHOUT_KCAL`);
+    - acima de `MAX_PLAUSIBLE_ACTIVITY_KCAL`: não soma (`EXCLUDED_ABOVE_CEILING`);
+    - duplicata certa (mesmo id externo/impressão) ou mesmo treino de uma sessão do app com horário (início próximo,
+      duração parecida): não soma (`EXCLUDED_DUPLICATE`; a sessão é a que conta);
+    - possível duplicata entre atividades do Intervals: CONTA e avisa (`LIMIT_POSSIBLE_DOUBLE_COUNT`);
+    - sem duração: entra como está, com `LIMIT_REST_NOT_DISCOUNTED`."""
+    itens = tuple(activities)
+    if not itens:
+        return NO_EXTRA_ACTIVITY_KCAL
+    cruas = [
+        activity_energy.RawActivity(
+            id=f"{_ITEM_ID_PREFIX}{i}",
+            start=item.start if item.start is not None else _NO_START_EPOCH + timedelta(days=i),
+            duration_seconds=item.duration_seconds,
+            kind=str(item.kind),
+            name=item.label,
+            calories_kcal=item.calories_kcal,
+            calorie_mode=calorie_mode,
+            external_id=None if item.external_id is None else str(item.external_id),
+        )
+        for i, item in enumerate(itens)
+    ]
+    normalizadas = [activity_energy.normalize_activity(crua, bmr_kcal) for crua in cruas]
+    normalizadas += [activity_energy.normalize_activity(crua, bmr_kcal) for crua in _session_activities(sessions)]
+    por_id = {atividade.id: atividade for atividade in activity_energy.deduplicate(normalizadas)}
+    linhas: list[ExtraLine] = []
     liquido = 0.0
     bruto = 0.0
     sem_desconto = False
-    por_item: list[float] = []
-    for item in somadas:
-        informada = positive_number(item.calories_kcal) or 0.0
-        kcal, _, faltou = _net_kcal(informada, calorie_mode, item.duration_min, bmr_kcal)
+    possivel = False
+    sem_kcal = False
+    for i, item in enumerate(itens):
+        atividade = por_id[f"{_ITEM_ID_PREFIX}{i}"]
+        informada = positive_number(item.calories_kcal)
+        if informada is None:
+            sem_kcal = True
+            linhas.append(ExtraLine(item, excluded_reason=EXCLUDED_NO_KCAL))
+            continue
+        if informada > activity_energy.MAX_PLAUSIBLE_ACTIVITY_KCAL:
+            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_ABOVE_CEILING))
+            continue
+        da_sessao = any(outro.startswith(_SESSION_ID_PREFIX) for outro in atividade.possible_duplicate_of)
+        if atividade.is_certain_duplicate or da_sessao:
+            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_DUPLICATE))
+            continue
+        possivel = possivel or bool(atividade.possible_duplicate_of)
+        kcal, desconto, faltou = _net_kcal(informada, calorie_mode, item.duration_min, bmr_kcal)
         liquido += kcal
         bruto += informada
-        por_item.append(kcal)
         sem_desconto = sem_desconto or faltou
+        linhas.append(ExtraLine(item, gross_kcal=informada, resting_discount_kcal=desconto, net_kcal=kcal))
+    limitacoes = (
+        *((LIMIT_ACTIVITY_WITHOUT_KCAL,) if sem_kcal else ()),
+        *((LIMIT_POSSIBLE_DOUBLE_COUNT,) if possivel else ()),
+        *((LIMIT_REST_NOT_DISCOUNTED,) if sem_desconto else ()),
+    )
+    contou = any(linha.excluded_reason is None for linha in linhas)
     return ExtraActivityKcal(
         kcal=liquido,
-        items=somadas,
-        kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE,
-        gross_kcal=bruto if bruto > liquido else None,
+        items=itens,
+        kcal_nature=EXTRA_ACTIVITY_KCAL_NATURE if contou else None,
+        gross_kcal=bruto,
         resting_discount_kcal=bruto - liquido,
-        limitations=(*sem_kcal, *((LIMIT_REST_NOT_DISCOUNTED,) if sem_desconto else ())),
-        net_by_item=tuple(por_item),
+        limitations=limitacoes,
+        lines=tuple(linhas),
     )
 
 
@@ -357,21 +457,20 @@ class TrainingKcal:
     quality: Optional[DataQuality]
     limitations: tuple[str, ...] = ()
     # `kcal` é a LÍQUIDA do repouso da sessão; a bruta e o desconto só vão ao `to_dict` quando houve desconto.
-    gross_kcal: Optional[float] = None
-    resting_discount_kcal: float = 0.0
+    # Fora da igualdade: a comparação de valores continua sobre kcal/natureza/qualidade/limitações.
+    gross_kcal: Optional[float] = field(default=None, compare=False)
+    resting_discount_kcal: float = field(default=0.0, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
-        dados: dict[str, Any] = {
+        return {
             "kcal": self.kcal,
             "kcal_nature": self.kcal_nature.value if self.kcal_nature else None,
             "nature": self.nature.value if self.nature else None,
             "quality": self.quality.value if self.quality else None,
             "limitations": list(self.limitations),
+            "gross_kcal": self.gross_kcal if self.gross_kcal is not None else self.kcal,
+            "resting_discount_kcal": self.resting_discount_kcal,
         }
-        if self.resting_discount_kcal > 0:
-            dados["gross_kcal"] = self.gross_kcal
-            dados["resting_discount_kcal"] = self.resting_discount_kcal
-        return dados
 
 
 NO_TRAINING_KCAL: Final[TrainingKcal] = TrainingKcal(
@@ -405,7 +504,7 @@ def resolve_training_kcal(
                 nature=NATURE_BY_TRAINING_KCAL_NATURE[natureza],
                 quality=QUALITY_BY_TRAINING_KCAL_NATURE[natureza],
                 limitations=(LIMIT_REST_NOT_DISCOUNTED,) if faltou else (),
-                gross_kcal=kcal if desconto > 0 else None,
+                gross_kcal=kcal,
                 resting_discount_kcal=desconto,
             )
     return NO_TRAINING_KCAL
@@ -417,9 +516,14 @@ class SessionKcal:
 
     calories_kcal: Any = None
     duration_min: Any = None
+    # Horário de início da sessão (opcional): entra na deduplicação contra as atividades do Intervals (`extra_activity_kcal`).
+    start: Optional[datetime] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
+        dados: dict[str, Any] = {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
+        if self.start is not None:
+            dados["start"] = self.start.isoformat()
+        return dados
 
 
 @dataclass(frozen=True)
@@ -483,13 +587,13 @@ def resolve_sessions_kcal(
             nature=DataNature.ESTIMATED,
             quality=DataQuality.MEDIUM,
             limitations=(LIMIT_TRAINING_PARTIALLY_ESTIMATED, *sem_desconto),
-            gross_kcal=bruto if bruto > total else None,
+            gross_kcal=bruto,
             resting_discount_kcal=bruto - total,
         )
     return replace(
         _training_kcal_of(natureza, total),
         limitations=sem_desconto,
-        gross_kcal=bruto if bruto > total else None,
+        gross_kcal=bruto,
         resting_discount_kcal=bruto - total,
     )
 
@@ -530,6 +634,7 @@ class TrainingKcalComparison:
             "reported": self.reported.to_dict(),
             "estimated": self.estimated.to_dict(),
             "used": self.used.to_dict(),
+            "used_net_kcal": self.used.kcal,  # o valor usado, LÍQUIDO do repouso (quando o modo desconta)
             "partial": self.partial,
             # Lista pronta para a tela: código da natureza, valor e se é a usada pela prioridade.
             "sides": [

@@ -252,6 +252,25 @@ TDEE_BREAKDOWN_NOTE_LABELS: Final[Mapping[str, str]] = {
 }
 
 
+# --- Bloco de atividades do dia (diário): rótulos prontos; a tela não escreve texto de regra --------------------------
+ACTIVITIES_BLOCK_TITLE: Final[str] = "Atividades do Intervals"
+NET_OF_REST_SUFFIX: Final[str] = "líquido do repouso da sessão"
+EXCLUDED_ACTIVITY_REASON_LABELS: Final[Mapping[str, str]] = {
+    ee_mod.EXCLUDED_DUPLICATE: "Duplicada: já conta como outro treino do dia",
+    ee_mod.EXCLUDED_ABOVE_CEILING: "Acima do teto plausível de kcal: não somou",
+    ee_mod.EXCLUDED_NO_KCAL: "Sem kcal: não somou",
+}
+
+
+def activity_block_labels() -> dict[str, Any]:
+    """Rótulos do bloco de atividades do dia: título, sufixo do valor usado (líquido) e motivos de exclusão por código."""
+    return {
+        "activities_title": ACTIVITIES_BLOCK_TITLE,
+        "net_suffix": NET_OF_REST_SUFFIX,
+        "excluded_reasons": dict(EXCLUDED_ACTIVITY_REASON_LABELS),
+    }
+
+
 def tdee_breakdown_public(breakdown: Any) -> Any:
     """Composição do gasto pronta para a tela (`None` se o motor não montou): o motor entrega códigos e kcal; aqui só
     entram os rótulos pt-BR."""
@@ -661,6 +680,9 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
         "Intervals não está sincronizado. Preencha o nível no perfil e salve o plano de novo."
     ),
     ee_mod.LIMIT_TRAINING_PARTIALLY_ESTIMATED: "Treino parcialmente estimado: há sessão sem kcal, estimada pela duração.",
+    ee_mod.LIMIT_POSSIBLE_DOUBLE_COUNT: (
+        "Possível treino em duplicidade (início e duração parecidos): os dois entraram no gasto; exclua um se for o mesmo."
+    ),
     ee_mod.LIMIT_ACTIVITY_WITHOUT_KCAL: "Atividade do Intervals sem kcal: não entrou no gasto (a kcal não é estimada).",
     ee_mod.LIMIT_REST_NOT_DISCOUNTED: (
         "Treino ou atividade sem duração: o repouso da sessão não foi descontado e a kcal entrou como veio."

@@ -39,6 +39,7 @@ from .domain.nutrition.daily_target import day_context_for, diary_target_notice
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL,
     TdeeBasis,
+    TdeeMode,
     activity_total_kcal,
     compare_sessions_kcal,
     met_for_session,
@@ -179,6 +180,8 @@ def _training(
         "comparison": comparacao.to_dict() if comparacao is not None else None,
         # Como o gasto do dia foi montado (o motor gravou): no fallback do automático a tela avisa que treino e cardio
         # NÃO foram somados.
+        # Rótulos prontos do motor para o bloco de atividades (a tela não escreve texto de regra).
+        "labels": nutrition_labels.activity_block_labels(),
         "tdee_basis": basis or TdeeBasis.CLASSIC.value,
         "tdee_basis_note": nutrition_labels.TDEE_BASIS_NOTES.get(basis or ""),
         "extra_activity": extra,
@@ -190,8 +193,12 @@ def _training(
     }
 
 
+_NOT_READ: Any = object()  # `energy_detail`: o `tdee` gravado ainda não foi lido por quem chama
+
+
 def energy_detail(
-    cur: Any, user_id: int, day: date, today: date, meta: Optional[dict[str, Any]], entradas: Optional[UserInputs] = None
+    cur: Any, user_id: int, day: date, today: date, meta: Optional[dict[str, Any]], entradas: Optional[UserInputs] = None,
+    gravado_lido: Any = _NOT_READ,
 ) -> dict[str, Any]:
     """Explicação do gasto do dia (só leitura; nada é recalculado nem gravado). `breakdown` = composição do gasto relida
     do que o motor GRAVOU na meta (`energy_expenditure.tdee_breakdown_from_stored` + rótulos do dono); `activities` = o
@@ -208,7 +215,7 @@ def energy_detail(
         return detalhe
     detalhe["energy"] = meta.get("energy")
     try:
-        gravado = read_stored_tdee(cur, user_id, day)
+        gravado = read_stored_tdee(cur, user_id, day) if gravado_lido is _NOT_READ else gravado_lido
         base = TdeeBasis(meta.get("tdee_basis") or TdeeBasis.CLASSIC.value)
         extra = (meta.get("extra_activity") or {}).get("kcal")
         itens_extra = (meta.get("extra_activity") or {}).get("items")
@@ -270,11 +277,22 @@ def build_day(conn: Any, aluno: int, local_date: date) -> dict[str, Any]:
         # Medidas e série até HOJE (ou até o dia, se futuro): o histórico da explicação usa a mesma série da meta; o
         # treino do dia só consulta o próprio dia (`readings_on`, `sessions.get(dia)`).
         entradas = load_user_inputs(cur, aluno, local_date, max(local_date, hoje), hoje)
+        # O desconto do repouso só vale onde o gasto o aplica (explícito/automático sincronizado): o modo vem do `tdee`
+        # gravado; no embutido, no fallback do automático e no adaptativo o treino segue bruto, como sempre.
+        gravado: Any = _NOT_READ
+        desconta = False
+        if meta:
+            try:
+                gravado = read_stored_tdee(cur, aluno, local_date)
+                desconta = (gravado or {}).get("mode") == TdeeMode.EXPLICIT_TRAINING.value
+            except Exception as erro:  # noqa: BLE001 - sem o modo gravado o treino segue bruto; a seção de explicação trata a falha
+                gravado = _NOT_READ
+                logger.warning("nutrition.day_stored_tdee_failed error=%s", type(erro).__name__)
         treino = _training(
             cur, aluno, local_date, hoje, (meta or {}).get("extra_activity"), (meta or {}).get("tdee_basis"), entradas,
-            (meta or {}).get("bmr_kcal"),
+            (meta or {}).get("bmr_kcal") if desconta else None,
         )
-        detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas)
+        detalhe_gasto = energy_detail(cur, aluno, local_date, hoje, meta, entradas, gravado)
         fechamento = adjustments.read_closure(cur, aluno, local_date)
     origem = detalhe_gasto.pop(COMPLETENESS_KEY, None)
     totais = day_totals(linhas)

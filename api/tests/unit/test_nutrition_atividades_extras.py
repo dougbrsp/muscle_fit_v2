@@ -17,11 +17,13 @@ from app.domain.nutrition import activity_energy
 from app.domain.nutrition import energy_expenditure as ee
 from app.domain.nutrition import strategy as st
 from app.domain.nutrition.anthropometrics import ActivityLevel, Sex, Subject
+from app.domain.nutrition.labels import LIMITATION_LABELS
 from app.domain.nutrition.daily_target import SessionFacts, day_context_for
 from tests.support.nutrition_fake import FakeNutritionDB
 
 HOJE = date(2026, 11, 5)
 ALUNO = 2
+OUTRO_ALUNO = 3
 AUTO = ee.TdeeMode.AUTO_INTERVALS
 TMB_FAKE = 1750.0  # TMB do aluno do `FakeNutritionDB` (Mifflin do perfil e do peso dele)
 
@@ -36,6 +38,7 @@ def _extras(*atividades: tuple[str, float | None]) -> tuple[ee.ExtraActivity, ..
 def test_o_tipo_so_rotula_e_nao_filtra_o_que_soma():
     """2026-11-08: tudo que entra pelo Intervals conta; a classe do dono da classificação é só exibição."""
     assert not hasattr(ee, "EXTRA_ACTIVITY_KINDS")
+    assert ee.SESSION_ACTIVITY_KIND == kind.STRENGTH  # paridade: a sessão do app entra na deduplicação como força
     tipos = {kind.classify(esporte) for esporte in ("Walk", "WeightTraining", "RockClimbing")}
     assert tipos == {kind.CARDIO, kind.STRENGTH, kind.OTHER}
     resultado = ee.extra_activity_kcal(_extras(("Walk", 100), ("WeightTraining", 200), ("RockClimbing", 50), ("TipoNovoXYZ", 30)))
@@ -151,7 +154,7 @@ def test_extras_com_duracao_descontam_o_repouso_da_janela_e_sem_duracao_entram_c
     assert pequena.kcal == 0.0  # piso 0
     ativa = ee.extra_activity_kcal(com_duracao, TMB, activity_energy.CalorieMode.ACTIVE)
     assert ativa.kcal == 400.0 and ativa.resting_discount_kcal == 0.0
-    assert "gross_kcal" not in ativa.to_dict()
+    assert ativa.to_dict()["gross_kcal"] == 400.0 and ativa.to_dict()["resting_discount_kcal"] == 0.0
 
 
 def test_automatico_sincronizado_sem_atividade_e_descanso_com_a_rotina():
@@ -368,7 +371,7 @@ def test_plano_explicito_so_le_os_extras_o_embutido_nada_e_o_automatico_tudo():
     novas = (svc.INTERVALS_CONNECTION_SQL, svc.INTERVALS_SYNC_AGE_SQL, svc.EXTRA_ACTIVITIES_SQL)
     explicito = _db(modo="explicit_training")
     entradas, visto = _consultas(explicito, [svc.settings_from_row(explicito.plans[1])])
-    assert svc.EXTRA_ACTIVITIES_SQL in visto and entradas.intervals_loaded is True
+    assert svc.EXTRA_ACTIVITIES_SQL in visto and entradas.extras_loaded is True and entradas.intervals_loaded is False
     assert svc.INTERVALS_CONNECTION_SQL not in visto and svc.INTERVALS_SYNC_AGE_SQL not in visto  # sem prova de sync
     classico = _db(modo="included_in_factor")
     entradas, visto = _consultas(classico, [svc.settings_from_row(classico.plans[1])])
@@ -376,7 +379,7 @@ def test_plano_explicito_so_le_os_extras_o_embutido_nada_e_o_automatico_tudo():
     assert not [sql for sql in _consultas(classico, [])[1] if sql in novas]  # sem plano nenhum, idem
     automatico = _db()
     entradas, visto = _consultas(automatico, [svc.settings_from_row(automatico.plans[1])])
-    assert set(novas) <= set(visto) and entradas.intervals_loaded is True and entradas.intervals_in_sync is True
+    assert set(novas) <= set(visto) and entradas.intervals_loaded is True and entradas.extras_loaded is True and entradas.intervals_in_sync is True
 
 
 def test_so_a_sincronizacao_de_atividades_prova_frescor_wellness_nao():
@@ -512,3 +515,146 @@ def test_breakdown_traz_uma_parcela_por_atividade_com_o_nome_do_intervals_e_soma
     publico = lb.tdee_breakdown_public(quebra)
     assert [p["label"] for p in publico["parts"][1:]] == ["Morning Walk", "Weight Training"]
     assert publico["parts"][1]["kcal"] == round(436 - TMB / 1440 * 2601 / 60)
+
+
+# --- rodada de revisão (ADR 0008): flags separadas, deduplicação do dono, modos, contrato -------------------------
+
+
+def test_dia_do_automatico_nao_e_regravado_no_fallback_ao_publicar_um_plano_explicito():
+    """P1: com só o plano EXPLÍCITO nas entradas (extras lidos, sincronização NÃO lida), o dia de ontem que valia o
+    automático é recarregado e não cai no fallback."""
+    db = _db()
+    antigo = next(iter(db.plans))
+    db.plans[antigo]["superseded_at"] = datetime(2026, 11, 5, 10)
+    db.add_plan(ALUNO, status="published", effective_from=HOJE, published_at=datetime(2026, 11, 5, 10),
+                training_kcal_mode="explicit_training")
+    ontem = HOJE - timedelta(days=1)
+    db.add_intervals_activity(ALUNO, ontem, "VirtualRun", 200)
+    explicito = svc.settings_from_row(db.plans[2])
+    with db.conn() as conn, conn.cursor() as cur:
+        entradas = svc.load_user_inputs(cur, ALUNO, ontem, HOJE, HOJE, [explicito])
+    assert entradas.extras_loaded is True and entradas.intervals_loaded is False
+    janela = svc.TargetWindow(date_from=ontem, date_to=HOJE, create_until=HOJE)
+    linhas = {l["local_date"]: l for l in svc.ensure_daily_targets(db.conn(), ALUNO, janela, today=HOJE, inputs=entradas)}
+    assert linhas[ontem.isoformat()]["tdee_basis"] == "auto_synced"
+    assert linhas[ontem.isoformat()]["extra_activity"]["kcal"] == pytest.approx(200)
+    assert linhas[HOJE.isoformat()]["tdee_basis"] == "classic"
+
+
+INICIO = datetime(2026, 11, 5, 18, 0)
+
+
+def test_sessao_do_app_e_weight_training_sem_vinculo_no_mesmo_horario_contam_uma_vez_pela_sessao():
+    sessao = ee.SessionKcal(calories_kcal=428, duration_min=60, start=INICIO)
+    intervals = (
+        ee.ExtraActivity(kind="strength", calories_kcal=430, label="Weight Training", duration_seconds=3560, start=INICIO.replace(minute=3)),
+        ee.ExtraActivity(kind="cardio", calories_kcal=100, label="Walk", duration_seconds=1800, start=INICIO.replace(hour=20)),
+    )
+    soma = ee.extra_activity_kcal(intervals, TMB, sessions=[sessao])
+    razoes = [linha.excluded_reason for linha in soma.lines]
+    assert razoes == [ee.EXCLUDED_DUPLICATE, None]
+    assert soma.kcal == pytest.approx(100 - TMB / 1440 * 30)  # só a caminhada; a sessão do app é a que conta
+    assert soma.lines[0].net_kcal == 0.0 and soma.lines[0].gross_kcal == 430
+    # sem horário na sessão não há como casar: as duas contam (o vínculo do sync é a proteção)
+    sem_horario = ee.extra_activity_kcal(intervals[:1], TMB, sessions=[ee.SessionKcal(calories_kcal=428, duration_min=60)])
+    assert sem_horario.lines[0].excluded_reason is None
+
+
+def test_uploads_duplicados_do_mesmo_treino_pelo_dono():
+    # mesmo id externo: duplicata CERTA (não soma)
+    certa = (
+        ee.ExtraActivity(kind="cardio", calories_kcal=300, label="Run", duration_seconds=1800, start=INICIO, external_id="zepp-1"),
+        ee.ExtraActivity(kind="cardio", calories_kcal=300, label="Run", duration_seconds=1800, start=INICIO, external_id="zepp-1"),
+    )
+    soma = ee.extra_activity_kcal(certa, TMB)
+    assert [linha.excluded_reason for linha in soma.lines] == [None, ee.EXCLUDED_DUPLICATE]
+    assert soma.kcal == pytest.approx(300 - TMB / 1440 * 30)
+    # Zepp + Strava (ids distintos, início e duração parecidos): possível duplicata, CONTA e avisa
+    possivel = (
+        ee.ExtraActivity(kind="cardio", calories_kcal=300, label="Run", duration_seconds=1800, start=INICIO, external_id="zepp-1"),
+        ee.ExtraActivity(kind="cardio", calories_kcal=310, label="Run", duration_seconds=1780, start=INICIO.replace(minute=2), external_id="strava-9"),
+    )
+    soma = ee.extra_activity_kcal(possivel, TMB)
+    assert all(linha.excluded_reason is None for linha in soma.lines)
+    assert ee.LIMIT_POSSIBLE_DOUBLE_COUNT in soma.limitations and ee.LIMIT_POSSIBLE_DOUBLE_COUNT in LIMITATION_LABELS
+
+
+def test_kcal_acima_do_teto_do_dono_nao_soma_e_sem_kcal_nao_soma():
+    teto = activity_energy.MAX_PLAUSIBLE_ACTIVITY_KCAL
+    itens = (
+        ee.ExtraActivity(kind="cardio", calories_kcal=teto + 1, label="Erro", duration_seconds=1800, start=INICIO),
+        ee.ExtraActivity(kind="cardio", calories_kcal=None, label="Sem kcal", duration_seconds=1800, start=INICIO.replace(hour=20)),
+        ee.ExtraActivity(kind="cardio", calories_kcal=200, label="Ok", duration_seconds=1800, start=INICIO.replace(hour=22)),
+    )
+    soma = ee.extra_activity_kcal(itens, TMB)
+    assert [linha.excluded_reason for linha in soma.lines] == [ee.EXCLUDED_ABOVE_CEILING, ee.EXCLUDED_NO_KCAL, None]
+    assert soma.kcal == pytest.approx(200 - TMB / 1440 * 30) and ee.LIMIT_ACTIVITY_WITHOUT_KCAL in soma.limitations
+    contrato = soma.to_dict()["items"]
+    assert [item["excluded_reason"] for item in contrato] == ["above_ceiling", "no_kcal", None]
+    assert all({"gross_kcal", "resting_discount_kcal", "net_kcal", "excluded_reason"} <= set(item) for item in contrato)
+    assert contrato[0]["net_kcal"] == 0 and contrato[2]["net_kcal"] == pytest.approx(200 - TMB / 1440 * 30)
+
+
+def test_desconto_so_nos_modos_que_o_usam_embutido_e_adaptativo_mantem_o_treino_bruto():
+    sessoes = [SessionFacts(calories_kcal=874, duration_seconds=6433)]
+    contexto = day_context_for(HOJE, HOJE, sessoes)
+    explicito = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), contexto)
+    assert explicito.training_kcal.kcal < 874 and explicito.training_kcal.resting_discount_kcal > 0
+    for modo in (ee.TdeeMode.INCLUDED_IN_FACTOR, ee.TdeeMode.ADAPTIVE_BALANCE):
+        meta = compute_daily_target(SUJEITO, _plano(modo), contexto)
+        assert meta.training_kcal.kcal == 874 and meta.training_kcal.resting_discount_kcal == 0
+        assert ee.LIMIT_REST_NOT_DISCOUNTED not in meta.limitations
+    fallback = compute_daily_target(SUJEITO, _plano(), day_context_for(HOJE, HOJE, sessoes, intervals_in_sync=False))
+    assert fallback.training_kcal.kcal == 874  # fallback do automático: treino ignorado no gasto e bruto
+
+
+def test_sessao_curta_que_fica_liquida_zero_continua_sendo_dia_de_treino():
+    from app.domain.nutrition import plan as plan_mod
+    from app.domain.nutrition import plan_suggestion as sug
+
+    meta = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.EXPLICIT_TRAINING), day_context_for(HOJE, HOJE, [SessionFacts(calories_kcal=50, duration_seconds=7200)]))
+    assert meta.training_kcal.kcal == 0.0
+    assert plan_mod.training_kcal_of_day(True, meta.training_kcal.kcal) == 0.0  # conhecido, não "desconhecido"
+    assert sug.training_summary([0.0, 0.0, None], [True, False, True])["training_days"] == 2
+    assert sug.training_summary([0.0, 300.0])["training_days"] == 1  # sem flags: como antes
+
+
+def test_servico_dia_com_sessao_liquida_zero_e_dia_de_treino_no_passado():
+    db = _db(modo="explicit_training")
+    db.add_session(ALUNO, HOJE - timedelta(days=1), 50, seconds=7200)
+    settings = svc.settings_from_row(db.plans[1])
+    with db.conn() as conn, conn.cursor() as cur:
+        entradas = svc.load_user_inputs(cur, ALUNO, HOJE - timedelta(days=ee_window()), HOJE, HOJE, [settings])
+    kcal, dias = svc.past_training_window(entradas, settings, HOJE)
+    assert dias[-1] is True and kcal[-1] == pytest.approx(0.0)
+
+
+def test_o_fake_simula_o_join_de_vinculo_e_projeta_so_as_colunas_do_select():
+    """P3-2: a vinculada sai pela consulta (como o `l.id IS NULL`), e as colunas fora do SELECT não chegam ao serviço."""
+    db = _db(modo="explicit_training")
+    db.add_intervals_activity(ALUNO, HOJE, "Walk", 100)
+    db.add_intervals_activity(ALUNO, HOJE, "WeightTraining", 700, linked=True)
+    db.add_intervals_activity(OUTRO_ALUNO, HOJE, "Walk", 999)
+    assert len(db.intervals_extras) == 3  # o fake guarda TODAS; quem exclui é a consulta
+    with db.conn() as conn, conn.cursor() as cur:
+        cur.execute(svc.EXTRA_ACTIVITIES_SQL, (ALUNO, HOJE, HOJE))
+        linhas = cur.fetchall()
+    assert [l["sport_type"] for l in linhas] == ["Walk"]
+    assert "raw_json" not in linhas[0] and "linked" not in linhas[0] and "user_id" not in linhas[0]
+    assert {"id", "external_id", "start_time", "elapsed_time_seconds"} <= set(linhas[0])
+
+
+def test_contrato_do_treino_e_da_comparacao_sempre_traz_bruto_desconto_e_liquido():
+    t = ee.resolve_sessions_kcal([ee.SessionKcal(calories_kcal=500, duration_min=60)], 80, None, TMB)
+    d = t.to_dict()
+    assert d["gross_kcal"] == 500 and d["kcal"] == pytest.approx(500 - TMB / 1440 * 60)
+    assert d["resting_discount_kcal"] == pytest.approx(TMB / 1440 * 60)
+    bruto = ee.resolve_sessions_kcal([ee.SessionKcal(calories_kcal=500, duration_min=60)], 80, None).to_dict()
+    assert bruto["gross_kcal"] == 500 and bruto["resting_discount_kcal"] == 0  # sem TMB: nada descontado, campos presentes
+    comparacao = ee.compare_sessions_kcal([ee.SessionKcal(calories_kcal=500, duration_min=60)], 80, None, TMB).to_dict()
+    assert comparacao["used_net_kcal"] == pytest.approx(500 - TMB / 1440 * 60) and comparacao["used"]["kcal"] == comparacao["used_net_kcal"]
+    from app.domain.nutrition import labels as lb
+
+    rotulos = lb.activity_block_labels()
+    assert rotulos["activities_title"] == "Atividades do Intervals" and rotulos["net_suffix"] == "líquido do repouso da sessão"
+    assert set(rotulos["excluded_reasons"]) == {ee.EXCLUDED_DUPLICATE, ee.EXCLUDED_ABOVE_CEILING, ee.EXCLUDED_NO_KCAL}

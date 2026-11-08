@@ -40,7 +40,7 @@ from typing import Any, Final, Mapping, Optional, Sequence
 from . import energy_expenditure as ee
 from . import adaptive_energy
 from .activity_energy import CalorieMode
-from .anthropometrics import ActivityLevel, Subject, normalize_activity_level, positive_number, weight_is_valid
+from .anthropometrics import ActivityLevel, Subject, non_negative_number, normalize_activity_level, positive_number, weight_is_valid
 from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_ffm_kg, target_weight_for_body_fat
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
@@ -715,7 +715,7 @@ def training_kcal_of_day(is_training_day: bool, resolved_kcal: Any) -> Optional[
     """Gasto de treino de um dia PASSADO para a média da projeção. `resolved_kcal` é a kcal JÁ resolvida pelo
     dono (`energy_expenditure.resolve_training_kcal`: informada > MET). 0 em dia sem treino; a kcal do treino; ou
     `None` (desconhecida) só em dia de treino sem kcal e sem duração ou peso para estimar."""
-    kcal = positive_number(resolved_kcal)
+    kcal = non_negative_number(resolved_kcal)  # 0 é valor conhecido (sessão curta que fica líquida 0), não "desconhecido"
     if kcal is not None:
         return kcal
     return None if is_training_day else 0.0

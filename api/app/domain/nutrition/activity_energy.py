@@ -4,9 +4,11 @@ e agregação por dia local.
 Dono único (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7; guarda `api/tests/unit/test_guarda_fontes_da_verdade.py`).
 Spec: `.omc/research/NUTRICAO-spec-2026-11-05.md` §3.3, §4, §5, §13 e §19; plano `.omc/plans/nutricao-adaptativo-2026-11-05.md`.
 
-Escopo. Este módulo vale SÓ para o modo adaptativo futuro. Os três modos legados (`explicit_training`,
-`included_in_factor`, `auto_intervals`) continuam com `energy_expenditure.extra_activity_kcal`/`resolve_training_kcal`
-e NÃO usam nada daqui (testes-ouro em `tests/unit/test_nutrition_modos_legados_ouro.py`).
+Escopo. Este módulo é do modo adaptativo e é a fonte das regras de energia de atividade que os modos explícito e
+automático sincronizado reaproveitam (ADR 0008, `nutrition-v3`): `energy_expenditure` usa `net_of_resting_kcal` (desconto
+do repouso da janela), `normalize_activity` e `deduplicate` (duplicata e possível duplicata) e `MAX_PLAUSIBLE_ACTIVITY_KCAL`
+(teto) para somar a kcal das sessões e das atividades do Intervals. O embutido (`included_in_factor`) NÃO usa nada daqui.
+Testes-ouro: `tests/unit/test_nutrition_modos_legados_ouro.py`.
 
 Fronteiras:
 - A CLASSIFICAÇÃO da atividade (força, cardio, outra) é de `app/intervals_activity_kind.py`; aqui o tipo chega como texto

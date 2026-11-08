@@ -293,6 +293,7 @@ def test_plano_embutido_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
     assert treino["extra_activity"]["kcal"] == 0.0
+    assert treino["activity_kcal"]["total_kcal"] == 410.0  # embutido: o treino segue BRUTO (sem desconto do repouso)
 
 
 def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db):
@@ -300,7 +301,7 @@ def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db)
     db.add_activity(ALUNO, HOJE, 410, 3600)
     db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": []}
+    assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": [], "gross_kcal": 0.0, "resting_discount_kcal": 0.0}
     assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
 
 
