@@ -47,7 +47,7 @@ def _cadastrado(reps_floor: int, reps_ceiling: int, *rules: nsl.Rule, version: i
 CADASTRADO = _cadastrado(
     nsl.DEFAULT_RULESET.reps_floor,
     nsl.DEFAULT_RULESET.reps_ceiling,
-    nsl.Rule(
+    nsl.rule_from_v1(
         position=1,
         reps=nsl.Condition(nsl.ConditionOp.GT, nsl.REPS_TOKEN_CEILING),
         action=pe.INCREASE_LOAD,
@@ -102,6 +102,29 @@ def test_cadastrado_percentual_cita_a_regra_e_a_versao():
     exigir(f"  1. {regra}\n" in secao, "regra cadastrada na lista")
     # as regras do padrão não aparecem quando o cadastrado vale
     exigir(nsl.describe_rule(nsl.DEFAULT_RULESET.rules[0], nsl.DEFAULT_RULESET) not in secao, "sem as regras do padrão")
+
+
+def test_arvore_v2_cita_a_formula_do_dono_sem_bump_de_versao():
+    """O template do prompt nao muda: o texto interpolado e a formula SE ... ENTAO ..."""
+    arvore = nsl.Rule(
+        position=1,
+        when=nsl.all_of(
+            nsl.leaf(nsl.VAR_REPS, nsl.ConditionOp.GT, nsl.REPS_TOKEN_CEILING),
+            nsl.any_of(
+                nsl.leaf(nsl.VAR_RPE, nsl.ConditionOp.LT, Decimal(9), scope=nsl.SCOPE_PREVIOUS),
+                nsl.leaf(nsl.VAR_RPE, nsl.ConditionOp.LT, nsl.RPE_TOKEN_TARGET),
+            ),
+        ),
+        action=pe.INCREASE_LOAD,
+        magnitude=nsl.Magnitude(nsl.MagnitudeKind.PERCENT, Decimal(25)),
+    )
+    conjunto = _cadastrado(nsl.DEFAULT_RULESET.reps_floor, nsl.DEFAULT_RULESET.reps_ceiling, arvore, version=5)
+    proxima = next_set_load_for(PAYLOAD, MOTOR, ruleset=conjunto, previous_set={"reps": 12, "rpe": 8, "weight_kg": 40})
+    regra = nsl.describe_rule(conjunto.rules[0], conjunto)
+    exigir(regra.startswith("SE ") and " ENTÃO " in regra, "formula do dono")
+    secao = _secao(PAYLOAD, proxima, conjunto)
+    exigir(f"  1. {regra}\n" in secao, "formula na lista de regras")
+    exigir(set_ai.PROMPT_VERSION == "set-eval-v8", "sem bump de versao do prompt")
 
 
 def test_nenhuma_regra_casou_manter():

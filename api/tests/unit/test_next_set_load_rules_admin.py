@@ -113,8 +113,79 @@ def test_salvar_rascunho_devolve_texto_e_avisos_sem_bloquear(admin, db):
     assert corpo["warnings"] == [nsl.WARN_NO_DECREASE_RULE]
     rascunho = corpo["draft"]
     assert rascunho["status"] == "draft" and rascunho["version"] is None and rascunho["notes"] == "teste"
-    assert rascunho["ruleset"]["rules"][0]["text"].startswith("1ª série · músculo descansado")
+    assert rascunho["ruleset"]["rules"][0]["text"].startswith("SE série = 1 E fadiga = descansado")
     assert admin.get(f"{BASE}/draft").json()["draft"]["id"] == rascunho["id"]
+
+
+ARVORE_V2 = {
+    "reps_floor": 6,
+    "reps_ceiling": 12,
+    "rules": [
+        {
+            "when": {
+                "logic": "and",
+                "children": [
+                    {"variable": "reps", "scope": "previous", "op": ">=", "value": 10},
+                    {"variable": "rpe", "op": "<", "value": "target"},
+                ],
+            },
+            "action": "ENGINE_TARGET",
+        },
+        {"when": {"logic": "and", "children": [{"variable": "rpe", "op": ">=", "value": 10}]},
+         "action": "DECREASE_LOAD", "magnitude": {"kind": "steps", "value": 1}},
+    ],
+}
+FATOS_V2 = {"working_set_index": 2, "reps": 10, "rpe": 7, "rpe_target": 9, "weight_kg": 20, "step_kg": 2.5,
+            "engine_target_kg": 30, "previous": {"reps": 11, "rpe": 7, "weight_kg": 20}}
+
+
+def test_describe_da_arvore_v2_devolve_a_formula_do_dono(admin, db):
+    corpo = admin.post(f"{BASE}/describe", json={"ruleset": ARVORE_V2}).json()
+    conjunto = rules.ruleset_from_input(rules.RuleSetIn(**ARVORE_V2))
+    assert corpo["texts"] == [nsl.describe_rule(r, conjunto) for r in conjunto.rules]
+    assert corpo["texts"][0].startswith("SE ") and " ENTÃO " in corpo["texts"][0]
+    assert corpo["errors"] == [] and db.statements == []
+
+
+def test_simulate_com_serie_anterior_e_alvo_do_motor(admin, db):
+    resposta = admin.post(f"{BASE}/simulate", json={"ruleset": ARVORE_V2, "facts": FATOS_V2})
+    assert resposta.status_code == 200, resposta.text
+    conjunto = rules.ruleset_from_input(rules.RuleSetIn(**ARVORE_V2))
+    esperado = nsl.evaluate_ruleset(rules.SetFactsIn(**FATOS_V2).to_facts(), conjunto).to_dict()
+    assert resposta.json()["result"] == esperado
+    assert resposta.json()["result"]["rule_position"] == 1 and resposta.json()["result"]["load_kg"] == 30.0
+    # sem a serie anterior a folha `previous` nao casa; sem alvo do motor a acao nao casa
+    sem_anterior = admin.post(f"{BASE}/simulate", json={"ruleset": ARVORE_V2, "facts": {**FATOS_V2, "previous": None}})
+    assert sem_anterior.json()["result"]["direction"] == pe.HOLD
+    sem_alvo = admin.post(f"{BASE}/simulate", json={"ruleset": ARVORE_V2, "facts": {**FATOS_V2, "engine_target_kg": None}})
+    assert sem_alvo.json()["result"]["direction"] == pe.HOLD
+
+
+def _aninhado(niveis):
+    grupo = {"logic": "and", "children": [{"variable": "reps", "op": ">=", "value": 10}]}
+    for _ in range(niveis - 1):
+        grupo = {"logic": "or", "children": [grupo]}
+    return grupo
+
+
+@pytest.mark.parametrize(
+    ("regra", "codigo"),
+    [
+        ({"when": _aninhado(4), "action": "HOLD"}, nsl.RULE_DEPTH_EXCEEDED),
+        ({"when": {"logic": "and", "children": [{"variable": "reps", "op": ">=", "value": i + 1} for i in range(9)]},
+          "action": "HOLD"}, nsl.RULE_TOO_MANY_LEAVES),
+        ({"when": {"logic": "and", "children": [{"variable": "reps", "scope": "next", "op": ">=", "value": 1}]},
+          "action": "HOLD"}, nsl.RULE_SCOPE_INVALID),
+    ],
+)
+def test_422_da_arvore_traz_o_codigo_do_dono(admin, db, regra, codigo):
+    corpo = {**ARVORE_V2, "rules": [regra]}
+    simulado = admin.post(f"{BASE}/simulate", json={"ruleset": corpo, "facts": FATOS_V2})
+    salvo = admin.put(f"{BASE}/draft", json=corpo)
+    for resposta in (simulado, salvo):
+        assert resposta.status_code == 422, resposta.text
+        assert any(item.split(":")[0] == codigo for item in resposta.json()["detail"]["codes"])
+    assert db.rows == []
 
 
 def test_rascunho_vazio_e_null(admin, db):

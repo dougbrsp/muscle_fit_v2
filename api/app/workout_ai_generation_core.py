@@ -46,6 +46,7 @@ from .domain.next_set_load import (
     planned_ramp_rpe,
     ruleset_for_goal,
     ruleset_uses_fatigue,
+    ruleset_uses_previous_set,
     ruleset_uses_published,
 )
 from .domain.prescription import UNKNOWN_PAIR_SAFETY
@@ -56,6 +57,7 @@ from .engine_decision_context import (
     load_activity_decisions,
     load_logged_exercise_decision,
     load_pair_context,
+    last_working_previous_set,
     next_set_load_for,
     payload_working_set_index,
     safe_read,
@@ -279,6 +281,8 @@ def dispatch_evaluate_set(payload: dict[str, Any], user_id: Any = None) -> dict[
         rpe_ceiling=(logged or intensity).ceiling,
         ruleset=ruleset,
         intensity_status=reading.status,
+        previous_set=last_working_previous_set(payload) if ruleset_uses_previous_set(ruleset) else None,
+        engine_target_kg=engine.decision.load_kg if engine.decision else None,
     )
     try:
         result = evaluate_set(

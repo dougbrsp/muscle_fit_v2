@@ -153,6 +153,39 @@ export function SimulatePanel({ draftPayload }: { draftPayload: RuleSetInput | n
             value={form.planned_rpe}
             onChange={(planned_rpe) => set({ planned_rpe })}
           />
+          <NumberField
+            label="RPE alvo da ficha"
+            description="opcional (token alvo)"
+            min={RPE_VALUE_BOUNDS.min}
+            max={RPE_VALUE_BOUNDS.max}
+            decimal
+            value={form.rpe_target}
+            onChange={(rpe_target) => set({ rpe_target })}
+          />
+          <NumberField
+            label="Reps da série anterior"
+            description="opcional"
+            min={0}
+            value={form.previous_reps}
+            onChange={(previous_reps) => set({ previous_reps })}
+          />
+          <NumberField
+            label="RPE da série anterior"
+            description="opcional"
+            min={RPE_VALUE_BOUNDS.min}
+            max={RPE_VALUE_BOUNDS.max}
+            decimal
+            value={form.previous_rpe}
+            onChange={(previous_rpe) => set({ previous_rpe })}
+          />
+          <NumberField
+            label="Alvo do motor (kg)"
+            description="opcional"
+            min={0}
+            decimal
+            value={form.engine_target_kg}
+            onChange={(engine_target_kg) => set({ engine_target_kg })}
+          />
           <NumberField label="Carga (kg)" min={0} decimal value={form.weight_kg} onChange={(weight_kg) => set({ weight_kg })} />
           <NumberField
             label="Passo do equipamento (kg)"

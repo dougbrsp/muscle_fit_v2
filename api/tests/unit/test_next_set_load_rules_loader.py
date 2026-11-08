@@ -48,8 +48,14 @@ def test_pydantic_vira_o_conjunto_do_dono_na_ordem_da_lista():
     ruleset = _rs()
     assert [rule.position for rule in ruleset.rules] == [1, 2]
     primeira = ruleset.rules[0]
-    assert primeira.set_position is nsl.SetPosition.FIRST and primeira.fatigue is nsl.FatigueCondition.RESTED
-    assert primeira.reps == nsl.Condition(nsl.ConditionOp.GT, "ceiling")
+    # formato v1 aceito por compatibilidade: convertido pelo dono para a arvore `when`
+    assert primeira.when == nsl.when_from_v1(
+        set_position=nsl.SetPosition.FIRST,
+        fatigue=nsl.FatigueCondition.RESTED,
+        reps=nsl.Condition(nsl.ConditionOp.GT, "ceiling"),
+        rpe=nsl.Condition(nsl.ConditionOp.LT, "max"),
+        respect_planned_ramp=True,
+    )
     assert primeira.magnitude == nsl.Magnitude(nsl.MagnitudeKind.PERCENT, Decimal(25))
     assert primeira.reason_code is None  # regra cadastrada: motivo genérico
     assert nsl.ruleset_errors(ruleset) == []
@@ -70,7 +76,7 @@ def test_ida_e_volta_pela_linha_preserva_o_conjunto():
         {"extra": 1},
         {"rules": [{"action": "HOLD", "reason_code": "NEXT_SET_PAIN"}]},  # motivo não é aceito
         {"rules": [{"action": "HOLD", "set_position": "fourth"}]},  # fora do vocabulário do dono
-        {"rules": [{"action": "HOLD", "reps": {"op": "!=", "value": 3}}]},
+        {"rules": [{"action": "HOLD", "reps": {"op": "~", "value": 3}}]},
         {"rules": [{"action": "HOLD", "respect_planned_ramp": "sim"}]},
         {"reps_floor": "6"},
     ],
@@ -78,6 +84,105 @@ def test_ida_e_volta_pela_linha_preserva_o_conjunto():
 def test_forma_invalida_e_recusada_pelo_pydantic(ajuste):
     with pytest.raises(ValidationError):
         rules.RuleSetIn(**{**EXEMPLO, **ajuste})
+
+
+def _folha(variable="reps", op=">=", value=10, **extra):
+    return {"variable": variable, "op": op, "value": value, **extra}
+
+
+def _regra_v2(*children, logic="and", action="ENGINE_TARGET", **extra):
+    return {"when": {"logic": logic, "children": list(children)}, "action": action, **extra}
+
+
+def _conjunto_v2(*regras):
+    return {"reps_floor": 6, "reps_ceiling": 12, "rules": list(regras)}
+
+
+def _aninhar(niveis):
+    grupo = {"logic": "and", "children": [_folha()]}
+    for _ in range(niveis - 1):
+        grupo = {"logic": "or", "children": [grupo]}
+    return grupo
+
+
+ARVORE = _regra_v2(
+    _folha("reps", ">=", 10, scope="previous"),
+    {"logic": "or", "children": [_folha("rpe", "<", "target"), _folha("rpe", "<", 8)]},
+)
+
+
+def test_arvore_v2_vira_o_conjunto_do_dono_e_engine_target_dispensa_magnitude():
+    ruleset = _rs(_conjunto_v2(ARVORE))
+    regra = ruleset.rules[0]
+    assert regra.action == nsl.ACTION_ENGINE_TARGET and regra.magnitude is None
+    assert regra.when.logic == nsl.LOGIC_AND and isinstance(regra.when.children[1], nsl.ConditionGroup)
+    assert regra.when.children[0].scope == nsl.SCOPE_PREVIOUS
+    assert regra.when.children[1].children[0].value == nsl.RPE_TOKEN_TARGET
+    assert nsl.ruleset_uses_previous_set(ruleset) and nsl.ruleset_uses_engine_target(ruleset)
+
+
+def test_ida_e_volta_v2_preserva_a_arvore_e_grava_when():
+    ruleset = _rs(_conjunto_v2(ARVORE))
+    assert "when" in rules._rules_param(ruleset)[0] and "set_position" not in rules._rules_param(ruleset)[0]
+    db = FakeRuleSetsDB()
+    db.add(status=rules.STATUS_PUBLISHED, version_number=2, ruleset_dict=nsl.ruleset_to_dict(ruleset))
+    assert rules.load_published_ruleset(db.conn()).rules == ruleset.rules
+
+
+def test_linha_v1_do_banco_e_lida_em_v2_sem_regravar():
+    db = FakeRuleSetsDB()
+    db.add(status=rules.STATUS_PUBLISHED, version_number=3, ruleset_dict=EXEMPLO)  # rules_json no formato v1
+    lido = rules.load_published_ruleset(db.conn())
+    assert lido.version == 3 and lido.source == "published"
+    assert nsl.ruleset_to_dict(lido)["rules"][0]["when"]["children"]  # em memoria: v2
+    assert [s for s in db.statements if s.lstrip().upper().startswith(("UPDATE", "INSERT"))] == []
+    assert nsl.ruleset_errors(lido) == []
+
+
+def test_formato_v1_e_v2_na_mesma_regra_e_recusado():
+    with pytest.raises(ValidationError):
+        rules.RuleSetIn(**_conjunto_v2({**ARVORE, "set_position": "first"}))
+
+
+@pytest.mark.parametrize(
+    "regra",
+    [
+        _regra_v2(_folha(extra=1)),  # campo extra na folha
+        {**_regra_v2(_folha()), "reason_code": "NEXT_SET_PAIN"},
+        _regra_v2(_folha(op="~")),  # operador fora do vocabulario
+        {"when": {"logic": "and"}, "action": "HOLD"},  # sem children
+        {"when": {"children": [_folha()], "extra": 1}, "action": "HOLD"},
+    ],
+)
+def test_arvore_forma_invalida_e_recusada_pelo_pydantic(regra):
+    with pytest.raises(ValidationError):
+        rules.RuleSetIn(**_conjunto_v2(regra))
+
+
+@pytest.mark.parametrize(
+    ("regra", "codigo"),
+    [
+        ({"when": _aninhar(4), "action": "HOLD"}, nsl.RULE_DEPTH_EXCEEDED),  # profundidade maxima = 3
+        (_regra_v2(*[_folha(value=i + 1) for i in range(nsl.RULESET_MAX_LEAVES_PER_RULE + 1)], action="HOLD"), nsl.RULE_TOO_MANY_LEAVES),
+        (_regra_v2(_folha(scope="future"), action="HOLD"), nsl.RULE_SCOPE_INVALID),
+        (_regra_v2(_folha(variable="peso"), action="HOLD"), nsl.RULE_VARIABLE_UNKNOWN),
+        (_regra_v2(action="HOLD"), nsl.RULE_WITHOUT_CONDITION),
+    ],
+)
+def test_semantica_da_arvore_e_so_do_dono(regra, codigo):
+    ruleset = _rs(_conjunto_v2(regra, {"when": _aninhar(1), "action": "HOLD"}))
+    assert any(item.split(":")[0] == codigo for item in nsl.ruleset_errors(ruleset))
+
+
+def test_set_facts_in_leva_previous_alvo_do_motor_e_rpe_alvo():
+    facts = rules.SetFactsIn(
+        reps=10, rpe=8, engine_target_kg=30, rpe_target=9, previous={"reps": 11, "rpe": 7, "weight_kg": 20}
+    ).to_facts()
+    assert facts.previous == nsl.PreviousSetFacts(reps=11, rpe=7, weight_kg=20)
+    assert (facts.engine_target_kg, facts.rpe_target) == (30, 9)
+    assert rules.SetFactsIn().to_facts().previous is None
+    with pytest.raises(ValidationError):
+        rules.SetFactsIn(previous={"reps": 1, "x": 2})
 
 
 def test_ruleset_payload_traz_o_texto_do_dono():
