@@ -89,3 +89,32 @@ describe('buildAdvancedExerciseCounters = montagem antiga da tela', () => {
     ).toEqual(legacyCounters(planExercise, loggedSets, true, undefined, undefined));
   });
 });
+
+describe('buildAdvancedExerciseCounters: techniqueTarget da família além da falha', () => {
+  const build = (planExercise: AdvancedCountersPlanExercise) =>
+    buildAdvancedExerciseCounters({ planExercise, loggedSets: [], advancedMode: true, adjustedSetsCount: undefined, localProgress: undefined });
+
+  it('partial_reps com 3 séries e 2 aplicações: 2 etapas depois das 3 séries de trabalho', () => {
+    const counters = build({ sets_count: 3, advanced_technique: 'partial_reps', advanced_technique_applications: 2 });
+    expect(counters.techniqueTarget).toBe(2);
+    expect(counters.workingTarget).toBe(3);
+  });
+
+  it.each([null, 0, undefined])('partial_reps com aplicações %s: sem etapa (0)', (applications) => {
+    expect(
+      build({ sets_count: 3, advanced_technique: 'partial_reps', advanced_technique_applications: applications }).techniqueTarget,
+    ).toBe(0);
+  });
+
+  it.each(['forced_reps', 'negative_reps', 'cheat_reps'])('%s com 2 aplicações: 2', (technique) => {
+    expect(build({ sets_count: 3, advanced_technique: technique, advanced_technique_applications: 2 }).techniqueTarget).toBe(2);
+  });
+
+  it.each(['fst7', 'gvt'])('%s com aplicações preenchidas: o bloco não vira etapa (0)', (technique) => {
+    expect(build({ sets_count: 3, advanced_technique: technique, advanced_technique_applications: 7 }).techniqueTarget).toBe(0);
+  });
+
+  it('rest_pause 3+2: 2 aplicações, sem regressão', () => {
+    expect(build({ sets_count: 3, advanced_technique: 'rest_pause', advanced_technique_applications: 2 }).techniqueTarget).toBe(2);
+  });
+});

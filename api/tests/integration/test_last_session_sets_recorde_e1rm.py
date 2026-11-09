@@ -6,7 +6,9 @@ Recorde (M76 Lote 3b, decisão 3): a regra do dashboard
 canônico + equipamento global + convenção -, sobre o histórico inteiro, sem a
 sessão atual. A 1ª exposição não é recorde (M76 Lote 3d: vira a "Melhor
 carga", `kind = "best_load"`); empate de carga com mais reps não
-é recorde; reps da série recorde só informam. e1RM:
+é recorde como evento; as reps exibidas da marca vigente são o máximo feito
+na carga da marca, entre todas as exposições da chave e sem a sessão atual
+(decisão reps-max de 2026-11-09, FONTES_DA_VERDADE §102). e1RM:
 `app.domain.equipment_record.summarize_equipment_history`.
 
 Roda so no CI (MySQL).
@@ -39,7 +41,8 @@ def test_recorde_e_a_carga_que_superou_a_marca_e_e1rm_do_historico_do_equipament
     assert _grava(client, media, ex_media, set_type="working", reps=6, weight_kg=32.5, rpe=None).status_code == 200
 
     recente, ex_recente = _sessao(client, catalog, academia, plan)
-    # mesma carga do recorde com MAIS reps: empate na carga nao e recorde
+    # mesma carga do recorde com MAIS reps: empate na carga nao e recorde como
+    # evento, mas as 12 reps passam a ser as exibidas na marca (reps-max)
     assert _grava(client, recente, ex_recente, set_type="working", reps=12, weight_kg=32.5, rpe=None).status_code == 200
 
     atual, ex_atual = _sessao(client, catalog, academia, plan)
@@ -56,8 +59,13 @@ def test_recorde_e_a_carga_que_superou_a_marca_e_e1rm_do_historico_do_equipament
     assert item is not None
     assert item["activity_id"] == recente
     assert item["record_scope"] == "equipment"
-    # 32,5 superou 30 (a 1a exposicao); reps = as da serie recorde (sessao media)
-    assert item["record"] == {"reps": 8, "weight_kg": 32.5, "kind": "record"}
+    # 32,5 superou 30 (a 1a exposicao): o EVENTO de recorde e a carga. As reps
+    # exibidas sao o MAXIMO feito nessa carga entre todas as exposicoes da
+    # chave (reps-max, 2026-11-09, §102): 12 (sessao recente), nao as 8 da
+    # serie que bateu a marca. O aquecimento de 80 kg e a sessao atual
+    # (12x60) ficam fora, senao o peso seria 80 ou 60.
+    assert item["record"] == {"reps": 12, "weight_kg": 32.5, "kind": "record"}
+    assert item["record"]["reps"] != 8
     # A serie de 13 reps passa do teto de confiabilidade do Epley (12 reps,
     # mesma regra do dashboard): o e1RM vem da de 10 reps a RPE 10 ->
     # 30 x (1 + 10 / 30) = 40,0. As series sem RPE nao geram e1RM.

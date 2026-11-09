@@ -816,7 +816,7 @@ def resolve_current_cycle(user_id: int, *, as_of: Optional[date] = None) -> Opti
     `window=cycle` nao tem resposta possivel."""
     from ...analytics import _resolve_latest_assigned_template_id
     from ...db import transaction
-    from ...workout_plan_templates_engine import get_template_if_assigned, resolve_next_slot
+    from ...workout_plan_templates_engine import get_template_if_assigned, resolve_upcoming_slot
 
     user_id = require_user_id(user_id)
     template_id = _resolve_latest_assigned_template_id(user_id)
@@ -860,7 +860,9 @@ def resolve_current_cycle(user_id: int, *, as_of: Optional[date] = None) -> Opti
         if len(done) >= len(slots):
             break
 
-    next_slot = resolve_next_slot(template, user_id)
+    # Treino mais proximo (hoje se ainda nao feito; senao o seguinte): a regra
+    # mora no motor de Modelos. `done` acima segue contando fichas salvas.
+    next_slot = resolve_upcoming_slot(template, user_id)
     next_sequence = next_slot.get("sequence") if next_slot else None
     all_sequences = {slot["sequence"] for slot in slots}
 

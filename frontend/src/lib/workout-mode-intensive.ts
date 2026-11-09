@@ -17,10 +17,12 @@
 // - `INTENSIVE_MODE_TECHNIQUES` é só o recorte de entrega (quais técnicas já
 //   têm tela): não decide carga, esforço nem volume.
 //
-// PR 3: GVT usa o mesmo bloco do FST-7 (`working_block`). A família "além da
-// falha" (`beyond_failure`) usa o bloco sem briefing, com "reps extras" de um
-// toque na última série. Drop set e rest-pause (`application`) NÃO usam a
-// máquina do bloco: as etapas seguem as sub-etapas da Fase 5
+// PR 3: GVT usa o mesmo bloco do FST-7 (`working_block`). Drop set e
+// rest-pause (`application`) e a família "além da falha" (`beyond_failure`)
+// NÃO usam a máquina do bloco: as N séries de trabalho usam a tela NORMAL de
+// série e só depois delas vêm as etapas da técnica (uma por aplicação
+// prescrita; a família além da falha grava cada etapa como linha da técnica
+// ligada à última série, o mesmo contrato do rest-pause). As etapas seguem as sub-etapas da Fase 5
 // (`workout-mode-advanced-stage.ts`, contagem por `technique_code` +
 // `anchor_set_number`) e aqui ficam só a carga planejada da etapa
 // (`intensiveApplicationPlannedLoad`: a do dono `session_loads`, recebida
@@ -197,7 +199,7 @@ export function resolveIntensiveProfile(params: {
 
   const pause = techniquePauseSeconds(code, technique, params.techniqueDurationSeconds);
   const restBetween: IntensiveRestBetween =
-    stageKind === 'application'
+    isTechniqueStageKind(stageKind)
       ? pause != null
         ? { kind: 'technique_pause', seconds: pause }
         : { kind: 'none' }
@@ -225,9 +227,19 @@ export function resolveIntensiveProfile(params: {
   };
 }
 
-/** O perfil usa a máquina do bloco (séries inteiras); `application` segue as sub-etapas da Fase 5. */
+/** Famílias cujas etapas vêm DEPOIS das séries de trabalho normais (sub-etapas da Fase 5). */
+export function isTechniqueStageKind(stageKind: IntensiveStageKind): boolean {
+  return stageKind === 'application' || stageKind === 'beyond_failure';
+}
+
+/** O perfil usa a máquina do bloco (séries inteiras: FST-7, GVT); drop, rest-pause e além da falha seguem as sub-etapas da Fase 5. */
 export function isIntensiveBlockProfile(profile: Pick<IntensiveProfile, 'stageKind'> | null | undefined): boolean {
-  return profile != null && profile.stageKind !== 'application';
+  return profile != null && profile.stageKind === 'working_block';
+}
+
+/** O perfil abre etapas da técnica depois das séries normais (drop set, rest-pause, além da falha). */
+export function isTechniqueStageProfile(profile: Pick<IntensiveProfile, 'stageKind'> | null | undefined): boolean {
+  return profile != null && isTechniqueStageKind(profile.stageKind);
 }
 
 /** "Reps extras" de um toque: família além da falha, só na última série do bloco (como no fluxo normal). */

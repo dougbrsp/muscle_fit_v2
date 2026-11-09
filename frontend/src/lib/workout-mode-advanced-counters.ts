@@ -11,6 +11,7 @@
 // de aplicações é de `techniqueStageTarget` e a conclusão/sub-etapa de
 // `workout-mode-plan-flow.ts` (`isAdvancedExerciseDone`/`resolveAdvancedSubStage`).
 
+import { isExtraRepsTechnique } from './advanced-techniques';
 import { MIN_SETS_COUNT } from './prescription-defaults';
 import { effectiveAdvancedStageDone } from './workout-mode-advanced-stage';
 import type { AdvancedExerciseCounters } from './workout-mode-plan-flow';
@@ -28,6 +29,20 @@ export type AdvancedCountersPlanExercise = Pick<
   | 'advanced_technique'
   | 'advanced_technique_applications'
 >;
+
+/**
+ * Aplicações da técnica que viram etapa DEPOIS das séries de trabalho: as de
+ * rest-pause/drop (`techniqueStageTarget`) e, na família "além da falha", as
+ * `advanced_technique_applications` da prescrição (uma etapa por aplicação,
+ * gravada como linha `forced_rep` ligada à última série). Sem aplicações
+ * prescritas a família segue como "reps extras" na última série. Quem decide a
+ * contagem é a prescrição; aqui só se lê.
+ */
+function techniqueApplicationsTarget(planExercise: AdvancedCountersPlanExercise): number {
+  const stageTarget = techniqueStageTarget(planExercise);
+  if (stageTarget > 0 || !isExtraRepsTechnique(planExercise.advanced_technique)) return stageTarget;
+  return Math.max(0, planExercise.advanced_technique_applications || 0);
+}
 
 /**
  * Contadores do item (`AdvancedExerciseCounters`), a mesma base para `done`
@@ -67,7 +82,7 @@ export function buildAdvancedExerciseCounters(params: {
     warmupDone,
     feelerTarget,
     feelerDone,
-    techniqueTarget: techniqueStageTarget(planExercise),
+    techniqueTarget: techniqueApplicationsTarget(planExercise),
     techniqueSkipped: localProgress?.techniqueSkipped ?? 0,
   };
 }

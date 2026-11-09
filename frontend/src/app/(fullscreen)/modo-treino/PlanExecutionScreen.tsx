@@ -172,6 +172,7 @@ import {
   intensiveRestSeconds,
   intensiveSetPayload,
   isIntensiveBlockProfile,
+  isTechniqueStageProfile,
   nextIntensiveSetNumber,
   reconcileIntensiveBlock,
   resolveIntensiveProfile,
@@ -677,7 +678,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // Perfil das ETAPAS da técnica (drop set / rest-pause) do item, ou null.
   function applicationProfileFor(planExercise: WorkoutModePlanExercise, plannedSetsCount: number | null): IntensiveProfile | null {
     const profile = intensiveProfileFor(planExercise, plannedSetsCount);
-    return profile?.stageKind === 'application' ? profile : null;
+    return isTechniqueStageProfile(profile) ? profile : null;
   }
 
   // Início de um descanso (série salva ou etapa do avançado concluída/pulada).
@@ -2314,8 +2315,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // estado do bloco é o snapshot local reconciliado com o servidor a cada
   // render (séries confirmadas, pendentes, `completed_at`). Sem perfil, nada
   // muda no fluxo normal.
-  // O bloco cobre séries inteiras (FST-7, GVT) e a família além da falha;
-  // drop set/rest-pause usam as etapas logo abaixo.
+  // O bloco cobre só séries inteiras (FST-7, GVT); drop set, rest-pause e a
+  // família além da falha usam a tela normal nas séries e as etapas logo abaixo.
   const currentIntensiveProfile =
     currentWorkoutPlanExerciseId != null ? intensiveProfileFor(current.planExercise, current.targetCount) : null;
   const intensiveProfile = isIntensiveBlockProfile(currentIntensiveProfile) ? currentIntensiveProfile : null;
@@ -2324,7 +2325,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // A sub-etapa e a contagem são as da Fase 5 (`advancedStage`); a carga do
   // protocolo é a mesma do card antigo (`techniqueApplicationLoad`, dono
   // `session_loads`). Sem perfil (técnica fora do recorte), o card antigo.
-  const applicationProfile = currentIntensiveProfile?.stageKind === 'application' ? currentIntensiveProfile : null;
+  const applicationProfile = isTechniqueStageProfile(currentIntensiveProfile) ? currentIntensiveProfile : null;
   const applicationStage =
     applicationProfile && advancedStage?.kind === 'technique' && advancedTechniqueValue ? advancedStage : null;
   const applicationNoun = advancedTechniqueValue ? getAdvancedTechniqueApplicationNoun(advancedTechniqueValue) : '';
@@ -3211,7 +3212,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             upcomingTechnique={advancedTechniqueValue}
             upcomingTechniqueApplications={advancedApplicationsTotal}
             // Família além da falha: "reps extras" só na ÚLTIMA série de trabalho.
-            extraRepsEnabled={isExtraRepsTechnique(advancedTechniqueValue) && workingSetNumber >= current.targetCount}
+            extraRepsEnabled={
+              isExtraRepsTechnique(advancedTechniqueValue) &&
+              current.advancedCounters.techniqueTarget === 0 &&
+              workingSetNumber >= current.targetCount
+            }
           />
         </>
       )}
