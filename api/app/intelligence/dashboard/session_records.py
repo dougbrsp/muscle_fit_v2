@@ -244,7 +244,8 @@ def record_events(history: Sequence[HistoryExposure]) -> list[RecordEvent]:
 
     - a primeira exposicao de uma chave nao e recorde (nao ha marca a bater);
     - empate na carga NAO e recorde, mesmo com mais repeticoes (as reps da
-      serie recorde sao so informacao - `record_set_reps`);
+      serie recorde sao so informacao - `record_set_reps` por evento,
+      `mark_max_reps` na marca vigente exibida);
     - chave sem equipamento resolvido nao e comparavel (fora da excecao do
       §8.1, em que NENHUMA exposicao do exercicio tem equipamento);
     - `bodyweight` nao tem recorde de carga (`directional_load` = None).
@@ -367,6 +368,46 @@ def record_set_reps(event: Any, sets: Iterable[Mapping[str, Any]]) -> Optional[i
     melhor: Optional[int] = None
     for row in sets or []:
         if parse_int(row.get("exercise_row_id")) != event.exposure.exercise_row_id:
+            continue
+        weight = to_float(row.get("weight_kg"))
+        reps = parse_int(row.get("reps"))
+        if weight is None or reps is None or reps <= 0 or alvo is None or abs(weight - alvo) > 1e-6:
+            continue
+        melhor = reps if melhor is None else max(melhor, reps)
+    return melhor
+
+
+def mark_exposure_row_ids(history: Sequence[HistoryExposure], mark: Any) -> list[int]:
+    """Ids de `exercises` de TODAS as exposicoes da chave da marca vigente
+    (`RecordEvent`/`BestLoad`) que atingiram a carga da marca (mesma carga
+    direcional). Sao as unicas cujas series podem ter reps na carga da marca;
+    uma consulta so (`SETS_SQL` com `IN`), sem N+1."""
+    key = mark.exposure.key
+    alvo = mark.exposure.directional_load
+    if alvo is None:
+        return []
+    return [
+        item.exercise_row_id
+        for item in history
+        if item.key == key and item.directional_load is not None and abs(item.directional_load - alvo) <= 1e-6
+    ]
+
+
+def mark_max_reps(
+    mark: Any, sets: Iterable[Mapping[str, Any]], exercise_row_ids: Iterable[int]
+) -> Optional[int]:
+    """Reps exibidas da MARCA VIGENTE (decisao `reps-max`, 2026-11-09): o
+    MAXIMO de reps ja feito na carga da marca, em todas as exposicoes da
+    chave (`mark_exposure_row_ids`). So informacao: nao decide recorde nem
+    muda `record_events` (a carga continua mandando). `sets` = linhas de
+    `SETS_SQL`; mesmos filtros do historico (working, rep-based, confirmada).
+    Listas por evento continuam em `record_set_reps` (reps da propria exposicao)."""
+    alvo = mark.load_kg
+    ids = {int(item) for item in exercise_row_ids}
+    melhor: Optional[int] = None
+    for row in sets or []:
+        row_id = parse_int(row.get("exercise_row_id"))
+        if row_id is None or row_id not in ids:
             continue
         weight = to_float(row.get("weight_kg"))
         reps = parse_int(row.get("reps"))
@@ -522,4 +563,6 @@ __all__ = [
     "record_exercise_ids",
     "record_load_kg",
     "record_set_reps",
+    "mark_exposure_row_ids",
+    "mark_max_reps",
 ]

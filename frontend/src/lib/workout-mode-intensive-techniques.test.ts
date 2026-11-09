@@ -18,6 +18,7 @@ import {
   intensiveRestSeconds,
   intensiveSetPayload,
   isIntensiveBlockProfile,
+  isTechniqueStageProfile,
   nextIntensiveSetNumber,
   pauseRemainingSeconds,
   reconcileIntensiveBlock,
@@ -28,7 +29,10 @@ import {
   type IntensiveProfile,
 } from './workout-mode-intensive';
 import { quickAdjustPlannedKg } from './workout-mode-intensive';
+import { buildAdvancedExerciseCounters } from './workout-mode-advanced-counters';
+import { advancedStageOf } from './workout-mode-advanced-stage';
 import { techniqueApplicationLoad } from './workout-mode-load-suggestions';
+import { isAdvancedExerciseDone } from './workout-mode-plan-flow';
 
 const T0 = Date.parse('2026-10-24T12:00:00Z');
 
@@ -266,9 +270,10 @@ describe('rest-pause: pausa da prescrição e mini-blocos separados', () => {
 describe('família "além da falha": bloco leve, reps extras com um toque', () => {
   const forced = profileOf('forced_reps', { plannedSetsCount: 3, itemRestSeconds: 90 });
 
-  it('perfil sem briefing, descanso do item e RPE-alvo do backend', () => {
-    expect(forced).toMatchObject({ stageKind: 'beyond_failure', restBetween: { kind: 'item_rest', seconds: 90 }, targetRpe: 9 });
-    expect(isIntensiveBlockProfile(forced)).toBe(true);
+  it('perfil de etapas da técnica (não é bloco), sem pausa inventada e com RPE-alvo do backend', () => {
+    expect(forced).toMatchObject({ stageKind: 'beyond_failure', restBetween: { kind: 'none' }, targetRpe: 9 });
+    expect(isIntensiveBlockProfile(forced)).toBe(false);
+    expect(isTechniqueStageProfile(forced)).toBe(true);
     expect(createIntensiveBlock(forced, 50).phase).toBe('SERIE_EM_EXECUCAO');
     for (const code of ['negative_reps', 'partial_reps', 'cheat_reps']) {
       expect(profileOf(code).stageKind).toBe('beyond_failure');
@@ -370,5 +375,95 @@ describe('regressão do FST-7', () => {
     expect(s.phase).toBe('DESCANSO');
     expect(s.records[0].extraReps).toBeUndefined();
     expect(intensiveExtraRepsEnabled(fst7, 7, 7)).toBe(false);
+  });
+});
+
+// Defeito "minibloco": as N séries de trabalho usam a tela NORMAL e só depois
+// vêm as etapas da técnica (uma por aplicação). Caso real da ficha 167.
+describe('séries normais primeiro, etapas da técnica depois (partial_reps, rest_pause)', () => {
+  type Case = { code: string; sets: number; applications: number; stageSetType: string };
+  const CASES: Case[] = [
+    { code: 'partial_reps', sets: 3, applications: 2, stageSetType: 'forced_rep' },
+    { code: 'rest_pause', sets: 3, applications: 2, stageSetType: 'rest_pause' },
+  ];
+  const working = (n: number) => Array.from({ length: n }, () => ({ set_type: 'working' }));
+
+  function stageAfter(c: Case, logged: Array<{ set_type?: string | null }>, skipped = 0) {
+    const planExercise = {
+      sets_count: c.sets,
+      advanced_technique: c.code,
+      advanced_technique_applications: c.applications,
+    };
+    const counters = buildAdvancedExerciseCounters({
+      planExercise,
+      loggedSets: logged,
+      advancedMode: false,
+      localProgress: { warmupDone: 0, feelerDone: 0, techniqueSkipped: skipped },
+    });
+    return {
+      counters,
+      stage: advancedStageOf({ advancedMode: false, planExercise: { ...planExercise, warmup_reps: null, feeler_set_reps: null }, counters }),
+      done: isAdvancedExerciseDone(counters),
+    };
+  }
+
+  for (const c of CASES) {
+    describe(c.code, () => {
+      const profile = profileOf(c.code, { plannedSetsCount: c.sets });
+
+      it('o perfil NÃO é bloco Intensivo: a tela das séries é a normal', () => {
+        expect(isIntensiveBlockProfile(profile)).toBe(false);
+        expect(isTechniqueStageProfile(profile)).toBe(true);
+      });
+
+      it('as 3 séries de trabalho não têm etapa de técnica (tela normal "Série N de 3")', () => {
+        for (const n of [0, 1, 2]) {
+          const { stage, done } = stageAfter(c, working(n));
+          expect(stage).toBeNull();
+          expect(done).toBe(false);
+        }
+      });
+
+      it('depois das 3 séries vêm as 2 aplicações, uma por etapa, e só então o exercício conclui', () => {
+        const first = stageAfter(c, working(3));
+        expect(first.counters.techniqueTarget).toBe(2);
+        expect(first.stage).toEqual({ kind: 'technique', index: 1, total: 2 });
+        expect(first.done).toBe(false);
+        const second = stageAfter(c, [...working(3), { set_type: c.stageSetType }]);
+        expect(second.stage).toEqual({ kind: 'technique', index: 2, total: 2 });
+        const last = stageAfter(c, [...working(3), { set_type: c.stageSetType }, { set_type: c.stageSetType }]);
+        expect(last.stage).toBeNull();
+        expect(last.done).toBe(true);
+      });
+
+      it('retomada: a etapa deriva das séries gravadas; pular a última aplicação conclui', () => {
+        expect(stageAfter(c, [...working(3), { set_type: c.stageSetType }]).stage).toMatchObject({ index: 2 });
+        const skipped = stageAfter(c, [...working(3), { set_type: c.stageSetType }], 1);
+        expect(skipped.stage).toBeNull();
+        expect(skipped.done).toBe(true);
+      });
+    });
+  }
+
+  it('além da falha sem aplicações prescritas segue sem etapa (reps extras na última série)', () => {
+    const counters = buildAdvancedExerciseCounters({
+      planExercise: { sets_count: 3, advanced_technique: 'partial_reps', advanced_technique_applications: null },
+      loggedSets: working(3),
+      advancedMode: false,
+    });
+    expect(counters.techniqueTarget).toBe(0);
+    expect(isAdvancedExerciseDone(counters)).toBe(true);
+  });
+
+  it('FST-7 e GVT seguem como bloco de séries e sem etapas de técnica', () => {
+    for (const code of ['fst7', 'gvt']) {
+      expect(isIntensiveBlockProfile(profileOf(code, { plannedSetsCount: 7 }))).toBe(true);
+      const counters = buildAdvancedExerciseCounters({
+        planExercise: { sets_count: 7, advanced_technique: code, advanced_technique_applications: 7 },
+        loggedSets: [],
+        advancedMode: false,
+      });
+      expect(counters.techniqueTarget).toBe(0);
+    }
   });
 });
