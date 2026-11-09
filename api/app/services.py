@@ -21,7 +21,7 @@ from .domain.deload import sql_not_deload
 from .domain.training_goal import goal_value, sql_goal_is
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
-from .domain.equipment_record import current_mark, record_payload, summarize_equipment_history
+from .domain.equipment_record import current_mark_with_exposures, record_payload, summarize_equipment_history
 from .load_conventions import (
     DEFAULT_LOAD_CONVENTION,
     equipment_exercises_join_sql,
@@ -1694,7 +1694,7 @@ def get_last_session_sets(
                     session_records.history_sql(convention_expr).format(placeholders="%s"),
                     (user_id, _RECORD_HISTORY_UNTIL, canonical_mapping_id),
                 )
-                mark = current_mark(
+                mark, mark_row_ids = current_mark_with_exposures(
                     cur.fetchall(),
                     exercise_id=canonical_mapping_id,
                     equipment_id=session_row.get("global_equipment_id"),
@@ -1706,11 +1706,15 @@ def get_last_session_sets(
                 if mark is not None:
                     kind, event = mark
                     record_key_has_equipment = event.exposure.key.equipment_id is not None
+                    # Reps da marca = maximo na carga em TODAS as exposicoes da
+                    # chave que a atingiram (decisao `reps-max`): uma consulta
+                    # com `IN`, sem N+1.
+                    row_ids = mark_row_ids or [event.exposure.exercise_row_id]
                     cur.execute(
-                        session_records.SETS_SQL.format(placeholders="%s"),
-                        (user_id, event.exposure.exercise_row_id),
+                        session_records.SETS_SQL.format(placeholders=", ".join(["%s"] * len(row_ids))),
+                        (user_id, *row_ids),
                     )
-                    record = record_payload(event, cur.fetchall(), kind)
+                    record = record_payload(event, cur.fetchall(), kind, row_ids)
 
             # e1RM "nesse equipamento": MESMO escopo (usuario,
             # exercicio canonico, equipamento global, sem a sessao atual) do

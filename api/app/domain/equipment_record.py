@@ -16,8 +16,8 @@ Definicoes:
   primeira exposicao nao e recorde; empate na carga com mais reps nao e
   recorde; sem equipamento resolvido nao ha recorde (fora da excecao do §8.1);
   `bodyweight` nao tem recorde de carga. O Modo Treino mostra o recorde
-  VIGENTE da chave (`current_record`) e as reps da serie recorde so como
-  informacao. M76 Lote 3d: sem recorde vigente, mostra a "Melhor carga" da
+  VIGENTE da chave (`current_record`) e, como informacao, o MAXIMO de reps ja
+  feito naquela carga em qualquer exposicao da chave (`mark_max_reps`). M76 Lote 3d: sem recorde vigente, mostra a "Melhor carga" da
   chave (`current_mark`/`session_records.best_load`, mesmas restricoes), com
   `kind` no payload. Antes: melhor (carga, reps) com desempate por reps, primeira
   exposicao valendo recorde e, sem `equipment_id`, equipamentos misturados.
@@ -123,10 +123,32 @@ def current_mark(
     return sr.current_mark(history, key)
 
 
+def current_mark_with_exposures(
+    history_rows: Iterable[Mapping[str, Any]],
+    *,
+    exercise_id: int,
+    equipment_id: Optional[int],
+    load_convention: Any = None,
+    exclude_activity_id: Optional[int] = None,
+):
+    """Como `current_mark`, mas devolve `(mark, exercise_row_ids)`: `mark` e
+    `None` ou `(kind, evento)`, e `exercise_row_ids` sao as exposicoes da
+    chave que atingiram a carga da marca (para ler as series delas numa
+    consulta so e exibir o MAXIMO de reps na carga - decisao `reps-max`)."""
+    from ..intelligence.dashboard import session_records as sr
+
+    history, key = _history_and_key(history_rows, exercise_id, equipment_id, load_convention, exclude_activity_id)
+    mark = sr.current_mark(history, key)
+    if mark is None:
+        return None, []
+    return mark, sr.mark_exposure_row_ids(history, mark[1])
+
+
 def record_payload(
     event: Any,
     set_rows: Iterable[Mapping[str, Any]],
     kind: str = "record",
+    exercise_row_ids: Optional[Iterable[int]] = None,
 ) -> Optional[dict[str, Any]]:
     """`{"reps", "weight_kg", "kind"}` do Modo Treino a partir do
     `RecordEvent` (ou `BestLoad`): a carga da marca (numero registrado;
@@ -136,14 +158,22 @@ def record_payload(
     `session_records.SETS_SQL` da exposicao da marca."""
     if event is None:
         return None
-    from ..intelligence.dashboard.session_records import record_set_reps
+    from ..intelligence.dashboard.session_records import mark_max_reps, record_set_reps
 
     load = event.load_kg
+    # Reps da marca VIGENTE = o MAXIMO feito naquela carga em todas as
+    # exposicoes da chave (`exercise_row_ids`); sem ids, so a da exposicao
+    # da marca (comportamento anterior).
+    reps = (
+        record_set_reps(event, set_rows)
+        if exercise_row_ids is None
+        else mark_max_reps(event, set_rows, exercise_row_ids)
+    )
     return {
-        "reps": record_set_reps(event, set_rows),
+        "reps": reps,
         "weight_kg": None if load is None else round(float(load), 2),
         "kind": kind,
     }
 
 
-__all__ = ["LoadConvention", "current_mark", "current_record", "record_payload", "summarize_equipment_history"]
+__all__ = ["LoadConvention", "current_mark", "current_mark_with_exposures","current_record", "record_payload", "summarize_equipment_history"]

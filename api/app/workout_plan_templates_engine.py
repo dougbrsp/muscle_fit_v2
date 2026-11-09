@@ -50,6 +50,7 @@ import unicodedata
 from collections import defaultdict
 from typing import Any, Optional
 
+from . import db
 from .db import transaction
 from .domain import cardio_prescription
 from .template_versions import current_version_id_of
@@ -177,6 +178,68 @@ def resolve_next_slot(
 
     next_position = (current_position + 1) % slot_count
     return ordered_slots[next_position]
+
+
+def resolve_upcoming_slot(template: dict[str, Any], user_id: int) -> Optional[dict[str, Any]]:
+    """Slot do treino MAIS PROXIMO do usuario (tela inicial / badge "proximo").
+
+    `resolve_next_slot` avanca a partir da ultima ficha salva, mas a ficha de
+    hoje costuma ser gerada na noite anterior: ate o treino rodar, o "proximo"
+    de `resolve_next_slot` ja e o de amanha. Esta regra corrige so a LEITURA:
+
+    - ultima ficha salva do Modelo COM atividade executada
+      (`activities.workout_plan_id` = ficha, mesmo `user_id`, status em
+      `EXECUTED_SESSION_STATUSES`) -> slot seguinte, com wraparound;
+    - ultima ficha sem atividade executada (ou so `in_progress`) -> o slot
+      da propria ficha (o treino ainda esta por fazer);
+    - sem ficha, ou `sequence` que nao existe mais no Modelo -> 1o slot.
+
+    A geracao NAO usa esta funcao: continua em `resolve_next_slot`.
+    """
+    from .intelligence.dashboard.metrics_registry import EXECUTED_SESSION_STATUSES, normalize_session_status
+
+    ordered_slots = sorted(template.get("slots") or [], key=lambda slot: slot["sequence"])
+    if not ordered_slots:
+        return None
+
+    # `db.transaction` resolvido na chamada (nao o nome importado no topo):
+    # os testes do dashboard substituem `app.db.transaction` num ponto so.
+    with db.transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT wp.template_slot_sequence AS template_slot_sequence,
+                       a.id AS activity_id,
+                       a.session_status AS session_status
+                FROM workout_plans wp
+                LEFT JOIN activities a
+                  ON a.workout_plan_id = wp.id AND a.user_id = wp.user_id
+                WHERE wp.user_id = %s
+                  AND wp.id = (
+                    SELECT MAX(id) FROM workout_plans
+                    WHERE user_id = %s AND template_id = %s AND template_slot_sequence IS NOT NULL
+                  )
+                """,
+                (user_id, user_id, template.get("id")),
+            )
+            rows = list(cur.fetchall() or [])
+
+    if not rows:
+        return ordered_slots[0]
+
+    last_sequence = rows[0]["template_slot_sequence"]
+    position = next((i for i, slot in enumerate(ordered_slots) if slot["sequence"] == last_sequence), None)
+    if position is None:
+        return ordered_slots[0]
+
+    executed = any(
+        row.get("activity_id") is not None
+        and normalize_session_status(row.get("session_status")) in EXECUTED_SESSION_STATUSES
+        for row in rows
+    )
+    if not executed:
+        return ordered_slots[position]
+    return ordered_slots[(position + 1) % len(ordered_slots)]
 
 
 def _load_muscle_group_names(cur, muscle_group_ids: set[int]) -> dict[int, str]:
