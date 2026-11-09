@@ -222,9 +222,9 @@ SET_EVAL_SHA = {
     "decisao_com_carga_alerta": "9d5e0daf577be4e118c48189f6f1e2bc4b51138b58c189e6fd21cb0398e6c67b",
     "decisao_sem_carga_sem_status": "f9c9310828d615cb948aa40a9743b111b443ce25db6a934726843e58a9956f1f",
     "legado_sem_motor": "387df5484bf1abc93c7559a3e4d4a615d1bfa3f78f6256bf3e22854e7b95f26a",
-    "rampa_conjunto_publicado_forca": "614df575c70cbc57a5c6de0146df856b02ae2c2682acd60eb1ea83337841eaa7",
+    "rampa_conjunto_publicado_forca": "caae665e2cfd0074561eccc445073e7cb832eb591187e6c33698511d7bfc88e7",
     "sem_decisao_recuperacao": "2878b255ecb58df42821631b334f6f42f43a3790525e4100faa843e189bfbca4",
-    "sem_passo_dor_alta_lados_deload": "4d8b0fb5db959ec6b1cd9d5aecea1f10e77e88aa16b10e9f0558ab2746702a1e",
+    "sem_passo_dor_alta_lados_deload": "72550d5addc0ffb2b02b2e80e7613236c2fb1d7fcee9497465ef4f5e5b13a29f",
 }
 
 

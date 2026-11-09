@@ -25,7 +25,7 @@ from app.domain import effective_intensity as ei
 from app.domain import next_set_load as nsl
 from app.domain import progression_engine as pe
 from app.domain.prior_fatigue import PriorFatigue, PriorFatigueBand
-from app.engine_decision_context import PairEngineContext
+from app.engine_decision_context import EngineDecision, PairEngineContext
 from app.models import SetEvaluationIn
 from tests.support.fake_db import NullContext, SharedCursorConn
 
@@ -39,10 +39,37 @@ LINHA = {"id": EXERCISE, "plan_reps_target": "10-12", "prescription_json": None,
 # músculo descansado), versão 3.
 CONJUNTO_COM_FADIGA = replace(
     nsl.DEFAULT_RULESET,
-    rules=(replace(nsl.DEFAULT_RULESET.rules[0], fatigue=nsl.FatigueCondition.RESTED),) + nsl.DEFAULT_RULESET.rules[1:],
+    rules=(
+        replace(
+            nsl.DEFAULT_RULESET.rules[0],
+            when=nsl.all_of(
+                *nsl.DEFAULT_RULESET.rules[0].when.children,
+                nsl.leaf(nsl.VAR_FATIGUE_BAND, nsl.ConditionOp.EQ, nsl.FatigueCondition.RESTED.value),
+            ),
+        ),
+    )
+    + nsl.DEFAULT_RULESET.rules[1:],
     version=3,
     source=nsl.RULESET_SOURCE_PUBLISHED,
 )
+
+# Conjunto que EXIGE a serie anterior (escopo previous), versao 4.
+CONJUNTO_COM_ANTERIOR = replace(
+    nsl.DEFAULT_RULESET,
+    rules=(
+        replace(
+            nsl.DEFAULT_RULESET.rules[0],
+            when=nsl.all_of(
+                *nsl.DEFAULT_RULESET.rules[0].when.children,
+                nsl.leaf(nsl.VAR_REPS, nsl.ConditionOp.GTE, 10, scope=nsl.SCOPE_PREVIOUS),
+            ),
+        ),
+    )
+    + nsl.DEFAULT_RULESET.rules[1:],
+    version=4,
+    source=nsl.RULESET_SOURCE_PUBLISHED,
+)
+DECISAO_MOTOR = {"decision": "INCREASE", "suggested_load_kg": 42.5}
 
 
 def _prior(band):
@@ -52,22 +79,27 @@ def _prior(band):
 class _Cursor(NullContext):
     """Devolve `{"n": anteriores}` para o COUNT das séries de trabalho."""
 
-    def __init__(self, anteriores):
+    def __init__(self, anteriores, anterior=None):
         self.anteriores = anteriores
+        self.anterior = anterior
         self.executados: list[str] = []
 
     def execute(self, sql, params=None):
         self.executados.append(sql)
 
     def fetchone(self):
-        return {"n": self.anteriores} if self.executados and "COUNT(*)" in self.executados[-1] else dict(LINHA)
+        if self.executados and "COUNT(*)" in self.executados[-1]:
+            return {"n": self.anteriores}
+        if self.executados and "ORDER BY set_number DESC" in self.executados[-1]:
+            return self.anterior
+        return dict(LINHA)
 
     def fetchall(self):
         return []
 
 
-def _preparar(monkeypatch, *, anteriores=2, fadiga=None, falha=None, conjunto=CONJUNTO_COM_FADIGA):
-    cursor = _Cursor(anteriores)
+def _preparar(monkeypatch, *, anteriores=2, fadiga=None, falha=None, conjunto=CONJUNTO_COM_FADIGA, anterior=None):
+    cursor = _Cursor(anteriores, anterior)
     conn = SharedCursorConn(cursor)
     recebido: dict = {}
     leituras: list = []
@@ -98,7 +130,7 @@ def _preparar(monkeypatch, *, anteriores=2, fadiga=None, falha=None, conjunto=CO
     return conn, cursor, recebido, leituras
 
 
-def _avaliar(conn, cursor, **kwargs):
+def _avaliar(conn, cursor, linha=None, **kwargs):
     base = dict(
         user_id=USER,
         session_id=SESSION,
@@ -110,7 +142,7 @@ def _avaliar(conn, cursor, **kwargs):
         joint_pain=None,
         muscle_pain=None,
     )
-    return workout_sessions._evaluate_set(conn, cursor, EXERCISE, dict(LINHA), INTENSIDADE, **{**base, **kwargs})
+    return workout_sessions._evaluate_set(conn, cursor, EXERCISE, dict(linha or LINHA), INTENSIDADE, **{**base, **kwargs})
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +246,85 @@ def test_salvamento_de_verdade_com_conjunto_publicado_devolve_a_versao(monkeypat
     monkeypatch.setattr(workout_sessions, "load_published_ruleset", lambda c: CONJUNTO_COM_FADIGA)
     _, proxima = _avaliar(conn, cursor, reps=16)
     assert (proxima.direction, proxima.rule_position, proxima.ruleset_version) == (pe.INCREASE_LOAD, 1, 3)
+
+
+def test_serie_anterior_so_e_lida_quando_o_conjunto_usa_o_escopo_previous(monkeypatch):
+    """Padrao e conjunto so de fadiga: nenhuma leitura extra no POST da serie."""
+    for conjunto in (nsl.DEFAULT_RULESET, CONJUNTO_COM_FADIGA):
+        assert not nsl.ruleset_uses_previous_set(conjunto)
+        conn, cursor, recebido, _ = _preparar(monkeypatch, conjunto=conjunto)
+        _avaliar(conn, cursor)
+        assert recebido["previous_set"] is None
+        assert not any("ORDER BY set_number DESC" in sql for sql in cursor.executados)
+
+
+def test_serie_anterior_lida_e_repassada_quando_o_conjunto_exige(monkeypatch):
+    anterior = {"reps": 11, "rpe": Decimal(8), "weight_kg": Decimal(20)}
+    conn, cursor, recebido, _ = _preparar(monkeypatch, conjunto=CONJUNTO_COM_ANTERIOR, anterior=anterior)
+    assert nsl.ruleset_uses_previous_set(CONJUNTO_COM_ANTERIOR)
+    _avaliar(conn, cursor)
+    assert recebido["previous_set"] == anterior
+    leitura = [sql for sql in cursor.executados if "ORDER BY set_number DESC" in sql]
+    assert len(leitura) == 1 and "set_number < %s" in leitura[0]
+
+
+def test_serie_anterior_ignora_pendentes_do_modo_intensivo(monkeypatch):
+    from app.set_types import sql_set_confirmed
+
+    conn, cursor, _, _ = _preparar(monkeypatch, conjunto=CONJUNTO_COM_ANTERIOR, anterior=None)
+    _avaliar(conn, cursor)
+    leitura = [sql for sql in cursor.executados if "ORDER BY set_number DESC" in sql]
+    assert len(leitura) == 1 and sql_set_confirmed("reps_pending") in leitura[0]
+    contagem = [sql for sql in cursor.executados if "COUNT(*)" in sql]
+    assert contagem and "reps_pending" not in contagem[0]
+
+
+def test_primeira_serie_sem_anterior_repassa_none(monkeypatch):
+    conn, cursor, recebido, _ = _preparar(monkeypatch, anteriores=0, conjunto=CONJUNTO_COM_ANTERIOR, anterior=None)
+    _avaliar(conn, cursor, set_number=1)
+    assert recebido["previous_set"] is None
+
+
+def test_alvo_do_motor_vem_da_decisao_da_ficha_e_rpe_alvo_da_rampa(monkeypatch):
+    conn, cursor, recebido, _ = _preparar(monkeypatch, anteriores=1, conjunto=nsl.DEFAULT_RULESET)
+    linha = {**LINHA, "prescription_json": {**DECISAO_MOTOR, "rpe_target": "8-9-10"}}
+    _avaliar(conn, cursor, linha=linha, set_number=2)
+    assert recebido["engine_target_kg"] == 42.5
+    assert recebido["rpe_target"] == Decimal(9)  # alvo efetivo 9 (INTENSIDADE) restringido pelo degrau 9
+    conn, cursor, recebido, _ = _preparar(monkeypatch, conjunto=nsl.DEFAULT_RULESET)
+    _avaliar(conn, cursor)  # sem decisao do motor
+    assert recebido["engine_target_kg"] is None
+
+
+def test_alvo_do_protocolo_vence_como_rpe_alvo(monkeypatch):
+    conn, cursor, recebido, _ = _preparar(monkeypatch, conjunto=nsl.DEFAULT_RULESET)
+    _avaliar(conn, cursor, protocol_target=Decimal(7))
+    assert recebido["rpe_target"] == Decimal(7)
+
+
+def test_next_set_load_for_monta_os_fatos_v2_sem_regra(monkeypatch):
+    """O contexto repassa previous/alvo do motor/RPE alvo aos fatos; o dono decide."""
+    from app import engine_decision_context as edc
+
+    visto: dict = {}
+
+    def espiao(facts, ruleset):
+        visto["facts"] = facts
+
+    monkeypatch.setattr(edc, "evaluate_ruleset", espiao)
+    contexto = PairEngineContext(step_kg=PASSO, decision=EngineDecision(decision="INCREASE", load_kg=40.0))
+    edc.next_set_load_for(
+        {"set_type": "working", "reps": 10, "weight_kg": 20, "rpe": 8, "rpe_target": "8-9-10"},
+        contexto,
+        previous_set={"reps": 12, "rpe": 8, "weight_kg": 20},
+    )
+    facts = visto["facts"]
+    assert facts.previous == nsl.PreviousSetFacts(reps=12, rpe=8, weight_kg=20)
+    assert facts.engine_target_kg == 40.0  # da decisao do par
+    assert facts.rpe_target == Decimal(8)  # 1a serie da rampa 8-9-10
+    edc.next_set_load_for({"set_type": "working"}, contexto, engine_target_kg=None, rpe_target=Decimal(9))
+    assert visto["facts"].engine_target_kg is None and visto["facts"].rpe_target == Decimal(9)
+    assert visto["facts"].previous is None
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +432,45 @@ def test_dispatch_passa_indice_faixa_teto_e_conjunto(monkeypatch, conjunto, faix
     assert len(leituras) == leituras_esperadas
     assert recebido["rpe_ceiling"] == 9  # par desconhecido: teto conservador D3
     assert recebido["ruleset"] is (conjunto if isinstance(conjunto, nsl.RuleSet) else nsl.DEFAULT_RULESET)
+
+
+def _preparar_dispatch(monkeypatch, conjunto, contexto):
+    _preparar_ia(monkeypatch)
+    monkeypatch.setattr(core, "load_published_ruleset_autocommit", lambda: conjunto)
+    monkeypatch.setattr(core.effective_intensity, "resolve_pair_safety", lambda conn, e, q: None)
+    monkeypatch.setattr(core, "_evaluate_set_engine", lambda payload, user_id: contexto)
+    recebido: dict = {}
+    monkeypatch.setattr(core, "next_set_load_for", lambda values, context, **kw: recebido.update(kw))
+    monkeypatch.setattr(
+        core,
+        "evaluate_set",
+        lambda payload, **kwargs: {"model": "m", "category": "HOLD", "note": "", "raw_text": "", "suggested_next_reps": None, "suggested_next_load_kg": None, "suggested_next_rpe": None},
+    )
+    return recebido
+
+
+def test_dispatch_monta_a_serie_anterior_da_ultima_working_e_o_alvo_do_motor(monkeypatch):
+    contexto = PairEngineContext(step_kg=PASSO, decision=EngineDecision(decision="INCREASE", load_kg=42.5))
+    recebido = _preparar_dispatch(monkeypatch, CONJUNTO_COM_ANTERIOR, contexto)
+    anteriores = [
+        {"set_type": "working", "reps": 12, "rpe": 7, "weight_kg": 40},
+        {"set_type": "working", "reps": 11, "rpe": 8, "weight_kg": 40},
+        {"set_type": "drop_set", "reps": 8, "rpe": 10, "weight_kg": 30},
+    ]
+    core.dispatch_evaluate_set(
+        {"exercise_name": "Supino", "reps": 10, "weight_kg": 40, "rpe": 8, "previous_sets_this_session": anteriores}, USER
+    )
+    assert recebido["previous_set"] == {"reps": 11, "rpe": 8, "weight_kg": 40}  # a ultima working
+    assert recebido["engine_target_kg"] == 42.5
+
+
+def test_dispatch_com_conjunto_padrao_nao_monta_a_serie_anterior(monkeypatch):
+    recebido = _preparar_dispatch(monkeypatch, nsl.DEFAULT_RULESET, PairEngineContext(step_kg=PASSO))
+    core.dispatch_evaluate_set(
+        {"exercise_name": "Supino", "reps": 10, "weight_kg": 40, "rpe": 8,
+         "previous_sets_this_session": [{"set_type": "working", "reps": 12}]}, USER
+    )
+    assert recebido["previous_set"] is None and recebido["engine_target_kg"] is None
 
 
 def test_payload_da_ia_aceita_sessao_e_exercicio_opcionais():

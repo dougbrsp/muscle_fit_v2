@@ -37,6 +37,11 @@ Uso (de dentro de `api/`, com o MySQL do docker compose de pe e carregado com
 Sem `--base-api`, a referencia e o proprio checkout com o conjunto padrao
 (com `--ruleset-json`, o diff mostra o que o conjunto cadastrado mudaria).
 
+Arvore v2: alem dos fatos de sempre, o worker monta (SO quando o `SetFacts` do
+dono os tem) a serie de trabalho ANTERIOR do mesmo exercicio/sessao (por
+`set_number`), a carga do motor (`decision_from_snapshot(prescription_json)`) e
+o RPE alvo efetivo (alvo da ficha restringido pelo degrau da rampa).
+
 Saida: Markdown (stdout ou `--out-md`) e JSON (`--out-json`) com, por versao,
 contagens por direcao e por motivo, a tabela informativa de series por faixa
 de fadiga x posicao da serie, e a lista de diferencas serie a serie. Codigo
@@ -46,6 +51,7 @@ de saida: 0 sem diferencas, 1 com diferencas, 2 erro.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import subprocess
@@ -140,7 +146,7 @@ def run_worker(api: Path, user_id: int, ruleset_json: Optional[Path]) -> dict[st
     from app import db  # noqa: PLC0415 - import tardio: depende do sys.path da versao
     from app.domain import next_set_load as nsl  # noqa: PLC0415
     from app.domain.effective_intensity import plan_rpe_target  # noqa: PLC0415
-    from app.engine_decision_context import load_pair_step_context  # noqa: PLC0415
+    from app.engine_decision_context import decision_from_snapshot, load_pair_step_context  # noqa: PLC0415
     from app.intelligence.session_fatigue_reader import load_session_prior_fatigue  # noqa: PLC0415
     from app.set_types import sql_is_working  # noqa: PLC0415
 
@@ -154,6 +160,8 @@ def run_worker(api: Path, user_id: int, ruleset_json: Optional[Path]) -> dict[st
         confirmed = "1 = 1"
 
     has_ruleset_api = hasattr(nsl, "evaluate_ruleset")
+    facts_fields = {f.name for f in dataclasses.fields(nsl.SetFacts)} if has_ruleset_api else set()
+    has_v2_facts = {"previous", "engine_target_kg", "rpe_target"} <= facts_fields
     ruleset = None
     if ruleset_json is not None:
         if not has_ruleset_api:
@@ -189,6 +197,7 @@ def run_worker(api: Path, user_id: int, ruleset_json: Optional[Path]) -> dict[st
 
     # Indice da serie entre as `working` do exercicio (1-based, por set_number).
     seen_per_exercise: Counter = Counter()
+    last_working: dict[int, dict[str, Any]] = {}  # serie `working` anterior por exercicio
     sets: list[dict[str, Any]] = []
     for row in rows:
         exercise_row_id = int(row["exercise_row_id"])
@@ -197,6 +206,8 @@ def run_worker(api: Path, user_id: int, ruleset_json: Optional[Path]) -> dict[st
         # pula as series sem carga.
         seen_per_exercise[exercise_row_id] += 1
         index = seen_per_exercise[exercise_row_id]
+        previous_row = last_working.get(exercise_row_id)
+        last_working[exercise_row_id] = row
         weight = row.get("weight_kg")
         if weight is None or Decimal(str(weight)) <= 0:
             continue
@@ -222,9 +233,30 @@ def run_worker(api: Path, user_id: int, ruleset_json: Optional[Path]) -> dict[st
             load_convention=pair.load_convention,
             planned_rpe=planned_rpe,
         )
+        v2_facts: dict[str, Any] = {}
+        if has_v2_facts:
+            decision = decision_from_snapshot(row.get("prescription_json"))
+            plan_rpe = plan_rpe_target(row.get("prescription_json"), row.get("plan_rpe_target"))
+            from app.domain.prescription import parse_rpe  # noqa: PLC0415
+            from app.domain.progression_engine import set_effort_target  # noqa: PLC0415
+
+            v2_facts = dict(
+                engine_target_kg=decision.load_kg if decision is not None else None,
+                rpe_target=set_effort_target(parse_rpe(plan_rpe), planned_rpe),
+                previous=(
+                    nsl.PreviousSetFacts(
+                        reps=previous_row.get("reps"),
+                        rpe=previous_row.get("rpe"),
+                        weight_kg=previous_row.get("weight_kg"),
+                    )
+                    if previous_row is not None
+                    else None
+                ),
+            )
         if has_ruleset_api:
             result = nsl.evaluate_ruleset(
-                nsl.SetFacts(working_set_index=index, fatigue_band=band, rpe_ceiling=ceiling, **common), ruleset
+                nsl.SetFacts(working_set_index=index, fatigue_band=band, rpe_ceiling=ceiling, **common, **v2_facts),
+                ruleset,
             )
         else:
             result = nsl.suggest_next_set_load(**common)
@@ -422,7 +454,10 @@ def compare(args: argparse.Namespace) -> dict[str, Any]:
     ruleset_json = Path(args.ruleset_json).resolve() if args.ruleset_json else None
     if ruleset_json is not None and not ruleset_json.is_file():
         raise DiffError(f"--ruleset-json: arquivo nao encontrado: {ruleset_json}")
-    base = run_version(base_api, args.user_id, None)
+    base_ruleset_json = Path(args.base_ruleset_json).resolve() if args.base_ruleset_json else None
+    if base_ruleset_json is not None and not base_ruleset_json.is_file():
+        raise DiffError(f"--base-ruleset-json: arquivo nao encontrado: {base_ruleset_json}")
+    base = run_version(base_api, args.user_id, base_ruleset_json)
     current = run_version(current_api, args.user_id, ruleset_json)
     return {
         "user_id": args.user_id,
@@ -441,6 +476,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--base-api", help="diretorio api/ do dono de referencia (ex.: checkout da develop)")
     parser.add_argument("--current-api", help="diretorio api/ do dono atual (default: este checkout)")
     parser.add_argument("--ruleset-json", help="JSON de um conjunto cadastrado (`ruleset_to_dict`) para a versao atual")
+    parser.add_argument(
+        "--base-ruleset-json",
+        help="JSON de conjunto aplicado tambem na REFERENCIA (ex.: o mesmo --ruleset-json): mede so a mudanca do dono",
+    )
     parser.add_argument("--out-md", help="grava o Markdown aqui (default: stdout)")
     parser.add_argument("--out-json", help="grava o JSON completo aqui")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)

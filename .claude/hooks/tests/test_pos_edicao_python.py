@@ -15,7 +15,10 @@ PRECISA_RUFF = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff for
 
 
 def test_mapa_real_cobre_os_donos_conhecidos() -> None:
-    sufixos = h.sufixos_do_mapa((RAIZ_REPO / h.MAPA).read_text(encoding="utf-8"))
+    mapa = RAIZ_REPO / h.MAPA
+    if not mapa.is_file():
+        pytest.skip("O mapa real fica no checkout do MuscleFit.")
+    sufixos = h.sufixos_do_mapa(mapa.read_text(encoding="utf-8"))
     for rel in (
         "api/app/domain/e1rm.py",
         "api/app/domain/next_set_load.py",
@@ -51,7 +54,7 @@ def _checkout(tmp_path: Path, guarda: str) -> Path:
     (api / "app" / "routers").mkdir(parents=True)
     (api / "vendor").mkdir()
     (api / "tests" / "unit").mkdir(parents=True)
-    shutil.copy(RAIZ_REPO / "api" / "ruff.toml", api / "ruff.toml")
+    (api / "ruff.toml").write_text('[lint]\nselect = ["F"]\n', encoding="utf-8")
     (api / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     (api / "tests" / "unit" / "test_guarda_fontes_da_verdade.py").write_text(guarda, encoding="utf-8")
     (repo / "docs" / "motores").mkdir(parents=True)

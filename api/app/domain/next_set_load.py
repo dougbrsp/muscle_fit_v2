@@ -79,6 +79,33 @@ loader `app/next_set_load_rules.py` (I/O: só converte e grava; sem linha ou
 falha de leitura -> `DEFAULT_RULESET`); `ruleset_uses_fatigue` diz ao chamador
 se a faixa de fadiga precisa ser lida. A tela de cadastro vem no R4.
 
+ÁRVORE DE CONDIÇÕES (v2, decisões do usuário de 2026-11-08)
+-----------------------------------------------------------
+
+Cada regra passa a ter `when`: um `ConditionGroup{logic: and|or, children}`
+cujos filhos são `ConditionLeaf{variable, scope, op, value, value_to?,
+ramp_cap?}` ou outros grupos (no máximo `RULESET_MAX_DEPTH` níveis e
+`RULESET_MAX_LEAVES_PER_RULE` folhas por regra). Variáveis: `set_index`
+(posição da série de trabalho, 1-based), `fatigue_band`, `reps` e `rpe`; o
+escopo `current` é a série que ACABOU de ser registrada (`working_set_index`
+do `SetFacts`) e `previous` é a série de trabalho anterior a ela
+(`SetFacts.previous`). A regra decide a carga da série SEGUINTE. Tokens: reps
+`floor`/`ceiling` (do conjunto); RPE `max` (teto efetivo da série) e `target`
+(RPE alvo efetivo da série, `SetFacts.rpe_target`: degrau da rampa ou alvo
+único; sem alvo a folha não casa; não existe piso global de RPE). `ramp_cap`
+(só folha `rpe` com `<`/`<=` no escopo `current`) faz o limiar virar
+`min(limiar, RPE planejado)` e preserva `NEXT_SET_WITHIN_PLANNED_RAMP` quando
+só o cap barrou. Folha com fato ausente (sem RPE, sem série anterior) não
+casa; em `or` basta um filho casar. Ações: `HOLD`/`INCREASE_LOAD`/
+`DECREASE_LOAD` (relativas à carga executada) e `ENGINE_TARGET` (a carga que o
+motor prescreveu para o par na sessão, `SetFacts.engine_target_kg`, ± uma
+magnitude opcional com sinal; sem alvo do motor a regra não casa e segue para
+a próxima). `NextSetLoad.direction` continua HOLD/INCREASE_LOAD/DECREASE_LOAD,
+derivado pela comparação com a carga executada. O formato v1 do JSON
+(`set_position`/`fatigue`/`reps`/`rpe`/`respect_planned_ramp`) continua sendo
+LIDO (convertido para a árvore); a escrita é sempre v2
+(`RULESET_ENGINE_VERSION`).
+
 Consumidores (não recalculam): `engine_decision_context.next_set_load_for`
 (monta os `SetFacts`), `bound_ai_load` (a carga final da IA por série É a
 desta regra), o prompt da IA por série (`exercise_set_evaluation_ai`,
@@ -94,7 +121,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Any, Callable, Final, Mapping, Optional, Union
+from typing import Any, Final, Mapping, Optional, Union
 
 from ..load_conventions import LoadConvention, normalize_load_convention
 from ..set_types import WORKING, normalize_set_type
@@ -183,7 +210,7 @@ REASON_NEXT_SET_RULE = "NEXT_SET_LOAD_RULE"
 RULESET_SOURCE_DEFAULT: Final[str] = "default"
 RULESET_SOURCE_PUBLISHED: Final[str] = "published"
 RULESET_SOURCE_DRAFT: Final[str] = "draft"
-RULESET_ENGINE_VERSION: Final[str] = "next-set-load-rules-v1"
+RULESET_ENGINE_VERSION: Final[str] = "next-set-load-rules-v2"
 
 
 def _muscle_pain_block_above() -> int:
@@ -292,6 +319,8 @@ class ConditionOp(str, Enum):
     LT = "<"
     LTE = "<="
     BETWEEN = "between"
+    EQ = "="
+    NEQ = "!="
 
 
 CONDITION_OP_LABELS: Final[Mapping[ConditionOp, str]] = {
@@ -300,17 +329,77 @@ CONDITION_OP_LABELS: Final[Mapping[ConditionOp, str]] = {
     ConditionOp.LT: "<",
     ConditionOp.LTE: "≤",
     ConditionOp.BETWEEN: "entre",
+    ConditionOp.EQ: "=",
+    ConditionOp.NEQ: "≠",
 }
 
 # Tokens: valores simbólicos resolvidos na avaliação (reps pelo conjunto, RPE
-# pelo teto efetivo da série).
+# pelo teto efetivo e pelo alvo efetivo da série).
 REPS_TOKEN_FLOOR: Final[str] = "floor"
 REPS_TOKEN_CEILING: Final[str] = "ceiling"
 RPE_TOKEN_MAX: Final[str] = "max"
+RPE_TOKEN_TARGET: Final[str] = "target"
 REPS_TOKENS: Final[tuple[str, ...]] = (REPS_TOKEN_FLOOR, REPS_TOKEN_CEILING)
-RPE_TOKENS: Final[tuple[str, ...]] = (RPE_TOKEN_MAX,)
+RPE_TOKENS: Final[tuple[str, ...]] = (RPE_TOKEN_MAX, RPE_TOKEN_TARGET)
 REPS_TOKEN_LABELS: Final[Mapping[str, str]] = {REPS_TOKEN_FLOOR: "piso", REPS_TOKEN_CEILING: "teto"}
-RPE_TOKEN_LABELS: Final[Mapping[str, str]] = {RPE_TOKEN_MAX: "máximo"}
+RPE_TOKEN_LABELS: Final[Mapping[str, str]] = {RPE_TOKEN_MAX: "máximo", RPE_TOKEN_TARGET: "alvo"}
+
+# --- árvore de condições (v2) ------------------------------------------------
+VAR_SET_INDEX: Final[str] = "set_index"
+VAR_FATIGUE_BAND: Final[str] = "fatigue_band"
+VAR_REPS: Final[str] = "reps"
+VAR_RPE: Final[str] = "rpe"
+SCOPE_CURRENT: Final[str] = "current"  # a série que ACABOU de ser registrada
+SCOPE_PREVIOUS: Final[str] = "previous"  # a série de trabalho anterior a ela
+SCOPES: Final[tuple[str, ...]] = (SCOPE_CURRENT, SCOPE_PREVIOUS)
+SCOPE_LABELS: Final[Mapping[str, str]] = {SCOPE_CURRENT: "série executada", SCOPE_PREVIOUS: "série anterior"}
+LOGIC_AND: Final[str] = "and"
+LOGIC_OR: Final[str] = "or"
+LOGIC_OPS: Final[tuple[str, ...]] = (LOGIC_AND, LOGIC_OR)
+LOGIC_LABELS: Final[Mapping[str, str]] = {LOGIC_AND: "E", LOGIC_OR: "OU"}
+KIND_NUMBER: Final[str] = "number"
+KIND_ENUM: Final[str] = "enum"
+_ALL_OPS: Final[tuple[ConditionOp, ...]] = (
+    ConditionOp.GT,
+    ConditionOp.GTE,
+    ConditionOp.LT,
+    ConditionOp.LTE,
+    ConditionOp.EQ,
+    ConditionOp.NEQ,
+    ConditionOp.BETWEEN,
+)
+
+
+@dataclass(frozen=True)
+class VariableSpec:
+    """O que cada variável da árvore aceita (fonte do validador, da descrição
+    e do vocabulário do FE)."""
+
+    value: str
+    label: str
+    kind: str
+    scopes: tuple[str, ...]
+    ops: tuple[ConditionOp, ...]
+    tokens: tuple[str, ...] = ()
+
+
+VARIABLES: Final[Mapping[str, VariableSpec]] = {
+    spec.value: spec
+    for spec in (
+        VariableSpec(
+            VAR_SET_INDEX,
+            "série",
+            KIND_NUMBER,
+            (SCOPE_CURRENT,),
+            (ConditionOp.EQ, ConditionOp.NEQ, ConditionOp.GTE, ConditionOp.LTE, ConditionOp.BETWEEN),
+        ),
+        VariableSpec(VAR_FATIGUE_BAND, "fadiga", KIND_ENUM, (SCOPE_CURRENT,), (ConditionOp.EQ, ConditionOp.NEQ)),
+        VariableSpec(VAR_REPS, "reps", KIND_NUMBER, SCOPES, _ALL_OPS, REPS_TOKENS),
+        VariableSpec(VAR_RPE, "RPE", KIND_NUMBER, SCOPES, _ALL_OPS, RPE_TOKENS),
+    )
+}
+# Ops em que `ramp_cap` faz sentido (limiar SUPERIOR de RPE; no `between` o máximo).
+_RAMP_CAP_OPS: Final[tuple[ConditionOp, ...]] = (ConditionOp.LT, ConditionOp.LTE, ConditionOp.BETWEEN)
 
 
 class MagnitudeKind(str, Enum):
@@ -323,11 +412,28 @@ MAGNITUDE_KIND_LABELS: Final[Mapping[MagnitudeKind, str]] = {
     MagnitudeKind.PERCENT: "percentual da carga",
 }
 
+# `ENGINE_TARGET`: a carga é a prescrita pelo motor para o par na sessão
+# (`SetFacts.engine_target_kg`) ± magnitude opcional com sinal.
+ACTION_ENGINE_TARGET: Final[str] = "ENGINE_TARGET"
+ENGINE_TARGET_LABEL: Final[str] = "Recomendação do motor"
 # Ações que uma regra pode tomar (códigos de ação do motor).
-RULE_ACTIONS: Final[tuple[str, ...]] = (HOLD, INCREASE_LOAD, DECREASE_LOAD)
+RULE_ACTIONS: Final[tuple[str, ...]] = (HOLD, INCREASE_LOAD, DECREASE_LOAD, ACTION_ENGINE_TARGET)
+MAGNITUDE_NONE: Final[str] = "none"
+MAGNITUDE_OPTIONAL: Final[str] = "optional"
+MAGNITUDE_REQUIRED: Final[str] = "required"
+ACTION_MAGNITUDE_RULE: Final[Mapping[str, str]] = {
+    HOLD: MAGNITUDE_NONE,
+    INCREASE_LOAD: MAGNITUDE_REQUIRED,
+    DECREASE_LOAD: MAGNITUDE_REQUIRED,
+    ACTION_ENGINE_TARGET: MAGNITUDE_OPTIONAL,
+}
 
 # --- limites do cadastro (validação; a tela só os exibe) --------------------
 RULESET_MAX_RULES: Final[int] = 20
+RULESET_MAX_DEPTH: Final[int] = 3  # níveis de grupo, contando a raiz
+RULESET_MAX_LEAVES_PER_RULE: Final[int] = 8
+RULE_SET_INDEX_MAX: Final[int] = 20
+_PARSE_MAX_DEPTH: Final[int] = RULESET_MAX_DEPTH + 4  # só protege o parser; o erro é do validador
 MAGNITUDE_PERCENT_MIN: Final[int] = 1
 MAGNITUDE_PERCENT_MAX: Final[int] = 50
 MAGNITUDE_STEPS_MIN: Final[int] = 1
@@ -358,6 +464,17 @@ RULE_RPE_OUT_OF_RANGE = "RULE_RPE_OUT_OF_RANGE"
 RULE_BETWEEN_INVALID = "RULE_BETWEEN_INVALID"
 RULE_RAMP_WITHOUT_RPE = "RULE_RAMP_WITHOUT_RPE"
 RULE_REASON_CODE_UNKNOWN = "RULE_REASON_CODE_UNKNOWN"
+RULE_GROUP_EMPTY = "RULE_GROUP_EMPTY"
+RULE_DEPTH_EXCEEDED = "RULE_DEPTH_EXCEEDED"
+RULE_TOO_MANY_LEAVES = "RULE_TOO_MANY_LEAVES"
+RULE_VARIABLE_UNKNOWN = "RULE_VARIABLE_UNKNOWN"
+RULE_SCOPE_INVALID = "RULE_SCOPE_INVALID"
+RULE_OP_INVALID_FOR_VARIABLE = "RULE_OP_INVALID_FOR_VARIABLE"
+RULE_RAMP_CAP_INVALID = "RULE_RAMP_CAP_INVALID"
+RULE_ENGINE_TARGET_MAGNITUDE_INVALID = "RULE_ENGINE_TARGET_MAGNITUDE_INVALID"
+RULE_SET_INDEX_OUT_OF_RANGE = "RULE_SET_INDEX_OUT_OF_RANGE"
+RULE_ENUM_VALUE_UNKNOWN = "RULE_ENUM_VALUE_UNKNOWN"
+RULE_LOGIC_UNKNOWN = "RULE_LOGIC_UNKNOWN"
 WARN_NO_DECREASE_RULE = RULESET_WARNING_PREFIX + "NO_DECREASE_RULE"
 WARN_RULE_UNREACHABLE = RULESET_WARNING_PREFIX + "RULE_UNREACHABLE"
 
@@ -371,12 +488,37 @@ NumberOrToken = Union[Decimal, str]
 
 @dataclass(frozen=True)
 class Condition:
-    """`<campo> <op> <valor>`; `between` usa `value` (mínimo) e `value_to`
-    (máximo), fechado nos dois lados. `value` pode ser um token."""
+    """`<campo> <op> <valor>` do formato v1; `between` usa `value` (mínimo) e
+    `value_to` (máximo), fechado nos dois lados. `value` pode ser um token.
+    Na árvore v2 a mesma ideia vira `ConditionLeaf` (com variável e escopo)."""
 
     op: ConditionOp
     value: NumberOrToken
     value_to: Optional[NumberOrToken] = None
+
+
+@dataclass(frozen=True)
+class ConditionLeaf:
+    """Folha da árvore: `<variable> do <scope> <op> <value>`. `variable` e
+    `scope` são texto (valores de `VARIABLES`/`SCOPES`) para o validador poder
+    apontar um valor desconhecido. `value` é número, token ou (fadiga) o valor
+    da faixa."""
+
+    variable: str
+    op: ConditionOp
+    value: Optional[Union[NumberOrToken, str]]
+    scope: str = SCOPE_CURRENT
+    value_to: Optional[NumberOrToken] = None
+    ramp_cap: bool = False
+
+
+@dataclass(frozen=True)
+class ConditionGroup:
+    logic: str = LOGIC_AND
+    children: tuple[Union[ConditionLeaf, "ConditionGroup"], ...] = ()
+
+
+ConditionNode = Union[ConditionLeaf, ConditionGroup]
 
 
 @dataclass(frozen=True)
@@ -394,11 +536,7 @@ ONE_STEP: Final[Magnitude] = Magnitude(MagnitudeKind.STEPS, Decimal(1))
 @dataclass(frozen=True)
 class Rule:
     position: int
-    set_position: SetPosition = SetPosition.ANY
-    fatigue: FatigueCondition = FatigueCondition.ANY
-    reps: Optional[Condition] = None
-    rpe: Optional[Condition] = None
-    respect_planned_ramp: bool = False
+    when: ConditionGroup = ConditionGroup()
     action: str = HOLD
     magnitude: Optional[Magnitude] = None
     # Motivo próprio (as regras padrão têm os `NEXT_SET_*` de sempre); None =
@@ -413,6 +551,15 @@ class RuleSet:
     rules: tuple[Rule, ...]
     version: int = 0  # 0 = o conjunto padrão em código
     source: str = RULESET_SOURCE_DEFAULT
+
+
+@dataclass(frozen=True)
+class PreviousSetFacts:
+    """A série de trabalho anterior à executada (escopo `previous`)."""
+
+    reps: Any = None
+    rpe: Any = None
+    weight_kg: Any = None
 
 
 @dataclass(frozen=True)
@@ -441,6 +588,14 @@ class SetFacts:
     # Teto de carga do par exercicio+equipamento marcado pelo usuario (kg
     # TOTAIS; None = sem teto, comportamento anterior). Nenhuma sugestao passa dele.
     max_load_kg: Any = None
+    # Árvore v2: a carga que o MOTOR prescreveu para o par na sessão (kg
+    # totais; base da ação `ENGINE_TARGET`), o RPE ALVO efetivo da série (token
+    # `target`: degrau da rampa ou alvo único) e a série de trabalho anterior
+    # (escopo `previous`). Quem monta é o consumidor; None = desconhecido (a
+    # folha/ação que depende disso não casa).
+    engine_target_kg: Any = None
+    rpe_target: Any = None
+    previous: Optional[PreviousSetFacts] = None
 
 
 @dataclass(frozen=True)
@@ -492,6 +647,96 @@ class NextSetLoad:
 
 
 # ---------------------------------------------------------------------------
+# Construtores da árvore
+# ---------------------------------------------------------------------------
+
+
+def leaf(
+    variable: str,
+    op: ConditionOp,
+    value: Any,
+    *,
+    scope: str = SCOPE_CURRENT,
+    value_to: Any = None,
+    ramp_cap: bool = False,
+) -> ConditionLeaf:
+    return ConditionLeaf(variable=variable, op=op, value=value, scope=scope, value_to=value_to, ramp_cap=ramp_cap)
+
+
+def all_of(*children: ConditionNode) -> ConditionGroup:
+    return ConditionGroup(LOGIC_AND, tuple(children))
+
+
+def any_of(*children: ConditionNode) -> ConditionGroup:
+    return ConditionGroup(LOGIC_OR, tuple(children))
+
+
+def _set_position_leaf(position: SetPosition) -> Optional[ConditionLeaf]:
+    """`SetPosition` do formato v1 -> folha `set_index` (`any` = sem folha)."""
+    if position is SetPosition.ANY:
+        return None
+    low, high = _SET_POSITION_RANGE[position]
+    if high is None:
+        return leaf(VAR_SET_INDEX, ConditionOp.GTE, Decimal(low))
+    return leaf(VAR_SET_INDEX, ConditionOp.EQ, Decimal(low))
+
+
+def when_from_v1(
+    *,
+    set_position: SetPosition = SetPosition.ANY,
+    fatigue: FatigueCondition = FatigueCondition.ANY,
+    reps: Optional[Condition] = None,
+    rpe: Optional[Condition] = None,
+    respect_planned_ramp: bool = False,
+) -> ConditionGroup:
+    """Condições do formato v1 (posição, fadiga, reps, RPE, rampa) -> raiz `and`.
+    `respect_planned_ramp` vira `ramp_cap` na folha de RPE; sem condição de RPE
+    a rampa não tem onde morar e vira uma folha de RPE sem valor, que o
+    validador recusa com `RULE_RAMP_WITHOUT_RPE`."""
+    children: list[ConditionNode] = []
+    position_leaf = _set_position_leaf(set_position)
+    if position_leaf is not None:
+        children.append(position_leaf)
+    if fatigue is not FatigueCondition.ANY:
+        children.append(leaf(VAR_FATIGUE_BAND, ConditionOp.EQ, fatigue.value))
+    if reps is not None:
+        children.append(leaf(VAR_REPS, reps.op, reps.value, value_to=reps.value_to))
+    if rpe is not None:
+        children.append(leaf(VAR_RPE, rpe.op, rpe.value, value_to=rpe.value_to, ramp_cap=bool(respect_planned_ramp) and rpe.op in _RAMP_CAP_OPS))
+    elif respect_planned_ramp:
+        children.append(leaf(VAR_RPE, ConditionOp.LT, None, ramp_cap=True))
+    return all_of(*children)
+
+
+def rule_from_v1(
+    position: int,
+    *,
+    set_position: SetPosition = SetPosition.ANY,
+    fatigue: FatigueCondition = FatigueCondition.ANY,
+    reps: Optional[Condition] = None,
+    rpe: Optional[Condition] = None,
+    respect_planned_ramp: bool = False,
+    action: str = HOLD,
+    magnitude: Optional[Magnitude] = None,
+    reason_code: Optional[str] = None,
+) -> Rule:
+    """Regra no formato v1 (campos fixos) convertida para a árvore."""
+    return Rule(
+        position=position,
+        when=when_from_v1(
+            set_position=set_position,
+            fatigue=fatigue,
+            reps=reps,
+            rpe=rpe,
+            respect_planned_ramp=respect_planned_ramp,
+        ),
+        action=action,
+        magnitude=magnitude,
+        reason_code=reason_code,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Conjunto padrão = a regra de 2026-10-12 (com a rampa de 36.1)
 # ---------------------------------------------------------------------------
 
@@ -501,24 +746,27 @@ DEFAULT_RULESET: Final[RuleSet] = RuleSet(
     rules=(
         Rule(
             position=1,
-            reps=Condition(ConditionOp.GT, Decimal(NEXT_SET_INCREASE_ABOVE_REPS)),
+            when=all_of(leaf(VAR_REPS, ConditionOp.GT, Decimal(NEXT_SET_INCREASE_ABOVE_REPS))),
             action=INCREASE_LOAD,
             magnitude=ONE_STEP,
             reason_code=REASON_REPS_ABOVE_LIMIT,
         ),
         Rule(
             position=2,
-            reps=Condition(ConditionOp.GTE, Decimal(NEXT_SET_INCREASE_MIN_REPS_LOW_RPE)),
-            rpe=Condition(ConditionOp.LT, Decimal(NEXT_SET_LOW_RPE_BELOW)),
-            respect_planned_ramp=True,
+            when=all_of(
+                leaf(VAR_REPS, ConditionOp.GTE, Decimal(NEXT_SET_INCREASE_MIN_REPS_LOW_RPE)),
+                leaf(VAR_RPE, ConditionOp.LT, Decimal(NEXT_SET_LOW_RPE_BELOW), ramp_cap=True),
+            ),
             action=INCREASE_LOAD,
             magnitude=ONE_STEP,
             reason_code=REASON_LOW_RPE_AT_REPS,
         ),
         Rule(
             position=3,
-            reps=Condition(ConditionOp.LT, Decimal(NEXT_SET_DECREASE_BELOW_REPS)),
-            rpe=Condition(ConditionOp.GTE, Decimal(NEXT_SET_FAILURE_RPE)),
+            when=all_of(
+                leaf(VAR_REPS, ConditionOp.LT, Decimal(NEXT_SET_DECREASE_BELOW_REPS)),
+                leaf(VAR_RPE, ConditionOp.GTE, Decimal(NEXT_SET_FAILURE_RPE)),
+            ),
             action=DECREASE_LOAD,
             magnitude=ONE_STEP,
             reason_code=REASON_FAILURE_BEFORE_MIN_REPS,
@@ -558,22 +806,25 @@ STRENGTH_RULESET: Final[RuleSet] = RuleSet(
     rules=(
         Rule(
             position=1,
-            reps=Condition(ConditionOp.GT, Decimal(STRENGTH_NEXT_SET_INCREASE_ABOVE_REPS)),
+            when=all_of(leaf(VAR_REPS, ConditionOp.GT, Decimal(STRENGTH_NEXT_SET_INCREASE_ABOVE_REPS))),
             action=INCREASE_LOAD,
             magnitude=Magnitude(MagnitudeKind.PERCENT, Decimal(STRENGTH_NEXT_SET_LARGE_INCREASE_PERCENT)),
         ),
         Rule(
             position=2,
-            reps=Condition(ConditionOp.GTE, REPS_TOKEN_CEILING),
-            rpe=Condition(ConditionOp.LT, Decimal(STRENGTH_NEXT_SET_LOW_RPE_BELOW)),
-            respect_planned_ramp=True,
+            when=all_of(
+                leaf(VAR_REPS, ConditionOp.GTE, REPS_TOKEN_CEILING),
+                leaf(VAR_RPE, ConditionOp.LT, Decimal(STRENGTH_NEXT_SET_LOW_RPE_BELOW), ramp_cap=True),
+            ),
             action=INCREASE_LOAD,
             magnitude=Magnitude(MagnitudeKind.PERCENT, Decimal(STRENGTH_NEXT_SET_INCREASE_PERCENT)),
         ),
         Rule(
             position=3,
-            reps=Condition(ConditionOp.LT, REPS_TOKEN_FLOOR),
-            rpe=Condition(ConditionOp.GTE, Decimal(NEXT_SET_FAILURE_RPE)),
+            when=all_of(
+                leaf(VAR_REPS, ConditionOp.LT, REPS_TOKEN_FLOOR),
+                leaf(VAR_RPE, ConditionOp.GTE, Decimal(NEXT_SET_FAILURE_RPE)),
+            ),
             action=DECREASE_LOAD,
             magnitude=Magnitude(MagnitudeKind.PERCENT, Decimal(STRENGTH_NEXT_SET_DECREASE_PERCENT)),
         ),
@@ -715,7 +966,7 @@ class _Match:
     magnitude: Optional[Magnitude]
 
 
-def _resolve_reps_value(value: Optional[NumberOrToken], ruleset: RuleSet) -> Optional[Decimal]:
+def _resolve_reps_value(value: Any, ruleset: RuleSet) -> Optional[Decimal]:
     if isinstance(value, str):
         if value == REPS_TOKEN_FLOOR:
             return Decimal(ruleset.reps_floor)
@@ -725,9 +976,13 @@ def _resolve_reps_value(value: Optional[NumberOrToken], ruleset: RuleSet) -> Opt
     return _decimal(value)
 
 
-def _resolve_rpe_value(value: Optional[NumberOrToken], facts: SetFacts) -> Optional[Decimal]:
+def _resolve_rpe_value(value: Any, facts: SetFacts) -> Optional[Decimal]:
     if isinstance(value, str):
-        return _decimal(facts.rpe_ceiling) if value == RPE_TOKEN_MAX else None
+        if value == RPE_TOKEN_MAX:
+            return _decimal(facts.rpe_ceiling)
+        if value == RPE_TOKEN_TARGET:
+            return _decimal(facts.rpe_target)
+        return None
     return _decimal(value)
 
 
@@ -740,74 +995,101 @@ def _compare(actual: Decimal, op: ConditionOp, threshold: Decimal, threshold_to:
         return actual < threshold
     if op is ConditionOp.LTE:
         return actual <= threshold
+    if op is ConditionOp.EQ:
+        return actual == threshold
+    if op is ConditionOp.NEQ:
+        return actual != threshold
     return threshold_to is not None and threshold <= actual <= threshold_to
 
 
-def _position_matches(position: SetPosition, working_set_index: Any) -> bool:
-    if position is SetPosition.ANY:
-        return True
-    index = _int(working_set_index)
-    if index is None:
-        return False
-    low, high = _SET_POSITION_RANGE[position]
-    return index >= low and (high is None or index <= high)
+def _resolve_leaf_value(leaf_node: ConditionLeaf, value: Any, facts: SetFacts, ruleset: RuleSet) -> Optional[Decimal]:
+    if leaf_node.variable == VAR_REPS:
+        return _resolve_reps_value(value, ruleset)
+    if leaf_node.variable == VAR_RPE:
+        return _resolve_rpe_value(value, facts)
+    return None if isinstance(value, str) else _decimal(value)
 
 
-def _fatigue_matches(condition: FatigueCondition, band: Any) -> bool:
-    if condition is FatigueCondition.ANY:
-        return True
-    if band is None:
-        return False
+def _leaf_actual(leaf_node: ConditionLeaf, facts: SetFacts) -> Optional[Decimal]:
+    """O fato numérico que a folha compara (None = ausente: a folha não casa)."""
+    if leaf_node.variable == VAR_SET_INDEX:
+        index = _int(facts.working_set_index)
+        return Decimal(index) if index is not None else None
+    source: Any = facts if leaf_node.scope == SCOPE_CURRENT else facts.previous
+    if source is None:
+        return None
+    return _decimal(source.reps if leaf_node.variable == VAR_REPS else source.rpe)
+
+
+def _fatigue_leaf_outcome(leaf_node: ConditionLeaf, band: Any) -> _Outcome:
+    if band is None or not isinstance(leaf_node.value, str):
+        return _Outcome.NO_MATCH
     value = band.value if isinstance(band, Enum) else str(band)
-    return value == condition.value
+    if leaf_node.op is ConditionOp.EQ:
+        return _Outcome.MATCH if value == leaf_node.value else _Outcome.NO_MATCH
+    if leaf_node.op is ConditionOp.NEQ:
+        return _Outcome.MATCH if value != leaf_node.value else _Outcome.NO_MATCH
+    return _Outcome.NO_MATCH
 
 
-def _reps_matches(condition: Optional[Condition], reps: Decimal, ruleset: RuleSet) -> bool:
-    if condition is None:
-        return True
-    threshold = _resolve_reps_value(condition.value, ruleset)
-    threshold_to = _resolve_reps_value(condition.value_to, ruleset) if condition.op is ConditionOp.BETWEEN else None
-    if threshold is None or (condition.op is ConditionOp.BETWEEN and threshold_to is None):
-        return False
-    return _compare(reps, condition.op, threshold, threshold_to)
-
-
-def _rpe_outcome(rule: Rule, facts: SetFacts, rpe: Optional[Decimal]) -> _Outcome:
-    """Condição de RPE da regra. Sem condição: não exige RPE. Com condição e
-    RPE ausente/teto ausente (token `max`): não casa. `respect_planned_ramp`
-    com rampa: o limiar SUPERIOR (`<`, `<=`, máximo do `between`) vira
-    `min(limiar, RPE planejado)`; se a regra só deixou de casar por isso,
-    `RAMP_BLOCKED` (o motivo final vira "dentro da rampa planejada")."""
-    condition = rule.rpe
-    if condition is None:
-        return _Outcome.MATCH
-    if rpe is None:
+def _leaf_outcome(leaf_node: ConditionLeaf, facts: SetFacts, ruleset: RuleSet) -> _Outcome:
+    """Uma folha. Fato ausente (sem RPE, sem série anterior, sem teto/alvo do
+    token) não casa. `ramp_cap` (folha de RPE com `<`/`<=` no escopo `current`)
+    com rampa: o limiar vira `min(limiar, RPE planejado)`; se a folha só deixou
+    de casar por isso, `RAMP_BLOCKED` (o motivo final vira "dentro da rampa
+    planejada")."""
+    spec = VARIABLES.get(leaf_node.variable)
+    if spec is None or leaf_node.scope not in spec.scopes or leaf_node.op not in spec.ops:
         return _Outcome.NO_MATCH
-    threshold = _resolve_rpe_value(condition.value, facts)
-    threshold_to = _resolve_rpe_value(condition.value_to, facts) if condition.op is ConditionOp.BETWEEN else None
-    if threshold is None or (condition.op is ConditionOp.BETWEEN and threshold_to is None):
+    if leaf_node.variable == VAR_FATIGUE_BAND:
+        return _fatigue_leaf_outcome(leaf_node, facts.fatigue_band)
+    actual = _leaf_actual(leaf_node, facts)
+    if actual is None:
         return _Outcome.NO_MATCH
-    matched_without_ramp = _compare(rpe, condition.op, threshold, threshold_to)
-    planned = _decimal(facts.planned_rpe) if rule.respect_planned_ramp else None
+    threshold = _resolve_leaf_value(leaf_node, leaf_node.value, facts, ruleset)
+    is_between = leaf_node.op is ConditionOp.BETWEEN
+    threshold_to = _resolve_leaf_value(leaf_node, leaf_node.value_to, facts, ruleset) if is_between else None
+    if threshold is None or (is_between and threshold_to is None):
+        return _Outcome.NO_MATCH
+    matched_without_cap = _compare(actual, leaf_node.op, threshold, threshold_to)
+    capped = (
+        leaf_node.ramp_cap
+        and leaf_node.variable == VAR_RPE
+        and leaf_node.scope == SCOPE_CURRENT
+        and leaf_node.op in _RAMP_CAP_OPS
+    )
+    planned = _decimal(facts.planned_rpe) if capped else None
     if planned is None:
-        return _Outcome.MATCH if matched_without_ramp else _Outcome.NO_MATCH
-    if condition.op in (ConditionOp.LT, ConditionOp.LTE):
-        threshold = min(threshold, planned)
-    elif condition.op is ConditionOp.BETWEEN and threshold_to is not None:
-        threshold_to = min(threshold_to, planned)
-    if _compare(rpe, condition.op, threshold, threshold_to):
+        return _Outcome.MATCH if matched_without_cap else _Outcome.NO_MATCH
+    if is_between:
+        capped_to = min(threshold_to, planned) if threshold_to is not None else None
+        capped_match = _compare(actual, leaf_node.op, threshold, capped_to)
+    else:
+        capped_match = _compare(actual, leaf_node.op, min(threshold, planned), threshold_to)
+    if capped_match:
         return _Outcome.MATCH
-    return _Outcome.RAMP_BLOCKED if matched_without_ramp else _Outcome.NO_MATCH
+    return _Outcome.RAMP_BLOCKED if matched_without_cap else _Outcome.NO_MATCH
 
 
-def _rule_outcome(rule: Rule, facts: SetFacts, ruleset: RuleSet, reps: Decimal, rpe: Optional[Decimal]) -> _Outcome:
-    if not _position_matches(rule.set_position, facts.working_set_index):
+def _node_outcome(node: ConditionNode, facts: SetFacts, ruleset: RuleSet) -> _Outcome:
+    if isinstance(node, ConditionLeaf):
+        return _leaf_outcome(node, facts, ruleset)
+    outcomes = [_node_outcome(child, facts, ruleset) for child in node.children]
+    if node.logic == LOGIC_OR:
+        if _Outcome.MATCH in outcomes:
+            return _Outcome.MATCH
+        return _Outcome.RAMP_BLOCKED if _Outcome.RAMP_BLOCKED in outcomes else _Outcome.NO_MATCH
+    if _Outcome.NO_MATCH in outcomes:
         return _Outcome.NO_MATCH
-    if not _fatigue_matches(rule.fatigue, facts.fatigue_band):
-        return _Outcome.NO_MATCH
-    if not _reps_matches(rule.reps, reps, ruleset):
-        return _Outcome.NO_MATCH
-    return _rpe_outcome(rule, facts, rpe)
+    return _Outcome.RAMP_BLOCKED if _Outcome.RAMP_BLOCKED in outcomes else _Outcome.MATCH
+
+
+def _rule_outcome(rule: Rule, facts: SetFacts, ruleset: RuleSet) -> _Outcome:
+    if rule.action == ACTION_ENGINE_TARGET:
+        target = _decimal(facts.engine_target_kg)
+        if target is None or target <= 0:
+            return _Outcome.NO_MATCH  # sem alvo do motor a regra não casa (nem barra por rampa)
+    return _node_outcome(rule.when, facts, ruleset)
 
 
 def _classify(facts: SetFacts, ruleset: RuleSet) -> Optional[_Match]:
@@ -815,15 +1097,20 @@ def _classify(facts: SetFacts, ruleset: RuleSet) -> Optional[_Match]:
     reps = _decimal(facts.reps)
     if reps is None or reps <= 0:
         return None
-    rpe = _decimal(facts.rpe)
     if bool(facts.joint_pain) or _muscle_pain_blocks(facts.muscle_pain):
         return _Match(DECREASE_LOAD, REASON_PAIN, None, ONE_STEP)
     ramp_blocked = False
     for rule in ruleset.rules:
-        outcome = _rule_outcome(rule, facts, ruleset, reps, rpe)
+        outcome = _rule_outcome(rule, facts, ruleset)
         if outcome is _Outcome.MATCH:
-            # Magnitude APLICADA: manter não tem; aumentar/reduzir sem cadastro vale um passo.
-            magnitude = None if rule.action == HOLD else (rule.magnitude or ONE_STEP)
+            # Magnitude APLICADA: manter não tem; aumentar/reduzir sem cadastro vale um passo;
+            # o alvo do motor segue a magnitude cadastrada (ou nenhuma).
+            if rule.action == HOLD:
+                magnitude = None
+            elif rule.action == ACTION_ENGINE_TARGET:
+                magnitude = rule.magnitude
+            else:
+                magnitude = rule.magnitude or ONE_STEP
             return _Match(rule.action, rule.reason_code or REASON_RULE_MATCHED, rule, magnitude)
         if outcome is _Outcome.RAMP_BLOCKED:
             ramp_blocked = True
@@ -841,6 +1128,28 @@ def _load_for(match: _Match, executed: Decimal, step: Decimal) -> Optional[float
     if magnitude.kind is MagnitudeKind.PERCENT:
         return _percent_load(executed, step, magnitude.value, up=up)
     return _steps_load(executed, step, int(magnitude.value), up=up)
+
+
+def _engine_target_load(target: Decimal, step: Decimal, magnitude: Optional[Magnitude]) -> Optional[float]:
+    """Carga do alvo do motor ± magnitude (com sinal) arredondada ao passo do
+    equipamento. Resultado não positivo: None (reduzir sem passo abaixo)."""
+    value = target
+    if magnitude is not None:
+        if magnitude.kind is MagnitudeKind.PERCENT:
+            value = target * (1 + magnitude.value / 100)
+        else:
+            value = target + step * magnitude.value
+    return round_to_equipment_step(value, step)
+
+
+def _derived_direction(load_kg: Optional[float], executed: Decimal) -> str:
+    """Direção pela comparação com a carga executada (sem carga = reduzir)."""
+    if load_kg is None:
+        return DECREASE_LOAD
+    proposed = Decimal(str(load_kg))
+    if proposed > executed:
+        return INCREASE_LOAD
+    return DECREASE_LOAD if proposed < executed else HOLD
 
 
 def evaluate_ruleset(facts: SetFacts, ruleset: RuleSet) -> Optional[NextSetLoad]:
@@ -866,7 +1175,11 @@ def evaluate_ruleset(facts: SetFacts, ruleset: RuleSet) -> Optional[NextSetLoad]
     step = load_increment(is_compound=False, load_increment_kg=_decimal(facts.step_kg)).step_kg
     planned = _decimal(facts.planned_rpe)
     direction, reason = match.direction, match.reason
-    load_kg = _load_for(match, executed, step)
+    if direction == ACTION_ENGINE_TARGET:
+        load_kg = _engine_target_load(_decimal(facts.engine_target_kg) or Decimal(0), step, match.magnitude)
+        direction = _derived_direction(load_kg, executed)
+    else:
+        load_kg = _load_for(match, executed, step)
     ceiling = _decimal(facts.max_load_kg)
     if ceiling is not None and ceiling > 0 and direction == INCREASE_LOAD and load_kg is not None:
         # Dono unico do teto: `progression_engine.cap_load_to_ceiling`. So limita
@@ -918,6 +1231,9 @@ def suggest_next_set_load(
     rpe_ceiling: Any = None,
     ruleset: Optional[RuleSet] = None,
     max_load_kg: Any = None,
+    engine_target_kg: Any = None,
+    rpe_target: Any = None,
+    previous: Optional[PreviousSetFacts] = None,
 ) -> Optional[NextSetLoad]:
     """Sugestão da próxima série, ou None quando a regra não se aplica
     (série que não é `working`, sem carga/reps, convenção excluída).
@@ -938,6 +1254,9 @@ def suggest_next_set_load(
         joint_pain=joint_pain,
         muscle_pain=muscle_pain,
         max_load_kg=max_load_kg,
+        engine_target_kg=engine_target_kg,
+        rpe_target=rpe_target,
+        previous=previous,
     )
     return evaluate_ruleset(facts, ruleset or DEFAULT_RULESET)
 
@@ -946,26 +1265,43 @@ def suggest_next_set_load(
 # Texto (pt-BR) e validação do conjunto
 # ---------------------------------------------------------------------------
 
+SIGN_PLUS: Final[str] = "+"
+SIGN_MINUS: Final[str] = "−"
 
-def _reps_value_text(value: NumberOrToken, ruleset: RuleSet) -> str:
+
+def _value_text(variable: str, value: Any) -> str:
+    if value is None:
+        return "?"
     if isinstance(value, str):
-        resolved = _resolve_reps_value(value, ruleset)
-        label = REPS_TOKEN_LABELS.get(value, value)
-        return f"{label} ({_number_text(resolved)})" if resolved is not None else label
+        if variable == VAR_REPS:
+            return REPS_TOKEN_LABELS.get(value, value)
+        if variable == VAR_RPE:
+            return RPE_TOKEN_LABELS.get(value, value)
+        if variable == VAR_FATIGUE_BAND:
+            return fatigue_condition_labels().get(value, value)
+        return value
     return _number_text(value)
 
 
-def _rpe_value_text(value: NumberOrToken) -> str:
-    if isinstance(value, str):
-        return RPE_TOKEN_LABELS.get(value, value)
-    return _number_text(value)
+def _leaf_text(node: ConditionLeaf) -> str:
+    spec = VARIABLES.get(node.variable)
+    name = spec.label if spec is not None else node.variable
+    if node.scope == SCOPE_PREVIOUS:
+        name = f"{name} da série anterior"
+    if node.op is ConditionOp.BETWEEN:
+        text = f"{name} entre {_value_text(node.variable, node.value)} e {_value_text(node.variable, node.value_to)}"
+    else:
+        text = f"{name} {CONDITION_OP_LABELS[node.op]} {_value_text(node.variable, node.value)}"
+    return f"{text} (limitado à rampa planejada)" if node.ramp_cap else text
 
 
-def _condition_text(name: str, condition: Condition, value_text: Callable[[NumberOrToken], str]) -> str:
-    if condition.op is ConditionOp.BETWEEN:
-        upper = value_text(condition.value_to) if condition.value_to is not None else "?"
-        return f"{name} entre {value_text(condition.value)} e {upper}"
-    return f"{name} {CONDITION_OP_LABELS[condition.op]} {value_text(condition.value)}"
+def _group_text(group: ConditionGroup, *, nested: bool) -> str:
+    parts = [
+        _leaf_text(child) if isinstance(child, ConditionLeaf) else _group_text(child, nested=True)
+        for child in group.children
+    ]
+    text = f" {LOGIC_LABELS.get(group.logic, group.logic)} ".join(parts)
+    return f"({text})" if nested else text
 
 
 def _magnitude_text(magnitude: Optional[Magnitude]) -> str:
@@ -976,30 +1312,38 @@ def _magnitude_text(magnitude: Optional[Magnitude]) -> str:
     return f"{steps} passo" if steps == 1 else f"{steps} passos"
 
 
-def _action_text(rule: Rule) -> str:
+def _signed_magnitude_text(magnitude: Magnitude, sign: str) -> str:
+    """Magnitude com o sinal no texto: + 1 passo, − 2 passos, + 5%."""
+    value = abs(magnitude.value)
+    if magnitude.kind is MagnitudeKind.PERCENT:
+        return f"{sign} {_number_text(value)}%"
+    steps = int(value)
+    return f"{sign} {steps} passo" if steps == 1 else f"{sign} {steps} passos"
+
+
+def _result_text(rule: Rule) -> str:
+    """O lado ENTÃO da fórmula: carga = base ± magnitude."""
     if rule.action == INCREASE_LOAD:
-        return f"Aumentar {_magnitude_text(rule.magnitude)}"
+        return "carga = carga executada " + _signed_magnitude_text(rule.magnitude or ONE_STEP, SIGN_PLUS)
     if rule.action == DECREASE_LOAD:
-        return f"Reduzir {_magnitude_text(rule.magnitude)}"
-    return "Manter a carga"
+        return "carga = carga executada " + _signed_magnitude_text(rule.magnitude or ONE_STEP, SIGN_MINUS)
+    if rule.action == ACTION_ENGINE_TARGET:
+        base = "carga = recomendação do motor"
+        if rule.magnitude is None:
+            return base
+        sign = SIGN_MINUS if rule.magnitude.value < 0 else SIGN_PLUS
+        return f"{base} {_signed_magnitude_text(rule.magnitude, sign)}"
+    return "carga = carga executada"
 
 
 def describe_rule(rule: Rule, ruleset: RuleSet) -> str:
-    """Texto pt-BR de uma regra, ex.: "2ª série · músculo descansado · reps >
-    teto (12) · RPE < máximo · respeita a rampa → Aumentar 25% (no passo do
-    equipamento)". Partes `any` ficam de fora; sem condição: "sempre"."""
-    parts: list[str] = []
-    if rule.set_position is not SetPosition.ANY:
-        parts.append(SET_POSITION_LABELS[rule.set_position])
-    if rule.fatigue is not FatigueCondition.ANY:
-        parts.append(f"músculo {fatigue_condition_labels()[rule.fatigue.value]}")
-    if rule.reps is not None:
-        parts.append(_condition_text("reps", rule.reps, lambda value: _reps_value_text(value, ruleset)))
-    if rule.rpe is not None:
-        parts.append(_condition_text("RPE", rule.rpe, _rpe_value_text))
-    if rule.respect_planned_ramp:
-        parts.append("respeita a rampa")
-    return f"{' · '.join(parts) or 'sempre'} → {_action_text(rule)}"
+    """Fórmula pt-BR da regra, ex.: SE série = 2 E fadiga = descansado E reps
+    ≥ teto E RPE < alvo E (RPE da série anterior = máximo E reps da série
+    anterior ≥ teto) ENTÃO carga = recomendação do motor + 1 passo. Sem
+    condição: SE sempre. Os tokens aparecem pelo nome (piso/teto/máximo/alvo);
+    o piso e o teto do conjunto abrem `describe_ruleset`."""
+    condition = _group_text(rule.when, nested=False) or "sempre"
+    return f"SE {condition} ENTÃO {_result_text(rule)}"
 
 
 def describe_ruleset(ruleset: RuleSet) -> str:
@@ -1028,50 +1372,126 @@ def describe_matched_rule(next_set: NextSetLoad) -> Optional[str]:
     return "Nenhuma regra casou: manter a carga"
 
 
+def _iter_leaves(group: ConditionGroup) -> list[ConditionLeaf]:
+    leaves: list[ConditionLeaf] = []
+    for child in group.children:
+        if isinstance(child, ConditionLeaf):
+            leaves.append(child)
+        else:
+            leaves.extend(_iter_leaves(child))
+    return leaves
+
+
 def _is_catch_all(rule: Rule) -> bool:
-    return (
-        rule.set_position is SetPosition.ANY
-        and rule.fatigue is FatigueCondition.ANY
-        and rule.reps is None
-        and rule.rpe is None
-    )
+    return not _iter_leaves(rule.when)
 
 
-def _validate_condition(
-    condition: Optional[Condition], *, tokens: tuple[str, ...], low: int, high: int
-) -> tuple[bool, bool, bool]:
-    """(token desconhecido, número fora da faixa, `between` inválido)."""
-    if condition is None:
-        return False, False, False
-    unknown_token = False
-    out_of_range = False
+_VALUE_CODES: Final[Mapping[str, tuple[int, int, str, str]]] = {
+    VAR_REPS: (REPS_FLOOR_MIN, REPS_CEILING_MAX, RULE_REPS_TOKEN_UNKNOWN, RULE_REPS_OUT_OF_RANGE),
+    VAR_RPE: (RULE_RPE_MIN, RULE_RPE_MAX, RULE_RPE_TOKEN_UNKNOWN, RULE_RPE_OUT_OF_RANGE),
+    VAR_SET_INDEX: (1, RULE_SET_INDEX_MAX, RULE_SET_INDEX_OUT_OF_RANGE, RULE_SET_INDEX_OUT_OF_RANGE),
+}
+
+
+def _validate_values(spec: VariableSpec, node: ConditionLeaf) -> list[str]:
+    """Códigos de valor da folha (token, faixa, between)."""
+    codes: list[str] = []
+    if spec.kind == KIND_ENUM:
+        allowed = {band.value for band in PriorFatigueBand}
+        if not isinstance(node.value, str) or node.value not in allowed:
+            codes.append(RULE_ENUM_VALUE_UNKNOWN)
+        if node.value_to is not None:
+            codes.append(RULE_BETWEEN_INVALID)
+        return codes
+    low, high, token_code, range_code = _VALUE_CODES[spec.value]
     numbers: list[Decimal] = []
-    for value in (condition.value, condition.value_to):
+    if node.value is None:
+        codes.append(range_code)
+    for value in (node.value, node.value_to):
         if value is None:
             continue
         if isinstance(value, str):
-            unknown_token = unknown_token or value not in tokens
+            if value not in spec.tokens:
+                codes.append(token_code)
             continue
         number = _decimal(value)
-        if number is None or not (low <= number <= high):
-            out_of_range = True
-        elif number is not None:
+        in_range = number is not None and low <= number <= high
+        if spec.value == VAR_SET_INDEX and number is not None and number != number.to_integral_value():
+            in_range = False
+        if in_range and number is not None:
             numbers.append(number)
-    between_invalid = False
-    if condition.op is ConditionOp.BETWEEN:
-        if condition.value_to is None:
-            between_invalid = True
-        elif len(numbers) == 2 and numbers[0] >= numbers[1]:
-            between_invalid = True
-    elif condition.value_to is not None:
-        between_invalid = True
-    return unknown_token, out_of_range, between_invalid
+        else:
+            codes.append(range_code)
+    if node.op is ConditionOp.BETWEEN:
+        if node.value_to is None or (len(numbers) == 2 and numbers[0] >= numbers[1]):
+            codes.append(RULE_BETWEEN_INVALID)
+    elif node.value_to is not None:
+        codes.append(RULE_BETWEEN_INVALID)
+    return codes
+
+
+def _validate_leaf(node: ConditionLeaf) -> list[str]:
+    spec = VARIABLES.get(node.variable)
+    if spec is None:
+        return [RULE_VARIABLE_UNKNOWN]
+    codes: list[str] = []
+    if node.scope not in spec.scopes:
+        codes.append(RULE_SCOPE_INVALID)
+    if node.op not in spec.ops:
+        codes.append(RULE_OP_INVALID_FOR_VARIABLE)
+    if node.ramp_cap:
+        if node.variable != VAR_RPE or node.op not in _RAMP_CAP_OPS or node.scope != SCOPE_CURRENT:
+            codes.append(RULE_RAMP_CAP_INVALID)
+        elif node.value is None:
+            # rampa pedida sem condição de RPE (formato v1): nada a limitar.
+            codes.append(RULE_RAMP_WITHOUT_RPE)
+            return codes
+    codes.extend(_validate_values(spec, node))
+    return codes
+
+
+def _validate_tree(group: ConditionGroup) -> list[str]:
+    """Códigos estruturais e das folhas da árvore da regra (sem repetição)."""
+    codes: list[str] = []
+    deepest = 0
+
+    def walk(node: ConditionGroup, depth: int) -> None:
+        nonlocal deepest
+        deepest = max(deepest, depth)
+        if node.logic not in LOGIC_OPS:
+            codes.append(RULE_LOGIC_UNKNOWN)
+        if depth > 1 and not node.children:
+            codes.append(RULE_GROUP_EMPTY)
+        for child in node.children:
+            if isinstance(child, ConditionLeaf):
+                codes.extend(_validate_leaf(child))
+            else:
+                walk(child, depth + 1)
+
+    walk(group, 1)
+    if deepest > RULESET_MAX_DEPTH:
+        codes.append(RULE_DEPTH_EXCEEDED)
+    if len(_iter_leaves(group)) > RULESET_MAX_LEAVES_PER_RULE:
+        codes.append(RULE_TOO_MANY_LEAVES)
+    return list(dict.fromkeys(codes))
+
+
+def _engine_target_magnitude_valid(magnitude: Magnitude) -> bool:
+    """Magnitude do ENGINE_TARGET: COM SINAL, não nula, módulo dentro dos
+    limites do tipo (passos inteiros ou percentual)."""
+    value = _decimal(magnitude.value)
+    if value is None or value == 0:
+        return False
+    size = abs(value)
+    if magnitude.kind is MagnitudeKind.PERCENT:
+        return MAGNITUDE_PERCENT_MIN <= size <= MAGNITUDE_PERCENT_MAX
+    return size == size.to_integral_value() and MAGNITUDE_STEPS_MIN <= size <= MAGNITUDE_STEPS_MAX
 
 
 def validate_ruleset(ruleset: RuleSet) -> list[str]:
-    """Códigos de erro e de aviso (prefixo `WARN_`) do conjunto; vazio = ok.
-    Códigos por regra levam `:<position>`. Conjunto sem regra de redução é
-    AVISO, não erro (a dor continua reduzindo acima de tudo)."""
+    """Códigos de erro e de aviso (prefixo WARN_) do conjunto; vazio = ok.
+    Códigos por regra levam o sufixo com a posição. Conjunto sem regra de
+    redução é AVISO, não erro (a dor continua reduzindo acima de tudo)."""
     codes: list[str] = []
     if not ruleset.rules:
         codes.append(RULESET_EMPTY)
@@ -1102,24 +1522,10 @@ def validate_ruleset(ruleset: RuleSet) -> list[str]:
                 codes.append(RULE_MAGNITUDE_MISSING + suffix)
             else:
                 codes.extend(code + suffix for code in _validate_magnitude(rule.magnitude))
-        unknown, out_of_range, between_invalid = _validate_condition(
-            rule.reps, tokens=REPS_TOKENS, low=REPS_FLOOR_MIN, high=REPS_CEILING_MAX
-        )
-        if unknown:
-            codes.append(RULE_REPS_TOKEN_UNKNOWN + suffix)
-        if out_of_range:
-            codes.append(RULE_REPS_OUT_OF_RANGE + suffix)
-        unknown_rpe, out_of_range_rpe, between_invalid_rpe = _validate_condition(
-            rule.rpe, tokens=RPE_TOKENS, low=RULE_RPE_MIN, high=RULE_RPE_MAX
-        )
-        if unknown_rpe:
-            codes.append(RULE_RPE_TOKEN_UNKNOWN + suffix)
-        if out_of_range_rpe:
-            codes.append(RULE_RPE_OUT_OF_RANGE + suffix)
-        if between_invalid or between_invalid_rpe:
-            codes.append(RULE_BETWEEN_INVALID + suffix)
-        if rule.respect_planned_ramp and rule.rpe is None:
-            codes.append(RULE_RAMP_WITHOUT_RPE + suffix)
+        if rule.action == ACTION_ENGINE_TARGET and rule.magnitude is not None:
+            if not _engine_target_magnitude_valid(rule.magnitude):
+                codes.append(RULE_ENGINE_TARGET_MAGNITUDE_INVALID + suffix)
+        codes.extend(code + suffix for code in _validate_tree(rule.when))
         if rule.reason_code is not None and rule.reason_code not in _RULE_REASON_CODES:
             codes.append(RULE_REASON_CODE_UNKNOWN + suffix)
     if ruleset.rules and not any(rule.action == DECREASE_LOAD for rule in ruleset.rules):
@@ -1127,18 +1533,38 @@ def validate_ruleset(ruleset: RuleSet) -> list[str]:
     return codes
 
 
-# Motivos que uma regra pode carregar (`reason_code`): os das regras padrão e o
-# genérico. A dor e "manter" não são motivo de regra.
+# Motivos que uma regra pode carregar (reason_code): os das regras padrão e o
+# genérico. A dor e o manter não são motivo de regra.
 _RULE_REASON_CODES: Final[frozenset[str]] = frozenset(
     {REASON_REPS_ABOVE_LIMIT, REASON_LOW_RPE_AT_REPS, REASON_FAILURE_BEFORE_MIN_REPS, REASON_RULE_MATCHED}
 )
 
 
+def _all_leaves(ruleset: RuleSet) -> list[ConditionLeaf]:
+    return [leaf_node for rule in ruleset.rules for leaf_node in _iter_leaves(rule.when)]
+
+
 def ruleset_uses_fatigue(ruleset: RuleSet) -> bool:
-    """Alguma regra exige um contexto de fadiga prévia (`fatigue != any`)?
-    Sem nenhuma, a faixa não muda o resultado de `evaluate_ruleset` e o
-    chamador pode deixar de lê-la (R2: corta a leitura por série do padrão)."""
-    return any(rule.fatigue is not FatigueCondition.ANY for rule in ruleset.rules)
+    """Alguma regra tem folha de fadiga (fatigue_band)? Sem nenhuma, a faixa
+    não muda o resultado de `evaluate_ruleset` e o chamador pode deixar de
+    lê-la (R2: corta a leitura por série do padrão)."""
+    return any(leaf_node.variable == VAR_FATIGUE_BAND for leaf_node in _all_leaves(ruleset))
+
+
+def ruleset_uses_previous_set(ruleset: RuleSet) -> bool:
+    """Alguma folha olha a série anterior (scope previous)? Sem nenhuma, o
+    chamador pode deixar de montar `SetFacts.previous`."""
+    return any(leaf_node.scope == SCOPE_PREVIOUS for leaf_node in _all_leaves(ruleset))
+
+
+def ruleset_uses_engine_target(ruleset: RuleSet) -> bool:
+    """Alguma regra usa a ação ENGINE_TARGET (precisa de `engine_target_kg`)?"""
+    return any(rule.action == ACTION_ENGINE_TARGET for rule in ruleset.rules)
+
+
+def ruleset_uses_rpe_target(ruleset: RuleSet) -> bool:
+    """Alguma folha usa o token target (precisa de `rpe_target`)?"""
+    return any(RPE_TOKEN_TARGET in (leaf_node.value, leaf_node.value_to) for leaf_node in _all_leaves(ruleset))
 
 
 def _validate_magnitude(magnitude: Magnitude) -> list[str]:
@@ -1163,31 +1589,46 @@ def ruleset_errors(ruleset: RuleSet) -> list[str]:
 # ---------------------------------------------------------------------------
 # JSON (persistência no R2; a tela no R4 monta este mesmo formato)
 # ---------------------------------------------------------------------------
+# v2 (escrita): regra = {position, when: {logic, children}, action, magnitude,
+# reason_code?}; folha = {variable, scope, op, value, value_to?, ramp_cap?}.
+# v1 (só leitura): regra = {position, set_position, fatigue, reps, rpe,
+# respect_planned_ramp, action, magnitude} convertida para a árvore.
 
 
-def _value_to_json(value: Optional[NumberOrToken]) -> Any:
+def _value_to_json(value: Any) -> Any:
     if value is None:
         return None
     return value if isinstance(value, str) else _number(value)
 
 
-def _condition_to_dict(condition: Optional[Condition]) -> Optional[dict[str, Any]]:
-    if condition is None:
-        return None
-    data: dict[str, Any] = {"op": condition.op.value, "value": _value_to_json(condition.value)}
-    if condition.value_to is not None:
-        data["value_to"] = _value_to_json(condition.value_to)
+def _leaf_to_dict(node: ConditionLeaf) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "variable": node.variable,
+        "scope": node.scope,
+        "op": node.op.value,
+        "value": _value_to_json(node.value),
+    }
+    if node.value_to is not None:
+        data["value_to"] = _value_to_json(node.value_to)
+    if node.ramp_cap:
+        data["ramp_cap"] = True
     return data
+
+
+def _group_to_dict(group: ConditionGroup) -> dict[str, Any]:
+    return {
+        "logic": group.logic,
+        "children": [
+            _leaf_to_dict(child) if isinstance(child, ConditionLeaf) else _group_to_dict(child)
+            for child in group.children
+        ],
+    }
 
 
 def rule_to_dict(rule: Rule) -> dict[str, Any]:
     data: dict[str, Any] = {
         "position": rule.position,
-        "set_position": rule.set_position.value,
-        "fatigue": rule.fatigue.value,
-        "reps": _condition_to_dict(rule.reps),
-        "rpe": _condition_to_dict(rule.rpe),
-        "respect_planned_ramp": rule.respect_planned_ramp,
+        "when": _group_to_dict(rule.when),
         "action": rule.action,
         "magnitude": rule.magnitude.to_dict() if rule.magnitude is not None else None,
     }
@@ -1248,32 +1689,91 @@ def _magnitude_from_dict(data: Any) -> Optional[Magnitude]:
     return Magnitude(kind=MagnitudeKind(str(data.get("kind"))), value=value)
 
 
+def _leaf_from_dict(data: Mapping[str, Any]) -> ConditionLeaf:
+    variable = str(data.get("variable") or "")
+    scope = str(data.get("scope") or SCOPE_CURRENT)
+    spec = VARIABLES.get(variable)
+    ramp_cap = bool(data.get("ramp_cap"))
+    raw_value = data.get("value")
+    raw_value_to = data.get("value_to")
+    value: Any
+    value_to: Any
+    if spec is not None and spec.kind == KIND_ENUM:
+        value = None if raw_value is None else str(raw_value)
+        value_to = None if raw_value_to is None else str(raw_value_to)
+    else:
+        tokens = spec.tokens if spec is not None else REPS_TOKENS + RPE_TOKENS
+        value = _value_from_json(raw_value, tokens=tokens)
+        value_to = _value_from_json(raw_value_to, tokens=tokens)
+    if value is None and not ramp_cap:
+        raise ValueError("folha sem `value`")
+    return ConditionLeaf(
+        variable=variable,
+        op=ConditionOp(str(data.get("op"))),
+        value=value,
+        scope=scope,
+        value_to=value_to,
+        ramp_cap=ramp_cap,
+    )
+
+
+def _group_from_dict(data: Any, depth: int = 1) -> ConditionGroup:
+    if not isinstance(data, Mapping) or "children" not in data:
+        raise ValueError("`when` e os grupos precisam ser objetos {logic, children}")
+    if depth > _PARSE_MAX_DEPTH:
+        raise ValueError("árvore de condições profunda demais")
+    children_raw = data.get("children")
+    if not isinstance(children_raw, (list, tuple)):
+        raise ValueError("`children` precisa ser uma lista")
+    children: list[ConditionNode] = []
+    for item in children_raw:
+        if not isinstance(item, Mapping):
+            raise ValueError("filho da condição precisa ser um objeto")
+        if "children" in item:
+            children.append(_group_from_dict(item, depth + 1))
+        else:
+            children.append(_leaf_from_dict(item))
+    return ConditionGroup(logic=str(data.get("logic") or LOGIC_AND), children=tuple(children))
+
+
 def rule_from_dict(data: Mapping[str, Any], *, position: Optional[int] = None) -> Rule:
-    """Regra a partir do JSON; `position` explícito (ordem na lista) vence o do
-    JSON. Valor de enum desconhecido -> `ValueError`."""
+    """Regra a partir do JSON (v2 com `when`, ou v1 com campos fixos);
+    `position` explícito (ordem na lista) vence o do JSON. Valor de enum
+    desconhecido -> `ValueError`."""
     resolved_position = position if position is not None else _int(data.get("position"))
     if resolved_position is None:
         raise ValueError("regra sem `position`")
     reason_code = data.get("reason_code")
-    return Rule(
-        position=resolved_position,
+    resolved_reason = str(reason_code) if reason_code else None
+    action = str(data.get("action") or HOLD)
+    magnitude = _magnitude_from_dict(data.get("magnitude"))
+    if "when" in data:
+        return Rule(
+            position=resolved_position,
+            when=_group_from_dict(data.get("when")),
+            action=action,
+            magnitude=magnitude,
+            reason_code=resolved_reason,
+        )
+    return rule_from_v1(
+        resolved_position,
         set_position=SetPosition(str(data.get("set_position") or SetPosition.ANY.value)),
         fatigue=FatigueCondition(str(data.get("fatigue") or FatigueCondition.ANY.value)),
         reps=_condition_from_dict(data.get("reps"), tokens=REPS_TOKENS),
         rpe=_condition_from_dict(data.get("rpe"), tokens=RPE_TOKENS),
         respect_planned_ramp=bool(data.get("respect_planned_ramp")),
-        action=str(data.get("action") or HOLD),
-        magnitude=_magnitude_from_dict(data.get("magnitude")),
-        reason_code=str(reason_code) if reason_code else None,
+        action=action,
+        magnitude=magnitude,
+        reason_code=resolved_reason,
     )
 
 
 def ruleset_from_dict(
     data: Mapping[str, Any], *, version: Optional[int] = None, source: Optional[str] = None
 ) -> RuleSet:
-    """Conjunto a partir do JSON (`{"reps_floor", "reps_ceiling", "rules": [...]}`).
-    As regras ficam na ordem da lista, com `position` = 1..n. `version`/`source`
-    explícitos vencem os do JSON (0 / "default")."""
+    """Conjunto a partir do JSON (formato v1 ou v2: reps_floor, reps_ceiling,
+    rules). As regras ficam na ordem da lista, com `position` = 1..n.
+    `version`/`source` explícitos vencem os do JSON (0 / default)."""
     if not isinstance(data, Mapping):
         raise ValueError("conjunto precisa ser um objeto")
     reps_floor = _int(data.get("reps_floor"))
@@ -1288,12 +1788,39 @@ def ruleset_from_dict(
     rules = tuple(rule_from_dict(item, position=index) for index, item in enumerate(raw_rules, start=1))
     resolved_version = version if version is not None else (_int(data.get("version")) or 0)
     resolved_source = source if source is not None else str(data.get("source") or RULESET_SOURCE_DEFAULT)
-    return RuleSet(reps_floor=reps_floor, reps_ceiling=reps_ceiling, rules=rules, version=resolved_version, source=resolved_source)
+    return RuleSet(
+        reps_floor=reps_floor, reps_ceiling=reps_ceiling, rules=rules, version=resolved_version, source=resolved_source
+    )
 
 
 # ---------------------------------------------------------------------------
 # Espelho do FE
 # ---------------------------------------------------------------------------
+
+_TOKEN_LABELS_BY_VARIABLE: Final[Mapping[str, Mapping[str, str]]] = {
+    VAR_REPS: REPS_TOKEN_LABELS,
+    VAR_RPE: RPE_TOKEN_LABELS,
+}
+
+
+def _variable_vocabulary(spec: VariableSpec) -> dict[str, Any]:
+    item: dict[str, Any] = {
+        "value": spec.value,
+        "label": spec.label,
+        "kind": spec.kind,
+        "scopes": list(spec.scopes),
+        "ops": [op.value for op in spec.ops],
+    }
+    if spec.kind == KIND_ENUM:
+        item["enum_values"] = [{"value": band.value, "label": PRIOR_FATIGUE_BAND_LABELS[band]} for band in PriorFatigueBand]
+    else:
+        labels = _TOKEN_LABELS_BY_VARIABLE.get(spec.value, {})
+        item["tokens"] = [{"value": token, "label": labels[token]} for token in spec.tokens]
+    return item
+
+
+def _action_label(action: str) -> str:
+    return DECISION_LABELS.get(action, ENGINE_TARGET_LABEL)
 
 
 def rule_vocabulary() -> dict[str, Any]:
@@ -1305,14 +1832,23 @@ def rule_vocabulary() -> dict[str, Any]:
         "condition_ops": [{"value": item.value, "label": CONDITION_OP_LABELS[item]} for item in ConditionOp],
         "reps_tokens": [{"value": token, "label": REPS_TOKEN_LABELS[token]} for token in REPS_TOKENS],
         "rpe_tokens": [{"value": token, "label": RPE_TOKEN_LABELS[token]} for token in RPE_TOKENS],
-        "actions": [{"value": action, "label": DECISION_LABELS[action]} for action in RULE_ACTIONS],
+        "actions": [
+            {"value": action, "label": _action_label(action), "magnitude": ACTION_MAGNITUDE_RULE[action]}
+            for action in RULE_ACTIONS
+        ],
         "magnitude_kinds": [{"value": item.value, "label": MAGNITUDE_KIND_LABELS[item]} for item in MagnitudeKind],
+        "variables": [_variable_vocabulary(spec) for spec in VARIABLES.values()],
+        "scopes": [{"value": scope, "label": SCOPE_LABELS[scope]} for scope in SCOPES],
+        "logic_ops": [{"value": logic, "label": LOGIC_LABELS[logic]} for logic in LOGIC_OPS],
     }
 
 
 def rule_limits() -> dict[str, Any]:
     return {
         "max_rules": RULESET_MAX_RULES,
+        "max_depth": RULESET_MAX_DEPTH,
+        "max_leaves_per_rule": RULESET_MAX_LEAVES_PER_RULE,
+        "set_index_max": RULE_SET_INDEX_MAX,
         "magnitude_percent_min": MAGNITUDE_PERCENT_MIN,
         "magnitude_percent_max": MAGNITUDE_PERCENT_MAX,
         "magnitude_steps_min": MAGNITUDE_STEPS_MIN,

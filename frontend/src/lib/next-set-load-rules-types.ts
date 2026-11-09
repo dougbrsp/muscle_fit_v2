@@ -9,25 +9,34 @@ import type { NextSetLoad } from './set-engine-status';
 /** Número OU token (`floor`/`ceiling` nas reps, `max` no RPE). */
 export type RuleValue = number | string;
 
-export type RuleCondition = {
-  op: string;
-  value: RuleValue;
-  value_to?: RuleValue | null;
-};
-
 export type RuleMagnitude = { kind: string; value: number };
 
-/** Uma regra como a API devolve (`text` e `reason_code` só de saída). */
+/** Folha da árvore `when` (v2): `ConditionLeafIn`. `value` ausente só com `ramp_cap`. */
+export type ConditionLeafPayload = {
+  variable: string;
+  scope: string;
+  op: string;
+  value?: RuleValue | null;
+  value_to?: RuleValue | null;
+  ramp_cap?: boolean;
+};
+
+/** Grupo recursivo (v2): `ConditionGroupIn`. */
+export type ConditionGroupPayload = {
+  logic: string;
+  children: Array<ConditionLeafPayload | ConditionGroupPayload>;
+};
+
+/**
+ * Uma regra como a API devolve (`text` e `reason_code` só de saída). O servidor
+ * sempre devolve a v2 (`when`).
+ */
 export type RulePayload = {
   position?: number;
   text?: string | null;
-  set_position: string;
-  fatigue: string;
-  reps: RuleCondition | null;
-  rpe: RuleCondition | null;
-  respect_planned_ramp: boolean;
+  when?: ConditionGroupPayload | null;
   action: string;
-  magnitude: RuleMagnitude | null;
+  magnitude?: RuleMagnitude | null;
   reason_code?: string | null;
 };
 
@@ -81,6 +90,9 @@ export type DescribeResponse = {
   warnings: string[];
 };
 
+/** Série anterior (`PreviousSetFactsIn`) do simulador. */
+export type SimulatePreviousFacts = { reps: number | null; rpe: number | null };
+
 /** Fatos de uma série para `POST /simulate` (`SetFactsIn` do loader). */
 export type SimulateFacts = {
   working_set_index: number | null;
@@ -89,10 +101,13 @@ export type SimulateFacts = {
   rpe: number | null;
   rpe_ceiling: number | null;
   planned_rpe: number | null;
+  rpe_target: number | null;
   weight_kg: number | null;
   step_kg: number | null;
+  engine_target_kg: number | null;
   joint_pain: boolean | null;
   muscle_pain: number | null;
+  previous: SimulatePreviousFacts | null;
 };
 
 export type SimulatePayload = { ruleset: RuleSetInput | null; facts: SimulateFacts };

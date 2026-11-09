@@ -1,13 +1,50 @@
 {
+  "ultracode": false,
+  "enabledPlugins": {
+    "oh-my-claudecode@omc": false
+  },
+  "permissions": {
+    "deny": [
+      "Bash(python .claude/scripts/ship.py decide *)",
+      "PowerShell(python .claude/scripts/ship.py decide *)",
+      "Edit(/.claude/local-state/ship/**)",
+      "Edit(//c/openclaw-dev-agent/**)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ship_confirmation.py"],
+            "timeout": 60,
+            "onFailure": "block"
+          }
+        ]
+      },
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guarda_comandos.py\"",
-            "timeout": 30
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guarda_comandos.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guarda_fluxo.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       },
@@ -16,23 +53,71 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guarda_arquivos.py\"",
-            "timeout": 30
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guarda_arquivos.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guarda_fluxo.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       }
     ],
     "PostToolUse": [
       {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ship_confirmation.py"],
+            "timeout": 60,
+            "onFailure": "continue"
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pos_edicao_python.py\"",
-            "timeout": 180
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/pos_edicao_python.py"
+            ],
+            "timeout": 180,
+            "onFailure": "continue"
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/ship_receipt.py"
+            ],
+            "type": "command",
+            "timeout": 15,
+            "onFailure": "continue"
+          }
+        ],
+        "matcher": "code-reviewer|guardiao-motores|revisor-impacto-producao|security-reviewer"
+      }
     ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   }
 }

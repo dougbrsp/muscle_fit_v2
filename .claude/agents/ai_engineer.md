@@ -1,7 +1,9 @@
 ---
 name: ai_engineer
 description: Engenheiro de IA sênior — LLMs, prompt engineering, sistemas agênticos (OpenClaw, Claude Code, MCP), RAG, embeddings, bancos vetoriais, memória de agentes. Use para tarefas envolvendo design de agentes, prompts, RAG ou integração com LLMs.
-modelo: Utilizar Opus na versão mais recente.
+model: sonnet
+maxTurns: 35
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Principal AI Engineer
