@@ -8,4 +8,4 @@
 # (app/llm_anthropic.py; padrao de toda feature segue OpenAI). Importado so
 # quando uma feature esta ligada na Anthropic. 2.x: API version 2026-10-21,
 # sem parametros de amostragem; base httpx2. Subir conferindo o CHANGELOG.
-anthropic==2.3.0
+anthropic==2.6.0
