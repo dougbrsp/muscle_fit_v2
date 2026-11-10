@@ -61,6 +61,7 @@ PERMITIDOS_BASH = [
     "aws ec2 describe-instances --region us-east-1",
     "gh pr checks 5 --watch && gh pr merge 5",
     "gh pr checks 5 --json name,bucket --jq 'all(.[]; .bucket==\"pass\")' && gh pr merge 5",
+    "gh pr checks 5 --json bucket --jq 'if length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\") then \"VERDE\" else error(\"checks nao verdes\") end' && gh pr merge 5",
     "gh pr checks 5 | tail -3",
     "gh pr checks 5 || gh pr merge 5",
     "gh pr merge 5 --merge",
@@ -78,6 +79,14 @@ PERMITIDOS_BASH = [
 @pytest.mark.parametrize("cmd", BLOQUEADOS_BASH)
 def test_bash_bloqueados(cmd: str) -> None:
     assert g.avaliar(cmd) is not None, cmd
+
+
+def test_mensagem_gh_recomenda_error() -> None:
+    msg = g.avaliar("gh pr checks 5 | tail -3 && gh pr merge 5")
+    assert msg is not None
+    assert "error(" in msg
+    assert "all(.[]; .bucket==\"pass\" or .bucket==\"skipping\")'" not in msg
+    assert "--watch && gh pr merge" not in msg
 
 
 @pytest.mark.parametrize("cmd", PERMITIDOS_BASH)

@@ -327,9 +327,13 @@ MSG_GH = (
     "BLOQUEADO: `gh pr merge` no mesmo comando que `gh pr checks ... |`.\n"
     "O pipe engole o exit status dos checks e o merge acontece com check vermelho (foi assim que o "
     "#430 entrou com plan vermelho em 08/10).\n"
-    "Decida pelo exit status, por exemplo:\n"
-    "  gh pr checks <n> --json name,bucket --jq 'all(.[]; .bucket==\"pass\" or .bucket==\"skipping\")'\n"
-    "  gh pr checks <n> --watch && gh pr merge <n> ...   (sem pipe)"
+    "Decida com o exit status deste comando (sai com 0 e imprime VERDE so com todos os checks em "
+    "pass/skipping; sai com 1 caso contrario):\n"
+    "  gh pr checks <n> --json bucket --jq 'if length > 0 and all(.[]; .bucket == \"pass\" or "
+    ".bucket == \"skipping\") then \"VERDE\" else error(\"checks nao verdes\") end'\n"
+    "`--json` sem `error()` sai com 0 mesmo com check pendente ou vermelho, entao nao decide. "
+    "`--watch` so espera, nao decide.\n"
+    "Encadear `<decisao acima> && gh pr merge <n> ...` sem pipe e permitido."
 )
 
 _AWS_GLOBAIS_COM_VALOR = {
