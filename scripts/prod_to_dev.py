@@ -86,6 +86,7 @@ GLOBAL_TABLES: tuple[str, ...] = (
     "exercise_catalog",
     "exercise_aliases",
     "exercise_card_generations",
+    "exercise_card_references",  # 109: só s3_key/nota da foto de referência do catálogo (created_by é anonimizado)
     "exercise_external_mappings",
     "exercise_legacy_id_map",
     "exercise_mappings",
@@ -99,15 +100,21 @@ GLOBAL_TABLES: tuple[str, ...] = (
     "muscle_group_body_map",
     "muscle_volume_classes",
     "muscle_volume_class_ranges",
+    "muscle_volume_class_mode_ranges",  # 073: faixas por modo de contagem (FK muscle_volume_classes)
+    "muscle_volume_class_weekly_targets",  # 073: metas semanais por modo (FK muscle_volume_classes)
     "sources",
     "training_types",
     "training_type_muscle_group_targets",
     "weekly_summaries",  # legado sem dono (sem user_id)
+    "next_set_load_rule_sets",  # 088: regras de carga globais (versões do admin; created_by/published_by anonimizados)
+    "access_groups",  # 111 (PR #120): grupos de acesso (RBAC), configuração global
+    "access_group_grants",  # 111 (PR #120): permissões de cada grupo, configuração global
 )
 
 # Tabelas com dono: só as linhas `user_id = <usuário>`.
 USER_TABLES: tuple[str, ...] = (
     "activities",
+    "activity_energy_corrections",  # 108: PK (user_id, activity_id)
     "activity_intervals_link",
     "body_composition",
     "body_measurements",
@@ -116,20 +123,32 @@ USER_TABLES: tuple[str, ...] = (
     "daily_biometrics",
     "daily_checkins",
     "dashboard_alert_states",
+    "deload_periods",  # 094
     "devices",
     "generation_runs",
     "intervals_activities",
+    "intervals_athlete_hr_zones",  # 097: zonas de FC por esporte; não guarda chave da Intervals
     "intervals_sync_runs",
     "intervals_wellness",
     "manual_effort_metrics",
+    "meals",  # 082
     "muscle_recovery_coefficients",
+    "nutrition_checkin_settings",  # 103: PK user_id
+    "nutrition_checkins",  # 103
+    "nutrition_daily_targets",  # 079
+    "nutrition_day_closures",  # 108: PK (user_id, day)
+    "nutrition_days",  # 083
+    "nutrition_plans",  # 078 (+101, 105, 106); coluna gerada current_user_id não é copiada
     "progression_decisions",
     "progression_group_states",
     "progression_tracks",
     "reports",
     "sleep_metrics",
     "template_generation_logs",
+    "user_access_groups",  # 111 (PR #120): grupos do usuário; ao menos 1 é garantido em verify_snapshot
     "user_equipment_exercise_preferences",
+    "user_equipment_load_ceilings",  # 110: PK (user_id, equipment_exercise_id)
+    "user_favorite_foods",  # 102
     "workout_plans",
     "workout_plan_template_assignments",
 )
@@ -150,8 +169,20 @@ USER_CHILD_TABLES: tuple[ChildSpec, ...] = (
     ChildSpec("activity_hr_zones", "activity_id", "activities"),
     ChildSpec("exercises", "activity_id", "activities"),
     ChildSpec("exercise_sets", "exercise_id", "exercises"),
+    ChildSpec("meal_items", "meal_id", "meals"),  # 082
     ChildSpec("workout_plan_exercises", "plan_id", "workout_plans"),
 )
+
+# Tabelas MISTAS: `owner_user_id` NULL = linha pública do catálogo (copiada); preenchido =
+# privada do dono (copiada só se for do usuário copiado, nunca de outro). Migração 080.
+MIXED_OWNER_TABLES: tuple[tuple[str, str], ...] = (
+    ("food_items", "owner_user_id"),
+    ("food_portions", "owner_user_id"),
+)
+
+# Grupos de acesso (RBAC, migração 111 do PR #120): o usuário copiado nunca pode ficar sem grupo.
+USER_ACCESS_GROUPS_TABLE = "user_access_groups"
+ACCESS_GROUPS_TABLE = "access_groups"
 
 TEMPLATES_TABLE = "workout_plan_templates"
 
@@ -189,6 +220,9 @@ EXCLUDED_TABLES: dict[str, str] = {
     "user_sessions": "sessões de login (tokens) - fica vazia",
     "password_reset_tokens": "tokens de redefinição de senha - fica vazia",
     "password_reset_attempts": "rate limit de reset (hash de e-mail/IP de terceiros) - fica vazia",
+    "ai_usage_log": "log de uso/cota da IA (085: job_id, tokens, custo): sem valor no DEV e consumiria a cota; fica vazia",
+    "trainer_students": "111 (PR #120): vínculo personal-aluno envolve terceiros - fica vazia",
+    "access_audit_log": "111 (PR #120): auditoria de acesso com ator/alvo de terceiros - fica vazia",
 }
 UNTOUCHED_TABLES: dict[str, str] = {
     "schema_migration_files": "controle de migrações do banco local",
@@ -210,6 +244,18 @@ SOFT_REFERENCES: tuple[tuple[str, str, str, str], ...] = (
     ("progression_group_states", "technique_target_equipment_id", "equipment", "id"),
     ("exercise_catalog", "card_generation_id", "exercise_card_generations", "id"),
     ("exercise_card_generations", "parent_generation_id", "exercise_card_generations", "id"),
+    # Nutrição (sem FK declarada): alimento privado de terceiro nunca entra, então a referência
+    # a ele é anulada (coluna anulável) ou derruba a linha (NOT NULL).
+    ("food_portions", "food_id", "food_items", "id"),
+    ("meal_items", "food_id", "food_items", "id"),
+    ("meal_items", "portion_id", "food_portions", "id"),
+    ("user_favorite_foods", "food_id", "food_items", "id"),
+    ("user_favorite_foods", "default_portion_id", "food_portions", "id"),
+    ("nutrition_daily_targets", "plan_id", "nutrition_plans", "id"),
+    ("nutrition_checkins", "source_plan_id", "nutrition_plans", "id"),
+    ("nutrition_checkins", "generated_plan_id", "nutrition_plans", "id"),
+    ("exercise_card_references", "exercise_id", "exercise_catalog", "id"),
+    ("user_equipment_load_ceilings", "equipment_exercise_id", "equipment_exercises", "id"),
 )
 
 # Colunas que guardam id de usuário SEM FK para `users` (as com FK vêm do schema).
@@ -220,6 +266,17 @@ USER_SOFT_REFERENCES: tuple[tuple[str, str], ...] = (
     ("workout_plan_template_assignments", "unassigned_by_user_id"),
     ("workout_plan_template_drafts", "updated_by_user_id"),
     ("workout_plan_template_versions", "created_by_user_id"),
+    ("nutrition_plans", "created_by"),
+    ("nutrition_plans", "published_by"),
+    ("food_items", "created_by"),
+    ("food_portions", "created_by"),
+    ("meals", "created_by"),
+    ("meals", "updated_by"),
+    ("nutrition_days", "updated_by"),
+    ("next_set_load_rule_sets", "created_by"),
+    ("next_set_load_rule_sets", "published_by"),
+    ("exercise_card_references", "created_by"),
+    ("user_access_groups", "created_by_user_id"),
 )
 
 # Colunas sensíveis e o tratamento de cada uma (também listado no PR/docs).
@@ -300,6 +357,7 @@ def classified_tables() -> dict[str, str]:
         ("global", GLOBAL_TABLES),
         ("user", USER_TABLES + ("users",)),
         ("user_child", (c.table for c in USER_CHILD_TABLES)),
+        ("mixed", (t for t, _ in MIXED_OWNER_TABLES)),
         ("template", (TEMPLATES_TABLE,)),
         ("template_child", (c.table for c in TEMPLATE_CHILD_TABLES)),
         ("referenced_only", (c.table for c in REFERENCED_ONLY_TABLES)),
@@ -424,15 +482,28 @@ class DataApiReader:
             for record in resp.get("records", [])
         ]
 
-    def fetch(self, table: TableSchema, column: Optional[str] = None, values: Optional[Iterable[Any]] = None) -> list[dict[str, Any]]:
-        """Lê a tabela inteira (column=None) ou só `column IN values`, paginando pela PK."""
+    def fetch(
+        self,
+        table: TableSchema,
+        column: Optional[str] = None,
+        values: Optional[Iterable[Any]] = None,
+        *,
+        include_null: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Lê a tabela inteira (column=None) ou só `column IN values` (mais `column IS NULL`
+        se `include_null`, para as tabelas mistas), paginando pela PK."""
         if column is None:
             return self._paged(table, "")
         ids = sorted({v for v in (values or []) if v is not None}, key=_sort_key)
+        chunks = [ids[i : i + 500] for i in range(0, len(ids), 500)] or ([[]] if include_null else [])
         rows: list[dict[str, Any]] = []
-        for chunk_start in range(0, len(ids), 500):
-            chunk = ids[chunk_start : chunk_start + 500]
-            cond = f"{_q(column)} IN ({', '.join(sql_literal(v) for v in chunk)})"
+        for n, chunk in enumerate(chunks):
+            parts = []
+            if chunk:
+                parts.append(f"{_q(column)} IN ({', '.join(sql_literal(v) for v in chunk)})")
+            if include_null and n == 0:
+                parts.append(f"{_q(column)} IS NULL")
+            cond = parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
             rows.extend(self._paged(table, cond))
         return rows
 
@@ -572,6 +643,11 @@ def build_snapshot(reader: Any, schema: Schema, user_id: int) -> dict[str, list[
         if present(name):
             snap[name] = reader.fetch(tables[name], "user_id", [user_id])
 
+    for name, owner_column in MIXED_OWNER_TABLES:
+        if present(name):
+            # públicas (owner NULL) + as do usuário; as privadas de outros nunca são lidas.
+            snap[name] = reader.fetch(tables[name], owner_column, [user_id], include_null=True)
+
     for spec in USER_CHILD_TABLES:
         if present(spec.table):
             parents = snap.get(spec.parent_table, [])
@@ -681,6 +757,25 @@ def verify_snapshot(snap: dict[str, list[dict[str, Any]]], schema: Schema, user_
     for row in snap.get("users", []):
         if row["id"] != user_id and row.get("password_hash") != PLACEHOLDER_USER["password_hash"]:
             raise AbortError("hash de senha de terceiro na cópia")
+    mixed = dict(MIXED_OWNER_TABLES)
+    for table, owner_column in mixed.items():
+        for row in snap.get(table, []):
+            if row.get(owner_column) not in (None, user_id):
+                raise AbortError(f"{table} contém linha privada de outro usuário")
+    # Nada copiado pode apontar para linha de tabela mista que não veio (privada de terceiro).
+    for table, column, ref_table, ref_column in schema.row_references():
+        if ref_table in mixed and table in snap:
+            keys = _ids(snap.get(ref_table, []), ref_column)
+            for row in snap[table]:
+                if row.get(column) is not None and row[column] not in keys:
+                    raise AbortError(f"{table}.{column} aponta para {ref_table} que não foi copiado")
+    if USER_ACCESS_GROUPS_TABLE in schema.tables:
+        groups = _ids(snap.get(ACCESS_GROUPS_TABLE, []), "id")
+        if not any(r.get("group_id") in groups for r in snap.get(USER_ACCESS_GROUPS_TABLE, [])):
+            raise AbortError(
+                f"o usuário {user_id} ficaria sem grupo de acesso no DEV ({USER_ACCESS_GROUPS_TABLE} "
+                "sem linha válida em produção); confira a migração 111 em produção"
+            )
 
 
 def prepare(reader: Any, schema: Schema, user_id: int) -> tuple[dict[str, list[dict[str, Any]]], Report]:

@@ -125,12 +125,12 @@ class FakeReader:
         self.data = data
         self.calls = []
 
-    def fetch(self, table, column=None, values=None):
+    def fetch(self, table, column=None, values=None, *, include_null=False):
         self.calls.append((table.name, column))
         rows = self.data.get(table.name, [])
         if column is not None:
             wanted = set(values or [])
-            rows = [r for r in rows if r.get(column) in wanted]
+            rows = [r for r in rows if r.get(column) in wanted or (include_null and r.get(column) is None)]
         cols = table.insertable_columns
         return [{c: r.get(c) for c in cols} for r in rows]
 
@@ -155,6 +155,82 @@ def test_nenhuma_tabela_classificada_duas_vezes():
     assert kinds["users"] == "user"
     assert kinds["user_sessions"] == "excluded"
     assert kinds["schema_migration_files"] == "untouched"
+
+
+_CLASSIFICACAO_ESPERADA = {
+    # 20 tabelas de produção que estavam sem classificação (migrações 073 a 110)
+    "activity_energy_corrections": "user",
+    "ai_usage_log": "excluded",
+    "deload_periods": "user",
+    "exercise_card_references": "global",
+    "food_items": "mixed",
+    "food_portions": "mixed",
+    "intervals_athlete_hr_zones": "user",
+    "meal_items": "user_child",
+    "meals": "user",
+    "muscle_volume_class_mode_ranges": "global",
+    "muscle_volume_class_weekly_targets": "global",
+    "next_set_load_rule_sets": "global",
+    "nutrition_checkin_settings": "user",
+    "nutrition_checkins": "user",
+    "nutrition_daily_targets": "user",
+    "nutrition_day_closures": "user",
+    "nutrition_days": "user",
+    "nutrition_plans": "user",
+    "user_equipment_load_ceilings": "user",
+    "user_favorite_foods": "user",
+    # RBAC da migração 111 (PR #120), ainda ausente em produção
+    "access_groups": "global",
+    "access_group_grants": "global",
+    "user_access_groups": "user",
+    "trainer_students": "excluded",
+    "access_audit_log": "excluded",
+}
+
+
+@pytest.mark.parametrize("table, kind", sorted(_CLASSIFICACAO_ESPERADA.items()))
+def test_tabelas_novas_em_exatamente_uma_categoria(table, kind):
+    assert p2d.classified_tables()[table] == kind  # classified_tables aborta se houver duplicidade
+
+
+_CREATE_TABLE = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\{?\w+\}?)`?\s*\(", re.IGNORECASE)
+
+
+# Criadas por uma migração e removidas por outra (não existem em produção, nem no DEV migrado).
+_REMOVIDAS_POR_MIGRACAO = frozenset({"user_equipment_preferences"})  # 034 cria, 035 a substitui
+
+
+def _tabelas_criadas_pelas_migracoes():
+    """Nomes em `CREATE TABLE <nome>|{CONSTANTE} (` das migrações; `{CONSTANTE}` é resolvida
+    pela atribuição `CONSTANTE = "nome"` do mesmo arquivo. Nome que não resolve vira erro."""
+    criadas, nao_resolvidas = set(), []
+    for path in sorted(p2d.MIGRATIONS_DIR.iterdir()):
+        if not re.match(r"^\d{3}_.+\.(sql|py)$", path.name):
+            continue
+        text = path.read_text(encoding="utf-8")
+        consts = dict(re.findall(r'^(\w+)\s*=\s*"(\w+)"', text, re.MULTILINE))
+        for name in _CREATE_TABLE.findall(text):
+            if name.startswith("{"):
+                resolved = consts.get(name[1:-1])
+                if resolved is None:
+                    nao_resolvidas.append(f"{path.name}: {name}")
+                    continue
+                name = resolved
+            criadas.add(name)
+    return criadas, nao_resolvidas
+
+
+def test_toda_tabela_criada_pelas_migracoes_esta_classificada():
+    """Guarda: migração nova que cria tabela sem classificá-la aqui quebra o CI, em vez de
+    só abortar a cópia na hora em que o usuário precisa dela. Derivação estática (regex nos
+    DDLs das migrações); as tabelas das migrações ainda não mescladas entram pela lista
+    explícita acima."""
+    criadas, nao_resolvidas = _tabelas_criadas_pelas_migracoes()
+    assert not nao_resolvidas, f"nome de tabela não resolvido (use CONSTANTE = \"nome\"): {nao_resolvidas}"
+    assert len(criadas) > 60  # a derivação achou as tabelas (e não zero por regex quebrada)
+    assert {"food_items", "nutrition_plans", "user_equipment_load_ceilings"} <= criadas
+    sem_classificacao = sorted(criadas - set(p2d.classified_tables()) - _REMOVIDAS_POR_MIGRACAO)
+    assert not sem_classificacao, f"tabelas das migrações sem classificação em scripts/prod_to_dev.py: {sem_classificacao}"
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +324,168 @@ def test_verificacao_final_recusa_id_de_terceiro_que_escapou():
 def test_usuario_inexistente_aborta():
     with pytest.raises(p2d.AbortError, match="não existe"):
         p2d.prepare(FakeReader({"users": []}), _schema(), UID)
+
+
+# ---------------------------------------------------------------------------
+# Tabela mista (alimentos) e RBAC
+# ---------------------------------------------------------------------------
+
+
+def _schema_nutricao():
+    base = _schema()
+    extra = [
+        _table("food_items", ["id", "name", "owner_user_id", "created_by"], nullable=("owner_user_id", "created_by")),
+        _table("food_portions", ["id", "food_id", "label", "owner_user_id"], nullable=("owner_user_id",)),
+        _table("meals", ["id", "user_id", "created_by"], nullable=("created_by",)),
+        _table("meal_items", ["id", "meal_id", "food_id", "portion_id"], nullable=("food_id", "portion_id")),
+        _table("user_favorite_foods", ["id", "user_id", "food_id", "default_portion_id"], nullable=("default_portion_id",)),
+    ]
+    fks = [
+        ("food_items", "owner_user_id", "users", "id"),
+        ("food_portions", "owner_user_id", "users", "id"),
+        ("meals", "user_id", "users", "id"),
+        ("meal_items", "meal_id", "meals", "id"),
+        ("user_favorite_foods", "user_id", "users", "id"),
+    ]
+    return p2d.Schema({**base.tables, **{x.name: x for x in extra}}, base.foreign_keys + fks)
+
+
+def _dados_nutricao():
+    data = _prod_data()
+    data.update({
+        "food_items": [
+            {"id": 1, "name": "Arroz (público)", "owner_user_id": None, "created_by": OTHER},
+            {"id": 2, "name": "Meu alimento", "owner_user_id": UID, "created_by": UID},
+            {"id": 3, "name": "Alimento privado de terceiro", "owner_user_id": OTHER, "created_by": OTHER},
+        ],
+        "food_portions": [
+            {"id": 10, "food_id": 1, "label": "colher", "owner_user_id": None},
+            {"id": 11, "food_id": 2, "label": "minha porção", "owner_user_id": UID},
+            {"id": 12, "food_id": 3, "label": "porção do terceiro", "owner_user_id": OTHER},
+            {"id": 13, "food_id": 3, "label": "porção pública sobre alimento privado", "owner_user_id": None},
+        ],
+        "meals": [{"id": 50, "user_id": UID, "created_by": OTHER}, {"id": 51, "user_id": OTHER, "created_by": OTHER}],
+        "meal_items": [
+            {"id": 1, "meal_id": 50, "food_id": 1, "portion_id": 10},
+            {"id": 2, "meal_id": 50, "food_id": 3, "portion_id": 12},  # não deveria existir; fecha em NULL
+            {"id": 3, "meal_id": 51, "food_id": 3, "portion_id": 12},
+        ],
+        "user_favorite_foods": [
+            {"id": 1, "user_id": UID, "food_id": 2, "default_portion_id": 11},
+            {"id": 2, "user_id": UID, "food_id": 3, "default_portion_id": None},  # aponta p/ privado de terceiro
+        ],
+    })
+    return data
+
+
+def test_tabela_mista_copia_publicos_e_do_usuario_nunca_privados_de_terceiros():
+    reader = FakeReader(_dados_nutricao())
+    schema = _schema_nutricao()
+    snap, report = p2d.prepare(reader, schema, UID)
+    assert {r["id"] for r in snap["food_items"]} == {1, 2}
+    # porção 12 (dono terceiro) fora; 13 (pública) aponta para alimento privado de terceiro: derrubada
+    assert {r["id"] for r in snap["food_portions"]} == {10, 11}
+    assert {r["id"] for r in snap["meals"]} == {50}
+    assert {r["id"]: (r["food_id"], r["portion_id"]) for r in snap["meal_items"]} == {1: (1, 10), 2: (None, None)}
+    assert {r["id"] for r in snap["user_favorite_foods"]} == {1}  # favorito de alimento privado alheio cai
+    # nenhum ponteiro sobrevivente para alimento fora da cópia
+    food_ids = {r["id"] for r in snap["food_items"]}
+    for table, col in (("food_portions", "food_id"), ("meal_items", "food_id"), ("user_favorite_foods", "food_id")):
+        assert all(r[col] is None or r[col] in food_ids for r in snap[table])
+    assert all(r["owner_user_id"] in (None, UID) for r in snap["food_items"] + snap["food_portions"])
+    # o criador (outro usuário) de alimento público foi anulado
+    assert next(r for r in snap["food_items"] if r["id"] == 1)["created_by"] is None
+    assert ("food_items", "owner_user_id") in set(p2d.MIXED_OWNER_TABLES)
+
+
+def test_verificacao_final_recusa_linha_privada_de_terceiro_em_tabela_mista():
+    schema = _schema_nutricao()
+    snap = {"users": [{"id": UID}], "food_items": [{"id": 3, "name": "x", "owner_user_id": UID + 5, "created_by": None}]}
+    with pytest.raises(p2d.AbortError, match="food_items"):
+        p2d.verify_snapshot(snap, schema, UID)
+
+
+def test_verificacao_final_recusa_ponteiro_para_alimento_nao_copiado():
+    schema = _schema_nutricao()
+    snap = {
+        "users": [{"id": UID}],
+        "food_items": [{"id": 1, "name": "x", "owner_user_id": None, "created_by": None}],
+        "meal_items": [{"id": 1, "meal_id": 50, "food_id": 3, "portion_id": None}],
+    }
+    with pytest.raises(p2d.AbortError, match="meal_items.food_id"):
+        p2d.verify_snapshot(snap, schema, UID)
+
+
+def test_leitura_da_tabela_mista_usa_owner_null_ou_usuario_e_so_select():
+    api = FakeDataApi([])
+    reader = p2d.DataApiReader(api, "arn:c", "arn:s", "musclefit")
+    reader.fetch(_T, "owner_user_id", [UID], include_null=True)
+    assert "(`owner_user_id` IN (1) OR `owner_user_id` IS NULL)" in api.sqls[0]
+
+
+def _schema_rbac(com_tabelas=True):
+    schema = _schema()
+    if not com_tabelas:
+        return schema
+    extra = [
+        _table("access_groups", ["id", "group_key", "name"]),
+        _table("access_group_grants", ["id", "group_id", "resource"]),
+        _table("user_access_groups", ["user_id", "group_id", "created_by_user_id"], pk=("user_id", "group_id"),
+               nullable=("created_by_user_id",)),
+        _table("trainer_students", ["id", "trainer_user_id", "student_user_id", "active_flag"], generated=("active_flag",)),
+        _table("access_audit_log", ["id", "actor_user_id", "action"]),
+    ]
+    fks = [
+        ("access_group_grants", "group_id", "access_groups", "id"),
+        ("user_access_groups", "user_id", "users", "id"),
+        ("user_access_groups", "group_id", "access_groups", "id"),
+        ("trainer_students", "trainer_user_id", "users", "id"),
+        ("trainer_students", "student_user_id", "users", "id"),
+    ]
+    return p2d.Schema({**schema.tables, **{x.name: x for x in extra}}, schema.foreign_keys + fks)
+
+
+def _dados_rbac(grupos_do_usuario=True):
+    data = _prod_data()
+    data.update({
+        "access_groups": [{"id": 1, "group_key": "admin", "name": "Admin"}, {"id": 2, "group_key": "aluno", "name": "Aluno"}],
+        "access_group_grants": [{"id": 1, "group_id": 1, "resource": "*"}, {"id": 2, "group_id": 2, "resource": "treino"}],
+        "user_access_groups": [{"user_id": OTHER, "group_id": 2, "created_by_user_id": UID}]
+        + ([{"user_id": UID, "group_id": 1, "created_by_user_id": OTHER}] if grupos_do_usuario else []),
+        "trainer_students": [{"id": 1, "trainer_user_id": UID, "student_user_id": OTHER}],
+        "access_audit_log": [{"id": 1, "actor_user_id": OTHER, "action": "grant"}],
+    })
+    return data
+
+
+def test_rbac_usuario_copiado_fica_com_grupo_e_terceiros_nao_entram():
+    schema = _schema_rbac()
+    snap, _ = p2d.prepare(FakeReader(_dados_rbac()), schema, UID)
+    assert {r["id"] for r in snap["access_groups"]} == {1, 2}
+    assert len(snap["access_group_grants"]) == 2
+    assert [(r["user_id"], r["group_id"]) for r in snap["user_access_groups"]] == [(UID, 1)]
+    assert snap["user_access_groups"][0]["created_by_user_id"] is None  # quem concedeu era outro usuário
+    assert "trainer_students" not in snap and "access_audit_log" not in snap
+    stmts = p2d.render_sql(snap, schema)
+    assert "DELETE FROM `trainer_students`" in stmts and "DELETE FROM `access_audit_log`" in stmts
+    assert not any(s.startswith("INSERT INTO `trainer_students`") for s in stmts)
+
+
+def test_rbac_usuario_sem_grupo_em_producao_aborta_em_vez_de_ficar_sem_grupo_no_dev():
+    with pytest.raises(p2d.AbortError, match="sem grupo de acesso"):
+        p2d.prepare(FakeReader(_dados_rbac(grupos_do_usuario=False)), _schema_rbac(), UID)
+
+
+def test_rbac_grupo_orfao_nao_conta_como_grupo():
+    data = _dados_rbac()
+    data["user_access_groups"] = [{"user_id": UID, "group_id": 99, "created_by_user_id": None}]  # sem FK real: cai no fechamento
+    with pytest.raises(p2d.AbortError, match="sem grupo de acesso"):
+        p2d.prepare(FakeReader(data), _schema_rbac(), UID)
+
+
+def test_rbac_ausente_em_producao_nao_aborta():
+    snap, _ = p2d.prepare(FakeReader(_prod_data()), _schema_rbac(com_tabelas=False), UID)
+    assert "user_access_groups" not in snap and "access_groups" not in snap
 
 
 # ---------------------------------------------------------------------------
