@@ -61,8 +61,10 @@ disparam; na duvida, espere e rode de novo.
 PR sem nenhum check ("no checks reported", exit 1) nao e verde. So libera o merge se
 `gh pr diff <n> --name-only` nao tocar nenhum caminho dos `paths` dos workflows
 (`.github/workflows/*.yml` e a autoridade; o CLAUDE.md resume a lista). Na duvida, trate
-como "toca caminho" e investigue. Integracao/smoke rodam neste PR develop -> main, entao
-ele sempre dispara CI: lista vazia aqui e anomalia, pare e investigue.
+como "toca caminho" e investigue. A mesma conferencia vale neste PR develop -> main: ele
+so dispara CI quando toca algum `paths` (ai integracao/smoke rodam); promocao so de
+`.claude/`/`docs/` nao tem checks (medido no PR #113 em 2026-11-10). Lista vazia em
+promocao que toca `paths` e anomalia: pare e investigue.
 
 Nunca `gh pr checks <n> | tail ...` antes de mesclar: o pipe engole o exit status (o #430
 entrou com plan vermelho assim; o hook `guarda_comandos.py` bloqueia). Encadear
