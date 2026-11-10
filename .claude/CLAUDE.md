@@ -27,7 +27,7 @@ Regra permanente (pedido do usuário em 2026-10-07). Mapa: `docs/motores/FONTES_
 
 Regra permanente (decisões do usuário de 2026-09-19, 2026-10-10 e 2026-10-17). Desde 2026-10-29 o repositório é público (`dougbrsp/muscle_fit_v2`), e os runners padrão do GitHub não consomem minutos. Quando ele era privado, o limite de gastos do Actions foi atingido mais de uma vez. As regras abaixo continuam valendo até o usuário decidir relaxá-las.
 
-- Integração com MySQL e smoke do compose não rodam em PR para `develop`. Rodam só com o rótulo `ci-completo` e sempre no PR de promoção `develop` → `main`.
+- Integração com MySQL e smoke do compose não rodam em PR para `develop`. Rodam só com o rótulo `ci-completo` e no PR de promoção `develop` → `main` que toca algum caminho dos `paths` dos workflows; promoção só de `.claude/` ou `docs/` não dispara CI.
 - O rótulo `ci-completo` é obrigatório em PR que mexe em SQL, migração ou `db_dataapi`/`db_pymysql`.
 - O rótulo entra só no último push, logo antes do merge. Nunca na abertura do PR: depois dele, cada push roda a suíte inteira de novo.
 - O Tech Lead aciona os revisores (`guardiao-motores`, `revisor-impacto-producao`) antes do primeiro push, para o PR já nascer revisado. As correções de uma rodada de revisão vão num push só.
