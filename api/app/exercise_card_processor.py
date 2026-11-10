@@ -27,6 +27,7 @@ servico (`exercise_card_storage`). A unica leitura de disco e
 
 from __future__ import annotations
 
+import functools
 import io
 import math
 from dataclasses import dataclass
@@ -55,6 +56,15 @@ WEBP_QUALITY = 85
 THUMB_WIDTH = 400
 
 DEFAULT_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "branding" / "musclefit-logo.png"
+
+# Logo para ESTAMPA no peito do atleta gerado pela IA (anexado como ultima
+# imagem de entrada das duas cenas): simbolo MF + "MUSCLE FIT", SEM o slogan.
+# Derivado de musclefit-logo.png (recorte em assets/branding/README.md), ja
+# versionado achatado (RGB) sobre cinza neutro. NAO e o logo colado pelo
+# compositor (esse continua sendo DEFAULT_LOGO_PATH, RGBA).
+STAMP_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "branding" / "musclefit-logo-estampa.png"
+STAMP_LOGO_MAX_SIDE = 1024
+STAMP_LOGO_BACKGROUND = (128, 128, 128)
 
 IMAGE_PROCESSING_FAILED = "IMAGE_PROCESSING_FAILED"
 
@@ -226,3 +236,30 @@ def load_brand_logo(path: Optional[Path] = None) -> Image.Image:
             return raw.convert("RGBA")
     except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
         raise ImageProcessingError(f"Logo oficial ilegivel em {target.name}.", reason="logo_missing") from exc
+
+
+@functools.lru_cache(maxsize=4)
+def _load_stamp_logo_png(path: Path) -> bytes:
+    try:
+        with Image.open(path) as raw:
+            raw.load()
+            image = raw.convert("RGBA")
+    except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
+        raise ImageProcessingError(f"Logo para estampa ilegivel em {path.name}.", reason="stamp_logo_missing") from exc
+    # Achata sobre fundo solido neutro (sem alfa) e limita o lado: a OpenAI
+    # recebe sempre um PNG RGB previsivel, mesmo que o asset mude de formato.
+    flat = Image.new("RGBA", image.size, (*STAMP_LOGO_BACKGROUND, 255))
+    flat.alpha_composite(image)
+    out = flat.convert("RGB")
+    if max(out.size) > STAMP_LOGO_MAX_SIDE:
+        out.thumbnail((STAMP_LOGO_MAX_SIDE, STAMP_LOGO_MAX_SIDE), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    out.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def load_stamp_logo_png(path: Optional[Path] = None) -> bytes:
+    """PNG RGB (sem alfa, lado <= 1024) do logo para estampa, carregado UMA vez
+    por processo (cache em modulo; falha nao e cacheada). Asset ausente ou
+    ilegivel -> `ImageProcessingError(reason="stamp_logo_missing")`."""
+    return _load_stamp_logo_png(Path(path) if path else STAMP_LOGO_PATH)

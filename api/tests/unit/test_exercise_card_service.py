@@ -493,10 +493,12 @@ def test_worker_gera_as_duas_cenas_compoe_e_grava_generated(worker, db, s3, open
         card_prompt.ExerciseCardContext(exercise_id=42, name="Supino reto"), instruction="pegada mais aberta"
     )
     exigir(openai[0]["prompt"] == prompts_v3.start and openai[1]["prompt"] == prompts_v3.end, "um prompt por cena")
-    # Sem fotos do admin: cena 1 sem referencia; cena 2 so com a cena 1 (JPEG).
-    assert openai[0]["reference_images"] == []
-    (cena1_jpeg,) = openai[1]["reference_images"]
+    # Sem fotos do admin: cena 1 so com o logo; cena 2 com a cena 1 (JPEG) e o logo por ultimo.
+    logo = processor.load_stamp_logo_png()
+    assert openai[0]["reference_images"] == [logo]
+    cena1_jpeg, logo_cena2 = openai[1]["reference_images"]
     assert cena1_jpeg.startswith(JPEG_SIGNATURE)
+    assert logo_cena2 == logo
     assert prompts[0] == {"text_level": "minimal", "instruction": "pegada mais aberta", "parent_reject_reason": None,
                           "reference_count": 0, "reference_notes": []}
     for key in (row["preview_s3_key"], storage.scene_key(gid, 1), storage.scene_key(gid, 2)):
@@ -523,10 +525,11 @@ def test_fotos_de_referencia_vao_nas_duas_cenas_e_no_evento(db, clock, s3, opena
     with caplog.at_level(logging.INFO):
         jobs.run_generation_job({"generation_id": gid, "job_id": "j-1"})
     assert db.generation(gid)["status"] == "GENERATED"
-    # Cena 1: so as fotos ativas do exercicio, na ordem; cena 2: cena 1 primeiro.
-    assert openai[0]["reference_images"] == [foto_a, foto_b]
+    # Cena 1: fotos ativas do exercicio, na ordem, e o logo por ultimo; cena 2: cena 1 primeiro.
+    logo = processor.load_stamp_logo_png()
+    assert openai[0]["reference_images"] == [foto_a, foto_b, logo]
     assert openai[1]["reference_images"][0].startswith(JPEG_SIGNATURE)
-    assert openai[1]["reference_images"][1:] == [foto_a, foto_b]
+    assert openai[1]["reference_images"][1:] == [foto_a, foto_b, logo]
     assert prompts[0]["reference_count"] == 2
     # A nota de cada foto vai ao prompt, na ordem das fotos, nas duas cenas.
     assert prompts[0]["reference_notes"] == ["NOTA-DO-ADMIN rolo atrás do tornozelo", None]

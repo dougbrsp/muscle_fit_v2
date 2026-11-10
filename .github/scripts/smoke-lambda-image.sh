@@ -378,6 +378,15 @@ with Image.open(logo) as im:
     assert im.width >= 1024, im.size
     print("ok: logo", logo, im.mode, im.size)
 
+# Logo para ESTAMPA (anexado como ultima imagem de entrada das duas cenas da
+# OpenAI): derivado sem slogan, achatado (RGB, sem alfa), lado <= 1024.
+stamp = assets_dir / "branding" / "musclefit-logo-estampa.png"
+assert stamp.is_file(), f"logo para estampa ausente na imagem: {stamp}"
+with Image.open(stamp) as im:
+    assert im.format == "PNG" and im.mode == "RGB", (im.format, im.mode)
+    assert max(im.size) == 1024 and min(im.size) > 0, im.size
+    print("ok: logo para estampa", stamp, im.mode, im.size)
+
 expected = {"Oswald-Medium.ttf", "Oswald-SemiBold.ttf", "Oswald-Bold.ttf", "Inter-Regular.ttf", "Inter-SemiBold.ttf"}
 names = {f.name for f in fonts}
 assert expected <= names, f"fontes ausentes na imagem: {sorted(expected - names)} (achadas: {sorted(names)})"
