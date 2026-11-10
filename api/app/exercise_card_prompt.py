@@ -88,7 +88,7 @@ TEXT_LEVELS = (TEXT_LEVEL_MINIMAL,)
 DEFAULT_TEXT_LEVEL = TEXT_LEVEL_MINIMAL
 
 # Por cena. Pior caso medido (todos os campos no teto + 3 notas de foto no
-# teto + revisao) = 8335 caracteres (`test_pior_caso_cabe_no_limite`); a Images
+# teto + revisao) = 8980 caracteres (cena 2, com a estampa do logo) (`test_pior_caso_cabe_no_limite`); a Images
 # API aceita ate 32 mil e as duas cenas juntas cabem em `prompt_text` (TEXT).
 MAX_PROMPT_CHARS = 9000
 

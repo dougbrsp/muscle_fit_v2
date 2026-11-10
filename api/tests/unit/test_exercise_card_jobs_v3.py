@@ -19,7 +19,9 @@ import pytest
 
 from app import async_jobs, openai_client
 from app import exercise_card_jobs as jobs
+from app import exercise_card_processor as processor
 from app import exercise_card_prompt as card_prompt
+from app import exercise_card_references as refs
 from app import exercise_card_service as svc
 from app import exercise_card_storage as storage
 from tests.support import card_illustrations as ill
@@ -203,8 +205,9 @@ def test_foto_ausente_no_s3_e_pulada_e_o_card_sai_com_as_presentes(ambiente, mon
     with caplog.at_level(logging.INFO):
         jobs.run_generation_job({"generation_id": gid})
     assert banco.generation(gid)["status"] == "GENERATED"
-    assert chamadas[0]["reference_images"] == [foto_a, foto_c]
-    assert chamadas[1]["reference_images"][1:] == [foto_a, foto_c]
+    logo = processor.load_stamp_logo_png()
+    assert chamadas[0]["reference_images"] == [foto_a, foto_c, logo]
+    assert chamadas[1]["reference_images"][1:] == [foto_a, foto_c, logo]
     # Notas alinhadas as fotos LIDAS: a da foto ausente nao entra.
     exigir("NOTA-A" in chamadas[0]["prompt"] and "NOTA-B" not in chamadas[0]["prompt"], "notas das fotos lidas")
     gerado = next(
@@ -250,5 +253,60 @@ def test_sem_fotos_cadastradas_nem_le_o_s3(ambiente, monkeypatch):
     _openai_rapido(monkeypatch, chamadas)
     gid = banco.insert_generation(exercise_id=42, status="PENDING")
     jobs.run_generation_job({"generation_id": gid})
-    assert chamadas[0]["reference_images"] == []
+    logo = processor.load_stamp_logo_png()
+    assert chamadas[0]["reference_images"] == [logo]  # cena 1 sempre por edicao (logo)
+    assert len(chamadas[1]["reference_images"]) == 2
+    assert chamadas[1]["reference_images"][0].startswith(b"\xff\xd8\xff")
+    assert chamadas[1]["reference_images"][1] == logo
     assert s3.calls_of("get_object") == []
+
+
+def test_pior_caso_de_imagens_de_entrada_cabe_no_limite_da_openai(ambiente, monkeypatch):
+    """Cena 2 com o maximo de fotos do admin: cena 1 + fotos + logo."""
+    banco, s3, _relogio = ambiente
+    fotos = [_foto(banco, s3)[1] for _ in range(refs.MAX_ACTIVE_REFERENCES)]
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    jobs.run_generation_job({"generation_id": gid})
+    logo = processor.load_stamp_logo_png()
+    assert chamadas[0]["reference_images"] == [*fotos, logo]
+    assert chamadas[1]["reference_images"][1:] == [*fotos, logo]
+    assert len(chamadas[1]["reference_images"]) == 1 + refs.MAX_ACTIVE_REFERENCES + 1
+    assert len(chamadas[1]["reference_images"]) <= openai_client.IMAGE_MAX_REFERENCE_IMAGES
+
+
+def test_reference_count_e_reference_ids_nao_contam_o_logo(ambiente, monkeypatch, caplog):
+    banco, s3, _relogio = ambiente
+    ref_a, _ = _foto(banco, s3)
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    contagens: list = []
+    original = card_prompt.build_scene_prompts
+
+    def espia(*args, **kwargs):
+        contagens.append(kwargs["reference_count"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(card_prompt, "build_scene_prompts", espia)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    with caplog.at_level(logging.INFO):
+        jobs.run_generation_job({"generation_id": gid})
+    assert contagens == [1]
+    gerado = next(json.loads(r.getMessage()) for r in caplog.records if '"exercise_card.generated"' in r.getMessage())
+    assert gerado["reference_ids"] == [ref_a] and gerado["reference_count"] == 1
+
+
+def test_sem_asset_do_logo_falha_cedo_sem_chamar_a_openai(ambiente, monkeypatch, tmp_path):
+    banco, _s3, _relogio = ambiente
+    monkeypatch.setattr(processor, "STAMP_LOGO_PATH", tmp_path / "nao-existe.png")
+    processor._load_stamp_logo_png.cache_clear()
+    chamadas: list = []
+    _openai_rapido(monkeypatch, chamadas)
+    gid = banco.insert_generation(exercise_id=42, status="PENDING")
+    with pytest.raises(jobs.ExerciseCardJobError):
+        jobs.run_generation_job({"generation_id": gid})
+    row = banco.generation(gid)
+    assert (row["status"], row["error_code"]) == ("FAILED", svc.ERROR_CARD_COMPOSITION_FAILED)
+    assert row["cost_usd"] is None and chamadas == []
+

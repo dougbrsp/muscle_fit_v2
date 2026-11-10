@@ -44,3 +44,37 @@ demais `Dockerfile.*.dockerignore`) já libera com `!app`. O smoke de CI
 da `musclefit-api-core` (aprovação) e do worker `musclefit-ai-generators`
 (`Dockerfile.ai`, onde o card é composto), junto com as fontes de
 `app/assets/fonts/`, e que o Pillow da imagem grava WebP.
+
+## Logo para estampa (`musclefit-logo-estampa.png`)
+
+Derivado de `musclefit-logo.png` **sem o slogan** "AI POWERED WORKOUT" (decisao
+do usuario: versao `sem-slogan`, simbolo MF + silhueta + "MUSCLE FIT"). Nao e o
+logo colado pelo compositor: o worker de cards V3 o anexa como a **ultima
+imagem de entrada** das duas cenas da OpenAI, para o atleta gerado vestir roupa
+com o logo no peito (o texto do prompt diz "the LAST attached image").
+
+| Propriedade | Valor |
+|---|---|
+| Recorte | caixa `(0, 0, 1200, 925)` do PNG oficial (1200 x 992): o nome termina na linha 900 e o slogan comeca na 946 |
+| Achatamento | sobre cinza neutro `(128, 128, 128)`, RGB, sem alfa |
+| Tamanho | 1024 x 789 px (lado maior = 1024, proporcao 1200:925 preservada) |
+
+O asset ja e versionado achatado; `exercise_card_processor.load_stamp_logo_png()`
+(cache em modulo) valida e achata de novo se algum dia o arquivo vier com alfa.
+Se o arquivo faltar, o job falha cedo (`CARD_COMPOSITION_FAILED`) antes de
+qualquer chamada paga. Para regenerar a partir do logo oficial (da raiz do repo):
+
+```python
+from PIL import Image
+
+base = "api/app/assets/branding/"
+logo = Image.open(base + "musclefit-logo.png").convert("RGBA").crop((0, 0, 1200, 925))
+fundo = Image.new("RGBA", logo.size, (128, 128, 128, 255))
+fundo.alpha_composite(logo)
+saida = fundo.convert("RGB")
+saida.thumbnail((1024, 1024), Image.LANCZOS)
+saida.save(base + "musclefit-logo-estampa.png", optimize=True)
+```
+
+Se `musclefit-logo.png` for regenerado com outra arte, refaca o recorte (o
+teste `test_branding_logo_asset.py` confere a proporcao e que nao sobra slogan).

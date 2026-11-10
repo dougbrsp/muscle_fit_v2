@@ -16,6 +16,7 @@ Sem banco, sem rede, sem AWS.
 
 from __future__ import annotations
 
+import io
 import re
 from pathlib import Path
 
@@ -78,3 +79,45 @@ def test_proporcao_igual_ao_viewbox_do_svg(logo):
         f"proporcao do PNG {real:.4f} difere do viewBox do SVG {esperada:.4f} "
         "- regenere com `node frontend/scripts/generate-brand-logo-png.mjs`"
     )
+
+
+# ---------------------------------------------------------------------------
+# Logo para ESTAMPA (anexado a OpenAI como ultima imagem de entrada)
+# ---------------------------------------------------------------------------
+
+STAMP_PNG = API_DIR / "app" / "assets" / "branding" / "musclefit-logo-estampa.png"
+# Recorte documentado no README: caixa (0, 0, 1200, 925) do PNG oficial 1200x992.
+RECORTE_OFICIAL = (1200, 925)
+
+
+def test_logo_estampa_e_rgb_achatado_com_lado_ate_1024():
+    from app import exercise_card_processor as processor
+
+    assert STAMP_PNG.is_file(), f"asset ausente: {STAMP_PNG}"
+    with Image.open(STAMP_PNG) as versionado:
+        assert versionado.format == "PNG" and versionado.mode == "RGB"
+        assert max(versionado.size) == 1024
+    pronto = processor.load_stamp_logo_png()
+    with Image.open(io.BytesIO(pronto)) as enviado:
+        assert enviado.format == "PNG" and enviado.mode == "RGB"  # sem alfa
+        assert max(enviado.size) <= processor.STAMP_LOGO_MAX_SIDE
+    assert processor.load_stamp_logo_png() is pronto  # carregado uma vez (cache)
+
+
+def test_logo_estampa_deriva_do_oficial_sem_o_slogan(logo):
+    with Image.open(STAMP_PNG) as estampa:
+        largura, altura = estampa.size
+        esperada = RECORTE_OFICIAL[0] / RECORTE_OFICIAL[1]
+        assert abs(largura / altura - esperada) / esperada <= TOLERANCIA_PROPORCAO
+        assert (logo.width, logo.height) == (1200, 992), "oficial mudou: refaca o recorte (README)"
+        # Mesma arte do oficial: faixa do nome (linhas 780-900 de 1200x992)
+        # tem tinta; sem slogan, a base do asset nao tem mais nada alem do nome.
+        fundo = estampa.getpixel((2, 2))
+        escala = altura / RECORTE_OFICIAL[1]
+        assert estampa.getpixel((largura // 2, int(850 * escala))) != fundo or any(
+            estampa.getpixel((x, int(850 * escala))) != fundo for x in range(0, largura, 8)
+        ), "nome MUSCLE FIT ausente"
+        # Margem inferior: nenhuma linha com tinta abaixo do fim do nome (900) no oficial.
+        primeira_vazia = int(905 * escala)
+        for y in range(primeira_vazia, altura):
+            assert all(estampa.getpixel((x, y)) == fundo for x in range(0, largura, 4)), f"tinta na linha {y} (slogan?)"
