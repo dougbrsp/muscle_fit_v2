@@ -43,15 +43,31 @@ uma vez (economia de GitHub Actions).
 ## 3. Checks pelo exit status
 
 ```bash
-gh pr checks <n> --watch            # sem pipe
-# ou
-gh pr checks <n> --json name,bucket --jq 'all(.[]; .bucket=="pass" or .bucket=="skipping")'
+gh pr checks <n> --watch            # so espera, sem pipe e sem decidir
+gh pr view <n> --json headRefOid --jq .headRefOid   # deve ser o SHA do ultimo push
+# depois (decisao, sem pipe; pode ser encadeada ao merge com &&):
+gh pr checks <n> --json bucket --jq 'if length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping") then "VERDE" else error("checks nao verdes") end'
 ```
 
-Nunca `gh pr checks <n> | tail ...` antes de mesclar (o pipe engole o exit status; o #430
-entrou com plan vermelho assim; o hook `guarda_comandos.py` bloqueia). "no checks reported"
-e normal quando nada em `infra/`/`.github/` mudou. Integracao/smoke rodam neste PR
-develop -> main.
+So VERDE (exit 0) libera o merge. `--json bucket` sem `error()` sai com 0 mesmo com check
+pendente ou vermelho (medido nos PRs #109 e #34), por isso nao serve de decisao. Se o head
+divergir do SHA do ultimo push (o que o `git push` informou, ou `git rev-parse HEAD` da
+branch publicada), pare: nao decida nem mescle. Logo apos um push, inclusive o que poe
+`ci-completo`, a lista pode ainda nao ter os checks do commit novo (precaucao, nao medida):
+espere com `--watch` e confira o head antes de decidir. Rode o comando de decisao
+imediatamente antes do merge e confira que a lista inclui os checks que os caminhos do PR
+disparam; na duvida, espere e rode de novo.
+
+PR sem nenhum check ("no checks reported", exit 1) nao e verde. So libera o merge se
+`gh pr diff <n> --name-only` nao tocar nenhum caminho dos `paths` dos workflows
+(`.github/workflows/*.yml` e a autoridade; o CLAUDE.md resume a lista). Na duvida, trate
+como "toca caminho" e investigue. Integracao/smoke rodam neste PR develop -> main, entao
+ele sempre dispara CI: lista vazia aqui e anomalia, pare e investigue.
+
+Nunca `gh pr checks <n> | tail ...` antes de mesclar: o pipe engole o exit status (o #430
+entrou com plan vermelho assim; o hook `guarda_comandos.py` bloqueia). Encadear
+`<comando de decisao> && gh pr merge <n> --merge` e permitido, porque o `&&` so segue com
+exit 0; pipe (`|`) continua proibido em qualquer um dos dois comandos.
 
 ## 4. Merge na main
 
