@@ -21,7 +21,7 @@ REVIEWERS = ("code-reviewer", "guardiao-motores", "revisor-impacto-producao", "s
 RISKS = {"motores", "producao", "seguranca"}
 PROTECTED_BRANCHES = {"develop", "main", "master"}
 MAX_TASKS = 6
-MAX_REWORK = 2
+MAX_REWORK = 5
 MAX_GATES = 3
 
 
@@ -496,7 +496,7 @@ def advance(state, tasks, args):
                 "Retrabalho exige pareceres completos com achado ou falha de verificação.")
         require(set(args.tasks) <= set(tasks), "IDs de retrabalho desconhecidos.")
         if state["round"] >= MAX_REWORK:
-            state.update(phase="blocked", reason="Limite de 2 rodadas de correção atingido.")
+            state.update(phase="blocked", reason=f"Limite de {MAX_REWORK} rodadas de correção atingido.")
         else:
             state["history"].append({"review": state["reviews"], "verify": state.pop("verify", None),
                                      "rework": args.tasks})

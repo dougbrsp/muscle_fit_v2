@@ -18,7 +18,7 @@ flowchart TD
   R -- Aprovado --> V[Verificação local dirigida]
   R -- Achados --> L{Limite de correção}
   V -- Falhou --> L
-  L -- Até duas correções com avanço --> D
+  L -- Até cinco correções com avanço --> D
   L -- Esgotado ou sem avanço --> B[Bloqueado com evidências]
   V -- Passou --> F[Diff verificado]
   F -- Publicação autorizada --> PR[PR para develop e CI]

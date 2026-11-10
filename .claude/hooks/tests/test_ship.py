@@ -8,6 +8,8 @@ import sys
 import pytest
 
 CLAUDE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(CLAUDE / "scripts"))
+from ship import MAX_REWORK  # noqa: E402
 
 
 @pytest.fixture
@@ -132,17 +134,19 @@ def test_retry_without_diff_change_blocks(checkout):
     assert invoke(checkout, "review")["phase"] == "blocked"
 
 
-def test_retry_budget_blocks_third_repair(checkout):
+def test_retry_budget_blocks_repair_after_max_rework(checkout):
     review = implemented(checkout)
-    for attempt in range(2):
+    for attempt in range(MAX_REWORK):
         verdict(checkout, review, "changes")
-        invoke(checkout, "rework", "extra")
+        state = invoke(checkout, "rework", "extra")
+        assert state["phase"] == "execute" and state["round"] == attempt + 1
         invoke(checkout, "claim", "extra")
         (checkout / "novo.md").write_text(f"tentativa {attempt}\n", encoding="utf-8")
         report(checkout, "extra")
         review = invoke(checkout, "review")
     verdict(checkout, review, "changes")
-    assert invoke(checkout, "rework", "extra")["phase"] == "blocked"
+    blocked = invoke(checkout, "rework", "extra")
+    assert blocked["phase"] == "blocked" and str(MAX_REWORK) in blocked["reason"]
 
 
 def test_rejects_cyclic_graph(checkout):
