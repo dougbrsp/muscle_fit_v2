@@ -141,6 +141,15 @@ import { ExerciseSummaryCard, SetLoggerCard, type SetLoggerValues } from './SetL
 import type { SavedSetIntensity } from '@/lib/set-engine-status';
 import { restoreRestTimer, type RestAfterStageKind, type StoredRestTimer } from '@/lib/workout-mode-rest-timer';
 import { restSavedSetView } from '@/lib/workout-mode-rest-view';
+import {
+  applyRestSetPatch,
+  canEditRestSet,
+  createSequenceGuard,
+  restSetResponseApplies,
+  type SequenceGuard,
+  type RestSetPatchBody,
+  type RestSetValues,
+} from '@/lib/workout-mode-rest-set-edit';
 import { SkipExerciseModal, type SkipExerciseModalItem } from './SkipExerciseModal';
 import { LaboralExerciseCard } from './LaboralExerciseCard';
 import {
@@ -518,6 +527,34 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // (salva no aparelho, ainda sem 2xx). Não persiste: some no reload; a fila segue.
   const [restLocalClientKey, setRestLocalClientKey] = useState<string | null>(null);
   const restLocalStatus = useOpStatus(restLocalClientKey);
+  // Série que abriu o descanso, para o "Editar" do card "Série salva". Só
+  // existe em memória (não persiste): depois de um reload o botão não é
+  // oferecido (os selos e a carga recalculados seguem em `saved_set`).
+  const [restSetEdit, setRestSetEditState] = useState<{
+    /** Identidade do descanso que abriu a edição (resposta tardia do PATCH). */
+    token: number;
+    exerciseId: number;
+    /** `set_number` FÍSICO gravado (não o exibido). */
+    setNumber: number;
+    values: RestSetValues;
+    evalKey: string | null;
+    /** Refaz IA por série e resumo do exercício com os valores corrigidos. */
+    rerun: (values: RestSetValues) => void;
+  } | null>(null);
+  // Espelho síncrono do alvo vigente + contador de descansos: uma resposta
+  // tardia do PATCH só vale se o alvo ainda é o mesmo (`restSetResponseApplies`).
+  const restSetEditRef = useRef<typeof restSetEdit>(null);
+  const restSetTokenRef = useRef(0);
+  function setRestSetEdit(next: typeof restSetEdit) {
+    restSetEditRef.current = next;
+    setRestSetEditState(next);
+  }
+  // Guardas de sequência: a resposta (ou falha) de um pedido de IA/resumo
+  // antigo não sobrescreve o refeito, nem reaparece depois de um reset.
+  const evalGuardRef = useRef<SequenceGuard | null>(null);
+  const summaryGuardRef = useRef<SequenceGuard | null>(null);
+  evalGuardRef.current ??= createSequenceGuard();
+  summaryGuardRef.current ??= createSequenceGuard();
   const [extendMode, setExtendMode] = useState(false);
   // M4: exercicios cujo briefing ja foi lido NESTA sessao. Persistido em
   // `briefed_keys` (novo visual, PR1/3): sem isso, um reload depois de
@@ -699,6 +736,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     restActiveRef.current = true;
     restTimerRef.current = null;
     setRestLocalClientKey(null);
+    setRestSetEdit(null);
     setRestKey(`${key}@${Date.now()}`);
     setResting(true);
     setRestIsExerciseTransition(isExerciseTransition);
@@ -739,6 +777,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   function endRest() {
     restActiveRef.current = false;
     persistRestTimer(null);
+    setRestSetEdit(null);
     setResting(false);
     setRestIsExerciseTransition(false);
     setTransitionFromKey(null);
@@ -1296,7 +1335,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       persistSession({ advanced_stage_progress: next });
       return next;
     });
-    setEvaluation(IDLE_EVALUATION);
+    resetEvaluation();
     setLastSavedSet(null);
     // Pular a ÚLTIMA aplicação pendente conclui o exercício: o descanso vira
     // transição de exercício (resumo + preview do PRÓXIMO, excluindo o
@@ -1313,7 +1352,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     if (completesExercise && current?.loggedRow) {
       runExerciseSummary(current.loggedRow.id);
     } else {
-      setExerciseSummary(IDLE_SUMMARY);
+      resetExerciseSummary();
     }
     if (!completesExercise && options.skipRest) return;
     if (!completesExercise || nextPendingItem != null) {
@@ -1610,6 +1649,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         opensApplication,
         applicationPauseSeconds,
         tappedAt,
+        physicalSetNumber,
       };
     },
     onSettled: () => saveSetLatchRef.current.release(),
@@ -1625,6 +1665,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       opensApplication,
       applicationPauseSeconds,
       tappedAt,
+      physicalSetNumber,
     }) => {
       // Só aqui (sucesso confirmado pelo servidor) o descanso passa a dizer
       // "SÉRIE SALVA": erro nunca chega a este ponto. Série só na fila offline
@@ -1647,15 +1688,39 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         });
       }
       setRestLocalClientKey(queuedClientKey);
+      // Recorte: "Modo Intensivo fora" vale para o bloco intensivo e para as
+      // etapas de técnica (`opensApplication`), não para série de trabalho comum
+      // numa sessão `advancedMode`: ela ganha o "Editar" (decisão do Tech Lead).
+      setRestSetEdit(
+        !opensApplication && canEditRestSet(values, exerciseId)
+          ? {
+              token: ++restSetTokenRef.current,
+              exerciseId,
+              setNumber: physicalSetNumber,
+              values: { reps: values.reps, weight_kg: values.weight_kg, rpe: values.rpe },
+              evalKey,
+              rerun: (corrected) => {
+                const correctedValues = {
+                  ...values,
+                  reps: corrected.reps,
+                  weight_kg: corrected.weight_kg,
+                  rpe: corrected.rpe,
+                };
+                if (perSetAiEnabled) runEvaluation(exerciseId, setNumber, correctedValues, previousSets, evalKey);
+                if (isLastSetOfExercise) runExerciseSummary(exerciseId);
+              },
+            }
+          : null,
+      );
       if (perSetAiEnabled) {
         runEvaluation(exerciseId, setNumber, values, previousSets, evalKey);
       } else {
-        setEvaluation(IDLE_EVALUATION);
+        resetEvaluation();
       }
       if (isLastSetOfExercise) {
         runExerciseSummary(exerciseId);
       } else {
-        setExerciseSummary(IDLE_SUMMARY);
+        resetExerciseSummary();
       }
     },
   });
@@ -1746,11 +1811,17 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
 
   // PATCH de uma série gravada (confirmação de reps pendentes / correção).
   // 409 = sessão já finalizada; 404 = série sumiu: viram mensagem legível.
-  async function patchSessionSet(exerciseId: number, setNumber: number, body: Record<string, number>) {
+  // Devolve a resposta do servidor (`SavedSetIntensity`, a mesma do POST); nada
+  // quando a edição foi na fila offline.
+  async function patchSessionSet(
+    exerciseId: number,
+    setNumber: number,
+    body: Record<string, number>,
+  ): Promise<SavedSetIntensity | undefined> {
     // Série ainda só na fila offline: edita a operação pendente (mesma client_key)
     // em vez de mandar um PATCH para uma série que o servidor ainda não conhece.
     const pendingEdit = await opQueue.editPendingSet(session.session_id, exerciseId, setNumber, body);
-    if (pendingEdit === 'edited') return;
+    if (pendingEdit === 'edited') return undefined;
     if (pendingEdit === 'in_flight') {
       throw new Error('A série está sendo enviada agora. Tente corrigir de novo em instantes.');
     }
@@ -1760,10 +1831,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       throw new Error('O exercício ainda não foi confirmado no servidor. Tente corrigir de novo em instantes.');
     }
     try {
-      await apiFetch(`/workout-sessions/${session.session_id}/exercises/${serverExerciseId}/sets/${setNumber}`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      });
+      return await apiFetch<SavedSetIntensity>(
+        `/workout-sessions/${session.session_id}/exercises/${serverExerciseId}/sets/${setNumber}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+      );
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         throw new Error('O treino já foi finalizado: corrija a série pelo histórico.');
@@ -1773,6 +1844,28 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       }
       throw new Error(errorMessage(error, 'Não foi possível corrigir a série.'));
     }
+  }
+
+  // "Editar" da série no descanso: PATCH só dos campos alterados (set_number
+  // FÍSICO). Com resposta do servidor, os selos e a carga da próxima série
+  // passam a ser os recalculados e IA/resumo são refeitos; na fila offline só
+  // os valores mostrados mudam. Erro sobe para o editor (valores gravados ficam).
+  async function handleRestSetEditSave(body: RestSetPatchBody) {
+    const target = restSetEditRef.current;
+    if (!target) return;
+    const response = await patchSessionSet(target.exerciseId, target.setNumber, body);
+    // A série mudou no servidor: invalida sempre. Os efeitos de tela só valem
+    // se o descanso que abriu a edição ainda é o vigente (P2-1).
+    void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+    if (!restSetResponseApplies(restSetEditRef.current, target)) return;
+    const values = applyRestSetPatch(target.values, body);
+    setRestSetEdit({ ...target, values });
+    if (!response) return;
+    setLastSavedSet({ forKey: target.evalKey, saved: response });
+    if (restTimerRef.current) {
+      persistRestTimer({ ...restTimerRef.current, saved_set: { for_key: target.evalKey, saved: response } });
+    }
+    target.rerun(values);
   }
 
   // Avaliação de IA por série — só quando o toggle "IA por série" está ligado
@@ -1787,6 +1880,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   ) {
     if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
     if (!current) return;
+    const seq = evalGuardRef.current!.begin();
     setEvaluation({ loading: true, error: false, result: null, forKey: evalKey });
     fetchWorkoutAiResult<SetEvaluationResult>('/exercises/evaluate-set', {
       method: 'POST',
@@ -1831,18 +1925,40 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         })),
       }),
     })
-      .then((result) => setEvaluation({ loading: false, error: false, result, forKey: evalKey }))
-      .catch(() => setEvaluation({ loading: false, error: true, result: null, forKey: evalKey }));
+      .then((result) => {
+        if (evalGuardRef.current!.isCurrent(seq)) setEvaluation({ loading: false, error: false, result, forKey: evalKey });
+      })
+      .catch(() => {
+        if (evalGuardRef.current!.isCurrent(seq)) {
+          setEvaluation({ loading: false, error: true, result: null, forKey: evalKey });
+        }
+      });
   }
 
   // Resumo de fim de EXERCÍCIO — incondicional (independe de
   // `perSetAiEnabled`), disparado quando a última série do exercício é salva.
   function runExerciseSummary(exerciseId: number) {
     if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
+    const seq = summaryGuardRef.current!.begin();
     setExerciseSummary({ loading: true, error: false, result: null });
     fetchWorkoutAiResult<ExerciseSummaryResult>(`/exercises/${exerciseId}/summarize`, { method: 'POST' })
-      .then((result) => setExerciseSummary({ loading: false, error: false, result }))
-      .catch(() => setExerciseSummary({ loading: false, error: true, result: null }));
+      .then((result) => {
+        if (summaryGuardRef.current!.isCurrent(seq)) setExerciseSummary({ loading: false, error: false, result });
+      })
+      .catch(() => {
+        if (summaryGuardRef.current!.isCurrent(seq)) setExerciseSummary({ loading: false, error: true, result: null });
+      });
+  }
+
+  // Zerar o estado também invalida o pedido em voo (resposta antiga não volta).
+  function resetEvaluation() {
+    evalGuardRef.current!.invalidate();
+    setEvaluation(IDLE_EVALUATION);
+  }
+
+  function resetExerciseSummary() {
+    summaryGuardRef.current!.invalidate();
+    setExerciseSummary(IDLE_SUMMARY);
   }
 
   // Ao fim da ÚLTIMA série de um exercício, zerar o cronômetro NÃO avança
@@ -1853,7 +1969,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     endRest();
     // `evaluation` NÃO é limpo aqui: a sugestão numérica precisa sobreviver
     // até o `SetLoggerCard` da próxima série usá-la como default.
-    setExerciseSummary(IDLE_SUMMARY);
+    resetExerciseSummary();
   }
 
   function openSkipModalFor(workoutPlanExerciseId: number | null | undefined) {
@@ -2569,7 +2685,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     setIntensiveCorrectionError(null);
     intensiveDispatch({ type: 'FINISH' });
     if (!hadRecords) return;
-    setEvaluation(IDLE_EVALUATION);
+    resetEvaluation();
     setLastSavedSet(null);
     if (current.loggedRow) runExerciseSummary(current.loggedRow.id);
     beginRest({
@@ -2703,6 +2819,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             </div>
           )}
           <RestSavedSetPanel
+            // Rascunho e erro de um descanso nunca passam para o seguinte.
+            key={restSetEdit?.token ?? 'sem-edicao'}
             view={restSavedSetView({
               setSaved: restSetSaved,
               saved: lastSavedSet?.saved,
@@ -2711,6 +2829,16 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             })}
             // A carga da próxima série já está no relógio: aqui não se repete.
             loadShownElsewhere={nextSetPreview?.weightKg != null}
+            edit={
+              restSetEdit
+                ? {
+                    values: restSetEdit.values,
+                    weightUnit,
+                    loadIncrementKg,
+                    onSave: handleRestSetEditSave,
+                  }
+                : null
+            }
           />
           <RestAiEvaluationCard
             enabled={perSetAiEnabled}
