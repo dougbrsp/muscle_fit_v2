@@ -56,6 +56,8 @@ BLOQUEADOS_BASH = [
     f"{DECISOR} && gh pr merge 5 && gh pr checks 6 --watch && gh pr merge 6",
     f"{DECISOR} && gh pr checks 5 --watch && gh pr merge 5",
     "gh pr merge 5 && gh pr checks 5 --watch",
+    f"{DECISOR} & gh pr merge 5",
+    "gh pr checks 5 --json bucket --jq='all(.[]; .bucket==\"pass\")' && gh pr merge 5",
 ]
 
 PERMITIDOS_BASH = [

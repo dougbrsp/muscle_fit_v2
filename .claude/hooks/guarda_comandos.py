@@ -11,9 +11,9 @@ Bloqueia (exit 2 + mensagem em stderr):
   4. `gh pr merge` no mesmo comando que `gh pr checks ... |` (o #430 foi
      mesclado com plan vermelho em 08/10: o pipe engole o exit status), ou
      que um `gh pr checks` que nao decide: com `gh pr checks` no comando, cada
-     merge so passa se a cadeia ininterrupta de `&&` que chega nele comecar num
-     `gh pr checks` com `--jq`/`-q` contendo `error(` (so o exit 1 do `error()`
-     decide; `--json`/`--watch` saem com 0 com check pendente ou vermelho).
+     merge so passa se, na cadeia ininterrupta de `&&` que chega nele, o
+     `gh pr checks` mais proximo do merge tiver `--jq`/`-q` contendo `error(`
+     (so o exit 1 do `error()` decide; `--json`/`--watch` saem com 0 com check pendente ou vermelho).
 
 Como casa: o comando e quebrado em segmentos (`;`, `&&`, `||`, `|`, `&`,
 nova linha, `(`, `)`, `{`, `}`, `$(`), respeitando aspas e pulando o corpo de
@@ -331,8 +331,8 @@ MSG_GH = (
     "BLOQUEADO: `gh pr merge` no mesmo comando que `gh pr checks`, por um destes motivos:\n"
     "  1. `gh pr checks ... |`: o pipe engole o exit status dos checks e o merge acontece com check "
     "vermelho (foi assim que o #430 entrou com plan vermelho em 08/10);\n"
-    "  2. o `gh pr checks` nao decide no mesmo comando do merge: o merge so passa se a cadeia de `&&` "
-    "que chega nele, o `gh pr checks` mais proximo tem de ter `--jq`/`-q` cujo valor contenha "
+    "  2. o `gh pr checks` nao decide no mesmo comando do merge: o merge so passa se, na cadeia de `&&` "
+    "que chega nele, o `gh pr checks` mais proximo tiver `--jq`/`-q` cujo valor contenha "
     "`error(`. Espera (`--watch`) e conferencia do head podem vir antes, na mesma cadeia.\n"
     "Decida com o exit status deste comando (sai com 0 e imprime VERDE so com todos os checks em "
     "pass/skipping; sai com 1 caso contrario):\n"
