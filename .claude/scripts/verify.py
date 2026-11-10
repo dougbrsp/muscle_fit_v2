@@ -15,6 +15,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT = 105
+# Suite de hooks: ~200-235 s com 189 testes (2026-11-10); limite externo de 900 s no ship.py.
+HOOKS_TIMEOUT = 600
 
 
 def run(argv: list[str], cwd: Path = ROOT, timeout: int = TIMEOUT) -> bool:
@@ -108,7 +110,7 @@ def main() -> int:
     # .claude changes -> run preservation regression tests for safety hooks.
     if any(x.startswith('.claude/') for x in changed):
         if not run([sys.executable,'-m','pytest','-q','--tb=line','-p','no:cacheprovider',
-                    '.claude/hooks/tests'],timeout=240):ok=False
+                    '.claude/hooks/tests'],timeout=HOOKS_TIMEOUT):ok=False
     if backend:
         if shutil.which('ruff') is None:
             print('[gate] ruff não instalado; instale-o ou rode no ambiente do projeto.',file=sys.stderr);ok=False
