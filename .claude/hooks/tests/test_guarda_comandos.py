@@ -8,6 +8,11 @@ from conftest import rodar_hook
 
 import guarda_comandos as g
 
+DECISOR = (
+    "gh pr checks 5 --json bucket --jq 'if length > 0 and all(.[]; .bucket == \"pass\" or "
+    ".bucket == \"skipping\") then \"VERDE\" else error(\"checks nao verdes\") end'"
+)
+
 BLOQUEADOS_BASH = [
     "terraform apply",
     "terraform apply -auto-approve",
@@ -37,6 +42,20 @@ BLOQUEADOS_BASH = [
     "gh pr checks 5 | tail -3 && gh pr merge 5 --merge",
     "gh pr checks 430 | grep -v pass; gh pr merge 430 --squash",
     "gh pr checks 5 | tail\ngh pr merge 5",
+    "gh pr checks 5 --watch && gh pr merge 5",
+    "gh pr checks 5 --json name,bucket --jq 'all(.[]; .bucket==\"pass\")' && gh pr merge 5",
+    "gh pr checks 5 || gh pr merge 5",
+    "gh pr checks 5; gh pr merge 5",
+    "gh pr checks 5\ngh pr merge 5",
+    f"{DECISOR}; gh pr merge 5",
+    f"{DECISOR} || gh pr merge 5",
+    f"{DECISOR} | tail && gh pr merge 5",
+    f"{DECISOR}\ngh pr merge 5",
+    f"{DECISOR} ; gh pr view 5 && gh pr merge 5",
+    "bash -c \"gh pr checks 5 --watch && gh pr merge 5\"",
+    f"{DECISOR} && gh pr merge 5 && gh pr checks 6 --watch && gh pr merge 6",
+    f"{DECISOR} && gh pr checks 5 --watch && gh pr merge 5",
+    "gh pr merge 5 && gh pr checks 5 --watch",
 ]
 
 PERMITIDOS_BASH = [
@@ -59,11 +78,17 @@ PERMITIDOS_BASH = [
     "aws s3 cp s3://bucket/key -",
     "aws --profile musclefit lambda get-function --function-name x",
     "aws ec2 describe-instances --region us-east-1",
-    "gh pr checks 5 --watch && gh pr merge 5",
-    "gh pr checks 5 --json name,bucket --jq 'all(.[]; .bucket==\"pass\")' && gh pr merge 5",
-    "gh pr checks 5 --json bucket --jq 'if length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\") then \"VERDE\" else error(\"checks nao verdes\") end' && gh pr merge 5",
+    f"{DECISOR} && gh pr merge 5",
+    f"{DECISOR} && gh pr view 5 --json headRefOid && gh pr merge 5",
+    f"gh pr checks 5 --watch && {DECISOR} && gh pr merge 5",
+    f"gh pr view 5 --json headRefOid && {DECISOR} && gh pr merge 5",
+    f"gh pr checks 5 --watch && gh pr view 5 --json headRefOid && {DECISOR} && gh pr merge 5",
+    f"gh pr checks 5 --watch; {DECISOR} && gh pr merge 5",
+    f"gh pr checks 5 --watch\n{DECISOR} && gh pr merge 5 --merge",
+    "gh pr checks 5 --json bucket -q 'if length > 0 then \"V\" else error(\"x\") end' && gh pr merge 5",
+    "gh pr checks 5 --json bucket --jq='if length > 0 then \"V\" else error(\"x\") end' && gh pr merge 5",
     "gh pr checks 5 | tail -3",
-    "gh pr checks 5 || gh pr merge 5",
+    "gh pr checks 5 --watch",
     "gh pr merge 5 --merge",
     "echo terraform apply",
     "grep -rn 'terraform apply' docs/",
@@ -103,6 +128,9 @@ def test_bash_permitidos(cmd: str) -> None:
         "Set-Location infra; terraform apply",
         "aws.exe lambda update-function-code --function-name x",
         "gh pr checks 5 | Select-Object -Last 3; gh pr merge 5",
+        "gh pr checks 5 --watch; gh pr merge 5",
+        "gh pr checks 5 --watch && gh pr merge 5",
+        f"{DECISOR}; gh pr merge 5",
         'powershell -Command "terraform apply"',
     ],
 )
@@ -118,6 +146,10 @@ def test_powershell_bloqueados(cmd: str) -> None:
         "Get-ChildItem C:\\muscle_fit\\infra",
         "aws lambda list-functions --profile musclefit",
         "terraform plan",
+        "gh pr checks 5 | Select-Object -Last 3",
+        "gh pr merge 5 --merge",
+        # o lexer trata `&&` igual no PowerShell (o 5.1 nao tem `&&`; o 7+ tem)
+        f"{DECISOR} && gh pr merge 5",
     ],
 )
 def test_powershell_permitidos(cmd: str) -> None:
