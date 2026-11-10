@@ -140,7 +140,7 @@ type SteppedFieldProps = {
 // o rótulo à esquerda (ver `.fieldGrid` no CSS). Valor editável direto no
 // input. Passos, limites e precisão chegam prontos de quem chama — nada muda
 // aqui.
-function SteppedField({
+export function SteppedField({
   label,
   accessibleName,
   labelSuffix,

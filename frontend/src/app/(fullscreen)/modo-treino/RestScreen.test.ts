@@ -7,7 +7,7 @@ import { restSavedSetView } from '@/lib/workout-mode-rest-view';
 import { theme } from '@/theme';
 import { MuscleMapDisclosure } from './MuscleMapDisclosure';
 import { LastExerciseNotice, NextExercisePreviewCard } from './NextExercisePreviewCard';
-import { RestAiEvaluationCard, RestSavedSetPanel } from './RestRecommendation';
+import { RestAiEvaluationCard, RestSavedSetPanel, type RestSetEditProps } from './RestRecommendation';
 import { RestTimerHero } from './RestTimer';
 
 function render(element: ReactElement): string {
@@ -150,6 +150,97 @@ describe('Série salva + recomendação', () => {
       }),
     );
     expect(html).toContain('→ 47.5 kg');
+  });
+});
+
+describe('Série salva: edição da série executada', () => {
+  const saved = { intensity_status: 'BELOW_TARGET', intensity_status_label: 'Esforço abaixo do alvo' };
+  const edit: RestSetEditProps = {
+    values: { reps: 10, weight_kg: 32.5, rpe: 8 },
+    weightUnit: 'kg',
+    onSave: async () => {},
+  };
+  const view = (setSaved: boolean) =>
+    restSavedSetView({ setSaved, saved, isExerciseTransition: false, weightUnit: 'kg' });
+
+  it('mostra reps, carga e RPE gravados e o botão Editar; editor fechado', () => {
+    const html = render(createElement(RestSavedSetPanel, { view: view(true), edit }));
+    expect(html).toContain('data-testid="set-saved-chip"');
+    expect(html).toContain('10 reps · 32.5 kg · RPE 8');
+    expect(html).toContain('data-testid="rest-set-edit-open"');
+    expect(html).not.toContain('data-testid="rest-set-editor"');
+  });
+
+  it('carga na unidade do usuário (lb)', () => {
+    const html = render(
+      createElement(RestSavedSetPanel, {
+        view: restSavedSetView({ setSaved: true, saved, isExerciseTransition: false, weightUnit: 'lb' }),
+        edit: { ...edit, weightUnit: 'lb' },
+      }),
+    );
+    expect(html).toContain('71.7 lb');
+  });
+
+  it('transição de exercício: continua com a série e o Editar', () => {
+    const html = render(
+      createElement(RestSavedSetPanel, {
+        view: restSavedSetView({ setSaved: true, saved, isExerciseTransition: true, weightUnit: 'kg' }),
+        edit,
+      }),
+    );
+    expect(html).toContain('data-testid="rest-set-edit-open"');
+    expect(html).not.toContain('data-testid="engine-next-set"');
+  });
+
+  it('série na fila offline: mostra a série (valores novos) sem o chip "Série salva"', () => {
+    const html = render(
+      createElement(RestSavedSetPanel, {
+        view: view(false),
+        edit: { ...edit, values: { reps: 12, weight_kg: 35, rpe: 8 } },
+      }),
+    );
+    expect(html).not.toContain('data-testid="set-saved-chip"');
+    expect(html).toContain('12 reps · 35 kg · RPE 8');
+  });
+
+  it('sem edição (fora do escopo): nenhum botão Editar', () => {
+    const html = render(createElement(RestSavedSetPanel, { view: view(true) }));
+    expect(html).not.toContain('rest-set-edit');
+  });
+
+  it('editor aberto: reps, carga, RPE, Salvar e Cancelar com os valores gravados', () => {
+    const html = render(createElement(RestSavedSetPanel, { view: view(true), edit: { ...edit, startOpen: true } }));
+    expect(html).toContain('data-testid="rest-set-editor"');
+    expect(html).toContain('Diminuir Reps');
+    expect(html).toContain('Aumentar Carga (kg)');
+    expect(html).toContain('Aumentar RPE');
+    expect(html).toContain('data-testid="rest-set-edit-save"');
+    expect(html).toContain('data-testid="rest-set-edit-cancel"');
+    expect(html).toContain('value="32.5"');
+    expect(html).not.toContain('data-testid="rest-set-edit-open"');
+  });
+
+  it('erro de PATCH aparece no editor e os valores mostrados seguem os gravados', () => {
+    const html = render(
+      createElement(RestSavedSetPanel, {
+        view: view(true),
+        edit: { ...edit, startOpen: true, initialError: 'O treino já foi finalizado: corrija a série pelo histórico.' },
+      }),
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('O treino já foi finalizado: corrija a série pelo histórico.');
+    expect(html).toContain('10 reps · 32.5 kg · RPE 8');
+  });
+
+  it('sucesso: o card mostra os valores já aplicados (props novas) e o editor fecha', () => {
+    const html = render(
+      createElement(RestSavedSetPanel, {
+        view: view(true),
+        edit: { ...edit, values: { reps: 12, weight_kg: 35, rpe: 9 } },
+      }),
+    );
+    expect(html).toContain('12 reps · 35 kg · RPE 9');
+    expect(html).not.toContain('data-testid="rest-set-editor"');
   });
 });
 

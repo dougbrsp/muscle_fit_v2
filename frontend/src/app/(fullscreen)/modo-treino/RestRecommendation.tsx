@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader } from '@mantine/core';
+import { Button, Loader } from '@mantine/core';
 import {
   IconAlertTriangle,
   IconCircleCheck,
@@ -9,12 +9,22 @@ import {
   IconTrendingDown,
   IconTrendingUp,
 } from '@tabler/icons-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { loadAdjustmentText } from '@/lib/set-engine-status';
+import { DISPLAY_DECIMALS, loadStepperStep, type WeightUnit } from '@/lib/weight-units';
+import {
+  restSetDraftFrom,
+  restSetPatchBody,
+  restSetSummary,
+  type RestSetDraft,
+  type RestSetPatchBody,
+  type RestSetValues,
+} from '@/lib/workout-mode-rest-set-edit';
 import { aiTipView } from '@/lib/workout-mode-execution-view';
 import type { RestSavedSetView } from '@/lib/workout-mode-rest-view';
 import type { SetEvaluationResult } from '@/lib/workout-mode-types';
 import { BRAND, WORKOUT_MODE_TOKENS } from '@/theme';
+import { SteppedField } from './SetLoggerCard';
 import { ClampText } from './ui/ClampText';
 import { StatusChip } from './ui/StatusChip';
 import styles from './workout-mode.module.css';
@@ -25,6 +35,136 @@ function mantineColor(name: string): string {
 }
 
 const DIRECTION_ICONS = { UP: IconTrendingUp, HOLD: IconEqual, DOWN: IconTrendingDown } as const;
+
+/** Edição da série executada no descanso (reps, carga, RPE). */
+export type RestSetEditProps = {
+  /** Valores gravados (carga em kg). */
+  values: RestSetValues;
+  weightUnit: WeightUnit;
+  loadIncrementKg?: number | null;
+  /** Envia só o corpo alterado; rejeita com `Error(mensagem)` quando falha. */
+  onSave: (body: RestSetPatchBody) => Promise<void>;
+  /** Só para teste de renderização estática. */
+  startOpen?: boolean;
+  initialError?: string | null;
+};
+
+/**
+ * Resumo da série gravada + botão "Editar" + editor inline. O relógio do
+ * descanso não depende deste componente: continua correndo com o editor
+ * aberto. Erro fica no editor e os valores mostrados seguem os gravados.
+ */
+export function RestSavedSetEditor({
+  values,
+  weightUnit,
+  loadIncrementKg,
+  onSave,
+  startOpen = false,
+  initialError = null,
+}: RestSetEditProps) {
+  const [editing, setEditing] = useState(startOpen);
+  const [draft, setDraft] = useState<RestSetDraft>(() => restSetDraftFrom(values, weightUnit));
+  const [saving, setSaving] = useState(false);
+  // Trava síncrona: `saving` só vale após o re-render (duplo toque reenviaria).
+  const savingRef = useRef(false);
+  const [error, setError] = useState<string | null>(initialError);
+  const summary = restSetSummary(values, weightUnit);
+
+  function open() {
+    setDraft(restSetDraftFrom(values, weightUnit));
+    setError(null);
+    setEditing(true);
+  }
+
+  async function save() {
+    const body = restSetPatchBody(values, draft, weightUnit);
+    if (Object.keys(body).length === 0) {
+      setEditing(false);
+      return;
+    }
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(body);
+      setEditing(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Não foi possível corrigir a série.');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div data-testid="rest-set-edit">
+      <div className={styles.engineLine}>
+        <span data-testid="rest-set-summary">{summary.text}</span>
+        {!editing && (
+          <button type="button" className={styles.textToggle} onClick={open} data-testid="rest-set-edit-open">
+            Editar
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div role="group" aria-label="Editar série executada" data-testid="rest-set-editor">
+          <div className={styles.fieldGrid}>
+            <SteppedField
+              label="Reps"
+              value={draft.reps}
+              onChange={(value) => setDraft((current) => ({ ...current, reps: value }))}
+              step={1}
+              min={0}
+              decimalScale={0}
+            />
+            <SteppedField
+              label="Carga"
+              accessibleName={`Carga (${weightUnit})`}
+              labelSuffix={<span className={styles.fieldHint}>{weightUnit}</span>}
+              value={draft.weight}
+              onChange={(value) => setDraft((current) => ({ ...current, weight: value }))}
+              step={loadStepperStep(weightUnit, loadIncrementKg)}
+              min={0}
+              decimalScale={DISPLAY_DECIMALS[weightUnit]}
+              suffix=""
+            />
+            <SteppedField
+              label="RPE"
+              value={draft.rpe}
+              onChange={(value) => setDraft((current) => ({ ...current, rpe: value }))}
+              step={0.5}
+              min={0}
+              decimalScale={1}
+            />
+          </div>
+          {error && (
+            <p role="alert" data-testid="rest-set-edit-error" style={{ color: WORKOUT_MODE_TOKENS.danger }}>
+              {error}
+            </p>
+          )}
+          <div className={styles.chipRow}>
+            <Button size="sm" onClick={() => void save()} loading={saving} data-testid="rest-set-edit-save">
+              Salvar
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              disabled={saving}
+              onClick={() => {
+                setEditing(false);
+                setError(null);
+              }}
+              data-testid="rest-set-edit-cancel"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * "SÉRIE SALVA" + selos do motor + a regra do motor para a próxima série
@@ -40,13 +180,16 @@ const DIRECTION_ICONS = { UP: IconTrendingUp, HOLD: IconEqual, DOWN: IconTrendin
 export function RestSavedSetPanel({
   view,
   loadShownElsewhere = false,
+  edit = null,
 }: {
   view: RestSavedSetView;
   loadShownElsewhere?: boolean;
+  /** Série executada + editor; só com série gravada e elegível (ver `canEditRestSet`). */
+  edit?: RestSetEditProps | null;
 }) {
   const [open, setOpen] = useState(false);
   const explanationId = useId();
-  if (!view.showSavedChip && view.badges.length === 0 && !view.engine) return null;
+  if (!view.showSavedChip && view.badges.length === 0 && !view.engine && !edit) return null;
   const engine = view.engine;
   const DirectionIcon = engine?.direction ? DIRECTION_ICONS[engine.direction] : IconEqual;
   const reason = engine?.reason || '';
@@ -69,6 +212,8 @@ export function RestSavedSetPanel({
           ))}
         </div>
       )}
+
+      {edit && <RestSavedSetEditor {...edit} />}
 
       {engine && (
         <div data-testid="engine-next-set">
