@@ -269,9 +269,145 @@ def run(args):
     show(state, tasks)
 
 
+def clean_git_env():
+    # Remove todas as variáveis GIT_* herdadas (GIT_DIR, GIT_CONFIG_*, GIT_AUTHOR_*...); a identidade vem da config.
+    return {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+
+
+# Config fixa: sem hooks, sem assinatura, sem fsmonitor (que executaria comando do repositório).
+SAFE_GIT = ["git", "-c", f"core.hooksPath={os.devnull}", "-c", "commit.gpgsign=false", "-c", "core.fsmonitor=false"]
+
+
+def git_out(*args, cwd, timeout=25):
+    result = subprocess.run([*SAFE_GIT, *args], cwd=cwd, capture_output=True, encoding="utf-8",
+                            env=clean_git_env(), timeout=timeout)
+    require(result.returncode == 0, f"git {args[0]} falhou em {Path(cwd).name}: {result.stderr.strip()[-300:]}")
+    return result.stdout.strip()
+
+
+def run_git(*args, cwd, stdin=""):
+    result = subprocess.run([*SAFE_GIT, *args], cwd=cwd, input=stdin, capture_output=True, encoding="utf-8",
+                            env=clean_git_env(), timeout=60)
+    require(result.returncode == 0, f"git {args[0]} falhou em {cwd.name}: {result.stderr.strip()[-300:]}")
+
+
+def real(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
+def git_try(*args, cwd):
+    """Como git_out, mas devolve None em falha (a condição que depende dele vira recusa específica)."""
+    try:
+        result = subprocess.run([*SAFE_GIT, *args], cwd=cwd, capture_output=True, encoding="utf-8",
+                                env=clean_git_env(), timeout=25)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def submodule_name(name, base):
+    """Nome do submódulo cujo path é `name` no .gitmodules da BASE; ausente ou ambíguo recusa."""
+    listed = git_try("config", "--blob", f"{base}:.gitmodules", "--get-regexp", r"^submodule\..*\.path$", cwd=ROOT)
+    wanted = name.replace("\\", "/").rstrip("/")
+    names = []
+    for line in (listed or "").splitlines():
+        key, _, value = line.partition(" ")
+        if value.strip().rstrip("/") == wanted:
+            names.append(key[len("submodule."):-len(".path")])
+    require(len(names) == 1, f"Caminho {name}: nome do submódulo ausente ou ambíguo no .gitmodules da base.")
+    return names[0]
+
+
+def require_registered_submodule(name, path, base):
+    """Só é submódulo commitável o gitlink da base, sem links no caminho, com gitfile para o gitdir exato
+    <gitdir do principal>/modules/<nome>, sem commondir desviando e com core.worktree apontando para o caminho."""
+    why = f"Caminho {name} tem .git mas não é submódulo registrado na base; o report não commita nele."
+    entry = git_out("ls-tree", base, "--", name.rstrip("/"), cwd=ROOT)
+    require(entry.startswith("160000 commit"), why + " (não é gitlink na base)")
+    expected = os.path.normcase(os.path.join(os.path.realpath(ROOT), os.path.normpath(name)))
+    require(real(path) == expected, why + " (caminho com link ou junção)")
+    dotgit = path / ".git"
+    require(not dotgit.is_dir(), why + " (repositório embutido: .git é diretório; não suportado)")
+    require(dotgit.is_file() and not dotgit.is_symlink(), why + " (.git não é um gitfile)")
+    # (d1) gitdir exato modules/<nome>, lido do gitfile e conferido com o que o git resolve
+    main_gitdir = real(git_out("rev-parse", "--absolute-git-dir", cwd=ROOT))
+    wanted_dir = real(os.path.join(main_gitdir, "modules", *submodule_name(name, base).split("/")))
+    text = dotgit.read_text(encoding="utf-8", errors="replace").strip()
+    require(text.startswith("gitdir:"), why + " (gitfile inválido)")
+    gitdir = real(os.path.join(path, text[len("gitdir:"):].strip()))
+    seen = git_try("rev-parse", "--absolute-git-dir", cwd=path)
+    require(gitdir == wanted_dir and seen is not None and real(seen) == wanted_dir,
+            why + " (gitdir não é exatamente modules/<nome> do repositório principal)")
+    # (d2) sem commondir desviando refs/objetos para outro repositório
+    require(not os.path.lexists(os.path.join(gitdir, "commondir")), why + " (commondir presente no gitdir)")
+    # (d4) core.worktree ausente ou igual ao caminho
+    worktree = git_try("config", "--local", "--get", "core.worktree", cwd=path)
+    require(not worktree or real(os.path.join(gitdir, worktree)) == expected,
+            why + " (core.worktree diverge do caminho do submódulo)")
+    # (c) raiz do repositório é o próprio caminho
+    top = git_try("rev-parse", "--show-toplevel", cwd=path)
+    require(top is not None and real(top) == expected, why + " (a raiz do repositório não é o próprio caminho)")
+    common = git_try("rev-parse", "--git-common-dir", cwd=path)
+    require(common is not None and real(os.path.join(path, common)) == gitdir,
+            why + " (git-common-dir difere do gitdir)")
+
+
+def protected_heads(base, skip):
+    """HEAD e todas as refs do principal, mais o HEAD dos demais submódulos registrados (fora da tarefa)."""
+    main = (git_out("rev-parse", "HEAD", cwd=ROOT), git_out("for-each-ref", cwd=ROOT))
+    others = {}
+    for line in git_out("ls-tree", "-r", base, cwd=ROOT).splitlines():
+        if line.startswith("160000 commit"):
+            other = line.split("\t", 1)[1]
+            if other not in skip and (ROOT / other / ".git").exists():
+                others[other] = git_try("rev-parse", "HEAD", cwd=ROOT / other)
+    return main, others
+
+
+def dirty_submodules(files, base):
+    found = []
+    for name in files:
+        path = ROOT / name
+        if path.is_dir() and (path / ".git").exists() and real(path) != real(ROOT):
+            require_registered_submodule(name, path, base)
+            if git_out("status", "--porcelain", cwd=path):
+                found.append((name, path))
+    return found
+
+
+def commit_task_submodules(run_id, task, data, base):
+    message = data.get("submodule_commit_message")
+    require(message is None or nonempty(message), "submodule_commit_message deve ser texto não vazio.")
+    require(message is None or all(c in "\n\t" or (c >= " " and c != "\x7f" and not "\x80" <= c <= "\x9f")
+                                   for c in message),
+            "submodule_commit_message não pode ter NUL nem caracteres de controle além de nova linha e tab.")
+    message = message or f"chore: alterações da tarefa {task['id']} (/ship {run_id})"
+    dirty = dirty_submodules(task["files"], base)
+    for name, path in dirty:  # todas as checagens antes do primeiro commit
+        branch = git_out("branch", "--show-current", cwd=path)
+        require(branch and branch not in PROTECTED_BRANCHES,
+                f"Submódulo {name} em HEAD destacado ou branch protegida; use uma branch de trabalho própria.")
+    if not dirty:
+        return
+    before = protected_heads(base, {name for name, _ in dirty})
+    for name, path in dirty:
+        require_registered_submodule(name, path, base)  # revalida logo antes de escrever
+        run_git("add", "-A", cwd=path)
+        run_git("commit", "-F", "-", cwd=path, stdin=message)
+    require(protected_heads(base, {name for name, _ in dirty}) == before,
+            "o commit do submódulo alterou refs do repositório principal; investigue antes de continuar")
+
+
 def advance(state, tasks, args):
     command, phase = args.command, state["phase"]
     base = state["base"]
+    data = None
+    if command == "report":
+        require(phase == "execute" and state["active"] == args.id, "Resultado sem tarefa ativa correspondente.")
+        data = json_file(args.file)
+        require(isinstance(data, dict) and data.get("status") in {"done", "blocked"}
+                and nonempty(data.get("evidence")), "Resultado exige status (done ou blocked) e evidence.")
+        commit_task_submodules(state["id"], tasks[args.id], data, base)
     current = snapshot(base)
     if command != "report":
         require(current == state["known"], "Diff divergiu do checkpoint. Investigue antes de continuar.")
@@ -292,10 +428,6 @@ def advance(state, tasks, args):
                 "Tarefa indisponível ou dependências incompletas.")
         state["active"] = args.id
     elif command == "report":
-        require(phase == "execute" and state["active"] == args.id, "Resultado sem tarefa ativa correspondente.")
-        data = json_file(args.file)
-        require(isinstance(data, dict) and data.get("status") in {"done", "blocked"}
-                and nonempty(data.get("evidence")), "Resultado exige status (done ou blocked) e evidence.")
         touched = {key for key in current.keys() | state["known"].keys()
                    if current.get(key) != state["known"].get(key)}
         outside = touched - set(tasks[args.id]["files"])

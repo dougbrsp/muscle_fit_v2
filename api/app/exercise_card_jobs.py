@@ -12,11 +12,13 @@ valida dono); o `job_id` fica gravado na geracao para diagnostico.
 V3 (cards fotorrealistas, 2026-11-06) - DUAS chamadas sequenciais a OpenAI:
 
     fotos de referencia do admin (`exercise_card_references`, ate 3, S3)
-    cena 1: generate_image(prompt da posicao inicial, referencias)
+    logo p/ estampa (musclefit-logo-estampa.png, achatado, carregado ANTES da
+            OpenAI; ausente -> FAILED CARD_COMPOSITION_FAILED sem custo)
+    cena 1: generate_image(prompt da posicao inicial, [referencias, logo])
             -> grava `scene1.png` (crua, paga)
     orcamento: ainda cabe o pior caso da cena 2 + composicao?
             -> nao: FAILED `TIME_BUDGET_EXCEEDED` com o custo da cena 1
-    cena 2: generate_image(prompt da posicao final, [cena 1 em JPEG, referencias])
+    cena 2: generate_image(prompt da posicao final, [cena 1 em JPEG, referencias, logo])
             -> grava `scene2.png` (crua, paga)
     `exercise_card_composer.compose_card_v3` -> grava `preview.png` (o card)
     GENERATED com o custo e os tokens SOMADOS das duas chamadas
@@ -279,6 +281,21 @@ def _compose(scene_start: bytes, scene_end: bytes, context: card_prompt.Exercise
         raise _StepFailure(svc.ERROR_CARD_COMPOSITION_FAILED, f"Composicao do card falhou: {type(exc).__name__}") from exc
 
 
+def _load_stamp_logo() -> bytes:
+    """Logo para estampa (ultima imagem de entrada das duas cenas). Roda ANTES
+    de qualquer chamada paga: asset ausente/ilegivel falha cedo, sem consumir
+    a OpenAI. Import tardio (Pillow so no worker)."""
+    try:
+        from . import exercise_card_processor as processor
+
+        return processor.load_stamp_logo_png()
+    except Exception as exc:  # noqa: BLE001 - falha cedo, nunca deixa a linha presa
+        logger.exception("Logo para estampa indisponivel")
+        raise _StepFailure(
+            svc.ERROR_CARD_COMPOSITION_FAILED, f"Logo para estampa indisponivel: {type(exc).__name__}"
+        ) from exc
+
+
 def _read_references(
     generation_id: int, rows: Sequence[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], list[bytes]]:
@@ -366,6 +383,9 @@ def run_generation_job(payload: dict[str, Any]) -> dict[str, Any]:
         reference_rows, reference_images = _read_references(generation_id, reference_rows)
         reference_ids = [int(ref["id"]) for ref in reference_rows]
 
+        stage = "stamp_logo"
+        stamp_logo = _load_stamp_logo()
+
         stage = "prompt"
         try:
             prompts = card_prompt.build_scene_prompts(
@@ -390,7 +410,9 @@ def run_generation_job(payload: dict[str, Any]) -> dict[str, Any]:
 
         stage = "openai_scene1"
         started = _monotonic()
-        scene_start = openai_client.generate_image(prompts.start, reference_images=reference_images, **image_options)
+        scene_start = openai_client.generate_image(
+            prompts.start, reference_images=[*reference_images, stamp_logo], **image_options
+        )
         latency_scene1_ms = int((_monotonic() - started) * 1000)
         paid.append(scene_start)
 
@@ -412,7 +434,7 @@ def run_generation_job(payload: dict[str, Any]) -> dict[str, Any]:
         stage = "openai_scene2"
         started = _monotonic()
         scene_end = openai_client.generate_image(
-            prompts.end, reference_images=[scene_start_jpeg, *reference_images], **image_options
+            prompts.end, reference_images=[scene_start_jpeg, *reference_images, stamp_logo], **image_options
         )
         latency_scene2_ms = int((_monotonic() - started) * 1000)
         paid.append(scene_end)

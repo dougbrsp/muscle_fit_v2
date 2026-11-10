@@ -41,6 +41,7 @@ from PIL import Image
 from app import async_jobs, openai_client
 from app import exercise_card_composer as composer
 from app import exercise_card_jobs as jobs
+from app import exercise_card_processor as processor
 from app import exercise_card_service as svc
 from app import exercise_card_storage as storage
 from app import exercise_cards
@@ -343,8 +344,10 @@ def test_fotos_de_referencia_ativas_vao_para_as_duas_cenas(seed, backend, raw, f
     raw.commit()
     gid = _gerar(_client(seed["admin"]), fakes)
     assert _row(raw, gid)["status"] == "GENERATED", backend
-    assert fakes["references"][0] == fotos, backend
-    assert fakes["references"][1][0].startswith(b"\xff\xd8\xff") and fakes["references"][1][1:] == fotos
+    # O logo para estampa e SEMPRE a ultima imagem de entrada, nas duas cenas.
+    logo = processor.load_stamp_logo_png()
+    assert fakes["references"][0] == [*fotos, logo], backend
+    assert fakes["references"][1][0].startswith(b"\xff\xd8\xff") and fakes["references"][1][1:] == [*fotos, logo]
 
 
 def test_409_com_geracao_viva_e_replay_200(seed, backend, raw, fakes):
