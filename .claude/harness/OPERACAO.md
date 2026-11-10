@@ -64,7 +64,7 @@ Mantenha entradas JSON em `.claude/local-state/ship-input/`. O diretório `ship/
 }
 ```
 
-Valores de `risks`: `motores`, `producao` e `seguranca`. O grafo acrescenta revisores por caminhos de risco conhecidos. Classifique também mudanças semânticas que apareçam em consumidores, telas e prompts. Cada caminho exato pertence a uma tarefa. Em renomeação, inclua caminho antigo e novo. Atribua alterações de submódulo pelo caminho do gitlink e valide o trabalho no repositório do submódulo.
+Valores de `risks`: `motores`, `producao` e `seguranca`. O grafo acrescenta revisores por caminhos de risco conhecidos. Classifique também mudanças semânticas que apareçam em consumidores, telas e prompts. Cada caminho exato pertence a uma tarefa. Em renomeação, inclua caminho antigo e novo. Atribua alterações de submódulo pelo caminho do gitlink e valide o trabalho no repositório do submódulo. O autor deixa o submódulo numa branch de trabalho própria, sem commitar (o `report` recusa HEAD destacado e `main`, `master` ou `develop`), e o `report` faz o commit local dos submódulos sujos da tarefa, sem hooks do git, com a mensagem de `submodule_commit_message` do resultado ou uma padrão com o ID do run e da tarefa. O `report` só commita submódulo já registrado (gitlink) na base do run e recusa qualquer outro caminho com `.git`; o commit leva tudo que não estiver no `.gitignore` do submódulo (`git add -A`), então o autor deixa nele só o que deve ser publicado. O `report` também confere que o gitdir é exatamente `modules/<nome>` do repositório principal (sem `commondir` e com `core.worktree` apontando para o caminho) e que o commit não alterou refs do principal; em worktree linkado ou submódulo com repositório embutido (`.git` diretório) ele recusa o commit, pois não é suportado. O push da branch do submódulo acontece na publicação.
 
 Opcionalmente inclua `gate` no plano ou registre depois com `gate <arquivo>`. A escolha registrada deve ser repassada às tarefas afetadas.
 
@@ -83,7 +83,7 @@ O Tech Lead apresenta `confirmations.gate` com o formulário nativo `AskUserQues
 |---|---|
 | `start plano.json` | DAG válido, branch e base limpas. Só um run por checkout |
 | `status` | Estado, tarefas prontas, formulários, decisões, revisores, recibos e evidências |
-| `claim ID` e `report ID resultado.json` | Início e fim do autor. Resultado contém `status` (`done` ou `blocked`) e `evidence` |
+| `claim ID` e `report ID resultado.json` | Início e fim do autor. Resultado contém `status` (`done` ou `blocked`), `evidence` e, opcional, `submodule_commit_message`; o `report` commita localmente os submódulos sujos da tarefa |
 | `review` e `verdict REVISOR parecer.json` | Parecer sobre a revisão congelada. Informe `revision`, `agent_id` observado em recibo, `status` (`pass`, `changes`, `blocked`) e `evidence` |
 | `verify testes.json` | Roda `verify.py` e registra exit code e log. O manifesto contém `backend_tests` e `frontend_tests` como listas de caminhos relativos |
 | `rework ID [ID ...]` | Reabre apenas os autores afetados. Revisa e verifica o diff inteiro novamente |
