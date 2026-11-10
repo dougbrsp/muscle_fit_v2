@@ -278,7 +278,7 @@ Cada módulo é dono único de uma regra (ver FONTES_DA_VERDADE). Sem I/O, excet
 - `api/tests/`: rodar sempre de `api/`. `conftest.py` força `DB_BACKEND=pymysql`; integração cria schema único `musclefit_run<token>_test` e limpa órfãos. Markers: `integration`, `dataapi`, `slow`, `llm_eval` (os dois últimos fora por padrão).
 - **Guarda**: `tests/unit/test_guarda_fontes_da_verdade.py` (ratchet de >35 padrões sobre `api/app`, `frontend/src` e `api/privado/rag/markdown` (submódulo privado); allowlist só encolhe).
 - Evals: `tests/unit/test_package_eval.py` (determinístico, todo PR) e `tests/eval/` (`llm_eval`, pago).
-- `.claude/hooks/`: `guarda_comandos.py` (bloqueia terraform apply, aws mutável, worktree remove com junction, merge com pipe em `gh pr checks`), `guarda_arquivos.py` (locks e openclaw), `pos_edicao_python.py` (ruff + guarda quando o arquivo é dono no mapa).
+- `.claude/hooks/`: `guarda_comandos.py` (bloqueia terraform apply, aws mutável, worktree remove com junction, merge com pipe em `gh pr checks` ou sem `gh pr checks` decisor, com `--jq`/`-q` contendo `error(`, encadeado por `&&` ao merge), `guarda_arquivos.py` (locks e openclaw), `pos_edicao_python.py` (ruff + guarda quando o arquivo é dono no mapa).
 
 ## Fluxos de dados
 

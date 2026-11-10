@@ -9,7 +9,11 @@ Bloqueia (exit 2 + mensagem em stderr):
   3. `aws <servico> <operacao mutavel>` (create-/delete-/put-/update-/...,
      `s3 cp|mv|sync` com destino s3://, `s3 rm`). Leitura passa.
   4. `gh pr merge` no mesmo comando que `gh pr checks ... |` (o #430 foi
-     mesclado com plan vermelho em 08/10: o pipe engole o exit status).
+     mesclado com plan vermelho em 08/10: o pipe engole o exit status), ou
+     que um `gh pr checks` que nao decide: com `gh pr checks` no comando, cada
+     merge so passa se a cadeia ininterrupta de `&&` que chega nele comecar num
+     `gh pr checks` com `--jq`/`-q` contendo `error(` (so o exit 1 do `error()`
+     decide; `--json`/`--watch` saem com 0 com check pendente ou vermelho).
 
 Como casa: o comando e quebrado em segmentos (`;`, `&&`, `||`, `|`, `&`,
 nova linha, `(`, `)`, `{`, `}`, `$(`), respeitando aspas e pulando o corpo de
@@ -324,9 +328,12 @@ MSG_AWS = (
 )
 
 MSG_GH = (
-    "BLOQUEADO: `gh pr merge` no mesmo comando que `gh pr checks ... |`.\n"
-    "O pipe engole o exit status dos checks e o merge acontece com check vermelho (foi assim que o "
-    "#430 entrou com plan vermelho em 08/10).\n"
+    "BLOQUEADO: `gh pr merge` no mesmo comando que `gh pr checks`, por um destes motivos:\n"
+    "  1. `gh pr checks ... |`: o pipe engole o exit status dos checks e o merge acontece com check "
+    "vermelho (foi assim que o #430 entrou com plan vermelho em 08/10);\n"
+    "  2. o `gh pr checks` nao decide no mesmo comando do merge: o merge so passa se a cadeia de `&&` "
+    "que chega nele, o `gh pr checks` mais proximo tem de ter `--jq`/`-q` cujo valor contenha "
+    "`error(`. Espera (`--watch`) e conferencia do head podem vir antes, na mesma cadeia.\n"
     "Decida com o exit status deste comando (sai com 0 e imprime VERDE so com todos os checks em "
     "pass/skipping; sai com 1 caso contrario):\n"
     "  gh pr checks <n> --json bucket --jq 'if length > 0 and all(.[]; .bucket == \"pass\" or "
@@ -451,6 +458,48 @@ def _regra_worktree(palavras: list[str], cwd: str | None, projeto: str | None) -
     return None
 
 
+def _gh_pr(palavras: list[str], sub: str) -> bool:
+    if _exe(palavras[0]) != "gh":
+        return False
+    return [p for p in palavras[1:] if not p.startswith("-")][:2] == ["pr", sub]
+
+
+def _checks_decisor(palavras: list[str]) -> bool:
+    """`gh pr checks` cujo --jq/-q tem `error(` (so isso faz o exit status decidir)."""
+    for k, p in enumerate(palavras):
+        if p in ("--jq", "-q") and k + 1 < len(palavras) and "error(" in palavras[k + 1]:
+            return True
+        if p.startswith("--jq=") and "error(" in p:
+            return True
+    return False
+
+
+def _merge_sem_decisao(segs: list[tuple[list[str], str]]) -> bool:
+    """Ha `gh pr checks` junto de `gh pr merge` e algum merge nao vem de um checks decisor.
+
+    O `sep` de cada segmento e o separador DEPOIS dele. A cadeia do merge sobe
+    enquanto o separador anterior for `&&`; nela, o `gh pr checks` MAIS PROXIMO
+    do merge tem de existir e ser decisor (espera/conferencia de head antes valem).
+    """
+    if not any(_gh_pr(p, "checks") for p, _ in segs):
+        return False
+    for i, (palavras, _) in enumerate(segs):
+        if not _gh_pr(palavras, "merge"):
+            continue
+        proximo: list[str] | None = None
+        k = i
+        while True:
+            if k < i and _gh_pr(segs[k][0], "checks"):
+                proximo = segs[k][0]
+                break
+            if k == 0 or segs[k - 1][1] != "&&":
+                break
+            k -= 1
+        if proximo is None or not _checks_decisor(proximo):
+            return True
+    return False
+
+
 def avaliar(comando: str, powershell: bool = False, cwd: str | None = None, projeto: str | None = None) -> str | None:
     """Devolve a mensagem de bloqueio, ou None se o comando pode seguir."""
     segs = _expande(comando, powershell)
@@ -476,7 +525,7 @@ def avaliar(comando: str, powershell: bool = False, cwd: str | None = None, proj
                 tem_merge = True
             if pos[:2] == ["pr", "checks"] and sep == "|":
                 checks_com_pipe = True
-    if tem_merge and checks_com_pipe:
+    if tem_merge and (checks_com_pipe or _merge_sem_decisao(segs)):
         return MSG_GH
     return None
 

@@ -17,7 +17,7 @@ nunca trava o trabalho). Comando: `python "$CLAUDE_PROJECT_DIR/.claude/hooks/<sc
 | `guarda_comandos.py` | PreToolUse `Bash\|PowerShell` | `git worktree remove <wt>` com `<wt>/frontend/node_modules` existente (junction, link ou pasta) | junction apagou o node_modules do usuario em 22/09 e 04/10 |
 | | | `terraform apply\|destroy\|import`, `terraform state rm\|mv` (init/plan/validate/fmt passam) | regra: infra so via PR, quem aplica e o pipeline |
 | | | `aws <servico> <op>` mutavel (`create-`, `delete-`, `put-`, `update-`, `attach-`, `detach-`, `modify-`, `remove-`, `add-`, `tag-`, `untag-`, `invoke`, `start-`, `stop-`, `terminate-`, `run-instances`, `publish`, `set-`, `reboot-`, `restore-`); `s3 rm\|mb\|rb`; `s3 cp\|sync` com destino `s3://`; `s3 mv` envolvendo `s3://` | regra: escrita na AWS so via PR/pipeline (excecao: o usuario roda `! <comando>`) |
-| | | `gh pr merge` no mesmo comando que `gh pr checks ... \|` | #430 mesclado com plan vermelho em 08/10 |
+| | | `gh pr merge` no mesmo comando que `gh pr checks ... \|`, ou que um `gh pr checks` sem decisão: com `gh pr checks` no comando, o merge só passa se o `gh pr checks` mais próximo na cadeia de `&&` que chega nele tiver `--jq`/`-q` contendo `error(` | #430 mesclado com plan vermelho em 08/10 |
 | `guarda_arquivos.py` | PreToolUse `Edit\|Write\|MultiEdit\|NotebookEdit` | `api/requirements*.txt` (lock do pip-compile: editar o `.in` e rodar `sh api/scripts/lock-requirements.sh`) | lock com hashes (M47) |
 | | | `frontend/package-lock.json` (vem de `npm install` + revisao) | npm do Windows remove `@emnapi` e quebra o `npm ci` do CI |
 | | | qualquer caminho em `C:\openclaw-dev-agent` | projeto de origem congelado |
