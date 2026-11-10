@@ -28,11 +28,12 @@ OTHER = 2
 # ---------------------------------------------------------------------------
 
 
-def _table(name, cols, pk=("id",), nullable=(), generated=()):
+def _table(name, cols, pk=("id",), nullable=(), generated=(), unique=()):
     return p2d.TableSchema(
         name,
         [p2d.Column(c, c in nullable, c in generated) for c in cols],
         list(pk),
+        list(unique),
     )
 
 
@@ -428,12 +429,20 @@ def _schema_rbac(com_tabelas=True):
     if not com_tabelas:
         return schema
     extra = [
-        _table("access_groups", ["id", "group_key", "name"]),
-        _table("access_group_grants", ["id", "group_id", "resource"]),
-        _table("user_access_groups", ["user_id", "group_id", "created_by_user_id"], pk=("user_id", "group_id"),
-               nullable=("created_by_user_id",)),
-        _table("trainer_students", ["id", "trainer_user_id", "student_user_id", "active_flag"], generated=("active_flag",)),
-        _table("access_audit_log", ["id", "actor_user_id", "action"]),
+        # Fiel ao DDL da migração 111 (api/db/migrations/111_access_groups_rbac.py).
+        _table("access_groups", ["id", "group_key", "name", "description", "is_system", "created_at", "updated_at"],
+               nullable=("description",)),
+        _table("access_group_grants", ["id", "group_id", "resource", "action", "scope"]),
+        # SEM PK: só UNIQUE (user_id, group_id), ambas NOT NULL.
+        _table("user_access_groups", ["user_id", "group_id", "created_at", "created_by_user_id"], pk=(),
+               nullable=("created_by_user_id",), unique=("user_id", "group_id")),
+        _table("trainer_students",
+               ["id", "trainer_user_id", "student_user_id", "status", "created_by_user_id", "created_at", "ended_at",
+                "active_flag"],
+               nullable=("created_by_user_id", "ended_at", "active_flag"), generated=("active_flag",)),
+        _table("access_audit_log",
+               ["id", "actor_user_id", "action", "target_type", "target_id", "detalhe", "created_at"],
+               nullable=("actor_user_id", "target_id", "detalhe")),
     ]
     fks = [
         ("access_group_grants", "group_id", "access_groups", "id"),
@@ -486,6 +495,53 @@ def test_rbac_grupo_orfao_nao_conta_como_grupo():
 def test_rbac_ausente_em_producao_nao_aborta():
     snap, _ = p2d.prepare(FakeReader(_prod_data()), _schema_rbac(com_tabelas=False), UID)
     assert "user_access_groups" not in snap and "access_groups" not in snap
+
+
+def test_rbac_schema_do_teste_bate_com_o_ddl_da_migracao_111():
+    mig = (Path(__file__).resolve().parents[2] / "db" / "migrations" / "111_access_groups_rbac.py").read_text(
+        encoding="utf-8"
+    )
+    ddl = re.search(r"CREATE TABLE IF NOT EXISTS \{T_MEMBERS\} \((.*?)\n\) \{_TAIL\}", mig, re.S).group(1)
+    assert "PRIMARY KEY" not in ddl and "UNIQUE KEY uq_uag_user_group (user_id, group_id)" in ddl
+    uag = _schema_rbac().tables["user_access_groups"]
+    assert uag.primary_key == [] and uag.order_key == ["user_id", "group_id"]
+    for col in uag.columns:
+        assert re.search(rf"\b{col.name} \w+.*{'NULL' if col.nullable else 'NOT NULL'}", ddl)
+
+
+def test_escolha_da_chave_unica_so_aceita_not_null_e_e_deterministica():
+    cols = [p2d.Column("a", False), p2d.Column("b", False), p2d.Column("n", True), p2d.Column("g", False, True)]
+    idx = {
+        "uq_b": [(1, "b", False)],
+        "uq_ab": [(1, "a", False), (2, "b", False)],
+        "uq_a": [(1, "a", False)],
+        "uq_nulavel": [(1, "n", False)],
+        "uq_gerada": [(1, "g", False)],
+        "uq_prefixo": [(1, "a", True)],
+    }
+    assert p2d.choose_unique_key(cols, idx) == ["a"]  # menos colunas; empate pelo nome do índice
+    assert p2d.choose_unique_key(cols, {"uq_nulavel": [(1, "n", False)], "uq_ab": [(2, "b", False), (1, "a", False)]}) == ["a", "b"]
+    assert p2d.choose_unique_key(cols, {"uq_nulavel": [(1, "n", False)]}) == []
+
+
+def test_load_schema_descobre_a_chave_unica_da_tabela_sem_pk():
+    class Q:
+        def query(self, sql):
+            if "information_schema.TABLES" in sql:
+                return [{"TABLE_NAME": "m"}, {"TABLE_NAME": "p"}]
+            if "information_schema.COLUMNS" in sql:
+                return [{"TABLE_NAME": t, "COLUMN_NAME": c, "IS_NULLABLE": "NO", "EXTRA": ""}
+                        for t, c in (("m", "u"), ("m", "g"), ("p", "id"))]
+            if "CONSTRAINT_NAME = 'PRIMARY'" in sql:
+                return [{"TABLE_NAME": "p", "COLUMN_NAME": "id"}]
+            if "information_schema.STATISTICS" in sql:
+                return [{"TABLE_NAME": "m", "INDEX_NAME": "uq", "SEQ_IN_INDEX": 1, "COLUMN_NAME": "u", "SUB_PART": None},
+                        {"TABLE_NAME": "m", "INDEX_NAME": "uq", "SEQ_IN_INDEX": 2, "COLUMN_NAME": "g", "SUB_PART": None}]
+            return []
+
+    schema = p2d.load_schema(Q())
+    assert schema.tables["m"].primary_key == [] and schema.tables["m"].order_key == ["u", "g"]
+    assert schema.tables["p"].order_key == ["id"]
 
 
 # ---------------------------------------------------------------------------
@@ -601,6 +657,42 @@ def test_paginacao_por_pk_le_tudo_sem_repetir():
     assert [r["id"] for r in rows] == list(range(1, 26))
     assert rows[0] == {"id": 1, "peso": "1.50", "ativo": 1, "obs": None}  # DECIMAL como texto exato
     assert len(api.sqls) == 3 and "`id` > 20" in api.sqls[-1]
+
+
+class FakeDataApiComposta:
+    """Responde `ORDER BY a, b LIMIT n OFFSET k` sobre linhas fora de ordem."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.sqls = []
+
+    def execute_statement(self, **kw):
+        sql = kw["sql"]
+        self.sqls.append(sql)
+        assert "ORDER BY `user_id`, `group_id`" in sql
+        limit = int(re.search(r"LIMIT (\d+)", sql).group(1))
+        offset = int((re.search(r"OFFSET (\d+)", sql) or [0, 0])[1])
+        rows = sorted(self.rows, key=lambda r: (r["user_id"], r["group_id"]))[offset : offset + limit]
+        return {
+            "columnMetadata": [{"label": "user_id"}, {"label": "group_id"}],
+            "records": [[{"longValue": r["user_id"]}, {"longValue": r["group_id"]}] for r in rows],
+        }
+
+
+def test_paginacao_de_tabela_sem_pk_usa_a_chave_unica_sem_repetir_nem_perder():
+    table = _table("m", ["user_id", "group_id"], pk=(), unique=("user_id", "group_id"))
+    pares = [(u, g) for u in (3, 1, 2) for g in (9, 5, 7, 1)]  # 12 linhas, fora de ordem
+    api = FakeDataApiComposta([{"user_id": u, "group_id": g} for u, g in pares])
+    rows = p2d.DataApiReader(api, "arn:c", "arn:s", "musclefit", page_size=5).fetch(table)
+    assert [(r["user_id"], r["group_id"]) for r in rows] == sorted(pares)
+    assert len(api.sqls) == 3 and "OFFSET 10" in api.sqls[-1]
+
+
+def test_tabela_sem_pk_e_sem_chave_unica_not_null_aborta():
+    table = _table("sem_chave", ["a", "b"], pk=(), unique=())
+    reader = p2d.DataApiReader(FakeDataApi([]), "arn:c", "arn:s", "musclefit")
+    with pytest.raises(p2d.AbortError, match="nem chave única com todas as colunas NOT NULL"):
+        reader.fetch(table)
 
 
 def test_resposta_acima_de_1mb_reduz_a_pagina():

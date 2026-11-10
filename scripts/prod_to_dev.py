@@ -318,6 +318,13 @@ class TableSchema:
     name: str
     columns: list[Column]
     primary_key: list[str]
+    # Chave única (não PRIMARY) escolhida por `choose_unique_key`; só vale sem PK.
+    unique_key: list[str] = field(default_factory=list)
+
+    @property
+    def order_key(self) -> list[str]:
+        """Colunas da ordem total que garante a paginação: PK, senão a chave única NOT NULL."""
+        return self.primary_key or self.unique_key
 
     @property
     def insertable_columns(self) -> list[str]:
@@ -491,7 +498,7 @@ class DataApiReader:
         include_null: bool = False,
     ) -> list[dict[str, Any]]:
         """Lê a tabela inteira (column=None) ou só `column IN values` (mais `column IS NULL`
-        se `include_null`, para as tabelas mistas), paginando pela PK."""
+        se `include_null`, para as tabelas mistas), paginando pela PK (ou, sem PK, pela chave única NOT NULL)."""
         if column is None:
             return self._paged(table, "")
         ids = sorted({v for v in (values or []) if v is not None}, key=_sort_key)
@@ -508,12 +515,16 @@ class DataApiReader:
         return rows
 
     def _paged(self, table: TableSchema, condition: str) -> list[dict[str, Any]]:
-        if not table.primary_key:
-            raise AbortError(f"{table.name} não tem chave primária: não há como paginar")
+        key = table.order_key
+        if not key:
+            raise AbortError(
+                f"{table.name} não tem chave primária nem chave única com todas as colunas NOT NULL: "
+                "não há como paginar com ordem determinística"
+            )
         cols = ", ".join(_q(c) for c in table.insertable_columns)
-        order = ", ".join(_q(c) for c in table.primary_key)
-        keyset = len(table.primary_key) == 1
-        pk = table.primary_key[0]
+        order = ", ".join(_q(c) for c in key)
+        keyset = len(key) == 1
+        pk = key[0]
         rows: list[dict[str, Any]] = []
         last: Any = None
         offset = 0
@@ -580,6 +591,18 @@ def load_schema(reader: Any) -> Schema:
         t = _text(r["TABLE_NAME"])
         if t in pks:
             pks[t].append(_text(r["COLUMN_NAME"]))
+    unique_indexes: dict[str, dict[str, list[tuple[int, Optional[str], bool]]]] = {}
+    for r in reader.query(
+        "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART FROM information_schema.STATISTICS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY' "
+        "ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
+    ):
+        t = _text(r["TABLE_NAME"])
+        if t in tables:
+            column = r.get("COLUMN_NAME")
+            unique_indexes.setdefault(t, {}).setdefault(_text(r["INDEX_NAME"]), []).append(
+                (int(r["SEQ_IN_INDEX"]), None if column is None else _text(column), r.get("SUB_PART") is not None)
+            )
     fks = [
         (_text(r["TABLE_NAME"]), _text(r["COLUMN_NAME"]), _text(r["REFERENCED_TABLE_NAME"]), _text(r["REFERENCED_COLUMN_NAME"]))
         for r in reader.query(
@@ -588,7 +611,29 @@ def load_schema(reader: Any) -> Schema:
             "WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL"
         )
     ]
-    return Schema({t: TableSchema(t, columns[t], pks[t]) for t in sorted(tables)}, fks)
+    return Schema(
+        {
+            t: TableSchema(t, columns[t], pks[t], [] if pks[t] else choose_unique_key(columns[t], unique_indexes.get(t, {})))
+            for t in sorted(tables)
+        },
+        fks,
+    )
+
+
+def choose_unique_key(
+    columns: list[Column], indexes: dict[str, list[tuple[int, Optional[str], bool]]]
+) -> list[str]:
+    """Chave única para ordenar/paginar tabela sem PK. Só serve índice UNIQUE cujas colunas
+    são todas NOT NULL, não geradas (não vêm no SELECT) e inteiras (sem prefixo); UNIQUE
+    com NULL admite linhas iguais e não dá ordem total. Entre várias, vence a de menos
+    colunas e, no empate, o menor nome de índice (escolha determinística). [] = nenhuma."""
+    usable = {c.name for c in columns if not c.nullable and not c.generated}
+    candidates: list[tuple[int, str, list[str]]] = []
+    for name, parts in indexes.items():
+        if any(col is None or prefix or col not in usable for _, col, prefix in parts):
+            continue
+        candidates.append((len(parts), name, [col for _, col, _ in sorted(parts) if col is not None]))
+    return min(candidates)[2] if candidates else []
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +663,7 @@ def _merge_unique(table: TableSchema, *groups: list[dict[str, Any]]) -> list[dic
     seen: dict[tuple[Any, ...], dict[str, Any]] = {}
     for rows in groups:
         for row in rows:
-            seen.setdefault(tuple(row[c] for c in table.primary_key), row)
+            seen.setdefault(tuple(row[c] for c in table.order_key), row)
     return list(seen.values())
 
 
