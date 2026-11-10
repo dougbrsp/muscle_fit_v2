@@ -22,12 +22,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import login_throttle
+from .access.service import resolve_permissions, serialize_permissions
 from .client_ip import client_ip
 from .db import transaction
 from .db_helpers import jsonable
 from .domain.nutrition import anthropometrics as anthro
 from .exercise_card_service import generation_enabled as exercise_cards_enabled
 from .security import (
+    AuthBackendUnavailable,
     Identity,
     SESSION_COOKIE_NAME,
     get_current_identity,
@@ -451,6 +453,19 @@ def me(identity: Identity = Depends(get_current_identity)):
     # (`EXERCISE_CARD_GENERATION_ENABLED`); quem pode gerar continua sendo
     # decidido por `role` (admin).
     result["features"] = {"exercise_cards": exercise_cards_enabled()}
+    # RBAC (ADR 0011): permissoes efetivas (`permissions`, `groups`). Falha de
+    # banco vira degradacao so aqui: `null` = permissoes desconhecidas (diferente
+    # de `{}`/`[]` = nenhuma permissao). Evita derrubar a sessao se o codigo
+    # subir antes da migracao 111. Outras excecoes propagam.
+    try:
+        result.update(serialize_permissions(resolve_permissions(identity)))
+    except AuthBackendUnavailable:
+        logger.warning(
+            "auth/me: permissoes indisponiveis; respondendo 200 com permissions/groups nulos",
+            extra={"event": "auth_me_permissions_degraded"},
+        )
+        result["permissions"] = None
+        result["groups"] = None
     return result
 
 
