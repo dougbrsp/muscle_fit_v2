@@ -132,6 +132,9 @@ def test_rota_traduz_o_erro_para_404(monkeypatch):
 class _SeedCursor:
     def __init__(self):
         self.inserts = []
+        self.group_inserts = []
+        self.lastrowid = None
+        self._rows = []
 
     def __enter__(self):
         return self
@@ -140,11 +143,21 @@ class _SeedCursor:
         return False
 
     def execute(self, sql, params=None):
-        if "INSERT INTO users" in sql:
+        flat = " ".join(sql.split())
+        self._rows = []
+        if "INSERT INTO users" in flat:
             self.inserts.append(params)
+            self.lastrowid = 42
+        elif flat.startswith("SELECT id FROM access_groups"):
+            self._rows = [{"id": 1}]  # grupo de sistema 'admin' existe
+        elif flat.startswith("INSERT INTO user_access_groups") and "ON DUPLICATE KEY UPDATE" in flat:
+            self.group_inserts.append(params)
+        elif "user_access_groups" in flat:
+            raise AssertionError(f"SQL inesperado no fake: {flat}")
+        # SELECT id FROM users WHERE username: 'doug' ainda nao existe (sem linhas)
 
     def fetchone(self):
-        return None  # 'doug' ainda nao existe
+        return self._rows[0] if self._rows else None
 
 
 def test_seed_do_admin_nao_loga_nem_imprime_a_senha(monkeypatch, caplog, capsys):

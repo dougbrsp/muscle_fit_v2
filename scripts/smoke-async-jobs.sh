@@ -97,7 +97,11 @@ if [ -n "$COMPOSE" ]; then
   $COMPOSE exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "
     INSERT INTO users (username, password_hash, role, is_active)
     SELECT '"'"'smoke-admin'"'"', '"'"'!'"'"', '"'"'admin'"'"', 1
-    FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = '"'"'admin'"'"' AND is_active = 1);"' 2>/dev/null
+    FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = '"'"'admin'"'"' AND is_active = 1);
+    INSERT IGNORE INTO user_access_groups (user_id, group_id)
+    SELECT u.id, g.id FROM users u JOIN access_groups g
+      ON g.group_key = '"'"'admin'"'"' AND g.is_system = 1
+    WHERE u.username = '"'"'smoke-admin'"'"' AND u.role = '"'"'admin'"'"' AND u.is_active = 1;"' 2>/dev/null
 fi
 
 failures=0
