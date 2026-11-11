@@ -41,7 +41,8 @@ from fastapi.responses import JSONResponse
 from . import exercise_card_jobs as jobs
 from . import exercise_card_references as refs
 from . import exercise_card_service as svc
-from .security import Identity, get_current_identity, require_admin
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/exercises", tags=["exercise-cards"])
 
@@ -54,7 +55,7 @@ def _http_error(exc: svc.ExerciseCardError) -> HTTPException:
 def create_card_generation(
     exercise_id: int,
     payload: Dict[str, Any] = Body(default_factory=dict),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "editar")),
 ):
     """`{idempotency_key, instruction?, text_level?}` -> 202 com a geracao
     PENDING (o worker roda na plan-generator). Mesma chave de novo -> 200 com
@@ -78,7 +79,7 @@ def create_card_generation(
 def list_card_generations(
     exercise_id: int,
     limit: int = Query(default=svc.DEFAULT_LIST_LIMIT, ge=1, le=svc.MAX_LIST_LIMIT),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "ver")),
 ):
     try:
         rows = svc.list_generations(exercise_id=exercise_id, limit=limit)
@@ -91,7 +92,7 @@ def list_card_generations(
 def get_card_generation(
     exercise_id: int,
     generation_id: int,
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "ver")),
 ):
     """O recurso que o frontend consulta durante a geracao (polling)."""
     try:
@@ -105,7 +106,7 @@ def get_card_generation(
 def approve_card_generation(
     exercise_id: int,
     generation_id: int,
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "editar")),
 ):
     try:
         row, card = svc.approve_generation(
@@ -121,7 +122,7 @@ def reject_card_generation(
     exercise_id: int,
     generation_id: int,
     payload: Dict[str, Any] = Body(default_factory=dict),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "editar")),
 ):
     """`{reason?}` - o motivo (texto humano) vai para o prompt de uma
     regeneracao futura a partir desta geracao."""
@@ -142,7 +143,7 @@ def regenerate_card_generation(
     exercise_id: int,
     generation_id: int,
     payload: Dict[str, Any] = Body(default_factory=dict),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "editar")),
 ):
     """`{idempotency_key, instruction?, text_level?}` -> 202 com a filha
     PENDING e o pai (GENERATED vira REJECTED `regenerated`)."""
@@ -169,7 +170,7 @@ def regenerate_card_generation(
 def create_card_reference(
     exercise_id: int,
     payload: Dict[str, Any] = Body(default_factory=dict),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "editar")),
 ):
     """`{image_base64, note?}` -> 201 `{reference}`. A foto vai no corpo como
     base64 sem padding (nunca URL externa); o servidor valida pela assinatura,
@@ -189,7 +190,7 @@ def create_card_reference(
 @router.get("/{exercise_id}/card-references")
 def list_card_references(
     exercise_id: int,
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "ver")),
 ):
     """`{items, limits}`: as fotos ativas (URL pre-assinada de 15 min) e os
     limites que o front usa (nenhum numero escrito la)."""
@@ -203,7 +204,7 @@ def list_card_references(
 def delete_card_reference(
     exercise_id: int,
     ref_id: int,
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("ia.cards_exercicio", "excluir")),
 ):
     try:
         refs.delete_reference(exercise_id=exercise_id, ref_id=ref_id, user_id=identity.user_id)
@@ -215,7 +216,7 @@ def delete_card_reference(
 @router.get("/{exercise_id}/card")
 def get_exercise_card(
     exercise_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
     """Card publicado vigente - Modo Treino/briefing de qualquer usuario."""
     try:

@@ -31,9 +31,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .advanced_techniques import ensure_valid_codes
 from .db import transaction
 from .domain import training_safety as ts
-from .security import Identity, require_admin
+from .access import require_permission
+from .security import Identity
 
-router = APIRouter(tags=["training-safety"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["training-safety"])
 
 SAFETY_NOTES_MAX_LENGTH = 2000
 TECHNIQUE_CODE_MAX_LENGTH = 20  # advanced_techniques.code VARCHAR(20)
@@ -227,14 +228,14 @@ def _ensure_codes(payload: _SafetyIn) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/equipment/{equipment_id}/safety")
+@router.get("/equipment/{equipment_id}/safety", dependencies=[Depends(require_permission("admin.seguranca_treino", "ver"))])
 def get_equipment_safety(equipment_id: int):
     with transaction() as conn:
         return read_equipment_safety(conn, equipment_id)
 
 
 @router.put("/equipment/{equipment_id}/safety")
-def put_equipment_safety(equipment_id: int, payload: EquipmentSafetyIn, identity: Identity = Depends(require_admin)):
+def put_equipment_safety(equipment_id: int, payload: EquipmentSafetyIn, identity: Identity = Depends(require_permission("admin.seguranca_treino", "editar"))):
     _ensure_codes(payload)
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -248,7 +249,7 @@ def put_equipment_safety(equipment_id: int, payload: EquipmentSafetyIn, identity
         return read_equipment_safety(conn, equipment_id)
 
 
-@router.get("/equipment-exercises/{link_id}/safety")
+@router.get("/equipment-exercises/{link_id}/safety", dependencies=[Depends(require_permission("admin.seguranca_treino", "ver"))])
 def get_equipment_exercise_safety(link_id: int):
     with transaction() as conn:
         return read_equipment_exercise_safety(conn, link_id)
@@ -256,7 +257,7 @@ def get_equipment_exercise_safety(link_id: int):
 
 @router.put("/equipment-exercises/{link_id}/safety")
 def put_equipment_exercise_safety(
-    link_id: int, payload: EquipmentExerciseSafetyIn, identity: Identity = Depends(require_admin)
+    link_id: int, payload: EquipmentExerciseSafetyIn, identity: Identity = Depends(require_permission("admin.seguranca_treino", "editar"))
 ):
     _ensure_codes(payload)
     with transaction() as conn:

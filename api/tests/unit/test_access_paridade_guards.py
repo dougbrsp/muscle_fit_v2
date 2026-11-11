@@ -314,3 +314,63 @@ def test_combinacoes_excluem_token_mestre_de_papel_nao_admin():
     assert len(combos) == 7
     assert ("admin", "master_token") in combos
     assert not [c for c in combos if c[1] == "master_token" and c[0] != "admin"]
+
+
+# ---------------------------------------------------------------------------
+# Lote 2C-1: catalogos e administracao (34 rotas)
+# ---------------------------------------------------------------------------
+
+ROTAS_2B = {
+    "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
+    "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
+    "PUT /users/{user_id}",
+}
+
+
+def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
+    com_permissao, _ = _rotas_convertidas()
+    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B}
+
+
+def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
+    classe = carregar_retrato()["rotas"][rota]["classe"]
+    return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
+
+
+def test_paridade_cobre_as_43_rotas_com_permissao_9_do_2b_mais_34_do_2c1():
+    com_permissao, _ = _rotas_convertidas()
+    assert len(com_permissao) == 43
+    assert ROTAS_2B <= set(com_permissao)
+    assert len(_convertidas_2c1()) == 34
+
+
+def test_as_34_rotas_do_2c1_sao_admin_admin_ou_pt_ou_autenticado_com_decisao_automatica():
+    retrato = carregar_retrato()["rotas"]
+    for rota in _convertidas_2c1():
+        assert retrato[rota]["classe"] in ("admin", "admin_ou_pt", "autenticado"), rota
+        assert rota not in CASOS_MANUAIS, rota
+        assert divergencias(rota, retrato[rota]["classe"], _convertidas_2c1()[rota]) == [], rota
+
+
+def test_get_training_types_e_negado_a_regular_e_permitido_a_pt_e_admin():
+    rota = "GET /training-types"
+    assert rota in _convertidas_2c1()
+    assert _permitido(rota, "regular") is False
+    assert _permitido(rota, "personal_trainer") is True
+    assert _permitido(rota, "admin") is True
+    assert _permitido(rota, "admin", "master_token") is True
+
+
+@pytest.mark.parametrize(
+    "rota",
+    [
+        "GET /next-set-load-rules/published",
+        "GET /exercises/{exercise_id}/card",
+        "GET /mapping-canonical/options",
+        "GET /mapping-canonical/unmapped",
+    ],
+)
+def test_leituras_de_catalogo_sao_permitidas_a_regular(rota):
+    assert rota in _convertidas_2c1()
+    for papel in ("regular", "personal_trainer", "admin"):
+        assert _permitido(rota, papel) is True, (rota, papel)

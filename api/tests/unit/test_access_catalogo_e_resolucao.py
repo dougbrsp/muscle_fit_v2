@@ -30,6 +30,7 @@ from app.security import Identity
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "111_access_groups_rbac.py"
 MIGRATION_113 = m.DEFAULT_MIGRATIONS_DIR / "113_access_grants_conta_dispositivos.py"
+MIGRATION_114 = m.DEFAULT_MIGRATIONS_DIR / "114_access_grants_modelos_tipos_treino.py"
 
 # Grupos que a migracao 111 semeia com is_system=1 (free e comum e vem com 0).
 GRUPOS_DE_SISTEMA = frozenset({"admin", "personal_trainer", "usuario"})
@@ -47,11 +48,17 @@ def _migration_113_globals() -> dict:
     return m.load_python_migration(MIGRATION_113).__globals__
 
 
-def _matriz_acumulada_111_113() -> dict[str, list[tuple[str, str, str]]]:
-    """Retrato congelado acumulado: matriz da 111 + concessoes da 113."""
+@functools.lru_cache(maxsize=1)
+def _migration_114_globals() -> dict:
+    return m.load_python_migration(MIGRATION_114).__globals__
+
+
+def _matriz_acumulada_das_migracoes() -> dict[str, list[tuple[str, str, str]]]:
+    """Retrato congelado acumulado: matriz da 111 + concessoes da 113 e da 114."""
     acumulado = {g: list(linhas) for g, linhas in _migration_globals()["GRANTS_BY_GROUP"].items()}
-    for grupo, linhas in _migration_113_globals()["GRANTS_BY_GROUP"].items():
-        acumulado[grupo].extend(linhas)
+    for globais in (_migration_113_globals(), _migration_114_globals()):
+        for grupo, linhas in globais["GRANTS_BY_GROUP"].items():
+            acumulado[grupo].extend(linhas)
     return acumulado
 
 
@@ -497,13 +504,24 @@ def test_falha_de_banco_nunca_e_401_nem_403(db):
 # ---------------------------------------------------------------------------
 
 
-def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113():
-    migracao = _matriz_acumulada_111_113()
+def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_mais_114():
+    migracao = _matriz_acumulada_das_migracoes()
     assert set(migracao) == set(DEFAULT_GRANTS_BY_GROUP)
     for grupo, linhas in DEFAULT_GRANTS_BY_GROUP.items():
         assert sorted(linhas) == sorted(migracao[grupo]), f"matriz divergente em {grupo}"
         pares = [(r, a) for r, a, _ in migracao[grupo]]
-        assert len(pares) == len(set(pares)), f"{grupo}: 113 repete concessao da 111"
+        assert len(pares) == len(set(pares)), f"{grupo}: 113/114 repete concessao anterior"
+
+
+def test_tipos_treino_so_o_personal_trainer_recebe_com_escopo_todos():
+    assert "modelos.tipos_treino" in RESOURCE_KEYS
+    recurso = catalog.RESOURCES_BY_KEY["modelos.tipos_treino"]
+    assert recurso.label == "Tipos de treino" and recurso.domain == catalog.DOMAIN_MODELOS
+    esperado = {("modelos.tipos_treino", a, "todos") for a in catalog.ACTIONS}
+    assert {l for l in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if l[0] == "modelos.tipos_treino"} == esperado
+    for grupo in ("usuario", "free", "admin"):
+        assert not [l for l in DEFAULT_GRANTS_BY_GROUP[grupo] if l[0] == "modelos.tipos_treino"]
+    assert len(DEFAULT_GRANTS_BY_GROUP["personal_trainer"]) == 85
 
 
 def test_conta_dispositivos_usuario_e_pt_proprios_free_e_admin_vazios():
@@ -519,7 +537,7 @@ def test_conta_dispositivos_usuario_e_pt_proprios_free_e_admin_vazios():
 
 def test_paridade_recursos_da_matriz_e_da_migracao_com_o_catalogo():
     g = _migration_globals()
-    usados = {r for linhas in _matriz_acumulada_111_113().values() for r, _, _ in linhas}
+    usados = {r for linhas in _matriz_acumulada_das_migracoes().values() for r, _, _ in linhas}
     assert usados <= set(RESOURCE_KEYS)
     so_admin = set(g["RESOURCES_SO_ADMIN"])
     assert so_admin <= set(RESOURCE_KEYS)
@@ -534,6 +552,9 @@ def test_paridade_vocabulario_acoes_escopos_e_grupos():
     g113 = _migration_113_globals()
     assert tuple(g113["ACTIONS"]) == catalog.ACTIONS
     assert set(g113["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    g114 = _migration_114_globals()
+    assert tuple(g114["ACTIONS"]) == catalog.ACTIONS
+    assert set(g114["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
     assert {k for k, *_ in g["SEED_GROUPS"]} == set(DEFAULT_GRANTS_BY_GROUP)
 
 
@@ -549,7 +570,12 @@ ADMIN_ONLY_RESOURCES = (
     "admin.seguranca_treino",
     "ia.cards_exercicio",
 )
-MODELOS_PT = ("modelos.treino", "modelos.metas_ativacao", "ia.modelo_periodizacao")
+MODELOS_PT = (
+    "modelos.treino",
+    "modelos.metas_ativacao",
+    "modelos.tipos_treino",
+    "ia.modelo_periodizacao",
+)
 NUTRICAO_TERCEIROS = ("nutricao.diario", "nutricao.plano", "nutricao.checkin", "ia.nutricao")
 
 
@@ -607,7 +633,6 @@ def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
     assert usam == [
         "cardio_recommendations.py",
         "nutrition_access.py",
-        "training_types.py",
         "workout_plan_templates.py",
     ]
 

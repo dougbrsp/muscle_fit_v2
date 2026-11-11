@@ -5,11 +5,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query
 
-from .security import get_current_identity, require_admin
+from .access import require_permission
 
 logger = logging.getLogger("fitness.exercise_mapping_canonical")
 
-router = APIRouter(prefix="/mapping-canonical", tags=["mapping-canonical"], dependencies=[Depends(get_current_identity)])
+router = APIRouter(prefix="/mapping-canonical", tags=["mapping-canonical"])
 
 
 def fix_text(value: Any) -> Any:
@@ -576,7 +576,7 @@ def _unmapped_grouped(limit: int, offset: int) -> Dict[str, Any]:
     )
 
 
-@router.get("/unmapped")
+@router.get("/unmapped", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def unmapped(
     limit: int = Query(100, ge=1, le=1000),
     group_by: Optional[str] = Query(None, pattern="^name$"),
@@ -641,7 +641,7 @@ def _canonical_mapping_options() -> List[Dict[str, Any]]:
     return fix_obj(options)
 
 
-@router.get("/options")
+@router.get("/options", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def canonical_options(q: Optional[str] = Query(None)) -> Dict[str, Any]:
     options = _canonical_mapping_options()
 
@@ -663,7 +663,7 @@ def canonical_options(q: Optional[str] = Query(None)) -> Dict[str, Any]:
     }
 
 
-@router.post("/associate", dependencies=[Depends(require_admin)])
+@router.post("/associate", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def canonical_associate(payload: CanonicalAssociationRequest) -> Dict[str, Any]:
     """Associa manualmente um nome sem correspondência (ex.: um
     original_name de exercicio importado que o matching automatico nao
