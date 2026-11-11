@@ -12,12 +12,14 @@ from __future__ import annotations
 import copy
 import functools
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 
 from app import auth, users
 from app import migrate as m
 from app.access import membership
+from app.access import service as access_service
 from app.access.membership import (
     InvalidMembershipTargetError,
     ROLE_TO_SYSTEM_GROUP,
@@ -30,6 +32,25 @@ from app.security import Identity
 
 GROUP_IDS = {"admin": 1, "personal_trainer": 2, "usuario": 3, "free": 4, "equipe_x": 9}
 ADMIN_ACTOR = Identity(user_id=1, role="admin", source="session")
+
+
+def _request():
+    """`Request` falso: `permissions_for_request` so usa `request.state`."""
+    return SimpleNamespace(state=SimpleNamespace())
+
+
+@pytest.fixture(autouse=True)
+def _permissoes_de_admin(monkeypatch):
+    """Resolvedor de permissoes sem banco: o ator e membro do grupo de sistema `admin`
+    (acesso total); a sincronizacao papel -> grupo, nao o RBAC, e o que se prova aqui."""
+    monkeypatch.setattr(
+        access_service,
+        "resolve_permissions",
+        lambda identity: access_service.merge_grants(
+            [{"group_key": "admin", "is_system": 1, "resource": None, "action": None, "scope": None}]
+        ),
+    )
+
 # Texto exato esperado; um `INSERT IGNORE` cai no ramo "SQL inesperado" e o teste falha.
 MEMBERSHIP_PREFIX = "INSERT INTO user_access_groups"
 MEMBERSHIP_INSERT = (
@@ -126,6 +147,13 @@ class _Cursor:
                 for (u, g) in sorted(db.members)
                 if g == admin_gid and db.users[u]["is_active"] == 1
             ]
+        elif flat.startswith("SELECT 1 AS member FROM user_access_groups uag JOIN access_groups g"):
+            g = db.groups.get(params[1])
+            self._rows = (
+                [{"member": 1}]
+                if g and g["is_system"] == 1 and (params[0], g["id"]) in db.members
+                else []
+            )
         elif flat == MEMBERSHIP_INSERT:
             # como o banco: FK obrigatoria; par repetido nao duplica (ON DUPLICATE KEY)
             if db.fail_membership_insert is not None:
@@ -166,7 +194,7 @@ def db(monkeypatch):
 
 
 def _create(role, username="novo"):
-    return users.create_user(UserCreateIn(username=username, password="senha-longa-123", role=role), identity=ADMIN_ACTOR)
+    return users.create_user(UserCreateIn(username=username, password="senha-longa-123", role=role), request=_request(), identity=ADMIN_ACTOR)
 
 
 # 1 -------------------------------------------------------------------------
@@ -205,15 +233,15 @@ def test_rota_post_users_nao_devolve_sucesso_com_grupo_ausente(db):
     from fastapi.testclient import TestClient
 
     from app import main
-    from app.security import require_admin
+    from app.security import get_current_identity
 
     del db.groups["usuario"]
-    main.app.dependency_overrides[require_admin] = lambda: ADMIN_ACTOR
+    main.app.dependency_overrides[get_current_identity] = lambda: ADMIN_ACTOR
     try:
         client = TestClient(main.app, raise_server_exceptions=False)
         resp = client.post("/users", json={"username": "novo", "password": "senha-longa-123", "role": "regular"})
     finally:
-        main.app.dependency_overrides.pop(require_admin, None)
+        main.app.dependency_overrides.pop(get_current_identity, None)
     assert resp.status_code >= 400
     assert db.commits == 0 and list(db.users) == [1]
 
@@ -231,7 +259,7 @@ def test_grupo_com_is_system_zero_nao_serve_de_grupo_de_papel(db):
 def test_troca_de_papel_remove_grupo_antigo_insere_novo_e_preserva_grupo_custom(db):
     db.users[5] = {"id": 5, "username": "x", "role": "regular", "is_active": 1}
     db.members |= {(5, GROUP_IDS["usuario"]), (5, GROUP_IDS["equipe_x"]), (5, GROUP_IDS["free"])}
-    users.update_user(5, UserUpdateIn(role="personal_trainer"), identity=ADMIN_ACTOR)
+    users.update_user(5, UserUpdateIn(role="personal_trainer"), request=_request(), identity=ADMIN_ACTOR)
     got = {g for (u, g) in db.members if u == 5}
     assert got == {GROUP_IDS["personal_trainer"], GROUP_IDS["equipe_x"], GROUP_IDS["free"]}
     assert db.users[5]["role"] == "personal_trainer"
@@ -244,8 +272,8 @@ def test_put_sem_mudanca_de_papel_nao_mexe_em_grupos(db):
     db.users[5] = {"id": 5, "username": "x", "role": "regular", "is_active": 1}
     db.members |= {(5, GROUP_IDS["usuario"])}
     before = set(db.members)
-    users.update_user(5, UserUpdateIn(full_name="Novo Nome"), identity=ADMIN_ACTOR)
-    users.update_user(5, UserUpdateIn(role="regular"), identity=ADMIN_ACTOR)  # mesmo papel
+    users.update_user(5, UserUpdateIn(full_name="Novo Nome"), request=_request(), identity=ADMIN_ACTOR)
+    users.update_user(5, UserUpdateIn(role="regular"), request=_request(), identity=ADMIN_ACTOR)  # mesmo papel
     assert db.members == before
     assert db.sqls(MEMBERSHIP_PREFIX) == []
     assert db.sqls("DELETE FROM user_access_groups") == []
@@ -257,7 +285,7 @@ def test_troca_de_papel_com_grupo_novo_ausente_desfaz_o_update_de_papel(db):
     db.members |= {(5, GROUP_IDS["usuario"])}
     del db.groups["personal_trainer"]
     with pytest.raises(MissingSystemGroupError):
-        users.update_user(5, UserUpdateIn(role="personal_trainer"), identity=ADMIN_ACTOR)
+        users.update_user(5, UserUpdateIn(role="personal_trainer"), request=_request(), identity=ADMIN_ACTOR)
     assert db.users[5]["role"] == "regular"
     assert (5, GROUP_IDS["usuario"]) in db.members
     assert db.rollbacks == 1
@@ -369,15 +397,15 @@ def test_rota_post_users_com_lastrowid_invalido_nao_devolve_sucesso(db, bad):
     from fastapi.testclient import TestClient
 
     from app import main
-    from app.security import require_admin
+    from app.security import get_current_identity
 
     db.forced_lastrowid = bad
-    main.app.dependency_overrides[require_admin] = lambda: ADMIN_ACTOR
+    main.app.dependency_overrides[get_current_identity] = lambda: ADMIN_ACTOR
     try:
         client = TestClient(main.app, raise_server_exceptions=False)
         resp = client.post("/users", json={"username": "novo", "password": "senha-longa-123", "role": "regular"})
     finally:
-        main.app.dependency_overrides.pop(require_admin, None)
+        main.app.dependency_overrides.pop(get_current_identity, None)
     assert resp.status_code >= 400
     assert db.commits == 0 and list(db.users) == [1] and db.members == {(1, 1)}
 
@@ -406,7 +434,7 @@ def test_erro_de_fk_na_associacao_desfaz_a_troca_de_papel(db):
     db.members |= {(5, GROUP_IDS["usuario"])}
     db.fail_membership_insert = RuntimeError("FK violada")
     with pytest.raises(RuntimeError, match="FK violada"):
-        users.update_user(5, UserUpdateIn(role="personal_trainer"), identity=ADMIN_ACTOR)
+        users.update_user(5, UserUpdateIn(role="personal_trainer"), request=_request(), identity=ADMIN_ACTOR)
     assert db.commits == 0 and db.rollbacks == 1
     assert db.users[5]["role"] == "regular"
     assert {g for (u, g) in db.members if u == 5} == {GROUP_IDS["usuario"]}

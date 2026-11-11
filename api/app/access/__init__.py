@@ -13,7 +13,12 @@ from .catalog import (
     catalog_payload,
     scope_covers,
 )
-from .deps import declared_permissions, permission_of, require_permission
+from .deps import (
+    declared_permissions,
+    permission_of,
+    require_additional_permission,
+    require_permission,
+)
 from .membership import (
     ROLE_TO_SYSTEM_GROUP,
     InvalidMembershipTargetError,
@@ -27,12 +32,14 @@ from .membership import (
 )
 from .service import (
     EffectivePermissions,
+    authorize_self_or_all,
     authorize_target,
     check_catalog,
     has_permission,
     permission_scope,
     resolve_permissions,
     serialize_permissions,
+    validate_target_user_id,
 )
 
 __all__ = [
@@ -51,6 +58,7 @@ __all__ = [
     "SCOPES",
     "SYSTEM_GROUP_KEYS",
     "assign_role_group",
+    "authorize_self_or_all",
     "authorize_target",
     "catalog_payload",
     "check_catalog",
@@ -60,10 +68,12 @@ __all__ = [
     "lock_active_admin_ids",
     "permission_of",
     "permission_scope",
+    "require_additional_permission",
     "require_permission",
     "resolve_permissions",
     "scope_covers",
     "serialize_permissions",
     "switch_role_group",
     "system_group_key_for_role",
+    "validate_target_user_id",
 ]

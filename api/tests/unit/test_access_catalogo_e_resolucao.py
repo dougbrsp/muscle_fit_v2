@@ -29,6 +29,7 @@ from app.security import Identity
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "111_access_groups_rbac.py"
+MIGRATION_113 = m.DEFAULT_MIGRATIONS_DIR / "113_access_grants_conta_dispositivos.py"
 
 # Grupos que a migracao 111 semeia com is_system=1 (free e comum e vem com 0).
 GRUPOS_DE_SISTEMA = frozenset({"admin", "personal_trainer", "usuario"})
@@ -39,6 +40,19 @@ ROLE_TO_GROUP = {"admin": "admin", "personal_trainer": "personal_trainer", "regu
 @functools.lru_cache(maxsize=1)
 def _migration_globals() -> dict:
     return m.load_python_migration(MIGRATION).__globals__
+
+
+@functools.lru_cache(maxsize=1)
+def _migration_113_globals() -> dict:
+    return m.load_python_migration(MIGRATION_113).__globals__
+
+
+def _matriz_acumulada_111_113() -> dict[str, list[tuple[str, str, str]]]:
+    """Retrato congelado acumulado: matriz da 111 + concessoes da 113."""
+    acumulado = {g: list(linhas) for g, linhas in _migration_globals()["GRANTS_BY_GROUP"].items()}
+    for grupo, linhas in _migration_113_globals()["GRANTS_BY_GROUP"].items():
+        acumulado[grupo].extend(linhas)
+    return acumulado
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +362,6 @@ def test_authorize_target_alvo_ausente_ou_proprio_passa_com_qualquer_escopo(db, 
     fake = db(groups={10: [("g", "cardio", "ver", escopo)]})
     assert service.authorize_target(_ident(), "cardio", "ver") == 10
     assert service.authorize_target(_ident(), "cardio", "ver", 10) == 10
-    assert service.authorize_target(_ident(), "cardio", "ver", "10") == 10
     assert all("trainer_students" not in sql for sql, _ in fake.calls)
 
 
@@ -484,16 +497,29 @@ def test_falha_de_banco_nunca_e_401_nem_403(db):
 # ---------------------------------------------------------------------------
 
 
-def test_paridade_matriz_do_catalogo_e_da_migracao_111():
-    migracao = _migration_globals()["GRANTS_BY_GROUP"]
+def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113():
+    migracao = _matriz_acumulada_111_113()
     assert set(migracao) == set(DEFAULT_GRANTS_BY_GROUP)
     for grupo, linhas in DEFAULT_GRANTS_BY_GROUP.items():
         assert sorted(linhas) == sorted(migracao[grupo]), f"matriz divergente em {grupo}"
+        pares = [(r, a) for r, a, _ in migracao[grupo]]
+        assert len(pares) == len(set(pares)), f"{grupo}: 113 repete concessao da 111"
+
+
+def test_conta_dispositivos_usuario_e_pt_proprios_free_e_admin_vazios():
+    assert "conta.dispositivos" in RESOURCE_KEYS
+    recurso = catalog.RESOURCES_BY_KEY["conta.dispositivos"]
+    assert recurso.label == "Relógio e dispositivos"
+    assert recurso.domain == catalog.DOMAIN_CONTA and catalog.DOMAIN_CONTA in catalog.DOMAINS
+    esperado = {("conta.dispositivos", a, "proprios") for a in catalog.ACTIONS}
+    for grupo in ("usuario", "personal_trainer"):
+        assert {l for l in DEFAULT_GRANTS_BY_GROUP[grupo] if l[0] == "conta.dispositivos"} == esperado
+    assert DEFAULT_GRANTS_BY_GROUP["free"] == () and DEFAULT_GRANTS_BY_GROUP["admin"] == ()
 
 
 def test_paridade_recursos_da_matriz_e_da_migracao_com_o_catalogo():
     g = _migration_globals()
-    usados = {r for linhas in g["GRANTS_BY_GROUP"].values() for r, _, _ in linhas}
+    usados = {r for linhas in _matriz_acumulada_111_113().values() for r, _, _ in linhas}
     assert usados <= set(RESOURCE_KEYS)
     so_admin = set(g["RESOURCES_SO_ADMIN"])
     assert so_admin <= set(RESOURCE_KEYS)
@@ -505,6 +531,9 @@ def test_paridade_vocabulario_acoes_escopos_e_grupos():
     g = _migration_globals()
     assert tuple(g["ACTIONS"]) == catalog.ACTIONS
     assert tuple(g["SCOPES"]) == catalog.SCOPES
+    g113 = _migration_113_globals()
+    assert tuple(g113["ACTIONS"]) == catalog.ACTIONS
+    assert set(g113["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
     assert {k for k, *_ in g["SEED_GROUPS"]} == set(DEFAULT_GRANTS_BY_GROUP)
 
 
@@ -635,3 +664,140 @@ def test_pt_nao_ganha_terceiros_em_recursos_sem_guard_de_terceiro_hoje():
         if recurso in MODELOS_PT or recurso in NUTRICAO_TERCEIROS:
             continue
         assert usuario.get((recurso, acao)) == escopo, (recurso, acao)
+
+
+# ---------------------------------------------------------------------------
+# authorize_target com id estrito; helper "o proprio ou quem tem permissao"
+# ---------------------------------------------------------------------------
+
+INVALIDOS = [True, False, 0, -1, 10.0, 1.5, "10", "", b"10", [10]]
+
+
+@pytest.mark.parametrize("alvo", INVALIDOS)
+def test_authorize_target_id_invalido_400_antes_de_qualquer_consulta(db, alvo):
+    fake = db(error=AssertionError("nao deve consultar"))
+    with pytest.raises(HTTPException) as exc:
+        service.authorize_target(_ident(), "cardio", "ver", alvo)
+    assert _status(exc) == 400
+    assert exc.value.detail["error"] == "invalid_target" and exc.value.detail["message"].strip()
+    assert fake.calls == []
+
+
+def test_authorize_target_id_invalido_vem_antes_do_403_de_permissao(db):
+    db(groups={})
+    with pytest.raises(HTTPException) as exc:
+        service.authorize_target(_ident(), "cardio", "ver", "10")
+    assert _status(exc) == 400
+
+
+def test_authorize_target_identity_invalida_continua_erro_de_programacao():
+    ident = Identity(user_id="x", role="regular", source="session")
+    with pytest.raises(ValueError):
+        service.authorize_target(ident, "cardio", "ver", 5, permissoes=_perms([("g", "cardio", "ver", "todos")]))
+
+
+@pytest.mark.parametrize("alvo", INVALIDOS + [None])
+def test_self_or_all_alvo_obrigatorio_e_estrito(db, alvo):
+    fake = db(error=AssertionError("nao deve consultar"))
+    with pytest.raises(HTTPException) as exc:
+        service.authorize_self_or_all(_ident(), "admin.usuarios", "editar", alvo)
+    assert _status(exc) == 400 and exc.value.detail["error"] == "invalid_target"
+    assert fake.calls == []
+
+
+def test_self_or_all_o_proprio_passa_sem_concessao_e_sem_banco(db):
+    fake = db(error=AssertionError("nao deve consultar"))
+    assert service.authorize_self_or_all(_ident(10), "admin.usuarios", "editar", 10) == 10
+    assert fake.calls == []
+
+
+def test_self_or_all_terceiro_exige_todos(db):
+    db(
+        groups={
+            10: [("g", "admin.usuarios", "editar", "todos")],
+            11: [("g", "admin.usuarios", "editar", "alunos")],
+            12: [("g", "admin.usuarios", "editar", "proprios")],
+            13: [("g", "admin.usuarios", "ver", "todos")],
+        },
+        links={(11, 50): "ativo"},
+    )
+    assert service.authorize_self_or_all(_ident(10), "admin.usuarios", "editar", 50) == 50
+    for quem in (11, 12, 13, 14):
+        with pytest.raises(HTTPException) as exc:
+            service.authorize_self_or_all(_ident(quem), "admin.usuarios", "editar", 50)
+        assert _status(exc) == 403 and exc.value.detail == service.FORBIDDEN_DETAIL
+
+
+def test_self_or_all_alunos_nao_consulta_vinculo(db):
+    fake = db(groups={11: [("g", "cardio", "ver", "alunos")]}, links={(11, 50): "ativo"})
+    with pytest.raises(HTTPException) as exc:
+        service.authorize_self_or_all(_ident(11), "cardio", "ver", 50)
+    assert _status(exc) == 403
+    assert all("trainer_students" not in sql for sql, _ in fake.calls)
+
+
+def test_self_or_all_usa_permissoes_resolvidas_e_master_sem_banco(db):
+    fake = db(error=AssertionError("nao deve consultar"))
+    perms = _perms([("g", "cardio", "ver", "todos")])
+    assert service.authorize_self_or_all(_ident(), "cardio", "ver", 99, permissoes=perms) == 99
+    master = _ident(user_id=1, role="admin", source="master_token")
+    assert service.authorize_self_or_all(master, "admin.usuarios", "editar", 99) == 99
+    assert fake.calls == []
+
+
+def test_self_or_all_fora_do_catalogo_e_erro_e_falha_de_banco_e_503(db):
+    db(groups={})
+    with pytest.raises(ValueError):
+        service.authorize_self_or_all(_ident(), "nao.existe", "ver", 5)
+    db(error=RuntimeError("Aurora fora"))
+    with pytest.raises(HTTPException) as exc:
+        service.authorize_self_or_all(_ident(), "cardio", "ver", 5)
+    assert _status(exc) == 503
+
+
+def test_token_mestre_inclui_conta_dispositivos():
+    perms = service.resolve_permissions(_ident(user_id=1, role="admin", source="master_token"))
+    assert all(service.permission_scope(perms, "conta.dispositivos", a) == "todos" for a in catalog.ACTIONS)
+
+
+# ---------------------------------------------------------------------------
+# require_additional_permission (deps)
+# ---------------------------------------------------------------------------
+
+
+def _request():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(state=SimpleNamespace())
+
+
+def test_permissao_adicional_reusa_o_cache_da_requisicao(db):
+    from app.access import require_additional_permission
+
+    fake = db(groups={10: [("g", "admin.grupos", "editar", "todos"), ("g", "cardio", "ver", "proprios")]})
+    req, ident = _request(), _ident(10)
+    require_additional_permission(req, ident, "admin.grupos", "editar")
+    require_additional_permission(req, ident, "cardio", "ver")
+    assert len(fake.calls) == 1
+
+
+def test_permissao_adicional_403_se_faltar_e_valueerror_fora_do_catalogo(db):
+    from app.access import require_additional_permission
+
+    db(groups={10: [("g", "cardio", "ver", "proprios")]})
+    with pytest.raises(HTTPException) as exc:
+        require_additional_permission(_request(), _ident(10), "admin.grupos", "editar")
+    assert _status(exc) == 403 and exc.value.detail == service.FORBIDDEN_DETAIL
+    with pytest.raises(ValueError):
+        require_additional_permission(_request(), _ident(10), "nao.existe", "ver")
+    with pytest.raises(ValueError):
+        require_additional_permission(_request(), _ident(10), "cardio", "apagar")
+
+
+def test_permissao_adicional_falha_de_banco_e_503(db):
+    from app.access import require_additional_permission
+
+    db(error=RuntimeError("Aurora fora"))
+    with pytest.raises(HTTPException) as exc:
+        require_additional_permission(_request(), _ident(10), "cardio", "ver")
+    assert _status(exc) == 503

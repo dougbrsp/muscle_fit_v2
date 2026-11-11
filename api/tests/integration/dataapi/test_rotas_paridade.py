@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import datetime as _dt
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -410,15 +411,17 @@ def test_desativar_usuario_ja_inativo_nao_vira_404_em_nenhum_backend(training_hi
     from app import users
 
     admin = _identity(training_history["user"])
+    # `request` so e usado se o alvo for admin (exige admin.grupos); aqui o alvo e comum.
+    req = SimpleNamespace(state=SimpleNamespace())
     results = {}
     for backend in BACKENDS:
         use_backend(backend, monkeypatch, fake_rds, mysql_schema)
         with raw.cursor() as cur:
             cur.execute("UPDATE users SET is_active = 1 WHERE id = %s", (training_history["other_user"],))
-        first = users.deactivate_user(training_history["other_user"], identity=admin)
-        second = users.deactivate_user(training_history["other_user"], identity=admin)
+        first = users.deactivate_user(training_history["other_user"], request=req, identity=admin)
+        second = users.deactivate_user(training_history["other_user"], request=req, identity=admin)
         with pytest.raises(HTTPException) as missing:
-            users.deactivate_user(999_999, identity=admin)
+            users.deactivate_user(999_999, request=req, identity=admin)
         results[backend] = (first, second, missing.value.status_code)
     assert results["data-api"] == results["pymysql"]
     assert results["data-api"][0] == results["data-api"][1]

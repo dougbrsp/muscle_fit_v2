@@ -12,17 +12,19 @@ from __future__ import annotations
 
 import copy
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
 from app import users
+from app.access import service as access_service
 from app.request_models import UserUpdateIn
 from app.security import Identity
 
 ADMIN_GID, PT_GID, USUARIO_GID, FAKE_ADMIN_GID = 1, 2, 3, 8
 TARGET_LOCK_PUT = "SELECT id, role FROM users WHERE id = %s FOR UPDATE"
-TARGET_LOCK_DELETE = "SELECT id FROM users WHERE id = %s FOR UPDATE"
+TARGET_LOCK_DELETE = TARGET_LOCK_PUT  # o DELETE tambem le o papel do alvo (checagem admin.grupos)
 # Texto exato esperado; um `INSERT IGNORE` cai no ramo "SQL inesperado" e o teste falha.
 MEMBERSHIP_INSERT = (
     "INSERT INTO user_access_groups (user_id, group_id, created_by_user_id) VALUES (%s, %s, %s) "
@@ -113,8 +115,13 @@ class _Cursor:
             if db.on_target_lock:
                 db.on_target_lock(db, params[0])
             u = db.users.get(params[0])
-            cols = ("id", "role") if flat == TARGET_LOCK_PUT else ("id",)
-            self._rows = [{c: u[c] for c in cols}] if u else []
+            self._rows = [{c: u[c] for c in ("id", "role")}] if u else []
+        elif flat.startswith("SELECT 1 AS member FROM user_access_groups uag JOIN access_groups g"):
+            self._rows = [
+                {"member": 1}
+                for (uid, gid) in sorted(db.members)
+                if uid == params[0] and db.groups[gid] == (params[1], 1)
+            ][:1]
         elif flat.startswith("SELECT u.id AS id FROM users u JOIN user_access_groups"):
             assert flat.endswith("FOR UPDATE")
             only_active = "u.is_active = 1" in flat
@@ -183,12 +190,30 @@ OTHER_ADMIN_ACTOR = Identity(user_id=99, role="admin", source="session")  # ex.:
 SELF_ACTOR = Identity(user_id=1, role="admin", source="session")
 
 
+def _request():
+    """`Request` falso: `permissions_for_request` so usa `request.state`."""
+    return SimpleNamespace(state=SimpleNamespace())
+
+
+@pytest.fixture(autouse=True)
+def _permissoes_de_admin(monkeypatch):
+    """Resolvedor de permissoes sem banco: o ator e membro do grupo de sistema `admin`
+    (acesso total); a trava do ultimo admin, nao o RBAC, e o que se prova aqui."""
+    monkeypatch.setattr(
+        access_service,
+        "resolve_permissions",
+        lambda identity: access_service.merge_grants(
+            [{"group_key": "admin", "is_system": 1, "resource": None, "action": None, "scope": None}]
+        ),
+    )
+
+
 def _put(uid, actor, **fields):
-    return users.update_user(uid, UserUpdateIn(**fields), identity=actor)
+    return users.update_user(uid, UserUpdateIn(**fields), request=_request(), identity=actor)
 
 
 def _delete(uid, actor):
-    return users.deactivate_user(uid, identity=actor)
+    return users.deactivate_user(uid, request=_request(), identity=actor)
 
 
 def _expect_last_admin(call):
@@ -238,16 +263,16 @@ def test_a_trava_vale_pela_rota_http_com_corpo_estruturado(monkeypatch):
     from fastapi.testclient import TestClient
 
     from app import main
-    from app.security import require_admin
+    from app.security import get_current_identity
 
     db = _install(monkeypatch, _sole_admin_db())
-    main.app.dependency_overrides[require_admin] = lambda: OTHER_ADMIN_ACTOR
+    main.app.dependency_overrides[get_current_identity] = lambda: OTHER_ADMIN_ACTOR
     try:
         client = TestClient(main.app, raise_server_exceptions=False)
         resp_put = client.put("/users/1", json={"role": "regular"})
         resp_del = client.delete("/users/1")
     finally:
-        main.app.dependency_overrides.pop(require_admin, None)
+        main.app.dependency_overrides.pop(get_current_identity, None)
     for resp in (resp_put, resp_del):
         assert resp.status_code == 409
         assert resp.json()["detail"]["error"] == "last_admin"
@@ -316,19 +341,23 @@ def test_membro_de_grupo_admin_nao_de_sistema_nao_conta(monkeypatch):
 
 
 def _assert_lock_order(db, target_sql, expect_admin_lock):
-    """Alvo FOR UPDATE e o 1o statement; admins depois do alvo e antes do UPDATE; mesma transacao."""
-    first_tx, first_sql, _ = db.log[0]
-    assert first_sql == target_sql and first_sql.endswith("FOR UPDATE")
+    """Ordem do ADR 0011: admins ativos (ORDER BY id) PRIMEIRO, alvo depois, UPDATE por ultimo;
+    sem trava de admins, o alvo FOR UPDATE e o 1o statement. Tudo na mesma transacao."""
+    first_tx = db.log[0][0]
     upd_idx = next(i for i, e in enumerate(db.log) if e[1].startswith("UPDATE users"))
     assert len(db.target_locks()) == 1
+    target_idx = next(i for i, e in enumerate(db.log) if e in db.target_locks())
+    assert db.log[target_idx][1] == target_sql and target_sql.endswith("FOR UPDATE")
     if expect_admin_lock:
+        assert len(db.admin_locks()) == 1
         admin_idx = next(i for i, e in enumerate(db.log) if e in db.admin_locks())
         admin_sql = db.log[admin_idx][1]
-        assert 0 < admin_idx < upd_idx
+        assert admin_idx == 0 and admin_idx < target_idx < upd_idx
         assert "is_active = 1" in admin_sql and "user_access_groups" in admin_sql
+        assert "ORDER BY u.id" in admin_sql and admin_sql.endswith("ORDER BY u.id FOR UPDATE")
         assert db.log[admin_idx][0] == first_tx
     else:
-        assert db.admin_locks() == []
+        assert db.admin_locks() == [] and target_idx == 0
     assert db.log[upd_idx][0] == first_tx
     assert {e[0] for e in db.log} == {first_tx}
     assert db.commits == 1 and db.tx == 1 and db.rollbacks == 0
@@ -343,7 +372,7 @@ def _assert_lock_order(db, target_sql, expect_admin_lock):
     ],
     ids=["put_role", "put_is_active", "delete"],
 )
-def test_lock_do_alvo_primeiro_depois_admins_depois_update_na_mesma_transacao(monkeypatch, call, target_sql):
+def test_lock_dos_admins_primeiro_depois_alvo_depois_update_na_mesma_transacao(monkeypatch, call, target_sql):
     db = _install(monkeypatch, _two_admins_db())
     call()
     _assert_lock_order(db, target_sql, expect_admin_lock=True)
@@ -361,7 +390,10 @@ def test_update_user_le_o_alvo_com_for_update_exato(monkeypatch):
 def test_deactivate_user_trava_o_alvo_com_for_update_exato(monkeypatch):
     db = _install(monkeypatch, _two_admins_db())
     _delete(2, SELF_ACTOR)
-    assert db.log[0][1] == "SELECT id FROM users WHERE id = %s FOR UPDATE"
+    # Ordem do ADR 0011: admins ativos primeiro (log[0]), alvo com FOR UPDATE exato depois.
+    assert db.log[0] in db.admin_locks()
+    assert db.log[1][1] == "SELECT id, role FROM users WHERE id = %s FOR UPDATE"
+    assert db.log[1][2] == (2,)
 
 
 def test_put_de_usuario_inexistente_devolve_404_sem_lock_de_admins_e_sem_update(monkeypatch):
@@ -369,7 +401,9 @@ def test_put_de_usuario_inexistente_devolve_404_sem_lock_de_admins_e_sem_update(
     with pytest.raises(HTTPException) as exc:
         _put(777, OTHER_ADMIN_ACTOR, role="regular")
     assert exc.value.status_code == 404
-    assert len(db.target_locks()) == 1 and db.admin_locks() == []
+    # role=regular pode remover um admin: os admins sao travados ANTES do alvo (ADR 0011).
+    assert len(db.target_locks()) == 1 and len(db.admin_locks()) == 1
+    assert db.log.index(db.admin_locks()[0]) < db.log.index(db.target_locks()[0])
     assert db.writes() == [] and db.rollbacks == 1 and db.commits == 0
 
 
@@ -396,7 +430,9 @@ def test_papel_mudou_entre_requisicoes_alvo_ja_rebaixado_sob_lock_nao_dispara_tr
     db.on_target_lock = _demote_user1_concurrently
     out = _put(1, OTHER_ADMIN_ACTOR, role="regular")
     assert out["status"] == "ok"
-    assert db.admin_locks() == []
+    # Os admins ja foram travados antes do alvo (o papel real so e visto sob o lock do alvo);
+    # sem mudanca de papel sob lock, nao ha segunda releitura nem troca de grupo.
+    assert len(db.admin_locks()) == 1
     assert not [e for e in db.writes() if "user_access_groups" in e[1]]
     assert db.users[1]["role"] == "regular"
     assert {g for (u, g) in db.members if u == 1} == {USUARIO_GID}
@@ -410,7 +446,8 @@ def test_papel_mudou_entre_requisicoes_alvo_promovido_sob_lock_e_unico_admin_rec
     db.on_target_lock = _promote_user2_concurrently
     _expect_last_admin(lambda: _put(2, OTHER_ADMIN_ACTOR, role="regular"))
     assert db.writes() == []
-    assert len(db.admin_locks()) == 1
+    # 1o lock (antes do alvo) nao via admin algum; a releitura da trava, sob o alvo ja promovido, o ve.
+    assert len(db.admin_locks()) == 2
     assert db.rollbacks == 1 and db.commits == 0
 
 
@@ -425,13 +462,13 @@ def test_desativar_usuario_comum_nao_e_barrado_mesmo_com_um_unico_admin(monkeypa
     assert db.users[1]["is_active"] == 1
 
 
-def test_delete_de_usuario_comum_trava_o_alvo_depois_os_admins_e_aplica_a_desativacao(monkeypatch):
+def test_delete_de_usuario_comum_trava_os_admins_depois_o_alvo_e_aplica_a_desativacao(monkeypatch):
     db = _install(monkeypatch, _sole_admin_db())
     _delete(5, OTHER_ADMIN_ACTOR)
-    # DELETE sempre passa pela trava (que decide dentro do lock dos admins): alvo primeiro, admins depois
-    assert db.log[0][1] == TARGET_LOCK_DELETE
+    # DELETE sempre trava os admins primeiro (ADR 0011), depois o alvo; alvo comum nao dispara 409.
+    assert db.log[0] in db.admin_locks()
     assert len(db.target_locks()) == 1 and len(db.admin_locks()) == 1
-    assert db.log.index(db.admin_locks()[0]) > 0
+    assert db.log.index(db.target_locks()[0]) == 1
     assert db.users[5]["is_active"] == 0
 
 
@@ -457,5 +494,68 @@ def test_delete_de_usuario_inexistente_404_sem_lock_de_admins_e_sem_update(monke
     with pytest.raises(HTTPException) as exc:
         _delete(777, OTHER_ADMIN_ACTOR)
     assert exc.value.status_code == 404
-    assert len(db.target_locks()) == 1 and db.admin_locks() == []
+    assert len(db.target_locks()) == 1 and len(db.admin_locks()) == 1
+    assert db.log.index(db.admin_locks()[0]) < db.log.index(db.target_locks()[0])
     assert db.writes() == [] and db.rollbacks == 1 and db.commits == 0
+
+
+# Sequencia de statements nas tres entradas e PUT sem risco ------------------
+
+
+def _sequencia(db):
+    """Rotulos dos statements de lock/escrita na ordem emitida (leitura final omitida)."""
+    rotulos = []
+    for _, sql, _p in db.log:
+        if sql.startswith("SELECT u.id AS id FROM users u JOIN"):
+            rotulos.append("lock_admins(ORDER BY id)" if "ORDER BY u.id" in sql else "lock_admins(sem ORDER BY)")
+        elif sql in (TARGET_LOCK_PUT, TARGET_LOCK_DELETE):
+            rotulos.append("lock_alvo")
+        elif sql.startswith("UPDATE users"):
+            rotulos.append("update_users")
+        elif sql.startswith("DELETE FROM user_access_groups"):
+            rotulos.append("delete_grupos_de_sistema")
+        elif sql == MEMBERSHIP_INSERT:
+            rotulos.append("insert_grupo")
+    return rotulos
+
+
+@pytest.mark.parametrize(
+    ("call", "esperado"),
+    [
+        (
+            lambda: _put(2, SELF_ACTOR, role="regular"),
+            ["lock_admins(ORDER BY id)", "lock_alvo", "update_users", "delete_grupos_de_sistema", "insert_grupo"],
+        ),
+        (
+            lambda: _put(2, SELF_ACTOR, is_active=False),
+            ["lock_admins(ORDER BY id)", "lock_alvo", "update_users"],
+        ),
+        (
+            lambda: _delete(2, SELF_ACTOR),
+            ["lock_admins(ORDER BY id)", "lock_alvo", "update_users"],
+        ),
+    ],
+    ids=["put_troca_de_papel", "put_desativacao", "delete"],
+)
+def test_sequencia_de_statements_admins_ativos_antes_do_lock_do_alvo(monkeypatch, call, esperado):
+    db = _install(monkeypatch, _two_admins_db())
+    call()
+    assert _sequencia(db) == esperado
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [{"full_name": "Novo"}, {"role": "admin"}, {"is_active": True}, {}],
+    ids=["so_nome", "mesmo_papel_admin", "reativar", "vazio"],
+)
+def test_put_sem_troca_de_papel_nem_desativacao_nao_trava_admins(monkeypatch, fields):
+    db = _install(monkeypatch, _two_admins_db())
+    _put(1, SELF_ACTOR, **fields)
+    assert db.admin_locks() == []
+    assert _sequencia(db) == ["lock_alvo", "update_users"]
+
+
+def test_put_promovendo_para_admin_nao_trava_admins_e_so_grava_o_grupo(monkeypatch):
+    db = _install(monkeypatch, _two_admins_db())
+    _put(5, SELF_ACTOR, role="admin")
+    assert _sequencia(db) == ["lock_alvo", "update_users", "delete_grupos_de_sistema", "insert_grupo"]

@@ -23,6 +23,8 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
+from .access import require_permission
+from .access.catalog import ACTION_EDITAR, ACTION_EXCLUIR, ACTION_VER
 from .db import transaction
 from .security import Identity, get_current_identity
 
@@ -37,6 +39,11 @@ DEVICE_TOKEN_RANDOM_BYTES = 32
 DEVICE_NAME_MAX_LENGTH = 160
 DEVICE_PLATFORM_MAX_LENGTH = 80
 DEFAULT_DEVICE_PLATFORM = "zepp"
+
+# Recurso do catálogo (app.access.catalog). Ordem de avaliação nas rotas: tipo de
+# credencial primeiro (o dispositivo recebe o 403 específico, sem consulta de
+# permissões), depois a permissão do dono.
+_RESOURCE_DISPOSITIVOS = "conta.dispositivos"
 
 DEVICE_MANAGEMENT_FORBIDDEN_DETAIL = "Um dispositivo não pode gerenciar dispositivos. Use o app MuscleFit."
 DEVICE_ONLY_DETAIL = "Rota exclusiva para token de dispositivo."
@@ -83,7 +90,11 @@ def _device_status(row: dict) -> str:
 
 
 @router.post("/devices/pair")
-def pair_device(payload: DevicePairIn, identity: Identity = Depends(require_user_credential)):
+def pair_device(
+    payload: DevicePairIn,
+    _credential: Identity = Depends(require_user_credential),
+    identity: Identity = Depends(require_permission(_RESOURCE_DISPOSITIVOS, ACTION_EDITAR)),
+):
     raw_token = _new_device_token()
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
@@ -106,7 +117,11 @@ def pair_device(payload: DevicePairIn, identity: Identity = Depends(require_user
 
 
 @router.get("/devices")
-def list_devices(include_revoked: bool = False, identity: Identity = Depends(require_user_credential)):
+def list_devices(
+    include_revoked: bool = False,
+    _credential: Identity = Depends(require_user_credential),
+    identity: Identity = Depends(require_permission(_RESOURCE_DISPOSITIVOS, ACTION_VER)),
+):
     filtro_ativos = "" if include_revoked else "AND is_active = 1 AND revoked_at IS NULL"
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -125,7 +140,10 @@ def list_devices(include_revoked: bool = False, identity: Identity = Depends(req
 
 
 @router.get("/devices/me")
-def current_device(identity: Identity = Depends(require_device_credential)):
+def current_device(
+    _credential: Identity = Depends(require_device_credential),
+    identity: Identity = Depends(require_permission(_RESOURCE_DISPOSITIVOS, ACTION_VER)),
+):
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -156,7 +174,11 @@ def current_device(identity: Identity = Depends(require_device_credential)):
 
 
 @router.delete("/devices/{device_id}")
-def revoke_device(device_id: int, identity: Identity = Depends(require_user_credential)):
+def revoke_device(
+    device_id: int,
+    _credential: Identity = Depends(require_user_credential),
+    identity: Identity = Depends(require_permission(_RESOURCE_DISPOSITIVOS, ACTION_EXCLUIR)),
+):
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(

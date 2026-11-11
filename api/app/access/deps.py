@@ -53,6 +53,17 @@ def require_permission(resource: str, action: str) -> Callable[..., Identity]:
     return _dependency
 
 
+def require_additional_permission(
+    request: Request, identity: Identity, resource: str, action: str
+) -> None:
+    """Exige, de dentro de um handler, uma concessao alem da declarada na rota
+    (ex.: `admin.grupos`/`editar` ao criar ou promover admin). Reutiliza o cache
+    de `permissions_for_request` (sem segunda consulta na mesma requisicao).
+    403 `FORBIDDEN_DETAIL` se faltar; recurso/acao fora do catalogo: ValueError."""
+    service.check_catalog(resource, action)
+    service.require(permissions_for_request(request, identity), resource, action)
+
+
 def permission_of(call: Any) -> Optional[tuple[str, str]]:
     """`(recurso, acao)` se `call` veio de `require_permission`, senao None."""
     resource = getattr(call, PERMISSION_RESOURCE_ATTR, None)

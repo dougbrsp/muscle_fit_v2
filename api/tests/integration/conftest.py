@@ -47,8 +47,29 @@ CATALOG_TABLES = (
     "equipment",
     "gyms",
     "muscle_groups",
+    # ADR 0011 (lote 2B): `users` zera o AUTO_INCREMENT; sem limpar as
+    # associacoes, um id reaproveitado herdaria o grupo de outro usuario.
+    "user_access_groups",
     "users",
 )
+
+
+def conceder_grupo_do_papel(cur, user_id: int, role: str) -> None:
+    """Grava o grupo de sistema do papel (mesma rotina de `app.access.membership`).
+
+    Rotas `admin.usuarios`/`conta.dispositivos` consultam `user_access_groups`;
+    usuario criado por SQL direto nao tem a linha e recebe 403. Use este helper
+    em todo teste de integracao que chame essas rotas com identidade de sessao.
+    """
+    from app.access.membership import assign_role_group
+
+    assign_role_group(cur, user_id, role)
+
+
+@pytest.fixture
+def conceder_grupo():
+    """Entrega `conceder_grupo_do_papel` aos testes (conftest nao e importavel por caminho)."""
+    return conceder_grupo_do_papel
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -190,6 +211,7 @@ def catalog(db_conn) -> Catalog:
             ("teste-admin", "x"),
         )
         cat.user_id = cur.lastrowid
+        conceder_grupo_do_papel(cur, cat.user_id, "admin")
 
         for name in MUSCLE_GROUPS:
             cur.execute("INSERT INTO muscle_groups (name) VALUES (%s)", (name,))
