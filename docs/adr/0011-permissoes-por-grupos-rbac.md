@@ -1,11 +1,11 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). Os lotes 2 a 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está implementado na branch `feat/rbac-lote2a-precondicoes`, ainda não promovido**: migração 112, sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard muda no 2A. Os lotes 2B a 6 ainda não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
 
-O MuscleFit hoje decide acesso por um papel único por usuário e por guards fixos no FastAPI. Estado do código em `C:\muscle_fit` (branch `feat/rbac-lote1-fundacao`, base `origin/develop` 3a27e473). Os arquivos e linhas citados foram conferidos na leitura deste ADR; os itens sem arquivo citado (JWT/authorizer ausentes, contagem de endpoints, tratamento de 403 no frontend, guarda de três rotas) vêm do levantamento do Tech Lead e devem ser reconfirmados no lote 2.
+O MuscleFit hoje decide acesso por um papel único por usuário e por guards fixos no FastAPI. Estado do código em `C:\muscle_fit` no lote 1 (branch `feat/rbac-lote1-fundacao`, base `origin/develop` 3a27e473). Os arquivos e linhas citados foram conferidos na leitura deste ADR; os itens sem arquivo citado (JWT/authorizer ausentes, contagem de endpoints, tratamento de 403 no frontend, guarda de três rotas) vêm do levantamento do Tech Lead e devem ser reconfirmados no lote 2.
 
 **Autenticação e identidades**
 
@@ -73,8 +73,8 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
   - `access_audit_log`: auditoria de alterações de grupos e membros.
 - **Aplicação no servidor**: dependência `require_permission(recurso, ação)` e `authorize_target(...)`. O `authorize_target` resolve o escopo do alvo e vai substituir `resolve_target_user`. Ele não substitui `resolve_plan_owner`, que segue respondendo 404 (ver Pré-condições do lote 2).
 - **Guarda de cobertura**: teste unitário que enumera todas as rotas do FastAPI e falha se alguma não declarar permissão. Uma allowlist de exceções que só encolhe. Ela lista todas as rotas que ainda não declaram `require_permission` (361 de dívida e 6 públicas), inclusive as que só usam `get_current_identity`, e o lote 2 zera a dívida. Limitações conhecidas: a guarda mede a presença de `require_permission`, não se o par recurso/ação escolhido é o adequado para a rota; o teste que garante só dois apps FastAPI varre apenas `api/app/*.py` de primeiro nível (`test_access_guarda_cobertura_rotas.py`, linha 172), então um app em subpacote escaparia; e um router cujo import falhe em `main.py` some da enumeração sem alarme (o `try/except Exception` vira log e a rota some), a menos que as rotas dele estejam na allowlist. O teto da dívida fica no mesmo arquivo que a lista (`api/tests/unit/access_cobertura_allowlist.json`), então qualquer aumento do teto exige revisão humana.
-- **Grupo Admin de sistema**: com acesso total. Ele passa a ser imutável pelo serviço no lote 3; hoje não há escrita de grupo nem trava no banco, então a imutabilidade é desenho, não algo entregue. O acesso total exige o grupo com chave `admin` **e** `is_system = 1`; a checagem é feita pelo código, não só pelo nome. Neste lote não existe nenhuma escrita de grupo, membro ou vínculo: o módulo `access` só lê. Trava do último admin, com prazos distintos: (1) neste lote não há escrita de grupo, membro ou vínculo, logo não há trava; (2) a trava sobre `users` é **pré-condição do lote 2** e tem de existir antes de qualquer guard passar a decidir por grupo, porque a partir daí rebaixar ou desativar o último admin deixaria a instalação sem admin de sessão (o acesso total vem do grupo `admin`, sem fallback para `users.role`); (3) a trava para **remoção de membro do grupo `admin` pela tela/API de grupos** entra no lote 3, junto com as mutações de grupo e membro e com a gravação em `access_audit_log`. Redação única da trava do lote 2 (a mesma em todas as seções): ela cobre três entradas, `PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive quando o admin age sobre si mesmo; "último admin" conta só usuários **ativos** (`users.is_active = 1`) associados ao grupo `admin` de sistema, porque a exclusão é lógica e contar só por `user_access_groups` contaria o usuário desativado. No lote 3 o serviço também deve impedir renomear a chave `admin`, alterar `is_system` ou apagar grupos de sistema, e não apenas a tela (hoje não há trava no banco para isso).
-- **Associação e exclusão de usuário**: `DELETE /users/{id}` é exclusão lógica (`UPDATE users SET is_active = 0`, `api/app/users.py`, linha 497) e não apaga a linha. A associação em `user_access_groups` permanece. O `ON DELETE CASCADE` da FK só atuaria num `DELETE` físico de `users`, que nenhum fluxo da API faz hoje. `PUT /users/{id}` também desativa (`is_active`, linha 459) e troca o papel (`role`, linha 458), e não tem a checagem contra autodesativação que o `DELETE` tem (linha 492): hoje um admin pode se rebaixar ou se desativar pelo `PUT`. Por isso a trava do último admin (redação única acima) cobre as três entradas sobre `users` no lote 2, e a remoção de membro do grupo `admin` fica no lote 3.
+- **Grupo Admin de sistema**: com acesso total. Ele passa a ser imutável pelo serviço no lote 3; hoje não há escrita de grupo nem trava no banco, então a imutabilidade é desenho, não algo entregue. O acesso total exige o grupo com chave `admin` **e** `is_system = 1`; a checagem é feita pelo código, não só pelo nome. Até o lote 1 não existia nenhuma escrita de grupo, membro ou vínculo: o módulo `access` só lia. Desde o 2A, `api/app/access/membership.py` grava `user_access_groups` (só membros; grupos e vínculos continuam sem escrita até o lote 3 e o lote 5). Trava do último admin, com prazos distintos: (1) até o lote 1 não havia escrita de grupo, membro ou vínculo, logo não havia trava; (2) a trava sobre `users` é **pré-condição do lote 2** e tem de existir antes de qualquer guard passar a decidir por grupo, porque a partir daí rebaixar ou desativar o último admin deixaria a instalação sem admin de sessão (o acesso total vem do grupo `admin`, sem fallback para `users.role`); (3) a trava para **remoção de membro do grupo `admin` pela tela/API de grupos** entra no lote 3, junto com as mutações de grupo e membro e com a gravação em `access_audit_log`. Redação única da trava do lote 2 (a mesma em todas as seções): ela cobre três entradas, `PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive quando o admin age sobre si mesmo; "último admin" conta só usuários **ativos** (`users.is_active = 1`) associados ao grupo `admin` de sistema, porque a exclusão é lógica e contar só por `user_access_groups` contaria o usuário desativado. No lote 3 o serviço também deve impedir renomear a chave `admin`, alterar `is_system` ou apagar grupos de sistema, e não apenas a tela (hoje não há trava no banco para isso).
+- **Associação e exclusão de usuário**: `DELETE /users/{id}` é exclusão lógica (`UPDATE users SET is_active = 0`, `api/app/users.py`, linha 497) e não apaga a linha. A associação em `user_access_groups` permanece. O `ON DELETE CASCADE` da FK só atuaria num `DELETE` físico de `users`, que nenhum fluxo da API faz hoje. `PUT /users/{id}` também desativa (`is_active`, linha 459) e troca o papel (`role`, linha 458), e até o lote 1 não tinha a checagem contra autodesativação que o `DELETE` tem (linha 492): até o lote 1 um admin podia se rebaixar ou se desativar pelo `PUT`. Desde o 2A, `PUT /users/{id}` recusa a autodesativação com 400 (`api/app/users.py`, `update_user`). Por isso a trava do último admin (redação única acima) cobre as três entradas sobre `users` no lote 2, e a remoção de membro do grupo `admin` fica no lote 3.
 - **Identidades**: o token mestre continua resolvendo para admin. O dispositivo herda as permissões do dono.
 - **Virada sem mudança de comportamento** (lote 1):
   - Três grupos de sistema espelham os guards atuais: Admin, Personal Trainer e Usuário.
@@ -95,8 +95,14 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 
 ### Sequência de lotes
 
-1. **Fundação** (este lote): este ADR, migração 111, módulo `api/app/access/`, permissões em `/auth/me` e guarda de cobertura. Sem mudança de comportamento.
-2. **Aplicação no backend**: troca dos guards por `require_permission` e `authorize_target`. Allowlist zerada.
+1. **Fundação** (lote 1, em produção desde 10/11/2026): este ADR, migração 111, módulo `api/app/access/`, permissões em `/auth/me` e guarda de cobertura. Sem mudança de comportamento.
+2. **Aplicação no backend**: troca dos guards por `require_permission` e `authorize_target`. Allowlist zerada. Dividida em:
+   - **2A Pré-condições** (branch `feat/rbac-lote2a-precondicoes`): sincronização usuário→grupo, migração 112, trava do último admin, smoke. Nenhum guard muda.
+   - **2B Base da troca**: recursos novos no catálogo e migração de concessões, retrato congelado dos guards antigos, teste de paridade, guarda estática de `identity.role`, `authorize_target` com id estrito, categoria "só autenticação" na guarda de cobertura, conversão de `users`, `auth`, `devices` e `jobs`.
+   - **2C** Administração e catálogos.
+   - **2D** Nutrição (`resolve_target_user` → `authorize_target`, 404 preservado).
+   - **2E** Analytics e engines.
+   - **2F** Treino, corpo e fecho (allowlist zerada, remoção de `require_admin` e `require_admin_or_pt`).
 3. **Tela "Grupos e acessos"**: API de grupos, membros e auditoria.
 4. **Ocultação no frontend**: hook de permissões nas telas.
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
@@ -106,7 +112,22 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 
 Riscos levantados na revisão independente. O lote 2 só troca um guard depois de cobrir cada item abaixo.
 
-- **Sincronização usuário→grupo.** Nenhum ponto que escreve em `users` grava `user_access_groups` hoje. Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
+**Estado do 2A** (branch `feat/rbac-lote2a-precondicoes`, não promovida). Os itens abaixo são as pré-condições; o que o 2A entrega está marcado, e o restante segue pendente para 2B–2F.
+
+- [x] **Sincronização (a)**: a 112 reconcilia os grupos de sistema com `users.role` para todos os usuários, não só para quem não tem linha (ver a decisão abaixo). Reexecutar a 111 continua não sendo o caminho.
+- [x] **Sincronização (b)**: migração 112 implementada em `api/db/migrations/112_user_access_groups_backfill.py`, com a decisão sobre papel alterado depois da 111.
+- [x] **Sincronização (c)**: a associação é gravada na mesma transação do `INSERT`/`UPDATE` de `users` em `POST /users` (`api/app/users.py`, `assign_role_group`), na troca de papel de `PUT /users/{id}` (`switch_role_group`, que remove o grupo de sistema antigo) e no seed do admin em `api/app/auth.py` (`ensure_admin_seed`, `assign_role_group`). Ainda não cobre: `scripts/prod_to_dev.py`, restauração por dump, fixtures de `api/tests/integration`, e o smoke tratado abaixo.
+- [x] **Sincronização (d)**: `api/tests/unit/test_access_sincronizacao_grupo.py` cobre os dois casos (usuário criado depois da 111 recebe o grupo do papel; troca de papel não deixa o grupo antigo), com banco falso. O teste de paridade completo (guards antigos × novos, três identidades) continua para o 2B.
+- [x] **Trava do último admin**: `api/app/access/membership.py` (`ensure_not_last_admin`, `lock_active_admin_ids`) é chamada em `PUT /users/{id}` (quando `is_active = false` ou quando o papel muda para um valor diferente de `admin`) e em `DELETE /users/{id}`, com resposta 409 `last_admin`. A troca de papel para `admin` não avalia a trava, porque não reduz o número de admins.
+  - **Ordem de locks** (igual nas duas rotas, `api/app/users.py`, `update_user` e `deactivate_user`): (1) a linha do alvo, com `SELECT id, role FROM users WHERE id = %s FOR UPDATE` no `PUT` e `SELECT id FROM users WHERE id = %s FOR UPDATE` no `DELETE`; (2) quando a trava é avaliada, `lock_active_admin_ids` roda `SELECT ... FOR UPDATE` com JOIN sobre `users`, `user_access_groups` e `access_groups`, travando as linhas dos admins ativos e as linhas correspondentes de `user_access_groups` e `access_groups`; (3) só então a escrita em `users` e, se houver, a troca de grupo.
+  - O papel usado para decidir a troca de grupo e a avaliação da trava é o lido sob o lock do alvo. Motivo: dois `PUT` concorrentes podiam deixar `users.role` e o grupo do mesmo usuário divergentes.
+  - Custo: toda desativação e todo rebaixamento travam todas as linhas de admin durante a transação. O volume é baixo, porque as rotas são só de admin.
+  - Limitação de deadlock entre admins: ver "Locks e deadlock" nas decisões do 2A.
+  - `api/tests/unit/test_users_trava_ultimo_admin.py` verifica com banco falso a ordem dos statements. **Não há teste de concorrência com transações reais**; a atomicidade e a ordem dos locks estão provadas só pelos statements emitidos.
+- [x] **Smoke** (`scripts/smoke-async-jobs.sh`, bloco `smoke-admin`, linhas 98 a 104): o `INSERT` em `users` só roda se não houver admin ativo; logo depois, um `INSERT IGNORE INTO user_access_groups` associa ao grupo `admin` o usuário `smoke-admin` filtrado por `u.role = 'admin' AND u.is_active = 1`. É SQL de script, não código da aplicação. Diferença em relação ao código: não há `START TRANSACTION` no bloco e o cliente `mysql` roda em autocommit por padrão, então os dois statements não estão na mesma transação; e o bloco roda com `2>/dev/null`, então uma falha fica silenciosa.
+- [ ] **Pendente para 2B–2F**: exigir `admin.grupos` para criar ou promover admin (ver item 4); todos os guards e checagens de papel em handlers; rotas por id e posse da linha; classificação das rotas sem `get_current_identity`; teste de paridade completo.
+
+- **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
   - `api/app/auth.py`, seed do admin no boot (linha 202): em ambiente novo ou restaurado esse admin ficaria sem grupo e receberia 403 em tudo depois do lote 2;
   - `scripts/smoke-async-jobs.sh` (linha 98): usuário de smoke criado por SQL; deve gravar a associação, ou o smoke passa a levar 403;
@@ -117,10 +138,10 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 
   O lote 2 cobre estes itens antes de trocar qualquer guard:
   - (a) A migração 111 NÃO refaz o preenchimento. O seed de membros roda só com a tabela `user_access_groups` vazia. Usuário criado, ou com papel alterado, depois da 111 fica sem grupo (negado) ou no grupo do papel antigo (acesso indevido). Reexecutar a 111 não corrige isso, porque depois que a tabela tem linhas o conteúdo é do admin.
-  - (b) O lote 2 precisa de uma migração nova, `112`, idempotente, que insere a associação só para usuários sem nenhuma linha em `user_access_groups`. Ela é aplicada imediatamente antes de ativar os guards novos. A 112 não corrige quem já tem linha e teve o papel alterado depois da 111; esse caso precisa de decisão antes da ativação.
+  - (b) O lote 2 precisa de uma migração nova, `112`, idempotente, que insere a associação só para usuários sem nenhuma linha em `user_access_groups`. Ela é aplicada imediatamente antes de ativar os guards novos. A 112 não corrige quem já tem linha e teve o papel alterado depois da 111; esse caso precisa de decisão antes da ativação. *(Decidido no 2A: a 112 reconcilia também esse caso; ver "Decisões e pendências do 2A".)*
   - (c) Todo ponto que cria usuário (`POST /users`, seed do admin em `auth.py` e os demais da lista acima) grava a associação na mesma transação do `INSERT INTO users`. A troca de papel **remove** a associação do grupo de sistema antigo e insere a nova, na mesma transação da alteração de `users.role`: sem a remoção, um ex-admin ou ex-PT acumularia grupos e a união manteria o acesso antigo.
   - (d) O teste de paridade do lote 2 ganha o caso "usuário criado depois da 111 tem grupo" (e o caso "troca de papel não deixa o grupo antigo").
-- **Trava do último admin.** Antes de qualquer guard decidir por grupo, a trava cobre três entradas: `PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive quando o admin age sobre si mesmo (hoje só o `DELETE` recusa a autodesativação). "Último admin" conta só usuários **ativos** (`users.is_active = 1`) associados ao grupo `admin` de sistema; como a exclusão é lógica, contar só por `user_access_groups` contaria o desativado. Sem a trava, rebaixar ou desativar o último admin deixa a instalação sem admin de sessão, porque o acesso total vem do grupo `admin`, sem fallback para `users.role`. A trava de remoção de membro do grupo `admin` pela tela/API de grupos é do lote 3.
+- **Trava do último admin.** Antes de qualquer guard decidir por grupo, a trava cobre três entradas: `PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive quando o admin age sobre si mesmo (até o lote 1 só o `DELETE` recusava a autodesativação; desde o 2A o `PUT` também recusa, com 400). "Último admin" conta só usuários **ativos** (`users.is_active = 1`) associados ao grupo `admin` de sistema; como a exclusão é lógica, contar só por `user_access_groups` contaria o desativado. Sem a trava, rebaixar ou desativar o último admin deixa a instalação sem admin de sessão, porque o acesso total vem do grupo `admin`, sem fallback para `users.role`. A trava de remoção de membro do grupo `admin` pela tela/API de grupos é do lote 3.
 - **Deploy em todas as imagens.** api-core, engines e as Lambdas de IA resolvem permissões de forma independente e dependem do mesmo schema, aplicado só pela Lambda de migrações; todas precisam subir com a 111 já aplicada.
 - **Matriz mais larga que alguns guards.** `POST /integrations/intervals/sync` (hoje só admin) e `POST /cardio-recommendations/{id}/apply` (hoje admin ou PT) precisam de recurso próprio no mapeamento rota→permissão, com teste que compara por papel com o guard antigo.
 - **Checagens de papel dentro de handlers e de SQL.** Há `identity.role == 'admin'`, `is_admin(`, `is_staff(` e `_require_admin_identity` em `gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py`, `exercise_cards.py`, `nutrition_access.py` e em serviços. A guarda de cobertura não enxerga essas checagens. O lote 2 precisa cobri-las e ganhar uma guarda estática que proíba `identity.role` novo fora de `security.py` e do módulo `access`.
@@ -130,6 +151,31 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - **404 que esconde existência.** Rotas que hoje respondem 404 para não revelar que um recurso alheio existe (ex.: `resolve_plan_owner` em `api/app/nutrition_access.py`, linha 46) não podem passar a responder 403. `authorize_target` responde 403 e substitui `resolve_target_user`, não `resolve_plan_owner`.
 - **Ordem de deploy do lote 2.** Quando as rotas exigirem permissão, um banco sem a 111 responde 503 em tudo. O lote 2 só sobe com a 111 já aplicada e conferida em produção.
 - **Paridade.** Teste por papel antigo × novo para todas as rotas e para os três tipos de identidade (sessão, dispositivo, token mestre). Decisão explícita sobre usuário desativado e sobre papel fora dos três valores (`admin`, `personal_trainer`, `regular`); hoje esse caso fica sem grupo, portanto negado.
+
+#### Decisões e pendências do 2A
+
+**Papel alterado depois da 111 (decisão, 2A).** A 112 reconcilia os grupos de sistema (`access_groups.is_system = 1`: `admin`, `personal_trainer`, `usuario`) com `users.role`:
+- remove a associação a grupo de sistema que não corresponde ao papel atual e insere a correta;
+- grupos que não são de sistema (ex.: `free`, grupos criados pelo admin) ficam intactos;
+- papel fora dos três valores fica sem grupo de sistema (negado);
+- inclui usuários inativos, porque o papel deles volta a valer se forem reativados.
+
+Motivo: `users.role` é a verdade até o fim do lote 2, e a 112 alinha os grupos a ela. A 112 é só DML, sem DDL e sem FK; o `plan` lê antes de escrever e emite um statement por usuário e grupo, então reexecutar converge. `down` não apaga nada, porque não há como distinguir as associações da 112 das demais.
+
+**Consequência a registrar.** Depois do lote 3 (edição de membros pela tela), a 112 não deve ser reexecutada como ferramenta de correção, porque desfaria ajustes manuais feitos em grupos de sistema.
+
+**Limitação entre a 112 e o código novo (aberta, não afeta o 2A).** A 112 só é aplicada pelo `migrate` da promoção. Usuário criado pelo código do lote 1 entre esse `migrate` e a atualização das Lambdas da aplicação fica sem grupo, e a 112 não o corrige sozinha. Nenhum guard lê grupo no 2A, então isso não causa negação agora. Mas antes de ativar os guards do 2B, a conferência por `SELECT` precisa ser repetida; a correção é uma nova reconciliação decidida pelo Tech Lead, não uma reexecução automática.
+
+**Trava do último admin conta só por grupo (limitação aceita, 2A).** `lock_active_admin_ids` conta admins ativos com linha em `user_access_groups`. Antes da 112, um admin que existe só por `users.role` (sem linha no grupo `admin`) não é contado: a trava não dispara para ele, ou seja, ele pode ser desativado ou rebaixado sem 409, e não conta como admin restante, então a desativação do último admin contado responde 409 mesmo quando esse outro admin existe. Para o último admin contado, a trava continua decidindo do lado seguro: o bloqueio pode ser excessivo, mas nunca remove o último admin contado. A ordem do deploy (migrate da 112 antes da atualização das Lambdas) fecha a janela dos usuários já existentes. Resta a janela entre o migrate e a atualização das Lambdas, em que o código do lote 1 ainda pode criar um admin sem grupo; ela já é a limitação acima. Alternativa não adotada: contar também `users.role = 'admin'` na trava. Não foi adotada porque reintroduz a segunda fonte de verdade durante a transição, e a regra do lote 2 é que o acesso total vem só do grupo `admin`, sem fallback para `users.role`.
+
+**Locks e deadlock entre admins (limitação aceita, 2A).** A ordem alvo → admins ativos não é uma ordem total. Dois admins que agem ao mesmo tempo sobre alvos diferentes travam, cada um, a linha do próprio alvo e depois as linhas dos admins ativos; essas duas etapas podem se cruzar e formar um ciclo. O InnoDB aborta uma das transações com erro 1213. Não há tratamento desse erro no código de `api/app` (busca sem ocorrência), então a resposta é 5xx em vez de 409. O estado fica consistente, porque a transação abortada sofre rollback. Alternativas não adotadas no 2A, candidatas para o 2B: (a) mapear 1213 para 409 ou 503, com retentativa; (b) travar os admins ativos em ordem determinística antes do alvo.
+
+**Pendências que o 2A não cobre** (seguem valendo):
+- Exigir `admin.grupos` para criar ou promover admin, com teste negativo. Vai com a conversão de `api/app/users.py` no 2B. Até lá, `POST /users` e `PUT /users/{id}` com `role = 'admin'` continuam protegidos só por `require_admin`, como antes; a diferença é que o 2A já põe esse usuário no grupo `admin`.
+- `scripts/prod_to_dev.py` e restauração por dump. Desde o PR #121, `verify_snapshot` (`scripts/prod_to_dev.py`, linhas 817 a 823) aborta a cópia se o usuário copiado não tiver nenhuma linha válida em `user_access_groups`. Restaurar um dump antigo deixa usuários sem grupo e exige rodar a 112 depois.
+- Fixtures de `api/tests/integration` e de `api/tests/support` que inserem usuários por SQL sem grupo (ex.: `test_seg06_seg07_sessoes_e_login.py`, linha 37). Só passam a importar quando as rotas exigirem permissão.
+
+**Dependência da 111 na trava.** A trava lê `access_groups` e `user_access_groups` também em `DELETE /users/{id}` e na desativação por `PUT`, mesmo sem troca de papel. Sem a 111 aplicada, essas rotas respondem 500.
 
 ### Riscos para lotes futuros
 
@@ -173,7 +219,7 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - As próximas decisões de acesso (cobrança, cota por grupo, visibilidade) entram como grupos e concessões, não como novos valores de `users.role`.
 - Autores de migração, módulo de acesso e testes devem partir deste ADR. Qualquer desvio desta decisão exige um novo ADR que substitua este.
 - O token mestre continua sendo admin, e o dispositivo continua herdando as permissões do dono. Isso precisa ser testado no lote 1, porque é o caminho que mais facilmente escapa de um guard novo.
-- O último admin ativo não pode ser removido. Esta regra ainda não existe no código e é entregue em dois momentos: no lote 2, como pré-condição, a trava sobre `users` com as três entradas (`PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive o admin agindo sobre si mesmo), contando só usuários ativos (`users.is_active = 1`) no grupo `admin` de sistema; no lote 3, a remoção de membro do grupo `admin`, no módulo `access`, junto com as mutações de grupo e membro e a auditoria. Não é aplicada só na tela.
+- O último admin ativo não pode ser removido. Até o lote 1 esta regra não existia no código. Ela é entregue em dois momentos: no lote 2, como pré-condição (implementada no 2A, nesta branch, ainda não promovida), a trava sobre `users` com as três entradas (`PUT /users/{id}` trocando o papel, `PUT /users/{id}` com `is_active = false` e `DELETE /users/{id}`, inclusive o admin agindo sobre si mesmo), contando só usuários ativos (`users.is_active = 1`) no grupo `admin` de sistema; no lote 3, a remoção de membro do grupo `admin`, no módulo `access`, junto com as mutações de grupo e membro e a auditoria. Não é aplicada só na tela.
 
 ## Impacto em produção
 
@@ -186,7 +232,7 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - Semeia 150 concessões: 71 do grupo `usuario` e 79 do grupo `personal_trainer`. O `admin` tem acesso total implícito, sem linhas.
 - Associa cada usuário ao grupo do seu `users.role` atual.
 - `GET /auth/me` passa a devolver os campos aditivos `permissions` e `groups`, com uma consulta a mais por chamada.
-- Nenhum guard, rota ou `users.role` muda. Nada lê as tabelas além de `/auth/me`. Não há FK para `exercise_catalog`.
+- Nenhum guard, rota ou `users.role` muda. No lote 1, nada lia as tabelas além de `/auth/me` (desde o 2A, a trava e a 112 também leem, e o `POST /users`, a troca de papel e o seed gravam `user_access_groups`; ver "Impacto em produção", Lote 2A). Não há FK para `exercise_catalog`.
 
 **Efeito colateral conhecido: `scripts/prod_to_dev.py` (dois bloqueios)**
 
@@ -229,7 +275,7 @@ O script e o teste dele (`api/tests/unit/test_prod_to_dev.py`) não fazem parte 
 
 **Limitação conhecida**
 
-- A associação usuário→grupo é um retrato do momento da migração. Usuário criado ou com papel alterado depois dela depende da sincronização do lote 2 (ver Pré-condições do lote 2).
+- A associação usuário→grupo é um retrato do momento da migração. Usuário criado ou com papel alterado depois dela depende da sincronização do lote 2 (ver Pré-condições do lote 2). Desde o 2A, a sincronização cobre `POST /users`, a troca de papel e o seed do admin, e a 112 reconcilia o retrato com `users.role` (ver "Decisões e pendências do 2A").
 
 **Ainda depende de prova**
 
@@ -237,12 +283,45 @@ O script e o teste dele (`api/tests/unit/test_prod_to_dev.py`) não fazem parte 
 
 O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/unit/test_access_*`, `test_auth_me_permissoes`, `test_migracao_111_access_groups`) não é evidência deste documento. A 111 não foi executada em MySQL real aqui.
 
+**Lote 2A** (branch `feat/rbac-lote2a-precondicoes`, não promovido)
+
+*O que muda:*
+- Migração 112 (`api/db/migrations/112_user_access_groups_backfill.py`): só DML (DELETE de associações a grupo de sistema que não correspondem ao papel; INSERT IGNORE do grupo do papel). Sem DDL e sem FK. `down` não apaga nada. Pré-requisito: a 111. Sem as tabelas `access_groups` e `user_access_groups`, `plan` devolve plano vazio com log, sem erro e sem escrita (caso do `dry-run` com a 111 pendente). Com as tabelas presentes e algum grupo de sistema ausente, levanta `UserAccessGroupsBackfillError` antes de qualquer escrita.
+- `POST /users`, a troca de papel em `PUT /users/{id}` e o seed do admin no boot passam a gravar `user_access_groups` na mesma transação de `users`.
+- Novo 409 `last_admin` (corpo `{"error": "last_admin", "message": ...}`) em `PUT /users/{id}` (`is_active = false` ou troca de papel para um valor diferente de `admin`) e em `DELETE /users/{id}`.
+- Sem a 111 aplicada: `DELETE /users/{id}` e `PUT /users/{id}` com `is_active = false` ou com troca de papel respondem 500, porque avaliam a trava ou leem `access_groups` pela troca de grupo. `POST /users` sempre lê `access_groups` (o papel é validado antes e sempre gera um grupo), então também responde 500. `PUT /users/{id}` sem troca de papel e sem desativação não consulta grupos.
+- Associação: o INSERT em `user_access_groups` (`api/app/access/membership.py`, `_insert_membership`) é `INSERT ... ON DUPLICATE KEY UPDATE user_id = user_id`, e não `INSERT IGNORE`, para que erro de FK ou NOT NULL desfaça a transação do chamador. `assign_role_group` e `switch_role_group` rejeitam `user_id` que não seja inteiro positivo com `InvalidMembershipTargetError` (inclui `lastrowid` 0 ou None). As migrações 111 e 112 continuam com `INSERT IGNORE`.
+- Custo de locks: toda desativação e todo rebaixamento travam todas as linhas de admin ativo durante a transação (ver "Trava do último admin", no checklist). O volume é baixo, porque as rotas são só de admin.
+- `PUT /users/{id}` com `is_active = false` sobre a própria conta passa a responder 400 (antes aceitava).
+- Se o grupo de sistema do papel não existir, `POST /users` e a troca de papel respondem 5xx e a transação desfaz tudo (`db_dataapi.transaction` e `db_pymysql.transaction` fazem rollback em exceção). No seed do admin não há 5xx: a exceção é registrada em log, o admin não é criado e a tentativa se repete no próximo boot.
+
+*O que não muda:*
+- Em produção, o comportamento sem a 111 não altera nada: a 111 já está aplicada desde 10/11/2026, então a 112 planeja as mesmas linhas de antes.
+- Nenhum guard. Nenhuma rota declara `require_permission` (o símbolo existe em `api/app/access/deps.py`, sem uso em `api/app`). `users.role` segue gravado e lido.
+- Nenhuma rota nova e nenhuma resposta de sucesso muda de formato.
+
+*Promoção:*
+- Mesma sequência do lote 1 (`RUN_DB_MIGRATIONS=true` antes do deploy, `RUN_DB_MIGRATIONS` de volta a `false` depois), com a 112 aplicada pelo `migrate`, antes de as Lambdas da aplicação receberem o código novo. Num banco sem a 111, a 112 não faz nada (plano vazio); quem garante a 111 antes é a ordem do runner, que planeja e aplica uma migração por vez no `migrate`. Um `dry-run` com a 111 pendente mostra plano vazio para a 112 e não prevê as inserções de grupo; isso é esperado, não é falha.
+- Depois do deploy, `SELECT` de leitura conferindo: nenhum usuário com papel conhecido (`admin`, `personal_trainer`, `regular`) sem linha no grupo de sistema do papel; nenhuma linha de grupo de sistema divergente do papel do usuário. Usuário com papel fora dos três valores deve ficar sem grupo de sistema, e isso é o esperado.
+
+*O que foi medido:*
+- Só testes unitários com banco falso (`api/tests/unit/test_access_sincronizacao_grupo.py`, `test_users_trava_ultimo_admin.py` e `test_migracao_112_backfill_grupos.py`). Eles não substituem as provas abaixo.
+
+*O que não foi medido:*
+- A 112 em MySQL real: fica para o CI com o rótulo `ci-completo`.
+- A 112 pela RDS Data API no Aurora: só no `migrate` da promoção.
+- Concorrência real da trava e dos locks, inclusive o deadlock entre admins: não há teste com transações concorrentes. A ordem (linha do alvo, depois admins ativos, depois o `UPDATE`) é verificada só em banco falso, pelos statements emitidos.
+- O número atual de usuários divergentes em produção. A conferência de 10/11 achou 4 usuários, todos com grupo; não foi medido de novo.
+
 ## Referências
 
 - `api/app/security.py`: `get_current_identity`, `require_admin`, `require_admin_or_pt`, `Identity`, `master_token_matches`.
 - `api/app/nutrition_access.py`: `resolve_target_user` (a ser substituído por `authorize_target`).
-- `api/app/auth.py`: `me`.
-- `api/app/users.py`: `_ALLOWED_ROLES`.
+- `api/app/auth.py`: `me`; `ensure_admin_seed` (lote 2A: grava o grupo `admin` do seed).
+- `api/app/users.py`: `_ALLOWED_ROLES`; `create_user`, `update_user` e `deactivate_user` (lote 2A: sincronização e trava).
+- `api/app/access/membership.py`: escrita de `user_access_groups` e trava do último admin (lote 2A).
+- `api/db/migrations/112_user_access_groups_backfill.py`: reconciliação dos grupos de sistema com `users.role` (lote 2A).
+- `scripts/smoke-async-jobs.sh` (bloco `smoke-admin`) e `scripts/prod_to_dev.py` (`verify_snapshot`).
 - `api/db/migrations/001_schema.sql` e `007_workout_plan_templates.sql`: origem do ENUM de `users.role`.
 - `api/app/domain/nutrition/ai_usage.py`: dono da cota de IA de nutrição.
 - `frontend/src/lib/nav-items.ts`: menu central.

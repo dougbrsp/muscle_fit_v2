@@ -13,6 +13,12 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from . import athlete_hr_zones
+from .access.membership import (
+    LastAdminError,
+    assign_role_group,
+    ensure_not_last_admin,
+    switch_role_group,
+)
 from .auth import MIN_PASSWORD_LENGTH, generate_temp_password, hash_password
 from .crypto_utils import encrypt_secret, is_encrypted
 from .db import transaction
@@ -48,6 +54,11 @@ def _user_photo_key_is_canonical(user_id: int, key: Any) -> bool:
 _ALLOWED_ROLES = {"admin", "regular", "personal_trainer"}
 _ROLE_ERROR = "role deve ser um de: " + ", ".join(f"'{r}'" for r in sorted(_ALLOWED_ROLES)) + "."
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_SELF_DEACTIVATE_ERROR = "Você não pode desativar a própria conta."
+
+
+def _last_admin_http_error(exc: LastAdminError) -> HTTPException:
+    return HTTPException(status_code=409, detail={"error": "last_admin", "message": str(exc)})
 
 
 def _validate_email(raw: Any) -> Optional[str]:
@@ -338,6 +349,7 @@ def create_user(payload: UserCreateIn, identity: Identity = Depends(require_admi
                 ),
             )
             user_id = cur.lastrowid
+            assign_role_group(cur, user_id, role, identity.user_id)
             cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
 
@@ -441,12 +453,26 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
         _validate_height_cm(item.get("height_cm")), _validate_activity_level(item.get("activity_level"))
     )
     max_hr_sql, max_hr_params = _max_hr_set(payload)
+    is_active = item.get("is_active")
+    deactivating = is_active is not None and not is_active
+    if deactivating and identity.user_id == user_id:
+        raise HTTPException(status_code=400, detail=_SELF_DEACTIVATE_ERROR)
 
     with transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
-            if not cur.fetchone():
+            # Ordem de locks (PUT e DELETE): 1) linha do alvo, 2) admins ativos.
+            cur.execute("SELECT id, role FROM users WHERE id = %s FOR UPDATE", (user_id,))
+            existing = cur.fetchone()
+            if not existing:
                 raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+            current_role = existing.get("role") if isinstance(existing, dict) else existing[1]
+            role_changes = role is not None and role != current_role
+
+            if deactivating or (role_changes and role != "admin"):
+                try:
+                    ensure_not_last_admin(cur, user_id)
+                except LastAdminError as exc:
+                    raise _last_admin_http_error(exc) from exc
 
             cur.execute(
                 f"""
@@ -481,6 +507,8 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
                     user_id,
                 ),
             )
+            if role_changes:
+                switch_role_group(cur, user_id, role, identity.user_id)
             cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
 
@@ -490,10 +518,18 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
 @router.delete("/{user_id}")
 def deactivate_user(user_id: int, identity: Identity = Depends(require_admin)):
     if identity.user_id == user_id:
-        raise HTTPException(status_code=400, detail="Você não pode desativar a própria conta.")
+        raise HTTPException(status_code=400, detail=_SELF_DEACTIVATE_ERROR)
 
     with transaction() as conn:
         with conn.cursor() as cur:
+            # Ordem de locks (igual ao PUT): 1) linha do alvo, 2) admins ativos.
+            cur.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+            try:
+                ensure_not_last_admin(cur, user_id)
+            except LastAdminError as exc:
+                raise _last_admin_http_error(exc) from exc
             cur.execute("UPDATE users SET is_active = 0 WHERE id = %s", (user_id,))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Usuário não encontrado.")
