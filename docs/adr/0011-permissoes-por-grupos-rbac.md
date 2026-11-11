@@ -286,7 +286,7 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 **Lote 2A** (branch `feat/rbac-lote2a-precondicoes`, não promovido)
 
 *O que muda:*
-- Migração 112 (`api/db/migrations/112_user_access_groups_backfill.py`): só DML (DELETE de associações a grupo de sistema que não correspondem ao papel; INSERT IGNORE do grupo do papel). Sem DDL e sem FK. `down` não apaga nada.
+- Migração 112 (`api/db/migrations/112_user_access_groups_backfill.py`): só DML (DELETE de associações a grupo de sistema que não correspondem ao papel; INSERT IGNORE do grupo do papel). Sem DDL e sem FK. `down` não apaga nada. Pré-requisito: a 111. Sem as tabelas `access_groups` e `user_access_groups`, `plan` devolve plano vazio com log, sem erro e sem escrita (caso do `dry-run` com a 111 pendente). Com as tabelas presentes e algum grupo de sistema ausente, levanta `UserAccessGroupsBackfillError` antes de qualquer escrita.
 - `POST /users`, a troca de papel em `PUT /users/{id}` e o seed do admin no boot passam a gravar `user_access_groups` na mesma transação de `users`.
 - Novo 409 `last_admin` (corpo `{"error": "last_admin", "message": ...}`) em `PUT /users/{id}` (`is_active = false` ou troca de papel para um valor diferente de `admin`) e em `DELETE /users/{id}`.
 - Sem a 111 aplicada: `DELETE /users/{id}` e `PUT /users/{id}` com `is_active = false` ou com troca de papel respondem 500, porque avaliam a trava ou leem `access_groups` pela troca de grupo. `POST /users` sempre lê `access_groups` (o papel é validado antes e sempre gera um grupo), então também responde 500. `PUT /users/{id}` sem troca de papel e sem desativação não consulta grupos.
@@ -296,11 +296,12 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - Se o grupo de sistema do papel não existir, `POST /users` e a troca de papel respondem 5xx e a transação desfaz tudo (`db_dataapi.transaction` e `db_pymysql.transaction` fazem rollback em exceção). No seed do admin não há 5xx: a exceção é registrada em log, o admin não é criado e a tentativa se repete no próximo boot.
 
 *O que não muda:*
+- Em produção, o comportamento sem a 111 não altera nada: a 111 já está aplicada desde 10/11/2026, então a 112 planeja as mesmas linhas de antes.
 - Nenhum guard. Nenhuma rota declara `require_permission` (o símbolo existe em `api/app/access/deps.py`, sem uso em `api/app`). `users.role` segue gravado e lido.
 - Nenhuma rota nova e nenhuma resposta de sucesso muda de formato.
 
 *Promoção:*
-- Mesma sequência do lote 1 (`RUN_DB_MIGRATIONS=true` antes do deploy, `RUN_DB_MIGRATIONS` de volta a `false` depois), com a 112 aplicada pelo `migrate`, antes de as Lambdas da aplicação receberem o código novo.
+- Mesma sequência do lote 1 (`RUN_DB_MIGRATIONS=true` antes do deploy, `RUN_DB_MIGRATIONS` de volta a `false` depois), com a 112 aplicada pelo `migrate`, antes de as Lambdas da aplicação receberem o código novo. Num banco sem a 111, a 112 não faz nada (plano vazio); quem garante a 111 antes é a ordem do runner, que planeja e aplica uma migração por vez no `migrate`. Um `dry-run` com a 111 pendente mostra plano vazio para a 112 e não prevê as inserções de grupo; isso é esperado, não é falha.
 - Depois do deploy, `SELECT` de leitura conferindo: nenhum usuário com papel conhecido (`admin`, `personal_trainer`, `regular`) sem linha no grupo de sistema do papel; nenhuma linha de grupo de sistema divergente do papel do usuário. Usuário com papel fora dos três valores deve ficar sem grupo de sistema, e isso é o esperado.
 
 *O que foi medido:*

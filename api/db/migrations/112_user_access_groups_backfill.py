@@ -22,11 +22,17 @@ exatamente o que falta, um statement parametrizado por usuario/grupo
 Sobre o estado convergido o plano e vazio. Interrompida em qualquer ponto,
 reexecutar converge. Sem DDL e sem FK nova.
 
-Pre-requisito: a 111. Se `access_groups`/`user_access_groups` nao existirem ou
-faltar algum dos tres grupos de sistema, `UserAccessGroupsBackfillError` e
-levantado antes de qualquer escrita.
+Pre-requisito: a 111. Se `access_groups` e/ou `user_access_groups` nao existirem,
+`plan(db)` devolve plano VAZIO (sem erro, sem escrita, com log): e o caso do
+`--dry-run`, que planeja o lote sem aplicar a 111 antes. No `migrate` real a 111
+e aplicada e confirmada antes de a 112 ser planejada (o runner planeja e executa
+uma migracao por vez), entao a 112 ve as tabelas. Tabelas presentes mas algum dos
+tres grupos de sistema ausente: `UserAccessGroupsBackfillError` antes de qualquer
+escrita.
 
-Impacto em producao: so altera linhas de `user_access_groups` (remove as de
+Impacto em producao: com a 111 ja aplicada (producao, 10/11/2026) o
+comportamento e o mesmo de antes; sem as tabelas o plano e vazio em vez de erro
+(so afeta dry-run/lotes em que a 111 ainda esta pendente). So altera linhas de `user_access_groups` (remove as de
 sistema divergentes do papel, adiciona as faltantes); `users` e os guards
 atuais nao mudam. Reexecutavel sem efeito. Volume esperado pequeno (4 usuarios
 na conferencia de 10/11/2026; nao medido de novo).
@@ -38,6 +44,10 @@ Data API: um statement por chamada, SQL parametrizado, sem PREPARE/SET.
 """
 
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 T_GROUPS = "access_groups"
 T_MEMBERS = "user_access_groups"
@@ -84,10 +94,11 @@ def plan(db) -> list[tuple[str, tuple | None]]:
     }
     faltando = {T_GROUPS, T_MEMBERS} - presentes
     if faltando:
-        raise UserAccessGroupsBackfillError(
-            f"112: tabela(s) {sorted(faltando)} ausente(s); rode a 111 antes. "
-            "Nenhum statement executado."
+        logger.info(
+            "112: tabela(s) %s ausente(s); a 111 ainda nao foi aplicada. Plano vazio.",
+            sorted(faltando),
         )
+        return []
 
     group_id_by_key = {
         _text(row["group_key"]): int(row["id"])

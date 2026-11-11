@@ -124,12 +124,18 @@ def test_grupo_de_sistema_ausente_e_erro_sem_escrita(remover):
     assert db.executed == []
 
 
-@pytest.mark.parametrize("ausente", ["access_groups", "user_access_groups"])
-def test_tabela_ausente_e_erro_sem_escrita(ausente):
-    db = FakeDB({1: "admin"}, tables={"access_groups", "user_access_groups"} - {ausente})
-    with pytest.raises(_mod()["UserAccessGroupsBackfillError"]):
-        _run(db)
+@pytest.mark.parametrize(
+    "presentes",
+    [set(), {"access_groups"}, {"user_access_groups"}],
+    ids=["ambas_ausentes", "so_grupos", "so_associacoes"],
+)
+def test_tabela_ausente_devolve_plano_vazio_sem_erro_e_sem_escrita(presentes):
+    # dry-run do lote com a 111 pendente: a 111 ainda nao criou as tabelas
+    db = FakeDB({1: "admin"}, tables=presentes)
+    assert _mod()["plan"](db) == []
+    _run(db)
     assert db.executed == []
+    assert db.members == set()
 
 
 def test_segunda_execucao_nao_emite_escrita():
