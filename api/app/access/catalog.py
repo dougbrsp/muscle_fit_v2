@@ -2,8 +2,10 @@
 
 Python puro, sem banco. Define acoes, escopos (com ordem de abrangencia),
 recursos (chave, rotulo em portugues, dominio) e a matriz padrao dos grupos de
-sistema. A migracao 111 guarda um retrato congelado desta matriz (nao importa
-este modulo); um teste de paridade compara os dois.
+sistema. As migracoes guardam retratos congelados desta matriz (nao importam
+este modulo): a 111 (matriz inicial) e a 113 (concessoes de `conta.dispositivos`,
+lote 2B). O retrato congelado e o acumulado 111 + 113; um teste de paridade
+compara o catalogo com esse acumulado.
 
 Sem regra de motor aqui: controle de acesso nao e regra de recuperacao,
 progressao, volume etc.
@@ -41,6 +43,7 @@ DOMAIN_CORPO: Final = "Corpo"
 DOMAIN_NUTRICAO: Final = "Nutrição"
 DOMAIN_MODELOS: Final = "Modelos"
 DOMAIN_IA: Final = "IA e Insights"
+DOMAIN_CONTA: Final = "Conta"
 DOMAIN_ADMIN: Final = "Administração"
 DOMAINS: Final[tuple[str, ...]] = (
     DOMAIN_TREINO,
@@ -48,6 +51,7 @@ DOMAINS: Final[tuple[str, ...]] = (
     DOMAIN_NUTRICAO,
     DOMAIN_MODELOS,
     DOMAIN_IA,
+    DOMAIN_CONTA,
     DOMAIN_ADMIN,
 )
 
@@ -91,6 +95,7 @@ RESOURCES: Final[tuple[Resource, ...]] = (
     Resource("ia.nutricao", "IA de nutrição", DOMAIN_IA),
     Resource("ia.modelo_periodizacao", "IA de periodização de Modelo", DOMAIN_IA),
     Resource("ia.cards_exercicio", "Cards ilustrados de exercício", DOMAIN_IA),
+    Resource("conta.dispositivos", "Relógio e dispositivos", DOMAIN_CONTA),
     Resource("admin.usuarios", "Usuários", DOMAIN_ADMIN),
     Resource("admin.grupos", "Grupos e acessos", DOMAIN_ADMIN),
     Resource("admin.regras_carga", "Regras de carga", DOMAIN_ADMIN),
@@ -155,6 +160,8 @@ _IA_USUARIO: Final[tuple[str, ...]] = (
     "ia.cardio",
     "ia.nutricao",
 )
+# Relogio e dispositivos (lote 2B): usuario e personal trainer, dados proprios.
+_CONTA_PROPRIOS: Final[tuple[str, ...]] = ("conta.dispositivos",)
 # Usuario: so `ver`.
 _USUARIO_SO_VER: Final[tuple[tuple[str, str], ...]] = (
     ("exercicios.catalogo", SCOPE_TODOS),
@@ -180,7 +187,9 @@ def _linhas(resources: tuple[str, ...], actions: tuple[str, ...], scope: str) ->
 
 
 def _build_usuario() -> tuple[Grant, ...]:
-    rows = _linhas(_DADOS_PROPRIOS + _IA_USUARIO, ACTIONS, SCOPE_PROPRIOS)
+    rows = _linhas(
+        _DADOS_PROPRIOS + _IA_USUARIO + _CONTA_PROPRIOS, ACTIONS, SCOPE_PROPRIOS
+    )
     rows += [(resource, ACTION_VER, scope) for resource, scope in _USUARIO_SO_VER]
     return tuple(rows)
 
@@ -195,7 +204,7 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 
 
-# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` da migracao 111). `admin`
+# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111 e 113). `admin`
 # fica vazio (acesso total implicito) e `free` e criado vazio (nao e de sistema).
 DEFAULT_GRANTS_BY_GROUP: Final[dict[str, tuple[Grant, ...]]] = {
     GROUP_ADMIN: (),

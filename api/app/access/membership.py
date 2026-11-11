@@ -122,6 +122,7 @@ def lock_active_admin_ids(cur: Any) -> list[int]:
         JOIN user_access_groups uag ON uag.user_id = u.id
         JOIN access_groups g ON g.id = uag.group_id
         WHERE u.is_active = 1 AND g.group_key = %s AND g.is_system = 1
+        ORDER BY u.id
         FOR UPDATE
         """,
         (GROUP_ADMIN,),
@@ -129,9 +130,37 @@ def lock_active_admin_ids(cur: Any) -> list[int]:
     return [int(_cell(row, "id")) for row in cur.fetchall() or []]
 
 
-def ensure_not_last_admin(cur: Any, user_id: int) -> None:
+def is_system_admin_member(cur: Any, user_id: int) -> bool:
+    """Leitura: o usuario (ativo ou nao) pertence ao grupo de sistema `admin`?"""
+    cur.execute(
+        """
+        SELECT 1 AS member
+        FROM user_access_groups uag
+        JOIN access_groups g ON g.id = uag.group_id
+        WHERE uag.user_id = %s AND g.group_key = %s AND g.is_system = 1
+        LIMIT 1
+        """,
+        (int(user_id), GROUP_ADMIN),
+    )
+    return bool(cur.fetchone())
+
+
+def ensure_not_last_admin(cur: Any, user_id: int, *, locked_admin_ids: Optional[list[int]] = None) -> None:
     """Levanta LastAdminError se `user_id` e o unico admin ativo. Se o alvo nao
-    e admin ativo, ou ha outro admin ativo, retorna sem efeito."""
+    e admin ativo, ou ha outro admin ativo, retorna sem efeito.
+
+    `locked_admin_ids`: ids ja travados por `lock_active_admin_ids` NESTA
+    transacao (ordem ADR 0011: admins primeiro, alvo depois). Com outro admin
+    na lista a remocao e segura (as linhas travadas nao mudam); sendo o alvo o
+    unico da lista, recusa; lista sem o alvo e sem outro admin (alvo pode ter
+    sido promovido enquanto esperavamos o lock) cai na releitura travada."""
+    target = int(user_id)
+    if locked_admin_ids is not None:
+        others = set(locked_admin_ids) - {target}
+        if others:
+            return
+        if target in locked_admin_ids:
+            raise LastAdminError("Não é possível remover o último administrador ativo.")
     admin_ids = lock_active_admin_ids(cur)
-    if int(user_id) in admin_ids and len(set(admin_ids) - {int(user_id)}) == 0:
+    if target in admin_ids and len(set(admin_ids) - {target}) == 0:
         raise LastAdminError("Não é possível remover o último administrador ativo.")

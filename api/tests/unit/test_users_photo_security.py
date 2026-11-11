@@ -45,6 +45,26 @@ class _Cursor:
         return self._result
 
 
+@pytest.fixture(autouse=True)
+def _permissoes_pelo_papel(monkeypatch):
+    """Sem banco: o resolvedor de permissoes devolve as concessoes padrao do grupo de
+    sistema do papel da identidade de teste (mesma regra de `access.membership`)."""
+    from app.access import DEFAULT_GRANTS_BY_GROUP, ROLE_TO_SYSTEM_GROUP
+    from app.access import service as access_service
+
+    def _resolver(identity):
+        grupo = ROLE_TO_SYSTEM_GROUP.get(identity.role)
+        if grupo is None:
+            return access_service.EffectivePermissions()
+        linhas = [
+            {"group_key": grupo, "is_system": 1, "resource": r, "action": a, "scope": s}
+            for r, a, s in DEFAULT_GRANTS_BY_GROUP[grupo]
+        ] or [{"group_key": grupo, "is_system": 1, "resource": None, "action": None, "scope": None}]
+        return access_service.merge_grants(linhas)
+
+    monkeypatch.setattr(access_service, "resolve_permissions", _resolver)
+
+
 def _make_client(monkeypatch, photo_path=None, user_id=7, role="regular"):
     cur = _Cursor(photo_path)
 

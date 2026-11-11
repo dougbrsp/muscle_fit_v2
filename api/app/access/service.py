@@ -163,6 +163,32 @@ def has_active_link(trainer_user_id: int, student_user_id: int) -> bool:
     return bool(rows)
 
 
+INVALID_TARGET_DETAIL = {
+    "error": "invalid_target",
+    "message": "Usuário alvo inválido: informe um id inteiro positivo.",
+}
+
+
+def invalid_target() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail=dict(INVALID_TARGET_DETAIL)
+    )
+
+
+def validate_target_user_id(target_user_id: Any, *, required: bool = False) -> Optional[int]:
+    """Id de usuario alvo estrito: `int > 0` (ou `None`, se `required` for falso).
+    `bool`, `float`, `str` e `int <= 0` levantam 400 `invalid_target`; nada de
+    coercao (`"10"` e `10.0` nao viram 10). Roda ANTES de qualquer consulta de
+    permissao ou de vinculo."""
+    if target_user_id is None:
+        if required:
+            raise invalid_target()
+        return None
+    if isinstance(target_user_id, bool) or not isinstance(target_user_id, int) or target_user_id <= 0:
+        raise invalid_target()
+    return target_user_id
+
+
 def authorize_target(
     identity: Identity,
     resource: str,
@@ -173,6 +199,10 @@ def authorize_target(
 ) -> int:
     """Autoriza `action` em `resource` sobre os dados de `target_user_id` e
     devolve o id do usuario alvo.
+
+    `target_user_id` aceita `None` ou `int > 0`; qualquer outro valor (`bool`,
+    `float`, `str`, `int <= 0`) levanta 400 `invalid_target`, antes de qualquer
+    consulta. `identity.user_id` invalido e erro de programacao (nao vira 400).
 
     Alvo ausente ou o proprio: qualquer escopo basta. Terceiro: `todos`, ou
     `alunos` com vinculo ativo em `trainer_students`. Negacao = 403, como
@@ -185,19 +215,47 @@ def authorize_target(
     (como `nutrition_access.py` faz hoje, com 404). Vinculo ativo com aluno
     inativo e decisao do lote 5."""
     check_catalog(resource, action)
+    target = validate_target_user_id(target_user_id)
     own_id = int(identity.user_id)
     perms = permissoes if permissoes is not None else resolve_permissions(identity)
     scope = permission_scope(perms, resource, action)
     if scope is None:
         raise forbidden()
-    if target_user_id is None or int(target_user_id) == own_id:
+    if target is None or target == own_id:
         return own_id
-    target = int(target_user_id)
     if scope == catalog.SCOPE_TODOS:
         return target
     if scope == catalog.SCOPE_ALUNOS and has_active_link(own_id, target):
         return target
     raise forbidden()
+
+
+def authorize_self_or_all(
+    identity: Identity,
+    resource: str,
+    action: str,
+    target_user_id: int,
+    *,
+    permissoes: Optional[EffectivePermissions] = None,
+) -> int:
+    """Autoriza o proprio usuario ou quem tem a permissao sobre terceiros; devolve o alvo.
+
+    `target_user_id` e obrigatorio e estrito (`int > 0`, senao 400
+    `invalid_target`). Alvo igual ao `user_id` da identidade passa SEM exigir
+    concessao e sem consultar o banco. Alvo diferente exige `(recurso, acao)`
+    com escopo `todos`; qualquer outro caso e 403 `FORBIDDEN_DETAIL`. O escopo
+    `alunos` NAO libera aqui (nao consulta vinculo): esta funcao e para recursos
+    administrativos, nao para a relacao treinador-aluno (use `authorize_target`).
+    Recurso/acao fora do catalogo: `ValueError`. Falha de banco: 503."""
+    check_catalog(resource, action)
+    target = validate_target_user_id(target_user_id, required=True)
+    if target == int(identity.user_id):
+        return target
+    perms = permissoes if permissoes is not None else resolve_permissions(identity)
+    scope = permission_scope(perms, resource, action)
+    if scope != catalog.SCOPE_TODOS:
+        raise forbidden()
+    return target
 
 
 def serialize_permissions(permissoes: EffectivePermissions) -> dict[str, Any]:

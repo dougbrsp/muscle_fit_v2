@@ -29,15 +29,16 @@ SENHA_ALVO = "SenhaOriginal123"
 
 
 @pytest.fixture
-def contas(raw):
-    """Semeia admin + alvo com uma conexao neutra (igual para os 2 backends)."""
+def contas(raw, conceder_grupo):
+    """Semeia admin + alvo com uma conexao neutra (igual para os 2 backends).
+
+    ADR 0011 (lote 2B): `POST /users/{id}/reset-password` exige `admin.usuarios`,
+    resolvida por `user_access_groups`; o admin inserido por SQL puro ganha o
+    grupo de sistema `admin` na mesma conexao autocommit (visivel aos dois
+    backends, que leem o mesmo banco).
+    """
+    _limpar(raw)
     with raw.cursor() as cur:
-        cur.execute(
-            "DELETE FROM user_sessions WHERE user_id IN "
-            "(SELECT id FROM users WHERE username IN (%s, %s))",
-            (USERNAME_ALVO, USERNAME_ADMIN),
-        )
-        cur.execute("DELETE FROM users WHERE username IN (%s, %s)", (USERNAME_ALVO, USERNAME_ADMIN))
         cur.execute(
             "INSERT INTO users (username, password_hash, role, is_active) VALUES (%s, %s, 'admin', 1)",
             (USERNAME_ADMIN, auth.hash_password("senha-do-admin")),
@@ -48,7 +49,28 @@ def contas(raw):
             (USERNAME_ALVO, auth.hash_password(SENHA_ALVO)),
         )
         alvo_id = cur.lastrowid
-    return {"admin_id": admin_id, "alvo_id": alvo_id}
+        # Tira heranca de linhas orfas (TRUNCATE users com FK desligada em outros
+        # arquivos reaproveita ids) antes de conceder o grupo do admin.
+        cur.execute("DELETE FROM user_access_groups WHERE user_id IN (%s, %s)", (admin_id, alvo_id))
+        conceder_grupo(cur, admin_id, "admin")
+    yield {"admin_id": admin_id, "alvo_id": alvo_id}
+    _limpar(raw)
+
+
+def _limpar(raw) -> None:
+    """Apaga sessoes, associacoes a grupos (FK) e os dois usuarios da fixture."""
+    with raw.cursor() as cur:
+        cur.execute(
+            "DELETE FROM user_sessions WHERE user_id IN "
+            "(SELECT id FROM users WHERE username IN (%s, %s))",
+            (USERNAME_ALVO, USERNAME_ADMIN),
+        )
+        cur.execute(
+            "DELETE FROM user_access_groups WHERE user_id IN "
+            "(SELECT id FROM users WHERE username IN (%s, %s))",
+            (USERNAME_ALVO, USERNAME_ADMIN),
+        )
+        cur.execute("DELETE FROM users WHERE username IN (%s, %s)", (USERNAME_ALVO, USERNAME_ADMIN))
 
 
 def _estado(raw, user_id: int) -> dict:
