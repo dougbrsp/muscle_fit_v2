@@ -10,13 +10,21 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from . import athlete_hr_zones
+from .access import (
+    authorize_self_or_all,
+    require_additional_permission,
+    require_permission,
+)
+from .access.catalog import ACTION_EDITAR, ACTION_EXCLUIR, ACTION_VER
 from .access.membership import (
     LastAdminError,
     assign_role_group,
     ensure_not_last_admin,
+    is_system_admin_member,
+    lock_active_admin_ids,
     switch_role_group,
 )
 from .auth import MIN_PASSWORD_LENGTH, generate_temp_password, hash_password
@@ -28,7 +36,7 @@ from .domain.nutrition import anthropometrics as anthro
 from .gyms import _EXT_TO_CONTENT_TYPE, _delete_photo, _read_photo, _save_photo
 from .observability import log_event
 from .request_models import UserCreateIn, UserProfileUpdateIn, UserUpdateIn
-from .security import Identity, get_current_identity, require_admin
+from .security import Identity, get_current_identity
 from .timezones import is_valid_timezone, normalize_timezone
 from .weight_units import WEIGHT_UNITS, normalize_weight_unit
 
@@ -49,12 +57,16 @@ def _user_photo_key_is_canonical(user_id: int, key: Any) -> bool:
     return re.fullmatch(pattern, key) is not None
 
 # Papéis atribuíveis pelo CRUD. `personal_trainer` existe no ENUM desde a 007 e
-# em `require_admin_or_pt`; passou a ser atribuível no L0 do plano de nutrição
+# no guard de admin/PT; passou a ser atribuível no L0 do plano de nutrição
 # (2026-10-15; o vínculo PT<->aluno fica para o L11).
 _ALLOWED_ROLES = {"admin", "regular", "personal_trainer"}
 _ROLE_ERROR = "role deve ser um de: " + ", ".join(f"'{r}'" for r in sorted(_ALLOWED_ROLES)) + "."
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _SELF_DEACTIVATE_ERROR = "Você não pode desativar a própria conta."
+
+# Recursos do catálogo (app.access.catalog) usados por este módulo.
+_RESOURCE_USUARIOS = "admin.usuarios"
+_RESOURCE_GRUPOS = "admin.grupos"
 
 
 def _last_admin_http_error(exc: LastAdminError) -> HTTPException:
@@ -286,14 +298,8 @@ def require_session_identity(identity: Identity = Depends(get_current_identity))
     return identity
 
 
-def _require_self_or_admin(identity: Identity, user_id: int) -> None:
-    if identity.role == "admin" or identity.user_id == user_id:
-        return
-    raise HTTPException(status_code=403, detail="Sem permissão para alterar a foto deste usuário.")
-
-
 @router.get("")
-def list_users(identity: Identity = Depends(require_admin)):
+def list_users(identity: Identity = Depends(require_permission(_RESOURCE_USUARIOS, ACTION_VER))):
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users ORDER BY username")
@@ -303,7 +309,11 @@ def list_users(identity: Identity = Depends(require_admin)):
 
 
 @router.post("")
-def create_user(payload: UserCreateIn, identity: Identity = Depends(require_admin)):
+def create_user(
+    payload: UserCreateIn,
+    request: Request,
+    identity: Identity = Depends(require_permission(_RESOURCE_USUARIOS, ACTION_EDITAR)),
+):
     item = payload.model_dump()
     username = str(item.get("username") or "").strip()
     password = str(item.get("password") or "")
@@ -315,6 +325,9 @@ def create_user(payload: UserCreateIn, identity: Identity = Depends(require_admi
         raise HTTPException(status_code=400, detail=f"password deve ter ao menos {MIN_PASSWORD_LENGTH} caracteres.")
     if role not in _ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail=_ROLE_ERROR)
+    if role == "admin":
+        # Criar admin concede acesso total: exige também gerir grupos (antes de qualquer escrita).
+        require_additional_permission(request, identity, _RESOURCE_GRUPOS, ACTION_EDITAR)
 
     password_hash = hash_password(password)
 
@@ -438,8 +451,26 @@ def update_my_profile(payload: UserProfileUpdateIn, identity: Identity = Depends
     return {"status": "ok", "item": _public_row(row)}
 
 
+def _cell(row: Any, key: str, idx: int) -> Any:
+    return row.get(key) if isinstance(row, dict) else row[idx]
+
+
+def _alvo_e_admin(cur: Any, user_id: int, current_role: Any, admin_ids: Optional[list[int]] = None) -> bool:
+    """O alvo é admin? `users.role` lido do banco OU grupo de sistema `admin`
+    (as duas fontes podem divergir na transição; o acesso total vem do grupo).
+    Conta alvo inativo também."""
+    if current_role == "admin" or (admin_ids is not None and user_id in admin_ids):
+        return True
+    return is_system_admin_member(cur, user_id)
+
+
 @router.put("/{user_id}")
-def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depends(require_admin)):
+def update_user(
+    user_id: int,
+    payload: UserUpdateIn,
+    request: Request,
+    identity: Identity = Depends(require_permission(_RESOURCE_USUARIOS, ACTION_EDITAR)),
+):
     item = payload.model_dump()
     role = item.get("role")
     if role is not None and role not in _ALLOWED_ROLES:
@@ -457,10 +488,15 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
     deactivating = is_active is not None and not is_active
     if deactivating and identity.user_id == user_id:
         raise HTTPException(status_code=400, detail=_SELF_DEACTIVATE_ERROR)
+    may_remove_admin = deactivating or (role is not None and role != "admin")
 
     with transaction() as conn:
         with conn.cursor() as cur:
-            # Ordem de locks (PUT e DELETE): 1) linha do alvo, 2) admins ativos.
+            # Ordem de locks (PUT e DELETE; ADR 0011): 1) admins ativos (por id),
+            # 2) linha do alvo. O papel real do alvo só é conhecido sob o lock dele;
+            # por isso a trava dos admins vale já que o PUT PODE tirar um admin
+            # (desativa ou pede papel diferente de admin).
+            admin_ids = lock_active_admin_ids(cur) if may_remove_admin else None
             cur.execute("SELECT id, role FROM users WHERE id = %s FOR UPDATE", (user_id,))
             existing = cur.fetchone()
             if not existing:
@@ -468,9 +504,16 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
             current_role = existing.get("role") if isinstance(existing, dict) else existing[1]
             role_changes = role is not None and role != current_role
 
+            if role == "admin" or _alvo_e_admin(cur, user_id, current_role, admin_ids):
+                # Qualquer escrita sobre admin (ou que torne alguém admin) mexe no
+                # acesso total: exige também gerir grupos. Decidido com o papel lido
+                # sob lock, antes de qualquer UPDATE/troca de grupo e da trava do
+                # último admin; o 403 desfaz a transação.
+                require_additional_permission(request, identity, _RESOURCE_GRUPOS, ACTION_EDITAR)
+
             if deactivating or (role_changes and role != "admin"):
                 try:
-                    ensure_not_last_admin(cur, user_id)
+                    ensure_not_last_admin(cur, user_id, locked_admin_ids=admin_ids)
                 except LastAdminError as exc:
                     raise _last_admin_http_error(exc) from exc
 
@@ -516,18 +559,27 @@ def update_user(user_id: int, payload: UserUpdateIn, identity: Identity = Depend
 
 
 @router.delete("/{user_id}")
-def deactivate_user(user_id: int, identity: Identity = Depends(require_admin)):
+def deactivate_user(
+    user_id: int,
+    request: Request,
+    identity: Identity = Depends(require_permission(_RESOURCE_USUARIOS, ACTION_EXCLUIR)),
+):
     if identity.user_id == user_id:
         raise HTTPException(status_code=400, detail=_SELF_DEACTIVATE_ERROR)
 
     with transaction() as conn:
         with conn.cursor() as cur:
-            # Ordem de locks (igual ao PUT): 1) linha do alvo, 2) admins ativos.
-            cur.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
-            if not cur.fetchone():
+            # Ordem de locks (igual ao PUT; ADR 0011): 1) admins ativos (por id), 2) linha do alvo.
+            admin_ids = lock_active_admin_ids(cur)
+            cur.execute("SELECT id, role FROM users WHERE id = %s FOR UPDATE", (user_id,))
+            alvo = cur.fetchone()
+            if not alvo:
                 raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+            if _alvo_e_admin(cur, user_id, _cell(alvo, "role", 1), admin_ids):
+                # Desativar admin exige gerir grupos; antes da trava do último admin.
+                require_additional_permission(request, identity, _RESOURCE_GRUPOS, ACTION_EDITAR)
             try:
-                ensure_not_last_admin(cur, user_id)
+                ensure_not_last_admin(cur, user_id, locked_admin_ids=admin_ids)
             except LastAdminError as exc:
                 raise _last_admin_http_error(exc) from exc
             cur.execute("UPDATE users SET is_active = 0 WHERE id = %s", (user_id,))
@@ -538,12 +590,16 @@ def deactivate_user(user_id: int, identity: Identity = Depends(require_admin)):
 
 
 @router.post("/{user_id}/reset-password")
-def reset_user_password(user_id: int, identity: Identity = Depends(require_admin)):
+def reset_user_password(
+    user_id: int,
+    request: Request,
+    identity: Identity = Depends(require_permission(_RESOURCE_USUARIOS, ACTION_EDITAR)),
+):
     """Reset administrativo de senha (dívida técnica: antes desta rota, a
     única saída para um usuário sem acesso era um `UPDATE` manual no banco).
 
     Regras:
-    - admin-only (`require_admin`), e um admin NÃO reseta a própria senha por
+    - exige `admin.usuarios`/`editar`, e quem chama NÃO reseta a própria senha por
       aqui - para isso existe `POST /auth/change-password`;
     - a senha nova é GERADA PELO SERVIDOR e devolvida uma única vez no corpo
       da resposta; o chamador não escolhe a senha e ela nunca é logada nem
@@ -564,11 +620,14 @@ def reset_user_password(user_id: int, identity: Identity = Depends(require_admin
 
     with transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, username FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, username, role FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             if not row:
                 # Só leitura até aqui: nada a perder no rollback.
                 raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+            if _alvo_e_admin(cur, user_id, row["role"]):
+                # Resetar a senha de um admin é assumir o acesso total dele.
+                require_additional_permission(request, identity, _RESOURCE_GRUPOS, ACTION_EDITAR)
 
             cur.execute(
                 """
@@ -617,7 +676,7 @@ def upload_user_photo(
     file: UploadFile = File(...),
     identity: Identity = Depends(get_current_identity),
 ):
-    _require_self_or_admin(identity, user_id)
+    authorize_self_or_all(identity, _RESOURCE_USUARIOS, ACTION_EDITAR, user_id)
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -636,7 +695,7 @@ def upload_user_photo(
 
 @router.get("/{user_id}/photo")
 def get_user_photo(user_id: int, identity: Identity = Depends(get_current_identity)):
-    _require_self_or_admin(identity, user_id)
+    authorize_self_or_all(identity, _RESOURCE_USUARIOS, ACTION_VER, user_id)
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -655,7 +714,7 @@ def get_user_photo(user_id: int, identity: Identity = Depends(get_current_identi
 
 @router.delete("/{user_id}/photo")
 def delete_user_photo(user_id: int, identity: Identity = Depends(get_current_identity)):
-    _require_self_or_admin(identity, user_id)
+    authorize_self_or_all(identity, _RESOURCE_USUARIOS, ACTION_EXCLUIR, user_id)
 
     with transaction() as conn:
         with conn.cursor() as cur:

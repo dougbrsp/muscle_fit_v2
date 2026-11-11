@@ -36,7 +36,7 @@ def cookie_sem_dominio(monkeypatch):
 
 
 @pytest.fixture
-def contas(catalog):
+def contas(catalog, conceder_grupo):
     """`catalog` ja truncou `users` e criou o admin de teste; aqui entram o
     usuario alvo (com senha real) e a limpeza das sessoes."""
     with transaction() as conn:
@@ -48,6 +48,7 @@ def contas(catalog):
                 ("alvo", hash_password(SENHA_ALVO)),
             )
             alvo_id = cur.lastrowid
+            conceder_grupo(cur, alvo_id, "regular")
 
     return {"admin_id": catalog.user_id, "alvo_id": alvo_id}
 

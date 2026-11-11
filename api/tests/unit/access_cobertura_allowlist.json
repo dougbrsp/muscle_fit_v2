@@ -1,7 +1,7 @@
 {
-  "_leia_me": "Guarda de cobertura de rotas do RBAC (ADR 0011). Toda rota deve declarar require_permission; so as de divida abaixo ainda nao declaram. A divida SO ENCOLHE: ao declarar a permissao de uma rota, REMOVA-A daqui e diminua divida.teto. Nunca adicione rota nova a esta lista. Rota legitimamente publica vai em publicas, com motivo. Chave = METODO CAMINHO (caminho do template, sem prefixo de ambiente). Rotas de /docs, /redoc e /openapi.json nao sao enumeradas (dependem de API_DOCS_ENABLED e nao sao APIRoute): ficam fora da guarda.",
+  "_leia_me": "Guarda de cobertura de rotas do RBAC (ADR 0011). Toda rota deve declarar require_permission; so as de divida abaixo ainda nao declaram. A divida SO ENCOLHE: ao declarar a permissao de uma rota, REMOVA-A daqui e diminua divida.teto. Nunca adicione rota nova a esta lista. Rota legitimamente publica vai em publicas, com motivo. Chave = METODO CAMINHO (caminho do template, sem prefixo de ambiente). Rotas de /docs, /redoc e /openapi.json nao sao enumeradas (dependem de API_DOCS_ENABLED e nao sao APIRoute): ficam fora da guarda. Categoria so_autenticacao (lote 2B): rotas que exigem apenas identidade autenticada (get_current_identity na arvore), sem require_permission; o conjunto e pinado em SO_AUTENTICACAO_APROVADAS no teste e rota nova nela exige revisao de seguranca. Nao pode estar em divida nem em publicas.",
   "divida": {
-    "teto": 361,
+    "teto": 343,
     "rotas": [
       "DELETE /activities/{activity_id}",
       "DELETE /body-composition/{entry_id}",
@@ -9,7 +9,6 @@
       "DELETE /cardio-recommendations/{entry_id}",
       "DELETE /context-events/{entry_id}",
       "DELETE /daily-checkins/{entry_id}",
-      "DELETE /devices/{device_id}",
       "DELETE /equipment-exercises/{link_id}",
       "DELETE /equipment-types/{type_id}",
       "DELETE /equipment/{equipment_id}",
@@ -35,8 +34,6 @@
       "DELETE /nutrition/plans/{plan_id}",
       "DELETE /sleep-metrics/{entry_id}",
       "DELETE /training-types/{training_type_id}",
-      "DELETE /users/{user_id}",
-      "DELETE /users/{user_id}/photo",
       "DELETE /workout-plan-templates/{template_id}",
       "DELETE /workout-plan-templates/{template_id}/assignments/{user_id}",
       "DELETE /workout-plan-templates/{template_id}/draft",
@@ -95,7 +92,6 @@
       "GET /analytics/training-trend",
       "GET /analytics/training-volume",
       "GET /analytics/training-volume-by-split-day",
-      "GET /auth/me",
       "GET /body-composition",
       "GET /body-composition/{entry_id}",
       "GET /body-measurements",
@@ -108,8 +104,6 @@
       "GET /daily-checkins/{entry_id}",
       "GET /deload-periods",
       "GET /deload-periods/current",
-      "GET /devices",
-      "GET /devices/me",
       "GET /effort-metrics",
       "GET /equipment",
       "GET /equipment-exercises",
@@ -153,7 +147,6 @@
       "GET /integrations/intervals/status",
       "GET /integrations/intervals/summary",
       "GET /integrations/intervals/wellness",
-      "GET /jobs/{job_id}",
       "GET /mapping-canonical/options",
       "GET /mapping-canonical/unmapped",
       "GET /me/equipment-exercise-preferences",
@@ -199,10 +192,6 @@
       "GET /training-types",
       "GET /training-types/rag-folders",
       "GET /training-types/{training_type_id}",
-      "GET /users",
-      "GET /users/me",
-      "GET /users/me/hr-zones",
-      "GET /users/{user_id}/photo",
       "GET /workout-plan-templates",
       "GET /workout-plan-templates/assigned-to-me",
       "GET /workout-plan-templates/hr-zones",
@@ -232,7 +221,6 @@
       "POST /activities/{activity_id}/ai-summary/generate",
       "POST /analytics/muscle-activation-breakdown",
       "POST /analytics/muscle-activation-preview",
-      "POST /auth/change-password",
       "POST /body-composition",
       "POST /body-measurements",
       "POST /cardio-recommendations",
@@ -242,7 +230,6 @@
       "POST /daily-checkins",
       "POST /deload-periods",
       "POST /deload-periods/{period_id}/cancel",
-      "POST /devices/pair",
       "POST /equipment",
       "POST /equipment-exercises",
       "POST /equipment-types",
@@ -301,9 +288,6 @@
       "POST /sleep-metrics",
       "POST /training-types",
       "POST /training-types/{training_type_id}/duplicate",
-      "POST /users",
-      "POST /users/{user_id}/photo",
-      "POST /users/{user_id}/reset-password",
       "POST /workout-plan-templates",
       "POST /workout-plan-templates/cardio-prescription-check",
       "POST /workout-plan-templates/methodology-volume-preview",
@@ -358,8 +342,6 @@
       "PUT /nutrition/plans/{plan_id}",
       "PUT /sleep-metrics/{entry_id}",
       "PUT /training-types/{training_type_id}",
-      "PUT /users/me",
-      "PUT /users/{user_id}",
       "PUT /workout-plan-templates/{template_id}",
       "PUT /workout-plan-templates/{template_id}/draft",
       "PUT /workout-plan-templates/{template_id}/methodology-intent",
@@ -390,6 +372,44 @@
     {
       "rota": "POST /auth/password-reset/request",
       "motivo": "esqueci a senha: o usuario nao consegue logar (captcha + e-mail)"
+    }
+  ],
+  "so_autenticacao": [
+    {
+      "rota": "GET /auth/me",
+      "motivo": "Perfil da propria sessao: so exige identidade autenticada e devolve apenas dados e permissoes do chamador."
+    },
+    {
+      "rota": "POST /auth/change-password",
+      "motivo": "Troca a senha da propria conta: exige a sessao e a senha atual; nao ha alvo de terceiro."
+    },
+    {
+      "rota": "GET /users/me",
+      "motivo": "Perfil da propria conta (exige sessao de login); sem alvo de terceiro."
+    },
+    {
+      "rota": "GET /users/me/hr-zones",
+      "motivo": "Zonas de FC da propria conta (exige sessao de login); sem alvo de terceiro."
+    },
+    {
+      "rota": "PUT /users/me",
+      "motivo": "Edicao do proprio perfil (exige sessao de login); nao altera papel, usuario nem is_active."
+    },
+    {
+      "rota": "GET /jobs/{job_id}",
+      "motivo": "Consulta de job pelo dono: a posse da linha (user_id do job) e checada no handler (M65); sem permissao de recurso."
+    },
+    {
+      "rota": "POST /users/{user_id}/photo",
+      "motivo": "Foto de perfil: o proprio usuario passa; terceiro exige admin.usuarios/editar via authorize_self_or_all no handler."
+    },
+    {
+      "rota": "GET /users/{user_id}/photo",
+      "motivo": "Foto de perfil: o proprio usuario passa; terceiro exige admin.usuarios/ver via authorize_self_or_all no handler."
+    },
+    {
+      "rota": "DELETE /users/{user_id}/photo",
+      "motivo": "Foto de perfil: o proprio usuario passa; terceiro exige admin.usuarios/excluir via authorize_self_or_all no handler."
     }
   ]
 }

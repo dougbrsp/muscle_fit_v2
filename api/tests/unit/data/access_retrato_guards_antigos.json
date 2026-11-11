@@ -1,0 +1,4373 @@
+{
+  "_doc": "Retrato congelado dos guards antigos (ADR 0011). Gerado por tests/support/access_retrato.py; nao editar a mao.",
+  "rotas": {
+    "DELETE /activities/{activity_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "DELETE /body-composition/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_composition"
+    },
+    "DELETE /body-measurements/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_measurements"
+    },
+    "DELETE /cardio-recommendations/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "DELETE /context-events/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.context_events"
+    },
+    "DELETE /daily-checkins/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.daily_checkins"
+    },
+    "DELETE /devices/{device_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "usuario_sem_dispositivo",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "usuario_sem_dispositivo"
+      ],
+      "modulo": "app.devices"
+    },
+    "DELETE /equipment-exercises/{link_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.equipment_exercises"
+    },
+    "DELETE /equipment-types/{type_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "DELETE /equipment/{equipment_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /equipment/{equipment_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /exercise-mapping-catalog/aliases/{alias_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "DELETE /exercise-mapping-catalog/{mapping_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "DELETE /exercises/aliases/{alias_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "DELETE /exercises/external-mappings/{mapping_row_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "DELETE /exercises/logs/{exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "DELETE /exercises/{exercise_id}/card-references/{ref_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "DELETE /gym-equipment-catalog/{link_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: deactivate_gym_equipment_catalog -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: deactivate_gym_equipment_catalog -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /gym-equipment/{link_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: deactivate_gym_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: deactivate_gym_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /gyms/{gym_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: deactivate_gym -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: deactivate_gym -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /gyms/{gym_id}/logo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "DELETE /me/equipment-exercise-preferences/{equipment_exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_exercise_preferences"
+    },
+    "DELETE /me/equipment-load-ceiling": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_load_ceiling"
+    },
+    "DELETE /muscle-contributions/{mapping_id}/{muscle_group_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "DELETE /muscle-volume-classes/{class_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "DELETE /nutrition/activities/{activity_id}/correction": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "DELETE /nutrition/days/{local_date}/close": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "DELETE /nutrition/favorites/{food_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_favorites"
+    },
+    "DELETE /nutrition/meals/{meal_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "DELETE /nutrition/plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "DELETE /sleep-metrics/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.sleep_metrics"
+    },
+    "DELETE /training-types/{training_type_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "DELETE /users/{user_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "DELETE /users/{user_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_self_or_admin"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "DELETE /workout-plan-templates/{template_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "DELETE /workout-plan-templates/{template_id}/assignments/{user_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "DELETE /workout-plan-templates/{template_id}/draft": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "DELETE /workout-plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /activities": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /activities/{activity_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /advanced-techniques": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.advanced_techniques"
+    },
+    "GET /analytics/body-composition-trend": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /analytics/cardio": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/cardio-agent-context": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_intelligence"
+    },
+    "GET /analytics/dashboard-cycle": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-muscle-drilldown": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-muscle-status": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-progression": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.optional_goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-progression-by-muscle-group": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-progression-suggestion": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.optional_goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-progression-trend": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-recovery": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-stimulus-fatigue": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard-workout-sessions": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/dashboard/adherence": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/body": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/cardio": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/context": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/data-quality": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/engine": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/engine/plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/exercises/{exercise_id}/progress": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/insights": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/intelligence-package": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/muscles": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/muscles/{muscle_group_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/overview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/recovery-signals": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/strength-panel": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/workouts": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/dashboard/workouts/{activity_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics_dashboard"
+    },
+    "GET /analytics/exercise-progress": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.optional_goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/health": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/methodology-realized": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-activation-by-activity": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-group-body-map": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /analytics/muscle-groups-daily-activation": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-groups-equivalent-sets-by-activity": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-groups-mapped-debug": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_groups_mapped"
+    },
+    "GET /analytics/muscle-groups-mapped-health": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_groups_mapped"
+    },
+    "GET /analytics/muscle-groups-mapped-table": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_groups_mapped"
+    },
+    "GET /analytics/muscle-groups-mapped-trend": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_groups_mapped"
+    },
+    "GET /analytics/muscle-groups-recent-exercise-volume": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.optional_goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-groups-slot-comparison": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.optional_goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/muscle-recovery": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /analytics/muscle-recovery-consecutive-check": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /analytics/rpe-distribution": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/summary": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/training-evolution": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_intelligence"
+    },
+    "GET /analytics/training-trend": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "GET /analytics/training-volume": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /analytics/training-volume-by-split-day": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "GET /auth/me": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.auth"
+    },
+    "GET /body-composition": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_composition"
+    },
+    "GET /body-composition/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_composition"
+    },
+    "GET /body-measurements": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_measurements"
+    },
+    "GET /body-measurements/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_measurements"
+    },
+    "GET /cardio-recommendations": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "GET /cardio-recommendations/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "is_admin_or_pt"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "GET /context-events": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.context_events"
+    },
+    "GET /context-events/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.context_events"
+    },
+    "GET /daily-checkins": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.daily_checkins"
+    },
+    "GET /daily-checkins/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.daily_checkins"
+    },
+    "GET /deload-periods": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.deload_periods"
+    },
+    "GET /deload-periods/current": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.deload_periods"
+    },
+    "GET /devices": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "usuario_sem_dispositivo",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "usuario_sem_dispositivo"
+      ],
+      "modulo": "app.devices"
+    },
+    "GET /devices/me": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "dispositivo",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "dispositivo"
+      ],
+      "modulo": "app.devices"
+    },
+    "GET /effort-metrics": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.effort_metrics"
+    },
+    "GET /equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /equipment-exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_equipment_exercises -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_equipment_exercises -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.equipment_exercises"
+    },
+    "GET /equipment-exercises/{link_id}/safety": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.training_safety_admin"
+    },
+    "GET /equipment-types": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_equipment_types -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_equipment_types -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /equipment/{equipment_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: get_equipment_photo -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: get_equipment_photo -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /equipment/{equipment_id}/safety": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.training_safety_admin"
+    },
+    "GET /exercise-external-mappings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_external_mappings_flat -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_external_mappings_flat -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercise-external-mappings/providers": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_external_mapping_providers -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_external_mapping_providers -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercise-mapping-catalog": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_mappings -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_mappings -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercise-mapping-catalog/export/markdown": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: export_markdown -> resolve_identity_from_credentials; list_mappings -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: export_markdown -> resolve_identity_from_credentials; list_mappings -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercise-mapping-catalog/groups": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_groups -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_groups -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercise-mapping-catalog/health": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: health -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: health -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercise-mapping-catalog/{mapping_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: get_mapping -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: get_mapping -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercise-mapping-catalog/{mapping_id}/aliases": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_mapping_aliases -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_mapping_aliases -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_exercises -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_exercises -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercises/execution-descriptions/pending": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: count_pending_execution_descriptions -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: count_pending_execution_descriptions -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercises/history": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /exercises/last-session-sets": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /exercises/logs": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /exercises/suggested-progression": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.engines_extra"
+    },
+    "GET /exercises/suggested-set-count-for-substitution": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.engines_extra"
+    },
+    "GET /exercises/{exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: get_exercise_detail -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: get_exercise_detail -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercises/{exercise_id}/aliases": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_exercise_aliases -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_exercise_aliases -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /exercises/{exercise_id}/card": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "GET /exercises/{exercise_id}/card-generations": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "GET /exercises/{exercise_id}/card-generations/{generation_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "GET /exercises/{exercise_id}/card-references": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "GET /exercises/{exercise_id}/external-mappings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_exercise_external_mappings -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_exercise_external_mappings -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "GET /gym-equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_gym_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_gym_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gym-equipment-catalog": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_gym_equipment_catalog -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_gym_equipment_catalog -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gym-equipment/recommend": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: recommend_gym_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: recommend_gym_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gym-equipment/recommend-all": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: recommend_gym_equipment_all -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: recommend_gym_equipment_all -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gyms": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_gyms -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_gyms -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gyms/{gym_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: get_gym -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: get_gym -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /gyms/{gym_id}/logo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: get_gym_logo -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: get_gym_logo -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "GET /health": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "outra",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "chave duplicada com classificacoes distintas (publica x publica)"
+      ],
+      "guards": [],
+      "justificativa": "Nao reconhecida automaticamente: chave duplicada com classificacoes distintas (publica x publica). Checagem de papel: nenhuma checagem de papel vista. Revisar a mao antes de trocar o guard.",
+      "modulo": "app.main_engines"
+    },
+    "GET /integrations/intervals/activities": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/cardio-adherence": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/dashboard": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/health": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/status": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/summary": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /integrations/intervals/wellness": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "GET /jobs/{job_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.jobs"
+    },
+    "GET /mapping-canonical/options": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.exercise_mapping_canonical"
+    },
+    "GET /mapping-canonical/unmapped": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.exercise_mapping_canonical"
+    },
+    "GET /me/equipment-exercise-preferences": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_exercise_preferences"
+    },
+    "GET /me/equipment-load-ceiling": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_load_ceiling"
+    },
+    "GET /me/training-preferences": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_exercise_preferences"
+    },
+    "GET /muscle-contributions/{mapping_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_muscle_contributions -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_muscle_contributions -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /muscle-groups": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_muscle_groups -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_muscle_groups -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "GET /muscle-groups/{muscle_group_id}/equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_group_equipment"
+    },
+    "GET /muscle-groups/{muscle_group_id}/equipment/{equipment_id}/exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_group_equipment"
+    },
+    "GET /muscle-groups/{muscle_group_id}/exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.muscle_group_equipment"
+    },
+    "GET /muscle-volume-classes": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: list_volume_classes -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: list_volume_classes -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "GET /next-set-load-rules/draft": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "GET /next-set-load-rules/published": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "GET /next-set-load-rules/versions": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "GET /nutrition/checkin": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "GET /nutrition/checkin/settings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "GET /nutrition/checkins": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "GET /nutrition/cycle-days/from-template": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "GET /nutrition/dashboard": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_dashboard"
+    },
+    "GET /nutrition/days/{local_date}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "GET /nutrition/favorites": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_favorites"
+    },
+    "GET /nutrition/foods/barcode/{ean}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_external_foods"
+    },
+    "GET /nutrition/foods/label-photo/usage": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_label_photo"
+    },
+    "GET /nutrition/foods/search": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "GET /nutrition/foods/usda/search": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_external_foods"
+    },
+    "GET /nutrition/foods/{food_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "GET /nutrition/me/plan": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "GET /nutrition/meals/last-time": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "GET /nutrition/meals/parse/quota": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meal_parse"
+    },
+    "GET /nutrition/meals/photo/usage": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meal_photo"
+    },
+    "GET /nutrition/meals/slot-for-time": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "GET /nutrition/plan-suggestion/usage": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plan_suggestion"
+    },
+    "GET /nutrition/plans": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "GET /nutrition/today": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_dashboard"
+    },
+    "GET /nutrition/weeks": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "GET /progression/tracks": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.training_goal_query.goal_query"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.progression"
+    },
+    "GET /progression/tracks/{track_id}/decisions": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.progression"
+    },
+    "GET /ready": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "outra",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "chave duplicada com classificacoes distintas (publica x publica)"
+      ],
+      "guards": [],
+      "justificativa": "Nao reconhecida automaticamente: chave duplicada com classificacoes distintas (publica x publica). Checagem de papel: nenhuma checagem de papel vista. Revisar a mao antes de trocar o guard.",
+      "modulo": "app.main_engines"
+    },
+    "GET /reports/markdown": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.reports"
+    },
+    "GET /sets/high-rpe": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "GET /sleep-metrics": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.sleep_metrics"
+    },
+    "GET /sleep-metrics/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.sleep_metrics"
+    },
+    "GET /training-goals": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.training_goals"
+    },
+    "GET /training-types": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "GET /training-types/rag-folders": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "GET /training-types/{training_type_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "GET /users": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "GET /users/me": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "sessao",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "sessao"
+      ],
+      "modulo": "app.users"
+    },
+    "GET /users/me/hr-zones": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "sessao",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "sessao"
+      ],
+      "modulo": "app.users"
+    },
+    "GET /users/{user_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_self_or_admin"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "GET /workout-plan-templates": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/assigned-to-me": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/hr-zones": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/users-lookup": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/assignments": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/draft": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/methodology-intent": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/methodology-volume": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/methodology-volume/counting-modes": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/versions": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plan-templates/{template_id}/versions/{version_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "GET /workout-plans": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-plans/{plan_id}/cardio": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-plans/{plan_id}/exercise-swap-options": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-plans/{plan_id}/exercises/{exercise_id}/equipment-options": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-plans/{plan_id}/exercises/{workout_plan_exercise_id}/briefing": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.exercise_briefing"
+    },
+    "GET /workout-plans/{plan_id}/muscle-map.png": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "GET /workout-sessions/{session_id}/deload": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "PATCH /integrations/intervals/wellness/{wellness_date}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "PATCH /training-types/{training_type_id}/status": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "PATCH /workout-plan-templates/{template_id}/status": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "PATCH /workout-sessions/{session_id}/exercises/{exercise_id}/sets/{set_number}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "PATCH /workout-sessions/{session_id}/meta": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "POST /activities": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /activities/{activity_id}/ai-summary/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /analytics/muscle-activation-breakdown": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "POST /analytics/muscle-activation-preview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.analytics"
+    },
+    "POST /auth/change-password": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.auth"
+    },
+    "POST /auth/login": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "publica",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [],
+      "modulo": "app.auth"
+    },
+    "POST /auth/logout": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "outra",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "handler recebe x_api_token sem resolver identidade reconhecida"
+      ],
+      "guards": [],
+      "justificativa": "Nao reconhecida automaticamente: handler recebe x_api_token sem resolver identidade reconhecida. Checagem de papel: nenhuma checagem de papel vista. Revisar a mao antes de trocar o guard.",
+      "modulo": "app.auth"
+    },
+    "POST /auth/password-reset/confirm": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "publica",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [],
+      "modulo": "app.password_reset"
+    },
+    "POST /auth/password-reset/request": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "publica",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [],
+      "modulo": "app.password_reset"
+    },
+    "POST /body-composition": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_composition"
+    },
+    "POST /body-measurements": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_measurements"
+    },
+    "POST /cardio-recommendations": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "POST /cardio-recommendations/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "POST /cardio-recommendations/{entry_id}/apply": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.cardio_recommendations"
+    },
+    "POST /context-events": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.context_events"
+    },
+    "POST /daily-checkins": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.daily_checkins"
+    },
+    "POST /deload-periods": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.deload_periods"
+    },
+    "POST /deload-periods/{period_id}/cancel": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.deload_periods"
+    },
+    "POST /devices/pair": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "usuario_sem_dispositivo",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "usuario_sem_dispositivo"
+      ],
+      "modulo": "app.devices"
+    },
+    "POST /equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /equipment-exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.equipment_exercises"
+    },
+    "POST /equipment-types": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /equipment/{equipment_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /exercise-mapping-catalog": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "POST /exercise-mapping-catalog/{mapping_id}/aliases": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "POST /exercise-mappings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /exercises/evaluate-set": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /exercises/execution-descriptions/generate-batch": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /exercises/{exercise_id}/aliases": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /exercises/{exercise_id}/card-generations": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "POST /exercises/{exercise_id}/card-generations/{generation_id}/approve": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "POST /exercises/{exercise_id}/card-generations/{generation_id}/regenerate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "POST /exercises/{exercise_id}/card-generations/{generation_id}/reject": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "POST /exercises/{exercise_id}/card-references": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_cards"
+    },
+    "POST /exercises/{exercise_id}/execution-description/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /exercises/{exercise_id}/external-mappings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "POST /exercises/{exercise_id}/summarize": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /gym-equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: create_gym_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: create_gym_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /gym-equipment-catalog": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: create_gym_equipment_catalog -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: create_gym_equipment_catalog -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /gyms": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: create_gym -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: create_gym -> resolve_identity_from_credentials. Checagem de papel no handler: nenhuma checagem de papel vista. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /gyms/{gym_id}/logo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "POST /insights/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "POST /integrations/intervals/activities": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "POST /integrations/intervals/sync": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "POST /integrations/intervals/wellness": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.intervals_integration"
+    },
+    "POST /mapping-canonical/associate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.exercise_mapping_canonical"
+    },
+    "POST /muscle-groups": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "POST /muscle-volume-classes": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "POST /muscle-volume-classes/{class_id}/copy-from-default": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "POST /next-set-load-rules/describe": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "POST /next-set-load-rules/publish": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "POST /next-set-load-rules/simulate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "POST /nutrition/checkins/{checkin_id}/accept": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "is_staff"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "POST /nutrition/checkins/{checkin_id}/decline": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "is_staff"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "POST /nutrition/favorites": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_favorites"
+    },
+    "POST /nutrition/favorites/reorder": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_favorites"
+    },
+    "POST /nutrition/foods": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "is_admin"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "POST /nutrition/foods/label-photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_label_photo"
+    },
+    "POST /nutrition/foods/usda/{fdc_id}/import": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_external_foods"
+    },
+    "POST /nutrition/foods/{food_id}/portions": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "POST /nutrition/foods/{food_id}/promote": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "POST /nutrition/meals": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "POST /nutrition/meals/parse": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meal_parse"
+    },
+    "POST /nutrition/meals/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meal_photo"
+    },
+    "POST /nutrition/meals/preview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "POST /nutrition/plan-preview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/plan-suggestion": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plan_suggestion"
+    },
+    "POST /nutrition/plans": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/plans/{plan_id}/archive": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/plans/{plan_id}/preview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/plans/{plan_id}/publish": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/plans/{plan_id}/unarchive": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /nutrition/targets/recompute": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "POST /sleep-metrics": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.sleep_metrics"
+    },
+    "POST /training-types": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "POST /training-types/{training_type_id}/duplicate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "POST /users": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "POST /users/{user_id}/photo": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_self_or_admin"
+      ],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "POST /users/{user_id}/reset-password": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "POST /workout-plan-templates": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/cardio-prescription-check": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/methodology-volume-preview": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/periodization-drafts": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/preview-activation": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/{template_id}/assignments": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/{template_id}/duplicate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/{template_id}/versions/{version_id}/archive": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/{template_id}/versions/{version_id}/revert": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plan-templates/{template_id}/versions/{version_id}/unarchive": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "POST /workout-plans": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "POST /workout-plans/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "POST /workout-plans/{plan_id}/exercises/{exercise_id}/substitute-equipment": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "POST /workout-plans/{plan_id}/refresh-prescription": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    },
+    "POST /workout-sessions/start": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "POST /workout-sessions/{session_id}/exercises": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "POST /workout-sessions/{session_id}/exercises/{exercise_id}/sets": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "POST /workout-sessions/{session_id}/finish": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_sessions"
+    },
+    "POST /workouts-analysis/generate": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workouts_analysis"
+    },
+    "PUT /activities/{activity_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "PUT /analytics/muscle-group-body-map": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.dashboard_modules"
+    },
+    "PUT /body-composition/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_composition"
+    },
+    "PUT /body-measurements/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.body_measurements"
+    },
+    "PUT /context-events/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.context_events"
+    },
+    "PUT /daily-checkins/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.daily_checkins"
+    },
+    "PUT /equipment-exercises/{link_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.equipment_exercises"
+    },
+    "PUT /equipment-exercises/{link_id}/safety": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.training_safety_admin"
+    },
+    "PUT /equipment-types/{type_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "PUT /equipment/{equipment_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "PUT /equipment/{equipment_id}/safety": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.training_safety_admin"
+    },
+    "PUT /exercise-mapping-catalog/{mapping_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "PUT /exercises/external-mappings/{mapping_row_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "PUT /exercises/logs/{exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.main"
+    },
+    "PUT /exercises/{exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_catalog_admin"
+    },
+    "PUT /gym-equipment/{link_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: update_gym_equipment -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: update_gym_equipment -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "PUT /gyms/{gym_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials; update_gym -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials; update_gym -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.gyms"
+    },
+    "PUT /me/equipment-exercise-preferences/{equipment_exercise_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_exercise_preferences"
+    },
+    "PUT /me/equipment-load-ceiling": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.equipment_load_ceiling"
+    },
+    "PUT /muscle-contributions/{mapping_id}/{muscle_group_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "PUT /muscle-groups/{muscle_group_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.exercise_mapping_catalog"
+    },
+    "PUT /muscle-volume-classes/{class_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "PUT /muscle-volume-classes/{class_id}/groups": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "PUT /muscle-volume-classes/{class_id}/ranges": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [
+        "identity.role",
+        "_require_admin_identity"
+      ],
+      "classe": "identidade_no_corpo",
+      "dependencias_proprias": [],
+      "detalhe": [
+        "resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials"
+      ],
+      "guards": [],
+      "justificativa": "O guard antigo nao esta na arvore de dependencias: resolve identidade no corpo: _require_admin_identity -> resolve_identity_from_credentials. Checagem de papel no handler: identity.role, _require_admin_identity. A paridade desta rota depende dessa leitura e deve ser provada a mao.",
+      "modulo": "app.muscle_volume_classes"
+    },
+    "PUT /next-set-load-rules/draft": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.next_set_load_rules_admin"
+    },
+    "PUT /nutrition/activities/{activity_id}/correction": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "PUT /nutrition/checkin/settings": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_checkins"
+    },
+    "PUT /nutrition/days/{local_date}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "PUT /nutrition/days/{local_date}/close": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_days"
+    },
+    "PUT /nutrition/favorites/{food_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_favorites"
+    },
+    "PUT /nutrition/foods/{food_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_foods"
+    },
+    "PUT /nutrition/meals/{meal_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_meals"
+    },
+    "PUT /nutrition/plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [
+        "app.nutrition_access.plan_actor"
+      ],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.nutrition_plans"
+    },
+    "PUT /sleep-metrics/{entry_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.sleep_metrics"
+    },
+    "PUT /training-types/{training_type_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.training_types"
+    },
+    "PUT /users/me": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "sessao",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado",
+        "sessao"
+      ],
+      "modulo": "app.users"
+    },
+    "PUT /users/{user_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin",
+        "autenticado"
+      ],
+      "modulo": "app.users"
+    },
+    "PUT /workout-plan-templates/{template_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "PUT /workout-plan-templates/{template_id}/draft": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "PUT /workout-plan-templates/{template_id}/methodology-intent": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "admin_ou_pt",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "admin_ou_pt",
+        "autenticado"
+      ],
+      "modulo": "app.workout_plan_templates"
+    },
+    "PUT /workout-plans/{plan_id}": {
+      "checagem_em_dependencias": [],
+      "checagem_no_handler": [],
+      "classe": "autenticado",
+      "dependencias_proprias": [],
+      "detalhe": [],
+      "guards": [
+        "autenticado"
+      ],
+      "modulo": "app.workout_plans"
+    }
+  },
+  "rotas_removidas_depois_do_retrato": []
+}

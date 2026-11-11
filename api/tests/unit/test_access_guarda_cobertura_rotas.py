@@ -8,6 +8,12 @@ estar em `access_cobertura_allowlist.json`:
   `divida.teto` registra o tamanho; a lista nao pode passar dele.
 - `publicas`: rotas legitimamente publicas (login, esqueci a senha, health),
   com motivo. Nao contam como divida.
+- `so_autenticacao` (lote 2B): rotas que exigem APENAS identidade autenticada
+  (`get_current_identity` na arvore de dependencias), sem `require_permission`:
+  perfil da propria conta, troca da propria senha, consulta de job pelo dono e foto
+  de perfil (decidida no handler por `authorize_self_or_all`). Cada uma tem motivo, o
+  conjunto e pinado em `SO_AUTENTICACAO_APROVADAS` (rota nova exige revisao de
+  seguranca), nao pode declarar permissao nem estar em `divida`/`publicas`.
 
 Determinismo da enumeracao. `main.py` inclui cada router dentro de
 `try/except Exception` (falha de import vira log e a rota some) e nenhuma
@@ -49,6 +55,22 @@ PUBLICAS_APROVADAS = frozenset(
         "POST /auth/password-reset/request",
         "POST /auth/password-reset/confirm",
         "POST /auth/logout",
+    }
+)
+
+# Pino das rotas "so autenticacao" (lote 2B). Acrescentar uma rota aqui e decisao de
+# seguranca: exige revisao de seguranca, nao so este teste.
+SO_AUTENTICACAO_APROVADAS = frozenset(
+    {
+        "GET /auth/me",
+        "POST /auth/change-password",
+        "GET /users/me",
+        "GET /users/me/hr-zones",
+        "PUT /users/me",
+        "GET /jobs/{job_id}",
+        "POST /users/{user_id}/photo",
+        "GET /users/{user_id}/photo",
+        "DELETE /users/{user_id}/photo",
     }
 )
 
@@ -98,15 +120,41 @@ def check_publicas_pinadas(allowlist: dict) -> list[str]:
     return problemas
 
 
+def check_so_autenticacao_pinada(allowlist: dict) -> list[str]:
+    """Violacoes do pino de `so_autenticacao`: conjunto exatamente igual ao aprovado."""
+    atuais = [item["rota"] for item in allowlist.get("so_autenticacao", [])]
+    problemas: list[str] = []
+    if len(atuais) != len(set(atuais)):
+        problemas.append("so_autenticacao tem entradas duplicadas.")
+    for rota in sorted(set(atuais) - SO_AUTENTICACAO_APROVADAS):
+        problemas.append(
+            f"{rota} foi adicionada a `so_autenticacao`: rota nova nesta categoria exige "
+            "REVISAO DE SEGURANCA e a alteracao explicita de SO_AUTENTICACAO_APROVADAS neste teste."
+        )
+    for rota in sorted(SO_AUTENTICACAO_APROVADAS - set(atuais)):
+        problemas.append(f"{rota} saiu de `so_autenticacao`: confirme a nova guarda e atualize o pino.")
+    return problemas
+
+
 def _load_allowlist() -> dict:
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
 
 
-def check_coverage(routes: dict[str, list[tuple[str, str]]], allowlist: dict) -> list[str]:
-    """Violacoes da guarda (lista vazia = verde)."""
+def check_coverage(
+    routes: dict[str, list[tuple[str, str]]],
+    allowlist: dict,
+    identity_routes: set[str] | None = None,
+) -> list[str]:
+    """Violacoes da guarda (lista vazia = verde).
+
+    `identity_routes`: rotas (`"METODO caminho"`) que tem `get_current_identity` na
+    arvore de dependencias; so e usado para validar `so_autenticacao` (None = nao
+    verifica a identidade; a guarda real sempre passa o conjunto)."""
     divida = list(allowlist["divida"]["rotas"])
     divida_set = set(divida)
     publicas = {item["rota"] for item in allowlist["publicas"]}
+    so_auth_lista = [item["rota"] for item in allowlist.get("so_autenticacao", [])]
+    so_auth = set(so_auth_lista)
     teto = allowlist["divida"]["teto"]
     problemas: list[str] = []
 
@@ -119,6 +167,23 @@ def check_coverage(routes: dict[str, list[tuple[str, str]]], allowlist: dict) ->
         )
     for rota in sorted(divida_set & publicas):
         problemas.append(f"{rota} esta em divida E em publicas: deixe so em uma.")
+    if len(so_auth_lista) != len(so_auth):
+        problemas.append("so_autenticacao tem entradas duplicadas.")
+    for rota in sorted(so_auth & divida_set):
+        problemas.append(f"{rota} esta em so_autenticacao E em divida: deixe so em uma.")
+    for rota in sorted(so_auth & publicas):
+        problemas.append(f"{rota} esta em so_autenticacao E em publicas: deixe so em uma.")
+    for rota in sorted(so_auth):
+        if routes.get(rota):
+            problemas.append(
+                f"{rota} esta em so_autenticacao mas declara permissao {routes[rota][0]}: "
+                "remova-a de so_autenticacao."
+            )
+        elif identity_routes is not None and rota in routes and rota not in identity_routes:
+            problemas.append(
+                f"{rota} esta em so_autenticacao mas nao tem get_current_identity na arvore de "
+                "dependencias: sem identidade a rota e publica, nao so_autenticacao."
+            )
 
     for rota, permissoes in sorted(routes.items()):
         if permissoes:
@@ -128,7 +193,7 @@ def check_coverage(routes: dict[str, list[tuple[str, str]]], allowlist: dict) ->
                     "e diminua divida.teto no JSON."
                 )
             continue
-        if rota in divida_set or rota in publicas:
+        if rota in divida_set or rota in publicas or rota in so_auth:
             continue
         problemas.append(
             f"{rota} nao declara permissao e nao esta na allowlist. Declare "
@@ -137,12 +202,38 @@ def check_coverage(routes: dict[str, list[tuple[str, str]]], allowlist: dict) ->
         )
 
     existentes = set(routes)
-    for rota in sorted((divida_set | publicas) - existentes):
+    for rota in sorted((divida_set | publicas | so_auth) - existentes):
         problemas.append(
             f"{rota} esta na allowlist mas a rota nao existe mais (ou o router deixou de "
-            "carregar): remova-a do JSON e diminua divida.teto."
+            "carregar): remova-a do JSON e, se era da divida, diminua divida.teto."
         )
     return problemas
+
+
+def _depende_de_identidade(route) -> bool:
+    stack = [route.dependant]
+    while stack:
+        node = stack.pop()
+        if getattr(node, "call", None) is get_current_identity:
+            return True
+        stack.extend(getattr(node, "dependencies", ()) or ())
+    return False
+
+
+def enumerate_identity_routes(app: FastAPI) -> set[str]:
+    """Rotas (`"METODO caminho"`) com `get_current_identity` na arvore de dependencias."""
+    found: set[str] = set()
+    for route in _iter_api_routes(app):
+        if _depende_de_identidade(route):
+            found.update(f"{m} {route.path}" for m in route.methods if m not in _IGNORED_METHODS)
+    return found
+
+
+def _all_identity_routes() -> set[str]:
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    return enumerate_identity_routes(main_app) | enumerate_identity_routes(engines_app)
 
 
 def _all_project_routes() -> dict[str, list[tuple[str, str]]]:
@@ -162,7 +253,7 @@ def _all_project_routes() -> dict[str, list[tuple[str, str]]]:
 
 
 def test_guarda_todas_as_rotas_declaram_permissao_ou_estao_na_allowlist():
-    problemas = check_coverage(_all_project_routes(), _load_allowlist())
+    problemas = check_coverage(_all_project_routes(), _load_allowlist(), _all_identity_routes())
     assert not problemas, "Guarda de cobertura RBAC:\n" + "\n".join(problemas[:25])
 
 
@@ -201,6 +292,10 @@ def test_allowlist_registra_o_proprio_tamanho_e_categorias_estao_separadas():
     chaves = {item["rota"] for item in publicas}
     assert {"POST /auth/login", "GET /health"} <= chaves
     assert not chaves & set(divida)
+    for item in allowlist["so_autenticacao"]:
+        assert set(item) == {"rota", "motivo"} and item["motivo"].strip()
+    so_auth = {item["rota"] for item in allowlist["so_autenticacao"]}
+    assert not so_auth & set(divida) and not so_auth & chaves
 
 
 def test_enumeracao_nao_depende_da_variavel_das_docs(monkeypatch):
@@ -229,10 +324,11 @@ def _mini_app() -> FastAPI:
     return app
 
 
-def _allowlist(divida=(), publicas=(), teto=None) -> dict:
+def _allowlist(divida=(), publicas=(), teto=None, so_autenticacao=()) -> dict:
     return {
         "divida": {"teto": len(divida) if teto is None else teto, "rotas": list(divida)},
         "publicas": [{"rota": r, "motivo": "teste"} for r in publicas],
+        "so_autenticacao": [{"rota": r, "motivo": "teste"} for r in so_autenticacao],
     }
 
 
@@ -310,7 +406,7 @@ def test_permissao_em_dependencia_aninhada_e_em_router_incluido_conta():
     assert sorted(enumerate_routes(app)["POST /v1/x"]) == [("cardio", "editar"), ("cardio", "ver")]
 
 
-@pytest.mark.parametrize("campo", ["divida", "publicas"])
+@pytest.mark.parametrize("campo", ["divida", "publicas", "so_autenticacao"])
 def test_json_tem_a_estrutura_esperada(campo):
     assert campo in _load_allowlist()
 
@@ -362,6 +458,108 @@ def test_enumeracao_falha_com_mount_dentro_de_router_incluido():
         assert "montada nao inspecionavel" in str(exc)
     else:  # esta versao do FastAPI nao propaga mounts de router: nada a inspecionar
         assert not [r for r in app.routes if isinstance(r, (Mount, Host))]
+
+
+def test_so_autenticacao_sao_exatamente_as_nove_aprovadas():
+    assert len(SO_AUTENTICACAO_APROVADAS) == 9
+    problemas = check_so_autenticacao_pinada(_load_allowlist())
+    assert not problemas, "\n".join(problemas)
+
+
+def test_so_autenticacao_real_tem_identidade_e_nao_declara_permissao():
+    rotas = _all_project_routes()
+    com_identidade = _all_identity_routes()
+    for rota in SO_AUTENTICACAO_APROVADAS:
+        assert rota in rotas and rotas[rota] == [], rota
+        assert rota in com_identidade, rota
+
+
+def test_divida_real_tem_teto_343_e_nao_contem_as_18_rotas_convertidas():
+    divida = _load_allowlist()["divida"]
+    assert divida["teto"] == 343 and len(divida["rotas"]) == 343
+    convertidas = {
+        "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
+        "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
+        "PUT /users/{user_id}",
+    } | SO_AUTENTICACAO_APROVADAS
+    assert len(convertidas) == 18
+    assert not convertidas & set(divida["rotas"])
+
+
+def test_pino_so_autenticacao_acusa_rota_nova_removida_e_duplicada():
+    nova = _allowlist(so_autenticacao=sorted(SO_AUTENTICACAO_APROVADAS | {"GET /x"}))
+    problemas = check_so_autenticacao_pinada(nova)
+    assert len(problemas) == 1 and "GET /x" in problemas[0] and "REVISAO DE SEGURANCA" in problemas[0]
+    faltando = _allowlist(so_autenticacao=sorted(SO_AUTENTICACAO_APROVADAS - {"GET /auth/me"}))
+    assert any("GET /auth/me" in p and "saiu" in p for p in check_so_autenticacao_pinada(faltando))
+    dup = _allowlist(so_autenticacao=sorted(SO_AUTENTICACAO_APROVADAS) + ["GET /auth/me"])
+    assert any("duplicadas" in p for p in check_so_autenticacao_pinada(dup))
+
+
+def test_guarda_verde_quando_rota_so_autenticacao_tem_identidade_e_sem_permissao():
+    app = _mini_app()
+    assert check_coverage(
+        enumerate_routes(app),
+        _allowlist(so_autenticacao=["GET /sem-permissao"]),
+        enumerate_identity_routes(app),
+    ) == []
+
+
+def test_guarda_acusa_so_autenticacao_que_declara_permissao():
+    app = _mini_app()
+    problemas = check_coverage(
+        enumerate_routes(app),
+        _allowlist(["GET /sem-permissao"], so_autenticacao=["GET /protegida"]),
+        enumerate_identity_routes(app),
+    )
+    assert len(problemas) == 1 and "GET /protegida" in problemas[0] and "declara permissao" in problemas[0]
+
+
+def test_guarda_acusa_so_autenticacao_sem_identidade_na_arvore():
+    app = FastAPI()
+
+    @app.get("/aberta")
+    def aberta():
+        return {}
+
+    problemas = check_coverage(
+        enumerate_routes(app), _allowlist(so_autenticacao=["GET /aberta"]), enumerate_identity_routes(app)
+    )
+    assert len(problemas) == 1 and "GET /aberta" in problemas[0] and "get_current_identity" in problemas[0]
+
+
+def test_guarda_acusa_so_autenticacao_tambem_em_divida_ou_publicas():
+    app = _mini_app()
+    ids = enumerate_identity_routes(app)
+    em_divida = check_coverage(
+        enumerate_routes(app),
+        _allowlist(["GET /sem-permissao"], so_autenticacao=["GET /sem-permissao"]),
+        ids,
+    )
+    assert any("so_autenticacao E em divida" in p for p in em_divida)
+    em_publicas = check_coverage(
+        enumerate_routes(app),
+        _allowlist(publicas=["GET /sem-permissao"], so_autenticacao=["GET /sem-permissao"]),
+        ids,
+    )
+    assert any("so_autenticacao E em publicas" in p for p in em_publicas)
+
+
+def test_guarda_acusa_so_autenticacao_inexistente_e_duplicada():
+    app = _mini_app()
+    problemas = check_coverage(
+        enumerate_routes(app),
+        _allowlist(so_autenticacao=["GET /sem-permissao", "GET /fantasma", "GET /sem-permissao"]),
+        enumerate_identity_routes(app),
+    )
+    assert any("GET /fantasma" in p and "nao existe mais" in p for p in problemas)
+    assert any("duplicadas" in p for p in problemas)
+
+
+def test_rota_sem_permissao_fora_de_qualquer_categoria_continua_acusada():
+    app = _mini_app()
+    problemas = check_coverage(enumerate_routes(app), _allowlist(), enumerate_identity_routes(app))
+    assert len(problemas) == 1 and "GET /sem-permissao" in problemas[0]
 
 
 def test_apps_reais_nao_tem_rota_montada():
