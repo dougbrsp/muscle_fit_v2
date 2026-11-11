@@ -232,14 +232,19 @@ def test_dry_run_do_lote_com_a_031_pendente(runner_backend, monkeypatch, fake_rd
 
 
 @pytest.fixture
-def domain(sraw):
-    """2 equipamentos, 2 exercicios, 2 vinculos; admin e aluno com sessao."""
+def domain(sraw, conceder_grupo):
+    """2 equipamentos, 2 exercicios, 2 vinculos; admin e aluno com sessao.
+
+    ADR 0011 (lote 2C-1): `admin.seguranca_treino` e resolvida por grupos. O
+    aluno (sessao) recebe o grupo `usuario`, que nao tem a permissao: o 403 vem
+    do caminho real. O admin entra por token mestre (acesso total, sem banco)."""
     token_hash = hashlib.sha256(USER_TOKEN.encode("utf-8")).hexdigest()
     with sraw.cursor() as cur:
         cur.execute("INSERT IGNORE INTO users (username, password_hash, role) VALUES ('admin-p07', 'x', 'admin')")
         cur.execute("INSERT IGNORE INTO users (username, password_hash, role) VALUES ('aluno-p07', 'x', 'user')")
         cur.execute("SELECT id FROM users WHERE username = 'aluno-p07'")
         user_id = cur.fetchone()["id"]
+        conceder_grupo(cur, user_id, "regular")  # idempotente (ON DUPLICATE KEY)
         cur.execute("DELETE FROM user_sessions WHERE token_hash = %s", (token_hash,))
         cur.execute(
             "INSERT INTO user_sessions (user_id, token_hash, expires_at) VALUES (%s, %s, NOW() + INTERVAL 1 DAY)",

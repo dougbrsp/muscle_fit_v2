@@ -131,7 +131,6 @@ def test_vinculo_que_muda_depois_da_ultima_leitura(raw, monkeypatch, fake_rds, m
     """Um nome sem correspondencia ganha um alias no catalogo depois de ja ter
     sido lido. Antes: o proximo GET reclassificava. Agora: a rota do catalogo
     reclassifica na escrita. O Dashboard mostra o mesmo numero nos dois casos."""
-    monkeypatch.setattr(exercise_catalog_admin, "_require_admin_identity", lambda *args, **kwargs: None)
     results = {}
     for backend in BACKENDS:
         # ANTES (oraculo): alias gravado direto no banco + reclassificacao na leitura.
@@ -150,9 +149,7 @@ def test_vinculo_que_muda_depois_da_ultima_leitura(raw, monkeypatch, fake_rds, m
         # DEPOIS: mesmo alias pela rota admin do catalogo (reclassifica na escrita).
         history = seed_canonical_history(raw)
         assert UNMAPPED_NAME in _unmapped_names(_dashboard(history["user"]))
-        exercise_catalog_admin.create_exercise_alias(
-            SUPINO_ID, item={"alias": UNMAPPED_NAME}, x_api_token=None, musclefit_session=None
-        )
+        exercise_catalog_admin.create_exercise_alias(SUPINO_ID, item={"alias": UNMAPPED_NAME})
         with recorded_sql(backend, monkeypatch, fake_rds) as statements:
             now = _dashboard(history["user"])
         assert _writes(statements) == []

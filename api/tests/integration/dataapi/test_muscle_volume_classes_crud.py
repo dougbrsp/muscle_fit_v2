@@ -139,8 +139,16 @@ def client(backend) -> TestClient:
 
 
 @pytest.fixture
-def non_admin_client(backend, monkeypatch) -> TestClient:
-    identidade = security.Identity(user_id=2, role="regular", source="session")
+def non_admin_client(backend, monkeypatch, raw, conceder_grupo) -> TestClient:
+    # RBAC: o usuario comum so tem concessoes pelo grupo `usuario` (consulta a
+    # `user_access_groups`), entao ele precisa existir de verdade. Depende de
+    # `raw` para nascer depois do TRUNCATE de `users`.
+    with raw.cursor() as cur:
+        cur.execute("DELETE FROM user_access_groups")
+        cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('regular-mvc', 'x', 'regular')")
+        regular_id = cur.lastrowid
+        conceder_grupo(cur, regular_id, "regular")
+    identidade = security.Identity(user_id=regular_id, role="regular", source="session")
     app = _app()
     monkeypatch.setattr(security, "resolve_identity", lambda _token: identidade)
     return TestClient(app, raise_server_exceptions=False)

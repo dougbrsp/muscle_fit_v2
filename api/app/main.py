@@ -23,12 +23,12 @@ from .models import (
     SetEvaluationIn,
 )
 from .training_goal_query import GOAL_QUERY_DESCRIPTION, goal_query_value
+from .access import require_permission
 from .security import (
     Identity,
     MustChangePasswordRequired,
     get_current_identity,
     must_change_password_handler,
-    require_admin,
 )
 from .services import (
     activity_detail,
@@ -304,7 +304,7 @@ def get_high_rpe_sets(
     return {"items": high_rpe_sets(min_rpe, limit, user_id=identity.user_id)}
 
 
-@app.post("/exercise-mappings", dependencies=[Depends(require_admin)])
+@app.post("/exercise-mappings", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_or_update_exercise_mapping(payload: ExerciseMappingIn):
     # exercise_mappings e o catalogo GLOBAL de mapeamento (nao dado pessoal) -
     # restrito a admin, mesmo padrao dos demais endpoints de catalogo.

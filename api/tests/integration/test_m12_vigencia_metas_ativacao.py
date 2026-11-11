@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import training_types
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from app.training_type_targets import resolve_targets_at, resolve_targets_now
 
 
@@ -44,9 +44,13 @@ def api(db_conn, catalog):
 
     app = FastAPI()
     app.include_router(training_types.router)
+    # ADR 0011 (lote 2C-1): `/training-types` exige `modelos.tipos_treino`
+    # via `require_permission`, que resolve os grupos do `user_id` no banco.
+    # O `catalog` ja grava o usuario no grupo de sistema `admin`
+    # (`conceder_grupo_do_papel`), entao a identidade abaixo passa pelo caminho
+    # real; nao ha mais override de `require_admin_or_pt` (o router nao o usa).
     identidade = Identity(user_id=catalog.user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

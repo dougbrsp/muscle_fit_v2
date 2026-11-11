@@ -23,6 +23,7 @@ from app import exercise_card_processor as processor
 from app import exercise_card_service as svc
 from app import exercise_card_storage as storage
 from app import exercise_cards
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
 from tests.unit.test_exercise_card_service import (  # noqa: F401 - fixtures reaproveitadas
     ADMIN,
@@ -41,6 +42,28 @@ from tests.unit.test_exercise_card_service import (  # noqa: F401 - fixtures rea
 )
 
 REGULAR = 8
+
+
+@pytest.fixture(autouse=True)
+def _permissoes_do_papel(monkeypatch):
+    """`require_permission` consulta o banco: aqui as permissoes vem das concessoes
+    padrao do grupo de sistema do papel (admin = acesso total), sem banco."""
+    from app.access import DEFAULT_GRANTS_BY_GROUP, ROLE_TO_SYSTEM_GROUP
+    from app.access import service as access_service
+
+    def _resolver(identity):
+        if identity.source == "master_token":
+            return access_service._full_access(("admin",))
+        grupo = ROLE_TO_SYSTEM_GROUP.get(identity.role)
+        if grupo is None:
+            return access_service.EffectivePermissions()
+        linhas = [
+            {"group_key": grupo, "is_system": 1, "resource": r, "action": a, "scope": s}
+            for r, a, s in DEFAULT_GRANTS_BY_GROUP[grupo]
+        ] or [{"group_key": grupo, "is_system": 1, "resource": None, "action": None, "scope": None}]
+        return access_service.merge_grants(linhas)
+
+    monkeypatch.setattr(access_service, "resolve_permissions", _resolver)
 
 
 def _client(identity: Identity | None) -> TestClient:
@@ -89,6 +112,7 @@ def test_nao_admin_recebe_403_em_toda_rota_de_geracao(regular, db):  # noqa: F81
     for metodo, path, body in _rotas_de_geracao(gid):
         resposta = _chamar(regular, metodo, path, body)
         assert resposta.status_code == 403, (metodo, path, resposta.text)
+        assert resposta.json()["detail"] == FORBIDDEN_DETAIL
     assert db.raw.execute("SELECT status FROM exercise_card_generations").fetchall()[0][0] == "GENERATED"
 
 
@@ -407,6 +431,7 @@ def test_referencias_nao_admin_403_em_toda_rota(ref_regular, db, s3):  # noqa: F
     for metodo, path, body in _rotas_de_referencia(ref_id):
         resposta = _chamar_ref(ref_regular, metodo, path, body)
         assert resposta.status_code == 403, (metodo, path, resposta.text)
+        assert resposta.json()["detail"] == FORBIDDEN_DETAIL
     assert db.reference(ref_id)["deleted_at"] is None and s3.keys() == []
 
 

@@ -52,6 +52,28 @@ def _chegou_no_banco():
     raise _PassouDaAutenticacao()
 
 
+@pytest.fixture
+def _permissoes_do_papel(monkeypatch):
+    """`require_permission` consulta o banco: aqui as permissoes vem das concessoes
+    padrao do grupo de sistema do papel (token mestre = acesso total), sem banco."""
+    from app.access import DEFAULT_GRANTS_BY_GROUP, ROLE_TO_SYSTEM_GROUP
+    from app.access import service as access_service
+
+    def _resolver(identity):
+        if identity.source == "master_token":
+            return access_service._full_access(("admin",))
+        grupo = ROLE_TO_SYSTEM_GROUP.get(identity.role)
+        if grupo is None:
+            return access_service.EffectivePermissions()
+        linhas = [
+            {"group_key": grupo, "is_system": 1, "resource": r, "action": a, "scope": s}
+            for r, a, s in DEFAULT_GRANTS_BY_GROUP[grupo]
+        ] or [{"group_key": grupo, "is_system": 1, "resource": None, "action": None, "scope": None}]
+        return access_service.merge_grants(linhas)
+
+    monkeypatch.setattr(access_service, "resolve_permissions", _resolver)
+
+
 @pytest.fixture(scope="module")
 def api_core():
     from app.main import app
@@ -87,7 +109,9 @@ def test_rota_bloqueia_sessao_com_troca_pendente(monkeypatch, api_core, modulo, 
 
 @pytest.mark.parametrize("identidade", [NORMAL, MESTRE])
 @pytest.mark.parametrize("modulo, rota", ROTAS)
-def test_rota_segue_igual_para_usuario_normal_e_token_mestre(monkeypatch, api_core, modulo, rota, identidade):
+def test_rota_segue_igual_para_usuario_normal_e_token_mestre(
+    monkeypatch, api_core, _permissoes_do_papel, modulo, rota, identidade
+):
     monkeypatch.setattr(security, "resolve_identity", lambda token: identidade)
     monkeypatch.setattr(importlib.import_module(f"app.{modulo}"), "_connect", _chegou_no_banco)
     # Passou da identidade e foi ao banco, como antes.

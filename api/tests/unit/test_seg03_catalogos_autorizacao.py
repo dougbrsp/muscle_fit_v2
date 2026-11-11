@@ -11,12 +11,35 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import dashboard_modules, gyms, security, services
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
 
 OWNER = Identity(user_id=10, role="regular", source="session")
 OTHER = Identity(user_id=11, role="regular", source="session")
 ADMIN = Identity(user_id=1, role="admin", source="session")
 IDENTITIES = {"owner": OWNER, "other": OTHER, "admin": ADMIN}
+
+
+@pytest.fixture(autouse=True)
+def _permissoes_do_papel(monkeypatch):
+    """`require_permission` consulta o banco: aqui as permissoes vem das concessoes
+    padrao do grupo de sistema do papel (admin = acesso total), sem banco."""
+    from app.access import DEFAULT_GRANTS_BY_GROUP, ROLE_TO_SYSTEM_GROUP
+    from app.access import service as access_service
+
+    def _resolver(identity):
+        if identity.source == "master_token":
+            return access_service._full_access(("admin",))
+        grupo = ROLE_TO_SYSTEM_GROUP.get(identity.role)
+        if grupo is None:
+            return access_service.EffectivePermissions()
+        linhas = [
+            {"group_key": grupo, "is_system": 1, "resource": r, "action": a, "scope": s}
+            for r, a, s in DEFAULT_GRANTS_BY_GROUP[grupo]
+        ] or [{"group_key": grupo, "is_system": 1, "resource": None, "action": None, "scope": None}]
+        return access_service.merge_grants(linhas)
+
+    monkeypatch.setattr(access_service, "resolve_permissions", _resolver)
 
 
 class _Cursor:
@@ -162,6 +185,7 @@ def test_put_body_map_regular_403_e_nao_grava(body_map_client):
     state["identity"] = OTHER
     resp = client.put("/analytics/muscle-group-body-map", json={"muscle_group": "peito", "slugs": ["chest"]})
     assert resp.status_code == 403
+    assert resp.json()["detail"] == FORBIDDEN_DETAIL
     assert saved == []
 
 

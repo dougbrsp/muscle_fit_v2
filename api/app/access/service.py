@@ -258,6 +258,33 @@ def authorize_self_or_all(
     return target
 
 
+def owns_row_or_all(
+    identity: Identity,
+    permissoes: EffectivePermissions,
+    resource: str,
+    action: str,
+    owner_user_id: Optional[int],
+) -> bool:
+    """Posse da linha (ADR 0011): True se a linha e do usuario ou se o escopo
+    concedido para `(recurso, acao)` e `todos`.
+
+    Dono: `owner_user_id` nao nulo e igual ao `user_id` da identidade, com
+    qualquer escopo concedido. Linha orfa (`owner_user_id` None) so passa com
+    `todos`. Escopo `alunos` nao basta (sem consulta de vinculo). Sem concessao
+    = False. Nao levanta nada: o chamador escolhe a recusa (404 para esconder a
+    existencia, 403 quando o id ja veio explicito). Sem banco: usa as
+    permissoes ja resolvidas na requisicao. Recurso/acao fora do catalogo:
+    `ValueError`."""
+    scope = permission_scope(permissoes, resource, action)
+    if scope is None:
+        return False
+    if scope == catalog.SCOPE_TODOS:
+        return True
+    if owner_user_id is None:
+        return False
+    return int(owner_user_id) == int(identity.user_id)
+
+
 def serialize_permissions(permissoes: EffectivePermissions) -> dict[str, Any]:
     """Payload de `/auth/me`: `{"permissions": {recurso: {acao: escopo}},
     "groups": [chave, ...]}`, so com o que foi concedido."""

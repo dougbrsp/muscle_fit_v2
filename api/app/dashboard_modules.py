@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from . import services
 from .request_models import MuscleGroupBodyMapIn
 from .intelligence import BodyCompositionTrendService, MuscleRecoveryService, VolumeService
-from .security import Identity, get_current_identity, require_admin
+from .access import require_permission
+from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/analytics", tags=["analytics", "dashboard-modules"], dependencies=[Depends(get_current_identity)])
 
@@ -83,7 +84,7 @@ def muscle_group_body_map():
     return {"items": services.list_muscle_group_body_map()}
 
 
-@router.put("/muscle-group-body-map", dependencies=[Depends(require_admin)])
+@router.put("/muscle-group-body-map", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def upsert_muscle_group_body_map(
     payload: MuscleGroupBodyMapIn,
 ):

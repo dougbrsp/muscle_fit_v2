@@ -28,7 +28,7 @@ def cookie_sem_dominio(monkeypatch):
 
 
 @pytest.fixture
-def contas(catalog):
+def contas(catalog, conceder_grupo):
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM user_sessions")
@@ -38,6 +38,8 @@ def contas(catalog):
                 ("alvo", hash_password(SENHA)),
             )
             alvo_id = cur.lastrowid
+            # RBAC: /gyms exige `treino.academias`/`ver`, que vem do grupo do papel.
+            conceder_grupo(cur, alvo_id, "regular")
     return {"alvo_id": alvo_id}
 
 
