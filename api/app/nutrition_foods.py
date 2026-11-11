@@ -39,8 +39,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from .access import EffectivePermissions, require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import catalog, food_text
@@ -49,13 +51,13 @@ from .domain.nutrition import labels as nutrition_labels
 from .nutrition_access import (
     VISIBLE_FOODS_SQL,
     VISIBLE_PORTIONS_SQL,
+    administers_public_catalog,
     can_add_portion,
     can_edit_food,
     can_list_private_foods,
     can_promote_food,
     can_view_food,
     foods_visibility,
-    is_admin,
     favorites_owner,
     ownership,
     portion_owner_for,
@@ -63,7 +65,7 @@ from .nutrition_access import (
 )
 from .nutrition_schema import has_favorites_table, require_food_tables
 from .request_models import FoodItemCreateIn, FoodItemIn, FoodPortionIn
-from .security import Identity, get_current_identity, require_admin
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition/foods", tags=["nutrition"])
 
@@ -168,7 +170,7 @@ def _origin_public(row: dict[str, Any]) -> Optional[dict[str, str]]:
     return {"code": origem.value, "label": nutrition_labels.FOOD_ORIGIN_LABELS[origem]} if origem else None
 
 
-def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
+def food_public(row: dict[str, Any], identity: Identity, permissoes: EffectivePermissions) -> dict[str, Any]:
     """Alimento para a API: valores por 100 g/ml (códigos da RDC 429), porção do
     rótulo, citação/licença da linha, a origem dos valores que vieram de outra
     fonte (`field_sources`, com a nota pronta do motor; M85) e o que ESTE
@@ -204,9 +206,9 @@ def food_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
         **ownership(identity, row.get("owner_user_id")),
         "is_active": bool(row.get("is_active")),
         "permissions": {
-            "can_edit": can_edit_food(identity, row),
+            "can_edit": can_edit_food(identity, permissoes, row),
             "can_add_portion": can_add_portion(identity, row),
-            "can_promote": can_promote_food(identity, row),
+            "can_promote": can_promote_food(permissoes, row),
         },
         "created_at": _iso(row.get("created_at")),
         "updated_at": _iso(row.get("updated_at")),
@@ -224,11 +226,11 @@ def portion_public(row: dict[str, Any], identity: Identity) -> dict[str, Any]:
     }
 
 
-def _fetch_food(cur: Any, food_id: int, identity: Identity) -> dict[str, Any]:
+def _fetch_food(cur: Any, food_id: int, identity: Identity, permissoes: EffectivePermissions) -> dict[str, Any]:
     """Alimento visível para o usuário ou 404 (não revela o privado de outro)."""
     cur.execute(FOOD_BY_ID_SQL, (int(food_id),))
     row = cur.fetchone()
-    if not row or not can_view_food(identity, row):
+    if not row or not can_view_food(identity, permissoes, row):
         raise _error(404, "food_not_found", "Alimento não encontrado.")
     return row
 
@@ -308,12 +310,14 @@ def _with_validation(food: dict[str, Any], validacao: catalog.FoodValidation) ->
 
 @router.get("/search")
 def search_foods(
+    request: Request,
     q: str = Query(..., min_length=1, max_length=120),
     source: Optional[str] = Query(default=None, max_length=16),
     scope: str = Query(default=SCOPE_VISIBLE, max_length=16),
     limit: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
+    permissoes = permissions_for_request(request, identity)
     fonte = None
     if source is not None:
         fonte = catalog.normalize_source(source)
@@ -322,7 +326,7 @@ def search_foods(
     if scope not in SCOPES:
         raise _error(400, "invalid_scope", "Escopo de busca inválido.", allowed=list(SCOPES))
     private_all = scope == SCOPE_PRIVATE_ALL
-    if private_all and not can_list_private_foods(identity):
+    if private_all and not can_list_private_foods(permissoes):
         raise _error(403, "food_forbidden", "Só o administrador lista os alimentos privados de outros usuários.")
 
     normalizado = food_text.normalize_name(q)
@@ -371,7 +375,7 @@ def search_foods(
     )
     resposta["items"] = [
         {
-            **food_public(por_id[int(m.candidate_id)], identity),
+            **food_public(por_id[int(m.candidate_id)], identity, permissoes),
             "score": m.score,
             "auto_accept": m.auto_accept,
             "is_favorite": int(m.candidate_id) in favoritos,
@@ -382,19 +386,21 @@ def search_foods(
 
 
 @router.get("/{food_id}")
-def get_food(food_id: int, identity: Identity = Depends(get_current_identity)):
+def get_food(request: Request, food_id: int, identity: Identity = Depends(require_permission("nutricao.alimentos", "ver"))):
+    permissoes = permissions_for_request(request, identity)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
-            linha = _fetch_food(cur, food_id, identity)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
             _condicao, params_visibilidade = portions_visibility(identity, linha)
             cur.execute(PORTIONS_OF_FOOD_SQL, (int(food_id), *params_visibilidade))
             porcoes = cur.fetchall() or []
-    return {**food_public(linha, identity), "portions": [portion_public(p, identity) for p in porcoes]}
+    return {**food_public(linha, identity, permissoes), "portions": [portion_public(p, identity) for p in porcoes]}
 
 
 @router.post("", status_code=201)
-def create_food(payload: FoodItemCreateIn, identity: Identity = Depends(get_current_identity)):
+def create_food(request: Request, payload: FoodItemCreateIn, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))):
+    permissoes = permissions_for_request(request, identity)
     fonte = catalog.user_entry_source(payload.source)
     if fonte is None:
         raise _invalid_food([catalog.ERR_INVALID_SOURCE])
@@ -408,7 +414,7 @@ def create_food(payload: FoodItemCreateIn, identity: Identity = Depends(get_curr
                 if existente is not None:
                     raise _barcode_conflict(existente)
             # Admin + (rótulo ou EAN): nasce público (`owner_user_id` NULL, regra do motor); os demais, privado (D-G).
-            dono = None if catalog.is_born_public(is_admin(identity), fonte, codigo) else int(identity.user_id)
+            dono = None if catalog.is_born_public(administers_public_catalog(permissoes, "editar"), fonte, codigo) else int(identity.user_id)
             cur.execute(
                 INSERT_FOOD_SQL,
                 (fonte.value, codigo, *valores, dono, int(identity.user_id)),
@@ -416,28 +422,30 @@ def create_food(payload: FoodItemCreateIn, identity: Identity = Depends(get_curr
             novo_id = cur.lastrowid
             if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
                 raise _error(500, "food_insert_failed", "Alimento não encontrado após gravar.")
-            linha = _fetch_food(cur, int(novo_id), identity)
-    return _with_validation(food_public(linha, identity), validacao)
+            linha = _fetch_food(cur, int(novo_id), identity, permissoes)
+    return _with_validation(food_public(linha, identity, permissoes), validacao)
 
 
 @router.put("/{food_id}")
-def update_food(food_id: int, payload: FoodItemIn, identity: Identity = Depends(get_current_identity)):
+def update_food(request: Request, food_id: int, payload: FoodItemIn, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))):
+    permissoes = permissions_for_request(request, identity)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
-            linha = _fetch_food(cur, food_id, identity)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
             if catalog.is_read_only(linha.get("source")):
                 raise _error(409, catalog.ERR_SOURCE_READ_ONLY, nutrition_labels.limitation_label(catalog.ERR_SOURCE_READ_ONLY))
-            if not can_edit_food(identity, linha):
+            if not can_edit_food(identity, permissoes, linha):
                 raise _error(403, "food_forbidden", "Só o dono edita um alimento privado; o público, só o administrador.")
             valores, validacao = _validated_write_values(payload)
             cur.execute(UPDATE_FOOD_SQL, (*valores, int(food_id)))
-            linha = _fetch_food(cur, food_id, identity)
-    return _with_validation(food_public(linha, identity), validacao)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
+    return _with_validation(food_public(linha, identity, permissoes), validacao)
 
 
 @router.post("/{food_id}/portions", status_code=201)
-def add_portion(food_id: int, payload: FoodPortionIn, identity: Identity = Depends(get_current_identity)):
+def add_portion(request: Request, food_id: int, payload: FoodPortionIn, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))):
+    permissoes = permissions_for_request(request, identity)
     erro = catalog.validate_portion_amount(payload.amount)
     rotulo = " ".join(payload.label.split())
     if erro or not rotulo:
@@ -450,13 +458,13 @@ def add_portion(food_id: int, payload: FoodPortionIn, identity: Identity = Depen
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
-            linha = _fetch_food(cur, food_id, identity)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
             if not can_add_portion(identity, linha):
                 raise _error(403, "food_forbidden", "Só o dono cria porções num alimento privado.")
             cur.execute(
                 INSERT_PORTION_SQL,
                 (int(food_id), rotulo, payload.amount, catalog.USER_ENTRY_SOURCE.value,
-                 portion_owner_for(identity, linha), int(identity.user_id)),
+                 portion_owner_for(identity, permissoes, linha), int(identity.user_id)),
             )
             novo_id = cur.lastrowid
             cur.execute(PORTION_BY_ID_SQL, (int(novo_id),))
@@ -465,20 +473,21 @@ def add_portion(food_id: int, payload: FoodPortionIn, identity: Identity = Depen
 
 
 @router.post("/{food_id}/promote")
-def promote_food(food_id: int, identity: Identity = Depends(require_admin)):
+def promote_food(request: Request, food_id: int, identity: Identity = Depends(require_permission("admin.catalogos", "editar"))):
+    permissoes = permissions_for_request(request, identity)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
-            linha = _fetch_food(cur, food_id, identity)
-            if not can_promote_food(identity, linha):
+            linha = _fetch_food(cur, food_id, identity, permissoes)
+            if not can_promote_food(permissoes, linha):
                 raise _error(409, "food_already_public", "O alimento já é público.")
             dono = int(linha["owner_user_id"])
             cur.execute(PROMOTE_FOOD_SQL, (int(food_id), dono))
             if int(cur.rowcount or 0) != 1:
                 raise _error(409, "food_already_public", "O alimento já é público.")
             cur.execute(PROMOTE_PORTIONS_SQL, (int(food_id), dono))
-            linha = _fetch_food(cur, food_id, identity)
-    return food_public(linha, identity)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
+    return food_public(linha, identity, permissoes)
 
 
 __all__ = ["food_public", "portion_public", "router", "search_sql"]

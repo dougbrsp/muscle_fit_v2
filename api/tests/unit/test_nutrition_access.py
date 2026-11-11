@@ -129,3 +129,66 @@ def test_alimento_no_diario(dono, ativo, quem, aluno, usa):
 @pytest.mark.parametrize(("dono", "usa"), [(None, True), (10, True), (99, True), (20, False)])
 def test_porcao_no_diario(dono, usa):
     assert access.can_log_portion(_ident("personal_trainer", 99), 10, {"owner_user_id": dono}) is usa
+
+
+# ---------------------------------------------------------------------------
+# Catálogo de alimentos por concessão `admin.catalogos` (RBAC lote 2D-2)
+# ---------------------------------------------------------------------------
+
+_PUBLICO = {"owner_user_id": None, "source": "user"}
+_PRIVADO_ALHEIO = {"owner_user_id": 20, "source": "user"}
+_PRIVADO_PROPRIO = {"owner_user_id": 10, "source": "user"}
+_PUBLICO_SO_LEITURA = {"owner_user_id": None, "source": "taco"}
+
+
+def _so_catalogo(acao: str) -> EffectivePermissions:
+    return service.merge_grants(
+        [{"group_key": "g", "is_system": 0, "resource": "admin.catalogos", "action": acao, "scope": "todos"}]
+    )
+
+
+@pytest.mark.parametrize(
+    ("role", "administra"),
+    [("admin", True), ("personal_trainer", False), ("regular", False)],
+)
+def test_grupo_de_sistema_de_cada_papel_mantem_o_acesso_de_hoje_ao_catalogo(role, administra):
+    perms, eu = _perms(role), _ident(role)
+    assert access.administers_public_catalog(perms, "ver") is administra
+    assert access.administers_public_catalog(perms, "editar") is administra
+    assert access.can_view_food(eu, perms, _PRIVADO_ALHEIO) is administra
+    assert access.can_view_food(eu, perms, _PUBLICO) is True
+    assert access.can_view_food(eu, perms, _PRIVADO_PROPRIO) is True
+    assert access.can_list_private_foods(perms) is administra
+    assert access.can_edit_food(eu, perms, _PUBLICO) is administra
+    assert access.can_edit_food(eu, perms, _PUBLICO_SO_LEITURA) is False
+    assert access.can_edit_food(eu, perms, _PRIVADO_PROPRIO) is True
+    assert access.can_edit_food(eu, perms, _PRIVADO_ALHEIO) is False
+    assert access.can_promote_food(perms, _PRIVADO_ALHEIO) is administra
+    assert access.can_promote_food(perms, _PUBLICO) is False
+    assert access.portion_owner_for(eu, perms, _PUBLICO) == (None if administra else 10)
+    assert access.portion_owner_for(eu, perms, _PRIVADO_PROPRIO) == 10
+
+
+def test_grupo_sintetico_so_com_catalogo_ver_ve_e_lista_privados_mas_nao_edita_nem_promove():
+    perms, eu = _so_catalogo("ver"), _ident("regular")
+    assert access.can_view_food(eu, perms, _PRIVADO_ALHEIO) is True
+    assert access.can_list_private_foods(perms) is True
+    assert access.can_edit_food(eu, perms, _PUBLICO) is False
+    assert access.can_promote_food(perms, _PRIVADO_ALHEIO) is False
+    assert access.portion_owner_for(eu, perms, _PUBLICO) == 10
+
+
+def test_grupo_sintetico_so_com_catalogo_editar_nao_ve_privado_de_terceiro():
+    perms, eu = _so_catalogo("editar"), _ident("regular")
+    assert access.can_view_food(eu, perms, _PRIVADO_ALHEIO) is False
+    assert access.can_list_private_foods(perms) is False
+    assert access.can_edit_food(eu, perms, _PUBLICO) is True
+    assert access.can_promote_food(perms, _PRIVADO_ALHEIO) is True
+    assert access.portion_owner_for(eu, perms, _PUBLICO) is None
+
+
+def test_sem_nenhuma_concessao_so_o_publico_e_o_proprio():
+    perms, eu = EffectivePermissions(), _ident("regular")
+    assert access.can_view_food(eu, perms, _PRIVADO_ALHEIO) is False
+    assert access.can_view_food(eu, perms, _PRIVADO_PROPRIO) is True
+    assert access.can_list_private_foods(perms) is False

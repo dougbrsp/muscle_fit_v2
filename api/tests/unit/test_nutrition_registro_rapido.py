@@ -15,6 +15,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.access import EffectivePermissions
 from app import nutrition_days as days_mod
 from app import nutrition_foods as foods_mod
 from app import nutrition_meals as meals_mod
@@ -490,8 +491,9 @@ def test_porcao_padrao_do_motor(serving, base, basis, esperado):
 def test_food_public_expoe_a_porcao_padrao_do_motor():
     linha = {"id": 1, "serving_size": Decimal("30"), "basis": "g", "table_base_amount": None, "is_active": 1}
     identidade = Identity(user_id=2, role="regular", source="session")
-    assert foods_mod.food_public(linha, identidade)["default_portion"] == {"quantity": 30.0, "unit": "g"}
-    assert foods_mod.food_public({**linha, "serving_size": None}, identidade)["default_portion"] is None
+    sem_grants = EffectivePermissions()
+    assert foods_mod.food_public(linha, identidade, sem_grants)["default_portion"] == {"quantity": 30.0, "unit": "g"}
+    assert foods_mod.food_public({**linha, "serving_size": None}, identidade, sem_grants)["default_portion"] is None
 
 
 def test_o_endpoint_esta_no_app_real_da_api_core():
@@ -689,14 +691,15 @@ def test_origem_do_alimento_pelo_motor(source, barcode, codigo, rotulo):
     assert origem.value == codigo and labels.FOOD_ORIGIN_LABELS[origem] == rotulo
     linha = {"id": 1, "source": source, "barcode": barcode, "is_active": 1}
     identidade = Identity(user_id=2, role="regular", source="session")
-    assert foods_mod.food_public(linha, identidade)["origin"] == {"code": codigo, "label": rotulo}
+    assert foods_mod.food_public(linha, identidade, EffectivePermissions())["origin"] == {"code": codigo, "label": rotulo}
 
 
 def test_origem_de_fonte_desconhecida_e_nula_e_todo_codigo_tem_rotulo():
     assert catalog.food_origin("xyz", None) is None and catalog.food_origin(None, None) is None
     assert set(labels.FOOD_ORIGIN_LABELS) == set(catalog.FoodOrigin)
     linha = {"id": 1, "source": "xyz", "is_active": 1}
-    assert foods_mod.food_public(linha, Identity(user_id=2, role="regular", source="session"))["origin"] is None
+    identidade = Identity(user_id=2, role="regular", source="session")
+    assert foods_mod.food_public(linha, identidade, EffectivePermissions())["origin"] is None
 
 
 # ---------------------------------------------------------------------------

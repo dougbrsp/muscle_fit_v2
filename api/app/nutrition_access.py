@@ -10,10 +10,11 @@ requisição (`permissions_for_request`) e o par (recurso, ação) da rota; nega
 `FORBIDDEN_DETAIL`, id inválido = 400 `invalid_target`. `resolve_plan_owner` (rotas por
 id de plano) responde 404 `plan_not_found` a quem não alcança o dono.
 
-Catálogo de alimentos (decisão D-G, ainda por papel; é do lote 2D-2).
-
-Catálogo de alimentos (L3a, D-G): quem vê, usa, edita, promove e cria porção
-de um alimento também é decidido só aqui (`can_*_food`, `portion_owner_for`).
+Catálogo de alimentos (L3a, D-G; RBAC lote 2D-2): quem vê, usa, edita, promove e cria porção
+de um alimento é decidido só aqui (`can_*_food`, `portion_owner_for`). "Administra o catálogo
+público" é a concessão `admin.catalogos` (`administers_public_catalog`: `ver` enxerga os
+privados de todos, `editar` edita o público, promove e cria porção/alimento públicos), não o
+papel; as funções recebem as permissões já resolvidas da requisição.
 Diário (L4): o diário de um aluno segue `resolve_target_user`; alimento e
 porção que entram nele, `can_log_food`/`can_log_portion`.
 
@@ -26,7 +27,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 
-from .access import EffectivePermissions, authorize_target, can_access_target
+from .access import EffectivePermissions, authorize_target, can_access_target, has_permission
 from .domain.nutrition import catalog
 from .security import Identity
 
@@ -74,7 +75,7 @@ def fetch_target_user(cur: Any, user_id: int) -> dict[str, Any]:
 # a regra de QUAIS fontes é do motor (`catalog.is_read_only`).
 # ---------------------------------------------------------------------------
 
-ADMIN_ROLE = "admin"
+CATALOG_ADMIN_RESOURCE = "admin.catalogos"
 
 
 def _owner(food: dict[str, Any]) -> Optional[int]:
@@ -82,15 +83,18 @@ def _owner(food: dict[str, Any]) -> Optional[int]:
     return None if dono is None else int(dono)
 
 
-def is_admin(identity: Identity) -> bool:
-    return identity.role == ADMIN_ROLE
+def administers_public_catalog(permissoes: EffectivePermissions, action: str) -> bool:
+    """Administra o catálogo público de alimentos: concessão `admin.catalogos`/`action` (qualquer
+    escopo). `ver` = enxerga os privados de todos; `editar` = edita o público, cria porção e
+    alimento públicos e promove."""
+    return has_permission(permissoes, CATALOG_ADMIN_RESOURCE, action)
 
 
-def can_view_food(identity: Identity, food: dict[str, Any]) -> bool:
-    """Público, do próprio usuário ou (admin) qualquer um — o admin precisa ver
-    o privado para promovê-lo."""
+def can_view_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    """Público, do próprio usuário ou (`admin.catalogos`/`ver`) qualquer um — quem administra o
+    catálogo precisa ver o privado para promovê-lo."""
     dono = _owner(food)
-    return dono is None or dono == int(identity.user_id) or is_admin(identity)
+    return dono is None or dono == int(identity.user_id) or administers_public_catalog(permissoes, "ver")
 
 
 def can_use_food(identity: Identity, food: dict[str, Any]) -> bool:
@@ -99,33 +103,34 @@ def can_use_food(identity: Identity, food: dict[str, Any]) -> bool:
     return dono is None or dono == int(identity.user_id)
 
 
-def can_edit_food(identity: Identity, food: dict[str, Any]) -> bool:
-    """O dono edita o privado; o admin edita o público. Fonte somente leitura nunca."""
+def can_edit_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    """O dono edita o privado; quem administra o catálogo (`admin.catalogos`/`editar`) edita o
+    público. Fonte somente leitura nunca."""
     if catalog.is_read_only(food.get("source")):
         return False
     dono = _owner(food)
-    return dono == int(identity.user_id) if dono is not None else is_admin(identity)
+    return dono == int(identity.user_id) if dono is not None else administers_public_catalog(permissoes, "editar")
 
 
 def can_add_portion(identity: Identity, food: dict[str, Any]) -> bool:
     return can_use_food(identity, food)
 
 
-def portion_owner_for(identity: Identity, food: dict[str, Any]) -> Optional[int]:
-    """Dono da porção nova: o admin num alimento público cria porção pública;
-    no resto a porção é do próprio usuário."""
-    if _owner(food) is None and is_admin(identity):
+def portion_owner_for(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> Optional[int]:
+    """Dono da porção nova: quem administra o catálogo (`admin.catalogos`/`editar`) num alimento
+    público cria porção pública; no resto a porção é do próprio usuário."""
+    if _owner(food) is None and administers_public_catalog(permissoes, "editar"):
         return None
     return int(identity.user_id)
 
 
-def can_promote_food(identity: Identity, food: dict[str, Any]) -> bool:
-    return is_admin(identity) and _owner(food) is not None
+def can_promote_food(permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    return administers_public_catalog(permissoes, "editar") and _owner(food) is not None
 
 
-def can_list_private_foods(identity: Identity) -> bool:
-    """Só o admin lista os alimentos privados de todos (para promover)."""
-    return is_admin(identity)
+def can_list_private_foods(permissoes: EffectivePermissions) -> bool:
+    """Só quem tem `admin.catalogos`/`ver` lista os alimentos privados de todos (para promover)."""
+    return administers_public_catalog(permissoes, "ver")
 
 
 def ownership(identity: Identity, owner_user_id: Any) -> dict[str, bool]:
@@ -209,10 +214,12 @@ def portions_visibility(identity: Identity, food: dict[str, Any]) -> tuple[str, 
 
 
 __all__ = [
+    "CATALOG_ADMIN_RESOURCE",
     "DIARY_FOODS_SQL",
     "PRIVATE_FOODS_SQL",
     "VISIBLE_FOODS_SQL",
     "VISIBLE_PORTIONS_SQL",
+    "administers_public_catalog",
     "can_add_portion",
     "can_edit_food",
     "can_favorite_food",
@@ -227,7 +234,6 @@ __all__ = [
     "favorites_owner",
     "fetch_target_user",
     "foods_visibility",
-    "is_admin",
     "ownership",
     "portion_owner_for",
     "portions_visibility",

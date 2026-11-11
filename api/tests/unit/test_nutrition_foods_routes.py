@@ -299,3 +299,30 @@ def test_promocao_pelo_admin_leva_as_porcoes_do_dono(db):
     assert "Arroz da vovó" in [i["name"] for i in _busca(_client(user_id=OUTRO), "arroz")["items"]]
     assert _client("admin", ADMIN).post("/nutrition/foods/6/promote").status_code == 409
     assert _client("admin", ADMIN).post("/nutrition/foods/1/promote").status_code == 409  # TACO já é pública
+
+
+# ---------------------------------------------------------------------------
+# RBAC lote 2D-2: concessão declarada nas rotas
+# ---------------------------------------------------------------------------
+
+
+def test_promocao_negada_a_quem_nao_administra_o_catalogo_tem_o_corpo_padrao_do_rbac(db):
+    from app.access.service import FORBIDDEN_DETAIL
+
+    resposta = _client().post("/nutrition/foods/6/promote")
+    assert resposta.status_code == 403 and resposta.json()["detail"] == FORBIDDEN_DETAIL
+
+
+@pytest.mark.parametrize(("metodo", "caminho", "corpo"), [
+    ("get", "/nutrition/foods/search?q=arroz", None),
+    ("get", "/nutrition/foods/1", None),
+    ("post", "/nutrition/foods", {"name": "x"}),
+    ("put", "/nutrition/foods/1", {"name": "x"}),
+    ("post", "/nutrition/foods/1/portions", {"label": "x", "amount": 10}),
+    ("post", "/nutrition/foods/1/promote", None),
+])
+def test_usuario_sem_grupo_recebe_403_do_rbac_nas_rotas_do_catalogo(db, metodo, caminho, corpo):
+    from app.access.service import FORBIDDEN_DETAIL
+
+    resposta = getattr(_client("sem_grupo", 77), metodo)(caminho, **({"json": corpo} if corpo else {}))
+    assert resposta.status_code == 403 and resposta.json()["detail"] == FORBIDDEN_DETAIL

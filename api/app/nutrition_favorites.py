@@ -23,15 +23,17 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 
+from .access import EffectivePermissions, require_permission
+from .access.deps import permissions_for_request
 from .domain.nutrition import favorites as favorites_engine
 from .domain.nutrition import labels as nutrition_labels
 from .nutrition_access import can_favorite_food, can_favorite_portion, favorites_owner
 from .nutrition_foods import FOOD_COLUMNS, FOODS, PORTION_COLUMNS, PORTIONS, _connect, _error, _iso, _num, food_public
 from .nutrition_schema import require_favorites_table, require_food_tables
 from .request_models import FavoriteCreateIn, FavoriteDefaultIn, FavoriteReorderIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition/favorites", tags=["nutrition"])
 
@@ -81,7 +83,11 @@ def _invalid(codes: list[str] | tuple[str, ...], status: int = 400) -> HTTPExcep
 
 
 def _item_public(
-    favorito: dict[str, Any], alimento: dict[str, Any], porcao: Optional[dict[str, Any]], identity: Identity
+    favorito: dict[str, Any],
+    alimento: dict[str, Any],
+    porcao: Optional[dict[str, Any]],
+    identity: Identity,
+    permissoes: EffectivePermissions,
 ) -> dict[str, Any]:
     quantidade = favorito.get("default_quantity")
     padrao = None
@@ -99,7 +105,7 @@ def _item_public(
             "portion_amount": _num(porcao.get("amount")) if porcao else None,
         }
     return {
-        "food": food_public(alimento, identity),
+        "food": food_public(alimento, identity, permissoes),
         "position": int(favorito.get("position") or 0),
         "default": padrao,
         "created_at": _iso(favorito.get("created_at")),
@@ -111,7 +117,7 @@ def _by_id(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return {int(r["id"]): r for r in rows}
 
 
-def _listed(cur: Any, identity: Identity) -> list[dict[str, Any]]:
+def _listed(cur: Any, identity: Identity, permissoes: EffectivePermissions) -> list[dict[str, Any]]:
     """Favoritos do usuário cujo alimento ele ainda pode usar, na ordem dele."""
     cur.execute(FAVORITES_OF_USER_SQL, (favorites_owner(identity),))
     favoritos = cur.fetchall() or []
@@ -131,12 +137,12 @@ def _listed(cur: Any, identity: Identity) -> list[dict[str, Any]]:
         if alimento is None or not can_favorite_food(identity, alimento):
             continue
         porcao = porcoes.get(int(favorito["default_portion_id"])) if favorito.get("default_portion_id") is not None else None
-        itens.append(_item_public(favorito, alimento, porcao, identity))
+        itens.append(_item_public(favorito, alimento, porcao, identity, permissoes))
     return itens
 
 
-def _response(cur: Any, identity: Identity) -> dict[str, Any]:
-    return {"items": _listed(cur, identity), "max_items": favorites_engine.MAX_FAVORITES}
+def _response(cur: Any, identity: Identity, permissoes: EffectivePermissions) -> dict[str, Any]:
+    return {"items": _listed(cur, identity, permissoes), "max_items": favorites_engine.MAX_FAVORITES}
 
 
 def _usable_food(cur: Any, identity: Identity, food_id: int) -> dict[str, Any]:
@@ -183,22 +189,24 @@ def _validated_default(
 
 
 @router.get("")
-def list_favorites(identity: Identity = Depends(get_current_identity)):
+def list_favorites(request: Request, identity: Identity = Depends(require_permission("nutricao.alimentos", "ver"))):
+    permissoes = permissions_for_request(request, identity)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_favorites_table(cur)
             require_food_tables(cur)
-            return _response(cur, identity)
+            return _response(cur, identity, permissoes)
 
 
 @router.post("/reorder")
-def reorder_favorites(payload: FavoriteReorderIn, identity: Identity = Depends(get_current_identity)):
+def reorder_favorites(request: Request, payload: FavoriteReorderIn, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))):
+    permissoes = permissions_for_request(request, identity)
     dono = favorites_owner(identity)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_favorites_table(cur)
             require_food_tables(cur)
-            listados = _listed(cur, identity)
+            listados = _listed(cur, identity, permissoes)
             atuais = [int(item["food"]["id"]) for item in listados]
             erros = favorites_engine.order_errors(atuais, payload.food_ids)
             if erros:
@@ -208,11 +216,17 @@ def reorder_favorites(payload: FavoriteReorderIn, identity: Identity = Depends(g
             for food_id, posicao in sorted(favorites_engine.positions_for(payload.food_ids)):
                 if atuais_pos.get(food_id) != posicao:
                     cur.execute(UPDATE_POSITION_SQL, (posicao, dono, food_id))
-            return _response(cur, identity)
+            return _response(cur, identity, permissoes)
 
 
 @router.post("", status_code=201)
-def add_favorite(response: Response, payload: FavoriteCreateIn, identity: Identity = Depends(get_current_identity)):
+def add_favorite(
+    request: Request,
+    response: Response,
+    payload: FavoriteCreateIn,
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "editar")),
+):
+    permissoes = permissions_for_request(request, identity)
     dono = favorites_owner(identity)
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -242,16 +256,18 @@ def add_favorite(response: Response, payload: FavoriteCreateIn, identity: Identi
             if favorito.get("default_portion_id") is not None:
                 cur.execute(PORTION_SQL, (int(favorito["default_portion_id"]),))
                 porcao = cur.fetchone()
-            item = _item_public(favorito, alimento, porcao, identity)
+            item = _item_public(favorito, alimento, porcao, identity, permissoes)
     return item
 
 
 @router.put("/{food_id}")
 def update_favorite_default(
+    request: Request,
     payload: FavoriteDefaultIn,
     food_id: int = Path(..., gt=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "editar")),
 ):
+    permissoes = permissions_for_request(request, identity)
     dono = favorites_owner(identity)
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -269,11 +285,14 @@ def update_favorite_default(
             if porcao_id is not None:
                 cur.execute(PORTION_SQL, (porcao_id,))
                 porcao = cur.fetchone()
-            return _item_public(favorito, alimento, porcao, identity)  # type: ignore[arg-type]
+            return _item_public(favorito, alimento, porcao, identity, permissoes)  # type: ignore[arg-type]
 
 
 @router.delete("/{food_id}")
-def remove_favorite(food_id: int = Path(..., gt=0), identity: Identity = Depends(get_current_identity)):
+def remove_favorite(
+    food_id: int = Path(..., gt=0),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "excluir")),
+):
     dono = favorites_owner(identity)
     with _connect() as conn:
         with conn.cursor() as cur:
