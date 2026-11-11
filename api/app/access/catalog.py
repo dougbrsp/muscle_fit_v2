@@ -3,9 +3,10 @@
 Python puro, sem banco. Define acoes, escopos (com ordem de abrangencia),
 recursos (chave, rotulo em portugues, dominio) e a matriz padrao dos grupos de
 sistema. As migracoes guardam retratos congelados desta matriz (nao importam
-este modulo): a 111 (matriz inicial) e a 113 (concessoes de `conta.dispositivos`,
-lote 2B). O retrato congelado e o acumulado 111 + 113; um teste de paridade
-compara o catalogo com esse acumulado.
+este modulo): a 111 (matriz inicial), a 113 (concessoes de `conta.dispositivos`,
+lote 2B) e a 114 (concessoes de `modelos.tipos_treino`, lote 2C-1). O retrato
+congelado e o acumulado 111 + 113 + 114; um teste de paridade compara o catalogo
+com esse acumulado.
 
 Sem regra de motor aqui: controle de acesso nao e regra de recuperacao,
 progressao, volume etc.
@@ -94,6 +95,7 @@ RESOURCES: Final[tuple[Resource, ...]] = (
     Resource("ia.cardio", "IA de cardio", DOMAIN_IA),
     Resource("ia.nutricao", "IA de nutrição", DOMAIN_IA),
     Resource("ia.modelo_periodizacao", "IA de periodização de Modelo", DOMAIN_IA),
+    Resource("modelos.tipos_treino", "Tipos de treino", DOMAIN_MODELOS),
     Resource("ia.cards_exercicio", "Cards ilustrados de exercício", DOMAIN_IA),
     Resource("conta.dispositivos", "Relógio e dispositivos", DOMAIN_CONTA),
     Resource("admin.usuarios", "Usuários", DOMAIN_ADMIN),
@@ -171,6 +173,7 @@ _USUARIO_SO_VER: Final[tuple[tuple[str, str], ...]] = (
 _PT_RECURSOS_TODOS: Final[tuple[str, ...]] = (
     "modelos.treino",
     "modelos.metas_ativacao",
+    "modelos.tipos_treino",
     "ia.modelo_periodizacao",
 )
 # Personal trainer: nutricao de terceiros, `todos` hoje; o lote 5 troca para `alunos`.
@@ -204,7 +207,7 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 
 
-# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111 e 113). `admin`
+# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113 e 114). `admin`
 # fica vazio (acesso total implicito) e `free` e criado vazio (nao e de sistema).
 DEFAULT_GRANTS_BY_GROUP: Final[dict[str, tuple[Grant, ...]]] = {
     GROUP_ADMIN: (),

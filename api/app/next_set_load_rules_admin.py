@@ -27,7 +27,8 @@ from pydantic import BaseModel, ConfigDict
 from . import next_set_load_rules as rules
 from .db import transaction
 from .domain import next_set_load as nsl
-from .security import Identity, get_current_identity, require_admin
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/next-set-load-rules", tags=["next-set-load-rules"])
 
@@ -89,7 +90,7 @@ def _draft_payload(stored: Optional[rules.StoredRuleSet]) -> dict[str, Any]:
 
 
 @router.get("/published")
-def get_published(identity: Identity = Depends(get_current_identity)):
+def get_published(identity: Identity = Depends(require_permission("treino.modo_treino", "ver"))):
     """O conjunto que a avaliação de série usa AGORA (sem linha publicada,
     tabela ausente ou falha de leitura = o padrão em código, versão 0)."""
     ruleset, stored = rules.resolve_published_autocommit()
@@ -97,13 +98,13 @@ def get_published(identity: Identity = Depends(get_current_identity)):
 
 
 @router.get("/draft")
-def get_draft(identity: Identity = Depends(require_admin)):
+def get_draft(identity: Identity = Depends(require_permission("admin.regras_carga", "ver"))):
     with transaction() as conn:
         return _draft_payload(rules.load_draft(conn))
 
 
 @router.put("/draft")
-def put_draft(payload: rules.DraftIn, identity: Identity = Depends(require_admin)):
+def put_draft(payload: rules.DraftIn, identity: Identity = Depends(require_permission("admin.regras_carga", "editar"))):
     ruleset, _warnings = _validated(payload)
     notes = (payload.notes or "").strip() or None
     try:
@@ -115,7 +116,7 @@ def put_draft(payload: rules.DraftIn, identity: Identity = Depends(require_admin
 
 
 @router.post("/publish")
-def post_publish(payload: rules.PublishIn, identity: Identity = Depends(require_admin)):
+def post_publish(payload: rules.PublishIn, identity: Identity = Depends(require_permission("admin.regras_carga", "editar"))):
     try:
         with transaction() as conn:
             stored = rules.publish(conn, payload.draft_id, payload.expected_published_version, identity.user_id)
@@ -129,13 +130,13 @@ def post_publish(payload: rules.PublishIn, identity: Identity = Depends(require_
 
 
 @router.get("/versions")
-def get_versions(identity: Identity = Depends(require_admin)):
+def get_versions(identity: Identity = Depends(require_permission("admin.regras_carga", "ver"))):
     with transaction() as conn:
         return {"versions": [stored.to_dict() for stored in rules.list_versions(conn)]}
 
 
 @router.post("/describe")
-def post_describe(payload: DescribeIn, identity: Identity = Depends(require_admin)):
+def post_describe(payload: DescribeIn, identity: Identity = Depends(require_permission("admin.regras_carga", "editar"))):
     """Prévia ao vivo da tela: textos e códigos do dono, sem gravar e sem 422
     por regra semântica (a tela mostra os códigos)."""
     ruleset = _convert(payload.ruleset)
@@ -149,7 +150,7 @@ def post_describe(payload: DescribeIn, identity: Identity = Depends(require_admi
 
 
 @router.post("/simulate")
-def post_simulate(payload: SimulateIn, identity: Identity = Depends(require_admin)):
+def post_simulate(payload: SimulateIn, identity: Identity = Depends(require_permission("admin.regras_carga", "editar"))):
     """Uma série pelos fatos dados contra o conjunto enviado (validado pelo
     dono) ou, sem conjunto, o em vigor. `result` null = fora da regra."""
     if payload.ruleset is None:

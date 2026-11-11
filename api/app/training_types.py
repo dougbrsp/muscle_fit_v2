@@ -2,8 +2,10 @@
 grupo muscular) — ver plano completo em melhoria-eager-origami.md, seções
 1 e 2.
 
-Mesmo esqueleto de `workout_plan_templates.py`: todos os endpoints exigem
-`require_admin_or_pt` (admin ou personal_trainer), replace-all transacional
+Mesmo esqueleto de `workout_plan_templates.py`: cada rota declara
+`require_permission("modelos.tipos_treino", <ação>)` (GET = `ver`; POST, PUT e
+PATCH = `editar`; DELETE = `excluir`), recurso concedido ao grupo
+`personal_trainer` (admin tem acesso total; ADR 0011), replace-all transacional
 para os `targets` em POST/PUT, validação centralizada sem CHECK/trigger no
 banco.
 
@@ -23,13 +25,10 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from .db import transaction
 from .models import TrainingTypeIn, TrainingTypeMuscleGroupTargetIn
 from .rag_chunking import list_training_type_rag_folders
-from .security import Identity, require_admin_or_pt
+from .access import require_permission
+from .security import Identity
 
-router = APIRouter(
-    prefix="/training-types",
-    tags=["training-types"],
-    dependencies=[Depends(require_admin_or_pt)],
-)
+router = APIRouter(prefix="/training-types", tags=["training-types"])
 
 
 # ---------------------------------------------------------------------------
@@ -155,17 +154,17 @@ def _get_training_type(training_type_id: int) -> Optional[dict[str, Any]]:
     return training_type
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("modelos.tipos_treino", "ver"))])
 def list_training_types(is_active: Optional[bool] = Query(default=None)):
     return {"items": _list_training_types(is_active)}
 
 
-@router.get("/rag-folders")
+@router.get("/rag-folders", dependencies=[Depends(require_permission("modelos.tipos_treino", "ver"))])
 def get_training_type_rag_folders():
     return {"items": list_training_type_rag_folders()}
 
 
-@router.get("/{training_type_id}")
+@router.get("/{training_type_id}", dependencies=[Depends(require_permission("modelos.tipos_treino", "ver"))])
 def get_training_type(training_type_id: int):
     training_type = _get_training_type(training_type_id)
     if not training_type:
@@ -195,7 +194,7 @@ def _replace_training_type_targets(
 
 
 @router.post("")
-def create_training_type(payload: TrainingTypeIn, identity: Identity = Depends(require_admin_or_pt)):
+def create_training_type(payload: TrainingTypeIn, identity: Identity = Depends(require_permission("modelos.tipos_treino", "editar"))):
     targets_to_persist = _validate_training_type_payload(payload)
 
     with transaction() as conn:
@@ -214,7 +213,7 @@ def create_training_type(payload: TrainingTypeIn, identity: Identity = Depends(r
 
 
 @router.post("/{training_type_id}/duplicate")
-def duplicate_training_type(training_type_id: int, identity: Identity = Depends(require_admin_or_pt)):
+def duplicate_training_type(training_type_id: int, identity: Identity = Depends(require_permission("modelos.tipos_treino", "editar"))):
     original = _get_training_type(training_type_id)
     if not original:
         raise HTTPException(status_code=404, detail="Tipo de treinamento não encontrado.")
@@ -250,7 +249,7 @@ def duplicate_training_type(training_type_id: int, identity: Identity = Depends(
     return _get_training_type(new_training_type_id)
 
 
-@router.put("/{training_type_id}")
+@router.put("/{training_type_id}", dependencies=[Depends(require_permission("modelos.tipos_treino", "editar"))])
 def update_training_type(training_type_id: int, payload: TrainingTypeIn):
     targets_to_persist = _validate_training_type_payload(payload)
 
@@ -273,7 +272,7 @@ def update_training_type(training_type_id: int, payload: TrainingTypeIn):
     return _get_training_type(training_type_id)
 
 
-@router.patch("/{training_type_id}/status")
+@router.patch("/{training_type_id}/status", dependencies=[Depends(require_permission("modelos.tipos_treino", "editar"))])
 def set_training_type_status(training_type_id: int, body: dict = Body(...)):
     is_active = bool(body.get("is_active"))
 
@@ -290,7 +289,7 @@ def set_training_type_status(training_type_id: int, body: dict = Body(...)):
     return _get_training_type(training_type_id)
 
 
-@router.delete("/{training_type_id}")
+@router.delete("/{training_type_id}", dependencies=[Depends(require_permission("modelos.tipos_treino", "excluir"))])
 def delete_training_type(training_type_id: int):
     # Exclusão física: CASCADE limpa training_type_muscle_group_targets;
     # workout_plan_templates.training_type_id cai para NULL via

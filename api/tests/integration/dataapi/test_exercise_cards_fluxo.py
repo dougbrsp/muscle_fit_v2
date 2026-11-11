@@ -73,13 +73,21 @@ def _key() -> str:
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw, extras=("exercise_card_generations", "exercise_card_references"))
+def seed(raw, conceder_grupo):
+    # ADR 0011 (lote 2C-1): as rotas de cards exigem permissao resolvida por
+    # `user_access_groups`. `truncar` zera `users` (ids reiniciam) mas nao as
+    # associacoes: `user_access_groups` entra no TRUNCATE para nenhum id herdar
+    # grupo de outro arquivo.
+    truncar(raw, extras=("exercise_card_generations", "exercise_card_references", "user_access_groups"))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_cards', 'x', 'admin')")
         admin_id = cur.lastrowid
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('aluno_cards', 'x', 'regular')")
         regular_id = cur.lastrowid
+        # Admin: acesso total. Aluno: grupo `usuario` (tem `exercicios.catalogo`/ver,
+        # nao tem `ia.cards_exercicio`).
+        conceder_grupo(cur, admin_id, "admin")
+        conceder_grupo(cur, regular_id, "regular")
         cur.execute("INSERT INTO muscle_groups (name) VALUES ('Peitoral')")
         peitoral = cur.lastrowid
         # Mapa corporal do grupo (silhueta do rodape, CARD_LAYOUT_V2). O

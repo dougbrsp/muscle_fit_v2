@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está implementado na branch `feat/rbac-lote2b-base-da-troca`, ainda não publicado nem promovido** (sem PR): ver "Lote 2B: base da troca". Os lotes 2C a 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está implementado na branch `feat/rbac-lote2c1-admin-declarado`, não publicado nem promovido** (ver "Lote 2C-1: administração com guard declarado"). O 2C-2 e os lotes 2D a 6 ainda não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -98,8 +98,9 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 1. **Fundação** (lote 1, em produção desde 10/11/2026): este ADR, migração 111, módulo `api/app/access/`, permissões em `/auth/me` e guarda de cobertura. Sem mudança de comportamento.
 2. **Aplicação no backend**: troca dos guards por `require_permission` e `authorize_target`. Allowlist zerada. Dividida em:
    - **2A Pré-condições** (em produção desde 11/11/2026): sincronização usuário→grupo, migração 112, trava do último admin, smoke. Nenhum guard mudou.
-   - **2B Base da troca** (branch `feat/rbac-lote2b-base-da-troca`, não publicado): recurso `conta.dispositivos` com migração 113; categoria "só autenticação" na guarda de cobertura; retrato congelado dos guards antigos e teste de paridade; guarda estática de `identity.role`; `authorize_self_or_all` e id estrito; `require_additional_permission` (`admin.grupos` em qualquer escrita sobre admin ou que torne alguém admin); trava com nova ordem de locks; conversão de 18 rotas de `users`, `auth`, `devices` e `jobs` (9 com `require_permission`, 9 só autenticação). Os recursos de intervals sync, aplicação de recomendação de cardio e administração de academias entram no catálogo com os lotes 2C a 2F, quando as rotas que os usam forem convertidas.
-   - **2C** Administração e catálogos.
+   - **2B Base da troca** (em produção desde 11/11/2026): recurso `conta.dispositivos` com migração 113; categoria "só autenticação" na guarda de cobertura; retrato congelado dos guards antigos e teste de paridade; guarda estática de `identity.role`; `authorize_self_or_all` e id estrito; `require_additional_permission` (`admin.grupos` em qualquer escrita sobre admin ou que torne alguém admin); trava com nova ordem de locks; conversão de 18 rotas de `users`, `auth`, `devices` e `jobs` (9 com `require_permission`, 9 só autenticação). Os recursos de intervals sync, aplicação de recomendação de cardio e administração de academias entram no catálogo com os lotes 2C a 2F, quando as rotas que os usam forem convertidas.
+   - **2C-1** Administração com guard declarado (branch `feat/rbac-lote2c1-admin-declarado`, não publicado): 34 rotas, recurso `modelos.tipos_treino` e migração 114.
+   - **2C-2** Academias e catálogos de exercícios: 72 rotas de classe `identidade_no_corpo`, com caso manual de paridade.
    - **2D** Nutrição (`resolve_target_user` → `authorize_target`, 404 preservado).
    - **2E** Analytics e engines.
    - **2F** Treino, corpo e fecho (allowlist zerada, remoção de `require_admin` e `require_admin_or_pt`).
@@ -180,7 +181,7 @@ Motivo: `users.role` é a verdade até o fim do lote 2, e a 112 alinha os grupos
 
 ### Lote 2B: base da troca
 
-Branch `feat/rbac-lote2b-base-da-troca` (diff não commitado sobre `c91ab87f`). Não publicado, sem PR e não promovido. O 2B converte 18 rotas de `users`, `auth`, `devices` e `jobs`, acrescenta o recurso `conta.dispositivos` (migração 113) e cria as provas da troca: retrato dos guards antigos, teste de paridade, guarda estática de papel e a categoria "só autenticação". A migração 112 não foi alterada.
+Branch `feat/rbac-lote2b-base-da-troca` (commit `4d8c467f`, merge `157184b5`). Em produção desde 11/11/2026 (PR #126, promoção #128, deploy 43022098093). O 2B converte 18 rotas de `users`, `auth`, `devices` e `jobs`, acrescenta o recurso `conta.dispositivos` (migração 113) e cria as provas da troca: retrato dos guards antigos, teste de paridade, guarda estática de papel e a categoria "só autenticação". A migração 112 não foi alterada.
 
 **Rotas convertidas (18)**
 
@@ -263,6 +264,53 @@ Nas rotas de dispositivo, a recusa de token de dispositivo (403 de `require_user
 - O papel decidido é o lido sob o lock do alvo, como no 2A.
 - Prova: `api/tests/unit/test_users_trava_ultimo_admin.py`, com banco falso, verifica os statements emitidos e a ordem. **Não há teste de concorrência com transações reais**: atomicidade, ordem efetiva e deadlock não estão provados em MySQL.
 
+### Lote 2C-1: administração com guard declarado
+
+Branch `feat/rbac-lote2c1-admin-declarado` (não publicado, não promovido). O 2C-1 converte 34 rotas de administração: ciclo de cards de exercício, tipos de treino, regras de carga, segurança de treino, mapeamento canônico, mapeamento de exercícios e corpo de grupos musculares. A permissão é declarada por rota. Os guards de router de `training_types.py`, `training_safety_admin.py` e `exercise_mapping_canonical.py` saíram; `dashboard_modules.py` manteve o `get_current_identity` do router, porque as outras rotas do arquivo são do 2E. Nenhuma função mudou de assinatura.
+
+**Rotas convertidas (34)**
+
+| Módulo | Rotas | Guard antigo (retrato) | Regra nova |
+|---|---|---|---|
+| `exercise_cards.py` | 6 de `/exercises/{id}/card-generations` e 3 de `/exercises/{id}/card-references` | `admin` | `ia.cards_exercicio` |
+| `exercise_cards.py` | `GET /exercises/{id}/card` | `autenticado` | `exercicios.catalogo`/`ver` |
+| `training_types.py` | 8 de `/training-types` | `admin_ou_pt` | `modelos.tipos_treino` |
+| `next_set_load_rules_admin.py` | `GET` e `PUT /draft`, `POST /publish`, `GET /versions`, `POST /describe`, `POST /simulate` | `admin` | `admin.regras_carga` |
+| `next_set_load_rules_admin.py` | `GET /next-set-load-rules/published` | `autenticado` | `treino.modo_treino`/`ver` |
+| `training_safety_admin.py` | `GET` e `PUT /equipment/{id}/safety`, `GET` e `PUT /equipment-exercises/{link_id}/safety` | `admin` | `admin.seguranca_treino` |
+| `exercise_mapping_canonical.py` | `POST /mapping-canonical/associate` | `admin` | `admin.catalogos`/`editar` |
+| `exercise_mapping_canonical.py` | `GET /mapping-canonical/options`, `GET /mapping-canonical/unmapped` | `autenticado` | `exercicios.catalogo`/`ver` |
+| `main.py` | `POST /exercise-mappings` | `admin` | `admin.catalogos`/`editar` |
+| `dashboard_modules.py` | `PUT /analytics/muscle-group-body-map` | `admin` | `admin.catalogos`/`editar` |
+
+Ação por método: GET = `ver`; POST, PUT e PATCH = `editar`; DELETE = `excluir`.
+
+**Recurso `modelos.tipos_treino` e migração 114**
+
+- Recurso `modelos.tipos_treino` (rótulo "Tipos de treino", domínio Modelos), em `api/app/access/catalog.py`. A matriz concede `ver`, `editar` e `excluir` com escopo `todos` só a `personal_trainer`, que passa a ter 85 concessões no catálogo. `usuario` e `free` não recebem. `admin` tem acesso total implícito.
+- Motivo: `/training-types` é só de admin ou PT, inclusive nos GET, e `modelos.treino`/`ver` é concedido a `usuario`.
+- Migração `api/db/migrations/114_access_grants_modelos_tipos_treino.py`: só DML em `access_group_grants`, sem DDL e sem FK. Insere até 3 linhas no grupo de sistema `personal_trainer`. Se as tabelas da 111 não existem, o plano sai vazio e a migração registra log. Se o grupo de sistema falta, levanta erro próprio antes de qualquer escrita. Não toca concessão existente nem grupo que não é de sistema. Reexecutar converge.
+- Diferença em relação à 113: ao fim de `up`, a migração relê as linhas e levanta erro se alguma linha planejada não existir. A releitura é pulada em dry-run e em plano vazio, e confere os pares grupo e ação, não o escopo.
+- `down` remove só as linhas do recurso nesse grupo.
+- Paridade catálogo × migrações agora é 111 + 113 + 114 (`api/tests/unit/test_migracao_114_concessoes.py`).
+
+**Guarda de cobertura**
+
+- `api/tests/unit/access_cobertura_allowlist.json`, conferida no JSON e por enumeração: dívida de 343 para 309.
+- 309 em dívida + 6 públicas + 9 só autenticação + 43 com `require_permission` (9 do 2B + 34) = 367.
+- Nenhuma rota entrou em `so_autenticacao` nem em `publicas`.
+
+**Paridade (`api/tests/unit/test_access_paridade_guards.py`)**
+
+- Prova: as 34 rotas são das classes `admin`, `admin_ou_pt` e `autenticado`, com decisão automática; `CASOS_MANUAIS` continua vazio; 43 rotas são cobertas nas 7 combinações papel × identidade.
+- Não prova: checagens dentro do handler, posse da linha e escopo, nem que o banco tenha as concessões do catálogo (isso é o teste da 114).
+- O retrato congelado (`api/tests/unit/data/access_retrato_guards_antigos.json`) não foi regenerado.
+
+**Testes HTTP (`api/tests/unit/test_catalogos_admin_permissoes_rbac.py`)**
+
+- 64 testes, 10 rotas representantes; token mestre sem consulta ao banco; falha de banco responde 503; DELETE exige `excluir`.
+- Limites: o positivo de `POST /mapping-canonical/associate` é inferido por 422; `POST /exercise-mappings` é testado num app mínimo com as dependências copiadas de `app.main`; handlers de negócio são substituídos por dublês.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
@@ -272,6 +320,9 @@ Nas rotas de dispositivo, a recusa de token de dispositivo (403 de `require_user
 - **Lote 2 (mapeamento rota→permissão)**: as rotas de equipamentos, de vínculo academia–equipamento e de logos em `api/app/gyms.py` são só de admin por checagem dentro do handler (`_require_admin_identity`, a partir da linha 150), enquanto a matriz dá a `usuario` editar e excluir em `treino.academias` com escopo próprio. O mapeamento precisa de um recurso administrativo para essas rotas, para não abri-las a quem tem só `treino.academias`.
 - **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`).
 - **Lote 2C–2F (deadlock)**: mapear o erro 1213 para 409 ou 503 (alternativa (a) do 2A) segue pendente; sem ela, um ciclo entre admins vira 5xx.
+- **`GET /training-types` no registro de treino**: `frontend/src/components/NewWorkoutModal.tsx` (linha 89) chama `GET /training-types?is_active=true`. A rota já respondia 403 a usuário comum antes do 2C-1 (guard de router `require_admin_or_pt`) e continua assim. Não foi verificado se o modal trata o erro nem se só aparece para admin e PT.
+- **Lambda engines resolve permissões**: `PUT /analytics/muscle-group-body-map` vive no router de `api/app/dashboard_modules.py`, incluído só em `app.main_engines`. A partir do 2C-1, essa Lambda consulta as tabelas de acesso nessa rota.
+- **Positivos de escrita provados por dublê**: ver os limites dos testes HTTP do 2C-1 (positivo de `POST /mapping-canonical/associate` inferido por 422; `POST /exercise-mappings` em app mínimo; handlers de negócio substituídos por dublês).
 - **Lote 2C–2F (deadlock, PUT que promove a admin)**: `switch_role_group` insere em `user_access_groups` com FK para a linha do grupo `admin`, e essa linha entra no JOIN de `lock_active_admin_ids` (`FOR UPDATE`, `api/app/access/membership.py`). Um `PUT` que promove a admin e um `PUT`/`DELETE` que trava os admins ativos podem se bloquear em ordem cruzada; em teoria, isso vira 1213 e 5xx, como no item acima. Não foi reproduzido; sem teste de concorrência, é hipótese.
 - **Lote 3 (pré-condição: ator × alvo)**: antes de liberar grupos personalizados, decidir a regra geral de que o ator só age sobre alvo cujas permissões efetivas sejam subconjunto das suas. Hoje só o alvo admin é protegido; ficam abertos, por exemplo, conceder o grupo `personal_trainer` (troca de papel) por quem não tem essas permissões e resetar a senha de usuário de grupo com mais permissões que o ator.
 - **Só autenticação não prova isolamento**: o pino de "só autenticação" não prova que o handler toca só dados do próprio usuário. As rotas de foto dependem da chamada a `authorize_self_or_all` (`api/app/access/service.py`, linha 233) no corpo; isso é coberto por teste de comportamento em `api/tests/unit/test_users_permissoes_rbac.py`, não pela guarda de cobertura.
@@ -447,6 +498,44 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - O número atual de usuários divergentes em produção (última conferência, de 11/11: 4 usuários, nenhum divergente).
 - O `INSERT IGNORE` da 113 (`api/db/migrations/113_access_grants_conta_dispositivos.py`, linha 77) pode engolir erro que não seja duplicidade; a conferência das 6 linhas por `SELECT` depois do deploy é o que detecta isso.
 
+**Lote 2C-1** (branch `feat/rbac-lote2c1-admin-declarado`, não publicado, não promovido)
+
+*O que muda:*
+- As 34 rotas passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive em `GET /exercises/{id}/card`, `GET /next-set-load-rules/published` e `GET /mapping-canonical/options`, que antes aceitavam qualquer autenticado.
+- As rotas convertidas fazem uma consulta de permissões por requisição. Se a consulta falhar, a resposta é 503.
+- O corpo do 403 passa a ser o de `FORBIDDEN_DETAIL`.
+- `/training-types` depende de `modelos.tipos_treino`, que só existe no banco depois da 114.
+
+*O que não muda:*
+- Respostas de sucesso.
+- Limite diário e flag de geração de cards.
+- Token mestre segue com acesso total, sem banco. Dispositivo herda as permissões do dono.
+- `api/app/security.py` não mudou.
+- As 309 rotas em dívida seguem com o guard antigo.
+- A 111, a 112 e a 113 não foram editadas.
+- Nenhuma regra de motor.
+
+*Promoção* (mesma sequência do 2B):
+1. SELECT prévio de leitura: nenhum usuário ativo sem o grupo de sistema do papel e nenhuma linha de grupo de sistema divergente do papel. Este passo é obrigatório antes da promoção e ainda NÃO foi executado para o 2C-1. A última medição é a de 11/11/2026, do 2B: 4 usuários, nenhum divergente.
+2. Ligar `RUN_DB_MIGRATIONS=true` antes do deploy. O `migrate` aplica a 114 antes de as Lambdas da aplicação receberem o código novo.
+3. Depois do deploy: SELECT das 3 linhas de `modelos.tipos_treino` no grupo `personal_trainer`; `/health`.
+4. Voltar `RUN_DB_MIGRATIONS` a `false`.
+
+O PR toca migração e por isso leva o rótulo `ci-completo` no último push, logo antes do merge.
+
+*Janela de risco:* se o código subir sem a 114, personal trainer recebe 403 em `/training-types`. O `migrate` só roda com `RUN_DB_MIGRATIONS=true`; com a variável diferente de `true`, o workflow só emite um aviso (`.github/workflows/deploy-producao.yml`, linhas 430 a 432), o código sobe sem a 114 e o problema acontece. O SELECT das 3 linhas depois do deploy é o que detecta. A correção é ligar a variável e reexecutar o deploy.
+
+*Rollback:* reverter só o código é seguro. O `down` da 114 não roda em produção.
+
+*Medido:* unitários do lote reexecutados pelo Tech Lead depois da correção da falha em `test_access_catalogo_e_resolucao.py::test_os_guards_de_papel_continuam_nos_mesmos_modulos` (a lista esperada deixou de incluir `training_types.py`), em 12 arquivos: `test_access_guarda_cobertura_rotas.py`, `test_access_paridade_guards.py`, `test_access_retrato_guards.py`, `test_access_guarda_identity_role.py`, `test_access_catalogo_e_resolucao.py`, `test_exercise_cards_routes.py`, `test_next_set_load_rules_admin.py`, `test_seg03_catalogos_autorizacao.py`, `test_catalogos_admin_permissoes_rbac.py`, `test_migracao_114_concessoes.py`, `test_migracao_113_concessoes.py` e `test_migracao_111_access_groups.py`: 547 passed, 0 failed. Relato dos autores, anterior à correção e não reexecutado nesta curadoria: varredura de unitários por palavra-chave, 1714 passed. Coleta dos 4 arquivos de integração ajustados: 112 coletados, sem erro.
+
+*Não medido:*
+- A 114 em MySQL real (só no CI, com `ci-completo`) e pela RDS Data API no Aurora (só no `migrate` da promoção).
+- Os 4 testes de integração ajustados (só o CI roda): `test_m12_vigencia_metas_ativacao.py`, `dataapi/test_exercise_cards_fluxo.py`, `dataapi/test_exercise_card_references_sql.py` e `dataapi/test_migration_032_033_seguranca_equipamento.py`.
+- Rotas por HTTP com sessão real em produção.
+- A releitura ao fim do `up` da 114 depende de a transação do runner enxergar as próprias escritas. Isso vale para o runner (`api/app/migrate.py`, commit depois de `up`). O comportamento pela RDS Data API não foi provado por leitura e só se confirma no `migrate` da promoção. Se a releitura falhar ali, o job de deploy para antes de atualizar as Lambdas da aplicação.
+- Não foi provado por leitura que o API Gateway roteia `PUT /analytics/muscle-group-body-map` para a Lambda engines.
+
 ## Referências
 
 - `api/app/security.py`: `get_current_identity`, `require_admin`, `require_admin_or_pt`, `Identity`, `master_token_matches`.
@@ -460,4 +549,5 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - `api/app/domain/nutrition/ai_usage.py`: dono da cota de IA de nutrição.
 - `frontend/src/lib/nav-items.ts`: menu central.
 - Lote 2B: `api/app/access/catalog.py` (`conta.dispositivos`); `api/app/access/service.py` (`validate_target_user_id`, `authorize_target`, `authorize_self_or_all`); `api/app/access/deps.py` (`require_additional_permission`, `permissions_for_request`); `api/app/access/membership.py` (`ensure_not_last_admin`, `locked_admin_ids`); `api/app/users.py` (`create_user`, `update_user`, `deactivate_user`, fotos); `api/app/devices.py` (rotas de relógio); `api/app/jobs.py`; `api/app/auth.py` (`me`, `change-password`); `api/db/migrations/113_access_grants_conta_dispositivos.py`; `api/tests/support/access_retrato.py` e `api/tests/unit/data/access_retrato_guards_antigos.json`; `api/tests/unit/test_access_retrato_guards.py`, `test_access_paridade_guards.py`, `test_access_guarda_identity_role.py` (com `access_identity_role_allowlist.json`), `test_access_guarda_cobertura_rotas.py` (com `access_cobertura_allowlist.json`), `test_users_permissoes_rbac.py`, `test_devices_permissoes_rbac.py`, `test_users_trava_ultimo_admin.py` e `test_migracao_113_concessoes.py`; `api/tests/integration/conftest.py` (`conceder_grupo_do_papel`, fixture `conceder_grupo`, fixture `catalog`).
+- Lote 2C-1: `api/app/access/catalog.py` (`modelos.tipos_treino`); `api/db/migrations/114_access_grants_modelos_tipos_treino.py`; `api/app/exercise_cards.py`, `api/app/training_types.py`, `api/app/next_set_load_rules_admin.py`, `api/app/training_safety_admin.py`, `api/app/exercise_mapping_canonical.py`, `api/app/main.py` (`POST /exercise-mappings`) e `api/app/dashboard_modules.py` (`PUT /analytics/muscle-group-body-map`); `api/tests/unit/test_migracao_114_concessoes.py` e `api/tests/unit/test_catalogos_admin_permissoes_rbac.py`.
 - ADR relacionado de forma indireta: [0010](0010-regras-de-carga-como-formula-com-condicionais.md) (formato de decisão com "Impacto em produção").

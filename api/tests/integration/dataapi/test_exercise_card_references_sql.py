@@ -50,11 +50,15 @@ def _foto(w: int = 640, h: int = 480) -> str:
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw, extras=("exercise_card_references",))
+def seed(raw, conceder_grupo):
+    # ADR 0011 (lote 2C-1): `ia.cards_exercicio` e resolvida por
+    # `user_access_groups`; `truncar` nao a limpa e zera `users` (ids reciclados),
+    # entao ela entra nos extras e o admin recebe o grupo de sistema `admin`.
+    truncar(raw, extras=("exercise_card_references", "user_access_groups"))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_refs', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         cur.execute("INSERT INTO exercise_catalog (id, name, is_active) VALUES (%s, %s, 1)", (SUPINO, "Supino reto com barra"))
         cur.execute("INSERT INTO exercise_catalog (id, name, is_active) VALUES (%s, %s, 1)", (AGACHAMENTO, "Agachamento livre"))
     raw.commit()

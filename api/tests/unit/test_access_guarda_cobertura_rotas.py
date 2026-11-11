@@ -474,9 +474,10 @@ def test_so_autenticacao_real_tem_identidade_e_nao_declara_permissao():
         assert rota in com_identidade, rota
 
 
-def test_divida_real_tem_teto_343_e_nao_contem_as_18_rotas_convertidas():
-    divida = _load_allowlist()["divida"]
-    assert divida["teto"] == 343 and len(divida["rotas"]) == 343
+def test_divida_real_tem_teto_309_e_nao_contem_as_rotas_convertidas():
+    allowlist = _load_allowlist()
+    divida = allowlist["divida"]
+    assert divida["teto"] == 309 and len(divida["rotas"]) == 309
     convertidas = {
         "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
         "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
@@ -484,6 +485,12 @@ def test_divida_real_tem_teto_343_e_nao_contem_as_18_rotas_convertidas():
     } | SO_AUTENTICACAO_APROVADAS
     assert len(convertidas) == 18
     assert not convertidas & set(divida["rotas"])
+    # Lote 2C-1: as 34 rotas de catalogos/admin tambem saem da divida.
+    com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
+    assert len(com_permissao) == 43
+    assert not com_permissao & set(divida["rotas"])
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 367
+    assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
 def test_pino_so_autenticacao_acusa_rota_nova_removida_e_duplicada():

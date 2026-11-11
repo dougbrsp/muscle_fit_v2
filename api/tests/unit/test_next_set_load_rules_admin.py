@@ -21,6 +21,7 @@ from app import next_set_load_rules as rules
 from app import next_set_load_rules_admin as admin_mod
 from app.domain import next_set_load as nsl
 from app.domain import progression_engine as pe
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
 from tests.support.next_set_load_rules_fake import FakeRuleSetsDB
 
@@ -39,6 +40,28 @@ EXEMPLO = {
 # 1ª série, músculo descansado, 13 reps em RPE 8 com teto 9, 20 kg no passo 2,5.
 FATOS = {"working_set_index": 1, "fatigue_band": "rested", "reps": 13, "rpe": 8, "rpe_ceiling": 9,
          "weight_kg": 20, "step_kg": 2.5}
+
+
+@pytest.fixture(autouse=True)
+def _permissoes_do_papel(monkeypatch):
+    """`require_permission` consulta o banco: aqui as permissoes vem das concessoes
+    padrao do grupo de sistema do papel (admin = acesso total), sem banco."""
+    from app.access import DEFAULT_GRANTS_BY_GROUP, ROLE_TO_SYSTEM_GROUP
+    from app.access import service as access_service
+
+    def _resolver(identity):
+        if identity.source == "master_token":
+            return access_service._full_access(("admin",))
+        grupo = ROLE_TO_SYSTEM_GROUP.get(identity.role)
+        if grupo is None:
+            return access_service.EffectivePermissions()
+        linhas = [
+            {"group_key": grupo, "is_system": 1, "resource": r, "action": a, "scope": s}
+            for r, a, s in DEFAULT_GRANTS_BY_GROUP[grupo]
+        ] or [{"group_key": grupo, "is_system": 1, "resource": None, "action": None, "scope": None}]
+        return access_service.merge_grants(linhas)
+
+    monkeypatch.setattr(access_service, "resolve_permissions", _resolver)
 
 
 @pytest.fixture
@@ -91,7 +114,9 @@ def test_o_router_esta_no_app_real_da_api_core():
 )
 def test_usuario_comum_nao_cadastra(db, metodo, caminho, corpo):
     kwargs = {"json": corpo} if corpo is not None else {}
-    assert getattr(_client("regular", 2), metodo)(BASE + caminho, **kwargs).status_code == 403
+    resposta = getattr(_client("regular", 2), metodo)(BASE + caminho, **kwargs)
+    assert resposta.status_code == 403
+    assert resposta.json()["detail"] == FORBIDDEN_DETAIL
 
 
 def test_published_sem_linha_e_o_padrao_v0_para_qualquer_autenticado(db):
