@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from app import equipment_exercises as ee
 from app import exercise_catalog_admin as eca
 from app.domain.set_measures import SetMeasure
+from app.security import Identity
 
 
 @pytest.mark.parametrize(
@@ -38,6 +39,9 @@ def test_default_measure_desconhecido_e_400():
     with pytest.raises(HTTPException) as exc_info:
         eca.clean_default_measure("minutos")
     assert exc_info.value.status_code == 400
+
+
+_ADMIN = Identity(user_id=1, role="admin", source="session")
 
 
 class _Cursor:
@@ -77,7 +81,6 @@ class _Conn:
 def chamadas(monkeypatch):
     calls: list = []
     monkeypatch.setattr(eca, "_connect", lambda: _Conn(calls))
-    monkeypatch.setattr(eca, "_require_admin_identity", lambda *a, **k: type("I", (), {"user_id": 1})())
     monkeypatch.setattr(eca, "reclassify_after_catalog_change", lambda source: None)
     return calls
 
@@ -87,26 +90,26 @@ def _updates_de_medida(calls):
 
 
 def test_put_sem_o_campo_nao_toca_a_coluna(chamadas):
-    eca.update_exercise(55, item={"name": "Prancha"}, x_api_token="t", musclefit_session=None)
+    eca.update_exercise(55, item={"name": "Prancha"}, identity=_ADMIN)
     assert _updates_de_medida(chamadas) == []
 
 
 def test_put_grava_a_medida_canonica_e_limpa_com_vazio(chamadas):
-    eca.update_exercise(55, item={"default_measure": " Duration "}, x_api_token="t", musclefit_session=None)
-    eca.update_exercise(55, item={"default_measure": ""}, x_api_token="t", musclefit_session=None)
+    eca.update_exercise(55, item={"default_measure": " Duration "}, identity=_ADMIN)
+    eca.update_exercise(55, item={"default_measure": ""}, identity=_ADMIN)
     assert _updates_de_medida(chamadas) == [(SetMeasure.DURATION.value, 55), (None, 55)]
 
 
 def test_post_grava_a_medida_depois_do_insert(chamadas):
-    eca.create_exercise(item={"name": "Prancha", "default_measure": SetMeasure.DURATION.value}, x_api_token="t")
+    eca.create_exercise(item={"name": "Prancha", "default_measure": SetMeasure.DURATION.value})
     assert _updates_de_medida(chamadas) == [(SetMeasure.DURATION.value, 55)]
 
 
 def test_post_e_put_com_medida_desconhecida_nao_escrevem_nada(chamadas):
     with pytest.raises(HTTPException):
-        eca.create_exercise(item={"name": "Prancha", "default_measure": "minutos"}, x_api_token="t")
+        eca.create_exercise(item={"name": "Prancha", "default_measure": "minutos"})
     with pytest.raises(HTTPException):
-        eca.update_exercise(55, item={"default_measure": "minutos"}, x_api_token="t", musclefit_session=None)
+        eca.update_exercise(55, item={"default_measure": "minutos"}, identity=_ADMIN)
     assert chamadas == []
 
 

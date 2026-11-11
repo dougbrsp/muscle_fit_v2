@@ -5,9 +5,9 @@ equipment_types), usado pela nova secao `/admin/dominio-exercicios` do
 frontend.
 
 Mesmo padrao de conexao/identidade/JSON de exercise_mapping_catalog.py e
-gyms.py (pymysql direto, sem app.db, _require_identity/_require_admin_identity
-resolvidos a partir do header X-API-Token). Leitura livre a qualquer usuario
-autenticado, escrita restrita a admin.
+gyms.py (pymysql direto, sem app.db). Autorizacao por permissao declarada
+(`require_permission`): leitura `exercicios.catalogo`/ver, escrita
+`admin.catalogos` (editar/excluir).
 
 Este router NAO substitui exercise_mapping_catalog.py (que continua servindo
 a tela legada /mapeamentos sobre a mesma exercise_catalog/exercise_aliases,
@@ -20,15 +20,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Cookie, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from . import security
+from .access import require_permission
 from . import exercise_description_service
 from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503, DB_UNAVAILABLE_MYSQL, jsonable as _jsonable
 from .domain import laboral as laboral_domain
 from .domain.set_measures import MEASURE_UNKNOWN, item_validation_message, parse_measure
-from .security import resolve_identity_from_credentials as _require_identity
 from .exercise_mapping_canonical import reclassify_after_catalog_change
 
 router = APIRouter(prefix="/exercises", tags=["exercise-catalog-admin"])
@@ -38,16 +38,6 @@ external_mappings_router = APIRouter(prefix="/exercise-external-mappings", tags=
 
 def _connect():
     return connect_or_503(get_conn, DB_UNAVAILABLE_MYSQL)
-
-
-def _require_admin_identity(
-    x_api_token: Optional[str],
-    musclefit_session: Optional[str] = None,
-) -> security.Identity:
-    identity = _require_identity(x_api_token, musclefit_session)
-    if identity.role != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
-    return identity
 
 
 def _row_jsonable(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -161,16 +151,13 @@ def _require_exercise_exists(cursor, exercise_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_exercises(
     query: str = Query(default=""),
     active_only: bool = Query(default=True),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     where: List[str] = []
     params: List[Any] = []
@@ -222,13 +209,10 @@ def list_exercises(
     }
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_exercise(
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     name = _clean_text(item.get("name"))
     if not name:
@@ -283,10 +267,8 @@ def create_exercise(
 def update_exercise(
     exercise_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "editar")),
 ):
-    identity = _require_admin_identity(x_api_token, musclefit_session)
     default_measure = clean_default_measure(item.get(DEFAULT_MEASURE_FIELD))
     laboral_fields = clean_laboral_fields(item)
 
@@ -381,11 +363,9 @@ def update_exercise(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/execution-descriptions/pending")
+@router.get("/execution-descriptions/pending", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def count_pending_execution_descriptions(
     prompt_version: Optional[str] = Query(default=None),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Quantos exercicios ATIVOS ainda estao sem descricao de execucao.
 
@@ -398,7 +378,6 @@ def count_pending_execution_descriptions(
     rotas na ordem de declaracao, e `/{exercise_id}` engoliria
     `/execution-descriptions/pending` (e responderia 422, id nao inteiro).
     """
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -417,11 +396,9 @@ def count_pending_execution_descriptions(
     }
 
 
-@router.post("/execution-descriptions/generate-batch")
+@router.post("/execution-descriptions/generate-batch", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def generate_execution_descriptions_batch(
     payload: Dict[str, Any] = Body(default_factory=dict),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Gera a descricao de execucao de um LOTE de exercicios do catalogo.
 
@@ -445,7 +422,6 @@ def generate_execution_descriptions_batch(
     Rota ANTES de `/{exercise_id}` neste arquivo? Nao precisa: este endpoint e
     POST e nao existe `POST /exercises/{exercise_id}` para colidir.
     """
-    _require_admin_identity(x_api_token, musclefit_session)
 
     prompt_version = _clean_optional(payload.get("prompt_version"))
     exercise_ids = payload.get("exercise_ids") or None
@@ -475,12 +451,10 @@ def generate_execution_descriptions_batch(
     return {"status": "ok", **result}
 
 
-@router.post("/{exercise_id}/execution-description/generate")
+@router.post("/{exercise_id}/execution-description/generate", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def generate_execution_description_for_exercise(
     exercise_id: int,
     payload: Dict[str, Any] = Body(default_factory=dict),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Gera (ou regera, com `force`) a descricao de execucao de UM exercicio.
 
@@ -489,7 +463,6 @@ def generate_execution_description_for_exercise(
     humano. `502` quando a OpenAI falha: o catalogo continua exatamente como
     estava.
     """
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -519,17 +492,14 @@ def generate_execution_description_for_exercise(
     return {"status": "ok", "generation": result, "item": _row_jsonable(row)}
 
 
-@router.get("/{exercise_id}")
+@router.get("/{exercise_id}", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def get_exercise_detail(
     exercise_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Endpoint agregado: dados do exercício + aliases + mapeamentos externos +
     contribuições musculares + equipamentos vinculados + ids legados fundidos
     (exercise_legacy_id_map), para montar a tela de detalhe/edição em uma
     única chamada."""
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -602,13 +572,10 @@ def get_exercise_detail(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{exercise_id}/aliases")
+@router.get("/{exercise_id}/aliases", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_exercise_aliases(
     exercise_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -622,14 +589,11 @@ def list_exercise_aliases(
     return {"items": _rows_jsonable(rows)}
 
 
-@router.post("/{exercise_id}/aliases")
+@router.post("/{exercise_id}/aliases", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_exercise_alias(
     exercise_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     alias = _clean_text(item.get("alias"))
     if not alias:
@@ -662,13 +626,10 @@ def create_exercise_alias(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-@router.delete("/aliases/{alias_id}")
+@router.delete("/aliases/{alias_id}", dependencies=[Depends(require_permission("admin.catalogos", "excluir"))])
 def delete_exercise_alias(
     alias_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -684,13 +645,10 @@ def delete_exercise_alias(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{exercise_id}/external-mappings")
+@router.get("/{exercise_id}/external-mappings", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_exercise_external_mappings(
     exercise_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -709,14 +667,11 @@ def list_exercise_external_mappings(
     return {"items": _rows_jsonable(rows)}
 
 
-@router.post("/{exercise_id}/external-mappings")
+@router.post("/{exercise_id}/external-mappings", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_exercise_external_mapping(
     exercise_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     provider = _clean_text(item.get("provider"))
     external_name = _clean_text(item.get("external_name"))
@@ -757,14 +712,11 @@ def create_exercise_external_mapping(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-@router.put("/external-mappings/{mapping_row_id}")
+@router.put("/external-mappings/{mapping_row_id}", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def update_exercise_external_mapping(
     mapping_row_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -804,13 +756,10 @@ def update_exercise_external_mapping(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-@router.delete("/external-mappings/{mapping_row_id}")
+@router.delete("/external-mappings/{mapping_row_id}", dependencies=[Depends(require_permission("admin.catalogos", "excluir"))])
 def delete_exercise_external_mapping(
     mapping_row_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -834,17 +783,14 @@ def delete_exercise_external_mapping(
 # ---------------------------------------------------------------------------
 
 
-@external_mappings_router.get("")
+@external_mappings_router.get("", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_external_mappings_flat(
     query: str = Query(default=""),
     provider: str = Query(default=""),
     active_only: bool = Query(default=True),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     where: List[str] = []
     params: List[Any] = []
@@ -910,13 +856,10 @@ def list_external_mappings_flat(
     }
 
 
-@external_mappings_router.get("/providers")
+@external_mappings_router.get("/providers", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_external_mapping_providers(
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Providers distintos existentes, para popular o filtro da tela."""
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -938,12 +881,9 @@ def list_external_mapping_providers(
 # ---------------------------------------------------------------------------
 
 
-@equipment_types_router.get("")
+@equipment_types_router.get("", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_equipment_types(
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -953,13 +893,10 @@ def list_equipment_types(
     return {"items": _rows_jsonable(rows)}
 
 
-@equipment_types_router.post("")
+@equipment_types_router.post("", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_equipment_type(
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     code = _clean_text(item.get("code")).upper()
     name = _clean_text(item.get("name"))
@@ -987,14 +924,11 @@ def create_equipment_type(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-@equipment_types_router.put("/{type_id}")
+@equipment_types_router.put("/{type_id}", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def update_equipment_type(
     type_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -1028,13 +962,10 @@ def update_equipment_type(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-@equipment_types_router.delete("/{type_id}")
+@equipment_types_router.delete("/{type_id}", dependencies=[Depends(require_permission("admin.catalogos", "excluir"))])
 def delete_equipment_type(
     type_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:

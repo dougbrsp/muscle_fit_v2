@@ -44,12 +44,11 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from fastapi import APIRouter, Body, Cookie, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from . import security
+from .access import require_permission
 from .db import get_conn
 from .db_helpers import connect_or_503, DB_UNAVAILABLE_RDS
-from .security import resolve_identity_from_credentials as _require_identity
 from .gym_equipment_sync import resolve_fk_referenced_table, sync_gym_equipment_for_equipment
 from .load_conventions import (
     current_schema,
@@ -217,13 +216,6 @@ def serialize_link_row(row: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _connect():
     return connect_or_503(get_conn, DB_UNAVAILABLE_RDS)
-
-
-def _require_admin_identity(x_api_token: Optional[str], musclefit_session: Optional[str]) -> security.Identity:
-    identity = _require_identity(x_api_token, musclefit_session)
-    if identity.role != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
-    return identity
 
 
 def _resolve_legacy_fk(cursor: Any) -> Tuple[bool, Optional[str]]:
@@ -474,16 +466,13 @@ def deactivate_equipment_exercise(conn: Any, link_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/equipment-exercises")
+@router.get("/equipment-exercises", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_equipment_exercises(
     equipment_id: Optional[int] = Query(default=None),
     exercise_id: Optional[int] = Query(default=None),
     primary_group: Optional[str] = Query(default=None),
     active_only: bool = Query(default=True),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
 
     where: List[str] = []
     params: List[Any] = []
@@ -547,13 +536,10 @@ def list_equipment_exercises(
     return {"items": [serialize_link_row(row) for row in rows]}
 
 
-@router.post("/equipment-exercises")
+@router.post("/equipment-exercises", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_equipment_exercise(
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
     try:
         equipment_id, exercise_id, notes, notes_provided = normalize_link_payload(item)
         convention, convention_provided = normalize_load_convention_field(item)
@@ -575,12 +561,10 @@ def create_equipment_exercise(
     return {"status": "ok", "item": row, "gym_sync_warnings": gym_sync_warnings}
 
 
-@router.put("/equipment-exercises/{link_id}")
+@router.put("/equipment-exercises/{link_id}", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def update_equipment_exercise(
     link_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Edicao dos atributos do par JA existente (`notes`, `load_convention`).
 
@@ -589,7 +573,6 @@ def update_equipment_exercise(
     o par seria outra associacao, criada pelo POST. Campo ausente preserva o
     valor gravado; enviado vazio limpa. Mesma permissao do POST/DELETE (admin).
     """
-    _require_admin_identity(x_api_token, musclefit_session)
     if not isinstance(item, Mapping):
         raise HTTPException(status_code=400, detail="Corpo da requisição deve ser um objeto JSON.")
 
@@ -636,13 +619,10 @@ def update_equipment_exercise(
     return {"status": "ok", "item": serialize_link_row(row)}
 
 
-@router.delete("/equipment-exercises/{link_id}")
+@router.delete("/equipment-exercises/{link_id}", dependencies=[Depends(require_permission("admin.catalogos", "excluir"))])
 def delete_equipment_exercise(
     link_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         result = deactivate_equipment_exercise(conn, link_id)

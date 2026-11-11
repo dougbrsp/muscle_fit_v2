@@ -130,15 +130,15 @@ def test_modulos_usam_o_rows_comum(modulo, nome):
     assert getattr(importlib.import_module(f"app.{modulo}"), nome) is db_helpers.rows
 
 
-@pytest.mark.parametrize("nome", ["exercise_catalog_admin", "exercise_mapping_catalog", "gyms", "equipment_exercises"])
-def test_require_identity_header_tem_prioridade_sobre_cookie(monkeypatch, nome):
-    modulo = importlib.import_module(f"app.{nome}")
+def test_credenciais_header_tem_prioridade_sobre_cookie(monkeypatch):
+    # Os modulos convertidos para `require_permission` nao tem mais o alias
+    # `_require_identity`; a propriedade vive em `resolve_identity_from_credentials`.
     vistos = []
     ident = security.Identity(user_id=1, role="regular", source="session")
     monkeypatch.setattr(security, "resolve_identity", lambda token: vistos.append(token) or ident)
-    assert modulo._require_identity("hdr", "cookie") is ident
-    assert modulo._require_identity(None, "cookie") is ident
-    assert modulo._require_identity("", "cookie") is ident
+    assert security.resolve_identity_from_credentials("hdr", "cookie") is ident
+    assert security.resolve_identity_from_credentials(None, "cookie") is ident
+    assert security.resolve_identity_from_credentials("", "cookie") is ident
     assert vistos == ["hdr", "cookie", "cookie"]
 
 
