@@ -25,8 +25,10 @@ import json
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from .access import EffectivePermissions, can_access_target, require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
@@ -37,7 +39,7 @@ from .domain.nutrition.plan import plan_in_force
 from .domain.nutrition.subject import resolve_subject
 from .domain.nutrition.weekly_budget import intake_macros, target_macros
 from .intelligence.dashboard.time_windows import user_today_for
-from .nutrition_access import fetch_target_user, is_staff, resolve_target_user
+from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_dashboard import MEAL_TOTALS_SQL, MUSCLE_WINDOW_SQL
 from .nutrition_meals import day_totals
 from .nutrition_plans import _CURRENT_FOR_UPDATE_SQL, PUBLISHED, TABLE as PLANS_TABLE, _fetch_plan, insert_draft, publish_draft
@@ -59,7 +61,7 @@ from .nutrition_targets_service import (
     settings_from_row,
 )
 from .request_models import NutritionCheckinSettingsIn
-from .security import Identity, get_current_identity
+from .security import Identity
 from .template_assignments import db_now
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
@@ -416,14 +418,15 @@ def ensure_checkin(conn: Any, aluno: int, hoje: date) -> dict[str, Any]:
 
 @router.get("/checkin")
 def get_checkin(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.checkin", "ver")),
 ):
     """Sem as tabelas do check-in (o código novo atende antes da migração 103) a leitura responde 200 com
     `checkin: null` e o motivo `migration_pending`; escrever segue 503. Isto vale SÓ para o check-in: sem a 103 o código
     novo lê `nutrition_plans.maintenance_kcal_adjust` e o plano, o diário e `/nutrition/today` falham até a migração
     rodar. A ordem do deploy (migração antes do código) é obrigatória, ver §83."""
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.checkin", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             pronto = tables_ready(cur)
@@ -453,11 +456,12 @@ def get_checkin(
 
 @router.get("/checkins")
 def list_checkins(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
     limit: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.checkin", "ver")),
 ):
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.checkin", "ver", user_id)
     quantidade = wc.HISTORY_LIMIT_DEFAULT if limit is None else max(1, min(int(limit), wc.HISTORY_LIMIT_MAX))
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -471,10 +475,11 @@ def list_checkins(
 
 @router.get("/checkin/settings")
 def get_checkin_settings(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.checkin", "ver")),
 ):
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.checkin", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -484,10 +489,10 @@ def get_checkin_settings(
 
 
 @router.put("/checkin/settings")
-def put_checkin_settings(payload: NutritionCheckinSettingsIn, identity: Identity = Depends(get_current_identity)):
+def put_checkin_settings(request: Request, payload: NutritionCheckinSettingsIn, identity: Identity = Depends(require_permission("nutricao.checkin", "editar"))):
     if not wc.checkin_weekday_is_valid(payload.weekday):
         raise _error(400, "invalid_checkin_weekday", "Dia da semana inválido para o check-in.")
-    aluno = resolve_target_user(identity, payload.user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.checkin", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -496,17 +501,20 @@ def put_checkin_settings(payload: NutritionCheckinSettingsIn, identity: Identity
     return {"user_id": aluno, **_weekday_payload(int(payload.weekday)), "weekday_options": _weekday_options()}
 
 
-def _owned_row(cur: Any, identity: Identity, checkin_id: int, *, lock: bool = False) -> dict[str, Any]:
-    """A linha do check-in, só para o dono, admin ou PT; qualquer outro recebe 404 (igual ao que não existe)."""
+def _owned_row(
+    cur: Any, identity: Identity, permissoes: EffectivePermissions, action: str, checkin_id: int, *, lock: bool = False
+) -> dict[str, Any]:
+    """A linha do check-in, só para quem tem `nutricao.checkin`/`action` sobre o dono (o próprio, `todos` ou `alunos`
+    com vínculo ativo); qualquer outro recebe 404 (igual ao que não existe)."""
     cur.execute(_BY_ID_FOR_UPDATE_SQL if lock else _BY_ID_SQL, (int(checkin_id),))
     linha = cur.fetchone()
-    if not linha or not (int(linha["user_id"]) == int(identity.user_id) or is_staff(identity)):
+    if not linha or not can_access_target(identity, permissoes, "nutricao.checkin", action, int(linha["user_id"])):
         raise _error(404, "checkin_not_found", "Check-in não encontrado.")
     return linha
 
 
 @router.post("/checkins/{checkin_id}/accept")
-def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_identity)):
+def accept_checkin(request: Request, checkin_id: int, identity: Identity = Depends(require_permission("nutricao.checkin", "editar"))):
     """Aceita a proposta: publica uma nova versão do plano com as mudanças que o motor gravou. A linha é travada
     (`FOR UPDATE`), então duas chamadas simultâneas se enfileiram e a segunda só lê o aceite da primeira. O plano
     vigente também é travado com `FOR UPDATE` ANTES de qualquer leitura `FOR SHARE` (`load_published_plans`): ler com
@@ -517,8 +525,11 @@ def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_ide
             _require_tables(cur)
             # O aceite lê (`_fetch_plan`) e grava (`insert_draft`) as colunas da 106: sem ela, 503 e nada gravado (não 500).
             require_plan_energy_columns(cur)
-            linha = _owned_row(cur, identity, checkin_id, lock=True)
+            permissoes = permissions_for_request(request, identity)
+            linha = _owned_row(cur, identity, permissoes, "editar", checkin_id, lock=True)
             aluno = int(linha["user_id"])
+            # Aceitar publica um plano novo do dono da linha: exige tambem `nutricao.plano`/`editar` sobre ele (403).
+            resolve_target_user(identity, permissoes, "nutricao.plano", "editar", aluno)
             hoje = _today_for(conn, aluno)
             if linha["status"] == ACCEPTED:  # idempotente: o aceite já foi feito
                 return {"checkin": checkin_public(linha, hoje), "already_accepted": True, "plan": None}
@@ -566,12 +577,12 @@ def accept_checkin(checkin_id: int, identity: Identity = Depends(get_current_ide
 
 
 @router.post("/checkins/{checkin_id}/decline")
-def decline_checkin(checkin_id: int, identity: Identity = Depends(get_current_identity)):
+def decline_checkin(request: Request, checkin_id: int, identity: Identity = Depends(require_permission("nutricao.checkin", "editar"))):
     """Recusar mantém as metas atuais. Repetir é idempotente; aceito ou expirado não se recusa."""
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
-            linha = _owned_row(cur, identity, checkin_id, lock=True)
+            linha = _owned_row(cur, identity, permissions_for_request(request, identity), "editar", checkin_id, lock=True)
             aluno = int(linha["user_id"])
             hoje = _today_for(conn, aluno)
             if linha["status"] == DECLINED:

@@ -25,6 +25,7 @@ from tests.unit.test_nutrition_modo_adaptativo_servico import (  # noqa: F401 - 
     db,
 )
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 def _dois_planos(db, *, antigo: str, novo: str):
     """Plano A vigente até ontem (ontem já tem meta dele) e plano B publicado hoje, na mesma semana (quinta). Cada um é

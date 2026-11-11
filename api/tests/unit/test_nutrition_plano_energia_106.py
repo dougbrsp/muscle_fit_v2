@@ -19,6 +19,8 @@ from app import nutrition_targets_service as svc
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_fake import FakeNutritionDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 17)  # sábado
 ALUNO = 2
 

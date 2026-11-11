@@ -1,15 +1,16 @@
 """Quem vê e quem define o plano nutricional de quem (plano de nutrição §5 D1,
 decisão D-L; Lote L2b).
 
-Planos (N2, decisão D2 de 2026-11-02): o usuário cria, edita e publica o PRÓPRIO plano (`plan_actor`);
-admin e personal trainer continuam podendo para qualquer aluno; usuário comum nunca alcança o plano de outro.
+Alvo (RBAC, ADR 0011, lote 2D-1): a decisão é por concessão e escopo do grupo
+(`access.authorize_target` / `access.can_access_target`), não por papel. O próprio
+usuário passa com qualquer concessão; TERCEIRO exige escopo `todos` ou `alunos`
+com vínculo ativo. O grupo de sistema do papel mantém o acesso de hoje (admin e
+PT: qualquer aluno). `resolve_target_user` recebe as permissões já resolvidas da
+requisição (`permissions_for_request`) e o par (recurso, ação) da rota; negado = 403
+`FORBIDDEN_DETAIL`, id inválido = 400 `invalid_target`. `resolve_plan_owner` (rotas por
+id de plano) responde 404 `plan_not_found` a quem não alcança o dono.
 
-Regra de hoje (decisão do usuário, 2026-10-14): o próprio usuário passa;
-TERCEIRO exige admin ou personal trainer (`security.require_admin_or_pt`), e o
-personal trainer vê/define para QUALQUER aluno — sem vínculo formal PT↔aluno,
-como nos Modelos e nas Metas de Ativação. Centralizado aqui para que o vínculo
-formal (L11) troque a regra num lugar só: as rotas de nutrição nunca checam
-papel por conta própria.
+Catálogo de alimentos (decisão D-G, ainda por papel; é do lote 2D-2).
 
 Catálogo de alimentos (L3a, D-G): quem vê, usa, edita, promove e cria porção
 de um alimento também é decidido só aqui (`can_*_food`, `portion_owner_for`).
@@ -23,42 +24,38 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 
+from .access import EffectivePermissions, authorize_target, can_access_target
 from .domain.nutrition import catalog
-from .security import Identity, get_current_identity, is_admin_or_pt, require_admin_or_pt
+from .security import Identity
 
 _USER_SQL = "SELECT id, username, full_name FROM users WHERE id = %s"
 
 
-def plan_actor(identity: Identity = Depends(get_current_identity)) -> Identity:
-    """Dependência das rotas de plano (N2, D2): qualquer usuário logado cria, edita e publica o
-    PRÓPRIO plano; o plano de outro usuário exige admin ou PT, decidido em `resolve_target_user`
-    (por usuário) e `resolve_plan_owner` (por id de plano)."""
-    return identity
-
-
-def is_staff(identity: Identity) -> bool:
-    """Admin ou personal trainer (a regra de `security.require_admin_or_pt`, sem levantar)."""
-    return is_admin_or_pt(identity)
-
-
-def resolve_plan_owner(identity: Identity, owner_user_id: int) -> int:
-    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: o próprio
-    usuário, admin ou PT passam; qualquer outro recebe 404 `plan_not_found` (igual ao plano que
-    não existe), para o id de um plano alheio não revelar que ele existe."""
-    if int(owner_user_id) == int(identity.user_id) or is_staff(identity):
+def resolve_plan_owner(
+    identity: Identity, permissoes: EffectivePermissions, action: str, owner_user_id: int
+) -> int:
+    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: passa quem
+    tem `nutricao.plano`/`action` sobre o dono (o próprio, `todos`, ou `alunos` com vínculo ativo);
+    qualquer outro recebe 404 `plan_not_found` (igual ao plano que não existe), para o id de um
+    plano alheio não revelar que ele existe."""
+    if can_access_target(identity, permissoes, "nutricao.plano", action, int(owner_user_id)):
         return int(owner_user_id)
     raise HTTPException(status_code=404, detail={"error": "plan_not_found", "message": "Plano não encontrado."})
 
 
-def resolve_target_user(identity: Identity, user_id: Optional[int]) -> int:
-    """Aluno-alvo da chamada. Sem `user_id` ou o próprio -> o usuário logado;
-    terceiro -> exige admin/PT (403 senão)."""
-    if user_id is None or int(user_id) == int(identity.user_id):
-        return int(identity.user_id)
-    require_admin_or_pt(identity)
-    return int(user_id)
+def resolve_target_user(
+    identity: Identity,
+    permissoes: EffectivePermissions,
+    resource: str,
+    action: str,
+    user_id: Optional[int],
+) -> int:
+    """Aluno-alvo da chamada, por concessão (`access.authorize_target`): sem `user_id` ou o próprio
+    -> o usuário logado (qualquer escopo); terceiro -> `todos`, ou `alunos` com vínculo ativo.
+    400 `invalid_target` (id inválido, antes de qualquer consulta); 403 `FORBIDDEN_DETAIL` senão."""
+    return authorize_target(identity, resource, action, user_id, permissoes=permissoes)
 
 
 def fetch_target_user(cur: Any, user_id: int) -> dict[str, Any]:
@@ -231,8 +228,6 @@ __all__ = [
     "fetch_target_user",
     "foods_visibility",
     "is_admin",
-    "is_staff",
-    "plan_actor",
     "ownership",
     "portion_owner_for",
     "portions_visibility",

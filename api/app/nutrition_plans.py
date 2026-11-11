@@ -48,7 +48,7 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 
 from .db import get_conn, is_duplicate_key_error
@@ -93,7 +93,9 @@ from .domain.nutrition.plan import (
 )
 from .intelligence.dashboard.time_windows import user_today_for
 from .intelligence.methodology_volume import is_training_slot_type
-from .nutrition_access import fetch_target_user, plan_actor, resolve_plan_owner, resolve_target_user
+from .access import require_permission
+from .access.deps import permissions_for_request
+from .nutrition_access import fetch_target_user, resolve_plan_owner, resolve_target_user
 from .nutrition_schema import require_nutrition_tables, require_plan_energy_columns
 from .nutrition_targets_service import (
     DayComputation,
@@ -114,7 +116,7 @@ from .request_models import (
     NutritionPlanSettingsIn,
     NutritionTargetsRecomputeIn,
 )
-from .security import Identity, get_current_identity
+from .security import Identity
 from .template_assignments import db_now, resolve_active_template_id
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
@@ -524,11 +526,12 @@ def _preview_payload(
 
 @router.get("/plans")
 def list_plans(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
     include_archived: bool = Query(default=False),
-    identity: Identity = Depends(plan_actor),
+    identity: Identity = Depends(require_permission("nutricao.plano", "ver")),
 ):
-    alvo = resolve_target_user(identity, user_id)
+    alvo = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
@@ -539,9 +542,9 @@ def list_plans(
 
 
 @router.post("/plans", status_code=201)
-def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_actor)):
+def create_plan(request: Request, payload: NutritionPlanIn, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     settings = _validate_payload(payload)
-    alvo = resolve_target_user(identity, payload.user_id)
+    alvo = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
@@ -565,13 +568,15 @@ def create_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_acto
 
 
 @router.put("/plans/{plan_id}")
-def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identity = Depends(plan_actor)):
+def update_plan(
+    request: Request, plan_id: int, payload: NutritionPlanSettingsIn, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))
+):
     settings = _validate_payload(payload)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             _require_draft(linha)
         _, avisos = _plan_checks(conn, aluno, settings, _today_for(conn, aluno)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
@@ -584,12 +589,12 @@ def update_plan(plan_id: int, payload: NutritionPlanSettingsIn, identity: Identi
 
 
 @router.delete("/plans/{plan_id}")
-def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+def delete_plan(request: Request, plan_id: int, identity: Identity = Depends(require_permission("nutricao.plano", "excluir"))):
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            resolve_plan_owner(identity, int(linha["user_id"]))
+            resolve_plan_owner(identity, permissions_for_request(request, identity), "excluir", int(linha["user_id"]))
             _require_draft(linha)
             cur.execute(_DELETE_DRAFT_SQL, (int(plan_id), DRAFT))
             if int(cur.rowcount or 0) == 0:
@@ -598,14 +603,14 @@ def delete_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
 
 
 @router.post("/plans/{plan_id}/archive")
-def archive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+def archive_plan(request: Request, plan_id: int, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     """Oculta da lista um plano SUBSTITUÍDO (reversível). Rascunho (tem DELETE) e vigente: 409
     `plan_not_archivable`. Já arquivado: 200 sem mudar nada (idempotente)."""
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            resolve_plan_owner(identity, int(linha["user_id"]))
+            resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             if linha.get("archived_at") is None:
                 if not is_archivable_plan(linha.get("status"), linha.get("superseded_at")):
                     raise _error(
@@ -621,13 +626,13 @@ def archive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
 
 
 @router.post("/plans/{plan_id}/unarchive")
-def unarchive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+def unarchive_plan(request: Request, plan_id: int, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     """Volta o plano arquivado para a lista. Não arquivado: 200 sem mudar nada (idempotente)."""
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            resolve_plan_owner(identity, int(linha["user_id"]))
+            resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             if linha.get("archived_at") is not None:
                 cur.execute(_UNARCHIVE_SQL, (int(plan_id),))
                 linha = _fetch_plan(cur, plan_id)
@@ -635,13 +640,13 @@ def unarchive_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
 
 
 @router.post("/plans/{plan_id}/preview")
-def preview_plan(plan_id: int, identity: Identity = Depends(plan_actor)):
+def preview_plan(request: Request, plan_id: int, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     """Calcula a semana atual com ESTE plano, sem gravar nada."""
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             usuario = fetch_target_user(cur, aluno)
         hoje = _today_for(conn, aluno)
         with conn.cursor() as cur:
@@ -767,11 +772,11 @@ def publish_draft(
 
 
 @router.post("/plan-preview")
-def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(plan_actor)):
+def preview_unsaved_plan(request: Request, payload: NutritionPlanIn, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     """Calcula a semana atual com o formulário ainda não salvo, sem gravar nada: mesma validação do
     `POST /plans` (400 com o código do motor) e mesma prévia do plano salvo."""
     settings = _validate_payload(payload)
-    aluno = resolve_target_user(identity, payload.user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
@@ -787,9 +792,10 @@ def preview_unsaved_plan(payload: NutritionPlanIn, identity: Identity = Depends(
 
 @router.post("/plans/{plan_id}/publish")
 def publish_plan(
+    request: Request,
     plan_id: int,
     payload: NutritionPlanPublishIn,
-    identity: Identity = Depends(plan_actor),
+    identity: Identity = Depends(require_permission("nutricao.plano", "editar")),
 ):
     """Rascunho -> vigente a partir de HOJE (`publish_draft`): concorrência otimista por
     `expected_current_id` (409 `publish_conflict`) e janela de publicação do motor."""
@@ -797,7 +803,7 @@ def publish_plan(
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
-            aluno = resolve_plan_owner(identity, int(linha["user_id"]))
+            aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
         publicado, janela, metas = publish_draft(
             conn, linha, aluno, identity.user_id, payload.expected_current_id, payload.expected_updated_at
         )
@@ -805,10 +811,10 @@ def publish_plan(
 
 
 @router.post("/targets/recompute")
-def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity = Depends(plan_actor)):
+def recompute_targets(request: Request, payload: NutritionTargetsRecomputeIn, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))):
     """Recalcula as metas na janela de recálculo do motor (`recompute_window`)
     com o plano em vigor em cada dia."""
-    aluno = resolve_target_user(identity, payload.user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
@@ -835,14 +841,15 @@ def recompute_targets(payload: NutritionTargetsRecomputeIn, identity: Identity =
 
 @router.get("/cycle-days/from-template")
 def cycle_days_from_template(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(plan_actor),
+    identity: Identity = Depends(require_permission("nutricao.plano", "ver")),
 ):
     """Botão "puxar do Modelo" (D5): os dias da semana com treino no Modelo atribuído viram dia
     alto e os demais baixo (`carb_cycling.propose_day_kinds`). É só uma PROPOSTA: o usuário ajusta
     antes de salvar. Sem Modelo, ou com Modelo sem dia da semana nos slots, não propõe nada e
     explica em `notes`."""
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "ver", user_id)
     modelo_id = resolve_active_template_id(aluno)
     notas: list[str] = []
     modelo: Optional[dict[str, Any]] = None
@@ -899,11 +906,11 @@ def _my_week(
 
 
 @router.get("/me/plan")
-def my_plan(identity: Identity = Depends(get_current_identity)):
+def my_plan(request: Request, identity: Identity = Depends(require_permission("nutricao.plano", "ver"))):
     """O plano em vigor HOJE do próprio usuário (motor: `plan_in_force`), só
     leitura, o sujeito de hoje e as metas da semana atual (materializa os dias
     não congelados da semana)."""
-    aluno = resolve_target_user(identity, None)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.plano", "ver", None)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)

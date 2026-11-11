@@ -30,9 +30,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from . import async_jobs, nutrition_ai_quota, nutrition_meal_photo_storage
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import diary, label_photo, meal_photo
@@ -43,7 +45,7 @@ from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_meal_photo_ai import PROMPT_VERSION
 from .nutrition_schema import require_diary_tables, require_food_tables
 from .request_models import MealPhotoUploadIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 logger = logging.getLogger("musclefit.nutrition.meal_photo")
 
@@ -71,14 +73,18 @@ def _close_failed(usage_id: int, code: str) -> None:
 
 
 @router.get("/usage")
-def meal_photo_usage(identity: Identity = Depends(get_current_identity)):
+def meal_photo_usage(identity: Identity = Depends(require_permission("ia.nutricao", "ver"))):
     with connect_or_503(get_conn) as conn:
         return nutrition_ai_quota.usage_today(conn, user_id=int(identity.user_id), feature=FEATURE).to_dict()
 
 
 @router.post("", status_code=202)
-def upload_meal_photo(payload: MealPhotoUploadIn, identity: Identity = Depends(get_current_identity)):
-    aluno = resolve_target_user(identity, payload.user_id)
+def upload_meal_photo(request: Request, payload: MealPhotoUploadIn, identity: Identity = Depends(require_permission("ia.nutricao", "editar"))):
+    permissoes = permissions_for_request(request, identity)
+    # O alvo precisa de `ia.nutricao` (a leitura por IA) E de `nutricao.diario` (o diário dele), antes de consultar o
+    # usuário e de reservar cota; a cota segue sendo de quem pede.
+    aluno = resolve_target_user(identity, permissoes, "ia.nutricao", "editar", payload.user_id)
+    resolve_target_user(identity, permissoes, "nutricao.diario", "editar", payload.user_id)
     solicitante = int(identity.user_id)
 
     dados, erro = meal_photo.decode_upload(payload.image_base64)

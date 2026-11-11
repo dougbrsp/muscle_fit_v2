@@ -69,7 +69,7 @@ def _limpar_cadastros(raw) -> None:
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_nutrition_tables_cache()
     _limpar_cadastros(raw)
     ids = {}
@@ -78,6 +78,7 @@ def usuarios(raw):
         for nome, papel in zip(USUARIOS, ("admin", "regular", "regular")):
             cur.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', %s)", (nome, papel))
             ids[nome.split("_")[0]] = cur.lastrowid
+            conceder_grupo(cur, ids[nome.split("_")[0]], papel)
     raw.commit()
     yield ids
     _limpar_cadastros(raw)

@@ -31,6 +31,8 @@ from app.domain.nutrition.subject import Reading, SubjectSeries
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_dashboard_fake import FakeDashboardDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 11, 5)  # quinta-feira
 ALUNO, OUTRO, ADMIN = 2, 4, 1
 FUSO = "America/Sao_Paulo"

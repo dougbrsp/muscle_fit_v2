@@ -632,7 +632,6 @@ def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
     )
     assert usam == [
         "cardio_recommendations.py",
-        "nutrition_access.py",
         "workout_plan_templates.py",
     ]
 
@@ -642,22 +641,27 @@ def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
 @pytest.mark.parametrize("acao", ["ver", "editar", "excluir"])
 def test_nutricao_de_terceiros_equivale_a_resolve_target_user(role, recurso, acao):
     ident = _ident(user_id=10, role=role)
+    perms = _perms_do_papel(role)
 
-    def _atual() -> bool:
+    def _guard_de_papel() -> bool:
+        # a regra de antes do lote 2D-1: terceiro exigia admin ou PT (`require_admin_or_pt`)
+        return _guard_passa(security.require_admin_or_pt, role)
+
+    def _nova_assinatura() -> bool:
         try:
-            resolve_target_user(ident, 99)
+            resolve_target_user(ident, perms, recurso, acao, 99)
         except HTTPException:
             return False
         return True
 
     def _matriz() -> bool:
         try:
-            service.authorize_target(ident, recurso, acao, 99, permissoes=_perms_do_papel(role))
+            service.authorize_target(ident, recurso, acao, 99, permissoes=perms)
         except HTTPException:
             return False
         return True
 
-    assert _matriz() is _atual(), (role, recurso, acao)
+    assert _matriz() is _nova_assinatura() is _guard_de_papel(), (role, recurso, acao)
 
 
 @pytest.mark.parametrize("recurso", NUTRICAO_TERCEIROS)

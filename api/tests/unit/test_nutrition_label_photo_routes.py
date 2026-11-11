@@ -21,6 +21,8 @@ from app.nutrition_ai_quota import quota_exceeded_error
 from app.nutrition_label_ai import PROMPT_VERSION
 from app.security import Identity, get_current_identity
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 USUARIO = 7
 JPEG = b"\xff\xd8\xff\xe0" + b"j" * 2048
 PNG = b"\x89PNG\r\n\x1a\n" + b"p" * 2048

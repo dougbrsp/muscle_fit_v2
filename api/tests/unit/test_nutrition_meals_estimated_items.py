@@ -22,6 +22,8 @@ from app.domain.nutrition import meal_parse as mp
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_diary_fake import FakeDiaryDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 DIA = date(2026, 10, 18)
 ALUNO = 2
 ARROZ = {"energy_kcal": 128.26, "carbohydrates_g": 28.06, "protein_g": 2.52, "total_fat_g": 0.23, "fiber_g": 1.56,

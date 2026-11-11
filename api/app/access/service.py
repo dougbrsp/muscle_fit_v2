@@ -218,16 +218,33 @@ def authorize_target(
     target = validate_target_user_id(target_user_id)
     own_id = int(identity.user_id)
     perms = permissoes if permissoes is not None else resolve_permissions(identity)
-    scope = permission_scope(perms, resource, action)
-    if scope is None:
+    alvo = own_id if target is None else target
+    if not can_access_target(identity, perms, resource, action, alvo):
         raise forbidden()
-    if target is None or target == own_id:
-        return own_id
-    if scope == catalog.SCOPE_TODOS:
-        return target
-    if scope == catalog.SCOPE_ALUNOS and has_active_link(own_id, target):
-        return target
-    raise forbidden()
+    return alvo
+
+
+def can_access_target(
+    identity: Identity,
+    permissoes: EffectivePermissions,
+    resource: str,
+    action: str,
+    owner_user_id: int,
+) -> bool:
+    """Decisao de `authorize_target` SEM levantar (ADR 0011): True se o dono
+    `owner_user_id` e o proprio usuario e ha concessao em qualquer escopo; se o
+    escopo e `todos`; ou se o escopo e `alunos` com vinculo ativo
+    (`has_active_link`, 1 consulta so nesse caso). False nos demais, inclusive
+    sem concessao. Nao valida o formato do id (use `validate_target_user_id`
+    antes quando ele vier de fora). Falha de banco no vinculo: 503. Recurso/acao
+    fora do catalogo: `ValueError`."""
+    scope = permission_scope(permissoes, resource, action)
+    if scope is None:
+        return False
+    own_id = int(identity.user_id)
+    if int(owner_user_id) == own_id or scope == catalog.SCOPE_TODOS:
+        return True
+    return scope == catalog.SCOPE_ALUNOS and has_active_link(own_id, int(owner_user_id))
 
 
 def authorize_self_or_all(

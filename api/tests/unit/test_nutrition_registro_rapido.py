@@ -24,6 +24,8 @@ from app.security import Identity, get_current_identity
 from tests.support.nutrition_diary_fake import FakeDiaryDB
 from tests.support.nutrition_foods_fake import FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ALUNO = 2
 DIA = date(2026, 11, 4)
 

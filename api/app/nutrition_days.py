@@ -29,8 +29,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.calories_source import calories_source_label, resolve_calories_source
@@ -62,7 +64,7 @@ from .nutrition_targets_service import (
     read_stored_tdee,
 )
 from .request_models import ActivityCorrectionIn, NutritionDayIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 logger = logging.getLogger(__name__)
@@ -322,11 +324,12 @@ def build_day(conn: Any, aluno: int, local_date: date) -> dict[str, Any]:
 
 @router.get("/days/{local_date}")
 def get_day(
+    request: Request,
     local_date: date,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "ver")),
 ):
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -335,26 +338,30 @@ def get_day(
 
 @router.put("/days/{local_date}/close")
 def close_day(
+    request: Request,
     local_date: date,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "editar")),
 ):
     """"Fechei o dia": o dia conta como completo para o gasto adaptativo (o motor decide; reversível). Dia futuro: 422."""
-    return _set_closure(local_date, user_id, identity, closed=True)
+    return _set_closure(local_date, user_id, identity, permissions_for_request(request, identity), "editar", closed=True)
 
 
 @router.delete("/days/{local_date}/close")
 def reopen_day(
+    request: Request,
     local_date: date,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "excluir")),
 ):
     """Reabre o dia (volta à regra da ingestão). Idempotente."""
-    return _set_closure(local_date, user_id, identity, closed=False)
+    return _set_closure(local_date, user_id, identity, permissions_for_request(request, identity), "excluir", closed=False)
 
 
-def _set_closure(local_date: date, user_id: Optional[int], identity: Identity, *, closed: bool) -> dict[str, Any]:
-    aluno = resolve_target_user(identity, user_id)
+def _set_closure(
+    local_date: date, user_id: Optional[int], identity: Identity, permissoes: Any, acao: str, *, closed: bool
+) -> dict[str, Any]:
+    aluno = resolve_target_user(identity, permissoes, "nutricao.diario", acao, user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -372,29 +379,36 @@ def _set_closure(local_date: date, user_id: Optional[int], identity: Identity, *
 
 @router.put("/activities/{activity_id}/correction")
 def put_activity_correction(
+    request: Request,
     activity_id: str,
     payload: ActivityCorrectionIn,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "editar")),
 ):
     """Corrige uma atividade importada do Intervals (excluir ou reclassificar); o motor aplica a correção antes de normalizar."""
-    return _set_correction(activity_id, user_id, identity, payload)
+    return _set_correction(activity_id, user_id, identity, permissions_for_request(request, identity), "editar", payload)
 
 
 @router.delete("/activities/{activity_id}/correction")
 def delete_activity_correction(
+    request: Request,
     activity_id: str,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "excluir")),
 ):
     """Desfaz a correção (idempotente). Só atividade do próprio aluno (404 caso contrário)."""
-    return _set_correction(activity_id, user_id, identity, None)
+    return _set_correction(activity_id, user_id, identity, permissions_for_request(request, identity), "excluir", None)
 
 
 def _set_correction(
-    activity_id: str, user_id: Optional[int], identity: Identity, payload: Optional[ActivityCorrectionIn]
+    activity_id: str,
+    user_id: Optional[int],
+    identity: Identity,
+    permissoes: Any,
+    acao: str,
+    payload: Optional[ActivityCorrectionIn],
 ) -> dict[str, Any]:
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissoes, "nutricao.diario", acao, user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -413,12 +427,13 @@ def _set_correction(
 
 @router.put("/days/{local_date}")
 def put_day(
+    request: Request,
     local_date: date,
     payload: NutritionDayIn,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "editar")),
 ):
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "editar", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_diary_tables(cur)
@@ -433,13 +448,14 @@ def put_day(
 
 @router.get("/weeks")
 def get_week(
+    request: Request,
     start: Optional[date] = Query(default=None),
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "ver")),
 ):
     """A semana (segunda a domingo, `weekly_budget.week_days`) que contém
     `start` (padrão: hoje do aluno)."""
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)

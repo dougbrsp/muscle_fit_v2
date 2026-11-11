@@ -28,6 +28,8 @@ from app.security import Identity, get_current_identity
 from tests.support import nutrition_external_payloads as payloads
 from tests.support.nutrition_foods_fake import AGORA, FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ADMIN, ALUNO, OUTRO = 1, 2, 3
 INICIO_DO_DIA = AGORA - timedelta(hours=9)  # início do dia do usuário no relógio do banco (fixado)
 MOCA = payloads.OFF_MOCA_CODE
