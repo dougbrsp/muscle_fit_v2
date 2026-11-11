@@ -352,6 +352,15 @@ def test_grupo_free_nao_tem_concessoes_nem_membros_na_matriz_padrao():
     assert "free" not in catalog.SYSTEM_GROUP_KEYS and "admin" not in catalog.SYSTEM_GROUP_KEYS
 
 
+@pytest.mark.parametrize("grupo", ["usuario", "personal_trainer"])
+def test_matriz_padrao_nao_concede_admin_catalogos_a_usuario_nem_a_personal_em_nenhuma_acao(grupo):
+    # Mantem a troca de is_admin por admin.catalogos (promocao e edicao do catalogo publico
+    # de alimentos, lote 2D-2) equivalente a is_admin: so o grupo admin (acesso total) passa.
+    assert "admin.catalogos" in RESOURCE_KEYS
+    concedidas = [(r, a) for r, a, _s in DEFAULT_GRANTS_BY_GROUP[grupo] if r == "admin.catalogos"]
+    assert concedidas == [], concedidas
+
+
 def test_dispositivo_resolve_pelo_user_id_do_dono(db):
     fake = db(groups={7: [("usuario", "cardio", "ver", "proprios")]})
     perms = service.resolve_permissions(_ident(user_id=7, source="device"))

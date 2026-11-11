@@ -469,11 +469,39 @@ def _rotas_2d1() -> dict[str, list[tuple[str, str]]]:
     return rotas
 
 
+MODULOS_2D2 = {
+    "app.nutrition_foods": "nutricao.alimentos",
+    "app.nutrition_external_foods": "nutricao.alimentos",
+    "app.nutrition_favorites": "nutricao.alimentos",
+    "app.nutrition_label_photo": "ia.nutricao",
+}
+ROTA_PROMOTE = "POST /nutrition/foods/{food_id}/promote"
+
+
+def _rotas_2d2() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas dos 4 modulos de alimentos do 2D-2 que declaram permissao."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    com_permissao, _ = _rotas_convertidas()
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") not in MODULOS_2D2:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave in com_permissao:
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B e do 2D-1: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    """Rotas com permissao fora do 2B, 2D-1 e 2D-2: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     d1 = _rotas_2d1()
-    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B and r not in d1}
+    d2 = _rotas_2d2()
+    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B and r not in d1 and r not in d2}
 
 
 def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
@@ -481,10 +509,11 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_154_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1():
+def test_paridade_cobre_as_170_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 154
+    assert len(com_permissao) == 170
     assert len(_rotas_2d1()) == 39
+    assert len(_rotas_2d2()) == 16
     assert ROTAS_2B <= set(com_permissao)
     assert len(_convertidas_2c1()) == 34 + 72  # 2C-1 + 2C-2 (as 72 tem caso manual)
     assert len([r for r in _convertidas_2c1() if r not in CASOS_MANUAIS]) == 34
@@ -628,3 +657,69 @@ def test_paridade_das_39_rotas_do_2d1_sem_divergencia_de_acesso():
     for rota, declaradas in sorted(_rotas_2d1().items()):
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2D-1:" + chr(10) + chr(10).join(problemas[:30])
+
+
+# ---------------------------------------------------------------------------
+# Lote 2D-2: alimentos (16 rotas; 15 `autenticado` e `/promote` `admin`, decisao automatica)
+#
+# A paridade cobre o guard de ENTRADA (classe do retrato x permissao declarada). A troca de
+# `is_admin` por `admin.catalogos` dentro dos handlers (edicao/promocao do catalogo publico)
+# e provada em `test_nutrition_access.py` e no teste HTTP do lote, nao aqui.
+# ---------------------------------------------------------------------------
+
+
+def test_o_conjunto_convertido_no_2d2_e_exatamente_o_das_16_rotas_dos_4_modulos():
+    rotas = _rotas_2d2()
+    assert len(rotas) == 16
+    contagem: dict[str, int] = {}
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo in MODULOS_2D2:
+                contagem[modulo] = contagem.get(modulo, 0) + len(route.methods - {"HEAD", "OPTIONS"})
+    # Toda rota viva dos 4 modulos declara permissao (nenhuma ficou de fora do lote).
+    assert sum(contagem.values()) == 16, contagem
+    assert contagem == {
+        "app.nutrition_foods": 6, "app.nutrition_external_foods": 3,
+        "app.nutrition_favorites": 5, "app.nutrition_label_photo": 2,
+    }
+    retrato = carregar_retrato()["rotas"]
+    for rota in rotas:
+        esperada = "admin" if rota == ROTA_PROMOTE else "autenticado"
+        assert retrato[rota]["classe"] == esperada, rota
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+    assert sum(1 for r in rotas if retrato[r]["classe"] == "autenticado") == 15
+    assert len(CASOS_MANUAIS) == 72
+
+
+def test_as_16_rotas_do_2d2_declaram_o_recurso_do_contrato_com_a_acao_do_metodo():
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    problemas: list[str] = []
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo not in MODULOS_2D2:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave == ROTA_PROMOTE:
+                    esperado = [("admin.catalogos", "editar")]
+                else:
+                    esperado = [(MODULOS_2D2[modulo], ACAO_POR_METODO[metodo])]
+                declarado = _rotas_convertidas()[0].get(chave)
+                if declarado != esperado:
+                    problemas.append(f"{chave}: declara {declarado}, contrato {esperado}")
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_paridade_das_16_rotas_do_2d2_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota, declaradas in sorted(_rotas_2d2().items()):
+        problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
+    assert not problemas, "Divergencia de acesso no 2D-2:" + chr(10) + chr(10).join(problemas[:30])

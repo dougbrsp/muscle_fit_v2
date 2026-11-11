@@ -474,10 +474,10 @@ def test_so_autenticacao_real_tem_identidade_e_nao_declara_permissao():
         assert rota in com_identidade, rota
 
 
-def test_divida_real_tem_teto_198_e_nao_contem_as_rotas_convertidas():
+def test_divida_real_tem_teto_182_e_nao_contem_as_rotas_convertidas():
     allowlist = _load_allowlist()
     divida = allowlist["divida"]
-    assert divida["teto"] == 198 and len(divida["rotas"]) == 198
+    assert divida["teto"] == 182 and len(divida["rotas"]) == 182
     convertidas = {
         "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
         "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
@@ -487,9 +487,10 @@ def test_divida_real_tem_teto_198_e_nao_contem_as_rotas_convertidas():
     assert not convertidas & set(divida["rotas"])
     # Lotes 2C-1 (34 rotas) e 2C-2 (72 rotas de academias e catalogos) saem da divida;
     # 2D-1 (39 rotas de nutricao: plano, check-in, diario e IA) tambem sai da divida:
-    # 43 + 72 + 39 = 154 rotas com permissao declarada.
+    # 2D-2 (16 rotas de alimentos: catalogo, externos, favoritos e foto de rotulo) tambem sai:
+    # 43 + 72 + 39 + 16 = 170 rotas com permissao declarada.
     com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
-    assert len(com_permissao) == 154
+    assert len(com_permissao) == 170
     assert not com_permissao & set(divida["rotas"])
     assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 367
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}

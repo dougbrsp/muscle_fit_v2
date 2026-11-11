@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está na `develop` desde 11/11/2026 (PR #129, migração 114), não promovido para produção** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está implementado na branch `feat/rbac-lote2c2-academias-catalogos`, não publicado nem promovido** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está implementado na branch `feat/rbac-lote2d1-nutricao-alvo`, não publicado nem promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). Os lotes 2D-2 a 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está implementado na branch `feat/rbac-lote2d2-alimentos`, não publicado nem promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). Os lotes 2E a 6 ainda não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -99,10 +99,10 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 2. **Aplicação no backend**: troca dos guards por `require_permission` e `authorize_target`. Allowlist zerada. Dividida em:
    - **2A Pré-condições** (em produção desde 11/11/2026): sincronização usuário→grupo, migração 112, trava do último admin, smoke. Nenhum guard mudou.
    - **2B Base da troca** (em produção desde 11/11/2026): recurso `conta.dispositivos` com migração 113; categoria "só autenticação" na guarda de cobertura; retrato congelado dos guards antigos e teste de paridade; guarda estática de `identity.role`; `authorize_self_or_all` e id estrito; `require_additional_permission` (`admin.grupos` em qualquer escrita sobre admin ou que torne alguém admin); trava com nova ordem de locks; conversão de 18 rotas de `users`, `auth`, `devices` e `jobs` (9 com `require_permission`, 9 só autenticação). Os recursos de intervals sync, aplicação de recomendação de cardio e administração de academias entram no catálogo com os lotes 2C a 2F, quando as rotas que os usam forem convertidas.
-   - **2C-1** Administração com guard declarado (branch `feat/rbac-lote2c1-admin-declarado`, não publicado): 34 rotas, recurso `modelos.tipos_treino` e migração 114.
-   - **2C-2** Academias e catálogos de exercícios (branch `feat/rbac-lote2c2-academias-catalogos`, implementado, não publicado): 72 rotas de classe `identidade_no_corpo`, com caso manual de paridade; sem migração.
-   - **2D-1** Nutrição com usuário alvo (branch `feat/rbac-lote2d1-nutricao-alvo`, implementado, não publicado): 39 rotas de planos, check-in, diário, dashboard, refeições e IA com alvo; `resolve_target_user` passa a delegar a `authorize_target`; 404 preservado nas rotas por id; sem migração (ver "Lote 2D-1").
-   - **2D-2** Alimentos, fontes externas, preferidos e foto de rótulo (16 rotas, pendente).
+   - **2C-1** Administração com guard declarado (PR #129, em produção desde 11/11/2026): 34 rotas, recurso `modelos.tipos_treino` e migração 114.
+   - **2C-2** Academias e catálogos de exercícios (PR #130, em produção desde 11/11/2026): 72 rotas de classe `identidade_no_corpo`, com caso manual de paridade; sem migração.
+   - **2D-1** Nutrição com usuário alvo (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido): 39 rotas de planos, check-in, diário, dashboard, refeições e IA com alvo; `resolve_target_user` passa a delegar a `authorize_target`; 404 preservado nas rotas por id; sem migração (ver "Lote 2D-1").
+   - **2D-2** Alimentos, fontes externas, preferidos e foto de rótulo (branch `feat/rbac-lote2d2-alimentos`, implementado, não publicado; 16 rotas; sem migração; ver "Lote 2D-2").
    - **2E** Analytics e engines.
    - **2F** Treino, corpo e fecho (allowlist zerada, remoção de `require_admin` e `require_admin_or_pt`).
 3. **Tela "Grupos e acessos"**: API de grupos, membros e auditoria.
@@ -128,9 +128,10 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
   - `api/tests/unit/test_users_trava_ultimo_admin.py` verifica com banco falso a ordem dos statements. **Não há teste de concorrência com transações reais**; a atomicidade e a ordem dos locks estão provadas só pelos statements emitidos.
 - [x] **Smoke** (`scripts/smoke-async-jobs.sh`, bloco `smoke-admin`, linhas 98 a 104): o `INSERT` em `users` só roda se não houver admin ativo; logo depois, um `INSERT IGNORE INTO user_access_groups` associa ao grupo `admin` o usuário `smoke-admin` filtrado por `u.role = 'admin' AND u.is_active = 1`. É SQL de script, não código da aplicação. Diferença em relação ao código: não há `START TRANSACTION` no bloco e o cliente `mysql` roda em autocommit por padrão, então os dois statements não estão na mesma transação; e o bloco roda com `2>/dev/null`, então uma falha fica silenciosa.
 - [x] **Coberto no 2B**: exigir `admin.grupos` para qualquer escrita sobre alvo admin ou que torne alguém admin (criar, promover, rebaixar, editar, reativar, desativar, excluir, resetar senha), com teste negativo; guarda estática de `identity.role` fora de `app/access` (ratchet em `access_identity_role_allowlist.json`); id estrito em `authorize_target` e `authorize_self_or_all`; paridade guard antigo × permissão nova para as 18 rotas convertidas (ver "Lote 2B: base da troca").
-- [x] **Coberto no 2C-2** (branch `feat/rbac-lote2c2-academias-catalogos`, não publicado): checagens de papel em handlers de `gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py` e `equipment_exercises.py`; as 72 rotas `identidade_no_corpo`; e, em `gyms.py`, posse da linha e 404 que esconde existência em `/gyms/{id}` (ver "Lote 2C-2"). A paridade dessas rotas prova só o guard de entrada.
-- [x] **Coberto no 2D-1** (branch `feat/rbac-lote2d1-nutricao-alvo`, não publicado): as 39 rotas de nutrição com usuário alvo (planos, sugestão de plano por IA, check-in, diário, dashboard, refeições, `parse` e foto de refeição) passam a `require_permission`; posse do plano e do check-in com 404 que esconde existência; `resolve_target_user` sobre `authorize_target`, com id estrito (ver "Lote 2D-1"). A paridade dessas rotas prova só o guard de entrada.
-- [ ] **Pendente para 2D-2–2F**: alimentos, fontes externas, preferidos e foto de rótulo (2D-2, 16 rotas); checagens de papel nos demais módulos (2E e 2F); as 3 rotas `outra` do retrato, sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; matriz mais larga que alguns guards (intervals sync, aplicar recomendação de cardio); paridade das demais rotas.
+- [x] **Coberto no 2C-2** (PR #130, em produção desde 11/11/2026): checagens de papel em handlers de `gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py` e `equipment_exercises.py`; as 72 rotas `identidade_no_corpo`; e, em `gyms.py`, posse da linha e 404 que esconde existência em `/gyms/{id}` (ver "Lote 2C-2"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2D-1** (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido): as 39 rotas de nutrição com usuário alvo (planos, sugestão de plano por IA, check-in, diário, dashboard, refeições, `parse` e foto de refeição) passam a `require_permission`; posse do plano e do check-in com 404 que esconde existência; `resolve_target_user` sobre `authorize_target`, com id estrito (ver "Lote 2D-1"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2D-2** (branch `feat/rbac-lote2d2-alimentos`, não publicado): as 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a `require_permission`; as checagens `is_admin` do catálogo de alimentos passam a `admin.catalogos` (ver "Lote 2D-2"). A paridade dessas rotas prova só o guard de entrada.
+- [ ] **Pendente para 2E–2F**: checagens de papel nos demais módulos (2E e 2F); as 3 rotas `outra` do retrato, sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; matriz mais larga que alguns guards (intervals sync, aplicar recomendação de cardio); paridade das demais rotas.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -269,7 +270,7 @@ Nas rotas de dispositivo, a recusa de token de dispositivo (403 de `require_user
 
 ### Lote 2C-1: administração com guard declarado
 
-Branch `feat/rbac-lote2c1-admin-declarado` (não publicado, não promovido). O 2C-1 converte 34 rotas de administração: ciclo de cards de exercício, tipos de treino, regras de carga, segurança de treino, mapeamento canônico, mapeamento de exercícios e corpo de grupos musculares. A permissão é declarada por rota. Os guards de router de `training_types.py`, `training_safety_admin.py` e `exercise_mapping_canonical.py` saíram; `dashboard_modules.py` manteve o `get_current_identity` do router, porque as outras rotas do arquivo são do 2E. Nenhuma função mudou de assinatura.
+PR #129, em produção desde 11/11/2026 (promoção #133). O 2C-1 converte 34 rotas de administração: ciclo de cards de exercício, tipos de treino, regras de carga, segurança de treino, mapeamento canônico, mapeamento de exercícios e corpo de grupos musculares. A permissão é declarada por rota. Os guards de router de `training_types.py`, `training_safety_admin.py` e `exercise_mapping_canonical.py` saíram; `dashboard_modules.py` manteve o `get_current_identity` do router, porque as outras rotas do arquivo são do 2E. Nenhuma função mudou de assinatura.
 
 **Rotas convertidas (34)**
 
@@ -316,7 +317,7 @@ Ação por método: GET = `ver`; POST, PUT e PATCH = `editar`; DELETE = `excluir
 
 ### Lote 2C-2: academias e catálogos de exercícios
 
-Branch `feat/rbac-lote2c2-academias-catalogos` (implementado, não publicado, não promovido). O 2C-2 converte 72 rotas de classe `identidade_no_corpo`, cuja credencial era resolvida dentro do handler: `_require_identity` (qualquer autenticado) ou `_require_admin_identity` (só admin, 403). Cada rota passa a declarar `Depends(require_permission(...))`. Saíram dos cinco módulos (`gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py`, `equipment_exercises.py`) os dois helpers, `_assert_admin` e toda leitura de `identity.role`. Não há migração: `treino.academias`, `exercicios.catalogo`, `volume.grupamentos` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema.
+PR #130, em produção desde 11/11/2026 (promoção #133). O 2C-2 converte 72 rotas de classe `identidade_no_corpo`, cuja credencial era resolvida dentro do handler: `_require_identity` (qualquer autenticado) ou `_require_admin_identity` (só admin, 403). Cada rota passa a declarar `Depends(require_permission(...))`. Saíram dos cinco módulos (`gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py`, `equipment_exercises.py`) os dois helpers, `_assert_admin` e toda leitura de `identity.role`. Não há migração: `treino.academias`, `exercicios.catalogo`, `volume.grupamentos` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema.
 
 **Rotas convertidas (72)**
 
@@ -372,7 +373,7 @@ Total: 24 em `gyms.py` e 48 nos quatro módulos de catálogo, 72 no lote. Os cas
 
 ### Lote 2D-1: nutrição com usuário alvo
 
-Branch `feat/rbac-lote2d1-nutricao-alvo` (implementado, não publicado, não promovido). O lote 2D foi dividido em 2D-1 (nutrição com usuário alvo: planos, check-in, diário e IA com alvo, 39 rotas, este lote) e 2D-2 (alimentos, fontes externas, preferidos e foto de rótulo, 16 rotas, pendente). As 39 rotas eram de classe `autenticado` no retrato e passam a declarar `Depends(require_permission(recurso, ação))`. Ação pelo método: GET = `ver`; POST e PUT = `editar`; DELETE = `excluir`. Não há migração: `nutricao.plano`, `nutricao.checkin`, `nutricao.diario` e `ia.nutricao` já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
+PR #134, na `develop` e no DEV desde 11/11/2026, não promovido. O lote 2D foi dividido em 2D-1 (nutrição com usuário alvo: planos, check-in, diário e IA com alvo, 39 rotas, este lote) e 2D-2 (alimentos, fontes externas, preferidos e foto de rótulo, 16 rotas, implementado na branch `feat/rbac-lote2d2-alimentos`, não publicado). As 39 rotas eram de classe `autenticado` no retrato e passam a declarar `Depends(require_permission(recurso, ação))`. Ação pelo método: GET = `ver`; POST e PUT = `editar`; DELETE = `excluir`. Não há migração: `nutricao.plano`, `nutricao.checkin`, `nutricao.diario` e `ia.nutricao` já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
 
 **Rotas convertidas (39)**
 
@@ -442,11 +443,61 @@ Total: 12 + 2 + 6 + 7 + 2 + 6 + 2 + 2 = 39. Nas rotas de IA com alvo, a exigênc
 - `api/tests/unit/test_nutricao_alvo_permissoes_rbac.py`: 266 passed.
 - Integração com MySQL (só roda no CI, com o rótulo `ci-completo`): não medida.
 
+### Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo
+
+Branch `feat/rbac-lote2d2-alimentos` (implementado, não publicado, não promovido). Fecha a conversão da nutrição: as 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a declarar `Depends(require_permission(recurso, ação))`, e o catálogo de alimentos deixa de ler o papel (`identity.role`, via `is_admin`) e passa a decidir por `admin.catalogos`. Não há migração: `nutricao.alimentos`, `ia.nutricao` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
+
+**Rotas convertidas (16)**
+
+| Módulo | Rotas | Guard antigo | Regra nova |
+|---|---|---|---|
+| `nutrition_foods.py` | 6 | `get_current_identity` nas 5 rotas de busca, leitura, criação, edição e porções; `require_admin` em `POST /nutrition/foods/{food_id}/promote` (classe `admin` no retrato) | `nutricao.alimentos` (GET = ver; POST e PUT = editar); `/promote` = `admin.catalogos`/editar |
+| `nutrition_external_foods.py` | 3 | `get_current_identity` | `nutricao.alimentos`: `GET /nutrition/foods/barcode/{ean}` e `GET /nutrition/foods/usda/search` = ver; `POST /nutrition/foods/usda/{fdc_id}/import` = editar |
+| `nutrition_favorites.py` | 5 | `get_current_identity` | `nutricao.alimentos`: GET = ver; `POST`, `POST /reorder` e `PUT /{food_id}` = editar; `DELETE /{food_id}` = excluir |
+| `nutrition_label_photo.py` | 2 | `get_current_identity` | `ia.nutricao`: `GET /nutrition/foods/label-photo/usage` = ver; `POST /nutrition/foods/label-photo` = editar |
+
+Total: 6 + 3 + 5 + 2 = 16. Das 16, 15 eram de classe `autenticado` no retrato e uma (`/promote`) de classe `admin`. A cota da foto de rótulo continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`, sem alteração.
+
+**Troca de `is_admin` por `admin.catalogos`**
+
+- `api/app/nutrition_access.py` não lê mais `identity.role`: `is_admin` e `ADMIN_ROLE` foram removidos. A nova função `administers_public_catalog(permissoes, acao)` devolve `has_permission(permissoes, "admin.catalogos", acao)` (constante `CATALOG_ADMIN_RESOURCE`).
+- Ação `ver`: `can_view_food` (ver alimento privado de terceiro) e `can_list_private_foods` (escopo `private_all`).
+- Ação `editar`: `can_edit_food` (alimento público), `portion_owner_for` (porção de alimento público), `can_promote_food` e o booleano passado a `catalog.is_born_public` em `create_food`.
+- Assinaturas novas: `can_view_food(identity, permissoes, food)`, `can_edit_food(identity, permissoes, food)`, `portion_owner_for(identity, permissoes, food)`, `can_promote_food(permissoes, food)`, `can_list_private_foods(permissoes)` e `food_public(row, identity, permissoes)`.
+- As permissões vêm de `permissions_for_request(request, identity)`, uma consulta por requisição.
+
+**Preservado**
+
+- 403 `food_forbidden` de dentro dos handlers (`private_all` negado, editar alimento público ou alheio, porção), 404 de alimento privado de terceiro, respostas de sucesso e as flags `can_edit`, `can_add_portion` e `can_promote`.
+- Preferidos continuam pessoais: nenhuma rota aceita `user_id`.
+- Regras de `catalog`, `favorites`, `labels`, `label_photo` e `ai_usage` intocadas.
+- Identidade de dispositivo herda as concessões do dono (antes herdava o papel do dono).
+
+**Mudanças de comportamento**
+
+- Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nas 16 rotas.
+- Em `/promote`, o 403 de quem não tem `admin.catalogos`/editar passa a ter o corpo `FORBIDDEN_DETAIL`.
+- Consequência nova: um grupo personalizado pode receber `admin.catalogos` só com `ver`. Nesse caso vê e lista alimentos privados de terceiros, mas não edita o público nem promove.
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 198 para 182. Conta: 182 em dívida + 6 públicas + 9 só autenticação + 170 com `require_permission` = 367 rotas. Os 170 são 154 (até o 2D-1) mais 16 deste lote.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` de 11 para 3; `nutrition_access.py` de 7 para 0 e `nutrition_foods.py` de 1 para 0 (entradas removidas). Restam `analytics_dashboard.py`, `athlete_hr_zones.py` e `cardio_recommendations.py`, 1 cada.
+
+**Testes**
+
+- `api/tests/unit/test_access_paridade_guards.py`: as 16 rotas entram pela decisão automática (15 `autenticado`, 1 `admin`), sem caso manual; `CASOS_MANUAIS` continua com 72.
+- Troca de `is_admin` por `admin.catalogos` dentro dos handlers: `api/tests/unit/test_nutrition_access.py` e o teste HTTP `api/tests/unit/test_nutricao_alimentos_permissoes_rbac.py` (148 casos).
+- `api/tests/unit/test_access_catalogo_e_resolucao.py` fixa que `admin.catalogos` não é concedido a `usuario` nem a `personal_trainer`.
+- Retrato congelado não regenerado.
+- **O que a paridade prova:** só o guard de entrada das 16 rotas, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** a troca de `is_admin` por `admin.catalogos` dentro dos handlers (provada nos testes acima); a regra de alimento privado de terceiro com `private_all`; grupos personalizados (como `admin.catalogos` só com `ver`); rotas com sessão real de personal trainer e de usuário comum.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
 - **Lote 2 (atomicidade da trava do último admin)** (coberto no 2B na ordem de locks; o teste de concorrência real continua pendente): a contagem de admins ativos e a escrita acontecem na mesma transação, com bloqueio das linhas dos admins ativos (`SELECT ... FOR UPDATE` ou equivalente) e teste de concorrência; sem isso, dois admins se removem ao mesmo tempo.
-- **Lote 2 (`authorize_target`)** (id estrito coberto no 2B; `authorize_target` ainda não tem chamador em `api/app`, a troca de `resolve_target_user` é do 2D): antes de substituir `resolve_target_user` (`api/app/nutrition_access.py`, linhas 55 a 61, que só faz `int(user_id)`), exigir id inteiro estrito e maior que zero. Hoje 0, negativo, booleano e float truncado passam no escopo `todos`; não concedem acesso indevido, mas o contrato é implícito. **Resolvido no 2D-1**: `resolve_target_user` passou a delegar a `authorize_target`, que valida o id antes de qualquer consulta (400 `invalid_target`); o texto acima descreve o estado anterior ao 2D-1.
+- **Lote 2 (`authorize_target`)** (id estrito coberto no 2B; desde o 2D-1, `resolve_target_user` delega a `authorize_target`): antes de substituir `resolve_target_user` (`api/app/nutrition_access.py`, linhas 55 a 61, que só faz `int(user_id)`), exigir id inteiro estrito e maior que zero. Hoje 0, negativo, booleano e float truncado passam no escopo `todos`; não concedem acesso indevido, mas o contrato é implícito. **Resolvido no 2D-1**: `resolve_target_user` passou a delegar a `authorize_target`, que valida o id antes de qualquer consulta (400 `invalid_target`); o texto acima descreve o estado anterior ao 2D-1.
 - **Lote 3**: só quem tem `admin.grupos` pode colocar alguém no grupo `admin`; ninguém se coloca nele sozinho; `is_system` e a chave dos grupos de sistema não são editáveis por API (hoje não há trava no banco para isso).
 - **Lote 2 (mapeamento rota→permissão)**: as rotas de equipamentos, de vínculo academia–equipamento e de logos em `api/app/gyms.py` são só de admin por checagem dentro do handler (`_require_admin_identity`, a partir da linha 150), enquanto a matriz dá a `usuario` editar e excluir em `treino.academias` com escopo próprio. O mapeamento precisa de um recurso administrativo para essas rotas, para não abri-las a quem tem só `treino.academias`.
 - **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`).
@@ -589,7 +640,7 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - Concorrência real da trava e dos locks, inclusive o deadlock entre admins: não há teste com transações concorrentes. A ordem (linha do alvo, depois admins ativos, depois o `UPDATE`) é verificada só em banco falso, pelos statements emitidos.
 - O número atual de usuários divergentes em produção. A conferência de 10/11 achou 4 usuários, todos com grupo; repetida em 11/11, achou 4 usuários e nenhum divergente.
 
-**Lote 2B** (branch `feat/rbac-lote2b-base-da-troca`, não publicado, sem PR, não promovido)
+**Lote 2B** (PR #126, em produção desde 11/11/2026, promoção #128)
 
 *O que muda:*
 - As 9 rotas com `require_permission` passam a decidir por grupo: as cinco de `users` (`GET /users`, `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` e `POST /users/{id}/reset-password`) e as quatro de `devices`. Usuário sem o grupo de sistema do papel recebe 403 nelas; antes a decisão era de `users.role`.
@@ -629,7 +680,7 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - O número atual de usuários divergentes em produção (última conferência, de 11/11: 4 usuários, nenhum divergente).
 - O `INSERT IGNORE` da 113 (`api/db/migrations/113_access_grants_conta_dispositivos.py`, linha 77) pode engolir erro que não seja duplicidade; a conferência das 6 linhas por `SELECT` depois do deploy é o que detecta isso.
 
-**Lote 2C-1** (branch `feat/rbac-lote2c1-admin-declarado`, não publicado, não promovido)
+**Lote 2C-1** (PR #129, em produção desde 11/11/2026, promoção #133)
 
 *O que muda:*
 - As 34 rotas passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive em `GET /exercises/{id}/card`, `GET /next-set-load-rules/published` e `GET /mapping-canonical/options`, que antes aceitavam qualquer autenticado.
@@ -667,7 +718,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - A releitura ao fim do `up` da 114 depende de a transação do runner enxergar as próprias escritas. Isso vale para o runner (`api/app/migrate.py`, commit depois de `up`). O comportamento pela RDS Data API não foi provado por leitura e só se confirma no `migrate` da promoção. Se a releitura falhar ali, o job de deploy para antes de atualizar as Lambdas da aplicação.
 - Não foi provado por leitura que o API Gateway roteia `PUT /analytics/muscle-group-body-map` para a Lambda engines.
 
-**Lote 2C-2** (branch `feat/rbac-lote2c2-academias-catalogos`, não publicado, não promovido)
+**Lote 2C-2** (PR #130, em produção desde 11/11/2026, promoção #133)
 
 *O que muda:*
 - As 72 rotas passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive nas leituras de catálogo e de academias usadas pelo app, que antes bastavam estar autenticado.
@@ -683,7 +734,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 
 *Promoção:*
 1. SELECT prévio de leitura em produção: nenhum usuário ativo sem o grupo de sistema do papel e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perderia a leitura de catálogo e de academias. Este passo NÃO foi executado para o 2C-2. A última medição é a de 11/11/2026, do 2B: 4 usuários, nenhum divergente.
-2. Sem migração neste lote. O 2C-1, ainda não promovido, tem a migração 114 e vai na mesma promoção; `RUN_DB_MIGRATIONS` precisa ser `true` por causa dela, não por causa deste lote.
+2. Sem migração neste lote. A migração 114 do 2C-1 foi aplicada na promoção #133, já em produção.
 3. Promoção só de backend.
 
 *Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
@@ -695,7 +746,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Latência adicional da consulta de permissões por requisição.
 - Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
 
-**Lote 2D-1** (branch `feat/rbac-lote2d1-nutricao-alvo`, não publicado, não promovido)
+**Lote 2D-1** (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido)
 
 *O que muda:*
 - As 39 rotas de nutrição com usuário alvo passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive em `GET /nutrition/me/plan`, que antes só exigia autenticação.
@@ -725,6 +776,36 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Latência adicional da consulta de permissões em `/nutrition/today`.
 - Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
 - Frontend: a busca em `frontend/src` não achou tratamento específico do corpo do 403 de nutrição.
+
+**Lote 2D-2** (branch `feat/rbac-lote2d2-alimentos`, não publicado, não promovido)
+
+*O que muda:*
+- As 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 `FORBIDDEN_DETAIL` nelas. Usuário sem grupo perde o catálogo de alimentos, os preferidos e a foto de rótulo.
+- `POST /nutrition/foods/{food_id}/promote` passa a exigir `admin.catalogos`/editar, no lugar do papel `admin`; o 403 de quem não tem a permissão passa a ter o corpo `FORBIDDEN_DETAIL`.
+- Dentro dos handlers de alimentos, a checagem de papel vira `admin.catalogos`, com a ação de cada decisão (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo").
+- Grupo personalizado pode receber `admin.catalogos` só com `ver`: vê alimentos privados de terceiros, sem editar o público nem promover.
+- Identidade de dispositivo herda as concessões do dono (antes herdava o papel do dono).
+- As 16 rotas fazem uma consulta de permissões por requisição.
+
+*O que não muda:*
+- Respostas de sucesso, flags `can_edit`, `can_add_portion` e `can_promote`, 403 `food_forbidden` dos handlers e 404 de alimento privado de terceiro.
+- Preferidos continuam pessoais; nenhuma rota aceita `user_id`.
+- Cota da foto de rótulo: continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`.
+- Regras de `catalog`, `favorites`, `labels`, `label_photo` e `ai_usage`; nenhuma regra, cálculo, constante ou default mudou; `docs/motores/FONTES_DA_VERDADE.md` não foi alterado.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: nenhum usuário ativo sem grupo e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perde o catálogo de alimentos, os preferidos e a foto de rótulo. Ainda não há medição registrada para o 2D-2.
+2. Sem migração neste lote. As concessões usadas (`nutricao.alimentos`, `ia.nutricao`, `admin.catalogos`) já estão em produção desde a migração 111.
+3. Promoção só de backend, sem `RUN_DB_MIGRATIONS`.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote; não reexecutado nesta curadoria):* 16 rotas por módulo (6, 3, 5 e 2); dívida de 198 para 182; conta de 367 rotas; `teto_total` do ratchet de 11 para 3. Suíte unitária inteira: 14.356 passed antes do ajuste das guardas; as falhas eram das guardas de RBAC, depois ajustadas, e de `test_sem_mojibake` (falha local conhecida). Guardas de cobertura, paridade e retrato: 354 passed. `test_nutricao_alimentos_permissoes_rbac.py`: 148 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
+- Latência da consulta de permissões nas rotas de alimentos.
 
 ## Referências
 
