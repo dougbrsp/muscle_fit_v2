@@ -22,6 +22,8 @@ from app.domain.nutrition.daily_target import TargetWindow, week_window
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_fake import FakeNutritionDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 SEGUNDA = date(2026, 10, 12)
 SABADO = date(2026, 10, 17)
 ALUNO = 2

@@ -19,6 +19,8 @@ from app.nutrition_schema import food_tables_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_foods_fake import FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ADMIN, ALUNO, OUTRO = 1, 2, 3
 
 ARROZ = {"name": "Arroz caseiro", "energy_kcal": 128, "carbohydrates_g": 28.1, "protein_g": 2.5, "total_fat_g": 0.2}

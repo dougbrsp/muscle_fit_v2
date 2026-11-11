@@ -1,12 +1,11 @@
 {
   "_leia_me": "Ratchet da guarda de checagem de papel fora de app.access (ADR 0011). Contagem por arquivo de acessos a .role em objetos de identidade e de chamadas/definicoes de is_admin, is_staff, is_admin_or_pt e _require_admin_identity (heuristica e limites no docstring de tests/unit/test_access_guarda_identity_role.py). So ENCOLHE: ao trocar a checagem por require_permission/authorize_* baixe o numero (ou remova a entrada) e o teto_total. Nunca adicione arquivo novo nem aumente numero; decida acesso por app.access. security.py e app/access/ ficam fora da contagem; users.py esta em zero.",
-  "teto_total": 15,
+  "teto_total": 11,
   "arquivos": {
     "app/analytics_dashboard.py": 1,
     "app/athlete_hr_zones.py": 1,
     "app/cardio_recommendations.py": 1,
-    "app/nutrition_access.py": 10,
-    "app/nutrition_checkins.py": 1,
+    "app/nutrition_access.py": 7,
     "app/nutrition_foods.py": 1
   }
 }

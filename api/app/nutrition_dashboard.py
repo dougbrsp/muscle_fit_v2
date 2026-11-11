@@ -29,8 +29,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import dashboard as dash
@@ -57,7 +59,7 @@ from .nutrition_targets_service import (
     read_targets,
     target_row_public,
 )
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
@@ -142,11 +144,12 @@ def plan_versions(planos: Any) -> list[dash.PlanVersion]:
 
 @router.get("/today")
 def get_today(
+    request: Request,
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "ver")),
 ):
     """Meta, total e balanço de HOJE do aluno (o `GET /nutrition/days/{date}` sem refeições, sem treino e sem semana)."""
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "ver", user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -172,11 +175,12 @@ def get_today(
 
 @router.get("/dashboard")
 def get_dashboard(
+    request: Request,
     days: Optional[int] = Query(default=None),
     user_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.diario", "ver")),
 ):
-    aluno = resolve_target_user(identity, user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "ver", user_id)
     janela = dash.normalize_window_days(days)
     with _connect() as conn:
         with conn.cursor() as cur:

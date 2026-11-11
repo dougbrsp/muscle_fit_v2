@@ -35,6 +35,10 @@ O que este teste NAO prova:
 - rotas nao convertidas (sem permissao e fora de `so_autenticacao`) e a existencia, no
   retrato, de rota criada depois dele (falha pedindo regeneracao proposital).
 
+Escopo da paridade: ela cobre o guard de ENTRADA (credencial + permissao declarada). A regra de
+terceiros (escopo proprios x alunos x todos, `authorize_self_or_all`) e provada em
+`test_access_catalogo_e_resolucao.py` e nos testes HTTP de cada rota.
+
 Rodar: cd api && python -m pytest tests/unit/test_access_paridade_guards.py
 """
 
@@ -63,7 +67,7 @@ from tests.support.access_retrato import (
     classificar_rotas_vivas,
     guard_antigo_permitia,
 )
-from tests.unit.test_access_guarda_cobertura_rotas import _all_project_routes
+from tests.unit.test_access_guarda_cobertura_rotas import _all_project_routes, _iter_api_routes
 
 ALLOWLIST_PATH = Path(__file__).with_name("access_cobertura_allowlist.json")
 
@@ -434,10 +438,42 @@ ROTAS_2B = {
 }
 
 
-def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+MODULOS_2D1 = {
+    "app.nutrition_plans": "nutricao.plano",
+    "app.nutrition_plan_suggestion": "ia.nutricao",
+    "app.nutrition_checkins": "nutricao.checkin",
+    "app.nutrition_days": "nutricao.diario",
+    "app.nutrition_dashboard": "nutricao.diario",
+    "app.nutrition_meals": "nutricao.diario",
+    "app.nutrition_meal_parse": "ia.nutricao",
+    "app.nutrition_meal_photo": "ia.nutricao",
+}
+ACAO_POR_METODO = {"GET": "ver", "POST": "editar", "PUT": "editar", "DELETE": "excluir"}
+
+
+def _rotas_2d1() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas dos 8 modulos de nutricao do 2D-1 que declaram permissao."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
     com_permissao, _ = _rotas_convertidas()
-    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B}
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") not in MODULOS_2D1:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave in com_permissao:
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
+def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
+    """Rotas com permissao fora do 2B e do 2D-1: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    com_permissao, _ = _rotas_convertidas()
+    d1 = _rotas_2d1()
+    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B and r not in d1}
 
 
 def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
@@ -445,9 +481,10 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_115_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2():
+def test_paridade_cobre_as_154_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 115
+    assert len(com_permissao) == 154
+    assert len(_rotas_2d1()) == 39
     assert ROTAS_2B <= set(com_permissao)
     assert len(_convertidas_2c1()) == 34 + 72  # 2C-1 + 2C-2 (as 72 tem caso manual)
     assert len([r for r in _convertidas_2c1() if r not in CASOS_MANUAIS]) == 34
@@ -534,3 +571,60 @@ def test_paridade_das_72_rotas_do_2c2_sem_divergencia_de_acesso():
     for rota, declaradas in sorted(_convertidas_2c2().items()):
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2C-2:" + chr(10) + chr(10).join(problemas[:30])
+
+
+# ---------------------------------------------------------------------------
+# Lote 2D-1: nutricao (39 rotas de classe `autenticado`, decisao automatica)
+# ---------------------------------------------------------------------------
+
+
+def test_o_conjunto_convertido_no_2d1_e_exatamente_o_das_39_rotas_dos_8_modulos():
+    rotas = _rotas_2d1()
+    assert len(rotas) == 39
+    contagem = {}
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo in MODULOS_2D1:
+                contagem[modulo] = contagem.get(modulo, 0) + len(route.methods - {"HEAD", "OPTIONS"})
+    # Toda rota viva dos 8 modulos declara permissao (nenhuma ficou de fora do lote).
+    assert sum(contagem.values()) == 39, contagem
+    assert contagem == {
+        "app.nutrition_plans": 12, "app.nutrition_plan_suggestion": 2, "app.nutrition_checkins": 6,
+        "app.nutrition_days": 7, "app.nutrition_dashboard": 2, "app.nutrition_meals": 6,
+        "app.nutrition_meal_parse": 2, "app.nutrition_meal_photo": 2,
+    }
+    retrato = carregar_retrato()["rotas"]
+    for rota in rotas:
+        assert retrato[rota]["classe"] == "autenticado", rota
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+
+
+def test_as_39_rotas_do_2d1_declaram_o_recurso_do_contrato_com_a_acao_do_metodo():
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    problemas: list[str] = []
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            recurso = MODULOS_2D1.get(getattr(route.endpoint, "__module__", ""))
+            if recurso is None:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                esperado = [(recurso, ACAO_POR_METODO[metodo])]
+                declarado = _rotas_convertidas()[0].get(chave)
+                if declarado != esperado:
+                    problemas.append(f"{chave}: declara {declarado}, contrato {esperado}")
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_paridade_das_39_rotas_do_2d1_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota, declaradas in sorted(_rotas_2d1().items()):
+        problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
+    assert not problemas, "Divergencia de acesso no 2D-1:" + chr(10) + chr(10).join(problemas[:30])

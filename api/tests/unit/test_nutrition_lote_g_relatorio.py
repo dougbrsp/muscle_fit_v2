@@ -29,6 +29,8 @@ from tests.unit.test_nutrition_lote_g_fechamento_correcao import _ingestao_do_di
 from tests.unit.test_nutrition_modo_adaptativo_servico import ALUNO, HOJE, _historico
 from tests.unit.test_reports_markdown_renderer import full_report_data
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 
 def _estados(db):  # noqa: F811 - fixture do pytest importada
     cursor = db.conn().cursor()

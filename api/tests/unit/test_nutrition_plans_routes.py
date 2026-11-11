@@ -26,6 +26,8 @@ from app.nutrition_schema import tables_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_fake import FakeCursor, FakeNutritionDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 17)  # sábado: a semana atual vai de 12/10 a 18/10
 ALUNO = 2
 

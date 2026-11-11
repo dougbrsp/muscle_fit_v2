@@ -27,6 +27,8 @@ from app.domain.nutrition.daily_target import TargetWindow
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_dashboard_fake import FakeDashboardDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 11, 5)  # quinta-feira
 ALUNO, OUTRO, ADMIN = 2, 4, 1
 SYNC_UTC = datetime(2026, 11, 5, 9, 0)  # 06:00 em São Paulo: confirma até o dia 04

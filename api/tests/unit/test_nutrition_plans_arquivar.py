@@ -16,6 +16,8 @@ from app import nutrition_targets_service as svc
 from app.domain.nutrition.plan import is_archivable_plan
 from tests.unit.test_nutrition_plans_routes import ALUNO, _client, db  # noqa: F401 (fixture reaproveitada)
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ANTES = datetime(2026, 9, 1, 12, 0, 0)
 
 
@@ -92,12 +94,12 @@ def test_plano_inexistente_404(cenario):
 
 def test_dono_arquiva_o_proprio_e_usuario_comum_nao_alcanca_o_alheio(cenario):
     banco, _, _, substituido = cenario
-    outro = _client("user", user_id=3)
+    outro = _client("regular", user_id=3)
     for rota in ("archive", "unarchive"):
         resposta = outro.post(f"/nutrition/plans/{substituido}/{rota}")
         assert resposta.status_code == 404 and resposta.json()["detail"]["error"] == "plan_not_found"
     assert banco.plans[substituido]["archived_at"] is None
-    dono = _client("user", user_id=ALUNO)
+    dono = _client("regular", user_id=ALUNO)
     assert dono.post(f"/nutrition/plans/{substituido}/archive").status_code == 200
 
 

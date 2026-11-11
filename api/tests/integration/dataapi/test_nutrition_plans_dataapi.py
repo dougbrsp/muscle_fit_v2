@@ -50,22 +50,24 @@ def _limpar(raw) -> None:
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_nutrition_tables_cache()
     reset_body_measurements_table_cache()
     with raw.cursor() as cur:
         cur.execute("SET FOREIGN_KEY_CHECKS = 0")
-        for tabela in (*TABELAS, "users"):
+        for tabela in (*TABELAS, "user_access_groups", "users"):
             cur.execute(f"TRUNCATE TABLE {tabela}")
         cur.execute("SET FOREIGN_KEY_CHECKS = 1")
         ids = {}
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_nutri', 'x', 'admin')")
         ids["admin"] = cur.lastrowid
+        conceder_grupo(cur, ids["admin"], "admin")
         cur.execute(
             "INSERT INTO users (username, password_hash, role, sex, birth_date, height_cm, activity_level) "
             "VALUES ('aluno_nutri', 'x', 'regular', 'male', '1990-01-01', 180.0, 'moderate')"
         )
         ids["aluno"] = cur.lastrowid
+        conceder_grupo(cur, ids["aluno"], "regular")
     raw.commit()
     return ids
 

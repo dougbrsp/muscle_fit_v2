@@ -64,7 +64,7 @@ def _limpar(raw) -> None:
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_nutrition_tables_cache()
     reset_body_measurements_table_cache()
     _limpar(raw)
@@ -73,6 +73,7 @@ def usuarios(raw):
         cur.execute(f"DELETE FROM users WHERE username IN ({', '.join(['%s'] * len(USUARIOS))})", USUARIOS)
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_diario', 'x', 'admin')")
         ids["admin"] = cur.lastrowid
+        conceder_grupo(cur, ids["admin"], "admin")
         for nome in USUARIOS[1:]:
             cur.execute(
                 "INSERT INTO users (username, password_hash, role, sex, birth_date, height_cm, activity_level) "
@@ -80,6 +81,7 @@ def usuarios(raw):
                 (nome,),
             )
             ids[nome.split("_")[0]] = cur.lastrowid
+            conceder_grupo(cur, ids[nome.split("_")[0]], "regular")
     raw.commit()
     yield ids
     _limpar(raw)
