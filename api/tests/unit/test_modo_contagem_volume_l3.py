@@ -23,7 +23,7 @@ from app import workout_plan_templates as wpt
 
 from app.intelligence import methodology_volume as mv
 from app.intelligence import methodology_volume_service as svc
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from tests.support import methodology_paridade as paridade
 from tests.support.methodology_paridade import grupo, seed_volume_classes
 
@@ -283,7 +283,6 @@ def _api_modelos() -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=1, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 
@@ -316,18 +315,16 @@ class _Conn:
 
 
 def test_copia_explicita_recusa_o_modo_default(monkeypatch):
-    monkeypatch.setattr(mvc, "_require_admin_identity", lambda *a: None)
     for modo in (None, PRIMARIO.value):
         with pytest.raises(HTTPException) as erro:
-            mvc.copy_volume_class_from_default_mode(1, counting_mode=modo, x_api_token=None, musclefit_session=None)
+            mvc.copy_volume_class_from_default_mode(1, counting_mode=modo)
         assert erro.value.status_code == 422
 
 
 def test_copia_explicita_so_preenche_o_que_falta_e_marca_a_copia(monkeypatch):
     cur = _Cur({"FROM muscle_volume_classes WHERE id": [{"id": 1, "name": "Novo"}]})
-    monkeypatch.setattr(mvc, "_require_admin_identity", lambda *a: None)
     monkeypatch.setattr(mvc, "_connect", lambda: _Conn(cur))
-    mvc.copy_volume_class_from_default_mode(1, counting_mode=PONDERADO.value, x_api_token=None, musclefit_session=None)
+    mvc.copy_volume_class_from_default_mode(1, counting_mode=PONDERADO.value)
     inserts = [(sql, p) for sql, p in cur.chamadas if sql.startswith("INSERT")]
     assert len(inserts) == 2
     (faixas_sql, faixas_p), (meta_sql, meta_p) = inserts

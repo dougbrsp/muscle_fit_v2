@@ -10,13 +10,14 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Cookie, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 
 from . import equipment_recommender, security
+from .access import owns_row_or_all, require_additional_permission, require_permission
+from .access.deps import permissions_for_request
 from .advanced_techniques import ensure_valid_codes as ensure_valid_technique_codes
 from .db import DataApiError, get_conn
-from .security import resolve_identity_from_credentials as _require_identity
 from .request_models import GymCreateIn
 from .gym_equipment_sync import sync_gym_equipment_for_gym
 
@@ -147,19 +148,6 @@ def _connect():
         )
 
 
-def _require_admin_identity(
-    x_api_token: Optional[str],
-    musclefit_session: Optional[str] = None,
-) -> security.Identity:
-    return _assert_admin(_require_identity(x_api_token, musclefit_session))
-
-
-def _assert_admin(identity: security.Identity) -> security.Identity:
-    if identity.role != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
-    return identity
-
-
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
@@ -278,13 +266,11 @@ def _delete_photo(key: str) -> None:
 @router.get("/gyms")
 def list_gyms(
     active_only: bool = Query(default=True),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
     # Regra especial (Multiusuario Parte 4): leitura de /gyms permanece
     # COMPARTILHADA entre todos os usuarios, sem filtro por owner_user_id -
     # so a escrita muda. Ver CLAUDE.md.
-    _require_identity(x_api_token, musclefit_session)
     with _connect() as conn:
         items = list_gym_items(conn, active_only=active_only)
 
@@ -306,11 +292,8 @@ def list_gym_items(conn, *, active_only: bool = True) -> List[Dict[str, Any]]:
 @router.get("/gyms/{gym_id}")
 def get_gym(
     gym_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
-    _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM gyms WHERE id = %s", (gym_id,))
@@ -325,10 +308,8 @@ def get_gym(
 @router.post("/gyms")
 def create_gym(
     payload: GymCreateIn,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
     item = payload.model_dump()
     name = str(item.get("name") or "").strip()
     if not name:
@@ -360,23 +341,31 @@ def create_gym(
     return {"status": "ok", "item": _row_jsonable(row)}
 
 
-def _assert_gym_writable(cursor, gym_id: int, identity: security.Identity) -> None:
-    """Regra de dono (Multiusuario Parte 4): permite escrever se
-    owner_user_id == identity.user_id OU identity.role == 'admin'. Academias
-    legadas com owner_user_id NULL (dado orfao da Parte 1, sem backfill) so
-    podem ser editadas/excluidas por admin - nao deixa qualquer usuario
-    reivindicar uma academia orfa. 404 (nao 403) para nao vazar existencia."""
+def _assert_gym_writable(
+    cursor,
+    gym_id: int,
+    request: Request,
+    identity: security.Identity,
+    action: str,
+) -> None:
+    """Posse da linha (RBAC, ADR 0011): escreve se a academia e do usuario
+    (`owner_user_id == identity.user_id`) ou se `treino.academias` na `action`
+    da rota tem escopo `todos`. Academia legada com owner_user_id NULL (dado
+    orfao, sem backfill) so passa com `todos`. 404 (nao 403) para nao vazar
+    existencia."""
     cursor.execute("SELECT owner_user_id FROM gyms WHERE id = %s", (gym_id,))
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Academia não encontrada.")
 
-    owner_user_id = row.get("owner_user_id")
-    if identity.role == "admin":
-        return
-    if owner_user_id is not None and owner_user_id == identity.user_id:
-        return
-    raise HTTPException(status_code=404, detail="Academia não encontrada.")
+    if not owns_row_or_all(
+        identity,
+        permissions_for_request(request, identity),
+        "treino.academias",
+        action,
+        row.get("owner_user_id"),
+    ):
+        raise HTTPException(status_code=404, detail="Academia não encontrada.")
 
 
 ADMIN_ONLY_GYM_FIELDS = ("name", "opens_at", "closes_at")
@@ -385,18 +374,16 @@ ADMIN_ONLY_GYM_FIELDS = ("name", "opens_at", "closes_at")
 @router.put("/gyms/{gym_id}")
 def update_gym(
     gym_id: int,
+    request: Request,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     # name/opens_at/closes_at sao admin-only, independente de quem e dono da
     # academia; os demais campos ja aceitos continuam usando
-    # _assert_gym_writable (dono OU admin) sem regressao.
+    # _assert_gym_writable (dono OU escopo `todos`) sem regressao.
     has_admin_only_field = any(field in item for field in ADMIN_ONLY_GYM_FIELDS)
     if has_admin_only_field:
-        identity = _require_admin_identity(x_api_token, musclefit_session)
+        require_additional_permission(request, identity, "admin.catalogos", "editar")
 
     opens_at = _validate_time_field(item["opens_at"], "opens_at") if "opens_at" in item else None
     closes_at = _validate_time_field(item["closes_at"], "closes_at") if "closes_at" in item else None
@@ -409,7 +396,7 @@ def update_gym(
 
     with _connect() as conn:
         with conn.cursor() as cursor:
-            _assert_gym_writable(cursor, gym_id, identity)
+            _assert_gym_writable(cursor, gym_id, request, identity, "editar")
 
             if "opens_at" in item or "closes_at" in item:
                 # opens_at/closes_at aceitam null explicito para limpar o
@@ -459,14 +446,12 @@ def update_gym(
 @router.delete("/gyms/{gym_id}")
 def deactivate_gym(
     gym_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    request: Request,
+    identity: security.Identity = Depends(require_permission("treino.academias", "excluir")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
-            _assert_gym_writable(cursor, gym_id, identity)
+            _assert_gym_writable(cursor, gym_id, request, identity, "excluir")
 
             cursor.execute("UPDATE gyms SET is_active = 0 WHERE id = %s", (gym_id,))
             if cursor.rowcount == 0:
@@ -479,11 +464,8 @@ def deactivate_gym(
 def upload_gym_logo(
     gym_id: int,
     file: UploadFile = File(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "editar")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id FROM gyms WHERE id = %s", (gym_id,))
@@ -502,12 +484,9 @@ def upload_gym_logo(
 @router.get("/gyms/{gym_id}/logo")
 def get_gym_logo(
     gym_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
     # Logo nao e informacao sensivel: liberado a qualquer usuario autenticado.
-    _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT logo_path FROM gyms WHERE id = %s", (gym_id,))
@@ -522,11 +501,8 @@ def get_gym_logo(
 @router.delete("/gyms/{gym_id}/logo")
 def delete_gym_logo(
     gym_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "excluir")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT logo_path FROM gyms WHERE id = %s", (gym_id,))
@@ -551,13 +527,10 @@ def delete_gym_logo(
 def list_equipment(
     query: str = Query(default=""),
     active_only: bool = Query(default=True),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
     # Catalogo global (Multiusuario Parte 4): leitura livre a qualquer
     # usuario autenticado.
-    _require_identity(x_api_token, musclefit_session)
-
     where = []
     params: List[Any] = []
 
@@ -580,12 +553,9 @@ def list_equipment(
 @router.post("/equipment")
 def create_equipment(
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "editar")),
 ):
     # Catalogo global: escrita restrita a admin.
-    _require_admin_identity(x_api_token, musclefit_session)
-
     name = str(item.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name é obrigatório.")
@@ -623,11 +593,8 @@ def create_equipment(
 def update_equipment(
     equipment_id: int,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "editar")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM equipment WHERE id = %s", (equipment_id,))
@@ -667,11 +634,8 @@ def update_equipment(
 @router.delete("/equipment/{equipment_id}")
 def deactivate_equipment(
     equipment_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "excluir")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("UPDATE equipment SET is_active = 0 WHERE id = %s", (equipment_id,))
@@ -685,11 +649,8 @@ def deactivate_equipment(
 def upload_equipment_photo(
     equipment_id: int,
     file: UploadFile = File(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "editar")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id FROM equipment WHERE id = %s", (equipment_id,))
@@ -708,11 +669,8 @@ def upload_equipment_photo(
 @router.get("/equipment/{equipment_id}/photo")
 def get_equipment_photo(
     equipment_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
-    _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT photo_path FROM equipment WHERE id = %s", (equipment_id,))
@@ -727,11 +685,8 @@ def get_equipment_photo(
 @router.delete("/equipment/{equipment_id}/photo")
 def delete_equipment_photo(
     equipment_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("admin.catalogos", "excluir")),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT photo_path FROM equipment WHERE id = %s", (equipment_id,))
@@ -758,11 +713,8 @@ def list_gym_equipment(
     mapping_id: Optional[int] = Query(default=None),
     primary_group: Optional[str] = Query(default=None),
     active_only: bool = Query(default=True),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
-    _require_identity(x_api_token, musclefit_session)
-
     where = []
     params: List[Any] = []
 
@@ -827,12 +779,10 @@ def list_gym_equipment(
 
 @router.post("/gym-equipment")
 def create_gym_equipment(
+    request: Request,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     gym_id = item.get("gym_id")
     mapping_id = item.get("mapping_id")
     equipment_id = item.get("equipment_id")
@@ -843,7 +793,7 @@ def create_gym_equipment(
     with _connect() as conn:
         with conn.cursor() as cursor:
             # SEG-03: so dono da academia ou admin escreve no vinculo.
-            _assert_gym_equipment_catalog_writable(cursor, gym_id, identity)
+            _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "editar")
             cursor.execute("SELECT id FROM equipment WHERE id = %s", (equipment_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="equipment_id não encontrado no catálogo.")
@@ -869,12 +819,10 @@ def create_gym_equipment(
 @router.put("/gym-equipment/{link_id}")
 def update_gym_equipment(
     link_id: int,
+    request: Request,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, gym_id FROM gym_equipment WHERE id = %s", (link_id,))
@@ -882,7 +830,7 @@ def update_gym_equipment(
             if not link:
                 raise HTTPException(status_code=404, detail="Associação não encontrada.")
             # SEG-03: so dono da academia ou admin escreve no vinculo.
-            _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], identity)
+            _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], request, identity, "editar")
 
             cursor.execute(
                 """
@@ -902,11 +850,9 @@ def update_gym_equipment(
 @router.delete("/gym-equipment/{link_id}")
 def deactivate_gym_equipment(
     link_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    request: Request,
+    identity: security.Identity = Depends(require_permission("treino.academias", "excluir")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT gym_id FROM gym_equipment WHERE id = %s", (link_id,))
@@ -914,7 +860,7 @@ def deactivate_gym_equipment(
             if not link:
                 raise HTTPException(status_code=404, detail="Associação não encontrada.")
             # SEG-03: so dono da academia ou admin desativa o vinculo.
-            _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], identity)
+            _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], request, identity, "excluir")
             cursor.execute("UPDATE gym_equipment SET is_active = 0 WHERE id = %s", (link_id,))
 
     return {"status": "ok", "id": link_id, "is_active": False}
@@ -941,8 +887,7 @@ def recommend_gym_equipment(
     primary_group: Optional[str] = Query(default=None),
     exclude_equipment_id: Optional[int] = Query(default=None),
     required_technique: Optional[str] = Query(default=None, description=_REQUIRED_TECHNIQUE_DOC),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
     """Sugere equipamento para o grupo muscular na academia informada, no
     ranking DO USUARIO corrente (PR-08): estrelas do PAR exercicio+equipamento DESC (ausente = 3), depois o
@@ -968,8 +913,6 @@ def recommend_gym_equipment(
     segurança só INFORMA: itens só saem da lista (para `excluded[]`) quando
     `required_technique` é passado.
     """
-    identity = _require_identity(x_api_token, musclefit_session)
-
     if not mapping_id and not primary_group:
         raise HTTPException(status_code=400, detail="Informe mapping_id ou primary_group.")
     technique = _normalize_required_technique(required_technique)
@@ -1017,8 +960,7 @@ def recommend_gym_equipment(
 def recommend_gym_equipment_all(
     gym_id: int = Query(...),
     required_technique: Optional[str] = Query(default=None, description=_REQUIRED_TECHNIQUE_DOC),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
     """Mesma lógica de /gym-equipment/recommend (ranking do usuário corrente +
     segurança do par), mas para TODOS os grupos musculares de uma vez em uma
@@ -1033,7 +975,6 @@ def recommend_gym_equipment_all(
     com `required_technique`). Grupos com `has_equipment_for_group = false`
     não devem ser sugeridos nessa academia.
     """
-    identity = _require_identity(x_api_token, musclefit_session)
     technique = _normalize_required_technique(required_technique)
 
     with _connect() as conn:
@@ -1056,11 +997,8 @@ def list_gym_equipment_catalog(
     gym_id: Optional[int] = Query(default=None),
     equipment_id: Optional[int] = Query(default=None),
     active_only: bool = Query(default=True),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "ver")),
 ):
-    _require_identity(x_api_token, musclefit_session)
-
     where = []
     params: List[Any] = []
 
@@ -1096,34 +1034,39 @@ def list_gym_equipment_catalog(
     return {"items": _rows_jsonable(rows)}
 
 
-def _assert_gym_equipment_catalog_writable(cursor, gym_id: int, identity: security.Identity) -> None:
-    """Checagem de dono para POST/DELETE /gym-equipment-catalog (Multiusuario
-    Parte 4): permite se a academia pertence ao usuario (owner_user_id ==
-    identity.user_id) OU identity.role == 'admin'; 403 caso contrario
-    (diferente de _assert_gym_writable, que usa 404 - aqui o gym_id ja veio
-    explicito no payload do chamador, entao nao ha risco de vazar
-    existencia)."""
+def _assert_gym_equipment_catalog_writable(
+    cursor,
+    gym_id: int,
+    request: Request,
+    identity: security.Identity,
+    action: str,
+) -> None:
+    """Posse da linha para POST/DELETE /gym-equipment-catalog (e vinculos de
+    /gym-equipment): dono da academia ou `treino.academias` na `action` da rota
+    com escopo `todos`; 403 caso contrario (diferente de _assert_gym_writable,
+    que usa 404 - aqui o gym_id ja veio explicito no payload do chamador, entao
+    nao ha risco de vazar existencia)."""
     cursor.execute("SELECT owner_user_id FROM gyms WHERE id = %s", (gym_id,))
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="gym_id não encontrado.")
 
-    owner_user_id = row.get("owner_user_id")
-    if identity.role == "admin":
-        return
-    if owner_user_id is not None and owner_user_id == identity.user_id:
-        return
-    raise HTTPException(status_code=403, detail="Você não tem permissão para gerenciar equipamentos desta academia.")
+    if not owns_row_or_all(
+        identity,
+        permissions_for_request(request, identity),
+        "treino.academias",
+        action,
+        row.get("owner_user_id"),
+    ):
+        raise HTTPException(status_code=403, detail="Você não tem permissão para gerenciar equipamentos desta academia.")
 
 
 @router.post("/gym-equipment-catalog")
 def create_gym_equipment_catalog(
+    request: Request,
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     gym_id = item.get("gym_id")
     equipment_id = item.get("equipment_id")
 
@@ -1132,7 +1075,7 @@ def create_gym_equipment_catalog(
 
     with _connect() as conn:
         with conn.cursor() as cursor:
-            _assert_gym_equipment_catalog_writable(cursor, gym_id, identity)
+            _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "editar")
 
             cursor.execute("SELECT id FROM equipment WHERE id = %s", (equipment_id,))
             if not cursor.fetchone():
@@ -1161,11 +1104,9 @@ def create_gym_equipment_catalog(
 @router.delete("/gym-equipment-catalog/{link_id}")
 def deactivate_gym_equipment_catalog(
     link_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
+    request: Request,
+    identity: security.Identity = Depends(require_permission("treino.academias", "excluir")),
 ):
-    identity = _require_identity(x_api_token, musclefit_session)
-
     with _connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT gym_id FROM gym_equipment_catalog WHERE id = %s", (link_id,))
@@ -1174,7 +1115,7 @@ def deactivate_gym_equipment_catalog(
                 raise HTTPException(status_code=404, detail="Associação não encontrada.")
             gym_id = row["gym_id"]
 
-            _assert_gym_equipment_catalog_writable(cursor, gym_id, identity)
+            _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "excluir")
 
             cursor.execute("UPDATE gym_equipment_catalog SET is_active = 0 WHERE id = %s", (link_id,))
 

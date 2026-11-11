@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from starlette.requests import Request
 
 # Importados no topo: `use_dataapi` so troca o backend de modulos ja importados.
 from app.request_models import GymCreateIn, SleepMetricsUpdateIn
@@ -46,7 +47,7 @@ from tests.support.sql_capture import ddl, recorded_sql  # noqa: E402
 
 
 @pytest.fixture
-def grupo_b_env(raw):
+def grupo_b_env(raw, conceder_grupo):
     """Estado de producao: tabelas pela 027 (e a de cardio pela 025, lida pelo
     relatorio), na conexao neutra e FORA da captura - este fixture precisa vir
     antes de `db_backend` na assinatura do teste."""
@@ -65,6 +66,8 @@ def grupo_b_env(raw):
             (f"grupob-{tag}",),
         )
         env["user"] = cur.lastrowid
+        # RBAC: a identidade de sessao so tem concessoes pelo grupo (user_access_groups).
+        conceder_grupo(cur, env["user"], "admin")
         cur.execute(
             "INSERT INTO devices (user_id, device_name, token_hash) VALUES (%s, %s, %s)",
             (env["user"], f"GB relogio {tag}", os.urandom(32).hex()),
@@ -105,11 +108,17 @@ def grupo_b_env(raw):
             cur.execute("DELETE FROM exercise_muscle_contributions WHERE exercise_id = %s", (exercise_id,))
             cur.execute("DELETE FROM exercise_catalog WHERE id = %s", (exercise_id,))
         cur.execute("DELETE FROM exercise_zepp_mappings WHERE id = %s", (env["zepp_mapping"],))
+        cur.execute("DELETE FROM user_access_groups WHERE user_id = %s", (env["user"],))
         cur.execute("DELETE FROM users WHERE id = %s", (env["user"],))
 
 
 def _identity(env) -> Identity:
     return Identity(user_id=env["user"], role="admin", source="session")
+
+
+def _request() -> Request:
+    """Request minimo para chamar handlers que recebem `request` direto (cache de permissoes em `state`)."""
+    return Request({"type": "http", "method": "PUT", "path": "/", "headers": []})
 
 
 def _count(env, sql: str, params) -> int:
@@ -176,7 +185,6 @@ def _devices_revoke(env, monkeypatch):
 
 
 def _as_admin_catalog(env, monkeypatch):
-    monkeypatch.setattr(exercise_mapping_catalog, "_require_identity", lambda *a, **k: _identity(env))
     # Reclassificacao pos-escrita e outro fluxo (coberto em seus proprios testes).
     monkeypatch.setattr(exercise_mapping_catalog, "reclassify_after_catalog_change", lambda *a, **k: None)
 
@@ -190,8 +198,6 @@ def _catalog_list(env, monkeypatch):
         active_only=True,
         limit=100,
         offset=0,
-        x_api_token=None,
-        musclefit_session=None,
     )
     assert env["exercise"] in _ids(out["items"])
 
@@ -209,8 +215,6 @@ def _catalog_create(env, monkeypatch):
     _as_admin_catalog(env, monkeypatch)
     out = exercise_mapping_catalog.create_or_upsert_mapping(
         item={"exercise_name": f"GB exercicio {env['tag']}", "amazfit_name": f"GB amazfit {env['tag']}"},
-        x_api_token=None,
-        musclefit_session=None,
     )
     assert out["status"] == "ok" and out["item"]["id"] == env["exercise"]
     assert out["item"]["amazfit_name"] == f"GB amazfit {env['tag']}"
@@ -221,8 +225,6 @@ def _catalog_update(env, monkeypatch):
     out = exercise_mapping_catalog.update_mapping(
         env["exercise"],
         item={"exercise_name": f"GB editado {env['tag']}", "amazfit_name": f"GB amazfit {env['tag']}"},
-        x_api_token=None,
-        musclefit_session=None,
     )
     assert out["status"] == "ok" and out["item"]["exercise_name"] == f"GB editado {env['tag']}"
     assert _count(env, "SELECT COUNT(*) FROM exercise_catalog WHERE id = %s AND name = %s", (env["exercise"], f"GB editado {env['tag']}")) == 1
@@ -232,7 +234,7 @@ def _catalog_deactivate(env, monkeypatch):
     _as_admin_catalog(env, monkeypatch)
     # DELETE inativa no catalogo canonico (mesma fonte de GET/POST/PUT), nao
     # mais no legado exercise_zepp_mappings, que fica intocado.
-    out = exercise_mapping_catalog.deactivate_mapping(env["exercise"], x_api_token=None, musclefit_session=None)
+    out = exercise_mapping_catalog.deactivate_mapping(env["exercise"])
     assert out["is_active"] is False
     assert _count(env, "SELECT COUNT(*) FROM exercise_catalog WHERE id = %s AND is_active = 0", (env["exercise"],)) == 1
     assert _count(env, "SELECT COUNT(*) FROM exercise_zepp_mappings WHERE id = %s AND is_active = 0", (env["zepp_mapping"],)) == 0
@@ -242,21 +244,20 @@ def _catalog_deactivate(env, monkeypatch):
 
 
 def _gyms_list(env, monkeypatch):
-    monkeypatch.setattr(gyms, "_require_identity", lambda *a, **k: _identity(env))
-    assert env["gym"] in _ids(gyms.list_gyms(active_only=True, x_api_token=None, musclefit_session=None)["items"])
+    assert env["gym"] in _ids(gyms.list_gyms(active_only=True, identity=_identity(env))["items"])
 
 
 def _gyms_create(env, monkeypatch):
-    monkeypatch.setattr(gyms, "_require_identity", lambda *a, **k: _identity(env))
     name = f"GB academia nova {env['tag']}"
-    out = gyms.create_gym(payload=GymCreateIn(name=name, notes="nova"), x_api_token=None, musclefit_session=None)
+    out = gyms.create_gym(payload=GymCreateIn(name=name, notes="nova"), identity=_identity(env))
     assert out["item"]["name"] == name
 
 
 def _gyms_update(env, monkeypatch):
-    monkeypatch.setattr(gyms, "_require_identity", lambda *a, **k: _identity(env))
     name = f"GB academia editada {env['tag']}"
-    out = gyms.update_gym(env["gym"], item={"name": name, "notes": "editada"}, x_api_token=None, musclefit_session=None)
+    out = gyms.update_gym(
+        env["gym"], request=_request(), item={"name": name, "notes": "editada"}, identity=_identity(env)
+    )
     assert out["item"]["name"] == name and out["item"]["notes"] == "editada"
 
 

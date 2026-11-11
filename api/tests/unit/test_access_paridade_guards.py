@@ -67,9 +67,116 @@ from tests.unit.test_access_guarda_cobertura_rotas import _all_project_routes
 
 ALLOWLIST_PATH = Path(__file__).with_name("access_cobertura_allowlist.json")
 
+# Lote 2C-2 (academias e catalogos, 72 rotas `identidade_no_corpo`). Decisao do guard de
+# ENTRADA ANTIGO provada a mao: o guard de `gyms.py`/`exercise_*`/`muscle_volume_classes.py`/
+# `equipment_exercises.py` era `_require_identity` (= `resolve_identity_from_credentials`),
+# que aceita qualquer credencial valida (sessao, dispositivo, token mestre) de qualquer papel;
+# a checagem de papel vinha depois, no handler, e e lida do campo `checagem_no_handler` do
+# retrato congelado:
+# - sem checagem no handler, ou so `identity.role` de dono-ou-admin (POST `/gyms`,
+#   PUT/DELETE `/gyms/{id}`, escritas de `/gym-equipment` e `/gym-equipment-catalog`): o guard
+#   de entrada aceitava qualquer papel -> "qualquer autenticado". A posse da linha (dono ou
+#   escopo `todos`) e provada em testes HTTP, nao aqui;
+# - `_require_admin_identity` no handler: so admin (token mestre resolve para admin).
+# PUT `/gyms/{id}` e o caso misto: o retrato lista `_require_admin_identity` porque campos
+# admin-only (name/opens_at/closes_at) a exigiam; a paridade cobre so o guard de entrada
+# (qualquer autenticado). A exigencia de `admin.catalogos` para esses campos vive no handler
+# (`require_additional_permission`) e e coberta por teste HTTP.
+_ROTAS_2C2_QUALQUER_AUTENTICADO = (
+    "DELETE /gym-equipment-catalog/{link_id}",
+    "DELETE /gym-equipment/{link_id}",
+    "DELETE /gyms/{gym_id}",
+    "GET /equipment",
+    "GET /equipment-exercises",
+    "GET /equipment-types",
+    "GET /equipment/{equipment_id}/photo",
+    "GET /exercise-external-mappings",
+    "GET /exercise-external-mappings/providers",
+    "GET /exercise-mapping-catalog",
+    "GET /exercise-mapping-catalog/export/markdown",
+    "GET /exercise-mapping-catalog/groups",
+    "GET /exercise-mapping-catalog/health",
+    "GET /exercise-mapping-catalog/{mapping_id}",
+    "GET /exercise-mapping-catalog/{mapping_id}/aliases",
+    "GET /exercises",
+    "GET /exercises/execution-descriptions/pending",
+    "GET /exercises/{exercise_id}",
+    "GET /exercises/{exercise_id}/aliases",
+    "GET /exercises/{exercise_id}/external-mappings",
+    "GET /gym-equipment",
+    "GET /gym-equipment-catalog",
+    "GET /gym-equipment/recommend",
+    "GET /gym-equipment/recommend-all",
+    "GET /gyms",
+    "GET /gyms/{gym_id}",
+    "GET /gyms/{gym_id}/logo",
+    "GET /muscle-contributions/{mapping_id}",
+    "GET /muscle-groups",
+    "GET /muscle-volume-classes",
+    "POST /gym-equipment",
+    "POST /gym-equipment-catalog",
+    "POST /gyms",
+    "PUT /gym-equipment/{link_id}",
+    "PUT /gyms/{gym_id}",
+)
+
+_ROTAS_2C2_SO_ADMIN = (
+    "DELETE /equipment-exercises/{link_id}",
+    "DELETE /equipment-types/{type_id}",
+    "DELETE /equipment/{equipment_id}",
+    "DELETE /equipment/{equipment_id}/photo",
+    "DELETE /exercise-mapping-catalog/aliases/{alias_id}",
+    "DELETE /exercise-mapping-catalog/{mapping_id}",
+    "DELETE /exercises/aliases/{alias_id}",
+    "DELETE /exercises/external-mappings/{mapping_row_id}",
+    "DELETE /gyms/{gym_id}/logo",
+    "DELETE /muscle-contributions/{mapping_id}/{muscle_group_id}",
+    "DELETE /muscle-volume-classes/{class_id}",
+    "POST /equipment",
+    "POST /equipment-exercises",
+    "POST /equipment-types",
+    "POST /equipment/{equipment_id}/photo",
+    "POST /exercise-mapping-catalog",
+    "POST /exercise-mapping-catalog/{mapping_id}/aliases",
+    "POST /exercises",
+    "POST /exercises/execution-descriptions/generate-batch",
+    "POST /exercises/{exercise_id}/aliases",
+    "POST /exercises/{exercise_id}/execution-description/generate",
+    "POST /exercises/{exercise_id}/external-mappings",
+    "POST /gyms/{gym_id}/logo",
+    "POST /muscle-groups",
+    "POST /muscle-volume-classes",
+    "POST /muscle-volume-classes/{class_id}/copy-from-default",
+    "PUT /equipment-exercises/{link_id}",
+    "PUT /equipment-types/{type_id}",
+    "PUT /equipment/{equipment_id}",
+    "PUT /exercise-mapping-catalog/{mapping_id}",
+    "PUT /exercises/external-mappings/{mapping_row_id}",
+    "PUT /exercises/{exercise_id}",
+    "PUT /muscle-contributions/{mapping_id}/{muscle_group_id}",
+    "PUT /muscle-groups/{muscle_group_id}",
+    "PUT /muscle-volume-classes/{class_id}",
+    "PUT /muscle-volume-classes/{class_id}/groups",
+    "PUT /muscle-volume-classes/{class_id}/ranges",
+)
+
+
+def _caso_qualquer_autenticado() -> Callable[[str, str], bool]:
+    """Guard antigo de entrada: qualquer papel e qualquer tipo de credencial valida."""
+    return lambda papel, tipo: True
+
+
+def _caso_so_admin() -> Callable[[str, str], bool]:
+    """Guard antigo `_require_admin_identity`: so papel admin (token mestre resolve para admin)."""
+    return lambda papel, tipo: papel == "admin"
+
+
 # rota -> funcao(papel, tipo_identidade) -> bool com a decisao do guard ANTIGO provada a
 # mao, para rotas convertidas cuja classe do retrato e `identidade_no_corpo`/`outra`.
-CASOS_MANUAIS: dict[str, Callable[[str, str], bool]] = {}
+CASOS_MANUAIS: dict[str, Callable[[str, str], bool]] = {
+    **{rota: _caso_qualquer_autenticado() for rota in _ROTAS_2C2_QUALQUER_AUTENTICADO},
+    **{rota: _caso_so_admin() for rota in _ROTAS_2C2_SO_ADMIN},
+}
 
 _CLASSES_DE_CREDENCIAL = ("usuario_sem_dispositivo", "dispositivo", "sessao")
 
@@ -328,6 +435,7 @@ ROTAS_2B = {
 
 
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
+    """Rotas com permissao fora do 2B: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B}
 
@@ -337,19 +445,21 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_43_rotas_com_permissao_9_do_2b_mais_34_do_2c1():
+def test_paridade_cobre_as_115_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 43
+    assert len(com_permissao) == 115
     assert ROTAS_2B <= set(com_permissao)
-    assert len(_convertidas_2c1()) == 34
+    assert len(_convertidas_2c1()) == 34 + 72  # 2C-1 + 2C-2 (as 72 tem caso manual)
+    assert len([r for r in _convertidas_2c1() if r not in CASOS_MANUAIS]) == 34
 
 
 def test_as_34_rotas_do_2c1_sao_admin_admin_ou_pt_ou_autenticado_com_decisao_automatica():
     retrato = carregar_retrato()["rotas"]
-    for rota in _convertidas_2c1():
+    convertidas = {r: p for r, p in _convertidas_2c1().items() if r not in CASOS_MANUAIS}
+    assert len(convertidas) == 34
+    for rota in convertidas:
         assert retrato[rota]["classe"] in ("admin", "admin_ou_pt", "autenticado"), rota
-        assert rota not in CASOS_MANUAIS, rota
-        assert divergencias(rota, retrato[rota]["classe"], _convertidas_2c1()[rota]) == [], rota
+        assert divergencias(rota, retrato[rota]["classe"], convertidas[rota]) == [], rota
 
 
 def test_get_training_types_e_negado_a_regular_e_permitido_a_pt_e_admin():
@@ -374,3 +484,53 @@ def test_leituras_de_catalogo_sao_permitidas_a_regular(rota):
     assert rota in _convertidas_2c1()
     for papel in ("regular", "personal_trainer", "admin"):
         assert _permitido(rota, papel) is True, (rota, papel)
+
+
+# ---------------------------------------------------------------------------
+# Lote 2C-2: academias e catalogos (72 rotas `identidade_no_corpo`, casos manuais)
+# ---------------------------------------------------------------------------
+
+
+def _convertidas_2c2() -> dict[str, list[tuple[str, str]]]:
+    com_permissao, _ = _rotas_convertidas()
+    retrato = carregar_retrato()["rotas"]
+    return {r: p for r, p in com_permissao.items() if retrato[r]["classe"] == "identidade_no_corpo"}
+
+
+def test_casos_manuais_sao_exatamente_as_72_rotas_identidade_no_corpo_convertidas():
+    assert set(CASOS_MANUAIS) == set(_convertidas_2c2())
+    assert len(CASOS_MANUAIS) == 72
+    assert not set(_ROTAS_2C2_QUALQUER_AUTENTICADO) & set(_ROTAS_2C2_SO_ADMIN)
+    assert len(_ROTAS_2C2_QUALQUER_AUTENTICADO) == 35 and len(_ROTAS_2C2_SO_ADMIN) == 37
+    assert len(set(_ROTAS_2C2_QUALQUER_AUTENTICADO) | set(_ROTAS_2C2_SO_ADMIN)) == 72
+
+
+def test_caso_so_admin_corresponde_a_require_admin_identity_no_retrato_e_nao_o_contradiz():
+    retrato = carregar_retrato()["rotas"]
+    for rota in _ROTAS_2C2_SO_ADMIN:
+        assert "_require_admin_identity" in retrato[rota]["checagem_no_handler"], rota
+    for rota in _ROTAS_2C2_QUALQUER_AUTENTICADO:
+        if rota == "PUT /gyms/{gym_id}":
+            continue  # caso misto documentado: so o guard de entrada e comparado
+        assert "_require_admin_identity" not in retrato[rota]["checagem_no_handler"], rota
+    # Toda rota do retrato que chamava `_require_admin_identity` e foi convertida e "so admin"
+    # (a unica excecao e o PUT de gyms, cujos campos admin-only ficam no handler).
+    esperadas = {
+        r for r in _convertidas_2c2() if "_require_admin_identity" in retrato[r]["checagem_no_handler"]
+    }
+    assert esperadas == set(_ROTAS_2C2_SO_ADMIN) | {"PUT /gyms/{gym_id}"}
+
+
+def test_put_gyms_tem_paridade_so_do_guard_de_entrada_qualquer_autenticado():
+    rota = "PUT /gyms/{gym_id}"
+    assert rota in _ROTAS_2C2_QUALQUER_AUTENTICADO
+    for papel, tipo in _combinacoes():
+        assert CASOS_MANUAIS[rota](papel, tipo) is True
+
+
+def test_paridade_das_72_rotas_do_2c2_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota, declaradas in sorted(_convertidas_2c2().items()):
+        problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
+    assert not problemas, "Divergencia de acesso no 2C-2:" + chr(10) + chr(10).join(problemas[:30])

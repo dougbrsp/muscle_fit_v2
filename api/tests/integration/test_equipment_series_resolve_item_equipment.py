@@ -11,6 +11,7 @@ exercício original ("Desenvolvimento de ombros na máquina" com Halteres,
 from __future__ import annotations
 
 from app.generation import mode_b_legacy as engine
+from app.security import Identity
 
 
 def _link(cur, gym_id: int, mapping_id: int, equipment_id: int) -> int:
@@ -85,7 +86,7 @@ def test_sem_equipamento_do_exercicio_nao_empresta_associacao_de_outro(db_conn, 
     assert resolved["exercise_name"] == "Supino reto"
 
 
-def test_lista_de_equipamentos_da_academia_traz_descricao_do_exercicio(db_conn, catalog, monkeypatch):
+def test_lista_de_equipamentos_da_academia_traz_descricao_do_exercicio(db_conn, catalog):
     """O Modo Treino usa `mapping_exercise_description` para exibir a
     descrição do exercício escolhido numa troca de equipamento."""
     from app import gyms
@@ -98,10 +99,10 @@ def test_lista_de_equipamentos_da_academia_traz_descricao_do_exercicio(db_conn, 
         )
         link_id = _link(cur, catalog.gym_id, ex["Crucifixo"], eq["Polia"])
     db_conn.commit()
-    monkeypatch.setattr(gyms, "_require_identity", lambda *_args, **_kwargs: None)
 
     result = gyms.list_gym_equipment(
-        gym_id=catalog.gym_id, mapping_id=None, primary_group=None, active_only=True, x_api_token=None, musclefit_session=None
+        gym_id=catalog.gym_id, mapping_id=None, primary_group=None, active_only=True,
+        identity=Identity(user_id=1, role="admin", source="session"),
     )
 
     row = next(item for item in result["items"] if item["id"] == link_id)

@@ -37,13 +37,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, NoReturn, Optional
 
-from fastapi import APIRouter, Body, Cookie, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from . import security
+from .access import require_permission
 from .exercise_mapping_catalog import (
     _connect,
-    _require_admin_identity,
-    _require_identity,
     _row_jsonable,
 )
 from .db import is_duplicate_key_error
@@ -268,13 +266,10 @@ def _raise_duplicate_name(exc: Exception) -> NoReturn:
 # ---------------------------------------------------------------------------
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("volume.grupamentos", "ver"))])
 def list_volume_classes(
     counting_mode: Optional[str] = Query(default=None),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_identity(x_api_token, musclefit_session)
     mode = _counting_mode(counting_mode)
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -282,13 +277,10 @@ def list_volume_classes(
     return {"items": items, "counting_mode": mode}
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def create_volume_class(
     item: Dict[str, Any] = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
-    _require_admin_identity(x_api_token, musclefit_session)
 
     name = _clean_name(item.get("name"))
     if not name:
@@ -323,13 +315,11 @@ def create_volume_class(
     return {"status": "ok", "item": created}
 
 
-@router.put("/{class_id}")
+@router.put("/{class_id}", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def update_volume_class(
     class_id: int,
     item: Dict[str, Any] = Body(...),
     counting_mode: Optional[str] = Query(default=None),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Edição parcial: campo ausente do payload preserva o valor atual.
     Mexer na meta semanal (qualquer um dos dois limites) grava
@@ -338,7 +328,6 @@ def update_volume_class(
     `?counting_mode=` (073): a meta semanal editada é a DESSE modo (default
     `primary_only`, a coluna de sempre); nome, descrição e ordem são do
     macro-grupo, iguais em todos os modos."""
-    _require_admin_identity(x_api_token, musclefit_session)
     mode = _counting_mode(counting_mode)
 
     with _connect() as conn:
@@ -418,16 +407,13 @@ def _upsert_weekly(cursor, class_id: int, mode: str, weekly_min: Optional[float]
     )
 
 
-@router.delete("/{class_id}")
+@router.delete("/{class_id}", dependencies=[Depends(require_permission("admin.catalogos", "excluir"))])
 def delete_volume_class(
     class_id: int,
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """409 se houver grupo associado: excluir tiraria esses grupos da
     avaliação em silêncio. A FK (ON DELETE RESTRICT) é a garantia no banco;
     esta checagem existe para a resposta ser 409 com mensagem, e não 500."""
-    _require_admin_identity(x_api_token, musclefit_session)
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -484,13 +470,11 @@ def _parse_ranges(payload: Any) -> List[Dict[str, Any]]:
     return parsed
 
 
-@router.put("/{class_id}/ranges")
+@router.put("/{class_id}/ranges", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def replace_volume_class_ranges(
     class_id: int,
     payload: Any = Body(...),
     counting_mode: Optional[str] = Query(default=None),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Substitui as linhas de frequência do macro-grupo NO MODO `?counting_mode=`
     (073; default `primary_only`) pelo que veio no payload (`{"ranges": [...]}`).
@@ -501,7 +485,6 @@ def replace_volume_class_ranges(
     novo grava `admin` e limpa a evidência. A marca de cópia não calibrada
     (`copied_from_counting_mode`) segue o eixo de SÉRIES, o que muda entre os
     modos: séries iguais às copiadas mantêm a marca; séries novas a limpam."""
-    _require_admin_identity(x_api_token, musclefit_session)
     ranges = _parse_ranges(payload)
     mode = _counting_mode(counting_mode)
 
@@ -597,12 +580,10 @@ _COPY_WEEKLY_SQL = (
 )
 
 
-@router.post("/{class_id}/copy-from-default")
+@router.post("/{class_id}/copy-from-default", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def copy_volume_class_from_default_mode(
     class_id: int,
     counting_mode: Optional[str] = Query(default=None),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Ação EXPLÍCITA do admin (nunca automática): copia para o modo
     `?counting_mode=` as faixas por frequência e a meta semanal do modo default
@@ -611,7 +592,6 @@ def copy_volume_class_from_default_mode(
     tocado. O que entra fica marcado `copied_from_counting_mode` = default
     ("cópia — não calibrada") até o admin gravar um número diferente.
     Modo default (ou ausente) = 422: não há de onde copiar."""
-    _require_admin_identity(x_api_token, musclefit_session)
     from .intelligence.methodology_volume import DEFAULT_VOLUME_COUNTING_MODE
 
     mode = _counting_mode(counting_mode)
@@ -649,12 +629,10 @@ def _parse_group_ids(payload: Any) -> List[int]:
     return ids
 
 
-@router.put("/{class_id}/groups")
+@router.put("/{class_id}/groups", dependencies=[Depends(require_permission("admin.catalogos", "editar"))])
 def replace_volume_class_groups(
     class_id: int,
     payload: Any = Body(...),
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    musclefit_session: Optional[str] = Cookie(default=None, alias=security.SESSION_COOKIE_NAME),
 ):
     """Substitui o conjunto de grupos do macro-grupo (`{"muscle_group_ids":
     [...]}`). Um grupo pertence a no máximo um macro-grupo, então incluir aqui
@@ -664,7 +642,6 @@ def replace_volume_class_groups(
     Fatia (`methodology_parent_group_id` preenchido) é recusada: ela soma no
     grupo pai e usa o macro-grupo dele - associar a fatia a outro macro-grupo
     faria o mesmo bloco ter duas metas."""
-    _require_admin_identity(x_api_token, musclefit_session)
     ids = _parse_group_ids(payload)
 
     with _connect() as conn:

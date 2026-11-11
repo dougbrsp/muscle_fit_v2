@@ -234,7 +234,7 @@ def _table_exists(cur, table: str) -> bool:
 
 
 @pytest.fixture
-def domain(sraw):
+def domain(sraw, conceder_grupo):
     """Academia com 3 associacoes no grupo (2 exercicios), 2 alunos com sessao.
     `pair_*` = `equipment_exercises.id` (ancora da nota).
 
@@ -247,6 +247,10 @@ def domain(sraw):
         cur.execute("INSERT IGNORE INTO users (username, password_hash, role) VALUES ('admin-p08', 'x', 'admin')")
         ids["user_a"] = _session(cur, "aluno-a-p08", TOKEN_A)
         ids["user_b"] = _session(cur, "aluno-b-p08", TOKEN_B)
+        # RBAC (lote 2C-2): /gym-equipment/recommend* exige `treino.academias`/`ver`,
+        # concedida pelo grupo `usuario` (user_access_groups), nao pelo papel do usuario.
+        conceder_grupo(cur, ids["user_a"], "regular")
+        conceder_grupo(cur, ids["user_b"], "regular")
         cur.execute("INSERT INTO muscle_groups (name) VALUES (%s)", (GROUP,))
         ids["group"] = cur.lastrowid
         legacy = _table_exists(cur, "exercise_zepp_mappings")
@@ -306,6 +310,7 @@ def domain(sraw):
             cur.execute("DELETE FROM exercise_zepp_mappings WHERE id IN (%s, %s)", (EX_SUPINO, EX_CRUCIFIXO))
         cur.execute("DELETE FROM muscle_groups WHERE id = %s", (ids["group"],))
         cur.execute("DELETE FROM user_sessions WHERE user_id IN (%s, %s)", (ids["user_a"], ids["user_b"]))
+        cur.execute("DELETE FROM user_access_groups WHERE user_id IN (%s, %s)", (ids["user_a"], ids["user_b"]))
 
 
 @pytest.fixture
