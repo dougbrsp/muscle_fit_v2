@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import login_throttle
+from .access.membership import assign_role_group
 from .access.service import resolve_permissions, serialize_permissions
 from .client_ip import client_ip
 from .db import transaction
@@ -204,6 +205,8 @@ def ensure_admin_seed() -> None:
                     """,
                     (ADMIN_SEED_USERNAME, password_hash, "Doug"),
                 )
+                # Mesma transação do INSERT: sem grupo de sistema, desfaz o admin.
+                assign_role_group(cur, cur.lastrowid, "admin", None)
     except Exception:
         logger.exception("Falha ao criar usuário admin seed ('doug').")
         return
