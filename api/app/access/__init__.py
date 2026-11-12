@@ -1,5 +1,21 @@
 """Controle de acesso por grupos (RBAC, ADR 0011). Importar nao acessa banco."""
 
+from .admin import (
+    AccessAdminError,
+    GroupHasMembersError,
+    GroupKeyTakenError,
+    GroupMembershipByRoleError,
+    GroupNotFoundError,
+    GroupSystemImmutableError,
+    InvalidGrantError,
+    InvalidGroupDataError,
+    InvalidIdError,
+    InvalidPaginationError,
+    MembershipNotFoundError,
+    ResourceNotGrantableError,
+    SelfMembershipForbiddenError,
+    UserNotFoundError,
+)
 from .catalog import (
     ACTIONS,
     DEFAULT_GRANTS_BY_GROUP,
@@ -48,11 +64,25 @@ from .service import (
 
 __all__ = [
     "ACTIONS",
+    "AccessAdminError",
     "DEFAULT_GRANTS_BY_GROUP",
     "DOMAINS",
     "EffectivePermissions",
     "FULL_ACCESS_GROUP",
+    "GroupHasMembersError",
+    "GroupKeyTakenError",
+    "GroupMembershipByRoleError",
+    "GroupNotFoundError",
+    "GroupSystemImmutableError",
+    "InvalidGrantError",
+    "InvalidGroupDataError",
+    "InvalidIdError",
+    "InvalidPaginationError",
     "InvalidMembershipTargetError",
+    "MembershipNotFoundError",
+    "ResourceNotGrantableError",
+    "SelfMembershipForbiddenError",
+    "UserNotFoundError",
     "LastAdminError",
     "MissingSystemGroupError",
     "ROLE_TO_SYSTEM_GROUP",

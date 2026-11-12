@@ -1059,6 +1059,18 @@ except Exception as exc:
     )
 # END auth router
 
+# BEGIN access admin router
+# RBAC lote 3A (ADR 0011): API de "Grupos e acessos" (so api-core).
+try:
+    from app.access_admin import router as access_admin_router
+    app.include_router(access_admin_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.access_admin").exception(
+        "Access admin router não foi carregado. Erro: %s", exc
+    )
+# END access admin router
+
 # BEGIN users router
 # Multiusuario (Parte 1): CRUD de usuarios (admin gerencia todos; usuario
 # regular gerencia o proprio perfil via /users/me).
