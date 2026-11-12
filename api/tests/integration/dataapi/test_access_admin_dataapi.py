@@ -34,7 +34,7 @@ GRANTS_1 = [
 ]
 GRANTS_2 = [
     {"resource": "modelos.treino", "action": "editar", "scope": "alunos"},
-    {"resource": "ia.insights", "action": "ver", "scope": "proprios"},
+    {"resource": "modelos.tipos_treino", "action": "ver", "scope": "proprios"},
 ]
 
 
@@ -177,7 +177,9 @@ def test_fluxo_completo_de_grupo_personalizado(client, raw, usuarios):
 
     # 4. membro: 201, depois 200 idempotente sem nova auditoria
     antes = resolve_permissions(Identity(user_id=aluno, role="regular", source="session"))
-    assert "modelos.treino" not in antes.grants
+    # o grupo `usuario` so tem `modelos.treino`/ver (proprios); editar e tipos_treino faltam
+    assert "editar" not in antes.grants.get("modelos.treino", {})
+    assert "modelos.tipos_treino" not in antes.grants
     r = client.post(f"/access/groups/{gid}/members", json={"user_id": aluno})
     assert r.status_code == 201 and r.json()["added"] is True
     assert len(_auditoria(raw, gid, "member.add")) == 1
@@ -187,7 +189,8 @@ def test_fluxo_completo_de_grupo_personalizado(client, raw, usuarios):
 
     efetivas = resolve_permissions(Identity(user_id=aluno, role="regular", source="session"))
     assert efetivas.grants["modelos.treino"]["editar"] == "alunos"
-    assert efetivas.grants["ia.insights"]["ver"] == "proprios"
+    assert efetivas.grants["modelos.treino"]["ver"] == "proprios"  # uniao: `ver` vem do `usuario`
+    assert efetivas.grants["modelos.tipos_treino"]["ver"] == "proprios"
     assert "usuario" in efetivas.group_keys and GROUP_KEY in efetivas.group_keys
     assert efetivas.grants["dashboards"]["ver"] == "proprios"  # uniao com o grupo `usuario`
 
@@ -209,7 +212,9 @@ def test_fluxo_completo_de_grupo_personalizado(client, raw, usuarios):
     assert r.status_code == 200 and r.json()["removed"] is True
     assert len(_auditoria(raw, gid, "member.remove")) == 1
     depois = resolve_permissions(Identity(user_id=aluno, role="regular", source="session"))
-    assert "modelos.treino" not in depois.grants and GROUP_KEY not in depois.group_keys
+    assert "editar" not in depois.grants.get("modelos.treino", {})
+    assert "modelos.tipos_treino" not in depois.grants and GROUP_KEY not in depois.group_keys
+    assert depois.grants["modelos.treino"]["ver"] == "proprios"  # o do `usuario` permanece
     r = client.delete(f"/access/groups/{gid}/members/{aluno}")
     assert r.status_code == 404 and r.json()["error"] == "membership_not_found"
 
