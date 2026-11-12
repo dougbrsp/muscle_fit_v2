@@ -19,6 +19,8 @@ from app import reports
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import NullContext
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 AGORA = datetime(2026, 10, 1, 14, 30)
 
 

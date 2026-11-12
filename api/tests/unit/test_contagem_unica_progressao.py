@@ -28,6 +28,8 @@ from app.intelligence.dashboard.contracts import WindowInfo, WindowKind
 from app.intelligence.dashboard.metrics_registry import ExerciseProgressionStatus as S
 from app.intelligence.dashboard.overview_service import progression_block
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 2)
 
 

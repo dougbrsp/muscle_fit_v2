@@ -84,9 +84,10 @@ AUDIT = {
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Dois usuarios, um grupo, tres exercicios canonicos."""
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
     ids: dict[str, int] = {}
     with raw.cursor() as cur:
         for nome, papel in (("dono", "admin"), ("outro", "regular")):
@@ -94,6 +95,8 @@ def seed(raw):
                 "INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', %s)", (nome, papel)
             )
             ids[nome] = cur.lastrowid
+            # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+            conceder_grupo(cur, ids[nome], "regular")
 
         cur.execute("INSERT INTO muscle_groups (name) VALUES ('Peitoral')")
         ids["Peitoral"] = cur.lastrowid

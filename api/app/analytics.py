@@ -13,7 +13,8 @@ from .domain import effective_intensity
 from .load_conventions import exercise_tonnage_joins_sql, sql_tonnage_excluded_sets, sql_tonnage_sum
 from .models import MuscleActivationPreviewIn
 from .observability import log_event
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 from .domain.set_measures import is_rep_based, sql_if_rep_based, sql_is_rep_based
 from .set_types import sql_not_preparatory, sql_set_confirmed
 from .training_goal_query import goal_query, optional_goal_param, optional_goal_query
@@ -118,7 +119,7 @@ def _period_expr(period: str) -> str:
 
 
 @router.get("/health")
-def analytics_health(identity: Identity = Depends(get_current_identity)):
+def analytics_health(identity: Identity = Depends(require_permission("dashboards", "ver"))):
     db_status = _fetch_one("SELECT 1 AS ok")
 
     return {
@@ -237,7 +238,7 @@ def summarize_cardio_periods(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 @router.get("/summary")
 def analytics_summary(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     days = _safe_days(days)
     tonnage_sum, tonnage_excluded = _global_tonnage_columns()
@@ -417,7 +418,7 @@ def compute_rolling_weekly_trend(days: int, user_id: Optional[int] = None) -> Li
 def training_trend(
     period: str = Query(default="week", pattern="^(day|week|month|year)$"),
     days: int = Query(default=365, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     days = _safe_days(days)
 
@@ -435,7 +436,7 @@ def exercise_progress(
     name: str = Query(..., min_length=1),
     days: int = Query(default=365, ge=1, le=3650),
     goal: Optional[str] = Depends(optional_goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Volume/carga por sessao de um exercicio (busca por nome). `goal`
     (M97 F4, opcional): so as execucoes daquele objetivo (predicado do dono
@@ -501,7 +502,7 @@ def exercise_progress(
 @router.get("/rpe-distribution")
 def rpe_distribution(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     days = _safe_days(days)
 
@@ -532,7 +533,7 @@ def rpe_distribution(
 def cardio_summary(
     period: str = Query(default="week", pattern="^(day|week|month|year)$"),
     days: int = Query(default=365, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     """Cardio por periodo das atividades registradas (`activities`). O que e
     cardio e do dono `intervals_activity_kind` (M98 C4; antes, uma lista de
@@ -556,7 +557,7 @@ def cardio_summary(
 @router.get("/muscle-groups-equivalent-sets-by-activity")
 def muscle_groups_equivalent_sets_by_activity(
     limit: int = Query(default=400, ge=1, le=2000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Series EQUIVALENTES ponderadas (PRIMARY peso 1.0, SECONDARY/
     STABILIZER = stimulus_weight real de exercise_muscle_contributions, com
@@ -586,7 +587,7 @@ def muscle_groups_equivalent_sets_by_activity(
 @router.get("/muscle-activation-by-activity")
 def muscle_activation_by_activity(
     activity_id: int = Query(...),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Ativacoes musculares (primary/secondary separadas, com series/peso
     medio/equivalente por role) de UMA atividade especifica, para a tabela
@@ -616,7 +617,7 @@ def muscle_groups_recent_exercise_volume(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     goal: Optional[str] = Depends(optional_goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Volume BRUTO recente por (activity_id, muscle_group, equipment_name),
     usado pelas 4 tabelas client-side de /volume-grupamentos (comparativo dos
@@ -665,7 +666,7 @@ def muscle_groups_recent_exercise_volume(
 def muscle_groups_slot_comparison(
     limit: int = Query(default=400, ge=1, le=2000),
     goal: Optional[str] = Depends(optional_goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Comparativo T-0..T-3 de /volume-grupamentos pelo MESMO slot do Modelo
     (pedido do usuario, 2026-10-23): T-0 = ultima sessao da chave; T-1..T-3 =
@@ -687,7 +688,7 @@ def muscle_groups_slot_comparison(
 @router.get("/muscle-groups-daily-activation")
 def muscle_groups_daily_activation(
     days: int = Query(default=7, ge=1, le=90),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Ativacao muscular DIARIA por (local_date, muscle_group) - motor unico
     via VolumeService.get_daily_muscle_activation, usada pela tabela
@@ -715,7 +716,7 @@ REALIZED_METHODOLOGY_WINDOW_DAYS = 7
 
 
 @router.get("/methodology-realized")
-def methodology_realized(identity: Identity = Depends(get_current_identity)):
+def methodology_realized(identity: Identity = Depends(require_permission("volume.grupamentos", "ver"))):
     """Metodologia do REALIZADO na janela de 7 dias (M76 E6): por BLOCO
     (fatia -> bloco pela cadeia inteira), as series DIRETAS de cada dia, a
     frequencia, a faixa por treino e a meta semanal do macro-grupo e os
@@ -765,7 +766,7 @@ def methodology_realized(identity: Identity = Depends(get_current_identity)):
 @router.post("/muscle-activation-preview")
 def muscle_activation_preview(
     payload: MuscleActivationPreviewIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "editar")),
 ):
     """Mesma formula de `muscle_activation_by_activity`, mas para uma lista
     de exercicios fornecida diretamente no corpo (sem `activity_id`
@@ -784,7 +785,7 @@ def muscle_activation_preview(
 @router.post("/muscle-activation-breakdown")
 def muscle_activation_breakdown(
     payload: MuscleActivationPreviewIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "editar")),
 ):
     """Mesma fonte de dados de `muscle_activation_preview`
     (`_resolve_muscle_contributions_for_mappings` + `sets_count *
@@ -924,7 +925,7 @@ def _build_muscle_status_items(user_id: int, days: int, training_type_id: Option
 def dashboard_muscle_status(
     days: int = Query(default=14, ge=1, le=3650),
     training_type_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Volume semanal REALIZADO (series equivalentes, `VolumeService.get_muscle_group_overview`)
     de cada grupo muscular contra a meta min/target/max de um `training_type`
@@ -948,7 +949,7 @@ def dashboard_muscle_status(
 def dashboard_muscle_drilldown(
     muscle_group_id: int = Query(...),
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Drill-down de UM grupo muscular para `/dashboard/musculos`
     (MuscleStatusClient.tsx, clique em uma linha) - volume semanal
@@ -1316,7 +1317,7 @@ def dashboard_progression(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     goal: Optional[str] = Depends(optional_goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Tabela Data|Carga|Reps|RPE|Sets|e1RM|Evolução de `/dashboard/progressao`
     (ProgressionClient.tsx, Fase 2): estende `exercise_progress` (acima)
@@ -1819,7 +1820,7 @@ def dashboard_progression_by_muscle_group(
         "Presente, vence days/date_from/date_to (custom exige date_from e date_to).",
     ),
     goal: str = Depends(goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Progressao de TODOS os grupos musculares de uma vez (M7): tonelagem
     ponderada por contribuicao muscular, periodo atual x periodo anterior de
@@ -1954,7 +1955,7 @@ def dashboard_progression_trend(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     goal: str = Depends(goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Veredito de `/dashboard/progressao` - a MESMA regra da home e do
     drill-down: `classify_exercise_progression` sobre as exposicoes do
@@ -2017,7 +2018,7 @@ def dashboard_progression_suggestion(
     exercise_name: Optional[str] = Query(default=None),
     mapping_id: Optional[int] = Query(default=None),
     goal: Optional[str] = Depends(optional_goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Card "Sugestao para a proxima sessao" de `/dashboard/progressao`.
 
@@ -2056,7 +2057,7 @@ def dashboard_progression_suggestion(
 def dashboard_workout_sessions(
     days: int = Query(default=90, ge=1, le=3650),
     limit: int = Query(default=200, ge=1, le=1000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     """Timeline de sessoes (`activities`) com series equivalentes de
     estimulo/fadiga por sessao - gap real confirmado por leitura de
@@ -2090,7 +2091,7 @@ def dashboard_workout_sessions(
 @router.get("/dashboard-recovery")
 def dashboard_recovery(
     days: int = Query(default=14, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     """Quase 1:1 sobre `MuscleRecoveryService.get_recovery_overview` (JA
     calcula tudo que `/dashboard/recovery` (RecoveryClient.tsx) precisa:
@@ -2141,7 +2142,7 @@ _NO_TEMPLATE_CYCLE_PAYLOAD: Dict[str, Any] = {
 
 @router.get("/dashboard-cycle")
 def dashboard_cycle(
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     """Posicao no ciclo do Modelo de Ficha atribuido ao usuario (gap real,
     endpoint novo - nao existe em `GET /workout-plan-templates/assigned-to-me`,
@@ -2409,7 +2410,7 @@ def dashboard_stimulus_fatigue(
     days: int = Query(default=90, ge=1, le=3650),
     activity_id: Optional[int] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     """Tabela Exercício|Stimulus|Fatigue|Ratio para o drill-down muscular de
     `/dashboard/musculos` (`MuscleStatusClient.tsx`, Fase 4) -

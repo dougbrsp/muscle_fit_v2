@@ -21,6 +21,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
+from .access import require_permission
 from .db import get_conn
 from .db_helpers import connect_or_503, DB_UNAVAILABLE_RDS
 from .intelligence.dashboard.contracts import (
@@ -79,7 +80,7 @@ from .intelligence.dashboard.recovery_signals_service import build_recovery_sign
 from .intelligence.dashboard.strength_panel import build_strength_panel
 from .intelligence.dashboard.time_windows import resolve_window, user_now, user_timezone, user_today
 from .observability import log_event
-from .security import Identity, get_current_identity
+from .security import Identity
 from .timezones import DEFAULT_TIMEZONE  # noqa: F401 - reexportado: importado por testes/modulos que nasceram com ele aqui
 from .training_types import resolve_training_type_for_window
 
@@ -151,7 +152,7 @@ def exercise_progress(
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=MAX_EXPOSURES, ge=1, le=MAX_EXPOSURES),
     goal: str = Depends(goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ) -> ExerciseProgressResponse:
     """"Estou evoluindo neste exercicio?" (plano §8, §10).
 
@@ -183,7 +184,7 @@ def strength_panel(
     window: str = Query(default=DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ) -> StrengthPanelResponse:
     """Painel de forca (M97 F4): tendencia do e1RM (linha unica entre
     objetivos, sem deload) dos compostos principais e o top set de cada
@@ -202,7 +203,7 @@ def data_quality(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     examples_limit: int = Query(default=MAX_EXAMPLES, ge=1, le=MAX_EXAMPLES),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> DataQualityResponse:
     """"Dá para concluir alguma coisa com o que está registrado?" (§8.3, §10).
 
@@ -273,7 +274,7 @@ def muscles(
     training_type_id: Optional[int] = Query(default=None, ge=1),
     include_readiness: bool = Query(default=True),
     include_comparatives: bool = Query(default=False),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> MusclesResponse:
     """"Quais grupos estao atrasados ou em excesso, e o volume chegou no
     musculo certo?" (plano §7, §10).
@@ -332,7 +333,7 @@ def muscle_drilldown(
     training_type_id: Optional[int] = Query(default=None, ge=1),
     include_readiness: bool = Query(default=True),
     sets_limit: int = Query(default=MAX_DRILLDOWN_SETS, ge=1, le=MAX_DRILLDOWN_SETS),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> MuscleDrilldownResponse:
     """Drill-down de UM grupo ate a SERIE de origem (plano §7, §10).
 
@@ -379,7 +380,7 @@ def workouts(
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=DEFAULT_WORKOUTS_LIMIT, ge=1, le=MAX_WORKOUTS_LIMIT),
     offset: int = Query(default=0, ge=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> WorkoutsResponse:
     """Sessoes executadas na janela, com planejado x executado resumido.
 
@@ -415,7 +416,7 @@ def workout_detail(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     sets_limit: int = Query(default=MAX_DETAIL_SETS, ge=1, le=MAX_DETAIL_SETS),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> WorkoutDetailResponse:
     """Uma sessao item a item: prescrito x executado lado a lado.
 
@@ -449,7 +450,7 @@ def adherence(
     window: str = Query(default=DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> AdherenceResponse:
     """"Cumpri o planejado?" e "a frequencia bate com o ciclo?" (§7).
 
@@ -484,7 +485,7 @@ def recovery_signals(
     window: str = Query(default=RECOVERY_DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> RecoverySignalsResponse:
     """"Estou recuperando bem?" (plano §7).
 
@@ -533,7 +534,7 @@ def overview(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     training_type_id: Optional[int] = Query(default=None, ge=1),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> OverviewResponse:
     """A visao geral do hub: "Estou evoluindo?" e "Proxima acao" (§7).
 
@@ -582,7 +583,7 @@ def insights(
     limit: int = Query(default=INSIGHTS_DEFAULT_LIMIT, ge=1, le=INSIGHTS_MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
     include_suppressed: bool = Query(default=False),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> InsightsResponse:
     """Os insights disparados na janela (§12), deduplicados por `fingerprint` e
     ordenados por severidade e confianca, com paginacao simples. E a MESMA
@@ -633,7 +634,7 @@ def body(
     window: str = Query(default=BODY_DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ) -> BodyResponse:
     """"Como esta o corpo?" (plano §7) - tela `/dashboard/corpo`.
 
@@ -672,7 +673,7 @@ def context(
     window: str = Query(default=CONTEXT_DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> ContextResponse:
     """"O que mais estava acontecendo?" (plano §7) - tela `/dashboard/contexto`.
 
@@ -713,7 +714,7 @@ def cardio(
     window: str = Query(default=CARDIO_DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ) -> CardioResponse:
     """"Quanto de cardio eu fiz, e com que FC eu treinei?" - tela
     `/dashboard/cardio`.
@@ -798,7 +799,7 @@ def intelligence_package(
     date_to: Optional[date] = Query(default=None),
     training_type_id: Optional[int] = Query(default=None, ge=1),
     question: Optional[str] = Query(default=None, max_length=500),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> IntelligencePackageResponse:
     """O pacote de inteligência da janela — a MESMA leitura da visão geral,
     achatada num contrato fechado de no máximo 40 KB para um consumidor que
@@ -877,7 +878,7 @@ def engine_runs(
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=DEFAULT_RUNS_LIMIT, ge=1, le=MAX_RUNS_LIMIT),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> EngineRunsResponse:
     """As GERACOES de ficha da janela - o seletor da tela `/dashboard/engine`.
 
@@ -910,7 +911,7 @@ def engine_plan(
     window: str = Query(default=ENGINE_DEFAULT_WINDOW.value),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ) -> EnginePlanResponse:
     """"Por que a minha ficha saiu assim, e o que eu fiz com ela?" - as tres
     colunas, item a item.

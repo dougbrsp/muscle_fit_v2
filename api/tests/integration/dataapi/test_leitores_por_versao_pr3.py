@@ -41,12 +41,15 @@ SUPINO, CRUCIFIXO = 4101, 4102
 
 
 @pytest.fixture
-def cenario(raw, monkeypatch):
-    truncar(raw)
+def cenario(raw, monkeypatch, conceder_grupo):
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
     congelar_relogio(monkeypatch)
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('dono_pr3', 'x', 'admin')")
         dono = cur.lastrowid
+        # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+        conceder_grupo(cur, dono, "regular")
         cur.execute("INSERT INTO muscle_groups (name) VALUES ('Peitoral')")
         peitoral = cur.lastrowid
         for exercise_id, nome in ((SUPINO, "Supino reto"), (CRUCIFIXO, "Crucifixo")):

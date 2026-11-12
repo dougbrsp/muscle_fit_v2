@@ -51,11 +51,12 @@ def _truncate(raw) -> None:
     le ou escreve - inclusive o que os SERVICOS leem por baixo do endpoint, nao
     so o que este seed insere. Manter a lista por arquivo foi como nasceram os
     dois vazamentos do PR #199."""
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Usuario A: 35 dias de wellness (HRV e FC de repouso PIORES na ultima
     semana), sessoes de treino ate ontem e uma sessao com dor articular.
     Usuario B: nada - e a prova de isolamento."""
@@ -71,6 +72,8 @@ def seed(raw):
                 "INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', %s)", (nome, papel)
             )
             ids[nome] = cur.lastrowid
+            # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+            conceder_grupo(cur, ids[nome], "regular")
 
         cur.execute("INSERT INTO muscle_groups (name) VALUES ('Peito')")
         ids["Peito"] = cur.lastrowid
