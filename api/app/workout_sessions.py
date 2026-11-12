@@ -77,6 +77,7 @@ from .intelligence.session_fatigue_reader import load_session_prior_fatigue
 from .next_set_load_rules import load_published_ruleset
 from .observability import EVENT_SAFETY_CLAMP, EVENT_SAFETY_RPE_ABOVE_CEILING, log_event
 from .progression_state import on_session_finish
+from .access import require_permission
 from .security import Identity, get_current_identity
 from .domain.session_loads import LOAD_ADJUST_SOURCES
 from .domain.set_measures import SetMeasure, is_rep_based, normalize_measure
@@ -490,7 +491,9 @@ def _refresh_activity_avg_rpe(cur, activity_id: int) -> None:
 
 
 @router.post("/workout-sessions/start")
-def start_session(payload: SessionStartIn, identity: Identity = Depends(get_current_identity)):
+def start_session(
+    payload: SessionStartIn, identity: Identity = Depends(require_permission("treino.modo_treino", "editar"))
+):
     ext_id = f"zepp-session-{uuid.uuid4().hex}"
 
     with transaction() as conn:
@@ -613,7 +616,9 @@ def _session_deload_status(cur, user_id: int, row: dict[str, Any], source: Optio
 
 
 @router.get("/workout-sessions/{session_id}/deload")
-def get_session_deload(session_id: int, identity: Identity = Depends(get_current_identity)):
+def get_session_deload(
+    session_id: int, identity: Identity = Depends(require_permission("treino.modo_treino", "ver"))
+):
     """M97 F3: deload da sessao em andamento (origem gravada no `start` ou no
     PATCH meta) e se ainda pode ser ligado/desligado (sem serie gravada)."""
     with transaction() as conn:
@@ -625,7 +630,11 @@ def get_session_deload(session_id: int, identity: Identity = Depends(get_current
 
 
 @router.patch("/workout-sessions/{session_id}/meta")
-def update_session_meta(session_id: int, payload: SessionMetaIn, identity: Identity = Depends(get_current_identity)):
+def update_session_meta(
+    session_id: int,
+    payload: SessionMetaIn,
+    identity: Identity = Depends(require_permission("treino.modo_treino", "editar")),
+):
     """Edita apenas os metadados do cabeçalho do treino (nome, academia, data/hora,
     condutor, ficha vinculada). Não mexe em exercises/exercise_sets. Diferente de
     PUT /activities/{id} (delete+recreate de exercícios via ActivityIn), este endpoint
@@ -775,7 +784,7 @@ def _existing_after_unique_violation(exc: Exception, client_key: Optional[str], 
 def add_session_exercise(
     session_id: int,
     payload: SessionExerciseIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.modo_treino", "editar")),
 ):
     client_key = payload.client_key
     with transaction() as conn:
@@ -1289,7 +1298,7 @@ def add_session_set(
     session_id: int,
     exercise_id: int,
     payload: SessionSetIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.modo_treino", "editar")),
 ):
     technique_code = (payload.technique_code or "").strip() or None
     # Fora da transação: o catálogo tem cache próprio e abre a sua leitura.
@@ -1535,7 +1544,7 @@ def update_session_set(
     exercise_id: int,
     set_number: int,
     payload: SessionSetPatchIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.modo_treino", "editar")),
 ):
     """Confirma reps pendentes ou corrige carga/reps/RPE de UMA série
     (Modo Intensivo), sem o apaga-e-recria do `PUT /exercises/logs`.
@@ -1639,7 +1648,11 @@ def update_session_set(
 
 
 @router.post("/workout-sessions/{session_id}/finish")
-def finish_session(session_id: int, payload: SessionFinishIn, identity: Identity = Depends(get_current_identity)):
+def finish_session(
+    session_id: int,
+    payload: SessionFinishIn,
+    identity: Identity = Depends(require_permission("treino.modo_treino", "editar")),
+):
     with transaction() as conn:
         with conn.cursor() as cur:
             session = _get_finishable_activity(cur, session_id, identity.user_id)

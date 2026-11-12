@@ -86,7 +86,10 @@ def test_nomes_que_diferem_so_por_caixa_nao_se_fundem(history, mysql_schema):
     assert peitoral["sets"] == 4
 
 
-def test_rota_mapped_table_expoe_campos_do_dashboard(history):
+def test_rota_mapped_table_expoe_campos_do_dashboard(history, mysql_schema, conceder_grupo):
+    # RBAC lote 2F-2: a rota exige permissao pelos grupos do usuario no banco.
+    with raw_connection(mysql_schema) as conn, conn.cursor() as cur:
+        conceder_grupo(cur, history["user"], "regular")
     app = FastAPI()
     app.include_router(mgm.router)
     app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=history["user"], role="regular", source="session")

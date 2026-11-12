@@ -643,16 +643,114 @@ def _rotas_2f1() -> dict[str, list[tuple[str, str]]]:
     return rotas
 
 
+MODULOS_2F2 = (
+    "app.workout_sessions", "app.workout_plans", "app.exercise_briefing", "app.deload_periods",
+    "app.equipment_exercise_preferences", "app.equipment_load_ceiling", "app.advanced_techniques",
+    "app.training_goals", "app.muscle_group_equipment", "app.muscle_groups_mapped",
+)
+_WP = "/workout-plans/{plan_id}"
+_WS = "/workout-sessions/{session_id}"
+_EP = "/me/equipment-exercise-preferences"
+# Tabela rota -> (recurso, acao) do contrato do 2F-2 (GET = ver; POST/PUT/PATCH = editar; DELETE = excluir).
+CONTRATO_2F2: dict[str, tuple[str, str]] = {
+    # app.main: treino.registro (11)
+    "GET /activities": ("treino.registro", "ver"),
+    "POST /activities": ("treino.registro", "editar"),
+    "GET /activities/{activity_id}": ("treino.registro", "ver"),
+    "PUT /activities/{activity_id}": ("treino.registro", "editar"),
+    "DELETE /activities/{activity_id}": ("treino.registro", "excluir"),
+    "GET /exercises/history": ("treino.registro", "ver"),
+    "GET /exercises/last-session-sets": ("treino.registro", "ver"),
+    "GET /exercises/logs": ("treino.registro", "ver"),
+    "PUT /exercises/logs/{exercise_id}": ("treino.registro", "editar"),
+    "DELETE /exercises/logs/{exercise_id}": ("treino.registro", "excluir"),
+    "GET /sets/high-rpe": ("treino.registro", "ver"),
+    # app.main: IA (4)
+    "POST /activities/{activity_id}/ai-summary/generate": ("ia.analise_treinos", "editar"),
+    "POST /exercises/{exercise_id}/summarize": ("ia.analise_treinos", "editar"),
+    "POST /insights/generate": ("ia.insights", "editar"),
+    "POST /exercises/evaluate-set": ("ia.modo_treino", "editar"),
+    # app.workout_sessions: treino.modo_treino (7)
+    "POST /workout-sessions/start": ("treino.modo_treino", "editar"),
+    f"GET {_WS}/deload": ("treino.modo_treino", "ver"),
+    f"PATCH {_WS}/meta": ("treino.modo_treino", "editar"),
+    f"POST {_WS}/exercises": ("treino.modo_treino", "editar"),
+    f"POST {_WS}/exercises/{{exercise_id}}/sets": ("treino.modo_treino", "editar"),
+    f"PATCH {_WS}/exercises/{{exercise_id}}/sets/{{set_number}}": ("treino.modo_treino", "editar"),
+    f"POST {_WS}/finish": ("treino.modo_treino", "editar"),
+    # app.workout_plans (12): treino.planos, menos a geracao por IA
+    "GET /workout-plans": ("treino.planos", "ver"),
+    "POST /workout-plans": ("treino.planos", "editar"),
+    "POST /workout-plans/generate": ("ia.geracao_plano", "editar"),
+    f"GET {_WP}": ("treino.planos", "ver"),
+    f"PUT {_WP}": ("treino.planos", "editar"),
+    f"DELETE {_WP}": ("treino.planos", "excluir"),
+    f"POST {_WP}/refresh-prescription": ("treino.planos", "editar"),
+    f"GET {_WP}/exercise-swap-options": ("treino.planos", "ver"),
+    f"GET {_WP}/exercises/{{exercise_id}}/equipment-options": ("treino.planos", "ver"),
+    f"POST {_WP}/exercises/{{exercise_id}}/substitute-equipment": ("treino.planos", "editar"),
+    f"GET {_WP}/cardio": ("treino.planos", "ver"),
+    f"GET {_WP}/muscle-map.png": ("treino.planos", "ver"),
+    # app.exercise_briefing (1) e app.deload_periods (4): treino.planos
+    f"GET {_WP}/exercises/{{workout_plan_exercise_id}}/briefing": ("treino.planos", "ver"),
+    "GET /deload-periods": ("treino.planos", "ver"),
+    "GET /deload-periods/current": ("treino.planos", "ver"),
+    "POST /deload-periods": ("treino.planos", "editar"),
+    "POST /deload-periods/{period_id}/cancel": ("treino.planos", "editar"),
+    # treino.preferencias (7)
+    f"GET {_EP}": ("treino.preferencias", "ver"),
+    f"PUT {_EP}/{{equipment_exercise_id}}": ("treino.preferencias", "editar"),
+    f"DELETE {_EP}/{{equipment_exercise_id}}": ("treino.preferencias", "excluir"),
+    "GET /me/training-preferences": ("treino.preferencias", "ver"),
+    "GET /me/equipment-load-ceiling": ("treino.preferencias", "ver"),
+    "PUT /me/equipment-load-ceiling": ("treino.preferencias", "editar"),
+    "DELETE /me/equipment-load-ceiling": ("treino.preferencias", "excluir"),
+    # exercicios.catalogo (5) e volume.grupamentos (4): ver
+    "GET /advanced-techniques": ("exercicios.catalogo", "ver"),
+    "GET /training-goals": ("exercicios.catalogo", "ver"),
+    "GET /muscle-groups/{muscle_group_id}/equipment": ("exercicios.catalogo", "ver"),
+    "GET /muscle-groups/{muscle_group_id}/equipment/{equipment_id}/exercises": ("exercicios.catalogo", "ver"),
+    "GET /muscle-groups/{muscle_group_id}/exercises": ("exercicios.catalogo", "ver"),
+    "GET /analytics/muscle-groups-mapped-health": ("volume.grupamentos", "ver"),
+    "GET /analytics/muscle-groups-mapped-debug": ("volume.grupamentos", "ver"),
+    "GET /analytics/muscle-groups-mapped-trend": ("volume.grupamentos", "ver"),
+    "GET /analytics/muscle-groups-mapped-table": ("volume.grupamentos", "ver"),
+}
+# Rotas de `app.main` do lote: as 15 primeiras da tabela (as demais de main.py, como
+# `POST /exercise-mappings` do 2C-1, nao sao).
+ROTAS_MAIN_2F2 = set(list(CONTRATO_2F2)[:15])
+
+
+def _rotas_2f2() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas do 2F-2 que declaram permissao: 10 modulos inteiros mais as 15 de `app.main` da tabela."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    com_permissao, _ = _rotas_convertidas()
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave not in com_permissao:
+                    continue
+                if modulo in MODULOS_2F2 or (modulo == "app.main" and chave in ROTAS_MAIN_2F2):
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B, 2D-1, 2D-2, 2E e 2F-1: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    """Rotas com permissao fora do 2B, 2D-1, 2D-2, 2E, 2F-1 e 2F-2: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     d1 = _rotas_2d1()
     d2 = _rotas_2d2()
     e = _rotas_2e()
     f1 = _rotas_2f1()
+    f2 = _rotas_2f2()
     return {
         r: p for r, p in com_permissao.items()
-        if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e and r not in f1
+        if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e and r not in f1 and r not in f2
     }
 
 
@@ -661,9 +759,10 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_255_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1():
+def test_paridade_cobre_as_310_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1_mais_55_do_2f2():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 255
+    assert len(com_permissao) == 310
+    assert len(_rotas_2f2()) == 55
     assert len(_rotas_2f1()) == 29
     assert len(_rotas_2e()) == 56
     assert len(_rotas_2d1()) == 39
@@ -1103,3 +1202,87 @@ def test_2f1_detector_ignorar_o_escopo_minimo_faria_a_paridade_acusar_o_regular_
     assert not scope_covers("proprios", "todos")
     assert permission_scope(permissoes_do_papel("regular", "session"), "modelos.treino", "ver") == "proprios"
     assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "ver") == "todos"
+
+
+# ---------------------------------------------------------------------------
+# Lote 2F-2: treino (55 rotas `autenticado` sem escopo minimo: registro, Modo Treino, planos,
+# preferencias, catalogo, grupamentos e IA)
+#
+# A paridade cobre o guard de ENTRADA; o escopo dos dados segue nos handlers (usuario da identidade).
+# ---------------------------------------------------------------------------
+
+
+def test_o_conjunto_convertido_no_2f2_e_exatamente_o_das_55_rotas_dos_11_modulos():
+    rotas = _rotas_2f2()
+    assert len(CONTRATO_2F2) == 55
+    assert set(rotas) == set(CONTRATO_2F2), sorted(set(rotas) ^ set(CONTRATO_2F2))
+    assert len(ROTAS_MAIN_2F2) == 15
+    assert {CONTRATO_2F2[r][0] for r in ROTAS_MAIN_2F2} == {
+        "treino.registro", "ia.analise_treinos", "ia.insights", "ia.modo_treino",
+    }
+    # `POST /exercise-mappings` mora em main.py mas e do 2C-1.
+    com_permissao, _ = _rotas_convertidas()
+    assert com_permissao["POST /exercise-mappings"] == [("admin.catalogos", "editar")]
+    assert "POST /exercise-mappings" not in rotas
+    # Toda rota viva dos 10 modulos declara permissao (nenhuma ficou de fora).
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    vivas: dict[str, int] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo in MODULOS_2F2:
+                for m in route.methods - {"HEAD", "OPTIONS"}:
+                    assert f"{m} {route.path}" in rotas, (modulo, m, route.path)
+                    vivas[modulo] = vivas.get(modulo, 0) + 1
+    assert vivas == {
+        "app.workout_sessions": 7, "app.workout_plans": 12, "app.exercise_briefing": 1,
+        "app.deload_periods": 4, "app.equipment_exercise_preferences": 4, "app.equipment_load_ceiling": 3,
+        "app.advanced_techniques": 1, "app.training_goals": 1, "app.muscle_group_equipment": 3,
+        "app.muscle_groups_mapped": 4,
+    }, vivas
+    retrato = carregar_retrato()["rotas"]
+    for rota in rotas:
+        assert retrato[rota]["classe"] == "autenticado", rota
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+    assert len(CASOS_MANUAIS) == 72
+
+
+def test_a_tabela_do_2f2_tem_os_totais_por_recurso_e_acao_do_contrato():
+    from collections import Counter
+
+    assert Counter(r for r, _ in CONTRATO_2F2.values()) == {
+        "treino.planos": 16, "treino.registro": 11, "treino.modo_treino": 7, "treino.preferencias": 7,
+        "exercicios.catalogo": 5, "volume.grupamentos": 4, "ia.analise_treinos": 2, "ia.insights": 1,
+        "ia.modo_treino": 1, "ia.geracao_plano": 1,
+    }
+    por = Counter(CONTRATO_2F2.values())
+    assert {k: v for k, v in por.items() if k[0].startswith("treino.")} == {
+        ("treino.planos", "ver"): 9, ("treino.planos", "editar"): 6, ("treino.planos", "excluir"): 1,
+        ("treino.registro", "ver"): 6, ("treino.registro", "editar"): 3, ("treino.registro", "excluir"): 2,
+        ("treino.modo_treino", "ver"): 1, ("treino.modo_treino", "editar"): 6,
+        ("treino.preferencias", "ver"): 3, ("treino.preferencias", "editar"): 2,
+        ("treino.preferencias", "excluir"): 2,
+    }
+    assert sum(1 for r, _ in CONTRATO_2F2.values() if r.startswith("ia.")) == 5
+    assert all(a == "ver" for r, a in CONTRATO_2F2.values() if r in {"exercicios.catalogo", "volume.grupamentos"})
+
+
+def test_as_55_rotas_do_2f2_declaram_recurso_e_acao_da_tabela_sem_escopo_minimo():
+    vivas = _declaradas_com_escopo()
+    problemas: list[str] = []
+    for rota, (recurso, acao) in sorted(CONTRATO_2F2.items()):
+        esperado = [(recurso, acao, None)]
+        if vivas.get(rota) != esperado:
+            problemas.append(f"{rota}: declara {vivas.get(rota)}, contrato {esperado}")
+        assert ACAO_POR_METODO[rota.split(" ", 1)[0]] == acao, rota
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_paridade_das_55_rotas_do_2f2_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota, declaradas in sorted(_rotas_2f2().items()):
+        problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
+    assert not problemas, "Divergencia de acesso no 2F-2:" + chr(10) + chr(10).join(problemas[:30])

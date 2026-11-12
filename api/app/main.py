@@ -27,7 +27,6 @@ from .access import require_permission
 from .security import (
     Identity,
     MustChangePasswordRequired,
-    get_current_identity,
     must_change_password_handler,
 )
 from .services import (
@@ -129,7 +128,9 @@ def ready():
 
 
 @app.post("/activities")
-def create_or_replace_activity(payload: ActivityIn, identity: Identity = Depends(get_current_identity)):
+def create_or_replace_activity(
+    payload: ActivityIn, identity: Identity = Depends(require_permission("treino.registro", "editar"))
+):
     result = upsert_activity(payload.model_dump(), user_id=identity.user_id)
     return {"status": "ok", **result}
 
@@ -144,7 +145,7 @@ def list_activities(
     conducted_by: str | None = Query(default=None),
     q: str | None = Query(default=None),
     session_status: str | None = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):
     return {
         "items": latest_activities(
@@ -162,7 +163,9 @@ def list_activities(
 
 
 @app.get("/activities/{activity_id}")
-def get_activity(activity_id: int, identity: Identity = Depends(get_current_identity)):
+def get_activity(
+    activity_id: int, identity: Identity = Depends(require_permission("treino.registro", "ver"))
+):
     detail = activity_detail(activity_id, user_id=identity.user_id, include_pending=True)
     if not detail:
         raise HTTPException(status_code=404, detail="Atividade não encontrada.")
@@ -173,7 +176,11 @@ def get_activity(activity_id: int, identity: Identity = Depends(get_current_iden
 
 
 @app.put("/activities/{activity_id}")
-def update_activity_by_id(activity_id: int, payload: ActivityIn, identity: Identity = Depends(get_current_identity)):
+def update_activity_by_id(
+    activity_id: int,
+    payload: ActivityIn,
+    identity: Identity = Depends(require_permission("treino.registro", "editar")),
+):
     result = update_activity(activity_id, payload.model_dump(), user_id=identity.user_id)
     if not result:
         raise HTTPException(status_code=404, detail="Atividade não encontrada.")
@@ -181,7 +188,9 @@ def update_activity_by_id(activity_id: int, payload: ActivityIn, identity: Ident
 
 
 @app.delete("/activities/{activity_id}")
-def delete_activity_by_id(activity_id: int, identity: Identity = Depends(get_current_identity)):
+def delete_activity_by_id(
+    activity_id: int, identity: Identity = Depends(require_permission("treino.registro", "excluir"))
+):
     deleted = delete_activity(activity_id, user_id=identity.user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Atividade não encontrada.")
@@ -192,7 +201,7 @@ def delete_activity_by_id(activity_id: int, identity: Identity = Depends(get_cur
 def get_exercise_history(
     name: str,
     limit: int = Query(default=30, ge=1, le=200),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):
     return {"items": exercise_history(name, limit, user_id=identity.user_id)}
 
@@ -203,7 +212,7 @@ def get_last_session_sets_by_mapping(
     exclude_activity_id: int = Query(...),
     equipment_id: int | None = Query(None),
     goal: str | None = Query(None, description=GOAL_QUERY_DESCRIPTION),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):
     """Series da sessao anterior mais recente (excluindo a sessao atual) em que
     o mesmo exercicio canonico (mapping_id) foi executado, usadas como
@@ -239,7 +248,7 @@ def get_exercise_logs(
     limit: int = Query(default=100, ge=1, le=500),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):
     return {
         "items": list_exercise_logs(
@@ -252,7 +261,7 @@ def get_exercise_logs(
 def update_exercise_log_by_id(
     exercise_id: int,
     payload: ExerciseLogUpdateIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "editar")),
 ):
     data = payload.model_dump()
     # workout_plan_exercise_id precisa distinguir "não enviado" (preserva
@@ -278,7 +287,9 @@ def update_exercise_log_by_id(
 
 
 @app.delete("/exercises/logs/{exercise_id}")
-def delete_exercise_log_by_id(exercise_id: int, identity: Identity = Depends(get_current_identity)):
+def delete_exercise_log_by_id(
+    exercise_id: int, identity: Identity = Depends(require_permission("treino.registro", "excluir"))
+):
     result = delete_exercise_log(exercise_id, user_id=identity.user_id)
     if not result:
         raise HTTPException(status_code=404, detail="Exercício não encontrado.")
@@ -299,7 +310,7 @@ def delete_exercise_log_by_id(exercise_id: int, identity: Identity = Depends(get
 def get_high_rpe_sets(
     min_rpe: float = 9.0,
     limit: int = Query(default=50, ge=1, le=200),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):
     return {"items": high_rpe_sets(min_rpe, limit, user_id=identity.user_id)}
 
@@ -312,7 +323,9 @@ def create_or_update_exercise_mapping(payload: ExerciseMappingIn):
 
 
 @app.post("/insights/generate", status_code=202)
-def generate_insight_endpoint(payload: InsightsGenerateIn, identity: Identity = Depends(get_current_identity)):
+def generate_insight_endpoint(
+    payload: InsightsGenerateIn, identity: Identity = Depends(require_permission("ia.insights", "editar"))
+):
     """Assíncrono desde a Fase 3 da migração AWS (202 + job_id + polling via
     GET /jobs/{job_id}) — a geração em si (`insights_core.dispatch_insights`,
     mesma lógica exata do endpoint síncrono anterior) roda na Lambda
@@ -358,7 +371,7 @@ def generate_insight_endpoint(payload: InsightsGenerateIn, identity: Identity = 
 @app.post("/exercises/evaluate-set", status_code=202)
 def evaluate_set_endpoint(
     payload: SetEvaluationIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("ia.modo_treino", "editar")),
 ):
     """Assíncrono desde a Fase 3 da migração AWS (202 + job_id + polling via
     GET /jobs/{job_id}) — a avaliação em si
@@ -398,7 +411,9 @@ def evaluate_set_endpoint(
 
 
 @app.post("/exercises/{exercise_id}/summarize", status_code=202)
-def summarize_exercise_endpoint(exercise_id: int, identity: Identity = Depends(get_current_identity)):
+def summarize_exercise_endpoint(
+    exercise_id: int, identity: Identity = Depends(require_permission("ia.analise_treinos", "editar"))
+):
     """Assíncrono desde a Fase 3 da migração AWS (202 + job_id + polling via
     GET /jobs/{job_id}) — mesmo padrão/motivo do endpoint acima. A leitura
     de contexto do exercício (`exercise_summary_context`) e a geração via
@@ -435,7 +450,7 @@ def summarize_exercise_endpoint(exercise_id: int, identity: Identity = Depends(g
 def generate_activity_ai_summary_endpoint(
     activity_id: int,
     force: bool = False,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("ia.analise_treinos", "editar")),
 ):
     """Assíncrono desde a Fase 3 da migração AWS (202 + job_id + polling via
     GET /jobs/{job_id}) — mesmo padrão/motivo dos dois endpoints acima. A

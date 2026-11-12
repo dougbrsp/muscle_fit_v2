@@ -49,6 +49,7 @@ from .domain.deload import deload_allows_technique, item_deload_prescription
 from .domain.training_goal import goal_value, sql_goal_is, sql_goal_join
 from .domain.training_history import DEFAULT_SESSION_WINDOW, TrainingHistoryRepository
 from .gyms import PUBLIC_ASSETS_DOMAIN
+from .access import require_permission
 from .security import Identity, get_current_identity
 
 logger = logging.getLogger(__name__)
@@ -266,7 +267,7 @@ def get_exercise_briefing(
     plan_id: int,
     workout_plan_exercise_id: int,
     session_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.planos", "ver")),
 ) -> dict[str, Any]:
     """Tudo o que a tela de briefing precisa, montado no backend.
 

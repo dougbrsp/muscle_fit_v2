@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from .domain import prescription_defaults, training_goal, training_safety
+from .access import require_permission
 from .security import get_current_identity
 
 router = APIRouter(prefix="/training-goals", tags=["training-goals"], dependencies=[Depends(get_current_identity)])
@@ -45,7 +46,7 @@ def training_goals_payload() -> dict[str, Any]:
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def list_training_goals():
     return training_goals_payload()
 

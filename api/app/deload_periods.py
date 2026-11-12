@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict
 from .db import transaction
 from .domain import deload as deload_owner
 from .domain.training_goal import goal_value, sql_goal_is
+from .access import require_permission
 from .security import Identity, get_current_identity
 
 logger = logging.getLogger(__name__)
@@ -300,7 +301,7 @@ def _constants() -> dict[str, Any]:
 
 
 @router.get("")
-def list_deload_periods(identity: Identity = Depends(get_current_identity)):
+def list_deload_periods(identity: Identity = Depends(require_permission("treino.planos", "ver"))):
     with transaction() as conn:
         today = _today(conn, identity.user_id)
         with conn.cursor() as cur:
@@ -319,7 +320,7 @@ def list_deload_periods(identity: Identity = Depends(get_current_identity)):
 
 
 @router.get("/current")
-def current_deload(identity: Identity = Depends(get_current_identity)):
+def current_deload(identity: Identity = Depends(require_permission("treino.planos", "ver"))):
     """Deload ativo HOJE (fuso do usuário) e os números do dono."""
     with transaction() as conn:
         today = _today(conn, identity.user_id)
@@ -329,7 +330,9 @@ def current_deload(identity: Identity = Depends(get_current_identity)):
 
 
 @router.post("")
-def create_deload_period(payload: DeloadPeriodIn, identity: Identity = Depends(get_current_identity)):
+def create_deload_period(
+    payload: DeloadPeriodIn, identity: Identity = Depends(require_permission("treino.planos", "editar"))
+):
     with transaction() as conn:
         today = _today(conn, identity.user_id)
         try:
@@ -367,7 +370,9 @@ def create_deload_period(payload: DeloadPeriodIn, identity: Identity = Depends(g
 
 
 @router.post("/{period_id}/cancel")
-def cancel_deload_period(period_id: int, identity: Identity = Depends(get_current_identity)):
+def cancel_deload_period(
+    period_id: int, identity: Identity = Depends(require_permission("treino.planos", "editar"))
+):
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(f"SELECT {_COLUMNS} FROM {TABLE} WHERE id = %s AND user_id = %s", (period_id, identity.user_id))

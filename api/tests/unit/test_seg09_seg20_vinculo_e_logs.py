@@ -101,6 +101,7 @@ def test_sem_o_campo_preserva_o_vinculo_atual(monkeypatch):
     assert VINCULO_ATUAL in cur.update_exercises_params
 
 
+@pytest.mark.usefixtures("permissoes_por_papel")
 def test_rota_traduz_o_erro_para_404(monkeypatch):
     from fastapi.testclient import TestClient
 
