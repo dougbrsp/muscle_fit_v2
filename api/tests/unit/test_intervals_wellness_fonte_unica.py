@@ -31,6 +31,8 @@ from app.intervals_store import IntervalsCredentialsError
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import LoopingExecuteMany
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 API_KEY = "chave-super-secreta-do-intervals-1234567890"
 
 

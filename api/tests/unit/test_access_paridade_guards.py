@@ -740,17 +740,89 @@ def _rotas_2f2() -> dict[str, list[tuple[str, str]]]:
     return rotas
 
 
+MODULOS_2F3 = (
+    "app.body_composition", "app.body_measurements", "app.sleep_metrics", "app.daily_checkins",
+    "app.context_events", "app.intervals_integration", "app.cardio_recommendations",
+)
+ROTA_SYNC_2F3 = "POST /integrations/intervals/sync"
+ROTA_APPLY_2F3 = "POST /cardio-recommendations/{entry_id}/apply"
+_II = "/integrations/intervals"
+_CR = "/cardio-recommendations"
+
+
+def _contrato_crud_2f3(base: str, recurso: str) -> dict[str, tuple[str, str, str | None]]:
+    """CRUD de 5 rotas: lista e item (ver), criar e atualizar (editar), apagar (excluir); sem escopo minimo."""
+    item = base + "/{entry_id}"
+    return {
+        f"GET {base}": (recurso, "ver", None),
+        f"POST {base}": (recurso, "editar", None),
+        f"GET {item}": (recurso, "ver", None),
+        f"PUT {item}": (recurso, "editar", None),
+        f"DELETE {item}": (recurso, "excluir", None),
+    }
+
+
+# Tabela rota -> (recurso, acao, escopo minimo) do contrato do 2F-3 (GET = ver; POST/PUT/PATCH = editar;
+# DELETE = excluir). Escopo minimo "todos" so no sync (era admin) e no apply (era admin_ou_pt).
+CONTRATO_2F3: dict[str, tuple[str, str, str | None]] = {
+    **_contrato_crud_2f3("/body-composition", "corpo.indicadores"),
+    **_contrato_crud_2f3("/body-measurements", "corpo.indicadores"),
+    **_contrato_crud_2f3("/sleep-metrics", "corpo.indicadores"),
+    **_contrato_crud_2f3("/daily-checkins", "corpo.checkin"),
+    **_contrato_crud_2f3("/context-events", "corpo.checkin"),
+    # app.intervals_integration (11): integracoes.intervals
+    f"GET {_II}/health": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/status": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/summary": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/activities": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/wellness": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/dashboard": ("integracoes.intervals", "ver", None),
+    f"GET {_II}/cardio-adherence": ("integracoes.intervals", "ver", None),
+    f"POST {_II}/activities": ("integracoes.intervals", "editar", None),
+    f"POST {_II}/wellness": ("integracoes.intervals", "editar", None),
+    f"PATCH {_II}/wellness/{{wellness_date}}": ("integracoes.intervals", "editar", None),
+    ROTA_SYNC_2F3: ("integracoes.intervals", "editar", "todos"),
+    # app.cardio_recommendations (6)
+    f"GET {_CR}": ("cardio", "ver", None),
+    f"GET {_CR}/{{entry_id}}": ("cardio", "ver", None),
+    f"POST {_CR}": ("cardio", "editar", None),
+    f"DELETE {_CR}/{{entry_id}}": ("cardio", "excluir", None),
+    f"POST {_CR}/generate": ("ia.cardio", "editar", None),
+    ROTA_APPLY_2F3: ("modelos.treino", "editar", "todos"),
+}
+
+
+def _rotas_2f3() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas dos 7 modulos do 2F-3 que declaram permissao (pares)."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    com_permissao, _ = _rotas_convertidas()
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") not in MODULOS_2F3:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave in com_permissao:
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B, 2D-1, 2D-2, 2E, 2F-1 e 2F-2: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    """Rotas com permissao fora do 2B, 2D-1, 2D-2, 2E, 2F-1, 2F-2 e 2F-3: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     d1 = _rotas_2d1()
     d2 = _rotas_2d2()
     e = _rotas_2e()
     f1 = _rotas_2f1()
     f2 = _rotas_2f2()
+    f3 = _rotas_2f3()
     return {
         r: p for r, p in com_permissao.items()
         if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e and r not in f1 and r not in f2
+        and r not in f3
     }
 
 
@@ -759,9 +831,11 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_310_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1_mais_55_do_2f2():
+def test_paridade_cobre_as_352_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1_mais_55_do_2f2_mais_42_do_2f3():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 310
+    assert len(com_permissao) == 352
+    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 == 352
+    assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 55
     assert len(_rotas_2f1()) == 29
     assert len(_rotas_2e()) == 56
@@ -1286,3 +1360,108 @@ def test_paridade_das_55_rotas_do_2f2_sem_divergencia_de_acesso():
     for rota, declaradas in sorted(_rotas_2f2().items()):
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2F-2:" + chr(10) + chr(10).join(problemas[:30])
+
+
+# ---------------------------------------------------------------------------
+# Lote 2F-3: corpo, check-in, contexto, sono, Intervals e recomendacoes de cardio (42 rotas;
+# fecha o lote 2). 40 sao `autenticado` sem escopo minimo; o sync (era `admin`) e o apply
+# (era `admin_ou_pt`) declaram escopo minimo "todos". Todas pela decisao automatica.
+# ---------------------------------------------------------------------------
+
+
+def test_o_conjunto_convertido_no_2f3_e_exatamente_o_das_42_rotas_dos_7_modulos():
+    from collections import Counter
+
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    rotas = _rotas_2f3()
+    assert len(CONTRATO_2F3) == 42
+    assert set(rotas) == set(CONTRATO_2F3), sorted(set(rotas) ^ set(CONTRATO_2F3))
+    vivas: Counter = Counter()
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo in MODULOS_2F3:
+                for m in route.methods - {"HEAD", "OPTIONS"}:
+                    # toda rota viva dos 7 modulos declara permissao (nenhuma ficou de fora)
+                    assert f"{m} {route.path}" in rotas, (modulo, m, route.path)
+                    vivas[modulo] += 1
+    assert vivas == {
+        "app.body_composition": 5, "app.body_measurements": 5, "app.sleep_metrics": 5,
+        "app.daily_checkins": 5, "app.context_events": 5, "app.intervals_integration": 11,
+        "app.cardio_recommendations": 6,
+    }, vivas
+    retrato = carregar_retrato()["rotas"]
+    classes = Counter(retrato[r]["classe"] for r in rotas)
+    assert classes == {"autenticado": 40, "admin": 1, "admin_ou_pt": 1}, classes
+    assert retrato[ROTA_SYNC_2F3]["classe"] == "admin"
+    assert retrato[ROTA_APPLY_2F3]["classe"] == "admin_ou_pt"
+    for rota in rotas:
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+    assert len(CASOS_MANUAIS) == 72
+
+
+def test_a_tabela_do_2f3_tem_os_totais_por_recurso_e_o_escopo_minimo_so_no_sync_e_no_apply():
+    from collections import Counter
+
+    assert Counter(r for r, _, _ in CONTRATO_2F3.values()) == {
+        "corpo.indicadores": 15, "corpo.checkin": 10, "integracoes.intervals": 11,
+        "cardio": 4, "ia.cardio": 1, "modelos.treino": 1,
+    }
+    assert {r for r, (_, _, esc) in CONTRATO_2F3.items() if esc} == {ROTA_SYNC_2F3, ROTA_APPLY_2F3}
+    assert all(esc in (None, "todos") for _, _, esc in CONTRATO_2F3.values())
+
+
+def test_as_42_rotas_do_2f3_declaram_recurso_acao_e_escopo_minimo_do_contrato():
+    vivas = _declaradas_com_escopo()
+    problemas: list[str] = []
+    for rota, tripla in sorted(CONTRATO_2F3.items()):
+        if vivas.get(rota) != [tripla]:
+            problemas.append(f"{rota}: declara {vivas.get(rota)}, contrato {[tripla]}")
+        assert ACAO_POR_METODO[rota.split(" ", 1)[0]] == tripla[1], rota
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_paridade_das_42_rotas_do_2f3_sem_divergencia_de_acesso():
+    vivas = _declaradas_com_escopo()
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota in sorted(_rotas_2f3()):
+        problemas += divergencias(rota, retrato[rota]["classe"], vivas[rota])
+    assert not problemas, "Divergencia de acesso no 2F-3:" + chr(10) + chr(10).join(problemas[:30])
+
+
+def test_2f3_sync_nega_regular_e_pt_e_permite_admin_apply_nega_regular_e_permite_pt_e_admin():
+    vivas = _declaradas_com_escopo()
+    retrato = carregar_retrato()["rotas"]
+
+    def decide(rota: str, papel: str) -> bool:
+        return decisao_nova(retrato[rota]["classe"], vivas[rota], permissoes_do_papel(papel, "session"), "session")
+
+    papeis = ("regular", "personal_trainer", "admin")
+    assert [decide(ROTA_SYNC_2F3, p) for p in papeis] == [False, False, True]
+    assert [decide(ROTA_APPLY_2F3, p) for p in papeis] == [False, True, True]
+    # o guard antigo decidia igual (classe do retrato congelado)
+    assert [_decisao_antiga(ROTA_SYNC_2F3, "admin", p, "session") for p in papeis] == [False, False, True]
+    assert [_decisao_antiga(ROTA_APPLY_2F3, "admin_ou_pt", p, "session") for p in papeis] == [False, True, True]
+    # As outras 40 seguem abertas a qualquer papel com sessao (o escopo dos dados fica no handler).
+    for rota in set(CONTRATO_2F3) - {ROTA_SYNC_2F3, ROTA_APPLY_2F3}:
+        assert all(decide(rota, p) for p in papeis), rota
+
+
+def test_2f3_detector_sem_o_escopo_minimo_o_regular_passaria_no_sync():
+    """No sync, o escopo minimo "todos" e o que preserva a paridade: o regular tem
+    `integracoes.intervals`/editar com escopo proprios, entao so com o par a paridade acusa.
+    No apply o escopo minimo e defesa extra: o regular nem tem `modelos.treino`/editar."""
+    vivas = _declaradas_com_escopo()
+    retrato = carregar_retrato()["rotas"]
+    for rota in (ROTA_SYNC_2F3, ROTA_APPLY_2F3):
+        assert divergencias(rota, retrato[rota]["classe"], vivas[rota]) == [], rota
+    pares_sync = [(r, a) for r, a, _ in vivas[ROTA_SYNC_2F3]]
+    problemas = divergencias(ROTA_SYNC_2F3, "admin", pares_sync)
+    assert any("regular" in p and "permite" in p for p in problemas), problemas
+    regular = permissoes_do_papel("regular", "session")
+    assert permission_scope(regular, "integracoes.intervals", "editar") == "proprios"
+    assert permission_scope(regular, "modelos.treino", "editar") is None
+    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "editar") == "todos"

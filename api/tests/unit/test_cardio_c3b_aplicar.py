@@ -33,6 +33,7 @@ import re
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app import cardio_display, cardio_recommendation_v3, template_drafts as td
@@ -40,6 +41,8 @@ from app import cardio_recommendations as cr
 from app import workout_plan_templates as wpt
 from app.domain import cardio_envelope, cardio_prescription as cp
 from app.security import Identity, get_current_identity
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 TEMPLATE_ID = 36
 VERSION_ID = 31
@@ -431,7 +434,7 @@ def _ident(role="admin", user_id=1):
 
 
 def test_detalhe_traz_a_visao_pronta(rec_db):
-    row = cr.get_cardio_recommendation(5, identity=_ident())
+    row = cr.get_cardio_recommendation(5, request=Request({"type": "http"}), identity=_ident())
     view = row["recommendation_view"]
     assert view["can_apply"] is True
     first, second = view["sessions"]
@@ -445,10 +448,10 @@ def test_detalhe_traz_a_visao_pronta(rec_db):
 
 
 def test_detalhe_aluno_nao_aplica_e_antiga_sem_visao(rec_db):
-    view = cr.get_cardio_recommendation(5, identity=_ident(role="regular"))["recommendation_view"]
+    view = cr.get_cardio_recommendation(5, request=Request({"type": "http"}), identity=_ident(role="regular"))["recommendation_view"]
     assert view["can_apply"] is False and not any(s["applicable"] for s in view["sessions"])
     rec_db["row"] = _row(None)
-    row = cr.get_cardio_recommendation(5, identity=_ident())
+    row = cr.get_cardio_recommendation(5, request=Request({"type": "http"}), identity=_ident())
     assert row["recommendation_json"] is None and row["recommendation_view"] is None
 
 

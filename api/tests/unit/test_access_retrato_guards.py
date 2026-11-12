@@ -7,6 +7,7 @@ Rodar: cd api && python -m pytest tests/unit/test_access_retrato_guards.py -q --
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 
@@ -17,12 +18,11 @@ from app.devices import require_device_credential, require_user_credential
 from app.security import (
     Identity,
     get_current_identity,
-    require_admin,
-    require_admin_or_pt,
     resolve_identity_from_credentials,
 )
 from app.users import require_session_identity
 from tests.support import access_retrato as ar
+from tests.support.guards_antigos import require_admin, require_admin_or_pt
 
 ALLOWLIST_PATH = Path(__file__).with_name("access_cobertura_allowlist.json")
 COMO_REGENERAR = "Regenerar so de proposito: cd api && python -m tests.support.access_retrato"
@@ -387,3 +387,70 @@ def test_checagem_nao_segue_funcao_de_outro_modulo_fora_de_app():
 def test_retrato_marca_logout_como_outra_com_justificativa(retrato):
     entry = retrato["rotas"]["POST /auth/logout"]
     assert entry["classe"] == "outra" and entry["justificativa"].strip()
+
+
+_GUARDS_REMOVIDOS = frozenset({"require_admin", "require_admin_or_pt", "is_admin_or_pt", "ADMIN_OR_PT_ROLES"})
+_APP_DIR = Path(__file__).resolve().parents[2] / "app"
+
+
+def _usos_dos_guards_removidos(source: str) -> list[str]:
+    """Definicao, import, chamada ou referencia (nome ou atributo) dos guards removidos."""
+    achados: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in _GUARDS_REMOVIDOS:
+            achados.append(f"def {node.name}")
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                if alias.name.rsplit(".", 1)[-1] in _GUARDS_REMOVIDOS or "guards_antigos" in alias.name:
+                    achados.append(f"import {alias.name}")
+            if isinstance(node, ast.ImportFrom) and "guards_antigos" in (node.module or ""):
+                achados.append(f"from {node.module}")
+        elif isinstance(node, ast.Name) and node.id in _GUARDS_REMOVIDOS:
+            achados.append(f"nome {node.id}")
+        elif isinstance(node, ast.Attribute) and node.attr in _GUARDS_REMOVIDOS:
+            achados.append(f"atributo {node.attr}")
+    return achados
+
+
+def test_nenhum_modulo_de_app_define_nem_importa_os_guards_de_papel_removidos():
+    """Lote 2F-3 (ADR 0011): os guards de papel sairam de `app`; so as copias congeladas de
+    `tests/support/guards_antigos.py` existem, e `app` nao pode trazê-los de volta."""
+    violacoes = {}
+    arquivos = sorted(_APP_DIR.rglob("*.py"))
+    assert len(arquivos) > 50
+    for arquivo in arquivos:
+        achados = _usos_dos_guards_removidos(arquivo.read_text(encoding="utf-8"))
+        if achados:
+            violacoes[arquivo.relative_to(_APP_DIR).as_posix()] = achados
+    assert violacoes == {}
+
+
+@pytest.mark.parametrize(
+    "fonte",
+    [
+        "def require_admin(i):\n    return i\n",
+        "async def require_admin_or_pt(i):\n    return i\n",
+        "from app.security import require_admin\n",
+        "from .security import is_admin_or_pt as x\n",
+        "from tests.support.guards_antigos import require_admin_or_pt\n",
+        "import tests.support.guards_antigos\n",
+        "def f(identity):\n    return security.is_admin_or_pt(identity)\n",
+        "x = Depends(require_admin)\n",
+        "ADMIN_OR_PT_ROLES = ('admin',)\n",
+    ],
+    ids=["def", "async_def", "import", "import_relativo", "import_copia", "import_modulo_copia", "atributo", "depends", "constante"],
+)
+def test_guarda_dos_guards_removidos_acusa_reintroducao(fonte):
+    assert _usos_dos_guards_removidos(fonte)
+
+
+def test_guarda_dos_guards_removidos_nao_acusa_nomes_parecidos():
+    assert _usos_dos_guards_removidos("def require_admin_identity(i):\n    return is_admin(i)\n") == []
+
+
+def test_copias_congeladas_tem_a_regra_de_antes():
+    from tests.support import guards_antigos as g
+
+    assert g.ADMIN_OR_PT_ROLES == ("admin", "personal_trainer")
+    for role, esperado in [("admin", True), ("personal_trainer", True), ("regular", False)]:
+        assert g.is_admin_or_pt(Identity(user_id=1, role=role, source="session")) is esperado

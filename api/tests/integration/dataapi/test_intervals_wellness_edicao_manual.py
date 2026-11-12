@@ -40,9 +40,10 @@ DIA = HOJE - _dt.timedelta(days=1)
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     ensure_grupo_b_tables(raw)
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo (ADR 0011).
+    truncar(raw, extras=("user_access_groups",))
     ids: dict[str, int] = {}
     with raw.cursor() as cur:
         for nome in ("dono", "outro"):
@@ -51,6 +52,7 @@ def seed(raw):
                 (f"wellness-manual-{nome}",),
             )
             ids[nome] = cur.lastrowid
+            conceder_grupo(cur, ids[nome], "regular")
     raw.commit()
     ids["raw"] = raw  # type: ignore[assignment]
     return ids

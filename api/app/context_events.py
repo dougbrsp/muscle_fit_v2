@@ -48,7 +48,8 @@ from .context_events_schema import (
 )
 from .db import get_conn
 from .db_helpers import connect_or_503
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/context-events", tags=["context-events"])
 
@@ -159,7 +160,7 @@ def list_context_events(
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "ver")),
 ):
     """Eventos do proprio usuario, mais recentes primeiro. Tabela ausente
     (antes da 048) -> `items: []` com a limitacao declarada, nunca 500.
@@ -215,7 +216,7 @@ def list_context_events(
 @router.post("")
 def create_context_event(
     payload: ContextEventIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "editar")),
 ):
     """INSERT (nunca upsert): o mesmo tipo no mesmo dia pode acontecer duas
     vezes e as duas sao verdade."""
@@ -248,7 +249,7 @@ def create_context_event(
 @router.get("/{entry_id}")
 def get_context_event(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "ver")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -264,7 +265,7 @@ def get_context_event(
 def update_context_event(
     entry_id: int,
     payload: ContextEventPatch,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "editar")),
 ):
     updates = dict(payload.model_dump(exclude_unset=True))
     if not updates:
@@ -300,7 +301,7 @@ def update_context_event(
 @router.delete("/{entry_id}")
 def delete_context_event(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "excluir")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:
