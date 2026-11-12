@@ -21,11 +21,11 @@ import pytest
 from fastapi import HTTPException
 
 from app import migrate as m
-from app import security
 from app.access import catalog, service
 from app.access.catalog import DEFAULT_GRANTS_BY_GROUP, RESOURCE_KEYS
 from app.nutrition_access import resolve_target_user
 from app.security import Identity
+from tests.support import guards_antigos
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "111_access_groups_rbac.py"
@@ -607,7 +607,7 @@ def test_papel_do_codigo_atual_mapeia_para_o_grupo_da_migracao():
 
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 def test_recursos_admin_e_cards_so_para_quem_passa_em_require_admin(role):
-    guard_libera = _guard_passa(security.require_admin, role)
+    guard_libera = _guard_passa(guards_antigos.require_admin, role)
     perms = _perms_do_papel(role)
     for recurso in ADMIN_ONLY_RESOURCES:
         for acao in catalog.ACTIONS:
@@ -617,7 +617,7 @@ def test_recursos_admin_e_cards_so_para_quem_passa_em_require_admin(role):
 
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 def test_modelos_metas_e_periodizacao_seguem_require_admin_or_pt(role):
-    guard_libera = _guard_passa(security.require_admin_or_pt, role)
+    guard_libera = _guard_passa(guards_antigos.require_admin_or_pt, role)
     perms = _perms_do_papel(role)
     for recurso in MODELOS_PT:
         for acao in catalog.ACTIONS:
@@ -632,16 +632,19 @@ def test_modelos_metas_e_periodizacao_seguem_require_admin_or_pt(role):
 
 
 def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
-    """Se um modulo novo passar a usar `require_admin_or_pt`, a matriz precisa ser revista."""
+    """Lote 2F-3: nenhum modulo de `app` usa mais os guards de papel; a matriz e a fonte.
+
+    A regra antiga vive so nas copias congeladas de `tests/support/guards_antigos.py`."""
     usam = sorted(
         p.name
-        for p in APP_DIR.glob("*.py")
-        if re.search(r"Depends\(require_admin_or_pt\)|require_admin_or_pt\(identity|is_admin_or_pt\(identity", p.read_text(encoding="utf-8"))
-        and p.name not in {"security.py"}
+        for p in APP_DIR.rglob("*.py")
+        if re.search(
+            r"Depends\(require_admin(_or_pt)?\)|require_admin(_or_pt)?\(identity|is_admin_or_pt\(identity"
+            r"|import[^\n]*\b(require_admin|require_admin_or_pt|is_admin_or_pt)\b",
+            p.read_text(encoding="utf-8"),
+        )
     )
-    assert usam == [
-        "cardio_recommendations.py",
-    ]
+    assert usam == []
 
 
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
@@ -653,7 +656,7 @@ def test_nutricao_de_terceiros_equivale_a_resolve_target_user(role, recurso, aca
 
     def _guard_de_papel() -> bool:
         # a regra de antes do lote 2D-1: terceiro exigia admin ou PT (`require_admin_or_pt`)
-        return _guard_passa(security.require_admin_or_pt, role)
+        return _guard_passa(guards_antigos.require_admin_or_pt, role)
 
     def _nova_assinatura() -> bool:
         try:

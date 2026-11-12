@@ -474,10 +474,10 @@ def test_so_autenticacao_real_tem_identidade_e_nao_declara_permissao():
         assert rota in com_identidade, rota
 
 
-def test_divida_real_tem_teto_42_e_nao_contem_as_rotas_convertidas():
+def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     allowlist = _load_allowlist()
     divida = allowlist["divida"]
-    assert divida["teto"] == 42 and len(divida["rotas"]) == 42
+    assert divida["teto"] == 0 and divida["rotas"] == []
     convertidas = {
         "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
         "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
@@ -492,12 +492,34 @@ def test_divida_real_tem_teto_42_e_nao_contem_as_rotas_convertidas():
     # tambem sai: 43 + 72 + 39 + 16 + 56 = 226 rotas com permissao declarada;
     # 2F-1 (29 rotas de `app.workout_plan_templates`: modelos de treino) tambem sai: 226 + 29 = 255;
     # 2F-2 (55 rotas de treino: registro, Modo Treino, planos, preferencias, catalogo, grupamentos e IA)
-    # tambem sai (divida 97 -> 42): 255 + 55 = 310.
+    # tambem sai (divida 97 -> 42): 255 + 55 = 310;
+    # 2F-3 (42 rotas de corpo, check-in, contexto, sono, Intervals e recomendacoes de cardio)
+    # fecha o lote 2 (divida 42 -> 0): 310 + 42 = 352. 0 + 6 + 9 + 352 = 367.
     com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
-    assert len(com_permissao) == 310
+    assert len(com_permissao) == 352
     assert not com_permissao & set(divida["rotas"])
     assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 367
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
+
+
+def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_categorias():
+    """Lote 2F-3 fechou a divida: toda rota viva dos dois apps (`app.main` e `app.main_engines`)
+    declara `require_permission`, e publica (com motivo) ou e so autenticacao pinada.
+    Nenhuma fica fora nem em duas categorias."""
+    allowlist = _load_allowlist()
+    assert allowlist["divida"]["rotas"] == [] and allowlist["divida"]["teto"] == 0
+    vivas = _all_project_routes()
+    com_permissao = {rota for rota, declaradas in vivas.items() if declaradas}
+    publicas = {item["rota"] for item in allowlist["publicas"]}
+    so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
+    assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
+    assert len(publicas) == 6 and len(so_autenticacao) == 9 and len(com_permissao) == 352
+    assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
+    sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
+    assert sem_categoria == set(), sorted(sem_categoria)
+    # e nenhuma categoria lista rota que nao existe mais
+    assert (publicas | so_autenticacao) <= set(vivas)
+    assert len(vivas) == 367
 
 
 def test_pino_so_autenticacao_acusa_rota_nova_removida_e_duplicada():

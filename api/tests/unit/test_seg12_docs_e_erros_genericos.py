@@ -16,6 +16,8 @@ from app import api_docs, body_composition
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import RaisingCursor
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 SEGREDO = "tabela_interna_xyz nao existe"
 
 

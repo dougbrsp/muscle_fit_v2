@@ -49,7 +49,8 @@ from .daily_checkins_schema import (
 )
 from .db import get_conn
 from .db_helpers import connect_or_503
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/daily-checkins", tags=["daily-checkins"])
 
@@ -153,7 +154,7 @@ def list_daily_checkins(
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "ver")),
 ):
     """Check-ins do proprio usuario, mais recentes primeiro. Tabela ausente
     (antes da 050) -> `items: []` com a limitacao declarada, nunca 500."""
@@ -200,7 +201,7 @@ def list_daily_checkins(
 @router.post("")
 def create_daily_checkin(
     payload: DailyCheckinIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "editar")),
 ):
     """UPSERT por `(user_id, local_date)`: repetir o check-in do dia CORRIGE.
 
@@ -233,7 +234,7 @@ def create_daily_checkin(
 @router.get("/{entry_id}")
 def get_daily_checkin(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "ver")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -249,7 +250,7 @@ def get_daily_checkin(
 def update_daily_checkin(
     entry_id: int,
     payload: DailyCheckinPatch,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "editar")),
 ):
     """PUT parcial. `local_date` NAO e editavel: mover um check-in de dia
     seria afirmar que a pessoa se sentia assim em outro dia. Errou a data?
@@ -275,7 +276,7 @@ def update_daily_checkin(
 @router.delete("/{entry_id}")
 def delete_daily_checkin(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.checkin", "excluir")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:

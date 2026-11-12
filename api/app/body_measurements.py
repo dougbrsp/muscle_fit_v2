@@ -37,7 +37,8 @@ from .body_measurements_schema import (
 from .db import get_conn
 from .domain import body_measurement_sites as _sites
 from .db_helpers import connect_or_503
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/body-measurements", tags=["body-measurements"])
 
@@ -190,7 +191,7 @@ def list_body_measurements(
     date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     """Medidas do proprio usuario, mais recentes primeiro. Tabela ausente
     (antes da 047) -> `items: []` com a limitacao declarada, nunca 500."""
@@ -242,7 +243,7 @@ def list_body_measurements(
 @router.post("")
 def create_or_update_body_measurement(
     payload: BodyMeasurementIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     """Upsert por `(user_id, local_date, site)`."""
     with _connect() as conn:
@@ -274,7 +275,7 @@ def create_or_update_body_measurement(
 @router.get("/{entry_id}")
 def get_body_measurement(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -290,7 +291,7 @@ def get_body_measurement(
 def update_body_measurement(
     entry_id: int,
     payload: BodyMeasurementPatch,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     updates = {key: value for key, value in payload.model_dump(exclude_unset=True).items()}
     if not updates:
@@ -328,7 +329,7 @@ def update_body_measurement(
 @router.delete("/{entry_id}")
 def delete_body_measurement(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "excluir")),
 ):
     with _connect() as conn:
         with conn.cursor() as cur:

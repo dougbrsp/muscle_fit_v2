@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está implementado na branch `feat/rbac-lote2f2-treino`, não publicado nem promovido** (ver "Lote 2F-2: treino"). O 2F-3 e os lotes 3 a 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está implementado na branch `feat/rbac-lote2f3-corpo-integracoes-fecho`, não publicado nem promovido, e fecha o lote 2 na branch: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). Os lotes 3 a 6 ainda não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -105,8 +105,8 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
    - **2D-2** Alimentos, fontes externas, preferidos e foto de rótulo (PR #135, na `develop` e no DEV desde 11/11/2026, não promovido; 16 rotas; sem migração; ver "Lote 2D-2").
    - **2E** Analytics e engines (PR #136, na `develop` e no DEV desde 12/11/2026, não promovido; 56 rotas; sem migração; ver "Lote 2E: analytics e engines").
    - **2F-1** Modelos de treino e escopo mínimo (PR #139, na `develop` e no DEV desde 12/11/2026, não promovido; 29 rotas; sem migração; ver "Lote 2F-1: modelos de treino e escopo mínimo").
-   - **2F-2** Treino (atividades, registros de exercício, planos, sessões, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício e grupos mapeados; branch `feat/rbac-lote2f2-treino`, implementado, não publicado nem promovido; 55 rotas; sem migração; ver "Lote 2F-2: treino").
-   - **2F-3** Corpo, integrações (Intervals), cardio e fecho (dívida zerada, remoção de `require_admin` e `require_admin_or_pt`, ratchet de papel zerado).
+   - **2F-2** Treino (atividades, registros de exercício, planos, sessões, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício e grupos mapeados; PR #143, na `develop` e no DEV desde 12/11/2026, não promovido; 55 rotas; sem migração; ver "Lote 2F-2: treino").
+   - **2F-3** Corpo, integrações (Intervals), cardio e fecho (implementado na branch `feat/rbac-lote2f3-corpo-integracoes-fecho`, não publicado nem promovido; 42 rotas; sem migração; dívida da guarda zerada, guards de papel removidos de `security.py`, ratchet de papel 3 → 1; ver "Lote 2F-3: corpo, integrações, cardio e fecho").
 3. **Tela "Grupos e acessos"**: API de grupos, membros e auditoria.
 4. **Ocultação no frontend**: hook de permissões nas telas.
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
@@ -135,8 +135,9 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - [x] **Coberto no 2D-2** (PR #135, na develop): as 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a `require_permission`; as checagens `is_admin` do catálogo de alimentos passam a `admin.catalogos` (ver "Lote 2D-2"). A paridade dessas rotas prova só o guard de entrada.
 - [x] **Coberto no 2E** (PR #136, na `develop`): as 56 rotas de analytics, dashboards, volume, progressão, cardio, corpo, relatórios e análise de treinos por IA passam a `require_permission`, uma por recurso do tema (ver "Lote 2E"). A paridade dessas rotas prova só o guard de entrada.
 - [x] **Coberto no 2F-1** (PR #139, na `develop`): as 29 rotas de modelos de treino passam a `require_permission`, com escopo mínimo `todos` na gestão e sem mínimo em `/assigned-to-me` e `/hr-zones` (ver "Lote 2F-1"). A paridade dessas rotas prova só o guard de entrada, com o escopo mínimo.
-- [x] **Coberto no 2F-2** (branch `feat/rbac-lote2f2-treino`, não publicado): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
-- [ ] **Pendente para 2F-3**: checagens de papel nos demais módulos (2F-3); as 3 rotas `outra` do retrato, sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; matriz mais larga que alguns guards (intervals sync, aplicar recomendação de cardio); paridade das demais rotas.
+- [x] **Coberto no 2F-2** (PR #143, na `develop`): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
+- [x] **Coberto no 2F-3** (branch `feat/rbac-lote2f3-corpo-integracoes-fecho`, não publicado): as 42 rotas de corpo, check-in, integrações Intervals, cardio e geração de recomendação passam a `require_permission`, com escopo mínimo `todos` no sync e no apply. Fecha o lote 2: dívida da guarda de cobertura zerada e `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` removidos de `api/app/security.py` (ver "Lote 2F-3: corpo, integrações, cardio e fecho").
+- [ ] **Pendente para os lotes 3 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (lote 5); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lotes 5 e 6); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -648,6 +649,59 @@ Total: 11 + 2 + 1 + 1 + 1 + 7 + 16 + 7 + 5 + 4 = 55.
 - **O que a paridade prova:** o guard de entrada das 55 rotas, para quem está no grupo de sistema do próprio papel.
 - **O que a paridade não prova:** o escopo dos dados dentro dos handlers; grupos personalizados; sessão real de usuário comum e de personal trainer; latência da consulta de permissões no Modo Treino.
 
+### Lote 2F-3: corpo, integrações, cardio e fecho
+
+Fecha o lote 2: as 42 rotas restantes passam a `require_permission`, a dívida da guarda de cobertura chega a zero e os guards de papel saem de `api/app/security.py`. Sem migração. Ação pelo método (ver, editar, excluir, sync, criar job).
+
+| Recurso | Rotas | Rotas cobertas | Ações |
+|---|---|---|---|
+| `corpo.indicadores` | 15 | `/body-composition*`, `/body-measurements*`, `/sleep-metrics*` | 6 ver, 6 editar, 3 excluir |
+| `corpo.checkin` | 10 | `/daily-checkins*`, `/context-events*` | 4 ver, 4 editar, 2 excluir |
+| `integracoes.intervals` | 11 | `/integrations/intervals/*` | 7 ver, 3 editar, mais o sync (POST `/integrations/intervals/sync`) |
+| `cardio` | 4 | GET lista, GET `{entry_id}`, POST e DELETE de `/cardio-recommendations` | ver (GET), editar (POST), excluir (DELETE) |
+| `ia.cardio` | 1 | POST `/cardio-recommendations/generate` (cria job) | editar |
+| `modelos.treino` | 1 | POST `/cardio-recommendations/{entry_id}/apply` (escopo mínimo `todos`, ver abaixo) | editar |
+
+Total: 15 + 10 + 11 + 4 + 1 + 1 = 42 rotas.
+
+*Decisão automática:* as 42 rotas são decididas pela decisão automática: 40 como `autenticado`, 1 como `admin` (sync) e 1 como `admin_ou_pt` (apply). As duas últimas são as que tinham guard de papel antes e usam escopo mínimo, descrito abaixo.
+
+*Escopo mínimo `todos` em sync e apply* (guards antigos preservados na lógica de quem pode):
+- POST `/integrations/intervals/sync`: antes `require_admin`; agora `integracoes.intervals`/editar com escopo mínimo `todos`. Só o admin tem `todos`: o usuário comum e o personal trainer recebem 403.
+- POST `/cardio-recommendations/{entry_id}/apply`: antes `require_admin_or_pt`; aplica no rascunho do Modelo e agora usa `modelos.treino`/editar com escopo mínimo `todos`. PT e admin têm `todos`; o usuário comum não tem `modelos.treino`/editar e recebe 403.
+- O corpo do 403 dessas duas rotas passa a ser `FORBIDDEN_DETAIL`.
+
+*`can_apply` em GET `/cardio-recommendations/{entry_id}`:* antes `is_admin_or_pt(identity)`. Agora é verdadeiro se a concessão `modelos.treino`/editar cobrir `todos`, lida das permissões em cache da requisição. O handler ganhou o parâmetro `request`.
+
+*Remoção dos guards de papel:*
+- `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` saem de `api/app/security.py`. Nenhum módulo de `api/app` os define nem importa.
+- Cópias congeladas ficam em `api/tests/support/guards_antigos.py`, só para o retrato e a paridade. Não são importadas por código de produção.
+- Um teste por AST impede a reintrodução dos guards em `api/app`.
+- O retrato congelado não foi regenerado.
+
+*Log:* o evento `intelligence_package.accessed` perde o campo `role`.
+
+*Dívida e ratchet:*
+- Dívida da guarda de cobertura: 42 → 0. Rotas com permissão declarada: 352.
+- Conferência: 0 + 6 públicas + 9 só autenticação + 352 com permissão = 367 rotas vivas.
+- Por lote: 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 = 352.
+- Um teste fixa que toda rota viva está em exatamente uma categoria.
+- Ratchet de papel: 3 → 1. Saíram `cardio_recommendations.py` e `analytics_dashboard.py`. Resta `athlete_hr_zones.py`, para o lote 5 (a regra de quem são as zonas de FC para o PT, sem conferência de vínculo).
+
+*Testes:*
+- Teste HTTP novo `api/tests/unit/test_corpo_integracoes_cardio_permissoes_rbac.py` (380 casos).
+- Sete testes unitários com a fixture `permissoes_por_papel`.
+- Overrides de `require_admin` sem efeito removidos de `test_users_fcmax_zonas` e `test_users_perfil_antropometrico`.
+- Quatro testes de integração passaram a conceder o grupo do papel aos usuários criados por SQL.
+- Nenhuma asserção foi alterada.
+
+*Paridade (`api/tests/unit/test_access_paridade_guards.py`):*
+- As 42 rotas entram pela decisão automática (40 `autenticado`, 1 `admin`, 1 `admin_ou_pt`); `CASOS_MANUAIS` segue com 72.
+- O sync nega o usuário comum e o PT e permite o admin; o apply nega o usuário comum e permite PT e admin.
+- Detector: sem o escopo mínimo, o usuário comum passaria no sync.
+- **O que a paridade prova:** o guard de entrada das 42 rotas, para quem está no grupo de sistema do próprio papel, e os dois escopos mínimos acima.
+- **O que a paridade não prova:** o escopo dos dados dentro dos handlers; grupos personalizados; integração com MySQL (CI com `ci-completo`); sessão real de usuário comum, de PT e de admin; relógio real; latência da consulta de permissões.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
@@ -1016,7 +1070,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Sessão real de personal trainer e de usuário comum, no DEV e em produção.
 - Latência da consulta de permissões nos Modelos.
 
-**Lote 2F-2** (branch `feat/rbac-lote2f2-treino`, não publicado, não promovido)
+**Lote 2F-2** (PR #143, na `develop` e no DEV desde 12/11/2026, não promovido)
 
 *O que muda:*
 - As 55 rotas de treino (registro de atividades e exercícios, Modo Treino, planos, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício, grupos mapeados e a IA de análise, insights, avaliação de série e geração de plano) passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas, inclusive no registro de treino, no Modo Treino e nos planos.
@@ -1038,6 +1092,38 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
 - Sessão real de usuário comum e de personal trainer, no DEV e em produção.
 - Latência da consulta de permissões no Modo Treino.
+
+**Lote 2F-3** (branch `feat/rbac-lote2f3-corpo-integracoes-fecho`, não publicado, não promovido)
+
+*O que muda:*
+- As 42 rotas de corpo, check-in, integrações Intervals, cardio e a geração de recomendação de cardio passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas.
+- POST `/integrations/intervals/sync` deixa de ser só admin: passa a exigir `integracoes.intervals`/editar, com escopo mínimo `todos` (só o admin tem). Personal trainer e usuário comum com grupo recebem 403.
+- POST `/cardio-recommendations/{entry_id}/apply` deixa de ser `admin_ou_pt` por papel: passa a exigir `modelos.treino`/editar, com escopo mínimo `todos` (PT e admin têm; usuário comum não).
+- Os guards `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` saem de `api/app/security.py`. O dispositivo de um dono sem grupo passa a ser negado.
+- O corpo do 403 do sync e do apply passa a ser `FORBIDDEN_DETAIL`.
+- O log `intelligence_package.accessed` perde o campo `role`.
+
+*O que não muda:*
+- Preservado: quem está no grupo de sistema do papel não ganha nem perde acesso. Nas duas rotas com escopo mínimo, quem tinha acesso pelo papel antes continua tendo; quem não tinha (PT no sync, usuário comum no apply) continua sem.
+- Assinaturas dos handlers de sucesso, respostas de sucesso e regras de motor. O handler de GET `/cardio-recommendations/{entry_id}` ganha o parâmetro `request`, sem mudar a resposta.
+- Nenhuma migração. Não há mudança de `users.role` nem de tabela.
+
+*Campo `can_apply`:* em GET `/cardio-recommendations/{entry_id}` deixa de ser `is_admin_or_pt(identity)`. Passa a ser verdadeiro se a concessão `modelos.treino`/editar cobrir `todos`, lida das permissões em cache da requisição.
+*Promoção:*
+1. SELECT prévio de leitura em produção: usuários ativos sem grupo ou com linha de grupo de sistema divergente do papel, cruzado com donos de dispositivo ativo (o dispositivo de um dono sem grupo é negado). Ainda não há medição registrada para o 2F-3.
+2. Sem migração. Promoção só de backend, sem `RUN_DB_MIGRATIONS`. As rotas rodam na api-core.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Os guards removidos de `security.py` voltam com ele. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote, na branch; não publicado):*
+- suíte unitária inteira após o código: 15.848 passed, com falhas só nas guardas, depois ajustadas, e em `test_sem_mojibake` (falha local conhecida);
+- guardas, retrato e paridade: 387 passed;
+- `test_corpo_integracoes_cardio_permissoes_rbac.py` (HTTP, 380 casos): 380 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Sessão real de usuário comum, de personal trainer e de admin, no DEV e em produção.
+- Relógio real e latência da consulta de permissões.
 
 ## Referências
 

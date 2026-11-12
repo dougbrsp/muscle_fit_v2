@@ -855,7 +855,6 @@ def intelligence_package(
         "intelligence_package.accessed",
         user_id=identity.user_id,
         identity_source=identity.source,
-        role=identity.role,
         window=resolved.kind.value,
         size_bytes=payload["size_bytes"],
         max_bytes=PACKAGE_MAX_BYTES,
