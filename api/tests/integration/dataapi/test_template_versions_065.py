@@ -30,7 +30,7 @@ from fastapi.testclient import TestClient
 
 from app import migrate as m
 from app import workout_plan_templates as wpt
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from app.workout_plan_templates_engine import get_template_if_assigned
 from tests.support.isolamento_v3 import truncar
 
@@ -55,13 +55,15 @@ PEITORAL = 52
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_v065', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('aluno_v065', 'x', 'regular')")
         aluno_id = cur.lastrowid
+        conceder_grupo(cur, aluno_id, "regular")
         cur.execute("INSERT INTO muscle_groups (id, name) VALUES (%s, 'Peitoral')", (PEITORAL,))
     raw.commit()
     return {"admin": admin_id, "aluno": aluno_id}
@@ -73,7 +75,6 @@ def _client(user_id: int) -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

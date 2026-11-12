@@ -32,7 +32,7 @@ from app import services
 from app import workout_plan_templates as wpt
 from app.generation import freeze_mode_a, freeze_mode_b
 from app.generation.generation_runs import record_generation_run
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from app.template_versions import current_version_id_of
 from tests.support.isolamento_v3 import truncar
 
@@ -43,11 +43,12 @@ PEITORAL, SUPINO, BANCO = 52, 7100, 9001
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_v066', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         cur.execute("INSERT INTO muscle_groups (id, name) VALUES (%s, 'Peitoral')", (PEITORAL,))
         cur.execute("INSERT INTO equipment (id, name) VALUES (%s, 'Banco reto')", (BANCO,))
         cur.execute("INSERT INTO exercise_catalog (id, name, is_active) VALUES (%s, 'Supino reto', 1)", (SUPINO,))
@@ -65,7 +66,6 @@ def _client(user_id: int) -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

@@ -641,7 +641,6 @@ def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
     )
     assert usam == [
         "cardio_recommendations.py",
-        "workout_plan_templates.py",
     ]
 
 

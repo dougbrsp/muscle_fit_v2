@@ -22,6 +22,8 @@ from app import athlete_hr_zones, workout_plan_templates
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import fake_transaction
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 # FCmáx manual por usuário: 1 = admin, 2 = PT, 3 = aluno A, 4 = aluno B.
 _USERS = {
     1: {"id": 1, "full_name": "Admin", "max_hr_bpm_manual": 180},

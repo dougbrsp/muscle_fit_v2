@@ -35,6 +35,14 @@ O que este teste NAO prova:
 - rotas nao convertidas (sem permissao e fora de `so_autenticacao`) e a existencia, no
   retrato, de rota criada depois dele (falha pedindo regeneracao proposital).
 
+Escopo minimo (lote 2F-1): `require_permission(..., min_scope=...)` exige que o escopo
+concedido cubra o minimo declarado. `decisao_nova` aceita `declaradas` como pares
+`(recurso, acao)` ou triplas `(recurso, acao, escopo_minimo)` (de `declared_permission_scopes`)
+e, com escopo minimo, exige `scope_covers(escopo concedido, minimo)` via `permission_scope`.
+Pares seguem aceitando qualquer escopo. A paridade geral usa as triplas vivas de todas as
+rotas. O 2F-1 prova que ignorar o escopo minimo faria o `regular` (`modelos.treino`/ver so
+`proprios`) passar nas GET de gestao, que o guard antigo (`admin_ou_pt`) recusava.
+
 Escopo da paridade: ela cobre o guard de ENTRADA (credencial + permissao declarada). A regra de
 terceiros (escopo proprios x alunos x todos, `authorize_self_or_all`) e provada em
 `test_access_catalogo_e_resolucao.py` e nos testes HTTP de cada rota.
@@ -54,10 +62,14 @@ from app.access import (
     DEFAULT_GRANTS_BY_GROUP,
     ROLE_TO_SYSTEM_GROUP,
     EffectivePermissions,
+    declared_permission_scopes,
     has_permission,
+    min_scope_of,
+    permission_of,
     resolve_permissions,
+    scope_covers,
 )
-from app.access.service import merge_grants
+from app.access.service import merge_grants, permission_scope
 from app.security import Identity
 from tests.support.access_retrato import (
     PAPEIS,
@@ -220,8 +232,19 @@ def credencial_aceita(classe: str, tipo: str) -> bool:
     return True
 
 
-def decisao_nova(classe: str, declaradas: list[tuple[str, str]], permissoes: EffectivePermissions, tipo: str) -> bool:
-    return credencial_aceita(classe, tipo) and all(has_permission(permissoes, r, a) for r, a in declaradas)
+def _permissao_atendida(permissoes: EffectivePermissions, declarada: tuple) -> bool:
+    """Par (recurso, acao): qualquer escopo basta. Tripla com escopo minimo: o escopo
+    concedido tem de cobri-lo (`scope_covers`)."""
+    recurso, acao = declarada[0], declarada[1]
+    minimo = declarada[2] if len(declarada) > 2 else None
+    if minimo is None:
+        return has_permission(permissoes, recurso, acao)
+    concedido = permission_scope(permissoes, recurso, acao)
+    return concedido is not None and scope_covers(concedido, minimo)
+
+
+def decisao_nova(classe: str, declaradas: list[tuple], permissoes: EffectivePermissions, tipo: str) -> bool:
+    return credencial_aceita(classe, tipo) and all(_permissao_atendida(permissoes, d) for d in declaradas)
 
 
 def _decisao_antiga(rota: str, classe: str, papel: str, tipo: str) -> bool:
@@ -233,7 +256,7 @@ def _decisao_antiga(rota: str, classe: str, papel: str, tipo: str) -> bool:
 def divergencias(
     rota: str,
     classe: str,
-    declaradas: list[tuple[str, str]],
+    declaradas: list[tuple],
     permissoes_por_papel: Callable[[str, str], EffectivePermissions] = permissoes_do_papel,
 ) -> list[str]:
     """Combinacoes (papel, tipo) em que guard antigo e permissao nova decidem diferente."""
@@ -263,6 +286,22 @@ def _rotas_convertidas() -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
     return {r: p for r, p in todas.items() if p}, _so_autenticacao()
 
 
+def _declaradas_com_escopo() -> dict[str, list[tuple[str, str, str | None]]]:
+    """Rota viva -> triplas (recurso, acao, escopo_minimo) declaradas (so rotas com permissao)."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    rotas: dict[str, list[tuple[str, str, str | None]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            triplas = declared_permission_scopes(route)
+            if not triplas:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                rotas.setdefault(f"{metodo} {route.path}", []).extend(triplas)
+    return rotas
+
+
 # ---------------------------------------------------------------------------
 # Paridade real
 # ---------------------------------------------------------------------------
@@ -286,7 +325,7 @@ def test_toda_rota_convertida_esta_no_retrato():
 
 def test_paridade_guard_antigo_x_permissao_nova_nas_rotas_com_permissao():
     retrato = carregar_retrato()["rotas"]
-    com_permissao, _ = _rotas_convertidas()
+    com_permissao = _declaradas_com_escopo()
     problemas: list[str] = []
     for rota, declaradas in sorted(com_permissao.items()):
         if rota not in retrato:
@@ -448,7 +487,7 @@ MODULOS_2D1 = {
     "app.nutrition_meal_parse": "ia.nutricao",
     "app.nutrition_meal_photo": "ia.nutricao",
 }
-ACAO_POR_METODO = {"GET": "ver", "POST": "editar", "PUT": "editar", "DELETE": "excluir"}
+ACAO_POR_METODO = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}
 
 
 def _rotas_2d1() -> dict[str, list[tuple[str, str]]]:
@@ -581,15 +620,39 @@ def _rotas_2e() -> dict[str, list[tuple[str, str]]]:
     return rotas
 
 
+MODULO_2F1 = "app.workout_plan_templates"
+ROTA_DRAFTS_IA = "POST /workout-plan-templates/periodization-drafts"
+ROTAS_2F1_ME = ("GET /workout-plan-templates/assigned-to-me", "GET /workout-plan-templates/hr-zones")
+
+
+def _rotas_2f1() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas de `app.workout_plan_templates` que declaram permissao (pares)."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    com_permissao, _ = _rotas_convertidas()
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") != MODULO_2F1:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave in com_permissao:
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B, 2D-1, 2D-2 e 2E: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    """Rotas com permissao fora do 2B, 2D-1, 2D-2, 2E e 2F-1: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     d1 = _rotas_2d1()
     d2 = _rotas_2d2()
     e = _rotas_2e()
+    f1 = _rotas_2f1()
     return {
         r: p for r, p in com_permissao.items()
-        if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e
+        if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e and r not in f1
     }
 
 
@@ -598,9 +661,10 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_226_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e():
+def test_paridade_cobre_as_255_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 226
+    assert len(com_permissao) == 255
+    assert len(_rotas_2f1()) == 29
     assert len(_rotas_2e()) == 56
     assert len(_rotas_2d1()) == 39
     assert len(_rotas_2d2()) == 16
@@ -890,3 +954,152 @@ def test_paridade_das_56_rotas_do_2e_sem_divergencia_de_acesso():
     for rota, declaradas in sorted(_rotas_2e().items()):
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2E:" + chr(10) + chr(10).join(problemas[:30])
+
+
+# ---------------------------------------------------------------------------
+# Lote 2F-1: modelos de treino (29 rotas de `app.workout_plan_templates`)
+#
+# 27 de gestao (classe `admin_ou_pt` no retrato) exigem escopo minimo `todos`; as 2 do
+# me_router (classe `autenticado`) so `modelos.treino`/ver, sem escopo minimo. A paridade
+# cobre o guard de ENTRADA incluindo o escopo minimo; a posse/atribuicao do modelo dentro
+# dos handlers e coberta pelos testes HTTP de cada rota.
+# ---------------------------------------------------------------------------
+
+_T = "/workout-plan-templates"
+_TID = _T + "/{template_id}"
+_VER = _TID + "/versions/{version_id}"
+_GESTAO_2F1_TODOS = {
+    # ver (10)
+    f"GET {_T}": ("modelos.treino", "ver"),
+    f"GET {_T}/users-lookup": ("modelos.treino", "ver"),
+    f"GET {_TID}": ("modelos.treino", "ver"),
+    f"GET {_TID}/assignments": ("modelos.treino", "ver"),
+    f"GET {_TID}/draft": ("modelos.treino", "ver"),
+    f"GET {_TID}/methodology-intent": ("modelos.treino", "ver"),
+    f"GET {_TID}/methodology-volume": ("modelos.treino", "ver"),
+    f"GET {_TID}/methodology-volume/counting-modes": ("modelos.treino", "ver"),
+    f"GET {_TID}/versions": ("modelos.treino", "ver"),
+    f"GET {_VER}": ("modelos.treino", "ver"),
+    # editar (13 de modelos.treino)
+    f"PATCH {_TID}/status": ("modelos.treino", "editar"),
+    f"POST {_T}": ("modelos.treino", "editar"),
+    f"POST {_T}/cardio-prescription-check": ("modelos.treino", "editar"),
+    f"POST {_T}/methodology-volume-preview": ("modelos.treino", "editar"),
+    f"POST {_T}/preview-activation": ("modelos.treino", "editar"),
+    f"POST {_TID}/assignments": ("modelos.treino", "editar"),
+    f"POST {_TID}/duplicate": ("modelos.treino", "editar"),
+    f"POST {_VER}/archive": ("modelos.treino", "editar"),
+    f"POST {_VER}/revert": ("modelos.treino", "editar"),
+    f"POST {_VER}/unarchive": ("modelos.treino", "editar"),
+    f"PUT {_TID}": ("modelos.treino", "editar"),
+    f"PUT {_TID}/draft": ("modelos.treino", "editar"),
+    f"PUT {_TID}/methodology-intent": ("modelos.treino", "editar"),
+    # IA de periodizacao (editar)
+    ROTA_DRAFTS_IA: ("ia.modelo_periodizacao", "editar"),
+    # excluir (3)
+    f"DELETE {_TID}": ("modelos.treino", "excluir"),
+    f"DELETE {_TID}/assignments/{{user_id}}": ("modelos.treino", "excluir"),
+    f"DELETE {_TID}/draft": ("modelos.treino", "excluir"),
+}
+# rota -> (recurso, acao, escopo minimo) do contrato do 2F-1
+CONTRATO_2F1: dict[str, tuple[str, str, str | None]] = {
+    **{r: (*ra, "todos") for r, ra in _GESTAO_2F1_TODOS.items()},
+    **{r: ("modelos.treino", "ver", None) for r in ROTAS_2F1_ME},
+}
+
+
+def test_o_conjunto_convertido_no_2f1_e_exatamente_o_das_29_rotas_do_modulo():
+    rotas = _rotas_2f1()
+    assert len(rotas) == 29
+    assert set(rotas) == set(CONTRATO_2F1)
+    assert len(_GESTAO_2F1_TODOS) == 27
+    contagem = {"ver": 0, "editar": 0, "excluir": 0}
+    for recurso, acao in _GESTAO_2F1_TODOS.values():
+        if recurso == "modelos.treino":
+            contagem[acao] += 1
+    assert contagem == {"ver": 10, "editar": 13, "excluir": 3}, contagem
+    # Toda rota viva do modulo declara permissao (nenhuma ficou de fora do lote).
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    vivas: set[str] = set()
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") == MODULO_2F1:
+                vivas |= {f"{m} {route.path}" for m in route.methods - {"HEAD", "OPTIONS"}}
+    assert vivas == set(CONTRATO_2F1), sorted(vivas ^ set(CONTRATO_2F1))
+    retrato = carregar_retrato()["rotas"]
+    for rota in rotas:
+        esperada = "autenticado" if rota in ROTAS_2F1_ME else "admin_ou_pt"
+        assert retrato[rota]["classe"] == esperada, rota
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+    assert len(CASOS_MANUAIS) == 72
+
+
+def test_as_29_rotas_do_2f1_declaram_recurso_acao_e_escopo_minimo_do_contrato():
+    vivas = _declaradas_com_escopo()
+    problemas: list[str] = []
+    for rota, (recurso, acao, minimo) in sorted(CONTRATO_2F1.items()):
+        esperado = [(recurso, acao, minimo)]
+        if vivas.get(rota) != esperado:
+            problemas.append(f"{rota}: declara {vivas.get(rota)}, contrato {esperado}")
+        if rota != ROTA_DRAFTS_IA:
+            assert ACAO_POR_METODO[rota.split(" ", 1)[0]] == acao, rota
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_helpers_publicos_leem_o_escopo_minimo_das_rotas_do_2f1():
+    from app.main import app as main_app
+
+    com_todos = sem_minimo = 0
+    for route in _iter_api_routes(main_app):
+        if getattr(route.endpoint, "__module__", "") != MODULO_2F1:
+            continue
+        calls = [d.call for d in route.dependant.dependencies]
+        for call in [c for c in calls if permission_of(c) is not None]:
+            if min_scope_of(call) == "todos":
+                com_todos += 1
+            else:
+                assert min_scope_of(call) is None
+                sem_minimo += 1
+    assert com_todos == 27 and sem_minimo == 2
+
+
+def test_paridade_das_29_rotas_do_2f1_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    vivas = _declaradas_com_escopo()
+    problemas: list[str] = []
+    for rota in sorted(_rotas_2f1()):
+        problemas += divergencias(rota, retrato[rota]["classe"], vivas[rota])
+    assert not problemas, "Divergencia de acesso no 2F-1:" + chr(10) + chr(10).join(problemas[:30])
+
+
+def test_2f1_regular_negado_nas_27_de_gestao_e_permitido_nas_2_do_me_router_pt_e_admin_em_todas():
+    vivas = _declaradas_com_escopo()
+    retrato = carregar_retrato()["rotas"]
+    for rota in _rotas_2f1():
+        classe = retrato[rota]["classe"]
+        for papel, tipo in _combinacoes():
+            esperado = (papel != "regular" or rota in ROTAS_2F1_ME) and credencial_aceita(classe, tipo)
+            assert decisao_nova(classe, vivas[rota], permissoes_do_papel(papel, tipo), tipo) is esperado, (
+                rota, papel, tipo,
+            )
+    assert len([r for r in _rotas_2f1() if r not in ROTAS_2F1_ME]) == 27
+
+
+def test_2f1_detector_ignorar_o_escopo_minimo_faria_a_paridade_acusar_o_regular_nas_get_de_gestao():
+    vivas = _declaradas_com_escopo()
+    retrato = carregar_retrato()["rotas"]
+    get_gestao = sorted(r for r in _GESTAO_2F1_TODOS if r.startswith("GET "))
+    assert len(get_gestao) == 10
+    for rota in get_gestao:
+        classe = retrato[rota]["classe"]
+        # Com o escopo minimo (o real): sem divergencia.
+        assert divergencias(rota, classe, vivas[rota]) == [], rota
+        # Sem o escopo minimo (so pares): o regular (escopo proprios) passaria e a paridade acusa.
+        pares = [(r, a) for r, a, _ in vivas[rota]]
+        problemas = divergencias(rota, classe, pares)
+        assert any("regular" in p and "permite" in p for p in problemas), (rota, problemas)
+    assert not scope_covers("proprios", "todos")
+    assert permission_scope(permissoes_do_papel("regular", "session"), "modelos.treino", "ver") == "proprios"
+    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "ver") == "todos"

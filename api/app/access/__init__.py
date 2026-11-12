@@ -14,7 +14,9 @@ from .catalog import (
     scope_covers,
 )
 from .deps import (
+    declared_permission_scopes,
     declared_permissions,
+    min_scope_of,
     permission_of,
     require_additional_permission,
     require_permission,
@@ -65,10 +67,12 @@ __all__ = [
     "can_access_target",
     "catalog_payload",
     "check_catalog",
+    "declared_permission_scopes",
     "declared_permissions",
     "ensure_not_last_admin",
     "has_permission",
     "lock_active_admin_ids",
+    "min_scope_of",
     "owns_row_or_all",
     "permission_of",
     "permission_scope",
