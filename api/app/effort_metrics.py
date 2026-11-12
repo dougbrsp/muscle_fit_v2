@@ -15,7 +15,8 @@ from . import effort_estimates
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .intelligence.dashboard.time_windows import user_today_for
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/effort-metrics", tags=["effort-metrics"])
 
@@ -32,7 +33,7 @@ def _connect():
 @router.get("")
 def list_effort_metrics(
     days: int = Query(default=DEFAULT_DAYS, ge=1, le=MAX_DAYS),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     """Dias com estimativa nos últimos `days` dias (hoje no fuso do usuário),
     do mais recente para o mais antigo."""

@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse
 
 from . import async_jobs
 from .models import WorkoutsAnalysisGenerateIn
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 from .workouts_analysis_core import JOB_TYPE_WORKOUTS_ANALYSIS
 
 router = APIRouter(prefix="/workouts-analysis", tags=["workouts-analysis"])
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/workouts-analysis", tags=["workouts-analysis"])
 @router.post("/generate", status_code=202)
 def generate_workouts_analysis(
     payload: WorkoutsAnalysisGenerateIn | None = None,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("ia.analise_treinos", "editar")),
 ):
     """Assincrono desde a Fase 3 da migracao AWS (202 + job_id + polling via
     GET /jobs/{job_id}) - a geracao em si

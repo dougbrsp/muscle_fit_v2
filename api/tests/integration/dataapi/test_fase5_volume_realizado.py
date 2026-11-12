@@ -45,13 +45,16 @@ PESOS = {"Peitoral": 1.0, "Triceps": 0.5, "Ombro": 0.25}
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
     advanced_techniques.clear_cache()
     ids: dict[str, int] = {}
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('dono_f5', 'x', 'admin')")
         ids["dono"] = cur.lastrowid
+        # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+        conceder_grupo(cur, ids["dono"], "regular")
         for grupo in PESOS:
             cur.execute("INSERT INTO muscle_groups (name) VALUES (%s)", (grupo,))
             ids[grupo] = cur.lastrowid

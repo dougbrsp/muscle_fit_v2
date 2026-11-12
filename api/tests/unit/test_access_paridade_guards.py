@@ -496,12 +496,101 @@ def _rotas_2d2() -> dict[str, list[tuple[str, str]]]:
     return rotas
 
 
+MODULOS_2E = (
+    "app.analytics", "app.analytics_dashboard", "app.dashboard_modules", "app.dashboard_intelligence",
+    "app.engines_extra", "app.progression", "app.effort_metrics", "app.reports", "app.workouts_analysis",
+)
+# O PUT do mapa corporal e do 2C-1 (`admin.catalogos`), nao do 2E, embora more em `app.dashboard_modules`.
+ROTA_PUT_BODY_MAP_2C1 = "PUT /analytics/muscle-group-body-map"
+# Tabela rota -> recurso do contrato do 2E (acao: GET = ver; POST = editar).
+RECURSO_2E = {
+    "GET /analytics/body-composition-trend": "corpo.indicadores",
+    "GET /analytics/cardio": "cardio",
+    "GET /analytics/cardio-agent-context": "cardio",
+    "GET /analytics/dashboard-cycle": "dashboards",
+    "GET /analytics/dashboard-muscle-drilldown": "volume.grupamentos",
+    "GET /analytics/dashboard-muscle-status": "volume.grupamentos",
+    "GET /analytics/dashboard-progression": "progressao",
+    "GET /analytics/dashboard-progression-by-muscle-group": "progressao",
+    "GET /analytics/dashboard-progression-suggestion": "progressao",
+    "GET /analytics/dashboard-progression-trend": "progressao",
+    "GET /analytics/dashboard-recovery": "dashboards",
+    "GET /analytics/dashboard-stimulus-fatigue": "volume.grupamentos",
+    "GET /analytics/dashboard-workout-sessions": "dashboards",
+    "GET /analytics/dashboard/adherence": "dashboards",
+    "GET /analytics/dashboard/body": "corpo.indicadores",
+    "GET /analytics/dashboard/cardio": "cardio",
+    "GET /analytics/dashboard/context": "dashboards",
+    "GET /analytics/dashboard/data-quality": "dashboards",
+    "GET /analytics/dashboard/engine": "dashboards",
+    "GET /analytics/dashboard/engine/plans/{plan_id}": "dashboards",
+    "GET /analytics/dashboard/exercises/{exercise_id}/progress": "progressao",
+    "GET /analytics/dashboard/insights": "dashboards",
+    "GET /analytics/dashboard/intelligence-package": "dashboards",
+    "GET /analytics/dashboard/muscles": "volume.grupamentos",
+    "GET /analytics/dashboard/muscles/{muscle_group_id}": "volume.grupamentos",
+    "GET /analytics/dashboard/overview": "dashboards",
+    "GET /analytics/dashboard/recovery-signals": "dashboards",
+    "GET /analytics/dashboard/strength-panel": "progressao",
+    "GET /analytics/dashboard/workouts": "dashboards",
+    "GET /analytics/dashboard/workouts/{activity_id}": "dashboards",
+    "GET /analytics/exercise-progress": "progressao",
+    "GET /analytics/health": "dashboards",
+    "GET /analytics/methodology-realized": "volume.grupamentos",
+    "GET /analytics/muscle-activation-by-activity": "volume.grupamentos",
+    "GET /analytics/muscle-group-body-map": "volume.grupamentos",
+    "GET /analytics/muscle-groups-daily-activation": "volume.grupamentos",
+    "GET /analytics/muscle-groups-equivalent-sets-by-activity": "volume.grupamentos",
+    "GET /analytics/muscle-groups-recent-exercise-volume": "volume.grupamentos",
+    "GET /analytics/muscle-groups-slot-comparison": "volume.grupamentos",
+    "GET /analytics/muscle-recovery": "dashboards",
+    "GET /analytics/muscle-recovery-consecutive-check": "dashboards",
+    "GET /analytics/rpe-distribution": "dashboards",
+    "GET /analytics/summary": "dashboards",
+    "GET /analytics/training-evolution": "progressao",
+    "GET /analytics/training-trend": "dashboards",
+    "GET /analytics/training-volume": "volume.grupamentos",
+    "GET /analytics/training-volume-by-split-day": "volume.grupamentos",
+    "GET /effort-metrics": "cardio",
+    "GET /exercises/suggested-progression": "progressao",
+    "GET /exercises/suggested-set-count-for-substitution": "progressao",
+    "GET /progression/tracks": "progressao",
+    "GET /progression/tracks/{track_id}/decisions": "progressao",
+    "GET /reports/markdown": "relatorios",
+    "POST /analytics/muscle-activation-breakdown": "volume.grupamentos",
+    "POST /analytics/muscle-activation-preview": "volume.grupamentos",
+    "POST /workouts-analysis/generate": "ia.analise_treinos",
+}
+
+
+def _rotas_2e() -> dict[str, list[tuple[str, str]]]:
+    """Rotas vivas dos 9 modulos de analytics/engines do 2E que declaram permissao (sem o PUT do 2C-1)."""
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    com_permissao, _ = _rotas_convertidas()
+    rotas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") not in MODULOS_2E:
+                continue
+            for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
+                chave = f"{metodo} {route.path}"
+                if chave != ROTA_PUT_BODY_MAP_2C1 and chave in com_permissao:
+                    rotas[chave] = com_permissao[chave]
+    return rotas
+
+
 def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
-    """Rotas com permissao fora do 2B, 2D-1 e 2D-2: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
+    """Rotas com permissao fora do 2B, 2D-1, 2D-2 e 2E: as 34 do 2C-1 mais as 72 do 2C-2 (casos manuais)."""
     com_permissao, _ = _rotas_convertidas()
     d1 = _rotas_2d1()
     d2 = _rotas_2d2()
-    return {r: p for r, p in com_permissao.items() if r not in ROTAS_2B and r not in d1 and r not in d2}
+    e = _rotas_2e()
+    return {
+        r: p for r, p in com_permissao.items()
+        if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e
+    }
 
 
 def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
@@ -509,9 +598,10 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_170_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2():
+def test_paridade_cobre_as_226_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 170
+    assert len(com_permissao) == 226
+    assert len(_rotas_2e()) == 56
     assert len(_rotas_2d1()) == 39
     assert len(_rotas_2d2()) == 16
     assert ROTAS_2B <= set(com_permissao)
@@ -723,3 +813,80 @@ def test_paridade_das_16_rotas_do_2d2_sem_divergencia_de_acesso():
     for rota, declaradas in sorted(_rotas_2d2().items()):
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2D-2:" + chr(10) + chr(10).join(problemas[:30])
+
+
+# ---------------------------------------------------------------------------
+# Lote 2E: analytics e engines (56 rotas `autenticado` sobre os dados do proprio usuario)
+#
+# A paridade cobre o guard de ENTRADA (classe do retrato x permissao declarada); nao prova o
+# escopo dos dados dentro dos handlers, que continuam filtrando pelo usuario da identidade.
+# ---------------------------------------------------------------------------
+
+
+def test_o_conjunto_convertido_no_2e_e_exatamente_o_das_56_rotas_dos_9_modulos():
+    rotas = _rotas_2e()
+    assert len(rotas) == 56
+    assert set(rotas) == set(RECURSO_2E)
+    contagem: dict[str, int] = {}
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    vistas: set[tuple[str, str]] = set()
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            modulo = getattr(route.endpoint, "__module__", "")
+            if modulo not in MODULOS_2E:
+                continue
+            for metodo in route.methods - {"HEAD", "OPTIONS"}:
+                chave = f"{metodo} {route.path}"
+                if chave == ROTA_PUT_BODY_MAP_2C1 or (modulo, chave) in vistas:
+                    continue
+                vistas.add((modulo, chave))
+                contagem[modulo] = contagem.get(modulo, 0) + 1
+    assert contagem == {
+        "app.analytics": 24, "app.analytics_dashboard": 17, "app.dashboard_modules": 6,
+        "app.dashboard_intelligence": 2, "app.engines_extra": 2, "app.progression": 2,
+        "app.effort_metrics": 1, "app.reports": 1, "app.workouts_analysis": 1,
+    }, contagem
+    # O PUT do 2C-1 segue com `admin.catalogos` e fora do conjunto do 2E.
+    com_permissao, _ = _rotas_convertidas()
+    assert com_permissao[ROTA_PUT_BODY_MAP_2C1] == [("admin.catalogos", "editar")]
+    assert ROTA_PUT_BODY_MAP_2C1 not in rotas
+    retrato = carregar_retrato()["rotas"]
+    for rota in rotas:
+        assert retrato[rota]["classe"] == "autenticado", rota
+        assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
+    assert len(CASOS_MANUAIS) == 72
+
+
+def test_a_tabela_do_2e_tem_os_totais_por_recurso_do_contrato():
+    from collections import Counter
+
+    assert Counter(RECURSO_2E.values()) == {
+        "dashboards": 20, "volume.grupamentos": 16, "progressao": 12, "cardio": 4,
+        "corpo.indicadores": 2, "relatorios": 1, "ia.analise_treinos": 1,
+    }
+    editar = {r for r in RECURSO_2E if r.startswith("POST ")}
+    assert editar == {
+        "POST /analytics/muscle-activation-breakdown", "POST /analytics/muscle-activation-preview",
+        "POST /workouts-analysis/generate",
+    }
+
+
+def test_as_56_rotas_do_2e_declaram_o_recurso_da_tabela_com_a_acao_do_metodo():
+    problemas: list[str] = []
+    declaradas = _rotas_2e()
+    for chave, recurso in sorted(RECURSO_2E.items()):
+        metodo = chave.split(" ", 1)[0]
+        esperado = [(recurso, ACAO_POR_METODO[metodo])]
+        if declaradas.get(chave) != esperado:
+            problemas.append(f"{chave}: declara {declaradas.get(chave)}, contrato {esperado}")
+    assert not problemas, chr(10).join(problemas)
+
+
+def test_paridade_das_56_rotas_do_2e_sem_divergencia_de_acesso():
+    retrato = carregar_retrato()["rotas"]
+    problemas: list[str] = []
+    for rota, declaradas in sorted(_rotas_2e().items()):
+        problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
+    assert not problemas, "Divergencia de acesso no 2E:" + chr(10) + chr(10).join(problemas[:30])

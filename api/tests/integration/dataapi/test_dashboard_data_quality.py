@@ -50,11 +50,12 @@ def _truncate(raw) -> None:
     le ou escreve - inclusive o que os SERVICOS leem por baixo do endpoint, nao
     so o que este seed insere. Manter a lista por arquivo foi como nasceram os
     dois vazamentos do PR #199."""
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Cenario montado para violar as 10 regras do §8.3 de uma vez, para o
     usuario A. O usuario B fica sem NENHUM dado - e a prova de isolamento."""
     # `intervals_wellness` nasce na migracao 027 (grupo B), que o schema base
@@ -67,6 +68,8 @@ def seed(raw):
         for nome, papel in (("dono", "admin"), ("outro", "regular")):
             cur.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', %s)", (nome, papel))
             ids[nome] = cur.lastrowid
+            # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+            conceder_grupo(cur, ids[nome], "regular")
 
         for grupo in ("Peito", "Triceps"):
             cur.execute("INSERT INTO muscle_groups (name) VALUES (%s)", (grupo,))
