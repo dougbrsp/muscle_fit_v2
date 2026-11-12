@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from app import async_jobs, cardio_agent_ai, lambda_cardio_agent
 from app.openai_client import StructuredResult
@@ -109,7 +109,9 @@ def _list(env, monkeypatch):
 
 
 def _detail(env, monkeypatch):
-    row = cr.get_cardio_recommendation(env["existing"], identity=_identity(env["user"]))
+    row = cr.get_cardio_recommendation(
+        env["existing"], request=Request({"type": "http"}), identity=_identity(env["user"])
+    )
     assert row["recommendation_markdown"] == "# existente"
 
 
