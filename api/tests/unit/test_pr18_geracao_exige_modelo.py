@@ -28,6 +28,8 @@ from app.security import Identity, get_current_identity
 
 USER_ID = 7
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 TEMPLATE = {"id": 55, "name": "Modelo do PT", "volume_mode": "equipment_series", "slots": [{"sequence": 1}]}
 SLOT = {"id": 900, "sequence": 1, "name": "A", "items": []}
 
@@ -46,7 +48,7 @@ def client(monkeypatch) -> TestClient:
 
     app = FastAPI()
     app.include_router(workout_plans.router)
-    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=USER_ID, role="user", source="session")
+    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=USER_ID, role="regular", source="session")
     test_client = TestClient(app, raise_server_exceptions=False)
     test_client.created_jobs = created  # type: ignore[attr-defined]
     test_client.invoked_events = invoked  # type: ignore[attr-defined]

@@ -19,6 +19,9 @@ from app import body_map_render as bm
 from app import muscle_map
 
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
+
 def _open(data: bytes) -> Image.Image:
     image = Image.open(io.BytesIO(data))
     image.load()

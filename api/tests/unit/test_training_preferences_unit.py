@@ -25,6 +25,8 @@ from tests.support.fake_db import NullContext, fake_transaction
 
 USER_ID = 42
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ROW_SEM_NOTA = {
     "equipment_exercise_id": 7,
     "exercise_id": 101,

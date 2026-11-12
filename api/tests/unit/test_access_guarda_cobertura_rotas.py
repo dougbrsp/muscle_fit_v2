@@ -474,10 +474,10 @@ def test_so_autenticacao_real_tem_identidade_e_nao_declara_permissao():
         assert rota in com_identidade, rota
 
 
-def test_divida_real_tem_teto_97_e_nao_contem_as_rotas_convertidas():
+def test_divida_real_tem_teto_42_e_nao_contem_as_rotas_convertidas():
     allowlist = _load_allowlist()
     divida = allowlist["divida"]
-    assert divida["teto"] == 97 and len(divida["rotas"]) == 97
+    assert divida["teto"] == 42 and len(divida["rotas"]) == 42
     convertidas = {
         "DELETE /devices/{device_id}", "DELETE /users/{user_id}", "GET /devices", "GET /devices/me",
         "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
@@ -490,9 +490,11 @@ def test_divida_real_tem_teto_97_e_nao_contem_as_rotas_convertidas():
     # 2D-2 (16 rotas de alimentos: catalogo, externos, favoritos e foto de rotulo) tambem sai:
     # 2E (56 rotas de analytics e engines: dashboards, progressao, cardio, volume, corpo, relatorio e IA de analise)
     # tambem sai: 43 + 72 + 39 + 16 + 56 = 226 rotas com permissao declarada;
-    # 2F-1 (29 rotas de `app.workout_plan_templates`: modelos de treino) tambem sai: 226 + 29 = 255.
+    # 2F-1 (29 rotas de `app.workout_plan_templates`: modelos de treino) tambem sai: 226 + 29 = 255;
+    # 2F-2 (55 rotas de treino: registro, Modo Treino, planos, preferencias, catalogo, grupamentos e IA)
+    # tambem sai (divida 97 -> 42): 255 + 55 = 310.
     com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
-    assert len(com_permissao) == 255
+    assert len(com_permissao) == 310
     assert not com_permissao & set(divida["rotas"])
     assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 367
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}

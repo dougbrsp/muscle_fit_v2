@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, Depends, Query
 
 from .intelligence.volume_service import OUTROS_GROUP, VolumeService
+from .access import require_permission
 from .security import Identity, get_current_identity
 from .set_types import sql_not_preparatory, sql_set_confirmed
 # Leitura pura: estas rotas nao emitem DDL nem DML. `exercises.mapping_id` e
@@ -413,7 +414,7 @@ def aggregate(period: str, metric: str, days: int, include_secondary: bool, user
 @router.get("/muscle-groups-mapped-health")
 def health(
     days: int = Query(180, ge=1, le=2000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> Dict[str, Any]:
     rows, meta = load_rows(days, user_id=identity.user_id)
     groups_by_exercise = resolve_exercise_groups(
@@ -442,7 +443,7 @@ def health(
 @router.get("/muscle-groups-mapped-debug")
 def debug(
     days: int = Query(180, ge=1, le=2000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> Dict[str, Any]:
     return aggregate("weekly", "sets", days, True, user_id=identity.user_id)
 
@@ -453,7 +454,7 @@ def trend(
     metric: str = Query("volume", pattern="^(volume|sets|reps|load)$"),
     days: int = Query(180, ge=1, le=2000),
     include_secondary: bool = Query(True),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> Dict[str, Any]:
     result = aggregate(period, metric, days, include_secondary, user_id=identity.user_id)
     result["rows"] = result.get("trend_rows", [])
@@ -467,7 +468,7 @@ def table(
     metric: str = Query("volume", pattern="^(volume|sets|reps|load)$"),
     days: int = Query(180, ge=1, le=2000),
     include_secondary: bool = Query(True),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ) -> Dict[str, Any]:
     result = aggregate(period, metric, days, include_secondary, user_id=identity.user_id)
     table_rows = result.get("table_rows", [])

@@ -31,7 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import request_memo
 from .db import transaction
 from .load_conventions import equipment_exercises_join_sql
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ def _link_or_404(cursor: Any, mapping_id: int, gym_equipment_id: int) -> int:
 def get_equipment_load_ceiling(
     mapping_id: int = Query(gt=0),
     gym_equipment_id: int = Query(gt=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.preferencias", "ver")),
 ):
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -183,7 +184,9 @@ def get_equipment_load_ceiling(
 
 
 @router.put("")
-def put_equipment_load_ceiling(payload: LoadCeilingIn, identity: Identity = Depends(get_current_identity)):
+def put_equipment_load_ceiling(
+    payload: LoadCeilingIn, identity: Identity = Depends(require_permission("treino.preferencias", "editar"))
+):
     value = Decimal(str(payload.max_load_kg)).quantize(Decimal("0.01"))
     try:
         with transaction() as conn:
@@ -210,7 +213,7 @@ def put_equipment_load_ceiling(payload: LoadCeilingIn, identity: Identity = Depe
 def delete_equipment_load_ceiling(
     mapping_id: int = Query(gt=0),
     gym_equipment_id: int = Query(gt=0),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.preferencias", "excluir")),
 ):
     """Idempotente: desmarcar o que nao existe devolve `deleted: false`."""
     try:

@@ -26,6 +26,7 @@ from tests.support import progression_fixtures as fx
 from tests.support.fake_db import NullContext, fake_transaction
 
 NOW = datetime(2026, 10, 26, 18, 0)
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 S = "strength"
 H = "hypertrophy"
 SUPINO, BANCO, PEITO = 101, 201, 10

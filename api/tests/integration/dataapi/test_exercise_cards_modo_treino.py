@@ -50,11 +50,12 @@ CARD_SUPINO = {
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('aluno_card_treino', 'x', 'regular')")
         user_id = cur.lastrowid
+        conceder_grupo(cur, user_id, "regular")
         cur.execute(
             "INSERT INTO exercise_catalog (id, name, is_active, execution_description, card_generation_id, "
             "card_version, card_published_at) VALUES (%s, %s, 1, %s, 7, 3, %s)",
