@@ -34,7 +34,10 @@ from fastapi.testclient import TestClient
 from app import migrate as m
 from app import template_drafts as td
 from app import workout_plan_templates as wpt
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "067_workout_plan_template_drafts.py"
@@ -298,7 +301,11 @@ def test_usuario_regular_recebe_403(monkeypatch, metodo):
     db = FakeDB()
     api = _client(monkeypatch, db, role="regular")
     kwargs = {"json": _incompleto()} if metodo == "put" else {}
-    assert getattr(api, metodo)("/workout-plan-templates/5/draft", **kwargs).status_code == 403
+    # O grupo `usuario` tem `modelos.treino`/`ver` com escopo `proprios`: o
+    # escopo minimo `todos` da rota de gestao nega tambem o GET.
+    resposta = getattr(api, metodo)("/workout-plan-templates/5/draft", **kwargs)
+    assert resposta.status_code == 403
+    assert resposta.json()["detail"] == FORBIDDEN_DETAIL
     assert db.sql == []
 
 

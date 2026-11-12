@@ -20,17 +20,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import workout_plan_templates
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 
 
 @pytest.fixture
 def api(db_conn, catalog):
-    """App so com o router de modelos, autenticado como o proprio catalogo."""
+    """App so com o router de modelos, autenticado como o proprio catalogo.
+
+    ADR 0011 (lote 2F-1): as rotas exigem `modelos.treino` via
+    `require_permission`; o `catalog` ja grava o usuario no grupo `admin`."""
     app = FastAPI()
     app.include_router(workout_plan_templates.router)
     identidade = Identity(user_id=catalog.user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

@@ -35,13 +35,15 @@ PEITORAL = 52
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_d067', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('aluno_d067', 'x', 'regular')")
         aluno_id = cur.lastrowid
+        conceder_grupo(cur, aluno_id, "regular")
         cur.execute("INSERT INTO muscle_groups (id, name) VALUES (%s, 'Peitoral')", (PEITORAL,))
     raw.commit()
     return {"admin": admin_id, "aluno": aluno_id}

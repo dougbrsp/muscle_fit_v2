@@ -19,7 +19,10 @@ from fastapi.testclient import TestClient
 from app import template_assignments as assignments
 from app import template_versions as tv
 from app import workout_plan_templates as wpt
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 ANTES = datetime(2026, 9, 1, 12, 0, 0)
 AGORA = datetime(2026, 11, 5, 10, 0, 0)
@@ -186,10 +189,14 @@ def test_404_versao_de_outro_modelo_inexistente_ou_modelo_excluido(db, rota):
     assert c.post(f"/workout-plan-templates/77/versions/1/{rota}").status_code == 404  # Modelo inexistente
 
 
+@pytest.mark.parametrize("papel", ["user", "regular"])
 @pytest.mark.parametrize("rota", ["archive", "unarchive"])
-def test_403_para_quem_nao_e_admin_nem_pt(db, rota):
-    r = _client("user").post(f"/workout-plan-templates/10/versions/1/{rota}")
+def test_403_para_quem_nao_e_admin_nem_pt(db, rota, papel):
+    # `user`: papel sem grupo (nenhuma concessao); `regular`: grupo `usuario`
+    # (`modelos.treino` so `ver`/`proprios`, sem `editar`).
+    r = _client(papel).post(f"/workout-plan-templates/10/versions/1/{rota}")
     assert r.status_code == 403 and db.executed == []
+    assert r.json()["detail"] == FORBIDDEN_DETAIL
 
 
 def test_personal_trainer_pode_arquivar(db):

@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 
 from app import workout_plan_templates as wpt
 from app.intelligence import methodology_volume_service as svc
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from tests.support.isolamento_v3 import truncar
 from tests.support.methodology_paridade import semear_macro_grupos
 
@@ -41,15 +41,16 @@ EQUIPAMENTO = 9001
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Um admin; seis grupos (Peitoral superior e fatia do Peitoral; Core nao
     classificado); sete exercicios - o 7107 e o supino reto de OUTRA academia,
     absorvido pelo 7100 (`exercise_legacy_id_map`, inativo no catalogo, SEM
     contribuicao propria); o 7108 so tem contribuicao SECONDARY."""
-    truncar(raw)
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_f4e', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         # Fase 6: o motor le o cadastro de macro-grupos (seed da 057, os
         # numeros da v1); cada grupo e associado ao macro-grupo do porte dele.
         macro = semear_macro_grupos(cur)
@@ -106,7 +107,6 @@ def _client(user_id: int) -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

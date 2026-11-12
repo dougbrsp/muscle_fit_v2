@@ -27,6 +27,8 @@ from app.security import Identity, get_current_identity
 from tests.support import methodology_paridade as paridade
 from tests.support.methodology_paridade import grupo, seed_volume_classes
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 SEED = seed_volume_classes()
 PONDERADO = mv.VolumeCountingMode.PRIMARY_SECONDARY
 PRIMARIO = mv.VolumeCountingMode.PRIMARY_ONLY

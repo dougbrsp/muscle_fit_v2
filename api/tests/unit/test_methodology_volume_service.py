@@ -29,8 +29,10 @@ from app import workout_plan_templates as wpt
 from app.intelligence import methodology_volume as mv
 from app.intelligence import methodology_volume_service as svc
 from app.models import WorkoutPlanTemplateSlotIn
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from tests.support.methodology_paridade import grupo, seed_volume_classes
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 # ---------------------------------------------------------------------------
 # Cenario em memoria (ids reais da 002/055)
@@ -117,7 +119,6 @@ def api():
     app.include_router(wpt.router)
     identidade = Identity(user_id=1, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

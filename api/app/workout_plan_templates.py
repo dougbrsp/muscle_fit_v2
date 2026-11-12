@@ -2,9 +2,15 @@
 de Treino Personalizados" (Fase 1, sem IA — ver plano completo em
 melhoria-eager-origami.md, seções 1 e 2).
 
-Todos os endpoints exigem `require_admin_or_pt` (admin ou personal_trainer).
-Personal Trainer é um papel amplo nesta fase (sem vínculo formal PT<->aluno):
-vê/atribui modelos para qualquer usuário.
+Acesso por permissão declarada (RBAC, ADR 0011, lote 2F-1). Cada rota de
+gestão do `router` exige `modelos.treino` (GET = ver; POST/PUT/PATCH = editar;
+DELETE = excluir) com escopo mínimo `todos`; a geração de rascunho por IA
+(`POST /periodization-drafts`) exige `ia.modelo_periodizacao`/`editar`, também
+com escopo mínimo `todos`. O escopo mínimo impede que a concessão `ver` com
+escopo `proprios` do grupo `usuario` abra a gestão. As duas rotas do
+`me_router` (`/hr-zones` e `/assigned-to-me`) exigem só `modelos.treino`/`ver`,
+qualquer escopo. Quem tem escopo `todos` vê/atribui modelos para qualquer
+usuário (sem vínculo formal PT<->aluno nesta fase).
 
 Mesmo padrão de conexão de `workout_plans.py`/`services.py` — `.db.transaction()`
 (pymysql com `DictCursor`, `autocommit=False`), não a conexão própria usada por
@@ -58,7 +64,8 @@ from .models import (
     counting_mode_value,
 )
 from .periodization.limits import MAX_PRIORITIZED_PER_SLOT
-from .security import Identity, get_current_identity, require_admin_or_pt
+from .access import require_permission
+from .security import Identity
 from .template_safety_validation import (
     build_safety_report,
     has_safety_relevant_input,
@@ -92,13 +99,12 @@ MAX_TEMPLATE_SLOTS = 8
 router = APIRouter(
     prefix="/workout-plan-templates",
     tags=["workout-plan-templates"],
-    dependencies=[Depends(require_admin_or_pt)],
 )
 
-# Router SEM require_admin_or_pt: qualquer usuário autenticado (inclusive
-# role='regular') pode ver os PRÓPRIOS modelos atribuídos — necessário para o
-# popup "Gerar novo plano" (WorkoutPlansClient.tsx) mostrar os modelos do
-# usuário logado antes de ele escolher explicitamente qual usar em
+# Router das rotas do próprio usuário: `modelos.treino`/`ver` em qualquer
+# escopo (o grupo `usuario` tem `proprios`). O usuário vê os PRÓPRIOS modelos
+# atribuídos — necessário para o popup "Gerar novo plano"
+# (WorkoutPlansClient.tsx) mostrar os modelos do usuário logado antes de ele escolher explicitamente qual usar em
 # POST /workout-plans/generate (payload.template_id).
 me_router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-templates"])
 
@@ -106,7 +112,7 @@ me_router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-temp
 @me_router.get("/hr-zones")
 def get_template_hr_zones(
     template_id: Optional[int] = Query(None, ge=1),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("modelos.treino", "ver")),
 ):
     """Zonas de FC que o editor do Modelo mostra ao lado do seletor de zona
     (M98, correção da C1). DE QUEM são as zonas é regra de autorização de
@@ -115,7 +121,7 @@ def get_template_hr_zones(
     (só aluno vinculado). `template_id` ausente = Modelo novo, ainda sem
     aluno. Exige sessão (mesma regra de `/users/me/hr-zones`).
 
-    Fica no `me_router` (sem `require_admin_or_pt`) para o aluno receber as
+    Fica no `me_router` (sem escopo mínimo `todos`) para o aluno receber as
     próprias zonas, e vem antes de `/{template_id}` (o `me_router` é incluído
     primeiro em `main.py`)."""
     from . import athlete_hr_zones
@@ -132,7 +138,9 @@ def get_template_hr_zones(
 
 
 @me_router.get("/assigned-to-me")
-def list_my_assigned_templates(identity: Identity = Depends(get_current_identity)):
+def list_my_assigned_templates(
+    identity: Identity = Depends(require_permission("modelos.treino", "ver")),
+):
     """Modelos VIGENTES do usuário — depois do M23 (migração 049), no máximo
     UM. A lista continua sendo uma lista (o contrato do frontend não muda e o
     popup "Gerar novo plano" segue funcionando sem alteração), mas ela deixa
@@ -751,7 +759,10 @@ def _persisted_methodology_intent(template: Optional[dict[str, Any]]):
     return _methodology_intent(str(declared.get("intent") or "standard"), declared.get("target_group_ids"))
 
 
-@router.get("")
+@router.get(
+    "",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def list_templates(is_active: Optional[bool] = Query(default=None)):
     return {"items": _list_templates(is_active)}
 
@@ -765,7 +776,10 @@ def list_templates(is_active: Optional[bool] = Query(default=None)):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/users-lookup")
+@router.get(
+    "/users-lookup",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def users_lookup(search: Optional[str] = Query(default=None)):
     query = "SELECT id, username, full_name FROM users WHERE is_active = 1"
     params: list[Any] = []
@@ -793,7 +807,10 @@ def _with_draft_flags(template: Optional[dict[str, Any]]) -> Optional[dict[str, 
     return template_drafts.attach_draft_flags(template, stamps)
 
 
-@router.get("/{template_id}")
+@router.get(
+    "/{template_id}",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def get_template(template_id: int):
     template = _get_template(template_id)
     if not template:
@@ -1013,7 +1030,10 @@ def _resolve_origin(cur, payload: WorkoutPlanTemplateIn, user_id: int) -> tuple[
 
 
 @router.post("")
-def create_template(payload: WorkoutPlanTemplateIn, identity: Identity = Depends(require_admin_or_pt)):
+def create_template(
+    payload: WorkoutPlanTemplateIn,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+):
     _validate_template_payload(payload)
     _validate_technique_codes(payload)
     # FST-7/GVT salvos com aplicações/pausa (antes da Fase 5, PR 5): gravados
@@ -1078,7 +1098,10 @@ def create_template(payload: WorkoutPlanTemplateIn, identity: Identity = Depends
 
 
 @router.post("/{template_id}/duplicate")
-def duplicate_template(template_id: int, identity: Identity = Depends(require_admin_or_pt)):
+def duplicate_template(
+    template_id: int,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+):
     original = _get_template(template_id)
     if not original:
         raise HTTPException(status_code=404, detail="Modelo de treino não encontrado.")
@@ -1139,7 +1162,7 @@ def duplicate_template(template_id: int, identity: Identity = Depends(require_ad
 def update_template(
     template_id: int,
     payload: WorkoutPlanTemplateIn,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
 ):
     existing = _get_template(template_id)
     if not existing:
@@ -1219,7 +1242,10 @@ def update_template(
     return resposta
 
 
-@router.patch("/{template_id}/status")
+@router.patch(
+    "/{template_id}/status",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def set_template_status(template_id: int, body: dict = Body(...)):
     is_active = bool(body.get("is_active"))
 
@@ -1239,7 +1265,10 @@ def set_template_status(template_id: int, body: dict = Body(...)):
 
 
 @router.delete("/{template_id}")
-def delete_template(template_id: int, identity: Identity = Depends(require_admin_or_pt)):
+def delete_template(
+    template_id: int,
+    identity: Identity = Depends(require_permission("modelos.treino", "excluir", min_scope="todos")),
+):
     """Exclusao LOGICA (065): grava `deleted_at` e encerra as atribuicoes
     vigentes - como a desatribuicao do M23 (`unassigned_at` + quem encerrou),
     no MESMO instante. O Modelo some da lista, de `assigned-to-me`, da
@@ -1340,7 +1369,10 @@ def _version_item(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.get("/{template_id}/versions")
+@router.get(
+    "/{template_id}/versions",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def list_template_versions(template_id: int, include_archived: bool = Query(default=False)):
     """Historico de versoes, da mais nova para a mais antiga. Lista LEVE:
     sem slots nem itens (o detalhe e `GET /{id}/versions/{vid}`). Sem as
@@ -1361,7 +1393,10 @@ def _version_item_or_404(cur, template_id: int, version_id: int) -> dict[str, An
     return dict(row)
 
 
-@router.post("/{template_id}/versions/{version_id}/archive")
+@router.post(
+    "/{template_id}/versions/{version_id}/archive",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def archive_template_version(template_id: int, version_id: int):
     """Oculta do historico uma versao NAO vigente (reversivel; nada e apagado e
     nada muda no revert, na resolucao por data nem nas fichas geradas).
@@ -1393,7 +1428,10 @@ def archive_template_version(template_id: int, version_id: int):
     return _version_item(item)
 
 
-@router.post("/{template_id}/versions/{version_id}/unarchive")
+@router.post(
+    "/{template_id}/versions/{version_id}/unarchive",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def unarchive_template_version(template_id: int, version_id: int):
     """Volta a versao arquivada para o historico. Nao arquivada: 200 sem mudar nada.
     404 como no `archive`."""
@@ -1440,7 +1478,10 @@ def _item_names(cur, slots: list[dict[str, Any]]) -> dict[tuple[str, int], str]:
     return names
 
 
-@router.get("/{template_id}/versions/{version_id}")
+@router.get(
+    "/{template_id}/versions/{version_id}",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def get_template_version(template_id: int, version_id: int):
     """Uma versao do historico: cabecalho estrutural e intencao DAQUELA
     versao, nome e descricao do Modelo, e os slots com os NOMES de exercicio,
@@ -1534,7 +1575,7 @@ def _revert_validation_errors(conn, version, slots: list[dict[str, Any]], curren
 def revert_template_version(
     template_id: int,
     version_id: int,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
 ):
     """Reverte o Modelo para a versao `version_id`, gerando a versao n+1 com
     o conteudo dela (`reverted_from_version_id`); nada e apagado.
@@ -1644,7 +1685,7 @@ def revert_template_version(
 # Rascunho (migracao 067): "Salvar rascunho" x "Publicar modelo"
 #
 # Um rascunho por Modelo, compartilhado por quem pode editar (as mesmas
-# permissoes do PUT: o `require_admin_or_pt` do router). O corpo e o MESMO do
+# permissoes do PUT: `modelos.treino` com escopo `todos`). O corpo e o MESMO do
 # PUT, validado so pelo Pydantic (formato): as regras de metodologia, o
 # catalogo de tecnicas e a seguranca D14 ficam para a publicacao. Gravar o
 # rascunho nao cria versao nem toca slots, vigente ou colunas do Modelo.
@@ -1654,7 +1695,10 @@ def revert_template_version(
 DRAFT_NOT_FOUND = "Este modelo não tem rascunho."
 
 
-@router.get("/{template_id}/draft")
+@router.get(
+    "/{template_id}/draft",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def get_template_draft(template_id: int):
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -1669,7 +1713,7 @@ def get_template_draft(template_id: int):
 def save_template_draft(
     template_id: int,
     payload: WorkoutPlanTemplateIn,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
 ):
     # `generation_log_id` so faz sentido na criacao (POST) - nao vai para o
     # rascunho de um Modelo que ja existe.
@@ -1687,7 +1731,10 @@ def save_template_draft(
         ) from exc
 
 
-@router.delete("/{template_id}/draft")
+@router.delete(
+    "/{template_id}/draft",
+    dependencies=[Depends(require_permission("modelos.treino", "excluir", min_scope="todos"))],
+)
 def delete_template_draft(template_id: int):
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -1789,7 +1836,10 @@ def apply_cardio_sessions_to_draft(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{template_id}/assignments")
+@router.get(
+    "/{template_id}/assignments",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def list_assignments(template_id: int, include_history: bool = Query(False)):
     """Atribuições VIGENTES deste modelo. `include_history=1` traz também as
     já encerradas, com `unassigned_at` — é assim que a tela de `/modelos-treino`
@@ -1823,7 +1873,7 @@ def list_assignments(template_id: int, include_history: bool = Query(False)):
 def create_assignment(
     template_id: int,
     payload: WorkoutPlanTemplateAssignIn,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
 ):
     """Atribui o modelo ao usuário, ENCERRANDO o modelo que ele seguia (M23).
 
@@ -1900,7 +1950,7 @@ def create_assignment(
 def delete_assignment(
     template_id: int,
     user_id: int,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "excluir", min_scope="todos")),
 ):
     """Encerra a vigência — NÃO apaga a linha (M23).
 
@@ -2433,7 +2483,10 @@ def _item_prior_fatigue(
     return result
 
 
-@router.post("/preview-activation")
+@router.post(
+    "/preview-activation",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def preview_activation(payload: WorkoutPlanTemplatePreviewIn):
     filled_cycle = _build_cycle(payload.slots)
     cycle_length = len(filled_cycle)
@@ -2553,8 +2606,8 @@ def preview_activation(payload: WorkoutPlanTemplatePreviewIn):
 #
 # Rotas novas na api-core pelo catch-all `{proxy+}` do API Gateway
 # (infra/api_gateway.tf): sem Terraform de rota. Autorizacao =
-# `require_admin_or_pt` do proprio router, a mesma do preview de ativacao e
-# do GET do Modelo.
+# `modelos.treino` com escopo minimo `todos`, a mesma do preview de ativacao
+# e do GET do Modelo.
 # ---------------------------------------------------------------------------
 
 MethodologyIntentKind = Literal["standard", "specialization", "maintenance", "cutting"]
@@ -2628,7 +2681,10 @@ def _copy_methodology_intent(cur, source_template_id: int, new_template_id: int)
         )
 
 
-@router.get("/{template_id}/methodology-intent")
+@router.get(
+    "/{template_id}/methodology-intent",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def get_template_methodology_intent(template_id: int):
     """Intencao declarada do Modelo (`standard` sem declaracao). 404 se o
     Modelo nao existe."""
@@ -2647,7 +2703,7 @@ def get_template_methodology_intent(template_id: int):
 def put_template_methodology_intent(
     template_id: int,
     payload: MethodologyIntentIn,
-    identity: Identity = Depends(require_admin_or_pt),
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
 ):
     """Declara (ou troca) a intencao do Modelo. Substituicao inteira: a linha
     da intencao e reescrita e os alvos anteriores sao apagados antes de gravar
@@ -2698,7 +2754,10 @@ def put_template_methodology_intent(
     return {"template_id": template_id, "intent": payload.intent, "target_group_ids": targets}
 
 
-@router.post("/cardio-prescription-check")
+@router.post(
+    "/cardio-prescription-check",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def check_cardio_prescription(payload: CardioPrescriptionCheckIn):
     """Valida UM item de cardio em memória pelo dono (M98 C1): o editor mostra
     a mensagem no card antes de salvar. Mesma regra do PUT
@@ -2708,7 +2767,10 @@ def check_cardio_prescription(payload: CardioPrescriptionCheckIn):
     return {"error": cardio_prescription.validation_error(item)}
 
 
-@router.post("/methodology-volume-preview")
+@router.post(
+    "/methodology-volume-preview",
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+)
 def preview_methodology_volume(payload: MethodologyVolumePreviewIn):
     """Avalia os slots EM MEMORIA (nao salva nada) pela metodologia.
 
@@ -2728,7 +2790,10 @@ def preview_methodology_volume(payload: MethodologyVolumePreviewIn):
     return evaluation_to_payload(evaluation)
 
 
-@router.get("/{template_id}/methodology-volume")
+@router.get(
+    "/{template_id}/methodology-volume",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def get_template_methodology_volume(
     template_id: int,
     intent: Optional[MethodologyIntentKind] = Query(default=None),
@@ -2756,7 +2821,10 @@ def get_template_methodology_volume(
     return response
 
 
-@router.get("/{template_id}/methodology-volume/counting-modes")
+@router.get(
+    "/{template_id}/methodology-volume/counting-modes",
+    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+)
 def compare_template_methodology_volume_counting_modes(template_id: int):
     """O Modelo SALVO avaliado em CADA modo de contagem do volume, lado a lado
     por grupo (series semanais, bucket, status e as transicoes entre os modos),
@@ -2783,7 +2851,8 @@ def compare_template_methodology_volume_counting_modes(template_id: int):
 # usuario salva, se quiser, pelo `POST ""` acima.
 #
 # Rota nova na api-core pelo catch-all do API Gateway: sem Terraform de rota.
-# Autorizacao = `require_admin_or_pt` do proprio router (D17).
+# Autorizacao = `ia.modelo_periodizacao`/`editar` com escopo minimo `todos`
+# (D17; RBAC lote 2F-1).
 # ---------------------------------------------------------------------------
 
 
@@ -2826,7 +2895,10 @@ def _validate_periodization_request(payload: PeriodizationDraftIn) -> None:
 
 @router.post("/periodization-drafts", status_code=202)
 def create_periodization_draft(
-    payload: PeriodizationDraftIn, identity: Identity = Depends(require_admin_or_pt)
+    payload: PeriodizationDraftIn,
+    identity: Identity = Depends(
+        require_permission("ia.modelo_periodizacao", "editar", min_scope="todos")
+    ),
 ):
     """Gera um RASCUNHO de modelo de treino por LLM, de forma assincrona:
     202 `{job_id}` e o resultado em `GET /jobs/{job_id}`.
