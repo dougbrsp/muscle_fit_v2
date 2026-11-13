@@ -4,8 +4,9 @@ Python puro, sem banco. Define acoes, escopos (com ordem de abrangencia),
 recursos (chave, rotulo em portugues, dominio) e a matriz padrao dos grupos de
 sistema. As migracoes guardam retratos congelados desta matriz (nao importam
 este modulo): a 111 (matriz inicial), a 113 (concessoes de `conta.dispositivos`,
-lote 2B) e a 114 (concessoes de `modelos.tipos_treino`, lote 2C-1). O retrato
-congelado e o acumulado 111 + 113 + 114; um teste de paridade compara o catalogo
+lote 2B) e a 114 (concessoes de `modelos.tipos_treino`, lote 2C-1), a 115
+(nutricao do PT em `alunos`, lote 5A) e a 116 (`modelos.treino` do PT em `alunos`,
+lote 6A). O retrato congelado e o acumulado 111 + 113 + 114 + 115 + 116; um teste de paridade compara o catalogo
 com esse acumulado.
 
 Sem regra de motor aqui: controle de acesso nao e regra de recuperacao,
@@ -201,20 +202,22 @@ _USUARIO_SO_VER: Final[tuple[tuple[str, str], ...]] = (
     ("exercicios.catalogo", SCOPE_TODOS),
     ("modelos.treino", SCOPE_PROPRIOS),
 )
-# Personal trainer: o que `require_admin_or_pt` libera hoje (escopo todos).
+# Personal trainer: o que `require_admin_or_pt` libera hoje (escopo todos). `modelos.treino`
+# saiu daqui no lote 6A (migracao 116): escopo `alunos` (proprios + publicos).
 _PT_RECURSOS_TODOS: Final[tuple[str, ...]] = (
-    "modelos.treino",
     "modelos.metas_ativacao",
     "modelos.tipos_treino",
     "ia.modelo_periodizacao",
 )
-# Personal trainer: nutricao de terceiros, escopo `alunos` desde o lote 5 (migracao 115);
-# os recursos de `_PT_RECURSOS_TODOS` seguem em `todos` ate o lote 6.
+# Personal trainer: nutricao de terceiros, escopo `alunos` desde o lote 5 (migracao 115),
+# e Modelos de treino, escopo `alunos` desde o lote 6A (migracao 116). Os recursos de
+# `_PT_RECURSOS_TODOS` seguem em `todos`.
 _PT_NUTRICAO_TERCEIROS: Final[tuple[str, ...]] = (
     "nutricao.diario",
     "nutricao.plano",
     "nutricao.checkin",
     "ia.nutricao",
+    "modelos.treino",
 )
 
 
@@ -240,7 +243,7 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 
 
-# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113 e 114). `admin`
+# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113, 114, 115 e 116). `admin`
 # fica vazio (acesso total implicito) e `free` e criado vazio (nao e de sistema).
 DEFAULT_GRANTS_BY_GROUP: Final[dict[str, tuple[Grant, ...]]] = {
     GROUP_ADMIN: (),

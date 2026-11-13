@@ -37,15 +37,31 @@ _GRANTS_SQL = (
 )
 # Vinculo vale so se: ativo, aluno ativo e treinador AINDA membro de `personal_trainer`
 # (tirado do grupo, o vinculo deixa de dar acesso sem ser encerrado). Uma consulta.
+# Treinador ainda no grupo `personal_trainer` (parte da regra do vinculo
+# ativo). Compartilhado por `has_active_link` e pela busca de alunos do
+# `users-lookup` (lote 6A), para as duas nao divergirem.
+ACTIVE_LINK_TRAINER_IN_GROUP_SQL = (
+    "EXISTS (SELECT 1 FROM user_access_groups uag "
+    "JOIN access_groups g ON g.id = uag.group_id "
+    f"WHERE uag.user_id = ts.trainer_user_id AND g.group_key = '{catalog.GROUP_PERSONAL_TRAINER}')"
+)
+
 _ACTIVE_LINK_SQL = (
     "SELECT 1 AS ok FROM trainer_students ts "
     "JOIN users s ON s.id = ts.student_user_id "
     "WHERE ts.trainer_user_id = %s AND ts.student_user_id = %s AND ts.status = 'ativo' "
     "AND s.is_active = 1 "
-    "AND EXISTS (SELECT 1 FROM user_access_groups uag "
-    "JOIN access_groups g ON g.id = uag.group_id "
-    f"WHERE uag.user_id = ts.trainer_user_id AND g.group_key = '{catalog.GROUP_PERSONAL_TRAINER}') "
+    f"AND {ACTIVE_LINK_TRAINER_IN_GROUP_SQL} "
     "LIMIT 1"
+)
+
+# Alunos com vinculo ativo do treinador (mesma regra de `has_active_link`),
+# com as colunas da busca de usuarios. Parametro: trainer_user_id.
+ACTIVE_STUDENTS_LOOKUP_SQL = (
+    "SELECT s.id, s.username, s.full_name FROM trainer_students ts "
+    "JOIN users s ON s.id = ts.student_user_id "
+    "WHERE ts.trainer_user_id = %s AND ts.status = 'ativo' AND s.is_active = 1 "
+    f"AND {ACTIVE_LINK_TRAINER_IN_GROUP_SQL}"
 )
 
 
@@ -181,6 +197,19 @@ def has_active_link(trainer_user_id: int, student_user_id: int) -> bool:
         "trainer_link",
     )
     return bool(rows)
+
+
+def active_student_ids(trainer_user_id: int, candidate_ids: list[int]) -> set[int]:
+    """Dos `candidate_ids`, os que tem vinculo ativo com o treinador, com a
+    MESMA regra de `has_active_link` (aluno ativo, treinador ainda em
+    `personal_trainer`). Uma consulta por candidato, so com candidatos (lista
+    vazia nao consulta). Serve para filtrar listas curtas (atribuicoes de um
+    Modelo); para um alvo so, use `has_active_link`."""
+    return {
+        int(student_id)
+        for student_id in dict.fromkeys(int(c) for c in candidate_ids)
+        if has_active_link(trainer_user_id, student_id)
+    }
 
 
 INVALID_TARGET_DETAIL = {

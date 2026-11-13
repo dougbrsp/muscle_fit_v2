@@ -37,6 +37,8 @@ _USERS = {
 }
 # Modelo -> alunos com atribuição vigente.
 _ASSIGNEES = {10: [3], 11: [], 12: [3, 4]}
+# Modelo -> (dono, visibilidade): todos privados do PT (2), lidos por authorize_template.
+_MODELOS = {10: (2, "private"), 11: (2, "private"), 12: (2, "private")}
 # Zonas do Intervals gravadas pelo sync (C2): só a aluna Bia (4) tem.
 _INTERVALS = {4: [{"sport_settings_id": 1, "sport_types": '["Run"]', "hr_zones_bpm": "[129,137,145,153,157,162,170]", "max_hr_bpm": 170, "lthr_bpm": 154}]}
 
@@ -58,6 +60,11 @@ class _Cursor:
         self.executed.append(flat)
         if flat.startswith("SELECT * FROM users"):
             self._one = dict(_USERS[params[0]]) if params[0] in _USERS else None
+        elif flat.startswith("SELECT id, created_by_user_id, visibility FROM workout_plan_templates"):
+            modelo = _MODELOS.get(params[0])
+            self._one = (
+                {"id": params[0], "created_by_user_id": modelo[0], "visibility": modelo[1]} if modelo else None
+            )
         elif "FROM workout_plan_template_assignments" in flat:
             self._all = [
                 {"user_id": uid, "full_name": _USERS[uid]["full_name"], "username": _USERS[uid].get("username")}

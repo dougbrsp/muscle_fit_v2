@@ -260,7 +260,8 @@ def test_as_rotas_vivas_sao_exatamente_as_42_do_contrato():
 def test_o_contrato_declara_escopo_todos_so_no_sync_e_no_apply():
     assert {k for k, (_, _, esc) in CONTRATO_2F3.items() if esc} == ESCOPADAS
     assert CONTRATO_2F3[ROTA_SYNC_2F3] == ("integracoes.intervals", "editar", "todos")
-    assert CONTRATO_2F3[ROTA_APPLY_2F3] == ("modelos.treino", "editar", "todos")
+    # Lote 6A: o apply desceu para `alunos` (posse do Modelo no handler).
+    assert CONTRATO_2F3[ROTA_APPLY_2F3] == ("modelos.treino", "editar", "alunos")
     assert CONTRATO_2F3[ROTA_GENERATE] == ("ia.cardio", "editar", None)
 
 
@@ -364,12 +365,21 @@ def test_sync_com_escopo_todos_passa(ctx, rota):
     assert dados.chamadas > 0
 
 
-@pytest.mark.parametrize("uid", [SINT_TREINO_PROPRIOS, SINT_TREINO_ALUNOS], ids=["proprios", "alunos"])
 @pytest.mark.parametrize("rota", APPLY, ids=_ids(APPLY))
-def test_apply_com_escopo_abaixo_de_todos_e_negado_mesmo_com_todas_as_acoes(ctx, uid, rota):
+def test_apply_com_escopo_proprios_e_negado_mesmo_com_todas_as_acoes(ctx, rota):
     clients, state, _, dados = ctx
-    _como(state, uid)
+    _como(state, SINT_TREINO_PROPRIOS)
     _negado(_chamar(clients, rota), dados)
+
+
+@pytest.mark.parametrize("rota", APPLY, ids=_ids(APPLY))
+def test_apply_com_escopo_alunos_passa_pelo_guard(ctx, rota):
+    """Lote 6A (ADR 0011): o apply desceu para `alunos`; a posse do Modelo
+    (dono ou `todos`) e conferida no handler por `authorize_template`."""
+    clients, state, _, dados = ctx
+    _como(state, SINT_TREINO_ALUNOS)
+    _passou(_chamar(clients, rota), dados)
+    assert dados.chamadas > 0
 
 
 @pytest.mark.parametrize("rota", APPLY, ids=_ids(APPLY))

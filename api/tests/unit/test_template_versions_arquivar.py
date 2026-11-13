@@ -71,7 +71,11 @@ class FakeCursor:
     def execute(self, sql: str, params: Any = None) -> None:
         db, p = self.db, tuple(params or ())
         self.rowcount = 0
-        if sql == wpt.LIVE_TEMPLATE_SQL:
+        if sql.startswith("SELECT id, created_by_user_id, visibility FROM workout_plan_templates"):
+            # Lote 6A: guard de dono (`authorize_template`); o PT (id 1) e o dono.
+            t = db.templates.get(int(p[0]))
+            self._rows = [{"id": t["id"], "created_by_user_id": 1, "visibility": "privado"}] if t else []
+        elif sql == wpt.LIVE_TEMPLATE_SQL:
             t = db.templates.get(int(p[0]))
             self._rows = [t] if t else []
         elif sql in (wpt.VERSIONS_LIST_SQL, wpt.VERSIONS_LIST_VISIBLE_SQL):

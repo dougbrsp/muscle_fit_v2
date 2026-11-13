@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está na `develop` e no DEV desde 13/11/2026 (PR #149, merge `694b5fae`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). **O 4B-2 está na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido** (ver "Lote 4B-2: IA, abas do iPhone e ajustes"). **O 4B-3 está na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.** **O 4B-4 está na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido** (ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício"). **O lote 5 foi dividido em 5A (backend) e 5B (frontend), com a decisão do usuário de 13/11/2026 sobre o escopo dos dados de aluno. O 5A está na `develop` e no DEV desde 13/11/2026 (PR #155, merge `38a68565`; migração 115 aplicada no DEV), não promovido** (ver "Lote 5A: vínculo treinador–aluno (backend)"). **O 5B está em PR para a `develop` (branch `feat/rbac-lote5b-vinculos-frontend`), não promovido** (ver "Lote 5B: frontend do vínculo treinador–aluno"). O lote 6 ainda não existe.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está na `develop` e no DEV desde 13/11/2026 (PR #149, merge `694b5fae`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). **O 4B-2 está na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido** (ver "Lote 4B-2: IA, abas do iPhone e ajustes"). **O 4B-3 está na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.** **O 4B-4 está na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido** (ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício"). **O lote 5 foi dividido em 5A (backend) e 5B (frontend), com a decisão do usuário de 13/11/2026 sobre o escopo dos dados de aluno. O 5A está na `develop` e no DEV desde 13/11/2026 (PR #155, merge `38a68565`; migração 115 aplicada no DEV), não promovido** (ver "Lote 5A: vínculo treinador–aluno (backend)"). **O 5B está na `develop` e no DEV desde 13/11/2026 (PR #156, merge `ba67d470`), não promovido** (ver "Lote 5B: frontend do vínculo treinador–aluno"). **O lote 6 foi dividido em 6A (backend) e 6B (frontend), com as decisões do usuário de 13/11/2026 sobre dono e visibilidade dos Modelos. O 6A está em PR para a `develop` (branch `feat/rbac-lote6a-modelos-dono`), não promovido; migração 116** (ver "Lote 6A: Modelos com dono e visibilidade (backend)"). O 6B não foi iniciado.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -118,8 +118,10 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
    - **4B-4 Telas em rotas dinâmicas e resumo por exercício** (na `develop` e no DEV desde 13/11/2026, PR #154, merge `1b3d3d6a`, não promovido; só frontend estático; sem migração; ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício").
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários. Dividido em:
    - **5A Vínculo (backend)** (na `develop` e no DEV desde 13/11/2026, PR #155, merge `38a68565`, não promovido; 4 rotas novas em `/access`; `GET /access/my-students`; `has_active_link` exige treinador no grupo `personal_trainer`; zonas de FC com `no_link`; migração 115, que move a nutrição de terceiros do PT para `alunos`; ver "Lote 5A: vínculo treinador–aluno (backend)").
-   - **5B Telas de vínculo e seletor de alunos** (em PR para a `develop`, branch `feat/rbac-lote5b-vinculos-frontend`, não promovido): tela de vínculos para o admin, seletor de alunos do PT por `/access/my-students`, `planoNutricionalControls` aceitando alunos e motivo `no_link` nas zonas de FC.
-6. **Modelos**: visibilidade e edição pelo dono.
+   - **5B Telas de vínculo e seletor de alunos** (na `develop` e no DEV desde 13/11/2026, PR #156, merge `ba67d470`, não promovido): tela de vínculos para o admin, seletor de alunos do PT por `/access/my-students`, `planoNutricionalControls` aceitando alunos e motivo `no_link` nas zonas de FC.
+6. **Modelos**: visibilidade e edição pelo dono. Dividido em:
+   - **6A Modelos com dono e visibilidade (backend)** (em PR para a `develop`, branch `feat/rbac-lote6a-modelos-dono`, não promovido; migração 116; `modelos.treino` do PT passa a `alunos`; ver "Lote 6A: Modelos com dono e visibilidade (backend)").
+   - **6B Frontend de Modelos** (não iniciado): visibilidade no editor e na lista, duplicar, `AssignTemplateModal` com alunos vinculados e `modelosTreinoControls` com escopo `alunos` e escrita por dono.
 
 ### Pré-condições do lote 2
 
@@ -147,7 +149,7 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - [x] **Coberto no 2F-2** (PR #143, na `develop`): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
 - [x] **Coberto no 2F-3** (PR #144, na `develop`): as 42 rotas de corpo, check-in, integrações Intervals, cardio e geração de recomendação passam a `require_permission`, com escopo mínimo `todos` no sync e no apply. Fecha o lote 2: dívida da guarda de cobertura zerada e `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` removidos de `api/app/security.py` (ver "Lote 2F-3: corpo, integrações, cardio e fecho").
 - [x] **Coberto no 3A** (na `develop` e no DEV, PR #145, não promovido): as 11 rotas de grupos e acessos passam a `require_permission` com `admin.grupos`, sem migração (ver "Lote 3A: API de grupos e acessos").
-- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (resolvido no 5A, ver "Lote 5A"); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lote 6, porque o lote 5 não troca `modelos.treino`); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
+- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (resolvido no 5A, ver "Lote 5A"); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lote 6, porque o lote 5 não troca `modelos.treino`). **Resolvido no 6A**: o escopo mínimo de `modelos.treino` do PT é `alunos` (ver "Lote 6A"); os demais itens desta lista seguem pendentes; `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -606,9 +608,11 @@ Total: 10 + 13 + 3 + 1 + 2 = 29 (27 do `router` e 2 do `me_router`). `PATCH` ent
 - **O que a paridade prova:** o guard de entrada das 29 rotas, com o escopo mínimo, para quem está no grupo de sistema do próprio papel.
 - **O que a paridade não prova:** sessão real de personal trainer e de usuário comum; a regra de quem vê qual Modelo (visibilidade por dono fica para o lote 6); grupos personalizados; latência.
 
-**Pendência para o lote 6**
+**Pendência para o lote 6 (resolvida no 6A)**
 
 Decisão do usuário (13/11/2026): no lote 5 só os dados de aluno mudam de escopo. `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` do `personal_trainer` passam de `todos` para `alunos` (migração 115). `modelos.treino`, `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` seguem em `todos` até o lote 6. Quando o PT passar de `todos` para `alunos` em `modelos.treino` (lote 6), o escopo mínimo `todos` bloquearia a gestão de Modelos dele. Isso precisa ser decidido junto com a visibilidade e a edição por dono (lote 6).
+
+**Resolvido no 6A** (13/11/2026): o escopo mínimo de `modelos.treino` nas rotas de Modelo passa a `alunos` (`template_guard` e `template_viewer` em `api/app/workout_plan_templates.py`), e a regra de dono e visibilidade está em "Lote 6A: Modelos com dono e visibilidade (backend)".
 
 ### Lote 2F-2: treino
 
@@ -1109,6 +1113,113 @@ Fecha o lote 5 no frontend, consumindo a API do 5A. Só transporte e apresentaç
 *Não medido:* UI no navegador e integração (CI).
 
 *Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. O efeito visível é o PT passar a ver o seletor do plano nutricional com os alunos vinculados (hoje a tela esconde a gestão de terceiros, ver "Lote 5A"), e o admin ganhar a aba Vínculos. O backend já impõe o acesso (403 sem vínculo ativo). Rollback: reverter o PR e refazer o deploy do frontend.
+
+### Lote 6A: Modelos com dono e visibilidade (backend)
+
+Primeiro pedaço do lote 6: cada Modelo de treino passa a ter dono e visibilidade (`publico` ou `privado`), e o personal trainer passa de `todos` para `alunos` em `modelos.treino`. A regra fica num helper único (`authorize_template`) usado pelas dependências das rotas e pelo cardio. Estado: em PR para a `develop` (branch `feat/rbac-lote6a-modelos-dono`), não promovido; migração 116. O editor, a lista com visibilidade, duplicar pela tela e o seletor de alunos no `AssignTemplateModal` são o 6B.
+
+Arquivos: `api/db/migrations/116_modelos_visibilidade_e_escopo_pt.py` (DDL e DML); `api/app/access/catalog.py` (`_PT_NUTRICAO_TERCEIROS` passa a incluir `modelos.treino`; `_PT_RECURSOS_TODOS` deixa de incluir); `api/app/workout_plan_templates.py` (helper, dependências e rotas); `api/app/access/service.py` (`has_active_link`, `active_student_ids`, `ACTIVE_STUDENTS_LOOKUP_SQL`); `api/app/cardio_recommendations.py` (`apply_cardio_recommendation`).
+
+*Decisões do usuário (13/11/2026):*
+- Cada Modelo tem dono (`created_by_user_id`) e visibilidade `publico` ou `privado`. Os existentes ficam públicos.
+- O personal trainer vê e usa os públicos e os próprios; os privados só o dono vê. O admin vê e edita tudo.
+- Só o dono e o admin editam, arquivam e excluem. O personal trainer duplica um público para ter cópia própria.
+
+*Decisões do lead:*
+- O personal trainer atribui só a aluno com vínculo ativo (ou a si mesmo).
+- `GET /workout-plan-templates/users-lookup` com escopo `alunos` lista só os alunos vinculados.
+- `GET /{id}/assignments` com escopo `alunos` mostra só as atribuições do próprio ator e dos seus alunos.
+
+*Migração 116:*
+- DDL, só se a coluna não existe: `ALTER TABLE workout_plan_templates ADD COLUMN visibility ENUM('publico','privado') NOT NULL DEFAULT 'publico', ALGORITHM=INSTANT`. Sem FK, sem índice. Coluna já existente com tipo, nulabilidade ou default diferentes: `ModelosVisibilidadeError` antes de qualquer escrita.
+- DML: `UPDATE access_group_grants SET scope = 'alunos'` nas linhas `modelos.treino` (`ver`, `editar`, `excluir`) do grupo de sistema `personal_trainer` que ainda estão em `todos`. Até 3 linhas. Escopo que o admin já tenha editado (ex.: `proprios`) não é tocado.
+- `plan` só lê. Sobre o estado convergido o plano é vazio. Sem as tabelas da 111, o DML é omitido com log. `up` relê ao fim e levanta erro se restar linha em `todos`; em `--dry-run` a releitura é pulada.
+- `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` não mudam. Grupos personalizados não são tocados.
+- `down` volta para `todos` as linhas do PT em `alunos` e remove a coluna, o que perde a visibilidade gravada. Produção não roda `down`.
+- Paridade: `api/tests/unit/test_access_catalogo_e_resolucao.py` confere a 116 contra o catálogo (`test_paridade_vocabulario_acoes_escopos_e_grupos`, linhas 588 a 591) e o escopo do PT em `modelos.treino` (linha 652).
+
+*Semântica do escopo em `modelos.treino`:*
+
+| Escopo (quem) | Leitura (`ver`) | Escrita (`editar`, `excluir`) |
+|---|---|---|
+| `todos` (admin) | qualquer Modelo | qualquer Modelo |
+| `alunos` (personal trainer) | os públicos e os próprios | só os próprios |
+| `proprios` (usuário comum) | não abre a gestão: as rotas de gestão exigem escopo mínimo `alunos` | não abre a gestão |
+
+Decisão pura (`template_access_decision`, sem banco) sobre um Modelo existente:
+- sem concessão: 403;
+- escopo `todos`: 200, sem consulta ao banco;
+- dono, qualquer escopo: 200;
+- público alheio: 200 na leitura e 403 na escrita (`TEMPLATE_WRITE_FORBIDDEN`, com a mensagem de duplicar);
+- privado alheio, ou visibilidade desconhecida (tratada como privada): 404, para não revelar a existência;
+- Modelo excluído logicamente: 404;
+- Modelo órfão (sem dono): só `todos` escreve; público segue legível.
+
+*Helper e dependências (`api/app/workout_plan_templates.py`):*
+- `authorize_template(cur, identity, permissoes, template_id, action, for_write)`: único ponto de acesso a um Modelo por id. Lê `id`, `created_by_user_id` e `visibility`. Escopo `todos` devolve sem consultar o banco.
+- `template_guard(action, for_write)`: dependência das rotas `/{template_id}`. Exige `modelos.treino`/`action` com `min_scope="alunos"` e aplica `authorize_template`. Devolve `TemplateViewer`.
+- `template_viewer(action)`: dependência da lista e do `users-lookup`. Só checa o escopo; o filtro por dono é feito na consulta.
+- `TemplateViewer`: identidade e escopo, com `sees_all`.
+
+*Regra por rota:*
+
+| Rota | Regra no 6A |
+|---|---|
+| GET `/workout-plan-templates` (lista) | `alunos` vê públicos e próprios; `todos` vê tudo |
+| GET `/users-lookup` | `todos`: usuários ativos; `alunos`: só alunos com vínculo ativo (mesma regra de `has_active_link`) |
+| GET `/{id}` | `template_guard("ver")`; atribuições filtradas para `alunos` |
+| POST `` (criar) | `editar` com `min_scope="alunos"`; dono = ator; sem `visibility`, `publico` |
+| POST `/{id}/duplicate` | `template_guard("editar", for_write=False)`: lê público alheio e cria cópia do ator; a cópia nasce `privado` (ou `?visibility=publico`); privado alheio: 404 |
+| PUT `/{id}` | `template_guard("editar", for_write=True)`: público alheio 403; `visibility` (em `WorkoutPlanTemplateWriteIn`) só muda pelo dono ou admin; ausente mantém |
+| PATCH `/{id}/status`, DELETE `/{id}` | `editar` e `excluir`, escrita por dono |
+| Versões: GET lista e GET versão | `ver`, leitura |
+| Versões: arquivar, desarquivar, reverter | `editar`, escrita por dono |
+| Rascunho: GET | `ver`, leitura |
+| Rascunho: PUT e DELETE | `editar` e `excluir`, escrita por dono; o rascunho usa `WorkoutPlanTemplateIn` e não grava `visibility` |
+| GET `/{id}/assignments` | `ver`; com `alunos`, só as atribuições do ator e dos alunos (`_filter_assignments`) |
+| POST e DELETE `/{id}/assignments` | Modelo legível (`template_guard` com `for_write=False`) e `_authorize_assignment_target`: só si mesmo ou aluno com `has_active_link`; senão 403 |
+| Intenção metodológica: GET e PUT | `ver` leitura; `editar` escrita por dono |
+| Volume metodológico e comparação de modos de contagem | `ver`, leitura |
+| POST `/preview-activation`, `/cardio-prescription-check` | `editar` com `min_scope="alunos"`; não recebem id de Modelo, então não há checagem de dono |
+| POST `/methodology-volume-preview` | `editar` com `min_scope="alunos"`; com `template_id` no corpo, `authorize_template` de leitura (`ver`) quando o escopo não é `todos`: privado alheio ou inexistente, 404 |
+| GET `/hr-zones` | `ver`, sem escopo mínimo; com `template_id` e escopo `alunos` (personal trainer), `authorize_template` de leitura na mesma transação, antes de resolver o sujeito: privado alheio ou inexistente, 404. Aluno (`proprios`) e admin (`todos`) inalterados: o aluno usa a rota com o Modelo atribuído a ele, que não é dele nem precisa ser público |
+| GET `/assigned-to-me` | inalterada (`ver`, sem escopo mínimo) |
+| POST `/periodization-drafts` | inalterada: `ia.modelo_periodizacao`/`editar` com `todos` |
+| POST `/cardio-recommendations/{id}/apply` (`api/app/cardio_recommendations.py`) | `modelos.treino`/`editar` com `min_scope="alunos"`; antes de gravar o rascunho, `authorize_template(for_write=True)`: 404 privado alheio, 403 público alheio |
+| GET `/cardio-recommendations/{id}` | `can_apply` é só o selo da tela (escopo de `editar` cobre `alunos`); a posse é conferida no POST |
+
+*Correções da revisão do 6A (13/11/2026, em `api/app/workout_plan_templates.py`):*
+- **`/hr-zones?template_id=`** passou a chamar `authorize_template(cur, identity, permissoes, template_id, "ver", for_write=False)` quando o escopo de `modelos.treino`/`ver` é `alunos`. Antes, um personal trainer com vínculo com o aluno atribuído a um Modelo privado de outro treinador recebia as zonas e o nome desse aluno. `resolve_template_zones_subject` (`api/app/athlete_hr_zones.py`) não mudou.
+- **Respostas de escrita filtradas**: o helper único `_present(template, viewer)` aplica `_filter_assignments` no GET `/{id}`, no PUT `/{id}`, no PATCH `/{id}/status` (o guard virou parâmetro `viewer`), no revert e no duplicate. Antes, o dono personal trainer de um Modelo público recebia no PUT os alunos de outro treinador. O POST `''` não passa por `_present`: o Modelo recém-criado não tem atribuições. Arquivar e desarquivar versão devolvem a versão, não o Modelo.
+- **`/methodology-volume-preview` com `template_id`**: `authorize_template` de leitura via `_authorize_template_request`, o mesmo helper que o `template_guard` passou a usar.
+- O teste de integração `api/tests/integration/dataapi/test_rollback_preserva_erro_original.py` chamava `create_assignment` com `Identity` no lugar do `viewer` e passou a usar `TemplateViewer(identity, "todos")`.
+
+*Riscos e pendências do 6A:*
+- **P3, `assignments_count` na lista é global**: `_list_templates` conta todas as atribuições vigentes, inclusive as de alunos de outro treinador. O PT vê o número, não os nomes.
+- **P3, `can_apply` cosmético**: GET `/cardio-recommendations/{id}` devolve `can_apply: true` para o personal trainer mesmo quando o apply dará 403 (Modelo público de outro treinador). A posse é conferida no POST.
+- **P3, atribuições de alunos de outros treinadores (comportamento a confirmar com o usuário)**: o DELETE de um Modelo público próprio encerra também as atribuições de alunos de outros treinadores (`close_assignments_of_template_for_everyone`). O PUT que torna o Modelo privado mantém essas atribuições.
+- **Contrato**: `visibility` existe só em `WorkoutPlanTemplateWriteIn` (POST e PUT). O rascunho e o apply de cardio não gravam visibilidade. O 6B precisa enviar o campo no PUT de publicação.
+- **Custo**: `active_student_ids` (`api/app/access/service.py`, linhas 202 a 212) faz uma consulta de vínculo por aluno candidato no GET de atribuições com escopo `alunos`. Não medido.
+- **Desatribuição**: o personal trainer com vínculo pode encerrar a atribuição de um aluno seu em Modelo público de outro treinador (`DELETE /{id}/assignments/{user_id}`, escrita não exigida do dono). É a regra "usa público" aplicada à atribuição; conferir na revisão.
+- **Documentação do módulo**: o docstring de `api/app/workout_plan_templates.py` (linhas 5 a 13) ainda descreve escopo `todos` e "sem vínculo formal". Corrigir no 6B.
+- **Ordem de deploy**: a migração 116 roda antes do código que lê `visibility`.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta edição do ADR):* unitários com `-k` em modelos, template, escopo, paridade, cardio, access e migração: 3161 passed. Integração: 6 casos coletados (`api/tests/integration/dataapi/test_modelos_dono_dataapi.py`, 3 funções), que rodam só no CI com o rótulo `ci-completo`.
+
+*Testes:*
+- Novos: `api/tests/unit/test_modelos_dono_visibilidade.py` (19 funções de teste), `api/tests/unit/test_migracao_116_modelos.py` e `api/tests/integration/dataapi/test_modelos_dono_dataapi.py`.
+- Ajustados: `test_access_catalogo_e_resolucao.py`, `test_access_paridade_guards.py`, `test_cardio_c3b_aplicar.py`, `test_corpo_integracoes_cardio_permissoes_rbac.py`, `test_modelos_treino_permissoes_rbac.py`, `test_template_drafts.py` e `test_template_versions_arquivar.py`.
+
+*Medido após as correções (13/11/2026, na branch):* o mesmo `-k` acrescido de `hr_zones`: 3226 passed e 4 failed. As 4 falhas estão em `api/tests/unit/test_template_hr_zones_autorizacao.py`: o cursor falso desse arquivo não responde ao `SELECT` do `authorize_template` e precisa de ajuste fora do plano desta rodada. `test_modelos_dono_visibilidade.py` passou a cobrir hr-zones, preview, respostas filtradas e troca de `visibility` no PUT. Coleta da integração: 32 casos em `test_rollback_preserva_erro_original.py` e `test_modelos_dono_dataapi.py`.
+
+*Não medido:* integração (roda no CI); a UI do 6B (ainda não existe); sessão real de personal trainer com Modelo de outro treinador; latência da lista de atribuições; concorrência.
+
+*Impacto em produção:* DDL e DML.
+- `ALTER TABLE` INSTANT (metadado) em `workout_plan_templates` e até 3 linhas de `access_group_grants` do grupo `personal_trainer`. A promoção exige `RUN_DB_MIGRATIONS=true` na execução da promoção e volta a `false` depois, como nos lotes anteriores.
+- Efeito de comportamento: o personal trainer perde a escrita sobre Modelos de outros (403 em público, 404 em privado). Os Modelos existentes são públicos, então a leitura deles continua. Um Modelo privado criado depois só aparece para o dono e para o admin.
+- O frontend atual (sem o 6B) exige escopo `todos` em `modelosTreinoControls` (`frontend/src/lib/screen-permissions.ts`, linhas 96 a 106). Sem o 6B, o personal trainer perde a tela de Modelos (fail-closed). Por isso o 6B precisa ir na mesma promoção.
+- Antes de promover, conferir por leitura autorizada: `SELECT` de Modelos por `created_by_user_id` e `visibility`, e `SELECT` de membros do grupo `personal_trainer`.
+- Rollback: reverter o PR não reverte a coluna nem o escopo no banco. Reverter exige migração nova, porque produção não roda `down`, que perderia a `visibility` gravada.
 
 ### Riscos para lotes futuros
 

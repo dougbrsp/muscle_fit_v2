@@ -268,12 +268,13 @@ def get_cardio_recommendation(
     identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     row = _load_recommendation(entry_id, identity.user_id)
-    # can_apply: mesma regra do POST /apply (modelos.treino/editar com escopo
-    # que cubra `todos`), lida da concessao do grupo.
+    # can_apply: mesma porta do POST /apply (modelos.treino/editar com escopo
+    # que cubra `alunos`, lote 6A), lida da concessao do grupo. A posse do
+    # Modelo (dono ou `todos`) o POST confere; aqui e so o selo da tela.
     apply_scope = access_service.permission_scope(
         permissions_for_request(request, identity), "modelos.treino", "editar"
     )
-    can_apply = apply_scope is not None and catalog.scope_covers(apply_scope, "todos")
+    can_apply = apply_scope is not None and catalog.scope_covers(apply_scope, catalog.SCOPE_ALUNOS)
     # M98 C3b: a recomendação pronta para exibir (rótulos, tempo total e se
     # cada sessão pode ir para o Modelo). Antiga (sem JSON) = null.
     row["recommendation_view"] = cardio_recommendation_v3.build_view(
@@ -300,7 +301,8 @@ NO_TEMPLATE = "Esta recomendação não tem Modelo vinculado: não há onde apli
 def apply_cardio_recommendation(
     entry_id: int,
     payload: CardioApplyIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    request: Request,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="alunos")),
 ):
     """Aplica sessões da recomendação no RASCUNHO do Modelo ativo (M98 C3b).
 
@@ -320,6 +322,16 @@ def apply_cardio_recommendation(
     template_id = (recommendation.get("plan") or {}).get("template_id")
     if template_id is None:
         raise HTTPException(status_code=409, detail={"reason": "no_template", "message": NO_TEMPLATE})
+    # Lote 6A: escrever no rascunho exige posse do Modelo (dono ou `todos`),
+    # pelo helper unico dos Modelos (404 privado alheio, 403 publico alheio).
+    from .db import transaction
+    from .workout_plan_templates import authorize_template
+
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            authorize_template(
+                cur, identity, permissions_for_request(request, identity), int(template_id), "editar", for_write=True
+            )
     by_date = {session.get("date"): session for session in recommendation.get("sessions") or []}
     chosen: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []

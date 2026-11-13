@@ -323,11 +323,32 @@ def test_dispositivo_de_dono_sem_grupo_e_negado_nas_29(ctx, rota):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("uid", [SINT_PROPRIOS, SINT_ALUNOS], ids=["proprios", "alunos"])
 @pytest.mark.parametrize("rota", GESTAO, ids=_ids(GESTAO))
-def test_escopo_abaixo_de_todos_e_negado_nas_27_de_gestao(ctx, uid, rota):
+def test_escopo_proprios_e_negado_nas_27_de_gestao(ctx, rota):
     clients, state, _, dados = ctx
-    _como(state, uid)
+    _como(state, SINT_PROPRIOS)
+    _negado(_chamar(clients, rota), dados)
+
+
+GESTAO_SEM_IA = [v for v in GESTAO if CHAVE[v] != ROTA_DRAFTS_IA]
+
+
+@pytest.mark.parametrize("rota", GESTAO_SEM_IA, ids=_ids(GESTAO_SEM_IA))
+def test_escopo_alunos_passa_pelo_guard_nas_26_de_gestao_de_modelos(ctx, rota):
+    """Lote 6A (ADR 0011): o escopo minimo de `modelos.treino` desceu para
+    `alunos` (personal trainer). A posse do Modelo (dono/publico) e conferida
+    depois, por `authorize_template` (coberto em `test_modelos_dono_visibilidade`)."""
+    clients, state, _, dados = ctx
+    _como(state, SINT_ALUNOS)
+    resp = _chamar(clients, rota)
+    assert resp.status_code != 403, resp.text
+    _passou(resp, dados, rota)
+
+
+@pytest.mark.parametrize("rota", DRAFTS_IA, ids=_ids(DRAFTS_IA))
+def test_escopo_alunos_segue_negado_na_periodizacao_por_ia(ctx, rota):
+    clients, state, _, dados = ctx
+    _como(state, SINT_ALUNOS)
     _negado(_chamar(clients, rota), dados)
 
 
