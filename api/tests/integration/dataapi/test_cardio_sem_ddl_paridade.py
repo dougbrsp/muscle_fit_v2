@@ -120,7 +120,10 @@ def _apply_legacy(env, monkeypatch):
     # sai depois de ler a linha, sem DDL e sem tocar o rascunho.
     with pytest.raises(HTTPException) as exc:
         cr.apply_cardio_recommendation(
-            env["existing"], cr.CardioApplyIn(dates=["2026-09-01"]), identity=_identity(env["user"])
+            env["existing"],
+            cr.CardioApplyIn(dates=["2026-09-01"]),
+            request=Request({"type": "http"}),
+            identity=_identity(env["user"]),
         )
     assert exc.value.status_code == 409 and exc.value.detail["reason"] == "legacy_recommendation"
 
