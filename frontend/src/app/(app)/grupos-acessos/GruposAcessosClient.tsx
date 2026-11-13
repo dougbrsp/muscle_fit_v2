@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Badge, Button, Card, Group, Loader, Modal, NavLink, Stack, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Loader, Modal, NavLink, Stack, Tabs, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useCallback, useState } from 'react';
@@ -24,6 +24,7 @@ import { gruposControls } from '@/lib/screen-permissions';
 import type { UserAdminListResponse } from '@/lib/users-admin-types';
 import { BRAND } from '@/theme';
 import { GrupoDetalhe } from './GrupoDetalhe';
+import { VinculosTreinador } from './VinculosTreinador';
 
 /**
  * Tela admin "Grupos e acessos" (RBAC por grupos, ADR 0011). Mesmo padrão de
@@ -188,6 +189,12 @@ export function GruposAcessosClient() {
       )}
 
       {groupsQuery.isSuccess && catalog && (
+        <Tabs defaultValue="grupos" keepMounted>
+          <Tabs.List>
+            <Tabs.Tab value="grupos">Grupos</Tabs.Tab>
+            <Tabs.Tab value="vinculos">Vínculos</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="grupos" pt="md">
         <Group align="flex-start" wrap="wrap" gap="lg">
           <Card withBorder padding="xs" style={{ flex: '1 1 240px', maxWidth: 340 }} component="nav" aria-label="Grupos">
             {groups.length === 0 && (
@@ -235,6 +242,18 @@ export function GruposAcessosClient() {
             )}
           </div>
         </Group>
+          </Tabs.Panel>
+          <Tabs.Panel value="vinculos" pt="md">
+            <VinculosTreinador
+              groups={groups}
+              users={usersQuery.data?.items ?? []}
+              currentUserId={currentUser?.id ?? null}
+              canEdit={ctrl.canEdit}
+              canDelete={ctrl.canDelete}
+              canListUsers={ctrl.canListUsers && !usersForbidden}
+            />
+          </Tabs.Panel>
+        </Tabs>
       )}
 
       <Modal opened={pendingId !== null} onClose={() => setPendingId(null)} title="Descartar alterações?" size="sm">

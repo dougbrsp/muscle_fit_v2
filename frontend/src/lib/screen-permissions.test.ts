@@ -52,11 +52,12 @@ function personalTrainer(): Perms {
     p,
     [
       'modelos.treino', 'modelos.metas_ativacao', 'modelos.tipos_treino', 'ia.modelo_periodizacao',
-      'nutricao.diario', 'nutricao.plano', 'nutricao.checkin', 'ia.nutricao',
+      'nutricao.diario', 'nutricao.checkin', 'ia.nutricao',
     ],
     ACTIONS,
     'todos',
   );
+  grant(p, ['nutricao.plano'], ACTIONS, 'alunos');
   return p;
 }
 function admin(): Perms {
@@ -131,12 +132,16 @@ describe('controles das telas de gestão (paridade com o que cada papel via por 
     expect(allFalse(usuariosControls(p))).toBe(true);
     expect(allFalse(gruposControls(p))).toBe(true);
     expect(allFalse(alimentosControls(p))).toBe(true);
-    expect(planoNutricionalControls(p).canManageOthers).toBe(true);
+    expect(planoNutricionalControls(p)).toEqual({ canManageOthers: true, studentsOnly: true });
   });
 
-  it('admin: todos os controles', () => {
+  it('admin: todos os controles (plano: gere todos, sem restrição a alunos)', () => {
     const p = admin();
-    for (const fn of ALL_FNS) expect(allTrue(fn(p))).toBe(true);
+    for (const fn of ALL_FNS) {
+      if (fn === planoNutricionalControls) continue;
+      expect(allTrue(fn(p))).toBe(true);
+    }
+    expect(planoNutricionalControls(p)).toEqual({ canManageOthers: true, studentsOnly: false });
   });
 
   it('null, undefined e {}: nenhum controle (fail-closed)', () => {
@@ -155,9 +160,10 @@ describe('escopo e ação exatos', () => {
   });
 
   it('plano de outros exige editar com escopo todos', () => {
-    expect(planoNutricionalControls({ 'nutricao.plano': { editar: 'alunos' } }).canManageOthers).toBe(false);
-    expect(planoNutricionalControls({ 'nutricao.plano': { ver: 'todos' } }).canManageOthers).toBe(false);
-    expect(planoNutricionalControls({ 'nutricao.plano': { editar: 'todos' } }).canManageOthers).toBe(true);
+    expect(planoNutricionalControls({ 'nutricao.plano': { editar: 'alunos' } })).toEqual({ canManageOthers: true, studentsOnly: true });
+    expect(planoNutricionalControls({ 'nutricao.plano': { editar: 'proprios' } })).toEqual({ canManageOthers: false, studentsOnly: false });
+    expect(planoNutricionalControls({ 'nutricao.plano': { ver: 'todos' } })).toEqual({ canManageOthers: false, studentsOnly: false });
+    expect(planoNutricionalControls({ 'nutricao.plano': { editar: 'todos' } })).toEqual({ canManageOthers: true, studentsOnly: false });
   });
 
   it('ver sem editar/excluir não libera escrita (catálogo, usuários, grupos, tipos)', () => {

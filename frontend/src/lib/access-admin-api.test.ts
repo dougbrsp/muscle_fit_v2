@@ -40,6 +40,22 @@ describe('access-admin-api: transporte para /access', () => {
     ]);
   });
 
+  it('vínculos treinador–aluno: caminhos, métodos e chaves do contrato 5A', async () => {
+    await api.fetchTrainerLinks();
+    await api.fetchTrainerLinks({ status: 'ativo' });
+    await api.createTrainerLink({ trainer_user_id: 4, student_user_id: 9 });
+    await api.endTrainerLink(7);
+    expect(apiFetch.mock.calls).toEqual([
+      ['/access/links'],
+      ['/access/links?status=ativo'],
+      ['/access/links', { method: 'POST', body: JSON.stringify({ trainer_user_id: 4, student_user_id: 9 }) }],
+      ['/access/links/7', { method: 'DELETE' }],
+    ]);
+    expect(api.accessKeys.links()).toEqual(['access-admin', 'links', null]);
+    expect(api.accessKeys.links('encerrado')).toEqual(['access-admin', 'links', 'encerrado']);
+    expect(api.accessKeys.linksAll).toEqual(['access-admin', 'links']);
+  });
+
   it('query keys são estáveis por grupo', () => {
     expect(api.accessKeys.members(2)).toEqual(['access-admin', 'members', 2]);
     expect(api.accessKeys.audit(2)).toEqual(['access-admin', 'audit', 2]);

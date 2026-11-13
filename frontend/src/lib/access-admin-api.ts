@@ -7,6 +7,9 @@ import type {
   AccessMember,
   AddMemberResponse,
   CreateGroupPayload,
+  CreateTrainerLinkPayload,
+  TrainerLink,
+  TrainerLinkFilters,
   UpdateGroupPayload,
 } from './access-admin-types';
 
@@ -16,6 +19,8 @@ export const accessKeys = {
   groups: ['access-admin', 'groups'] as const,
   members: (groupId: number) => ['access-admin', 'members', groupId] as const,
   audit: (groupId: number) => ['access-admin', 'audit', groupId] as const,
+  links: (status: string | null = null) => ['access-admin', 'links', status] as const,
+  linksAll: ['access-admin', 'links'] as const,
 };
 
 const json = (method: string, body?: unknown): RequestInit =>
@@ -37,6 +42,15 @@ export const removeGroupMember = (id: number, userId: number) =>
   apiFetch<unknown>(`/access/groups/${id}/members/${userId}`, json('DELETE'));
 export const fetchGroupAudit = (groupId: number, limit = 50, offset = 0) =>
   apiFetch<AccessAuditEntry[]>(`/access/audit?group_id=${groupId}&limit=${limit}&offset=${offset}`);
+
+export function trainerLinksPath(filters: TrainerLinkFilters = {}): string {
+  return filters.status ? `/access/links?status=${encodeURIComponent(filters.status)}` : '/access/links';
+}
+export const fetchTrainerLinks = (filters: TrainerLinkFilters = {}) =>
+  apiFetch<TrainerLink[]>(trainerLinksPath(filters));
+export const createTrainerLink = (payload: CreateTrainerLinkPayload) =>
+  apiFetch<TrainerLink>('/access/links', json('POST', payload));
+export const endTrainerLink = (id: number) => apiFetch<TrainerLink>(`/access/links/${id}`, json('DELETE'));
 
 /**
  * Mensagem de erro para a tela: o backend manda `{error, message}` (em PT-BR)

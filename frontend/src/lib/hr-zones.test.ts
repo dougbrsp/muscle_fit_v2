@@ -51,5 +51,7 @@ describe('zonas do editor do Modelo', () => {
     expect(hrZonesHint(semAluno)).toContain('Atribua o Modelo');
     const varios = base({ kind: 'none', user_id: null, name: null, reason: 'multiple_assignees' }, []);
     expect(hrZonesHint(varios)).toContain('mais de um aluno');
+    const semVinculo = base({ kind: 'none', user_id: null, name: null, reason: 'no_link' }, []);
+    expect(hrZonesHint(semVinculo)).toBe('Você não tem vínculo ativo com o aluno deste Modelo.');
   });
 });

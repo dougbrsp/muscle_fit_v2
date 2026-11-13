@@ -17,6 +17,13 @@ export function fetchUserLookup(search: string): Promise<ApiListResponse<UserLoo
   );
 }
 
+/** Alunos com vínculo ativo do usuário logado (`GET /access/my-students`, só autenticação). */
+export const MY_STUDENTS_KEY = ['access-my-students'] as const;
+
+export function fetchMyStudents(): Promise<UserLookupItem[]> {
+  return apiFetch<UserLookupItem[]>('/access/my-students');
+}
+
 /** "Nome (usuário)" ou só o usuário. */
 export function userLookupLabel(user: Pick<UserLookupItem, 'username' | 'full_name'>): string {
   return user.full_name ? `${user.full_name} (${user.username})` : user.username;
