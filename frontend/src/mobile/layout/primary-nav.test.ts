@@ -3,7 +3,7 @@ import {
   DASHBOARD_NAV_ITEMS,
   isDesktopOnlyPath,
   mobileMainNavItems,
-  navVisibilityFromUser,
+  navVisibilityFromPermissions,
   visibleMainNavItems,
 } from '@/lib/nav-items';
 import {
@@ -19,9 +19,27 @@ import {
 } from './primary-nav';
 import { isNavGroupItemActive, scrollMemoryKey } from './nav-active';
 
-const admin = navVisibilityFromUser({ role: 'admin', intervals_configured: true }, true);
-const pt = navVisibilityFromUser({ role: 'personal_trainer', intervals_configured: false }, true);
-const plain = navVisibilityFromUser({ role: 'user', intervals_configured: false }, true);
+// Permissões mínimas por papel (espelho reduzido das concessões padrão do catálogo);
+// a paridade completa com o menu por role está em lib/nav-items.test.ts.
+type Perms = Record<string, Record<string, string>>;
+const give = (p: Perms, keys: string[], scope: string) => {
+  for (const k of keys) p[k] = { ver: scope, editar: scope, excluir: scope };
+};
+const COMUM_KEYS = [
+  'dashboards', 'treino.registro', 'treino.modo_treino', 'treino.planos', 'treino.preferencias',
+  'treino.academias', 'volume.grupamentos', 'corpo.indicadores', 'integracoes.intervals',
+  'nutricao.diario', 'ia.cardio', 'ia.insights', 'exercicios.catalogo',
+];
+const plainPerms: Perms = {};
+give(plainPerms, COMUM_KEYS, 'proprios');
+const ptPerms: Perms = JSON.parse(JSON.stringify(plainPerms));
+give(ptPerms, ['modelos.treino', 'modelos.metas_ativacao'], 'todos');
+const adminPerms: Perms = JSON.parse(JSON.stringify(ptPerms));
+give(adminPerms, ['admin.usuarios', 'admin.grupos', 'admin.regras_carga', 'admin.catalogos'], 'todos');
+
+const admin = navVisibilityFromPermissions({ permissions: adminPerms, intervals_configured: true });
+const pt = navVisibilityFromPermissions({ permissions: ptPerms, intervals_configured: false });
+const plain = navVisibilityFromPermissions({ permissions: plainPerms, intervals_configured: false });
 
 const tab = (id: string) => PRIMARY_TABS.find((t) => t.id === id)!;
 
@@ -154,11 +172,10 @@ describe('toda rota mobile continua alcançável', () => {
     expect(evo(plain)).not.toContain('/intervals-icu');
   });
 
-  it('enquanto /auth/me não resolve, itens condicionais ficam visíveis (menos os só-desktop)', () => {
-    const pending = navVisibilityFromUser(undefined, false);
-    const hrefs = buildMoreGroups(visibleMainNavItems(pending)).flatMap((g) => g.items.map((i) => i.href));
-    expect(hrefs).toContain('/usuarios');
-    expect(hrefs).not.toContain('/modelos-treino');
+  it('enquanto /auth/me não resolve, nenhum item do menu aparece (esconde por padrão)', () => {
+    const pending = navVisibilityFromPermissions(undefined);
+    expect(visibleMainNavItems(pending)).toEqual([]);
+    expect(mobileMainNavItems(pending)).toEqual([]);
   });
 
   it('nenhum item aparece em dois lugares da navegação', () => {

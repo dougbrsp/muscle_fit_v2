@@ -20,13 +20,14 @@ import {
 } from '@/lib/access-grants';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { permissionsApi } from '@/lib/use-permissions';
 import type { UserAdminListResponse } from '@/lib/users-admin-types';
 import { BRAND } from '@/theme';
 import { GrupoDetalhe } from './GrupoDetalhe';
 
 /**
  * Tela admin "Grupos e acessos" (RBAC por grupos, ADR 0011). Mesmo padrão de
- * `/usuarios`: só aparece para `role === "admin"`; a garantia real é o 403 do
+ * `/usuarios`: só aparece com a permissão `admin.grupos`/ver; a garantia real é o 403 do
  * backend (`admin.grupos`). Grupo selecionado fica em estado (export estático,
  * sem rota dinâmica).
  */
@@ -47,7 +48,8 @@ export function GruposAcessosClient() {
     retry: false,
   });
   const currentUser = currentUserQuery.data;
-  const isAdmin = currentUser?.role === 'admin';
+  // Permissão (RBAC), não role: o backend segue barrando com 403 em `admin.grupos`.
+  const isAdmin = permissionsApi(currentUser).can('admin.grupos', 'ver');
 
   const catalogQuery = useQuery({
     queryKey: accessKeys.catalog,

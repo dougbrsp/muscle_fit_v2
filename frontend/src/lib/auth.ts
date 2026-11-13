@@ -18,6 +18,14 @@ export interface SessionUser {
    */
   features?: { exercise_cards?: boolean };
   /**
+   * Permissões por grupos (RBAC, ADR 0011): `{recurso: {acao: escopo}}`, só com
+   * recursos que têm alguma ação. `null` = backend de acesso indisponível;
+   * ausente = backend anterior ao RBAC. Em ambos os casos o frontend esconde.
+   */
+  permissions?: Record<string, Record<string, string>> | null;
+  /** Chaves dos grupos do usuário (`null`/ausente como em `permissions`). */
+  groups?: string[] | null;
+  /**
    * Perfil antropométrico (nutrição L0, migração 074) — só leitura aqui; a
    * escrita é `PUT /users/me` (tela "Meu perfil", L2a).
    * Opcionais: backend anterior ao L0 não manda; `null` = não informado.

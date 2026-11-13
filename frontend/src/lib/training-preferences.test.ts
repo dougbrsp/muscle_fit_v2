@@ -6,7 +6,7 @@ import {
   UNGROUPED_LABEL,
   type TrainingPreferenceItem,
 } from './equipment-recommend';
-import { isAdminRole, adminRouteState } from './admin-route';
+import { isAdminRole, adminRouteState, permissionRouteState } from './admin-route';
 
 function item(overrides: Partial<TrainingPreferenceItem>): TrainingPreferenceItem {
   return {
@@ -89,5 +89,44 @@ describe('adminRouteState', () => {
     expect(adminRouteState({ isSuccess: false, isError: true, role: undefined })).toBe('redirect');
     expect(isAdminRole('admin')).toBe(true);
     expect(isAdminRole(undefined)).toBe(false);
+  });
+});
+
+describe('permissionRouteState', () => {
+  const required = { resource: 'admin.regras_carga' };
+  const perms = { 'admin.regras_carga': { ver: 'todos' } };
+  it('carregando enquanto /auth/me não resolveu', () => {
+    expect(permissionRouteState({ hasData: false, permissions: undefined, required })).toBe('loading');
+  });
+  it('libera com a permissão; redireciona sem ela, com null/{} ou em erro', () => {
+    expect(permissionRouteState({ hasData: true, permissions: perms, required })).toBe('allow');
+    expect(permissionRouteState({ hasData: true, permissions: {}, required })).toBe('redirect');
+    expect(permissionRouteState({ hasData: true, permissions: null, required })).toBe('redirect');
+    expect(permissionRouteState({ hasData: true, permissions: undefined, required })).toBe('redirect');
+    expect(permissionRouteState({ hasData: false, isError: true, permissions: undefined, required })).toBe(
+      'redirect',
+    );
+  });
+  it('refetch com erro mas dados em cache: decide por can() (não redireciona)', () => {
+    expect(permissionRouteState({ hasData: true, isError: true, permissions: perms, required })).toBe('allow');
+    expect(permissionRouteState({ hasData: true, isError: true, permissions: {}, required })).toBe('redirect');
+  });
+  it('respeita ação e escopo mínimo', () => {
+    const r = { resource: 'admin.regras_carga', action: 'editar', minScope: 'todos' as const };
+    expect(permissionRouteState({ hasData: true, permissions: perms, required: r })).toBe('redirect');
+    expect(
+      permissionRouteState({
+        hasData: true,
+        permissions: { 'admin.regras_carga': { editar: 'alunos' } },
+        required: r,
+      }),
+    ).toBe('redirect');
+    expect(
+      permissionRouteState({
+        hasData: true,
+        permissions: { 'admin.regras_carga': { editar: 'todos' } },
+        required: r,
+      }),
+    ).toBe('allow');
   });
 });
