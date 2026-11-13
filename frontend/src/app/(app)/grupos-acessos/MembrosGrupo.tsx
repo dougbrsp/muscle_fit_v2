@@ -15,11 +15,23 @@ import type { AccessGroup } from '@/lib/access-admin-types';
 import { roleLabel, type UserAdminItem } from '@/lib/users-admin-types';
 import { BRAND } from '@/theme';
 
-type Props = { group: AccessGroup; users: UserAdminItem[]; currentUserId: number | null };
+type Props = {
+  group: AccessGroup;
+  users: UserAdminItem[];
+  currentUserId: number | null;
+  /** admin.grupos/editar: adicionar membro. */
+  canEdit: boolean;
+  /** admin.grupos/excluir: remover membro. */
+  canDelete: boolean;
+  /** admin.usuarios/ver: a lista de usuários (seletor) só existe com ela. */
+  canListUsers: boolean;
+};
 
-export function MembrosGrupo({ group, users, currentUserId }: Props) {
+export function MembrosGrupo({ group, users, currentUserId, canEdit, canDelete, canListUsers }: Props) {
   const qc = useQueryClient();
   const readOnly = !group.editable;
+  const showAdd = canEdit && !readOnly;
+  const showRemove = canDelete && !readOnly;
   const [selected, setSelected] = useState<string | null>(null);
 
   const membersQuery = useQuery({
@@ -64,7 +76,11 @@ export function MembrosGrupo({ group, users, currentUserId }: Props) {
         <Alert color="gray" variant="light">
           Grupo de sistema: os membros são definidos pelo papel do usuário e não podem ser alterados aqui.
         </Alert>
-      ) : (
+      ) : showAdd && !canListUsers ? (
+        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
+          Seu acesso não inclui a lista de usuários: não é possível escolher novos membros aqui.
+        </Alert>
+      ) : showAdd ? (
         <Group align="flex-end" wrap="wrap">
           <Select
             label="Adicionar membro"
@@ -90,7 +106,7 @@ export function MembrosGrupo({ group, users, currentUserId }: Props) {
             Adicionar
           </Button>
         </Group>
-      )}
+      ) : null}
 
       {(addMutation.isError || removeMutation.isError) && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -119,7 +135,7 @@ export function MembrosGrupo({ group, users, currentUserId }: Props) {
                 <Table.Th>Usuário</Table.Th>
                 <Table.Th>Papel</Table.Th>
                 <Table.Th>Status</Table.Th>
-                {!readOnly && <Table.Th />}
+                {showRemove && <Table.Th />}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -135,7 +151,7 @@ export function MembrosGrupo({ group, users, currentUserId }: Props) {
                       {m.is_active ? 'Ativo' : 'Desativado'}
                     </Badge>
                   </Table.Td>
-                  {!readOnly && (
+                  {showRemove && (
                     <Table.Td>
                       <Tooltip label="Remover do grupo">
                         <ActionIcon

@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { ExerciseDetailResponse, ExerciseUpsertPayload, ExerciseUpsertResponse } from '@/lib/exercise-catalog-admin-types';
+import { usePermissions } from '@/lib/use-permissions';
 import { MEASURE_OPTIONS, parseMeasure } from '@/lib/set-measures';
 import { BRAND } from '@/theme';
 import { AliasesSection } from './AliasesSection';
@@ -127,6 +128,8 @@ export function ExerciseDetailDrawer({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  // Card ilustrado: rotas de geração exigem ia.cards_exercicio/editar (não admin.catalogos).
+  const canGenerateCards = usePermissions().can('ia.cards_exercicio', 'editar');
 
   const detailQueryKey = ['exercise-catalog-admin-exercise-detail', exerciseId] as const;
 
@@ -383,7 +386,7 @@ export function ExerciseDetailDrawer({
                 key={exerciseId}
                 exerciseId={exerciseId}
                 exerciseName={detail.exercise.name}
-                isAdmin={isAdmin}
+                isAdmin={canGenerateCards}
                 enabled={exerciseCardsEnabled}
               />
             </>

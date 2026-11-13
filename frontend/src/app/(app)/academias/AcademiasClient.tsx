@@ -32,6 +32,7 @@ import { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { GymLogo } from '@/components/GymLogo';
 import { apiFetch, ApiError } from '@/lib/api';
+import { academiasControls } from '@/lib/screen-permissions';
 import type { SessionUser } from '@/lib/auth';
 import {
   ApiListResponse,
@@ -65,7 +66,7 @@ export function AcademiasClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const isAdmin = currentUserQuery.data?.role === 'admin';
+  const controls = academiasControls(currentUserQuery.data?.permissions);
 
   // ---- Nova academia -------------------------------------------------
   const [newGymName, setNewGymName] = useState('');
@@ -304,66 +305,68 @@ export function AcademiasClient() {
         </Text>
       </div>
 
-      <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
-        <Title order={3} mb="md" c={BRAND.textPrimary}>
-          Nova academia
-        </Title>
-        <TextInput
-          label="Nome"
-          placeholder="Ex.: Gaviões"
-          value={newGymName}
-          onChange={(event) => setNewGymName(event.currentTarget.value)}
-        />
-        <Stack gap={4} mt="sm">
-          <Checkbox
-            label="Academia avulsa (visita única, sem frequência recorrente)"
-            checked={!newGymRecurring}
-            onChange={(event) => {
-              const avulsa = event.currentTarget.checked;
-              setNewGymRecurring(!avulsa);
-              if (avulsa) setNewGymDays([]);
-            }}
+      {controls.canEdit && (
+        <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
+          <Title order={3} mb="md" c={BRAND.textPrimary}>
+            Nova academia
+          </Title>
+          <TextInput
+            label="Nome"
+            placeholder="Ex.: Gaviões"
+            value={newGymName}
+            onChange={(event) => setNewGymName(event.currentTarget.value)}
           />
-        </Stack>
-        {newGymRecurring && (
           <Stack gap={4} mt="sm">
-            <Text size="sm" fw={600} c={BRAND.textPrimary}>
-              Frequência normal
-            </Text>
-            <Group gap="md">
-              {WEEKDAYS.map((day) => (
-                <Checkbox
-                  key={day.value}
-                  label={day.label}
-                  checked={newGymDays.includes(day.value)}
-                  onChange={(event) => {
-                    const checked = event.currentTarget.checked;
-                    setNewGymDays((current) =>
-                      checked ? [...current, day.value] : current.filter((d) => d !== day.value),
-                    );
-                  }}
-                />
-              ))}
-            </Group>
+            <Checkbox
+              label="Academia avulsa (visita única, sem frequência recorrente)"
+              checked={!newGymRecurring}
+              onChange={(event) => {
+                const avulsa = event.currentTarget.checked;
+                setNewGymRecurring(!avulsa);
+                if (avulsa) setNewGymDays([]);
+              }}
+            />
           </Stack>
-        )}
-        <Group mt="md">
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            disabled={!newGymName.trim()}
-            loading={createGymMutation.isPending}
-            onClick={() => createGymMutation.mutate()}
-          >
-            Adicionar academia
-          </Button>
-        </Group>
-        {createGymMutation.isError && (
-          <Alert color="red" icon={<IconAlertTriangle size={16} />} mt="sm">
-            {errorMessage(createGymMutation.error, 'Não foi possível criar a academia.')}
-          </Alert>
-        )}
-      </Paper>
+          {newGymRecurring && (
+            <Stack gap={4} mt="sm">
+              <Text size="sm" fw={600} c={BRAND.textPrimary}>
+                Frequência normal
+              </Text>
+              <Group gap="md">
+                {WEEKDAYS.map((day) => (
+                  <Checkbox
+                    key={day.value}
+                    label={day.label}
+                    checked={newGymDays.includes(day.value)}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setNewGymDays((current) =>
+                        checked ? [...current, day.value] : current.filter((d) => d !== day.value),
+                      );
+                    }}
+                  />
+                ))}
+              </Group>
+            </Stack>
+          )}
+          <Group mt="md">
+            <Button
+              color="brand"
+              leftSection={<IconPlus size={16} />}
+              disabled={!newGymName.trim()}
+              loading={createGymMutation.isPending}
+              onClick={() => createGymMutation.mutate()}
+            >
+              Adicionar academia
+            </Button>
+          </Group>
+          {createGymMutation.isError && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />} mt="sm">
+              {errorMessage(createGymMutation.error, 'Não foi possível criar a academia.')}
+            </Alert>
+          )}
+        </Paper>
+      )}
 
       {gymsQuery.isLoading && (
         <Group>
@@ -400,7 +403,7 @@ export function AcademiasClient() {
                   </Title>
                 </Group>
                 <Group gap="xs" wrap="nowrap">
-                  {isAdmin && (
+                  {controls.canEditAdminFields && (
                     <Tooltip label="Editar academia">
                       <ActionIcon
                         color="brand"
@@ -414,18 +417,20 @@ export function AcademiasClient() {
                       </ActionIcon>
                     </Tooltip>
                   )}
-                  <Tooltip label="Excluir academia">
-                    <ActionIcon
-                      color="red"
-                      variant="subtle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openDeleteGymConfirm(gym);
-                      }}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
+                  {controls.canDelete && (
+                    <Tooltip label="Excluir academia">
+                      <ActionIcon
+                        color="red"
+                        variant="subtle"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openDeleteGymConfirm(gym);
+                        }}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
                 </Group>
               </Group>
               {gym.is_recurring ? (
@@ -444,6 +449,7 @@ export function AcademiasClient() {
                           style={{ cursor: 'pointer' }}
                           onClick={(event) => {
                             event.stopPropagation();
+                            if (!controls.canEdit) return;
                             const current = gym.usual_weekdays || [];
                             const next = checked ? current.filter((d) => d !== day.value) : [...current, day.value];
                             updateGymDaysMutation.mutate({ id: gym.id, usual_weekdays: next });
@@ -463,6 +469,7 @@ export function AcademiasClient() {
                   title="Academia avulsa — clique para tornar recorrente"
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (!controls.canEdit) return;
                     updateGymRecurringMutation.mutate({ id: gym.id, is_recurring: true });
                   }}
                 >
@@ -539,7 +546,10 @@ export function AcademiasClient() {
                       <Table.Td>
                         <Checkbox
                           checked={gymHasEquipmentId.has(eq.id)}
-                          disabled={!activeGymId}
+                          disabled={
+                            !activeGymId ||
+                            !(gymHasEquipmentId.has(eq.id) ? controls.canDelete : controls.canEdit)
+                          }
                           onChange={(event) => toggleGymEquipment(eq, event.currentTarget.checked)}
                         />
                       </Table.Td>
@@ -731,7 +741,7 @@ export function AcademiasClient() {
               >
                 Enviar logo
               </Button>
-              {liveEditGym?.has_logo && (
+              {liveEditGym?.has_logo && controls.canRemoveLogo && (
                 <Button variant="light" color="orange" size="xs" onClick={openRemoveGymLogo}>
                   Remover logo
                 </Button>

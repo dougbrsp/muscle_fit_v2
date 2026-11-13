@@ -20,7 +20,7 @@ import {
 } from '@/lib/access-grants';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { permissionsApi } from '@/lib/use-permissions';
+import { gruposControls } from '@/lib/screen-permissions';
 import type { UserAdminListResponse } from '@/lib/users-admin-types';
 import { BRAND } from '@/theme';
 import { GrupoDetalhe } from './GrupoDetalhe';
@@ -49,7 +49,8 @@ export function GruposAcessosClient() {
   });
   const currentUser = currentUserQuery.data;
   // Permissão (RBAC), não role: o backend segue barrando com 403 em `admin.grupos`.
-  const isAdmin = permissionsApi(currentUser).can('admin.grupos', 'ver');
+  const ctrl = gruposControls(currentUser?.permissions);
+  const isAdmin = ctrl.canAccess;
 
   const catalogQuery = useQuery({
     queryKey: accessKeys.catalog,
@@ -69,7 +70,8 @@ export function GruposAcessosClient() {
   const usersQuery = useQuery({
     queryKey: ['users-admin'],
     queryFn: () => apiFetch<UserAdminListResponse>('/users'),
-    enabled: isAdmin,
+    // GET /users exige admin.usuarios/ver; sem ela a tela segue sem nomes/seletor (aviso abaixo).
+    enabled: isAdmin && ctrl.canListUsers,
     retry: false,
   });
 
@@ -126,6 +128,7 @@ export function GruposAcessosClient() {
     );
   }
 
+  const usersForbidden = usersQuery.error instanceof ApiError && usersQuery.error.status === 403;
   const groups = groupsQuery.data ?? [];
   const catalog = catalogQuery.data;
   const selected = groups.find((g) => g.id === selectedId) ?? null;
@@ -151,16 +154,18 @@ export function GruposAcessosClient() {
             Grupos de permissão, concessões por recurso e ação, membros e auditoria. Restrito a administradores.
           </Text>
         </div>
-        <Button
-          color="brand"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => {
-            createMutation.reset();
-            setCreateOpen(true);
-          }}
-        >
-          Novo grupo
-        </Button>
+        {ctrl.canEdit && (
+          <Button
+            color="brand"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => {
+              createMutation.reset();
+              setCreateOpen(true);
+            }}
+          >
+            Novo grupo
+          </Button>
+        )}
       </Group>
 
       {loading && (
@@ -172,6 +177,13 @@ export function GruposAcessosClient() {
       {loadError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {accessErrorMessage(loadError, 'Não foi possível carregar os grupos.')}
+        </Alert>
+      )}
+
+      {isAdmin && (!ctrl.canListUsers || usersForbidden) && (
+        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
+          Seu acesso não inclui a lista de usuários: a auditoria mostra ids em vez de nomes e não é possível escolher
+          novos membros.
         </Alert>
       )}
 
@@ -209,6 +221,9 @@ export function GruposAcessosClient() {
                 catalog={catalog}
                 users={usersQuery.data?.items ?? []}
                 currentUserId={currentUser?.id ?? null}
+                canEdit={ctrl.canEdit}
+                canDelete={ctrl.canDelete}
+                canListUsers={ctrl.canListUsers && !usersForbidden}
                 onDeleted={() => {
                   setDirty(false);
                   setSelectedId(null);

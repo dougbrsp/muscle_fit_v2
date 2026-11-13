@@ -18,16 +18,17 @@ import {
 } from '@/lib/access-grants';
 import { BRAND } from '@/theme';
 
-type Props = { group: AccessGroup; catalog: AccessCatalog; onDirtyChange?: (dirty: boolean) => void };
+type Props = { group: AccessGroup; catalog: AccessCatalog; canEdit: boolean; onDirtyChange?: (dirty: boolean) => void };
 
 /**
  * Matriz recurso x ação. Cada célula escolhe o escopo (ou nenhum). O backend
  * decide o que é válido; aqui só se reflete o catálogo e se envia o conjunto
  * inteiro em PUT /access/groups/{id}/grants.
  */
-export function MatrizConcessoes({ group, catalog, onDirtyChange }: Props) {
+export function MatrizConcessoes({ group, catalog, canEdit, onDirtyChange }: Props) {
   const qc = useQueryClient();
-  const readOnly = !group.editable;
+  // Salvar exige admin.grupos/editar (PUT /access/groups/{id}/grants), além de o grupo ser editável.
+  const readOnly = !group.editable || !canEdit;
   const [draft, setDraft] = useState<GrantMatrix>(() => grantsToMatrix(group.grants));
   const [confirmOpen, setConfirmOpen] = useState(false);
 

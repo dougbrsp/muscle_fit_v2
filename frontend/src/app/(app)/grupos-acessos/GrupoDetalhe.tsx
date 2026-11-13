@@ -18,11 +18,14 @@ type Props = {
   catalog: AccessCatalog;
   users: UserAdminItem[];
   currentUserId: number | null;
+  canEdit: boolean;
+  canDelete: boolean;
+  canListUsers: boolean;
   onDeleted: () => void;
   onDirtyChange: (dirty: boolean) => void;
 };
 
-export function GrupoDetalhe({ group, catalog, users, currentUserId, onDeleted, onDirtyChange }: Props) {
+export function GrupoDetalhe({ group, catalog, users, currentUserId, canEdit, canDelete, canListUsers, onDeleted, onDirtyChange }: Props) {
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -70,11 +73,14 @@ export function GrupoDetalhe({ group, catalog, users, currentUserId, onDeleted, 
           </Text>
           {group.description && <Text size="sm" c={BRAND.textMuted}>{group.description}</Text>}
         </div>
-        {group.editable && (
+        {group.editable && (canEdit || canDelete) && (
           <Group gap="xs">
-            <Button variant="light" color="brand" leftSection={<IconPencil size={16} />} onClick={openEdit}>
-              Editar
-            </Button>
+            {canEdit && (
+              <Button variant="light" color="brand" leftSection={<IconPencil size={16} />} onClick={openEdit}>
+                Editar
+              </Button>
+            )}
+            {canDelete && (
             <Tooltip label="Remova os membros antes de excluir" disabled={group.member_count === 0}>
               <Button
                 variant="light"
@@ -89,6 +95,7 @@ export function GrupoDetalhe({ group, catalog, users, currentUserId, onDeleted, 
                 Excluir
               </Button>
             </Tooltip>
+            )}
           </Group>
         )}
       </Group>
@@ -100,10 +107,17 @@ export function GrupoDetalhe({ group, catalog, users, currentUserId, onDeleted, 
           <Tabs.Tab value="auditoria">Auditoria</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="concessoes" pt="md">
-          <MatrizConcessoes group={group} catalog={catalog} onDirtyChange={onDirtyChange} />
+          <MatrizConcessoes group={group} catalog={catalog} canEdit={canEdit} onDirtyChange={onDirtyChange} />
         </Tabs.Panel>
         <Tabs.Panel value="membros" pt="md">
-          <MembrosGrupo group={group} users={users} currentUserId={currentUserId} />
+          <MembrosGrupo
+            group={group}
+            users={users}
+            currentUserId={currentUserId}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            canListUsers={canListUsers}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="auditoria" pt="md">
           <AuditoriaGrupo group={group} users={users} />

@@ -45,6 +45,7 @@ const ATRASO_DA_BUSCA_MS = 300;
 export const FAVORITE_TOGGLE_KEY = ['nutrition-favorite-toggle'] as const;
 
 type Props = {
+  /** Nome legado: significa admin.catalogos/ver (permissão efetiva, não role); enxerga alimentos privados de todos (`scope=private_all`). */
   isAdmin: boolean;
   selectedId: number | null;
   onSelect: (item: FoodSearchItem) => void;

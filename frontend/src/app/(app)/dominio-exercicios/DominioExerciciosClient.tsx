@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { exerciseCardsFeatureEnabled } from '@/lib/exercise-cards';
+import { catalogosControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 import { EquipmentTypesPanel } from './components/EquipmentTypesPanel';
 import { ExercisesPanel } from './components/ExercisesPanel';
@@ -25,7 +26,7 @@ async function fetchCurrentUser(): Promise<SessionUser> {
  *
  * Leitura aberta a qualquer autenticado; toda escrita é admin-only, mesmo
  * padrão estrito de `/mapeamentos` (Etapa 16) e `/equipamentos-exercicios`
- * (Etapa 17): `role === "admin"` via `/auth/me`, botões desabilitados +
+ * (Etapa 17): permissão `admin.catalogos` (editar) via `/auth/me`, botões desabilitados +
  * tooltip para não-admin, e o 403 do backend continua sendo a garantia real.
  */
 export function DominioExerciciosClient() {
@@ -37,7 +38,8 @@ export function DominioExerciciosClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const isAdmin = currentUserQuery.data?.role === 'admin';
+  // Decisão por permissão efetiva (RBAC), não por role: espelha `admin.catalogos`/editar das rotas.
+  const isAdmin = catalogosControls(currentUserQuery.data?.permissions).canEdit;
   // Flag do AMBIENTE (não do usuário): liga a seção de card ilustrado no drawer.
   const exerciseCardsEnabled = exerciseCardsFeatureEnabled(currentUserQuery.data);
 

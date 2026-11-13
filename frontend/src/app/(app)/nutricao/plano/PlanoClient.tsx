@@ -16,6 +16,7 @@ import { UserPicker } from '@/components/nutrition/UserPicker';
 import { planoInicial } from '@/lib/nutrition-plan-user';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { planoNutricionalControls } from '@/lib/screen-permissions';
 import {
   archiveNutritionPlan,
   deleteNutritionPlan,
@@ -251,8 +252,8 @@ export function PlanoClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const role = currentUserQuery.data?.role;
-  const canManage = role === 'admin' || role === 'personal_trainer';
+  // nutricao.plano/editar com escopo todos (RBAC), não role.
+  const canManage = planoNutricionalControls(currentUserQuery.data?.permissions).canManageOthers;
 
   return (
     <Stack gap="xl">
