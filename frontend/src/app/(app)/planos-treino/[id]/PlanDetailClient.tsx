@@ -48,6 +48,8 @@ import { GenerationWarnings } from '../GenerationWarnings';
 import { PlanMuscleMap } from '../PlanMuscleMap';
 import { BRAND } from '@/theme';
 import { formatDateOrDash } from '@/lib/format';
+import { useIaControls } from '@/lib/screen-permissions';
+import { usePermissions } from '@/lib/use-permissions';
 
 // COD-14: modal sob demanda. Fechado ele não desenha nada, e o componente
 // continua sempre montado, então o chunk chega logo depois da hidratação,
@@ -169,6 +171,9 @@ export function PlanDetailClient() {
     enabled: Number.isFinite(planId),
   });
   const cardioRecommendation = cardioQuery.data?.items?.[0] || null;
+  // Gerar: ia.cardio/editar. Aplicar ao Modelo: modelos.treino/editar (todos). Fail-closed.
+  const canGenerateCardio = useIaControls().canCardio;
+  const canApplyCardioToTemplate = usePermissions().can('modelos.treino', 'editar', 'todos');
 
   const [cardioDeleteOpened, { open: openCardioDelete, close: closeCardioDelete }] = useDisclosure(false);
 
@@ -401,15 +406,17 @@ export function PlanDetailClient() {
             </Title>
           </Group>
           <Group gap={6}>
-            <Button
-              leftSection={<IconSparkles size={16} />}
-              color="brand"
-              size="xs"
-              loading={generateCardioMutation.isPending}
-              onClick={() => generateCardioMutation.mutate()}
-            >
-              {cardioRecommendation ? 'Gerar novamente' : 'Gerar recomendação de cardio'}
-            </Button>
+            {canGenerateCardio && (
+              <Button
+                leftSection={<IconSparkles size={16} />}
+                color="brand"
+                size="xs"
+                loading={generateCardioMutation.isPending}
+                onClick={() => generateCardioMutation.mutate()}
+              >
+                {cardioRecommendation ? 'Gerar novamente' : 'Gerar recomendação de cardio'}
+              </Button>
+            )}
             {cardioRecommendation && (
               <Button variant="subtle" color="red" size="xs" leftSection={<IconTrash size={14} />} onClick={openCardioDelete}>
                 Excluir
@@ -446,6 +453,7 @@ export function PlanDetailClient() {
               recommendationId={cardioRecommendation.id}
               markdown={cardioRecommendation.recommendation_markdown}
               promptVersion={cardioRecommendation.prompt_version}
+              hideApplyToTemplate={!canApplyCardioToTemplate}
             />
           </>
         )}

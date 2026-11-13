@@ -137,6 +137,7 @@ import { RestTimerHero } from './RestTimer';
 import { RestAiEvaluationCard, RestSavedSetPanel } from './RestRecommendation';
 import { useWeightUnit } from '@/lib/use-weight-unit';
 import { formatWeight, type WeightUnit } from '@/lib/weight-units';
+import { useIaControls } from '@/lib/screen-permissions';
 import { ExerciseSummaryCard, SetLoggerCard, type SetLoggerValues } from './SetLoggerCard';
 import type { SavedSetIntensity } from '@/lib/set-engine-status';
 import { restoreRestTimer, type RestAfterStageKind, type StoredRestTimer } from '@/lib/workout-mode-rest-timer';
@@ -564,6 +565,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const [briefedKeys, setBriefedKeys] = useState<Set<string>>(() => restoreBriefedKeys(session));
   const [evaluation, setEvaluation] = useState<EvaluationState>(IDLE_EVALUATION);
   const [exerciseSummary, setExerciseSummary] = useState<ExerciseSummaryState>(IDLE_SUMMARY);
+  const canExerciseSummary = useIaControls().canAnaliseTreinos;
   // RPE 10 Lote 6/P9: status do motor da última série de trabalho salva (resposta
   // do servidor), para o descanso e o card da próxima série do mesmo exercício.
   const [lastSavedSet, setLastSavedSet] = useState<{ forKey: string | null; saved: SavedSetIntensity } | null>(() =>
@@ -1939,6 +1941,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // `perSetAiEnabled`), disparado quando a última série do exercício é salva.
   function runExerciseSummary(exerciseId: number) {
     if (exerciseId < 0) return; // exercício só local: o servidor ainda não o conhece
+    if (!canExerciseSummary) return; // POST /exercises/{id}/summarize exige ia.analise_treinos/editar
     const seq = summaryGuardRef.current!.begin();
     setExerciseSummary({ loading: true, error: false, result: null });
     fetchWorkoutAiResult<ExerciseSummaryResult>(`/exercises/${exerciseId}/summarize`, { method: 'POST' })
@@ -2846,7 +2849,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             error={evaluation.error}
             result={evaluation.result}
           />
-          {restIsExerciseTransition && (
+          {restIsExerciseTransition && canExerciseSummary && (
             <ExerciseSummaryCard
               loading={exerciseSummary.loading}
               error={exerciseSummary.error}
