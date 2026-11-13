@@ -200,7 +200,9 @@ export function WorkoutModeClient() {
 
   return (
     <WorkoutModeShell
-      aiToggle={session ? { checked: perSetAiEnabled, onChange: handlePerSetAiToggle } : null}
+      aiToggle={
+        session && ia.canModoTreino ? { checked: perSetAiEnabled, onChange: handlePerSetAiToggle } : null
+      }
       onExit={openExit}
       onHeaderSlot={setHeaderSlot}
       inSession={Boolean(session)}
@@ -212,7 +214,7 @@ export function WorkoutModeClient() {
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
           session={session}
-          perSetAiEnabled={perSetAiEnabled}
+          perSetAiEnabled={perSetAiEnabled && ia.canModoTreino}
           onFinish={handleWorkoutFinished}
           headerSlot={headerSlot}
         />
@@ -221,7 +223,7 @@ export function WorkoutModeClient() {
         <FreeformScreen
           sessionId={session.session_id}
           gymId={session.gym_id}
-          perSetAiEnabled={perSetAiEnabled}
+          perSetAiEnabled={perSetAiEnabled && ia.canModoTreino}
           onFinish={handleWorkoutFinished}
         />
       )}

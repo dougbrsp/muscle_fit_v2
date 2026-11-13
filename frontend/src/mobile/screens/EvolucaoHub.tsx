@@ -1,9 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { mobileMainNavItems, navVisibilityFromPermissions } from '@/lib/nav-items';
 import { dashboardHref, useDashboardFilters } from '@/lib/dashboard-filters';
-import { buildEvolucaoGroups } from '../layout/primary-nav';
+import { evolucaoGroupsFor } from '../layout/primary-nav';
 import { ListGroup, ListRow, ScreenHeader } from '../ui';
 import { useCurrentUser } from '../use-current-user';
 
@@ -17,10 +16,7 @@ export function EvolucaoHub() {
   const userQuery = useCurrentUser();
   const { filters } = useDashboardFilters();
   const groups = useMemo(
-    () => {
-      const vis = navVisibilityFromPermissions(userQuery.data);
-      return buildEvolucaoGroups(mobileMainNavItems(vis), vis);
-    },
+    () => evolucaoGroupsFor(userQuery.data),
     [userQuery.data],
   );
 

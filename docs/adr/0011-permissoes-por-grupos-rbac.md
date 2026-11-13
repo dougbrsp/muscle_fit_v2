@@ -113,7 +113,8 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 4. **Ocultação no frontend**: hook de permissões nas telas. Dividida em:
    - **4A Base e menu** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido; só frontend estático e um teste unitário de backend; sem migração; ver "Lote 4A: base da ocultação e menu").
    - **4B-1 Telas de gestão por permissão** (na `develop` e no DEV desde 13/11/2026, PR #149, merge `694b5fae`, não promovido; só frontend estático; sem migração; ver "Lote 4B-1: telas de gestão por permissão").
-   - **4B-2 IA, abas do iPhone e ajustes** (em PR para a `develop`, branch `feat/rbac-lote4b2-ia-e-ajustes`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`).
+   - **4B-2 IA, abas do iPhone e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #150, merge `d059f9e0`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`).
+   - **4B-3 Abas do iPhone offline e ajustes** (em PR para a `develop`, branch `feat/rbac-lote4b3-abas-offline`, não promovido; só frontend estático; sem migração; ver "Lote 4B-3: abas do iPhone offline e ajustes").
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
 6. **Modelos**: visibilidade e edição pelo dono.
 
@@ -930,7 +931,7 @@ Primeiro pedaço do 4B: as telas de gestão deixam de decidir por `role` e passa
 
 ### Lote 4B-2: IA, abas do iPhone e ajustes
 
-Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e aviso da matriz passam a seguir as permissões efetivas de `GET /auth/me`. Ocultar é conveniência de tela; o backend segue sendo a barreira (403). Frontend estático, sem migração e sem infra. Estado: em PR para a `develop` (branch `feat/rbac-lote4b2-ia-e-ajustes`), não promovido.
+Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e aviso da matriz passam a seguir as permissões efetivas de `GET /auth/me`. Ocultar é conveniência de tela; o backend segue sendo a barreira (403). Frontend estático, sem migração e sem infra. Estado: na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido.
 
 *Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente e carregamento escondem; concessões padrão, grupos de sistema e `users.role` não mudam. Nenhuma regra de motor muda; `docs/motores/FONTES_DA_VERDADE.md` não é alterado.
 
@@ -948,7 +949,7 @@ Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e av
 | Resumo do Modo Treino (`WorkoutModeClient.tsx`) | `POST /activities/{id}/ai-summary/generate` | `ia.modo_treino` editar | `ia.canModoTreino`; sem ela, o POST não é feito |
 | Cards ilustrados (`ExerciseDetailDrawer.tsx`) | `exercise_cards.py` | `ia.cards_exercicio` editar | `exerciseCardsControls(perms).canGenerate`, passado como `canManage`; religa a função que o 4B-1 deixou sem consumidor |
 
-*Abas do iPhone* (`frontend/src/mobile/layout/primary-nav.ts`): `visiblePrimaryTabs(visibility)` filtra `PRIMARY_TABS`: Início por `dashboards`/`ver`, Treino por `treino.modo_treino`, Histórico por `treino.registro`, Evolução só se o hub (`buildEvolucaoGroups(visibleMain, visibility)`) não ficar vazio. Sem dados de permissão, só Mais e Perfil. `MobileShell.tsx` itera `visiblePrimaryTabs(navVisibilityFromPermissions(user))` com o usuário da query `['current-user']`, e `EvolucaoHub.tsx` passa a mesma visibilidade como segundo argumento a `buildEvolucaoGroups`. Os sub-itens do hub seguem a permissão de cada tela.
+*Abas do iPhone* (`frontend/src/mobile/layout/primary-nav.ts`): `visiblePrimaryTabs(visibility)` filtra `PRIMARY_TABS`: Início por `dashboards`/`ver`, Treino por `treino.modo_treino`, Histórico por `treino.registro`, Evolução só se o hub (`buildEvolucaoGroups(visibleMain, visibility)`) não ficar vazio. Com `permissions` nulo ou `{}` vindo do backend, só Mais e Perfil; sem dados do usuário (carregando ou erro sem cache) a exceção do 4B-3 mostra as 4 abas fixas (ver "Lote 4B-3"). `MobileShell.tsx` itera `visiblePrimaryTabs(navVisibilityFromPermissions(user))` com o usuário da query `['current-user']`, e `EvolucaoHub.tsx` passa a mesma visibilidade como segundo argumento a `buildEvolucaoGroups`. Os sub-itens do hub seguem a permissão de cada tela.
 
 *Flag de logout* (`frontend/src/lib/api.ts`, `app-logout.ts`): `beginLogout`, `endLogout` e `isLoggingOut`. Enquanto a flag está ligada, um 401 de poller (`refetchInterval`) não recarrega a página com `?next=<tela antiga>`. `logoutAndRedirect` liga; `resetSessionCache` (montagem do `LoginClient` e login bem-sucedido) ou falha da saída desligam. Fecha o residual do logout citado no 4A.
 
@@ -969,6 +970,26 @@ Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e av
 *Não medido:* UI no navegador, sessão real por papel, iPhone real, build e integração (CI).
 
 *Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com as concessões padrão, os usuários atuais veem as mesmas telas e abas (equivalência por fixtures, não conferida em sessão real). Rollback: reverter o PR e refazer o deploy do frontend; não há dado nem schema a desfazer.
+
+### Lote 4B-3: abas do iPhone offline e ajustes
+
+Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem cache (PWA offline; `['current-user']` não é persistido), o iPhone mostrava só Mais e Perfil, e some até a aba Treino, que é offline-first (Modo Treino na academia). Antes do 4B-2 as 4 abas sempre apareciam. Estado: em PR para a `develop` (branch `feat/rbac-lote4b3-abas-offline`), não promovido.
+
+*Exceção (sem dados do usuário):* `primaryTabsFor(user)` em `primary-nav.ts` devolve `PRIMARY_TABS` (as 4 abas fixas) quando `user === undefined`; com dados, delega a `visiblePrimaryTabs` como no 4B-2 (concessões padrão = mesmas 4 abas; `permissions` nulo ou `{}` = nenhuma aba de link, só Mais/Perfil). Motivo: as abas são só navegação e o Treino precisa abrir offline. Isso não concede nada: os dados continuam barrados pelo backend (403) e cada tela segue as próprias guardas. `MobileShell.tsx` usa `primaryTabsFor(userQuery.data)`.
+
+*Hub Evolução:* sem dados a aba Evolução aparece e abriria vazia. Decisão: aplicar a mesma exceção, não um aviso. `evolucaoGroupsFor(user)` (usada por `EvolucaoHub.tsx`) usa, sem dados, visibilidade permissiva com Intervals.icu oculto (depende de configuração), o que dá os grupos de antes do 4B-2; com dados, igual ao 4B-2. Motivo: um hub vazio parece falha, e o hub é só lista de links; as telas de destino continuam guardadas e o backend barra os dados.
+
+*Toggle de IA por série (Modo Treino):* a avaliação por série chama `POST /exercises/evaluate-set` (`main.py`), que exige `ia.modo_treino` editar (`require_permission`); é rota online e de IA, não há avaliação offline. `WorkoutModeClient.tsx` só mostra o toggle com `ia.canModoTreino` (flag já existente em `iaControls`) e passa `perSetAiEnabled && ia.canModoTreino` às duas execuções; a preferência salva não é alterada. Sem dados de usuário o toggle some (a IA não funciona offline de qualquer forma).
+
+*Formatação (P3):* `MORE_TAB = {` em `primary-nav.ts` e a indentação do `MealParseModal` em `NutricaoClient.tsx`.
+
+*Testes:* `primary-nav.test.ts` (`primaryTabsFor`: `undefined` => 4 abas; padrão por papel => 4 abas; `{}` e `null` => nenhuma; `evolucaoGroupsFor` sem dados e com `{}`).
+
+*Medido na branch:* Vitest em 15 arquivos (primary-nav, screen-permissions, nav-items, pastas modo-treino, nutricao e mobile/layout) com 180 passed (primary-nav 36); `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos de `react-hooks/exhaustive-deps` fora do lote). Não há teste de componente para `MobileShell`, `EvolucaoHub` nem `WorkoutModeClient`.
+
+*Não medido:* UI no navegador, PWA offline real, iPhone real, build e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com dados e concessões padrão nada muda; sem dados, as abas voltam a aparecer como antes do 4B-2. Rollback: reverter o PR e refazer o deploy do frontend.
 
 ### Riscos para lotes futuros
 
@@ -1442,7 +1463,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 **Lote 4A** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido)
 
 *O que muda:*
-- Menu desktop, menu do iPhone e hub Evolução derivam a visibilidade de `permissions` de `/auth/me`; item sem permissão some. Enquanto `/auth/me` não resolve ou falha sem dados em cache, nada aparece (antes, tudo aparecia); dados em cache sobrevivem a falha transitória de refetch. O logout cancela as queries e navega; o login limpa o cache do TanStack Query na montagem e no sucesso, para não herdar permissões de outra conta.
+- Menu desktop, menu do iPhone e hub Evolução derivam a visibilidade de `permissions` de `/auth/me`; item sem permissão some. Enquanto `/auth/me` não resolve ou falha sem dados em cache, o menu não mostra itens e as abas fixas do iPhone seguem a exceção do 4B-3 (aparecem); dados em cache sobrevivem a falha transitória de refetch. O logout cancela as queries e navega; o login limpa o cache do TanStack Query na montagem e no sucesso, para não herdar permissões de outra conta.
 - `regras-carga`, `equipamentos-exercicios` e `dominio-exercicios` mandam para `/preferencias-treino` quem não tem a permissão de tela (`admin.regras_carga` ou `admin.catalogos`).
 
 *O que não muda:*

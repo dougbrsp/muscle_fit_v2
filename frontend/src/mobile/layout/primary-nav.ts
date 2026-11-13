@@ -13,6 +13,7 @@ import {
   canSeeDashboard,
   isDesktopOnlyPath,
   mobileMainNavItems,
+  navVisibilityFromPermissions,
   type MainNavItem,
   type NavItem,
   type NavVisibility,
@@ -59,8 +60,8 @@ export function evolucaoHubHref(search: string | null | undefined): string {
  * Recurso que libera cada aba (mesmo mapa do menu em `lib/nav-items.ts`).
  * Início carrega a visão geral do Dashboard (`dashboards/ver`). Evolução é o
  * hub: aparece se `canSeeDashboard` ou se sobrar algum item de análise.
- * Fail-closed: sem `/auth/me` nenhuma aba de link aparece; a aba "Mais" (sempre
- * presente, com Perfil e Sair) garante que o app nunca fique sem navegação.
+ * Fail-closed para `permissions` nulo/vazio; a exceção "sem dados do usuário"
+ * (abas fixas) está em `primaryTabsFor`.
  */
 const TAB_RESOURCE: Record<Exclude<PrimaryTab['id'], 'evolucao' | 'inicio'>, string> = {
   treino: 'treino.modo_treino',
@@ -77,7 +78,32 @@ export function visiblePrimaryTabs(visibility: NavVisibility): readonly PrimaryT
   });
 }
 
-export const MORE_TAB ={ id: 'mais', label: 'Mais', icon: IconDots } as const;
+type NavUser = Parameters<typeof navVisibilityFromPermissions>[0];
+
+/**
+ * Visibilidade para quando `/auth/me` não tem dados (carregando, ou erro sem cache
+ * no PWA offline). Só navegação: os dados continuam barrados pelo backend e cada
+ * tela segue a própria guarda. Intervals.icu fica oculto (depende da configuração).
+ */
+const NAV_WITHOUT_USER: NavVisibility = { can: () => true, hasIntervalsConfigured: false };
+
+/**
+ * Abas do iPhone. Sem dados do usuário (`undefined`) as 4 abas fixas aparecem,
+ * porque são navegação e o Treino é offline-first. Com dados (inclusive
+ * `permissions` nulo ou `{}`), filtra por permissão.
+ */
+export function primaryTabsFor(user: NavUser): readonly PrimaryTab[] {
+  if (user === undefined) return PRIMARY_TABS;
+  return visiblePrimaryTabs(navVisibilityFromPermissions(user));
+}
+
+/** Grupos do hub Evolução; mesma exceção de `primaryTabsFor` para `undefined`. */
+export function evolucaoGroupsFor(user: NavUser): readonly NavGroup[] {
+  const vis = user === undefined ? NAV_WITHOUT_USER : navVisibilityFromPermissions(user);
+  return buildEvolucaoGroups(mobileMainNavItems(vis), vis);
+}
+
+export const MORE_TAB = { id: 'mais', label: 'Mais', icon: IconDots } as const;
 
 /** Rotas fora de `/dashboard/*` que pertencem ao hub Evolução. */
 const EVOLUCAO_EXTRA_PATHS: readonly string[] = ['/insights', '/agente-cardio', '/intervals-icu'];

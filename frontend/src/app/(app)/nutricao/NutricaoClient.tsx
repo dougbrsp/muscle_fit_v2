@@ -192,17 +192,19 @@ export function NutricaoClient() {
                   )}
                 </Group>
                 {dia.totals && <TotalsLine totals={dia.totals} />}
-                {ia.canNutricao && <MealParseModal
-                  opened={lendo}
-                  mode={modoLeitura}
-                  onClose={() => setLendo(false)}
-                  date={date}
-                  onParsed={(form) => {
-                    setLendo(false);
-                    // Nunca por cima de um formulário aberto: a pessoa perderia o que digitou.
-                    setEditing((atual) => atual ?? { mode: 'parsed', form });
-                  }}
-                />}
+                {ia.canNutricao && (
+                  <MealParseModal
+                    opened={lendo}
+                    mode={modoLeitura}
+                    onClose={() => setLendo(false)}
+                    date={date}
+                    onParsed={(form) => {
+                      setLendo(false);
+                      // Nunca por cima de um formulário aberto: a pessoa perderia o que digitou.
+                      setEditing((atual) => atual ?? { mode: 'parsed', form });
+                    }}
+                  />
+                )}
                 <QuickEntryDialog
                   opened={lancando}
                   onClose={() => setLancando(false)}
