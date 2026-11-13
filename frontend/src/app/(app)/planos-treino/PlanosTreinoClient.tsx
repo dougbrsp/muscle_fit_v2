@@ -9,6 +9,7 @@ import { Alert, Badge, Button, Group, Loader, Modal, Stack, Table, Text, Title }
 import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { planTypeDisplayLabel, type ApiListResponse, type WorkoutPlanListItem } from '@/lib/workout-plans-types';
+import { useIaControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 import { formatDateOrDash } from '@/lib/format';
 
@@ -29,6 +30,7 @@ function statusColor(status: string) {
 
 export function PlanosTreinoClient() {
   const qc = useQueryClient();
+  const ia = useIaControls();
   const [generateOpened, { open: openGenerate, close: closeGenerate }] = useDisclosure(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkoutPlanListItem | null>(null);
   const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
@@ -65,9 +67,11 @@ export function PlanosTreinoClient() {
             Gere fichas a partir dos seus Modelos de Treino e acompanhe a execução.
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} color="brand" onClick={openGenerate}>
-          Gerar novo plano
-        </Button>
+        {ia.canGerarPlano && (
+          <Button leftSection={<IconPlus size={16} />} color="brand" onClick={openGenerate}>
+            Gerar novo plano
+          </Button>
+        )}
       </Group>
 
       {plansQuery.isLoading && (
@@ -158,7 +162,7 @@ export function PlanosTreinoClient() {
         </Table.ScrollContainer>
       )}
 
-      <GenerateDraftModal opened={generateOpened} onClose={closeGenerate} />
+      {ia.canGerarPlano && <GenerateDraftModal opened={generateOpened} onClose={closeGenerate} />}
 
       <Modal opened={deleteOpened} onClose={closeDelete} title="Confirmar exclusão" centered>
         <Stack gap="md">

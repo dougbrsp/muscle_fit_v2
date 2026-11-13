@@ -17,10 +17,10 @@ export function EvolucaoHub() {
   const userQuery = useCurrentUser();
   const { filters } = useDashboardFilters();
   const groups = useMemo(
-    () =>
-      buildEvolucaoGroups(
-        mobileMainNavItems(navVisibilityFromPermissions(userQuery.data)),
-      ),
+    () => {
+      const vis = navVisibilityFromPermissions(userQuery.data);
+      return buildEvolucaoGroups(mobileMainNavItems(vis), vis);
+    },
     [userQuery.data],
   );
 

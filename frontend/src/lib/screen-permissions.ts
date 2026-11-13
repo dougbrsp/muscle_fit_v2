@@ -5,7 +5,9 @@
 // real (403). Nenhuma regra de acesso nasce aqui: sem permissões (null/undefined/{}),
 // nenhum controle aparece (fail-closed).
 
+import { useQuery } from '@tanstack/react-query';
 import { can, type Permissions } from './permissions';
+import { fetchCurrentUser } from './use-is-admin';
 
 type Perms = Permissions | null | undefined;
 
@@ -47,6 +49,35 @@ export function exerciseCardsControls(perms: Perms) {
     /** Gerar, aprovar, rejeitar, regenerar, referências: ia.cards_exercicio/editar. */
     canGenerate: can(perms, 'ia.cards_exercicio', 'editar'),
   };
+}
+
+/**
+ * Gatilhos de IA (lote 4B-2). Cada flag espelha o `require_permission` do POST que
+ * dispara a geração (todos `ia.*`/editar, sem min_scope). Leituras de conteúdo já
+ * gerado não exigem `ia.*` (ex.: `GET /cardio-recommendations` é `cardio/ver`),
+ * então só o gatilho some, não o histórico.
+ */
+export function iaControls(perms: Perms) {
+  return {
+    /** `POST /insights/generate`: ia.insights/editar. */
+    canInsights: can(perms, 'ia.insights', 'editar'),
+    /** `POST /workouts-analysis/generate`: ia.analise_treinos/editar. */
+    canAnaliseTreinos: can(perms, 'ia.analise_treinos', 'editar'),
+    /** `POST /workout-plans/generate`: ia.geracao_plano/editar. */
+    canGerarPlano: can(perms, 'ia.geracao_plano', 'editar'),
+    /** `POST /cardio-recommendations/generate`: ia.cardio/editar. */
+    canCardio: can(perms, 'ia.cardio', 'editar'),
+    /** `POST /nutrition/meals/parse` e `/photo`: ia.nutricao/editar. */
+    canNutricao: can(perms, 'ia.nutricao', 'editar'),
+    /** `POST /activities/{id}/ai-summary/generate`: ia.modo_treino/editar. */
+    canModoTreino: can(perms, 'ia.modo_treino', 'editar'),
+  };
+}
+
+/** Hook dos gatilhos de IA: reaproveita a query `['current-user']` (sem requisição extra); sem dados, tudo `false`. */
+export function useIaControls() {
+  const query = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
+  return iaControls(query.data?.permissions);
 }
 
 /** Tipos de treino / Metas de Ativação (`/training-types*`). */

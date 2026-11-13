@@ -5,6 +5,7 @@ import {
   catalogosControls,
   exerciseCardsControls,
   gruposControls,
+  iaControls,
   modelosTreinoControls,
   planoNutricionalControls,
   segurancaTreinoControls,
@@ -71,6 +72,36 @@ const ALL_FNS = [
 ] as const;
 const allTrue = (o: Record<string, boolean>) => Object.values(o).every((v) => v === true);
 const allFalse = (o: Record<string, boolean>) => Object.values(o).every((v) => v === false);
+
+describe('gatilhos de IA (lote 4B-2)', () => {
+  it('usuario, personal e admin têm todos os gatilhos (igual a hoje)', () => {
+    for (const p of [usuario(), personalTrainer(), admin()]) {
+      expect(iaControls(p)).toEqual({
+        canInsights: true,
+        canAnaliseTreinos: true,
+        canGerarPlano: true,
+        canCardio: true,
+        canNutricao: true,
+        canModoTreino: true,
+      });
+    }
+  });
+
+  it('sem permissões (null/undefined/{}) nenhum gatilho aparece', () => {
+    for (const p of [null, undefined, {}] as const) expect(allFalse(iaControls(p))).toBe(true);
+  });
+
+  it('cada gatilho depende só do seu recurso e exige editar', () => {
+    const so = (resource: string, action = 'editar'): Perms => ({ [resource]: { [action]: 'proprios' } });
+    expect(iaControls(so('ia.insights'))).toMatchObject({ canInsights: true, canCardio: false, canNutricao: false });
+    expect(iaControls(so('ia.cardio')).canCardio).toBe(true);
+    expect(iaControls(so('ia.nutricao')).canNutricao).toBe(true);
+    expect(iaControls(so('ia.modo_treino')).canModoTreino).toBe(true);
+    expect(iaControls(so('ia.geracao_plano')).canGerarPlano).toBe(true);
+    expect(iaControls(so('ia.analise_treinos')).canAnaliseTreinos).toBe(true);
+    expect(allFalse(iaControls(so('ia.insights', 'ver')))).toBe(true);
+  });
+});
 
 describe('controles das telas de gestão (paridade com o que cada papel via por role)', () => {
   it('usuário comum: só academias próprias; nada de catálogo, modelos, usuários, grupos', () => {

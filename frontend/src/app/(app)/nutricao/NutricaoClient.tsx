@@ -20,6 +20,7 @@ import { DayNotesInput } from '@/components/nutrition/DayNotesInput';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { useIaControls } from '@/lib/screen-permissions';
 import { dashboardKeys } from '@/lib/nutrition-dashboard';
 import { deleteMeal, diaryKeys, fetchNutritionDay, lastMealTimeKey, fetchNutritionWeek, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
@@ -44,6 +45,7 @@ export function NutricaoClient() {
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const ia = useIaControls();
   const [lendo, setLendo] = useState(false);
   const [lancando, setLancando] = useState(false);
   // Fica com o último modo depois de fechar: o título não pisca na animação de saída.
@@ -170,12 +172,16 @@ export function NutricaoClient() {
                   </Group>
                   {editing === null && (
                     <Group gap="xs">
-                      <Button variant="light" color="brand" leftSection={<IconCamera size={16} />} onClick={() => abrirLeitura('photo')}>
-                        Foto do prato
-                      </Button>
-                      <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => abrirLeitura('text')}>
-                        Descrever com IA
-                      </Button>
+                      {ia.canNutricao && (
+                        <Button variant="light" color="brand" leftSection={<IconCamera size={16} />} onClick={() => abrirLeitura('photo')}>
+                          Foto do prato
+                        </Button>
+                      )}
+                      {ia.canNutricao && (
+                        <Button variant="light" color="brand" leftSection={<IconSparkles size={16} />} onClick={() => abrirLeitura('text')}>
+                          Descrever com IA
+                        </Button>
+                      )}
                       <Button variant="light" color="brand" leftSection={<IconBolt size={16} />} onClick={() => setLancando(true)}>
                         Lançamento rápido
                       </Button>
@@ -186,7 +192,7 @@ export function NutricaoClient() {
                   )}
                 </Group>
                 {dia.totals && <TotalsLine totals={dia.totals} />}
-                <MealParseModal
+                {ia.canNutricao && <MealParseModal
                   opened={lendo}
                   mode={modoLeitura}
                   onClose={() => setLendo(false)}
@@ -196,7 +202,7 @@ export function NutricaoClient() {
                     // Nunca por cima de um formulário aberto: a pessoa perderia o que digitou.
                     setEditing((atual) => atual ?? { mode: 'parsed', form });
                   }}
-                />
+                />}
                 <QuickEntryDialog
                   opened={lancando}
                   onClose={() => setLancando(false)}

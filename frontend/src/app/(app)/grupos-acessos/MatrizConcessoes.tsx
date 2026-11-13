@@ -76,9 +76,14 @@ export function MatrizConcessoes({ group, catalog, canEdit, onDirtyChange }: Pro
 
   return (
     <Stack gap="sm">
-      {readOnly && (
+      {!group.editable && (
         <Alert color="gray" variant="light">
           Grupo de sistema: as concessões são fixas e aparecem somente para consulta.
+        </Alert>
+      )}
+      {group.editable && !canEdit && (
+        <Alert color="gray" variant="light">
+          Seu perfil não pode editar concessões. As concessões aparecem somente para consulta.
         </Alert>
       )}
 

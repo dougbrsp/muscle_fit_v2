@@ -37,6 +37,7 @@ import { resolveWorkoutModeFromPlan } from '@/lib/workout-mode-advanced-stage';
 import { DeloadStartPanel } from './DeloadPanels';
 import { WorkoutModeNotice } from './WorkoutModeNotice';
 import { buildDraftRawPayload, toWorkoutPlanInput } from '@/lib/workout-plan-payload';
+import { useIaControls } from '@/lib/screen-permissions';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft, localPlanTime } from '@/lib/workout-plan-generate-payload';
 import type { AssignedTemplateSummary } from '@/lib/workout-plan-templates-types';
 import {
@@ -104,6 +105,7 @@ function fetchPlanDetail(planId: number): Promise<WorkoutPlanDetail> {
  * (storage perdido, sessão aberta no relógio) aplica a mesma regra à ficha.
  */
 export function ModeSelectScreen({ onSessionStarted }: Props) {
+  const ia = useIaControls();
   const [subMode, setSubMode] = useState<SubMode>('select');
   // M97 F3: "Sessão de deload" escolhida no início (vale para qualquer forma de começar).
   const [deloadManual, setDeloadManual] = useState(false);
@@ -373,6 +375,7 @@ export function ModeSelectScreen({ onSessionStarted }: Props) {
         )}
         <DeloadStartPanel manual={deloadManual} onManualChange={setDeloadManual} />
         <SimpleGrid cols={1} spacing="md">
+          {ia.canGerarPlano && (
           <Card
             component="button"
             withBorder
@@ -394,6 +397,7 @@ export function ModeSelectScreen({ onSessionStarted }: Props) {
               </div>
             </Group>
           </Card>
+          )}
           <Card
             component="button"
             withBorder

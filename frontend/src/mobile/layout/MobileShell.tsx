@@ -26,12 +26,12 @@ import { scrollMemoryKey } from './nav-active';
 import { MoreSheet } from './MoreSheet';
 import {
   MORE_TAB,
-  PRIMARY_TABS,
   backTargetFor,
   buildMoreGroups,
   evolucaoHubHref,
   isMoreActive,
   isPrimaryTabActive,
+  visiblePrimaryTabs,
 } from './primary-nav';
 import styles from './mobile-shell.module.css';
 
@@ -202,7 +202,7 @@ function Shell({ children }: { children: ReactNode }) {
         aria-label="Navegação principal"
         data-hidden={keyboardOpen ? 'true' : 'false'}
       >
-        {PRIMARY_TABS.map((tab) => {
+        {visiblePrimaryTabs(navVisibilityFromPermissions(userQuery.data)).map((tab) => {
           const active = isPrimaryTabActive(tab, pathname, search);
           return (
             <Link

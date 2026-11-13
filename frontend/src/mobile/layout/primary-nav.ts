@@ -10,9 +10,12 @@ import {
 import { parseDashboardFilters, serializeDashboardFilters } from '@/lib/dashboard-filters';
 import {
   DASHBOARD_NAV_ITEMS,
+  canSeeDashboard,
   isDesktopOnlyPath,
+  mobileMainNavItems,
   type MainNavItem,
   type NavItem,
+  type NavVisibility,
 } from '@/lib/nav-items';
 
 /**
@@ -52,7 +55,29 @@ export function evolucaoHubHref(search: string | null | undefined): string {
   return `/dashboard/?${params.toString()}`;
 }
 
-export const MORE_TAB = { id: 'mais', label: 'Mais', icon: IconDots } as const;
+/**
+ * Recurso que libera cada aba (mesmo mapa do menu em `lib/nav-items.ts`).
+ * Início carrega a visão geral do Dashboard (`dashboards/ver`). Evolução é o
+ * hub: aparece se `canSeeDashboard` ou se sobrar algum item de análise.
+ * Fail-closed: sem `/auth/me` nenhuma aba de link aparece; a aba "Mais" (sempre
+ * presente, com Perfil e Sair) garante que o app nunca fique sem navegação.
+ */
+const TAB_RESOURCE: Record<Exclude<PrimaryTab['id'], 'evolucao' | 'inicio'>, string> = {
+  treino: 'treino.modo_treino',
+  historico: 'treino.registro',
+};
+
+export function visiblePrimaryTabs(visibility: NavVisibility): readonly PrimaryTab[] {
+  return PRIMARY_TABS.filter((tab) => {
+    if (tab.id === 'inicio') return canSeeDashboard(visibility);
+    if (tab.id === 'evolucao') {
+      return buildEvolucaoGroups(mobileMainNavItems(visibility), visibility).length > 0;
+    }
+    return visibility.can(TAB_RESOURCE[tab.id]);
+  });
+}
+
+export const MORE_TAB ={ id: 'mais', label: 'Mais', icon: IconDots } as const;
 
 /** Rotas fora de `/dashboard/*` que pertencem ao hub Evolução. */
 const EVOLUCAO_EXTRA_PATHS: readonly string[] = ['/insights', '/agente-cardio', '/intervals-icu'];
@@ -170,9 +195,15 @@ function groupBy(layout: GroupLayout, pool: ReadonlyMap<string, NavItem>) {
  * Grupos do hub Evolução. `visibleMain` são os itens do menu já filtrados por
  * papel/configuração (ex.: Intervals.icu só se configurado).
  */
-export function buildEvolucaoGroups(visibleMain: readonly MainNavItem[]): readonly NavGroup[] {
+export function buildEvolucaoGroups(
+  visibleMain: readonly MainNavItem[],
+  visibility?: NavVisibility,
+): readonly NavGroup[] {
   const pool = new Map<string, NavItem>();
-  for (const item of DASHBOARD_NAV_ITEMS) if (item.href !== '/dashboard') pool.set(item.href, item);
+  // Sub-rotas do Dashboard exigem dashboards/ver; sem visibilidade, fail-closed.
+  if (visibility && canSeeDashboard(visibility)) {
+    for (const item of DASHBOARD_NAV_ITEMS) if (item.href !== '/dashboard') pool.set(item.href, item);
+  }
   for (const item of mobileCandidates(visibleMain)) {
     if (EVOLUCAO_EXTRA_PATHS.includes(item.href)) pool.set(item.href, item);
   }

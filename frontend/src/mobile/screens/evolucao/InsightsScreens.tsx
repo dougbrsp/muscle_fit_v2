@@ -28,6 +28,7 @@ import {
 import styles from './evolucao.module.css';
 import { plural } from './pure';
 import { BlockSkeleton, mobileSafeHref, OfflineNote, PartialNote, PeriodFilter, QueryGate } from './shared';
+import { useIaControls } from '@/lib/screen-permissions';
 import { useIsAdmin } from '@/lib/use-is-admin';
 
 const PAGE_SIZE = 20;
@@ -199,6 +200,7 @@ const WINDOW_OPTIONS = [
 export function InsightsIaScreen() {
   useEffect(preloadMarkdown, []);
   const online = useOnlineStatus();
+  const ia = useIaControls();
   const [janela, setJanela] = useState('28d');
   const [pergunta, setPergunta] = useState('Analise meu histórico recente de treino e sugira melhorias práticas.');
   const gerar = useMutation({
@@ -217,6 +219,14 @@ export function InsightsIaScreen() {
         title="Insights"
         subtitle="Pergunte livremente. A resposta usa o pacote de dados da janela escolhida (os mesmos números da visão geral, com a confiança declarada) e o método (RAG)."
       />
+      {!ia.canInsights ? (
+        <ListGroup>
+          <ListBlock>
+            <p className={styles.meta} style={{ margin: 0 }}>Seu perfil não tem acesso à geração de insights.</p>
+          </ListBlock>
+        </ListGroup>
+      ) : null}
+      {ia.canInsights ? (
       <ListGroup>
         <ListBlock>
           <div className={styles.stack}>
@@ -244,6 +254,7 @@ export function InsightsIaScreen() {
           </div>
         </ListBlock>
       </ListGroup>
+      ) : null}
 
       {gerar.isError ? (
         <ListGroup title={indisponivel ? 'IA indisponível no momento' : 'Erro ao gerar insight'}>
@@ -267,21 +278,23 @@ export function InsightsIaScreen() {
         </ListGroup>
       ) : null}
 
-      <StickyAction>
-        <Button
-          fullWidth
-          size="lg"
-          color="brand"
-          mih={48}
-          leftSection={<IconBrain size={18} />}
-          loading={gerar.isPending}
-          disabled={!pergunta.trim() || !online}
-          onClick={() => gerar.mutate({ question: pergunta, window: janela })}
-        >
-          Gerar insight
-        </Button>
-      </StickyAction>
-      <OfflineNote what="gerar o insight" />
+      {ia.canInsights ? (
+        <StickyAction>
+          <Button
+            fullWidth
+            size="lg"
+            color="brand"
+            mih={48}
+            leftSection={<IconBrain size={18} />}
+            loading={gerar.isPending}
+            disabled={!pergunta.trim() || !online}
+            onClick={() => gerar.mutate({ question: pergunta, window: janela })}
+          >
+            Gerar insight
+          </Button>
+        </StickyAction>
+      ) : null}
+      {ia.canInsights ? <OfflineNote what="gerar o insight" /> : null}
       <div className={styles.scrollEnd} aria-hidden />
     </>
   );
