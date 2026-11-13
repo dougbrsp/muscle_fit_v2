@@ -32,6 +32,8 @@ import {
   IconWeight,
   type Icon as TablerIcon,
 } from '@tabler/icons-react';
+import type { SessionUser } from '@/lib/auth';
+import { can, type Scope } from '@/lib/permissions';
 
 /**
  * Lista única de rotas do menu autenticado. Alimenta o `AppShellLayout`
@@ -64,7 +66,7 @@ export const DASHBOARD_NAV_ITEMS: readonly NavItem[] = [
 export type MainNavItem = NavItem & {
   /** Prefixos de rota que marcam o item como ativo (default: o próprio `href`). */
   prefixes?: readonly string[];
-  /** Regra de permissão/configuração; ausente = sempre visível. */
+  /** Permissão/configuração do item; ausente = sempre visível. */
   visible?: boolean;
   /**
    * Seção só do computador (mobile v2, D1): o shell do iPhone não lista o item
@@ -77,32 +79,39 @@ export function isNavItemActive(item: MainNavItem, pathname: string | null): boo
   return (item.prefixes ?? [item.href]).some((prefix) => Boolean(pathname?.startsWith(prefix)));
 }
 
-/** Permissões de visibilidade, derivadas de `GET /auth/me` por `navVisibilityFromUser`. */
+/**
+ * Visibilidade do menu, derivada das permissões de `GET /auth/me`
+ * (`navVisibilityFromPermissions`). `can` é a função de `lib/permissions`
+ * já presa às permissões do usuário; `hasIntervalsConfigured` vem de
+ * `intervals_configured` (configuração, não permissão).
+ */
 export type NavVisibility = {
-  canManageTrainingTypes: boolean;
-  canManageWorkoutPlanTemplates: boolean;
-  isAdmin: boolean;
+  can: (resource: string, action?: string, minScope?: Scope) => boolean;
   hasIntervalsConfigured: boolean;
 };
 
 /**
- * Enquanto `/auth/me` não resolveu, os itens ficam visíveis (evita "sumir e
- * voltar"); a própria tela trata 403/"configure suas credenciais".
- * - `/training-types` e `/workout-plan-templates`: admin ou personal_trainer.
- * - `/users` e catálogos: role EXATAMENTE "admin".
- * - Intervals.icu/Cardio: `intervals_configured`.
+ * Decide pela PRESENÇA de dados (`user`), não pelo status da query: um refetch
+ * que falha mantém `data` em cache e o menu não pode sumir por isso. Sem dados
+ * (carregando ou erro sem cache), ou com `permissions` nulo, tudo fica
+ * ESCONDIDO (ADR 0011, fail-closed). O backend é a barreira; aqui só se esconde.
  */
-export function navVisibilityFromUser(
-  user: { role?: string; intervals_configured?: boolean } | undefined,
-  isSuccess: boolean,
+export function navVisibilityFromPermissions(
+  user: Pick<SessionUser, 'permissions' | 'intervals_configured'> | undefined,
 ): NavVisibility {
-  const canManageTrainingTypes = !isSuccess || user?.role === 'admin' || user?.role === 'personal_trainer';
+  const perms = user?.permissions ?? null;
   return {
-    canManageTrainingTypes,
-    canManageWorkoutPlanTemplates: canManageTrainingTypes,
-    isAdmin: !isSuccess || user?.role === 'admin',
-    hasIntervalsConfigured: !isSuccess || user?.intervals_configured === true,
+    can: (resource, action = 'ver', minScope) => can(perms, resource, action, minScope),
+    hasIntervalsConfigured: user?.intervals_configured === true,
   };
+}
+
+/** Visibilidade total (só para derivar metadados estáticos, como `desktopOnly`). */
+const SEE_ALL: NavVisibility = { can: () => true, hasIntervalsConfigured: true };
+
+/** O "Dashboard" (com submenu) é renderizado à parte pelos shells. */
+export function canSeeDashboard(visibility: NavVisibility): boolean {
+  return visibility.can('dashboards', 'ver');
 }
 
 /**
@@ -116,45 +125,50 @@ export function navVisibilityFromUser(
  * /dashboard/cardio.
  */
 export function buildMainNavItems(visibility: NavVisibility): readonly MainNavItem[] {
-  const { canManageTrainingTypes, canManageWorkoutPlanTemplates, isAdmin, hasIntervalsConfigured } =
-    visibility;
+  const { can: allowed, hasIntervalsConfigured } = visibility;
   return [
-    { href: '/registro-exercicios', label: 'Registro de exercícios', icon: IconClipboardList },
-    { href: '/modo-treino', label: 'Modo Treino', icon: IconPlayerPlay },
-    { href: '/agente-cardio', label: 'Agente de Cardio', icon: IconActivity },
-    { href: '/insights', label: 'Insights', icon: IconMessageChatbot },
-    { href: '/indicadores-fisicos', label: 'Indicadores Físicos', icon: IconReportMedical },
+    { href: '/registro-exercicios', label: 'Registro de exercícios', icon: IconClipboardList, visible: allowed('treino.registro') },
+    { href: '/modo-treino', label: 'Modo Treino', icon: IconPlayerPlay, visible: allowed('treino.modo_treino') },
+    { href: '/agente-cardio', label: 'Agente de Cardio', icon: IconActivity, visible: allowed('ia.cardio') },
+    { href: '/insights', label: 'Insights', icon: IconMessageChatbot, visible: allowed('ia.insights') },
+    { href: '/indicadores-fisicos', label: 'Indicadores Físicos', icon: IconReportMedical, visible: allowed('corpo.indicadores') },
     // Nutrição: a entrada abre o diário (`/nutricao`); plano e alimentos são
     // seções da mesma entrada (prefixo `/nutricao` mantém o item ativo).
-    { href: '/nutricao', label: 'Nutrição', icon: IconApple, prefixes: ['/nutricao'] },
-    { href: '/intervals-icu', label: 'Intervals.icu', icon: IconRun, visible: hasIntervalsConfigured },
-    { href: '/exercicios', label: 'Exercícios', icon: IconBarbell },
-    { href: '/volume-grupamentos', label: 'Volume por grupamento', icon: IconChartBar },
-    { href: '/planos-treino', label: 'Planos de treino', icon: IconNotes },
-    { href: '/academias', label: 'Academias', icon: IconBuildingWarehouse, desktopOnly: true },
-    { href: '/preferencias-treino', label: 'Preferências de Treino', icon: IconStars },
+    {
+      href: '/nutricao',
+      label: 'Nutrição',
+      icon: IconApple,
+      prefixes: ['/nutricao'],
+      visible: allowed('nutricao.diario'),
+    },
+    { href: '/intervals-icu', label: 'Intervals.icu', icon: IconRun, visible: allowed('integracoes.intervals') && hasIntervalsConfigured },
+    { href: '/exercicios', label: 'Exercícios', icon: IconBarbell, visible: allowed('exercicios.catalogo') },
+    { href: '/volume-grupamentos', label: 'Volume por grupamento', icon: IconChartBar, visible: allowed('volume.grupamentos') },
+    { href: '/planos-treino', label: 'Planos de treino', icon: IconNotes, visible: allowed('treino.planos') },
+    { href: '/academias', label: 'Academias', icon: IconBuildingWarehouse, visible: allowed('treino.academias'), desktopOnly: true },
+    { href: '/preferencias-treino', label: 'Preferências de Treino', icon: IconStars, visible: allowed('treino.preferencias') },
     // Catálogo de exercícios/equipamentos: só admin (decisão de 2026-10-13).
     {
       href: '/equipamentos-exercicios',
       label: 'Equipamentos x Exercícios',
       icon: IconPlugConnected,
-      visible: isAdmin,
+      visible: allowed('admin.catalogos'),
       desktopOnly: true,
     },
     {
       href: '/dominio-exercicios',
       label: 'Domínio de Exercícios',
       icon: IconDatabase,
-      visible: isAdmin,
+      visible: allowed('admin.catalogos'),
       desktopOnly: true,
     },
     // Regras de carga da próxima série (R4): só admin.
-    { href: '/regras-carga', label: 'Regras de carga', icon: IconWeight, visible: isAdmin, desktopOnly: true },
+    { href: '/regras-carga', label: 'Regras de carga', icon: IconWeight, visible: allowed('admin.regras_carga'), desktopOnly: true },
     {
       href: '/metas-ativacao',
       label: 'Metas de Ativação',
       icon: IconTarget,
-      visible: canManageTrainingTypes,
+      visible: allowed('modelos.metas_ativacao'),
       desktopOnly: true,
     },
     {
@@ -162,16 +176,17 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
       label: 'Modelos de treino',
       icon: IconTemplate,
       prefixes: ['/modelos-treino', '/diagnostico-volume'],
-      visible: canManageWorkoutPlanTemplates,
+      // Gerir modelos = editar com escopo todos (o usuário comum só vê os próprios).
+      visible: allowed('modelos.treino', 'editar', 'todos'),
       desktopOnly: true,
     },
-    { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: isAdmin },
+    { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: allowed('admin.usuarios') },
     // Matriz de concessões (RBAC por grupos): só admin e só no computador.
     {
       href: '/grupos-acessos',
       label: 'Grupos e acessos',
       icon: IconLockAccess,
-      visible: isAdmin,
+      visible: allowed('admin.grupos'),
       desktopOnly: true,
     },
   ];
@@ -202,12 +217,7 @@ const DESKTOP_ONLY_LEGACY: readonly { prefix: string; label: string }[] = [
  * desktop lista.
  */
 const DESKTOP_ONLY_ENTRIES: readonly { prefix: string; label: string }[] = [
-  ...buildMainNavItems({
-    canManageTrainingTypes: true,
-    canManageWorkoutPlanTemplates: true,
-    isAdmin: true,
-    hasIntervalsConfigured: true,
-  })
+  ...buildMainNavItems(SEE_ALL)
     .filter((item) => item.desktopOnly)
     .flatMap((item) => (item.prefixes ?? [item.href]).map((prefix) => ({ prefix, label: item.label }))),
   ...DESKTOP_ONLY_LEGACY,

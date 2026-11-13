@@ -28,7 +28,7 @@ import {
   IconLogout,
   IconUser,
 } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -51,7 +51,8 @@ import {
 import {
   DASHBOARD_NAV_ITEMS,
   isNavItemActive,
-  navVisibilityFromUser,
+  canSeeDashboard,
+  navVisibilityFromPermissions,
   visibleMainNavItems,
   type MainNavItem,
 } from '@/lib/nav-items';
@@ -152,6 +153,7 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
 
 function DesktopAppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure();
 
@@ -166,7 +168,10 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
   const displayName = user?.full_name || user?.username || '';
   // Permissões de visibilidade e lista de rotas: `lib/nav-items.ts` (fonte
   // única, compartilhada com o shell mobile).
-  const visibleNavItems = visibleMainNavItems(navVisibilityFromUser(user, currentUserQuery.isSuccess));
+  const navVisibility = navVisibilityFromPermissions(user);
+  const visibleNavItems = visibleMainNavItems(navVisibility);
+  // O Dashboard (com submenu) é renderizado à parte: também depende da permissão.
+  const showDashboard = canSeeDashboard(navVisibility);
 
   const { collapsed, toggle: toggleCollapsed } = useNavbarCollapsed();
   const toggleLabel = navbarToggleLabel(collapsed);
@@ -174,7 +179,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
   const dashboardActive = Boolean(pathname?.startsWith('/dashboard'));
 
   function handleLogout() {
-    void logoutAndRedirect(router.replace);
+    void logoutAndRedirect(router.replace, queryClient);
   }
 
   return (
@@ -266,6 +271,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
             <Stack gap={6} align="center">
               {/* Recolhido: o Dashboard (único item com submenu) vira um ícone
                   que abre as sub-rotas num menu flutuante à direita. */}
+              {showDashboard && (
               <Menu position="right-start" offset={12} shadow="md" width={240} withinPortal>
                 <Tooltip label="Dashboard" position="right" withArrow openDelay={300}>
                   <Menu.Target>
@@ -287,6 +293,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
                   </Suspense>
                 </Menu.Dropdown>
               </Menu>
+              )}
               {visibleNavItems.map((item) => (
                 <CollapsedNavItem
                   key={item.href}
@@ -305,6 +312,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
                 `onClick` com stopPropagation impede que abrir/fechar o submenu
                 dispare o `closeNavbar` do Stack no mobile.
               */}
+              {showDashboard && (
               <NavLink
                 label="Dashboard"
                 leftSection={<IconLayoutDashboard size={18} />}
@@ -323,6 +331,7 @@ function DesktopAppShell({ children }: { children: ReactNode }) {
                   <DashboardNavLinks items={DASHBOARD_NAV_ITEMS} />
                 </Suspense>
               </NavLink>
+              )}
               {visibleNavItems.map((item) => (
                 <NavLink
                   key={item.href}
