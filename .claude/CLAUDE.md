@@ -71,6 +71,7 @@ Regra permanente (pedido do usuário em 2026-11-13). O grafo fica em `graphify-o
 - Antes de responder a qualquer pergunta sobre o código ou de planejar uma alteração, consulte primeiro o grafo: `graphify query "<pergunta>"`, `graphify path "<A>" "<B>"` ou `graphify explain "<nó>"`. Só depois leia os arquivos que o grafo apontar. O grafo vem antes do subagente Explore, que fica para o que o grafo não alcança.
 - O grafo localiza; quem confirma é o código. Ele cobre só o código de `api/` e `frontend/`: SQL, `infra/`, `docs/` e o RAG ficam de fora e seguem por busca direta. Ele pode estar desatualizado, e ausência de aresta não prova ausência de uso.
 - Em decisão de segurança (autenticação, autorização e RBAC, IAM, upload), o grafo nunca substitui a leitura e a busca direta no código.
+- Para achar o dono de uma regra dos motores, a autoridade é o mapa `docs/motores/FONTES_DA_VERDADE.md`. O grafo ajuda a localizar o código do dono, mas não substitui o mapa nem a guarda.
 - Depois de toda alteração de código em `api/` ou `frontend/`, atualize o grafo antes de encerrar a entrega, assim que o código novo chegar ao checkout principal (`C:\muscle_fit`) por merge, pull ou checkout da branch. Worktree não tem o grafo. O Tech Lead roda estes comandos ele mesmo: eles só escrevem em `graphify-out/`, não são alteração de código e não passam por especialista. Os três comandos não consomem tokens:
 
 ```bash
