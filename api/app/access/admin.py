@@ -25,7 +25,14 @@ from collections.abc import Mapping
 from typing import Any, Final, Optional
 
 from ..db import is_duplicate_key_error
-from .catalog import ACTIONS, DOMAIN_ADMIN, RESOURCES_BY_KEY, SCOPES, catalog_payload
+from .catalog import (
+    ACTIONS,
+    RESOURCES_BY_KEY,
+    SCOPE_WARNINGS,
+    SCOPES,
+    catalog_payload,
+    is_grantable,
+)
 
 GROUP_KEY_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 NAME_MAX_LEN: Final = 120
@@ -256,7 +263,12 @@ def _audit(
 
 def catalog_view() -> dict[str, Any]:
     """Recursos (`key`, `label`, `domain`), acoes e escopos do catalogo."""
-    return {"resources": catalog_payload(), "actions": list(ACTIONS), "scopes": list(SCOPES)}
+    return {
+        "resources": catalog_payload(),
+        "actions": list(ACTIONS),
+        "scopes": list(SCOPES),
+        "scope_warnings": dict(SCOPE_WARNINGS),
+    }
 
 
 # --- Leitura de grupos ---------------------------------------------------------
@@ -377,7 +389,7 @@ def validate_grants(grants: Any) -> list[dict[str, str]]:
         resource, action, scope = _normalize_grant(item)
         if not isinstance(resource, str) or resource not in RESOURCES_BY_KEY:
             raise InvalidGrantError(f"Recurso desconhecido: {resource!r}.")
-        if RESOURCES_BY_KEY[resource].domain == DOMAIN_ADMIN:
+        if not is_grantable(resource):
             raise ResourceNotGrantableError(
                 f"O recurso '{resource}' é da Administração e não pode ser concedido a grupo personalizado."
             )

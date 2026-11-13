@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está implementado na branch `feat/rbac-lote3a-api-grupos`, não publicado nem promovido** (ver "Lote 3A: API de grupos e acessos"). O 3B ainda não existe. Os lotes 4 a 6 também não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está em PR para a `develop` (branch `feat/rbac-lote3b-tela-grupos`), não promovido** (ver "Lote 3B: tela Grupos e acessos"). Os lotes 4 a 6 também não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -108,8 +108,8 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
    - **2F-2** Treino (atividades, registros de exercício, planos, sessões, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício e grupos mapeados; PR #143, na `develop` e no DEV desde 12/11/2026, não promovido; 55 rotas; sem migração; ver "Lote 2F-2: treino").
    - **2F-3** Corpo, integrações (Intervals), cardio e fecho (PR #144, na `develop` e no DEV desde 12/11/2026, não promovido; 42 rotas; sem migração; dívida da guarda zerada, guards de papel removidos de `security.py`, ratchet de papel 3 → 1; ver "Lote 2F-3: corpo, integrações, cardio e fecho").
 3. **Grupos e acessos** (dividido em 3A e 3B):
-   - **3A** API de grupos, membros, concessões e auditoria (implementado na branch `feat/rbac-lote3a-api-grupos`, não publicado nem promovido; 11 rotas; sem migração; ver "Lote 3A: API de grupos e acessos").
-   - **3B** Tela "Grupos e acessos" (pendente).
+   - **3A** API de grupos, membros, concessões e auditoria (na `develop` e no DEV, PR #145, não promovido; 11 rotas; sem migração; ver "Lote 3A: API de grupos e acessos").
+   - **3B** Tela "Grupos e acessos" (em PR para a `develop`, branch `feat/rbac-lote3b-tela-grupos`, não promovida; frontend estático, ajuste aditivo do cliente HTTP (`apiFetch`) e campos aditivos em `GET /access/catalog`; sem migração; ver "Lote 3B: tela Grupos e acessos").
 4. **Ocultação no frontend**: hook de permissões nas telas.
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
 6. **Modelos**: visibilidade e edição pelo dono.
@@ -139,8 +139,8 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - [x] **Coberto no 2F-1** (PR #139, na `develop`): as 29 rotas de modelos de treino passam a `require_permission`, com escopo mínimo `todos` na gestão e sem mínimo em `/assigned-to-me` e `/hr-zones` (ver "Lote 2F-1"). A paridade dessas rotas prova só o guard de entrada, com o escopo mínimo.
 - [x] **Coberto no 2F-2** (PR #143, na `develop`): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
 - [x] **Coberto no 2F-3** (PR #144, na `develop`): as 42 rotas de corpo, check-in, integrações Intervals, cardio e geração de recomendação passam a `require_permission`, com escopo mínimo `todos` no sync e no apply. Fecha o lote 2: dívida da guarda de cobertura zerada e `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` removidos de `api/app/security.py` (ver "Lote 2F-3: corpo, integrações, cardio e fecho").
-- [x] **Coberto no 3A** (branch `feat/rbac-lote3a-api-grupos`, não publicado): as 11 rotas de grupos e acessos passam a `require_permission` com `admin.grupos`, sem migração (ver "Lote 3A: API de grupos e acessos").
-- [ ] **Pendente para 3B e lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (lote 5); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lotes 5 e 6); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
+- [x] **Coberto no 3A** (na `develop` e no DEV, PR #145, não promovido): as 11 rotas de grupos e acessos passam a `require_permission` com `admin.grupos`, sem migração (ver "Lote 3A: API de grupos e acessos").
+- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (lote 5); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lotes 5 e 6); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -762,6 +762,49 @@ Primeiro pedaço do lote 3: API de grupos, membros, concessões e auditoria. A t
 - Integração `test_access_admin_dataapi.py`: 4 testes × 2 backends (fluxo completo, grupo de sistema imutável, recusas e auditoria). Roda só no CI, com `ci-completo`; não roda localmente.
 - Suíte unitária inteira: 16.690 passed; só `test_sem_mojibake` falha (falha local conhecida).
 
+### Lote 3B: tela Grupos e acessos
+
+Segundo pedaço do lote 3: a tela `/grupos-acessos` no frontend, sobre a API do 3A. A tela só reflete o catálogo e as respostas da API; quem decide é o backend. Frontend estático, ajuste aditivo do cliente HTTP e campos aditivos em `GET /access/catalog`. Sem migração e sem infra. Estado: em PR para a `develop` (branch `feat/rbac-lote3b-tela-grupos`), não promovido.
+
+*Decisões herdadas do 3A (nenhuma decisão nova neste lote):* só quem tem `admin.grupos` gerencia grupos e vínculos; grupos de sistema não são editáveis; ninguém altera o próprio vínculo; a regra de subconjunto de permissões fica descartada na v1.
+
+*Arquivos:*
+- Tela: `frontend/src/app/(app)/grupos-acessos/` (`page.tsx`, `GruposAcessosClient.tsx`, `GrupoDetalhe.tsx`, `MatrizConcessoes.tsx`, `MembrosGrupo.tsx`, `AuditoriaGrupo.tsx`).
+- Libs: `frontend/src/lib/access-admin-api.ts` (chamadas à API), `access-grants.ts` (matriz, diferença entre estados, avisos e agrupamento por domínio) e `access-admin-types.ts` (tipos do contrato).
+- Cliente HTTP: `frontend/src/lib/api.ts` (`apiFetch`), ajuste aditivo de erro de negócio (ver "O que muda" abaixo).
+- Menu: `frontend/src/lib/nav-items.ts`, item `/grupos-acessos` com `visible: isAdmin` e `desktopOnly: true`. No celular a rota cai na tela "Disponível no computador" (ADR 0004).
+- Testes: `frontend/src/lib/access-admin-api.test.ts`, `access-grants.test.ts`, `api.test.ts` (detail estruturado) e `nav-items.test.ts`.
+
+*O que a tela faz:*
+- Lista de grupos (`GruposAcessosClient.tsx`), com os de sistema marcados; criação de grupo personalizado (chave, nome e descrição). O `/users` é lido nessa tela e repassado aos componentes filhos.
+- Detalhe (`GrupoDetalhe.tsx`): editar nome e descrição e excluir, só em grupo personalizado (`group.editable`). A API recusa a exclusão se houver membros.
+- Matriz recurso × ação com escopo (`MatrizConcessoes.tsx`). Salva o conjunto inteiro com `PUT /access/groups/{id}/grants`. Em grupo de sistema é só leitura. Em grupo personalizado, os recursos não concedíveis (domínio Administração, `grantable = false`) ficam ocultos (`groupResourcesByDomain`, com `onlyGrantable`).
+- Avisos: o `warning` do recurso aparece como tooltip e o texto de `scope_warnings` aparece no escopo. Ao salvar, se alguma concessão nova ou alterada tiver aviso (`warningsForSave`), abre o modal "Confirmar concessões com aviso" com os textos do catálogo; só a confirmação envia o `PUT`.
+- Membros (`MembrosGrupo.tsx`): inclusão a partir de usuários ativos de `/users`, sem o próprio admin (filtro `u.id !== currentUserId`). Em grupo de sistema a lista só mostra os membros.
+- Auditoria do grupo (`AuditoriaGrupo.tsx`): `GET /access/audit?group_id=`.
+
+*O que a tela não faz:* não tem regra numérica, não repete a lista de recursos (vem de `GET /access/catalog`) e não bloqueia nada sozinha. O backend continua recusando com 403 quem não tem `admin.grupos`, com 422 `resource_not_grantable`, com 409 nas mutações de grupo de sistema e com a validação de escopo e de concessão.
+
+*Mudança na API (aditiva, `api/app/access_admin.py`, `catalog_view` em `api/app/access/admin.py`):*
+- Cada recurso de `GET /access/catalog` ganha `grantable` (`false` no domínio Administração, via `is_grantable` em `api/app/access/catalog.py`) e `warning` (`RESOURCE_WARNINGS`; hoje só `ia.cards_exercicio`: custo de IA por card, com limite diário por usuário e não por grupo).
+- No topo, `scope_warnings` (`SCOPE_WARNINGS`; hoje só `todos`).
+- `is_grantable` passa a ser a fonte única também de `validate_grants` (`api/app/access/admin.py`). A regra de validação não muda: recurso de Administração continua recusado com 422.
+- Nada muda em concessões padrão, em resolução de permissões ou em validação.
+
+*Ajuste no cliente HTTP (`frontend/src/lib/api.ts`, `apiFetch`):* quando a resposta de erro não tem `detail` e o corpo traz `error` e `message` como string, `ApiError.detail` recebe `{error, message}`. Hoje, no backend, o formato de topo sem `detail` só existe em `api/app/access_admin.py` (`_error`, usado pelo `/access`); outras rotas usam `detail` objeto, que já era preservado. Motivo: sem isso a tela não mostrava a mensagem do backend em 404, 409 e 422 (achado da revisão de código). Aditivo: a mensagem do `ApiError` continua a padrão (não passa a ser a do backend), a mensagem de 503 continua a padrão, o `must_change_password` (403 com `code`) e as respostas com `detail` string ou objeto continuam como antes.
+
+*O que não muda:* nenhum usuário sem `admin.grupos` vê a rota ou o item de menu; nenhuma rota antiga, guard, concessão padrão ou `users.role` muda.
+
+*Testes:*
+- Backend: `api/tests/unit/test_access_admin_servico.py` cobre `catalog_view` (campos de cada recurso e coerência de `grantable` com `validate_grants`).
+- Frontend: `access-admin-api.test.ts`, `access-grants.test.ts`, `api.test.ts` (detail string, detail objeto e corpo de topo `{error, message}`) e `nav-items.test.ts`.
+- Integração: não roda localmente; roda só no CI, com o rótulo `ci-completo`.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas):*
+- Backend: unitários com `-k access`, 862 passed; ruff limpo nos arquivos de backend alterados.
+- Frontend: Vitest em 7 arquivos (`api`, `access-admin-api`, `access-grants`, `exercise-cards`, `nutrition-api`, `next-set-load-rules`, `cardio-recommendation-apply`) com 134 passed; `nav-items` e `primary-nav` ok; typecheck limpo; lint sem erros.
+- Integração e build ficam no CI, com `ci-completo`; ainda não há resultado registrado para eles.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
@@ -1185,7 +1228,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Sessão real de usuário comum, de personal trainer e de admin, no DEV e em produção.
 - Relógio real e latência da consulta de permissões.
 
-**Lote 3A** (branch `feat/rbac-lote3a-api-grupos`, não publicado, não promovido)
+**Lote 3A** (na `develop` e no DEV, PR #145, não promovido)
 
 *O que muda:*
 - 11 rotas novas de grupos e acessos (catálogo, grupos, membros, concessões, exclusão e auditoria), todas em `admin.grupos`. Quem não tem a permissão recebe 403; na matriz padrão, só o grupo admin tem.
@@ -1198,7 +1241,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 
 *Rollback:* reverter o PR e refazer o deploy de backend. As 11 rotas saem e a auditoria deixa de receber linhas. Grupos, concessões, vínculos e linhas de auditoria criados pela API continuam no banco e precisariam de limpeza manual.
 
-*Medido (na branch; não publicado):*
+*Medido (na branch, antes do merge do PR #145):*
 - `test_access_admin_servico.py` e `test_access_admin_rotas.py`: 307 passed juntos;
 - guardas e paridade: rotas com permissão 352 → 363; total de rotas vivas 367 → 378; dívida 0; as 11 rotas novas em `ROTAS_NOVAS_POS_RETRATO`; retrato congelado não regenerado;
 - suíte unitária inteira: 16.690 passed, com falha só em `test_sem_mojibake` (falha local conhecida).
@@ -1207,6 +1250,29 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Integração `test_access_admin_dataapi.py` (4 testes × 2 backends): não roda localmente; roda só no CI, com o rótulo `ci-completo`. Resultado ainda não registrado.
 - Integração com MySQL e concorrência real dos locks `SELECT ... FOR UPDATE`.
 - Uso real da tela (3B) e sessão real de admin, de personal trainer e de usuário comum.
+
+**Lote 3B** (em PR para a `develop`, branch `feat/rbac-lote3b-tela-grupos`, não promovido)
+
+*O que muda:*
+- Nova rota `/grupos-acessos` no frontend estático, visível só para admin e só no computador.
+- O rascunho da matriz de concessões não se perde ao trocar de aba (abas montadas); trocar de grupo com rascunho não salvo pede confirmação para descartar.
+- `GET /access/catalog` (api-core) traz `grantable` e `warning` por recurso e `scope_warnings` no topo. Campos aditivos.
+- `apiFetch` (`frontend/src/lib/api.ts`) preenche `ApiError.detail` com `{error, message}` quando o corpo de erro não tem `detail` e traz `error` e `message` string. Afeta todo o frontend, mas só nas respostas com esse formato (no backend, hoje, só `/access`). Aditivo: mensagem padrão, 503, `must_change_password` e respostas com `detail` inalterados.
+
+*O que não muda:*
+- Nenhum acesso, rota, guard, concessão padrão ou `users.role`. A API não ganha rota nova neste lote.
+- Sem migração, sem infra e sem `RUN_DB_MIGRATIONS`. A promoção é só de frontend e api-core.
+
+*Promoção:* smoke depois do deploy, com conta admin: abrir `/grupos-acessos` e conferir que a lista de grupos carrega; conferir que `GET /access/catalog` traz `grantable`, `warning` e `scope_warnings`.
+
+*Rollback:* reverter o PR e refazer o deploy de frontend e api-core. Não há dado nem schema a desfazer. Os campos aditivos deixam de existir, e clientes que não os leem não percebem. Grupos, concessões e auditoria criados pela tela já existem desde o 3A e não são afetados.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas; números da seção acima):* backend `-k access` 862 passed, ruff limpo; Vitest 7 arquivos com 134 passed; `nav-items` e `primary-nav` ok; typecheck limpo; lint sem erros.
+
+*Não medido:*
+- Uso real da tela por admin, e comportamento no celular (a rota só tem a tela "Disponível no computador").
+- Integração com MySQL e build (CI, com `ci-completo`).
+- Smoke de promoção: ainda não executado.
 
 ## Referências
 
@@ -1222,4 +1288,5 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - `frontend/src/lib/nav-items.ts`: menu central.
 - Lote 2B: `api/app/access/catalog.py` (`conta.dispositivos`); `api/app/access/service.py` (`validate_target_user_id`, `authorize_target`, `authorize_self_or_all`); `api/app/access/deps.py` (`require_additional_permission`, `permissions_for_request`); `api/app/access/membership.py` (`ensure_not_last_admin`, `locked_admin_ids`); `api/app/users.py` (`create_user`, `update_user`, `deactivate_user`, fotos); `api/app/devices.py` (rotas de relógio); `api/app/jobs.py`; `api/app/auth.py` (`me`, `change-password`); `api/db/migrations/113_access_grants_conta_dispositivos.py`; `api/tests/support/access_retrato.py` e `api/tests/unit/data/access_retrato_guards_antigos.json`; `api/tests/unit/test_access_retrato_guards.py`, `test_access_paridade_guards.py`, `test_access_guarda_identity_role.py` (com `access_identity_role_allowlist.json`), `test_access_guarda_cobertura_rotas.py` (com `access_cobertura_allowlist.json`), `test_users_permissoes_rbac.py`, `test_devices_permissoes_rbac.py`, `test_users_trava_ultimo_admin.py` e `test_migracao_113_concessoes.py`; `api/tests/integration/conftest.py` (`conceder_grupo_do_papel`, fixture `conceder_grupo`, fixture `catalog`).
 - Lote 2C-1: `api/app/access/catalog.py` (`modelos.tipos_treino`); `api/db/migrations/114_access_grants_modelos_tipos_treino.py`; `api/app/exercise_cards.py`, `api/app/training_types.py`, `api/app/next_set_load_rules_admin.py`, `api/app/training_safety_admin.py`, `api/app/exercise_mapping_canonical.py`, `api/app/main.py` (`POST /exercise-mappings`) e `api/app/dashboard_modules.py` (`PUT /analytics/muscle-group-body-map`); `api/tests/unit/test_migracao_114_concessoes.py` e `api/tests/unit/test_catalogos_admin_permissoes_rbac.py`.
+- Lote 3B: `frontend/src/app/(app)/grupos-acessos/` (tela); `frontend/src/lib/access-admin-api.ts`, `access-grants.ts`, `access-admin-types.ts` e seus testes; `frontend/src/lib/api.ts` (`apiFetch`) e `api.test.ts`; `frontend/src/lib/nav-items.ts` (item `/grupos-acessos`) e `nav-items.test.ts`; `api/app/access/catalog.py` (`is_grantable`, `RESOURCE_WARNINGS`, `SCOPE_WARNINGS`); `api/app/access/admin.py` (`catalog_view`, `validate_grants`); `api/app/access_admin.py` (`GET /access/catalog`); `api/tests/unit/test_access_admin_servico.py`.
 - ADR relacionado de forma indireta: [0010](0010-regras-de-carga-como-formula-com-condicionais.md) (formato de decisão com "Impacto em produção").

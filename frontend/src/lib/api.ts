@@ -177,6 +177,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
         detail = body.detail;
       } else if (body?.detail != null) {
         structuredDetail = body.detail;
+      } else if (body?.detail == null && typeof body?.error === 'string' && typeof body?.message === 'string') {
+        // Erro de negócio de /access: corpo de topo `{error, message}`, sem `detail`.
+        structuredDetail = { error: body.error, message: body.message };
       }
     } catch {
       // corpo sem JSON válido — mantém a mensagem padrão
