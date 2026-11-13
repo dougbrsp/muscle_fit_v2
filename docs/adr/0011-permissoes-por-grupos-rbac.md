@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está em PR para a `develop` (branch `feat/rbac-lote4a-permissoes-frontend`), não promovido** (ver "Lote 4A: base da ocultação e menu"). Os lotes 4B a 6 também não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está em PR para a `develop` (branch `feat/rbac-lote4b1-telas-gestao`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). O 4B-2 e os lotes 5 e 6 também não existem.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -111,8 +111,9 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
    - **3A** API de grupos, membros, concessões e auditoria (na `develop` e no DEV, PR #145, não promovido; 11 rotas; sem migração; ver "Lote 3A: API de grupos e acessos").
    - **3B** Tela "Grupos e acessos" (na `develop` e no DEV desde 12/11/2026, PR #147, merge `ac1e28b4`, não promovida; frontend estático, ajuste aditivo do cliente HTTP (`apiFetch`) e campos aditivos em `GET /access/catalog`; sem migração; ver "Lote 3B: tela Grupos e acessos").
 4. **Ocultação no frontend**: hook de permissões nas telas. Dividida em:
-   - **4A Base e menu** (em PR para a `develop`, branch `feat/rbac-lote4a-permissoes-frontend`, não promovido; só frontend estático e um teste unitário de backend; sem migração; ver "Lote 4A: base da ocultação e menu").
-   - **4B Telas internas** (botões, cards de IA, `canManage` inline, abas do iPhone em `frontend/src/mobile/layout/primary-nav.ts`, badges de qualidade de dado) — não iniciado.
+   - **4A Base e menu** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido; só frontend estático e um teste unitário de backend; sem migração; ver "Lote 4A: base da ocultação e menu").
+   - **4B-1 Telas de gestão por permissão** (em PR para a `develop`, branch `feat/rbac-lote4b1-telas-gestao`, não promovido; só frontend estático; sem migração; ver "Lote 4B-1: telas de gestão por permissão").
+   - **4B-2 Telas internas restantes** (não iniciado): cards e botões de IA, badges de qualidade de dado, abas do iPhone em `frontend/src/mobile/layout/primary-nav.ts`, editor de modelo em `frontend/src/app/(app)/modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx` e residual do logout (pollers com `refetchInterval` entre o logout e a navegação).
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
 6. **Modelos**: visibilidade e edição pelo dono.
 
@@ -809,7 +810,7 @@ Segundo pedaço do lote 3: a tela `/grupos-acessos` no frontend, sobre a API do 
 
 ### Lote 4A: base da ocultação e menu
 
-Primeiro pedaço do lote 4: o frontend passa a ler `permissions` de `GET /auth/me` (campo do lote 1) e esconde menu, rotas administrativas e hub Evolução que o usuário não pode usar. Ocultar é conveniência de tela. Quem bloqueia é o backend, que já exige `require_permission` em todas as rotas desde o 2F-3 e o 3A. Frontend estático, sem migração e sem infra. Estado: em PR para a `develop` (branch `feat/rbac-lote4a-permissoes-frontend`), não promovido.
+Primeiro pedaço do lote 4: o frontend passa a ler `permissions` de `GET /auth/me` (campo do lote 1) e esconde menu, rotas administrativas e hub Evolução que o usuário não pode usar. Ocultar é conveniência de tela. Quem bloqueia é o backend, que já exige `require_permission` em todas as rotas desde o 2F-3 e o 3A. Frontend estático, sem migração e sem infra. Estado: na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido.
 
 *Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente, carregamento e erro sem dados em cache escondem (a decisão é por presença de dados: dados em cache sobrevivem a falha transitória de refetch); o menu é a lista única de `nav-items.ts`.
 
@@ -854,7 +855,7 @@ Primeiro pedaço do lote 4: o frontend passa a ler `permissions` de `GET /auth/m
 - Nenhuma rota de API, guard, concessão padrão, `users.role` ou grupo de sistema. Sem migração, sem infra e sem `RUN_DB_MIGRATIONS`.
 - Os 4 usuários atuais (1 admin e 3 regulares, todos com grupo; número informado no briefing do Tech Lead, não conferido no banco nesta entrega) devem ver o mesmo menu, conforme a equivalência acima.
 
-*Pendências para o 4B:*
+*Pendências para o 4B (as telas de gestão foram tratadas no 4B-1; ver "Lote 4B-1"; o restante fica no 4B-2):*
 - As abas fixas do iPhone e o pool de sub-itens do Dashboard em `frontend/src/mobile/layout/primary-nav.ts` ainda não aplicam `dashboards`/`ver`.
 - Telas internas: botões, cards de IA, `canManage` inline e badges de qualidade de dado ainda não consultam o hook.
 
@@ -871,6 +872,61 @@ Primeiro pedaço do lote 4: o frontend passa a ler `permissions` de `GET /auth/m
 - Integração e build (CI).
 - Sessão real de admin, de personal trainer e de usuário comum, no DEV e em produção.
 - Comportamento no iPhone real durante o instante de carregamento.
+
+### Lote 4B-1: telas de gestão por permissão
+
+Primeiro pedaço do 4B: as telas de gestão deixam de decidir por `role` e passam a ler as permissões efetivas de `GET /auth/me`, com a mesma condição do `require_permission` da rota que cada controle chama. Ocultar é conveniência de tela; o backend segue sendo a barreira (403). Frontend estático, sem migração e sem infra. Estado: em PR para a `develop` (branch `feat/rbac-lote4b1-telas-gestao`), não promovido.
+
+*Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente e carregamento escondem; concessões padrão, grupos de sistema e `users.role` não mudam.
+
+*Regra de implementação:* a condição da UI espelha o `require_permission(recurso, ação, escopo mínimo)` da rota do backend que o controle chama. As funções são puras e ficam em `frontend/src/lib/screen-permissions.ts`. Cada tela usa a função do seu domínio e o booleano devolvido, sem comparar papel. Fail-closed: `can` (`frontend/src/lib/permissions.ts`) devolve `false` para `null`, `undefined`, `{}`, recurso ausente ou escopo abaixo do mínimo. Nenhuma regra de acesso nasce no frontend.
+
+*Arquivos:*
+- Módulo puro: `frontend/src/lib/screen-permissions.ts` (`academiasControls`, `catalogosControls`, `segurancaTreinoControls`, `exerciseCardsControls`, `tiposTreinoControls`, `modelosTreinoControls`, `usuariosControls`, `gruposControls`, `alimentosControls`, `planoNutricionalControls`), com teste em `frontend/src/lib/screen-permissions.test.ts`.
+- Telas: `frontend/src/app/(app)/academias/AcademiasClient.tsx`, `dominio-exercicios/DominioExerciciosClient.tsx` e `components/ExerciseDetailDrawer.tsx`, `equipamentos-exercicios/EquipamentosExerciciosClient.tsx` e `EquipmentSafetyTab.tsx`, `grupos-acessos/` (`GruposAcessosClient.tsx`, `GrupoDetalhe.tsx`, `MatrizConcessoes.tsx`, `MembrosGrupo.tsx`, `AuditoriaGrupo.tsx`), `usuarios/UsuariosClient.tsx`, `metas-ativacao/TrainingTypesListClient.tsx`, `modelos-treino/WorkoutPlanTemplatesListClient.tsx`, `nutricao/plano/PlanoClient.tsx`, `nutricao/alimentos/AlimentosClient.tsx` e `components/nutrition/FoodSearch.tsx`; mobile: `frontend/src/mobile/screens/telas/UsuariosScreen.tsx`.
+- Helpers: `frontend/src/lib/admin-route.ts` (fica `permissionRouteState`; saem `adminRouteState` e `isAdminRole`), `frontend/src/lib/exercise-cards.ts`, `frontend/src/lib/mappings-types.ts`, `frontend/src/lib/training-preferences.test.ts`.
+
+*Controles por tela (espelho do backend):*
+
+| Controle (tela) | Rota e arquivo do backend | `require_permission` | Condição na UI |
+|---|---|---|---|
+| Domínio de exercícios (abas e formulário do exercício) | `exercise_catalog_admin.py` (POST `/exercises`, aliases, descrição de execução) | `admin.catalogos` editar | `catalogosControls.canEdit`, passado como `isAdmin` às abas |
+| Equipamentos x exercícios (associações, em massa, catálogo) | `equipment_exercises.py` (POST e PUT: editar; DELETE: excluir) | `admin.catalogos` editar / excluir | `catalogosControls.canEdit` e `canDelete` |
+| Aba Segurança | `training_safety_admin.py` (GET e PUT de `/equipment/{id}/safety` e `/equipment-exercises/{id}/safety`) | `admin.seguranca_treino` ver / editar | `segurancaTreinoControls.canView` (sem ela, a aba não carrega o conteúdo) e `canEdit` |
+| Cards ilustrados (no detalhe do exercício) | `exercise_cards.py` (geração, aprovação, referências: editar; leitura: ver; remoção: excluir) | `ia.cards_exercicio` editar | `ExerciseDetailDrawer.tsx` (linha 132) usa `usePermissions().can('ia.cards_exercicio', 'editar')` como `canManage` da seção de card; ver a limitação sobre `exerciseCardsControls` |
+| Academias | `gyms.py`: GET (ver); POST e PUT de dias, avulsa e vínculo de equipamento (editar); DELETE (excluir); PUT com `name`, `opens_at` ou `closes_at` (`require_additional_permission`, linha 386); POST e DELETE de logo | `treino.academias` editar / excluir; `admin.catalogos` editar (campos administrativos e logo) e excluir (remoção de logo) | `canEdit` (dias, avulsa, vínculo) = `treino.academias`/editar; `canDelete` = `treino.academias`/excluir; `canEditAdminFields` (lápis "Editar academia": nome, horário e logo) = `admin.catalogos`/editar; `canRemoveLogo` = `admin.catalogos`/excluir |
+| Grupos e acessos | `access_admin.py` (11 rotas): leitura, catálogo, auditoria e membros (ver); criar e editar grupo, matriz e adicionar membro (editar); excluir grupo e remover membro (excluir). `GET /users` alimenta as opções de membro e os nomes da auditoria | `admin.grupos` ver / editar / excluir; `GET /users` exige `admin.usuarios`/ver | `canAccess` = ver; `canEdit` = editar; `canDelete` = excluir; `canListUsers` = `admin.usuarios`/ver. Sem `canListUsers` a tela não chama `/users`, mostra aviso no lugar do seletor de membros e a auditoria exibe `Usuário #id`. 403 de catálogo ou grupos vira estado de acesso restrito; 403 de `/users` vira `usersForbidden` |
+| Usuários (desktop e iPhone) | `users.py`: GET (ver); POST, PUT e reset de senha (editar); DELETE (excluir). A exigência extra de `admin.grupos` para alvo admin é do backend (lote 2B) | `admin.usuarios` ver / editar / excluir | `usuariosControls.canAccess` (ver), `canEdit` (criar, editar, senha) e `canDelete` (desativar) |
+| Metas de ativação | `training_types.py`: GET (ver); POST, PUT, PATCH de status e duplicar (editar); DELETE (excluir) | `modelos.tipos_treino` ver / editar / excluir | `tiposTreinoControls`: sem `canAccess` a lista não carrega; `canEdit` e `canDelete` nas ações |
+| Modelos de treino (lista) | `workout_plan_templates.py`: rotas de gestão com `modelos.treino` e `min_scope=todos`; `POST /workout-plan-templates/periodization-drafts` com `ia.modelo_periodizacao` editar e `min_scope=todos` | `modelos.treino` ver / editar / excluir (todos); `ia.modelo_periodizacao` editar (todos) | `modelosTreinoControls`: `canAccess` (editar), `canView`, `canEdit`, `canDelete`; `canGenerateDraft` no botão de gerar rascunho |
+| Plano nutricional de outros | `nutrition_plans.py` (`nutricao.plano` ver / editar / excluir, sem `min_scope`); alvo de terceiro checado por `authorize_target` (`todos`, ou `alunos` com vínculo ativo) | `nutricao.plano` editar com `todos` (condição da tela) | `planoNutricionalControls.canManageOthers` |
+| Alimentos privados | `nutrition_foods.py` recusa `scope=private_all` sem `can_list_private_foods`, que é `administers_public_catalog` com `ver` (`nutrition_access.py`, linhas 86 e 131 a 133) | `admin.catalogos` ver | `alimentosControls.canListPrivate`, passado a `FoodSearch` como `isAdmin` |
+
+*Equivalência com o papel de hoje.* `screen-permissions.test.ts` fixa, para `usuario`, `personal_trainer` e `admin`, os controles esperados com as concessões padrão de `DEFAULT_GRANTS_BY_GROUP` (`api/app/access/catalog.py`). As fixtures são cópias manuais, o mesmo limite registrado no 4A: nenhum teste compara a cópia com o backend, e nenhum teste compara com o comportamento anterior ao lote. Os casos `null`, `undefined` e `{}` nos dez controles não mostram nada. O teste também prova escopo e ação exatos: modelos exige `todos` (`próprios` e `alunos` não bastam), o plano de outros exige `editar` com `todos`, e `ver` sozinho não libera escrita.
+
+*Removidos:* `adminRouteState` e `isAdminRole` de `frontend/src/lib/admin-route.ts`. Não há mais referência a eles no repositório.
+
+*Limitações conhecidas:*
+- O editor de modelo `frontend/src/app/(app)/modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx` (linhas 386 e 387) ainda decide `canManageVersions` por `role` (`admin` ou `personal_trainer`), que controla o histórico de versões. O `/ship` desta entrega não aceita colchetes no caminho; o ajuste fica no 4B-2.
+- `exerciseCardsControls` não tem consumidor de tela. O controle real dos cards está em `ExerciseDetailDrawer.tsx`. A função fica como candidata a ser religada ou removida no 4B-2.
+- Metas de ativação: o menu usa `modelos.metas_ativacao` (`frontend/src/lib/nav-items.ts`, linha 171), e a tela e a API de `/training-types` usam `modelos.tipos_treino`. Com as concessões padrão, os dois recursos vão aos mesmos grupos, mas são recursos distintos no catálogo. Alinhar em um só fica no 4B-2 ou em ajuste de catálogo.
+- Plano de outros: a tela exige `nutricao.plano` com escopo `todos`; o backend (`authorize_target`) também aceita `alunos` com vínculo ativo. A tela é mais restrita (fail-closed) até o lote 5.
+- Usuários: a tela mostra editar a quem tem `admin.usuarios`/editar, sem espelhar a exigência extra de `admin.grupos` ao mexer em admin (lote 2B). Nenhum grupo padrão tem `admin.usuarios` sem `admin.grupos`, então não há efeito hoje. Com grupos personalizados, quem só tem `admin.usuarios` vê o botão e recebe 403 ao salvar um admin.
+- Os textos "Ação restrita a administradores" foram mantidos. Várias props `isAdmin` (abas de Domínio de exercícios, `FoodSearch`) são nome histórico; o valor vem de permissão.
+- `useIsAdmin` (`frontend/src/lib/use-is-admin.ts`, por `role`) continua em uso em badges de qualidade de dado e dashboards. Sai no 4B-2.
+- Foto de usuário: a rota está na categoria "só autenticação" do 2B (sem `require_permission` declarado; terceiro cai em `authorize_self_or_all`). O controle de foto na tela não foi alterado.
+
+*Testes:*
+- Frontend: `frontend/src/lib/screen-permissions.test.ts`.
+- Backend: nenhum teste novo; nenhuma rota muda.
+- Integração: não roda localmente; no CI, só com o rótulo `ci-completo`.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta entrega):* parte A: Vitest em 6 arquivos com 128 passed e typecheck ok; parte B: Vitest em 40 arquivos com 272 passed, `tsc` com 0 erros e lint com 0 erros.
+
+*Não medido:*
+- UI no navegador: nenhuma sessão real de admin, personal trainer ou usuário comum.
+- Build e integração (CI).
+- Comportamento no iPhone real.
 
 ### Riscos para lotes futuros
 
@@ -1341,7 +1397,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Integração com MySQL e build (CI, com `ci-completo`).
 - Smoke de promoção: ainda não executado.
 
-**Lote 4A** (na `develop`, branch `feat/rbac-lote4a-permissoes-frontend`, PR para a `develop`, não promovido)
+**Lote 4A** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido)
 
 *O que muda:*
 - Menu desktop, menu do iPhone e hub Evolução derivam a visibilidade de `permissions` de `/auth/me`; item sem permissão some. Enquanto `/auth/me` não resolve ou falha sem dados em cache, nada aparece (antes, tudo aparecia); dados em cache sobrevivem a falha transitória de refetch. O logout cancela as queries e navega; o login limpa o cache do TanStack Query na montagem e no sucesso, para não herdar permissões de outra conta.
@@ -1359,6 +1415,22 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 
 *Não medido:* integração e build (CI, com `ci-completo`); uso real por sessão de admin, de personal trainer e de usuário comum no DEV; comportamento no iPhone real no instante de carregamento.
 
+**Lote 4B-1** (na branch `feat/rbac-lote4b1-telas-gestao`, PR para a `develop`, não promovido)
+
+*O que muda:*
+- Os controles das telas de gestão listadas em "Lote 4B-1" passam a vir de `permissions` de `GET /auth/me`, pela condição de `frontend/src/lib/screen-permissions.ts`. Cada controle segue a permissão de leitura, escrita ou exclusão da rota que ele chama.
+- `adminRouteState` e `isAdminRole` saem de `frontend/src/lib/admin-route.ts`.
+
+*O que não muda:* nenhuma rota, guard, concessão padrão, `users.role`, grupo de sistema ou migração. Sem infra e sem `RUN_DB_MIGRATIONS`. A promoção é só de frontend estático.
+
+*Quem vê o quê hoje:* os 4 usuários atuais (1 admin e 3 comuns; número do briefing do Tech Lead, não conferido no banco nesta entrega) recebem as concessões padrão do próprio grupo. Pelas fixtures de "Equivalência", veem os mesmos controles; isso não foi conferido em sessão real.
+
+*Promoção (smoke):* com conta admin, os botões de edição aparecem em usuários, grupos, Domínio de exercícios e Equipamentos x exercícios. Com conta de usuário comum, esses botões não aparecem, e a aba Segurança não mostra conteúdo.
+
+*Rollback:* reverter o PR e refazer o deploy do frontend. Não há dado nem schema a desfazer.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta entrega):* parte A, Vitest em 6 arquivos com 128 passed e typecheck ok; parte B, Vitest em 40 arquivos com 272 passed, `tsc` com 0 erros e lint com 0 erros. A UI não foi exercitada no navegador.
+
 ## Referências
 
 - `api/app/security.py`: `get_current_identity`, `require_admin`, `require_admin_or_pt`, `Identity`, `master_token_matches`.
@@ -1375,4 +1447,5 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Lote 2C-1: `api/app/access/catalog.py` (`modelos.tipos_treino`); `api/db/migrations/114_access_grants_modelos_tipos_treino.py`; `api/app/exercise_cards.py`, `api/app/training_types.py`, `api/app/next_set_load_rules_admin.py`, `api/app/training_safety_admin.py`, `api/app/exercise_mapping_canonical.py`, `api/app/main.py` (`POST /exercise-mappings`) e `api/app/dashboard_modules.py` (`PUT /analytics/muscle-group-body-map`); `api/tests/unit/test_migracao_114_concessoes.py` e `api/tests/unit/test_catalogos_admin_permissoes_rbac.py`.
 - Lote 3B: `frontend/src/app/(app)/grupos-acessos/` (tela); `frontend/src/lib/access-admin-api.ts`, `access-grants.ts`, `access-admin-types.ts` e seus testes; `frontend/src/lib/api.ts` (`apiFetch`) e `api.test.ts`; `frontend/src/lib/nav-items.ts` (item `/grupos-acessos`) e `nav-items.test.ts`; `api/app/access/catalog.py` (`is_grantable`, `RESOURCE_WARNINGS`, `SCOPE_WARNINGS`); `api/app/access/admin.py` (`catalog_view`, `validate_grants`); `api/app/access_admin.py` (`GET /access/catalog`); `api/tests/unit/test_access_admin_servico.py`.
 - Lote 4A: `frontend/src/lib/permissions.ts` (`can`, `SCOPE_ORDER`); `frontend/src/lib/use-permissions.ts`; `frontend/src/lib/auth.ts` (`SessionUser`); `frontend/src/lib/nav-items.ts` (`navVisibilityFromPermissions`, mapa item → permissão); `frontend/src/components/AppShellLayout.tsx`, `frontend/src/mobile/layout/MobileShell.tsx`, `frontend/src/mobile/screens/EvolucaoHub.tsx`; `frontend/src/components/AdminOnlyRoute.tsx` (`PermissionRoute`); `frontend/src/lib/admin-route.ts` (`permissionRouteState`); `frontend/src/app/(app)/grupos-acessos/GruposAcessosClient.tsx`; `frontend/src/lib/app-logout.ts` (`logoutAndRedirect`, `resetSessionCache`) e `frontend/src/app/LoginClient.tsx`; testes `frontend/src/lib/permissions.test.ts`, `use-permissions.test.ts`, `nav-items.test.ts`, `training-preferences.test.ts`, `app-logout.test.ts` e `frontend/src/mobile/layout/primary-nav.test.ts`; `api/tests/unit/test_access_paridade_escopos_frontend.py`.
+- Lote 4B-1: `frontend/src/lib/screen-permissions.ts` (funções por domínio) e `screen-permissions.test.ts`; `frontend/src/lib/permissions.ts` (`can`); `frontend/src/lib/admin-route.ts` (`permissionRouteState`); telas e componentes listados em "Lote 4B-1"; `api/app/access/catalog.py` (`DEFAULT_GRANTS_BY_GROUP`); `api/app/access/service.py` (`authorize_target`); rotas: `api/app/gyms.py`, `api/app/access_admin.py`, `api/app/users.py`, `api/app/training_types.py`, `api/app/workout_plan_templates.py`, `api/app/nutrition_plans.py`, `api/app/nutrition_access.py`, `api/app/nutrition_foods.py`, `api/app/training_safety_admin.py`, `api/app/exercise_cards.py`, `api/app/equipment_exercises.py` e `api/app/exercise_catalog_admin.py`.
 - ADR relacionado de forma indireta: [0010](0010-regras-de-carga-como-formula-com-condicionais.md) (formato de decisão com "Impacto em produção").

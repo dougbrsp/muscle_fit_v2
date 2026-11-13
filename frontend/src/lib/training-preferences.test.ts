@@ -6,7 +6,7 @@ import {
   UNGROUPED_LABEL,
   type TrainingPreferenceItem,
 } from './equipment-recommend';
-import { isAdminRole, adminRouteState, permissionRouteState } from './admin-route';
+import { permissionRouteState } from './admin-route';
 
 function item(overrides: Partial<TrainingPreferenceItem>): TrainingPreferenceItem {
   return {
@@ -77,18 +77,6 @@ describe('buildTrainingPreferencesPath', () => {
   it('só põe gym_id quando há academia', () => {
     expect(buildTrainingPreferencesPath(4)).toBe('/me/training-preferences?gym_id=4');
     expect(buildTrainingPreferencesPath(null)).toBe('/me/training-preferences');
-  });
-});
-
-describe('adminRouteState', () => {
-  it('carregando enquanto /auth/me não resolveu; libera só admin; redireciona o resto', () => {
-    expect(adminRouteState({ isSuccess: false, role: undefined })).toBe('loading');
-    expect(adminRouteState({ isSuccess: true, role: 'admin' })).toBe('allow');
-    expect(adminRouteState({ isSuccess: true, role: 'personal_trainer' })).toBe('redirect');
-    expect(adminRouteState({ isSuccess: true, role: 'regular' })).toBe('redirect');
-    expect(adminRouteState({ isSuccess: false, isError: true, role: undefined })).toBe('redirect');
-    expect(isAdminRole('admin')).toBe(true);
-    expect(isAdminRole(undefined)).toBe(false);
   });
 });
 

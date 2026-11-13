@@ -11,10 +11,6 @@ export type AdminRouteState = 'loading' | 'allow' | 'redirect';
 
 export type RoutePermission = { resource: string; action?: string; minScope?: Scope };
 
-export function isAdminRole(role: string | null | undefined): boolean {
-  return role === 'admin';
-}
-
 // Decide pela PRESENÇA de dados (`hasData`), não por isSuccess: um refetch que
 // falha mantém `data` em cache e a guarda segue decidindo por `can()`. Sem dados:
 // erro redireciona (sem loader eterno); senão loader (nada vaza).
@@ -28,15 +24,4 @@ export function permissionRouteState(input: {
   if (!input.hasData) return input.isError ? 'redirect' : 'loading';
   const { resource, action = 'ver', minScope } = input.required;
   return can(input.permissions, resource, action, minScope) ? 'allow' : 'redirect';
-}
-
-// Mantido por compatibilidade: guarda por role EXATAMENTE "admin".
-export function adminRouteState(input: {
-  isSuccess: boolean;
-  isError?: boolean;
-  role: string | null | undefined;
-}): AdminRouteState {
-  if (input.isError) return 'redirect';
-  if (!input.isSuccess) return 'loading';
-  return isAdminRole(input.role) ? 'allow' : 'redirect';
 }

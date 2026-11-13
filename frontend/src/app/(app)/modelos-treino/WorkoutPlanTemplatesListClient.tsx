@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { modelosTreinoControls } from '@/lib/screen-permissions';
 import {
   VOLUME_MODE_OPTIONS,
   type ApiListResponse,
@@ -70,12 +71,14 @@ export function WorkoutPlanTemplatesListClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const canManage = currentUserQuery.data?.role === 'admin' || currentUserQuery.data?.role === 'personal_trainer';
+  // Permissões efetivas (RBAC), espelho do require_permission de /workout-plan-templates (escopo todos).
+  const ctrl = modelosTreinoControls(currentUserQuery.data?.permissions);
+  const canManage = ctrl.canAccess;
 
   const templatesQuery = useQuery({
     queryKey: ['workout-plan-templates'],
     queryFn: () => apiFetch<ApiListResponse<WorkoutPlanTemplateListItem>>('/workout-plan-templates'),
-    enabled: currentUserQuery.isSuccess,
+    enabled: currentUserQuery.isSuccess && canManage,
     retry: false,
   });
 
@@ -139,7 +142,7 @@ export function WorkoutPlanTemplatesListClient() {
           Modelos de treino
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />} radius="md">
-          Acesso restrito a administradores e personal trainers.
+          Acesso restrito a quem tem permissão para gerir modelos de treino.
         </Alert>
       </Stack>
     );
@@ -174,7 +177,7 @@ export function WorkoutPlanTemplatesListClient() {
           </Text>
         </div>
         <Group gap="sm" wrap="wrap">
-          {canManage && (
+          {ctrl.canGenerateDraft && (
             <Button
               variant="light"
               color="brand"
@@ -184,13 +187,15 @@ export function WorkoutPlanTemplatesListClient() {
               Gerar modelo automaticamente
             </Button>
           )}
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => router.push('/modelos-treino/novo')}
-          >
-            Novo modelo
-          </Button>
+          {ctrl.canEdit && (
+            <Button
+              color="brand"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => router.push('/modelos-treino/novo')}
+            >
+              Novo modelo
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -259,6 +264,7 @@ export function WorkoutPlanTemplatesListClient() {
                       color="brand"
                       checked={template.is_active}
                       label={template.is_active ? 'Ativo' : 'Inativo'}
+                      disabled={!ctrl.canEdit}
                       onChange={(event) =>
                         toggleStatusMutation.mutate({ id: template.id, isActive: event.currentTarget.checked })
                       }
@@ -266,51 +272,61 @@ export function WorkoutPlanTemplatesListClient() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        onClick={() => router.push(`/modelos-treino/${template.id}`)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconChartBar size={14} />}
-                        onClick={() => router.push(`/diagnostico-volume/${template.id}`)}
-                      >
-                        Diagnóstico de volume
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconUsers size={14} />}
-                        onClick={() => openAssignModal(template)}
-                      >
-                        Atribuir
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconCopy size={14} />}
-                        loading={duplicateMutation.isPending && duplicateMutation.variables === template.id}
-                        onClick={() => duplicateMutation.mutate(template.id)}
-                      >
-                        Duplicar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => confirmDelete(template)}
-                      >
-                        Excluir
-                      </Button>
+                      {ctrl.canEdit && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          onClick={() => router.push(`/modelos-treino/${template.id}`)}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      {ctrl.canView && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconChartBar size={14} />}
+                          onClick={() => router.push(`/diagnostico-volume/${template.id}`)}
+                        >
+                          Diagnóstico de volume
+                        </Button>
+                      )}
+                      {ctrl.canEdit && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconUsers size={14} />}
+                          onClick={() => openAssignModal(template)}
+                        >
+                          Atribuir
+                        </Button>
+                      )}
+                      {ctrl.canEdit && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconCopy size={14} />}
+                          loading={duplicateMutation.isPending && duplicateMutation.variables === template.id}
+                          onClick={() => duplicateMutation.mutate(template.id)}
+                        >
+                          Duplicar
+                        </Button>
+                      )}
+                      {ctrl.canDelete && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => confirmDelete(template)}
+                        >
+                          Excluir
+                        </Button>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>

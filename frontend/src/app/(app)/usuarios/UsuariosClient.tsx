@@ -49,6 +49,7 @@ import {
   UserRole,
   roleLabel,
 } from '@/lib/users-admin-types';
+import { usuariosControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -69,11 +70,11 @@ function isForbidden(error: unknown): boolean {
  * Tela "Admin / Usuários" (Fase 4, Etapa 23): listar, criar, editar,
  * desativar e gerenciar foto de perfil de qualquer usuário da plataforma.
  *
- * Admin-only estrito, mesmo padrão de `/metas-ativacao`: `role === "admin"`
- * via `/auth/me`, a query de listagem só dispara depois de saber o papel do
+ * Controles por permissões efetivas (`admin.usuarios`: ver/editar/excluir, via
+ * `/auth/me`; fail-closed), sem checar role. A query de listagem só dispara depois de saber o papel do
  * usuário (evita uma chamada fadada a 403), e o bloqueio de acesso mostra
  * mensagem clara em vez de renderizar a tela pela metade. A garantia real
- * continua sendo o 403 do backend (`require_admin`).
+ * continua sendo o 403 do backend (`require_permission` em `admin.usuarios`).
  *
  * DELETE /users/{id} é soft-delete (`is_active = 0`, não remove a linha) —
  * por isso os botões usam "Desativar", não "Excluir". O backend já rejeita
@@ -93,7 +94,8 @@ export function UsuariosClient() {
     retry: false,
   });
   const currentUser = currentUserQuery.data;
-  const isAdmin = currentUser?.role === 'admin';
+  const ctrl = usuariosControls(currentUser?.permissions);
+  const isAdmin = ctrl.canAccess;
 
   const usersQuery = useQuery({
     queryKey: ['users-admin'],
@@ -101,7 +103,7 @@ export function UsuariosClient() {
     // GET /users é admin-only no backend (403 para os demais) — só dispara
     // depois de saber o papel do usuário, para não gastar uma chamada
     // fadada a falhar e mostrar direto a mensagem de acesso restrito.
-    enabled: currentUserQuery.isSuccess,
+    enabled: currentUserQuery.isSuccess && isAdmin,
     retry: false,
   });
 
@@ -335,9 +337,11 @@ export function UsuariosClient() {
             administradores.
           </Text>
         </div>
-        <Button color="brand" leftSection={<IconPlus size={16} />} onClick={openCreate}>
-          Novo usuário
-        </Button>
+        {ctrl.canEdit && (
+          <Button color="brand" leftSection={<IconPlus size={16} />} onClick={openCreate}>
+            Novo usuário
+          </Button>
+        )}
       </Group>
 
       {usersQuery.isLoading && (
@@ -407,12 +411,14 @@ export function UsuariosClient() {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap" justify="flex-end">
-                        <Tooltip label="Editar usuário">
-                          <ActionIcon color="brand" variant="subtle" onClick={() => openEdit(user)}>
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        {self ? (
+                        {ctrl.canEdit && (
+                          <Tooltip label="Editar usuário">
+                            <ActionIcon color="brand" variant="subtle" onClick={() => openEdit(user)}>
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {!ctrl.canEdit ? null : self ? (
                           <Tooltip label="Use 'Meu perfil' para trocar a própria senha">
                             <ActionIcon color="brand" variant="subtle" disabled>
                               <IconKey size={16} />
@@ -425,7 +431,7 @@ export function UsuariosClient() {
                             </ActionIcon>
                           </Tooltip>
                         )}
-                        {self ? (
+                        {!ctrl.canDelete ? null : self ? (
                           <Tooltip label="Você não pode desativar a própria conta">
                             <ActionIcon color="red" variant="subtle" disabled>
                               <IconUserOff size={16} />
