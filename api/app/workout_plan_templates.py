@@ -36,9 +36,10 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, Literal, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -65,6 +66,7 @@ from .models import (
 )
 from .periodization.limits import MAX_PRIORITIZED_PER_SLOT
 from .access import require_permission
+from .access.deps import permissions_for_request
 from .security import Identity
 from .template_safety_validation import (
     build_safety_report,
@@ -109,8 +111,212 @@ router = APIRouter(
 me_router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-templates"])
 
 
+# ---------------------------------------------------------------------------
+# Dono e visibilidade do Modelo (ADR 0011, lote 6A; migracao 116)
+#
+# Decisao do usuario (13/11/2026): o Modelo tem dono (`created_by_user_id`) e
+# visibilidade (`publico`/`privado`; os existentes sao publicos). Escopo de
+# `modelos.treino`:
+# - `todos` (admin): le e escreve qualquer Modelo;
+# - `alunos` (personal trainer): le os publicos e os proprios; escreve so os
+#   proprios. Privado alheio = 404 (nao revela a existencia); publico alheio em
+#   escrita = 403. Para ter uma copia editavel de um publico, duplica.
+# Controle de acesso, nao regra de motor: nada de calculo aqui.
+# ---------------------------------------------------------------------------
+
+TEMPLATE_RESOURCE = "modelos.treino"
+VISIBILITY_PUBLIC = "publico"
+VISIBILITY_PRIVATE = "privado"
+VISIBILITIES = (VISIBILITY_PUBLIC, VISIBILITY_PRIVATE)
+# Copia (duplicar) nasce privada: e a copia de trabalho do ator.
+DUPLICATE_DEFAULT_VISIBILITY = VISIBILITY_PRIVATE
+TEMPLATE_NOT_FOUND = "Modelo de treino não encontrado."
+TEMPLATE_WRITE_FORBIDDEN = {
+    "error": "forbidden",
+    "message": "Só o dono do Modelo ou um administrador pode alterá-lo. Duplique-o para ter uma cópia própria.",
+}
+
+ACCESS_OK = 200
+ACCESS_FORBIDDEN = 403
+ACCESS_NOT_FOUND = 404
+
+
+def template_access_decision(
+    scope: Optional[str],
+    actor_user_id: int,
+    owner_user_id: Optional[int],
+    visibility: Optional[str],
+    *,
+    for_write: bool,
+) -> int:
+    """Decisao pura (sem banco) sobre um Modelo EXISTENTE: 200, 403 ou 404.
+
+    Sem concessao: 403. `todos`: 200. Dono (qualquer escopo): 200. Publico
+    alheio: 200 na leitura, 403 na escrita. Privado alheio (ou visibilidade
+    desconhecida, tratada como privada): 404. Modelo orfao (sem dono) so e do
+    escopo `todos`; publico, ainda e legivel."""
+    from .access import catalog
+
+    if scope is None:
+        return ACCESS_FORBIDDEN
+    if scope == catalog.SCOPE_TODOS:
+        return ACCESS_OK
+    if owner_user_id is not None and int(owner_user_id) == int(actor_user_id):
+        return ACCESS_OK
+    if (visibility or VISIBILITY_PUBLIC) == VISIBILITY_PUBLIC:
+        return ACCESS_FORBIDDEN if for_write else ACCESS_OK
+    return ACCESS_NOT_FOUND
+
+
+def authorize_template(
+    cur,
+    identity: Identity,
+    permissoes: Any,
+    template_id: int,
+    action: str,
+    *,
+    for_write: bool,
+) -> Optional[dict[str, Any]]:
+    """Helper UNICO de acesso a um Modelo por id (lote 6A).
+
+    Le `(id, created_by_user_id, visibility)` do Modelo vivo e aplica
+    `template_access_decision` com o escopo de `modelos.treino`/`action`.
+    Devolve a linha; levanta 404 (inexistente, excluido ou privado alheio) ou
+    403 (sem concessao, ou publico alheio em escrita). Escopo `todos` NAO
+    consulta o banco e devolve None: a rota segue com o 404 de sempre."""
+    from .access import catalog
+    from .access import service as access_service
+
+    scope = access_service.permission_scope(permissoes, TEMPLATE_RESOURCE, action)
+    if scope is None:
+        raise access_service.forbidden()
+    if scope == catalog.SCOPE_TODOS:
+        return None
+    cur.execute(
+        "SELECT id, created_by_user_id, visibility FROM workout_plan_templates "
+        "WHERE id = %s AND deleted_at IS NULL",
+        (int(template_id),),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=TEMPLATE_NOT_FOUND)
+    decision = template_access_decision(
+        scope, identity.user_id, row.get("created_by_user_id"), row.get("visibility"), for_write=for_write
+    )
+    if decision == ACCESS_NOT_FOUND:
+        raise HTTPException(status_code=404, detail=TEMPLATE_NOT_FOUND)
+    if decision == ACCESS_FORBIDDEN:
+        if for_write:
+            raise HTTPException(status_code=403, detail=dict(TEMPLATE_WRITE_FORBIDDEN))
+        raise access_service.forbidden()
+    return dict(row)
+
+
+def template_guard(action: str, *, for_write: bool) -> Callable[..., "TemplateViewer"]:
+    """Dependencia das rotas `/{template_id}`: exige `modelos.treino`/`action`
+    com escopo minimo `alunos` e aplica `authorize_template` (escopo `todos`
+    nao consulta o banco). Devolve `TemplateViewer` (identidade + escopo), que
+    a rota usa para o ator e para filtrar atribuicoes."""
+    permission = require_permission(TEMPLATE_RESOURCE, action, min_scope="alunos")
+
+    def _guard(template_id: int, request: Request, identity: Identity = Depends(permission)) -> TemplateViewer:
+        return _authorize_template_request(request, identity, template_id, action, for_write=for_write)
+
+    _guard.__name__ = f"template_guard__{action}__{'write' if for_write else 'read'}"
+    return _guard
+
+
+def _authorize_template_request(
+    request: Request, identity: Identity, template_id: int, action: str, *, for_write: bool
+) -> "TemplateViewer":
+    """`authorize_template` numa transacao propria (escopo `todos` nao abre
+    transacao nem consulta o banco). Usado pelo `template_guard` e pelas rotas
+    que recebem o `template_id` fora do caminho (ex.: preview de volume)."""
+    from .access import catalog
+    from .access import service as access_service
+
+    permissoes = permissions_for_request(request, identity)
+    scope = access_service.permission_scope(permissoes, TEMPLATE_RESOURCE, action)
+    if scope != catalog.SCOPE_TODOS:
+        with transaction() as conn:
+            with conn.cursor() as cur:
+                authorize_template(cur, identity, permissoes, template_id, action, for_write=for_write)
+    return TemplateViewer(identity, scope)
+
+
+@dataclass(frozen=True)
+class TemplateViewer:
+    """Quem le a lista/os detalhes de gestao: identidade e escopo de `ver`."""
+
+    identity: Identity
+    scope: Optional[str]
+
+    @property
+    def sees_all(self) -> bool:
+        from .access import catalog
+
+        return self.scope == catalog.SCOPE_TODOS
+
+
+def template_viewer(action: str = "ver") -> Callable[..., TemplateViewer]:
+    """Dependencia da listagem: `modelos.treino`/`action` com escopo minimo
+    `alunos`; devolve `TemplateViewer` para o filtro por dono/publico."""
+    permission = require_permission(TEMPLATE_RESOURCE, action, min_scope="alunos")
+
+    def _viewer(request: Request, identity: Identity = Depends(permission)) -> TemplateViewer:
+        from .access import service as access_service
+
+        permissoes = permissions_for_request(request, identity)
+        return TemplateViewer(identity, access_service.permission_scope(permissoes, TEMPLATE_RESOURCE, action))
+
+    _viewer.__name__ = f"template_viewer__{action}"
+    return _viewer
+
+
+def _visible_assignment_user_ids(viewer: Optional[TemplateViewer], user_ids: list[int]) -> Optional[set[int]]:
+    """Com escopo `alunos`, so as atribuicoes do proprio ator e dos alunos com
+    vinculo ativo aparecem (Modelo publico e compartilhado entre treinadores:
+    os alunos de um nao sao do outro). `todos`/sem viewer: None (sem filtro)."""
+    if viewer is None or viewer.sees_all:
+        return None
+    from .access import service as access_service
+
+    actor = int(viewer.identity.user_id)
+    candidates = sorted({int(uid) for uid in user_ids if int(uid) != actor})
+    linked = access_service.active_student_ids(actor, candidates)
+    return {actor} | linked
+
+
+def _filter_assignments(viewer: Optional[TemplateViewer], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = _visible_assignment_user_ids(viewer, [int(r["user_id"]) for r in rows])
+    if allowed is None:
+        return list(rows)
+    return [r for r in rows if int(r["user_id"]) in allowed]
+
+
+def _present(template: Any, viewer: Optional[TemplateViewer]) -> Any:
+    """Helper UNICO de resposta com o Modelo (leitura e escrita): aplica o
+    filtro de `assignments` do `viewer` (escopo `alunos` so ve a si e aos
+    alunos vinculados). Copia rasa: `_get_template` e memorizado na requisicao."""
+    if isinstance(template, dict) and isinstance(viewer, TemplateViewer) and not viewer.sees_all:
+        return dict(template, assignments=_filter_assignments(viewer, template.get("assignments") or []))
+    return template
+
+
+def _resolve_visibility(value: Optional[str], default: str) -> str:
+    return value if value in VISIBILITIES else default
+
+
+class WorkoutPlanTemplateWriteIn(WorkoutPlanTemplateIn):
+    """Corpo de `POST ''` e `PUT /{id}`: o Modelo + `visibility` opcional
+    (lote 6A). Ausente: criar = `publico`; editar = mantem a atual."""
+
+    visibility: Optional[Literal["publico", "privado"]] = None
+
+
 @me_router.get("/hr-zones")
 def get_template_hr_zones(
+    request: Request,
     template_id: Optional[int] = Query(None, ge=1),
     identity: Identity = Depends(require_permission("modelos.treino", "ver")),
 ):
@@ -123,13 +329,24 @@ def get_template_hr_zones(
 
     Fica no `me_router` (sem escopo mínimo `todos`) para o aluno receber as
     próprias zonas, e vem antes de `/{template_id}` (o `me_router` é incluído
-    primeiro em `main.py`)."""
+    primeiro em `main.py`).
+
+    Lote 6A: com `template_id` e escopo `alunos` (personal), o Modelo passa
+    por `authorize_template` de leitura antes do sujeito (privado alheio ou
+    inexistente: 404). Aluno (`proprios`) e admin (`todos`) seguem como antes:
+    o aluno usa a rota com o Modelo atribuido a ele, que nao e dele."""
     from . import athlete_hr_zones
+    from .access import catalog
+    from .access import service as access_service
     from .users import require_session_identity
 
     require_session_identity(identity)
+    permissoes = permissions_for_request(request, identity)
+    scope = access_service.permission_scope(permissoes, TEMPLATE_RESOURCE, "ver")
     with transaction() as conn:
         with conn.cursor() as cur:
+            if template_id is not None and scope == catalog.SCOPE_ALUNOS:
+                authorize_template(cur, identity, permissoes, template_id, "ver", for_write=False)
             subject = athlete_hr_zones.resolve_template_zones_subject(cur, identity, template_id)
             athlete = (
                 athlete_hr_zones.load_athlete_zones(cur, subject.user_id) if subject.user_id is not None else None
@@ -533,10 +750,14 @@ def _current_version_ref(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def _list_templates(is_active: Optional[bool]) -> list[dict[str, Any]]:
+def _list_templates(is_active: Optional[bool], viewer: Optional[TemplateViewer] = None) -> list[dict[str, Any]]:
     # Excluido logicamente (065) nao aparece na lista.
     where = ["t.deleted_at IS NULL"]
     params: list[Any] = []
+    if isinstance(viewer, TemplateViewer) and not viewer.sees_all:
+        # Lote 6A: escopo `alunos` ve os publicos e os proprios.
+        where.append("(t.visibility = %s OR t.created_by_user_id = %s)")
+        params.extend([VISIBILITY_PUBLIC, int(viewer.identity.user_id)])
     if is_active is not None:
         where.append("t.is_active = %s")
         params.append(1 if is_active else 0)
@@ -550,7 +771,7 @@ def _list_templates(is_active: Optional[bool]) -> list[dict[str, Any]]:
                     t.id, t.name, t.description, t.template_type, t.training_type_id,
                     t.volume_mode, t.volume_counting_mode, t.training_goal, t.is_active, t.origin,
                     t.grid_rows, t.grid_cols, t.created_by_user_id, u.username AS created_by_username,
-                    t.created_at, t.updated_at,
+                    t.visibility, t.created_at, t.updated_at,
                     cv.id AS current_version_id, cv.version_number AS current_version_number,
                     COUNT(a.id) AS assignments_count
                 FROM workout_plan_templates t
@@ -564,7 +785,8 @@ def _list_templates(is_active: Optional[bool]) -> list[dict[str, Any]]:
                 {where_sql}
                 GROUP BY t.id, t.name, t.description, t.template_type, t.training_type_id,
                     t.volume_mode, t.volume_counting_mode, t.training_goal, t.is_active, t.origin,
-                    t.grid_rows, t.grid_cols, t.created_by_user_id, u.username, t.created_at, t.updated_at,
+                    t.grid_rows, t.grid_cols, t.created_by_user_id, u.username, t.visibility,
+                    t.created_at, t.updated_at,
                     cv.id, cv.version_number
                 ORDER BY t.created_at DESC
                 """,
@@ -629,7 +851,7 @@ def _read_template(template_id: int, *, as_of: Optional[Any] = None) -> Optional
                     SELECT t.id, t.name, t.description, t.template_type, t.training_type_id, t.volume_mode,
                            t.volume_counting_mode, t.training_goal, t.is_active, t.origin, t.generation_log_id,
                            t.grid_rows, t.grid_cols,
-                           t.created_by_user_id, t.created_at, t.updated_at,
+                           t.created_by_user_id, t.visibility, t.created_at, t.updated_at,
                            cv.id AS current_version_id, cv.version_number AS current_version_number
                     FROM workout_plan_templates t
                     LEFT JOIN workout_plan_template_versions cv ON cv.current_template_id = t.id
@@ -643,7 +865,7 @@ def _read_template(template_id: int, *, as_of: Optional[Any] = None) -> Optional
                     SELECT t.id, t.name, t.description, t.template_type, t.training_type_id, t.volume_mode,
                            t.volume_counting_mode, t.training_goal, t.is_active, t.origin, t.generation_log_id,
                            t.grid_rows, t.grid_cols,
-                           t.created_by_user_id, t.created_at, t.updated_at,
+                           t.created_by_user_id, t.visibility, t.created_at, t.updated_at,
                            cv.id AS current_version_id, cv.version_number AS current_version_number,
                            av.id AS as_of_version_id, av.version_number AS as_of_version_number,
                            av.template_type AS as_of_template_type, av.training_type_id AS as_of_training_type_id,
@@ -759,12 +981,12 @@ def _persisted_methodology_intent(template: Optional[dict[str, Any]]):
     return _methodology_intent(str(declared.get("intent") or "standard"), declared.get("target_group_ids"))
 
 
-@router.get(
-    "",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
-)
-def list_templates(is_active: Optional[bool] = Query(default=None)):
-    return {"items": _list_templates(is_active)}
+@router.get("")
+def list_templates(
+    is_active: Optional[bool] = Query(default=None),
+    viewer: TemplateViewer = Depends(template_viewer("ver")),
+):
+    return {"items": _list_templates(is_active, viewer)}
 
 
 # ---------------------------------------------------------------------------
@@ -776,18 +998,31 @@ def list_templates(is_active: Optional[bool] = Query(default=None)):
 # ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/users-lookup",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
-)
-def users_lookup(search: Optional[str] = Query(default=None)):
-    query = "SELECT id, username, full_name FROM users WHERE is_active = 1"
+@router.get("/users-lookup")
+def users_lookup(
+    search: Optional[str] = Query(default=None),
+    viewer: TemplateViewer = Depends(template_viewer("ver")),
+):
+    """Escopo `todos`: usuarios ativos. Escopo `alunos` (lote 6A): so os
+    alunos com vinculo ativo do ator (mesma regra de `has_active_link`)."""
+    from .access import service as access_service
+
     params: list[Any] = []
-    if search:
-        query += " AND (username LIKE %s OR full_name LIKE %s)"
-        like = f"%{search}%"
-        params.extend([like, like])
-    query += " ORDER BY username ASC LIMIT 50"
+    if isinstance(viewer, TemplateViewer) and not viewer.sees_all:
+        query = access_service.ACTIVE_STUDENTS_LOOKUP_SQL
+        params.append(int(viewer.identity.user_id))
+        if search:
+            query += " AND (s.username LIKE %s OR s.full_name LIKE %s)"
+            like = f"%{search}%"
+            params.extend([like, like])
+        query += " ORDER BY s.username ASC LIMIT 50"
+    else:
+        query = "SELECT id, username, full_name FROM users WHERE is_active = 1"
+        if search:
+            query += " AND (username LIKE %s OR full_name LIKE %s)"
+            like = f"%{search}%"
+            params.extend([like, like])
+        query += " ORDER BY username ASC LIMIT 50"
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -807,15 +1042,12 @@ def _with_draft_flags(template: Optional[dict[str, Any]]) -> Optional[dict[str, 
     return template_drafts.attach_draft_flags(template, stamps)
 
 
-@router.get(
-    "/{template_id}",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
-)
-def get_template(template_id: int):
+@router.get("/{template_id}")
+def get_template(template_id: int, viewer: TemplateViewer = Depends(template_guard("ver", for_write=False))):
     template = _get_template(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Modelo de treino não encontrado.")
-    return _with_draft_flags(_attach_safety_warnings(template))
+    return _with_draft_flags(_attach_safety_warnings(_present(template, viewer)))
 
 
 # ---------------------------------------------------------------------------
@@ -1031,8 +1263,8 @@ def _resolve_origin(cur, payload: WorkoutPlanTemplateIn, user_id: int) -> tuple[
 
 @router.post("")
 def create_template(
-    payload: WorkoutPlanTemplateIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    payload: WorkoutPlanTemplateWriteIn,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="alunos")),
 ):
     _validate_template_payload(payload)
     _validate_technique_codes(payload)
@@ -1050,9 +1282,9 @@ def create_template(
                 INSERT INTO workout_plan_templates (
                     name, description, template_type, training_type_id, volume_mode,
                     is_active, created_by_user_id, origin, generation_log_id,
-                    grid_rows, grid_cols, volume_counting_mode, training_goal
+                    grid_rows, grid_cols, volume_counting_mode, training_goal, visibility
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     payload.name,
@@ -1068,6 +1300,8 @@ def create_template(
                     payload.grid_cols,
                     _resolve_counting_mode(payload, None),
                     _resolve_training_goal(payload, None),
+                    # Lote 6A: dono = ator (acima); sem `visibility`, publico.
+                    _resolve_visibility(getattr(payload, "visibility", None), VISIBILITY_PUBLIC),
                 ),
             )
             template_id = cur.lastrowid
@@ -1100,8 +1334,16 @@ def create_template(
 @router.post("/{template_id}/duplicate")
 def duplicate_template(
     template_id: int,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=False)),
+    visibility: Optional[Literal["publico", "privado"]] = Query(default=None),
 ):
+    """Copia um Modelo LEGIVEL pelo ator (lote 6A: o personal duplica um
+    publico para ter a copia propria). A copia e do ator e nasce `privado`,
+    salvo `?visibility=publico`."""
+    identity = viewer.identity
+    copy_visibility = _resolve_visibility(
+        visibility if isinstance(visibility, str) else None, DUPLICATE_DEFAULT_VISIBILITY
+    )
     original = _get_template(template_id)
     if not original:
         raise HTTPException(status_code=404, detail="Modelo de treino não encontrado.")
@@ -1120,9 +1362,9 @@ def duplicate_template(
                 INSERT INTO workout_plan_templates (
                     name, description, template_type, training_type_id, volume_mode,
                     is_active, created_by_user_id, grid_rows, grid_cols, volume_counting_mode,
-                    source_template_id, training_goal
+                    source_template_id, training_goal, visibility
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     f"{original['name']} (cópia)",
@@ -1139,6 +1381,7 @@ def duplicate_template(
                     # duas contam como o mesmo Modelo (`slot_session_comparison`).
                     template_id,
                     training_goal_of(original),
+                    copy_visibility,
                 ),
             )
             new_template_id = cur.lastrowid
@@ -1154,16 +1397,19 @@ def duplicate_template(
             _copy_methodology_intent(cur, template_id, new_template_id)
 
     return _attach_safety_warnings(
-        _attach_methodology_volume_warnings(_attach_volume_coverage_warnings(_get_template(new_template_id)))
+        _attach_methodology_volume_warnings(
+            _attach_volume_coverage_warnings(_present(_get_template(new_template_id), viewer))
+        )
     )
 
 
 @router.put("/{template_id}")
 def update_template(
     template_id: int,
-    payload: WorkoutPlanTemplateIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    payload: WorkoutPlanTemplateWriteIn,
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
 ):
+    identity = viewer.identity
     existing = _get_template(template_id)
     if not existing:
         # Inexistente ou excluido logicamente (065): nao aceita edicao.
@@ -1181,7 +1427,8 @@ def update_template(
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, template_type, volume_counting_mode, training_goal FROM workout_plan_templates "
+                "SELECT id, template_type, volume_counting_mode, training_goal, visibility "
+                "FROM workout_plan_templates "
                 "WHERE id = %s AND deleted_at IS NULL",
                 (template_id,),
             )
@@ -1191,13 +1438,18 @@ def update_template(
             template_type = _resolve_template_type(payload, current.get("template_type"))
             counting_mode = _resolve_counting_mode(payload, current.get("volume_counting_mode"))
             training_goal = _resolve_training_goal(payload, current.get("training_goal"))
+            # Lote 6A: so dono/admin chegam aqui (guard de escrita); ausente = mantem.
+            visibility = _resolve_visibility(
+                getattr(payload, "visibility", None),
+                _resolve_visibility(current.get("visibility"), VISIBILITY_PUBLIC),
+            )
 
             cur.execute(
                 """
                 UPDATE workout_plan_templates
                 SET name = %s, description = %s, template_type = %s, training_type_id = %s,
                     volume_mode = %s, is_active = %s, grid_rows = %s, grid_cols = %s,
-                    volume_counting_mode = %s, training_goal = %s
+                    volume_counting_mode = %s, training_goal = %s, visibility = %s
                 WHERE id = %s
                 """,
                 (
@@ -1211,6 +1463,7 @@ def update_template(
                     payload.grid_cols,
                     counting_mode,
                     training_goal,
+                    visibility,
                     template_id,
                 ),
             )
@@ -1233,7 +1486,9 @@ def update_template(
 
     resposta = _with_draft_flags(
         _attach_safety_warnings(
-            _attach_methodology_volume_warnings(_attach_volume_coverage_warnings(_get_template(template_id)))
+            _attach_methodology_volume_warnings(
+                _attach_volume_coverage_warnings(_present(_get_template(template_id), viewer))
+            )
         )
     )
     # PR4, aditivo: `false` = nada estrutural mudou e a versao foi mantida (a
@@ -1242,11 +1497,12 @@ def update_template(
     return resposta
 
 
-@router.patch(
-    "/{template_id}/status",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
-)
-def set_template_status(template_id: int, body: dict = Body(...)):
+@router.patch("/{template_id}/status")
+def set_template_status(
+    template_id: int,
+    body: dict = Body(...),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
+):
     is_active = bool(body.get("is_active"))
 
     with transaction() as conn:
@@ -1261,13 +1517,13 @@ def set_template_status(template_id: int, body: dict = Body(...)):
                 (is_active, template_id),
             )
 
-    return _get_template(template_id)
+    return _present(_get_template(template_id), viewer)
 
 
 @router.delete("/{template_id}")
 def delete_template(
     template_id: int,
-    identity: Identity = Depends(require_permission("modelos.treino", "excluir", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("excluir", for_write=True)),
 ):
     """Exclusao LOGICA (065): grava `deleted_at` e encerra as atribuicoes
     vigentes - como a desatribuicao do M23 (`unassigned_at` + quem encerrou),
@@ -1278,6 +1534,7 @@ def delete_template(
 
     Resposta igual a de antes (`{"status", "template_id"}`); 404 para
     inexistente ou ja excluido."""
+    identity = viewer.identity
     from .template_assignments import close_assignments_of_template_for_everyone, db_now
 
     with transaction() as conn:
@@ -1371,7 +1628,7 @@ def _version_item(row: dict[str, Any]) -> dict[str, Any]:
 
 @router.get(
     "/{template_id}/versions",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def list_template_versions(template_id: int, include_archived: bool = Query(default=False)):
     """Historico de versoes, da mais nova para a mais antiga. Lista LEVE:
@@ -1395,7 +1652,7 @@ def _version_item_or_404(cur, template_id: int, version_id: int) -> dict[str, An
 
 @router.post(
     "/{template_id}/versions/{version_id}/archive",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+    dependencies=[Depends(template_guard("editar", for_write=True))],
 )
 def archive_template_version(template_id: int, version_id: int):
     """Oculta do historico uma versao NAO vigente (reversivel; nada e apagado e
@@ -1430,7 +1687,7 @@ def archive_template_version(template_id: int, version_id: int):
 
 @router.post(
     "/{template_id}/versions/{version_id}/unarchive",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+    dependencies=[Depends(template_guard("editar", for_write=True))],
 )
 def unarchive_template_version(template_id: int, version_id: int):
     """Volta a versao arquivada para o historico. Nao arquivada: 200 sem mudar nada.
@@ -1480,7 +1737,7 @@ def _item_names(cur, slots: list[dict[str, Any]]) -> dict[tuple[str, int], str]:
 
 @router.get(
     "/{template_id}/versions/{version_id}",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def get_template_version(template_id: int, version_id: int):
     """Uma versao do historico: cabecalho estrutural e intencao DAQUELA
@@ -1575,7 +1832,7 @@ def _revert_validation_errors(conn, version, slots: list[dict[str, Any]], curren
 def revert_template_version(
     template_id: int,
     version_id: int,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
 ):
     """Reverte o Modelo para a versao `version_id`, gerando a versao n+1 com
     o conteudo dela (`reverted_from_version_id`); nada e apagado.
@@ -1590,6 +1847,7 @@ def revert_template_version(
     O cabecalho vivo (`training_type_id`, `volume_mode`, `template_type`,
     grade) e a intencao da 056 passam a refletir a versao reativada, na mesma
     transacao."""
+    identity = viewer.identity
     with transaction() as conn:
         with conn.cursor() as cur:
             _live_template_or_404(cur, template_id)
@@ -1672,7 +1930,9 @@ def revert_template_version(
 
     resposta = _with_draft_flags(
         _attach_safety_warnings(
-            _attach_methodology_volume_warnings(_attach_volume_coverage_warnings(_get_template(template_id)))
+            _attach_methodology_volume_warnings(
+                _attach_volume_coverage_warnings(_present(_get_template(template_id), viewer))
+            )
         )
     )
     resposta["version_created"] = True
@@ -1697,7 +1957,7 @@ DRAFT_NOT_FOUND = "Este modelo não tem rascunho."
 
 @router.get(
     "/{template_id}/draft",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def get_template_draft(template_id: int):
     with transaction() as conn:
@@ -1713,8 +1973,9 @@ def get_template_draft(template_id: int):
 def save_template_draft(
     template_id: int,
     payload: WorkoutPlanTemplateIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
 ):
+    identity = viewer.identity
     # `generation_log_id` so faz sentido na criacao (POST) - nao vai para o
     # rascunho de um Modelo que ja existe.
     body = payload.model_dump(mode="json", exclude={"generation_log_id"})
@@ -1733,7 +1994,7 @@ def save_template_draft(
 
 @router.delete(
     "/{template_id}/draft",
-    dependencies=[Depends(require_permission("modelos.treino", "excluir", min_scope="todos"))],
+    dependencies=[Depends(template_guard("excluir", for_write=True))],
 )
 def delete_template_draft(template_id: int):
     with transaction() as conn:
@@ -1836,11 +2097,27 @@ def apply_cardio_sessions_to_draft(
 # ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/{template_id}/assignments",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
-)
-def list_assignments(template_id: int, include_history: bool = Query(False)):
+def _authorize_assignment_target(viewer: Any, target_user_id: int) -> None:
+    """Lote 6A: com escopo `alunos`, so atribui/desatribui a si mesmo ou a
+    aluno com vinculo ativo (`has_active_link`); `todos`, a qualquer um. 403
+    `FORBIDDEN_DETAIL` antes de revelar se o usuario existe."""
+    if not isinstance(viewer, TemplateViewer) or viewer.sees_all:
+        return
+    from .access import service as access_service
+
+    actor = int(viewer.identity.user_id)
+    if int(target_user_id) == actor:
+        return
+    if not access_service.has_active_link(actor, int(target_user_id)):
+        raise access_service.forbidden()
+
+
+@router.get("/{template_id}/assignments")
+def list_assignments(
+    template_id: int,
+    include_history: bool = Query(False),
+    viewer: TemplateViewer = Depends(template_guard("ver", for_write=False)),
+):
     """Atribuições VIGENTES deste modelo. `include_history=1` traz também as
     já encerradas, com `unassigned_at` — é assim que a tela de `/modelos-treino`
     mostra "quem seguiu este modelo e até quando" sem poluir a lista do dia a
@@ -1866,14 +2143,16 @@ def list_assignments(template_id: int, include_history: bool = Query(False)):
                 """,
                 (template_id,),
             )
-            return {"items": cur.fetchall()}
+            rows = list(cur.fetchall() or [])
+    # Lote 6A: com `alunos`, so as atribuicoes do ator e dos seus alunos.
+    return {"items": _filter_assignments(viewer if isinstance(viewer, TemplateViewer) else None, rows)}
 
 
 @router.post("/{template_id}/assignments")
 def create_assignment(
     template_id: int,
     payload: WorkoutPlanTemplateAssignIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=False)),
 ):
     """Atribui o modelo ao usuário, ENCERRANDO o modelo que ele seguia (M23).
 
@@ -1888,8 +2167,14 @@ def create_assignment(
 
     409 continua existindo, para um caso só: o modelo pedido JÁ é o vigente.
     Reatribuir o mesmo modelo não é troca nenhuma; encerrar e reabrir a mesma
-    vigência só criaria um corte falso no histórico."""
+    vigência só criaria um corte falso no histórico.
+
+    Lote 6A: o Modelo precisa ser legível pelo ator (guard) e, com escopo
+    `alunos`, o usuário-alvo precisa de vínculo ativo com ele."""
+    identity = viewer.identity
     from .template_assignments import close_active_assignment, db_now, insert_assignment
+
+    _authorize_assignment_target(viewer, payload.user_id)
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -1943,14 +2228,14 @@ def create_assignment(
                     detail="Outra atribuição para este usuário foi feita ao mesmo tempo; tente de novo.",
                 ) from exc
 
-    return list_assignments(template_id)
+    return list_assignments(template_id, False, viewer)
 
 
 @router.delete("/{template_id}/assignments/{user_id}")
 def delete_assignment(
     template_id: int,
     user_id: int,
-    identity: Identity = Depends(require_permission("modelos.treino", "excluir", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("excluir", for_write=False)),
 ):
     """Encerra a vigência — NÃO apaga a linha (M23).
 
@@ -1962,7 +2247,11 @@ def delete_assignment(
     404 quando aquele modelo não é o vigente daquele usuário — inclusive
     quando ele JÁ foi encerrado antes: desatribuir duas vezes não deve criar
     um segundo fim nem reescrever o primeiro."""
+    identity = viewer.identity
     from .template_assignments import close_assignment_of_template, db_now
+
+    # Lote 6A: com `alunos`, so encerra a do proprio ator ou de aluno vinculado.
+    _authorize_assignment_target(viewer, user_id)
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -2485,7 +2774,7 @@ def _item_prior_fatigue(
 
 @router.post(
     "/preview-activation",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="alunos"))],
 )
 def preview_activation(payload: WorkoutPlanTemplatePreviewIn):
     filled_cycle = _build_cycle(payload.slots)
@@ -2683,7 +2972,7 @@ def _copy_methodology_intent(cur, source_template_id: int, new_template_id: int)
 
 @router.get(
     "/{template_id}/methodology-intent",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def get_template_methodology_intent(template_id: int):
     """Intencao declarada do Modelo (`standard` sem declaracao). 404 se o
@@ -2703,7 +2992,7 @@ def get_template_methodology_intent(template_id: int):
 def put_template_methodology_intent(
     template_id: int,
     payload: MethodologyIntentIn,
-    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="todos")),
+    viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
 ):
     """Declara (ou troca) a intencao do Modelo. Substituicao inteira: a linha
     da intencao e reescrita e os alvos anteriores sao apagados antes de gravar
@@ -2712,6 +3001,7 @@ def put_template_methodology_intent(
     A intencao VERSIONA (065): trocar so ela grava a versao n+1 com os slots
     e itens da vigente copiados por `INSERT ... SELECT`. Declarar de novo a
     mesma intencao nao cria versao."""
+    identity = viewer.identity
     targets: list[int] = []
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -2756,7 +3046,7 @@ def put_template_methodology_intent(
 
 @router.post(
     "/cardio-prescription-check",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
+    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="alunos"))],
 )
 def check_cardio_prescription(payload: CardioPrescriptionCheckIn):
     """Valida UM item de cardio em memória pelo dono (M98 C1): o editor mostra
@@ -2767,16 +3057,22 @@ def check_cardio_prescription(payload: CardioPrescriptionCheckIn):
     return {"error": cardio_prescription.validation_error(item)}
 
 
-@router.post(
-    "/methodology-volume-preview",
-    dependencies=[Depends(require_permission("modelos.treino", "editar", min_scope="todos"))],
-)
-def preview_methodology_volume(payload: MethodologyVolumePreviewIn):
+@router.post("/methodology-volume-preview")
+def preview_methodology_volume(
+    payload: MethodologyVolumePreviewIn,
+    request: Request,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="alunos")),
+):
     """Avalia os slots EM MEMORIA (nao salva nada) pela metodologia.
 
     Modo de contagem (073): o do corpo; ausente, o gravado na versao VIGENTE
-    do Modelo `template_id` (uma leitura); senao o default (`primary_only`)."""
+    do Modelo `template_id` (uma leitura); senao o default (`primary_only`).
+    Lote 6A: `template_id` informado passa por `authorize_template` de leitura
+    (escopo diferente de `todos`; privado alheio ou inexistente: 404)."""
     from .intelligence.methodology_volume_service import evaluate_slots, evaluation_to_payload
+
+    if payload.template_id is not None:
+        _authorize_template_request(request, identity, int(payload.template_id), "ver", for_write=False)
 
     counting_mode = payload.volume_counting_mode
     if counting_mode is None and payload.template_id is not None:
@@ -2792,7 +3088,7 @@ def preview_methodology_volume(payload: MethodologyVolumePreviewIn):
 
 @router.get(
     "/{template_id}/methodology-volume",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def get_template_methodology_volume(
     template_id: int,
@@ -2823,7 +3119,7 @@ def get_template_methodology_volume(
 
 @router.get(
     "/{template_id}/methodology-volume/counting-modes",
-    dependencies=[Depends(require_permission("modelos.treino", "ver", min_scope="todos"))],
+    dependencies=[Depends(template_guard("ver", for_write=False))],
 )
 def compare_template_methodology_volume_counting_modes(template_id: int):
     """O Modelo SALVO avaliado em CADA modo de contagem do volume, lado a lado

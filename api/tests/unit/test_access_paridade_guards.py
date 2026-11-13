@@ -802,7 +802,8 @@ CONTRATO_2F3: dict[str, tuple[str, str, str | None]] = {
     f"POST {_CR}": ("cardio", "editar", None),
     f"DELETE {_CR}/{{entry_id}}": ("cardio", "excluir", None),
     f"POST {_CR}/generate": ("ia.cardio", "editar", None),
-    ROTA_APPLY_2F3: ("modelos.treino", "editar", "todos"),
+    # Lote 6A: o apply desceu para `alunos` (posse do Modelo no handler, `authorize_template`).
+    ROTA_APPLY_2F3: ("modelos.treino", "editar", "alunos"),
 }
 
 
@@ -1192,9 +1193,18 @@ _GESTAO_2F1_TODOS = {
     f"DELETE {_TID}/assignments/{{user_id}}": ("modelos.treino", "excluir"),
     f"DELETE {_TID}/draft": ("modelos.treino", "excluir"),
 }
-# rota -> (recurso, acao, escopo minimo) do contrato do 2F-1
+# rota -> (recurso, acao, escopo minimo) do contrato do 2F-1.
+# Lote 6A (ADR 0011, decisao do usuario de 13/11): as 26 de `modelos.treino` desceram o
+# escopo minimo de `todos` para `alunos` (o personal trainer gere os proprios Modelos e le
+# os publicos; a posse e conferida por `authorize_template`, fora deste guard de entrada).
+# A periodizacao por IA (`ia.modelo_periodizacao`) segue em `todos`. A paridade com o retrato
+# continua: o PT (classe `admin_ou_pt`) passa, o regular (`proprios`) segue negado.
+ESCOPO_MINIMO_MODELOS_LOTE6 = "alunos"
 CONTRATO_2F1: dict[str, tuple[str, str, str | None]] = {
-    **{r: (*ra, "todos") for r, ra in _GESTAO_2F1_TODOS.items()},
+    **{
+        r: (*ra, "todos" if r == ROTA_DRAFTS_IA else ESCOPO_MINIMO_MODELOS_LOTE6)
+        for r, ra in _GESTAO_2F1_TODOS.items()
+    },
     **{r: ("modelos.treino", "ver", None) for r in ROTAS_2F1_ME},
 }
 
@@ -1242,18 +1252,26 @@ def test_as_29_rotas_do_2f1_declaram_recurso_acao_e_escopo_minimo_do_contrato():
 def test_helpers_publicos_leem_o_escopo_minimo_das_rotas_do_2f1():
     from app.main import app as main_app
 
-    com_todos = sem_minimo = 0
+    def _calls(dependant):
+        # Lote 6A: as rotas `/{template_id}` declaram a permissao dentro de
+        # `template_guard` (subdependencia), entao a busca desce a arvore.
+        for dep in dependant.dependencies:
+            yield dep.call
+            yield from _calls(dep)
+
+    com_todos = com_alunos = sem_minimo = 0
     for route in _iter_api_routes(main_app):
         if getattr(route.endpoint, "__module__", "") != MODULO_2F1:
             continue
-        calls = [d.call for d in route.dependant.dependencies]
-        for call in [c for c in calls if permission_of(c) is not None]:
+        for call in [c for c in _calls(route.dependant) if permission_of(c) is not None]:
             if min_scope_of(call) == "todos":
                 com_todos += 1
+            elif min_scope_of(call) == ESCOPO_MINIMO_MODELOS_LOTE6:
+                com_alunos += 1
             else:
                 assert min_scope_of(call) is None
                 sem_minimo += 1
-    assert com_todos == 27 and sem_minimo == 2
+    assert com_todos == 1 and com_alunos == 26 and sem_minimo == 2
 
 
 def test_paridade_das_29_rotas_do_2f1_sem_divergencia_de_acesso():
@@ -1292,8 +1310,11 @@ def test_2f1_detector_ignorar_o_escopo_minimo_faria_a_paridade_acusar_o_regular_
         problemas = divergencias(rota, classe, pares)
         assert any("regular" in p and "permite" in p for p in problemas), (rota, problemas)
     assert not scope_covers("proprios", "todos")
+    assert not scope_covers("proprios", ESCOPO_MINIMO_MODELOS_LOTE6)
     assert permission_scope(permissoes_do_papel("regular", "session"), "modelos.treino", "ver") == "proprios"
-    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "ver") == "todos"
+    # Lote 6A: o PT passou de `todos` para `alunos` em `modelos.treino` (decisao do lote 6).
+    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "ver") == "alunos"
+    assert permission_scope(permissoes_do_papel("admin", "session"), "modelos.treino", "ver") == "todos"
 
 
 # ---------------------------------------------------------------------------
@@ -1428,7 +1449,8 @@ def test_a_tabela_do_2f3_tem_os_totais_por_recurso_e_o_escopo_minimo_so_no_sync_
         "cardio": 4, "ia.cardio": 1, "modelos.treino": 1,
     }
     assert {r for r, (_, _, esc) in CONTRATO_2F3.items() if esc} == {ROTA_SYNC_2F3, ROTA_APPLY_2F3}
-    assert all(esc in (None, "todos") for _, _, esc in CONTRATO_2F3.values())
+    assert all(esc in (None, "todos", "alunos") for _, _, esc in CONTRATO_2F3.values())
+    assert CONTRATO_2F3[ROTA_APPLY_2F3][2] == "alunos"  # lote 6A
 
 
 def test_as_42_rotas_do_2f3_declaram_recurso_acao_e_escopo_minimo_do_contrato():
@@ -1482,7 +1504,9 @@ def test_2f3_detector_sem_o_escopo_minimo_o_regular_passaria_no_sync():
     regular = permissoes_do_papel("regular", "session")
     assert permission_scope(regular, "integracoes.intervals", "editar") == "proprios"
     assert permission_scope(regular, "modelos.treino", "editar") is None
-    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "editar") == "todos"
+    # Lote 6A: o PT passou de `todos` para `alunos` (decisao do lote 6); o apply exige `alunos`.
+    assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "editar") == "alunos"
+    assert permission_scope(permissoes_do_papel("admin", "session"), "modelos.treino", "editar") == "todos"
 
 
 # ---------------------------------------------------------------------------

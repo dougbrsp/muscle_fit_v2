@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app import migrate as m
@@ -287,7 +287,10 @@ def test_aplicar_cardio_no_rascunho(seed, db_backend, raw):
     identidade = Identity(user_id=seed["admin"], role="admin", source="session")
     try:
         corpo = cr.CardioApplyIn(dates=["2026-10-28", "2026-10-29"])
-        aplicado = cr.apply_cardio_recommendation(rec_id, corpo, identity=identidade)
+        # Request novo por chamada: o cache de permissões vive em request.state.
+        aplicado = cr.apply_cardio_recommendation(
+            rec_id, corpo, request=Request({"type": "http"}), identity=identidade
+        )
         assert [(r["date"], r["code"]) for r in aplicado["results"]] == [
             ("2026-10-28", "replaced"), ("2026-10-29", "added")
         ], db_backend
@@ -302,7 +305,9 @@ def test_aplicar_cardio_no_rascunho(seed, db_backend, raw):
         novo = payload["slots"][1]["items"][1]
         assert (novo["item_order"], novo["cardio_mode"], novo["hiit_rounds"]) == (2, "hiit", 8)
 
-        de_novo = cr.apply_cardio_recommendation(rec_id, corpo, identity=identidade)
+        de_novo = cr.apply_cardio_recommendation(
+            rec_id, corpo, request=Request({"type": "http"}), identity=identidade
+        )
         assert [r["status"] for r in de_novo["results"]] == ["already_applied", "already_applied"]
         assert de_novo["draft_saved"] is False
         assert api.get(f"/workout-plan-templates/{template_id}/draft").json()["payload"] == payload

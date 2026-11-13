@@ -426,6 +426,23 @@ def rec_db(monkeypatch):
             pass
 
     monkeypatch.setattr(cr, "_connect", lambda: Conn())
+    # Lote 6A: o apply confere a posse do Modelo por `authorize_template` numa
+    # transacao propria. Aqui o duble so registra a chamada (a decisao de
+    # dono/visibilidade e coberta em `test_modelos_dono_visibilidade`).
+    from app import db as app_db
+
+    state["authorize"] = []
+
+    @contextlib.contextmanager
+    def _tx():
+        yield Conn()
+
+    def _authorize(cur, identity, permissoes, template_id, action, *, for_write):
+        state["authorize"].append((identity.user_id, type(permissoes).__name__, template_id, action, for_write))
+        return None
+
+    monkeypatch.setattr(app_db, "transaction", _tx)
+    monkeypatch.setattr(wpt, "authorize_template", _authorize)
     return state
 
 
@@ -472,9 +489,12 @@ def test_aplicar_repassa_as_sessoes_escolhidas(rec_db, monkeypatch):
 
     monkeypatch.setattr(wpt, "apply_cardio_sessions_to_draft", fake_apply)
     out = cr.apply_cardio_recommendation(
-        5, cr.CardioApplyIn(dates=["2026-10-28", "2026-10-28", "2026-12-25"]), identity=_ident(role="personal_trainer")
+        5, cr.CardioApplyIn(dates=["2026-10-28", "2026-10-28", "2026-12-25"]),
+        request=Request({"type": "http"}), identity=_ident(role="personal_trainer"),
     )
     assert calls == [(TEMPLATE_ID, ["2026-10-28"], 1, 1)]
+    # Lote 6A: a posse do Modelo e conferida antes de escrever no rascunho.
+    assert rec_db["authorize"] == [(1, "EffectivePermissions", TEMPLATE_ID, "editar", True)]
     assert [(r["date"], r["code"]) for r in out["results"]] == [
         ("2026-10-28", td.CODE_REPLACED), ("2026-12-25", td.CODE_NOT_IN_RECOMMENDATION)
     ]
@@ -484,17 +504,20 @@ def test_aplicar_repassa_as_sessoes_escolhidas(rec_db, monkeypatch):
 def test_aplicar_recomendacao_antiga_ou_sem_modelo_e_409(rec_db):
     rec_db["row"] = _row(None)
     with pytest.raises(HTTPException) as exc:
-        cr.apply_cardio_recommendation(5, cr.CardioApplyIn(dates=["2026-10-28"]), identity=_ident())
+        cr.apply_cardio_recommendation(5, cr.CardioApplyIn(dates=["2026-10-28"]), request=Request({"type": "http"}), identity=_ident())
     assert exc.value.status_code == 409 and exc.value.detail["reason"] == "legacy_recommendation"
     rec_db["row"] = _row({**_recommendation_json(), "plan": None})
     with pytest.raises(HTTPException) as exc:
-        cr.apply_cardio_recommendation(5, cr.CardioApplyIn(dates=["2026-10-28"]), identity=_ident())
+        cr.apply_cardio_recommendation(5, cr.CardioApplyIn(dates=["2026-10-28"]), request=Request({"type": "http"}), identity=_ident())
     assert exc.value.detail["reason"] == "no_template"
+    assert rec_db["authorize"] == []  # sem Modelo, nada a autorizar
 
 
 def test_aplicar_recomendacao_de_outro_usuario_e_404(rec_db):
     with pytest.raises(HTTPException) as exc:
-        cr.apply_cardio_recommendation(5, cr.CardioApplyIn(dates=["2026-10-28"]), identity=_ident(user_id=2))
+        cr.apply_cardio_recommendation(
+            5, cr.CardioApplyIn(dates=["2026-10-28"]), request=Request({"type": "http"}), identity=_ident(user_id=2)
+        )
     assert exc.value.status_code == 404
 
 

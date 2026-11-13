@@ -186,7 +186,12 @@ class FakeCursor:
         if self.db.missing_table and D in flat:
             raise Exception(f"(1146, \"Table 'musclefit.{D}' doesn't exist\")")
         self._rows, self.rowcount = [], 0
-        if flat.startswith("SELECT id, name, description, is_active FROM workout_plan_templates"):
+        if flat.startswith("SELECT id, created_by_user_id, visibility FROM workout_plan_templates"):
+            # Lote 6A: guard de dono (`authorize_template`); o PT (id 7) e o dono.
+            self._rows = (
+                [{"id": params[0], "created_by_user_id": 7, "visibility": "privado"}] if self.db.live else []
+            )
+        elif flat.startswith("SELECT id, name, description, is_active FROM workout_plan_templates"):
             self._rows = [{"id": params[0], "name": "M", "description": None, "is_active": 1}] if self.db.live else []
         elif flat.startswith(f"INSERT INTO {D}"):
             self.db.draft = {"template_id": params[0], "payload": params[1], "updated_by_user_id": params[2]}
