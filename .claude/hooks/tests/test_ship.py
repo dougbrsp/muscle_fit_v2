@@ -157,6 +157,51 @@ def test_rejects_cyclic_graph(checkout):
     invoke(checkout, "start", payload(checkout, "plan.json", plan), error="ciclo")
 
 
+def test_task_path_accepts_brackets_rejects_wildcards():
+    from ship import task_path
+    assert task_path("app/[id]/page.tsx") and task_path("app/(app)/x/[id]/C.tsx")
+    assert not task_path("app/*/page.tsx") and not task_path("app/?/page.tsx")
+    assert not task_path("../x") and not task_path("/x") and not task_path(".git/config")
+
+
+def test_bracket_path_is_literal_for_git(checkout):
+    for rel in ("app/i/page.tsx", "app/[id]/page.tsx"):
+        (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
+    (checkout / "app/i/page.tsx").write_text("i\n", encoding="utf-8")
+    (checkout / "app/[id]/page.tsx").write_text("antigo\n", encoding="utf-8")
+    subprocess.check_call(["git", "add", "."], cwd=checkout)
+    subprocess.check_call(["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-m", "rotas"],
+                          cwd=checkout)
+    subprocess.check_call(["git", "update-ref", "refs/remotes/origin/develop", "HEAD"], cwd=checkout)
+    tasks = [{"id": "rota", "agent": "docs-curator", "files": ["app/[id]/page.tsx"], "deps": [],
+              "acceptance": "Editar rota."}]
+    invoke(checkout, "start", payload(checkout, "plan.json", {"goal": "Rota", "tasks": tasks}))
+    invoke(checkout, "claim", "rota")
+    (checkout / "app/[id]/page.tsx").write_text("novo\n", encoding="utf-8")
+    (checkout / "app/i/page.tsx").write_text("intruso\n", encoding="utf-8")
+    result = report(checkout, "rota")
+    assert result["phase"] == "blocked" and "app/i/page.tsx" in result["reason"]
+
+
+def test_bracket_path_report_and_review(checkout):
+    (checkout / "app/i").mkdir(parents=True)
+    (checkout / "app/i/page.tsx").write_text("i\n", encoding="utf-8")
+    subprocess.check_call(["git", "add", "."], cwd=checkout)
+    subprocess.check_call(["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-m", "rotas"],
+                          cwd=checkout)
+    subprocess.check_call(["git", "update-ref", "refs/remotes/origin/develop", "HEAD"], cwd=checkout)
+    tasks = [{"id": "rota", "agent": "docs-curator", "files": ["app/[id]/page.tsx"], "deps": [],
+              "acceptance": "Criar rota."}]
+    invoke(checkout, "start", payload(checkout, "plan.json", {"goal": "Rota", "tasks": tasks}))
+    invoke(checkout, "claim", "rota")
+    (checkout / "app/[id]").mkdir(parents=True)
+    (checkout / "app/[id]/page.tsx").write_text("rota\n", encoding="utf-8")
+    assert report(checkout, "rota")["phase"] != "blocked"
+    invoke(checkout, "review")
+    diff = (checkout / ".claude/local-state/ship/review.diff").read_text(encoding="utf-8")
+    assert "app/[id]/page.tsx" in diff and "+rota" in diff and "app/i/page.tsx" not in diff
+
+
 # --- report faz o commit local do submódulo da tarefa ---
 
 IDENT = ["-c", "user.email=test@example.invalid", "-c", "user.name=Harness Test"]
