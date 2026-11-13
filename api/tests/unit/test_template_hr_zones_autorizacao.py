@@ -3,10 +3,10 @@
 `GET /workout-plan-templates/hr-zones?template_id=N` decide no backend DE QUEM
 são as zonas (`athlete_hr_zones.resolve_template_zones_subject`):
 
-- admin: as do usuário logado (mesmo num Modelo atribuído a um aluno);
-- aluno: as próprias, nunca as de terceiros;
-- personal trainer: as do aluno vinculado (atribuição vigente) ao Modelo; sem
-  aluno, com mais de um ou sem Modelo, nenhuma (nunca as do próprio PT).
+- não treinador (admin, aluno): as próprias, nunca as de terceiros;
+- treinador (grupo personal_trainer): as do aluno com vínculo ativo atribuído
+  ao Modelo; sem aluno, com mais de um, sem vínculo ou sem Modelo, nenhuma
+  (nunca as do próprio treinador). Grupo e vínculo simulados por monkeypatch.
 
 Sem banco: cursor roteirizado por SQL.
 Rodar: cd api && python -m pytest tests/unit/test_template_hr_zones_autorizacao.py
@@ -19,10 +19,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import athlete_hr_zones, workout_plan_templates
+from app.access import service as access_service
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import fake_transaction
 
 pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
+_TREINADORES = {2}
+_VINCULOS = {(2, 3), (2, 4)}
 
 # FCmáx manual por usuário: 1 = admin, 2 = PT, 3 = aluno A, 4 = aluno B.
 _USERS = {
@@ -73,6 +77,8 @@ class _Cursor:
 
 def _client(monkeypatch, user_id: int, role: str, source: str = "session"):
     cur = _Cursor()
+    monkeypatch.setattr(access_service, "is_group_member", lambda uid, key: key == "personal_trainer" and uid in _TREINADORES)
+    monkeypatch.setattr(access_service, "has_active_link", lambda t, s: (t, s) in _VINCULOS)
     monkeypatch.setattr(workout_plan_templates, "transaction", fake_transaction(cur))
     app = FastAPI()
     app.include_router(workout_plan_templates.me_router)
@@ -106,6 +112,17 @@ def test_pt_sem_aluno_vinculado_unico_nao_ve_zonas(monkeypatch, params, reason):
     assert not any(sql.startswith("SELECT * FROM users") for sql in cur.executed)
 
 
+def test_pt_sem_vinculo_com_o_atleta_unico_recebe_no_link(monkeypatch):
+    client, cur = _client(monkeypatch, 2, "personal_trainer")
+    monkeypatch.setattr(access_service, "has_active_link", lambda t, s: False)
+    resp = client.get("/workout-plan-templates/hr-zones", params={"template_id": 10})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["subject"]["kind"] == "none" and body["subject"]["reason"] == "no_link"
+    assert body["zones"] == []
+    assert not any(sql.startswith("SELECT * FROM users") for sql in cur.executed)
+
+
 def test_admin_ve_as_proprias_mesmo_no_modelo_do_aluno(monkeypatch):
     client, cur = _client(monkeypatch, 1, "admin")
     resp = client.get("/workout-plan-templates/hr-zones", params={"template_id": 10})
@@ -132,8 +149,10 @@ def test_exige_sessao(monkeypatch):
 
 
 def test_resolucao_do_sujeito_e_a_unica_regra(monkeypatch):
-    """O papel decide; o template_id de um aluno é ignorado para admin e aluno."""
+    """O grupo decide; o template_id de um aluno é ignorado para não treinador."""
     cur = _Cursor()
+    monkeypatch.setattr(access_service, "is_group_member", lambda uid, key: uid in _TREINADORES)
+    monkeypatch.setattr(access_service, "has_active_link", lambda t, s: (t, s) in _VINCULOS)
     admin = Identity(user_id=1, role="admin", source="session")
     assert athlete_hr_zones.resolve_template_zones_subject(cur, admin, 10).user_id == 1
     pt = Identity(user_id=2, role="personal_trainer", source="session")

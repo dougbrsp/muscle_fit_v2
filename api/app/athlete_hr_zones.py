@@ -11,14 +11,13 @@ Duas responsabilidades, nenhuma delas numérica:
    Modelo mostra. É regra de AUTORIZAÇÃO e mora só aqui (decisão do usuário,
    2026-10-26, correção da C1):
 
-   - admin: as zonas do usuário LOGADO;
-   - aluno (`regular`): as próprias, sempre; nunca as de terceiros, mesmo que
-     peça um Modelo de outra pessoa;
-   - personal trainer: as do ALUNO a quem o Modelo está atribuído (vínculo
-     vigente em `workout_plan_template_assignments`). O PT só enxerga aluno
-     vinculado ao Modelo pedido: sem Modelo, sem atribuição vigente ou com
-     mais de um aluno vigente, não há zonas (nunca as do próprio PT, que
-     enganariam a prescrição do aluno).
+   Sem identity.role (RBAC, lote 5A). "Treinador" = membro do grupo
+   personal_trainer (`access.is_group_member`). Treinador: sem Modelo =>
+   none/no_template; sem atribuição => none/no_assignee; vários atribuídos =>
+   none/multiple_assignees; um atribuído sem VÍNCULO ATIVO
+   (`access.has_active_link`) => none/no_link; com vínculo => as do atleta.
+   Nunca as do próprio treinador (enganariam a prescrição do aluno). Não
+   treinador (admin, usuário comum): as próprias.
 
    O frontend não decide nada disso: só pede as zonas do Modelo aberto.
 
@@ -32,12 +31,11 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from . import intervals_store
+from .access import catalog
+from .access import service as access_service
 from .domain import hr_zones
 
 MAX_HR_FIELD = "max_hr_bpm_manual"
-
-ROLE_ADMIN = "admin"
-ROLE_PERSONAL_TRAINER = "personal_trainer"
 
 SUBJECT_SELF = "self"
 SUBJECT_ASSIGNEE = "assignee"
@@ -46,6 +44,7 @@ SUBJECT_NONE = "none"
 REASON_NO_TEMPLATE = "no_template"
 REASON_NO_ASSIGNEE = "no_assignee"
 REASON_MULTIPLE_ASSIGNEES = "multiple_assignees"
+REASON_NO_LINK = "no_link"
 
 _ACTIVE_ASSIGNEES_SQL = """
     SELECT a.user_id, u.full_name, u.username
@@ -97,10 +96,11 @@ def zones_payload(athlete: Optional[hr_zones.AthleteZones]) -> dict[str, Any]:
 
 def resolve_template_zones_subject(cur: Any, identity: Any, template_id: Optional[int]) -> ZonesSubject:
     """De quem são as zonas que o editor do Modelo `template_id` mostra para
-    `identity` (regra no docstring do módulo)."""
-    if identity.role != ROLE_PERSONAL_TRAINER:
-        # Admin e aluno: sempre o usuário logado (aluno nunca vê terceiros).
-        return ZonesSubject(kind=SUBJECT_SELF, user_id=int(identity.user_id))
+    `identity` (regra no docstring do módulo). Sem checar papel: o atleta do
+    Modelo só é o assunto com vínculo ativo (`access.has_active_link`)."""
+    own = ZonesSubject(kind=SUBJECT_SELF, user_id=int(identity.user_id))
+    if not access_service.is_group_member(int(identity.user_id), catalog.GROUP_PERSONAL_TRAINER):
+        return own
     if template_id is None:
         return ZonesSubject(kind=SUBJECT_NONE, reason=REASON_NO_TEMPLATE)
     cur.execute(_ACTIVE_ASSIGNEES_SQL, (int(template_id),))
@@ -110,6 +110,10 @@ def resolve_template_zones_subject(cur: Any, identity: Any, template_id: Optiona
     if len(assignees) > 1:
         return ZonesSubject(kind=SUBJECT_NONE, reason=REASON_MULTIPLE_ASSIGNEES)
     row = assignees[0]
+    if int(row["user_id"]) == int(identity.user_id) or not access_service.has_active_link(
+        int(identity.user_id), int(row["user_id"])
+    ):
+        return ZonesSubject(kind=SUBJECT_NONE, reason=REASON_NO_LINK)
     return ZonesSubject(
         kind=SUBJECT_ASSIGNEE,
         user_id=int(row["user_id"]),
@@ -120,6 +124,7 @@ def resolve_template_zones_subject(cur: Any, identity: Any, template_id: Optiona
 __all__ = [
     "REASON_MULTIPLE_ASSIGNEES",
     "REASON_NO_ASSIGNEE",
+    "REASON_NO_LINK",
     "REASON_NO_TEMPLATE",
     "SUBJECT_ASSIGNEE",
     "SUBJECT_NONE",

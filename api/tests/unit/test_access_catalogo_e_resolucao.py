@@ -31,6 +31,7 @@ APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "111_access_groups_rbac.py"
 MIGRATION_113 = m.DEFAULT_MIGRATIONS_DIR / "113_access_grants_conta_dispositivos.py"
 MIGRATION_114 = m.DEFAULT_MIGRATIONS_DIR / "114_access_grants_modelos_tipos_treino.py"
+MIGRATION_115 = m.DEFAULT_MIGRATIONS_DIR / "115_access_grants_pt_nutricao_alunos.py"
 
 # Grupos que a migracao 111 semeia com is_system=1 (free e comum e vem com 0).
 GRUPOS_DE_SISTEMA = frozenset({"admin", "personal_trainer", "usuario"})
@@ -53,12 +54,21 @@ def _migration_114_globals() -> dict:
     return m.load_python_migration(MIGRATION_114).__globals__
 
 
+@functools.lru_cache(maxsize=1)
+def _migration_115_globals() -> dict:
+    return m.load_python_migration(MIGRATION_115).__globals__
+
+
 def _matriz_acumulada_das_migracoes() -> dict[str, list[tuple[str, str, str]]]:
-    """Retrato congelado acumulado: matriz da 111 + concessoes da 113 e da 114."""
+    """Retrato congelado acumulado: matriz da 111 + concessoes da 113/114 + escopos da 115."""
     acumulado = {g: list(linhas) for g, linhas in _migration_globals()["GRANTS_BY_GROUP"].items()}
     for globais in (_migration_113_globals(), _migration_114_globals()):
         for grupo, linhas in globais["GRANTS_BY_GROUP"].items():
             acumulado[grupo].extend(linhas)
+    # 115: UPDATE de escopo sobre linhas existentes (nao acrescenta pares novos)
+    for grupo, linhas in _migration_115_globals()["GRANTS_BY_GROUP"].items():
+        novos = {(r, a): sc for r, a, sc in linhas}
+        acumulado[grupo] = [(r, a, novos.get((r, a), sc)) for r, a, sc in acumulado[grupo]]
     return acumulado
 
 
@@ -513,7 +523,7 @@ def test_falha_de_banco_nunca_e_401_nem_403(db):
 # ---------------------------------------------------------------------------
 
 
-def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_mais_114():
+def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_114_115():
     migracao = _matriz_acumulada_das_migracoes()
     assert set(migracao) == set(DEFAULT_GRANTS_BY_GROUP)
     for grupo, linhas in DEFAULT_GRANTS_BY_GROUP.items():
@@ -564,6 +574,10 @@ def test_paridade_vocabulario_acoes_escopos_e_grupos():
     g114 = _migration_114_globals()
     assert tuple(g114["ACTIONS"]) == catalog.ACTIONS
     assert set(g114["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    g115 = _migration_115_globals()
+    assert tuple(g115["ACTIONS"]) == catalog.ACTIONS
+    assert set(g115["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    assert set(g115["RESOURCES"]) == set(NUTRICAO_TERCEIROS)
     assert {k for k, *_ in g["SEED_GROUPS"]} == set(DEFAULT_GRANTS_BY_GROUP)
 
 
@@ -647,16 +661,18 @@ def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
     assert usam == []
 
 
+@pytest.mark.parametrize("vinculo", [True, False])
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 @pytest.mark.parametrize("recurso", NUTRICAO_TERCEIROS)
 @pytest.mark.parametrize("acao", ["ver", "editar", "excluir"])
-def test_nutricao_de_terceiros_equivale_a_resolve_target_user(role, recurso, acao):
+def test_nutricao_de_terceiros_admin_todos_pt_so_aluno_com_vinculo_usuario_nunca(
+    db, role, recurso, acao, vinculo
+):
+    """Lote 5A: admin segue em `todos`; o PT so alcanca aluno com vinculo ativo (`alunos`);
+    o usuario comum segue sem terceiros."""
+    db(links={(10, 99): "ativo"} if vinculo else {})
     ident = _ident(user_id=10, role=role)
     perms = _perms_do_papel(role)
-
-    def _guard_de_papel() -> bool:
-        # a regra de antes do lote 2D-1: terceiro exigia admin ou PT (`require_admin_or_pt`)
-        return _guard_passa(guards_antigos.require_admin_or_pt, role)
 
     def _nova_assinatura() -> bool:
         try:
@@ -672,7 +688,12 @@ def test_nutricao_de_terceiros_equivale_a_resolve_target_user(role, recurso, aca
             return False
         return True
 
-    assert _matriz() is _nova_assinatura() is _guard_de_papel(), (role, recurso, acao)
+    esperado = {"admin": True, "personal_trainer": vinculo, "regular": False}[role]
+    assert _matriz() is _nova_assinatura() is esperado, (role, recurso, acao, vinculo)
+    if role == "personal_trainer":
+        assert service.permission_scope(perms, recurso, acao) == "alunos"
+    elif role == "admin":
+        assert service.permission_scope(perms, recurso, acao) == "todos"
 
 
 @pytest.mark.parametrize("recurso", NUTRICAO_TERCEIROS)
@@ -683,8 +704,9 @@ def test_usuario_comum_so_tem_nutricao_proprios(recurso):
 
 
 def test_seguranca_nenhum_grupo_de_sistema_recebe_mais_do_que_os_guards_de_hoje():
-    """Achado de seguranca se falhar: escopo `todos` (terceiros) so onde o guard atual deixa o PT."""
-    permitido_todos_pt = set(MODELOS_PT) | set(NUTRICAO_TERCEIROS)
+    """Achado de seguranca se falhar: escopo `todos` do PT so nos Modelos (ate o lote 6);
+    nutricao de terceiros do PT e `alunos` (lote 5A)."""
+    permitido_todos_pt = set(MODELOS_PT)
     for acao in catalog.ACTIONS:
         pt = {r for r, a, s in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if a == acao and s == "todos"}
         assert pt <= permitido_todos_pt | {"exercicios.catalogo"}, pt - permitido_todos_pt
@@ -692,9 +714,10 @@ def test_seguranca_nenhum_grupo_de_sistema_recebe_mais_do_que_os_guards_de_hoje(
     assert usuario_todos == {("exercicios.catalogo", "ver")}
     for grupo in ("usuario", "personal_trainer"):
         assert not [r for r, _, _ in DEFAULT_GRANTS_BY_GROUP[grupo] if r in ADMIN_ONLY_RESOURCES]
-        assert not [1 for _, _, s in DEFAULT_GRANTS_BY_GROUP[grupo] if s == "alunos"], (
-            "escopo alunos so entra no lote 5 (vinculo)"
-        )
+    assert not [1 for _, _, s in DEFAULT_GRANTS_BY_GROUP["usuario"] if s == "alunos"]
+    assert {(r, a) for r, a, s in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if s == "alunos"} == {
+        (r, a) for r in NUTRICAO_TERCEIROS for a in catalog.ACTIONS
+    }
 
 
 def test_pt_nao_ganha_terceiros_em_recursos_sem_guard_de_terceiro_hoje():

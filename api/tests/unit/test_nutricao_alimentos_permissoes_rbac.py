@@ -395,6 +395,14 @@ def test_preferidos_do_usuario_ciclo_completo_so_na_propria_lista(ctx):
     assert any(f["user_id"] == PT for f in db.favorites)  # a lista de outro usuario ficou intacta
 
 
+def test_lote_5a_alimentos_do_pt_seguem_proprios_so_a_nutricao_de_terceiros_vira_alunos():
+    """A mudanca de escopo do PT (lote 5A) nao alcanca `nutricao.alimentos`."""
+    pt = {(r, a): s for r, a, s in DEFAULT_GRANTS_BY_GROUP["personal_trainer"]}
+    usuario = {(r, a): s for r, a, s in DEFAULT_GRANTS_BY_GROUP["usuario"]}
+    for acao in ("ver", "editar", "excluir"):
+        assert pt[("nutricao.alimentos", acao)] == usuario[("nutricao.alimentos", acao)] == "proprios"
+
+
 # ---------------------------------------------------------------------------
 # (b) admin
 # ---------------------------------------------------------------------------

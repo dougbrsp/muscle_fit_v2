@@ -66,6 +66,10 @@
     {
       "rota": "DELETE /users/{user_id}/photo",
       "motivo": "Foto de perfil: o proprio usuario passa; terceiro exige admin.usuarios/excluir via authorize_self_or_all no handler."
+    },
+    {
+      "rota": "GET /access/my-students",
+      "motivo": "Alunos com vinculo ativo do proprio usuario (filtro pelo user_id da identidade); sem alvo de terceiro."
     }
   ]
 }

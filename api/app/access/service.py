@@ -35,9 +35,17 @@ _GRANTS_SQL = (
     "LEFT JOIN access_group_grants gg ON gg.group_id = g.id "
     "WHERE m.user_id = %s"
 )
+# Vinculo vale so se: ativo, aluno ativo e treinador AINDA membro de `personal_trainer`
+# (tirado do grupo, o vinculo deixa de dar acesso sem ser encerrado). Uma consulta.
 _ACTIVE_LINK_SQL = (
-    "SELECT 1 AS ok FROM trainer_students "
-    "WHERE trainer_user_id = %s AND student_user_id = %s AND status = 'ativo' LIMIT 1"
+    "SELECT 1 AS ok FROM trainer_students ts "
+    "JOIN users s ON s.id = ts.student_user_id "
+    "WHERE ts.trainer_user_id = %s AND ts.student_user_id = %s AND ts.status = 'ativo' "
+    "AND s.is_active = 1 "
+    "AND EXISTS (SELECT 1 FROM user_access_groups uag "
+    "JOIN access_groups g ON g.id = uag.group_id "
+    f"WHERE uag.user_id = ts.trainer_user_id AND g.group_key = '{catalog.GROUP_PERSONAL_TRAINER}') "
+    "LIMIT 1"
 )
 
 
@@ -154,6 +162,18 @@ def require(permissoes: EffectivePermissions, resource: str, action: str) -> Non
         raise forbidden()
 
 
+def is_group_member(user_id: int, group_key: str) -> bool:
+    """O usuario e membro do grupo `group_key` (uma consulta)."""
+    rows = _fetch_rows(
+        "SELECT 1 AS ok FROM user_access_groups uag "
+        "JOIN access_groups g ON g.id = uag.group_id "
+        "WHERE uag.user_id = %s AND g.group_key = %s LIMIT 1",
+        (int(user_id), str(group_key)),
+        "group_member",
+    )
+    return bool(rows)
+
+
 def has_active_link(trainer_user_id: int, student_user_id: int) -> bool:
     rows = _fetch_rows(
         _ACTIVE_LINK_SQL,
@@ -211,9 +231,9 @@ def authorize_target(
     alvo e um usuario informado pelo chamador). `permissoes` evita nova consulta
     quando o chamador ja resolveu (ex.: `require_permission`).
 
-    NAO valida a existencia nem a atividade do usuario alvo: o chamador faz isso
-    (como `nutrition_access.py` faz hoje, com 404). Vinculo ativo com aluno
-    inativo e decisao do lote 5."""
+    NAO valida a existencia do usuario alvo: o chamador faz isso (como
+    `nutrition_access.py` faz hoje, com 404). O vinculo (`has_active_link`) so
+    vale com aluno ativo e treinador ainda no grupo `personal_trainer` (lote 5A)."""
     check_catalog(resource, action)
     target = validate_target_user_id(target_user_id)
     own_id = int(identity.user_id)

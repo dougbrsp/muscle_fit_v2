@@ -28,7 +28,7 @@ from .access import require_permission
 from .access.catalog import ACTION_EDITAR, ACTION_EXCLUIR, ACTION_VER
 from .access.service import FORBIDDEN_DETAIL
 from .db import transaction
-from .security import Identity
+from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/access", tags=["access"])
 
@@ -48,6 +48,14 @@ _STATUS_BY_CODE: dict[str, int] = {
     "invalid_group_data": 422,
     "invalid_pagination": 422,
     "invalid_id": 422,
+    "invalid_link_data": 422,
+    "trainer_not_personal_trainer": 422,
+    "link_self_forbidden": 422,
+    "user_inactive": 409,
+    "link_actor_involved": 409,
+    "link_already_active": 409,
+    "link_already_ended": 409,
+    "link_not_found": 404,
 }
 
 
@@ -78,6 +86,11 @@ class GrantsReplaceIn(_StrictIn):
 
 class MemberAddIn(_StrictIn):
     user_id: int
+
+
+class LinkCreateIn(_StrictIn):
+    trainer_user_id: int
+    student_user_id: int
 
 
 def _reject_device(identity: Identity) -> None:
@@ -209,6 +222,47 @@ def remove_member(
     identity: Identity = Depends(require_permission(RESOURCE_GRUPOS, ACTION_EXCLUIR)),
 ):
     return _ok(identity, lambda cur: access_admin.remove_member(cur, identity.user_id, group_id, user_id))
+
+
+@router.get("/links")
+def list_links(
+    trainer_user_id: Optional[int] = None,
+    student_user_id: Optional[int] = None,
+    status: Optional[str] = None,
+    identity: Identity = Depends(require_permission(RESOURCE_GRUPOS, ACTION_VER)),
+):
+    return _ok(
+        identity,
+        lambda cur: access_admin.list_links(cur, trainer_user_id, student_user_id, status),
+    )
+
+
+@router.post("/links", status_code=201)
+def create_link(
+    body: LinkCreateIn,
+    identity: Identity = Depends(require_permission(RESOURCE_GRUPOS, ACTION_EDITAR)),
+):
+    return _ok(
+        identity,
+        lambda cur: access_admin.create_link(cur, identity.user_id, body.trainer_user_id, body.student_user_id),
+        201,
+    )
+
+
+@router.delete("/links/{link_id}")
+def end_link(
+    link_id: int,
+    identity: Identity = Depends(require_permission(RESOURCE_GRUPOS, ACTION_EXCLUIR)),
+):
+    """Encerra o vinculo (status `encerrado`); 200 com o vinculo atualizado."""
+    return _ok(identity, lambda cur: access_admin.end_link(cur, identity.user_id, link_id))
+
+
+@router.get("/my-students")
+def my_students(identity: Identity = Depends(get_current_identity)):
+    """Alunos com vinculo ativo do proprio usuario. So autenticacao: o filtro e o `user_id` da
+    identidade (nao ha alvo de terceiro)."""
+    return _ok(identity, lambda cur: access_admin.list_my_students(cur, identity.user_id))
 
 
 @router.get("/audit")
