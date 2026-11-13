@@ -75,6 +75,27 @@ SO_AUTENTICACAO_APROVADAS = frozenset(
 )
 
 
+# Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
+# Unico lugar da lista: os testes que exigem "toda rota viva/convertida esta no retrato" aceitam
+# SO estas e continuam falhando para qualquer outra rota nova. O retrato NAO e regenerado.
+# rota -> (recurso, acao). Decisao esperada (credencial de sessao ou token mestre): admin e
+# token mestre permitidos; usuario (`regular`), `personal_trainer` e sem grupo negados. A recusa
+# de dispositivo e feita no handler (403) e coberta por `test_access_admin_rotas.py`.
+ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
+    "GET /access/catalog": ("admin.grupos", "ver"),
+    "GET /access/groups": ("admin.grupos", "ver"),
+    "GET /access/groups/{group_id}": ("admin.grupos", "ver"),
+    "GET /access/groups/{group_id}/members": ("admin.grupos", "ver"),
+    "GET /access/audit": ("admin.grupos", "ver"),
+    "POST /access/groups": ("admin.grupos", "editar"),
+    "PUT /access/groups/{group_id}": ("admin.grupos", "editar"),
+    "PUT /access/groups/{group_id}/grants": ("admin.grupos", "editar"),
+    "POST /access/groups/{group_id}/members": ("admin.grupos", "editar"),
+    "DELETE /access/groups/{group_id}": ("admin.grupos", "excluir"),
+    "DELETE /access/groups/{group_id}/members/{user_id}": ("admin.grupos", "excluir"),
+}
+
+
 def _iter_api_routes(app: FastAPI):
     for route in app.routes:
         expand = getattr(route, "effective_route_contexts", None)
@@ -496,9 +517,11 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # 2F-3 (42 rotas de corpo, check-in, contexto, sono, Intervals e recomendacoes de cardio)
     # fecha o lote 2 (divida 42 -> 0): 310 + 42 = 352. 0 + 6 + 9 + 352 = 367.
     com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
-    assert len(com_permissao) == 352
+    # Lote 3A: + 11 rotas de `/access` (admin.grupos): 352 + 11 = 363. 0 + 6 + 9 + 363 = 378.
+    assert len(com_permissao) == 363
+    assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 367
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 378
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -513,13 +536,35 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 9 and len(com_permissao) == 352
+    assert len(publicas) == 6 and len(so_autenticacao) == 9 and len(com_permissao) == 363
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 367
+    assert len(vivas) == 378
+
+
+def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
+    from app.main import app as main_app
+    from app.main_engines import app as engines_app
+
+    vivas: dict[str, list[tuple[str, str]]] = {}
+    for app in (main_app, engines_app):
+        for route in _iter_api_routes(app):
+            if getattr(route.endpoint, "__module__", "") != "app.access_admin":
+                continue
+            for metodo in route.methods - _IGNORED_METHODS:
+                vivas[f"{metodo} {route.path}"] = declared_permissions(route)
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 11
+    assert set(vivas) == set(ROTAS_NOVAS_POS_RETRATO), sorted(set(vivas) ^ set(ROTAS_NOVAS_POS_RETRATO))
+    acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}
+    for rota, declaradas in vivas.items():
+        esperada = ("admin.grupos", acao_por_metodo[rota.split(" ", 1)[0]])
+        assert declaradas == [esperada], (rota, declaradas)
+        assert ROTAS_NOVAS_POS_RETRATO[rota] == esperada, rota
+    # so existem no app api-core
+    assert not [r for r in enumerate_routes(engines_app) if r in ROTAS_NOVAS_POS_RETRATO]
 
 
 def test_pino_so_autenticacao_acusa_rota_nova_removida_e_duplicada():

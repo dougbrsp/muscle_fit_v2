@@ -79,7 +79,11 @@ from tests.support.access_retrato import (
     classificar_rotas_vivas,
     guard_antigo_permitia,
 )
-from tests.unit.test_access_guarda_cobertura_rotas import _all_project_routes, _iter_api_routes
+from tests.unit.test_access_guarda_cobertura_rotas import (
+    ROTAS_NOVAS_POS_RETRATO,
+    _all_project_routes,
+    _iter_api_routes,
+)
 
 ALLOWLIST_PATH = Path(__file__).with_name("access_cobertura_allowlist.json")
 
@@ -316,7 +320,10 @@ def test_toda_rota_convertida_esta_no_retrato():
     retrato = carregar_retrato()
     removidas = set(retrato["rotas_removidas_depois_do_retrato"])
     com_permissao, so_auth = _rotas_convertidas()
-    faltando = sorted((set(com_permissao) | set(so_auth)) - set(retrato["rotas"]) - removidas)
+    # So as rotas de ROTAS_NOVAS_POS_RETRATO (lote 3A) podem faltar no retrato.
+    faltando = sorted(
+        (set(com_permissao) | set(so_auth)) - set(retrato["rotas"]) - removidas - set(ROTAS_NOVAS_POS_RETRATO)
+    )
     assert not faltando, (
         "Rota convertida fora do retrato dos guards antigos (rota criada depois dele?): "
         f"{faltando}. Regenere o retrato de proposito ou prove a paridade a mao."
@@ -822,7 +829,7 @@ def _convertidas_2c1() -> dict[str, list[tuple[str, str]]]:
     return {
         r: p for r, p in com_permissao.items()
         if r not in ROTAS_2B and r not in d1 and r not in d2 and r not in e and r not in f1 and r not in f2
-        and r not in f3
+        and r not in f3 and r not in ROTAS_NOVAS_POS_RETRATO
     }
 
 
@@ -831,10 +838,11 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_352_rotas_com_permissao_9_do_2b_mais_34_do_2c1_mais_72_do_2c2_mais_39_do_2d1_mais_16_do_2d2_mais_56_do_2e_mais_29_do_2f1_mais_55_do_2f2_mais_42_do_2f3():
+def test_paridade_cobre_as_363_rotas_com_permissao_352_do_retrato_mais_11_do_3a():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 352
-    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 == 352
+    assert len(com_permissao) == 363
+    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 + 11 == 363
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 11 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 55
     assert len(_rotas_2f1()) == 29
@@ -887,7 +895,10 @@ def test_leituras_de_catalogo_sao_permitidas_a_regular(rota):
 def _convertidas_2c2() -> dict[str, list[tuple[str, str]]]:
     com_permissao, _ = _rotas_convertidas()
     retrato = carregar_retrato()["rotas"]
-    return {r: p for r, p in com_permissao.items() if retrato[r]["classe"] == "identidade_no_corpo"}
+    return {
+        r: p for r, p in com_permissao.items()
+        if r not in ROTAS_NOVAS_POS_RETRATO and retrato[r]["classe"] == "identidade_no_corpo"
+    }
 
 
 def test_casos_manuais_sao_exatamente_as_72_rotas_identidade_no_corpo_convertidas():
@@ -1465,3 +1476,33 @@ def test_2f3_detector_sem_o_escopo_minimo_o_regular_passaria_no_sync():
     assert permission_scope(regular, "integracoes.intervals", "editar") == "proprios"
     assert permission_scope(regular, "modelos.treino", "editar") is None
     assert permission_scope(permissoes_do_papel("personal_trainer", "session"), "modelos.treino", "editar") == "todos"
+
+
+# ---------------------------------------------------------------------------
+# Lote 3A: 11 rotas de `/access` (admin.grupos), criadas DEPOIS do retrato congelado.
+# Sem classe antiga no retrato: a decisao nova (classe tratada como `admin`) e conferida contra
+# a decisao esperada. Dispositivo e recusado no handler (403), fora do escopo desta paridade.
+# ---------------------------------------------------------------------------
+
+
+def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_e_sem_grupo_negados():
+    vivas = _declaradas_com_escopo()
+    assert set(ROTAS_NOVAS_POS_RETRATO) <= set(vivas)
+    assert not set(ROTAS_NOVAS_POS_RETRATO) & set(carregar_retrato()["rotas"])
+    sem_grupo = EffectivePermissions()
+    problemas: list[str] = []
+    for rota in sorted(ROTAS_NOVAS_POS_RETRATO):
+        declaradas = vivas[rota]
+        assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
+        esperado = {
+            ("admin", "session"): True,
+            ("admin", "master_token"): True,
+            ("personal_trainer", "session"): False,
+            ("regular", "session"): False,
+        }
+        for (papel, tipo), permitido in esperado.items():
+            if decisao_nova("admin", declaradas, permissoes_do_papel(papel, tipo), tipo) is not permitido:
+                problemas.append(f"{rota} [{papel}/{tipo}]: esperado {'permitido' if permitido else 'negado'}")
+        if decisao_nova("admin", declaradas, sem_grupo, "session") is not False:
+            problemas.append(f"{rota} [sem grupo]: esperado negado")
+    assert not problemas, chr(10).join(problemas)
