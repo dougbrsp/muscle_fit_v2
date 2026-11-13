@@ -38,6 +38,8 @@ Thumbs.db
 .playwright-mcp/
 .claude/settings.local.json
 .claude/worktrees/
+# Saida local do graphify (grafo de conhecimento na raiz, api/ e frontend/)
+graphify-out/
 *.pem
 *.key
 *.p12
