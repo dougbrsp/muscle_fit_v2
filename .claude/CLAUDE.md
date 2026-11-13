@@ -64,6 +64,25 @@ Para a arquitetura detalhada, veja [docs/CODEBASE_MAP.md](../docs/CODEBASE_MAP.m
 - `gh` sempre com `--json`/`--jq`, nunca listagens completas.
 - Não releia arquivos já lidos nem cole saídas longas na resposta.
 
+## Graphify: grafo do código
+
+Regra permanente (pedido do usuário em 2026-11-13). O grafo fica em `graphify-out/graph.json`, unido a partir de `api/graphify-out/` e `frontend/graphify-out/`. São artefatos locais e nunca vão para o Git: o grafo da `api` inclui símbolos do submódulo privado `api/privado`, e o repositório é público. O `.gitignore` da raiz ignora `graphify-out/` em qualquer nível. Se mesmo assim algum aparecer no `git status` ou no `git diff --cached`, pare e tire do stage antes de commitar.
+
+- Antes de responder a qualquer pergunta sobre o código ou de planejar uma alteração, consulte primeiro o grafo: `graphify query "<pergunta>"`, `graphify path "<A>" "<B>"` ou `graphify explain "<nó>"`. Só depois leia os arquivos que o grafo apontar. O grafo vem antes do subagente Explore, que fica para o que o grafo não alcança.
+- O grafo localiza; quem confirma é o código. Ele cobre só o código de `api/` e `frontend/`: SQL, `infra/`, `docs/` e o RAG ficam de fora e seguem por busca direta. Ele pode estar desatualizado, e ausência de aresta não prova ausência de uso.
+- Em decisão de segurança (autenticação, autorização e RBAC, IAM, upload), o grafo nunca substitui a leitura e a busca direta no código.
+- Depois de toda alteração de código em `api/` ou `frontend/`, atualize o grafo antes de encerrar a entrega, assim que o código novo chegar ao checkout principal (`C:\muscle_fit`) por merge, pull ou checkout da branch. Worktree não tem o grafo. O Tech Lead roda estes comandos ele mesmo: eles só escrevem em `graphify-out/`, não são alteração de código e não passam por especialista. Os três comandos não consomem tokens:
+
+```bash
+graphify update ./api
+graphify update ./frontend
+graphify merge-graphs ./api/graphify-out/graph.json ./frontend/graphify-out/graph.json --out graphify-out/graph.json --previous graphify-out/graph.json
+```
+
+- Se `graphify-out/graph.json` não existir, recrie com `graphify extract ./api --code-only` e `graphify extract ./frontend --code-only`, e una com o `merge-graphs` acima sem o `--previous`. Nunca rode `graphify extract` sem `--code-only`: sem a flag, a extração envia o conteúdo dos arquivos a um LLM.
+- `graphify cluster-only` renomeia as comunidades por LLM e consome tokens (cerca de 390 mil na primeira execução). Só rode a pedido do usuário.
+- Nos briefings a agentes, passe os caminhos e símbolos que o grafo apontou em vez de mandar o agente procurar.
+
 
 ## Fluxo do Tech Lead
 
