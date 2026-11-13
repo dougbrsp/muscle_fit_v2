@@ -95,7 +95,29 @@ def test_catalog_view_traz_recursos_acoes_e_escopos():
     assert view["actions"] == list(ACTIONS)
     assert view["scopes"] == list(SCOPES)
     assert {r["key"] for r in view["resources"]} == {r.key for r in RESOURCES}
-    assert set(view["resources"][0]) == {"key", "label", "domain"}
+    assert set(view["resources"][0]) == {"key", "label", "domain", "grantable", "warning"}
+
+
+def test_catalog_view_grantable_coerente_com_validate_grants():
+    by_key = {r["key"]: r for r in svc.catalog_view()["resources"]}
+    for key, res in by_key.items():
+        if key.startswith("admin."):
+            assert res["grantable"] is False
+            with pytest.raises(svc.ResourceNotGrantableError):
+                svc.validate_grants([{"resource": key, "action": "ver", "scope": "proprios"}])
+        else:
+            assert res["grantable"] is True
+            svc.validate_grants([{"resource": key, "action": "ver", "scope": "proprios"}])
+
+
+def test_catalog_view_avisos():
+    view = svc.catalog_view()
+    by_key = {r["key"]: r for r in view["resources"]}
+    assert by_key["ia.cards_exercicio"]["warning"]
+    assert "custo" in by_key["ia.cards_exercicio"]["warning"]
+    assert [k for k, r in by_key.items() if r["warning"]] == ["ia.cards_exercicio"]
+    assert view["scope_warnings"]["todos"]
+    assert set(view["scope_warnings"]) == {"todos"}
 
 
 # --- leitura ---------------------------------------------------------------

@@ -14,6 +14,7 @@ import {
   IconGauge,
   IconHeartRateMonitor,
   IconHistory,
+  IconLockAccess,
   IconMessageChatbot,
   IconMoodSmile,
   IconNotes,
@@ -165,6 +166,14 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
       desktopOnly: true,
     },
     { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: isAdmin },
+    // Matriz de concessões (RBAC por grupos): só admin e só no computador.
+    {
+      href: '/grupos-acessos',
+      label: 'Grupos e acessos',
+      icon: IconLockAccess,
+      visible: isAdmin,
+      desktopOnly: true,
+    },
   ];
 }
 

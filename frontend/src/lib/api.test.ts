@@ -148,6 +148,16 @@ describe('apiFetch — detail estruturado', () => {
     expect(error.message).toBe('Erro ao consultar /exercises/1/card-generations (HTTP 409).');
     expect(error.detail).toEqual(detail);
   });
+
+  it('corpo de topo {error, message} sem detail vira detail estruturado; mensagem genérica não muda', async () => {
+    fetchMock.mockResolvedValue(json(409, { error: 'group_in_use', message: 'Grupo em uso.' }));
+    const result = await settle(api.apiFetch('/access/groups/3', { method: 'DELETE' }));
+    const error = (result as PromiseRejectedResult).reason;
+    expect(error).toBeInstanceOf(api.ApiError);
+    expect(error.status).toBe(409);
+    expect(error.message).toBe('Erro ao consultar /access/groups/3 (HTTP 409).');
+    expect(error.detail).toEqual({ error: 'group_in_use', message: 'Grupo em uso.' });
+  });
 });
 
 describe('apiFetch — erros da troca de senha não deslogam (bug de 2026-10-10)', () => {

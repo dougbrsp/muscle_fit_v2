@@ -109,10 +109,42 @@ RESOURCES_BY_KEY: Final[dict[str, Resource]] = {r.key: r for r in RESOURCES}
 RESOURCE_KEYS: Final[tuple[str, ...]] = tuple(r.key for r in RESOURCES)
 
 
+# Dominios cujos recursos um grupo personalizado nao pode receber.
+NON_GRANTABLE_DOMAINS: Final[frozenset[str]] = frozenset({DOMAIN_ADMIN})
+
+
+def is_grantable(resource_key: str) -> bool:
+    """Recurso concedivel a grupo personalizado (fonte unica; validate_grants consome)."""
+    return RESOURCES_BY_KEY[resource_key].domain not in NON_GRANTABLE_DOMAINS
+
+
+# Avisos por recurso para a tela de grupos (o frontend so exibe o texto).
+RESOURCE_WARNINGS: Final[dict[str, str]] = {
+    "ia.cards_exercicio": (
+        "Cada card gera imagens por IA e tem custo cobrado por card. "
+        "O limite diário é por usuário e igual para todos, não é um limite próprio do grupo."
+    ),
+}
+
+# Avisos por escopo para a tela de grupos.
+SCOPE_WARNINGS: Final[dict[str, str]] = {
+    SCOPE_TODOS: (
+        "O membro passa a ver e alterar os dados de todos os usuários neste recurso."
+    ),
+}
+
+
 def catalog_payload() -> list[dict[str, object]]:
     """Catalogo serializavel para a futura tela de grupos (listado pela API)."""
     return [
-        {"key": r.key, "label": r.label, "domain": r.domain} for r in RESOURCES
+        {
+            "key": r.key,
+            "label": r.label,
+            "domain": r.domain,
+            "grantable": is_grantable(r.key),
+            "warning": RESOURCE_WARNINGS.get(r.key),
+        }
+        for r in RESOURCES
     ]
 
 
