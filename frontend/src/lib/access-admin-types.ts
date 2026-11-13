@@ -47,6 +47,26 @@ export type AccessMember = {
 
 export type AddMemberResponse = { added?: boolean; already_member?: boolean };
 
+export type TrainerLinkStatus = 'ativo' | 'encerrado';
+
+/** Vínculo treinador–aluno (lote 5A, `/access/links`). */
+export type TrainerLink = {
+  id: number;
+  trainer_user_id: number;
+  student_user_id: number;
+  status: TrainerLinkStatus;
+  created_by_user_id: number | null;
+  created_at: string | null;
+  ended_at: string | null;
+  trainer_username: string;
+  trainer_full_name: string | null;
+  student_username: string;
+  student_full_name: string | null;
+};
+
+export type TrainerLinkFilters = { status?: TrainerLinkStatus | null };
+export type CreateTrainerLinkPayload = { trainer_user_id: number; student_user_id: number };
+
 export type AccessAuditEntry = {
   id: number;
   actor_user_id: number | null;

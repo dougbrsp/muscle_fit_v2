@@ -139,9 +139,15 @@ export function alimentosControls(perms: Perms) {
   };
 }
 
-/** Plano nutricional (`/nutrition/plans*`): gerir o plano de outros = nutricao.plano com escopo todos. */
+/**
+ * Plano nutricional (`/nutrition/plans*`): gerir o plano de outros = nutricao.plano/editar
+ * com escopo alunos (que cobre todos). `studentsOnly`: o escopo não chega a todos, então o
+ * seletor lista só os alunos vinculados (o backend decide o acesso de verdade).
+ */
 export function planoNutricionalControls(perms: Perms) {
+  const canManageOthers = can(perms, 'nutricao.plano', 'editar', 'alunos');
   return {
-    canManageOthers: can(perms, 'nutricao.plano', 'editar', 'todos'),
+    canManageOthers,
+    studentsOnly: canManageOthers && !can(perms, 'nutricao.plano', 'editar', 'todos'),
   };
 }

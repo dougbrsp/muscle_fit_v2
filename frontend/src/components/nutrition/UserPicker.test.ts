@@ -12,9 +12,11 @@ import { UserPicker } from './UserPicker';
 // Aqui o componente é MONTADO de verdade (jsdom, efeitos rodando).
 
 const fetchUserLookup = vi.hoisted(() => vi.fn());
+const fetchMyStudents = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/user-lookup', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/user-lookup')>()),
   fetchUserLookup,
+  fetchMyStudents,
 }));
 
 const DOUG = { id: 1, username: 'doug', full_name: 'Doug' };
@@ -66,6 +68,7 @@ afterEach(async () => {
   host.remove();
   vi.restoreAllMocks();
   fetchUserLookup.mockReset();
+  fetchMyStudents.mockReset();
 });
 
 const esperar = async (vezes = 5) => {
@@ -76,12 +79,13 @@ let valorDoPai: number | null = null;
 let onChangeDoPai: ReturnType<typeof vi.fn>;
 
 // Pai real: guarda o `value` em estado, como o PlanManager em producao.
-function Pai({ initial }: { initial: { id: number; label: string } }) {
-  const [value, setValue] = useState<number | null>(initial.id);
+function Pai({ initial, source }: { initial?: { id: number; label: string }; source?: 'all' | 'students' }) {
+  const [value, setValue] = useState<number | null>(initial?.id ?? null);
   valorDoPai = value;
   return createElement(UserPicker, {
     value,
     initial,
+    source,
     onChange: (id: number | null) => {
       onChangeDoPai(id);
       setValue(id);
@@ -89,7 +93,7 @@ function Pai({ initial }: { initial: { id: number; label: string } }) {
   });
 }
 
-async function montar(initial: { id: number; label: string }) {
+async function montar(initial?: { id: number; label: string }, source?: 'all' | 'students') {
   onChangeDoPai = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(host);
@@ -98,7 +102,7 @@ async function montar(initial: { id: number; label: string }) {
       createElement(
         QueryClientProvider,
         { client },
-        createElement(MantineProvider, null, createElement(Pai, { initial })),
+        createElement(MantineProvider, null, createElement(Pai, { initial, source })),
       ),
     );
   });
@@ -206,6 +210,34 @@ describe('UserPicker montado (efeitos rodando)', () => {
     await abrir();
     expect(opcoes()).toEqual(['Ana Souza (ana)', 'Doug']);
     expect(loop()).toEqual([]);
+  });
+
+  it('modo alunos: usa só /access/my-students, filtra a busca no cliente e escolhe', async () => {
+    fetchMyStudents.mockResolvedValue([DOUG, ANA]);
+    await montar(undefined, 'students');
+    expect(fetchUserLookup).not.toHaveBeenCalled();
+    expect(fetchMyStudents).toHaveBeenCalledTimes(1);
+    await abrir();
+    expect(opcoes()).toEqual(['Doug (doug)', 'Ana Souza (ana)']);
+    await digitar('ANA');
+    expect(opcoes()).toEqual(['Ana Souza (ana)']);
+    expect(fetchMyStudents).toHaveBeenCalledTimes(1);
+    await escolher('Ana Souza (ana)');
+    expect(valorDoPai).toBe(2);
+    expect(loop()).toEqual([]);
+  });
+
+  it('modo alunos sem vínculo: avisa e não consulta o lookup geral', async () => {
+    fetchMyStudents.mockResolvedValue([]);
+    await montar(undefined, 'students');
+    expect(host.textContent).toContain('Você não tem alunos vinculados');
+    expect(fetchUserLookup).not.toHaveBeenCalled();
+  });
+
+  it('modo padrão não consulta /access/my-students', async () => {
+    await montar({ id: 1, label: 'Doug' });
+    expect(fetchMyStudents).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain('alunos vinculados');
   });
 
   it('escolhido fora do resultado da busca vai ao início', async () => {
