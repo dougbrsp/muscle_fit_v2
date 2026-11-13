@@ -71,8 +71,13 @@ SO_AUTENTICACAO_APROVADAS = frozenset(
         "POST /users/{user_id}/photo",
         "GET /users/{user_id}/photo",
         "DELETE /users/{user_id}/photo",
+        "GET /access/my-students",
     }
 )
+
+# Rota so-autenticacao criada DEPOIS do retrato (lote 5A, `app.access_admin`): fora do retrato e
+# fora de `ROTAS_NOVAS_POS_RETRATO` (que lista so as com `admin.grupos`).
+ROTA_NOVA_SO_AUTENTICACAO = "GET /access/my-students"
 
 
 # Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
@@ -93,6 +98,10 @@ ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
     "POST /access/groups/{group_id}/members": ("admin.grupos", "editar"),
     "DELETE /access/groups/{group_id}": ("admin.grupos", "excluir"),
     "DELETE /access/groups/{group_id}/members/{user_id}": ("admin.grupos", "excluir"),
+    # Lote 5A: vinculos treinador-aluno.
+    "GET /access/links": ("admin.grupos", "ver"),
+    "POST /access/links": ("admin.grupos", "editar"),
+    "DELETE /access/links/{link_id}": ("admin.grupos", "excluir"),
 }
 
 
@@ -481,8 +490,8 @@ def test_enumeracao_falha_com_mount_dentro_de_router_incluido():
         assert not [r for r in app.routes if isinstance(r, (Mount, Host))]
 
 
-def test_so_autenticacao_sao_exatamente_as_nove_aprovadas():
-    assert len(SO_AUTENTICACAO_APROVADAS) == 9
+def test_so_autenticacao_sao_exatamente_as_dez_aprovadas():
+    assert len(SO_AUTENTICACAO_APROVADAS) == 10
     problemas = check_so_autenticacao_pinada(_load_allowlist())
     assert not problemas, "\n".join(problemas)
 
@@ -504,7 +513,7 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
         "GET /users", "POST /devices/pair", "POST /users", "POST /users/{user_id}/reset-password",
         "PUT /users/{user_id}",
     } | SO_AUTENTICACAO_APROVADAS
-    assert len(convertidas) == 18
+    assert len(convertidas) == 19
     assert not convertidas & set(divida["rotas"])
     # Lotes 2C-1 (34 rotas) e 2C-2 (72 rotas de academias e catalogos) saem da divida;
     # 2D-1 (39 rotas de nutricao: plano, check-in, diario e IA) tambem sai da divida:
@@ -518,10 +527,12 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # fecha o lote 2 (divida 42 -> 0): 310 + 42 = 352. 0 + 6 + 9 + 352 = 367.
     com_permissao = {rota for rota, declaradas in _all_project_routes().items() if declaradas}
     # Lote 3A: + 11 rotas de `/access` (admin.grupos): 352 + 11 = 363. 0 + 6 + 9 + 363 = 378.
-    assert len(com_permissao) == 363
+    # Lote 5A: + 3 rotas de vinculos (admin.grupos) e + 1 so-autenticacao (my-students):
+    # 363 + 3 = 366 com permissao; 0 + 6 + 10 + 366 = 382.
+    assert len(com_permissao) == 366
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 378
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 382
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -536,13 +547,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 9 and len(com_permissao) == 363
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 366
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 378
+    assert len(vivas) == 382
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
@@ -555,8 +566,12 @@ def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_adm
             if getattr(route.endpoint, "__module__", "") != "app.access_admin":
                 continue
             for metodo in route.methods - _IGNORED_METHODS:
-                vivas[f"{metodo} {route.path}"] = declared_permissions(route)
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 11
+                chave = f"{metodo} {route.path}"
+                if chave == ROTA_NOVA_SO_AUTENTICACAO:
+                    assert declared_permissions(route) == []  # so autenticacao, pinada a parte
+                    continue
+                vivas[chave] = declared_permissions(route)
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14
     assert set(vivas) == set(ROTAS_NOVAS_POS_RETRATO), sorted(set(vivas) ^ set(ROTAS_NOVAS_POS_RETRATO))
     acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}
     for rota, declaradas in vivas.items():

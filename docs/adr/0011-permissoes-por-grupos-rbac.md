@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está na `develop` e no DEV desde 13/11/2026 (PR #149, merge `694b5fae`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). **O 4B-2 está em PR para a `develop` (branch `feat/rbac-lote4b2-ia-e-ajustes`), não promovido** (ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Os lotes 5 e 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está na `develop` e no DEV desde 13/11/2026 (PR #149, merge `694b5fae`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). **O 4B-2 está na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido** (ver "Lote 4B-2: IA, abas do iPhone e ajustes"). **O 4B-3 está na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.** **O 4B-4 está na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido** (ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício"). **O lote 5 foi dividido em 5A (backend) e 5B (frontend), com a decisão do usuário de 13/11/2026 sobre o escopo dos dados de aluno. O 5A está em PR para a `develop` (branch `feat/rbac-lote5a-vinculos-api`), não promovido, com a migração 115** (ver "Lote 5A: vínculo treinador–aluno (backend)"). O 5B não foi iniciado. O lote 6 ainda não existe.
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -115,8 +115,10 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
    - **4B-1 Telas de gestão por permissão** (na `develop` e no DEV desde 13/11/2026, PR #149, merge `694b5fae`, não promovido; só frontend estático; sem migração; ver "Lote 4B-1: telas de gestão por permissão").
    - **4B-2 IA, abas do iPhone e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #150, merge `d059f9e0`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`; tratados no 4B-4, exceto os badges).
    - **4B-3 Abas do iPhone offline e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #151, merge `d4e4bb75`, não promovido; só frontend estático; sem migração; ver "Lote 4B-3: abas do iPhone offline e ajustes"). O harness do `/ship` aceita caminhos com colchetes desde o PR #153.
-   - **4B-4 Telas em rotas dinâmicas e resumo por exercício** (em PR para a `develop`, branch `feat/rbac-lote4b4-telas-id`, não promovido; só frontend estático; sem migração; ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício").
-5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
+   - **4B-4 Telas em rotas dinâmicas e resumo por exercício** (na `develop` e no DEV desde 13/11/2026, PR #154, merge `1b3d3d6a`, não promovido; só frontend estático; sem migração; ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício").
+5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários. Dividido em:
+   - **5A Vínculo (backend)** (em PR para a `develop`, branch `feat/rbac-lote5a-vinculos-api`, não promovido; 4 rotas novas em `/access`; `GET /access/my-students`; `has_active_link` exige treinador no grupo `personal_trainer`; zonas de FC com `no_link`; migração 115, que move a nutrição de terceiros do PT para `alunos`; ver "Lote 5A: vínculo treinador–aluno (backend)").
+   - **5B Telas de vínculo e seletor de alunos** (não iniciado): tela de vínculos para o admin, seletor de alunos do PT por `/access/my-students`, `planoNutricionalControls` aceitando alunos e motivo `no_link` nas zonas de FC.
 6. **Modelos**: visibilidade e edição pelo dono.
 
 ### Pré-condições do lote 2
@@ -145,7 +147,7 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - [x] **Coberto no 2F-2** (PR #143, na `develop`): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
 - [x] **Coberto no 2F-3** (PR #144, na `develop`): as 42 rotas de corpo, check-in, integrações Intervals, cardio e geração de recomendação passam a `require_permission`, com escopo mínimo `todos` no sync e no apply. Fecha o lote 2: dívida da guarda de cobertura zerada e `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` removidos de `api/app/security.py` (ver "Lote 2F-3: corpo, integrações, cardio e fecho").
 - [x] **Coberto no 3A** (na `develop` e no DEV, PR #145, não promovido): as 11 rotas de grupos e acessos passam a `require_permission` com `admin.grupos`, sem migração (ver "Lote 3A: API de grupos e acessos").
-- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (lote 5); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lotes 5 e 6); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
+- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (resolvido no 5A, ver "Lote 5A"); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lote 6, porque o lote 5 não troca `modelos.treino`); `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -604,9 +606,9 @@ Total: 10 + 13 + 3 + 1 + 2 = 29 (27 do `router` e 2 do `me_router`). `PATCH` ent
 - **O que a paridade prova:** o guard de entrada das 29 rotas, com o escopo mínimo, para quem está no grupo de sistema do próprio papel.
 - **O que a paridade não prova:** sessão real de personal trainer e de usuário comum; a regra de quem vê qual Modelo (visibilidade por dono fica para o lote 6); grupos personalizados; latência.
 
-**Pendência para os lotes 5 e 6**
+**Pendência para o lote 6**
 
-Quando o PT passar de `todos` para `alunos` em `modelos.treino` (lote 5), o escopo mínimo `todos` bloquearia a gestão de Modelos dele. Isso precisa ser decidido junto com a visibilidade e a edição por dono (lote 6).
+Decisão do usuário (13/11/2026): no lote 5 só os dados de aluno mudam de escopo. `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` do `personal_trainer` passam de `todos` para `alunos` (migração 115). `modelos.treino`, `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` seguem em `todos` até o lote 6. Quando o PT passar de `todos` para `alunos` em `modelos.treino` (lote 6), o escopo mínimo `todos` bloquearia a gestão de Modelos dele. Isso precisa ser decidido junto com a visibilidade e a edição por dono (lote 6).
 
 ### Lote 2F-2: treino
 
@@ -994,7 +996,7 @@ Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem
 
 ### Lote 4B-4: telas em rotas dinâmicas e resumo por exercício
 
-Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]` (o harness do `/ship` passou a aceitar colchetes no PR #153) e a análise por exercício do Modo Treino. Estado: em PR para a `develop` (branch `feat/rbac-lote4b4-telas-id`), não promovido. Só frontend; a condição espelha o `require_permission` da rota chamada, fail-closed (sem `permissions`, o controle some e nada é chamado).
+Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]` (o harness do `/ship` passou a aceitar colchetes no PR #153) e a análise por exercício do Modo Treino. Estado: na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido. Só frontend; a condição espelha o `require_permission` da rota chamada, fail-closed (sem `permissions`, o controle some e nada é chamado).
 
 | Controle | Rota | `require_permission` | Condição na tela |
 |---|---|---|---|
@@ -1011,6 +1013,83 @@ Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]
 
 *Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com as concessões padrão nada muda para admin e personal trainer; usuário comum continua sem gestão de Modelo, e o resumo de exercício e o cardio seguem as concessões de `ia.analise_treinos` e `ia.cardio`. Rollback: reverter o PR e refazer o deploy do frontend.
 
+### Lote 5A: vínculo treinador–aluno (backend)
+
+Primeiro pedaço do lote 5: vínculo treinador–aluno no backend, leitura dos alunos pelo treinador, zonas de FC com o motivo `no_link` e a migração 115. A tela de vínculos e o seletor de alunos do PT são o 5B. Estado: em PR para a `develop` (branch `feat/rbac-lote5a-vinculos-api`), não promovido. Serviço em `api/app/access/admin.py` (`create_link`, `end_link`, `list_links`, `list_my_students`); rotas em `api/app/access_admin.py`; `has_active_link` e `is_group_member` em `api/app/access/service.py`. A tabela `trainer_students` e o UNIQUE `uq_ts_active_pair` vêm da 111 (sem DDL no 5A).
+
+*Decisões do usuário (13/11/2026):*
+- No lote 5 só os dados de aluno mudam de escopo: `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` do `personal_trainer` passam de `todos` para `alunos`. `modelos.treino`, `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` seguem em `todos` até o lote 6.
+
+*Rotas:*
+
+| Método e rota | Permissão | Sucesso |
+|---|---|---|
+| GET `/access/links` (filtros `trainer_user_id`, `student_user_id`, `status` = `ativo` ou `encerrado`) | `admin.grupos` ver | 200, lista do mais recente para o mais antigo |
+| POST `/access/links` (corpo `trainer_user_id` e `student_user_id`; campo extra recusado) | `admin.grupos` editar | 201 |
+| DELETE `/access/links/{link_id}` | `admin.grupos` excluir | 200, com o vínculo `encerrado` |
+| GET `/access/my-students` | só autenticação (`get_current_identity`) | 200, lista `{id, username, full_name}` de alunos ativos |
+
+Todas recusam credencial de dispositivo com 403 `FORBIDDEN_DETAIL`, inclusive `my-students`, porque passam por `_ok` (`_reject_device`). O vínculo devolvido traz `id`, `trainer_user_id`, `student_user_id`, `status`, `created_by_user_id`, `created_at`, `ended_at` e os nomes de treinador e aluno.
+
+*Erros* (formato `{error, message}`):
+- 404: `user_not_found`, `link_not_found`.
+- 409: `link_actor_involved` (o ator é treinador ou aluno, na criação e no encerramento), `link_already_active`, `link_already_ended`, `user_inactive`.
+- 422: `link_self_forbidden`, `trainer_not_personal_trainer`, `invalid_link_data` (status de filtro fora de `ativo`/`encerrado`), `invalid_id`.
+
+*Validações na criação (`create_link`, nesta ordem):*
+1. ator é treinador ou aluno: 409 `link_actor_involved`;
+2. treinador igual ao aluno (auto-vínculo): 422 `link_self_forbidden`;
+3. treinador e aluno existem e estão ativos: 404 `user_not_found` ou 409 `user_inactive`;
+4. treinador é membro de `personal_trainer`: 422 `trainer_not_personal_trainer`;
+5. não há vínculo ativo para o par (`SELECT ... FOR UPDATE`): senão 409 `link_already_active`. Uma corrida entre dois `INSERT` é recusada pelo UNIQUE `uq_ts_active_pair` (coluna gerada `active_flag`, `IF(status = 'ativo', 1, NULL)`, migração 111), e a violação de chave vira o mesmo 409.
+
+*Encerramento (`end_link`):* trava a linha (`FOR UPDATE`); ator envolvido: 409; vínculo já `encerrado`: 409 `link_already_ended`; senão grava `status = encerrado` e `ended_at`. O histórico fica, e o par pode ser vinculado de novo (a unicidade vale só para vínculo `ativo`).
+
+*Auditoria:* `link.create` e `link.end`, gravados na mesma transação, com `target_type = trainer_link`, `target_id` = id do vínculo e `detalhe` com antes e depois (`trainer_user_id`, `student_user_id`, `status`). `GET /access/audit` com `group_id` filtra só `target_type = group`, então esses eventos não aparecem com `group_id`; sem `group_id`, aparecem na listagem geral.
+
+*Vínculo como condição de acesso (`api/app/access/service.py`):*
+- `has_active_link(treinador, aluno)`: uma consulta. Exige vínculo `ativo`, aluno com `is_active = 1` e treinador ainda com linha no grupo `personal_trainer`. Tirar o treinador do grupo faz o vínculo deixar de dar acesso, sem encerrá-lo. Não confere `is_active` do treinador (ver pontos em aberto).
+- `authorize_target` e `can_access_target`: terceiro com escopo `alunos` passa só com `has_active_link`; `todos` passa sem consulta; próprio usuário passa em qualquer escopo.
+
+*Zonas de FC (`api/app/athlete_hr_zones.py`, `resolve_template_zones_subject`; rota `GET /hr-zones` em `api/app/workout_plan_templates.py`, linha 112):* a regra é por grupo, não por papel.
+- Quem não é membro de `personal_trainer`: as próprias zonas (`self`).
+- Treinador, sem `template_id`: `none` com `no_template`. Sem atribuição ativa: `none` com `no_assignee`. Com mais de uma: `none` com `multiple_assignees`.
+- Treinador com uma atribuição: se for o próprio treinador, ou se não houver vínculo ativo, `none` com `no_link` (o auto-atribuído cai em `no_link`, não há motivo separado). Com vínculo, as zonas do aluno (`assignee`).
+- Nunca as zonas do próprio treinador como fallback, porque enganariam a prescrição do aluno.
+
+*Migração 115 (`api/db/migrations/115_access_grants_pt_nutricao_alunos.py`):*
+- Só DML em `access_group_grants`: `UPDATE` de `scope` para `alunos` nas linhas do grupo de sistema `personal_trainer` dos 4 recursos que ainda estão em `todos` (até 12 linhas: 4 recursos × 3 ações). Sem DDL, sem FK, um statement por chamada.
+- `plan` só lê e emite o `UPDATE` apenas se houver linha em `todos`. Idempotente: sobre o estado convergido o plano é vazio, e escopo que o admin já editou (ex.: `proprios`) não é tocado.
+- Sem as tabelas da 111: plano vazio, com log, sem erro. `personal_trainer` ausente como grupo de sistema: `AccessGrantsPtNutricaoAlunosError` antes de qualquer escrita.
+- `up` relê ao fim e levanta o erro se restar linha em `todos`; em `--dry-run` a releitura é pulada.
+- `down` volta para `todos` só essas linhas do `personal_trainer` que estiverem em `alunos`. Em produção o runner não roda `down`.
+- Paridade com o catálogo: `test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_114_115` (`api/tests/unit/test_access_catalogo_e_resolucao.py`). Banco falso: `api/tests/unit/test_migracao_115_concessoes.py`.
+
+*Dívida e ratchet:*
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` 3 → 0 e `arquivos` vazio. Saiu `athlete_hr_zones.py`, o último ponto do lote 2F-3. A guarda de identidade por papel fica zerada fora de `app/access`.
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida 0; `so_autenticacao` 9 → 10 (`GET /access/my-students`, pino em `SO_AUTENTICACAO_APROVADAS`); `ROTAS_NOVAS_POS_RETRATO` 11 → 14 (as 3 rotas de `/access/links`, com `admin.grupos`). Rotas com permissão: 363 → 366. Total de rotas vivas: 378 → 382 (6 públicas + 10 só autenticação + 366 com permissão).
+
+*Testes:*
+- Novos: `api/tests/unit/test_access_vinculos_servico.py`, `api/tests/unit/test_access_vinculos_rotas.py`, `api/tests/unit/test_athlete_hr_zones_vinculo.py` e `api/tests/unit/test_migracao_115_concessoes.py`.
+- Ajustados: `test_access_admin_rotas.py`, `test_access_catalogo_e_resolucao.py`, `test_access_guarda_cobertura_rotas.py`, `test_access_guarda_identity_role.py`, `test_access_paridade_guards.py`, `test_access_retrato_guards.py`, `test_nutrition_access.py`, `test_nutricao_alvo_permissoes_rbac.py`, `test_nutricao_alimentos_permissoes_rbac.py` e `test_template_hr_zones_autorizacao.py`.
+- Integração: `api/tests/integration/dataapi/test_access_vinculos_dataapi.py` (14 testes coletados). Roda só no CI, com o rótulo `ci-completo`.
+- Os retratos (`access_retrato_guards_antigos.json`) não foram regenerados.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta edição do ADR):* unitários de `access`, nutrição, migração, zonas de FC, cardio, sync de intervals, catálogo e rbac: 7403 passed; ruff limpo.
+
+*Não medido:* integração local (não roda localmente; quem roda é o CI); guarda dos motores (timeout no hook local; roda no `verify` e no CI); UI; sessão real de treinador e de aluno; concorrência real entre `FOR UPDATE` e o UNIQUE.
+
+*O que as guardas e os testes provam:* cada rota nova declara `admin.grupos` (ou só autenticação, pinada); a recusa de dispositivo e as validações de `create_link` e `end_link`; `has_active_link` e a regra de zonas com banco falso; a matriz 111 + 113 + 114 + 115 contra o catálogo.
+
+*O que não provam:* o efeito sobre dados reais de produção; a corrida entre dois admins criando o mesmo vínculo; a tela (5B).
+
+*Impacto em produção:* este lote altera produção por dados e por regra de acesso.
+- Migração 115: só DML, até 12 linhas do grupo `personal_trainer` em `access_group_grants`. Sem tabela nova. A promoção exige `RUN_DB_MIGRATIONS=true` na execução da promoção e volta a `false` depois, como nos lotes anteriores.
+- Efeito de comportamento: personal trainers perdem acesso à nutrição de quem não é aluno vinculado (diário, plano, check-in e IA de nutrição de terceiros), que passa a responder 403. O acesso aos próprios dados do PT (`proprios`) não muda. Nenhum usuário comum é afetado.
+- O frontend ainda trata a nutrição de terceiros como `todos` até o 5B. Por isso a tela esconde mais do que o backend permite (fail-closed); nada novo é liberado.
+- Antes da promoção, conferir em produção por leitura autorizada: `SELECT` de membros do grupo `personal_trainer` (esperado 0 em 12/11/2026) e `SELECT` de `trainer_students`.
+- Rollback: reverter o PR não reverte a linha da 115 no banco, porque o `down` está documentado mas produção não roda `down`. Reverter exigiria migração nova. Até lá, o PT segue com `alunos` no banco; sem vínculo ativo, a nutrição de terceiros responde 403.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
@@ -1018,7 +1097,7 @@ Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]
 - **Lote 2 (`authorize_target`)** (id estrito coberto no 2B; desde o 2D-1, `resolve_target_user` delega a `authorize_target`): antes de substituir `resolve_target_user` (`api/app/nutrition_access.py`, linhas 55 a 61, que só faz `int(user_id)`), exigir id inteiro estrito e maior que zero. Hoje 0, negativo, booleano e float truncado passam no escopo `todos`; não concedem acesso indevido, mas o contrato é implícito. **Resolvido no 2D-1**: `resolve_target_user` passou a delegar a `authorize_target`, que valida o id antes de qualquer consulta (400 `invalid_target`); o texto acima descreve o estado anterior ao 2D-1.
 - **Lote 3**: só quem tem `admin.grupos` pode colocar alguém no grupo `admin`; ninguém se coloca nele sozinho; `is_system` e a chave dos grupos de sistema não são editáveis por API (hoje não há trava no banco para isso). **Resolvido no 3A**: só quem tem `admin.grupos` cria e edita grupos e muda membros; grupos de sistema são imutáveis pela API; ninguém altera o próprio vínculo.
 - **Lote 2 (mapeamento rota→permissão)**: as rotas de equipamentos, de vínculo academia–equipamento e de logos em `api/app/gyms.py` são só de admin por checagem dentro do handler (`_require_admin_identity`, a partir da linha 150), enquanto a matriz dá a `usuario` editar e excluir em `treino.academias` com escopo próprio. O mapeamento precisa de um recurso administrativo para essas rotas, para não abri-las a quem tem só `treino.academias`.
-- **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`).
+- **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`). **Resolvido no 5A**: `has_active_link` e `list_my_students` conferem o grupo `personal_trainer` (`api/app/access/service.py`, `api/app/access/admin.py`), e `create_link` recusa quem não é treinador (`TrainerNotPersonalTrainerError`).
 - **Lote 2C–2F (deadlock)**: mapear o erro 1213 para 409 ou 503 (alternativa (a) do 2A) segue pendente; sem ela, um ciclo entre admins vira 5xx.
 - **`GET /training-types` no registro de treino**: `frontend/src/components/NewWorkoutModal.tsx` (linha 89) chama `GET /training-types?is_active=true`. A rota já respondia 403 a usuário comum antes do 2C-1 (guard de router `require_admin_or_pt`) e continua assim. Não foi verificado se o modal trata o erro nem se só aparece para admin e PT.
 - **Lambda engines resolve permissões**: `PUT /analytics/muscle-group-body-map` vive no router de `api/app/dashboard_modules.py`, incluído só em `app.main_engines`. A partir do 2C-1, essa Lambda consulta as tabelas de acesso nessa rota.
@@ -1030,9 +1109,10 @@ Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]
 - **Fixtures de teste**: um teste que faz `TRUNCATE users` com `FOREIGN_KEY_CHECKS = 0` fora do `truncate_tables` do `conftest.py` deixa linhas órfãs em `user_access_groups`, e um id reaproveitado herda o grupo antigo. O `truncate_tables` já limpa `user_access_groups`.
 - **Overrides mortos**: `test_users_fcmax_zonas.py` e `test_users_perfil_antropometrico.py` registram `dependency_overrides[require_admin]`, que não tem efeito nas rotas de `users` convertidas. Eles já trocam `resolve_permissions` por monkeypatch; o override pode sair numa limpeza.
 
-### Ponto em aberto (lote 5)
+### Pontos em aberto (lote 5)
 
-- `trainer_students` não impede hoje que o treinador seja vinculado a si mesmo nem a um aluno inativo. A validação fica no serviço do lote 5, não na tabela nem na tela.
+- `trainer_students` não impede hoje que o treinador seja vinculado a si mesmo nem a um aluno inativo. A validação fica no serviço do lote 5, não na tabela nem na tela. **Resolvido no 5A**: auto-vínculo recusado (422 `link_self_forbidden`), aluno inativo recusado (409 `user_inactive`) e treinador fora de `personal_trainer` recusado (422 `trainer_not_personal_trainer`), todos na criação (`api/app/access/admin.py`, `create_link`). `has_active_link` também exige aluno ativo.
+- **Aberto (5A)**: treinador desativado não encerra os vínculos. A sessão e o dispositivo dele já recebem 401 (`api/app/security.py`, linhas 164 e 295), mas `has_active_link` não confere `is_active` do treinador, e a desativação de `users` não toca `trainer_students`. Se ele for reativado, os vínculos voltam a valer. Decisão pendente: encerrar os vínculos na desativação ou checar `is_active` do treinador em `has_active_link`.
 
 ### Fora do escopo
 

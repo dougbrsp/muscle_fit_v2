@@ -169,7 +169,7 @@ def test_as_11_rotas_existem_com_admin_grupos_e_a_acao_certa():
                 perms.add(p)
         for m in route.methods - {"HEAD", "OPTIONS"}:
             achadas[f"{m} {route.path}"] = perms
-    assert len(achadas) == 11
+    assert len(achadas) == 15
     for metodo, caminho, acao, _, _ in ROTAS:
         modelo = (
             caminho.replace("/groups/5/members/7", "/groups/{group_id}/members/{user_id}")

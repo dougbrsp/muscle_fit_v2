@@ -23,7 +23,7 @@ from app.security import (
 from app.users import require_session_identity
 from tests.support import access_retrato as ar
 from tests.support.guards_antigos import require_admin, require_admin_or_pt
-from tests.unit.test_access_guarda_cobertura_rotas import ROTAS_NOVAS_POS_RETRATO
+from tests.unit.test_access_guarda_cobertura_rotas import ROTA_NOVA_SO_AUTENTICACAO, ROTAS_NOVAS_POS_RETRATO
 
 ALLOWLIST_PATH = Path(__file__).with_name("access_cobertura_allowlist.json")
 COMO_REGENERAR = "Regenerar so de proposito: cd api && python -m tests.support.access_retrato"
@@ -58,7 +58,7 @@ def test_conjunto_de_rotas_do_retrato_e_vivas_mais_removidas(vivas, retrato):
     congeladas = set(retrato["rotas"])
     assert removidas <= congeladas, f"Removidas fora do retrato: {sorted(removidas - congeladas)}"
     # So as rotas listadas em ROTAS_NOVAS_POS_RETRATO (lote 3A) podem faltar no retrato.
-    novas = sorted(set(vivas) - congeladas - set(ROTAS_NOVAS_POS_RETRATO))
+    novas = sorted(set(vivas) - congeladas - set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_SO_AUTENTICACAO})
     sumiram = sorted(congeladas - set(vivas) - removidas)
     assert not novas, (
         f"Rotas novas sem retrato: {novas[:10]}. Rota nova nasce com require_permission; o retrato cobre so o "

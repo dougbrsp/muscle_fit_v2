@@ -208,7 +208,8 @@ _PT_RECURSOS_TODOS: Final[tuple[str, ...]] = (
     "modelos.tipos_treino",
     "ia.modelo_periodizacao",
 )
-# Personal trainer: nutricao de terceiros, `todos` hoje; o lote 5 troca para `alunos`.
+# Personal trainer: nutricao de terceiros, escopo `alunos` desde o lote 5 (migracao 115);
+# os recursos de `_PT_RECURSOS_TODOS` seguem em `todos` ate o lote 6.
 _PT_NUTRICAO_TERCEIROS: Final[tuple[str, ...]] = (
     "nutricao.diario",
     "nutricao.plano",
@@ -233,8 +234,8 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     # Um escopo por (recurso, acao): a linha `todos` do PT substitui a do usuario.
     rows: dict[tuple[str, str], str] = {(r, a): s for r, a, s in _build_usuario()}
     for resource, action, scope in _linhas(
-        _PT_RECURSOS_TODOS + _PT_NUTRICAO_TERCEIROS, ACTIONS, SCOPE_TODOS
-    ):
+        _PT_RECURSOS_TODOS, ACTIONS, SCOPE_TODOS
+    ) + _linhas(_PT_NUTRICAO_TERCEIROS, ACTIONS, SCOPE_ALUNOS):
         rows[(resource, action)] = scope
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 

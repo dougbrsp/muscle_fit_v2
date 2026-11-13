@@ -80,6 +80,7 @@ from tests.support.access_retrato import (
     guard_antigo_permitia,
 )
 from tests.unit.test_access_guarda_cobertura_rotas import (
+    ROTA_NOVA_SO_AUTENTICACAO,
     ROTAS_NOVAS_POS_RETRATO,
     _all_project_routes,
     _iter_api_routes,
@@ -285,6 +286,11 @@ def _so_autenticacao() -> list[str]:
     return [item["rota"] for item in json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))["so_autenticacao"]]
 
 
+def _so_autenticacao_do_retrato() -> list[str]:
+    """so_autenticacao existente no retrato (sem a rota criada depois dele, lote 5A)."""
+    return [r for r in _so_autenticacao() if r != ROTA_NOVA_SO_AUTENTICACAO]
+
+
 def _rotas_convertidas() -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
     todas = _all_project_routes()
     return {r: p for r, p in todas.items() if p}, _so_autenticacao()
@@ -313,7 +319,7 @@ def _declaradas_com_escopo() -> dict[str, list[tuple[str, str, str | None]]]:
 
 def test_ha_rotas_com_permissao_e_so_autenticacao_para_verificar():
     com_permissao, so_auth = _rotas_convertidas()
-    assert len(com_permissao) >= 9 and len(so_auth) == 9
+    assert len(com_permissao) >= 9 and len(so_auth) == 10
 
 
 def test_toda_rota_convertida_esta_no_retrato():
@@ -322,7 +328,8 @@ def test_toda_rota_convertida_esta_no_retrato():
     com_permissao, so_auth = _rotas_convertidas()
     # So as rotas de ROTAS_NOVAS_POS_RETRATO (lote 3A) podem faltar no retrato.
     faltando = sorted(
-        (set(com_permissao) | set(so_auth)) - set(retrato["rotas"]) - removidas - set(ROTAS_NOVAS_POS_RETRATO)
+        (set(com_permissao) | set(so_auth))
+        - set(retrato["rotas"]) - removidas - set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_SO_AUTENTICACAO}
     )
     assert not faltando, (
         "Rota convertida fora do retrato dos guards antigos (rota criada depois dele?): "
@@ -359,7 +366,7 @@ def test_credencial_exigida_pela_classe_do_retrato_continua_na_arvore_da_rota():
 def test_so_autenticacao_tem_a_mesma_classificacao_viva_e_do_retrato():
     retrato = carregar_retrato()["rotas"]
     vivas = classificar_rotas_vivas()
-    for rota in _so_autenticacao():
+    for rota in _so_autenticacao_do_retrato():
         assert rota in retrato, rota
         assert vivas[rota]["classe"] == retrato[rota]["classe"], (
             f"{rota}: guard mudou (retrato {retrato[rota]['classe']!r}, vivo {vivas[rota]['classe']!r}); "
@@ -370,7 +377,7 @@ def test_so_autenticacao_tem_a_mesma_classificacao_viva_e_do_retrato():
 
 def test_so_autenticacao_decide_so_pelo_tipo_de_credencial_do_retrato():
     retrato = carregar_retrato()["rotas"]
-    for rota in _so_autenticacao():
+    for rota in _so_autenticacao_do_retrato():
         classe = retrato[rota]["classe"]
         for papel, tipo in _combinacoes():
             assert guard_antigo_permitia(classe, papel, tipo) == credencial_aceita(classe, tipo), (rota, papel, tipo)
@@ -391,7 +398,7 @@ def test_usuario_sem_grupo_e_negado_em_toda_rota_com_permissao():
 
 def test_usuario_sem_grupo_passa_nas_rotas_so_autenticacao_pelo_guard_antigo():
     retrato = carregar_retrato()["rotas"]
-    for rota in _so_autenticacao():
+    for rota in _so_autenticacao_do_retrato():
         # Sem grupo nao ha consulta de permissao: a decisao e so a da credencial.
         assert guard_antigo_permitia(retrato[rota]["classe"], "regular", "session") is True, rota
 
@@ -838,11 +845,11 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_363_rotas_com_permissao_352_do_retrato_mais_11_do_3a():
+def test_paridade_cobre_as_366_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 363
-    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 + 11 == 363
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 11 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    assert len(com_permissao) == 366
+    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 + 14 == 366
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 55
     assert len(_rotas_2f1()) == 29

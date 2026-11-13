@@ -27,6 +27,7 @@ from typing import Any, Final, Optional
 from ..db import is_duplicate_key_error
 from .catalog import (
     ACTIONS,
+    GROUP_PERSONAL_TRAINER,
     RESOURCES_BY_KEY,
     SCOPE_WARNINGS,
     SCOPES,
@@ -49,6 +50,9 @@ AUDIT_GROUP_GRANTS_REPLACE: Final = "group.grants.replace"
 AUDIT_GROUP_DELETE: Final = "group.delete"
 AUDIT_MEMBER_ADD: Final = "member.add"
 AUDIT_MEMBER_REMOVE: Final = "member.remove"
+TARGET_TRAINER_LINK: Final = "trainer_link"
+AUDIT_LINK_CREATE: Final = "link.create"
+AUDIT_LINK_END: Final = "link.end"
 AUDIT_ACTIONS: Final[tuple[str, ...]] = (
     AUDIT_GROUP_CREATE,
     AUDIT_GROUP_UPDATE,
@@ -56,7 +60,13 @@ AUDIT_ACTIONS: Final[tuple[str, ...]] = (
     AUDIT_GROUP_DELETE,
     AUDIT_MEMBER_ADD,
     AUDIT_MEMBER_REMOVE,
+    AUDIT_LINK_CREATE,
+    AUDIT_LINK_END,
 )
+
+LINK_STATUS_ACTIVE: Final = "ativo"
+LINK_STATUS_ENDED: Final = "encerrado"
+LINK_STATUSES: Final[tuple[str, ...]] = (LINK_STATUS_ACTIVE, LINK_STATUS_ENDED)
 
 
 # --- Erros -----------------------------------------------------------------
@@ -122,6 +132,42 @@ class SelfMembershipForbiddenError(AccessAdminError):
 
 class MembershipNotFoundError(AccessAdminError):
     code = "membership_not_found"
+
+
+class InvalidLinkDataError(AccessAdminError):
+    code = "invalid_link_data"
+
+
+class UserInactiveError(AccessAdminError):
+    code = "user_inactive"
+
+
+class TrainerNotPersonalTrainerError(AccessAdminError):
+    code = "trainer_not_personal_trainer"
+
+
+class LinkSelfForbiddenError(AccessAdminError):
+    """Treinador e aluno sao o mesmo usuario."""
+
+    code = "link_self_forbidden"
+
+
+class LinkActorInvolvedError(AccessAdminError):
+    """Ninguem altera vinculo em que e treinador ou aluno."""
+
+    code = "link_actor_involved"
+
+
+class LinkAlreadyActiveError(AccessAdminError):
+    code = "link_already_active"
+
+
+class LinkNotFoundError(AccessAdminError):
+    code = "link_not_found"
+
+
+class LinkAlreadyEndedError(AccessAdminError):
+    code = "link_already_ended"
 
 
 # --- Auxiliares --------------------------------------------------------------
@@ -521,6 +567,191 @@ def remove_member(cur: Any, actor_user_id: Any, group_id: Any, user_id: Any) -> 
         {"user_id": uid, "antes": {"membro": True}, "depois": {"membro": False}},
     )
     return {"group_id": gid, "user_id": uid, "removed": True}
+
+
+# --- Vinculos treinador-aluno (lote 5A) --------------------------------------------
+
+_LINK_SELECT: Final = (
+    "SELECT ts.id, ts.trainer_user_id, ts.student_user_id, ts.status, ts.created_by_user_id, "
+    "ts.created_at, ts.ended_at, t.username AS trainer_username, t.full_name AS trainer_full_name, "
+    "s.username AS student_username, s.full_name AS student_full_name "
+    "FROM trainer_students ts "
+    "JOIN users t ON t.id = ts.trainer_user_id "
+    "JOIN users s ON s.id = ts.student_user_id"
+)
+
+_LINK_COLUMNS: Final = (
+    "id", "trainer_user_id", "student_user_id", "status", "created_by_user_id", "created_at",
+    "ended_at", "trainer_username", "trainer_full_name", "student_username", "student_full_name",
+)
+
+
+def _link_from_row(row: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {key: _cell(row, key, idx) for idx, key in enumerate(_LINK_COLUMNS)}
+    for key in ("id", "trainer_user_id", "student_user_id"):
+        out[key] = int(out[key])
+    if out["created_by_user_id"] is not None:
+        out["created_by_user_id"] = int(out["created_by_user_id"])
+    return out
+
+
+def _optional_id(value: Any, name: str) -> Optional[int]:
+    return None if value is None else _require_id(value, name)
+
+
+def list_links(
+    cur: Any, trainer_user_id: Any = None, student_user_id: Any = None, status: Any = None
+) -> list[dict[str, Any]]:
+    """Vinculos (mais recentes primeiro), filtraveis por treinador, aluno e status."""
+    trainer = _optional_id(trainer_user_id, "trainer_user_id")
+    student = _optional_id(student_user_id, "student_user_id")
+    if status is not None and status not in LINK_STATUSES:
+        raise InvalidLinkDataError(f"status deve ser um de {', '.join(LINK_STATUSES)}.")
+    where: list[str] = []
+    params: list[Any] = []
+    if trainer is not None:
+        where.append("ts.trainer_user_id = %s")
+        params.append(trainer)
+    if student is not None:
+        where.append("ts.student_user_id = %s")
+        params.append(student)
+    if status is not None:
+        where.append("ts.status = %s")
+        params.append(status)
+    sql = _LINK_SELECT + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY ts.id DESC"
+    cur.execute(sql, tuple(params))
+    return [_link_from_row(row) for row in cur.fetchall() or []]
+
+
+def _load_active_user(cur: Any, user_id: int, label: str) -> None:
+    cur.execute("SELECT id, is_active FROM users WHERE id = %s", (user_id,))
+    row = cur.fetchone()
+    if not row:
+        raise UserNotFoundError(f"Usuário {user_id} ({label}) não encontrado.")
+    if not int(_cell(row, "is_active", 1) or 0):
+        raise UserInactiveError(f"Usuário {user_id} ({label}) está inativo.")
+
+
+def _is_personal_trainer(cur: Any, user_id: int) -> bool:
+    cur.execute(
+        "SELECT 1 AS member FROM user_access_groups uag JOIN access_groups g ON g.id = uag.group_id "
+        "WHERE uag.user_id = %s AND g.group_key = %s",
+        (user_id, GROUP_PERSONAL_TRAINER),
+    )
+    return bool(cur.fetchone())
+
+
+def _link_snapshot(link: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "trainer_user_id": link["trainer_user_id"],
+        "student_user_id": link["student_user_id"],
+        "status": link["status"],
+    }
+
+
+def create_link(cur: Any, actor_user_id: Any, trainer_user_id: Any, student_user_id: Any) -> dict[str, Any]:
+    """Cria o vinculo ativo treinador-aluno (so o admin cria; o ator nao pode ser parte)."""
+    actor = _require_id(actor_user_id, "actor_user_id")
+    trainer = _require_id(trainer_user_id, "trainer_user_id")
+    student = _require_id(student_user_id, "student_user_id")
+    if actor in (trainer, student):
+        raise LinkActorInvolvedError("Você não pode criar um vínculo em que é treinador ou aluno.")
+    if trainer == student:
+        raise LinkSelfForbiddenError("Treinador e aluno devem ser usuários diferentes.")
+    _load_active_user(cur, trainer, "treinador")
+    _load_active_user(cur, student, "aluno")
+    if not _is_personal_trainer(cur, trainer):
+        raise TrainerNotPersonalTrainerError(
+            f"O usuário {trainer} não é membro do grupo {GROUP_PERSONAL_TRAINER}."
+        )
+    cur.execute(
+        "SELECT id FROM trainer_students WHERE trainer_user_id = %s AND student_user_id = %s "
+        "AND status = %s FOR UPDATE",
+        (trainer, student, LINK_STATUS_ACTIVE),
+    )
+    if cur.fetchone():
+        raise LinkAlreadyActiveError("Já existe vínculo ativo entre este treinador e este aluno.")
+    try:
+        cur.execute(
+            "INSERT INTO trainer_students (trainer_user_id, student_user_id, status, created_by_user_id) "
+            "VALUES (%s, %s, %s, %s)",
+            (trainer, student, LINK_STATUS_ACTIVE, actor),
+        )
+    except Exception as exc:  # noqa: BLE001 - so a violacao de UNIQUE vira erro de dominio
+        if is_duplicate_key_error(exc):
+            raise LinkAlreadyActiveError("Já existe vínculo ativo entre este treinador e este aluno.") from exc
+        raise
+    link_id = getattr(cur, "lastrowid", None)
+    if not link_id:
+        cur.execute(
+            "SELECT id FROM trainer_students WHERE trainer_user_id = %s AND student_user_id = %s "
+            "AND status = %s",
+            (trainer, student, LINK_STATUS_ACTIVE),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LinkNotFoundError("Vínculo não encontrado após a criação.")
+        link_id = _cell(row, "id", 0)
+    link_id = int(link_id)
+    cur.execute(_LINK_SELECT + " WHERE ts.id = %s", (link_id,))
+    row = cur.fetchone()
+    if not row:
+        raise LinkNotFoundError(f"Vínculo {link_id} não encontrado após a criação.")
+    link = _link_from_row(row)
+    _audit(
+        cur, actor, AUDIT_LINK_CREATE, TARGET_TRAINER_LINK, link_id,
+        {"antes": None, "depois": _link_snapshot(link)},
+    )
+    return link
+
+
+def end_link(cur: Any, actor_user_id: Any, link_id: Any) -> dict[str, Any]:
+    """Encerra o vinculo ativo (o historico fica; o par pode ser vinculado de novo)."""
+    actor = _require_id(actor_user_id, "actor_user_id")
+    lid = _require_id(link_id, "link_id")
+    cur.execute(_LINK_SELECT + " WHERE ts.id = %s FOR UPDATE", (lid,))
+    row = cur.fetchone()
+    if not row:
+        raise LinkNotFoundError(f"Vínculo {lid} não encontrado.")
+    link = _link_from_row(row)
+    if actor in (link["trainer_user_id"], link["student_user_id"]):
+        raise LinkActorInvolvedError("Você não pode encerrar um vínculo em que é treinador ou aluno.")
+    if link["status"] != LINK_STATUS_ACTIVE:
+        raise LinkAlreadyEndedError(f"O vínculo {lid} já está encerrado.")
+    before = _link_snapshot(link)
+    cur.execute(
+        "UPDATE trainer_students SET status = %s, ended_at = CURRENT_TIMESTAMP WHERE id = %s",
+        (LINK_STATUS_ENDED, lid),
+    )
+    link["status"] = LINK_STATUS_ENDED
+    _audit(
+        cur, actor, AUDIT_LINK_END, TARGET_TRAINER_LINK, lid,
+        {"antes": before, "depois": _link_snapshot(link)},
+    )
+    return link
+
+
+def list_my_students(cur: Any, trainer_user_id: Any) -> list[dict[str, Any]]:
+    """Alunos ativos com vinculo ativo do treinador. Mesma regra de `has_active_link`: o
+    treinador precisa ainda ser membro de `personal_trainer`; sem isso a lista e vazia."""
+    trainer = _require_id(trainer_user_id, "trainer_user_id")
+    if not _is_personal_trainer(cur, trainer):
+        return []
+    cur.execute(
+        "SELECT s.id, s.username, s.full_name FROM trainer_students ts "
+        "JOIN users s ON s.id = ts.student_user_id "
+        "WHERE ts.trainer_user_id = %s AND ts.status = %s AND s.is_active = 1 "
+        "ORDER BY s.full_name, s.username, s.id",
+        (trainer, LINK_STATUS_ACTIVE),
+    )
+    return [
+        {
+            "id": int(_cell(row, "id", 0)),
+            "username": _cell(row, "username", 1),
+            "full_name": _cell(row, "full_name", 2),
+        }
+        for row in cur.fetchall() or []
+    ]
 
 
 # --- Auditoria -----------------------------------------------------------------

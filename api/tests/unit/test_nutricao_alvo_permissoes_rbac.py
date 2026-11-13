@@ -314,14 +314,28 @@ def test_usuario_comum_com_user_id_de_terceiro_recebe_403_antes_do_banco(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("uid,role", [(PT, "personal_trainer"), (ADMIN_ID, "admin")], ids=["pt", "admin"])
+@pytest.mark.parametrize("uid,role,vinculo", [(PT, "personal_trainer", True), (ADMIN_ID, "admin", False)], ids=["pt-com-vinculo", "admin"])
 @pytest.mark.parametrize("nome,metodo,caminho,corpo,onde,recurso,acao", ALVOS, ids=_ids_alvo(ALVOS))
-def test_pt_e_admin_alcancam_terceiro(ctx, uid, role, nome, metodo, caminho, corpo, onde, recurso, acao):
-    client, state, _, nutri, _, _ = ctx
+def test_pt_com_vinculo_e_admin_alcancam_terceiro(ctx, uid, role, vinculo, nome, metodo, caminho, corpo, onde, recurso, acao):
+    """Lote 5A: PT so alcanca aluno com vinculo ativo (escopo `alunos`); admin segue em `todos`."""
+    client, state, perms, nutri, _, _ = ctx
+    if vinculo:
+        perms.vinculos.add((uid, OUTRO))
     _como(state, uid, role)
     resp = _chamar(client, metodo, caminho, corpo, OUTRO, onde)
     assert _liberou(resp), (resp.status_code, resp.text)
     assert _chegou_ao_banco(nome, nutri)
+    assert ((uid, OUTRO) in perms.vinculos_consultados) is vinculo
+
+
+@pytest.mark.parametrize("nome,metodo,caminho,corpo,onde,recurso,acao", ALVOS, ids=_ids_alvo(ALVOS))
+def test_pt_sem_vinculo_ativo_e_negado_em_terceiro(ctx, nome, metodo, caminho, corpo, onde, recurso, acao):
+    client, state, perms, nutri, cota, _ = ctx
+    _como(state, PT, "personal_trainer")
+    _negado(_chamar(client, metodo, caminho, corpo, OUTRO, onde))
+    assert (PT, OUTRO) in perms.vinculos_consultados
+    assert not nutri.conectou
+    assert cota == []
 
 
 # ---------------------------------------------------------------------------
@@ -363,13 +377,29 @@ def test_recurso_por_id_proprio_passa_a_guarda(ctx, nome, metodo, caminho, corpo
 
 
 @pytest.mark.parametrize("nome,metodo,caminho,corpo,status,erro", POR_ID, ids=[p[0] for p in POR_ID])
-def test_recurso_por_id_de_terceiro_pt_e_admin_passam_a_guarda(ctx, nome, metodo, caminho, corpo, status, erro):
-    client, state, _, nutri, _, _ = ctx
+def test_recurso_por_id_de_terceiro_pt_com_vinculo_e_admin_passam_a_guarda(ctx, nome, metodo, caminho, corpo, status, erro):
+    client, state, perms, nutri, _, _ = ctx
+    perms.vinculos.add((PT, OUTRO))
     nutri.dono = OUTRO
     for uid, role in ((PT, "personal_trainer"), (ADMIN_ID, "admin")):
         _como(state, uid, role)
         resp = _chamar(client, metodo, caminho, corpo)
         assert _liberou(resp), (uid, resp.status_code, resp.text)
+
+
+@pytest.mark.parametrize("nome,metodo,caminho,corpo,status,erro", POR_ID, ids=[p[0] for p in POR_ID])
+def test_recurso_por_id_de_terceiro_pt_sem_vinculo_e_negado(ctx, nome, metodo, caminho, corpo, status, erro):
+    client, state, _, nutri, _, publicados = ctx
+    _como(state, PT, "personal_trainer")
+    nutri.dono = OUTRO
+    resp = _chamar(client, metodo, caminho, corpo)
+    assert resp.status_code == status, resp.text
+    if erro is None:
+        assert resp.json()["detail"] == FORBIDDEN_DETAIL
+    else:
+        assert _erro(resp) == erro
+    assert nutri.escritas == []
+    assert publicados == []
 
 
 def test_excluir_refeicao_propria_executa_o_delete(ctx):
@@ -604,11 +634,16 @@ def test_dispositivo_herda_as_concessoes_do_dono_usuario(ctx, nome, metodo, cami
 
 
 @pytest.mark.parametrize("nome,metodo,caminho,corpo,onde,recurso,acao", ALVOS, ids=_ids_alvo(ALVOS))
-def test_dispositivo_de_pt_herda_o_acesso_a_terceiro(ctx, nome, metodo, caminho, corpo, onde, recurso, acao):
+def test_dispositivo_de_pt_herda_o_acesso_a_aluno_com_vinculo(ctx, nome, metodo, caminho, corpo, onde, recurso, acao):
     client, state, perms, nutri, _, _ = ctx
+    perms.vinculos.add((PT, OUTRO))
     _como(state, PT, "personal_trainer", source="device")
     assert _liberou(_chamar(client, metodo, caminho, corpo, OUTRO, onde))
     assert perms.consultas[0] == (PT,)
+    nutri.conectou = False
+    perms.vinculos.clear()
+    _negado(_chamar(client, metodo, caminho, corpo, OUTRO, onde))
+    assert not nutri.conectou
 
 
 def test_dispositivo_sem_grupo_e_negado(ctx):

@@ -43,11 +43,26 @@ def test_o_proprio_usuario_sempre_passa(role):
     assert access.resolve_target_user(_ident(role), perms, PLANO, "ver", 10) == 10
 
 
-@pytest.mark.parametrize("role", ["admin", "personal_trainer"])
-def test_admin_e_pt_veem_qualquer_aluno(role):
-    perms = _perms(role)
-    assert access.resolve_target_user(_ident(role), perms, PLANO, "editar", 99) == 99
-    assert access.resolve_plan_owner(_ident(role), perms, "editar", 99) == 99
+def test_admin_ve_qualquer_aluno():
+    perms = _perms("admin")
+    assert access.resolve_target_user(_ident("admin"), perms, PLANO, "editar", 99) == 99
+    assert access.resolve_plan_owner(_ident("admin"), perms, "editar", 99) == 99
+
+
+@pytest.mark.parametrize("acao", ["ver", "editar", "excluir"])
+def test_pt_so_ve_aluno_com_vinculo_ativo(monkeypatch, acao):
+    """Lote 5A: a matriz do PT e `alunos` na nutricao; `has_active_link` decide."""
+    monkeypatch.setattr(service, "has_active_link", lambda treinador, aluno: (treinador, aluno) == (10, 99))
+    perms = _perms("personal_trainer")
+    ident = _ident("personal_trainer")
+    assert access.resolve_target_user(ident, perms, PLANO, acao, 99) == 99
+    assert access.resolve_plan_owner(ident, perms, acao, 99) == 99
+    with pytest.raises(HTTPException) as erro:
+        access.resolve_target_user(ident, perms, PLANO, acao, 98)
+    assert erro.value.status_code == 403
+    with pytest.raises(HTTPException) as erro:
+        access.resolve_plan_owner(ident, perms, acao, 98)
+    assert erro.value.status_code == 404
 
 
 def test_aluno_comum_nao_ve_terceiro():
