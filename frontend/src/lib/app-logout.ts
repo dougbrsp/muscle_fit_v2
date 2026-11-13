@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, beginLogout, endLogout } from '@/lib/api';
 import { clearSession, confirmLogoutWithUnsyncedOps } from '@/lib/auth';
 
 /**
@@ -12,6 +12,9 @@ export async function logoutAndRedirect(
   queryClient: QueryClient,
 ): Promise<void> {
   if (!(await confirmLogoutWithUnsyncedOps())) return;
+  // Só depois da confirmação (cancelar não deixa a flag ligada). Desligada em
+  // `resetSessionCache` (fronteira do login) ou aqui se `replace` falhar.
+  beginLogout();
   try {
     await apiFetch('/auth/logout', { method: 'POST' });
   } catch {
@@ -28,7 +31,12 @@ export async function logoutAndRedirect(
     } catch {
       // falha ao cancelar nao impede a saida.
     } finally {
-      replace('/');
+      try {
+        replace('/');
+      } catch (error) {
+        endLogout();
+        throw error;
+      }
     }
   }
 }
@@ -40,5 +48,6 @@ export async function logoutAndRedirect(
  * onde nao ha observers de ['current-user'], e no login bem-sucedido.
  */
 export function resetSessionCache(queryClient: QueryClient): void {
+  endLogout();
   queryClient.clear();
 }

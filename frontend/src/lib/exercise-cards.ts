@@ -425,9 +425,11 @@ export type StartGenerationInput = {
 };
 
 /**
- * Estado + ações da seção de card de UM exercício. `canManage` (permissão
- * ia.cards_exercicio/editar, vinda de `exerciseCardsControls`, com a flag ligada) habilita as rotas de geração; sem ele só o card publicado é lido
- * (e só com a flag ligada — desligada, nenhuma chamada sai).
+ * Estado + ações da seção de card de UM exercício. `isAdmin` é nome legado: o
+ * valor é `exerciseCardsControls(perms).canGenerate` (permissão
+ * ia.cards_exercicio/editar de `/auth/me`), não o papel admin. Com a flag
+ * ligada, `canManage` habilita as rotas de geração; sem ele só o card
+ * publicado é lido (e só com a flag ligada — desligada, nenhuma chamada sai).
  */
 export function useExerciseCardManager({
   exerciseId,

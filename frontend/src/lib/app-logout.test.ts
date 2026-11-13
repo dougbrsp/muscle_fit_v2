@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const calls: string[] = [];
 
+let loggingOut = false;
 vi.mock('@/lib/api', () => ({
+  beginLogout: vi.fn(() => {
+    loggingOut = true;
+  }),
+  endLogout: vi.fn(() => {
+    loggingOut = false;
+  }),
   apiFetch: vi.fn(async () => {
     calls.push('apiFetch');
     return {};
@@ -17,7 +24,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 import { apiFetch } from '@/lib/api';
-import { confirmLogoutWithUnsyncedOps } from '@/lib/auth';
+import { clearSession, confirmLogoutWithUnsyncedOps } from '@/lib/auth';
 import { logoutAndRedirect, resetSessionCache } from './app-logout';
 
 const PERMS = { id: 1, permissions: { admin: { ver: 'todos' } } };
@@ -25,6 +32,7 @@ const PERMS = { id: 1, permissions: { admin: { ver: 'todos' } } };
 describe('logoutAndRedirect', () => {
   beforeEach(() => {
     calls.length = 0;
+    loggingOut = false;
     vi.mocked(confirmLogoutWithUnsyncedOps).mockResolvedValue(true);
     vi.mocked(apiFetch).mockImplementation((async () => {
       calls.push('apiFetch');
@@ -110,6 +118,45 @@ describe('logoutAndRedirect', () => {
     expect(replace).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
     expect(qc.getQueryData(['current-user'])).toEqual({ id: 1 });
+  });
+});
+
+describe('flag de saída em andamento', () => {
+  beforeEach(() => {
+    calls.length = 0;
+    loggingOut = false;
+    vi.mocked(confirmLogoutWithUnsyncedOps).mockResolvedValue(true);
+  });
+
+  it('liga depois da confirmação, antes de clearSession, e segue ligada após a navegação', async () => {
+    const qc = new QueryClient();
+    let atClear = false;
+    vi.mocked(clearSession).mockImplementationOnce(async () => {
+      atClear = loggingOut;
+    });
+    await logoutAndRedirect(vi.fn(), qc);
+    expect(atClear).toBe(true);
+    expect(loggingOut).toBe(true);
+  });
+
+  it('cancelar a confirmação não liga a flag', async () => {
+    vi.mocked(confirmLogoutWithUnsyncedOps).mockResolvedValue(false);
+    await logoutAndRedirect(vi.fn(), new QueryClient());
+    expect(loggingOut).toBe(false);
+  });
+
+  it('replace que lança desliga a flag', async () => {
+    const replace = vi.fn(() => {
+      throw new Error('nav');
+    });
+    await expect(logoutAndRedirect(replace, new QueryClient())).rejects.toThrow('nav');
+    expect(loggingOut).toBe(false);
+  });
+
+  it('resetSessionCache (fronteira do login) desliga a flag', () => {
+    loggingOut = true;
+    resetSessionCache(new QueryClient());
+    expect(loggingOut).toBe(false);
   });
 });
 

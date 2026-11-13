@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
 import { formatDateOrDash } from '@/lib/format';
+import { useIaControls } from '@/lib/screen-permissions';
 import { planTypeDisplayLabel, type ApiListResponse, type WorkoutPlanListItem } from '@/lib/workout-plans-types';
 import { BottomSheet, ListGroup, ListRow, ResponsiveDataList, ScreenHeader, StickyAction } from '../../ui';
 import { SheetButton, useBackToClose } from './common';
@@ -20,6 +21,7 @@ function errorMessage(error: unknown, fallback: string): string {
 export function PlanosScreen() {
   const qc = useQueryClient();
   const router = useRouter();
+  const ia = useIaControls();
   const [generating, setGenerating] = useState(false);
   // Depois de aberta, a visão de geração fica montada (escondida) para voltar não perder o rascunho.
   const [generationStarted, setGenerationStarted] = useState(false);
@@ -51,7 +53,7 @@ export function PlanosScreen() {
 
   return (
     <>
-      {generationStarted ? (
+      {generationStarted && ia.canGerarPlano ? (
         <div hidden={!generating}>
           <GerarPlanoView onClose={() => setGenerating(false)} />
         </div>
@@ -83,14 +85,16 @@ export function PlanosScreen() {
         )}
       />
 
-      <StickyAction>
-        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => {
-            setGenerationStarted(true);
-            setGenerating(true);
-          }}>
-          Gerar novo plano
-        </Button>
-      </StickyAction>
+      {ia.canGerarPlano ? (
+        <StickyAction>
+          <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => {
+              setGenerationStarted(true);
+              setGenerating(true);
+            }}>
+            Gerar novo plano
+          </Button>
+        </StickyAction>
+      ) : null}
 
       <BottomSheet
         opened={selected !== null}

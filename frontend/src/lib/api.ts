@@ -30,6 +30,26 @@ export class ApiError extends Error {
 // completo), o que já reinicia o módulo e este flag.
 let redirectingToLogin = false;
 
+// Saída (logout) confirmada em andamento: entre `clearSession` e o fim da
+// navegação, um 401 de poller (refetchInterval) não pode recarregar a página com
+// `?next=<tela antiga>`; o logout já navega para `/`. Ligada por
+// `logoutAndRedirect` (`app-logout.ts`) e desligada na fronteira do login
+// (`resetSessionCache`, na montagem do LoginClient e no login bem-sucedido) ou
+// se a saída falhar.
+let loggingOut = false;
+
+export function beginLogout(): void {
+  loggingOut = true;
+}
+
+export function endLogout(): void {
+  loggingOut = false;
+}
+
+export function isLoggingOut(): boolean {
+  return loggingOut;
+}
+
 /**
  * Sanitiza o destino pós-login: só aceita caminho interno (SEG-18, ver
  * `src/lib/safe-path.ts`) e ignora a própria raiz. Ver `LoginClient.tsx` para
@@ -53,6 +73,8 @@ function redirectToPasswordChange(): void {
 
 function redirectToLogin(): void {
   if (typeof window === 'undefined') return;
+  // Logout em andamento: ele mesmo navega para `/`; nada de `next=` da tela antiga.
+  if (loggingOut) return;
   // Já na tela de login (`/`): um 401 aqui é o caso normal de "ainda não
   // logado" (ex.: checagem de sessão ao montar a página) — nada a fazer,
   // evita um reload desnecessário da própria página de login.

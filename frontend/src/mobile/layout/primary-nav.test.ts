@@ -13,6 +13,7 @@ import {
   buildEvolucaoGroups,
   buildMoreGroups,
   evolucaoHubHref,
+  visiblePrimaryTabs,
   isEvolucaoHub,
   isMoreActive,
   isPrimaryTabActive,
@@ -95,7 +96,7 @@ describe('D1: seções só do computador', () => {
     it(`nenhuma das 6 aparece na navegação mobile (${nome})`, () => {
       const main = mobileMainNavItems(vis);
       const groups = buildMoreGroups(visibleMainNavItems(vis));
-      const evolucao = buildEvolucaoGroups(visibleMainNavItems(vis));
+      const evolucao = buildEvolucaoGroups(visibleMainNavItems(vis), vis);
       const shown = new Set<string>([
         ...main.map((i) => i.href),
         ...groups.flatMap((g) => g.items.map((i) => i.href)),
@@ -149,7 +150,7 @@ describe('toda rota mobile continua alcançável', () => {
       const reachable = new Set<string>([
         ...PRIMARY_TABS.map((t) => t.href.split('?')[0].replace(/\/$/, '')),
         ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
-        ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+        ...buildEvolucaoGroups(visible, vis).flatMap((g) => g.items.map((i) => i.href)),
       ]);
       for (const item of visible) {
         if (item.desktopOnly) continue;
@@ -165,7 +166,7 @@ describe('toda rota mobile continua alcançável', () => {
 
   it('itens administrativos e condicionais respeitam o papel', () => {
     const more = (v: typeof admin) => buildMoreGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
-    const evo = (v: typeof admin) => buildEvolucaoGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
+    const evo = (v: typeof admin) => buildEvolucaoGroups(visibleMainNavItems(v), v).flatMap((g) => g.items.map((i) => i.href));
     expect(more(admin)).toContain('/usuarios');
     expect(more(plain)).not.toContain('/usuarios');
     expect(evo(admin)).toContain('/intervals-icu');
@@ -182,9 +183,58 @@ describe('toda rota mobile continua alcançável', () => {
     const visible = visibleMainNavItems(admin);
     const all = [
       ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
-      ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+      ...buildEvolucaoGroups(visible, admin).flatMap((g) => g.items.map((i) => i.href)),
     ];
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('abas e pool do hub por permissões', () => {
+  const ALL = ['inicio', 'treino', 'historico', 'evolucao'];
+  const poolOf = (v: typeof admin) =>
+    buildEvolucaoGroups(mobileMainNavItems(v), v).flatMap((g) => g.items.map((i) => i.href));
+
+  for (const [nome, vis] of [
+    ['admin', admin],
+    ['personal trainer', pt],
+    ['usuário comum', plain],
+  ] as const) {
+    it(`concessões padrão mantêm as 4 abas e o pool completo (${nome})`, () => {
+      expect(visiblePrimaryTabs(vis).map((t) => t.id)).toEqual(ALL);
+      const pool = poolOf(vis);
+      for (const item of DASHBOARD_NAV_ITEMS) {
+        if (item.href !== '/dashboard') expect(pool, item.href).toContain(item.href);
+      }
+      expect(pool).toContain('/insights');
+      expect(pool).toContain('/agente-cardio');
+    });
+  }
+
+  for (const [nome, user] of [
+    ['sem /auth/me', undefined],
+    ['permissions nulo', { permissions: null, intervals_configured: true }],
+    ['permissions vazio', { permissions: {}, intervals_configured: true }],
+  ] as const) {
+    it(`fail-closed: nenhuma aba de link nem pool (${nome}); Mais segue disponível`, () => {
+      const v = navVisibilityFromPermissions(user);
+      expect(visiblePrimaryTabs(v)).toEqual([]);
+      expect(poolOf(v)).toEqual([]);
+      expect(buildMoreGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href))).toEqual(['/perfil']);
+    });
+  }
+
+  it('sem o parâmetro de visibilidade o pool do Dashboard fica escondido', () => {
+    const hrefs = buildEvolucaoGroups(mobileMainNavItems(admin)).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs.some((h) => h.startsWith('/dashboard'))).toBe(false);
+  });
+
+  it('cada aba segue o recurso do item correspondente', () => {
+    const only = (key: string) =>
+      visiblePrimaryTabs(navVisibilityFromPermissions({ permissions: { [key]: { ver: 'proprios' } }, intervals_configured: false })).map((t) => t.id);
+    expect(only('dashboards')).toEqual(['inicio', 'evolucao']);
+    expect(only('treino.modo_treino')).toEqual(['treino']);
+    expect(only('treino.registro')).toEqual(['historico']);
+    expect(only('ia.insights')).toEqual(['evolucao']);
   });
 });
 
