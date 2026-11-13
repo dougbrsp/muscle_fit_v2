@@ -113,8 +113,9 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 4. **Ocultação no frontend**: hook de permissões nas telas. Dividida em:
    - **4A Base e menu** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido; só frontend estático e um teste unitário de backend; sem migração; ver "Lote 4A: base da ocultação e menu").
    - **4B-1 Telas de gestão por permissão** (na `develop` e no DEV desde 13/11/2026, PR #149, merge `694b5fae`, não promovido; só frontend estático; sem migração; ver "Lote 4B-1: telas de gestão por permissão").
-   - **4B-2 IA, abas do iPhone e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #150, merge `d059f9e0`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`).
-   - **4B-3 Abas do iPhone offline e ajustes** (em PR para a `develop`, branch `feat/rbac-lote4b3-abas-offline`, não promovido; só frontend estático; sem migração; ver "Lote 4B-3: abas do iPhone offline e ajustes").
+   - **4B-2 IA, abas do iPhone e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #150, merge `d059f9e0`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`; tratados no 4B-4, exceto os badges).
+   - **4B-3 Abas do iPhone offline e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #151, merge `d4e4bb75`, não promovido; só frontend estático; sem migração; ver "Lote 4B-3: abas do iPhone offline e ajustes"). O harness do `/ship` aceita caminhos com colchetes desde o PR #153.
+   - **4B-4 Telas em rotas dinâmicas e resumo por exercício** (em PR para a `develop`, branch `feat/rbac-lote4b4-telas-id`, não promovido; só frontend estático; sem migração; ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício").
 5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
 6. **Modelos**: visibilidade e edição pelo dono.
 
@@ -908,7 +909,7 @@ Primeiro pedaço do 4B: as telas de gestão deixam de decidir por `role` e passa
 *Removidos:* `adminRouteState` e `isAdminRole` de `frontend/src/lib/admin-route.ts`. Não há mais referência a eles no repositório.
 
 *Limitações conhecidas:*
-- O editor de modelo `frontend/src/app/(app)/modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx` (linhas 386 e 387) ainda decide `canManageVersions` por `role` (`admin` ou `personal_trainer`), que controla o histórico de versões. O `/ship` desta entrega não aceita colchetes no caminho; o ajuste fica no 4B-2.
+- O editor de modelo `frontend/src/app/(app)/modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx` (linhas 386 e 387) ainda decide `canManageVersions` por `role` (`admin` ou `personal_trainer`), que controla o histórico de versões. O `/ship` desta entrega não aceita colchetes no caminho; o ajuste foi feito no 4B-4 (ver "Lote 4B-4").
 - `exerciseCardsControls` não tem consumidor de tela. O controle real dos cards está em `ExerciseDetailDrawer.tsx`. A função fica como candidata a ser religada ou removida no 4B-2.
 - Metas de ativação: o menu usa `modelos.metas_ativacao` (`frontend/src/lib/nav-items.ts`, linha 171), e a tela e a API de `/training-types` usam `modelos.tipos_treino`. Com as concessões padrão, os dois recursos vão aos mesmos grupos, mas são recursos distintos no catálogo. Alinhar em um só fica no 4B-2 ou em ajuste de catálogo.
 - Plano de outros: a tela exige `nutricao.plano` com escopo `todos`; o backend (`authorize_target`) também aceita `alunos` com vínculo ativo. A tela é mais restrita (fail-closed) até o lote 5.
@@ -956,9 +957,9 @@ Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e av
 *Aviso da matriz* (`grupos-acessos/MatrizConcessoes.tsx`): o aviso de grupo de sistema (somente leitura) passa a depender de `!group.editable`, e um segundo aviso aparece quando o grupo é editável mas o usuário não tem `admin.grupos`/editar ("Seu perfil não pode editar concessões..."). Só texto; nenhuma regra muda.
 
 *Fora do escopo e limitações:*
-- `PlanDetailClient` e o editor de modelo (`modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx`, que ainda decide `canManageVersions` por `role`) ficam em caminhos com `[id]`; o `/ship` não aceita colchetes.
+- `PlanDetailClient` e o editor de modelo (`modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx`, que ainda decide `canManageVersions` por `role`) ficam em caminhos com `[id]`; o `/ship` não aceitava colchetes. Tratados no 4B-4 (ver "Lote 4B-4").
 - Sugestão de plano nutricional e foto de rótulo (`PlanSuggestionPanel.tsx` e afins) não foram religadas.
-- Análise por exercício não foi religada.
+- Análise por exercício não foi religada (tratada no 4B-4: resumo de fim de exercício no Modo Treino).
 - Badges de qualidade de dado por papel (`useIsAdmin`) continuam por `role`.
 - O DELETE das abas de domínio segue por flag única, sem separar excluir de editar.
 - O pós-login vai a `/dashboard` mesmo para quem não tem `dashboards`/`ver`.
@@ -973,7 +974,7 @@ Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e av
 
 ### Lote 4B-3: abas do iPhone offline e ajustes
 
-Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem cache (PWA offline; `['current-user']` não é persistido), o iPhone mostrava só Mais e Perfil, e some até a aba Treino, que é offline-first (Modo Treino na academia). Antes do 4B-2 as 4 abas sempre apareciam. Estado: em PR para a `develop` (branch `feat/rbac-lote4b3-abas-offline`), não promovido.
+Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem cache (PWA offline; `['current-user']` não é persistido), o iPhone mostrava só Mais e Perfil, e some até a aba Treino, que é offline-first (Modo Treino na academia). Antes do 4B-2 as 4 abas sempre apareciam. Estado: na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.
 
 *Exceção (sem dados do usuário):* `primaryTabsFor(user)` em `primary-nav.ts` devolve `PRIMARY_TABS` (as 4 abas fixas) quando `user === undefined`; com dados, delega a `visiblePrimaryTabs` como no 4B-2 (concessões padrão = mesmas 4 abas; `permissions` nulo ou `{}` = nenhuma aba de link, só Mais/Perfil). Motivo: as abas são só navegação e o Treino precisa abrir offline. Isso não concede nada: os dados continuam barrados pelo backend (403) e cada tela segue as próprias guardas. `MobileShell.tsx` usa `primaryTabsFor(userQuery.data)`.
 
@@ -990,6 +991,25 @@ Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem
 *Não medido:* UI no navegador, PWA offline real, iPhone real, build e integração (CI).
 
 *Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com dados e concessões padrão nada muda; sem dados, as abas voltam a aparecer como antes do 4B-2. Rollback: reverter o PR e refazer o deploy do frontend.
+
+### Lote 4B-4: telas em rotas dinâmicas e resumo por exercício
+
+Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]` (o harness do `/ship` passou a aceitar colchetes no PR #153) e a análise por exercício do Modo Treino. Estado: em PR para a `develop` (branch `feat/rbac-lote4b4-telas-id`), não promovido. Só frontend; a condição espelha o `require_permission` da rota chamada, fail-closed (sem `permissions`, o controle some e nada é chamado).
+
+| Controle | Rota | `require_permission` | Condição na tela |
+|---|---|---|---|
+| Histórico de versões do Modelo: reverter e arquivar/desarquivar (`canManage` do `TemplateVersionHistory`, em `WorkoutPlanTemplateBuilderClient.tsx`) | `POST /workout-plan-templates/{id}/versions/{v}/revert` | `modelos.treino` editar, `min_scope=todos` | `modelosTreinoControls(perms).canEdit` (antes: `role` admin ou personal_trainer) |
+| Gerar/regerar recomendação de cardio (`PlanDetailClient.tsx`) | `POST /cardio-recommendations/generate` | `ia.cardio` editar | `useIaControls().canCardio` |
+| Aplicar recomendação ao Modelo (`CardioRecommendationPanel`, prop `hideApplyToTemplate`) | `POST /cardio-recommendations/{id}/apply` | `modelos.treino` editar, `min_scope=todos` | `usePermissions().can('modelos.treino', 'editar', 'todos')` |
+| Resumo de fim de exercício (`PlanExecutionScreen.tsx`, `FreeformScreen.tsx`: `runExerciseSummary` e `ExerciseSummaryCard`) | `POST /exercises/{id}/summarize` | `ia.analise_treinos` editar | `useIaControls().canAnaliseTreinos`; sem permissão não há POST, spinner nem erro, e o cartão não é renderizado |
+
+*Sem alteração:* o botão Excluir da recomendação de cardio (`cardio` excluir) e as demais ações do editor (salvar, rascunho) seguem como estavam; o editor já era alcançado só por quem tem `modelos.treino`. O rascunho de periodização por IA (`ia.modelo_periodizacao`, `modelosTreinoControls.canGenerateDraft`) não é chamado por estas telas. `screen-permissions.ts` e seus testes não mudaram (`canCardio` e `canAnaliseTreinos` já existiam e têm teste).
+
+*Medido na branch:* Vitest em 17 arquivos (screen-permissions e testes das pastas modo-treino, modelos-treino e planos-treino) com 167 passed; `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos de `react-hooks/exhaustive-deps` fora do lote). Não há teste de componente para `PlanDetailClient`, `PlanExecutionScreen` nem `FreeformScreen`.
+
+*Não medido:* UI no navegador, Modo Treino real, build e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com as concessões padrão nada muda para admin e personal trainer; usuário comum continua sem gestão de Modelo, e o resumo de exercício e o cardio seguem as concessões de `ia.analise_treinos` e `ia.cardio`. Rollback: reverter o PR e refazer o deploy do frontend.
 
 ### Riscos para lotes futuros
 

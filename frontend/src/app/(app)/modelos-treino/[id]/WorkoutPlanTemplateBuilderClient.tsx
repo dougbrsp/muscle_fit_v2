@@ -129,6 +129,7 @@ import { buildItemPriorFatigueLookup } from '@/lib/prior-fatigue';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { MethodologyIntentKind } from '@/lib/methodology-volume-types';
 import type { SessionUser } from '@/lib/auth';
+import { modelosTreinoControls } from '@/lib/screen-permissions';
 import { versionLabel } from '@/lib/template-versions';
 import {
   goalOption,
@@ -383,8 +384,8 @@ export function WorkoutPlanTemplateBuilderClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const canManageVersions =
-    currentUserQuery.data?.role === 'admin' || currentUserQuery.data?.role === 'personal_trainer';
+  // Reverter versão: POST /workout-plan-templates/{id}/versions/{v}/revert = modelos.treino/editar (todos).
+  const canManageVersions = modelosTreinoControls(currentUserQuery.data?.permissions).canEdit;
 
   const muscleGroupsQuery = useQuery({
     queryKey: ['muscle-groups-catalog'],
