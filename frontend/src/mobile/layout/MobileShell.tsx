@@ -31,7 +31,7 @@ import {
   evolucaoHubHref,
   isMoreActive,
   isPrimaryTabActive,
-  visiblePrimaryTabs,
+  primaryTabsFor,
 } from './primary-nav';
 import styles from './mobile-shell.module.css';
 
@@ -202,7 +202,7 @@ function Shell({ children }: { children: ReactNode }) {
         aria-label="Navegação principal"
         data-hidden={keyboardOpen ? 'true' : 'false'}
       >
-        {visiblePrimaryTabs(navVisibilityFromPermissions(userQuery.data)).map((tab) => {
+        {primaryTabsFor(userQuery.data).map((tab) => {
           const active = isPrimaryTabActive(tab, pathname, search);
           return (
             <Link

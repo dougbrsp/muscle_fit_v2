@@ -12,7 +12,9 @@ import {
   backTargetFor,
   buildEvolucaoGroups,
   buildMoreGroups,
+  evolucaoGroupsFor,
   evolucaoHubHref,
+  primaryTabsFor,
   visiblePrimaryTabs,
   isEvolucaoHub,
   isMoreActive,
@@ -209,6 +211,37 @@ describe('abas e pool do hub por permissões', () => {
       expect(pool).toContain('/agente-cardio');
     });
   }
+
+  it('primaryTabsFor: sem dados do usuário (carregando/erro sem cache) mostra as 4 abas fixas', () => {
+    expect(primaryTabsFor(undefined).map((t) => t.id)).toEqual(ALL);
+  });
+
+  for (const [nome, perms] of [
+    ['admin', adminPerms],
+    ['personal trainer', ptPerms],
+    ['usuário comum', plainPerms],
+  ] as const) {
+    it(`primaryTabsFor: concessões padrão mantêm as 4 abas (${nome})`, () => {
+      expect(primaryTabsFor({ permissions: perms, intervals_configured: false }).map((t) => t.id)).toEqual(ALL);
+    });
+  }
+
+  for (const permissions of [null, {}]) {
+    it(`primaryTabsFor: permissions ${permissions === null ? 'nulo' : 'vazio'} vindo do backend não mostra aba de link`, () => {
+      expect(primaryTabsFor({ permissions, intervals_configured: true })).toEqual([]);
+    });
+  }
+
+  it('evolucaoGroupsFor: sem dados abre o hub com os itens de hoje (sem Intervals.icu); com {} fica vazio', () => {
+    const sem = evolucaoGroupsFor(undefined).flatMap((g) => g.items.map((i) => i.href));
+    for (const item of DASHBOARD_NAV_ITEMS) {
+      if (item.href !== '/dashboard') expect(sem, item.href).toContain(item.href);
+    }
+    expect(sem).toContain('/insights');
+    expect(sem).toContain('/agente-cardio');
+    expect(sem).not.toContain('/intervals-icu');
+    expect(evolucaoGroupsFor({ permissions: {}, intervals_configured: true })).toEqual([]);
+  });
 
   for (const [nome, user] of [
     ['sem /auth/me', undefined],
