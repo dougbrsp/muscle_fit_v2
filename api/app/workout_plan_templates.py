@@ -124,6 +124,9 @@ me_router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-temp
 # - Rascunho e area de escrita: `GET /{id}/draft` exige `editar` (como o PUT), e
 #   quem nao pode escrever o Modelo ve `has_draft=false` (sem `draft_updated_at`).
 # - Modelo novo sem `visibility`: `privado` para `alunos`, `publico` para `todos`.
+# - Modelo com alunos atribuidos (vigentes, de qualquer treinador; vale ate para
+#   admin): DELETE e PUT publico -> privado respondem 409, sem gravar nada
+#   (`assignments_block`; vem DEPOIS do guard: 403/404 nao revelam a contagem).
 # Controle de acesso, nao regra de motor: nada de calculo aqui.
 # ---------------------------------------------------------------------------
 
@@ -142,6 +145,36 @@ TEMPLATE_WRITE_FORBIDDEN = {
     "error": "forbidden",
     "message": "Só o dono do Modelo ou um administrador pode alterá-lo. Duplique-o para ter uma cópia própria.",
 }
+
+# Modelo com aluno atribuido (vigente, de QUALQUER treinador, inclusive para o
+# admin) nao pode ser excluido nem passar de publico para privado (decisao do
+# usuario, 14/11/2026). A contagem e global, nao filtrada pelo viewer.
+TEMPLATE_DELETE_BLOCKED = "template_has_assignments"
+TEMPLATE_PRIVATE_BLOCKED = "template_has_assignments_visibility"
+_BLOCK_MESSAGES = {
+    TEMPLATE_DELETE_BLOCKED: "Este Modelo não pode ser excluído porque tem alunos atribuídos. "
+    "Encerre as atribuições dos alunos antes de excluí-lo.",
+    TEMPLATE_PRIVATE_BLOCKED: "Este Modelo não pode ficar privado porque tem alunos atribuídos. "
+    "Encerre as atribuições dos alunos antes de torná-lo privado.",
+}
+
+
+def assignments_block(
+    active_assignments: int, *, delete: bool = False, current_visibility: Optional[str] = None,
+    new_visibility: Optional[str] = None,
+) -> Optional[dict]:
+    """Decisao pura (sem banco): o `detail` do 409 ou None. Exclusao e
+    publico -> privado com atribuicao vigente sao barrados; o resto passa."""
+    if active_assignments <= 0:
+        return None
+    if delete:
+        code = TEMPLATE_DELETE_BLOCKED
+    elif current_visibility == VISIBILITY_PUBLIC and new_visibility == VISIBILITY_PRIVATE:
+        code = TEMPLATE_PRIVATE_BLOCKED
+    else:
+        return None
+    return {"error": code, "message": _BLOCK_MESSAGES[code], "assigned_count": int(active_assignments)}
+
 
 ACCESS_OK = 200
 ACCESS_FORBIDDEN = 403
@@ -1452,6 +1485,8 @@ def update_template(
     payload: WorkoutPlanTemplateWriteIn,
     viewer: TemplateViewer = Depends(template_guard("editar", for_write=True)),
 ):
+    """Atualiza o Modelo. 409 (`template_has_assignments_visibility`, sem gravar
+    nada) se a visibilidade for de publico para privado e houver aluno atribuido."""
     identity = viewer.identity
     existing = _get_template(template_id)
     if not existing:
@@ -1486,6 +1521,18 @@ def update_template(
                 getattr(payload, "visibility", None),
                 _resolve_visibility(current.get("visibility"), VISIBILITY_PUBLIC),
             )
+            # Publico -> privado com aluno atribuido: 409 antes de gravar qualquer campo.
+            atual = _resolve_visibility(current.get("visibility"), VISIBILITY_PUBLIC)
+            if atual == VISIBILITY_PUBLIC and visibility == VISIBILITY_PRIVATE:
+                from .template_assignments import count_active_assignments_of_template
+
+                bloqueio = assignments_block(
+                    count_active_assignments_of_template(cur, template_id),
+                    current_visibility=atual,
+                    new_visibility=visibility,
+                )
+                if bloqueio:
+                    raise HTTPException(status_code=409, detail=bloqueio)
 
             cur.execute(
                 """
@@ -1575,13 +1622,22 @@ def delete_template(
     vinculo das fichas ja salvas ficam - eram apagados em cascata pelo DELETE
     fisico de antes, e com eles o historico do usuario.
 
-    Resposta igual a de antes (`{"status", "template_id"}`); 404 para
-    inexistente ou ja excluido."""
+    Com atribuicao vigente (qualquer aluno, de qualquer treinador, ate para o
+    admin): 409 `template_has_assignments`, sem alterar nada; encerre as
+    atribuicoes antes. Sem atribuicao, a resposta e a de antes
+    (`{"status", "template_id"}`); 404 para inexistente ou ja excluido."""
     identity = viewer.identity
-    from .template_assignments import close_assignments_of_template_for_everyone, db_now
+    from .template_assignments import (
+        close_assignments_of_template_for_everyone,
+        count_active_assignments_of_template,
+        db_now,
+    )
 
     with transaction() as conn:
         with conn.cursor() as cur:
+            bloqueio = assignments_block(count_active_assignments_of_template(cur, template_id), delete=True)
+            if bloqueio:
+                raise HTTPException(status_code=409, detail=bloqueio)
             agora = db_now(cur)
             cur.execute(
                 "UPDATE workout_plan_templates SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",

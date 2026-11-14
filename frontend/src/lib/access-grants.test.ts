@@ -11,6 +11,7 @@ import {
   validateGroupKey,
   validateGroupName,
   warningsForSave,
+  withoutNonGrantable,
 } from './access-grants';
 
 const catalog: AccessCatalog = {
@@ -37,6 +38,15 @@ describe('access-grants', () => {
       { resource: 'c', action: 'ver', scope: 'proprios' },
     ]);
     expect(matrixToGrants({ 'a|ver': '' }, catalog)).toEqual([]);
+  });
+
+  it('não concedível fora de Administração: oculto na edição, filtrado do corpo do salvar', () => {
+    expect(groupResourcesByDomain(catalog.resources, { onlyGrantable: true }).flatMap((s) => s.resources.map((r) => r.key))).not.toContain('b');
+    const draft = [
+      { resource: 'a', action: 'ver', scope: 'proprios' },
+      { resource: 'b', action: 'ver', scope: 'todos' },
+    ];
+    expect(withoutNonGrantable(draft, catalog)).toEqual([{ resource: 'a', action: 'ver', scope: 'proprios' }]);
   });
 
   it('diff separa novas, alteradas e removidas', () => {

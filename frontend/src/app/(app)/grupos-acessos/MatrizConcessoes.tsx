@@ -13,6 +13,7 @@ import {
   grantsToMatrix,
   groupResourcesByDomain,
   matrixToGrants,
+  withoutNonGrantable,
   presentationLabel,
   warningsForSave,
 } from '@/lib/access-grants';
@@ -54,7 +55,7 @@ export function MatrizConcessoes({ group, catalog, canEdit, onDirtyChange }: Pro
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const saveMutation = useMutation({
-    mutationFn: () => replaceAccessGrants(group.id, draftGrants),
+    mutationFn: () => replaceAccessGrants(group.id, withoutNonGrantable(draftGrants, catalog)),
     onSuccess: async () => {
       setConfirmOpen(false);
       await qc.invalidateQueries({ queryKey: accessKeys.groups });
