@@ -437,7 +437,7 @@ def validate_grants(grants: Any) -> list[dict[str, str]]:
             raise InvalidGrantError(f"Recurso desconhecido: {resource!r}.")
         if not is_grantable(resource):
             raise ResourceNotGrantableError(
-                f"O recurso '{resource}' é da Administração e não pode ser concedido a grupo personalizado."
+                f"O recurso '{resource}' não pode ser concedido a grupo personalizado (Administração ou custo de IA)."
             )
         if not isinstance(action, str) or action not in ACTIONS:
             raise InvalidGrantError(f"Ação inválida: {action!r}.")

@@ -114,18 +114,25 @@ RESOURCE_KEYS: Final[tuple[str, ...]] = tuple(r.key for r in RESOURCES)
 NON_GRANTABLE_DOMAINS: Final[frozenset[str]] = frozenset({DOMAIN_ADMIN})
 
 
+# Recursos que um grupo personalizado nao pode receber (decisao do usuario,
+# 14/11/2026). `ia.cards_exercicio`: cada card gera imagens por IA com custo por
+# card, e o limite diario e por usuario (igual para todos), nao por grupo; so os
+# grupos de sistema o tem.
+NON_GRANTABLE_RESOURCES: Final[frozenset[str]] = frozenset({"ia.cards_exercicio"})
+
+
 def is_grantable(resource_key: str) -> bool:
     """Recurso concedivel a grupo personalizado (fonte unica; validate_grants consome)."""
-    return RESOURCES_BY_KEY[resource_key].domain not in NON_GRANTABLE_DOMAINS
+    return (
+        resource_key not in NON_GRANTABLE_RESOURCES
+        and RESOURCES_BY_KEY[resource_key].domain not in NON_GRANTABLE_DOMAINS
+    )
 
 
-# Avisos por recurso para a tela de grupos (o frontend so exibe o texto).
-RESOURCE_WARNINGS: Final[dict[str, str]] = {
-    "ia.cards_exercicio": (
-        "Cada card gera imagens por IA e tem custo cobrado por card. "
-        "O limite diário é por usuário e igual para todos, não é um limite próprio do grupo."
-    ),
-}
+# Avisos por recurso para a tela de grupos (o frontend so exibe o texto). Vazio:
+# o unico aviso (custo dos cards) virou nao-concedivel, e a tela esconde esses
+# recursos na edicao.
+RESOURCE_WARNINGS: Final[dict[str, str]] = {}
 
 # Avisos por escopo para a tela de grupos.
 SCOPE_WARNINGS: Final[dict[str, str]] = {

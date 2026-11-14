@@ -201,7 +201,7 @@ def test_o_banco_recusa_duas_versoes_vigentes(seed, db_backend, raw):
 # ---------------------------------------------------------------------------
 
 
-def test_excluir_esconde_o_modelo_encerra_atribuicoes_e_mantem_a_ficha(seed, db_backend, raw):
+def test_excluir_so_sem_atribuicao_esconde_o_modelo_e_mantem_a_ficha(seed, db_backend, raw):
     api = _client(seed["admin"])
     template_id = _criar(api, db_backend)
     assert api.post(f"/workout-plan-templates/{template_id}/assignments", json={"user_id": seed["aluno"]}).status_code == 200
@@ -212,6 +212,14 @@ def test_excluir_esconde_o_modelo_encerra_atribuicoes_e_mantem_a_ficha(seed, db_
             (seed["aluno"], template_id),
         )
         plan_id = cur.lastrowid
+
+    # Com aluno atribuido a exclusao e barrada (409), mesmo para o admin; nada muda.
+    barrado = api.delete(f"/workout-plan-templates/{template_id}")
+    assert barrado.status_code == 409, (db_backend, barrado.text)
+    assert barrado.json()["detail"]["error"] == "template_has_assignments"
+    assert api.get(f"/workout-plan-templates/{template_id}").status_code == 200
+    # Encerrada a atribuicao, a exclusao segue.
+    assert api.delete(f"/workout-plan-templates/{template_id}/assignments/{seed['aluno']}").status_code == 200
 
     apagado = api.delete(f"/workout-plan-templates/{template_id}")
     assert apagado.status_code == 200, (db_backend, apagado.text)

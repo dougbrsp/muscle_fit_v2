@@ -148,6 +148,14 @@ SET unassigned_at = %s, unassigned_by_user_id = %s
 WHERE template_id = %s AND unassigned_at IS NULL
 """
 
+# Contagem GLOBAL de atribuicoes vigentes do Modelo (regra de exclusao e de
+# publico -> privado; nao filtra pelo viewer).
+COUNT_ACTIVE_OF_TEMPLATE_SQL = """
+SELECT COUNT(*) AS total
+FROM workout_plan_template_assignments
+WHERE template_id = %s AND unassigned_at IS NULL
+"""
+
 INSERT_SQL = """
 INSERT INTO workout_plan_template_assignments
     (template_id, user_id, assigned_by_user_id, assigned_at)
@@ -460,6 +468,13 @@ def close_assignments_of_template_for_everyone(
     request_memo.forget(MEMO_NAME)
     cur.execute(CLOSE_TEMPLATE_SQL, (moment, by_user_id, template_id))
     return int(cur.rowcount or 0)
+
+
+def count_active_assignments_of_template(cur: Any, template_id: int) -> int:
+    """Quantos usuarios (de qualquer treinador) seguem o Modelo agora."""
+    cur.execute(COUNT_ACTIVE_OF_TEMPLATE_SQL, (template_id,))
+    row = cur.fetchone()
+    return int((row["total"] if isinstance(row, dict) else row[0]) or 0) if row else 0
 
 
 def insert_assignment(

@@ -153,7 +153,10 @@ const NO_COLLAPSED_ITEMS: Set<string> = new Set();
 const ALL_ITEMS_EXPANDED = { has: () => true } as unknown as Set<string>;
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+  if (!(error instanceof ApiError)) return fallback;
+  // `detail` objeto ({error, message, ...}): ApiError.message fica no texto padrão de HTTP.
+  const d = error.detail as { message?: unknown } | null | undefined;
+  return typeof d?.message === 'string' && d.message ? d.message : error.message;
 }
 
 const GRID_ROW_OPTIONS = Array.from({ length: GRID_MAX_ROWS }, (_, i) => String(i + 1));
@@ -1036,7 +1039,12 @@ export function WorkoutPlanTemplateBuilderClient() {
         </Group>
         <Select
           label="Visibilidade"
-          description="Público: todos os personal trainers veem o modelo. Privado: só você e os administradores."
+          description={
+            'Público: todos os personal trainers veem o modelo. Privado: só você e os administradores.' +
+            (!isNew && (templateQuery.data?.assignments?.length ?? 0) > 0
+              ? ' Para tornar privado, encerre antes as atribuições dos alunos.'
+              : '')
+          }
           mt="sm"
           data={[
             { value: 'publico', label: 'Público' },

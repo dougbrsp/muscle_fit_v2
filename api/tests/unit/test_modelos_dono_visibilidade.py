@@ -88,6 +88,15 @@ class FakeCursor:
             self.db.writes.append(("insert", p))
             self.lastrowid = 99
             self.rowcount = 1
+        elif flat.startswith("SELECT COUNT(*) AS total FROM workout_plan_template_assignments"):
+            self._rows = [{"total": self.db.active_count}]
+        elif flat.startswith("SELECT NOW()"):
+            self._rows = [{"agora": "2026-11-14 10:00:00"}]
+        elif flat.startswith("UPDATE workout_plan_templates SET deleted_at"):
+            self.db.writes.append(("delete", p))
+            self.rowcount = 1
+        elif flat.startswith("UPDATE workout_plan_template_assignments SET unassigned_at"):
+            self.db.writes.append(("close", p))
         elif "FROM workout_plan_template_assignments a" in flat:
             self._rows = [dict(r) for r in self.db.assignments]
         elif flat.startswith("SELECT t.id"):
@@ -108,6 +117,7 @@ class FakeDB:
         self.writes: list[tuple[str, tuple]] = []
         self.guard_calls = 0
         self.assignments: list[dict[str, Any]] = []
+        self.active_count = 0  # atribuicoes vigentes (global) do Modelo
 
     @contextlib.contextmanager
     def transaction(self):
@@ -580,3 +590,96 @@ def test_selo_do_rascunho_so_para_quem_pode_escrever(uid, dono, vis, visivel):
     out = wpt._mask_draft_flags(row, viewer)
     assert (out["has_draft"], out["draft_updated_at"]) == ((True, "2026-11-14") if visivel else (False, None))
     assert wpt._mask_draft_flags(row, None) == row
+
+
+# --- Lote 6D: Modelo com aluno atribuido nao some nem fica privado ------------
+
+
+@pytest.mark.parametrize(
+    "n, kw, esperado",
+    [
+        (0, dict(delete=True), None),
+        (3, dict(delete=True), "template_has_assignments"),
+        (3, dict(current_visibility="publico", new_visibility="privado"), "template_has_assignments_visibility"),
+        (0, dict(current_visibility="publico", new_visibility="privado"), None),
+        (3, dict(current_visibility="privado", new_visibility="privado"), None),
+        (3, dict(current_visibility="privado", new_visibility="publico"), None),
+        (3, dict(current_visibility="publico", new_visibility="publico"), None),
+    ],
+)
+def test_assignments_block_funcao_pura(n, kw, esperado):
+    out = wpt.assignments_block(n, **kw)
+    assert (out["error"] if out else None) == esperado
+    if out:
+        assert out["assigned_count"] == n and "Encerre as atribuições" in out["message"]
+        assert set(out) == {"error", "message", "assigned_count"}
+
+
+@pytest.fixture
+def exclusao(db, monkeypatch):
+    monkeypatch.setattr(wpt.template_drafts, "discard_draft", lambda cur, tid: False)
+    return db
+
+
+@pytest.mark.parametrize("uid, tid", [(PT, PROPRIO_PUBLICO), (PT, PROPRIO_PRIVADO), (ADMIN, PUBLICO_ALHEIO)])
+def test_delete_com_atribuicao_vigente_e_409_sem_gravar(exclusao, uid, tid):
+    exclusao.active_count = 2  # inclui aluno de outro treinador: contagem global
+    resp = _client(uid).delete(f"/workout-plan-templates/{tid}")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "template_has_assignments"
+    assert resp.json()["detail"]["assigned_count"] == 2
+    assert exclusao.writes == []
+
+
+@pytest.mark.parametrize("uid, tid", [(PT, PROPRIO_PUBLICO), (ADMIN, PUBLICO_ALHEIO)])
+def test_delete_sem_atribuicao_segue(exclusao, uid, tid):
+    resp = _client(uid).delete(f"/workout-plan-templates/{tid}")
+    assert resp.status_code == 200 and resp.json() == {"status": "ok", "template_id": tid}
+    assert [w[0] for w in exclusao.writes] == ["delete", "close"]
+
+
+def test_delete_guard_vem_antes_do_409(exclusao):
+    exclusao.active_count = 5
+    c = _client(PT)
+    assert c.delete(f"/workout-plan-templates/{PUBLICO_ALHEIO}").status_code == 403
+    assert c.delete(f"/workout-plan-templates/{PRIVADO_ALHEIO}").status_code == 404
+    assert _client(USUARIO).delete(f"/workout-plan-templates/{PROPRIO_PUBLICO}").status_code == 403
+    assert not any("COUNT(*)" in s for s, _ in exclusao.sql)
+
+
+@pytest.mark.parametrize("uid, tid", [(PT, PROPRIO_PUBLICO), (ADMIN, PUBLICO_ALHEIO)])
+def test_put_publico_para_privado_com_atribuicao_e_409_sem_gravar(escrita, uid, tid):
+    escrita.active_count = 1
+    resp = _client(uid).put(f"/workout-plan-templates/{tid}", json=dict(CORPO, name="Outro", visibility="privado"))
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "template_has_assignments_visibility"
+    assert escrita.writes == []
+
+
+@pytest.mark.parametrize(
+    "uid, tid, vis",
+    [
+        (PT, PROPRIO_PUBLICO, None),  # nao muda a visibilidade
+        (PT, PROPRIO_PUBLICO, "publico"),
+        (PT, PROPRIO_PRIVADO, "privado"),  # ja privado
+        (PT, PROPRIO_PRIVADO, "publico"),  # privado -> publico
+    ],
+)
+def test_put_que_nao_vai_a_privado_segue_com_atribuicao(escrita, uid, tid, vis):
+    escrita.active_count = 4
+    corpo = dict(CORPO, visibility=vis) if vis else CORPO
+    assert _client(uid).put(f"/workout-plan-templates/{tid}", json=corpo).status_code == 200
+    assert [w[0] for w in escrita.writes] == ["update"]
+
+
+def test_put_publico_para_privado_sem_atribuicao_segue(escrita):
+    resp = _client(PT).put(f"/workout-plan-templates/{PROPRIO_PUBLICO}", json=dict(CORPO, visibility="privado"))
+    assert resp.status_code == 200 and _vis_gravada(escrita) == "privado"
+
+
+def test_put_guard_vem_antes_do_409(escrita):
+    escrita.active_count = 5
+    c = _client(PT)
+    assert c.put(f"/workout-plan-templates/{PUBLICO_ALHEIO}", json=dict(CORPO, visibility="privado")).status_code == 403
+    assert c.put(f"/workout-plan-templates/{PRIVADO_ALHEIO}", json=dict(CORPO, visibility="privado")).status_code == 404
+    assert escrita.writes == []

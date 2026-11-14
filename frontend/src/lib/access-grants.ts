@@ -35,6 +35,12 @@ export function matrixToGrants(matrix: GrantMatrix, catalog: AccessCatalog): Acc
   return out;
 }
 
+/** Corpo do salvar: remove concessões de recurso não concedível (o backend responde 422 a elas). */
+export function withoutNonGrantable(grants: readonly AccessGrant[], catalog: AccessCatalog): AccessGrant[] {
+  const blocked = new Set(catalog.resources.filter((r) => !r.grantable).map((r) => r.key));
+  return grants.filter((g) => !blocked.has(g.resource));
+}
+
 export type GrantsDiff = { added: AccessGrant[]; changed: AccessGrant[]; removed: AccessGrant[] };
 
 export function diffGrants(before: readonly AccessGrant[], after: readonly AccessGrant[]): GrantsDiff {

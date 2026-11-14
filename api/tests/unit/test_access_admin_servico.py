@@ -101,7 +101,7 @@ def test_catalog_view_traz_recursos_acoes_e_escopos():
 def test_catalog_view_grantable_coerente_com_validate_grants():
     by_key = {r["key"]: r for r in svc.catalog_view()["resources"]}
     for key, res in by_key.items():
-        if key.startswith("admin."):
+        if key.startswith("admin.") or key == "ia.cards_exercicio":
             assert res["grantable"] is False
             with pytest.raises(svc.ResourceNotGrantableError):
                 svc.validate_grants([{"resource": key, "action": "ver", "scope": "proprios"}])
@@ -113,9 +113,9 @@ def test_catalog_view_grantable_coerente_com_validate_grants():
 def test_catalog_view_avisos():
     view = svc.catalog_view()
     by_key = {r["key"]: r for r in view["resources"]}
-    assert by_key["ia.cards_exercicio"]["warning"]
-    assert "custo" in by_key["ia.cards_exercicio"]["warning"]
-    assert [k for k, r in by_key.items() if r["warning"]] == ["ia.cards_exercicio"]
+    # Cards viraram nao-concedivel (14/11/2026): o aviso de custo saiu.
+    assert by_key["ia.cards_exercicio"]["grantable"] is False
+    assert [k for k, r in by_key.items() if r["warning"]] == []
     assert view["scope_warnings"]["todos"]
     assert set(view["scope_warnings"]) == {"todos"}
 
@@ -361,7 +361,9 @@ def test_replace_grants_invalido(grants):
     assert exc.value.code == "invalid_grant" and cur.writes() == []
 
 
-@pytest.mark.parametrize("resource", [r.key for r in RESOURCES if r.domain == "Administração"])
+@pytest.mark.parametrize(
+    "resource", [r.key for r in RESOURCES if r.domain == "Administração"] + ["ia.cards_exercicio"]
+)
 def test_replace_grants_dominio_admin_nao_concedivel(resource):
     cur = _cur_with_group()
     with pytest.raises(svc.ResourceNotGrantableError) as exc:
@@ -375,7 +377,7 @@ def test_admin_grupos_e_do_dominio_admin():
 
 def test_replace_grants_aceita_todo_recurso_nao_admin():
     grants = [{"resource": r.key, "action": "ver", "scope": "proprios"} for r in RESOURCES
-              if r.domain != "Administração"]
+              if r.domain != "Administração" and r.key != "ia.cards_exercicio"]
     cur = _cur_with_group()
     out = svc.replace_grants(cur, ACTOR, 10, grants)
     assert len(out["grants"]) == len(grants)

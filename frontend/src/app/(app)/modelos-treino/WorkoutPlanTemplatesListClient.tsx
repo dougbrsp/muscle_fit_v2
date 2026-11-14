@@ -40,7 +40,16 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+  if (!(error instanceof ApiError)) return fallback;
+  // `detail` objeto ({error, message, ...}): ApiError.message fica no texto padrão de HTTP.
+  const d = error.detail as { message?: unknown } | null | undefined;
+  return typeof d?.message === 'string' && d.message ? d.message : error.message;
+}
+
+function assignedCount(error: unknown): number | null {
+  const n = (error instanceof ApiError ? (error.detail as { assigned_count?: unknown } | null | undefined) : null)
+    ?.assigned_count;
+  return typeof n === 'number' ? n : null;
 }
 
 function volumeModeLabel(mode: string): string {
@@ -125,6 +134,7 @@ export function WorkoutPlanTemplatesListClient() {
   });
 
   function confirmDelete(template: WorkoutPlanTemplateListItem) {
+    deleteMutation.reset();
     setDeleteTarget(template);
     openDelete();
   }
@@ -391,6 +401,7 @@ export function WorkoutPlanTemplatesListClient() {
           {deleteMutation.isError && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
               {errorMessage(deleteMutation.error, 'Não foi possível excluir o modelo de treino.')}
+              {assignedCount(deleteMutation.error) != null && ` Alunos atribuídos: ${assignedCount(deleteMutation.error)}.`}
             </Alert>
           )}
           <Group justify="flex-end">
