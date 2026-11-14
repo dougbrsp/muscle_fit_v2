@@ -135,6 +135,14 @@ export function modeloTreinoItemControls(
   };
 }
 
+/**
+ * Visibilidade padrão de um Modelo NOVO. Espelho de `create_default_visibility`
+ * (`workout_plan_templates.py`); quem decide é o backend, que a aplica quando o POST vem sem `visibility`.
+ */
+export function modeloTreinoDefaultVisibility(perms: Perms): 'publico' | 'privado' {
+  return can(perms, 'modelos.treino', 'editar', 'todos') ? 'publico' : 'privado';
+}
+
 /** Usuários (`/users*`). */
 export function usuariosControls(perms: Perms) {
   return {

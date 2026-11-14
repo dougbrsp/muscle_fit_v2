@@ -126,7 +126,7 @@ def db(monkeypatch):
     monkeypatch.setattr(wpt, "transaction", banco.transaction)
     # Leitura do Modelo e selos: fora do escopo (o guard e o que se testa).
     monkeypatch.setattr(wpt, "_get_template", lambda template_id, **_: {"id": template_id, "assignments": []})
-    monkeypatch.setattr(wpt, "_with_draft_flags", lambda t: t)
+    monkeypatch.setattr(wpt, "_with_draft_flags", lambda t, viewer=None: t)
     monkeypatch.setattr(wpt, "_attach_safety_warnings", lambda t: t)
     monkeypatch.setattr(wpt.template_drafts, "draft_stamps", lambda cur, ids: {})
     vinculos = {(PT, ALUNO)}
@@ -308,7 +308,7 @@ def _cria(monkeypatch, uid, corpo):
     return _client(uid).post("/workout-plan-templates", json=corpo)
 
 
-@pytest.mark.parametrize("vis, esperado", [(None, "publico"), ("privado", "privado"), ("publico", "publico")])
+@pytest.mark.parametrize("vis, esperado", [(None, "privado"), ("privado", "privado"), ("publico", "publico")])
 def test_criar_grava_o_ator_como_dono_e_a_visibilidade(db, monkeypatch, vis, esperado):
     corpo = {"name": "M", "slots": [{"sequence": 1, "name": "A", "items": []}]}
     if vis:
@@ -543,3 +543,40 @@ def test_preview_legivel_segue(preview, uid, tid, consultas):
     resp = _client(uid).post("/workout-plan-templates/methodology-volume-preview", json=_preview_body(tid))
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"ok": "avaliado"} and preview.guard_calls == consultas
+
+
+def test_criar_como_admin_sem_visibilidade_e_publico_e_explicita_e_respeitada(db, monkeypatch):
+    corpo = {"name": "M", "slots": [{"sequence": 1, "name": "A", "items": []}]}
+    assert _cria(monkeypatch, ADMIN, corpo).status_code == 200
+    assert _cria(monkeypatch, ADMIN, dict(corpo, visibility="privado")).status_code == 200
+    assert [p[-1] for k, p in db.writes if k == "insert"] == ["publico", "privado"]
+
+
+@pytest.mark.parametrize("scope, esperado", [("todos", "publico"), ("alunos", "privado"), (None, "privado")])
+def test_padrao_de_visibilidade_na_criacao_por_escopo(scope, esperado):
+    assert wpt.create_default_visibility(scope) == esperado
+
+
+def test_get_draft_exige_editar_com_escrita(db, monkeypatch):
+    monkeypatch.setattr(wpt, "_live_template_or_404", lambda cur, tid: {"id": tid})
+    monkeypatch.setattr(wpt.template_drafts, "get_draft", lambda cur, tid: {"payload": {}})
+    url = "/workout-plan-templates/{}/draft"
+    resp = _client(PT).get(url.format(PUBLICO_ALHEIO))
+    assert resp.status_code == 403 and resp.json()["detail"] == wpt.TEMPLATE_WRITE_FORBIDDEN
+    assert _client(PT).get(url.format(PRIVADO_ALHEIO)).status_code == 404
+    assert _client(PT).get(url.format(PROPRIO_PUBLICO)).status_code == 200
+    assert _client(ADMIN).get(url.format(PUBLICO_ALHEIO)).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "uid, dono, vis, visivel",
+    [(PT, PT, "publico", True), (PT, OUTRO_PT, "publico", False), (ADMIN, OUTRO_PT, "publico", True),
+     (ADMIN, OUTRO_PT, "privado", True), (PT, PT, "privado", True)],
+)
+def test_selo_do_rascunho_so_para_quem_pode_escrever(uid, dono, vis, visivel):
+    ident = Identity(user_id=uid, role=PAPEIS[uid], source="session")
+    viewer = wpt.TemplateViewer(ident, "todos" if uid == ADMIN else "alunos")
+    row = {"created_by_user_id": dono, "visibility": vis, "has_draft": True, "draft_updated_at": "2026-11-14"}
+    out = wpt._mask_draft_flags(row, viewer)
+    assert (out["has_draft"], out["draft_updated_at"]) == ((True, "2026-11-14") if visivel else (False, None))
+    assert wpt._mask_draft_flags(row, None) == row

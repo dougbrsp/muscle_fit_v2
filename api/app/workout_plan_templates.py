@@ -121,6 +121,9 @@ me_router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-temp
 # - `alunos` (personal trainer): le os publicos e os proprios; escreve so os
 #   proprios. Privado alheio = 404 (nao revela a existencia); publico alheio em
 #   escrita = 403. Para ter uma copia editavel de um publico, duplica.
+# - Rascunho e area de escrita: `GET /{id}/draft` exige `editar` (como o PUT), e
+#   quem nao pode escrever o Modelo ve `has_draft=false` (sem `draft_updated_at`).
+# - Modelo novo sem `visibility`: `privado` para `alunos`, `publico` para `todos`.
 # Controle de acesso, nao regra de motor: nada de calculo aqui.
 # ---------------------------------------------------------------------------
 
@@ -130,6 +133,10 @@ VISIBILITY_PRIVATE = "privado"
 VISIBILITIES = (VISIBILITY_PUBLIC, VISIBILITY_PRIVATE)
 # Copia (duplicar) nasce privada: e a copia de trabalho do ator.
 DUPLICATE_DEFAULT_VISIBILITY = VISIBILITY_PRIVATE
+# Criacao sem `visibility` (decisao do usuario, 14/11/2026): `todos` (admin)
+# publica; qualquer outro escopo (`alunos`) nasce privado.
+CREATE_DEFAULT_VISIBILITY_TODOS = VISIBILITY_PUBLIC
+CREATE_DEFAULT_VISIBILITY_OTHER = VISIBILITY_PRIVATE
 TEMPLATE_NOT_FOUND = "Modelo de treino não encontrado."
 TEMPLATE_WRITE_FORBIDDEN = {
     "error": "forbidden",
@@ -303,13 +310,41 @@ def _present(template: Any, viewer: Optional[TemplateViewer]) -> Any:
     return template
 
 
+def create_default_visibility(scope: Optional[str]) -> str:
+    """Padrao de visibilidade na criacao, pelo escopo de `modelos.treino`/`editar`."""
+    from .access import catalog
+
+    return CREATE_DEFAULT_VISIBILITY_TODOS if scope == catalog.SCOPE_TODOS else CREATE_DEFAULT_VISIBILITY_OTHER
+
+
+def can_write_template(
+    viewer: Optional[TemplateViewer], owner_user_id: Optional[int], visibility: Optional[str]
+) -> bool:
+    """Derivada de `template_access_decision(for_write=True)`: o `viewer` pode
+    escrever este Modelo? Sem viewer (rota de escrita do proprio dono): sim."""
+    if not isinstance(viewer, TemplateViewer):
+        return True
+    decision = template_access_decision(
+        viewer.scope, viewer.identity.user_id, owner_user_id, visibility, for_write=True
+    )
+    return decision == ACCESS_OK
+
+
+def _mask_draft_flags(template: dict[str, Any], viewer: Optional[TemplateViewer]) -> dict[str, Any]:
+    """Quem nao escreve o Modelo nao ve o selo do rascunho (area de escrita)."""
+    if can_write_template(viewer, template.get("created_by_user_id"), template.get("visibility")):
+        return template
+    return dict(template, has_draft=False, draft_updated_at=None)
+
+
 def _resolve_visibility(value: Optional[str], default: str) -> str:
     return value if value in VISIBILITIES else default
 
 
 class WorkoutPlanTemplateWriteIn(WorkoutPlanTemplateIn):
     """Corpo de `POST ''` e `PUT /{id}`: o Modelo + `visibility` opcional
-    (lote 6A). Ausente: criar = `publico`; editar = mantem a atual."""
+    (lote 6A). Ausente: criar = `privado` para escopo `alunos` e `publico` para
+    `todos`; editar = mantem a atual."""
 
     visibility: Optional[Literal["publico", "privado"]] = None
 
@@ -796,7 +831,7 @@ def _list_templates(is_active: Optional[bool], viewer: Optional[TemplateViewer] 
             # Rascunho (067): so o selo (`has_draft`/`draft_updated_at`) para o
             # badge da lista - uma consulta para todos, tolerante a falha.
             stamps = template_drafts.draft_stamps(cur, [int(row["id"]) for row in rows])
-            return [template_drafts.attach_draft_flags(row, stamps) for row in rows]
+            return [_mask_draft_flags(template_drafts.attach_draft_flags(row, stamps), viewer) for row in rows]
 
 
 # Nome do memo por requisicao (`request_memo`) das leituras do Modelo.
@@ -1030,7 +1065,9 @@ def users_lookup(
             return {"items": cur.fetchall()}
 
 
-def _with_draft_flags(template: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def _with_draft_flags(
+    template: Optional[dict[str, Any]], viewer: Optional[TemplateViewer] = None
+) -> Optional[dict[str, Any]]:
     """`has_draft`/`draft_updated_at` (067) nas respostas das ROTAS do
     Modelo. Fora de `_get_template` de proposito: o motor de geracao tambem le
     por ela, e nenhum leitor alem das rotas do editor toca o rascunho."""
@@ -1039,7 +1076,7 @@ def _with_draft_flags(template: Optional[dict[str, Any]]) -> Optional[dict[str, 
     with transaction() as conn:
         with conn.cursor() as cur:
             stamps = template_drafts.draft_stamps(cur, [int(template["id"])])
-    return template_drafts.attach_draft_flags(template, stamps)
+    return _mask_draft_flags(template_drafts.attach_draft_flags(template, stamps), viewer)
 
 
 @router.get("/{template_id}")
@@ -1047,7 +1084,7 @@ def get_template(template_id: int, viewer: TemplateViewer = Depends(template_gua
     template = _get_template(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Modelo de treino não encontrado.")
-    return _with_draft_flags(_attach_safety_warnings(_present(template, viewer)))
+    return _with_draft_flags(_attach_safety_warnings(_present(template, viewer)), viewer)
 
 
 # ---------------------------------------------------------------------------
@@ -1264,8 +1301,14 @@ def _resolve_origin(cur, payload: WorkoutPlanTemplateIn, user_id: int) -> tuple[
 @router.post("")
 def create_template(
     payload: WorkoutPlanTemplateWriteIn,
+    request: Request,
     identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="alunos")),
 ):
+    from .access import service as access_service
+
+    default_visibility = create_default_visibility(
+        access_service.permission_scope(permissions_for_request(request, identity), TEMPLATE_RESOURCE, "editar")
+    )
     _validate_template_payload(payload)
     _validate_technique_codes(payload)
     # FST-7/GVT salvos com aplicações/pausa (antes da Fase 5, PR 5): gravados
@@ -1300,8 +1343,8 @@ def create_template(
                     payload.grid_cols,
                     _resolve_counting_mode(payload, None),
                     _resolve_training_goal(payload, None),
-                    # Lote 6A: dono = ator (acima); sem `visibility`, publico.
-                    _resolve_visibility(getattr(payload, "visibility", None), VISIBILITY_PUBLIC),
+                    # Lote 6A: dono = ator (acima); sem `visibility`, o padrao do escopo.
+                    _resolve_visibility(getattr(payload, "visibility", None), default_visibility),
                 ),
             )
             template_id = cur.lastrowid
@@ -1957,7 +2000,7 @@ DRAFT_NOT_FOUND = "Este modelo não tem rascunho."
 
 @router.get(
     "/{template_id}/draft",
-    dependencies=[Depends(template_guard("ver", for_write=False))],
+    dependencies=[Depends(template_guard("editar", for_write=True))],
 )
 def get_template_draft(template_id: int):
     with transaction() as conn:
