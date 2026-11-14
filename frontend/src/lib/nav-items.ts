@@ -176,8 +176,8 @@ export function buildMainNavItems(visibility: NavVisibility): readonly MainNavIt
       label: 'Modelos de treino',
       icon: IconTemplate,
       prefixes: ['/modelos-treino', '/diagnostico-volume'],
-      // Gerir modelos = editar com escopo todos (o usuário comum só vê os próprios).
-      visible: allowed('modelos.treino', 'editar', 'todos'),
+      // Gerir modelos = editar com escopo alunos ou todos (o usuário comum só vê os próprios).
+      visible: allowed('modelos.treino', 'editar', 'alunos'),
       desktopOnly: true,
     },
     { href: '/usuarios', label: 'Usuários', icon: IconUsers, visible: allowed('admin.usuarios') },

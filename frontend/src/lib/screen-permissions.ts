@@ -92,16 +92,46 @@ export function tiposTreinoControls(perms: Perms) {
   };
 }
 
-/** Lista de Modelos de treino (`/workout-plan-templates*`, gestão = escopo todos). */
+/**
+ * Lista de Modelos de treino (`/workout-plan-templates*`, gestão = escopo mínimo alunos).
+ * Nível da TELA; o que cada Modelo permite está em `modeloTreinoItemControls`.
+ */
 export function modelosTreinoControls(perms: Perms) {
   return {
-    /** Gerir modelos (mesmo critério do menu): modelos.treino/editar com escopo todos. */
-    canAccess: can(perms, 'modelos.treino', 'editar', 'todos'),
-    canView: can(perms, 'modelos.treino', 'ver', 'todos'),
-    canEdit: can(perms, 'modelos.treino', 'editar', 'todos'),
-    canDelete: can(perms, 'modelos.treino', 'excluir', 'todos'),
+    /** Gerir modelos (mesmo critério do menu): modelos.treino/editar com escopo alunos (todos cobre). */
+    canAccess: can(perms, 'modelos.treino', 'editar', 'alunos'),
+    canView: can(perms, 'modelos.treino', 'ver', 'alunos'),
+    /** Criar, duplicar e atribuir (nível da tela). */
+    canEdit: can(perms, 'modelos.treino', 'editar', 'alunos'),
+    canDelete: can(perms, 'modelos.treino', 'excluir', 'alunos'),
     /** `POST /workout-plan-templates/periodization-drafts`: ia.modelo_periodizacao/editar com escopo todos. */
     canGenerateDraft: can(perms, 'ia.modelo_periodizacao', 'editar', 'todos'),
+  };
+}
+
+/**
+ * Controles de UM Modelo (espelho de `template_access_decision`, `workout_plan_templates.py`):
+ * escopo `todos` escreve em qualquer Modelo; escopo `alunos` escreve só nos próprios
+ * (`created_by_user_id` = usuário logado). Duplicar, atribuir e encerrar atribuição exigem só
+ * ver o Modelo (`for_write=False`). O backend segue sendo a barreira (403/404). Nenhuma regra
+ * nova; sem permissões ou sem id do usuário, tudo `false` (fail-closed).
+ */
+export function modeloTreinoItemControls(
+  perms: Perms,
+  userId: number | null | undefined,
+  item: { created_by_user_id: number | null | undefined },
+) {
+  const known = !!perms && Object.keys(perms).length > 0 && userId != null;
+  const isOwner = known && item.created_by_user_id === userId;
+  const write = (action: string) =>
+    known && (can(perms, 'modelos.treino', action, 'todos') || (isOwner && can(perms, 'modelos.treino', action, 'alunos')));
+  return {
+    isOwner,
+    canWrite: write('editar'),
+    canDelete: write('excluir'),
+    canDuplicate: known && can(perms, 'modelos.treino', 'editar', 'alunos'),
+    canAssign: known && can(perms, 'modelos.treino', 'editar', 'alunos'),
+    canEndAssignment: known && can(perms, 'modelos.treino', 'excluir', 'alunos'),
   };
 }
 
