@@ -130,7 +130,7 @@ import { buildItemPriorFatigueLookup } from '@/lib/prior-fatigue';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { MethodologyIntentKind } from '@/lib/methodology-volume-types';
 import type { SessionUser } from '@/lib/auth';
-import { modeloTreinoItemControls } from '@/lib/screen-permissions';
+import { modeloTreinoDefaultVisibility, modeloTreinoItemControls } from '@/lib/screen-permissions';
 import { versionLabel } from '@/lib/template-versions';
 import {
   goalOption,
@@ -211,7 +211,8 @@ export function WorkoutPlanTemplateBuilderClient() {
   const trainingGoals = trainingGoalsQuery.data;
   const [isActive, setIsActive] = useState(true);
   // Padrão do backend ao criar: público.
-  const [visibility, setVisibility] = useState<TemplateVisibility>('publico');
+  // Modelo novo: null = o usuário ainda não escolheu (o POST omite o campo e o backend aplica o padrão).
+  const [visibility, setVisibility] = useState<TemplateVisibility | null>(isNew ? null : 'publico');
   const [slots, setSlots] = useState<SlotState[]>([]);
   // M10: payload dos previews memoizado por identidade de `slots` (antes era
   // recalculado a cada render, 2x). Como os campos de texto/número só promovem
@@ -692,7 +693,7 @@ export function WorkoutPlanTemplateBuilderClient() {
       volume_counting_mode: countingMode,
       ...(trainingGoal != null ? { training_goal: trainingGoal } : {}),
       is_active: isActive,
-      visibility,
+      ...(visibility != null ? { visibility } : {}),
       // Só num rascunho de periodização ainda não salvo. É isto que marca
       // `origin='periodization'` no backend e fecha a auditoria da geração;
       // sem enviar, o modelo nasceria `manual` e o log ficaria órfão.
@@ -1041,7 +1042,7 @@ export function WorkoutPlanTemplateBuilderClient() {
             { value: 'publico', label: 'Público' },
             { value: 'privado', label: 'Privado' },
           ]}
-          value={visibility}
+          value={visibility ?? modeloTreinoDefaultVisibility(currentUserQuery.data?.permissions)}
           onChange={(v) => v && setVisibility(v as TemplateVisibility)}
           allowDeselect={false}
         />

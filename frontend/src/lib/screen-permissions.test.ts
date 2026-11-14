@@ -6,6 +6,7 @@ import {
   exerciseCardsControls,
   gruposControls,
   iaControls,
+  modeloTreinoDefaultVisibility,
   modeloTreinoItemControls,
   modelosTreinoControls,
   planoNutricionalControls,
@@ -178,6 +179,13 @@ describe('escopo e ação exatos', () => {
       expect(Object.values(modeloTreinoItemControls(perms, 7, own)).every((v) => v === false)).toBe(true);
     }
     expect(Object.values(modeloTreinoItemControls(admin(), undefined, own)).every((v) => v === false)).toBe(true);
+  });
+
+  it('visibilidade padrão do Modelo novo: todos = publico; alunos e sem permissão = privado', () => {
+    const pt: Perms = { 'modelos.treino': { ver: 'alunos', editar: 'alunos', excluir: 'alunos' } };
+    expect(modeloTreinoDefaultVisibility(admin())).toBe('publico');
+    expect(modeloTreinoDefaultVisibility(pt)).toBe('privado');
+    for (const perms of [null, undefined, {}]) expect(modeloTreinoDefaultVisibility(perms)).toBe('privado');
   });
 
   it('plano de outros exige editar com escopo todos', () => {

@@ -636,6 +636,7 @@ def _rotas_2e() -> dict[str, list[tuple[str, str]]]:
 
 MODULO_2F1 = "app.workout_plan_templates"
 ROTA_DRAFTS_IA = "POST /workout-plan-templates/periodization-drafts"
+ROTA_GET_DRAFT = "GET /workout-plan-templates/{template_id}/draft"
 ROTAS_2F1_ME = ("GET /workout-plan-templates/assigned-to-me", "GET /workout-plan-templates/hr-zones")
 
 
@@ -1166,7 +1167,7 @@ _GESTAO_2F1_TODOS = {
     f"GET {_T}/users-lookup": ("modelos.treino", "ver"),
     f"GET {_TID}": ("modelos.treino", "ver"),
     f"GET {_TID}/assignments": ("modelos.treino", "ver"),
-    f"GET {_TID}/draft": ("modelos.treino", "ver"),
+    f"GET {_TID}/draft": ("modelos.treino", "editar"),  # lote 6C: rascunho e area de escrita
     f"GET {_TID}/methodology-intent": ("modelos.treino", "ver"),
     f"GET {_TID}/methodology-volume": ("modelos.treino", "ver"),
     f"GET {_TID}/methodology-volume/counting-modes": ("modelos.treino", "ver"),
@@ -1218,7 +1219,7 @@ def test_o_conjunto_convertido_no_2f1_e_exatamente_o_das_29_rotas_do_modulo():
     for recurso, acao in _GESTAO_2F1_TODOS.values():
         if recurso == "modelos.treino":
             contagem[acao] += 1
-    assert contagem == {"ver": 10, "editar": 13, "excluir": 3}, contagem
+    assert contagem == {"ver": 9, "editar": 14, "excluir": 3}, contagem
     # Toda rota viva do modulo declara permissao (nenhuma ficou de fora do lote).
     from app.main import app as main_app
     from app.main_engines import app as engines_app
@@ -1244,7 +1245,7 @@ def test_as_29_rotas_do_2f1_declaram_recurso_acao_e_escopo_minimo_do_contrato():
         esperado = [(recurso, acao, minimo)]
         if vivas.get(rota) != esperado:
             problemas.append(f"{rota}: declara {vivas.get(rota)}, contrato {esperado}")
-        if rota != ROTA_DRAFTS_IA:
+        if rota not in (ROTA_DRAFTS_IA, ROTA_GET_DRAFT):  # GET do rascunho = `editar` (lote 6C)
             assert ACAO_POR_METODO[rota.split(" ", 1)[0]] == acao, rota
     assert not problemas, chr(10).join(problemas)
 
@@ -1299,8 +1300,9 @@ def test_2f1_regular_negado_nas_27_de_gestao_e_permitido_nas_2_do_me_router_pt_e
 def test_2f1_detector_ignorar_o_escopo_minimo_faria_a_paridade_acusar_o_regular_nas_get_de_gestao():
     vivas = _declaradas_com_escopo()
     retrato = carregar_retrato()["rotas"]
-    get_gestao = sorted(r for r in _GESTAO_2F1_TODOS if r.startswith("GET "))
-    assert len(get_gestao) == 10
+    # O GET do rascunho passou a `editar` (lote 6C): o regular nem tem `editar`, o detector so vale para `ver`.
+    get_gestao = sorted(r for r, (_, acao) in _GESTAO_2F1_TODOS.items() if r.startswith("GET ") and acao == "ver")
+    assert len(get_gestao) == 9
     for rota in get_gestao:
         classe = retrato[rota]["classe"]
         # Com o escopo minimo (o real): sem divergencia.
