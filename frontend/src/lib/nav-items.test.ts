@@ -101,11 +101,13 @@ describe('menu derivado das permissões (paridade com o menu por role)', () => {
     }
     expect(navVisibilityFromPermissions(undefined).hasIntervalsConfigured).toBe(false);
   });
-  it('Modelos de treino exige editar com escopo todos (ver próprios não basta)', () => {
+  it('Modelos de treino exige editar com escopo alunos ou todos (ver próprios não basta)', () => {
     const p = usuario();
     expect(hrefs(vis(p))).not.toContain('/modelos-treino');
-    p['modelos.treino'].editar = 'alunos';
+    p['modelos.treino'].editar = 'proprios';
     expect(hrefs(vis(p))).not.toContain('/modelos-treino');
+    p['modelos.treino'].editar = 'alunos';
+    expect(hrefs(vis(p))).toContain('/modelos-treino');
     p['modelos.treino'].editar = 'todos';
     expect(hrefs(vis(p))).toContain('/modelos-treino');
   });

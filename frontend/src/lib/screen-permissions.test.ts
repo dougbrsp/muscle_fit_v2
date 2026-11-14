@@ -6,6 +6,7 @@ import {
   exerciseCardsControls,
   gruposControls,
   iaControls,
+  modeloTreinoItemControls,
   modelosTreinoControls,
   planoNutricionalControls,
   segurancaTreinoControls,
@@ -152,11 +153,31 @@ describe('controles das telas de gestão (paridade com o que cada papel via por 
 });
 
 describe('escopo e ação exatos', () => {
-  it('modelos de treino exige escopo todos: próprios ou alunos não bastam', () => {
-    for (const scope of ['proprios', 'alunos']) {
-      const p: Perms = { 'modelos.treino': { ver: scope, editar: scope, excluir: scope } };
-      expect(allFalse(modelosTreinoControls(p))).toBe(true);
+  it('modelos de treino exige escopo alunos: próprios não basta; gerar rascunho segue exigindo todos', () => {
+    const grantAll = (scope: string): Perms => ({ 'modelos.treino': { ver: scope, editar: scope, excluir: scope } });
+    expect(allFalse(modelosTreinoControls(grantAll('proprios')))).toBe(true);
+    expect(modelosTreinoControls(grantAll('alunos'))).toEqual({
+      canAccess: true, canView: true, canEdit: true, canDelete: true, canGenerateDraft: false,
+    });
+  });
+
+  it('por Modelo: admin escreve em qualquer um; PT (alunos) só nos próprios; sem permissão/id, nada', () => {
+    const pt: Perms = { 'modelos.treino': { ver: 'alunos', editar: 'alunos', excluir: 'alunos' } };
+    const own = { created_by_user_id: 7, visibility: 'privado' };
+    const other = { created_by_user_id: 9, visibility: 'publico' };
+    const allow = { isOwner: true, canWrite: true, canDelete: true, canDuplicate: true, canAssign: true, canEndAssignment: true };
+    expect(modeloTreinoItemControls(admin(), 1, other)).toEqual({ ...allow, isOwner: false });
+    expect(modeloTreinoItemControls(pt, 7, own)).toEqual(allow);
+    expect(modeloTreinoItemControls(pt, 7, other)).toEqual({
+      ...allow, isOwner: false, canWrite: false, canDelete: false,
+    });
+    expect(modeloTreinoItemControls(usuario(), 7, own)).toMatchObject({
+      canWrite: false, canDelete: false, canDuplicate: false, canAssign: false, canEndAssignment: false,
+    });
+    for (const perms of [null, undefined, {}]) {
+      expect(Object.values(modeloTreinoItemControls(perms, 7, own)).every((v) => v === false)).toBe(true);
     }
+    expect(Object.values(modeloTreinoItemControls(admin(), undefined, own)).every((v) => v === false)).toBe(true);
   });
 
   it('plano de outros exige editar com escopo todos', () => {

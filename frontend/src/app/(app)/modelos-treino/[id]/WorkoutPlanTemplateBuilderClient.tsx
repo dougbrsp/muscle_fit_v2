@@ -86,6 +86,7 @@ import {
   VOLUME_MODE_OPTIONS,
   type ApiListResponse,
   type TemplateSafetyWarning,
+  type TemplateVisibility,
   type VolumeCoverageWarning,
   type VolumeMode,
   type WorkoutPlanTemplateDetail,
@@ -129,7 +130,7 @@ import { buildItemPriorFatigueLookup } from '@/lib/prior-fatigue';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { MethodologyIntentKind } from '@/lib/methodology-volume-types';
 import type { SessionUser } from '@/lib/auth';
-import { modelosTreinoControls } from '@/lib/screen-permissions';
+import { modeloTreinoItemControls } from '@/lib/screen-permissions';
 import { versionLabel } from '@/lib/template-versions';
 import {
   goalOption,
@@ -145,6 +146,11 @@ import { TemplateVersionHistoryPanel } from './TemplateVersionHistory';
 import { PeriodizationDraftPanel } from './PeriodizationDraftPanel';
 import { SlotDragPreview, SlotEditor } from './SlotEditor';
 import type { SortableData } from './sortable';
+
+// Em leitura todos os cards ficam expandidos (sem tocar no estado persistido).
+const NO_COLLAPSED_ITEMS: Set<string> = new Set();
+// Leitura: o SlotEditor só consulta `.has(id)`; expande tudo para mostrar técnica/aquecimento/ajuste.
+const ALL_ITEMS_EXPANDED = { has: () => true } as unknown as Set<string>;
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
@@ -204,6 +210,8 @@ export function WorkoutPlanTemplateBuilderClient() {
   const trainingGoalsQuery = useTrainingGoals();
   const trainingGoals = trainingGoalsQuery.data;
   const [isActive, setIsActive] = useState(true);
+  // Padrão do backend ao criar: público.
+  const [visibility, setVisibility] = useState<TemplateVisibility>('publico');
   const [slots, setSlots] = useState<SlotState[]>([]);
   // M10: payload dos previews memoizado por identidade de `slots` (antes era
   // recalculado a cada render, 2x). Como os campos de texto/número só promovem
@@ -369,12 +377,6 @@ export function WorkoutPlanTemplateBuilderClient() {
   // Rascunho (067): só quando o GET do Modelo diz que existe. Ao abrir, o
   // editor carrega o RASCUNHO, não a vigente.
   const hasDraft = Boolean(templateQuery.data?.has_draft);
-  const draftQuery = useQuery({
-    queryKey: ['workout-plan-template-draft', numericId],
-    queryFn: () => apiFetch<WorkoutPlanTemplateDraft>(`/workout-plan-templates/${numericId}/draft`),
-    enabled: !isNew && !!numericId && hasDraft,
-    retry: false,
-  });
 
   // Mesma query key do AppShellLayout/lista de Modelos — o React Query dedupa.
   // Só admin/PT veem as ações do histórico (reverter).
@@ -384,8 +386,29 @@ export function WorkoutPlanTemplateBuilderClient() {
     staleTime: 60_000,
     retry: false,
   });
-  // Reverter versão: POST /workout-plan-templates/{id}/versions/{v}/revert = modelos.treino/editar (todos).
-  const canManageVersions = modelosTreinoControls(currentUserQuery.data?.permissions).canEdit;
+  // Reverter versão: POST /workout-plan-templates/{id}/versions/{v}/revert = modelos.treino/editar
+  // com dono ou escopo todos (decisão por Modelo, espelho de `template_access_decision`).
+  const currentUserId = currentUserQuery.data?.id;
+  const itemCtrl = modeloTreinoItemControls(
+    currentUserQuery.data?.permissions,
+    currentUserId,
+    isNew ? { created_by_user_id: currentUserId } : { created_by_user_id: templateQuery.data?.created_by_user_id },
+  );
+  const canManageVersions = itemCtrl.canWrite;
+  // Modelo salvo que o usuário só pode ver (público alheio): editor em somente leitura.
+  // Fail-closed: até saber que `canWrite` é verdadeiro (inclui /auth/me carregando ou falho), fica em leitura.
+  // Modelo novo: `canWrite` = "pode criar" (o dono é o próprio usuário).
+  const readOnly = !itemCtrl.canWrite;
+  // O aviso só aparece quando usuário e Modelo já carregaram e de fato não há permissão.
+  const showReadOnlyNotice = readOnly && currentUserQuery.isSuccess && (isNew || !!templateQuery.data);
+
+  // O rascunho não publicado é do dono: leitor nunca o busca (o GET /draft o aceitaria).
+  const draftQuery = useQuery({
+    queryKey: ['workout-plan-template-draft', numericId],
+    queryFn: () => apiFetch<WorkoutPlanTemplateDraft>(`/workout-plan-templates/${numericId}/draft`),
+    enabled: !isNew && !!numericId && hasDraft && itemCtrl.canWrite,
+    retry: false,
+  });
 
   const muscleGroupsQuery = useQuery({
     queryKey: ['muscle-groups-catalog'],
@@ -427,12 +450,15 @@ export function WorkoutPlanTemplateBuilderClient() {
       return;
     }
     if (!templateQuery.data) return;
+    // `canWrite` só é conhecido após /auth/me: hidratar antes ignoraria o rascunho do dono.
+    if (currentUserQuery.isPending) return;
 
     const detail = templateQuery.data;
-    // Com rascunho, espera a leitura dele; se ela falhar (ex.: descartado em
-    // outra aba), cai na vigente.
-    if (detail.has_draft && draftQuery.isPending) return;
-    const draft = detail.has_draft && draftQuery.data ? draftQuery.data : null;
+    // Com rascunho (só para quem escreve), espera a leitura dele; se ela falhar
+    // (ex.: descartado em outra aba), cai na vigente.
+    const useDraft = detail.has_draft && itemCtrl.canWrite;
+    if (useDraft && draftQuery.isPending) return;
+    const draft = useDraft && draftQuery.data ? draftQuery.data : null;
     const source = draft ? draft.payload : detail;
     setName(source.name ?? '');
     setDescription(source.description || '');
@@ -441,6 +467,7 @@ export function WorkoutPlanTemplateBuilderClient() {
     setCountingMode(normalizeCountingMode(source.volume_counting_mode));
     setTrainingGoal(source.training_goal ?? null);
     setIsActive(source.is_active ?? true);
+    setVisibility(source.visibility ?? detail.visibility ?? 'publico');
     const { slots: hydratedSlots, itemServerIds: hydratedItemServerIds } = hydrateSlotsWithItemIds(
       source.slots ?? [],
     );
@@ -461,7 +488,7 @@ export function WorkoutPlanTemplateBuilderClient() {
     setSafetyWarnings(draft ? [] : detail.safety_warnings || []);
     setDraftUpdatedAt(draft ? draft.updated_at : null);
     setInitialized(true);
-  }, [isNew, initialized, templateQuery.data, draftQuery.isPending, draftQuery.data]);
+  }, [isNew, initialized, templateQuery.data, draftQuery.isPending, draftQuery.data, currentUserQuery.isPending, itemCtrl.canWrite]);
 
   // Persiste os slots recolhidos por POSIÇÃO (o `localId` muda a cada
   // carregamento). Reordenar slots move a posição junto. Modelo novo não grava.
@@ -604,6 +631,7 @@ export function WorkoutPlanTemplateBuilderClient() {
   // Os ids são sempre `localId` (chaves estáveis, nunca o índice).
   function handleDragEnd(event: DragEndEvent) {
     setActiveDragSlotId(null);
+    if (readOnly) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const activeData = sortableData(active.data);
@@ -664,6 +692,7 @@ export function WorkoutPlanTemplateBuilderClient() {
       volume_counting_mode: countingMode,
       ...(trainingGoal != null ? { training_goal: trainingGoal } : {}),
       is_active: isActive,
+      visibility,
       // Só num rascunho de periodização ainda não salvo. É isto que marca
       // `origin='periodization'` no backend e fecha a auditoria da geração;
       // sem enviar, o modelo nasceria `manual` e o log ficaria órfão.
@@ -825,7 +854,7 @@ export function WorkoutPlanTemplateBuilderClient() {
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>
           {forbidden
-            ? 'Acesso restrito a administradores e personal trainers.'
+            ? 'Acesso restrito a quem tem permissão para gerir modelos de treino.'
             : errorMessage(
                 templateQuery.error,
                 'Não foi possível carregar este modelo de treino (talvez não exista mais).',
@@ -919,12 +948,12 @@ export function WorkoutPlanTemplateBuilderClient() {
             color="brand"
             leftSection={<IconUsers size={16} />}
             onClick={openAssign}
-            disabled={isNew}
+            disabled={isNew || !itemCtrl.canAssign}
           >
             Atribuir usuários
           </Button>
           {/* Modelo novo: só "Publicar modelo" (cria a v1) — nunca existe Modelo sem versão vigente. */}
-          {!isNew && (
+          {!isNew && !readOnly && (
             <Button
               variant="default"
               onClick={() => saveDraftMutation.mutate()}
@@ -934,24 +963,37 @@ export function WorkoutPlanTemplateBuilderClient() {
               {SAVE_DRAFT_LABEL}
             </Button>
           )}
-          <Button
-            color="brand"
-            onClick={handleSave}
-            loading={saveMutation.isPending}
-            disabled={saveDraftMutation.isPending}
-          >
-            {PUBLISH_LABEL}
-          </Button>
+          {!readOnly && (
+            <Button
+              color="brand"
+              onClick={handleSave}
+              loading={saveMutation.isPending}
+              disabled={saveDraftMutation.isPending}
+            >
+              {PUBLISH_LABEL}
+            </Button>
+          )}
         </Group>
       </Group>
 
+      {showReadOnlyNotice && (
+        <Alert color="blue" icon={<IconInfoCircle size={16} />}>
+          {isNew
+            ? 'Você não tem permissão para criar modelos de treino.'
+            : 'Você pode ver este modelo, mas só o dono ou um administrador pode alterá-lo. Duplique-o para ter uma cópia própria.'}
+        </Alert>
+      )}
+
       {!isNew && draftUpdatedAt && (
-        <TemplateDraftBanner
-          updatedAt={draftUpdatedAt}
-          currentVersionNumber={templateQuery.data?.current_version?.number}
-          discarding={discardDraftMutation.isPending}
-          onDiscard={() => discardDraftMutation.mutate()}
-        />
+        // fieldset disabled: `onDiscard` é obrigatório no banner; em leitura o botão "Descartar" fica travado.
+        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          <TemplateDraftBanner
+            updatedAt={draftUpdatedAt}
+            currentVersionNumber={templateQuery.data?.current_version?.number}
+            discarding={discardDraftMutation.isPending}
+            onDiscard={() => discardDraftMutation.mutate()}
+          />
+        </fieldset>
       )}
 
       {periodizationSeed && (
@@ -970,6 +1012,8 @@ export function WorkoutPlanTemplateBuilderClient() {
         </Text>
       )}
 
+      {/* Somente leitura: o fieldset desabilita todos os campos e botões nativos do editor. */}
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <Grid gutter="xl" align="stretch">
       <Grid.Col span={{ base: 12, md: periodizationSeed ? 7 : 12 }}>
       <Paper
@@ -989,6 +1033,18 @@ export function WorkoutPlanTemplateBuilderClient() {
             mt={28}
           />
         </Group>
+        <Select
+          label="Visibilidade"
+          description="Público: todos os personal trainers veem o modelo. Privado: só você e os administradores."
+          mt="sm"
+          data={[
+            { value: 'publico', label: 'Público' },
+            { value: 'privado', label: 'Privado' },
+          ]}
+          value={visibility}
+          onChange={(v) => v && setVisibility(v as TemplateVisibility)}
+          allowDeselect={false}
+        />
         <BlurCommitTextarea
           label="Descrição"
           mt="sm"
@@ -1206,11 +1262,11 @@ export function WorkoutPlanTemplateBuilderClient() {
                   muscleGroupOptions={muscleGroupOptions}
                   muscleGroupNameById={muscleGroupNameById}
                   muscleGroupParentById={muscleGroupParentById}
-                  expandedItemIds={expandedItemIds}
-                  collapsed={collapsedSlotIds.has(slot.localId)}
+                  expandedItemIds={readOnly ? ALL_ITEMS_EXPANDED : expandedItemIds}
+                  collapsed={!readOnly && collapsedSlotIds.has(slot.localId)}
                   onToggleCollapsed={() => toggleSlotCollapsed(slot.localId)}
                   onToggleItemExpanded={toggleItemExpanded}
-                  collapsedItemIds={collapsedItemIds}
+                  collapsedItemIds={readOnly ? NO_COLLAPSED_ITEMS : collapsedItemIds}
                   onToggleItemCollapsed={toggleItemCollapsed}
                   onSetItemsCollapsed={setSlotItemsCollapsed}
                   onChangeSlot={(patch) => updateSlot(slot.localId, patch)}
@@ -1281,6 +1337,7 @@ export function WorkoutPlanTemplateBuilderClient() {
           </Text>
         </Tooltip>
       </Paper>
+      </fieldset>
 
       {/* Fase 4 (PR F): duas leituras do MESMO Modelo em unidades DIFERENTES —
           cada cabeçalho escreve a sua. Fase 7: uma embaixo da outra, em

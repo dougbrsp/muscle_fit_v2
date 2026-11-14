@@ -171,9 +171,9 @@ export function PlanDetailClient() {
     enabled: Number.isFinite(planId),
   });
   const cardioRecommendation = cardioQuery.data?.items?.[0] || null;
-  // Gerar: ia.cardio/editar. Aplicar ao Modelo: modelos.treino/editar (todos). Fail-closed.
+  // Gerar: ia.cardio/editar. Aplicar ao Modelo: modelos.treino/editar (alunos; o backend ainda exige ser dono do Modelo). Fail-closed.
   const canGenerateCardio = useIaControls().canCardio;
-  const canApplyCardioToTemplate = usePermissions().can('modelos.treino', 'editar', 'todos');
+  const canApplyCardioToTemplate = usePermissions().can('modelos.treino', 'editar', 'alunos');
 
   const [cardioDeleteOpened, { open: openCardioDelete, close: closeCardioDelete }] = useDisclosure(false);
 

@@ -17,7 +17,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
-import { modelosTreinoControls } from '@/lib/screen-permissions';
+import { modeloTreinoItemControls, modelosTreinoControls } from '@/lib/screen-permissions';
+import { notifications } from '@mantine/notifications';
 import {
   VOLUME_MODE_OPTIONS,
   type ApiListResponse,
@@ -49,8 +50,8 @@ function volumeModeLabel(mode: string): string {
 /**
  * Listagem de "Modelos de treino" (Fase 4, Etapa 15). Mesmo padrão
  * estrutural de TrainingTypesListClient.tsx (Etapa 14): router inteiro é
- * admin/PT-only no backend (403 para os demais), então a query só dispara
- * depois de `/auth/me` resolver o papel do usuário.
+ * restrito por permissão no backend (modelos.treino, escopo alunos; 403 para os
+ * demais), então a query só dispara depois de `/auth/me` resolver as permissões.
  *
  * Gap documentado (fora de escopo desta etapa): `GET
  * /workout-plan-templates/assigned-to-me` (me_router, aberto a qualquer
@@ -71,7 +72,8 @@ export function WorkoutPlanTemplatesListClient() {
     staleTime: 60_000,
     retry: false,
   });
-  // Permissões efetivas (RBAC), espelho do require_permission de /workout-plan-templates (escopo todos).
+  // Permissões efetivas (RBAC), espelho do require_permission de /workout-plan-templates (escopo alunos);
+  // o que cada linha permite (dono x público alheio) vem de `modeloTreinoItemControls`.
   const ctrl = modelosTreinoControls(currentUserQuery.data?.permissions);
   const canManage = ctrl.canAccess;
 
@@ -99,7 +101,14 @@ export function WorkoutPlanTemplatesListClient() {
     mutationFn: (id: number) =>
       apiFetch<WorkoutPlanTemplateDetail>(`/workout-plan-templates/${id}/duplicate`, { method: 'POST' }),
     onSuccess: async () => {
+      notifications.show({
+        color: 'green',
+        message: 'Cópia criada como privada e sua. Abra-a para editar ou torná-la pública.',
+      });
       await qc.invalidateQueries({ queryKey: ['workout-plan-templates'] });
+    },
+    onError: (error) => {
+      notifications.show({ color: 'red', message: errorMessage(error, 'Não foi possível duplicar o modelo.') });
     },
   });
 
@@ -120,11 +129,10 @@ export function WorkoutPlanTemplatesListClient() {
     openDelete();
   }
 
-  // Modal do Motor de Periodização (PR-17). O botão que o abre só existe para
-  // admin/PT — o mesmo `require_admin_or_pt` que protege
-  // `POST /workout-plan-templates/periodization-drafts` no backend (D17); a
-  // tela inteira já é admin/PT-only, então o gate aqui é de UI, não de
-  // segurança.
+  // Modal do Motor de Periodização (PR-17). O botão que o abre segue
+  // `ctrl.canGenerateDraft` (ia.modelo_periodizacao, escopo todos), o mesmo gate de
+  // `POST /workout-plan-templates/periodization-drafts` no backend; o gate aqui é de UI,
+  // não de segurança.
   const [periodizationOpened, { open: openPeriodization, close: closePeriodization }] = useDisclosure(false);
 
   const [assignTarget, setAssignTarget] = useState<WorkoutPlanTemplateListItem | null>(null);
@@ -155,7 +163,7 @@ export function WorkoutPlanTemplatesListClient() {
           Modelos de treino
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />} radius="md">
-          {errorMessage(templatesQuery.error, 'Acesso restrito a administradores e personal trainers.')}
+          {errorMessage(templatesQuery.error, 'Acesso restrito a quem tem permissão para gerir modelos de treino.')}
         </Alert>
       </Stack>
     );
@@ -219,7 +227,13 @@ export function WorkoutPlanTemplatesListClient() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {items.map((template) => (
+              {items.map((template) => {
+                const item = modeloTreinoItemControls(
+                  currentUserQuery.data?.permissions,
+                  currentUserQuery.data?.id,
+                  template,
+                );
+                return (
                 <Table.Tr key={template.id}>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
@@ -237,6 +251,18 @@ export function WorkoutPlanTemplatesListClient() {
                         </Badge>
                       )}
                       <TrainingGoalBadge value={template.training_goal} onlyNonDefault />
+                      <Badge
+                        variant="light"
+                        color={template.visibility === 'privado' ? 'violet' : 'blue'}
+                        size="sm"
+                        title={
+                          template.visibility === 'privado'
+                            ? 'Só o dono e os administradores veem este modelo'
+                            : 'Todos os personal trainers veem este modelo'
+                        }
+                      >
+                        {template.visibility === 'privado' ? 'Privado' : 'Público'}
+                      </Badge>
                       {template.has_draft && (
                         <Badge variant="light" color="yellow" size="sm" title="Há um rascunho não publicado">
                           Rascunho
@@ -246,6 +272,11 @@ export function WorkoutPlanTemplatesListClient() {
                     {template.description && (
                       <Text size="xs" c={BRAND.textMuted}>
                         {template.description}
+                      </Text>
+                    )}
+                    {template.created_by_username && (
+                      <Text size="xs" c={BRAND.textMuted}>
+                        Dono: {item.isOwner ? 'você' : template.created_by_username}
                       </Text>
                     )}
                   </Table.Td>
@@ -264,7 +295,7 @@ export function WorkoutPlanTemplatesListClient() {
                       color="brand"
                       checked={template.is_active}
                       label={template.is_active ? 'Ativo' : 'Inativo'}
-                      disabled={!ctrl.canEdit}
+                      disabled={!item.canWrite}
                       onChange={(event) =>
                         toggleStatusMutation.mutate({ id: template.id, isActive: event.currentTarget.checked })
                       }
@@ -272,16 +303,14 @@ export function WorkoutPlanTemplatesListClient() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
-                      {ctrl.canEdit && (
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="brand"
-                          onClick={() => router.push(`/modelos-treino/${template.id}`)}
-                        >
-                          Editar
-                        </Button>
-                      )}
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="brand"
+                        onClick={() => router.push(`/modelos-treino/${template.id}`)}
+                      >
+                        {item.canWrite ? 'Editar' : 'Ver'}
+                      </Button>
                       {ctrl.canView && (
                         <Button
                           size="xs"
@@ -293,7 +322,7 @@ export function WorkoutPlanTemplatesListClient() {
                           Diagnóstico de volume
                         </Button>
                       )}
-                      {ctrl.canEdit && (
+                      {item.canAssign && (
                         <Button
                           size="xs"
                           variant="light"
@@ -304,7 +333,7 @@ export function WorkoutPlanTemplatesListClient() {
                           Atribuir
                         </Button>
                       )}
-                      {ctrl.canEdit && (
+                      {item.canDuplicate && (
                         <Button
                           size="xs"
                           variant="light"
@@ -316,7 +345,7 @@ export function WorkoutPlanTemplatesListClient() {
                           Duplicar
                         </Button>
                       )}
-                      {ctrl.canDelete && (
+                      {item.canDelete && (
                         <Button
                           size="xs"
                           variant="light"
@@ -330,7 +359,8 @@ export function WorkoutPlanTemplatesListClient() {
                     </Group>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+                );
+              })}
               {items.length === 0 && (
                 <Table.Tr>
                   <Table.Td colSpan={6}>

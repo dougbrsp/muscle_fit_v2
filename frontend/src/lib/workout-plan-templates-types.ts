@@ -124,6 +124,8 @@ export type WorkoutPlanTemplateAssignment = {
 // (workout_plan_templates.py::_list_templates).
 export type VolumeMode = 'percent_budget' | 'equipment_series';
 
+export type TemplateVisibility = 'publico' | 'privado';
+
 export type WorkoutPlanTemplateListItem = {
   id: number;
   name: string;
@@ -141,6 +143,8 @@ export type WorkoutPlanTemplateListItem = {
   is_active: boolean;
   created_by_user_id: number;
   created_by_username: string | null;
+  /** Lote 6A: Modelo público (todo personal vê) ou privado (só o dono e o admin). */
+  visibility: TemplateVisibility;
   created_at: string;
   updated_at: string;
   assignments_count: number;
@@ -215,6 +219,7 @@ export type WorkoutPlanTemplateDetail = {
   training_goal?: string;
   is_active: boolean;
   created_by_user_id: number;
+  visibility: TemplateVisibility;
   created_at: string;
   updated_at: string;
   // Grade do editor (migração 062): linhas (1–2) x colunas (1–4), lida linha
@@ -339,6 +344,8 @@ export type WorkoutPlanTemplatePayload = {
   /** Objetivo de treino do Modelo (093). Ausente = a API preserva o gravado (criação: default). */
   training_goal?: string | null;
   is_active: boolean;
+  /** Ausente: criar = público; editar = mantém o gravado. */
+  visibility?: TemplateVisibility;
   // Procedência (migração 038, PR-16): id da geração automática de onde este
   // modelo saiu. O cliente NÃO informa `origin` — informa de qual geração
   // veio, e o backend decide (`workout_plan_templates._resolve_origin`) depois
