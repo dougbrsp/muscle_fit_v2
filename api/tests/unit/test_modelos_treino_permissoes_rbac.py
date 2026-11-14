@@ -2,7 +2,8 @@
 `app.workout_plan_templates` (prefixo `/workout-plan-templates`) servidas pelos apps reais.
 
 Contrato (tabela viva `CONTRATO_2F1` de `test_access_paridade_guards`):
-- 27 de gestao em `modelos.treino` com `min_scope="todos"` (GET ver, POST/PUT/PATCH editar, DELETE excluir),
+- 27 de gestao em `modelos.treino` com `min_scope="todos"` (GET ver, POST/PUT/PATCH editar, DELETE excluir; excecao: `GET .../{template_id}/draft`
+  exige `editar`, lote 6C),
   sendo `POST /periodization-drafts` em `ia.modelo_periodizacao`/editar, tambem com `min_scope="todos"`;
 - `GET /assigned-to-me` e `GET /hr-zones` em `modelos.treino`/ver, sem escopo minimo.
 
@@ -37,6 +38,7 @@ from tests.unit.test_access_paridade_guards import (
     CONTRATO_2F1,
     MODULO_2F1,
     ROTA_DRAFTS_IA,
+    ROTA_GET_DRAFT,
     ROTAS_2F1_ME,
 )
 
@@ -139,6 +141,8 @@ IDS = [f"{n}:{m}:{p}" for n, m, p in VIVAS]
 GESTAO = [v for v in VIVAS if CHAVE[v] not in ROTAS_2F1_ME]
 GESTAO_GET = [v for v in GESTAO if v[1] == "GET"]
 GESTAO_ESCRITA = [v for v in GESTAO if v[1] != "GET"]
+GET_DRAFT = [v for v in GESTAO_GET if CHAVE[v] == ROTA_GET_DRAFT]  # GET que exige `editar` (lote 6C)
+GESTAO_GET_VER = [v for v in GESTAO_GET if CHAVE[v] != ROTA_GET_DRAFT]
 ME = [v for v in VIVAS if CHAVE[v] in ROTAS_2F1_ME]
 SEM_IA = [v for v in VIVAS if CHAVE[v] != ROTA_DRAFTS_IA]
 DRAFTS_IA = [v for v in VIVAS if CHAVE[v] == ROTA_DRAFTS_IA]
@@ -227,6 +231,7 @@ def test_as_rotas_vivas_sao_exatamente_as_29_do_contrato():
     assert {CHAVE[v] for v in VIVAS} == set(CONTRATO_2F1)
     assert len(CONTRATO_2F1) == 29
     assert len(GESTAO) == 27 and len(GESTAO_GET) == 10 and len(ME) == 2
+    assert len(GET_DRAFT) == 1 and len(GESTAO_GET_VER) == 9
     assert len(DRAFTS_IA) == len(VIVAS) - len(SEM_IA) >= 1
     assert set(CORPOS) <= set(CONTRATO_2F1)
 
@@ -380,10 +385,26 @@ def test_so_ver_em_todos_e_negado_nas_escritas(ctx, rota):
     _negado(_chamar(clients, rota), dados)
 
 
-@pytest.mark.parametrize("rota", GESTAO_GET + ME, ids=_ids(GESTAO_GET + ME))
+@pytest.mark.parametrize("rota", GESTAO_GET_VER + ME, ids=_ids(GESTAO_GET_VER + ME))
 def test_so_ver_em_todos_passa_nas_get(ctx, rota):
     clients, state, _, dados = ctx
     _como(state, SINT_SO_VER)
+    _passou(_chamar(clients, rota), dados, rota)
+    assert dados.chamadas > 0
+
+
+@pytest.mark.parametrize("rota", GET_DRAFT, ids=_ids(GET_DRAFT))
+def test_so_ver_em_todos_e_negado_no_get_do_rascunho(ctx, rota):
+    """Lote 6C (ADR 0011): o rascunho so e lido por quem pode escreve-lo (`editar`)."""
+    clients, state, _, dados = ctx
+    _como(state, SINT_SO_VER)
+    _negado(_chamar(clients, rota), dados)
+
+
+@pytest.mark.parametrize("rota", GET_DRAFT, ids=_ids(GET_DRAFT))
+def test_editar_em_todos_passa_no_get_do_rascunho(ctx, rota):
+    clients, state, _, dados = ctx
+    _como(state, SINT_SEM_IA)  # modelos.treino ver/editar/excluir em todos
     _passou(_chamar(clients, rota), dados, rota)
     assert dados.chamadas > 0
 
