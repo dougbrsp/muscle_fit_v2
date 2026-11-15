@@ -10,13 +10,17 @@ import {
   findRemainingAfterUpcoming,
   findUpcomingExercise,
   isAdvancedExerciseDone,
+  isSavedPlanStartable,
+  isSessionClosedOnServer,
   mergeResumedSession,
   progressAfterEquipmentSwap,
   reorderPendingBySkip,
   resolveAdvancedSubStage,
   resolveEffectiveExerciseDisplay,
+  resolvePlanExecutionView,
   resolveRestSeconds,
   resolveSessionPairLimits,
+  shouldDiscardLocalSession,
   shouldSwapAsOverride,
   syntheticExtraToPlanExercise,
 } from './workout-mode-plan-flow';
@@ -1060,5 +1064,63 @@ describe('originalPlanItemId (M97-D2: item trocado na sugestão do par)', () => 
   it('sem item: null', () => {
     expect(originalPlanItemId(null, extras)).toBeNull();
     expect(originalPlanItemId(undefined, extras)).toBeNull();
+  });
+});
+
+describe('resolvePlanExecutionView (issue #127)', () => {
+  it('erro de carga sem snapshot: erro, nunca concluída', () => {
+    expect(resolvePlanExecutionView({ hasPlan: false, planExerciseCount: 0, hasPendingExercise: false })).toBe('plan-error');
+  });
+  it('ficha carregada sem exercícios: vazia, nunca concluída', () => {
+    expect(resolvePlanExecutionView({ hasPlan: true, planExerciseCount: 0, hasPendingExercise: false })).toBe('plan-empty');
+  });
+  it('ficha com exercícios pendentes: execução', () => {
+    expect(resolvePlanExecutionView({ hasPlan: true, planExerciseCount: 5, hasPendingExercise: true })).toBe('execute');
+  });
+  it('ficha toda concluída: concluída', () => {
+    expect(resolvePlanExecutionView({ hasPlan: true, planExerciseCount: 5, hasPendingExercise: false })).toBe('completed');
+  });
+});
+
+describe('isSessionClosedOnServer', () => {
+  it('encerrada no servidor: obsoleta', () => {
+    expect(isSessionClosedOnServer('done')).toBe(true);
+  });
+  it('em andamento, ausente, nula ou desconhecida: ativa', () => {
+    expect(isSessionClosedOnServer('in_progress')).toBe(false);
+    expect(isSessionClosedOnServer(null)).toBe(false);
+    expect(isSessionClosedOnServer(undefined)).toBe(false);
+    expect(isSessionClosedOnServer('algo_novo')).toBe(false);
+  });
+});
+
+describe('shouldDiscardLocalSession', () => {
+  const base = { sessionStatus: 'done', isFresh: true, finishIdle: true, extendMode: false };
+  it('done fresco, finish idle, fora do extendMode: descarta', () => {
+    expect(shouldDiscardLocalSession(base)).toBe(true);
+  });
+  it('placeholder não descarta', () => {
+    expect(shouldDiscardLocalSession({ ...base, isFresh: false })).toBe(false);
+  });
+  it('finish pendente, com sucesso ou com erro (não idle): não descarta', () => {
+    expect(shouldDiscardLocalSession({ ...base, finishIdle: false })).toBe(false);
+  });
+  it('extendMode não descarta', () => {
+    expect(shouldDiscardLocalSession({ ...base, extendMode: true })).toBe(false);
+  });
+  it('in_progress, nulo e desconhecido não descartam', () => {
+    for (const sessionStatus of ['in_progress', null, undefined, 'algo_novo']) {
+      expect(shouldDiscardLocalSession({ ...base, sessionStatus })).toBe(false);
+    }
+  });
+});
+
+describe('isSavedPlanStartable', () => {
+  it('ficha gravada vazia não inicia sessão', () => {
+    expect(isSavedPlanStartable([])).toBe(false);
+    expect(isSavedPlanStartable(undefined)).toBe(false);
+  });
+  it('ficha gravada com exercícios inicia', () => {
+    expect(isSavedPlanStartable([{}])).toBe(true);
   });
 });

@@ -78,6 +78,7 @@ export function WorkoutModeClient() {
   const [hydrated, setHydrated] = useState(false);
   const [exitOpen, { open: openExit, close: closeExit }] = useDisclosure(false);
   const [perSetAiEnabled, setPerSetAiEnabled] = useState(false);
+  const [staleNotice, setStaleNotice] = useState(false);
   const [completion, setCompletion] = useState<CompletionState>(initialCompletionState);
   // Número da conclusão em curso; sair do modal o invalida, para o resumo que
   // chegar depois não atualizar estado de um modal já fechado.
@@ -101,6 +102,15 @@ export function WorkoutModeClient() {
     clearParkedSession();
     saveStoredSession(next);
     setSession(next);
+  }
+
+  // Activity já encerrada no servidor: descarta a sessão local sem o modal de
+  // conclusão e sem chamar `finish` de novo.
+  function handleSessionClosedOnServer() {
+    clearStoredSession();
+    clearParkedSession();
+    setSession(null);
+    setStaleNotice(true);
   }
 
   function handlePerSetAiToggle(enabled: boolean) {
@@ -210,6 +220,11 @@ export function WorkoutModeClient() {
       <StorageStatusNotice />
       <SyncIndicator />
       {session && <WakeLockNotice />}
+      {!session && staleNotice && (
+        <Alert color="blue" variant="light" withCloseButton onClose={() => setStaleNotice(false)}>
+          <Text size="sm">Este treino já foi encerrado em outro aparelho ou aba. Escolha como quer treinar agora.</Text>
+        </Alert>
+      )}
       {!session && <ModeSelectScreen onSessionStarted={handleSessionStarted} />}
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
@@ -217,6 +232,7 @@ export function WorkoutModeClient() {
           perSetAiEnabled={perSetAiEnabled && ia.canModoTreino}
           onFinish={handleWorkoutFinished}
           headerSlot={headerSlot}
+          onSessionClosedOnServer={handleSessionClosedOnServer}
         />
       )}
       {session && session.source === 'freeform' && (
