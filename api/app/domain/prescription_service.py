@@ -61,6 +61,8 @@ PAIR_SUGGESTION_ENGINE_VERSION = "pair-suggestion-v2"
 
 LOAD_SOURCE_ENGINE = "engine"  # carga da trilha (ou da decisão do motor)
 LOAD_SOURCE_LAST_EXECUTION = "last_execution"  # trilha sem carga: calibração pela execução
+NO_HISTORY_NOTE = "Sem histórico registrado"
+NO_HISTORY_ON_EQUIPMENT_NOTE = "Sem histórico neste equipamento"
 
 # Mesmos códigos de `progression` que a UI já desenha como seta.
 PROGRESSION_INCREASED = "increased"
@@ -185,8 +187,11 @@ def last_execution_from_logs(
     """Última execução do exercício em `services.list_exercise_logs` (já em
     ordem do mais recente para o mais antigo, `mapping_id` já canônico).
 
-    Prefere a última NO equipamento pedido (`equipment_catalog_id`); sem
-    nenhuma nele, a última do exercício. Ocorrência sem série de trabalho com
+    Com equipamento (resolvido: o pedido ou, na falta, o derivado da última
+    execução com trilha ou da trilha mais recente, ver `suggest_for_pairs`),
+    só vale a última NO equipamento (`equipment_catalog_id`); sem nenhuma nele, `None`: a carga de outro
+    equipamento nunca é carga de partida (decisão de 15/11/2026, #137 B).
+    Sem equipamento, a última do exercício. Ocorrência sem série de trabalho com
     carga (só aquecimento, só técnica) é pulada: aquecimento não conta e
     aplicação de técnica nunca vira carga base (bug G2)."""
     candidates = []
@@ -206,12 +211,13 @@ def last_execution_from_logs(
         candidates.append((entry, working))
     if not candidates:
         return None
-    chosen = candidates[0]
     if equipment_id is not None:
-        same = [item for item in candidates if _int_or_none(item[0].get("equipment_catalog_id")) == int(equipment_id)]
-        if same:
-            chosen = same[0]
-    entry, working = chosen
+        candidates = [
+            item for item in candidates if _int_or_none(item[0].get("equipment_catalog_id")) == int(equipment_id)
+        ]
+        if not candidates:
+            return None
+    entry, working = candidates[0]
     last = working[-1]
     minimum = session_working_load(working)
     return LastExecution(
@@ -234,7 +240,10 @@ def progression_note(suggestion: PairSuggestion) -> str:
     evidence = decision.get("evidence") or {}
     reps = suggestion.reps_target
     if suggestion.last_execution is None and suggestion.suggested_load_kg is None:
-        return f"Sem histórico registrado — comece conservador dentro da faixa {reps or 'prescrita'}."
+        if suggestion.equipment_id is not None and suggestion.track_load_status is None:
+            # sem trilha do par: de fato sem histórico NESTE equipamento
+            return f"{NO_HISTORY_ON_EQUIPMENT_NOTE} — comece conservador dentro da faixa {reps or 'prescrita'}."
+        return f"{NO_HISTORY_NOTE} — comece conservador dentro da faixa {reps or 'prescrita'}."
     if code == SKIP:
         return "Grupo sem trabalho direto pela recuperação: sem progressão nesta sessão."
     partes: list[str] = []
@@ -307,6 +316,11 @@ def suggest_for_pairs(
 ) -> dict[tuple[int, Optional[int]], PairSuggestion]:
     """Uma sugestão por pedido (chave = `PairQuery.key` como veio), em número
     fixo de queries (o motor lê em lote).
+
+    Equipamento RESOLVIDO: o pedido ou, sem pedido, o da última execução (se
+    houver trilha nele) ou o da trilha executada mais recentemente; a "última
+    execução" e a carga de partida do par só vêm de execuções NESSE
+    equipamento (nunca de outro), mesmo no caminho sem equipamento pedido.
 
     `readiness` ausente = contrato PROJETADO para agora (nunca READY fixo);
     `logs` = `services.list_exercise_logs` do usuário, para a última execução."""
