@@ -1950,6 +1950,7 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
     """Resposta de `suggested_progression_for_mapping` para a sugestao do motor
     (contrato que o FE le; campos novos sao aditivos)."""
     from .domain.prescription_service import (
+        NO_HISTORY_NOTE,
         PAIR_SUGGESTION_ENGINE_VERSION,
         legacy_indicators,
         progression_note,
@@ -1961,7 +1962,7 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
             "reps_target": "",
             "load_target": "",
             "rpe_target": "",
-            "progression_note": "Sem histórico registrado.",
+            "progression_note": f"{NO_HISTORY_NOTE}.",
             "has_history": False,
             "progression": None,
             "last_load_kg": None,
