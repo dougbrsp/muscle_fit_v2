@@ -94,7 +94,9 @@ import {
   findRemainingAfterUpcoming,
   findUpcomingExercise,
   isAdvancedExerciseDone,
+  shouldDiscardLocalSession,
   originalPlanItemId,
+  resolvePlanExecutionView,
   progressAfterEquipmentSwap,
   resolveEffectiveExerciseDisplay,
   resolveRestSeconds,
@@ -425,6 +427,8 @@ type Props = {
   // Vaga na barra fina do topo (`WorkoutModeShell`) onde a linha de
   // progresso é desenhada (portal). Ausente: a linha fica no topo da tela.
   headerSlot?: HTMLElement | null;
+  // Activity já encerrada no servidor (outro aparelho/aba): descarta a sessão local.
+  onSessionClosedOnServer?: () => void;
 };
 
 /**
@@ -446,7 +450,7 @@ type Props = {
  * responder com sucesso — resumo de IA do treino e navegação são do
  * orquestrador (`WorkoutModeClient`).
  */
-export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, headerSlot = null }: Props) {
+export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, headerSlot = null, onSessionClosedOnServer }: Props) {
   const queryClient = useQueryClient();
   // Catálogo de técnicas (GET /advanced-techniques). Os helpers de
   // `advanced-techniques.ts` são síncronos e usam o fallback local até a
@@ -2203,8 +2207,25 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     />
   );
 
+  // Só dado FRESCO do servidor (não o retrato local) decide; encerrar por este
+  // aparelho segue o fluxo normal de `onFinish`, sem esta saída.
+  // Sessão de ficha sem `workout_plan_id` é inválida: sai pelo mesmo caminho.
+  const closedOnServer =
+    !session.workout_plan_id ||
+    (activityQuery.isSuccess &&
+      shouldDiscardLocalSession({
+        sessionStatus: activityQuery.data?.session_status,
+        isFresh: !activityQuery.isPlaceholderData,
+        finishIdle: finishMutation.isIdle,
+        extendMode,
+      }));
+  useEffect(() => {
+    if (closedOnServer) onSessionClosedOnServer?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closedOnServer]);
+
   // ── Render ──────────────────────────────────────────────────────────────
-  if (activityQuery.isLoading || planQuery.isLoading) {
+  if (closedOnServer || activityQuery.isLoading || planQuery.isLoading) {
     return (
       <Group justify="center" py="xl">
         <Loader size="md" color="brand" />
@@ -2242,6 +2263,35 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         onFinish={onFinish}
         onReturnToPlan={() => setExtendMode(false)}
       />
+    );
+  }
+
+  const executionView = resolvePlanExecutionView({
+    hasPlan: Boolean(plan),
+    planExerciseCount: plan?.exercises?.length ?? 0,
+    hasPendingExercise: current != null,
+  });
+  if (executionView === 'plan-error' || executionView === 'plan-empty') {
+    return (
+      <Stack gap="sm" py="md">
+        <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} role="alert">
+          <Text size="sm">
+            {executionView === 'plan-error'
+              ? 'Não foi possível carregar a ficha deste treino. Verifique sua conexão e tente novamente.'
+              : 'A ficha deste treino não tem exercícios. Tente novamente ou volte e gere a ficha outra vez.'}
+          </Text>
+        </Alert>
+        <Button
+          radius="xl"
+          loading={activityQuery.isFetching || planQuery.isFetching}
+          onClick={() => {
+            activityQuery.refetch();
+            planQuery.refetch();
+          }}
+        >
+          Tentar novamente
+        </Button>
+      </Stack>
     );
   }
 

@@ -306,6 +306,59 @@ export function mergeResumedSession(
 }
 
 // ---------------------------------------------------------------------------
+// Estado da tela de execução (issue #127: "Ficha concluída!" indevida)
+// ---------------------------------------------------------------------------
+
+export type PlanExecutionView = 'plan-error' | 'plan-empty' | 'execute' | 'completed';
+
+/**
+ * Qual estado a execução mostra. "Ficha concluída" exige ficha CARREGADA, com
+ * ao menos um exercício e nenhum pendente; ficha ausente (erro de carga sem
+ * snapshot) ou sem exercícios nunca é "concluída".
+ */
+export function resolvePlanExecutionView(params: {
+  hasPlan: boolean;
+  planExerciseCount: number;
+  hasPendingExercise: boolean;
+}): PlanExecutionView {
+  if (!params.hasPlan) return 'plan-error';
+  if (params.planExerciseCount <= 0) return 'plan-empty';
+  return params.hasPendingExercise ? 'execute' : 'completed';
+}
+
+/**
+ * Sessão local obsoleta: a activity já foi encerrada no servidor (outro
+ * aparelho/aba). `in_progress` e ausente (treino antigo) seguem ativos.
+ */
+export function isSessionClosedOnServer(sessionStatus: string | null | undefined): boolean {
+  return sessionStatus === 'done';
+}
+
+/**
+ * Descartar a sessão local? Só com `done` FRESCO (não placeholder), sem que
+ * este aparelho tenha tentado finalizar (idle, inclusive após erro/timeout) e
+ * fora do modo avulso (quem finaliza ali é outra tela).
+ */
+export function shouldDiscardLocalSession(params: {
+  sessionStatus: string | null | undefined;
+  isFresh: boolean;
+  finishIdle: boolean;
+  extendMode: boolean;
+}): boolean {
+  return (
+    params.isFresh &&
+    params.finishIdle &&
+    !params.extendMode &&
+    isSessionClosedOnServer(params.sessionStatus)
+  );
+}
+
+/** Ficha recém-gravada só inicia sessão se tiver exercícios. */
+export function isSavedPlanStartable(exercises: ReadonlyArray<unknown> | null | undefined): boolean {
+  return (exercises?.length ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Fila de execução
 // ---------------------------------------------------------------------------
 
