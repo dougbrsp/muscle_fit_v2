@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from . import async_jobs, deload_periods, services, workout_plan_edit_rules, workout_plan_equipment
 from .db import transaction
@@ -120,6 +121,23 @@ def list_plan_exercise_swap_options(
         return services.list_exercise_swap_options(plan_id, user_id=identity.user_id)
     except services.PlanNotFoundError:
         raise HTTPException(status_code=404, detail="Plano de treino não encontrado.")
+
+
+class DraftSwapOptionsIn(BaseModel):
+    # Uma ficha tem poucas dezenas de linhas; 200 e folga larga.
+    # exercise_catalog.id e BIGINT UNSIGNED, mas a RDS Data API so envia longValue com sinal (int64).
+    mapping_ids: list[Annotated[int, Field(gt=0, le=9223372036854775807)]] = Field(max_length=200)
+
+
+@router.post("/workout-plans/exercise-swap-options")
+def list_draft_exercise_swap_options(
+    payload: DraftSwapOptionsIn, identity: Identity = Depends(require_permission("treino.planos", "ver"))
+):
+    """Mesma elegibilidade de troca da ficha salva, para o rascunho (sem
+    `plan_id`), por `mapping_id`. Catalogo global: sem dado de usuario. POST
+    so pela lista no corpo; permissao de leitura. Rota da api-core
+    (catch-all): sem Terraform."""
+    return services.list_draft_exercise_swap_options(payload.mapping_ids)
 
 
 @router.get("/workout-plans/{plan_id}/exercises/{exercise_id}/equipment-options")

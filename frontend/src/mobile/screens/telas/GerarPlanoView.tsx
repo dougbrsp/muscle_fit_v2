@@ -4,10 +4,16 @@ import { Alert, Badge, Button, Group, NumberInput, Select, Stack, Text, Textarea
 import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GenerationWarnings } from '@/app/(app)/planos-treino/GenerationWarnings';
 import { ApiError, apiFetch } from '@/lib/api';
 import type { AsyncJob } from '@/lib/analytics-types';
+import {
+  draftSwapOptionsState,
+  generatedMappingIds,
+  stampGeneratedRows,
+  type DraftSwapOptionsResponse,
+} from '@/lib/exercise-swap-options';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
 import {
   DEFAULT_MAX_REST_SECONDS,
@@ -98,9 +104,23 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
     if (job?.status === 'done' && job.result && !draft) {
       setDraft(job.result);
       setDraftName(job.result.name);
-      setDraftExercises(job.result.exercises || []);
+      setDraftExercises(stampGeneratedRows(job.result.exercises || []));
     }
   }, [job, draft]);
+
+  // Elegibilidade de troca das linhas GERADAS (regra do servidor), pelos
+  // `mapping_id` do rascunho como chegou; novo rascunho = nova chave = nova busca.
+  const generatedIds = useMemo(() => generatedMappingIds(draft?.exercises), [draft]);
+  const swapOptionsQuery = useQuery({
+    queryKey: ['draft-exercise-swap-options', generatedIds],
+    queryFn: () =>
+      apiFetch<DraftSwapOptionsResponse>('/workout-plans/exercise-swap-options', {
+        method: 'POST',
+        body: JSON.stringify({ mapping_ids: generatedIds }),
+      }),
+    enabled: generatedIds.length > 0,
+  });
+  const draftSwapOptions = draftSwapOptionsState(swapOptionsQuery, generatedIds.length > 0);
 
   const createMutation = useMutation({
     mutationFn: (payload: WorkoutPlanInput) => apiFetch<WorkoutPlan>('/workout-plans', { method: 'POST', body: JSON.stringify(payload) }),
@@ -167,7 +187,12 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
               <GenerationWarnings draft={draft} />
             </>
           )}
-          <PlanExercisesEditor exercises={draftExercises} onChange={setDraftExercises} onEditingChange={setEditingRow} />
+          <PlanExercisesEditor
+            exercises={draftExercises}
+            onChange={setDraftExercises}
+            draftSwapOptions={draftSwapOptions}
+            onEditingChange={setEditingRow}
+          />
           {editingRow ? null : <PlanActivationPreviewList exercises={draftExercises} />}
           {createMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar" role="alert">

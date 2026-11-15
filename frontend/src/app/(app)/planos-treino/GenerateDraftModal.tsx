@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import {
@@ -34,6 +34,12 @@ import {
 } from '@/lib/workout-plans-types';
 import { buildDraftCreatePayload } from '@/lib/workout-plan-payload';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft } from '@/lib/workout-plan-generate-payload';
+import {
+  draftSwapOptionsState,
+  generatedMappingIds,
+  stampGeneratedRows,
+  type DraftSwapOptionsResponse,
+} from '@/lib/exercise-swap-options';
 import { ExercisesTable } from './ExercisesTable';
 import { MuscleActivationPreview } from './MuscleActivationPreview';
 import { GenerationWarnings } from './GenerationWarnings';
@@ -138,9 +144,23 @@ export function GenerateDraftModal({ opened, onClose }: Props) {
     if (job?.status === 'done' && job.result && !draft) {
       setDraft(job.result);
       setDraftName(job.result.name);
-      setDraftExercises(job.result.exercises || []);
+      setDraftExercises(stampGeneratedRows(job.result.exercises || []));
     }
   }, [job, draft]);
+
+  // Elegibilidade de troca das linhas GERADAS (regra do servidor), pelos
+  // `mapping_id` do rascunho como chegou; novo rascunho = nova chave = nova busca.
+  const generatedIds = useMemo(() => generatedMappingIds(draft?.exercises), [draft]);
+  const swapOptionsQuery = useQuery({
+    queryKey: ['draft-exercise-swap-options', generatedIds],
+    queryFn: () =>
+      apiFetch<DraftSwapOptionsResponse>('/workout-plans/exercise-swap-options', {
+        method: 'POST',
+        body: JSON.stringify({ mapping_ids: generatedIds }),
+      }),
+    enabled: generatedIds.length > 0,
+  });
+  const draftSwapOptions = draftSwapOptionsState(swapOptionsQuery, generatedIds.length > 0);
 
   const createMutation = useMutation({
     mutationFn: (payload: WorkoutPlanInput) => apiFetch<WorkoutPlan>('/workout-plans', { method: 'POST', body: JSON.stringify(payload) }),
@@ -325,7 +345,7 @@ export function GenerateDraftModal({ opened, onClose }: Props) {
             <GenerationWarnings draft={draft} />
 
             <Divider label="Exercícios" />
-            <ExercisesTable exercises={draftExercises} onChange={setDraftExercises} />
+            <ExercisesTable exercises={draftExercises} onChange={setDraftExercises} draftSwapOptions={draftSwapOptions} />
 
             <Divider label="Prévia de ativação muscular" />
             <MuscleActivationPreview exercises={draftExercises} />
