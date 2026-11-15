@@ -1,6 +1,6 @@
 # ADR 0011: Permissões por grupos (RBAC) como fundação da monetização
 
-- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está na `develop` desde 11/11/2026 (PR #129, migração 114), não promovido para produção** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está implementado na branch `feat/rbac-lote2c2-academias-catalogos`, não publicado nem promovido** (ver "Lote 2C-2: academias e catálogos de exercícios"). Os lotes 2D a 6 ainda não existem.
+- **Status**: Aceita (decisão do usuário, 10/11/2026: vínculo treinador–aluno criado só pelo admin na primeira versão; virada sem mudança de acesso, com grupo Free vazio; visibilidade dos modelos existentes pública). A implementação é feita nos lotes 1 a 6 descritos abaixo. Este ADR registra a decisão; o lote 1 a implementa (migração 111, módulo `api/app/access`, campos `permissions` e `groups` em `/auth/me` e testes unitários). **O lote 1 está em produção desde 10/11/2026** (PR #120, promoção #122, migração 111 aplicada). **O lote 2 foi dividido em 2A a 2F** (ver Sequência de lotes). **O 2A está em produção desde 11/11/2026** (PR #124, promoção #125, deploy 42937922299; migração 112 aplicada com 0 statements): sincronização usuário→grupo, trava do último admin e smoke. Nenhum guard mudou no 2A. **O 2B está em produção desde 11/11/2026** (PR #126, promoção #128, deploy 43022098093, migração 113): ver "Lote 2B: base da troca". **O lote 2C foi dividido em 2C-1 e 2C-2.** **O 2C-1 está em produção desde 11/11/2026 (PR #129, promoção #133, migração 114 aplicada)** (ver "Lote 2C-1: administração com guard declarado"). **O 2C-2 está em produção desde 11/11/2026 (PR #130, promoção #133)** (ver "Lote 2C-2: academias e catálogos de exercícios"). **O 2D-1 está na `develop` e no DEV desde 11/11/2026 (PR #134), não promovido** (ver "Lote 2D-1: nutrição com usuário alvo"). **O 2D-2 está na `develop` e no DEV desde 11/11/2026 (PR #135), não promovido** (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo"). **O 2E está na `develop` e no DEV desde 12/11/2026 (PR #136), não promovido** (ver "Lote 2E: analytics e engines"). **O 2F foi dividido em 2F-1, 2F-2 e 2F-3. O 2F-1 está na `develop` e no DEV desde 12/11/2026 (PR #139), não promovido** (ver "Lote 2F-1: modelos de treino e escopo mínimo"). **O 2F-2 está na `develop` e no DEV desde 12/11/2026 (PR #143), não promovido** (ver "Lote 2F-2: treino"). **O 2F-3 está na `develop` e no DEV desde 12/11/2026 (PR #144), não promovido, e fecha o lote 2 na `develop`: dívida da guarda de cobertura zerada** (ver "Lote 2F-3: corpo, integrações, cardio e fecho"). **O lote 3 foi dividido em 3A (API e auditoria) e 3B (tela "Grupos e acessos"), com as decisões do usuário de 12/11/2026. O 3A está na `develop` e no DEV (PR #145), não promovido** (ver "Lote 3A: API de grupos e acessos"). **O 3B está na `develop` desde 12/11/2026 (PR #147, merge `ac1e28b4`) e no DEV desde a mesma data, não promovido** (ver "Lote 3B: tela Grupos e acessos"). **O 4A está na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido** (ver "Lote 4A: base da ocultação e menu"). **O 4B-1 está na `develop` e no DEV desde 13/11/2026 (PR #149, merge `694b5fae`), não promovido** (ver "Lote 4B-1: telas de gestão por permissão"). **O 4B-2 está na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido** (ver "Lote 4B-2: IA, abas do iPhone e ajustes"). **O 4B-3 está na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.** **O 4B-4 está na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido** (ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício"). **O lote 5 foi dividido em 5A (backend) e 5B (frontend), com a decisão do usuário de 13/11/2026 sobre o escopo dos dados de aluno. O 5A está na `develop` e no DEV desde 13/11/2026 (PR #155, merge `38a68565`; migração 115 aplicada no DEV), não promovido** (ver "Lote 5A: vínculo treinador–aluno (backend)"). **O 5B está na `develop` e no DEV desde 13/11/2026 (PR #156, merge `ba67d470`), não promovido** (ver "Lote 5B: frontend do vínculo treinador–aluno"). **O lote 6 foi dividido em 6A (backend) e 6B (frontend), com as decisões do usuário de 13/11/2026 sobre dono e visibilidade dos Modelos. O 6A está na `develop` e no DEV desde 13/11/2026 (PR #157, merge `4338a6a8`; migração 116), não promovido** (ver "Lote 6A: Modelos com dono e visibilidade (backend)"). **O 6B está na `develop` e no DEV desde 14/11/2026 (PR #161, merge `7679295a`), não promovido** (ver "Lote 6B: frontend de Modelos"). **O 6C está na `develop` e no DEV desde 14/11/2026 (PR #162, merge `f77a38ec`), não promovido, sem migração** (ver "Lote 6C: rascunho como área de escrita e padrão de visibilidade"). **O 6D está em PR para a `develop` (branch `feat/rbac-lote6d-cards-e-atribuicoes`), não promovido, sem migração** (ver "Lote 6D: cards não concedíveis e Modelo com alunos atribuídos").
 - **Data**: 2026-11-10
 
 ## Contexto
@@ -20,7 +20,7 @@ O MuscleFit hoje decide acesso por um papel único por usuário e por guards fix
   - `require_admin_or_pt` (linha 448): aceita `ADMIN_OR_PT_ROLES`.
   - `get_current_identity` (linha 403): usado no restante dos endpoints, sem checagem de papel.
 - `require_admin` e `require_admin_or_pt` aparecem em cerca de 40 ocorrências em `api/app` (contagem por busca textual, que inclui importações e definições; o número exato de endpoints deve ser fechado no lote 2). São cerca de 370 endpoints em 56 arquivos, sem contagem automatizada.
-- `require_admin_or_pt` cobre Modelos, tipos de treino, cardio e nutrição. Na nutrição, `resolve_target_user` (`api/app/nutrition_access.py`, linha 55) decide qual `user_id` é lido ou gravado.
+- `require_admin_or_pt` cobre Modelos, tipos de treino, cardio e nutrição (até o lote 2D-1). Na nutrição, `resolve_target_user` (`api/app/nutrition_access.py`, linha 55 até o lote 2D-1) decide qual `user_id` é lido ou gravado.
 
 **O que não existe hoje**
 
@@ -99,15 +99,31 @@ Autorização por **grupos de permissão**, com concessões **aditivas** e **neg
 2. **Aplicação no backend**: troca dos guards por `require_permission` e `authorize_target`. Allowlist zerada. Dividida em:
    - **2A Pré-condições** (em produção desde 11/11/2026): sincronização usuário→grupo, migração 112, trava do último admin, smoke. Nenhum guard mudou.
    - **2B Base da troca** (em produção desde 11/11/2026): recurso `conta.dispositivos` com migração 113; categoria "só autenticação" na guarda de cobertura; retrato congelado dos guards antigos e teste de paridade; guarda estática de `identity.role`; `authorize_self_or_all` e id estrito; `require_additional_permission` (`admin.grupos` em qualquer escrita sobre admin ou que torne alguém admin); trava com nova ordem de locks; conversão de 18 rotas de `users`, `auth`, `devices` e `jobs` (9 com `require_permission`, 9 só autenticação). Os recursos de intervals sync, aplicação de recomendação de cardio e administração de academias entram no catálogo com os lotes 2C a 2F, quando as rotas que os usam forem convertidas.
-   - **2C-1** Administração com guard declarado (branch `feat/rbac-lote2c1-admin-declarado`, não publicado): 34 rotas, recurso `modelos.tipos_treino` e migração 114.
-   - **2C-2** Academias e catálogos de exercícios (branch `feat/rbac-lote2c2-academias-catalogos`, implementado, não publicado): 72 rotas de classe `identidade_no_corpo`, com caso manual de paridade; sem migração.
-   - **2D** Nutrição (`resolve_target_user` → `authorize_target`, 404 preservado).
-   - **2E** Analytics e engines.
-   - **2F** Treino, corpo e fecho (allowlist zerada, remoção de `require_admin` e `require_admin_or_pt`).
-3. **Tela "Grupos e acessos"**: API de grupos, membros e auditoria.
-4. **Ocultação no frontend**: hook de permissões nas telas.
-5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários.
-6. **Modelos**: visibilidade e edição pelo dono.
+   - **2C-1** Administração com guard declarado (PR #129, em produção desde 11/11/2026): 34 rotas, recurso `modelos.tipos_treino` e migração 114.
+   - **2C-2** Academias e catálogos de exercícios (PR #130, em produção desde 11/11/2026): 72 rotas de classe `identidade_no_corpo`, com caso manual de paridade; sem migração.
+   - **2D-1** Nutrição com usuário alvo (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido): 39 rotas de planos, check-in, diário, dashboard, refeições e IA com alvo; `resolve_target_user` passa a delegar a `authorize_target`; 404 preservado nas rotas por id; sem migração (ver "Lote 2D-1").
+   - **2D-2** Alimentos, fontes externas, preferidos e foto de rótulo (PR #135, na `develop` e no DEV desde 11/11/2026, não promovido; 16 rotas; sem migração; ver "Lote 2D-2").
+   - **2E** Analytics e engines (PR #136, na `develop` e no DEV desde 12/11/2026, não promovido; 56 rotas; sem migração; ver "Lote 2E: analytics e engines").
+   - **2F-1** Modelos de treino e escopo mínimo (PR #139, na `develop` e no DEV desde 12/11/2026, não promovido; 29 rotas; sem migração; ver "Lote 2F-1: modelos de treino e escopo mínimo").
+   - **2F-2** Treino (atividades, registros de exercício, planos, sessões, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício e grupos mapeados; PR #143, na `develop` e no DEV desde 12/11/2026, não promovido; 55 rotas; sem migração; ver "Lote 2F-2: treino").
+   - **2F-3** Corpo, integrações (Intervals), cardio e fecho (PR #144, na `develop` e no DEV desde 12/11/2026, não promovido; 42 rotas; sem migração; dívida da guarda zerada, guards de papel removidos de `security.py`, ratchet de papel 3 → 1; ver "Lote 2F-3: corpo, integrações, cardio e fecho").
+3. **Grupos e acessos** (dividido em 3A e 3B):
+   - **3A** API de grupos, membros, concessões e auditoria (na `develop` e no DEV, PR #145, não promovido; 11 rotas; sem migração; ver "Lote 3A: API de grupos e acessos").
+   - **3B** Tela "Grupos e acessos" (na `develop` e no DEV desde 12/11/2026, PR #147, merge `ac1e28b4`, não promovida; frontend estático, ajuste aditivo do cliente HTTP (`apiFetch`) e campos aditivos em `GET /access/catalog`; sem migração; ver "Lote 3B: tela Grupos e acessos").
+4. **Ocultação no frontend**: hook de permissões nas telas. Dividida em:
+   - **4A Base e menu** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido; só frontend estático e um teste unitário de backend; sem migração; ver "Lote 4A: base da ocultação e menu").
+   - **4B-1 Telas de gestão por permissão** (na `develop` e no DEV desde 13/11/2026, PR #149, merge `694b5fae`, não promovido; só frontend estático; sem migração; ver "Lote 4B-1: telas de gestão por permissão").
+   - **4B-2 IA, abas do iPhone e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #150, merge `d059f9e0`, não promovido; só frontend estático; sem migração; ver "Lote 4B-2: IA, abas do iPhone e ajustes"). Ficam fora dele: badges de qualidade de dado, editor de modelo e `PlanDetailClient` (caminhos com `[id]`; tratados no 4B-4, exceto os badges).
+   - **4B-3 Abas do iPhone offline e ajustes** (na `develop` e no DEV desde 13/11/2026, PR #151, merge `d4e4bb75`, não promovido; só frontend estático; sem migração; ver "Lote 4B-3: abas do iPhone offline e ajustes"). O harness do `/ship` aceita caminhos com colchetes desde o PR #153.
+   - **4B-4 Telas em rotas dinâmicas e resumo por exercício** (na `develop` e no DEV desde 13/11/2026, PR #154, merge `1b3d3d6a`, não promovido; só frontend estático; sem migração; ver "Lote 4B-4: telas em rotas dinâmicas e resumo por exercício").
+5. **Vínculo treinador–aluno e leitura de dados dos alunos**: efeito de a PT deixar de ver todos os usuários. Dividido em:
+   - **5A Vínculo (backend)** (na `develop` e no DEV desde 13/11/2026, PR #155, merge `38a68565`, não promovido; 4 rotas novas em `/access`; `GET /access/my-students`; `has_active_link` exige treinador no grupo `personal_trainer`; zonas de FC com `no_link`; migração 115, que move a nutrição de terceiros do PT para `alunos`; ver "Lote 5A: vínculo treinador–aluno (backend)").
+   - **5B Telas de vínculo e seletor de alunos** (na `develop` e no DEV desde 13/11/2026, PR #156, merge `ba67d470`, não promovido): tela de vínculos para o admin, seletor de alunos do PT por `/access/my-students`, `planoNutricionalControls` aceitando alunos e motivo `no_link` nas zonas de FC.
+6. **Modelos**: visibilidade e edição pelo dono. Dividido em:
+   - **6A Modelos com dono e visibilidade (backend)** (na `develop` e no DEV desde 13/11/2026, PR #157, merge `4338a6a8`, não promovido; migração 116; `modelos.treino` do PT passa a `alunos`; ver "Lote 6A: Modelos com dono e visibilidade (backend)").
+   - **6B Frontend de Modelos** (na `develop` e no DEV desde 14/11/2026, PR #161, merge `7679295a`, não promovido; só frontend; sem migração; ver "Lote 6B: frontend de Modelos"): visibilidade no editor e na lista, duplicar, `AssignTemplateModal` com alunos vinculados e `modelosTreinoControls` com escopo `alunos` e escrita por dono.
+   - **6C Rascunho como área de escrita e padrão de visibilidade (backend e editor)** (na `develop` e no DEV desde 14/11/2026, PR #162, merge `f77a38ec`, não promovido; sem migração; ver "Lote 6C: rascunho como área de escrita e padrão de visibilidade").
+   - **6D Cards não concedíveis e Modelo com alunos atribuídos (backend e telas)** (em PR para a `develop`, branch `feat/rbac-lote6d-cards-e-atribuicoes`, não promovido; sem migração; ver "Lote 6D: cards não concedíveis e Modelo com alunos atribuídos").
 
 ### Pré-condições do lote 2
 
@@ -127,8 +143,15 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
   - `api/tests/unit/test_users_trava_ultimo_admin.py` verifica com banco falso a ordem dos statements. **Não há teste de concorrência com transações reais**; a atomicidade e a ordem dos locks estão provadas só pelos statements emitidos.
 - [x] **Smoke** (`scripts/smoke-async-jobs.sh`, bloco `smoke-admin`, linhas 98 a 104): o `INSERT` em `users` só roda se não houver admin ativo; logo depois, um `INSERT IGNORE INTO user_access_groups` associa ao grupo `admin` o usuário `smoke-admin` filtrado por `u.role = 'admin' AND u.is_active = 1`. É SQL de script, não código da aplicação. Diferença em relação ao código: não há `START TRANSACTION` no bloco e o cliente `mysql` roda em autocommit por padrão, então os dois statements não estão na mesma transação; e o bloco roda com `2>/dev/null`, então uma falha fica silenciosa.
 - [x] **Coberto no 2B**: exigir `admin.grupos` para qualquer escrita sobre alvo admin ou que torne alguém admin (criar, promover, rebaixar, editar, reativar, desativar, excluir, resetar senha), com teste negativo; guarda estática de `identity.role` fora de `app/access` (ratchet em `access_identity_role_allowlist.json`); id estrito em `authorize_target` e `authorize_self_or_all`; paridade guard antigo × permissão nova para as 18 rotas convertidas (ver "Lote 2B: base da troca").
-- [x] **Coberto no 2C-2** (branch `feat/rbac-lote2c2-academias-catalogos`, não publicado): checagens de papel em handlers de `gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py` e `equipment_exercises.py`; as 72 rotas `identidade_no_corpo`; e, em `gyms.py`, posse da linha e 404 que esconde existência em `/gyms/{id}` (ver "Lote 2C-2"). A paridade dessas rotas prova só o guard de entrada.
-- [ ] **Pendente para 2D–2F**: checagens de papel nos demais módulos; as 3 rotas `outra` do retrato, sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; matriz mais larga que alguns guards (intervals sync, aplicar recomendação de cardio); paridade das demais rotas.
+- [x] **Coberto no 2C-2** (PR #130, em produção desde 11/11/2026): checagens de papel em handlers de `gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py` e `equipment_exercises.py`; as 72 rotas `identidade_no_corpo`; e, em `gyms.py`, posse da linha e 404 que esconde existência em `/gyms/{id}` (ver "Lote 2C-2"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2D-1** (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido): as 39 rotas de nutrição com usuário alvo (planos, sugestão de plano por IA, check-in, diário, dashboard, refeições, `parse` e foto de refeição) passam a `require_permission`; posse do plano e do check-in com 404 que esconde existência; `resolve_target_user` sobre `authorize_target`, com id estrito (ver "Lote 2D-1"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2D-2** (PR #135, na develop): as 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a `require_permission`; as checagens `is_admin` do catálogo de alimentos passam a `admin.catalogos` (ver "Lote 2D-2"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2E** (PR #136, na `develop`): as 56 rotas de analytics, dashboards, volume, progressão, cardio, corpo, relatórios e análise de treinos por IA passam a `require_permission`, uma por recurso do tema (ver "Lote 2E"). A paridade dessas rotas prova só o guard de entrada.
+- [x] **Coberto no 2F-1** (PR #139, na `develop`): as 29 rotas de modelos de treino passam a `require_permission`, com escopo mínimo `todos` na gestão e sem mínimo em `/assigned-to-me` e `/hr-zones` (ver "Lote 2F-1"). A paridade dessas rotas prova só o guard de entrada, com o escopo mínimo.
+- [x] **Coberto no 2F-2** (PR #143, na `develop`): as 55 rotas de treino passam a `require_permission`, sem escopo mínimo (ver "Lote 2F-2: treino").
+- [x] **Coberto no 2F-3** (PR #144, na `develop`): as 42 rotas de corpo, check-in, integrações Intervals, cardio e geração de recomendação passam a `require_permission`, com escopo mínimo `todos` no sync e no apply. Fecha o lote 2: dívida da guarda de cobertura zerada e `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` removidos de `api/app/security.py` (ver "Lote 2F-3: corpo, integrações, cardio e fecho").
+- [x] **Coberto no 3A** (na `develop` e no DEV, PR #145, não promovido): as 11 rotas de grupos e acessos passam a `require_permission` com `admin.grupos`, sem migração (ver "Lote 3A: API de grupos e acessos").
+- [ ] **Pendente para os lotes 4 a 6**: `athlete_hr_zones.py` (ratchet de papel 1) e `/hr-zones` com `template_id` sem conferência de vínculo (resolvido no 5A, ver "Lote 5A"); escopo mínimo `todos` em `modelos.treino`, que bloquearia o PT se ele passar a `alunos` (lote 6, porque o lote 5 não troca `modelos.treino`). **Resolvido no 6A**: o escopo mínimo de `modelos.treino` do PT é `alunos` (ver "Lote 6A"); os demais itens desta lista seguem pendentes; `summarize` e `ai-summary/generate` criam job antes de conferir o dono do id (P3); as 3 rotas `outra` do retrato (`/health`, `/ready`, `/auth/logout`), sem decisão automática; posse da linha nos demais módulos; concessões largas demais em leitura; paridade das rotas além do guard de entrada.
 
 - **Sincronização usuário→grupo.** Até o lote 1, nenhum ponto que escreve em `users` grava `user_access_groups` (desde o 2A, os três pontos marcados abaixo gravam; os demais continuam sem gravar). Busca por `INSERT INTO users` feita em `api/app`, `api/scripts`, `api/db`, `scripts/`, `tools/`, `dev/` e `localstack/` (arquivos `.py`, `.sh`, `.sql`, `.json`, `.yml`, `.ps1`). Pontos encontrados:
   - `api/app/users.py`, `POST /users` (linha 322) e a troca de papel em `PUT /users/{id}`;
@@ -151,7 +174,7 @@ Riscos levantados na revisão independente. O lote 2 só troca um guard depois d
 - **Rotas sem `get_current_identity`.** Fotos e logos por id, e rotas com `resolve_identity_from_credentials`, precisam ser classificadas uma a uma.
 - **Concessões largas demais em leitura.** A matriz concede as três ações (`ver`, `editar`, `excluir`) em recursos que são só de leitura (dashboards, relatórios, progressão, IA). Reduzir conforme o mapeamento real das rotas.
 - **Posse da linha.** A permissão por recurso não prova que o registro pertence ao usuário. Rotas por id (apagar ou editar uma atividade, um plano, uma foto) precisam checar o dono da linha além da permissão. `authorize_target` resolve o usuário alvo, não a posse de uma linha.
-- **404 que esconde existência.** Rotas que hoje respondem 404 para não revelar que um recurso alheio existe (ex.: `resolve_plan_owner` em `api/app/nutrition_access.py`, linha 46) não podem passar a responder 403. `authorize_target` responde 403 e substitui `resolve_target_user`, não `resolve_plan_owner`.
+- **404 que esconde existência.** Rotas que hoje respondem 404 para não revelar que um recurso alheio existe (ex.: `resolve_plan_owner` em `api/app/nutrition_access.py`, linha 46, até o lote 2D-1) não podem passar a responder 403. `authorize_target` responde 403 e substitui `resolve_target_user`, não `resolve_plan_owner`.
 - **Ordem de deploy do lote 2.** Quando as rotas exigirem permissão, um banco sem a 111 responde 503 em tudo. O lote 2 só sobe com a 111 já aplicada e conferida em produção.
 - **Paridade.** Teste por papel antigo × novo para todas as rotas e para os três tipos de identidade (sessão, dispositivo, token mestre). Decisão explícita sobre usuário desativado e sobre papel fora dos três valores (`admin`, `personal_trainer`, `regular`); hoje esse caso fica sem grupo, portanto negado.
 
@@ -246,7 +269,7 @@ Nas rotas de dispositivo, a recusa de token de dispositivo (403 de `require_user
 **Id estrito e helpers de alvo**
 
 - `validate_target_user_id` (`api/app/access/service.py`) aceita `None` quando o id não é obrigatório, ou `int > 0`. `bool`, `float`, `str` e `int <= 0` levantam 400 `invalid_target` antes de qualquer consulta. Não há coerção: `"10"` não vira 10.
-- `authorize_target` usa esse validador. Ainda não tem chamador em `api/app`; `resolve_target_user` segue em uso até o 2D.
+- `authorize_target` usa esse validador. Até o 2C-2 não tinha chamador em `api/app`; desde o 2D-1 tem: `resolve_target_user` (`api/app/nutrition_access.py`) delega a ele nas rotas de nutrição com alvo (ver "Lote 2D-1").
 - `authorize_self_or_all(identity, recurso, acao, target_user_id)`, no mesmo arquivo e usado nas três rotas de foto: id obrigatório e estrito. Alvo igual ao próprio `user_id` passa sem consulta. Alvo de terceiro exige escopo `todos`; `alunos` não basta, porque a função não consulta vínculo. Qualquer outro caso é 403.
 - `require_additional_permission(request, identity, recurso, acao)` (`api/app/access/deps.py`) exige, dentro do handler, uma concessão além da declarada na rota. Reusa o cache por requisição de `permissions_for_request`.
 
@@ -267,7 +290,7 @@ Nas rotas de dispositivo, a recusa de token de dispositivo (403 de `require_user
 
 ### Lote 2C-1: administração com guard declarado
 
-Branch `feat/rbac-lote2c1-admin-declarado` (não publicado, não promovido). O 2C-1 converte 34 rotas de administração: ciclo de cards de exercício, tipos de treino, regras de carga, segurança de treino, mapeamento canônico, mapeamento de exercícios e corpo de grupos musculares. A permissão é declarada por rota. Os guards de router de `training_types.py`, `training_safety_admin.py` e `exercise_mapping_canonical.py` saíram; `dashboard_modules.py` manteve o `get_current_identity` do router, porque as outras rotas do arquivo são do 2E. Nenhuma função mudou de assinatura.
+PR #129, em produção desde 11/11/2026 (promoção #133). O 2C-1 converte 34 rotas de administração: ciclo de cards de exercício, tipos de treino, regras de carga, segurança de treino, mapeamento canônico, mapeamento de exercícios e corpo de grupos musculares. A permissão é declarada por rota. Os guards de router de `training_types.py`, `training_safety_admin.py` e `exercise_mapping_canonical.py` saíram; `dashboard_modules.py` manteve o `get_current_identity` do router, porque as outras rotas do arquivo são do 2E. Nenhuma função mudou de assinatura.
 
 **Rotas convertidas (34)**
 
@@ -314,7 +337,7 @@ Ação por método: GET = `ver`; POST, PUT e PATCH = `editar`; DELETE = `excluir
 
 ### Lote 2C-2: academias e catálogos de exercícios
 
-Branch `feat/rbac-lote2c2-academias-catalogos` (implementado, não publicado, não promovido). O 2C-2 converte 72 rotas de classe `identidade_no_corpo`, cuja credencial era resolvida dentro do handler: `_require_identity` (qualquer autenticado) ou `_require_admin_identity` (só admin, 403). Cada rota passa a declarar `Depends(require_permission(...))`. Saíram dos cinco módulos (`gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py`, `equipment_exercises.py`) os dois helpers, `_assert_admin` e toda leitura de `identity.role`. Não há migração: `treino.academias`, `exercicios.catalogo`, `volume.grupamentos` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema.
+PR #130, em produção desde 11/11/2026 (promoção #133). O 2C-2 converte 72 rotas de classe `identidade_no_corpo`, cuja credencial era resolvida dentro do handler: `_require_identity` (qualquer autenticado) ou `_require_admin_identity` (só admin, 403). Cada rota passa a declarar `Depends(require_permission(...))`. Saíram dos cinco módulos (`gyms.py`, `exercise_catalog_admin.py`, `exercise_mapping_catalog.py`, `muscle_volume_classes.py`, `equipment_exercises.py`) os dois helpers, `_assert_admin` e toda leitura de `identity.role`. Não há migração: `treino.academias`, `exercicios.catalogo`, `volume.grupamentos` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema.
 
 **Rotas convertidas (72)**
 
@@ -368,28 +391,921 @@ Total: 24 em `gyms.py` e 48 nos quatro módulos de catálogo, 72 no lote. Os cas
 - `api/tests/unit/test_gyms_permissoes_rbac.py`: testes HTTP das 24 rotas de `gyms.py`.
 - `api/tests/unit/test_catalogos_exercicios_permissoes_rbac.py`: amostra de 18 das 48 rotas dos quatro módulos de catálogo. `GET /exercises` e `DELETE /equipment-types/{id}` não têm teste direto da guarda; as 30 rotas restantes dependem da paridade e do ratchet, sem teste HTTP próprio.
 
+### Lote 2D-1: nutrição com usuário alvo
+
+PR #134, na `develop` e no DEV desde 11/11/2026, não promovido. O lote 2D foi dividido em 2D-1 (nutrição com usuário alvo: planos, check-in, diário e IA com alvo, 39 rotas, este lote) e 2D-2 (alimentos, fontes externas, preferidos e foto de rótulo, 16 rotas, implementado na branch `feat/rbac-lote2d2-alimentos`, não publicado). As 39 rotas eram de classe `autenticado` no retrato e passam a declarar `Depends(require_permission(recurso, ação))`. Ação pelo método: GET = `ver`; POST e PUT = `editar`; DELETE = `excluir`. Não há migração: `nutricao.plano`, `nutricao.checkin`, `nutricao.diario` e `ia.nutricao` já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
+
+**Rotas convertidas (39)**
+
+| Módulo | Rotas | Guard antigo | Regra nova |
+|---|---|---|---|
+| `nutrition_plans.py` | 12 | `plan_actor` (qualquer autenticado) com `resolve_target_user`/`resolve_plan_owner`; `GET /nutrition/me/plan` com `get_current_identity` | `nutricao.plano` (ação pelo método) |
+| `nutrition_plan_suggestion.py` | 2 | qualquer autenticado; alvo buscado por `fetch_target_user` | `ia.nutricao`; no POST, também `nutricao.plano`/`editar` sobre o alvo |
+| `nutrition_checkins.py` | 6 | qualquer autenticado | `nutricao.checkin`; `accept` exige também `nutricao.plano`/`editar` sobre o dono da linha |
+| `nutrition_days.py` | 7 | qualquer autenticado | `nutricao.diario` (ação pelo método) |
+| `nutrition_dashboard.py` (`/nutrition/today`, `/nutrition/dashboard`) | 2 | qualquer autenticado | `nutricao.diario`/`ver` |
+| `nutrition_meals.py` | 6 | qualquer autenticado | `nutricao.diario` (ação pelo método) |
+| `nutrition_meal_parse.py` | 2 | qualquer autenticado | `ia.nutricao`; no POST, também `nutricao.diario`/`editar` sobre o alvo |
+| `nutrition_meal_photo.py` | 2 | qualquer autenticado | `ia.nutricao`; no POST, também `nutricao.diario`/`editar` sobre o alvo |
+
+Total: 12 + 2 + 6 + 7 + 2 + 6 + 2 + 2 = 39. Nas rotas de IA com alvo, a exigência dupla vale antes de `fetch_target_user` e antes da reserva de cota. A cota continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`, sem alteração.
+
+**Helper que não levanta (`can_access_target`)**
+
+- `can_access_target(identity, permissoes, resource, action, owner_user_id) -> bool`, em `api/app/access/service.py`, exportado em `app.access`. Usa as permissões já resolvidas na requisição; só o escopo `alunos` consulta banco (`has_active_link`). Não levanta exceção: o chamador escolhe a recusa.
+- Retorna True se: o dono é o próprio usuário e há concessão em qualquer escopo; ou o escopo concedido é `todos`; ou o escopo é `alunos` e há vínculo ativo (`has_active_link`). Nos demais casos, False.
+- `authorize_target` passou a decidir por ele: valida o id antes de qualquer consulta (400 `invalid_target`) e responde 403 com `FORBIDDEN_DETAIL` quando o helper dá False.
+- `api/app/nutrition_access.py`: `resolve_target_user(identity, permissoes, resource, action, user_id)` delega a `authorize_target`; `resolve_plan_owner(identity, permissoes, action, owner_user_id)` usa `can_access_target` com `nutricao.plano` e mantém 404 `plan_not_found`. `plan_actor` e `is_staff` foram removidos, junto com os imports de `require_admin_or_pt` e `is_admin_or_pt`. As funções de alimentos (`is_admin`, `can_*_food` etc.) não mudaram; ficam para o 2D-2.
+
+**Ordem das respostas**
+
+- Validação do payload → alvo (400 `invalid_target`, 403) → usuário alvo inexistente (404) → regras da rota.
+- 404 `plan_not_found` (plano por id) e 404 `checkin_not_found` (check-in por id) para quem não alcança o dono. Não viram 403, para não revelar existência.
+- `PUT` e `DELETE /nutrition/meals/{id}` de terceiro respondem 403, depois do 404 de refeição inexistente.
+- `accept` de check-in: quem não tem `nutricao.plano`/`editar` recebe 403 antes da lógica de status, inclusive antes do "já aceito" idempotente. O 404 de check-in inexistente continua vindo antes do 403.
+
+**Exigência dupla**
+
+- Rotas de IA com alvo (`nutrition_plan_suggestion`, `nutrition_meal_parse`, `nutrition_meal_photo`): o POST exige `ia.nutricao`/`editar` e também `nutricao.plano` ou `nutricao.diario`/`editar` sobre o alvo. A checagem do alvo acontece antes de `fetch_target_user` e antes da reserva de cota.
+- `accept` de check-in: exige `nutricao.checkin` e também `nutricao.plano`/`editar` sobre o dono da linha.
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 237 para 198. Conta: 198 em dívida + 6 públicas + 9 só autenticação + 154 com `require_permission` = 367 rotas. Os 154 são 115 (até o 2C-2) mais 39 deste lote.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` de 15 para 11; `nutrition_checkins.py` de 1 para 0 (entrada removida); `nutrition_access.py` de 10 para 7 (restam `is_admin` e os usos nas funções de alimentos, do 2D-2).
+
+**Testes**
+
+- Fixture opcional `permissoes_por_papel` em `api/tests/unit/conftest.py`: troca só o banco de `app.access.service` e concede, a partir de `DEFAULT_GRANTS_BY_GROUP`, as permissões do grupo de sistema do papel da identidade. Usada por 30 arquivos unitários de nutrição.
+- Os 12 testes de integração `dataapi` de nutrição passaram a conceder o grupo de sistema aos usuários criados por INSERT.
+- `api/tests/unit/test_access_paridade_guards.py`: as 39 rotas entram pela decisão automática (classe `autenticado`), sem caso manual; testes novos fixam o conjunto exato das 39 rotas nos 8 módulos e o recurso e a ação do contrato.
+- Regra de terceiros (escopo), provada fora da paridade: matriz papel × recurso × ação contra `require_admin_or_pt` em `api/tests/unit/test_access_catalogo_e_resolucao.py`; `api/tests/unit/test_access_alvo_sem_levantar.py` (helper); `api/tests/unit/test_nutricao_alvo_permissoes_rbac.py` (HTTP).
+- **O que a paridade prova:** só o guard de entrada, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** a regra de terceiros (escopo `todos`/`alunos`); posse do plano e do check-in; a exigência dupla; a ordem das respostas; grupos personalizados.
+
+**Mudanças de comportamento**
+
+- O corpo do 403 de terceiro passa a ser `FORBIDDEN_DETAIL` do `app.access`.
+- `user_id` menor ou igual a zero responde 400 `invalid_target`. Antes: 403 para usuário comum, ou 404 `user_not_found` para admin e PT.
+- Uma consulta de permissões por requisição nas 39 rotas, com cache em `request.state`.
+- Usuário sem grupo é negado (403) em toda a nutrição convertida, inclusive em `GET /nutrition/me/plan`.
+- O que não muda para quem está no grupo de sistema do próprio papel: `usuario` tem `nutricao.*` e `ia.nutricao` com escopo `proprios`; `personal_trainer` tem `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` com escopo `todos` (o lote 5 troca para `alunos`); admin tem acesso total.
+
+**Dívidas e pendências deste lote**
+
+- Não medido: latência da consulta de permissões em `/nutrition/today`.
+- Não medido: rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
+- Não verificado: o frontend não tem tratamento específico do corpo do 403 de nutrição (busca somente leitura em `frontend/src`).
+
+**Medido (informado na execução do lote; não reexecutado nesta curadoria)**
+
+- Suíte unitária inteira rodada localmente depois dos ajustes, antes da tarefa das guardas: 14.074 passed e 7 failed. Seis falhas eram das guardas de acesso, corrigidas em seguida (349 passed nos 5 arquivos de guarda e paridade). A falha restante, `test_sem_mojibake`, é conhecida no ambiente local.
+- `api/tests/unit/test_nutricao_alvo_permissoes_rbac.py`: 266 passed.
+- Integração com MySQL (só roda no CI, com o rótulo `ci-completo`): não medida.
+
+### Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo
+
+Branch `feat/rbac-lote2d2-alimentos` (PR #135, na develop e no DEV, não promovido). Fecha a conversão da nutrição: as 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a declarar `Depends(require_permission(recurso, ação))`, e o catálogo de alimentos deixa de ler o papel (`identity.role`, via `is_admin`) e passa a decidir por `admin.catalogos`. Não há migração: `nutricao.alimentos`, `ia.nutricao` e `admin.catalogos` já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
+
+**Rotas convertidas (16)**
+
+| Módulo | Rotas | Guard antigo | Regra nova |
+|---|---|---|---|
+| `nutrition_foods.py` | 6 | `get_current_identity` nas 5 rotas de busca, leitura, criação, edição e porções; `require_admin` em `POST /nutrition/foods/{food_id}/promote` (classe `admin` no retrato) | `nutricao.alimentos` (GET = ver; POST e PUT = editar); `/promote` = `admin.catalogos`/editar |
+| `nutrition_external_foods.py` | 3 | `get_current_identity` | `nutricao.alimentos`: `GET /nutrition/foods/barcode/{ean}` e `GET /nutrition/foods/usda/search` = ver; `POST /nutrition/foods/usda/{fdc_id}/import` = editar |
+| `nutrition_favorites.py` | 5 | `get_current_identity` | `nutricao.alimentos`: GET = ver; `POST`, `POST /reorder` e `PUT /{food_id}` = editar; `DELETE /{food_id}` = excluir |
+| `nutrition_label_photo.py` | 2 | `get_current_identity` | `ia.nutricao`: `GET /nutrition/foods/label-photo/usage` = ver; `POST /nutrition/foods/label-photo` = editar |
+
+Total: 6 + 3 + 5 + 2 = 16. Das 16, 15 eram de classe `autenticado` no retrato e uma (`/promote`) de classe `admin`. A cota da foto de rótulo continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`, sem alteração.
+
+**Troca de `is_admin` por `admin.catalogos`**
+
+- `api/app/nutrition_access.py` não lê mais `identity.role`: `is_admin` e `ADMIN_ROLE` foram removidos. A nova função `administers_public_catalog(permissoes, acao)` devolve `has_permission(permissoes, "admin.catalogos", acao)` (constante `CATALOG_ADMIN_RESOURCE`).
+- Ação `ver`: `can_view_food` (ver alimento privado de terceiro) e `can_list_private_foods` (escopo `private_all`).
+- Ação `editar`: `can_edit_food` (alimento público), `portion_owner_for` (porção de alimento público), `can_promote_food` e o booleano passado a `catalog.is_born_public` em `create_food`.
+- Assinaturas novas: `can_view_food(identity, permissoes, food)`, `can_edit_food(identity, permissoes, food)`, `portion_owner_for(identity, permissoes, food)`, `can_promote_food(permissoes, food)`, `can_list_private_foods(permissoes)` e `food_public(row, identity, permissoes)`.
+- As permissões vêm de `permissions_for_request(request, identity)`, uma consulta por requisição.
+
+**Preservado**
+
+- 403 `food_forbidden` de dentro dos handlers (`private_all` negado, editar alimento público ou alheio, porção), 404 de alimento privado de terceiro, respostas de sucesso e as flags `can_edit`, `can_add_portion` e `can_promote`.
+- Preferidos continuam pessoais: nenhuma rota aceita `user_id`.
+- Regras de `catalog`, `favorites`, `labels`, `label_photo` e `ai_usage` intocadas.
+- Identidade de dispositivo herda as concessões do dono (antes herdava o papel do dono).
+
+**Mudanças de comportamento**
+
+- Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nas 16 rotas.
+- Em `/promote`, o 403 de quem não tem `admin.catalogos`/editar passa a ter o corpo `FORBIDDEN_DETAIL`.
+- Consequência nova: um grupo personalizado pode receber `admin.catalogos` só com `ver`. Nesse caso vê e lista alimentos privados de terceiros, mas não edita o público nem promove.
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 198 para 182. Conta: 182 em dívida + 6 públicas + 9 só autenticação + 170 com `require_permission` = 367 rotas. Os 170 são 154 (até o 2D-1) mais 16 deste lote.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` de 11 para 3; `nutrition_access.py` de 7 para 0 e `nutrition_foods.py` de 1 para 0 (entradas removidas). Restam `analytics_dashboard.py`, `athlete_hr_zones.py` e `cardio_recommendations.py`, 1 cada.
+
+**Testes**
+
+- `api/tests/unit/test_access_paridade_guards.py`: as 16 rotas entram pela decisão automática (15 `autenticado`, 1 `admin`), sem caso manual; `CASOS_MANUAIS` continua com 72.
+- Troca de `is_admin` por `admin.catalogos` dentro dos handlers: `api/tests/unit/test_nutrition_access.py` e o teste HTTP `api/tests/unit/test_nutricao_alimentos_permissoes_rbac.py` (148 casos).
+- `api/tests/unit/test_access_catalogo_e_resolucao.py` fixa que `admin.catalogos` não é concedido a `usuario` nem a `personal_trainer`.
+- Retrato congelado não regenerado.
+- **O que a paridade prova:** só o guard de entrada das 16 rotas, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** a troca de `is_admin` por `admin.catalogos` dentro dos handlers (provada nos testes acima); a regra de alimento privado de terceiro com `private_all`; grupos personalizados (como `admin.catalogos` só com `ver`); rotas com sessão real de personal trainer e de usuário comum.
+
+### Lote 2E: analytics e engines
+
+Branch `feat/rbac-lote2e-analytics-engines` (PR #136, na `develop` e no DEV desde 12/11/2026, não promovido). Converte as 56 rotas de analytics, dashboards, volume, progressão, cardio, corpo, relatórios e análise de treinos por IA. Todas eram de classe `autenticado` no retrato, com guard antigo `get_current_identity`, e todas leem ou escrevem sobre os dados do próprio usuário; nenhuma aceita usuário alvo. Não há migração: os recursos usados já estão no catálogo e nas concessões dos grupos de sistema desde a migração 111.
+
+**Critério do recurso**
+
+O recurso é o tema da rota, para que um grupo futuro (Free ou pago) possa liberar ou negar cada área separadamente. A ação segue o método: GET = `ver`, POST = `editar`. Hoje nada muda para os grupos de sistema: `usuario` e `personal_trainer` têm todos esses recursos em ver, editar e excluir (escopo `proprios`), e o admin tem acesso total.
+
+**Rotas convertidas (56)**
+
+| Recurso | Rotas | Ação |
+|---|---|---|
+| `dashboards` | 20: `analytics.py` GET `/analytics/dashboard-cycle`, `/analytics/dashboard-recovery`, `/analytics/dashboard-workout-sessions`, `/analytics/health`, `/analytics/rpe-distribution`, `/analytics/summary`, `/analytics/training-trend`; `analytics_dashboard.py` GET `/analytics/dashboard/adherence`, `/context`, `/data-quality`, `/engine`, `/engine/plans/{plan_id}`, `/insights`, `/intelligence-package`, `/overview`, `/recovery-signals`, `/workouts`, `/workouts/{activity_id}`; `dashboard_modules.py` GET `/analytics/muscle-recovery` e `/analytics/muscle-recovery-consecutive-check` | ver |
+| `volume.grupamentos` | 16: `analytics.py` GET `/analytics/dashboard-muscle-drilldown`, `/analytics/dashboard-muscle-status`, `/analytics/dashboard-stimulus-fatigue`, `/analytics/methodology-realized`, `/analytics/muscle-activation-by-activity`, `/analytics/muscle-groups-daily-activation`, `/analytics/muscle-groups-equivalent-sets-by-activity`, `/analytics/muscle-groups-recent-exercise-volume`, `/analytics/muscle-groups-slot-comparison`; POST `/analytics/muscle-activation-breakdown` e `/analytics/muscle-activation-preview`; `analytics_dashboard.py` GET `/analytics/dashboard/muscles` e `/analytics/dashboard/muscles/{muscle_group_id}`; `dashboard_modules.py` GET `/analytics/muscle-group-body-map`, `/analytics/training-volume`, `/analytics/training-volume-by-split-day` | ver (GET), editar (POST) |
+| `progressao` | 12: `analytics.py` GET `/analytics/dashboard-progression`, `/analytics/dashboard-progression-by-muscle-group`, `/analytics/dashboard-progression-suggestion`, `/analytics/dashboard-progression-trend`, `/analytics/exercise-progress`; `analytics_dashboard.py` GET `/analytics/dashboard/exercises/{exercise_id}/progress` e `/analytics/dashboard/strength-panel`; `dashboard_intelligence.py` GET `/analytics/training-evolution`; `engines_extra.py` GET `/exercises/suggested-progression` e `/exercises/suggested-set-count-for-substitution`; `progression.py` GET `/progression/tracks` e `/progression/tracks/{track_id}/decisions` | ver |
+| `cardio` | 4: GET `/analytics/cardio` (`analytics.py`), `/analytics/dashboard/cardio` (`analytics_dashboard.py`), `/analytics/cardio-agent-context` (`dashboard_intelligence.py`), `/effort-metrics` (`effort_metrics.py`) | ver |
+| `corpo.indicadores` | 2: GET `/analytics/dashboard/body` (`analytics_dashboard.py`) e `/analytics/body-composition-trend` (`dashboard_modules.py`) | ver |
+| `relatorios` | 1: GET `/reports/markdown` (`reports.py`) | ver |
+| `ia.analise_treinos` | 1: POST `/workouts-analysis/generate` (`workouts_analysis.py`) | editar |
+
+Total: 20 + 16 + 12 + 4 + 2 + 1 + 1 = 56. Por módulo: `analytics.py` 24, `analytics_dashboard.py` 17, `dashboard_modules.py` 6, `dashboard_intelligence.py` 2, `engines_extra.py` 2, `progression.py` 2, `effort_metrics.py` 1, `reports.py` 1, `workouts_analysis.py` 1. Das 56, 5 são servidas por `app.main` (api-core) e 51 por `app.main_engines` (engines).
+
+**Preservado**
+
+- Assinaturas dos handlers, respostas, status e ordem de validação. O handler de `GET /analytics/muscle-group-body-map` não recebe `identity`, então a permissão fica em `dependencies` do decorator, o mesmo padrão do PUT do 2C-1.
+- `PUT /analytics/muscle-group-body-map` (2C-1, `admin.catalogos`) fica como estava.
+- O log `intelligence_package.accessed` continua registrando `role=identity.role`. Essa é a única ocorrência restante no ratchet de papel de `analytics_dashboard.py`, e fica para o 2F.
+
+**Mudanças de comportamento**
+
+- Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nas 56 rotas, incluindo os dashboards e os relatórios.
+- Grupo sem um recurso recebe 403 nas rotas desse recurso; grupo só com `ver` recebe 403 nos 3 POST (`muscle-activation-breakdown`, `muscle-activation-preview` e `workouts-analysis/generate`).
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 182 para 126. Conta: 126 em dívida + 6 públicas + 9 só autenticação + 226 com `require_permission` = 367 rotas. Os 226 são 170 (até o 2D-2) mais 56 deste lote.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` sem mudança (3). Nenhuma entrada foi removida neste lote; a restante de `analytics_dashboard.py` fica para o 2F.
+
+**Testes**
+
+- `api/tests/unit/test_access_paridade_guards.py`: as 56 rotas entram pela decisão automática; `CASOS_MANUAIS` continua com 72. A tabela `RECURSO_2E` fixa rota → recurso.
+- Teste HTTP novo `api/tests/unit/test_analytics_engines_permissoes_rbac.py` (518 casos): usuário sem grupo negado nas 56 rotas, sem acesso a dados; grupo sem cada recurso negado nas rotas dele; grupo só `ver` negado nos 3 POST; `usuario`, `personal_trainer`, admin, token mestre e dispositivo do dono passam; falha de banco nas permissões resulta em 503.
+- Seis testes unitários ganharam a fixture `permissoes_por_papel`; 16 testes de integração concedem o grupo do papel aos usuários criados por SQL, e `truncar` limpa `user_access_groups`. Nenhuma asserção foi alterada.
+- **O que a paridade prova:** só o guard de entrada das 56 rotas, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** o escopo dos dados dentro dos handlers; grupos personalizados; rotas com sessão real de usuário comum e de personal trainer.
+
+### Lote 2F-1: modelos de treino e escopo mínimo
+
+Branch `feat/rbac-lote2f1-modelos-treino` (PR #139, na `develop` e no DEV desde 12/11/2026, não promovido). Converte 29 rotas de `api/app/workout_plan_templates.py`, prefixo `/workout-plan-templates`. Eram de checagem de papel: `require_admin_or_pt` no `router` e por rota (classe `admin_ou_pt` no retrato), exceto 2 rotas do `me_router` (classe `autenticado`). O 2F foi dividido em três sublotes: 2F-1 (modelos de treino e escopo mínimo), 2F-2 (treino) e 2F-3 (corpo, integrações, cardio e fecho). Não há migração: `modelos.treino` e `ia.modelo_periodizacao` já estão no catálogo e nas concessões dos grupos de sistema.
+
+**Escopo mínimo (contrato novo de `app.access`)**
+
+`require_permission(resource, action, min_scope=None)`, em `api/app/access/deps.py`. Com `min_scope`, a concessão precisa ter escopo que cubra o mínimo (`catalog.scope_covers`; ordem `proprios` < `alunos` < `todos`); senão, 403 `FORBIDDEN_DETAIL`. `min_scope` fora do catálogo levanta `ValueError` ao declarar a rota. Sem `min_scope`, qualquer escopo basta, como antes.
+
+Helpers públicos: `min_scope_of(call)` e `declared_permission_scopes(route)`. `permission_of` e `declared_permissions` mantêm o contrato de pares.
+
+**Por que existe**
+
+`has_permission` ignora o escopo. O grupo `usuario` tem `modelos.treino`/ver com escopo `proprios`, para ver os Modelos atribuídos a ele. Sem o mínimo, as leituras de gestão de Modelos, que hoje só admin e personal trainer acessam, passariam a aceitar o usuário comum. Teste próprio: `api/tests/unit/test_access_escopo_minimo.py` (12 testes).
+
+**Rotas convertidas (29)**
+
+| Recurso | Rotas | Ação | Escopo mínimo |
+|---|---|---|---|
+| `modelos.treino` | 10 GET | ver | `todos` |
+| `modelos.treino` | 13 POST, PUT e PATCH | editar | `todos` |
+| `modelos.treino` | 3 DELETE | excluir | `todos` |
+| `ia.modelo_periodizacao` | 1: POST `/periodization-drafts` | editar | `todos` |
+| `modelos.treino` | 2 do `me_router`: GET `/assigned-to-me` e GET `/hr-zones` | ver | sem mínimo |
+
+Total: 10 + 13 + 3 + 1 + 2 = 29 (27 do `router` e 2 do `me_router`). `PATCH` entrou no mapa de ação como editar. `require_admin_or_pt` sai do módulo; as assinaturas dos handlers ficam inalteradas.
+
+**Preservado**
+
+- Personal trainer e admin, com o grupo de sistema do próprio papel, mantêm a gestão de Modelos.
+- O usuário comum continua negado na gestão, inclusive nas leituras, e mantém `/assigned-to-me` e `/hr-zones`.
+- A regra interna de `/hr-zones` não muda: de quem são as zonas, em `athlete_hr_zones`, e `require_session_identity`.
+
+**Mudanças de comportamento**
+
+- Usuário sem grupo recebe 403 nas 29 rotas.
+- Quem não é admin nem PT recebe, nas rotas de gestão, `FORBIDDEN_DETAIL` no corpo do 403, em vez de "Acesso restrito a administradores e personal trainers.".
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 126 para 97; 255 rotas com permissão (226 mais 29); conta de 367 = 97 + 6 + 9 + 255.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` sem mudança (3). O pino `test_os_guards_de_papel_continuam_nos_mesmos_modulos` passa a listar só `cardio_recommendations.py`.
+
+**Testes**
+
+- `api/app/access` e paridade: `api/tests/unit/test_access_paridade_guards.py`: as 29 rotas entram pela decisão automática, com `decisao_nova` respeitando o escopo mínimo declarado; `CASOS_MANUAIS` continua com 72. Um teste prova que, se o escopo mínimo fosse ignorado, a paridade acusaria o usuário comum nas leituras de gestão.
+- Teste HTTP novo `api/tests/unit/test_modelos_treino_permissoes_rbac.py` (409 casos).
+- Seis testes unitários de rota trocaram overrides de `require_admin_or_pt` pela fixture `permissoes_por_papel`; nenhuma asserção foi enfraquecida, e dois passaram a afirmar também o corpo `FORBIDDEN_DETAIL`.
+- Dez testes de integração concedem o grupo do papel aos usuários criados por SQL e removem overrides de `require_admin_or_pt` sem efeito.
+- **O que a paridade prova:** o guard de entrada das 29 rotas, com o escopo mínimo, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** sessão real de personal trainer e de usuário comum; a regra de quem vê qual Modelo (visibilidade por dono fica para o lote 6); grupos personalizados; latência.
+
+**Pendência para o lote 6 (resolvida no 6A)**
+
+Decisão do usuário (13/11/2026): no lote 5 só os dados de aluno mudam de escopo. `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` do `personal_trainer` passam de `todos` para `alunos` (migração 115). `modelos.treino`, `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` seguem em `todos` até o lote 6. Quando o PT passar de `todos` para `alunos` em `modelos.treino` (lote 6), o escopo mínimo `todos` bloquearia a gestão de Modelos dele. Isso precisa ser decidido junto com a visibilidade e a edição por dono (lote 6).
+
+**Resolvido no 6A** (13/11/2026): o escopo mínimo de `modelos.treino` nas rotas de Modelo passa a `alunos` (`template_guard` e `template_viewer` em `api/app/workout_plan_templates.py`), e a regra de dono e visibilidade está em "Lote 6A: Modelos com dono e visibilidade (backend)".
+
+### Lote 2F-2: treino
+
+Branch `feat/rbac-lote2f2-treino` (PR #143, na `develop` e no DEV desde 12/11/2026, não promovido). Converte 55 rotas de classe `autenticado` no retrato, com guard antigo `get_current_identity`. Todas leem ou escrevem sobre os dados do próprio usuário; nenhuma aceita usuário alvo, então nenhuma recebe escopo mínimo. Não há migração: os recursos usados já estão no catálogo e nas concessões dos grupos de sistema. Em `api/app/main.py` só 15 rotas mudam; `POST /exercise-mappings` já era do 2C-1.
+
+**Critério do recurso**
+
+O recurso é o tema da rota. A ação segue o método: GET = `ver`, POST e PUT/PATCH = `editar`, DELETE = `excluir`. Os POST de IA criam job assíncrono e ficam em `editar`. Hoje nada muda para os grupos de sistema: `usuario` e `personal_trainer` têm todos esses recursos (`exercicios.catalogo` só em ver), e o admin tem acesso total.
+
+**Rotas convertidas (55)**
+
+| Recurso | Rotas | Ação |
+|---|---|---|
+| `treino.registro` | 11 (`main.py`): GET e POST `/activities`; GET, PUT e DELETE `/activities/{activity_id}`; GET `/exercises/history`, `/exercises/last-session-sets`, `/exercises/logs` e `/sets/high-rpe`; PUT e DELETE `/exercises/logs/{exercise_id}` | 6 ver, 3 editar, 2 excluir |
+| `ia.analise_treinos` | 2: POST `/activities/{activity_id}/ai-summary/generate` e `/exercises/{exercise_id}/summarize` | editar |
+| `ia.insights` | 1: POST `/insights/generate` | editar |
+| `ia.modo_treino` | 1: POST `/exercises/evaluate-set` | editar |
+| `ia.geracao_plano` | 1: POST `/workout-plans/generate` | editar |
+| `treino.modo_treino` | 7 (`workout_sessions.py`) | 1 ver, 6 editar |
+| `treino.planos` | 16: 11 de `workout_plans.py`, 1 de `exercise_briefing.py` e 4 de `deload_periods.py` | 9 ver, 6 editar, 1 excluir |
+| `treino.preferencias` | 7: 4 de `equipment_exercise_preferences.py` e 3 de `equipment_load_ceiling.py` | 3 ver, 2 editar, 2 excluir |
+| `exercicios.catalogo` | 5: GET `/advanced-techniques`, GET `/training-goals` e 3 de `muscle_group_equipment.py` | ver |
+| `volume.grupamentos` | 4: `muscle_groups_mapped.py` | ver |
+
+Total: 11 + 2 + 1 + 1 + 1 + 7 + 16 + 7 + 5 + 4 = 55.
+
+**Preservado**
+
+- Assinaturas dos handlers, respostas, status e ordem de validação.
+- Regras de motor não mudam.
+- Usuário comum, personal trainer e admin, com o grupo de sistema do próprio papel, mantêm o acesso a esses recursos.
+
+**Mudanças de comportamento**
+
+- Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nas 55 rotas, incluindo o registro de treino, o Modo Treino e os planos.
+- Grupo sem um recurso recebe 403 nas rotas desse recurso.
+
+**Dívida e ratchet**
+
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida de 97 para 42; 310 rotas com permissão (255 mais 55); conta de 367 = 42 + 6 + 9 + 310.
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` sem mudança (3).
+
+**Testes**
+
+- `api/tests/unit/test_access_paridade_guards.py`: as 55 rotas entram pela decisão automática; `CASOS_MANUAIS` continua com 72. A tabela `CONTRATO_2F2` é conferida contra a declaração viva.
+- Teste HTTP novo `api/tests/unit/test_treino_permissoes_rbac.py` (497 casos).
+- Sete testes unitários ganharam a fixture `permissoes_por_papel`; um deles trocou o papel de teste inexistente `user` por `regular`. Dois testes de integração passaram a conceder o grupo do papel aos usuários criados por SQL. Nenhuma asserção foi alterada.
+- **O que a paridade prova:** o guard de entrada das 55 rotas, para quem está no grupo de sistema do próprio papel.
+- **O que a paridade não prova:** o escopo dos dados dentro dos handlers; grupos personalizados; sessão real de usuário comum e de personal trainer; latência da consulta de permissões no Modo Treino.
+
+### Lote 2F-3: corpo, integrações, cardio e fecho
+
+Fecha o lote 2 (PR #144, na `develop` e no DEV desde 12/11/2026, não promovido): as 42 rotas restantes passam a `require_permission`, a dívida da guarda de cobertura chega a zero e os guards de papel saem de `api/app/security.py`. Sem migração. Ação pelo método (ver, editar, excluir, sync, criar job).
+
+| Recurso | Rotas | Rotas cobertas | Ações |
+|---|---|---|---|
+| `corpo.indicadores` | 15 | `/body-composition*`, `/body-measurements*`, `/sleep-metrics*` | 6 ver, 6 editar, 3 excluir |
+| `corpo.checkin` | 10 | `/daily-checkins*`, `/context-events*` | 4 ver, 4 editar, 2 excluir |
+| `integracoes.intervals` | 11 | `/integrations/intervals/*` | 7 ver, 3 editar, mais o sync (POST `/integrations/intervals/sync`) |
+| `cardio` | 4 | GET lista, GET `{entry_id}`, POST e DELETE de `/cardio-recommendations` | ver (GET), editar (POST), excluir (DELETE) |
+| `ia.cardio` | 1 | POST `/cardio-recommendations/generate` (cria job) | editar |
+| `modelos.treino` | 1 | POST `/cardio-recommendations/{entry_id}/apply` (escopo mínimo `todos`, ver abaixo) | editar |
+
+Total: 15 + 10 + 11 + 4 + 1 + 1 = 42 rotas.
+
+*Decisão automática:* as 42 rotas são decididas pela decisão automática: 40 como `autenticado`, 1 como `admin` (sync) e 1 como `admin_ou_pt` (apply). As duas últimas são as que tinham guard de papel antes e usam escopo mínimo, descrito abaixo.
+
+*Escopo mínimo `todos` em sync e apply* (guards antigos preservados na lógica de quem pode):
+- POST `/integrations/intervals/sync`: antes `require_admin`; agora `integracoes.intervals`/editar com escopo mínimo `todos`. Só o admin tem `todos`: o usuário comum e o personal trainer recebem 403.
+- POST `/cardio-recommendations/{entry_id}/apply`: antes `require_admin_or_pt`; aplica no rascunho do Modelo e agora usa `modelos.treino`/editar com escopo mínimo `todos`. PT e admin têm `todos`; o usuário comum não tem `modelos.treino`/editar e recebe 403. (mudou no 6A/6B)
+- O corpo do 403 dessas duas rotas passa a ser `FORBIDDEN_DETAIL`.
+
+*`can_apply` em GET `/cardio-recommendations/{entry_id}`:* antes `is_admin_or_pt(identity)`. Agora é verdadeiro se a concessão `modelos.treino`/editar cobrir `todos`, lida das permissões em cache da requisição. O handler ganhou o parâmetro `request`.
+
+*Remoção dos guards de papel:*
+- `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` saem de `api/app/security.py`. Nenhum módulo de `api/app` os define nem importa.
+- Cópias congeladas ficam em `api/tests/support/guards_antigos.py`, só para o retrato e a paridade. Não são importadas por código de produção.
+- Um teste por AST impede a reintrodução dos guards em `api/app`.
+- O retrato congelado não foi regenerado.
+
+*Log:* o evento `intelligence_package.accessed` perde o campo `role`.
+
+*Dívida e ratchet:*
+- Dívida da guarda de cobertura: 42 → 0. Rotas com permissão declarada: 352.
+- Conferência: 0 + 6 públicas + 9 só autenticação + 352 com permissão = 367 rotas vivas.
+- Por lote: 9 + 34 + 72 + 39 + 16 + 56 + 29 + 55 + 42 = 352.
+- Um teste fixa que toda rota viva está em exatamente uma categoria.
+- Ratchet de papel: 3 → 1. Saíram `cardio_recommendations.py` e `analytics_dashboard.py`. Resta `athlete_hr_zones.py`, para o lote 5 (a regra de quem são as zonas de FC para o PT, sem conferência de vínculo).
+
+*Testes:*
+- Teste HTTP novo `api/tests/unit/test_corpo_integracoes_cardio_permissoes_rbac.py` (380 casos).
+- Sete testes unitários com a fixture `permissoes_por_papel`.
+- Overrides de `require_admin` sem efeito removidos de `test_users_fcmax_zonas` e `test_users_perfil_antropometrico`.
+- Quatro testes de integração passaram a conceder o grupo do papel aos usuários criados por SQL.
+- Nenhuma asserção foi alterada.
+
+*Paridade (`api/tests/unit/test_access_paridade_guards.py`):*
+- As 42 rotas entram pela decisão automática (40 `autenticado`, 1 `admin`, 1 `admin_ou_pt`); `CASOS_MANUAIS` segue com 72.
+- O sync nega o usuário comum e o PT e permite o admin; o apply nega o usuário comum e permite PT e admin.
+- Detector: sem o escopo mínimo, o usuário comum passaria no sync.
+- **O que a paridade prova:** o guard de entrada das 42 rotas, para quem está no grupo de sistema do próprio papel, e os dois escopos mínimos acima.
+- **O que a paridade não prova:** o escopo dos dados dentro dos handlers; grupos personalizados; integração com MySQL (CI com `ci-completo`); sessão real de usuário comum, de PT e de admin; relógio real; latência da consulta de permissões.
+
+### Lote 3A: API de grupos e acessos
+
+Primeiro pedaço do lote 3: API de grupos, membros, concessões e auditoria. A tela "Grupos e acessos" é o 3B. Sem migração: usa as tabelas da 111. Serviço em `api/app/access/admin.py`; router em `api/app/access_admin.py`, montado só na api-core.
+
+*Decisões do usuário (12/11/2026):*
+- A v1 tem grupos personalizados, que são a base dos planos pagos.
+- Regra ator × alvo: só o admin gerencia grupos e vínculos. Só quem tem `admin.grupos` (na matriz padrão, só o grupo admin) cria e edita grupos e muda membros.
+- A regra de subconjunto de permissões fica descartada na v1.
+
+*Decisões do Tech Lead (reversíveis):*
+- Grupos de sistema (`is_system = 1`: `admin`, `usuario`, `personal_trainer`) são imutáveis pela API: nome, descrição, concessões, exclusão e membros.
+- O vínculo a grupo de sistema segue `users.role`, pela tela e pelas rotas de usuários.
+- O grupo `free` não é de sistema e é editável.
+- Grupo personalizado não recebe recurso do domínio Admin (`admin.*`).
+- Ninguém altera o próprio vínculo.
+- Só se exclui grupo sem membros.
+- Credencial de dispositivo é recusada; sessão e token mestre passam.
+- Toda escrita grava `access_audit_log` na mesma transação, com antes e depois em JSON.
+- Escritas travam a linha do grupo (`SELECT ... FOR UPDATE`).
+- Concessões valem na requisição seguinte, porque não há cache entre requisições.
+
+*Rotas (todas em `admin.grupos`):*
+
+| Método e rota | Ação | Sucesso |
+|---|---|---|
+| GET `/access/catalog` | ver | leitura |
+| GET `/access/groups` | ver | leitura |
+| GET `/access/groups/{group_id}` | ver | leitura |
+| GET `/access/groups/{group_id}/members` | ver | leitura |
+| GET `/access/audit` (`group_id`, `limit` de 1 a 200, padrão 50, `offset`) | ver | leitura |
+| POST `/access/groups` | editar | 201 |
+| PUT `/access/groups/{group_id}` | editar | — |
+| PUT `/access/groups/{group_id}/grants` | editar | substitui o conjunto inteiro |
+| POST `/access/groups/{group_id}/members` | editar | 201, ou 200 se já era membro (sem nova auditoria) |
+| DELETE `/access/groups/{group_id}` | excluir | 204 |
+| DELETE `/access/groups/{group_id}/members/{user_id}` | excluir | 200 |
+
+*Erros* (formato `{error, message}`):
+- 404: `group_not_found`, `user_not_found`, `membership_not_found`.
+- 409: `group_system_immutable`, `group_membership_by_role`, `group_key_taken`, `group_has_members`, `self_membership_forbidden`.
+- 422: `invalid_grant`, `resource_not_grantable`, `invalid_group_data`, `invalid_pagination`, `invalid_id`.
+- Validação: chave do grupo `^[a-z][a-z0-9_]{2,63}$`; nome de 1 a 120 caracteres; descrição até 500.
+
+*Auditoria:* ações `group.create`, `group.update`, `group.grants.replace`, `group.delete`, `member.add` e `member.remove`, gravadas na mesma transação da escrita, com antes e depois em JSON.
+
+*Guardas e paridade:*
+- As 11 rotas foram criadas depois do retrato congelado. Ficam em `ROTAS_NOVAS_POS_RETRATO`, em `api/tests/unit/test_access_guarda_cobertura_rotas.py`, e só elas são aceitas fora do retrato. O retrato não foi regenerado.
+- Rotas com permissão: 352 → 363. Total de rotas vivas: 367 → 378. Dívida da guarda: 0.
+- Paridade das 11 rotas: admin e token mestre permitidos; usuário comum, PT e sem grupo negados.
+- O que a guarda e a paridade provam: cada rota nova declara `admin.grupos` e recusa a entrada de quem não tem a permissão.
+- O que não provam: o escopo dos dados dentro dos handlers; a concorrência real dos locks; grupos personalizados com vínculo real; sessão real.
+
+*Testes:*
+- `test_access_admin_servico.py` e `test_access_admin_rotas.py`: 307 passed juntos.
+- Integração `test_access_admin_dataapi.py`: 4 testes × 2 backends (fluxo completo, grupo de sistema imutável, recusas e auditoria). Roda só no CI, com `ci-completo`; não roda localmente.
+- Suíte unitária inteira: 16.690 passed; só `test_sem_mojibake` falha (falha local conhecida).
+
+### Lote 3B: tela Grupos e acessos
+
+Segundo pedaço do lote 3: a tela `/grupos-acessos` no frontend, sobre a API do 3A. A tela só reflete o catálogo e as respostas da API; quem decide é o backend. Frontend estático, ajuste aditivo do cliente HTTP e campos aditivos em `GET /access/catalog`. Sem migração e sem infra. Estado: mesclado na `develop` pelo PR #147 (merge `ac1e28b4`) e atualizado no DEV em 12/11/2026, não promovido.
+
+*Decisões herdadas do 3A (nenhuma decisão nova neste lote):* só quem tem `admin.grupos` gerencia grupos e vínculos; grupos de sistema não são editáveis; ninguém altera o próprio vínculo; a regra de subconjunto de permissões fica descartada na v1.
+
+*Arquivos:*
+- Tela: `frontend/src/app/(app)/grupos-acessos/` (`page.tsx`, `GruposAcessosClient.tsx`, `GrupoDetalhe.tsx`, `MatrizConcessoes.tsx`, `MembrosGrupo.tsx`, `AuditoriaGrupo.tsx`).
+- Libs: `frontend/src/lib/access-admin-api.ts` (chamadas à API), `access-grants.ts` (matriz, diferença entre estados, avisos e agrupamento por domínio) e `access-admin-types.ts` (tipos do contrato).
+- Cliente HTTP: `frontend/src/lib/api.ts` (`apiFetch`), ajuste aditivo de erro de negócio (ver "O que muda" abaixo).
+- Menu: `frontend/src/lib/nav-items.ts`, item `/grupos-acessos` com `visible: isAdmin` e `desktopOnly: true`. No celular a rota cai na tela "Disponível no computador" (ADR 0004).
+- Testes: `frontend/src/lib/access-admin-api.test.ts`, `access-grants.test.ts`, `api.test.ts` (detail estruturado) e `nav-items.test.ts`.
+
+*O que a tela faz:*
+- Lista de grupos (`GruposAcessosClient.tsx`), com os de sistema marcados; criação de grupo personalizado (chave, nome e descrição). O `/users` é lido nessa tela e repassado aos componentes filhos.
+- Detalhe (`GrupoDetalhe.tsx`): editar nome e descrição e excluir, só em grupo personalizado (`group.editable`). A API recusa a exclusão se houver membros.
+- Matriz recurso × ação com escopo (`MatrizConcessoes.tsx`). Salva o conjunto inteiro com `PUT /access/groups/{id}/grants`. Em grupo de sistema é só leitura. Em grupo personalizado, os recursos não concedíveis (domínio Administração, `grantable = false`) ficam ocultos (`groupResourcesByDomain`, com `onlyGrantable`).
+- Avisos: o `warning` do recurso aparece como tooltip e o texto de `scope_warnings` aparece no escopo. Ao salvar, se alguma concessão nova ou alterada tiver aviso (`warningsForSave`), abre o modal "Confirmar concessões com aviso" com os textos do catálogo; só a confirmação envia o `PUT`.
+- Membros (`MembrosGrupo.tsx`): inclusão a partir de usuários ativos de `/users`, sem o próprio admin (filtro `u.id !== currentUserId`). Em grupo de sistema a lista só mostra os membros.
+- Auditoria do grupo (`AuditoriaGrupo.tsx`): `GET /access/audit?group_id=`.
+
+*O que a tela não faz:* não tem regra numérica, não repete a lista de recursos (vem de `GET /access/catalog`) e não bloqueia nada sozinha. O backend continua recusando com 403 quem não tem `admin.grupos`, com 422 `resource_not_grantable`, com 409 nas mutações de grupo de sistema e com a validação de escopo e de concessão.
+
+*Mudança na API (aditiva, `api/app/access_admin.py`, `catalog_view` em `api/app/access/admin.py`):*
+- Cada recurso de `GET /access/catalog` ganha `grantable` (`false` no domínio Administração, via `is_grantable` em `api/app/access/catalog.py`) e `warning` (`RESOURCE_WARNINGS`; hoje só `ia.cards_exercicio`: custo de IA por card, com limite diário por usuário e não por grupo) (no 6D o recurso passou a não concedível e o aviso saiu; ver Lote 6D).
+- No topo, `scope_warnings` (`SCOPE_WARNINGS`; hoje só `todos`).
+- `is_grantable` passa a ser a fonte única também de `validate_grants` (`api/app/access/admin.py`). A regra de validação não muda: recurso de Administração continua recusado com 422.
+- Nada muda em concessões padrão, em resolução de permissões ou em validação.
+
+*Ajuste no cliente HTTP (`frontend/src/lib/api.ts`, `apiFetch`):* quando a resposta de erro não tem `detail` e o corpo traz `error` e `message` como string, `ApiError.detail` recebe `{error, message}`. Hoje, no backend, o formato de topo sem `detail` só existe em `api/app/access_admin.py` (`_error`, usado pelo `/access`); outras rotas usam `detail` objeto, que já era preservado. Motivo: sem isso a tela não mostrava a mensagem do backend em 404, 409 e 422 (achado da revisão de código). Aditivo: a mensagem do `ApiError` continua a padrão (não passa a ser a do backend), a mensagem de 503 continua a padrão, o `must_change_password` (403 com `code`) e as respostas com `detail` string ou objeto continuam como antes.
+
+*O que não muda:* nenhum usuário sem `admin.grupos` vê a rota ou o item de menu; nenhuma rota antiga, guard, concessão padrão ou `users.role` muda.
+
+*Testes:*
+- Backend: `api/tests/unit/test_access_admin_servico.py` cobre `catalog_view` (campos de cada recurso e coerência de `grantable` com `validate_grants`).
+- Frontend: `access-admin-api.test.ts`, `access-grants.test.ts`, `api.test.ts` (detail string, detail objeto e corpo de topo `{error, message}`) e `nav-items.test.ts`.
+- Integração: não roda localmente; roda só no CI, com o rótulo `ci-completo`.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas):*
+- Backend: unitários com `-k access`, 862 passed; ruff limpo nos arquivos de backend alterados.
+- Frontend: Vitest em 7 arquivos (`api`, `access-admin-api`, `access-grants`, `exercise-cards`, `nutrition-api`, `next-set-load-rules`, `cardio-recommendation-apply`) com 134 passed; `nav-items` e `primary-nav` ok; typecheck limpo; lint sem erros.
+- Integração e build ficam no CI, com `ci-completo`; ainda não há resultado registrado para eles.
+
+### Lote 4A: base da ocultação e menu
+
+Primeiro pedaço do lote 4: o frontend passa a ler `permissions` de `GET /auth/me` (campo do lote 1) e esconde menu, rotas administrativas e hub Evolução que o usuário não pode usar. Ocultar é conveniência de tela. Quem bloqueia é o backend, que já exige `require_permission` em todas as rotas desde o 2F-3 e o 3A. Frontend estático, sem migração e sem infra. Estado: na `develop` e no DEV desde 13/11/2026 (PR #148, merge `6bd4a7b9`), não promovido.
+
+*Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente, carregamento e erro sem dados em cache escondem (a decisão é por presença de dados: dados em cache sobrevivem a falha transitória de refetch); o menu é a lista única de `nav-items.ts`.
+
+*Decisão de implementação deste lote:* enquanto `/auth/me` não resolve, o menu fica escondido. Antes, o menu mostrava tudo até a resposta chegar ou falhar, o que expunha entradas de admin a quem não tinha permissão. Custo aceito: um instante sem menu no carregamento. No iPhone, o "Mais" e o hub Evolução ficam vazios nesse instante.
+
+*Arquivos:*
+- Módulo puro: `frontend/src/lib/permissions.ts`. `SCOPE_ORDER` espelha `SCOPES` de `api/app/access/catalog.py`. `can(perms, recurso, acao = 'ver', minEscopo?)` devolve `false` para `null` ou ausente, recurso ou ação ausente, escopo desconhecido e escopo abaixo do mínimo.
+- Paridade: `api/tests/unit/test_access_paridade_escopos_frontend.py` compara `SCOPE_ORDER` com `catalog.SCOPES` lendo o arquivo do frontend. Pula se o diretório `frontend/` não existe (imagem só da api).
+- Hook: `frontend/src/lib/use-permissions.ts` (`usePermissions` e `permissionsApi`). Reaproveita a query `['current-user']` de `use-is-admin.ts`, a mesma de `AppShellLayout`, então não há segunda chamada a `/auth/me`.
+- Tipo: `frontend/src/lib/auth.ts`, `SessionUser` com `permissions` e `groups` (nulos ou ausentes contam como sem permissão).
+- Menu: `frontend/src/lib/nav-items.ts` (`navVisibilityFromPermissions`, `buildMainNavItems`, `canSeeDashboard`). Consumido por `frontend/src/components/AppShellLayout.tsx` (desktop), `frontend/src/mobile/layout/MobileShell.tsx` (iPhone) e `frontend/src/mobile/screens/EvolucaoHub.tsx` (hub Evolução).
+- Guarda de rota: `PermissionRoute` em `frontend/src/components/AdminOnlyRoute.tsx`, com `permissionRouteState` em `frontend/src/lib/admin-route.ts`. Aplicada a `regras-carga` (`admin.regras_carga`), `equipamentos-exercicios` e `dominio-exercicios` (`admin.catalogos`). Enquanto carrega, mostra loader; sem permissão, em erro sem dados em cache ou com `permissions` nulo, leva para `/preferencias-treino`. Dados em cache sobrevivem a falha transitória de refetch (decisão por presença de dados). Limpeza de cache entre contas: o logout (`logoutAndRedirect`, que recebe o `QueryClient`) só cancela as queries em voo (`cancelQueries`) e navega, na ordem `clearSession` → `cancelQueries` → `replace('/')`, inclusive se `POST /auth/logout` falhar. Ele não chama `clear()`: com as telas ainda montadas, os observers de `['current-user']` recriariam a query e disparariam `GET /auth/me` sem cookie, e o 401 de `api.ts` redirecionaria com `?next=<tela antiga>`, que o próximo login (de outra conta) seguiria. O cache é descartado na fronteira do login: `LoginClient` chama `resetSessionCache` (`clear()`, em `app-logout.ts`) na montagem, antes do atalho de sessão ativa, e de novo no login bem-sucedido, antes de navegar. A tela de login não tem observers de `['current-user']`, então nada recria a query depois do clear.
+- Grupos e acessos: `GruposAcessosClient.tsx` lê `admin.grupos`/`ver` para habilitar o carregamento do catálogo (`enabled: isAdmin`). Não usa `PermissionRoute`; a tela continua a da 3B.
+
+*Mapa item → permissão (`nav-items.ts`).* Ação `ver`, salvo indicação.
+
+| Item do menu | Permissão |
+|---|---|
+| Dashboard (submenu) | `dashboards` |
+| Registro de exercícios | `treino.registro` |
+| Modo Treino | `treino.modo_treino` |
+| Agente de Cardio | `ia.cardio` |
+| Insights | `ia.insights` |
+| Indicadores Físicos | `corpo.indicadores` |
+| Nutrição | `nutricao.diario` |
+| Intervals.icu | `integracoes.intervals` e `intervals_configured` (configuração, não permissão) |
+| Exercícios | `exercicios.catalogo` |
+| Volume por grupamento | `volume.grupamentos` |
+| Planos de treino | `treino.planos` |
+| Academias | `treino.academias` |
+| Preferências de Treino | `treino.preferencias` |
+| Equipamentos x Exercícios e Domínio de Exercícios | `admin.catalogos` |
+| Regras de carga | `admin.regras_carga` |
+| Metas de Ativação | `modelos.metas_ativacao` |
+| Modelos de treino | `modelos.treino` com `editar` e escopo `todos` |
+| Usuários | `admin.usuarios` |
+| Grupos e acessos | `admin.grupos` |
+
+*Equivalência com o menu de hoje.* `frontend/src/lib/nav-items.test.ts` (bloco "paridade com o menu por role") deriva o menu das concessões padrão de `usuario`, `personal_trainer` e `admin`. Resultado: comum 12 itens; personal trainer 14 (comum mais metas e modelos); admin 19. Limite: essas concessões estão copiadas à mão no teste (`usuario()`, `personalTrainer()`, `admin()`). Nenhum teste compara a cópia com `DEFAULT_GRANTS_BY_GROUP` do backend; a única ligação automática entre frontend e backend é a paridade de escopos. Intervals.icu entra nessas contagens com `intervals_configured` verdadeiro.
+
+*O que não muda:*
+- Nenhuma rota de API, guard, concessão padrão, `users.role` ou grupo de sistema. Sem migração, sem infra e sem `RUN_DB_MIGRATIONS`.
+- Os 4 usuários atuais (1 admin e 3 regulares, todos com grupo; número informado no briefing do Tech Lead, não conferido no banco nesta entrega) devem ver o mesmo menu, conforme a equivalência acima.
+
+*Pendências para o 4B (as telas de gestão foram tratadas no 4B-1; ver "Lote 4B-1"; o restante fica no 4B-2):*
+- As abas fixas do iPhone e o pool de sub-itens do Dashboard em `frontend/src/mobile/layout/primary-nav.ts` ainda não aplicam `dashboards`/`ver`.
+- Telas internas: botões, cards de IA, `canManage` inline e badges de qualidade de dado ainda não consultam o hook.
+
+*Testes:*
+- Frontend: `frontend/src/lib/permissions.test.ts`, `use-permissions.test.ts`, `nav-items.test.ts`, `training-preferences.test.ts` (`permissionRouteState`), `app-logout.test.ts` (ordem do logout, observer sem novo `/auth/me`, falha do POST, `resetSessionCache`) e `frontend/src/mobile/layout/primary-nav.test.ts`.
+- Backend: `api/tests/unit/test_access_paridade_escopos_frontend.py`.
+- Integração: não roda localmente; roda só no CI, com o rótulo `ci-completo`, se o PR tocar caminhos que o disparem.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas):* Vitest em 7 arquivos (app-logout, permissions, use-permissions, nav-items, training-preferences, primary-nav, safe-path) com 109 passed; pytest de paridade com 1 passed (rodada anterior); typecheck limpo; lint sem erros (3 avisos antigos fora do lote).
+
+*Limitação conhecida:* um refetch de `/auth/me` que devolve `permissions` nulo (backend de auth indisponível) troca o cache bom por `null` e esconde o menu ou redireciona as rotas protegidas (fail-closed). Tratar no 4B se necessário.
+
+*Não medido:*
+- Integração e build (CI).
+- Sessão real de admin, de personal trainer e de usuário comum, no DEV e em produção.
+- Comportamento no iPhone real durante o instante de carregamento.
+
+### Lote 4B-1: telas de gestão por permissão
+
+Primeiro pedaço do 4B: as telas de gestão deixam de decidir por `role` e passam a ler as permissões efetivas de `GET /auth/me`, com a mesma condição do `require_permission` da rota que cada controle chama. Ocultar é conveniência de tela; o backend segue sendo a barreira (403). Frontend estático, sem migração e sem infra. Estado: em PR para a `develop` (branch `feat/rbac-lote4b1-telas-gestao`), não promovido.
+
+*Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente e carregamento escondem; concessões padrão, grupos de sistema e `users.role` não mudam.
+
+*Regra de implementação:* a condição da UI espelha o `require_permission(recurso, ação, escopo mínimo)` da rota do backend que o controle chama. As funções são puras e ficam em `frontend/src/lib/screen-permissions.ts`. Cada tela usa a função do seu domínio e o booleano devolvido, sem comparar papel. Fail-closed: `can` (`frontend/src/lib/permissions.ts`) devolve `false` para `null`, `undefined`, `{}`, recurso ausente ou escopo abaixo do mínimo. Nenhuma regra de acesso nasce no frontend.
+
+*Arquivos:*
+- Módulo puro: `frontend/src/lib/screen-permissions.ts` (`academiasControls`, `catalogosControls`, `segurancaTreinoControls`, `exerciseCardsControls`, `tiposTreinoControls`, `modelosTreinoControls`, `usuariosControls`, `gruposControls`, `alimentosControls`, `planoNutricionalControls`), com teste em `frontend/src/lib/screen-permissions.test.ts`.
+- Telas: `frontend/src/app/(app)/academias/AcademiasClient.tsx`, `dominio-exercicios/DominioExerciciosClient.tsx` e `components/ExerciseDetailDrawer.tsx`, `equipamentos-exercicios/EquipamentosExerciciosClient.tsx` e `EquipmentSafetyTab.tsx`, `grupos-acessos/` (`GruposAcessosClient.tsx`, `GrupoDetalhe.tsx`, `MatrizConcessoes.tsx`, `MembrosGrupo.tsx`, `AuditoriaGrupo.tsx`), `usuarios/UsuariosClient.tsx`, `metas-ativacao/TrainingTypesListClient.tsx`, `modelos-treino/WorkoutPlanTemplatesListClient.tsx`, `nutricao/plano/PlanoClient.tsx`, `nutricao/alimentos/AlimentosClient.tsx` e `components/nutrition/FoodSearch.tsx`; mobile: `frontend/src/mobile/screens/telas/UsuariosScreen.tsx`.
+- Helpers: `frontend/src/lib/admin-route.ts` (fica `permissionRouteState`; saem `adminRouteState` e `isAdminRole`), `frontend/src/lib/exercise-cards.ts`, `frontend/src/lib/mappings-types.ts`, `frontend/src/lib/training-preferences.test.ts`.
+
+*Controles por tela (espelho do backend):*
+
+| Controle (tela) | Rota e arquivo do backend | `require_permission` | Condição na UI |
+|---|---|---|---|
+| Domínio de exercícios (abas e formulário do exercício) | `exercise_catalog_admin.py` (POST `/exercises`, aliases, descrição de execução) | `admin.catalogos` editar | `catalogosControls.canEdit`, passado como `isAdmin` às abas |
+| Equipamentos x exercícios (associações, em massa, catálogo) | `equipment_exercises.py` (POST e PUT: editar; DELETE: excluir) | `admin.catalogos` editar / excluir | `catalogosControls.canEdit` e `canDelete` |
+| Aba Segurança | `training_safety_admin.py` (GET e PUT de `/equipment/{id}/safety` e `/equipment-exercises/{id}/safety`) | `admin.seguranca_treino` ver / editar | `segurancaTreinoControls.canView` (sem ela, a aba não carrega o conteúdo) e `canEdit` |
+| Cards ilustrados (no detalhe do exercício) | `exercise_cards.py` (geração, aprovação, referências: editar; leitura: ver; remoção: excluir) | `ia.cards_exercicio` editar | `ExerciseDetailDrawer.tsx` (linha 132) usa `usePermissions().can('ia.cards_exercicio', 'editar')` como `canManage` da seção de card; ver a limitação sobre `exerciseCardsControls` |
+| Academias | `gyms.py`: GET (ver); POST e PUT de dias, avulsa e vínculo de equipamento (editar); DELETE (excluir); PUT com `name`, `opens_at` ou `closes_at` (`require_additional_permission`, linha 386); POST e DELETE de logo | `treino.academias` editar / excluir; `admin.catalogos` editar (campos administrativos e logo) e excluir (remoção de logo) | `canEdit` (dias, avulsa, vínculo) = `treino.academias`/editar; `canDelete` = `treino.academias`/excluir; `canEditAdminFields` (lápis "Editar academia": nome, horário e logo) = `admin.catalogos`/editar; `canRemoveLogo` = `admin.catalogos`/excluir |
+| Grupos e acessos | `access_admin.py` (11 rotas): leitura, catálogo, auditoria e membros (ver); criar e editar grupo, matriz e adicionar membro (editar); excluir grupo e remover membro (excluir). `GET /users` alimenta as opções de membro e os nomes da auditoria | `admin.grupos` ver / editar / excluir; `GET /users` exige `admin.usuarios`/ver | `canAccess` = ver; `canEdit` = editar; `canDelete` = excluir; `canListUsers` = `admin.usuarios`/ver. Sem `canListUsers` a tela não chama `/users`, mostra aviso no lugar do seletor de membros e a auditoria exibe `Usuário #id`. 403 de catálogo ou grupos vira estado de acesso restrito; 403 de `/users` vira `usersForbidden` |
+| Usuários (desktop e iPhone) | `users.py`: GET (ver); POST, PUT e reset de senha (editar); DELETE (excluir). A exigência extra de `admin.grupos` para alvo admin é do backend (lote 2B) | `admin.usuarios` ver / editar / excluir | `usuariosControls.canAccess` (ver), `canEdit` (criar, editar, senha) e `canDelete` (desativar) |
+| Metas de ativação | `training_types.py`: GET (ver); POST, PUT, PATCH de status e duplicar (editar); DELETE (excluir) | `modelos.tipos_treino` ver / editar / excluir | `tiposTreinoControls`: sem `canAccess` a lista não carrega; `canEdit` e `canDelete` nas ações |
+| Modelos de treino (lista) | `workout_plan_templates.py`: rotas de gestão com `modelos.treino` e `min_scope=todos` (mudou no 6A/6B); `POST /workout-plan-templates/periodization-drafts` com `ia.modelo_periodizacao` editar e `min_scope=todos` | `modelos.treino` ver / editar / excluir (todos); `ia.modelo_periodizacao` editar (todos) | `modelosTreinoControls`: `canAccess` (editar), `canView`, `canEdit`, `canDelete`; `canGenerateDraft` no botão de gerar rascunho |
+| Plano nutricional de outros | `nutrition_plans.py` (`nutricao.plano` ver / editar / excluir, sem `min_scope`); alvo de terceiro checado por `authorize_target` (`todos`, ou `alunos` com vínculo ativo) | `nutricao.plano` editar com `todos` (condição da tela) | `planoNutricionalControls.canManageOthers` |
+| Alimentos privados | `nutrition_foods.py` recusa `scope=private_all` sem `can_list_private_foods`, que é `administers_public_catalog` com `ver` (`nutrition_access.py`, linhas 86 e 131 a 133) | `admin.catalogos` ver | `alimentosControls.canListPrivate`, passado a `FoodSearch` como `isAdmin` |
+
+*Equivalência com o papel de hoje.* `screen-permissions.test.ts` fixa, para `usuario`, `personal_trainer` e `admin`, os controles esperados com as concessões padrão de `DEFAULT_GRANTS_BY_GROUP` (`api/app/access/catalog.py`). As fixtures são cópias manuais, o mesmo limite registrado no 4A: nenhum teste compara a cópia com o backend, e nenhum teste compara com o comportamento anterior ao lote. Os casos `null`, `undefined` e `{}` nos dez controles não mostram nada. O teste também prova escopo e ação exatos: modelos exige `todos` (`próprios` e `alunos` não bastam), o plano de outros exige `editar` com `todos`, e `ver` sozinho não libera escrita.
+
+*Removidos:* `adminRouteState` e `isAdminRole` de `frontend/src/lib/admin-route.ts`. Não há mais referência a eles no repositório.
+
+*Limitações conhecidas:*
+- O editor de modelo `frontend/src/app/(app)/modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx` (linhas 386 e 387) ainda decide `canManageVersions` por `role` (`admin` ou `personal_trainer`), que controla o histórico de versões. O `/ship` desta entrega não aceita colchetes no caminho; o ajuste foi feito no 4B-4 (ver "Lote 4B-4").
+- `exerciseCardsControls` não tem consumidor de tela. O controle real dos cards está em `ExerciseDetailDrawer.tsx`. A função fica como candidata a ser religada ou removida no 4B-2.
+- Metas de ativação: o menu usa `modelos.metas_ativacao` (`frontend/src/lib/nav-items.ts`, linha 171), e a tela e a API de `/training-types` usam `modelos.tipos_treino`. Com as concessões padrão, os dois recursos vão aos mesmos grupos, mas são recursos distintos no catálogo. Alinhar em um só fica no 4B-2 ou em ajuste de catálogo.
+- Plano de outros: a tela exige `nutricao.plano` com escopo `todos`; o backend (`authorize_target`) também aceita `alunos` com vínculo ativo. A tela é mais restrita (fail-closed) até o lote 5.
+- Usuários: a tela mostra editar a quem tem `admin.usuarios`/editar, sem espelhar a exigência extra de `admin.grupos` ao mexer em admin (lote 2B). Nenhum grupo padrão tem `admin.usuarios` sem `admin.grupos`, então não há efeito hoje. Com grupos personalizados, quem só tem `admin.usuarios` vê o botão e recebe 403 ao salvar um admin.
+- Os textos "Ação restrita a administradores" foram mantidos. Várias props `isAdmin` (abas de Domínio de exercícios, `FoodSearch`) são nome histórico; o valor vem de permissão.
+- `useIsAdmin` (`frontend/src/lib/use-is-admin.ts`, por `role`) continua em uso em badges de qualidade de dado e dashboards. Sai no 4B-2.
+- Foto de usuário: a rota está na categoria "só autenticação" do 2B (sem `require_permission` declarado; terceiro cai em `authorize_self_or_all`). O controle de foto na tela não foi alterado.
+
+*Testes:*
+- Frontend: `frontend/src/lib/screen-permissions.test.ts`.
+- Backend: nenhum teste novo; nenhuma rota muda.
+- Integração: não roda localmente; no CI, só com o rótulo `ci-completo`.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta entrega):* parte A: Vitest em 6 arquivos com 128 passed e typecheck ok; parte B: Vitest em 40 arquivos com 272 passed, `tsc` com 0 erros e lint com 0 erros.
+
+*Não medido:*
+- UI no navegador: nenhuma sessão real de admin, personal trainer ou usuário comum.
+- Build e integração (CI).
+- Comportamento no iPhone real.
+
+### Lote 4B-2: IA, abas do iPhone e ajustes
+
+Segundo pedaço do 4B: gatilhos de IA, abas fixas do iPhone, flag de logout e aviso da matriz passam a seguir as permissões efetivas de `GET /auth/me`. Ocultar é conveniência de tela; o backend segue sendo a barreira (403). Frontend estático, sem migração e sem infra. Estado: na `develop` e no DEV desde 13/11/2026 (PR #150, merge `d059f9e0`), não promovido.
+
+*Decisões herdadas (nenhuma decisão nova de acesso neste lote):* ocultação não concede nada; `null`, `{}`, campo ausente e carregamento escondem; concessões padrão, grupos de sistema e `users.role` não mudam. Nenhuma regra de motor muda; `docs/motores/FONTES_DA_VERDADE.md` não é alterado.
+
+*Regra de implementação:* `iaControls(perms)` e o hook `useIaControls()` em `frontend/src/lib/screen-permissions.ts` devolvem um booleano por gatilho, com a mesma condição do `require_permission` da rota (`ia.<recurso>`, `editar`).
+
+*Gatilhos de IA (espelho do backend):*
+
+| Gatilho (tela) | Rota | `require_permission` | Condição na UI |
+|---|---|---|---|
+| Insights (`insights/page.tsx`, `InsightsScreens.tsx`) | `POST /insights/generate` | `ia.insights` editar | `ia.canInsights`; sem ela, aviso no lugar do botão |
+| Análise de treinos (`dashboard/treinos/DashboardTreinosClient.tsx`) | `POST /workouts-analysis/generate` | `ia.analise_treinos` editar | `ia.canAnaliseTreinos` monta `AnaliseIaBloco` |
+| Geração de plano (`PlanosTreinoClient.tsx`, `PlanosScreen.tsx`, `ModeSelectScreen.tsx`) | `POST /workout-plans/generate` | `ia.geracao_plano` editar | `ia.canGerarPlano` (botão e modal de geração) |
+| Cardio (`agente-cardio/page.tsx`, `AgenteCardioScreen.tsx`, `PlanoDetalheScreen.tsx`) | `POST /cardio-recommendations/generate` | `ia.cardio` editar | `ia.canCardio` |
+| Nutrição (`NutricaoClient.tsx`, `NutricaoDiarioScreen.tsx`) | `POST /nutrition/meals/parse` e `/photo` | `ia.nutricao` editar | `ia.canNutricao` (foto do prato, descrever com IA e `MealParseModal`) |
+| Resumo do Modo Treino (`WorkoutModeClient.tsx`) | `POST /activities/{id}/ai-summary/generate` | `ia.modo_treino` editar | `ia.canModoTreino`; sem ela, o POST não é feito |
+| Cards ilustrados (`ExerciseDetailDrawer.tsx`) | `exercise_cards.py` | `ia.cards_exercicio` editar | `exerciseCardsControls(perms).canGenerate`, passado como `canManage`; religa a função que o 4B-1 deixou sem consumidor |
+
+*Abas do iPhone* (`frontend/src/mobile/layout/primary-nav.ts`): `visiblePrimaryTabs(visibility)` filtra `PRIMARY_TABS`: Início por `dashboards`/`ver`, Treino por `treino.modo_treino`, Histórico por `treino.registro`, Evolução só se o hub (`buildEvolucaoGroups(visibleMain, visibility)`) não ficar vazio. Com `permissions` nulo ou `{}` vindo do backend, só Mais e Perfil; sem dados do usuário (carregando ou erro sem cache) a exceção do 4B-3 mostra as 4 abas fixas (ver "Lote 4B-3"). `MobileShell.tsx` itera `visiblePrimaryTabs(navVisibilityFromPermissions(user))` com o usuário da query `['current-user']`, e `EvolucaoHub.tsx` passa a mesma visibilidade como segundo argumento a `buildEvolucaoGroups`. Os sub-itens do hub seguem a permissão de cada tela.
+
+*Flag de logout* (`frontend/src/lib/api.ts`, `app-logout.ts`): `beginLogout`, `endLogout` e `isLoggingOut`. Enquanto a flag está ligada, um 401 de poller (`refetchInterval`) não recarrega a página com `?next=<tela antiga>`. `logoutAndRedirect` liga; `resetSessionCache` (montagem do `LoginClient` e login bem-sucedido) ou falha da saída desligam. Fecha o residual do logout citado no 4A.
+
+*Aviso da matriz* (`grupos-acessos/MatrizConcessoes.tsx`): o aviso de grupo de sistema (somente leitura) passa a depender de `!group.editable`, e um segundo aviso aparece quando o grupo é editável mas o usuário não tem `admin.grupos`/editar ("Seu perfil não pode editar concessões..."). Só texto; nenhuma regra muda.
+
+*Fora do escopo e limitações:*
+- `PlanDetailClient` e o editor de modelo (`modelos-treino/[id]/WorkoutPlanTemplateBuilderClient.tsx`, que ainda decide `canManageVersions` por `role`) ficam em caminhos com `[id]`; o `/ship` não aceitava colchetes. Tratados no 4B-4 (ver "Lote 4B-4").
+- Sugestão de plano nutricional e foto de rótulo (`PlanSuggestionPanel.tsx` e afins) não foram religadas.
+- Análise por exercício não foi religada (tratada no 4B-4: resumo de fim de exercício no Modo Treino).
+- Badges de qualidade de dado por papel (`useIsAdmin`) continuam por `role`.
+- O DELETE das abas de domínio segue por flag única, sem separar excluir de editar.
+- O pós-login vai a `/dashboard` mesmo para quem não tem `dashboards`/`ver`.
+
+*Testes:* `screen-permissions.test.ts`, `primary-nav.test.ts` (`visiblePrimaryTabs`, `buildEvolucaoGroups` com visibilidade), `nav-items.test.ts`, `api.test.ts` e `app-logout.test.ts`. Não há teste de componente para `MobileShell` nem `EvolucaoHub`. Integração: não roda localmente.
+
+*Medido na branch:* rodadas anteriores (Tech Lead): IA em Vitest com 168 arquivos e 2816 passed; nav-logout com 4 arquivos e 64 passed; typecheck e lint sem erros. Esta rodada (após ligar `MobileShell` e `EvolucaoHub`): Vitest em 5 arquivos (primary-nav, nav-items, api, app-logout, screen-permissions) com 75 passed; `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos de `react-hooks/exhaustive-deps` fora do lote).
+
+*Não medido:* UI no navegador, sessão real por papel, iPhone real, build e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com as concessões padrão, os usuários atuais veem as mesmas telas e abas (equivalência por fixtures, não conferida em sessão real). Rollback: reverter o PR e refazer o deploy do frontend; não há dado nem schema a desfazer.
+
+### Lote 4B-3: abas do iPhone offline e ajustes
+
+Corrige um achado de revisão do 4B-2: com `/auth/me` carregando ou falhando sem cache (PWA offline; `['current-user']` não é persistido), o iPhone mostrava só Mais e Perfil, e some até a aba Treino, que é offline-first (Modo Treino na academia). Antes do 4B-2 as 4 abas sempre apareciam. Estado: na `develop` e no DEV desde 13/11/2026 (PR #151, merge `d4e4bb75`), não promovido.
+
+*Exceção (sem dados do usuário):* `primaryTabsFor(user)` em `primary-nav.ts` devolve `PRIMARY_TABS` (as 4 abas fixas) quando `user === undefined`; com dados, delega a `visiblePrimaryTabs` como no 4B-2 (concessões padrão = mesmas 4 abas; `permissions` nulo ou `{}` = nenhuma aba de link, só Mais/Perfil). Motivo: as abas são só navegação e o Treino precisa abrir offline. Isso não concede nada: os dados continuam barrados pelo backend (403) e cada tela segue as próprias guardas. `MobileShell.tsx` usa `primaryTabsFor(userQuery.data)`.
+
+*Hub Evolução:* sem dados a aba Evolução aparece e abriria vazia. Decisão: aplicar a mesma exceção, não um aviso. `evolucaoGroupsFor(user)` (usada por `EvolucaoHub.tsx`) usa, sem dados, visibilidade permissiva com Intervals.icu oculto (depende de configuração), o que dá os grupos de antes do 4B-2; com dados, igual ao 4B-2. Motivo: um hub vazio parece falha, e o hub é só lista de links; as telas de destino continuam guardadas e o backend barra os dados.
+
+*Toggle de IA por série (Modo Treino):* a avaliação por série chama `POST /exercises/evaluate-set` (`main.py`), que exige `ia.modo_treino` editar (`require_permission`); é rota online e de IA, não há avaliação offline. `WorkoutModeClient.tsx` só mostra o toggle com `ia.canModoTreino` (flag já existente em `iaControls`) e passa `perSetAiEnabled && ia.canModoTreino` às duas execuções; a preferência salva não é alterada. Sem dados de usuário o toggle some (a IA não funciona offline de qualquer forma).
+
+*Formatação (P3):* `MORE_TAB = {` em `primary-nav.ts` e a indentação do `MealParseModal` em `NutricaoClient.tsx`.
+
+*Testes:* `primary-nav.test.ts` (`primaryTabsFor`: `undefined` => 4 abas; padrão por papel => 4 abas; `{}` e `null` => nenhuma; `evolucaoGroupsFor` sem dados e com `{}`).
+
+*Medido na branch:* Vitest em 15 arquivos (primary-nav, screen-permissions, nav-items, pastas modo-treino, nutricao e mobile/layout) com 180 passed (primary-nav 36); `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos de `react-hooks/exhaustive-deps` fora do lote). Não há teste de componente para `MobileShell`, `EvolucaoHub` nem `WorkoutModeClient`.
+
+*Não medido:* UI no navegador, PWA offline real, iPhone real, build e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com dados e concessões padrão nada muda; sem dados, as abas voltam a aparecer como antes do 4B-2. Rollback: reverter o PR e refazer o deploy do frontend.
+
+### Lote 4B-4: telas em rotas dinâmicas e resumo por exercício
+
+Fecha as telas que o 4B-1 a 4B-3 deixaram fora por ficarem em caminhos com `[id]` (o harness do `/ship` passou a aceitar colchetes no PR #153) e a análise por exercício do Modo Treino. Estado: na `develop` e no DEV desde 13/11/2026 (PR #154, merge `1b3d3d6a`), não promovido. Só frontend; a condição espelha o `require_permission` da rota chamada, fail-closed (sem `permissions`, o controle some e nada é chamado).
+
+| Controle | Rota | `require_permission` | Condição na tela |
+|---|---|---|---|
+| Histórico de versões do Modelo: reverter e arquivar/desarquivar (`canManage` do `TemplateVersionHistory`, em `WorkoutPlanTemplateBuilderClient.tsx`) | `POST /workout-plan-templates/{id}/versions/{v}/revert` | `modelos.treino` editar, `min_scope=todos` | `modelosTreinoControls(perms).canEdit` (antes: `role` admin ou personal_trainer) |
+| Gerar/regerar recomendação de cardio (`PlanDetailClient.tsx`) | `POST /cardio-recommendations/generate` | `ia.cardio` editar | `useIaControls().canCardio` |
+| Aplicar recomendação ao Modelo (`CardioRecommendationPanel`, prop `hideApplyToTemplate`) | `POST /cardio-recommendations/{id}/apply` | `modelos.treino` editar, `min_scope=todos` | `usePermissions().can('modelos.treino', 'editar', 'todos')` |
+| Resumo de fim de exercício (`PlanExecutionScreen.tsx`, `FreeformScreen.tsx`: `runExerciseSummary` e `ExerciseSummaryCard`) | `POST /exercises/{id}/summarize` | `ia.analise_treinos` editar | `useIaControls().canAnaliseTreinos`; sem permissão não há POST, spinner nem erro, e o cartão não é renderizado |
+
+*Sem alteração:* o botão Excluir da recomendação de cardio (`cardio` excluir) e as demais ações do editor (salvar, rascunho) seguem como estavam; o editor já era alcançado só por quem tem `modelos.treino`. O rascunho de periodização por IA (`ia.modelo_periodizacao`, `modelosTreinoControls.canGenerateDraft`) não é chamado por estas telas. `screen-permissions.ts` e seus testes não mudaram (`canCardio` e `canAnaliseTreinos` já existiam e têm teste).
+
+*Medido na branch:* Vitest em 17 arquivos (screen-permissions e testes das pastas modo-treino, modelos-treino e planos-treino) com 167 passed; `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos de `react-hooks/exhaustive-deps` fora do lote). Não há teste de componente para `PlanDetailClient`, `PlanExecutionScreen` nem `FreeformScreen`.
+
+*Não medido:* UI no navegador, Modo Treino real, build e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. Com as concessões padrão nada muda para admin e personal trainer; usuário comum continua sem gestão de Modelo, e o resumo de exercício e o cardio seguem as concessões de `ia.analise_treinos` e `ia.cardio`. Rollback: reverter o PR e refazer o deploy do frontend.
+
+### Lote 5A: vínculo treinador–aluno (backend)
+
+Primeiro pedaço do lote 5: vínculo treinador–aluno no backend, leitura dos alunos pelo treinador, zonas de FC com o motivo `no_link` e a migração 115. A tela de vínculos e o seletor de alunos do PT são o 5B. Estado: na `develop` e no DEV desde 13/11/2026 (PR #155, merge `38a68565`; migração 115 aplicada no DEV), não promovido. Serviço em `api/app/access/admin.py` (`create_link`, `end_link`, `list_links`, `list_my_students`); rotas em `api/app/access_admin.py`; `has_active_link` e `is_group_member` em `api/app/access/service.py`. A tabela `trainer_students` e o UNIQUE `uq_ts_active_pair` vêm da 111 (sem DDL no 5A).
+
+*Decisões do usuário (13/11/2026):*
+- No lote 5 só os dados de aluno mudam de escopo: `nutricao.diario`, `nutricao.plano`, `nutricao.checkin` e `ia.nutricao` do `personal_trainer` passam de `todos` para `alunos`. `modelos.treino`, `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` seguem em `todos` até o lote 6.
+
+*Rotas:*
+
+| Método e rota | Permissão | Sucesso |
+|---|---|---|
+| GET `/access/links` (filtros `trainer_user_id`, `student_user_id`, `status` = `ativo` ou `encerrado`) | `admin.grupos` ver | 200, lista do mais recente para o mais antigo |
+| POST `/access/links` (corpo `trainer_user_id` e `student_user_id`; campo extra recusado) | `admin.grupos` editar | 201 |
+| DELETE `/access/links/{link_id}` | `admin.grupos` excluir | 200, com o vínculo `encerrado` |
+| GET `/access/my-students` | só autenticação (`get_current_identity`) | 200, lista `{id, username, full_name}` de alunos ativos |
+
+Todas recusam credencial de dispositivo com 403 `FORBIDDEN_DETAIL`, inclusive `my-students`, porque passam por `_ok` (`_reject_device`). O vínculo devolvido traz `id`, `trainer_user_id`, `student_user_id`, `status`, `created_by_user_id`, `created_at`, `ended_at` e os nomes de treinador e aluno.
+
+*Erros* (formato `{error, message}`):
+- 404: `user_not_found`, `link_not_found`.
+- 409: `link_actor_involved` (o ator é treinador ou aluno, na criação e no encerramento), `link_already_active`, `link_already_ended`, `user_inactive`.
+- 422: `link_self_forbidden`, `trainer_not_personal_trainer`, `invalid_link_data` (status de filtro fora de `ativo`/`encerrado`), `invalid_id`.
+
+*Validações na criação (`create_link`, nesta ordem):*
+1. ator é treinador ou aluno: 409 `link_actor_involved`;
+2. treinador igual ao aluno (auto-vínculo): 422 `link_self_forbidden`;
+3. treinador e aluno existem e estão ativos: 404 `user_not_found` ou 409 `user_inactive`;
+4. treinador é membro de `personal_trainer`: 422 `trainer_not_personal_trainer`;
+5. não há vínculo ativo para o par (`SELECT ... FOR UPDATE`): senão 409 `link_already_active`. Uma corrida entre dois `INSERT` é recusada pelo UNIQUE `uq_ts_active_pair` (coluna gerada `active_flag`, `IF(status = 'ativo', 1, NULL)`, migração 111), e a violação de chave vira o mesmo 409.
+
+*Encerramento (`end_link`):* trava a linha (`FOR UPDATE`); ator envolvido: 409; vínculo já `encerrado`: 409 `link_already_ended`; senão grava `status = encerrado` e `ended_at`. O histórico fica, e o par pode ser vinculado de novo (a unicidade vale só para vínculo `ativo`).
+
+*Auditoria:* `link.create` e `link.end`, gravados na mesma transação, com `target_type = trainer_link`, `target_id` = id do vínculo e `detalhe` com antes e depois (`trainer_user_id`, `student_user_id`, `status`). `GET /access/audit` com `group_id` filtra só `target_type = group`, então esses eventos não aparecem com `group_id`; sem `group_id`, aparecem na listagem geral.
+
+*Vínculo como condição de acesso (`api/app/access/service.py`):*
+- `has_active_link(treinador, aluno)`: uma consulta. Exige vínculo `ativo`, aluno com `is_active = 1` e treinador ainda com linha no grupo `personal_trainer`. Tirar o treinador do grupo faz o vínculo deixar de dar acesso, sem encerrá-lo. Não confere `is_active` do treinador (ver pontos em aberto).
+- `authorize_target` e `can_access_target`: terceiro com escopo `alunos` passa só com `has_active_link`; `todos` passa sem consulta; próprio usuário passa em qualquer escopo.
+
+*Zonas de FC (`api/app/athlete_hr_zones.py`, `resolve_template_zones_subject`; rota `GET /hr-zones` em `api/app/workout_plan_templates.py`, linha 112):* a regra é por grupo, não por papel.
+- Quem não é membro de `personal_trainer`: as próprias zonas (`self`).
+- Treinador, sem `template_id`: `none` com `no_template`. Sem atribuição ativa: `none` com `no_assignee`. Com mais de uma: `none` com `multiple_assignees`.
+- Treinador com uma atribuição: se for o próprio treinador, ou se não houver vínculo ativo, `none` com `no_link` (o auto-atribuído cai em `no_link`, não há motivo separado). Com vínculo, as zonas do aluno (`assignee`).
+- Nunca as zonas do próprio treinador como fallback, porque enganariam a prescrição do aluno.
+
+*Migração 115 (`api/db/migrations/115_access_grants_pt_nutricao_alunos.py`):*
+- Só DML em `access_group_grants`: `UPDATE` de `scope` para `alunos` nas linhas do grupo de sistema `personal_trainer` dos 4 recursos que ainda estão em `todos` (até 12 linhas: 4 recursos × 3 ações). Sem DDL, sem FK, um statement por chamada.
+- `plan` só lê e emite o `UPDATE` apenas se houver linha em `todos`. Idempotente: sobre o estado convergido o plano é vazio, e escopo que o admin já editou (ex.: `proprios`) não é tocado.
+- Sem as tabelas da 111: plano vazio, com log, sem erro. `personal_trainer` ausente como grupo de sistema: `AccessGrantsPtNutricaoAlunosError` antes de qualquer escrita.
+- `up` relê ao fim e levanta o erro se restar linha em `todos`; em `--dry-run` a releitura é pulada.
+- `down` volta para `todos` só essas linhas do `personal_trainer` que estiverem em `alunos`. Em produção o runner não roda `down`.
+- Paridade com o catálogo: `test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_114_115` (`api/tests/unit/test_access_catalogo_e_resolucao.py`). Banco falso: `api/tests/unit/test_migracao_115_concessoes.py`.
+
+*Dívida e ratchet:*
+- Ratchet de papel (`api/tests/unit/access_identity_role_allowlist.json`): `teto_total` 3 → 0 e `arquivos` vazio. Saiu `athlete_hr_zones.py`, o último ponto do lote 2F-3. A guarda de identidade por papel fica zerada fora de `app/access`.
+- Guarda de cobertura (`api/tests/unit/access_cobertura_allowlist.json`): dívida 0; `so_autenticacao` 9 → 10 (`GET /access/my-students`, pino em `SO_AUTENTICACAO_APROVADAS`); `ROTAS_NOVAS_POS_RETRATO` 11 → 14 (as 3 rotas de `/access/links`, com `admin.grupos`). Rotas com permissão: 363 → 366. Total de rotas vivas: 378 → 382 (6 públicas + 10 só autenticação + 366 com permissão).
+
+*Testes:*
+- Novos: `api/tests/unit/test_access_vinculos_servico.py`, `api/tests/unit/test_access_vinculos_rotas.py`, `api/tests/unit/test_athlete_hr_zones_vinculo.py` e `api/tests/unit/test_migracao_115_concessoes.py`.
+- Ajustados: `test_access_admin_rotas.py`, `test_access_catalogo_e_resolucao.py`, `test_access_guarda_cobertura_rotas.py`, `test_access_guarda_identity_role.py`, `test_access_paridade_guards.py`, `test_access_retrato_guards.py`, `test_nutrition_access.py`, `test_nutricao_alvo_permissoes_rbac.py`, `test_nutricao_alimentos_permissoes_rbac.py` e `test_template_hr_zones_autorizacao.py`.
+- Integração: `api/tests/integration/dataapi/test_access_vinculos_dataapi.py` (14 testes coletados). Roda só no CI, com o rótulo `ci-completo`.
+- Os retratos (`access_retrato_guards_antigos.json`) não foram regenerados.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta edição do ADR):* unitários de `access`, nutrição, migração, zonas de FC, cardio, sync de intervals, catálogo e rbac: 7403 passed; ruff limpo.
+
+*Não medido:* integração local (não roda localmente; quem roda é o CI); guarda dos motores (timeout no hook local; roda no `verify` e no CI); UI; sessão real de treinador e de aluno; concorrência real entre `FOR UPDATE` e o UNIQUE.
+
+*O que as guardas e os testes provam:* cada rota nova declara `admin.grupos` (ou só autenticação, pinada); a recusa de dispositivo e as validações de `create_link` e `end_link`; `has_active_link` e a regra de zonas com banco falso; a matriz 111 + 113 + 114 + 115 contra o catálogo.
+
+*O que não provam:* o efeito sobre dados reais de produção; a corrida entre dois admins criando o mesmo vínculo; a tela (5B).
+
+*Impacto em produção:* este lote altera produção por dados e por regra de acesso.
+- Migração 115: só DML, até 12 linhas do grupo `personal_trainer` em `access_group_grants`. Sem tabela nova. A promoção exige `RUN_DB_MIGRATIONS=true` na execução da promoção e volta a `false` depois, como nos lotes anteriores.
+- Efeito de comportamento: personal trainers perdem acesso à nutrição de quem não é aluno vinculado (diário, plano, check-in e IA de nutrição de terceiros), que passa a responder 403. O acesso aos próprios dados do PT (`proprios`) não muda. Nenhum usuário comum é afetado.
+- O frontend ainda trata a nutrição de terceiros como `todos` até o 5B. Por isso a tela esconde mais do que o backend permite (fail-closed); nada novo é liberado.
+- Antes da promoção, conferir em produção por leitura autorizada: `SELECT` de membros do grupo `personal_trainer` (esperado 0 em 12/11/2026) e `SELECT` de `trainer_students`.
+- Rollback: reverter o PR não reverte a linha da 115 no banco, porque o `down` está documentado mas produção não roda `down`. Reverter exigiria migração nova. Até lá, o PT segue com `alunos` no banco; sem vínculo ativo, a nutrição de terceiros responde 403.
+
+### Lote 5B: frontend do vínculo treinador–aluno
+
+Fecha o lote 5 no frontend, consumindo a API do 5A. Só transporte e apresentação: nenhuma regra de vínculo nasce na tela (treinador no grupo `personal_trainer`, ator fora do par, par já ativo, aluno ativo são do backend, que devolve a mensagem exibida).
+
+| Mudança | Arquivo | Contrato |
+|---|---|---|
+| Motivo `no_link` nas zonas de FC do editor do Modelo, com o aviso "Você não tem vínculo ativo com o aluno deste Modelo." | `frontend/src/lib/hr-zones.ts` | `GET /workout-plan-templates/hr-zones` |
+| `planoNutricionalControls`: `canManageOthers` = `nutricao.plano` editar com escopo `alunos` (cobre `todos`); novo `studentsOnly` = pode gerir outros sem chegar a `todos` | `frontend/src/lib/screen-permissions.ts` | `require_permission` das rotas de plano |
+| Seletor de aluno do plano com `source: 'all' \| 'students'`; no modo `students` usa `GET /access/my-students` (busca no cliente, sem acento) e avisa quando não há alunos vinculados. `AssignTemplateModal` segue no modo padrão | `frontend/src/components/nutrition/UserPicker.tsx`, `frontend/src/lib/user-lookup.ts`, `PlanoClient.tsx` | `GET /access/my-students` |
+| Aba "Vínculos" em Grupos e acessos: lista com filtro de status, criar (treinador = membros ativos do grupo `personal_trainer` via `GET /access/groups/{id}/members`; aluno = `/users`, que exige `admin.usuarios` ver, senão aviso), encerrar com confirmação; botões por `admin.grupos` editar e excluir; erros do backend exibidos | `frontend/src/app/(app)/grupos-acessos/VinculosTreinador.tsx`, `GruposAcessosClient.tsx` | `GET/POST /access/links`, `DELETE /access/links/{id}` |
+| Cliente, tipos e funções puras (candidatos, rótulos de status, `canEndLink`) | `frontend/src/lib/access-admin-api.ts`, `access-admin-types.ts`, `access-links.ts` | |
+
+*Decisões:* `studentsOnly` é falso sem permissão (fail-closed), então a tela de quem não gere outros não muda. As abas Grupos e Vínculos usam `keepMounted`, para não perder o rascunho de concessões não salvo ao trocar de aba. O botão Encerrar some quando o admin é parte do vínculo (o backend também recusa com 409).
+
+*Medido na branch:* Vitest dos 5 arquivos tocados (hr-zones, screen-permissions, access-admin-api, access-links e UserPicker) com 40 passed; `npm run typecheck` sem erros; `npm run lint` com 0 erros (avisos antigos fora do lote). Não há teste de componente para `VinculosTreinador` nem para `PlanoClient`.
+
+*Não medido:* UI no navegador e integração (CI).
+
+*Impacto em produção:* só frontend estático, sem migração, infra ou `RUN_DB_MIGRATIONS`. O efeito visível é o PT passar a ver o seletor do plano nutricional com os alunos vinculados (hoje a tela esconde a gestão de terceiros, ver "Lote 5A"), e o admin ganhar a aba Vínculos. O backend já impõe o acesso (403 sem vínculo ativo). Rollback: reverter o PR e refazer o deploy do frontend.
+
+### Lote 6A: Modelos com dono e visibilidade (backend)
+
+Primeiro pedaço do lote 6: cada Modelo de treino passa a ter dono e visibilidade (`publico` ou `privado`), e o personal trainer passa de `todos` para `alunos` em `modelos.treino`. A regra fica num helper único (`authorize_template`) usado pelas dependências das rotas e pelo cardio. Estado: na `develop` e no DEV desde 13/11/2026 (PR #157, merge `4338a6a8`), não promovido; migração 116. O editor, a lista com visibilidade, duplicar pela tela e o seletor de alunos no `AssignTemplateModal` são o 6B.
+
+Arquivos: `api/db/migrations/116_modelos_visibilidade_e_escopo_pt.py` (DDL e DML); `api/app/access/catalog.py` (`_PT_NUTRICAO_TERCEIROS` passa a incluir `modelos.treino`; `_PT_RECURSOS_TODOS` deixa de incluir); `api/app/workout_plan_templates.py` (helper, dependências e rotas); `api/app/access/service.py` (`has_active_link`, `active_student_ids`, `ACTIVE_STUDENTS_LOOKUP_SQL`); `api/app/cardio_recommendations.py` (`apply_cardio_recommendation`).
+
+*Decisões do usuário (13/11/2026):*
+- Cada Modelo tem dono (`created_by_user_id`) e visibilidade `publico` ou `privado`. Os existentes ficam públicos.
+- O personal trainer vê e usa os públicos e os próprios; os privados só o dono vê. O admin vê e edita tudo.
+- Só o dono e o admin editam, arquivam e excluem. O personal trainer duplica um público para ter cópia própria.
+
+*Decisões do lead:*
+- O personal trainer atribui só a aluno com vínculo ativo (ou a si mesmo).
+- `GET /workout-plan-templates/users-lookup` com escopo `alunos` lista só os alunos vinculados.
+- `GET /{id}/assignments` com escopo `alunos` mostra só as atribuições do próprio ator e dos seus alunos.
+
+*Migração 116:*
+- DDL, só se a coluna não existe: `ALTER TABLE workout_plan_templates ADD COLUMN visibility ENUM('publico','privado') NOT NULL DEFAULT 'publico', ALGORITHM=INSTANT`. Sem FK, sem índice. Coluna já existente com tipo, nulabilidade ou default diferentes: `ModelosVisibilidadeError` antes de qualquer escrita.
+- DML: `UPDATE access_group_grants SET scope = 'alunos'` nas linhas `modelos.treino` (`ver`, `editar`, `excluir`) do grupo de sistema `personal_trainer` que ainda estão em `todos`. Até 3 linhas. Escopo que o admin já tenha editado (ex.: `proprios`) não é tocado.
+- `plan` só lê. Sobre o estado convergido o plano é vazio. Sem as tabelas da 111, o DML é omitido com log. `up` relê ao fim e levanta erro se restar linha em `todos`; em `--dry-run` a releitura é pulada.
+- `modelos.metas_ativacao`, `modelos.tipos_treino` e `ia.modelo_periodizacao` não mudam. Grupos personalizados não são tocados.
+- `down` volta para `todos` as linhas do PT em `alunos` e remove a coluna, o que perde a visibilidade gravada. Produção não roda `down`.
+- Paridade: `api/tests/unit/test_access_catalogo_e_resolucao.py` confere a 116 contra o catálogo (`test_paridade_vocabulario_acoes_escopos_e_grupos`, linhas 588 a 591) e o escopo do PT em `modelos.treino` (linha 652).
+
+*Semântica do escopo em `modelos.treino`:*
+
+| Escopo (quem) | Leitura (`ver`) | Escrita (`editar`, `excluir`) |
+|---|---|---|
+| `todos` (admin) | qualquer Modelo | qualquer Modelo |
+| `alunos` (personal trainer) | os públicos e os próprios | só os próprios |
+| `proprios` (usuário comum) | não abre a gestão: as rotas de gestão exigem escopo mínimo `alunos` | não abre a gestão |
+
+Decisão pura (`template_access_decision`, sem banco) sobre um Modelo existente:
+- sem concessão: 403;
+- escopo `todos`: 200, sem consulta ao banco;
+- dono, qualquer escopo: 200;
+- público alheio: 200 na leitura e 403 na escrita (`TEMPLATE_WRITE_FORBIDDEN`, com a mensagem de duplicar);
+- privado alheio, ou visibilidade desconhecida (tratada como privada): 404, para não revelar a existência;
+- Modelo excluído logicamente: 404;
+- Modelo órfão (sem dono): só `todos` escreve; público segue legível.
+
+*Helper e dependências (`api/app/workout_plan_templates.py`):*
+- `authorize_template(cur, identity, permissoes, template_id, action, for_write)`: único ponto de acesso a um Modelo por id. Lê `id`, `created_by_user_id` e `visibility`. Escopo `todos` devolve sem consultar o banco.
+- `template_guard(action, for_write)`: dependência das rotas `/{template_id}`. Exige `modelos.treino`/`action` com `min_scope="alunos"` e aplica `authorize_template`. Devolve `TemplateViewer`.
+- `template_viewer(action)`: dependência da lista e do `users-lookup`. Só checa o escopo; o filtro por dono é feito na consulta.
+- `TemplateViewer`: identidade e escopo, com `sees_all`.
+
+*Regra por rota:*
+
+| Rota | Regra no 6A |
+|---|---|
+| GET `/workout-plan-templates` (lista) | `alunos` vê públicos e próprios; `todos` vê tudo |
+| GET `/users-lookup` | `todos`: usuários ativos; `alunos`: só alunos com vínculo ativo (mesma regra de `has_active_link`) |
+| GET `/{id}` | `template_guard("ver")`; atribuições filtradas para `alunos` |
+| POST `` (criar) | `editar` com `min_scope="alunos"`; dono = ator; sem `visibility`, `publico` |
+| POST `/{id}/duplicate` | `template_guard("editar", for_write=False)`: lê público alheio e cria cópia do ator; a cópia nasce `privado` (ou `?visibility=publico`); privado alheio: 404 |
+| PUT `/{id}` | `template_guard("editar", for_write=True)`: público alheio 403; `visibility` (em `WorkoutPlanTemplateWriteIn`) só muda pelo dono ou admin; ausente mantém |
+| PATCH `/{id}/status`, DELETE `/{id}` | `editar` e `excluir`, escrita por dono |
+| Versões: GET lista e GET versão | `ver`, leitura |
+| Versões: arquivar, desarquivar, reverter | `editar`, escrita por dono |
+| Rascunho: GET | `ver`, leitura |
+| Rascunho: PUT e DELETE | `editar` e `excluir`, escrita por dono; o rascunho usa `WorkoutPlanTemplateIn` e não grava `visibility` |
+| GET `/{id}/assignments` | `ver`; com `alunos`, só as atribuições do ator e dos alunos (`_filter_assignments`) |
+| POST e DELETE `/{id}/assignments` | Modelo legível (`template_guard` com `for_write=False`) e `_authorize_assignment_target`: só si mesmo ou aluno com `has_active_link`; senão 403 |
+| Intenção metodológica: GET e PUT | `ver` leitura; `editar` escrita por dono |
+| Volume metodológico e comparação de modos de contagem | `ver`, leitura |
+| POST `/preview-activation`, `/cardio-prescription-check` | `editar` com `min_scope="alunos"`; não recebem id de Modelo, então não há checagem de dono |
+| POST `/methodology-volume-preview` | `editar` com `min_scope="alunos"`; com `template_id` no corpo, `authorize_template` de leitura (`ver`) quando o escopo não é `todos`: privado alheio ou inexistente, 404 |
+| GET `/hr-zones` | `ver`, sem escopo mínimo; com `template_id` e escopo `alunos` (personal trainer), `authorize_template` de leitura na mesma transação, antes de resolver o sujeito: privado alheio ou inexistente, 404. Aluno (`proprios`) e admin (`todos`) inalterados: o aluno usa a rota com o Modelo atribuído a ele, que não é dele nem precisa ser público |
+| GET `/assigned-to-me` | inalterada (`ver`, sem escopo mínimo) |
+| POST `/periodization-drafts` | inalterada: `ia.modelo_periodizacao`/`editar` com `todos` |
+| POST `/cardio-recommendations/{id}/apply` (`api/app/cardio_recommendations.py`) | `modelos.treino`/`editar` com `min_scope="alunos"`; antes de gravar o rascunho, `authorize_template(for_write=True)`: 404 privado alheio, 403 público alheio |
+| GET `/cardio-recommendations/{id}` | `can_apply` é só o selo da tela (escopo de `editar` cobre `alunos`); a posse é conferida no POST |
+
+*Correções da revisão do 6A (13/11/2026, em `api/app/workout_plan_templates.py`):*
+- **`/hr-zones?template_id=`** passou a chamar `authorize_template(cur, identity, permissoes, template_id, "ver", for_write=False)` quando o escopo de `modelos.treino`/`ver` é `alunos`. Antes, um personal trainer com vínculo com o aluno atribuído a um Modelo privado de outro treinador recebia as zonas e o nome desse aluno. `resolve_template_zones_subject` (`api/app/athlete_hr_zones.py`) não mudou.
+- **Respostas de escrita filtradas**: o helper único `_present(template, viewer)` aplica `_filter_assignments` no GET `/{id}`, no PUT `/{id}`, no PATCH `/{id}/status` (o guard virou parâmetro `viewer`), no revert e no duplicate. Antes, o dono personal trainer de um Modelo público recebia no PUT os alunos de outro treinador. O POST `''` não passa por `_present`: o Modelo recém-criado não tem atribuições. Arquivar e desarquivar versão devolvem a versão, não o Modelo.
+- **`/methodology-volume-preview` com `template_id`**: `authorize_template` de leitura via `_authorize_template_request`, o mesmo helper que o `template_guard` passou a usar.
+- O teste de integração `api/tests/integration/dataapi/test_rollback_preserva_erro_original.py` chamava `create_assignment` com `Identity` no lugar do `viewer` e passou a usar `TemplateViewer(identity, "todos")`.
+
+*Riscos e pendências do 6A:*
+- **P3, `assignments_count` na lista é global**: `_list_templates` conta todas as atribuições vigentes, inclusive as de alunos de outro treinador. O PT vê o número, não os nomes.
+- **P3, `can_apply` cosmético**: GET `/cardio-recommendations/{id}` devolve `can_apply: true` para o personal trainer mesmo quando o apply dará 403 (Modelo público de outro treinador). A posse é conferida no POST.
+- **P3, atribuições de alunos de outros treinadores (comportamento a confirmar com o usuário)**: o DELETE de um Modelo público próprio encerra também as atribuições de alunos de outros treinadores (`close_assignments_of_template_for_everyone`). O PUT que torna o Modelo privado mantém essas atribuições. **Resolvido no 6D** (decisão do usuário de 14/11/2026): excluir e tornar privado são recusados com 409 enquanto houver atribuição vigente.
+- **Contrato**: `visibility` existe só em `WorkoutPlanTemplateWriteIn` (POST e PUT). O rascunho e o apply de cardio não gravam visibilidade. O 6B precisa enviar o campo no PUT de publicação.
+- **Custo**: `active_student_ids` (`api/app/access/service.py`, linhas 202 a 212) faz uma consulta de vínculo por aluno candidato no GET de atribuições com escopo `alunos`. Não medido.
+- **Desatribuição**: o personal trainer com vínculo pode encerrar a atribuição de um aluno seu em Modelo público de outro treinador (`DELETE /{id}/assignments/{user_id}`, escrita não exigida do dono). É a regra "usa público" aplicada à atribuição; conferir na revisão.
+- **Documentação do módulo**: o docstring de `api/app/workout_plan_templates.py` (linhas 5 a 13) ainda descreve escopo `todos` e "sem vínculo formal". Corrigir no 6B.
+- **Ordem de deploy**: a migração 116 roda antes do código que lê `visibility`.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta edição do ADR):* unitários com `-k` em modelos, template, escopo, paridade, cardio, access e migração: 3161 passed. Integração: 6 casos coletados (`api/tests/integration/dataapi/test_modelos_dono_dataapi.py`, 3 funções), que rodam só no CI com o rótulo `ci-completo`.
+
+*Testes:*
+- Novos: `api/tests/unit/test_modelos_dono_visibilidade.py` (19 funções de teste), `api/tests/unit/test_migracao_116_modelos.py` e `api/tests/integration/dataapi/test_modelos_dono_dataapi.py`.
+- Ajustados: `test_access_catalogo_e_resolucao.py`, `test_access_paridade_guards.py`, `test_cardio_c3b_aplicar.py`, `test_corpo_integracoes_cardio_permissoes_rbac.py`, `test_modelos_treino_permissoes_rbac.py`, `test_template_drafts.py` e `test_template_versions_arquivar.py`.
+
+*Medido após as correções (13/11/2026, na branch):* o mesmo `-k` acrescido de `hr_zones`: 3226 passed e 4 failed. As 4 falhas estão em `api/tests/unit/test_template_hr_zones_autorizacao.py`: o cursor falso desse arquivo não responde ao `SELECT` do `authorize_template` e precisa de ajuste fora do plano desta rodada. `test_modelos_dono_visibilidade.py` passou a cobrir hr-zones, preview, respostas filtradas e troca de `visibility` no PUT. Coleta da integração: 32 casos em `test_rollback_preserva_erro_original.py` e `test_modelos_dono_dataapi.py`.
+
+*Não medido:* integração (roda no CI); a UI do 6B (ainda não existe); sessão real de personal trainer com Modelo de outro treinador; latência da lista de atribuições; concorrência.
+
+*Impacto em produção:* DDL e DML.
+- `ALTER TABLE` INSTANT (metadado) em `workout_plan_templates` e até 3 linhas de `access_group_grants` do grupo `personal_trainer`. A promoção exige `RUN_DB_MIGRATIONS=true` na execução da promoção e volta a `false` depois, como nos lotes anteriores.
+- Efeito de comportamento: o personal trainer perde a escrita sobre Modelos de outros (403 em público, 404 em privado). Os Modelos existentes são públicos, então a leitura deles continua. Um Modelo privado criado depois só aparece para o dono e para o admin.
+- O frontend atual (sem o 6B) exige escopo `todos` em `modelosTreinoControls` (`frontend/src/lib/screen-permissions.ts`, linhas 96 a 106). Sem o 6B, o personal trainer perde a tela de Modelos (fail-closed). Por isso o 6B precisa ir na mesma promoção.
+- Antes de promover, conferir por leitura autorizada: `SELECT` de Modelos por `created_by_user_id` e `visibility`, e `SELECT` de membros do grupo `personal_trainer`.
+- Rollback: reverter o PR não reverte a coluna nem o escopo no banco. Reverter exige migração nova, porque produção não roda `down`, que perderia a `visibility` gravada.
+
+### Lote 6B: frontend de Modelos
+
+Segundo pedaço do lote 6: o frontend passa a seguir o dono e a visibilidade do 6A. Estado: na `develop` e no DEV desde 14/11/2026 (PR #161, merge `7679295a`), não promovido; só frontend estático, sem migração. Arquivos: `frontend/src/lib/screen-permissions.ts`, `frontend/src/lib/nav-items.ts`, a lista e o editor de Modelos (`frontend/src/app/(app)/modelos-treino/`), `AssignTemplateModal` e `PlanDetailClient`.
+
+- `modelosTreinoControls` passa a exigir escopo `alunos` em acesso, ver, editar e excluir; `canGenerateDraft` segue `todos`.
+- Nova função pura `modeloTreinoItemControls(perms, userId, modelo)`, espelho de `template_access_decision`: escreve e exclui só o dono ou o escopo `todos`; duplicar e atribuir valem para qualquer Modelo visível; encerrar atribuição exige excluir; fail-closed sem permissões ou sem id do usuário.
+- Menu "Modelos de treino" (`nav-items.ts`) visível com editar `alunos`.
+- Lista: dono, selo Público/Privado e controles por Modelo; duplicar avisa que a cópia é privada.
+- Editor (`WorkoutPlanTemplateBuilderClient.tsx`): modo leitura para quem não pode escrever (`fieldset disabled` em slots, cards e painéis expandidos; não busca o rascunho do dono; salvar, publicar, reverter e descartar indisponíveis); seletor de visibilidade para quem pode; formulário de criação fechado sem permissão.
+- `AssignTemplateModal`: "Encerrar" só com excluir. `PlanDetailClient`: aplicar cardio ao Modelo só com escopo `alunos` (o backend exige ser dono).
+
+*Testes:* `frontend/src/lib/screen-permissions.test.ts` e `frontend/src/lib/nav-items.test.ts`. Não há teste de componente do editor; a tela não foi testada no navegador.
+
+*Pendências (P3):*
+- `assignments_count` da lista soma atribuições de todos os treinadores.
+- Título "Editando:" continua em modo leitura.
+- Editor fica travado sem aviso se `/auth/me` falhar.
+- `PUT /draft` ignora `visibility` (só vale ao publicar).
+- Botão de aplicar cardio aparece para Modelo alheio; o backend recusa.
+
+### Lote 6C: rascunho como área de escrita e padrão de visibilidade
+
+Estado: na `develop` e no DEV desde 14/11/2026 (PR #162, merge `f77a38ec`), não promovido; sem migração.
+
+*Motivo:* a revisão de segurança do 6B apontou que `GET /workout-plan-templates/{id}/draft` usava guarda de leitura, o que entregava o rascunho não publicado de Modelo público a qualquer personal trainer.
+
+*Decisão:* o rascunho é área de escrita. `GET /{id}/draft` usa `template_guard("editar", for_write=True)`: dono e escopo `todos` leem; público alheio recebe 403; privado alheio recebe 404. Na lista e no `GET /{id}`, o selo `has_draft` e `draft_updated_at` vem `false` e nulo para quem não pode escrever o Modelo (`can_write_template` e `_mask_draft_flags` em `api/app/workout_plan_templates.py`).
+
+*Decisão do usuário (14/11/2026):* Modelo novo criado com escopo `alunos` nasce privado quando `visibility` não é informada; com escopo `todos` nasce público; `visibility` explícita é respeitada (`create_default_visibility`, constantes `CREATE_DEFAULT_VISIBILITY_TODOS` e `CREATE_DEFAULT_VISIBILITY_OTHER`). Duplicar (cópia privada) e editar (campo ausente mantém) não mudam. Modelos existentes não mudam.
+
+*Frontend:* `modeloTreinoDefaultVisibility(perms)` em `frontend/src/lib/screen-permissions.ts` é espelho do padrão. No Modelo novo, o seletor mostra o padrão, e o POST só envia `visibility` quando o usuário escolheu.
+
+*Paridade de guards* (`api/tests/unit/test_access_paridade_guards.py`): o `GET draft` passa a ser a exceção em que o método GET declara a ação `editar`; a contagem vai de 10/13/3 para 9/14/3 (GET/POST-PUT-PATCH/DELETE).
+
+*Testes:* `api/tests/unit/test_modelos_dono_visibilidade.py`, `api/tests/unit/test_access_paridade_guards.py` e `frontend/src/lib/screen-permissions.test.ts`. Integração não roda localmente.
+
+*Impacto em produção:* sem dado nem migração. Personal trainer deixa de ler o rascunho e de ver o selo de rascunho de Modelo alheio. Modelo novo de personal trainer sem `visibility` nasce privado.
+
+*Limite conhecido:* a máscara do selo usa o escopo de `ver`. Um grupo personalizado com `ver` em `todos` e `editar` em `alunos` veria o selo sem conseguir abrir o rascunho (os grupos de sistema não têm essa combinação).
+
+### Lote 6D: cards não concedíveis e Modelo com alunos atribuídos
+
+Estado: em PR para a `develop` (branch `feat/rbac-lote6d-cards-e-atribuicoes`), não promovido; sem migração. Arquivos: `api/app/access/catalog.py`, `api/app/workout_plan_templates.py`, `api/app/template_assignments.py`, `frontend/src/lib/access-grants.ts`, `frontend/src/app/(app)/grupos-acessos/MatrizConcessoes.tsx` e a lista e o editor de Modelos (`frontend/src/app/(app)/modelos-treino/`).
+
+*Decisões do usuário (14/11/2026):*
+- (a) `ia.cards_exercicio` não pode ser concedido a grupos personalizados; antes havia só um aviso na matriz.
+- (b) Não se exclui nem se torna privado um Modelo com alunos associados; a tentativa recebe mensagem. O bloqueio vale para qualquer atribuição vigente, inclusive alunos do próprio dono e inclusive para o admin.
+
+*Cards:* `NON_GRANTABLE_RESOURCES` em `api/app/access/catalog.py` (hoje só `ia.cards_exercicio`; motivo: custo de IA por card e limite diário por usuário, não por grupo) é consumido por `is_grantable`, que segue como fonte única de `catalog_view` e de `validate_grants`. `GET /access/catalog` devolve `grantable: false`; conceder dá 422 `resource_not_grantable`. `RESOURCE_WARNINGS` ficou vazio. As concessões padrão dos grupos de sistema e a resolução de permissões não mudam. A matriz decide só por `grantable` e, ao salvar, envia o rascunho sem os recursos não concedíveis (`withoutNonGrantable` em `frontend/src/lib/access-grants.ts`), para que um grupo nunca fique impossível de salvar.
+
+*Modelos com alunos atribuídos:* função pura `assignments_block` e constantes `TEMPLATE_DELETE_BLOCKED` e `TEMPLATE_PRIVATE_BLOCKED` em `api/app/workout_plan_templates.py`; contagem global de atribuições vigentes por `count_active_assignments_of_template` (`api/app/template_assignments.py`; SQL novo: `COUNT(*)` em `workout_plan_template_assignments` com `unassigned_at IS NULL`). `DELETE /workout-plan-templates/{id}` responde 409 `template_has_assignments`. `PUT /{id}` que muda a visibilidade de `publico` para `privado` responde 409 `template_has_assignments_visibility` e não grava nada. O `detail` é `{error, message, assigned_count}`, sem nomes nem ids. A checagem roda depois da guarda de acesso (403 e 404 vêm antes) e na mesma transação da escrita. `close_assignments_of_template_for_everyone` continua no DELETE como defesa contra corrida. Não mudam: desativar (`PATCH status`), duplicar, atribuir, encerrar atribuição, rascunho e versões.
+
+*Telas:* a lista e o editor de Modelos mostram `detail.message` quando `detail` é objeto; o modal de exclusão mostra também "Alunos atribuídos: N."; o editor avisa, junto ao seletor de visibilidade, que é preciso encerrar as atribuições antes de tornar privado (texto, sem bloquear).
+
+*Consequência registrada:* o personal trainer dono de um Modelo público também é barrado por alunos de outros treinadores, que ele não vê e não consegue desatribuir (`DELETE /{id}/assignments/{user_id}` exige vínculo no escopo `alunos`); nesse caso só quem tem escopo `todos` destrava.
+
+*Testes:* `api/tests/unit/test_access_admin_servico.py`, `api/tests/unit/test_modelos_dono_visibilidade.py` e `frontend/src/lib/access-grants.test.ts`; integração `api/tests/integration/dataapi/test_template_versions_065.py` ajustada (409, encerra a atribuição, exclui). A integração só roda no CI; o PR exige o rótulo `ci-completo` por ter SQL novo.
+
+*Impacto em produção:* sem migração. Medido em 14/11/2026 por SELECT de leitura: nenhuma concessão de `ia.cards_exercicio` gravada em `access_group_grants`, nem no DEV nem em produção (produção tem 1 grupo personalizado). Produção tem 3 Modelos com atribuição vigente, que passam a não poder ser excluídos nem tornados privados até as atribuições serem encerradas.
+
 ### Riscos para lotes futuros
 
 - **Lote 2 (quem pode tornar alguém admin pela rota de usuários)** (coberto no 2B): com a sincronização do lote 2, `POST /users` e `PUT /users/{id}` com papel `admin` colocam o usuário no grupo `admin`. Criar usuário admin e trocar o papel para ou a partir de `admin` deve exigir a permissão de associar ao grupo admin (`admin.grupos`) além de `admin.usuarios`, com teste negativo; senão quem tiver só `admin.usuarios` vira admin por essa rota.
 - **Lote 2 (atomicidade da trava do último admin)** (coberto no 2B na ordem de locks; o teste de concorrência real continua pendente): a contagem de admins ativos e a escrita acontecem na mesma transação, com bloqueio das linhas dos admins ativos (`SELECT ... FOR UPDATE` ou equivalente) e teste de concorrência; sem isso, dois admins se removem ao mesmo tempo.
-- **Lote 2 (`authorize_target`)** (id estrito coberto no 2B; `authorize_target` ainda não tem chamador em `api/app`, a troca de `resolve_target_user` é do 2D): antes de substituir `resolve_target_user` (`api/app/nutrition_access.py`, linhas 55 a 61, que só faz `int(user_id)`), exigir id inteiro estrito e maior que zero. Hoje 0, negativo, booleano e float truncado passam no escopo `todos`; não concedem acesso indevido, mas o contrato é implícito.
-- **Lote 3**: só quem tem `admin.grupos` pode colocar alguém no grupo `admin`; ninguém se coloca nele sozinho; `is_system` e a chave dos grupos de sistema não são editáveis por API (hoje não há trava no banco para isso).
+- **Lote 2 (`authorize_target`)** (id estrito coberto no 2B; desde o 2D-1, `resolve_target_user` delega a `authorize_target`): antes de substituir `resolve_target_user` (`api/app/nutrition_access.py`, linhas 55 a 61, que só faz `int(user_id)`), exigir id inteiro estrito e maior que zero. Hoje 0, negativo, booleano e float truncado passam no escopo `todos`; não concedem acesso indevido, mas o contrato é implícito. **Resolvido no 2D-1**: `resolve_target_user` passou a delegar a `authorize_target`, que valida o id antes de qualquer consulta (400 `invalid_target`); o texto acima descreve o estado anterior ao 2D-1.
+- **Lote 3**: só quem tem `admin.grupos` pode colocar alguém no grupo `admin`; ninguém se coloca nele sozinho; `is_system` e a chave dos grupos de sistema não são editáveis por API (hoje não há trava no banco para isso). **Resolvido no 3A**: só quem tem `admin.grupos` cria e edita grupos e muda membros; grupos de sistema são imutáveis pela API; ninguém altera o próprio vínculo.
 - **Lote 2 (mapeamento rota→permissão)**: as rotas de equipamentos, de vínculo academia–equipamento e de logos em `api/app/gyms.py` são só de admin por checagem dentro do handler (`_require_admin_identity`, a partir da linha 150), enquanto a matriz dá a `usuario` editar e excluir em `treino.academias` com escopo próprio. O mapeamento precisa de um recurso administrativo para essas rotas, para não abri-las a quem tem só `treino.academias`.
-- **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`).
+- **Lote 5**: além do vínculo ativo, conferir que o treinador pertence ao grupo `personal_trainer` (`has_active_link` só olha `trainer_students`). **Resolvido no 5A**: `has_active_link` e `list_my_students` conferem o grupo `personal_trainer` (`api/app/access/service.py`, `api/app/access/admin.py`), e `create_link` recusa quem não é treinador (`TrainerNotPersonalTrainerError`).
 - **Lote 2C–2F (deadlock)**: mapear o erro 1213 para 409 ou 503 (alternativa (a) do 2A) segue pendente; sem ela, um ciclo entre admins vira 5xx.
 - **`GET /training-types` no registro de treino**: `frontend/src/components/NewWorkoutModal.tsx` (linha 89) chama `GET /training-types?is_active=true`. A rota já respondia 403 a usuário comum antes do 2C-1 (guard de router `require_admin_or_pt`) e continua assim. Não foi verificado se o modal trata o erro nem se só aparece para admin e PT.
 - **Lambda engines resolve permissões**: `PUT /analytics/muscle-group-body-map` vive no router de `api/app/dashboard_modules.py`, incluído só em `app.main_engines`. A partir do 2C-1, essa Lambda consulta as tabelas de acesso nessa rota.
 - **Positivos de escrita provados por dublê**: ver os limites dos testes HTTP do 2C-1 (positivo de `POST /mapping-canonical/associate` inferido por 422; `POST /exercise-mappings` em app mínimo; handlers de negócio substituídos por dublês).
 - **Lote 2C–2F (deadlock, PUT que promove a admin)**: `switch_role_group` insere em `user_access_groups` com FK para a linha do grupo `admin`, e essa linha entra no JOIN de `lock_active_admin_ids` (`FOR UPDATE`, `api/app/access/membership.py`). Um `PUT` que promove a admin e um `PUT`/`DELETE` que trava os admins ativos podem se bloquear em ordem cruzada; em teoria, isso vira 1213 e 5xx, como no item acima. Não foi reproduzido; sem teste de concorrência, é hipótese.
-- **Lote 3 (pré-condição: ator × alvo)**: antes de liberar grupos personalizados, decidir a regra geral de que o ator só age sobre alvo cujas permissões efetivas sejam subconjunto das suas. Hoje só o alvo admin é protegido; ficam abertos, por exemplo, conceder o grupo `personal_trainer` (troca de papel) por quem não tem essas permissões e resetar a senha de usuário de grupo com mais permissões que o ator.
+- **Lote 3 (pré-condição: ator × alvo)**: antes de liberar grupos personalizados, decidir a regra geral de que o ator só age sobre alvo cujas permissões efetivas sejam subconjunto das suas. Hoje só o alvo admin é protegido; ficam abertos, por exemplo, conceder o grupo `personal_trainer` (troca de papel) por quem não tem essas permissões e resetar a senha de usuário de grupo com mais permissões que o ator. **No 3A, para grupos e vínculos**: a regra ficou "só admin gerencia" (decisão do usuário, 12/11/2026; só quem tem `admin.grupos` gerencia grupos e vínculos); a regra de subconjunto de permissões fica descartada na v1, e ninguém altera o próprio vínculo.
 - **Só autenticação não prova isolamento**: o pino de "só autenticação" não prova que o handler toca só dados do próprio usuário. As rotas de foto dependem da chamada a `authorize_self_or_all` (`api/app/access/service.py`, linha 233) no corpo; isso é coberto por teste de comportamento em `api/tests/unit/test_users_permissoes_rbac.py`, não pela guarda de cobertura.
 - **Trava que conta só por grupo**: segue como aceita no 2A; o 2B não muda isso.
 - **Fixtures de teste**: um teste que faz `TRUNCATE users` com `FOREIGN_KEY_CHECKS = 0` fora do `truncate_tables` do `conftest.py` deixa linhas órfãs em `user_access_groups`, e um id reaproveitado herda o grupo antigo. O `truncate_tables` já limpa `user_access_groups`.
 - **Overrides mortos**: `test_users_fcmax_zonas.py` e `test_users_perfil_antropometrico.py` registram `dependency_overrides[require_admin]`, que não tem efeito nas rotas de `users` convertidas. Eles já trocam `resolve_permissions` por monkeypatch; o override pode sair numa limpeza.
 
-### Ponto em aberto (lote 5)
+### Pontos em aberto (lote 5)
 
-- `trainer_students` não impede hoje que o treinador seja vinculado a si mesmo nem a um aluno inativo. A validação fica no serviço do lote 5, não na tabela nem na tela.
+- `trainer_students` não impede hoje que o treinador seja vinculado a si mesmo nem a um aluno inativo. A validação fica no serviço do lote 5, não na tabela nem na tela. **Resolvido no 5A**: auto-vínculo recusado (422 `link_self_forbidden`), aluno inativo recusado (409 `user_inactive`) e treinador fora de `personal_trainer` recusado (422 `trainer_not_personal_trainer`), todos na criação (`api/app/access/admin.py`, `create_link`). `has_active_link` também exige aluno ativo.
+- **Aberto (5A)**: treinador desativado não encerra os vínculos. A sessão e o dispositivo dele já recebem 401 (`api/app/security.py`, linhas 164 e 295), mas `has_active_link` não confere `is_active` do treinador, e a desativação de `users` não toca `trainer_students`. Se ele for reativado, os vínculos voltam a valer. Decisão pendente: encerrar os vínculos na desativação ou checar `is_active` do treinador em `has_active_link`.
 
 ### Fora do escopo
 
@@ -515,7 +1431,7 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - Concorrência real da trava e dos locks, inclusive o deadlock entre admins: não há teste com transações concorrentes. A ordem (linha do alvo, depois admins ativos, depois o `UPDATE`) é verificada só em banco falso, pelos statements emitidos.
 - O número atual de usuários divergentes em produção. A conferência de 10/11 achou 4 usuários, todos com grupo; repetida em 11/11, achou 4 usuários e nenhum divergente.
 
-**Lote 2B** (branch `feat/rbac-lote2b-base-da-troca`, não publicado, sem PR, não promovido)
+**Lote 2B** (PR #126, em produção desde 11/11/2026, promoção #128)
 
 *O que muda:*
 - As 9 rotas com `require_permission` passam a decidir por grupo: as cinco de `users` (`GET /users`, `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}` e `POST /users/{id}/reset-password`) e as quatro de `devices`. Usuário sem o grupo de sistema do papel recebe 403 nelas; antes a decisão era de `users.role`.
@@ -555,7 +1471,7 @@ O que não foi medido: o resultado dos testes unitários do lote 1 (`api/tests/u
 - O número atual de usuários divergentes em produção (última conferência, de 11/11: 4 usuários, nenhum divergente).
 - O `INSERT IGNORE` da 113 (`api/db/migrations/113_access_grants_conta_dispositivos.py`, linha 77) pode engolir erro que não seja duplicidade; a conferência das 6 linhas por `SELECT` depois do deploy é o que detecta isso.
 
-**Lote 2C-1** (branch `feat/rbac-lote2c1-admin-declarado`, não publicado, não promovido)
+**Lote 2C-1** (PR #129, em produção desde 11/11/2026, promoção #133)
 
 *O que muda:*
 - As 34 rotas passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive em `GET /exercises/{id}/card`, `GET /next-set-load-rules/published` e `GET /mapping-canonical/options`, que antes aceitavam qualquer autenticado.
@@ -593,7 +1509,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - A releitura ao fim do `up` da 114 depende de a transação do runner enxergar as próprias escritas. Isso vale para o runner (`api/app/migrate.py`, commit depois de `up`). O comportamento pela RDS Data API não foi provado por leitura e só se confirma no `migrate` da promoção. Se a releitura falhar ali, o job de deploy para antes de atualizar as Lambdas da aplicação.
 - Não foi provado por leitura que o API Gateway roteia `PUT /analytics/muscle-group-body-map` para a Lambda engines.
 
-**Lote 2C-2** (branch `feat/rbac-lote2c2-academias-catalogos`, não publicado, não promovido)
+**Lote 2C-2** (PR #130, em produção desde 11/11/2026, promoção #133)
 
 *O que muda:*
 - As 72 rotas passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive nas leituras de catálogo e de academias usadas pelo app, que antes bastavam estar autenticado.
@@ -609,7 +1525,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 
 *Promoção:*
 1. SELECT prévio de leitura em produção: nenhum usuário ativo sem o grupo de sistema do papel e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perderia a leitura de catálogo e de academias. Este passo NÃO foi executado para o 2C-2. A última medição é a de 11/11/2026, do 2B: 4 usuários, nenhum divergente.
-2. Sem migração neste lote. O 2C-1, ainda não promovido, tem a migração 114 e vai na mesma promoção; `RUN_DB_MIGRATIONS` precisa ser `true` por causa dela, não por causa deste lote.
+2. Sem migração neste lote. A migração 114 do 2C-1 foi aplicada na promoção #133, já em produção.
 3. Promoção só de backend.
 
 *Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
@@ -621,10 +1537,260 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - Latência adicional da consulta de permissões por requisição.
 - Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
 
+**Lote 2D-1** (PR #134, na `develop` e no DEV desde 11/11/2026, não promovido)
+
+*O que muda:*
+- As 39 rotas de nutrição com usuário alvo passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 nelas, inclusive em `GET /nutrition/me/plan`, que antes só exigia autenticação.
+- `user_id` menor ou igual a zero responde 400 `invalid_target`. Antes: 403 para usuário comum, ou 404 `user_not_found` para admin e PT.
+- O corpo do 403 de terceiro passa a ser `FORBIDDEN_DETAIL` do `app.access`.
+- As 39 rotas fazem uma consulta de permissões por requisição (com cache em `request.state`). O token mestre não consulta o banco.
+- Nas rotas de IA com alvo e no `accept` de check-in, a exigência dupla (ver "Lote 2D-1: nutrição com usuário alvo") passa a valer.
+- No `accept`, quem não tem `nutricao.plano`/`editar` recebe 403 antes da lógica de status, inclusive antes do "já aceito" idempotente.
+
+*O que não muda:*
+- Quem está no grupo de sistema do próprio papel mantém o acesso (`usuario` com escopo `proprios`; `personal_trainer` com escopo `todos`, trocado para `alunos` no lote 5; admin com acesso total).
+- Respostas de sucesso e os demais status 400, 404 e 422 já existentes; `plan_not_found` e `checkin_not_found` continuam 404 para quem não alcança o dono.
+- Cota de IA: continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`.
+- Nenhuma regra, cálculo, constante ou default de nutrição mudou; `docs/motores/FONTES_DA_VERDADE.md` não foi alterado.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: nenhum usuário sem grupo e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perde toda a nutrição convertida. Este passo NÃO foi executado para o 2D-1.
+2. Sem migração neste lote. A promoção depende apenas do código; as concessões usadas (`nutricao.*`, `ia.nutricao`) já estão em produção desde a migração 111.
+3. Promoção só de backend.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido:* 39 rotas por módulo (12, 2, 6, 7, 2, 6, 2 e 2), dívida de 237 para 198, conta de 367 rotas, `teto_total` do ratchet de 15 para 11. A suíte unitária inteira teve 14.074 passed e 7 failed antes das guardas, e as guardas (6 falhas) foram corrigidas (349 passed nos 5 arquivos de guarda e paridade); `test_nutricao_alvo_permissoes_rbac.py` teve 266 passed. A falha `test_sem_mojibake` é conhecida no ambiente local. Estes números vêm da execução do lote, não foram reexecutados nesta curadoria.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Latência adicional da consulta de permissões em `/nutrition/today`.
+- Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
+- Frontend: a busca em `frontend/src` não achou tratamento específico do corpo do 403 de nutrição.
+
+**Lote 2D-2** (PR #135, na develop e no DEV, não promovido)
+
+*O que muda:*
+- As 16 rotas de alimentos, fontes externas, preferidos e foto de rótulo passam a decidir por grupo. Usuário sem o grupo de sistema do papel recebe 403 `FORBIDDEN_DETAIL` nelas. Usuário sem grupo perde o catálogo de alimentos, os preferidos e a foto de rótulo.
+- `POST /nutrition/foods/{food_id}/promote` passa a exigir `admin.catalogos`/editar, no lugar do papel `admin`; o 403 de quem não tem a permissão passa a ter o corpo `FORBIDDEN_DETAIL`.
+- Dentro dos handlers de alimentos, a checagem de papel vira `admin.catalogos`, com a ação de cada decisão (ver "Lote 2D-2: alimentos, fontes externas, preferidos e foto de rótulo").
+- Grupo personalizado pode receber `admin.catalogos` só com `ver`: vê alimentos privados de terceiros, sem editar o público nem promover.
+- Identidade de dispositivo herda as concessões do dono (antes herdava o papel do dono).
+- As 16 rotas fazem uma consulta de permissões por requisição.
+
+*O que não muda:*
+- Respostas de sucesso, flags `can_edit`, `can_add_portion` e `can_promote`, 403 `food_forbidden` dos handlers e 404 de alimento privado de terceiro.
+- Preferidos continuam pessoais; nenhuma rota aceita `user_id`.
+- Cota da foto de rótulo: continua cobrada de quem pede, no dono `api/app/domain/nutrition/ai_usage.py`.
+- Regras de `catalog`, `favorites`, `labels`, `label_photo` e `ai_usage`; nenhuma regra, cálculo, constante ou default mudou; `docs/motores/FONTES_DA_VERDADE.md` não foi alterado.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: nenhum usuário ativo sem grupo e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perde o catálogo de alimentos, os preferidos e a foto de rótulo. Ainda não há medição registrada para o 2D-2.
+2. Sem migração neste lote. As concessões usadas (`nutricao.alimentos`, `ia.nutricao`, `admin.catalogos`) já estão em produção desde a migração 111.
+3. Promoção só de backend, sem `RUN_DB_MIGRATIONS`.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote; não reexecutado nesta curadoria):* 16 rotas por módulo (6, 3, 5 e 2); dívida de 198 para 182; conta de 367 rotas; `teto_total` do ratchet de 11 para 3. Suíte unitária inteira: 14.356 passed antes do ajuste das guardas; as falhas eram das guardas de RBAC, depois ajustadas, e de `test_sem_mojibake` (falha local conhecida). Guardas de cobertura, paridade e retrato: 354 passed. `test_nutricao_alimentos_permissoes_rbac.py`: 148 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Rotas com sessão real de personal trainer e de usuário comum, no DEV e em produção.
+- Latência da consulta de permissões nas rotas de alimentos.
+
+**Lote 2E** (PR #136, na `develop` e no DEV desde 12/11/2026, não promovido)
+
+*O que muda:*
+- As 56 rotas de analytics e engines (dashboards, volume, progressão, cardio, corpo, relatórios e análise de treinos por IA) passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas, incluindo os dashboards e os relatórios.
+- Usuário sem grupo perde dashboards, progressão, volume, cardio, corpo, relatórios e análise de treinos por IA.
+- Cada rota aponta para o recurso do seu tema (ver "Lote 2E: analytics e engines"): GET exige `ver` e POST exige `editar`.
+- As 56 rotas fazem uma consulta de permissões por requisição.
+
+*O que não muda:*
+- Assinaturas dos handlers, respostas, status e ordem de validação.
+- Nenhuma rota aceita usuário alvo: todas são sobre os dados do próprio usuário.
+- `PUT /analytics/muscle-group-body-map` (2C-1, `admin.catalogos`) fica como estava.
+- Log `intelligence_package.accessed` continua registrando `role`; a checagem de papel restante fica para o 2F.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: nenhum usuário ativo sem grupo e nenhuma linha de grupo de sistema divergente do papel. Um usuário sem grupo perderia dashboards, progressão, volume, cardio, corpo, relatórios e análise por IA. Ainda não há medição registrada para o 2E.
+2. Sem migração neste lote. As concessões usadas já estão em produção desde a migração 111.
+3. Promoção só de backend, sem `RUN_DB_MIGRATIONS`. As rotas rodam em dois apps: 5 em `app.main` (api-core) e 51 em `app.main_engines` (engines).
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote; não reexecutado nesta curadoria):* 56 rotas por módulo (24, 17, 6, 2, 2, 2, 1, 1 e 1); dívida de 182 para 126; 226 rotas com permissão; conta de 367 (126 + 6 + 9 + 226); `teto_total` do ratchet sem mudança (3). Suíte unitária inteira: 14.511 passed, com falhas só nas guardas depois ajustadas e em `test_sem_mojibake` (falha local conhecida). Guardas, paridade e retrato: 358 passed. `test_analytics_engines_permissoes_rbac.py`: 518 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Sessão real de usuário comum e de personal trainer, no DEV e em produção.
+- Latência da consulta de permissões nos dashboards.
+
+**Lote 2F-1** (PR #139, na `develop` e no DEV desde 12/11/2026, não promovido)
+
+*O que muda:*
+- As 29 rotas de Modelos de treino (`/workout-plan-templates`) passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas, inclusive `/assigned-to-me` e `/hr-zones`.
+- Usuário sem grupo perde a gestão de Modelos, inclusive PT e admin; o aluno sem grupo perde os Modelos atribuídos a ele.
+- A gestão (27 rotas) exige escopo `todos` no grupo: o usuário comum continua negado nas leituras de gestão.
+- O corpo do 403 de quem não é admin nem PT passa de "Acesso restrito a administradores e personal trainers." para `FORBIDDEN_DETAIL`.
+
+*O que não muda:*
+- Assinaturas dos handlers e respostas de sucesso.
+- Personal trainer e admin com o grupo de sistema do próprio papel mantêm a gestão.
+- `/assigned-to-me` e `/hr-zones` seguem para quem está no grupo `usuario`. A regra interna de `/hr-zones` (de quem são as zonas, em `athlete_hr_zones`, e `require_session_identity`) não muda.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: usuários ativos sem grupo (inclusive PT e admin) e linhas de grupo de sistema divergentes do papel. Ainda não há medição registrada para o 2F-1.
+2. Sem migração. Promoção só de backend, sem `RUN_DB_MIGRATIONS`. As rotas rodam na api-core.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote; não reexecutado nesta curadoria):* suíte unitária inteira: 15.059 passed, com falhas só nas guardas, depois ajustadas, e em `test_sem_mojibake` (falha local conhecida); guardas e retrato: 364 passed; `test_modelos_treino_permissoes_rbac.py`: 409 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Sessão real de personal trainer e de usuário comum, no DEV e em produção.
+- Latência da consulta de permissões nos Modelos.
+
+**Lote 2F-2** (PR #143, na `develop` e no DEV desde 12/11/2026, não promovido)
+
+*O que muda:*
+- As 55 rotas de treino (registro de atividades e exercícios, Modo Treino, planos, deload, preferências e tetos de equipamento, técnicas avançadas, metas, briefing de exercício, grupos mapeados e a IA de análise, insights, avaliação de série e geração de plano) passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas, inclusive no registro de treino, no Modo Treino e nos planos.
+
+*O que não muda:*
+- Usuário comum e personal trainer mantêm o acesso: os grupos `usuario` e `personal_trainer` têm todos esses recursos (`exercicios.catalogo` só em ver), e o admin tem acesso total.
+- Assinaturas dos handlers, respostas de sucesso e regras de motor.
+- Nenhuma rota recebe escopo mínimo: todas leem ou escrevem sobre os dados do próprio usuário, sem usuário alvo.
+
+*Promoção:*
+1. SELECT prévio de leitura em produção: usuários ativos sem grupo e linhas de grupo de sistema divergentes do papel. Usuário sem grupo perderia o registro de treino, o Modo Treino, os planos e as preferências. Ainda não há medição registrada para o 2F-2.
+2. Sem migração. Promoção só de backend, sem `RUN_DB_MIGRATIONS`. As rotas rodam na api-core.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote; não reexecutado nesta curadoria):* suíte unitária inteira após o código: 15.477 passed, com falhas só nas guardas, depois ajustadas, e em `test_sem_mojibake` (falha local conhecida); guardas e retrato: 368 passed; `test_treino_permissoes_rbac.py`: 497 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Sessão real de usuário comum e de personal trainer, no DEV e em produção.
+- Latência da consulta de permissões no Modo Treino.
+
+**Lote 2F-3** (branch `feat/rbac-lote2f3-corpo-integracoes-fecho`, PR #144, na `develop` e no DEV desde 12/11/2026, não promovido)
+
+*O que muda:*
+- As 42 rotas de corpo, check-in, integrações Intervals, cardio e a geração de recomendação de cardio passam a decidir por grupo. Usuário sem grupo recebe 403 `FORBIDDEN_DETAIL` nelas.
+- POST `/integrations/intervals/sync` deixa de ser só admin: passa a exigir `integracoes.intervals`/editar, com escopo mínimo `todos` (só o admin tem). Personal trainer e usuário comum com grupo recebem 403.
+- POST `/cardio-recommendations/{entry_id}/apply` deixa de ser `admin_ou_pt` por papel: passa a exigir `modelos.treino`/editar, com escopo mínimo `todos` (PT e admin têm; usuário comum não).
+- Os guards `require_admin`, `require_admin_or_pt`, `is_admin_or_pt` e `ADMIN_OR_PT_ROLES` saem de `api/app/security.py`. O dispositivo de um dono sem grupo passa a ser negado.
+- O corpo do 403 do sync e do apply passa a ser `FORBIDDEN_DETAIL`.
+- O log `intelligence_package.accessed` perde o campo `role`.
+
+*O que não muda:*
+- Preservado: quem está no grupo de sistema do papel não ganha nem perde acesso. Nas duas rotas com escopo mínimo, quem tinha acesso pelo papel antes continua tendo; quem não tinha (PT no sync, usuário comum no apply) continua sem.
+- Assinaturas dos handlers de sucesso, respostas de sucesso e regras de motor. O handler de GET `/cardio-recommendations/{entry_id}` ganha o parâmetro `request`, sem mudar a resposta.
+- Nenhuma migração. Não há mudança de `users.role` nem de tabela.
+
+*Campo `can_apply`:* em GET `/cardio-recommendations/{entry_id}` deixa de ser `is_admin_or_pt(identity)`. Passa a ser verdadeiro se a concessão `modelos.treino`/editar cobrir `todos`, lida das permissões em cache da requisição.
+*Promoção:*
+1. SELECT prévio de leitura em produção: usuários ativos sem grupo ou com linha de grupo de sistema divergente do papel, cruzado com donos de dispositivo ativo (o dispositivo de um dono sem grupo é negado). Ainda não há medição registrada para o 2F-3.
+2. Sem migração. Promoção só de backend, sem `RUN_DB_MIGRATIONS`. As rotas rodam na api-core.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. Os guards removidos de `security.py` voltam com ele. Não há dado nem schema a desfazer.
+
+*Medido (na execução do lote, na branch; não publicado):*
+- suíte unitária inteira após o código: 15.848 passed, com falhas só nas guardas, depois ajustadas, e em `test_sem_mojibake` (falha local conhecida);
+- guardas, retrato e paridade: 387 passed;
+- `test_corpo_integracoes_cardio_permissoes_rbac.py` (HTTP, 380 casos): 380 passed.
+
+*Não medido:*
+- Integração com MySQL (roda só no CI, com o rótulo `ci-completo`).
+- Sessão real de usuário comum, de personal trainer e de admin, no DEV e em produção.
+- Relógio real e latência da consulta de permissões.
+
+**Lote 3A** (na `develop` e no DEV, PR #145, não promovido)
+
+*O que muda:*
+- 11 rotas novas de grupos e acessos (catálogo, grupos, membros, concessões, exclusão e auditoria), todas em `admin.grupos`. Quem não tem a permissão recebe 403; na matriz padrão, só o grupo admin tem.
+- As escritas da API passam a gravar linhas em `access_audit_log`, com antes e depois em JSON. Até aqui a tabela não recebia dados.
+- Grupo personalizado só tem efeito quando o admin concede permissões a ele e vincula usuários.
+
+*O que não muda:*
+- Nenhum acesso existente muda: rotas antigas, guards, `users.role` e grupos de sistema ficam como estavam. A API não altera grupos de sistema.
+- Sem migração: usa as tabelas da 111. Sem migração, não há `RUN_DB_MIGRATIONS`.
+
+*Rollback:* reverter o PR e refazer o deploy de backend. As 11 rotas saem e a auditoria deixa de receber linhas. Grupos, concessões, vínculos e linhas de auditoria criados pela API continuam no banco e precisariam de limpeza manual.
+
+*Medido (na branch, antes do merge do PR #145):*
+- `test_access_admin_servico.py` e `test_access_admin_rotas.py`: 307 passed juntos;
+- guardas e paridade: rotas com permissão 352 → 363; total de rotas vivas 367 → 378; dívida 0; as 11 rotas novas em `ROTAS_NOVAS_POS_RETRATO`; retrato congelado não regenerado;
+- suíte unitária inteira: 16.690 passed, com falha só em `test_sem_mojibake` (falha local conhecida).
+
+*Não medido:*
+- Integração `test_access_admin_dataapi.py` (4 testes × 2 backends): não roda localmente; roda só no CI, com o rótulo `ci-completo`. Resultado ainda não registrado.
+- Integração com MySQL e concorrência real dos locks `SELECT ... FOR UPDATE`.
+- Uso real da tela (3B) e sessão real de admin, de personal trainer e de usuário comum.
+
+**Lote 3B** (na `develop` pelo PR #147, merge `ac1e28b4`, atualizado no DEV em 12/11/2026, não promovido)
+
+*O que muda:*
+- Nova rota `/grupos-acessos` no frontend estático, visível só para admin e só no computador.
+- O rascunho da matriz de concessões não se perde ao trocar de aba (abas montadas); trocar de grupo com rascunho não salvo pede confirmação para descartar.
+- `GET /access/catalog` (api-core) traz `grantable` e `warning` por recurso e `scope_warnings` no topo. Campos aditivos.
+- `apiFetch` (`frontend/src/lib/api.ts`) preenche `ApiError.detail` com `{error, message}` quando o corpo de erro não tem `detail` e traz `error` e `message` string. Afeta todo o frontend, mas só nas respostas com esse formato (no backend, hoje, só `/access`). Aditivo: mensagem padrão, 503, `must_change_password` e respostas com `detail` inalterados.
+
+*O que não muda:*
+- Nenhum acesso, rota, guard, concessão padrão ou `users.role`. A API não ganha rota nova neste lote.
+- Sem migração, sem infra e sem `RUN_DB_MIGRATIONS`. A promoção é só de frontend e api-core.
+
+*Promoção:* smoke depois do deploy, com conta admin: abrir `/grupos-acessos` e conferir que a lista de grupos carrega; conferir que `GET /access/catalog` traz `grantable`, `warning` e `scope_warnings`.
+
+*Rollback:* reverter o PR e refazer o deploy de frontend e api-core. Não há dado nem schema a desfazer. Os campos aditivos deixam de existir, e clientes que não os leem não percebem. Grupos, concessões e auditoria criados pela tela já existem desde o 3A e não são afetados.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas; números da seção acima):* backend `-k access` 862 passed, ruff limpo; Vitest 7 arquivos com 134 passed; `nav-items` e `primary-nav` ok; typecheck limpo; lint sem erros.
+
+*Não medido:*
+- Uso real da tela por admin, e comportamento no celular (a rota só tem a tela "Disponível no computador").
+- Integração com MySQL e build (CI, com `ci-completo`).
+- Smoke de promoção: ainda não executado.
+
+**Lote 4A** (na `develop` e no DEV desde 13/11/2026, PR #148, merge `6bd4a7b9`, não promovido)
+
+*O que muda:*
+- Menu desktop, menu do iPhone e hub Evolução derivam a visibilidade de `permissions` de `/auth/me`; item sem permissão some. Enquanto `/auth/me` não resolve ou falha sem dados em cache, o menu não mostra itens e as abas fixas do iPhone seguem a exceção do 4B-3 (aparecem); dados em cache sobrevivem a falha transitória de refetch. O logout cancela as queries e navega; o login limpa o cache do TanStack Query na montagem e no sucesso, para não herdar permissões de outra conta.
+- `regras-carga`, `equipamentos-exercicios` e `dominio-exercicios` mandam para `/preferencias-treino` quem não tem a permissão de tela (`admin.regras_carga` ou `admin.catalogos`).
+
+*O que não muda:*
+- Nenhuma rota de API, guard, concessão padrão, `users.role` ou grupo de sistema. Sem migração, sem infra e sem `RUN_DB_MIGRATIONS`. A promoção é só de frontend estático.
+- Com as concessões padrão, o menu de hoje por papel é o mesmo (ver "Equivalência" no Lote 4A). Os contadores valem com `intervals_configured` verdadeiro: admin 19 itens e usuário comum 12; sem Intervals configurado, 18 e 11.
+
+*Promoção (smoke):* com conta admin, o menu deve listar 19 itens (18 sem Intervals configurado). Com conta de usuário comum, 12 itens (11 sem Intervals) e `/regras-carga` deve redirecionar para `/preferencias-treino`.
+
+*Rollback:* reverter o PR e refazer o deploy de frontend. Não há dado nem schema a desfazer; o menu volta a mostrar tudo até `/auth/me` resolver.
+
+*Medido na branch (execução local do Tech Lead, só unitários e checagens estáticas):* Vitest 7 arquivos com 109 passed; pytest de paridade de escopos com 1 passed (rodada anterior); typecheck limpo; lint sem erros.
+
+*Não medido:* integração e build (CI, com `ci-completo`); uso real por sessão de admin, de personal trainer e de usuário comum no DEV; comportamento no iPhone real no instante de carregamento.
+
+**Lote 4B-1** (na branch `feat/rbac-lote4b1-telas-gestao`, PR para a `develop`, não promovido)
+
+*O que muda:*
+- Os controles das telas de gestão listadas em "Lote 4B-1" passam a vir de `permissions` de `GET /auth/me`, pela condição de `frontend/src/lib/screen-permissions.ts`. Cada controle segue a permissão de leitura, escrita ou exclusão da rota que ele chama.
+- `adminRouteState` e `isAdminRole` saem de `frontend/src/lib/admin-route.ts`.
+
+*O que não muda:* nenhuma rota, guard, concessão padrão, `users.role`, grupo de sistema ou migração. Sem infra e sem `RUN_DB_MIGRATIONS`. A promoção é só de frontend estático.
+
+*Quem vê o quê hoje:* os 4 usuários atuais (1 admin e 3 comuns; número do briefing do Tech Lead, não conferido no banco nesta entrega) recebem as concessões padrão do próprio grupo. Pelas fixtures de "Equivalência", veem os mesmos controles; isso não foi conferido em sessão real.
+
+*Promoção (smoke):* com conta admin, os botões de edição aparecem em usuários, grupos, Domínio de exercícios e Equipamentos x exercícios. Com conta de usuário comum, esses botões não aparecem, e a aba Segurança não mostra conteúdo.
+
+*Rollback:* reverter o PR e refazer o deploy do frontend. Não há dado nem schema a desfazer.
+
+*Medido na branch (relatado pelo Tech Lead, não reexecutado nesta entrega):* parte A, Vitest em 6 arquivos com 128 passed e typecheck ok; parte B, Vitest em 40 arquivos com 272 passed, `tsc` com 0 erros e lint com 0 erros. A UI não foi exercitada no navegador.
+
 ## Referências
 
 - `api/app/security.py`: `get_current_identity`, `require_admin`, `require_admin_or_pt`, `Identity`, `master_token_matches`.
-- `api/app/nutrition_access.py`: `resolve_target_user` (a ser substituído por `authorize_target`).
+- `api/app/nutrition_access.py`: `resolve_target_user` (desde o 2D-1 delega a `authorize_target`; antes era só `int(user_id)`).
 - `api/app/auth.py`: `me`; `ensure_admin_seed` (lote 2A: grava o grupo `admin` do seed).
 - `api/app/users.py`: `_ALLOWED_ROLES`; `create_user`, `update_user` e `deactivate_user` (lote 2A: sincronização e trava).
 - `api/app/access/membership.py`: escrita de `user_access_groups` e trava do último admin (lote 2A).
@@ -635,4 +1801,7 @@ O PR toca migração e por isso leva o rótulo `ci-completo` no último push, lo
 - `frontend/src/lib/nav-items.ts`: menu central.
 - Lote 2B: `api/app/access/catalog.py` (`conta.dispositivos`); `api/app/access/service.py` (`validate_target_user_id`, `authorize_target`, `authorize_self_or_all`); `api/app/access/deps.py` (`require_additional_permission`, `permissions_for_request`); `api/app/access/membership.py` (`ensure_not_last_admin`, `locked_admin_ids`); `api/app/users.py` (`create_user`, `update_user`, `deactivate_user`, fotos); `api/app/devices.py` (rotas de relógio); `api/app/jobs.py`; `api/app/auth.py` (`me`, `change-password`); `api/db/migrations/113_access_grants_conta_dispositivos.py`; `api/tests/support/access_retrato.py` e `api/tests/unit/data/access_retrato_guards_antigos.json`; `api/tests/unit/test_access_retrato_guards.py`, `test_access_paridade_guards.py`, `test_access_guarda_identity_role.py` (com `access_identity_role_allowlist.json`), `test_access_guarda_cobertura_rotas.py` (com `access_cobertura_allowlist.json`), `test_users_permissoes_rbac.py`, `test_devices_permissoes_rbac.py`, `test_users_trava_ultimo_admin.py` e `test_migracao_113_concessoes.py`; `api/tests/integration/conftest.py` (`conceder_grupo_do_papel`, fixture `conceder_grupo`, fixture `catalog`).
 - Lote 2C-1: `api/app/access/catalog.py` (`modelos.tipos_treino`); `api/db/migrations/114_access_grants_modelos_tipos_treino.py`; `api/app/exercise_cards.py`, `api/app/training_types.py`, `api/app/next_set_load_rules_admin.py`, `api/app/training_safety_admin.py`, `api/app/exercise_mapping_canonical.py`, `api/app/main.py` (`POST /exercise-mappings`) e `api/app/dashboard_modules.py` (`PUT /analytics/muscle-group-body-map`); `api/tests/unit/test_migracao_114_concessoes.py` e `api/tests/unit/test_catalogos_admin_permissoes_rbac.py`.
+- Lote 3B: `frontend/src/app/(app)/grupos-acessos/` (tela); `frontend/src/lib/access-admin-api.ts`, `access-grants.ts`, `access-admin-types.ts` e seus testes; `frontend/src/lib/api.ts` (`apiFetch`) e `api.test.ts`; `frontend/src/lib/nav-items.ts` (item `/grupos-acessos`) e `nav-items.test.ts`; `api/app/access/catalog.py` (`is_grantable`, `RESOURCE_WARNINGS`, `SCOPE_WARNINGS`); `api/app/access/admin.py` (`catalog_view`, `validate_grants`); `api/app/access_admin.py` (`GET /access/catalog`); `api/tests/unit/test_access_admin_servico.py`.
+- Lote 4A: `frontend/src/lib/permissions.ts` (`can`, `SCOPE_ORDER`); `frontend/src/lib/use-permissions.ts`; `frontend/src/lib/auth.ts` (`SessionUser`); `frontend/src/lib/nav-items.ts` (`navVisibilityFromPermissions`, mapa item → permissão); `frontend/src/components/AppShellLayout.tsx`, `frontend/src/mobile/layout/MobileShell.tsx`, `frontend/src/mobile/screens/EvolucaoHub.tsx`; `frontend/src/components/AdminOnlyRoute.tsx` (`PermissionRoute`); `frontend/src/lib/admin-route.ts` (`permissionRouteState`); `frontend/src/app/(app)/grupos-acessos/GruposAcessosClient.tsx`; `frontend/src/lib/app-logout.ts` (`logoutAndRedirect`, `resetSessionCache`) e `frontend/src/app/LoginClient.tsx`; testes `frontend/src/lib/permissions.test.ts`, `use-permissions.test.ts`, `nav-items.test.ts`, `training-preferences.test.ts`, `app-logout.test.ts` e `frontend/src/mobile/layout/primary-nav.test.ts`; `api/tests/unit/test_access_paridade_escopos_frontend.py`.
+- Lote 4B-1: `frontend/src/lib/screen-permissions.ts` (funções por domínio) e `screen-permissions.test.ts`; `frontend/src/lib/permissions.ts` (`can`); `frontend/src/lib/admin-route.ts` (`permissionRouteState`); telas e componentes listados em "Lote 4B-1"; `api/app/access/catalog.py` (`DEFAULT_GRANTS_BY_GROUP`); `api/app/access/service.py` (`authorize_target`); rotas: `api/app/gyms.py`, `api/app/access_admin.py`, `api/app/users.py`, `api/app/training_types.py`, `api/app/workout_plan_templates.py`, `api/app/nutrition_plans.py`, `api/app/nutrition_access.py`, `api/app/nutrition_foods.py`, `api/app/training_safety_admin.py`, `api/app/exercise_cards.py`, `api/app/equipment_exercises.py` e `api/app/exercise_catalog_admin.py`.
 - ADR relacionado de forma indireta: [0010](0010-regras-de-carga-como-formula-com-condicionais.md) (formato de decisão com "Impacto em produção").

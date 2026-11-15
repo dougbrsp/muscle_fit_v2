@@ -3,6 +3,7 @@
 import { Avatar, Image } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconChevronLeft, IconUser } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -13,7 +14,7 @@ import {
   type ReactNode,
 } from 'react';
 import { logoutAndRedirect } from '@/lib/app-logout';
-import { isDesktopOnlyPath, mobileMainNavItems, navVisibilityFromUser } from '@/lib/nav-items';
+import { isDesktopOnlyPath, mobileMainNavItems, navVisibilityFromPermissions } from '@/lib/nav-items';
 import { MOBILE_CSS_VARS } from '../css-vars';
 import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
@@ -25,12 +26,12 @@ import { scrollMemoryKey } from './nav-active';
 import { MoreSheet } from './MoreSheet';
 import {
   MORE_TAB,
-  PRIMARY_TABS,
   backTargetFor,
   buildMoreGroups,
   evolucaoHubHref,
   isMoreActive,
   isPrimaryTabActive,
+  primaryTabsFor,
 } from './primary-nav';
 import styles from './mobile-shell.module.css';
 
@@ -52,6 +53,7 @@ export default function MobileShell({ children }: { children: ReactNode }) {
 
 function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const search = searchParams.toString();
@@ -63,9 +65,9 @@ function Shell({ children }: { children: ReactNode }) {
   const groups = useMemo(
     () =>
       buildMoreGroups(
-        mobileMainNavItems(navVisibilityFromUser(userQuery.data, userQuery.isSuccess)),
+        mobileMainNavItems(navVisibilityFromPermissions(userQuery.data)),
       ),
-    [userQuery.data, userQuery.isSuccess],
+    [userQuery.data],
   );
 
   // Navegou (inclusive voltar/avançar do navegador): a folha fecha.
@@ -113,7 +115,7 @@ function Shell({ children }: { children: ReactNode }) {
   }
 
   function handleLogout() {
-    void logoutAndRedirect(router.replace);
+    void logoutAndRedirect(router.replace, queryClient);
   }
 
   const desktopOnly = isDesktopOnlyPath(pathname);
@@ -200,7 +202,7 @@ function Shell({ children }: { children: ReactNode }) {
         aria-label="Navegação principal"
         data-hidden={keyboardOpen ? 'true' : 'false'}
       >
-        {PRIMARY_TABS.map((tab) => {
+        {primaryTabsFor(userQuery.data).map((tab) => {
           const active = isPrimaryTabActive(tab, pathname, search);
           return (
             <Link

@@ -37,6 +37,7 @@ import type {
 } from '@/lib/analytics-types';
 import { readinessColor, readinessIcon, readinessLabel } from '@/lib/muscle-readiness';
 import { statusVisual } from '@/lib/dashboard-status';
+import { useIaControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 import { formatDateOrDash, formatDateTimeOrDash } from '@/lib/format';
 
@@ -116,6 +117,7 @@ export default function AgenteCardioPage() {
   // COD-14: o Markdown da IA vem sob demanda; começa a baixar já na montagem.
   useEffect(preloadMarkdown, []);
   const qc = useQueryClient();
+  const ia = useIaControls();
   const [days, setDays] = useState('14');
   const [jobId, setJobId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
@@ -262,17 +264,19 @@ export default function AgenteCardioPage() {
             Gera uma recomendação de cardio com base no seu contexto recente (recuperação, sono, esforço e carga).
           </Text>
         </div>
-        <Group align="flex-end">
-          <Select label="Janela de contexto" value={days} onChange={(value) => setDays(value || '14')} data={dayOptions} w={170} />
-          <Button
-            leftSection={<IconSparkles size={16} />}
-            color="brand"
-            loading={isGenerating}
-            onClick={handleGenerate}
-          >
-            Gerar recomendação
-          </Button>
-        </Group>
+        {ia.canCardio && (
+          <Group align="flex-end">
+            <Select label="Janela de contexto" value={days} onChange={(value) => setDays(value || '14')} data={dayOptions} w={170} />
+            <Button
+              leftSection={<IconSparkles size={16} />}
+              color="brand"
+              loading={isGenerating}
+              onClick={handleGenerate}
+            >
+              Gerar recomendação
+            </Button>
+          </Group>
+        )}
       </Group>
 
       {contextQuery.isLoading && (

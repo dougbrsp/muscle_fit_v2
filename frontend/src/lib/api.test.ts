@@ -58,6 +58,29 @@ describe('apiFetch — 401 é o único que desloga', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('logout em andamento: 401 de poller não redireciona nem limpa a sessão com next', async () => {
+    fetchMock.mockResolvedValue(json(401, { detail: 'Token inválido.' }));
+    api.beginLogout();
+    expect(api.isLoggingOut()).toBe(true);
+
+    const result = await settle(api.apiFetch('/auth/me'));
+
+    expect((result as PromiseRejectedResult).reason).toMatchObject({ status: 401 });
+    expect(location.href).toBe('');
+    expect(clearSession).not.toHaveBeenCalled();
+  });
+
+  it('depois de endLogout o 401 volta a redirecionar com next', async () => {
+    fetchMock.mockResolvedValue(json(401, { detail: 'Token inválido.' }));
+    api.beginLogout();
+    api.endLogout();
+    expect(api.isLoggingOut()).toBe(false);
+
+    await settle(api.apiFetch('/auth/me'));
+
+    expect(location.href).toBe('/?next=%2Fdashboard%2F');
+  });
+
   it('503 persistente num GET: tenta de novo, falha com 503 e NÃO desloga', async () => {
     fetchMock.mockImplementation(async () => json(503, { detail: 'Não foi possível validar sua sessão agora.' }));
 
@@ -147,6 +170,16 @@ describe('apiFetch — detail estruturado', () => {
     expect(error.status).toBe(409);
     expect(error.message).toBe('Erro ao consultar /exercises/1/card-generations (HTTP 409).');
     expect(error.detail).toEqual(detail);
+  });
+
+  it('corpo de topo {error, message} sem detail vira detail estruturado; mensagem genérica não muda', async () => {
+    fetchMock.mockResolvedValue(json(409, { error: 'group_in_use', message: 'Grupo em uso.' }));
+    const result = await settle(api.apiFetch('/access/groups/3', { method: 'DELETE' }));
+    const error = (result as PromiseRejectedResult).reason;
+    expect(error).toBeInstanceOf(api.ApiError);
+    expect(error.status).toBe(409);
+    expect(error.message).toBe('Erro ao consultar /access/groups/3 (HTTP 409).');
+    expect(error.detail).toEqual({ error: 'group_in_use', message: 'Grupo em uso.' });
   });
 });
 

@@ -41,6 +41,7 @@ import { PhotoLightbox, usePhotoLightbox, type LightboxPhoto } from '@/app/(full
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { catalogosControls, segurancaTreinoControls } from '@/lib/screen-permissions';
 import type {
   ApiListResponse as CatalogAdminApiListResponse,
   EquipmentType,
@@ -292,10 +293,12 @@ export function EquipamentosExerciciosClient() {
     staleTime: 60_000,
     retry: false,
   });
-  // `_require_admin_identity` no backend exige role EXATAMENTE "admin" —
-  // mesmo padrão estrito de /mapeamentos (Etapa 16), diferente do
-  // admin_or_pt usado em /academias.
-  const isAdmin = currentUserQuery.data?.role === 'admin';
+  // Permissões efetivas (RBAC): POST/PUT de /equipment-exercises e /equipment
+  // exigem admin.catalogos/editar; DELETE exige admin.catalogos/excluir.
+  const catalogControls = catalogosControls(currentUserQuery.data?.permissions);
+  const isAdmin = catalogControls.canEdit;
+  const canDelete = catalogControls.canDelete;
+  const segurancaControls = segurancaTreinoControls(currentUserQuery.data?.permissions);
 
   // ---- Filtros (query params reais de GET /equipment-exercises) ------------
   const [filterEquipmentId, setFilterEquipmentId] = useState<string | null>(null);
@@ -929,7 +932,7 @@ export function EquipamentosExerciciosClient() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {isAdmin ? (
+                      {canDelete ? (
                         <Tooltip label="Remover associação">
                           <ActionIcon color="red" variant="subtle" onClick={() => openRemoveConfirm(link)}>
                             <IconTrash size={16} />
@@ -1315,15 +1318,17 @@ export function EquipamentosExerciciosClient() {
                                       <IconPencil size={16} />
                                     </ActionIcon>
                                   </Tooltip>
-                                  <Tooltip label="Excluir equipamento">
-                                    <ActionIcon
-                                      color="red"
-                                      variant="subtle"
-                                      onClick={() => openDeleteEquipmentConfirm(eq)}
-                                    >
-                                      <IconTrash size={16} />
-                                    </ActionIcon>
-                                  </Tooltip>
+                                  {canDelete && (
+                                    <Tooltip label="Excluir equipamento">
+                                      <ActionIcon
+                                        color="red"
+                                        variant="subtle"
+                                        onClick={() => openDeleteEquipmentConfirm(eq)}
+                                      >
+                                        <IconTrash size={16} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  )}
                                 </>
                               ) : (
                                 <Tooltip label="Ação restrita a administradores">
@@ -1356,7 +1361,8 @@ export function EquipamentosExerciciosClient() {
           <EquipmentSafetyTab
             equipment={equipmentItems}
             equipmentTypes={equipmentTypesQuery.data?.items || []}
-            isAdmin={isAdmin}
+            canView={segurancaControls.canView}
+            canEdit={segurancaControls.canEdit}
             loading={equipmentQuery.isLoading}
           />
         </Tabs.Panel>

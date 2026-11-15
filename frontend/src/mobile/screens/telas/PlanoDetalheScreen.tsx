@@ -10,6 +10,7 @@ import { GenerationWarnings } from '@/app/(app)/planos-treino/GenerationWarnings
 import { PlanMuscleMap } from '@/app/(app)/planos-treino/PlanMuscleMap';
 import { preloadMarkdown } from '@/components/LazyMarkdown';
 import { CardioRecommendationPanel } from '@/components/cardio/CardioRecommendationPanel';
+import { useIaControls } from '@/lib/screen-permissions';
 import { ApiError, apiFetch } from '@/lib/api';
 import { formatDateOrDash } from '@/lib/format';
 import type { CardioRecommendation, CardioRecommendationsResponse } from '@/lib/analytics-types';
@@ -122,6 +123,7 @@ export function PlanoDetalheScreen() {
     },
   });
 
+  const ia = useIaControls();
   const cardioQuery = useQuery({
     queryKey: ['cardio-recommendations-for-plan', planId],
     queryFn: () => apiFetch<CardioRecommendationsResponse>(`/cardio-recommendations?workout_plan_id=${planId}&limit=1`),
@@ -318,17 +320,19 @@ export function PlanoDetalheScreen() {
                 />
               </ListBlock>
             ) : null}
-            <ListRow
-              icon={IconSparkles}
-              title={
-                generateCardioMutation.isPending
-                  ? 'Gerando...'
-                  : cardioRecommendation
-                    ? 'Gerar novamente'
-                    : 'Gerar recomendação de cardio'
-              }
-              onClick={generateCardioMutation.isPending ? undefined : () => generateCardioMutation.mutate()}
-            />
+            {ia.canCardio ? (
+              <ListRow
+                icon={IconSparkles}
+                title={
+                  generateCardioMutation.isPending
+                    ? 'Gerando...'
+                    : cardioRecommendation
+                      ? 'Gerar novamente'
+                      : 'Gerar recomendação de cardio'
+                }
+                onClick={generateCardioMutation.isPending ? undefined : () => generateCardioMutation.mutate()}
+              />
+            ) : null}
             {cardioRecommendation ? (
               <ListRow icon={IconTrash} destructive title="Excluir recomendação" onClick={() => setCardioDeleteOpen(true)} />
             ) : null}

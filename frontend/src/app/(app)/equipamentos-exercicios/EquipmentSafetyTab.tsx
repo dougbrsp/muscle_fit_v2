@@ -418,12 +418,16 @@ function BatchByTypePanel({
 export function EquipmentSafetyTab({
   equipment,
   equipmentTypes,
-  isAdmin,
+  canView,
+  canEdit,
   loading,
 }: {
   equipment: readonly Equipment[];
   equipmentTypes: readonly EquipmentType[];
-  isAdmin: boolean;
+  /** admin.seguranca_treino/ver (GET /equipment/{id}/safety). */
+  canView: boolean;
+  /** admin.seguranca_treino/editar (PUT /equipment/{id}/safety). */
+  canEdit: boolean;
   loading: boolean;
 }) {
   const { items: catalog, isFallback } = useAdvancedTechniques();
@@ -439,10 +443,10 @@ export function EquipmentSafetyTab({
     (item) => (!term || item.name.toLocaleLowerCase('pt-BR').includes(term)) && (!onlyMissing || item.max_safe_rpe == null),
   );
 
-  if (!isAdmin) {
+  if (!canView) {
     return (
       <Alert color="yellow" icon={<IconShieldCheck size={16} />}>
-        O cadastro de segurança dos equipamentos é restrito a administradores.
+        O cadastro de segurança dos equipamentos é restrito a quem tem a permissão de segurança de treino.
       </Alert>
     );
   }
@@ -513,9 +517,11 @@ export function EquipmentSafetyTab({
                       <Table.Td c={BRAND.textMuted}>{formatLoadIncrement(item.load_increment_kg) || '-'}</Table.Td>
                       <Table.Td>
                         <Group justify="flex-end">
-                          <Button size="xs" variant="light" color="brand" leftSection={<IconPencil size={14} />} onClick={() => setEditing(item)}>
-                            Editar
-                          </Button>
+                          {canEdit && (
+                            <Button size="xs" variant="light" color="brand" leftSection={<IconPencil size={14} />} onClick={() => setEditing(item)}>
+                              Editar
+                            </Button>
+                          )}
                         </Group>
                       </Table.Td>
                     </Table.Tr>
@@ -536,9 +542,9 @@ export function EquipmentSafetyTab({
         </Stack>
       </Paper>
 
-      {equipmentTypes.length > 0 && <BatchByTypePanel equipment={equipment} equipmentTypes={equipmentTypes} techniques={techniques} />}
+      {canEdit && equipmentTypes.length > 0 && <BatchByTypePanel equipment={equipment} equipmentTypes={equipmentTypes} techniques={techniques} />}
 
-      {editing && (
+      {canEdit && editing && (
         <EquipmentSafetyModal
           key={editing.id}
           equipment={editing}

@@ -32,17 +32,19 @@ HOJE = hoje_do_usuario()
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_body_measurements_table_cache()
     with raw.cursor() as cur:
         cur.execute("SET FOREIGN_KEY_CHECKS = 0")
         cur.execute("TRUNCATE TABLE body_measurements")
+        cur.execute("TRUNCATE TABLE user_access_groups")  # ids reciclados; a rota exige o grupo (RBAC)
         cur.execute("TRUNCATE TABLE users")
         cur.execute("SET FOREIGN_KEY_CHECKS = 1")
         ids = {}
         for nome in ("dono", "outro"):
             cur.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', 'regular')", (nome,))
             ids[nome] = cur.lastrowid
+            conceder_grupo(cur, ids[nome], "regular")
     raw.commit()
     return ids
 

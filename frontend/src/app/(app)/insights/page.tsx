@@ -18,6 +18,7 @@ import { AiMarkdownLazy as AiMarkdown, preloadMarkdown } from '@/components/Lazy
 import { ApiError } from '@/lib/api';
 import { dispatchAndPollJob } from '@/lib/async-job-poll';
 import type { InsightsGenerateRequest, InsightsGenerateResponse } from '@/lib/insights-types';
+import { useIaControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 
 // F3.2: as janelas agora são as do hub (`WindowKind`), não um número de dias
@@ -34,6 +35,7 @@ const windowOptions = [
 export default function InsightsPage() {
   // COD-14: o Markdown da IA vem sob demanda; começa a baixar já na montagem.
   useEffect(preloadMarkdown, []);
+  const ia = useIaControls();
   const [analysisWindow, setAnalysisWindow] = useState('28d');
   const [question, setQuestion] = useState(
     'Analise meu histórico recente de treino e sugira melhorias práticas.',
@@ -78,6 +80,13 @@ export default function InsightsPage() {
         </Text>
       </div>
 
+      {!ia.canInsights && (
+        <Text c={BRAND.textMuted} size="sm">
+          Seu perfil não tem acesso à geração de insights.
+        </Text>
+      )}
+
+      {ia.canInsights && (
       <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
         <Stack>
           <Group align="flex-end" wrap="wrap">
@@ -114,6 +123,7 @@ export default function InsightsPage() {
           )}
         </Stack>
       </Paper>
+      )}
 
       {generateMutation.isError && (
         <Alert color="red" icon={<IconAlertTriangle />} title={isUnavailable ? 'IA indisponível no momento' : 'Erro ao gerar insight'}>

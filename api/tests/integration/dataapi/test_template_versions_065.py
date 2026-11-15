@@ -30,7 +30,7 @@ from fastapi.testclient import TestClient
 
 from app import migrate as m
 from app import workout_plan_templates as wpt
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from app.workout_plan_templates_engine import get_template_if_assigned
 from tests.support.isolamento_v3 import truncar
 
@@ -55,13 +55,15 @@ PEITORAL = 52
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_v065', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('aluno_v065', 'x', 'regular')")
         aluno_id = cur.lastrowid
+        conceder_grupo(cur, aluno_id, "regular")
         cur.execute("INSERT INTO muscle_groups (id, name) VALUES (%s, 'Peitoral')", (PEITORAL,))
     raw.commit()
     return {"admin": admin_id, "aluno": aluno_id}
@@ -73,7 +75,6 @@ def _client(user_id: int) -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 
@@ -200,7 +201,7 @@ def test_o_banco_recusa_duas_versoes_vigentes(seed, db_backend, raw):
 # ---------------------------------------------------------------------------
 
 
-def test_excluir_esconde_o_modelo_encerra_atribuicoes_e_mantem_a_ficha(seed, db_backend, raw):
+def test_excluir_so_sem_atribuicao_esconde_o_modelo_e_mantem_a_ficha(seed, db_backend, raw):
     api = _client(seed["admin"])
     template_id = _criar(api, db_backend)
     assert api.post(f"/workout-plan-templates/{template_id}/assignments", json={"user_id": seed["aluno"]}).status_code == 200
@@ -211,6 +212,14 @@ def test_excluir_esconde_o_modelo_encerra_atribuicoes_e_mantem_a_ficha(seed, db_
             (seed["aluno"], template_id),
         )
         plan_id = cur.lastrowid
+
+    # Com aluno atribuido a exclusao e barrada (409), mesmo para o admin; nada muda.
+    barrado = api.delete(f"/workout-plan-templates/{template_id}")
+    assert barrado.status_code == 409, (db_backend, barrado.text)
+    assert barrado.json()["detail"]["error"] == "template_has_assignments"
+    assert api.get(f"/workout-plan-templates/{template_id}").status_code == 200
+    # Encerrada a atribuicao, a exclusao segue.
+    assert api.delete(f"/workout-plan-templates/{template_id}/assignments/{seed['aluno']}").status_code == 200
 
     apagado = api.delete(f"/workout-plan-templates/{template_id}")
     assert apagado.status_code == 200, (db_backend, apagado.text)

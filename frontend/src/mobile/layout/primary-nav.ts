@@ -10,9 +10,13 @@ import {
 import { parseDashboardFilters, serializeDashboardFilters } from '@/lib/dashboard-filters';
 import {
   DASHBOARD_NAV_ITEMS,
+  canSeeDashboard,
   isDesktopOnlyPath,
+  mobileMainNavItems,
+  navVisibilityFromPermissions,
   type MainNavItem,
   type NavItem,
+  type NavVisibility,
 } from '@/lib/nav-items';
 
 /**
@@ -50,6 +54,53 @@ export function evolucaoHubHref(search: string | null | undefined): string {
   const filters = parseDashboardFilters(new URLSearchParams(search ?? ''));
   const params = serializeDashboardFilters(filters, new URLSearchParams('hub=evolucao'));
   return `/dashboard/?${params.toString()}`;
+}
+
+/**
+ * Recurso que libera cada aba (mesmo mapa do menu em `lib/nav-items.ts`).
+ * Início carrega a visão geral do Dashboard (`dashboards/ver`). Evolução é o
+ * hub: aparece se `canSeeDashboard` ou se sobrar algum item de análise.
+ * Fail-closed para `permissions` nulo/vazio; a exceção "sem dados do usuário"
+ * (abas fixas) está em `primaryTabsFor`.
+ */
+const TAB_RESOURCE: Record<Exclude<PrimaryTab['id'], 'evolucao' | 'inicio'>, string> = {
+  treino: 'treino.modo_treino',
+  historico: 'treino.registro',
+};
+
+export function visiblePrimaryTabs(visibility: NavVisibility): readonly PrimaryTab[] {
+  return PRIMARY_TABS.filter((tab) => {
+    if (tab.id === 'inicio') return canSeeDashboard(visibility);
+    if (tab.id === 'evolucao') {
+      return buildEvolucaoGroups(mobileMainNavItems(visibility), visibility).length > 0;
+    }
+    return visibility.can(TAB_RESOURCE[tab.id]);
+  });
+}
+
+type NavUser = Parameters<typeof navVisibilityFromPermissions>[0];
+
+/**
+ * Visibilidade para quando `/auth/me` não tem dados (carregando, ou erro sem cache
+ * no PWA offline). Só navegação: os dados continuam barrados pelo backend e cada
+ * tela segue a própria guarda. Intervals.icu fica oculto (depende da configuração).
+ */
+const NAV_WITHOUT_USER: NavVisibility = { can: () => true, hasIntervalsConfigured: false };
+
+/**
+ * Abas do iPhone. Sem dados do usuário (`undefined`) as 4 abas fixas aparecem,
+ * porque são navegação e o Treino é offline-first. Com dados (inclusive
+ * `permissions` nulo ou `{}`), filtra por permissão.
+ */
+export function primaryTabsFor(user: NavUser): readonly PrimaryTab[] {
+  if (user === undefined) return PRIMARY_TABS;
+  return visiblePrimaryTabs(navVisibilityFromPermissions(user));
+}
+
+/** Grupos do hub Evolução; mesma exceção de `primaryTabsFor` para `undefined`. */
+export function evolucaoGroupsFor(user: NavUser): readonly NavGroup[] {
+  const vis = user === undefined ? NAV_WITHOUT_USER : navVisibilityFromPermissions(user);
+  return buildEvolucaoGroups(mobileMainNavItems(vis), vis);
 }
 
 export const MORE_TAB = { id: 'mais', label: 'Mais', icon: IconDots } as const;
@@ -170,9 +221,15 @@ function groupBy(layout: GroupLayout, pool: ReadonlyMap<string, NavItem>) {
  * Grupos do hub Evolução. `visibleMain` são os itens do menu já filtrados por
  * papel/configuração (ex.: Intervals.icu só se configurado).
  */
-export function buildEvolucaoGroups(visibleMain: readonly MainNavItem[]): readonly NavGroup[] {
+export function buildEvolucaoGroups(
+  visibleMain: readonly MainNavItem[],
+  visibility?: NavVisibility,
+): readonly NavGroup[] {
   const pool = new Map<string, NavItem>();
-  for (const item of DASHBOARD_NAV_ITEMS) if (item.href !== '/dashboard') pool.set(item.href, item);
+  // Sub-rotas do Dashboard exigem dashboards/ver; sem visibilidade, fail-closed.
+  if (visibility && canSeeDashboard(visibility)) {
+    for (const item of DASHBOARD_NAV_ITEMS) if (item.href !== '/dashboard') pool.set(item.href, item);
+  }
   for (const item of mobileCandidates(visibleMain)) {
     if (EVOLUCAO_EXTRA_PATHS.includes(item.href)) pool.set(item.href, item);
   }

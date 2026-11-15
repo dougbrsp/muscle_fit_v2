@@ -59,12 +59,13 @@ TETO_STATEMENTS = 14
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Usuario A COM Intervals configurado: 4 sessoes de treino (duas com FC
     associada - uma delas AMBIGUA -, duas sem) e 3 atividades no cache (uma
     corrida, um pedal, um yoga que NAO pode virar cardio). Usuario B: nada."""
     ensure_grupo_b_tables(raw)
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
     ids: dict[str, int] = {}
     with raw.cursor() as cur:
         cur.execute(
@@ -74,6 +75,9 @@ def seed(raw):
         ids["dono"] = cur.lastrowid
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('outro', 'x', 'regular')")
         ids["outro"] = cur.lastrowid
+        # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+        conceder_grupo(cur, ids["dono"], "regular")
+        conceder_grupo(cur, ids["outro"], "regular")
 
         # Cache do Intervals: corrida, pedal (sem FC) e yoga.
         atividades = (

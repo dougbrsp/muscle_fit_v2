@@ -23,6 +23,8 @@ from app.nutrition_schema import diary_tables_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_diary_fake import FakeDiaryDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 DIA = date(2026, 10, 17)
 ALUNO, OUTRO, ADMIN = 2, 4, 1
 

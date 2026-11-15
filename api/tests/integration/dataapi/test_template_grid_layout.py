@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import workout_plan_templates as wpt
-from app.security import Identity, get_current_identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from tests.support.isolamento_v3 import truncar
 from tests.support.template_versions import versao_v1
 
@@ -29,11 +29,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.dataapi]
 
 
 @pytest.fixture
-def seed(raw):
-    truncar(raw)
+def seed(raw, conceder_grupo):
+    truncar(raw, extras=("user_access_groups",))
     with raw.cursor() as cur:
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_grade', 'x', 'admin')")
         admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
     raw.commit()
     return {"admin": admin_id}
 
@@ -43,7 +44,6 @@ def _client(user_id: int) -> TestClient:
     app.include_router(wpt.router)
     identidade = Identity(user_id=user_id, role="admin", source="session")
     app.dependency_overrides[get_current_identity] = lambda: identidade
-    app.dependency_overrides[require_admin_or_pt] = lambda: identidade
     return TestClient(app)
 
 

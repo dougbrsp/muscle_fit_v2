@@ -27,6 +27,8 @@ from app.domain.nutrition.phases import PhaseKind, ProjectionStatus
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_fake import FakeNutritionDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 SEGUNDA = date(2026, 10, 12)
 QUARTA = date(2026, 10, 14)
 ALUNO = 2

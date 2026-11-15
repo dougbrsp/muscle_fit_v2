@@ -10,6 +10,7 @@ from .db import transaction
 from .generation.template_request import resolve_template_and_slot
 from .models import PlanExerciseEquipmentSubstituteIn, WorkoutPlanGenerateIn, WorkoutPlanIn
 from .muscle_map import render_muscle_map_png
+from .access import require_permission
 from .security import Identity, get_current_identity
 
 router = APIRouter(tags=["workout-plans"], dependencies=[Depends(get_current_identity)])
@@ -20,7 +21,7 @@ def list_plans(
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
     has_advanced_technique: Optional[bool] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.planos", "ver")),
 ):
     return {
         "items": services.list_workout_plans(
@@ -36,7 +37,7 @@ def list_plans(
 def get_plan(
     plan_id: int,
     session_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.planos", "ver")),
 ):
     """Ficha do usuário. Fix M97 (2026-10-26): com `session_id` (Modo Treino),
     a ficha sai como ESSA sessão a executa - numa sessão de deload, cada item
@@ -53,12 +54,18 @@ def get_plan(
 
 
 @router.post("/workout-plans")
-def create_plan(payload: WorkoutPlanIn, identity: Identity = Depends(get_current_identity)):
+def create_plan(
+    payload: WorkoutPlanIn, identity: Identity = Depends(require_permission("treino.planos", "editar"))
+):
     return services.create_workout_plan(payload.model_dump(), user_id=identity.user_id)
 
 
 @router.put("/workout-plans/{plan_id}")
-def update_plan(plan_id: int, payload: WorkoutPlanIn, identity: Identity = Depends(get_current_identity)):
+def update_plan(
+    plan_id: int,
+    payload: WorkoutPlanIn,
+    identity: Identity = Depends(require_permission("treino.planos", "editar")),
+):
     data = payload.model_dump()
     # exclude_unset nos exercícios: permite a _replace_plan_exercises
     # distinguir campo avançado NÃO enviado (preserva o valor persistido) de
@@ -82,7 +89,9 @@ def update_plan(plan_id: int, payload: WorkoutPlanIn, identity: Identity = Depen
 
 
 @router.post("/workout-plans/{plan_id}/refresh-prescription")
-def refresh_plan_prescription(plan_id: int, identity: Identity = Depends(get_current_identity)):
+def refresh_plan_prescription(
+    plan_id: int, identity: Identity = Depends(require_permission("treino.planos", "editar"))
+):
     """Recalcula e recongela a prescricao da ficha (PLANO_20260912.md 6.3).
 
     Rota da api-core (catch-all): sem Terraform de rota.
@@ -101,7 +110,9 @@ def refresh_plan_prescription(plan_id: int, identity: Identity = Depends(get_cur
 
 
 @router.get("/workout-plans/{plan_id}/exercise-swap-options")
-def list_plan_exercise_swap_options(plan_id: int, identity: Identity = Depends(get_current_identity)):
+def list_plan_exercise_swap_options(
+    plan_id: int, identity: Identity = Depends(require_permission("treino.planos", "ver"))
+):
     """Exercicios elegiveis para a troca em cada linha salva da ficha nao
     finalizada (mesma regra do 422 `muscle_group_locked`; dono:
     `workout_plan_edit_rules`). Rota da api-core (catch-all): sem Terraform."""
@@ -113,7 +124,7 @@ def list_plan_exercise_swap_options(plan_id: int, identity: Identity = Depends(g
 
 @router.get("/workout-plans/{plan_id}/exercises/{exercise_id}/equipment-options")
 def list_plan_exercise_equipment_options(
-    plan_id: int, exercise_id: int, identity: Identity = Depends(get_current_identity)
+    plan_id: int, exercise_id: int, identity: Identity = Depends(require_permission("treino.planos", "ver"))
 ):
     """M8: equipamentos da academia da ficha que servem o exercicio da linha,
     com elegibilidade D13a. Rota da api-core (catch-all): sem Terraform."""
@@ -130,7 +141,7 @@ def substitute_plan_exercise_equipment(
     plan_id: int,
     exercise_id: int,
     payload: PlanExerciseEquipmentSubstituteIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.planos", "editar")),
 ):
     """M8: troca o equipamento de UMA linha da ficha e recongela a prescricao
     dela pelo mesmo caminho do `refresh-prescription`. 409 = estado da ficha
@@ -150,7 +161,7 @@ def substitute_plan_exercise_equipment(
 
 
 @router.delete("/workout-plans/{plan_id}")
-def delete_plan(plan_id: int, identity: Identity = Depends(get_current_identity)):
+def delete_plan(plan_id: int, identity: Identity = Depends(require_permission("treino.planos", "excluir"))):
     deleted = services.delete_workout_plan(plan_id, user_id=identity.user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Plano de treino não encontrado.")
@@ -158,7 +169,9 @@ def delete_plan(plan_id: int, identity: Identity = Depends(get_current_identity)
 
 
 @router.get("/workout-plans/{plan_id}/cardio")
-def get_plan_slot_cardio(plan_id: int, identity: Identity = Depends(get_current_identity)):
+def get_plan_slot_cardio(
+    plan_id: int, identity: Identity = Depends(require_permission("treino.planos", "ver"))
+):
     """Cardio prescrito no slot do Modelo desta ficha, pronto para exibir
     (M98 C3b): o Modo Treino mostra ao encerrar a força. Etapas, textos, tempo
     total e faixas de bpm vêm prontos (`cardio_display`); sem cardio, `items`
@@ -172,7 +185,9 @@ def get_plan_slot_cardio(plan_id: int, identity: Identity = Depends(get_current_
 
 
 @router.get("/workout-plans/{plan_id}/muscle-map.png")
-def get_plan_muscle_map(plan_id: int, identity: Identity = Depends(get_current_identity)):
+def get_plan_muscle_map(
+    plan_id: int, identity: Identity = Depends(require_permission("treino.planos", "ver"))
+):
     """PNG (frente + costas) com os grupos musculares da ficha destacados —
     mapa corporal v1 (`app/body_map_render.py`, a mesma arte e regiões do
     rodapé do card ilustrado e da web), exibido na página da ficha e pensado
@@ -187,7 +202,9 @@ def get_plan_muscle_map(plan_id: int, identity: Identity = Depends(get_current_i
 
 
 @router.post("/workout-plans/generate", status_code=202)
-def generate_plan(payload: WorkoutPlanGenerateIn, identity: Identity = Depends(get_current_identity)):
+def generate_plan(
+    payload: WorkoutPlanGenerateIn, identity: Identity = Depends(require_permission("ia.geracao_plano", "editar"))
+):
     """Assincrono desde a Fase 3 da migracao AWS (202 + job_id + polling via
     GET /jobs/{job_id}) - a geracao em si (`plan_generation_core.dispatch_plan_generation`,
     mesma logica exata do endpoint sincrono anterior) roda na Lambda

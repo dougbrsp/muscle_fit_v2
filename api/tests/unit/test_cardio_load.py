@@ -16,6 +16,8 @@ from app import effort_estimates, effort_metrics, intervals_store
 from app.domain import cardio_load
 from app.security import Identity, get_current_identity
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 FIXTURE = Path(__file__).parent / "fixtures" / "cardio_load" / "tres_dias_sinteticos.json"
 DIA = date(2026, 8, 10)
 MINUTO = cardio_load.SECONDS_PER_MINUTE

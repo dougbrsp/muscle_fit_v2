@@ -17,6 +17,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { modeloTreinoItemControls, modelosTreinoControls } from '@/lib/screen-permissions';
+import { notifications } from '@mantine/notifications';
 import {
   VOLUME_MODE_OPTIONS,
   type ApiListResponse,
@@ -38,7 +40,16 @@ async function fetchCurrentUser(): Promise<SessionUser> {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+  if (!(error instanceof ApiError)) return fallback;
+  // `detail` objeto ({error, message, ...}): ApiError.message fica no texto padrão de HTTP.
+  const d = error.detail as { message?: unknown } | null | undefined;
+  return typeof d?.message === 'string' && d.message ? d.message : error.message;
+}
+
+function assignedCount(error: unknown): number | null {
+  const n = (error instanceof ApiError ? (error.detail as { assigned_count?: unknown } | null | undefined) : null)
+    ?.assigned_count;
+  return typeof n === 'number' ? n : null;
 }
 
 function volumeModeLabel(mode: string): string {
@@ -48,8 +59,8 @@ function volumeModeLabel(mode: string): string {
 /**
  * Listagem de "Modelos de treino" (Fase 4, Etapa 15). Mesmo padrão
  * estrutural de TrainingTypesListClient.tsx (Etapa 14): router inteiro é
- * admin/PT-only no backend (403 para os demais), então a query só dispara
- * depois de `/auth/me` resolver o papel do usuário.
+ * restrito por permissão no backend (modelos.treino, escopo alunos; 403 para os
+ * demais), então a query só dispara depois de `/auth/me` resolver as permissões.
  *
  * Gap documentado (fora de escopo desta etapa): `GET
  * /workout-plan-templates/assigned-to-me` (me_router, aberto a qualquer
@@ -70,12 +81,15 @@ export function WorkoutPlanTemplatesListClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const canManage = currentUserQuery.data?.role === 'admin' || currentUserQuery.data?.role === 'personal_trainer';
+  // Permissões efetivas (RBAC), espelho do require_permission de /workout-plan-templates (escopo alunos);
+  // o que cada linha permite (dono x público alheio) vem de `modeloTreinoItemControls`.
+  const ctrl = modelosTreinoControls(currentUserQuery.data?.permissions);
+  const canManage = ctrl.canAccess;
 
   const templatesQuery = useQuery({
     queryKey: ['workout-plan-templates'],
     queryFn: () => apiFetch<ApiListResponse<WorkoutPlanTemplateListItem>>('/workout-plan-templates'),
-    enabled: currentUserQuery.isSuccess,
+    enabled: currentUserQuery.isSuccess && canManage,
     retry: false,
   });
 
@@ -96,7 +110,14 @@ export function WorkoutPlanTemplatesListClient() {
     mutationFn: (id: number) =>
       apiFetch<WorkoutPlanTemplateDetail>(`/workout-plan-templates/${id}/duplicate`, { method: 'POST' }),
     onSuccess: async () => {
+      notifications.show({
+        color: 'green',
+        message: 'Cópia criada como privada e sua. Abra-a para editar ou torná-la pública.',
+      });
       await qc.invalidateQueries({ queryKey: ['workout-plan-templates'] });
+    },
+    onError: (error) => {
+      notifications.show({ color: 'red', message: errorMessage(error, 'Não foi possível duplicar o modelo.') });
     },
   });
 
@@ -113,15 +134,15 @@ export function WorkoutPlanTemplatesListClient() {
   });
 
   function confirmDelete(template: WorkoutPlanTemplateListItem) {
+    deleteMutation.reset();
     setDeleteTarget(template);
     openDelete();
   }
 
-  // Modal do Motor de Periodização (PR-17). O botão que o abre só existe para
-  // admin/PT — o mesmo `require_admin_or_pt` que protege
-  // `POST /workout-plan-templates/periodization-drafts` no backend (D17); a
-  // tela inteira já é admin/PT-only, então o gate aqui é de UI, não de
-  // segurança.
+  // Modal do Motor de Periodização (PR-17). O botão que o abre segue
+  // `ctrl.canGenerateDraft` (ia.modelo_periodizacao, escopo todos), o mesmo gate de
+  // `POST /workout-plan-templates/periodization-drafts` no backend; o gate aqui é de UI,
+  // não de segurança.
   const [periodizationOpened, { open: openPeriodization, close: closePeriodization }] = useDisclosure(false);
 
   const [assignTarget, setAssignTarget] = useState<WorkoutPlanTemplateListItem | null>(null);
@@ -139,7 +160,7 @@ export function WorkoutPlanTemplatesListClient() {
           Modelos de treino
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />} radius="md">
-          Acesso restrito a administradores e personal trainers.
+          Acesso restrito a quem tem permissão para gerir modelos de treino.
         </Alert>
       </Stack>
     );
@@ -152,7 +173,7 @@ export function WorkoutPlanTemplatesListClient() {
           Modelos de treino
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />} radius="md">
-          {errorMessage(templatesQuery.error, 'Acesso restrito a administradores e personal trainers.')}
+          {errorMessage(templatesQuery.error, 'Acesso restrito a quem tem permissão para gerir modelos de treino.')}
         </Alert>
       </Stack>
     );
@@ -174,7 +195,7 @@ export function WorkoutPlanTemplatesListClient() {
           </Text>
         </div>
         <Group gap="sm" wrap="wrap">
-          {canManage && (
+          {ctrl.canGenerateDraft && (
             <Button
               variant="light"
               color="brand"
@@ -184,13 +205,15 @@ export function WorkoutPlanTemplatesListClient() {
               Gerar modelo automaticamente
             </Button>
           )}
-          <Button
-            color="brand"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => router.push('/modelos-treino/novo')}
-          >
-            Novo modelo
-          </Button>
+          {ctrl.canEdit && (
+            <Button
+              color="brand"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => router.push('/modelos-treino/novo')}
+            >
+              Novo modelo
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -214,7 +237,13 @@ export function WorkoutPlanTemplatesListClient() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {items.map((template) => (
+              {items.map((template) => {
+                const item = modeloTreinoItemControls(
+                  currentUserQuery.data?.permissions,
+                  currentUserQuery.data?.id,
+                  template,
+                );
+                return (
                 <Table.Tr key={template.id}>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
@@ -232,6 +261,18 @@ export function WorkoutPlanTemplatesListClient() {
                         </Badge>
                       )}
                       <TrainingGoalBadge value={template.training_goal} onlyNonDefault />
+                      <Badge
+                        variant="light"
+                        color={template.visibility === 'privado' ? 'violet' : 'blue'}
+                        size="sm"
+                        title={
+                          template.visibility === 'privado'
+                            ? 'Só o dono e os administradores veem este modelo'
+                            : 'Todos os personal trainers veem este modelo'
+                        }
+                      >
+                        {template.visibility === 'privado' ? 'Privado' : 'Público'}
+                      </Badge>
                       {template.has_draft && (
                         <Badge variant="light" color="yellow" size="sm" title="Há um rascunho não publicado">
                           Rascunho
@@ -241,6 +282,11 @@ export function WorkoutPlanTemplatesListClient() {
                     {template.description && (
                       <Text size="xs" c={BRAND.textMuted}>
                         {template.description}
+                      </Text>
+                    )}
+                    {template.created_by_username && (
+                      <Text size="xs" c={BRAND.textMuted}>
+                        Dono: {item.isOwner ? 'você' : template.created_by_username}
                       </Text>
                     )}
                   </Table.Td>
@@ -259,6 +305,7 @@ export function WorkoutPlanTemplatesListClient() {
                       color="brand"
                       checked={template.is_active}
                       label={template.is_active ? 'Ativo' : 'Inativo'}
+                      disabled={!item.canWrite}
                       onChange={(event) =>
                         toggleStatusMutation.mutate({ id: template.id, isActive: event.currentTarget.checked })
                       }
@@ -272,49 +319,58 @@ export function WorkoutPlanTemplatesListClient() {
                         color="brand"
                         onClick={() => router.push(`/modelos-treino/${template.id}`)}
                       >
-                        Editar
+                        {item.canWrite ? 'Editar' : 'Ver'}
                       </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconChartBar size={14} />}
-                        onClick={() => router.push(`/diagnostico-volume/${template.id}`)}
-                      >
-                        Diagnóstico de volume
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconUsers size={14} />}
-                        onClick={() => openAssignModal(template)}
-                      >
-                        Atribuir
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconCopy size={14} />}
-                        loading={duplicateMutation.isPending && duplicateMutation.variables === template.id}
-                        onClick={() => duplicateMutation.mutate(template.id)}
-                      >
-                        Duplicar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => confirmDelete(template)}
-                      >
-                        Excluir
-                      </Button>
+                      {ctrl.canView && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconChartBar size={14} />}
+                          onClick={() => router.push(`/diagnostico-volume/${template.id}`)}
+                        >
+                          Diagnóstico de volume
+                        </Button>
+                      )}
+                      {item.canAssign && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconUsers size={14} />}
+                          onClick={() => openAssignModal(template)}
+                        >
+                          Atribuir
+                        </Button>
+                      )}
+                      {item.canDuplicate && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconCopy size={14} />}
+                          loading={duplicateMutation.isPending && duplicateMutation.variables === template.id}
+                          onClick={() => duplicateMutation.mutate(template.id)}
+                        >
+                          Duplicar
+                        </Button>
+                      )}
+                      {item.canDelete && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => confirmDelete(template)}
+                        >
+                          Excluir
+                        </Button>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+                );
+              })}
               {items.length === 0 && (
                 <Table.Tr>
                   <Table.Td colSpan={6}>
@@ -345,6 +401,7 @@ export function WorkoutPlanTemplatesListClient() {
           {deleteMutation.isError && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
               {errorMessage(deleteMutation.error, 'Não foi possível excluir o modelo de treino.')}
+              {assignedCount(deleteMutation.error) != null && ` Alunos atribuídos: ${assignedCount(deleteMutation.error)}.`}
             </Alert>
           )}
           <Group justify="flex-end">

@@ -23,6 +23,9 @@ from app import intervals_integration
 from app.domain import cardio_adherence as ca
 from app.security import Identity, get_current_identity
 
+import pytest
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 SESSAO = {
     "activity_id": 500,
     "local_date": date(2026, 10, 26),

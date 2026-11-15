@@ -31,10 +31,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from . import async_jobs
 from . import nutrition_ai_quota as quota
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import diary, meal_parse
@@ -44,7 +46,7 @@ from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_meal_parse_ai import PROMPT_VERSION
 from .nutrition_schema import require_diary_tables, require_food_tables
 from .request_models import MealParseIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 logger = logging.getLogger("musclefit.nutrition.meal_parse")
 
@@ -80,15 +82,19 @@ def _quota_public(user_id: int) -> Optional[dict[str, Any]]:
 
 
 @router.get("/parse/quota")
-def meal_parse_quota(identity: Identity = Depends(get_current_identity)):
+def meal_parse_quota(identity: Identity = Depends(require_permission("ia.nutricao", "ver"))):
     """Cota de hoje de quem pede (dia do fuso do perfil). 503 antes da 085."""
     with _connect() as conn:
         return quota.usage_today(conn, user_id=int(identity.user_id), feature=FEATURE).to_dict()
 
 
 @router.post("/parse", status_code=202)
-def parse_meal(payload: MealParseIn, identity: Identity = Depends(get_current_identity)):
-    aluno = resolve_target_user(identity, payload.user_id)
+def parse_meal(request: Request, payload: MealParseIn, identity: Identity = Depends(require_permission("ia.nutricao", "editar"))):
+    permissoes = permissions_for_request(request, identity)
+    # O alvo precisa de `ia.nutricao` (a leitura por IA) E de `nutricao.diario` (o diário dele), antes de consultar o
+    # usuário e de reservar cota; a cota segue sendo de quem pede.
+    aluno = resolve_target_user(identity, permissoes, "ia.nutricao", "editar", payload.user_id)
+    resolve_target_user(identity, permissoes, "nutricao.diario", "editar", payload.user_id)
     texto, erros = meal_parse.validate_text(payload.text)
     if payload.meal_slot is not None and diary.normalize_meal_slot(payload.meal_slot) is None:
         erros = (*erros, diary.ERR_INVALID_MEAL_SLOT)

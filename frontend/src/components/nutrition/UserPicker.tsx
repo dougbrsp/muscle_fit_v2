@@ -1,9 +1,10 @@
 'use client';
 
-import { Select } from '@mantine/core';
+import { Select, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { fetchUserLookup, userLookupKey, userLookupLabel } from '@/lib/user-lookup';
+import { fetchMyStudents, fetchUserLookup, MY_STUDENTS_KEY, userLookupKey, userLookupLabel } from '@/lib/user-lookup';
+import type { UserLookupItem } from '@/lib/workout-plan-templates-types';
 
 type Option = { value: string; label: string };
 
@@ -12,7 +13,17 @@ type Props = {
   onChange: (userId: number | null) => void;
   /** Usuário já escolhido na abertura (o rótulo aparece sem esperar a busca). */
   initial?: { id: number; label: string };
+  /** `all` (padrão): busca em todos os usuários; `students`: só os alunos vinculados ao usuário logado. */
+  source?: 'all' | 'students';
 };
+
+/** Busca por nome/usuário, sem acento e sem caixa, sobre a lista dos vinculados. */
+export function filterStudents(students: ReadonlyArray<UserLookupItem>, term: string): UserLookupItem[] {
+  const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const needle = norm(term.trim());
+  if (!needle) return [...students];
+  return students.filter((s) => norm(`${s.full_name ?? ''} ${s.username}`).includes(needle));
+}
 
 /**
  * Seletor de aluno do plano nutricional (admin/PT). Mesma busca e mesmo rótulo
@@ -24,19 +35,32 @@ type Props = {
  * vai para a busca (senão a lista se esvaziaria) e a opção escolhida fica
  * guardada para continuar visível.
  */
-export function UserPicker({ value, onChange, initial }: Props) {
+export function UserPicker({ value, onChange, initial, source = 'all' }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Option | null>(initial ? { value: String(initial.id), label: initial.label } : null);
   const termo = selected && search === selected.label ? '' : search;
 
+  const studentsMode = source === 'students';
+
   const usersQuery = useQuery({
     queryKey: userLookupKey(termo),
     queryFn: () => fetchUserLookup(termo),
+    enabled: !studentsMode,
   });
-  const options: Option[] = (usersQuery.data?.items || []).map((user) => ({
+  // Modo alunos: a API devolve a lista inteira dos vinculados; a busca filtra no cliente.
+  const studentsQuery = useQuery({
+    queryKey: MY_STUDENTS_KEY,
+    queryFn: fetchMyStudents,
+    enabled: studentsMode,
+    retry: false,
+  });
+  const activeQuery = studentsMode ? studentsQuery : usersQuery;
+  const items = studentsMode ? filterStudents(studentsQuery.data ?? [], termo) : usersQuery.data?.items || [];
+  const options: Option[] = items.map((user) => ({
     value: String(user.id),
     label: userLookupLabel(user),
   }));
+  const noStudents = studentsMode && studentsQuery.isSuccess && (studentsQuery.data ?? []).length === 0;
   // A opção escolhida é SEMPRE a guardada (rótulo congelado no momento da escolha), nunca a da
   // busca: o Select copia o rótulo da opção selecionada para a caixa de texto, e se esse rótulo
   // mudasse com o resultado da busca (ex.: "Doug" inicial x "Doug (doug)" do lookup) a caixa e a
@@ -49,6 +73,7 @@ export function UserPicker({ value, onChange, initial }: Props) {
   }
 
   return (
+    <Stack gap={6}>
     <Select
       label="Aluno"
       placeholder="Buscar por nome ou usuário..."
@@ -62,8 +87,19 @@ export function UserPicker({ value, onChange, initial }: Props) {
       searchValue={search}
       onSearchChange={setSearch}
       clearable
-      nothingFoundMessage={usersQuery.isLoading ? 'Carregando...' : 'Nenhum usuário encontrado.'}
+      nothingFoundMessage={activeQuery.isLoading ? 'Carregando...' : 'Nenhum usuário encontrado.'}
       maw={420}
     />
+    {noStudents && (
+      <Text size="sm" c="dimmed" role="status">
+        Você não tem alunos vinculados. Peça a um administrador para criar o vínculo em Grupos e acessos.
+      </Text>
+    )}
+    {studentsMode && studentsQuery.isError && (
+      <Text size="sm" c="red" role="alert">
+        Não foi possível carregar seus alunos.
+      </Text>
+    )}
+    </Stack>
   );
 }

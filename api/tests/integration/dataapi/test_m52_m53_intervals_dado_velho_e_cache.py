@@ -69,12 +69,13 @@ SUPINO = 2101
 
 
 @pytest.fixture
-def seed(raw):
+def seed(raw, conceder_grupo):
     """Dois usuarios. "dono" treinou supino ontem (a recuperacao tem numero);
     "outro" tambem, para o IDOR. Wellness e semeado por cada teste - e o
     que cada cenario varia."""
     ensure_grupo_b_tables(raw)
-    truncar(raw)
+    # `user_access_groups`: ids de usuario sao reciclados; a rota exige o grupo.
+    truncar(raw, extras=("user_access_groups",))
     ids: dict[str, int] = {}
     with raw.cursor() as cur:
         for nome, papel in (("dono", "admin"), ("outro", "regular")):
@@ -84,6 +85,8 @@ def seed(raw):
                 (nome, papel, f"i-{nome}"),
             )
             ids[nome] = cur.lastrowid
+            # RBAC (ADR 0011): a identidade de sessao (role regular) so passa pelo grupo.
+            conceder_grupo(cur, ids[nome], "regular")
 
         cur.execute("INSERT INTO muscle_groups (name) VALUES ('Peito')")
         peito = cur.lastrowid

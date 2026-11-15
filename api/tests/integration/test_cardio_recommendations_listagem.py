@@ -16,6 +16,7 @@ import os
 import uuid
 
 import pytest
+from fastapi import Request
 
 from app import cardio_recommendations as cr
 from app.security import Identity
@@ -110,7 +111,9 @@ def test_listagem_devolve_snapshot_null_e_detalhe_devolve_completo(seed):
             "context_snapshot", "recommendation_markdown", "created_at",
         }
 
-    detail = cr.get_cardio_recommendation(ids[0], identity=Identity(user_id=uid, role="regular", source="session"))
+    detail = cr.get_cardio_recommendation(
+        ids[0], request=Request({"type": "http"}), identity=Identity(user_id=uid, role="regular", source="session")
+    )
     assert _as_json(detail["context_snapshot"]) == {"blob": "x" * 5000}
 
 

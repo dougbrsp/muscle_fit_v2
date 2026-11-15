@@ -55,6 +55,7 @@ import {
 } from '@/lib/prescription-defaults';
 import { RestTimer } from './RestTimer';
 import { useWeightUnit } from '@/lib/use-weight-unit';
+import { useIaControls } from '@/lib/screen-permissions';
 import { ExerciseSummaryCard, SetEvaluationCard, SetLoggerCard, type SetLoggerValues } from './SetLoggerCard';
 
 type Phase = 'pick-group' | 'pick-equipment' | 'pick-exercise' | 'logging' | 'exercise-done';
@@ -136,6 +137,7 @@ export function FreeformScreen({
   const [suggested, setSuggested] = useState<SuggestedProgressionResponse | null>(null);
   const [evaluation, setEvaluation] = useState<AiState<SetEvaluationResult>>(IDLE_AI);
   const [exerciseSummary, setExerciseSummary] = useState<AiState<ExerciseSummaryResult>>(IDLE_AI);
+  const canExerciseSummary = useIaControls().canAnaliseTreinos;
 
   // Passo 1 — grupos musculares do catálogo canônico.
   const groupsQuery = useQuery({
@@ -357,6 +359,7 @@ export function FreeformScreen({
   // `perSetAiEnabled`), disparado ao encerrar o exercício, que é o ponto
   // natural de conclusão aqui (não existe "próximo item da ficha").
   function runExerciseSummary(exerciseId: number) {
+    if (!canExerciseSummary) return; // POST /exercises/{id}/summarize exige ia.analise_treinos/editar
     setExerciseSummary({ loading: true, error: false, result: null });
     fetchWorkoutAiResult<ExerciseSummaryResult>(`/exercises/${exerciseId}/summarize`, { method: 'POST' })
       .then((result) => setExerciseSummary({ loading: false, error: false, result }))
@@ -682,11 +685,13 @@ export function FreeformScreen({
         <Text c={BRAND.textMuted} ta="center">
           {selectedExercise?.exercise_name} — {loggedSets.length} série(s) registrada(s).
         </Text>
-        <ExerciseSummaryCard
-          loading={exerciseSummary.loading}
-          error={exerciseSummary.error}
-          result={exerciseSummary.result}
-        />
+        {canExerciseSummary && (
+          <ExerciseSummaryCard
+            loading={exerciseSummary.loading}
+            error={exerciseSummary.error}
+            result={exerciseSummary.result}
+          />
+        )}
         <Button size="lg" radius="xl" h={56} fullWidth onClick={startNewExercise}>
           Adicionar novo exercício
         </Button>

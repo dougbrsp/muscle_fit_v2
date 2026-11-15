@@ -31,7 +31,8 @@ def require(condition, message):
 
 
 def git(*args, cwd=ROOT):
-    return subprocess.check_output(["git", *args], cwd=cwd, timeout=25).decode("utf-8")
+    return subprocess.check_output(["git", *args], cwd=cwd, timeout=25,
+                                   env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"}).decode("utf-8")
 
 
 def lines_z(value):
@@ -77,7 +78,8 @@ def save_review_diff(base):
     output = git("diff", *opts, base, "--")
     for name in sorted(lines_z(git("ls-files", "--others", "--exclude-standard", "-z"))):
         result = subprocess.run(["git", "diff", "--no-index", *opts, "--", "/dev/null", name],
-                                cwd=ROOT, capture_output=True, timeout=25)
+                                cwd=ROOT, capture_output=True, timeout=25,
+                                env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"})
         require(result.returncode == 1, f"Não foi possível gerar o diff de {name}.")
         output += result.stdout.decode("utf-8")
     (STATE / "review.diff").write_text(output, encoding="utf-8")
@@ -90,7 +92,7 @@ def task_path(value):
     return (path.parts and path.parts[0].lower() != ".git" and
             not value.lower().startswith(".claude/local-state/") and
             path.as_posix() == value and not path.is_absolute() and
-            ".." not in path.parts and not re.search(r'[\\:*?\[\]<>|"]', value))
+            ".." not in path.parts and not re.search(r'[\\:*?<>|"]', value))
 
 
 def nonempty(value):
@@ -271,7 +273,10 @@ def run(args):
 
 def clean_git_env():
     # Remove todas as variáveis GIT_* herdadas (GIT_DIR, GIT_CONFIG_*, GIT_AUTHOR_*...); a identidade vem da config.
-    return {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+    # Caminhos de tarefa são literais (colchetes de rotas dinâmicas não são curinga de pathspec).
+    env = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+    env["GIT_LITERAL_PATHSPECS"] = "1"
+    return env
 
 
 # Config fixa: sem hooks, sem assinatura, sem fsmonitor (que executaria comando do repositório).

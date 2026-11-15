@@ -25,6 +25,8 @@ from app.intelligence.dashboard import exposure_service as svc
 from app.intelligence.dashboard.contracts import WindowInfo, WindowKind
 from app.intelligence.dashboard.metrics_registry import ExerciseProgressionStatus
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 EXERCICIO = 1001
 USUARIO = 7
 SQUAT_RACK = 11

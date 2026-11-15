@@ -32,7 +32,8 @@ from .progression_state import (
     TRACKS_TABLE,
     engine_mode,
 )
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 from .training_goal_query import goal_query
 
 router = APIRouter(prefix="/progression", tags=["progression"])
@@ -125,7 +126,7 @@ def list_tracks(
     exercise_id: Optional[int] = Query(default=None, ge=1),
     equipment_id: Optional[int] = Query(default=None, ge=1),
     goal: str = Depends(goal_query),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ) -> dict[str, Any]:
     """Trilhas do usuario corrente NO OBJETIVO `goal` (M97 F1; ausente =
     default), com a fase do grupo de cada uma (a do mesmo objetivo)."""
@@ -153,7 +154,7 @@ def list_tracks(
 def list_track_decisions(
     track_id: int,
     limit: int = Query(default=50, ge=1, le=MAX_DECISIONS),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ) -> dict[str, Any]:
     """Decisoes gravadas para a trilha e para o grupo dela, mais recentes
     primeiro. Trilha de outro usuario -> 404."""

@@ -30,6 +30,8 @@ from app.db import DataApiError
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import LoopingExecuteMany
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 3)
 
 

@@ -33,7 +33,8 @@ from .intelligence.report.markdown_report_service import (
     default_custom_today_window,
     report_filename,
 )
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -90,7 +91,7 @@ def download_markdown_report(
     window: ReportWindow = Query(default="90d"),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("relatorios", "ver")),
 ) -> Response:
     """Relatorio do periodo em Markdown, como anexo
     `relatorio-musclefit-<de>_<ate>.md`.

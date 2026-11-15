@@ -28,6 +28,8 @@ from tests.unit.test_nutrition_modo_adaptativo_servico import (  # noqa: F401 - 
     db,
 )
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 
 @pytest.fixture
 def banco(monkeypatch):

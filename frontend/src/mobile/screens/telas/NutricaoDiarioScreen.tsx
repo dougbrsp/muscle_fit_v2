@@ -18,6 +18,7 @@ import { TrainingKcalRow } from '@/components/nutrition/TrainingKcalRow';
 import { WeekStrip } from '@/components/nutrition/WeekStrip';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { useIaControls } from '@/lib/screen-permissions';
 import { formatWithUnit } from '@/lib/nutrition-format';
 import { MEAL_SLOT_OPTIONS, ITEM_NUTRIENT_FIELDS, nutritionLabel } from '@/lib/nutrition-constants';
 import { mealHeadline, mealMacrosLine } from '@/lib/nutrition-meal-list';
@@ -42,6 +43,7 @@ function NutricaoDiarioContent() {
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const ia = useIaControls();
   const [lendo, setLendo] = useState(false);
   const [lancando, setLancando] = useState(false);
   const [modoLeitura, setModoLeitura] = useState<'text' | 'photo'>('text');
@@ -200,8 +202,8 @@ function NutricaoDiarioContent() {
 
               <ListGroup title="Registrar de outro jeito">
                 <ListRow icon={IconBolt} title="Lançamento rápido" subtitle="Nome e macros, sem salvar alimento" onClick={() => setLancando(true)} />
-                <ListRow icon={IconCamera} title="Foto do prato" onClick={() => abrirLeitura('photo')} />
-                <ListRow icon={IconSparkles} title="Descrever com IA" onClick={() => abrirLeitura('text')} />
+                {ia.canNutricao ? <ListRow icon={IconCamera} title="Foto do prato" onClick={() => abrirLeitura('photo')} /> : null}
+                {ia.canNutricao ? <ListRow icon={IconSparkles} title="Descrever com IA" onClick={() => abrirLeitura('text')} /> : null}
               </ListGroup>
             </>
           ) : null}
@@ -209,7 +211,7 @@ function NutricaoDiarioContent() {
         </Stack>
       ) : null}
 
-      {date !== null ? (
+      {date !== null && ia.canNutricao ? (
         <MealParseModal
           opened={lendo}
           mode={modoLeitura}

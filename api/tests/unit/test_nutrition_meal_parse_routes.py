@@ -18,6 +18,8 @@ from app.nutrition_ai_quota import quota_exceeded_error
 from app.nutrition_meal_parse_ai import PROMPT_VERSION
 from app.security import Identity, get_current_identity
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ALUNO, OUTRO = 2, 4
 
 

@@ -233,6 +233,7 @@ def test_leitor_preserva_o_id_da_serie():
 # --- Contrato do endpoint ------------------------------------------------------
 
 
+@pytest.mark.usefixtures("permissoes_por_papel")
 def test_contrato_last_session_sets_traz_fadiga_atual_e_por_serie(monkeypatch):
     from app import main
     from app.security import Identity, get_current_identity

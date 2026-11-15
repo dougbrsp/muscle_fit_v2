@@ -49,6 +49,7 @@ import {
 import { textoTecnicaAplicada } from '@/lib/dashboard-technique-indicator';
 import type { PlanItem, WorkoutSession } from '@/lib/dashboard-workouts-types';
 import { exerciseProgressHref } from '@/lib/exercise-progress';
+import { useIaControls } from '@/lib/screen-permissions';
 import { BRAND } from '@/theme';
 import { AnaliseIaBloco } from './AnaliseIaBloco';
 import { DistribuicaoRpeBloco } from './DistribuicaoRpeBloco';
@@ -471,6 +472,7 @@ function DetalheDaSessao({ activityId }: { activityId: number }) {
 // ---------------------------------------------------------------------------
 
 export function DashboardTreinosClient() {
+  const ia = useIaControls();
   const { filters, setFilters, windowQuery, rangeError } = useDashboardFilters();
   const [offset, setOffset] = useState(0);
   const [sessaoAberta, setSessaoAberta] = useState<number | null>(null);
@@ -515,7 +517,7 @@ export function DashboardTreinosClient() {
         <DistribuicaoRpeBloco days={days} />
       </SimpleGrid>
 
-      <AnaliseIaBloco days={days} />
+      {ia.canAnaliseTreinos && <AnaliseIaBloco days={days} />}
 
       <Title order={3} c={BRAND.textPrimary}>
         Sessões

@@ -23,6 +23,8 @@ from tests.unit.test_nutrition_energy_detail import (  # noqa: F401  (db é fixt
     _plano_adaptativo_publicado, _plano_legado_publicado, _primeiro_dia, db,
 )
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 INICIO = date(2026, 9, 1)
 
 

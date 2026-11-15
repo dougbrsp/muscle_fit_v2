@@ -1,10 +1,9 @@
 // Tipos para a tela "Mapeamentos" (Fase 4, Etapa 16 da migração).
 // Endpoints confirmados lendo diretamente `C:\muscle_fit\api\app\exercise_mapping_canonical.py`
 // (router `/mapping-canonical`, prefixo aplicado no arquivo). Leitura exige
-// apenas usuário autenticado (`Depends(get_current_identity)` no router);
-// `POST /reclassify` e `POST /associate` exigem `Depends(require_admin)`
-// (role === "admin" — personal_trainer NÃO passa, diferente do padrão
-// admin_or_pt usado em outras telas).
+// a permissão `exercicios.catalogo`/ver (`require_permission`);
+// `POST /associate` exige `admin.catalogos`/editar
+// (permissão efetiva do grupo, não o papel do usuário).
 //
 // Não confundir com `GET /exercise-mapping-catalog/health` (router
 // `exercise_mapping_catalog.py`, já consumido por

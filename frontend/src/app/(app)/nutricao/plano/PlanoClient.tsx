@@ -16,6 +16,7 @@ import { UserPicker } from '@/components/nutrition/UserPicker';
 import { planoInicial } from '@/lib/nutrition-plan-user';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { planoNutricionalControls } from '@/lib/screen-permissions';
 import {
   archiveNutritionPlan,
   deleteNutritionPlan,
@@ -45,7 +46,15 @@ type Editing = { mode: 'new' } | { mode: 'edit'; plan: NutritionPlan } | null;
  * Cria/edita o rascunho, vê o preview e publica. Admin/PT escolhem o usuário; o usuário comum
  * opera o próprio plano (`fixedUserId`, D2). O acesso é decidido pela API.
  */
-function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initialUser?: { id: number; label: string } }) {
+function PlanManager({
+  fixedUserId,
+  initialUser,
+  studentsOnly = false,
+}: {
+  fixedUserId?: number;
+  initialUser?: { id: number; label: string };
+  studentsOnly?: boolean;
+}) {
   const qc = useQueryClient();
   const PrimaryAction = usePresentationSlot('primaryAction');
   const [userId, setUserId] = useState<number | null>(fixedUserId ?? initialUser?.id ?? null);
@@ -108,7 +117,7 @@ function PlanManager({ fixedUserId, initialUser }: { fixedUserId?: number; initi
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" wrap="wrap">
-        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} /> : <span />}
+        {fixedUserId === undefined ? <UserPicker value={userId} onChange={chooseUser} initial={initialUser} source={studentsOnly ? 'students' : 'all'} /> : <span />}
         {userId !== null &&
           (PrimaryAction ? (
             editing !== null ? null : (
@@ -251,8 +260,8 @@ export function PlanoClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const role = currentUserQuery.data?.role;
-  const canManage = role === 'admin' || role === 'personal_trainer';
+  // nutricao.plano/editar com escopo alunos ou todos (RBAC), não role; só alunos = lista dos vinculados.
+  const { canManageOthers: canManage, studentsOnly } = planoNutricionalControls(currentUserQuery.data?.permissions);
 
   return (
     <Stack gap="xl">
@@ -282,7 +291,7 @@ export function PlanoClient() {
       {currentUserQuery.isLoading && <Text c={BRAND.textMuted}>Carregando...</Text>}
       {currentUserQuery.isSuccess &&
         (canManage ? (
-          <PlanManager initialUser={planoInicial(currentUserQuery.data)} />
+          <PlanManager initialUser={planoInicial(currentUserQuery.data)} studentsOnly={studentsOnly} />
         ) : (
           <>
             <MyPlanView />

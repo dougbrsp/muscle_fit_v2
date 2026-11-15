@@ -27,6 +27,8 @@ from app.nutrition_schema import diary_tables_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_diary_fake import FakeDiaryDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 17)  # sábado; semana de 12/10 a 18/10
 ALUNO, OUTRO, ADMIN = 2, 4, 1
 INICIO_DO_PLANO = date(2026, 10, 1)

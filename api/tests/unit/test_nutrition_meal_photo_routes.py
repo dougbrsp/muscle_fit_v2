@@ -20,6 +20,8 @@ from app.nutrition_ai_quota import quota_exceeded_error
 from app.nutrition_meal_photo_ai import PROMPT_VERSION
 from app.security import Identity, get_current_identity
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 USUARIO = 7
 ALUNO = 12
 URL = "/nutrition/meals/photo"

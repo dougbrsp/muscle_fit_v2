@@ -30,6 +30,7 @@ from tests.support import progression_fixtures as fx
 from tests.support.fake_db import NullContext, fake_transaction
 
 NOW = datetime(2026, 9, 10, 18, 0)
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 USER_ID = 42
 PASSO = Decimal("2.5")
 

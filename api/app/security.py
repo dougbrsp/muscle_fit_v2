@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
+from fastapi import Cookie, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from .db import transaction
@@ -417,38 +417,4 @@ def get_current_identity(
     identity = resolve_identity(x_api_token or musclefit_session)
     if identity.must_change_password and not _is_must_change_exempt(request):
         raise MustChangePasswordRequired()
-    return identity
-
-
-def require_admin(identity: Identity = Depends(get_current_identity)) -> Identity:
-    if identity.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a administradores.")
-    return identity
-
-
-# ---------------------------------------------------------------------------
-# Guard aditivo (feature "Modelos de Ficha de Treino Personalizados"):
-# Personal Trainer é um papel amplo, análogo a admin mas escopado à seção de
-# modelos de treino (sem vínculo formal PT<->aluno nesta fase — vê/atribui
-# para qualquer usuário). NÃO modifica require_admin acima, para não afetar
-# nenhum endpoint hoje admin-only puro.
-# ---------------------------------------------------------------------------
-
-
-ADMIN_OR_PT_ROLES = ("admin", "personal_trainer")
-
-
-def is_admin_or_pt(identity: Identity) -> bool:
-    """Mesma regra de `require_admin_or_pt`, para quem só precisa SABER (ex.:
-    a tela da recomendação de cardio mostra "Aplicar no Modelo" só a quem
-    edita o Modelo, M98 C3b)."""
-    return identity.role in ADMIN_OR_PT_ROLES
-
-
-def require_admin_or_pt(identity: Identity = Depends(get_current_identity)) -> Identity:
-    if not is_admin_or_pt(identity):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores e personal trainers.",
-        )
     return identity

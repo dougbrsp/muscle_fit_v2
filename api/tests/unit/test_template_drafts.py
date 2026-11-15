@@ -34,7 +34,10 @@ from fastapi.testclient import TestClient
 from app import migrate as m
 from app import template_drafts as td
 from app import workout_plan_templates as wpt
+from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity, get_current_identity
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "067_workout_plan_template_drafts.py"
@@ -183,7 +186,12 @@ class FakeCursor:
         if self.db.missing_table and D in flat:
             raise Exception(f"(1146, \"Table 'musclefit.{D}' doesn't exist\")")
         self._rows, self.rowcount = [], 0
-        if flat.startswith("SELECT id, name, description, is_active FROM workout_plan_templates"):
+        if flat.startswith("SELECT id, created_by_user_id, visibility FROM workout_plan_templates"):
+            # Lote 6A: guard de dono (`authorize_template`); o PT (id 7) e o dono.
+            self._rows = (
+                [{"id": params[0], "created_by_user_id": 7, "visibility": "privado"}] if self.db.live else []
+            )
+        elif flat.startswith("SELECT id, name, description, is_active FROM workout_plan_templates"):
             self._rows = [{"id": params[0], "name": "M", "description": None, "is_active": 1}] if self.db.live else []
         elif flat.startswith(f"INSERT INTO {D}"):
             self.db.draft = {"template_id": params[0], "payload": params[1], "updated_by_user_id": params[2]}
@@ -298,7 +306,11 @@ def test_usuario_regular_recebe_403(monkeypatch, metodo):
     db = FakeDB()
     api = _client(monkeypatch, db, role="regular")
     kwargs = {"json": _incompleto()} if metodo == "put" else {}
-    assert getattr(api, metodo)("/workout-plan-templates/5/draft", **kwargs).status_code == 403
+    # O grupo `usuario` tem `modelos.treino`/`ver` com escopo `proprios`: o
+    # escopo minimo `todos` da rota de gestao nega tambem o GET.
+    resposta = getattr(api, metodo)("/workout-plan-templates/5/draft", **kwargs)
+    assert resposta.status_code == 403
+    assert resposta.json()["detail"] == FORBIDDEN_DETAIL
     assert db.sql == []
 
 

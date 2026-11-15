@@ -26,6 +26,8 @@ from app.nutrition_schema import favorites_table_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_foods_fake import AGORA, FakeConn, FakeCursor, FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ALUNO, OUTRO, ADMIN = 2, 3, 1
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from .intelligence import CardioAgentContextService, DashboardIntelligenceLayer
+from .access import require_permission
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/analytics", tags=["analytics", "dashboard-intelligence"], dependencies=[Depends(get_current_identity)])
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics", "dashboard-intelligen
 @router.get("/training-evolution")
 def training_evolution(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     layer = DashboardIntelligenceLayer()
     return layer.get_training_evolution(days=days, user_id=identity.user_id)
@@ -20,7 +21,7 @@ def training_evolution(
 @router.get("/cardio-agent-context")
 def cardio_agent_context(
     days: int = Query(default=14, ge=1, le=90),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     # Multiusuario Parte 4: Identity agora disponivel - propaga user_id para
     # build_context() (fecha a ressalva documentada na Parte 2).

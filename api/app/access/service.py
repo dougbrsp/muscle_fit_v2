@@ -35,9 +35,33 @@ _GRANTS_SQL = (
     "LEFT JOIN access_group_grants gg ON gg.group_id = g.id "
     "WHERE m.user_id = %s"
 )
+# Vinculo vale so se: ativo, aluno ativo e treinador AINDA membro de `personal_trainer`
+# (tirado do grupo, o vinculo deixa de dar acesso sem ser encerrado). Uma consulta.
+# Treinador ainda no grupo `personal_trainer` (parte da regra do vinculo
+# ativo). Compartilhado por `has_active_link` e pela busca de alunos do
+# `users-lookup` (lote 6A), para as duas nao divergirem.
+ACTIVE_LINK_TRAINER_IN_GROUP_SQL = (
+    "EXISTS (SELECT 1 FROM user_access_groups uag "
+    "JOIN access_groups g ON g.id = uag.group_id "
+    f"WHERE uag.user_id = ts.trainer_user_id AND g.group_key = '{catalog.GROUP_PERSONAL_TRAINER}')"
+)
+
 _ACTIVE_LINK_SQL = (
-    "SELECT 1 AS ok FROM trainer_students "
-    "WHERE trainer_user_id = %s AND student_user_id = %s AND status = 'ativo' LIMIT 1"
+    "SELECT 1 AS ok FROM trainer_students ts "
+    "JOIN users s ON s.id = ts.student_user_id "
+    "WHERE ts.trainer_user_id = %s AND ts.student_user_id = %s AND ts.status = 'ativo' "
+    "AND s.is_active = 1 "
+    f"AND {ACTIVE_LINK_TRAINER_IN_GROUP_SQL} "
+    "LIMIT 1"
+)
+
+# Alunos com vinculo ativo do treinador (mesma regra de `has_active_link`),
+# com as colunas da busca de usuarios. Parametro: trainer_user_id.
+ACTIVE_STUDENTS_LOOKUP_SQL = (
+    "SELECT s.id, s.username, s.full_name FROM trainer_students ts "
+    "JOIN users s ON s.id = ts.student_user_id "
+    "WHERE ts.trainer_user_id = %s AND ts.status = 'ativo' AND s.is_active = 1 "
+    f"AND {ACTIVE_LINK_TRAINER_IN_GROUP_SQL}"
 )
 
 
@@ -154,6 +178,18 @@ def require(permissoes: EffectivePermissions, resource: str, action: str) -> Non
         raise forbidden()
 
 
+def is_group_member(user_id: int, group_key: str) -> bool:
+    """O usuario e membro do grupo `group_key` (uma consulta)."""
+    rows = _fetch_rows(
+        "SELECT 1 AS ok FROM user_access_groups uag "
+        "JOIN access_groups g ON g.id = uag.group_id "
+        "WHERE uag.user_id = %s AND g.group_key = %s LIMIT 1",
+        (int(user_id), str(group_key)),
+        "group_member",
+    )
+    return bool(rows)
+
+
 def has_active_link(trainer_user_id: int, student_user_id: int) -> bool:
     rows = _fetch_rows(
         _ACTIVE_LINK_SQL,
@@ -161,6 +197,19 @@ def has_active_link(trainer_user_id: int, student_user_id: int) -> bool:
         "trainer_link",
     )
     return bool(rows)
+
+
+def active_student_ids(trainer_user_id: int, candidate_ids: list[int]) -> set[int]:
+    """Dos `candidate_ids`, os que tem vinculo ativo com o treinador, com a
+    MESMA regra de `has_active_link` (aluno ativo, treinador ainda em
+    `personal_trainer`). Uma consulta por candidato, so com candidatos (lista
+    vazia nao consulta). Serve para filtrar listas curtas (atribuicoes de um
+    Modelo); para um alvo so, use `has_active_link`."""
+    return {
+        int(student_id)
+        for student_id in dict.fromkeys(int(c) for c in candidate_ids)
+        if has_active_link(trainer_user_id, student_id)
+    }
 
 
 INVALID_TARGET_DETAIL = {
@@ -211,23 +260,40 @@ def authorize_target(
     alvo e um usuario informado pelo chamador). `permissoes` evita nova consulta
     quando o chamador ja resolveu (ex.: `require_permission`).
 
-    NAO valida a existencia nem a atividade do usuario alvo: o chamador faz isso
-    (como `nutrition_access.py` faz hoje, com 404). Vinculo ativo com aluno
-    inativo e decisao do lote 5."""
+    NAO valida a existencia do usuario alvo: o chamador faz isso (como
+    `nutrition_access.py` faz hoje, com 404). O vinculo (`has_active_link`) so
+    vale com aluno ativo e treinador ainda no grupo `personal_trainer` (lote 5A)."""
     check_catalog(resource, action)
     target = validate_target_user_id(target_user_id)
     own_id = int(identity.user_id)
     perms = permissoes if permissoes is not None else resolve_permissions(identity)
-    scope = permission_scope(perms, resource, action)
-    if scope is None:
+    alvo = own_id if target is None else target
+    if not can_access_target(identity, perms, resource, action, alvo):
         raise forbidden()
-    if target is None or target == own_id:
-        return own_id
-    if scope == catalog.SCOPE_TODOS:
-        return target
-    if scope == catalog.SCOPE_ALUNOS and has_active_link(own_id, target):
-        return target
-    raise forbidden()
+    return alvo
+
+
+def can_access_target(
+    identity: Identity,
+    permissoes: EffectivePermissions,
+    resource: str,
+    action: str,
+    owner_user_id: int,
+) -> bool:
+    """Decisao de `authorize_target` SEM levantar (ADR 0011): True se o dono
+    `owner_user_id` e o proprio usuario e ha concessao em qualquer escopo; se o
+    escopo e `todos`; ou se o escopo e `alunos` com vinculo ativo
+    (`has_active_link`, 1 consulta so nesse caso). False nos demais, inclusive
+    sem concessao. Nao valida o formato do id (use `validate_target_user_id`
+    antes quando ele vier de fora). Falha de banco no vinculo: 503. Recurso/acao
+    fora do catalogo: `ValueError`."""
+    scope = permission_scope(permissoes, resource, action)
+    if scope is None:
+        return False
+    own_id = int(identity.user_id)
+    if int(owner_user_id) == own_id or scope == catalog.SCOPE_TODOS:
+        return True
+    return scope == catalog.SCOPE_ALUNOS and has_active_link(own_id, int(owner_user_id))
 
 
 def authorize_self_or_all(

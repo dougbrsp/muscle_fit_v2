@@ -44,7 +44,8 @@ from .equipment_recommender import (
     PUBLIC_ASSETS_DOMAIN,
     is_missing_preferences_table_error,
 )
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/me/equipment-exercise-preferences", tags=["equipment-exercise-preferences"])
 training_preferences_router = APIRouter(prefix="/me/training-preferences", tags=["equipment-exercise-preferences"])
@@ -111,7 +112,9 @@ def _read(cur: Any, user_id: int, equipment_exercise_id: int | None = None) -> l
 
 
 @router.get("")
-def list_equipment_exercise_preferences(identity: Identity = Depends(get_current_identity)):
+def list_equipment_exercise_preferences(
+    identity: Identity = Depends(require_permission("treino.preferencias", "ver")),
+):
     try:
         with transaction() as conn:
             with conn.cursor() as cur:
@@ -127,7 +130,7 @@ def list_equipment_exercise_preferences(identity: Identity = Depends(get_current
 def put_equipment_exercise_preference(
     equipment_exercise_id: int,
     payload: EquipmentExercisePreferenceIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.preferencias", "editar")),
 ):
     try:
         with transaction() as conn:
@@ -155,7 +158,8 @@ def put_equipment_exercise_preference(
 
 @router.delete("/{equipment_exercise_id}")
 def delete_equipment_exercise_preference(
-    equipment_exercise_id: int, identity: Identity = Depends(get_current_identity)
+    equipment_exercise_id: int,
+    identity: Identity = Depends(require_permission("treino.preferencias", "excluir")),
 ):
     """Idempotente: apagar o que nao existe devolve `deleted: false`."""
     try:
@@ -243,7 +247,7 @@ def _default_gym_id(cur: Any, user_id: int) -> int | None:
 @training_preferences_router.get("")
 def list_training_preferences(
     gym_id: int | None = Query(default=None, ge=1),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("treino.preferencias", "ver")),
 ):
     """Pares exercicio+equipamento da academia com a nota do usuario corrente.
 

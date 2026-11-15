@@ -19,6 +19,7 @@ from typing import Any, Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .access import require_permission
 from .db import transaction
 from .security import get_current_identity
 from .set_labels import technique_names
@@ -132,6 +133,6 @@ def ensure_valid_codes(codes: Iterable[Optional[str]]) -> None:
         )
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])
 def get_advanced_techniques(include_inactive: bool = Query(default=False)):
     return {"items": list_techniques(include_inactive=include_inactive)}

@@ -1,18 +1,20 @@
 """Quem vê e quem define o plano nutricional de quem (plano de nutrição §5 D1,
 decisão D-L; Lote L2b).
 
-Planos (N2, decisão D2 de 2026-11-02): o usuário cria, edita e publica o PRÓPRIO plano (`plan_actor`);
-admin e personal trainer continuam podendo para qualquer aluno; usuário comum nunca alcança o plano de outro.
+Alvo (RBAC, ADR 0011, lote 2D-1): a decisão é por concessão e escopo do grupo
+(`access.authorize_target` / `access.can_access_target`), não por papel. O próprio
+usuário passa com qualquer concessão; TERCEIRO exige escopo `todos` ou `alunos`
+com vínculo ativo. O grupo de sistema do papel mantém o acesso de hoje (admin e
+PT: qualquer aluno). `resolve_target_user` recebe as permissões já resolvidas da
+requisição (`permissions_for_request`) e o par (recurso, ação) da rota; negado = 403
+`FORBIDDEN_DETAIL`, id inválido = 400 `invalid_target`. `resolve_plan_owner` (rotas por
+id de plano) responde 404 `plan_not_found` a quem não alcança o dono.
 
-Regra de hoje (decisão do usuário, 2026-10-14): o próprio usuário passa;
-TERCEIRO exige admin ou personal trainer (`security.require_admin_or_pt`), e o
-personal trainer vê/define para QUALQUER aluno — sem vínculo formal PT↔aluno,
-como nos Modelos e nas Metas de Ativação. Centralizado aqui para que o vínculo
-formal (L11) troque a regra num lugar só: as rotas de nutrição nunca checam
-papel por conta própria.
-
-Catálogo de alimentos (L3a, D-G): quem vê, usa, edita, promove e cria porção
-de um alimento também é decidido só aqui (`can_*_food`, `portion_owner_for`).
+Catálogo de alimentos (L3a, D-G; RBAC lote 2D-2): quem vê, usa, edita, promove e cria porção
+de um alimento é decidido só aqui (`can_*_food`, `portion_owner_for`). "Administra o catálogo
+público" é a concessão `admin.catalogos` (`administers_public_catalog`: `ver` enxerga os
+privados de todos, `editar` edita o público, promove e cria porção/alimento públicos), não o
+papel; as funções recebem as permissões já resolvidas da requisição.
 Diário (L4): o diário de um aluno segue `resolve_target_user`; alimento e
 porção que entram nele, `can_log_food`/`can_log_portion`.
 
@@ -23,42 +25,38 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 
+from .access import EffectivePermissions, authorize_target, can_access_target, has_permission
 from .domain.nutrition import catalog
-from .security import Identity, get_current_identity, is_admin_or_pt, require_admin_or_pt
+from .security import Identity
 
 _USER_SQL = "SELECT id, username, full_name FROM users WHERE id = %s"
 
 
-def plan_actor(identity: Identity = Depends(get_current_identity)) -> Identity:
-    """Dependência das rotas de plano (N2, D2): qualquer usuário logado cria, edita e publica o
-    PRÓPRIO plano; o plano de outro usuário exige admin ou PT, decidido em `resolve_target_user`
-    (por usuário) e `resolve_plan_owner` (por id de plano)."""
-    return identity
-
-
-def is_staff(identity: Identity) -> bool:
-    """Admin ou personal trainer (a regra de `security.require_admin_or_pt`, sem levantar)."""
-    return is_admin_or_pt(identity)
-
-
-def resolve_plan_owner(identity: Identity, owner_user_id: int) -> int:
-    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: o próprio
-    usuário, admin ou PT passam; qualquer outro recebe 404 `plan_not_found` (igual ao plano que
-    não existe), para o id de um plano alheio não revelar que ele existe."""
-    if int(owner_user_id) == int(identity.user_id) or is_staff(identity):
+def resolve_plan_owner(
+    identity: Identity, permissoes: EffectivePermissions, action: str, owner_user_id: int
+) -> int:
+    """Dono do plano `owner_user_id` visto por quem chama, nas rotas por id de plano: passa quem
+    tem `nutricao.plano`/`action` sobre o dono (o próprio, `todos`, ou `alunos` com vínculo ativo);
+    qualquer outro recebe 404 `plan_not_found` (igual ao plano que não existe), para o id de um
+    plano alheio não revelar que ele existe."""
+    if can_access_target(identity, permissoes, "nutricao.plano", action, int(owner_user_id)):
         return int(owner_user_id)
     raise HTTPException(status_code=404, detail={"error": "plan_not_found", "message": "Plano não encontrado."})
 
 
-def resolve_target_user(identity: Identity, user_id: Optional[int]) -> int:
-    """Aluno-alvo da chamada. Sem `user_id` ou o próprio -> o usuário logado;
-    terceiro -> exige admin/PT (403 senão)."""
-    if user_id is None or int(user_id) == int(identity.user_id):
-        return int(identity.user_id)
-    require_admin_or_pt(identity)
-    return int(user_id)
+def resolve_target_user(
+    identity: Identity,
+    permissoes: EffectivePermissions,
+    resource: str,
+    action: str,
+    user_id: Optional[int],
+) -> int:
+    """Aluno-alvo da chamada, por concessão (`access.authorize_target`): sem `user_id` ou o próprio
+    -> o usuário logado (qualquer escopo); terceiro -> `todos`, ou `alunos` com vínculo ativo.
+    400 `invalid_target` (id inválido, antes de qualquer consulta); 403 `FORBIDDEN_DETAIL` senão."""
+    return authorize_target(identity, resource, action, user_id, permissoes=permissoes)
 
 
 def fetch_target_user(cur: Any, user_id: int) -> dict[str, Any]:
@@ -77,7 +75,7 @@ def fetch_target_user(cur: Any, user_id: int) -> dict[str, Any]:
 # a regra de QUAIS fontes é do motor (`catalog.is_read_only`).
 # ---------------------------------------------------------------------------
 
-ADMIN_ROLE = "admin"
+CATALOG_ADMIN_RESOURCE = "admin.catalogos"
 
 
 def _owner(food: dict[str, Any]) -> Optional[int]:
@@ -85,15 +83,18 @@ def _owner(food: dict[str, Any]) -> Optional[int]:
     return None if dono is None else int(dono)
 
 
-def is_admin(identity: Identity) -> bool:
-    return identity.role == ADMIN_ROLE
+def administers_public_catalog(permissoes: EffectivePermissions, action: str) -> bool:
+    """Administra o catálogo público de alimentos: concessão `admin.catalogos`/`action` (qualquer
+    escopo). `ver` = enxerga os privados de todos; `editar` = edita o público, cria porção e
+    alimento públicos e promove."""
+    return has_permission(permissoes, CATALOG_ADMIN_RESOURCE, action)
 
 
-def can_view_food(identity: Identity, food: dict[str, Any]) -> bool:
-    """Público, do próprio usuário ou (admin) qualquer um — o admin precisa ver
-    o privado para promovê-lo."""
+def can_view_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    """Público, do próprio usuário ou (`admin.catalogos`/`ver`) qualquer um — quem administra o
+    catálogo precisa ver o privado para promovê-lo."""
     dono = _owner(food)
-    return dono is None or dono == int(identity.user_id) or is_admin(identity)
+    return dono is None or dono == int(identity.user_id) or administers_public_catalog(permissoes, "ver")
 
 
 def can_use_food(identity: Identity, food: dict[str, Any]) -> bool:
@@ -102,33 +103,34 @@ def can_use_food(identity: Identity, food: dict[str, Any]) -> bool:
     return dono is None or dono == int(identity.user_id)
 
 
-def can_edit_food(identity: Identity, food: dict[str, Any]) -> bool:
-    """O dono edita o privado; o admin edita o público. Fonte somente leitura nunca."""
+def can_edit_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    """O dono edita o privado; quem administra o catálogo (`admin.catalogos`/`editar`) edita o
+    público. Fonte somente leitura nunca."""
     if catalog.is_read_only(food.get("source")):
         return False
     dono = _owner(food)
-    return dono == int(identity.user_id) if dono is not None else is_admin(identity)
+    return dono == int(identity.user_id) if dono is not None else administers_public_catalog(permissoes, "editar")
 
 
 def can_add_portion(identity: Identity, food: dict[str, Any]) -> bool:
     return can_use_food(identity, food)
 
 
-def portion_owner_for(identity: Identity, food: dict[str, Any]) -> Optional[int]:
-    """Dono da porção nova: o admin num alimento público cria porção pública;
-    no resto a porção é do próprio usuário."""
-    if _owner(food) is None and is_admin(identity):
+def portion_owner_for(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> Optional[int]:
+    """Dono da porção nova: quem administra o catálogo (`admin.catalogos`/`editar`) num alimento
+    público cria porção pública; no resto a porção é do próprio usuário."""
+    if _owner(food) is None and administers_public_catalog(permissoes, "editar"):
         return None
     return int(identity.user_id)
 
 
-def can_promote_food(identity: Identity, food: dict[str, Any]) -> bool:
-    return is_admin(identity) and _owner(food) is not None
+def can_promote_food(permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    return administers_public_catalog(permissoes, "editar") and _owner(food) is not None
 
 
-def can_list_private_foods(identity: Identity) -> bool:
-    """Só o admin lista os alimentos privados de todos (para promover)."""
-    return is_admin(identity)
+def can_list_private_foods(permissoes: EffectivePermissions) -> bool:
+    """Só quem tem `admin.catalogos`/`ver` lista os alimentos privados de todos (para promover)."""
+    return administers_public_catalog(permissoes, "ver")
 
 
 def ownership(identity: Identity, owner_user_id: Any) -> dict[str, bool]:
@@ -212,10 +214,12 @@ def portions_visibility(identity: Identity, food: dict[str, Any]) -> tuple[str, 
 
 
 __all__ = [
+    "CATALOG_ADMIN_RESOURCE",
     "DIARY_FOODS_SQL",
     "PRIVATE_FOODS_SQL",
     "VISIBLE_FOODS_SQL",
     "VISIBLE_PORTIONS_SQL",
+    "administers_public_catalog",
     "can_add_portion",
     "can_edit_food",
     "can_favorite_food",
@@ -230,9 +234,6 @@ __all__ = [
     "favorites_owner",
     "fetch_target_user",
     "foods_visibility",
-    "is_admin",
-    "is_staff",
-    "plan_actor",
     "ownership",
     "portion_owner_for",
     "portions_visibility",

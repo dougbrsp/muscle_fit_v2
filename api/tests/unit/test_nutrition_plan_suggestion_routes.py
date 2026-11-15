@@ -21,6 +21,8 @@ from app.nutrition_targets_service import UserInputs
 from app.security import Identity, get_current_identity
 from tests.unit.test_m65_jobs_dono import FakeTable
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 INCOMPLETO_REAL = rota._incomplete_subject
 DIA = date(2026, 11, 3)
 USUARIO = 7

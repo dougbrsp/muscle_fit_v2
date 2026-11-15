@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from . import services
 from .observability import EVENT_SAFETY_CLAMP, log_event
+from .access import require_permission
 from .security import Identity, get_current_identity
 
 router = APIRouter(tags=["exercises-engine"], dependencies=[Depends(get_current_identity)])
@@ -34,7 +35,7 @@ def get_suggested_progression(
     session_id: Optional[int] = Query(default=None, ge=1),
     workout_plan_exercise_id: Optional[int] = Query(default=None, ge=1),
     training_goal: Optional[str] = Query(default=None, max_length=32),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Sugestao de reps_target/load_target/rpe_target para um exercicio fora da
     geracao de ficha (exercicio extra em /planos-treino, treino livre e troca de
@@ -82,7 +83,7 @@ def get_suggested_set_count_for_substitution(
     original_mapping_id: int = Query(...),
     original_sets_count: int = Query(..., ge=1),
     new_mapping_id: int = Query(...),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
     """Sugestao de quantas series fazer em um exercicio SUBSTITUTO escolhido em
     pleno treino (Modo Treino -> EquipmentSubstituteModal.tsx), para se

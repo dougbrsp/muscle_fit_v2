@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 from app import analytics, security
 from app.intelligence.muscle_group_progression import comparison_windows, range_comparison_windows
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 10, 3)
 
 

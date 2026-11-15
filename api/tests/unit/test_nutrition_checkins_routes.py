@@ -23,6 +23,8 @@ from app.nutrition_schema import checkin_tables_missing_error
 from app.security import Identity, get_current_identity
 from tests.support.nutrition_checkins_fake import FakeCheckinDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 HOJE = date(2026, 11, 2)  # segunda-feira: o check-in avalia 26/10 a 01/11
 SEMANA = date(2026, 10, 26)
 ALUNO, OUTRO, ADMIN = 2, 4, 1

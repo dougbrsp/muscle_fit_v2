@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { tiposTreinoControls } from '@/lib/screen-permissions';
 import type { ApiListResponse, TrainingTypeDetail, TrainingTypeListItem } from '@/lib/training-types-types';
 import { BRAND } from '@/theme';
 
@@ -31,15 +32,17 @@ export function TrainingTypesListClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const canManage = currentUserQuery.data?.role === 'admin' || currentUserQuery.data?.role === 'personal_trainer';
+  // Permissões efetivas (RBAC), espelho do require_permission de /training-types: ver/editar/excluir.
+  const ctrl = tiposTreinoControls(currentUserQuery.data?.permissions);
+  const canManage = ctrl.canAccess;
 
   const trainingTypesQuery = useQuery({
     queryKey: ['training-types'],
     queryFn: () => apiFetch<ApiListResponse<TrainingTypeListItem>>('/training-types'),
-    // Router inteiro é admin/PT-only no backend (403 para os demais) — só
-    // dispara depois de saber o papel do usuário, para não gastar uma
+    // Router exige modelos.tipos_treino no backend (403 para os demais) — só
+    // dispara depois de saber as permissões do usuário, para não gastar uma
     // chamada fadada a falhar e mostrar direto a mensagem de acesso restrito.
-    enabled: currentUserQuery.isSuccess,
+    enabled: currentUserQuery.isSuccess && canManage,
     retry: false,
   });
 
@@ -87,7 +90,7 @@ export function TrainingTypesListClient() {
           Metas de Ativação
         </Title>
         <Alert color="red" icon={<IconAlertTriangle size={16} />} radius="md">
-          Acesso restrito a administradores e personal trainers.
+          Acesso restrito a quem tem permissão para gerir tipos de treino e metas de ativação.
         </Alert>
       </Stack>
     );
@@ -120,13 +123,15 @@ export function TrainingTypesListClient() {
             para o motor de geração de ficha considerar o orçamento de volume automaticamente.
           </Text>
         </div>
-        <Button
-          color="brand"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => router.push('/metas-ativacao/novo')}
-        >
-          Nova meta de ativação
-        </Button>
+        {ctrl.canEdit && (
+          <Button
+            color="brand"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => router.push('/metas-ativacao/novo')}
+          >
+            Nova meta de ativação
+          </Button>
+        )}
       </Group>
 
       {(currentUserQuery.isLoading || trainingTypesQuery.isLoading) && (
@@ -176,6 +181,7 @@ export function TrainingTypesListClient() {
                     <Switch
                       color="brand"
                       checked={trainingType.is_active}
+                      disabled={!ctrl.canEdit}
                       label={trainingType.is_active ? 'Ativo' : 'Inativo'}
                       onChange={(event) =>
                         toggleStatusMutation.mutate({ id: trainingType.id, isActive: event.currentTarget.checked })
@@ -184,33 +190,39 @@ export function TrainingTypesListClient() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        onClick={() => router.push(`/metas-ativacao/${trainingType.id}`)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="brand"
-                        leftSection={<IconCopy size={14} />}
-                        loading={duplicateMutation.isPending && duplicateMutation.variables === trainingType.id}
-                        onClick={() => duplicateMutation.mutate(trainingType.id)}
-                      >
-                        Duplicar
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => confirmDelete(trainingType)}
-                      >
-                        Excluir
-                      </Button>
+                      {ctrl.canEdit && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          onClick={() => router.push(`/metas-ativacao/${trainingType.id}`)}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      {ctrl.canEdit && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="brand"
+                          leftSection={<IconCopy size={14} />}
+                          loading={duplicateMutation.isPending && duplicateMutation.variables === trainingType.id}
+                          onClick={() => duplicateMutation.mutate(trainingType.id)}
+                        >
+                          Duplicar
+                        </Button>
+                      )}
+                      {ctrl.canDelete && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => confirmDelete(trainingType)}
+                        >
+                          Excluir
+                        </Button>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>

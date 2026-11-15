@@ -33,6 +33,8 @@ from tests.unit.test_nutrition_energy_detail import (  # noqa: F401  (db é fixt
 )
 from tests.unit.test_nutrition_modo_adaptativo_servico import ALUNO, HOJE, OUTRO, SYNC_UTC, _historico
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 AMANHA = HOJE + timedelta(days=1)
 
 

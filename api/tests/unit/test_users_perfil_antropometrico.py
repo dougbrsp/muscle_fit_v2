@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from app import users
 from app.domain.nutrition import anthropometrics as anthro
-from app.security import Identity, get_current_identity, require_admin
+from app.security import Identity, get_current_identity
 from tests.support.fake_db import fake_transaction
 
 _LINHA = {
@@ -97,7 +97,6 @@ def _client(monkeypatch, role="regular"):
     app.include_router(users.router)
     identity = Identity(user_id=7, role=role, source="session")
     app.dependency_overrides[get_current_identity] = lambda: identity
-    app.dependency_overrides[require_admin] = lambda: identity
     return TestClient(app, raise_server_exceptions=False), cur
 
 

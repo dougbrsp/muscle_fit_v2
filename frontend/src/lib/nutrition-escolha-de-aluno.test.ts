@@ -46,7 +46,10 @@ describe('plano: admin e personal abrem com o próprio usuário pré-selecionado
 
   it('o gerente do plano nasce com esse usuário (o campo do dia do check-in aparece)', () => {
     const fonte = readFileSync(join(SRC, 'app/(app)/nutricao/plano/PlanoClient.tsx'), 'utf8');
-    expect(fonte).toContain('<PlanManager initialUser={planoInicial(currentUserQuery.data)} />');
+    // Tolerante a quebra de linha e ordem de props; exige o usuário inicial e a prop do modo alunos.
+    const tag = fonte.match(/<PlanManager\b(?=[^>]*\binitialUser=\{planoInicial\(currentUserQuery\.data\)\})[^>]*\/>/)?.[0];
+    expect(tag, 'PlanManager com initialUser={planoInicial(...)}').toBeDefined();
+    expect(tag).toMatch(/\bstudentsOnly=\{studentsOnly\}/);
     expect(fonte).toContain('useState<number | null>(fixedUserId ?? initialUser?.id ?? null)');
   });
 });

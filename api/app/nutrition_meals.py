@@ -41,8 +41,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION, catalog, diary, meal_math, meal_parse
@@ -50,7 +52,7 @@ from .domain.nutrition import labels as nutrition_labels
 from .nutrition_access import can_log_food, can_log_portion, fetch_target_user, resolve_target_user
 from .nutrition_schema import require_diary_tables, require_food_tables
 from .request_models import MealBodyIn, MealIn, MealItemIn, MealPreviewIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition/meals", tags=["nutrition"])
 
@@ -588,7 +590,7 @@ def _suggested_slot(eaten_at: Any) -> Optional[str]:
 
 @router.get("/slot-for-time")
 def slot_for_time(time_of_day: str = Query(..., alias="time", min_length=3, max_length=8),
-                  identity: Identity = Depends(get_current_identity)):
+                  identity: Identity = Depends(require_permission("nutricao.diario", "ver"))):
     """Refeição sugerida pela hora local `HH:MM` (D3, `diary.meal_slot_for_time`). Só sugere: a tela
     mostra e deixa o usuário trocar. Hora inválida -> 400 `invalid_clock_time`."""
     slot = diary.meal_slot_for_time(time_of_day)
@@ -602,7 +604,7 @@ def slot_for_time(time_of_day: str = Query(..., alias="time", min_length=3, max_
 
 
 @router.get("/last-time")
-def last_meal_time(identity: Identity = Depends(get_current_identity)):
+def last_meal_time(identity: Identity = Depends(require_permission("nutricao.diario", "ver"))):
     """Hora (`HH:MM`) da refeição gravada mais recentemente COM hora, do usuário logado; `null` sem
     histórico. A tela só pré-preenche o campo (editável); não calcula nada."""
     with _connect() as conn:
@@ -614,9 +616,9 @@ def last_meal_time(identity: Identity = Depends(get_current_identity)):
 
 
 @router.post("/preview")
-def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_current_identity)):
+def preview_meal(request: Request, payload: MealPreviewIn, identity: Identity = Depends(require_permission("nutricao.diario", "editar"))):
     """Itens e totais pelo motor, sem gravar nada."""
-    aluno = resolve_target_user(identity, payload.user_id)
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -642,8 +644,8 @@ def preview_meal(payload: MealPreviewIn, identity: Identity = Depends(get_curren
 
 
 @router.post("", status_code=201)
-def create_meal(payload: MealIn, identity: Identity = Depends(get_current_identity)):
-    aluno = resolve_target_user(identity, payload.user_id)
+def create_meal(request: Request, payload: MealIn, identity: Identity = Depends(require_permission("nutricao.diario", "editar"))):
+    aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "editar", payload.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
@@ -670,12 +672,12 @@ def create_meal(payload: MealIn, identity: Identity = Depends(get_current_identi
 
 
 @router.put("/{meal_id}")
-def update_meal(meal_id: int, payload: MealBodyIn, identity: Identity = Depends(get_current_identity)):
+def update_meal(request: Request, meal_id: int, payload: MealBodyIn, identity: Identity = Depends(require_permission("nutricao.diario", "editar"))):
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_tables(cur)
             refeicao = _fetch_meal(cur, meal_id)
-            aluno = resolve_target_user(identity, int(refeicao["user_id"]))
+            aluno = resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "editar", int(refeicao["user_id"]))
             existentes = {int(item["id"]): item for item in _meal_items(cur, meal_id)}
             itens = resolve_items(cur, identity, aluno, payload.meal_slot, payload.items, existentes)
             totais = meal_math.sum_items([item.nutrition for item in itens])
@@ -693,12 +695,12 @@ def update_meal(meal_id: int, payload: MealBodyIn, identity: Identity = Depends(
 
 
 @router.delete("/{meal_id}")
-def delete_meal(meal_id: int, identity: Identity = Depends(get_current_identity)):
+def delete_meal(request: Request, meal_id: int, identity: Identity = Depends(require_permission("nutricao.diario", "excluir"))):
     with _connect() as conn:
         with conn.cursor() as cur:
             require_diary_tables(cur)
             refeicao = _fetch_meal(cur, meal_id)
-            resolve_target_user(identity, int(refeicao["user_id"]))
+            resolve_target_user(identity, permissions_for_request(request, identity), "nutricao.diario", "excluir", int(refeicao["user_id"]))
             cur.execute(DELETE_MEAL_SQL, (int(meal_id),))
     return {"status": "deleted", "id": int(meal_id)}
 

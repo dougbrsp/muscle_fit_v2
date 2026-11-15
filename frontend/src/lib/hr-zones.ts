@@ -43,7 +43,7 @@ export type HrZonesSubject = {
   kind: HrZonesSubjectKind;
   user_id: number | null;
   name: string | null;
-  reason: 'no_template' | 'no_assignee' | 'multiple_assignees' | null;
+  reason: 'no_template' | 'no_assignee' | 'multiple_assignees' | 'no_link' | null;
 };
 
 export type TemplateHrZones = AthleteHrZones & { subject: HrZonesSubject };
@@ -78,6 +78,9 @@ export function hrZonesHint(data: TemplateHrZones | undefined): string | null {
   if (subject.kind === 'none') {
     if (subject.reason === 'multiple_assignees') {
       return 'Modelo atribuído a mais de um aluno: as faixas de bpm das zonas não são exibidas.';
+    }
+    if (subject.reason === 'no_link') {
+      return 'Você não tem vínculo ativo com o aluno deste Modelo.';
     }
     return 'Atribua o Modelo a um aluno para ver as faixas de bpm das zonas dele.';
   }

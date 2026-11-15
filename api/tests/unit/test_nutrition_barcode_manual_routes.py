@@ -17,6 +17,8 @@ from app.security import Identity, get_current_identity
 from tests.support import nutrition_external_payloads as payloads
 from tests.support.nutrition_foods_fake import FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 ALUNO, OUTRO = 2, 3
 MOCA = payloads.OFF_MOCA_CODE
 MANUAL = {"name": "Barra da vovó", "energy_kcal": 400, "carbohydrates_g": 60, "protein_g": 8, "total_fat_g": 14}

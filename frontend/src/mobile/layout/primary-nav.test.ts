@@ -3,7 +3,7 @@ import {
   DASHBOARD_NAV_ITEMS,
   isDesktopOnlyPath,
   mobileMainNavItems,
-  navVisibilityFromUser,
+  navVisibilityFromPermissions,
   visibleMainNavItems,
 } from '@/lib/nav-items';
 import {
@@ -12,16 +12,37 @@ import {
   backTargetFor,
   buildEvolucaoGroups,
   buildMoreGroups,
+  evolucaoGroupsFor,
   evolucaoHubHref,
+  primaryTabsFor,
+  visiblePrimaryTabs,
   isEvolucaoHub,
   isMoreActive,
   isPrimaryTabActive,
 } from './primary-nav';
 import { isNavGroupItemActive, scrollMemoryKey } from './nav-active';
 
-const admin = navVisibilityFromUser({ role: 'admin', intervals_configured: true }, true);
-const pt = navVisibilityFromUser({ role: 'personal_trainer', intervals_configured: false }, true);
-const plain = navVisibilityFromUser({ role: 'user', intervals_configured: false }, true);
+// Permissões mínimas por papel (espelho reduzido das concessões padrão do catálogo);
+// a paridade completa com o menu por role está em lib/nav-items.test.ts.
+type Perms = Record<string, Record<string, string>>;
+const give = (p: Perms, keys: string[], scope: string) => {
+  for (const k of keys) p[k] = { ver: scope, editar: scope, excluir: scope };
+};
+const COMUM_KEYS = [
+  'dashboards', 'treino.registro', 'treino.modo_treino', 'treino.planos', 'treino.preferencias',
+  'treino.academias', 'volume.grupamentos', 'corpo.indicadores', 'integracoes.intervals',
+  'nutricao.diario', 'ia.cardio', 'ia.insights', 'exercicios.catalogo',
+];
+const plainPerms: Perms = {};
+give(plainPerms, COMUM_KEYS, 'proprios');
+const ptPerms: Perms = JSON.parse(JSON.stringify(plainPerms));
+give(ptPerms, ['modelos.treino', 'modelos.metas_ativacao'], 'todos');
+const adminPerms: Perms = JSON.parse(JSON.stringify(ptPerms));
+give(adminPerms, ['admin.usuarios', 'admin.grupos', 'admin.regras_carga', 'admin.catalogos'], 'todos');
+
+const admin = navVisibilityFromPermissions({ permissions: adminPerms, intervals_configured: true });
+const pt = navVisibilityFromPermissions({ permissions: ptPerms, intervals_configured: false });
+const plain = navVisibilityFromPermissions({ permissions: plainPerms, intervals_configured: false });
 
 const tab = (id: string) => PRIMARY_TABS.find((t) => t.id === id)!;
 
@@ -77,7 +98,7 @@ describe('D1: seções só do computador', () => {
     it(`nenhuma das 6 aparece na navegação mobile (${nome})`, () => {
       const main = mobileMainNavItems(vis);
       const groups = buildMoreGroups(visibleMainNavItems(vis));
-      const evolucao = buildEvolucaoGroups(visibleMainNavItems(vis));
+      const evolucao = buildEvolucaoGroups(visibleMainNavItems(vis), vis);
       const shown = new Set<string>([
         ...main.map((i) => i.href),
         ...groups.flatMap((g) => g.items.map((i) => i.href)),
@@ -131,7 +152,7 @@ describe('toda rota mobile continua alcançável', () => {
       const reachable = new Set<string>([
         ...PRIMARY_TABS.map((t) => t.href.split('?')[0].replace(/\/$/, '')),
         ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
-        ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+        ...buildEvolucaoGroups(visible, vis).flatMap((g) => g.items.map((i) => i.href)),
       ]);
       for (const item of visible) {
         if (item.desktopOnly) continue;
@@ -147,27 +168,106 @@ describe('toda rota mobile continua alcançável', () => {
 
   it('itens administrativos e condicionais respeitam o papel', () => {
     const more = (v: typeof admin) => buildMoreGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
-    const evo = (v: typeof admin) => buildEvolucaoGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
+    const evo = (v: typeof admin) => buildEvolucaoGroups(visibleMainNavItems(v), v).flatMap((g) => g.items.map((i) => i.href));
     expect(more(admin)).toContain('/usuarios');
     expect(more(plain)).not.toContain('/usuarios');
     expect(evo(admin)).toContain('/intervals-icu');
     expect(evo(plain)).not.toContain('/intervals-icu');
   });
 
-  it('enquanto /auth/me não resolve, itens condicionais ficam visíveis (menos os só-desktop)', () => {
-    const pending = navVisibilityFromUser(undefined, false);
-    const hrefs = buildMoreGroups(visibleMainNavItems(pending)).flatMap((g) => g.items.map((i) => i.href));
-    expect(hrefs).toContain('/usuarios');
-    expect(hrefs).not.toContain('/modelos-treino');
+  it('enquanto /auth/me não resolve, nenhum item do menu aparece (esconde por padrão)', () => {
+    const pending = navVisibilityFromPermissions(undefined);
+    expect(visibleMainNavItems(pending)).toEqual([]);
+    expect(mobileMainNavItems(pending)).toEqual([]);
   });
 
   it('nenhum item aparece em dois lugares da navegação', () => {
     const visible = visibleMainNavItems(admin);
     const all = [
       ...buildMoreGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
-      ...buildEvolucaoGroups(visible).flatMap((g) => g.items.map((i) => i.href)),
+      ...buildEvolucaoGroups(visible, admin).flatMap((g) => g.items.map((i) => i.href)),
     ];
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('abas e pool do hub por permissões', () => {
+  const ALL = ['inicio', 'treino', 'historico', 'evolucao'];
+  const poolOf = (v: typeof admin) =>
+    buildEvolucaoGroups(mobileMainNavItems(v), v).flatMap((g) => g.items.map((i) => i.href));
+
+  for (const [nome, vis] of [
+    ['admin', admin],
+    ['personal trainer', pt],
+    ['usuário comum', plain],
+  ] as const) {
+    it(`concessões padrão mantêm as 4 abas e o pool completo (${nome})`, () => {
+      expect(visiblePrimaryTabs(vis).map((t) => t.id)).toEqual(ALL);
+      const pool = poolOf(vis);
+      for (const item of DASHBOARD_NAV_ITEMS) {
+        if (item.href !== '/dashboard') expect(pool, item.href).toContain(item.href);
+      }
+      expect(pool).toContain('/insights');
+      expect(pool).toContain('/agente-cardio');
+    });
+  }
+
+  it('primaryTabsFor: sem dados do usuário (carregando/erro sem cache) mostra as 4 abas fixas', () => {
+    expect(primaryTabsFor(undefined).map((t) => t.id)).toEqual(ALL);
+  });
+
+  for (const [nome, perms] of [
+    ['admin', adminPerms],
+    ['personal trainer', ptPerms],
+    ['usuário comum', plainPerms],
+  ] as const) {
+    it(`primaryTabsFor: concessões padrão mantêm as 4 abas (${nome})`, () => {
+      expect(primaryTabsFor({ permissions: perms, intervals_configured: false }).map((t) => t.id)).toEqual(ALL);
+    });
+  }
+
+  for (const permissions of [null, {}]) {
+    it(`primaryTabsFor: permissions ${permissions === null ? 'nulo' : 'vazio'} vindo do backend não mostra aba de link`, () => {
+      expect(primaryTabsFor({ permissions, intervals_configured: true })).toEqual([]);
+    });
+  }
+
+  it('evolucaoGroupsFor: sem dados abre o hub com os itens de hoje (sem Intervals.icu); com {} fica vazio', () => {
+    const sem = evolucaoGroupsFor(undefined).flatMap((g) => g.items.map((i) => i.href));
+    for (const item of DASHBOARD_NAV_ITEMS) {
+      if (item.href !== '/dashboard') expect(sem, item.href).toContain(item.href);
+    }
+    expect(sem).toContain('/insights');
+    expect(sem).toContain('/agente-cardio');
+    expect(sem).not.toContain('/intervals-icu');
+    expect(evolucaoGroupsFor({ permissions: {}, intervals_configured: true })).toEqual([]);
+  });
+
+  for (const [nome, user] of [
+    ['sem /auth/me', undefined],
+    ['permissions nulo', { permissions: null, intervals_configured: true }],
+    ['permissions vazio', { permissions: {}, intervals_configured: true }],
+  ] as const) {
+    it(`fail-closed: nenhuma aba de link nem pool (${nome}); Mais segue disponível`, () => {
+      const v = navVisibilityFromPermissions(user);
+      expect(visiblePrimaryTabs(v)).toEqual([]);
+      expect(poolOf(v)).toEqual([]);
+      expect(buildMoreGroups(visibleMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href))).toEqual(['/perfil']);
+    });
+  }
+
+  it('sem o parâmetro de visibilidade o pool do Dashboard fica escondido', () => {
+    const hrefs = buildEvolucaoGroups(mobileMainNavItems(admin)).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs.some((h) => h.startsWith('/dashboard'))).toBe(false);
+  });
+
+  it('cada aba segue o recurso do item correspondente', () => {
+    const only = (key: string) =>
+      visiblePrimaryTabs(navVisibilityFromPermissions({ permissions: { [key]: { ver: 'proprios' } }, intervals_configured: false })).map((t) => t.id);
+    expect(only('dashboards')).toEqual(['inicio', 'evolucao']);
+    expect(only('treino.modo_treino')).toEqual(['treino']);
+    expect(only('treino.registro')).toEqual(['historico']);
+    expect(only('ia.insights')).toEqual(['evolucao']);
   });
 });
 

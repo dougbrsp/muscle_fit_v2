@@ -37,12 +37,12 @@ RITMO_PROPOSTO = 0.0085
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_nutrition_tables_cache()
     reset_body_measurements_table_cache()
     with raw.cursor() as cur:
         cur.execute("SET FOREIGN_KEY_CHECKS = 0")
-        for tabela in (*TABELAS, "users"):
+        for tabela in (*TABELAS, "user_access_groups", "users"):
             cur.execute(f"TRUNCATE TABLE {tabela}")
         cur.execute("SET FOREIGN_KEY_CHECKS = 1")
         ids = {}
@@ -53,8 +53,10 @@ def usuarios(raw):
                 (f"{nome}_n7",),
             )
             ids[nome] = cur.lastrowid
+            conceder_grupo(cur, ids[nome], "regular")
         cur.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin_n7', 'x', 'admin')")
         ids["admin"] = cur.lastrowid
+        conceder_grupo(cur, ids["admin"], "admin")
         for dias in range(0, 30):
             cur.execute(
                 "INSERT INTO body_composition (user_id, local_date, weight_kg, body_fat_percent, source) "

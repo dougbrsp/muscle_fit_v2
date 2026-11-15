@@ -36,6 +36,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from . import async_jobs, nutrition_ai_quota, nutrition_label_storage
+from .access import require_permission
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import label_photo
@@ -44,7 +45,7 @@ from .domain.nutrition.ai_usage import LABEL_PHOTO_JOB_TYPE, AiFeature, AiUsageS
 from .gyms import sniff_image_content_type
 from .nutrition_label_ai import PROMPT_VERSION
 from .request_models import LabelPhotoUploadIn
-from .security import Identity, get_current_identity
+from .security import Identity
 
 logger = logging.getLogger("musclefit.nutrition.label_photo")
 
@@ -70,13 +71,13 @@ def _close_failed(usage_id: int, code: str) -> None:
 
 
 @router.get("/usage")
-def label_photo_usage(identity: Identity = Depends(get_current_identity)):
+def label_photo_usage(identity: Identity = Depends(require_permission("ia.nutricao", "ver"))):
     with connect_or_503(get_conn) as conn:
         return nutrition_ai_quota.usage_today(conn, user_id=int(identity.user_id), feature=AiFeature.LABEL_PHOTO).to_dict()
 
 
 @router.post("", status_code=202)
-def upload_label_photo(payload: LabelPhotoUploadIn, identity: Identity = Depends(get_current_identity)):
+def upload_label_photo(payload: LabelPhotoUploadIn, identity: Identity = Depends(require_permission("ia.nutricao", "editar"))):
     usuario = int(identity.user_id)
     dados, erro = label_photo.decode_upload(payload.image_base64)
     dados = dados or b""

@@ -4,8 +4,9 @@ Python puro, sem banco. Define acoes, escopos (com ordem de abrangencia),
 recursos (chave, rotulo em portugues, dominio) e a matriz padrao dos grupos de
 sistema. As migracoes guardam retratos congelados desta matriz (nao importam
 este modulo): a 111 (matriz inicial), a 113 (concessoes de `conta.dispositivos`,
-lote 2B) e a 114 (concessoes de `modelos.tipos_treino`, lote 2C-1). O retrato
-congelado e o acumulado 111 + 113 + 114; um teste de paridade compara o catalogo
+lote 2B) e a 114 (concessoes de `modelos.tipos_treino`, lote 2C-1), a 115
+(nutricao do PT em `alunos`, lote 5A) e a 116 (`modelos.treino` do PT em `alunos`,
+lote 6A). O retrato congelado e o acumulado 111 + 113 + 114 + 115 + 116; um teste de paridade compara o catalogo
 com esse acumulado.
 
 Sem regra de motor aqui: controle de acesso nao e regra de recuperacao,
@@ -109,10 +110,49 @@ RESOURCES_BY_KEY: Final[dict[str, Resource]] = {r.key: r for r in RESOURCES}
 RESOURCE_KEYS: Final[tuple[str, ...]] = tuple(r.key for r in RESOURCES)
 
 
+# Dominios cujos recursos um grupo personalizado nao pode receber.
+NON_GRANTABLE_DOMAINS: Final[frozenset[str]] = frozenset({DOMAIN_ADMIN})
+
+
+# Recursos que um grupo personalizado nao pode receber (decisao do usuario,
+# 14/11/2026). `ia.cards_exercicio`: cada card gera imagens por IA com custo por
+# card, e o limite diario e por usuario (igual para todos), nao por grupo; so os
+# grupos de sistema o tem.
+NON_GRANTABLE_RESOURCES: Final[frozenset[str]] = frozenset({"ia.cards_exercicio"})
+
+
+def is_grantable(resource_key: str) -> bool:
+    """Recurso concedivel a grupo personalizado (fonte unica; validate_grants consome)."""
+    return (
+        resource_key not in NON_GRANTABLE_RESOURCES
+        and RESOURCES_BY_KEY[resource_key].domain not in NON_GRANTABLE_DOMAINS
+    )
+
+
+# Avisos por recurso para a tela de grupos (o frontend so exibe o texto). Vazio:
+# o unico aviso (custo dos cards) virou nao-concedivel, e a tela esconde esses
+# recursos na edicao.
+RESOURCE_WARNINGS: Final[dict[str, str]] = {}
+
+# Avisos por escopo para a tela de grupos.
+SCOPE_WARNINGS: Final[dict[str, str]] = {
+    SCOPE_TODOS: (
+        "O membro passa a ver e alterar os dados de todos os usuários neste recurso."
+    ),
+}
+
+
 def catalog_payload() -> list[dict[str, object]]:
     """Catalogo serializavel para a futura tela de grupos (listado pela API)."""
     return [
-        {"key": r.key, "label": r.label, "domain": r.domain} for r in RESOURCES
+        {
+            "key": r.key,
+            "label": r.label,
+            "domain": r.domain,
+            "grantable": is_grantable(r.key),
+            "warning": RESOURCE_WARNINGS.get(r.key),
+        }
+        for r in RESOURCES
     ]
 
 
@@ -169,19 +209,22 @@ _USUARIO_SO_VER: Final[tuple[tuple[str, str], ...]] = (
     ("exercicios.catalogo", SCOPE_TODOS),
     ("modelos.treino", SCOPE_PROPRIOS),
 )
-# Personal trainer: o que `require_admin_or_pt` libera hoje (escopo todos).
+# Personal trainer: o que `require_admin_or_pt` libera hoje (escopo todos). `modelos.treino`
+# saiu daqui no lote 6A (migracao 116): escopo `alunos` (proprios + publicos).
 _PT_RECURSOS_TODOS: Final[tuple[str, ...]] = (
-    "modelos.treino",
     "modelos.metas_ativacao",
     "modelos.tipos_treino",
     "ia.modelo_periodizacao",
 )
-# Personal trainer: nutricao de terceiros, `todos` hoje; o lote 5 troca para `alunos`.
+# Personal trainer: nutricao de terceiros, escopo `alunos` desde o lote 5 (migracao 115),
+# e Modelos de treino, escopo `alunos` desde o lote 6A (migracao 116). Os recursos de
+# `_PT_RECURSOS_TODOS` seguem em `todos`.
 _PT_NUTRICAO_TERCEIROS: Final[tuple[str, ...]] = (
     "nutricao.diario",
     "nutricao.plano",
     "nutricao.checkin",
     "ia.nutricao",
+    "modelos.treino",
 )
 
 
@@ -201,13 +244,13 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     # Um escopo por (recurso, acao): a linha `todos` do PT substitui a do usuario.
     rows: dict[tuple[str, str], str] = {(r, a): s for r, a, s in _build_usuario()}
     for resource, action, scope in _linhas(
-        _PT_RECURSOS_TODOS + _PT_NUTRICAO_TERCEIROS, ACTIONS, SCOPE_TODOS
-    ):
+        _PT_RECURSOS_TODOS, ACTIONS, SCOPE_TODOS
+    ) + _linhas(_PT_NUTRICAO_TERCEIROS, ACTIONS, SCOPE_ALUNOS):
         rows[(resource, action)] = scope
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 
 
-# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113 e 114). `admin`
+# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113, 114, 115 e 116). `admin`
 # fica vazio (acesso total implicito) e `free` e criado vazio (nao e de sistema).
 DEFAULT_GRANTS_BY_GROUP: Final[dict[str, tuple[Grant, ...]]] = {
     GROUP_ADMIN: (),

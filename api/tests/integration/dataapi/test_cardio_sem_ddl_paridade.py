@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from app import async_jobs, cardio_agent_ai, lambda_cardio_agent
 from app.openai_client import StructuredResult
@@ -109,7 +109,9 @@ def _list(env, monkeypatch):
 
 
 def _detail(env, monkeypatch):
-    row = cr.get_cardio_recommendation(env["existing"], identity=_identity(env["user"]))
+    row = cr.get_cardio_recommendation(
+        env["existing"], request=Request({"type": "http"}), identity=_identity(env["user"])
+    )
     assert row["recommendation_markdown"] == "# existente"
 
 
@@ -118,7 +120,10 @@ def _apply_legacy(env, monkeypatch):
     # sai depois de ler a linha, sem DDL e sem tocar o rascunho.
     with pytest.raises(HTTPException) as exc:
         cr.apply_cardio_recommendation(
-            env["existing"], cr.CardioApplyIn(dates=["2026-09-01"]), identity=_identity(env["user"])
+            env["existing"],
+            cr.CardioApplyIn(dates=["2026-09-01"]),
+            request=Request({"type": "http"}),
+            identity=_identity(env["user"]),
         )
     assert exc.value.status_code == 409 and exc.value.detail["reason"] == "legacy_recommendation"
 

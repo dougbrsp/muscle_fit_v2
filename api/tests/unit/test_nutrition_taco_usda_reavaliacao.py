@@ -43,6 +43,8 @@ from app.security import Identity, get_current_identity
 from tests.support.nutrition_diary_fake import FakeDiaryDB
 from tests.support.nutrition_foods_fake import FakeFoodsDB
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 GERADOR = Path(__file__).resolve().parents[2] / "scripts" / "gerar_taco_usda_reavaliacao.py"
 M081 = m.DEFAULT_MIGRATIONS_DIR / "081_food_catalog_seed_taco.py"
 M084 = m.DEFAULT_MIGRATIONS_DIR / "084_food_items_taco_usda_reavaliacao.py"

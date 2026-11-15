@@ -7,18 +7,21 @@ Rodar: cd api && python -m pytest tests/unit/test_cardio_prescription_check.py
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import workout_plan_templates as wpt
 from app.domain import cardio_prescription as cp
-from app.security import require_admin_or_pt
+from app.security import Identity, get_current_identity
+
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
 
 def _client() -> TestClient:
     app = FastAPI()
     app.include_router(wpt.router)
-    app.dependency_overrides[require_admin_or_pt] = lambda: None
+    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=1, role="personal_trainer", source="session")
     return TestClient(app)
 
 

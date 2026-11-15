@@ -41,6 +41,8 @@ from tests.unit.test_nutrition_modo_adaptativo_servico import (
     _rascunho,
 )
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 FUSO = "America/Sao_Paulo"
 ONTEM = HOJE - timedelta(days=1)
 INICIO_FORCA = datetime(2026, 11, 4, 18, 0)

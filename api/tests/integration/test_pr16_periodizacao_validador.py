@@ -26,7 +26,7 @@ from app.openai_client import OpenAIGenerationError, StructuredResult
 from app.periodization import core as periodization_core
 from app.periodization.core import PROMPT_VERSION, PeriodizationError, run_periodization_draft
 from app.periodization.logs import DAILY_GENERATION_LIMIT
-from app.security import Identity, require_admin_or_pt
+from app.security import Identity, get_current_identity
 from tests.support.privado import exigir
 from tests.support.sql_capture import WRITE_SQL, recorded_sql
 
@@ -786,7 +786,9 @@ def test_relatorio_de_erro_tambem_e_auditado_como_failed(db_conn, catalog, acade
 def client(catalog, monkeypatch) -> TestClient:
     app = FastAPI()
     app.include_router(workout_plan_templates.router)
-    app.dependency_overrides[require_admin_or_pt] = lambda: Identity(
+    # ADR 0011 (lote 2F-1): `require_permission` resolve os grupos no banco; o
+    # `catalog` ja grava o usuario no grupo de sistema `admin`.
+    app.dependency_overrides[get_current_identity] = lambda: Identity(
         user_id=catalog.user_id, role="admin", source="session"
     )
     invocacoes: list[dict] = []

@@ -21,16 +21,18 @@ import pytest
 from fastapi import HTTPException
 
 from app import migrate as m
-from app import security
 from app.access import catalog, service
 from app.access.catalog import DEFAULT_GRANTS_BY_GROUP, RESOURCE_KEYS
 from app.nutrition_access import resolve_target_user
 from app.security import Identity
+from tests.support import guards_antigos
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 MIGRATION = m.DEFAULT_MIGRATIONS_DIR / "111_access_groups_rbac.py"
 MIGRATION_113 = m.DEFAULT_MIGRATIONS_DIR / "113_access_grants_conta_dispositivos.py"
 MIGRATION_114 = m.DEFAULT_MIGRATIONS_DIR / "114_access_grants_modelos_tipos_treino.py"
+MIGRATION_115 = m.DEFAULT_MIGRATIONS_DIR / "115_access_grants_pt_nutricao_alunos.py"
+MIGRATION_116 = m.DEFAULT_MIGRATIONS_DIR / "116_modelos_visibilidade_e_escopo_pt.py"
 
 # Grupos que a migracao 111 semeia com is_system=1 (free e comum e vem com 0).
 GRUPOS_DE_SISTEMA = frozenset({"admin", "personal_trainer", "usuario"})
@@ -53,12 +55,27 @@ def _migration_114_globals() -> dict:
     return m.load_python_migration(MIGRATION_114).__globals__
 
 
+@functools.lru_cache(maxsize=1)
+def _migration_115_globals() -> dict:
+    return m.load_python_migration(MIGRATION_115).__globals__
+
+
+@functools.lru_cache(maxsize=1)
+def _migration_116_globals() -> dict:
+    return m.load_python_migration(MIGRATION_116).__globals__
+
+
 def _matriz_acumulada_das_migracoes() -> dict[str, list[tuple[str, str, str]]]:
-    """Retrato congelado acumulado: matriz da 111 + concessoes da 113 e da 114."""
+    """Retrato congelado acumulado: matriz da 111 + concessoes da 113/114 + escopos da 115."""
     acumulado = {g: list(linhas) for g, linhas in _migration_globals()["GRANTS_BY_GROUP"].items()}
     for globais in (_migration_113_globals(), _migration_114_globals()):
         for grupo, linhas in globais["GRANTS_BY_GROUP"].items():
             acumulado[grupo].extend(linhas)
+    # 115 e 116: UPDATE de escopo sobre linhas existentes (nao acrescenta pares novos)
+    for globais in (_migration_115_globals(), _migration_116_globals()):
+        for grupo, linhas in globais["GRANTS_BY_GROUP"].items():
+            novos = {(r, a): sc for r, a, sc in linhas}
+            acumulado[grupo] = [(r, a, novos.get((r, a), sc)) for r, a, sc in acumulado[grupo]]
     return acumulado
 
 
@@ -352,6 +369,15 @@ def test_grupo_free_nao_tem_concessoes_nem_membros_na_matriz_padrao():
     assert "free" not in catalog.SYSTEM_GROUP_KEYS and "admin" not in catalog.SYSTEM_GROUP_KEYS
 
 
+@pytest.mark.parametrize("grupo", ["usuario", "personal_trainer"])
+def test_matriz_padrao_nao_concede_admin_catalogos_a_usuario_nem_a_personal_em_nenhuma_acao(grupo):
+    # Mantem a troca de is_admin por admin.catalogos (promocao e edicao do catalogo publico
+    # de alimentos, lote 2D-2) equivalente a is_admin: so o grupo admin (acesso total) passa.
+    assert "admin.catalogos" in RESOURCE_KEYS
+    concedidas = [(r, a) for r, a, _s in DEFAULT_GRANTS_BY_GROUP[grupo] if r == "admin.catalogos"]
+    assert concedidas == [], concedidas
+
+
 def test_dispositivo_resolve_pelo_user_id_do_dono(db):
     fake = db(groups={7: [("usuario", "cardio", "ver", "proprios")]})
     perms = service.resolve_permissions(_ident(user_id=7, source="device"))
@@ -504,7 +530,7 @@ def test_falha_de_banco_nunca_e_401_nem_403(db):
 # ---------------------------------------------------------------------------
 
 
-def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_mais_114():
+def test_paridade_matriz_do_catalogo_e_das_migracoes_111_mais_113_114_115():
     migracao = _matriz_acumulada_das_migracoes()
     assert set(migracao) == set(DEFAULT_GRANTS_BY_GROUP)
     for grupo, linhas in DEFAULT_GRANTS_BY_GROUP.items():
@@ -555,6 +581,14 @@ def test_paridade_vocabulario_acoes_escopos_e_grupos():
     g114 = _migration_114_globals()
     assert tuple(g114["ACTIONS"]) == catalog.ACTIONS
     assert set(g114["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    g115 = _migration_115_globals()
+    assert tuple(g115["ACTIONS"]) == catalog.ACTIONS
+    assert set(g115["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    assert set(g115["RESOURCES"]) == set(NUTRICAO_TERCEIROS)
+    g116 = _migration_116_globals()
+    assert tuple(g116["ACTIONS"]) == catalog.ACTIONS
+    assert set(g116["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    assert set(g116["RESOURCES"]) == {"modelos.treino"}
     assert {k for k, *_ in g["SEED_GROUPS"]} == set(DEFAULT_GRANTS_BY_GROUP)
 
 
@@ -598,7 +632,7 @@ def test_papel_do_codigo_atual_mapeia_para_o_grupo_da_migracao():
 
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 def test_recursos_admin_e_cards_so_para_quem_passa_em_require_admin(role):
-    guard_libera = _guard_passa(security.require_admin, role)
+    guard_libera = _guard_passa(guards_antigos.require_admin, role)
     perms = _perms_do_papel(role)
     for recurso in ADMIN_ONLY_RESOURCES:
         for acao in catalog.ACTIONS:
@@ -608,13 +642,14 @@ def test_recursos_admin_e_cards_so_para_quem_passa_em_require_admin(role):
 
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 def test_modelos_metas_e_periodizacao_seguem_require_admin_or_pt(role):
-    guard_libera = _guard_passa(security.require_admin_or_pt, role)
+    guard_libera = _guard_passa(guards_antigos.require_admin_or_pt, role)
     perms = _perms_do_papel(role)
     for recurso in MODELOS_PT:
         for acao in catalog.ACTIONS:
             concedido = service.permission_scope(perms, recurso, acao)
             if guard_libera:
-                assert concedido == "todos", (role, recurso, acao)
+                esperado = "alunos" if (role == "personal_trainer" and recurso == "modelos.treino") else "todos"
+                assert concedido == esperado, (role, recurso, acao)  # modelos.treino do PT: alunos (116)
             elif recurso == "modelos.treino" and acao == "ver":
                 # me_router: o aluno ve os Modelos atribuidos a ele (so os proprios)
                 assert concedido == "proprios"
@@ -623,41 +658,54 @@ def test_modelos_metas_e_periodizacao_seguem_require_admin_or_pt(role):
 
 
 def test_os_guards_de_papel_continuam_nos_mesmos_modulos():
-    """Se um modulo novo passar a usar `require_admin_or_pt`, a matriz precisa ser revista."""
+    """Lote 2F-3: nenhum modulo de `app` usa mais os guards de papel; a matriz e a fonte.
+
+    A regra antiga vive so nas copias congeladas de `tests/support/guards_antigos.py`."""
     usam = sorted(
         p.name
-        for p in APP_DIR.glob("*.py")
-        if re.search(r"Depends\(require_admin_or_pt\)|require_admin_or_pt\(identity|is_admin_or_pt\(identity", p.read_text(encoding="utf-8"))
-        and p.name not in {"security.py"}
+        for p in APP_DIR.rglob("*.py")
+        if re.search(
+            r"Depends\(require_admin(_or_pt)?\)|require_admin(_or_pt)?\(identity|is_admin_or_pt\(identity"
+            r"|import[^\n]*\b(require_admin|require_admin_or_pt|is_admin_or_pt)\b",
+            p.read_text(encoding="utf-8"),
+        )
     )
-    assert usam == [
-        "cardio_recommendations.py",
-        "nutrition_access.py",
-        "workout_plan_templates.py",
-    ]
+    assert usam == []
 
 
+@pytest.mark.parametrize("vinculo", [True, False])
 @pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
 @pytest.mark.parametrize("recurso", NUTRICAO_TERCEIROS)
 @pytest.mark.parametrize("acao", ["ver", "editar", "excluir"])
-def test_nutricao_de_terceiros_equivale_a_resolve_target_user(role, recurso, acao):
+def test_nutricao_de_terceiros_admin_todos_pt_so_aluno_com_vinculo_usuario_nunca(
+    db, role, recurso, acao, vinculo
+):
+    """Lote 5A: admin segue em `todos`; o PT so alcanca aluno com vinculo ativo (`alunos`);
+    o usuario comum segue sem terceiros."""
+    db(links={(10, 99): "ativo"} if vinculo else {})
     ident = _ident(user_id=10, role=role)
+    perms = _perms_do_papel(role)
 
-    def _atual() -> bool:
+    def _nova_assinatura() -> bool:
         try:
-            resolve_target_user(ident, 99)
+            resolve_target_user(ident, perms, recurso, acao, 99)
         except HTTPException:
             return False
         return True
 
     def _matriz() -> bool:
         try:
-            service.authorize_target(ident, recurso, acao, 99, permissoes=_perms_do_papel(role))
+            service.authorize_target(ident, recurso, acao, 99, permissoes=perms)
         except HTTPException:
             return False
         return True
 
-    assert _matriz() is _atual(), (role, recurso, acao)
+    esperado = {"admin": True, "personal_trainer": vinculo, "regular": False}[role]
+    assert _matriz() is _nova_assinatura() is esperado, (role, recurso, acao, vinculo)
+    if role == "personal_trainer":
+        assert service.permission_scope(perms, recurso, acao) == "alunos"
+    elif role == "admin":
+        assert service.permission_scope(perms, recurso, acao) == "todos"
 
 
 @pytest.mark.parametrize("recurso", NUTRICAO_TERCEIROS)
@@ -668,8 +716,9 @@ def test_usuario_comum_so_tem_nutricao_proprios(recurso):
 
 
 def test_seguranca_nenhum_grupo_de_sistema_recebe_mais_do_que_os_guards_de_hoje():
-    """Achado de seguranca se falhar: escopo `todos` (terceiros) so onde o guard atual deixa o PT."""
-    permitido_todos_pt = set(MODELOS_PT) | set(NUTRICAO_TERCEIROS)
+    """Achado de seguranca se falhar: escopo `todos` do PT so nos Modelos (metas, tipos, periodizacao);
+    nutricao de terceiros (lote 5A) e `modelos.treino` (lote 6A) do PT sao `alunos`."""
+    permitido_todos_pt = set(MODELOS_PT)
     for acao in catalog.ACTIONS:
         pt = {r for r, a, s in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if a == acao and s == "todos"}
         assert pt <= permitido_todos_pt | {"exercicios.catalogo"}, pt - permitido_todos_pt
@@ -677,9 +726,10 @@ def test_seguranca_nenhum_grupo_de_sistema_recebe_mais_do_que_os_guards_de_hoje(
     assert usuario_todos == {("exercicios.catalogo", "ver")}
     for grupo in ("usuario", "personal_trainer"):
         assert not [r for r, _, _ in DEFAULT_GRANTS_BY_GROUP[grupo] if r in ADMIN_ONLY_RESOURCES]
-        assert not [1 for _, _, s in DEFAULT_GRANTS_BY_GROUP[grupo] if s == "alunos"], (
-            "escopo alunos so entra no lote 5 (vinculo)"
-        )
+    assert not [1 for _, _, s in DEFAULT_GRANTS_BY_GROUP["usuario"] if s == "alunos"]
+    assert {(r, a) for r, a, s in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if s == "alunos"} == {
+        (r, a) for r in (*NUTRICAO_TERCEIROS, "modelos.treino") for a in catalog.ACTIONS
+    }
 
 
 def test_pt_nao_ganha_terceiros_em_recursos_sem_guard_de_terceiro_hoje():

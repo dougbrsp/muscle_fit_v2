@@ -8,6 +8,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { apiFetch, ApiError } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { SEX_OPTIONS } from '@/lib/nutrition-constants';
+import { usuariosControls } from '@/lib/screen-permissions';
 import {
   CreateUserPayload,
   ResetPasswordResponse,
@@ -55,7 +56,8 @@ export function UsuariosScreen() {
   const qc = useQueryClient();
   const currentUserQuery = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
   const currentUser = currentUserQuery.data;
-  const isAdmin = currentUser?.role === 'admin';
+  const ctrl = usuariosControls(currentUser?.permissions);
+  const isAdmin = ctrl.canAccess;
 
   const usersQuery = useQuery({
     queryKey: ['users-admin'],
@@ -429,12 +431,16 @@ export function UsuariosScreen() {
             </Alert>
           ) : (
             <>
-              <Button variant="light" color="brand" mih={48} leftSection={<IconKey size={16} />} onClick={() => openReset(editTarget)}>
-                Resetar senha
-              </Button>
-              <Button variant="light" color="red" mih={48} leftSection={<IconTrash size={16} />} disabled={!editTarget.is_active} onClick={() => setDeactivateTarget(editTarget)}>
-                {editTarget.is_active ? 'Desativar usuário' : 'Já desativado'}
-              </Button>
+              {ctrl.canEdit && (
+                <Button variant="light" color="brand" mih={48} leftSection={<IconKey size={16} />} onClick={() => openReset(editTarget)}>
+                  Resetar senha
+                </Button>
+              )}
+              {ctrl.canDelete && (
+                <Button variant="light" color="red" mih={48} leftSection={<IconTrash size={16} />} disabled={!editTarget.is_active} onClick={() => setDeactivateTarget(editTarget)}>
+                  {editTarget.is_active ? 'Desativar usuário' : 'Já desativado'}
+                </Button>
+              )}
             </>
           )}
           {updateMutation.isError ? (
@@ -490,16 +496,18 @@ export function UsuariosScreen() {
               }
               subtitle={[user.full_name, user.email, user.is_active ? null : 'Desativado'].filter(Boolean).join(' · ') || undefined}
               value={roleLabel(user.role)}
-              onClick={() => openEdit(user)}
+              onClick={ctrl.canEdit ? () => openEdit(user) : undefined}
             />
           );
         }}
       />
-      <StickyAction>
-        <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => setView({ kind: 'create' })}>
-          Novo usuário
-        </Button>
-      </StickyAction>
+      {ctrl.canEdit && (
+        <StickyAction>
+          <Button fullWidth size="lg" color="brand" mih={48} leftSection={<IconPlus size={20} />} onClick={() => setView({ kind: 'create' })}>
+            Novo usuário
+          </Button>
+        </StickyAction>
+      )}
       {resetSheet}
       {deactivateSheet}
     </>

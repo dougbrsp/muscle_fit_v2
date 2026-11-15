@@ -210,7 +210,7 @@ class _BoomConn:
     "nome, metodo, rota",
     [("effort_metrics", "get", "/effort-metrics"), ("sleep_metrics", "post", "/sleep-metrics")],
 )
-def test_metricas_respondem_500_generico(monkeypatch, caplog, nome, metodo, rota):
+def test_metricas_respondem_500_generico(permissoes_por_papel, monkeypatch, caplog, nome, metodo, rota):
     modulo = importlib.import_module(f"app.{nome}")
     monkeypatch.setattr(modulo, "get_conn", lambda: _BoomConn())
     app = FastAPI()

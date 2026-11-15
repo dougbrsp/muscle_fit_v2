@@ -116,7 +116,8 @@ def _iter_api_routes(app):
 
 def _guards_conhecidos() -> dict[Callable, str]:
     from app.devices import require_device_credential, require_user_credential
-    from app.security import get_current_identity, require_admin, require_admin_or_pt
+    from app.security import get_current_identity
+    from tests.support.guards_antigos import require_admin, require_admin_or_pt
     from app.users import require_session_identity
 
     return {

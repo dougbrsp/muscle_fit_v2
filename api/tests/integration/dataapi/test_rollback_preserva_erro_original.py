@@ -228,12 +228,14 @@ def test_atribuicao_duplicada_de_modelo_devolve_409(assignment_backend, assignme
     admin_id, student_id, template_id = assignment_seed
     identity = Identity(user_id=admin_id, role="admin", source="session")
     payload = WorkoutPlanTemplateAssignIn(user_id=student_id)
+    # Lote 6A: o handler recebe o `TemplateViewer` (identidade + escopo) do guard.
+    viewer = workout_plan_templates.TemplateViewer(identity, "todos")
 
-    first = workout_plan_templates.create_assignment(template_id, payload, identity)
+    first = workout_plan_templates.create_assignment(template_id, payload, viewer)
     assert [item["user_id"] for item in first["items"]] == [student_id]
 
     with pytest.raises(HTTPException) as exc:
-        workout_plan_templates.create_assignment(template_id, payload, identity)
+        workout_plan_templates.create_assignment(template_id, payload, viewer)
     assert exc.value.status_code == 409
 
     with raw.cursor() as cur:

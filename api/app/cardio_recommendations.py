@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any, Dict, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -13,7 +13,9 @@ from .db import DataApiError, get_conn
 from .domain.cardio_envelope import RECOMMENDATION_HORIZON_DAYS
 from .intelligence.report_data_service import CARDIO_CONTEXT_MAX_DAYS
 from .request_models import NOTES_MAX
-from .security import Identity, get_current_identity, is_admin_or_pt, require_admin_or_pt
+from .access import catalog, require_permission, service as access_service
+from .access.deps import permissions_for_request
+from .security import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,7 @@ def _insert_recommendation(fields: Dict[str, Any], user_id: int) -> int:
 @router.post("")
 def create_cardio_recommendation(
     payload: Dict[str, Any],
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "editar")),
 ):
     if not payload.get("reference_date"):
         raise HTTPException(status_code=400, detail="reference_date é obrigatório.")
@@ -142,7 +144,7 @@ class CardioGenerateIn(BaseModel):
 @router.post("/generate", status_code=202)
 def generate_and_save_cardio_recommendation(
     payload: Optional[CardioGenerateIn] = None,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("ia.cardio", "editar")),
 ):
     """Assincrono desde a Fase 3 da migracao AWS (202 + job_id + polling via
     GET /jobs/{job_id}) - a geracao + persistencia em si
@@ -191,7 +193,7 @@ def list_cardio_recommendations(
     limit: int = Query(default=LIST_DEFAULT_LIMIT, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     workout_plan_id: Optional[int] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     where = ["user_id = %s"]
     params: list[Any] = [identity.user_id]
@@ -262,13 +264,21 @@ def _load_recommendation(entry_id: int, user_id: int) -> dict[str, Any]:
 @router.get("/{entry_id}")
 def get_cardio_recommendation(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    request: Request,
+    identity: Identity = Depends(require_permission("cardio", "ver")),
 ):
     row = _load_recommendation(entry_id, identity.user_id)
+    # can_apply: mesma porta do POST /apply (modelos.treino/editar com escopo
+    # que cubra `alunos`, lote 6A), lida da concessao do grupo. A posse do
+    # Modelo (dono ou `todos`) o POST confere; aqui e so o selo da tela.
+    apply_scope = access_service.permission_scope(
+        permissions_for_request(request, identity), "modelos.treino", "editar"
+    )
+    can_apply = apply_scope is not None and catalog.scope_covers(apply_scope, catalog.SCOPE_ALUNOS)
     # M98 C3b: a recomendação pronta para exibir (rótulos, tempo total e se
     # cada sessão pode ir para o Modelo). Antiga (sem JSON) = null.
     row["recommendation_view"] = cardio_recommendation_v3.build_view(
-        row.get("recommendation_json"), can_apply=is_admin_or_pt(identity)
+        row.get("recommendation_json"), can_apply=can_apply
     )
     return row
 
@@ -291,7 +301,8 @@ NO_TEMPLATE = "Esta recomendação não tem Modelo vinculado: não há onde apli
 def apply_cardio_recommendation(
     entry_id: int,
     payload: CardioApplyIn,
-    identity: Identity = Depends(require_admin_or_pt),
+    request: Request,
+    identity: Identity = Depends(require_permission("modelos.treino", "editar", min_scope="alunos")),
 ):
     """Aplica sessões da recomendação no RASCUNHO do Modelo ativo (M98 C3b).
 
@@ -311,6 +322,16 @@ def apply_cardio_recommendation(
     template_id = (recommendation.get("plan") or {}).get("template_id")
     if template_id is None:
         raise HTTPException(status_code=409, detail={"reason": "no_template", "message": NO_TEMPLATE})
+    # Lote 6A: escrever no rascunho exige posse do Modelo (dono ou `todos`),
+    # pelo helper unico dos Modelos (404 privado alheio, 403 publico alheio).
+    from .db import transaction
+    from .workout_plan_templates import authorize_template
+
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            authorize_template(
+                cur, identity, permissions_for_request(request, identity), int(template_id), "editar", for_write=True
+            )
     by_date = {session.get("date"): session for session in recommendation.get("sessions") or []}
     chosen: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
@@ -332,7 +353,7 @@ def apply_cardio_recommendation(
 @router.delete("/{entry_id}")
 def delete_cardio_recommendation(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("cardio", "excluir")),
 ):
     conn = _connect()
     try:

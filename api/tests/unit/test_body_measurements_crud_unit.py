@@ -20,6 +20,8 @@ from app import body_measurements as bm
 from app import body_measurements_schema as schema
 from app.security import Identity, get_current_identity
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 
 # ---------------------------------------------------------------------------
 # Validacao

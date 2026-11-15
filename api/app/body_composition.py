@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from .db import DataApiError, get_conn
 from .models import BodyCompositionIn
 from .request_models import BodyCompositionUpdateIn
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 from .services import upsert_body_composition
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def _connect():
 @router.post("")
 def create_or_update_body_composition(
     payload: BodyCompositionIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     """Upsert por (user_id, local_date) - contrato legado usado pelo
     MCP/OpenClaw, unificado aqui junto com o CRUD GET/PUT/DELETE."""
@@ -39,7 +40,7 @@ def create_or_update_body_composition(
 @router.get("")
 def list_body_composition(
     limit: int = 200,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     conn = _connect()
     try:
@@ -68,7 +69,7 @@ def list_body_composition(
 @router.get("/{entry_id}")
 def get_body_composition(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     conn = _connect()
     try:
@@ -86,7 +87,7 @@ def get_body_composition(
 def update_body_composition(
     entry_id: int,
     body: BodyCompositionUpdateIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     # `exclude_unset`: campo enviado como null grava NULL; campo ausente nao muda.
     payload = body.model_dump(exclude_unset=True)
@@ -127,7 +128,7 @@ def update_body_composition(
 @router.delete("/{entry_id}")
 def delete_body_composition(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "excluir")),
 ):
     conn = _connect()
     try:

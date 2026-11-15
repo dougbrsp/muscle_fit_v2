@@ -39,6 +39,8 @@ from app import migrate as m
 from app.security import Identity, get_current_identity
 from tests.support.fake_db import LoopingExecuteMany
 
+pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
+
 # ---------------------------------------------------------------------------
 # Avaliador do ON DUPLICATE KEY UPDATE (subconjunto usado pelas metricas
 # editaveis: IF, AND, IS NULL, =, VALUES(col), literal e coluna).

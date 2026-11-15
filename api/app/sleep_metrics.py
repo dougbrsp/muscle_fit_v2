@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .request_models import SleepMetricsUpdateIn
-from .security import Identity, get_current_identity
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/sleep-metrics", tags=["sleep-metrics"])
 
@@ -35,7 +36,7 @@ _ALLOWED_FIELDS = {
 @router.post("")
 def create_or_update_sleep_metrics(
     payload: Dict[str, Any],
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     if not payload.get("local_date"):
         raise HTTPException(status_code=400, detail="local_date é obrigatório.")
@@ -85,7 +86,7 @@ def create_or_update_sleep_metrics(
 def list_sleep_metrics(
     days: Optional[int] = Query(default=None, ge=1, le=3650),
     limit: int = Query(default=200, ge=1, le=1000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     conn = _connect()
     try:
@@ -125,7 +126,7 @@ def list_sleep_metrics(
 @router.get("/{entry_id}")
 def get_sleep_metrics(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     conn = _connect()
     try:
@@ -143,7 +144,7 @@ def get_sleep_metrics(
 def update_sleep_metrics(
     entry_id: int,
     body: SleepMetricsUpdateIn,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "editar")),
 ):
     payload = body.model_dump(exclude_unset=True)
     updates = {k: v for k, v in payload.items() if k in _ALLOWED_FIELDS}
@@ -176,7 +177,7 @@ def update_sleep_metrics(
 @router.delete("/{entry_id}")
 def delete_sleep_metrics(
     entry_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "excluir")),
 ):
     conn = _connect()
     try:

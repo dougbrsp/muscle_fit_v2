@@ -209,6 +209,13 @@ def test_allowlist_tem_estrutura_ordenada_e_teto_igual_a_soma():
     assert all(a.startswith("app/") and a.endswith(".py") for a in arquivos)
 
 
+def test_allowlist_zerada_nenhum_arquivo_checa_papel():
+    allowlist = _allowlist()
+    assert allowlist["teto_total"] == 0
+    assert allowlist["arquivos"] == {}
+    assert contagem_viva() == {}
+
+
 def test_arquivos_da_allowlist_existem():
     for arquivo in _allowlist()["arquivos"]:
         assert (API_ROOT / arquivo).is_file(), arquivo

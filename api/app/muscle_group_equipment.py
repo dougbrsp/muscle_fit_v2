@@ -24,9 +24,10 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from .access import require_permission
 from .db import get_conn
 from .db_helpers import connect_or_503, DB_UNAVAILABLE_MYSQL
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/muscle-groups", tags=["muscle-group-equipment"])
 
@@ -61,7 +62,7 @@ def _ensure_muscle_group_exists(muscle_group_id: int) -> None:
 @router.get("/{muscle_group_id}/equipment")
 def list_equipment_for_muscle_group(
     muscle_group_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
     """Lista os equipamentos que trabalham o grupo muscular informado como
     grupo PRINCIPAL (role='PRIMARY'), via `vw_muscle_group_equipment_exercises`
@@ -95,7 +96,7 @@ def list_equipment_for_muscle_group(
 def list_exercises_for_muscle_group_equipment(
     muscle_group_id: int,
     equipment_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
     """Lista os exercícios do grupo muscular informado possíveis naquele
     equipamento específico, via `vw_muscle_group_equipment_exercises`
@@ -130,7 +131,7 @@ def list_exercises_for_muscle_group_equipment(
 @router.get("/{muscle_group_id}/exercises")
 def list_exercises_for_muscle_group(
     muscle_group_id: int,
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("exercicios.catalogo", "ver")),
 ):
     """Lista todos os exercícios em que o grupo muscular informado é o
     grupo PRINCIPAL (role='PRIMARY'), independente de equipamento (DISTINCT

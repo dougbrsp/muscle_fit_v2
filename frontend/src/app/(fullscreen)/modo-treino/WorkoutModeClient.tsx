@@ -11,6 +11,7 @@ import { apiFetch } from '@/lib/api';
 import { useOfflineUser } from '@/lib/offline/use-offline-user';
 import type { PlanCardioResponse } from '@/lib/analytics-types';
 import { type StoredWorkoutModeSession, type WorkoutAiSummaryResult } from '@/lib/workout-mode-types';
+import { useIaControls } from '@/lib/screen-permissions';
 import { fetchWorkoutSummary } from '@/lib/workout-mode-ai';
 import {
   clearParkedSession,
@@ -72,6 +73,7 @@ export function WorkoutModeClient() {
   useEffect(preloadMuscleBodyMap, []);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const ia = useIaControls();
   const [session, setSession] = useState<StoredWorkoutModeSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [exitOpen, { open: openExit, close: closeExit }] = useDisclosure(false);
@@ -120,6 +122,12 @@ export function WorkoutModeClient() {
     clearStoredSession();
     clearParkedSession();
     setSession(null);
+    // Sem ia.modo_treino/editar o resumo de IA nem é pedido (o POST daria 403):
+    // o modal mostra só "Treino concluído" e o cardio.
+    if (!ia.canModoTreino) {
+      setCompletion({ open: true, loading: false, error: false, summary: null, workoutPlanId });
+      return;
+    }
     setCompletion({ open: true, loading: true, error: false, summary: null, workoutPlanId });
     const run = ++completionRunRef.current;
     fetchWorkoutSummary(sessionId)
@@ -192,7 +200,9 @@ export function WorkoutModeClient() {
 
   return (
     <WorkoutModeShell
-      aiToggle={session ? { checked: perSetAiEnabled, onChange: handlePerSetAiToggle } : null}
+      aiToggle={
+        session && ia.canModoTreino ? { checked: perSetAiEnabled, onChange: handlePerSetAiToggle } : null
+      }
       onExit={openExit}
       onHeaderSlot={setHeaderSlot}
       inSession={Boolean(session)}
@@ -204,7 +214,7 @@ export function WorkoutModeClient() {
       {session && session.source === 'plan' && (
         <PlanExecutionScreen
           session={session}
-          perSetAiEnabled={perSetAiEnabled}
+          perSetAiEnabled={perSetAiEnabled && ia.canModoTreino}
           onFinish={handleWorkoutFinished}
           headerSlot={headerSlot}
         />
@@ -213,7 +223,7 @@ export function WorkoutModeClient() {
         <FreeformScreen
           sessionId={session.session_id}
           gymId={session.gym_id}
-          perSetAiEnabled={perSetAiEnabled}
+          perSetAiEnabled={perSetAiEnabled && ia.canModoTreino}
           onFinish={handleWorkoutFinished}
         />
       )}

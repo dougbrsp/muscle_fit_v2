@@ -19,6 +19,7 @@ import uuid
 
 import pytest
 from botocore.exceptions import ClientError
+from fastapi import Request
 
 from app import cardio_recommendations as cr
 from app.security import Identity
@@ -149,7 +150,7 @@ def test_detalhe_com_snapshot_volumoso_segue_completo(seed_volumoso, db_backend)
         days=None, limit=1, offset=0, workout_plan_id=None, identity=_identity(user_id)
     )["items"][0]["id"]
 
-    detail = cr.get_cardio_recommendation(entry_id, identity=_identity(user_id))
+    detail = cr.get_cardio_recommendation(entry_id, request=Request({"type": "http"}), identity=_identity(user_id))
 
     snapshot = detail["context_snapshot"]
     snapshot = json.loads(snapshot) if isinstance(snapshot, (str, bytes)) else snapshot

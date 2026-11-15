@@ -8,6 +8,7 @@ import { apiFetch, ApiError } from '@/lib/api';
 // Reusada de `/indicadores-fisicos`: recorte de string puro, sem `new Date()`
 // - uma data vinda do banco nao pode escorregar um dia por fuso do browser.
 import { formatDateBR } from '@/lib/physical-indicators-types';
+import { usePermissions } from '@/lib/use-permissions';
 import { fetchUserLookup, userLookupKey, userLookupLabel } from '@/lib/user-lookup';
 import type {
   ApiListResponse,
@@ -47,6 +48,8 @@ type Props = {
  */
 export function AssignTemplateModal({ templateId, opened, onClose, onAssigned }: Props) {
   const qc = useQueryClient();
+  // DELETE /assignments/{user_id}: modelos.treino/excluir (escopo alunos); sem permissão, sem o botão.
+  const canEndAssignment = usePermissions().can('modelos.treino', 'excluir', 'alunos');
   const [search, setSearch] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
@@ -109,7 +112,7 @@ export function AssignTemplateModal({ templateId, opened, onClose, onAssigned }:
     <Modal opened={opened} onClose={handleClose} title="Atribuir modelo a usuários" size="md">
       <Stack gap="md">
         <Text size="sm" c={BRAND.textMuted}>
-          Selecione os usuários que devem receber este modelo. O motor de geração de ficha passa a usar este modelo
+          Selecione os usuários (os seus alunos, se você não for administrador) que devem receber este modelo. O motor de geração de ficha passa a usar este modelo
           para eles automaticamente.
         </Text>
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
@@ -160,16 +163,18 @@ export function AssignTemplateModal({ templateId, opened, onClose, onAssigned }:
                     {assignment.full_name ? `${assignment.full_name} (${assignment.username})` : assignment.username}
                   </Table.Td>
                   <Table.Td>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      color="red"
-                      leftSection={<IconTrash size={12} />}
-                      loading={removeMutation.isPending && removeMutation.variables === assignment.user_id}
-                      onClick={() => removeMutation.mutate(assignment.user_id)}
-                    >
-                      Encerrar
-                    </Button>
+                    {canEndAssignment && (
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="red"
+                        leftSection={<IconTrash size={12} />}
+                        loading={removeMutation.isPending && removeMutation.variables === assignment.user_id}
+                        onClick={() => removeMutation.mutate(assignment.user_id)}
+                      >
+                        Encerrar
+                      </Button>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}

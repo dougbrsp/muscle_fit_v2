@@ -24,16 +24,18 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from . import async_jobs, nutrition_ai_quota
+from .access import require_permission
+from .access.deps import permissions_for_request
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition import plan_suggestion
 from .domain.nutrition.ai_usage import PLAN_SUGGESTION_JOB_TYPE, AiFeature, AiUsageStatus
 from .intelligence.dashboard.time_windows import user_today_for
-from .nutrition_access import fetch_target_user, plan_actor, resolve_target_user
+from .nutrition_access import fetch_target_user, resolve_target_user
 from .nutrition_plan_suggestion_ai import PROMPT_VERSION
 from .nutrition_plans import subject_incomplete_error
 from .nutrition_schema import require_nutrition_tables
@@ -65,14 +67,20 @@ def _incomplete_subject(conn: Any, cur: Any, aluno: int, current: Mapping[str, A
 
 
 @router.get("/usage")
-def plan_suggestion_usage(identity: Identity = Depends(plan_actor)):
+def plan_suggestion_usage(identity: Identity = Depends(require_permission("ia.nutricao", "ver"))):
     with connect_or_503(get_conn) as conn:
         return nutrition_ai_quota.usage_today(conn, user_id=int(identity.user_id), feature=FEATURE).to_dict()
 
 
 @router.post("", status_code=202)
-def suggest_plan(payload: PlanSuggestionIn, identity: Identity = Depends(plan_actor)):
-    aluno = resolve_target_user(identity, payload.user_id)
+def suggest_plan(
+    request: Request, payload: PlanSuggestionIn, identity: Identity = Depends(require_permission("ia.nutricao", "editar"))
+):
+    permissoes = permissions_for_request(request, identity)
+    # O alvo precisa de `ia.nutricao` (pedir a sugestao) E de `nutricao.plano` (o plano dele), antes de consultar o
+    # usuario e de reservar cota; a cota segue sendo de quem pede.
+    aluno = resolve_target_user(identity, permissoes, "ia.nutricao", "editar", payload.user_id)
+    resolve_target_user(identity, permissoes, "nutricao.plano", "editar", payload.user_id)
     solicitante = int(identity.user_id)
 
     with connect_or_503(get_conn) as conn:

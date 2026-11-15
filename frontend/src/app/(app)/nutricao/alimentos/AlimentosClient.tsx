@@ -13,6 +13,7 @@ import { NutritionLimitations } from '@/components/nutrition/NutritionLimitation
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
+import { alimentosControls } from '@/lib/screen-permissions';
 import { existingFoodSelection } from '@/lib/nutrition-barcode-flow';
 import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
 import type { ExternalFoodResponse, FoodSaveResponse } from '@/lib/nutrition-types';
@@ -61,7 +62,8 @@ export function AlimentosClient() {
     staleTime: 60_000,
     retry: false,
   });
-  const isAdmin = currentUserQuery.data?.role === 'admin';
+  // admin.catalogos/ver (RBAC): privados de todos e promoção.
+  const canListPrivate = alimentosControls(currentUserQuery.data?.permissions).canListPrivate;
 
   const detailQuery = useQuery({
     queryKey: foodKeys.detail(selectedId ?? 0),
@@ -143,7 +145,7 @@ export function AlimentosClient() {
       )}
 
       <FoodSearch
-        isAdmin={isAdmin}
+        isAdmin={canListPrivate}
         selectedId={selectedId}
         onSelect={(item) => {
           setSelectedId(item.id);

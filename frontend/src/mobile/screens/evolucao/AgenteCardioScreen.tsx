@@ -21,6 +21,7 @@ import type {
 import { statusVisual } from '@/lib/dashboard-status';
 import { formatDateOrDash, formatDateTimeOrDash } from '@/lib/format';
 import { readinessLabel } from '@/lib/muscle-readiness';
+import { useIaControls } from '@/lib/screen-permissions';
 import {
   BottomSheet,
   EmptyState,
@@ -51,6 +52,7 @@ const fmt = (v: number | null | undefined, d = 1) => (v != null && Number.isFini
 export function AgenteCardioScreen() {
   useEffect(preloadMarkdown, []);
   const online = useOnlineStatus();
+  const ia = useIaControls();
   const qc = useQueryClient();
   const [days, setDays] = useState('14');
   const [jobId, setJobId] = useState<string | null>(null);
@@ -327,23 +329,25 @@ export function AgenteCardioScreen() {
       </BottomSheet>
 
 
-      <StickyAction>
-        <Button
-          fullWidth
-          size="lg"
-          color="brand"
-          mih={48}
-          leftSection={<IconSparkles size={18} />}
-          loading={isGenerating}
-          disabled={!online}
-          onClick={() => {
-            setJobId(null);
-            generate.mutate({ days: Number(days) });
-          }}
-        >
-          Gerar recomendação
-        </Button>
-      </StickyAction>
+      {ia.canCardio ? (
+        <StickyAction>
+          <Button
+            fullWidth
+            size="lg"
+            color="brand"
+            mih={48}
+            leftSection={<IconSparkles size={18} />}
+            loading={isGenerating}
+            disabled={!online}
+            onClick={() => {
+              setJobId(null);
+              generate.mutate({ days: Number(days) });
+            }}
+          >
+            Gerar recomendação
+          </Button>
+        </StickyAction>
+      ) : null}
       <OfflineNote what="gerar ou excluir recomendações" />
       <div className={styles.scrollEnd} aria-hidden />
     </>

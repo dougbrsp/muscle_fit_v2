@@ -15,10 +15,12 @@ import {
   Title,
 } from '@mantine/core';
 import { IconAlertCircle, IconLock } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '@/lib/api';
+import { resetSessionCache } from '@/lib/app-logout';
 import { AuthError, login, type SessionUser } from '@/lib/auth';
 import { sanitizeInternalPath } from '@/lib/safe-path';
 
@@ -35,6 +37,7 @@ export function sanitizeNextPath(raw: string | null): string {
 
 export function LoginClient() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const nextPath = sanitizeNextPath(searchParams.get('next'));
 
@@ -48,10 +51,16 @@ export function LoginClient() {
   // para o destino em vez de pedir login de novo. Como o cookie é httpOnly,
   // a única forma de checar é perguntando à API.
   useEffect(() => {
+    // Fronteira entre contas: o logout nao limpa o cache (evita /auth/me sem
+    // cookie com as telas antigas montadas); a limpeza acontece aqui, antes do
+    // atalho de sessao ativa.
+    resetSessionCache(queryClient);
     let cancelled = false;
     apiFetch<SessionUser>('/auth/me')
       .then(() => {
-        if (!cancelled) router.replace(nextPath);
+        if (!cancelled) {
+          router.replace(nextPath);
+        }
       })
       .catch(() => {
         // sem sessão válida — permanece na tela de login normalmente.
@@ -69,6 +78,8 @@ export function LoginClient() {
     try {
       const result = await login(username, password);
       setLoggedUser(result.user);
+      // Descarta cache da conta anterior (permissoes, dados admin) antes de navegar.
+      resetSessionCache(queryClient);
       if (result.user.must_change_password) {
         router.replace('/perfil?troque-senha=1');
       } else {

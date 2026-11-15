@@ -15,7 +15,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics", "dashboard-modules"],
 @router.get("/body-composition-trend")
 def body_composition_trend(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("corpo.indicadores", "ver")),
 ):
     service = BodyCompositionTrendService()
     return service.get_body_trend(days=days, user_id=identity.user_id)
@@ -24,7 +24,7 @@ def body_composition_trend(
 @router.get("/training-volume")
 def training_volume(
     days: int = Query(default=30, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     from .intelligence.methodology_volume_service import annotate_group_hierarchy, load_group_hierarchy
 
@@ -41,7 +41,7 @@ def training_volume(
 @router.get("/training-volume-by-split-day")
 def training_volume_by_split_day(
     days: int = Query(default=180, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
 ):
     service = VolumeService()
     clamped_days = min(max(days, 7), 180)
@@ -54,7 +54,7 @@ def training_volume_by_split_day(
 @router.get("/muscle-recovery")
 def muscle_recovery(
     days: int = Query(default=14, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     # Multiusuario Parte 4: Identity agora disponivel - propaga user_id para
     # o fator global de TSB (fecha a ressalva documentada na Parte 2, ver
@@ -70,7 +70,7 @@ def muscle_recovery(
 @router.get("/muscle-recovery-consecutive-check")
 def muscle_recovery_consecutive_check(
     days: int = Query(default=7, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("dashboards", "ver")),
 ):
     service = MuscleRecoveryService()
     return {
@@ -79,7 +79,7 @@ def muscle_recovery_consecutive_check(
     }
 
 
-@router.get("/muscle-group-body-map")
+@router.get("/muscle-group-body-map", dependencies=[Depends(require_permission("volume.grupamentos", "ver"))])
 def muscle_group_body_map():
     return {"items": services.list_muscle_group_body_map()}
 

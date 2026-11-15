@@ -13,7 +13,8 @@ from .db import get_conn
 from .db_helpers import connect_or_503, DB_UNAVAILABLE_MYSQL, jsonable as _jsonable
 from .intervals_client import IntervalsClientError
 from .intervals_store import IntervalsCredentialsError, ManualWellnessError
-from .security import Identity, get_current_identity, require_admin
+from .access import require_permission
+from .security import Identity
 
 router = APIRouter(prefix="/integrations/intervals", tags=["intervals"])
 
@@ -149,7 +150,7 @@ def _fetch_live_activities_and_wellness(user_id: int, days: int) -> tuple[List[D
 
 
 @router.get("/health")
-def intervals_integration_health(identity: Identity = Depends(get_current_identity)):
+def intervals_integration_health(identity: Identity = Depends(require_permission("integracoes.intervals", "ver"))):
     return {
         "status": "ok",
         "namespace": "/integrations/intervals",
@@ -163,7 +164,7 @@ def intervals_integration_health(identity: Identity = Depends(get_current_identi
 
 
 @router.get("/status")
-def intervals_status(identity: Identity = Depends(get_current_identity)):
+def intervals_status(identity: Identity = Depends(require_permission("integracoes.intervals", "ver"))):
     """Diz se o usuario autenticado ja configurou o Intervals.icu no perfil,
     sem nunca vazar a chave (nem criptografada) na resposta."""
     with _connect() as conn:
@@ -189,7 +190,7 @@ def intervals_status(identity: Identity = Depends(get_current_identity)):
 @router.post("/sync")
 def intervals_sync(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(require_admin),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "editar", min_scope="todos")),
 ):
     """Sync MANUAL do proprio usuario - hoje so para troubleshooting (ADMIN).
 
@@ -299,7 +300,7 @@ def _sync_athlete_hr_zones(user_id: int, *, elapsed_seconds: float = 0.0) -> Dic
 @router.post("/activities")
 def upsert_intervals_activities(
     payload: Any = Body(...),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "editar")),
 ):
     items = _extract_items(payload, ["items", "activities", "data"])
     result = _upsert_activities(identity.user_id, items)
@@ -309,7 +310,7 @@ def upsert_intervals_activities(
 @router.post("/wellness")
 def upsert_intervals_wellness(
     payload: Any = Body(...),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "editar")),
 ):
     items = _extract_items(payload, ["items", "wellness", "data"])
     result = _upsert_wellness(identity.user_id, items)
@@ -339,7 +340,7 @@ def _user_today(conn, user_id: int) -> date:
 def patch_intervals_wellness_manual(
     payload: ManualWellnessPatch,
     wellness_date: date = Path(...),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "editar")),
 ):
     """Edicao manual de FC de repouso / HRV de um dia do proprio usuario.
 
@@ -376,7 +377,7 @@ def patch_intervals_wellness_manual(
 @router.get("/summary")
 def intervals_cached_summary(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "ver")),
 ):
     activities = _fetch_one(
         """
@@ -433,7 +434,7 @@ def intervals_cached_summary(
 def intervals_cached_activities(
     days: int = Query(default=90, ge=1, le=3650),
     limit: int = Query(default=100, ge=1, le=1000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "ver")),
 ):
     rows = _fetch_all(
         """
@@ -471,7 +472,7 @@ def intervals_cached_activities(
 def intervals_cached_wellness(
     days: int = Query(default=90, ge=1, le=3650),
     limit: int = Query(default=100, ge=1, le=1000),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "ver")),
 ):
     rows = _fetch_all(
         """
@@ -900,7 +901,7 @@ def _fetch_live_activities(user_id: int, days: int) -> tuple[List[Dict[str, Any]
 @router.get("/dashboard")
 def intervals_live_dashboard(
     days: int = Query(default=90, ge=1, le=3650),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "ver")),
 ):
     """Atividades ao vivo do Intervals.icu (como antes), agora tambem
     gravadas no cache `intervals_activities` (M53, melhor-esforco); wellness
@@ -929,7 +930,7 @@ def intervals_cardio_adherence(
     window: str = Query(default="28d"),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("integracoes.intervals", "ver")),
 ):
     """Cardio planejado × realizado do usuário logado (M98 C2), por sessão e
     por semana. Só leitura do cache (`intervals_activities`, mantido pelo

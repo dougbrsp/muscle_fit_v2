@@ -52,7 +52,7 @@ def _limpar(raw) -> None:
 
 
 @pytest.fixture
-def usuarios(raw):
+def usuarios(raw, conceder_grupo):
     reset_nutrition_tables_cache()
     _limpar(raw)
     ids = {}
@@ -61,6 +61,7 @@ def usuarios(raw):
         for nome in USUARIOS:
             cur.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', 'regular')", (nome,))
             ids[nome.split("_")[0]] = cur.lastrowid
+            conceder_grupo(cur, ids[nome.split("_")[0]], "regular")
     raw.commit()
     yield ids
     _limpar(raw)

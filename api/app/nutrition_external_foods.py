@@ -37,9 +37,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional, TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 
 from . import external_food_sources as ext
+from .access import EffectivePermissions, require_permission
+from .access.deps import permissions_for_request
 from .domain.nutrition import catalog
 from .domain.nutrition import external_sources as fontes
 from .domain.nutrition import labels as nutrition_labels
@@ -48,7 +50,7 @@ from .intelligence.dashboard.time_windows import user_day_start_db_for
 from .nutrition_access import can_view_food
 from .nutrition_foods import FOOD_COLUMNS, FOODS, _connect, _error, food_by_barcode, food_public
 from .nutrition_schema import require_food_tables
-from .security import Identity, get_current_identity
+from .security import Identity
 
 router = APIRouter(prefix="/nutrition/foods", tags=["nutrition"])
 
@@ -116,12 +118,14 @@ def _row_validation(row: dict[str, Any]) -> catalog.FoodValidation:
     return catalog.validate_food_values(row, row.get("basis"), required=catalog.EXTERNAL_REQUIRED_PER_100_FIELDS)
 
 
-def _external_food_response(row: dict[str, Any], identity: Identity, **extra: Any) -> dict[str, Any]:
-    if not row.get("is_active") or not can_view_food(identity, row):
+def _external_food_response(
+    row: dict[str, Any], identity: Identity, permissoes: EffectivePermissions, **extra: Any
+) -> dict[str, Any]:
+    if not row.get("is_active") or not can_view_food(identity, permissoes, row):
         raise _error(404, "food_not_found", "Alimento não encontrado.")
     validacao = _row_validation(row)
     return {
-        **food_public(row, identity),
+        **food_public(row, identity, permissoes),
         "warnings": nutrition_labels.limitation_items(validacao.warnings),
         "atwater": validacao.atwater.to_dict() if validacao.atwater else None,
         **extra,
@@ -180,9 +184,11 @@ def _save(alimento: fontes.ExternalFood, identity: Identity) -> dict[str, Any]:
 
 @router.get("/barcode/{ean}")
 def lookup_barcode(
+    request: Request,
     ean: str = Path(..., min_length=1, max_length=32),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
+    permissoes = permissions_for_request(request, identity)
     codigo = fontes.normalize_gtin(ean)
     if codigo is None:
         raise _error(400, fontes.ERR_INVALID_BARCODE, nutrition_labels.limitation_label(fontes.ERR_INVALID_BARCODE))
@@ -193,7 +199,7 @@ def lookup_barcode(
             linha = _food_by_source(cur, FoodSource.OFF, codigo)
             # Linha do OFF desativada (ou invisível ao usuário): não serve de cache, mas também não pode
             # esconder um cadastro local do mesmo EAN nem impedir a oferta de cadastro na tela.
-            off_indisponivel = linha is not None and not (linha.get("is_active") and can_view_food(identity, linha))
+            off_indisponivel = linha is not None and not (linha.get("is_active") and can_view_food(identity, permissoes, linha))
             if linha is None or off_indisponivel:
                 # N3: o EAN cadastrado à mão (ou por outra fonte) também é cache; não gasta consulta ao OFF.
                 linha = food_by_barcode(cur, codigo, int(identity.user_id))
@@ -202,7 +208,7 @@ def lookup_barcode(
     if linha is None and off_indisponivel:
         raise _error(404, "food_not_found", "Produto indisponível no catálogo para este código.")
     if linha is not None:
-        return _external_food_response(linha, identity, from_cache=True)
+        return _external_food_response(linha, identity, permissoes, from_cache=True)
     if not fontes.off_lookup_allowed(usadas):
         raise _error(
             429,
@@ -214,7 +220,7 @@ def lookup_barcode(
     alimento = fontes.map_off_product(produto, codigo)
     if not alimento.ok:
         raise _invalid_external_food(alimento)
-    return _external_food_response(_save(alimento, identity), identity, from_cache=False)
+    return _external_food_response(_save(alimento, identity), identity, permissoes, from_cache=False)
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +231,7 @@ def lookup_barcode(
 @router.get("/usda/search")
 def search_usda(
     q: str = Query(..., min_length=1, max_length=120),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
     _external(ext.ensure_usda_configured)
     termo = " ".join(q.split())
@@ -237,10 +243,12 @@ def search_usda(
 
 @router.post("/usda/{fdc_id}/import", status_code=201)
 def import_usda_food(
+    request: Request,
     response: Response,
     fdc_id: int = Path(..., gt=0, le=2_147_483_647),
-    identity: Identity = Depends(get_current_identity),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "editar")),
 ):
+    permissoes = permissions_for_request(request, identity)
     _external(ext.ensure_usda_configured)
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -248,12 +256,12 @@ def import_usda_food(
             existente = _food_by_source(cur, FoodSource.USDA, str(fdc_id))
     if existente is not None:
         response.status_code = 200
-        return _external_food_response(existente, identity, created=False)
+        return _external_food_response(existente, identity, permissoes, created=False)
     detalhe = _external(lambda: ext.usda_food(fdc_id))
     alimento = fontes.map_usda_food(detalhe, fdc_id)
     if not alimento.ok:
         raise _invalid_external_food(alimento)
-    return _external_food_response(_save(alimento, identity), identity, created=True)
+    return _external_food_response(_save(alimento, identity), identity, permissoes, created=True)
 
 
 __all__ = ["router"]
