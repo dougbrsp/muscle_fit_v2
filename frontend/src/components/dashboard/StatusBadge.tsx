@@ -1,8 +1,10 @@
 'use client';
 
-import { Badge, Tooltip } from '@mantine/core';
+import { Badge, Text, Tooltip } from '@mantine/core';
 import type { MantineSize } from '@mantine/core';
 import { statusVisual, type StatusDomain } from '@/lib/dashboard-status';
+import { scopeDescription, scopeLabel, type ProgressionScope } from '@/lib/progression-scope';
+import { BRAND } from '@/theme';
 
 /**
  * F1.7 — o `Badge` do Mantine tem ALTURA FIXA e corta o texto com reticências
@@ -76,6 +78,28 @@ export function StatusBadge({
   return (
     <Tooltip label={label} multiline w={320} withArrow>
       {badge}
+    </Tooltip>
+  );
+}
+
+/**
+ * Escopo da leitura de progressão (o que o selo compara), em texto visível;
+ * a descrição vai no tooltip. Sem descritor (resposta antiga) não renderiza.
+ */
+export function ScopeCaption({ scope, prefix }: { scope: ProgressionScope | null | undefined; prefix?: string }) {
+  const label = scopeLabel(scope);
+  if (!label) return null;
+  const text = (
+    <Text size="xs" c={BRAND.textMuted} data-testid="progression-scope">
+      {prefix ? `${prefix} ` : ''}
+      {label}
+    </Text>
+  );
+  const description = scopeDescription(scope);
+  if (!description) return text;
+  return (
+    <Tooltip label={description} multiline w={320} withArrow events={{ hover: true, focus: true, touch: true }}>
+      {text}
     </Tooltip>
   );
 }

@@ -1839,8 +1839,26 @@ def dashboard_progression_by_muscle_group(
     `date_from`/`date_to`). Com `days=28` (a janela padrao da home) os numeros
     sao identicos aos da home. `window` (como no overview, inclusive `cycle`)
     vence `days`/`date_from`/`date_to`. O `performance_status` de cada grupo e a
-    agregacao ponderada desses mesmos status."""
+    agregacao ponderada desses mesmos status.
+
+    Escopo das leituras (issue #152), chaves de topo, todas descritores de
+    `domain/progression_status_labels.PROGRESSION_SCOPES` (`code`, `entity`,
+    `metric`, `comparator`, `label`, `description`): `performance_status_scope`
+    (status de desempenho do grupo), `volume_status_scope` (`volume_status`),
+    `performance_change_scope` (`performance_change_pct` e `change_pct` de
+    `performance_exercises`) e `exercise_status_scope` (o `status` de cada item
+    de `performance_exercises`, status do EXERCICIO). `metric_versions` traz as
+    versoes de regra (status, tonelagem, e1RM). As janelas sao
+    `current_from`/`current_to`/`previous_from`/`previous_to`."""
+    from .domain.progression_status_labels import (
+        SCOPE_E1RM_WINDOWS,
+        SCOPE_EXERCISE_LAST_VS_PREVIOUS,
+        SCOPE_GROUP_VOLUME_WINDOWS,
+        SCOPE_GROUP_WEIGHTED_EXERCISES,
+        progression_scope,
+    )
     from .intelligence.dashboard.comparability import exercise_progression_summary
+    from .intelligence.dashboard.metrics_registry import metric_version
     from .intelligence.dashboard.contracts import ExerciseProgressionSummaryOut
     from .intelligence.muscle_group_performance import (
         PERFORMANCE_BASIS,
@@ -1918,6 +1936,16 @@ def dashboard_progression_by_muscle_group(
         "comparison_basis": COMPARISON_BASIS,
         "performance_basis": PERFORMANCE_BASIS,
         "performance_status_basis": STATUS_BASIS,
+        # Issue #152: o que cada leitura compara (valem para todos os itens).
+        "performance_status_scope": progression_scope(SCOPE_GROUP_WEIGHTED_EXERCISES),
+        "volume_status_scope": progression_scope(SCOPE_GROUP_VOLUME_WINDOWS),
+        "performance_change_scope": progression_scope(SCOPE_E1RM_WINDOWS),
+        "exercise_status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
+        "metric_versions": {
+            "exercise_progression_status": metric_version("exercise_progression_status"),
+            "tonnage": metric_version("tonnage"),
+            "e1rm": metric_version("e1rm"),
+        },
         **{key: value.isoformat() for key, value in windows.items()},
         "exercise_progression": None
         if exercise_items is None
@@ -1969,6 +1997,9 @@ def dashboard_progression_trend(
 
     Ate 2026-10-06 esta rota usava `classify_progression_trend` (e1RM contra a
     MEDIA das sessoes, sem chave de equipamento) e divergia da home.
+    `status_scope` (issue #152): descritor do que `status` compara (ultima
+    exposicao vs. anterior), vindo de `progression_verdict`.
+
     `classification`/`reason` continuam so por compatibilidade (DEPRECADOS)."""
     from .intelligence.dashboard.exposure_service import MAX_EXPOSURES, progression_verdict
     from .intelligence.dashboard.metrics_registry import (

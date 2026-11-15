@@ -16,6 +16,15 @@ export const FROZEN_NOW = new Date('2026-10-14T15:00:00.000Z');
 
 type Json = unknown;
 
+const SCOPE_EXERCISE = {
+  code: 'exercise_last_vs_previous_exposure',
+  entity: 'exercise',
+  metric: 'exposure',
+  comparator: 'last_vs_previous',
+  label: 'Última exposição vs. anterior',
+  description: 'Compara a última exposição do exercício com a anterior comparável.',
+};
+
 const QUALITY = 'HIGH';
 const metric = (value: number | null, unit: string | null = null) => ({
   value,
@@ -80,6 +89,9 @@ const overview = {
       counts: [],
       exposures_per_exercise: 3,
       truncated: false,
+      status_scope: SCOPE_EXERCISE,
+      rule_version: 'progression-status-v2',
+      window: { kind: '30d', date_from: '2026-09-15', date_to: '2026-10-14', timezone: 'America/Sao_Paulo', days: 30 },
     },
     priority_muscles: {
       ...blockBase('Quais musculos priorizar?', 'Nenhum grupo abaixo da faixa.', '/dashboard/musculos'),

@@ -67,6 +67,7 @@ from .comparability import (
     trailing_comparable_indices,
     trailing_comparable_run,
 )
+from ...domain.progression_status_labels import SCOPE_EXERCISE_LAST_VS_PREVIOUS, progression_scope
 from .contracts import DataQuality, WindowInfo
 from .identity import require_user_id
 from .metrics_registry import THRESHOLDS, ExerciseProgressionStatus, metric_version
@@ -543,6 +544,7 @@ def progression_verdict(exposures: list[dict[str, Any]]) -> dict[str, Any]:
     ultima = exposures[-1] if exposures else None
     return {
         "status": status.value,
+        "status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
         "status_reasons": reasons,
         "comparable_exposures": len(trailing_comparable_run(summaries)),
         "exposures_in_window": len(exposures),
@@ -821,6 +823,7 @@ def build_exercise_progress(
         },
         "comparability_key": current_key.to_dict() if current_key else None,
         "status": status.value,
+        "status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
         "status_reasons": reasons,
         # O status e do contexto de fadiga da exposicao mais recente.
         "fatigue_context": exposures[-1].get("fatigue_context") if exposures else None,

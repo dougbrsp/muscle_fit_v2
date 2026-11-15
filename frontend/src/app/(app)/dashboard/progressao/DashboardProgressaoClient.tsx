@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { DashboardPeriodSelect } from '@/components/dashboard/DashboardPeriodSelect';
-import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { TrendBadge } from '@/components/dashboard/TrendBadge';
 import { DashboardCardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { CHART_LEGEND_STYLE } from '@/components/charts/chartTheme';
@@ -265,7 +265,10 @@ export function DashboardProgressaoClient() {
                     Tendência
                   </Text>
                 </Group>
-                <StatusBadge domain="exerciseProgression" code={trend.status} size="lg" />
+                <Stack gap={2} align="flex-end">
+                  <StatusBadge domain="exerciseProgression" code={trend.status} size="lg" />
+                  <ScopeCaption scope={trend.status_scope} />
+                </Stack>
               </Group>
               {trendReasons.map((reason) => (
                 <Text key={reason.code} size="sm" c={BRAND.textPrimary}>

@@ -8,7 +8,7 @@ import { DashboardPeriodSelect } from '@/components/dashboard/DashboardPeriodSel
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { MetricValue } from '@/components/dashboard/MetricValue';
 import { OverviewBlockCard } from '@/components/dashboard/OverviewBlockCard';
-import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { AllClearState, DashboardCardSkeleton, ErrorState, PartialState } from '@/components/dashboard/states';
 import { MEASUREMENT_SITE_LABELS, WAIST_SITE } from '@/lib/body-measurement-sites';
 import { dashboardKeys, fetchOverview } from '@/lib/dashboard-api';
@@ -35,6 +35,7 @@ import type {
   RecoveryBlock,
 } from '@/lib/dashboard-overview-types';
 import { exerciseProgressHref, fatigueContextLabel, statusWithContextLabel } from '@/lib/exercise-progress';
+import { scopeFootnote } from '@/lib/progression-scope';
 import { BRAND } from '@/theme';
 import { useIsAdmin } from '@/lib/use-is-admin';
 
@@ -198,6 +199,12 @@ function ProgressionCard({ block, filters }: { block: ProgressionBlock; filters:
           <StatusBadge key={bar.status} domain="exerciseProgression" code={bar.status} size="xs" suffix={` ${bar.count}`} />
         ))}
       </Group>
+      <ScopeCaption scope={block.status_scope} />
+      {scopeFootnote(block.window, block.rule_version) && (
+        <Text size="xs" c={BRAND.textMuted}>
+          {scopeFootnote(block.window, block.rule_version)}
+        </Text>
+      )}
       <Text size="xs" c={BRAND.textMuted}>
         {fmtInt(block.comparable_total)} de {fmtInt(block.exercises_total)} exercícios com histórico comparável.
       </Text>

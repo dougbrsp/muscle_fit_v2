@@ -11,6 +11,7 @@
 
 import type { ComparabilityKey, FatigueContext } from './dashboard-v3-types';
 import type { LoadConvention } from './equipment-exercises-types';
+import type { ProgressionScope } from './progression-scope';
 
 // ---------------------------------------------------------------------------
 // Comuns
@@ -129,6 +130,8 @@ export type DashboardProgressionTrendResponse = {
   load_convention: LoadConvention | null;
   load_convention_source: 'equipment_exercises' | 'default_total' | null;
   last_local_date: string | null;
+  /** O que o veredito compara (rótulo e frase prontos do backend); ausente em respostas antigas. */
+  status_scope?: ProgressionScope | null;
   /** @deprecated rótulo da regra antiga, mantido só para compatibilidade de deploy. Use `status`. */
   classification?: ProgressionTrendClassification;
   /** @deprecated idem. Use `status_reasons`. */
@@ -192,6 +195,8 @@ export type MuscleGroupPerformanceExercise = {
   /** Variação de e1RM acima de ±50%: listado, mas fora do cálculo do grupo ("conferir registro"). */
   outlier: boolean;
   excluded_reason: 'OUTLIER_CHANGE' | null;
+  /** Status do exercício (o mesmo código da home); `null` se indisponível, ausente em respostas antigas. */
+  status?: string | null;
 };
 
 /** Por que o grupo ficou sem leitura de desempenho (`null` quando classificado). */
@@ -260,6 +265,12 @@ export type ExerciseProgressionSummary = {
 };
 
 export type MuscleGroupProgressionResponse = {
+  /** Escopos das leituras do painel (texto pronto do backend); todos opcionais. */
+  performance_status_scope?: ProgressionScope | null;
+  volume_status_scope?: ProgressionScope | null;
+  performance_change_scope?: ProgressionScope | null;
+  exercise_status_scope?: ProgressionScope | null;
+  metric_versions?: { exercise_progression_status?: string; tonnage?: string; e1rm?: string } | null;
   /** Ausente em respostas antigas: nesse caso nada é exibido. */
   exercise_progression?: ExerciseProgressionSummary | null;
   /** Base do `performance_status` por grupo (descrição vinda do backend). */
