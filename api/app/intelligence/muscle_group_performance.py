@@ -173,6 +173,9 @@ def build_group_performance(
         entry["weight"] = max(entry["weight"], weight)
         entry["exercise_name"] = entry["exercise_name"] or row.get("exercise_name")
 
+    # Status (a) de cada exercicio, como o lote o classificou: so repassado ao
+    # item de `performance_exercises` para a tela ver o status individual.
+    status_by_exercise = {int(item["exercise_id"]): item["status"] for item in (exercise_items or [])}
     by_group: Dict[int, List[Dict[str, Any]]] = {}
     for (group_id, key), entry in pairs.items():
         if entry["current"] is None or entry["previous"] is None:
@@ -187,6 +190,7 @@ def build_group_performance(
                 "previous_e1rm_kg": round(entry["previous"], 1),
                 "current_e1rm_kg": round(entry["current"], 1),
                 "change_pct": round(change, 1),
+                "status": status_by_exercise.get(key.canonical_exercise_id),
                 "stimulus_weight": round(entry["weight"], 3),
                 "outlier": _is_outlier(change),
                 "excluded_reason": OUTLIER_CHANGE if _is_outlier(change) else None,
@@ -195,7 +199,6 @@ def build_group_performance(
         )
 
     # Status: agregacao do dono sobre os status dos exercicios do grupo.
-    status_by_exercise = {int(item["exercise_id"]): item["status"] for item in (exercise_items or [])}
     aggregated: Dict[int, Dict[str, Any]] = {}
     for group_id, weights in (group_weights or {}).items():
         entries = [

@@ -23,7 +23,7 @@ import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { DashboardPeriodSelect } from '@/components/dashboard/DashboardPeriodSelect';
 import { MetricValue } from '@/components/dashboard/MetricValue';
-import { BADGE_QUEBRA_LINHA, StatusBadge } from '@/components/dashboard/StatusBadge';
+import { BADGE_QUEBRA_LINHA, ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import {
   DashboardCardSkeleton,
   DashboardSkeleton,
@@ -251,6 +251,7 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
           </div>
           <Stack gap={4} align="flex-end">
             <StatusBadge domain="exerciseProgression" code={data.status} size="lg" />
+            <ScopeCaption scope={data.status_scope} />
             {/* O status vale para o contexto de fadiga da exposição mais
                 recente ("Progresso · pré-fatigado"); rótulo do backend. */}
             {fatigueContextLabel(data.fatigue_context) && (

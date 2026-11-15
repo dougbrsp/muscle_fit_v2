@@ -31,5 +31,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0009](0009-proteina-do-corte-sobre-o-peso-total.md) | Proteína do corte em g/kg de peso total (nutrition-v4) | Aceita | 2026-11-08 |
 | [0010](0010-regras-de-carga-como-formula-com-condicionais.md) | Regras de carga da próxima série como fórmula com condições E/OU (next-set-load-rules-v2) | Aceita | 2026-11-08 |
 | [0011](0011-permissoes-por-grupos-rbac.md) | Permissões por grupos (RBAC) como fundação da monetização: concessões aditivas de recurso × ação × escopo | Aceita | 2026-11-10 |
+| [0012](0012-escopo-das-leituras-de-progressao.md) | Escopo das leituras de progressão (issue #152) | Aceita | 2026-11-15 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

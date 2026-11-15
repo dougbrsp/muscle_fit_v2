@@ -200,7 +200,7 @@ def test_ultima_execucao_ignora_aquecimento_e_aplicacao_de_tecnica():
     assert ultima.working_load_kg == 60.0  # calibração: mínimo das séries de trabalho
 
 
-def test_ultima_execucao_pula_ocorrencia_so_de_aquecimento_e_prefere_o_equipamento():
+def test_ultima_execucao_pula_ocorrencia_so_de_aquecimento_e_so_vale_no_equipamento_pedido():
     logs = [
         _log(10, [_s(1, 20, 10, set_type="warmup")], equipment_id=7),
         _log(10, [_s(1, 50, 10)], equipment_id=8, local_date=date(2026, 9, 28)),
@@ -209,6 +209,8 @@ def test_ultima_execucao_pula_ocorrencia_so_de_aquecimento_e_prefere_o_equipamen
     assert svc.last_execution_from_logs(logs, 10).last_load_kg == 50.0
     assert svc.last_execution_from_logs(logs, 10, 7).last_load_kg == 40.0
     assert svc.last_execution_from_logs(logs, 99) is None
+    # #137 B: equipamento sem execução não herda a de outro
+    assert svc.last_execution_from_logs(logs, 10, 9) is None
 
 
 def _decisao(**kwargs):

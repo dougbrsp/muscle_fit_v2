@@ -8,7 +8,15 @@ import { IconAdjustments, IconArrowDown, IconArrowUp, IconBarbell, IconGripVerti
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toActivationPayloadItem } from '@/lib/activation-payload';
-import { filterBySwapEligibility, swapEligibilityFor, type SwapEligibilityIndex } from '@/lib/exercise-swap-options';
+import {
+  filterBySwapEligibility,
+  rowSwapEligibility,
+  pickedExercisePatch,
+  typedExercisePatch,
+  type DraftRowKey,
+  type DraftSwapOptions,
+  type SwapEligibilityIndex,
+} from '@/lib/exercise-swap-options';
 import { apiFetch } from '@/lib/api';
 import type { MuscleActivationBreakdownItem } from '@/lib/analytics-types';
 import type { MappingCanonicalOptionsResponse } from '@/lib/mappings-types';
@@ -72,9 +80,14 @@ type Props = {
    * Exercícios elegíveis para a troca em cada linha SALVA, prontos do
    * servidor (`GET /workout-plans/{id}/exercise-swap-options`, mesma regra do
    * 422 `muscle_group_locked`). `'loading'` enquanto a leitura não chega;
-   * ausente = tabela sem linhas salvas (rascunho), sem restrição.
+   * ausente = tabela sem linhas salvas, sem restrição.
    */
   swapOptions?: SwapEligibilityIndex | 'loading';
+  /**
+   * Rascunho gerado: elegibilidade por `mapping_id` de GERAÇÃO da linha
+   * (`POST /workout-plans/exercise-swap-options`). Ausente = sem restrição.
+   */
+  draftSwapOptions?: DraftSwapOptions;
 };
 
 // Sem digitação (foco/clique num campo já preenchido) a lista mostra todas as
@@ -245,6 +258,7 @@ export function ExercisesTable({
   onSwapEquipment,
   readOnly = false,
   swapOptions,
+  draftSwapOptions,
 }: Props) {
   // Nomes das técnicas vêm do catálogo (GET /advanced-techniques); o hook
   // dispara a carga e re-renderiza os badges quando ela chega.
@@ -497,7 +511,7 @@ export function ExercisesTable({
           <Table.Tbody ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
             {exercises.map((exercise, index) => {
               const configBadges = advancedConfigBadges(exercise);
-              const swapEligibility = swapEligibilityFor(exercise.workout_plan_exercise_id, swapOptions);
+              const swapEligibility = rowSwapEligibility(exercise as WorkoutPlanExercise & DraftRowKey, swapOptions, draftSwapOptions);
               const rowOptions = filterBySwapEligibility(exerciseAutocompleteData, swapEligibility);
               const prescBadges = prescriptionBadges(exercise);
               const breakdown = activationBreakdown[index];
@@ -557,10 +571,7 @@ export function ExercisesTable({
                       // vínculo stale após uma edição manual.
                       const matchesLinkedMapping =
                         exercise.mapping_id != null && mappingIdByExerciseName.get(value) === exercise.mapping_id;
-                      updateExercise(index, {
-                        exercise_name: value,
-                        mapping_id: matchesLinkedMapping ? exercise.mapping_id : null,
-                      });
+                      updateExercise(index, typedExercisePatch(exercise, value, matchesLinkedMapping));
                     }}
                     onOptionSubmit={(value) => {
                       const mappingId = mappingIdByExerciseName.get(value) ?? null;
@@ -571,7 +582,10 @@ export function ExercisesTable({
                         !isSavedRow(exercise) && !exercise.muscle_primary && catalogGroup
                           ? { muscle_primary: catalogGroup }
                           : {};
-                      updateExercise(index, { exercise_name: value, mapping_id: mappingId, ...groupPatch });
+                      updateExercise(index, {
+                        ...pickedExercisePatch(exercise, value, mappingId),
+                        ...groupPatch,
+                      });
                       // Troca de exercício (inclusive substituindo um já
                       // preenchido) invalida reps/carga/RPE anteriores — busca
                       // a sugestão determinística de progressão para o novo

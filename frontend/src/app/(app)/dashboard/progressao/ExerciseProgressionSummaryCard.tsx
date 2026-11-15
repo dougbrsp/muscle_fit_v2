@@ -1,7 +1,8 @@
 import { Group, Paper, Text } from '@mantine/core';
-import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { fmtDate, fmtInt } from '@/lib/dashboard-format';
 import type { ExerciseProgressionSummary } from '@/lib/dashboard-v2-types';
+import type { ProgressionScope } from '@/lib/progression-scope';
 import { BRAND } from '@/theme';
 
 /**
@@ -9,7 +10,14 @@ import { BRAND } from '@/theme';
  * backend enviou (`exercise_progression`): nenhuma contagem ou classificação
  * é feita aqui. Sem o campo, não renderiza nada.
  */
-export function ExerciseProgressionSummaryCard({ summary }: { summary: ExerciseProgressionSummary | null | undefined }) {
+export function ExerciseProgressionSummaryCard({
+  summary,
+  scope,
+}: {
+  summary: ExerciseProgressionSummary | null | undefined;
+  /** `exercise_status_scope` da resposta (opcional). */
+  scope?: ProgressionScope | null;
+}) {
   if (!summary) return null;
   const { counts } = summary;
   const badges = [
@@ -38,6 +46,7 @@ export function ExerciseProgressionSummaryCard({ summary }: { summary: ExerciseP
           <StatusBadge key={code} domain="exerciseProgression" code={code} size="xs" suffix={` ${count}`} />
         ))}
       </Group>
+      <ScopeCaption scope={scope} />
       <Text size="xs" c={BRAND.textMuted} mt={6}>
         {fmtInt(counts.comparable_total)} exercícios comparáveis, de {fmtDate(summary.period_start)} a{' '}
         {fmtDate(summary.period_end)}.

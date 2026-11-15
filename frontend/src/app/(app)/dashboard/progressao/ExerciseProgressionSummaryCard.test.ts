@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ExerciseProgressionSummary } from '@/lib/dashboard-v2-types';
+import type { ProgressionScope } from '@/lib/progression-scope';
 import { theme } from '@/theme';
 import { ExerciseProgressionSummaryCard } from './ExerciseProgressionSummaryCard';
 
@@ -24,10 +25,10 @@ const SUMMARY: ExerciseProgressionSummary = {
   answer: '18 de 40 exercícios comparáveis progredindo; 4 com suspeita de platô e 9 regredindo.',
 };
 
-function render(summary: ExerciseProgressionSummary | null | undefined) {
+function render(summary: ExerciseProgressionSummary | null | undefined, scope?: ProgressionScope | null) {
   // Tira os <style> injetados pelo MantineProvider: sobra só o markup do card.
   return renderToStaticMarkup(
-    createElement(MantineProvider, { theme }, createElement(ExerciseProgressionSummaryCard, { summary })),
+    createElement(MantineProvider, { theme }, createElement(ExerciseProgressionSummaryCard, { summary, scope })),
   ).replace(/<style[\s\S]*?<\/style>/g, '');
 }
 
@@ -52,6 +53,19 @@ describe('ExerciseProgressionSummaryCard', () => {
     expect(render({ ...SUMMARY, truncated: true })).toContain('Leitura parcial: janela muito longa; considere uma janela menor');
     expect(render({ ...SUMMARY, truncated: false })).not.toContain('Leitura parcial');
     expect(render(SUMMARY)).not.toContain('Leitura parcial');
+  });
+
+  it('mostra o escopo vindo da API (rótulo visível) e some sem ele', () => {
+    const scope: ProgressionScope = {
+      code: 'exercise_last_vs_previous_exposure',
+      entity: 'exercise',
+      metric: 'exposure',
+      comparator: 'last_vs_previous',
+      label: 'Última exposição vs. anterior',
+      description: 'Compara a última exposição com a anterior.',
+    };
+    expect(render(SUMMARY, scope)).toContain('Última exposição vs. anterior');
+    expect(render(SUMMARY)).not.toContain('Última exposição');
   });
 
   it('sem o campo, não renderiza nada nem inventa contagem', () => {

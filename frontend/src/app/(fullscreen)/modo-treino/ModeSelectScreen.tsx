@@ -32,7 +32,7 @@ import {
 } from '@/lib/workout-plans-types';
 import { type StoredWorkoutModeSession, type WorkoutPlanDetail } from '@/lib/workout-mode-types';
 import { loadParkedSession } from '@/lib/workout-mode-storage';
-import { mergeResumedSession } from '@/lib/workout-mode-plan-flow';
+import { isSavedPlanStartable, mergeResumedSession } from '@/lib/workout-mode-plan-flow';
 import { resolveWorkoutModeFromPlan } from '@/lib/workout-mode-advanced-stage';
 import { DeloadStartPanel } from './DeloadPanels';
 import { WorkoutModeNotice } from './WorkoutModeNotice';
@@ -254,6 +254,10 @@ export function ModeSelectScreen({ onSessionStarted }: Props) {
         method: 'POST',
         body: JSON.stringify(savePayload),
       });
+
+      if (!isSavedPlanStartable(savedPlan.exercises)) {
+        throw new Error('A ficha foi gravada sem exercícios. O treino não foi iniciado; gere a ficha novamente.');
+      }
 
       const result = await startWorkoutSession({
         name: savedPlan.name,
@@ -587,7 +591,12 @@ export function ModeSelectScreen({ onSessionStarted }: Props) {
         </Stack>
         {confirmDraftMutation.isError && (
           <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-            {errorMessage(confirmDraftMutation.error, 'Não foi possível salvar/iniciar a ficha.')}
+            {errorMessage(
+              confirmDraftMutation.error,
+              confirmDraftMutation.error instanceof Error
+                ? confirmDraftMutation.error.message
+                : 'Não foi possível salvar/iniciar a ficha.',
+            )}
           </Alert>
         )}
         <Button size="lg" radius="xl" h={56} loading={confirmDraftMutation.isPending} onClick={() => confirmDraftMutation.mutate()}>

@@ -12,6 +12,7 @@
  */
 
 import type { LoadConvention } from './equipment-exercises-types';
+import type { ProgressionScope } from './progression-scope';
 
 export type DataNature = 'OBSERVED' | 'DERIVED' | 'PLANNED' | 'PROJECTED' | 'ESTIMATED' | 'INFERRED';
 
@@ -250,6 +251,8 @@ export type ExerciseProgressResponse = {
   comparability_key: ComparabilityKey | null;
   /** Código de `ExerciseProgressionCode` (`lib/dashboard-status.ts`). */
   status: string;
+  /** O que o status compara (rótulo e frase prontos do backend); ausente em respostas antigas. */
+  status_scope?: ProgressionScope | null;
   /** Códigos `comparability.REASON_*`; texto em `lib/exercise-progress.ts`. */
   status_reasons: string[];
   /** Contexto de fadiga em que o status vale (o da exposição mais recente). */

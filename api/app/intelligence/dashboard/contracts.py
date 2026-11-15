@@ -355,6 +355,18 @@ class DeloadSessionOut(_Contract):
     deload_label: str | None = None
 
 
+class ProgressionScopeOut(_Contract):
+    """Descritor de O QUE uma leitura de progressao compara (issue #152). O
+    dono e `domain/progression_status_labels.PROGRESSION_SCOPES`."""
+
+    code: str
+    entity: str
+    metric: str
+    comparator: str
+    label: str
+    description: str
+
+
 class ExerciseProgressResponse(DashboardEnvelope):
     """Resposta de `/analytics/dashboard/exercises/{exercise_id}/progress`.
 
@@ -364,6 +376,8 @@ class ExerciseProgressResponse(DashboardEnvelope):
     exercise: ExerciseRefOut
     comparability_key: ComparabilityKeyOut | None = None
     status: str
+    # O que `status` compara (ultima exposicao vs. anterior).
+    status_scope: ProgressionScopeOut
     status_reasons: list[str] = Field(default_factory=list)
     # Contexto de fadiga da exposicao mais recente: o status vale para ele.
     fatigue_context: FatigueContextOut | None = None
@@ -1482,6 +1496,10 @@ class ProgressionBlockOut(OverviewBlockBase):
     as ultimas N exposicoes de CADA exercicio numa unica consulta (teto de 1 MB
     da Data API, §15) e declara o corte."""
 
+    # Issue #152: o que o status dos exercicios compara, a regra e a janela.
+    status_scope: ProgressionScopeOut
+    rule_version: str
+    window: WindowInfo
     exercises_total: int = Field(ge=0)
     comparable_total: int = Field(ge=0)
     counts: list[ProgressionStatusCountOut] = Field(default_factory=list)
@@ -2533,6 +2551,7 @@ __all__ = [
     "PriorityMuscleOut",
     "PriorityMusclesBlockOut",
     "ProgressionBlockOut",
+    "ProgressionScopeOut",
     "ProgressionExerciseOut",
     "ProgressionStatusCountOut",
     "RecoveryBlockOut",

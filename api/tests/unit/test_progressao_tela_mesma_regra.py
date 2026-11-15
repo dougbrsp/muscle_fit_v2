@@ -196,6 +196,24 @@ def test_mesmas_exposicoes_mesmo_status_na_tela_na_home_e_no_drill_down(nome):
     assert verdict["status_reasons"] == home(rows)["status_reasons"] == drill_down(rows)["status_reasons"], nome
 
 
+@pytest.mark.parametrize("nome", list(_cenarios()))
+def test_mesma_entidade_mesmo_status_e_mesmo_escopo_no_inicio_no_detalhe_e_na_tendencia(nome):
+    """Issue #152: bloco do Inicio, detalhe e tendencia (mesmo exercicio, filtros e
+    janela) devolvem o mesmo status E o mesmo descritor de escopo (a)."""
+    from app.domain.progression_status_labels import SCOPE_EXERCISE_LAST_VS_PREVIOUS, progression_scope
+    from app.intelligence.dashboard.overview_service import progression_block
+
+    rows = _cenarios()[nome]
+    itens, _ = svc.classify_batch(rows, per_exercise_limit=svc.MAX_BATCH_EXPOSURES_PER_EXERCISE)
+    bloco = progression_block(itens, truncated=False, exposures_per_exercise=5, window=JANELA)
+    bucket = next(c for c in bloco["counts"] if c["exercises"])
+    esperado = progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS)
+    detalhe, tendencia = drill_down(rows), tela(rows)
+
+    assert bucket["status"] == detalhe["status"] == tendencia["status"], nome
+    assert bloco["status_scope"] == detalhe["status_scope"] == tendencia["status_scope"] == esperado
+
+
 def test_sem_exposicoes_e_dados_insuficientes_sem_chave():
     verdict = svc.progression_verdict([])
     assert verdict["status"] == ExerciseProgressionStatus.INSUFFICIENT_DATA.value
