@@ -2953,7 +2953,6 @@ def list_exercise_swap_options(plan_id: int, user_id: int | None = None) -> dict
     `exercise_ids = None` = troca sem restricao (linha sem exercicio vinculado
     ou cujo exercicio nao tem grupo PRIMARY: o servidor nao compara). Ficha
     finalizada devolve `rows = []` (os exercicios sao somente leitura)."""
-    from . import progression_state as ps
     from . import workout_plan_edit_rules as edit_rules
 
     with transaction() as conn:
@@ -2975,34 +2974,61 @@ def list_exercise_swap_options(plan_id: int, user_id: int | None = None) -> dict
                 (int(plan_id),),
             )
             plan_rows = cur.fetchall() or []
-            cur.execute("SELECT id FROM exercise_catalog WHERE is_active = 1")
-            candidate_ids = [int(row["id"]) for row in (cur.fetchall() or [])]
-            # Mesma resolucao de `_resolve_canonical_exercise_id` (validacao do
-            # save), numa leitura so para todas as linhas.
-            canonical = equipment_pair.canonical_exercise_ids(cur, [row.get("mapping_id") for row in plan_rows])
-            canonical_by_row = {
-                int(row["id"]): canonical.get(int(row["mapping_id"])) if row.get("mapping_id") else None
-                for row in plan_rows
-            }
-            groups, _weights = ps.primary_groups_from_cursor(
-                cur, candidate_ids + [eid for eid in canonical_by_row.values() if eid is not None]
-            )
+            eligible = _swap_eligibility_by_mapping(cur, [row.get("mapping_id") for row in plan_rows])
 
-    candidate_groups = {eid: groups.get(eid) for eid in candidate_ids}
     rows = []
     for row in plan_rows:
-        canonical_id = canonical_by_row[int(row["id"])]
-        group_id = groups.get(int(canonical_id)) if canonical_id is not None else None
+        group_id, exercise_ids = eligible.get(int(row["mapping_id"]), (None, None)) if row.get("mapping_id") else (None, None)
         rows.append(
             {
                 "workout_plan_exercise_id": int(row["id"]),
                 "primary_group_id": group_id,
-                "exercise_ids": edit_rules.eligible_swap_exercise_ids(
-                    persisted_group_id=group_id, candidate_groups=candidate_groups
-                ),
+                "exercise_ids": exercise_ids,
             }
         )
     return {"plan_id": int(plan_id), "editable": True, "rows": rows}
+
+
+def _swap_eligibility_by_mapping(cur, mapping_ids) -> dict[int, tuple[int | None, list[int] | None]]:
+    """Nucleo unico da elegibilidade de troca: `mapping_id` -> (grupo PRIMARY,
+    ids elegiveis do catalogo ATIVO; `None` = sem restricao). Usado pela ficha
+    salva e pelo rascunho. Mesma resolucao canonica da validacao do save
+    (`_resolve_canonical_exercise_id`), numa leitura so; `mapping_id` que nao
+    resolve em grupo PRIMARY (desconhecido/sem PRIMARY) = `(None, None)`."""
+    from . import progression_state as ps
+    from . import workout_plan_edit_rules as edit_rules
+
+    cur.execute("SELECT id FROM exercise_catalog WHERE is_active = 1")
+    candidate_ids = [int(row["id"]) for row in (cur.fetchall() or [])]
+    canonical = equipment_pair.canonical_exercise_ids(cur, mapping_ids)
+    groups, _weights = ps.primary_groups_from_cursor(cur, candidate_ids + list(canonical.values()))
+    candidate_groups = {eid: groups.get(eid) for eid in candidate_ids}
+    out: dict[int, tuple[int | None, list[int] | None]] = {}
+    for mapping_id, canonical_id in canonical.items():
+        group_id = groups.get(int(canonical_id))
+        out[mapping_id] = (
+            group_id,
+            edit_rules.eligible_swap_exercise_ids(persisted_group_id=group_id, candidate_groups=candidate_groups),
+        )
+    return out
+
+
+def list_draft_exercise_swap_options(mapping_ids: list[int]) -> dict[str, Any]:
+    """`POST /workout-plans/exercise-swap-options`: a mesma elegibilidade de
+    `list_exercise_swap_options` para um rascunho sem id de ficha, por
+    `mapping_id` (ids repetidos saem uma vez, na ordem de chegada). Catalogo
+    global: nada depende de dado de usuario."""
+    unique = list(dict.fromkeys(int(m) for m in mapping_ids))
+    if not unique:
+        return {"items": []}
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            eligible = _swap_eligibility_by_mapping(cur, unique)
+    items = []
+    for mapping_id in unique:
+        group_id, exercise_ids = eligible[mapping_id]
+        items.append({"mapping_id": mapping_id, "primary_group_id": group_id, "exercise_ids": exercise_ids})
+    return {"items": items}
 
 
 def _replace_plan_exercises(

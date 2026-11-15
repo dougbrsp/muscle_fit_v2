@@ -29,7 +29,15 @@ import { AdvancedConfigModal, type AdvancedConfigPatch } from '@/app/(app)/plano
 import { toActivationPayloadItem } from '@/lib/activation-payload';
 import { apiFetch } from '@/lib/api';
 import type { MuscleActivationBreakdownItem } from '@/lib/analytics-types';
-import { filterBySwapEligibility, swapEligibilityFor, type SwapEligibilityIndex } from '@/lib/exercise-swap-options';
+import {
+  filterBySwapEligibility,
+  rowSwapEligibility,
+  pickedExercisePatch,
+  typedExercisePatch,
+  type DraftRowKey,
+  type DraftSwapOptions,
+  type SwapEligibilityIndex,
+} from '@/lib/exercise-swap-options';
 import type { MappingCanonicalOptionsResponse } from '@/lib/mappings-types';
 import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defaults';
 import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
@@ -46,6 +54,8 @@ type Props = {
   onChange: (exercises: WorkoutPlanExercise[]) => void;
   readOnly?: boolean;
   swapOptions?: SwapEligibilityIndex | 'loading';
+  /** Rascunho gerado: elegibilidade pelo `mapping_id` de geração da linha. */
+  draftSwapOptions?: DraftSwapOptions;
   onSwapEquipment?: (exercise: WorkoutPlanExercise) => void;
   onRefreshPrescription?: () => void;
   refreshingPrescription?: boolean;
@@ -66,6 +76,7 @@ export function PlanExercisesEditor({
   onChange,
   readOnly = false,
   swapOptions,
+  draftSwapOptions,
   onSwapEquipment,
   onRefreshPrescription,
   refreshingPrescription = false,
@@ -210,7 +221,7 @@ export function PlanExercisesEditor({
   const exercise = editIndex !== null ? exercises[editIndex] : null;
   if (editIndex !== null && exercise) {
     const index = editIndex;
-    const swapEligibility = swapEligibilityFor(exercise.workout_plan_exercise_id, swapOptions);
+    const swapEligibility = rowSwapEligibility(exercise as WorkoutPlanExercise & DraftRowKey, swapOptions, draftSwapOptions);
     const rowOptions = filterBySwapEligibility(autocompleteData, swapEligibility);
     const prescBadges = prescriptionBadges(exercise);
     const configBadges = advancedConfigBadges(exercise);
@@ -236,14 +247,14 @@ export function PlanExercisesEditor({
             onChange={(value) => {
               setTyping(true);
               const matches = exercise.mapping_id != null && mappingIdByName.get(value) === exercise.mapping_id;
-              updateExercise(index, { exercise_name: value, mapping_id: matches ? exercise.mapping_id : null });
+              updateExercise(index, typedExercisePatch(exercise, value, matches));
             }}
             onOptionSubmit={(value) => {
               const mappingId = mappingIdByName.get(value) ?? null;
               const catalogGroup = mappingId != null ? primaryGroupByMappingId.get(mappingId) : undefined;
               const groupPatch =
                 !isSavedRow(exercise) && !exercise.muscle_primary && catalogGroup ? { muscle_primary: catalogGroup } : {};
-              updateExercise(index, { exercise_name: value, mapping_id: mappingId, ...groupPatch });
+              updateExercise(index, { ...pickedExercisePatch(exercise, value, mappingId), ...groupPatch });
               if (mappingId != null) void applySuggestedProgression(index, mappingId);
             }}
             renderOption={({ option }) => {

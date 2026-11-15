@@ -1,7 +1,7 @@
-"""RBAC do treino (ADR 0011, lote 2F-2), por HTTP: as 55 rotas do contrato `CONTRATO_2F2` de
+"""RBAC do treino (ADR 0011, lote 2F-2), por HTTP: as 56 rotas do contrato `CONTRATO_2F2` de
 `test_access_paridade_guards` (11 modulos, com so as 15 de `app.main` da tabela), sem escopo minimo.
 
-Recursos: treino.planos (16), treino.registro (11), treino.modo_treino (7), treino.preferencias (7),
+Recursos: treino.planos (17), treino.registro (11), treino.modo_treino (7), treino.preferencias (7),
 exercicios.catalogo (5, so ver), volume.grupamentos (4, so ver) e 5 POST de IA (editar) que criam job.
 
 O resolvedor REAL de permissoes roda sobre um banco falso de concessoes (`access_service._db`), com
@@ -59,6 +59,7 @@ CORPOS: dict[str, dict] = {
     "PUT /workout-plans/{plan_id}": {"name": "Plano"},
     "POST /workout-plans/{plan_id}/exercises/{exercise_id}/substitute-equipment": {"gym_equipment_id": 1},
     "POST /workout-plans/generate": {"template_id": 1},
+    "POST /workout-plans/exercise-swap-options": {"mapping_ids": [1]},
     "PUT /me/equipment-exercise-preferences/{equipment_exercise_id}": {"stars": 3},
     "PUT /me/equipment-load-ceiling": {**_CEIL, "max_load_kg": 100},
     "POST /workout-sessions/{session_id}/exercises": {"original_name": "Supino"},
@@ -173,8 +174,10 @@ def _amostra(recurso):
 
 
 AMOSTRAS = {r: _amostra(r) for r in RECURSOS}
-ESCRITAS = [v for v in VIVAS if v[1] != "GET"]
-GETS = [v for v in VIVAS if v[1] == "GET"]
+# Leitura via POST (corpo com ids, fix #164): "ver", portanto fica com as GET nas matrizes de so-ver.
+LEITURA_POST = "POST /workout-plans/exercise-swap-options"
+ESCRITAS = [v for v in VIVAS if v[1] != "GET" and CHAVE[v] != LEITURA_POST]
+GETS = [v for v in VIVAS if v[1] == "GET" or CHAVE[v] == LEITURA_POST]
 POST_IA = [v for v in VIVAS if _recurso(v).startswith("ia.")]
 GET_AMOSTRAS = [AMOSTRAS[r] for r in RECURSOS if not r.startswith("ia.")]
 
@@ -250,10 +253,10 @@ def test_o_duble_cobre_a_abertura_de_conexao_do_backend_ativo(monkeypatch):
     assert dados.chamadas == 3
 
 
-def test_as_rotas_vivas_sao_exatamente_as_55_do_contrato():
+def test_as_rotas_vivas_sao_exatamente_as_56_do_contrato():
     assert len(VIVAS) == len(set(VIVAS))
     assert {CHAVE[v] for v in VIVAS} == set(CONTRATO_2F2)
-    assert len(VIVAS) == len(CONTRATO_2F2) == 55
+    assert len(VIVAS) == len(CONTRATO_2F2) == 56
     assert len(POST_IA) == 5 and {CHAVE[v] for v in POST_IA} == set(ROTAS_IA)
     assert all(v[1] == "POST" for v in POST_IA)
     assert len(RECURSOS) == 10
@@ -325,7 +328,7 @@ def test_so_ver_passa_na_get_de_amostra_de_cada_recurso(ctx, rota):
 def test_so_ver_passa_em_todas_as_get(ctx):
     clients, state, _, dados = ctx
     _como(state, SINT_SO_VER)
-    assert len(GETS) == 55 - len(ESCRITAS)
+    assert len(GETS) == 56 - len(ESCRITAS)
     for rota in GETS:
         dados.chamadas = 0
         resp = _chamar(clients, rota)
@@ -340,7 +343,7 @@ def test_so_ver_passa_em_todas_as_get(ctx):
 
 @pytest.mark.parametrize("uid", [USUARIO, PT, ADMIN_ID], ids=["usuario", "pt", "admin"])
 @pytest.mark.parametrize("rota", VIVAS, ids=IDS)
-def test_usuario_pt_e_admin_passam_pelo_guard_nas_55(ctx, uid, rota):
+def test_usuario_pt_e_admin_passam_pelo_guard_nas_56(ctx, uid, rota):
     clients, state, _, dados = ctx
     _como(state, uid)
     _passou(_chamar(clients, rota), dados)
@@ -355,7 +358,7 @@ def test_token_mestre_passa_sem_consultar_o_banco_de_permissoes(ctx, rota):
 
 
 @pytest.mark.parametrize("rota", VIVAS, ids=IDS)
-def test_dispositivo_de_dono_usuario_herda_e_passa_nas_55(ctx, rota):
+def test_dispositivo_de_dono_usuario_herda_e_passa_nas_56(ctx, rota):
     clients, state, perms, dados = ctx
     _como(state, USUARIO, source="device")
     _passou(_chamar(clients, rota), dados)
@@ -363,7 +366,7 @@ def test_dispositivo_de_dono_usuario_herda_e_passa_nas_55(ctx, rota):
 
 
 @pytest.mark.parametrize("rota", VIVAS, ids=IDS)
-def test_dispositivo_de_dono_sem_grupo_e_negado_nas_55(ctx, rota):
+def test_dispositivo_de_dono_sem_grupo_e_negado_nas_56(ctx, rota):
     clients, state, perms, dados = ctx
     _como(state, SEM_GRUPO, source="device")
     _negado(_chamar(clients, rota), dados)
