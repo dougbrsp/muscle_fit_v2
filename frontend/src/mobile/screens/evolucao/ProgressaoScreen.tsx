@@ -29,7 +29,8 @@ import {
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { performanceTooltip } from '@/lib/dashboard-muscle-performance';
 import { EM_DASH, fmtDate, fmtInt, fmtKg, fmtKgTotal, fmtRpe, fmtSignedPercent } from '@/lib/dashboard-format';
-import type { ProgressionSessionItem } from '@/lib/dashboard-v2-types';
+import type { MuscleGroupProgressionResponse, ProgressionSessionItem } from '@/lib/dashboard-v2-types';
+import { groupCompositionText, type ProgressionScope } from '@/lib/progression-scope';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
@@ -128,12 +129,13 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
                     <StatusBadge key={code} domain="exerciseProgression" code={code} size="xs" suffix={` ${count}`} />
                   ))}
                 </div>
+                <ScopeLine scope={data.exercise_status_scope} />
               </ListBlock>
             </ListGroup>
           ) : null}
           <ListGroup
             title="Tendência por grupo muscular"
-            footer={`Compara a janela atual com a anterior de mesmo tamanho (${fmtDate(data.current_from)}–${fmtDate(data.current_to)} × ${fmtDate(data.previous_from)}–${fmtDate(data.previous_to)}).`}
+            footer={`Compara a janela atual com a anterior de mesmo tamanho (${fmtDate(data.current_from)}–${fmtDate(data.current_to)} × ${fmtDate(data.previous_from)}–${fmtDate(data.previous_to)}).${data.performance_change_scope?.label ? ` O percentual em destaque é a variação de e1RM (${data.performance_change_scope.label}), informativa: não é o status.` : ''}`}
           >
             <ListRow title="Como ler esta tela" subtitle="Volume, desempenho e status do grupo" onClick={openHelp} />
           </ListGroup>
@@ -146,7 +148,16 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
             emptyDescription="Nenhuma série de trabalho registrada na janela escolhida nem no período anterior."
             renderItem={(i) => (
               <DataCard
-                title={i.muscle_group_name ?? `Grupo ${i.muscle_group_id}`}
+                title={
+                  <>
+                    {i.muscle_group_name ?? `Grupo ${i.muscle_group_id}`}
+                    {data.performance_status_scope?.label ? (
+                      <span className={styles.meta} style={{ display: 'block', fontWeight: 400 }}>
+                        {data.performance_status_scope.label}
+                      </span>
+                    ) : null}
+                  </>
+                }
                 value={i.performance_change_pct != null ? fmtSignedPercent(i.performance_change_pct) : EM_DASH}
                 status={<StatusBadge domain="muscleGroupProgression" code={i.performance_status} size="xs" />}
                 secondary={[
@@ -158,7 +169,7 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
             )}
           />
           <BottomSheet opened={open !== null} onClose={() => setOpen(null)} title={open?.muscle_group_name ?? 'Grupo'}>
-            {open ? <GrupoDetalhe item={open} degraded={data.degraded === true} minSessions={data.min_sessions_per_window} /> : null}
+            {open ? <GrupoDetalhe item={open} degraded={data.degraded === true} minSessions={data.min_sessions_per_window} scopes={data} /> : null}
           </BottomSheet>
           <BottomSheet opened={help} onClose={closeHelp} title="Como ler">
             <ListGroup>
@@ -167,6 +178,13 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
                   <strong>Status do grupo</strong>: agregação ponderada dos status dos exercícios do grupo (mesma regra da home), na janela
                   atual.
                 </p>
+                {[data.exercise_status_scope, data.performance_status_scope, data.volume_status_scope, data.performance_change_scope].map((scope) =>
+                  scope?.label ? (
+                    <p key={scope.code} className={styles.meta}>
+                      <strong>{scope.label}</strong>: {scope.description}
+                    </p>
+                  ) : null,
+                )}
                 <p className={styles.meta}>
                   <strong>Volume</strong>: tonelagem (carga × reps das séries de trabalho e das técnicas, sem aquecimento/ajuste, ponderada
                   pela ativação muscular), comparada pela média por sessão. Menos volume pode ser planejado e não quer dizer regressão.
@@ -185,7 +203,28 @@ function GruposSection({ window }: { window: ReturnType<typeof useDashboardFilte
   );
 }
 
-function GrupoDetalhe({ item, degraded, minSessions }: { item: GrupoItem; degraded: boolean; minSessions: number }) {
+/** Escopo da leitura (o que o selo compara): rótulo visível, frase no `title`. */
+function ScopeLine({ scope }: { scope: ProgressionScope | null | undefined }) {
+  if (!scope?.label) return null;
+  return (
+    <p className={styles.meta} title={scope.description || undefined}>
+      {scope.label}
+    </p>
+  );
+}
+
+function GrupoDetalhe({
+  item,
+  degraded,
+  minSessions,
+  scopes,
+}: {
+  item: GrupoItem;
+  degraded: boolean;
+  minSessions: number;
+  scopes: MuscleGroupProgressionResponse;
+}) {
+  const composicao = groupCompositionText(item.progression_counts);
   const tooltip = performanceTooltip(item, degraded);
   void minSessions;
   return (
@@ -194,12 +233,18 @@ function GrupoDetalhe({ item, degraded, minSessions }: { item: GrupoItem; degrad
         <ListBlock>
           <div className={styles.badges}>
             <StatusBadge domain="muscleGroupVolume" code={item.volume_status} size="sm" />
+          </div>
+          <ScopeLine scope={scopes.volume_status_scope} />
+          <div className={styles.badges} style={{ marginTop: 10 }}>
             <StatusBadge domain="muscleGroupProgression" code={item.performance_status} size="sm" />
           </div>
-          <p className={styles.meta} style={{ marginTop: 0 }}>
+          <ScopeLine scope={scopes.performance_status_scope} />
+          {composicao ? <p className={styles.meta}>Exercícios do grupo: {composicao}</p> : null}
+          <p className={styles.meta}>
             Volume {item.change_pct != null ? fmtSignedPercent(item.change_pct) : EM_DASH} (média por sessão; tonelagem total{' '}
-            {fmtSignedPercent(item.total_change_pct)}). Desempenho{' '}
-            {item.performance_change_pct != null ? fmtSignedPercent(item.performance_change_pct) : EM_DASH}.
+            {fmtSignedPercent(item.total_change_pct)}). Variação de e1RM{' '}
+            {item.performance_change_pct != null ? fmtSignedPercent(item.performance_change_pct) : EM_DASH}
+            {scopes.performance_change_scope?.label ? ` (${scopes.performance_change_scope.label}; não é o status)` : ''}.
           </p>
           {item.performance_exercises_excluded > 0 && item.performance_change_pct != null ? (
             <p className={styles.meta}>{fmtInt(item.performance_exercises_excluded)} atípico(s) fora do cálculo</p>
@@ -218,6 +263,20 @@ function GrupoDetalhe({ item, degraded, minSessions }: { item: GrupoItem; degrad
           value={fmtKgTotal(item.previous_tonnage_kg)}
         />
       </ListGroup>
+      {item.performance_exercises?.some((ex) => ex.status) ? (
+        <ListGroup title="Status por exercício" footer={scopes.exercise_status_scope?.label}>
+          {item.performance_exercises.filter((ex) => ex.status).map((ex) => (
+            <ListBlock key={ex.exercise_id}>
+              <p className={styles.body} style={{ marginTop: 0 }}>
+                {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+              </p>
+              <div className={styles.badges}>
+                <StatusBadge domain="exerciseProgression" code={ex.status} size="xs" />
+              </div>
+            </ListBlock>
+          ))}
+        </ListGroup>
+      ) : null}
       {tooltip ? (
         <ListGroup title="Desempenho: detalhe">
           <ListBlock>
@@ -388,6 +447,7 @@ function ExercicioSection() {
                     <div className={styles.badges}>
                       <StatusBadge domain="exerciseProgression" code={trend.status} size="lg" />
                     </div>
+                    <ScopeLine scope={trend.status_scope} />
                     {reasons.map((r) => (
                       <p key={r.code} className={styles.body}>
                         • {r.text}

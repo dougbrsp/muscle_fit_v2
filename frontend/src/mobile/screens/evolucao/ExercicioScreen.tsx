@@ -166,6 +166,11 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
           <div className={styles.badges}>
             <StatusBadge domain="exerciseProgression" code={data.status} size="lg" />
           </div>
+          {data.status_scope?.label ? (
+            <p className={styles.meta} style={{ marginTop: 0 }} title={data.status_scope.description || undefined}>
+              {data.status_scope.label}
+            </p>
+          ) : null}
           {fatigueContextLabel(data.fatigue_context) ? (
             <p className={styles.meta} style={{ marginTop: 0 }}>Condição: {fatigueContextLabel(data.fatigue_context)}</p>
           ) : null}

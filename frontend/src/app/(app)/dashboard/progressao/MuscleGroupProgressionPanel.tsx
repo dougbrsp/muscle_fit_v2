@@ -3,13 +3,14 @@
 import { Group, Paper, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { ExerciseProgressionSummaryCard } from './ExerciseProgressionSummaryCard';
-import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { DashboardSkeleton, EmptyState, ErrorState } from '@/components/dashboard/states';
 import { dashboardKeys, fetchProgressionByMuscleGroup } from '@/lib/dashboard-api';
 import type { DashboardWindowQuery } from '@/lib/dashboard-filters';
 import { fmtDate, fmtInt, fmtKgTotal, fmtSignedPercent } from '@/lib/dashboard-format';
 import { performanceTooltip } from '@/lib/dashboard-muscle-performance';
-import type { MuscleGroupProgressionItem } from '@/lib/dashboard-v2-types';
+import type { MuscleGroupProgressionItem, MuscleGroupProgressionResponse } from '@/lib/dashboard-v2-types';
+import { groupCompositionText } from '@/lib/progression-scope';
 import { BRAND } from '@/theme';
 
 /**
@@ -53,7 +54,7 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
 
   return (
     <Stack gap="lg">
-      <ExerciseProgressionSummaryCard summary={data?.degraded ? null : data?.exercise_progression} />
+      <ExerciseProgressionSummaryCard summary={data?.degraded ? null : data?.exercise_progression} scope={data?.exercise_status_scope} />
       <Paper withBorder radius="lg" p="md" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
         <Text fw={700} c={BRAND.textPrimary}>
           Tendência por grupo muscular
@@ -100,8 +101,14 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
                   <Table.Th>Grupo</Table.Th>
                   <Table.Th>Período atual</Table.Th>
                   <Table.Th>Período anterior</Table.Th>
-                  <Table.Th>Volume</Table.Th>
-                  <Table.Th>Desempenho</Table.Th>
+                  <Table.Th>
+                    Volume
+                    <ScopeCaption scope={data?.volume_status_scope} />
+                  </Table.Th>
+                  <Table.Th>
+                    Desempenho
+                    <ScopeCaption scope={data?.performance_status_scope} />
+                  </Table.Th>
                   <Table.Th>Fase</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -129,7 +136,7 @@ export function MuscleGroupProgressionPanel({ window }: { window: DashboardWindo
                       <VolumeCell item={item} />
                     </Table.Td>
                     <Table.Td>
-                      <PerformanceCell item={item} degraded={data?.degraded === true} />
+                      <PerformanceCell item={item} degraded={data?.degraded === true} scopes={data} />
                     </Table.Td>
                     <Table.Td>
                       <Text size="xs" c={BRAND.textMuted}>
@@ -193,8 +200,18 @@ function VolumeCell({ item }: { item: MuscleGroupProgressionItem }) {
   );
 }
 
-function PerformanceCell({ item, degraded }: { item: MuscleGroupProgressionItem; degraded: boolean }) {
+function PerformanceCell({
+  item,
+  degraded,
+  scopes,
+}: {
+  item: MuscleGroupProgressionItem;
+  degraded: boolean;
+  scopes: MuscleGroupProgressionResponse | undefined;
+}) {
   const tooltip = performanceTooltip(item, degraded);
+  const composicao = groupCompositionText(item.progression_counts);
+  const exercicios = (item.performance_exercises ?? []).filter((ex) => ex.status);
   const badge = <StatusBadge domain="muscleGroupProgression" code={item.performance_status} size="xs" />;
   return (
     <Stack gap={4} align="flex-start">
@@ -205,6 +222,10 @@ function PerformanceCell({ item, degraded }: { item: MuscleGroupProgressionItem;
           </Text>
         </Tooltip>
       )}
+      {item.performance_change_pct != null && (
+        // Variação de e1RM: informativa, não é o status.
+        <ScopeCaption scope={scopes?.performance_change_scope} />
+      )}
       {item.performance_change_pct == null && tooltip ? (
         // Sem leitura: o motivo (sem exercício comparável / participação insuficiente) fica no badge.
         <Tooltip withArrow multiline w={340} style={{ whiteSpace: 'pre-line' }} label={tooltip}>
@@ -212,6 +233,24 @@ function PerformanceCell({ item, degraded }: { item: MuscleGroupProgressionItem;
         </Tooltip>
       ) : (
         badge
+      )}
+      {composicao && (
+        <Text size="xs" c={BRAND.textMuted}>
+          Exercícios do grupo: {composicao}
+        </Text>
+      )}
+      {exercicios.length > 0 && (
+        <Stack gap={2} align="flex-start">
+          <ScopeCaption scope={scopes?.exercise_status_scope} />
+          {exercicios.map((ex) => (
+            <Group key={ex.exercise_id} gap={6} wrap="nowrap" align="center">
+              <Text size="xs" c={BRAND.textMuted}>
+                {ex.exercise_name ?? `Exercício ${ex.exercise_id}`}
+              </Text>
+              <StatusBadge domain="exerciseProgression" code={ex.status} size="xs" />
+            </Group>
+          ))}
+        </Stack>
       )}
       {item.performance_exercises_excluded > 0 && item.performance_change_pct != null && (
         <Text size="xs" c={BRAND.textMuted}>

@@ -20,6 +20,7 @@ import type {
 } from './dashboard-v3-types';
 import type { ReadinessReading } from './dashboard-recovery-types';
 import type { CycleSlot } from './dashboard-workouts-types';
+import type { ProgressionScope } from './progression-scope';
 
 // ---------------------------------------------------------------------------
 // Insight (§12)
@@ -143,6 +144,10 @@ export type ProgressionBlock = OverviewBlockBase & {
   counts: ProgressionStatusCount[];
   exposures_per_exercise: number;
   truncated: boolean;
+  /** O que os selos comparam, janela e versão da regra; ausentes em respostas antigas. */
+  status_scope?: ProgressionScope | null;
+  rule_version?: string | null;
+  window?: DashboardWindow | null;
 };
 
 export type PriorityMuscle = {

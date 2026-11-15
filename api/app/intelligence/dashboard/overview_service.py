@@ -34,6 +34,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Sequence
 
+from ...domain.progression_status_labels import SCOPE_EXERCISE_LAST_VS_PREVIOUS, progression_scope
 from ...observability import log_event
 from ...parallel_reads import ConnFactory, run_blocks
 from ...set_types import sql_is_working, sql_set_confirmed
@@ -342,6 +343,9 @@ def progression_block(
         "exercises_total": total,
         "comparable_total": comparable,
         "counts": counts,
+        "status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
+        "rule_version": metric_version("exercise_progression_status"),
+        "window": window,
         "exposures_per_exercise": int(exposures_per_exercise),
         "truncated": bool(truncated),
     }

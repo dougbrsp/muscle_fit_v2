@@ -120,9 +120,16 @@ const muscleDetail = (id: number) => ({
 });
 
 // ----------------------------------------------------------------- progressao
+const scope = (code: string, label: string, description: string) => ({ code, entity: 'e2e', metric: 'e2e', comparator: 'e2e', label, description });
+const SCOPE_EXERCISE = scope('exercise_last_vs_previous_exposure', 'Última exposição vs. anterior', 'Compara a última exposição do exercício com a anterior comparável.');
+const SCOPE_GROUP = scope('group_weighted_exercise_status', 'Grupo: soma ponderada dos exercícios', 'Agrega os status dos exercícios do grupo, ponderados pela ativação.');
+const SCOPE_VOLUME = scope('group_volume_current_vs_previous_window', 'Volume: janela atual vs. anterior', 'Compara a tonelagem por sessão da janela atual com a anterior.');
+const SCOPE_E1RM = scope('e1rm_current_vs_previous_window', 'e1RM: janela atual vs. anterior', 'Variação do melhor e1RM entre as janelas; informativa, não define o status.');
 const progByGroup = {
   days: 28, stable_band_pct: 3, min_sessions_per_window: 3, comparison_basis: 'tonnage_per_session', performance_basis: 'best_e1rm_epley_same_exercise',
   current_from: '2026-09-17', current_to: '2026-10-14', previous_from: '2026-08-20', previous_to: '2026-09-16', degraded: false,
+  performance_status_scope: SCOPE_GROUP, volume_status_scope: SCOPE_VOLUME, performance_change_scope: SCOPE_E1RM, exercise_status_scope: SCOPE_EXERCISE,
+  metric_versions: { exercise_progression_status: 'progression-status-v2', tonnage: 'tonnage-v1', e1rm: 'e1rm-v1' },
   exercise_progression: {
     window_days: 28, period_start: '2026-09-17', period_end: '2026-10-14', answer: '5 de 8 exercícios comparáveis estão progredindo.',
     counts: { progressing: 5, stable: 2, plateau_suspected: 1, regressing: 0, comparable_total: 8, not_comparable: 2, insufficient_data: 1 },
@@ -132,7 +139,8 @@ const progByGroup = {
     current_tonnage_per_session_kg: 2250, previous_tonnage_per_session_kg: 2357, classification: 'ESTAVEL', volume_status: ['VOLUME_UP', 'VOLUME_STABLE', 'VOLUME_DOWN'][i % 3],
     performance_status: ['PROGREDINDO', 'ESTAVEL', 'REGREDINDO', 'PROGREDINDO'][i % 4], performance_change_pct: [4.2, 0.8, -3.1, 6.5][i % 4], performance_exercises_compared: 2, performance_exercises_excluded: i === 2 ? 1 : 0,
     performance_activation_sum: 1.4, performance_insufficient_reason: null,
-    performance_exercises: [{ exercise_id: 101, exercise_name: 'Supino reto', equipment_id: 1, load_convention: 'total', previous_e1rm_kg: 92, current_e1rm_kg: 96, change_pct: 4.3, stimulus_weight: 1, outlier: false, excluded_reason: null }],
+    performance_exercises: [{ exercise_id: 101, exercise_name: 'Supino reto', equipment_id: 1, load_convention: 'total', previous_e1rm_kg: 92, current_e1rm_kg: 96, change_pct: 4.3, stimulus_weight: 1, outlier: false, excluded_reason: null, status: 'PROGRESSING' }],
+    progression_counts: { progressing: 1, stable: 1, plateau_suspected: 0, regressing: 0, comparable_total: 2, not_comparable: 0, insufficient_data: 0 },
     change_pct: [8.4, -2.0, -6.1][i % 3], total_change_pct: [9.0, 3.0, -8.0][i % 3], phase: ['Fase 2', 'Fase 1', null][i % 3], phase_status: null,
   })),
 };
@@ -144,7 +152,7 @@ const progression = {
   })),
 };
 const progressionTrend = {
-  exercise_name: 'Supino reto', mapping_id: 1, days: 28, status: 'PROGRESSING', status_reasons: [], comparable_exposures: 8, exposures_in_window: 9, comparability_key: null,
+  exercise_name: 'Supino reto', mapping_id: 1, days: 28, status: 'PROGRESSING', status_scope: SCOPE_EXERCISE, status_reasons: [], comparable_exposures: 8, exposures_in_window: 9, comparability_key: null,
   equipment_name: 'Barra olímpica', load_convention: 'total', load_convention_source: 'equipment_exercises', last_local_date: '2026-10-12',
 };
 const suggestion = { mapping_id: 1, reps_target: '8-10', load_target: '82,5 kg', rpe_target: '8', progression_note: 'Subir 2,5 kg se completar 10 reps.', has_history: true, progression: 'increased', last_load_kg: 80, last_reps: 9, trend: 'up', last_date: '2026-10-12' };
@@ -308,7 +316,7 @@ const expo = (i: number) => ({
   sets: [1, 2, 3].map((n) => ({ set_number: n, reps: 10 - n, weight_kg: 60 + i * 2.5, rpe: 8, rest_seconds: 90, notes: null })), total_reps: 27, best_load_kg: 60 + i * 2.5, avg_rpe: 8, e1rm: 85 + i * 1.5, tonnage: 4800, comparability_key: exerciseKey, e1rm_reps: 8, e1rm_reliable: true, comparable_with_current: i !== 1, mismatch_with_current: i === 1 ? 'equipment' : null,
 });
 const exerciseProgress = {
-  window: WINDOW, exercise: { exercise_id: 101, name: 'Supino reto', amazfit_name: null }, comparability_key: exerciseKey, status: 'PROGRESSING', status_reasons: [], fatigue_context: null,
+  window: WINDOW, exercise: { exercise_id: 101, name: 'Supino reto', amazfit_name: null }, comparability_key: exerciseKey, status: 'PROGRESSING', status_scope: SCOPE_EXERCISE, status_reasons: [], fatigue_context: null,
   exposures: [0, 1, 2, 3, 4].map(expo),
   latest_comparison: { comparable: true, paired_reps: { pairs: 2, previous: [8, 8], current: [9, 8], previous_sum: 16, current_sum: 17, delta: 1 }, e1rm_decisive: true, e1rm_max_reliable_reps: 12 },
   records: { best_e1rm: { value: 91, activity_id: 304, local_date: '2026-10-02', reliable: true, max_reliable_reps: 12 }, best_load_kg: { value: 70, activity_id: 304, local_date: '2026-10-02' } },
