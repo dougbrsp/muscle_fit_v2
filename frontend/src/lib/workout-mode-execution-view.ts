@@ -67,9 +67,22 @@ export function setTargetLine({
 }
 
 /**
+ * Valor inicial do RPE realizado da série de trabalho: o primeiro candidato
+ * pronto, na ordem esperado da série > alvo efetivo prescrito (modo avançado)
+ * > cadeia restante (IA, última série, alvo). Só escolhe; nunca calcula.
+ */
+export function initialRpe(c: {
+  expected?: number | null;
+  prescribed?: number | null;
+  fallback?: number | null;
+}): number | null {
+  return c.expected ?? c.prescribed ?? c.fallback ?? null;
+}
+
+/**
  * "RPE esperado: 8" da série de trabalho (valor pronto do servidor, índice =
  * posição ordinal entre as séries de trabalho). `null` = sem alvo por série:
- * nada aparece. Só formata; nunca vira valor inicial do RPE realizado.
+ * nada aparece. Só formata (o valor inicial do realizado é `initialRpe`).
  */
 export function expectedRpeLine(expected: number | null | undefined): string | null {
   return expected == null ? null : `RPE esperado: ${expected}`;

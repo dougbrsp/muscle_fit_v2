@@ -70,13 +70,6 @@ describe('SetLoggerCard — RPE esperado por série (#146)', () => {
     expect(sem).not.toContain('set-expected-rpe');
     expect(sem).not.toContain('RPE esperado');
   });
-
-  it('o realizado não nasce com o alvo: defaultRpe null deixa o campo vazio', () => {
-    const html = render({ expectedRpe: 8, defaultRpe: null, rpeTarget: '8' });
-    expect(html).toContain('RPE esperado: 8');
-    expect(html).not.toMatch(/aria-label="Diminuir RPE"[^>]*>[\s\S]{0,400}value="8"/);
-    expect(html).not.toMatch(/<input[^>]*value="8"/);
-  });
 });
 
 // ---------------------------------------------------------------------------

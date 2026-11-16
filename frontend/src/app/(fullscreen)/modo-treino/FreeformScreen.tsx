@@ -647,7 +647,7 @@ export function FreeformScreen({
             defaultRpe={clampRpeSuggestion(
               suggestion?.suggested_next_rpe != null
                 ? suggestion.suggested_next_rpe
-                : (lastSet?.rpe ?? null),
+                : (lastSet?.rpe ?? parseNumericTarget(suggested?.rpe_target)),
               suggested?.effective_rpe_ceiling,
             )}
             previousSessionSets={previousSessionSetsQuery.isSuccess ? previousSessionSets : null}
