@@ -40,7 +40,7 @@ from ..set_types import is_working_set
 from . import prescription as prescription_domain
 from .set_measures import is_rep_based
 from .training_goal import goal_value
-from .training_history import parse_reps_range
+from .training_history import is_rpe_ramp, parse_int, parse_reps_range
 from .progression_engine import (
     INTENSITY_ABOVE_SAFE_CEILING,
     SAFETY_EVENT_RPE_ABOVE_CEILING,
@@ -462,9 +462,40 @@ def set_intensity_reading(
 
 
 def _format_rpe(value: Decimal) -> str:
-    if value == value.to_integral_value():
-        return str(int(value))
-    return format(value.normalize(), "f")
+    from .training_history import format_rpe_step
+
+    return format_rpe_step(value)
+
+
+def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target: Any) -> list[float]:
+    """Alvo COBRADO em cada serie de trabalho da ficha exibida: o mesmo da
+    sessao (`set_effort_target(alvo efetivo ja cortado pelo teto, degrau da
+    serie)`, degrau por `next_set_load.planned_ramp_rpe`). So restringe. Sem
+    alvo efetivo ou sem series -> []. Preparatoria e tecnica nao entram."""
+    from .next_set_load import planned_ramp_rpe
+
+    if effective_target is None:
+        return []
+    return [
+        float(set_effort_target(effective_target, planned_ramp_rpe(rpe_text, index)))
+        for index in range(_positive_int(sets_count))
+    ]
+
+
+def _positive_int(value: Any) -> int:
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def draft_rpe_target(effective: Any, model_rpe_target: Any) -> Optional[str]:
+    """`rpe_target` do rascunho de geracao. Modelo com RAMPA (`is_rpe_ramp`, #146)
+    e alvo efetivo do motor: a rampa cortada pelo alvo/teto (`clamp_rpe_text`).
+    Sem rampa: o alvo do motor, senao o do Modelo."""
+    if effective is not None and is_rpe_ramp(model_rpe_target):
+        return clamp_rpe_text(model_rpe_target, parse_int(effective))[0]
+    return effective or model_rpe_target
 
 
 def clamp_rpe_text(text: Any, ceiling: Optional[int]) -> tuple[Optional[str], list[dict[str, Any]]]:

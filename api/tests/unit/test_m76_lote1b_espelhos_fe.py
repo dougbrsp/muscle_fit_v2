@@ -68,6 +68,7 @@ from app.domain.exercise_briefing import DECISION_LABELS  # noqa: E402
 from app.engine_decision_context import REASON_ENGINE_TARGET, REASON_EQUIPMENT_STEP  # noqa: E402
 from app.domain import prescription_defaults as pd  # noqa: E402
 from app.domain import session_loads as sl  # noqa: E402
+from app.domain import training_history as th  # noqa: E402
 from app.domain import training_safety as ts  # noqa: E402
 from app.domain.progression_status_labels import EXERCISE_PROGRESSION_LABELS  # noqa: E402
 from app.intelligence import methodology_volume as mvol  # noqa: E402
@@ -189,6 +190,9 @@ def constantes() -> dict[str, Any]:
         # 2026-10-20 (medidas de série, Lote T1): valores, rótulos, `rep_based`, limites e o motivo
         # "não baseada em reps" (dono `domain/set_measures.py`); lido por `set-measures.ts`.
         "set_measures": smeas.export_for_frontend(),
+        # 2026-11-15 (#146, RPE esperado por série): escala do alvo (mín, máx, passo);
+        # dono `domain/training_history.py`.
+        "rpe_target_scale": th.export_rpe_scale_for_frontend(),
     }
 
 

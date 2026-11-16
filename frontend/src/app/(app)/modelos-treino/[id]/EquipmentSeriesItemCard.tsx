@@ -51,6 +51,7 @@ import {
   MEASURE_SELECT_DATA,
   measureChangePatch,
   pairSelectionPatch,
+  storedRpeTextOnly,
   type ItemState,
 } from '@/lib/workout-plan-template-form';
 import type {
@@ -63,6 +64,7 @@ import { BRAND } from '@/theme';
 import { ItemActivationLine } from '../ItemActivationLine';
 import { ItemDirectSetsLine } from '../ItemDirectSetsLine';
 import { BlurCommitNumberInput, BlurCommitTextInput } from './BlurCommitInputs';
+import { RpePerSetField } from './RpePerSetField';
 import { ItemCollapsedSummary, ItemCollapseToggle, itemCardStyle, PriorFatigueStripe } from './ItemCollapsedSummary';
 import { ItemGoalSelect } from './ItemGoalSelect';
 import { ItemSafetyWarnings } from './ItemSafetyWarnings';
@@ -458,13 +460,6 @@ export function EquipmentSeriesItemCard({
               allowDecimal={false}
             />
           )}
-          <BlurCommitTextInput
-            size="xs"
-            label="RPE"
-            placeholder={placeholders?.rpe ?? 'ex.: 7-8'}
-            value={item.rpe_target ?? ''}
-            onCommit={(v) => onUpdate({ rpe_target: v || null })}
-          />
           {/* Fase 7: descanso entre as séries de trabalho deste exercício.
               Vazio = "da geração" (ponto médio do intervalo escolhido ao
               gerar a ficha); preenchido, sobrepõe o intervalo. */}
@@ -478,6 +473,12 @@ export function EquipmentSeriesItemCard({
             max={600}
           />
         </Box>
+        <RpePerSetField
+          targets={item.rpe_targets_by_set}
+          storedText={storedRpeTextOnly(item)}
+          setsCount={item.sets_count}
+          onCommit={(rpe_targets_by_set) => onUpdate({ rpe_targets_by_set, rpe_target: null, rpe_edited: true })}
+        />
 
         {/* Linha 4: priorizado, configurações avançadas, "Revisar" e lixeira. */}
         <Group justify="space-between" wrap="wrap" gap={4} align="center">
