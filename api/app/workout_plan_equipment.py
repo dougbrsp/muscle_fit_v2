@@ -172,17 +172,41 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
                 "Este exercício não está vinculado ao catálogo; vincule-o antes de trocar o equipamento.",
             )
         gym_id, mapping_id = int(plan["gym_id"]), int(row["mapping_id"])
-        links = _same_exercise_links(conn, gym_id, mapping_id)
-        with conn.cursor() as cur:
-            ranked = rank_gym_equipment_rows(cur, links, gym_id=gym_id, user_id=plan.get("user_id"))
-        current = _current_link(conn, row)
-        pairs = [(int(link["canonical_exercise_id"]), int(link["equipment_id"])) for link in ranked]
-        if current:
-            pairs.append((mapping_id, int(current["equipment_id"])))
-        safety_by_pair = ts.resolve_training_safety_bulk(conn, pairs) if pairs else {}
-        current_safety = safety_by_pair.get((mapping_id, int(current["equipment_id"]))) if current else None
-        original_max_safe_rpe = int(current_safety.max_safe_rpe) if current_safety else 0
         technique = row.get("advanced_technique") or None
+        items, current_id, current_rpe = _ranked_equipment_options(
+            conn, gym_id, mapping_id, plan.get("user_id"), _current_link(conn, row), technique
+        )
+    return {
+        "plan_id": int(plan_id),
+        "workout_plan_exercise_id": int(row["id"]),
+        "mapping_id": mapping_id,
+        "exercise_name": row.get("exercise_name"),
+        "current_gym_equipment_id": current_id,
+        "current_max_safe_rpe": current_rpe,
+        "required_technique": technique,
+        "items": items,
+    }
+
+
+def _ranked_equipment_options(
+    conn: Any,
+    gym_id: int,
+    mapping_id: int,
+    owner_user_id: Optional[int],
+    current: Optional[dict[str, Any]],
+    technique: Optional[str],
+) -> tuple[list[dict[str, Any]], Optional[int], Optional[int]]:
+    """Nucleo unico da ficha salva e do rascunho: `(items, current_gym_equipment_id,
+    current_max_safe_rpe)`."""
+    links = _same_exercise_links(conn, gym_id, mapping_id)
+    with conn.cursor() as cur:
+        ranked = rank_gym_equipment_rows(cur, links, gym_id=gym_id, user_id=owner_user_id)
+    pairs = [(int(link["canonical_exercise_id"]), int(link["equipment_id"])) for link in ranked]
+    if current:
+        pairs.append((mapping_id, int(current["equipment_id"])))
+    safety_by_pair = ts.resolve_training_safety_bulk(conn, pairs) if pairs else {}
+    current_safety = safety_by_pair.get((mapping_id, int(current["equipment_id"]))) if current else None
+    original_max_safe_rpe = int(current_safety.max_safe_rpe) if current_safety else 0
 
     items = []
     for link in ranked:
@@ -202,13 +226,45 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
                 "reason": reason,
             }
         )
+    return (
+        items,
+        int(current["id"]) if current else None,
+        original_max_safe_rpe if current else None,
+    )
+
+
+def list_draft_equipment_options(
+    gym_id: int,
+    mapping_id: int,
+    user_id: Optional[int],
+    current_gym_equipment_id: Optional[int] = None,
+    advanced_technique: Optional[str] = None,
+) -> dict[str, Any]:
+    """Mesmas opcoes de `list_equipment_options` para o RASCUNHO (sem `plan_id`),
+    por academia + exercicio, no ranking de quem pediu. Academia inexistente ou
+    inativa, ou sem associacao para o exercicio: `items=[]` (nao e erro). O
+    vinculo atual so vale se coerente com o exercicio e da MESMA academia."""
+    technique = advanced_technique or None
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM gyms WHERE id = %s AND is_active = 1", (int(gym_id),))
+            gym_ok = bool(cur.fetchone())
+        items: list[dict[str, Any]] = []
+        current_id = current_rpe = None
+        if gym_ok:
+            current = None
+            if current_gym_equipment_id:
+                current = _current_link(conn, {"mapping_id": mapping_id, "preferred_equipment_id": current_gym_equipment_id})
+                if current and int(current["gym_id"]) != int(gym_id):
+                    current = None
+            items, current_id, current_rpe = _ranked_equipment_options(
+                conn, int(gym_id), int(mapping_id), user_id, current, technique
+            )
     return {
-        "plan_id": int(plan_id),
-        "workout_plan_exercise_id": int(row["id"]),
-        "mapping_id": mapping_id,
-        "exercise_name": row.get("exercise_name"),
-        "current_gym_equipment_id": int(current["id"]) if current else None,
-        "current_max_safe_rpe": original_max_safe_rpe if current else None,
+        "gym_id": int(gym_id),
+        "mapping_id": int(mapping_id),
+        "current_gym_equipment_id": current_id,
+        "current_max_safe_rpe": current_rpe,
         "required_technique": technique,
         "items": items,
     }

@@ -82,6 +82,7 @@ from tests.support.access_retrato import (
 from tests.unit.test_access_guarda_cobertura_rotas import (
     ROTA_NOVA_SO_AUTENTICACAO,
     ROTA_NOVA_TREINO,
+    ROTA_NOVA_TREINO_EQUIP,
     ROTAS_NOVAS_POS_RETRATO,
     _all_project_routes,
     _iter_api_routes,
@@ -704,6 +705,7 @@ CONTRATO_2F2: dict[str, tuple[str, str]] = {
     f"POST {_WP}/refresh-prescription": ("treino.planos", "editar"),
     f"GET {_WP}/exercise-swap-options": ("treino.planos", "ver"),
     "POST /workout-plans/exercise-swap-options": ("treino.planos", "ver"),  # fix #164: leitura via POST (corpo)
+    "POST /workout-plans/equipment-options": ("treino.planos", "ver"),  # #179: leitura via POST (corpo)
     f"GET {_WP}/exercises/{{exercise_id}}/equipment-options": ("treino.planos", "ver"),
     f"POST {_WP}/exercises/{{exercise_id}}/substitute-equipment": ("treino.planos", "editar"),
     f"GET {_WP}/cardio": ("treino.planos", "ver"),
@@ -851,12 +853,12 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
 
 def test_paridade_cobre_as_367_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 367
+    assert len(com_permissao) == 368
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 56 + 29 + 56 + 42 + 14 == 367
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 15 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 == 368
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 16 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
-    assert len(_rotas_2f2()) == 56
+    assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
     assert len(_rotas_2e()) == 56
     assert len(_rotas_2d1()) == 39
@@ -1332,7 +1334,7 @@ def test_2f1_detector_ignorar_o_escopo_minimo_faria_a_paridade_acusar_o_regular_
 
 def test_o_conjunto_convertido_no_2f2_e_exatamente_o_das_55_rotas_dos_11_modulos():
     rotas = _rotas_2f2()
-    assert len(CONTRATO_2F2) == 56
+    assert len(CONTRATO_2F2) == 57
     assert set(rotas) == set(CONTRATO_2F2), sorted(set(rotas) ^ set(CONTRATO_2F2))
     assert len(ROTAS_MAIN_2F2) == 15
     assert {CONTRATO_2F2[r][0] for r in ROTAS_MAIN_2F2} == {
@@ -1355,14 +1357,14 @@ def test_o_conjunto_convertido_no_2f2_e_exatamente_o_das_55_rotas_dos_11_modulos
                     assert f"{m} {route.path}" in rotas, (modulo, m, route.path)
                     vivas[modulo] = vivas.get(modulo, 0) + 1
     assert vivas == {
-        "app.workout_sessions": 7, "app.workout_plans": 13, "app.exercise_briefing": 1,
+        "app.workout_sessions": 7, "app.workout_plans": 14, "app.exercise_briefing": 1,
         "app.deload_periods": 4, "app.equipment_exercise_preferences": 4, "app.equipment_load_ceiling": 3,
         "app.advanced_techniques": 1, "app.training_goals": 1, "app.muscle_group_equipment": 3,
         "app.muscle_groups_mapped": 4,
     }, vivas
     retrato = carregar_retrato()["rotas"]
     for rota in rotas:
-        if rota == ROTA_NOVA_TREINO:
+        if rota in (ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP):
             continue  # sem classe antiga: nasceu depois do retrato (fix #164), coberta por teste proprio
         assert retrato[rota]["classe"] == "autenticado", rota
         assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
@@ -1373,13 +1375,13 @@ def test_a_tabela_do_2f2_tem_os_totais_por_recurso_e_acao_do_contrato():
     from collections import Counter
 
     assert Counter(r for r, _ in CONTRATO_2F2.values()) == {
-        "treino.planos": 17, "treino.registro": 11, "treino.modo_treino": 7, "treino.preferencias": 7,
+        "treino.planos": 18, "treino.registro": 11, "treino.modo_treino": 7, "treino.preferencias": 7,
         "exercicios.catalogo": 5, "volume.grupamentos": 4, "ia.analise_treinos": 2, "ia.insights": 1,
         "ia.modo_treino": 1, "ia.geracao_plano": 1,
     }
     por = Counter(CONTRATO_2F2.values())
     assert {k: v for k, v in por.items() if k[0].startswith("treino.")} == {
-        ("treino.planos", "ver"): 10, ("treino.planos", "editar"): 6, ("treino.planos", "excluir"): 1,
+        ("treino.planos", "ver"): 11, ("treino.planos", "editar"): 6, ("treino.planos", "excluir"): 1,
         ("treino.registro", "ver"): 6, ("treino.registro", "editar"): 3, ("treino.registro", "excluir"): 2,
         ("treino.modo_treino", "ver"): 1, ("treino.modo_treino", "editar"): 6,
         ("treino.preferencias", "ver"): 3, ("treino.preferencias", "editar"): 2,
@@ -1396,7 +1398,7 @@ def test_as_55_rotas_do_2f2_declaram_recurso_e_acao_da_tabela_sem_escopo_minimo(
         esperado = [(recurso, acao, None)]
         if vivas.get(rota) != esperado:
             problemas.append(f"{rota}: declara {vivas.get(rota)}, contrato {esperado}")
-        if rota != ROTA_NOVA_TREINO:  # unica leitura via POST (corpo com ids): "ver", como a irma GET
+        if rota not in (ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP):  # unica leitura via POST (corpo com ids): "ver", como a irma GET
             assert ACAO_POR_METODO[rota.split(" ", 1)[0]] == acao, rota
     assert not problemas, chr(10).join(problemas)
 
@@ -1405,7 +1407,7 @@ def test_paridade_das_55_rotas_do_2f2_sem_divergencia_de_acesso():
     retrato = carregar_retrato()["rotas"]
     problemas: list[str] = []
     for rota, declaradas in sorted(_rotas_2f2().items()):
-        if rota == ROTA_NOVA_TREINO:
+        if rota in (ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP):
             continue  # sem guard antigo no retrato
         problemas += divergencias(rota, retrato[rota]["classe"], declaradas)
     assert not problemas, "Divergencia de acesso no 2F-2:" + chr(10) + chr(10).join(problemas[:30])
@@ -1532,7 +1534,7 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
     assert not set(ROTAS_NOVAS_POS_RETRATO) & set(carregar_retrato()["rotas"])
     sem_grupo = EffectivePermissions()
     problemas: list[str] = []
-    for rota in sorted(set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO}):
+    for rota in sorted(set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP}):
         declaradas = vivas[rota]
         assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
         esperado = {

@@ -284,6 +284,22 @@ export type PlanExerciseEquipmentOptionsResponse = {
   items: PlanExerciseEquipmentOption[];
 };
 
+// Rascunho gerado (sem linha salva): `POST /workout-plans/equipment-options`,
+// mesmo núcleo e mesmos itens da ficha salva.
+export const DRAFT_EQUIPMENT_OPTIONS_PATH = '/workout-plans/equipment-options';
+
+export type DraftEquipmentOptionsRequest = {
+  gym_id: number;
+  mapping_id: number;
+  current_gym_equipment_id?: number | null;
+  advanced_technique?: string | null;
+};
+
+export type DraftEquipmentOptionsResponse = Omit<
+  PlanExerciseEquipmentOptionsResponse,
+  'plan_id' | 'workout_plan_exercise_id' | 'exercise_name'
+> & { gym_id: number };
+
 export type SubstituteEquipmentResponse = {
   plan: WorkoutPlan;
   // A linha já relida do servidor (prescrição recongelada).

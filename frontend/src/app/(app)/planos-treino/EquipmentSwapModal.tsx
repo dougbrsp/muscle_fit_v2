@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Badge, Group, Loader, Modal, Rating, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Alert, Badge, Button, Group, Loader, Modal, Rating, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconCheck } from '@tabler/icons-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -8,10 +8,14 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import { MAX_PREFERENCE_STARS, starsLabel } from '@/lib/equipment-recommend';
+import { draftEquipmentOptionsBody, draftEquipmentOptionsKey } from '@/lib/exercise-swap-options';
 import {
   equipmentOptionReasonLabel,
+  DRAFT_EQUIPMENT_OPTIONS_PATH,
   planExerciseEquipmentOptionsPath,
   planExerciseSubstituteEquipmentPath,
+  type DraftEquipmentOptionsResponse,
+  type PlanExerciseEquipmentOption,
   type PlanExerciseEquipmentOptionsResponse,
   type SubstituteEquipmentResponse,
   type WorkoutPlanExercise,
@@ -21,11 +25,14 @@ import { BRAND } from '@/theme';
 type Props = {
   opened: boolean;
   onClose: () => void;
-  planId: number;
-  // Linha SALVA da ficha (precisa de `workout_plan_exercise_id`).
+  // Ficha salva: `planId` + `onApplied`. Rascunho: `draft` (sem `planId`).
+  planId?: number;
+  // Linha SALVA da ficha (precisa de `workout_plan_exercise_id`) ou linha do rascunho.
   exercise: WorkoutPlanExercise | null;
   // Chamado com a linha já relida do servidor (prescrição recongelada).
-  onApplied: (exercise: WorkoutPlanExercise) => void;
+  onApplied?: (exercise: WorkoutPlanExercise) => void;
+  // Modo rascunho: consulta `POST /workout-plans/equipment-options` e devolve a escolha sem gravar.
+  draft?: { gymId: number; onPick: (item: PlanExerciseEquipmentOption) => void };
 };
 
 /**
@@ -39,28 +46,45 @@ type Props = {
  * .../substitute-equipment`, e o servidor grava o vínculo e recongela a
  * prescrição da linha — o cliente só reflete a linha devolvida.
  */
-export function EquipmentSwapModal({ opened, onClose, planId, exercise, onApplied }: Props) {
+export function EquipmentSwapModal({ opened, onClose, planId, exercise, onApplied, draft }: Props) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const exerciseId = exercise?.workout_plan_exercise_id ?? null;
+  const draftBody = draft && exercise ? draftEquipmentOptionsBody(exercise, draft.gymId) : null;
 
-  const optionsQuery = useQuery({
-    queryKey: ['plan-exercise-equipment-options', planId, exerciseId],
+  const optionsQuery = useQuery<DraftEquipmentOptionsResponse | PlanExerciseEquipmentOptionsResponse>({
+    queryKey: draft ? draftEquipmentOptionsKey(draftBody) : ['plan-exercise-equipment-options', planId, exerciseId],
     queryFn: () =>
-      apiFetch<PlanExerciseEquipmentOptionsResponse>(planExerciseEquipmentOptionsPath(planId, exerciseId as number)),
-    enabled: opened && exerciseId != null,
+      draft
+        ? apiFetch<DraftEquipmentOptionsResponse>(DRAFT_EQUIPMENT_OPTIONS_PATH, {
+            method: 'POST',
+            body: JSON.stringify(draftBody),
+          })
+        : apiFetch<PlanExerciseEquipmentOptionsResponse>(
+            planExerciseEquipmentOptionsPath(planId as number, exerciseId as number),
+          ),
+    enabled: opened && (draft ? draftBody != null : exerciseId != null && planId != null),
   });
 
   const swapMutation = useMutation({
     mutationFn: (gymEquipmentId: number) =>
-      apiFetch<SubstituteEquipmentResponse>(planExerciseSubstituteEquipmentPath(planId, exerciseId as number), {
+      apiFetch<SubstituteEquipmentResponse>(planExerciseSubstituteEquipmentPath(planId as number, exerciseId as number), {
         method: 'POST',
         body: JSON.stringify({ gym_equipment_id: gymEquipmentId }),
       }),
     onSuccess: (result) => {
-      if (result.exercise) onApplied(result.exercise);
+      if (result.exercise) onApplied?.(result.exercise);
       onClose();
     },
   });
+
+  function choose(item: PlanExerciseEquipmentOption) {
+    if (draft) {
+      draft.onPick(item);
+      onClose();
+    } else {
+      swapMutation.mutate(item.gym_equipment_id);
+    }
+  }
 
   const data = optionsQuery.data;
   const items = data?.items ?? [];
@@ -105,6 +129,9 @@ export function EquipmentSwapModal({ opened, onClose, planId, exercise, onApplie
                 ? optionsQuery.error.message
                 : 'Não foi possível carregar os equipamentos desta academia.'}
             </Text>
+            <Button size="xs" variant="light" color="red" mt="xs" onClick={() => void optionsQuery.refetch()}>
+              Tentar novamente
+            </Button>
           </Alert>
         )}
 
@@ -141,7 +168,7 @@ export function EquipmentSwapModal({ opened, onClose, planId, exercise, onApplie
                   opacity: disabled && !item.is_current ? 0.5 : 1,
                   width: '100%',
                 }}
-                onClick={() => !disabled && swapMutation.mutate(item.gym_equipment_id)}
+                onClick={() => !disabled && choose(item)}
               >
                 <Group gap="sm" wrap="nowrap" align="center">
                   <EquipmentPhoto photoUrl={item.photo_url} alt={item.equipment_name ?? ''} size={56} />
@@ -193,7 +220,7 @@ export function EquipmentSwapModal({ opened, onClose, planId, exercise, onApplie
           })}
           {optionsQuery.isSuccess && items.length === 0 && (
             <Text size="sm" c={BRAND.textMuted} ta="center" py="md">
-              Esta academia não tem nenhum equipamento cadastrado para este exercício.
+              Nenhum equipamento compatível com este exercício nesta academia.
             </Text>
           )}
         </Stack>
