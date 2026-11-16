@@ -63,6 +63,15 @@ describe('SetLoggerCard — medidas de série (Lote T5)', () => {
   });
 });
 
+describe('SetLoggerCard — RPE esperado por série (#146)', () => {
+  it('mostra "RPE esperado" à parte; sem valor, a linha não existe', () => {
+    expect(render({ expectedRpe: 8.5 })).toContain('RPE esperado: 8.5');
+    const sem = render({});
+    expect(sem).not.toContain('set-expected-rpe');
+    expect(sem).not.toContain('RPE esperado');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Novo visual — tela de Execução (PR2/3)
 // ---------------------------------------------------------------------------

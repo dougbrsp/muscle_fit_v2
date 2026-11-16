@@ -147,6 +147,9 @@ export type WorkoutPlanPrescription = SessionLoadPlan & {
   reps_target: string | null;
   load_target: string | null;
   rpe_target: string | null;
+  // #146: RPE esperado de cada série de trabalho, já cortado pelo teto de hoje
+  // (índice 0 = 1ª série de trabalho). Ausente/[] = sem alvo por série.
+  charged_rpe_targets_by_set?: number[];
   effective_rpe_target: number | null;
   effective_rpe_ceiling: number | null;
   failure_allowed: boolean;
@@ -347,6 +350,8 @@ export type WorkoutPlanExercise = {
   reps_target?: string | null;
   load_target?: string | null;
   rpe_target?: string | null;
+  // #146: RPE planejado de cada série (expandido pelo backend).
+  rpe_targets_by_set?: number[];
   rest_seconds?: number | null;
   warmup?: boolean;
   substitution_options?: string[] | null;

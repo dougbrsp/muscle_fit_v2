@@ -4,7 +4,7 @@ import { ActionIcon, Badge, Box, Checkbox, Group, Input, Paper, Select, Stack, T
 import { IconTrash } from '@tabler/icons-react';
 import type { ItemActivationSummary } from '@/lib/item-activation-summary';
 import { effectiveItemGoal, itemFieldPlaceholders, type TrainingGoalsResponse } from '@/lib/training-goals';
-import type { ItemState } from '@/lib/workout-plan-template-form';
+import { storedRpeTextOnly, type ItemState } from '@/lib/workout-plan-template-form';
 import {
   ITEM_KIND_OPTIONS,
   type PriorFatigue,
@@ -15,6 +15,7 @@ import {
 import { BRAND } from '@/theme';
 import { ItemActivationLine } from '../ItemActivationLine';
 import { BlurCommitNumberInput, BlurCommitTextInput } from './BlurCommitInputs';
+import { RpePerSetField } from './RpePerSetField';
 import { cardioShortDescribe, newCardioPrescription } from '@/lib/cardio-prescription';
 import { CardioPrescriptionEditor } from './CardioPrescriptionEditor';
 import { FIELD_GRID_STYLE } from './fieldGridStyle';
@@ -201,14 +202,15 @@ export function PercentBudgetItemCard({
               value={item.reps_target ?? ''}
               onCommit={(v) => onChangeItem({ reps_target: v || null })}
             />
-            <BlurCommitTextInput
-              size="xs"
-              label="RPE"
-              placeholder={placeholders?.rpe ?? 'ex.: 7-8'}
-              value={item.rpe_target ?? ''}
-              onCommit={(v) => onChangeItem({ rpe_target: v || null })}
-            />
           </Box>
+        )}
+        {isMuscleGroup && (
+          <RpePerSetField
+            targets={item.rpe_targets_by_set}
+            storedText={storedRpeTextOnly(item)}
+            setsCount={item.sets_count}
+            onCommit={(rpe_targets_by_set) => onChangeItem({ rpe_targets_by_set, rpe_target: null, rpe_edited: true })}
+          />
         )}
 
         {/* Linha 4: priorizado e % da meta (min-máx, só grupo muscular). */}

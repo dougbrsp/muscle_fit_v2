@@ -48,6 +48,7 @@ from .advanced_techniques import ensure_valid_codes
 from .db import is_duplicate_key_error, transaction
 from .domain import cardio_prescription
 from .domain.free_exercise_item import FREE_EXERCISE_PRIMARY_WEIGHT, is_free_exercise_item
+from .domain.training_history import template_item_rpe_targets
 from .domain.set_measures import (
     MEASURE_ONLY_ON_EQUIPMENT,
     declares_non_rep_measure,
@@ -875,7 +876,54 @@ def _load_version_tree(cur, version_id: int) -> list[dict[str, Any]]:
     """Slots (com `items`) de UMA versao, na forma de `_get_template`. Unico
     lugar que le a arvore de uma versao para a API: o detalhe do Modelo (a
     vigente) e o detalhe de uma versao do historico (PR4) passam por aqui."""
-    return load_version_tree(cur, int(version_id))
+    slots = load_version_tree(cur, int(version_id))
+    # RPE-alvo por série (#146): expansão do `rpe_target` pelo dono; dado
+    # legado ilegível sai [] (a leitura nunca quebra).
+    for slot in slots:
+        for item in slot.get("items") or ():
+            item["rpe_targets_by_set"] = template_item_rpe_targets(item.get("rpe_target"), item.get("sets_count"))
+    return slots
+
+
+def decorate_draft_payload(payload: Any) -> Any:
+    """SAIDA de payload de rascunho ao editor: copia com `rpe_targets_by_set`
+    derivado em cada item (#146). Nunca muta o original nem volta ao banco;
+    `_slot_in_as_stored` descarta o campo se algum caminho o receber de volta."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("slots"), list):
+        return payload
+    slots = []
+    for slot in payload["slots"]:
+        items = slot.get("items") if isinstance(slot, dict) else None
+        if isinstance(items, list):
+            items = [
+                {**it, "rpe_targets_by_set": template_item_rpe_targets(it.get("rpe_target"), it.get("sets_count"))}
+                if isinstance(it, dict)
+                else it
+                for it in items
+            ]
+            slot = {**slot, "items": items}
+        slots.append(slot)
+    return {**payload, "slots": slots}
+
+
+def _decorate_draft(draft: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    return draft if draft is None else {**draft, "payload": decorate_draft_payload(draft.get("payload"))}
+
+
+def _slot_in_as_stored(slot: dict[str, Any]) -> WorkoutPlanTemplateSlotIn:
+    """Schema de entrada a partir de um slot JA GRAVADO (duplicar, reverter,
+    rascunho). `rpe_targets_by_set` e derivado (so saida) e `rpe_target` e dado
+    gravado, nao entrada nova: nenhum dos dois passa pelo validador; o texto
+    volta como esta (inclusive legado fora da escala)."""
+    items = slot.get("items") or []
+    clean = {
+        **slot,
+        "items": [{k: v for k, v in it.items() if k not in ("rpe_targets_by_set", "rpe_target")} for it in items],
+    }
+    parsed = WorkoutPlanTemplateSlotIn(**clean)
+    for item_in, item in zip(parsed.items, items):
+        item_in.rpe_target = item.get("rpe_target")
+    return parsed
 
 
 def _get_template(template_id: int, *, as_of: Optional[Any] = None) -> Optional[dict[str, Any]]:
@@ -1429,7 +1477,7 @@ def duplicate_template(
     # de `_get_template` (com `id`/`slot_id`/`template_id` extras e sem
     # `assignments`, que não é copiado de propósito) podem ser passados direto
     # — inclusive `items` aninhado, validado automaticamente pelo Pydantic.
-    slots_to_persist = [WorkoutPlanTemplateSlotIn(**slot) for slot in original["slots"]]
+    slots_to_persist = [_slot_in_as_stored(slot) for slot in original["slots"]]
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -1906,7 +1954,7 @@ def _revert_validation_errors(conn, version, slots: list[dict[str, Any]], curren
             grid_cols=version.grid_cols,
             volume_counting_mode=version.volume_counting_mode,
             training_goal=version.training_goal,
-            slots=[WorkoutPlanTemplateSlotIn(**slot) for slot in slots],
+            slots=[_slot_in_as_stored(slot) for slot in slots],
         )
     except ValidationError as exc:
         return [f"{'.'.join(str(p) for p in err.get('loc', ()))}: {err.get('msg')}" for err in exc.errors()]
@@ -2065,7 +2113,7 @@ def get_template_draft(template_id: int):
             draft = template_drafts.get_draft(cur, template_id)
     if draft is None:
         raise HTTPException(status_code=404, detail=DRAFT_NOT_FOUND)
-    return draft
+    return _decorate_draft(draft)
 
 
 @router.put("/{template_id}/draft")
@@ -2082,7 +2130,7 @@ def save_template_draft(
         with transaction() as conn:
             with conn.cursor() as cur:
                 _live_template_or_404(cur, template_id)
-                return template_drafts.save_draft(cur, template_id, body, actor=identity.user_id)
+                return _decorate_draft(template_drafts.save_draft(cur, template_id, body, actor=identity.user_id))
     except template_drafts.DraftTooLarge as exc:
         raise HTTPException(status_code=413, detail="Rascunho grande demais para ser salvo.") from exc
     except template_drafts.DraftTableMissing as exc:
@@ -2125,7 +2173,10 @@ def draft_payload_from_template(template: dict[str, Any]) -> dict[str, Any]:
     vigente, para quando o Modelo ainda não tem rascunho. Mesmos campos que o
     editor manda (`buildPayload` do frontend): sem `template_type` (legado) e
     sem `generation_log_id` (só na criação)."""
-    payload = WorkoutPlanTemplateIn.model_validate({**template, "template_type": None, "generation_log_id": None})
+    slots = [_slot_in_as_stored(slot) for slot in template.get("slots") or []]
+    payload = WorkoutPlanTemplateIn.model_validate(
+        {**template, "slots": slots, "template_type": None, "generation_log_id": None}
+    )
     return payload.model_dump(mode="json", exclude={"generation_log_id", "template_type"})
 
 

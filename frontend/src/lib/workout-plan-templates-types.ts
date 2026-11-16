@@ -53,6 +53,8 @@ export type WorkoutPlanTemplateSlotItem = {
   sets_count: number | null;
   reps_target: string | null;
   rpe_target: string | null;
+  // #146: RPE esperado de cada série (expandido pelo backend); [] = sem alvo.
+  rpe_targets_by_set?: number[];
   prioritize: boolean;
   cardio_duration_minutes: number | null;
   // Motor de ficha v2: faixa percentual (0-100) da meta semanal do grupo
@@ -296,6 +298,8 @@ export type WorkoutPlanTemplateSlotItemPayload = {
   sets_count: number | null;
   reps_target: string | null;
   rpe_target: string | null;
+  // #146: quando enviada é a fonte e o backend compõe o texto.
+  rpe_targets_by_set?: number[];
   prioritize: boolean;
   cardio_duration_minutes: number | null;
   priority_min_pct: number | null;

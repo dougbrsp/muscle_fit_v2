@@ -22,6 +22,7 @@ import { overlayQueuedSets } from '@/lib/offline/overlay';
 import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
 import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
+import { initialRpe } from '@/lib/workout-mode-execution-view';
 import { postSetOrQueue } from './offline-set-post';
 import styles from './workout-mode.module.css';
 import {
@@ -2380,6 +2381,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // repetido da última série ofereça um valor acima do teto de hoje (§5.7: o
   // que foi registrado não é reescrito, mas a tela nunca OFERECE 10 onde a
   // falha não é permitida).
+  // RPE esperado da série de trabalho (posição ordinal), já cortado pelo teto.
+  const workingExpectedRpe = prescription?.charged_rpe_targets_by_set?.[workingSetNumber - 1] ?? null;
   const defaultRpe = clampRpeSuggestion(
     suggestion?.suggested_next_rpe != null
       ? suggestion.suggested_next_rpe
@@ -2388,11 +2391,6 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         : parseNumericTarget(effectiveRpeTarget),
     effectiveRpeCeiling,
   );
-
-  // Alvo de RPE da série de TRABALHO do modo avançado: prescrição congelada
-  // (com overlay) > sugestão da IA/última série (`defaultRpe`), sempre
-  // limitado pelo teto de hoje. Nunca 10 num par sem falha permitida.
-  const advancedWorkingDefaultRpe = prescribedEffectiveRpe ?? defaultRpe;
 
   // Evento de segurança JÁ GRAVADO pelo servidor em alguma série deste
   // exercício (`exercise_sets.safety_event`, §5.7): RPE 10 registrado com a
@@ -3344,11 +3342,20 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             durationSecondsTarget={measureSpec.durationSecondsTarget}
             timeWindowSeconds={measureSpec.timeWindowSeconds}
             defaultDurationSeconds={measureDefaults.durationSeconds}
-            // Era RPE 10 FIXO aqui (§5.7 proíbe: onde a falha não é
-            // permitida a ficha nunca mostra 10). O default do modo avançado
-            // passa a ser o alvo efetivo da prescrição congelada, que já vem
-            // clampado pelo teto seguro do par.
-            defaultRpe={hasAdvancedFlow ? advancedWorkingDefaultRpe : defaultRpe}
+            // O RPE realizado nunca nasce vazio (#146): esperado da série >
+            // (modo avançado) alvo efetivo congelado > cadeia de `defaultRpe`;
+            // o resultado passa pelo teto exibido (nunca oferece acima dele).
+            defaultRpe={clampRpeSuggestion(
+              initialRpe({
+                expected: workingExpectedRpe,
+                prescribed: hasAdvancedFlow ? prescribedEffectiveRpe : null,
+                fallback: defaultRpe,
+              }),
+              effectiveRpeCeiling,
+            )}
+            // RPE esperado desta série de trabalho (posição ordinal entre as
+            // de trabalho), já cortado pelo teto de hoje; sem valor = como antes.
+            expectedRpe={workingExpectedRpe}
             // Histórico só depois de a consulta responder: enquanto carrega (ou
             // se ela falhar) o card some, em vez de afirmar "Ainda não há
             // execução comparável".

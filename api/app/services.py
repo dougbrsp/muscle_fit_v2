@@ -10,6 +10,7 @@ from typing import Any
 from . import exercise_card_storage
 from .db import transaction
 from .domain import effective_intensity, equipment_pair
+from .domain.training_history import expand_rpe_targets
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain import prescription as prescription_domain
 from .domain import progression_engine, technique_accounting
@@ -2754,7 +2755,15 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]], *, user_
         shown, overlay = prescription_domain.apply_safety_overlay(frozen, safety)
         step = steps_by_row.get(row_id)
         ex["load_increment_kg"] = float(load_step(step))
+        # RPE-alvo por série (#146): planejado (coluna) e, na prescrição exibida,
+        # o COBRADO (já cortado pelo teto de hoje). Ficha sem alvo/snapshot: [].
+        ex["rpe_targets_by_set"] = expand_rpe_targets(ex.get("rpe_target"), ex.get("sets_count"))
         if shown is not None:
+            shown["charged_rpe_targets_by_set"] = effective_intensity.charged_rpe_targets_by_set(
+                effective_intensity.plan_rpe_target(shown, ex.get("rpe_target")),
+                shown.get("sets_count") or ex.get("sets_count"),
+                shown.get("effective_rpe_target"),
+            )
             # Ficha congelada antes do `continuous_clock`: o flag sai do dono na exposicao.
             if shown.get("advanced_technique_parameters"):
                 shown["advanced_technique_parameters"] = progression_engine.with_continuous_clock(

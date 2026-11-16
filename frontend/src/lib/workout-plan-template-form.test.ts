@@ -14,6 +14,7 @@ import {
   pairSelectionPatch,
   safetyWarningsForItem,
   slotsToPayload,
+  storedRpeTextOnly,
   validateSlots,
   type ItemState,
   type SlotState,
@@ -855,6 +856,125 @@ describe('prescrição de cardio no editor atual (M98 C0)', () => {
       cardio_warmup_minutes: null,
       cardio_cooldown_minutes: null,
       cardio_target_zone: null,
+    });
+  });
+});
+
+describe('RPE esperado por série no payload (#146)', () => {
+  const payloadOf = (state: ItemState) => slotsToPayload([slot({ items: [state] })])[0].items[0];
+
+  it('editado: envia a lista (ajustada às séries) e nenhum texto divergente', () => {
+    const p = payloadOf(
+      item({ item_kind: 'equipment', sets_count: 4, rpe_target: '7-8', rpe_targets_by_set: [7, 8], rpe_edited: true }),
+    );
+    expect(p.rpe_targets_by_set).toEqual([7, 8, 8, 8]);
+    expect(p.rpe_target).toBeNull();
+  });
+
+  it('editado: lista maior que as séries é cortada no fim (evita 422)', () => {
+    const p = payloadOf(item({ sets_count: 2, rpe_targets_by_set: [7, 8, 9], rpe_edited: true }));
+    expect(p.rpe_targets_by_set).toEqual([7, 8]);
+  });
+
+  it('editado e limpo: envia [] (sem alvo)', () => {
+    const p = payloadOf(item({ sets_count: 3, rpe_target: null, rpe_targets_by_set: [], rpe_edited: true }));
+    expect(p.rpe_targets_by_set).toEqual([]);
+    expect(p.rpe_target).toBeNull();
+  });
+
+  it('não editado: reenvia o texto e não envia lista', () => {
+    const p = payloadOf(item({ sets_count: 2, rpe_target: '7-8-9', rpe_targets_by_set: [7, 8] }));
+    expect(p.rpe_target).toBe('7-8-9');
+    expect('rpe_targets_by_set' in p).toBe(false);
+  });
+
+  describe('round-trip "7-8-9" com 2 séries (backend devolve a lista truncada)', () => {
+    const hydrate = (sets: number) =>
+      hydrateSlots([apiSlot({ items: [apiItem({ sets_count: 2, rpe_target: '7-8-9', rpe_targets_by_set: [7, 8] })] })])
+        .map((s) => ({ ...s, items: s.items.map((i) => ({ ...i, sets_count: sets })) }))[0];
+
+    it('sem tocar: texto preservado e sem lista', () => {
+      const p = slotsToPayload([hydrate(2)])[0].items[0];
+      expect(p.rpe_target).toBe('7-8-9');
+      expect('rpe_targets_by_set' in p).toBe(false);
+    });
+
+    it('mudar só o nº de séries: texto preservado e sem lista', () => {
+      const p = slotsToPayload([hydrate(4)])[0].items[0];
+      expect(p.rpe_target).toBe('7-8-9');
+      expect('rpe_targets_by_set' in p).toBe(false);
+    });
+
+    it('editar uma série: lista enviada e texto null', () => {
+      const s = hydrate(2);
+      s.items[0] = { ...s.items[0], rpe_targets_by_set: [7, 9], rpe_target: null, rpe_edited: true };
+      const p = slotsToPayload([s])[0].items[0];
+      expect(p.rpe_targets_by_set).toEqual([7, 9]);
+      expect(p.rpe_target).toBeNull();
+    });
+
+    it('limpar tudo: envia []', () => {
+      const s = hydrate(2);
+      s.items[0] = { ...s.items[0], rpe_targets_by_set: [], rpe_target: null, rpe_edited: true };
+      const p = slotsToPayload([s])[0].items[0];
+      expect(p.rpe_targets_by_set).toEqual([]);
+      expect(p.rpe_target).toBeNull();
+    });
+  });
+
+  it('texto legado sem lista (rascunho): mantém o texto e não envia lista', () => {
+    const p = payloadOf(item({ rpe_target: '8-9', rpe_targets_by_set: [] }));
+    expect(p.rpe_target).toBe('8-9');
+    expect('rpe_targets_by_set' in p).toBe(false);
+  });
+
+  it('hidrata a lista do backend (mostrada no campo) e o round-trip reenvia só o texto', () => {
+    const [hydrated] = hydrateSlots([
+      apiSlot({ items: [apiItem({ sets_count: 5, rpe_target: '7-8-9', rpe_targets_by_set: [7, 8, 9, 9, 9] })] }),
+    ]);
+    expect(hydrated.items[0].rpe_targets_by_set).toEqual([7, 8, 9, 9, 9]);
+    const p = slotsToPayload([hydrated])[0].items[0];
+    expect(p.rpe_target).toBe('7-8-9');
+    expect('rpe_targets_by_set' in p).toBe(false);
+  });
+
+  it('séries nulas: a rampa gravada é mostrada inteira e a edição não a aumenta', () => {
+    const [hydrated] = hydrateSlots([
+      apiSlot({ items: [apiItem({ item_kind: 'muscle_group', sets_count: null, rpe_target: '7-8-9-9-9', rpe_targets_by_set: [7, 8, 9, 9, 9] })] }),
+    ]);
+    const edited = { ...hydrated.items[0], rpe_targets_by_set: [7, 8, 9, 9, 9], rpe_edited: true };
+    expect(slotsToPayload([{ ...hydrated, items: [edited] }])[0].items[0].rpe_targets_by_set).toEqual([7, 8, 9, 9, 9]);
+  });
+
+  describe('texto gravado sem lista (rascunho/semente da IA)', () => {
+    const seeded = () =>
+      hydrateSlots([apiSlot({ items: [apiItem({ sets_count: 3, rpe_target: '7-8-9', rpe_targets_by_set: undefined })] })])[0];
+
+    it('detecta o estado e preserva o texto literal sem ligar rpe_edited', () => {
+      const i = seeded().items[0];
+      expect(i.rpe_edited).toBeUndefined();
+      expect(storedRpeTextOnly(i)).toBe('7-8-9');
+    });
+
+    it('sem tocar: reenvia o texto e nenhuma lista', () => {
+      const p = slotsToPayload([seeded()])[0].items[0];
+      expect(p.rpe_target).toBe('7-8-9');
+      expect('rpe_targets_by_set' in p).toBe(false);
+    });
+
+    it('após definir por série: lista enviada e texto null; estado some', () => {
+      const s = seeded();
+      s.items[0] = { ...s.items[0], rpe_targets_by_set: [7, 7, 7], rpe_target: null, rpe_edited: true };
+      expect(storedRpeTextOnly(s.items[0])).toBeNull();
+      const p = slotsToPayload([s])[0].items[0];
+      expect(p.rpe_targets_by_set).toEqual([7, 7, 7]);
+      expect(p.rpe_target).toBeNull();
+    });
+
+    it('lista do backend e item sem alvo não entram no estado', () => {
+      expect(storedRpeTextOnly(item({ rpe_target: '7-8', rpe_targets_by_set: [7, 8] }))).toBeNull();
+      expect(storedRpeTextOnly(item({ rpe_target: null, rpe_targets_by_set: [] }))).toBeNull();
+      expect(storedRpeTextOnly(item({ rpe_target: '  ', rpe_targets_by_set: [] }))).toBeNull();
     });
   });
 });

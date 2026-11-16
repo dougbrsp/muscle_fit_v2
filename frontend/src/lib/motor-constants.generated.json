@@ -1632,5 +1632,10 @@
     "reason_labels": {
       "measure_not_rep_based": "Série por tempo ou por máximo de repetições: não entra na comparação de carga"
     }
+  },
+  "rpe_target_scale": {
+    "min": 1.0,
+    "max": 10.0,
+    "step": 0.5
   }
 }

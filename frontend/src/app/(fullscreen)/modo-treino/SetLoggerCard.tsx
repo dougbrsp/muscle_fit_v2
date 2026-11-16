@@ -100,6 +100,7 @@ import {
 import {
   aiTipView,
   fieldsToRefresh,
+  expectedRpeLine,
   setTargetLine,
   type AiTipView,
   type LoggerField,
@@ -294,6 +295,8 @@ type Props = {
   // (`formatStrengthLoadRange` sobre `prescription.strength_load`); ausente = nada.
   loadRangeText?: string | null;
   rpeTarget?: string | null;
+  // #146: RPE esperado desta série de trabalho (pronto do servidor); só exibição.
+  expectedRpe?: number | null;
   // `null` = campo vazio (aplicação de técnica: a meta é "até a falha", sem reps sugeridas).
   defaultReps: number | null;
   // `null` = campo de carga vazio (permitido só fora de repetições).
@@ -631,6 +634,7 @@ export function SetLoggerCard({
   loadTarget,
   loadRangeText,
   rpeTarget,
+  expectedRpe,
   defaultReps,
   defaultWeight,
   defaultRpe,
@@ -1381,6 +1385,11 @@ export function SetLoggerCard({
           {targetLine && (
             <span className={styles.targetLine} data-testid="set-target">
               {targetLine}
+            </span>
+          )}
+          {expectedRpeLine(expectedRpe) && (
+            <span className={styles.targetLine} data-testid="set-expected-rpe" style={{ fontWeight: 700 }}>
+              {expectedRpeLine(expectedRpe)}
             </span>
           )}
           {loadRangeText && (
