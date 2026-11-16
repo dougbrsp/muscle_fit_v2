@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSubmitLatch } from './submit-latch';
-import { aiTipView, fieldsToRefresh, isLongText, setTargetLine } from './workout-mode-execution-view';
+import { aiTipView, expectedRpeLine, fieldsToRefresh, isLongText, setTargetLine } from './workout-mode-execution-view';
 import type { SetEvaluationResult } from './workout-mode-types';
 
 const RESULT: SetEvaluationResult = {
@@ -66,5 +66,14 @@ describe('createSubmitLatch (dupla submissão)', () => {
     latch.release();
     expect(latch.isBusy()).toBe(false);
     expect(latch.tryEnter()).toBe(true);
+  });
+});
+
+describe('expectedRpeLine (#146)', () => {
+  it('mostra o RPE esperado da série; sem valor, nada', () => {
+    expect(expectedRpeLine(8)).toBe('RPE esperado: 8');
+    expect(expectedRpeLine(8.5)).toBe('RPE esperado: 8.5');
+    expect(expectedRpeLine(null)).toBeNull();
+    expect(expectedRpeLine(undefined)).toBeNull();
   });
 });

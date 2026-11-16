@@ -38,6 +38,50 @@ import type {
 // da Periodização (dono `api/app/periodization/limits.py`, M76 Lote 4c).
 const MAX_PRIORITIZED_PER_SLOT: number = motorConstants.periodization_limits.max_prioritized_per_slot;
 
+/** Escala do controle de RPE esperado por série (dono: backend, via espelho gerado). */
+export const RPE_TARGET_SCALE: { min: number; max: number; step: number } = motorConstants.rpe_target_scale;
+
+/** Rascunho de um campo de série: número ou vazio (''/null/undefined). */
+export type RpeDraftValue = number | string | null | undefined;
+
+function filledRpe(v: RpeDraftValue): number | null {
+  if (v === '' || v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Rascunho do editor -> lista aceita pelo backend (sem buracos). Tudo em branco
+ * = [] (sem alvo). Série em branco recebe o valor da anterior; em branco antes
+ * do primeiro preenchido recebe o primeiro preenchido. Só copia valores.
+ */
+export function commitRpeDraft(draft: readonly RpeDraftValue[]): number[] {
+  const values = draft.map(filledRpe);
+  const first = values.find((v): v is number => v != null);
+  if (first === undefined) return [];
+  let previous = first;
+  return values.map((v) => (previous = v ?? previous));
+}
+
+/** Ajusta a lista ao nº de séries: sobra sai do fim; série nova nasce com a última. */
+export function fitRpeTargets(targets: readonly number[], setsCount: number | null): number[] {
+  if (targets.length === 0 || setsCount == null) return [...targets];
+  const n = Math.max(0, setsCount);
+  if (targets.length >= n) return targets.slice(0, n);
+  return [...targets, ...Array<number>(n - targets.length).fill(targets[targets.length - 1])];
+}
+
+/**
+ * Item com alvo gravado só em texto (rascunho antigo ou semente da IA), sem lista
+ * e ainda não editado: devolve o texto literal (sem interpretar) ou null.
+ */
+export function storedRpeTextOnly(
+  item: Pick<ItemState, 'rpe_target' | 'rpe_targets_by_set' | 'rpe_edited'>,
+): string | null {
+  const text = item.rpe_target?.trim();
+  return text && item.rpe_targets_by_set.length === 0 && item.rpe_edited !== true ? text : null;
+}
+
 export function localKey(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
 }
@@ -56,6 +100,12 @@ export type ItemState = {
   sets_count: number | null;
   reps_target: string | null;
   rpe_target: string | null;
+  // #146: RPE esperado por série (rascunho do editor); [] = sem alvo.
+  rpe_targets_by_set: number[];
+  // Só do navegador: o usuário editou o RPE deste item. Só então a lista vai no
+  // payload (e o texto vai null); sem edição reenvia o `rpe_target` recebido, que
+  // pode ser mais longo que as séries (a lista hidratada vem truncada).
+  rpe_edited?: boolean;
   prioritize: boolean;
   cardio_duration_minutes: number | null;
   priority_min_pct: number | null;
@@ -110,6 +160,7 @@ export function newItem(kind: WorkoutPlanTemplateItemKind): ItemState {
     sets_count: kind === 'muscle_group' || kind === 'equipment' ? 3 : null,
     reps_target: null,
     rpe_target: null,
+    rpe_targets_by_set: [],
     prioritize: false,
     cardio_duration_minutes: null,
     priority_min_pct: null,
@@ -199,6 +250,7 @@ export function hydrateSlotsWithItemIds(slots: WorkoutPlanTemplateSlot[]): {
             sets_count: item.sets_count,
             reps_target: item.reps_target,
             rpe_target: item.rpe_target,
+            rpe_targets_by_set: item.rpe_targets_by_set ?? [],
             prioritize: item.prioritize,
             cardio_duration_minutes: item.cardio_duration_minutes,
             priority_min_pct: item.priority_min_pct,
@@ -266,6 +318,9 @@ export function slotsToPayload(slots: SlotState[]): WorkoutPlanTemplateSlotPaylo
     items: slot.items.map((item, itemIndex): WorkoutPlanTemplateSlotItemPayload => {
       const isEquipment = item.item_kind === 'equipment';
       const isMuscleGroup = item.item_kind === 'muscle_group';
+      // #146: editado = a lista (ajustada às séries) é a fonte e o texto vai null;
+      // não editado = reenvia o texto recebido, sem lista.
+      const rpeEdited = (isMuscleGroup || isEquipment) && item.rpe_edited === true;
       return {
         item_order: itemIndex + 1,
         item_kind: item.item_kind,
@@ -274,7 +329,8 @@ export function slotsToPayload(slots: SlotState[]): WorkoutPlanTemplateSlotPaylo
         equipment_id: isEquipment ? item.equipment_id : null,
         sets_count: isMuscleGroup || isEquipment ? item.sets_count : null,
         reps_target: isMuscleGroup || isEquipment ? item.reps_target : null,
-        rpe_target: isMuscleGroup || isEquipment ? item.rpe_target : null,
+        rpe_target: (isMuscleGroup || isEquipment) && !rpeEdited ? item.rpe_target : null,
+        ...(rpeEdited ? { rpe_targets_by_set: fitRpeTargets(item.rpe_targets_by_set, item.sets_count) } : {}),
         prioritize: item.prioritize,
         cardio_duration_minutes: item.item_kind === 'cardio' ? item.cardio_duration_minutes : null,
         priority_min_pct: isMuscleGroup ? item.priority_min_pct : null,

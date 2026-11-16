@@ -71,6 +71,7 @@ from ..domain.prescription_defaults import (
 from ..domain.set_measures import is_rep_based, normalize_measure
 from ..domain.training_goal import resolved_goal_value
 from ..domain.laboral import laboral_row_fields
+from ..domain.effective_intensity import draft_rpe_target
 from ..laboral_catalog import load_laboral_defaults
 
 logger = logging.getLogger("fitness.generation")
@@ -929,7 +930,7 @@ def generate_plan_draft_from_equipment_template(
                     **item_measure_and_reps(item, prescription, item_goal),
                     "load_target": normalize_load_target(prescription.suggested_load_kg) if prescription else None,
                     "suggested_load_kg": prescription.suggested_load_kg if prescription else None,
-                    "rpe_target": (prescription.rpe_target if prescription else None) or item.get("rpe_target"),
+                    "rpe_target": draft_rpe_target(prescription.rpe_target if prescription else None, item.get("rpe_target")),
                     # Tecnica: hierarquia da secao 5.9 (modelo vence a
                     # progressao; seguranca remove a invalida).
                     "advanced_technique": prescription.technique if prescription else item.get("advanced_technique"),

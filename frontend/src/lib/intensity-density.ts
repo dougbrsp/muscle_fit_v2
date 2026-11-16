@@ -117,7 +117,10 @@ export type IntensityDensityItemInput = Pick<
   | 'peak_contraction_seconds'
   | 'advanced_technique'
   | 'measure'
->;
+> & {
+  /** Rampa pronta por série (RPE editado no editor); tem prioridade sobre o texto `rpe_target`. */
+  rpe_targets_by_set?: number[] | null;
+};
 
 type TechniqueCatalog = ReadonlyArray<Pick<AdvancedTechniqueCatalogItem, 'code' | 'failure_requirement'>>;
 
@@ -176,7 +179,8 @@ export function isFailureTechnique(code: string | null | undefined, catalog: Tec
  * Técnica de falha → última série = RPE 10. Sem RPE → `null`.
  */
 export function itemIntensity(item: IntensityDensityItemInput, catalog: TechniqueCatalog): number | null {
-  const ramp = parseRpeRamp(item.rpe_target);
+  const byList = (item.rpe_targets_by_set ?? []).filter((n) => Number.isFinite(n));
+  const ramp = byList.length > 0 ? byList : parseRpeRamp(item.rpe_target);
   if (ramp.length === 0) return null;
   const sets = positiveOrNull(item.sets_count) != null ? Math.round(item.sets_count as number) : ramp.length;
   if (sets <= 0) return null;

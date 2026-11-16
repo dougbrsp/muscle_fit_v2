@@ -67,6 +67,15 @@ export function setTargetLine({
 }
 
 /**
+ * "RPE esperado: 8" da série de trabalho (valor pronto do servidor, índice =
+ * posição ordinal entre as séries de trabalho). `null` = sem alvo por série:
+ * nada aparece. Só formata; nunca vira valor inicial do RPE realizado.
+ */
+export function expectedRpeLine(expected: number | null | undefined): string | null {
+  return expected == null ? null : `RPE esperado: ${expected}`;
+}
+
+/**
  * Campos editáveis do card de série. Um campo editado à mão nesta série não
  * é sobrescrito quando o valor sugerido muda (ex.: a avaliação da IA chega
  * depois de o usuário já ter ajustado a carga); trocar de série/exercício

@@ -106,6 +106,36 @@ describe('intensidade', () => {
     expect(itemIntensity({ ...base, advanced_technique: 'gvt' }, CATALOG)).toBeCloseTo(0.3, 6);
   });
 
+  it('sem sets_count a lista de 5 equivale ao texto não colapsado que o backend grava', () => {
+    const lista = itemIntensity(input({ rpe_targets_by_set: [7, 8, 9, 9, 9] }), CATALOG) as number;
+    expect(itemIntensity(input({ rpe_target: '7-8-9-9-9' }), CATALOG)).toBeCloseTo(lista, 6);
+    expect(itemIntensity(input({ rpe_target: '7-8-9' }), CATALOG)).not.toBeCloseTo(lista, 6);
+  });
+
+  it('lista rpe_targets_by_set (RPE editado) equivale ao texto', () => {
+    const edited = input({ sets_count: 3, rpe_target: null, rpe_targets_by_set: [8, 9, 10] });
+    const text = input({ sets_count: 3, rpe_target: '8-9-10' });
+    expect(itemIntensity(edited, CATALOG)).toBeCloseTo(itemIntensity(text, CATALOG) as number, 6);
+    expect(itemIntensity(edited, CATALOG)).toBeCloseTo(2 / 3, 6);
+    // lista curta repete o último degrau
+    expect(itemIntensity(input({ sets_count: 4, rpe_targets_by_set: [8, 9] }), CATALOG)).toBeCloseTo(
+      (0.3 + 0.7 * 3) / 4,
+      6,
+    );
+    // só texto, sem lista: inalterado
+    expect(itemIntensity(input({ sets_count: 3, rpe_target: '10', rpe_targets_by_set: [] }), CATALOG)).toBe(1);
+    // sem alvo
+    expect(itemIntensity(input({ sets_count: 3, rpe_targets_by_set: [] }), CATALOG)).toBeNull();
+    expect(itemIntensity(input({ sets_count: 3, rpe_targets_by_set: null }), CATALOG)).toBeNull();
+    // técnica de falha com lista
+    expect(
+      itemIntensity(
+        input({ sets_count: 3, rpe_targets_by_set: [8, 8, 8], advanced_technique: 'drop_set' }),
+        CATALOG,
+      ),
+    ).toBeCloseTo((0.3 * 2 + 1) / 3, 6);
+  });
+
   it('sem RPE o componente fica ausente', () => {
     expect(itemIntensity(input({ sets_count: 3 }), CATALOG)).toBeNull();
     const item = computeItemIntensityDensity(input({ sets_count: 3, reps_target: '15' }), CATALOG);

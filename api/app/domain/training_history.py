@@ -89,6 +89,103 @@ def parse_rpe_ramp(value: Any) -> tuple[Decimal, ...]:
     return tuple(Decimal(item.replace(",", ".")) for item in _ALL_NUMBERS_RE.findall(str(value)))
 
 
+def is_rpe_ramp(value: Any) -> bool:
+    """RAMPA = dois ou mais degraus DIFERENTES (`"7-8"`; `"8-8"` e `"9"` nao).
+    Mesmo criterio de `next_set_load.planned_ramp_rpe`."""
+    return len(set(parse_rpe_ramp(value))) > 1
+
+
+# ---------------------------------------------------------------------------
+# RPE-alvo por serie (issue #146): validacao, composicao e expansao da rampa
+# ---------------------------------------------------------------------------
+
+RPE_TARGET_STEP = Decimal("0.5")  # passo da escala do alvo (meio ponto)
+
+
+class RpeTargetError(ValueError):
+    """`rpe_target` de entrada invalido (a mensagem e a que a API devolve em 422)."""
+
+
+def rpe_target_scale() -> tuple[Decimal, Decimal, Decimal]:
+    """(minimo, maximo, passo) do alvo: 1 a 10 em meio ponto. Limites do dono da
+    regra da proxima serie (`next_set_load.RULE_RPE_MIN`) e da falha
+    (`training_safety.FAILURE_RPE`); import tardio porque `next_set_load` importa
+    este modulo."""
+    from .next_set_load import RULE_RPE_MIN
+    from .training_safety import FAILURE_RPE
+
+    return Decimal(RULE_RPE_MIN), Decimal(FAILURE_RPE), RPE_TARGET_STEP
+
+
+def export_rpe_scale_for_frontend() -> dict[str, float]:
+    low, high, step = rpe_target_scale()
+    return {"min": float(low), "max": float(high), "step": float(step)}
+
+
+def format_rpe_step(value: Decimal) -> str:
+    """`Decimal("8")` -> `"8"`; `Decimal("8.50")` -> `"8.5"`."""
+    if value == value.to_integral_value():
+        return str(int(value))
+    return format(value.normalize(), "f")
+
+
+def compose_rpe_target(steps: Iterable[Any], *, collapse_tail: bool = True) -> Optional[str]:
+    """Texto canonico da rampa a partir de uma lista de alvos por serie
+    (`[7, 8, 9]` -> `"7-8-9"`). Valida cada degrau na escala e no passo; degraus
+    repetidos no fim colapsam (`[8, 8, 8]` -> `"8"`; o ultimo degrau ja se repete),
+    salvo `collapse_tail=False` (item sem `sets_count`: o tamanho da rampa define as
+    series para `intensity_density.item_intensity`). Lista vazia -> None."""
+    low, high, step = rpe_target_scale()
+    ramp: list[Decimal] = []
+    for raw in steps:
+        try:
+            value = Decimal(str(raw).strip().replace(",", "."))
+        except (InvalidOperation, ValueError):
+            raise RpeTargetError(f"RPE-alvo inválido: '{raw}'. Use números de {format_rpe_step(low)} a {format_rpe_step(high)}.")
+        if not value.is_finite() or value < low or value > high or value % step != 0:
+            raise RpeTargetError(
+                f"RPE-alvo {raw} fora da escala: use valores de {format_rpe_step(low)} a {format_rpe_step(high)} "
+                f"em passos de {format_rpe_step(step)}."
+            )
+        ramp.append(value)
+    while collapse_tail and len(ramp) > 1 and ramp[-1] == ramp[-2]:
+        ramp.pop()
+    return "-".join(format_rpe_step(v) for v in ramp) or None
+
+
+def normalize_rpe_target(value: Any, *, collapse_tail: bool = True) -> Optional[str]:
+    """Valida/normaliza o `rpe_target` de ENTRADA (so na escrita). Vazio/None ->
+    None; texto sem numero ou com degrau fora da escala/passo -> `RpeTargetError`."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    # shortcut: le todo numero do texto ("7-8 (RIR 2)" -> "7-8-2"), como o parser sempre leu; endurecer quando o texto livre da LLM/cliente passar a trazer RIR.
+    ramp = parse_rpe_ramp(value)
+    if not ramp:
+        raise RpeTargetError(f"RPE-alvo '{value}' não tem nenhum número. Use, por exemplo, 8 ou 8-9-10.")
+    return compose_rpe_target(ramp, collapse_tail=collapse_tail)
+
+
+def expand_rpe_targets(value: Any, sets_count: Any) -> list[float]:
+    """Alvo de cada serie de TRABALHO (`sets_count` posicoes): o degrau da rampa
+    na posicao da serie, repetindo o ultimo quando faltam degraus e ignorando os
+    que sobram (`PrescribedSpec.rpe_target_for_set`). Sem alvo/sem series -> []."""
+    ramp = parse_rpe_ramp(value)
+    try:
+        total = int(sets_count)
+    except (TypeError, ValueError):
+        return []
+    if not ramp or total < 1:
+        return []
+    return [float(ramp[min(index, len(ramp) - 1)]) for index in range(total)]
+
+
+def template_item_rpe_targets(value: Any, sets_count: Any) -> list[float]:
+    """`rpe_targets_by_set` da SAIDA do item do Modelo: `expand_rpe_targets`; com
+    `sets_count` nulo/<1 a rampa gravada como esta."""
+    expanded = expand_rpe_targets(value, sets_count)
+    return expanded or [float(step) for step in parse_rpe_ramp(value)]
+
+
 def parse_int(value: Any) -> Optional[int]:
     """Primeiro inteiro de um texto livre (`"RPE 9"` -> 9). None se nao houver."""
     if value is None or isinstance(value, bool):

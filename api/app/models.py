@@ -4,6 +4,7 @@ from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from .domain.training_goal import optional_goal_value
+from .domain.training_history import compose_rpe_target, normalize_rpe_target
 from .domain.prescription_defaults import DEFAULT_MAX_REST_SECONDS, DEFAULT_MIN_REST_SECONDS
 from .domain.set_measures import MEASURE_UNKNOWN, item_validation_message, parse_measure
 from .domain.set_sides import apply_canonical_to_model
@@ -282,6 +283,9 @@ class WorkoutPlanExerciseIn(BaseModel):
     # gravado, `workout_plan_exercise_merge`); linha nova sem ele = default.
     # Valor fora do vocabulário -> 422.
     training_goal: Optional[str] = None
+    # RPE-alvo por série (#146): lista de números, só na entrada; quando enviada
+    # é a fonte e compõe `rpe_target` (dono `training_history`). [] = sem alvo.
+    rpe_targets_by_set: Optional[list[float]] = None
 
     @field_validator("measure")
     @classmethod
@@ -292,6 +296,29 @@ class WorkoutPlanExerciseIn(BaseModel):
     @classmethod
     def _training_goal_known(cls, value: Optional[str]) -> Optional[str]:
         return optional_goal_value(value)
+
+    @model_validator(mode="after")
+    def _rpe_target_resolved(self):
+        return _resolve_rpe_target(self)
+
+
+def _resolve_rpe_target(model):
+    """Valida/normaliza `rpe_target` (texto) ou o compõe de `rpe_targets_by_set`,
+    sempre pelo dono `training_history`. Lista maior que `sets_count` é erro.
+    Campo não enviado fica como está (o save preserva o gravado)."""
+    steps = model.rpe_targets_by_set
+    # Sem séries definidas o tamanho da rampa é o nº de séries: não colapsa o fim.
+    collapse = model.sets_count is not None and model.sets_count >= 1
+    if steps is not None:
+        if model.sets_count is not None and len(steps) > model.sets_count:
+            raise ValueError(
+                f"rpe_targets_by_set tem {len(steps)} alvos para {model.sets_count} séries de trabalho."
+            )
+        model.rpe_target = compose_rpe_target(steps, collapse_tail=collapse)
+        model.rpe_targets_by_set = None
+    elif "rpe_target" in model.model_fields_set:
+        model.rpe_target = normalize_rpe_target(model.rpe_target, collapse_tail=collapse)
+    return model
 
 
 class WorkoutPlanIn(BaseModel):
@@ -492,11 +519,17 @@ class WorkoutPlanTemplateSlotItemIn(BaseModel):
     # `domain/training_goal.py`): override do objetivo do Modelo. None = herda
     # (`training_goal.resolve_goal`). Valor fora do vocabulário -> 422.
     training_goal: Optional[str] = None
+    # RPE-alvo por série (#146): ver `WorkoutPlanExerciseIn.rpe_targets_by_set`.
+    rpe_targets_by_set: Optional[list[float]] = None
 
     @field_validator("training_goal")
     @classmethod
     def _training_goal_known(cls, value: Optional[str]) -> Optional[str]:
         return optional_goal_value(value)
+
+    @model_validator(mode="after")
+    def _rpe_target_resolved(self):
+        return _resolve_rpe_target(self)
 
 
 class CardioPrescriptionCheckIn(BaseModel):
