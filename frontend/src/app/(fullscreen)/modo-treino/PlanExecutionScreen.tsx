@@ -22,6 +22,7 @@ import { overlayQueuedSets } from '@/lib/offline/overlay';
 import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
 import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
+import { initialRpe } from '@/lib/workout-mode-execution-view';
 import { postSetOrQueue } from './offline-set-post';
 import styles from './workout-mode.module.css';
 import {
@@ -2376,17 +2377,18 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const measuredDefaultWeight = lastSet?.weight_kg != null ? Number(lastSet.weight_kg) : null;
   const defaultWeight = measureDefaults.loadOptional ? measuredDefaultWeight : repsDefaultWeight;
   // Sugestão da IA (já clampada no servidor) > RPE da última série desta
-  // sessão. O alvo (RPE esperado) NÃO pré-preenche o realizado (#146): ele é
-  // mostrado à parte no card. `clampRpeSuggestion` garante que nem o RPE
+  // sessão > alvo da prescrição. `clampRpeSuggestion` garante que nem o RPE
   // repetido da última série ofereça um valor acima do teto de hoje (§5.7: o
   // que foi registrado não é reescrito, mas a tela nunca OFERECE 10 onde a
   // falha não é permitida).
+  // RPE esperado da série de trabalho (posição ordinal), já cortado pelo teto.
+  const workingExpectedRpe = prescription?.charged_rpe_targets_by_set?.[workingSetNumber - 1] ?? null;
   const defaultRpe = clampRpeSuggestion(
     suggestion?.suggested_next_rpe != null
       ? suggestion.suggested_next_rpe
       : lastSet?.rpe != null
         ? Number(lastSet.rpe)
-        : null,
+        : parseNumericTarget(effectiveRpeTarget),
     effectiveRpeCeiling,
   );
 
@@ -3340,11 +3342,20 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             durationSecondsTarget={measureSpec.durationSecondsTarget}
             timeWindowSeconds={measureSpec.timeWindowSeconds}
             defaultDurationSeconds={measureDefaults.durationSeconds}
-            // Sem pré-preenchimento pelo alvo (#146), nem no modo avançado.
-            defaultRpe={defaultRpe}
+            // O RPE realizado nunca nasce vazio (#146): esperado da série >
+            // (modo avançado) alvo efetivo congelado > cadeia de `defaultRpe`;
+            // o resultado passa pelo teto exibido (nunca oferece acima dele).
+            defaultRpe={clampRpeSuggestion(
+              initialRpe({
+                expected: workingExpectedRpe,
+                prescribed: hasAdvancedFlow ? prescribedEffectiveRpe : null,
+                fallback: defaultRpe,
+              }),
+              effectiveRpeCeiling,
+            )}
             // RPE esperado desta série de trabalho (posição ordinal entre as
             // de trabalho), já cortado pelo teto de hoje; sem valor = como antes.
-            expectedRpe={prescription?.charged_rpe_targets_by_set?.[workingSetNumber - 1] ?? null}
+            expectedRpe={workingExpectedRpe}
             // Histórico só depois de a consulta responder: enquanto carrega (ou
             // se ela falhar) o card some, em vez de afirmar "Ainda não há
             // execução comparável".

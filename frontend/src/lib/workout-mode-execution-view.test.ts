@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSubmitLatch } from './submit-latch';
-import { aiTipView, expectedRpeLine, fieldsToRefresh, isLongText, setTargetLine } from './workout-mode-execution-view';
+import { aiTipView, expectedRpeLine, fieldsToRefresh, initialRpe, isLongText, setTargetLine } from './workout-mode-execution-view';
 import type { SetEvaluationResult } from './workout-mode-types';
 
 const RESULT: SetEvaluationResult = {
@@ -75,5 +75,22 @@ describe('expectedRpeLine (#146)', () => {
     expect(expectedRpeLine(8.5)).toBe('RPE esperado: 8.5');
     expect(expectedRpeLine(null)).toBeNull();
     expect(expectedRpeLine(undefined)).toBeNull();
+  });
+});
+
+describe('initialRpe (#146)', () => {
+  it('o esperado da série vence prescrito, sugestão da IA e série anterior', () => {
+    expect(initialRpe({ expected: 8, prescribed: 9, fallback: 7 })).toBe(8);
+  });
+  it('sem esperado: alvo prescrito (modo avançado) e depois a cadeia', () => {
+    expect(initialRpe({ expected: null, prescribed: 9, fallback: 7 })).toBe(9);
+    expect(initialRpe({ expected: null, fallback: 7.5 })).toBe(7.5);
+  });
+  it('o fallback (IA, última série ou alvo) preenche sem esperado', () => {
+    expect(initialRpe({ fallback: 6 })).toBe(6);
+  });
+  it('nada disponível: null', () => {
+    expect(initialRpe({})).toBeNull();
+    expect(initialRpe({ expected: undefined, prescribed: null, fallback: null })).toBeNull();
   });
 });
