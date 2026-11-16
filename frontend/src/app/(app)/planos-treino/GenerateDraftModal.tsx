@@ -35,11 +35,13 @@ import {
 import { buildDraftCreatePayload } from '@/lib/workout-plan-payload';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft } from '@/lib/workout-plan-generate-payload';
 import {
+  applyDraftEquipmentChoice,
   draftSwapOptionsState,
   generatedMappingIds,
   stampGeneratedRows,
   type DraftSwapOptionsResponse,
 } from '@/lib/exercise-swap-options';
+import { EquipmentSwapModal } from './EquipmentSwapModal';
 import { ExercisesTable } from './ExercisesTable';
 import { MuscleActivationPreview } from './MuscleActivationPreview';
 import { GenerationWarnings } from './GenerationWarnings';
@@ -92,6 +94,8 @@ export function GenerateDraftModal({ opened, onClose }: Props) {
   const [draftName, setDraftName] = useState('');
   const [draftExercises, setDraftExercises] = useState<WorkoutPlanExercise[]>([]);
   const [status, setStatus] = useState('planned');
+  // Índice da linha do rascunho cujo equipamento está sendo escolhido.
+  const [equipmentRow, setEquipmentRow] = useState<number | null>(null);
 
   const gymsQuery = useQuery({
     queryKey: ['gyms'],
@@ -345,7 +349,26 @@ export function GenerateDraftModal({ opened, onClose }: Props) {
             <GenerationWarnings draft={draft} />
 
             <Divider label="Exercícios" />
-            <ExercisesTable exercises={draftExercises} onChange={setDraftExercises} draftSwapOptions={draftSwapOptions} />
+            <ExercisesTable
+              exercises={draftExercises}
+              onChange={setDraftExercises}
+              draftSwapOptions={draftSwapOptions}
+              onPickDraftEquipment={gymId ? setEquipmentRow : undefined}
+            />
+            {gymId && (
+              <EquipmentSwapModal
+                opened={equipmentRow != null}
+                onClose={() => setEquipmentRow(null)}
+                exercise={equipmentRow != null ? draftExercises[equipmentRow] ?? null : null}
+                draft={{
+                  gymId: Number(gymId),
+                  onPick: (item) =>
+                    setDraftExercises((rows) =>
+                      rows.map((row, i) => (i === equipmentRow ? applyDraftEquipmentChoice(row, item) : row)),
+                    ),
+                }}
+              />
+            )}
 
             <Divider label="Prévia de ativação muscular" />
             <MuscleActivationPreview exercises={draftExercises} />

@@ -72,6 +72,11 @@ type Props = {
    */
   onSwapEquipment?: (exercise: WorkoutPlanExercise) => void;
   /**
+   * Rascunho gerado: escolher/trocar o equipamento de uma linha ainda não
+   * salva (com `mapping_id`). Só é passado com academia escolhida.
+   */
+  onPickDraftEquipment?: (index: number) => void;
+  /**
    * Ficha finalizada (o servidor diz em `plan.editable`): tudo somente
    * leitura, sem adicionar, remover ou reordenar.
    */
@@ -256,6 +261,7 @@ export function ExercisesTable({
   refreshingPrescription = false,
   refreshPrescriptionError = null,
   onSwapEquipment,
+  onPickDraftEquipment,
   readOnly = false,
   swapOptions,
   draftSwapOptions,
@@ -502,7 +508,7 @@ export function ExercisesTable({
               <Table.Th miw={160}>Notas</Table.Th>
               <Table.Th w={110} style={NOWRAP}>Progressão</Table.Th>
               <Table.Th miw={190}>Prescrição</Table.Th>
-              <Table.Th w={onSwapEquipment ? 110 : 90} style={NOWRAP}>Ações</Table.Th>
+              <Table.Th w={onSwapEquipment || onPickDraftEquipment ? 110 : 90} style={NOWRAP}>Ações</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <DragDropContext onDragEnd={handleDragEnd}>
@@ -780,6 +786,18 @@ export function ExercisesTable({
                           variant="subtle"
                           onClick={() => onSwapEquipment(exercise)}
                           aria-label="Trocar equipamento"
+                        >
+                          <IconReplace size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    {!readOnly && onPickDraftEquipment && exercise.workout_plan_exercise_id == null && exercise.mapping_id != null && (
+                      <Tooltip label="Escolher equipamento (só o equipamento; o exercício não muda)" withArrow>
+                        <ActionIcon
+                          color="brand"
+                          variant="subtle"
+                          onClick={() => onPickDraftEquipment(index)}
+                          aria-label="Escolher equipamento"
                         >
                           <IconReplace size={16} />
                         </ActionIcon>

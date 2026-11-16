@@ -8,7 +8,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { GenerationWarnings } from '@/app/(app)/planos-treino/GenerationWarnings';
 import { ApiError, apiFetch } from '@/lib/api';
 import type { AsyncJob } from '@/lib/analytics-types';
+import { EquipmentSwapModal } from '@/app/(app)/planos-treino/EquipmentSwapModal';
 import {
+  applyDraftEquipmentChoice,
   draftSwapOptionsState,
   generatedMappingIds,
   stampGeneratedRows,
@@ -63,6 +65,8 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
   const [draftExercises, setDraftExercises] = useState<WorkoutPlanExercise[]>([]);
   const [status, setStatus] = useState('planned');
   const [editingRow, setEditingRow] = useState(false);
+  // Índice da linha do rascunho cujo equipamento está sendo escolhido.
+  const [equipmentRow, setEquipmentRow] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
 
   const gymsQuery = useQuery({
@@ -191,8 +195,23 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
             exercises={draftExercises}
             onChange={setDraftExercises}
             draftSwapOptions={draftSwapOptions}
+            onPickDraftEquipment={gymId ? setEquipmentRow : undefined}
             onEditingChange={setEditingRow}
           />
+          {gymId ? (
+            <EquipmentSwapModal
+              opened={equipmentRow != null}
+              onClose={() => setEquipmentRow(null)}
+              exercise={equipmentRow != null ? draftExercises[equipmentRow] ?? null : null}
+              draft={{
+                gymId: Number(gymId),
+                onPick: (item) =>
+                  setDraftExercises((rows) =>
+                    rows.map((row, i) => (i === equipmentRow ? applyDraftEquipmentChoice(row, item) : row)),
+                  ),
+              }}
+            />
+          ) : null}
           {editingRow ? null : <PlanActivationPreviewList exercises={draftExercises} />}
           {createMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar" role="alert">
