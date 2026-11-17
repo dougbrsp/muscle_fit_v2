@@ -13,8 +13,10 @@ let alimento: { id: number; name: string; basis: string; warnings: { code: strin
 const sinais: number[] = [];
 
 vi.mock('@/lib/api', () => ({ apiFetch: vi.fn(async () => ({ role: 'regular' })), ApiError: class extends Error {} }));
+const excluir = vi.fn();
 vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/nutrition-api')>()),
+  deleteFood: (id: number) => excluir(id),
   fetchFood: vi.fn(async () => ({ id: 7, name: 'Arroz', basis: 'g', portions: [] })),
 }));
 vi.mock('@/components/nutrition/FoodCitationFooter', () => ({ FoodCitationFooter: () => null }));
@@ -27,9 +29,12 @@ vi.mock('@/components/nutrition/FoodSearch', async () => {
   };
 });
 vi.mock('@/components/nutrition/FoodDetailCard', async () => {
-  const { createElement: h } = await import('react');
+  const { createElement: h, Fragment } = await import('react');
   return {
-    FoodDetailCard: ({ onEdit }: { onEdit: () => void }) => h('button', { type: 'button', 'data-testid': 'editar', onClick: onEdit }, 'editar'),
+    FoodDetailCard: ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => Promise<unknown> }) =>
+      h(Fragment, null,
+        h('button', { type: 'button', 'data-testid': 'editar', onClick: onEdit }, 'editar'),
+        h('button', { type: 'button', 'data-testid': 'excluir', onClick: () => onDelete().catch(() => undefined) }, 'excluir')),
   };
 });
 vi.mock('@/components/nutrition/FoodForm', async () => {
@@ -65,6 +70,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sinais.length = 0;
+  excluir.mockReset();
   alimento = { id: 7, name: 'Arroz', basis: 'g', warnings: [] };
   rolou = vi.fn();
   window.HTMLElement.prototype.scrollIntoView = rolou as unknown as typeof window.HTMLElement.prototype.scrollIntoView;
@@ -86,8 +92,9 @@ const clicar = async (id: string) => {
   await esperar();
 };
 
+let client: QueryClient;
 async function montar() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(host);
   await act(async () => {
     root!.render(createElement(QueryClientProvider, { client }, createElement(MantineProvider, { env: 'test' }, createElement(AlimentosClient))));
@@ -137,5 +144,30 @@ describe('AlimentosClient: cadastro em andamento e rolagem', () => {
     rolou.mockClear();
     await clicar('escolher');
     expect(rolou).toHaveBeenCalled();
+  });
+});
+
+describe('AlimentosClient: excluir alimento (#140)', () => {
+  it('sucesso: chama DELETE uma vez, fecha o detalhe e invalida busca e favoritos', async () => {
+    excluir.mockResolvedValue({ status: 'deleted', id: 7 });
+    await montar();
+    const invalidar = vi.spyOn(client, 'invalidateQueries');
+    await clicar('escolher');
+    await clicar('excluir');
+    expect(excluir).toHaveBeenCalledTimes(1);
+    expect(excluir).toHaveBeenCalledWith(7);
+    expect(q('editar')).toBeNull();
+    const chaves = invalidar.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown[] }).queryKey));
+    expect(chaves).toContain(JSON.stringify(['nutrition-foods-search']));
+    expect(chaves).toContain(JSON.stringify(['nutrition-favorites']));
+  });
+
+  it('erro da API: mensagem na tela e o alimento continua aberto', async () => {
+    excluir.mockRejectedValue(new Error('falhou'));
+    await montar();
+    await clicar('escolher');
+    await clicar('excluir');
+    expect(host.textContent).toContain('Não foi possível excluir o alimento.');
+    expect(q('editar')).not.toBeNull();
   });
 });

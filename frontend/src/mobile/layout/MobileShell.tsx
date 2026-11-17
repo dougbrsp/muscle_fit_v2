@@ -22,7 +22,7 @@ import { DesktopOnlyScreen } from '../screens/DesktopOnlyScreen';
 import { resolveMobileScreen } from '../screens/registry';
 import { hasOpenView } from '../screens/telas/view-stack';
 import { useKeyboardOpen } from './keyboard';
-import { scrollMemoryKey } from './nav-active';
+import { marcarNavegacaoInterna, scrollMemoryKey, voltarDoEditorNova } from './nav-active';
 import { MoreSheet } from './MoreSheet';
 import {
   MORE_TAB,
@@ -74,6 +74,13 @@ function Shell({ children }: { children: ReactNode }) {
   useEffect(() => {
     closeMore();
   }, [pathname, search, closeMore]);
+
+  // Primeira rota = abertura direta; as seguintes têm origem a que o voltar pode retornar.
+  const primeiraRota = useRef(true);
+  useEffect(() => {
+    if (primeiraRota.current) primeiraRota.current = false;
+    else marcarNavegacaoInterna();
+  }, [pathname, search]);
 
   // Voltar/gesto do navegador: o navegador restaura a rolagem sozinho; a posicao
   // guardada por toque em aba nao pode sobreviver a essa saida.
@@ -160,7 +167,10 @@ function Shell({ children }: { children: ReactNode }) {
                 className={styles.back}
                 aria-label={`Voltar para ${back.label}`}
                 onClick={() => {
+                  const novaUrl = voltarDoEditorNova(pathname, search);
                   if (hasOpenView()) router.back();
+                  else if (novaUrl === 'back') router.back();
+                  else if (novaUrl === 'replace') router.replace('/nutricao/');
                   else openMore();
                 }}
               >
@@ -204,12 +214,18 @@ function Shell({ children }: { children: ReactNode }) {
       >
         {primaryTabsFor(userQuery.data).map((tab) => {
           const active = isPrimaryTabActive(tab, pathname, search);
+          const href = tab.id === 'evolucao' ? evolucaoHubHref(search) : tab.href;
           return (
             <Link
               key={tab.id}
-              href={tab.id === 'evolucao' ? evolucaoHubHref(search) : tab.href}
+              href={href}
               className={styles.tab}
+              aria-label={tab.ariaLabel}
               aria-current={active ? 'page' : undefined}
+              onClick={(event) => {
+                // Toque repetido no destino atual: no-op, sem empilhar histórico.
+                if (tab.id === 'refeicao' && active) event.preventDefault();
+              }}
             >
               <tab.icon size={24} stroke={active ? 2.1 : 1.6} aria-hidden />
               <span>{tab.label}</span>

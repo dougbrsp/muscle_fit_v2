@@ -22,6 +22,10 @@ Rotas (prefixo `/nutrition/foods`):
                                            (`catalog.USER_ENTRY_SOURCES`; outra -> 400)
 - `PUT  /{id}`                             o dono (privado) ou o admin (público); fonte
                                            somente leitura (TACO) -> 409
+- `DELETE /{id}`                           exclusão lógica (`is_active = 0`) + remove os preferidos do
+                                           alimento; mesma posse da edição com a ação `excluir`
+                                           (privado: dono; público: `admin.catalogos`/`excluir`);
+                                           TACO -> 409; `meal_items` intacto; 200 `{status, id}`
 - `POST /{id}/portions`                    `FoodPortionIn` -> 201 (pública só do admin em
                                            alimento público)
 - `POST /{id}/promote`                     admin: privado -> público, com as porções do dono
@@ -36,6 +40,7 @@ ausentes: 503 citando a 080/081 (`nutrition_schema`).
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -53,6 +58,7 @@ from .nutrition_access import (
     VISIBLE_PORTIONS_SQL,
     administers_public_catalog,
     can_add_portion,
+    can_delete_food,
     can_edit_food,
     can_list_private_foods,
     can_promote_food,
@@ -68,6 +74,7 @@ from .request_models import FoodItemCreateIn, FoodItemIn, FoodPortionIn
 from .security import Identity
 
 router = APIRouter(prefix="/nutrition/foods", tags=["nutrition"])
+logger = logging.getLogger(__name__)
 
 FOODS = "food_items"
 PORTIONS = "food_portions"
@@ -101,6 +108,9 @@ FOOD_BY_BARCODE_SQL = (
     f"{_SELECT_FOODS} WHERE barcode = %s AND is_active = 1 AND {VISIBLE_FOODS_SQL} ORDER BY id LIMIT 1"
 )
 UPDATE_FOOD_SQL = f"UPDATE {FOODS} SET {', '.join(f'{c} = %s' for c in _WRITE_COLUMNS)} WHERE id = %s"
+# Exclusão lógica (#140): `meal_items` guarda snapshot e não é tocado; os preferidos do alimento saem junto.
+DEACTIVATE_FOOD_SQL = f"UPDATE {FOODS} SET is_active = 0 WHERE id = %s AND is_active = 1"
+DELETE_FOOD_FAVORITES_SQL = "DELETE FROM user_favorite_foods WHERE food_id = %s"
 PROMOTE_FOOD_SQL = f"UPDATE {FOODS} SET owner_user_id = NULL WHERE id = %s AND owner_user_id = %s"
 
 PORTION_COLUMNS = "id, food_id, label, amount, source, owner_user_id, created_at"
@@ -207,6 +217,7 @@ def food_public(row: dict[str, Any], identity: Identity, permissoes: EffectivePe
         "is_active": bool(row.get("is_active")),
         "permissions": {
             "can_edit": can_edit_food(identity, permissoes, row),
+            "can_delete": can_delete_food(identity, permissoes, row),
             "can_add_portion": can_add_portion(identity, row),
             "can_promote": can_promote_food(permissoes, row),
         },
@@ -230,7 +241,7 @@ def _fetch_food(cur: Any, food_id: int, identity: Identity, permissoes: Effectiv
     """Alimento visível para o usuário ou 404 (não revela o privado de outro)."""
     cur.execute(FOOD_BY_ID_SQL, (int(food_id),))
     row = cur.fetchone()
-    if not row or not can_view_food(identity, permissoes, row):
+    if not row or not row.get("is_active", 1) or not can_view_food(identity, permissoes, row):
         raise _error(404, "food_not_found", "Alimento não encontrado.")
     return row
 
@@ -441,6 +452,26 @@ def update_food(request: Request, food_id: int, payload: FoodItemIn, identity: I
             cur.execute(UPDATE_FOOD_SQL, (*valores, int(food_id)))
             linha = _fetch_food(cur, food_id, identity, permissoes)
     return _with_validation(food_public(linha, identity, permissoes), validacao)
+
+
+@router.delete("/{food_id}")
+def delete_food(request: Request, food_id: int, identity: Identity = Depends(require_permission("nutricao.alimentos", "excluir"))):
+    permissoes = permissions_for_request(request, identity)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_food_tables(cur)
+            linha = _fetch_food(cur, food_id, identity, permissoes)
+            if catalog.is_read_only(linha.get("source")):
+                raise _error(409, catalog.ERR_SOURCE_READ_ONLY, nutrition_labels.limitation_label(catalog.ERR_SOURCE_READ_ONLY))
+            if not can_delete_food(identity, permissoes, linha):
+                raise _error(403, "food_forbidden", "Só o dono exclui um alimento privado; o público, só o administrador.")
+            cur.execute(DEACTIVATE_FOOD_SQL, (int(food_id),))
+            if int(cur.rowcount or 0) != 1:
+                raise _error(404, "food_not_found", "Alimento não encontrado.")
+            if has_favorites_table(cur):
+                cur.execute(DELETE_FOOD_FAVORITES_SQL, (int(food_id),))
+    logger.info("food_deleted user_id=%s food_id=%s barcode=%s", int(identity.user_id), int(food_id), linha.get("barcode"))
+    return {"status": "deleted", "id": int(food_id)}
 
 
 @router.post("/{food_id}/portions", status_code=201)

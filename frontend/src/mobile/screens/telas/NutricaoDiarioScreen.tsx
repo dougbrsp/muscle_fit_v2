@@ -3,7 +3,8 @@
 import { Alert, Button, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle, IconBolt, IconCamera, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { CheckinCard } from '@/components/nutrition/CheckinCard';
 import { DayHeader } from '@/components/nutrition/DayHeader';
 import { DayNotesInput } from '@/components/nutrition/DayNotesInput';
@@ -26,6 +27,7 @@ import { dashboardKeys } from '@/lib/nutrition-dashboard';
 import { deleteMeal, diaryKeys, fetchNutritionDay, fetchNutritionWeek, lastMealTimeKey, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { MealEditorForm } from '@/lib/nutrition-meal-form';
 import type { Meal } from '@/lib/nutrition-types';
+import { temOrigemInterna } from '../../layout/nav-active';
 import { BottomSheet, ListBlock, ListGroup, ListRow, LoadingState, ScreenHeader, StickyAction } from '../../ui';
 import { SheetButton, useBackToClose } from './common';
 import { MobileNutritionPresentation } from './MobileNutritionPresentation';
@@ -43,6 +45,14 @@ function NutricaoDiarioContent() {
   const [date, setDate] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  // `?nova=1` (aba "Refeição"): o editor é dirigido pela URL; a própria entrada de histórico da aba serve de "voltar".
+  const router = useRouter();
+  const novaNaUrl = useSearchParams().get('nova') === '1';
+  const [viaUrl, setViaUrl] = useState(false);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const viaUrlRef = useRef(viaUrl);
+  viaUrlRef.current = viaUrl;
   const ia = useIaControls();
   const [lendo, setLendo] = useState(false);
   const [lancando, setLancando] = useState(false);
@@ -83,7 +93,31 @@ function NutricaoDiarioContent() {
     },
   });
 
-  useBackToClose(editing !== null, () => setEditing(null));
+  useEffect(() => {
+    if (novaNaUrl) {
+      if (editingRef.current) router.replace('/nutricao/'); // editor já aberto pelo botão: mantém, sem parâmetro
+      else {
+        setEditing({ mode: 'new' });
+        setViaUrl(true);
+      }
+    } else if (viaUrlRef.current) {
+      // voltar do navegador tirou o parâmetro
+      setViaUrl(false);
+      setEditing(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [novaNaUrl]);
+
+  useBackToClose(editing !== null && !viaUrl, () => setEditing(null));
+
+  function fecharEditor(salvou: boolean) {
+    const urlDirigida = viaUrl;
+    setViaUrl(false);
+    setEditing(null);
+    if (!urlDirigida) return;
+    if (!salvou && temOrigemInterna()) router.back();
+    else router.replace('/nutricao/');
+  }
   // Folha do lançamento rápido: o voltar fecha só a folha, não sai do diário.
   useBackToClose(lancando, () => setLancando(false));
 
@@ -118,10 +152,10 @@ function NutricaoDiarioContent() {
           meal={editing.mode === 'edit' ? editing.meal : null}
           initialForm={editing.mode === 'parsed' ? editing.form : null}
           onSaved={async () => {
-            setEditing(null);
+            fecharEditor(true);
             await invalidarDiario();
           }}
-          onCancel={() => setEditing(null)}
+          onCancel={() => fecharEditor(false)}
         />
       </>
     );
@@ -317,7 +351,9 @@ function NutricaoDiarioContent() {
 export function NutricaoDiarioScreen() {
   return (
     <MobileNutritionPresentation>
-      <NutricaoDiarioContent />
+      <Suspense fallback={null}>
+        <NutricaoDiarioContent />
+      </Suspense>
     </MobileNutritionPresentation>
   );
 }

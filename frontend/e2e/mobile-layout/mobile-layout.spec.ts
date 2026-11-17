@@ -111,7 +111,7 @@ for (const size of sizes) {
     const nav = page.getByRole('navigation', { name: 'Navegação principal' });
     const tabs = nav.locator('a, button');
     await expect(tabs).toHaveCount(5);
-    await expect(tabs).toHaveText(['Início', 'Treino', 'Histórico', 'Evolução', 'Mais']);
+    await expect(tabs).toHaveText(['Início', 'Treino', 'Refeição', 'Evolução', 'Mais']);
     for (let i = 0; i < 5; i += 1) {
       const box = await tabs.nth(i).boundingBox();
       expect(box!.height, `aba ${i} altura`).toBeGreaterThanOrEqual(44);
@@ -242,10 +242,14 @@ test('tab bar navega; voltar, avancar e refresh preservam a rota', async ({ page
   await expect(page.locator(SHELL)).toBeVisible({ timeout: 20_000 });
   const nav = page.getByRole('navigation', { name: 'Navegação principal' });
 
-  await nav.getByRole('link', { name: 'Histórico' }).click();
+  // Histórico saiu da barra: chega pelo grupo Treino da folha "Mais"; nenhuma aba de link fica ativa.
+  await nav.getByRole('button', { name: 'Mais' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Registro de exercícios' }).click();
   await expect(page).toHaveURL(/\/registro-exercicios\/?$/);
   await expect(page.locator(SHELL)).toBeVisible();
-  await expect(nav.getByRole('link', { name: 'Histórico' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Início' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Adicionar refeição' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Mais' })).toHaveAttribute('aria-current', 'page');
 
   await nav.getByRole('link', { name: 'Evolução' }).click();
   await expect(page).toHaveURL(/\/dashboard\/\?hub=evolucao$/);

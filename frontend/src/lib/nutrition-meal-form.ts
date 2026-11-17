@@ -79,6 +79,8 @@ export type MealEditorForm = {
     limitations: NutritionLimitation[];
     ai_source?: string;
   } | null;
+  /** Foto do prato enviada à análise: só no cliente, pelo tempo de vida do rascunho; nunca entra nos corpos da API. */
+  photo?: Blob | null;
 };
 
 const SEM_LEITURA: Pick<

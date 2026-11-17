@@ -103,13 +103,20 @@ def can_use_food(identity: Identity, food: dict[str, Any]) -> bool:
     return dono is None or dono == int(identity.user_id)
 
 
-def can_edit_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
-    """O dono edita o privado; quem administra o catálogo (`admin.catalogos`/`editar`) edita o
-    público. Fonte somente leitura nunca."""
+def can_edit_food(
+    identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any], action: str = "editar"
+) -> bool:
+    """O dono edita o privado; quem administra o catálogo (`admin.catalogos`/`action`) edita o
+    público. Fonte somente leitura nunca. `action` = "excluir" para a exclusão (`can_delete_food`)."""
     if catalog.is_read_only(food.get("source")):
         return False
     dono = _owner(food)
-    return dono == int(identity.user_id) if dono is not None else administers_public_catalog(permissoes, "editar")
+    return dono == int(identity.user_id) if dono is not None else administers_public_catalog(permissoes, action)
+
+
+def can_delete_food(identity: Identity, permissoes: EffectivePermissions, food: dict[str, Any]) -> bool:
+    """Mesma posse da edição: o dono exclui o privado; o público, só `admin.catalogos`/`excluir`."""
+    return can_edit_food(identity, permissoes, food, "excluir")
 
 
 def can_add_portion(identity: Identity, food: dict[str, Any]) -> bool:
@@ -221,6 +228,7 @@ __all__ = [
     "VISIBLE_PORTIONS_SQL",
     "administers_public_catalog",
     "can_add_portion",
+    "can_delete_food",
     "can_edit_food",
     "can_favorite_food",
     "can_favorite_portion",

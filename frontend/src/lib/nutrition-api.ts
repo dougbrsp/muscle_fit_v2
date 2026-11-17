@@ -178,6 +178,11 @@ export function createFood(payload: FoodItemCreatePayload): Promise<FoodSaveResp
   return apiFetch<FoodSaveResponse>('/nutrition/foods', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+/** Exclusão lógica (a API decide a permissão: 404 `food_not_found`, 409 `food_source_read_only`, 403 `food_forbidden`). */
+export function deleteFood(foodId: number): Promise<{ status: string; id: number }> {
+  return apiFetch(`/nutrition/foods/${foodId}`, { method: 'DELETE' });
+}
+
 // ---------------------------------------------------------------------------
 // Alimentos preferidos (Lote N3). A lista é pessoal (a API usa a sessão); teto,
 // porção padrão e ordem são do motor.
