@@ -541,10 +541,11 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # Fix #164: + 1 rota de treino (POST /workout-plans/exercise-swap-options): 367 e 383.
     # #179: + POST /workout-plans/equipment-options: 368 e 384.
     # #188: + PATCH /gym-equipment-catalog/{link_id}: 369 e 385.
-    assert len(com_permissao) == 369
+    # #140: + DELETE /nutrition/foods/{food_id}: 370 e 386.
+    assert len(com_permissao) == 370
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 385
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 386
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -559,13 +560,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 369
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 370
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 385
+    assert len(vivas) == 386
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():

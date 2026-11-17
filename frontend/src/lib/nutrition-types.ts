@@ -360,7 +360,7 @@ export type FoodServing = {
   servings_per_package: number | null;
 };
 
-export type FoodPermissions = { can_edit: boolean; can_add_portion: boolean; can_promote: boolean };
+export type FoodPermissions = { can_edit: boolean; can_add_portion: boolean; can_promote: boolean; can_delete?: boolean };
 
 /**
  * Origem de valores do alimento que NÃO vieram da fonte da linha (M85,

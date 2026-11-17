@@ -1,5 +1,5 @@
 """RBAC dos alimentos na nutricao (ADR 0011, lote 2D-2), por HTTP: catalogo (`nutrition_foods`),
-fontes externas, preferidos e foto de rotulo (16 rotas).
+fontes externas, preferidos e foto de rotulo (17 rotas).
 
 O resolvedor REAL de permissoes roda sobre um banco falso de concessoes (`access_service._db`). As
 concessoes dos papeis (usuario, personal trainer, admin) vem de `DEFAULT_GRANTS_BY_GROUP`; os
@@ -57,6 +57,8 @@ ROTAS = [
     ("get-food", "get", "/nutrition/foods/{food_id}", "/nutrition/foods/1", None, "nutricao.alimentos", "ver", 200),
     ("create-food", "post", "/nutrition/foods", "/nutrition/foods", ARROZ, "nutricao.alimentos", "editar", 201),
     ("update-food", "put", "/nutrition/foods/{food_id}", "/nutrition/foods/{proprio}", ARROZ, "nutricao.alimentos", "editar", 200),
+    ("delete-food", "delete", "/nutrition/foods/{food_id}", "/nutrition/foods/{proprio}", None,
+     "nutricao.alimentos", "excluir", 200),
     ("portion", "post", "/nutrition/foods/{food_id}/portions", "/nutrition/foods/1/portions",
      {"label": "1 colher", "amount": 25}, "nutricao.alimentos", "editar", 201),
     ("promote", "post", "/nutrition/foods/{food_id}/promote", "/nutrition/foods/3/promote", None, "admin.catalogos", "editar", 200),
@@ -182,6 +184,14 @@ class FakeFavCursor(FakeCursor):
             self._rows = [dict(linha)] if linha else []
         elif sql == favorites_mod.portions_by_ids_sql(len(p)):
             self._rows = [dict(db.portions[i]) for i in p if i in db.portions]
+        elif sql == foods_mod.DEACTIVATE_FOOD_SQL:  # exclusao logica (#140)
+            db.queries.append((sql, p))
+            linha = db.foods.get(int(p[0]))
+            if linha and linha["is_active"]:
+                linha["is_active"], self.rowcount = 0, 1
+        elif sql == foods_mod.DELETE_FOOD_FAVORITES_SQL:
+            db.queries.append((sql, p))
+            db.favorites = [f for f in db.favorites if f["food_id"] != p[0]]
         else:
             super().execute(sql, params)
 
@@ -321,7 +331,7 @@ def test_cadastro_manual_nasce_privado_e_o_proprio_pode_edita_lo(ctx, uid):
     corpo = resp.json()
     assert corpo["is_public"] is False and corpo["is_own"] is True
     assert db.foods[corpo["id"]]["owner_user_id"] == uid
-    assert corpo["permissions"] == {"can_edit": True, "can_add_portion": True, "can_promote": False}
+    assert corpo["permissions"] == {"can_edit": True, "can_delete": True, "can_add_portion": True, "can_promote": False}
     assert client.put(f"/nutrition/foods/{corpo['id']}", json={**ARROZ, "name": "Arroz da casa"}).status_code == 200
 
 
@@ -578,14 +588,14 @@ def _rotas_vivas():
     return vivas
 
 
-def test_as_rotas_vivas_dos_4_modulos_sao_16_e_batem_com_a_tabela():
+def test_as_rotas_vivas_dos_4_modulos_sao_17_e_batem_com_a_tabela():
     vivas = _rotas_vivas()
-    assert len(vivas) == 16 and len(set(vivas)) == 16
+    assert len(vivas) == 17 and len(set(vivas)) == 17
     assert set(vivas) == {(r[1], r[2]) for r in ROTAS}
 
 
 @pytest.mark.parametrize("metodo,modelo", _rotas_vivas(), ids=lambda v: v)
-def test_usuario_sem_grupo_e_negado_nas_16_rotas_vivas(ctx, metodo, modelo):
+def test_usuario_sem_grupo_e_negado_nas_17_rotas_vivas(ctx, metodo, modelo):
     client, state, perms, db, quota = ctx
     rota = next(r for r in ROTAS if (r[1], r[2]) == (metodo, modelo))
     _como(state, SEM_GRUPO)

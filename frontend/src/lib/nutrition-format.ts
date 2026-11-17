@@ -33,6 +33,12 @@ export function inputNumberOrNull(value: number | string | null | undefined): nu
   return Number.isFinite(valor) ? valor : null;
 }
 
+/** Texto colado em campo decimal: só "3.5"/"3,5" (sem sinal, expoente ou milhar) vale; vira número com no máx. `decimals` casas (trunca, como a digitação). Inválido: `null`. */
+export function parsePastedDecimal(text: string, decimals = 2): number | null {
+  const m = /^(\d+)(?:[.,](\d+))?$/.exec(text.trim());
+  return m ? Number(`${m[1]}.${(m[2] ?? '').slice(0, decimals) || '0'}`) : null;
+}
+
 export function formatKcal(value: number | null | undefined): string {
   const texto = formatNumberOrDash(value, 0);
   return texto === DASH ? DASH : `${texto} kcal`;

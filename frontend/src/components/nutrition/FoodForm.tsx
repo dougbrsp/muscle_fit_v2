@@ -3,7 +3,8 @@
 import { Alert, Button, Group, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { IconBarcode } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ClipboardEvent } from 'react';
+import { parsePastedDecimal } from '@/lib/nutrition-format';
 import { NutritionLimitations } from './NutritionLimitations';
 import { barcodeConflict, createFood, nutritionErrorInfo, updateFood } from '@/lib/nutrition-api';
 import { selectionAfterBarcodeConflict } from '@/lib/nutrition-barcode-flow';
@@ -68,6 +69,13 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
     setForm((atual) => ({ ...atual, ...patch }));
   }
 
+  // Colar: o Mantine remove o ponto ("3.5" viraria 35), então o valor válido entra pelo onChange do campo; o inválido é recusado.
+  const colar = (aplicar: (valor: number) => void) => (e: ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const valor = parsePastedDecimal(e.clipboardData.getData('text'));
+    if (valor !== null) aplicar(valor);
+  };
+
   function updateValue(code: string, value: number | string) {
     setForm((atual) => ({ ...atual, values: { ...atual.values, [code]: value } }));
   }
@@ -109,11 +117,13 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
             description="Quantidade a que a tabela se refere (ex.: 30 para uma tabela por 30 g)."
             value={form.tableBaseAmount}
             onChange={(tableBaseAmount) => update({ tableBaseAmount })}
+            onPaste={colar((tableBaseAmount) => update({ tableBaseAmount }))}
             min={FOOD_TABLE_BASE.min}
             max={FOOD_TABLE_BASE.max}
             error={erroBase ?? undefined}
             decimalScale={FOOD_TABLE_BASE.display_decimals}
             decimalSeparator=","
+            allowNegative={false}
             hideControls
             required
             inputMode="decimal"
@@ -170,10 +180,13 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
             label={`${campo.label} (${campo.unit})`}
             value={form.values[campo.code] ?? ''}
             onChange={(valor) => updateValue(campo.code, valor)}
+            onPaste={colar((valor) => updateValue(campo.code, valor))}
             required={FOOD_REQUIRED_FIELDS.includes(campo.code)}
             min={0}
             decimalScale={2}
             decimalSeparator=","
+            allowNegative={false}
+            inputMode="decimal"
             hideControls
           />
         ))}
@@ -185,9 +198,12 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
             label={`${porcao.label} (${form.basis})`}
             value={form.servingSize}
             onChange={(servingSize) => update({ servingSize })}
+            onPaste={colar((servingSize) => update({ servingSize }))}
             min={0}
             decimalScale={2}
             decimalSeparator=","
+            allowNegative={false}
+            inputMode="decimal"
             hideControls
           />
         )}
@@ -205,9 +221,12 @@ export function FoodForm({ food, initial, createSource, barcode, barcodeRead = 0
             label={embalagem.label}
             value={form.servingsPerPackage}
             onChange={(servingsPerPackage) => update({ servingsPerPackage })}
+            onPaste={colar((servingsPerPackage) => update({ servingsPerPackage }))}
             min={0}
             decimalScale={2}
             decimalSeparator=","
+            allowNegative={false}
+            inputMode="decimal"
             hideControls
           />
         )}

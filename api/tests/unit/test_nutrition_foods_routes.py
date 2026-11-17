@@ -17,7 +17,7 @@ from app import nutrition_foods as foods_mod
 from app.domain.nutrition import catalog, food_text
 from app.nutrition_schema import food_tables_missing_error
 from app.security import Identity, get_current_identity
-from tests.support.nutrition_foods_fake import FakeFoodsDB
+from tests.support.nutrition_foods_fake import FakeConn, FakeCursor, FakeFoodsDB
 
 pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
 
@@ -26,9 +26,40 @@ ADMIN, ALUNO, OUTRO = 1, 2, 3
 ARROZ = {"name": "Arroz caseiro", "energy_kcal": 128, "carbohydrates_g": 28.1, "protein_g": 2.5, "total_fat_g": 0.2}
 
 
+class _DeleteCursor(FakeCursor):
+    """Acrescenta ao fake os dois statements da exclusão lógica (#140); o resto cai no cursor base."""
+
+    def execute(self, sql, params=None):
+        p = tuple(params or ())
+        if sql == foods_mod.DEACTIVATE_FOOD_SQL:
+            self.db.queries.append((sql, p))
+            linha = self.db.foods.get(int(p[0]))
+            self.rowcount = 0
+            if linha and linha["is_active"]:
+                linha["is_active"] = 0
+                self.rowcount = 1
+        elif sql == foods_mod.DELETE_FOOD_FAVORITES_SQL:
+            self.db.queries.append((sql, p))
+            antes = len(self.db.favorites)
+            self.db.favorites = [f for f in self.db.favorites if f["food_id"] != p[0]]
+            self.rowcount = antes - len(self.db.favorites)
+        else:
+            super().execute(sql, params)
+
+
+class _DeleteConn(FakeConn):
+    def cursor(self):
+        return _DeleteCursor(self.db)
+
+
+class _Banco(FakeFoodsDB):
+    def conn(self):  # type: ignore[override]
+        return _DeleteConn(self)
+
+
 @pytest.fixture
 def db(monkeypatch):
-    banco = FakeFoodsDB()
+    banco = _Banco()
     banco.add_food("Arroz, tipo 1, cozido", energy_kcal=128.26, carbohydrates_g=28.06, protein_g=2.52, total_fat_g=0.23,
                    fiber_g=1.56, sodium_mg=1.2)
     banco.add_food("Arroz, integral, cozido", energy_kcal=123.53, carbohydrates_g=25.81, protein_g=2.59, total_fat_g=1.0)
@@ -103,7 +134,7 @@ def test_busca_ordena_pela_nota_do_motor_e_traz_a_citacao(db):
     assert primeiro["citation"] == catalog.TACO_CITATION and primeiro["license"] == catalog.TACO_LICENSE
     assert primeiro["per_100"]["energy_kcal"] == 128.26 and primeiro["per_100"]["total_sugars_g"] is None
     assert primeiro["is_public"] is True and primeiro["permissions"] == {
-        "can_edit": False, "can_add_portion": True, "can_promote": False}
+        "can_edit": False, "can_delete": False, "can_add_portion": True, "can_promote": False}
     notas = [item["score"] for item in corpo["items"]]
     assert notas == sorted(notas, reverse=True)
     sql, params = next(q for q in db.queries if q[0].startswith("SELECT") and "MATCH" in q[0])
@@ -320,9 +351,92 @@ def test_promocao_negada_a_quem_nao_administra_o_catalogo_tem_o_corpo_padrao_do_
     ("put", "/nutrition/foods/1", {"name": "x"}),
     ("post", "/nutrition/foods/1/portions", {"label": "x", "amount": 10}),
     ("post", "/nutrition/foods/1/promote", None),
+    ("delete", "/nutrition/foods/6", None),
 ])
 def test_usuario_sem_grupo_recebe_403_do_rbac_nas_rotas_do_catalogo(db, metodo, caminho, corpo):
     from app.access.service import FORBIDDEN_DETAIL
 
     resposta = getattr(_client("sem_grupo", 77), metodo)(caminho, **({"json": corpo} if corpo else {}))
     assert resposta.status_code == 403 and resposta.json()["detail"] == FORBIDDEN_DETAIL
+
+
+# ---------------------------------------------------------------------------
+# Exclusão lógica (#140)
+# ---------------------------------------------------------------------------
+
+EAN = "7891000100103"
+
+
+def _escritas(db):
+    return [q for q, _p in db.queries if q.split(" ", 1)[0].upper() in ("INSERT", "UPDATE", "DELETE")]
+
+
+def test_excluir_alimento_sem_uso_some_de_tudo_e_libera_o_mesmo_ean(db):
+    aluno = _client()
+    criado = aluno.post("/nutrition/foods", json={**ARROZ, "barcode": EAN}).json()
+    assert criado["permissions"]["can_delete"] is True
+    db.favorites.append({"user_id": ALUNO, "food_id": criado["id"]})
+    db.favorites.append({"user_id": OUTRO, "food_id": criado["id"]})
+    resposta = aluno.delete(f"/nutrition/foods/{criado['id']}")
+    assert resposta.status_code == 200 and resposta.json() == {"status": "deleted", "id": criado["id"]}
+    assert db.foods[criado["id"]]["is_active"] == 0  # lógica: a linha continua
+    assert db.favorites == []  # de todos os usuários
+    assert aluno.get(f"/nutrition/foods/{criado['id']}").status_code == 404
+    assert "Arroz caseiro" not in [i["name"] for i in _busca(aluno, "arroz caseiro")["items"]]
+    with db.conn() as conn, conn.cursor() as cur:
+        assert foods_mod.food_by_barcode(cur, EAN, ALUNO) is None
+    novo = aluno.post("/nutrition/foods", json={**ARROZ, "barcode": EAN})
+    assert novo.status_code == 201 and novo.json()["id"] != criado["id"]
+
+
+def test_excluir_alimento_usado_em_refeicao_nao_toca_nos_itens(db):
+    db.meal_items = [{"id": 1, "food_id": 6, "name": "Arroz da vovó", "energy_kcal": 140}]
+    antes = [dict(i) for i in db.meal_items]
+    assert _client().delete("/nutrition/foods/6").status_code == 200
+    assert db.meal_items == antes
+    assert not any("meal_items" in q for q, _p in db.queries)
+    assert len(_escritas(db)) == 2  # só food_items e user_favorite_foods
+
+
+def test_excluir_permissoes_dono_outro_e_publico(db):
+    publico = db.add_food("Pão caseiro", source="user", owner=None, energy_kcal=250, carbohydrates_g=50, protein_g=8,
+                          total_fat_g=2)
+    assert _client(user_id=OUTRO).delete("/nutrition/foods/6").status_code == 404  # privado de outro: nem existe
+    assert db.foods[6]["is_active"] == 1
+    resposta = _client().delete(f"/nutrition/foods/{publico}")
+    assert resposta.status_code == 403 and resposta.json()["detail"]["error"] == "food_forbidden"
+    assert db.foods[publico]["is_active"] == 1
+    assert _client("admin", ADMIN).delete(f"/nutrition/foods/{publico}").status_code == 200
+    assert db.foods[publico]["is_active"] == 0
+
+
+def test_excluir_publico_exige_admin_catalogos_excluir(db, monkeypatch):
+    publico = db.add_food("Pão caseiro", source="user", owner=None, energy_kcal=250, carbohydrates_g=50, protein_g=8,
+                          total_fat_g=2)
+    from app import nutrition_access as acesso
+
+    # Admin com `admin.catalogos`/`editar` mas sem `excluir`: o público não sai e `can_delete` é falso.
+    monkeypatch.setattr(acesso, "administers_public_catalog", lambda perm, acao: acao == "editar")
+    admin = _client("admin", ADMIN)
+    assert admin.get(f"/nutrition/foods/{publico}").json()["permissions"] == {
+        "can_edit": True, "can_delete": False, "can_add_portion": True, "can_promote": False,
+    }
+    assert admin.delete(f"/nutrition/foods/{publico}").status_code == 403
+    assert db.foods[publico]["is_active"] == 1
+
+
+def test_excluir_fonte_somente_leitura_e_409_e_can_delete_falso(db):
+    for cliente in (_client(), _client("admin", ADMIN)):
+        resposta = cliente.delete("/nutrition/foods/1")
+        assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == catalog.ERR_SOURCE_READ_ONLY
+    assert db.foods[1]["is_active"] == 1
+    assert _client().get("/nutrition/foods/1").json()["permissions"]["can_delete"] is False
+
+
+def test_segunda_exclusao_e_inexistente_sao_404(db):
+    aluno = _client()
+    assert aluno.delete("/nutrition/foods/6").status_code == 200
+    segunda = aluno.delete("/nutrition/foods/6")
+    assert segunda.status_code == 404 and segunda.json()["detail"]["error"] == "food_not_found"
+    assert aluno.delete("/nutrition/foods/999").status_code == 404
+    assert aluno.delete("/nutrition/foods/7").status_code == 404  # já inativo desde o cenário
