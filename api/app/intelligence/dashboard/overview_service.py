@@ -58,7 +58,13 @@ from .body_service import (  # noqa: F401 - reexportados: `body_block`, `pick_da
     waist_summary,
 )
 from .coercion import to_date, to_float
-from .comparability import MIN_COMPARABLE_FOR_RELIABLE_ANSWER, progression_answer, progression_counts, progression_total
+from .comparability import (
+    MIN_COMPARABLE_FOR_RELIABLE_ANSWER,
+    PROGRESSION_COUNT_KEYS,
+    progression_answer,
+    progression_counts,
+    progression_total,
+)
 from .context_service import load_context_events, load_deload_ranges, load_training_gap
 from .contracts import DataNature, DataQuality, Severity, TargetSource, WindowInfo, WindowKind
 from .data_quality_service import build_data_quality
@@ -273,6 +279,9 @@ def progression_block(
     """Contagem por status, com TODOS os exercicios de cada status (a tela
     mostra alguns e expande o resto). SEM score: as contagens sao o resumo, e
     cada uma e decomponivel. A lista ja e limitada pelos exercicios da janela."""
+    # Contagem e frase vem do dono (`comparability.progression_counts`): a mesma
+    # de `/dashboard/progressao`. Aqui so se agrupa para LISTAR os exercicios.
+    summary = progression_counts(items)
     by_status: dict[str, list[Mapping[str, Any]]] = {status.value: [] for status in ExerciseProgressionStatus}
     for item in items:
         by_status.setdefault(str(item["status"]), []).append(item)
@@ -299,14 +308,11 @@ def progression_block(
             {
                 "status": status.value,
                 "label": EXERCISE_PROGRESSION_STATUS_LABELS[status],
-                "count": len(bucket),
+                "count": summary[PROGRESSION_COUNT_KEYS[status]],
                 "exercises": [_public(item) for item in bucket],
             }
         )
 
-    # Contagem e frase vêm do dono (`comparability`): a mesma de
-    # `/dashboard/progressao` (`exercise_progression`).
-    summary = progression_counts(items)
     total = progression_total(summary)
     comparable = summary["comparable_total"]
 
@@ -316,7 +322,10 @@ def progression_block(
         quality = DataQuality.INSUFFICIENT
     elif comparable == 0:
         quality = DataQuality.INSUFFICIENT
-        limitations.append("Progressão exige ao menos 2 exposições na mesma máquina/convenção de carga.")
+        limitations.append(
+            f"Progressão exige ao menos {int(threshold('min_comparable_exposures'))} exposições "
+            "na mesma máquina/convenção de carga."
+        )
     else:
         quality = DataQuality.HIGH if comparable >= MIN_COMPARABLE_FOR_RELIABLE_ANSWER else DataQuality.MEDIUM
         if comparable < MIN_COMPARABLE_FOR_RELIABLE_ANSWER:

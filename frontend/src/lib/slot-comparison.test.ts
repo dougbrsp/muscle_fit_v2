@@ -13,7 +13,16 @@ function response(): SlotComparisonResponse {
         comparison_status: 'same_slot' as const,
         slot,
         by_period: {
-          t0: { activity_id: 9, local_date: '2026-10-20', volume_kg: 1000, avg_rpe: 8, sets_count: 4 },
+          t0: {
+            activity_id: 9,
+            local_date: '2026-10-20',
+            volume_kg: 1000,
+            avg_rpe: 8,
+            sets_count: 4,
+            volume_delta_kg: 100,
+            volume_direction: 'up' as const,
+            rpe_direction: null,
+          },
           t1: { activity_id: 4, local_date: '2026-10-13', volume_kg: 900, avg_rpe: null, sets_count: 3 },
           t2: null,
           t3: null,
@@ -25,7 +34,12 @@ function response(): SlotComparisonResponse {
         group,
         comparison_status: 'no_slot' as const,
         slot: null,
-        by_period: { t0: { activity_id: 9, local_date: '2026-10-20', equivalent_sets: 4.5 }, t1: null, t2: null, t3: null },
+        by_period: {
+          t0: { activity_id: 9, local_date: '2026-10-20', equivalent_sets: 4.5, equivalent_sets_delta: null, sets_direction: 'stable' as const },
+          t1: null,
+          t2: null,
+          t3: null,
+        },
       },
     ],
   };
@@ -42,15 +56,24 @@ describe('slot-comparison', () => {
     const [row] = slotVolumeRows(response(), 'muscle_group');
     expect(row.slot?.slot_sequence).toBe(2);
     expect(row.comparisonStatus).toBe('same_slot');
-    expect(row.byPeriod.t0).toEqual({ activity_id: 9, local_date: '2026-10-20', volume_kg: 1000, avg_rpe: 8 });
+    expect(row.byPeriod.t0).toEqual({
+      activity_id: 9,
+      local_date: '2026-10-20',
+      volume_kg: 1000,
+      avg_rpe: 8,
+      volume_direction: 'up',
+      rpe_direction: null,
+    });
     expect(row.byPeriod.t1?.activity_id).toBe(4);
+    // API antiga (sem direção) → null: a tela não calcula, só exibe sem seta.
+    expect(row.byPeriod.t1?.volume_direction).toBeNull();
     expect(row.byPeriod.t2).toBeNull();
     expect(row.byPeriod.t3).toBeNull();
   });
 
   it('converte séries equivalentes', () => {
     const [row] = slotSetsRows(response(), 'volume_class');
-    expect(row.byPeriod.t0).toEqual({ sets_count: 4.5 });
+    expect(row.byPeriod.t0).toEqual({ sets_count: 4.5, sets_direction: 'stable' });
     expect(row.comparisonStatus).toBe('no_slot');
   });
 

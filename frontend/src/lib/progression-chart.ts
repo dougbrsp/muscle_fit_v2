@@ -4,8 +4,8 @@
  *
  * Nada aqui decide progresso. O backend (`analytics._attach_session_evolution`
  * + `_build_progression_sessions`) já marca, por sessão:
- * - `in_verdict_key`: a sessão é da chave do veredito (mesmo equipamento e
- *   convenção da última exposição — o "Comparado em" da tela);
+ * - `in_context_run`: a sessão é da sequência do contexto atual (o gráfico
+ *   plota estas) e `in_verdict_run`: o veredito a usou (destaque; issue #188);
  * - `top_load_kg` / `top_set_reps`: carga de TOPO da exposição e as reps das
  *   séries feitas nela (a carga que a regra compara);
  * - `e1rm_reliable`: o e1RM veio de série com até 12 reps.
@@ -30,6 +30,8 @@ export type ProgressionChartPoint = {
   /** M97 F4: sessão de deload (marca no gráfico; fora da linha de e1RM). */
   deload?: boolean;
   deloadLabel?: string | null;
+  /** Issue #188: o veredito usou esta sessão (`in_verdict_run`); `false` em calibração. */
+  inVerdict?: boolean;
 };
 
 export type ProgressionChart = {
@@ -66,19 +68,21 @@ export function isSessionE1rmReliable(item: ProgressionSessionItem): boolean {
 }
 
 /**
- * Pontos do gráfico: só as sessões da chave do veredito. Backend anterior
- * (sem `in_verdict_key` em nenhuma sessão) plota tudo, como antes.
+ * Pontos do gráfico: as sessões que o motor marcou `in_context_run` (sequência
+ * do contexto atual; em calibração continuam plotadas). `inVerdict` destaca as
+ * que o veredito usou (`in_verdict_run`). Backend anterior (sem
+ * `in_context_run` em nenhuma sessão) plota tudo, sem filtro próprio.
  */
 export function buildProgressionChart(
   items: readonly ProgressionSessionItem[],
   /** M97 F4: objetivos destacados (decididos pela lista de `/training-goals`); ausente = nenhum. */
   isHighlighted: (goal: string) => boolean = () => false,
 ): ProgressionChart {
-  const keyKnown = items.some((item) => item.in_verdict_key != null);
+  const runKnown = items.some((item) => item.in_context_run != null);
   // M97 F4: a sessão de deload não entra na linha (o backend já manda o e1RM
   // nulo e sem chave), mas fica no gráfico como MARCA, na ordem da tabela.
-  const inKey = keyKnown
-    ? items.filter((item) => item.in_verdict_key === true || isDeloadSession(item))
+  const inKey = runKnown
+    ? items.filter((item) => item.in_context_run === true || isDeloadSession(item))
     : [...items];
   let unreliableE1rm = 0;
   let strengthPoints = 0;
@@ -97,6 +101,7 @@ export function buildProgressionChart(
       xKey: `${index}`,
       deload,
       deloadLabel: deload ? (item.deload_label ?? 'Deload') : null,
+      inVerdict: item.in_verdict_run === true,
     };
   });
   const otherKeySessions = items.length - inKey.length;

@@ -308,7 +308,7 @@ def delete_exercise_log_by_id(
 
 @app.get("/sets/high-rpe")
 def get_high_rpe_sets(
-    min_rpe: float = 9.0,
+    min_rpe: float | None = None,  # None = `metrics_registry.HIGH_RPE_MIN` (em `high_rpe_sets`)
     limit: int = Query(default=50, ge=1, le=200),
     identity: Identity = Depends(require_permission("treino.registro", "ver")),
 ):

@@ -29,7 +29,7 @@ export function WeightChart({ weightChartData }: { weightChartData: ChartRows })
           formatter={(value) => formatKgFixed(Number(value), 1)}
         />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-        <Line type="monotone" dataKey="melhorCarga" name="Melhor carga" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
+        <Line type="monotone" dataKey="melhorCarga" name="Carga de topo" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
         <Line type="monotone" dataKey="volume" name="Volume" stroke={CHART_COLORS.compare} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
       </LineChart>
     </ResponsiveContainer>

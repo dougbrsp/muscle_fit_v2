@@ -206,23 +206,26 @@ def test_tabela_marca_a_chave_do_veredito_e_usa_a_carga_de_topo(monkeypatch):
     exposures = svc.get_exposures_between(
         FakeDb(rows), EXERCICIO, user_id=USUARIO, date_from=JANELA.date_from, date_to=JANELA.date_to
     )
-    monkeypatch.setattr(analytics, "_progression_exposures", lambda *a, **k: exposures)
     items = analytics._build_progression_sessions(
         [_set_row(1, "2026-09-10", 10, 60.0, 8.0),
          _set_row(2, "2026-09-14", 10, 60.0, 8.0), _set_row(2, "2026-09-14", 20, 55.0, 10.0),
-         _set_row(3, "2026-09-18", 11, 60.0, 8.0)]
+         _set_row(3, "2026-09-18", 11, 60.0, 8.0)],
+        exposures=exposures,
     )
 
-    analytics._attach_session_evolution(items, USUARIO, EXERCICIO, None, 30, None)
+    analytics._attach_session_evolution(items, exposures)
 
     assert [i["in_verdict_key"] for i in items] == [False, True, True]  # Smith fora do grafico
+    assert [i["in_verdict_run"] for i in items] == [i["in_context_run"] for i in items] == [False, True, True]
     sessao_2 = items[1]
     # Carga de TOPO da exposicao (60 kg), nao a da serie do melhor e1RM:
-    # 55 kg x 20 @ 10 = 91,7 > 60 kg x 10 @ 8 = 84.
-    assert sessao_2["best_load_kg"] == 55.0  # campo legado: serie do melhor e1RM
+    # 55 kg x 20 @ 10 = 91,7 > 60 kg x 10 @ 8 = 84. Issue #188: `best_load_kg`
+    # e o resumo do dono (carga de topo), igual a `top_load_kg`.
+    assert sessao_2["best_load_kg"] == sessao_2["top_load_kg"] == 60.0
+    assert sessao_2["best_reps"] == 10
     assert sessao_2["e1rm_reliable"] is False  # e veio de 20 reps
-    assert sessao_2["top_load_kg"] == 60.0
     assert sessao_2["top_set_reps"] == [10]
+    assert sessao_2["e1rm"] == svc.exposure_snapshot(exposures[1])["e1rm"]
 
 
 def test_e1rm_acima_de_12_reps_e_marcado_pouco_confiavel():
@@ -234,7 +237,9 @@ def test_e1rm_acima_de_12_reps_e_marcado_pouco_confiavel():
 
 
 def test_sem_exposicoes_os_campos_novos_ficam_nulos(monkeypatch):
-    monkeypatch.setattr(analytics, "_progression_exposures", lambda *a, **k: [])
-    items = analytics._build_progression_sessions([_set_row(1, "2026-09-10", 10, 60.0, 8.0)])
-    analytics._attach_session_evolution(items, USUARIO, EXERCICIO, None, 30, None)
-    assert items[0]["in_verdict_key"] is None and items[0]["top_load_kg"] is None
+    items = analytics._build_progression_sessions([_set_row(1, "2026-09-10", 10, 60.0, 8.0)], exposures=[])
+    analytics._attach_session_evolution(items, [])
+    assert items[0]["in_verdict_key"] is None and items[0]["evolution"] is None
+    assert items[0]["in_context_run"] is None and items[0]["in_verdict_run"] is None
+    # Sem exposicao lida, os numeros vem do mesmo resumo do dono sobre as series.
+    assert items[0]["top_load_kg"] == items[0]["best_load_kg"] == 60.0

@@ -64,7 +64,7 @@ def exercise_progression_context(
 
     Funcao PURA (sem banco). Ordem: exposicao mais recente primeiro; corta em
     `limit`."""
-    from .dashboard.exposure_service import exposure_snapshot, paired_top_reps
+    from .dashboard.exposure_service import exposure_snapshot
 
     names = equipment_names or {}
     ordered = sorted(
@@ -76,10 +76,12 @@ def exercise_progression_context(
     for item in ordered[: max(0, int(limit))]:
         exposures = list(item.get("_exposures") or [])
         comparable = int(item.get("comparable_exposures") or 0)
-        # Run comparavel do status (mesmo contexto de fadiga), nao as ultimas N.
-        run = list(item.get("_comparable_run") or [])
+        # Par "anterior vs atual" pronto no lote (dono `latest_comparable_pair`):
+        # sem anterior em calibracao, troca fisica ou primeira do contexto.
+        pair = item.get("_latest_comparison") or {}
         latest = exposures[-1] if exposures else None
-        previous = run[-2] if len(run) >= 2 else None
+        previous_index = pair.get("previous_index")
+        previous = exposures[previous_index] if previous_index is not None else None
         key = (latest or {}).get("comparability_key") or {}
         equipment_id = key.get("equipment_id")
         status = item.get("status")
@@ -103,7 +105,7 @@ def exercise_progression_context(
                 "load_convention": key.get("load_convention"),
                 "latest": exposure_snapshot(latest),
                 "previous_comparable": exposure_snapshot(previous),
-                "paired_top_reps": paired_top_reps(previous, latest) if previous and latest else None,
+                "paired_top_reps": pair.get("paired_reps"),
             }
         )
     return out

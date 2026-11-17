@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, Query
 
+from .intelligence.volume_comparison import pressure_rows
 from .intelligence.volume_service import OUTROS_GROUP, VolumeService
 from .access import require_permission
 from .security import Identity, get_current_identity
@@ -407,6 +408,7 @@ def aggregate(period: str, metric: str, days: int, include_secondary: bool, user
             "table": table_rows,
             "table_rows": table_rows,
             "groups": table_rows,
+            **pressure_rows(trend_rows),
         }
     )
 

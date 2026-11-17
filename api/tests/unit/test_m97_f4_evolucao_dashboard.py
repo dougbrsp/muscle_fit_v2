@@ -282,23 +282,30 @@ def test_sessao_de_deload_fica_fora_do_e1rm_e_marcada():
     assert sessions[1]["e1rm"] is not None and sessions[3]["training_goal"] == S
 
 
-def test_exercise_progress_sem_goal_e_o_sql_de_sempre_e_com_goal_filtra(monkeypatch):
-    from app import analytics
+def test_exercise_progress_sem_goal_le_todos_os_objetivos_e_com_goal_filtra(monkeypatch):
+    """Issue #188: a curva sai das exposicoes do dono; sem `goal` todos os
+    objetivos (`all_goals`), com `goal` so o dele."""
+    from contextlib import nullcontext
 
-    chamadas = []
-    monkeypatch.setattr(analytics, "_fetch_all", lambda sql, params=None: chamadas.append((sql, params)) or [])
+    from app import analytics
+    from app.intelligence.dashboard import exposure_service as svc
+
+    lidas = []
+    monkeypatch.setattr(analytics, "_fetch_all", lambda sql, params=None: [{"exercise_id": EXERCICIO, "matched_total": 1}] if "GROUP BY exercise_id" in sql else [])
     monkeypatch.setattr(analytics, "_days_ago", lambda user_id, days: date(2026, 1, 1))
+    monkeypatch.setattr(analytics, "_user_today", lambda user_id: date(2026, 1, 31))
+    monkeypatch.setattr(analytics, "_connect", lambda: nullcontext(object()))
+    monkeypatch.setattr(svc, "_fetch_exercise", lambda conn, exercise_id: {"exercise_name": "Agachamento"})
+    monkeypatch.setattr(svc, "get_exposures_between", lambda conn, ex, **kw: lidas.append(kw) or [])
 
     class _Id:
         user_id = USUARIO
 
     analytics.exercise_progress(name="agach", days=30, goal=None, identity=_Id())
     analytics.exercise_progress(name="agach", days=30, goal=S, identity=_Id())
-    (sql_sem, params_sem), (sql_com, params_com) = chamadas
-    assert tg.sql_goal_is("e") not in sql_sem
-    assert params_sem == (date(2026, 1, 1), USUARIO, "%agach%", "%agach%")
-    assert tg.sql_goal_is("e") in sql_com
-    assert params_com == (*params_sem, S)
+    sem, com = lidas
+    assert sem["all_goals"] is True and com["all_goals"] is False and com["training_goal"] == S
+    assert sem["date_from"] == date(2026, 1, 1) and sem["date_to"] == date(2026, 1, 31)
 
 
 def test_rota_chamada_direto_sem_goal_nao_filtra(monkeypatch):

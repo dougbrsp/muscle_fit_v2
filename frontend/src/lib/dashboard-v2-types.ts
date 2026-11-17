@@ -68,6 +68,10 @@ export type ProgressionSessionItem = {
    * "Comparado em")? `null` = não foi possível saber (sem exposição lida).
    */
   in_verdict_key?: boolean | null;
+  /** Issue #188: pertence à sequência do contexto atual (o gráfico plota estas). Ausente = API antiga. */
+  in_context_run?: boolean | null;
+  /** Issue #188: o veredito usou esta sessão (destaque; `false` em calibração). */
+  in_verdict_run?: boolean | null;
   /** Contexto de fadiga prévia da sessão (pronto do backend; opcional). */
   fatigue_context?: FatigueContext | null;
   /** M97 F4: objetivo da execução (`hypertrophy`/`strength`). */
@@ -97,13 +101,6 @@ export type DashboardProgressionResponse = {
   items: ProgressionSessionItem[];
 };
 
-export type ProgressionTrendClassification =
-  | 'PROGREDINDO'
-  | 'ESTAVEL'
-  | 'ESTAGNADO'
-  | 'REGREDINDO'
-  | 'DADOS_INSUFICIENTES';
-
 /**
  * Veredito de `/dashboard/progressao` — desde 2026-10-06 é a MESMA regra da
  * home e do drill-down (`classify_exercise_progression`).
@@ -132,10 +129,6 @@ export type DashboardProgressionTrendResponse = {
   last_local_date: string | null;
   /** O que o veredito compara (rótulo e frase prontos do backend); ausente em respostas antigas. */
   status_scope?: ProgressionScope | null;
-  /** @deprecated rótulo da regra antiga, mantido só para compatibilidade de deploy. Use `status`. */
-  classification?: ProgressionTrendClassification;
-  /** @deprecated idem. Use `status_reasons`. */
-  reason?: string;
 };
 
 export type DashboardProgressionSuggestionResponse = {
@@ -163,14 +156,6 @@ export type DashboardProgressionSuggestionResponse = {
 };
 
 // GET /analytics/dashboard-progression-by-muscle-group (M7)
-export type MuscleGroupProgressionClassification =
-  | 'PROGREDINDO'
-  | 'ESTAVEL'
-  | 'REGREDINDO'
-  | 'DADOS_INSUFICIENTES'
-  | 'NOVO'
-  | 'SEM_DADOS';
-
 /** Status de VOLUME (tonelagem) — rótulo neutro: menos volume não é regressão. */
 export type MuscleGroupVolumeStatus =
   | 'VOLUME_UP'
@@ -217,8 +202,6 @@ export type MuscleGroupProgressionItem = {
   previous_sessions: number;
   current_tonnage_per_session_kg: number | null;
   previous_tonnage_per_session_kg: number | null;
-  /** @deprecated volume com rótulo de desempenho; use `volume_status`/`performance_status`. */
-  classification: MuscleGroupProgressionClassification;
   volume_status: MuscleGroupVolumeStatus;
   performance_status: MuscleGroupPerformanceStatus;
   /** Média das variações de e1RM dos exercícios comparáveis, ponderada pela ativação. */

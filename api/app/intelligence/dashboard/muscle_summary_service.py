@@ -61,6 +61,7 @@ from ...observability import log_event
 from ...set_types import normalize_set_type, sql_not_preparatory, sql_set_confirmed
 from ..methodology_volume import calendar_weekly_rate
 from ..technique_volume import TechniqueSets, free_exercise_primary_sets, new_catalog, sql_application_rows, sql_work_unit, technique_sets_sql
+from ..volume_comparison import EFFECTIVE_SETS_STABLE_TOLERANCE, period_delta, period_direction
 from ..volume_service import (
     DASHBOARD_FALLBACK_MAX_SETS,
     DASHBOARD_FALLBACK_MIN_SETS,
@@ -1509,6 +1510,52 @@ def _readiness_block(row: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any
     }
 
 
+def _contribution_share(stimulus: float, total: float) -> Optional[float]:
+    """Fracao do estimulo do exercicio no total (3 casas; None sem total). Um
+    ponto so para o resumo (`_top_exercises`) e o drill-down."""
+    return round(stimulus / total, 3) if total else None
+
+
+def _exercise_contributions(sessions: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Contribuicao por EXERCICIO sobre as sessoes DEVOLVIDAS pelo drill-down
+    (1o nivel "grupo -> exercicios -> sessoes -> series"; a tela so le).
+
+    Base = soma do estimulo das exposicoes devolvidas (descreve a amostra
+    exibida quando o drill-down trunca), e nao o total do periodo do resumo:
+    por isso nao reusa `_top_exercises`, que tambem corta em
+    `MAX_TOP_EXERCISES` e nao conta sessoes. Exposicao sem id agrupa pelo nome.
+    Ordem: estimulo (arredondado) decrescente, empate na ordem de aparicao."""
+    buckets: dict[Any, dict[str, Any]] = {}
+    total = 0.0
+    for session in sessions:
+        for exposure in session["exposures"]:
+            exercise_id = exposure.get("exercise_id")
+            key = ("id", exercise_id) if exercise_id is not None else ("nome", exposure.get("name"))
+            bucket = buckets.setdefault(
+                key,
+                {"exercise_id": exercise_id, "name": exposure.get("name"), "sets": 0,
+                 "stimulus": 0.0, "roles": set(), "sessions": set()},
+            )
+            stimulus = float(exposure.get("effective_sets_stimulus") or 0.0)
+            bucket["sets"] += len(exposure.get("sets") or [])
+            bucket["stimulus"] += stimulus
+            bucket["roles"].add(exposure.get("role"))
+            bucket["sessions"].add(session["activity_id"])
+            total += stimulus
+    results = [
+        {
+            **bucket,
+            "stimulus": round(bucket["stimulus"], 2),
+            "share": _contribution_share(bucket["stimulus"], total if total > 0 else 0.0),
+            "roles": sorted(bucket["roles"]),
+            "sessions": len(bucket["sessions"]),
+        }
+        for bucket in buckets.values()
+    ]
+    results.sort(key=lambda item: item["stimulus"], reverse=True)
+    return results
+
+
 def _top_exercises(
     rows: list[Mapping[str, Any]],
     group_stimulus: float,
@@ -1556,11 +1603,7 @@ def _top_exercises(
                 or "Exercício sem nome",
                 "sets_count": bucket["sets_count"],
                 "effective_sets_stimulus": round(bucket["effective_sets_stimulus"], 2),
-                "contribution_share": (
-                    round(bucket["effective_sets_stimulus"] / group_stimulus, 3)
-                    if group_stimulus
-                    else None
-                ),
+                "contribution_share": _contribution_share(bucket["effective_sets_stimulus"], group_stimulus),
                 "roles": sorted(bucket["roles"]),
                 "last_local_date": bucket["last_local_date"],
             }
@@ -1790,6 +1833,7 @@ def build_muscle_drilldown(
         "limitations": limitations,
         "item": item,
         "sessions": sessions,
+        "exercise_contributions": _exercise_contributions(sessions),
         "sets_limit": capped,
         "sets_truncated": truncated,
         "target_source": summary["target_source"],
@@ -2188,12 +2232,20 @@ def assemble_comparatives(
                 }
             )
 
+        # T-0 contra T-1 pelo dono (antes `sessionDelta` na tela).
+        t0_sets, t1_sets = (
+            points[offset]["effective_sets_stimulus"] if len(points) > offset else None for offset in (0, 1)
+        )
         by_session_block.append(
             {
                 "muscle_group_id": group_id,
                 "muscle_group": group_name(group_id),
                 "points": points,
                 "sessions_in_window": len(ordered),
+                "effective_sets_delta": period_delta(t0_sets, t1_sets),
+                "effective_sets_direction": period_direction(
+                    t0_sets, t1_sets, EFFECTIVE_SETS_STABLE_TOLERANCE
+                ),
             }
         )
 

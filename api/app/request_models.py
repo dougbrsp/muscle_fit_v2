@@ -14,11 +14,13 @@ handlers, com o mesmo 400 de antes.
 """
 from __future__ import annotations
 
+import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 
@@ -84,6 +86,25 @@ class GymCreateIn(_StrictIn):
     usual_weekdays: Optional[List[int]] = Field(default=None, max_length=7)
     is_recurring: Optional[bool] = None
     notes: Optional[str] = Field(default=None, max_length=NOTES_MAX)
+
+
+class GymEquipmentManufacturerIn(_StrictIn):
+    """PATCH /gym-equipment-catalog/{link_id} (#188). Campo ausente nao altera;
+    string e gravada aparada; vazio (ou null) = NULL = volta ao padrao do catalogo."""
+
+    manufacturer: Optional[str] = Field(default=None, max_length=MANUFACTURER_MAX_LENGTH)
+
+    @field_validator("manufacturer")
+    @classmethod
+    def _sem_controle(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if any(ord(ch) < 32 or 127 <= ord(ch) < 160 for ch in value):
+            raise ValueError("manufacturer nao aceita caracteres de controle")
+        # formatacao invisivel (bidi U+202E, zero-width U+200B-D, U+2060, U+FEFF) engana quem le
+        if any(unicodedata.category(ch) == "Cf" for ch in value):
+            raise ValueError("manufacturer nao aceita caracteres de formatacao")
+        return value.strip() or None
 
 
 class BodyCompositionUpdateIn(_StrictIn):

@@ -53,9 +53,14 @@ import {
   buildTrendSeries,
   buildUnifiedE1rmChart,
   comparabilityMismatch,
-  decisionsForKey,
+  decisionsInCurrentContext,
   e1rmReliabilityNote,
+  type ExposurePairRow,
   fatigueContextLabel,
+  outcomeTone,
+  pairDeltaText,
+  pairNotComparableText,
+  SERIES_UNAVAILABLE_TEXT,
   progressionDecisionLabel,
   statusReasonsText,
 } from '@/lib/exercise-progress';
@@ -186,9 +191,9 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
   const currentKey = data.comparability_key;
   const reasons = useMemo(() => statusReasonsText(data.status_reasons), [data.status_reasons]);
   const pair = useMemo(() => buildExposurePair(data), [data]);
-  const trend = useMemo(() => buildTrendSeries(data.exposures, currentKey), [data.exposures, currentKey]);
+  const trend = useMemo(() => buildTrendSeries(data.exposures, data.trend_metric), [data.exposures, data.trend_metric]);
   // M35: RPE médio POR SESSÃO — o que `/exercicios` tinha e o hub não.
-  const rpe = useMemo(() => buildRpeSeries(data.exposures), [data.exposures]);
+  const rpe = useMemo(() => buildRpeSeries(data.exposures, data.avg_rpe_period), [data.exposures, data.avg_rpe_period]);
   // M97 F4: linha ÚNICA de e1RM (todos os objetivos) + marcas de deload.
   const unified = useMemo(
     () =>
@@ -196,8 +201,8 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
     [data.e1rm_series, data.deload_sessions, defaultGoal],
   );
   const decisions = useMemo(
-    () => decisionsForKey(data.progression_decisions, currentKey),
-    [data.progression_decisions, currentKey],
+    () => decisionsInCurrentContext(data.progression_decisions),
+    [data.progression_decisions],
   );
 
   const nome = data.exercise.name || data.exercise.amazfit_name || `Exercício ${data.exercise.exercise_id}`;
@@ -312,32 +317,25 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
 // Última exposição comparável vs. a anterior
 // ---------------------------------------------------------------------------
 
-function DeltaText({
-  deltaAbs,
-  deltaPct,
-  betterWhen,
-}: {
-  deltaAbs: number | null;
-  deltaPct: number | null;
-  betterWhen: 'up' | 'down' | 'neutral';
-}) {
-  if (deltaAbs == null && deltaPct == null) {
+const TONE_COLORS = {
+  positive: CHART_COLORS.positive,
+  negative: CHART_COLORS.negative,
+  neutral: BRAND.textMuted,
+} as const;
+
+/** Só pinta o desfecho pronto do motor (`metrics[].outcome`). */
+function DeltaText({ row }: { row: ExposurePairRow }) {
+  const text = pairDeltaText(row);
+  if (text == null) {
     return (
       <Text size="sm" c="dimmed">
         {EM_DASH}
       </Text>
     );
   }
-  const direcao = (deltaAbs ?? 0) > 0 ? 'up' : (deltaAbs ?? 0) < 0 ? 'down' : 'flat';
-  const cor =
-    betterWhen === 'neutral' || direcao === 'flat'
-      ? BRAND.textMuted
-      : direcao === betterWhen
-        ? CHART_COLORS.positive
-        : CHART_COLORS.negative;
   return (
-    <Text size="sm" fw={600} c={cor}>
-      {deltaPct != null ? fmtSignedPercent(deltaPct) : `${(deltaAbs ?? 0) > 0 ? '+' : ''}${deltaAbs}`}
+    <Text size="sm" fw={600} c={TONE_COLORS[outcomeTone(row.outcome)]}>
+      {text}
     </Text>
   );
 }
@@ -354,11 +352,7 @@ function ExposurePairCard({ pair }: { pair: NonNullable<ReturnType<typeof buildE
 
       {!pair.comparable && (
         <Text size="sm" c={BRAND.orange} mt="xs">
-          {pair.previous == null
-            ? 'Não há exposição anterior no período: os números da última execução estão abaixo, sem variação.'
-            : `Estas duas execuções não são comparáveis (${COMPARABILITY_MISMATCH_LABELS[
-                pair.mismatch as keyof typeof COMPARABILITY_MISMATCH_LABELS
-              ]}). Os valores continuam visíveis, mas a variação seria uma conclusão errada — por isso ela não é exibida.`}
+          {pairNotComparableText(pair)}
         </Text>
       )}
 
@@ -409,7 +403,7 @@ function ExposurePairCard({ pair }: { pair: NonNullable<ReturnType<typeof buildE
                   )}
                 </Table.Td>
                 <Table.Td>
-                  <DeltaText deltaAbs={row.deltaAbs} deltaPct={row.deltaPct} betterWhen={row.betterWhen} />
+                  <DeltaText row={row} />
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -461,7 +455,9 @@ function TrendCard({ trend }: { trend: ReturnType<typeof buildTrendSeries> }) {
 
       {trend.metric == null ? (
         <Text size="sm" c="dimmed" mt="md">
-          Ainda não há duas exposições comparáveis com valor para desenhar uma linha.
+          {trend.unavailable
+            ? SERIES_UNAVAILABLE_TEXT
+            : 'Ainda não há duas exposições comparáveis com valor para desenhar uma linha.'}
         </Text>
       ) : (
         <>
@@ -519,19 +515,23 @@ function RpeCard({ rpe }: { rpe: ReturnType<typeof buildRpeSeries> }) {
             Só exposições comparáveis com a chave atual.
           </Text>
         </div>
-        <Stack gap={0} align="flex-end">
-          <Text size="xs" c="dimmed">
-            Média do período
-          </Text>
-          <Text size="xl" fw={700} c={BRAND.textPrimary}>
-            {rpe.average != null ? fmtDecimal(rpe.average, 1) : EM_DASH}
-          </Text>
-        </Stack>
+        {rpe.average != null && (
+          <Stack gap={0} align="flex-end">
+            <Text size="xs" c="dimmed">
+              Média do período
+            </Text>
+            <Text size="xl" fw={700} c={BRAND.textPrimary}>
+              {fmtDecimal(rpe.average, 1)}
+            </Text>
+          </Stack>
+        )}
       </Group>
 
       {!rpe.hasSeries ? (
         <Text size="sm" c="dimmed" mt="md">
-          Ainda não há duas sessões comparáveis com RPE registrado para desenhar uma linha.
+          {rpe.unavailable
+            ? SERIES_UNAVAILABLE_TEXT
+            : 'Ainda não há duas sessões comparáveis com RPE registrado para desenhar uma linha.'}
           {rpe.missing > 0 ? ` ${fmtInt(rpe.missing)} sessão(ões) sem RPE.` : ''}
         </Text>
       ) : (

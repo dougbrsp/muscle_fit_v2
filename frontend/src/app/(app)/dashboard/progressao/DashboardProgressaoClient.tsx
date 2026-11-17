@@ -305,7 +305,7 @@ export function DashboardProgressaoClient() {
                 1RM estimado e carga de topo (kg)
               </Text>
               <Text size="xs" c={BRAND.textMuted} mb="xs">
-                Só as sessões comparáveis com o veredito (mesmo equipamento e convenção de carga).
+                Só as sessões do contexto atual (mesmo equipamento e convenção de carga), inclusive as de calibração.
                 {chart.otherKeySessions > 0 &&
                   ` ${fmtInt(chart.otherKeySessions)} sessão(ões) em outro equipamento/convenção ficaram fora do gráfico (seguem na tabela).`}
                 {chart.unreliableE1rm > 0 &&
@@ -353,9 +353,9 @@ export function DashboardProgressaoClient() {
                               {fatigueContextLabel(item.fatigue_context)}
                             </Text>
                           )}
-                          {item.in_verdict_key === false && (
+                          {item.in_verdict_run === false && (
                             <Text size="xs" c={BRAND.textMuted}>
-                              outro equipamento, convenção ou condição de fadiga
+                              fora do veredito
                             </Text>
                           )}
                           {(isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label) && (

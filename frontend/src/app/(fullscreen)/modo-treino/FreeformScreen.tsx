@@ -44,11 +44,14 @@ import {
 import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
 import { resolveNextSetPreview } from '@/lib/workout-mode-next-set';
 import { DEFAULT_MEASURE, MEASURE_OPTIONS } from '@/lib/set-measures';
+import { suggestionCalibrationLabel } from '@/lib/suggested-progression';
 import { measureLoggerDefaults, setMeasurePayload } from '@/lib/workout-mode-measures';
 import { selectPreviousSessionRecord } from '@/lib/workout-mode-previous-session';
 import { selectPreviousSessionWorkingSets } from '@/lib/workout-mode-previous-session-sets';
 import { finishWorkoutSession } from '@/lib/workout-session-finish';
 import { BRAND } from '@/theme';
+import { manufacturerLabel } from '@/lib/gym-equipment-manufacturer';
+import type { ManufacturerSource } from '@/lib/gyms-types';
 import {
   DEFAULT_REST_SECONDS,
   SET_LOGGER_FALLBACK_LOAD_KG,
@@ -58,9 +61,15 @@ import { useWeightUnit } from '@/lib/use-weight-unit';
 import { useIaControls } from '@/lib/screen-permissions';
 import { ExerciseSummaryCard, SetEvaluationCard, SetLoggerCard, type SetLoggerValues } from './SetLoggerCard';
 
-type Phase = 'pick-group' | 'pick-equipment' | 'pick-exercise' | 'logging' | 'exercise-done';
+type Phase ='pick-group' | 'pick-equipment' | 'pick-exercise' | 'logging' | 'exercise-done';
 
-type EquipmentOption = { equipment_id: number; equipment_name: string; photo_url: string | null };
+type EquipmentOption = {
+  equipment_id: number;
+  equipment_name: string;
+  photo_url: string | null;
+  manufacturer?: string | null; // #188: do servidor (texto livre, só como texto)
+  manufacturer_source?: ManufacturerSource;
+};
 
 type ExerciseOption = {
   link_id: number;
@@ -178,6 +187,8 @@ export function FreeformScreen({
           equipment_id: link.equipment_id,
           equipment_name: link.equipment_name,
           photo_url: link.photo_url ?? null,
+          manufacturer: link.manufacturer,
+          manufacturer_source: link.manufacturer_source,
         });
       }
     }
@@ -492,6 +503,11 @@ export function FreeformScreen({
                 <Text size="sm" fw={700} mt={6} c={BRAND.textPrimary}>
                   {option.equipment_name}
                 </Text>
+                {manufacturerLabel(option.manufacturer, option.manufacturer_source) && (
+                  <Text size="xs" c={BRAND.textMuted}>
+                    {manufacturerLabel(option.manufacturer, option.manufacturer_source)}
+                  </Text>
+                )}
               </Card>
             </UnstyledButton>
           ))}
@@ -628,6 +644,11 @@ export function FreeformScreen({
             disabled={loggedSets.length > 0}
             data={MEASURE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
           />
+          {suggestionCalibrationLabel(suggested) && (
+            <Badge size="sm" variant="light" color="yellow" style={{ alignSelf: 'flex-start' }}>
+              {suggestionCalibrationLabel(suggested)}
+            </Badge>
+          )}
           <SetLoggerCard
             exerciseName={selectedExercise.exercise_name}
             equipmentName={selectedEquipment?.equipment_name}

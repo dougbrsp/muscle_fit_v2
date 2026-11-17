@@ -249,6 +249,8 @@ def recreate_schema_with_all_migrations(
 # - a 093 acrescenta `training_goal` em `uk_ptr_user_pair_context` (conferida
 #   pela 068) e em `uk_pgs_user_group` (conferida pela 036). O `down` dela roda
 #   PRIMEIRO (ordem inversa), devolvendo as chaves a forma que a 068 confere.
+# - a 118 acrescenta `gym_context_id` em `uk_ptr_user_pair_context` (que a 093
+#   confere ao reexecutar); o `down` dela roda antes do da 093.
 # Em producao a 036 e a 047 nunca reexecutam: ficam registradas em
 # `schema_migration_files` e o runner pula arquivo registrado (e recusa
 # checksum divergente, entao a migracao antiga NAO pode ser editada). So os
@@ -260,6 +262,7 @@ RESHAPING_MIGRATIONS: tuple[str, ...] = (
     "068_progression_track_fatigue_context.py",
     "075_body_measurements_sites.py",
     "093_training_goal.py",
+    "118_progression_track_gym_context.py",
 )
 
 

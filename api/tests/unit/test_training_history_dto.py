@@ -303,3 +303,12 @@ def test_sql_le_as_chaves_do_snapshot_sem_trazer_o_json_inteiro():
         assert f"'$.{key}'" in th.SESSIONS_SQL and f"AS {column}" in th.SESSIONS_SQL
     assert "wpe.prescription_json  " not in th.SESSIONS_SQL
     assert "wpe.prescription_json AS" not in th.SESSIONS_SQL
+
+
+def test_sessions_sql_traz_convencao_de_carga_do_par_sem_multiplicar_linhas():
+    # #188: mesma coluna da comparabilidade (`equipment_exercises.load_convention`),
+    # pelo JOIN do dono (UNIQUE (equipment_id, exercise_id): nao duplica serie).
+    sql = th.SESSIONS_SQL
+    assert "eqex.load_convention        AS load_convention" in sql
+    assert "LEFT JOIN equipment_exercises eqex" in sql and "eqex.is_active = 1" in sql
+    assert th.ExerciseExecution(exercise_row_id=1, sequence=1, exercise_id=1, equipment_id=1).load_convention is None

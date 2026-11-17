@@ -1,4 +1,5 @@
 import type { BriefingDeload } from './deload';
+import type { ManufacturerSource } from './gyms-types';
 
 // Contrato de `GET /workout-plans/{plan_id}/exercises/{wpe_id}/briefing`
 // (M4), lido diretamente de `api/app/exercise_briefing.py`.
@@ -54,6 +55,8 @@ export type BriefingPerformance = {
   equipment_name: string | null;
   load_convention: string | null;
   last_local_date: string | null;
+  /** #188 (aditivo): `calibration_start_other_gym` ou null; ausente na API antiga. */
+  equipment_context_code?: string | null;
 };
 
 /** AJUSTE DE HOJE decidido pelo motor (ação, nunca rótulo de desempenho). */
@@ -137,6 +140,13 @@ export type ExerciseBriefingResponse = {
     equipment_id: number | null;
     name: string | null;
     photo_url: string | null;
+    // #188: fabricante efetivo (da academia ou padrão do catálogo). Opcionais:
+    // API antiga não manda. `gym_equipment_catalog_id` null = não editável.
+    gym_id?: number | null;
+    gym_equipment_catalog_id?: number | null;
+    manufacturer?: string | null;
+    manufacturer_source?: ManufacturerSource;
+    can_edit_manufacturer?: boolean;
   } | null;
   muscles: BriefingMuscle[];
   prescription: BriefingPrescription;

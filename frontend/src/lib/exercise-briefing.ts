@@ -4,6 +4,7 @@
 
 import { statusVisual } from './dashboard-status';
 import { progressionDecisionLabel, statusReasonsText } from './exercise-progress';
+import { calibrationLabel } from './suggested-progression';
 import {
   DEFAULT_WEIGHT_UNIT,
   WEIGHT_UNIT_LABEL,
@@ -138,6 +139,11 @@ export function performanceBadge(performance: BriefingPerformance | null | undef
  * Frase do "Como estamos": por que o badge é o que é (razão principal de
  * `comparability`) e onde a comparação foi feita.
  */
+/** #188: selo do contexto do aparelho (ex.: carga de partida de outra academia); null = sem selo. */
+export function briefingContextLabel(performance: BriefingPerformance | null | undefined): string | null {
+  return calibrationLabel(performance?.equipment_context_code);
+}
+
 export function performanceExplanation(performance: BriefingPerformance | null | undefined): string {
   if (!performance || !performance.comparable) {
     return 'Ainda não há duas execuções comparáveis (mesmo equipamento e convenção de carga) para avaliar o desempenho.';

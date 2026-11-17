@@ -16,11 +16,11 @@ from datetime import date
 
 from app import analytics
 from app.intelligence.dashboard.comparability import GROUP_MIN_COMPARABLE_WEIGHT
+from app.intelligence.dashboard.metrics_registry import GROUP_E1RM_OUTLIER_CHANGE_PCT
 from app.intelligence.muscle_group_performance import (
     LOW_ACTIVATION,
     NO_COMPARABLE_EXERCISE,
     OUTLIER_CHANGE,
-    OUTLIER_CHANGE_PCT,
     PERFORMANCE_BASIS,
     build_group_performance,
 )
@@ -29,8 +29,8 @@ from app.intelligence.muscle_group_progression import (
     VOLUME_STABLE,
     VOLUME_UP,
     build_group_progression,
+    classify_change,
     comparison_windows,
-    volume_status,
 )
 
 QUAD = 4
@@ -84,8 +84,8 @@ def test_volume_cai_e_status_vem_dos_exercicios():
     assert item["progression_counts"]["progressing"] == 1
     (exercise,) = item["performance_exercises"]
     assert exercise["previous_e1rm_kg"] == 160.0 and exercise["current_e1rm_kg"] == 180.0
-    # Compatibilidade: o campo antigo continua (deprecado), com o valor de antes.
-    assert item["classification"] == "REGREDINDO"
+    # O campo deprecado `classification` saiu (#188): so `volume_status`.
+    assert "classification" not in item
 
 
 def test_e1rm_sobe_mas_o_dono_diz_estavel_o_status_segue_o_dono():
@@ -180,7 +180,7 @@ ADUTORES = 17
 
 
 def test_constantes_documentadas():
-    assert OUTLIER_CHANGE_PCT == 50.0
+    assert GROUP_E1RM_OUTLIER_CHANGE_PCT == 50.0
     assert GROUP_MIN_COMPARABLE_WEIGHT == 0.5
 
 
@@ -315,11 +315,12 @@ def test_grupo_sem_leitura_explica_o_motivo():
 
 
 def test_volume_status_neutro():
-    assert volume_status("PROGREDINDO") == VOLUME_UP
-    assert volume_status("ESTAVEL") == VOLUME_STABLE
-    assert volume_status("REGREDINDO") == VOLUME_DOWN
-    for passthrough in ("DADOS_INSUFICIENTES", "NOVO", "SEM_DADOS"):
-        assert volume_status(passthrough) == passthrough
+    assert classify_change(4400, 4000, 4, 4)["volume_status"] == VOLUME_UP
+    assert classify_change(4000, 4000, 4, 4)["volume_status"] == VOLUME_STABLE
+    assert classify_change(3600, 4000, 4, 4)["volume_status"] == VOLUME_DOWN
+    assert classify_change(0, 800, 0, 4)["volume_status"] == "DADOS_INSUFICIENTES"
+    assert classify_change(500, 0, 2, 0)["volume_status"] == "NOVO"
+    assert classify_change(0, 0, 0, 0)["volume_status"] == "SEM_DADOS"
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +337,11 @@ CREATE TABLE exercise_sets (id INTEGER PRIMARY KEY, exercise_id INTEGER, set_num
                             measure TEXT NOT NULL DEFAULT 'reps', duration_seconds INTEGER,
                             reps_pending INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE exercise_legacy_id_map (old_exercise_id INTEGER, canonical_exercise_id INTEGER);
-CREATE TABLE gym_equipment (id INTEGER PRIMARY KEY, equipment_id INTEGER);
+CREATE TABLE gym_equipment (id INTEGER PRIMARY KEY, gym_id INTEGER NOT NULL, mapping_id INTEGER NOT NULL,
+                            equipment_id INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE equipment (id INTEGER PRIMARY KEY, name TEXT NOT NULL, equipment_type_id INTEGER,
+                        is_active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE equipment_types (id INTEGER PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL);
 CREATE TABLE equipment_exercises (equipment_id INTEGER, exercise_id INTEGER, load_convention TEXT,
                                   is_active INTEGER);
 CREATE TABLE exercise_muscle_contributions (exercise_id INTEGER, muscle_group_id INTEGER,
@@ -351,8 +356,14 @@ def _run_real_query(sets_by_session, windows, *, user_id=1, gym_equipment_id=7):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
-    conn.execute("INSERT INTO gym_equipment VALUES (7, 50)")
-    conn.execute("INSERT INTO gym_equipment VALUES (8, 18)")
+    conn.execute("INSERT INTO equipment_types (id, code, name) VALUES (1, 'MACHINE', 'Maquina')")
+    conn.execute("INSERT INTO equipment_types (id, code, name) VALUES (2, 'BARBELL', 'Barra')")
+    conn.execute("INSERT INTO equipment (id, name, equipment_type_id) VALUES (50, 'Hack machine', 1)")
+    conn.execute("INSERT INTO equipment (id, name, equipment_type_id) VALUES (18, 'Barra livre', 2)")
+    # (id por academia, academia, mapping, equipamento canonico): 7 e 9 = a mesma
+    # maquina 50 nas academias 1 e 2; 8 e 10 = a mesma barra 18 nas academias 1 e 2.
+    for row in ((7, 1, 22, 50), (8, 1, 22, 18), (9, 2, 22, 50), (10, 2, 22, 18)):
+        conn.execute("INSERT INTO gym_equipment (id, gym_id, mapping_id, equipment_id) VALUES (?, ?, ?, ?)", row)
     conn.execute("INSERT INTO equipment_exercises VALUES (50, 22, 'total', 1)")
     conn.execute("INSERT INTO exercise_muscle_contributions VALUES (22, 4, 1.0, 1)")
     conn.execute("INSERT INTO exercise_muscle_contributions VALUES (22, 9, 0.5, 1)")
@@ -608,3 +619,30 @@ def test_query_real_serie_pendente_nao_entra_no_e1rm():
         date(2026, 9, 29): [("working", 10, 100.0, 8.0), ("working", 10, 200.0, None, 1)],
     }
     assert _run_real_query(com_pendente, windows) == _run_real_query(base, windows)
+
+
+def test_query_real_mesma_maquina_em_duas_academias_nao_pareia():
+    """Maquina (tipo MACHINE): a academia entra na chave do dono; a mesma
+    maquina 50 na academia 1 (anterior) e na 2 (atual) nao se compara."""
+    windows = comparison_windows(date(2026, 10, 2), 7)
+    sessions = {date(2026, 9, 22): [("working", 10, 120.0)], date(2026, 9, 29): [("working", 8, 150.0)]}
+    rows = _run_real_query(sessions, windows, gym_equipment_id=lambda d: 7 if d == date(2026, 9, 22) else 9)
+    assert {(r["period"], r["gym_id"], r["equipment_type_code"]) for r in rows} == {
+        ("previous", 1, "MACHINE"),
+        ("current", 2, "MACHINE"),
+    }
+    assert build_group_performance(rows) == {}
+
+
+def test_query_real_peso_livre_em_duas_academias_pareia():
+    """Peso livre (BARBELL): a academia nao entra na chave; a mesma barra 18
+    nas academias 1 e 2 se compara (Epley 160 -> 190 = +18,8%)."""
+    windows = comparison_windows(date(2026, 10, 2), 7)
+    sessions = {date(2026, 9, 22): [("working", 10, 120.0)], date(2026, 9, 29): [("working", 8, 150.0)]}
+    rows = _run_real_query(sessions, windows, gym_equipment_id=lambda d: 8 if d == date(2026, 9, 22) else 10)
+    assert {r["gym_id"] for r in rows} == {1, 2}
+    performance = build_group_performance(rows)
+    assert performance[4]["performance_change_pct"] == 18.8
+    [item] = performance[4]["performance_exercises"]
+    assert item["equipment_id"] == 18
+    assert "gym_id" not in item and "muscle_group_id" not in item

@@ -4,7 +4,8 @@
   séries de trabalho e só convenções com e1RM;
 - `services.compute_exercise_stats`: aplicação de técnica fora de
   `best_weight_kg`/`avg_rpe`;
-- `exercise_performance`: emparelhamento de `comparability`, Epley do dono.
+- razao de desempenho (issue #188: no dono `comparability`): emparelhamento
+  de `comparability`, Epley do dono.
 """
 
 from __future__ import annotations
@@ -108,14 +109,14 @@ def _summary(reps, weight=100.0, rpe=None):
 
 
 def test_exercise_performance_nao_copia_comparability():
-    for nome in ("_same_load", "_top_load_reps", "_paired_top_reps", "_rir"):
+    for nome in ("_same_load", "_top_load_reps", "_paired_top_reps", "_rir", "paired_top_reps",
+                 "paired_reps_epley_ratio", "performance_ratio", "compare_exposures", "keys_match"):
         assert not hasattr(ep, nome), nome
-    assert ep.paired_top_reps is comparability.paired_top_reps
 
 
 def test_magnitude_por_reps_usa_o_epley_do_dono():
     previous, current = _summary([15, 15]), _summary([13, 13, 13])
     esperado = e1rm.epley_multiplier(13, 0) / e1rm.epley_multiplier(15, 0)
-    assert ep.paired_reps_epley_ratio(previous, current) == pytest.approx(esperado)
-    com_rpe = ep.paired_reps_epley_ratio(_summary([12], rpe=8.0), _summary([10], rpe=9.0))
+    assert comparability.paired_reps_epley_ratio(previous, current) == pytest.approx(esperado)
+    com_rpe = comparability.paired_reps_epley_ratio(_summary([12], rpe=8.0), _summary([10], rpe=9.0))
     assert com_rpe == pytest.approx(e1rm.epley_multiplier(10, 1) / e1rm.epley_multiplier(12, 2))

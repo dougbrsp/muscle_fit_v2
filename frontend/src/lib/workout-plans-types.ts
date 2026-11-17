@@ -16,6 +16,7 @@
 import type { AdvancedTechniqueParameters } from './workout-mode-intensive';
 import type { RecoverySignal } from './intensity-status';
 import type { SessionLoadPlan } from './workout-mode-load-suggestions';
+import type { ManufacturerSource } from './gyms-types';
 
 export type ApiListResponse<T> = { items: T[] };
 
@@ -271,6 +272,12 @@ export type PlanExerciseEquipmentOption = {
   eligible: boolean;
   // 'MAX_SAFE_RPE_LOWER' | 'TECHNIQUE_INCOMPATIBLE' | null
   reason: string | null;
+  // #188: fabricante efetivo (só leitura aqui). Opcionais: API antiga não manda.
+  gym_id?: number | null;
+  gym_equipment_catalog_id?: number | null;
+  manufacturer?: string | null;
+  manufacturer_source?: ManufacturerSource;
+  can_edit_manufacturer?: boolean;
 };
 
 export type PlanExerciseEquipmentOptionsResponse = {
@@ -437,6 +444,10 @@ export type WorkoutPlanExercise = {
   // Exercício que exige uma escolha do usuário antes de executar (ex.:
   // técnica prescrita inválida para o equipamento).
   requires_user_choice?: boolean;
+  // #188: selo de calibração pronto do backend, só na leitura com `session_id`
+  // (Modo Treino); ausente sem sessão ou na API antiga.
+  calibrating?: boolean;
+  calibration_code?: 'context_calibration' | 'calibration_start_other_gym' | null;
 };
 
 export type WorkoutPlanExerciseInput = {
@@ -690,7 +701,11 @@ export type SuggestedProgressionResponse = {
   last_date?: string | null;
   // Carga sugerida pelo motor (ou a da calibração pela última execução).
   suggested_load_kg?: number | null;
-  load_source?: 'engine' | 'last_execution' | null;
+  load_source?: 'engine' | 'last_execution' | 'other_gym_start' | null;
+  // #188 (aditivos; ausentes na API antiga): máquina calibrando nesta academia
+  // e o código do motor; a nota em texto vem em `progression_note`.
+  calibrating?: boolean;
+  calibration_code?: 'context_calibration' | 'calibration_start_other_gym' | null;
   // Passo do equipamento da trilha usada (stepper e arredondamento).
   load_increment_kg?: number | null;
   // Teto de carga do usuário para o par (migração 110); null = sem teto.

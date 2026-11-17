@@ -1,3 +1,5 @@
+import type { ManufacturerSource } from './gyms-types';
+
 // Tipos compartilhados entre a tela de Registro de Exercícios
 // (`src/app/(app)/registro-exercicios/page.tsx`), a tela de detalhe de um
 // treino (`src/app/(app)/registro-exercicios/[activityId]/page.tsx`) e o
@@ -250,6 +252,11 @@ export type GymEquipmentLink = {
   has_photo?: boolean;
   photo_url?: string | null;
   is_active?: boolean;
+  // #188: campos aditivos entregues pela API; só exibição.
+  gym_equipment_catalog_id?: number | null;
+  manufacturer?: string | null;
+  manufacturer_source?: ManufacturerSource;
+  can_edit_manufacturer?: boolean;
 };
 
 export type GymEquipmentResponse = { items: GymEquipmentLink[] };

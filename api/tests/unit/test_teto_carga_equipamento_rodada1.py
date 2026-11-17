@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -227,7 +229,7 @@ def test_calibracao_pela_ultima_execucao_nao_reduz_por_causa_do_teto(monkeypatch
     group = replace(fx.group(muscle_group_id=PEITO, phase=pe.F2, reps=pe.PROGRESSED_REPS), training_goal=H)
     _motor_sem_banco(monkeypatch, [track], [group], {(SUPINO, BANCO): D("90")})
     ultima = svc.LastExecution(local_date="2026-10-20", equipment_id=BANCO, last_load_kg=100.0, last_reps=10, working_load_kg=100.0)
-    monkeypatch.setattr(svc, "last_execution_from_logs", lambda logs, exercise_id, equipment_id=None: ultima)
+    monkeypatch.setattr(svc, "last_execution_from_logs", lambda logs, exercise_id, equipment_id=None, gym_context=None: ultima)
     r = svc.suggest_for_pair(object(), 1, SUPINO, BANCO, readiness={}, logs=[{"x": 1}], now=NOW)
     if r.load_source == svc.LOAD_SOURCE_LAST_EXECUTION:
         assert r.suggested_load_kg == 100.0
@@ -498,3 +500,184 @@ def test_vinculo_confere_o_exercicio_do_equipamento():
 
     assert elc.resolve_pair_link(Cur(), 5, 9) is None
     assert "m2.canonical_exercise_id" in sql_executado[0]  # canonico x canonico
+
+
+# ---------------------------------------------------------------------------
+# #188 (rodada 1): trilha so em OUTRA academia + teto, e carga atual por academia
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("partida", "esperada"), [(70, 70.0), (100, 80.0)])
+def test_sugestao_sem_logs_com_teto_e_trilha_so_de_outra_academia_nao_quebra(monkeypatch, partida, esperada):
+    track = replace(
+        fx.track(exercise_id=SUPINO, equipment_id=BANCO, muscle_group_id=PEITO, load=partida, is_compound=True),
+        training_goal=H,
+        id=1,
+        last_executed_at=datetime(2026, 10, 20),
+        gym_context=1,
+    )
+    group = replace(fx.group(muscle_group_id=PEITO, phase=pe.F2, reps=pe.PROGRESSED_REPS), training_goal=H)
+    # partida 100 > teto 80: a partida de OUTRA academia e cortada no teto (decisao do usuario,
+    # 2026-11-17); abaixo do teto fica como veio. A regressao original: nao lancar com logs=None
+    _motor_sem_banco(monkeypatch, [track], [group], {(SUPINO, BANCO): D("80")})
+    query = svc.PairQuery(exercise_id=SUPINO, equipment_id=BANCO, training_goal=H, gym_context=2)
+    r = svc.suggest_for_pairs(object(), 1, [query], readiness={}, logs=None, now=NOW)[query.key]
+    assert r.load_source == svc.LOAD_SOURCE_OTHER_GYM_START
+    assert r.suggested_load_kg == esperada
+    assert r.max_load_kg == 80.0
+
+
+@pytest.mark.parametrize(("gym", "esperada"), [(2, D("70")), (1, D("55")), (None, D("70"))])
+def test_ceilings_by_row_carga_atual_e_a_da_trilha_da_academia_da_ficha(monkeypatch, gym, esperada):
+    from app import progression_state as ps
+    from app import services
+    from app.generation import deterministic_prescription as dp
+
+    class Cur(NullContext):
+        def execute(self, sql, params=None):
+            self._sql = sql
+
+        def fetchall(self):
+            if "FROM gym_equipment" in self._sql:
+                return [{"id": 9, "equipment_id": 33}]
+            return []
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+    monkeypatch.setattr(elc, "load_user_ceilings", lambda conn, user_id: {(5, 33): D("90")})
+    # academia 1 (mais antiga, 55 kg) e academia 2 (mais recente, 70 kg)
+    t1 = replace(fx.track(exercise_id=5, equipment_id=33, load=55), id=1, gym_context=1, last_executed_at=NOW - timedelta(days=5))
+    t2 = replace(fx.track(exercise_id=5, equipment_id=33, load=70), id=2, gym_context=2, last_executed_at=NOW)
+    monkeypatch.setattr(ps, "load_tracks", lambda conn, user_id: {t1.key: t1, t2.key: t2})
+    monkeypatch.setattr(dp, "gym_contexts_by_gym_equipment", lambda conn, ids: {9: gym})
+    linhas = [{"workout_plan_exercise_id": 1, "mapping_id": 5, "preferred_equipment_id": 9}]
+    assert services._ceilings_by_row(Conn(), 1, linhas) == {1: (D("90"), esperada)}
+
+
+# ---------------------------------------------------------------------------
+# #188 (passada B, decisao 2026-11-17): partida de outra academia cortada no teto
+# ---------------------------------------------------------------------------
+
+
+def _clamp(load, *, start, ceiling=80):
+    track = replace(
+        fx.track(exercise_id=SUPINO, equipment_id=BANCO, muscle_group_id=PEITO, load=load, is_compound=True),
+        max_load_kg=D(str(ceiling)),
+        start_from_other_gym=start,
+    )
+    evidence: dict = {}
+    return pe._clamp_to_equipment_ceiling(track, D(str(load)), pe.HOLD, evidence, []), evidence
+
+
+def test_partida_de_outra_academia_acima_do_teto_vira_o_teto():
+    (load, decision), evidence = _clamp(100, start=True)
+    assert (load, decision) == (D("80"), pe.HOLD)
+    assert "load_increment_kg" not in evidence
+
+
+def test_partida_de_outra_academia_abaixo_do_teto_fica_inalterada():
+    (load, _decision), _ = _clamp(70, start=True)
+    assert load == D("70")
+
+
+def test_trilha_propria_acima_do_teto_continua_inalterada():
+    (load, decision), evidence = _clamp(100, start=False)
+    assert (load, decision) == (D("100"), pe.HOLD)
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_REACHED
+
+
+@pytest.mark.parametrize(("from_other_gym", "esperada"), [(True, 80.0), (False, 100.0)])
+def test_fallback_por_logs_corta_so_a_partida_de_outra_academia(monkeypatch, from_other_gym, esperada):
+    from app.domain import prescription_service as ps_mod
+
+    last = SimpleNamespace(working_load_kg=100.0, from_other_gym=from_other_gym)
+    monkeypatch.setattr(ps_mod, "last_execution_from_logs", lambda *a, **k: last)
+    _motor_sem_banco(monkeypatch, [], [], {(SUPINO, BANCO): D("80")})
+    query = svc.PairQuery(exercise_id=SUPINO, equipment_id=BANCO, training_goal=H, gym_context=2)
+    r = svc.suggest_for_pairs(object(), 1, [query], readiness={}, logs=[{}], now=NOW)[query.key]
+    assert r.suggested_load_kg == esperada
+
+
+def test_partida_de_outra_academia_no_teto_tem_nota_propria_e_nao_reached():
+    """Rodada 1: a carga de la nunca foi executada aqui, entao nao "chegou ao teto"."""
+    track = replace(
+        fx.track(exercise_id=SUPINO, equipment_id=BANCO, muscle_group_id=PEITO, load=100, is_compound=True),
+        max_load_kg=D("80"),
+        start_from_other_gym=True,
+    )
+    evidence: dict = {}
+    reasons: list = []
+    pe._clamp_to_equipment_ceiling(track, D("100"), pe.HOLD, evidence, reasons)
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_START_LIMITED
+    assert reasons == [pe.EQUIPMENT_LOAD_CEILING_START_NOTE]
+    assert pe.EQUIPMENT_LOAD_CEILING_NOTE not in reasons
+
+
+def _clamp_proposta(base, proposta, decision, *, start=True, ceiling=80):
+    track = replace(
+        fx.track(exercise_id=SUPINO, equipment_id=BANCO, muscle_group_id=PEITO, load=base, is_compound=True),
+        max_load_kg=D(str(ceiling)),
+        start_from_other_gym=start,
+    )
+    evidence: dict = {}
+    if proposta != base:
+        evidence["load_increment_kg"] = float(proposta - base)  # o que o passo anterior gravou
+    reasons: list = []
+    result = pe._clamp_to_equipment_ceiling(track, D(str(proposta)), decision, evidence, reasons)
+    return result, evidence, reasons
+
+
+def test_partida_abaixo_do_teto_com_aumento_alem_do_teto_incremento_coerente_por_construcao():
+    """Coerencia por construcao: em `prescribe` a trilha de partida esta em calibracao
+    (aumento do grupo vira HOLD, pendencia da trilha e regime e1RM pulados), entao este
+    ramo nao e alcancado hoje; a funcao continua coerente se for."""
+    (load, decision), evidence, reasons = _clamp_proposta(70, 85, pe.INCREASE_LOAD)
+    assert (load, decision) == (D("80"), pe.INCREASE_LOAD)
+    assert evidence["load_increment_kg"] == 10.0
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_START_LIMITED
+    assert reasons == [pe.EQUIPMENT_LOAD_CEILING_START_NOTE]
+
+
+def test_partida_acima_do_teto_cortada_sem_incremento_desatualizado():
+    (load, decision), evidence, reasons = _clamp_proposta(100, 100, pe.HOLD)
+    assert (load, decision) == (D("80"), pe.HOLD)
+    assert "load_increment_kg" not in evidence
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_START_LIMITED
+    assert reasons == [pe.EQUIPMENT_LOAD_CEILING_START_NOTE]
+
+
+@pytest.mark.parametrize("base", [80, 70])
+def test_partida_no_teto_ou_abaixo_sem_aumento_nao_tem_evidencia_de_limite(base):
+    (load, decision), evidence, reasons = _clamp_proposta(base, base, pe.HOLD)
+    assert (load, decision) == (D(str(base)), pe.HOLD)
+    assert pe.EVIDENCE_EQUIPMENT_LOAD_CEILING not in evidence
+    assert reasons == []
+
+
+def test_partida_no_teto_com_aumento_pedido_vira_hold_com_nota_de_partida():
+    (load, decision), evidence, reasons = _clamp_proposta(80, 85, pe.INCREASE_LOAD)
+    assert (load, decision) == (D("80"), pe.HOLD)
+    assert "load_increment_kg" not in evidence
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_START_LIMITED
+
+
+@pytest.mark.parametrize(
+    ("base", "proposta", "decision", "carga", "estado", "incremento"),
+    [
+        (80, 80, pe.HOLD, 80, pe.EQUIPMENT_CEILING_REACHED, None),
+        (70, 85, pe.INCREASE_LOAD, 80, pe.EQUIPMENT_CEILING_LIMITED, 10.0),
+        (100, 100, pe.HOLD, 100, pe.EQUIPMENT_CEILING_REACHED, None),
+    ],
+)
+def test_trilha_propria_sem_mudanca(base, proposta, decision, carga, estado, incremento):
+    (load, _decision), evidence, _ = _clamp_proposta(base, proposta, decision, start=False)
+    assert load == D(str(carga))
+    assert evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == estado
+    assert evidence.get("load_increment_kg") == incremento
+
+
+@pytest.mark.parametrize(("from_other_gym", "esperado"), [(True, None), (False, D("100"))])
+def test_ceiling_reference_ponto_unico_da_excecao(from_other_gym, esperado):
+    assert pe.ceiling_reference(D("100"), from_other_gym=from_other_gym) == esperado

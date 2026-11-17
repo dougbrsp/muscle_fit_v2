@@ -80,6 +80,7 @@ from .session_loads import (
     technique_application_loads,
 )
 from .prior_fatigue import PriorFatigueBand
+from .equipment_context import CALIBRATION_CODE_START_OTHER_GYM, latest_in_gym_context  # noqa: F401 (reexport)
 from .recovery_signal_summary import RECOVERY_SIGNALS_KEY, summarize_signals
 from .set_measures import REASON_MEASURE_NOT_REP_BASED as _REASON_MEASURE_NOT_REP_BASED
 from .set_measures import has_non_rep_based
@@ -123,6 +124,8 @@ SKIP = "SKIP"
 
 # --- blocked_by ------------------------------------------------------------
 BLOCKED_LOAD_NOT_APPLICABLE = "LOAD_NOT_APPLICABLE"
+# #188: maquina calibrando o contexto (troca de aparelho/academia): carga nao muda
+BLOCKED_CONTEXT_CALIBRATION = "CONTEXT_CALIBRATION"
 BLOCKED_NO_ELIGIBLE_TECHNIQUE = "NO_ELIGIBLE_TECHNIQUE"
 BLOCKED_MODEL_FIXED_SETS = "MODEL_FIXED_SETS"
 BLOCKED_ACTIVATION_MAX = "ACTIVATION_MAX"
@@ -146,6 +149,9 @@ RESET = "RESET"
 
 # --- evidencias / eventos --------------------------------------------------
 REASON_TRACK_IN_CALIBRATION = "track_in_calibration"
+# #188: codigos de `ProgressionDecision.calibration_code` (e evidencia `context_calibration`)
+CALIBRATION_CODE_CONTEXT = "context_calibration"
+EVIDENCE_CONTEXT_CALIBRATION = "context_calibration"
 REASON_PAIN_REPORTED = "pain_reported"
 REASON_NO_WORKING_SETS = "no_working_sets"
 # Lote T3 (medidas de serie): alguma serie de trabalho por tempo ou por
@@ -381,6 +387,9 @@ EQUIPMENT_LOAD_CEILING_LIMITED_NOTE = "Aumento de carga limitado ao teto do equi
 # Valor da evidencia: carga de trabalho ja no teto ("reached") ou aumento so ate o teto ("limited").
 EQUIPMENT_CEILING_REACHED = "reached"
 EQUIPMENT_CEILING_LIMITED = "limited"
+# Carga de PARTIDA herdada de outra academia (nunca executada neste aparelho) cortada no teto.
+EQUIPMENT_CEILING_START_LIMITED = "start_limited"
+EQUIPMENT_LOAD_CEILING_START_NOTE = "Carga de partida de outra academia limitada ao teto deste equipamento."
 EVIDENCE_LOAD_REGIME = "load_regime"
 EVIDENCE_STRENGTH_E1RM_LOAD = "strength_e1rm_load"
 # Evidencia/motivo/bloqueio do ramo de forca.
@@ -716,27 +725,40 @@ def track_key(
     equipment_id: Any,
     fatigue_context: Optional[str] = None,
     training_goal: Any = None,
-) -> tuple[int, int, str, str]:
+    gym_context: Optional[int] = None,
+) -> tuple:
     """Identidade da trilha: `(exercicio, equipamento, contexto de fadiga,
     objetivo)`. M97 F1: o objetivo (`domain/training_goal.py`, leitura
     tolerante: ausente = default) separa a trilha de forca da de hipertrofia
-    do mesmo par e contexto."""
-    return (
+    do mesmo par e contexto. #188: maquina ganha a 5a posicao, a academia
+    (`gym_context`, resolvida pelo dono `domain/equipment_context.context_gym_id`);
+    peso livre (`None`) fica com a chave de 4 posicoes de sempre."""
+    key = (
         int(exercise_id),
         int(equipment_id),
         str(fatigue_context or DEFAULT_FATIGUE_CONTEXT),
         goal_value(training_goal),
     )
+    return key if gym_context is None else key + (int(gym_context),)
+
+
+def key_gym_context(key: Sequence[Any]) -> Optional[int]:
+    """Academia da chave da trilha (5a posicao), ou `None` (peso livre)."""
+    return int(key[4]) if len(key) > 4 and key[4] is not None else None
 
 
 def track_label(key: Sequence[Any]) -> str:
     """Rotulo da trilha na evidencia (`progression_decisions.evidence_json`):
     `"ex:eq"` no contexto descansado (o formato de sempre), `"ex:eq:ctx"`
     nos outros e, fora do objetivo default (M97 F1), `"ex:eq:ctx:objetivo"`.
-    Trilha do objetivo default tem o MESMO rotulo de antes."""
+    Trilha do objetivo default tem o MESMO rotulo de antes. Maquina (#188):
+    `"ex:eq:ctx:objetivo:gym<id>"` sempre completo; peso livre nao muda."""
     base = f"{key[0]}:{key[1]}"
     context = key[2] if len(key) > 2 else DEFAULT_FATIGUE_CONTEXT
     goal = goal_value(key[3] if len(key) > 3 else None)
+    gym = key_gym_context(key)
+    if gym is not None:
+        return f"{base}:{context}:{goal}:gym{gym}"
     if goal != DEFAULT_GOAL.value:
         return f"{base}:{context}:{goal}"
     return base if context == DEFAULT_FATIGUE_CONTEXT else f"{base}:{context}"
@@ -745,10 +767,14 @@ def track_label(key: Sequence[Any]) -> str:
 def track_key_payload(key: Optional[Sequence[Any]]) -> Optional[list[Any]]:
     """Alvo gravado em `pending_payload.track_key`: `[ex, eq, ctx]` no
     objetivo default (o formato de sempre - o estado gravado de hipertrofia
-    nao muda) e `[ex, eq, ctx, objetivo]` nos outros (M97 F1)."""
+    nao muda) e `[ex, eq, ctx, objetivo]` nos outros (M97 F1). Maquina
+    (#188): `[ex, eq, ctx, objetivo, academia]` sempre completo."""
     if not key:
         return None
     values = list(key)
+    if key_gym_context(values) is not None:
+        return values[:5]
+    values = values[:4]
     if len(values) > 3 and goal_value(values[3]) == DEFAULT_GOAL.value:
         values = values[:3]
     return values
@@ -758,16 +784,45 @@ def target_matches(raw_target: Any, track: "TrackState") -> bool:
     """O alvo de uma acao pendente (`pending_payload.track_key`) e esta
     trilha? Alvo com 3 ou 4 posicoes compara a trilha inteira (com contexto;
     3 posicoes = objetivo default); alvo legado com 2 (gravado antes do
-    contexto) compara so o par."""
+    contexto) compara so o par. Alvo com 5 = maquina com academia (#188)."""
     if not isinstance(raw_target, (list, tuple)) or len(raw_target) < 2:
         return False
     try:
         if len(raw_target) >= 3:
             goal = raw_target[3] if len(raw_target) >= 4 else None
-            return track_key(raw_target[0], raw_target[1], raw_target[2], goal) == track.key
+            gym = key_gym_context(raw_target)
+            return track_key(raw_target[0], raw_target[1], raw_target[2], goal, gym) == track.key
         return (int(raw_target[0]), int(raw_target[1])) == track.pair
     except (TypeError, ValueError):
         return False
+
+
+def _track_recency(track: "TrackState") -> tuple:
+    """Ordem de recencia das trilhas: `(last_executed_at, id)`."""
+    return (track.last_executed_at or datetime.min, track.id or 0)
+
+
+def current_track_for_pair(
+    tracks: Mapping[Any, "TrackState"] | Iterable["TrackState"],
+    exercise_id: Any,
+    equipment_id: Any,
+    gym_context: Optional[int] = None,
+) -> Optional["TrackState"]:
+    """#188: a trilha ATUAL do par - a executada mais recentemente, de qualquer
+    objetivo e contexto de fadiga (desempate por `id`). `gym_context` (do dono
+    `equipment_context.context_gym_id`) restringe a essa academia, sem fallback
+    para outra; `None` (peso livre) = qualquer academia, como antes."""
+    if exercise_id is None or equipment_id is None:
+        return None
+    values = tracks.values() if isinstance(tracks, Mapping) else tracks
+    pair = [
+        t
+        for t in values
+        if t.exercise_id == int(exercise_id)
+        and t.equipment_id == int(equipment_id)
+        and (gym_context is None or t.gym_context == int(gym_context))
+    ]
+    return max(pair, key=_track_recency) if pair else None
 
 
 def resolve_track(
@@ -776,6 +831,7 @@ def resolve_track(
     equipment_id: Any,
     fatigue_context: Optional[str] = None,
     training_goal: Any = None,
+    gym_context: Optional[int] = None,
 ) -> tuple[Optional["TrackState"], bool]:
     """Trilha para PRESCREVER o par no contexto pedido, SO entre as trilhas
     do objetivo pedido (M97 F1; ausente = default): a trilha de forca nunca
@@ -790,24 +846,67 @@ def resolve_track(
     - `fatigue_context=None` (quem prescreve sem posicao planejada: troca de
       equipamento, treino livre, card do dashboard) -> a trilha executada mais
       recentemente do par, no contexto DELA.
-    - Par sem trilha (no objetivo) -> `(None, False)`."""
+    - Par sem trilha (no objetivo) -> `(None, False)`.
+
+    #188: `gym_context` (academia da maquina, do dono
+    `domain/equipment_context.context_gym_id`) restringe tudo as trilhas da
+    MESMA academia: o fallback nunca cruza academia para maquina.
+    `gym_context=None` (peso livre, ou chamador que ainda nao passa a
+    academia) casa como antes, em qualquer academia."""
     if equipment_id is None:
         return None, False
     goal = goal_value(training_goal)
+    pair_goal = sorted(
+        (
+            track
+            for track in tracks.values()
+            if track.exercise_id == int(exercise_id)
+            and track.equipment_id == int(equipment_id)
+            and goal_value(track.training_goal) == goal
+        ),
+        key=_track_recency,
+    )
+    same_pair = [t for t in pair_goal if gym_context is None or t.gym_context == int(gym_context)]
     if fatigue_context is not None:
-        exact = tracks.get(track_key(exercise_id, equipment_id, fatigue_context, goal))
+        exact = tracks.get(track_key(exercise_id, equipment_id, fatigue_context, goal, gym_context))
         if exact is not None:
             return exact, True
-    same_pair = [
-        track
-        for track in tracks.values()
-        if track.exercise_id == int(exercise_id)
-        and track.equipment_id == int(equipment_id)
-        and goal_value(track.training_goal) == goal
+        if gym_context is None:
+            # chamador sem academia (legado): trilha de maquina do mesmo contexto, a mais recente
+            in_context = [track for track in same_pair if track.fatigue_context == str(fatigue_context)]
+            if in_context:
+                return in_context[-1], True
+    # #188: sem trilha nesta academia, a carga de PARTIDA vem da mais recente do
+    # mesmo aparelho em OUTRA academia (regra unica `latest_in_gym_context`), sem
+    # herdar estado (pendencias, contadores, tecnica): o contexto nasce calibrando.
+    candidates = [
+        t for t in pair_goal if gym_context is None or t.gym_context == int(gym_context) or t.working_load_kg is not None
     ]
-    if not same_pair:
+    latest, from_other_gym = latest_in_gym_context(candidates, gym_context, lambda t: t.gym_context)
+    if latest is None:
         return None, False
-    latest = max(same_pair, key=lambda track: (track.last_executed_at or datetime.min, track.id or 0))
+    if from_other_gym:
+        source = latest
+        return (
+            TrackState(
+                exercise_id=source.exercise_id,
+                equipment_id=source.equipment_id,
+                muscle_group_id=source.muscle_group_id,
+                load_status=CALIBRATION,
+                working_load_kg=source.working_load_kg,
+                sets_count=source.sets_count,
+                last_executed_at=source.last_executed_at,
+                stimulus_weight=source.stimulus_weight,
+                is_compound=source.is_compound,
+                load_increment_kg=source.load_increment_kg,
+                max_load_kg=source.max_load_kg,
+                fatigue_context=str(fatigue_context or source.fatigue_context),
+                training_goal=source.training_goal,
+                gym_context=int(gym_context),
+                start_from_other_gym=True,
+            ),
+            False,
+        )
     if fatigue_context is None:
         return latest, True
     # acao pendente da trilha de OUTRO contexto nao se aplica ao contexto pedido
@@ -871,12 +970,28 @@ class TrackState:
     # M97 F1 (migracao 093): objetivo de treino da trilha (VALOR de
     # `domain/training_goal.TrainingGoal`; persistido, na chave unica).
     training_goal: str = DEFAULT_GOAL.value
+    # #188 (migracao 118): academia da maquina (`equipment_context.context_gym_id`);
+    # `None` = peso livre / sem academia (a chave de sempre).
+    gym_context: Optional[int] = None
+    # #188 (metadado, nao persistido): carga de PARTIDA vinda da trilha do mesmo
+    # aparelho em OUTRA academia (`resolve_track`), sem estado proprio ainda.
+    start_from_other_gym: bool = False
 
     @property
-    def key(self) -> tuple[int, int, str, str]:
+    def in_context_calibration(self) -> bool:
+        """#188: maquina calibrando o contexto depois de troca de aparelho ou
+        academia (`equipment_context.context_in_calibration`, aplicada pelo
+        avaliador): `CALIBRATION` guardando a ultima carga executada no
+        contexto. Peso livre e trilha nunca executada ficam de fora."""
+        return self.gym_context is not None and self.in_calibration and self.working_load_kg is not None
+
+    @property
+    def key(self) -> tuple:
         """Identidade da trilha: `(exercise_id, equipment_id, fatigue_context,
-        training_goal)` - a mesma de `track_key`."""
-        return track_key(self.exercise_id, self.equipment_id, self.fatigue_context, self.training_goal)
+        training_goal[, gym_context])` - a mesma de `track_key`."""
+        return track_key(
+            self.exercise_id, self.equipment_id, self.fatigue_context, self.training_goal, self.gym_context
+        )
 
     @property
     def pair(self) -> tuple[int, int]:
@@ -1671,6 +1786,14 @@ def load_increment(*, is_compound: bool, load_increment_kg: Any = None) -> LoadI
     return LoadIncrement(delta_kg=delta, step_kg=step, evidence=evidence)
 
 
+def ceiling_reference(base: Optional[Decimal], *, from_other_gym: bool) -> Optional[Decimal]:
+    """Ponto UNICO da excecao do teto (decisao do usuario, 2026-11-17): o
+    `current` a passar a `cap_load_to_ceiling`. Carga de PARTIDA de outra
+    academia nao foi executada neste aparelho, entao nao protege contra o teto
+    (None = corte simples no teto); senao, a propria carga executada."""
+    return None if from_other_gym else base
+
+
 def cap_load_to_ceiling(
     value: Optional[Decimal], max_load_kg: Any, current: Optional[Decimal] = None
 ) -> Optional[Decimal]:
@@ -1807,7 +1930,7 @@ def technique_target_from_payload(payload: Optional[Mapping[str, Any]]) -> Optio
     (`{"track_key": [exercise_id, equipment_id(, fatigue_context)], ...}`), ou
     None se ausente ou malformado. O alvo persistido (063) e o PAR."""
     raw = (payload or {}).get("track_key")
-    if not isinstance(raw, (list, tuple)) or len(raw) not in (2, 3, 4):
+    if not isinstance(raw, (list, tuple)) or len(raw) not in (2, 3, 4, 5):
         return None
     try:
         return (int(raw[0]), int(raw[1]))
@@ -2389,6 +2512,11 @@ class ProgressionDecision:
     evidence: Mapping[str, Any] = field(default_factory=dict)
     next_eligible_progression_at: Optional[datetime] = None
     reason: str = ""
+    # #188: trilha de maquina calibrando o contexto - carga = ultima executada
+    # no contexto (ou a de partida de outra academia); `calibration_code` em
+    # `CALIBRATION_CODE_*`. Tambem vai na evidencia (`context_calibration`).
+    calibrating: bool = False
+    calibration_code: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2616,25 +2744,41 @@ def _clamp_to_equipment_ceiling(
     trabalho ja no teto ou acima dele: INCREASE_LOAD vira HOLD e a progressao
     segue por reps/volume; reducao nunca e criada nem desfeita pelo teto.
     Evidencia: `reached` (carga de trabalho >= teto) ou `limited` (subiu, mas so
-    ate o teto). Sem teto: identidade (comportamento anterior)."""
+    ate o teto). Sem teto: identidade (comportamento anterior).
+
+    Excecao (decisao do usuario, 2026-11-17): a carga de PARTIDA herdada de
+    outra academia (`start_from_other_gym`) nao e carga executada neste
+    aparelho, entao e cortada no teto (`cap_load_to_ceiling` sem `current`)."""
     if track.max_load_kg is None or Decimal(str(track.max_load_kg)) <= 0 or not track.load_applicable:
         return load, decision
     ceiling = Decimal(str(track.max_load_kg))
     base = Decimal(track.working_load_kg) if track.working_load_kg is not None else None
+    start_cut = track.start_from_other_gym
     if load is not None:
-        capped = cap_load_to_ceiling(load, ceiling, current=base)
+        capped = cap_load_to_ceiling(load, ceiling, current=ceiling_reference(base, from_other_gym=start_cut))
         if capped != load:
             load = capped
-            evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_LIMITED
+            evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = (
+                EQUIPMENT_CEILING_START_LIMITED if start_cut else EQUIPMENT_CEILING_LIMITED
+            )
             if base is not None:
-                evidence_out["load_increment_kg"] = float(load - base)
+                # incremento coerente com a carga final; sem aumento (partida cortada) nao fica valor velho
+                if load > base:
+                    evidence_out["load_increment_kg"] = float(load - base)
+                else:
+                    evidence_out.pop("load_increment_kg", None)
     if base is not None and base >= ceiling and decision != DECREASE_LOAD:
-        evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_REACHED
+        # partida de outra academia: a carga de la nunca foi executada aqui, nao "chegou ao teto";
+        # a evidencia dela so existe quando houve corte (acima)
+        if not start_cut:
+            evidence_out[EVIDENCE_EQUIPMENT_LOAD_CEILING] = EQUIPMENT_CEILING_REACHED
         if decision == INCREASE_LOAD and (load is None or load <= base):
             decision = HOLD
             evidence_out.pop("load_increment_kg", None)
     state = evidence_out.get(EVIDENCE_EQUIPMENT_LOAD_CEILING)
-    if state == EQUIPMENT_CEILING_REACHED:
+    if state == EQUIPMENT_CEILING_START_LIMITED:
+        reasons.append(EQUIPMENT_LOAD_CEILING_START_NOTE)
+    elif state == EQUIPMENT_CEILING_REACHED:
         reasons.append(EQUIPMENT_LOAD_CEILING_NOTE)
     elif state == EQUIPMENT_CEILING_LIMITED:
         reasons.append(EQUIPMENT_LOAD_CEILING_LIMITED_NOTE)
@@ -2729,6 +2873,17 @@ def prescribe(
     technique_from_progression = track_technique_in_force(track, group)
     decision = HOLD
     reasons: list[str] = []
+    # #188: em calibracao de contexto o motor nao sobe nem desce a carga
+    calibrating = track.in_context_calibration
+    calibration_code = None
+    if calibrating:
+        calibration_code = CALIBRATION_CODE_START_OTHER_GYM if track.start_from_other_gym else CALIBRATION_CODE_CONTEXT
+        evidence_out[EVIDENCE_CONTEXT_CALIBRATION] = calibration_code
+        reasons.append(
+            "Carga de partida do mesmo aparelho em outra academia: calibrando a maquina."
+            if track.start_from_other_gym
+            else "Calibrando a maquina neste contexto: mantem a ultima carga executada."
+        )
 
     dose_reduced = readiness.status != READY or readiness.has_blocking_pain
     if dose_reduced:
@@ -2745,6 +2900,9 @@ def prescribe(
         if decision == SET_REP_RANGE_10_12:
             reps_min, reps_max = PROGRESSED_REPS
             reasons.append("Faixa de repeticoes passa a 10-12 para todas as trilhas do grupo.")
+        elif decision in (INCREASE_LOAD, DECREASE_LOAD) and calibrating:
+            blocked.append(BLOCKED_CONTEXT_CALIBRATION)
+            decision = HOLD
         elif decision == INCREASE_LOAD:
             if not track.load_applicable:
                 blocked.append(BLOCKED_LOAD_NOT_APPLICABLE)
@@ -2840,7 +2998,7 @@ def prescribe(
     # os outros exercicios do grupo (nao muda a fase). Dose reduzida difere,
     # como as acoes do grupo. Vale sobre HOLD/DECREASE_LOAD; com outra acao do
     # grupo na mesma ficha, a carga sobe e a acao do grupo e mantida.
-    track_load = None if dose_reduced else track_pending_load(track, now=now)
+    track_load = None if dose_reduced or calibrating else track_pending_load(track, now=now)
     if track_load is not None and (load is None or track_load > load):
         base = Decimal(track.working_load_kg) if track.working_load_kg is not None else track_load
         load = track_load
@@ -2866,7 +3024,7 @@ def prescribe(
                 f"carga da trilha sobe para {track_load} kg e a faixa volta ao piso."
             )
 
-    if ladder.load_pct_1rm is not None:
+    if ladder.load_pct_1rm is not None and not calibrating:
         load, decision = _apply_e1rm_load_regime(
             track, ladder, current_e1rm_kg, load, decision, evidence_out, reasons, blocked
         )
@@ -2913,4 +3071,6 @@ def prescribe(
         evidence=evidence_out,
         next_eligible_progression_at=group.next_eligible_progression_at,
         reason=" ".join(reasons),
+        calibrating=calibrating,
+        calibration_code=calibration_code,
     )

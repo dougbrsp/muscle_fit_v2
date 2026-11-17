@@ -44,6 +44,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Optional, Sequence
 
+from ..load_conventions import equipment_exercises_join_sql
 from ..set_types import normalize_set_type, sql_is_working, sql_not_preparatory, sql_set_confirmed
 from .set_measures import DEFAULT_MEASURE, SetMeasure, is_rep_based, normalize_measure
 from .training_goal import DEFAULT_GOAL, goal_value, goals_in
@@ -485,6 +486,15 @@ class ExerciseExecution:
     # carimbado no registro a partir da linha da ficha; VALOR do dono
     # `domain/training_goal.py`, leitura tolerante: ausente = default).
     training_goal: str = DEFAULT_GOAL.value
+    # #188: academia do VINCULO do equipamento (`gym_equipment.gym_id`) e o
+    # tipo (`equipment_types.code`); a chave da trilha vem do dono
+    # `domain/equipment_context.context_gym_id`.
+    gym_id: Optional[int] = None
+    equipment_type_code: Optional[str] = None
+    # #188: convencao de carga do par (`equipment_exercises.load_convention`,
+    # cru; `None` = nao cadastrada). Entra so na chave fisica da calibracao
+    # (`comparability.calibration_physical_key`), nunca na trilha.
+    load_convention: Optional[str] = None
 
     @property
     def pair(self) -> Optional[tuple[int, int]]:
@@ -565,6 +575,9 @@ SELECT
   COALESCE(e.mapping_id, wpe.mapping_id) AS exercise_id,
   ge.equipment_id             AS equipment_id,
   e.equipment_id              AS gym_equipment_id,
+  ge.gym_id                   AS gym_id,
+  et.code                     AS equipment_type_code,
+  eqex.load_convention        AS load_convention,
   e.workout_plan_exercise_id  AS workout_plan_exercise_id,
   e.training_goal             AS training_goal,
   e.muscle_pain               AS exercise_muscle_pain,
@@ -618,7 +631,10 @@ FROM (
 JOIN exercises e ON e.activity_id = s.activity_id
 LEFT JOIN workout_plan_exercises wpe ON wpe.id = e.workout_plan_exercise_id
 LEFT JOIN gym_equipment ge ON ge.id = e.equipment_id
-LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {sql_not_preparatory("es.set_type")} AND {sql_set_confirmed('es.reps_pending')}
+LEFT JOIN equipment eq ON eq.id = ge.equipment_id
+LEFT JOIN equipment_types et ON et.id = eq.equipment_type_id
+LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = COALESCE(e.mapping_id, wpe.mapping_id)
+{equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, e.mapping_id, wpe.mapping_id)")}LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {sql_not_preparatory("es.set_type")} AND {sql_set_confirmed('es.reps_pending')}
 ORDER BY s.occurred_at ASC, s.activity_id ASC, e.sequence ASC, e.id ASC, es.set_number ASC, es.id ASC
 """
 
@@ -661,6 +677,9 @@ def build_sessions(rows: Iterable[dict[str, Any]]) -> list[SessionRecord]:
                 "exercise_id": parse_int(row.get("exercise_id")),
                 "equipment_id": parse_int(row.get("equipment_id")),
                 "gym_equipment_id": parse_int(row.get("gym_equipment_id")),
+                "gym_id": parse_int(row.get("gym_id")),
+                "equipment_type_code": row.get("equipment_type_code"),
+                "load_convention": row.get("load_convention"),
                 "workout_plan_exercise_id": parse_int(row.get("workout_plan_exercise_id")),
                 "prescribed": PrescribedSpec.from_row(row),
                 "muscle_pain": parse_int(row.get("exercise_muscle_pain")),
@@ -682,6 +701,9 @@ def build_sessions(rows: Iterable[dict[str, Any]]) -> list[SessionRecord]:
                 exercise_id=item["exercise_id"],
                 equipment_id=item["equipment_id"],
                 gym_equipment_id=item["gym_equipment_id"],
+                gym_id=item["gym_id"],
+                equipment_type_code=item["equipment_type_code"],
+                load_convention=item["load_convention"],
                 workout_plan_exercise_id=item["workout_plan_exercise_id"],
                 prescription_snapshot_id=item["workout_plan_exercise_id"],
                 prescribed=item["prescribed"],

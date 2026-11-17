@@ -73,3 +73,22 @@ def test_dose_inputs_defaults_sem_dado():
     assert e1rm.dose_inputs(None, None) == (e1rm.DOSE_REPS_WHEN_MISSING, e1rm.DOSE_RPE_WHEN_MISSING) == (8, 7.0)
     assert e1rm.dose_inputs(12, 9.5) == (12, 9.5)
     assert e1rm.dose_inputs(0, 0) == (0, 0.0)
+
+
+def test_reliable_reps_sql_espelha_is_reliable_reps():
+    # #188 etapa 3: o filtro SQL de `analytics._fetch_group_e1rm_rows` vem do dono.
+    assert e1rm.reliable_reps_sql("es.reps") == (
+        f"es.reps > 0 AND es.reps <= {e1rm.E1RM_MAX_RELIABLE_REPS}"
+    )
+    assert e1rm.E1RM_MAX_RELIABLE_REPS == 12
+    assert e1rm.is_reliable_reps(12) and not e1rm.is_reliable_reps(13) and not e1rm.is_reliable_reps(0)
+
+
+def test_analytics_usa_o_predicado_sql_do_dono():
+    import inspect
+
+    from app import analytics
+
+    source = inspect.getsource(analytics._fetch_group_e1rm_rows)
+    assert 'reliable_reps_sql("es.reps")' in source
+    assert "E1RM_MAX_RELIABLE_REPS" not in source.split('"""')[-1]

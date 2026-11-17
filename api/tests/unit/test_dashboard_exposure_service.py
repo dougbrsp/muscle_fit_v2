@@ -501,3 +501,24 @@ def test_caso_real_do_agachamento_e_progresso_com_aviso_de_menos_series():
     assert payload["status"] == ExerciseProgressionStatus.PROGRESSING.value
     assert "same_load_more_reps" in payload["status_reasons"]
     assert "fewer_working_sets" in payload["status_reasons"]
+
+
+def test_equipment_context_code_primeira_vez_nesta_academia_188():
+    from types import SimpleNamespace
+
+    from app.domain.progression_engine import CALIBRATION_CODE_START_OTHER_GYM
+    from app.intelligence.dashboard.exposure_service import equipment_context_code
+
+    def exp(equipment_id, gym_id):
+        return {"equipment_id": equipment_id, "_key": SimpleNamespace(gym_id=gym_id)}
+
+    so_em_a = [exp(9, 1), exp(9, 1)]
+    assert equipment_context_code(so_em_a, 9, 2) == CALIBRATION_CODE_START_OTHER_GYM
+    assert equipment_context_code(so_em_a, 9, 1) is None
+    assert equipment_context_code(so_em_a + [exp(9, 2)], 9, 2) is None
+    # sem contexto informado, aparelho nunca usado ou sem equipamento: nada a dizer
+    assert equipment_context_code(so_em_a, 9) is None
+    assert equipment_context_code(so_em_a, 42, 2) is None
+    assert equipment_context_code(so_em_a, None, 2) is None
+    # peso livre: chave sem academia, contexto None
+    assert equipment_context_code([exp(9, None)], 9, None) is None

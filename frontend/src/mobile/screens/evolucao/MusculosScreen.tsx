@@ -13,7 +13,6 @@ import { EM_DASH, fmtDate, fmtInt, fmtKg, fmtRpe, fmtSets } from '@/lib/dashboar
 import {
   MUSCLE_SORTS,
   MUSCLE_SORT_LABELS,
-  contributionsByExercise,
   countByStatus,
   groupsOutsideTemplatePlan,
   groupsWithGenericTarget,
@@ -24,7 +23,7 @@ import {
   type MuscleSort,
 } from '@/lib/dashboard-muscles';
 import { STATUS_DOMAIN_ORDER, volumeStatusDomain } from '@/lib/dashboard-status';
-import type { MuscleItem, MuscleSession } from '@/lib/dashboard-v3-types';
+import type { MuscleExerciseContribution, MuscleItem, MuscleSession } from '@/lib/dashboard-v3-types';
 import { exerciseProgressHref } from '@/lib/exercise-progress';
 import { isWorkingSetType } from '@/lib/set-types';
 import {
@@ -316,7 +315,7 @@ function GrupoDetalhe({
             <>
               <PartialNote quality={d.data_quality} limitations={d.limitations} />
               {d.sets_truncated ? <p className={styles.note}>Mostrando as {d.sets_limit} séries mais recentes do período.</p> : null}
-              <Contribuicoes sessions={d.sessions} onPick={(id, name) => setExercise({ id, name })} />
+              <Contribuicoes contribs={d.exercise_contributions ?? []} onPick={(id, name) => setExercise({ id, name })} />
               <BottomSheet opened={exercise !== null} onClose={() => setExercise(null)} title={exercise?.name ?? 'Exercício'}>
                 {exercise ? (
                   <ExercicioSeries
@@ -335,13 +334,18 @@ function GrupoDetalhe({
   );
 }
 
-function Contribuicoes({ sessions, onPick }: { sessions: MuscleSession[]; onPick: (id: number | null, name: string) => void }) {
-  const contribs = useMemo(() => contributionsByExercise(sessions), [sessions]);
+function Contribuicoes({
+  contribs,
+  onPick,
+}: {
+  contribs: MuscleExerciseContribution[];
+  onPick: (id: number | null, name: string) => void;
+}) {
   return (
     <ListGroup>
       {contribs.map((c) => (
         <ListRow
-          key={`${c.exerciseId ?? c.name}`}
+          key={`${c.exercise_id ?? c.name}`}
           title={c.name}
           subtitle={`${fmtSets(c.stimulus, 1)} efetivas${c.share != null ? ` · ${Math.round(c.share * 100)}% do grupo` : ''}`}
           trailing={
@@ -351,7 +355,7 @@ function Contribuicoes({ sessions, onPick }: { sessions: MuscleSession[]; onPick
               ))}
             </span>
           }
-          onClick={() => onPick(c.exerciseId, c.name)}
+          onClick={() => onPick(c.exercise_id, c.name)}
         />
       ))}
     </ListGroup>

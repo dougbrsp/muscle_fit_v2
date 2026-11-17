@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from .domain import equipment_ranking as ranking
+from .domain.equipment_context import manufacturer_columns_sql, manufacturer_join_sql, with_manufacturer_fields
 from .domain.laboral import sql_not_laboral
 from .domain import training_safety as ts
 from .workout_plan_edit_rules import PLANNED_PLAN_STATUS
@@ -200,14 +201,17 @@ def _load_candidates(cursor: Any, gym_id: int, group: Optional[str]) -> list[dic
                 ORDER BY zam.id ASC LIMIT 1
             ) AS mapping_amazfit_name,
             pg.id AS muscle_group_id, pg.name AS primary_group,
-            GROUP_CONCAT(DISTINCT ea.alias ORDER BY ea.alias SEPARATOR '{_ALIAS_SEPARATOR}') AS mapping_aliases_raw
+            GROUP_CONCAT(DISTINCT ea.alias ORDER BY ea.alias SEPARATOR '{_ALIAS_SEPARATOR}') AS mapping_aliases_raw,
+            {manufacturer_columns_sql()}
         FROM gym_equipment ge
         JOIN exercise_catalog zm ON zm.id = ge.mapping_id
         {_PRIMARY_GROUP_JOIN}
         JOIN equipment eq ON eq.id = ge.equipment_id
+        {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
         LEFT JOIN exercise_aliases ea ON ea.exercise_id = ge.mapping_id
         WHERE {' AND '.join(where)}
-        GROUP BY ge.id, ge.mapping_id, ge.equipment_id, eq.name, eq.photo_path, zm.name, pg.id, pg.name
+        GROUP BY ge.id, ge.mapping_id, ge.equipment_id, eq.name, eq.photo_path, zm.name, pg.id, pg.name,
+                 gec.id, gec.manufacturer, eq.manufacturer, gec_g.owner_user_id
         ORDER BY ge.id ASC
         """,
         tuple(params),
@@ -251,8 +255,17 @@ def rank_gym_equipment_rows(
 # ---------------------------------------------------------------------------
 
 
+def _closed(_owner_user_id: Any) -> bool:
+    return False
+
+
 def _enrich_and_rank(
-    conn: Any, cursor: Any, candidates: list[dict[str, Any]], gym_id: int, user_id: Optional[int]
+    conn: Any,
+    cursor: Any,
+    candidates: list[dict[str, Any]],
+    gym_id: int,
+    user_id: Optional[int],
+    can_edit_manufacturer: Callable[[Optional[int]], bool] = _closed,
 ) -> tuple[list[dict[str, Any]], dict[int, ts.TrainingSafety]]:
     if not candidates:
         return [], {}
@@ -265,7 +278,7 @@ def _enrich_and_rank(
     safety_by_item: dict[int, ts.TrainingSafety] = {}
     items: list[dict[str, Any]] = []
     for row in candidates:
-        item = dict(row)
+        item = with_manufacturer_fields(row, can_edit_manufacturer)  # #188: fabricante nesta academia
         raw_aliases = item.pop("mapping_aliases_raw", None)
         item["mapping_aliases"] = raw_aliases.split(_ALIAS_SEPARATOR) if raw_aliases else []
         used = recency.get(int(item["id"])) or {}
@@ -291,13 +304,15 @@ def recommend_for_group(
     group: str,
     exclude_gym_equipment_id: Optional[int] = None,
     required_technique: Optional[str] = None,
+    can_edit_manufacturer: Callable[[Optional[int]], bool] = _closed,
 ) -> dict[str, Any]:
     """Payload de `/gym-equipment/recommend` (sem `ok`), para UM grupo muscular.
+    `can_edit_manufacturer(owner_user_id)`: posse do RBAC (`gyms.manufacturer_editor`); fechado por padrao.
     `required_technique` fora do catalogo ativo exclui todos os itens
     (TECHNIQUE_INCOMPATIBLE); a rota HTTP responde 422 antes de chegar aqui."""
     with conn.cursor() as cursor:
         candidates = _load_candidates(cursor, gym_id, group)
-        ranked, safety_by_item = _enrich_and_rank(conn, cursor, candidates, gym_id, user_id)
+        ranked, safety_by_item = _enrich_and_rank(conn, cursor, candidates, gym_id, user_id, can_edit_manufacturer)
     has_equipment_for_group = bool(ranked)  # ignora exclude_equipment_id, como antes
     if exclude_gym_equipment_id:
         ranked = [item for item in ranked if item["id"] != exclude_gym_equipment_id]

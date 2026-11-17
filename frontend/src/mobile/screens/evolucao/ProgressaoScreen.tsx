@@ -580,8 +580,8 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
         {fatigueContextLabel(item.fatigue_context) ? (
           <p className={styles.meta}>{fatigueContextLabel(item.fatigue_context)}</p>
         ) : null}
-        {item.in_verdict_key === false ? (
-          <p className={styles.meta}>Outro equipamento, convenção ou condição de fadiga.</p>
+        {item.in_verdict_run === false ? (
+          <p className={styles.meta}>Fora do veredito.</p>
         ) : null}
         {isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label ? (
           <div className={styles.badges} style={{ marginTop: 8 }}>

@@ -12,6 +12,7 @@ import inspect
 import pytest
 
 from app import muscle_groups_mapped as mgm
+from app.intelligence import volume_comparison
 from app.security import Identity
 
 
@@ -203,3 +204,46 @@ def test_health_lista_so_grupos_primarios_cadastrados(fake_rows):
 def test_rotas_nao_aceitam_mais_fator_fixo_de_secundario():
     for funcao in (mgm.trend, mgm.table, mgm.aggregate):
         assert "secondary_factor" not in inspect.signature(funcao).parameters
+
+
+# #188 (passada B): `pressure_rows` pronto do servidor (paridade com `MuscleGroupTrend.test.ts`).
+def _trend(period, group, value):
+    return {"period": period, "group": group, "value": value}
+
+
+TREND_ROWS = [
+    _trend("2026-W38", "Peitoral", 1000),
+    _trend("2026-W39", "Peitoral", 1200),
+    _trend("2026-W38", "Costas", 900),
+    _trend("2026-W39", "Costas", 600),
+    _trend("2026-W39", "Bíceps", 300),
+]
+
+
+def test_pressure_rows_paridade_com_o_cliente():
+    out = volume_comparison.pressure_rows(TREND_ROWS)
+    assert (out["latest_period"], out["previous_period"]) == ("2026-W39", "2026-W38")
+    rows = out["pressure_rows"]
+    assert [r["group"] for r in rows] == ["Peitoral", "Costas", "Bíceps"]
+    assert rows[0] == {
+        "group": "Peitoral", "latest": 1200.0, "previous": 1000.0, "total": 2200.0, "variation_pct": 20.0, "tone": "up",
+    }
+    assert rows[1]["variation_pct"] == -33.3333 and rows[1]["tone"] == "down" and rows[1]["total"] == 1500.0
+    assert rows[2]["previous"] == 0.0 and rows[2]["variation_pct"] is None and rows[2]["tone"] is None
+
+
+def test_pressure_rows_desempate_total_e_nome_e_janela_de_um_periodo():
+    rows = [_trend("2026-W38", "Ombro", 50), _trend("2026-W39", "Ombro", 100), _trend("2026-W39", "Abdômen", 100),
+            _trend("2026-W39", "Bíceps", 100)]
+    out = volume_comparison.pressure_rows(rows)
+    # mesmo latest: total desc; mesmo total: alfabetico sem acento (localeCompare pt-BR)
+    assert [r["group"] for r in out["pressure_rows"]] == ["Ombro", "Abdômen", "Bíceps"]
+    single = volume_comparison.pressure_rows([_trend("2026-W39", "Ombro", 10)])
+    assert single["previous_period"] is None and single["pressure_rows"][0]["tone"] is None
+    assert volume_comparison.pressure_rows([]) == {"latest_period": None, "previous_period": None, "pressure_rows": []}
+
+
+def test_aggregate_entrega_pressure_rows(fake_rows):
+    result = mgm.aggregate("weekly", "volume", 30, True, user_id=1)
+    assert result["latest_period"] is not None and result["previous_period"] is None  # uma semana so
+    assert {r["group"] for r in result["pressure_rows"]} == {r["group"] for r in result["table_rows"]}

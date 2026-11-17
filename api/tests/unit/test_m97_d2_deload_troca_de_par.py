@@ -96,6 +96,10 @@ def rota(monkeypatch):
     monkeypatch.setattr(services, "_resolve_canonical_exercise_id", lambda mapping_id, cur: PAR_NOVO)
     monkeypatch.setattr(services, "list_exercise_logs", lambda limit, user_id, only_mapping_id: [])
     monkeypatch.setattr(ei, "equipment_id_of_gym_equipment", lambda conn, gym_equipment_id: 7)
+    # #188: academia do vinculo (dono `equipment_context`); sem banco no dublê
+    from app.generation import deterministic_prescription as dp
+
+    monkeypatch.setattr(dp, "gym_contexts_by_gym_equipment", lambda conn, ids: {})
     monkeypatch.setattr(svc, "suggest_for_pair", fake_suggest)
     return state
 

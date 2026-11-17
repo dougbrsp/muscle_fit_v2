@@ -216,67 +216,6 @@ export function groupsOutsideTemplatePlan(items: readonly MuscleItem[]): string[
 // Drill-down
 // ---------------------------------------------------------------------------
 
-export type ExerciseContribution = {
-  exerciseId: number | null;
-  name: string;
-  sets: number;
-  stimulus: number;
-  share: number | null;
-  roles: string[];
-  sessions: number;
-};
-
-/**
- * Sessões → contribuição por EXERCÍCIO, o primeiro nível do drill-down
- * ("grupo → exercícios → sessões → séries").
- *
- * Feito aqui, e não no backend, porque o backend já devolve as sessões com as
- * séries: agregar de novo lá custaria uma consulta a mais para uma soma que o
- * payload já permite. `share` usa o total das sessões RETORNADAS — quando o
- * drill-down trunca, ele descreve a amostra exibida, não o período inteiro.
- */
-export function contributionsByExercise(
-  sessions: readonly MuscleSession[],
-): ExerciseContribution[] {
-  const buckets = new Map<string, ExerciseContribution & { _sessions: Set<number> }>();
-  let total = 0;
-
-  for (const session of sessions) {
-    for (const exposure of session.exposures) {
-      const key = exposure.exercise_id != null ? `id:${exposure.exercise_id}` : `nome:${exposure.name}`;
-      let bucket = buckets.get(key);
-      if (!bucket) {
-        bucket = {
-          exerciseId: exposure.exercise_id,
-          name: exposure.name,
-          sets: 0,
-          stimulus: 0,
-          share: null,
-          roles: [],
-          sessions: 0,
-          _sessions: new Set<number>(),
-        };
-        buckets.set(key, bucket);
-      }
-      bucket.sets += exposure.sets.length;
-      bucket.stimulus += exposure.effective_sets_stimulus;
-      if (!bucket.roles.includes(exposure.role)) bucket.roles.push(exposure.role);
-      bucket._sessions.add(session.activity_id);
-      total += exposure.effective_sets_stimulus;
-    }
-  }
-
-  return [...buckets.values()]
-    .map(({ _sessions, ...bucket }) => ({
-      ...bucket,
-      sessions: _sessions.size,
-      stimulus: Number(bucket.stimulus.toFixed(2)),
-      share: total > 0 ? Number((bucket.stimulus / total).toFixed(3)) : null,
-      roles: [...bucket.roles].sort(),
-    }))
-    .sort((a, b) => b.stimulus - a.stimulus);
-}
-
 /** Sessões em que um exercício específico apareceu (2º nível do drill-down). */
 export function sessionsForExercise(
   sessions: readonly MuscleSession[],
@@ -323,35 +262,6 @@ export const SESSION_UNIT_SUBTITLE =
 /** Rótulo curto da coluna: `T-0`, `T-1`… */
 export function sessionOffsetLabel(offset: number): string {
   return `T-${offset}`;
-}
-
-export type SessionDelta = {
-  current: number | null;
-  previous: number | null;
-  /** `null` quando falta T-0 ou T-1 — nunca 0 fingindo "sem mudança". */
-  delta: number | null;
-  direction: 'up' | 'down' | 'stable' | 'none';
-};
-
-/**
- * Variação entre T-0 e T-1 de uma série de pontos já ordenada por `offset`.
- *
- * `epsilon` existe porque séries efetivas são fracionárias (pesos de
- * contribuição): 3.0000001 contra 3.0 é a mesma coisa, e uma seta de
- * "aumentou" aí seria ruído.
- */
-export function sessionDelta(
-  values: ReadonlyArray<number | null>,
-  epsilon = 0.01,
-): SessionDelta {
-  const current = values[0] ?? null;
-  const previous = values[1] ?? null;
-  if (current == null || previous == null) {
-    return { current, previous, delta: null, direction: 'none' };
-  }
-  const delta = current - previous;
-  if (Math.abs(delta) <= epsilon) return { current, previous, delta, direction: 'stable' };
-  return { current, previous, delta, direction: delta > 0 ? 'up' : 'down' };
 }
 
 /** Nome exibido de um equipamento — `null` é "não registrado", nunca um aparelho. */

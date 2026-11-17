@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -15,7 +15,7 @@ from .models import MuscleActivationPreviewIn
 from .observability import log_event
 from .access import require_permission
 from .security import Identity
-from .domain.set_measures import is_rep_based, sql_if_rep_based, sql_is_rep_based
+from .domain.set_measures import sql_is_rep_based
 from .set_types import sql_not_preparatory, sql_set_confirmed
 from .training_goal_query import goal_query, optional_goal_param, optional_goal_query
 
@@ -254,7 +254,7 @@ def analytics_summary(
             {tonnage_sum} AS volume_kg,
             {tonnage_excluded} AS tonnage_excluded_sets,
             ROUND(AVG(es.rpe), 2) AS avg_rpe,
-            SUM(CASE WHEN es.rpe >= 9 THEN 1 ELSE 0 END) AS high_rpe_sets
+            SUM(CASE WHEN es.rpe >= {_high_rpe_min()} THEN 1 ELSE 0 END) AS high_rpe_sets
         FROM activities a
         LEFT JOIN exercises e ON e.activity_id = a.id
         LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {_ES_NOT_PREPARATORY} AND {sql_set_confirmed('es.reps_pending')}
@@ -330,7 +330,7 @@ def compute_training_trend(period: str, days: int, user_id: Optional[int] = None
             {tonnage_sum} AS volume_kg,
             {tonnage_excluded} AS tonnage_excluded_sets,
             ROUND(AVG(es.rpe), 2) AS avg_rpe,
-            SUM(CASE WHEN es.rpe >= 9 THEN 1 ELSE 0 END) AS high_rpe_sets
+            SUM(CASE WHEN es.rpe >= {_high_rpe_min()} THEN 1 ELSE 0 END) AS high_rpe_sets
         FROM activities a
         LEFT JOIN exercises e ON e.activity_id = a.id
         LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {_ES_NOT_PREPARATORY} AND {sql_set_confirmed('es.reps_pending')}
@@ -387,7 +387,7 @@ def compute_rolling_weekly_trend(days: int, user_id: Optional[int] = None) -> Li
             {tonnage_sum} AS volume_kg,
             {tonnage_excluded} AS tonnage_excluded_sets,
             ROUND(AVG(es.rpe), 2) AS avg_rpe,
-            SUM(CASE WHEN es.rpe >= 9 THEN 1 ELSE 0 END) AS high_rpe_sets
+            SUM(CASE WHEN es.rpe >= {_high_rpe_min()} THEN 1 ELSE 0 END) AS high_rpe_sets
         FROM activities a
         LEFT JOIN exercises e ON e.activity_id = a.id
         LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {_ES_NOT_PREPARATORY} AND {sql_set_confirmed('es.reps_pending')}
@@ -431,6 +431,66 @@ def training_trend(
     }
 
 
+def _high_rpe_min() -> int:
+    """Limiar de serie com RPE alto do registro (`metrics_registry.HIGH_RPE_MIN`).
+    Import preguicoso: o modulo nao carrega `intelligence` no import."""
+    from .intelligence.dashboard.metrics_registry import HIGH_RPE_MIN
+
+    return int(HIGH_RPE_MIN)
+
+
+#: Teto de exercicios casados pelo filtro livre de `/analytics/exercise-progress`
+#: (os de sessao mais recente): cada um custa leituras proprias, e um nome curto
+#: casaria dezenas e estouraria os 29 s do API Gateway.
+EXERCISE_PROGRESS_MAX_EXERCISES = 12
+
+
+# Exercicios canonicos do usuario cujo nome lancado ou nome AMAZFIT casa o
+# filtro livre da tela `/exercicios`. So resolve QUAIS exercicios: a curva sai
+# das exposicoes do dono (`exposure_service`), nunca de agregacao aqui. Uma
+# linha por exercicio, da sessao mais recente (`MAX(a.local_date)` so ordena),
+# limitada no banco (teto de 1 MB da Data API); `matched_total` (janela sobre
+# os grupos, antes do LIMIT) conta todos os casados. Mesmos predicados da
+# leitura do dono (deload fora, serie de trabalho confirmada, objetivo): um
+# exercicio casado nunca sai sem pontos.
+def _exercise_progress_match_sql(with_goal: bool) -> str:
+    from .domain.deload import sql_not_deload
+    from .domain.training_goal import sql_goal_is
+    from .set_types import sql_is_working, sql_set_confirmed
+
+    goal_filter = f"\n  AND {sql_goal_is('e')}" if with_goal else ""
+    return f"""
+SELECT CAST(COALESCE(elm.canonical_exercise_id, e.mapping_id) AS SIGNED) AS exercise_id,
+       MAX(a.local_date) AS last_date,
+       COUNT(*) OVER () AS matched_total
+FROM activities a
+JOIN exercises e ON e.activity_id = a.id
+LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
+WHERE a.user_id = %s
+  AND a.local_date >= %s
+  AND a.local_date <= %s{goal_filter}
+  AND {sql_not_deload("a")}
+  AND COALESCE(elm.canonical_exercise_id, e.mapping_id) IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM exercise_sets es
+    WHERE es.exercise_id = e.id AND {sql_is_working("es.set_type")} AND {sql_set_confirmed("es.reps_pending")}
+  )
+  AND (
+    LOWER(COALESCE(e.original_name, '')) LIKE %s
+    OR LOWER(COALESCE((
+        SELECT exm.external_name
+        FROM exercise_external_mappings exm
+        WHERE exm.exercise_id = COALESCE(elm.canonical_exercise_id, e.mapping_id)
+          AND exm.provider = 'AMAZFIT' AND exm.is_active = 1
+        ORDER BY exm.id ASC LIMIT 1
+    ), '')) LIKE %s
+  )
+GROUP BY exercise_id
+ORDER BY last_date DESC, exercise_id
+LIMIT %s
+"""
+
+
 @router.get("/exercise-progress")
 def exercise_progress(
     name: str = Query(..., min_length=1),
@@ -438,64 +498,128 @@ def exercise_progress(
     goal: Optional[str] = Depends(optional_goal_query),
     identity: Identity = Depends(require_permission("progressao", "ver")),
 ):
-    """Volume/carga por sessao de um exercicio (busca por nome). `goal`
-    (M97 F4, opcional): so as execucoes daquele objetivo (predicado do dono
-    `sql_goal_is`); ausente = todas, como sempre."""
-    from .domain.training_goal import sql_goal_is
+    """Curva de carga/volume/RPE por exposicao dos exercicios cujo nome casa
+    `name`. Issue #188: cada ponto e o resumo de exposicao do DONO
+    (`exposure_service.get_exposures_between` + `exposure_snapshot`): so
+    series de trabalho confirmadas, deload fora, convencao de carga e chave de
+    comparacao do dono, com `in_context_run`/`in_verdict_run`
+    (`verdict_run_flags`). Uma serie por exercicio canonico (`series`);
+    `items` = todos os pontos em ordem de data (tabela). `goal` (M97 F4,
+    opcional): so as execucoes daquele objetivo; ausente = todos os objetivos,
+    com as marcacoes da sequencia do objetivo de cada ponto. No maximo
+    `EXERCISE_PROGRESS_MAX_EXERCISES` exercicios (os de sessao mais recente):
+    `truncated`/`matched_exercises` dizem quando houve corte. O contexto de
+    fadiga continua lido: a sequencia (`in_context_run`) depende dele."""
+    from .intelligence.dashboard.exposure_service import (
+        MAX_TABLE_EXPOSURES,
+        _fetch_exercise,
+        get_exposures_between,
+        in_requested_range,
+        verdict_run_flags,
+    )
 
     goal = optional_goal_param(goal)
     days = _safe_days(days)
-
+    user_id = identity.user_id
+    date_from = _days_ago(user_id, days)
     like = f"%{name.lower()}%"
-    goal_filter = f"AND {sql_goal_is('e')}" if goal is not None else ""
-    goal_params: tuple = (goal,) if goal is not None else ()
+    # Uma linha por exercicio, da sessao mais recente; o +1 so revela o corte.
+    from .domain.training_goal import goal_value
 
+    # Mesma data final da leitura das exposicoes abaixo.
+    date_to = _user_today(user_id)
+    goal_params = (goal_value(goal),) if goal is not None else ()
     rows = _fetch_all(
-        f"""
-        SELECT
-            a.local_date,
-            a.name AS activity_name,
-            e.original_name,
-            (
-                SELECT exm.external_name
-                FROM exercise_external_mappings exm
-                WHERE exm.exercise_id = COALESCE(elm.canonical_exercise_id, e.mapping_id)
-                  AND exm.provider = 'AMAZFIT' AND exm.is_active = 1
-                ORDER BY exm.id ASC LIMIT 1
-            ) AS mapped_name,
-            COUNT(es.id) AS sets_count,
-            COALESCE(SUM(COALESCE(es.reps, 0)), 0) AS reps_total,
-            MAX(es.weight_kg) AS best_weight_kg,
-            COALESCE(SUM({sql_if_rep_based('COALESCE(es.reps, 0) * COALESCE(es.weight_kg, 0)')}), 0) AS volume_kg,
-            ROUND(AVG(es.rpe), 2) AS avg_rpe,
-            SUM(CASE WHEN es.rpe >= 9 THEN 1 ELSE 0 END) AS high_rpe_sets
-        FROM activities a
-        JOIN exercises e ON e.activity_id = a.id
-        LEFT JOIN exercise_sets es ON es.exercise_id = e.id AND {_ES_NOT_PREPARATORY} AND {sql_set_confirmed('es.reps_pending')}
-        LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
-        WHERE a.local_date >= %s
-          AND a.user_id = %s
-          AND (
-            LOWER(COALESCE(e.original_name, '')) LIKE %s
-            OR LOWER(COALESCE((
-                SELECT exm2.external_name
-                FROM exercise_external_mappings exm2
-                WHERE exm2.exercise_id = COALESCE(elm.canonical_exercise_id, e.mapping_id)
-                  AND exm2.provider = 'AMAZFIT' AND exm2.is_active = 1
-                ORDER BY exm2.id ASC LIMIT 1
-            ), '')) LIKE %s
-          )
-          {goal_filter}
-        GROUP BY a.local_date, a.name, e.original_name, e.id
-        ORDER BY a.local_date
-        """,
-        (_days_ago(identity.user_id, days), identity.user_id, like, like, *goal_params),
+        _exercise_progress_match_sql(goal is not None),
+        (user_id, date_from, date_to, *goal_params, like, like, EXERCISE_PROGRESS_MAX_EXERCISES + 1),
     )
+    matches = [int(row["exercise_id"]) for row in rows][:EXERCISE_PROGRESS_MAX_EXERCISES]
+    matched_total = int(rows[0]["matched_total"]) if rows else 0
+
+    series: List[Dict[str, Any]] = []
+    if matches:
+        with _connect() as conn:
+            for exercise_id in matches:
+                exercise = _fetch_exercise(conn, exercise_id) or {}
+                exposures = get_exposures_between(
+                    conn,
+                    exercise_id,
+                    user_id=user_id,
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=MAX_TABLE_EXPOSURES,
+                    training_goal=goal,
+                    all_goals=goal is None,
+                    # veredito sobre a janela do dono tambem sem objetivo (#188)
+                    verdict_context=True,
+                )
+                series.append(
+                    {
+                        "exercise_id": exercise_id,
+                        "exercise_name": exercise.get("exercise_name"),
+                        "mapped_name": exercise.get("exercise_amazfit_name"),
+                        "items": [
+                            _exercise_progress_point(exercise_id, exercise, exposure, flags)
+                            for exposure, flags in zip(exposures, verdict_run_flags(exposures))
+                            # contexto do veredito (#188) decide, mas nao vira ponto do grafico
+                            if in_requested_range(exposure)
+                        ],
+                    }
+                )
+
+    items = sorted((p for s in series for p in s["items"]), key=lambda p: str(p["local_date"] or ""))
+    activity_ids = sorted({p["activity_id"] for p in items if p["activity_id"] is not None})
+    if activity_ids:
+        names = {
+            row["id"]: row.get("name")
+            for row in _fetch_all(
+                f"SELECT id, name FROM activities WHERE user_id = %s AND id IN ({', '.join(['%s'] * len(activity_ids))})",
+                (user_id, *activity_ids),
+            )
+        }
+        for point in items:
+            point["activity_name"] = names.get(point["activity_id"])
 
     return {
         "name": name,
         "days": days,
-        "items": rows,
+        "series": series,
+        "items": items,
+        "matched_exercises": matched_total,
+        "truncated": matched_total > len(matches),
+    }
+
+
+def _exercise_progress_point(
+    exercise_id: int, exercise: Dict[str, Any], exposure: Dict[str, Any], flags: Dict[str, bool]
+) -> Dict[str, Any]:
+    """Um ponto da curva = resumo da exposicao do dono, com os nomes de campo
+    que a tela `/exercicios` ja le."""
+    from .intelligence.dashboard.exposure_service import exposure_snapshot
+
+    snapshot = exposure_snapshot(exposure) or {}
+    return {
+        "exercise_id": exercise_id,
+        "activity_id": exposure.get("activity_id"),
+        "local_date": exposure.get("local_date"),
+        "activity_name": None,
+        "original_name": exercise.get("exercise_name"),
+        "mapped_name": exercise.get("exercise_amazfit_name"),
+        "equipment_name": exposure.get("equipment_name"),
+        "load_convention": exposure.get("load_convention"),
+        "sets_count": snapshot.get("working_sets"),
+        "reps_total": exposure.get("total_reps"),
+        "best_weight_kg": snapshot.get("best_load_kg"),
+        "top_set_reps": snapshot.get("top_set_reps"),
+        "volume_kg": exposure.get("tonnage"),
+        "avg_rpe": snapshot.get("avg_rpe"),
+        "high_rpe_sets": snapshot.get("high_rpe_sets"),
+        "e1rm": snapshot.get("e1rm"),
+        "e1rm_reps": snapshot.get("e1rm_reps"),
+        "e1rm_reliable": snapshot.get("e1rm_reliable"),
+        "comparability_key": exposure.get("comparability_key"),
+        "in_context_run": flags["in_context_run"],
+        "in_verdict_run": flags["in_verdict_run"],
     }
 
 
@@ -611,6 +735,12 @@ def muscle_activation_by_activity(
     }
 
 
+INCLUDE_WEEKLY = "weekly"
+INCLUDE_EQUIPMENT_WEEKLY = "equipment_weekly"
+INCLUDE_HEATMAP = "heatmap"
+RECENT_VOLUME_INCLUDES = (INCLUDE_WEEKLY, INCLUDE_EQUIPMENT_WEEKLY, INCLUDE_HEATMAP)
+
+
 @router.get("/muscle-groups-recent-exercise-volume")
 def muscle_groups_recent_exercise_volume(
     limit: Optional[int] = Query(default=None, ge=1, le=2000),
@@ -618,6 +748,8 @@ def muscle_groups_recent_exercise_volume(
     date_to: Optional[date] = Query(default=None),
     goal: Optional[str] = Depends(optional_goal_query),
     identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
+    include: Annotated[Optional[str], Query()] = None,
+    activity_id: Annotated[Optional[int], Query(ge=1)] = None,
 ):
     """Volume BRUTO recente por (activity_id, muscle_group, equipment_name),
     usado pelas 4 tabelas client-side de /volume-grupamentos (comparativo dos
@@ -637,10 +769,19 @@ def muscle_groups_recent_exercise_volume(
 
     `goal` (M97, opcional): so os exercicios daquele objetivo (predicado do
     dono `sql_goal_is`, o mesmo do comparativo por slot); ausente = todos, a
-    resposta de sempre."""
+    resposta de sempre.
+
+    `include` (opcional, lista separada por virgula de
+    `RECENT_VOLUME_INCLUDES`): blocos prontos do dono
+    (`slot_session_comparison`) sobre os MESMOS itens; ausente = a resposta de
+    sempre. `activity_id` restringe so o `heatmap` a uma sessao."""
     from .intelligence.methodology_volume_service import annotate_group_hierarchy, load_group_hierarchy
     from .intelligence.volume_service import VolumeService
 
+    requested = [part.strip() for part in include.split(",") if part.strip()] if include else []
+    invalid = sorted(set(requested) - set(RECENT_VOLUME_INCLUDES))
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"include invalido: {', '.join(invalid)}")
     goal = optional_goal_param(goal)
     volume_service = VolumeService()
     effective_limit = None if (date_from is not None or date_to is not None) else (limit or 400)
@@ -654,12 +795,24 @@ def muscle_groups_recent_exercise_volume(
     )
     annotate_group_hierarchy(items, load_group_hierarchy())
 
-    return {
+    body = {
         "limit": effective_limit,
         "date_from": date_from.isoformat() if date_from else None,
         "date_to": date_to.isoformat() if date_to else None,
         "items": items,
     }
+    if requested:
+        from .intelligence import slot_session_comparison as comparison
+
+        builders = {
+            INCLUDE_WEEKLY: comparison.build_weekly_comparison,
+            INCLUDE_EQUIPMENT_WEEKLY: comparison.build_equipment_weekly_comparison,
+            INCLUDE_HEATMAP: lambda rows: comparison.build_heatmap(rows, activity_id=activity_id),
+        }
+        for name in RECENT_VOLUME_INCLUDES:
+            if name in requested:
+                body[name] = builders[name](items)
+    return body
 
 
 @router.get("/muscle-groups-slot-comparison")
@@ -1120,73 +1273,45 @@ def _fetch_exercise_set_rows(
 
 
 def _build_progression_sessions(
-    rows: List[Dict[str, Any]], failure_allowed: Optional[Dict[Any, bool]] = None
+    rows: List[Dict[str, Any]],
+    failure_allowed: Optional[Dict[Any, bool]] = None,
+    exposures: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Agrupa linhas de serie (ja ordenadas cronologicamente ASC por
-    `_fetch_exercise_set_rows`) em sessoes (`activity_id`), calculando o
-    melhor e1RM da sessao (`MuscleRecoveryService.estimated_1rm`, MESMA
-    formula ja usada por `get_progression_signal_counts`/
-    `get_muscle_group_overview` - nunca reinventada aqui), a melhor
-    carga/reps (do MESMO set que gerou o melhor e1RM) e o RPE medio da
-    sessao. Retorno em ordem cronologica ASC - shape da tabela de
-    `dashboard-progression`. O veredito e a seta "Evolucao" NAO saem daqui:
-    usam a regra da home (`exposure_service`).
+    """Agrupa linhas de serie (ja ordenadas ASC por `_fetch_exercise_set_rows`)
+    em sessoes (`activity_id`) - shape da tabela de `dashboard-progression`.
 
-    M97 F4: a sessao de DELOAD (`activities.deload_source`, dono
-    `domain/deload`) continua na tabela, marcada (`deload_source`), mas fica
-    FORA do e1RM por sessao (`e1rm`/`e1rm_reps` = None), como na
-    comparabilidade e no recorde. `training_goal` = objetivo da execucao (a da
-    ultima linha da sessao, a que fecha a sessao)."""
+    Issue #188: carga, reps, RPE e e1RM da sessao sao o resumo de exposicao do
+    DONO (`exposure_service.exposure_snapshot`) da exposicao lida para a
+    sessao (`exposures`, a ultima da sessao vence) ou, se a sessao nao esta
+    entre elas (deload, fora do teto, outro exercicio no filtro por nome),
+    `exposure_service.snapshot_of_rows` sobre as series dela. Nenhuma conta
+    aqui. `best_load_kg` = `top_load_kg` = carga de TOPO; `best_reps` = maior
+    rep feita nela. Seta e marcacoes: `_attach_session_evolution`.
+
+    So series `working` (aquecimento/ajuste/tecnica fora, como no dono);
+    sessao sem serie working nao aparece. M97 F4: a sessao de DELOAD continua
+    na tabela, marcada, mas FORA do e1RM (`e1rm`/`e1rm_reps` = None).
+    `training_goal` = objetivo da ultima linha da sessao."""
     from .domain.deload import deload_source_label, deload_source_value, is_deload_session
     from .domain.training_goal import goal_value
-    from .intelligence.muscle_recovery_service import MuscleRecoveryService
-
+    from .intelligence.dashboard.exposure_service import exposure_snapshot, snapshot_of_rows
     from .set_types import is_working_set
 
-    sessions_by_activity: Dict[Any, Dict[str, Any]] = {}
-    order: List[Any] = []
-
-    # Somente series `working` (legado sem set_type = working) entram em
-    # e1RM/carga/reps/RPE/sets_count da progressao. Aquecimento/ajuste nao
-    # representam esforco maximo; aplicacoes de tecnica (drop_set/rest_pause/
-    # forced_rep) tambem ficam de fora por decisao documentada: sao feitas em
-    # fadiga acumulada ou com reps fracionadas/assistidas, o que distorce o
-    # e1RM (Epley/RPE) e a tendencia. Sessao sem nenhuma serie working nao
-    # aparece na progressao.
+    exposicao_da_sessao = {
+        int(item["activity_id"]): item for item in exposures or [] if item.get("activity_id") is not None
+    }
+    sets_by_activity: Dict[Any, List[Dict[str, Any]]] = {}
     for row in rows:
-        if not is_working_set(row):
-            continue
-        activity_id = row["activity_id"]
-        if activity_id not in sessions_by_activity:
-            sessions_by_activity[activity_id] = {
-                "activity_id": activity_id,
-                "local_date": row.get("local_date"),
-                "activity_name": row.get("activity_name"),
-                "sets": [],
-            }
-            order.append(activity_id)
-        sessions_by_activity[activity_id]["sets"].append(row)
+        if is_working_set(row):
+            sets_by_activity.setdefault(row["activity_id"], []).append(row)
 
     results: List[Dict[str, Any]] = []
-    for activity_id in order:
-        session = sessions_by_activity[activity_id]
-        sets = session["sets"]
-
-        best_e1rm = 0.0
-        best_set: Optional[Dict[str, Any]] = None
-        rpe_values: List[float] = []
-
-        for s in sets:
-            reps, weight, rpe = s.get("reps"), s.get("weight_kg"), s.get("rpe")
-            if rpe is not None:
-                rpe_values.append(float(rpe))
-            # Lote T3 (medidas de serie): e1RM so de serie de repeticoes.
-            if reps is None or weight is None or rpe is None or not is_rep_based(s.get("measure")):
-                continue
-            e1rm = MuscleRecoveryService.estimated_1rm(float(weight), int(reps), float(rpe))
-            if e1rm >= best_e1rm:
-                best_e1rm = e1rm
-                best_set = s
+    for activity_id, sets in sets_by_activity.items():
+        exposure = exposicao_da_sessao.get(int(activity_id)) if activity_id is not None else None
+        snapshot = (
+            exposure_snapshot(exposure) if exposure else snapshot_of_rows(sets, sets[-1].get("mapping_id") or 0)
+        ) or {}
+        top_reps = snapshot.get("top_set_reps") or []
 
         # `intensity_status` (secao 5.7) da sessao: so quando o chamador
         # informou a falha permitida por equipamento (`failure_allowed`);
@@ -1197,26 +1322,26 @@ def _build_progression_sessions(
             else None
         )
         deload_source = deload_source_value(sets[-1].get("deload_source"))
-        if is_deload_session(deload_source):
-            best_e1rm = 0.0
+        deload = is_deload_session(deload_source)
         results.append(
             {
                 "activity_id": activity_id,
-                "local_date": session["local_date"],
-                "activity_name": session["activity_name"],
+                "local_date": sets[0].get("local_date"),
+                "activity_name": sets[0].get("activity_name"),
                 "training_goal": goal_value(sets[-1].get("training_goal")),
                 "deload_source": deload_source,
                 "deload_label": deload_source_label(deload_source),
                 "sets_count": len(sets),
-                "best_load_kg": round(float(best_set["weight_kg"]), 2) if best_set else None,
-                "best_reps": int(best_set["reps"]) if best_set and best_set.get("reps") is not None else None,
-                "avg_rpe": round(sum(rpe_values) / len(rpe_values), 2) if rpe_values else None,
-                "e1rm": round(best_e1rm, 2) if best_e1rm else None,
-                # Reps da serie do melhor e1RM e se ele e confiavel: acima de
-                # `e1rm_max_reliable_reps` (12) o Epley nao decide nada na
-                # regra (`comparability`), entao a tela marca o ponto.
-                "e1rm_reps": int(best_set["reps"]) if best_e1rm and best_set and best_set.get("reps") is not None else None,
-                "e1rm_reliable": _e1rm_reps_reliable(best_set.get("reps") if best_e1rm and best_set else None),
+                "best_load_kg": snapshot.get("best_load_kg"),
+                "best_reps": max(top_reps) if top_reps else None,
+                "top_load_kg": snapshot.get("best_load_kg"),
+                "top_set_reps": snapshot.get("top_set_reps"),
+                "avg_rpe": snapshot.get("avg_rpe"),
+                "e1rm": None if deload else snapshot.get("e1rm"),
+                # Acima do teto de reps o Epley nao decide nada na regra; o
+                # dono (`e1rm_reliable`) marca o ponto.
+                "e1rm_reps": None if deload else snapshot.get("e1rm_reps"),
+                "e1rm_reliable": False if deload else bool(snapshot.get("e1rm_reliable")),
                 "intensity_status": None
                 if session_failure_allowed is None
                 else effective_intensity.session_intensity_status(sets, failure_allowed=session_failure_allowed),
@@ -1233,14 +1358,6 @@ def _build_progression_sessions(
         )
 
     return results
-
-
-def _e1rm_reps_reliable(reps: Any) -> bool:
-    """Teto de confiabilidade do e1RM: predicado do dono
-    (`domain/e1rm.is_reliable_reps`); sem reps nao ha o que confiar."""
-    from .domain.e1rm import is_reliable_reps
-
-    return reps is not None and is_reliable_reps(reps)
 
 
 def _failure_allowed_for_rows(rows: List[Dict[str, Any]]) -> Optional[Dict[Any, bool]]:
@@ -1329,8 +1446,10 @@ def dashboard_progression(
     `comparability.compare_exposures` da sessao contra a exposicao
     imediatamente anterior, se for da mesma chave (exercicio canonico,
     equipamento, convencao de carga) - a MESMA regra da home e do drill-down
-    (`exposure_service.consecutive_comparisons`). `None` = sem anterior lida
-    na janela; `NOT_COMPARABLE` = a anterior foi em outro equipamento/
+    (`exposure_service.consecutive_comparisons`). A anterior pode ser
+    de antes da janela (contexto do veredito, #188, ate
+    `VERDICT_LOOKBACK_EXPOSURES`): a primeira sessao do periodo tambem ganha
+    seta. `None` = nenhuma anterior nem no contexto; `NOT_COMPARABLE` = a anterior foi em outro equipamento/
     convencao. O frontend so desenha.
 
     `date_from`/`date_to` (M61, opcionais e juntos): janela `custom` exata;
@@ -1354,10 +1473,13 @@ def dashboard_progression(
         date_range=date_range,
         training_goal=goal,
     )
-    items = _build_progression_sessions(rows, failure_allowed=_failure_allowed_for_rows(rows))
-    _attach_session_evolution(
-        items, identity.user_id, mapping_id, exercise_name, days, date_range, training_goal=goal
+    exposures = (
+        _session_exposures(identity.user_id, mapping_id, exercise_name, days, date_range, training_goal=goal)
+        if rows
+        else []
     )
+    items = _build_progression_sessions(rows, failure_allowed=_failure_allowed_for_rows(rows), exposures=exposures)
+    _attach_session_evolution(items, exposures)
 
     return {
         "exercise_name": exercise_name,
@@ -1410,61 +1532,65 @@ def _canonical_for_progression(mapping_id: Optional[int], exercise_name: Optiona
     return _resolve_mapping_id_by_name(exercise_name) if exercise_name else None
 
 
-def _attach_session_evolution(
-    items: List[Dict[str, Any]],
+def _session_exposures(
     user_id: int,
     mapping_id: Optional[int],
     exercise_name: Optional[str],
     days: int,
     date_range: Optional[Tuple[date, date]],
     training_goal: Optional[str] = None,
-) -> None:
-    """Preenche `item["evolution"]` de cada sessao da tabela.
+) -> List[Dict[str, Any]]:
+    """Exposicoes do dono para a tabela (teto `MAX_TABLE_EXPOSURES`), lidas UMA
+    vez e usadas nos numeros da sessao e na seta. Falha na leitura nao derruba
+    a tabela: lista vazia (sem seta nem marcacao) e o erro vai para o log."""
+    from .intelligence.dashboard.exposure_service import MAX_TABLE_EXPOSURES
 
-    A tabela agrupa por SESSAO (`activity_id`); a regra compara EXPOSICOES.
-    Quando o exercicio aparece duas vezes na mesma sessao, a seta da sessao e
-    a da ULTIMA exposicao dela (a que fecha a sessao). Sessao sem exposicao
-    correspondente (fora do teto `MAX_TABLE_EXPOSURES`, ou consulta por nome
-    que casou outro exercicio) fica sem seta - nunca uma seta inventada.
-
-    Falha na leitura nao derruba a tabela: as setas ficam `None` e o erro vai
-    para o log (mesmo criterio do `intensity_status`)."""
-    from .intelligence.dashboard.exposure_service import (
-        MAX_TABLE_EXPOSURES,
-        consecutive_comparisons,
-        exposure_snapshot,
-    )
-
-    for item in items:
-        item["evolution"] = None
-        item.setdefault("top_load_kg", None)
-        item.setdefault("top_set_reps", None)
-        item.setdefault("in_verdict_key", None)
-        item.setdefault("fatigue_context", None)
-    if not items:
-        return
     canonical = _canonical_for_progression(mapping_id, exercise_name)
     if canonical is None:
-        return
+        return []
     try:
-        exposures = _progression_exposures(
+        return _progression_exposures(
             user_id, canonical, days, date_range, MAX_TABLE_EXPOSURES, training_goal=training_goal
         )
     except Exception:  # noqa: BLE001 - dashboard nunca 500 por causa da seta
         logger.exception("Falha ao calcular a evolucao por sessao da progressao")
+        return []
+
+
+def _attach_session_evolution(items: List[Dict[str, Any]], exposures: List[Dict[str, Any]]) -> None:
+    """Preenche `evolution` e as marcacoes do dono de cada sessao da tabela.
+
+    A tabela agrupa por SESSAO (`activity_id`); a regra compara EXPOSICOES.
+    Quando o exercicio aparece duas vezes na mesma sessao, a seta da sessao e
+    a da ULTIMA exposicao dela. Sessao sem exposicao correspondente fica sem
+    seta e sem marcacoes (None) - nunca inventadas. Os numeros da sessao ja
+    vem do dono (`_build_progression_sessions`); nada e sobrescrito aqui."""
+    from .intelligence.dashboard.exposure_service import consecutive_comparisons, verdict_run_flags
+
+    for item in items:
+        item["evolution"] = None
+        item["in_verdict_key"] = None
+        item["in_context_run"] = None
+        item["in_verdict_run"] = None
+        item["fatigue_context"] = None
+    if not items or not exposures:
         return
 
-    # Chave do veredito = a da ULTIMA exposicao (a mesma que
-    # `progression_verdict` informa em "Comparado em"). O grafico plota so as
-    # sessoes desta chave; as outras ficam fora da linha (a tabela as mostra).
-    verdict_key = exposures[-1].get("_key") if exposures else None
-
+    # Marcacoes do dono (`exposure_service.verdict_run_flags`) sobre as
+    # ultimas `comparability.VERDICT_LOOKBACK_EXPOSURES` (a janela do veredito
+    # que `progression_verdict` aplica sobre a lista desta rota); as sessoes
+    # mais antigas ficam com as duas falsas.
+    # `in_context_run` = o grafico plota; `in_verdict_run` = o grafico destaca.
     por_sessao: Dict[int, Optional[Dict[str, Any]]] = {}
     exposicao_da_sessao: Dict[int, Dict[str, Any]] = {}
-    for exposure, evolution in zip(exposures, consecutive_comparisons(exposures)):
+    no_veredito: Dict[int, Dict[str, bool]] = {}
+    for exposure, evolution, in_run in zip(
+        exposures, consecutive_comparisons(exposures), verdict_run_flags(exposures)
+    ):
         if exposure.get("activity_id") is not None:
             por_sessao[int(exposure["activity_id"])] = evolution  # a ultima da sessao vence
             exposicao_da_sessao[int(exposure["activity_id"])] = exposure
+            no_veredito[int(exposure["activity_id"])] = in_run
     for item in items:
         try:
             activity_id = int(item.get("activity_id"))
@@ -1474,14 +1600,10 @@ def _attach_session_evolution(
         exposure = exposicao_da_sessao.get(activity_id)
         if exposure is None:
             continue
-        snapshot = exposure_snapshot(exposure) or {}
-        # Carga de TOPO da exposicao (`best_load_kg` da regra) e as reps das
-        # series feitas nela - nao a carga da serie do melhor e1RM.
-        item["top_load_kg"] = snapshot.get("best_load_kg")
-        item["top_set_reps"] = snapshot.get("top_set_reps")
-        # Mesma chave do veredito = mesmo equipamento/convencao E mesmo
-        # contexto de fadiga previa; a etiqueta do contexto vai junto.
-        item["in_verdict_key"] = verdict_key is not None and exposure.get("_key") == verdict_key
+        # Marcacoes do dono; `in_verdict_key` = `in_verdict_run` (nome antigo,
+        # compatibilidade com o frontend anterior).
+        item.update(no_veredito[activity_id])
+        item["in_verdict_key"] = no_veredito[activity_id]["in_verdict_run"]
         item["fatigue_context"] = exposure.get("fatigue_context")
 
 
@@ -1602,10 +1724,12 @@ def _fetch_group_e1rm_rows(
     backoff nao medem forca maxima. Sem migracao: so leitura.
 
     Devolve uma linha por (janela, exercicio canonico, equipamento canonico,
-    convencao de carga, grupo) com `best_e1rm_kg` - o contrato de
-    `build_group_performance`."""
+    convencao de carga, academia, tipo de equipamento, grupo) com
+    `best_e1rm_kg`, `gym_id` e `equipment_type_code` (mesmos joins do
+    `exposure_service`) - o contrato de `comparability.group_e1rm_changes`
+    (academia na chave so para maquina)."""
     from .domain.deload import sql_not_deload
-    from .domain.e1rm import E1RM_MAX_RELIABLE_REPS, MissingRpePolicy, reliable_e1rm
+    from .domain.e1rm import MissingRpePolicy, reliable_e1rm, reliable_reps_sql
     from .set_types import sql_is_working
 
     lc = load_convention_expr if load_convention_expr is not None else _load_convention_expr()
@@ -1621,6 +1745,8 @@ def _fetch_group_e1rm_rows(
             MAX(e.original_name) AS exercise_name,
             ge.equipment_id AS equipment_id,
             {lc} AS load_convention,
+            ge.gym_id AS gym_id,
+            et.code AS equipment_type_code,
             NULL AS muscle_group_id,
             NULL AS stimulus_weight,
             es.reps AS reps,
@@ -1631,6 +1757,8 @@ def _fetch_group_e1rm_rows(
         JOIN exercise_sets es ON es.exercise_id = e.id AND {sql_set_confirmed('es.reps_pending')}
         LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
         LEFT JOIN gym_equipment ge ON ge.id = e.equipment_id
+        LEFT JOIN equipment eq ON eq.id = ge.equipment_id
+        LEFT JOIN equipment_types et ON et.id = eq.equipment_type_id
         LEFT JOIN equipment_exercises eqex
           ON eqex.equipment_id = ge.equipment_id
          AND eqex.exercise_id = {canonical}
@@ -1641,10 +1769,9 @@ def _fetch_group_e1rm_rows(
           AND {sql_not_deload("a")}
           AND {sql_is_working("es.set_type")}
           AND {sql_is_rep_based("es.measure")}
-          AND es.reps > 0
-          AND es.reps <= {int(E1RM_MAX_RELIABLE_REPS)}
+          AND {reliable_reps_sql("es.reps")}
           AND es.weight_kg > 0
-        GROUP BY period, {canonical}, ge.equipment_id{group_lc}, es.reps, es.rpe
+        GROUP BY period, {canonical}, ge.equipment_id{group_lc}, ge.gym_id, et.code, es.reps, es.rpe
         UNION ALL
         SELECT
             'contribution' AS row_kind,
@@ -1653,6 +1780,8 @@ def _fetch_group_e1rm_rows(
             NULL AS exercise_name,
             NULL AS equipment_id,
             NULL AS load_convention,
+            NULL AS gym_id,
+            NULL AS equipment_type_code,
             emc.muscle_group_id AS muscle_group_id,
             MAX(emc.stimulus_weight) AS stimulus_weight,
             NULL AS reps,
@@ -1702,7 +1831,8 @@ def _fetch_group_e1rm_rows(
         if value is None:
             continue
         equipment_id = None if row.get("equipment_id") is None else int(row["equipment_id"])
-        key = (row["period"], exercise_id, equipment_id, row.get("load_convention"))
+        gym_id = None if row.get("gym_id") is None else int(row["gym_id"])
+        key = (row["period"], exercise_id, equipment_id, row.get("load_convention"), gym_id, row.get("equipment_type_code"))
         entry = best_by_key.get(key)
         if entry is None:
             best_by_key[key] = {"best": value, "name": row.get("exercise_name")}
@@ -1711,7 +1841,7 @@ def _fetch_group_e1rm_rows(
             entry["name"] = max(filter(None, (entry["name"], row.get("exercise_name"))), default=None)
 
     result: List[Dict[str, Any]] = []
-    for (period, exercise_id, equipment_id, load_convention), entry in best_by_key.items():
+    for (period, exercise_id, equipment_id, load_convention, gym_id, type_code), entry in best_by_key.items():
         for group_id, stimulus_weight in groups_by_exercise.get(exercise_id, {}).items():
             result.append(
                 {
@@ -1720,6 +1850,8 @@ def _fetch_group_e1rm_rows(
                     "exercise_name": entry["name"],
                     "equipment_id": equipment_id,
                     "load_convention": load_convention,
+                    "gym_id": gym_id,
+                    "equipment_type_code": type_code,
                     "muscle_group_id": group_id,
                     "stimulus_weight": stimulus_weight,
                     "best_e1rm_kg": entry["best"],
@@ -1962,19 +2094,6 @@ def dashboard_progression_by_muscle_group(
     }
 
 
-# `classification`/`reason` (rotulo pt-BR antigo) seguem no payload SO para o
-# frontend anterior a esta mudanca continuar renderizando durante o deploy.
-# DEPRECADOS: a tela usa `status`/`status_reasons`.
-_LEGACY_TREND_CLASSIFICATION = {
-    "PROGRESSING": "PROGREDINDO",
-    "STABLE": "ESTAVEL",
-    "PLATEAU_SUSPECTED": "ESTAGNADO",
-    "REGRESSING": "REGREDINDO",
-    "INSUFFICIENT_DATA": "DADOS_INSUFICIENTES",
-    "NOT_COMPARABLE": "DADOS_INSUFICIENTES",
-}
-
-
 @router.get("/dashboard-progression-trend")
 def dashboard_progression_trend(
     exercise_name: Optional[str] = Query(default=None),
@@ -2000,12 +2119,8 @@ def dashboard_progression_trend(
     `status_scope` (issue #152): descritor do que `status` compara (ultima
     exposicao vs. anterior), vindo de `progression_verdict`.
 
-    `classification`/`reason` continuam so por compatibilidade (DEPRECADOS)."""
+    O vocabulario antigo (`classification`/`reason`) foi removido: so `status`."""
     from .intelligence.dashboard.exposure_service import MAX_EXPOSURES, progression_verdict
-    from .intelligence.dashboard.metrics_registry import (
-        EXERCISE_PROGRESSION_STATUS_LABELS,
-        ExerciseProgressionStatus,
-    )
 
     if not exercise_name and mapping_id is None:
         raise HTTPException(status_code=400, detail="Informe exercise_name ou mapping_id.")
@@ -2026,8 +2141,6 @@ def dashboard_progression_trend(
         "days": days,
         **_range_echo(date_range),
         **verdict,
-        "classification": _LEGACY_TREND_CLASSIFICATION[verdict["status"]],
-        "reason": EXERCISE_PROGRESSION_STATUS_LABELS[ExerciseProgressionStatus(verdict["status"])],
     }
 
 

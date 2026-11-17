@@ -14,6 +14,7 @@ from datetime import date, timedelta
 import pytest
 
 from app.intelligence.dashboard import insight_rules as ir
+from app.intelligence.dashboard.exposure_service import RUN_SPAN_BASIS, run_span
 from app.intelligence.dashboard.contracts import (
     DataNature,
     DataQuality,
@@ -129,6 +130,8 @@ def _progression_item(exercise_id: int, status: ExerciseProgressionStatus, *, co
         "_exposures": exposures,
         # run comparavel montado por `classify_batch` (a mesma lista)
         "_comparable_run": exposures,
+        # primeira x ultima da sequencia, pronta no dono (`classify_batch`)
+        "_run_span": run_span(exposures),
     }
 
 
@@ -616,11 +619,13 @@ def test_plato_exige_quatro_exposicoes_comparaveis():
     assert out[0].severity is Severity.INFO
     assert out[0].source_screen == "/dashboard/exercicios/11"
     assert out[0].data_quality is DataQuality.HIGH
+    assert out[0].comparison.basis == RUN_SPAN_BASIS  # a base vem do dono (`run_span`)
 
 
 def test_plato_sem_e1rm_rebaixa_a_confianca():
     item = _progression_item(11, ExerciseProgressionStatus.PLATEAU_SUSPECTED, comparable=4)
     item["_exposures"][-1]["e1rm"] = None
+    item["_run_span"] = run_span(item["_comparable_run"])  # o lote monta o span depois da sequencia
     out = ir.rule_exercise_plateau_suspected(_ctx(progression=[item]))
     assert out[0]["data_quality"] is DataQuality.MEDIUM
 
@@ -813,6 +818,7 @@ def test_plato_evidencia_reps_emparelhadas_e_nao_o_total():
     item = _progression_item(11, ExerciseProgressionStatus.PLATEAU_SUSPECTED, comparable=4)
     item["_exposures"] = [exposicao([10, 10, 10]), exposicao([10, 10, 10]), exposicao([10, 10, 10]), exposicao([10, 10])]
     item["_comparable_run"] = item["_exposures"]
+    item["_run_span"] = run_span(item["_comparable_run"])
     (insight,) = ir.rule_exercise_plateau_suspected(_ctx(progression=[item]))
     metrics = {e["metric"]: e for e in insight["evidence"]}
     assert "total_reps" not in metrics

@@ -62,6 +62,7 @@ from .activation_window import (
     resolve_window,
 )
 from .deterministic_prescription import (
+    gym_contexts_by_gym_equipment,
     MODE_A_ENGINE_VERSION,
     PairPrescription,
     PairRequest,
@@ -637,6 +638,10 @@ def generate_plan_draft_from_template_a(
             tracks = ps.load_tracks(conn, int(user_id))
 
             # ---- passo 9 (fonte): a progressao prescreve cada par --------
+            # #188: academia da maquina pelo vinculo (`gym_equipment`) do candidato
+            gym_contexts = gym_contexts_by_gym_equipment(
+                conn, [c.gym_equipment_id for group in candidates_by_group.values() for c in group]
+            )
             requests = [
                 PairRequest(
                     exercise_id=candidate.exercise_id,
@@ -644,6 +649,7 @@ def generate_plan_draft_from_template_a(
                     muscle_group_id=group_id,
                     sequence=index,
                     training_goal=goals_by_group.get(group_id, template_goal),
+                    gym_context=gym_contexts.get(int(candidate.gym_equipment_id or 0)),
                 )
                 for index, (group_id, candidate) in enumerate(
                     (

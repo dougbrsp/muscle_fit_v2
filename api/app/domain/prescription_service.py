@@ -30,9 +30,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping, Optional, Sequence
 
+from .equipment_context import context_gym_id
 from .progression_engine import (
     ADD_SET,
     APPLY_TECHNIQUE,
+    CALIBRATION_CODE_START_OTHER_GYM,
+    latest_in_gym_context,
     DECREASE_LOAD,
     EQUIPMENT_CEILING_LIMITED,
     EQUIPMENT_CEILING_REACHED,
@@ -45,6 +48,7 @@ from .progression_engine import (
     SET_REP_RANGE_10_12,
     SKIP,
     cap_load_to_ceiling,
+    ceiling_reference,
     ReadinessContract,
     classify_sets,
     resolve_track,
@@ -58,11 +62,24 @@ from .training_history import SetRecord
 # Rótulo do motor gravado no snapshot de linha acrescentada à mão na ficha
 # (congelamento fora dos Modos A/B). O contrato do snapshot não muda.
 PAIR_SUGGESTION_ENGINE_VERSION = "pair-suggestion-v2"
+#: Janela de logs (series mais recentes) que os chamadores leem para a sugestao.
+SUGGESTION_LOG_LIMIT = 300
 
 LOAD_SOURCE_ENGINE = "engine"  # carga da trilha (ou da decisão do motor)
 LOAD_SOURCE_LAST_EXECUTION = "last_execution"  # trilha sem carga: calibração pela execução
 NO_HISTORY_NOTE = "Sem histórico registrado"
 NO_HISTORY_ON_EQUIPMENT_NOTE = "Sem histórico neste equipamento"
+# #188: máquina sem execução nesta academia - carga de PARTIDA do mesmo
+# aparelho em outra academia (`progression_engine.resolve_track`).
+LOAD_SOURCE_OTHER_GYM_START = "other_gym_start"
+CONTEXT_CALIBRATION_NOTE = (
+    "Calibrando a máquina nesta academia: mantenha a última carga executada aqui; "
+    "a progressão volta ao fim da calibração."
+)
+OTHER_GYM_START_NOTE = (
+    "Primeira vez nesta máquina nesta academia: carga de partida = a última usada no mesmo aparelho "
+    "em outra academia (calibração)."
+)
 
 # Mesmos códigos de `progression` que a UI já desenha como seta.
 PROGRESSION_INCREASED = "increased"
@@ -84,6 +101,9 @@ class PairQuery:
     # M97 F1: objetivo da linha (VALOR do dono `training_goal`; None = default).
     # A trilha e a fase lidas são SÓ as desse objetivo.
     training_goal: Optional[str] = None
+    # #188: academia da maquina, JA resolvida pelo dono
+    # `equipment_context.context_gym_id` (None = peso livre ou sem academia).
+    gym_context: Optional[int] = None
 
     @property
     def key(self) -> tuple[int, Optional[int]]:
@@ -99,6 +119,8 @@ class LastExecution:
     last_load_kg: Optional[float]  # última série de trabalho
     last_reps: Optional[int]
     working_load_kg: Optional[float]  # mínimo das séries de trabalho (calibração, seção 5.10)
+    # #188: máquina sem execução na academia pedida; esta é a de OUTRA academia
+    from_other_gym: bool = False
 
 
 @dataclass(frozen=True)
@@ -151,6 +173,21 @@ class PairSuggestion:
     def trend(self) -> str:
         return _TREND_BY_PROGRESSION.get(self.progression or "", "unknown")
 
+    @property
+    def calibrating(self) -> bool:
+        # #188: maquina calibrando o contexto (decisao do motor) ou partindo da carga de outra academia
+        # (`load_source`, derivado de `track.start_from_other_gym` ou, sem carga do motor, de
+        # `last_execution_from_logs` - ambos pela regra unica `latest_in_gym_context`)
+        return bool(self.decision.get("calibrating")) or self.load_source == LOAD_SOURCE_OTHER_GYM_START
+
+    @property
+    def calibration_code(self) -> Optional[str]:
+        # codigo do motor (`progression_engine.CALIBRATION_CODE_*`); sem ele, o da partida pelo `load_source`
+        code = self.decision.get("calibration_code")
+        if code is None and self.load_source == LOAD_SOURCE_OTHER_GYM_START:
+            return CALIBRATION_CODE_START_OTHER_GYM
+        return code
+
 
 # ---------------------------------------------------------------------------
 # Funções puras
@@ -182,7 +219,10 @@ def _set_record(raw: Mapping[str, Any]) -> SetRecord:
 
 
 def last_execution_from_logs(
-    logs: Sequence[Mapping[str, Any]], exercise_id: int, equipment_id: Optional[int] = None
+    logs: Sequence[Mapping[str, Any]],
+    exercise_id: int,
+    equipment_id: Optional[int] = None,
+    gym_context: Optional[int] = None,
 ) -> Optional[LastExecution]:
     """Última execução do exercício em `services.list_exercise_logs` (já em
     ordem do mais recente para o mais antigo, `mapping_id` já canônico).
@@ -217,7 +257,12 @@ def last_execution_from_logs(
         ]
         if not candidates:
             return None
-    entry, working = candidates[0]
+    # #188: maquina (`gym_context`) - regra unica do dono (`latest_in_gym_context`,
+    # itens do mais antigo ao mais recente: os logs chegam do mais recente).
+    chosen, from_other_gym = latest_in_gym_context(candidates[::-1], gym_context, lambda item: _log_gym_context(item[0]))
+    if chosen is None:
+        return None
+    entry, working = chosen
     last = working[-1]
     minimum = session_working_load(working)
     return LastExecution(
@@ -226,7 +271,13 @@ def last_execution_from_logs(
         last_load_kg=float(last.weight_kg) if last.weight_kg is not None else None,
         last_reps=last.reps,
         working_load_kg=float(minimum) if minimum is not None else None,
+        from_other_gym=from_other_gym,
     )
+
+
+def _log_gym_context(entry: Mapping[str, Any]) -> Optional[int]:
+    # academia do contexto de maquina da execucao (vinculo do equipamento, dono `equipment_context`)
+    return context_gym_id(entry.get("equipment_type_code"), entry.get("equipment_gym_id"))
 
 
 def progression_note(suggestion: PairSuggestion) -> str:
@@ -249,6 +300,10 @@ def progression_note(suggestion: PairSuggestion) -> str:
     partes: list[str] = []
     if evidence.get(EVIDENCE_TRANSITION_DEFERRED):
         partes.append("Dose reduzida pela recuperação: manter a carga e adiar a progressão.")
+    elif suggestion.calibration_code == CALIBRATION_CODE_START_OTHER_GYM:
+        partes.append(OTHER_GYM_START_NOTE)
+    elif suggestion.calibrating:
+        partes.append(CONTEXT_CALIBRATION_NOTE)
     elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_REACHED and code != DECREASE_LOAD:
         partes.append(EQUIPMENT_LOAD_CEILING_NOTE)
     elif evidence.get(EVIDENCE_EQUIPMENT_LOAD_CEILING) == EQUIPMENT_CEILING_LIMITED and code == INCREASE_LOAD:
@@ -287,18 +342,25 @@ def current_readiness(user_id: int) -> dict[int, ReadinessContract]:
     return projected_readiness(int(user_id), None, None)
 
 
-def _has_pair_track(tracks: Mapping[tuple, Any], exercise_id: int, equipment_id: Optional[int]) -> bool:
-    """Ha trilha do par (em qualquer contexto de fadiga) entre `tracks` (ja
-    as do objetivo pedido, `progression_evaluator.goal_tracks`)?"""
-    if equipment_id is None:
-        return False
-    return any(key[0] == int(exercise_id) and key[1] == int(equipment_id) for key in tracks)
+def _has_pair_track(
+    tracks: Mapping[tuple, Any], exercise_id: int, equipment_id: Optional[int], training_goal: Optional[str] = None
+) -> bool:
+    """Ha trilha do par (em qualquer contexto de fadiga e academia) entre
+    `tracks` (ja as do objetivo pedido)? Resolve pelo dono (`resolve_track`)."""
+    return resolve_track(tracks, exercise_id, equipment_id, None, training_goal)[0] is not None
 
 
-def _latest_track_equipment(tracks: Mapping[tuple, Any], exercise_id: int) -> Optional[int]:
+def _latest_track_equipment(
+    tracks: Mapping[tuple, Any], exercise_id: int, training_goal: Optional[str] = None
+) -> Optional[int]:
     """Equipamento da trilha executada mais recentemente para o exercício
-    (entre `tracks`, ja as do objetivo pedido)."""
-    found = [track for key, track in tracks.items() if key[0] == int(exercise_id)]
+    (entre `tracks`, ja as do objetivo pedido): a trilha de cada equipamento
+    vem do dono (`resolve_track`); aqui so se escolhe a mais recente."""
+    candidates = (
+        resolve_track(tracks, exercise_id, equipment, None, training_goal)[0]
+        for equipment in {track.equipment_id for track in tracks.values()}
+    )
+    found = [track for track in candidates if track is not None]
     if not found:
         return None
     found.sort(key=lambda track: (track.last_executed_at or datetime.min, track.id or 0))
@@ -345,10 +407,12 @@ def suggest_for_pairs(
             # tela mostra), se houver trilha nele; senao a trilha executada mais
             # recentemente.
             executed = last_execution_from_logs(logs or (), int(query.exercise_id)) if logs else None
-            if executed is not None and _has_pair_track(tracks, int(query.exercise_id), executed.equipment_id):
+            if executed is not None and _has_pair_track(
+                tracks, int(query.exercise_id), executed.equipment_id, query.training_goal
+            ):
                 equipment_id = executed.equipment_id
             else:
-                equipment_id = _latest_track_equipment(tracks, int(query.exercise_id))
+                equipment_id = _latest_track_equipment(tracks, int(query.exercise_id), query.training_goal)
         resolved.append((query, equipment_id))
 
     requests = [
@@ -359,6 +423,8 @@ def suggest_for_pairs(
             model_sets_count=query.sets_count,
             model_rpe_target=query.rpe_target,
             training_goal=query.training_goal,
+            # #188: so com o equipamento PEDIDO (o vinculo e dele); o derivado do historico fica sem academia
+            gym_context=query.gym_context if query.equipment_id is not None else None,
         )
         for query, equipment_id in resolved
     ]
@@ -375,24 +441,40 @@ def suggest_for_pairs(
         # Sem posicao planejada: a trilha do par executada mais recentemente
         # (qualquer contexto de fadiga) - a mesma que `prescribe_pairs` usou.
         track = (
-            resolve_track(all_tracks, int(query.exercise_id), equipment_id, None, query.training_goal)[0]
+            resolve_track(
+                all_tracks, int(query.exercise_id), equipment_id, None, query.training_goal, request.gym_context
+            )[0]
             if equipment_id is not None
             else None
         )
-        last = last_execution_from_logs(logs or (), int(query.exercise_id), equipment_id) if logs is not None else None
+        last = (
+            last_execution_from_logs(logs or (), int(query.exercise_id), equipment_id, request.gym_context)
+            if logs is not None
+            else None
+        )
         load = decision.get("suggested_load_kg")
-        source = LOAD_SOURCE_ENGINE if load is not None else None
-        load_applicable = track is None or track.load_status != LOAD_NOT_APPLICABLE
-        if load is None and load_applicable and last is not None and last.working_load_kg is not None:
-            # Trilha que o avaliador ainda nao calibrou: a calibracao do motor
-            # (secao 5.10) adota o minimo das series de trabalho executadas.
-            load, source = last.working_load_kg, LOAD_SOURCE_LAST_EXECUTION
         step = steps.get(int(equipment_id)) if equipment_id is not None else None
         ceiling = ceilings.get((int(query.exercise_id), int(equipment_id))) if equipment_id is not None else None
-        if ceiling is not None and load is not None and source == LOAD_SOURCE_LAST_EXECUTION:
-            # calibracao pela ultima execucao: o teto so limita aumento (a carga
-            # e a ultima executada, entao nunca ha reducao por causa do teto)
-            load = float(cap_load_to_ceiling(Decimal(str(load)), ceiling, current=Decimal(str(last.working_load_kg))))
+        source = None
+        if load is not None:
+            # carga do MOTOR: ja cortada pelo teto no dono (`_clamp_to_equipment_ceiling`)
+            source = (
+                LOAD_SOURCE_OTHER_GYM_START if track is not None and track.start_from_other_gym else LOAD_SOURCE_ENGINE
+            )
+        elif (
+            (track is None or track.load_status != LOAD_NOT_APPLICABLE)
+            and last is not None
+            and last.working_load_kg is not None
+        ):
+            # Trilha que o avaliador ainda nao calibrou: a calibracao do motor
+            # (secao 5.10) adota o minimo das series de trabalho executadas.
+            load = last.working_load_kg
+            source = LOAD_SOURCE_OTHER_GYM_START if last.from_other_gym else LOAD_SOURCE_LAST_EXECUTION
+            if ceiling is not None:
+                # o teto so limita aumento (a carga e a ultima executada, nunca ha reducao por causa do
+                # teto); a partida de OUTRA academia nao foi executada neste aparelho: corta no teto (17/11)
+                current = ceiling_reference(Decimal(str(load)), from_other_gym=last.from_other_gym)
+                load = float(cap_load_to_ceiling(Decimal(str(load)), ceiling, current=current))
         result[query.key] = PairSuggestion(
             exercise_id=int(query.exercise_id),
             equipment_id=equipment_id,
@@ -418,12 +500,17 @@ def suggest_for_pair(
     rpe_target: Optional[str] = None,
     now: Optional[datetime] = None,
     training_goal: Optional[str] = None,
+    gym_context: Optional[int] = None,
 ) -> Optional[PairSuggestion]:
     """Atalho de `suggest_for_pairs` para um par só. `training_goal` (VALOR do
     dono `training_goal`; None = default) escolhe a trilha, a fase e a escada
     do objetivo (M97, a mesma `PairQuery.training_goal` da geração de ficha)."""
     query = PairQuery(
-        exercise_id=int(exercise_id), equipment_id=equipment_id, rpe_target=rpe_target, training_goal=training_goal
+        exercise_id=int(exercise_id),
+        equipment_id=equipment_id,
+        rpe_target=rpe_target,
+        training_goal=training_goal,
+        gym_context=gym_context,
     )
     return suggest_for_pairs(conn, user_id, [query], readiness=readiness, logs=logs, now=now).get(query.key)
 

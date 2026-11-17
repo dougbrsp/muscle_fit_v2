@@ -46,6 +46,8 @@ from .db import transaction
 from .domain import equipment_pair
 from .domain import prescription as prescription_domain
 from .domain import training_safety as ts
+from .access import resolve_permissions
+from .domain.equipment_context import manufacturer_columns_sql, manufacturer_fields, manufacturer_join_sql
 from .equipment_recommender import PUBLIC_ASSETS_DOMAIN, rank_gym_equipment_rows
 from .generation import exercise_substitution as subst
 
@@ -111,9 +113,11 @@ def _same_exercise_links(conn: Any, gym_id: int, mapping_id: int) -> list[dict[s
             f"""
             SELECT ge.id, ge.mapping_id, ge.equipment_id, eq.name AS equipment_name,
                    (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
-                   COALESCE(in_elm.canonical_exercise_id, %s) AS canonical_exercise_id
+                   COALESCE(in_elm.canonical_exercise_id, %s) AS canonical_exercise_id,
+                   {manufacturer_columns_sql()}
             FROM gym_equipment ge
             JOIN equipment eq ON eq.id = ge.equipment_id
+            {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
             LEFT JOIN exercise_legacy_id_map ge_elm ON ge_elm.old_exercise_id = ge.mapping_id
             LEFT JOIN exercise_legacy_id_map in_elm ON in_elm.old_exercise_id = %s
             WHERE ge.gym_id = %s
@@ -155,7 +159,27 @@ def _eligibility(
     return None
 
 
-def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int]) -> dict[str, Any]:
+def _manufacturer_editor(identity: Any):
+    """`can_edit(owner)` da posse do RBAC (`gyms.manufacturer_editor`); sem
+    identidade (chamador antigo) ninguem edita. Permissoes resolvidas 1x, so
+    se houver o que editar."""
+    if identity is None:
+        return lambda _owner: False
+    from .gyms import manufacturer_editor  # import tardio: gyms e modulo de rotas
+
+    cache: dict[str, Any] = {}
+
+    def can_edit(owner_user_id: Optional[int]) -> bool:
+        if "perms" not in cache:
+            cache["perms"] = resolve_permissions(identity)
+        return manufacturer_editor(identity, cache["perms"])(owner_user_id)
+
+    return can_edit
+
+
+def list_equipment_options(
+    plan_id: int, exercise_id: int, user_id: Optional[int], *, identity: Any = None
+) -> dict[str, Any]:
     """Payload de `GET .../equipment-options`: as associacoes da academia da
     ficha para o exercicio da linha, no ranking do DONO da ficha, cada uma
     com `eligible` + `reason` (D13a) e a seguranca do par."""
@@ -174,7 +198,8 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
         gym_id, mapping_id = int(plan["gym_id"]), int(row["mapping_id"])
         technique = row.get("advanced_technique") or None
         items, current_id, current_rpe = _ranked_equipment_options(
-            conn, gym_id, mapping_id, plan.get("user_id"), _current_link(conn, row), technique
+            conn, gym_id, mapping_id, plan.get("user_id"), _current_link(conn, row), technique,
+            _manufacturer_editor(identity),
         )
     return {
         "plan_id": int(plan_id),
@@ -195,6 +220,7 @@ def _ranked_equipment_options(
     owner_user_id: Optional[int],
     current: Optional[dict[str, Any]],
     technique: Optional[str],
+    can_edit: Any = lambda _owner: False,
 ) -> tuple[list[dict[str, Any]], Optional[int], Optional[int]]:
     """Nucleo unico da ficha salva e do rascunho: `(items, current_gym_equipment_id,
     current_max_safe_rpe)`."""
@@ -216,6 +242,7 @@ def _ranked_equipment_options(
             {
                 "gym_equipment_id": int(link["id"]),
                 "equipment_id": int(link["equipment_id"]),
+                "gym_id": int(gym_id),
                 "equipment_name": link.get("equipment_name"),
                 "photo_url": link.get("photo_url"),
                 "user_preference_stars": link.get("user_preference_stars"),
@@ -224,6 +251,7 @@ def _ranked_equipment_options(
                 "is_current": bool(current and int(current["id"]) == int(link["id"])),
                 "eligible": reason is None,
                 "reason": reason,
+                **manufacturer_fields(link, can_edit),
             }
         )
     return (
@@ -239,6 +267,8 @@ def list_draft_equipment_options(
     user_id: Optional[int],
     current_gym_equipment_id: Optional[int] = None,
     advanced_technique: Optional[str] = None,
+    *,
+    identity: Any = None,
 ) -> dict[str, Any]:
     """Mesmas opcoes de `list_equipment_options` para o RASCUNHO (sem `plan_id`),
     por academia + exercicio, no ranking de quem pediu. Academia inexistente ou
@@ -258,7 +288,7 @@ def list_draft_equipment_options(
                 if current and int(current["gym_id"]) != int(gym_id):
                     current = None
             items, current_id, current_rpe = _ranked_equipment_options(
-                conn, int(gym_id), int(mapping_id), user_id, current, technique
+                conn, int(gym_id), int(mapping_id), user_id, current, technique, _manufacturer_editor(identity)
             )
     return {
         "gym_id": int(gym_id),

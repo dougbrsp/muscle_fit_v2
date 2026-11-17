@@ -48,7 +48,6 @@ import { EM_DASH, fmtDate, fmtInt, fmtKg, fmtRpe, fmtSets } from '@/lib/dashboar
 import {
   MUSCLE_SORTS,
   MUSCLE_SORT_LABELS,
-  contributionsByExercise,
   countByStatus,
   groupsOutsideTemplatePlan,
   groupsWithGenericTarget,
@@ -59,7 +58,7 @@ import {
   type MuscleSort,
 } from '@/lib/dashboard-muscles';
 import { STATUS_DOMAIN_ORDER, statusVisual, volumeStatusDomain } from '@/lib/dashboard-status';
-import type { MuscleItem, MuscleSession } from '@/lib/dashboard-v3-types';
+import type { MuscleExerciseContribution, MuscleItem, MuscleSession } from '@/lib/dashboard-v3-types';
 import { exerciseProgressHref } from '@/lib/exercise-progress';
 import { isWorkingSetType } from '@/lib/set-types';
 import { BRAND } from '@/theme';
@@ -358,6 +357,7 @@ export function DashboardMusculosClient() {
           {detailQuery.isSuccess && (
             <MuscleDrilldown
               sessions={detailQuery.data.sessions}
+              contribuicoes={detailQuery.data.exercise_contributions ?? []}
               setsTruncated={detailQuery.data.sets_truncated}
               setsLimit={detailQuery.data.sets_limit}
               limitations={detailQuery.data.limitations}
@@ -679,6 +679,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
 
 function MuscleDrilldown({
   sessions,
+  contribuicoes,
   setsTruncated,
   setsLimit,
   limitations,
@@ -686,14 +687,13 @@ function MuscleDrilldown({
   filters,
 }: {
   sessions: MuscleSession[];
+  contribuicoes: MuscleExerciseContribution[];
   setsTruncated: boolean;
   setsLimit: number;
   limitations: string[];
   quality: MuscleItem['data_quality'];
   filters: DashboardFilters;
 }) {
-  const contribuicoes = useMemo(() => contributionsByExercise(sessions), [sessions]);
-
   if (sessions.length === 0) {
     return (
       <EmptyState
@@ -715,8 +715,8 @@ function MuscleDrilldown({
 
       <Accordion variant="separated" radius="md">
         {contribuicoes.map((contribuicao) => {
-          const sessoes = sessionsForExercise(sessions, contribuicao.exerciseId, contribuicao.name);
-          const chave = `${contribuicao.exerciseId ?? contribuicao.name}`;
+          const sessoes = sessionsForExercise(sessions, contribuicao.exercise_id, contribuicao.name);
+          const chave = `${contribuicao.exercise_id ?? contribuicao.name}`;
           return (
             <Accordion.Item key={chave} value={chave}>
               <Accordion.Control>
@@ -740,10 +740,10 @@ function MuscleDrilldown({
                 </Group>
               </Accordion.Control>
               <Accordion.Panel>
-                {contribuicao.exerciseId != null && (
+                {contribuicao.exercise_id != null && (
                   <Anchor
                     component={Link}
-                    href={exerciseProgressHref(contribuicao.exerciseId, filters)}
+                    href={exerciseProgressHref(contribuicao.exercise_id, filters)}
                     c={BRAND.orange}
                     size="sm"
                   >

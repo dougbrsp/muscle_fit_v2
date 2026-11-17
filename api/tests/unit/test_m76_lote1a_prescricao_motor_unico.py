@@ -341,6 +341,10 @@ class _Cursor:
     def fetchone(self):
         return self.row
 
+    def fetchall(self):
+        # vinculo sem linha de academia (peso livre): `gym_contexts_by_gym_equipment` devolve {}
+        return []
+
 
 def test_suggested_progression_mantem_o_contrato_e_acrescenta_a_decisao(monkeypatch):
     from app import services

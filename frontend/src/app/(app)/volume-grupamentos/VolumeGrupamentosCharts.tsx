@@ -29,8 +29,8 @@ import {
 import { formatFixed, formatKgFixed, formatSetsCount } from '@/lib/format';
 import { BRAND } from '@/theme';
 
-// Bloco 5: mapa de calor — gradiente vermelho -> amarelo -> verde por
-// volume, mesma paleta da referência on-premise (`getHeatmapColor`).
+// Bloco 5: mapa de calor — gradiente vermelho -> amarelo -> verde pela
+// posição `volume_ratio` (0..1) pronta do backend; aqui só vira cor.
 const HEATMAP_COLOR_LOW = { r: 0xe0, g: 0x0d, b: 0x02 };
 const HEATMAP_COLOR_MID = { r: 0xe0, g: 0xd5, b: 0x02 };
 const HEATMAP_COLOR_HIGH = { r: 0x05, g: 0xab, b: 0x10 };
@@ -39,11 +39,9 @@ function toHex(color: { r: number; g: number; b: number }): string {
   return `#${color.r.toString(16).padStart(2, '0')}${color.g.toString(16).padStart(2, '0')}${color.b.toString(16).padStart(2, '0')}`;
 }
 
-function getHeatmapColor(value: number | null, minValue: number, maxValue: number): string {
-  if (value == null) return '#5C5C5C';
-  if (maxValue <= minValue) return toHex(HEATMAP_COLOR_LOW);
-
-  const ratio = Math.min(1, Math.max(0, (value - minValue) / (maxValue - minValue)));
+function getHeatmapColor(volumeRatio: number | null): string {
+  if (volumeRatio == null) return '#5C5C5C';
+  const ratio = Math.min(1, Math.max(0, volumeRatio));
   const [from, to, localRatio] =
     ratio < 0.5
       ? [HEATMAP_COLOR_LOW, HEATMAP_COLOR_MID, ratio / 0.5]
@@ -56,10 +54,10 @@ function getHeatmapColor(value: number | null, minValue: number, maxValue: numbe
 }
 
 function HeatmapCellContent(props: any) {
-  const { x, y, width, height, name, sets_count, volume_kg, minVolume, maxVolume } = props;
+  const { x, y, width, height, name, sets_count, volume_ratio } = props;
   if (width <= 0 || height <= 0) return null;
 
-  const color = getHeatmapColor(volume_kg ?? null, minVolume, maxVolume);
+  const color = getHeatmapColor(volume_ratio ?? null);
   const showLabel = width > 50 && height > 28;
 
   return (
