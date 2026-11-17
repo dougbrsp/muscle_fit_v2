@@ -1091,6 +1091,8 @@ def list_exercise_logs(
                     sg.name AS muscle_secondary,
                     e.equipment_id,
                     eq.id AS equipment_catalog_id,
+                    ge.gym_id AS equipment_gym_id,
+                    et.code AS equipment_type_code,
                     eq.name AS equipment_name,
                     (eq.photo_path IS NOT NULL) AS equipment_has_photo,
                     (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://app.musclefit.com.br/', eq.photo_path) ELSE NULL END) AS equipment_photo_url,
@@ -1117,6 +1119,7 @@ def list_exercise_logs(
                 LEFT JOIN gyms g ON g.id = a.gym_id
                 LEFT JOIN gym_equipment ge ON ge.id = e.equipment_id
                 LEFT JOIN equipment eq ON eq.id = ge.equipment_id
+                LEFT JOIN equipment_types et ON et.id = eq.equipment_type_id
                 {where_clause}
                 ORDER BY a.local_date DESC, a.id DESC, e.sequence ASC
                 LIMIT %s
@@ -1437,7 +1440,12 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
             }
 
 
-def high_rpe_sets(min_rpe: float = 9.0, limit: int = 50, user_id: int | None = None) -> list[dict[str, Any]]:
+def high_rpe_sets(min_rpe: float | None = None, limit: int = 50, user_id: int | None = None) -> list[dict[str, Any]]:
+    if min_rpe is None:
+        # Limiar do registro; import preguicoso (api-core nao carrega `intelligence`).
+        from .intelligence.dashboard.metrics_registry import HIGH_RPE_MIN
+
+        min_rpe = float(HIGH_RPE_MIN)
     with transaction() as conn:
         with conn.cursor() as cur:
             # Aquecimento/serie de ajuste nao sao series de esforco real:
@@ -1890,7 +1898,8 @@ def _pair_suggestion(
     training_goal: str | None = None,
 ) -> Any:
     """Sugestao do motor v2 para o par (`suggest_for_pair`); sem usuario, None."""
-    from .domain.prescription_service import suggest_for_pair
+    from .domain.prescription_service import SUGGESTION_LOG_LIMIT, suggest_for_pair
+    from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
 
     equipment_id = (
         effective_intensity.equipment_id_of_gym_equipment(conn, gym_equipment_id) if gym_equipment_id else None
@@ -1901,7 +1910,13 @@ def _pair_suggestion(
     # apenas para a ultima execucao do proprio exercicio
     # (`last_execution_from_logs` filtra por `mapping_id`), entao ler as
     # series do historico inteiro nao mudava nada na resposta.
-    logs = list_exercise_logs(limit=300, user_id=user_id, only_mapping_id=canonical_mapping_id)
+    logs = list_exercise_logs(limit=SUGGESTION_LOG_LIMIT, user_id=user_id, only_mapping_id=canonical_mapping_id)
+    # #188: academia da maquina pelo vinculo pedido (dono `equipment_context`)
+    gym_context = (
+        gym_contexts_by_gym_equipment(conn, [gym_equipment_id]).get(int(gym_equipment_id))
+        if equipment_id is not None
+        else None
+    )
     return suggest_for_pair(
         conn,
         int(user_id),
@@ -1910,6 +1925,7 @@ def _pair_suggestion(
         readiness=readiness,
         logs=logs,
         training_goal=training_goal,
+        gym_context=gym_context,
     )
 
 
@@ -1993,6 +2009,10 @@ def _suggested_progression_payload(suggestion: Any) -> dict[str, Any]:
         # Mesmo campo dos indicadores da ficha (topo da faixa do motor).
         "suggested_reps": legacy_indicators(suggestion)["suggested_reps"],
         "load_source": suggestion.load_source,
+        # #188 (aditivos): maquina calibrando o contexto (academia); codigo do motor
+        # (`progression_engine.CALIBRATION_CODE_*`) ou None.
+        "calibrating": suggestion.calibrating,
+        "calibration_code": suggestion.calibration_code,
         "load_increment_kg": suggestion.load_increment_kg,
         # Teto de carga do par marcado pelo usuario (migracao 110; None = sem teto).
         "max_load_kg": suggestion.max_load_kg,
@@ -2659,7 +2679,12 @@ def _ceilings_by_row(conn, user_id: int | None, exercises: list[dict[str, Any]])
             canonical_by_old = {
                 int(row["old_exercise_id"]): int(row["canonical_exercise_id"]) for row in cur.fetchall() or []
             }
-    tracks = list(ps.load_tracks(conn, int(user_id)).values())
+    from .domain.progression_engine import current_track_for_pair
+    from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
+
+    tracks = ps.load_tracks(conn, int(user_id))
+    # #188: maquina = carga atual da academia do vinculo da linha (peso livre: None = qualquer)
+    gym_contexts = gym_contexts_by_gym_equipment(conn, wanted)
     result: dict[int, tuple[Any, Any]] = {}
     for ex in exercises:
         equipment_id = equipment_by_gym_equipment.get(int(ex["preferred_equipment_id"] or 0))
@@ -2668,9 +2693,10 @@ def _ceilings_by_row(conn, user_id: int | None, exercises: list[dict[str, Any]])
         exercise_id = canonical_by_old.get(int(ex["mapping_id"]), int(ex["mapping_id"]))
         if (exercise_id, equipment_id) not in ceilings:
             continue
-        pair_tracks = [t for t in tracks if t.exercise_id == exercise_id and t.equipment_id == equipment_id]
-        pair_tracks.sort(key=lambda t: (t.last_executed_at or datetime.min, t.id or 0))
-        current = pair_tracks[-1].working_load_kg if pair_tracks else None
+        track = current_track_for_pair(
+            tracks, exercise_id, equipment_id, gym_contexts.get(int(ex["preferred_equipment_id"]))
+        )
+        current = track.working_load_kg if track is not None else None
         result[int(ex["workout_plan_exercise_id"])] = (ceilings[(exercise_id, equipment_id)], current)
     return result
 
@@ -2804,6 +2830,60 @@ def _expose_frozen_prescriptions(conn, exercises: list[dict[str, Any]], *, user_
             ex[field] = (shown or {}).get(field)
 
 
+def attach_current_calibration(conn, exercises: list[dict[str, Any]], *, user_id: int | None) -> None:
+    """#188: so na ficha pedida PARA UMA SESSAO (Modo Treino), cada exercicio
+    ganha `calibrating`/`calibration_code` ATUAIS do motor
+    (`domain/prescription_service.suggest_for_pairs`, uma chamada em lote).
+    Aditivo: a prescricao congelada, a carga e o status nao mudam. Sem vinculo
+    de equipamento, cardio ou item livre: False/None."""
+    from .domain.cardio_prescription import is_cardio_item
+    from .domain.prescription_service import SUGGESTION_LOG_LIMIT, PairQuery, suggest_for_pairs
+    from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
+    from .generation.freeze_mode_b import equipment_by_gym_equipment
+
+    for ex in exercises:
+        ex["calibrating"], ex["calibration_code"] = False, None
+    linked = [
+        ex
+        for ex in exercises
+        if ex.get("mapping_id") and ex.get("preferred_equipment_id") and not is_cardio_item(ex)
+    ]
+    if user_id is None or not linked:
+        return
+    try:
+        gym_equipment_ids = [ex["preferred_equipment_id"] for ex in linked]
+        equipment_by_gym = equipment_by_gym_equipment(conn, gym_equipment_ids)
+        gym_contexts = gym_contexts_by_gym_equipment(conn, gym_equipment_ids)
+        queries = [
+            (
+                ex,
+                PairQuery(
+                    exercise_id=int(ex["mapping_id"]),
+                    equipment_id=equipment_by_gym.get(int(ex["preferred_equipment_id"])),
+                    rpe_target=ex.get("rpe_target"),
+                    training_goal=goal_value(ex.get("training_goal")),
+                    gym_context=gym_contexts.get(int(ex["preferred_equipment_id"])),
+                ),
+            )
+            for ex in linked
+        ]
+        found = suggest_for_pairs(
+            conn,
+            int(user_id),
+            [query for _, query in queries],
+            logs=list_exercise_logs(limit=SUGGESTION_LOG_LIMIT, user_id=user_id),
+        )
+        for ex, query in queries:
+            suggestion = found.get(query.key)
+            if suggestion is not None:
+                ex["calibrating"], ex["calibration_code"] = bool(suggestion.calibrating), suggestion.calibration_code
+    except Exception:
+        # Abrir o treino e caminho critico: sem o aviso, a ficha abre igual.
+        logger.exception("Falha ao calcular a calibracao atual da ficha para a sessao")
+        for ex in exercises:
+            ex["calibrating"], ex["calibration_code"] = False, None
+
+
 def _manual_rows_snapshots(
     conn,
     plan_id: int,
@@ -2834,10 +2914,12 @@ def _manual_rows_snapshots(
     from . import progression_state as ps
     from .domain.prescription_service import (
         PAIR_SUGGESTION_ENGINE_VERSION,
+        SUGGESTION_LOG_LIMIT,
         PairQuery,
         legacy_indicators,
         suggest_for_pairs,
     )
+    from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
     from .generation.freeze_mode_b import coherent_equipment_id, equipment_by_gym_equipment, projected_readiness
 
     if not rows:
@@ -2860,18 +2942,22 @@ def _manual_rows_snapshots(
     if owner_id is not None and mapped:
         try:
             equipment_by_gym = equipment_by_gym_equipment(conn, [row.get("preferred_equipment_id") for row in mapped])
-            logs = list_exercise_logs(limit=300, user_id=owner_id)
+            gym_contexts = gym_contexts_by_gym_equipment(conn, [row.get("preferred_equipment_id") for row in mapped])
+            logs = list_exercise_logs(limit=SUGGESTION_LOG_LIMIT, user_id=owner_id)
             # Uma chamada por alvo de RPE: o motor indexa por par, e o alvo da
             # linha entra na composicao do teto.
             by_rpe: dict[Any, list[tuple[int, PairQuery]]] = {}
             for row in mapped:
+                equipment_id = coherent_equipment_id(conn, equipment_by_gym, row, int(plan_id))
                 query = PairQuery(
                     exercise_id=int(row["mapping_id"]),
-                    equipment_id=coherent_equipment_id(conn, equipment_by_gym, row, int(plan_id)),
+                    equipment_id=equipment_id,
                     rpe_target=row.get("rpe_target"),
                     sets_count=row.get("sets_count"),
                     # M97 F1: trilha e fase do objetivo da linha (carimbado).
                     training_goal=goal_value(row.get("training_goal")),
+                    # #188: academia da maquina pelo vinculo da linha
+                    gym_context=gym_contexts.get(int(row["preferred_equipment_id"])) if equipment_id else None,
                 )
                 # Uma chamada por (alvo de RPE, objetivo): o resultado e
                 # indexado por par.

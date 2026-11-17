@@ -98,6 +98,8 @@ export type ComparabilityKey = {
    * `null`/ausente = contexto não medido. Opcional: backend anterior não envia.
    */
   fatigue_context?: FatigueBand | null;
+  /** Academia da exposição; preenchida só para máquina (`null` nos demais casos). */
+  gym_id?: number | null;
 };
 
 /** Faixas do dono `domain/prior_fatigue.py` (`PriorFatigueBand`). */
@@ -172,7 +174,12 @@ export type Exposure = {
     | 'load_convention'
     | 'equipment_unknown'
     | 'fatigue_context_changed'
+    | 'gym_changed'
     | null;
+  /** Pertence à sequência que o veredito usou (pronto do motor; `false` em calibração). */
+  in_verdict_run?: boolean;
+  /** Pertence à sequência do contexto atual: é o que o gráfico plota (issue #188). Ausente = API antiga. */
+  in_context_run?: boolean;
 };
 
 /**
@@ -203,6 +210,27 @@ export type LatestComparison = {
   /** e1RM decidiu sozinho? (séries do e1RM com até 12 reps nos dois lados) */
   e1rm_decisive: boolean;
   e1rm_max_reliable_reps: number;
+  /** Por que não há par (ex.: `equipment_context_in_calibration`); `[]` quando comparou. */
+  reasons?: string[];
+  /** Posições em `exposures` do par que o veredito comparou; `previous_*` nulo = sem par. */
+  previous_index?: number | null;
+  current_index?: number | null;
+  previous_activity_id?: number | null;
+  current_activity_id?: number | null;
+  /** Variação pronta por métrica (dono `exposure_service._pair_metrics`). */
+  metrics?: PairMetric[];
+};
+
+/** Uma métrica do par "anterior vs. atual"; `delta_pct` em pontos percentuais. */
+export type PairMetric = {
+  code: 'best_load_kg' | 'paired_reps' | 'total_reps' | 'avg_rpe' | 'e1rm' | 'tonnage';
+  previous: number | null;
+  current: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+  better_when: 'up' | 'down' | 'neutral';
+  /** Desfecho pronto (`comparability.metric_outcome`): a tela só pinta. Ausente = API antiga. */
+  outcome?: 'improved' | 'worsened' | 'flat' | 'neutral' | null;
 };
 
 /** Melhor marca DENTRO da mesma `comparability_key`. */
@@ -236,6 +264,8 @@ export type ProgressionDecision = {
   engine_version: string | null;
   created_at: string | null;
   equipment_id: number | null;
+  /** Do contexto atual (`exposure_service.decision_in_context`). Ausente = API antiga. */
+  in_current_context?: boolean | null;
 };
 
 export type ExerciseRef = {
@@ -261,11 +291,15 @@ export type ExerciseProgressResponse = {
   exposures: Exposure[];
   /** Opcional: backend anterior a 2026-10-06 não envia. */
   latest_comparison?: LatestComparison | null;
+  /** Métrica da linha de tendência, escolhida pelo motor; `null` = sem pontos; ausente = API antiga. */
+  trend_metric?: 'e1rm' | 'best_load_kg' | 'total_reps' | null;
   records: ExerciseRecords;
   /** M97 F4: objetivo da progressão lida (`?goal=`; ausente = hipertrofia). */
   training_goal?: TrainingGoalValue | null;
   /** M97 F4: linha ÚNICA de e1RM (todos os objetivos, sem deload). */
   e1rm_series?: E1rmPoint[];
+  /** Média de RPE do período, pronta do backend (séries de trabalho); `null`/ausente = não exibir. */
+  avg_rpe_period?: number | null;
   /** M97 F4: sessões de deload do exercício na janela (só a marca). */
   deload_sessions?: DeloadSession[];
   progression_decisions: ProgressionDecision[];
@@ -457,6 +491,9 @@ export type MuscleSessionComparative = {
   points: MuscleSessionPoint[];
   /** Sessões do grupo na janela inteira — `points` menor é RECORTE. */
   sessions_in_window: number;
+  /** T-0 menos T-1, pronto do backend; `null`/ausente = sem T-1 (API antiga). */
+  effective_sets_delta?: number | null;
+  effective_sets_direction?: 'up' | 'down' | 'stable' | null;
 };
 
 export type MuscleEquipmentPoint = {
@@ -566,10 +603,24 @@ export type MuscleSession = {
   exposures: MuscleExposure[];
 };
 
+/** Contribuição de um exercício ao grupo, pronta do backend (#188). */
+export type MuscleExerciseContribution = {
+  exercise_id: number | null;
+  name: string;
+  sets: number;
+  stimulus: number;
+  /** Fração 0–1 do estímulo do grupo; null quando não há estímulo. */
+  share: number | null;
+  roles: string[];
+  sessions: number;
+};
+
 export type MuscleDrilldownResponse = {
   window: DashboardWindow;
   item: MuscleItem;
   sessions: MuscleSession[];
+  /** Já ordenada pelo backend; ausente na API antiga (a tela mostra lista vazia). */
+  exercise_contributions?: MuscleExerciseContribution[];
   /** Teto de séries desta resposta (limite de 1 MB da Data API). */
   sets_limit: number;
   sets_truncated: boolean;

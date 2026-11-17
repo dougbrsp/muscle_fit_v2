@@ -63,6 +63,7 @@ a poucas centenas de linhas curtas. Especificamente:
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -89,8 +90,8 @@ from ...load_conventions import load_convention_select_expr
 from .coercion import to_date, to_datetime, to_float
 from .contracts import DataNature, DataQuality, PrescriptionSource, WindowInfo
 from .identity import require_user_id
-from .session_records import SETS_SQL as SESSION_RECORD_SETS_SQL
-from .session_records import compute_session_records, exposures_to_compare, history_sql, parse_history
+from .exposure_service import get_session_progressions
+from .session_records import history_sql, parse_history
 from .session_records import record_exercise_ids as _record_exercise_ids
 from .metrics_registry import (
     EXECUTED_SESSION_STATUSES,
@@ -302,9 +303,9 @@ WHERE wp.user_id = %s
 ORDER BY wpe.plan_id ASC, wpe.sequence ASC
 """
 
-# Recordes e progressoes da pagina: `session_records.HISTORY_SQL_TEMPLATE`
-# (uma linha por exposicao dos exercicios da pagina) e `session_records.SETS_SQL`
-# (series so das exposicoes comparadas) - a regra e a de `comparability`.
+# Recordes da pagina: `session_records.HISTORY_SQL_TEMPLATE` (uma linha por
+# exposicao dos exercicios da pagina). Progressoes: o dono
+# (`exposure_service.get_session_progressions`), nunca decididas aqui.
 
 # Series dos exercicios com aplicacao de tecnica das sessoes da pagina (Fase 5,
 # PR 4) - lida so quando `SESSION_EXERCISES_SQL` acusou aplicacao.
@@ -413,6 +414,12 @@ RECORDS_LIMITATION = (
     "Recorde e progressao comparados dentro do mesmo exercicio, equipamento e convencao de carga "
     "(mesma regra de /dashboard/exercicios/[id]): trocar de maquina nao conta, assistido conta menos "
     "assistencia como melhora e mais carga com menos reps so progride quando o e1RM decide."
+)
+
+logger = logging.getLogger(__name__)
+
+PROGRESSIONS_UNAVAILABLE_LIMITATION = (
+    "Progressoes indisponiveis nesta pagina: leitura do historico incompleta."
 )
 
 EXPECTED_FROM_WEEKLY_SLOTS_LIMITATION = (
@@ -746,21 +753,26 @@ def count_item_statuses(items: Iterable[Mapping[str, Any]]) -> dict[str, int]:
 
 def compute_records_and_progressions(
     history_rows: Sequence[Mapping[str, Any]],
-    set_rows: Sequence[Mapping[str, Any]],
+    progressions: Optional[Mapping[int, Iterable[int]]],
     activity_ids: Iterable[int],
-) -> dict[int, dict[str, int]]:
+) -> dict[int, dict[str, Optional[int]]]:
     """Recordes e progressoes POR SESSAO (contagem de exercicios).
 
-    Regra unica de `comparability` via `session_records`: progressao =
-    `compare_exposures` PROGRESSING contra a exposicao anterior de MESMA chave
-    (exercicio + equipamento + convencao); recorde = melhor carga direcional da
-    chave (`assisted`: menos assistencia) superando todo o historico anterior
-    da chave. A primeira exposicao de uma chave nao e recorde."""
-    history = parse_history(history_rows)
-    computed = compute_session_records(history, set_rows, activity_ids)
+    Recorde = `session_records` (melhor carga direcional da chave fisica
+    superando todo o historico anterior da chave; a primeira exposicao nao e
+    recorde). Progressoes = `{activity_id: {exercicio}}` ja decididas pelo
+    dono (`exposure_service.get_session_progressions`): aqui so se conta.
+    `progressions=None` (dono sem leitura completa) -> `None` por sessao:
+    indisponivel, nunca zero."""
+    recordes = _record_exercise_ids(parse_history(history_rows))
     return {
-        activity_id: {"records": item["records"], "progressions": item["progressions"]}
-        for activity_id, item in computed.items()
+        activity_id: {
+            "records": len(recordes.get(activity_id, ())),
+            "progressions": (
+                None if progressions is None else len(set(progressions.get(activity_id, ())))
+            ),
+        }
+        for activity_id in sorted({int(item) for item in activity_ids})
     }
 
 
@@ -1038,12 +1050,23 @@ def _session_payload(
             version_key="session_records",
             limitations=[RECORDS_LIMITATION],
         ),
-        "progressions": metric(
-            float(records.get("progressions", 0)),
-            unit="exercicios",
-            nature=DataNature.DERIVED,
-            version_key="session_records",
-            limitations=[RECORDS_LIMITATION],
+        "progressions": (
+            metric(
+                None,
+                unit="exercicios",
+                nature=DataNature.DERIVED,
+                version_key="session_records",
+                quality=DataQuality.INSUFFICIENT,
+                limitations=[PROGRESSIONS_UNAVAILABLE_LIMITATION, RECORDS_LIMITATION],
+            )
+            if records.get("progressions", 0) is None
+            else metric(
+                float(records.get("progressions", 0)),
+                unit="exercicios",
+                nature=DataNature.DERIVED,
+                version_key="session_records",
+                limitations=[RECORDS_LIMITATION],
+            )
         ),
         "item_status_counts": dict(counts),
         "plan_link": plan_link,
@@ -1139,7 +1162,7 @@ def _collect_page_details(
         {int(row["exercise_id"]) for row in exercise_rows if row.get("exercise_id") is not None}
     )
     history_rows: list[dict[str, Any]] = []
-    set_rows: list[dict[str, Any]] = []
+    progressions: Optional[dict[int, set[int]]] = {}
     if exercise_ids:
         with conn.cursor() as cursor:
             convention_expr = load_convention_select_expr(cursor)
@@ -1148,11 +1171,20 @@ def _collect_page_details(
             _in_clause(history_sql(convention_expr), exercise_ids),
             (user_id, max_local_date, *exercise_ids),
         )
-        compared_row_ids = exposures_to_compare(parse_history(history_rows), activity_ids)
-        if compared_row_ids:
-            set_rows = _rows(
-                conn, _in_clause(SESSION_RECORD_SETS_SQL, compared_row_ids), (user_id, *compared_row_ids)
+        page_dates = [to_date(row.get("local_date")) for row in session_rows]
+        try:
+            progressions = get_session_progressions(
+                conn,
+                user_id=user_id,
+                activity_ids=activity_ids,
+                exercise_ids=exercise_ids,
+                date_from=min((item for item in page_dates if item is not None), default=max_local_date),
+                date_to=max_local_date,
             )
+        except Exception:
+            # A lista de treinos nunca cai por causa das progressoes: viram indisponiveis.
+            logger.exception("session_progressions falhou; progressoes indisponiveis nesta pagina")
+            progressions = None
 
     items_by_activity: dict[int, list[dict[str, Any]]] = {}
     for row in session_rows:
@@ -1173,7 +1205,7 @@ def _collect_page_details(
         "totals": {int(row["activity_id"]): row for row in totals_rows},
         "effective": {int(row["activity_id"]): row for row in effective_rows},
         "items": items_by_activity,
-        "records": compute_records_and_progressions(history_rows, set_rows, activity_ids),
+        "records": compute_records_and_progressions(history_rows, progressions, activity_ids),
         "record_exercise_ids": record_exercise_ids(history_rows),
         "slot_names": _template_slot_names(conn, version_ids),
         # Copia de Modelo (090) cai no grupo da origem: a raiz vem do dono.

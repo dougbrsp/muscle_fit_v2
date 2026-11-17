@@ -105,6 +105,12 @@ def is_reliable_reps(reps: Any, max_reps: int = E1RM_MAX_RELIABLE_REPS) -> bool:
     return parsed is not None and 0 < parsed <= int(max_reps)
 
 
+def reliable_reps_sql(column: str) -> str:
+    """Fragmento SQL do mesmo predicado de `is_reliable_reps` (0 < reps <= teto),
+    para filtro em WHERE. `column` e identificador do codigo, nunca entrada do usuario."""
+    return f"{column} > 0 AND {column} <= {int(E1RM_MAX_RELIABLE_REPS)}"
+
+
 def reliable_e1rm(
     load_kg: Any,
     reps: Any,

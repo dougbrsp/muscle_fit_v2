@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
 
 from . import services
+from .intelligence.volume_comparison import PERIOD_GRANULARITIES
 from .request_models import MuscleGroupBodyMapIn
 from .intelligence import BodyCompositionTrendService, MuscleRecoveryService, VolumeService
 from .access import require_permission
 from .security import Identity, get_current_identity
 
 router = APIRouter(prefix="/analytics", tags=["analytics", "dashboard-modules"], dependencies=[Depends(get_current_identity)])
+
+_GRANULARITY_PATTERN = f"^({'|'.join(PERIOD_GRANULARITIES)})$"
 
 
 @router.get("/body-composition-trend")
@@ -25,8 +29,14 @@ def body_composition_trend(
 def training_volume(
     days: int = Query(default=30, ge=1, le=3650),
     identity: Identity = Depends(require_permission("volume.grupamentos", "ver")),
+    granularity: Annotated[Optional[str], Query(pattern=_GRANULARITY_PATTERN)] = None,
 ):
+    """`granularity` (opcional, `d7`|`week`|`month`): acrescenta
+    `period_comparison`, a aba de tendencia atual x anterior pronta (dono:
+    `slot_session_comparison.build_period_comparison`), com as janelas no
+    "hoje" local do usuario. A janela anterior precisa caber em `days`."""
     from .intelligence.methodology_volume_service import annotate_group_hierarchy, load_group_hierarchy
+    from .intelligence.slot_session_comparison import build_period_comparison
 
     service = VolumeService()
     overview = service.get_volume_breakdown(days=days, user_id=identity.user_id)
@@ -35,7 +45,12 @@ def training_volume(
     # para /volume-grupamentos agrupar. O overview nao ganha os campos: status
     # e metas sao por grupo e nao se agregam.
     annotate_group_hierarchy(trend["items"], load_group_hierarchy())
-    return {"overview": overview, "trend": trend}
+    body = {"overview": overview, "trend": trend}
+    if granularity is not None:
+        body["period_comparison"] = build_period_comparison(
+            trend["items"], granularity, service._user_today(identity.user_id)
+        )
+    return body
 
 
 @router.get("/training-volume-by-split-day")

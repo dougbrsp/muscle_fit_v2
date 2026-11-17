@@ -2,8 +2,8 @@
 // nesta etapa. Ver `C:\muscle_fit\api\app\analytics.py` para o contrato
 // completo — ampliar aqui conforme novas telas forem portadas.
 
-import type { PlannedVolumeSeverity } from './dashboard-status';
-import type { WeeklySummary } from './workouts-analysis-types';
+import type { PlannedVolumeSeverity } from "./dashboard-status";
+import type { WeeklySummary } from "./workouts-analysis-types";
 
 export type TrainingTrendItem = {
   period: string;
@@ -18,7 +18,7 @@ export type TrainingTrendItem = {
 };
 
 export type TrainingTrendResponse = {
-  period: 'day' | 'week' | 'month' | 'year';
+  period: "day" | "week" | "month" | "year";
   days: number;
   items: TrainingTrendItem[];
 };
@@ -47,7 +47,7 @@ export type MuscleRecoveryRecentSet = {
   reps?: number | null;
   rpe?: number | null;
   set_type: string;
-  role: 'primary' | 'secondary';
+  role: "primary" | "secondary";
   participation: number;
   effort_points: number;
   repetition_factor: number;
@@ -62,7 +62,8 @@ export type MuscleRecoveryFactors = {
   rpe10_isolated_note?: string;
 };
 
-export type MuscleRecoveryReadinessStatus = 'READY' | 'REDUCED_DOSE' | 'NO_DIRECT_WORK';
+export type MuscleRecoveryReadinessStatus =
+  "READY" | "REDUCED_DOSE" | "NO_DIRECT_WORK";
 
 export type MuscleRecoveryRecommendation = {
   volume_multiplier: number;
@@ -79,13 +80,13 @@ export type MuscleRecoveryRecommendation = {
 };
 
 export type MuscleRecoveryBlockingSignalCode =
-  | 'JOINT_PAIN'
-  | 'MUSCLE_PAIN'
-  | 'PERFORMANCE_DROP'
+  | "JOINT_PAIN"
+  | "MUSCLE_PAIN"
+  | "PERFORMANCE_DROP"
   /** @deprecated Não é mais emitido pela API desde 2026-09-14 (RPE alto não bloqueia). */
-  | 'RPE_ANTICIPATED'
-  | 'EXCESSIVE_REP_DROP'
-  | 'LOW_READINESS';
+  | "RPE_ANTICIPATED"
+  | "EXCESSIVE_REP_DROP"
+  | "LOW_READINESS";
 
 export type MuscleRecoveryBlockingSignal = {
   code: MuscleRecoveryBlockingSignalCode;
@@ -116,8 +117,8 @@ export type MuscleRecoveryItem = {
   recovery_pct: number;
   estimated_recovery_hours: number;
   remaining_hours: number;
-  status: 'green' | 'yellow' | 'red';
-  guidance: 'ideal' | 'recovering' | 'avoid';
+  status: "green" | "yellow" | "red";
+  guidance: "ideal" | "recovering" | "avoid";
   readiness_status: MuscleRecoveryReadinessStatus;
   session_dose: number;
   dose_last_72h: number;
@@ -176,12 +177,13 @@ export type MuscleActivationRow = {
   assessment?: MuscleActivationAssessment;
 };
 
-export type MuscleActivationTargetSource = 'template_slot' | 'training_type' | 'generic_fallback';
+export type MuscleActivationTargetSource =
+  "template_slot" | "training_type" | "generic_fallback";
 
 export type MuscleActivationAssessment = {
   /** Código no domínio `status_domain` de `dashboard-status.ts`. */
   status: string;
-  status_domain: 'weeklyVolume' | 'plannedVolume';
+  status_domain: "weeklyVolume" | "plannedVolume";
   target_source: MuscleActivationTargetSource;
   /** Alvo e teto em séries equivalentes; `null` na meta genérica. */
   target_sets: number | null;
@@ -249,14 +251,14 @@ export type CardioRecommendationSessionView = {
   signals: string[];
   adjustment_labels: string[];
   slot_name: string | null;
-  plan_action: 'replace' | 'add' | null;
+  plan_action: "replace" | "add" | null;
   applicable: boolean;
 };
 
 export type CardioRecommendationNoteView = {
   date: string | null;
   date_label: string;
-  action: 'adjusted' | 'rejected' | string | null;
+  action: "adjusted" | "rejected" | string | null;
   code: string;
   label: string;
   detail_label: string | null;
@@ -269,7 +271,11 @@ export type CardioRecommendationView = {
   confidence_reason: string | null;
   sessions: CardioRecommendationSessionView[];
   notes: CardioRecommendationNoteView[];
-  plan: { template_id: number | null; template_name: string | null; template_version_id: number | null } | null;
+  plan: {
+    template_id: number | null;
+    template_name: string | null;
+    template_version_id: number | null;
+  } | null;
   can_apply: boolean;
 };
 
@@ -280,7 +286,7 @@ export type CardioRecommendationDetail = CardioRecommendation & {
 // POST /cardio-recommendations/{id}/apply (grava no RASCUNHO do Modelo).
 export type CardioApplyResultItem = {
   date: string;
-  status: 'applied' | 'already_applied' | 'rejected';
+  status: "applied" | "already_applied" | "rejected";
   code: string;
   message: string;
   slot_sequence: number | null;
@@ -306,7 +312,7 @@ export type PlanCardioZoneRange = {
 };
 
 export type PlanCardioStep = {
-  kind: 'warmup' | 'main' | 'intervals' | 'cooldown';
+  kind: "warmup" | "main" | "intervals" | "cooldown";
   label: string;
   text: string;
   zones: PlanCardioZoneRange[];
@@ -333,7 +339,7 @@ export type PlanCardioResponse = {
 // /cardio-recommendations/generate` retorna só `{job_id, status}`; o
 // resultado final vem de `GET /jobs/{job_id}`, campo `result`, no mesmo
 // formato de `cardio_generation_core.dispatch_cardio_generation`.
-export type AsyncJobStatus = 'pending' | 'done' | 'failed';
+export type AsyncJobStatus = "pending" | "done" | "failed";
 
 export type CardioGenerationResult = {
   id: number;
@@ -376,7 +382,7 @@ export type BodyCompositionTrendItem = {
 };
 
 export type BodyCompositionTrend = {
-  status?: 'insufficient_data';
+  status?: "insufficient_data";
   weight_velocity_per_day?: number | null;
   muscle_velocity_per_day?: number | null;
   fat_velocity_per_day?: number | null;
@@ -391,22 +397,53 @@ export type BodyCompositionTrendResponse = {
 
 // Contrato de GET /analytics/exercise-progress — ver rota `exercise_progress`
 // em `C:\muscle_fit\api\app\analytics.py`.
+// Issue #188: os pontos vêm do motor (só séries de trabalho, carga de topo sem
+// deload); a tela só exibe. Campos opcionais = ausentes em API antiga.
 export type ExerciseProgressItem = {
+  exercise_id?: number;
+  activity_id?: number;
   local_date: string;
   activity_name: string;
+  /** Nome do catálogo. */
   original_name: string;
   mapped_name?: string | null;
+  equipment_name?: string | null;
+  load_convention?: string | null;
   sets_count: number;
   reps_total: number;
+  /** Carga de topo das séries de trabalho (sem deload). */
   best_weight_kg: number | null;
-  volume_kg: number;
+  top_set_reps?: number[] | null;
+  /** `null` em convenções sem tonelagem. */
+  volume_kg: number | null;
   avg_rpe: number | null;
   high_rpe_sets: number;
+  e1rm?: number | null;
+  e1rm_reps?: number | null;
+  e1rm_reliable?: boolean | null;
+  comparability_key?: Record<string, unknown> | null;
+  in_context_run?: boolean | null;
+  in_verdict_run?: boolean | null;
+};
+
+/** Curva de UM exercício, montada pelo motor. */
+export type ExerciseProgressSeries = {
+  exercise_id: number;
+  exercise_name: string;
+  mapped_name?: string | null;
+  items: ExerciseProgressItem[];
 };
 
 export type ExerciseProgressResponse = {
   name: string;
   days: number;
+  /** Uma série por exercício; ausente em API antiga (a tela não reagrupa). */
+  series?: ExerciseProgressSeries[];
+  /** A busca foi cortada pelo limite do backend; ausente em API antiga. */
+  truncated?: boolean;
+  /** Exercícios que casaram com a busca (antes do corte); ausente em API antiga. */
+  matched_exercises?: number;
+  /** Todos os pontos de todas as séries, por `local_date` (tabela). */
   items: ExerciseProgressItem[];
 };
 
@@ -441,11 +478,11 @@ export type MuscleGroupsDailyActivationResponse = {
 // Status no vocabulário do motor: WITHIN_RANGE / BELOW_RANGE / ABOVE_RANGE /
 // NOT_EVALUABLE (sem faixa) / NOT_DIRECTLY_TRAINED (média sem treino).
 export type MethodologyRealizedStatus =
-  | 'WITHIN_RANGE'
-  | 'BELOW_RANGE'
-  | 'ABOVE_RANGE'
-  | 'NOT_EVALUABLE'
-  | 'NOT_DIRECTLY_TRAINED';
+  | "WITHIN_RANGE"
+  | "BELOW_RANGE"
+  | "ABOVE_RANGE"
+  | "NOT_EVALUABLE"
+  | "NOT_DIRECTLY_TRAINED";
 
 export type MethodologyRealizedRange = { min: number; max: number };
 
@@ -461,11 +498,14 @@ export type MethodologyRealizedItem = {
   muscle_group_id: number | null;
   muscle_group: string;
   /** Grupos (bloco e fatias) que somaram nesta linha. */
-  member_groups: Array<{ muscle_group_id: number | null; muscle_group: string }>;
+  member_groups: Array<{
+    muscle_group_id: number | null;
+    muscle_group: string;
+  }>;
   volume_class_name: string | null;
   days: MethodologyRealizedDay[];
   days_trained: number;
-  frequency_bucket: '1x' | '2x' | '3x_plus' | null;
+  frequency_bucket: "1x" | "2x" | "3x_plus" | null;
   session_range: MethodologyRealizedRange | null;
   direct_sets_per_session: number | null;
   session_status: MethodologyRealizedStatus;
@@ -494,7 +534,7 @@ export type MuscleRecoveryConsecutiveCheckItem = {
   elapsed_hours: number;
   required_hours: number;
   insufficient_recovery: boolean;
-  timestamp_precision: 'exact' | 'day_fallback';
+  timestamp_precision: "exact" | "day_fallback";
 };
 
 export type MuscleRecoveryConsecutiveCheckResponse = {

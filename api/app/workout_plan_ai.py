@@ -160,6 +160,11 @@ _RECOMMENDATION_FIELDS_OUT_OF_PROMPT = (
     "failure_allowed",
     "allowed_advanced_techniques",
     "safety_source",
+    # Fabricante por academia (#188): so a tela consome.
+    "gym_equipment_catalog_id",
+    "manufacturer",
+    "manufacturer_source",
+    "can_edit_manufacturer",
 )
 
 
@@ -215,12 +220,14 @@ def gather_ficha_context(gym_id: int | None, user_id: int) -> dict[str, Any]:
     (`_load_gyms`/`_load_exercise_catalog`, mesmas funcoes de servico das
     rotas). A geracao de ficha nao depende mais de `API_TOKEN` nem de
     `INTERNAL_API_BASE_URL`."""
+    from .domain.prescription_service import SUGGESTION_LOG_LIMIT
+
     context: dict[str, Any] = {
         "recent_exercise_logs": _trim_recent_exercise_logs(
-            services.list_exercise_logs(limit=300, user_id=user_id)
+            services.list_exercise_logs(limit=SUGGESTION_LOG_LIMIT, user_id=user_id)
         ),
         "high_rpe_sets": _trim_high_rpe_sets(
-            services.high_rpe_sets(min_rpe=9, limit=15, user_id=user_id)
+            services.high_rpe_sets(limit=15, user_id=user_id)
         ),
         "muscle_recovery": _trim_muscle_recovery(
             # Janela e limite: os do modelo (M76 B3), os mesmos da tela.
@@ -804,7 +811,8 @@ def assign_progression_indicators(exercises: list[dict[str, Any]], *, user_id: i
     de `gather_ficha_context` nao serve, porque aquecimento nao pode virar
     carga base. Sem usuario ou com falha, os indicadores ficam vazios (a
     ficha salva congela de novo pelo motor, em `_manual_rows_snapshots`)."""
-    from .domain.prescription_service import PairQuery, legacy_indicators, suggest_for_pairs
+    from .domain.prescription_service import SUGGESTION_LOG_LIMIT, PairQuery, legacy_indicators, suggest_for_pairs
+    from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
     from .generation.freeze_mode_b import equipment_by_gym_equipment
 
     vazio = legacy_indicators(None)
@@ -816,6 +824,10 @@ def assign_progression_indicators(exercises: list[dict[str, Any]], *, user_id: i
                 equipment_by_gym = equipment_by_gym_equipment(
                     conn, [exercise.get("preferred_equipment_id") for exercise in exercises]
                 )
+                # #188: academia da maquina pelo vinculo (dono `equipment_context`)
+                gym_contexts = gym_contexts_by_gym_equipment(
+                    conn, [exercise.get("preferred_equipment_id") for exercise in exercises]
+                )
                 for index, exercise in enumerate(exercises):
                     if not exercise.get("mapping_id"):
                         continue
@@ -824,10 +836,11 @@ def assign_progression_indicators(exercises: list[dict[str, Any]], *, user_id: i
                         exercise_id=int(exercise["mapping_id"]),
                         equipment_id=equipment_by_gym.get(int(gym_equipment_id)) if gym_equipment_id else None,
                         rpe_target=exercise.get("rpe_target"),
+                        gym_context=gym_contexts.get(int(gym_equipment_id)) if gym_equipment_id else None,
                     )
                 wanted = [query for query in queries if query is not None]
                 if wanted:
-                    logs = services.list_exercise_logs(limit=300, user_id=user_id)
+                    logs = services.list_exercise_logs(limit=SUGGESTION_LOG_LIMIT, user_id=user_id)
                     found = suggest_for_pairs(conn, int(user_id), wanted, logs=logs)
         except Exception:
             logger.exception("Falha ao calcular os indicadores de progressao do rascunho (motor v2)")

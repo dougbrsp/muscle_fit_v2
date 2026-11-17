@@ -44,28 +44,28 @@ def _group(current_sessions: int, previous_sessions: int, *, current_avg: float 
 def test_classify_change_faixas_por_sessao():
     # 4 sessoes cada: media 1100 x 1000 (total e por sessao andam juntos).
     assert classify_change(4400, 4000, 4, 4) == {
-        "classification": "PROGREDINDO", "change_pct": 10.0, "total_change_pct": 10.0,
+        "volume_status": "VOLUME_UP", "change_pct": 10.0, "total_change_pct": 10.0,
     }
-    assert classify_change(4196, 4000, 4, 4)["classification"] == "ESTAVEL"
+    assert classify_change(4196, 4000, 4, 4)["volume_status"] == "VOLUME_STABLE"
     assert classify_change(3600, 4000, 4, 4) == {
-        "classification": "REGREDINDO", "change_pct": -10.0, "total_change_pct": -10.0,
+        "volume_status": "VOLUME_DOWN", "change_pct": -10.0, "total_change_pct": -10.0,
     }
-    assert classify_change(500, 0, 2, 0)["classification"] == "NOVO"
-    assert classify_change(0, 0, 0, 0)["classification"] == "SEM_DADOS"
+    assert classify_change(500, 0, 2, 0)["volume_status"] == "NOVO"
+    assert classify_change(0, 0, 0, 0)["volume_status"] == "SEM_DADOS"
 
 
 def test_parou_de_treinar_o_grupo_nao_e_regressao():
     # Antes do M50: REGREDINDO -100%. Nenhuma sessao e frequencia, nao desempenho.
     assert classify_change(0, 800, 0, 4) == {
-        "classification": DADOS_INSUFICIENTES, "change_pct": None, "total_change_pct": None,
+        "volume_status": DADOS_INSUFICIENTES, "change_pct": None, "total_change_pct": None,
     }
 
 
 def test_janela_atual_no_inicio_fica_insuficiente():
     # Nenhuma ou uma sessao do grupo ate agora: nunca "regredindo".
-    assert _group(0, 8)["classification"] == DADOS_INSUFICIENTES
+    assert _group(0, 8)["volume_status"] == DADOS_INSUFICIENTES
     uma = _group(1, 8, current_avg=500.0)  # mesmo uma sessao fraca nao classifica
-    assert uma["classification"] == DADOS_INSUFICIENTES and uma["change_pct"] is None
+    assert uma["volume_status"] == DADOS_INSUFICIENTES and uma["change_pct"] is None
     assert MIN_SESSIONS_PER_WINDOW == 2
 
 
@@ -75,7 +75,7 @@ def test_janela_atual_no_meio_com_mesmo_desempenho_e_estavel():
     item = _group(4, 8)
     assert (item["current_tonnage_kg"], item["previous_tonnage_kg"]) == (4000.0, 8000.0)
     assert (item["current_tonnage_per_session_kg"], item["previous_tonnage_per_session_kg"]) == (1000.0, 1000.0)
-    assert item["classification"] == "ESTAVEL" and item["change_pct"] == 0.0
+    assert item["volume_status"] == "VOLUME_STABLE" and item["change_pct"] == 0.0
     assert item["total_change_pct"] == -50.0  # contexto: o total caiu, o desempenho nao
 
 
@@ -83,19 +83,19 @@ def test_uma_sessao_a_menos_por_causa_do_corte_nao_regride():
     # Janela de 28 dias cortando o ciclo: 7 sessoes contra 8, mesmo desempenho.
     # Total = -12,5% (fora da faixa de 5%); por sessao = 0%.
     item = _group(7, 8)
-    assert item["classification"] == "ESTAVEL" and item["change_pct"] == 0.0
+    assert item["volume_status"] == "VOLUME_STABLE" and item["change_pct"] == 0.0
 
 
 def test_janela_completa_classifica_pelo_desempenho():
-    assert _group(8, 8)["classification"] == "ESTAVEL"
-    assert _group(8, 8, current_avg=900.0)["classification"] == "REGREDINDO"
-    assert _group(8, 8, current_avg=1100.0)["classification"] == "PROGREDINDO"
+    assert _group(8, 8)["volume_status"] == "VOLUME_STABLE"
+    assert _group(8, 8, current_avg=900.0)["volume_status"] == "VOLUME_DOWN"
+    assert _group(8, 8, current_avg=1100.0)["volume_status"] == "VOLUME_UP"
 
 
 def test_regressao_real_aparece_mesmo_com_janela_parcial():
     # Menos sessoes E cada uma mais fraca: continua REGREDINDO.
     item = _group(3, 8, current_avg=850.0)
-    assert item["classification"] == "REGREDINDO" and item["change_pct"] == -15.0
+    assert item["volume_status"] == "VOLUME_DOWN" and item["change_pct"] == -15.0
 
 
 def test_sinais_discordantes_ficam_estaveis():
@@ -103,13 +103,13 @@ def test_sinais_discordantes_ficam_estaveis():
     # total identico (medido no DEV: biceps +122% por sessao, total 0%).
     item = _group(9, 20, current_avg=3658.0, previous_avg=1645.0)
     assert item["change_pct"] > 100 and abs(item["total_change_pct"]) < 5
-    assert item["classification"] == "ESTAVEL"
+    assert item["volume_status"] == "VOLUME_STABLE"
     # Menos sessoes, cada uma mais forte, total menor: nao e regressao.
     item = _group(8, 13, current_avg=4713.0, previous_avg=3681.0)
     assert item["change_pct"] > 5 and item["total_change_pct"] < -5
-    assert item["classification"] == "ESTAVEL"
+    assert item["volume_status"] == "VOLUME_STABLE"
     # Mais sessoes, cada uma mais fraca, total maior: nao e progressao.
-    assert _group(8, 4, current_avg=800.0)["classification"] == "ESTAVEL"
+    assert _group(8, 4, current_avg=800.0)["volume_status"] == "VOLUME_STABLE"
 
 
 def test_amostra_de_calculo_ponderada():
@@ -127,9 +127,9 @@ def test_amostra_de_calculo_ponderada():
     peito, ombro = items
     assert (peito["muscle_group_name"], peito["current_tonnage_kg"], peito["previous_tonnage_kg"]) == ("Peito", 3600.0, 3000.0)
     assert (peito["current_sessions"], peito["previous_sessions"]) == (2, 2)
-    assert peito["classification"] == "PROGREDINDO" and peito["change_pct"] == 20.0
+    assert peito["volume_status"] == "VOLUME_UP" and peito["change_pct"] == 20.0
     assert peito["phase"] == "ACUMULACAO"
-    assert ombro["current_tonnage_kg"] == 1440.0 and ombro["classification"] == "NOVO"
+    assert ombro["current_tonnage_kg"] == 1440.0 and ombro["volume_status"] == "NOVO"
     assert ombro["previous_tonnage_per_session_kg"] is None
     assert ombro["phase"] is None
 
@@ -291,7 +291,7 @@ def test_tecnica_avancada_entra_na_tonelagem_e_preparatorias_nao():
     assert by_period["current"]["sessions_count"] == 2
 
     (item,) = build_group_progression(rows)
-    assert item["classification"] == "ESTAVEL"
+    assert item["volume_status"] == "VOLUME_STABLE"
     assert item["change_pct"] == 0.0
 
 
@@ -364,7 +364,7 @@ def test_grupo_so_com_assistido_fica_sem_dados_e_declara_as_series():
     )
     (item,) = build_group_progression(rows)
     assert item["current_tonnage_kg"] == 0.0 and item["previous_tonnage_kg"] == 0.0
-    assert item["classification"] == "SEM_DADOS"
+    assert item["volume_status"] == "SEM_DADOS"
     assert item["current_tonnage_excluded_sets"] == 2
     assert item["previous_tonnage_excluded_sets"] == 2
 

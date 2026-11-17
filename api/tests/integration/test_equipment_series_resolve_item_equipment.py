@@ -10,6 +10,8 @@ exercício original ("Desenvolvimento de ombros na máquina" com Halteres,
 
 from __future__ import annotations
 
+from starlette.requests import Request
+
 from app.generation import mode_b_legacy as engine
 from app.security import Identity
 
@@ -101,7 +103,7 @@ def test_lista_de_equipamentos_da_academia_traz_descricao_do_exercicio(db_conn, 
     db_conn.commit()
 
     result = gyms.list_gym_equipment(
-        gym_id=catalog.gym_id, mapping_id=None, primary_group=None, active_only=True,
+        request=Request({"type": "http"}), gym_id=catalog.gym_id, mapping_id=None, primary_group=None, active_only=True,
         identity=Identity(user_id=1, role="admin", source="session"),
     )
 

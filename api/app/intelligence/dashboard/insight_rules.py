@@ -50,7 +50,8 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from ...domain.deload import suppresses_below_min_volume, suppresses_regression
 from ...observability import log_event
 from .contracts import DataNature, DataQuality, Severity, WindowInfo
-from .exposure_service import paired_top_reps
+from .comparability import progression_share
+from .exposure_service import RUN_SPAN_BASIS
 from .metrics_registry import (
     SIBLING_MUSCLE_GROUP_PAIRS,
     THRESHOLDS,
@@ -66,20 +67,6 @@ _ABOVE_MAX = "ABOVE_MAX"
 
 # Prontidao "piorando" = o modelo ja nao classifica o grupo como pronto.
 _STRAINED_READINESS = frozenset({"REDUCED_DOSE", "NO_DIRECT_WORK"})
-
-# Status comparaveis (o exercicio TEM historico comparavel; o resto e
-# ausencia de dado, nao resultado).
-_COMPARABLE_STATUSES = frozenset(
-    {
-        ExerciseProgressionStatus.PROGRESSING.value,
-        ExerciseProgressionStatus.STABLE.value,
-        ExerciseProgressionStatus.PLATEAU_SUSPECTED.value,
-        ExerciseProgressionStatus.REGRESSING.value,
-    }
-)
-_PROGRESS_OK_STATUSES = frozenset(
-    {ExerciseProgressionStatus.PROGRESSING.value, ExerciseProgressionStatus.STABLE.value}
-)
 
 _SEVERITY_RANK = {Severity.ACTION: 0, Severity.ATTENTION: 1, Severity.INFO: 2}
 _QUALITY_RANK = {
@@ -682,11 +669,11 @@ def rule_exercise_plateau_suspected(ctx: InsightContext) -> list[dict[str, Any]]
             continue
         if int(item.get("comparable_exposures") or 0) < minimum:
             continue
-        # Run comparavel do status (mesmo contexto de fadiga), nao as ultimas N.
-        run = list(item.get("_comparable_run") or [])
-        first, last = (run[0], run[-1]) if run else ({}, {})
-        paired = paired_top_reps(first, last) if len(run) >= 2 else None
-        e1rm_missing = any(exposure.get("e1rm") is None for exposure in run)
+        # Primeira x ultima da sequencia comparavel: pronta no dono (`run_span`).
+        span = item.get("_run_span") or {}
+        first, last = span.get("first") or {}, span.get("last") or {}
+        paired = span.get("paired")
+        e1rm_missing = bool(span.get("e1rm_missing"))
         key = last.get("comparability_key") or {}
         name = item.get("name") or f"exercício {item['exercise_id']}"
         out.append(
@@ -722,7 +709,7 @@ def rule_exercise_plateau_suspected(ctx: InsightContext) -> list[dict[str, Any]]
                         "e1rm", first.get("e1rm"), last.get("e1rm"), unit="kg", nature=DataNature.ESTIMATED
                     ),
                 ],
-                basis="trailing_comparable_run",
+                basis=span.get("basis") or RUN_SPAN_BASIS,
                 window=ctx.window.kind.value,
                 keys={
                     "exercise_id": int(item["exercise_id"]),
@@ -1026,12 +1013,10 @@ def rule_recomposition_compatible(ctx: InsightContext) -> list[dict[str, Any]]:
     if abs(change_pct) > float(ctx.threshold("weight_stable_pct")) * 100.0:
         return []
 
-    comparable = [item for item in ctx.progression if item.get("status") in _COMPARABLE_STATUSES]
-    min_comparable = int(ctx.threshold("insight_recomp_min_comparable_exercises"))
-    if len(comparable) < min_comparable:
+    resumo = progression_share(ctx.progression)
+    comparable, ok, share = resumo["comparable"], resumo["progressing_or_stable"], resumo["share"]
+    if comparable < int(ctx.threshold("insight_recomp_min_comparable_exercises")):
         return []
-    ok = [item for item in comparable if item.get("status") in _PROGRESS_OK_STATUSES]
-    share = len(ok) / len(comparable)
     if share < float(ctx.threshold("insight_recomp_progress_share")):
         return []
 
@@ -1052,7 +1037,7 @@ def rule_recomposition_compatible(ctx: InsightContext) -> list[dict[str, Any]]:
     ]
     answer = (
         f"Peso estável ({_fmt(first)} → {_fmt(last)} kg na média de 7 dias, {_fmt(change_pct, 1)}%) "
-        f"com {len(ok)} de {len(comparable)} exercícios comparáveis progredindo ou estáveis"
+        f"com {ok} de {comparable} exercícios comparáveis progredindo ou estáveis"
     )
     if waist_known:
         waist_first = _value({"value": waist.get("first")})

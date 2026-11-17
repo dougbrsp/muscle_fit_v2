@@ -113,7 +113,7 @@ from .context_service import (
     load_context_events,
 )
 from .identity import require_user_id
-from .metrics_registry import metric_version
+from .metrics_registry import THRESHOLDS, metric_version
 from .time_windows import user_now, user_wall_to_instant
 from ...db_helpers import rows as _rows
 
@@ -306,8 +306,9 @@ SIGNAL_SPECS: tuple[SignalSpec, ...] = (
         code="performance",
         label="Desempenho recente",
         description=(
-            "Ultima sessao de cada exercicio contra a anterior comparavel (mesmo exercicio, "
-            "equipamento e convencao de carga), agregada por grupo."
+            "Ultima sessao de cada exercicio contra a anterior comparavel decidida pelo motor de "
+            "progressao (mesmo exercicio, aparelho e convencao de carga; em maquina, mesma academia; "
+            "mesmo contexto de fadiga e objetivo), agregada por grupo."
         ),
         unit="x",
         source="muscle_recovery_service.performance_ratio",
@@ -1429,12 +1430,13 @@ def _performance_signal(
     items: Sequence[Mapping[str, Any]], readiness: ReadinessReading
 ) -> dict[str, Any]:
     """`performance_ratio` ja e uma razao contra a sessao ANTERIOR
-    COMPARAVEL de cada exercicio (fonte unica de progresso,
-    `exercise_performance` -> `dashboard/comparability`), entao a baseline
+    COMPARAVEL de cada exercicio, a do par do motor de progressao
+    (`dashboard/comparability.performance_ratio_of`), entao a baseline
     dele e 1,0 por construcao - nao ha o que recalcular aqui.
 
-    Desde 2026-10-06 so exercicios com par comparavel (mesmo exercicio,
-    equipamento e convencao) entram; abaixo de 1,0 so quando a regra de
+    So exercicios com par do dono entram (mesmo exercicio, aparelho e
+    convencao; em maquina, mesma academia, fora de calibracao; mesmo contexto
+    de fadiga e objetivo); abaixo de 1,0 so quando a regra de
     progresso chama a sessao de REGRESSING. Por isso "Desempenho caiu" deixou
     de aparecer por troca de aparelho, serie acima de 12 reps ou serie a
     menos."""
@@ -1493,8 +1495,10 @@ def _performance_signal(
         "source": spec.source,
         "limitations": [
             "e1RM e estimativa (Epley + RIR) e so existe em series com carga, repeticoes e RPE.",
-            "So entram exercicios com sessao anterior comparavel (mesmo exercicio, equipamento e "
-            "convencao de carga); acima de 12 repeticoes a comparacao e pelas repeticoes emparelhadas.",
+            "So entram exercicios com sessao anterior comparavel decidida pelo motor de progressao "
+            "(mesmo exercicio, aparelho e convencao de carga; em maquina, mesma academia, fora de "
+            "calibracao; mesmo contexto de fadiga e objetivo); acima de "
+            f"{int(THRESHOLDS['e1rm_max_reliable_reps'])} repeticoes a comparacao e pelas repeticoes emparelhadas.",
         ],
         "group": spec.group,
         "subjective": spec.subjective,

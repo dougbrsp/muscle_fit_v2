@@ -20,6 +20,7 @@ from ...domain.set_measures import SetMeasure, format_set_measure
 from ...domain.set_sides import WORST_SIDE_RULE_TEXT
 from ...domain.training_goal import goal_label, is_default
 from ..methodology_volume import STRENGTH_SET_HYPERTROPHY_VOLUME_WEIGHT
+from ..slot_session_comparison import NO_EQUIPMENT_LABEL  # rotulo unico do equipamento ausente
 
 SEM_DADOS = "_Sem dados no período._"
 INDISPONIVEL = "_Seção indisponível: não foi possível ler estes dados agora (detalhe em “Qualidade dos dados”)._"
@@ -80,7 +81,6 @@ INTENT_LABELS = {
     "cutting": "Cutting (definição)",
 }
 CONVENTION_LABELS = {"assisted": "assistido", "bodyweight": "peso corporal"}
-NO_EQUIPMENT_LABEL = "Sem equipamento"
 
 
 # ---------------------------------------------------------------------------
@@ -544,11 +544,13 @@ def _recovery(data: Mapping[str, Any]) -> str:
             )
         out.append(table(["Sinal", "Período", "Baseline", "Tendência", "Dias com dado"], rows, ["l", "r", "r", "l", "r"]))
         if any(str(s.get("code")) == "performance" for s in signals):
-            # Mesma base da prontidao (`exercise_performance`): o sinal nao e
-            # uma mediana de dias contra a baseline habitual como os demais.
+            # Mesma base da prontidao (par do motor de progressao,
+            # `comparability.performance_ratio_of`): o sinal nao e uma mediana
+            # de dias contra a baseline habitual como os demais.
             out.append(
                 "Desempenho recente: última sessão de cada exercício contra a anterior comparável "
-                "(mesmo exercício, equipamento e convenção de carga), agregada por grupo muscular; "
+                "decidida pelo motor de progressão (mesmo exercício, aparelho e convenção de carga; "
+                "em máquina, mesma academia; mesmo contexto de fadiga e objetivo), agregada por grupo muscular; "
                 "baseline = 1,00. Nessa linha, \"Dias com dado\" conta grupos musculares."
             )
 

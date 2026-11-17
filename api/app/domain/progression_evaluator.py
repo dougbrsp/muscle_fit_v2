@@ -82,12 +82,14 @@ from .progression_engine import (
     regression_triggered,
     session_working_load,
     strength_stall_triggered,
+    key_gym_context,
     track_key,
     track_key_payload,
     track_label,
     track_pending_load_status,
 )
 from .effective_intensity import from_prescription
+from .equipment_context import context_gym_id, context_in_calibration
 from .training_history import ExerciseExecution, SessionRecord
 from .training_safety import DEFAULT_MAX_SAFE_RPE, READY, IntensityComposition, TrainingSafety, compose
 
@@ -155,12 +157,13 @@ class SessionInputs:
         found = activation.get(muscle_group_id)
         return bool(found is not None and getattr(found, "in_range", False))
 
-    def track_key_for(self, execution: ExerciseExecution) -> Optional[tuple[int, int, str, str]]:
+    def track_key_for(self, execution: ExerciseExecution) -> Optional[tuple]:
         """Trilha da execucao: o par + o contexto de fadiga da execucao na
         sessao real (`fatigue_context`, montado por
         `progression_state.build_session_inputs` com o dono
         `domain/prior_fatigue.py`) + o objetivo da execucao (M97 F1,
-        `exercises.training_goal`). Sem contexto medido vale o descansado."""
+        `exercises.training_goal`) + a academia da maquina (#188, dono
+        `equipment_context.context_gym_id`). Sem contexto medido vale o descansado."""
         pair = execution.pair
         if pair is None:
             return None
@@ -169,6 +172,7 @@ class SessionInputs:
             pair[1],
             self.fatigue_context.get(int(execution.exercise_row_id)),
             execution.training_goal,
+            context_gym_id(execution.equipment_type_code, execution.gym_id),
         )
 
     def safety_for(self, key: tuple) -> TrainingSafety:
@@ -266,8 +270,69 @@ class EvaluationResult:
 # ---------------------------------------------------------------------------
 
 
+def context_calibrating(
+    execution: ExerciseExecution,
+    window: Sequence[SessionRecord],
+    session: SessionRecord,
+    inputs: SessionInputs,
+    context_window: Optional[Sequence[SessionRecord]] = None,
+) -> bool:
+    """#188: o contexto de maquina desta execucao esta calibrando? So monta a
+    sequencia de contextos do exercicio e pergunta ao dono
+    `equipment_context.context_in_calibration` - a MESMA regra e a MESMA
+    sequencia da comparabilidade (`comparability.comparable_run`): uma entrada
+    por execucao (duas passagens na sessao = duas), de QUALQUER objetivo e
+    contexto de fadiga, ate esta execucao inclusive, cortada nas ultimas
+    `VERDICT_LOOKBACK_EXPOSURES`. `context_window` = as sessoes INTEIRAS da
+    janela (sem o filtro por objetivo); ausente, vale `window`. Peso livre:
+    sempre `False`."""
+    # import tardio: a janela do veredito mora na comparabilidade (dona da constante)
+    from ..intelligence.dashboard.comparability import (
+        VERDICT_LOOKBACK_EXPOSURES,
+        build_key,
+        calibration_physical_key,
+    )
+
+    key = inputs.track_key_for(execution)
+    if key is None or key_gym_context(key) is None:
+        return False
+    records = list(window if context_window is None else context_window)
+    exercise_id = execution.exercise_id
+    executions = [
+        item
+        for record in records
+        if record.activity_id != session.activity_id
+        for item in record.exercises
+        if item.exercise_id == exercise_id
+    ]
+    current = next(
+        (r for r in records if r.activity_id == session.activity_id and any(i is execution for i in r.exercises)),
+        session,
+    )
+    for item in current.exercises:
+        if item.exercise_id == exercise_id:
+            executions.append(item)
+        if item is execution:
+            break
+    if not executions or executions[-1] is not execution:
+        executions.append(execution)
+    return context_in_calibration(
+        [
+            (
+                calibration_physical_key(build_key(item.exercise_id, item.equipment_id, item.load_convention)),
+                item.equipment_id,
+                context_gym_id(item.equipment_type_code, item.gym_id),
+            )
+            for item in executions[-VERDICT_LOOKBACK_EXPOSURES:]
+        ]
+    )
+
+
 def track_for(
-    execution: ExerciseExecution, tracks: Mapping[tuple[int, int], TrackState], inputs: SessionInputs
+    execution: ExerciseExecution,
+    tracks: Mapping[tuple[int, int], TrackState],
+    inputs: SessionInputs,
+    calibrating: bool = False,
 ) -> TrackState:
     """Trilha do par executado NO CONTEXTO DE FADIGA da execucao, com os
     metadados de catalogo atualizados. Trilha nova (par novo, ou par
@@ -289,13 +354,20 @@ def track_for(
         "max_load_kg": inputs.max_load_kg.get((key[0], key[1])),
     }
     if existing is not None:
-        return replace(existing, **metadata)
+        track = replace(existing, **metadata)
+        # #188: a calibracao de contexto vale por TODAS as sessoes dela; acabou, decide
+        if calibrating and track.gym_context is not None and track.load_applicable:
+            return replace(track, load_status=CALIBRATION)
+        if not calibrating and track.in_context_calibration:
+            return replace(track, load_status=ACTIVE)
+        return track
     return TrackState(
         exercise_id=key[0],
         equipment_id=key[1],
         muscle_group_id=inputs.primary_group.get(key[0]),
         fatigue_context=key[2],
         training_goal=key[3],
+        gym_context=key_gym_context(key),
         load_status=CALIBRATION,
         # A PRESCRICAO tambem respeita o teto de 4 (secao 5.6): a ficha pode
         # pedir 9 series, a trilha nunca guarda mais de 4 - senao a secao 5.4
@@ -312,6 +384,7 @@ def update_track_execution(
     now: datetime,
     reps_min: Optional[int] = None,
     group: Optional[GroupState] = None,
+    calibrating: bool = False,
 ) -> TrackState:
     """Efeito da execucao na trilha (secao 5.11): calibracao (a 1a sessao
     define L = MINIMO das `working`), **adocao da carga executada**,
@@ -370,7 +443,8 @@ def update_track_execution(
         if track.in_calibration:
             changes["calibrated_at"] = now
     elif track.in_calibration and load is not None:
-        changes["load_status"] = ACTIVE
+        # #188: em calibracao de contexto segue CALIBRATION guardando a ultima carga executada
+        changes["load_status"] = CALIBRATION if calibrating else ACTIVE
         changes["working_load_kg"] = load
         changes["last_load_change_at"] = now
         # a sessao que calibrou nao entra no historico (`counts_for_history`)
@@ -614,8 +688,11 @@ def evaluate_session(
     inputs: SessionInputs,
     now: Optional[datetime] = None,
     training_goal: Any = None,
+    context_window: Optional[Sequence[SessionRecord]] = None,
 ) -> EvaluationResult:
     """Avalia UMA sessao (a ultima de `window`) e devolve o estado novo.
+    `context_window` = a mesma janela com as sessoes de TODOS os objetivos,
+    so para a calibracao de maquina (`context_calibrating`).
 
     Avaliacao de UM objetivo (M97 F1): `session`, `window`, `group_states` e
     `tracks` sao todos do objetivo `training_goal` (ausente = default), e o
@@ -626,8 +703,13 @@ def evaluate_session(
     new_tracks = dict(tracks)
     decisions: list[ProgressionDecision] = []
 
+    calibrating = {
+        id(execution): context_calibrating(execution, window, session, inputs, context_window)
+        for execution in session.exercises
+        if execution.pair is not None
+    }
     touched = [
-        (execution, track_for(execution, new_tracks, inputs))
+        (execution, track_for(execution, new_tracks, inputs, calibrating[id(execution)]))
         for execution in session.exercises
         if execution.pair is not None
     ]
@@ -659,7 +741,9 @@ def evaluate_session(
     for execution, track in touched:
         group = new_groups.get(track.muscle_group_id) if track.muscle_group_id is not None else None
         reps_min = group.reps_min if group else reps_for_phase(F1, track.training_goal)[0]
-        updated = update_track_execution(track, execution, now=moment, reps_min=reps_min, group=group)
+        updated = update_track_execution(
+            track, execution, now=moment, reps_min=reps_min, group=group, calibrating=calibrating[id(execution)]
+        )
         if updated.working_load_kg != track.working_load_kg and not track.in_calibration:
             adoptions[track.key] = {
                 "from_kg": None if track.working_load_kg is None else float(track.working_load_kg),
@@ -1057,6 +1141,7 @@ def evaluate_session_by_goal(
             inputs=goal_inputs,
             now=now,
             training_goal=goal,
+            context_window=[item.progression_view(None) if item.is_deload else item for item in window],
         )
     return GoalEvaluation(results=results)
 
@@ -1086,10 +1171,13 @@ def evaluate_history_by_goal(
         decisions: list[ProgressionDecision] = []
         per_session: list[SessionDecisions] = []
         filtered = [item.progression_view(goal) for item in sessions]
+        # calibracao de maquina: todos os objetivos, deload sem execucao (como na janela do objetivo)
+        every_goal = [item.progression_view(None) if item.is_deload else item for item in sessions]
         for index, session in enumerate(filtered):
             if not session.exercises:
                 continue
-            window = filtered[max(0, index + 1 - window_size) : index + 1]
+            start = max(0, index + 1 - window_size)
+            window = filtered[start : index + 1]
             result = evaluate_session(
                 session,
                 window,
@@ -1097,6 +1185,7 @@ def evaluate_history_by_goal(
                 tracks=tracks,
                 inputs=goal_inputs,
                 training_goal=goal,
+                context_window=every_goal[start : index + 1],
             )
             group_states, tracks = result.group_states, result.tracks
             decisions.extend(result.decisions)

@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Drawer, Group, Loader, Text, UnstyledButton } from '@mantine/core';
+import { Alert, Button, Drawer, Group, Loader, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconAdjustments,
@@ -18,9 +18,9 @@ import {
   IconPlayerPlay,
   IconPlayerTrackNext,
 } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
-import { apiFetch } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
+import { apiFetch, ApiError } from '@/lib/api';
 import { getAdvancedTechniqueDescription, getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import {
   adjustmentLabel,
@@ -34,6 +34,7 @@ import {
   groupMusclesByRole,
   NO_COMPARISON_LABEL,
   parseExecutionDescription,
+  briefingContextLabel,
   performanceBadge,
   performanceExplanation,
   summarizeLastExecution,
@@ -42,6 +43,8 @@ import {
 } from '@/lib/exercise-briefing';
 import { deloadLoadOrigin, deloadPrescriptionText } from '@/lib/deload';
 import type { ExerciseBriefingResponse } from '@/lib/exercise-briefing-types';
+import { manufacturerLabel, saveGymEquipmentManufacturer } from '@/lib/gym-equipment-manufacturer';
+import { useOnlineStatus } from '@/mobile/ui/use-online-status';
 import { recoveryCeilingText } from '@/lib/intensity-status';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { WeightUnit } from '@/lib/weight-units';
@@ -146,6 +149,90 @@ export function ExerciseBriefingScreen({
   useAdvancedTechniques();
 
   return <ExerciseBriefingView {...props} data={query.data} isLoading={query.isLoading} isError={query.isError} />;
+}
+
+/**
+ * #188: fabricante efetivo do aparelho nesta academia. A edição aparece só
+ * com `can_edit_manufacturer` do servidor e vínculo no catálogo da academia;
+ * exige rede (desabilitada offline). Erros 403/422 do servidor vão para a tela.
+ */
+function BriefingManufacturer({ equipment }: { equipment: NonNullable<ExerciseBriefingResponse['equipment']> }) {
+  const qc = useQueryClient();
+  const online = useOnlineStatus();
+  const [value, setValue] = useState<string | null>(null);
+  const linkId = equipment.gym_equipment_catalog_id ?? null;
+  const mutation = useMutation({
+    mutationFn: (input: string) => saveGymEquipmentManufacturer(linkId as number, input),
+    onSuccess: async () => {
+      setValue(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['exercise-briefing'] }),
+        qc.invalidateQueries({ queryKey: ['gym-equipment-catalog'] }),
+      ]);
+    },
+  });
+  const label = manufacturerLabel(equipment.manufacturer, equipment.manufacturer_source);
+  const canEdit = Boolean(equipment.can_edit_manufacturer) && linkId != null;
+  if (!label && !canEdit) return null;
+
+  if (value !== null) {
+    const save = () => mutation.mutate(value);
+    return (
+      <div data-testid="briefing-manufacturer-edit">
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          <TextInput
+            size="xs"
+            label="Fabricante nesta academia"
+            description="Vazio = padrão do catálogo"
+            value={value}
+            onChange={(event) => setValue(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') save();
+              if (event.key === 'Escape') setValue(null);
+            }}
+            disabled={mutation.isPending}
+            autoFocus
+            style={{ flex: 1 }}
+          />
+          <Button size="xs" loading={mutation.isPending} disabled={!online} onClick={save}>
+            Salvar
+          </Button>
+          <Button size="xs" variant="subtle" disabled={mutation.isPending} onClick={() => setValue(null)}>
+            Cancelar
+          </Button>
+        </Group>
+        {mutation.isError && (
+          <Text size="xs" c="red" mt={4} role="alert">
+            {mutation.error instanceof ApiError ? mutation.error.message : 'Não foi possível salvar o fabricante.'}
+          </Text>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid="briefing-manufacturer">
+      <Text size="xs" c={BRAND.textMuted}>
+        Fabricante: {label || '—'}
+      </Text>
+      {canEdit && (
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          disabled={!online}
+          title={online ? undefined : 'Editar o fabricante exige conexão'}
+          aria-label="Editar fabricante deste aparelho nesta academia"
+          onClick={() => {
+            mutation.reset();
+            // Edita o valor da academia; o padrão do catálogo começa vazio (placeholder implícito).
+            setValue(equipment.manufacturer_source === 'gym' ? equipment.manufacturer || '' : '');
+          }}
+        >
+          Editar
+        </Button>
+      )}
+    </Group>
+  );
 }
 
 const SECTION_ICONS: Record<BriefingSectionKey, ReactNode> = {
@@ -366,6 +453,7 @@ export function ExerciseBriefingView({
         }
         testId="briefing-title"
       />
+      {!substitution && data?.equipment && <BriefingManufacturer equipment={data.equipment} />}
 
       {isLoading && (
         <Group gap="xs">
@@ -530,6 +618,11 @@ export function ExerciseBriefingView({
               {performanceExplanation(data.performance)}
               {!lastExecution ? ' Primeira vez que você faz este exercício por aqui.' : ''}
             </p>
+            {briefingContextLabel(data.performance) && (
+              <p style={{ margin: '4px 0 0', fontWeight: 600 }} data-testid="briefing-equipment-context">
+                {briefingContextLabel(data.performance)}
+              </p>
+            )}
             {data.track?.phase && (
               <p style={{ margin: '4px 0 0', color: BRAND.textMuted }}>
                 Fase da trilha: {data.track.phase}

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   ESCALA_ALEM_DO_MAXIMO,
-  contributionsByExercise,
   countByStatus,
   groupsOutsideTemplatePlan,
   groupsWithGenericTarget,
@@ -11,7 +10,6 @@ import {
   plannedVsRealizedScale,
   equipmentLabel,
   pointsByOffset,
-  sessionDelta,
   sessionOffsetLabel,
   sessionsForExercise,
   sortMuscleItems,
@@ -292,49 +290,6 @@ const crucifixo = {
   sets: [supino.sets[0]],
 };
 
-describe('contributionsByExercise', () => {
-  it('agrega por exercício e calcula a fração do estímulo do grupo', () => {
-    const contribuicoes = contributionsByExercise([
-      session({ activity_id: 1, exposures: [supino, crucifixo] }),
-    ]);
-    expect(contribuicoes.map((c) => c.name)).toEqual(['Supino', 'Crucifixo']);
-    expect(contribuicoes[0].share).toBe(0.75);
-    expect(contribuicoes[1].share).toBe(0.25);
-    expect(contribuicoes[0].sets).toBe(3);
-  });
-
-  it('conta SESSÕES distintas, não exposições', () => {
-    const contribuicoes = contributionsByExercise([
-      session({ activity_id: 1, exposures: [supino, { ...supino, exercise_row_id: 9 }] }),
-      session({ activity_id: 2, exposures: [supino] }),
-    ]);
-    expect(contribuicoes[0].sessions).toBe(2);
-  });
-
-  it('mantém os papéis separados quando o mesmo exercício contribui em dois', () => {
-    const contribuicoes = contributionsByExercise([
-      session({
-        activity_id: 1,
-        exposures: [supino, { ...supino, exercise_row_id: 3, role: 'STABILIZER' as const }],
-      }),
-    ]);
-    expect(contribuicoes[0].roles).toEqual(['PRIMARY', 'STABILIZER']);
-  });
-
-  it('exercício sem id canônico é agrupado pelo nome, não descartado', () => {
-    const semId = { ...supino, exercise_id: null, name: 'Exercício sem cadastro' };
-    const contribuicoes = contributionsByExercise([session({ activity_id: 1, exposures: [semId] })]);
-    expect(contribuicoes).toHaveLength(1);
-    expect(contribuicoes[0].exerciseId).toBeNull();
-  });
-
-  it('sem estímulo nenhum, a fração é nula em vez de NaN', () => {
-    const zerado = { ...supino, effective_sets_stimulus: 0, sets: [] };
-    const contribuicoes = contributionsByExercise([session({ activity_id: 1, exposures: [zerado] })]);
-    expect(contribuicoes[0].share).toBeNull();
-  });
-});
-
 describe('sessionsForExercise', () => {
   it('filtra as sessões e as exposições do exercício pedido', () => {
     const sessoes = sessionsForExercise(
@@ -385,18 +340,6 @@ describe('comparativo por sessão', () => {
 
   it('offset fora da faixa de colunas é descartado, não estoura o array', () => {
     expect(pointsByOffset([{ offset: 9 }], 4)).toEqual([null, null, null, null]);
-  });
-
-  it('T-0 contra T-1: sem T-1 não há variação (e não vira zero)', () => {
-    const delta = sessionDelta([5, null]);
-    expect(delta.delta).toBeNull();
-    expect(delta.direction).toBe('none');
-  });
-
-  it('variação menor que o epsilon é estável — séries efetivas são fracionárias', () => {
-    expect(sessionDelta([3.001, 3]).direction).toBe('stable');
-    expect(sessionDelta([3.5, 3]).direction).toBe('up');
-    expect(sessionDelta([2.5, 3]).direction).toBe('down');
   });
 
   it('o rótulo da coluna é T-n', () => {

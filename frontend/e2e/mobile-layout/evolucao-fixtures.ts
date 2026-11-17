@@ -105,7 +105,7 @@ const muscles = {
   items: GROUPS.map(([id, n], i) => mItem(id, n, i)),
   comparatives: {
     unit: 'session', sessions_compared: 4, data_quality: Q, limitations: [],
-    by_session: GROUPS.slice(0, 5).map(([id, n]) => ({ muscle_group_id: id, muscle_group: n, sessions_in_window: 8, points: [pt(0, '2026-10-12', 9), pt(1, '2026-10-09', 8), pt(2, '2026-10-06', 10), pt(3, '2026-10-02', 7)] })),
+    by_session: GROUPS.slice(0, 5).map(([id, n]) => ({ muscle_group_id: id, muscle_group: n, sessions_in_window: 8, effective_sets_delta: 1, effective_sets_direction: 'up', points: [pt(0, '2026-10-12', 9), pt(1, '2026-10-09', 8), pt(2, '2026-10-06', 10), pt(3, '2026-10-02', 7)] })),
     by_equipment: GROUPS.slice(0, 3).map(([id, n]) => ({ muscle_group_id: id, muscle_group: n, equipment_limit: 5, equipment_truncated: false, equipments: [epts('Barra'), epts('Halter')] })),
     heatmap: [{ activity_id: 103, activity_name: 'Costas e bíceps', local_date: '2026-10-13', max_effective_sets_stimulus: 9, cells: GROUPS.slice(0, 5).map(([id, n], i) => ({ muscle_group_id: id, muscle_group: n, physical_sets: 9 - i, effective_sets_stimulus: 9 - i, tonnage_kg: 3000, avg_rpe: 8, share_of_max: (9 - i) / 9, band: ['VERY_HIGH', 'HIGH', 'MODERATE', 'LOW', 'NONE'][i] })) }],
   },
@@ -117,6 +117,7 @@ const muscleDetail = (id: number) => ({
     exposures: [{ exercise_row_id: 1, exercise_id: 101, name: 'Supino reto', position_in_session: 1, role: 'PRIMARY', effective_sets_stimulus: 4,
       sets: [1, 2, 3, 4].map((n) => ({ set_id: n, set_number: n, set_type: 'working', reps: 10 - n, weight_kg: 60 + n * 2.5, rpe: 8, effective_sets_stimulus: 1, effective_sets_fatigue: 1, role: 'PRIMARY' })) }],
   }],
+  exercise_contributions: [{ exercise_id: 101, name: 'Supino reto', sets: 4, stimulus: 4, share: 1, roles: ['PRIMARY'], sessions: 1 }],
 });
 
 // ----------------------------------------------------------------- progressao
@@ -136,7 +137,7 @@ const progByGroup = {
   },
   items: GROUPS.map(([id, n], i) => ({
     muscle_group_id: id, muscle_group_name: n, current_tonnage_kg: 18000 + i * 900, previous_tonnage_kg: 16500, current_sets: 40, previous_sets: 36, current_sessions: 8, previous_sessions: 7,
-    current_tonnage_per_session_kg: 2250, previous_tonnage_per_session_kg: 2357, classification: 'ESTAVEL', volume_status: ['VOLUME_UP', 'VOLUME_STABLE', 'VOLUME_DOWN'][i % 3],
+    current_tonnage_per_session_kg: 2250, previous_tonnage_per_session_kg: 2357, volume_status: ['VOLUME_UP', 'VOLUME_STABLE', 'VOLUME_DOWN'][i % 3],
     performance_status: ['PROGREDINDO', 'ESTAVEL', 'REGREDINDO', 'PROGREDINDO'][i % 4], performance_change_pct: [4.2, 0.8, -3.1, 6.5][i % 4], performance_exercises_compared: 2, performance_exercises_excluded: i === 2 ? 1 : 0,
     performance_activation_sum: 1.4, performance_insufficient_reason: null,
     performance_exercises: [{ exercise_id: 101, exercise_name: 'Supino reto', equipment_id: 1, load_convention: 'total', previous_e1rm_kg: 92, current_e1rm_kg: 96, change_pct: 4.3, stimulus_weight: 1, outlier: false, excluded_reason: null, status: 'PROGRESSING' }],
@@ -148,7 +149,7 @@ const exOptions = { ok: true, source: 'e2e', items: [['Supino reto', 'Peito'], [
 const progression = {
   exercise_name: 'Supino reto', mapping_id: 1, days: 28, items: days(28).filter((_, i) => i % 3 === 0).map((d, i) => ({
     activity_id: 200 + i, local_date: d, activity_name: 'Peito e tríceps', sets_count: 4, best_load_kg: 60 + i * 2.5, best_reps: 8, avg_rpe: 8, e1rm: 88 + i * 1.6, intensity_status: 'REACHED', rpe_target_effective: 8,
-    failure_allowed: false, evolution: { status: i === 0 ? 'NOT_COMPARABLE' : 'PROGRESSING', reasons: [] }, e1rm_reps: 8, e1rm_reliable: true, top_load_kg: 60 + i * 2.5, top_set_reps: [8, 8], in_verdict_key: true, training_goal: 'hypertrophy', deload_source: null, deload_label: null,
+    failure_allowed: false, evolution: { status: i === 0 ? 'NOT_COMPARABLE' : 'PROGRESSING', reasons: [] }, e1rm_reps: 8, e1rm_reliable: true, top_load_kg: 60 + i * 2.5, top_set_reps: [8, 8], in_context_run: true, in_verdict_run: true, training_goal: 'hypertrophy', deload_source: null, deload_label: null,
   })),
 };
 const progressionTrend = {
@@ -318,6 +319,8 @@ const expo = (i: number) => ({
 const exerciseProgress = {
   window: WINDOW, exercise: { exercise_id: 101, name: 'Supino reto', amazfit_name: null }, comparability_key: exerciseKey, status: 'PROGRESSING', status_scope: SCOPE_EXERCISE, status_reasons: [], fatigue_context: null,
   exposures: [0, 1, 2, 3, 4].map(expo),
+  trend_metric: 'e1rm',
+  avg_rpe_period: 8,
   latest_comparison: { comparable: true, paired_reps: { pairs: 2, previous: [8, 8], current: [9, 8], previous_sum: 16, current_sum: 17, delta: 1 }, e1rm_decisive: true, e1rm_max_reliable_reps: 12 },
   records: { best_e1rm: { value: 91, activity_id: 304, local_date: '2026-10-02', reliable: true, max_reliable_reps: 12 }, best_load_kg: { value: 70, activity_id: 304, local_date: '2026-10-02' } },
   training_goal: 'hypertrophy', e1rm_series: [0, 1, 2, 3, 4].map((i) => ({ activity_id: 300 + i, local_date: `2026-09-${20 + i * 3}`, e1rm: 85 + i * 1.5, e1rm_reps: 8, e1rm_reliable: true, training_goal: 'hypertrophy', same_physical_key: true })),
@@ -363,7 +366,17 @@ const methodology = {
 };
 const consecutive = { days: 7, items: [{ muscle_group_id: 1, muscle_group: 'Peito', date_from: days(7)[0], date_to: days(7)[1], elapsed_hours: 20, required_hours: 48, insufficient_recovery: true, timestamp_precision: 'exact' }] };
 const trendRows = days(84).filter((_, i) => i % 7 === 0).flatMap((d, w) => GROUPS.slice(0, 6).map(([, n], g) => ({ period: `2026-W${String(30 + w).padStart(2, '0')}`, group: n, muscle_group: n, value: 8 + ((w + g * 2) % 9), sets: 10, volume_kg: 9000, avg_rpe: 8, rpe_sets: 8, exercise_count: 3, exercises: [], source: 'e2e' })));
-const mappedTrend = { ok: true, source: 'e2e', metric: 'volume', period: 'weekly', days: 180, total_sets: 400, mapped_sets: 392, unmapped_sets: 8, mapped_ratio: 0.98, unmapped: [], trend_rows: trendRows, table_rows: [] };
+// Ranking pronto como o backend devolveria para `trendRows` (12 semanas, W30..W41):
+// [índice do grupo, latest W41, previous W40, total da janela, variation_pct]; tom "up" em todos.
+const pressure: Array<[number, number, number, number, number]> = [
+  [3, 16, 15, 153, 6.7], [2, 14, 13, 147, 7.7], [1, 12, 11, 141, 9.1], [5, 11, 10, 138, 10], [0, 10, 9, 135, 11.1], [4, 9, 8, 141, 12.5],
+];
+const mappedTrend = {
+  ok: true, source: 'e2e', metric: 'volume', period: 'weekly', days: 180, total_sets: 400, mapped_sets: 392, unmapped_sets: 8, mapped_ratio: 0.98, unmapped: [], trend_rows: trendRows,
+  table_rows: pressure.map(([g, , , total]) => ({ group: GROUPS[g][1], muscle_group: GROUPS[g][1], value: total, sets: 120, volume_kg: 108000, avg_rpe: 8, rpe_sets: 96, exercise_count: 3, exercises: [], source: 'e2e', period_count: 12 })),
+  latest_period: '2026-W41', previous_period: '2026-W40',
+  pressure_rows: pressure.map(([g, latest, previous, total, variation_pct]) => ({ group: GROUPS[g][1], latest, previous, total, variation_pct, tone: 'up' })),
+};
 const goals = { default: 'hypertrophy', items: [{ value: 'hypertrophy', label: 'Hipertrofia', is_default: true, defaults: {}, rest_follows_generation_interval: true, target_rpe: 8, rpe_ceiling: 9, disallowed_techniques: [] }, { value: 'strength', label: 'Força', is_default: false, defaults: {}, rest_follows_generation_interval: false, target_rpe: 9, rpe_ceiling: 10, disallowed_techniques: [] }] };
 
 const bodyMap = { items: [['Peito','chest'],['Costas','trapezius'],['Quadríceps','quadriceps'],['Ombros','trapezius'],['Bíceps','biceps'],['Tríceps','triceps'],['Posterior de coxa','hamstring'],['Glúteos','gluteal']].map(([g,s]) => ({ muscle_group: g, slugs: [s] })) };

@@ -439,7 +439,7 @@ def test_o_run_comparavel_para_na_troca_de_chave():
         exposicao(equipment_id=MAQUINA_A),
         exposicao(equipment_id=MAQUINA_A),
     ]
-    run = cmp.trailing_comparable_run(historico)
+    run = [historico[i] for i in cmp.comparable_run(historico).indices]
     assert len(run) == 2
     assert all(item.key.equipment_id == MAQUINA_A for item in run)
 

@@ -20,25 +20,36 @@ function sessao(overrides: Partial<ProgressionSessionItem>): ProgressionSessionI
 }
 
 describe('buildProgressionChart', () => {
-  it('plota só as sessões da chave do veredito', () => {
+  it('plota só in_context_run e destaca in_verdict_run (in_verdict_key é ignorado)', () => {
     const chart = buildProgressionChart([
-      sessao({ activity_id: 1, in_verdict_key: false, top_load_kg: 80, e1rm: 100, e1rm_reliable: true }),
-      sessao({ activity_id: 2, in_verdict_key: true, top_load_kg: 60, e1rm: 84, e1rm_reliable: true }),
-      sessao({ activity_id: 3, in_verdict_key: true, top_load_kg: 62, e1rm: 86, e1rm_reliable: true }),
+      // in_verdict_key legado true, mas fora do contexto: fora do gráfico.
+      sessao({ activity_id: 1, in_context_run: false, in_verdict_key: true, top_load_kg: 80, e1rm: 100, e1rm_reliable: true }),
+      sessao({ activity_id: 2, in_context_run: true, in_verdict_run: false, top_load_kg: 60, e1rm: 84, e1rm_reliable: true }),
+      sessao({ activity_id: 3, in_context_run: true, in_verdict_run: true, top_load_kg: 62, e1rm: 86, e1rm_reliable: true }),
     ]);
     expect(chart.points.map((p) => p.carga)).toEqual([60, 62]);
+    expect(chart.points.map((p) => p.inVerdict)).toEqual([false, true]);
     expect(chart.otherKeySessions).toBe(1);
   });
 
+  it('calibração: pontos do contexto continuam no gráfico com o veredito vazio', () => {
+    const chart = buildProgressionChart([
+      sessao({ activity_id: 1, in_context_run: true, in_verdict_run: false, top_load_kg: 60 }),
+      sessao({ activity_id: 2, in_context_run: true, in_verdict_run: false, top_load_kg: 62 }),
+    ]);
+    expect(chart.points.map((p) => p.carga)).toEqual([60, 62]);
+    expect(chart.points.every((p) => p.inVerdict === false)).toBe(true);
+  });
+
   it('carga do gráfico é a de topo, não a da série do melhor e1RM', () => {
-    const chart = buildProgressionChart([sessao({ in_verdict_key: true, top_load_kg: 60, best_load_kg: 55 })]);
+    const chart = buildProgressionChart([sessao({ in_context_run: true, top_load_kg: 60, best_load_kg: 55 })]);
     expect(chart.points[0].carga).toBe(60);
   });
 
   it('e1RM de série com mais de 12 reps fica fora da linha e é contado', () => {
     const chart = buildProgressionChart([
-      sessao({ in_verdict_key: true, e1rm: 91.7, e1rm_reliable: false }),
-      sessao({ in_verdict_key: true, e1rm: 84, e1rm_reliable: true }),
+      sessao({ in_context_run: true, e1rm: 91.7, e1rm_reliable: false }),
+      sessao({ in_context_run: true, e1rm: 84, e1rm_reliable: true }),
     ]);
     expect(chart.points.map((p) => p.e1rm)).toEqual([null, 84]);
     expect(chart.unreliableE1rm).toBe(1);
@@ -57,8 +68,8 @@ describe('buildProgressionChart', () => {
 describe('buildProgressionChart — objetivo e deload (M97 F4)', () => {
   it('sessão de força destacada na MESMA linha de e1RM', () => {
     const chart = buildProgressionChart([
-      sessao({ activity_id: 1, in_verdict_key: true, e1rm: 90, e1rm_reliable: true, training_goal: 'hypertrophy' }),
-      sessao({ activity_id: 2, in_verdict_key: true, e1rm: 95, e1rm_reliable: true, training_goal: 'strength' }),
+      sessao({ activity_id: 1, in_context_run: true, e1rm: 90, e1rm_reliable: true, training_goal: 'hypertrophy' }),
+      sessao({ activity_id: 2, in_context_run: true, e1rm: 95, e1rm_reliable: true, training_goal: 'strength' }),
     ], (goal) => goal === 'strength');
     expect(chart.points.map((p) => p.e1rm)).toEqual([90, 95]);
     expect(chart.points.map((p) => p.e1rmForca)).toEqual([null, 95]);
@@ -67,15 +78,15 @@ describe('buildProgressionChart — objetivo e deload (M97 F4)', () => {
 
   it('deload vira marca fora da linha (sem e1RM nem carga), mesmo sem chave do veredito', () => {
     const chart = buildProgressionChart([
-      sessao({ activity_id: 1, in_verdict_key: true, e1rm: 90, e1rm_reliable: true }),
+      sessao({ activity_id: 1, in_context_run: true, e1rm: 90, e1rm_reliable: true }),
       sessao({
         activity_id: 2,
-        in_verdict_key: null,
+        in_context_run: null,
         e1rm: null,
         deload_source: 'period',
         deload_label: 'Deload (período)',
       }),
-      sessao({ activity_id: 3, in_verdict_key: false, e1rm: 99 }),
+      sessao({ activity_id: 3, in_context_run: false, e1rm: 99 }),
     ]);
     expect(chart.points).toHaveLength(2);
     expect(chart.points[1]).toMatchObject({ deload: true, e1rm: null, carga: null, deloadLabel: 'Deload (período)' });

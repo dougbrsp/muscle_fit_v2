@@ -8,7 +8,6 @@ import {
   MUSCLE_GROUP_PROGRESSION_ORDER,
   MUSCLE_GROUP_VOLUME_ORDER,
   PLANNED_VOLUME_STATUS_ORDER,
-  PROGRESSION_TREND_ORDER,
   READINESS_ORDER,
   RECOVERY_GUIDANCE_ORDER,
   RECOVERY_STATUS_ORDER,
@@ -59,7 +58,6 @@ describe('cobertura do registro', () => {
         'muscleGroupProgression',
         // 2026-10-02: volume por grupo tem domínio próprio, com rótulos neutros.
         'muscleGroupVolume',
-        'progressionTrend',
         'readiness',
         'recoveryStatus',
         // F2.5 / M34 — no mapa de calor a cor nunca é o único sinal: a faixa
@@ -159,7 +157,7 @@ describe('valores de cada enum (espelho do backend)', () => {
     ]);
   });
 
-  it('progressão por grupo e tendência v2 mantêm os códigos pt-BR', () => {
+  it('progressão por grupo mantém os códigos pt-BR', () => {
     expect(MUSCLE_GROUP_PROGRESSION_ORDER).toEqual([
       'PROGREDINDO',
       'ESTAVEL',
@@ -168,13 +166,6 @@ describe('valores de cada enum (espelho do backend)', () => {
       'DADOS_INSUFICIENTES',
       'NOVO',
       'SEM_DADOS',
-    ]);
-    expect(PROGRESSION_TREND_ORDER).toEqual([
-      'PROGREDINDO',
-      'ESTAVEL',
-      'ESTAGNADO',
-      'REGREDINDO',
-      'DADOS_INSUFICIENTES',
     ]);
   });
 
@@ -224,12 +215,6 @@ describe('divergências unificadas', () => {
 
   it('NO_DIRECT_WORK usa o rótulo acionável, não o descritivo', () => {
     expect(statusVisual('readiness', 'NO_DIRECT_WORK').label).toBe('Evitar trabalho direto');
-  });
-
-  it('os códigos comuns dos dois enums pt-BR compartilham a apresentação', () => {
-    for (const code of ['PROGREDINDO', 'ESTAVEL', 'REGREDINDO', 'DADOS_INSUFICIENTES']) {
-      expect(statusVisual('muscleGroupProgression', code)).toBe(statusVisual('progressionTrend', code));
-    }
   });
 
   it('os dois laranjas do volume semanal se distinguem por ícone e hex', () => {

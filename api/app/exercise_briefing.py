@@ -40,16 +40,18 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import deload_periods, exercise_card_storage, exercise_description_autogen, services
 from .db import transaction
 from .domain import exercise_briefing as briefing
+from .domain.equipment_context import manufacturer_columns_sql, manufacturer_fields, manufacturer_join_sql
 from .domain.deload import deload_allows_technique, item_deload_prescription
-from .domain.training_goal import goal_value, sql_goal_is, sql_goal_join
+from .domain.training_goal import goal_value, sql_goal_is
 from .domain.training_history import DEFAULT_SESSION_WINDOW, TrainingHistoryRepository
-from .gyms import PUBLIC_ASSETS_DOMAIN
-from .access import require_permission
+from .gyms import PUBLIC_ASSETS_DOMAIN, manufacturer_editor
+from .access import require_permission, resolve_permissions
+from .access.deps import permissions_for_request
 from .security import Identity, get_current_identity
 
 logger = logging.getLogger(__name__)
@@ -113,7 +115,9 @@ def _muscles(cursor, exercise_id: int) -> list[dict[str, Any]]:
     ]
 
 
-def _equipment(cursor, gym_equipment_id: Optional[int], fallback_name: Optional[str]) -> Optional[dict[str, Any]]:
+def _equipment(
+    cursor, gym_equipment_id: Optional[int], fallback_name: Optional[str], can_edit=lambda _owner: False
+) -> Optional[dict[str, Any]]:
     """Equipamento da ficha (`gym_equipment.id`) traduzido para o catalogo
     global, com a URL publica da foto.
 
@@ -125,71 +129,93 @@ def _equipment(cursor, gym_equipment_id: Optional[int], fallback_name: Optional[
     Sem `gym_equipment_id` (equipamento nao resolvido nesta academia) devolve,
     no maximo, o NOME que a ficha carrega - melhor que nada na tela.
     """
+    sem_fabricante = manufacturer_fields({}, can_edit)
     if not gym_equipment_id:
-        return {"gym_equipment_id": None, "equipment_id": None, "name": fallback_name, "photo_url": None} if fallback_name else None
+        if not fallback_name:
+            return None
+        return {"gym_equipment_id": None, "equipment_id": None, "gym_id": None, "name": fallback_name, "photo_url": None, **sem_fabricante}
     cursor.execute(
         f"""
-        SELECT ge.id AS gym_equipment_id, eq.id AS equipment_id, eq.name,
+        SELECT ge.id AS gym_equipment_id, eq.id AS equipment_id, ge.gym_id, eq.name,
                (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path)
-                     ELSE NULL END) AS photo_url
+                     ELSE NULL END) AS photo_url,
+               {manufacturer_columns_sql()}
         FROM gym_equipment ge
         JOIN equipment eq ON eq.id = ge.equipment_id
+        {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
         WHERE ge.id = %s
         """,
         (int(gym_equipment_id),),
     )
     row = cursor.fetchone()
     if not row:
-        return {"gym_equipment_id": int(gym_equipment_id), "equipment_id": None, "name": fallback_name, "photo_url": None}
+        return {
+            "gym_equipment_id": int(gym_equipment_id), "equipment_id": None, "gym_id": None,
+            "name": fallback_name, "photo_url": None, **sem_fabricante,
+        }
     return {
         "gym_equipment_id": int(row["gym_equipment_id"]),
         "equipment_id": int(row["equipment_id"]),
+        "gym_id": int(row["gym_id"]) if row.get("gym_id") is not None else None,
         "name": row["name"] or fallback_name,
         "photo_url": row["photo_url"],
+        **manufacturer_fields(row, can_edit),
     }
 
 
 def _track(
-    cursor, user_id: int, exercise_id: Optional[int], equipment_id: Optional[int], training_goal: Any = None
+    conn,
+    cursor,
+    user_id: int,
+    exercise_id: Optional[int],
+    equipment_id: Optional[int],
+    training_goal: Any = None,
+    gym_context: Optional[int] = None,
 ) -> Optional[dict[str, Any]]:
     """Fase da trilha do par (exercicio x equipamento) NO OBJETIVO do item
     (M97 F1; ausente = default) - o contexto de "onde estamos na
-    progressao". Ambiente sem a migracao 036 -> `None`."""
+    progressao". #188: a trilha e resolvida pelo dono
+    (`progression_engine.resolve_track`, sem contexto de fadiga) na academia
+    da maquina (`gym_context`; `None` = peso livre, qualquer academia); sem
+    trilha nesta academia, o dono devolve a carga de PARTIDA de outra
+    academia em calibracao. Ambiente sem a migracao 036 -> `None`."""
     if not exercise_id or not equipment_id:
         return None
     try:
-        cursor.execute(
-            f"""
-            SELECT t.load_status, t.working_load_kg, t.sets_count, t.technique_code, t.last_executed_at,
-                   g.phase, g.phase_status, g.reps_min, g.reps_max
-            FROM progression_tracks t
-            LEFT JOIN progression_group_states g
-                   ON g.user_id = t.user_id AND g.muscle_group_id = t.muscle_group_id
-                  AND {sql_goal_join("g", "t")}
-            WHERE t.user_id = %s AND t.exercise_id = %s AND t.equipment_id = %s AND {sql_goal_is("t")}
-            ORDER BY t.last_executed_at DESC, t.id DESC
-            LIMIT 1
-            """,
-            (int(user_id), int(exercise_id), int(equipment_id), goal_value(training_goal)),
+        from .domain.progression_engine import resolve_track
+        from .progression_state import load_tracks
+
+        track, _own = resolve_track(
+            load_tracks(conn, user_id), exercise_id, equipment_id, None, training_goal, gym_context
         )
-        row = cursor.fetchone()
+        if track is None:
+            return None
+        group: dict[str, Any] = {}
+        if track.muscle_group_id is not None:
+            cursor.execute(
+                f"""
+                SELECT g.phase, g.phase_status, g.reps_min, g.reps_max
+                FROM progression_group_states g
+                WHERE g.user_id = %s AND g.muscle_group_id = %s AND {sql_goal_is("g")}
+                """,
+                (int(user_id), int(track.muscle_group_id), goal_value(training_goal)),
+            )
+            group = cursor.fetchone() or {}
     except Exception:  # noqa: BLE001
         logger.exception("Falha ao ler a trilha de progressao para o briefing")
         return None
-    if not row:
-        return None
     return {
-        "load_status": row.get("load_status"),
-        "working_load_kg": float(row["working_load_kg"]) if row.get("working_load_kg") is not None else None,
-        "sets_count": int(row["sets_count"]) if row.get("sets_count") is not None else None,
-        "technique_code": row.get("technique_code"),
-        "phase": row.get("phase"),
-        "phase_status": row.get("phase_status"),
-        "reps_min": int(row["reps_min"]) if row.get("reps_min") is not None else None,
-        "reps_max": int(row["reps_max"]) if row.get("reps_max") is not None else None,
-        "last_executed_at": row["last_executed_at"].isoformat()
-        if hasattr(row.get("last_executed_at"), "isoformat")
-        else row.get("last_executed_at"),
+        "load_status": track.load_status,
+        "working_load_kg": float(track.working_load_kg) if track.working_load_kg is not None else None,
+        "sets_count": int(track.sets_count) if track.sets_count is not None else None,
+        "technique_code": track.technique_code,
+        "phase": group.get("phase"),
+        "phase_status": group.get("phase_status"),
+        "reps_min": int(group["reps_min"]) if group.get("reps_min") is not None else None,
+        "reps_max": int(group["reps_max"]) if group.get("reps_max") is not None else None,
+        "last_executed_at": track.last_executed_at.isoformat()
+        if hasattr(track.last_executed_at, "isoformat")
+        else track.last_executed_at,
     }
 
 
@@ -226,12 +252,18 @@ def _last_execution(
 
 
 def _performance(
-    conn, user_id: int, exercise_id: Optional[int], equipment_id: Optional[int], training_goal: Any = None
+    conn,
+    user_id: int,
+    exercise_id: Optional[int],
+    equipment_id: Optional[int],
+    training_goal: Any = None,
+    gym_context: Any = ...,
 ) -> dict[str, Any]:
     """Status de DESEMPENHO do exercicio pela regra unica do dashboard
     (`comparability`), sobre as exposicoes da janela `exposure_lookback_days`
     - a mesma janela do bloco de progressao do dashboard -, no objetivo do
-    item (M97 F1; ausente = default).
+    item (M97 F1; ausente = default). #188: `gym_context` = academia da
+    maquina do item (`...` = nao informado), repassada ao dominio.
 
     Imports locais: o pacote `intelligence` e pesado e so este caminho da
     api-core precisa dele (mesmo padrao de `analytics`/`equipment_record`).
@@ -242,7 +274,7 @@ def _performance(
     try:
         from datetime import timedelta
 
-        from .intelligence.dashboard.exposure_service import MAX_EXPOSURES, get_exposures_between
+        from .intelligence.dashboard.exposure_service import MAX_EXPOSURES, get_exposures_between, in_requested_range
         from .intelligence.dashboard.metrics_registry import THRESHOLDS
         from .intelligence.dashboard.time_windows import user_timezone, user_today
 
@@ -256,10 +288,41 @@ def _performance(
             limit=MAX_EXPOSURES,
             training_goal=training_goal,
         )
-        return briefing.summarize_performance(exposures, equipment_id=equipment_id)
+        # Contexto do veredito (#188): sem exposicao no periodo, sem veredito (so contexto nao decide).
+        if not any(in_requested_range(item) for item in exposures):
+            exposures = []
+        return briefing.summarize_performance(exposures, equipment_id=equipment_id, gym_context=gym_context)
     except Exception:  # noqa: BLE001
         logger.exception("Falha ao classificar o desempenho para o briefing")
         return briefing.performance_unavailable()
+
+
+def _gym_context(conn, gym_equipment_id: Any) -> Any:
+    """#188: academia do contexto de MAQUINA do vinculo do item (dono
+    `equipment_context.context_gym_id`, via a leitura em lote da prescricao;
+    `None` = peso livre). Sem vinculo ou falha de leitura -> `...` (nao
+    informado): o briefing degrada para o comportamento sem recorte."""
+    if not gym_equipment_id:
+        return ...
+    try:
+        from .generation.deterministic_prescription import gym_contexts_by_gym_equipment
+
+        contexts = gym_contexts_by_gym_equipment(conn, [gym_equipment_id])
+    except Exception:  # noqa: BLE001
+        logger.exception("Falha ao ler a academia do equipamento para o briefing")
+        return ...
+    return contexts.get(int(gym_equipment_id), ...)
+
+
+def _manufacturer_editor(request: Optional[Request], identity: Identity):
+    """Posse do RBAC para `can_edit_manufacturer`, resolvendo as permissoes so
+    se houver o que editar (reaproveita o cache da requisicao)."""
+
+    def can_edit(owner_user_id: Optional[int]) -> bool:
+        perms = permissions_for_request(request, identity) if request is not None else resolve_permissions(identity)
+        return manufacturer_editor(identity, perms)(owner_user_id)
+
+    return can_edit
 
 
 @router.get("/workout-plans/{plan_id}/exercises/{workout_plan_exercise_id}/briefing")
@@ -268,6 +331,7 @@ def get_exercise_briefing(
     workout_plan_exercise_id: int,
     session_id: Optional[int] = Query(default=None),
     identity: Identity = Depends(require_permission("treino.planos", "ver")),
+    request: Request = None,
 ) -> dict[str, Any]:
     """Tudo o que a tela de briefing precisa, montado no backend.
 
@@ -300,11 +364,17 @@ def get_exercise_briefing(
             exercise_id = _canonical_exercise_id(cursor, item.get("mapping_id"))
             catalog = _catalog_row(cursor, exercise_id) if exercise_id else None
             muscles = _muscles(cursor, exercise_id) if exercise_id else []
-            equipment = _equipment(cursor, item.get("preferred_equipment_id"), item.get("equipment_name"))
-            track = _track(cursor, identity.user_id, exercise_id, (equipment or {}).get("equipment_id"), goal)
+            equipment = _equipment(
+                cursor, item.get("preferred_equipment_id"), item.get("equipment_name"), _manufacturer_editor(request, identity)
+            )
+            gym_context = _gym_context(conn, item.get("preferred_equipment_id"))
+            equipment_id = (equipment or {}).get("equipment_id")
+            track = _track(
+                conn, cursor, identity.user_id, exercise_id, equipment_id, goal, None if gym_context is ... else gym_context
+            )
             deload = _deload(conn, cursor, identity.user_id, session_id)
         last_execution = _last_execution(conn, identity.user_id, exercise_id, workout_plan_exercise_id, goal)
-        performance = _performance(conn, identity.user_id, exercise_id, (equipment or {}).get("equipment_id"), goal)
+        performance = _performance(conn, identity.user_id, exercise_id, equipment_id, goal, gym_context)
 
     # Desempenho (regra do dashboard) e ajuste de hoje (motor) sao coisas
     # diferentes e saem em campos diferentes; `trend` fica so por

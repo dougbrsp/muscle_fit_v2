@@ -18,7 +18,13 @@ from .access import owns_row_or_all, require_additional_permission, require_perm
 from .access.deps import permissions_for_request
 from .advanced_techniques import ensure_valid_codes as ensure_valid_technique_codes
 from .db import DataApiError, get_conn
-from .request_models import GymCreateIn
+from .domain.equipment_context import (
+    manufacturer_columns_sql,
+    manufacturer_fields,
+    manufacturer_join_sql,
+    with_manufacturer_fields,
+)
+from .request_models import GymCreateIn, GymEquipmentManufacturerIn
 from .gym_equipment_sync import sync_gym_equipment_for_gym
 
 router = APIRouter(tags=["gyms"])
@@ -709,6 +715,7 @@ def delete_equipment_photo(
 
 @router.get("/gym-equipment")
 def list_gym_equipment(
+    request: Request,
     gym_id: Optional[int] = Query(default=None),
     mapping_id: Optional[int] = Query(default=None),
     primary_group: Optional[str] = Query(default=None),
@@ -746,7 +753,8 @@ def list_gym_equipment(
             pg.name AS primary_group, sg.name AS secondary_group,
             ge.equipment_id, eq.name AS equipment_name, (eq.photo_path IS NOT NULL) AS has_photo,
             (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
-            ge.is_active, ge.created_at, ge.updated_at
+            ge.is_active, ge.created_at, ge.updated_at,
+            {manufacturer_columns_sql()}
         FROM gym_equipment ge
         JOIN gyms g ON g.id = ge.gym_id
         JOIN exercise_catalog zm ON zm.id = ge.mapping_id
@@ -765,6 +773,7 @@ def list_gym_equipment(
             ORDER BY emc_sec.id ASC LIMIT 1
         )
         JOIN equipment eq ON eq.id = ge.equipment_id
+        {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
         {where_sql}
         ORDER BY g.name, pg.name, eq.name
     """
@@ -774,7 +783,9 @@ def list_gym_equipment(
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
 
-    return {"items": _rows_jsonable(rows)}
+    # #188: fabricante do aparelho NESTA academia (uq (gym_id, equipment_id): o JOIN nao multiplica linhas)
+    can_edit = manufacturer_editor(identity, permissions_for_request(request, identity))
+    return {"items": _rows_jsonable([with_manufacturer_fields(row, can_edit) for row in rows or []])}
 
 
 @router.post("/gym-equipment")
@@ -882,6 +893,7 @@ def _normalize_required_technique(required_technique: Optional[str]) -> Optional
 
 @router.get("/gym-equipment/recommend")
 def recommend_gym_equipment(
+    request: Request,
     gym_id: int = Query(...),
     mapping_id: Optional[int] = Query(default=None),
     primary_group: Optional[str] = Query(default=None),
@@ -951,6 +963,7 @@ def recommend_gym_equipment(
             group=group,
             exclude_gym_equipment_id=exclude_equipment_id,
             required_technique=technique,
+            can_edit_manufacturer=manufacturer_editor(identity, permissions_for_request(request, identity)),
         )
 
     return {"ok": True, **payload}
@@ -992,8 +1005,16 @@ def recommend_gym_equipment_all(
 # ---------------------------------------------------------------------------
 
 
+def manufacturer_editor(identity: security.Identity, permissoes):
+    """Quem pode editar o fabricante do aparelho de uma academia: a MESMA posse
+    das escritas de /gym-equipment-catalog (dono ou `treino.academias`/`editar`
+    com escopo `todos`). Devolve `can_edit(owner_user_id) -> bool`, sem banco."""
+    return lambda owner_user_id: owns_row_or_all(identity, permissoes, "treino.academias", "editar", owner_user_id)
+
+
 @router.get("/gym-equipment-catalog")
 def list_gym_equipment_catalog(
+    request: Request,
     gym_id: Optional[int] = Query(default=None),
     equipment_id: Optional[int] = Query(default=None),
     active_only: bool = Query(default=True),
@@ -1015,15 +1036,16 @@ def list_gym_equipment_catalog(
 
     sql = f"""
         SELECT
-            gec.id, gec.gym_id, g.name AS gym_name,
+            gec.id, gec.gym_id, gec_g.name AS gym_name,
             gec.equipment_id, eq.name AS equipment_name, (eq.photo_path IS NOT NULL) AS has_photo,
             (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
-            gec.is_active, gec.created_at, gec.updated_at
+            gec.is_active, gec.created_at, gec.updated_at,
+            {manufacturer_columns_sql()}
         FROM gym_equipment_catalog gec
-        JOIN gyms g ON g.id = gec.gym_id
+        JOIN gyms gec_g ON gec_g.id = gec.gym_id
         JOIN equipment eq ON eq.id = gec.equipment_id
         {where_sql}
-        ORDER BY g.name, eq.name
+        ORDER BY gec_g.name, eq.name
     """
 
     with _connect() as conn:
@@ -1031,7 +1053,23 @@ def list_gym_equipment_catalog(
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
 
-    return {"items": _rows_jsonable(rows)}
+    can_edit = manufacturer_editor(identity, permissions_for_request(request, identity))
+    return {"items": [_catalog_item(row, can_edit) for row in rows or []]}
+
+
+def _catalog_item(row: Dict[str, Any], can_edit) -> Dict[str, Any]:
+    """Item do catalogo da academia: `manufacturer` e o CRU da academia (o que
+    se edita), `catalog_manufacturer` o padrao e `effective_manufacturer` o
+    que a tela mostra. O dono da academia nao sai no payload."""
+    fields = manufacturer_fields(row, can_edit)
+    item = {k: v for k, v in row.items() if k not in ("gym_manufacturer", "gym_owner_user_id", "gym_equipment_catalog_id")}
+    item.update(
+        manufacturer=row.get("gym_manufacturer"),
+        effective_manufacturer=fields["manufacturer"],
+        manufacturer_source=fields["manufacturer_source"],
+        can_edit_manufacturer=fields["can_edit_manufacturer"],
+    )
+    return _row_jsonable(item)
 
 
 def _assert_gym_equipment_catalog_writable(
@@ -1099,6 +1137,45 @@ def create_gym_equipment_catalog(
             sync_gym_equipment_for_gym(conn, gym_id)
 
     return {"status": "ok", "item": _row_jsonable(row)}
+
+
+@router.patch("/gym-equipment-catalog/{link_id}")
+def update_gym_equipment_catalog_manufacturer(
+    link_id: int,
+    payload: GymEquipmentManufacturerIn,
+    request: Request,
+    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
+):
+    """Fabricante do aparelho NESTA academia (#188). So edita a linha existente:
+    nao cria vinculo nem mexe em `is_active` (por isso nao e o upsert do POST,
+    que reativa). Campo ausente nao altera; vazio/null volta ao padrao do catalogo."""
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT gym_id FROM gym_equipment_catalog WHERE id = %s", (link_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Associação não encontrada.")
+
+            _assert_gym_equipment_catalog_writable(cursor, row["gym_id"], request, identity, "editar")
+
+            if "manufacturer" in payload.model_fields_set:
+                cursor.execute(
+                    "UPDATE gym_equipment_catalog SET manufacturer = %s WHERE id = %s",
+                    (payload.manufacturer, link_id),
+                )
+            cursor.execute(
+                f"""
+                SELECT gec.id, gec.gym_id, gec.equipment_id, gec.is_active, {manufacturer_columns_sql()}
+                FROM gym_equipment_catalog gec
+                JOIN gyms gec_g ON gec_g.id = gec.gym_id
+                JOIN equipment eq ON eq.id = gec.equipment_id
+                WHERE gec.id = %s
+                """,
+                (link_id,),
+            )
+            updated = cursor.fetchone()
+
+    return {"status": "ok", "item": _catalog_item(updated, lambda _owner: True)}
 
 
 @router.delete("/gym-equipment-catalog/{link_id}")

@@ -54,6 +54,7 @@ from ..domain.prescription import (
 from ..domain.training_safety import resolve_training_safety_bulk, validate_technique
 from . import exercise_substitution as subst
 from .deterministic_prescription import (
+    gym_contexts_by_gym_equipment,
     MODE_B_ENGINE_VERSION,
     PairRequest,
     prescribe_pairs,
@@ -776,6 +777,8 @@ def generate_plan_draft_from_equipment_template(
             exercise_names = _load_names(conn, "exercise_catalog", exercise_ids)
             amazfit_names = _load_amazfit_names(conn, exercise_ids)
 
+            # #188: academia da maquina pelo vinculo (`gym_equipment`) escolhido
+            gym_contexts = gym_contexts_by_gym_equipment(conn, [r.preferred_equipment_id for r in resolved])
             requests = [
                 PairRequest(
                     exercise_id=int(r.mapping_id),
@@ -789,6 +792,7 @@ def generate_plan_draft_from_equipment_template(
                     sequence=index,
                     # M97 F1: a progressao do objetivo do item (> Modelo > default)
                     training_goal=resolved_goal_value(item.get("training_goal"), template.get("training_goal")),
+                    gym_context=gym_contexts.get(int(r.preferred_equipment_id or 0)),
                 )
                 for index, (item, r) in enumerate(zip(items, resolved), start=1)
                 if r.mapping_id

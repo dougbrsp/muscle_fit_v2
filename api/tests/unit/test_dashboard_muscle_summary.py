@@ -300,3 +300,111 @@ def test_servico_recusa_user_id_invalido_antes_de_qualquer_sql(user_id):
 
     with pytest.raises(ValueError):
         build_muscle_summary(_ConexaoProibida(), user_id=user_id, window=_window())
+
+
+# --- #188 etapa 3: T-0 contra T-1 de series efetivas pronto no backend ---
+
+
+def _cmp_row(activity, local_date, stimulus, group=1):
+    return {
+        "muscle_group_id": group, "activity_id": activity, "activity_name": "Treino",
+        "local_date": local_date, "trained_at": f"{local_date} 19:00:00",
+        "equipment_name": "Supino", "physical_sets": 3, "stimulus_sets": stimulus,
+        "tonnage_kg": 1000.0, "tonnage_n": 3, "rpe_sum": 24.0, "rpe_n": 3, "has_direct": 1,
+    }
+
+
+def _js_session_delta(values, epsilon=0.01):
+    """Formula de `sessionDelta` (lib/dashboard-muscles.ts), para paridade."""
+    current = values[0] if values else None
+    previous = values[1] if len(values) > 1 else None
+    if current is None or previous is None:
+        return None, None
+    delta = current - previous
+    if abs(delta) <= epsilon:
+        return delta, "stable"
+    return delta, "up" if delta > 0 else "down"
+
+
+@pytest.mark.parametrize(
+    "t1,t0,expected",
+    [(3.0, 3.5, "up"), (3.0, 2.5, "down"), (3.0, 3.01, "stable"), (3.0, 3.0000001, "stable")],
+)
+def test_comparativo_por_sessao_traz_delta_e_direcao_de_series_efetivas(t1, t0, expected):
+    from app.intelligence.dashboard.contracts import MuscleComparativesOut
+    from app.intelligence.dashboard.muscle_summary_service import assemble_comparatives
+
+    rows = [_cmp_row(100, "2026-09-20", t1), _cmp_row(101, "2026-09-22", t0)]
+    payload = assemble_comparatives(rows, group_names={1: "Peito"})
+    (item,) = payload["by_session"]
+    values = [p["effective_sets_stimulus"] for p in item["points"]]
+    js_delta, js_direction = _js_session_delta(values)
+    assert item["effective_sets_direction"] == js_direction == expected
+    assert item["effective_sets_delta"] == round(js_delta, 2)
+    MuscleComparativesOut.model_validate(payload)
+
+
+def test_comparativo_por_sessao_sem_t1_fica_none():
+    from app.intelligence.dashboard.muscle_summary_service import assemble_comparatives
+
+    payload = assemble_comparatives([_cmp_row(100, "2026-09-20", 3.0)], group_names={1: "Peito"})
+    (item,) = payload["by_session"]
+    assert item["effective_sets_delta"] is None and item["effective_sets_direction"] is None
+
+
+# ---------------------------------------------------------------------------
+# #188 (fecho): contribuicao por exercicio pronta do servidor. Paridade com os
+# casos de `frontend/src/lib/dashboard-muscles.test.ts` (`contributionsByExercise`).
+# ---------------------------------------------------------------------------
+
+from app.intelligence.dashboard.contracts import MuscleExerciseContributionOut  # noqa: E402
+from app.intelligence.dashboard.muscle_summary_service import _exercise_contributions  # noqa: E402
+
+_SET = {"set_id": 1, "effective_sets_stimulus": 1}
+_SUPINO = {"exercise_row_id": 1, "exercise_id": 10, "name": "Supino", "role": "PRIMARY",
+           "effective_sets_stimulus": 3, "sets": [_SET, _SET, _SET]}
+_CRUCIFIXO = {**_SUPINO, "exercise_row_id": 2, "exercise_id": 11, "name": "Crucifixo",
+              "effective_sets_stimulus": 1, "sets": [_SET]}
+
+
+def _sessao(activity_id, exposures):
+    return {"activity_id": activity_id, "exposures": exposures}
+
+
+def test_contribuicao_agrega_por_exercicio_e_calcula_a_fracao():
+    contribs = _exercise_contributions([_sessao(1, [_SUPINO, _CRUCIFIXO])])
+    assert [c["name"] for c in contribs] == ["Supino", "Crucifixo"]
+    assert [c["share"] for c in contribs] == [0.75, 0.25]
+    assert contribs[0]["sets"] == 3 and contribs[0]["stimulus"] == 3.0 and contribs[0]["exercise_id"] == 10
+    MuscleExerciseContributionOut(**contribs[0])  # contrato aceita o formato
+
+
+def test_contribuicao_conta_sessoes_distintas_nao_exposicoes():
+    contribs = _exercise_contributions(
+        [_sessao(1, [_SUPINO, {**_SUPINO, "exercise_row_id": 9}]), _sessao(2, [_SUPINO])]
+    )
+    assert contribs[0]["sessions"] == 2 and contribs[0]["sets"] == 9
+
+
+def test_contribuicao_mantem_papeis_separados_e_ordenados():
+    contribs = _exercise_contributions([_sessao(1, [_SUPINO, {**_SUPINO, "exercise_row_id": 3, "role": "STABILIZER"}])])
+    assert contribs[0]["roles"] == ["PRIMARY", "STABILIZER"]
+
+
+def test_contribuicao_sem_id_agrupa_pelo_nome():
+    sem_id = {**_SUPINO, "exercise_id": None, "name": "Exercício sem cadastro"}
+    contribs = _exercise_contributions([_sessao(1, [sem_id, sem_id])])
+    assert len(contribs) == 1 and contribs[0]["exercise_id"] is None and contribs[0]["sets"] == 6
+
+
+def test_contribuicao_sem_estimulo_tem_fracao_nula():
+    zerado = {**_SUPINO, "effective_sets_stimulus": 0, "sets": []}
+    contribs = _exercise_contributions([_sessao(1, [zerado])])
+    assert contribs[0]["share"] is None and contribs[0]["stimulus"] == 0.0
+
+
+def test_contribuicao_empate_mantem_ordem_de_aparicao_e_sem_sessoes_vazio():
+    a = {**_CRUCIFIXO, "exercise_id": 20, "name": "A"}
+    b = {**_CRUCIFIXO, "exercise_id": 21, "name": "B"}
+    assert [c["name"] for c in _exercise_contributions([_sessao(1, [a, b])])] == ["A", "B"]
+    assert _exercise_contributions([]) == []

@@ -46,6 +46,8 @@ export function slotVolumeRows(
             local_date: period.local_date,
             volume_kg: period.volume_kg,
             avg_rpe: period.avg_rpe,
+            volume_direction: period.volume_direction ?? null,
+            rpe_direction: period.rpe_direction ?? null,
           }
         : null;
     }
@@ -62,7 +64,9 @@ export function slotSetsRows(
     const byPeriod = {} as SlotComparativeSetsRow['byPeriod'];
     for (const key of PERIOD_KEYS) {
       const period = row.by_period?.[key] ?? null;
-      byPeriod[key] = period ? { sets_count: period.equivalent_sets } : null;
+      byPeriod[key] = period
+        ? { sets_count: period.equivalent_sets, sets_direction: period.sets_direction ?? null }
+        : null;
     }
     return { group: row.group, slot: row.slot, comparisonStatus: row.comparison_status, byPeriod };
   });

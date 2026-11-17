@@ -50,6 +50,9 @@ MIGRATIONS_SOBRE_A_065 = (
     m.DEFAULT_MIGRATIONS_DIR / "073_modo_contagem_volume.py",
     m.DEFAULT_MIGRATIONS_DIR / "093_training_goal.py",
     m.DEFAULT_MIGRATIONS_DIR / "105_archived_at_versoes_e_planos.py",
+    # A 118 recompoe `uk_ptr_user_pair_context` com `gym_context_id`: ao fim, o down
+    # dela roda primeiro (devolve a chave que o down da 093 espera) e o up por ultimo.
+    m.DEFAULT_MIGRATIONS_DIR / "118_progression_track_gym_context.py",
 )
 PEITORAL = 52
 

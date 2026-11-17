@@ -35,7 +35,7 @@ from app.intelligence.dashboard.comparability import (
     classify_exercise_progression,
     mismatch_with_current,
     physical_keys_match,
-    trailing_comparable_run,
+    comparable_run,
 )
 from app.intelligence.dashboard.metrics_registry import ExerciseProgressionStatus as S
 from tests.support import progression_fixtures as fx
@@ -97,7 +97,7 @@ def test_outro_contexto_intercalado_nao_interrompe_a_sequencia():
         _exposure(PRE, load=20, reps=5),
         _exposure(RESTED, load=30, reps=12),
     ]
-    run = trailing_comparable_run(historico)
+    run = [historico[i] for i in comparable_run(historico).indices]
     assert [item.sets[0].reps for item in run] == [10, 11, 12]
     status, reasons = classify_exercise_progression(historico)
     assert status is S.PROGRESSING
@@ -126,7 +126,7 @@ def test_troca_de_equipamento_interrompe_mesmo_com_contexto_pulado():
         _exposure(PRE, load=20, reps=6),
         _exposure(RESTED, load=30, reps=12),
     ]
-    assert len(trailing_comparable_run(historico)) == 1
+    assert len(comparable_run(historico).indices) == 1
     assert classify_exercise_progression(historico)[0] is S.INSUFFICIENT_DATA
 
 

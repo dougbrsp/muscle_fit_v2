@@ -24,6 +24,7 @@ import type {
   GymEquipmentLink,
   GymEquipmentRecommendResponse,
 } from '@/lib/workout-mode-types';
+import { manufacturerLabel } from '@/lib/gym-equipment-manufacturer';
 import { BRAND } from '@/theme';
 
 export type EquipmentSubstituteChoice = {
@@ -233,6 +234,9 @@ export function EquipmentSubstituteModal({
                 </Text>
                 <Text size="sm" c={BRAND.textMuted}>
                   {recommended.equipment_name}
+                  {manufacturerLabel(recommended.manufacturer, recommended.manufacturer_source)
+                    ? ` · ${manufacturerLabel(recommended.manufacturer, recommended.manufacturer_source)}`
+                    : ''}
                 </Text>
                 <StarsLine stars={recommended.user_preference_stars ?? null} />
               </div>
@@ -294,6 +298,9 @@ export function EquipmentSubstituteModal({
                   </Text>
                   <Text size="xs" c={BRAND.textMuted}>
                     {item.equipment_name}
+                    {manufacturerLabel(item.manufacturer, item.manufacturer_source)
+                      ? ` · ${manufacturerLabel(item.manufacturer, item.manufacturer_source)}`
+                      : ''}
                   </Text>
                   <StarsLine stars={stars.get(pairKey(item.equipment_id, item.mapping_id)) ?? null} />
                   {excludedByLinkId.has(item.id) && (

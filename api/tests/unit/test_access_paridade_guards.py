@@ -82,6 +82,7 @@ from tests.support.access_retrato import (
 from tests.unit.test_access_guarda_cobertura_rotas import (
     ROTA_NOVA_SO_AUTENTICACAO,
     ROTA_NOVA_TREINO,
+    ROTA_NOVA_ACADEMIA_FABRICANTE,
     ROTA_NOVA_TREINO_EQUIP,
     ROTAS_NOVAS_POS_RETRATO,
     _all_project_routes,
@@ -853,10 +854,11 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
 
 def test_paridade_cobre_as_367_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 368
+    assert len(com_permissao) == 369
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 == 368
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 16 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    # + 1 do #188 (ROTA_NOVA_ACADEMIA_FABRICANTE, so em ROTAS_NOVAS_POS_RETRATO)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 == 369
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 17 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
@@ -1534,7 +1536,7 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
     assert not set(ROTAS_NOVAS_POS_RETRATO) & set(carregar_retrato()["rotas"])
     sem_grupo = EffectivePermissions()
     problemas: list[str] = []
-    for rota in sorted(set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP}):
+    for rota in sorted(set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE}):
         declaradas = vivas[rota]
         assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
         esperado = {
@@ -1549,6 +1551,23 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
         if decisao_nova("admin", declaradas, sem_grupo, "session") is not False:
             problemas.append(f"{rota} [sem grupo]: esperado negado")
     assert not problemas, chr(10).join(problemas)
+
+
+def test_rota_nova_do_188_tem_a_permissao_do_post_irmao_e_decisao_de_usuario_comum():
+    """PATCH /gym-equipment-catalog/{link_id} (fabricante por academia): treino.academias/editar,
+    igual ao POST irmao; usuario, PT, admin e token mestre passam o guard de entrada (a posse do
+    dono ou escopo `todos` e provada por HTTP em test_gyms_permissoes_rbac/test_fabricante_por_academia);
+    sem grupo e negado. Sem classe antiga no retrato."""
+    vivas = _declaradas_com_escopo()
+    assert vivas[ROTA_NOVA_ACADEMIA_FABRICANTE] == vivas["POST /gym-equipment-catalog"] == [
+        ("treino.academias", "editar", None)
+    ]
+    assert ROTA_NOVA_ACADEMIA_FABRICANTE not in carregar_retrato()["rotas"]
+    declaradas = vivas[ROTA_NOVA_ACADEMIA_FABRICANTE]
+    for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),
+                        ("admin", "master_token")):
+        assert decisao_nova("autenticado", declaradas, permissoes_do_papel(papel, tipo), tipo) is True, papel
+    assert decisao_nova("autenticado", declaradas, EffectivePermissions(), "session") is False
 
 
 def test_rota_nova_do_164_tem_a_mesma_permissao_da_irma_get_e_decisao_de_usuario_comum():

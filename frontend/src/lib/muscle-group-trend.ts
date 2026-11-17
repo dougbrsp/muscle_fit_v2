@@ -10,6 +10,9 @@
 import type {
   MuscleGroupsMappedMetric,
   MuscleGroupsMappedPeriod,
+  MuscleGroupsMappedPressureRow,
+  MuscleGroupsMappedTableRow,
+  MuscleGroupsMappedTone,
   MuscleGroupsMappedTrendRow,
 } from '@/lib/muscle-groups-types';
 
@@ -90,20 +93,14 @@ export function muscleGroupTrendQueryKey(filters: MuscleGroupTrendFilters) {
   return ['muscle-groups-mapped-trend', filters.period, filters.days, filters.metric, filters.includeSecondary] as const;
 }
 
-/** Total acumulado por grupo na janela. */
-export function trendGroupTotals(rows: readonly MuscleGroupsMappedTrendRow[]): Map<string, number> {
-  const totals = new Map<string, number>();
-  for (const row of rows) {
-    totals.set(row.group, (totals.get(row.group) || 0) + Number(row.value || 0));
-  }
-  return totals;
-}
-
-/** Grupos ordenados por pressão acumulada (desc), desempate alfabético. */
-export function trendGroupOptions(totals: Map<string, number>): string[] {
-  return Array.from(totals.keys()).sort(
-    (a, b) => (totals.get(b) || 0) - (totals.get(a) || 0) || a.localeCompare(b, 'pt-BR'),
-  );
+/**
+ * Grupos ordenados pelo total da janela que a API entrega em `table_rows[].value`
+ * (desc), desempate alfabético. Só ordena valores prontos.
+ */
+export function trendGroupOptions(tableRows: readonly MuscleGroupsMappedTableRow[]): string[] {
+  return [...tableRows]
+    .sort((a, b) => Number(b.value || 0) - Number(a.value || 0) || a.group.localeCompare(b.group, 'pt-BR'))
+    .map((row) => row.group);
 }
 
 export function trendPeriods(rows: readonly MuscleGroupsMappedTrendRow[]): string[] {
@@ -133,32 +130,30 @@ export function pivotTrend(
   });
 }
 
-export type PressureRow = {
-  group: string;
-  latest: number;
-  previous: number;
-  total: number;
-  variation: number | null;
+/**
+ * Ranking "pressão no período mais recente": as `pressure_rows` prontas da API
+ * (variação, tom e ordem vêm do backend), filtradas aos grupos exibidos.
+ * API antiga sem `pressure_rows` → lista vazia.
+ */
+export function pressureRows(
+  rows: readonly MuscleGroupsMappedPressureRow[] | undefined,
+  visibleGroups: readonly string[],
+): MuscleGroupsMappedPressureRow[] {
+  const visible = new Set(visibleGroups);
+  return (rows ?? []).filter((row) => visible.has(row.group));
+}
+
+/** Cor do badge de variação pelo `tone` da API; `null` = sem base. */
+export const TREND_TONE_COLOR: Record<MuscleGroupsMappedTone, string> = {
+  up: 'red',
+  down: 'teal',
+  stable: 'gray',
 };
 
-/** Ranking "pressão no período mais recente" dos grupos exibidos. */
-export function pressureRows(
-  periods: readonly string[],
-  index: Map<string, number>,
-  totals: Map<string, number>,
-  visibleGroups: readonly string[],
-): PressureRow[] {
-  const latestPeriod = periods[periods.length - 1];
-  const previousPeriod = periods[periods.length - 2];
-  return visibleGroups
-    .map((group) => {
-      const latest = index.get(`${latestPeriod || ''}::${group}`) || 0;
-      const previous = index.get(`${previousPeriod || ''}::${group}`) || 0;
-      const total = totals.get(group) || 0;
-      const variation = previous > 0 ? ((latest - previous) / previous) * 100 : null;
-      return { group, latest, previous, total, variation };
-    })
-    .sort((a, b) => b.latest - a.latest || b.total - a.total);
+/** Variação pronta da API com uma casa e sinal; `null` = sem base. */
+export function formatTrendVariation(value: number | null): string | null {
+  if (value == null) return null;
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
 }
 
 export function formatTrendMetric(value: number, metric: MuscleGroupsMappedMetric): string {

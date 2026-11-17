@@ -63,7 +63,17 @@ export type GymEquipmentCatalogLink = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // #188: `manufacturer` é o CRU da academia (o que se edita); a tela mostra
+  // `effective_manufacturer`. Opcionais: API antiga não manda.
+  manufacturer?: string | null;
+  catalog_manufacturer?: string | null;
+  effective_manufacturer?: string | null;
+  manufacturer_source?: ManufacturerSource;
+  can_edit_manufacturer?: boolean;
 };
+
+/** Origem do fabricante efetivo, decidida pelo servidor. */
+export type ManufacturerSource = 'gym' | 'catalog' | null;
 
 // Item/grupo/resposta de `GET /gym-equipment/recommend-all`: tipo ÚNICO em
 // `equipment-recommend.ts` (PR-08, G20) — os nomes abaixo são aliases mantidos

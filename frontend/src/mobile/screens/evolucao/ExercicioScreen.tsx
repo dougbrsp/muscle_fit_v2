@@ -21,9 +21,12 @@ import {
   buildTrendSeries,
   buildUnifiedE1rmChart,
   comparabilityMismatch,
-  decisionsForKey,
+  decisionsInCurrentContext,
   e1rmReliabilityNote,
   fatigueContextLabel,
+  pairDeltaText,
+  pairNotComparableText,
+  SERIES_UNAVAILABLE_TEXT,
   progressionDecisionLabel,
   statusReasonsText,
 } from '@/lib/exercise-progress';
@@ -141,13 +144,13 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
   const currentKey = data.comparability_key;
   const reasons = useMemo(() => statusReasonsText(data.status_reasons), [data.status_reasons]);
   const pair = useMemo(() => buildExposurePair(data), [data]);
-  const trend = useMemo(() => buildTrendSeries(data.exposures, currentKey), [data.exposures, currentKey]);
-  const rpe = useMemo(() => buildRpeSeries(data.exposures), [data.exposures]);
+  const trend = useMemo(() => buildTrendSeries(data.exposures, data.trend_metric), [data.exposures, data.trend_metric]);
+  const rpe = useMemo(() => buildRpeSeries(data.exposures, data.avg_rpe_period), [data.exposures, data.avg_rpe_period]);
   const unified = useMemo(
     () => buildUnifiedE1rmChart(data.e1rm_series, data.deload_sessions, (v) => isHighlightedGoal(v, defaultGoal)),
     [data.e1rm_series, data.deload_sessions, defaultGoal],
   );
-  const decisions = useMemo(() => decisionsForKey(data.progression_decisions, currentKey), [data.progression_decisions, currentKey]);
+  const decisions = useMemo(() => decisionsInCurrentContext(data.progression_decisions), [data.progression_decisions]);
   const ultima = data.exposures.length > 0 ? data.exposures[data.exposures.length - 1] : null;
   const convencaoAssumida = ultima?.load_convention_source === 'default_total';
   const [exposicao, setExposicao] = useState<Exposure | null>(null);
@@ -210,9 +213,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
           title="Última exposição vs. a anterior"
           footer={
             !pair.comparable
-              ? pair.previous == null
-                ? 'Não há exposição anterior no período: os números da última execução estão abaixo, sem variação.'
-                : `Estas duas execuções não são comparáveis (${COMPARABILITY_MISMATCH_LABELS[pair.mismatch as keyof typeof COMPARABILITY_MISMATCH_LABELS]}). Os valores continuam visíveis, mas a variação seria uma conclusão errada, por isso ela não é exibida.`
+              ? pairNotComparableText(pair)
               : `${fmtDate(pair.previous?.local_date)} → ${fmtDate(pair.current.local_date)}`
           }
         >
@@ -224,11 +225,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
               value={metricText(row.current, row.code === 'e1rm' ? 1 : undefined)}
               trailing={
                 <span className={styles.fieldLabel}>
-                  {row.deltaAbs == null && row.deltaPct == null
-                    ? EM_DASH
-                    : row.deltaPct != null
-                      ? fmtSignedPercent(row.deltaPct)
-                      : `${(row.deltaAbs ?? 0) > 0 ? '+' : ''}${row.deltaAbs}`}
+                  {pairDeltaText(row) ?? EM_DASH}
                 </span>
               }
             />
@@ -241,7 +238,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
         footer={`Somente exposições comparáveis com a chave atual (mesmo equipamento e mesma convenção de carga).${trend.excluded > 0 ? ` ${plural(trend.excluded, 'exposição', 'exposições')} ficaram de fora por não serem comparáveis.` : ''}`}
       >
         {trend.metric == null ? (
-          <ListBlock><p className={styles.body}>Ainda não há duas exposições comparáveis com valor para desenhar uma linha.</p></ListBlock>
+          <ListBlock><p className={styles.body}>{trend.unavailable ? SERIES_UNAVAILABLE_TEXT : 'Ainda não há duas exposições comparáveis com valor para desenhar uma linha.'}</p></ListBlock>
         ) : (
           <div className={styles.chartBlock} role="img" aria-label={`Tendência de ${trend.label}`} style={{ height: 230 }}>
             <TrendChart trend={trend} />
@@ -264,7 +261,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
         title="RPE médio por sessão"
         footer="Média das séries de trabalho de cada sessão; aquecimento e série de ajuste ficam fora. RPE é relato, não medida: sono, cafeína e a ordem do exercício mexem nele tanto quanto a carga."
       >
-        <ListRow title="Média do período" value={rpe.average != null ? fmtDecimal(rpe.average, 1) : EM_DASH} />
+        {rpe.average != null ? <ListRow title="Média do período" value={fmtDecimal(rpe.average, 1)} /> : null}
         {rpe.hasSeries ? (
           <div className={styles.chartBlock} role="img" aria-label="RPE médio por sessão" style={{ height: 210 }}>
             <RpeChart rpe={rpe} />
@@ -272,7 +269,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
         ) : (
           <ListBlock>
             <p className={styles.body}>
-              Ainda não há duas sessões comparáveis com RPE registrado para desenhar uma linha.
+              {rpe.unavailable ? SERIES_UNAVAILABLE_TEXT : 'Ainda não há duas sessões comparáveis com RPE registrado para desenhar uma linha.'}
               {rpe.missing > 0 ? ` ${plural(rpe.missing, 'sessão', 'sessões')} sem RPE.` : ''}
             </p>
           </ListBlock>

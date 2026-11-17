@@ -35,8 +35,7 @@ import { BRAND } from '@/theme';
  * `muscleGroupVolume`) e "Desempenho" (`performance_status` — domínio `muscleGroupProgression`). O status
  * do grupo é a agregação ponderada dos status dos exercícios do grupo (mesma
  * regra da home), na janela atual; o resumo do topo
- * é a contagem de EXERCÍCIOS do backend, nada é contado aqui. `classification`
- * (deprecado) não é mais lido aqui.
+ * é a contagem de EXERCÍCIOS do backend, nada é contado aqui.
  *
  * M61: na janela personalizada a tela manda as duas datas e o período atual é
  * exatamente o escolhido (o anterior é o de mesmo tamanho logo antes dele).

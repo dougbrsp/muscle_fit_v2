@@ -280,16 +280,6 @@ export const MUSCLE_GROUP_VOLUME_ORDER = [
 
 export type MuscleGroupVolumeCode = (typeof MUSCLE_GROUP_VOLUME_ORDER)[number];
 
-export const PROGRESSION_TREND_ORDER = [
-  'PROGREDINDO',
-  'ESTAVEL',
-  'ESTAGNADO',
-  'REGREDINDO',
-  'DADOS_INSUFICIENTES',
-] as const;
-
-export type ProgressionTrendCode = (typeof PROGRESSION_TREND_ORDER)[number];
-
 /** Base compartilhada pelos dois enums pt-BR: o que é igual não pode divergir. */
 const PT_PROGRESSION_SHARED = {
   PROGREDINDO: EXERCISE_PROGRESSION.PROGRESSING,
@@ -329,11 +319,6 @@ const MUSCLE_GROUP_VOLUME: Record<MuscleGroupVolumeCode, StatusVisual> = {
   DADOS_INSUFICIENTES: MUSCLE_GROUP_PROGRESSION.DADOS_INSUFICIENTES,
   NOVO: MUSCLE_GROUP_PROGRESSION.NOVO,
   SEM_DADOS: MUSCLE_GROUP_PROGRESSION.SEM_DADOS,
-};
-
-const PROGRESSION_TREND: Record<ProgressionTrendCode, StatusVisual> = {
-  ...PT_PROGRESSION_SHARED,
-  ESTAGNADO: EXERCISE_PROGRESSION.PLATEAU_SUSPECTED,
 };
 
 // ---------------------------------------------------------------------------
@@ -932,7 +917,6 @@ export const STATUS_REGISTRY = {
   exerciseProgression: EXERCISE_PROGRESSION,
   muscleGroupProgression: MUSCLE_GROUP_PROGRESSION,
   muscleGroupVolume: MUSCLE_GROUP_VOLUME,
-  progressionTrend: PROGRESSION_TREND,
   readiness: READINESS,
   recoveryStatus: RECOVERY_STATUS,
   recoveryGuidance: RECOVERY_GUIDANCE,
@@ -960,7 +944,6 @@ export const STATUS_DOMAIN_ORDER: Record<StatusDomain, readonly string[]> = {
   exerciseProgression: EXERCISE_PROGRESSION_ORDER,
   muscleGroupProgression: MUSCLE_GROUP_PROGRESSION_ORDER,
   muscleGroupVolume: MUSCLE_GROUP_VOLUME_ORDER,
-  progressionTrend: PROGRESSION_TREND_ORDER,
   readiness: READINESS_ORDER,
   recoveryStatus: RECOVERY_STATUS_ORDER,
   recoveryGuidance: RECOVERY_GUIDANCE_ORDER,

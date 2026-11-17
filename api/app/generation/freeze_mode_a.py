@@ -31,7 +31,12 @@ from typing import Any, Mapping, Optional, Sequence
 from ..domain.prescription import WARNING_EQUIPMENT_UNRESOLVED, build_prescription
 from ..domain.training_goal import goal_value
 from ..domain.training_safety import TrainingSafety
-from .deterministic_prescription import MODE_A_ENGINE_VERSION, PairRequest, prescribe_pairs
+from .deterministic_prescription import (
+    MODE_A_ENGINE_VERSION,
+    PairRequest,
+    gym_contexts_by_gym_equipment,
+    prescribe_pairs,
+)
 from .freeze_mode_b import coherent_equipment_id, equipment_by_gym_equipment, projected_readiness
 
 logger = logging.getLogger("fitness.generation")
@@ -87,6 +92,7 @@ def freeze_mode_a(
         return None
 
     equipment_by_gym = equipment_by_gym_equipment(conn, [row.get("preferred_equipment_id") for row in rows])
+    gym_contexts = gym_contexts_by_gym_equipment(conn, [row.get("preferred_equipment_id") for row in rows])
     readiness = projected_readiness(owner_id, plan.get("plan_date"), plan.get("plan_time"))
 
     requests: list[PairRequest] = []
@@ -110,6 +116,8 @@ def freeze_mode_a(
             sequence=sequence,
             # M97 F1: o objetivo carimbado na linha (`plan_goal_stamp`)
             training_goal=goal_value(row.get("training_goal")),
+            # #188: academia da maquina pelo vinculo do equipamento da linha
+            gym_context=gym_contexts.get(int(row["preferred_equipment_id"])) if equipment_id is not None else None,
         )
         requests.append(request)
         per_row[int(row["workout_plan_exercise_id"])] = {"request": request, "row": row}

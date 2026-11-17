@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   adjustmentLabel,
+  briefingContextLabel,
   buildBriefingSections,
   firstStatement,
   musclesSummary,
@@ -365,5 +366,16 @@ describe('formatStrengthLoadRange', () => {
   it('sem faixa (hipertrofia ou força sem e1RM) não mostra nada', () => {
     expect(formatStrengthLoadRange(null)).toBeNull();
     expect(formatStrengthLoadRange(undefined)).toBeNull();
+  });
+});
+
+describe('briefingContextLabel (#188)', () => {
+  it('rotula o contexto do aparelho vindo do motor; ausente ou null = sem selo', () => {
+    expect(briefingContextLabel({ ...DESEMPENHO, equipment_context_code: 'calibration_start_other_gym' })).toBe(
+      'Carga de partida de outra academia',
+    );
+    expect(briefingContextLabel({ ...DESEMPENHO, equipment_context_code: null })).toBeNull();
+    expect(briefingContextLabel(DESEMPENHO)).toBeNull();
+    expect(briefingContextLabel(null)).toBeNull();
   });
 });

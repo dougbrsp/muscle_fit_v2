@@ -18,7 +18,7 @@ Regras nao negociaveis:
   a sequencia comparavel e a do contexto da ULTIMA exposicao, e exposicoes de
   OUTRO contexto intercaladas sao PULADAS (nao interrompem a sequencia) -
   diferente da troca de equipamento/convencao, que continua INTERROMPENDO
-  (`trailing_comparable_indices`). Recorde e e1RM continuam absolutos
+  (`_trailing_comparable_window`). Recorde e e1RM continuam absolutos
   (`exposure_service._records` compara so a chave fisica).
 - Objetivo de treino (M97 F1, dono `domain/training_goal.py`): progressao e
   plato sao SEPARADOS por objetivo. A exposicao de OUTRO objetivo e PULADA
@@ -26,6 +26,14 @@ Regras nao negociaveis:
   objetivo da ultima nem a interrompe. A chave FISICA
   (`ComparabilityKey.physical`) nao tem objetivo - recorde e e1RM continuam
   unicos.
+- Academia (issue #188, dono `domain/equipment_context.py`): MAQUINA tem a
+  academia do vinculo na chave FISICA (`ComparabilityKey.gym_id`); peso livre
+  tem `gym_id = None` (tudo como antes). A exposicao que difere SO na
+  academia e PULADA (como a de outro contexto de fadiga, contada a parte).
+  DEPOIS de uma troca de aparelho ou academia (local ao segmento atual), o
+  contexto de maquina so e classificado a partir da N-esima sessao comparavel
+  (`in_equipment_calibration`); sem troca, o minimo de sempre. Recorde e e1RM continuam globais: comparam a
+  chave fisica SEM a academia (`ComparabilityKey.physical_any_gym`).
 - `assisted` inverte o sinal da carga - MENOS quilos de assistencia e
   progresso. Nunca aplicar a mesma leitura de "carga subiu = progresso".
 - `bodyweight` compara so repeticoes (o peso corporal nao esta na serie).
@@ -52,10 +60,11 @@ define constante numerica propria.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ...domain import e1rm as _e1rm
+from ...domain.equipment_context import context_gym_id, context_in_calibration
 from ...domain.set_measures import REASON_MEASURE_NOT_REP_BASED as _REASON_MEASURE_NOT_REP_BASED
 from ...domain.training_goal import goal_value
 from ...load_conventions import (
@@ -67,7 +76,7 @@ from ...load_conventions import (
     normalize_load_convention,
     supports_e1rm,
 )
-from .metrics_registry import THRESHOLDS, ExerciseProgressionStatus
+from .metrics_registry import GROUP_E1RM_OUTLIER_CHANGE_PCT, THRESHOLDS, ExerciseProgressionStatus
 
 # ---------------------------------------------------------------------------
 # Convencao de carga: vocabulario e regras vivem em `app/load_conventions.py`
@@ -107,6 +116,9 @@ class ComparabilityKey:
     # FORA de `to_dict` (o contrato da API nao muda nesta fase): as leituras
     # do dashboard ja chegam filtradas por um objetivo.
     training_goal: Optional[str] = None
+    # Academia do contexto de MAQUINA (issue #188; `equipment_context.context_gym_id`).
+    # Faz parte da chave FISICA. `None` = peso livre/tipo ausente: como antes.
+    gym_id: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,6 +127,7 @@ class ComparabilityKey:
             "load_convention": self.load_convention.value,
             "equipment_agnostic": self.equipment_agnostic,
             "fatigue_context": self.fatigue_context,
+            "gym_id": self.gym_id,
         }
 
     @property
@@ -126,6 +139,13 @@ class ComparabilityKey:
             return self
         return replace(self, fatigue_context=None, training_goal=None)
 
+    @property
+    def physical_any_gym(self) -> "ComparabilityKey":
+        """A chave FISICA sem a academia: exercicio + equipamento + convencao.
+        E o que decide recorde e linha de e1RM (globais entre academias)."""
+        physical = self.physical
+        return physical if physical.gym_id is None else replace(physical, gym_id=None)
+
 
 def build_key(
     canonical_exercise_id: Optional[int],
@@ -135,12 +155,15 @@ def build_key(
     equipment_agnostic: bool = False,
     fatigue_context: Any = None,
     training_goal: Any = None,
+    gym_id: Optional[int] = None,
 ) -> ComparabilityKey:
     """Monta a chave. `equipment_agnostic=True` descarta o equipamento (caso
     do §8.1 em que nenhuma exposicao tem equipamento). `fatigue_context` =
     faixa do dono `prior_fatigue` (`PriorFatigueBand` ou o seu valor).
     `training_goal` = objetivo da exposicao (`None` = nao lido; senao o VALOR
-    do dono `training_goal`, leitura tolerante)."""
+    do dono `training_goal`, leitura tolerante). `gym_id` = academia do
+    contexto de maquina (`equipment_context.context_gym_id`; `None` = peso
+    livre, como antes)."""
     convention = normalize_load_convention(load_convention)
     return ComparabilityKey(
         canonical_exercise_id=None if canonical_exercise_id is None else int(canonical_exercise_id),
@@ -149,6 +172,7 @@ def build_key(
         equipment_agnostic=bool(equipment_agnostic),
         fatigue_context=None if fatigue_context is None else str(getattr(fatigue_context, "value", fatigue_context)),
         training_goal=None if training_goal is None else goal_value(training_goal),
+        gym_id=None if gym_id is None else int(gym_id),
     )
 
 
@@ -165,6 +189,17 @@ def keys_match(a: Optional[ComparabilityKey], b: Optional[ComparabilityKey]) -> 
     return a.equipment_agnostic or a.equipment_id is not None
 
 
+def calibration_physical_key(key: Optional[ComparabilityKey]) -> Optional[ComparabilityKey]:
+    """Chave fisica que a regra unica da calibracao (`equipment_context.context_in_calibration`)
+    recebe por exposicao: exercicio + aparelho + convencao, sem academia; `None` quando o
+    aparelho nao esta resolvido (`keys_match`). Ponto unico para a comparabilidade e o
+    avaliador do motor de carga (`progression_evaluator.context_calibrating`), issue #188."""
+    if key is None:
+        return None
+    physical = key.physical_any_gym
+    return physical if keys_match(physical, physical) else None
+
+
 def physical_keys_match(a: Optional[ComparabilityKey], b: Optional[ComparabilityKey]) -> bool:
     """`keys_match` IGNORANDO o contexto de fadiga: mesmo exercicio,
     equipamento e convencao. E o que decide se a sequencia continua (troca
@@ -172,6 +207,19 @@ def physical_keys_match(a: Optional[ComparabilityKey], b: Optional[Comparability
     if a is None or b is None:
         return False
     return keys_match(a.physical, b.physical)
+
+
+def physical_keys_match_any_gym(a: Optional[ComparabilityKey], b: Optional[ComparabilityKey]) -> bool:
+    """`physical_keys_match` IGNORANDO tambem a academia (issue #188)."""
+    if a is None or b is None:
+        return False
+    return keys_match(a.physical_any_gym, b.physical_any_gym)
+
+
+def only_gym_differs(a: Optional[ComparabilityKey], b: Optional[ComparabilityKey]) -> bool:
+    """Mesma chave fisica, OUTRA academia (contexto de maquina, issue #188):
+    a exposicao e pulada, nao interrompe a sequencia."""
+    return a is not None and b is not None and a.gym_id != b.gym_id and physical_keys_match_any_gym(a, b)
 
 
 # Por que uma exposicao NAO e comparavel com a chave atual (M76 Lote 3c, C13).
@@ -188,6 +236,9 @@ MISMATCH_FATIGUE_CONTEXT = "fatigue_context_changed"
 # leituras do dashboard ja chegam filtradas por objetivo, entao a resposta
 # da API nao o emite nesta fase.
 MISMATCH_TRAINING_GOAL = "training_goal_changed"
+# Mesma maquina e convencao, OUTRA academia (issue #188): o contexto de maquina
+# atual nao a compara.
+MISMATCH_GYM = "gym_changed"
 
 
 def goals_match(a: Optional[ComparabilityKey], b: Optional[ComparabilityKey]) -> bool:
@@ -207,6 +258,8 @@ def mismatch_with_current(key: ComparabilityKey, current: ComparabilityKey) -> O
         return MISMATCH_LOAD_CONVENTION
     if not current.equipment_agnostic and key.equipment_id is None:
         return MISMATCH_EQUIPMENT_UNKNOWN
+    if only_gym_differs(key, current):
+        return MISMATCH_GYM
     if physical_keys_match(key, current):
         if not goals_match(key, current):
             return MISMATCH_TRAINING_GOAL
@@ -228,6 +281,41 @@ def all_equipment_missing(equipment_ids: Sequence[Optional[int]]) -> bool:
     qualidade MEDIUM, decidida por quem monta a resposta)."""
     values = list(equipment_ids)
     return bool(values) and all(value is None for value in values)
+
+
+# ---------------------------------------------------------------------------
+# Chave do RECORDE (session_records): chave fisica GLOBAL por aparelho -
+# exercicio + equipamento + convencao, sem academia, fadiga nem objetivo
+# (decisao do usuario). Unico ponto que o recorde usa (issue #188).
+# ---------------------------------------------------------------------------
+
+
+def record_equipment_agnostic(equipment_ids: Sequence[Optional[int]]) -> bool:
+    """Excecao do §8.1 para o recorde: nenhuma exposicao do historico do
+    exercicio tem equipamento resolvido."""
+    return all_equipment_missing(equipment_ids)
+
+
+def record_key(
+    exercise_id: int,
+    equipment_id: Optional[int],
+    load_convention: Any,
+    *,
+    equipment_agnostic: bool,
+) -> ComparabilityKey:
+    """Chave fisica do recorde de uma exposicao (convencao normalizada)."""
+    return build_key(
+        int(exercise_id),
+        equipment_id,
+        normalize_load_convention(load_convention),
+        equipment_agnostic=equipment_agnostic,
+    )
+
+
+def record_key_comparable(key: ComparabilityKey) -> bool:
+    """A chave do recorde pode ser comparada com alguma outra? (aparelho
+    resolvido, ou a excecao do §8.1)."""
+    return keys_match(key, key)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +418,12 @@ REASON_FIRST_IN_CONTEXT = "first_exposure_in_fatigue_context"
 # (todas as series emparelhadas dos dois lados tinham RPE). Nunca muda o
 # status por si - explica por que "11 reps" empatou com "12 reps".
 REASON_PAIRED_REPS_EFFORT_ADJUSTED = "paired_reps_effort_adjusted"
+# Contexto de maquina (issue #188, dono `domain/equipment_context.py`):
+# - em calibracao (menos sessoes comparaveis que o minimo do dono): o status e
+#   INSUFFICIENT_DATA, nunca progresso/regressao/plato;
+REASON_EQUIPMENT_CALIBRATING = "equipment_context_in_calibration"
+# - informativo: a sequencia PULOU exposicoes da mesma maquina em outra academia.
+REASON_OTHER_GYM_SKIPPED = "other_gym_exposures_skipped"
 # Informativo: a exposicao atual teve MENOS series working que a anterior.
 # Nunca muda o status - fazer menos series e decisao de volume, nao perda de
 # desempenho (as reps sao comparadas por serie emparelhada).
@@ -443,7 +537,7 @@ def paired_top_reps(previous: ExposureSummary, current: ExposureSummary, toleran
     escolha das N series nao muda (mais reps cruas primeiro).
 
     `None` quando um dos lados nao tem serie de topo com reps. Publica: a
-    magnitude do sinal de recuperacao (`exercise_performance`) e o drill-down
+    magnitude do sinal de recuperacao (`paired_reps_epley_ratio`) e o drill-down
     (`exposure_service.paired_top_reps`) emparelham por aqui, nunca por copia."""
     prev_sets = top_load_sets(previous, tolerance)
     curr_sets = top_load_sets(current, tolerance)
@@ -648,46 +742,427 @@ def _compare(
     return None, reasons
 
 
-def trailing_comparable_indices(exposures: Sequence[ExposureSummary]) -> tuple[list[int], int]:
+@dataclass(frozen=True)
+class ComparableWindow:
+    """Sequencia comparavel final (`_trailing_comparable_window`)."""
+
+    indices: list[int]
+    skipped: int  # outro contexto de fadiga (mesma chave fisica)
+    skipped_other_gym: int  # mesma maquina em OUTRA academia (issue #188)
+
+
+def _trailing_comparable_window(exposures: Sequence[ExposureSummary]) -> ComparableWindow:
     """Indices (ordem cronologica) da sequencia comparavel final e quantas
-    exposicoes de OUTRO contexto de fadiga foram puladas dentro dela.
+    exposicoes foram puladas dentro dela.
 
     Para tras a partir da ultima:
     - chave FISICA diferente (exercicio/equipamento/convencao) INTERROMPE: uma
       troca de maquina no meio do historico corta a serie comparavel em vez
       de ser saltada silenciosamente;
-    - OUTRO objetivo de treino (M97 F1) e PULADO sem contar em `skipped`: a
-      exposicao de forca nao entra na sequencia de hipertrofia nem a corta
-      (as leituras do dashboard ja chegam filtradas; `skipped` continua sendo
-      so o de contexto de fadiga, que tem motivo proprio);
-    - mesma chave fisica e OUTRO contexto de fadiga e PULADA: o supino feito
-      5o na quinta nao interrompe a sequencia do supino feito 1o na segunda -
-      so nao entra nela (e tem a sua propria)."""
+    - OUTRO objetivo de treino (M97 F1) e PULADO sem contar: a exposicao de
+      forca nao entra na sequencia de hipertrofia nem a corta (as leituras do
+      dashboard ja chegam filtradas);
+    - mesma maquina em OUTRA academia (issue #188) e PULADA e contada em
+      `skipped_other_gym`: voltar a academia reaproveita a sequencia dela;
+    - mesma chave fisica e OUTRO contexto de fadiga e PULADA e contada em
+      `skipped`: o supino feito 5o na quinta nao interrompe a sequencia do
+      supino feito 1o na segunda - so nao entra nela (e tem a sua propria)."""
     if not exposures:
-        return [], 0
+        return ComparableWindow([], 0, 0)
     last = exposures[-1]
     indices: list[int] = []
     skipped = 0
+    skipped_other_gym = 0
     for index in range(len(exposures) - 1, -1, -1):
         exposure = exposures[index]
-        if not physical_keys_match(exposure.key, last.key):
+        if not physical_keys_match_any_gym(exposure.key, last.key):
             break
         if not goals_match(exposure.key, last.key):
+            continue
+        if exposure.key.gym_id != last.key.gym_id:
+            skipped_other_gym += 1
             continue
         if not keys_match(exposure.key, last.key):
             skipped += 1
             continue
         indices.append(index)
     indices.reverse()
-    return indices, skipped
+    return ComparableWindow(indices, skipped, skipped_other_gym)
 
 
-def trailing_comparable_run(exposures: Sequence[ExposureSummary]) -> list[ExposureSummary]:
-    """As exposicoes da sequencia comparavel final (mesma chave da ultima,
-    inclusive o contexto de fadiga), em ordem cronologica - ver
-    `trailing_comparable_indices`."""
-    indices, _skipped = trailing_comparable_indices(exposures)
-    return [exposures[index] for index in indices]
+def in_equipment_calibration(history: Sequence[Any]) -> bool:
+    """O contexto de MAQUINA da ultima exposicao de `history` (exposicoes ate
+    ela, inclusive) esta calibrando (issue #188, decisao do usuario de
+    2026-11-16)? A troca e LOCAL ao segmento atual, nunca procurada no
+    historico todo: a decisao nao muda com o tamanho da leitura.
+
+    Segmento = exposicoes consecutivas, andando para tras a partir da ultima,
+    com a mesma chave fisica e a mesma academia (qualquer contexto de fadiga
+    ou objetivo), pulando as de OUTRA academia. Calibra quando: a ultima e de
+    maquina (`gym_id`), o segmento tem menos sessoes que o minimo do dono
+    `equipment_context` e foi ABERTO por uma troca - a exposicao que o
+    interrompeu tem aparelho identificado e e de OUTRO aparelho, ou houve
+    exposicao de outra academia pulada. Sem aparelho identificado, outra
+    convencao no mesmo aparelho ou o comeco do historico lido nao sao troca."""
+    # regra unica no dono (`equipment_context.context_in_calibration`); a chave
+    # fisica sem academia so casa quando o aparelho esta resolvido (`keys_match`)
+    return context_in_calibration(
+        [
+            (
+                calibration_physical_key(item.key),
+                item.key.equipment_id,
+                item.key.gym_id,
+            )
+            for item in history
+        ]
+    )
+
+
+@dataclass(frozen=True)
+class ComparableRun:
+    """A sequencia comparavel que a classificacao USA (issue #188): a janela
+    bruta (`_trailing_comparable_window`) mais a calibracao do contexto de
+    maquina. Em calibracao nenhuma exposicao foi comparada: `indices` vazio.
+    A janela crua (`_window`) e interna: consumidores leem `indices` ou
+    `run_flags`, nunca montam sequencia por conta propria."""
+
+    _window: ComparableWindow
+    in_calibration: bool
+
+    @property
+    def indices(self) -> list[int]:
+        return [] if self.in_calibration else self._window.indices
+
+
+#: Janela do veredito (decisao do usuario de 2026-11-16, "veredito sobre 8 em
+#: tudo"): toda leitura decide sobre as ULTIMAS N exposicoes do exercicio
+#: (inclusive a atual) - sequencia comparavel, par ("anterior"), plato,
+#: contagem de comparaveis e calibracao de maquina. Painel, detalhe, tabela,
+#: seta, briefing e Modo Treino decidem sobre o MESMO sufixo; o historico
+#: exibido continua inteiro. Nenhuma leitura pode trazer menos exposicoes que
+#: isto (`exposure_service.MAX_BATCH_EXPOSURES_PER_EXERCISE` deriva daqui).
+VERDICT_LOOKBACK_EXPOSURES = 8
+
+
+def comparable_run(exposures: Sequence[ExposureSummary]) -> ComparableRun:
+    """UNICO ponto que decide a sequencia comparavel e a calibracao, e UNICO
+    corte da janela do veredito: so as ultimas `VERDICT_LOOKBACK_EXPOSURES`
+    de `exposures` sao lidas, entao o resultado nao depende de quantas
+    exposicoes a leitura trouxe. Os indices devolvidos sao posicoes na lista
+    ORIGINAL `exposures` (o deslocamento do corte e somado)."""
+    offset = max(0, len(exposures) - VERDICT_LOOKBACK_EXPOSURES)
+    recent = exposures[offset:]
+    window = _trailing_comparable_window(recent)
+    window = ComparableWindow([offset + index for index in window.indices], window.skipped, window.skipped_other_gym)
+    return ComparableRun(window, in_equipment_calibration(recent))
+
+
+def physical_switch_reasons(previous: ComparabilityKey, current: ComparabilityKey) -> list[str]:
+    """Motivos de troca FISICA (equipamento/convencao) da atual em relacao a
+    IMEDIATAMENTE anterior; vazio quando nao trocou. So outra academia
+    (issue #188), outro contexto de fadiga ou objetivo nao e troca fisica: a
+    sequencia do contexto atual e filtrada em `comparable_run`."""
+    if physical_keys_match(previous, current) or only_gym_differs(previous, current):
+        return []
+    reasons = [REASON_KEY_CHANGED]
+    if current.equipment_id is None and not current.equipment_agnostic:
+        reasons.append(REASON_EQUIPMENT_UNKNOWN)
+    return reasons
+
+
+@dataclass(frozen=True)
+class ComparablePair:
+    """O par "anterior vs atual" da ULTIMA exposicao (`latest_comparable_pair`).
+
+    `previous_index`/`current_index` = posicoes em `exposures`. Sem par,
+    `previous_index` e `None` e `reasons` sao os MESMOS motivos do veredito
+    (troca fisica, serie nao baseada em reps, calibracao, poucas exposicoes,
+    primeira do contexto). Com par, `reasons` e vazio. Decidido so em
+    `_decide`, junto com o veredito."""
+
+    previous_index: Optional[int]
+    current_index: Optional[int]
+    reasons: list[str]
+    #: Resultado da TRANSICAO deste par (seta por sessao): `PROGRESSING`,
+    #: `REGRESSING` ou `STABLE` com par; `NOT_COMPARABLE` sem par. O veredito
+    #: do exercicio pode ser plato; a transicao nao.
+    transition_status: Optional[ExerciseProgressionStatus] = None
+    #: Motivos da transicao: os do veredito sem o de plato (sem par: `reasons`).
+    transition_reasons: list[str] = field(default_factory=list)
+    #: O e1RM decidiu sozinho neste par (`e1rm_is_decisive`, teto
+    #: `e1rm_max_reliable_reps`)? Sempre `False` sem par.
+    e1rm_decisive: bool = False
+
+    @property
+    def comparable(self) -> bool:
+        return self.previous_index is not None
+
+
+def latest_comparable_pair(
+    exposures: Sequence[ExposureSummary],
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> ComparablePair:
+    """A ANTERIOR comparavel da ultima exposicao - a MESMA que o veredito
+    compara (`progression_outcome(...).pair`)."""
+    return progression_outcome(exposures, thresholds=thresholds).pair
+
+
+# Direcao "melhor quando" de cada metrica do par (o frontend so pinta):
+# `up` = subir e melhora, `down` = descer e melhora, `neutral` = informativo.
+BETTER_UP = "up"
+BETTER_DOWN = "down"
+BETTER_NEUTRAL = "neutral"
+#: Metricas do par "anterior vs atual" e a direcao padrao de cada uma.
+PAIR_METRIC_BETTER_WHEN: dict[str, str] = {
+    "best_load_kg": BETTER_UP,
+    "paired_reps": BETTER_UP,
+    # Volume, nao desempenho: menos series nao e regressao.
+    "total_reps": BETTER_NEUTRAL,
+    "avg_rpe": BETTER_DOWN,
+    "e1rm": BETTER_UP,
+    "tonnage": BETTER_NEUTRAL,
+}
+
+
+def metric_better_when(code: str, load_convention: Any, *, e1rm_decisive: bool) -> str:
+    """Direcao de `code` no par: carga segue a convencao (`assisted` inverte,
+    `bodyweight` so compara reps), e1RM nao decisivo e informativo."""
+    if code == "best_load_kg":
+        convention = normalize_load_convention(load_convention)
+        if compares_reps_only(convention):
+            return BETTER_NEUTRAL
+        return BETTER_DOWN if inverts_load_direction(convention) else BETTER_UP
+    if code == "e1rm" and not e1rm_decisive:
+        return BETTER_NEUTRAL
+    return PAIR_METRIC_BETTER_WHEN[code]
+
+
+#: Pontos com valor que uma metrica precisa para virar a linha de tendencia.
+TREND_MIN_POINTS = 2
+
+
+def trend_metric(run: Sequence[Mapping[str, Any]], load_convention: Any) -> Optional[str]:
+    """Metrica da linha de tendencia do exercicio (o frontend so le).
+
+    `run` = exposicoes da sequencia do contexto atual (`in_context_run`);
+    `load_convention` = a da chave atual. Peso corporal (`compares_reps_only`)
+    prefere `total_reps`; os demais preferem `e1rm`; depois `best_load_kg`,
+    depois `total_reps`. Uma metrica entra com `TREND_MIN_POINTS` valores
+    presentes; `None` quando nenhuma tem."""
+    reps_only = compares_reps_only(normalize_load_convention(load_convention))
+
+    def enough(code: str) -> bool:
+        return sum(1 for item in run if item.get(code) is not None) >= TREND_MIN_POINTS
+
+    if not reps_only and enough("e1rm"):
+        return "e1rm"
+    if reps_only and enough("total_reps"):
+        return "total_reps"
+    for code in ("best_load_kg", "total_reps"):
+        if enough(code):
+            return code
+    return None
+
+
+def metric_change(previous: Optional[float], current: Optional[float]) -> dict[str, Optional[float]]:
+    """Variacao absoluta (atual - anterior) e percentual (pontos, `_pct_change`
+    x 100); `None` quando falta um lado ou o anterior e 0."""
+    if previous is None or current is None:
+        return {"delta": None, "delta_pct": None}
+    pct = _pct_change(float(current), float(previous))
+    return {
+        "delta": _clean_number(float(current) - float(previous)),
+        "delta_pct": None if pct is None else pct * 100,
+    }
+
+
+@dataclass(frozen=True)
+class ProgressionOutcome:
+    """Resultado UNICO da classificacao de um exercicio: o que painel em lote,
+    drill-down, tela de progressao e briefing expoem (issue #188)."""
+
+    status: ExerciseProgressionStatus
+    reasons: list[str]
+    run: ComparableRun
+    #: Par "anterior vs atual" que o veredito comparou (sem anterior: os
+    #: mesmos motivos de `reasons`).
+    pair: ComparablePair
+
+    @property
+    def in_calibration(self) -> bool:
+        return self.run.in_calibration
+
+    @property
+    def run_indices(self) -> list[int]:
+        """Posicoes (em `exposures`) da sequencia comparavel; vazia em calibracao."""
+        return self.run.indices
+
+    @property
+    def comparable_count(self) -> int:
+        """Exposicoes comparaveis: o tamanho de `run_indices` (0 em calibracao)."""
+        return len(self.run.indices)
+
+
+def progression_outcome(
+    exposures: Sequence[ExposureSummary],
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> ProgressionOutcome:
+    """Status, motivos, sequencia comparavel, calibracao e par de uma vez -
+    ver `classify_exercise_progression` (status) e `comparable_run`.
+    `exposures` = historico do exercicio em ordem cronologica; a janela do
+    veredito (`VERDICT_LOOKBACK_EXPOSURES`) e aplicada uma vez, em
+    `comparable_run`, e `_decide` so le as posicoes que ela devolve (indices
+    da lista original)."""
+    run = comparable_run(exposures)
+    status, reasons, pair = _decide(exposures, run, thresholds)
+    return ProgressionOutcome(status, reasons, run, pair)
+
+
+# ---------------------------------------------------------------------------
+# Razao de desempenho do par (sinal "Desempenho recente" da recuperacao).
+# Vinda de `exercise_performance.py` (issue #188) SEM mudar a formula: a
+# recuperacao so classifica a razao (limiares 0,95/0,90 do dono dela).
+# ---------------------------------------------------------------------------
+
+
+def paired_reps_ratio(
+    previous: ExposureSummary,
+    current: ExposureSummary,
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> Optional[float]:
+    """Razao BRUTA das reps emparelhadas (soma atual / soma anterior).
+    Informativa: NAO e a magnitude do sinal (ver `paired_reps_epley_ratio`)."""
+    paired = paired_top_reps(previous, current, float(thresholds["same_load_tolerance_pct"]))
+    if paired is None:
+        return None
+    reference = sum(paired.previous_reps)
+    if reference <= 0:
+        return None
+    return sum(paired.current_reps) / reference
+
+
+def paired_reps_epley_ratio(
+    previous: ExposureSummary,
+    current: ExposureSummary,
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> Optional[float]:
+    """Magnitude quando o e1RM NAO e decisivo: equivalente Epley (dono
+    `domain/e1rm.epley_multiplier`) na MESMA carga das reps emparelhadas de
+    topo (`paired_top_reps`):
+
+        ratio = epley(valor_atual_med) / epley(valor_anterior_med)
+
+    `valor_*_med` = media, por serie, do valor que a regra de reps compara
+    (`reps + RIR` quando todas as emparelhadas tem RPE, senao reps cruas nos
+    dois lados). A razao bruta de reps seria severa demais para limiares
+    calibrados em e1RM."""
+    paired = paired_top_reps(previous, current, float(thresholds["same_load_tolerance_pct"]))
+    if paired is None:
+        return None
+    prev_mean = sum(paired.previous) / paired.pairs
+    curr_mean = sum(paired.current) / paired.pairs
+    return _e1rm.epley_multiplier(curr_mean, 0.0) / _e1rm.epley_multiplier(prev_mean, 0.0)
+
+
+def performance_ratio_of(
+    exposures: Sequence[ExposureSummary],
+    *,
+    outcome: Optional[ProgressionOutcome] = None,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> Optional[float]:
+    """Razao atual / anterior do PAR que o veredito comparou
+    (`progression_outcome(...).pair`). `None` sem par (troca fisica, serie
+    nao baseada em reps, calibracao, poucas exposicoes, outro contexto).
+
+    Magnitude: razao de e1RM quando o e1RM e decisivo no par, senao
+    `paired_reps_epley_ratio`. Transicao `REGRESSING` -> magnitude com teto
+    1,0 (`None` sem magnitude); qualquer outra -> piso 1,0 (o que a regra de
+    progresso nao chama de queda nunca vira sinal negativo)."""
+    if outcome is None:
+        outcome = progression_outcome(exposures, thresholds=thresholds)
+    pair = outcome.pair
+    if pair.previous_index is None or pair.current_index is None:
+        return None
+    previous, current = exposures[pair.previous_index], exposures[pair.current_index]
+    magnitude: Optional[float] = None
+    if pair.e1rm_decisive and previous.e1rm:
+        magnitude = float(current.e1rm) / float(previous.e1rm)
+    if magnitude is None:
+        magnitude = paired_reps_epley_ratio(previous, current, thresholds=thresholds)
+    if pair.transition_status is ExerciseProgressionStatus.REGRESSING:
+        return None if magnitude is None else min(magnitude, 1.0)
+    return 1.0 if magnitude is None else max(magnitude, 1.0)
+
+
+def latest_session_performance_ratios(
+    exposures: Sequence[ExposureSummary],
+    session_ids: Sequence[Any],
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> dict[int, float]:
+    """Razao (`performance_ratio_of`) de CADA passagem da ultima sessao contra
+    o historico ate a ultima exposicao de OUTRA sessao: `{indice: razao}`.
+
+    Regra da recuperacao: duas passagens pelo mesmo exercicio na mesma sessao
+    medem fadiga intra-sessao, nao recuperacao - a anterior nunca e da propria
+    sessao. Sem exposicao de outra sessao -> `{}`. `session_ids[i]` identifica
+    a sessao de `exposures[i]` (ordem cronologica). As telas de progressao NAO
+    usam isto: la duas passagens seguem sendo duas exposicoes."""
+    if not exposures or len(session_ids) != len(exposures):
+        return {}
+    last_session = session_ids[-1]
+    previous_index = next(
+        (index for index in range(len(exposures) - 1, -1, -1) if session_ids[index] != last_session), None
+    )
+    if previous_index is None:
+        return {}
+    history = list(exposures[: previous_index + 1])
+    ratios: dict[int, float] = {}
+    for index in range(previous_index + 1, len(exposures)):
+        ratio = performance_ratio_of([*history, exposures[index]], thresholds=thresholds)
+        if ratio is not None:
+            ratios[index] = ratio
+    return ratios
+
+
+#: Desfecho de uma metrica do par (o frontend so pinta): melhorou, piorou,
+#: igual ou informativo (sem variacao ou `better_when` neutro).
+OUTCOME_IMPROVED = "improved"
+OUTCOME_WORSENED = "worsened"
+OUTCOME_FLAT = "flat"
+OUTCOME_NEUTRAL = "neutral"
+
+
+def metric_outcome(delta: Optional[float], better_when: str) -> str:
+    """Desfecho de uma metrica a partir da variacao (`metric_change`) e da
+    direcao (`metric_better_when`): sem delta ou direcao neutra -> `neutral`;
+    delta zero -> `flat`; senao `improved`/`worsened` conforme a direcao."""
+    if delta is None or better_when == BETTER_NEUTRAL:
+        return OUTCOME_NEUTRAL
+    if delta == 0:
+        return OUTCOME_FLAT
+    subiu = delta > 0
+    return OUTCOME_IMPROVED if subiu == (better_when == BETTER_UP) else OUTCOME_WORSENED
+
+
+def run_flags(outcome: ProgressionOutcome, size: int) -> list[dict[str, bool]]:
+    """Duas marcacoes por exposicao (mesma ordem de `exposures`, tamanho
+    `size`), as duas do dono:
+    - `in_context_run`: na sequencia do contexto atual (mesmo exercicio,
+      aparelho, convencao, academia, objetivo e contexto de fadiga, cortada
+      por troca fisica) - inclusive em calibracao; e o que o grafico plota;
+    - `in_verdict_run`: usada pelo veredito (`run_indices`; vazia em
+      calibracao); e o que o grafico destaca."""
+    contexto = set(outcome.run._window.indices)
+    veredito = set(outcome.run_indices)
+    return [
+        {"in_context_run": index in contexto, "in_verdict_run": index in veredito}
+        for index in range(size)
+    ]
 
 
 def classify_exercise_progression(
@@ -698,41 +1173,85 @@ def classify_exercise_progression(
     """Status do exercicio a partir das exposicoes JA filtradas pela janela de
     `exposure_lookback_days` e ordenadas em ordem CRONOLOGICA (mais antiga
     primeiro). Implementa o §8.2 na ordem em que o plano o escreve.
+    Casca de `progression_outcome`.
     """
-    min_comparable = int(thresholds["min_comparable_exposures"])
+    outcome = progression_outcome(exposures, thresholds=thresholds)
+    return outcome.status, outcome.reasons
+
+
+def _decide(
+    exposures: Sequence[ExposureSummary],
+    comparable: ComparableRun,
+    thresholds: Mapping[str, Any],
+) -> tuple[ExerciseProgressionStatus, list[str], ComparablePair]:
+    """UNICA decisao do veredito e do par, nesta ordem: troca fisica -> serie
+    nao baseada em reps -> calibracao -> poucas exposicoes/primeira do
+    contexto -> par comparado. Sem par, o par leva os motivos do veredito."""
+    current = len(exposures) - 1 if exposures else None
+
+    def sem_par(status: ExerciseProgressionStatus, reasons: list[str]):
+        return status, reasons, ComparablePair(
+            None,
+            current,
+            list(reasons),
+            ExerciseProgressionStatus.NOT_COMPARABLE,
+            list(reasons),
+        )
+
+    # Um par exige duas exposicoes, qualquer que seja o minimo configurado.
+    min_comparable = max(int(thresholds["min_comparable_exposures"]), 2)
     plateau_min = int(thresholds["plateau_min_exposures"])
+    calibrating = comparable.in_calibration
 
     if len(exposures) < min_comparable:
-        return ExerciseProgressionStatus.INSUFFICIENT_DATA, [REASON_NOT_ENOUGH_EXPOSURES]
+        return sem_par(
+            ExerciseProgressionStatus.INSUFFICIENT_DATA,
+            [REASON_EQUIPMENT_CALIBRATING if calibrating else REASON_NOT_ENOUGH_EXPOSURES],
+        )
 
     last, previous = exposures[-1], exposures[-2]
     # Troca FISICA (equipamento/convencao) em relacao a imediatamente
     # anterior: NOT_COMPARABLE, como sempre. Troca so de contexto de fadiga
-    # nao: a sequencia do contexto atual e filtrada abaixo.
-    if not physical_keys_match(last.key, previous.key):
-        reasons = [REASON_KEY_CHANGED]
-        if last.key.equipment_id is None and not last.key.equipment_agnostic:
-            reasons.append(REASON_EQUIPMENT_UNKNOWN)
-        return ExerciseProgressionStatus.NOT_COMPARABLE, reasons
+    # ou so de academia (issue #188) nao: a sequencia do contexto atual e
+    # filtrada abaixo.
+    switch = physical_switch_reasons(previous.key, last.key)
+    if switch:
+        return sem_par(ExerciseProgressionStatus.NOT_COMPARABLE, switch)
+    window = comparable._window
     # Lote T3 (medidas de serie): serie por tempo/maximo de reps na ultima
-    # exposicao ou na anterior -> NOT_COMPARABLE (a carga/reps dessa serie
+    # exposicao ou na anterior COMPARADA (a da sequencia, nao a pulada por
+    # outro contexto/academia) -> NOT_COMPARABLE (a carga/reps dessa serie
     # nao respondem a pergunta de progressao de carga).
-    if last.has_non_rep_sets or previous.has_non_rep_sets:
-        return ExerciseProgressionStatus.NOT_COMPARABLE, [REASON_MEASURE_NOT_REP_BASED]
+    compared = exposures[window.indices[-2]] if len(window.indices) >= 2 else None
+    if last.has_non_rep_sets or (compared is not None and compared.has_non_rep_sets):
+        return sem_par(ExerciseProgressionStatus.NOT_COMPARABLE, [REASON_MEASURE_NOT_REP_BASED])
 
-    indices, skipped = trailing_comparable_indices(exposures)
-    run = [exposures[index] for index in indices]
-    if len(run) < min_comparable:
-        reasons = [REASON_NOT_ENOUGH_EXPOSURES]
+    skipped = window.skipped
+    run = [exposures[index] for index in window.indices]
+    gym_reasons = [REASON_OTHER_GYM_SKIPPED] if window.skipped_other_gym else []
+    # Contexto de maquina em calibracao depois de uma troca (issue #188):
+    # nunca progresso, regressao nem plato, mesmo com reps/carga mudando.
+    if calibrating or len(run) < min_comparable:
+        reasons = [REASON_EQUIPMENT_CALIBRATING if calibrating else REASON_NOT_ENOUGH_EXPOSURES]
         if skipped and len(run) == 1:
             reasons.append(REASON_FIRST_IN_CONTEXT)
-        return ExerciseProgressionStatus.INSUFFICIENT_DATA, reasons
+        return sem_par(ExerciseProgressionStatus.INSUFFICIENT_DATA, [*reasons, *gym_reasons])
 
-    status, reasons = compare_exposures(run[-2], run[-1], thresholds=thresholds)
+    previous_index = window.indices[-2]
+    status, reasons = compare_exposures(exposures[previous_index], last, thresholds=thresholds)
     if skipped:
         reasons = [*reasons, REASON_OTHER_CONTEXT_SKIPPED]
+    reasons = [*reasons, *gym_reasons]
+    pair = ComparablePair(
+        previous_index,
+        current,
+        [],
+        status or ExerciseProgressionStatus.STABLE,
+        list(reasons),
+        e1rm_is_decisive(exposures[previous_index], last, int(thresholds["e1rm_max_reliable_reps"])),
+    )
     if status is not None:
-        return status, reasons
+        return status, reasons, pair
 
     # Sem progresso nem regressao na ultima transicao: so e "suspeita de
     # plato" se NENHUMA transicao do run comparavel tiver progredido ou
@@ -743,9 +1262,9 @@ def classify_exercise_progression(
             for index in range(1, len(run))
         )
         if not movimento:
-            return ExerciseProgressionStatus.PLATEAU_SUSPECTED, [*reasons, REASON_PLATEAU_RUN]
+            return ExerciseProgressionStatus.PLATEAU_SUSPECTED, [*reasons, REASON_PLATEAU_RUN], pair
 
-    return ExerciseProgressionStatus.STABLE, reasons
+    return ExerciseProgressionStatus.STABLE, reasons, pair
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +1284,30 @@ COMPARABLE_PROGRESSION_STATUSES: tuple[ExerciseProgressionStatus, ...] = (
     ExerciseProgressionStatus.REGRESSING,
 )
 
+#: Status de "progresso ok" (progredindo ou estavel): numerador da fracao da
+#: recomposicao (`progression_share`). Plato e regressao ficam fora.
+PROGRESS_OK_STATUSES: tuple[ExerciseProgressionStatus, ...] = (
+    ExerciseProgressionStatus.PROGRESSING,
+    ExerciseProgressionStatus.STABLE,
+)
+_COMPARABLE_VALUES = frozenset(status.value for status in COMPARABLE_PROGRESSION_STATUSES)
+_PROGRESS_OK_VALUES = frozenset(status.value for status in PROGRESS_OK_STATUSES)
+
+
+def _status_value(status: Any) -> Any:
+    return getattr(status, "value", status)
+
+
+def is_comparable_status(status: Any) -> bool:
+    """O status (enum ou codigo) e comparavel (`COMPARABLE_PROGRESSION_STATUSES`)?"""
+    return _status_value(status) in _COMPARABLE_VALUES
+
+
+def is_progress_ok_status(status: Any) -> bool:
+    """O status (enum ou codigo) e progredindo ou estavel (`PROGRESS_OK_STATUSES`)?"""
+    return _status_value(status) in _PROGRESS_OK_VALUES
+
+
 #: Menos exercicios comparaveis do que isto e a leitura geral e fraca (§7).
 MIN_COMPARABLE_FOR_RELIABLE_ANSWER = 3
 
@@ -778,6 +1321,40 @@ GROUP_REASON_NO_COMPARABLE_EXERCISE = "NO_COMPARABLE_EXERCISE"
 GROUP_REASON_LOW_ACTIVATION = "LOW_ACTIVATION"
 
 
+#: Chave de cada status em `progression_counts` (quem lista por status le a
+#: contagem por aqui, sem contar de novo).
+PROGRESSION_COUNT_KEYS: dict[ExerciseProgressionStatus, str] = {
+    ExerciseProgressionStatus.PROGRESSING: "progressing",
+    ExerciseProgressionStatus.STABLE: "stable",
+    ExerciseProgressionStatus.PLATEAU_SUSPECTED: "plateau_suspected",
+    ExerciseProgressionStatus.REGRESSING: "regressing",
+    ExerciseProgressionStatus.NOT_COMPARABLE: "not_comparable",
+    ExerciseProgressionStatus.INSUFFICIENT_DATA: "insufficient_data",
+}
+
+
+#: Tendencia de desempenho (briefing) de cada status comparavel: o plato e
+#: "mantendo" como o estavel. Fora daqui ninguem reduz o status.
+TREND_PROGRESSING = "progressing"
+TREND_MAINTAINING = "maintaining"
+TREND_REGRESSING = "regressing"
+PERFORMANCE_TREND: dict[ExerciseProgressionStatus, str] = {
+    ExerciseProgressionStatus.PROGRESSING: TREND_PROGRESSING,
+    ExerciseProgressionStatus.STABLE: TREND_MAINTAINING,
+    ExerciseProgressionStatus.PLATEAU_SUSPECTED: TREND_MAINTAINING,
+    ExerciseProgressionStatus.REGRESSING: TREND_REGRESSING,
+}
+
+
+def performance_trend(status: Any) -> Optional[str]:
+    """Tendencia (`TREND_*`) do status (enum ou codigo); `None` quando o
+    status nao e comparavel ou e desconhecido."""
+    try:
+        return PERFORMANCE_TREND.get(ExerciseProgressionStatus(status))
+    except ValueError:
+        return None
+
+
 def progression_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     """Contagem por status dos itens de `get_exercises_progression_batch`
     (`item["status"]`). Fonte unica das contagens da home e de
@@ -788,14 +1365,24 @@ def progression_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
         status = str(item["status"])
         if status in tally:
             tally[status] += 1
+    counts = {key: tally[status.value] for status, key in PROGRESSION_COUNT_KEYS.items()}
+    counts["comparable_total"] = sum(tally[status.value] for status in COMPARABLE_PROGRESSION_STATUSES)
+    return counts
+
+
+def progression_share(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Resumo pronto da recomposicao (insight e corpo): sobre os itens do lote
+    (`item["status"]`), `comparable` = quantos tem status comparavel,
+    `progressing_or_stable` = quantos desses progridem ou estao estaveis e
+    `share` = `progressing_or_stable / comparable` (`None` sem comparavel).
+    Comparar `comparable` com `insight_recomp_min_comparable_exercises` e
+    `share` com `insight_recomp_progress_share` e de quem consome."""
+    comparable = [item for item in items if is_comparable_status(item.get("status"))]
+    ok = sum(1 for item in comparable if is_progress_ok_status(item.get("status")))
     return {
-        "progressing": tally[ExerciseProgressionStatus.PROGRESSING.value],
-        "stable": tally[ExerciseProgressionStatus.STABLE.value],
-        "plateau_suspected": tally[ExerciseProgressionStatus.PLATEAU_SUSPECTED.value],
-        "regressing": tally[ExerciseProgressionStatus.REGRESSING.value],
-        "comparable_total": sum(tally[status.value] for status in COMPARABLE_PROGRESSION_STATUSES),
-        "not_comparable": tally[ExerciseProgressionStatus.NOT_COMPARABLE.value],
-        "insufficient_data": tally[ExerciseProgressionStatus.INSUFFICIENT_DATA.value],
+        "comparable": len(comparable),
+        "progressing_or_stable": ok,
+        "share": ok / len(comparable) if comparable else None,
     }
 
 
@@ -903,9 +1490,143 @@ def aggregate_group_progression(entries: Iterable[tuple[Any, float]]) -> dict[st
     }
 
 
+# ---------------------------------------------------------------------------
+# Variacao de e1RM por grupo (INFORMATIVA; nunca gera status). Antes calculada
+# em `muscle_group_performance.build_group_performance`; mesma formula e mesmo
+# limiar, agora com a academia na chave para maquina (issue #188).
+# ---------------------------------------------------------------------------
+
+#: Motivo de exclusao da media informativa (variacao atipica).
+GROUP_E1RM_OUTLIER_REASON = "OUTLIER_CHANGE"
+
+
+def group_e1rm_changes(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Variacao do melhor e1RM entre as duas janelas, por (grupo, chave do dono).
+
+    `rows` = linhas de `analytics._fetch_group_e1rm_rows`: `period`
+    (`current`/`previous`), `exercise_id`, `exercise_name`, `equipment_id`,
+    `load_convention` (bruta), `gym_id`, `equipment_type_code`,
+    `muscle_group_id`, `stimulus_weight`, `best_e1rm_kg`. A chave e
+    `build_key` (sem fadiga nem objetivo; academia so para maquina via
+    `equipment_context.context_gym_id`); excecao do §8.1 (nenhum equipamento)
+    decidida por exercicio nas duas janelas. Devolve uma entrada por par com as
+    duas janelas: `muscle_group_id`, `exercise_id`, `exercise_name`,
+    `equipment_id`, `load_convention`, `gym_id`, `previous_e1rm_kg`,
+    `current_e1rm_kg` (1 casa), `change_pct` (1 casa), `stimulus_weight`
+    (3 casas), `outlier` (`|change| > GROUP_E1RM_OUTLIER_CHANGE_PCT`),
+    `excluded_reason` e `_change` (variacao sem arredondar, para a media)."""
+    rows = list(rows)
+    equipment_by_exercise: dict[int, list[Optional[int]]] = {}
+    for row in rows:
+        if row.get("exercise_id") is None:
+            continue
+        equipment_by_exercise.setdefault(int(row["exercise_id"]), []).append(
+            None if row.get("equipment_id") is None else int(row["equipment_id"])
+        )
+    agnostic = {ex: all_equipment_missing(ids) for ex, ids in equipment_by_exercise.items()}
+
+    pairs: dict[tuple[int, ComparabilityKey], dict[str, Any]] = {}
+    for row in rows:
+        best = _optional_float(row.get("best_e1rm_kg"))
+        weight = _optional_float(row.get("stimulus_weight")) or 0.0
+        if row.get("exercise_id") is None or best is None or best <= 0 or weight <= 0:
+            continue
+        convention = normalize_load_convention(row.get("load_convention"))
+        if not supports_e1rm(convention):
+            continue
+        exercise_id = int(row["exercise_id"])
+        key = build_key(
+            exercise_id,
+            row.get("equipment_id"),
+            convention,
+            equipment_agnostic=agnostic[exercise_id],
+            gym_id=context_gym_id(row.get("equipment_type_code"), row.get("gym_id")),
+        )
+        if not keys_match(key, key):  # equipamento nao resolvido fora da excecao
+            continue
+        entry = pairs.setdefault(
+            (int(row["muscle_group_id"]), key),
+            {"exercise_name": row.get("exercise_name"), "weight": weight, "current": None, "previous": None},
+        )
+        period = "current" if row["period"] == "current" else "previous"
+        # `None` e `total` normalizam para a mesma chave: fica o maior.
+        entry[period] = best if entry[period] is None else max(entry[period], best)
+        entry["weight"] = max(entry["weight"], weight)
+        entry["exercise_name"] = entry["exercise_name"] or row.get("exercise_name")
+
+    out: list[dict[str, Any]] = []
+    for (group_id, key), entry in pairs.items():
+        if entry["current"] is None or entry["previous"] is None:
+            continue
+        change = (entry["current"] - entry["previous"]) / entry["previous"] * 100.0
+        outlier = abs(change) > GROUP_E1RM_OUTLIER_CHANGE_PCT
+        out.append(
+            {
+                "muscle_group_id": group_id,
+                "exercise_id": key.canonical_exercise_id,
+                "exercise_name": entry["exercise_name"],
+                "equipment_id": key.equipment_id,
+                "load_convention": key.load_convention.value,
+                "gym_id": key.gym_id,
+                "previous_e1rm_kg": round(entry["previous"], 1),
+                "current_e1rm_kg": round(entry["current"], 1),
+                "change_pct": round(change, 1),
+                "stimulus_weight": round(entry["weight"], 3),
+                "outlier": outlier,
+                "excluded_reason": GROUP_E1RM_OUTLIER_REASON if outlier else None,
+                "_change": change,
+            }
+        )
+    return out
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 __all__ = [
+    "PERFORMANCE_TREND",
+    "TREND_MAINTAINING",
+    "TREND_PROGRESSING",
+    "TREND_REGRESSING",
+    "in_equipment_calibration",
+    "VERDICT_LOOKBACK_EXPOSURES",
+    "performance_trend",
     "COMPARABLE_PROGRESSION_STATUSES",
+    "GROUP_E1RM_OUTLIER_REASON",
+    "PROGRESS_OK_STATUSES",
+    "group_e1rm_changes",
+    "is_comparable_status",
+    "is_progress_ok_status",
+    "progression_share",
     "ComparabilityKey",
+    "ComparablePair",
+    "ComparableRun",
+    "PAIR_METRIC_BETTER_WHEN",
+    "PROGRESSION_COUNT_KEYS",
+    "latest_comparable_pair",
+    "metric_better_when",
+    "metric_change",
+    "TREND_MIN_POINTS",
+    "trend_metric",
+    "metric_outcome",
+    "run_flags",
+    "OUTCOME_FLAT",
+    "OUTCOME_IMPROVED",
+    "OUTCOME_NEUTRAL",
+    "OUTCOME_WORSENED",
+    "ProgressionOutcome",
+    "comparable_run",
+    "progression_outcome",
+    "paired_reps_epley_ratio",
+    "paired_reps_ratio",
+    "performance_ratio_of",
+    "latest_session_performance_ratios",
     "DEFAULT_LOAD_CONVENTION",
     "GROUP_MIN_COMPARABLE_WEIGHT",
     "GROUP_REASON_LOW_ACTIVATION",
@@ -917,15 +1638,17 @@ __all__ = [
     "PairedTopReps",
     "aggregate_group_progression",
     "exercise_progression_summary",
-    "all_equipment_missing",
     "build_key",
+    "calibration_physical_key",
     "classify_exercise_progression",
     "compare_exposures",
     "compares_reps_only",
     "goals_match",
     "inverts_load_direction",
-    "keys_match",
     "normalize_load_convention",
+    "record_equipment_agnostic",
+    "record_key",
+    "record_key_comparable",
     "paired_top_reps",
     "physical_keys_match",
     "progression_answer",
@@ -933,8 +1656,6 @@ __all__ = [
     "progression_total",
     "top_load_reps",
     "top_load_sets",
-    "trailing_comparable_indices",
     "supports_e1rm",
-    "trailing_comparable_run",
     "WorkingSet",
 ]

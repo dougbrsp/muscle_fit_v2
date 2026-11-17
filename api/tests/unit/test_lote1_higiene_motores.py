@@ -19,7 +19,8 @@ REPO = Path(__file__).resolve().parents[3]
 
 
 def _antigo_analytics(reps: Any) -> bool:
-    """Corpo anterior de `analytics._e1rm_reps_reliable` (referencia)."""
+    """Corpo do antigo `analytics._e1rm_reps_reliable` (removido em #188, sem
+    uso; referencia do teto)."""
     if reps is None:
         return False
     return int(reps) <= int(THRESHOLDS["e1rm_max_reliable_reps"])
@@ -34,8 +35,10 @@ def _antigo_exposure(exposure: dict) -> bool:
 
 
 @pytest.mark.parametrize("reps", [None, 1, 5, 12, 13, 20])
-def test_predicado_analytics_identico_ao_anterior(reps):
-    assert analytics._e1rm_reps_reliable(reps) is _antigo_analytics(reps)
+def test_predicado_do_dono_identico_ao_antigo_de_analytics(reps):
+    """O predicado que `analytics` tinha agora e so o do dono do e1RM."""
+    assert not hasattr(analytics, "_e1rm_reps_reliable")
+    assert (reps is not None and e1rm.is_reliable_reps(reps)) is _antigo_analytics(reps)
 
 
 @pytest.mark.parametrize("reps", [None, 1, 5, 12, 13, 20])
@@ -50,7 +53,7 @@ def test_reps_zero_e_dado_invalido_agora_nao_confiavel():
     """Unica divergencia: 0 reps (dado invalido; nao gera e1RM) deixa de ser
     'confiavel' - o dono exige reps > 0."""
     assert _antigo_analytics(0) is True
-    assert analytics._e1rm_reps_reliable(0) is False
+    assert e1rm.is_reliable_reps(0) is False
     assert exposure_service.e1rm_reliable({"e1rm": 50.0, "e1rm_reps": 0}) is False
     assert e1rm.estimated_1rm(50, 0, 8) is None
 
