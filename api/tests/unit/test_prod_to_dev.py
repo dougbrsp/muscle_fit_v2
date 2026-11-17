@@ -748,12 +748,31 @@ def test_select_com_palavra_proibida_dentro_de_literal_e_aceito():
 def test_migracao_divergente_aborta():
     prod = {"066_a.py": "x", "067_b.py": "y"}
     p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "y"}, "o MySQL local")
-    with pytest.raises(p2d.AbortError, match="só em o MySQL local: 068_c.py"):
-        p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "y", "068_c.py": "z"}, "o MySQL local")
+    with pytest.raises(p2d.AbortError, match="só em o MySQL local: 060_c.py"):
+        p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "y", "060_c.py": "z"}, "o MySQL local")
+    with pytest.raises(p2d.AbortError, match="só em o MySQL local: 067_c.py"):
+        p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "y", "067_c.py": "z"}, "o MySQL local")
+    with pytest.raises(p2d.AbortError, match="só em produção: 067_b.py"):
+        p2d.compare_migrations(prod, {"066_a.py": "x", "068_c.py": "z"}, "o MySQL local")
+    with pytest.raises(p2d.AbortError, match="checksum diferente: 067_b.py"):
+        p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "outro", "068_c.py": "z"}, "o MySQL local")
     with pytest.raises(p2d.AbortError, match="checksum diferente: 067_b.py"):
         p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "outro"}, "o MySQL local")
     with pytest.raises(p2d.AbortError, match="só em produção: 067_b.py"):
         p2d.compare_migrations(prod, {"066_a.py": None}, "o repositório")
+
+
+def test_dev_a_frente_de_producao_e_aceito_com_aviso(capsys):
+    prod = {"066_a.py": "x", "067_b.py": "y"}
+    p2d.compare_migrations(prod, {"066_a.py": "x", "067_b.py": "y", "068_c.py": "z", "069_d.sql": "w"}, "o MySQL local")
+    out = capsys.readouterr().out
+    assert "AVISO" in out and "068_c.py" in out and "069_d.sql" in out
+
+
+def test_carga_nao_apaga_controle_de_migracoes():
+    schema = p2d.Schema(tables={n: object() for n in ("schema_migration_files", "schema_migrations", "users")})
+    stmts = p2d.render_sql({}, schema)
+    assert not any("schema_migration" in s for s in stmts)
 
 
 def test_repositorio_tem_as_migracoes_numeradas():
