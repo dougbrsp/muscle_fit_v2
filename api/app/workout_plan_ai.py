@@ -160,6 +160,11 @@ _RECOMMENDATION_FIELDS_OUT_OF_PROMPT = (
     "failure_allowed",
     "allowed_advanced_techniques",
     "safety_source",
+    # Fabricante por academia (#188): so a tela consome.
+    "gym_equipment_catalog_id",
+    "manufacturer",
+    "manufacturer_source",
+    "can_edit_manufacturer",
 )
 
 
