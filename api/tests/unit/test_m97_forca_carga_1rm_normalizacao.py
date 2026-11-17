@@ -424,6 +424,7 @@ def _gerar_rascunho(monkeypatch):
     )
     monkeypatch.setattr(mode_b, "_load_names", lambda conn, table, ids: {i: NOMES.get(i) for i in ids})
     monkeypatch.setattr(mode_b, "_load_amazfit_names", lambda conn, ids: {})
+    monkeypatch.setattr(mode_b, "gym_contexts_by_gym_equipment", lambda conn, ids: {})
     monkeypatch.setattr(mode_b, "load_laboral_defaults", lambda conn, ids: {})
     monkeypatch.setattr(
         volume_service.VolumeService, "get_muscle_activation_for_exercises", lambda self, payload: []
@@ -493,6 +494,7 @@ def test_teste_zepp_congelamento_do_modo_b(monkeypatch, motor_real):
         },
     )
     monkeypatch.setattr(freeze_mode_b, "equipment_by_gym_equipment", lambda conn, ids: {})
+    monkeypatch.setattr(freeze_mode_b, "gym_contexts_by_gym_equipment", lambda conn, ids: {})
     monkeypatch.setattr(freeze_mode_b, "projected_readiness", lambda user_id, plan_date, plan_time: {})
     monkeypatch.setattr(
         freeze_mode_b,

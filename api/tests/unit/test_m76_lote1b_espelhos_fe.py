@@ -70,7 +70,9 @@ from app.domain import prescription_defaults as pd  # noqa: E402
 from app.domain import session_loads as sl  # noqa: E402
 from app.domain import training_history as th  # noqa: E402
 from app.domain import training_safety as ts  # noqa: E402
+from app.domain.e1rm import E1RM_MAX_RELIABLE_REPS  # noqa: E402
 from app.domain.progression_status_labels import EXERCISE_PROGRESSION_LABELS  # noqa: E402
+from app.intelligence.dashboard.metrics_registry import THRESHOLDS  # noqa: E402
 from app.intelligence import methodology_volume as mvol  # noqa: E402
 from app.intelligence.muscle_contribution_resolver import DEFAULT_WRITE_WEIGHTS  # noqa: E402
 from app.periodization import core as pcore  # noqa: E402
@@ -193,6 +195,15 @@ def constantes() -> dict[str, Any]:
         # 2026-11-15 (#146, RPE esperado por série): escala do alvo (mín, máx, passo);
         # dono `domain/training_history.py`.
         "rpe_target_scale": th.export_rpe_scale_for_frontend(),
+        # 2026-11-16: limiares do status de progressão que as frases de motivo do FE citam
+        # (dono `metrics_registry.THRESHOLDS`; teto do e1RM em `domain/e1rm.py`). Percentuais inteiros.
+        "progression_thresholds": {
+            "same_load_tolerance": THRESHOLDS["same_load_tolerance_pct"],
+            "same_load_tolerance_percent": round(THRESHOLDS["same_load_tolerance_pct"] * 100),
+            "e1rm_progress": THRESHOLDS["e1rm_progress_pct"],
+            "e1rm_progress_percent": round(THRESHOLDS["e1rm_progress_pct"] * 100),
+            "e1rm_max_reliable_reps": E1RM_MAX_RELIABLE_REPS,
+        },
     }
 
 
@@ -1203,6 +1214,16 @@ def test_ajuste_rapido_do_plano_e_bordas():
             assert abs(round(valor / passo) * passo - valor) < 1e-9
             if caso["current"] > 0:
                 assert valor < caso["current"]
+
+
+def test_limiares_de_progressao_do_json_sao_os_do_dono():
+    """O JSON commitado traz os limiares lidos do dono (as frases do FE os interpolam)."""
+    bloco = json.loads(CONSTANTES.read_text(encoding="utf-8"))["progression_thresholds"]
+    assert bloco["same_load_tolerance"] == THRESHOLDS["same_load_tolerance_pct"]
+    assert bloco["e1rm_progress"] == THRESHOLDS["e1rm_progress_pct"]
+    assert bloco["e1rm_max_reliable_reps"] == E1RM_MAX_RELIABLE_REPS == THRESHOLDS["e1rm_max_reliable_reps"]
+    assert abs(bloco["same_load_tolerance_percent"] / 100 - THRESHOLDS["same_load_tolerance_pct"]) < 1e-9
+    assert abs(bloco["e1rm_progress_percent"] / 100 - THRESHOLDS["e1rm_progress_pct"]) < 1e-9
 
 
 if __name__ == "__main__":

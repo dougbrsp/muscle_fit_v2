@@ -24,7 +24,6 @@ import {
   SESSION_UNIT_TITLE,
   equipmentLabel,
   pointsByOffset,
-  sessionDelta,
   sessionOffsetLabel,
 } from '@/lib/dashboard-muscles';
 import { statusVisual } from '@/lib/dashboard-status';
@@ -140,10 +139,11 @@ function Bloco({
  * classifica volume contra meta é a tabela por período, com o status do
  * backend.
  */
-function Delta({ values, digits = 1 }: { values: Array<number | null>; digits?: number }) {
-  const { delta, direction } = sessionDelta(values);
+function Delta({ row, digits = 1 }: { row: MuscleSessionComparative; digits?: number }) {
+  const delta = row.effective_sets_delta ?? null;
+  const direction = row.effective_sets_direction ?? null;
 
-  if (direction === 'none' || delta == null) {
+  if (direction == null || delta == null) {
     return (
       <Text size="xs" c="dimmed">
         sem T-1
@@ -164,7 +164,7 @@ function Delta({ values, digits = 1 }: { values: Array<number | null>; digits?: 
 
   const Icon = direction === 'up' ? IconArrowUp : IconArrowDown;
   const color = direction === 'up' ? 'teal.4' : 'orange.4';
-  const sinal = delta > 0 ? '+' : '';
+  const sinal = direction === 'up' ? '+' : '';
 
   return (
     <Group gap={4} wrap="nowrap">
@@ -263,7 +263,7 @@ function SessionTable({ rows }: { rows: MuscleSessionComparative[] }) {
                       </Table.Td>
                     ))}
                     <Table.Td>
-                      <Delta values={slots.map((p) => p?.effective_sets_stimulus ?? null)} />
+                      <Delta row={row} />
                     </Table.Td>
                   </Table.Tr>
                 );
@@ -290,7 +290,7 @@ function SessionTable({ rows }: { rows: MuscleSessionComparative[] }) {
                 <Text size="sm" fw={600} c={BRAND.textPrimary}>
                   {row.muscle_group}
                 </Text>
-                <Delta values={slots.map((p) => p?.effective_sets_stimulus ?? null)} />
+                <Delta row={row} />
               </Group>
               <Stack gap={6} mt={6}>
                 {slots.map((point, index) => (

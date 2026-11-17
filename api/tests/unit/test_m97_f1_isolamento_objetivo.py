@@ -242,14 +242,13 @@ def test_exposicao_de_outro_objetivo_e_pulada_sem_quebrar_a_sequencia():
     """Decisao do Tech Lead (PR #627): como o contexto de fadiga, a exposicao
     de OUTRO objetivo e pulada - nao entra na sequencia nem a interrompe."""
     exposures = [_exposure(H), _exposure(S, reps=5, load=70.0), _exposure(H, reps=11)]
-    indices, skipped = cmp.trailing_comparable_indices(exposures)
-    assert indices == [0, 2] and skipped == 0
+    run = cmp.comparable_run(exposures)
+    assert run.indices == [0, 2] and cmp._trailing_comparable_window(exposures).skipped == 0
     status, _reasons = cmp.classify_exercise_progression(exposures)
     referencia, _ = cmp.classify_exercise_progression([exposures[0], exposures[2]])
     assert status == referencia
     # ultima de forca: a sequencia e so a de forca
-    indices, _ = cmp.trailing_comparable_indices([*exposures, _exposure(S, reps=5, load=72.5)])
-    assert indices == [1, 3]
+    assert cmp.comparable_run([*exposures, _exposure(S, reps=5, load=72.5)]).indices == [1, 3]
 
 
 def test_chave_fisica_sem_objetivo_recorde_unico():

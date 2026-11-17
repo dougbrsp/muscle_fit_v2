@@ -68,7 +68,7 @@ const ACTIVITY_DETAIL_TIMED = {
 };
 
 const PLAN_EXERCISES = [
-  { workout_plan_exercise_id: 101, sequence: 1, exercise_name: 'Supino reto com barra', mapping_id: 1, muscle_primary: 'Peitoral', equipment_name: 'Banco reto', sets_count: 4, reps_target: '8-10', load_target: '80 kg', rpe_target: '8', rest_seconds: 120, warmup: false, progression: 'increased', progression_note: 'Carga subiu em relação à sessão anterior.' },
+  { workout_plan_exercise_id: 101, sequence: 1, exercise_name: 'Supino reto com barra', mapping_id: 1, muscle_primary: 'Peitoral', equipment_name: 'Banco reto', sets_count: 4, reps_target: '8-10', load_target: '80 kg', rpe_target: '8', rest_seconds: 120, warmup: false, progression: 'increased', progression_note: 'Carga subiu em relação à sessão anterior.', calibrating: false, calibration_code: null },
   { workout_plan_exercise_id: 102, sequence: 2, exercise_name: 'Crucifixo inclinado', mapping_id: 4, muscle_primary: 'Peitoral', equipment_name: 'Halteres', sets_count: 3, reps_target: '10-12', load_target: '18 kg', rpe_target: '8', rest_seconds: 90, warmup: false, advanced_technique: null },
   { workout_plan_exercise_id: 103, sequence: 3, exercise_name: 'Tríceps na polia', mapping_id: 5, muscle_primary: 'Tríceps', equipment_name: 'Polia alta', sets_count: 3, reps_target: '10-15', load_target: '30 kg', rpe_target: '8', rest_seconds: 75, warmup: false },
 ];
@@ -141,22 +141,24 @@ const SLOT = { template_id: 7, slot_sequence: 1, slot_id: 1, slot_name: 'A', tem
 const VOL_ROW = (key: string, label: string) => ({
   group: GROUP(key, label), comparison_status: 'same_slot', slot: SLOT,
   by_period: {
-    t3: { activity_id: 1, local_date: '2026-09-22', volume_kg: 3000, avg_rpe: 7.5, sets_count: 9 },
-    t2: { activity_id: 2, local_date: '2026-09-29', volume_kg: 3200, avg_rpe: 8, sets_count: 9 },
-    t1: { activity_id: 3, local_date: '2026-10-06', volume_kg: 3100, avg_rpe: 8, sets_count: 9 },
-    t0: { activity_id: 4, local_date: '2026-10-13', volume_kg: 3400, avg_rpe: 8.5, sets_count: 9 },
+    t3: { activity_id: 1, local_date: '2026-09-22', volume_kg: 3000, avg_rpe: 7.5, sets_count: 9, volume_delta_kg: null, volume_direction: null, rpe_direction: null },
+    t2: { activity_id: 2, local_date: '2026-09-29', volume_kg: 3200, avg_rpe: 8, sets_count: 9, volume_delta_kg: 200, volume_direction: "up", rpe_direction: "up" },
+    t1: { activity_id: 3, local_date: '2026-10-06', volume_kg: 3100, avg_rpe: 8, sets_count: 9, volume_delta_kg: -100, volume_direction: "down", rpe_direction: "stable" },
+    t0: { activity_id: 4, local_date: '2026-10-13', volume_kg: 3400, avg_rpe: 8.5, sets_count: 9, volume_delta_kg: 300, volume_direction: "up", rpe_direction: "up" },
   },
 });
 const SETS_ROW = (key: string, label: string) => ({
   group: GROUP(key, label), comparison_status: 'same_slot', slot: SLOT,
   by_period: {
-    t3: { activity_id: 1, local_date: '2026-09-22', equivalent_sets: 9 },
-    t2: { activity_id: 2, local_date: '2026-09-29', equivalent_sets: 9 },
-    t1: { activity_id: 3, local_date: '2026-10-06', equivalent_sets: 10 },
-    t0: { activity_id: 4, local_date: '2026-10-13', equivalent_sets: 11 },
+    t3: { activity_id: 1, local_date: '2026-09-22', equivalent_sets: 9, equivalent_sets_delta: null, sets_direction: null },
+    t2: { activity_id: 2, local_date: '2026-09-29', equivalent_sets: 9, equivalent_sets_delta: 0, sets_direction: "stable" },
+    t1: { activity_id: 3, local_date: '2026-10-06', equivalent_sets: 10, equivalent_sets_delta: 1, sets_direction: "up" },
+    t0: { activity_id: 4, local_date: '2026-10-13', equivalent_sets: 11, equivalent_sets_delta: 1, sets_direction: "up" },
   },
 });
-const LEVEL = { volume: [VOL_ROW('peito', 'Peito'), VOL_ROW('costas', 'Costas')], equivalent_sets: [SETS_ROW('peito', 'Peito'), SETS_ROW('costas', 'Costas')] };
+const LEVEL = { volume: [VOL_ROW('peito', 'Peito'), VOL_ROW('costas', 'Costas')], equivalent_sets: [SETS_ROW('peito', 'Peito'), SETS_ROW('costas', 'Costas')],
+  totals: { by_period: { t0: 6800, t1: 6200, t2: 6400, t3: 6000 }, groups_with_t0: 2, groups_tracked: 2, avg_rpe_t0: 8.5 },
+  top_volume_t0: [{ group: GROUP('peito', 'Peito'), t0: 3400, t1: 3100 }, { group: GROUP('costas', 'Costas'), t0: 3400, t1: 3100 }] };
 const NUTRITION_PLAN = {
   id: 1, user_id: 1, status: 'draft', state: 'draft', notes: null, engine_version: 'x', effective_from: null, superseded_at: null, published_at: null,
   created_by: 1, published_by: null, created_at: '2026-10-10T09:00:00', updated_at: '2026-10-10T09:00:00', strategy: 'maintenance', advanced: false, protein_g_per_kg: null, fat_kcal_share: 0.25,
@@ -175,9 +177,23 @@ const FIXTURES: Record<string, unknown> = {
   'GET /jobs/j1': { status: 'done', result: PLAN_DRAFT },
   'POST /workout-plans': PLAN_DETAIL,
   'GET /training-goals': { default: 'hypertrophy', items: [] },
-  'GET /analytics/muscle-groups-recent-exercise-volume': { items: [] },
+  'GET /analytics/muscle-groups-recent-exercise-volume': {
+    items: [],
+    weekly: { period_keys: ['t0', 't1', 't2', 't3'], levels: { muscle_group: [], parent_group: [], volume_class: [] } },
+    equipment_weekly: { period_keys: ['t0', 't1', 't2', 't3'], levels: { muscle_group: [], parent_group: [], volume_class: [] } },
+    heatmap: { levels: {} },
+  },
   'GET /analytics/muscle-groups-slot-comparison': { limit: 400, sessions_per_slot: 4, period_keys: ['t3', 't2', 't1', 't0'], levels: { volume_class: LEVEL, parent_group: LEVEL, muscle_group: LEVEL } },
-  'GET /analytics/training-volume': { overview: { days: 14, items: [] }, trend: { days: 14, items: [] } },
+  'GET /analytics/training-volume': {
+    overview: { days: 14, items: [] },
+    trend: { days: 14, items: [] },
+    period_comparison: {
+      granularity: 'd7',
+      current: { from: '2026-11-10', to: '2026-11-16' },
+      previous: { from: '2026-11-03', to: '2026-11-09' },
+      levels: { muscle_group: [], parent_group: [], volume_class: [] },
+    },
+  },
   'GET /nutrition/plans': { user: USER, items: [NUTRITION_PLAN] },
   'GET /nutrition/me/plan': { __status: 404, body: { detail: { error: 'no_published_plan', message: 'Você ainda não tem plano publicado.' } } },
   'GET /nutrition/foods/1': FOOD_DETAIL,

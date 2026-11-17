@@ -2,7 +2,6 @@
 
 import { Checkbox } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconArrowDown, IconArrowRight, IconArrowUp } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
@@ -22,7 +21,6 @@ import {
   SESSION_UNIT_TITLE,
   equipmentLabel,
   pointsByOffset,
-  sessionDelta,
   sessionOffsetLabel,
 } from '@/lib/dashboard-muscles';
 import type { MuscleComparatives, MuscleHeatmapSession } from '@/lib/dashboard-v3-types';
@@ -55,9 +53,9 @@ import {
   muscleGroupTrendPath,
   muscleGroupTrendQueryKey,
   pivotTrend,
+  formatTrendVariation,
   pressureRows as buildPressureRows,
   trendGroupOptions as buildTrendGroupOptions,
-  trendGroupTotals as buildTrendGroupTotals,
   trendPeriods as buildTrendPeriods,
   trendValueIndex,
   type MuscleGroupTrendFilters,
@@ -102,25 +100,6 @@ export function MusculosExtras({ comparatives }: { comparatives: MuscleComparati
 // ---------------------------------------------------------------------------
 
 const COLUNAS = 4;
-
-function DeltaText({ values }: { values: Array<number | null> }) {
-  const { delta, direction } = sessionDelta(values);
-  if (direction === 'none' || delta == null) return <span>sem T-1</span>;
-  if (direction === 'stable') {
-    return (
-      <span>
-        <IconArrowRight size={14} aria-hidden /> estável
-      </span>
-    );
-  }
-  const Icon = direction === 'up' ? IconArrowUp : IconArrowDown;
-  return (
-    <span>
-      <Icon size={14} aria-hidden /> {delta > 0 ? '+' : ''}
-      {delta.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-    </span>
-  );
-}
 
 function Comparativos({ comparatives }: { comparatives: MuscleComparatives }) {
   const [equip, setEquip] = useState<MuscleComparatives['by_equipment'][number] | null>(null);
@@ -384,11 +363,10 @@ function Tendencia() {
     queryFn: () => apiFetch<MuscleGroupsMappedPayload>(muscleGroupTrendPath(filters)),
   });
   const trendRows = useMemo(() => trendQuery.data?.trend_rows ?? [], [trendQuery.data]);
-  const totals = useMemo(() => buildTrendGroupTotals(trendRows), [trendRows]);
-  const groupOptions = useMemo(() => buildTrendGroupOptions(totals), [totals]);
+  const groupOptions = useMemo(() => buildTrendGroupOptions(trendQuery.data?.table_rows ?? []), [trendQuery.data]);
   const periods = useMemo(() => buildTrendPeriods(trendRows), [trendRows]);
   const index = useMemo(() => trendValueIndex(trendRows), [trendRows]);
-  const ranking = useMemo(() => buildPressureRows(periods, index, totals, groupOptions), [periods, index, totals, groupOptions]);
+  const ranking = useMemo(() => buildPressureRows(trendQuery.data?.pressure_rows, groupOptions), [trendQuery.data, groupOptions]);
   const chosen = useMemo(() => {
     const valid = keepAvailableGroups(selected, groupOptions);
     return (valid.length > 0 ? valid : groupOptions).slice(0, MAX_LINES);
@@ -403,7 +381,7 @@ function Tendencia() {
     <ListRow
       key={r.group}
       title={`${i + 1}. ${r.group}`}
-      subtitle={`Anterior ${formatTrendMetric(r.previous, metric)} · janela ${formatTrendMetric(r.total, metric)} · ${r.variation == null ? 'sem base' : `${r.variation > 0 ? '+' : ''}${r.variation.toFixed(1)}%`}`}
+      subtitle={`Anterior ${formatTrendMetric(r.previous, metric)} · janela ${formatTrendMetric(r.total, metric)} · ${formatTrendVariation(r.variation_pct) ?? 'sem base'}`}
       value={formatTrendMetric(r.latest, metric)}
     />
   );
@@ -448,11 +426,11 @@ function Tendencia() {
       </FilterSheet>
       <QueryGate query={trendQuery} title="tendência por grupo" rows={2}>
         {() =>
-          ranking.length === 0 ? (
+          groupOptions.length === 0 ? (
             <EmptyState title="Sem dados" description="Nenhum dado disponível para os filtros selecionados." />
           ) : (
             <ListGroup
-              title={`Pressão no período mais recente (${periods[periods.length - 1] || 'sem período'})`}
+              title={`Pressão no período mais recente (${trendQuery.data?.latest_period || 'sem período'})`}
               footer="Ranking dos grupos e variação contra o período anterior."
             >
               {ranking.slice(0, 3).map(linha)}

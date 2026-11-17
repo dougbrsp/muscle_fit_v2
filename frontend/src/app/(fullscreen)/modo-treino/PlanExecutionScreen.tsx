@@ -65,7 +65,7 @@ import {
   useEffectiveExerciseCard,
 } from '@/lib/workout-mode-exercise-card';
 import { buildSafetyEventBannerText, isSafetyAlertEvent, safetyEventColor } from '@/lib/intensity-status';
-import { suggestedProgressionTargets } from '@/lib/suggested-progression';
+import { calibrationLabel, suggestedProgressionTargets, suggestionCalibrationLabel } from '@/lib/suggested-progression';
 import { useEquipmentLoadCeiling } from './useEquipmentLoadCeiling';
 import { resolveNextSetPreview } from '@/lib/workout-mode-next-set';
 import {
@@ -1070,6 +1070,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const overrideTargets = suggestedProgressionQuery.data
     ? suggestedProgressionTargets(suggestedProgressionQuery.data)
     : null;
+  // Selo de calibração: com aparelho trocado vale a sugestão do aparelho novo;
+  // sem troca, o selo que a ficha do Modo Treino já traz (#188).
+  const overrideCalibrationLabel = override
+    ? suggestionCalibrationLabel(suggestedProgressionQuery.data)
+    : calibrationLabel(current?.planExercise.calibration_code, current?.planExercise.calibrating === true);
   const effectiveRepsTarget = override
     ? (overrideTargets?.reps_target ?? current?.planExercise.reps_target ?? null)
     : (current?.planExercise.reps_target ?? null);
@@ -3321,6 +3326,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
               Meta ajustada: {adjustedSetsCount} série(s) (era {originalSetsCount}) para compensar o novo equipamento
             </Badge>
           )}
+          {overrideCalibrationLabel && (
+            <Badge size="sm" variant="light" color="yellow" style={{ alignSelf: 'flex-start' }}>
+              {overrideCalibrationLabel}
+            </Badge>
+          )}
           <SetLoggerCard
             exerciseName={effectiveExerciseName}
             goalBadge={currentGoalBadge}
@@ -3371,7 +3381,10 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
               workingSetNumber === 1 ? current.planExercise.progression : undefined
             }
             progressionNote={
-              workingSetNumber === 1 ? current.planExercise.progression_note : undefined
+              workingSetNumber === 1
+                ? // #188: com o par trocado vale a nota do par novo (calibração vem nela).
+                  (override && overrideTargets?.progression_note) || current.planExercise.progression_note
+                : undefined
             }
             // Lote 6/P9: decisão vigente do motor e status da série anterior.
             engineDecision={prescription?.decision ?? null}

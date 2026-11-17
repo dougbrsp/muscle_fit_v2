@@ -11,6 +11,7 @@ from ..load_conventions import (
 )
 from ..set_types import sql_not_preparatory, sql_set_confirmed
 from .base import IntelligenceServiceBase
+from .dashboard.metrics_registry import HIGH_RPE_MIN
 
 
 _ES_NOT_PREPARATORY = sql_not_preparatory("es.set_type")
@@ -60,7 +61,7 @@ class TrainingLoadService(IntelligenceServiceBase):
               {sql_tonnage_sum(convention)} AS total_volume_kg,
               {sql_tonnage_excluded_sets(convention)} AS tonnage_excluded_sets,
               ROUND(AVG(es.rpe), 2) AS avg_rpe,
-              SUM(CASE WHEN es.rpe >= 9 THEN 1 ELSE 0 END) AS high_rpe_sets
+              SUM(CASE WHEN es.rpe >= {int(HIGH_RPE_MIN)} THEN 1 ELSE 0 END) AS high_rpe_sets
             FROM activities a
             LEFT JOIN exercises e ON e.activity_id = a.id
             -- Resumo semanal de treino (contagem/volume/RPE), nao modelo de

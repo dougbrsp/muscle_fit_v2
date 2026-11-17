@@ -43,7 +43,7 @@ export type RecentExerciseVolumeResponse = {
   date_from: string | null;
   date_to: string | null;
   items: RecentExerciseVolumeItem[];
-};
+} & RecentVolumeBlocks;
 
 // T-0 (mais recente) .. T-3 (mais antigo). No comparativo por sessão: T-0 =
 // última sessão da chave; T-1..T-3 = as anteriores no MESMO slot do Modelo
@@ -51,11 +51,17 @@ export type RecentExerciseVolumeResponse = {
 // as mesmas chaves representam S-0..S-3.
 export type WorkoutPeriodKey = 't3' | 't2' | 't1' | 't0';
 
+/** Direção pronta do backend; `null` = sem vizinho para comparar ou valor ausente. */
+export type ApiTrendDirection = 'up' | 'down' | 'stable' | null;
+
 export type WorkoutPeriodMetrics = {
   activity_id: number;
   local_date: string;
   volume_kg: number;
   avg_rpe: number | null;
+  /** Contra o período seguinte (t<k> vs t<k+1>), pronto do backend; ausente na API antiga. */
+  volume_direction?: ApiTrendDirection;
+  rpe_direction?: ApiTrendDirection;
 };
 
 export type MuscleGroupComparativeRow = {
@@ -92,8 +98,27 @@ type SlotComparisonApiRow<TPeriod> = {
   by_period: Record<WorkoutPeriodKey, TPeriod | null>;
 };
 
-export type SlotComparisonVolumePeriod = WorkoutPeriodMetrics & { sets_count: number };
-export type SlotComparisonSetsPeriod = { activity_id: number; local_date: string; equivalent_sets: number };
+export type SlotComparisonVolumePeriod = WorkoutPeriodMetrics & {
+  sets_count: number;
+  volume_delta_kg?: number | null;
+};
+export type SlotComparisonSetsPeriod = {
+  activity_id: number;
+  local_date: string;
+  equivalent_sets: number;
+  equivalent_sets_delta?: number | null;
+  sets_direction?: ApiTrendDirection;
+};
+
+/** Agregados prontos do backend (cards, volume total por período). */
+export type SlotComparisonTotals = {
+  by_period: Record<WorkoutPeriodKey, number>;
+  groups_with_t0: number;
+  groups_tracked: number;
+  avg_rpe_t0: number | null;
+};
+
+export type SlotComparisonTopVolumeRow = { group: VolumeGroup; t0: number; t1: number | null };
 
 export type SlotComparisonResponse = {
   limit: number;
@@ -104,19 +129,22 @@ export type SlotComparisonResponse = {
     {
       volume: Array<SlotComparisonApiRow<SlotComparisonVolumePeriod>>;
       equivalent_sets: Array<SlotComparisonApiRow<SlotComparisonSetsPeriod>>;
+      /** Ausentes na API antiga. */
+      totals?: SlotComparisonTotals;
+      top_volume_t0?: SlotComparisonTopVolumeRow[];
     }
   >;
 };
 
 export type SlotComparativeVolumeRow = MuscleGroupComparativeRow & SlotComparisonInfo;
 
-export type TrendDirection = 'up' | 'down' | 'stable' | 'none';
-
 // ─── Fase 3, blocos adicionais portados de
 // fitness-frontend/.../TrainingVolumeClient.tsx (referência on-premise) ────
 
 export type WorkoutSetsMetrics = {
   sets_count: number;
+  /** Pronta do backend; ausente na API antiga. */
+  sets_direction?: ApiTrendDirection;
 };
 
 // Mesmo shape de `MuscleGroupComparativeRow` (T-3..T-0), mas para séries
@@ -128,28 +156,59 @@ export type ComparativeSetsRow = {
 
 export type SlotComparativeSetsRow = ComparativeSetsRow & SlotComparisonInfo;
 
-// Comparativo por SEMANA (S-3..S-0) — mesmo shape de
-// `MuscleGroupComparativeRow`, reaproveitado com bucket semanal (segunda-
-// feira da semana, `weekKeyOf` no client) em vez de por sessão. As chaves
-// t3..t0 aqui representam S-3..S-0.
-export type MuscleGroupWeeklyComparativeRow = MuscleGroupComparativeRow;
-
-export type WeekSetMetrics = {
+// Comparativo semanal e por equipamento (S-3..S-0), prontos do backend em
+// GET /analytics/muscle-groups-recent-exercise-volume?include=weekly,equipment_weekly
+// (dono: `intelligence/slot_session_comparison.py`). t3..t0 = S-3..S-0.
+export type WeeklyPeriodMetrics = {
+  week_start: string;
+  volume_kg: number;
   sets_count: number;
-  last_weight: number | null;
-  volume: number;
+  avg_rpe: number | null;
+  volume_delta_kg: number | null;
+  volume_direction: ApiTrendDirection;
+  rpe_direction: ApiTrendDirection;
 };
 
-// Comparativo por equipamento (últimas 4 semanas), expansível pela chave do
-// nível escolhido. Uma linha "Total" por bloco (isTotal=true) seguida das linhas
-// de cada equipamento quando o bloco está expandido.
-export type EquipmentComparativeRow = {
+export type WeeklyComparisonRow = {
   group: VolumeGroup;
-  equipment_label: string;
-  isTotal: boolean;
-  isFirstOfGroup: boolean;
-  groupSize: number;
-  byWeek: Record<WorkoutPeriodKey, WeekSetMetrics | null>;
+  by_period: Partial<Record<WorkoutPeriodKey, WeeklyPeriodMetrics | null>>;
+};
+
+export type EquipmentWeekMetrics = {
+  week_start: string;
+  sets_count: number;
+  volume_kg: number;
+  last_weight_kg: number | null;
+  sets_delta: number | null;
+  sets_direction: ApiTrendDirection;
+  last_weight_delta_kg: number | null;
+  last_weight_direction: ApiTrendDirection;
+};
+
+/** Linha Total primeiro (`is_total`); `equipment_name` nulo = sem equipamento. */
+export type EquipmentWeeklyEntry = {
+  equipment_name: string | null;
+  is_total: boolean;
+  by_period: Partial<Record<WorkoutPeriodKey, EquipmentWeekMetrics | null>>;
+};
+
+export type EquipmentWeeklyGroupRow = { group: VolumeGroup; equipments: EquipmentWeeklyEntry[] };
+
+/** Célula pronta do mapa de calor; `volume_ratio` (0..1) = posição entre o menor e o maior volume. */
+export type HeatmapCell = {
+  group: VolumeGroup;
+  sets_count: number;
+  volume_kg: number;
+  avg_weight_kg: number | null;
+  volume_ratio: number | null;
+};
+
+type ByLevel<T> = Partial<Record<VolumeGroupingLevel, T>>;
+
+export type RecentVolumeBlocks = {
+  weekly?: { period_keys: WorkoutPeriodKey[]; levels: ByLevel<WeeklyComparisonRow[]> };
+  equipment_weekly?: { period_keys: WorkoutPeriodKey[]; levels: ByLevel<EquipmentWeeklyGroupRow[]> };
+  heatmap?: { levels: ByLevel<{ min_volume_kg: number | null; max_volume_kg: number | null; cells: HeatmapCell[] }> };
 };
 
 export type TrainingVolumeGranularity = 'd7' | 'week' | 'month';
@@ -159,8 +218,8 @@ export type TrainingVolumeGranularity = 'd7' | 'week' | 'month';
 // `VolumeService.get_volume_breakdown`, `trend` via
 // `VolumeService.get_volume_trend` (clampado em [7,180] dias
 // internamente). Usada pelo bloco "Gráfico de repetições + Variação por
-// grupamento" desta tela, com janelas current/previous calculadas no
-// cliente pela granularidade escolhida (ver `buildWindow` no client).
+// grupamento" desta tela: com `granularity`, o backend devolve
+// `period_comparison` (janelas atual/anterior, deltas e direção prontos).
 export type TrainingVolumeOverviewItem = {
   muscle_group: string;
   sessions: number;
@@ -198,6 +257,24 @@ export type TrainingVolumeTrendItem = GroupHierarchyFields & {
   avg_rpe?: number | null;
 };
 
+export type PeriodComparisonRow = {
+  group: VolumeGroup;
+  current_reps: number;
+  previous_reps: number;
+  reps_delta: number;
+  current_volume_kg: number;
+  previous_volume_kg: number;
+  volume_delta_kg: number;
+  volume_direction: ApiTrendDirection;
+};
+
+export type PeriodComparison = {
+  granularity: TrainingVolumeGranularity;
+  current: { from: string; to: string };
+  previous: { from: string; to: string };
+  levels: ByLevel<PeriodComparisonRow[]>;
+};
+
 export type TrainingVolumeResponse = {
   overview: {
     days: number;
@@ -207,19 +284,8 @@ export type TrainingVolumeResponse = {
     days: number;
     items: TrainingVolumeTrendItem[];
   };
+  /** Só com `granularity`; ausente na API antiga (a tela fica vazia). */
+  period_comparison?: PeriodComparison;
 };
 
 export type HeatmapViewMode = 'session' | 'week' | 'month';
-
-// Célula agregada do mapa de calor (Treemap) — tamanho por séries, cor por
-// carga média aproximada (volume_kg / sets_count). Alimentada por GET
-// /analytics/muscle-groups-recent-exercise-volume, que já suporta
-// date_from/date_to no backend AWS (mutuamente exclusivo com `limit` — ver
-// docstring de `muscle_groups_recent_exercise_volume` em
-// `C:\muscle_fit\api\app\analytics.py`), usados pelos modos semana/mês.
-export type MuscleHeatmapCell = {
-  group: VolumeGroup;
-  sets_count: number;
-  avg_weight_kg: number | null;
-  volume_kg: number;
-};

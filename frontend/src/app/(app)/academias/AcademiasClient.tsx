@@ -32,6 +32,7 @@ import { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { GymLogo } from '@/components/GymLogo';
 import { apiFetch, ApiError } from '@/lib/api';
+import { manufacturerLabel, saveGymEquipmentManufacturer } from '@/lib/gym-equipment-manufacturer';
 import { academiasControls } from '@/lib/screen-permissions';
 import type { SessionUser } from '@/lib/auth';
 import {
@@ -114,6 +115,21 @@ export function AcademiasClient() {
     }
     return map;
   }, [gymCatalogQuery.data]);
+  const gymLinkByEquipmentId = useMemo(
+    () => new Map((gymCatalogQuery.data?.items || []).map((item) => [item.equipment_id, item])),
+    [gymCatalogQuery.data],
+  );
+
+  // #188: edição do fabricante POR ACADEMIA; quem pode editar vem do servidor
+  // (`can_edit_manufacturer`), e o 403/422 do servidor aparece na tela.
+  const [manufacturerEdit, setManufacturerEdit] = useState<{ linkId: number; value: string } | null>(null);
+  const manufacturerMutation = useMutation({
+    mutationFn: ({ linkId, value }: { linkId: number; value: string }) => saveGymEquipmentManufacturer(linkId, value),
+    onSuccess: async () => {
+      setManufacturerEdit(null);
+      await qc.invalidateQueries({ queryKey: ['gym-equipment-catalog', activeGymId] });
+    },
+  });
 
   const createGymMutation = useMutation({
     mutationFn: () =>
@@ -272,6 +288,60 @@ export function AcademiasClient() {
       await qc.invalidateQueries({ queryKey: ['gym-equipment-catalog', activeGymId] });
     },
   });
+
+  function renderManufacturerCell(eq: Equipment) {
+    const link = gymLinkByEquipmentId.get(eq.id);
+    // Sem vínculo com a academia não há fabricante "da academia" para mostrar.
+    if (!link) return null;
+    if (manufacturerEdit?.linkId === link.id) {
+      const saving = manufacturerMutation.isPending;
+      return (
+        <Group gap="xs" wrap="nowrap">
+          <TextInput
+            size="xs"
+            aria-label={`Fabricante de ${eq.name} nesta academia`}
+            placeholder={link.catalog_manufacturer || 'Vazio = padrão do catálogo'}
+            value={manufacturerEdit.value}
+            onChange={(event) => setManufacturerEdit({ linkId: link.id, value: event.currentTarget.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') manufacturerMutation.mutate(manufacturerEdit);
+              if (event.key === 'Escape') setManufacturerEdit(null);
+            }}
+            disabled={saving}
+            autoFocus
+          />
+          <Button size="xs" loading={saving} onClick={() => manufacturerMutation.mutate(manufacturerEdit)}>
+            Salvar
+          </Button>
+          <Button size="xs" variant="subtle" disabled={saving} onClick={() => setManufacturerEdit(null)}>
+            Cancelar
+          </Button>
+        </Group>
+      );
+    }
+    const label = manufacturerLabel(link.effective_manufacturer, link.manufacturer_source);
+    return (
+      <Group gap={4} wrap="nowrap">
+        <Text size="sm" c={label ? BRAND.textPrimary : BRAND.textMuted}>
+          {label || '—'}
+        </Text>
+        {link.can_edit_manufacturer && (
+          <Tooltip label="Editar fabricante nesta academia">
+            <ActionIcon
+              variant="subtle"
+              aria-label={`Editar fabricante de ${eq.name} nesta academia`}
+              onClick={() => {
+                manufacturerMutation.reset();
+                setManufacturerEdit({ linkId: link.id, value: link.manufacturer || '' });
+              }}
+            >
+              <IconPencil size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
+    );
+  }
 
   function toggleGymEquipment(equipment: Equipment, checked: boolean) {
     if (!activeGymId) return;
@@ -514,6 +584,11 @@ export function AcademiasClient() {
             )}
           </Alert>
         )}
+        {manufacturerMutation.isError && (
+          <Alert color="red" icon={<IconAlertTriangle size={16} />} mb="md" role="alert">
+            {errorMessage(manufacturerMutation.error, 'Não foi possível salvar o fabricante.')}
+          </Alert>
+        )}
 
         {(equipmentQuery.isLoading || gymCatalogQuery.isLoading) && (
           <Group>
@@ -531,13 +606,14 @@ export function AcademiasClient() {
           !equipmentQuery.isError &&
           !gymCatalogQuery.isLoading &&
           !gymCatalogQuery.isError && (
-            <Table.ScrollContainer minWidth={500}>
+            <Table.ScrollContainer minWidth={640}>
               <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th w={60}>Possui</Table.Th>
                     <Table.Th>Foto</Table.Th>
                     <Table.Th>Equipamento</Table.Th>
+                    <Table.Th>Fabricante</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -557,11 +633,12 @@ export function AcademiasClient() {
                         <EquipmentPhoto photoUrl={eq.photo_url} alt={eq.name} size={40} />
                       </Table.Td>
                       <Table.Td c={BRAND.textPrimary}>{eq.name}</Table.Td>
+                      <Table.Td>{renderManufacturerCell(eq)}</Table.Td>
                     </Table.Tr>
                   ))}
                   {equipmentItems.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={3}>
+                      <Table.Td colSpan={4}>
                         <Text c={BRAND.textMuted}>
                           Nenhum equipamento no catálogo — cadastre um na tela Equipamentos x Exercícios.
                         </Text>

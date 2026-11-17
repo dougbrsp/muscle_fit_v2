@@ -48,11 +48,12 @@ from ...body_measurements_schema import TABLE_MISSING_LIMITATION, has_body_measu
 from ...domain.body_measurement_sites import SITE_LABELS, WAIST_SITE
 from ...observability import log_event
 from .coercion import to_date, to_float
+from .comparability import is_comparable_status, progression_share
 from .contracts import DataNature, DataQuality, WindowInfo, WindowKind
 from .exposure_service import get_exercises_progression_batch, reliable_e1rm
 from .identity import require_user_id
 from .insight_rules import WAIST_UNAVAILABLE_LIMITATION
-from .metrics_registry import ExerciseProgressionStatus, metric_version, threshold
+from .metrics_registry import metric_version, threshold
 from .time_windows import resolve_window
 
 # Pontos de peso devolvidos (um por dia COM pesagem; janela maxima 365d).
@@ -216,18 +217,6 @@ WHERE a.user_id = %s AND a.assigned_at >= %s AND a.assigned_at < %s
 ORDER BY a.assigned_at ASC
 LIMIT %s
 """
-
-_COMPARABLE_STATUSES = frozenset(
-    {
-        ExerciseProgressionStatus.PROGRESSING.value,
-        ExerciseProgressionStatus.STABLE.value,
-        ExerciseProgressionStatus.PLATEAU_SUSPECTED.value,
-        ExerciseProgressionStatus.REGRESSING.value,
-    }
-)
-_PROGRESS_OK_STATUSES = frozenset(
-    {ExerciseProgressionStatus.PROGRESSING.value, ExerciseProgressionStatus.STABLE.value}
-)
 
 _QUALITY_ORDER = [DataQuality.HIGH, DataQuality.MEDIUM, DataQuality.LOW, DataQuality.INSUFFICIENT]
 
@@ -656,7 +645,8 @@ def performance_series(progression_items: Sequence[Mapping[str, Any]]) -> dict[s
     chave de equipamento/convencao que o status avaliou) e so com e1RM
     confiavel (serie de ate 12 reps, `exposure_service.reliable_e1rm`). Uma
     exposicao em outra maquina nao entra mais na media."""
-    comparable = [item for item in progression_items if item.get("status") in _COMPARABLE_STATUSES]
+    comparable = [item for item in progression_items if is_comparable_status(item.get("status"))]
+    resumo = progression_share(progression_items)
     by_day: dict[date, list[float]] = defaultdict(list)
     for item in comparable:
         # As exposicoes do run comparavel (mesmo contexto de fadiga; as de
@@ -679,7 +669,7 @@ def performance_series(progression_items: Sequence[Mapping[str, Any]]) -> dict[s
     if not comparable:
         quality = DataQuality.INSUFFICIENT
         limitations.append("Nenhum exercício com histórico comparável no período.")
-    elif len(comparable) < min_comparable:
+    elif resumo["comparable"] < min_comparable:
         quality = DataQuality.MEDIUM
         limitations.append(f"Menos de {min_comparable} exercícios comparáveis: a média fica sensível a um só exercício.")
     else:
@@ -687,8 +677,8 @@ def performance_series(progression_items: Sequence[Mapping[str, Any]]) -> dict[s
     return {
         "points": points,
         "exercises_total": len(progression_items),
-        "comparable_exercises": len(comparable),
-        "progressing_or_stable": sum(1 for item in comparable if item.get("status") in _PROGRESS_OK_STATUSES),
+        "comparable_exercises": resumo["comparable"],
+        "progressing_or_stable": resumo["progressing_or_stable"],
         "data_quality": quality,
         "limitations": limitations,
     }
@@ -798,18 +788,17 @@ def recomposition_signal(
         )
 
     # 3) desempenho
-    comparable = [item for item in progression_items if item.get("status") in _COMPARABLE_STATUSES]
-    ok = [item for item in comparable if item.get("status") in _PROGRESS_OK_STATUSES]
-    share = (len(ok) / len(comparable)) if comparable else None
-    if len(comparable) < min_comparable:
+    resumo = progression_share(progression_items)
+    comparable, ok, share = resumo["comparable"], resumo["progressing_or_stable"], resumo["share"]
+    if comparable < min_comparable:
         performance_ok = None
         performance_detail = (
-            f"{len(comparable)} exercício(s) com histórico comparável; são necessários {min_comparable}."
+            f"{comparable} exercício(s) com histórico comparável; são necessários {min_comparable}."
         )
     else:
         performance_ok = float(share or 0.0) >= share_needed
         performance_detail = (
-            f"{len(ok)} de {len(comparable)} exercícios comparáveis progredindo ou estáveis "
+            f"{ok} de {comparable} exercícios comparáveis progredindo ou estáveis "
             f"({_fmt((share or 0.0) * 100, 0)}%; esperado ≥ {_fmt(share_needed * 100, 0)}%)."
         )
 
@@ -915,8 +904,8 @@ def recomposition_signal(
             "Cintura medida em pontos ou horários diferentes.",
         ],
         "data_quality": quality,
-        "comparable_exercises": len(comparable),
-        "progressing_or_stable": len(ok),
+        "comparable_exercises": comparable,
+        "progressing_or_stable": ok,
     }
 
 

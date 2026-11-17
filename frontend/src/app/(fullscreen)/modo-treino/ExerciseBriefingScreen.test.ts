@@ -1,4 +1,5 @@
 import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -73,14 +74,18 @@ const BRIEFING: ExerciseBriefingResponse = {
 function render(props: Partial<ViewProps> = {}): string {
   return renderToStaticMarkup(
     createElement(
-      MantineProvider,
-      { theme },
-      createElement(ExerciseBriefingView, {
-        data: BRIEFING,
-        exerciseName: 'Nome da ficha',
-        onStart: () => {},
-        ...props,
-      }),
+      QueryClientProvider,
+      { client: new QueryClient() },
+      createElement(
+        MantineProvider,
+        { theme },
+        createElement(ExerciseBriefingView, {
+          data: BRIEFING,
+          exerciseName: 'Nome da ficha',
+          onStart: () => {},
+          ...props,
+        }),
+      ),
     ),
   );
 }
@@ -299,3 +304,28 @@ describe('ExerciseBriefingView — M97 F3 (objetivo e deload)', () => {
   });
 });
 
+describe('fabricante por academia (#188)', () => {
+  const equipment = BRIEFING.equipment as NonNullable<ExerciseBriefingResponse['equipment']>;
+
+  it('mostra o fabricante efetivo e indica o padrão do catálogo', () => {
+    const html = render({
+      data: { ...BRIEFING, equipment: { ...equipment, manufacturer: 'Matrix', manufacturer_source: 'catalog' } },
+    });
+    expect(html).toContain('Fabricante: Matrix (padrão do catálogo)');
+    expect(html).not.toContain('Editar fabricante');
+  });
+
+  it('só oferece edição com o indicador do servidor e vínculo no catálogo da academia', () => {
+    const base = { ...equipment, manufacturer: 'Hammer', manufacturer_source: 'gym' as const, can_edit_manufacturer: true };
+    expect(render({ data: { ...BRIEFING, equipment: { ...base, gym_equipment_catalog_id: 7 } } })).toContain(
+      'Editar fabricante',
+    );
+    expect(render({ data: { ...BRIEFING, equipment: { ...base, gym_equipment_catalog_id: null } } })).not.toContain(
+      'Editar fabricante',
+    );
+  });
+
+  it('API antiga (sem os campos) não mostra a linha do fabricante', () => {
+    expect(render()).not.toContain('briefing-manufacturer');
+  });
+});

@@ -194,7 +194,11 @@ def test_ddl_sem_fk_sem_backfill_e_registrada_como_remodelagem():
     for proibido in ("FOREIGN KEY", "REFERENCES", "exercise_catalog", "UPDATE ", "INSERT "):
         assert proibido not in codigo, proibido
     assert MIGRATION.name in support.RESHAPING_MIGRATIONS
-    assert support.RESHAPING_MIGRATIONS[-1] == MIGRATION.name  # desfeita primeiro (ordem inversa)
+    # Desfeita (ordem inversa) depois so das remodelagens MAIS NOVAS que mudam
+    # a forma que ela confere (#188: a 118) e antes das mais antigas (068, 075).
+    ordem = list(support.RESHAPING_MIGRATIONS)
+    assert ordem == sorted(ordem)
+    assert ordem[ordem.index(MIGRATION.name) + 1 :] == ["118_progression_track_gym_context.py"]
     # As chaves "antes" são as que a 068 e a 036 conferem por igualdade.
     g068 = m.load_python_migration(m.DEFAULT_MIGRATIONS_DIR / "068_progression_track_fatigue_context.py").__globals__
     assert list(_antes()[("progression_tracks", g068["NEW_UK"])]) == g068["NEW_UK_COLUMNS"]

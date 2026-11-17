@@ -22,6 +22,7 @@ dizia outra coisa do mesmo exercicio. Agora o rotulo de desempenho so sai de
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Mapping, Optional, Sequence
 
 from .progression_engine import (
@@ -37,9 +38,6 @@ from .progression_status_labels import EXERCISE_PROGRESSION_LABELS
 from .training_history import ExerciseExecution
 from ..set_types import is_working_set
 
-PROGRESSING = "progressing"
-MAINTAINING = "maintaining"
-REGRESSING = "regressing"
 UNKNOWN = "unknown"
 
 SOURCE_DECISION = "engine_decision"
@@ -48,23 +46,17 @@ SOURCE_COMPARABILITY = "comparability"
 PERFORMANCE_SCOPE_EQUIPMENT = "equipment"
 PERFORMANCE_SCOPE_EXERCISE = "exercise"
 
-# Codigos de `ExerciseProgressionStatus` (metrics_registry) - literais aqui
-# para o modulo nao importar o pacote `intelligence` no import (api-core).
-INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
-NOT_COMPARABLE = "NOT_COMPARABLE"
-COMPARABLE_STATUSES = frozenset({"PROGRESSING", "STABLE", "PLATEAU_SUSPECTED", "REGRESSING"})
+@lru_cache(maxsize=1)
+def performance_labels() -> dict[str, str]:
+    """Rotulos (dono `progression_status_labels`, M76 Lote 3c, C13) dos status
+    comparaveis do dono `comparability.COMPARABLE_PROGRESSION_STATUSES`. Import
+    preguicoso: o modulo nao carrega o pacote `intelligence` no import (api-core)."""
+    from ..intelligence.dashboard.comparability import COMPARABLE_PROGRESSION_STATUSES
 
-# Rotulos do dono unico (`progression_status_labels`, M76 Lote 3c, C13) - os
-# mesmos do dashboard e do frontend; aqui so os status comparaveis.
-PERFORMANCE_LABELS = {code: EXERCISE_PROGRESSION_LABELS[code] for code in sorted(COMPARABLE_STATUSES)}
+    return {status.value: EXERCISE_PROGRESSION_LABELS[status.value] for status in COMPARABLE_PROGRESSION_STATUSES}
+
+
 NO_COMPARISON_LABEL = "Sem comparação"
-
-_PERFORMANCE_TREND = {
-    "PROGRESSING": PROGRESSING,
-    "STABLE": MAINTAINING,
-    "PLATEAU_SUSPECTED": MAINTAINING,
-    "REGRESSING": REGRESSING,
-}
 
 # Acoes do motor em pt-BR - mesmos textos de `PROGRESSION_DECISION_LABELS`
 # (`frontend/src/lib/exercise-progress.ts`). E o AJUSTE de hoje, nao desempenho.
@@ -172,8 +164,14 @@ def summarize_performance(
     exposures: Sequence[Mapping[str, Any]],
     *,
     equipment_id: Optional[int] = None,
+    gym_context: Any = ...,
 ) -> dict[str, Any]:
     """Status de DESEMPENHO do exercicio - a mesma regra do dashboard.
+
+    #188: `gym_context` = academia do contexto de MAQUINA do item de hoje (ja
+    resolvida pelo dono `equipment_context` a partir do vinculo; `...` = nao
+    informado, sem recorte). O recorte e o codigo "primeira vez nesta
+    academia" (`equipment_context_code`) saem do dono `exposure_service`.
 
     `exposures` sao as de `exposure_service.get_exposures_between` (ordem
     cronologica). A classificacao e `classify_exercise_progression`: ultima
@@ -185,40 +183,40 @@ def summarize_performance(
     (`scope="equipment"`): a pergunta da tela e "como estou neste aparelho?".
     Sem historico nele, vale o historico do exercicio (`scope="exercise"`),
     igual ao drill-down do dashboard. Sem exposicao nenhuma, `scope=None`.
+    No escopo do aparelho, o dono recebe o historico COMPLETO ate (inclusive)
+    a ultima exposicao nele, sem subconjunto: outro aparelho no meio
+    interrompe a sequencia e a troca decide a calibracao (issue #188) - o
+    mesmo veredito do painel para esse historico.
     """
-    from ..intelligence.dashboard.comparability import classify_exercise_progression, trailing_comparable_run
-    from ..intelligence.dashboard.exposure_service import to_summaries
+    from ..intelligence.dashboard.comparability import COMPARABLE_PROGRESSION_STATUSES
+    from ..intelligence.dashboard.exposure_service import equipment_context_code, outcome_for_equipment
 
-    todas = list(exposures or [])
+    outcome, historico, no_aparelho = outcome_for_equipment(exposures, equipment_id, gym_context)
     escopo: Optional[str] = None
-    escolhidas = todas
-    if todas:
-        escopo = PERFORMANCE_SCOPE_EXERCISE
-        if equipment_id is not None:
-            no_aparelho = [item for item in todas if item.get("equipment_id") == int(equipment_id)]
-            if no_aparelho:
-                escolhidas, escopo = no_aparelho, PERFORMANCE_SCOPE_EQUIPMENT
-
-    summaries = to_summaries(escolhidas)
-    status, reasons = classify_exercise_progression(summaries)
-    ultima = escolhidas[-1] if escolhidas else None
+    if historico:
+        escopo = PERFORMANCE_SCOPE_EQUIPMENT if no_aparelho else PERFORMANCE_SCOPE_EXERCISE
+    status = outcome.status
+    ultima = historico[-1] if historico else None
     return {
         "status": status.value,
-        "reasons": list(reasons),
-        "comparable": status.value in COMPARABLE_STATUSES,
+        "reasons": list(outcome.reasons),
+        "comparable": status in COMPARABLE_PROGRESSION_STATUSES,
         "scope": escopo,
-        "comparable_exposures": len(trailing_comparable_run(summaries)),
+        "comparable_exposures": outcome.comparable_count,
         "equipment_name": (ultima or {}).get("equipment_name"),
         "load_convention": (ultima or {}).get("load_convention"),
         "last_local_date": (ultima or {}).get("local_date"),
+        "equipment_context_code": equipment_context_code(exposures, equipment_id, gym_context, outcome),
     }
 
 
 def performance_unavailable() -> dict[str, Any]:
     """Desempenho quando o historico nao pode ser lido: sem comparacao (a tela
     nao mostra veredito inventado)."""
+    from ..intelligence.dashboard.metrics_registry import ExerciseProgressionStatus
+
     return {
-        "status": INSUFFICIENT_DATA,
+        "status": ExerciseProgressionStatus.INSUFFICIENT_DATA.value,
         "reasons": [],
         "comparable": False,
         "scope": None,
@@ -226,6 +224,7 @@ def performance_unavailable() -> dict[str, Any]:
         "equipment_name": None,
         "load_convention": None,
         "last_local_date": None,
+        "equipment_context_code": None,
     }
 
 
@@ -264,9 +263,11 @@ def trend_from_performance(performance: Mapping[str, Any], adjustment: Optional[
     para clientes em cache que ainda o leem. Agora DERIVADO do desempenho
     (`performance`): o rotulo "Progredindo"/"Regredindo" nunca mais sai da
     prescricao. O ajuste do motor vai so no texto, como "Ajuste de hoje"."""
+    from ..intelligence.dashboard.comparability import performance_trend
+
     code = str(performance.get("status") or "")
-    status = _PERFORMANCE_TREND.get(code, UNKNOWN)
-    label = PERFORMANCE_LABELS.get(code, NO_COMPARISON_LABEL) if performance.get("comparable") else NO_COMPARISON_LABEL
+    status = performance_trend(code) or UNKNOWN
+    label = performance_labels().get(code, NO_COMPARISON_LABEL) if performance.get("comparable") else NO_COMPARISON_LABEL
     partes = [
         "Desempenho da última execução comparado com a anterior no mesmo equipamento e convenção de carga."
         if performance.get("comparable")

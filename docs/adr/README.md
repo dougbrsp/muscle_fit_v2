@@ -33,5 +33,7 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0011](0011-permissoes-por-grupos-rbac.md) | Permissões por grupos (RBAC) como fundação da monetização: concessões aditivas de recurso × ação × escopo | Aceita | 2026-11-10 |
 | [0012](0012-escopo-das-leituras-de-progressao.md) | Escopo das leituras de progressão (issue #152) | Aceita | 2026-11-15 |
 | [0013](0013-rpe-esperado-por-serie.md) | RPE esperado por série no Modelo de treino (issue #146) | Aceita | 2026-11-15 |
+| [0014](0014-contexto-de-equipamento-e-calibracao.md) | Contexto de equipamento (máquina por academia) e calibração após troca (issue #188) | Aceita | 2026-11-16 |
+| [0015](0015-progressao-fonte-unica-no-motor.md) | Progressão com fonte única no motor (issue #188) | Aceita | 2026-11-16 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

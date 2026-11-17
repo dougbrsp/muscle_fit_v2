@@ -1637,5 +1637,12 @@
     "min": 1.0,
     "max": 10.0,
     "step": 0.5
+  },
+  "progression_thresholds": {
+    "same_load_tolerance": 0.02,
+    "same_load_tolerance_percent": 2,
+    "e1rm_progress": 0.03,
+    "e1rm_progress_percent": 3,
+    "e1rm_max_reliable_reps": 12
   }
 }

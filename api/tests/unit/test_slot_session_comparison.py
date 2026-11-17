@@ -306,3 +306,100 @@ def test_leitura_das_sessoes_traz_o_nome_atual_do_modelo():
     for sql in (svc.SESSIONS_PAGE_SQL, svc.SESSION_BY_ID_SQL):
         assert "AS template_name" in sql
         assert "LEFT JOIN workout_plan_templates wpt" in sql
+
+
+# --- #188 etapa 3: variacao/direcao prontas (dono `volume_comparison`) ---
+
+
+def _js_trend(current, previous, epsilon=0.0001):
+    """Formula de `getTrendDirection` da tela (paridade)."""
+    if current is None or previous is None:
+        return None
+    delta = current - previous
+    if abs(delta) <= epsilon:
+        return "stable"
+    return "up" if delta > 0 else "down"
+
+
+def test_cada_periodo_contra_o_mais_antigo_volume_e_rpe():
+    slots = {aid: _slot(1) for aid in (1, 2, 3, 4)}
+    rows = [
+        _vol(1, 1, "Peitoral", 100.0, rpe=8.0),
+        _vol(2, 2, "Peitoral", 100.00005, rpe=8.04),  # dentro das tolerancias
+        _vol(3, 3, "Peitoral", 90.0, rpe=8.2),
+        _vol(4, 4, "Peitoral", 120.5, rpe=8.0),
+    ]
+    (row,) = build_slot_comparison(rows, [], slots)["levels"]["muscle_group"]["volume"]
+    p = row["by_period"]
+    assert (p["t0"]["volume_delta_kg"], p["t0"]["volume_direction"], p["t0"]["rpe_direction"]) == (30.5, "up", "down")
+    assert (p["t1"]["volume_delta_kg"], p["t1"]["volume_direction"], p["t1"]["rpe_direction"]) == (-10.0, "down", "up")
+    assert (p["t2"]["volume_direction"], p["t2"]["rpe_direction"]) == ("stable", "stable")
+    assert (p["t3"]["volume_delta_kg"], p["t3"]["volume_direction"], p["t3"]["rpe_direction"]) == (None, None, None)
+    for k, older in (("t0", "t1"), ("t1", "t2"), ("t2", "t3")):
+        assert p[k]["volume_direction"] == _js_trend(p[k]["volume_kg"], p[older]["volume_kg"])
+        assert p[k]["rpe_direction"] == _js_trend(p[k]["avg_rpe"], p[older]["avg_rpe"], 0.05)
+
+
+def test_periodo_sem_vizinho_ou_sem_rpe_fica_none():
+    slots = {1: _slot(1), 2: _slot(1)}
+    rows = [_vol(1, 1, "Costas", 50.0), _vol(2, 2, "Costas", 40.0, rpe=7.0)]
+    (row,) = build_slot_comparison(rows, [], slots)["levels"]["muscle_group"]["volume"]
+    t0 = row["by_period"]["t0"]
+    assert t0["volume_direction"] == "down" and t0["rpe_direction"] is None
+    assert row["by_period"]["t2"] is None
+
+
+def test_series_equivalentes_ganham_delta_e_direcao():
+    slots = {1: _slot(1), 2: _slot(1)}
+    eq = [
+        {"activity_id": 1, "local_date": "2026-10-01", "muscle_group": "Tríceps", "equivalent_sets": 1.25},
+        {"activity_id": 2, "local_date": "2026-10-02", "muscle_group": "Tríceps", "equivalent_sets": 2.0},
+    ]
+    (row,) = build_slot_comparison([], eq, slots)["levels"]["muscle_group"]["equivalent_sets"]
+    assert row["by_period"]["t0"]["equivalent_sets_delta"] == 0.75
+    assert row["by_period"]["t0"]["sets_direction"] == "up"
+    assert row["by_period"]["t1"]["sets_direction"] is None
+
+
+def test_totais_e_top_volume_t0_pela_formula_da_tela():
+    slots = {1: _slot(1), 2: _slot(1), 3: _slot(2)}
+    rows = [
+        _vol(1, 1, "Peitoral", 100.0, rpe=8.0),
+        _vol(2, 2, "Peitoral", 150.0, sets=1, rpe=9.0),
+        _vol(3, 3, "Costas", 80.0, sets=10, rpe=6.0),
+        _vol(3, 3, "Bíceps", 20.0),
+    ]
+    level = build_slot_comparison(rows, [], slots)["levels"]["muscle_group"]
+    totals = level["totals"]
+    assert totals["by_period"] == {"t0": 250.0, "t1": 100.0, "t2": 0.0, "t3": 0.0}
+    assert (totals["groups_with_t0"], totals["groups_tracked"]) == (3, 3)
+    # Decisao do usuario (17/11/2026): media PONDERADA pelas series de T-0
+    # (9 x 1 + 6 x 10) / 11 = 6,27; a media simples seria 7,5. Biceps sem RPE fica fora.
+    assert totals["avg_rpe_t0"] == 6.27
+    assert [(i["group"]["label"], i["t0"], i["t1"]) for i in level["top_volume_t0"]] == [
+        ("Peitoral", 150.0, 100.0),
+        ("Costas", 80.0, 0.0),
+        ("Bíceps", 20.0, 0.0),
+    ]
+    assert ssc.TOP_VOLUME_T0_LIMIT == 10
+
+
+def test_top_volume_t0_limita_a_10():
+    slots = {aid: _slot(aid) for aid in range(1, 13)}
+    rows = [_vol(aid, aid, f"G{aid:02d}", float(aid)) for aid in range(1, 13)]
+    top = build_slot_comparison(rows, [], slots)["levels"]["muscle_group"]["top_volume_t0"]
+    assert [i["t0"] for i in top] == [float(v) for v in range(12, 2, -1)]
+
+
+def test_totais_vazios():
+    totals = build_slot_comparison([], [], {})["levels"]["muscle_group"]["totals"]
+    assert totals == {
+        "by_period": {"t0": 0.0, "t1": 0.0, "t2": 0.0, "t3": 0.0},
+        "groups_with_t0": 0, "groups_tracked": 0, "avg_rpe_t0": None,
+    }
+
+
+def test_total_sem_serie_com_rpe_em_t0_sai_sem_rpe_medio():
+    slots = {1: _slot(1)}
+    totals = build_slot_comparison([_vol(1, 1, "Costas", 50.0)], [], slots)["levels"]["muscle_group"]["totals"]
+    assert totals["avg_rpe_t0"] is None

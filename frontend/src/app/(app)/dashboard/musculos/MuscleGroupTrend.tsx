@@ -30,9 +30,10 @@ import {
   muscleGroupTrendPath,
   muscleGroupTrendQueryKey,
   pivotTrend,
+  TREND_TONE_COLOR,
+  formatTrendVariation,
   pressureRows as buildPressureRows,
   trendGroupOptions as buildTrendGroupOptions,
-  trendGroupTotals as buildTrendGroupTotals,
   trendPeriods as buildTrendPeriods,
   trendValueIndex,
   type MuscleGroupTrendFilters,
@@ -81,8 +82,7 @@ export function MuscleGroupTrend({
   // render enquanto a query carrega, e todos os memos abaixo (inclusive as
   // opções do MultiSelect) mudariam de identidade sempre.
   const trendRows = useMemo(() => trendQuery.data?.trend_rows ?? [], [trendQuery.data]);
-  const totals = useMemo(() => buildTrendGroupTotals(trendRows), [trendRows]);
-  const groupOptions = useMemo(() => buildTrendGroupOptions(totals), [totals]);
+  const groupOptions = useMemo(() => buildTrendGroupOptions(trendQuery.data?.table_rows ?? []), [trendQuery.data]);
 
   // Vazio = "usar o default" (6 mais pressionados).
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -106,8 +106,8 @@ export function MuscleGroupTrend({
     [periods, valueIndex, visibleGroups],
   );
   const ranking = useMemo(
-    () => buildPressureRows(periods, valueIndex, totals, visibleGroups),
-    [periods, valueIndex, totals, visibleGroups],
+    () => buildPressureRows(trendQuery.data?.pressure_rows, visibleGroups),
+    [trendQuery.data, visibleGroups],
   );
 
   return (
@@ -206,7 +206,7 @@ export function MuscleGroupTrend({
               </Text>
             </div>
             <Badge variant="light" color="brand">
-              {periods[periods.length - 1] || 'Sem período'}
+              {trendQuery.data?.latest_period || 'Sem período'}
             </Badge>
           </Group>
 
@@ -223,6 +223,15 @@ export function MuscleGroupTrend({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
+                {ranking.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text size="sm" c={BRAND.textMuted}>
+                        Sem dados de pressão para os grupos exibidos.
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
                 {ranking.map((row, index) => (
                   <Table.Tr key={row.group}>
                     <Table.Td>{index + 1}</Table.Td>
@@ -232,19 +241,9 @@ export function MuscleGroupTrend({
                     <Table.Td>{formatTrendMetric(row.latest, metric)}</Table.Td>
                     <Table.Td>{formatTrendMetric(row.previous, metric)}</Table.Td>
                     <Table.Td>
-                      {row.variation == null ? (
-                        <Badge color="gray" variant="light">
-                          Sem base
-                        </Badge>
-                      ) : (
-                        <Badge
-                          color={row.variation > 5 ? 'red' : row.variation < -5 ? 'teal' : 'gray'}
-                          variant="light"
-                        >
-                          {row.variation > 0 ? '+' : ''}
-                          {row.variation.toFixed(1)}%
-                        </Badge>
-                      )}
+                      <Badge color={row.tone ? TREND_TONE_COLOR[row.tone] : 'gray'} variant="light">
+                        {formatTrendVariation(row.variation_pct) ?? 'Sem base'}
+                      </Badge>
                     </Table.Td>
                     <Table.Td>{formatTrendMetric(row.total, metric)}</Table.Td>
                   </Table.Tr>

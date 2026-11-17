@@ -144,6 +144,8 @@ JOIN (
       ),
       COALESCE(CAST(ge.equipment_id AS CHAR), ''),
       COALESCE(eqex.load_convention, ''),
+      COALESCE(CAST(ge.gym_id AS CHAR), ''),
+      COALESCE(et.code, ''),
       COALESCE(e.original_name, '')
     ) AS packed
   FROM activities a2
@@ -155,11 +157,14 @@ JOIN (
     ON eqex.equipment_id = ge.equipment_id
    AND eqex.exercise_id = {_CANONICAL}
    AND eqex.is_active = 1
+  LEFT JOIN equipment eq ON eq.id = ge.equipment_id
+  LEFT JOIN equipment_types et ON et.id = eq.equipment_type_id
   WHERE a2.user_id = %s
     AND {_ES_NOT_PREPARATORY}
     {{history_filter}}
   GROUP BY e.id, e.activity_id, e.mapping_id, e.muscle_pain, e.joint_pain,
-           e.original_name, elm.canonical_exercise_id, ge.equipment_id, eqex.load_convention
+           e.original_name, elm.canonical_exercise_id, ge.equipment_id, eqex.load_convention,
+           ge.gym_id, et.code
 ) x ON x.activity_id = a.id
 GROUP BY a.id, a.local_date, {{trained_at}}, a.deload_source
 ORDER BY a.id
@@ -305,8 +310,8 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
     que detecta um `GROUP_CONCAT` truncado por `group_concat_max_len`
     (1024 bytes por padrao, ~55 series num mesmo exercicio) em vez de
     devolver uma dose menor em silencio."""
-    parts = packed.split(_FIELD_SEP, 8)
-    if len(parts) != 9:
+    parts = packed.split(_FIELD_SEP, 10)
+    if len(parts) != 11:
         raise PackedHistoryError(f"exercicio empacotado invalido: {packed[:80]!r}")
     (
         exercise_id,
@@ -317,6 +322,8 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
         sets_packed,
         equipment_id,
         load_convention,
+        gym_id,
+        equipment_type_code,
         original_name,
     ) = parts
 
@@ -334,10 +341,14 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
         "joint_pain": int(joint_pain) if joint_pain else None,
         "original_name": _optional(original_name),
         # Chave de comparabilidade do sinal "Desempenho recente"
-        # (`exercise_performance`): equipamento CANONICO e convencao de carga,
-        # as MESMAS colunas do caminho serie a serie.
+        # (`exercise_performance`): equipamento CANONICO, convencao de carga,
+        # academia e tipo do aparelho - as MESMAS colunas do caminho serie a
+        # serie.
         "equipment_id": int(equipment_id) if equipment_id else None,
         "load_convention": _optional(load_convention),
+        # Issue #188: academia e tipo do aparelho (chave de maquina do dono).
+        "gym_id": int(gym_id) if gym_id else None,
+        "equipment_type_code": _optional(equipment_type_code),
         "set_rows": set_rows,
     }
 

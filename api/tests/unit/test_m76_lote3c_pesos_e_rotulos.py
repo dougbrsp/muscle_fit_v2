@@ -122,9 +122,8 @@ def test_rotulos_tem_um_dono_com_acento():
     assert {status.value: label for status, label in reg.EXERCISE_PROGRESSION_STATUS_LABELS.items()} == dict(
         EXERCISE_PROGRESSION_LABELS
     )
-    for code, label in exercise_briefing.PERFORMANCE_LABELS.items():
+    for code, label in exercise_briefing.performance_labels().items():
         assert label == EXERCISE_PROGRESSION_LABELS[code]
-    assert set(exercise_briefing.PERFORMANCE_LABELS) == set(exercise_briefing.COMPARABLE_STATUSES)
     assert EXERCISE_PROGRESSION_LABELS["STABLE"] == "Estável"
     assert EXERCISE_PROGRESSION_LABELS["PLATEAU_SUSPECTED"] == "Suspeita de platô"
     assert EXERCISE_PROGRESSION_LABELS["NOT_COMPARABLE"] == "Não comparável"

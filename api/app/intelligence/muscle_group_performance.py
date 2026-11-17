@@ -13,38 +13,25 @@ dava um numero diferente do da home - terceira divergencia reportada.
 
 ## O que sobrou deste modulo (informativo, nunca gera status)
 
-Para cada exercicio presente nas DUAS janelas com a MESMA chave de
-comparabilidade (`comparability.build_key`) compara-se o MELHOR e1RM de cada
-janela (Epley com RIR pelo dono `domain/e1rm.reliable_e1rm`, politica
-`MissingRpePolicy.RIR_ZERO`, series de trabalho com ate
-`E1RM_MAX_RELIABLE_REPS` reps - ver `analytics._fetch_group_e1rm_rows`). O
-resultado e `performance_change_pct` (media das variacoes ponderada pelo
-`stimulus_weight`) e a lista `performance_exercises`, para o usuario CONFERIR
-o numero. A variacao de mais de `OUTLIER_CHANGE_PCT` (+-50%) e atipica
-(quase sempre registro errado) e fica FORA da media informativa, marcada com
-`outlier: true`. Nada disso muda o status do grupo.
-
-Regras herdadas de `dashboard/comparability.py`: troca de maquina/convencao
-NAO e piora (chaves diferentes nao se comparam); equipamento ausente so compara
-quando todas as exposicoes do exercicio estao sem equipamento (§8.1);
-`assisted` e `bodyweight` nao tem e1RM; so series de trabalho.
+A variacao do melhor e1RM por exercicio entre as duas janelas (chave,
+excecao do §8.1, academia da maquina e limiar de atipico) vem pronta do dono
+`comparability.group_e1rm_changes`. Aqui so se monta a resposta da tela:
+`performance_change_pct` (media ponderada pelo `stimulus_weight`, sem os
+atipicos) e `performance_exercises`. Nada disso muda o status do grupo.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 from .dashboard.comparability import (
     GROUP_REASON_LOW_ACTIVATION,
     GROUP_REASON_NO_COMPARABLE_EXERCISE,
-    ComparabilityKey,
+    GROUP_E1RM_OUTLIER_REASON,
     aggregate_group_progression,
-    all_equipment_missing,
-    build_key,
-    keys_match,
+    group_e1rm_changes,
 )
 from .dashboard.metrics_registry import ExerciseProgressionStatus
-from ..load_conventions import normalize_load_convention, supports_e1rm
 from .muscle_group_progression import (
     DADOS_INSUFICIENTES,
     ESTAVEL,
@@ -57,11 +44,8 @@ PERFORMANCE_BASIS = "best_e1rm_epley_same_exercise"
 # Base do STATUS do grupo: agregacao ponderada dos status dos exercicios (dono).
 STATUS_BASIS = "weighted_exercise_progression_status"
 
-# Variacao de e1RM (em %, absoluta) acima da qual o exercicio e tratado como
-# atipico ("conferir registro") e fica fora da media INFORMATIVA. Estritamente
-# maior: +-50% exatos ainda contam. Nunca altera o status do grupo.
-OUTLIER_CHANGE_PCT = 50.0
-OUTLIER_CHANGE = "OUTLIER_CHANGE"
+# Motivo de exclusao da media informativa (dono), reexportado para a tela.
+OUTLIER_CHANGE = GROUP_E1RM_OUTLIER_REASON
 
 # Motivos de `performance_insufficient_reason` (None quando ha classificacao);
 # definidos pelo dono, reexportados aqui para o contrato da tela.
@@ -82,15 +66,6 @@ _ZERO_COUNTS = {
     "progressing": 0, "stable": 0, "plateau_suspected": 0, "regressing": 0,
     "comparable_total": 0, "not_comparable": 0, "insufficient_data": 0,
 }
-
-
-def _float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def insufficient() -> Dict[str, Any]:
@@ -114,10 +89,6 @@ def mark_progression_unavailable(items: Iterable[Dict[str, Any]]) -> None:
         item["performance_insufficient_reason"] = PROGRESSION_UNAVAILABLE
 
 
-def _is_outlier(change_pct: float) -> bool:
-    return abs(change_pct) > OUTLIER_CHANGE_PCT
-
-
 def build_group_performance(
     rows: Iterable[Dict[str, Any]],
     *,
@@ -137,66 +108,15 @@ def build_group_performance(
     `muscle_group_id`, `stimulus_weight` e `best_e1rm_kg`. Devolve
     `{muscle_group_id: leitura}`; grupo ausente = sem exercicio comparavel
     (quem monta usa `insufficient()`)."""
-    rows = list(rows)
-
-    # Excecao do §8.1: decidida por EXERCICIO, olhando as duas janelas juntas.
-    equipment_by_exercise: Dict[int, List[Optional[int]]] = {}
-    for row in rows:
-        if row.get("exercise_id") is None:
-            continue
-        equipment_by_exercise.setdefault(int(row["exercise_id"]), []).append(
-            None if row.get("equipment_id") is None else int(row["equipment_id"])
-        )
-    agnostic = {ex: all_equipment_missing(ids) for ex, ids in equipment_by_exercise.items()}
-
-    # (grupo, chave) -> melhor e1RM por janela + peso + nome.
-    pairs: Dict[Tuple[int, ComparabilityKey], Dict[str, Any]] = {}
-    for row in rows:
-        best = _float(row.get("best_e1rm_kg"))
-        weight = _float(row.get("stimulus_weight")) or 0.0
-        if row.get("exercise_id") is None or best is None or best <= 0 or weight <= 0:
-            continue
-        convention = normalize_load_convention(row.get("load_convention"))
-        if not supports_e1rm(convention):
-            continue
-        exercise_id = int(row["exercise_id"])
-        key = build_key(exercise_id, row.get("equipment_id"), convention, equipment_agnostic=agnostic[exercise_id])
-        if not keys_match(key, key):  # equipamento nao resolvido fora da excecao
-            continue
-        entry = pairs.setdefault(
-            (int(row["muscle_group_id"]), key),
-            {"exercise_name": row.get("exercise_name"), "weight": weight, "current": None, "previous": None},
-        )
-        period = "current" if row["period"] == "current" else "previous"
-        # `None` e `total` normalizam para a mesma chave: fica o maior.
-        entry[period] = best if entry[period] is None else max(entry[period], best)
-        entry["weight"] = max(entry["weight"], weight)
-        entry["exercise_name"] = entry["exercise_name"] or row.get("exercise_name")
-
     # Status (a) de cada exercicio, como o lote o classificou: so repassado ao
     # item de `performance_exercises` para a tela ver o status individual.
     status_by_exercise = {int(item["exercise_id"]): item["status"] for item in (exercise_items or [])}
     by_group: Dict[int, List[Dict[str, Any]]] = {}
-    for (group_id, key), entry in pairs.items():
-        if entry["current"] is None or entry["previous"] is None:
-            continue
-        change = (entry["current"] - entry["previous"]) / entry["previous"] * 100.0
-        by_group.setdefault(group_id, []).append(
-            {
-                "exercise_id": key.canonical_exercise_id,
-                "exercise_name": entry["exercise_name"],
-                "equipment_id": key.equipment_id,
-                "load_convention": key.load_convention.value,
-                "previous_e1rm_kg": round(entry["previous"], 1),
-                "current_e1rm_kg": round(entry["current"], 1),
-                "change_pct": round(change, 1),
-                "status": status_by_exercise.get(key.canonical_exercise_id),
-                "stimulus_weight": round(entry["weight"], 3),
-                "outlier": _is_outlier(change),
-                "excluded_reason": OUTLIER_CHANGE if _is_outlier(change) else None,
-                "_change": change,
-            }
-        )
+    for change in group_e1rm_changes(rows):
+        group_id = change.pop("muscle_group_id")
+        change.pop("gym_id")  # chave interna do dono; fora do contrato da tela
+        change["status"] = status_by_exercise.get(change["exercise_id"])
+        by_group.setdefault(group_id, []).append(change)
 
     # Status: agregacao do dono sobre os status dos exercicios do grupo.
     aggregated: Dict[int, Dict[str, Any]] = {}

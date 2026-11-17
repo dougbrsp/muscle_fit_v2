@@ -342,8 +342,8 @@ def test_rota_do_veredito_devolve_o_status_da_home(rotas):
     assert "fewer_working_sets" in body["status_reasons"]
     assert body["equipment_name"] == "Gaiola"
     assert body["comparable_exposures"] == 2
-    # campos legados (deprecados) seguem coerentes com o novo veredito
-    assert body["classification"] == "PROGREDINDO"
+    # o vocabulario antigo (classification/reason) saiu: so o status do dono
+    assert "classification" not in body and "reason" not in body
     # M97 F4: sem `?goal=` o veredito le o objetivo default (o de sempre).
     assert log["exposures"] == [
         {"canonical": EXERCICIO, "days": 30, "date_range": None, "limit": svc.MAX_EXPOSURES, "goal": "hypertrophy"}

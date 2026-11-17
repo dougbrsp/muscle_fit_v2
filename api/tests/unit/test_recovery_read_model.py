@@ -107,7 +107,7 @@ def _sessao(packed: list[str]):
 def test_serie_desempacotada_tem_as_mesmas_chaves_do_caminho_antigo():
     item = rrm._parse_exercise(
         f"11|900|3|1|2|1:10:8.50:60.00:0::,2:8:9.00:60.00:{rrm.SET_TYPE_CODES.index('rest_pause')}:rest_pause:"
-        "|42|per_side|Supino reto"
+        "|42|per_side|3|machine|Supino reto"
     )
 
     assert item["exercise_id"] == 11
@@ -119,6 +119,9 @@ def test_serie_desempacotada_tem_as_mesmas_chaves_do_caminho_antigo():
     # caminho serie a serie.
     assert item["equipment_id"] == 42
     assert item["load_convention"] == "per_side"
+    # Issue #188: academia e tipo do aparelho (chave de maquina do dono).
+    assert item["gym_id"] == 3
+    assert item["equipment_type_code"] == "machine"
     assert item["set_rows"] == [
         {"set_number": 1, "reps": 10, "rpe": 8.5, "weight_kg": 60.0, "set_type": "working", "technique_code": None, "measure": "reps"},
         {"set_number": 2, "reps": 8, "rpe": 9.0, "weight_kg": 60.0, "set_type": "rest_pause", "technique_code": "rest_pause", "measure": "reps"},
@@ -126,11 +129,13 @@ def test_serie_desempacotada_tem_as_mesmas_chaves_do_caminho_antigo():
 
 
 def test_campos_ausentes_viram_none_e_nunca_zero():
-    item = rrm._parse_exercise("12||||1|::::::|||")
+    item = rrm._parse_exercise("12||||1|::::::|||||")
 
     assert item["mapping_id"] is None
     assert item["equipment_id"] is None
     assert item["load_convention"] is None
+    assert item["gym_id"] is None
+    assert item["equipment_type_code"] is None
     assert item["muscle_pain"] is None
     assert item["joint_pain"] is None
     assert item["original_name"] is None
@@ -142,7 +147,7 @@ def test_campos_ausentes_viram_none_e_nunca_zero():
 def test_set_type_fora_do_vocabulario_cai_em_working():
     """Codigo desconhecido vale 1.00 no modelo - o mesmo que `working` -,
     entao o banco ja o codifica assim."""
-    (serie,) = rrm._parse_exercise("13|900|||1|1:10:8.00:60.00:9::|||")["set_rows"]
+    (serie,) = rrm._parse_exercise("13|900|||1|1:10:8.00:60.00:9::|||||")["set_rows"]
     assert serie["set_type"] == "working"
 
 
@@ -154,7 +159,7 @@ def test_set_type_fora_do_vocabulario_cai_em_working():
 def test_group_concat_truncado_levanta_em_vez_de_calcular_dose_menor():
     # o banco contou 4 series, mas so 2 vieram no texto
     with pytest.raises(rrm.PackedHistoryError):
-        rrm._parse_exercise("14|900|||4|1:10:8.00:60.00:0::,2:10:8.00:60.00:0::|||")
+        rrm._parse_exercise("14|900|||4|1:10:8.00:60.00:0::,2:10:8.00:60.00:0::|||||")
 
 
 def test_empacotamento_malformado_levanta():
@@ -170,7 +175,7 @@ def test_empacotamento_malformado_levanta():
 def test_referencia_resolve_contribuicoes_atributos_e_nomes():
     servico = _ServicoFalso(
         referencia=_referencia(),
-        historico=_sessao(["11|900|||1|1:10:8.00:60.00:0::|||"]),
+        historico=_sessao(["11|900|||1|1:10:8.00:60.00:0::|||||"]),
     )
     datasets = rrm.fetch_overview_datasets(servico, 14, user_id=3)
 
@@ -196,7 +201,7 @@ def test_historico_vem_ordenado_por_exercise_id():
     servico = _ServicoFalso(
         referencia=_referencia(),
         historico=_sessao(
-            ["30|900|||1|1:10:8.00:60.00:0::|||", "11|900|||1|1:10:8.00:60.00:0::|||"]
+            ["30|900|||1|1:10:8.00:60.00:0::|||||", "11|900|||1|1:10:8.00:60.00:0::|||||"]
         ),
     )
     datasets = rrm.fetch_overview_datasets(servico, 14, user_id=3)

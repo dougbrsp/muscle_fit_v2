@@ -452,10 +452,23 @@ def load_tracks(conn: Any, user_id: int) -> dict[tuple[int, int, str, str], Trac
     return request_memo.memoize((TRACKS_MEMO, int(user_id)), lambda: _read_tracks(conn, user_id))
 
 
-def _read_tracks(conn: Any, user_id: int) -> dict[tuple[int, int, str, str], TrackState]:
+#: `progression_tracks.gym_context_id` (migracao 118, #188) sem academia: peso
+#: livre ou maquina sem academia conhecida. A borda converte 0 <-> None.
+NO_GYM_CONTEXT_ID = 0
+
+
+def _gym_context_to_db(gym_context: Optional[int]) -> int:
+    return NO_GYM_CONTEXT_ID if gym_context is None else int(gym_context)
+
+
+def _gym_context_from_db(value: Any) -> Optional[int]:
+    return None if value is None or int(value) == NO_GYM_CONTEXT_ID else int(value)
+
+
+def _read_tracks(conn: Any, user_id: int) -> dict[tuple, TrackState]:
     with conn.cursor() as cur:
         cur.execute(
-            f"SELECT id, exercise_id, equipment_id, fatigue_context, {TRAINING_GOAL_COLUMN}, "
+            f"SELECT id, exercise_id, equipment_id, fatigue_context, {TRAINING_GOAL_COLUMN}, gym_context_id, "
             f"{', '.join(_TRACK_COLUMNS)} "
             f"FROM {TRACKS_TABLE} WHERE user_id = %s",
             (int(user_id),),
@@ -463,12 +476,17 @@ def _read_tracks(conn: Any, user_id: int) -> dict[tuple[int, int, str, str], Tra
         rows = cur.fetchall() or []
     return {
         track_key(
-            row["exercise_id"], row["equipment_id"], row.get("fatigue_context"), row.get(TRAINING_GOAL_COLUMN)
+            row["exercise_id"],
+            row["equipment_id"],
+            row.get("fatigue_context"),
+            row.get(TRAINING_GOAL_COLUMN),
+            _gym_context_from_db(row.get("gym_context_id")),
         ): TrackState(
             exercise_id=int(row["exercise_id"]),
             equipment_id=int(row["equipment_id"]),
             fatigue_context=str(row.get("fatigue_context") or DEFAULT_FATIGUE_CONTEXT),
             training_goal=goal_value(row.get(TRAINING_GOAL_COLUMN)),
+            gym_context=_gym_context_from_db(row.get("gym_context_id")),
             calibrated_at=row.get("calibrated_at"),
             muscle_group_id=None if row["muscle_group_id"] is None else int(row["muscle_group_id"]),
             id=int(row["id"]),
@@ -563,7 +581,7 @@ def _track_values(track: TrackState) -> tuple[Any, ...]:
 
 def save_track(conn: Any, user_id: int, track: TrackState) -> int:
     """Upsert por `(user_id, exercise_id, equipment_id, fatigue_context,
-    training_goal)` (chave unica `uk_ptr_user_pair_context`, 093); devolve o
+    training_goal, gym_context_id)` (chave unica `uk_ptr_user_pair_context`, refeita na 118); devolve o
     id. Trilha que ja traz `id` so faz o UPDATE (sem o SELECT de volta)."""
     values = _track_values(track)
     assignments = ", ".join(f"{column} = %s" for column in _TRACK_COLUMNS)
@@ -572,11 +590,12 @@ def save_track(conn: Any, user_id: int, track: TrackState) -> int:
         int(track.exercise_id),
         int(track.equipment_id),
         str(track.fatigue_context or DEFAULT_FATIGUE_CONTEXT),
+        _gym_context_to_db(track.gym_context),
         goal_value(track.training_goal),
     )
     where = (
         "WHERE user_id = %s AND exercise_id = %s AND equipment_id = %s AND fatigue_context = %s "
-        f"AND {sql_goal_is(TRACKS_TABLE)}"
+        f"AND gym_context_id = %s AND {sql_goal_is(TRACKS_TABLE)}"
     )
     request_memo.forget(TRACKS_MEMO)
     with conn.cursor() as cur:
@@ -586,11 +605,11 @@ def save_track(conn: Any, user_id: int, track: TrackState) -> int:
         )
         if cur.rowcount == 0 and track.id is None:
             columns = ", ".join(
-                ("user_id", "exercise_id", "equipment_id", "fatigue_context", TRAINING_GOAL_COLUMN)
+                ("user_id", "exercise_id", "equipment_id", "fatigue_context", "gym_context_id", TRAINING_GOAL_COLUMN)
                 + _TRACK_COLUMNS
                 + ("engine_version",)
             )
-            placeholders = ", ".join(["%s"] * (len(_TRACK_COLUMNS) + 6))
+            placeholders = ", ".join(["%s"] * (len(_TRACK_COLUMNS) + 7))
             cur.execute(
                 f"INSERT INTO {TRACKS_TABLE} ({columns}) VALUES ({placeholders})",
                 key + values + (ENGINE_VERSION,),

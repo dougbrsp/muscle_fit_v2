@@ -575,7 +575,9 @@ class VolumeService(IntelligenceServiceBase):
     # "Desempenho recente" usa (`exercise_performance`), lidas como no
     # `exposure_service`. LEFT JOINs que nunca duplicam linha
     # (`gym_equipment.id` e PK; `equipment_exercises` tem UNIQUE
-    # (equipment_id, exercise_id)).
+    # (equipment_id, exercise_id); `equipment.id` e `equipment_types.id` sao
+    # PK). Academia (`ge.gym_id`) e tipo (`et_ctx.code`) entram na chave de
+    # maquina do dono da progressao (issue #188).
     _EXERCISE_SCOPE_FROM = """
             FROM activities a
             JOIN exercises e ON e.activity_id = a.id
@@ -586,6 +588,8 @@ class VolumeService(IntelligenceServiceBase):
               ON eqex.equipment_id = ge.equipment_id
              AND eqex.exercise_id = COALESCE(elm.canonical_exercise_id, e.mapping_id)
              AND eqex.is_active = 1
+            LEFT JOIN equipment eq_ctx ON eq_ctx.id = ge.equipment_id
+            LEFT JOIN equipment_types et_ctx ON et_ctx.id = eq_ctx.equipment_type_id
     """
 
     # Colunas constantes por exercicio da JANELA. `mapping_id` continua sendo
@@ -618,6 +622,8 @@ class VolumeService(IntelligenceServiceBase):
               e.joint_pain,
               ge.equipment_id AS equipment_id,
               eqex.load_convention AS load_convention,
+              ge.gym_id AS gym_id,
+              et_ctx.code AS equipment_type_code,
               e.training_goal AS training_goal,
               a.deload_source AS deload_source,
               CAST(COALESCE(elm.canonical_exercise_id, e.mapping_id) AS SIGNED) AS canonical_exercise_id
@@ -1168,6 +1174,8 @@ class VolumeService(IntelligenceServiceBase):
                 # Chave de comparabilidade do sinal "Desempenho recente".
                 "equipment_id": first_row.get("equipment_id"),
                 "load_convention": first_row.get("load_convention"),
+                "gym_id": first_row.get("gym_id"),
+                "equipment_type_code": first_row.get("equipment_type_code"),
                 # M97 F1: objetivo da execucao - so separa a comparacao do
                 # sinal "Desempenho recente" (troca de objetivo = sem par
                 # comparavel); a dose de recuperacao conta tudo.
@@ -1344,10 +1352,9 @@ class VolumeService(IntelligenceServiceBase):
         # plano deixou de ser sinal de recuperacao.
 
         # 3) `performance_ratio` ("Desempenho recente") da ULTIMA sessao de
-        #    cada exercicio, pela fonte unica de progresso
-        #    (`exercise_performance` -> `dashboard/comparability`): so dentro
-        #    da chave exercicio+equipamento+convencao, queda = REGRESSING
-        #    contra a sessao anterior comparavel. A referencia de 28 dias
+        #    cada exercicio: a razao do PAR do motor de progressao
+        #    (`exercise_performance` -> `comparability.performance_ratio_of`;
+        #    sem par, sem razao). A referencia de 28 dias
         #    acima continua existindo SO para o `load_spike_factor` da dose.
         from .exercise_performance import latest_performance_ratios
 

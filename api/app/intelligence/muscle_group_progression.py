@@ -67,9 +67,8 @@ mostra duas dimensoes separadas e queda de volume nunca e chamada de
 - `performance_status` (`muscle_group_performance.py`): melhor e1RM do mesmo
   exercicio nas duas janelas, ponderado pela ativacao.
 
-`classification` continua no payload, com os valores de antes, so por
-compatibilidade (frontend publicado antes desta mudanca); e DEPRECADO - nao
-use em tela nova: e o volume com rotulo de desempenho.
+`classification` (o volume com rotulo de desempenho) saiu do payload em
+2026-11-16 (#188, etapa 3): nenhum leitor restava; so `volume_status`.
 """
 
 from __future__ import annotations
@@ -88,6 +87,7 @@ MIN_SESSIONS_PER_WINDOW = 2
 # Base da variacao `change_pct` (ecoada no payload para o frontend explicar).
 COMPARISON_BASIS = "tonnage_per_session"
 
+# Rotulos de DESEMPENHO, usados por `muscle_group_performance.py` (nao pelo volume).
 PROGREDINDO = "PROGREDINDO"
 ESTAVEL = "ESTAVEL"
 REGREDINDO = "REGREDINDO"
@@ -99,13 +99,6 @@ DADOS_INSUFICIENTES = "DADOS_INSUFICIENTES"  # poucas sessoes para comparar
 VOLUME_UP = "VOLUME_UP"
 VOLUME_STABLE = "VOLUME_STABLE"
 VOLUME_DOWN = "VOLUME_DOWN"
-_VOLUME_STATUS = {PROGREDINDO: VOLUME_UP, ESTAVEL: VOLUME_STABLE, REGREDINDO: VOLUME_DOWN}
-
-
-def volume_status(classification: str) -> str:
-    """Classificacao de tonelagem -> status de volume neutro. Os estados sem
-    leitura (`DADOS_INSUFICIENTES`/`NOVO`/`SEM_DADOS`) passam iguais."""
-    return _VOLUME_STATUS.get(classification, classification)
 
 
 def comparison_windows(today: date, days: int) -> Dict[str, date]:
@@ -162,26 +155,25 @@ def classify_change(
     current_sessions: int,
     previous_sessions: int,
 ) -> Dict[str, Any]:
-    """Classificacao da janela atual contra a anterior (ver docstring do
+    """`volume_status` da janela atual contra a anterior (ver docstring do
     modulo, M50). `change_pct` = variacao da tonelagem POR SESSAO;
     `total_change_pct` = variacao da tonelagem total (contexto)."""
     empty = {"change_pct": None, "total_change_pct": None}
     if current_sessions <= 0 and previous_sessions <= 0:
-        return {"classification": SEM_DADOS, **empty}
+        return {"volume_status": SEM_DADOS, **empty}
     if previous_sessions <= 0 or previous_tonnage <= 0:
-        return {"classification": NOVO, **empty}
+        return {"volume_status": NOVO, **empty}
     if current_sessions < MIN_SESSIONS_PER_WINDOW or previous_sessions < MIN_SESSIONS_PER_WINDOW:
         # Inclui "nenhuma sessao na janela atual": ausencia de treino e
         # frequencia/aderencia, nao queda de desempenho.
-        return {"classification": DADOS_INSUFICIENTES, **empty}
+        return {"volume_status": DADOS_INSUFICIENTES, **empty}
     per_session_change = _pct(current_tonnage / current_sessions, previous_tonnage / previous_sessions)
     total_change = _pct(current_tonnage, previous_tonnage)
     direction = _direction(per_session_change)
     if direction != _direction(total_change):
         direction = 0
-    label = {1: PROGREDINDO, -1: REGREDINDO, 0: ESTAVEL}[direction]
     return {
-        "classification": label,
+        "volume_status": {1: VOLUME_UP, -1: VOLUME_DOWN, 0: VOLUME_STABLE}[direction],
         "change_pct": round(per_session_change, 1),
         "total_change_pct": round(total_change, 1),
     }
@@ -238,7 +230,6 @@ def build_group_progression(
                 item["previous_sessions"],
             )
         )
-        item["volume_status"] = volume_status(item["classification"])
         item.update((performance or {}).get(item["muscle_group_id"]) or insufficient())
         phase = (phases or {}).get(item["muscle_group_id"]) or {}
         item["phase"] = phase.get("phase")

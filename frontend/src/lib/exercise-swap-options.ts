@@ -7,6 +7,8 @@
 // `POST /workout-plans/exercise-swap-options` (rascunho). A tela só filtra o catálogo
 // do autocomplete pelos ids devolvidos — nunca compara texto de grupo.
 
+import type { DraftEquipmentOptionsRequest, PlanExerciseEquipmentOption } from './workout-plans-types';
+
 export type ExerciseSwapOptionsRow = {
   workout_plan_exercise_id: number;
   primary_group_id: number | null;
@@ -103,6 +105,41 @@ export function swapExerciseResetPatch(
 ): { preferred_equipment_id?: null; equipment_name?: null; suggested_load_kg?: null } {
   if (previousMappingId === nextMappingId) return {};
   return { preferred_equipment_id: null, equipment_name: null, suggested_load_kg: null };
+}
+
+// ---- Equipamento no rascunho (lista e elegibilidade vêm do servidor) ----
+
+type DraftEquipmentRow = {
+  mapping_id?: number | null;
+  preferred_equipment_id?: number | null;
+  advanced_technique?: string | null;
+};
+
+/** Corpo do `POST /workout-plans/equipment-options`; null = linha sem exercício do catálogo. */
+export function draftEquipmentOptionsBody(
+  row: DraftEquipmentRow,
+  gymId: number,
+): DraftEquipmentOptionsRequest | null {
+  if (row.mapping_id == null) return null;
+  return {
+    gym_id: gymId,
+    mapping_id: row.mapping_id,
+    current_gym_equipment_id: row.preferred_equipment_id ?? null,
+    advanced_technique: row.advanced_technique ?? null,
+  };
+}
+
+/** A chave inclui tudo que o corpo leva: trocar exercício/equipamento/técnica refaz a consulta. */
+export function draftEquipmentOptionsKey(body: DraftEquipmentOptionsRequest | null) {
+  return ['draft-equipment-options', body?.gym_id, body?.mapping_id, body?.current_gym_equipment_id, body?.advanced_technique];
+}
+
+/** Escolha do usuário: só a linha local muda; a carga é resolvida pelo servidor ao salvar. */
+export function applyDraftEquipmentChoice<T extends { preferred_equipment_id?: number | null; equipment_name?: string | null }>(
+  row: T,
+  item: Pick<PlanExerciseEquipmentOption, 'gym_equipment_id' | 'equipment_name'>,
+): T {
+  return { ...row, preferred_equipment_id: item.gym_equipment_id, equipment_name: item.equipment_name };
 }
 
 /**

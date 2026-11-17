@@ -186,6 +186,9 @@ class ComparabilityKeyOut(_Contract):
     # Faixa de fadiga previa da exposicao (dono `domain/prior_fatigue.py`);
     # `None` = contexto nao medido.
     fatigue_context: Literal["rested", "pre_fatigued", "heavily_fatigued"] | None = None
+    # Academia do contexto de MAQUINA (issue #188, dono `domain/equipment_context.py`);
+    # `None` = peso livre ou tipo de equipamento ausente (academia nao separa).
+    gym_id: int | None = None
 
 
 class FatigueContextOut(_Contract):
@@ -258,9 +261,17 @@ class ExposureOut(_Contract):
             "fatigue_context_changed",
             # M97 F1: as leituras ja chegam filtradas por objetivo (nao emitido)
             "training_goal_changed",
+            # Issue #188: mesma maquina em outra academia
+            "gym_changed",
         ]
         | None
     ) = None
+    # Dono `comparability.run_flags`. Na sequencia do contexto atual (o
+    # grafico plota; preenchida tambem em calibracao de maquina).
+    in_context_run: bool = False
+    # Usada pelo veredito (`progression_outcome.run_indices`; tudo False em
+    # calibracao de maquina): o grafico destaca, a tabela marca.
+    in_verdict_run: bool = False
 
 
 class PairedRepsOut(_Contract):
@@ -282,6 +293,22 @@ class PairedRepsOut(_Contract):
     current_reps: list[int] = Field(default_factory=list)
 
 
+class PairMetricOut(_Contract):
+    """Uma metrica do par "anterior vs atual" (`exposure_service._pair_metrics`)."""
+
+    code: Literal["best_load_kg", "paired_reps", "total_reps", "avg_rpe", "e1rm", "tonnage"]
+    previous: float | None = None
+    current: float | None = None
+    # atual - anterior; `None` sem par ou sem um dos lados
+    delta: float | None = None
+    # variacao em pontos percentuais (+3.2); `None` sem par ou anterior 0
+    delta_pct: float | None = None
+    # `up` = subir e melhora; `down` = descer e melhora; `neutral` = informativo
+    better_when: Literal["up", "down", "neutral"]
+    # Desfecho pronto (`comparability.metric_outcome`): a tela so pinta.
+    outcome: Literal["improved", "worsened", "flat", "neutral"] | None = None
+
+
 class LatestComparisonOut(_Contract):
     """As duas ultimas exposicoes com os numeros que a regra usou."""
 
@@ -289,6 +316,19 @@ class LatestComparisonOut(_Contract):
     paired_reps: PairedRepsOut | None = None
     e1rm_decisive: bool = False
     e1rm_max_reliable_reps: int
+    # Por que nao ha par (issue #188, dono `comparability.latest_comparable_pair`):
+    # troca fisica, `equipment_context_in_calibration` ou primeira do
+    # contexto; vazio quando comparou.
+    reasons: list[str] = Field(default_factory=list)
+    # Posicoes (em `exposures` desta resposta) e atividades do par que o
+    # veredito comparou; `previous_*` = None sem par (inclusive em calibracao).
+    previous_index: int | None = None
+    current_index: int | None = None
+    previous_activity_id: int | None = None
+    current_activity_id: int | None = None
+    # Variacao pronta por metrica (a tela nao calcula nem escolhe direcao).
+    metrics: list[PairMetricOut] = Field(default_factory=list)
+
 
 
 class ExerciseRecordOut(_Contract):
@@ -323,6 +363,9 @@ class ProgressionDecisionOut(_Contract):
     engine_version: str | None = None
     created_at: datetime | None = None
     equipment_id: int | None = None
+    # Do contexto atual (`exposure_service.decision_in_context`, por aparelho;
+    # academia so quando as trilhas do motor de carga a tiverem).
+    in_current_context: bool | None = None
 
 
 class ExerciseRefOut(_Contract):
@@ -383,6 +426,12 @@ class ExerciseProgressResponse(DashboardEnvelope):
     fatigue_context: FatigueContextOut | None = None
     exposures: list[ExposureOut] = Field(default_factory=list)
     latest_comparison: LatestComparisonOut | None = None
+    # Metrica da linha de tendencia (`comparability.trend_metric`): `e1rm`,
+    # `best_load_kg`, `total_reps` ou `None` sem pontos suficientes.
+    trend_metric: Literal["e1rm", "best_load_kg", "total_reps"] | None = None
+    # Media do `avg_rpe` das exposicoes que o grafico de RPE plota
+    # (`in_context_run` com RPE), 1 casa (`exposure_service.average_rpe`).
+    avg_rpe_period: float | None = None
     records: ExerciseRecordsOut = Field(default_factory=ExerciseRecordsOut)
     # M97 F4: objetivo da progressao lida (`?goal=`, ausente = default), a
     # linha unica de e1RM (todos os objetivos) e as sessoes de deload marcadas.
@@ -685,6 +734,10 @@ class MuscleSessionComparativeOut(_Contract):
     muscle_group: str
     points: list[MuscleSessionPointOut] = Field(default_factory=list)
     sessions_in_window: int = Field(ge=0)
+    # #188: T-0 contra T-1 de `effective_sets_stimulus`, pelo dono
+    # `volume_comparison` (sem T-0 ou T-1 = None). Aditivo.
+    effective_sets_delta: float | None = None
+    effective_sets_direction: Literal["up", "down", "stable"] | None = None
 
 
 class MuscleEquipmentPointOut(_Contract):
@@ -827,6 +880,19 @@ class MuscleSessionOut(_Contract):
     exposures: list[MuscleExposureOut] = Field(default_factory=list)
 
 
+class MuscleExerciseContributionOut(_Contract):
+    """Contribuicao de um exercicio nas sessoes DEVOLVIDAS do drill-down
+    (dono `muscle_summary_service._exercise_contributions`; a tela so le)."""
+
+    exercise_id: int | None = None
+    name: str | None = None
+    sets: int = Field(ge=0)
+    stimulus: float
+    share: float | None = None
+    roles: list[str] = Field(default_factory=list)
+    sessions: int = Field(ge=0)
+
+
 class MuscleDrilldownResponse(DashboardEnvelope):
     """Resposta de `GET /analytics/dashboard/muscles/{muscle_group_id}`.
 
@@ -837,6 +903,7 @@ class MuscleDrilldownResponse(DashboardEnvelope):
 
     item: MuscleItemOut
     sessions: list[MuscleSessionOut] = Field(default_factory=list)
+    exercise_contributions: list[MuscleExerciseContributionOut] = Field(default_factory=list)
     sets_limit: int = Field(ge=1)
     sets_truncated: bool = False
     target_source: TargetSource

@@ -57,6 +57,8 @@ type Props = {
   /** Rascunho gerado: elegibilidade pelo `mapping_id` de geração da linha. */
   draftSwapOptions?: DraftSwapOptions;
   onSwapEquipment?: (exercise: WorkoutPlanExercise) => void;
+  /** Rascunho gerado: escolher equipamento da linha (só passado com academia escolhida). */
+  onPickDraftEquipment?: (index: number) => void;
   onRefreshPrescription?: () => void;
   refreshingPrescription?: boolean;
   refreshPrescriptionError?: string | null;
@@ -78,6 +80,7 @@ export function PlanExercisesEditor({
   swapOptions,
   draftSwapOptions,
   onSwapEquipment,
+  onPickDraftEquipment,
   onRefreshPrescription,
   refreshingPrescription = false,
   refreshPrescriptionError = null,
@@ -418,6 +421,14 @@ export function PlanExercisesEditor({
                   title="Trocar equipamento"
                   subtitle="Só o equipamento; o exercício não muda"
                   onClick={() => onSwapEquipment(exercise)}
+                />
+              ) : null}
+              {onPickDraftEquipment && exercise.workout_plan_exercise_id == null && exercise.mapping_id != null ? (
+                <ListRow
+                  icon={IconReplace}
+                  title="Escolher equipamento"
+                  subtitle="Só o equipamento; o exercício não muda"
+                  onClick={() => onPickDraftEquipment(index)}
                 />
               ) : null}
               <ListRow

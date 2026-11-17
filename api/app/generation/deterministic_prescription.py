@@ -29,11 +29,13 @@ violar:
 
 from __future__ import annotations
 
+
 from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping, Optional, Sequence
 
+from ..domain.equipment_context import context_gym_id
 from ..domain.prescription import WARNING_MODEL_TECHNIQUE_INVALID, parse_rpe
 from ..domain.progression_engine import (
     DEFAULT_FATIGUE_CONTEXT,
@@ -87,6 +89,10 @@ class PairRequest:
     # M97 F1: objetivo de treino do item (VALOR do dono `domain/training_goal`;
     # `None` = default). A trilha e a fase lidas sao SO as desse objetivo.
     training_goal: Optional[str] = None
+    # #188: academia da maquina, JA resolvida pelo dono
+    # `domain/equipment_context.context_gym_id` (`None` = peso livre ou sem
+    # academia: a trilha de sempre). Quem monta o pedido nao decide se e maquina.
+    gym_context: Optional[int] = None
 
     @property
     def key(self) -> tuple[int, Optional[int]]:
@@ -139,6 +145,30 @@ def readiness_by_group(projected_recovery: Sequence[Mapping[str, Any]]) -> dict[
     return contracts
 
 
+def gym_contexts_by_gym_equipment(conn: Any, ids: Sequence[Any]) -> dict[int, Optional[int]]:
+    """#188: `gym_equipment.id` -> academia do contexto de MAQUINA
+    (`domain/equipment_context.context_gym_id` sobre `gym_equipment.gym_id` e
+    `equipment_types.code`; `None` = peso livre). Uma leitura em lote. Falha de
+    leitura PROPAGA (como `equipment_by_gym_equipment`, a leitura irma): cair
+    em silencio para a trilha sem academia prescreveria a carga de outra
+    academia; quem chama ja trata a falha da prescricao (log + degradacao)."""
+    wanted = sorted({int(value) for value in ids or () if value})
+    if not wanted:
+        return {}
+    placeholders = ", ".join(["%s"] * len(wanted))
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT ge.id, ge.gym_id, et.code AS equipment_type_code "
+            "FROM gym_equipment ge "
+            "JOIN equipment e ON e.id = ge.equipment_id "
+            "LEFT JOIN equipment_types et ON et.id = e.equipment_type_id "
+            f"WHERE ge.id IN ({placeholders})",
+            tuple(wanted),
+        )
+        rows = cur.fetchall() or []
+    return {int(row["id"]): context_gym_id(row.get("equipment_type_code"), row.get("gym_id")) for row in rows}
+
+
 def _track_for(
     request: PairRequest,
     tracks: Mapping[tuple, TrackState],
@@ -164,7 +194,12 @@ def _track_for(
     `progression_state.load_tracks`/`save_track`."""
     sets_count = int(request.model_sets_count) if request.model_sets_count else None
     existing, _own_history = resolve_track(
-        tracks, request.exercise_id, request.equipment_id, request.fatigue_context, request.training_goal
+        tracks,
+        request.exercise_id,
+        request.equipment_id,
+        request.fatigue_context,
+        request.training_goal,
+        request.gym_context,
     )
     if existing is None:
         existing = TrackState(
@@ -173,6 +208,7 @@ def _track_for(
             muscle_group_id=muscle_group_id,
             fatigue_context=request.fatigue_context or DEFAULT_FATIGUE_CONTEXT,
             training_goal=goal_value(request.training_goal),
+            gym_context=request.gym_context if request.equipment_id is not None else None,
         )
     return replace(
         existing,
@@ -193,7 +229,12 @@ def _fatigue_evidence(request: PairRequest, tracks: Mapping[tuple, TrackState]) 
     if request.fatigue_context is None or request.equipment_id is None:
         return None
     _track, own_history = resolve_track(
-        tracks, request.exercise_id, request.equipment_id, request.fatigue_context, request.training_goal
+        tracks,
+        request.exercise_id,
+        request.equipment_id,
+        request.fatigue_context,
+        request.training_goal,
+        request.gym_context,
     )
     return {"fatigue_context": request.fatigue_context, "fatigue_context_own_history": own_history}
 

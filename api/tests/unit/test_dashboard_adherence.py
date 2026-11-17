@@ -42,7 +42,7 @@ from app.intelligence.dashboard.adherence_service import (
     expected_sessions_in_window,
     prescribed_from_plan_item,
 )
-from app.intelligence.dashboard.session_records import exposures_to_compare, parse_history
+from app.intelligence.dashboard.exposure_service import session_progressions_from_rows
 from app.intelligence.dashboard.metrics_registry import (
     PlanItemStatus,
     SessionExecutionStatus,
@@ -462,13 +462,44 @@ def _sets(activity_id, series, *, exercise_id=500):
     ]
 
 
+def _contar(historico, series, activity_ids):
+    """Recordes (historico de `session_records`) e progressoes decididas pelo
+    DONO (`exposure_service.session_progressions_from_rows`, a seta da sessao)
+    a partir das mesmas exposicoes e series, no formato das linhas do lote."""
+    por_row: dict = {}
+    for item in series:
+        por_row.setdefault(item["exercise_row_id"], []).append(item)
+    rows = [
+        {
+            "canonical_exercise_id": h["exercise_id"],
+            "exercise_name": None,
+            "exercise_row_id": h["exercise_row_id"],
+            "activity_id": h["activity_id"],
+            "local_date": None,
+            "started_at": None,
+            "position_in_session": 1,
+            "training_goal": None,
+            "equipment_id": h["equipment_id"],
+            "gym_id": None,
+            "equipment_type_code": None,
+            "load_convention": h["load_convention"],
+            "prescribed_reps_target": h["prescribed_reps_target"],
+            **{chave: serie[chave] for chave in ("set_number", "reps", "weight_kg", "rpe")},
+        }
+        for h in historico
+        for serie in por_row.get(h["exercise_row_id"], [])
+    ]
+    progressoes = session_progressions_from_rows(rows, activity_ids)
+    return compute_records_and_progressions(historico, progressoes, activity_ids)
+
+
 def test_sessao_pulada_nao_desloca_a_comparacao_entre_exposicoes():
     """Faltar a um treino reduz a aderencia, mas a sessao seguinte continua
     sendo comparada com a ANTERIOR do mesmo exercicio - o buraco nao empurra
     ninguem para o lugar da que faltou."""
     historico = [_hist(1, max_kg=60.0), _hist(3, max_kg=60.0)]
     series = _sets(1, [(8, 60.0, None)] * 3) + _sets(3, [(10, 60.0, None)] * 3)
-    resultado = compute_records_and_progressions(historico, series, [1, 3])
+    resultado = _contar(historico, series, [1, 3])
     # mesma carga, mais reps por serie -> progressao; carga igual -> sem recorde
     assert resultado[3] == {"records": 0, "progressions": 1}
     # A primeira sessao do exercicio nao e recorde: nao havia marca a bater.
@@ -497,17 +528,22 @@ def test_troca_de_maquina_nao_e_recorde_nem_progressao():
     ]
     series = _sets(1, [(10, 40.0, 8)] * 3) + _sets(2, [(12, 80.0, 8)] * 3)
     assert record_exercise_ids(historico) == {}
-    assert compute_records_and_progressions(historico, series, [2]) == {2: {"records": 0, "progressions": 0}}
+    assert _contar(historico, series, [2]) == {2: {"records": 0, "progressions": 0}}
 
 
-def test_progressao_compara_com_a_anterior_da_mesma_chave_saltando_outra_maquina():
+def test_volta_a_maquina_depois_de_outra_nao_e_progressao():
+    """Issue #188 (dono): a troca de aparelho no meio INTERROMPE a sequencia;
+    a sessao de volta nao e comparada com a de antes da troca (antes, a lista
+    pulava a outra maquina e contava 1 progressao)."""
     historico = [
         _hist(1, equipment_id=7, max_kg=40.0),
         _hist(2, equipment_id=9, max_kg=80.0),
         _hist(3, equipment_id=7, max_kg=40.0),
     ]
-    series = _sets(1, [(8, 40.0, None)] * 3) + _sets(3, [(10, 40.0, None)] * 3)
-    assert compute_records_and_progressions(historico, series, [3])[3]["progressions"] == 1
+    series = (
+        _sets(1, [(8, 40.0, None)] * 3) + _sets(2, [(10, 80.0, None)] * 3) + _sets(3, [(10, 40.0, None)] * 3)
+    )
+    assert _contar(historico, series, [3])[3]["progressions"] == 0
 
 
 def test_mesma_maquina_com_convencao_diferente_nao_e_comparavel():
@@ -530,7 +566,7 @@ def test_assistido_menos_assistencia_e_recorde_e_mais_assistencia_nao():
         + _sets(3, [(8, 40.0, None)] * 3)
     )
     assert record_exercise_ids(historico) == {2: {500}}
-    resultado = compute_records_and_progressions(historico, series, [3])
+    resultado = _contar(historico, series, [3])
     assert resultado[3] == {"records": 0, "progressions": 0}
 
 
@@ -540,7 +576,7 @@ def test_assistido_mesma_assistencia_mais_reps_e_progressao():
         _hist(2, convention="assisted", max_kg=20.0),
     ]
     series = _sets(1, [(6, 20.0, None)] * 3) + _sets(2, [(8, 20.0, None)] * 3)
-    assert compute_records_and_progressions(historico, series, [2])[2]["progressions"] == 1
+    assert _contar(historico, series, [2])[2]["progressions"] == 1
 
 
 def test_assistido_menos_assistencia_com_reps_na_faixa_e_progressao():
@@ -549,13 +585,13 @@ def test_assistido_menos_assistencia_com_reps_na_faixa_e_progressao():
         _hist(2, convention="assisted", max_kg=20.0, reps_target="8-10"),
     ]
     series = _sets(1, [(10, 30.0, None)] * 3) + _sets(2, [(8, 20.0, None)] * 3)
-    assert compute_records_and_progressions(historico, series, [2])[2] == {"records": 1, "progressions": 1}
+    assert _contar(historico, series, [2])[2] == {"records": 1, "progressions": 1}
 
 
 def test_mais_carga_com_menos_reps_nao_e_progressao_sem_e1rm():
     historico = [_hist(1, max_kg=60.0), _hist(2, max_kg=70.0)]
     series = _sets(1, [(10, 60.0, None)] * 3) + _sets(2, [(6, 70.0, None)] * 3)
-    resultado = compute_records_and_progressions(historico, series, [2])
+    resultado = _contar(historico, series, [2])
     # recorde de CARGA sim (70 > 60 na mesma chave); progressao nao.
     assert resultado[2] == {"records": 1, "progressions": 0}
 
@@ -564,13 +600,13 @@ def test_mais_carga_com_menos_reps_progride_quando_o_e1rm_decide():
     historico = [_hist(1, max_kg=60.0), _hist(2, max_kg=80.0)]
     # e1RM: 60 x (1 + 10/30) = 80 ; 80 x (1 + 8/30) = 101,3 (+26%, <= 12 reps)
     series = _sets(1, [(10, 60.0, 10)]) + _sets(2, [(8, 80.0, 10)])
-    assert compute_records_and_progressions(historico, series, [2])[2]["progressions"] == 1
+    assert _contar(historico, series, [2])[2]["progressions"] == 1
 
 
 def test_menos_series_nao_e_progressao_nem_regressao_por_si():
     historico = [_hist(1, max_kg=60.0), _hist(2, max_kg=60.0)]
     series = _sets(1, [(10, 60.0, None)] * 4) + _sets(2, [(10, 60.0, None)] * 2)
-    assert compute_records_and_progressions(historico, series, [2])[2]["progressions"] == 0
+    assert _contar(historico, series, [2])[2]["progressions"] == 0
 
 
 def test_sessao_sem_carga_registrada_nao_vira_recorde():
@@ -585,7 +621,7 @@ def test_peso_corporal_nao_tem_recorde_de_carga_mas_progride_por_reps():
         _hist(2, convention="bodyweight", max_kg=None),
     ]
     series = _sets(1, [(10, None, None)] * 3) + _sets(2, [(12, None, None)] * 3)
-    assert compute_records_and_progressions(historico, series, [2])[2] == {"records": 0, "progressions": 1}
+    assert _contar(historico, series, [2])[2] == {"records": 0, "progressions": 1}
 
 
 def test_recorde_identifica_o_exercicio_e_nao_so_a_contagem():
@@ -609,12 +645,6 @@ def test_historico_sem_equipamento_compara_pela_excecao_do_8_1():
 def test_equipamento_nao_resolvido_misturado_nao_e_comparavel():
     historico = [_hist(1, equipment_id=7, max_kg=60.0), _hist(2, equipment_id=None, max_kg=65.0)]
     assert record_exercise_ids(historico) == {}
-
-
-def test_exposicoes_comparadas_sao_so_as_da_pagina_e_suas_anteriores():
-    historico = [_hist(1, max_kg=60.0), _hist(2, max_kg=60.0), _hist(3, max_kg=60.0)]
-    assert exposures_to_compare(parse_history(historico), [3]) == [20, 30]
-    assert exposures_to_compare(parse_history(historico), [1]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -654,3 +684,104 @@ def test_lista_vazia_responde_insuficiente_e_nao_zeros():
     assert payload["total"] == 0
     assert payload["has_more"] is False
     assert payload["data_quality"] is DataQuality.INSUFFICIENT
+
+
+# ---------------------------------------------------------------------------
+# #188: progressoes indisponiveis (dono truncou ou falhou) nunca viram "0"
+# ---------------------------------------------------------------------------
+
+
+def _hist_page(aid, carga, ex=1001):
+    return {
+        "activity_id": aid,
+        "exercise_row_id": aid,
+        "exercise_id": ex,
+        "local_date": None,
+        "started_at": None,
+        "position_in_session": 1,
+        "equipment_id": 11,
+        "load_convention": "total",
+        "prescribed_reps_target": "8-12",
+        "max_weight_kg": carga,
+        "min_weight_kg": carga,
+    }
+
+
+class _PageCursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _PageConn:
+    def cursor(self):
+        return _PageCursor()
+
+
+def _page_records(monkeypatch, progressoes_fake):
+    from app.intelligence.dashboard import adherence_service as svc
+
+    historico = [_hist_page(1, 60.0), _hist_page(2, 70.0)]
+
+    def fake_rows(conn, sql, params):
+        if sql.startswith("EXERCISES"):
+            return [{"activity_id": 2, "exercise_id": 1001}]
+        if sql.startswith("HIST"):
+            return historico
+        return []
+
+    monkeypatch.setattr(svc, "_rows", fake_rows)
+    monkeypatch.setattr(svc, "SESSION_EXERCISES_SQL", "EXERCISES {placeholders}")
+    monkeypatch.setattr(svc, "history_sql", lambda expr: "HIST {placeholders}")
+    monkeypatch.setattr(svc, "load_convention_select_expr", lambda cursor: "NULL")
+    monkeypatch.setattr(svc, "build_session_items", lambda *a, **k: [])
+    monkeypatch.setattr(svc, "_template_slot_names", lambda conn, ids: {})
+    monkeypatch.setattr(svc, "load_lineage_roots", lambda fetch, ids: {})
+    monkeypatch.setattr(svc, "get_session_progressions", progressoes_fake)
+    detalhes = svc._collect_page_details(
+        _PageConn(),
+        user_id=7,
+        session_rows=[{"activity_id": 2, "local_date": date(2026, 9, 2), "session_status": "completed"}],
+        max_local_date=date(2026, 9, 2),
+    )
+    return svc, detalhes["records"]
+
+
+def _falha(*a, **k):
+    raise RuntimeError("Data API caiu")
+
+
+@pytest.mark.parametrize("fake", [lambda *a, **k: None, _falha], ids=["truncado", "excecao"])
+def test_progressoes_indisponiveis_nao_viram_zero(monkeypatch, caplog, fake):
+    with caplog.at_level("WARNING"):
+        svc, records = _page_records(monkeypatch, fake)
+    # Recorde preservado (70 > 60 na mesma chave); progressoes sem valor.
+    assert records == {2: {"records": 1, "progressions": None}}
+    payload = svc._session_payload(
+        {"activity_id": 2, "session_status": "completed", "workout_plan_id": 3},
+        totals={},
+        effective={},
+        counts={},
+        records=records[2],
+        slot_names={},
+    )
+    prog = payload["progressions"]
+    assert prog["value"] is None
+    assert prog["data_quality"] == DataQuality.INSUFFICIENT
+    assert prog["limitations"][0] == svc.PROGRESSIONS_UNAVAILABLE_LIMITATION
+    assert payload["records"]["value"] == 1
+    if fake is _falha:
+        assert "session_progressions falhou" in caplog.text
+
+
+def test_progressoes_completas_seguem_contadas(monkeypatch):
+    svc, records = _page_records(monkeypatch, lambda *a, **k: {2: {1001}})
+    assert records == {2: {"records": 1, "progressions": 1}}
+    payload = svc._session_payload(
+        {"activity_id": 2, "session_status": "completed", "workout_plan_id": 3},
+        totals={}, effective={}, counts={}, records=records[2], slot_names={},
+    )
+    assert payload["progressions"]["value"] == 1
+    assert svc.PROGRESSIONS_UNAVAILABLE_LIMITATION not in payload["progressions"]["limitations"]

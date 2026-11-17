@@ -450,8 +450,7 @@ PADROES: tuple[Padrao, ...] = (
         # (`reliable_e1rm` para o valor). Consumidor chama o dono; comparar
         # `<= E1RM_MAX_RELIABLE_REPS` / `<= THRESHOLDS["e1rm_max_reliable_reps"]`
         # fora dele é cópia. Proibição pura (o dono compara com o `max_reps`
-        # do argumento). O SQL de `analytics` que interpola o teto no WHERE fica
-        # na allowlist (filtro em SQL, não tem como chamar o predicado Python).
+        # do argumento; o filtro SQL vem de `e1rm.reliable_reps_sql`).
         regex=re.compile(
             r"""<=\s*\{?\s*(?:int\(\s*)?(?:[\w.]*THRESHOLDS\[\s*["']e1rm_max_reliable_reps["']\s*\]|[\w.]*E1RM_MAX_RELIABLE_REPS\b)"""
         ),
@@ -535,8 +534,20 @@ PADROES: tuple[Padrao, ...] = (
         # fadiga; quem prescreve resolve com `progression_engine.resolve_track`
         # (contexto pedido, fallback sem desconto). Pega `tracks.get((a, b))` e
         # `tracks[(a, b)]` com tupla de DUAS posições.
+        # Issue #188 (carga1, 2026-11-17): a chave ganhou objetivo e academia; montar a tupla à mão (qualquer
+        # tamanho), comparar `key[0]`/`key[1]` ou filtrar `track.exercise_id ==`/`track.equipment_id ==` fora
+        # do dono replica a resolução de trilha. Quem consome usa `track_key`/`resolve_track`/helpers do dono.
+        # Rodada 1: filtro pelo par com variável qualquer (`t.exercise_id == X and t.equipment_id == Y`, na mesma
+        # linha, em qualquer ordem) também replica; o dono expõe `current_track_for_pair`.
+        # Limite conhecido (fecho #188): o filtro do par QUEBRADO em duas linhas (`if t.exercise_id == ex`
+        # numa, `and t.equipment_id == eq` na seguinte) não é pego, porque a guarda lê linha a linha;
+        # o exemplo negativo abaixo documenta o limite. A revisão pega esse caso.
         regex=re.compile(
-            r"\btracks\s*(?:\.get\(|\[)\s*\(\s*(?:[^(),]|\([^()]*\))+,\s*(?:[^(),]|\([^()]*\))+\)\s*[\])]"
+            r"\btracks\s*(?:\.get\(|\[)\s*\("
+            r"|\bkey\[[01]\]\s*=="
+            r"|\btrack\.(?:exercise_id|equipment_id)\s*=="
+            r"|\.exercise_id\s*==[^\n]*\.equipment_id\s*=="
+            r"|\.equipment_id\s*==[^\n]*\.exercise_id\s*=="
         ),
         donos=("api/app/domain/progression_engine.py",),
         inventario="F1",
@@ -2121,6 +2132,182 @@ PADROES: tuple[Padrao, ...] = (
         donos=("api/app/domain/nutrition/energy_expenditure.py",),
         inventario="NUT-ADAPT (§97)",
     ),
+    Padrao(
+        chave="contexto_maquina_academia",
+        regra="códigos de tipo de máquina (`MACHINE`, `PLATE_LOADED`, `CABLE_STATION`) como literal ou o limiar de "
+        "calibração (`CALIBRATION_MIN_COMPARABLE_SESSIONS`) fora do dono, ou a janela do veredito "
+        "(`VERDICT_LOOKBACK_EXPOSURES`) redefinida fora de `comparability.py`",
+        # Issue #188 (2026-11-16, decisões do usuário): máquina separa a progressão por academia e, só depois de
+        # uma troca de aparelho ou academia (`comparability.in_equipment_calibration`), calibra até a 3ª sessão
+        # comparável. O dono é `domain/equipment_context.py` (`is_machine_type`, `context_gym_id`,
+        # `is_calibrating`); a comparabilidade chama as funções, o SQL só seleciona `et.code` (sem filtrar por
+        # código) e a tela recebe o motivo pronto. Literal entre aspas: `MACHINE` solto (enum, comentário) não casa.
+        # "Veredito sobre 8 em tudo" (2026-11-16): a janela do veredito (inclusive da calibração) mora só em
+        # `comparability.VERDICT_LOOKBACK_EXPOSURES`; consumidores importam o nome, nunca o redefinem.
+        regex=re.compile(
+            r"[\"'`](?:MACHINE|PLATE_LOADED|CABLE_STATION)[\"'`]"
+            r"|\bCALIBRATION_(?:MIN_COMPARABLE_SESSIONS|LOOKBACK_EXPOSURES)\b"
+            r"|\bVERDICT_LOOKBACK_EXPOSURES\s*(?::[^=\n]*)?=(?!=)"
+        ),
+        donos=("api/app/domain/equipment_context.py", "api/app/intelligence/dashboard/comparability.py"),
+        inventario="#188",
+    ),
+    Padrao(
+        chave="progressao_calculo_no_frontend",
+        regra="refazer no frontend a anterior por posição (`.length - 2]`), a variação (`pctChange`), a direção "
+        "(`loadBetterWhen`), o e1RM decisivo (`isE1rmDecisive`) ou o desfecho pelo sinal do delta",
+        # Issue #188, rodada 1B: o par, a variação, a direção e o desfecho (`metrics[].outcome`) saem prontos
+        # do dono (`comparability.metric_outcome`/`metric_change`/`metric_better_when`); a tela só pinta.
+        regex=re.compile(
+            r"\.length\s*-\s*2\s*\]"
+            r"|\b(?:pctChange|loadBetterWhen|isE1rmDecisive)\b"
+            r"|\bdelta\w*\s*[<>]=?\s*0\b"
+            r"|Math\.sign\("
+            r"|load_convention\s*===?\s*[\"'`]bodyweight[\"'`]"
+        ),
+        donos=("api/app/intelligence/dashboard/comparability.py",),
+        inventario="#188",
+        escopo=(
+            "frontend/src/lib/exercise-progress.ts",
+            "frontend/src/app/(app)/dashboard/exercicios/[exerciseId]/ExerciseProgressClient.tsx",
+            "frontend/src/mobile/screens/evolucao/ExercicioScreen.tsx",
+            "frontend/src/lib/progression-chart.ts",
+            "frontend/src/lib/dashboard-status.ts",
+            "frontend/src/app/(app)/exercicios/page.tsx",
+            "frontend/src/app/(app)/exercicios/ExerciciosCharts.tsx",
+            "frontend/src/mobile/screens/telas/ExerciciosScreen.tsx",
+            "frontend/src/app/(app)/dashboard/progressao/DashboardProgressaoClient.tsx",
+            "frontend/src/mobile/screens/evolucao/ProgressaoScreen.tsx",
+        ),
+    ),
+    Padrao(
+        chave="volume_calculo_no_frontend",
+        regra="refazer no frontend a direção/variação do volume (`getTrendBadge`, `getTrendDirection`, "
+        "`sessionDelta`, `Math.abs(delta) <=`, `epsilon`), as janelas (`buildWindow`), o RPE ponderado "
+        "(`rpe_sum`/`rpe_count`) ou o `volume_delta` atual - anterior",
+        # Issue #188, etapa 3: comparativos semanal, por equipamento, por período e mapa de calor saem
+        # prontos do dono (`volume_comparison` + `slot_session_comparison`, rota com `include=`); a tela só pinta.
+        regex=re.compile(
+            r"\b(?:getTrendBadge|getTrendDirection|sessionDelta|buildWindow|rpe_sum|rpe_count|epsilon)\b"
+            r"|\bcurrent_volume\w*\s*-\s*previous_volume"
+            r"|\bvolume_delta\w*\s*:\s*[\w.?]+\s*-\s*[\w.?]"
+            r"|(?:Math\.)?abs\(\s*delta\w*\s*\)\s*<="
+            # #188 (fecho): contribuição por exercício sai pronta do drill-down
+            # (`exercise_contributions`, dono `muscle_summary_service`); o cliente não soma estímulo.
+            r"|\bcontributionsByExercise\b"
+            r"|\bstimulus\s*\+="
+            r"|\+=\s*[\w.?]*effective_sets_stimulus\b"
+            # #188 (passada B): tendencia por grupo (`pressure_rows`: variacao e tom) sai pronta de
+            # `/analytics/muscle-groups-mapped-trend` (dono `volume_comparison.variation_pct`/`variation_tone`).
+            r"|/\s*previous\b|-\s*previous\s*\)\s*/"
+            r"|\bvariation\s*>\s*[1-9]|\bvariation\s*<\s*-\s*\d"
+            r"|\btrendGroupTotals\b"
+        ),
+        donos=("api/app/intelligence/volume_comparison.py",),
+        inventario="#188",
+        escopo=(
+            "frontend/src/app/(app)/volume-grupamentos/VolumeGrupamentosClient.tsx",
+            "frontend/src/app/(app)/volume-grupamentos/VolumeGrupamentosCharts.tsx",
+            "frontend/src/lib/dashboard-muscles.ts",
+            "frontend/src/app/(app)/dashboard/musculos/MuscleSessionComparatives.tsx",
+            "frontend/src/mobile/screens/evolucao/MusculosExtras.tsx",
+            "frontend/src/lib/volume-grupamentos-view.ts",
+            "frontend/src/lib/slot-comparison.ts",
+            "frontend/src/app/(app)/dashboard/musculos/DashboardMusculosClient.tsx",
+            "frontend/src/mobile/screens/evolucao/MusculosScreen.tsx",
+            "frontend/src/lib/muscle-group-trend.ts",
+            "frontend/src/app/(app)/dashboard/musculos/MuscleGroupTrend.tsx",
+        ),
+    ),
+    Padrao(
+        chave="progressao_comparacao_fora_do_dono",
+        regra="comparar exposições ou chaves de comparabilidade (`compare_exposures(`, `keys_match(`, "
+        "`physical_keys_match(`, `paired_top_reps(`, `trailing_comparable_*`) num consumidor da progressão",
+        # Issue #188 (2026-11-16, regra do usuário: a progressão tem fonte única). O par "anterior vs atual", a
+        # sequência e as variações saem prontos do dono (`comparable_run`, `progression_outcome`,
+        # `latest_comparable_pair`, `exposure_service.latest_comparison`/`verdict_run_flags`). Escopo só nos
+        # consumidores ja fechados. Etapa 2 fechou
+        # insights, corpo, grupo, recuperacao, pacote de inteligencia e carga de treino (ADR 0015).
+        # Rodada 1B: também as peças internas da sequência (troca/calibração/academia, motivo de troca,
+        # comparação com a chave atual) e a janela crua do dono (`ComparableRun._window`).
+        regex=re.compile(
+            r"\b(?:compare_exposures|(?:physical_)?keys_match|paired_top_reps|physical_keys_match_any_gym"
+            r"|only_gym_differs|had_equipment_switch|in_equipment_calibration|physical_switch_reasons"
+            r"|mismatch_with_current)\s*\("
+            r"|\btrailing_comparable_\w+"
+            r"|\._window\b"
+        ),
+        donos=(
+            "api/app/intelligence/dashboard/comparability.py",
+            "api/app/intelligence/dashboard/exposure_service.py",
+        ),
+        inventario="#188",
+        escopo=(
+            "api/app/analytics.py",
+            "api/app/intelligence/progression_service.py",
+            "api/app/intelligence/dashboard/overview_service.py",
+            "api/app/domain/exercise_briefing.py",
+            "api/app/exercise_briefing.py",
+            # Passada A (lista de treinos): as progressoes por sessao vem do dono
+            # (`exposure_service.get_session_progressions`).
+            "api/app/intelligence/dashboard/adherence_service.py",
+            # Etapa 5 (#188): o RECORDE usa as funcoes do dono (`comparability.record_key`/
+            # `record_key_comparable`), nao as primitivas; entra sem allowlist.
+            "api/app/intelligence/dashboard/session_records.py",
+            # Passada B (recuperacao): a razao de desempenho e do par do dono
+            # (`comparability.latest_session_performance_ratios`).
+            "api/app/intelligence/exercise_performance.py",
+            # Passada C (#188): varredura limpa, entram sem allowlist.
+            "api/app/intelligence/dashboard/recovery_signals_service.py",
+            "api/app/intelligence/volume_service.py",
+            "api/app/intelligence/recovery_read_model.py",
+            # Etapa 2 (#188): consumidores fechados, entram sem allowlist.
+            "api/app/intelligence/dashboard/insight_rules.py",
+            "api/app/intelligence/dashboard/body_service.py",
+            "api/app/intelligence/muscle_group_performance.py",
+            "api/app/intelligence/muscle_recovery_service.py",
+            "api/app/intelligence/dashboard/intelligence_package.py",
+            "api/app/intelligence/training_load_service.py",
+        ),
+    ),
+    Padrao(
+        chave="progressao_anterior_fora_do_dono",
+        regra="escolher a exposição anterior por posição (`run[-2]`, `exposures[-2]`) ou comparar chaves de "
+        "comparabilidade por igualdade (`item.get(\"_key\") == ...`) num consumidor da progressão",
+        # Issue #188: a anterior comparável é `previous_index` do par pronto e "pertence à sequência" é
+        # `in_verdict_run`/`verdict_run_flags` (dono `comparability.latest_comparable_pair`/`comparable_run`).
+        # Rodada 1B: `[-2]` e `[len(x) - 2]` sobre QUALQUER nome no escopo.
+        regex=re.compile(
+            r"\[\s*-\s*2\s*\]"
+            r"|\[\s*len\([^\]]*\)\s*-\s*2\s*\]"
+            r"|_key[\"']\)\s*[!=]="
+            r"|\[[\"']_key[\"']\]\s*[!=]="
+        ),
+        # So `comparability` escolhe a anterior (`latest_comparable_pair`, `ComparablePair.previous_index`).
+        donos=("api/app/intelligence/dashboard/comparability.py",),
+        inventario="#188",
+        escopo=(
+            "api/app/analytics.py",
+            "api/app/intelligence/progression_service.py",
+            "api/app/intelligence/dashboard/overview_service.py",
+            "api/app/domain/exercise_briefing.py",
+            "api/app/exercise_briefing.py",
+            "api/app/intelligence/dashboard/adherence_service.py",
+            "api/app/intelligence/dashboard/session_records.py",
+            "api/app/intelligence/exercise_performance.py",
+            # Passada C (#188): varredura limpa, entram sem allowlist.
+            "api/app/intelligence/dashboard/recovery_signals_service.py",
+            "api/app/intelligence/volume_service.py",
+            "api/app/intelligence/recovery_read_model.py",
+            # Etapa 2 (#188): consumidores fechados, entram sem allowlist.
+            "api/app/intelligence/dashboard/insight_rules.py",
+            "api/app/intelligence/dashboard/body_service.py",
+            "api/app/intelligence/muscle_group_performance.py",
+            "api/app/intelligence/muscle_recovery_service.py",
+            "api/app/intelligence/dashboard/intelligence_package.py",
+            "api/app/intelligence/training_load_service.py",
+        ),
+    ),
 )
 
 PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
@@ -2225,9 +2412,8 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     # COD-04: `_e1rm_reps_reliable` e `exposure_service.e1rm_reliable` chamam
     # `e1rm.is_reliable_reps`. Sobra o filtro em SQL do e1RM por grupo, que
     # interpola o teto do dono (não há como chamar o predicado Python no WHERE).
-    "e1rm_confiavel_paralelo": {
-        "api/app/analytics.py": 1,
-    },
+    # #188 etapa 3: o SQL de `analytics` usa `e1rm.reliable_reps_sql` (dono).
+    "e1rm_confiavel_paralelo": {},
     # E3: a ficha (`MuscleActivationPreview`, `ExercisesTable`), o breakdown e o
     # resumo do Modo B (e os legados `mode_a_legacy`/`mode_b_legacy`) mandavam
     # `{mapping_id, sets_count}` sem a técnica; desde o Lote 4b usam o payload único.
@@ -2251,7 +2437,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "numeros_prompt_cardio": {},  # `cardio_agent_ai` interpola `cardio_policy`
     "tonelagem_convertida": {},  # 2026-10-10: `workout_summary_ai` interpola `format_tonnage`
     "fadiga_previa": {},  # F1 (2026-10-07): dono novo, nasce sem cópias
-    "trilha_sem_contexto": {},  # F1 PR 2 (2026-10-07): nasce vazia (proibição pura)
+    "trilha_sem_contexto": {},  # F1 PR 2 (2026-10-07): nasceu vazia (proibição pura)
     "adocao_carga_abaixo_do_piso": {},  # M77 (2026-10-11): nasce vazia
     "mesmas_reps_rpe_maior": {},  # P8 (2026-10-11): nasce vazia
     "dose_exigida_series": {},  # Lote 2/P3 RPE 10 (2026-10-11): nasce vazia (a cópia do avaliador saiu)
@@ -2313,11 +2499,9 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     # (`domain/progression_status_labels.py`; FE via `motor-constants.generated.json`).
     # Contagem única de progressão (2026-11-01, C12): nasce vazia.
     "status_progressao_paralelo": {},
-    "rotulo_progressao": {
-        # Tendência de VOLUME do grupo ("Estável" = volume sem variação), não
-        # status de progressão por exercício; permanente.
-        "frontend/src/app/(app)/volume-grupamentos/VolumeGrupamentosClient.tsx": 1,
-    },
+    # Issue #188, etapa 3: a tendência de volume ("Estável") sai pronta do dono; a
+    # entrada de `VolumeGrupamentosClient.tsx` caiu (falha até a tarefa de frontend).
+    "rotulo_progressao": {},
     # NUT-L0 (2026-10-15): 3 cópias em Python e 1 no TS saíram no mesmo PR; nasce vazia.
     "rotulo_site_medida": {},
     # NUT-L0 (2026-10-16, revisão do #556): a rota do PATCH /meta deixou de decidir a
@@ -2364,6 +2548,11 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "pausa_padrao_rest_pause": {},  # §64.1 (2026-10-25): nasce vazia
     "motivo_manter_carga": {},  # M96 (2026-10-25): nasce vazia
     "padrao_laboral": {},  # M100 (2026-10-27): nasce vazia
+    "contexto_maquina_academia": {},  # issue #188 (2026-11-16): nasce vazia
+    "progressao_comparacao_fora_do_dono": {},  # issue #188 (2026-11-16): nasce vazia
+    "progressao_anterior_fora_do_dono": {},  # issue #188 (2026-11-16): nasce vazia
+    "progressao_calculo_no_frontend": {},  # issue #188, rodada 1B (2026-11-16): nasce vazia
+    "volume_calculo_no_frontend": {},  # issue #188, etapa 3 (2026-11-16): nasce vazia
 }
 
 
@@ -2870,9 +3059,19 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "trilha_sem_contexto": (
         ("track = tracks.get((exercise_id, equipment_id))", "tracks[(int(ex), int(eq))].working_load_kg",
-         "found = tracks.get((query.exercise_id, eq))"),
+         "found = tracks.get((query.exercise_id, eq))", "tracks[(ex, eq, ctx)]",
+         "tracks.get((ex, eq, ctx, goal, gym))",
+         "any(key[0] == int(exercise_id) and key[1] == int(equipment_id) for key in tracks)",
+         "[t for key, t in tracks.items() if key[0] == ex]", "if track.equipment_id == eq:",
+         "[t for t in tracks if t.exercise_id == exercise_id and t.equipment_id == equipment_id]",
+         "if row.equipment_id == eq and row.exercise_id == ex:"),
         ("tracks.get(track_key(ex, eq, ctx))", "resolve_track(tracks, ex, eq, ctx)",
-         "tracks.get(request.key)", "tracks[(ex, eq, ctx)]"),
+         "tracks.get(request.key)", "key = (int(key[0]), int(key[1]))", "exercise_id=key[0],",
+         "if key[0] != VOLUME_REDUCED", "tracks[key]",
+         "current_track_for_pair(tracks, ex, eq, gym)", "if t.exercise_id == ex:",
+         "if t.exercise_id != ex or t.equipment_id != eq:",
+         # limite conhecido: a 2ª linha do filtro do par quebrado em duas linhas escapa (ver o `Padrao`)
+         "and t.equipment_id == equipment_id"),
     ),
     "adocao_carga_abaixo_do_piso": (
         ("return all(item.reps is not None and int(item.reps) < int(reps_min) for item in working)",
@@ -3551,6 +3750,61 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("next.reason_label", "NEXT_SET_REASON_LABELS[next.reason]", '"Estado dentro do esperado: dizer isso"',
          "mantenha a carga executada ou reduza-a"),
     ),
+    "contexto_maquina_academia": (
+        ("if code in ('MACHINE', 'PLATE_LOADED'):", "AND et.code IN ('MACHINE', 'CABLE_STATION')",
+         "type === `PLATE_LOADED`", "len(run) < CALIBRATION_MIN_COMPARABLE_SESSIONS",
+         "history[-CALIBRATION_LOOKBACK_EXPOSURES:]", "VERDICT_LOOKBACK_EXPOSURES = 8",
+         "VERDICT_LOOKBACK_EXPOSURES=12", "VERDICT_LOOKBACK_EXPOSURES: int = 8",
+         "VERDICT_LOOKBACK_EXPOSURES: Final[int] = 8"),
+        ("et.code                   AS equipment_type_code,", "gym_id=context_gym_id(code, gym)",
+         "is_calibrating(len(run))", "MACHINE_TYPE_CODES", "'MACHINE_LEARNING'",
+         "CALIBRATION_LOOKBACK", "MAX_BATCH_EXPOSURES_PER_EXERCISE = VERDICT_LOOKBACK_EXPOSURES",
+         "if n == VERDICT_LOOKBACK_EXPOSURES:", "max(VERDICT_LOOKBACK_EXPOSURES, limit)",
+         "def f(n: int = VERDICT_LOOKBACK_EXPOSURES):"),
+    ),
+    "progressao_comparacao_fora_do_dono": (
+        ("status, _ = compare_exposures(previous, current)", "if keys_match(a.key, b.key):",
+         "paired_top_reps(previous, latest)", "trailing_comparable_run(summaries)",
+         "physical_keys_match (x, y)", "if only_gym_differs(a, b):", "had_equipment_switch(history)",
+         "in_equipment_calibration(run, history)", "physical_switch_reasons(prev.key, last.key)",
+         "mismatch_with_current(key, current)", "physical_keys_match_any_gym(a, b)", "run._window.indices"),
+        ("outcome = progression_outcome(to_summaries(exposures))", "pair.get(\"paired_reps\")",
+         "latest_comparison(exposures)", "comparable_run(summaries).indices",
+         "comparison_with_current(item[\"_key\"], current_key)", "\"mismatch_with_current\": None",
+         "run_flags(outcome, len(exposures))", "ctx.window.date_to"),
+    ),
+    "progressao_anterior_fora_do_dono": (
+        ("previous = run[-2] if len(run) >= 2 else None", "exposures[-2]", "item[\"_comparable_run\"][-2]",
+         "exposure.get(\"_key\") == verdict_key", "item['_key'] != key", "ramp[-1] == ramp[-2]",
+         "rows[ -2 ]", "summary[len(summary) - 2]", "items[len(items)-2]"),
+        ("exposures[pair.get(\"previous_index\")]", "no_veredito[activity_id]", "exposures[-1]",
+         "values[2]", "x[len(x) - 1]", "rows[-12]"),
+    ),
+    "progressao_calculo_no_frontend": (
+        ("exposures[exposures.length - 2]", "const pct = pctChange(curr, prev);", "loadBetterWhen(convention)",
+         "isE1rmDecisive(prev, curr)", "delta > 0 ? 'green' : 'red'", "deltaAbs < 0", "Math.sign(delta)",
+         "delta >= 0", "current?.load_convention === \"bodyweight\""),
+        ("exposures[exposures.length - 1]", "metric.outcome === 'improved'", "row.betterWhen",
+         "deltaPct == null", "reasons.length > 0", "e1rm_decisive", "Math.max(a, b)",
+         "load_convention: \"bodyweight\""),
+    ),
+    "volume_calculo_no_frontend": (
+        ("const trend = getTrendBadge(item.volume_delta);", "getTrendDirection(current, previous)",
+         "const d = sessionDelta(a, b)", "buildWindow(today, 'd7')", "rpe_sum += x", "acc.rpe_count",
+         "epsilon = 0.0001", "current_volume - previous_volume", "volume_delta: row.current - row.previous",
+         "if (Math.abs(delta) <= eps)", "if abs(delta) <= tolerance:",
+         "contributionsByExercise(sessions)", "bucket.stimulus += exposure.effective_sets_stimulus",
+         "total += exposure.effective_sets_stimulus",
+         "const variation = previous > 0 ? ((latest - previous) / previous) * 100 : null;",
+         "(latest - previous) /prev", "row.variation > 5 ? 'red'", "row.variation < -5 ? 'teal'",
+         "const totals = trendGroupTotals(ROWS);"),
+        ("item.volume_direction === 'up'", "volume_delta_kg: number", "row.volume_delta_kg",
+         "rpe_direction", "Math.abs(value)", "current_volume_kg", "volume_delta: -250",
+         "data.exercise_contributions", "row.stimulus", "effective_sets_stimulus: number",
+         "stimulus: Number(x)",
+         "row.variation_pct", "row.tone === 'up'", "row.variation > 0 ? '+' : ''", "variation_pct: number | null",
+         "data.pressure_rows", "previous_period"),
+    ),
 }
 
 
@@ -3890,7 +4144,6 @@ def test_a_guarda_enxerga_a_regra_no_dono():
         "set_type_paralelo",  # o dono gera o CASE (`sql_canonical_set_type_case`) e o FE lê o JSON exportado
         "recorde_paralelo",  # proibição pura: o dono é `record_events`, os critérios antigos não voltam
         "payload_ativacao_sem_tecnica",  # o dono monta o payload pelos campos (ACTIVATION_PAYLOAD_FIELDS)
-        "trilha_sem_contexto",  # proibição pura: o dono resolve por `track_key`/`resolve_track`
         "e1rm_confiavel_paralelo",  # proibição pura: o dono compara com o `max_reps` do argumento
         "exposicoes_minimas",  # o dono guarda o número (`plateau_min_exposures`), sem a frase
         "fator_carga_trabalho_texto",  # o dono usa constantes (WARMUP_LOAD_FACTORS, FEELER_*), sem prosa

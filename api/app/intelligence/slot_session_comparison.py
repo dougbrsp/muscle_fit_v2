@@ -59,7 +59,18 @@ mais recente com qualquer grupo dele, e o slot e o dessa sessao.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Callable, Iterable, Mapping, Optional
+
+from .volume_comparison import (
+    RPE_STABLE_TOLERANCE,
+    TREND_NO_TOLERANCE,
+    VOLUME_STABLE_TOLERANCE,
+    granularity_windows,
+    period_delta,
+    period_direction,
+    week_start_of,
+)
 
 # Quantas sessoes do mesmo slot o comparativo mostra (T-0..T-3).
 SLOT_COMPARISON_SESSIONS = 4
@@ -80,6 +91,7 @@ GROUPING_LEVELS: tuple[str, ...] = (LEVEL_VOLUME_CLASS, LEVEL_PARENT_GROUP, LEVE
 
 # Grupo sem nome na linha (mesmo fallback da leitura de volume e da tela).
 UNNAMED_GROUP_LABEL = "Outros"
+NO_EQUIPMENT_LABEL = "Sem equipamento"  # desempate da ordem; o payload segue com `equipment_name: null`
 
 SlotKey = tuple[int, int]
 
@@ -383,6 +395,89 @@ def _finish_equivalent_sets(session: dict[str, Any]) -> dict[str, Any]:
     return session
 
 
+# Grafico "T-0 vs T-1": os grupos mais treinados em T-0 (cabe no mobile).
+TOP_VOLUME_T0_LIMIT = 10
+
+
+def _value(period: Optional[Mapping[str, Any]], field: str) -> Optional[float]:
+    return None if period is None else period.get(field)
+
+
+def _annotate_periods(rows: list[dict[str, Any]], annotate: Callable[[dict, Mapping], None]) -> list[dict[str, Any]]:
+    """Cada periodo `t<k>` contra o imediatamente mais antigo `t<k+1>`
+    (`t3` e periodo sem vizinho ficam `None` nos campos novos)."""
+    for row in rows:
+        periods = row["by_period"]
+        for index, key in enumerate(PERIOD_KEYS):
+            current = periods.get(key)
+            if current is None:
+                continue
+            older_key = PERIOD_KEYS[index + 1] if index + 1 < len(PERIOD_KEYS) else None
+            annotate(current, periods.get(older_key) if older_key else None)
+    return rows
+
+
+def _annotate_volume(current: dict[str, Any], previous: Optional[Mapping[str, Any]]) -> None:
+    current["volume_delta_kg"] = period_delta(current.get("volume_kg"), _value(previous, "volume_kg"))
+    current["volume_direction"] = period_direction(
+        current.get("volume_kg"), _value(previous, "volume_kg"), VOLUME_STABLE_TOLERANCE
+    )
+    current["rpe_direction"] = period_direction(
+        current.get("avg_rpe"), _value(previous, "avg_rpe"), RPE_STABLE_TOLERANCE
+    )
+
+
+def _annotate_equivalent_sets(current: dict[str, Any], previous: Optional[Mapping[str, Any]]) -> None:
+    current["equivalent_sets_delta"] = period_delta(
+        current.get("equivalent_sets"), _value(previous, "equivalent_sets")
+    )
+    current["sets_direction"] = period_direction(
+        current.get("equivalent_sets"), _value(previous, "equivalent_sets"), VOLUME_STABLE_TOLERANCE
+    )
+
+
+def _volume_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Resumo da pagina (antes calculado na tela de volume por grupamento)."""
+    t0_rows = [row["by_period"]["t0"] for row in rows if row["by_period"].get("t0") is not None]
+    # Decisao do usuario (17/11/2026): RPE medio de T-0 PONDERADO pelas series de
+    # cada grupo; grupo sem RPE fica fora, mesmo arredondamento de `_finish_volume`.
+    rated = [(p["avg_rpe"], p.get("sets_count") or 0) for p in t0_rows if p.get("avg_rpe") is not None]
+    rated_sets = sum(sets for _, sets in rated)
+    return {
+        "by_period": {
+            key: sum((_value(row["by_period"].get(key), "volume_kg") or 0.0) for row in rows)
+            for key in PERIOD_KEYS
+        },
+        "groups_with_t0": len(t0_rows),
+        "groups_tracked": len(rows),
+        "avg_rpe_t0": round(sum(rpe * sets for rpe, sets in rated) / rated_sets, 2) if rated_sets > 0 else None,
+    }
+
+
+def _top_volume_t0(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Top `TOP_VOLUME_T0_LIMIT` por volume T-0 (desc, ordem estavel); periodo
+    ausente conta 0, como na tela."""
+    items = [
+        {
+            "group": row["group"],
+            "t0": _value(row["by_period"].get("t0"), "volume_kg") or 0.0,
+            "t1": _value(row["by_period"].get("t1"), "volume_kg") or 0.0,
+        }
+        for row in rows
+    ]
+    return sorted(items, key=lambda item: -item["t0"])[:TOP_VOLUME_T0_LIMIT]
+
+
+def _level_payload(volume: list[dict[str, Any]], equivalent_sets: list[dict[str, Any]]) -> dict[str, Any]:
+    volume = _annotate_periods(volume, _annotate_volume)
+    return {
+        "volume": volume,
+        "equivalent_sets": _annotate_periods(equivalent_sets, _annotate_equivalent_sets),
+        "totals": _volume_totals(volume),
+        "top_volume_t0": _top_volume_t0(volume),
+    }
+
+
 def build_slot_comparison(
     volume_rows: Iterable[Mapping[str, Any]],
     equivalent_sets_rows: Iterable[Mapping[str, Any]],
@@ -404,16 +499,235 @@ def build_slot_comparison(
         "sessions_per_slot": SLOT_COMPARISON_SESSIONS,
         "period_keys": list(PERIOD_KEYS),
         "levels": {
-            level: {
-                "volume": _comparison_rows(volume_rows, level, slots_by_activity, _accumulate_volume, _finish_volume),
-                "equivalent_sets": _comparison_rows(
+            level: _level_payload(
+                _comparison_rows(volume_rows, level, slots_by_activity, _accumulate_volume, _finish_volume),
+                _comparison_rows(
                     equivalent_sets_rows,
                     level,
                     slots_by_activity,
                     _accumulate_equivalent_sets,
                     _finish_equivalent_sets,
                 ),
-            }
+            )
             for level in GROUPING_LEVELS
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Comparativo semanal e tendencia atual x anterior (#188, etapa 3)
+# ---------------------------------------------------------------------------
+#
+# Antes somados na tela (`comparativeWeekRows` e `repsComparison` de
+# `VolumeGrupamentosClient.tsx`); mesma base, mesma conta, mesmos limiares.
+
+
+def _day_of(value: Any) -> date:
+    return date.fromisoformat(_iso(value)[:10])
+
+
+def _finish_week(week: dict[str, Any]) -> dict[str, Any]:
+    # Sem arredondar o RPE: a seta usa o valor cru, como a tela fazia.
+    rpe_sets = week.pop("_rpe_sets", 0)
+    rpe_sum = week.pop("_rpe_sum", 0.0)
+    week.setdefault("volume_kg", 0.0)
+    week.setdefault("sets_count", 0)
+    week["avg_rpe"] = rpe_sum / rpe_sets if rpe_sets > 0 else None
+    return week
+
+
+def _weekly_rows(rows: list[Mapping[str, Any]], level: str) -> list[dict[str, Any]]:
+    by_group: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group = grouping_key_of(row, level)
+        entry = by_group.setdefault(group["key"], {"group": group, "weeks": {}})
+        week_start = week_start_of(_day_of(row.get("local_date"))).isoformat()
+        week = entry["weeks"].setdefault(week_start, {"week_start": week_start})
+        _accumulate_volume(week, row)
+
+    result = []
+    for entry in by_group.values():
+        # As semanas mais recentes EM QUE O GRUPO APARECE (semana sem treino e pulada).
+        recent = sorted(entry["weeks"].values(), key=lambda week: week["week_start"], reverse=True)
+        picked: list[Optional[dict[str, Any]]] = [_finish_week(week) for week in recent[: len(PERIOD_KEYS)]]
+        picked += [None] * (len(PERIOD_KEYS) - len(picked))
+        result.append({"group": entry["group"], "by_period": dict(zip(PERIOD_KEYS, picked))})
+    return _annotate_periods(sorted(result, key=lambda item: _sort_key_group(item["group"])), _annotate_volume)
+
+
+def build_weekly_comparison(volume_rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Comparativo das ultimas semanas por nivel: volume somado por grupo x
+    semana (segunda), RPE ponderado por `sets_count` (RPE nulo nao entra), as
+    `len(PERIOD_KEYS)` semanas mais recentes do grupo em `t0..t3`, cada uma
+    contra a imediatamente mais antiga. `volume_rows`: as linhas de
+    `VolumeService.get_recent_exercise_volume` com a hierarquia anotada."""
+    rows = list(volume_rows)
+    return {
+        "period_keys": list(PERIOD_KEYS),
+        "levels": {level: _weekly_rows(rows, level) for level in GROUPING_LEVELS},
+    }
+
+
+def _annotate_equipment(current: dict[str, Any], previous: Optional[Mapping[str, Any]]) -> None:
+    # Setas da tela: series e ultimo peso, tolerancia de volume (epsilon 0.0001).
+    current["sets_delta"] = period_delta(current.get("sets_count"), _value(previous, "sets_count"))
+    current["sets_direction"] = period_direction(
+        current.get("sets_count"), _value(previous, "sets_count"), VOLUME_STABLE_TOLERANCE
+    )
+    current["last_weight_delta_kg"] = period_delta(current.get("last_weight_kg"), _value(previous, "last_weight_kg"))
+    current["last_weight_direction"] = period_direction(
+        current.get("last_weight_kg"), _value(previous, "last_weight_kg"), VOLUME_STABLE_TOLERANCE
+    )
+
+
+def _equipment_total(equipments: list[dict[str, Any]]) -> dict[str, Any]:
+    by_period: dict[str, Optional[dict[str, Any]]] = {}
+    for key in PERIOD_KEYS:
+        present = [eq["by_period"][key] for eq in equipments if eq["by_period"][key] is not None]
+        by_period[key] = (
+            {
+                "week_start": present[0]["week_start"],
+                "sets_count": sum(p["sets_count"] for p in present),
+                "volume_kg": sum(p["volume_kg"] for p in present),
+                # Decisao do usuario (17/11/2026): a MAIOR ultima carga entre os
+                # aparelhos na semana (nenhuma carga -> None), nunca a soma.
+                "last_weight_kg": max(
+                    (p["last_weight_kg"] for p in present if p["last_weight_kg"] is not None), default=None
+                ),
+            }
+            if present
+            else None
+        )
+    return {"equipment_name": None, "is_total": True, "by_period": by_period}
+
+
+def _equipment_rows(rows: list[Mapping[str, Any]], level: str) -> list[dict[str, Any]]:
+    by_group: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group = grouping_key_of(row, level)
+        entry = by_group.setdefault(group["key"], {"group": group, "weeks": set(), "equipments": {}})
+        week_start = week_start_of(_day_of(row.get("local_date"))).isoformat()
+        entry["weeks"].add(week_start)
+        # Sem equipamento ("" ou nulo) e uma linha so; o rotulo e da apresentacao.
+        weeks = entry["equipments"].setdefault(row.get("equipment_name") or None, {})
+        agg = weeks.setdefault(
+            week_start,
+            {"week_start": week_start, "sets_count": 0, "volume_kg": 0.0, "last_weight_kg": None, "_order": None},
+        )
+        agg["sets_count"] += int(row.get("sets_count") or 0)
+        agg["volume_kg"] += float(row.get("volume_kg") or 0.0)
+        order = (_iso(row.get("local_date")), int(row["activity_id"]))
+        if agg["_order"] is None or order >= agg["_order"]:  # ultima atividade da semana
+            agg["_order"] = order
+            agg["last_weight_kg"] = row.get("last_weight_kg")
+
+    result = []
+    for entry in by_group.values():
+        # As 4 semanas mais recentes EM QUE O GRUPO APARECE (qualquer equipamento).
+        top_weeks = sorted(entry["weeks"], reverse=True)[: len(PERIOD_KEYS)]
+        equipments = []
+        for name, weeks in entry["equipments"].items():
+            by_period = {}
+            for index, key in enumerate(PERIOD_KEYS):
+                week = weeks.get(top_weeks[index]) if index < len(top_weeks) else None
+                by_period[key] = None if week is None else {k: v for k, v in week.items() if k != "_order"}
+            if any(by_period.values()):
+                equipments.append({"equipment_name": name, "is_total": False, "by_period": by_period})
+        # Mais series nas 4 semanas primeiro; empate pelo rotulo (ausente = "Sem equipamento"), sem caixa.
+        equipments.sort(
+            key=lambda eq: (
+                -sum((p or {}).get("sets_count", 0) for p in eq["by_period"].values()),
+                (eq["equipment_name"] or NO_EQUIPMENT_LABEL).casefold(),
+            )
+        )
+        lines = _annotate_periods([_equipment_total(equipments), *equipments], _annotate_equipment)
+        result.append({"group": entry["group"], "equipments": lines})
+    return sorted(result, key=lambda item: _sort_key_group(item["group"]))
+
+
+def build_equipment_weekly_comparison(volume_rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Comparativo por equipamento nas 4 semanas mais recentes de cada grupo:
+    series e volume somados por grupo x equipamento x semana, ultimo peso da
+    atividade mais recente da semana, linha total por grupo (a primeira).
+    Antes somado na tela (`equipmentComparativeRows`)."""
+    rows = list(volume_rows)
+    return {
+        "period_keys": list(PERIOD_KEYS),
+        "levels": {level: _equipment_rows(rows, level) for level in GROUPING_LEVELS},
+    }
+
+
+def _heatmap_level(rows: list[Mapping[str, Any]], level: str) -> dict[str, Any]:
+    cells: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group = grouping_key_of(row, level)
+        cell = cells.setdefault(group["key"], {"group": group, "sets_count": 0, "volume_kg": 0.0})
+        cell["sets_count"] += int(row.get("sets_count") or 0)
+        cell["volume_kg"] += float(row.get("volume_kg") or 0.0)
+    ordered = sorted(cells.values(), key=lambda cell: -cell["sets_count"])
+    volumes = [cell["volume_kg"] for cell in ordered]
+    low, high = (min(volumes), max(volumes)) if volumes else (0.0, 0.0)
+    for cell in ordered:
+        cell["avg_weight_kg"] = cell["volume_kg"] / cell["sets_count"] if cell["sets_count"] > 0 else None
+        # Posicao min-max do volume (0 a 1); todos iguais = 0, como a tela.
+        cell["volume_ratio"] = min(1.0, max(0.0, (cell["volume_kg"] - low) / (high - low))) if high > low else 0.0
+    return {"min_volume_kg": low, "max_volume_kg": high, "cells": ordered}
+
+
+def build_heatmap(volume_rows: Iterable[Mapping[str, Any]], activity_id: Optional[int] = None) -> dict[str, Any]:
+    """Mapa de calor por nivel: series e volume por grupo, peso medio
+    aproximado (volume/series), ordem por series e posicao normalizada do
+    volume. `activity_id`: so aquela sessao. Antes calculado na tela
+    (`heatmapCells`/`heatmapVolumeRange`)."""
+    rows = [row for row in volume_rows if activity_id is None or int(row["activity_id"]) == int(activity_id)]
+    return {"levels": {level: _heatmap_level(rows, level) for level in GROUPING_LEVELS}}
+
+
+def _period_rows(items: list[Mapping[str, Any]], level: str, windows: Mapping[str, Mapping[str, date]]) -> list[dict]:
+    current, previous = windows["current"], windows["previous"]
+    by_group: dict[str, dict[str, Any]] = {}
+    for item in items:
+        group = grouping_key_of(item, level)
+        # O grupo entra mesmo sem item nas janelas (zeros), como na tela.
+        row = by_group.setdefault(
+            group["key"],
+            {"group": group, "current_reps": 0, "previous_reps": 0, "current_volume_kg": 0.0, "previous_volume_kg": 0.0},
+        )
+        day = _day_of(item.get("period"))
+        if current["from"] <= day <= current["to"]:
+            side = "current"
+        elif previous["from"] <= day <= previous["to"]:
+            side = "previous"
+        else:
+            continue
+        row[f"{side}_reps"] += int(float(item.get("reps_total") or 0))
+        row[f"{side}_volume_kg"] += float(item.get("volume_kg") or 0.0)
+
+    result = []
+    for row in by_group.values():
+        row["reps_delta"] = row["current_reps"] - row["previous_reps"]
+        row["volume_delta_kg"] = period_delta(row["current_volume_kg"], row["previous_volume_kg"])
+        row["volume_direction"] = period_direction(
+            row["current_volume_kg"], row["previous_volume_kg"], TREND_NO_TOLERANCE
+        )
+        result.append(row)
+    if level == LEVEL_VOLUME_CLASS:
+        return sorted(result, key=lambda row: _sort_key_group(row["group"]))
+    # Grupo e grupo pai: ranking por repeticoes (desempate por volume), como sempre.
+    return sorted(result, key=lambda row: (-row["current_reps"], -row["current_volume_kg"]))
+
+
+def build_period_comparison(
+    trend_items: Iterable[Mapping[str, Any]], granularity: str, today: date
+) -> dict[str, Any]:
+    """Aba de tendencia: reps e volume por grupo na janela atual x anterior
+    (`granularity_windows`), por nivel. `trend_items`: `VolumeService.get_volume_trend`
+    (tonelagem bruta por dia x grupo) com a hierarquia anotada; `today`: hoje local."""
+    windows = granularity_windows(today, granularity)
+    items = list(trend_items)
+    return {
+        "granularity": granularity,
+        "current": {key: value.isoformat() for key, value in windows["current"].items()},
+        "previous": {key: value.isoformat() for key, value in windows["previous"].items()},
+        "levels": {level: _period_rows(items, level, windows) for level in GROUPING_LEVELS},
     }

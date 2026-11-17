@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyDraftEquipmentChoice,
+  draftEquipmentOptionsBody,
+  draftEquipmentOptionsKey,
   draftSwapOptionsState,
   filterBySwapEligibility,
   generatedMappingIds,
@@ -159,5 +162,39 @@ describe('elegibilidade do rascunho gerado', () => {
       const row = { ...rowForPayload(), ...typedExercisePatch({ mapping_id: 5 }, 'x', false) };
       expect(JSON.stringify(toWorkoutPlanExerciseInput(row, 1))).not.toContain('last_linked_mapping_id');
     });
+  });
+});
+
+describe('equipamento no rascunho', () => {
+  const row = { mapping_id: 5, preferred_equipment_id: 11, advanced_technique: 'rest_pause', equipment_name: 'A', suggested_load_kg: 40 };
+
+  it('monta o corpo do POST a partir da linha', () => {
+    expect(draftEquipmentOptionsBody(row, 3)).toEqual({
+      gym_id: 3,
+      mapping_id: 5,
+      current_gym_equipment_id: 11,
+      advanced_technique: 'rest_pause',
+    });
+    expect(draftEquipmentOptionsBody({ mapping_id: 5 }, 3)).toMatchObject({
+      current_gym_equipment_id: null,
+      advanced_technique: null,
+    });
+    expect(draftEquipmentOptionsBody({ mapping_id: null }, 3)).toBeNull();
+  });
+
+  it('aplicar a escolha muda só equipamento e nome', () => {
+    expect(applyDraftEquipmentChoice(row, { gym_equipment_id: 12, equipment_name: 'B' })).toEqual({
+      ...row,
+      preferred_equipment_id: 12,
+      equipment_name: 'B',
+    });
+  });
+
+  it('trocar o exercício limpa o equipamento e muda a chave da consulta', () => {
+    const next = { ...row, mapping_id: 6, ...swapExerciseResetPatch(5, 6) };
+    expect(next.preferred_equipment_id).toBeNull();
+    expect(draftEquipmentOptionsKey(draftEquipmentOptionsBody(next, 3))).not.toEqual(
+      draftEquipmentOptionsKey(draftEquipmentOptionsBody(row, 3)),
+    );
   });
 });

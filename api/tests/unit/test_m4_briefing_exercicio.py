@@ -18,8 +18,11 @@ from fastapi import HTTPException
 
 from app import exercise_briefing as route
 from app import exercise_description_autogen as autogen
+from app import progression_state
 from app.domain import exercise_briefing as briefing
+from app.domain.progression_engine import TrackState
 from app.domain.training_history import ExerciseExecution, SessionRecord, SetRecord
+from app.intelligence.dashboard import comparability as cmp_trend
 from app.security import Identity
 from tests.support.fake_db import fake_transaction
 
@@ -28,11 +31,13 @@ from tests.support.fake_db import fake_transaction
 # ---------------------------------------------------------------------------
 
 
-def _exposicoes(*exposicoes):
+def _exposicoes(*exposicoes, gym_id=None, tipo=None):
     """Exposicoes montadas pelo MESMO caminho do dashboard
     (`build_exposures` + `assemble_exposures`). Cada argumento:
     `(activity_id, equipment_id, [(reps, kg, rpe), ...])`, em ordem
-    cronologica; convencao e faixa prescrita opcionais (4o e 5o itens)."""
+    cronologica; convencao e faixa prescrita opcionais (4o e 5o itens).
+    `gym_id`/`tipo` (issue #188): academia e `equipment_types.code` de todas
+    (6o item opcional: academia so desta exposicao)."""
     from app.intelligence.dashboard.exposure_service import assemble_exposures, build_exposures
 
     rows = []
@@ -54,6 +59,8 @@ def _exposicoes(*exposicoes):
                     "reps": reps,
                     "weight_kg": kg,
                     "rpe": rpe,
+                    "gym_id": item[5] if len(item) > 5 else gym_id,
+                    "equipment_type_code": tipo,
                 }
             )
     return assemble_exposures(build_exposures(rows), 10)
@@ -94,6 +101,34 @@ def test_desempenho_prefere_o_equipamento_do_item_de_hoje():
     assert outro["scope"] == briefing.PERFORMANCE_SCOPE_EXERCISE
     assert outro["status"] == "NOT_COMPARABLE"
     assert outro["comparable"] is False
+
+
+def test_desempenho_no_aparelho_novo_calibra_como_o_painel():
+    """Issue #188: maquina A x3 e depois B x2. O escopo e o aparelho B, mas a
+    troca e decidida no historico completo: calibrando, como no painel."""
+    from app.intelligence.dashboard.exposure_service import progression_verdict
+
+    exposicoes = _exposicoes(
+        (1, 9, [(8, 40.0, None)] * 3),
+        (2, 9, [(9, 40.0, None)] * 3),
+        (3, 9, [(10, 40.0, None)] * 3),
+        (4, 7, [(6, 60.0, None)] * 3),
+        (5, 7, [(9, 60.0, None)] * 3),
+        gym_id=1,
+        tipo="MACHINE",
+    )
+    resultado = briefing.summarize_performance(exposicoes, equipment_id=7)
+    painel = progression_verdict(exposicoes)
+    assert resultado["scope"] == briefing.PERFORMANCE_SCOPE_EQUIPMENT
+    assert (resultado["status"], resultado["reasons"], resultado["comparable_exposures"]) == (
+        painel["status"],
+        painel["status_reasons"],
+        painel["comparable_exposures"],
+    ) == ("INSUFFICIENT_DATA", ["equipment_context_in_calibration"], 0)
+    assert resultado["comparable"] is False
+
+    # No aparelho antigo (sem troca ate a ultima exposicao nele): compara como antes.
+    assert briefing.summarize_performance(exposicoes, equipment_id=9)["status"] == "PROGRESSING"
 
 
 def test_desempenho_assistido_menos_assistencia_com_reps_na_faixa_e_progresso():
@@ -166,7 +201,7 @@ def test_trend_legado_e_derivado_do_desempenho_e_nao_da_decisao():
     )
     ajuste = briefing.describe_adjustment({"decision": "DECREASE_LOAD"})
     trend = briefing.trend_from_performance(desempenho, ajuste)
-    assert trend["status"] == briefing.PROGRESSING
+    assert trend["status"] == cmp_trend.TREND_PROGRESSING
     assert trend["label"] == "Progredindo"
     assert "Ajuste de hoje: reduzir carga." in trend["reason"]
     assert trend["source"] == briefing.SOURCE_COMPARABILITY
@@ -341,13 +376,8 @@ RESPOSTAS_COMPLETAS = {
             "photo_url": "https://app.musclefit.com.br/equipment/9.jpg",
         }
     ],
-    "FROM progression_tracks": [
+    "FROM progression_group_states": [
         {
-            "load_status": "ACTIVE",
-            "working_load_kg": Decimal("40"),
-            "sets_count": 3,
-            "technique_code": None,
-            "last_executed_at": None,
             "phase": "F2",
             "phase_status": "ACTIVE",
             "reps_min": 10,
@@ -359,7 +389,17 @@ RESPOSTAS_COMPLETAS = {
 IDENTIDADE = Identity(user_id=1, role="regular", source="session")
 
 
-def _montar(monkeypatch, respostas, *, plano=PLANO, sessions=(), disparos=None, autogen_real=False):
+def _trilhas(*trilhas):
+    return {t.key: t for t in trilhas}
+
+
+TRILHAS = _trilhas(
+    TrackState(exercise_id=10, equipment_id=9, muscle_group_id=1, id=1, load_status="ACTIVE",
+               working_load_kg=Decimal("40"), sets_count=3)
+)
+
+
+def _montar(monkeypatch, respostas, *, plano=PLANO, sessions=(), disparos=None, autogen_real=False, tracks=None):
     cursor = FakeCursor(respostas)
 
     class _Repo:
@@ -372,6 +412,9 @@ def _montar(monkeypatch, respostas, *, plano=PLANO, sessions=(), disparos=None, 
     monkeypatch.setattr(route.services, "get_workout_plan", lambda plan_id, user_id=None: plano)
     monkeypatch.setattr(route, "transaction", fake_transaction(cursor))
     monkeypatch.setattr(route, "TrainingHistoryRepository", _Repo)
+    # Trilhas dubladas no dono da leitura (`progression_state.load_tracks`); o
+    # briefing resolve a do par com `progression_engine.resolve_track`.
+    monkeypatch.setattr(progression_state, "load_tracks", lambda conn, user_id: dict(tracks or TRILHAS))
     # A rede de seguranca da descricao de execucao e dublada por padrao: o
     # teste do briefing prova a TELA. `autogen_real=True` e para os dois casos
     # que precisam do modulo de verdade - e mesmo eles nunca chegam na OpenAI,
@@ -583,6 +626,11 @@ def test_exercicio_sem_equipamento_resolvido_cai_no_nome_da_ficha(monkeypatch):
         "equipment_id": None,
         "name": "Banco supino",
         "photo_url": None,
+        "gym_id": None,
+        "gym_equipment_catalog_id": None,
+        "manufacturer": None,
+        "manufacturer_source": None,
+        "can_edit_manufacturer": False,
     }
 
 
@@ -689,3 +737,140 @@ def test_briefing_nao_escreve_nada_no_banco(monkeypatch):
     cursor = _montar(monkeypatch, RESPOSTAS_COMPLETAS)
     route.get_exercise_briefing(3, 777, identity=IDENTIDADE)
     assert all(sql.upper().startswith("SELECT") for sql in cursor.executados)
+
+
+def test_comparable_statuses_do_briefing_vem_do_dono():
+    """Sem cópia: os rótulos do briefing saem do conjunto do dono (import preguiçoso)."""
+    from app.intelligence.dashboard.comparability import COMPARABLE_PROGRESSION_STATUSES
+
+    assert not hasattr(briefing, "COMPARABLE_STATUSES")
+    assert set(briefing.performance_labels()) == {s.value for s in COMPARABLE_PROGRESSION_STATUSES}
+
+
+# ---------------------------------------------------------------------------
+# #188: veredito do briefing por academia (maquina = contexto da academia)
+# ---------------------------------------------------------------------------
+
+_ACADEMIA_A, _ACADEMIA_B, _MAQ = 1, 2, 9
+
+
+def _sessoes(academia, inicio, n, kg0=100):
+    return [(inicio + i, _MAQ, [(10, kg0 + 5 * i, 8)], None, None, academia) for i in range(n)]
+
+
+def test_maquina_com_historico_so_em_outra_academia_nao_herda_o_veredito():
+    from app.domain.progression_engine import CALIBRATION_CODE_START_OTHER_GYM
+
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 4), tipo="MACHINE")
+    em_a = briefing.summarize_performance(exposicoes, equipment_id=_MAQ, gym_context=_ACADEMIA_A)
+    em_b = briefing.summarize_performance(exposicoes, equipment_id=_MAQ, gym_context=_ACADEMIA_B)
+
+    assert em_a["scope"] == briefing.PERFORMANCE_SCOPE_EQUIPMENT and em_a["equipment_context_code"] is None
+    # Em B nao ha historico: o veredito e o do dono para historico vazio, nao o de A.
+    assert em_b["scope"] is None and em_b["comparable_exposures"] == 0
+    assert em_b["status"] == briefing.summarize_performance([], equipment_id=_MAQ)["status"]
+    assert em_b["equipment_context_code"] == CALIBRATION_CODE_START_OTHER_GYM
+
+
+def test_maquina_com_historico_na_academia_de_hoje_usa_o_dela_mesmo_com_a_mais_recente_em_outra():
+    so_b = _exposicoes(*_sessoes(_ACADEMIA_B, 1, 4), tipo="MACHINE")
+    misto = _exposicoes(*_sessoes(_ACADEMIA_B, 1, 4), *_sessoes(_ACADEMIA_A, 5, 2, kg0=60), tipo="MACHINE")
+
+    em_b = briefing.summarize_performance(misto, equipment_id=_MAQ, gym_context=_ACADEMIA_B)
+
+    assert em_b["scope"] == briefing.PERFORMANCE_SCOPE_EQUIPMENT
+    assert em_b["last_local_date"] == so_b[-1]["local_date"]
+    assert em_b["equipment_context_code"] is None
+    esperado = briefing.summarize_performance(so_b, equipment_id=_MAQ, gym_context=_ACADEMIA_B)
+    assert (em_b["status"], em_b["reasons"]) == (esperado["status"], esperado["reasons"])
+
+
+def test_peso_livre_em_duas_academias_continua_como_antes():
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 2), *_sessoes(_ACADEMIA_B, 3, 2, kg0=110))
+    # Peso livre: o dono resolve `gym_context=None` (context_gym_id) e a chave nao tem academia.
+    hoje = briefing.summarize_performance(exposicoes, equipment_id=_MAQ, gym_context=None)
+    antes = briefing.summarize_performance(exposicoes, equipment_id=_MAQ)
+
+    assert hoje == antes and hoje["equipment_context_code"] is None
+
+
+def test_briefing_sem_equipamento_continua_como_antes():
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 3), tipo="MACHINE")
+
+    resultado = briefing.summarize_performance(exposicoes, gym_context=_ACADEMIA_B)
+
+    assert resultado == briefing.summarize_performance(exposicoes)
+    assert resultado["scope"] == briefing.PERFORMANCE_SCOPE_EXERCISE and resultado["equipment_context_code"] is None
+
+
+def test_maquina_calibrando_no_contexto_novo_le_o_codigo_do_veredito_do_dono():
+    from app.domain.equipment_context import CALIBRATION_MIN_COMPARABLE_SESSIONS
+    from app.domain.progression_engine import CALIBRATION_CODE_CONTEXT
+
+    em_a = _sessoes(_ACADEMIA_A, 1, 4)
+    uma_em_b = _exposicoes(*em_a, *_sessoes(_ACADEMIA_B, 5, 1), tipo="MACHINE")
+    calibrada = _exposicoes(*em_a, *_sessoes(_ACADEMIA_B, 5, CALIBRATION_MIN_COMPARABLE_SESSIONS), tipo="MACHINE")
+
+    hoje = briefing.summarize_performance(uma_em_b, equipment_id=_MAQ, gym_context=_ACADEMIA_B)
+    assert hoje["equipment_context_code"] == CALIBRATION_CODE_CONTEXT
+    depois = briefing.summarize_performance(calibrada, equipment_id=_MAQ, gym_context=_ACADEMIA_B)
+    assert depois["equipment_context_code"] is None
+
+
+# ---------------------------------------------------------------------------
+# #188 (fecho): a ROTA resolve a academia pelo vinculo do item e repassa
+# ---------------------------------------------------------------------------
+
+
+def _rota_na_academia(monkeypatch, exposicoes, contexto, *, tracks=None):
+    from app.generation import deterministic_prescription
+    from app.intelligence.dashboard import exposure_service
+
+    vinculos: list = []
+
+    def _contextos(conn, ids):
+        vinculos.append(list(ids))
+        return {int(i): contexto for i in ids}
+
+    monkeypatch.setattr(deterministic_prescription, "gym_contexts_by_gym_equipment", _contextos)
+    monkeypatch.setattr(exposure_service, "get_exposures_between", lambda *a, **k: exposicoes)
+    _montar(monkeypatch, RESPOSTAS_COMPLETAS, tracks=tracks)
+    resposta = route.get_exercise_briefing(3, 777, identity=IDENTIDADE)
+    assert vinculos == [[55]]  # `preferred_equipment_id` do item
+    return resposta
+
+
+def test_rota_maquina_com_historico_so_em_outra_academia_sai_com_codigo_de_partida(monkeypatch):
+    from app.domain.progression_engine import CALIBRATION, CALIBRATION_CODE_START_OTHER_GYM
+
+    so_em_a = _trilhas(
+        TrackState(exercise_id=10, equipment_id=_MAQ, muscle_group_id=1, id=1, load_status="ACTIVE",
+                   working_load_kg=Decimal("80"), sets_count=3, gym_context=_ACADEMIA_A)
+    )
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 4), tipo="MACHINE")
+
+    resposta = _rota_na_academia(monkeypatch, exposicoes, _ACADEMIA_B, tracks=so_em_a)
+
+    assert resposta["performance"]["equipment_context_code"] == CALIBRATION_CODE_START_OTHER_GYM
+    # Trilha: partida de A, calibrando em B (dono `resolve_track`), sem herdar o estado.
+    assert resposta["track"]["load_status"] == CALIBRATION
+    assert resposta["track"]["working_load_kg"] == 80.0
+
+
+def test_rota_maquina_com_historico_curto_na_academia_sai_com_codigo_de_calibracao(monkeypatch):
+    from app.domain.progression_engine import CALIBRATION_CODE_CONTEXT
+
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 4), *_sessoes(_ACADEMIA_B, 5, 1), tipo="MACHINE")
+
+    resposta = _rota_na_academia(monkeypatch, exposicoes, _ACADEMIA_B)
+
+    assert resposta["performance"]["equipment_context_code"] == CALIBRATION_CODE_CONTEXT
+
+
+def test_rota_peso_livre_sai_sem_codigo_de_contexto(monkeypatch):
+    exposicoes = _exposicoes(*_sessoes(_ACADEMIA_A, 1, 2), *_sessoes(_ACADEMIA_B, 3, 2, kg0=110))
+
+    resposta = _rota_na_academia(monkeypatch, exposicoes, None)
+
+    assert resposta["performance"]["equipment_context_code"] is None
+    assert resposta["track"]["working_load_kg"] == 40.0  # trilha sem academia, como antes

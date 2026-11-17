@@ -20,11 +20,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.intelligence.dashboard.comparability import ExposureSummary, WorkingSet, build_key
-from app.intelligence.exercise_performance import (
-    latest_performance_ratios,
-    paired_reps_ratio,
-    performance_ratio,
-)
+from app.intelligence.dashboard.comparability import paired_reps_ratio, performance_ratio_of
+from app.intelligence.exercise_performance import latest_performance_ratios
 from app.intelligence.muscle_recovery_service import MuscleRecoveryService
 from app.intelligence.volume_service import VolumeService
 
@@ -129,14 +126,14 @@ def test_troca_de_equipamento_nao_gera_queda():
     anterior = _exposure([(8, 100.0)] * 3, equipment_id=7)
     atual = _exposure([(8, 80.0)] * 3, equipment_id=9)  # e1RM -20%, outra maquina
 
-    assert performance_ratio(anterior, atual) is None
+    assert performance_ratio_of([anterior, atual]) is None
 
 
 def test_troca_de_convencao_nao_gera_queda():
     anterior = _exposure([(10, 30.0)] * 3, convention="total")
     atual = _exposure([(10, 15.0)] * 3, convention="per_side")
 
-    assert performance_ratio(anterior, atual) is None
+    assert performance_ratio_of([anterior, atual]) is None
 
 
 def test_serie_acima_de_12_reps_nao_decide_por_e1rm():
@@ -148,7 +145,7 @@ def test_serie_acima_de_12_reps_nao_decide_por_e1rm():
     atual = _exposure([(14, 60.0)] * 3, rpe=10.0)
     assert atual.e1rm / anterior.e1rm < 0.95  # a regra antiga chamaria de queda
 
-    assert performance_ratio(anterior, atual) == pytest.approx((1 + 14 / 30) / (1 + 18 / 30))
+    assert performance_ratio_of([anterior, atual]) == pytest.approx((1 + 14 / 30) / (1 + 18 / 30))
 
 
 def test_p8_mesmas_reps_com_rpe_maior_nao_e_queda():
@@ -156,8 +153,8 @@ def test_p8_mesmas_reps_com_rpe_maior_nao_e_queda():
     STABLE na fonte unica (`same_reps_higher_rpe`), entao a razao fica em 1,0.
     Antes: 15@7 -> 15@10 dava 0,9375 (reps + RIR) e 8@6 -> 8@10 dava a razao
     do e1RM decisivo (1,2667/1,4 = 0,905 < 0,95, `PERFORMANCE_DROP`)."""
-    assert performance_ratio(_exposure([(15, 60.0)] * 3, rpe=7.0), _exposure([(15, 60.0)] * 3, rpe=10.0)) == 1.0
-    assert performance_ratio(_exposure([(8, 60.0)] * 3, rpe=6.0), _exposure([(8, 60.0)] * 3, rpe=10.0)) == 1.0
+    assert performance_ratio_of([_exposure([(15, 60.0)] * 3, rpe=7.0), _exposure([(15, 60.0)] * 3, rpe=10.0)]) == 1.0
+    assert performance_ratio_of([_exposure([(8, 60.0)] * 3, rpe=6.0), _exposure([(8, 60.0)] * 3, rpe=10.0)]) == 1.0
 
 
 def test_p8_mesmas_reps_com_rpe_maior_nao_gera_performance_drop_na_recuperacao():
@@ -184,7 +181,7 @@ def test_serie_acima_de_12_reps_sem_rpe_nao_cai():
     anterior = _exposure([(15, 60.0)] * 3, rpe=None)
     atual = _exposure([(15, 60.0)] * 3, rpe=None)
 
-    assert performance_ratio(anterior, atual) == 1.0
+    assert performance_ratio_of([anterior, atual]) == 1.0
 
 
 def test_menos_series_nao_e_queda():
@@ -192,7 +189,7 @@ def test_menos_series_nao_e_queda():
     atual = _exposure([(12, 60.0), (11, 60.0)])
 
     assert paired_reps_ratio(anterior, atual) == 1.0
-    assert performance_ratio(anterior, atual) == 1.0
+    assert performance_ratio_of([anterior, atual]) == 1.0
 
 
 @pytest.mark.parametrize(
@@ -205,7 +202,7 @@ def test_regressao_real_com_e1rm_decisivo_tem_a_mesma_severidade_de_antes(carga_
     anterior = _exposure([(8, 100.0)] * 3)
     atual = _exposure([(8, carga_atual)] * 3)
 
-    ratio = performance_ratio(anterior, atual)
+    ratio = performance_ratio_of([anterior, atual])
 
     assert ratio == pytest.approx(carga_atual / 100.0)
     assert MuscleRecoveryService.classify_readiness(100.0, ratio, False, None, False) == esperado_status
@@ -214,7 +211,7 @@ def test_regressao_real_com_e1rm_decisivo_tem_a_mesma_severidade_de_antes(carga_
 def test_queda_leve_de_e1rm_e_regressing_mas_nao_vira_sinal_negativo():
     """-4%: a regra de progresso chama de REGRESSING (limiar 3%), mas o sinal
     da prontidao continua comecando em 0,95 - como antes."""
-    ratio = performance_ratio(_exposure([(8, 100.0)] * 3), _exposure([(8, 96.0)] * 3))
+    ratio = performance_ratio_of([_exposure([(8, 100.0)] * 3), _exposure([(8, 96.0)] * 3)])
 
     assert ratio == pytest.approx(0.96)
     assert MuscleRecoveryService.count_negative_signals(ratio, False, None) == 0
@@ -227,7 +224,7 @@ def test_regressao_por_reps_acima_de_12_usa_equivalente_epley_e_nao_bloqueia():
     anterior = _exposure([(15, 40.0), (15, 40.0)], rpe=None)
     atual = _exposure([(13, 40.0), (13, 40.0)], rpe=None)
 
-    ratio = performance_ratio(anterior, atual)
+    ratio = performance_ratio_of([anterior, atual])
 
     assert paired_reps_ratio(anterior, atual) == pytest.approx(26 / 30)
     assert ratio == pytest.approx((1 + 13 / 30) / (1 + 15 / 30))
@@ -242,7 +239,7 @@ def test_queda_grande_de_reps_ainda_chega_a_no_direct_work():
     atual = _exposure([(8, 50.0), (7, 50.0)], rpe=7.0)
     assert anterior.e1rm_reps > 12  # e1RM nao decisivo -> magnitude por reps
 
-    ratio = performance_ratio(anterior, atual)
+    ratio = performance_ratio_of([anterior, atual])
 
     assert ratio == pytest.approx((1 + (7.5 + 3) / 30) / (1 + (12.5 + 3) / 30))
     assert MuscleRecoveryService.classify_readiness(100.0, ratio, False, None, False) == "NO_DIRECT_WORK"
@@ -253,7 +250,7 @@ def test_queda_grande_de_reps_sem_rpe_12_para_7():
     anterior = _exposure([(12, 50.0)] * 2, rpe=None)
     atual = _exposure([(7, 50.0)] * 2, rpe=None)
 
-    ratio = performance_ratio(anterior, atual)
+    ratio = performance_ratio_of([anterior, atual])
 
     assert ratio == pytest.approx((1 + 7 / 30) / (1 + 12 / 30))
     assert MuscleRecoveryService.classify_readiness(100.0, ratio, False, None, False) == "NO_DIRECT_WORK"
@@ -263,7 +260,7 @@ def test_rpe_so_de_um_lado_usa_rir_zero_nos_dois():
     anterior = _exposure([(15, 40.0)] * 2, rpe=8.0)
     atual = _exposure([(13, 40.0)] * 2, rpe=None)
 
-    assert performance_ratio(anterior, atual) == pytest.approx((1 + 13 / 30) / (1 + 15 / 30))
+    assert performance_ratio_of([anterior, atual]) == pytest.approx((1 + 13 / 30) / (1 + 15 / 30))
 
 
 def test_progresso_nunca_fica_abaixo_de_1():
@@ -272,7 +269,7 @@ def test_progresso_nunca_fica_abaixo_de_1():
     anterior = _exposure([(15, 40.0)] * 2)
     atual = _exposure([(13, 50.0)] * 2)
 
-    assert performance_ratio(anterior, atual) == 1.0
+    assert performance_ratio_of([anterior, atual]) == 1.0
 
 
 # ---------------------------------------------------------------------------

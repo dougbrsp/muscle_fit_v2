@@ -137,6 +137,7 @@ LATER_MIGRATIONS_ON_036_TABLES = (
     "071_progression_track_pending_load.py",
     "072_progression_track_plateau_load.py",
     "093_training_goal.py",
+    "118_progression_track_gym_context.py",
 )
 
 # A 068 troca a UK de `progression_tracks` (`uk_ptr_user_pair` ->
@@ -148,6 +149,8 @@ MIGRATION_068 = "068_progression_track_fatigue_context.py"
 # `down` dela roda ANTES do da 068 (ordem inversa), como em
 # `tests/support/migrations.RESHAPING_MIGRATIONS`.
 MIGRATION_093 = "093_training_goal.py"
+# A 118 poe `gym_context_id` na UK da 093: o `down` dela roda antes do da 093.
+MIGRATION_118 = "118_progression_track_gym_context.py"
 
 
 def _reaplicar_migracoes_posteriores_a_036() -> None:
@@ -167,7 +170,7 @@ def _desfazer_068() -> None:
 
     conn = db.get_conn()
     try:
-        for name in (MIGRATION_093, MIGRATION_068):
+        for name in (MIGRATION_118, MIGRATION_093, MIGRATION_068):
             module = m.load_python_migration(m.DEFAULT_MIGRATIONS_DIR / name).__globals__
             module["down"](m.MigrationDB(conn))
             conn.commit()

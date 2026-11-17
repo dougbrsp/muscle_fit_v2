@@ -50,7 +50,7 @@ class FakeCursor:
     def execute(self, sql: str, params: tuple = ()) -> None:
         self.conn.statements.append(sql.split()[0])
         table = ps.GROUP_STATES_TABLE if ps.GROUP_STATES_TABLE in sql else ps.TRACKS_TABLE
-        key_len = 3 if table == ps.GROUP_STATES_TABLE else 5
+        key_len = 3 if table == ps.GROUP_STATES_TABLE else 6  # 118: + gym_context_id
         rows = self.conn.tables[table]
         if sql.startswith("UPDATE"):
             key = tuple(params[-key_len:])

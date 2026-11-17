@@ -537,6 +537,17 @@ THRESHOLDS: Final[Mapping[str, float | int]] = MappingProxyType(
 )
 
 
+#: Serie com RPE alto: `rpe >= HIGH_RPE_MIN` (origem: SQL antigo de
+#: `/analytics/exercise-progress`, `es.rpe >= 9`; valor inalterado). Nome
+#: publico: `exposure_service` e `analytics._high_rpe_min()` leem daqui.
+HIGH_RPE_MIN: Final[int] = 9
+
+#: Variacao de e1RM por exercicio (%, absoluta) acima da qual o exercicio e
+#: atipico ("conferir registro") na leitura por grupo. Estritamente maior:
+#: +-50% exatos ainda contam. Origem: `muscle_group_performance.OUTLIER_CHANGE_PCT`.
+GROUP_E1RM_OUTLIER_CHANGE_PCT: Final[float] = 50.0
+
+
 def threshold(name: str) -> float | int:
     try:
         return THRESHOLDS[name]

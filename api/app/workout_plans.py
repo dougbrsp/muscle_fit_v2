@@ -51,6 +51,8 @@ def get_plan(
     if session_id is None:
         return plan
     with transaction() as conn:
+        # #188: aviso de calibracao ATUAL so no Modo Treino (com sessao); nunca derruba a abertura.
+        services.attach_current_calibration(conn, plan.get("exercises") or [], user_id=identity.user_id)
         return deload_periods.apply_session_deload_to_plan(conn, plan, identity.user_id, session_id)
 
 
@@ -140,6 +142,32 @@ def list_draft_exercise_swap_options(
     return services.list_draft_exercise_swap_options(payload.mapping_ids)
 
 
+class DraftEquipmentOptionsIn(BaseModel):
+    # exercise_catalog.id/gyms.id/gym_equipment.id: a RDS Data API so envia longValue com sinal (int64).
+    gym_id: Annotated[int, Field(gt=0, le=9223372036854775807)]
+    mapping_id: Annotated[int, Field(gt=0, le=9223372036854775807)]
+    current_gym_equipment_id: Optional[Annotated[int, Field(gt=0, le=9223372036854775807)]] = None
+    advanced_technique: Optional[str] = Field(default=None, max_length=100)
+
+
+@router.post("/workout-plans/equipment-options")
+def list_draft_equipment_options(
+    payload: DraftEquipmentOptionsIn, identity: Identity = Depends(require_permission("treino.planos", "ver"))
+):
+    """Mesmas opcoes de equipamento da ficha salva, para o rascunho (sem
+    `plan_id`), por academia + exercicio, no ranking de quem esta logado.
+    Catalogo da academia (leitura compartilhada, como `/gyms`); POST so pelo
+    corpo; permissao de leitura. Rota da api-core (catch-all): sem Terraform."""
+    return workout_plan_equipment.list_draft_equipment_options(
+        payload.gym_id,
+        payload.mapping_id,
+        identity.user_id,
+        payload.current_gym_equipment_id,
+        payload.advanced_technique,
+        identity=identity,
+    )
+
+
 @router.get("/workout-plans/{plan_id}/exercises/{exercise_id}/equipment-options")
 def list_plan_exercise_equipment_options(
     plan_id: int, exercise_id: int, identity: Identity = Depends(require_permission("treino.planos", "ver"))
@@ -147,7 +175,7 @@ def list_plan_exercise_equipment_options(
     """M8: equipamentos da academia da ficha que servem o exercicio da linha,
     com elegibilidade D13a. Rota da api-core (catch-all): sem Terraform."""
     try:
-        return workout_plan_equipment.list_equipment_options(plan_id, exercise_id, identity.user_id)
+        return workout_plan_equipment.list_equipment_options(plan_id, exercise_id, identity.user_id, identity=identity)
     except services.PlanNotFoundError:
         raise HTTPException(status_code=404, detail="Plano de treino ou exercício não encontrado.")
     except workout_plan_equipment.PlanExerciseSubstitutionError as exc:

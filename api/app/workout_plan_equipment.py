@@ -46,6 +46,8 @@ from .db import transaction
 from .domain import equipment_pair
 from .domain import prescription as prescription_domain
 from .domain import training_safety as ts
+from .access import resolve_permissions
+from .domain.equipment_context import manufacturer_columns_sql, manufacturer_fields, manufacturer_join_sql
 from .equipment_recommender import PUBLIC_ASSETS_DOMAIN, rank_gym_equipment_rows
 from .generation import exercise_substitution as subst
 
@@ -111,9 +113,11 @@ def _same_exercise_links(conn: Any, gym_id: int, mapping_id: int) -> list[dict[s
             f"""
             SELECT ge.id, ge.mapping_id, ge.equipment_id, eq.name AS equipment_name,
                    (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
-                   COALESCE(in_elm.canonical_exercise_id, %s) AS canonical_exercise_id
+                   COALESCE(in_elm.canonical_exercise_id, %s) AS canonical_exercise_id,
+                   {manufacturer_columns_sql()}
             FROM gym_equipment ge
             JOIN equipment eq ON eq.id = ge.equipment_id
+            {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
             LEFT JOIN exercise_legacy_id_map ge_elm ON ge_elm.old_exercise_id = ge.mapping_id
             LEFT JOIN exercise_legacy_id_map in_elm ON in_elm.old_exercise_id = %s
             WHERE ge.gym_id = %s
@@ -155,7 +159,27 @@ def _eligibility(
     return None
 
 
-def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int]) -> dict[str, Any]:
+def _manufacturer_editor(identity: Any):
+    """`can_edit(owner)` da posse do RBAC (`gyms.manufacturer_editor`); sem
+    identidade (chamador antigo) ninguem edita. Permissoes resolvidas 1x, so
+    se houver o que editar."""
+    if identity is None:
+        return lambda _owner: False
+    from .gyms import manufacturer_editor  # import tardio: gyms e modulo de rotas
+
+    cache: dict[str, Any] = {}
+
+    def can_edit(owner_user_id: Optional[int]) -> bool:
+        if "perms" not in cache:
+            cache["perms"] = resolve_permissions(identity)
+        return manufacturer_editor(identity, cache["perms"])(owner_user_id)
+
+    return can_edit
+
+
+def list_equipment_options(
+    plan_id: int, exercise_id: int, user_id: Optional[int], *, identity: Any = None
+) -> dict[str, Any]:
     """Payload de `GET .../equipment-options`: as associacoes da academia da
     ficha para o exercicio da linha, no ranking do DONO da ficha, cada uma
     com `eligible` + `reason` (D13a) e a seguranca do par."""
@@ -172,17 +196,43 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
                 "Este exercício não está vinculado ao catálogo; vincule-o antes de trocar o equipamento.",
             )
         gym_id, mapping_id = int(plan["gym_id"]), int(row["mapping_id"])
-        links = _same_exercise_links(conn, gym_id, mapping_id)
-        with conn.cursor() as cur:
-            ranked = rank_gym_equipment_rows(cur, links, gym_id=gym_id, user_id=plan.get("user_id"))
-        current = _current_link(conn, row)
-        pairs = [(int(link["canonical_exercise_id"]), int(link["equipment_id"])) for link in ranked]
-        if current:
-            pairs.append((mapping_id, int(current["equipment_id"])))
-        safety_by_pair = ts.resolve_training_safety_bulk(conn, pairs) if pairs else {}
-        current_safety = safety_by_pair.get((mapping_id, int(current["equipment_id"]))) if current else None
-        original_max_safe_rpe = int(current_safety.max_safe_rpe) if current_safety else 0
         technique = row.get("advanced_technique") or None
+        items, current_id, current_rpe = _ranked_equipment_options(
+            conn, gym_id, mapping_id, plan.get("user_id"), _current_link(conn, row), technique,
+            _manufacturer_editor(identity),
+        )
+    return {
+        "plan_id": int(plan_id),
+        "workout_plan_exercise_id": int(row["id"]),
+        "mapping_id": mapping_id,
+        "exercise_name": row.get("exercise_name"),
+        "current_gym_equipment_id": current_id,
+        "current_max_safe_rpe": current_rpe,
+        "required_technique": technique,
+        "items": items,
+    }
+
+
+def _ranked_equipment_options(
+    conn: Any,
+    gym_id: int,
+    mapping_id: int,
+    owner_user_id: Optional[int],
+    current: Optional[dict[str, Any]],
+    technique: Optional[str],
+    can_edit: Any = lambda _owner: False,
+) -> tuple[list[dict[str, Any]], Optional[int], Optional[int]]:
+    """Nucleo unico da ficha salva e do rascunho: `(items, current_gym_equipment_id,
+    current_max_safe_rpe)`."""
+    links = _same_exercise_links(conn, gym_id, mapping_id)
+    with conn.cursor() as cur:
+        ranked = rank_gym_equipment_rows(cur, links, gym_id=gym_id, user_id=owner_user_id)
+    pairs = [(int(link["canonical_exercise_id"]), int(link["equipment_id"])) for link in ranked]
+    if current:
+        pairs.append((mapping_id, int(current["equipment_id"])))
+    safety_by_pair = ts.resolve_training_safety_bulk(conn, pairs) if pairs else {}
+    current_safety = safety_by_pair.get((mapping_id, int(current["equipment_id"]))) if current else None
+    original_max_safe_rpe = int(current_safety.max_safe_rpe) if current_safety else 0
 
     items = []
     for link in ranked:
@@ -192,6 +242,7 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
             {
                 "gym_equipment_id": int(link["id"]),
                 "equipment_id": int(link["equipment_id"]),
+                "gym_id": int(gym_id),
                 "equipment_name": link.get("equipment_name"),
                 "photo_url": link.get("photo_url"),
                 "user_preference_stars": link.get("user_preference_stars"),
@@ -200,15 +251,50 @@ def list_equipment_options(plan_id: int, exercise_id: int, user_id: Optional[int
                 "is_current": bool(current and int(current["id"]) == int(link["id"])),
                 "eligible": reason is None,
                 "reason": reason,
+                **manufacturer_fields(link, can_edit),
             }
         )
+    return (
+        items,
+        int(current["id"]) if current else None,
+        original_max_safe_rpe if current else None,
+    )
+
+
+def list_draft_equipment_options(
+    gym_id: int,
+    mapping_id: int,
+    user_id: Optional[int],
+    current_gym_equipment_id: Optional[int] = None,
+    advanced_technique: Optional[str] = None,
+    *,
+    identity: Any = None,
+) -> dict[str, Any]:
+    """Mesmas opcoes de `list_equipment_options` para o RASCUNHO (sem `plan_id`),
+    por academia + exercicio, no ranking de quem pediu. Academia inexistente ou
+    inativa, ou sem associacao para o exercicio: `items=[]` (nao e erro). O
+    vinculo atual so vale se coerente com o exercicio e da MESMA academia."""
+    technique = advanced_technique or None
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM gyms WHERE id = %s AND is_active = 1", (int(gym_id),))
+            gym_ok = bool(cur.fetchone())
+        items: list[dict[str, Any]] = []
+        current_id = current_rpe = None
+        if gym_ok:
+            current = None
+            if current_gym_equipment_id:
+                current = _current_link(conn, {"mapping_id": mapping_id, "preferred_equipment_id": current_gym_equipment_id})
+                if current and int(current["gym_id"]) != int(gym_id):
+                    current = None
+            items, current_id, current_rpe = _ranked_equipment_options(
+                conn, int(gym_id), int(mapping_id), user_id, current, technique, _manufacturer_editor(identity)
+            )
     return {
-        "plan_id": int(plan_id),
-        "workout_plan_exercise_id": int(row["id"]),
-        "mapping_id": mapping_id,
-        "exercise_name": row.get("exercise_name"),
-        "current_gym_equipment_id": int(current["id"]) if current else None,
-        "current_max_safe_rpe": original_max_safe_rpe if current else None,
+        "gym_id": int(gym_id),
+        "mapping_id": int(mapping_id),
+        "current_gym_equipment_id": current_id,
+        "current_max_safe_rpe": current_rpe,
         "required_technique": technique,
         "items": items,
     }

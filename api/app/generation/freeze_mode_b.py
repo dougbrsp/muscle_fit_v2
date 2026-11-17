@@ -49,6 +49,7 @@ from ..domain.set_measures import is_rep_based
 from ..domain.training_goal import goal_value
 from ..domain.training_safety import TrainingSafety
 from .deterministic_prescription import (
+    gym_contexts_by_gym_equipment,
     MODE_B_ENGINE_VERSION,
     PairRequest,
     prescribe_pairs,
@@ -361,6 +362,7 @@ def freeze_mode_b(
     equipment_by_gym = equipment_by_gym_equipment(
         conn, [row.get("preferred_equipment_id") for row in rows]
     )
+    gym_contexts = gym_contexts_by_gym_equipment(conn, [row.get("preferred_equipment_id") for row in rows])
     readiness = projected_readiness(owner_id, plan.get("plan_date"), plan.get("plan_time"))
 
     requests: list[PairRequest] = []
@@ -395,6 +397,8 @@ def freeze_mode_b(
             sequence=sequence,
             # M97 F1: o objetivo carimbado na linha (`plan_goal_stamp`)
             training_goal=goal_value(row.get("training_goal")),
+            # #188: academia da maquina pelo vinculo do equipamento da linha
+            gym_context=gym_contexts.get(int(row["preferred_equipment_id"])) if equipment_id is not None else None,
         )
         requests.append(request)
         per_row[int(row["workout_plan_exercise_id"])] = {

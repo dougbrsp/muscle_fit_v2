@@ -913,6 +913,12 @@ def compare_migrations(prod: dict[str, str], local: dict[str, Optional[str]], lo
     only_prod = sorted(set(prod) - set(local))
     only_local = sorted(set(local) - set(prod))
     changed = sorted(f for f in set(prod) & set(local) if local[f] is not None and local[f] != prod[f])
+    # DEV à frente: só local, com número maior que o maior de produção, é aceito (aviso).
+    max_prod = max((int(f[:3]) for f in prod), default=-1)
+    ahead = [f for f in only_local if int(f[:3]) > max_prod]
+    if ahead and ahead == only_local and not only_prod and not changed:
+        print(f"AVISO: {local_label} está à frente de produção (migrações só locais): " + ", ".join(ahead))
+        return
     if only_prod or only_local or changed:
         parts = []
         if only_prod:
@@ -1181,7 +1187,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     conn = None
     if dest is not None:
         conn = connect_local(dest)
-        compare_migrations(prod_migrations, local_migrations(conn), "o MySQL local")
+        local_files = local_migrations(conn)
+        compare_migrations(prod_migrations, local_files, "o MySQL local")
+        if set(local_files) != repo_migration_files():
+            raise AbortError(
+                "o MySQL local e o repositório estão desalinhados em migrações; rode "
+                "`docker compose exec -T api python -m app.migrate` e tente de novo."
+            )
 
     schema = load_schema(reader)
     snap, report = prepare(reader, schema, args.user_id)

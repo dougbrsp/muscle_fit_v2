@@ -110,6 +110,24 @@ export type MuscleGroupsMappedPayload = {
   // consumidores legados; usar sempre trend_rows/table_rows aqui.
   trend_rows: MuscleGroupsMappedTrendRow[];
   table_rows: MuscleGroupsMappedTableRow[];
+  // Só em -mapped-trend (aditivo; API antiga não manda): ranking pronto do
+  // período mais recente, já ordenado pelo backend (`pressure_rows` em
+  // api/app/muscle_groups_mapped.py; variação e tom do dono volume_comparison).
+  latest_period?: string | null;
+  previous_period?: string | null;
+  pressure_rows?: MuscleGroupsMappedPressureRow[];
+};
+
+export type MuscleGroupsMappedTone = 'up' | 'down' | 'stable';
+
+export type MuscleGroupsMappedPressureRow = {
+  group: string;
+  latest: number;
+  previous: number;
+  total: number;
+  // null = sem base (período anterior zerado ou ausente).
+  variation_pct: number | null;
+  tone: MuscleGroupsMappedTone | null;
 };
 
 // GET /mapping-canonical/options|unmapped e POST /mapping-canonical/associate:

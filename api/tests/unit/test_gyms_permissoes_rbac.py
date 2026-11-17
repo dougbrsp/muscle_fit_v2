@@ -332,6 +332,7 @@ ESCRITAS_VINCULO = [
     ("DELETE", "/gym-equipment/77", None),
     ("POST", "/gym-equipment-catalog", {"gym_id": 5, "equipment_id": 9}),
     ("DELETE", "/gym-equipment-catalog/88", None),
+    ("PATCH", "/gym-equipment-catalog/88", {"manufacturer": "Technogym"}),  # #188
 ]
 IDS_VINCULO = [f"{m} {p}" for m, p, _ in ESCRITAS_VINCULO]
 
@@ -363,6 +364,7 @@ def test_dono_admin_mestre_e_dispositivo_do_dono_escrevem_vinculos(ctx, quem, me
         ("DELETE", "/gym-equipment/78", None),
         ("POST", "/gym-equipment-catalog", {"gym_id": 6, "equipment_id": 9}),
         ("DELETE", "/gym-equipment-catalog/89", None),
+        ("PATCH", "/gym-equipment-catalog/89", {"manufacturer": "Technogym"}),
     ],
 )
 def test_vinculos_de_academia_orfa_so_com_escopo_todos(ctx, metodo, caminho, corpo):

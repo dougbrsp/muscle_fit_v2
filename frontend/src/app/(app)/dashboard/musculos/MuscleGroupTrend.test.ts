@@ -10,15 +10,21 @@ import {
   buildMuscleGroupTrendParams,
   muscleGroupTrendPath,
   muscleGroupTrendQueryKey,
+  TREND_TONE_COLOR,
+  formatTrendVariation,
   pivotTrend,
   pressureRows,
   trendGroupOptions,
-  trendGroupTotals,
   trendPeriods,
   trendValueIndex,
   type MuscleGroupTrendFilters,
 } from '@/lib/muscle-group-trend';
-import type { MuscleGroupsMappedPayload, MuscleGroupsMappedTrendRow } from '@/lib/muscle-groups-types';
+import type {
+  MuscleGroupsMappedPayload,
+  MuscleGroupsMappedPressureRow,
+  MuscleGroupsMappedTableRow,
+  MuscleGroupsMappedTrendRow,
+} from '@/lib/muscle-groups-types';
 import { theme } from '@/theme';
 import { MuscleGroupTrend } from './MuscleGroupTrend';
 
@@ -52,7 +58,20 @@ const ROWS: MuscleGroupsMappedTrendRow[] = [
   row('2026-W39', 'Bíceps', 300),
 ];
 
-function payload(rows: MuscleGroupsMappedTrendRow[]): MuscleGroupsMappedPayload {
+function tableRow(group: string, value: number): MuscleGroupsMappedTableRow {
+  const { period: _period, ...rest } = row('', group, value);
+  return { ...rest, period_count: 1 };
+}
+
+// Totais e ranking como a API entrega para ROWS (prontos do backend).
+const TABLE: MuscleGroupsMappedTableRow[] = [tableRow('Costas', 1500), tableRow('Peitoral', 2200), tableRow('Bíceps', 300)];
+const PRESSURE: MuscleGroupsMappedPressureRow[] = [
+  { group: 'Peitoral', latest: 1200, previous: 1000, total: 2200, variation_pct: 20, tone: 'up' },
+  { group: 'Costas', latest: 600, previous: 900, total: 1500, variation_pct: -33.3, tone: 'down' },
+  { group: 'Bíceps', latest: 300, previous: 0, total: 300, variation_pct: null, tone: null },
+];
+
+function payload(rows: MuscleGroupsMappedTrendRow[], extra: Partial<MuscleGroupsMappedPayload> = {}): MuscleGroupsMappedPayload {
   return {
     ok: true,
     source: 'mapped',
@@ -66,6 +85,7 @@ function payload(rows: MuscleGroupsMappedTrendRow[]): MuscleGroupsMappedPayload 
     unmapped: [],
     trend_rows: rows,
     table_rows: [],
+    ...extra,
   };
 }
 
@@ -122,13 +142,14 @@ describe('params e chave da query', () => {
 });
 
 describe('pivot e ranking', () => {
-  const totals = trendGroupTotals(ROWS);
-  const options = trendGroupOptions(totals);
   const periods = trendPeriods(ROWS);
   const index = trendValueIndex(ROWS);
 
-  it('ordena grupos por pressão acumulada', () => {
-    expect(options).toEqual(['Peitoral', 'Costas', 'Bíceps']);
+  it('ordena grupos pelo total pronto de table_rows (desc), empate por nome', () => {
+    expect(trendGroupOptions(TABLE)).toEqual(['Peitoral', 'Costas', 'Bíceps']);
+    const tie = [tableRow('Costas', 10), tableRow('Bíceps', 10), tableRow('Abdômen', 20)];
+    expect(trendGroupOptions(tie)).toEqual(['Abdômen', 'Bíceps', 'Costas']);
+    expect(trendGroupOptions([])).toEqual([]);
   });
 
   it('pivota um ponto por período com zero para grupo ausente', () => {
@@ -138,18 +159,30 @@ describe('pivot e ranking', () => {
     ]);
   });
 
-  it('ranking com variação contra o período anterior', () => {
-    const ranking = pressureRows(periods, index, totals, options);
-    expect(ranking.map((r) => r.group)).toEqual(['Peitoral', 'Costas', 'Bíceps']);
-    expect(ranking[0].variation).toBeCloseTo(20);
-    expect(ranking[1].variation).toBeCloseTo(-33.33, 1);
-    expect(ranking[2].variation).toBeNull();
+  it('ranking só filtra as pressure_rows da API, na ordem do servidor', () => {
+    expect(pressureRows(PRESSURE, ['Bíceps', 'Peitoral']).map((r) => r.group)).toEqual(['Peitoral', 'Bíceps']);
+    expect(pressureRows(PRESSURE, ['Peitoral', 'Costas', 'Bíceps'])).toEqual(PRESSURE);
+  });
+
+  it('API antiga sem pressure_rows: ranking vazio, sem cálculo local', () => {
+    expect(pressureRows(undefined, ['Peitoral'])).toEqual([]);
+  });
+
+  it('tom da API vira a cor do badge; variação pronta formatada com sinal', () => {
+    expect(TREND_TONE_COLOR).toEqual({ up: 'red', down: 'teal', stable: 'gray' });
+    expect(formatTrendVariation(20)).toBe('+20.0%');
+    expect(formatTrendVariation(-33.3)).toBe('-33.3%');
+    expect(formatTrendVariation(0)).toBe('0.0%');
+    expect(formatTrendVariation(null)).toBeNull();
   });
 });
 
 describe('<MuscleGroupTrend />', () => {
   it('renderiza título, filtros e ranking com dados no cache', () => {
-    const html = render(DEFAULT_MUSCLE_GROUP_TREND_FILTERS, payload(ROWS));
+    const html = render(
+      DEFAULT_MUSCLE_GROUP_TREND_FILTERS,
+      payload(ROWS, { table_rows: TABLE, pressure_rows: PRESSURE, latest_period: '2026-W39', previous_period: '2026-W38' }),
+    );
     expect(html).toContain('Tendência por grupo muscular');
     expect(html).toContain('Granularidade');
     expect(html).toContain('Grupos exibidos');
@@ -157,11 +190,28 @@ describe('<MuscleGroupTrend />', () => {
     expect(html).toContain('2026-W39');
     expect(html).toContain('Peitoral');
     expect(html).toContain('+20.0%');
+    expect(html).toContain('-33.3%');
+    expect(html).toContain('Sem base');
+  });
+
+  it('API antiga sem pressure_rows: gráfico segue e o ranking mostra "sem dados"', () => {
+    const html = render(DEFAULT_MUSCLE_GROUP_TREND_FILTERS, payload(ROWS, { table_rows: TABLE }));
+    expect(html).toContain('Pressão no período mais recente');
+    expect(html).toContain('Sem período');
+    expect(html).toContain('Sem dados de pressão para os grupos exibidos.');
+    expect(html).not.toContain('%</');
   });
 
   it('os filtros iniciais leem a entrada de cache da chave correspondente', () => {
     const monthly: MuscleGroupTrendFilters = { ...DEFAULT_MUSCLE_GROUP_TREND_FILTERS, period: 'monthly', metric: 'sets' };
-    const html = render(monthly, payload([row('2026-09', 'Glúteos', 12)]));
+    const html = render(
+      monthly,
+      payload([row('2026-09', 'Glúteos', 12)], {
+        table_rows: [tableRow('Glúteos', 12)],
+        pressure_rows: [{ group: 'Glúteos', latest: 12, previous: 0, total: 12, variation_pct: null, tone: null }],
+        latest_period: '2026-09',
+      }),
+    );
     expect(html).toContain('Glúteos');
     expect(html).toContain('2026-09');
   });

@@ -79,6 +79,8 @@ SO_AUTENTICACAO_APROVADAS = frozenset(
 # fora de `ROTAS_NOVAS_POS_RETRATO` (que lista so as com `admin.grupos`).
 ROTA_NOVA_SO_AUTENTICACAO = "GET /access/my-students"
 ROTA_NOVA_TREINO = "POST /workout-plans/exercise-swap-options"
+ROTA_NOVA_TREINO_EQUIP = "POST /workout-plans/equipment-options"  # #179
+ROTA_NOVA_ACADEMIA_FABRICANTE = "PATCH /gym-equipment-catalog/{link_id}"  # #188: fabricante por academia
 
 
 # Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
@@ -106,6 +108,9 @@ ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
     # Fix #164: rota de treino criada depois do retrato (mesma permissao da irma
     # `GET /workout-plans/{plan_id}/exercise-swap-options`); NAO e admin.grupos.
     ROTA_NOVA_TREINO: ("treino.planos", "ver"),
+    ROTA_NOVA_TREINO_EQUIP: ("treino.planos", "ver"),  # #179: opcoes de equipamento do rascunho
+    # #188: fabricante do aparelho por academia (mesma permissao e posse do POST irmao)
+    ROTA_NOVA_ACADEMIA_FABRICANTE: ("treino.academias", "editar"),
 }
 
 
@@ -534,10 +539,12 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # Lote 5A: + 3 rotas de vinculos (admin.grupos) e + 1 so-autenticacao (my-students):
     # 363 + 3 = 366 com permissao; 0 + 6 + 10 + 366 = 382.
     # Fix #164: + 1 rota de treino (POST /workout-plans/exercise-swap-options): 367 e 383.
-    assert len(com_permissao) == 367
+    # #179: + POST /workout-plans/equipment-options: 368 e 384.
+    # #188: + PATCH /gym-equipment-catalog/{link_id}: 369 e 385.
+    assert len(com_permissao) == 369
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 383
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 385
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -552,13 +559,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 367
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 369
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 383
+    assert len(vivas) == 385
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
@@ -576,8 +583,8 @@ def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_adm
                     assert declared_permissions(route) == []  # so autenticacao, pinada a parte
                     continue
                 vivas[chave] = declared_permissions(route)
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 1  # 14 de access_admin + ROTA_NOVA_TREINO (fix #164)
-    esperadas = set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO}
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1  # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188)
+    esperadas = set(ROTAS_NOVAS_POS_RETRATO) - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE}
     assert set(vivas) == esperadas, sorted(set(vivas) ^ esperadas)
     acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}
     for rota, declaradas in vivas.items():
