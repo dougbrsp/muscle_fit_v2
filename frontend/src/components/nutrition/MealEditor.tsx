@@ -26,7 +26,7 @@ import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { useScannerOpen } from '@/lib/barcode-scanner-open';
-import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
+import { MEAL_ITEMS_LIMIT, MEAL_ITEM_LOW_CONFIDENCE_NOTICE, MEAL_SLOT_OPTIONS, UNIT_OPTIONS, nutritionNotice } from '@/lib/nutrition-constants';
 import {
   createMeal,
   fetchFood,
@@ -170,7 +170,7 @@ function ItemRow({
         )}
         {item.lowConfidence && (
           <Badge size="xs" variant="light" color="yellow" leftSection={<IconAlertTriangle size={10} />} mb={8} data-testid="item-baixa-confianca">
-            Estimativa a conferir
+            {nutritionNotice(MEAL_ITEM_LOW_CONFIDENCE_NOTICE)}
           </Badge>
         )}
         <NumberInput

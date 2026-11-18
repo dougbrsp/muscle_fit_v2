@@ -217,6 +217,8 @@ def export_for_frontend() -> dict[str, Any]:
             "report_adaptive_basis": dict(lb.REPORT_ADAPTIVE_BASIS_LABELS),
             "activity_correction_action": dict(lb.ACTIVITY_CORRECTION_ACTION_LABELS),
             "activity_correction_energy_kind": dict(lb.ACTIVITY_CORRECTION_ENERGY_KIND_LABELS),
+            "activity_kcal_classification": dict(lb.ACTIVITY_KCAL_CLASSIFICATION_LABELS),
+            "activity_source": dict(lb.ACTIVITY_SOURCE_LABELS),
         },
         # Códigos que o frontend compara (sem repetir literais): origem da completude e tipo de energia da correção.
         "adaptive_codes": {
@@ -226,6 +228,10 @@ def export_for_frontend() -> dict[str, Any]:
             "correction_action_reclassify": activity_energy.CORRECTION_ACTION_RECLASSIFY,
             "correction_energy_kind_active": activity_energy.CalorieMode.ACTIVE.value,
             "correction_energy_kind_gross": activity_energy.CalorieMode.GROSS.value,
+            "kcal_classification_auto": activity_energy.KCAL_CLASSIFICATION_AUTO,
+            "kcal_classification_manual": activity_energy.KCAL_CLASSIFICATION_MANUAL,
+            "activity_source_intervals": activity_energy.FINGERPRINT_SOURCE_DEFAULT,
+            "notice_meal_item_low_confidence": lb.NOTICE_MEAL_ITEM_LOW_CONFIDENCE,
         },
         "notices": dict(lb.NOTICE_LABELS),
         "units": _codes(meal_math.Unit),

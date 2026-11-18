@@ -111,6 +111,9 @@ SYNC_RUN_RETENTION_DAYS: Final[int] = 120
 CORRECTION_ACTION_EXCLUDE: Final[str] = "exclude"
 CORRECTION_ACTION_RECLASSIFY: Final[str] = "reclassify"
 CORRECTION_ACTIONS: Final[tuple[str, ...]] = (CORRECTION_ACTION_EXCLUDE, CORRECTION_ACTION_RECLASSIFY)
+# Classificação da kcal na tela: sem correção = automática; com `reclassify` = manual (reaproveita o código da ação).
+KCAL_CLASSIFICATION_AUTO: Final[str] = "auto"
+KCAL_CLASSIFICATION_MANUAL: Final[str] = CORRECTION_ACTION_RECLASSIFY
 
 ROUNDING_DIGITS_PUBLIC: Final[int] = 1
 

@@ -382,6 +382,14 @@ ACTIVITY_CORRECTION_ACTION_LABELS: Final[Mapping[str, str]] = {
     activity_mod.CORRECTION_ACTION_EXCLUDE: "Excluída (duplicada ou errada)",
     activity_mod.CORRECTION_ACTION_RECLASSIFY: "Reclassificada",
 }
+ACTIVITY_KCAL_CLASSIFICATION_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.KCAL_CLASSIFICATION_AUTO: "Automático",
+    activity_mod.KCAL_CLASSIFICATION_MANUAL: "Manual",
+}
+# Origem da atividade, indexada pelo valor de `source` do payload.
+ACTIVITY_SOURCE_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.FINGERPRINT_SOURCE_DEFAULT: "Intervals",
+}
 ACTIVITY_CORRECTION_ENERGY_KIND_LABELS: Final[Mapping[str, str]] = {
     activity_mod.CalorieMode.ACTIVE.value: "Calorias ativas",
     activity_mod.CalorieMode.GROSS.value: "Calorias totais",
@@ -1028,8 +1036,11 @@ NOTICE_TARGET_FROZEN = "target_frozen"
 NOTICE_TARGET_BACKFILLED = dt_mod.LIMIT_TARGET_BACKFILLED
 NOTICE_INCOMPLETE_INTAKE_DAYS = wb_mod.LIMIT_INCOMPLETE_INTAKE_DAYS
 NOTICE_TRAINING_UNKNOWN_FUTURE_DAY = dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY
+# Item de refeição lido por IA com `low_confidence` (selo da tela).
+NOTICE_MEAL_ITEM_LOW_CONFIDENCE = "meal_item_low_confidence"
 
 NOTICE_LABELS: Final[Mapping[str, str]] = {
+    NOTICE_MEAL_ITEM_LOW_CONFIDENCE: "Estimativa a conferir",
     NOTICE_SCALE_BMR_DEVIATION: (
         f"A TMB da balança difere mais de {_percent(bmr_mod.SCALE_BMR_DEVIATION_WARN_SHARE)} da calculada pela fórmula."
     ),

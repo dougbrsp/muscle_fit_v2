@@ -261,8 +261,10 @@ def test_export_para_o_frontend_traz_os_rotulos_por_grupo_e_codigo():
     assert set(rotulos) == {"confidence_level", "calorie_mode", "activity_flag", "data_quality_flag",
                             "suspension_reason", "unavailable_reason", "day_sync_status", "day_confirmation_source",
                             "completeness_source", "activity_correction_action", "activity_correction_energy_kind",
-                            "report_adaptive_basis"}
+                            "report_adaptive_basis", "activity_kcal_classification", "activity_source"}
     assert rotulos["confidence_level"]["high"] == "Alta"
+    assert set(rotulos["activity_kcal_classification"]) == {ae.KCAL_CLASSIFICATION_AUTO, ae.KCAL_CLASSIFICATION_MANUAL}
+    assert set(rotulos["activity_source"]) == {ae.FINGERPRINT_SOURCE_DEFAULT}
     assert set(rotulos["activity_flag"]) == {f.value for f in ae.ActivityFlag}
     assert set(rotulos["calorie_mode"]) == {m.value for m in ae.CalorieMode}
     assert set(rotulos["unavailable_reason"]) == {svc_energy.UNAVAILABLE_NO_DATA, svc_energy.UNAVAILABLE_ERROR}

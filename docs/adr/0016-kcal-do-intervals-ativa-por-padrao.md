@@ -40,6 +40,11 @@
 - A correção manual passa a valer também nos modos explícito e automático (decisão 4); `EXCLUDED_ACTIVITY_REASON_LABELS` (`labels.py`) tem o rótulo de `EXCLUDED_BY_USER` ("Excluída por você: não somou"). O hint de `watch_calorie_mode` e `CALORIE_MODE_LABELS` (`labels.py`) descrevem ativa como padrão e `unknown` como "Não sei (tratado como total)".
 - Testes-ouro de `api/tests/unit/test_nutrition_modos_legados_ouro.py` regravados de propósito nos cenários `explicit_treino` e `auto_sync_extras` (os demais só mudam o hash).
 
+### Limitações (acrescentado em 2026-11-18)
+
+- A correção manual não recalcula dia com meta congelada: a meta congela quando `hoje >= dia + TARGET_FREEZE_LAG_DAYS` (2) e `days_to_materialize` não escreve dia congelado (`daily_target.py`). A correção vale para hoje e para os dias ainda não congelados.
+- A correção manual de atividade do Intervals vinculada a um treino vale para a kcal da sessão mesmo quando essa kcal foi digitada à mão (`activities.calories_source = manual`, migração 076): o motor aplica o `reclassify` a toda kcal informada da sessão, sem olhar a origem.
+
 ## O que NÃO muda
 
 - A kcal por MET é bruta e desconta o repouso.
