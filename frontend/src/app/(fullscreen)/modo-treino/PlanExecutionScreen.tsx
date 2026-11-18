@@ -218,6 +218,7 @@ import {
 } from '@/lib/deload';
 import { IntensiveApplicationCard } from './IntensiveApplicationCard';
 import { IntensiveBlock } from './IntensiveBlock';
+import { FinishWorkoutConfirmModal } from './FinishWorkoutConfirmModal';
 import { PendingRepsFinishModal } from './PendingRepsFinishModal';
 import type { IntensiveSetCorrection } from './IntensiveReview';
 import type { WorkoutIconAction } from './ui/IconAction';
@@ -497,6 +498,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const [intensiveCorrectionError, setIntensiveCorrectionError] = useState<{ wpeId: number; message: string } | null>(null);
   // "Finalizar treino" com séries de reps pendentes: confirmação antes do fim.
   const [pendingFinishOpen, setPendingFinishOpen] = useState(false);
+  const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<number>>(() => new Set(session.skipped_exercise_ids || []));
   const [cancelledIds, setCancelledIds] = useState<Set<number>>(() => new Set(session.cancelled_exercise_ids || []));
   const [priorityId, setPriorityId] = useState<number | null>(session.jump_target_exercise_id ?? null);
@@ -2194,13 +2196,22 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       setPendingFinishOpen(true);
       return;
     }
-    finishMutation.mutate();
+    finishMutation.reset();
+    setFinishConfirmOpen(true);
   }
   async function confirmPendingReps(item: PendingRepsSet, reps: number) {
     await patchSessionSet(item.exerciseId, item.setNumber, { reps });
     await queryClient.invalidateQueries({ queryKey: activityQueryKey });
   }
   const pendingFinishModal = (
+    <>
+    <FinishWorkoutConfirmModal
+      opened={finishConfirmOpen}
+      finishing={finishMutation.isPending}
+      error={finishMutation.isError ? errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.') : null}
+      onConfirm={() => finishMutation.mutate()}
+      onCancel={() => setFinishConfirmOpen(false)}
+    />
     <PendingRepsFinishModal
       opened={pendingFinishOpen}
       items={pendingRepsSets}
@@ -2211,6 +2222,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       onFinish={() => finishMutation.mutate()}
       onCancel={() => setPendingFinishOpen(false)}
     />
+    </>
   );
 
   // Só dado FRESCO do servidor (não o retrato local) decide; encerrar por este
@@ -2326,7 +2338,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         <Button size="lg" radius="xl" h={56} fullWidth variant="light" onClick={() => setExtendMode(true)}>
           Adicionar exercício avulso
         </Button>
-        {finishMutation.isError && (
+        {finishMutation.isError && !finishConfirmOpen && (
           <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
             {errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.')}
           </Alert>
@@ -3438,7 +3450,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           {errorMessage(savePreparatorySetMutation.error, SAVE_PREPARATORY_ERROR)}
         </Alert>
       )}
-      {!resting && finishMutation.isError && (
+      {!resting && finishMutation.isError && !finishConfirmOpen && (
         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
           {errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.')}
         </Alert>
