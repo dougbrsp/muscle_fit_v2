@@ -38,8 +38,9 @@ export type MuscleGroupEquipmentResponse = {
 
 // --- Catálogo de equipamentos (POST/PUT /equipment, admin-only) -------------
 // Contrato confirmado lendo C:\muscle_fit\api\app\gyms.py (linhas ~444-639).
-// `POST /equipment` faz `ON DUPLICATE KEY UPDATE` por `name` (UNIQUE) — criar
-// com um nome já existente reativa/atualiza em vez de duplicar ou dar erro.
+// `POST /equipment` com nome de equipamento ATIVO e `PUT /equipment/{id}`
+// renomeando para nome já usado respondem 409 (`detail` com a mensagem). Só
+// nome de equipamento INATIVO reativa o registro existente (200).
 export type EquipmentCreateOrUpdateResponse = {
   status: 'ok';
   item: {
