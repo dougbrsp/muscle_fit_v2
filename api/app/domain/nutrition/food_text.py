@@ -68,6 +68,16 @@ FULLTEXT_MIN_TOKEN_CHARS: Final[int] = 3
 SEARCH_CANDIDATE_POOL: Final[int] = 60
 SEARCH_RESULT_LIMIT_DEFAULT: Final[int] = 20
 SEARCH_RESULT_LIMIT_MAX: Final[int] = 50
+# Marca (#195): a busca também casa `brand LIKE %termo%` a partir de 3 caracteres
+# (mesmo tamanho mínimo do FULLTEXT); sem índice na coluna, termo curto varreria à toa.
+BRAND_MIN_CHARS: Final[int] = FULLTEXT_MIN_TOKEN_CHARS
+# Listagem do cadastro por letra (#195): alfabeto, balde de nomes que não começam
+# por A-Z (dígito, símbolo) e página (defaults de desenho, sem fonte bibliográfica).
+LETTERS: Final[tuple[str, ...]] = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+OTHER_BUCKET: Final[str] = "outros"
+LIST_BUCKETS: Final[tuple[str, ...]] = (*LETTERS, OTHER_BUCKET)
+LIST_PAGE_DEFAULT: Final[int] = 50
+LIST_PAGE_MAX: Final[int] = 100
 
 # Forma canônica -> variantes regionais/ortográficas (pt-BR), já sem acento.
 # A troca é feita numa passada só, da variante mais longa para a mais curta;
@@ -177,22 +187,48 @@ class Match:
         return {"candidate_id": self.candidate_id, "name": self.name, "score": self.score, "auto_accept": self.auto_accept}
 
 
-def _ordered(query: Any, candidates: Sequence[tuple[Hashable, str]], min_score: float) -> tuple[Match, ...]:
+def brand_score(query: Any, name: Any, brand: Any) -> float:
+    """Nota com marca (busca da tela, #195): a MAIOR entre a nota do nome, a da
+    marca (mesma `score`, sobre a marca normalizada) e a do texto "nome marca".
+    Sem marca = `score(query, name)`. Alimento que só casa pela marca nunca fica
+    abaixo da nota da marca. Limitação: a busca que mistura nome e marca ("whey
+    growth") não recupera o item (o `brand LIKE` exige a frase contígua e o
+    FULLTEXT só olha o nome); o "nome marca" só pontua quem já foi recuperado."""
+    nota = score(query, name)
+    if not normalize_name(brand):
+        return nota
+    return max(nota, score(query, brand), score(query, f"{name} {brand}"))
+
+
+def _ordered(
+    query: Any, candidates: Sequence[tuple[Hashable, str] | tuple[Hashable, str, Any]], min_score: float
+) -> tuple[Match, ...]:
     """Candidatos com nota >= `min_score`, do melhor para o pior (desempate pelo
-    nome). Só o primeiro pode ser pré-selecionado: nota >= `MATCH_AUTO_ACCEPT_SCORE`
-    e folga >= `MATCH_AUTO_ACCEPT_MIN_MARGIN` sobre o segundo."""
-    pontuados = sorted(
-        ((s, cid, nome) for cid, nome in candidates for s in (score(query, nome),) if s >= min_score),
-        key=lambda item: (-item[0], item[2]),
+    nome). Só o líder POR NOME pode ser pré-selecionado: nota DO NOME >=
+    `MATCH_AUTO_ACCEPT_SCORE` e folga >= `MATCH_AUTO_ACCEPT_MIN_MARGIN` sobre o
+    segundo por nome. Candidato de 3 posições (id, nome, marca) usa `brand_score` na ordem,
+    mas a marca sozinha nunca pré-seleciona (`auto_accept` olha só o nome).
+    Ressalva: quem entra só pela marca conta como "segundo por nome" (reduz a folga do líder) e
+    o item com `auto_accept` pode ficar abaixo de itens que subiram pela marca."""
+    pontuados = []
+    for candidato in candidates:
+        cid, nome = candidato[0], candidato[1]
+        marca = candidato[2] if len(candidato) > 2 else None
+        nota = brand_score(query, nome, marca)
+        if nota >= min_score:
+            pontuados.append((nota, cid, nome, score(query, nome)))
+    # Pré-seleção decidida só pelas notas do NOME (como antes da marca): o líder
+    # por nome qualifica e a folga é contra o segundo por nome; a marca só ordena.
+    por_nome = sorted(pontuados, key=lambda item: (-item[3], item[2]))
+    aceito = None
+    if por_nome and por_nome[0][3] >= MATCH_AUTO_ACCEPT_SCORE:
+        if len(por_nome) == 1 or por_nome[0][3] - por_nome[1][3] >= MATCH_AUTO_ACCEPT_MIN_MARGIN:
+            aceito = por_nome[0][1]
+    pontuados.sort(key=lambda item: (-item[0], item[2]))
+    return tuple(
+        Match(candidate_id=cid, name=nome, score=nota, auto_accept=cid == aceito)
+        for nota, cid, nome, _ in pontuados
     )
-    resultado: list[Match] = []
-    for posicao, (nota, cid, nome) in enumerate(pontuados):
-        aceita = False
-        if posicao == 0 and nota >= MATCH_AUTO_ACCEPT_SCORE:
-            segundo = pontuados[1][0] if len(pontuados) > 1 else None
-            aceita = segundo is None or nota - segundo >= MATCH_AUTO_ACCEPT_MIN_MARGIN
-        resultado.append(Match(candidate_id=cid, name=nome, score=nota, auto_accept=aceita))
-    return tuple(resultado)
 
 
 def rank_candidates(query: Any, candidates: Sequence[tuple[Hashable, str]]) -> tuple[Match, ...]:
@@ -200,11 +236,55 @@ def rank_candidates(query: Any, candidates: Sequence[tuple[Hashable, str]]) -> t
     return _ordered(query, candidates, MATCH_MIN_SCORE)
 
 
-def order_for_search(query: Any, candidates: Sequence[tuple[Hashable, str]]) -> tuple[Match, ...]:
+def order_for_search(
+    query: Any, candidates: Sequence[tuple[Hashable, str] | tuple[Hashable, str, Any]]
+) -> tuple[Match, ...]:
     """Busca da tela: TODOS os candidatos que o FULLTEXT trouxe, ordenados pela
     mesma nota (o limiar de candidato não corta a lista; a pré-seleção segue a
-    mesma regra de `rank_candidates`)."""
+    mesma regra de `rank_candidates`). Candidato (id, nome, marca): ver `brand_score`."""
     return _ordered(query, candidates, 0.0)
+
+
+def brand_pattern(query: Any) -> Optional[str]:
+    """Padrão `LIKE` `%termo%` da marca (`food_items.brand`, coluna sem
+    normalização e sem índice; a collation `utf8mb4_0900_ai_ci` já ignora acento e
+    caixa). Curingas do usuário (`\\`, `%`, `_`) são escapados. None se a busca
+    tem menos de `BRAND_MIN_CHARS` caracteres (não varre a tabela por "a")."""
+    texto = " ".join(str(query or "").split())
+    if len(texto) < BRAND_MIN_CHARS:
+        return None
+    escapado = texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escapado}%"
+
+
+def normalize_letter(raw: Any) -> Optional[str]:
+    """Letra da listagem do cadastro: 'a'..'z' (qualquer caixa) -> 'A'..'Z';
+    `OTHER_BUCKET` (qualquer caixa) -> `OTHER_BUCKET`; senão None (inválida)."""
+    texto = str(raw or "").strip()
+    if texto.lower() == OTHER_BUCKET:
+        return OTHER_BUCKET
+    return texto.upper() if len(texto) == 1 and texto.upper() in LETTERS else None
+
+
+def letter_prefixes(letter: str) -> tuple[str, ...]:
+    """Padrões `LIKE` de prefixo do nome EXIBIDO (a collation ai_ci ignora acento
+    e caixa: "Água" e "abacate" casam com 'A%'). Letra -> 1 padrão; balde de
+    não-letras -> os 26 (a rota usa NOT)."""
+    return tuple(f"{l}%" for l in LETTERS) if letter == OTHER_BUCKET else (f"{letter}%",)
+
+
+def list_page(limit: Any, offset: Any) -> tuple[int, int]:
+    """Página da listagem: limite em 1..`LIST_PAGE_MAX` (ausente/inválido =
+    `LIST_PAGE_DEFAULT`) e deslocamento >= 0 (inválido = 0)."""
+    try:
+        pedido = int(limit)
+    except (TypeError, ValueError):
+        pedido = LIST_PAGE_DEFAULT
+    try:
+        deslocamento = int(offset)
+    except (TypeError, ValueError):
+        deslocamento = 0
+    return max(1, min(pedido, LIST_PAGE_MAX)), max(0, deslocamento)
 
 
 def search_terms(query: Any) -> tuple[str, ...]:

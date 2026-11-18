@@ -1210,9 +1210,11 @@ PADROES: tuple[Padrao, ...] = (
         regex=re.compile(
             r"\b(?:MATCH_(?:MIN_SCORE|AUTO_ACCEPT_\w+)|QUERY_COVERAGE_WEIGHT|TOKEN_JACCARD_WEIGHT|SEQUENCE_RATIO_WEIGHT"
             r"|SEARCH_(?:CANDIDATE_POOL|RESULT_LIMIT_\w+)|FULLTEXT_MIN_TOKEN_CHARS|PORTION_AMOUNT_MAX"
-            r"|ML_BASIS_MAX_DENSITY_G_PER_ML)\s*(?::[^=\n]+)?=\s*[\d(]"
+            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
             # Vocabulário do matching redefinido (o worker do parse, L5, é o risco óbvio).
-            r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            # #195: balde "outros" e alfabeto da listagem por letra (literal de texto).
+            r"""|\bOTHER_BUCKET\s*(?::[^=\n]+)?=\s*["'`]"""
         ),
         donos=("api/app/domain/nutrition/food_text.py", "api/app/domain/nutrition/catalog.py"),
         inventario="NUT-L3A",
@@ -3411,7 +3413,8 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "catalogo_alimentos": (
         ("MATCH_MIN_SCORE = 0.6", "MATCH_AUTO_ACCEPT_SCORE: Final[float] = 0.85", "const SEARCH_CANDIDATE_POOL = 60;",
          "PORTION_AMOUNT_MAX: Final[float] = 2000.0", "QUERY_COVERAGE_WEIGHT = (0.3)",
-         "export const SEARCH_RESULT_LIMIT_MAX = 50;"),
+         "export const SEARCH_RESULT_LIMIT_MAX = 50;", "BRAND_MIN_CHARS = 3", "LIST_PAGE_MAX: Final[int] = 100",
+         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'"),
         ("if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
          "assert ft.MATCH_MIN_SCORE == 0.6", "limite = SEARCH_RESULT_LIMIT_MAX", "amount <= catalog.PORTION_AMOUNT_MAX",
          "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]"),

@@ -3010,10 +3010,41 @@ privado só o dono; público só o admin), `can_add_portion`, `portion_owner_for
 `can_list_private_foods`, `ownership` (`is_public`/`is_own`) e as condições SQL de visibilidade (`foods_visibility`;
 `portions_visibility`: públicas + as do usuário + as do dono num alimento privado, para o admin ver o que a promoção
 leva junto). A rota só monta o SQL com a expressão do motor (`fulltext_boolean_query`/`prefix_pattern`) e a condição
-do acesso. 503 citando a
+do acesso. **Marca e listagem por letra (#195, `food_text` é o dono):** `brand_pattern` (`%termo%`
+com `\`, `%`, `_` escapados; mínimo `BRAND_MIN_CHARS` = 3) alimenta uma consulta própria `brand LIKE` em
+`nutrition_foods.brand_search_sql` (visibilidade, fonte e preferidos iguais à busca por nome; sem índice, varre
+`food_items`: criar coluna normalizada/índice se o cadastro crescer). `brand_score` = maior entre nota do nome,
+da marca e de "nome marca"; `order_for_search` aceita candidato (id, nome, marca) e `auto_accept` olha só a nota
+do NOME (marca sozinha nunca pré-seleciona); `rank_candidates` (IA/diário) segue só pelo nome, inalterado.
+`GET /nutrition/foods?letter=&limit=&offset=` (`list_foods_by_letter`): `LETTERS` (A-Z), `OTHER_BUCKET`
+(`outros`: nome que não começa por A-Z), `LIST_BUCKETS`, `normalize_letter`, `letter_prefixes`, `list_page`
+(`LIST_PAGE_DEFAULT` 50, `LIST_PAGE_MAX` 100); filtro e ordem pelo `name` exibido na collation
+`utf8mb4_0900_ai_ci` da 080 (ignora acento e caixa); a tela só exibe `letters` e `items` da API. 503 citando a
 080/081 (`nutrition_schema.require_food_tables`). Tela `/nutricao/alimentos` (`AlimentosClient`, `FoodSearch`,
 `FoodForm`, `FoodDetailCard`, `PortionsEditor`, `FoodCitationFooter`, `NutritionSubnav`): campos, rótulos, unidades,
-obrigatórios, fontes e citações do JSON gerado; nota, ordem e permissões da API.
+obrigatórios, fontes e citações do JSON gerado; nota, ordem e permissões da API. `auto_accept` decidido só
+pelas notas do NOME (líder por nome e folga contra o segundo por nome, como antes da marca); a marca só ordena a
+lista e nunca liga nem desliga a pré-seleção. Ressalva: candidato que entra só pela marca conta como "segundo por
+nome" (pode reduzir a folga do líder) e o item com `auto_accept` pode ficar abaixo de itens que subiram pela marca;
+fixado em `test_nutrition_foods_marca_e_letras.py`. Limitação: busca que mistura nome e marca ("whey growth") não
+recupera o item. A guarda `catalogo_alimentos` cobre `BRAND_MIN_CHARS`, `LIST_PAGE_*`, `OTHER_BUCKET`,
+`LETTERS` e `LIST_BUCKETS`.
+
+**Impacto em produção (#195), medido por SELECT em 2026-11-18:** 657 alimentos ativos em `food_items`; 43 com marca
+preenchida, todas com 3 ou mais caracteres; 32 marcas distintas; a marca mais frequente tem 4 itens; por fonte:
+taco 597 sem marca, off 24 (23 com marca), user 31 (15 com marca), label_photo 5 (5 com marca); 648 públicos; a
+maior letra é C com 153 itens; 9 nomes não começam por A-Z. Conclusões: a busca por marca acrescenta no máximo 43
+itens ao universo de resultados; o lote por marca (`SEARCH_CANDIDATE_POOL`) não corta nenhuma marca hoje; a
+varredura sem índice percorre 657 linhas; a letra C passa de `LIST_PAGE_MAX`, então a paginação é usada.
+**Replay da ordem (somente leitura, 2026-11-18):** `order_for_search` sobre os 657 alimentos ativos, sem marca
+(candidatos por nome) e com marca (por nome mais os que só casam pela marca), para 93 consultas (as 32 marcas
+distintas, os nomes dos 43 itens com marca e 15 termos comuns: arroz, whey, aveia, leite, iogurte, queijo, frango,
+pao, cafe, chocolate, banana, ovo, proteina, barra, requeijao). Resultado: 31 consultas ganharam resultados (46
+itens a mais no total); em 11 a ordem relativa entre os resultados que já vinham por nome mudou; em 8 o primeiro
+resultado mudou; em 0 o `auto_accept` mudou; em nenhuma o lote de candidatos por nome estava cheio. Limites: o
+FULLTEXT foi aproximado em Python (prefixo de palavra sobre `name_normalized`); as consultas são sintéticas, não
+buscas reais de usuários; não foi separado quantas das 8 trocas de primeiro resultado são buscas pelo nome da
+marca. NÃO medido: tempo de execução/EXPLAIN do `brand LIKE`.
 
 **Decisões.**
 1. **D-G**: o cadastro do usuário nasce privado; o admin promove (o alimento e as porções do dono viram públicos).
