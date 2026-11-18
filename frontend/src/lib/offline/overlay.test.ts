@@ -82,6 +82,14 @@ describe('overlayQueuedSets: exercício criado offline', () => {
     expect(created?.sets).toHaveLength(1);
   });
 
+  it('copia form_practice do payload (ausente = false)', () => {
+    const base = activity([]);
+    const marked = overlayQueuedSets(base, [exOp({ payload: { original_name: 'X', form_practice: true } })]);
+    expect(marked?.exercises[2].form_practice).toBe(true);
+    const plain = overlayQueuedSets(base, [exOp()]);
+    expect(plain?.exercises[2].form_practice).toBe(false);
+  });
+
   it('quando o servidor já devolveu o exercício, a série pendente vai para a linha real (sem duplicar o exercício)', () => {
     const base = activity([]);
     const synced = exOp({ status: 'synced', serverResponse: { exercise_id: 6 } });

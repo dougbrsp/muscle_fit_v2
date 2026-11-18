@@ -165,6 +165,8 @@ export type ExerciseLogRow = {
   equipment_has_photo?: boolean;
   equipment_photo_url?: string | null;
   workout_plan_exercise_id?: number | null;
+  /** #196: exercício de aprimoramento de técnica (fora da progressão). */
+  form_practice?: boolean;
   planned_mapping_id?: number | null;
   planned_exercise_name?: string | null;
   // Nome/descrição do exercício REALMENTE lançado (`exercise_catalog` do

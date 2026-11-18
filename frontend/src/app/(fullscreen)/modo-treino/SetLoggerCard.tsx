@@ -38,6 +38,7 @@ import {
   IconPlus,
   IconRepeat,
   IconSparkles,
+  IconTarget,
   IconTool,
 } from '@tabler/icons-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -106,12 +107,14 @@ import {
   type LoggerField,
 } from '@/lib/workout-mode-execution-view';
 import { BRAND } from '@/theme';
+import { FORM_PRACTICE_LABEL } from '@/lib/form-practice';
 import { ExecutionTimer } from './ExecutionTimer';
 import { ClampText } from './ui/ClampText';
 import { ExerciseTitleRow } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import { MuscleFatigueChip } from './ui/MuscleFatigueChip';
 import { SectionAccordion } from './ui/SectionAccordion';
+import { StatusChip } from './ui/StatusChip';
 import { WorkoutActionBar, type WorkoutSecondaryAction } from './ui/WorkoutActionBar';
 import { WORKOUT_MODE_CSS_VARS } from './ui/workout-mode-css-vars';
 import styles from './workout-mode.module.css';
@@ -434,6 +437,8 @@ type Props = {
   beforeActions?: ReactNode;
   // M97 F3: badge do objetivo de treino do item (rótulo da API), no título.
   goalBadge?: ReactNode;
+  // #196: exercício de aprimoramento de técnica (marcação da sessão/servidor): selo no título.
+  formPractice?: boolean;
   // M102: exercício unilateral (`is_unilateral` do catálogo). Na série de
   // trabalho/backoff do card padrão, reps e RPE viram duas colunas (E/D), com a
   // carga única. Técnicas avançadas e o Modo Intensivo ficam com valor único (v1).
@@ -680,6 +685,7 @@ export function SetLoggerCard({
   aiEvaluation = null,
   beforeActions = null,
   goalBadge = null,
+  formPractice = false,
   unilateral = false,
 }: Props) {
   // Lote T5: formato do card pela medida (núcleo do Modo Treino). Em reps,
@@ -1361,9 +1367,18 @@ export function SetLoggerCard({
           if (equipmentPhotoUrl) lightbox.open({ src: equipmentPhotoUrl, alt: equipmentName || exerciseName });
         }}
         meta={
-          goalBadge || currentGroupFatigue !== undefined ? (
+          goalBadge || formPractice || currentGroupFatigue !== undefined ? (
             <>
               {goalBadge}
+              {formPractice && (
+                <StatusChip
+                  icon={<IconTarget size={12} />}
+                  label={FORM_PRACTICE_LABEL}
+                  color={BRAND.orange}
+                  size="sm"
+                  testId="execution-form-practice"
+                />
+              )}
               {currentGroupFatigue !== undefined ? <MuscleFatigueChip reading={currentGroupFatigue} /> : null}
             </>
           ) : null

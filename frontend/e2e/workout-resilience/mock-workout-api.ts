@@ -74,6 +74,8 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   // Exercicios criados no servidor (por client_key) -> id.
   const exercisesByKey = new Map<string, number>();
   const createdExercises = new Set<number>([EXERCISE_ID]);
+  // #196: marcação de técnica gravada na criação do exercício (ecoada no GET).
+  const formPracticeOf = new Map<number, boolean>();
   const planItemOf: Record<number, { id: number; sequence: number; name: string; mapping: number }> = {
     [CRUCIFIXO_PLAN_ITEM_ID]: { id: CRUCIFIXO_EXERCISE_ID, sequence: 2, name: 'Crucifixo', mapping: 12 },
     [FST_PLAN_ITEM_ID]: { id: FST_EXERCISE_ID, sequence: 3, name: 'Peck deck', mapping: 13 },
@@ -107,6 +109,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         original_name: meta.name,
         mapping_id: meta.mapping,
         workout_plan_exercise_id: wpe,
+        form_practice: formPracticeOf.get(exerciseId) ?? false,
         sets: rowsOf(exerciseId),
       };
     }),
@@ -186,6 +189,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null });
       if (clientKey && existing == null) exercisesByKey.set(clientKey, meta.id);
       createdExercises.add(meta.id);
+      if (existing == null) formPracticeOf.set(meta.id, body.form_practice === true);
       return send(200, {
         status: 'ok',
         session_id: SESSION_ID,
@@ -195,6 +199,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         equipment_id: null,
         workout_plan_exercise_id: Number(body.workout_plan_exercise_id),
         client_key: clientKey,
+        form_practice: formPracticeOf.get(meta.id) ?? false,
         duplicate: existing != null,
       });
     }

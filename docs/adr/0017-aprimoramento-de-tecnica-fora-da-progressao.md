@@ -1,6 +1,6 @@
 # ADR 0017: Aprimoramento de técnica fora da progressão (issue #196)
 
-- **Status**: Aceita. Lote 1 (motor) implementado na branch `feat/tecnica-fora-da-progressao-196-lote1`. Nada foi publicado nem promovido a produção.
+- **Status**: Aceita. Lote 1 (motor) implementado na branch `feat/tecnica-fora-da-progressao-196-lote1`; lote 2 (frontend) na branch `feat/tecnica-marcacao-196-lote2`. Nada foi publicado nem promovido a produção.
 - **Data**: 2026-11-18
 
 ## Contexto
@@ -29,8 +29,20 @@ Consumidores deste PR (lista completa no mapa §105):
 - Excluem a execução marcada: o motor (`progression_view`, `progression_view_all_goals`, `evaluate_history`, calibração), `exercise_briefing` (última execução), `exposure_service` (3 templates), `session_records`, `strength_panel`, `analytics` (`_exercise_progress_match_sql`, `_fetch_group_e1rm_rows` e o e1RM de `_build_progression_sessions`: a sessão toda marcada aparece no progresso sem e1RM; em sessão mista as séries marcadas não entram no e1RM), `volume_service` (só o e1RM de referência), `recovery_read_model` + `exercise_performance` ("Desempenho recente"; o histórico empacotado ganhou um 12º campo), `services.get_last_session_sets` e `prescription_service.last_execution_from_logs`.
 - Só transportam a marca: `workout_sessions` (criação, herança, repetição por `client_key`), `services.list_exercise_logs` e `services.activity_detail`.
 - Não avaliam a série marcada: `workout_sessions._evaluate_set` e o job `evaluate_set`, pelo desfecho neutro; o job também pelo contexto neutro e pela saída neutra da IA. A marcação chega ao job pelo leitor `engine_decision_context.read_exercise_form_practice`, porque o job não tem a linha de `exercises` em mãos.
-- `analytics`: a sessão toda marcada aparece na tabela de progresso sem e1RM, e cada sessão do resultado traz o campo `form_practice` (consumidor `analytics._build_progression_sessions`), verdadeiro só quando nenhuma série de trabalho da sessão conta para a progressão por ser de execução marcada e a sessão não é de deload; falso em sessão normal, mista (as séries marcadas ficam fora do snapshot de carga/reps/RPE e do e1RM), de deload e em linha antiga sem a coluna; na sessão toda marcada, carga de topo, reps e RPE mostrados são os da execução de técnica e `e1rm`/`e1rm_reps`/`e1rm_reliable` saem vazios; a tela (lote 2) usa o campo para rotular o ponto.
+- `analytics`: a sessão toda marcada aparece na tabela de progresso sem e1RM, e cada sessão do resultado traz o campo `form_practice` (consumidor `analytics._build_progression_sessions`), verdadeiro só quando nenhuma série de trabalho da sessão conta para a progressão por ser de execução marcada e a sessão não é de deload; falso em sessão normal, mista (as séries marcadas ficam fora do snapshot de carga/reps/RPE e do e1RM), de deload e em linha antiga sem a coluna; na sessão toda marcada, carga de topo, reps e RPE mostrados são os da execução de técnica e `e1rm`/`e1rm_reps`/`e1rm_reliable` saem vazios; a tela usa o campo para rotular o ponto (ver "Frontend (lote 2)" abaixo).
 - Mantêm: volume, recuperação, fadiga, tonelagem, tempo, aderência e teto de ativação.
+
+## Frontend (lote 2)
+
+Só apresentação: o frontend não decide elegibilidade, e1RM, veredito nem herança; isso fica no dono acima.
+
+- **Rótulo.** `FORM_PRACTICE_LABEL` ("Aprimoramento de técnica") e `FORM_PRACTICE_HELP` ficam em `frontend/src/lib/form-practice.ts`, com os helpers da marcação. É texto fixo de apresentação, sem fonte no backend, como os de "Laboral" e "Deload".
+- **Marcação pendente local.** Antes da 1ª série o exercício não existe no servidor, então a marca fica em `form_practice_plan_exercise_ids` do estado do Modo Treino (`frontend/src/lib/workout-mode-types.ts`), por `workout_plan_exercise_id` original do item da ficha. `persistSession` em `frontend/src/app/(fullscreen)/modo-treino/PlanExecutionScreen.tsx` grava essa lista, e ela sobrevive a recarregar o aplicativo.
+- **Envio.** `ensureExerciseMutation` envia `form_practice` no `POST /workout-sessions/{id}/exercises`. A fila offline usa o mesmo payload, e `frontend/src/lib/offline/overlay.ts` copia o campo para a linha local criada offline.
+- **Regra de exibição, coerente com D2.** `resolveFormPracticeState` (`ExerciseBriefingScreen.tsx`): sem linha do servidor, vale a marcação pendente e a ação pode ser alternada; com linha, vale a `form_practice` da linha e a ação trava. Numa continuação por troca de equipamento, a regra usa o item original.
+- **O que as telas mostram.** A ação e o aviso na apresentação do exercício (`ExerciseBriefingScreen.tsx`); o selo no cabeçalho das séries (`SetLoggerCard.tsx`); o rótulo no detalhe do treino (`WorkoutDetailClient.tsx` e `TreinoDetalheScreen.tsx`, de `GET /activities/{id}`); o rótulo na tabela e no gráfico de progresso (`DashboardProgressaoClient.tsx`, `ProgressaoChart.tsx` e `ProgressaoScreen.tsx`, de `GET /analytics/dashboard-progression`). No gráfico (`frontend/src/lib/progression-chart.ts`) o ponto marcado sai da linha de Carga, e o deload tem precedência sobre a técnica.
+- **Limitações do lote 2.** O treino livre (`FreeformScreen.tsx`) não tem a marcação e fica para outra entrega. A ação só aparece na apresentação do exercício, então quem sai dela sem registrar série não marca mais aquele exercício. Trocar o equipamento antes da 1ª série mantém a marca feita no item da ficha, que aparece e pode ser desmarcada. O gráfico mobile não tem rótulo de marcador (o deload também não tem). O corpo do `POST` não tem teste automatizado.
+- **Promoção.** Este frontend só pode ir para produção junto com o backend e a migração 120. Uma API sem o campo ignoraria `form_practice` e a marca sumiria em silêncio. Os três vão na mesma promoção, com `RUN_DB_MIGRATIONS=true` como descrito em Consequências.
 
 ## Alternativas descartadas
 

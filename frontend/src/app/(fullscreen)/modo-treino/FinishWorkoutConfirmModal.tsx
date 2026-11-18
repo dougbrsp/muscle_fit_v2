@@ -37,6 +37,8 @@ export function FinishWorkoutConfirmModal({ opened, finishing, error, onConfirm,
         )}
         <Button
           fullWidth
+          size="lg"
+          h={56}
           color="green"
           radius="xl"
           loading={finishing}
@@ -45,7 +47,7 @@ export function FinishWorkoutConfirmModal({ opened, finishing, error, onConfirm,
         >
           Confirmar encerramento
         </Button>
-        <Button fullWidth variant="light" radius="xl" disabled={finishing} onClick={onCancel}>
+        <Button fullWidth size="lg" h={56} variant="light" radius="xl" disabled={finishing} onClick={onCancel}>
           Continuar treino
         </Button>
       </div>

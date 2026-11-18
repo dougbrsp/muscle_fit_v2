@@ -148,8 +148,8 @@ const progByGroup = {
 const exOptions = { ok: true, source: 'e2e', items: [['Supino reto', 'Peito'], ['Puxada alta', 'Costas'], ['Agachamento livre', 'Quadríceps'], ['Desenvolvimento', 'Ombros'], ['Rosca direta', 'Bíceps']].map(([n, g], i) => ({ id: i + 1, exercise_name: n, amazfit_name: null, primary_group: g, secondary_group: null, primary_muscles: null, secondary_muscles: null })) };
 const progression = {
   exercise_name: 'Supino reto', mapping_id: 1, days: 28, items: days(28).filter((_, i) => i % 3 === 0).map((d, i) => ({
-    activity_id: 200 + i, local_date: d, activity_name: 'Peito e tríceps', sets_count: 4, best_load_kg: 60 + i * 2.5, best_reps: 8, avg_rpe: 8, e1rm: 88 + i * 1.6, intensity_status: 'REACHED', rpe_target_effective: 8,
-    failure_allowed: false, evolution: { status: i === 0 ? 'NOT_COMPARABLE' : 'PROGRESSING', reasons: [] }, e1rm_reps: 8, e1rm_reliable: true, top_load_kg: 60 + i * 2.5, top_set_reps: [8, 8], in_context_run: true, in_verdict_run: true, training_goal: 'hypertrophy', deload_source: null, deload_label: null,
+    activity_id: 200 + i, local_date: d, activity_name: 'Peito e tríceps', sets_count: 4, best_load_kg: 60 + i * 2.5, best_reps: 8, avg_rpe: 8, e1rm: i === 1 ? null : 88 + i * 1.6, form_practice: i === 1, intensity_status: 'REACHED', rpe_target_effective: 8,
+    failure_allowed: false, evolution: i === 1 ? null : { status: i === 0 ? 'NOT_COMPARABLE' : 'PROGRESSING', reasons: [] }, e1rm_reps: i === 1 ? null : 8, e1rm_reliable: i !== 1, top_load_kg: 60 + i * 2.5, top_set_reps: [8, 8], in_context_run: i === 1 ? null : true, in_verdict_run: i === 1 ? null : true, training_goal: 'hypertrophy', deload_source: null, deload_label: null,
   })),
 };
 const progressionTrend = {

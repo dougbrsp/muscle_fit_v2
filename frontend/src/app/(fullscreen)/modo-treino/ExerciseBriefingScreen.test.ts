@@ -8,7 +8,7 @@ import type { ExerciseBriefingResponse } from '@/lib/exercise-briefing-types';
 import parity from '@/lib/training-goal.parity.json';
 import type { DeloadPrescription } from '@/lib/deload';
 import { theme } from '@/theme';
-import { BriefingInstructions, ExerciseBriefingView } from './ExerciseBriefingScreen';
+import { BriefingInstructions, ExerciseBriefingView, resolveFormPracticeState } from './ExerciseBriefingScreen';
 
 type ViewProps = Parameters<typeof ExerciseBriefingView>[0];
 
@@ -327,5 +327,63 @@ describe('fabricante por academia (#188)', () => {
 
   it('API antiga (sem os campos) não mostra a linha do fabricante', () => {
     expect(render()).not.toContain('briefing-manufacturer');
+  });
+});
+
+/** Tag de abertura do elemento com `data-testid` (os atributos vêm antes do testid). */
+function openTag(html: string, testId: string): string {
+  const at = html.indexOf(`data-testid="${testId}"`);
+  expect(at).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at) + 1);
+}
+
+describe('ExerciseBriefingView — aprimoramento de técnica (#196)', () => {
+  it('sem handler, a ação não existe', () => {
+    expect(render()).not.toContain('briefing-form-practice"');
+  });
+
+  it('inativa: botão aria-pressed=false e nenhum indicador', () => {
+    const html = render({ onToggleFormPractice: () => {} });
+    const btn = openTag(html, 'briefing-form-practice');
+    expect(btn).toContain('aria-pressed="false"');
+    expect(btn).not.toContain('disabled');
+    expect(html).not.toContain('briefing-form-practice-on');
+  });
+
+  it('ativa: aria-pressed=true e indicador textual com rótulo e ajuda', () => {
+    const html = render({ onToggleFormPractice: () => {}, formPractice: true });
+    expect(openTag(html, 'briefing-form-practice')).toContain('aria-pressed="true"');
+    const on = section(html, 'briefing-form-practice-on');
+    expect(on).toContain('Aprimoramento de técnica');
+    expect(on).toContain('não conta para a progressão');
+  });
+
+  it('travada: desabilitada e ainda mostra o estado', () => {
+    const html = render({ onToggleFormPractice: () => {}, formPractice: true, formPracticeLocked: true });
+    const btn = openTag(html, 'briefing-form-practice');
+    expect(btn).toContain('disabled');
+    expect(btn).toContain('aria-pressed="true"');
+    expect(html).toContain('briefing-form-practice-on');
+  });
+});
+
+describe('resolveFormPracticeState (#196)', () => {
+  const extras = [{ localId: -1, originalWorkoutPlanExerciseId: 10 }] as never;
+  const base = { midExerciseExtras: [], loggedRow: null, loggedExercises: [], pendingIds: [] as number[] };
+
+  it('sem linha: vale a marcação pendente e não trava', () => {
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10 })).toEqual({ itemId: 10, marked: false, locked: false });
+  });
+
+  it('com linha do servidor: vale a linha e trava, mesmo com pendente divergente', () => {
+    const r = resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10], loggedRow: { form_practice: false } });
+    expect(r).toEqual({ itemId: 10, marked: false, locked: true });
+  });
+
+  it('continuação: usa o item original (marca e trava pela linha dele)', () => {
+    const rows = [{ workout_plan_exercise_id: 10, form_practice: true }];
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows })).toEqual({ itemId: 10, marked: true, locked: true });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false });
   });
 });

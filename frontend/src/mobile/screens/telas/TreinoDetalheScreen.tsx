@@ -10,6 +10,7 @@ import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import { apiFetch } from '@/lib/api';
+import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import {
   describeSets,
   formatLoggedSets,
@@ -711,6 +712,7 @@ export function TreinoDetalheScreen() {
                 title={row.original_name}
                 subtitle={[
                   row.equipment_name,
+                  isFormPracticeRow(row) ? FORM_PRACTICE_LABEL : null,
                   swapped ? `Trocado (planejado: ${row.planned_exercise_name || 'exercício da ficha'})` : null,
                 ]
                   .filter(Boolean)

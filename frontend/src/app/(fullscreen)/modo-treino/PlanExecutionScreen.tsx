@@ -52,6 +52,7 @@ import {
 } from '@/lib/workout-mode-types';
 import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
 import { loadStoredSession, restoreBriefedKeys, saveStoredSession } from '@/lib/workout-mode-storage';
+import { toggleFormPracticePending } from '@/lib/form-practice';
 import {
   feelerSetLoad,
   techniqueApplicationLoad,
@@ -135,7 +136,7 @@ import { FreeformScreen } from './FreeformScreen';
 import { MuscleMapDisclosure } from './MuscleMapDisclosure';
 import { LastExerciseNotice, NextExercisePreviewCard } from './NextExercisePreviewCard';
 import { RemainingExercisesList, type RemainingExerciseRow } from './RemainingExercisesList';
-import { ExerciseBriefingScreen } from './ExerciseBriefingScreen';
+import { ExerciseBriefingScreen, resolveFormPracticeState } from './ExerciseBriefingScreen';
 import { RestTimerHero } from './RestTimer';
 import { RestAiEvaluationCard, RestSavedSetPanel } from './RestRecommendation';
 import { useWeightUnit } from '@/lib/use-weight-unit';
@@ -478,6 +479,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     Object.fromEntries(Object.entries(session.advanced_stage_progress || {}).map(([k, v]) => [Number(k), v])),
   );
   const [midExerciseExtras, setMidExerciseExtras] = useState<MidExerciseExtra[]>(session.mid_exercise_extras || []);
+  // #196: marcações de técnica ainda sem exercício no servidor (ids ORIGINAIS da ficha).
+  const [formPracticeIds, setFormPracticeIds] = useState<number[]>(session.form_practice_plan_exercise_ids || []);
   // Modo Intensivo (FST-7): estado do bloco por `workout_plan_exercise_id`
   // (`workout-mode-intensive.ts`). Espelho síncrono no ref: as respostas do
   // POST chegam depois do render e gravam sobre o valor mais novo.
@@ -672,6 +675,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       equipment_overrides: overrides,
       warmup_state: warmup,
       mid_exercise_extras: midExerciseExtras,
+      form_practice_plan_exercise_ids: formPracticeIds,
       advanced_stage_progress: advancedProgress,
       briefed_keys: Array.from(briefedKeys),
       rest_timer: restTimerRef.current,
@@ -1047,6 +1051,22 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // e, numa sessão de deload, já com a prescrição de deload desde a 1ª série.
   const currentItemGoal = current?.planExercise.training_goal ?? null;
   const currentPlanItemId = originalPlanItemId(currentWorkoutPlanExerciseId, midExerciseExtras);
+  // #196: marcado/travado do exercício atual (linha do servidor vence a marcação pendente).
+  const formPractice = resolveFormPracticeState({
+    planExerciseId: currentWorkoutPlanExerciseId,
+    midExerciseExtras,
+    loggedRow: current?.loggedRow,
+    loggedExercises: activity?.exercises,
+    pendingIds: formPracticeIds,
+  });
+  function toggleFormPractice() {
+    if (formPractice.locked || formPractice.itemId == null) return;
+    const next =
+      toggleFormPracticePending({ form_practice_plan_exercise_ids: formPracticeIds }, formPractice.itemId)
+        .form_practice_plan_exercise_ids ?? [];
+    setFormPracticeIds(next);
+    persistSession({ form_practice_plan_exercise_ids: next });
+  }
   const suggestedProgressionQuery = useQuery({
     queryKey: [
       PAIR_SUGGESTION_QUERY_ROOT,
@@ -1425,6 +1445,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         equipment_id: effectiveEquipmentLinkId,
         workout_plan_exercise_id: workoutPlanExerciseId,
         client_key: exerciseKey,
+        // #196: sempre explícito (o mesmo corpo vai para a fila offline).
+        form_practice: formPractice.marked,
       };
       try {
         const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
@@ -2858,7 +2880,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           transitionNote={restIsExerciseTransition ? 'Exercício concluído' : null}
           iconActions={restIconActions}
           notice={
-            finishMutation.isError ? errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.') : null
+            finishMutation.isError && !finishConfirmOpen
+              ? errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.')
+              : null
           }
           initialSeconds={resolveRestSeconds({
               nextStageKind: advancedStage?.kind ?? null,
@@ -3054,6 +3078,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           workoutPlanExerciseId={currentWorkoutPlanExerciseId}
           sessionId={session.session_id}
           goalBadge={currentGoalBadge}
+          formPractice={formPractice.marked}
           hideTechnique={Boolean(current.planExercise.advanced_technique) && advancedTechniqueValue == null}
           exerciseName={effectiveExerciseName}
           // Só quando a troca mudou o exercício: senão o próprio briefing
@@ -3068,6 +3093,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           // pelo `EquipmentSubstituteModal`; pular pelo `SkipExerciseModal`.
           onSwap={!current.loggedRow ? openSubstitute : undefined}
           onSkip={() => openSkipModalFor(currentWorkoutPlanExerciseId)}
+          formPracticeLocked={formPractice.locked}
+          onToggleFormPractice={toggleFormPractice}
           nextExercise={
             nextPendingItem
               ? { name: nextPendingItem.planExercise.exercise_name, muscle: nextPendingItem.planExercise.muscle_primary }
@@ -3179,6 +3206,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         <SetLoggerCard
           exerciseName={effectiveExerciseName}
           goalBadge={currentGoalBadge}
+          formPractice={formPractice.marked}
           description={effectiveExerciseDescription}
           exerciseCard={effectiveExerciseCard}
           equipmentName={effectiveEquipmentName}
@@ -3246,6 +3274,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         <SetLoggerCard
           exerciseName={effectiveExerciseName}
           goalBadge={currentGoalBadge}
+          formPractice={formPractice.marked}
           description={effectiveExerciseDescription}
           exerciseCard={effectiveExerciseCard}
           equipmentName={effectiveEquipmentName}
@@ -3346,6 +3375,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           <SetLoggerCard
             exerciseName={effectiveExerciseName}
             goalBadge={currentGoalBadge}
+            formPractice={formPractice.marked}
             description={effectiveExerciseDescription}
             exerciseCard={effectiveExerciseCard}
             equipmentName={effectiveEquipmentName}
