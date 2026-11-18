@@ -264,7 +264,7 @@ def test_kcal_manual_e_sessao_sem_kcal(db):
     comparacao = treino["comparison"]
     assert comparacao["reported"]["kcal"] == pytest.approx(300)
     assert comparacao["estimated"]["kcal"] == pytest.approx(training_kcal_met(80, 75))
-    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30) - 1750.0 / 1440 * 75)  # líquida do repouso
+    assert comparacao["used"]["kcal"] == pytest.approx(300 + training_kcal_met(80, 30) - 1750.0 / 1440 * 30)  # ADR 0016: só a MET desconta (30 min); antes também a informada (75)
     assert comparacao["used"]["kcal_nature"] == "met" and comparacao["partial"] is True
     assert comparacao["used"]["limitations"] == ["training_kcal_partially_estimated"]
     assert not any(lado["is_used"] for lado in comparacao["sides"])
@@ -281,7 +281,7 @@ def test_dia_expoe_forca_extra_e_total_pelo_motor(db):
     for esporte, kcal in (("Walk", 51), ("Walk", 79), ("VirtualRun", 265)):
         db.add_intervals_activity(ALUNO, HOJE, esporte, kcal)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    assert treino["activity_kcal"] == {"training_kcal": 428.0 - 1750.0 / 1440 * 60, "extra_kcal": 395.0, "total_kcal": 823.0 - 1750.0 / 1440 * 60}
+    assert treino["activity_kcal"] == {"training_kcal": 428.0, "extra_kcal": 395.0, "total_kcal": 823.0}  # ADR 0016: informada ativa; antes 428 - 1750/1440*60
     assert treino["extra_activity"]["kcal"] == 395.0 and treino["extra_activity"]["kcal_nature"] == "reported"
     assert [i["label"] for i in treino["extra_activity"]["items"]] == ["Walk", "Walk", "VirtualRun"]
     assert treino["is_training_day"] is True
@@ -321,7 +321,7 @@ def test_plano_explicito_mostra_o_extra(db):
     db.add_intervals_activity(ALUNO, HOJE, "VirtualRun", 300)  # sem duração: entra como veio
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
     assert treino["extra_activity"]["kcal"] == 300.0
-    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60 + 300.0)
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 + 300.0)  # ADR 0016: informada ativa; antes 410 - 1750/1440*60 + 300
 
 
 def test_plano_embutido_nao_mostra_extra_mesmo_com_atividade_no_intervals(db):
@@ -339,7 +339,7 @@ def test_dia_sem_extra_mantem_o_formato_e_extra_de_outro_usuario_nao_aparece(db)
     db.add_intervals_activity(OUTRO, HOJE, "VirtualRun", 999)
     treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
     assert treino["extra_activity"] == {"kcal": 0.0, "kcal_nature": None, "items": [], "gross_kcal": 0.0, "resting_discount_kcal": 0.0}
-    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0 - 1750.0 / 1440 * 60)  # líquida do repouso
+    assert treino["activity_kcal"]["total_kcal"] == pytest.approx(410.0)  # ADR 0016: informada ativa; antes 410 - 1750/1440*60
 
 
 # ---------------------------------------------------------------------------
@@ -429,16 +429,14 @@ def test_admin_e_pt_veem_e_anotam_o_dia_do_aluno(db, papel):
     assert cliente.get(f"/nutrition/days/{HOJE.isoformat()}?user_id=999").status_code == 404
 
 
-def test_training_block_liquido_no_explicito_e_sem_desconto_no_embutido_e_nulo_sem_treino(db):
+def test_training_block_sem_desconto_por_padrao_no_explicito_e_no_embutido_e_nulo_sem_treino(db):
     sem_treino = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
     assert sem_treino["training_block"] is None
     db.add_activity(ALUNO, HOJE, 410, 3600)
     explicito = _client().get(f"/nutrition/days/{HOJE.isoformat()}").json()["training"]
-    desconto = 1750.0 / 1440 * 60
-    assert explicito["training_block"] == {
-        "gross_kcal": 410.0, "resting_discount_kcal": pytest.approx(desconto), "kcal": pytest.approx(410.0 - desconto)
-    }
-    assert explicito["comparison"]["used_net_kcal"] == pytest.approx(410.0 - desconto)
+    # ADR 0016: a informada entra ativa também no explícito; antes o desconto era 1750/1440*60 e o líquido 337,08.
+    assert explicito["training_block"] == {"gross_kcal": 410.0, "resting_discount_kcal": 0.0, "kcal": 410.0}
+    assert explicito["comparison"]["used_net_kcal"] == pytest.approx(410.0)
     assert explicito["comparison"]["used"]["kcal"] == explicito["comparison"]["used_net_kcal"]  # `used.kcal` já é o líquido
     assert explicito["comparison"]["used"]["gross_kcal"] == 410.0
     db.plans[db.plano]["training_kcal_mode"] = "included_in_factor"

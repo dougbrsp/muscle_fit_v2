@@ -111,6 +111,9 @@ SYNC_RUN_RETENTION_DAYS: Final[int] = 120
 CORRECTION_ACTION_EXCLUDE: Final[str] = "exclude"
 CORRECTION_ACTION_RECLASSIFY: Final[str] = "reclassify"
 CORRECTION_ACTIONS: Final[tuple[str, ...]] = (CORRECTION_ACTION_EXCLUDE, CORRECTION_ACTION_RECLASSIFY)
+# Classificação da kcal na tela: sem correção = automática; com `reclassify` = manual (reaproveita o código da ação).
+KCAL_CLASSIFICATION_AUTO: Final[str] = "auto"
+KCAL_CLASSIFICATION_MANUAL: Final[str] = CORRECTION_ACTION_RECLASSIFY
 
 ROUNDING_DIGITS_PUBLIC: Final[int] = 1
 
@@ -137,11 +140,21 @@ _CALORIE_MODE_ALIASES: Final[Mapping[str, CalorieMode]] = {
 }
 
 
+# Padrão ÚNICO do que a kcal INFORMADA pelo Intervals significa (ADR 0016, `nutrition-v5`): ATIVA. O relógio já separa
+# o repouso da atividade; descontar de novo seria tirar duas vezes. `plan.DEFAULT_WATCH_CALORIE_MODE` e
+# `energy_expenditure.DEFAULT_TDEE_CALORIE_MODE` derivam daqui (plan e energy_expenditure importam este módulo).
+DEFAULT_REPORTED_CALORIE_MODE: Final[CalorieMode] = CalorieMode.ACTIVE
+
+
 def normalize_calorie_mode(value: Any) -> CalorieMode:
-    """Texto -> modo da kcal; qualquer valor desconhecido, vazio ou ausente vira `UNKNOWN` (nunca levanta)."""
+    """Texto -> modo da kcal (nunca levanta). Ausente ou vazio = não informado = `DEFAULT_REPORTED_CALORIE_MODE`
+    (ADR 0016); texto `unknown` ou desconhecido = `UNKNOWN` (desconta o repouso e marca precisão reduzida)."""
     if isinstance(value, CalorieMode):
         return value
-    return _CALORIE_MODE_ALIASES.get(str(value or "").strip().lower(), CalorieMode.UNKNOWN)
+    texto = str(value or "").strip().lower()
+    if not texto:
+        return DEFAULT_REPORTED_CALORIE_MODE
+    return _CALORIE_MODE_ALIASES.get(texto, CalorieMode.UNKNOWN)
 
 
 class ActivityFlag(str, Enum):
@@ -273,7 +286,8 @@ def resting_kcal(bmr_kcal: Any, duration_minutes: Any) -> Optional[float]:
 
 
 def net_of_resting_kcal(kcal: Any, calorie_mode: Any, resting: Optional[float]) -> Optional[float]:
-    """Regra ÚNICA do desconto do repouso da janela (decisão D4): `active` entra como veio; `gross`/`unknown` descontam
+    """Regra ÚNICA do desconto do repouso da janela (decisão D4; padrão ativa pela ADR 0016): `active` (e o modo ausente,
+    ver `normalize_calorie_mode`) entra como veio; `gross`/`unknown` descontam
     `resting` (de `resting_kcal`) com piso 0. `kcal` ausente ou <= 0 -> None; `resting` None (sem TMB ou duração) em
     modo que desconta -> None (quem chama decide: marca a limitação e mantém a bruta). Consumida por `normalize_activity`
     (adaptativo) e por `energy_expenditure` (gasto do modo explícito/automático)."""
@@ -310,12 +324,20 @@ def apply_activity_corrections(
         correcao = por_id.get(str(atividade.id))
         if correcao is not None and correcao.action == CORRECTION_ACTION_EXCLUDE:
             atividade = replace(atividade, correction=correcao)
-        elif correcao is not None and correcao.action == CORRECTION_ACTION_RECLASSIFY:
-            tipo = str(correcao.energy_kind or "").strip().lower()
-            if tipo in CORRECTION_ENERGY_KINDS:
-                atividade = replace(atividade, calorie_mode=tipo, correction=correcao)
+        elif (tipo := reclassified_calorie_mode(correcao)) is not None:
+            atividade = replace(atividade, calorie_mode=tipo, correction=correcao)
         resultado.append(atividade)
     return tuple(resultado)
+
+
+def reclassified_calorie_mode(correction: Optional[ActivityCorrection]) -> Optional[str]:
+    """Modo da kcal imposto por uma correção `reclassify` com `energy_kind` válido; qualquer outra coisa (sem correção,
+    `exclude`, tipo inválido) -> None (vale o modo de quem chama). Usada por `apply_activity_corrections` e pela kcal da
+    sessão do app vinculada a uma atividade do Intervals (`energy_expenditure`)."""
+    if correction is None or correction.action != CORRECTION_ACTION_RECLASSIFY:
+        return None
+    tipo = str(correction.energy_kind or "").strip().lower()
+    return tipo if tipo in CORRECTION_ENERGY_KINDS else None
 
 
 def normalize_activity(raw: RawActivity, bmr_kcal: Any = None) -> NormalizedActivity:

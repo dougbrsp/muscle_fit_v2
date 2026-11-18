@@ -1,9 +1,9 @@
 # Cálculos de nutrição: como a meta do dia é montada
 
-- **Data de referência**: 08/11/2026.
-- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v4"` (`daily_target.py`, L85).
+- **Data de referência**: 08/11/2026. Atualizado em 17/11/2026 só nas regras da kcal informada (ADR 0016); os exemplos numéricos da seção 6 são de 08/11 (`nutrition-v3`, com a kcal da sessão descontada do repouso) e NÃO foram refeitos: em `nutrition-v5` a kcal informada entra ativa, sem esse desconto.
+- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v5"` (`daily_target.py`).
 - **Código lido**: worktree `agent-a9b5f1502049a983d`, branch `fix/tdee-desconta-repouso-sessao`. A leitura não usou git, então o commit `a091ddb3` informado pelo líder não foi conferido aqui. As linhas citadas foram conferidas nesta leitura e podem deslocar com novos commits; onde não há linha, a referência é o nome da função.
-- **Fontes**: ADR 0005 (gasto adaptativo), ADR 0007 (gordura pela fração configurada), ADR 0008 (desconto do repouso, atividades do Intervals e dedup), `docs/motores/FONTES_DA_VERDADE.md` (§3.7 e §100).
+- **Fontes**: ADR 0005 (gasto adaptativo), ADR 0007 (gordura pela fração configurada), ADR 0008 (desconto do repouso, atividades do Intervals e dedup; o desconto da kcal informada foi substituído pela ADR 0016), ADR 0016 (kcal informada ativa por padrão), `docs/motores/FONTES_DA_VERDADE.md` (§3.7 e §100).
 - **Convenção**: todo número abaixo vem de uma constante nomeada ou de uma fórmula do código, com o arquivo indicado. Os valores do exemplo da seção 6 são os medidos em produção pela ADR 0008 (só leitura), salvo quando marcados como derivados.
 
 ## 1. Visão geral do caminho
@@ -12,7 +12,7 @@ O motor calcula um dia por vez. A função de entrada é `daily_target.compute_d
 
 1. **Perfil e composição.** O sujeito traz sexo, idade, altura, peso, %G, massa livre de gordura (MLG) e nível de atividade (`anthropometrics.Subject`). A MLG vem da bioimpedância ou de peso × (1 − %G) (`body_composition.resolved_ffm_kg`). A massa gorda vem de peso × %G ou de peso − MLG (`resolved_fat_mass_kg`).
 2. **TMB.** `bmr.bmr` escolhe a fórmula e calcula o gasto basal (seção 2).
-3. **Gasto de atividade do dia.** `energy_expenditure.resolve_sessions_kcal` soma as sessões do app. `extra_activity_kcal` soma as atividades do Intervals sem vínculo, depois de deduplicar e de tirar as duplicatas contra as sessões (seção 4). No modo explícito e no automático sincronizado, as sessões e as atividades saem líquidas do repouso.
+3. **Gasto de atividade do dia.** `energy_expenditure.resolve_sessions_kcal` soma as sessões do app. `extra_activity_kcal` soma as atividades do Intervals sem vínculo, depois de deduplicar e de tirar as duplicatas contra as sessões (seção 4). No modo explícito e no automático sincronizado, a kcal informada (relógio/Intervals) entra ativa, como veio (ADR 0016), e a kcal estimada por MET sai líquida do repouso.
 4. **TDEE.** `effective_tdee_basis` decide o modo que vale no dia. `energy_expenditure.tdee` (ou `adaptive_tdee_result`, no adaptativo) monta o gasto total do dia (seção 3).
 5. **Meta de kcal.** `strategy.kcal_target` aplica a estratégia (cutting, bulking ou manutenção) sobre o TDEE, com pisos e tetos (seção 3.5).
 6. **Macros.** `macros.macro_split_for_priority` reparte a meta em proteína, gordura e carboidrato. A gordura segue a fração configurada sobre as kcal finais do dia (`macros.py`).
@@ -54,16 +54,16 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 
 - Atividade do Intervals que não é treino do app não faz o dia virar dia de treino. `is_training_day` e o tipo de dia do ciclo de carbo não mudam.
 - Dia de treino é definido pela existência de sessão concluída do app, não pela kcal líquida. Uma sessão com kcal líquida igual a zero continua sendo dia de treino (`training_kcal_of_day` trata zero como valor conhecido).
-- `ENGINE_VERSION` é `nutrition-v4`.
-- A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia.
+- `ENGINE_VERSION` é `nutrition-v5` (ADR 0016).
+- A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia. Dia já congelado (`hoje >= dia + TARGET_FREEZE_LAG_DAYS`, 2) não é recalculado, nem por correção manual de atividade (`days_to_materialize`, `daily_target.py`).
 
 ### 3.1 Modo explícito (`explicit_training`)
 
-**Fórmula**: TDEE = TMB × fator de não exercício + treino líquido do app + extras líquidos do Intervals.
+**Fórmula**: TDEE = TMB × fator de não exercício + treino do app + extras do Intervals (kcal informada como veio, ativa; MET líquida do repouso).
 
 - Fator: `NON_EXERCISE_ACTIVITY_FACTORS` (`anthropometrics.py`, L68): sedentário 1,2; leve 1,3; moderado 1,4; ativo 1,5; muito ativo 1,6. Decisão D-A do plano, sem fonte canônica única.
-- **Treino do app**: `resolve_sessions_kcal` soma por sessão. Cada sessão sai líquida do repouso: kcal − TMB ÷ 1.440 × minutos, com piso zero. A kcal informada é o número do relógio. Sessão sem kcal usa MET.
-- **Extras do Intervals**: `extra_activity_kcal` soma toda atividade sem vínculo com sessão, líquida do repouso da janela dela (seção 4).
+- **Treino do app**: `resolve_sessions_kcal` soma por sessão. A kcal informada é o número do relógio e entra ativa, sem desconto (ADR 0016). Sessão sem kcal usa MET, que sai líquida do repouso: kcal − TMB ÷ 1.440 × minutos, com piso zero. Correção manual `reclassify` da atividade do Intervals vinculada vale para a kcal da sessão; `exclude` é ignorado (a sessão continua contando).
+- **Extras do Intervals**: `extra_activity_kcal` soma toda atividade sem vínculo com sessão; a kcal informada entra ativa e a correção manual vale (seção 4).
 - Só soma treino e extras quando o dia é conhecido (hoje ou passado). Em dia futuro o treino fica como desconhecido (`LIMIT_TRAINING_UNKNOWN_FUTURE_DAY`).
 - **Fallback**: se faltar TMB ou nível de atividade, o TDEE sai `None` e a limitação correspondente aparece (`missing_bmr`, `missing_activity_level`).
 
@@ -79,7 +79,7 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 
 Este modo é uma escolha de dois caminhos, decidida dia a dia (`effective_tdee_basis`).
 
-- **Sincronizado** (`intervals_in_sync`): a conta do Intervals está conectada **e** a última sincronização tem até `INTERVALS_SYNC_MAX_AGE_MINUTES = 36 × 60` minutos. O dia vale como explícito, com o nível de **rotina** do plano (`routine_level`). Se o plano não tem rotina, vale `ROUTINE_ACTIVITY_LEVEL_DEFAULT = LIGHT`. Treino líquido do app e extras líquidos entram, com as mesmas regras do explícito.
+- **Sincronizado** (`intervals_in_sync`): a conta do Intervals está conectada **e** a última sincronização tem até `INTERVALS_SYNC_MAX_AGE_MINUTES = 36 × 60` minutos. O dia vale como explícito, com o nível de **rotina** do plano (`routine_level`). Se o plano não tem rotina, vale `ROUTINE_ACTIVITY_LEVEL_DEFAULT = LIGHT`. Treino do app e extras entram com as mesmas regras do explícito: kcal informada ativa, sem desconto; MET e `gross`/`unknown` explícitos descontam o repouso.
 - **Sem sincronização** (sem conexão ou sync parado há mais de 36 h): o dia vale como embutido, com o fator com exercício do **perfil**. Treino e atividades são ignorados no gasto. O `training_kcal` gravado fica **bruto**.
 - O plano automático sem nível de atividade no perfil é bloqueado para salvar e publicar (`LIMIT_AUTO_REQUIRES_PROFILE_LEVEL`).
 - Janela de frescor: a Lambda de sync roda 1 vez por dia às 05:45 BRT. As 36 h são um ciclo mais 12 h de folga.
@@ -205,9 +205,9 @@ Regra única (`activity_energy.net_of_resting_kcal`):
 
 - **Modo `active`**: a kcal entra como veio.
 - **Modo `gross`** (total, com o repouso dentro): líquida = max(0; kcal − repouso).
-- **Modo `unknown`**: tratada como bruta, desconta o repouso, e no adaptativo recebe a marca `reduced_precision`.
+- **Modo `unknown` explícito**: tratada como bruta, desconta o repouso, e no adaptativo recebe a marca `reduced_precision`. Tratar `unknown` como ativa continua proibido.
 - **MET**: sempre bruta (`MET_KCAL_CALORIE_MODE = GROSS`), sempre desconta.
-- **Modo padrão do relógio** no explícito e automático: `unknown` (`DEFAULT_TDEE_CALORIE_MODE`). Ou seja, a kcal do relógio é descontada.
+- **Modo padrão da kcal informada** (modo ausente ou vazio): ativa (`activity_energy.DEFAULT_REPORTED_CALORIE_MODE`, ADR 0016). `DEFAULT_TDEE_CALORIE_MODE` (explícito e automático) e `DEFAULT_WATCH_CALORIE_MODE` (plano adaptativo) derivam dele. Antes da ADR 0016 (até `nutrition-v4`) o padrão era `unknown` e a kcal do relógio era descontada. Precedência: correção manual > modo gravado no plano adaptativo > padrão.
 - **Onde se aplica**: explícito e automático sincronizado. No embutido, no fallback do automático e no adaptativo a kcal do treino não é descontada pelo modo explícito (o adaptativo tem o próprio desconto).
 - **Sem duração**: a kcal entra como está e sai `training_rest_not_discounted` (`LIMIT_REST_NOT_DISCOUNTED`).
 - **Sem TMB**: a kcal entra como está, sem aviso de desconto (o gasto já fica desconhecido por outra limitação).
@@ -219,7 +219,7 @@ A consulta de atividades do Intervals (`EXTRA_ACTIVITIES_SQL`, `nutrition_target
 
 - **Vinculada**: a atividade do Intervals ligada a uma sessão do app soma **uma vez**, pela sessão (kcal e duração da sessão). O vínculo é criado no sync.
 - **Não vinculada, mas casada por horário**: mesmo sem vínculo, a atividade do Intervals que é possível duplicata de uma sessão do app de força (início a até 10 minutos e duração dentro de 20%) não soma. A sessão é a que conta.
-- **Não vinculada e sem casamento**: soma como atividade extra, líquida do repouso.
+- **Não vinculada e sem casamento**: soma como atividade extra: a kcal informada entra ativa, sem desconto do repouso (ADR 0016); `gross`/`unknown` explícitos descontam.
 - **Dependência**: a proteção contra dupla contagem depende do vínculo e, na falta dele, do horário. A sessão sem `started_at` não entra no casamento por horário. Nesse caso, a musculação do Intervals soma além da sessão até o vínculo existir.
 
 ### 4.5 Deduplicação
@@ -237,17 +237,17 @@ A deduplicação é a do dono (`activity_energy.deduplicate`), reaproveitada pel
 
 **Aviso na tela**: o rótulo de `possible_double_count` diz "Possível treino em duplicidade: os dois entraram no gasto; exclua um se for o mesmo" (`labels.py`).
 
-**Limite**: a correção manual de atividade (`activity_energy_corrections`) não se aplica ao gasto explícito e automático (ADR 0008). Por isso, o usuário não consegue excluir a duplicata pela tela nesses modos.
+**Correção manual**: desde a ADR 0016, a correção manual de atividade (`activity_energy_corrections`) vale também no gasto explícito e automático (`extra_activity_kcal` e a kcal da sessão vinculada). `exclude` não soma a atividade (`excluded_by_user`); para a atividade vinculada a um treino do app, `exclude` é ignorado e `reclassify` vale para a kcal da sessão. Na ADR 0008 isso não valia.
 
-**Adaptativo**: usa o mesmo tratamento de duplicata e de possível duplicata, e é o único modo que aceita a correção manual de atividade.
+**Adaptativo**: usa o mesmo tratamento de duplicata e de possível duplicata e aceita a correção manual de atividade.
 
 ### 4.6 Quem soma em cada modo
 
 | Item | Explícito | Embutido | Automático sincronizado | Automático fallback | Adaptativo |
 |---|---|---|---|---|---|
-| Sessão do app (kcal informada) | soma, líquida | não | soma, líquida | não | não entra no gasto |
-| Sessão do app sem kcal | MET, líquida | não | MET, líquida | não | não entra no gasto |
-| Atividade do Intervals sem vínculo, sem casamento | soma, líquida | não | soma, líquida | não | entra pelo histórico |
+| Sessão do app (kcal informada) | soma, ativa (sem desconto; `gross`/`unknown` descontam) | não | soma, ativa (idem) | não | não entra no gasto |
+| Sessão do app sem kcal | MET, líquida do repouso | não | MET, líquida do repouso | não | não entra no gasto |
+| Atividade do Intervals sem vínculo, sem casamento | soma, ativa (idem) | não | soma, ativa (idem) | não | entra pelo histórico |
 | Atividade casada por horário com sessão do app | não soma (a sessão conta) | não | não soma | não | conforme o `activity_energy` |
 | Duplicata certa (id externo ou impressão) | não soma | não | não soma | não | não conta no total |
 | Possível duplicata entre Intervals (ids distintos) | soma as duas, com aviso | não | soma as duas, com aviso | não | conta no total, com aviso |
@@ -382,13 +382,13 @@ Em 07/11, o gasto cai 76 kcal, e a meta cai as mesmas 76 kcal antes do ciclo. A 
 
 Os itens abaixo vêm dos ADRs e do mapa, e foram verificados no código.
 
-- **Duplicata que não se resolve pelo usuário no explícito**: a possível duplicata entre atividades do Intervals (Zepp + Strava, ids distintos) conta as duas e avisa, mas a correção manual não se aplica ao explícito e ao automático (ADR 0008, limitação 2). Hoje, a única saída é desvincular ou corrigir no Intervals, ou mudar para o adaptativo. Decisão pendente: liberar a exclusão manual nesses modos.
+- **Duplicata no explícito**: a possível duplicata entre atividades do Intervals (Zepp + Strava, ids distintos) conta as duas e avisa. Desde a ADR 0016 a correção manual (`exclude`) vale no explícito e no automático, então o usuário pode excluir uma delas (a pendência registrada na ADR 0008, limitação 2, foi resolvida).
 - **Fator de não exercício sem fonte única** (decisão D-A, `anthropometrics.py`): os valores 1,2 a 1,6 foram adotados com o adaptativo ao lado. Não há citação bibliográfica própria.
 - **Defaults de desenho sem validação** do adaptativo: fração 0,70 da TMB, plausibilidade de 1,5 kg/semana, teto de 0,5 em suspensão, limiares de confiança, histórico de 90 dias e sequência máxima de 7 dias de descanso confirmado (ADR 0005).
 - **Decisões D2 e D5 da ADR 0005**: resolvidas no Lote C. O adaptativo governa a meta só nos planos que o escolhem, e o estado é recalculado, sem tabela persistida.
 - **Lote D (explicabilidade)** e **Lote E (robustez)** do adaptativo: pendentes (ADR 0005). O Lote E inclui fuso do usuário e reclassificação manual mais completa.
 - **Musculação ainda não vinculada e sem casamento por horário** soma em dobro até o vínculo existir no sync (ADR 0008, limitação 1).
-- **Modo do relógio** no explícito e automático fixo em `unknown` (`DEFAULT_TDEE_CALORIE_MODE`). Se o relógio for de kcal ativa, o desconto do repouso fica a mais. Não há campo no plano para isso fora do adaptativo.
+- **Modo do relógio** no explícito e automático: fixo no padrão ativa (`DEFAULT_TDEE_CALORIE_MODE`, ADR 0016). Se o relógio registrar kcal TOTAL (com o repouso dentro), o repouso não é descontado e o gasto fica a mais; não há campo no plano para isso fora do adaptativo (`watch_calorie_mode`).
 - **Faixas de bulking em planos com carbo baixo**: planos `fixed_protein` em bulking podem sair abaixo de 3 g/kg de carbo, com aviso apenas (ADR 0007, nota 2).
 - **Dias sem atividade com relógio parado**: com registro de execuções, a trava de sequência vale também dentro da janela de 30 dias. Sem registro (dias antigos), a trava vale só fora dela (`activity_energy.py`). Até 7 dias seguidos sem atividade contam como descanso confirmado, mesmo que o relógio esteja parado.
 
@@ -398,4 +398,4 @@ Os itens abaixo vêm dos ADRs e do mapa, e foram verificados no código.
 - **Água como meta**: o briefing listava água entre os itens das macros. O motor de meta não calcula água. Ela existe só como campo do diário (`nutrition_days.py`).
 - **MET por tipo de sessão é caminho morto em produção**: `met_for_session` aceita o tipo (02050, 02052, 02055), mas `day_context_for` nunca preenche `session_kind`. Só o teste unitário define o tipo (`test_nutrition_daily_target.py`). Em produção, toda sessão sem kcal usa MET 3,5 (`nutrition_days.py` chama `met_for_session(None)`).
 - **Exemplo da ADR 0007**: a ADR diz "pré-ciclo 2.940 kcal e base sem treino ~2.037 kcal". Os valores gravados do usuário 1 dão pré-ciclo ≈ 2.932 e base ≈ 2.058. A diferença sugere outro cenário no exemplo. A ADR não diz qual.
-- **Dedup e manutenção manual**: a ADR 0008 diz que a correção manual não se aplica ao explícito, mas a deduplicação agora faz parte do gasto desses modos. Um caso de duplicata que o motor não resolve fica sem saída pela tela. Está registrado na seção 7.
+- **Dedup e manutenção manual**: a ADR 0008 dizia que a correção manual não se aplicava ao explícito; a ADR 0016 a estendeu a esses modos (seção 4.5).

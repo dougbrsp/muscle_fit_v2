@@ -224,6 +224,16 @@ export const ESTIMATE_ITEM_NATURE: NutritionCode = MEAL_PARSE.estimate_item_natu
 /** Avisos das telas, com o texto do dono (`labels.NOTICE_LABELS`). */
 export const NUTRITION_NOTICES: Readonly<Record<string, string>> = NUTRITION.notices;
 
+/** Códigos do motor para os selos da atividade (classificação da kcal e origem Intervals); rótulos em `adaptiveLabel`. */
+export const ACTIVITY_BADGE_CODES = {
+  kcalAuto: NUTRITION.adaptive_codes.kcal_classification_auto,
+  kcalManual: NUTRITION.adaptive_codes.kcal_classification_manual,
+  sourceIntervals: NUTRITION.adaptive_codes.activity_source_intervals,
+} as const;
+
+/** Código do aviso "estimativa a conferir" do item da refeição (texto via `nutritionNotice`). */
+export const MEAL_ITEM_LOW_CONFIDENCE_NOTICE: string = NUTRITION.adaptive_codes.notice_meal_item_low_confidence;
+
 export function nutritionNotice(code: string): string {
   return NUTRITION_NOTICES[code] ?? code;
 }

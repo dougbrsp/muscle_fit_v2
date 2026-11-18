@@ -854,17 +854,18 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
 
 def test_paridade_cobre_as_367_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 369
+    assert len(com_permissao) == 370
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #188 (ROTA_NOVA_ACADEMIA_FABRICANTE, so em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 == 369
+    # + 1 do #140 (DELETE /nutrition/foods/{food_id}, 2D-2, com classe `autenticado` no retrato)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 == 370
     assert len(ROTAS_NOVAS_POS_RETRATO) == 17 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
     assert len(_rotas_2e()) == 56
     assert len(_rotas_2d1()) == 39
-    assert len(_rotas_2d2()) == 16
+    assert len(_rotas_2d2()) == 17
     assert ROTAS_2B <= set(com_permissao)
     assert len(_convertidas_2c1()) == 34 + 72  # 2C-1 + 2C-2 (as 72 tem caso manual)
     assert len([r for r in _convertidas_2c1() if r not in CASOS_MANUAIS]) == 34
@@ -1024,7 +1025,7 @@ def test_paridade_das_39_rotas_do_2d1_sem_divergencia_de_acesso():
 
 def test_o_conjunto_convertido_no_2d2_e_exatamente_o_das_16_rotas_dos_4_modulos():
     rotas = _rotas_2d2()
-    assert len(rotas) == 16
+    assert len(rotas) == 17
     contagem: dict[str, int] = {}
     from app.main import app as main_app
     from app.main_engines import app as engines_app
@@ -1035,9 +1036,9 @@ def test_o_conjunto_convertido_no_2d2_e_exatamente_o_das_16_rotas_dos_4_modulos(
             if modulo in MODULOS_2D2:
                 contagem[modulo] = contagem.get(modulo, 0) + len(route.methods - {"HEAD", "OPTIONS"})
     # Toda rota viva dos 4 modulos declara permissao (nenhuma ficou de fora do lote).
-    assert sum(contagem.values()) == 16, contagem
+    assert sum(contagem.values()) == 17, contagem
     assert contagem == {
-        "app.nutrition_foods": 6, "app.nutrition_external_foods": 3,
+        "app.nutrition_foods": 7, "app.nutrition_external_foods": 3,
         "app.nutrition_favorites": 5, "app.nutrition_label_photo": 2,
     }
     retrato = carregar_retrato()["rotas"]
@@ -1045,7 +1046,7 @@ def test_o_conjunto_convertido_no_2d2_e_exatamente_o_das_16_rotas_dos_4_modulos(
         esperada = "admin" if rota == ROTA_PROMOTE else "autenticado"
         assert retrato[rota]["classe"] == esperada, rota
         assert rota not in CASOS_MANUAIS, rota  # decisao automatica, sem caso manual
-    assert sum(1 for r in rotas if retrato[r]["classe"] == "autenticado") == 15
+    assert sum(1 for r in rotas if retrato[r]["classe"] == "autenticado") == 16
     assert len(CASOS_MANUAIS) == 72
 
 

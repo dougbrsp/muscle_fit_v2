@@ -1,9 +1,9 @@
 import {
   IconChartLine,
-  IconClipboardList,
   IconDots,
   IconLayoutDashboard,
   IconPlayerPlay,
+  IconToolsKitchen2,
   IconUser,
   type Icon as TablerIcon,
 } from '@tabler/icons-react';
@@ -22,7 +22,7 @@ import {
 /**
  * Navegação do iPhone (mobile v2, ADR 0004). Funções puras, testáveis sem DOM.
  *
- * - Tab bar de 5 abas (HIG): Início, Treino, Histórico, Evolução, Mais.
+ * - Tab bar de 5 abas (HIG): Início, Treino, Refeição, Evolução, Mais.
  * - Evolução é um hub (lista por objetivo) na URL `/dashboard/?hub=evolucao`:
  *   reaproveita a rota `/dashboard` (nenhuma rota nova aparece no desktop,
  *   onde o parâmetro é ignorado).
@@ -31,10 +31,15 @@ import {
 
 export const EVOLUCAO_HUB_HREF = '/dashboard/?hub=evolucao';
 
+/** A aba é um link; o diário lê `nova=1` e abre o editor de refeição. */
+export const NOVA_REFEICAO_HREF = '/nutricao/?nova=1';
+
 export type PrimaryTab = {
-  id: 'inicio' | 'treino' | 'historico' | 'evolucao';
+  id: 'inicio' | 'treino' | 'refeicao' | 'evolucao';
   href: string;
   label: string;
+  /** Nome acessível quando difere do rótulo visível. */
+  ariaLabel?: string;
   icon: TablerIcon;
 };
 
@@ -42,7 +47,13 @@ export type PrimaryTab = {
 export const PRIMARY_TABS: readonly PrimaryTab[] = [
   { id: 'inicio', href: '/dashboard/', label: 'Início', icon: IconLayoutDashboard },
   { id: 'treino', href: '/modo-treino', label: 'Treino', icon: IconPlayerPlay },
-  { id: 'historico', href: '/registro-exercicios', label: 'Histórico', icon: IconClipboardList },
+  {
+    id: 'refeicao',
+    href: NOVA_REFEICAO_HREF,
+    label: 'Refeição',
+    ariaLabel: 'Adicionar refeição',
+    icon: IconToolsKitchen2,
+  },
   { id: 'evolucao', href: EVOLUCAO_HUB_HREF, label: 'Evolução', icon: IconChartLine },
 ];
 
@@ -65,7 +76,7 @@ export function evolucaoHubHref(search: string | null | undefined): string {
  */
 const TAB_RESOURCE: Record<Exclude<PrimaryTab['id'], 'evolucao' | 'inicio'>, string> = {
   treino: 'treino.modo_treino',
-  historico: 'treino.registro',
+  refeicao: 'nutricao.diario',
 };
 
 export function visiblePrimaryTabs(visibility: NavVisibility): readonly PrimaryTab[] {
@@ -145,8 +156,8 @@ export function isPrimaryTabActive(
       );
     case 'treino':
       return underPrefix(path, '/modo-treino');
-    case 'historico':
-      return underPrefix(path, '/registro-exercicios');
+    case 'refeicao':
+      return path === '/nutricao' && new URLSearchParams(search ?? '').get('nova') === '1';
     default:
       return false;
   }
@@ -191,7 +202,7 @@ const PERFIL_ITEM: NavItem = { href: '/perfil', label: 'Perfil', icon: IconUser 
 const MORE_LAYOUT: GroupLayout = [
   {
     title: 'Treino',
-    hrefs: ['/planos-treino', '/exercicios', '/volume-grupamentos', '/preferencias-treino'],
+    hrefs: ['/registro-exercicios', '/planos-treino', '/exercicios', '/volume-grupamentos', '/preferencias-treino'],
   },
   { title: 'Corpo e nutrição', hrefs: ['/indicadores-fisicos', '/nutricao'] },
   { title: 'Conta', hrefs: ['/perfil', '/usuarios'] },
@@ -268,7 +279,7 @@ const BACK_LABELS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * `null` nas raízes das abas (Início, Treino, Histórico, Evolução). Nas demais
+ * `null` nas raízes das abas (Início, Treino, Evolução). Nas demais
  * telas, o destino do voltar: hub Evolução para o que é de Evolução, a raiz da
  * própria seção para detalhes, e "Mais" para o resto.
  */
@@ -278,7 +289,7 @@ export function backTargetFor(
 ): BackTarget | null {
   const path = normalizePath(pathname);
   if (!path || path === '/dashboard') return null; // Início e hub
-  if (path === '/modo-treino' || path === '/registro-exercicios') return null;
+  if (path === '/modo-treino') return null;
   if (
     path.startsWith('/dashboard/') ||
     EVOLUCAO_EXTRA_PATHS.some((prefix) => underPrefix(path, prefix))

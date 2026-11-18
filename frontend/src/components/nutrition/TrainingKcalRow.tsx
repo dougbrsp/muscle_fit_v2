@@ -1,7 +1,8 @@
 'use client';
 
 import { Badge, Card, Group, Stack, Text, Title } from '@mantine/core';
-import { TRAINING_KCAL_NATURE_OPTIONS, nutritionLabel, nutritionNotice } from '@/lib/nutrition-constants';
+import { ACTIVITY_BADGE_CODES, TRAINING_KCAL_NATURE_OPTIONS, nutritionLabel, nutritionNotice } from '@/lib/nutrition-constants';
+import { adaptiveLabel } from '@/lib/nutrition-dashboard';
 import { formatDurationMinutes, formatKcal } from '@/lib/nutrition-format';
 import type { DayTraining, TrainingKcalSide } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
@@ -80,6 +81,11 @@ export function TrainingKcalRow({ training }: { training: DayTraining }) {
                   <Text size="xs" c="dimmed">
                     {`bruto ${formatKcal(item.gross_kcal ?? item.calories_kcal)} − repouso ${formatKcal(desconto)}`}
                   </Text>
+                )}
+                {!excluida && item.correction?.action === ACTIVITY_BADGE_CODES.kcalManual && (
+                  <Badge size="xs" color="blue" variant="outline" data-testid="extra-manual">
+                    {adaptiveLabel('activity_kcal_classification', ACTIVITY_BADGE_CODES.kcalManual)}
+                  </Badge>
                 )}
                 {excluida && (
                   <Text size="xs" c="dimmed" data-testid="extra-excluida">

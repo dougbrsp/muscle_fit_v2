@@ -20,7 +20,12 @@ import {
   isMoreActive,
   isPrimaryTabActive,
 } from './primary-nav';
-import { isNavGroupItemActive, scrollMemoryKey } from './nav-active';
+import {
+  isNavGroupItemActive,
+  marcarNavegacaoInterna,
+  scrollMemoryKey,
+  voltarDoEditorNova,
+} from './nav-active';
 
 // Permissões mínimas por papel (espelho reduzido das concessões padrão do catálogo);
 // a paridade completa com o menu por role está em lib/nav-items.test.ts.
@@ -48,7 +53,8 @@ const tab = (id: string) => PRIMARY_TABS.find((t) => t.id === id)!;
 
 describe('tab bar mobile (5 abas)', () => {
   it('são 4 links + Mais = 5, na ordem do HIG', () => {
-    expect(PRIMARY_TABS.map((t) => t.label)).toEqual(['Início', 'Treino', 'Histórico', 'Evolução']);
+    expect(PRIMARY_TABS.map((t) => t.label)).toEqual(['Início', 'Treino', 'Refeição', 'Evolução']);
+    expect(tab('refeicao')).toMatchObject({ href: '/nutricao/?nova=1', ariaLabel: 'Adicionar refeição' });
   });
 
   it('Início só acende em /dashboard sem o hub (com ou sem barra final)', () => {
@@ -70,12 +76,18 @@ describe('tab bar mobile (5 abas)', () => {
     expect(isMoreActive('/nutricao/')).toBe(true);
     expect(isMoreActive('/perfil/')).toBe(true);
     expect(isMoreActive('/dashboard/progressao/')).toBe(false);
-    expect(isMoreActive('/registro-exercicios/9/')).toBe(false);
+    expect(isMoreActive('/registro-exercicios/9/')).toBe(true);
   });
 
-  it('Treino e Histórico casam por segmento', () => {
-    expect(isPrimaryTabActive(tab('historico'), '/registro-exercicios/12/')).toBe(true);
-    expect(isPrimaryTabActive(tab('historico'), '/registro-exercicios-extra')).toBe(false);
+  it('Refeição só acende em /nutricao com nova=1; Histórico não é mais aba', () => {
+    expect(isPrimaryTabActive(tab('refeicao'), '/nutricao/', '?nova=1')).toBe(true);
+    expect(isPrimaryTabActive(tab('refeicao'), '/nutricao/', '')).toBe(false);
+    expect(isPrimaryTabActive(tab('refeicao'), '/nutricao/plano/', 'nova=1')).toBe(false);
+    for (const t of PRIMARY_TABS) expect(isPrimaryTabActive(t, '/registro-exercicios/12/')).toBe(false);
+    expect(isMoreActive('/nutricao/', '?nova=1')).toBe(false);
+  });
+
+  it('Treino casa por segmento', () => {
     expect(isPrimaryTabActive(tab('treino'), '/modo-treino')).toBe(true);
   });
 });
@@ -192,7 +204,7 @@ describe('toda rota mobile continua alcançável', () => {
 });
 
 describe('abas e pool do hub por permissões', () => {
-  const ALL = ['inicio', 'treino', 'historico', 'evolucao'];
+  const ALL = ['inicio', 'treino', 'refeicao', 'evolucao'];
   const poolOf = (v: typeof admin) =>
     buildEvolucaoGroups(mobileMainNavItems(v), v).flatMap((g) => g.items.map((i) => i.href));
 
@@ -266,14 +278,30 @@ describe('abas e pool do hub por permissões', () => {
       visiblePrimaryTabs(navVisibilityFromPermissions({ permissions: { [key]: { ver: 'proprios' } }, intervals_configured: false })).map((t) => t.id);
     expect(only('dashboards')).toEqual(['inicio', 'evolucao']);
     expect(only('treino.modo_treino')).toEqual(['treino']);
-    expect(only('treino.registro')).toEqual(['historico']);
+    expect(only('nutricao.diario')).toEqual(['refeicao']);
+    expect(only('treino.registro')).toEqual([]);
     expect(only('ia.insights')).toEqual(['evolucao']);
+  });
+});
+
+describe('Histórico na folha Mais', () => {
+  it('entra no grupo Treino para quem tem treino.registro, antes dos planos', () => {
+    const v = navVisibilityFromPermissions({ permissions: { 'treino.registro': { ver: 'proprios' } }, intervals_configured: false });
+    const treino = buildMoreGroups(mobileMainNavItems(v)).find((g) => g.title === 'Treino');
+    expect(treino?.items.map((i) => i.href)).toEqual(['/registro-exercicios']);
+    const todos = buildMoreGroups(mobileMainNavItems(admin)).find((g) => g.title === 'Treino');
+    expect(todos?.items[0].href).toBe('/registro-exercicios');
+  });
+  it('sem a permissão não aparece', () => {
+    const v = navVisibilityFromPermissions({ permissions: { 'nutricao.diario': { ver: 'proprios' } }, intervals_configured: false });
+    const hrefs = buildMoreGroups(mobileMainNavItems(v)).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs).not.toContain('/registro-exercicios');
   });
 });
 
 describe('header de 2º nível', () => {
   it('raízes das abas não têm voltar', () => {
-    for (const p of ['/dashboard', '/dashboard/', '/modo-treino', '/registro-exercicios/']) {
+    for (const p of ['/dashboard', '/dashboard/', '/modo-treino']) {
       expect(backTargetFor(p), p).toBeNull();
     }
   });
@@ -288,6 +316,9 @@ describe('header de 2º nível', () => {
       href: '/dashboard/?hub=evolucao&window=90d',
     });
     expect(evolucaoHubHref('')).toBe(EVOLUCAO_HUB_HREF);
+  });
+  it('Histórico agora é tela do Mais: volta para Mais', () => {
+    expect(backTargetFor('/registro-exercicios/')).toEqual({ label: 'Mais', href: null });
   });
   it('detalhes voltam para a raiz da seção; o resto volta para Mais', () => {
     expect(backTargetFor('/registro-exercicios/9')).toEqual({ label: 'Histórico', href: '/registro-exercicios/' });
@@ -306,7 +337,19 @@ describe('auxiliares', () => {
   it('scrollMemoryKey só existe nas raízes das abas', () => {
     expect(scrollMemoryKey('/dashboard/', '')).toBe('inicio');
     expect(scrollMemoryKey('/dashboard/', 'hub=evolucao')).toBe('evolucao');
-    expect(scrollMemoryKey('/registro-exercicios', '')).toBe('historico');
+    expect(scrollMemoryKey('/registro-exercicios', '')).toBeNull();
     expect(scrollMemoryKey('/perfil', '')).toBeNull();
+  });
+});
+
+describe('voltar do cabeçalho com o editor de refeição dirigido por ?nova=1', () => {
+  it('só vale em /nutricao com nova=1', () => {
+    expect(voltarDoEditorNova('/nutricao/', '')).toBeNull();
+    expect(voltarDoEditorNova('/treinos/', 'nova=1')).toBeNull();
+  });
+  it('sem origem interna fecha por replace; com origem volta no histórico', () => {
+    expect(voltarDoEditorNova('/nutricao/', 'nova=1')).toBe('replace');
+    marcarNavegacaoInterna();
+    expect(voltarDoEditorNova('/nutricao/', 'nova=1')).toBe('back');
   });
 });

@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { fmtDate, fmtDateTime, fmtDecimal } from '@/lib/dashboard-format';
 import { deleteActivityCorrection, diaryKeys, nutritionErrorInfo, putActivityCorrection } from '@/lib/nutrition-api';
 import { adaptiveLabel, ADAPTIVE_CODES, dashboardKeys, type AdaptiveActivity, type AdaptiveEnergyDay } from '@/lib/nutrition-dashboard';
+import { ACTIVITY_BADGE_CODES } from '@/lib/nutrition-constants';
 import { formatKcal } from '@/lib/nutrition-format';
 import { BRAND } from '@/theme';
 
@@ -67,6 +68,7 @@ function ActivityRow({ activity, editable }: { activity: AdaptiveActivity; edita
   const duplicata = (activity.possible_duplicate_of?.length ?? 0) > 0 || activity.duplicate_of != null;
   const excluida = activity.excluded === true || activity.correction?.action === ADAPTIVE_CODES.exclude;
   const reclassificada = activity.correction?.action === ADAPTIVE_CODES.reclassify;
+  const manual = activity.correction?.action === ACTIVITY_BADGE_CODES.kcalManual;
   const foraDoTotal = activity.counts_in_total === false && !excluida;
   const duracao = activity.duration_minutes == null ? null : `${fmtDecimal(activity.duration_minutes, 0)} min`;
   const horario = activity.start ? fmtDateTime(activity.start) : null;
@@ -82,6 +84,16 @@ function ActivityRow({ activity, editable }: { activity: AdaptiveActivity; edita
         >
           {activity.name || activity.kind || 'Atividade'}
         </Text>
+        {activity.source === ACTIVITY_BADGE_CODES.sourceIntervals && (
+          <Badge size="xs" color="grape" variant="light" data-testid="adaptativo-origem">
+            {adaptiveLabel('activity_source', activity.source)}
+          </Badge>
+        )}
+        {!excluida && (
+          <Badge size="xs" color={reclassificada ? 'blue' : 'gray'} variant="outline" data-testid="adaptativo-tipo-origem">
+            {adaptiveLabel('activity_kcal_classification', manual ? ACTIVITY_BADGE_CODES.kcalManual : ACTIVITY_BADGE_CODES.kcalAuto)}
+          </Badge>
+        )}
         {reclassificada && (
           <Badge size="xs" color="blue" variant="light" data-testid="adaptativo-reclassificada">
             {adaptiveLabel('activity_correction_action', ADAPTIVE_CODES.reclassify)}

@@ -1,5 +1,8 @@
 """Desconto do repouso da sessão no gasto do modo explícito/automático (ADR 0008, `nutrition-v3`).
 
+ADR 0016 (`nutrition-v5`): a kcal INFORMADA passou a entrar ATIVA por padrão; os testes do desconto passam o modo
+`gross` explícito ao motor, e os de serviço/meta passaram a esperar a informada sem desconto.
+
 O fator de rotina já cobre a TMB das 24 h; a kcal do treino (informada ou MET, ambas brutas) entra LÍQUIDA:
 `kcal − TMB/1440 × minutos`, piso 0, pela MESMA regra do motor adaptativo (`activity_energy.net_of_resting_kcal`).
 Dono: `energy_expenditure.py` (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7)."""
@@ -37,12 +40,12 @@ def test_a_regra_do_repouso_e_a_mesma_funcao_do_adaptativo():
     assert ae.net_of_resting_kcal(874, ae.CalorieMode.ACTIVE, None) == 874
     assert ae.net_of_resting_kcal(None, ae.CalorieMode.GROSS, 10.0) is None
     # o adaptativo usa a mesma função: o `active_kcal` normalizado bate com o líquido
-    bruta = ae.RawActivity(id="1", start=None, duration_seconds=107.2 * 60, kind="strength", calories_kcal=874)  # type: ignore[arg-type]
+    bruta = ae.RawActivity(id="1", start=None, duration_seconds=107.2 * 60, kind="strength", calories_kcal=874, calorie_mode="gross")  # type: ignore[arg-type]
     assert ae.normalize_activity(bruta, TMB).active_kcal == pytest.approx(874 - REPOUSO_MIN * 107.2)
 
 
 def test_informada_desconta_o_repouso_da_janela_e_expoe_bruta_e_desconto():
-    t = ee.resolve_sessions_kcal(_sessao(874, 107.2), 80, None, TMB)
+    t = ee.resolve_sessions_kcal(_sessao(874, 107.2), 80, None, TMB, ae.CalorieMode.GROSS)
     assert t.kcal == pytest.approx(874 - REPOUSO_MIN * 107.2)
     assert t.kcal_nature == ee.TrainingKcalNature.REPORTED and t.limitations == ()
     assert t.gross_kcal == 874 and t.resting_discount_kcal == pytest.approx(REPOUSO_MIN * 107.2)
@@ -69,14 +72,14 @@ def test_active_entra_como_veio():
 
 
 def test_piso_zero_quando_o_repouso_passa_da_kcal():
-    t = ee.resolve_sessions_kcal(_sessao(50, 120), 80, None, TMB)
+    t = ee.resolve_sessions_kcal(_sessao(50, 120), 80, None, TMB, ae.CalorieMode.GROSS)
     assert t.kcal == 0.0 and t.kcal_nature == ee.TrainingKcalNature.REPORTED and t.gross_kcal == 50
 
 
 def test_sem_duracao_mantem_a_kcal_e_limita_sem_descartar_o_treino():
-    t = ee.resolve_sessions_kcal(_sessao(874, None), 80, None, TMB)
+    t = ee.resolve_sessions_kcal(_sessao(874, None), 80, None, TMB, ae.CalorieMode.GROSS)
     assert t.kcal == 874 and t.limitations == (ee.LIMIT_REST_NOT_DISCOUNTED,)
-    assert ee.resolve_training_kcal(reported_kcal=874, bmr_kcal=TMB).limitations == (ee.LIMIT_REST_NOT_DISCOUNTED,)
+    assert ee.resolve_training_kcal(reported_kcal=874, bmr_kcal=TMB, calorie_mode=ae.CalorieMode.GROSS).limitations == (ee.LIMIT_REST_NOT_DISCOUNTED,)
     # sem TMB o gasto já é desconhecido (limitação própria): não se duplica o aviso e nada é descontado
     sem_tmb = ee.resolve_sessions_kcal(_sessao(874, 60), 80, None, None)
     assert sem_tmb.kcal == 874 and sem_tmb.limitations == ()
@@ -85,14 +88,14 @@ def test_sem_duracao_mantem_a_kcal_e_limita_sem_descartar_o_treino():
 
 def test_dia_com_sessao_sem_duracao_desconta_so_a_que_tem_duracao():
     sessoes = [ee.SessionKcal(calories_kcal=300, duration_min=30), ee.SessionKcal(calories_kcal=200)]
-    t = ee.resolve_sessions_kcal(sessoes, 80, None, TMB)
+    t = ee.resolve_sessions_kcal(sessoes, 80, None, TMB, ae.CalorieMode.GROSS)
     assert t.kcal == pytest.approx(500 - REPOUSO_MIN * 30)
     assert t.kcal_nature == ee.TrainingKcalNature.REPORTED and t.limitations == (ee.LIMIT_REST_NOT_DISCOUNTED,)
 
 
 def test_dia_misto_desconta_informada_e_met_por_sessao():
     sessoes = [ee.SessionKcal(calories_kcal=300, duration_min=30), ee.SessionKcal(duration_min=30)]
-    t = ee.resolve_sessions_kcal(sessoes, 80, None, TMB)
+    t = ee.resolve_sessions_kcal(sessoes, 80, None, TMB, ae.CalorieMode.GROSS)
     assert t.kcal == pytest.approx(300 + 147.0 - 2 * REPOUSO_MIN * 30)
     assert t.kcal_nature == ee.TrainingKcalNature.MET and t.limitations == (ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED,)
 
@@ -103,14 +106,14 @@ def test_sem_bmr_nada_muda_o_comportamento_de_antes():
 
 
 def test_tdee_do_caso_real_07_11_do_plano_10():
-    t = ee.resolve_sessions_kcal(_sessao(874, 6433 / 60), 80, None, TMB)
+    t = ee.resolve_sessions_kcal(_sessao(874, 6433 / 60), 80, None, TMB, ae.CalorieMode.GROSS)
     resultado = ee.tdee(TMB, ActivityLevel.LIGHT, ee.TdeeMode.EXPLICIT_TRAINING, t.kcal)
     assert resultado.kcal == pytest.approx(TMB * 1.3 + 874 - TMB / 1440 * 6433 / 60)
     assert round(resultado.kcal) == 3350  # antes: 3.500
 
 
 def test_breakdown_mostra_a_parcela_liquida_e_soma_o_total():
-    t = ee.resolve_sessions_kcal(_sessao(874, 6433 / 60), 80, None, TMB)
+    t = ee.resolve_sessions_kcal(_sessao(874, 6433 / 60), 80, None, TMB, ae.CalorieMode.GROSS)
     extra = ee.extra_activity_kcal((ee.ExtraActivity(kind="cardio", calories_kcal=300, duration_seconds=1800),), TMB)
     resultado = ee.tdee(TMB, ActivityLevel.LIGHT, ee.TdeeMode.EXPLICIT_TRAINING, t.kcal + extra.kcal)
     quebra = ee.tdee_breakdown(resultado, extra.kcal, ee.TdeeBasis.AUTO_SYNCED)
@@ -145,10 +148,12 @@ def test_automatico_desconta_treino_e_extras_com_duracao_e_avisa_o_extra_sem_dur
     )
     meta = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.AUTO_INTERVALS), contexto)
     tmb = meta.bmr.kcal
-    assert meta.training_kcal.kcal == pytest.approx(500 - tmb / 1440 * 60)
-    assert meta.extra_activity.kcal == pytest.approx(400 - tmb / 1440 * 30)
+    assert tmb > 0
+    # ADR 0016: a kcal informada entra ativa no automático (sem desconto); só a MET desconta.
+    assert meta.training_kcal.kcal == pytest.approx(500)
+    assert meta.extra_activity.kcal == pytest.approx(400)
     assert meta.tdee.training_kcal == pytest.approx(meta.training_kcal.kcal + meta.extra_activity.kcal)
-    assert ee.LIMIT_REST_NOT_DISCOUNTED in meta.limitations
+    assert ee.LIMIT_REST_NOT_DISCOUNTED not in meta.limitations  # ativa: não há repouso a descontar
     fallback = day_context_for(HOJE, HOJE, [SessionFacts(calories_kcal=500, duration_seconds=3600)], extras, intervals_in_sync=False)
     assert meta.tdee.kcal != compute_daily_target(SUJEITO, _plano(ee.TdeeMode.AUTO_INTERVALS), fallback).tdee.kcal
 
@@ -156,7 +161,7 @@ def test_automatico_desconta_treino_e_extras_com_duracao_e_avisa_o_extra_sem_dur
 def test_adaptativo_nao_muda_e_a_versao_do_motor_e_v3():
     from app.domain.nutrition import ENGINE_VERSION
 
-    assert ENGINE_VERSION == "nutrition-v4"
+    assert ENGINE_VERSION == "nutrition-v5"
     contexto = DayContext(day=HOJE, is_training_day=True, training_kcal_reported=500.0, training_duration_min=60.0)
     meta = compute_daily_target(SUJEITO, _plano(ee.TdeeMode.ADAPTIVE_BALANCE), contexto)
     assert meta.tdee.adaptive is not None and meta.tdee.training_kcal is None  # o treino não entra pela via explícita
@@ -175,6 +180,6 @@ _DIAS_REAIS = [
 @pytest.mark.parametrize(("dia", "segundos", "kcal", "tmb", "antes", "depois"), _DIAS_REAIS)
 def test_tabela_de_impacto_do_adr_0008(dia, segundos, kcal, tmb, antes, depois):
     nivel = ActivityLevel.LIGHT  # fator de não-exercício 1,3
-    t = ee.resolve_sessions_kcal(_sessao(kcal, segundos / 60), 80, None, tmb)
+    t = ee.resolve_sessions_kcal(_sessao(kcal, segundos / 60), 80, None, tmb, ae.CalorieMode.GROSS)
     assert round(ee.tdee(tmb, nivel, ee.TdeeMode.EXPLICIT_TRAINING, kcal).kcal) == antes
     assert round(ee.tdee(tmb, nivel, ee.TdeeMode.EXPLICIT_TRAINING, t.kcal).kcal) == depois

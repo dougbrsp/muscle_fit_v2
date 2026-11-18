@@ -1566,7 +1566,7 @@ PADROES: tuple[Padrao, ...] = (
         # do JSON gerado e decide pelos campos do resultado, não por número.
         regex=re.compile(
             # Com prefixo também (`MEAL_PARSE_TEXT_MAX_CHARS = 1000` no FE), revisão do guardião.
-            r"\b\w*(?:TEXT_MAX_CHARS|CANDIDATES_PER_ITEM|ITEM_LABEL_MAX_CHARS|CONFIDENCE_RANGE)"
+            r"\b\w*(?:TEXT_MAX_CHARS|CANDIDATES_PER_ITEM|ITEM_LABEL_MAX_CHARS|CONFIDENCE_RANGE|LOW_CONFIDENCE_BELOW)"
             r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
             r"|\b\w*(?:AI_UNITS|ESTIMATE_FIELDS|ESTIMATE_REQUIRED_FIELDS|ESTIMATE_KEY|CATALOG_CANDIDATE_STATUSES"
             r"|UNSTATED_QUANTITY_UNIT|ESTIMATE_BASIS)"
@@ -2084,6 +2084,20 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-ADAPT (§95)",
     ),
     Padrao(
+        chave="padrao_modo_caloria",
+        regra="padrão do modo da kcal do relógio (`DEFAULT_*CALORIE_MODE`, `SHADOW_CALORIE_MODE`) atribuído a `CalorieMode.<X>` ou a "
+        "literal de modo (`active`/`gross`/`unknown`) fora do dono",
+        # 2026-11-18 (acabamento do #194, #138): dono `activity_energy.DEFAULT_REPORTED_CALORIE_MODE`; os demais DERIVAM dele.
+        # Só `DEFAULT_*`/`SHADOW_*` entram: `energy_expenditure.MET_KCAL_CALORIE_MODE = GROSS` é regra própria da MET (sempre
+        # bruta), não o padrão do modo, e não casa com o prefixo.
+        regex=re.compile(
+            r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*"
+            r"(?:(?:\w+\.)?CalorieMode\.\w+|[\"'](?:active|gross|unknown)[\"'])"
+        ),
+        donos=("api/app/domain/nutrition/activity_energy.py",),
+        inventario="NUT-ACABAMENTO (#138)",
+    ),
+    Padrao(
         chave="registro_execucoes_sync",
         regra="retenção do registro de execuções do sync, códigos de estado do dia (`confirmed`/`pending`) ou de origem da confirmação "
         "(`sync_run`/`last_sync`) redefinidos fora do dono",
@@ -2526,6 +2540,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "gasto_adaptativo_sombra": {},  # NUT-ADAPT (2026-11-05): nasce vazia (o serviço monta entradas e lê `to_public_dict`)
     "peso_tendencia": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "atividades_normalizadas": {},  # NUT-ADAPT (2026-11-05): nasce vazia
+    "padrao_modo_caloria": {},  # NUT-ACABAMENTO (2026-11-18): nasce vazia
     "registro_execucoes_sync": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
@@ -3531,6 +3546,13 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "INTERVALS_SYNC_WINDOW_DAYS = 30", "SHADOW_DISPLAY_DAYS: Final[int] = 7"),
         ("from .activity_energy import DAY_CONFIRMATION_LAG_HOURS", "bmr / MINUTES_PER_DAY", "x / 14400",
          "if streak > ae.MAX_CONFIRMED_REST_STREAK_DAYS", "dias = SHADOW_DISPLAY_DAYS"),
+    ),
+    "padrao_modo_caloria": (
+        ("DEFAULT_REPORTED_CALORIE_MODE: Final[CalorieMode] = CalorieMode.ACTIVE", "DEFAULT_WATCH_CALORIE_MODE = ae.CalorieMode.GROSS",
+         'DEFAULT_CALORIE_MODE = "active"', "SHADOW_CALORIE_MODE = 'gross'", "const DEFAULT_WATCH_CALORIE_MODE = 'active';"),
+        ("DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = DEFAULT_REPORTED_CALORIE_MODE", "DEFAULT_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value",
+         "MET_KCAL_CALORIE_MODE: Final[CalorieMode] = activity_energy.CalorieMode.GROSS", "calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE",
+         "SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value"),
     ),
     "registro_execucoes_sync": (
         ("SYNC_RUN_RETENTION_DAYS: Final[int] = 120", "SYNC_RUN_RETENTION_DAYS = 90",

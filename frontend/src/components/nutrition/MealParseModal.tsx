@@ -104,12 +104,12 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
   const lerFoto = useMutation({
     mutationFn: (file: File) =>
       readMealPhoto(file, { local_date: date, meal_slot: slotFoto }, setStage),
-    onSuccess: (resultado) => {
+    onSuccess: (resultado, file) => {
       if (resultado.items.length === 0) {
         setSemItens(resultado.limitations);
         return;
       }
-      onParsed(editorFormFromPhoto(resultado, { date, slot: slotFoto }));
+      onParsed(editorFormFromPhoto(resultado, { date, slot: slotFoto }, file));
       setSlotFoto(null);
     },
     onSettled: async () => {

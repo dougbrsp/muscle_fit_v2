@@ -57,6 +57,8 @@ export type MealEditorItem = {
   matchConfidence: number | null;
   /** Rótulo pronto do motor para a origem do item (leitura por IA ou estimado gravado). */
   originLabel: string | null;
+  /** Inferência da IA com baixa confiança (flag do backend); some ao trocar o alimento do item. */
+  lowConfidence?: boolean;
   /** Avisos da leitura (quantidade estimada, alimento fora do catálogo...). */
   notices: NutritionLimitation[];
   /** Lançamento rápido gravado: os 5 valores editáveis (sem busca, porção, unidade nem peso). */
@@ -79,6 +81,8 @@ export type MealEditorForm = {
     limitations: NutritionLimitation[];
     ai_source?: string;
   } | null;
+  /** Foto do prato enviada à análise: só no cliente, pelo tempo de vida do rascunho; nunca entra nos corpos da API. */
+  photo?: Blob | null;
 };
 
 const SEM_LEITURA: Pick<
@@ -173,6 +177,7 @@ export function chooseCandidate(item: MealEditorItem, candidate: MealParseCandid
     label: candidate.name,
     basis: candidate.basis ?? item.basis,
     usesEstimate: false,
+    lowConfidence: false,
     portion_id: null,
     matchConfidence: candidate.score,
     originLabel: nutritionLabel(MEAL_NATURE_OPTIONS, CATALOG_ITEM_NATURE),
@@ -189,6 +194,7 @@ export function chooseEstimate(item: MealEditorItem): MealEditorItem {
     label: item.estimate.name,
     basis: AI_ESTIMATE_BASIS,
     usesEstimate: true,
+    lowConfidence: false,
     portion_id: null,
     ...(item.proposal ? { quantity: item.proposal.quantity, unit: item.proposal.unit } : {}),
     matchConfidence: null,

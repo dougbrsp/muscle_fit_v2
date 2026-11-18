@@ -242,11 +242,12 @@ def test_publicar_o_adaptativo_carrega_o_historico_o_minimo(db, monkeypatch):
 def test_energy_params_e_nulo_no_padrao_e_aparece_fora_dele(db):
     admin = _client()
     assert _rascunho(admin)["energy_params"] is None
-    padrao = _rascunho(admin, tdee_mode="adaptive_balance", energy_params={"watch_calorie_mode": "unknown"})
+    # ADR 0016: o padrão é `active`; `unknown` passou a ser escolha explícita (aparece e é gravado).
+    padrao = _rascunho(admin, tdee_mode="adaptive_balance", energy_params={"watch_calorie_mode": "active"})
     assert padrao["energy_params"] is None and db.plans[padrao["id"]]["energy_params_json"] is None
-    ativo = _adaptativo(admin, "active")
-    assert ativo["energy_params"] == {"watch_calorie_mode": "active"}
-    assert json.loads(db.plans[ativo["id"]]["energy_params_json"]) == {"watch_calorie_mode": "active"}
+    nao_sei = _adaptativo(admin, "unknown")
+    assert nao_sei["energy_params"] == {"watch_calorie_mode": "unknown"}
+    assert json.loads(db.plans[nao_sei["id"]]["energy_params_json"]) == {"watch_calorie_mode": "unknown"}
 
 
 # --- TMB do histórico = fórmula do plano em jogo --------------------------------------------------------------------

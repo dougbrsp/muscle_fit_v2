@@ -46,7 +46,7 @@ from typing import Any, Iterable, Optional, Sequence
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.nutrition import labels as nutrition_labels
-from .domain.nutrition.activity_energy import activity_duration_seconds
+from .domain.nutrition.activity_energy import ActivityCorrection, activity_duration_seconds
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -80,7 +80,8 @@ from .domain.nutrition.plan import (
 from .domain.nutrition.subject import NAVY_SITE_FIELDS, Reading, ResolvedSubject, SubjectSeries, resolve_subject
 from .intelligence.dashboard.time_windows import user_today_for
 from .intervals_activity_kind import classify
-from .nutrition_energy_service import EnergyHistory, _as_datetime, energy_key, load_history
+from .nutrition_adjustments import load_corrections
+from .nutrition_energy_service import EnergyHistory, _as_datetime, corrections_of, energy_key, load_history
 from .nutrition_schema import has_plan_energy_columns
 
 logger = logging.getLogger(__name__)
@@ -174,9 +175,13 @@ _SITES_SQL = (
 # Sessão CONCLUÍDA: a mesma condição na materialização (contexto do dia) e na
 # lista de sessões do diário (`nutrition_days`), para a lista bater com a kcal usada.
 DONE_SESSION_STATUS = "done"
+# `intervals_activity_id`: a atividade do Intervals vinculada à sessão (no máximo uma: `activity_intervals_link` é único
+# por `activity_id`), para a correção manual dela valer na kcal da sessão.
 _SESSIONS_SQL = (
-    "SELECT local_date, calories_kcal, duration_seconds, started_at FROM activities "
-    f"WHERE user_id = %s AND session_status = '{DONE_SESSION_STATUS}' AND local_date BETWEEN %s AND %s"
+    "SELECT a.local_date, a.calories_kcal, a.duration_seconds, a.started_at, l.intervals_activity_id "
+    "FROM activities a "
+    "LEFT JOIN activity_intervals_link l ON l.activity_id = a.id AND l.user_id = a.user_id "
+    f"WHERE a.user_id = %s AND a.session_status = '{DONE_SESSION_STATUS}' AND a.local_date BETWEEN %s AND %s"
 )
 
 
@@ -377,8 +382,23 @@ def load_user_inputs(
         sites=locais,
     )
 
-    sessoes: dict[date, list[SessionFacts]] = {}
+    # Atividades do Intervals só quando algum plano em jogo soma extras (explícito/automático); conexão e frescor só no automático (o embutido não
+    # fazem nenhum SELECT novo). `plans` = as configurações que vão usar estas entradas.
+    planos = list(plans)
+    com_intervals = any(plano.is_auto_intervals for plano in planos)
+    com_extras = any(plano.sums_extra_activities for plano in planos)
     fim_sessoes = min(date_to, today)
+    # Correções manuais do usuário (Lote G, mesmo carregador da sombra), por id da atividade do Intervals; quem as aplica
+    # é o motor (`extra_activity_kcal` e a kcal da sessão vinculada). Só nos modos que somam a kcal do Intervals.
+    correcoes = (
+        {c.activity_id: c for c in corrections_of(load_corrections(cur, uid))}
+        if com_extras and fim_sessoes >= date_from else {}
+    )
+
+    def _correcao(activity_id: Any) -> Optional[ActivityCorrection]:
+        return None if activity_id is None else correcoes.get(str(activity_id))
+
+    sessoes: dict[date, list[SessionFacts]] = {}
     if fim_sessoes >= date_from:
         cur.execute(_SESSIONS_SQL, (uid, date_from, fim_sessoes))
         for row in cur.fetchall() or []:
@@ -388,13 +408,9 @@ def load_user_inputs(
                     SessionFacts(
                         calories_kcal=_float(row.get("calories_kcal")), duration_seconds=row.get("duration_seconds"),
                         start=_as_datetime(row.get("started_at")),
+                        correction=_correcao(row.get("intervals_activity_id")),
                     )
                 )
-    # Atividades do Intervals só quando algum plano em jogo soma extras (explícito/automático); conexão e frescor só no automático (o embutido não
-    # fazem nenhum SELECT novo). `plans` = as configurações que vão usar estas entradas.
-    planos = list(plans)
-    com_intervals = any(plano.is_auto_intervals for plano in planos)
-    com_extras = any(plano.sums_extra_activities for plano in planos)
     extras: dict[date, list[ExtraActivity]] = {}
     if com_extras and fim_sessoes >= date_from:
         cur.execute(EXTRA_ACTIVITIES_SQL, (uid, date_from, fim_sessoes))
@@ -409,6 +425,8 @@ def load_user_inputs(
                         duration_seconds=activity_duration_seconds(row.get("elapsed_time_seconds"), row.get("moving_time_seconds")),
                         start=_as_datetime(row.get("start_time")),
                         external_id=None if row.get("external_id") is None else str(row.get("external_id")),
+                        activity_id=None if row.get("id") is None else str(row.get("id")),
+                        correction=_correcao(row.get("id")),
                     )
                 )
     em_dia = False

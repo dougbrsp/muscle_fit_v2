@@ -160,10 +160,11 @@ describe('PlanForm: modo adaptativo', () => {
     expect(corpo.tdee_mode).toBe('adaptive_balance');
   });
 
-  it('adaptativo sem energy_params salvo: o relógio começa em "não informado" (unknown)', async () => {
+  it('adaptativo sem energy_params salvo: o relógio começa em "ativas" (padrão do ADR 0016)', async () => {
     await montar(plano({ tdee_mode: 'adaptive_balance' }));
     const corpo = await salvar();
-    expect(corpo.energy_params).toEqual({ watch_calorie_mode: 'unknown' });
+    expect(N.default_watch_calorie_mode).toBe('active');
+    expect(corpo.energy_params).toEqual({ watch_calorie_mode: 'active' });
   });
 
   it('adaptativo salvo com `energy_params: null` (padrão do motor): abre com o padrão e reenvia o padrão', async () => {

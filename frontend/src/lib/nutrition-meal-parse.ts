@@ -24,6 +24,7 @@ export function editorItemFromParse(item: MealParseItem, key: string): MealEdito
     unit: item.unit,
     portion_id: null,
     usesEstimate: item.uses_estimate,
+    lowConfidence: item.low_confidence === true,
     estimate: item.estimate,
     choices: item.candidates,
     proposal: { quantity: item.quantity ?? '', unit: item.unit },
@@ -35,10 +36,11 @@ export function editorItemFromParse(item: MealParseItem, key: string): MealEdito
 
 /** Foto do prato (L10) -> o mesmo editor da leitura por texto: sem texto descrito e
  * com a origem que a API grava. Os avisos da leitura vêm prontos do motor. */
-export function editorFormFromPhoto(result: MealPhotoResult, context: { date: string; slot: string | null }): MealEditorForm {
+export function editorFormFromPhoto(result: MealPhotoResult, context: { date: string; slot: string | null }, photo: Blob | null = null): MealEditorForm {
   const form = editorFormFromParse(result, { ...context, text: '' });
   return {
     ...form,
+    photo,
     // Selo pela natureza que o motor propôs; sem ela (escolha pendente), o estado do casamento.
     items: form.items.map((item, indice) => {
       const natureza = result.items[indice].nature;

@@ -42,7 +42,7 @@ def _dia(**extra) -> DayContext:
 def test_referencia_manutencao_em_dia_de_descanso():
     meta = compute_daily_target(SUJEITO, _plano(), _dia())
     assert isinstance(meta, DailyTarget) and meta.computable
-    assert meta.engine_version == ENGINE_VERSION == "nutrition-v4"
+    assert meta.engine_version == ENGINE_VERSION == "nutrition-v5"
     assert meta.bmr.kcal == pytest.approx(TMB) and meta.bmr.formula == bm.BmrFormula.MIFFLIN_ST_JEOR
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO)
     assert meta.kcal_target.kcal == pytest.approx(TDEE_DESCANSO)
@@ -58,13 +58,14 @@ def test_referencia_manutencao_em_dia_de_descanso():
 @pytest.mark.parametrize(
     ("contexto", "kcal_treino", "natureza", "sem_repouso"),
     [
-        # Sem duração: a kcal entra como veio e a limitação avisa (nada inventado, treino não descartado).
-        (dict(is_training_day=True, training_kcal_reported=350.0), 350.0, ee.TrainingKcalNature.REPORTED, True),
-        (dict(training_kcal_reported=350.0), 350.0, ee.TrainingKcalNature.REPORTED, True),
+        # ADR 0016: a kcal informada entra ativa (inteira), com ou sem duração, e a limitação não sai.
+        (dict(is_training_day=True, training_kcal_reported=350.0), 350.0, ee.TrainingKcalNature.REPORTED, False),
+        (dict(training_kcal_reported=350.0), 350.0, ee.TrainingKcalNature.REPORTED, False),
         # Com duração (60 min): kcal líquida do repouso da janela (a MET é bruta: também desconta).
         (dict(is_training_day=True, training_duration_min=60), 294.0 - 60 * REPOUSO_POR_MIN, ee.TrainingKcalNature.MET, False),
         (dict(is_training_day=True, training_duration_min=60, session_kind=ee.SessionKind.VIGOROUS), 504.0 - 60 * REPOUSO_POR_MIN, ee.TrainingKcalNature.MET, False),
-        (dict(is_training_day=True, training_kcal_reported=350.0, training_duration_min=60), 350.0 - 60 * REPOUSO_POR_MIN, ee.TrainingKcalNature.REPORTED, False),
+        # ADR 0016: informada com duração também entra inteira; antes 350 - 60 * REPOUSO_POR_MIN = 275,83.
+        (dict(is_training_day=True, training_kcal_reported=350.0, training_duration_min=60), 350.0, ee.TrainingKcalNature.REPORTED, False),
     ],
 )
 def test_treino_do_dia_entra_liquido_do_repouso_no_tdee(contexto, kcal_treino, natureza, sem_repouso):
@@ -227,11 +228,11 @@ def test_kcal_informada_soma_as_sessoes_quando_todas_tem_kcal():
     assert contexto.is_training_day and contexto.training_kcal_reported == pytest.approx(450.5)
     meta = compute_daily_target(SUJEITO, _plano(), contexto)
     assert meta.training_kcal.kcal_nature == ee.TrainingKcalNature.REPORTED
-    # 300 kcal em 60 min saem líquidas do repouso da janela; a sessão sem duração entra como veio (com a limitação).
-    liquido = 300 - 60 * REPOUSO_POR_MIN + 150.5
+    # ADR 0016: as duas informadas entram inteiras (450,5); antes 300 - 60 * REPOUSO_POR_MIN + 150,5 = 376,33, com a limitação.
+    liquido = 300 + 150.5
     assert meta.training_kcal.kcal == pytest.approx(liquido)
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO + liquido)
-    assert ee.LIMIT_REST_NOT_DISCOUNTED in meta.limitations
+    assert ee.LIMIT_REST_NOT_DISCOUNTED not in meta.limitations
 
 
 def test_sessao_sem_kcal_nao_derruba_mais_a_informada_soma_por_sessao_e_o_dia_e_parcialmente_estimado():
@@ -242,7 +243,7 @@ def test_sessao_sem_kcal_nao_derruba_mais_a_informada_soma_por_sessao_e_o_dia_e_
     assert contexto.training_kcal_reported is None  # campo legado: só soma quando TODAS têm kcal
     assert contexto.training_duration_min == pytest.approx(60.0)
     meta = compute_daily_target(SUJEITO, _plano(), contexto)
-    assert meta.training_kcal.kcal == pytest.approx(300 + ee.training_kcal_met(80, 30) - 2 * 30 * REPOUSO_POR_MIN)
+    assert meta.training_kcal.kcal == pytest.approx(300 + ee.training_kcal_met(80, 30) - 30 * REPOUSO_POR_MIN)  # ADR 0016: só a MET desconta; antes a informada também (2 * 30)
     assert meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET  # `reported` só se tudo for informado
     assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
     assert meta.tdee.kcal == pytest.approx(TDEE_DESCANSO + meta.training_kcal.kcal)
@@ -252,8 +253,8 @@ def test_caso_de_31_10_848_kcal_em_6474_s_mais_treino_avulso_de_345_s_sem_kcal()
     sessoes = [dt.SessionFacts(calories_kcal=848, duration_seconds=6474), dt.SessionFacts(duration_seconds=345)]
     meta = compute_daily_target(SUJEITO, _plano(), dt.day_context_for(HOJE, HOJE, sessoes))
     avulso = ee.training_kcal_met(80, 345 / 60)
-    descontos = (6474 / 60 + 345 / 60) * REPOUSO_POR_MIN
-    assert meta.training_kcal.kcal == pytest.approx(848 + avulso - descontos) and 700 < meta.training_kcal.kcal < 760
+    descontos = (345 / 60) * REPOUSO_POR_MIN  # ADR 0016: só o avulso (MET) desconta; antes também os 6474 s informados
+    assert meta.training_kcal.kcal == pytest.approx(848 + avulso - descontos) and 800 < meta.training_kcal.kcal < 900
     assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
 
 
@@ -262,7 +263,7 @@ def test_sessao_sem_kcal_e_sem_duracao_nao_soma_nem_derruba_as_outras_mas_marca_
     sessoes = [dt.SessionFacts(calories_kcal=300, duration_seconds=1800), dt.SessionFacts()]
     contexto = dt.day_context_for(HOJE, HOJE, sessoes)
     meta = compute_daily_target(SUJEITO, _plano(), contexto)
-    assert meta.training_kcal.kcal == pytest.approx(300 - 30 * REPOUSO_POR_MIN) and meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET
+    assert meta.training_kcal.kcal == pytest.approx(300) and meta.training_kcal.kcal_nature == ee.TrainingKcalNature.MET  # ADR 0016; antes 300 - 30 * REPOUSO_POR_MIN
     assert ee.LIMIT_TRAINING_PARTIALLY_ESTIMATED in meta.limitations
     assert "training_sessions" in contexto.to_dict()  # o valor mudou: entra no hash
     so_met = [dt.SessionFacts(duration_seconds=1800), dt.SessionFacts()]

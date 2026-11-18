@@ -360,7 +360,7 @@ export type FoodServing = {
   servings_per_package: number | null;
 };
 
-export type FoodPermissions = { can_edit: boolean; can_add_portion: boolean; can_promote: boolean };
+export type FoodPermissions = { can_edit: boolean; can_add_portion: boolean; can_promote: boolean; can_delete?: boolean };
 
 /**
  * Origem de valores do alimento que NÃO vieram da fonte da linha (M85,
@@ -686,6 +686,8 @@ export type MealParseItem = {
   candidate_for_catalog: boolean;
   /** A proposta do item é a estimativa da IA (decisão do motor). */
   uses_estimate: boolean;
+  /** Confiança da IA abaixo do limiar do motor (calculado no backend). */
+  low_confidence?: boolean;
   limitations: NutritionLimitation[];
 };
 
@@ -794,6 +796,10 @@ export type DayExtraActivityItem = {
   net_kcal?: number | null;
   /** Código da exclusão (duplicada, acima do teto, sem kcal) ou null. */
   excluded_reason?: string | null;
+  activity_id?: number | string | null;
+  calorie_mode?: string | null;
+  /** Só presente quando uma correção manual foi aplicada. */
+  correction?: { action: string; energy_kind?: string | null } | null;
 };
 
 export type DayTraining = {

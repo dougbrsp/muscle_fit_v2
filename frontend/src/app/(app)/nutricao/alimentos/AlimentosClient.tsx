@@ -15,7 +15,7 @@ import { apiFetch } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth';
 import { alimentosControls } from '@/lib/screen-permissions';
 import { existingFoodSelection } from '@/lib/nutrition-barcode-flow';
-import { fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
+import { deleteFood, favoriteKeys, fetchFood, foodKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
 import type { ExternalFoodResponse, FoodSaveResponse } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
@@ -77,6 +77,18 @@ export function AlimentosClient() {
     onSuccess: async (food) => {
       await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
       await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (foodId: number) => deleteFood(foodId),
+    onSuccess: async (_, foodId) => {
+      setSelectedId(null);
+      setSaved(null);
+      setExternal(null);
+      qc.removeQueries({ queryKey: foodKeys.detail(foodId) });
+      await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+      await qc.invalidateQueries({ queryKey: favoriteKeys.all });
     },
   });
 
@@ -167,6 +179,12 @@ export function AlimentosClient() {
         </Alert>
       )}
 
+      {deleteMutation.isError && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+          {nutritionErrorInfo(deleteMutation.error, 'Não foi possível excluir o alimento.').message}
+        </Alert>
+      )}
+
       {editing && (
         <Paper ref={editorRef} withBorder radius="md" p="md" bg={BRAND.bgElevated}>
           <Stack gap="sm">
@@ -222,6 +240,8 @@ export function AlimentosClient() {
               }}
               onPromote={() => promoteMutation.mutate(detail.id)}
               promoting={promoteMutation.isPending}
+              onDelete={() => deleteMutation.mutateAsync(detail.id)}
+              deleting={deleteMutation.isPending}
               onPortionAdded={() => qc.invalidateQueries({ queryKey: foodKeys.detail(detail.id) })}
             />
           )}

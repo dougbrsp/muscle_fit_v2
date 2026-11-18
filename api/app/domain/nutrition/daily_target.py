@@ -72,6 +72,7 @@ from . import adaptive_energy
 from . import macros as macros_mod
 from . import manual_targets
 from . import strategy as strategy_mod
+from .activity_energy import ActivityCorrection
 from .anthropometrics import ActivityLevel, Subject, positive_number
 from .body_composition import resolved_fat_mass_kg, resolved_ffm_kg
 from .phases import MAINTENANCE_KCAL_PHASES, PhaseKind
@@ -83,7 +84,7 @@ from .weekly_budget import week_days
 # dono). A troca de versão faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (D-1, hoje e
 # futuras); congeladas ficam como estão.
 # v4 (ADR 0009): a proteína do corte passa a g/kg de PESO TOTAL (antes massa livre de gordura), faixa 1,8 a 2,7, padrão 2,6.
-ENGINE_VERSION: Final[str] = "nutrition-v4"
+ENGINE_VERSION: Final[str] = "nutrition-v5"  # v5: kcal informada do Intervals entra ativa (ADR 0016)
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no
@@ -203,7 +204,9 @@ class DayContext:
 
     def to_dict(self) -> dict[str, Any]:
         extras = {"extra_activities": [item.to_dict() for item in self.extra_activities]} if self.extra_activities else {}
-        if _sessions_change_the_value(self.training_sessions):  # só estes dias entram no hash: os demais mantêm as entradas de antes
+        # Só estes dias entram no hash (os demais mantêm as entradas de antes): soma por sessão diferente da antiga ou
+        # sessão com correção manual da atividade vinculada (corrigir/desfazer recalcula a meta).
+        if _sessions_change_the_value(self.training_sessions) or any(s.correction for s in self.training_sessions):
             extras["training_sessions"] = [sessao.to_dict() for sessao in self.training_sessions]
         if self.intervals_in_sync is not None:
             extras["intervals_in_sync"] = self.intervals_in_sync
@@ -622,6 +625,8 @@ class SessionFacts:
     duration_seconds: Any = None
     # Horário de início (`activities.started_at`, local naive): deduplica a sessão contra as atividades do Intervals.
     start: Optional[datetime] = None
+    # Correção manual da atividade do Intervals vinculada (`activity_intervals_link`): ver `ee.SessionKcal.correction`.
+    correction: Optional[ActivityCorrection] = None
 
     def to_dict(self) -> dict[str, Any]:
         dados: dict[str, Any] = {
@@ -630,6 +635,8 @@ class SessionFacts:
         }
         if self.start is not None:
             dados["start"] = self.start.isoformat()
+        if self.correction is not None:
+            dados["correction"] = self.correction.to_dict()
         return dados
 
 
@@ -678,6 +685,7 @@ def day_context_for(
             calories_kcal=sessao.calories_kcal,
             duration_min=None if positive_number(sessao.duration_seconds) is None else positive_number(sessao.duration_seconds) / SECONDS_PER_MINUTE,
             start=sessao.start,
+            correction=getattr(sessao, "correction", None),
         )
         for sessao in sessions
     )

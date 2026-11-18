@@ -296,7 +296,7 @@ def plan_public(row: dict[str, Any]) -> dict[str, Any]:
         **settings.to_dict(),
         "notes": row.get("notes"),
         "engine_version": row.get("engine_version"),
-        # Lote C: parâmetros do modelo de gasto (sempre presentes; o padrão é `unknown`) e a versão do algoritmo gravada
+        # Lote C: parâmetros do modelo de gasto (`None` = o padrão do dono, ativa pela ADR 0016) e a versão do algoritmo gravada
         # na publicação do plano adaptativo (`None` nos legados e nos rascunhos).
         "energy_params": None if settings.energy_params.is_default else settings.energy_params.to_dict(),
         "energy_model_version": row.get("energy_model_version"),

@@ -1,7 +1,8 @@
 'use client';
 
-import { Badge, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { IconEdit, IconWorld } from '@tabler/icons-react';
+import { Badge, Button, Group, Modal, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { IconEdit, IconTrash, IconWorld } from '@tabler/icons-react';
+import { useState } from 'react';
 import { FieldSourcesNote } from './FieldSourcesNote';
 import { PortionsEditor } from './PortionsEditor';
 import {
@@ -22,10 +23,24 @@ type Props = {
   onPromote: () => void;
   promoting: boolean;
   onPortionAdded: (portion: FoodPortion) => void;
+  /** Exclusão confirmada; rejeita com o erro da API. Sem a prop, o botão não aparece. */
+  onDelete?: () => Promise<unknown>;
+  deleting?: boolean;
 };
 
 /** Alimento escolhido: tabela por 100 g/ml, porção do rótulo, citação, porções e ações permitidas pela API. */
-export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAdded }: Props) {
+export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAdded, onDelete, deleting = false }: Props) {
+  const [confirming, setConfirming] = useState(false);
+  // `can_delete` vem da API; payload sem o campo = sem botão.
+  const canDelete = food.permissions.can_delete === true && !!onDelete;
+  async function confirmar() {
+    try {
+      await onDelete?.();
+    } catch {
+      // o erro aparece na tela (Alert do pai); aqui só fecha a confirmação
+    }
+    setConfirming(false);
+  }
   const base = nutritionLabel(FOOD_BASIS_OPTIONS, food.basis);
   const rotuloDaPorcao = FOOD_SERVING_FIELDS.find((campo) => campo.code === 'serving_size')?.label;
   const rotuloDaMedida = FOOD_SERVING_FIELDS.find((campo) => campo.code === 'household_measure')?.label;
@@ -55,6 +70,11 @@ export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAd
             {food.permissions.can_edit && (
               <Button size="xs" variant="light" color="brand" leftSection={<IconEdit size={14} />} onClick={onEdit}>
                 Editar
+              </Button>
+            )}
+            {canDelete && (
+              <Button size="xs" variant="light" color="red" leftSection={<IconTrash size={14} />} onClick={() => setConfirming(true)}>
+                Excluir alimento
               </Button>
             )}
             {food.permissions.can_promote && (
@@ -103,6 +123,22 @@ export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAd
 
         <PortionsEditor food={food} onAdded={onPortionAdded} />
       </Stack>
+      <Modal opened={confirming} onClose={() => !deleting && setConfirming(false)} title="Excluir alimento" centered>
+        <Stack gap="sm">
+          <Text size="sm">
+            Excluir <strong>{food.name}</strong>
+            {food.barcode ? ` (código de barras ${food.barcode})` : ''}? O alimento deixa de aparecer na busca e nos favoritos.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setConfirming(false)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button color="red" onClick={confirmar} loading={deleting} disabled={deleting}>
+              Excluir
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Paper>
   );
 }

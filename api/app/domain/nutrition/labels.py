@@ -202,9 +202,9 @@ ADAPTIVE_FIELD_HINTS: Final[Mapping[str, str]] = {
     ),
     "bmr_formula": "Usado apenas na estimativa inicial e para conferir se o gasto observado é plausível.",
     "watch_calorie_mode": (
-        "Diz o que as calorias do relógio significam. Ativas: entram como vieram. Totais do exercício: o motor "
-        "desconta o repouso que a sua TMB já contém. Não sei: são tratadas como totais (desconta o repouso) e o "
-        "ajuste do dia fica com precisão reduzida."
+        "Diz o que as calorias do relógio significam. Ativas (padrão): entram como vieram, porque o relógio já "
+        "separa o repouso. Totais do exercício: o motor desconta o repouso que a sua TMB já contém. Não sei: são "
+        "tratadas como totais (desconta o repouso) e o ajuste do dia fica com precisão reduzida."
     ),
 }
 
@@ -259,6 +259,7 @@ EXCLUDED_ACTIVITY_REASON_LABELS: Final[Mapping[str, str]] = {
     ee_mod.EXCLUDED_DUPLICATE: "Duplicada: já conta como outro treino do dia",
     ee_mod.EXCLUDED_ABOVE_CEILING: "Acima do teto plausível de kcal: não somou",
     ee_mod.EXCLUDED_NO_KCAL: "Sem kcal: não somou",
+    ee_mod.EXCLUDED_BY_USER: "Excluída por você: não somou",
 }
 
 
@@ -334,7 +335,7 @@ DATA_QUALITY_FLAG_LABELS: Final[Mapping[str, str]] = {
 CALORIE_MODE_LABELS: Final[Mapping[activity_mod.CalorieMode, str]] = {
     activity_mod.CalorieMode.ACTIVE: "Calorias ativas",
     activity_mod.CalorieMode.GROSS: "Calorias totais do exercício",
-    activity_mod.CalorieMode.UNKNOWN: "Não informado (tratado como total)",
+    activity_mod.CalorieMode.UNKNOWN: "Não sei (tratado como total)",
 }
 
 # Marcas por atividade (`activity_energy.ActivityFlag`).
@@ -380,6 +381,14 @@ REPORT_ADAPTIVE_BASIS_LABELS: Final[Mapping[str, str]] = {
 ACTIVITY_CORRECTION_ACTION_LABELS: Final[Mapping[str, str]] = {
     activity_mod.CORRECTION_ACTION_EXCLUDE: "Excluída (duplicada ou errada)",
     activity_mod.CORRECTION_ACTION_RECLASSIFY: "Reclassificada",
+}
+ACTIVITY_KCAL_CLASSIFICATION_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.KCAL_CLASSIFICATION_AUTO: "Automático",
+    activity_mod.KCAL_CLASSIFICATION_MANUAL: "Manual",
+}
+# Origem da atividade, indexada pelo valor de `source` do payload.
+ACTIVITY_SOURCE_LABELS: Final[Mapping[str, str]] = {
+    activity_mod.FINGERPRINT_SOURCE_DEFAULT: "Intervals",
 }
 ACTIVITY_CORRECTION_ENERGY_KIND_LABELS: Final[Mapping[str, str]] = {
     activity_mod.CalorieMode.ACTIVE.value: "Calorias ativas",
@@ -1027,8 +1036,11 @@ NOTICE_TARGET_FROZEN = "target_frozen"
 NOTICE_TARGET_BACKFILLED = dt_mod.LIMIT_TARGET_BACKFILLED
 NOTICE_INCOMPLETE_INTAKE_DAYS = wb_mod.LIMIT_INCOMPLETE_INTAKE_DAYS
 NOTICE_TRAINING_UNKNOWN_FUTURE_DAY = dt_mod.LIMIT_TRAINING_UNKNOWN_FUTURE_DAY
+# Item de refeição lido por IA com `low_confidence` (selo da tela).
+NOTICE_MEAL_ITEM_LOW_CONFIDENCE = "meal_item_low_confidence"
 
 NOTICE_LABELS: Final[Mapping[str, str]] = {
+    NOTICE_MEAL_ITEM_LOW_CONFIDENCE: "Estimativa a conferir",
     NOTICE_SCALE_BMR_DEVIATION: (
         f"A TMB da balança difere mais de {_percent(bmr_mod.SCALE_BMR_DEVIATION_WARN_SHARE)} da calculada pela fórmula."
     ),

@@ -17,7 +17,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconAlertTriangle, IconSparkles, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconPhoto, IconSparkles, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { FavoriteShortcuts } from './FavoriteShortcuts';
@@ -26,7 +26,7 @@ import { FoodSearch } from './FoodSearch';
 import { MealItemsTable, TotalsBadges, TotalsLine } from './MealCard';
 import { QuickEntryItemRow } from './QuickEntryItemRow';
 import { useScannerOpen } from '@/lib/barcode-scanner-open';
-import { MEAL_ITEMS_LIMIT, MEAL_SLOT_OPTIONS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
+import { MEAL_ITEMS_LIMIT, MEAL_ITEM_LOW_CONFIDENCE_NOTICE, MEAL_SLOT_OPTIONS, UNIT_OPTIONS, nutritionNotice } from '@/lib/nutrition-constants';
 import {
   createMeal,
   fetchFood,
@@ -168,6 +168,11 @@ function ItemRow({
             {item.originLabel}
           </Badge>
         )}
+        {item.lowConfidence && (
+          <Badge size="xs" variant="light" color="yellow" leftSection={<IconAlertTriangle size={10} />} mb={8} data-testid="item-baixa-confianca">
+            {nutritionNotice(MEAL_ITEM_LOW_CONFIDENCE_NOTICE)}
+          </Badge>
+        )}
         <NumberInput
           label="Quantidade"
           value={item.quantity}
@@ -234,6 +239,19 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
   // Esc com o leitor de código aberto fecha só o leitor, não o cadastro por baixo.
   const leitorAberto = useScannerOpen();
   const queryClient = useQueryClient();
+  // Rever a foto da análise: object URL criado aqui e revogado ao fechar o editor (salvar ou cancelar desmontam).
+  const foto = form.photo ?? null;
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [verFoto, setVerFoto] = useState(false);
+  useEffect(() => {
+    if (!foto) {
+      setFotoUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(foto);
+    setFotoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [foto]);
 
   const corpo = mealCreatePayload(form);
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
@@ -375,6 +393,26 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
               </Text>
             ))}
           </Alert>
+        )}
+        {fotoUrl && (
+          <Stack gap="xs">
+            <Group>
+              <Button
+                variant="light"
+                color="brand"
+                size="xs"
+                leftSection={<IconPhoto size={14} />}
+                aria-expanded={verFoto}
+                onClick={() => setVerFoto((aberta) => !aberta)}
+              >
+                {verFoto ? 'Ocultar foto' : 'Ver foto'}
+              </Button>
+            </Group>
+            {verFoto && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoUrl} alt="Foto do prato enviada para análise" style={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 8 }} />
+            )}
+          </Stack>
         )}
         <Group gap="sm" align="flex-end" wrap="wrap">
           <Select

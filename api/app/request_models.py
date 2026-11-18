@@ -170,7 +170,7 @@ class NutritionPlanSettingsIn(_StrictIn):
     cycle_days: Optional[dict[str, Any]] = None
     # N7: kcal/dia da manutencao (inteiro; faixa e regra do motor `strategy.MAINT_KCAL_ADJUST_RANGE`).
     maintenance_kcal_adjust: Optional[int] = None
-    # Lote C: parâmetros do modelo de gasto (hoje `{"watch_calorie_mode": "active" | "gross" | "unknown"}`), só no modo
+    # Lote C: parâmetros do modelo de gasto (hoje `{"watch_calorie_mode": "active" | "gross" | "unknown"}`, padrão `active` pela ADR 0016), só no modo
     # `adaptive_balance`. Chaves e valores são validados pelo motor (`plan.build_plan_settings`, 400 com o código).
     energy_params: Optional[dict[str, Any]] = None
     # Legado: os clientes antigos ainda mandam; ignorado (o ciclo vem de `cycle_days`).
