@@ -60,6 +60,7 @@ def _run(monkeypatch, stored, status, sent, user_id=7, boom=False):
         calls.append((uid, aid))
         if boom:
             raise RuntimeError("falhou")
+        return {"ok": True}
 
     monkeypatch.setattr(progression_state, "reevaluate_after_correction", fake_reeval)
     payload = {"local_date": "2026-11-18", "original_name": "Supino", "sets": []}
@@ -80,10 +81,10 @@ def test_resolve_omitido_preserva():
 
 
 @pytest.mark.parametrize("stored", [0, 1])
-def test_omitido_preserva_e_nao_reavalia(monkeypatch, stored):
+def test_omitido_preserva_a_marca_e_reavalia(monkeypatch, stored):
     out, cur, calls = _run(monkeypatch, stored, "done", None)
-    assert cur.update_params[-2] == stored and calls == []
-    assert out["form_practice"] is bool(stored) and out["progression_reevaluated"] is False
+    assert cur.update_params[-2] == stored and calls == [(7, 20)]
+    assert out["form_practice"] is bool(stored) and out["progression_reevaluated"] is True
 
 
 def test_marcar_grava_e_reavalia(monkeypatch):
@@ -98,9 +99,9 @@ def test_desmarcar_grava_e_reavalia(monkeypatch):
     assert out["form_practice"] is False and out["progression_reevaluated"] is True
 
 
-def test_mesmo_valor_nao_reavalia(monkeypatch):
+def test_mesmo_valor_reavalia_em_sessao_encerrada(monkeypatch):
     out, _, calls = _run(monkeypatch, 1, "done", True)
-    assert calls == [] and out["progression_reevaluated"] is False
+    assert calls == [(7, 20)] and out["progression_reevaluated"] is True
 
 
 @pytest.mark.parametrize("status", ["in_progress", None])
