@@ -40,6 +40,13 @@ from .domain.progression_engine import SAFETY_ALERT_EVENTS
 from .domain.calories_source import source_on_manual_write
 from .domain import technique_accounting
 from .domain.training_goal import SQL_PLAN_EXERCISE_GOAL, plan_exercise_goal_params
+from .domain.form_practice import (
+    FORM_PRACTICE_COLUMN,
+    inherit_form_practice,
+    is_form_practice,
+    neutral_set_outcome,
+    sql_plan_item_marked,
+)
 from . import deload_periods
 from .domain.deload import (
     DELOAD_SOURCE_COLUMN,
@@ -177,6 +184,9 @@ class SessionExerciseIn(BaseModel):
     # Chave de idempotência do cliente (fila do relógio). Repetir a chave na
     # mesma sessão devolve o exercício já criado (`duplicate: true`).
     client_key: Optional[str] = _client_key_field()
+    # #196 (ADR 0017, D2): "Aprimoramento de técnica", só na criação (antes da
+    # 1ª série); não há edição depois. Ausente = execução normal.
+    form_practice: bool = False
 
 
 class SessionSetIn(BaseModel):
@@ -362,7 +372,7 @@ def _find_exercise_by_client_key(cur, session_id: int, client_key: str, *, locki
     leitura comum ficaria no snapshot do REPEATABLE READ, anterior a ela).
     """
     cur.execute(
-        "SELECT id, sequence, mapping_id, equipment_id, workout_plan_exercise_id FROM exercises "
+        "SELECT id, sequence, mapping_id, equipment_id, workout_plan_exercise_id, form_practice FROM exercises "
         "WHERE activity_id = %s AND client_key = %s" + (" FOR UPDATE" if locking else ""),
         (session_id, client_key),
     )
@@ -754,6 +764,8 @@ def _exercise_response(session_id: int, row: dict[str, Any], client_key: Optiona
         "mapping_id": row["mapping_id"],
         "equipment_id": row["equipment_id"],
         "workout_plan_exercise_id": row["workout_plan_exercise_id"],
+        # #196: a marcação GRAVADA (na repetição, a da 1ª gravação).
+        "form_practice": is_form_practice(row.get(FORM_PRACTICE_COLUMN)),
         "client_key": client_key,
         # True = esta chamada repetiu uma `client_key` já gravada: nada foi
         # criado e o registro devolvido é o da primeira gravação.
@@ -816,6 +828,9 @@ def add_session_exercise(
                 user_id=identity.user_id,
             )
 
+            form_practice = inherit_form_practice(
+                payload.form_practice, _plan_item_marked(cur, session_id, payload.workout_plan_exercise_id)
+            )
             # Sem chave, o INSERT nem cita a coluna da 087 (o de antes).
             key_column, key_value, key_param = _client_key_insert_parts(client_key)
             try:
@@ -824,9 +839,9 @@ def add_session_exercise(
                     INSERT INTO exercises (
                       activity_id, sequence, original_name, mapping_id, workout_plan_exercise_id,
                       equipment_id, sets_count, notes, muscle_pain, joint_pain, source_row_hash,
-                      training_goal{key_column}
+                      {FORM_PRACTICE_COLUMN}, training_goal{key_column}
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,{SQL_PLAN_EXERCISE_GOAL}{key_value})
+                    VALUES (%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,%s,{SQL_PLAN_EXERCISE_GOAL}{key_value})
                     """,
                     (
                         session_id,
@@ -839,6 +854,7 @@ def add_session_exercise(
                         payload.muscle_pain,
                         payload.joint_pain,
                         f"zepp-live-{uuid.uuid4().hex}",
+                        1 if form_practice else 0,
                         # Objetivo de treino (M97 F0): o da linha da ficha de
                         # origem; treino livre = default (dono `training_goal`).
                         *plan_exercise_goal_params(payload.workout_plan_exercise_id),
@@ -862,10 +878,26 @@ def add_session_exercise(
             "mapping_id": mapping_id,
             "equipment_id": equipment_id,
             "workout_plan_exercise_id": payload.workout_plan_exercise_id,
+            FORM_PRACTICE_COLUMN: form_practice,
         },
         client_key,
         duplicate=False,
     )
+
+
+def _plan_item_marked(cur, session_id: int, workout_plan_exercise_id: Optional[int]) -> Any:
+    """#196: a continuação por troca de equipamento é OUTRA linha do mesmo item
+    da ficha na sessão; ela herda a marcação de qualquer linha anterior dele,
+    para a execução marcada nunca virar normal pela troca (o corpo pode vir sem
+    o campo: fila offline antiga, relógio). Treino livre (sem item): o corpo."""
+    if workout_plan_exercise_id is None:
+        return None
+    cur.execute(
+        f"SELECT {sql_plan_item_marked('e')} AS marked FROM exercises e "
+        "WHERE e.activity_id = %s AND e.workout_plan_exercise_id = %s",
+        (session_id, workout_plan_exercise_id),
+    )
+    return (cur.fetchone() or {}).get("marked")
 
 
 def _session_fatigue_band(conn, user_id: Any, session_id: int, exercise_id: int):
@@ -942,6 +974,22 @@ def _evaluate_set(
     # sem linha/falha -> `DEFAULT_RULESET`), e a faixa de fadiga so e lida se
     # alguma regra dele a exige (`ruleset_uses_fatigue`, do dono): o padrao nao
     # exige, entao a leitura da fadiga por serie do R1 sai do caminho.
+    # #196 (ADR 0017, D1): aprimoramento de tecnica nao tem avaliacao de
+    # progressao nem carga da proxima serie (como o laboral); o evento de
+    # seguranca do RPE contra o teto continua. `.get`: linha sem a coluna = normal.
+    # M97 D: sessao de deload - o esforco e cobrado contra o RPE-alvo do
+    # deload (dono `domain/deload.py`). Fix 2026-10-26: o alvo do protocolo
+    # so vale para tecnica que o deload permite (hoje nenhuma). Aplicado antes
+    # do ramo #196 para o evento de seguranca da serie marcada ser o mesmo da
+    # serie normal equivalente.
+    deload = is_deload_session(exercise_row.get("deload_source"))
+    if deload:
+        protocol_target = deload_effort_target(protocol_target, exercise_row.get("plan_technique"))
+    if is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN)):
+        safety = effective_intensity.set_intensity_reading(
+            set_type, rpe, effective_intensity.with_protocol_target(intensity, protocol_target), measure=measure
+        )
+        return neutral_set_outcome(safety)
     working_set_index = None
     planned_rpe = None
     fatigue_band = None
@@ -999,13 +1047,9 @@ def _evaluate_set(
     # set-eval-v5: + reps da serie contra a faixa da ficha (motor).
     # M96: alvo do protocolo (Modo Intensivo) vale como esta; sem ele, o
     # degrau da rampa planejada restringe o alvo (`set_effort_target`).
-    # M97 D: sessao de deload - o esforco e cobrado contra o RPE-alvo do
-    # deload (dono `domain/deload.py`). Fix 2026-10-26: o alvo do protocolo
-    # so vale para tecnica que o deload permite (hoje nenhuma).
-    deload = is_deload_session(exercise_row.get("deload_source"))
+    # M97 D: no deload o alvo e o do deload (ajustado acima), sem rampa.
     if deload:
         planned_rpe = None
-        protocol_target = deload_effort_target(protocol_target, exercise_row.get("plan_technique"))
     reading = effective_intensity.set_intensity_reading(
         set_type,
         rpe,
@@ -1256,6 +1300,7 @@ def _session_exercise_row(cur, session_id: int, exercise_id: int) -> dict[str, A
                wpe.training_goal AS plan_training_goal,
                COALESCE(e.mapping_id, wpe.mapping_id) AS mapping_id,
                e.equipment_id AS gym_equipment_id,
+               e.form_practice AS form_practice,
                a.deload_source AS deload_source
         FROM exercises e
         LEFT JOIN workout_plan_exercises wpe ON wpe.id = e.workout_plan_exercise_id

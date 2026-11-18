@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping, Optional
 
+from .domain.form_practice import FORM_PRACTICE_COLUMN, is_form_practice
 from .domain.deload import DeloadPrescription, deload_next_set_load, is_deload_session, item_deload_prescription
 from .domain.exercise_briefing import DECISION_LABELS
 from .domain.next_set_load import (
@@ -146,6 +147,10 @@ class PairEngineContext:
     # Teto de carga do par marcado pelo usuario (migracao 110; kg TOTAIS; None
     # = sem teto). Lido de `equipment_load_ceiling`; so reexposto aos motores.
     max_load_kg: Optional[Decimal] = None
+    # #196 (ADR 0017, D1): a linha `exercises` do payload e aprimoramento de
+    # tecnica (dono `domain/form_practice.py`); quem consome entrega a leitura
+    # neutra e nenhuma decisao/carga do motor.
+    form_practice_marked: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +467,24 @@ def load_pair_context(conn: Any, user_id: Any, mapping_id: Any, gym_equipment_id
         deload=deload,
         max_load_kg=read_pair_load_ceiling(conn, user_id, mapping_id, gym_equipment_id),
     )
+
+
+EXERCISE_FORM_PRACTICE_SQL = f"""
+SELECT e.{FORM_PRACTICE_COLUMN}
+FROM exercises e
+JOIN activities a ON a.id = e.activity_id
+WHERE e.id = %s AND a.user_id = %s
+"""
+
+
+def read_exercise_form_practice(conn: Any, user_id: Any, exercise_id: Any) -> bool:
+    """A linha `exercises` (do usuario) e aprimoramento de tecnica? Sem id,
+    sem linha ou de outro usuario: nao marcada (o comportamento de antes)."""
+    ids = (_int(exercise_id), _int(user_id))
+    if None in ids:
+        return False
+    row = _fetchone(conn, EXERCISE_FORM_PRACTICE_SQL, ids)
+    return is_form_practice(row.get(FORM_PRACTICE_COLUMN)) if row else False
 
 
 def load_deload_prescription(
