@@ -412,6 +412,7 @@ export function WorkoutDetailClient() {
       closeDelete();
       setDeleteTarget(null);
       await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
 

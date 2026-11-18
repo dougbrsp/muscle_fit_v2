@@ -228,6 +228,7 @@ export function TreinoDetalheScreen() {
       if (editingExerciseId) setEditingExerciseId(null);
       closeRowSheet();
       await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
 

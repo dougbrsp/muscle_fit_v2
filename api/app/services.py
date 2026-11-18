@@ -1233,7 +1233,6 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
             activity_id = existing["activity_id"]
             # #205: ausente/None preserva a marca gravada; a regra é do dono.
             form_practice = resolve_form_practice(payload.get(FORM_PRACTICE_COLUMN), existing.get(FORM_PRACTICE_COLUMN))
-            form_practice_changed = form_practice != is_form_practice(existing.get(FORM_PRACTICE_COLUMN))
             # As séries são recriadas (DELETE + INSERT) mais abaixo: lê as
             # gravadas ANTES para preservar os campos que o cliente não
             # reenviou (set_type, rest_seconds, notes, hr_*, dor) - ver
@@ -1417,14 +1416,9 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
 
             _recompute_activity_avg_rpe(cur, activity_id)
 
-            # #205: marca mudou em sessão encerrada -> reavalia a progressão na MESMA
+            # #205: toda edição em sessão encerrada reavalia a progressão na MESMA
             # transação, depois da coluna e das séries (erro propaga e desfaz tudo).
-            reevaluated = False
-            if form_practice_changed and user_id is not None and existing.get("session_status") == "done":
-                from . import progression_state
-
-                progression_state.reevaluate_after_correction(conn, user_id, activity_id)
-                reevaluated = True
+            reevaluated = _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
 
             return {
                 "exercise_id": exercise_id,
@@ -1435,17 +1429,30 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
             }
 
 
+def _reevaluate_if_done(conn: Any, user_id: int | None, activity_id: int, session_status: Any) -> bool:
+    """#205: reavalia a progressão (dono: progression_state) se a sessão está encerrada."""
+    if user_id is None or session_status != "done":
+        return False
+    from . import progression_state
+
+    return progression_state.reevaluate_after_correction(conn, user_id, activity_id) is not None
+
+
 def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[str, Any] | None:
     with transaction() as conn:
         with conn.cursor() as cur:
             if user_id is not None:
                 cur.execute(
-                    "SELECT e.id, e.activity_id FROM exercises e "
+                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
                     (exercise_id, user_id),
                 )
             else:
-                cur.execute("SELECT id, activity_id FROM exercises WHERE id=%s", (exercise_id,))
+                cur.execute(
+                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
+                    "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s",
+                    (exercise_id,),
+                )
             existing = cur.fetchone()
             if not existing:
                 return None
@@ -1456,6 +1463,7 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
             cur.execute("DELETE FROM exercises WHERE id=%s", (exercise_id,))
 
             _recompute_activity_avg_rpe(cur, activity_id)
+            _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
 
             # O treino (activity) permanece existindo mesmo esvaziado (0 exercicios):
             # o usuario decide explicitamente quando excluir o treino inteiro, via

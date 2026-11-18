@@ -1,6 +1,6 @@
 # ADR 0017: Aprimoramento de técnica fora da progressão (issue #196)
 
-- **Status**: Aceita; D2 revista pela issue #205 (lote A, branch `feat/tecnica-no-registro-205-lote-a`, ver "Revisão pela #205"). Lote 1 (motor) implementado na branch `feat/tecnica-fora-da-progressao-196-lote1`; lote 2 (frontend) na branch `feat/tecnica-marcacao-196-lote2`. Nada foi publicado nem promovido a produção.
+- **Status**: Aceita; D2 revista pela issue #205 (lote A, branch `feat/tecnica-no-registro-205-lote-a`, e lote B1, branch `feat/registro-reavalia-progressao-205-lote-b1`, ver "Revisão pela #205"). Lote 1 (motor) implementado na branch `feat/tecnica-fora-da-progressao-196-lote1`; lote 2 (frontend) na branch `feat/tecnica-marcacao-196-lote2`. Nada foi publicado nem promovido a produção.
 - **Data**: 2026-11-18
 
 ## Contexto
@@ -58,9 +58,9 @@ Só apresentação: o frontend não decide elegibilidade, e1RM, veredito nem her
 - Não medido: replay para outros usuários além do 1; execução do ALTER em produção.
 - Os consumidores excluem a execução marcada só pelo dono (`sql_counts_for_progression`, `counts_for_progression`, `is_form_practice`). As guardas `aprimoramento_tecnica_filtro_sql` (filtro, comparação ou agregação da coluna em SQL) e `aprimoramento_tecnica_chave_literal` (leitura por chave literal sem o dono) barram a regra fora do dono.
 - Limitações conhecidas: no treino livre com troca de equipamento a continuação não herda a marca; uma segunda execução do mesmo item da ficha na mesma sessão herda a marca e não pode ser desmarcada no Modo Treino (pelo Registro, sim, #205); se a leitura da marcação falhar no job de IA, a série é avaliada como normal (log `evaluate_set.form_practice_failed`); a importação que recria os exercícios (`PUT /activities/{id}`) perde a marcação; os prompts de IA de resumo não conhecem a marcação.
-- Uma marca errada no Modo Treino só se corrige pelo Registro (revisão #205). A reavaliação só roda na troca da marca; editar séries, carga ou equipamento não reavalia a progressão (lote B da #205).
+- Uma marca errada no Modo Treino só se corrige pelo Registro (revisão #205). Pelo Registro (#205), a reavaliação roda em toda edição e exclusão de exercício de sessão encerrada (lotes A e B1), não só na troca da marca.
 
-## Revisão pela #205 (lote A, 2026-11-18)
+## Revisão pela #205 (lotes A e B1, 2026-11-18)
 
 **Contexto.** O usuário pediu (issue #205) que a marca possa ser corrigida depois da 1ª série, pelo Registro de exercícios. Com D2 absoluta, uma marca errada nunca saía.
 
@@ -73,18 +73,19 @@ Só apresentação: o frontend não decide elegibilidade, e1RM, veredito nem her
 **Decisão.**
 
 - D2 deixa de ser absoluta: no Modo Treino a marca continua travada depois da 1ª série; pelo Registro pode ser posta e retirada, inclusive em treino encerrado. D1 não muda.
-- Backend: `PUT /exercises/logs/{id}` (rota e permissão `treino.registro`/`editar` inalteradas; nenhuma rota nova). `ExerciseLogUpdateIn.form_practice` é opcional; omitido/null preserva a marca (`resolve_form_practice`, dono em `api/app/domain/form_practice.py`). `services.update_exercise_log` grava a coluna pela constante e, quando a marca muda numa sessão `done` com `user_id`, chama `progression_state.reevaluate_after_correction` na mesma transação (erro desfaz a edição). A resposta traz `form_practice` e `progression_reevaluated`.
+- Backend: `PUT /exercises/logs/{id}` (rota e permissão `treino.registro`/`editar` inalteradas; nenhuma rota nova). `ExerciseLogUpdateIn.form_practice` é opcional; omitido/null preserva a marca (`resolve_form_practice`, dono em `api/app/domain/form_practice.py`). `services.update_exercise_log` grava a coluna pela constante e, em toda edição de sessão `done` com `user_id` (não só quando a marca muda), chama `progression_state.reevaluate_after_correction` na mesma transação, pelo helper `services._reevaluate_if_done` (erro desfaz a edição). Lote B1: `services.delete_exercise_log` também chama o helper depois de excluir. A resposta do PUT traz `form_practice` e `progression_reevaluated`, verdadeiro só se a reavaliação devolveu algo (falso com o motor desligado).
 - `reevaluate_after_correction` (`api/app/progression_state.py`) não cria regra: lê o histórico paginado (`replay_progression.fetch_sessions_paged`), avalia como `rebuild_for_user` (`build_session_inputs` + `evaluate_history_by_goal`), grava só a diferença de grupos e trilhas, remove os que sumiram e regrava só as decisões EVALUATION da sessão corrigida em diante (`only_activity_ids`). Respeita `shadow_enabled()` e é idempotente.
 - Recorde, e1RM e referência de carga leem a coluna na consulta (`sql_counts_for_progression`); não precisam de reprocessamento.
-- Frontend (só apresentação): Switch nos formulários de `WorkoutDetailClient.tsx` e `TreinoDetalheScreen.tsx`, com `FORM_PRACTICE_LABEL` e `FORM_PRACTICE_REGISTRO_HELP`; `saveExerciseLog` envia o campo no PUT e no POST; no sucesso as telas invalidam `PROGRESSION_QUERY_KEYS` (`frontend/src/lib/exercise-log-save.ts`).
+- Frontend (só apresentação): Switch nos formulários de `WorkoutDetailClient.tsx` e `TreinoDetalheScreen.tsx`, com `FORM_PRACTICE_LABEL` e `FORM_PRACTICE_REGISTRO_HELP`; `saveExerciseLog` envia o campo no PUT e no POST; no sucesso da gravação e da exclusão de exercício, as telas invalidam `PROGRESSION_QUERY_KEYS` (`frontend/src/lib/exercise-log-save.ts`; a exclusão é o lote B1).
 
 **Trade-offs.**
 
 - Sessão antiga corrigida regrava todas as decisões dali em diante: o custo cresce com a antiguidade da sessão e pode se aproximar do teto de 29 s (não medido em produção).
 - A correção não reprocessa a leitura da série nem a avaliação por IA calculadas no registro original.
 - Concorrência com o encerramento de outro treino do mesmo usuário não está tratada.
-- `progression_reevaluated` vem `true` também com o motor desligado, quando a função não faz nada. O frontend não usa esse campo.
+- Escopo do Registro no lote B1: a mudança de data/hora do treino pelo cabeçalho (`PATCH /workout-sessions/{id}/meta`) não reavalia; chamadas sem `user_id` não reavaliam; deload da sessão, tipo de série, dor por série e objetivo do treino não são editáveis depois do treino (deload: lote B2 da #205; os demais: issue #216 e seguintes).
+- O frontend não usa `progression_reevaluated`.
 
-**Impacto medido** (Tech Lead, 2026-11-18, MySQL do DEV com os dados do usuário 1 copiados da produção: 82 sessões encerradas, 258 trilhas, 19 grupos; transação desfeita por rollback). Marcar/desmarcar a sessão mais recente: 11 a 12 comandos de escrita, cerca de 3 s. Sessão de uma semana antes (6 sessões regravadas, 41 decisões): 43 escritas, cerca de 3 s. Replay completo do mesmo usuário: 973 a 975 escritas. Depois da reavaliação, `state_snapshot` e as decisões de avaliação (sem ids) ficaram iguais aos do replay completo. Não medido: tempo na RDS Data API de produção.
+**Impacto medido** (Tech Lead, 2026-11-18, MySQL do DEV com os dados do usuário 1 copiados da produção: 82 sessões encerradas, 258 trilhas, 19 grupos; transação desfeita por rollback). Marcar/desmarcar a sessão mais recente: 11 a 12 comandos de escrita, cerca de 3 s. Sessão de uma semana antes (6 sessões regravadas, 41 decisões): 43 escritas, cerca de 3 s. Edição que não muda a avaliação: cerca de 3 s e ~10 escritas (as decisões da sessão editada são regravadas); edição que muda: 11 a 43 escritas. Replay completo do mesmo usuário: 973 a 975 escritas. Depois da reavaliação, `state_snapshot` e as decisões de avaliação (sem ids) ficaram iguais aos do replay completo. Não medido: tempo na RDS Data API de produção.
 
-**Testes.** `api/tests/unit/test_reavaliacao_retroativa_progressao.py`, `api/tests/unit/test_form_practice_edicao_registro.py`, `api/tests/unit/test_form_practice_sessao.py` e `frontend/src/lib/exercise-log-save.test.ts`. A execução destes testes não está registrada aqui.
+**Testes.** `api/tests/unit/test_reavaliacao_retroativa_progressao.py`, `api/tests/unit/test_form_practice_edicao_registro.py`, `api/tests/unit/test_form_practice_sessao.py`, `frontend/src/lib/exercise-log-save.test.ts` e, no lote B1, `api/tests/unit/test_registro_edicao_reavalia_progressao.py` (novo) com `test_form_practice_edicao_registro.py` (atualizado). A execução destes testes não está registrada aqui.
