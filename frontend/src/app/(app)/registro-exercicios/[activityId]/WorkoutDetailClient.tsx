@@ -32,7 +32,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
+import { deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import {
   describeSets,
   formatLoggedSets,
@@ -446,6 +447,28 @@ export function WorkoutDetailClient() {
     },
   });
 
+  const deloadQuery = useQuery({
+    queryKey: sessionDeloadQueryKey(activityId),
+    queryFn: () => apiFetch<{ session_id: number; deload: SessionDeloadStatus }>(`/workout-sessions/${activityId}/deload`),
+    enabled: isValidId,
+  });
+  const deloadStatus = deloadQuery.data?.deload;
+  const deloadMutation = useMutation({
+    mutationFn: (value: boolean) =>
+      apiFetch(`/workout-sessions/${activityId}/meta`, { method: 'PATCH', body: JSON.stringify({ deload: value }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sessionDeloadQueryKey(activityId) });
+      await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+    },
+  });
+  // 409 deload_locked: a mensagem vem do servidor em `detail.message`.
+  const deloadErrorMessage = !deloadMutation.isError
+    ? null
+    : ((deloadMutation.error instanceof ApiError &&
+        (deloadMutation.error.detail as { message?: string } | undefined)?.message) ||
+        (deloadMutation.error instanceof Error ? deloadMutation.error.message : String(deloadMutation.error)));
+
   function addSet() {
     setForm((current) => ({ ...current, sets: appendSet(current.sets) }));
   }
@@ -601,6 +624,29 @@ export function WorkoutDetailClient() {
         savingCalories={caloriesMutation.isPending}
         caloriesError={caloriesMutation.isError ? String(caloriesMutation.error) : null}
       />
+
+      {deloadStatus && (
+        <Stack gap={4} data-testid="workout-deload-control">
+          <Group gap="sm">
+            <Switch
+              label="Deload"
+              checked={deloadStatus.active}
+              disabled={!deloadStatus.can_toggle || deloadMutation.isPending}
+              onChange={(e) => deloadMutation.mutate(e.currentTarget.checked)}
+            />
+            {deloadBannerTitle(deloadStatus) && (
+              <Badge color="cyan" variant="light">
+                {deloadBannerTitle(deloadStatus)}
+              </Badge>
+            )}
+          </Group>
+          {deloadErrorMessage && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
+              {deloadErrorMessage}
+            </Alert>
+          )}
+        </Stack>
+      )}
 
       {activity.ai_summary && (
         <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>

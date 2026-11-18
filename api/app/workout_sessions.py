@@ -50,6 +50,7 @@ from .domain.form_practice import (
 from . import deload_periods
 from .domain.deload import (
     DELOAD_SOURCE_COLUMN,
+    SESSION_STATUS_DONE,
     DeloadSource,
     DeloadToggleLocked,
     can_toggle_deload,
@@ -83,7 +84,7 @@ from .intelligence.dashboard.time_windows import user_now, user_timezone
 from .intelligence.session_fatigue_reader import load_session_prior_fatigue
 from .next_set_load_rules import load_published_ruleset
 from .observability import EVENT_SAFETY_CLAMP, EVENT_SAFETY_RPE_ABOVE_CEILING, log_event
-from .progression_state import on_session_finish
+from .progression_state import on_session_finish, reevaluate_after_correction
 from .access import require_permission
 from .security import Identity, get_current_identity
 from .domain.session_loads import LOAD_ADJUST_SOURCES
@@ -599,7 +600,8 @@ SESSION_SAVED_SETS_SQL = (
     "SELECT COUNT(*) AS n FROM exercise_sets s JOIN exercises e ON e.id = s.exercise_id WHERE e.activity_id = %s"
 )
 SESSION_DELOAD_SQL = (
-    f"SELECT a.{DELOAD_SOURCE_COLUMN} AS deload_source, a.local_date AS local_date FROM activities a "
+    f"SELECT a.{DELOAD_SOURCE_COLUMN} AS deload_source, a.local_date AS local_date, "
+    "a.session_status AS session_status FROM activities a "
     "WHERE a.id = %s AND a.user_id = %s"
 )
 
@@ -621,7 +623,7 @@ def _session_deload_status(cur, user_id: int, row: dict[str, Any], source: Optio
     if source == DeloadSource.PERIOD.value and row.get("local_date") is not None:
         period = deload_periods.active_period_on_safe(cur, user_id, row["local_date"])
     status = deload_periods.deload_status(source, period)
-    status["can_toggle"] = can_toggle_deload(row.get("saved_sets"))
+    status["can_toggle"] = can_toggle_deload(row.get("saved_sets"), session_status=row.get("session_status"))
     return status
 
 
@@ -713,6 +715,8 @@ def update_session_meta(
                 updates["workout_plan_id"] = workout_plan_id
 
             deload_block: Optional[dict[str, Any]] = None
+            reevaluate = False
+            reevaluated: Optional[bool] = None
             if fields.get("deload") is not None:
                 # M97 F3: liga/desliga o deload so sem serie gravada (dono
                 # `domain/deload.toggled_deload_source`). Ligar segue a regra
@@ -731,6 +735,7 @@ def update_session_meta(
                         requested=bool(fields["deload"]),
                         saved_sets=deload_row["saved_sets"],
                         period_active=period is not None,
+                        session_status=deload_row.get("session_status"),
                     )
                 except DeloadToggleLocked as exc:
                     raise HTTPException(
@@ -738,6 +743,8 @@ def update_session_meta(
                     ) from exc
                 if new_source != current:
                     updates[DELOAD_SOURCE_COLUMN] = new_source
+                    # Sessão encerrada: a origem mudou depois do fato, então a progressão é reavaliada.
+                    reevaluate = deload_row.get("session_status") == SESSION_STATUS_DONE
                 deload_block = _session_deload_status(
                     cur, identity.user_id, {**deload_row, "local_date": local_date}, new_source
                 )
@@ -748,10 +755,14 @@ def update_session_meta(
                     f"UPDATE activities SET {set_clause} WHERE id = %s",
                     (*updates.values(), session_id),
                 )
+            if reevaluate:
+                # Mesma transação, depois do UPDATE; exceção sobe e desfaz tudo.
+                reevaluated = reevaluate_after_correction(conn, identity.user_id, session_id) is not None
 
     out: dict[str, Any] = {"status": "ok", "session_id": session_id, "updated_fields": list(updates.keys())}
     if deload_block is not None:
         out["deload"] = deload_block
+        out["progression_reevaluated"] = bool(reevaluated)
     return out
 
 

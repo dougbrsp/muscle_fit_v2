@@ -9,7 +9,8 @@ import { useMemo, useState } from 'react';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
-import { apiFetch } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
+import { deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import { FORM_PRACTICE_LABEL, FORM_PRACTICE_REGISTRO_HELP, isFormPracticeRow } from '@/lib/form-practice';
 import {
   describeSets,
@@ -261,6 +262,28 @@ export function TreinoDetalheScreen() {
       await refreshActivity();
     },
   });
+
+  const deloadQuery = useQuery({
+    queryKey: sessionDeloadQueryKey(activityId),
+    queryFn: () => apiFetch<{ session_id: number; deload: SessionDeloadStatus }>(`/workout-sessions/${activityId}/deload`),
+    enabled: isValidId,
+  });
+  const deloadStatus = deloadQuery.data?.deload;
+  const deloadMutation = useMutation({
+    mutationFn: (value: boolean) =>
+      apiFetch(`/workout-sessions/${activityId}/meta`, { method: 'PATCH', body: JSON.stringify({ deload: value }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sessionDeloadQueryKey(activityId) });
+      await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+    },
+  });
+  // 409 deload_locked: a mensagem vem do servidor em `detail.message`.
+  const deloadErrorMessage = !deloadMutation.isError
+    ? null
+    : ((deloadMutation.error instanceof ApiError &&
+        (deloadMutation.error.detail as { message?: string } | undefined)?.message) ||
+        (deloadMutation.error instanceof Error ? deloadMutation.error.message : String(deloadMutation.error)));
 
   function closeRowSheet() {
     setSelectedRow(null);
@@ -671,6 +694,23 @@ export function TreinoDetalheScreen() {
             subtitle={finishMutation.isError ? String(finishMutation.error) : finishMutation.isPending ? 'Finalizando...' : undefined}
             onClick={finishMutation.isPending ? undefined : () => finishMutation.mutate()}
           />
+        ) : null}
+        {deloadStatus ? (
+          <ListBlock>
+            <Switch
+              size="md"
+              label="Deload"
+              description={deloadBannerTitle(deloadStatus) ?? undefined}
+              checked={deloadStatus.active}
+              disabled={!deloadStatus.can_toggle || deloadMutation.isPending}
+              onChange={(e) => deloadMutation.mutate(e.currentTarget.checked)}
+            />
+            {deloadErrorMessage ? (
+              <Text size="sm" c="red" role="alert" mt="xs">
+                {deloadErrorMessage}
+              </Text>
+            ) : null}
+          </ListBlock>
         ) : null}
       </ListGroup>
 
