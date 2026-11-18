@@ -553,18 +553,26 @@ def suppresses_regression(ranges: Iterable[DeloadRange], today: date) -> bool:
 # da próxima série) contra o alvo da sessão como ela era; trocar depois
 # misturaria os dois regimes na mesma sessão.
 DELOAD_TOGGLE_MAX_SAVED_SETS: Final[int] = 0
+# Valor gravado em `activities.session_status` pelo "Finalizar treino".
+SESSION_STATUS_DONE: Final[str] = "done"
 
 
 class DeloadToggleLocked(ValueError):
     """A sessão já tem série gravada: o deload não muda mais (a API devolve 409)."""
 
 
-def can_toggle_deload(saved_sets: Any) -> bool:
-    """A sessão ainda pode ligar/desligar o deload? Só sem série gravada."""
+def can_toggle_deload(saved_sets: Any, *, session_status: Any = None) -> bool:
+    """A sessão pode ligar/desligar o deload? Em andamento, só sem série
+    gravada; encerrada (`session_status == 'done'`), sempre (correção
+    posterior pelo Registro, com a progressão reavaliada pelo chamador)."""
+    if session_status == SESSION_STATUS_DONE:
+        return True
     return (parse_int(saved_sets) or 0) <= DELOAD_TOGGLE_MAX_SAVED_SETS
 
 
-def toggled_deload_source(current_source: Any, *, requested: bool, saved_sets: Any, period_active: bool) -> Optional[str]:
+def toggled_deload_source(
+    current_source: Any, *, requested: bool, saved_sets: Any, period_active: bool, session_status: Any = None
+) -> Optional[str]:
     """Origem nova quando o usuário liga (`requested=True`) ou desliga o deload
     de uma sessão já iniciada (`PATCH /workout-sessions/{id}/meta`).
 
@@ -580,7 +588,7 @@ def toggled_deload_source(current_source: Any, *, requested: bool, saved_sets: A
     current = deload_source_value(current_source)
     if bool(requested) == (current is not None):
         return current
-    if not can_toggle_deload(saved_sets):
+    if not can_toggle_deload(saved_sets, session_status=session_status):
         raise DeloadToggleLocked(
             "A sessão já tem série gravada: o deload só pode ser ligado ou desligado antes da primeira série."
         )
@@ -635,6 +643,7 @@ __all__ = [
     "DeloadSource",
     "DeloadToggleLocked",
     "InvalidDeloadPeriod",
+    "SESSION_STATUS_DONE",
     "SKIP_REASON_DELOAD",
     "active_on",
     "can_toggle_deload",
