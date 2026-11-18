@@ -55,7 +55,7 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 - Atividade do Intervals que não é treino do app não faz o dia virar dia de treino. `is_training_day` e o tipo de dia do ciclo de carbo não mudam.
 - Dia de treino é definido pela existência de sessão concluída do app, não pela kcal líquida. Uma sessão com kcal líquida igual a zero continua sendo dia de treino (`training_kcal_of_day` trata zero como valor conhecido).
 - `ENGINE_VERSION` é `nutrition-v5` (ADR 0016).
-- A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia.
+- A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia. Dia já congelado (`hoje >= dia + TARGET_FREEZE_LAG_DAYS`, 2) não é recalculado, nem por correção manual de atividade (`days_to_materialize`, `daily_target.py`).
 
 ### 3.1 Modo explícito (`explicit_training`)
 
@@ -79,7 +79,7 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 
 Este modo é uma escolha de dois caminhos, decidida dia a dia (`effective_tdee_basis`).
 
-- **Sincronizado** (`intervals_in_sync`): a conta do Intervals está conectada **e** a última sincronização tem até `INTERVALS_SYNC_MAX_AGE_MINUTES = 36 × 60` minutos. O dia vale como explícito, com o nível de **rotina** do plano (`routine_level`). Se o plano não tem rotina, vale `ROUTINE_ACTIVITY_LEVEL_DEFAULT = LIGHT`. Treino líquido do app e extras líquidos entram, com as mesmas regras do explícito.
+- **Sincronizado** (`intervals_in_sync`): a conta do Intervals está conectada **e** a última sincronização tem até `INTERVALS_SYNC_MAX_AGE_MINUTES = 36 × 60` minutos. O dia vale como explícito, com o nível de **rotina** do plano (`routine_level`). Se o plano não tem rotina, vale `ROUTINE_ACTIVITY_LEVEL_DEFAULT = LIGHT`. Treino do app e extras entram com as mesmas regras do explícito: kcal informada ativa, sem desconto; MET e `gross`/`unknown` explícitos descontam o repouso.
 - **Sem sincronização** (sem conexão ou sync parado há mais de 36 h): o dia vale como embutido, com o fator com exercício do **perfil**. Treino e atividades são ignorados no gasto. O `training_kcal` gravado fica **bruto**.
 - O plano automático sem nível de atividade no perfil é bloqueado para salvar e publicar (`LIMIT_AUTO_REQUIRES_PROFILE_LEVEL`).
 - Janela de frescor: a Lambda de sync roda 1 vez por dia às 05:45 BRT. As 36 h são um ciclo mais 12 h de folga.
@@ -219,7 +219,7 @@ A consulta de atividades do Intervals (`EXTRA_ACTIVITIES_SQL`, `nutrition_target
 
 - **Vinculada**: a atividade do Intervals ligada a uma sessão do app soma **uma vez**, pela sessão (kcal e duração da sessão). O vínculo é criado no sync.
 - **Não vinculada, mas casada por horário**: mesmo sem vínculo, a atividade do Intervals que é possível duplicata de uma sessão do app de força (início a até 10 minutos e duração dentro de 20%) não soma. A sessão é a que conta.
-- **Não vinculada e sem casamento**: soma como atividade extra, líquida do repouso.
+- **Não vinculada e sem casamento**: soma como atividade extra: a kcal informada entra ativa, sem desconto do repouso (ADR 0016); `gross`/`unknown` explícitos descontam.
 - **Dependência**: a proteção contra dupla contagem depende do vínculo e, na falta dele, do horário. A sessão sem `started_at` não entra no casamento por horário. Nesse caso, a musculação do Intervals soma além da sessão até o vínculo existir.
 
 ### 4.5 Deduplicação
@@ -245,9 +245,9 @@ A deduplicação é a do dono (`activity_energy.deduplicate`), reaproveitada pel
 
 | Item | Explícito | Embutido | Automático sincronizado | Automático fallback | Adaptativo |
 |---|---|---|---|---|---|
-| Sessão do app (kcal informada) | soma, líquida | não | soma, líquida | não | não entra no gasto |
-| Sessão do app sem kcal | MET, líquida | não | MET, líquida | não | não entra no gasto |
-| Atividade do Intervals sem vínculo, sem casamento | soma, líquida | não | soma, líquida | não | entra pelo histórico |
+| Sessão do app (kcal informada) | soma, ativa (sem desconto; `gross`/`unknown` descontam) | não | soma, ativa (idem) | não | não entra no gasto |
+| Sessão do app sem kcal | MET, líquida do repouso | não | MET, líquida do repouso | não | não entra no gasto |
+| Atividade do Intervals sem vínculo, sem casamento | soma, ativa (idem) | não | soma, ativa (idem) | não | entra pelo histórico |
 | Atividade casada por horário com sessão do app | não soma (a sessão conta) | não | não soma | não | conforme o `activity_energy` |
 | Duplicata certa (id externo ou impressão) | não soma | não | não soma | não | não conta no total |
 | Possível duplicata entre Intervals (ids distintos) | soma as duas, com aviso | não | soma as duas, com aviso | não | conta no total, com aviso |

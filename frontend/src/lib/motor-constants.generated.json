@@ -1181,6 +1181,13 @@
       "activity_correction_energy_kind": {
         "active": "Calorias ativas",
         "gross": "Calorias totais"
+      },
+      "activity_kcal_classification": {
+        "auto": "Automático",
+        "reclassify": "Manual"
+      },
+      "activity_source": {
+        "intervals_icu": "Intervals"
       }
     },
     "adaptive_codes": {
@@ -1189,9 +1196,14 @@
       "correction_action_exclude": "exclude",
       "correction_action_reclassify": "reclassify",
       "correction_energy_kind_active": "active",
-      "correction_energy_kind_gross": "gross"
+      "correction_energy_kind_gross": "gross",
+      "kcal_classification_auto": "auto",
+      "kcal_classification_manual": "reclassify",
+      "activity_source_intervals": "intervals_icu",
+      "notice_meal_item_low_confidence": "meal_item_low_confidence"
     },
     "notices": {
+      "meal_item_low_confidence": "Estimativa a conferir",
       "scale_bmr_deviation": "A TMB da balança difere mais de 15% da calculada pela fórmula.",
       "phase_should_stop": "O % de gordura atual já chegou à meta desta fase.",
       "target_frozen": "Meta congelada: 2 dia(s) depois do dia ela não muda mais.",

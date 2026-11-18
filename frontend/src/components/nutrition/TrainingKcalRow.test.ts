@@ -144,6 +144,24 @@ describe('TrainingKcalRow: gasto do dia com cardio e caminhadas', () => {
     expect(texto).not.toMatch(/Treino \d/);
   });
 
+  it('item com correção manual mostra o selo Manual; sem correção não', async () => {
+    await montar({
+      ...BASE,
+      extra_activity: {
+        kcal: 150,
+        kcal_nature: 'reported',
+        items: [
+          { kind: 'cardio', calories_kcal: 100, label: 'Walk', correction: { action: 'reclassify', energy_kind: 'active' } },
+          { kind: 'cardio', calories_kcal: 50, label: 'Run' },
+        ],
+      },
+      activity_kcal: { training_kcal: null, extra_kcal: 150, total_kcal: 150 },
+    });
+    const itens = Array.from(host.querySelectorAll('[data-testid="extra-item"]'));
+    expect(itens[0].querySelector('[data-testid="extra-manual"]')?.textContent).toBe('Manual');
+    expect(itens[1].querySelector('[data-testid="extra-manual"]')).toBeNull();
+  });
+
   it('itens mostram o líquido, o desconto em texto secundário e a excluída riscada com o motivo', async () => {
     await montar({
       ...BASE,

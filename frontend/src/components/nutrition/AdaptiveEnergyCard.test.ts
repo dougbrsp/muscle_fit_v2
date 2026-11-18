@@ -171,6 +171,8 @@ describe('AdaptiveEnergyCard', () => {
         'activity_correction_action',
         'activity_correction_energy_kind',
         'activity_flag',
+        'activity_kcal_classification',
+        'activity_source',
         'calorie_mode',
         'completeness_source',
         'confidence_level',
