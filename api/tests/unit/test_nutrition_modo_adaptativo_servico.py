@@ -110,7 +110,7 @@ def test_rascunho_adaptativo_persiste_energy_params_e_a_saida_publica_os_traz(db
     editado = admin.put(f"/nutrition/plans/{plano['id']}", json={
         "strategy": "maintenance", "tdee_mode": "adaptive_balance", "energy_params": {"watch_calorie_mode": "active"}})
     assert editado.status_code == 200, editado.text
-    assert editado.json()["energy_params"] == {"watch_calorie_mode": "active"}
+    assert editado.json()["energy_params"] is None  # ADR 0016: `active` é o padrão, a coluna fica NULL
 
 
 def test_plano_legado_abre_e_edita_igual_com_energy_params_padrao_e_coluna_nula(db):

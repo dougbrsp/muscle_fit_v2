@@ -35,12 +35,14 @@ TDEE (`tdee`): `EXPLICIT_TRAINING` = TMB × fator de NÃO-exercício + kcal LÍQ
 treino do dia; `INCLUDED_IN_FACTOR` = TMB × fator clássico (treino embutido). TEF já
 embutido nos fatores.
 
-Desconto do repouso da sessão (ADR 0008, `nutrition-v3`): o fator de rotina já cobre a TMB das 24 h, então a kcal do
-treino (informada ou MET, ambas brutas: incluem o repouso da janela) entra LÍQUIDA, `kcal − TMB/1440 × minutos`, piso 0.
-A regra é a mesma do motor adaptativo (decisão D4) e vive em `activity_energy.net_of_resting_kcal`: `active` entra como
-veio; `gross`/`unknown` descontam; a MET é sempre bruta. Sem duração: a kcal fica como está (não se inventa nem se
-descarta o treino) e sai a limitação `LIMIT_REST_NOT_DISCOUNTED`. O modo do relógio do modo explícito/automático é o
-`DEFAULT_TDEE_CALORIE_MODE` (`unknown`: o plano só guarda `watch_calorie_mode` no adaptativo).
+Desconto do repouso da sessão (ADR 0008, `nutrition-v3`; padrão revisto pela ADR 0016, `nutrition-v5`): o fator de
+rotina já cobre a TMB das 24 h, então a kcal BRUTA do treino (inclui o repouso da janela) entra LÍQUIDA,
+`kcal − TMB/1440 × minutos`, piso 0. A regra é a mesma do motor adaptativo (decisão D4) e vive em
+`activity_energy.net_of_resting_kcal`: `active` entra como veio; `gross`/`unknown` descontam; a MET é sempre bruta
+(`MET_KCAL_CALORIE_MODE`). Sem duração: a kcal fica como está (não se inventa nem se descarta o treino) e sai a
+limitação `LIMIT_REST_NOT_DISCOUNTED`. A kcal INFORMADA (do Intervals ou do treino do app vinculado) no modo
+explícito/automático segue `DEFAULT_TDEE_CALORIE_MODE` = ATIVA (ADR 0016: o relógio já separou o repouso; o plano só
+guarda `watch_calorie_mode` no adaptativo).
 
 Módulo PURO: sem banco, sem FastAPI, sem I/O.
 """
@@ -136,8 +138,8 @@ EXTRA_ACTIVITY_KCAL_NATURE: Final[TrainingKcalNature] = TrainingKcalNature.REPOR
 EXTRA_ACTIVITY_LABEL_MAX_CHARS: Final[int] = 60
 
 # O que o número de kcal do relógio representa no modo explícito/automático: o plano só guarda `watch_calorie_mode` no
-# adaptativo; ausente = `unknown` = bruta (desconta o repouso, como o adaptativo).
-DEFAULT_TDEE_CALORIE_MODE: Final[activity_energy.CalorieMode] = activity_energy.CalorieMode.UNKNOWN
+# adaptativo; aqui vale o padrão do dono (`activity_energy.DEFAULT_REPORTED_CALORIE_MODE`, ADR 0016: ativa, sem desconto).
+DEFAULT_TDEE_CALORIE_MODE: Final[activity_energy.CalorieMode] = activity_energy.DEFAULT_REPORTED_CALORIE_MODE
 # A kcal por MET (`training_kcal_met`) é sempre bruta (inclui 1 MET de repouso).
 MET_KCAL_CALORIE_MODE: Final[activity_energy.CalorieMode] = activity_energy.CalorieMode.GROSS
 
@@ -157,6 +159,8 @@ def _net_kcal(kcal: float, calorie_mode: Any, duration_min: Any, bmr_kcal: Any) 
 EXCLUDED_DUPLICATE: Final[str] = "duplicate"  # duplicata certa (mesmo id externo/impressão) ou mesmo treino da sessão do app
 EXCLUDED_ABOVE_CEILING: Final[str] = "above_ceiling"  # kcal acima de `activity_energy.MAX_PLAUSIBLE_ACTIVITY_KCAL`
 EXCLUDED_NO_KCAL: Final[str] = "no_kcal"  # sem kcal informada: não soma e não é estimada
+# Correção manual `exclude` (`activity_energy.apply_activity_corrections`): o mesmo código da marca do dono.
+EXCLUDED_BY_USER: Final[str] = activity_energy.ActivityFlag.EXCLUDED_BY_USER.value
 # Treino que cruza com outro do Intervals por horário/duração (`activity_energy.deduplicate`, só sinaliza): CONTA e avisa.
 LIMIT_POSSIBLE_DOUBLE_COUNT = "possible_double_count"
 # A sessão do app entra na deduplicação como atividade de FORÇA, a classe do dono da classificação (módulo puro).
@@ -181,6 +185,10 @@ class ExtraActivity:
     duration_seconds: Any = None
     start: Optional[datetime] = None
     external_id: Optional[str] = None
+    # Id da atividade no banco (`intervals_activities.id`, o mesmo da rota de correção) e a correção manual do usuário
+    # para ele (`activity_energy.ActivityCorrection`); aplicada por `extra_activity_kcal` e parte do hash do dia.
+    activity_id: Optional[str] = None
+    correction: Optional[activity_energy.ActivityCorrection] = None
 
     @property
     def duration_min(self) -> Optional[float]:
@@ -196,6 +204,10 @@ class ExtraActivity:
             dados["start"] = self.start.isoformat()
         if self.external_id is not None:
             dados["external_id"] = str(self.external_id)
+        if self.activity_id is not None:
+            dados["activity_id"] = str(self.activity_id)
+        if self.correction is not None:
+            dados["correction"] = self.correction.to_dict()
         return dados
 
 
@@ -209,15 +221,24 @@ class ExtraLine:
     resting_discount_kcal: float = 0.0
     net_kcal: float = 0.0
     excluded_reason: Optional[str] = None
+    # Modo da kcal que valeu (padrão ou o da correção) e a correção que o motor APLICOU (ignorada = None).
+    calorie_mode: Optional[str] = None
+    correction: Optional[activity_energy.ActivityCorrection] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        dados = {
             **self.item.to_dict(),
             "gross_kcal": self.gross_kcal,
             "resting_discount_kcal": self.resting_discount_kcal,
             "net_kcal": self.net_kcal,
             "excluded_reason": self.excluded_reason,
         }
+        dados.pop("correction", None)
+        if self.calorie_mode is not None:
+            dados["calorie_mode"] = self.calorie_mode
+        if self.correction is not None:
+            dados["correction"] = self.correction.to_dict()
+        return dados
 
 
 @dataclass(frozen=True)
@@ -279,23 +300,31 @@ def extra_activity_kcal(
     - duplicata certa (mesmo id externo/impressão) ou mesmo treino de uma sessão do app com horário (início próximo,
       duração parecida): não soma (`EXCLUDED_DUPLICATE`; a sessão é a que conta);
     - possível duplicata entre atividades do Intervals: CONTA e avisa (`LIMIT_POSSIBLE_DOUBLE_COUNT`);
-    - sem duração: entra como está, com `LIMIT_REST_NOT_DISCOUNTED`."""
+    - sem duração: entra como está, com `LIMIT_REST_NOT_DISCOUNTED`.
+    Correção manual do usuário (`ExtraActivity.correction`, casada pelo `activity_id`) entra ANTES de normalizar e
+    deduplicar pela regra do dono (`activity_energy.apply_activity_corrections`) e prevalece sobre `calorie_mode`:
+    `exclude` não soma (`EXCLUDED_BY_USER`); `reclassify` troca o modo daquela atividade (bruta desconta o repouso, ativa
+    entra inteira). Correção sem atividade correspondente é ignorada."""
     itens = tuple(activities)
     if not itens:
         return NO_EXTRA_ACTIVITY_KCAL
-    cruas = [
-        activity_energy.RawActivity(
-            id=f"{_ITEM_ID_PREFIX}{i}",
-            start=item.start if item.start is not None else _NO_START_EPOCH + timedelta(days=i),
-            duration_seconds=item.duration_seconds,
-            kind=str(item.kind),
-            name=item.label,
-            calories_kcal=item.calories_kcal,
-            calorie_mode=calorie_mode,
-            external_id=None if item.external_id is None else str(item.external_id),
-        )
-        for i, item in enumerate(itens)
-    ]
+    ids = [str(item.activity_id) if item.activity_id is not None else f"{_ITEM_ID_PREFIX}{i}" for i, item in enumerate(itens)]
+    cruas = activity_energy.apply_activity_corrections(
+        (
+            activity_energy.RawActivity(
+                id=ids[i],
+                start=item.start if item.start is not None else _NO_START_EPOCH + timedelta(days=i),
+                duration_seconds=item.duration_seconds,
+                kind=str(item.kind),
+                name=item.label,
+                calories_kcal=item.calories_kcal,
+                calorie_mode=calorie_mode,
+                external_id=None if item.external_id is None else str(item.external_id),
+            )
+            for i, item in enumerate(itens)
+        ),
+        [item.correction for item in itens if item.correction is not None],
+    )
     normalizadas = [activity_energy.normalize_activity(crua, bmr_kcal) for crua in cruas]
     normalizadas += [activity_energy.normalize_activity(crua, bmr_kcal) for crua in _session_activities(sessions)]
     por_id = {atividade.id: atividade for atividade in activity_energy.deduplicate(normalizadas)}
@@ -306,25 +335,32 @@ def extra_activity_kcal(
     possivel = False
     sem_kcal = False
     for i, item in enumerate(itens):
-        atividade = por_id[f"{_ITEM_ID_PREFIX}{i}"]
+        atividade = por_id[ids[i]]
+        modo, correcao = cruas[i].calorie_mode, cruas[i].correction
         informada = positive_number(item.calories_kcal)
+        if atividade.excluded:
+            linhas.append(ExtraLine(item, gross_kcal=informada or 0.0, excluded_reason=EXCLUDED_BY_USER, correction=correcao))
+            continue
         if informada is None:
             sem_kcal = True
-            linhas.append(ExtraLine(item, excluded_reason=EXCLUDED_NO_KCAL))
+            linhas.append(ExtraLine(item, excluded_reason=EXCLUDED_NO_KCAL, correction=correcao))
             continue
         if informada > activity_energy.MAX_PLAUSIBLE_ACTIVITY_KCAL:
-            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_ABOVE_CEILING))
+            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_ABOVE_CEILING, correction=correcao))
             continue
         da_sessao = any(outro.startswith(_SESSION_ID_PREFIX) for outro in atividade.possible_duplicate_of)
         if atividade.is_certain_duplicate or da_sessao:
-            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_DUPLICATE))
+            linhas.append(ExtraLine(item, gross_kcal=informada, excluded_reason=EXCLUDED_DUPLICATE, correction=correcao))
             continue
         possivel = possivel or bool(atividade.possible_duplicate_of)
-        kcal, desconto, faltou = _net_kcal(informada, calorie_mode, item.duration_min, bmr_kcal)
+        kcal, desconto, faltou = _net_kcal(informada, modo, item.duration_min, bmr_kcal)
         liquido += kcal
         bruto += informada
         sem_desconto = sem_desconto or faltou
-        linhas.append(ExtraLine(item, gross_kcal=informada, resting_discount_kcal=desconto, net_kcal=kcal))
+        linhas.append(ExtraLine(
+            item, gross_kcal=informada, resting_discount_kcal=desconto, net_kcal=kcal,
+            calorie_mode=activity_energy.normalize_calorie_mode(modo).value, correction=correcao,
+        ))
     limitacoes = (
         *((LIMIT_ACTIVITY_WITHOUT_KCAL,) if sem_kcal else ()),
         *((LIMIT_POSSIBLE_DOUBLE_COUNT,) if possivel else ()),
@@ -527,11 +563,16 @@ class SessionKcal:
     duration_min: Any = None
     # Horário de início da sessão (opcional): entra na deduplicação contra as atividades do Intervals (`extra_activity_kcal`).
     start: Optional[datetime] = None
+    # Correção manual da atividade do Intervals VINCULADA a esta sessão: só `reclassify` vale (troca o modo da kcal
+    # informada); `exclude` é ignorado aqui, para uma exclusão nunca apagar o treino do dia.
+    correction: Optional[activity_energy.ActivityCorrection] = None
 
     def to_dict(self) -> dict[str, Any]:
         dados: dict[str, Any] = {"calories_kcal": positive_number(self.calories_kcal), "duration_min": positive_number(self.duration_min)}
         if self.start is not None:
             dados["start"] = self.start.isoformat()
+        if self.correction is not None:
+            dados["correction"] = self.correction.to_dict()
         return dados
 
 
@@ -555,7 +596,8 @@ def _session_parts(
     for sessao in sessions:
         informada = positive_number(sessao.calories_kcal)
         if informada is not None:
-            liquida, _, faltou = _net_kcal(informada, calorie_mode, sessao.duration_min, bmr_kcal)
+            modo = activity_energy.reclassified_calorie_mode(getattr(sessao, "correction", None)) or calorie_mode
+            liquida, _, faltou = _net_kcal(informada, modo, sessao.duration_min, bmr_kcal)
             partes.append(_SessionPart(TrainingKcalNature.REPORTED, liquida, informada, faltou))
             continue
         estimada = training_kcal_met(weight_kg, sessao.duration_min, met)

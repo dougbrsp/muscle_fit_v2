@@ -61,7 +61,8 @@ def test_modo_desconhecido_trata_como_bruta_com_marca_de_precisao_reduzida():
     atividade = _norm(_raw(modo="unknown"))
     assert atividade.active_kcal == pytest.approx(428.0 - 2020.0 / 1440.0 * 60.0)
     assert ActivityFlag.REDUCED_PRECISION in atividade.flags
-    assert _norm(_raw(modo=None)).calorie_mode == CalorieMode.UNKNOWN
+    # ADR 0016: modo ausente = padrão do dono (ativa); só o texto `unknown`/desconhecido é UNKNOWN.
+    assert _norm(_raw(modo=None)).calorie_mode == CalorieMode.ACTIVE
     assert _norm(_raw(modo="lixo")).calorie_mode == CalorieMode.UNKNOWN
 
 

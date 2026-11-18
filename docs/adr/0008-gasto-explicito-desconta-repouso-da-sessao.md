@@ -2,6 +2,7 @@
 
 - **Status**: Aceita (decisão do usuário, 08/11/2026: "corrija a dupla contagem descontando a TMB da sessão").
 - **Data**: 2026-11-08
+- **Nota (2026-11-17)**: substituída em parte pela [ADR 0016](0016-kcal-do-intervals-ativa-por-padrao.md). O desconto do repouso deixa de valer para a kcal INFORMADA (Intervals e treino do app vinculado), que entra ativa por padrão; segue valendo para a kcal por MET e para o modo `gross`/`unknown` explícito. A limitação das correções manuais (consequências e "Limitações e riscos") também foi superada: a correção passa a valer nos modos explícito e automático. O texto abaixo é o registro de 08/11.
 
 ## Contexto
 

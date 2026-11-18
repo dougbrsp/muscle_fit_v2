@@ -82,6 +82,16 @@ function ActivityRow({ activity, editable }: { activity: AdaptiveActivity; edita
         >
           {activity.name || activity.kind || 'Atividade'}
         </Text>
+        {activity.source === 'intervals_icu' && (
+          <Badge size="xs" color="grape" variant="light" data-testid="adaptativo-origem">
+            Intervals
+          </Badge>
+        )}
+        {!excluida && (
+          <Badge size="xs" color={reclassificada ? 'blue' : 'gray'} variant="outline" data-testid="adaptativo-tipo-origem">
+            {reclassificada ? 'Manual' : 'Automático'}
+          </Badge>
+        )}
         {reclassificada && (
           <Badge size="xs" color="blue" variant="light" data-testid="adaptativo-reclassificada">
             {adaptiveLabel('activity_correction_action', ADAPTIVE_CODES.reclassify)}

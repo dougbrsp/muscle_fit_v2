@@ -14,6 +14,11 @@ destes cenários não têm duração: entram como vieram. Embutido, fallback e d
 Exceção documentada (ADR 0009, `nutrition-v4`, 2026-11-08): a proteína do corte passou a g/kg de peso total. Nenhum cenário
 daqui é cutting, então só o hash de TODOS mudou (versão do motor no hash); gasto, meta e macros ficam como estavam.
 
+Exceção documentada (ADR 0016, `nutrition-v5`, 2026-11-17): a kcal INFORMADA (Intervals e treino do app vinculado) entra
+ATIVA no explícito e no automático, sem o desconto do repouso (a MET segue bruta). `explicit_treino`: 353,83 -> 428;
+`auto_sync_extras`: 673,83 -> 748 (428 + 200 + 120; os extras não têm duração e já não descontavam). Mudaram gasto,
+meta e macros desses cenários e o hash de TODOS (versão do motor no hash).
+
 Não há regra nesta suíte: só literais. O dono dos cálculos segue sendo `energy_expenditure.py`/`daily_target.py`
 (mapa `docs/motores/FONTES_DA_VERDADE.md` §3.7)."""
 
@@ -48,33 +53,37 @@ EXTRAS = [
 # (estrategia, modo, sessoes, extras, sincronizado) -> gasto, treino no gasto, fator, meta kcal, proteína, carbo, gordura, hash
 _CENARIOS = {
     "maintenance/explicit_treino": (("maintenance", "explicit_training", FORCA, [], False),
-        (2845.8333333333335, 353.8333333333333, 1.4, 2845.8333333333335, 160.0, 373.59375000000006, 79.05092592592592, "4f0041a354d18de9fe8b49b3e1c653c0101cd46da64f1f2d0e761fbbddfbad5d")),
+        # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
+        (2920.0, 428.0, 1.4, 2920.0, 160.0, 387.5, 81.11111111111111, "b8ef862e45815aca69fdad273770c1b9a027da4a697ee32077dfbb60f699bae2")),
     "maintenance/explicit_descanso": (("maintenance", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "5119c93b2488f6b93ac390f5e59ec26ad2b1852a0b031750d919fc3438ce0df0")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "a75a0d1e49171c7c966f9be9afd0be19a639fb405885f941c258d82e03e2ef25")),
     "maintenance/embutido_treino": (("maintenance", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "6308a11d4e15904e5458d52cd92476dbce50c30407270832d51698f67638ef83")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "3d9eb82fa16e89d9379b32e61164f75fda1a4589d521ba32298920d3dc3e4393")),
     "maintenance/embutido_descanso": (("maintenance", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "772254b0b6280b04633bb76b5f3a99dcddca738cfbfc786b6eba92f4b07733d0")),
+        (2759.0, None, 1.55, 2759.0, 160.0, 357.3125, 76.63888888888889, "2e8e07973ce3b1c2799559619b13fae913ecc5cc96561bcd516f0687cb86f190")),
     "maintenance/auto_sync_extras": (("maintenance", "auto_intervals", FORCA, EXTRAS, True),
-        (3165.833333333333, 673.8333333333333, 1.4, 3165.833333333333, 160.0, 433.59374999999994, 87.93981481481481, "481e759aa3b6ec01f82948ecbaf937b092f8cb2ae00eaae98eaf81650da5cba1")),
+        # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
+        (3240.0, 748.0, 1.4, 3240.0, 160.0, 447.5, 90.0, "9d91568052548fb3f454dc541ecd8a7118d5331adaef0af572ac0e5b4b0d47e8")),
     "maintenance/auto_sync_descanso": (("maintenance", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "b7ee64957dbfeaa358a7947104a74a5bd93073f7376d8d87d7cc8d3c65d33c69")),
+        (2492.0, 0.0, 1.4, 2492.0, 160.0, 307.25, 69.22222222222223, "727aec1da8945bc846784c4d4f85fee50f3ce1bbeac5a101307e7a93041c0839")),
     "maintenance/auto_fallback": (("maintenance", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "6305f0db659a7a5c600ce87a97d7c54f23f9daa92f35273b7d6b73cd101b7bc0")),
+        (3070.5, None, 1.725, 3070.5, 160.0, 415.71875, 85.29166666666667, "de877cb432aa8b0ed1b23c6e2a967b25d6e8e96cffa843d4feb6497c56e8bddb")),
     "bulking/explicit_treino": (("bulking", "explicit_training", FORCA, [], False),
-        (2845.8333333333335, 353.8333333333333, 1.4, 3130.416666666667, 160.0, 426.95312500000006, 86.95601851851853, "88db7beb4ed06b111d797ff44ffef1918e328c00b8bc7cad3c6a384f48dac46c")),
+        # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
+        (2920.0, 428.0, 1.4, 3212.0, 160.0, 442.25, 89.22222222222223, "93ebb232f448ad2bd0d47cd3b9058972bf0e1b74775dd81bc90b0e64d9c8d4ac")),
     "bulking/explicit_descanso": (("bulking", "explicit_training", [], [], False),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "c083df85f1f6d8c50c6abfb6ecc18582185c52b2636c4e054291b4af0055dd3e")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "54e5d5c8f651cf9cec4d1bfdc087f3144cc510f5f08944486cedeba713242028")),
     "bulking/embutido_treino": (("bulking", "included_in_factor", FORCA, [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "3cf900cc75585905425000bd426a1e92faae1d406a225e1b46b6f3e5a33647ef")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "8ae610082db0425cbf0b012268a4c14d1fe457ab0a2313ce39a505c225c7bbbf")),
     "bulking/embutido_descanso": (("bulking", "included_in_factor", [], [], False),
-        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "da92969ada1bd5f79d0a9fd79e7ae1409eb3f2c98c7befeb42d01d022aa0eaeb")),
+        (2759.0, None, 1.55, 3034.9, 160.0, 409.04375000000005, 84.30277777777778, "002c8adff72603f9f8c6a8fc674c3e18524abd948e8f5f264788b38b43846b64")),
     "bulking/auto_sync_extras": (("bulking", "auto_intervals", FORCA, EXTRAS, True),
-        (3165.833333333333, 673.8333333333333, 1.4, 3482.4166666666665, 160.0, 492.953125, 96.73379629629629, "6932ab0a69b394debf50b39fdd4c7538860162141534b800d82a4e1f4fda3b2f")),
+        # ADR 0016 (nutrition-v5): kcal informada entra ativa, sem o desconto de 74,17 (TMB/1440 × 60).
+        (3240.0, 748.0, 1.4, 3564.0, 160.0, 508.25, 99.0, "22c268ab8dd47ac7ef826e73664b3894ac7054211ddefcf797b0bd8c97a4b661")),
     "bulking/auto_sync_descanso": (("bulking", "auto_intervals", [], [], True),
-        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "ccbfb121622d47b8044f38c4e1b20c2456eee126f26cb84564cf78f7e2e57f66")),
+        (2492.0, 0.0, 1.4, 2741.2, 160.0, 353.97499999999997, 76.14444444444445, "90b28446927f71b0e9e3bec13aeafbb036b48df79ffeddf3b3ee69f996c3fb75")),
     "bulking/auto_fallback": (("bulking", "auto_intervals", FORCA, EXTRAS, False),
-        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "f651a86cd0fbf86fe0358060b4c813504179d3e08c4c4f8bd526cd1f20458e46")),
+        (3070.5, None, 1.725, 3377.55, 160.0, 473.29062500000003, 93.82083333333334, "ff02f29f89dca77634eda2153510b559b74099d8860385c79fc1d61d7a17f650")),
 }
 
 
@@ -105,7 +114,7 @@ def test_modo_legado_mantem_gasto_meta_macros_e_hash(nome):
     assert alvo.macros.fat_g == pytest.approx(gordura, rel=1e-12)
     # Trava do hash: `inputs_fingerprint` só olha as ENTRADAS (sujeito, plano, contexto do dia) e a versão do motor.
     assert svc.inputs_fingerprint(PLANO_ID, comp) == hash_esperado
-    assert alvo.engine_version == "nutrition-v4"
+    assert alvo.engine_version == "nutrition-v5"
 
 
 def test_embutido_tmb_2020_fator_1725_da_3485_sem_somar_o_treino_de_novo():
@@ -176,8 +185,8 @@ def test_tdee_breakdown_da_previa_fecha_o_total_exatamente(nome):
         assert any(c.startswith("activity_") for c in codigos) == bool(entrada[3] and sincronizado)
         if modo == "auto_intervals" and treino:  # força e extras separados: o `training_kcal` do tdee soma os dois
             partes = {p["code"]: p["kcal"] for p in comp_dict["parts"]}
-            assert partes["training"] == 354 and partes["activity_0"] + partes["activity_1"] == 320 and partes["base"] == 2492
-            assert [p["label"] for p in comp_dict["parts"][2:]] == ["Esteira", "Caminhada"]  # força líquida do repouso (60 min)
+            assert partes["training"] == 428 and partes["activity_0"] + partes["activity_1"] == 320 and partes["base"] == 2492
+            assert [p["label"] for p in comp_dict["parts"][2:]] == ["Esteira", "Caminhada"]  # ADR 0016: força informada entra ativa (428)
     # o `to_dict` gravado (inputs_json) e o hash não levam a composição
     assert "tdee_breakdown" not in comp.target.to_dict() and "tdee_breakdown" not in comp.target.tdee.to_dict()
 

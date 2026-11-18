@@ -2,6 +2,7 @@
 
 - **Status**: Aceita
 - **Data**: 2026-11-05 (Lote A); atualizada em 2026-11-06 com o Lote C
+- **Nota (2026-11-17)**: a decisão D4 foi substituída em parte pela [ADR 0016](0016-kcal-do-intervals-ativa-por-padrao.md): o padrão do modo da kcal passou a ser ativa (antes, `unknown`). O `unknown` EXPLÍCITO continua tratado como bruta, com a marca `reduced_precision`. O texto abaixo é o registro de 05/11.
 
 ## Contexto
 

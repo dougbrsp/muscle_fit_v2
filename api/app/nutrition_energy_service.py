@@ -17,8 +17,8 @@ Decisões e limitações (documentadas, a confirmar com o usuário quando o modo
   (inclui `WeightTraining`, com ou sem vínculo `activity_intervals_link`), uma vez só; `activities` (o treino do app)
   NÃO é somada, senão a sessão vinculada contaria duas vezes. Sessão do app sem atividade no Intervals não entra (sem
   relógio, o motor não tem kcal medida para ela); é o custo da fonte única, a reavaliar no Lote E.
-- Modo da kcal: `unknown` neste lote (vira parâmetro do plano no Lote C): tratada como bruta, com a marca de precisão
-  reduzida. A duração do desconto é de `activity_energy.activity_duration_seconds` (decorrido, com o movimento de reserva).
+- Modo da kcal: parâmetro do plano adaptativo (`watch_calorie_mode`, Lote C); sem plano adaptativo (sombra) vale o padrão
+  do dono, ATIVA (ADR 0016: entra como veio). `gross`/`unknown` explícitos descontam o repouso. A duração do desconto é de `activity_energy.activity_duration_seconds` (decorrido, com o movimento de reserva).
 - Dia confirmado (`activity_energy.day_confirmed`): `last_sync_at` = `MAX(synced_at)` das atividades, convertido para o
   fuso do usuário; `tracking_started_on` = a data da primeira atividade importada. A `synced_at` de TODA atividade da
   janela do job é regravada a cada execução bem-sucedida (`intervals_store`), então o relógio avança mesmo sem atividade
@@ -163,7 +163,7 @@ def corrections_of(linhas: Sequence[dict[str, Any]]) -> tuple[activity_mod.Activ
 def raw_activity_of(row: dict[str, Any], calorie_mode: str = DEFAULT_CALORIE_MODE) -> Optional[RawActivity]:
     """Linha de `intervals_activities` -> `RawActivity`. O dia é `activity_date` (o local de início); a hora vem de
     `start_time`. Duração = tempo decorrido, com o tempo em movimento de reserva. `calorie_mode` é o parâmetro do
-    plano (`energy_params.watch_calorie_mode`); sem plano adaptativo (sombra) vale `unknown`."""
+    plano (`energy_params.watch_calorie_mode`); sem plano adaptativo (sombra) vale o padrão do dono (ativa, ADR 0016)."""
     dia = _as_date(row.get("activity_date"))
     if dia is None:
         return None

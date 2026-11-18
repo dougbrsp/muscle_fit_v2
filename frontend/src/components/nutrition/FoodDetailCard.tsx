@@ -13,7 +13,7 @@ import {
   nutritionLabel,
 } from '@/lib/nutrition-constants';
 import { formatWithUnit } from '@/lib/nutrition-format';
-import type { FoodDetail, FoodPermissions, FoodPortion } from '@/lib/nutrition-types';
+import type { FoodDetail, FoodPortion } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
 import { FoodOriginBadge } from './FoodOriginBadge';
 
@@ -32,7 +32,7 @@ type Props = {
 export function FoodDetailCard({ food, onEdit, onPromote, promoting, onPortionAdded, onDelete, deleting = false }: Props) {
   const [confirming, setConfirming] = useState(false);
   // `can_delete` vem da API; payload sem o campo = sem botão.
-  const canDelete = (food.permissions as FoodPermissions & { can_delete?: boolean }).can_delete === true && !!onDelete;
+  const canDelete = food.permissions.can_delete === true && !!onDelete;
   async function confirmar() {
     try {
       await onDelete?.();

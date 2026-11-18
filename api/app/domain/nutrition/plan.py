@@ -39,7 +39,7 @@ from typing import Any, Final, Mapping, Optional, Sequence
 
 from . import energy_expenditure as ee
 from . import adaptive_energy
-from .activity_energy import CalorieMode
+from .activity_energy import DEFAULT_REPORTED_CALORIE_MODE, CalorieMode
 from .anthropometrics import ActivityLevel, Subject, non_negative_number, normalize_activity_level, positive_number, weight_is_valid
 from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_ffm_kg, target_weight_for_body_fat
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
@@ -177,14 +177,15 @@ class ManualMacros:
 
 
 ENERGY_PARAM_WATCH_CALORIE_MODE: Final[str] = "watch_calorie_mode"
-DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = CalorieMode.UNKNOWN
+# Padrão do dono `activity_energy` (ADR 0016: kcal informada do Intervals = ativa); sem literal aqui.
+DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = DEFAULT_REPORTED_CALORIE_MODE
 
 
 @dataclass(frozen=True)
 class EnergyParams:
     """Parâmetros de energia do plano adaptativo (hoje só o que a kcal do relógio significa: `active` = só as ativas,
-    `gross` = total do exercício com o repouso dentro, `unknown` = não informado, tratada como bruta, D4). Só entra no
-    `to_dict`/hash quando sai do padrão."""
+    `gross` = total do exercício com o repouso dentro, `unknown` = não sei, tratada como bruta, D4). Padrão `active`
+    (ADR 0016). Só entra no `to_dict`/hash quando sai do padrão: plano sem `energy_params` = ativa."""
 
     watch_calorie_mode: CalorieMode = DEFAULT_WATCH_CALORIE_MODE
 

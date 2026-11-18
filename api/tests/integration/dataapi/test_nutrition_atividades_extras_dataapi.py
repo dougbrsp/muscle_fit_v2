@@ -148,8 +148,8 @@ def test_dia_sincronizado_soma_forca_e_extras_e_fallback_nao_nos_dois_backends(u
                 assert treino["tdee_basis"] == "auto_synced", (backend, treino)
                 # 51 + 79 + 265 + 300 (WeightTraining sem vínculo); as do fixture não têm duração: entram como vieram
                 assert treino["extra_activity"]["kcal"] == pytest.approx(695), (backend, treino)
-                # a sessão do app (428 kcal, 3600 s) entra LÍQUIDA do repouso da janela: kcal − TMB/1440 × 60
-                forca = 428.0 - corpo["target"]["bmr_kcal"] / 1440 * 60
+                # ADR 0016: a kcal informada do Intervals (428) entra ATIVA, sem desconto do repouso; antes: 428 − TMB/1440 × 60
+                forca = 428.0
                 assert treino["activity_kcal"]["training_kcal"] == pytest.approx(forca, abs=0.1)
                 assert treino["activity_kcal"]["extra_kcal"] == 695.0
                 assert treino["activity_kcal"]["total_kcal"] == pytest.approx(forca + 695, abs=0.1)
