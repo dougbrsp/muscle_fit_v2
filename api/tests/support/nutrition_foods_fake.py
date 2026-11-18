@@ -14,6 +14,8 @@ conexão quando a rota levanta.
 from __future__ import annotations
 
 import copy
+import re
+import unicodedata
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
@@ -39,6 +41,23 @@ def _search_variants() -> dict[str, tuple[bool, str, bool, bool]]:
     }
 
 
+def _ai_ci(texto: Any) -> str:
+    """Simula a collation utf8mb4_0900_ai_ci: sem acento, sem distinção de caixa."""
+    nfkd = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch)).lower()
+
+
+def _brand_variants() -> dict[str, tuple[bool, bool, bool]]:
+    return {
+        foods.brand_search_sql(visibility=vis, with_source=src, favorites_only=fav): (
+            vis == access.VISIBLE_FOODS_SQL, src, fav,
+        )
+        for vis in (access.VISIBLE_FOODS_SQL, access.PRIVATE_FOODS_SQL)
+        for src in (True, False)
+        for fav in (True, False)
+    }
+
+
 class FakeFoodsDB:
     def __init__(self) -> None:
         self.foods: dict[int, dict[str, Any]] = {}
@@ -49,6 +68,8 @@ class FakeFoodsDB:
         self.queries: list[tuple[str, tuple]] = []
         self.now = AGORA  # `created_at` das linhas gravadas pela importação externa
         self._search = _search_variants()
+        self._brand = _brand_variants()
+        self._list = {foods.list_sql(bucket=False): False, foods.list_sql(bucket=True): True}
 
     # --- cenário -------------------------------------------------------------
     def add_food(self, name: str, *, source: str = "taco", owner: Optional[int] = None, active: bool = True,
@@ -172,13 +193,56 @@ class FakeCursor:
         achados.sort(key=lambda t: (t[0], t[1]))
         return [_publico(linha) for *_chave, linha in achados[:lote]]
 
+    def _buscar_marca(self, variante: tuple[bool, bool, bool], p: tuple) -> list[dict[str, Any]]:
+        """`brand LIKE %termo%` (padrão com `\\` escapando curinga), ORDER BY id LIMIT."""
+        visiveis, com_fonte, so_favoritos = variante
+        resto = list(p)
+        padrao = resto.pop(0)
+        usuario = resto.pop(0) if visiveis else None
+        fonte = resto.pop(0) if com_fonte else None
+        dono_favoritos = resto.pop(0) if so_favoritos else None
+        lote = resto.pop(0)
+        assert not resto and padrao.startswith("%") and padrao.endswith("%")
+        miolo = re.sub(r"\\(.)", r"\1", padrao[1:-1])
+        ids_favoritos = {f["food_id"] for f in self.db.favorites if f["user_id"] == dono_favoritos}
+        achados = [
+            linha for linha in self.db.foods.values()
+            if linha["is_active"] and linha["brand"] and _ai_ci(miolo) in _ai_ci(linha["brand"])
+            and (not so_favoritos or linha["id"] in ids_favoritos)
+            and ((linha["owner_user_id"] is None or linha["owner_user_id"] == usuario) if visiveis
+                 else linha["owner_user_id"] is not None)
+            and (fonte is None or linha["source"] == fonte)
+        ]
+        return [_publico(linha) for linha in sorted(achados, key=lambda r: r["id"])[:lote]]
+
+    def _listar(self, bucket: bool, p: tuple) -> list[dict[str, Any]]:
+        """Listagem por letra: nome em ai_ci, `NOT(...)` no balde, ORDER BY name, id LIMIT/OFFSET."""
+        usuario, *prefixos, limite, deslocamento = p
+        letras = tuple(x.rstrip("%").lower() for x in prefixos)
+        assert len(letras) == (26 if bucket else 1)
+        achados = []
+        for linha in self.db.foods.values():
+            if not linha["is_active"] or not (linha["owner_user_id"] is None or linha["owner_user_id"] == usuario):
+                continue
+            casa = any(_ai_ci(linha["name"]).startswith(letra) for letra in letras)
+            if casa != bucket:
+                achados.append(linha)
+        achados.sort(key=lambda r: (_ai_ci(r["name"]), r["id"]))
+        return [_publico(linha) for linha in achados[deslocamento:deslocamento + limite]]
+
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement
         p = tuple(params or ())
         db = self.db
         db.queries.append((sql, p))
         self._rows = []
         self.rowcount = 0
-        if sql in db._search:
+        if sql in db._brand:
+            self._rows = self._buscar_marca(db._brand[sql], p)
+            self.rowcount = len(self._rows)
+        elif sql in db._list:
+            self._rows = self._listar(db._list[sql], p)
+            self.rowcount = len(self._rows)
+        elif sql in db._search:
             self._rows = self._buscar(db._search[sql], p)
             self.rowcount = len(self._rows)
         elif sql == foods.FAVORITE_IDS_SQL:
