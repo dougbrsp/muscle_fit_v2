@@ -167,15 +167,15 @@ def test_detalhe_da_atividade_devolve_booleano(monkeypatch):
     assert [ex["form_practice"] for ex in detalhe["exercises"]] == [True, False, False]
 
 
-def test_edicao_no_historico_nao_regrava_a_marcacao():
-    # D2: o UPDATE da edição cita só as colunas editáveis; a marcação fica.
+def test_edicao_no_historico_pode_corrigir_a_marcacao():
+    # #205: o Registro aceita o campo (None preserva) e o UPDATE grava a coluna.
     import inspect
 
     fonte = inspect.getsource(services.update_exercise_log)
     update = fonte[fonte.index("UPDATE exercises") : fonte.index("WHERE", fonte.index("UPDATE exercises"))]
-    assert "form_practice" not in update
+    assert "FORM_PRACTICE_COLUMN" in update
     campo = ws.SessionExerciseIn.model_fields["form_practice"]
     assert campo.default is False
     from app.models import ExerciseLogUpdateIn
 
-    assert "form_practice" not in ExerciseLogUpdateIn.model_fields
+    assert ExerciseLogUpdateIn.model_fields["form_practice"].default is None

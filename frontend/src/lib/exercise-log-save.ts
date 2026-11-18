@@ -44,6 +44,7 @@ export async function saveExerciseLog(args: {
         workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
         muscle_pain: form.muscle_pain,
         joint_pain: form.joint_pain,
+        form_practice: form.form_practice,
         sets: form.sets.map(setUpdatePayload),
       }),
     });
@@ -58,6 +59,7 @@ export async function saveExerciseLog(args: {
       workout_plan_exercise_id: form.workout_plan_exercise_id ? Number(form.workout_plan_exercise_id) : null,
       muscle_pain: form.muscle_pain,
       joint_pain: form.joint_pain,
+      form_practice: form.form_practice,
     }),
   });
 
@@ -112,9 +114,13 @@ export function emptyExerciseForm(): ExerciseFormState {
     workout_plan_exercise_id: '',
     muscle_pain: null,
     joint_pain: false,
+    form_practice: false,
     sets: [defaultNewSet()],
   };
 }
+
+/** Consultas em cache que mostram progressão/recorde/e1RM: a reavaliação do servidor as muda. */
+export const PROGRESSION_QUERY_KEYS = [['dashboard'], ['analytics-exercise-progress'], ['exercise-briefing']] as const;
 
 type SetList = ExerciseFormState['sets'];
 

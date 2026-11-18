@@ -2,8 +2,9 @@
 
 DONO da regra "esta execucao conta para a progressao?". Python puro, sem
 banco. A marca e por linha de `exercises` (coluna `form_practice`, migracao
-120): o usuario marca no Modo Treino, so antes da 1a serie do exercicio, e
-ela nao muda depois (D2).
+120): no Modo Treino o usuario marca so antes da 1a serie do exercicio e a
+marca fica travada ali (D2); pelo Registro de exercicios ela pode ser
+corrigida depois (#205), com a progressao reavaliada (`resolve_form_practice`).
 
 A execucao marcada (D1):
 
@@ -94,7 +95,8 @@ def sql_plan_item_marked(alias: str) -> str:
 
 
 def inherit_form_practice(sent: Any, inherited: Any = None) -> bool:
-    """Marca da nova linha de `exercises` da sessao (D2: so na criacao).
+    """Marca da nova linha de `exercises` da sessao (D2: no Modo Treino so na
+    criacao; a correcao posterior e pelo Registro, `resolve_form_practice`).
 
     Regra: marcada a 1a passagem de um item da ficha na sessao, toda
     continuacao do MESMO item na MESMA sessao (troca de equipamento = nova
@@ -104,6 +106,14 @@ def inherit_form_practice(sent: Any, inherited: Any = None) -> bool:
     `inherited=None` e vale o que o cliente envia. Desmarcar pela continuacao
     nao e possivel (`enviado or herdado`)."""
     return is_form_practice(sent) or is_form_practice(inherited)
+
+
+def resolve_form_practice(sent: Any, stored: Any) -> bool:
+    """Marca resultante da edicao pelo Registro (#205): `sent` None (campo
+    omitido: Telegram/MCP, clientes antigos) preserva a gravada; True/False
+    substitui. Quem chama compara com `is_form_practice(stored)` para saber se
+    mudou."""
+    return is_form_practice(stored) if sent is None else is_form_practice(sent)
 
 
 def neutral_set_reading(reading: "SetIntensityReading") -> "SetIntensityReading":
@@ -170,6 +180,7 @@ __all__ = [
     "neutral_engine_context",
     "neutral_set_outcome",
     "neutral_set_reading",
+    "resolve_form_practice",
     "sql_counts_for_progression",
     "sql_plan_item_marked",
 ]

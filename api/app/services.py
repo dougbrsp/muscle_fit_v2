@@ -19,7 +19,12 @@ from .domain.recovery_signal_summary import summarize_signals
 from .domain.set_measures import normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical, attach_sides_text
 from .domain.deload import sql_not_deload
-from .domain.form_practice import FORM_PRACTICE_COLUMN, is_form_practice, sql_counts_for_progression
+from .domain.form_practice import (
+    FORM_PRACTICE_COLUMN,
+    is_form_practice,
+    resolve_form_practice,
+    sql_counts_for_progression,
+)
 from .domain.training_goal import goal_value, sql_goal_is
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
@@ -1208,14 +1213,17 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
             if user_id is not None:
                 cur.execute(
                     "SELECT e.id, e.activity_id, e.original_name, e.mapping_id, e.workout_plan_exercise_id, "
-                    "e.equipment_id, e.muscle_pain, e.joint_pain FROM exercises e "
+                    f"e.equipment_id, e.muscle_pain, e.joint_pain, e.{FORM_PRACTICE_COLUMN}, a.session_status "
+                    "FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
                     (exercise_id, user_id),
                 )
             else:
                 cur.execute(
                     "SELECT id, activity_id, original_name, mapping_id, workout_plan_exercise_id, "
-                    "equipment_id, muscle_pain, joint_pain FROM exercises WHERE id=%s",
+                    f"equipment_id, muscle_pain, joint_pain, {FORM_PRACTICE_COLUMN}, "
+                    "(SELECT session_status FROM activities WHERE id = exercises.activity_id) AS session_status "
+                    "FROM exercises WHERE id=%s",
                     (exercise_id,),
                 )
             existing = cur.fetchone()
@@ -1223,6 +1231,9 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                 return None
 
             activity_id = existing["activity_id"]
+            # #205: ausente/None preserva a marca gravada; a regra é do dono.
+            form_practice = resolve_form_practice(payload.get(FORM_PRACTICE_COLUMN), existing.get(FORM_PRACTICE_COLUMN))
+            form_practice_changed = form_practice != is_form_practice(existing.get(FORM_PRACTICE_COLUMN))
             # As séries são recriadas (DELETE + INSERT) mais abaixo: lê as
             # gravadas ANTES para preservar os campos que o cliente não
             # reenviou (set_type, rest_seconds, notes, hr_*, dor) - ver
@@ -1295,7 +1306,7 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                 workout_plan_exercise_id = existing.get("workout_plan_exercise_id")
 
             cur.execute(
-                """
+                f"""
                 UPDATE exercises
                 SET
                     original_name=%s,
@@ -1309,7 +1320,8 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                     best_weight_kg=%s,
                     avg_rpe=%s,
                     muscle_pain=%s,
-                    joint_pain=%s
+                    joint_pain=%s,
+                    {FORM_PRACTICE_COLUMN}=%s
                 WHERE id=%s
                 """,
                 (
@@ -1325,6 +1337,7 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                     stats["avg_rpe"],
                     muscle_pain,
                     joint_pain,
+                    1 if form_practice else 0,
                     exercise_id,
                 ),
             )
@@ -1404,10 +1417,21 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
 
             _recompute_activity_avg_rpe(cur, activity_id)
 
+            # #205: marca mudou em sessão encerrada -> reavalia a progressão na MESMA
+            # transação, depois da coluna e das séries (erro propaga e desfaz tudo).
+            reevaluated = False
+            if form_practice_changed and user_id is not None and existing.get("session_status") == "done":
+                from . import progression_state
+
+                progression_state.reevaluate_after_correction(conn, user_id, activity_id)
+                reevaluated = True
+
             return {
                 "exercise_id": exercise_id,
                 "activity_id": activity_id,
                 "sets": len(sets),
+                FORM_PRACTICE_COLUMN: form_practice,
+                "progression_reevaluated": reevaluated,
             }
 
 

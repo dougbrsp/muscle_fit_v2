@@ -672,6 +672,7 @@ def persist_result(
     training_goal: Any = None,
     baseline_groups: Optional[Mapping[Any, GroupState]] = None,
     baseline_tracks: Optional[Mapping[Any, TrackState]] = None,
+    only_activity_ids: Optional[frozenset[int]] = None,
 ) -> dict[str, int]:
     """Grava estado + decisoes de UM objetivo (`training_goal`, ausente =
     default: as decisoes levam o objetivo; estados e trilhas, o deles). Os ids das trilhas/grupos sao resolvidos antes
@@ -679,6 +680,8 @@ def persist_result(
 
     `per_session=True` (replay): grava `result.session_decisions`, cada grupo
     com o `activity_id` da sessao que o gerou, na mesma ordem da lista plana.
+    `only_activity_ids` (so com `per_session`): grava so os lotes dessas sessoes
+    (reavaliacao retroativa; o chamador apagou as antigas). Sem ele, todos.
     Sem ele, todas as `result.decisions` vao com o `activity_id` recebido (o
     `finish`, que avalia uma sessao so).
 
@@ -713,7 +716,11 @@ def persist_result(
             track = replace(track, id=known.id)
         track_ids[key] = save_track(conn, user_id, track)
     if per_session:
-        batches = [(batch.activity_id, batch.decisions) for batch in result.session_decisions]
+        batches = [
+            (batch.activity_id, batch.decisions)
+            for batch in result.session_decisions
+            if only_activity_ids is None or batch.activity_id in only_activity_ids
+        ]
     else:
         batches = [(activity_id, result.decisions)]
     written = 0
@@ -744,6 +751,7 @@ def persist_goal_evaluation(
     per_session: bool = False,
     baseline_groups: Optional[Mapping[Any, GroupState]] = None,
     baseline_tracks: Optional[Mapping[Any, TrackState]] = None,
+    only_activity_ids: Optional[frozenset[int]] = None,
 ) -> dict[str, int]:
     """`persist_result` de cada objetivo avaliado (M97 F1), somando as
     contagens. Um objetivo so = exatamente o `persist_result` de antes."""
@@ -758,6 +766,7 @@ def persist_goal_evaluation(
             training_goal=goal,
             baseline_groups=baseline_groups,
             baseline_tracks=baseline_tracks,
+            only_activity_ids=only_activity_ids,
         )
         for name in totals:
             totals[name] += counts[name]
@@ -969,6 +978,95 @@ def rebuild_for_user(
     # NULL). O estado gravado (trilhas e grupos) e o mesmo de antes.
     counts = persist_goal_evaluation(conn, user_id, result, per_session=True)
     return {"user_id": int(user_id), "sessions": len(sessions), **counts}
+
+
+def _delete_by_ids(conn: Any, table: str, user_id: int, ids: Sequence[int]) -> int:
+    removed = 0
+    with conn.cursor() as cur:
+        for start in range(0, len(ids), 500):
+            chunk = [int(i) for i in ids[start : start + 500]]
+            cur.execute(
+                f"DELETE FROM {table} WHERE user_id = %s AND id IN ({', '.join(['%s'] * len(chunk))})",
+                (int(user_id), *chunk),
+            )
+            removed += max(0, int(getattr(cur, "rowcount", 0) or 0))
+    return removed
+
+
+def reevaluate_after_correction(
+    conn: Any,
+    user_id: int,
+    activity_id: int,
+    *,
+    sessions: Optional[Sequence[SessionRecord]] = None,
+) -> Optional[dict[str, Any]]:
+    """Reavalia o historico depois de uma correcao retroativa (#205: marcar ou
+    desmarcar Aprimoramento de tecnica numa sessao encerrada) e grava SO a
+    diferenca, na transacao do chamador (sem commit). Estado final = o de
+    `rebuild_for_user` sobre o mesmo historico, sem apagar tudo (o replay
+    completo estoura o teto de 29 s do API Gateway: uma chamada da Data API
+    por linha).
+
+    - sombra desligada (`shadow_enabled()` falso): devolve None, sem tocar em nada;
+    - grupos/trilhas: gravacao seletiva contra o estado carregado; os que nao
+      existem mais no resultado sao apagados (a FK apaga em cascata as decisoes);
+    - decisoes EVALUATION: apaga e regrava as das sessoes de `activity_id` em
+      diante (as anteriores nao dependem da correcao). `activity_id` fora do
+      historico: regrava as de todas as sessoes. Excecoes sobem (sem try).
+
+    Resumo: `groups`/`tracks` = avaliados (so os alterados sao escritos),
+    `decisions` = escritas, `sessions` = tamanho do historico, `rewritten_sessions`,
+    `removed_groups`, `removed_tracks`."""
+    if not shadow_enabled():
+        return None
+    if sessions is None:
+        from .replay_progression import fetch_sessions_paged  # import tardio: ele importa este modulo
+
+        sessions, _pages = fetch_sessions_paged(conn, user_id)
+    inputs = build_session_inputs(conn, user_id, sessions)
+    result = evaluate_history_by_goal(sessions, inputs=inputs, window_size=SESSION_WINDOW)
+    request_memo.forget(TRACKS_MEMO)
+    loaded_groups = load_all_group_states(conn, user_id)
+    loaded_tracks = load_tracks(conn, user_id)
+
+    new_groups = {state.key for item in result.results.values() for state in item.group_states.values()}
+    new_tracks = {track.key for item in result.results.values() for track in item.tracks.values()}
+    stale_groups = [s.id for k, s in loaded_groups.items() if k not in new_groups and s.id is not None]
+    stale_tracks = [t.id for k, t in loaded_tracks.items() if k not in new_tracks and t.id is not None]
+    removed_tracks = _delete_by_ids(conn, TRACKS_TABLE, user_id, stale_tracks)
+    removed_groups = _delete_by_ids(conn, GROUP_STATES_TABLE, user_id, stale_groups)
+    request_memo.forget(TRACKS_MEMO)
+
+    order = [item.activity_id for item in sessions]
+    start = order.index(int(activity_id)) if int(activity_id) in order else 0
+    rewritten = frozenset(order[start:])
+    if rewritten:
+        with conn.cursor() as cur:
+            ids = sorted(rewritten)
+            for i in range(0, len(ids), 500):
+                chunk = ids[i : i + 500]
+                cur.execute(
+                    f"DELETE FROM {DECISIONS_TABLE} WHERE user_id = %s AND kind = 'EVALUATION' "
+                    f"AND activity_id IN ({', '.join(['%s'] * len(chunk))})",
+                    (int(user_id), *chunk),
+                )
+    counts = persist_goal_evaluation(
+        conn,
+        user_id,
+        result,
+        per_session=True,
+        baseline_groups=loaded_groups,
+        baseline_tracks=loaded_tracks,
+        only_activity_ids=rewritten,
+    )
+    return {
+        "user_id": int(user_id),
+        "sessions": len(sessions),
+        "rewritten_sessions": len(rewritten),
+        "removed_groups": removed_groups,
+        "removed_tracks": removed_tracks,
+        **counts,
+    }
 
 
 def users_with_history(conn: Any) -> list[int]:
