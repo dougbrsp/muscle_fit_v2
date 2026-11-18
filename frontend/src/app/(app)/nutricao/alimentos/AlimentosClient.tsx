@@ -9,6 +9,7 @@ import { FoodDetailCard } from '@/components/nutrition/FoodDetailCard';
 import { FoodForm } from '@/components/nutrition/FoodForm';
 import { FoodRegistrationFlow } from '@/components/nutrition/FoodRegistrationFlow';
 import { FoodSearch } from '@/components/nutrition/FoodSearch';
+import { FoodsAlphabet } from '@/components/nutrition/FoodsAlphabet';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { apiFetch } from '@/lib/api';
@@ -72,11 +73,17 @@ export function AlimentosClient() {
     retry: false,
   });
 
+  /** Busca e lista por letra refletem criar/editar/excluir/promover. */
+  async function invalidateFoodLists() {
+    await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    await qc.invalidateQueries({ queryKey: foodKeys.byLetter });
+  }
+
   const promoteMutation = useMutation({
     mutationFn: (foodId: number) => promoteFood(foodId),
     onSuccess: async (food) => {
       await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
-      await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+      await invalidateFoodLists();
     },
   });
 
@@ -87,7 +94,7 @@ export function AlimentosClient() {
       setSaved(null);
       setExternal(null);
       qc.removeQueries({ queryKey: foodKeys.detail(foodId) });
-      await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+      await invalidateFoodLists();
       await qc.invalidateQueries({ queryKey: favoriteKeys.all });
     },
   });
@@ -101,7 +108,7 @@ export function AlimentosClient() {
     setSelectedId(food.id);
     setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
-    await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    await invalidateFoodLists();
   }
 
   /** Código de barras ou importação do USDA: abre o item (já gravado pela API) no detalhe. */
@@ -112,7 +119,7 @@ export function AlimentosClient() {
     setSelectedId(food.id);
     setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(food.id) });
-    await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    await invalidateFoodLists();
   }
 
   /** EAN já cadastrado (409 do cadastro): abre o alimento existente no detalhe. */
@@ -125,6 +132,15 @@ export function AlimentosClient() {
     setSelectedId(selecao.selectedId);
     setScrollTick((n) => n + 1);
     await qc.invalidateQueries({ queryKey: foodKeys.detail(foodId) });
+  }
+
+  /** Escolha na busca ou na lista por letra: abre o mesmo detalhe. */
+  function selectFood(item: { id: number }) {
+    setSelectedId(item.id);
+    setScrollTick((n) => n + 1);
+    setEditing(false);
+    setSaved(null);
+    setExternal(null);
   }
 
   const detail = detailQuery.data ?? null;
@@ -159,14 +175,10 @@ export function AlimentosClient() {
       <FoodSearch
         isAdmin={canListPrivate}
         selectedId={selectedId}
-        onSelect={(item) => {
-          setSelectedId(item.id);
-          setScrollTick((n) => n + 1);
-          setEditing(false);
-          setSaved(null);
-          setExternal(null);
-        }}
+        onSelect={selectFood}
       />
+
+      <FoodsAlphabet selectedId={selectedId} onSelect={selectFood} />
 
       {detailQuery.isError && (
         <Alert color="red" icon={<IconAlertTriangle size={16} />}>

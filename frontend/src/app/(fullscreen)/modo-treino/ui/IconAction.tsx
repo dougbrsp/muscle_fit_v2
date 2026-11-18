@@ -15,7 +15,12 @@ export type WorkoutIconAction = {
   disabled?: boolean;
   loading?: boolean;
   testId?: string;
+  /** Ação de alternar (liga/desliga): definido, o botão expõe `aria-pressed` e o destaque de ativo. */
+  active?: boolean;
 };
+
+// Destaque de ativo no padrão laranja do Modo Treino (mesmas variáveis do :active).
+const ACTIVE_STYLE = { borderColor: 'var(--wm-orange)', background: 'var(--wm-orange-glow-inner)' } as const;
 
 /**
  * Ação explícita de ícone com legenda curta (Trocar / Pular / Encerrar),
@@ -31,6 +36,8 @@ export function IconAction({ action }: { action: WorkoutIconAction }) {
       disabled={action.disabled || action.loading}
       aria-label={action.label}
       aria-busy={action.loading || undefined}
+      aria-pressed={action.active}
+      style={action.active ? ACTIVE_STYLE : undefined}
       title={action.label}
       data-testid={action.testId}
     >

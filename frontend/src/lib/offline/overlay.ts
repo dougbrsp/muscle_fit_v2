@@ -67,6 +67,7 @@ export function overlayQueuedSets(activity: ActivityDetail | undefined, ops: rea
       mapping_id: (op.payload.mapping_id as number | null | undefined) ?? null,
       equipment_id: (op.payload.equipment_id as number | null | undefined) ?? null,
       workout_plan_exercise_id: (op.payload.workout_plan_exercise_id as number | null | undefined) ?? null,
+      form_practice: op.payload.form_practice === true,
       sets: [],
     });
   }

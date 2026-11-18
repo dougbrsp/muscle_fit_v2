@@ -98,7 +98,7 @@ class FakeSessionDB(NullContext):
             self._result = dict(row) if row else None
         elif "COALESCE(MAX(sequence), 0) + 1" in flat:
             self._result = {"seq": 1 + max((e["sequence"] for e in self.exercises if e["activity_id"] == p[0]), default=0)}
-        elif flat.startswith("SELECT id, sequence, mapping_id, equipment_id, workout_plan_exercise_id FROM exercises"):
+        elif flat.startswith("SELECT id, sequence, mapping_id, equipment_id, workout_plan_exercise_id, form_practice FROM exercises"):
             pool = self.exercises + (self.hidden_exercises if locking else [])
             self._result = next((dict(e) for e in pool if e["activity_id"] == p[0] and e["client_key"] == p[1]), None)
         elif "FROM exercises e LEFT JOIN workout_plan_exercises" in flat:

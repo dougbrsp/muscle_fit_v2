@@ -31,6 +31,7 @@ from decimal import Decimal
 from typing import Any, Mapping, Optional, Sequence
 
 from .equipment_context import context_gym_id
+from .form_practice import FORM_PRACTICE_COLUMN, counts_for_progression
 from .progression_engine import (
     ADD_SET,
     APPLY_TECHNIQUE,
@@ -237,6 +238,9 @@ def last_execution_from_logs(
     candidates = []
     for entry in logs or ():
         if _int_or_none(entry.get("mapping_id")) != int(exercise_id):
+            continue
+        # #196 (ADR 0017): aprimoramento de tecnica nunca e referencia de carga.
+        if not counts_for_progression(entry.get(FORM_PRACTICE_COLUMN)):
             continue
         records = [_set_record(item) for item in (entry.get("sets") or []) if item]
         # Lote T3 (medidas de serie): serie por tempo/maximo de reps nao e carga

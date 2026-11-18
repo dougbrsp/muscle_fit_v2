@@ -19,6 +19,12 @@ from .domain.recovery_signal_summary import summarize_signals
 from .domain.set_measures import normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical, attach_sides_text
 from .domain.deload import sql_not_deload
+from .domain.form_practice import (
+    FORM_PRACTICE_COLUMN,
+    is_form_practice,
+    resolve_form_practice,
+    sql_counts_for_progression,
+)
 from .domain.training_goal import goal_value, sql_goal_is
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
@@ -921,6 +927,8 @@ def activity_detail(
                     sets_by_exercise[set_row["exercise_id"]].append(attach_sides_text(_attach_set_measure(set_row)))
             for ex in exercises:
                 ex["sets"] = _with_canonical_set_type(sets_by_exercise[ex["id"]])
+                # #196: a marcacao vai como booleano (o banco devolve 0/1).
+                ex[FORM_PRACTICE_COLUMN] = is_form_practice(ex.get(FORM_PRACTICE_COLUMN))
 
             activity["exercises"] = exercises
             return activity
@@ -1098,7 +1106,9 @@ def list_exercise_logs(
                     (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://app.musclefit.com.br/', eq.photo_path) ELSE NULL END) AS equipment_photo_url,
                     e.muscle_pain,
                     e.joint_pain,
-                    e.sequence
+                    e.sequence,
+                    -- #196: o filtro da referencia de carga (`last_execution_from_logs`) le pelo dono.
+                    e.form_practice AS form_practice
                 FROM exercises e
                 JOIN activities a ON a.id = e.activity_id
                 LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
@@ -1203,14 +1213,17 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
             if user_id is not None:
                 cur.execute(
                     "SELECT e.id, e.activity_id, e.original_name, e.mapping_id, e.workout_plan_exercise_id, "
-                    "e.equipment_id, e.muscle_pain, e.joint_pain FROM exercises e "
+                    f"e.equipment_id, e.muscle_pain, e.joint_pain, e.{FORM_PRACTICE_COLUMN}, a.session_status "
+                    "FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
                     (exercise_id, user_id),
                 )
             else:
                 cur.execute(
                     "SELECT id, activity_id, original_name, mapping_id, workout_plan_exercise_id, "
-                    "equipment_id, muscle_pain, joint_pain FROM exercises WHERE id=%s",
+                    f"equipment_id, muscle_pain, joint_pain, {FORM_PRACTICE_COLUMN}, "
+                    "(SELECT session_status FROM activities WHERE id = exercises.activity_id) AS session_status "
+                    "FROM exercises WHERE id=%s",
                     (exercise_id,),
                 )
             existing = cur.fetchone()
@@ -1218,6 +1231,8 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                 return None
 
             activity_id = existing["activity_id"]
+            # #205: ausente/None preserva a marca gravada; a regra é do dono.
+            form_practice = resolve_form_practice(payload.get(FORM_PRACTICE_COLUMN), existing.get(FORM_PRACTICE_COLUMN))
             # As séries são recriadas (DELETE + INSERT) mais abaixo: lê as
             # gravadas ANTES para preservar os campos que o cliente não
             # reenviou (set_type, rest_seconds, notes, hr_*, dor) - ver
@@ -1290,7 +1305,7 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                 workout_plan_exercise_id = existing.get("workout_plan_exercise_id")
 
             cur.execute(
-                """
+                f"""
                 UPDATE exercises
                 SET
                     original_name=%s,
@@ -1304,7 +1319,8 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                     best_weight_kg=%s,
                     avg_rpe=%s,
                     muscle_pain=%s,
-                    joint_pain=%s
+                    joint_pain=%s,
+                    {FORM_PRACTICE_COLUMN}=%s
                 WHERE id=%s
                 """,
                 (
@@ -1320,6 +1336,7 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
                     stats["avg_rpe"],
                     muscle_pain,
                     joint_pain,
+                    1 if form_practice else 0,
                     exercise_id,
                 ),
             )
@@ -1399,11 +1416,26 @@ def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int 
 
             _recompute_activity_avg_rpe(cur, activity_id)
 
+            # #205: toda edição em sessão encerrada reavalia a progressão na MESMA
+            # transação, depois da coluna e das séries (erro propaga e desfaz tudo).
+            reevaluated = _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
+
             return {
                 "exercise_id": exercise_id,
                 "activity_id": activity_id,
                 "sets": len(sets),
+                FORM_PRACTICE_COLUMN: form_practice,
+                "progression_reevaluated": reevaluated,
             }
+
+
+def _reevaluate_if_done(conn: Any, user_id: int | None, activity_id: int, session_status: Any) -> bool:
+    """#205: reavalia a progressão (dono: progression_state) se a sessão está encerrada."""
+    if user_id is None or session_status != "done":
+        return False
+    from . import progression_state
+
+    return progression_state.reevaluate_after_correction(conn, user_id, activity_id) is not None
 
 
 def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[str, Any] | None:
@@ -1411,12 +1443,16 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
         with conn.cursor() as cur:
             if user_id is not None:
                 cur.execute(
-                    "SELECT e.id, e.activity_id FROM exercises e "
+                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
                     (exercise_id, user_id),
                 )
             else:
-                cur.execute("SELECT id, activity_id FROM exercises WHERE id=%s", (exercise_id,))
+                cur.execute(
+                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
+                    "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s",
+                    (exercise_id,),
+                )
             existing = cur.fetchone()
             if not existing:
                 return None
@@ -1427,6 +1463,7 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
             cur.execute("DELETE FROM exercises WHERE id=%s", (exercise_id,))
 
             _recompute_activity_avg_rpe(cur, activity_id)
+            _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
 
             # O treino (activity) permanece existindo mesmo esvaziado (0 exercicios):
             # o usuario decide explicitamente quando excluir o treino inteiro, via
@@ -1621,7 +1658,9 @@ def get_last_session_sets(
 
             where = (
                 "WHERE COALESCE(elm.canonical_exercise_id, e.mapping_id) = %s AND a.id != %s "
-                f"AND {sql_goal_is('e')} AND {sql_not_deload('a')}"
+                f"AND {sql_goal_is('e')} AND {sql_not_deload('a')} "
+                # #196 (ADR 0017): aprimoramento de tecnica nao e sessao anterior nem e1RM.
+                f"AND {sql_counts_for_progression('e')}"
             )
             params: list[Any] = [canonical_mapping_id, exclude_activity_id, goal]
             if user_id is not None:

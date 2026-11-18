@@ -31,6 +31,7 @@ import { performanceTooltip } from '@/lib/dashboard-muscle-performance';
 import { EM_DASH, fmtDate, fmtInt, fmtKg, fmtKgTotal, fmtRpe, fmtSignedPercent } from '@/lib/dashboard-format';
 import type { MuscleGroupProgressionResponse, ProgressionSessionItem } from '@/lib/dashboard-v2-types';
 import { groupCompositionText, type ProgressionScope } from '@/lib/progression-scope';
+import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
@@ -517,7 +518,10 @@ function ExercicioSection() {
                         : ''}
                       {(chart.strengthPoints ?? 0) > 0 ? 'Pontos destacados: sessões de força. ' : ''}
                       {(chart.deloadSessions ?? 0) > 0
-                        ? `${plural(chart.deloadSessions ?? 0, 'sessão', 'sessões')} de deload marcada(s) (linha tracejada), fora da linha do 1RM estimado.`
+                        ? `${plural(chart.deloadSessions ?? 0, 'sessão', 'sessões')} de deload marcada(s) (linha tracejada), fora da linha do 1RM estimado. `
+                        : ''}
+                      {(chart.formPracticeSessions ?? 0) > 0
+                        ? `${plural(chart.formPracticeSessions ?? 0, 'sessão', 'sessões')} de ${FORM_PRACTICE_LABEL.toLowerCase()} marcada(s), fora da linha do 1RM estimado.`
                         : ''}
                     </p>
                   </ListBlock>
@@ -583,12 +587,17 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
         {item.in_verdict_run === false ? (
           <p className={styles.meta}>Fora do veredito.</p>
         ) : null}
-        {isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label ? (
+        {isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label || isFormPracticeRow(item) ? (
           <div className={styles.badges} style={{ marginTop: 8 }}>
             <TrainingGoalBadge value={item.training_goal} onlyNonDefault size="xs" />
             {item.deload_label ? (
               <Badge size="xs" variant="outline" color="gray">
                 {item.deload_label}
+              </Badge>
+            ) : null}
+            {isFormPracticeRow(item) ? (
+              <Badge size="xs" variant="outline" color="gray">
+                {FORM_PRACTICE_LABEL}
               </Badge>
             ) : null}
           </div>

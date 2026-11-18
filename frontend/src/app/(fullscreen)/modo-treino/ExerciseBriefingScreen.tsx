@@ -17,6 +17,7 @@ import {
   IconInfoCircle,
   IconPlayerPlay,
   IconPlayerTrackNext,
+  IconTarget,
 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
@@ -43,12 +44,19 @@ import {
 } from '@/lib/exercise-briefing';
 import { deloadLoadOrigin, deloadPrescriptionText } from '@/lib/deload';
 import type { ExerciseBriefingResponse } from '@/lib/exercise-briefing-types';
+import {
+  FORM_PRACTICE_HELP,
+  FORM_PRACTICE_LABEL,
+  isFormPracticePending,
+  isFormPracticeRow,
+  resolveFormPracticePlanExerciseId,
+} from '@/lib/form-practice';
 import { manufacturerLabel, saveGymEquipmentManufacturer } from '@/lib/gym-equipment-manufacturer';
 import { useOnlineStatus } from '@/mobile/ui/use-online-status';
 import { recoveryCeilingText } from '@/lib/intensity-status';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import type { WeightUnit } from '@/lib/weight-units';
-import type { GroupFatigueReading } from '@/lib/workout-mode-types';
+import type { GroupFatigueReading, MidExerciseExtra } from '@/lib/workout-mode-types';
 import type { ExerciseCardSummary } from '@/lib/workout-plans-types';
 import { BRAND, WORKOUT_MODE_TOKENS } from '@/theme';
 import { ExerciseCardViewer } from './ExerciseCardViewer';
@@ -107,7 +115,66 @@ type SharedProps = {
   goalBadge?: ReactNode;
   /** M97 F3: o objetivo do item não permite a técnica (o Modo Treino não a oferece). */
   hideTechnique?: boolean;
+  /** #196: o exercício está marcado como aprimoramento de técnica (pendente ou já gravado). */
+  formPractice?: boolean;
+  /** #196: o exercício já tem série gravada — a marcação não muda mais. */
+  formPracticeLocked?: boolean;
+  /** #196: alterna a marcação. Ausente = ação indisponível. */
+  onToggleFormPractice?: () => void;
 };
+
+type FormPracticeRow = { form_practice?: boolean | null; workout_plan_exercise_id?: number | null };
+
+/**
+ * #196: estado da marcação do exercício atual (só apresentação; a regra é do backend).
+ * Com linha no servidor (o exercício já foi criado, ou seja, já houve série) vale
+ * o `form_practice` da linha e a marcação trava. Continuação (troca de equipamento)
+ * é o mesmo item da ficha: sem linha própria, usa a linha do item ORIGINAL.
+ * Sem linha, vale a marcação pendente guardada na sessão local.
+ */
+export function resolveFormPracticeState({
+  planExerciseId,
+  midExerciseExtras,
+  loggedRow,
+  loggedExercises,
+  pendingIds,
+}: {
+  planExerciseId: number | null;
+  midExerciseExtras: readonly MidExerciseExtra[];
+  loggedRow: FormPracticeRow | null | undefined;
+  loggedExercises: readonly FormPracticeRow[] | null | undefined;
+  pendingIds: number[];
+}): { itemId: number | null; marked: boolean; locked: boolean } {
+  const itemId = planExerciseId != null ? resolveFormPracticePlanExerciseId(planExerciseId, midExerciseExtras) : null;
+  const isContinuation = itemId != null && itemId !== planExerciseId;
+  const serverRow =
+    loggedRow ?? (isContinuation ? loggedExercises?.find((row) => row.workout_plan_exercise_id === itemId) : undefined);
+  return {
+    itemId,
+    marked: serverRow
+      ? isFormPracticeRow(serverRow)
+      : isFormPracticePending({ form_practice_plan_exercise_ids: pendingIds }, itemId),
+    locked: Boolean(serverRow),
+  };
+}
+
+/** #196: ação de alternar "Aprimoramento de técnica"; travada, fica desabilitada mostrando o estado. */
+export function buildFormPracticeAction(
+  formPractice: boolean,
+  locked: boolean,
+  onToggle: () => void,
+): WorkoutIconAction {
+  return {
+    key: 'form-practice',
+    label: FORM_PRACTICE_LABEL,
+    caption: 'Técnica',
+    icon: <IconTarget size={20} />,
+    onClick: onToggle,
+    disabled: locked,
+    active: formPractice,
+    testId: 'briefing-form-practice',
+  };
+}
 
 /**
  * Briefing do exercício (M4; novo visual no PR1/3 do redesign; "uma tela" no
@@ -343,6 +410,9 @@ export function ExerciseBriefingView({
   substitution = null,
   goalBadge = null,
   hideTechnique = false,
+  formPractice = false,
+  formPracticeLocked = false,
+  onToggleFormPractice,
 }: SharedProps & { data?: ExerciseBriefingResponse; isLoading?: boolean; isError?: boolean }) {
   const [cardViewerOpened, { open: openCardViewer, close: closeCardViewer }] = useDisclosure(false);
   const [instructionsOpened, { open: openInstructions, close: closeInstructions }] = useDisclosure(false);
@@ -413,6 +483,9 @@ export function ExerciseBriefingView({
       onClick: onSkip,
       testId: 'briefing-skip',
     });
+  }
+  if (onToggleFormPractice) {
+    iconActions.push(buildFormPracticeAction(formPractice, formPracticeLocked, onToggleFormPractice));
   }
 
   const performanceChip =
@@ -486,6 +559,17 @@ export function ExerciseBriefingView({
         <Text size="xs" c={BRAND.textMuted} data-testid="briefing-strength-load">
           Faixa de carga: {strengthLoadText}
         </Text>
+      )}
+
+      {formPractice && (
+        <Alert color="orange" variant="light" py={6} icon={<IconTarget size={16} />} data-testid="briefing-form-practice-on">
+          <Text size="xs" fw={700}>
+            {FORM_PRACTICE_LABEL}
+          </Text>
+          <Text size="xs" c={BRAND.textMuted}>
+            {FORM_PRACTICE_HELP}
+          </Text>
+        </Alert>
       )}
 
       {/* M97 F3: sessão de deload — a prescrição de deload do item vem pronta

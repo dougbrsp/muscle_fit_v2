@@ -178,7 +178,8 @@ def test_query_sem_preparatorias_janelas_explicitas_e_sessoes():
 
 _SCHEMA = """
 CREATE TABLE activities (id INTEGER PRIMARY KEY, user_id INTEGER, local_date TEXT);
-CREATE TABLE exercises (id INTEGER PRIMARY KEY, activity_id INTEGER, mapping_id INTEGER, equipment_id INTEGER);
+CREATE TABLE exercises (id INTEGER PRIMARY KEY, activity_id INTEGER, mapping_id INTEGER, equipment_id INTEGER,
+                        form_practice INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE exercise_sets (id INTEGER PRIMARY KEY, exercise_id INTEGER, set_number INTEGER,
                             set_type TEXT, reps INTEGER, weight_kg REAL,
                             measure TEXT NOT NULL DEFAULT 'reps', duration_seconds INTEGER,
@@ -230,7 +231,7 @@ def _run_real_query(
     for activity_id, (local_date, sets) in enumerate(sorted(sets_by_session.items()), start=1):
         equipment = gym_equipment_id(local_date) if callable(gym_equipment_id) else gym_equipment_id
         conn.execute("INSERT INTO activities VALUES (?, ?, ?)", (activity_id, user_id, local_date.isoformat()))
-        conn.execute("INSERT INTO exercises VALUES (?, ?, 22, ?)", (activity_id, activity_id, equipment))
+        conn.execute("INSERT INTO exercises (id, activity_id, mapping_id, equipment_id) VALUES (?, ?, 22, ?)", (activity_id, activity_id, equipment))
         for number, serie in enumerate(sets, start=1):
             # (set_type, reps, weight) ou + reps_pending (Modo Intensivo, 092).
             set_type, reps, weight = serie[:3]

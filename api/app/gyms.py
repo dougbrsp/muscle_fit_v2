@@ -17,7 +17,7 @@ from . import equipment_recommender, security
 from .access import owns_row_or_all, require_additional_permission, require_permission
 from .access.deps import permissions_for_request
 from .advanced_techniques import ensure_valid_codes as ensure_valid_technique_codes
-from .db import DataApiError, get_conn
+from .db import DataApiError, get_conn, is_duplicate_key_error
 from .domain.equipment_context import (
     manufacturer_columns_sql,
     manufacturer_fields,
@@ -556,6 +556,9 @@ def list_equipment(
     return {"items": _rows_jsonable(rows)}
 
 
+_EQUIPMENT_DUPLICATE_DETAIL = "Já existe um equipamento com esse nome."
+
+
 @router.post("/equipment")
 def create_equipment(
     item: Dict[str, Any] = Body(...),
@@ -568,27 +571,39 @@ def create_equipment(
 
     with _connect() as conn:
         with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO equipment (name, notes, equipment_type_id, manufacturer, model, location)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                  notes = VALUES(notes),
-                  equipment_type_id = VALUES(equipment_type_id),
-                  manufacturer = VALUES(manufacturer),
-                  model = VALUES(model),
-                  location = VALUES(location),
-                  is_active = 1
-                """,
-                (
-                    name,
-                    item.get("notes"),
-                    item.get("equipment_type_id"),
-                    item.get("manufacturer"),
-                    item.get("model"),
-                    item.get("location"),
-                ),
+            values = (
+                item.get("notes"),
+                item.get("equipment_type_id"),
+                item.get("manufacturer"),
+                item.get("model"),
+                item.get("location"),
             )
+            # INSERT puro: o UNIQUE e a autoridade (sem corrida); duplicado ativo vira 409.
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO equipment (name, notes, equipment_type_id, manufacturer, model, location)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (name, *values),
+                )
+            except Exception as exc:
+                if not is_duplicate_key_error(exc):
+                    raise
+                cursor.execute("SELECT id, is_active FROM equipment WHERE name = %s", (name,))
+                existing = cursor.fetchone()
+                if not existing or existing["is_active"]:
+                    raise HTTPException(status_code=409, detail=_EQUIPMENT_DUPLICATE_DETAIL) from exc
+                # inativo: reativa com os valores enviados
+                cursor.execute(
+                    """
+                    UPDATE equipment
+                    SET notes = %s, equipment_type_id = %s, manufacturer = %s, model = %s,
+                        location = %s, is_active = 1
+                    WHERE id = %s
+                    """,
+                    (*values, existing["id"]),
+                )
             cursor.execute("SELECT * FROM equipment WHERE name = %s", (name,))
             row = cursor.fetchone()
 
@@ -608,29 +623,34 @@ def update_equipment(
             if not current:
                 raise HTTPException(status_code=404, detail="Equipamento não encontrado.")
 
-            cursor.execute(
-                """
-                UPDATE equipment
-                SET name = COALESCE(%s, name),
-                    notes = %s,
-                    is_active = COALESCE(%s, is_active),
-                    equipment_type_id = %s,
-                    manufacturer = %s,
-                    model = %s,
-                    location = %s
-                WHERE id = %s
-                """,
-                (
-                    item.get("name"),
-                    item.get("notes"),
-                    item.get("is_active"),
-                    item.get("equipment_type_id") if "equipment_type_id" in item else current["equipment_type_id"],
-                    item.get("manufacturer") if "manufacturer" in item else current["manufacturer"],
-                    item.get("model") if "model" in item else current["model"],
-                    item.get("location") if "location" in item else current["location"],
-                    equipment_id,
-                ),
-            )
+            try:
+                cursor.execute(
+                    """
+                    UPDATE equipment
+                    SET name = COALESCE(%s, name),
+                        notes = %s,
+                        is_active = COALESCE(%s, is_active),
+                        equipment_type_id = %s,
+                        manufacturer = %s,
+                        model = %s,
+                        location = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        item.get("name"),
+                        item.get("notes"),
+                        item.get("is_active"),
+                        item.get("equipment_type_id") if "equipment_type_id" in item else current["equipment_type_id"],
+                        item.get("manufacturer") if "manufacturer" in item else current["manufacturer"],
+                        item.get("model") if "model" in item else current["model"],
+                        item.get("location") if "location" in item else current["location"],
+                        equipment_id,
+                    ),
+                )
+            except Exception as exc:
+                if not is_duplicate_key_error(exc):
+                    raise
+                raise HTTPException(status_code=409, detail=_EQUIPMENT_DUPLICATE_DETAIL) from exc
             cursor.execute("SELECT * FROM equipment WHERE id = %s", (equipment_id,))
             row = cursor.fetchone()
 

@@ -331,7 +331,8 @@ def test_volume_status_neutro():
 _SCHEMA = """
 CREATE TABLE activities (id INTEGER PRIMARY KEY, user_id INTEGER, local_date TEXT, deload_source TEXT);
 CREATE TABLE exercises (id INTEGER PRIMARY KEY, activity_id INTEGER, mapping_id INTEGER,
-                        original_name TEXT, equipment_id INTEGER);
+                        original_name TEXT, equipment_id INTEGER,
+                        form_practice INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE exercise_sets (id INTEGER PRIMARY KEY, exercise_id INTEGER, set_number INTEGER,
                             set_type TEXT, reps INTEGER, weight_kg REAL, rpe REAL,
                             measure TEXT NOT NULL DEFAULT 'reps', duration_seconds INTEGER,
@@ -350,7 +351,7 @@ CREATE TABLE muscle_groups (id INTEGER PRIMARY KEY, name TEXT);
 """
 
 
-def _run_real_query(sets_by_session, windows, *, user_id=1, gym_equipment_id=7):
+def _run_real_query(sets_by_session, windows, *, user_id=1, gym_equipment_id=7, form_practice_dates=()):
     """`sets_by_session`: {local_date: [(set_type, reps, weight_kg), ...]} -
     Hack squat (exercicio 22: 100% quadriceps, 50% gluteos) na maquina 50."""
     conn = sqlite3.connect(":memory:")
@@ -371,7 +372,11 @@ def _run_real_query(sets_by_session, windows, *, user_id=1, gym_equipment_id=7):
     for activity_id, (local_date, sets) in enumerate(sorted(sets_by_session.items()), start=1):
         equipment = gym_equipment_id(local_date) if callable(gym_equipment_id) else gym_equipment_id
         conn.execute("INSERT INTO activities VALUES (?, ?, ?, NULL)", (activity_id, user_id, local_date.isoformat()))
-        conn.execute("INSERT INTO exercises VALUES (?, ?, 22, 'Hack squat', ?)", (activity_id, activity_id, equipment))
+        conn.execute(
+            "INSERT INTO exercises (id, activity_id, mapping_id, original_name, equipment_id, form_practice) "
+            "VALUES (?, ?, 22, 'Hack squat', ?, ?)",
+            (activity_id, activity_id, equipment, 1 if local_date in form_practice_dates else 0),
+        )
         for number, serie in enumerate(sets, start=1):
             # (set_type, reps, weight) ou (set_type, reps, weight, rpe). Sem RPE
             # explicito vale RPE 10 (RIR 0): o Epley+RIR fica igual ao Epley.
@@ -425,6 +430,16 @@ def test_query_real_epley_so_series_de_trabalho():
     performance = build_group_performance(rows)
     assert performance[4]["performance_change_pct"] == 18.8
     assert performance[9]["performance_change_pct"] == 18.8
+
+
+def test_query_real_aprimoramento_de_tecnica_fica_fora_do_e1rm():
+    """#196 (ADR 0017): a execucao marcada, mesmo com e1RM maior, nao entra; sem a marca entra."""
+    windows = comparison_windows(date(2026, 10, 2), 7)
+    sessoes = {date(2026, 9, 22): [("working", 10, 120.0)], date(2026, 9, 29): [("working", 10, 200.0)]}
+    marcada = _run_real_query(sessoes, windows, form_practice_dates={date(2026, 9, 29)})
+    assert {r["period"] for r in marcada} == {"previous"}
+    normal = _run_real_query(sessoes, windows)
+    assert {r["period"] for r in normal} == {"previous", "current"}
 
 
 def test_query_real_troca_de_maquina_vira_dados_insuficientes():

@@ -47,6 +47,7 @@ from ...domain.progression_engine import CALIBRATION_CODE_CONTEXT
 from ...domain.prior_fatigue import PriorFatigue, band_label, context_band
 from ...domain.set_measures import format_set_measure, has_non_rep_based, is_rep_based, normalize_measure
 from ...domain.deload import deload_source_label, deload_source_value, sql_is_deload, sql_not_deload
+from ...domain.form_practice import sql_counts_for_progression
 from ...domain.training_goal import goal_value, sql_goal_is
 from ...domain.training_history import parse_decimal, parse_int, parse_reps_range
 from ...load_conventions import counts_in_tonnage, load_convention_select_expr
@@ -161,6 +162,7 @@ FROM (
       WHERE a2.user_id = %s
         AND COALESCE(elm2.canonical_exercise_id, e2.mapping_id) = %s{goal_filter}
         AND {sql_not_deload("a2")}
+        AND {sql_counts_for_progression("e2")}
         AND EXISTS (
           SELECT 1 FROM exercise_sets es2
           WHERE es2.exercise_id = e2.id AND {sql_is_working("es2.set_type")} AND {sql_set_confirmed("es2.reps_pending")}
@@ -1437,6 +1439,7 @@ _BATCH_SELECTION_SQL = f"""
       WHERE a2.user_id = %s
         AND {sql_goal_is("e2")}
         AND {sql_not_deload("a2")}
+        AND {sql_counts_for_progression("e2")}
         AND EXISTS (
           SELECT 1 FROM exercise_sets es2
           WHERE es2.exercise_id = e2.id AND {sql_is_working("es2.set_type")} AND {sql_set_confirmed("es2.reps_pending")}
@@ -1512,6 +1515,7 @@ SESSION_PROGRESSION_SQL_TEMPLATE = (
     JOIN exercise_catalog ec ON ec.id = COALESCE(elm2.canonical_exercise_id, e2.mapping_id)
     WHERE a2.user_id = %s
       AND {sql_not_deload("a2")}
+      AND {sql_counts_for_progression("e2")}
       AND a2.local_date <= %s
       AND COALESCE(elm2.canonical_exercise_id, e2.mapping_id) IN ({{placeholders}})
       AND EXISTS (

@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any, Final, Mapping, Sequence
 
 from ...domain.deload import sql_not_deload
+from ...domain.form_practice import sql_counts_for_progression
 from ...domain.training_goal import TrainingGoal, goal_label, goal_value, sql_goal_is
 from ...observability import log_event
 from ...set_types import sql_is_working, sql_set_confirmed
@@ -63,6 +64,7 @@ JOIN exercise_catalog xc ON xc.id = {_CANONICAL}
 WHERE a.user_id = %s
   AND {sql_goal_is("e")}
   AND {sql_not_deload("a")}
+  AND {sql_counts_for_progression("e")}
   AND a.local_date BETWEEN %s AND %s
   AND xc.is_compound = 1
   AND EXISTS (

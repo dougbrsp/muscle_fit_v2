@@ -32,7 +32,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
+import { deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import {
   describeSets,
   formatLoggedSets,
@@ -40,6 +41,12 @@ import {
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
+import {
+  FORM_PRACTICE_HELP,
+  FORM_PRACTICE_LABEL,
+  FORM_PRACTICE_REGISTRO_HELP,
+  isFormPracticeRow,
+} from '@/lib/form-practice';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import {
@@ -48,6 +55,7 @@ import {
   dropSet,
   emptyExerciseForm,
   headerMetaPayload,
+  PROGRESSION_QUERY_KEYS,
   saveExerciseLog,
   updateSetField,
 } from '@/lib/exercise-log-save';
@@ -394,6 +402,7 @@ export function WorkoutDetailClient() {
       setEditingExerciseId(null);
       setForm(emptyExerciseForm());
       await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
 
@@ -404,6 +413,7 @@ export function WorkoutDetailClient() {
       closeDelete();
       setDeleteTarget(null);
       await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
 
@@ -437,6 +447,28 @@ export function WorkoutDetailClient() {
     },
   });
 
+  const deloadQuery = useQuery({
+    queryKey: sessionDeloadQueryKey(activityId),
+    queryFn: () => apiFetch<{ session_id: number; deload: SessionDeloadStatus }>(`/workout-sessions/${activityId}/deload`),
+    enabled: isValidId,
+  });
+  const deloadStatus = deloadQuery.data?.deload;
+  const deloadMutation = useMutation({
+    mutationFn: (value: boolean) =>
+      apiFetch(`/workout-sessions/${activityId}/meta`, { method: 'PATCH', body: JSON.stringify({ deload: value }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sessionDeloadQueryKey(activityId) });
+      await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+    },
+  });
+  // 409 deload_locked: a mensagem vem do servidor em `detail.message`.
+  const deloadErrorMessage = !deloadMutation.isError
+    ? null
+    : ((deloadMutation.error instanceof ApiError &&
+        (deloadMutation.error.detail as { message?: string } | undefined)?.message) ||
+        (deloadMutation.error instanceof Error ? deloadMutation.error.message : String(deloadMutation.error)));
+
   function addSet() {
     setForm((current) => ({ ...current, sets: appendSet(current.sets) }));
   }
@@ -462,6 +494,7 @@ export function WorkoutDetailClient() {
       workout_plan_exercise_id: row.workout_plan_exercise_id ? String(row.workout_plan_exercise_id) : '',
       muscle_pain: row.muscle_pain ?? null,
       joint_pain: Boolean(row.joint_pain),
+      form_practice: isFormPracticeRow(row),
       sets: row.sets.map(setFormFromRow),
     });
   }
@@ -489,6 +522,7 @@ export function WorkoutDetailClient() {
         planExercise.workout_plan_exercise_id != null ? String(planExercise.workout_plan_exercise_id) : '',
       muscle_pain: null,
       joint_pain: false,
+      form_practice: false,
       sets: [defaultNewSet()],
     });
   }
@@ -590,6 +624,29 @@ export function WorkoutDetailClient() {
         savingCalories={caloriesMutation.isPending}
         caloriesError={caloriesMutation.isError ? String(caloriesMutation.error) : null}
       />
+
+      {deloadStatus && (
+        <Stack gap={4} data-testid="workout-deload-control">
+          <Group gap="sm">
+            <Switch
+              label="Deload"
+              checked={deloadStatus.active}
+              disabled={!deloadStatus.can_toggle || deloadMutation.isPending}
+              onChange={(e) => deloadMutation.mutate(e.currentTarget.checked)}
+            />
+            {deloadBannerTitle(deloadStatus) && (
+              <Badge color="cyan" variant="light">
+                {deloadBannerTitle(deloadStatus)}
+              </Badge>
+            )}
+          </Group>
+          {deloadErrorMessage && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
+              {deloadErrorMessage}
+            </Alert>
+          )}
+        </Stack>
+      )}
 
       {activity.ai_summary && (
         <Paper withBorder radius="lg" p="lg" style={{ background: BRAND.bgElevated, borderColor: BRAND.border }}>
@@ -759,6 +816,15 @@ export function WorkoutDetailClient() {
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
                 setForm((c) => ({ ...c, joint_pain: checked }));
+              }}
+            />
+            <Switch
+              label={FORM_PRACTICE_LABEL}
+              description={FORM_PRACTICE_REGISTRO_HELP}
+              checked={form.form_practice}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setForm((c) => ({ ...c, form_practice: checked }));
               }}
             />
           </Group>
@@ -946,6 +1012,13 @@ export function WorkoutDetailClient() {
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       <Text span>{row.original_name}</Text>
+                      {isFormPracticeRow(row) && (
+                        <Tooltip label={FORM_PRACTICE_HELP} multiline w={260}>
+                          <Badge color="grape" variant="light">
+                            {FORM_PRACTICE_LABEL}
+                          </Badge>
+                        </Tooltip>
+                      )}
                       {row.workout_plan_exercise_id != null &&
                         row.planned_mapping_id != null &&
                         row.planned_mapping_id !== row.mapping_id && (

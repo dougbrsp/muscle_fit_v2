@@ -455,6 +455,7 @@ EXERCISE_PROGRESS_MAX_EXERCISES = 12
 # exercicio casado nunca sai sem pontos.
 def _exercise_progress_match_sql(with_goal: bool) -> str:
     from .domain.deload import sql_not_deload
+    from .domain.form_practice import sql_counts_for_progression
     from .domain.training_goal import sql_goal_is
     from .set_types import sql_is_working, sql_set_confirmed
 
@@ -470,6 +471,7 @@ WHERE a.user_id = %s
   AND a.local_date >= %s
   AND a.local_date <= %s{goal_filter}
   AND {sql_not_deload("a")}
+  AND {sql_counts_for_progression("e")}
   AND COALESCE(elm.canonical_exercise_id, e.mapping_id) IS NOT NULL
   AND EXISTS (
     SELECT 1 FROM exercise_sets es
@@ -1260,6 +1262,7 @@ def _fetch_exercise_set_rows(
             CAST(e.equipment_id AS SIGNED) AS gym_equipment_id,
             e.id AS exercise_row_id,
             e.training_goal AS training_goal,
+            e.form_practice AS form_practice,
             a.deload_source AS deload_source
         FROM activities a
         JOIN exercises e ON e.activity_id = a.id
@@ -1293,6 +1296,7 @@ def _build_progression_sessions(
     na tabela, marcada, mas FORA do e1RM (`e1rm`/`e1rm_reps` = None).
     `training_goal` = objetivo da ultima linha da sessao."""
     from .domain.deload import deload_source_label, deload_source_value, is_deload_session
+    from .domain.form_practice import FORM_PRACTICE_COLUMN, counts_for_progression
     from .domain.training_goal import goal_value
     from .intelligence.dashboard.exposure_service import exposure_snapshot, snapshot_of_rows
     from .set_types import is_working_set
@@ -1308,8 +1312,14 @@ def _build_progression_sessions(
     results: List[Dict[str, Any]] = []
     for activity_id, sets in sets_by_activity.items():
         exposure = exposicao_da_sessao.get(int(activity_id)) if activity_id is not None else None
+        # #196: o snapshot (carga de topo, reps, RPE, e1RM) so soma series que
+        # contam para a progressao; `sets_count` e a intensidade seguem com todas.
+        # Sem nenhuma que conte, o snapshot usa todas e o e1RM sai (abaixo).
+        sets_progressao = [s for s in sets if counts_for_progression(s.get(FORM_PRACTICE_COLUMN))]
         snapshot = (
-            exposure_snapshot(exposure) if exposure else snapshot_of_rows(sets, sets[-1].get("mapping_id") or 0)
+            exposure_snapshot(exposure)
+            if exposure
+            else snapshot_of_rows(sets_progressao or sets, sets[-1].get("mapping_id") or 0)
         ) or {}
         top_reps = snapshot.get("top_set_reps") or []
 
@@ -1322,10 +1332,15 @@ def _build_progression_sessions(
             else None
         )
         deload_source = deload_source_value(sets[-1].get("deload_source"))
-        deload = is_deload_session(deload_source)
+        # Aprimoramento de tecnica (#196, ADR 0017): fora do e1RM, como o deload.
+        e1rm_zerado_por_deload = is_deload_session(deload_source)
+        fora_do_e1rm = e1rm_zerado_por_deload or not sets_progressao
         results.append(
             {
                 "activity_id": activity_id,
+                # Rotulo do ponto: nenhuma serie conta para a progressao por ser
+                # execucao marcada (deload fica falso; ele tem `deload_source`).
+                FORM_PRACTICE_COLUMN: not sets_progressao and not e1rm_zerado_por_deload,
                 "local_date": sets[0].get("local_date"),
                 "activity_name": sets[0].get("activity_name"),
                 "training_goal": goal_value(sets[-1].get("training_goal")),
@@ -1337,11 +1352,11 @@ def _build_progression_sessions(
                 "top_load_kg": snapshot.get("best_load_kg"),
                 "top_set_reps": snapshot.get("top_set_reps"),
                 "avg_rpe": snapshot.get("avg_rpe"),
-                "e1rm": None if deload else snapshot.get("e1rm"),
+                "e1rm": None if fora_do_e1rm else snapshot.get("e1rm"),
                 # Acima do teto de reps o Epley nao decide nada na regra; o
                 # dono (`e1rm_reliable`) marca o ponto.
-                "e1rm_reps": None if deload else snapshot.get("e1rm_reps"),
-                "e1rm_reliable": False if deload else bool(snapshot.get("e1rm_reliable")),
+                "e1rm_reps": None if fora_do_e1rm else snapshot.get("e1rm_reps"),
+                "e1rm_reliable": False if fora_do_e1rm else bool(snapshot.get("e1rm_reliable")),
                 "intensity_status": None
                 if session_failure_allowed is None
                 else effective_intensity.session_intensity_status(sets, failure_allowed=session_failure_allowed),
@@ -1730,6 +1745,7 @@ def _fetch_group_e1rm_rows(
     (academia na chave so para maquina)."""
     from .domain.deload import sql_not_deload
     from .domain.e1rm import MissingRpePolicy, reliable_e1rm, reliable_reps_sql
+    from .domain.form_practice import sql_counts_for_progression
     from .set_types import sql_is_working
 
     lc = load_convention_expr if load_convention_expr is not None else _load_convention_expr()
@@ -1767,6 +1783,7 @@ def _fetch_group_e1rm_rows(
           AND a.local_date >= %s
           AND a.local_date <= %s
           AND {sql_not_deload("a")}
+          AND {sql_counts_for_progression("e")}
           AND {sql_is_working("es.set_type")}
           AND {sql_is_rep_based("es.measure")}
           AND {reliable_reps_sql("es.reps")}

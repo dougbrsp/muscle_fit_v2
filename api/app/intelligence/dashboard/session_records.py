@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ...domain.deload import sql_not_deload
+from ...domain.form_practice import sql_counts_for_progression
 from ...domain.set_measures import sql_is_rep_based
 from ...domain.training_history import parse_int
 from ...load_conventions import compares_reps_only, inverts_load_direction
@@ -85,6 +86,7 @@ LEFT JOIN workout_plan_exercises wpe ON wpe.id = e.workout_plan_exercise_id
 WHERE a.user_id = %s
   AND a.local_date <= %s
   AND {sql_not_deload("a")}
+  AND {sql_counts_for_progression("e")}
   AND {_WORKING}
   AND {_REP_BASED}
   AND {_CANONICAL} IN ({{{{placeholders}}}})

@@ -227,6 +227,9 @@ export type StoredWorkoutModeSession = {
   // `client_key` do exercício por item do plano (`<sessão>#<item ou nome>`): a remontagem
   // reaproveita a MESMA chave, então um addExercise reenviado nunca cria outro exercício.
   exercise_client_keys?: Record<string, string>;
+  // #196: itens da ficha (`workout_plan_exercise_id` ORIGINAL) marcados como
+  // "Aprimoramento de técnica" e ainda sem 1ª série; vai no addExercise.
+  form_practice_plan_exercise_ids?: number[];
 };
 
 // Persistência em localStorage (load/save/park/clear e a preferência da IA por

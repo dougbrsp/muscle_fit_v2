@@ -59,6 +59,17 @@ export function ProgressaoChart({ chartData }: { chartData: ProgressionChartPoin
               label={{ value: point.deloadLabel ?? 'Deload', position: 'insideTop', fontSize: 10, fill: CHART_COLORS.compare }}
             />
           ))}
+        {chartData
+          .filter((point) => point.formPractice)
+          .map((point) => (
+            <ReferenceLine
+              key={`form-practice-${point.xKey}`}
+              x={point.xKey}
+              stroke={CHART_COLORS.compare}
+              strokeDasharray="2 4"
+              label={{ value: point.formPracticeLabel ?? '', position: 'insideTop', fontSize: 10, fill: CHART_COLORS.compare }}
+            />
+          ))}
         <Line
           type="monotone"
           dataKey="e1rm"

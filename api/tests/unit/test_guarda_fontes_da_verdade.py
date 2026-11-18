@@ -1210,9 +1210,11 @@ PADROES: tuple[Padrao, ...] = (
         regex=re.compile(
             r"\b(?:MATCH_(?:MIN_SCORE|AUTO_ACCEPT_\w+)|QUERY_COVERAGE_WEIGHT|TOKEN_JACCARD_WEIGHT|SEQUENCE_RATIO_WEIGHT"
             r"|SEARCH_(?:CANDIDATE_POOL|RESULT_LIMIT_\w+)|FULLTEXT_MIN_TOKEN_CHARS|PORTION_AMOUNT_MAX"
-            r"|ML_BASIS_MAX_DENSITY_G_PER_ML)\s*(?::[^=\n]+)?=\s*[\d(]"
+            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
             # Vocabulário do matching redefinido (o worker do parse, L5, é o risco óbvio).
-            r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            # #195: balde "outros" e alfabeto da listagem por letra (literal de texto).
+            r"""|\bOTHER_BUCKET\s*(?::[^=\n]+)?=\s*["'`]"""
         ),
         donos=("api/app/domain/nutrition/food_text.py", "api/app/domain/nutrition/catalog.py"),
         inventario="NUT-L3A",
@@ -1854,6 +1856,47 @@ PADROES: tuple[Padrao, ...] = (
         escopo=("api/app/",),
     ),
     Padrao(
+        chave="aprimoramento_tecnica_filtro_sql",
+        regra=(
+            "filtro/decisão de aprimoramento de técnica escrito à mão em SQL fora do dono (comparação "
+            "`= <> != > < IN IS`, `NOT form_practice`, agregação `MAX/MIN/SUM/AVG/BIT_OR/BIT_AND(form_practice)`)"
+        ),
+        # #196 (2026-11-18, §105, ADR 0017): progressão, calibração, recorde, e1RM e referência de carga
+        # excluem a execução marcada SÓ por `sql_counts_for_progression` (SQL) ou `counts_for_progression`
+        # (linha carregada); a herança da continuação SÓ por `sql_plan_item_marked` + `inherit_form_practice`.
+        # Vale também com a constante (`{FORM_PRACTICE_COLUMN} = 0`, `MAX({FORM_PRACTICE_COLUMN})`). Selecionar a
+        # coluna (`e.form_practice AS ...`, `CAST(... AS CHAR)`, `GROUP BY`) não é regra e não é acusado; o `NOT`
+        # é só maiúsculo (SQL) para não acusar `not item.form_practice` do Python. A migração 120 fica fora do escopo.
+        regex=re.compile(
+            r"(?i)\bform_practice(?:_column)?\}?\s*(?:<>|!=|==?|>=?|<=?)\s*(?:0|1|true|false)\b"
+            r"|\bform_practice(?:_column)?\}?\s+(?:not\s+)?in\s*\("
+            r"|\bform_practice(?:_column)?\}?\s+is\b"
+            r"|(?-i:\bNOT)\s+(?:\w+\.)?\{?form_practice(?:_column)?\b"
+            r"|\b(?:max|min|sum|avg|bit_or|bit_and)\s*\(\s*(?:distinct\s+)?(?:\w+\.)?\{?form_practice(?:_column)?\b"
+        ),
+        donos=("api/app/domain/form_practice.py",),
+        inventario="#196 (§105)",
+        linguagens=frozenset({"py"}),
+        escopo=("api/app/",),
+    ),
+    Padrao(
+        chave="aprimoramento_tecnica_chave_literal",
+        regra=(
+            "coluna `form_practice` lida por chave literal (`[\"form_practice\"]`, `.get(\"form_practice\")`) "
+            "sem passar por `is_form_practice`/`counts_for_progression` na mesma linha"
+        ),
+        # #196 (§105): a linha carregada só é lida pelo dono (`is_form_practice`/`counts_for_progression`) ou pela
+        # constante `FORM_PRACTICE_COLUMN`; a chave literal crua decide/transporta "marcada" sem a leitura tolerante.
+        regex=re.compile(
+            r"""^(?!.*\b(?:is_form_practice|counts_for_progression)\s*\().*?"""
+            r"""(?:\[\s*(["'])form_practice\1\s*\]|\.get\(\s*(["'])form_practice\2)"""
+        ),
+        donos=("api/app/domain/form_practice.py",),
+        inventario="#196 (§105)",
+        linguagens=frozenset({"py"}),
+        escopo=("api/app/",),
+    ),
+    Padrao(
         chave="deload_fator",
         regra="número de deload (fator de carga, RPE-alvo, séries, duração) escrito fora do dono",
         # M97 D (2026-10-25, §67): `DELOAD_LOAD_FACTOR`, `DELOAD_TARGET_RPE`, `DELOAD_SETS_REDUCTION_FRACTION`,
@@ -2334,6 +2377,8 @@ PADROES_POR_CHAVE = {p.chave: p for p in PADROES}
 
 ALLOWLIST: dict[str, dict[str, int]] = {
     "deload_filtro_sql": {},
+    "aprimoramento_tecnica_filtro_sql": {},
+    "aprimoramento_tecnica_chave_literal": {},  # #196 (§105): nasce vazia
     "deload_fator": {},
     # M98 C0 (§69): a validação da rota (`<= 0`) e a do editor (`<= 0`), o `minutos x 60` do
     # `time_estimate` e o `* PREMISES.seconds_per_cardio_minute` do espelho TS saíram neste PR.
@@ -2803,6 +2848,33 @@ def test_regra_nao_se_espalha_fora_do_dono(padrao: Padrao):
 # ---------------------------------------------------------------------------
 
 EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "aprimoramento_tecnica_filtro_sql": (
+        ("AND e.form_practice = 0", "WHERE ex.form_practice <> 1", "form_practice=1", "e2.FORM_PRACTICE != 0",
+         "AND e.form_practice = FALSE", "AND e.form_practice > 0", "WHERE e.form_practice < 1",
+         "AND e.form_practice IN (0)", "AND e.form_practice NOT IN (1)", "WHERE e.form_practice IS NOT TRUE",
+         "AND NOT e.form_practice", "WHERE NOT form_practice", 'f"AND e.{FORM_PRACTICE_COLUMN} = 0"',
+         'f"SELECT MAX({FORM_PRACTICE_COLUMN}) AS marked FROM exercises"', "SELECT MAX(e.form_practice) AS m",
+         "BIT_OR(form_practice)", "SUM(e.form_practice) = 0", "if row.form_practice == 1:"),
+        ("sql_counts_for_progression('e')", "e.form_practice AS form_practice", "form_practice = %s",
+         "form_practice: bool = False", "if counts_for_progression(row.get('form_practice')):",
+         "CAST(e.form_practice AS CHAR),", "GROUP BY e.id, e.form_practice, e.original_name",
+         "e.{FORM_PRACTICE_COLUMN}             AS form_practice,",
+         "exercises = tuple(i for i in xs if not i.form_practice)",
+         "form_practice = payload.form_practice or herdado", "1 if form_practice else 0,",
+         "SELECT id, sequence, workout_plan_exercise_id, form_practice FROM exercises ",
+         "f\"SELECT {sql_plan_item_marked('e')} AS marked FROM exercises e\"",
+         "if is_form_practice(row.get(FORM_PRACTICE_COLUMN)):"),
+    ),
+    "aprimoramento_tecnica_chave_literal": (
+        ('if row.get("form_practice"):', "marcada = item['form_practice'] == 1",
+         '"form_practice": first_row.get("form_practice"),', 'form_practice=item["form_practice"],',
+         'x = row.get( "form_practice", 0)'),
+        ('"form_practice": is_form_practice(row.get("form_practice")),',
+         'if not counts_for_progression(item.get("form_practice")):',
+         "all(is_form_practice(s.get('form_practice')) for s in sets)", "row.get(FORM_PRACTICE_COLUMN)",
+         '"form_practice": 1 if is_form_practice(form_practice) else 0,', "e.form_practice AS form_practice",
+         'row.get("form_practice_note")', "form_practice=item[FORM_PRACTICE_COLUMN],"),
+    ),
     "deload_filtro_sql": (
         ("AND a.deload_source IS NULL", "WHERE a2.deload_source is not null", "deload_source IS NOT NULL"),
         ("sql_not_deload('a')", "sql_is_deload('a')", "a.deload_source AS deload_source",
@@ -3411,7 +3483,8 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "catalogo_alimentos": (
         ("MATCH_MIN_SCORE = 0.6", "MATCH_AUTO_ACCEPT_SCORE: Final[float] = 0.85", "const SEARCH_CANDIDATE_POOL = 60;",
          "PORTION_AMOUNT_MAX: Final[float] = 2000.0", "QUERY_COVERAGE_WEIGHT = (0.3)",
-         "export const SEARCH_RESULT_LIMIT_MAX = 50;"),
+         "export const SEARCH_RESULT_LIMIT_MAX = 50;", "BRAND_MIN_CHARS = 3", "LIST_PAGE_MAX: Final[int] = 100",
+         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'"),
         ("if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
          "assert ft.MATCH_MIN_SCORE == 0.6", "limite = SEARCH_RESULT_LIMIT_MAX", "amount <= catalog.PORTION_AMOUNT_MAX",
          "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]"),
@@ -4183,6 +4256,7 @@ def test_a_guarda_enxerga_a_regra_no_dono():
         "fallback_registro_serie_cadeia",  # só TS do Modo Treino; o dono é Python (`SET_LOGGER_FALLBACK_*`)
         "objetivo_treino_filtro_sql",  # o dono monta o fragmento pela constante TRAINING_GOAL_COLUMN, sem o nome literal
         "deload_filtro_sql",  # o dono monta o fragmento pela constante DELOAD_SOURCE_COLUMN, sem o nome literal
+        "aprimoramento_tecnica_chave_literal",  # proibição pura: o dono lê o valor recebido, sem chave literal
         "medida_serie",  # o dono Python casa pelo Enum (`DURATION = "duration"`); o espelho TS lê o JSON e compara por `MEASURE_VALUES`, sem literal
     }
     for padrao in PADROES:

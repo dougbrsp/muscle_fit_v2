@@ -8,8 +8,11 @@ Rotas (prefixo `/nutrition/foods`):
                                            `SEARCH_CANDIDATE_POOL` candidatos -> ordem pela
                                            nota do motor; públicos + os do usuário, com a
                                            citação de cada item. `scope=private_all` (admin):
-                                           os privados de todos, para promover
-- `GET  /{id}`                             alimento + porções visíveis + permissões
+                                           os privados de todos, para promover. Casa também a
+                                           MARCA (`brand LIKE`, consulta própria; #195)
+- `GET  /?letter=&limit=&offset=`          cadastro por letra A-Z ou `outros` (#195): nome
+                                           exibido, ordem alfabética, `has_more`
+- `GET  /{id}`                           alimento + porções visíveis + permissões
 - `POST /`                                 `FoodItemCreateIn` -> alimento PRIVADO do usuário
                                            (D-G), 201; `barcode` opcional (N3: validado por
                                            `external_sources.normalize_gtin`, gravado em
@@ -143,6 +146,32 @@ def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_
         filtros.append(FAVORITES_ONLY_SQL)
     ordem = f"{MATCH_EXPR} DESC, id" if fulltext else "name_normalized, id"
     return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY {ordem} LIMIT %s"
+
+
+def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool = False) -> str:
+    """Busca extra pela MARCA (#195): `brand LIKE` (padrão de `food_text.brand_pattern`) com a mesma
+    visibilidade, fonte e restrição a preferidos da busca por nome. Parâmetros: padrão, os da
+    visibilidade, fonte (se filtrada), dono dos preferidos (se `favorites_only`) e o lote. É uma consulta
+    própria para a marca nunca ser cortada do lote do nome."""
+    # shortcut: brand LIKE sem índice varre food_items, criar índice/coluna normalizada se o cadastro crescer a ponto de a busca ficar lenta
+    filtros = ["brand LIKE %s", "is_active = 1", visibility]
+    if with_source:
+        filtros.append("source = %s")
+    if favorites_only:
+        filtros.append(FAVORITES_ONLY_SQL)
+    return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY id LIMIT %s"
+
+
+def list_sql(*, bucket: bool) -> str:
+    """Listagem por letra (#195): nome EXIBIDO (`name`, collation `utf8mb4_0900_ai_ci` da 080: ignora acento
+    e caixa no LIKE e no ORDER BY), públicos + os do usuário, ativos. Parâmetros: visibilidade, padrão(ões) de
+    `food_text.letter_prefixes` (1 letra; 26 no balde, com NOT), limite+1 e deslocamento."""
+    prefixos = len(food_text.letter_prefixes(food_text.OTHER_BUCKET if bucket else "A"))
+    cond = " OR ".join(["name LIKE %s"] * prefixos)
+    filtro = f"NOT ({cond})" if bucket else cond
+    return (
+        f"{_SELECT_FOODS} WHERE is_active = 1 AND {VISIBLE_FOODS_SQL} AND {filtro} ORDER BY name, id LIMIT %s OFFSET %s"
+    )
 
 
 def _connect():
@@ -361,11 +390,21 @@ def search_foods(
         fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None, favorites_only=True
     )
 
+    marca = food_text.brand_pattern(q)
+    base = [expressao, *params_visibilidade] + ([fonte.value] if fonte is not None else [])
+    # Marca: os mesmos filtros, o padrão da marca no lugar da expressão do nome e sem a expressão de ordem.
+    params_marca = [marca, *base[1:]]
+    sql_marca = brand_search_sql(visibility=visibilidade, with_source=fonte is not None)
+    sql_marca_favoritos = brand_search_sql(visibility=visibilidade, with_source=fonte is not None, favorites_only=True)
+
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
             cur.execute(sql, tuple(params))
             linhas = cur.fetchall() or []
+            if marca is not None:
+                cur.execute(sql_marca, (*params_marca, food_text.SEARCH_CANDIDATE_POOL))
+                linhas = [*linhas, *(cur.fetchall() or [])]
             favoritos: set[int] = set()
             # Preferidos (N3) só no escopo normal e se a 102 já rodou. Os que casam com o termo entram
             # mesmo fora do lote de candidatos (a busca extra repete o filtro restrita aos preferidos).
@@ -376,13 +415,16 @@ def search_foods(
                 if favoritos:
                     # `params` já leva expressão, visibilidade e fonte; o dono dos preferidos entra antes
                     # da expressão de ordenação e do lote.
-                    base = [expressao, *params_visibilidade] + ([fonte.value] if fonte is not None else [])
                     extra = [*base, dono] + ([expressao] if fulltext else []) + [food_text.SEARCH_CANDIDATE_POOL]
                     cur.execute(sql_favoritos, tuple(extra))
                     linhas = [*linhas, *(cur.fetchall() or [])]
+                    if marca is not None:
+                        cur.execute(sql_marca_favoritos, (*params_marca, dono, food_text.SEARCH_CANDIDATE_POOL))
+                        linhas = [*linhas, *(cur.fetchall() or [])]
     por_id = {int(linha["id"]): linha for linha in linhas}
     ordem = food_text.favorites_first(
-        food_text.order_for_search(q, [(food_id, linha["name"]) for food_id, linha in por_id.items()]), favoritos
+        food_text.order_for_search(q, [(food_id, linha["name"], linha.get("brand")) for food_id, linha in por_id.items()]),
+        favoritos,
     )
     resposta["items"] = [
         {
@@ -394,6 +436,45 @@ def search_foods(
         for m in ordem[: food_text.search_limit(limit)]
     ]
     return resposta
+
+
+@router.get("")
+def list_foods_by_letter(
+    request: Request,
+    letter: str = Query(..., max_length=16),
+    limit: Optional[int] = Query(default=None),
+    offset: Optional[int] = Query(default=None),
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
+):
+    """Cadastro por letra (#195): alimentos ativos, públicos + os do usuário, cujo NOME começa pela letra
+    (ou, em `outros`, por dígito/símbolo), em ordem alfabética. Regras de letra, balde e página: `food_text`."""
+    permissoes = permissions_for_request(request, identity)
+    codigo = food_text.normalize_letter(letter)
+    if codigo is None:
+        raise _error(400, "invalid_letter", "Letra inválida.", allowed=list(food_text.LIST_BUCKETS))
+    tamanho, deslocamento = food_text.list_page(limit, offset)
+    bucket = codigo == food_text.OTHER_BUCKET
+    params = (int(identity.user_id), *food_text.letter_prefixes(codigo), tamanho + 1, deslocamento)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_food_tables(cur)
+            cur.execute(list_sql(bucket=bucket), params)
+            linhas = cur.fetchall() or []
+            favoritos: set[int] = set()
+            if has_favorites_table(cur):
+                cur.execute(FAVORITE_IDS_SQL, (favorites_owner(identity),))
+                favoritos = {int(f["food_id"]) for f in (cur.fetchall() or [])}
+    return {
+        "letter": codigo,
+        "letters": list(food_text.LIST_BUCKETS),
+        "items": [
+            {**food_public(linha, identity, permissoes), "is_favorite": int(linha["id"]) in favoritos}
+            for linha in linhas[:tamanho]
+        ],
+        "limit": tamanho,
+        "offset": deslocamento,
+        "has_more": len(linhas) > tamanho,
+    }
 
 
 @router.get("/{food_id}")

@@ -56,6 +56,7 @@ import {
   DEFAULT_REST_SECONDS,
   SET_LOGGER_FALLBACK_LOAD_KG,
 } from '@/lib/prescription-defaults';
+import { FinishWorkoutConfirmModal } from './FinishWorkoutConfirmModal';
 import { RestTimer } from './RestTimer';
 import { useWeightUnit } from '@/lib/use-weight-unit';
 import { useIaControls } from '@/lib/screen-permissions';
@@ -407,11 +408,29 @@ export function FreeformScreen({
     </Button>
   ) : null;
 
-  const finishError = finishMutation.isError ? (
-    <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
-      {errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.')}
-    </Alert>
-  ) : null;
+  const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
+  function requestFinish() {
+    finishMutation.reset();
+    setFinishConfirmOpen(true);
+  }
+
+  // Alerta de erro + confirmação de "Encerrar treino" (renderizados juntos nas duas telas).
+  const finishError = (
+    <>
+      {finishMutation.isError && !finishConfirmOpen && (
+        <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+          {errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.')}
+        </Alert>
+      )}
+      <FinishWorkoutConfirmModal
+        opened={finishConfirmOpen}
+        finishing={finishMutation.isPending}
+        error={finishMutation.isError ? errorMessage(finishMutation.error, 'Não foi possível finalizar o treino.') : null}
+        onConfirm={() => finishMutation.mutate()}
+        onCancel={() => setFinishConfirmOpen(false)}
+      />
+    </>
+  );
 
   if (phase === 'pick-group') {
     const groups = groupsQuery.data?.items || [];
@@ -465,7 +484,7 @@ export function FreeformScreen({
           color="green"
           leftSection={<IconPlayerStop size={18} />}
           loading={finishMutation.isPending}
-          onClick={() => finishMutation.mutate()}
+          onClick={requestFinish}
         >
           Encerrar treino
         </Button>
@@ -730,7 +749,7 @@ export function FreeformScreen({
           color="green"
           leftSection={<IconPlayerStop size={18} />}
           loading={finishMutation.isPending}
-          onClick={() => finishMutation.mutate()}
+          onClick={requestFinish}
         >
           Encerrar treino
         </Button>

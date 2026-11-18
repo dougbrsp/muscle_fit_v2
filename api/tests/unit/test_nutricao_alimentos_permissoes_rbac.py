@@ -1,5 +1,5 @@
 """RBAC dos alimentos na nutricao (ADR 0011, lote 2D-2), por HTTP: catalogo (`nutrition_foods`),
-fontes externas, preferidos e foto de rotulo (17 rotas).
+fontes externas, preferidos e foto de rotulo (18 rotas).
 
 O resolvedor REAL de permissoes roda sobre um banco falso de concessoes (`access_service._db`). As
 concessoes dos papeis (usuario, personal trainer, admin) vem de `DEFAULT_GRANTS_BY_GROUP`; os
@@ -54,6 +54,7 @@ MODULOS = (foods_mod, external_mod, favorites_mod, label_mod)
 # `{proprio}` = alimento privado de quem chama.
 ROTAS = [
     ("search", "get", "/nutrition/foods/search", "/nutrition/foods/search?q=arroz", None, "nutricao.alimentos", "ver", 200),
+    ("list-foods", "get", "/nutrition/foods", "/nutrition/foods?letter=A", None, "nutricao.alimentos", "ver", 200),
     ("get-food", "get", "/nutrition/foods/{food_id}", "/nutrition/foods/1", None, "nutricao.alimentos", "ver", 200),
     ("create-food", "post", "/nutrition/foods", "/nutrition/foods", ARROZ, "nutricao.alimentos", "editar", 201),
     ("update-food", "put", "/nutrition/foods/{food_id}", "/nutrition/foods/{proprio}", ARROZ, "nutricao.alimentos", "editar", 200),
@@ -588,14 +589,14 @@ def _rotas_vivas():
     return vivas
 
 
-def test_as_rotas_vivas_dos_4_modulos_sao_17_e_batem_com_a_tabela():
+def test_as_rotas_vivas_dos_4_modulos_sao_18_e_batem_com_a_tabela():
     vivas = _rotas_vivas()
-    assert len(vivas) == 17 and len(set(vivas)) == 17
+    assert len(vivas) == 18 and len(set(vivas)) == 18
     assert set(vivas) == {(r[1], r[2]) for r in ROTAS}
 
 
 @pytest.mark.parametrize("metodo,modelo", _rotas_vivas(), ids=lambda v: v)
-def test_usuario_sem_grupo_e_negado_nas_17_rotas_vivas(ctx, metodo, modelo):
+def test_usuario_sem_grupo_e_negado_nas_18_rotas_vivas(ctx, metodo, modelo):
     client, state, perms, db, quota = ctx
     rota = next(r for r in ROTAS if (r[1], r[2]) == (metodo, modelo))
     _como(state, SEM_GRUPO)
