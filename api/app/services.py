@@ -19,6 +19,7 @@ from .domain.recovery_signal_summary import summarize_signals
 from .domain.set_measures import normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical, attach_sides_text
 from .domain.deload import sql_not_deload
+from .domain.form_practice import FORM_PRACTICE_COLUMN, is_form_practice, sql_counts_for_progression
 from .domain.training_goal import goal_value, sql_goal_is
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
@@ -921,6 +922,8 @@ def activity_detail(
                     sets_by_exercise[set_row["exercise_id"]].append(attach_sides_text(_attach_set_measure(set_row)))
             for ex in exercises:
                 ex["sets"] = _with_canonical_set_type(sets_by_exercise[ex["id"]])
+                # #196: a marcacao vai como booleano (o banco devolve 0/1).
+                ex[FORM_PRACTICE_COLUMN] = is_form_practice(ex.get(FORM_PRACTICE_COLUMN))
 
             activity["exercises"] = exercises
             return activity
@@ -1098,7 +1101,9 @@ def list_exercise_logs(
                     (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://app.musclefit.com.br/', eq.photo_path) ELSE NULL END) AS equipment_photo_url,
                     e.muscle_pain,
                     e.joint_pain,
-                    e.sequence
+                    e.sequence,
+                    -- #196: o filtro da referencia de carga (`last_execution_from_logs`) le pelo dono.
+                    e.form_practice AS form_practice
                 FROM exercises e
                 JOIN activities a ON a.id = e.activity_id
                 LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = e.mapping_id
@@ -1621,7 +1626,9 @@ def get_last_session_sets(
 
             where = (
                 "WHERE COALESCE(elm.canonical_exercise_id, e.mapping_id) = %s AND a.id != %s "
-                f"AND {sql_goal_is('e')} AND {sql_not_deload('a')}"
+                f"AND {sql_goal_is('e')} AND {sql_not_deload('a')} "
+                # #196 (ADR 0017): aprimoramento de tecnica nao e sessao anterior nem e1RM.
+                f"AND {sql_counts_for_progression('e')}"
             )
             params: list[Any] = [canonical_mapping_id, exclude_activity_id, goal]
             if user_id is not None:

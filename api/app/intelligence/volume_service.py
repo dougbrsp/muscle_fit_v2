@@ -11,6 +11,7 @@ from .. import request_memo
 from ..domain import e1rm
 from ..domain.technique_accounting import planned_equivalent, realized_recovery_factor
 from ..domain.deload import deload_source_label, deload_source_value
+from ..domain.form_practice import FORM_PRACTICE_COLUMN, counts_for_progression
 from ..domain.training_goal import goal_value, goals_in, sql_goal_is
 from ..load_conventions import normalize_load_convention, supports_e1rm
 from ..domain.set_measures import dose_reps_for_measure, is_rep_based, sql_if_rep_based
@@ -625,6 +626,7 @@ class VolumeService(IntelligenceServiceBase):
               ge.gym_id AS gym_id,
               et_ctx.code AS equipment_type_code,
               e.training_goal AS training_goal,
+              e.form_practice AS form_practice,
               a.deload_source AS deload_source,
               CAST(COALESCE(elm.canonical_exercise_id, e.mapping_id) AS SIGNED) AS canonical_exercise_id
     """
@@ -1183,6 +1185,8 @@ class VolumeService(IntelligenceServiceBase):
                 # M97 D: sessao de deload - conta na dose, mas fica fora do
                 # e1RM de referencia e do "Desempenho recente".
                 "deload_source": first_row.get("deload_source"),
+                # #196 (ADR 0017): aprimoramento de tecnica - idem ao deload.
+                FORM_PRACTICE_COLUMN: first_row.get(FORM_PRACTICE_COLUMN),
                 "set_rows": rows,
             }
             for key in _GROUP_ATTRIBUTE_KEYS:
@@ -1307,6 +1311,9 @@ class VolumeService(IntelligenceServiceBase):
         #    sua propria linha de exercicio; o maximo aqui cobre o caso de o
         #    MESMO exercicio aparecer duas vezes na mesma sessao).
         best_e1rm_by_identity_session: dict[tuple[tuple[str, Any], int], float] = {}
+        # So execucoes que contam para a progressao (dono `domain/form_practice.py`)
+        # entram na REFERENCIA; a execucao marcada segue na dose (load spike).
+        reference_e1rm_candidates: dict[tuple[tuple[str, Any], int], float] = {}
         session_dates_by_identity: dict[tuple[str, Any], dict[int, datetime]] = defaultdict(dict)
         for item in history_items:
             identity = self._exercise_identity(item)
@@ -1319,6 +1326,10 @@ class VolumeService(IntelligenceServiceBase):
             key = (identity, activity_id)
             if float(session_e1rm) > best_e1rm_by_identity_session.get(key, 0.0):
                 best_e1rm_by_identity_session[key] = float(session_e1rm)
+            if counts_for_progression(item.get(FORM_PRACTICE_COLUMN)) and float(session_e1rm) > reference_e1rm_candidates.get(
+                key, 0.0
+            ):
+                reference_e1rm_candidates[key] = float(session_e1rm)
 
         # M97 D: sessao de deload (carga reduzida de proposito) nao entra no
         # e1RM de REFERENCIA das outras sessoes (dono `domain/deload.py`); a
@@ -1334,12 +1345,12 @@ class VolumeService(IntelligenceServiceBase):
             for activity_id, session_date in ordered:
                 window_start = session_date - timedelta(days=LOAD_REFERENCE_WINDOW_DAYS)
                 priors = [
-                    best_e1rm_by_identity_session[(identity, other_id)]
+                    reference_e1rm_candidates[(identity, other_id)]
                     for other_id, other_date in ordered
                     if other_id != activity_id
                     and other_id not in deload_activity_ids
                     and window_start <= other_date < session_date
-                    and (identity, other_id) in best_e1rm_by_identity_session
+                    and (identity, other_id) in reference_e1rm_candidates
                 ]
                 reference_e1rm_by_identity_session[(identity, activity_id)] = (
                     statistics.median(priors)

@@ -33,6 +33,7 @@ de excecao usados - so `str(exc)` do texto do erro e aproveitado (ver
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -41,6 +42,7 @@ from .advanced_techniques import technique_display_names
 from .db import transaction
 from .domain import effective_intensity
 from .domain.deload import is_deload_session
+from .domain.form_practice import neutral_ai_suggestion, neutral_engine_context, neutral_set_outcome
 from .domain.next_set_load import (
     DEFAULT_RULESET,
     planned_ramp_rpe,
@@ -60,6 +62,7 @@ from .engine_decision_context import (
     last_working_previous_set,
     next_set_load_for,
     payload_working_set_index,
+    read_exercise_form_practice,
     safe_read,
 )
 from .intelligence.session_fatigue_reader import load_session_prior_fatigue
@@ -135,7 +138,19 @@ def _evaluate_set_engine(payload: dict[str, Any], user_id: Any) -> PairEngineCon
         with transaction() as conn:
             return load_pair_context(conn, user_id, payload.get("mapping_id"), payload.get("equipment_id"))
 
-    return safe_read(_read, default=PairEngineContext(step_kg=equipment_step_kg(None)))
+    def _marked():
+        with transaction() as conn:
+            return read_exercise_form_practice(conn, user_id, payload.get("exercise_id"))
+
+    context = safe_read(_read, default=PairEngineContext(step_kg=equipment_step_kg(None)))
+    # #196: a marcacao e da linha do payload (`exercise_id`, onde a serie foi
+    # salva; a linha do par acima so existe para item da ficha). Sem
+    # `exercise_id` nao ha leitura; falha de leitura = nao marcada (o de antes).
+    if payload.get("exercise_id") is not None and safe_read(
+        _marked, default=False, event="evaluate_set.form_practice_failed"
+    ):
+        context = replace(context, form_practice_marked=True)
+    return context
 
 
 def _evaluate_set_intensity(payload: dict[str, Any]) -> effective_intensity.EffectiveIntensity:
@@ -261,6 +276,17 @@ def dispatch_evaluate_set(payload: dict[str, Any], user_id: Any = None) -> dict[
     engine = _evaluate_set_engine(payload, user_id)
     logged = _evaluate_set_logged_intensity(engine)
     reading = _evaluate_set_reading(payload, engine, intensity, logged)
+    if engine.form_practice_marked:
+        # #196 (ADR 0017, D1): mesmo contrato neutro da rota da serie - leitura
+        # neutra do dono, sem carga da proxima serie e sem decisao/prescricao
+        # de carga do motor (nem a do deload) nos fatos entregues a IA.
+        neutral_engine, ruleset = neutral_engine_context(engine)
+        neutral_reading, next_set = neutral_set_outcome(reading)
+        return neutral_ai_suggestion(
+            _evaluate_set_with_ai(
+                payload, neutral_engine, intensity, composition, neutral_reading, next_set, ruleset, user_id
+            )
+        )
     # Regra da carga da proxima serie (2026-10-12, dono `domain/next_set_load.py`):
     # pronta ANTES da IA, entra no prompt e decide a carga final.
     # M97 F2: conjunto do OBJETIVO do exercicio em andamento (hipertrofia = o
@@ -284,6 +310,11 @@ def dispatch_evaluate_set(payload: dict[str, Any], user_id: Any = None) -> dict[
         previous_set=last_working_previous_set(payload) if ruleset_uses_previous_set(ruleset) else None,
         engine_target_kg=engine.decision.load_kg if engine.decision else None,
     )
+    return _evaluate_set_with_ai(payload, engine, intensity, composition, reading, next_set, ruleset, user_id)
+
+
+def _evaluate_set_with_ai(payload, engine, intensity, composition, reading, next_set, ruleset, user_id):
+    """Chamada da IA com os fatos prontos e limites de seguranca/carga."""
     try:
         result = evaluate_set(
             payload,

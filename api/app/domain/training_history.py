@@ -31,6 +31,10 @@ Regras que o SQL implementa (e por que):
   da RDS Data API - as series, o alvo efetivo, o teto, a falha e a decisao
   com que a ficha daquele dia foi congelada. E a base contra a qual o
   fechamento avalia a sessao (`FrozenPrescription`).
+- Aprimoramento de tecnica (#196): o SQL traz `exercises.form_practice` e a
+  sessao continua inteira; quem tira a execucao marcada da progressao e da
+  calibracao e `SessionRecord.progression_view*`, pela regra do dono
+  `domain/form_practice.py`.
 
 Os DTOs abaixo sao imutaveis e nao tem nenhuma regra de progressao: quem
 decide o que qualifica e o `progression_engine`.
@@ -46,6 +50,7 @@ from typing import Any, Iterable, Optional, Sequence
 
 from ..load_conventions import equipment_exercises_join_sql
 from ..set_types import normalize_set_type, sql_is_working, sql_not_preparatory, sql_set_confirmed
+from .form_practice import FORM_PRACTICE_COLUMN, counts_for_progression, is_form_practice
 from .set_measures import DEFAULT_MEASURE, SetMeasure, is_rep_based, normalize_measure
 from .training_goal import DEFAULT_GOAL, goal_value, goals_in
 
@@ -495,6 +500,10 @@ class ExerciseExecution:
     # cru; `None` = nao cadastrada). Entra so na chave fisica da calibracao
     # (`comparability.calibration_physical_key`), nunca na trilha.
     load_convention: Optional[str] = None
+    # #196: aprimoramento de tecnica (`exercises.form_practice`, leitura do
+    # dono `domain/form_practice.is_form_practice`): fora da progressao e da
+    # calibracao, dentro de volume, recuperacao, fadiga e tempo.
+    form_practice: bool = False
 
     @property
     def pair(self) -> Optional[tuple[int, int]]:
@@ -528,12 +537,25 @@ class SessionRecord:
 
     def progression_view(self, training_goal: Any) -> "SessionRecord":
         """O que a PROGRESSAO de um objetivo ve desta sessao: as execucoes do
-        objetivo (`only_goal`) ou, numa sessao de deload, nenhuma - a sessao
-        fica na janela (o teto de ativacao le a sessao inteira), mas nao
-        avanca, nao regride e nao conta para plato (M97 D)."""
+        objetivo (`only_goal`) que contam para a progressao ou, numa sessao de
+        deload, nenhuma - a sessao fica na janela (o teto de ativacao le a
+        sessao inteira), mas nao avanca, nao regride e nao conta para plato
+        (M97 D). A execucao de aprimoramento de tecnica (#196) sai do mesmo
+        jeito, so ela."""
+        return self.progression_view_all_goals().only_goal(training_goal)
+
+    def progression_view_all_goals(self) -> "SessionRecord":
+        """A sessao com as execucoes de TODOS os objetivos que contam para a
+        progressao: sem nenhuma no deload (M97 D) e sem as de aprimoramento de
+        tecnica (#196, dono `domain/form_practice.py`). E a janela da
+        calibracao de maquina e do replay sem separacao por objetivo. Nada a
+        tirar devolve a propria instancia."""
         if self.is_deload:
             return self if not self.exercises else replace(self, exercises=())
-        return self.only_goal(training_goal)
+        exercises = tuple(item for item in self.exercises if counts_for_progression(item.form_practice))
+        if len(exercises) == len(self.exercises):
+            return self
+        return replace(self, exercises=exercises)
 
     @property
     def occurred_at(self) -> Optional[datetime]:
@@ -580,6 +602,7 @@ SELECT
   eqex.load_convention        AS load_convention,
   e.workout_plan_exercise_id  AS workout_plan_exercise_id,
   e.training_goal             AS training_goal,
+  e.{FORM_PRACTICE_COLUMN}             AS form_practice,
   e.muscle_pain               AS exercise_muscle_pain,
   e.joint_pain                AS exercise_joint_pain,
   wpe.sets_count              AS prescribed_sets_count,
@@ -686,6 +709,7 @@ def build_sessions(rows: Iterable[dict[str, Any]]) -> list[SessionRecord]:
                 "joint_pain": None if joint_pain is None else bool(joint_pain),
                 "preparatory_sets_count": int(row.get("preparatory_sets_count") or 0),
                 "training_goal": goal_value(row.get("training_goal")),
+                FORM_PRACTICE_COLUMN: is_form_practice(row.get(FORM_PRACTICE_COLUMN)),
                 "sets": [],
             }
             session["exercises"][exercise_row_id] = exercise
@@ -712,6 +736,7 @@ def build_sessions(rows: Iterable[dict[str, Any]]) -> list[SessionRecord]:
                 preparatory_sets_count=item["preparatory_sets_count"],
                 sets=tuple(item["sets"]),
                 training_goal=item["training_goal"],
+                form_practice=item[FORM_PRACTICE_COLUMN],
             )
             for item in session["exercises"].values()
         )

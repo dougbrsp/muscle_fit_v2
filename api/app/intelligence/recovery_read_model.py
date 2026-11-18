@@ -56,6 +56,7 @@ import json
 import logging
 from typing import Any, Iterable
 
+from ..domain.form_practice import is_form_practice
 from ..domain.set_measures import normalize_measure, sql_if_rep_based
 from ..set_types import KNOWN_SET_TYPES, WORKING, sql_canonical_set_type_case, sql_not_preparatory, sql_set_confirmed
 from .dashboard.identity import require_user_id
@@ -146,6 +147,7 @@ JOIN (
       COALESCE(eqex.load_convention, ''),
       COALESCE(CAST(ge.gym_id AS CHAR), ''),
       COALESCE(et.code, ''),
+      CAST(e.form_practice AS CHAR),
       COALESCE(e.original_name, '')
     ) AS packed
   FROM activities a2
@@ -163,7 +165,7 @@ JOIN (
     AND {_ES_NOT_PREPARATORY}
     {{history_filter}}
   GROUP BY e.id, e.activity_id, e.mapping_id, e.muscle_pain, e.joint_pain,
-           e.original_name, elm.canonical_exercise_id, ge.equipment_id, eqex.load_convention,
+           e.form_practice, e.original_name, elm.canonical_exercise_id, ge.equipment_id, eqex.load_convention,
            ge.gym_id, et.code
 ) x ON x.activity_id = a.id
 GROUP BY a.id, a.local_date, {{trained_at}}, a.deload_source
@@ -310,8 +312,8 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
     que detecta um `GROUP_CONCAT` truncado por `group_concat_max_len`
     (1024 bytes por padrao, ~55 series num mesmo exercicio) em vez de
     devolver uma dose menor em silencio."""
-    parts = packed.split(_FIELD_SEP, 10)
-    if len(parts) != 11:
+    parts = packed.split(_FIELD_SEP, 11)
+    if len(parts) != 12:
         raise PackedHistoryError(f"exercicio empacotado invalido: {packed[:80]!r}")
     (
         exercise_id,
@@ -324,6 +326,7 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
         load_convention,
         gym_id,
         equipment_type_code,
+        form_practice,
         original_name,
     ) = parts
 
@@ -349,6 +352,9 @@ def _parse_exercise(packed: str) -> dict[str, Any]:
         # Issue #188: academia e tipo do aparelho (chave de maquina do dono).
         "gym_id": int(gym_id) if gym_id else None,
         "equipment_type_code": _optional(equipment_type_code),
+        # #196 (ADR 0017): fora do e1RM de referencia e do "Desempenho
+        # recente"; a dose conta (leitura pelo dono `domain/form_practice.py`).
+        "form_practice": 1 if is_form_practice(form_practice) else 0,
         "set_rows": set_rows,
     }
 

@@ -124,6 +124,22 @@ def _final_state(pe: Any, group_states: Any, tracks: Any) -> dict[str, Any]:
     }
 
 
+def _history_steps(ev: Any, sessions: list, inputs: Any, window_size: int):
+    """`(sessao, resultado)` do encadeamento de `evaluate_history`; motor
+    anterior ao #196 (sem `evaluate_history_steps`) usa o laco de sempre."""
+    steps = getattr(ev, "evaluate_history_steps", None)
+    if steps is not None:
+        yield from steps(sessions, inputs=inputs, window_size=window_size)
+        return
+    group_states: Any = {}
+    tracks: Any = {}
+    for index, session in enumerate(sessions):
+        window = list(sessions[max(0, index + 1 - window_size) : index + 1])
+        result = ev.evaluate_session(session, window, group_states=group_states, tracks=tracks, inputs=inputs)
+        group_states, tracks = result.group_states, result.tracks
+        yield session, result
+
+
 def run_worker(api: Path, user_id: int, window_size: int, page_size: int) -> dict[str, Any]:
     """Le o historico com o codigo de `api` e avalia com o motor de `api`."""
     sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != Path(__file__).resolve().parent]
@@ -161,13 +177,17 @@ def run_worker(api: Path, user_id: int, window_size: int, page_size: int) -> dic
 
     # 2. o mesmo encadeamento, sessao a sessao, so para expor o veredito de cada
     #    trilha (evaluate_history nao devolve `track_outcomes`). A janela e a de
-    #    evaluate_history; o estado final tem que bater (conferido abaixo).
+    #    evaluate_history (`evaluate_history_steps`: deload e aprimoramento de
+    #    tecnica fora); o estado final tem que bater (conferido abaixo).
     per_session: list[dict[str, Any]] = []
     group_states: Any = {}
     tracks: Any = {}
-    for index, session in enumerate(sessions):
-        window = list(sessions[max(0, index + 1 - window_size) : index + 1])
-        result = ev.evaluate_session(session, window, group_states=group_states, tracks=tracks, inputs=inputs)
+    for session, result in _history_steps(ev, sessions, inputs, window_size):
+        if result is None:
+            per_session.append(
+                {"activity_id": session.activity_id, "date": _jsonable(session.local_date), "tracks": {}, "decisions": []}
+            )
+            continue
         group_states, tracks = result.group_states, result.tracks
         per_session.append(
             {

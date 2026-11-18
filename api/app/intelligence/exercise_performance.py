@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Hashable, Iterable, Mapping, Optional, Sequence
 
 from ..domain.deload import is_deload_session
+from ..domain.form_practice import FORM_PRACTICE_COLUMN, counts_for_progression
 from ..domain.training_history import parse_decimal, parse_int
 from ..set_types import is_working_set
 from .dashboard.comparability import latest_session_performance_ratios
@@ -108,6 +109,9 @@ def _last_exposures_window(
         # M97 D: exposicao de deload e PULADA (carga reduzida de proposito
         # nao e queda de desempenho nem referencia), como no dashboard.
         if is_deload_session(item.get("deload_source")):
+            continue
+        # #196 (ADR 0017): aprimoramento de tecnica tambem fica de fora.
+        if not counts_for_progression(item.get(FORM_PRACTICE_COLUMN)):
             continue
         by_identity[identity(item)].append((sort_key(item), item.get("activity_id"), item.get("exercise_id"), item))
 

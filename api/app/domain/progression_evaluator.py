@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
 from ..set_types import normalize_set_type
 from .training_goal import DEFAULT_GOAL, goal_value, goals_in
@@ -283,9 +283,10 @@ def context_calibrating(
     sequencia da comparabilidade (`comparability.comparable_run`): uma entrada
     por execucao (duas passagens na sessao = duas), de QUALQUER objetivo e
     contexto de fadiga, ate esta execucao inclusive, cortada nas ultimas
-    `VERDICT_LOOKBACK_EXPOSURES`. `context_window` = as sessoes INTEIRAS da
-    janela (sem o filtro por objetivo); ausente, vale `window`. Peso livre:
-    sempre `False`."""
+    `VERDICT_LOOKBACK_EXPOSURES`. `context_window` = as sessoes da janela
+    sem o filtro por objetivo (`SessionRecord.progression_view_all_goals`:
+    sem deload e sem aprimoramento de tecnica); ausente, vale `window`. Peso
+    livre: sempre `False`."""
     # import tardio: a janela do veredito mora na comparabilidade (dona da constante)
     from ..intelligence.dashboard.comparability import (
         VERDICT_LOOKBACK_EXPOSURES,
@@ -986,6 +987,38 @@ def evaluate_session(
     )
 
 
+def evaluate_history_steps(
+    sessions: Sequence[SessionRecord],
+    *,
+    inputs: SessionInputs,
+    window_size: int = 21,
+) -> Iterator[tuple[SessionRecord, Optional[EvaluationResult]]]:
+    """O encadeamento de `evaluate_history`, sessao a sessao: `(sessao,
+    resultado)` em ordem, `resultado` None na sessao PULADA. O replay de
+    diagnostico (`scripts/replay_diff_progressao.py`) le daqui o veredito de
+    cada trilha, com a MESMA janela.
+
+    A progressao ve `SessionRecord.progression_view_all_goals`: a sessao de
+    deload (M97 D) e a toda marcada como aprimoramento de tecnica (#196) nao
+    sao avaliadas e ficam na janela sem execucao; a execucao marcada sai so
+    ela. O teto de ativacao continua lendo as execucoes marcadas."""
+    # M97 D: o teto de ativacao do replay sem objetivo sempre viu o deload vazio
+    full = [replace(item, exercises=()) if item.is_deload and item.exercises else item for item in sessions]
+    viewed = [item.progression_view_all_goals() for item in full]
+    if any(a is not b for a, b in zip(full, viewed)):
+        inputs = _goal_inputs(inputs, {item.activity_id: item for item in full})
+    group_states: Mapping[int, GroupState] = {}
+    tracks: Mapping[tuple[int, int], TrackState] = {}
+    for index, session in enumerate(viewed):
+        if session.is_deload or (not session.exercises and full[index].exercises):
+            yield session, None
+            continue
+        window = viewed[max(0, index + 1 - window_size) : index + 1]
+        result = evaluate_session(session, window, group_states=group_states, tracks=tracks, inputs=inputs)
+        group_states, tracks = result.group_states, result.tracks
+        yield session, result
+
+
 def evaluate_history(
     sessions: Sequence[SessionRecord],
     *,
@@ -993,8 +1026,9 @@ def evaluate_history(
     window_size: int = 21,
 ) -> EvaluationResult:
     """Replay: avalia a historia inteira, sessao por sessao, com janela
-    deslizante de `window_size`. Rodar duas vezes com a mesma entrada da o
-    mesmo estado (a sequencia e sempre recalculada da janela).
+    deslizante de `window_size` (`evaluate_history_steps`). Rodar duas vezes
+    com a mesma entrada da o mesmo estado (a sequencia e sempre recalculada
+    da janela).
 
     `decisions` e a lista plana de todas as sessoes (compatibilidade);
     `session_decisions` traz as mesmas decisoes agrupadas pela sessao de
@@ -1003,16 +1037,10 @@ def evaluate_history(
     tracks: Mapping[tuple[int, int], TrackState] = {}
     decisions: list[ProgressionDecision] = []
     per_session: list[SessionDecisions] = []
-    # M97 D: sessao de deload nao e avaliada e fica na janela sem execucao.
-    sessions = [replace(item, exercises=()) if item.is_deload and item.exercises else item for item in sessions]
-    for index, session in enumerate(sessions):
-        if session.is_deload:
+    for session, result in evaluate_history_steps(sessions, inputs=inputs, window_size=window_size):
+        if result is None:
             per_session.append(SessionDecisions(activity_id=session.activity_id, decisions=()))
             continue
-        window = list(sessions[max(0, index + 1 - window_size) : index + 1])
-        result = evaluate_session(
-            session, window, group_states=group_states, tracks=tracks, inputs=inputs
-        )
         group_states, tracks = result.group_states, result.tracks
         decisions.extend(result.decisions)
         per_session.append(SessionDecisions(activity_id=session.activity_id, decisions=tuple(result.decisions)))
@@ -1123,16 +1151,27 @@ def evaluate_session_by_goal(
     M97 D: sessao de deload (`SessionRecord.is_deload`) e PULADA - nenhum
     objetivo e avaliado, nenhum estado muda (`skipped_reason`); e, na janela,
     as sessoes de deload nao tem execucao para a progressao
-    (`SessionRecord.progression_view`)."""
+    (`SessionRecord.progression_view`).
+
+    #196: a execucao marcada como aprimoramento de tecnica sai da progressao
+    e da calibracao (`progression_view*`); a sessao toda marcada e PULADA
+    como o deload (`form_practice.SKIP_REASON_FORM_PRACTICE`). O teto de
+    ativacao continua lendo a sessao inteira."""
     if session.is_deload:
         from .deload import SKIP_REASON_DELOAD
 
         return GoalEvaluation(results={}, skipped_reason=SKIP_REASON_DELOAD)
+    counted = session.progression_view_all_goals()
+    if session.exercises and not counted.exercises:
+        from .form_practice import SKIP_REASON_FORM_PRACTICE
+
+        return GoalEvaluation(results={}, skipped_reason=SKIP_REASON_FORM_PRACTICE)
     full_by_id = {item.activity_id: item for item in window}
     full_by_id[session.activity_id] = session
     goal_inputs = _goal_inputs(inputs, full_by_id)
+    calibration_window = [item.progression_view_all_goals() for item in window]
     results: dict[str, EvaluationResult] = {}
-    for goal in session.training_goals:
+    for goal in counted.training_goals:
         results[goal] = evaluate_session(
             session.progression_view(goal),
             [item.progression_view(goal) for item in window],
@@ -1141,7 +1180,7 @@ def evaluate_session_by_goal(
             inputs=goal_inputs,
             now=now,
             training_goal=goal,
-            context_window=[item.progression_view(None) if item.is_deload else item for item in window],
+            context_window=calibration_window,
         )
     return GoalEvaluation(results=results)
 
@@ -1159,11 +1198,14 @@ def evaluate_history_by_goal(
 
     M97 D: sessao de deload fica na janela sem execucao para a progressao
     (`SessionRecord.progression_view`) e nao e avaliada; sem deload no
-    historico, nada muda."""
+    historico, nada muda. #196: a execucao de aprimoramento de tecnica sai
+    do mesmo jeito, so ela (o teto de ativacao continua lendo-a)."""
     sessions = list(sessions)
     full_by_id = {item.activity_id: item for item in sessions}
     goal_inputs = _goal_inputs(inputs, full_by_id)
-    goals = goals_in(goal for item in sessions if not item.is_deload for goal in item.training_goals)
+    # calibracao de maquina: todos os objetivos, sem deload e sem aprimoramento de tecnica
+    every_goal = [item.progression_view_all_goals() for item in sessions]
+    goals = goals_in(goal for item in every_goal for goal in item.training_goals)
     results: dict[str, EvaluationResult] = {}
     for goal in goals:
         group_states: Mapping[int, GroupState] = {}
@@ -1171,8 +1213,6 @@ def evaluate_history_by_goal(
         decisions: list[ProgressionDecision] = []
         per_session: list[SessionDecisions] = []
         filtered = [item.progression_view(goal) for item in sessions]
-        # calibracao de maquina: todos os objetivos, deload sem execucao (como na janela do objetivo)
-        every_goal = [item.progression_view(None) if item.is_deload else item for item in sessions]
         for index, session in enumerate(filtered):
             if not session.exercises:
                 continue
