@@ -82,6 +82,8 @@ export type ProgressionSessionItem = {
    */
   deload_source?: string | null;
   deload_label?: string | null;
+  /** #196: sessão inteira de aprimoramento de técnica (e1RM nulo; fora da progressão). */
+  form_practice?: boolean;
 };
 
 /** Status de UMA transição entre exposições consecutivas (`compare_exposures`). */

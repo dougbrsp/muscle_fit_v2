@@ -31,7 +31,7 @@ const ACTIVITY_DETAIL = {
   exercises: [
     {
       id: 11, activity_id: 1, sequence: 1, original_name: 'Supino reto com barra', mapped_name: 'Supino reto', mapping_id: 1, muscle_primary: 'Peitoral',
-      equipment_name: 'Banco reto', workout_plan_exercise_id: 101, planned_mapping_id: 1,
+      equipment_name: 'Banco reto', workout_plan_exercise_id: 101, planned_mapping_id: 1, form_practice: false,
       sets: sets([
         { reps: 10, weight_kg: 80, rpe: 8 },
         { reps: 9, weight_kg: 80, rpe: 8.5 },
@@ -40,7 +40,7 @@ const ACTIVITY_DETAIL = {
     },
     {
       id: 12, activity_id: 1, sequence: 2, original_name: 'Rosca unilateral com halter', mapped_name: 'Rosca direta', mapping_id: 2, muscle_primary: 'Bíceps',
-      equipment_name: 'Halteres', workout_plan_exercise_id: 102, planned_mapping_id: 3, planned_exercise_name: 'Rosca martelo',
+      equipment_name: 'Halteres', workout_plan_exercise_id: 102, planned_mapping_id: 3, planned_exercise_name: 'Rosca martelo', form_practice: true,
       sets: sets([
         { reps: 10, weight_kg: 16, rpe: 8, reps_left: 10, reps_right: 9, rpe_left: 8, rpe_right: 8.5, sides_text: 'reps E 10 · D 9' },
         { reps: 9, weight_kg: 16, rpe: 9, reps_left: 10, reps_right: 9, rpe_left: 8.5, rpe_right: 9, sides_text: 'reps E 10 · D 9' },

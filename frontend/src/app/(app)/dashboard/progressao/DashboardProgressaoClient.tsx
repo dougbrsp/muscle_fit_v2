@@ -32,6 +32,7 @@ import {
   fetchProgressionTrend,
 } from '@/lib/dashboard-api';
 import { useDashboardFilters } from '@/lib/dashboard-filters';
+import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
@@ -313,6 +314,8 @@ export function DashboardProgressaoClient() {
                 {(chart.strengthPoints ?? 0) > 0 && ' Pontos destacados: sessões de força (o 1RM estimado é um só).'}
                 {(chart.deloadSessions ?? 0) > 0 &&
                   ` ${fmtInt(chart.deloadSessions ?? 0)} sessão(ões) de deload marcada(s), fora da linha do 1RM estimado.`}
+                {(chart.formPracticeSessions ?? 0) > 0 &&
+                  ` ${fmtInt(chart.formPracticeSessions ?? 0)} sessão(ões) de ${FORM_PRACTICE_LABEL.toLowerCase()} marcada(s), fora da linha do 1RM estimado.`}
               </Text>
               <div style={{ height: 300 }}>
                 <ProgressaoChart chartData={chartData} />
@@ -358,12 +361,17 @@ export function DashboardProgressaoClient() {
                               fora do veredito
                             </Text>
                           )}
-                          {(isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label) && (
+                          {(isHighlightedGoal(item.training_goal, defaultGoal) || item.deload_label || isFormPracticeRow(item)) && (
                             <Group gap={4} mt={2}>
                               <TrainingGoalBadge value={item.training_goal} onlyNonDefault size="xs" />
                               {item.deload_label && (
                                 <Badge size="xs" variant="outline" color="gray">
                                   {item.deload_label}
+                                </Badge>
+                              )}
+                              {isFormPracticeRow(item) && (
+                                <Badge size="xs" variant="outline" color="gray">
+                                  {FORM_PRACTICE_LABEL}
                                 </Badge>
                               )}
                             </Group>

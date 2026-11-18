@@ -15,6 +15,7 @@
  */
 
 import { fmtDate } from './dashboard-format';
+import { FORM_PRACTICE_LABEL, isFormPracticeRow } from './form-practice';
 import type { ProgressionSessionItem } from './dashboard-v2-types';
 
 export type ProgressionChartPoint = {
@@ -32,6 +33,9 @@ export type ProgressionChartPoint = {
   deloadLabel?: string | null;
   /** Issue #188: o veredito usou esta sessão (`in_verdict_run`); `false` em calibração. */
   inVerdict?: boolean;
+  /** #196: sessão de aprimoramento de técnica (não é deload); rótulo pronto. */
+  formPractice?: boolean;
+  formPracticeLabel?: string | null;
 };
 
 export type ProgressionChart = {
@@ -42,6 +46,8 @@ export type ProgressionChart = {
   unreliableE1rm: number;
   /** M97 F4: sessões de deload marcadas (fora da linha). */
   deloadSessions?: number;
+  /** #196: sessões de aprimoramento de técnica marcadas (fora da linha). */
+  formPracticeSessions?: number;
   /** M97 F4: pontos de força destacados. */
   strengthPoints?: number;
 };
@@ -79,15 +85,17 @@ export function buildProgressionChart(
   isHighlighted: (goal: string) => boolean = () => false,
 ): ProgressionChart {
   const runKnown = items.some((item) => item.in_context_run != null);
-  // M97 F4: a sessão de deload não entra na linha (o backend já manda o e1RM
-  // nulo e sem chave), mas fica no gráfico como MARCA, na ordem da tabela.
+  // M97 F4 / #196: a sessão de deload e a de técnica não entram na linha (sem
+  // exposição, o backend manda e1RM nulo e `in_context_run` nulo), mas ficam
+  // no gráfico como MARCA, na ordem da tabela.
   const inKey = runKnown
-    ? items.filter((item) => item.in_context_run === true || isDeloadSession(item))
+    ? items.filter((item) => item.in_context_run === true || isDeloadSession(item) || isFormPracticeRow(item))
     : [...items];
   let unreliableE1rm = 0;
   let strengthPoints = 0;
   const points = inKey.map((item, index) => {
     const deload = isDeloadSession(item);
+    const formPractice = !deload && isFormPracticeRow(item);
     const reliable = isSessionE1rmReliable(item);
     if (!deload && !reliable && item.e1rm != null) unreliableE1rm += 1;
     const e1rm = !deload && reliable ? item.e1rm : null;
@@ -96,15 +104,18 @@ export function buildProgressionChart(
     return {
       label: fmtDate(item.local_date),
       e1rm,
-      carga: deload ? null : sessionLoad(item),
+      carga: deload || formPractice ? null : sessionLoad(item),
       e1rmForca: strength ? e1rm : null,
       xKey: `${index}`,
       deload,
       deloadLabel: deload ? (item.deload_label ?? 'Deload') : null,
       inVerdict: item.in_verdict_run === true,
+      formPractice,
+      formPracticeLabel: formPractice ? FORM_PRACTICE_LABEL : null,
     };
   });
   const otherKeySessions = items.length - inKey.length;
   const markedDeloads = points.filter((point) => point.deload).length;
-  return { points, otherKeySessions, unreliableE1rm, deloadSessions: markedDeloads, strengthPoints };
+  const formPracticeSessions = points.filter((point) => point.formPractice).length;
+  return { points, otherKeySessions, unreliableE1rm, deloadSessions: markedDeloads, formPracticeSessions, strengthPoints };
 }

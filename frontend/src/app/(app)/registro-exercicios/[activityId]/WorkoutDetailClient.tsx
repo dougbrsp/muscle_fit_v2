@@ -40,6 +40,7 @@ import {
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
+import { FORM_PRACTICE_HELP, FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import {
@@ -946,6 +947,13 @@ export function WorkoutDetailClient() {
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       <Text span>{row.original_name}</Text>
+                      {isFormPracticeRow(row) && (
+                        <Tooltip label={FORM_PRACTICE_HELP} multiline w={260}>
+                          <Badge color="grape" variant="light">
+                            {FORM_PRACTICE_LABEL}
+                          </Badge>
+                        </Tooltip>
+                      )}
                       {row.workout_plan_exercise_id != null &&
                         row.planned_mapping_id != null &&
                         row.planned_mapping_id !== row.mapping_id && (

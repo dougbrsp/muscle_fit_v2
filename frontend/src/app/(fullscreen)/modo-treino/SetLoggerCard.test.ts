@@ -288,3 +288,15 @@ describe('M102: série unilateral (E/D)', () => {
     expect(render({})).not.toContain(marker);
   });
 });
+
+describe('SetLoggerCard — aprimoramento de técnica (#196)', () => {
+  it('mostra o selo quando o exercício é de técnica', () => {
+    const html = render({ formPractice: true });
+    expect(html).toContain('data-testid="execution-form-practice"');
+    expect(html).toContain('Aprimoramento de técnica');
+  });
+
+  it('sem a marcação, nenhum selo', () => {
+    expect(render({})).not.toContain('execution-form-practice');
+  });
+});

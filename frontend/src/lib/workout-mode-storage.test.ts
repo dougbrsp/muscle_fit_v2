@@ -53,6 +53,13 @@ describe('StoredWorkoutModeSession.briefed_keys — compatibilidade', () => {
     expect(Array.from(restoreBriefedKeys(loadStoredSession()))).toEqual(['wpe-1', 'mapping-9']);
   });
 
+  it('ida e volta: form_practice_plan_exercise_ids (#196); sessão antiga sem o campo', () => {
+    store.set('musclefit.workout-mode-session', OLD_SESSION_JSON);
+    expect(loadStoredSession()?.form_practice_plan_exercise_ids).toBeUndefined();
+    saveStoredSession({ session_id: 232, source: 'plan', form_practice_plan_exercise_ids: [7, 9] });
+    expect(loadStoredSession()?.form_practice_plan_exercise_ids).toEqual([7, 9]);
+  });
+
   it('valor estranho no storage não quebra: só strings não vazias', () => {
     expect(restoreBriefedKeys({ briefed_keys: 'wpe-1' as unknown as string[] }).size).toBe(0);
     expect(Array.from(restoreBriefedKeys({ briefed_keys: ['wpe-1', '', 3 as unknown as string] }))).toEqual(['wpe-1']);
