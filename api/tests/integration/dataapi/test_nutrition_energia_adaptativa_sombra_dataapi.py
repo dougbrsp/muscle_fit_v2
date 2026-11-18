@@ -100,8 +100,10 @@ def test_sombra_do_dashboard_identica_nos_dois_backends(usuarios, raw, monkeypat
         dia_da_forca = por_dia[primeira.isoformat()]
         assert dia_da_forca["confirmed"] is True and dia_da_forca["counted_activities"] == 1, backend
         atividade = dia_da_forca["activities"][0]
-        assert atividade["reported_kcal"] == 428.0 and 0 < atividade["active_kcal"] < 428.0, backend  # desconto do repouso
-        assert atividade["kind"] == "strength" and atividade["flags"] == ["reduced_precision"], backend
+        # ADR 0016: sem plano adaptativo vale o padrao ATIVA: a informada entra como veio, sem desconto e sem `reduced_precision`
+        # (antes: 0 < active < 428 e flags == ["reduced_precision"]). Ajuste por leitura, sem execucao (integracao nao roda local).
+        assert atividade["reported_kcal"] == 428.0 and atividade["active_kcal"] == 428.0, backend
+        assert atividade["kind"] == "strength" and atividade["flags"] == [], backend
         seguinte = por_dia[(primeira + _dt.timedelta(days=1)).isoformat()]
         assert seguinte["confirmed"] is True and seguinte["active_kcal"] == 0.0 and seguinte["activities"] == [], backend
         assert HOJE.isoformat() in por_dia and por_dia[HOJE.isoformat()]["confirmed"] is False  # hoje: pendente

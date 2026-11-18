@@ -105,6 +105,8 @@ CATALOG_ITEM_NATURE: Final[MealNature] = MealNature.DERIVED
 ESTIMATE_ITEM_NATURE: Final[MealNature] = MealNature.ESTIMATED
 # A confiança que a IA declara (só informativa: nenhuma decisão usa o valor).
 CONFIDENCE_RANGE: Final[tuple[float, float]] = (0.0, 1.0)
+# Decisão do usuário (2026-11-17): confiança da IA abaixo disto = "estimativa a conferir".
+LOW_CONFIDENCE_BELOW: Final[float] = 0.7
 
 
 class MatchStatus(str, Enum):
@@ -180,6 +182,11 @@ def normalize_confidence(value: Any) -> Optional[float]:
     if not math.isfinite(numero):
         return None
     return min(max(numero, CONFIDENCE_RANGE[0]), CONFIDENCE_RANGE[1])
+
+
+def is_low_confidence(confidence: Optional[float]) -> bool:
+    """Estritamente abaixo de `LOW_CONFIDENCE_BELOW`; ausente não marca."""
+    return confidence is not None and confidence < LOW_CONFIDENCE_BELOW
 
 
 def _text(value: Any) -> Optional[str]:
@@ -351,6 +358,8 @@ class ParsedItem:
             "candidates": [m.to_dict() for m in self.candidates],
             "food_id": self.food_id,
             "match_confidence": self.match_confidence,
+            # Pela confiança da IA (`ai.confidence`), não pela nota do casamento.
+            "low_confidence": is_low_confidence(self.ai.confidence),
             "quantity": self.quantity,
             "unit": self.unit.value,
             # Estimativa por 100 g (só os `ESTIMATE_FIELDS`): a proposta do item
@@ -483,6 +492,8 @@ __all__ = [
     "CATALOG_ITEM_NATURE",
     "CATALOG_CANDIDATE_STATUSES",
     "CONFIDENCE_RANGE",
+    "LOW_CONFIDENCE_BELOW",
+    "is_low_confidence",
     "ERR_DISPATCH_FAILED",
     "ERR_MATCH_FAILED",
     "ERR_PARSE_FAILED",

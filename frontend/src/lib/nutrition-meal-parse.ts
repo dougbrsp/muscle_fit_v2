@@ -24,6 +24,7 @@ export function editorItemFromParse(item: MealParseItem, key: string): MealEdito
     unit: item.unit,
     portion_id: null,
     usesEstimate: item.uses_estimate,
+    lowConfidence: item.low_confidence === true,
     estimate: item.estimate,
     choices: item.candidates,
     proposal: { quantity: item.quantity ?? '', unit: item.unit },

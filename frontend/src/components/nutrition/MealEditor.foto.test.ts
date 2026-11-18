@@ -259,6 +259,23 @@ describe('foto do prato: revisão no editor', () => {
     expect(revogadas).toEqual([criadas[0]]);
   });
 
+  it('low_confidence: selo só no item marcado; quantidade mantém; trocar o alimento remove; payload sem o campo', async () => {
+    const r = resultado('job-3', [
+      lido(0, { low_confidence: false }),
+      lido(1, { candidates: [FRANGO], food_id: null, match_confidence: null, quantity: 150, low_confidence: true }),
+    ]);
+    await montar(form(r));
+    const selos = () => Array.from(host.querySelectorAll('[data-testid="item-baixa-confianca"]'));
+    expect(selos()).toHaveLength(1);
+    expect(selos()[0].textContent).toBe('Estimativa a conferir');
+    await digitar(quantidades()[1], '170');
+    expect(selos()).toHaveLength(1);
+    await escolherFrango();
+    expect(selos()).toHaveLength(0);
+    await clicarBotao('Salvar refeição');
+    expect(JSON.stringify(createMeal.mock.calls[0][0])).not.toMatch(/low_?confidence/i);
+  });
+
   it('rascunho sem foto (texto/manual) não mostra a ação', async () => {
     await montar(form(PRIMEIRO, null));
     expect(botao('Ver foto')).toBeUndefined();

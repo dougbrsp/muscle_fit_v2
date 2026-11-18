@@ -792,7 +792,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v4",
+    "engine_version": "nutrition-v5",
     "sexes": [
       "male",
       "female",
@@ -1008,7 +1008,7 @@
     "adaptive_field_hints": {
       "activity_level": "No modo adaptativo este nível não entra na conta: a estimativa inicial usa o fator de rotina sedentária do motor e o gasto adaptativo vem dos seus registros.",
       "bmr_formula": "Usado apenas na estimativa inicial e para conferir se o gasto observado é plausível.",
-      "watch_calorie_mode": "Diz o que as calorias do relógio significam. Ativas: entram como vieram. Totais do exercício: o motor desconta o repouso que a sua TMB já contém. Não sei: são tratadas como totais (desconta o repouso) e o ajuste do dia fica com precisão reduzida."
+      "watch_calorie_mode": "Diz o que as calorias do relógio significam. Ativas (padrão): entram como vieram, porque o relógio já separa o repouso. Totais do exercício: o motor desconta o repouso que a sua TMB já contém. Não sei: são tratadas como totais (desconta o repouso) e o ajuste do dia fica com precisão reduzida."
     },
     "watch_calorie_modes": [
       "active",
@@ -1018,9 +1018,9 @@
     "watch_calorie_mode_labels": {
       "active": "Calorias ativas",
       "gross": "Calorias totais do exercício",
-      "unknown": "Não informado (tratado como total)"
+      "unknown": "Não sei (tratado como total)"
     },
-    "default_watch_calorie_mode": "unknown",
+    "default_watch_calorie_mode": "active",
     "intervals_sync_max_age_minutes": 2160,
     "default_tdee_mode": "explicit_training",
     "session_kinds": [
@@ -1113,7 +1113,7 @@
       "calorie_mode": {
         "active": "Calorias ativas",
         "gross": "Calorias totais do exercício",
-        "unknown": "Não informado (tratado como total)"
+        "unknown": "Não sei (tratado como total)"
       },
       "activity_flag": {
         "invalid_kcal": "Calorias ausentes ou inválidas: fora do total.",

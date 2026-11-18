@@ -142,9 +142,10 @@ def test_bloco_com_historico_e_atividades_normaliza_confirma_e_nao_conta_a_forca
     assert hoje["confirmed"] is False and hoje["active_kcal"] is None  # dia aberto: pendente, nunca zero
     assert ontem["confirmed"] is True and ontem["counted_activities"] == 1
     atividade = ontem["activities"][0]
-    assert atividade["kind"] == "strength" and atividade["calorie_mode"] == "unknown"
-    assert atividade["flags"] == ["reduced_precision"] and ontem["reduced_precision"] is True
-    assert atividade["reported_kcal"] == 428.0 and 0 < atividade["active_kcal"] < 428.0  # descontou o repouso
+    # ADR 0016: sem plano adaptativo (sombra) a kcal informada entra ativa, sem a marca de precisão reduzida.
+    assert atividade["kind"] == "strength" and atividade["calorie_mode"] == "active"
+    assert atividade["flags"] == [] and ontem["reduced_precision"] is False
+    assert atividade["reported_kcal"] == 428.0 and atividade["active_kcal"] == 428.0  # ADR 0016: ativa, sem desconto
     assert ontem["active_kcal"] == atividade["active_kcal"]
     assert dias[2]["confirmed"] is True and dias[2]["active_kcal"] == 0.0  # descanso confirmado
     json.dumps(bloco)  # serializável
@@ -209,7 +210,7 @@ def test_raw_activity_usa_decorrido_com_reserva_no_movimento_e_classifica_pelo_d
              "calories_kcal": Decimal("428.00")}
     bruta = svc_energy.raw_activity_of(linha)
     assert bruta.duration_seconds == 3600 and bruta.kind == "strength" and bruta.calories_kcal == 428.0
-    assert bruta.start == datetime(2026, 11, 3, 23, 30) and bruta.calorie_mode == "unknown" and bruta.external_id == "i7"
+    assert bruta.start == datetime(2026, 11, 3, 23, 30) and bruta.calorie_mode == "active" and bruta.external_id == "i7"
     sem_decorrido = svc_energy.raw_activity_of({**linha, "elapsed_time_seconds": None})
     assert sem_decorrido.duration_seconds == 1500
     sem_hora = svc_energy.raw_activity_of({**linha, "start_time": None})

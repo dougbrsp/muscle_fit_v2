@@ -423,8 +423,11 @@ def test_dia_passado_usa_a_serie_ate_hoje_como_o_historico_da_meta(db):
     """Medida posterior ao dia (TMB da balanca ontem): a TMB recente do desconto do repouso vem da serie ate HOJE."""
     _historico(db)
     dia = HOJE - timedelta(days=4)
-    db.add_intervals_row(ALUNO, dia, "WeightTraining", 500.0, start=datetime.combine(dia, datetime.min.time()) + timedelta(hours=18),
-                         elapsed=3600, synced_at=SYNC_UTC)
+    # ADR 0016: a kcal informada entra ATIVA por padrao (sem desconto, sem depender da TMB; antes: bruta com desconto). Para o
+    # teste continuar discriminando a serie (TMB recente) do desconto, a atividade e reclassificada como `gross`.
+    ident = db.add_intervals_row(ALUNO, dia, "WeightTraining", 500.0, start=datetime.combine(dia, datetime.min.time()) + timedelta(hours=18),
+                                 elapsed=3600, synced_at=SYNC_UTC)
+    db.corrections[(ALUNO, str(ident))] = {"action": "reclassify", "energy_kind": "gross"}
     db.composition.append({"id": 9001, "user_id": ALUNO, "local_date": ONTEM, "weight_kg": Decimal("120"), "body_fat_percent": None,
                            "muscle_mass_kg": None, "fat_free_mass_kg": None, "bmr_kcal": 3000})
     _gravar(db, _execucao(finished_at=SYNC_UTC - timedelta(days=6)), _execucao())

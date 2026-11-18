@@ -299,8 +299,10 @@ def test_plano_adaptativo_valida_e_so_aceita_gramas_manuais_fixed():
 def test_energy_params_so_entram_no_dict_e_no_hash_quando_saem_do_padrao():
     padrao = _plano()
     assert "energy_params" not in padrao.to_dict() and "energy_params" not in padrao.fingerprint_dict()
-    explicito = _plano(energy_params={"watch_calorie_mode": "unknown"})
+    explicito = _plano(energy_params={"watch_calorie_mode": "active"})  # ADR 0016: o padrão é `active`
     assert explicito.fingerprint_dict() == padrao.fingerprint_dict()
+    nao_sei = _plano(energy_params={"watch_calorie_mode": "unknown"})
+    assert nao_sei.fingerprint_dict() != padrao.fingerprint_dict()
     bruta = _plano(energy_params={"watch_calorie_mode": "gross"})
     assert bruta.to_dict()["energy_params"] == {"watch_calorie_mode": "gross"}
     assert bruta.fingerprint_dict() != padrao.fingerprint_dict()
@@ -315,8 +317,8 @@ def test_energy_params_invalidos(valor):
 def test_energy_params_fora_do_padrao_nao_valem_nos_modos_legados():
     r = build_plan_settings(strategy="maintenance", tdee_mode="explicit_training", energy_params={"watch_calorie_mode": "gross"})
     assert not r.ok and any(e == f"param_not_applicable:{FIELD_ENERGY_PARAMS}" for e in r.errors)
-    ok = build_plan_settings(strategy="maintenance", tdee_mode="explicit_training", energy_params={"watch_calorie_mode": "unknown"})
-    assert ok.ok
+    ok = build_plan_settings(strategy="maintenance", tdee_mode="explicit_training", energy_params={"watch_calorie_mode": "active"})
+    assert ok.ok  # ADR 0016: o padrão é `active`
 
 
 def test_fingerprint_dos_planos_legados_nao_muda():

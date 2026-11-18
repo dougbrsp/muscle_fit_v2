@@ -168,6 +168,11 @@ function ItemRow({
             {item.originLabel}
           </Badge>
         )}
+        {item.lowConfidence && (
+          <Badge size="xs" variant="light" color="yellow" leftSection={<IconAlertTriangle size={10} />} mb={8} data-testid="item-baixa-confianca">
+            Estimativa a conferir
+          </Badge>
+        )}
         <NumberInput
           label="Quantidade"
           value={item.quantity}
@@ -248,7 +253,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     return () => URL.revokeObjectURL(url);
   }, [foto]);
 
-  const corpo =mealCreatePayload(form);
+  const corpo = mealCreatePayload(form);
   const corpoPreview: MealPreviewPayload | null = mealPreviewPayload(form, meal?.id);
   const [previewDebounced] = useDebouncedValue(corpoPreview ? JSON.stringify(corpoPreview) : null, ATRASO_DO_PREVIEW_MS);
   const preview = useQuery({

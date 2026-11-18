@@ -1566,7 +1566,7 @@ PADROES: tuple[Padrao, ...] = (
         # do JSON gerado e decide pelos campos do resultado, não por número.
         regex=re.compile(
             # Com prefixo também (`MEAL_PARSE_TEXT_MAX_CHARS = 1000` no FE), revisão do guardião.
-            r"\b\w*(?:TEXT_MAX_CHARS|CANDIDATES_PER_ITEM|ITEM_LABEL_MAX_CHARS|CONFIDENCE_RANGE)"
+            r"\b\w*(?:TEXT_MAX_CHARS|CANDIDATES_PER_ITEM|ITEM_LABEL_MAX_CHARS|CONFIDENCE_RANGE|LOW_CONFIDENCE_BELOW)"
             r"\s*(?::[^=\n]+)?=\s*[\d(\[]"
             r"|\b\w*(?:AI_UNITS|ESTIMATE_FIELDS|ESTIMATE_REQUIRED_FIELDS|ESTIMATE_KEY|CATALOG_CANDIDATE_STATUSES"
             r"|UNSTATED_QUANTITY_UNIT|ESTIMATE_BASIS)"
