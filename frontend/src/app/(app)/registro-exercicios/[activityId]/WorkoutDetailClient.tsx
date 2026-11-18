@@ -40,7 +40,12 @@ import {
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
-import { FORM_PRACTICE_HELP, FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
+import {
+  FORM_PRACTICE_HELP,
+  FORM_PRACTICE_LABEL,
+  FORM_PRACTICE_REGISTRO_HELP,
+  isFormPracticeRow,
+} from '@/lib/form-practice';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import {
@@ -49,6 +54,7 @@ import {
   dropSet,
   emptyExerciseForm,
   headerMetaPayload,
+  PROGRESSION_QUERY_KEYS,
   saveExerciseLog,
   updateSetField,
 } from '@/lib/exercise-log-save';
@@ -395,6 +401,7 @@ export function WorkoutDetailClient() {
       setEditingExerciseId(null);
       setForm(emptyExerciseForm());
       await refreshActivity();
+      await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
 
@@ -463,6 +470,7 @@ export function WorkoutDetailClient() {
       workout_plan_exercise_id: row.workout_plan_exercise_id ? String(row.workout_plan_exercise_id) : '',
       muscle_pain: row.muscle_pain ?? null,
       joint_pain: Boolean(row.joint_pain),
+      form_practice: isFormPracticeRow(row),
       sets: row.sets.map(setFormFromRow),
     });
   }
@@ -490,6 +498,7 @@ export function WorkoutDetailClient() {
         planExercise.workout_plan_exercise_id != null ? String(planExercise.workout_plan_exercise_id) : '',
       muscle_pain: null,
       joint_pain: false,
+      form_practice: false,
       sets: [defaultNewSet()],
     });
   }
@@ -760,6 +769,15 @@ export function WorkoutDetailClient() {
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
                 setForm((c) => ({ ...c, joint_pain: checked }));
+              }}
+            />
+            <Switch
+              label={FORM_PRACTICE_LABEL}
+              description={FORM_PRACTICE_REGISTRO_HELP}
+              checked={form.form_practice}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setForm((c) => ({ ...c, form_practice: checked }));
               }}
             />
           </Group>

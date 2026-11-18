@@ -336,6 +336,7 @@ export type ExerciseFormState = {
   workout_plan_exercise_id: string;
   muscle_pain: number | null;
   joint_pain: boolean;
+  form_practice: boolean;
   sets: Array<{
     set_number: number;
     // `null` só em série por tempo (Lote T5).

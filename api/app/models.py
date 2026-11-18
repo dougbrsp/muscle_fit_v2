@@ -184,6 +184,8 @@ class ExerciseLogUpdateIn(BaseModel):
     # Ver ExerciseIn.muscle_pain/joint_pain (mesma semantica, opcional aqui).
     muscle_pain: Optional[int] = Field(default=None, ge=0, le=10)
     joint_pain: Optional[bool] = None
+    # Aprimoramento de técnica (#205): None/omitido preserva a marca gravada.
+    form_practice: Optional[bool] = None
     sets: list[ExerciseSetUpdateIn] = Field(default_factory=list)
 
 

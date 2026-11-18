@@ -10,6 +10,10 @@ export const FORM_PRACTICE_LABEL = 'Aprimoramento de técnica';
 
 export const FORM_PRACTICE_HELP = 'A execução fica no histórico e não conta para a progressão.';
 
+/** Ajuda do campo no Registro de exercícios (treino já encerrado). */
+export const FORM_PRACTICE_REGISTRO_HELP =
+  'Fica no histórico e não conta para a progressão. Ao mudar, a progressão é reavaliada.';
+
 type PendingSession = Pick<StoredWorkoutModeSession, 'form_practice_plan_exercise_ids'> | null | undefined;
 
 /** Id do item da ficha: continuação (id sintético) resolve para o id ORIGINAL. */
