@@ -28,9 +28,9 @@ type StoredSet = { set_number: number; client_key: string; body: Record<string, 
 
 export type MockWorkoutApi = {
   /** Chamadas `POST .../sets` recebidas (inclui as recusadas por falha forcada). */
-  setPosts: Array<{ client_key: string; status: number }>;
+  setPosts: Array<{ client_key: string; status: number; exercise_form_practice?: unknown }>;
   /** Chamadas `POST .../exercises` recebidas (client_key, plan item). */
-  exercisePosts: Array<{ client_key: string | null; workout_plan_exercise_id: unknown; duplicate: boolean }>;
+  exercisePosts: Array<{ client_key: string | null; workout_plan_exercise_id: unknown; duplicate: boolean; form_practice?: unknown }>;
   /** Series efetivamente gravadas no "servidor" para o Supino (dedupe por client_key). */
   serverSets: () => StoredSet[];
   /** Series gravadas do Crucifixo (exercicio criado offline nos cenarios). */
@@ -186,7 +186,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         return send(404, { detail: 'e2e: item de ficha desconhecido' });
       }
       const existing = clientKey ? exercisesByKey.get(clientKey) : undefined;
-      exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null });
+      exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null, form_practice: body.form_practice });
       if (clientKey && existing == null) exercisesByKey.set(clientKey, meta.id);
       createdExercises.add(meta.id);
       if (existing == null) formPracticeOf.set(meta.id, body.form_practice === true);
@@ -235,7 +235,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       const setNumber = Number(body.set_number ?? bucket.size + 1);
       bucket.set(clientKey, { set_number: setNumber, client_key: clientKey, body });
       if (exerciseId === FST_EXERCISE_ID) fstBodies.push(body);
-      setPosts.push({ client_key: clientKey, status: 200 });
+      setPosts.push({ client_key: clientKey, status: 200, exercise_form_practice: body.exercise_form_practice });
       return send(200, { status: 'ok', set_number: setNumber, client_key: clientKey, duplicate: false });
     }
 

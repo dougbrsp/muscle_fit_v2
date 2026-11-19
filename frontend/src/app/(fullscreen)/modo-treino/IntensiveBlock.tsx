@@ -1,7 +1,8 @@
 'use client';
 
-import { IconArrowsExchange, IconPlayerSkipForward, IconPlayerStop } from '@tabler/icons-react';
+import { IconArrowsExchange, IconPlayerSkipForward, IconPlayerStop, IconTarget } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
+import { FORM_PRACTICE_LABEL } from '@/lib/form-practice';
 import { formatWeight, type WeightUnit } from '@/lib/weight-units';
 import {
   clampReducedReps,
@@ -43,6 +44,10 @@ export type IntensiveBlockProps = {
   onSkipExercise: () => void;
   /** Falha do último PATCH de reps; vive no bloco, não no stepper (que some com o descanso). */
   correctionError?: string | null;
+  /** #213: marca atual e ação de alternar; `formPracticeLocked` vem do servidor. Ausente = sem ação. */
+  formPractice?: boolean;
+  onToggleFormPractice?: () => void;
+  formPracticeLocked?: boolean;
 };
 
 /**
@@ -69,6 +74,9 @@ export function IntensiveBlock({
   onSwap,
   onSkipExercise,
   correctionError = null,
+  formPractice = false,
+  onToggleFormPractice,
+  formPracticeLocked = false,
 }: IntensiveBlockProps) {
   const swapAction: WorkoutIconAction[] = onSwap
     ? [
@@ -82,6 +90,19 @@ export function IntensiveBlock({
         },
       ]
     : [];
+  // #213: marca/desmarca o aprimoramento de técnica até a 1ª série de trabalho (travado pelo servidor).
+  if (onToggleFormPractice) {
+    swapAction.push({
+      key: 'form-practice',
+      label: FORM_PRACTICE_LABEL,
+      caption: 'Técnica',
+      icon: <IconTarget size={20} />,
+      onClick: onToggleFormPractice,
+      disabled: formPracticeLocked,
+      active: formPractice,
+      testId: 'execution-form-practice-toggle',
+    });
+  }
   const skipAction: WorkoutIconAction = {
     key: 'skip',
     label: 'Pular exercício',

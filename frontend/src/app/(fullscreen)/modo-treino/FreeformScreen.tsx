@@ -19,6 +19,12 @@ import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPlayerStop } from '@ta
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
+import {
+  type FormPracticeMark,
+  exerciseFormPracticeField,
+  formPracticeCreateField,
+  formPracticeStateFromSetResponse,
+} from '@/lib/form-practice';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import {
   EQUIPMENT_EXERCISE_PREFERENCES_PATH,
@@ -252,6 +258,12 @@ export function FreeformScreen({
   // recebe kg.
   const { unit: weightUnit, setUnit: setWeightUnit } = useWeightUnit();
 
+  // #213: marca de técnica do exercício atual; `locked` vem do servidor (resposta de série).
+  const [formPracticeState, setFormPracticeState] = useState<FormPracticeMark>({ marked: false, locked: false });
+  function freeContinuationMark(option: ExerciseOption): boolean {
+    return selectedExercise?.mapping_id === option.mapping_id && formPracticeState.marked;
+  }
+
   const pickExerciseMutation = useMutation({
     mutationFn: async (option: ExerciseOption) => {
       // Sugestão de progressão é best-effort: sem histórico (404) o
@@ -268,12 +280,16 @@ export function FreeformScreen({
           original_name: option.exercise_name,
           mapping_id: option.mapping_id,
           equipment_id: option.link_id,
+          // #213: troca de equipamento do MESMO exercício continua a marca vigente (sem item da ficha
+          // para herdar no servidor); outro exercício começa desmarcado.
+          ...formPracticeCreateField(freeContinuationMark(option)),
         }),
       });
 
       return { created, suggestion };
     },
     onSuccess: ({ created, suggestion }, option) => {
+      setFormPracticeState({ marked: freeContinuationMark(option), locked: false });
       setSelectedExercise(option);
       setSessionExerciseId(created.exercise_id);
       setSuggested(suggestion);
@@ -291,9 +307,12 @@ export function FreeformScreen({
       if (!sessionExerciseId) throw new ApiError('Exercício não iniciado nesta sessão.', 0);
       const setNumber = loggedSets.length + 1;
       const previousSets = loggedSets;
-      await apiFetch(`/workout-sessions/${sessionId}/exercises/${sessionExerciseId}/sets`, {
+      const saved = await apiFetch<{ form_practice?: boolean | null; form_practice_locked?: boolean | null }>(
+        `/workout-sessions/${sessionId}/exercises/${sessionExerciseId}/sets`,
+        {
         method: 'POST',
         body: JSON.stringify({
+          ...exerciseFormPracticeField(formPracticeState),
           set_number: setNumber,
           ...(values.set_type ? { set_type: values.set_type } : {}),
           reps: values.reps,
@@ -307,6 +326,8 @@ export function FreeformScreen({
           notes: values.notes,
         }),
       });
+      const serverState = formPracticeStateFromSetResponse(saved);
+      if (serverState) setFormPracticeState(serverState);
       return { setNumber, values, previousSets };
     },
     onSuccess: ({ setNumber, values, previousSets }) => {
@@ -670,6 +691,10 @@ export function FreeformScreen({
           )}
           <SetLoggerCard
             exerciseName={selectedExercise.exercise_name}
+            formPractice={formPracticeState.marked}
+            formPracticeLocked={formPracticeState.locked}
+            onToggleFormPractice={() => setFormPracticeState((prev) => ({ ...prev, marked: !prev.marked }))}
+            onFinishWorkout={requestFinish}
             equipmentName={selectedEquipment?.equipment_name}
             equipmentPhotoUrl={equipmentPhotoUrl}
             muscleGroup={selectedExercise.primary_group}

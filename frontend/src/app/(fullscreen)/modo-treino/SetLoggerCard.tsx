@@ -38,6 +38,7 @@ import {
   IconPlus,
   IconRepeat,
   IconSparkles,
+  IconFlag,
   IconTarget,
   IconTool,
 } from '@tabler/icons-react';
@@ -439,6 +440,11 @@ type Props = {
   goalBadge?: ReactNode;
   // #196: exercício de aprimoramento de técnica (marcação da sessão/servidor): selo no título.
   formPractice?: boolean;
+  // #213: alterna a marca até a 1ª série de trabalho; `formPracticeLocked` vem do servidor. Ausente = sem ação.
+  onToggleFormPractice?: () => void;
+  formPracticeLocked?: boolean;
+  // #213: "Encerrar treino" entre séries (mesmo `requestFinish` da tela de quem chama). Ausente = sem ação.
+  onFinishWorkout?: () => void;
   // M102: exercício unilateral (`is_unilateral` do catálogo). Na série de
   // trabalho/backoff do card padrão, reps e RPE viram duas colunas (E/D), com a
   // carga única. Técnicas avançadas e o Modo Intensivo ficam com valor único (v1).
@@ -686,6 +692,9 @@ export function SetLoggerCard({
   beforeActions = null,
   goalBadge = null,
   formPractice = false,
+  onToggleFormPractice,
+  formPracticeLocked = false,
+  onFinishWorkout,
   unilateral = false,
 }: Props) {
   // Lote T5: formato do card pela medida (núcleo do Modo Treino). Em reps,
@@ -826,6 +835,28 @@ export function SetLoggerCard({
       icon: <IconPlayerStop size={20} />,
       onClick: onFinishExercise,
       testId: 'execution-finish-exercise',
+    });
+  }
+  if (onToggleFormPractice) {
+    exerciseActions.push({
+      key: 'form-practice',
+      label: FORM_PRACTICE_LABEL,
+      caption: 'Técnica',
+      icon: <IconTarget size={20} />,
+      onClick: onToggleFormPractice,
+      disabled: formPracticeLocked,
+      active: formPractice,
+      testId: 'execution-form-practice-toggle',
+    });
+  }
+  if (onFinishWorkout) {
+    exerciseActions.push({
+      key: 'finish-workout',
+      label: 'Encerrar treino',
+      caption: 'Treino',
+      icon: <IconFlag size={20} />,
+      onClick: onFinishWorkout,
+      testId: 'execution-finish-workout',
     });
   }
 

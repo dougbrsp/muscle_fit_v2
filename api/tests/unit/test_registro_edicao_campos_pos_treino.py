@@ -97,7 +97,7 @@ class _PainCur(_Cur):
         super().execute(sql, params)
         if flat.startswith("UPDATE exercises SET original_name"):
             self.row_pain = [params[-5], params[-4]]
-        elif flat.startswith("SELECT MAX(muscle_pain)"):
+        elif flat.startswith("SELECT NULLIF(MAX(muscle_pain), 0)"):
             self._result = [{"muscle_pain": self.set_pain[0], "joint_pain": self.set_pain[1]}]
         elif flat.startswith("UPDATE exercises SET muscle_pain = COALESCE"):
             m, j, _ = params

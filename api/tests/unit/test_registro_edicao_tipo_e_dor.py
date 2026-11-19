@@ -102,7 +102,7 @@ class _Cur:
 def test_rollup_dor_usa_o_maximo_das_series_confirmadas():
     cur = _Cur({"muscle_pain": 4, "joint_pain": 2})
     rollup_exercise_pain(cur, 7)
-    assert "MAX(muscle_pain)" in cur.calls[0][0] and "reps_pending = 0" in cur.calls[0][0]
+    assert "NULLIF(MAX(muscle_pain), 0)" in cur.calls[0][0] and "NULLIF(MAX(joint_pain), 0)" in cur.calls[0][0] and "reps_pending = 0" in cur.calls[0][0]
     assert cur.calls[1][1] == (4, 2, 7) and "COALESCE" in cur.calls[1][0]
 
 

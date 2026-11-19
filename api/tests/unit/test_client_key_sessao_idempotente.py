@@ -111,6 +111,8 @@ class FakeSessionDB(NullContext):
         elif flat.startswith("SELECT set_number, set_type, reps, weight_kg, rpe, muscle_pain"):
             pool = self.sets + (self.hidden_sets if locking else [])
             self._result = next((dict(s) for s in pool if s["exercise_id"] == p[0] and s["client_key"] == p[1]), None)
+        elif flat.startswith("SELECT COUNT(*) AS n FROM exercise_sets es"):
+            self._result = {"n": sum(1 for s in self.sets if s["exercise_id"] == p[0] and s["set_type"] in ("", "working"))}
         elif "COALESCE(MAX(set_number), 0) + 1" in flat:
             self._result = {"n": 1 + max((s["set_number"] for s in self.sets if s["exercise_id"] == p[0]), default=0)}
         elif flat.startswith("INSERT INTO exercises "):

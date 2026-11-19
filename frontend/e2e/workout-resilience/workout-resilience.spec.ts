@@ -76,6 +76,19 @@ test('migra a sessao legada para o IndexedDB do usuario e remove a chave antiga'
   expect(await page.evaluate(() => window.localStorage.getItem('musclefit.workout-mode-session'))).toBeNull();
 });
 
+test('marcar Aprimoramento de tecnica na apresentacao: o POST de criacao do exercicio leva form_practice true', async ({ page }) => {
+  await page.goto('/modo-treino/');
+  const start = page.getByRole('button', { name: 'Iniciar exercício' });
+  await expect(start).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('briefing-form-practice').click();
+  await expect(page.getByTestId('briefing-form-practice-on')).toBeVisible();
+  await start.click();
+  await expect(page.getByTestId('set-save')).toBeVisible();
+  await logSet(page, 10, 40);
+  await expect(page.getByTestId('rest-clock')).toBeVisible();
+  expect(api.exercisePosts.at(0)?.form_practice).toBe(true);
+});
+
 test('registra serie, descanso, vai ao segundo plano e volta com dados integros e cronometro correto', async ({ page }) => {
   await page.clock.install();
   await openWorkout(page);

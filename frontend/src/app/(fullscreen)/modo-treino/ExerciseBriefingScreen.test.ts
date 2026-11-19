@@ -7,6 +7,7 @@ import { buildBriefingSections, groupMusclesByRole, parseExecutionDescription } 
 import type { ExerciseBriefingResponse } from '@/lib/exercise-briefing-types';
 import parity from '@/lib/training-goal.parity.json';
 import type { DeloadPrescription } from '@/lib/deload';
+import { exerciseFormPracticeField, formPracticeCreateField } from '@/lib/form-practice';
 import { theme } from '@/theme';
 import { BriefingInstructions, ExerciseBriefingView, resolveFormPracticeState } from './ExerciseBriefingScreen';
 
@@ -372,18 +373,73 @@ describe('resolveFormPracticeState (#196)', () => {
   const base = { midExerciseExtras: [], loggedRow: null, loggedExercises: [], pendingIds: [] as number[] };
 
   it('sem linha: vale a marcação pendente e não trava', () => {
-    expect(resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false });
-    expect(resolveFormPracticeState({ ...base, planExerciseId: 10 })).toEqual({ itemId: 10, marked: false, locked: false });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false, onServer: false });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10 })).toEqual({ itemId: 10, marked: false, locked: false, onServer: false });
   });
 
-  it('com linha do servidor: vale a linha e trava, mesmo com pendente divergente', () => {
-    const r = resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10], loggedRow: { form_practice: false } });
-    expect(r).toEqual({ itemId: 10, marked: false, locked: true });
+  it('com linha só de aquecimento: vale a linha e NÃO trava (#213)', () => {
+    const loggedRow = { form_practice: false, sets: [{ set_type: 'warmup' }, { set_type: 'feeler' }] };
+    const r = resolveFormPracticeState({ ...base, planExerciseId: 10, pendingIds: [10], loggedRow });
+    expect(r).toEqual({ itemId: 10, marked: false, locked: false, onServer: true });
   });
 
-  it('continuação: usa o item original (marca e trava pela linha dele)', () => {
+  it('com série de trabalho na linha: trava', () => {
+    const loggedRow = { form_practice: true, sets: [{ set_type: 'warmup' }, { set_type: 'working' }] };
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10, loggedRow })).toEqual({ itemId: 10, marked: true, locked: true, onServer: true });
+  });
+
+  it('resposta do servidor decide marca e travamento, e vence a linha local', () => {
+    const loggedRow = { id: 10, form_practice: false, sets: [{ set_type: 'warmup' }] };
+    const open = resolveFormPracticeState({ ...base, planExerciseId: 10, loggedRow, serverStates: { 10: { exerciseId: 10, marked: true, locked: false } } });
+    expect(open).toEqual({ itemId: 10, marked: true, locked: false, onServer: true });
+    const locked = resolveFormPracticeState({ ...base, planExerciseId: 10, loggedRow, serverStates: { 10: { exerciseId: 10, marked: false, locked: true } } });
+    expect(locked).toEqual({ itemId: 10, marked: false, locked: true, onServer: true });
+  });
+
+  it('continuação: herda a marca do item original e nunca nasce travada', () => {
     const rows = [{ workout_plan_exercise_id: 10, form_practice: true }];
-    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows })).toEqual({ itemId: 10, marked: true, locked: true });
-    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows })).toEqual({ itemId: 10, marked: true, locked: false, onServer: false });
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, pendingIds: [10] })).toEqual({ itemId: 10, marked: true, locked: false, onServer: false });
+  });
+
+  it('estado do servidor do exercício original não trava a continuação (achado 1)', () => {
+    const rows = [{ id: 10, workout_plan_exercise_id: 10, form_practice: true }];
+    const serverStates = { 10: { exerciseId: 10, marked: true, locked: true } };
+    // (a) continuação sem linha: ignora o estado, herda a marca, destravada
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows, serverStates }))
+      .toEqual({ itemId: 10, marked: true, locked: false, onServer: false });
+    // (b) o mesmo estado com a linha do exercício 10: travado
+    expect(resolveFormPracticeState({ ...base, planExerciseId: 10, loggedRow: rows[0], serverStates }))
+      .toEqual({ itemId: 10, marked: true, locked: true, onServer: true });
+    // (c) estado de outro exercício: usa a linha 11
+    const row11 = { id: 11, form_practice: false, sets: [] };
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedRow: row11, serverStates }))
+      .toEqual({ itemId: 10, marked: false, locked: false, onServer: true });
+  });
+
+  it('(d) desmarcar a continuação antes de criá-la: a criação leva form_practice false', () => {
+    const rows = [{ id: 10, workout_plan_exercise_id: 10, form_practice: true }];
+    const r = resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows, continuationChoices: { [-1]: false } });
+    expect(r).toEqual({ itemId: 10, marked: false, locked: false, onServer: false });
+    expect(formPracticeCreateField(r.marked)).toEqual({ form_practice: false });
+  });
+
+  it('criado e sem linha local ainda: vale o estado do servidor para o id atual (#213)', () => {
+    const open = resolveFormPracticeState({ ...base, planExerciseId: 10, currentExerciseId: 10, serverStates: { 10: { exerciseId: 10, marked: true, locked: false } } });
+    expect(open).toEqual({ itemId: 10, marked: true, locked: false, onServer: true });
+    // o 2º aquecimento leva true, não false
+    expect(exerciseFormPracticeField(open)).toEqual({ exercise_form_practice: true });
+    const locked = resolveFormPracticeState({ ...base, planExerciseId: 10, currentExerciseId: 10, serverStates: { 10: { exerciseId: 10, marked: true, locked: true } } });
+    expect(locked).toEqual({ itemId: 10, marked: true, locked: true, onServer: true });
+  });
+
+  it('continuação não criada nunca trava; criada vale o estado dela', () => {
+    const rows = [{ id: 10, workout_plan_exercise_id: 10, form_practice: true }];
+    const original = { 10: { exerciseId: 10, marked: true, locked: true } };
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, midExerciseExtras: extras, loggedExercises: rows, serverStates: original }))
+      .toEqual({ itemId: 10, marked: true, locked: false, onServer: false });
+    const own = { 10: { exerciseId: 11, marked: false, locked: false } };
+    expect(resolveFormPracticeState({ ...base, planExerciseId: -1, currentExerciseId: 11, midExerciseExtras: extras, loggedExercises: rows, serverStates: own }))
+      .toEqual({ itemId: 10, marked: false, locked: false, onServer: true });
   });
 });

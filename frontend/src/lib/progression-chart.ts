@@ -52,6 +52,13 @@ export type ProgressionChart = {
   strengthPoints?: number;
 };
 
+/** Nota do gráfico sobre sessões de técnica marcadas (singular/plural); vazio quando não há. */
+export function formPracticeSessionsNote(count: number | undefined): string {
+  if (!count || count <= 0) return '';
+  const one = count === 1;
+  return `${count.toLocaleString('pt-BR')} ${one ? 'sessão' : 'sessões'} de ${FORM_PRACTICE_LABEL.toLowerCase()} ${one ? 'marcada' : 'marcadas'}, fora da linha do 1RM estimado.`;
+}
+
 /** M97 F4: a sessão é de deload? (marca pronta do backend). */
 export function isDeloadSession(item: Pick<ProgressionSessionItem, 'deload_source'>): boolean {
   return item.deload_source != null && item.deload_source !== '';

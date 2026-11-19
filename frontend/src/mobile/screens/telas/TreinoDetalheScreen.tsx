@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
+import { FinishWorkoutConfirmModal } from '@/app/(fullscreen)/modo-treino/FinishWorkoutConfirmModal';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import { ApiError, apiFetch } from '@/lib/api';
 import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
@@ -95,6 +96,7 @@ export function TreinoDetalheScreen() {
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
   const [selectedRow, setSelectedRow] = useState<ExerciseLogRow | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [finishConfirmOpen, { open: openFinishConfirm, close: closeFinishConfirm }] = useDisclosure(false);
   const [headerEditOpen, { open: openHeaderEdit, close: closeHeaderEdit }] = useDisclosure(false);
   const [caloriesOpen, setCaloriesOpen] = useState(false);
   const [caloriesDraft, setCaloriesDraft] = useState<number | ''>('');
@@ -270,6 +272,7 @@ export function TreinoDetalheScreen() {
   const finishMutation = useMutation({
     mutationFn: async () => finishWorkoutSession(activityId),
     onSuccess: async () => {
+      closeFinishConfirm();
       await refreshActivity();
     },
   });
@@ -440,7 +443,7 @@ export function TreinoDetalheScreen() {
   };
   const formSetDisplay = describeSets(form.sets);
   // Só exibição: o servidor grava o máximo das séries (`rollup_exercise_pain`).
-  const setPain = setPainRollup(form.sets);
+  const setPain = setPainRollup(form.sets, form);
   const kcal = activity.calories_kcal == null ? null : Number(activity.calories_kcal);
   const when = [
     formatDateOrDash(activity.local_date) + (extractTime(activity.started_at) ? ` às ${extractTime(activity.started_at)}` : ''),
@@ -652,7 +655,7 @@ export function TreinoDetalheScreen() {
           <NumberInput
             size="md"
             label="Dor muscular (0-10)"
-            description={setPain.muscle_pain != null ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: dor muscular residual sentida neste exercício'}
+            description={setPain.derived_muscle ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: dor muscular residual sentida neste exercício'}
             min={0}
             max={10}
             step={1}
@@ -661,15 +664,15 @@ export function TreinoDetalheScreen() {
             value={(setPain.muscle_pain ?? form.muscle_pain) ?? undefined}
             onChange={(value) => setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))}
             clampBehavior="strict"
-            readOnly={setPain.muscle_pain != null}
-            disabled={setPain.muscle_pain != null}
+            readOnly={setPain.derived_muscle}
+            disabled={setPain.derived_muscle}
           />
           <Switch
             size="md"
             label="Dor articular"
-            description={setPain.joint_pain != null ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: reportou dor articular neste exercício'}
+            description={setPain.derived_joint ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: reportou dor articular neste exercício'}
             checked={setPain.joint_pain ?? form.joint_pain}
-            disabled={setPain.joint_pain != null}
+            disabled={setPain.derived_joint}
             onChange={(event) => {
               const checked = event.currentTarget.checked;
               setForm((c) => ({ ...c, joint_pain: checked }));
@@ -772,9 +775,24 @@ export function TreinoDetalheScreen() {
             icon={IconCheck}
             title="Finalizar treino"
             subtitle={finishMutation.isError ? String(finishMutation.error) : finishMutation.isPending ? 'Finalizando...' : undefined}
-            onClick={finishMutation.isPending ? undefined : () => finishMutation.mutate()}
+            onClick={
+              finishMutation.isPending
+                ? undefined
+                : () => {
+                    finishMutation.reset();
+                    openFinishConfirm();
+                  }
+            }
           />
         ) : null}
+        <FinishWorkoutConfirmModal
+          opened={finishConfirmOpen}
+          finishing={finishMutation.isPending}
+          error={finishMutation.isError ? 'Não foi possível finalizar o treino.' : null}
+          onConfirm={() => finishMutation.mutate()}
+          onCancel={closeFinishConfirm}
+          cancelLabel="Voltar"
+        />
         {deloadStatus ? (
           <ListBlock>
             <Switch

@@ -134,23 +134,32 @@ def _evaluate_set_engine(payload: dict[str, Any], user_id: Any) -> PairEngineCon
     default do motor: a IA segue, so sem decisao pronta (e e instruida a nao
     sugerir progressao)."""
 
+    def _marked(conn):
+        return read_exercise_form_practice(conn, user_id, payload.get("exercise_id"))
+
     def _read():
+        # Uma transacao so: o contexto do par e a marca (#196). A marca e da
+        # linha do payload (`exercise_id`, onde a serie foi salva; a linha do
+        # par so existe para item da ficha). Sem `exercise_id` nao ha leitura;
+        # falha so da marca = nao marcada, com o evento proprio, sem perder o par.
         with transaction() as conn:
-            return load_pair_context(conn, user_id, payload.get("mapping_id"), payload.get("equipment_id"))
+            # Falha do par = contexto padrao, e a marca ainda e lida (senao a
+            # execucao marcada seria avaliada como normal).
+            context = safe_read(
+                load_pair_context,
+                conn,
+                user_id,
+                payload.get("mapping_id"),
+                payload.get("equipment_id"),
+                default=PairEngineContext(step_kg=equipment_step_kg(None)),
+            )
+            if payload.get("exercise_id") is not None and safe_read(
+                _marked, conn, default=False, event="evaluate_set.form_practice_failed"
+            ):
+                context = replace(context, form_practice_marked=True)
+            return context
 
-    def _marked():
-        with transaction() as conn:
-            return read_exercise_form_practice(conn, user_id, payload.get("exercise_id"))
-
-    context = safe_read(_read, default=PairEngineContext(step_kg=equipment_step_kg(None)))
-    # #196: a marcacao e da linha do payload (`exercise_id`, onde a serie foi
-    # salva; a linha do par acima so existe para item da ficha). Sem
-    # `exercise_id` nao ha leitura; falha de leitura = nao marcada (o de antes).
-    if payload.get("exercise_id") is not None and safe_read(
-        _marked, default=False, event="evaluate_set.form_practice_failed"
-    ):
-        context = replace(context, form_practice_marked=True)
-    return context
+    return safe_read(_read, default=PairEngineContext(step_kg=equipment_step_kg(None)))
 
 
 def _evaluate_set_intensity(payload: dict[str, Any]) -> effective_intensity.EffectiveIntensity:

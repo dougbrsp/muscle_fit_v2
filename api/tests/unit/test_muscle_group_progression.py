@@ -207,6 +207,7 @@ def _run_real_query(
     gym_equipment_id=GE_TOTAL,
     convention_expr="eqex.load_convention",
     reader_id=None,
+    form_practice_dates=(),
 ):
     """`sets_by_session`: {local_date: [(set_type, reps, weight_kg), ...]} -
     um exercicio (Hack, 100% quadriceps) por sessao, gravado por `user_id` e
@@ -231,7 +232,10 @@ def _run_real_query(
     for activity_id, (local_date, sets) in enumerate(sorted(sets_by_session.items()), start=1):
         equipment = gym_equipment_id(local_date) if callable(gym_equipment_id) else gym_equipment_id
         conn.execute("INSERT INTO activities VALUES (?, ?, ?)", (activity_id, user_id, local_date.isoformat()))
-        conn.execute("INSERT INTO exercises (id, activity_id, mapping_id, equipment_id) VALUES (?, ?, 22, ?)", (activity_id, activity_id, equipment))
+        conn.execute(
+            "INSERT INTO exercises (id, activity_id, mapping_id, equipment_id, form_practice) VALUES (?, ?, 22, ?, ?)",
+            (activity_id, activity_id, equipment, 1 if local_date in form_practice_dates else 0),
+        )
         for number, serie in enumerate(sets, start=1):
             # (set_type, reps, weight) ou + reps_pending (Modo Intensivo, 092).
             set_type, reps, weight = serie[:3]
@@ -294,6 +298,18 @@ def test_tecnica_avancada_entra_na_tonelagem_e_preparatorias_nao():
     (item,) = build_group_progression(rows)
     assert item["volume_status"] == "VOLUME_STABLE"
     assert item["change_pct"] == 0.0
+
+
+def test_aprimoramento_de_tecnica_continua_na_tonelagem_e_nas_series():
+    """#196 (ADR 0017): a marca tira a execucao da progressao, NAO do volume. A tonelagem do grupo
+    e identica com e sem a marca (e a sessao marcada segue contando em `sessions_count`)."""
+    windows = comparison_windows(date(2026, 10, 2), 7)
+    sessoes = {date(2026, 9, 22): [("working", 10, 100.0)] * 3, date(2026, 9, 29): [("working", 10, 100.0)] * 3}
+    sem_marca = _run_real_query(sessoes, windows)
+    marcada = _run_real_query(sessoes, windows, form_practice_dates={date(2026, 9, 29)})
+    assert marcada == sem_marca
+    atual = next(r for r in marcada if r["period"] == "current")
+    assert (atual["tonnage_kg"], atual["sets_count"], atual["sessions_count"]) == (3000.0, 3, 1)
 
 
 def test_legado_sem_set_type_continua_sendo_trabalho():
