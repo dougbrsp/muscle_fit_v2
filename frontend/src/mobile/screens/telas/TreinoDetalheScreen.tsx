@@ -13,14 +13,20 @@ import { ApiError, apiFetch } from '@/lib/api';
 import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import { FORM_PRACTICE_LABEL, FORM_PRACTICE_REGISTRO_HELP, isFormPracticeRow } from '@/lib/form-practice';
 import {
+  canEditSetKind,
+  changeSetMeasure,
   describeSets,
   formatLoggedSets,
   repsFieldLabel,
   setEditFields,
   setFormFromRow,
+  setPainRollup,
+  setTypeSelectData,
 } from '@/lib/exercise-set-edit';
 import { formatDateOrDash, formatNumberOrDash } from '@/lib/format';
-import { isWorkingSetType } from '@/lib/set-types';
+import { MEASURE_OPTIONS, normalizeMeasure } from '@/lib/set-measures';
+import { isWorkingSetType, normalizeSetType } from '@/lib/set-types';
+import { goalSelectData, useTrainingGoals } from '@/lib/training-goals';
 import { hasSides, type SideField } from '@/lib/set-sides';
 import { useAdvancedTechniques } from '@/lib/use-advanced-techniques';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
@@ -29,7 +35,9 @@ import {
   defaultNewSet,
   dropSet,
   emptyExerciseForm,
+  exerciseLogSaveErrorMessage,
   headerMetaPayload,
+  patchSet,
   PROGRESSION_QUERY_KEYS,
   saveExerciseLog,
   updateSetField,
@@ -213,6 +221,8 @@ export function TreinoDetalheScreen() {
     await queryClient.invalidateQueries({ queryKey: ['muscle-activation-by-activity', activityId] });
   }
 
+  const trainingGoalsQuery = useTrainingGoals();
+
   const saveExerciseMutation = useMutation({
     mutationFn: () => saveExerciseLog({ activityId, activity, form, editingExerciseId, selectedMap }),
     onSuccess: async () => {
@@ -318,6 +328,8 @@ export function TreinoDetalheScreen() {
       muscle_pain: row.muscle_pain ?? null,
       joint_pain: Boolean(row.joint_pain),
       form_practice: isFormPracticeRow(row),
+      training_goal: row.training_goal ?? null,
+      initial_training_goal: row.training_goal ?? null,
       sets: row.sets.map(setFormFromRow),
     });
     closeRowSheet();
@@ -427,6 +439,8 @@ export function TreinoDetalheScreen() {
     workout_plan_id: activity.workout_plan_id ? String(activity.workout_plan_id) : '',
   };
   const formSetDisplay = describeSets(form.sets);
+  // Só exibição: o servidor grava o máximo das séries (`rollup_exercise_pain`).
+  const setPain = setPainRollup(form.sets);
   const kcal = activity.calories_kcal == null ? null : Number(activity.calories_kcal);
   const when = [
     formatDateOrDash(activity.local_date) + (extractTime(activity.started_at) ? ` às ${extractTime(activity.started_at)}` : ''),
@@ -532,6 +546,27 @@ export function TreinoDetalheScreen() {
                       Remover
                     </Button>
                   </Group>
+                  {/* #219: tipo e medida só em série trocável; técnica e laboral ficam só com o Badge. */}
+                  {canEditSetKind(set) ? (
+                    <>
+                      <Select
+                        size="md"
+                        label="Tipo da série"
+                        data={setTypeSelectData()}
+                        value={normalizeSetType(set.set_type)}
+                        allowDeselect={false}
+                        onChange={(value) => value && setForm((c) => ({ ...c, sets: patchSet(c.sets, index, (s) => ({ ...s, set_type: value })) }))}
+                      />
+                      <Select
+                        size="md"
+                        label="Medida da série"
+                        data={MEASURE_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+                        value={normalizeMeasure(set.measure)}
+                        allowDeselect={false}
+                        onChange={(value) => value && setForm((c) => ({ ...c, sets: patchSet(c.sets, index, (s) => changeSetMeasure(s, value)) }))}
+                      />
+                    </>
+                  ) : null}
                   {hasSides(set) && fields.showReps ? (
                     <>
                       <StepperField label="Reps E" min={0} max={100} step={1} value={set.reps_left} onChange={(v) => updateSet(index, 'reps_left', v)} />
@@ -553,6 +588,35 @@ export function TreinoDetalheScreen() {
                   ) : (
                     <StepperField stepper={false} label="RPE (esforço)" inputMode="decimal" min={0} max={10} step={0.5} decimalScale={1} value={set.rpe} onChange={(v) => updateSet(index, 'rpe', v)} />
                   )}
+                  <NumberInput
+                    size="md"
+                    label="Dor muscular (0-10)"
+                    placeholder="Sem dor"
+                    min={0}
+                    max={10}
+                    step={1}
+                    allowDecimal={false}
+                    inputMode="numeric"
+                    hideControls
+                    clampBehavior="strict"
+                    value={set.muscle_pain ?? undefined}
+                    onChange={(value) =>
+                      setForm((c) => ({
+                        ...c,
+                        sets: patchSet(c.sets, index, (s) => ({ ...s, muscle_pain: value === '' || value == null ? null : Number(value) })),
+                      }))
+                    }
+                  />
+                  <Switch
+                    size="md"
+                    label="Dor articular nesta série"
+                    checked={Boolean(set.joint_pain)}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      // Desligar volta a "sem informação" (null), como o servidor lê (MAX ignora NULL).
+                      setForm((c) => ({ ...c, sets: patchSet(c.sets, index, (s) => ({ ...s, joint_pain: checked ? true : null })) }));
+                    }}
+                  />
                 </ListBlock>
               </ListGroup>
             );
@@ -573,24 +637,39 @@ export function TreinoDetalheScreen() {
           </Button>
           <Collapse in={moreOpen} transitionDuration={0}>
             <Stack gap="md">
+          {trainingGoalsQuery.data ? (
+            <Select
+              size="md"
+              label="Objetivo do treino"
+              description="Vale para este exercício; vazio mantém o gravado"
+              placeholder="Manter"
+              data={goalSelectData(trainingGoalsQuery.data)}
+              value={form.training_goal ?? null}
+              allowDeselect={false}
+              onChange={(value) => setForm((c) => ({ ...c, training_goal: value }))}
+            />
+          ) : null}
           <NumberInput
             size="md"
             label="Dor muscular (0-10)"
-            description="Opcional: dor muscular residual sentida neste exercício"
+            description={setPain.muscle_pain != null ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: dor muscular residual sentida neste exercício'}
             min={0}
             max={10}
             step={1}
             inputMode="numeric"
             hideControls
-            value={form.muscle_pain ?? undefined}
+            value={(setPain.muscle_pain ?? form.muscle_pain) ?? undefined}
             onChange={(value) => setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))}
             clampBehavior="strict"
+            readOnly={setPain.muscle_pain != null}
+            disabled={setPain.muscle_pain != null}
           />
           <Switch
             size="md"
             label="Dor articular"
-            description="Opcional: reportou dor articular neste exercício"
-            checked={form.joint_pain}
+            description={setPain.joint_pain != null ? 'Máximo das séries (definido pelas séries acima)' : 'Opcional: reportou dor articular neste exercício'}
+            checked={setPain.joint_pain ?? form.joint_pain}
+            disabled={setPain.joint_pain != null}
             onChange={(event) => {
               const checked = event.currentTarget.checked;
               setForm((c) => ({ ...c, joint_pain: checked }));
@@ -614,7 +693,7 @@ export function TreinoDetalheScreen() {
           </ListGroup>
           {saveExerciseMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
-              {saveExerciseMutation.error instanceof Error ? saveExerciseMutation.error.message : String(saveExerciseMutation.error)}
+              {exerciseLogSaveErrorMessage(saveExerciseMutation.error)}
             </Alert>
           ) : null}
         </Stack>

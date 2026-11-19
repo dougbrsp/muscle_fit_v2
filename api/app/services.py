@@ -27,7 +27,14 @@ from .domain.form_practice import (
     resolve_form_practice,
     sql_counts_for_progression,
 )
-from .domain.training_goal import SQL_PLAN_EXERCISE_GOAL, goal_value, plan_exercise_goal_params, sql_goal_is
+from .domain.training_goal import (
+    SQL_PLAN_EXERCISE_GOAL,
+    TRAINING_GOAL_COLUMN,
+    goal_value,
+    optional_goal_value,
+    plan_exercise_goal_params,
+    sql_goal_is,
+)
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
 from .domain.equipment_record import current_mark_with_exposures, record_payload, summarize_equipment_history
@@ -1270,7 +1277,11 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
         "FROM exercise_sets WHERE exercise_id=%s",
         (exercise_id,),
     )
-    sets = merge_sets_for_update(payload.get("sets") or [], cur.fetchall() or [])
+    # #219: validado pelo dono antes de qualquer escrita (inválido -> InvalidTrainingGoal, 422);
+    # ausente/null = None = preserva (COALESCE no UPDATE).
+    training_goal = optional_goal_value(payload.get("training_goal"))
+    # lock_types: tipo/medida travados na edição pela rota (dono `exercise_set_update_merge`).
+    sets = merge_sets_for_update(payload.get("sets") or [], cur.fetchall() or [], lock_types=True)
     # Lote T3: a forma da medida vale para a série JÁ mesclada (medida
     # omitida preserva a gravada) -> 422 na rota.
     # Pendência e códigos isentos: dono `measure_codes_for_merged_set`.
@@ -1352,7 +1363,8 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
             avg_rpe=%s,
             muscle_pain=%s,
             joint_pain=%s,
-            {FORM_PRACTICE_COLUMN}=%s
+            {FORM_PRACTICE_COLUMN}=%s,
+            {TRAINING_GOAL_COLUMN}=COALESCE(%s, {TRAINING_GOAL_COLUMN})
         WHERE id=%s
         """,
         (
@@ -1369,6 +1381,7 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
             muscle_pain,
             joint_pain,
             1 if form_practice else 0,
+            training_goal,
             exercise_id,
         ),
     )
@@ -1450,6 +1463,12 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
             for st in sets
         ],
     )
+
+    # #219: com dor em alguma série, o exercício recebe o máximo (dono `rollup_exercise_pain`);
+    # sem dor nas séries, COALESCE mantém o campo do exercício já gravado acima (inclusive null).
+    from .workout_sessions import rollup_exercise_pain
+
+    rollup_exercise_pain(cur, exercise_id, keep_stored_when_empty=True)
 
     _recompute_activity_avg_rpe(cur, activity_id)
 

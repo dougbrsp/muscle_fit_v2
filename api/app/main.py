@@ -48,6 +48,8 @@ from .services import (
     upsert_activity,
     upsert_mapping,
 )
+from .domain.training_goal import InvalidTrainingGoal
+from .exercise_set_update_merge import SetEditLockedError
 from .set_measure_input import SetMeasureInputError
 from .workout_ai_generation_core import (
     JOB_TYPE_ACTIVITY_SUMMARY,
@@ -260,6 +262,10 @@ def get_exercise_logs(
     }
 
 
+def _locked_detail(exc: SetEditLockedError) -> dict:
+    return {"code": exc.code, "set_number": exc.set_number, "message": exc.message}
+
+
 def _exercise_log_data(payload: ExerciseLogUpdateIn) -> dict:
     data = payload.model_dump()
     # workout_plan_exercise_id precisa distinguir "não enviado" (preserva
@@ -292,6 +298,10 @@ def update_exercise_log_by_id(
     except SetMeasureInputError as exc:
         # Lote T3: série mesclada sem a forma da sua medida (dono `set_measures`).
         raise HTTPException(status_code=422, detail=exc.detail())
+    except SetEditLockedError as exc:
+        raise HTTPException(status_code=422, detail=_locked_detail(exc))
+    except InvalidTrainingGoal as exc:
+        raise HTTPException(status_code=422, detail={"code": "training_goal_invalid", "message": str(exc)})
     if not result:
         raise HTTPException(status_code=404, detail="Exercício não encontrado.")
     return {"status": "ok", **result}
@@ -312,6 +322,10 @@ def create_exercise_log_in_closed_session(
         raise HTTPException(status_code=404, detail="Item de ficha não encontrado.")
     except SetMeasureInputError as exc:
         raise HTTPException(status_code=422, detail=exc.detail())
+    except SetEditLockedError as exc:
+        raise HTTPException(status_code=422, detail=_locked_detail(exc))
+    except InvalidTrainingGoal as exc:
+        raise HTTPException(status_code=422, detail={"code": "training_goal_invalid", "message": str(exc)})
     if not result:
         raise HTTPException(status_code=404, detail="Treino não encontrado.")
     return {"status": "ok", **result}

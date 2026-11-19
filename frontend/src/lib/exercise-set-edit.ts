@@ -15,7 +15,14 @@
 // oficiais pelo pior lado (`domain/set_sides.py`) — a tela não recalcula.
 import { formatSetMeasureText, isRepBased, MEASURE_LIMITS, MEASURE_VALUES, normalizeMeasure } from './set-measures';
 import { sidesFromRow, sidesSuffix } from './set-sides';
-import { isTechniqueApplicationSetType, isWorkingSetType, normalizeSetType } from './set-types';
+import {
+  isSwappableSetType,
+  isTechniqueApplicationSetType,
+  isWorkingSetType,
+  normalizeSetType,
+  SWAPPABLE_SET_TYPES,
+  WORKING_SET_TYPE,
+} from './set-types';
 import type { ExerciseFormState, ExerciseSetRow } from './workout-log-types';
 
 // `reps_pending`: marca gravada pelo servidor (só leitura; não vai no PUT).
@@ -103,6 +110,44 @@ export function newMeasuredSetFromLast(last: ExerciseFormSet | undefined, setNum
     rpe: null,
     measure,
     duration_seconds: last?.duration_seconds ?? null,
+  };
+}
+
+// #219: rótulos de exibição dos tipos trocáveis; QUAIS são trocáveis vem do espelho (`swappable`).
+/** Opções do seletor "Tipo da série" na edição (só os tipos trocáveis do espelho). */
+export function setTypeSelectData(): { value: string; label: string }[] {
+  const labels: Record<string, string> = { [WORKING_SET_TYPE]: 'Série de trabalho', backoff: 'Backoff', ...PREPARATORY_LABELS };
+  return SWAPPABLE_SET_TYPES.map((value) => ({ value, label: labels[value] ?? value }));
+}
+
+/** Mostra seletor de tipo/medida? Técnica e laboral só exibem o Badge (o servidor decide em 422). */
+export function canEditSetKind(set: Pick<ExerciseFormSet, 'set_type'>): boolean {
+  return isSwappableSetType(set.set_type);
+}
+
+/**
+ * Troca a medida da série e limpa o que deixa de valer: os segundos sempre
+ * (janela do máximo ≠ tempo da série) e, para tempo, reps e lados.
+ */
+export function changeSetMeasure(set: ExerciseFormSet, measure: string): ExerciseFormSet {
+  const next = normalizeMeasure(measure);
+  if (next === normalizeMeasure(set.measure)) return set;
+  const base = { ...set, measure: next, duration_seconds: null };
+  if (setEditFields(next).showReps) return base;
+  return { ...base, reps: null, reps_left: null, reps_right: null, rpe_left: null, rpe_right: null };
+}
+
+/**
+ * Dor do exercício derivada das séries, só para EXIBIÇÃO (máximo por coluna;
+ * `null` = nenhuma série informou). Quem decide é o servidor (`rollup_exercise_pain`).
+ */
+export function setPainRollup(sets: readonly ExerciseFormSet[]): { muscle_pain: number | null; joint_pain: boolean | null } {
+  const confirmed = sets.filter((set) => !isRepsPending(set));
+  const muscle = confirmed.map((set) => set.muscle_pain).filter((v): v is number => v != null);
+  const joint = confirmed.map((set) => set.joint_pain).filter((v): v is boolean => v != null);
+  return {
+    muscle_pain: muscle.length ? Math.max(...muscle) : null,
+    joint_pain: joint.length ? joint.some(Boolean) : null,
   };
 }
 

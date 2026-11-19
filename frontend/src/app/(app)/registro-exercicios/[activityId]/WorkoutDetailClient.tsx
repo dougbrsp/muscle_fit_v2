@@ -35,12 +35,18 @@ import { useMemo, useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
 import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import {
+  canEditSetKind,
+  changeSetMeasure,
   describeSets,
   formatLoggedSets,
   repsFieldLabel,
   setEditFields,
   setFormFromRow,
+  setPainRollup,
+  setTypeSelectData,
 } from '@/lib/exercise-set-edit';
+import { MEASURE_OPTIONS, normalizeMeasure } from '@/lib/set-measures';
+import { goalSelectData, useTrainingGoals } from '@/lib/training-goals';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import {
   FORM_PRACTICE_HELP,
@@ -55,7 +61,9 @@ import {
   defaultNewSet,
   dropSet,
   emptyExerciseForm,
+  exerciseLogSaveErrorMessage,
   headerMetaPayload,
+  patchSet,
   PROGRESSION_QUERY_KEYS,
   saveExerciseLog,
   updateSetField,
@@ -81,7 +89,7 @@ import {
   WorkoutPlanDetail,
   WorkoutPlanExercise,
 } from '@/lib/workout-log-types';
-import { isWorkingSetType } from '@/lib/set-types';
+import { isWorkingSetType, normalizeSetType } from '@/lib/set-types';
 import { BRAND } from '@/theme';
 import { formatNumberOrDash } from '@/lib/format';
 
@@ -397,6 +405,8 @@ export function WorkoutDetailClient() {
     await queryClient.invalidateQueries({ queryKey: ['muscle-activation-by-activity', activityId] });
   }
 
+  const trainingGoalsQuery = useTrainingGoals();
+
   const saveExerciseMutation = useMutation({
     mutationFn: () => saveExerciseLog({ activityId, activity, form, editingExerciseId, selectedMap }),
     onSuccess: async () => {
@@ -496,6 +506,8 @@ export function WorkoutDetailClient() {
       muscle_pain: row.muscle_pain ?? null,
       joint_pain: Boolean(row.joint_pain),
       form_practice: isFormPracticeRow(row),
+      training_goal: row.training_goal ?? null,
+      initial_training_goal: row.training_goal ?? null,
       sets: row.sets.map(setFormFromRow),
     });
   }
@@ -590,6 +602,8 @@ export function WorkoutDetailClient() {
   // drop, reps extras) como subitens da série âncora. A edição mantém
   // `set_type`/`technique_code` e remapeia a âncora (ver exercise-set-edit.ts).
   const formSetDisplay = describeSets(form.sets);
+  // Só exibição: o servidor grava o máximo das séries (`rollup_exercise_pain`).
+  const setPain = setPainRollup(form.sets);
 
   return (
     <Stack gap="xl">
@@ -797,23 +811,47 @@ export function WorkoutDetailClient() {
             />
           )}
 
+          {trainingGoalsQuery.data && (
+            <Select
+              label="Objetivo do treino"
+              description="Vale para este exercício; vazio mantém o gravado"
+              placeholder="Manter"
+              data={goalSelectData(trainingGoalsQuery.data)}
+              value={form.training_goal ?? null}
+              allowDeselect={false}
+              onChange={(value) => setForm((c) => ({ ...c, training_goal: value }))}
+              data-testid="exercise-goal-select"
+            />
+          )}
+
           <Group grow align="end">
             <NumberInput
               label="Dor muscular (0-10)"
-              description="Opcional — dor muscular residual sentida neste exercício"
+              description={
+                setPain.muscle_pain != null
+                  ? 'Máximo das séries (definido pelas séries abaixo)'
+                  : 'Opcional — dor muscular residual sentida neste exercício'
+              }
               min={0}
               max={10}
               step={1}
-              value={form.muscle_pain ?? undefined}
+              value={(setPain.muscle_pain ?? form.muscle_pain) ?? undefined}
               onChange={(value) =>
                 setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))
               }
               clampBehavior="strict"
+              readOnly={setPain.muscle_pain != null}
+              disabled={setPain.muscle_pain != null}
             />
             <Switch
               label="Dor articular"
-              description="Opcional — reportou dor articular neste exercício"
-              checked={form.joint_pain}
+              description={
+                setPain.joint_pain != null
+                  ? 'Máximo das séries (definido pelas séries abaixo)'
+                  : 'Opcional — reportou dor articular neste exercício'
+              }
+              checked={setPain.joint_pain ?? form.joint_pain}
+              disabled={setPain.joint_pain != null}
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
                 setForm((c) => ({ ...c, joint_pain: checked }));
@@ -866,6 +904,32 @@ export function WorkoutDetailClient() {
                     </Text>
                   )}
                 </Stack>
+                {/* #219: tipo e medida só em série trocável; técnica e laboral ficam só com o Badge. */}
+                {canEditSetKind(set) && (
+                  <>
+                    <Select
+                      label="Tipo"
+                      data={setTypeSelectData()}
+                      value={normalizeSetType(set.set_type)}
+                      allowDeselect={false}
+                      onChange={(value) =>
+                        value && setForm((c) => ({ ...c, sets: patchSet(c.sets, index, (s) => ({ ...s, set_type: value })) }))
+                      }
+                      w={160}
+                    />
+                    <Select
+                      label="Medida"
+                      data={MEASURE_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+                      value={normalizeMeasure(set.measure)}
+                      allowDeselect={false}
+                      onChange={(value) =>
+                        value &&
+                        setForm((c) => ({ ...c, sets: patchSet(c.sets, index, (s) => changeSetMeasure(s, value)) }))
+                      }
+                      w={190}
+                    />
+                  </>
+                )}
                 {/* M102: série unilateral com lados: reps E/D (as oficiais saem do servidor, pior lado). */}
                 {hasSides(set) && setEditFields(set.measure).showReps && (
                   <>
@@ -957,6 +1021,39 @@ export function WorkoutDetailClient() {
                     w={140}
                   />
                 )}
+                <NumberInput
+                  label="Dor muscular (0-10)"
+                  placeholder="Sem dor"
+                  min={0}
+                  max={10}
+                  step={1}
+                  allowDecimal={false}
+                  clampBehavior="strict"
+                  value={set.muscle_pain ?? undefined}
+                  onChange={(value) =>
+                    setForm((c) => ({
+                      ...c,
+                      sets: patchSet(c.sets, index, (s) => ({
+                        ...s,
+                        muscle_pain: value === '' || value == null ? null : Number(value),
+                      })),
+                    }))
+                  }
+                  w={150}
+                />
+                <Switch
+                  label="Dor articular"
+                  checked={Boolean(set.joint_pain)}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    // Desligar volta a "sem informação" (null), como o servidor lê (MAX ignora NULL).
+                    setForm((c) => ({
+                      ...c,
+                      sets: patchSet(c.sets, index, (s) => ({ ...s, joint_pain: checked ? true : null })),
+                    }));
+                  }}
+                  pb={8}
+                />
                 <ActionIcon color="red" variant="subtle" onClick={() => removeSet(index)} disabled={form.sets.length <= 1}>
                   <IconTrash size={16} />
                 </ActionIcon>
@@ -979,7 +1076,7 @@ export function WorkoutDetailClient() {
 
           {saveExerciseMutation.isError && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-              {saveExerciseMutation.error instanceof Error ? saveExerciseMutation.error.message : String(saveExerciseMutation.error)}
+              {exerciseLogSaveErrorMessage(saveExerciseMutation.error)}
             </Alert>
           )}
         </Stack>

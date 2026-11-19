@@ -175,4 +175,4 @@ def test_edicao_no_historico_pode_corrigir_a_marcacao(monkeypatch):
     _setup(monkeypatch, cur)
     services.update_exercise_log(10, {**_body(), "form_practice": False}, user_id=7)
     services.update_exercise_log(10, {**_body(), "form_practice": None}, user_id=7)
-    assert [u[-2] for u in cur.starting("UPDATE exercises SET")] == [0, 1]
+    assert [u[-3] for u in cur.starting("UPDATE exercises SET original_name")] == [0, 1]

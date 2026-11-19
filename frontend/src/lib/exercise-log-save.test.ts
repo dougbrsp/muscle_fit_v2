@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { emptyExerciseForm, saveExerciseLog } from './exercise-log-save';
+import { ApiError } from './api';
+import { emptyExerciseForm, exerciseLogSaveErrorMessage, patchSet, saveExerciseLog, trainingGoalPayload } from './exercise-log-save';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
@@ -86,5 +87,36 @@ describe('saveExerciseLog envia a marca de aprimoramento de técnica', () => {
       selectedMap: undefined,
     });
     expect(bodyOf(0)).toHaveProperty('muscle_pain', null);
+  });
+});
+
+describe('#219 objetivo, dor por série e erro 422', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ exercise_id: 9 });
+  });
+
+  const save = (f: ReturnType<typeof emptyExerciseForm>) =>
+    saveExerciseLog({ activityId: 1, activity: undefined, form: f, editingExerciseId: 7, selectedMap: undefined });
+
+  it('training_goal só vai quando o usuário mudou o valor', async () => {
+    await save({ ...form(false), training_goal: 'hypertrophy', initial_training_goal: 'hypertrophy' });
+    expect('training_goal' in bodyOf(0)).toBe(false);
+    await save({ ...form(false), training_goal: 'strength', initial_training_goal: 'hypertrophy' });
+    expect(bodyOf(1).training_goal).toBe('strength');
+    expect(trainingGoalPayload({ training_goal: null, initial_training_goal: 'strength' })).toEqual({});
+  });
+
+  it('PUT leva tipo, medida e dor por série', async () => {
+    const f = form(false);
+    f.sets = patchSet(f.sets, 0, (s) => ({ ...s, set_type: 'warmup', measure: 'duration', duration_seconds: 30, reps: null, muscle_pain: 4, joint_pain: true }));
+    await save(f);
+    expect(bodyOf(0).sets[0]).toMatchObject({ set_type: 'warmup', measure: 'duration', duration_seconds: 30, muscle_pain: 4, joint_pain: true });
+  });
+
+  it('usa a message do 422 do servidor', () => {
+    const detail = { code: 'set_type_locked', set_number: 2, message: 'Série de técnica não troca de tipo.' };
+    expect(exerciseLogSaveErrorMessage(new ApiError('Erro', 422, detail))).toBe(detail.message);
+    expect(exerciseLogSaveErrorMessage(new Error('x'))).toBe('x');
   });
 });

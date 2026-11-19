@@ -125,11 +125,11 @@ def test_dor_do_exercicio_null_enviado_limpa_e_ausente_preserva(monkeypatch):
     cur = _Cur()
     _setup(monkeypatch, cur)
     _put(cur, muscle_pain=None, joint_pain=None)
-    assert cur.starting("UPDATE exercises SET")[0][-4:-2] == (None, None)
+    assert cur.starting("UPDATE exercises SET")[0][-5:-3] == (None, None)
     cur2 = _Cur()
     _setup(monkeypatch, cur2)
     _put(cur2)
-    assert cur2.starting("UPDATE exercises SET")[0][-4:-2] == (5, True)
+    assert cur2.starting("UPDATE exercises SET")[0][-5:-3] == (5, True)
 
 
 def test_put_em_sessao_de_deload_grava_o_alvo_de_deload(monkeypatch):
@@ -215,7 +215,7 @@ def test_put_alvo_de_protocolo_mantido_com_alvo_gravado_nulo_grava_null(monkeypa
     _setup(monkeypatch, cur, target=8)
     monkeypatch.setattr(
         merge, "merge_sets_for_update",
-        lambda inc, stored: [{"set_number": 1, "set_type": "working", "reps": 8, "weight_kg": 50,
+        lambda inc, stored, **kw: [{"set_number": 1, "set_type": "working", "reps": 8, "weight_kg": 50,
                               "rpe_target_source": "protocol", "rpe_target_effective": None}],
     )
     monkeypatch.setattr(services, "merge_sets_for_update", merge.merge_sets_for_update)

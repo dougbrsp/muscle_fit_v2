@@ -33,7 +33,7 @@ class _Cur(LoopingExecuteMany):
             self._result = [{"id": 10, "activity_id": 20, "original_name": "Supino", "mapping_id": 5,
                              "workout_plan_exercise_id": None, "equipment_id": None, "muscle_pain": None,
                              "joint_pain": None, "form_practice": self.stored, "session_status": self.status}]
-        elif flat.startswith("UPDATE exercises"):
+        elif flat.startswith("UPDATE exercises SET original_name"):
             self.update_params = params
             self._result = []
         elif flat.startswith("SELECT set_number,"):
@@ -83,19 +83,19 @@ def test_resolve_omitido_preserva():
 @pytest.mark.parametrize("stored", [0, 1])
 def test_omitido_preserva_a_marca_e_reavalia(monkeypatch, stored):
     out, cur, calls = _run(monkeypatch, stored, "done", None)
-    assert cur.update_params[-2] == stored and calls == [(7, 20)]
+    assert cur.update_params[-3] == stored and calls == [(7, 20)]
     assert out["form_practice"] is bool(stored) and out["progression_reevaluated"] is True
 
 
 def test_marcar_grava_e_reavalia(monkeypatch):
     out, cur, calls = _run(monkeypatch, 0, "done", True)
-    assert cur.update_params[-2] == 1 and calls == [(7, 20)]
+    assert cur.update_params[-3] == 1 and calls == [(7, 20)]
     assert out["form_practice"] is True and out["progression_reevaluated"] is True
 
 
 def test_desmarcar_grava_e_reavalia(monkeypatch):
     out, cur, calls = _run(monkeypatch, 1, "done", False)
-    assert cur.update_params[-2] == 0 and calls == [(7, 20)]
+    assert cur.update_params[-3] == 0 and calls == [(7, 20)]
     assert out["form_practice"] is False and out["progression_reevaluated"] is True
 
 
@@ -107,7 +107,7 @@ def test_mesmo_valor_reavalia_em_sessao_encerrada(monkeypatch):
 @pytest.mark.parametrize("status", ["in_progress", None])
 def test_sessao_nao_encerrada_nao_reavalia(monkeypatch, status):
     out, cur, calls = _run(monkeypatch, 0, status, True)
-    assert cur.update_params[-2] == 1 and calls == [] and out["progression_reevaluated"] is False
+    assert cur.update_params[-3] == 1 and calls == [] and out["progression_reevaluated"] is False
 
 
 def test_sem_user_id_nao_reavalia(monkeypatch):
