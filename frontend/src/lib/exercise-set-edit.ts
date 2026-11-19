@@ -18,7 +18,18 @@ import { sidesFromRow, sidesSuffix } from './set-sides';
 import { isTechniqueApplicationSetType, isWorkingSetType, normalizeSetType } from './set-types';
 import type { ExerciseFormState, ExerciseSetRow } from './workout-log-types';
 
-export type ExerciseFormSet = ExerciseFormState['sets'][number];
+// `reps_pending`: marca gravada pelo servidor (só leitura; não vai no PUT).
+export type ExerciseFormSet = ExerciseFormState['sets'][number] & { reps_pending?: boolean };
+
+/** Série gravada pendente e ainda sem reps preenchidas (a decisão é do servidor). */
+export function isRepsPending(set: Pick<ExerciseFormSet, 'reps' | 'reps_pending'>): boolean {
+  return Boolean(set.reps_pending) && set.reps == null;
+}
+
+/** Rótulo do campo de reps na edição, sinalizando a série pendente. */
+export function repsFieldLabel(set: Pick<ExerciseFormSet, 'reps' | 'reps_pending'>): string {
+  return isRepsPending(set) ? 'Repetições (pendente)' : 'Repetições';
+}
 
 function toNumberOrNull(value: number | string | null | undefined): number | null {
   if (value == null || value === '') return null;
@@ -31,7 +42,8 @@ export function setFormFromRow(set: ExerciseSetRow, index: number): ExerciseForm
   return {
     set_number: index + 1,
     // Série por tempo grava reps NULL (dono `validate_set_measure`): sem o `|| 0`.
-    reps: set.reps == null && !isRepBased(measure) ? null : Number(set.reps || 0),
+    // Pendente (`reps_pending`) também fica nula: com 0 o PUT a confirmaria.
+    reps: set.reps == null && (set.reps_pending || !isRepBased(measure)) ? null : Number(set.reps || 0),
     weight_kg: Number(set.weight_kg || 0),
     rpe: toNumberOrNull(set.rpe),
     set_type: set.set_type || 'working',
@@ -47,6 +59,7 @@ export function setFormFromRow(set: ExerciseSetRow, index: number): ExerciseForm
     duration_seconds: set.duration_seconds ?? null,
     ...sidesFromRow(set),
     source_set_number: set.set_number,
+    ...(set.reps_pending ? { reps_pending: true } : {}),
   };
 }
 
@@ -103,6 +116,8 @@ function remapAnchor(set: ExerciseFormSet, all?: readonly ExerciseFormSet[]): nu
 export function setUpdatePayload(set: ExerciseFormSet, index: number, all?: readonly ExerciseFormSet[]) {
   return {
     set_number: index + 1,
+    // Série gravada de origem (null = nova): o servidor pareia por ele.
+    source_set_number: set.source_set_number ?? null,
     reps: set.reps,
     weight_kg: set.weight_kg,
     rpe: set.rpe,

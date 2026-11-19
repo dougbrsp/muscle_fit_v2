@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import parity from './training-goal.parity.json';
 import {
+  DELOAD_LABEL,
   deloadBannerTitle,
   deloadLoadOrigin,
   deloadPrescriptionText,
@@ -17,6 +18,10 @@ import {
   type DeloadPrescription,
 } from './deload';
 import { goalDefaultRestSeconds, techniqueForGoal, type TrainingGoalsResponse } from './training-goals';
+
+it('rótulo único do deload', () => {
+  expect(DELOAD_LABEL).toBe('Deload');
+});
 
 // Números REAIS do dono (gerados por api/tests/unit/test_m97_f3_objetivo_telas.py --gravar).
 const constants = parity.deload_constants as DeloadConstants;

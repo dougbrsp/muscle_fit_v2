@@ -31,6 +31,7 @@ class Store:
         self.decisions: list[dict[str, Any]] = []
         self.ids = count(1)
         self.writes = {"group": 0, "track": 0, "decision": 0}
+        self._row: Any = None
 
     def save_group_state(self, conn, user_id, state):
         old = self.groups.get(state.key)
@@ -55,7 +56,11 @@ class Store:
 
     def execute(self, sql: str, params: tuple) -> None:
         if ps.DECISIONS_TABLE in sql:
-            if "activity_id IN" in sql:
+            if sql.startswith("SELECT"):
+                self._row = {"n": 1} if any(d["activity_id"] is None for d in self.decisions) else None
+            elif "activity_id IS NULL" in sql:
+                self.decisions = [d for d in self.decisions if d["activity_id"] is not None]
+            elif "activity_id IN" in sql:
                 ids = set(params[1:])
                 self.decisions = [d for d in self.decisions if d["activity_id"] not in ids]
             else:
@@ -82,6 +87,9 @@ class Conn:
 
             def execute(self, sql, params=None):
                 store.execute(sql, tuple(params or ()))
+
+            def fetchone(self):
+                return store._row
 
         yield _Cursor()
 
@@ -180,3 +188,58 @@ def test_sombra_desligada_nao_toca_em_nada(use, monkeypatch):
     monkeypatch.setattr(ps, "build_session_inputs", lambda *a, **k: pytest.fail("leu"))
     assert ps.reevaluate_after_correction(conn, USER, 1, sessions=_history()) is None
     assert not store.groups and not store.tracks and not store.decisions
+
+
+def _ids(sessions):
+    return [s.activity_id for s in sessions]
+
+
+def test_unico_exercicio_excluido_usa_ancora_e_nao_regrava_as_anteriores(use):
+    store = Store()
+    conn = use(store)
+    full = _history()
+    ps.rebuild_for_user(conn, USER, sessions=full)
+    gone = full[8]
+    sessions = full[:8] + full[9:]  # a sessao saiu do historico (nao tem mais exercicio)
+    antigas = {d["id"] for d in store.decisions if d["activity_id"] in set(_ids(full[:8]))}
+    anchor = ps.correction_anchor(gone.local_date)
+    summary = ps.reevaluate_after_correction(conn, USER, gone.activity_id, sessions=sessions, anchor_at=anchor)
+    assert summary["rewritten_sessions"] < len(sessions)
+    assert antigas <= {d["id"] for d in store.decisions}
+    assert all(d["activity_id"] != gone.activity_id for d in store.decisions)
+    assert _view(store, conn) == _rebuild_view(use, sessions)
+
+
+def test_sem_ancora_regrava_tudo_e_apaga_trilha_com_cascata(use):
+    store = Store()
+    conn = use(store)
+    full = _history()
+    ps.rebuild_for_user(conn, USER, sessions=full)
+    sessions = full[:5] + full[6:]  # sessao sai do historico e sem ancora regrava tudo; o que sumir leva a cascata
+    ps.reevaluate_after_correction(conn, USER, full[5].activity_id, sessions=sessions)
+    assert {d["group"] for d in store.decisions} <= {g.id for g in store.groups.values()}
+    assert _view(store, conn) == _rebuild_view(use, sessions)
+
+
+def test_decisoes_legadas_sem_activity_id_nao_duplicam_nem_ficam_orfas(use):
+    store = Store()
+    conn = use(store)
+    sessions = _history()
+    ps.rebuild_for_user(conn, USER, sessions=sessions)
+    for d in store.decisions[:3]:  # replay antigo: decisoes sem sessao
+        d["activity_id"] = None
+    ps.reevaluate_after_correction(conn, USER, sessions[-1].activity_id, sessions=sessions)
+    assert all(d["activity_id"] is not None for d in store.decisions)
+    assert _view(store, conn) == _rebuild_view(use, sessions)
+
+
+def test_log_estruturado_com_duracao_e_contagens(use, caplog):
+    store = Store()
+    conn = use(store)
+    sessions = _history()
+    ps.rebuild_for_user(conn, USER, sessions=sessions)
+    with caplog.at_level("INFO", logger=ps.logger.name):
+        ps.reevaluate_after_correction(conn, USER, sessions[-1].activity_id, sessions=sessions)
+    payload = next(json.loads(r.getMessage()) for r in caplog.records if "progression.reevaluated" in r.getMessage())
+    assert payload["sessions_read"] == len(sessions) and payload["sessions_rewritten"] == 1
+    assert payload["duration_ms"] >= 0

@@ -45,6 +45,7 @@ from typing import Any, Iterable, Optional, Sequence
 
 from .body_measurements_schema import has_body_measurements_table
 from .domain.nutrition import ENGINE_VERSION, compute_daily_target
+from .domain.session_status import SESSION_STATUS_DONE
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.activity_energy import ActivityCorrection, activity_duration_seconds
 from .domain.nutrition.energy_expenditure import (
@@ -174,7 +175,7 @@ _SITES_SQL = (
 
 # Sessão CONCLUÍDA: a mesma condição na materialização (contexto do dia) e na
 # lista de sessões do diário (`nutrition_days`), para a lista bater com a kcal usada.
-DONE_SESSION_STATUS = "done"
+DONE_SESSION_STATUS = SESSION_STATUS_DONE  # reexportado: `nutrition_days` importa daqui
 # `intervals_activity_id`: a atividade do Intervals vinculada à sessão (no máximo uma: `activity_intervals_link` é único
 # por `activity_id`), para a correção manual dela valer na kcal da sessão.
 _SESSIONS_SQL = (
