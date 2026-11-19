@@ -5,6 +5,7 @@ import {
   formPracticeCreateField,
   formPracticeStateFromSetResponse,
   removeFormPracticePending,
+  reconcileMarkAfterResponse,
   isFormPracticePending,
   isFormPracticeRow,
   nextServerStateOnCreated,
@@ -87,5 +88,24 @@ describe('form-practice (#213): corpos e estado do servidor', () => {
     expect(removeFormPracticePending(ids, 7)).toEqual([3]);
     expect(removeFormPracticePending(ids, null)).toEqual([3, 7]);
     expect(ids).toEqual([3, 7]);
+  });
+});
+
+describe('form-practice (#213): toque durante o envio da série', () => {
+  const sent = { marked: false, locked: false };
+  it('preserva a escolha mais recente quando o servidor não travou', () => {
+    expect(reconcileMarkAfterResponse(sent, { marked: true, locked: false }, { marked: false, locked: false })).toEqual({
+      marked: true,
+      locked: false,
+    });
+  });
+  it('servidor travado vale o servidor', () => {
+    expect(reconcileMarkAfterResponse(sent, { marked: true, locked: false }, { marked: false, locked: true })).toEqual({
+      marked: false,
+      locked: true,
+    });
+  });
+  it('sem toque no intervalo vale o servidor', () => {
+    expect(reconcileMarkAfterResponse(sent, sent, { marked: false, locked: false })).toEqual(sent);
   });
 });

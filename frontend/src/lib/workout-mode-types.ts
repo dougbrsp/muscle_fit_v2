@@ -144,6 +144,10 @@ export type MidExerciseExtra = {
   // aparece como "Já lançado"/"Trocado" em `WorkoutDetailClient`. Null
   // quando o exercício original já não tinha vínculo com o plano.
   originalWorkoutPlanExerciseId: number | null;
+  // Id REAL (servidor) do exercício que ESTA continuação criou (#225). `null` =
+  // continuação nova ainda sem exercício; ausente (`undefined`) = extra criado
+  // antes do #225, que pode ter séries gravadas no exercício original.
+  exerciseId?: number | null;
   // Configuração avançada herdada do item original (aquecimento/ajuste/
   // técnica/pico de contração) — sem ela a continuação ia direto às séries
   // de trabalho e pulava a série de ajuste com o equipamento novo. Opcionais:
@@ -543,12 +547,30 @@ export function isSyntheticPlanExerciseId(id: number | null | undefined): boolea
 export function findLoggedExerciseForPlanItem(
   activity: ActivityDetail | undefined,
   planExercise: WorkoutPlanExercise,
+  extras?: readonly MidExerciseExtra[],
+  queuedIds?: ReadonlyMap<number, readonly number[]>,
 ): ExerciseLogRow | undefined {
   if (!activity) return undefined;
   const planItemId = planExercise.workout_plan_exercise_id;
   if (planItemId != null && !isSyntheticPlanExerciseId(planItemId)) {
     return activity.exercises.find((ex) => ex.workout_plan_exercise_id === planItemId);
   }
+  // Continuação (#225): a linha é a que ELA criou, nunca a do original (mesmo `mapping_id`).
+  const exerciseId = extras?.find((extra) => extra.localId === planItemId)?.exerciseId;
+  if (exerciseId !== undefined) {
+    if (exerciseId !== null) {
+      const real = activity.exercises.find((ex) => ex.id === exerciseId);
+      if (real) return real;
+    }
+    // Criação ainda na fila (offline) ou id real já gravado e GET ainda não voltou: a linha é a sintética do overlay.
+    const candidates = queuedIds?.get(planItemId as number) ?? [];
+    for (const id of candidates) {
+      const row = activity.exercises.find((ex) => ex.id === id);
+      if (row) return row;
+    }
+    return undefined;
+  }
+  // Legado (extra sem o campo, anterior ao #225): resolve por `mapping_id`, como antes.
   return planExercise.mapping_id != null
     ? activity.exercises.find((ex) => ex.mapping_id === planExercise.mapping_id)
     : undefined;

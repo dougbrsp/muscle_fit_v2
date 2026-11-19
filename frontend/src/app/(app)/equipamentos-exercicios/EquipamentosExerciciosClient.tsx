@@ -40,6 +40,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { PhotoLightbox, usePhotoLightbox, type LightboxPhoto } from '@/app/(fullscreen)/modo-treino/PhotoLightbox';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { apiFetch, ApiError } from '@/lib/api';
+import { equipmentSaveErrorMessage } from '@/lib/equipment-save-error';
 import type { SessionUser } from '@/lib/auth';
 import { catalogosControls, segurancaTreinoControls } from '@/lib/screen-permissions';
 import type {
@@ -1562,9 +1563,7 @@ export function EquipamentosExerciciosClient() {
 
           {upsertEquipmentMutation.isError && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
-              {isForbidden(upsertEquipmentMutation.error)
-                ? 'Ação restrita a administradores.'
-                : errorMessage(upsertEquipmentMutation.error, 'Não foi possível salvar o equipamento.')}
+              {equipmentSaveErrorMessage(upsertEquipmentMutation.error)}
             </Alert>
           )}
 

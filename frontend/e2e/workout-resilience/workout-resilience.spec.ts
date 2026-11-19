@@ -24,6 +24,20 @@ async function openWorkout(page: Page) {
   await expect(page.getByTestId('set-save')).toBeVisible();
 }
 
+/** Shell mobile: o "Sair" fica na folha da aba "Mais". */
+async function openLogout(page: Page) {
+  await page.getByRole('button', { name: 'Mais' }).click();
+  await page.getByText('Sair', { exact: true }).click();
+}
+
+/** Exercicio cujo grupo ainda nao foi ativado abre no aquecimento opcional; pula para a serie. */
+async function skipWarmupIfShown(page: Page) {
+  const skip = page.getByRole('button', { name: 'Pular aquecimento' });
+  await expect(skip.or(page.getByTestId('set-save'))).toBeVisible();
+  if (await skip.isVisible()) await skip.click();
+  await expect(page.getByTestId('set-save')).toBeVisible();
+}
+
 async function logSet(page: Page, reps: number, weight: number, rpe = 8) {
   const inputs = page.locator('input[inputmode="numeric"]');
   await inputs.nth(0).fill(String(reps));
@@ -77,16 +91,20 @@ test('migra a sessao legada para o IndexedDB do usuario e remove a chave antiga'
 });
 
 test('marcar Aprimoramento de tecnica na apresentacao: o POST de criacao do exercicio leva form_practice true', async ({ page }) => {
+  // O Supino ja existe no servidor falso (sem POST de criacao); o Crucifixo (item 7002) ainda nao.
+  await seedCrucifixoOnly(page);
   await page.goto('/modo-treino/');
   const start = page.getByRole('button', { name: 'Iniciar exercício' });
   await expect(start).toBeVisible({ timeout: 20_000 });
   await page.getByTestId('briefing-form-practice').click();
   await expect(page.getByTestId('briefing-form-practice-on')).toBeVisible();
   await start.click();
-  await expect(page.getByTestId('set-save')).toBeVisible();
+  await skipWarmupIfShown(page);
   await logSet(page, 10, 40);
   await expect(page.getByTestId('rest-clock')).toBeVisible();
-  expect(api.exercisePosts.at(0)?.form_practice).toBe(true);
+  expect(api.exercisePosts).toHaveLength(1);
+  expect(api.exercisePosts[0].form_practice).toBe(true);
+  expect(api.setPosts.at(0)?.exercise_form_practice).toBe(true);
 });
 
 test('registra serie, descanso, vai ao segundo plano e volta com dados integros e cronometro correto', async ({ page }) => {
@@ -195,10 +213,9 @@ test('logout apaga os dados locais do usuario e outra conta nao ve a sessao ante
   await openWorkout(page);
   expect((await idbKeys(page)).some((k) => k.includes('v1:1:'))).toBe(true);
 
-  // Logout real pelo menu do AppShell.
+  // Logout real pelo shell mobile (390px): aba "Mais" > "Sair".
   await page.goto('/dashboard/');
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
 
@@ -326,7 +343,7 @@ test('exercicio novo offline: addExercise + series na fila, e ao reconectar 1 ex
   await seedCrucifixoOnly(page);
   await page.goto('/modo-treino/');
   await page.getByTestId('briefing-start').click();
-  await expect(page.getByTestId('set-save')).toBeVisible();
+  await skipWarmupIfShown(page);
 
   api.setNetworkDown(true);
   await context.setOffline(true);
@@ -350,6 +367,87 @@ test('exercicio novo offline: addExercise + series na fila, e ao reconectar 1 ex
   expect(Array.from(perKey.values()).every((n) => n === 1)).toBe(true);
   expect(perKey.size).toBe(2);
   await expect(page.getByTestId('sync-indicator')).toHaveCount(0, { timeout: 20_000 });
+});
+
+test('troca de equipamento no meio do exercicio (#225): a continuacao e um exercicio proprio, com serie 1 no exercicio novo', async ({
+  page,
+}) => {
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await skipWarmupIfShown(page);
+
+  // Serie 1 no equipamento original: cria o exercicio (chave A).
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.crucifixoSets().length).toBe(1);
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+
+  // Encerra o exercicio trocando de equipamento pelas series restantes.
+  await page.getByTestId('execution-finish-exercise').click();
+  await page.getByRole('button', { name: /Trocar de equipamento \(séries restantes\)/ }).click();
+  await page.getByText('Crucifixo na polia').first().click();
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+
+  // Serie na continuacao: exercicio novo (chave B), serie numero 1 nele.
+  await logSet(page, 10, 15);
+  await expect.poll(() => api.exercisePosts.length).toBe(2);
+  const keys = api.exercisePosts.map((p) => p.client_key);
+  expect(new Set(keys).size).toBe(2);
+  expect(api.exercisePosts.every((p) => !p.duplicate)).toBe(true);
+  expect(api.exercisePosts.every((p) => p.workout_plan_exercise_id === 7002)).toBe(true);
+  const created = api.createdExerciseIds();
+  const continuationId = created[created.length - 1];
+  expect(continuationId).not.toBe(502);
+  await expect.poll(() => api.setsOf(continuationId).map((s) => s.set_number)).toEqual([1]);
+  expect(api.crucifixoSets().map((s) => s.set_number)).toEqual([1]);
+  expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
+});
+
+test('troca de equipamento (#225) com a continuacao criada e registrada OFFLINE: series 1 e 2 no exercicio novo, sem 409', async ({
+  page,
+  context,
+}) => {
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await skipWarmupIfShown(page);
+
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.crucifixoSets().length).toBe(1);
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+
+  // A troca (lista de equipamentos) ainda online; a CRIACAO da continuacao e as series, offline.
+  await page.getByTestId('execution-finish-exercise').click();
+  await page.getByRole('button', { name: /Trocar de equipamento \(séries restantes\)/ }).click();
+  await page.getByText('Crucifixo na polia').first().click();
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+
+  api.setNetworkDown(true);
+  await context.setOffline(true);
+  await logSet(page, 10, 15);
+  await expect(page.getByTestId('set-local-chip')).toContainText('salva no aparelho');
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+  await expect(page.getByText(/SÉRIE 2 DE/i)).toBeVisible(); // a continuacao enxerga a serie local dela
+  await logSet(page, 9, 15);
+  expect(api.exercisePosts).toHaveLength(1); // so o original; a continuacao esta na fila
+
+  api.setNetworkDown(false);
+  await context.setOffline(false);
+  await expect.poll(() => api.exercisePosts.filter((p) => !p.duplicate).length, { timeout: 40_000 }).toBe(2);
+  const keys = api.exercisePosts.map((p) => p.client_key);
+  expect(new Set(keys).size).toBe(2);
+  const created = api.createdExerciseIds();
+  const continuationId = created[created.length - 1];
+  expect(continuationId).not.toBe(502);
+  await expect.poll(() => api.setsOf(continuationId).map((s) => s.set_number), { timeout: 40_000 }).toEqual([1, 2]);
+  expect(api.crucifixoSets().map((s) => s.set_number)).toEqual([1]);
+  expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
 });
 
 test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
@@ -450,16 +548,14 @@ test('logout com serie pendente pede confirmacao; cancelar mantem a fila, confir
   });
 
   await page.goto('/dashboard/');
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect.poll(() => messages.length).toBe(1);
   expect(messages[0]).toMatch(/1 série não sincronizada/);
   await expect(page).toHaveURL(/dashboard/); // cancelou: continua logado
   expect((await idbKeys(page)).filter((k) => k.startsWith('op_queue/v1:1:op:'))).toHaveLength(1);
 
   accept = true;
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
 });
