@@ -12,6 +12,7 @@ import {
   setTypeSelectData,
   setUpdatePayload,
 } from './exercise-set-edit';
+import painParity from './pain-rollup.parity.json';
 import { MEASURE_LIMITS, MEASURE_VALUES } from './set-measures';
 import { updateSetField } from './exercise-log-save';
 
@@ -316,8 +317,21 @@ describe('#219 edição de tipo, medida e dor', () => {
   it('dor por série vai no payload e o máximo é calculado só para exibição', () => {
     const sets = [row({ muscle_pain: 3, joint_pain: false }), row({ muscle_pain: 7, joint_pain: true }), row({})];
     expect(setUpdatePayload(sets[1], 1)).toMatchObject({ muscle_pain: 7, joint_pain: true });
-    expect(setPainRollup(sets)).toEqual({ muscle_pain: 7, joint_pain: true });
-    expect(setPainRollup([row({})])).toEqual({ muscle_pain: null, joint_pain: null });
-    expect(setPainRollup([row({ joint_pain: false })]).joint_pain).toBe(false);
+    expect(setPainRollup(sets)).toMatchObject({ muscle_pain: 7, joint_pain: true, derived_muscle: true, derived_joint: true });
+    expect(setPainRollup([row({})])).toEqual({ muscle_pain: null, joint_pain: null, derived_muscle: false, derived_joint: false });
+  });
+
+  it.each(painParity.cases)('paridade do rollup de dor com o backend: $name', (c) => {
+    const got = setPainRollup(
+      c.sets.map((s) => ({ ...s, reps: null })) as never,
+      c.exercise as never,
+    );
+    const j = c.expected.joint_pain;
+    expect(got).toEqual({
+      muscle_pain: c.expected.muscle_pain,
+      joint_pain: j == null ? null : Boolean(j),
+      derived_muscle: c.expected.derived_muscle,
+      derived_joint: c.expected.derived_joint,
+    });
   });
 });

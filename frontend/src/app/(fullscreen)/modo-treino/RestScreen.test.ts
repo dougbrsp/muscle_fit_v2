@@ -6,7 +6,7 @@ import type { SetEvaluationResult, WorkoutModePlanExercise } from '@/lib/workout
 import { restSavedSetView } from '@/lib/workout-mode-rest-view';
 import { theme } from '@/theme';
 import { MuscleMapDisclosure } from './MuscleMapDisclosure';
-import { LastExerciseNotice, NextExercisePreviewCard } from './NextExercisePreviewCard';
+import { LastExerciseNotice, NextExercisePreviewCard, buildRestFinishWorkoutAction } from './NextExercisePreviewCard';
 import { RestAiEvaluationCard, RestSavedSetPanel, type RestSetEditProps } from './RestRecommendation';
 import { RestTimerHero } from './RestTimer';
 
@@ -273,8 +273,17 @@ describe('Próximo exercício', () => {
     expect(html).toContain('Flexão de joelhos sentada na máquina');
     expect(html).toContain('src="https://cdn.example/equipamentos/flexora.jpg"');
     expect(html).toContain('Posterior de coxas');
-    // Entre séries o card é só informativo.
+    // Entre séries o card é só informativo: "Encerrar treino" mora nas ações do descanso (#213).
     expect(html).not.toContain('Encerrar treino');
+  });
+
+  it('descanso entre séries: ação "Encerrar treino" chama o requestFinish de quem monta', () => {
+    const onClick = vi.fn();
+    const action = buildRestFinishWorkoutAction(onClick);
+    expect(action.label).toBe('Encerrar treino');
+    expect(action.testId).toBe('rest-finish-workout');
+    action.onClick?.();
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('sem foto: placeholder; na transição, as ações de antes', () => {

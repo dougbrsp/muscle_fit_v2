@@ -1873,6 +1873,11 @@ PADROES: tuple[Padrao, ...] = (
             r"|\bform_practice(?:_column)?\}?\s+is\b"
             r"|(?-i:\bNOT)\s+(?:\w+\.)?\{?form_practice(?:_column)?\b"
             r"|\b(?:max|min|sum|avg|bit_or|bit_and)\s*\(\s*(?:distinct\s+)?(?:\w+\.)?\{?form_practice(?:_column)?\b"
+            # `COALESCE/IFNULL(form_practice, 0) = 0` e comparação com parâmetro em predicado (`AND/OR/WHERE/ON/HAVING
+            # form_practice = %s|:x|?`); o `SET form_practice = %s` de UPDATE/INSERT não é predicado e não é acusado.
+            r"|\b(?:coalesce|ifnull)\s*\(\s*(?:\w+\.)?\{?form_practice(?:_column)?\}?\s*,"
+            r"|\b(?:and|or|where|on|having)\s+\(?\s*(?:\w+\.)?\{?form_practice(?:_column)?\}?\s*"
+            r"(?:<>|!=|==?|>=?|<=?)\s*(?:%s|:\w+|\?)"
         ),
         donos=("api/app/domain/form_practice.py",),
         inventario="#196 (§105)",
@@ -2854,7 +2859,9 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "AND e.form_practice IN (0)", "AND e.form_practice NOT IN (1)", "WHERE e.form_practice IS NOT TRUE",
          "AND NOT e.form_practice", "WHERE NOT form_practice", 'f"AND e.{FORM_PRACTICE_COLUMN} = 0"',
          'f"SELECT MAX({FORM_PRACTICE_COLUMN}) AS marked FROM exercises"', "SELECT MAX(e.form_practice) AS m",
-         "BIT_OR(form_practice)", "SUM(e.form_practice) = 0", "if row.form_practice == 1:"),
+         "BIT_OR(form_practice)", "SUM(e.form_practice) = 0", "if row.form_practice == 1:",
+         "AND COALESCE(form_practice, 0) = 0", "AND COALESCE(e.form_practice, 0) = 0", "WHERE IFNULL(e.form_practice,0)=0",
+         "AND e.form_practice = %s", "WHERE form_practice = :marcado", "AND e.form_practice = ?"),
         ("sql_counts_for_progression('e')", "e.form_practice AS form_practice", "form_practice = %s",
          "form_practice: bool = False", "if counts_for_progression(row.get('form_practice')):",
          "CAST(e.form_practice AS CHAR),", "GROUP BY e.id, e.form_practice, e.original_name",

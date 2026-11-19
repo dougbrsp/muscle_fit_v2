@@ -4,6 +4,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Mapping, Sequence
 
+from ..domain.form_practice import sql_counts_for_progression
 from ..set_types import sql_is_working, sql_set_confirmed
 from .base import IntelligenceServiceBase
 from .dashboard.metrics_registry import EXERCISE_PROGRESSION_STATUS_LABELS, ExerciseProgressionStatus
@@ -263,6 +264,7 @@ class ProgressionService(IntelligenceServiceBase):
                 OR LOWER(a.activity_type) LIKE '%%força%%'
                 OR LOWER(a.activity_type) LIKE '%%strength%%'
               )
+              AND {sql_counts_for_progression('e')}
               {user_filter}
             GROUP BY a.id, a.local_date, a.activity_type, e.id,
                      COALESCE(zm.name, e.original_name), pg.name, sg.name

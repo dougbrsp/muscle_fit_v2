@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   FORM_PRACTICE_LABEL,
+  exerciseFormPracticeField,
+  formPracticeCreateField,
+  formPracticeStateFromSetResponse,
+  removeFormPracticePending,
   isFormPracticePending,
   isFormPracticeRow,
+  nextServerStateOnCreated,
   resolveFormPracticePlanExerciseId,
   toggleFormPracticePending,
 } from './form-practice';
@@ -40,5 +45,47 @@ describe('form-practice', () => {
     expect(isFormPracticeRow({ form_practice: null })).toBe(false);
     expect(isFormPracticeRow(undefined)).toBe(false);
     expect(isFormPracticeRow({ form_practice: true })).toBe(true);
+  });
+});
+
+describe('form-practice: nextServerStateOnCreated', () => {
+  it('mesmo exercício já travado mantém o estado', () => {
+    const prev = { exerciseId: 7, marked: true, locked: true };
+    expect(nextServerStateOnCreated(prev, 7, false)).toBe(prev);
+  });
+  it('id diferente ou sem estado grava o inicial destravado', () => {
+    expect(nextServerStateOnCreated({ exerciseId: 7, marked: true, locked: true }, 8, true)).toEqual({
+      exerciseId: 8,
+      marked: true,
+      locked: false,
+    });
+    expect(nextServerStateOnCreated(undefined, 9, false)).toEqual({ exerciseId: 9, marked: false, locked: false });
+  });
+});
+
+describe('form-practice (#213): corpos e estado do servidor', () => {
+  it('criação do exercício envia form_practice explícito, inclusive false', () => {
+    expect(formPracticeCreateField(true)).toEqual({ form_practice: true });
+    expect(formPracticeCreateField(false)).toEqual({ form_practice: false });
+  });
+
+  it('POST de série leva exercise_form_practice só enquanto não travado', () => {
+    expect(exerciseFormPracticeField({ marked: true, locked: false })).toEqual({ exercise_form_practice: true });
+    expect(exerciseFormPracticeField({ marked: false, locked: false })).toEqual({ exercise_form_practice: false });
+    expect(exerciseFormPracticeField({ marked: true, locked: true })).toEqual({});
+  });
+
+  it('lê form_practice/form_practice_locked da resposta de série', () => {
+    expect(formPracticeStateFromSetResponse({ form_practice: false, form_practice_locked: false })).toEqual({ marked: false, locked: false });
+    expect(formPracticeStateFromSetResponse({ form_practice: true, form_practice_locked: true })).toEqual({ marked: true, locked: true });
+    expect(formPracticeStateFromSetResponse({})).toBeNull();
+    expect(formPracticeStateFromSetResponse(null)).toBeNull();
+  });
+
+  it('limpa a pendência do item sem mutar a lista', () => {
+    const ids = [3, 7];
+    expect(removeFormPracticePending(ids, 7)).toEqual([3]);
+    expect(removeFormPracticePending(ids, null)).toEqual([3, 7]);
+    expect(ids).toEqual([3, 7]);
   });
 });

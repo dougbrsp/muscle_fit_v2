@@ -45,6 +45,7 @@ import {
   setPainRollup,
   setTypeSelectData,
 } from '@/lib/exercise-set-edit';
+import { FinishWorkoutConfirmModal } from '@/app/(fullscreen)/modo-treino/FinishWorkoutConfirmModal';
 import { MEASURE_OPTIONS, normalizeMeasure } from '@/lib/set-measures';
 import { goalSelectData, useTrainingGoals } from '@/lib/training-goals';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
@@ -265,6 +266,7 @@ export function WorkoutDetailClient() {
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
   const [deleteTarget, setDeleteTarget] = useState<ExerciseLogRow | null>(null);
   const [deleteOpen, { open: openDelete, close: closeDelete }] = useDisclosure(false);
+  const [finishConfirmOpen, { open: openFinishConfirm, close: closeFinishConfirm }] = useDisclosure(false);
   const [headerEditOpen, { open: openHeaderEdit, close: closeHeaderEdit }] = useDisclosure(false);
 
   const isValidId = Number.isFinite(activityId) && activityId > 0;
@@ -454,6 +456,7 @@ export function WorkoutDetailClient() {
   const finishMutation = useMutation({
     mutationFn: async () => finishWorkoutSession(activityId),
     onSuccess: async () => {
+      closeFinishConfirm();
       await refreshActivity();
     },
   });
@@ -603,7 +606,7 @@ export function WorkoutDetailClient() {
   // `set_type`/`technique_code` e remapeia a âncora (ver exercise-set-edit.ts).
   const formSetDisplay = describeSets(form.sets);
   // Só exibição: o servidor grava o máximo das séries (`rollup_exercise_pain`).
-  const setPain = setPainRollup(form.sets);
+  const setPain = setPainRollup(form.sets, form);
 
   return (
     <Stack gap="xl">
@@ -621,12 +624,22 @@ export function WorkoutDetailClient() {
               variant="light"
               color="green"
               leftSection={<IconCheck size={16} />}
-              loading={finishMutation.isPending}
-              onClick={() => finishMutation.mutate()}
+              onClick={() => {
+                finishMutation.reset();
+                openFinishConfirm();
+              }}
             >
               Finalizar treino
             </Button>
           )}
+          <FinishWorkoutConfirmModal
+            opened={finishConfirmOpen}
+            finishing={finishMutation.isPending}
+            error={finishMutation.isError ? 'Não foi possível finalizar o treino.' : null}
+            onConfirm={() => finishMutation.mutate()}
+            onCancel={closeFinishConfirm}
+            cancelLabel="Voltar"
+          />
           <Button variant="default" leftSection={<IconEdit size={16} />} onClick={openHeaderEdit}>
             Editar treino
           </Button>
@@ -828,7 +841,7 @@ export function WorkoutDetailClient() {
             <NumberInput
               label="Dor muscular (0-10)"
               description={
-                setPain.muscle_pain != null
+                setPain.derived_muscle
                   ? 'Máximo das séries (definido pelas séries abaixo)'
                   : 'Opcional — dor muscular residual sentida neste exercício'
               }
@@ -840,18 +853,18 @@ export function WorkoutDetailClient() {
                 setForm((c) => ({ ...c, muscle_pain: value == null || value === '' ? null : Number(value) }))
               }
               clampBehavior="strict"
-              readOnly={setPain.muscle_pain != null}
-              disabled={setPain.muscle_pain != null}
+              readOnly={setPain.derived_muscle}
+              disabled={setPain.derived_muscle}
             />
             <Switch
               label="Dor articular"
               description={
-                setPain.joint_pain != null
+                setPain.derived_joint
                   ? 'Máximo das séries (definido pelas séries abaixo)'
                   : 'Opcional — reportou dor articular neste exercício'
               }
               checked={setPain.joint_pain ?? form.joint_pain}
-              disabled={setPain.joint_pain != null}
+              disabled={setPain.derived_joint}
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
                 setForm((c) => ({ ...c, joint_pain: checked }));

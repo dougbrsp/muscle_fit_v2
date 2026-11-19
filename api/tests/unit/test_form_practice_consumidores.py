@@ -241,3 +241,87 @@ def test_sqls_de_volume_e_recuperacao_nao_filtram_a_marca():
     assert not _PREDICADO.search(fonte_volume)
     assert "sql_counts_for_progression" not in fonte_volume
     assert "form_practice" not in vs.VolumeService._WINDOW_EXERCISE_SELECT
+
+
+# ---------------------------------------------------------------------------
+# Recorde: a consulta REAL do historico num SQLite em memoria, sessao MISTA
+# ---------------------------------------------------------------------------
+
+_RECORDE_SCHEMA = """
+CREATE TABLE activities (id INTEGER PRIMARY KEY, user_id INTEGER, local_date TEXT, started_at TEXT,
+                         deload_source TEXT);
+CREATE TABLE exercises (id INTEGER PRIMARY KEY, activity_id INTEGER, mapping_id INTEGER, sequence INTEGER,
+                        equipment_id INTEGER, workout_plan_exercise_id INTEGER,
+                        form_practice INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE exercise_sets (id INTEGER PRIMARY KEY, exercise_id INTEGER, set_number INTEGER, set_type TEXT,
+                            reps INTEGER, weight_kg REAL, rpe REAL, measure TEXT NOT NULL DEFAULT 'reps',
+                            reps_pending INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE exercise_legacy_id_map (old_exercise_id INTEGER, canonical_exercise_id INTEGER);
+CREATE TABLE gym_equipment (id INTEGER PRIMARY KEY, equipment_id INTEGER);
+CREATE TABLE equipment_exercises (equipment_id INTEGER, exercise_id INTEGER, is_active INTEGER);
+CREATE TABLE workout_plan_exercises (id INTEGER PRIMARY KEY, reps_target INTEGER);
+"""
+
+
+def _historico_real(execucoes, *, marcadas):
+    """`execucoes`: [(activity_id, local_date, mapping_id, weight_kg)]; `marcadas`: ids de activity+mapping
+    `(activity_id, mapping_id)` marcados como aprimoramento de tecnica. Devolve `parse_history` da consulta real."""
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_RECORDE_SCHEMA)
+    conn.execute("INSERT INTO gym_equipment VALUES (7, 50)")
+    conn.execute("INSERT INTO gym_equipment VALUES (8, 51)")
+    conn.execute("INSERT INTO equipment_exercises VALUES (50, 22, 1)")
+    conn.execute("INSERT INTO equipment_exercises VALUES (51, 23, 1)")
+    for n, (activity_id, local_date, mapping_id, weight) in enumerate(execucoes, start=1):
+        conn.execute(
+            "INSERT OR IGNORE INTO activities VALUES (?, 1, ?, NULL, NULL)", (activity_id, local_date.isoformat())
+        )
+        conn.execute(
+            "INSERT INTO exercises VALUES (?, ?, ?, ?, ?, NULL, ?)",
+            (n, activity_id, mapping_id, n, 7 if mapping_id == 22 else 8, int((activity_id, mapping_id) in marcadas)),
+        )
+        conn.execute(
+            "INSERT INTO exercise_sets (id, exercise_id, set_number, set_type, reps, weight_kg, rpe) "
+            "VALUES (?, ?, 1, 'working', 8, ?, 8)",
+            (n, n, weight),
+        )
+    sql = session_records.history_sql("NULL").replace("{placeholders}", "?, ?")
+    rows = [
+        dict(r)
+        for r in conn.execute(sql.replace("%s", "?"), (1, "2026-12-31", 22, 23)).fetchall()
+    ]
+    conn.close()
+    return session_records.parse_history(rows)
+
+
+_SESSOES_MISTAS = [
+    (1, _dt.date(2026, 11, 1), 22, 100.0),
+    (2, _dt.date(2026, 11, 8), 22, 200.0),  # marcada: nao pode virar recorde nem referencia
+    (2, _dt.date(2026, 11, 8), 23, 50.0),  # mesma sessao, nao marcada
+    (3, _dt.date(2026, 11, 15), 22, 110.0),
+    (3, _dt.date(2026, 11, 15), 23, 60.0),
+]
+
+
+def test_recorde_em_sessao_mista_ignora_a_marcada_e_conta_a_outra():
+    historico = _historico_real(_SESSOES_MISTAS, marcadas={(2, 22)})
+    assert [(h.activity_id, h.exercise_id) for h in historico] == [(1, 22), (3, 22), (2, 23), (3, 23)]
+
+    eventos = {(e.exposure.activity_id, e.exposure.exercise_id): e for e in session_records.record_events(historico)}
+    # Referencia do exercicio marcado: 100 (nao 200); 110 supera 100 e e recorde.
+    assert eventos[(3, 22)].previous_best == 100.0
+    assert (2, 22) not in eventos
+    # O exercicio nao marcado da mesma sessao 2 entra normalmente: 60 supera 50.
+    assert eventos[(3, 23)].previous_best == 50.0
+    chave = historico[0].key
+    assert session_records.best_load(historico, chave).load_kg == 110.0
+
+
+def test_recorde_controle_sem_marca_a_execucao_de_200_e_recorde():
+    historico = _historico_real(_SESSOES_MISTAS, marcadas=set())
+    eventos = {(e.exposure.activity_id, e.exposure.exercise_id) for e in session_records.record_events(historico)}
+    assert (2, 22) in eventos
+    assert (3, 22) not in eventos  # 110 < 200

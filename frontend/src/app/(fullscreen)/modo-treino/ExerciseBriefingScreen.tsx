@@ -47,10 +47,12 @@ import type { ExerciseBriefingResponse } from '@/lib/exercise-briefing-types';
 import {
   FORM_PRACTICE_HELP,
   FORM_PRACTICE_LABEL,
+  type FormPracticeServerState,
   isFormPracticePending,
   isFormPracticeRow,
   resolveFormPracticePlanExerciseId,
 } from '@/lib/form-practice';
+import { isWorkingSetType } from '@/lib/set-types';
 import { manufacturerLabel, saveGymEquipmentManufacturer } from '@/lib/gym-equipment-manufacturer';
 import { useOnlineStatus } from '@/mobile/ui/use-online-status';
 import { recoveryCeilingText } from '@/lib/intensity-status';
@@ -123,7 +125,12 @@ type SharedProps = {
   onToggleFormPractice?: () => void;
 };
 
-type FormPracticeRow = { form_practice?: boolean | null; workout_plan_exercise_id?: number | null };
+type FormPracticeRow = {
+  id?: number | null;
+  form_practice?: boolean | null;
+  workout_plan_exercise_id?: number | null;
+  sets?: readonly { set_type?: string | null }[] | null;
+};
 
 /**
  * #196: estado da marcação do exercício atual (só apresentação; a regra é do backend).
@@ -134,28 +141,51 @@ type FormPracticeRow = { form_practice?: boolean | null; workout_plan_exercise_i
  */
 export function resolveFormPracticeState({
   planExerciseId,
+  currentExerciseId,
   midExerciseExtras,
   loggedRow,
   loggedExercises,
   pendingIds,
+  serverStates,
+  continuationChoices,
 }: {
   planExerciseId: number | null;
+  /** Id do exercício atual já criado (ou enfileirado) mesmo sem `loggedRow`; null = ainda não criado. */
+  currentExerciseId?: number | null;
   midExerciseExtras: readonly MidExerciseExtra[];
   loggedRow: FormPracticeRow | null | undefined;
   loggedExercises: readonly FormPracticeRow[] | null | undefined;
   pendingIds: number[];
-}): { itemId: number | null; marked: boolean; locked: boolean } {
+  /** Último estado devolvido pelo servidor por item da ficha, com o id do exercício a que se refere. */
+  serverStates?: Readonly<Record<number, FormPracticeServerState>>;
+  /** Escolha do usuário para a continuação ainda não criada, por id (sintético) do exercício atual. */
+  continuationChoices?: Readonly<Record<number, boolean>>;
+}): { itemId: number | null; marked: boolean; locked: boolean; onServer: boolean } {
   const itemId = planExerciseId != null ? resolveFormPracticePlanExerciseId(planExerciseId, midExerciseExtras) : null;
   const isContinuation = itemId != null && itemId !== planExerciseId;
-  const serverRow =
-    loggedRow ?? (isContinuation ? loggedExercises?.find((row) => row.workout_plan_exercise_id === itemId) : undefined);
-  return {
-    itemId,
-    marked: serverRow
-      ? isFormPracticeRow(serverRow)
-      : isFormPracticePending({ form_practice_plan_exercise_ids: pendingIds }, itemId),
-    locked: Boolean(serverRow),
-  };
+  // Quem decide o travamento é o servidor (última resposta), mas só vale para ESTE exercício
+  // (id da linha local ou, antes de ela aparecer, o id criado/enfileirado que a tela conhece).
+  const exerciseId = loggedRow?.id ?? currentExerciseId ?? null;
+  const serverState = itemId != null ? serverStates?.[itemId] : undefined;
+  if (serverState && exerciseId != null && serverState.exerciseId === exerciseId) {
+    return { itemId, marked: serverState.marked, locked: serverState.locked, onServer: true };
+  }
+  if (loggedRow) {
+    // Sem resposta de série ainda (ex.: após recarregar): fallback local, só para o estado antes da resposta.
+    return {
+      itemId,
+      marked: isFormPracticeRow(loggedRow),
+      locked: (loggedRow.sets ?? []).some((set) => isWorkingSetType(set.set_type)),
+      onServer: true,
+    };
+  }
+  // Exercício atual ainda não existe no servidor: nunca travado; a continuação herda a marca do original.
+  const originalRow = isContinuation ? loggedExercises?.find((row) => row.workout_plan_exercise_id === itemId) : undefined;
+  const inherited = originalRow
+    ? isFormPracticeRow(originalRow)
+    : isFormPracticePending({ form_practice_plan_exercise_ids: pendingIds }, itemId);
+  const choice = isContinuation && planExerciseId != null ? continuationChoices?.[planExerciseId] : undefined;
+  return { itemId, marked: choice ?? inherited, locked: false, onServer: false };
 }
 
 /** #196: ação de alternar "Aprimoramento de técnica"; travada, fica desabilitada mostrando o estado. */

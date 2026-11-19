@@ -497,7 +497,19 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
             else:
                 cur.execute("SELECT id FROM activities WHERE source_id=%s AND external_id=%s", (sid, ext_id))
             existing = cur.fetchone()
+            kept_marks: dict[tuple[Any, Any], tuple[bool, Any]] = {}
             if existing:
+                # Chave (sequence, original_name): o source_row_hash inclui as series e muda quando elas mudam;
+                # limite: renumerar ou renomear o exercicio no payload perde a marca.
+                cur.execute(
+                    f"SELECT sequence, original_name, {FORM_PRACTICE_COLUMN}, {TRAINING_GOAL_COLUMN} "
+                    "FROM exercises WHERE activity_id=%s",
+                    (existing["id"],),
+                )
+                kept_marks = {
+                    (r["sequence"], r["original_name"]): (is_form_practice(r[FORM_PRACTICE_COLUMN]), r[TRAINING_GOAL_COLUMN])
+                    for r in cur.fetchall() or []
+                }
                 cur.execute("DELETE FROM activities WHERE id=%s", (existing["id"],))
 
             exercise_rpes = []
@@ -612,6 +624,13 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                 )
                 exercise_id = cur.lastrowid
                 inserted_exercises += 1
+                kept = kept_marks.get((ex["sequence"], ex["original_name"]))
+                if kept:
+                    cur.execute(
+                        f"UPDATE exercises SET {FORM_PRACTICE_COLUMN}=%s, {TRAINING_GOAL_COLUMN}=COALESCE(%s, {TRAINING_GOAL_COLUMN}) "
+                        "WHERE id=%s",
+                        (kept[0], kept[1], exercise_id),
+                    )
 
                 for st in set_dicts:
                     set_type = normalize_set_type(st.get("set_type"))
@@ -962,9 +981,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
         with conn.cursor() as cur:
             if user_id is not None:
                 cur.execute(
-                    """
+                    f"""
                     SELECT e.id, e.original_name, e.notes, e.muscle_pain, e.joint_pain,
-                           e.training_goal, a.deload_source,
+                           e.training_goal, e.{FORM_PRACTICE_COLUMN}, a.deload_source,
                            wpe.reps_target, wpe.load_target, wpe.rpe_target
                     FROM exercises e
                     JOIN activities a ON a.id = e.activity_id
@@ -975,9 +994,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
                 )
             else:
                 cur.execute(
-                    """
+                    f"""
                     SELECT e.id, e.original_name, e.notes, e.muscle_pain, e.joint_pain,
-                           e.training_goal, a.deload_source,
+                           e.training_goal, e.{FORM_PRACTICE_COLUMN}, a.deload_source,
                            wpe.reps_target, wpe.load_target, wpe.rpe_target
                     FROM exercises e
                     JOIN activities a ON a.id = e.activity_id
@@ -1001,6 +1020,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
             # M95b: `technique_code`/`anchor_set_number` (059) rotulam a serie de
             # tecnica pelo nome do catalogo (`set_labels.set_display_label`).
             exercise["sets"] = _with_canonical_set_type(cur.fetchall())
+            # Resumo de UM exercicio, sem media historica: o contexto so informa a
+            # marca (dono `form_practice`); o texto do prompt ainda nao a usa.
+            exercise[FORM_PRACTICE_COLUMN] = is_form_practice(exercise.get(FORM_PRACTICE_COLUMN))
             return exercise
 
 

@@ -87,6 +87,13 @@ describe('FinishWorkoutConfirmModal', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it('cancelLabel troca o rótulo de desistir e ainda cancela', async () => {
+    const { onCancel } = await mount({ cancelLabel: 'Voltar' });
+    expect(button('Continuar treino')).toBeUndefined();
+    await click(button('Voltar')!);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('fechar pelo X cancela', async () => {
     const { onConfirm, onCancel } = await mount();
     await click(document.body.querySelector('button[aria-label="Fechar"]') as HTMLElement);

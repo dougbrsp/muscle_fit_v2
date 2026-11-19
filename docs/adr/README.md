@@ -39,5 +39,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0017](0017-aprimoramento-de-tecnica-fora-da-progressao.md) | Execução marcada como aprimoramento de técnica fica fora de progressão, calibração, recorde, e1RM e referência de carga; conta para volume, recuperação e tempo (issue #196) | Aceita | 2026-11-18 |
 | [0018](0018-edicao-de-treino-encerrado-e-reavaliacao.md) | Edição de treino encerrado pelo Registro e reavaliação da progressão (issues #215, #216 e #219) | Aceita | 2026-11-19 |
 | [0019](0019-campos-do-treino-editaveis-depois-do-treino.md) | Tipo de série, medida, dor por série e objetivo editáveis depois do treino pelo Registro (issue #219, lote 2) | Aceita | 2026-11-19 |
+| [0020](0020-tecnica-ate-a-serie-de-trabalho-e-encerrar-treino.md) | Marca de técnica até a 1ª série de trabalho, encerrar treino entre séries e dor zero sem dor (issues #213 e #211) | Aceita | 2026-11-19 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProgressionSessionItem } from './dashboard-v2-types';
-import { buildProgressionChart, isSessionE1rmReliable, sessionLoad, sessionRepsText } from './progression-chart';
+import { buildProgressionChart, formPracticeSessionsNote, isSessionE1rmReliable, sessionLoad, sessionRepsText } from './progression-chart';
 
 function sessao(overrides: Partial<ProgressionSessionItem>): ProgressionSessionItem {
   return {
@@ -138,5 +138,14 @@ describe('colunas da tabela', () => {
     expect(sessionRepsText(sessao({}))).toBe('20');
     expect(isSessionE1rmReliable(sessao({ e1rm_reliable: false }))).toBe(false);
     expect(isSessionE1rmReliable(sessao({}))).toBe(true);
+  });
+});
+
+describe('formPracticeSessionsNote', () => {
+  it('zero ou ausente não mostra; singular e plural concordam', () => {
+    expect(formPracticeSessionsNote(0)).toBe('');
+    expect(formPracticeSessionsNote(undefined)).toBe('');
+    expect(formPracticeSessionsNote(1)).toBe('1 sessão de aprimoramento de técnica marcada, fora da linha do 1RM estimado.');
+    expect(formPracticeSessionsNote(3)).toBe('3 sessões de aprimoramento de técnica marcadas, fora da linha do 1RM estimado.');
   });
 });

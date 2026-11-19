@@ -1,0 +1,67 @@
+{
+  "_comment": "Paridade do rollup de dor por série -> exercício. Dono: api/app/workout_sessions.py::rollup_exercise_pain (provado por api/tests/unit/test_dor_zero_sem_dor.py). Só dor > 0 nas séries confirmadas consolida (máximo por coluna); senão vale o campo do exercício. derived_* = o valor vem das séries (campo somente leitura na tela). Dor zero conta como sem dor (decisão 19/11/2026).",
+  "cases": [
+    {
+      "name": "nenhuma_serie_com_dor_vale_o_exercicio",
+      "sets": [
+        { "muscle_pain": null, "joint_pain": null, "reps_pending": false },
+        { "muscle_pain": null, "joint_pain": null, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": 3, "joint_pain": 1 },
+      "expected": { "muscle_pain": 3, "joint_pain": 1, "derived_muscle": false, "derived_joint": false }
+    },
+    {
+      "name": "series_so_com_zero_vale_o_exercicio",
+      "sets": [
+        { "muscle_pain": 0, "joint_pain": 0, "reps_pending": false },
+        { "muscle_pain": 0, "joint_pain": false, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": null, "joint_pain": 1 },
+      "expected": { "muscle_pain": null, "joint_pain": 1, "derived_muscle": false, "derived_joint": false }
+    },
+    {
+      "name": "sem_dor_em_lugar_nenhum",
+      "sets": [{ "muscle_pain": 0, "joint_pain": 0, "reps_pending": false }],
+      "exercise": { "muscle_pain": null, "joint_pain": null },
+      "expected": { "muscle_pain": null, "joint_pain": null, "derived_muscle": false, "derived_joint": false }
+    },
+    {
+      "name": "dor_muscular_maior_que_zero_o_maximo_vence",
+      "sets": [
+        { "muscle_pain": 2, "joint_pain": 0, "reps_pending": false },
+        { "muscle_pain": 5, "joint_pain": 0, "reps_pending": false },
+        { "muscle_pain": 0, "joint_pain": 0, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": 1, "joint_pain": null },
+      "expected": { "muscle_pain": 5, "joint_pain": null, "derived_muscle": true, "derived_joint": false }
+    },
+    {
+      "name": "dor_articular_1_em_uma_serie",
+      "sets": [
+        { "muscle_pain": null, "joint_pain": 0, "reps_pending": false },
+        { "muscle_pain": null, "joint_pain": 1, "reps_pending": false },
+        { "muscle_pain": null, "joint_pain": true, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": null, "joint_pain": null },
+      "expected": { "muscle_pain": null, "joint_pain": 1, "derived_muscle": false, "derived_joint": true }
+    },
+    {
+      "name": "serie_pendente_com_dor_nao_conta",
+      "sets": [
+        { "muscle_pain": 8, "joint_pain": 1, "reps_pending": true },
+        { "muscle_pain": 2, "joint_pain": 0, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": null, "joint_pain": null },
+      "expected": { "muscle_pain": 2, "joint_pain": null, "derived_muscle": true, "derived_joint": false }
+    },
+    {
+      "name": "colunas_independentes",
+      "sets": [
+        { "muscle_pain": 4, "joint_pain": 0, "reps_pending": false },
+        { "muscle_pain": 0, "joint_pain": 0, "reps_pending": false }
+      ],
+      "exercise": { "muscle_pain": 9, "joint_pain": 1 },
+      "expected": { "muscle_pain": 4, "joint_pain": 1, "derived_muscle": true, "derived_joint": false }
+    }
+  ]
+}

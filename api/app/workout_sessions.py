@@ -42,10 +42,13 @@ from .domain import technique_accounting
 from .domain.training_goal import SQL_PLAN_EXERCISE_GOAL, plan_exercise_goal_params
 from .domain.form_practice import (
     FORM_PRACTICE_COLUMN,
+    form_practice_locked,
     inherit_form_practice,
     is_form_practice,
     neutral_set_outcome,
+    resolve_form_practice_before_work,
     sql_plan_item_marked,
+    sql_working_sets_recorded,
 )
 from . import deload_periods
 from .domain.deload import (
@@ -103,6 +106,7 @@ from .set_types import (
     is_laboral_set,
     is_pending_set,
     is_preparatory_set,
+    is_working_set,
     normalize_set_type,
     sql_is_working,
     sql_set_confirmed,
@@ -187,9 +191,10 @@ class SessionExerciseIn(BaseModel):
     # Chave de idempotência do cliente (fila do relógio). Repetir a chave na
     # mesma sessão devolve o exercício já criado (`duplicate: true`).
     client_key: Optional[str] = _client_key_field()
-    # #196 (ADR 0017, D2): "Aprimoramento de técnica", só na criação (antes da
-    # 1ª série); não há edição depois. Ausente = execução normal.
-    form_practice: bool = False
+    # #196/#213 (ADR 0017): "Aprimoramento de técnica" na criação. O valor
+    # enviado (True/False) vale; ausente/null = herda do mesmo item da ficha na
+    # sessão (`inherit_form_practice`), senão execução normal.
+    form_practice: Optional[bool] = None
 
 
 class SessionSetIn(BaseModel):
@@ -217,6 +222,10 @@ class SessionSetIn(BaseModel):
     # Chave de idempotência do cliente (fila do relógio). Repetir a chave no
     # mesmo exercício da sessão devolve a série já gravada (`duplicate: true`).
     client_key: Optional[str] = _client_key_field()
+    # #213/#211: marca "Aprimoramento de técnica" do EXERCÍCIO, feita/desfeita
+    # até a 1ª série de trabalho (dono `form_practice.form_practice_locked`);
+    # travado, o pedido é ignorado. Ausente/null = não muda.
+    exercise_form_practice: Optional[bool] = None
     # Medidas de série (Lote T3, colunas da 089). Ausente = `reps`: o relógio
     # antigo só manda reps, e a medida NUNCA é deduzida do item da ficha.
     # `duration`: segundos em `duration_seconds`, reps nulas; `max_reps`: reps
@@ -435,10 +444,11 @@ def _read_pain_rollup(cur, exercise_id: int) -> dict:
     campos legados de exercises sempre sincronizados com o agregado das
     series reais, para NAO precisar alterar volume_service.py/
     muscle_recovery_service.py/workout_plan_ai.py, que continuam lendo
-    exclusivamente de exercises.muscle_pain/joint_pain). MAX() ignora NULL e
-    a serie pendente; sem dor em nenhuma serie, os dois valores sao None."""
+    exclusivamente de exercises.muscle_pain/joint_pain). Dor zero conta como SEM
+    dor (decisao 19/11/2026): NULLIF(MAX(..), 0) so consolida dor > 0; MAX ignora
+    NULL e a serie pendente; sem dor > 0 em nenhuma serie, o valor e None."""
     cur.execute(
-        "SELECT MAX(muscle_pain) AS muscle_pain, MAX(joint_pain) AS joint_pain FROM exercise_sets "
+        "SELECT NULLIF(MAX(muscle_pain), 0) AS muscle_pain, NULLIF(MAX(joint_pain), 0) AS joint_pain FROM exercise_sets "
         f"WHERE exercise_id = %s AND {sql_set_confirmed('reps_pending')}",
         (exercise_id,),
     )
@@ -475,6 +485,7 @@ def _refresh_exercise_aggregates(cur, exercise_id: int) -> None:
     # dor abaixo continua considerando TODAS as series.
     stats = compute_exercise_stats(cur.fetchall())
 
+    # Modo Treino: a dor do exercicio e DERIVADA das series (sem dor > 0 -> NULL).
     pain_rollup = _read_pain_rollup(cur, exercise_id)
 
     cur.execute(
@@ -482,8 +493,8 @@ def _refresh_exercise_aggregates(cur, exercise_id: int) -> None:
         UPDATE exercises
         SET sets_count = %s, reps_total = %s, volume_kg = %s,
             min_weight_kg = %s, best_weight_kg = %s, avg_rpe = %s,
-            muscle_pain = COALESCE(%s, muscle_pain),
-            joint_pain = COALESCE(%s, joint_pain)
+            muscle_pain = %s,
+            joint_pain = %s
         WHERE id = %s
         """,
         (
@@ -1246,9 +1257,14 @@ def _set_response(
     client_key: Optional[str],
     duplicate: bool,
     intensive: Optional[dict[str, Any]] = None,
+    form_practice: bool = False,
+    form_practice_locked: bool = False,
 ) -> dict[str, Any]:
     intensive = intensive or {}
     return {
+        # #213: marca vigente do exercício e se já travou (há série de trabalho).
+        "form_practice": form_practice,
+        "form_practice_locked": form_practice_locked,
         "status": "ok",
         "session_id": session_id,
         "exercise_id": exercise_id,
@@ -1387,7 +1403,14 @@ def _duplicate_set_response(
         client_key=client_key,
         duplicate=True,
         intensive=stored,
+        form_practice=is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN)),
+        form_practice_locked=form_practice_locked(_working_sets_recorded(cur, exercise_id)),
     )
+
+
+def _working_sets_recorded(cur, exercise_id: int, *, locking: bool = False) -> int:
+    cur.execute(sql_working_sets_recorded(locking=locking), (exercise_id,))
+    return int((cur.fetchone() or {}).get("n") or 0)
 
 
 def _session_exercise_row(cur, session_id: int, exercise_id: int) -> dict[str, Any]:
@@ -1469,6 +1492,27 @@ def add_session_set(
                         conn, cur, session_id, exercise_id, exercise_row, stored, client_key, user_id=identity.user_id
                     )
                 _ensure_not_finished(session)
+
+            # #213: a marca muda ANTES de avaliar/gravar, para a própria 1ª série
+            # de trabalho já ser tratada pelo valor novo; travada = ignora.
+            if payload.exercise_form_practice is not None:
+                # Serializa POSTs simultâneos da 1ª série de trabalho com marcas diferentes.
+                # Depois do lock tudo é leitura CORRENTE (o snapshot do REPEATABLE READ nasceu
+                # antes dele): a marca gravada e a contagem de séries de trabalho.
+                cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
+                locked_row = cur.fetchone()
+                if locked_row:
+                    exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
+            # Sem o campo ainda conta (sem trava): a resposta informa `form_practice_locked`.
+            working_before = _working_sets_recorded(cur, exercise_id, locking=payload.exercise_form_practice is not None)
+            stored_mark = is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN))
+            new_mark = resolve_form_practice_before_work(payload.exercise_form_practice, stored_mark, working_before)
+            if new_mark != stored_mark:
+                cur.execute(
+                    f"UPDATE exercises SET {FORM_PRACTICE_COLUMN} = %s WHERE id = %s",
+                    (1 if new_mark else 0, exercise_id),
+                )
+                exercise_row[FORM_PRACTICE_COLUMN] = 1 if new_mark else 0
 
             set_number = payload.set_number
             if set_number is None:
@@ -1686,6 +1730,8 @@ def add_session_set(
         client_key=client_key,
         duplicate=False,
         intensive=intensive,
+        form_practice=new_mark,
+        form_practice_locked=form_practice_locked(working_before + (1 if is_working_set(set_type) else 0)),
     )
 
 
@@ -1780,11 +1826,14 @@ def update_session_set(
                 )
             _refresh_exercise_aggregates(cur, exercise_id)
             _refresh_activity_avg_rpe(cur, session_id)
+            patch_locked = form_practice_locked(_working_sets_recorded(cur, exercise_id))
 
     return _set_response(
         session_id,
         exercise_id,
         set_number=set_number,
+        form_practice=is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN)),
+        form_practice_locked=patch_locked,
         technique_code=stored.get("technique_code"),
         anchor_set_number=stored.get("anchor_set_number"),
         rpe_target_effective=stored.get("rpe_target_effective"),

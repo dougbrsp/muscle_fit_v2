@@ -74,13 +74,13 @@ def test_heranca_fragmento_sql_e_alias_validado():
         (False, None, False),  # treino livre / 1a passagem sem marca
         (True, None, True),  # treino livre: vale o cliente
         (None, 1, True),  # continuacao sem o campo herda (fila offline antiga, relogio)
-        (False, "1", True),  # continuacao nao desmarca
+        (False, "1", False),  # #213: o valor enviado vale, inclusive desmarcar a continuacao
         (True, 0, True),
         (None, None, False),  # item sem linha anterior (MAX sem linha = NULL)
         (0, Decimal("0"), False),
     ],
 )
-def test_heranca_enviado_ou_herdado(enviado, herdado, esperado):
+def test_heranca_enviado_vale_nao_enviado_herda(enviado, herdado, esperado):
     assert fp.inherit_form_practice(enviado, herdado) is esperado
 
 
@@ -224,15 +224,27 @@ def _variantes():
     return com, sem, controle
 
 
+def _controles_isolados(com):
+    """Um controle por variavel: so a sessao 4 (regressao) ou so a 7 (avanco) sem a marca."""
+    def desmarcar(indice):
+        historico = list(com)
+        historico[indice] = replace(
+            historico[indice], exercises=tuple(replace(e, form_practice=False) for e in historico[indice].exercises)
+        )
+        return historico
+
+    return {"sessao 4": desmarcar(4), "sessao 7": desmarcar(7)}
+
+
 def test_replay_de_producao_com_marcadas_e_identico_ao_historico_sem_elas(monkeypatch):
-    com, sem, controle = _variantes()
+    com, sem, _ = _variantes()
     referencia = parity.run(monkeypatch, sessions=sem)
     marcado = parity.run(monkeypatch, sessions=com)
     assert marcado["fingerprint"] == referencia["fingerprint"]
     assert marcado["decisions_md5"] == referencia["decisions_md5"]
-    # controle: as mesmas execucoes sem a marca mudam o estado
-    sem_marca = parity.run(monkeypatch, sessions=controle)
-    assert sem_marca["decisions_md5"] != referencia["decisions_md5"]
+    # controles, uma variavel por vez: tirar a marca de QUALQUER das duas muda o estado
+    for nome, historico in _controles_isolados(com).items():
+        assert parity.run(monkeypatch, sessions=historico)["decisions_md5"] != referencia["decisions_md5"], nome
 
 
 def _iguais(a, b):
@@ -242,23 +254,25 @@ def _iguais(a, b):
 
 
 def test_por_objetivo_identico_ao_historico_sem_as_marcadas():
-    com, sem, controle = _variantes()
+    com, sem, _ = _variantes()
     inputs = fx.inputs(tracks=parity.TRACKS)
     referencia = ev.evaluate_history_by_goal(sem, inputs=inputs).results[H]
     _iguais(ev.evaluate_history_by_goal(com, inputs=inputs).results[H], referencia)
-    outro = ev.evaluate_history_by_goal(controle, inputs=inputs).results[H]
-    assert [d.to_dict() for d in outro.decisions] != [d.to_dict() for d in referencia.decisions]
+    for nome, historico in _controles_isolados(com).items():
+        outro = ev.evaluate_history_by_goal(historico, inputs=inputs).results[H]
+        assert [d.to_dict() for d in outro.decisions] != [d.to_dict() for d in referencia.decisions], nome
 
 
 def test_evaluate_history_identico_ao_historico_sem_as_marcadas():
-    com, sem, controle = _variantes()
+    com, sem, _ = _variantes()
     inputs = fx.inputs(tracks=parity.TRACKS)
     referencia = ev.evaluate_history(sem, inputs=inputs)
     marcado = ev.evaluate_history(com, inputs=inputs)
     _iguais(marcado, referencia)
     assert [s.activity_id for s in marcado.session_decisions] == [s.activity_id for s in com]
-    outro = ev.evaluate_history(controle, inputs=inputs)
-    assert [d.to_dict() for d in outro.decisions] != [d.to_dict() for d in referencia.decisions]
+    for nome, historico in _controles_isolados(com).items():
+        outro = ev.evaluate_history(historico, inputs=inputs)
+        assert [d.to_dict() for d in outro.decisions] != [d.to_dict() for d in referencia.decisions], nome
     # o passo a passo (replay de diagnostico) e o mesmo encadeamento
     passos = list(ev.evaluate_history_steps(com, inputs=inputs))
     assert [s.activity_id for s, _ in passos] == [s.activity_id for s in com]
@@ -270,19 +284,37 @@ def test_evaluate_history_identico_ao_historico_sem_as_marcadas():
     ]
 
 
-def test_marcada_intercalada_preserva_plato_e_contadores_por_trilha():
-    """Supino marcado na sessao 4: plato da trilha e historico do grupo sao os
-    de 3 -> 5 consecutivas (o historico sem a execucao)."""
+def test_marcada_intercalada_preserva_plato_e_contadores_por_trilha(monkeypatch):
+    """Supino marcado na sessao 4: o plato da trilha e o historico do grupo, como o MOTOR os calcula
+    (chamadas reais de `track_plateau_history`/`group_session_history` dentro de
+    `evaluate_history_by_goal`), sao os do historico sem a execucao."""
+
+    def chamadas(historico):
+        gravado = {"trilha": [], "grupo": []}
+        real_trilha, real_grupo = ev.track_plateau_history, ev.group_session_history
+
+        def espia_trilha(window, key, *args, **kwargs):
+            resultado = real_trilha(window, key, *args, **kwargs)
+            gravado["trilha"].append((key, resultado))
+            return resultado
+
+        def espia_grupo(window, group_id, *args, **kwargs):
+            resultado = real_grupo(window, group_id, *args, **kwargs)
+            gravado["grupo"].append((group_id, resultado))
+            return resultado
+
+        monkeypatch.setattr(ev, "track_plateau_history", espia_trilha)
+        monkeypatch.setattr(ev, "group_session_history", espia_grupo)
+        ev.evaluate_history_by_goal(historico, inputs=fx.inputs(tracks=parity.TRACKS))
+        monkeypatch.setattr(ev, "track_plateau_history", real_trilha)
+        monkeypatch.setattr(ev, "group_session_history", real_grupo)
+        return gravado
+
     com, sem, _ = _variantes()
-    inputs = fx.inputs(tracks=parity.TRACKS)
-    estado = ev.evaluate_history_by_goal(sem[:6], inputs=inputs).results[H]
-    for key in [k for k in estado.tracks if k[0] == parity.SUPINO]:
-        assert ev.track_plateau_history(
-            [s.progression_view(H) for s in com[:6]], key, estado.group_states, estado.tracks, inputs
-        ) == ev.track_plateau_history(sem[:6], key, estado.group_states, estado.tracks, inputs)
-    assert ev.group_session_history(
-        [s.progression_view(H) for s in com[:6]], parity.PEITO, estado.group_states, estado.tracks, inputs
-    ) == ev.group_session_history(sem[:6], parity.PEITO, estado.group_states, estado.tracks, inputs)
+    marcado, referencia = chamadas(com), chamadas(sem)
+    assert referencia["grupo"] and any(g == parity.PEITO for g, _ in referencia["grupo"])
+    assert any(key[0] == parity.SUPINO for key, _ in referencia["trilha"])
+    assert marcado == referencia
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +444,11 @@ def test_teto_de_ativacao_le_a_execucao_marcada():
 
 
 def test_fadiga_previa_le_a_execucao_marcada():
+    """Sessao MISTA (outros exercicios + a execucao marcada 999_001): a fadiga previa ve todas, inclusive a
+    marcada, enquanto a visao da progressao da mesma sessao tira so ela."""
     com, _, _ = _variantes()
-    assert {item.row_id for item in executions_from_session(com[7])} == {e.exercise_row_id for e in com[7].exercises}
-    assert 999_001 in {item.row_id for item in executions_from_session(com[7])}
+    sessao = com[7]
+    nao_marcadas = {e.exercise_row_id for e in sessao.exercises if not e.form_practice}
+    assert nao_marcadas and 999_001 not in nao_marcadas
+    assert {item.row_id for item in executions_from_session(sessao)} == nao_marcadas | {999_001}
+    assert {e.exercise_row_id for e in sessao.progression_view(H).exercises} == nao_marcadas
