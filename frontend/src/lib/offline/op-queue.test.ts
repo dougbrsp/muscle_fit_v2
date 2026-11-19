@@ -659,3 +659,46 @@ describe('fila offline: identidade do exercício (local -> real)', () => {
     expect(queue.toServerExerciseId(ex.localId as number)).toBe(100);
   });
 });
+
+describe('fila offline: continuação por troca de equipamento (#225)', () => {
+  const body = { original_name: 'Crucifixo', workout_plan_exercise_id: 7002 };
+
+  it('original e continuação do mesmo item (chaves diferentes) são dois exercícios; cada série vai ao seu id', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    clock = 1;
+    const orig = await queue.enqueue({ kind: 'addExercise', sessionId: 10, exerciseId: null, payload: body, clientKey: 'ex:orig' });
+    clock = 2;
+    const cont = await queue.enqueue({ kind: 'addExercise', sessionId: 10, exerciseId: null, payload: body, clientKey: 'ex:cont' });
+    expect(orig.localId).not.toBe(cont.localId);
+    clock = 3;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: orig.localId as number, clientKey: 'set:orig:1', payload: { set_number: 1 } });
+    clock = 4;
+    await queue.enqueue({ ...SET_INPUT, exerciseId: cont.localId as number, clientKey: 'set:cont:1', payload: { set_number: 1 } });
+    online = true;
+    await queue.flush();
+    await queue.flush();
+    expect(server.exercises.size).toBe(2);
+    const origId = queue.serverExerciseId(orig.localId as number);
+    const contId = queue.serverExerciseId(cont.localId as number);
+    expect(origId).not.toBe(contId);
+    const setCalls = server.calls.filter((c) => c.kind === 'addSet').map((c) => [c.clientKey, c.exerciseId]);
+    expect(setCalls).toContainEqual(['set:orig:1', origId]);
+    expect(setCalls).toContainEqual(['set:cont:1', contId]);
+  });
+
+  it('reenviar a criação da continuação com a mesma chave continua deduplicado', async () => {
+    const server = fakeServer();
+    const queue = build(server);
+    await queue.hydrate(1);
+    online = false;
+    const a = await queue.enqueue({ kind: 'addExercise', sessionId: 10, exerciseId: null, payload: body, clientKey: 'ex:cont' });
+    const b = await queue.enqueue({ kind: 'addExercise', sessionId: 10, exerciseId: null, payload: body, clientKey: 'ex:cont' });
+    expect(b.localId).toBe(a.localId);
+    online = true;
+    await queue.flush();
+    expect(server.exercises.size).toBe(1);
+  });
+});

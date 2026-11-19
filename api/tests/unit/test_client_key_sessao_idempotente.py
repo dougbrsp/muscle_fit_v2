@@ -229,6 +229,19 @@ def test_exercicio_chaves_diferentes_e_pais_diferentes_criam(db):
     assert not any(r["duplicate"] for r in (a, b, c))
 
 
+def test_continuacao_mesmo_item_da_ficha_com_chave_nova_cria_linha_propria(db):
+    original = _add_exercise(client_key="ex-1", workout_plan_exercise_id=77, mapping_id=13, equipment_id=2)
+    cont = _add_exercise(client_key="ex-2", workout_plan_exercise_id=77, mapping_id=14, equipment_id=2)
+    assert cont["duplicate"] is False and cont["exercise_id"] != original["exercise_id"]
+    linha = next(e for e in db.exercises if e["id"] == cont["exercise_id"])
+    assert (linha["workout_plan_exercise_id"], linha["mapping_id"], linha["equipment_id"]) == (77, 14, 2)
+    assert len(db.exercises) == 2
+    # chave repetida da continuação: mesma linha, sem novo INSERT
+    de_novo = _add_exercise(client_key="ex-2", workout_plan_exercise_id=77, mapping_id=14, equipment_id=2)
+    assert de_novo["duplicate"] is True and de_novo["exercise_id"] == cont["exercise_id"]
+    assert len(db.exercises) == 2
+
+
 def test_exercicio_sem_chave_igual_a_hoje(db):
     a = _add_exercise()
     b = _add_exercise()

@@ -80,3 +80,16 @@ export function exerciseFormPracticeField(state: FormPracticeMark): { exercise_f
 export function isFormPracticeRow(row: { form_practice?: boolean | null } | null | undefined): boolean {
   return row?.form_practice === true;
 }
+
+/**
+ * Resposta de série em voo: se o usuário mexeu na marca depois de o POST partir e o servidor ainda não
+ * travou, vale a escolha mais recente (vai no próximo POST); travado, vale o servidor.
+ */
+export function reconcileMarkAfterResponse(
+  sent: FormPracticeMark,
+  latest: FormPracticeMark,
+  fromServer: FormPracticeMark,
+): FormPracticeMark {
+  if (fromServer.locked || latest.locked || latest.marked === sent.marked) return fromServer;
+  return { marked: latest.marked, locked: false };
+}

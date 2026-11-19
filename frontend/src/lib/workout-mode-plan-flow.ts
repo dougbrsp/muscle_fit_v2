@@ -262,6 +262,63 @@ export function buildSyntheticContinuation(params: {
   };
 }
 
+/** Grava o id REAL do exercício criado pela continuação `localId` (#225); devolve a mesma lista se nada muda. */
+export function withContinuationExerciseId(
+  extras: ReadonlyArray<MidExerciseExtra>,
+  localId: number,
+  exerciseId: number,
+): MidExerciseExtra[] {
+  if (extras.every((extra) => extra.localId !== localId || extra.exerciseId === exerciseId)) return extras as MidExerciseExtra[];
+  return extras.map((extra) => (extra.localId === localId ? { ...extra, exerciseId } : extra));
+}
+
+/**
+ * #225: continuações novas (`exerciseId === null`) cuja criação a fila offline já confirmou por conta própria
+ * ganham o id REAL do exercício. `keyOf(localId)` devolve a `client_key` de criação da continuação.
+ * Mesma lista se nada muda.
+ */
+export function withQueueConfirmedContinuationIds(
+  extras: ReadonlyArray<MidExerciseExtra>,
+  ops: ReadonlyArray<{ kind: string; clientKey: string; status: string; serverResponse?: unknown }>,
+  keyOf: (localId: number) => string | undefined,
+): MidExerciseExtra[] {
+  let next = extras as MidExerciseExtra[];
+  for (const extra of extras) {
+    if (extra.exerciseId !== null) continue;
+    const key = keyOf(extra.localId);
+    const op = key ? ops.find((o) => o.kind === 'addExercise' && o.clientKey === key && o.status === 'synced') : undefined;
+    const id = (op?.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
+    if (typeof id === 'number') next = withContinuationExerciseId(next, extra.localId, id);
+  }
+  return next;
+}
+
+/**
+ * #225 offline: continuação nova (`exerciseId === null`) cuja criação está na fila →
+ * ids que podem hospedar as séries dela na atividade mostrada: o real (op sincronizada,
+ * linha já vinda do servidor) primeiro, depois o id LOCAL da op (linha sintética do overlay).
+ * Nunca é persistido: só vale enquanto a op está na fila.
+ */
+export function queuedContinuationExerciseIds(
+  extras: ReadonlyArray<MidExerciseExtra>,
+  ops: ReadonlyArray<{ kind: string; clientKey: string; localId?: number; serverResponse?: unknown }>,
+  keyOf: (localId: number) => string | undefined,
+): Map<number, number[]> {
+  const result = new Map<number, number[]>();
+  for (const extra of extras) {
+    if (extra.exerciseId === undefined) continue; // legado; id real também segue na transição até o GET voltar
+    const key = keyOf(extra.localId);
+    const op = key ? ops.find((o) => o.kind === 'addExercise' && o.clientKey === key) : undefined;
+    if (!op) continue;
+    const ids: number[] = [];
+    const serverId = (op.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
+    if (typeof serverId === 'number') ids.push(serverId);
+    if (typeof op.localId === 'number') ids.push(op.localId);
+    if (ids.length > 0) result.set(extra.localId, ids);
+  }
+  return result;
+}
+
 /** Item de ficha "virtual" que representa uma continuação sintética na fila. */
 export function syntheticExtraToPlanExercise(extra: MidExerciseExtra): WorkoutPlanExercise {
   return {

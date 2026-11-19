@@ -161,6 +161,14 @@ describe('apiFetch — detail estruturado', () => {
     expect(error.detail).toBeUndefined();
   });
 
+  it('409 de nome duplicado: o formulário de equipamento exibe o detail do servidor (#204)', async () => {
+    const detail = 'Já existe um equipamento com esse nome.';
+    fetchMock.mockResolvedValue(json(409, { detail }));
+    const result = await settle(api.apiFetch('/equipment', { method: 'POST', body: '{}' }));
+    const { equipmentSaveErrorMessage } = await import('./equipment-save-error');
+    expect(equipmentSaveErrorMessage((result as PromiseRejectedResult).reason)).toBe(detail);
+  });
+
   it('detail objeto ({error, message}) fica em `detail`; a mensagem genérica não muda', async () => {
     const detail = { error: 'exercise_card_generation_in_progress', message: 'Já existe.', generation_id: 11 };
     fetchMock.mockResolvedValue(json(409, { detail }));
