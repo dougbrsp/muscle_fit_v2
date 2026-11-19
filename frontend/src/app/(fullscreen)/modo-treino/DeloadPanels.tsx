@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '@/lib/api';
 import {
   DELOAD_CURRENT_QUERY_KEY,
+  DELOAD_LABEL,
   DELOAD_LOCKED_MESSAGE,
   deloadBannerTitle,
   deloadRuleText,
@@ -63,7 +64,7 @@ export function DeloadStartPanel({ manual, onManualChange }: { manual: boolean; 
           <div style={{ minWidth: 0 }}>
             <Group gap={6} wrap="wrap">
               <Text fw={800} c={BRAND.textPrimary}>
-                Deload
+                {DELOAD_LABEL}
               </Text>
               {period && (
                 <Badge color="cyan" variant="light" data-testid="deload-period-badge">

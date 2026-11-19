@@ -47,6 +47,7 @@ from fractions import Fraction
 from typing import Any, Final, Iterable, Mapping, Optional, Sequence
 
 from .prescription_defaults import defaults_for
+from .session_status import SESSION_STATUS_DONE, is_closed_session
 from .training_goal import goal_value
 from .training_history import parse_int, parse_reps_range
 
@@ -553,8 +554,6 @@ def suppresses_regression(ranges: Iterable[DeloadRange], today: date) -> bool:
 # da próxima série) contra o alvo da sessão como ela era; trocar depois
 # misturaria os dois regimes na mesma sessão.
 DELOAD_TOGGLE_MAX_SAVED_SETS: Final[int] = 0
-# Valor gravado em `activities.session_status` pelo "Finalizar treino".
-SESSION_STATUS_DONE: Final[str] = "done"
 
 
 class DeloadToggleLocked(ValueError):
@@ -565,7 +564,7 @@ def can_toggle_deload(saved_sets: Any, *, session_status: Any = None) -> bool:
     """A sessão pode ligar/desligar o deload? Em andamento, só sem série
     gravada; encerrada (`session_status == 'done'`), sempre (correção
     posterior pelo Registro, com a progressão reavaliada pelo chamador)."""
-    if session_status == SESSION_STATUS_DONE:
+    if is_closed_session(session_status):
         return True
     return (parse_int(saved_sets) or 0) <= DELOAD_TOGGLE_MAX_SAVED_SETS
 

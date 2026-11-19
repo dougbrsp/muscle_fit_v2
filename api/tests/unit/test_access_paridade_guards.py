@@ -84,6 +84,7 @@ from tests.unit.test_access_guarda_cobertura_rotas import (
     ROTA_NOVA_TREINO,
     ROTA_NOVA_ACADEMIA_FABRICANTE,
     ROTA_NOVA_ALIMENTOS_LISTA,
+    ROTA_NOVA_REGISTRO_EXERCICIO,
     ROTA_NOVA_TREINO_EQUIP,
     ROTAS_NOVAS_POS_RETRATO,
     _all_project_routes,
@@ -853,15 +854,16 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_371_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
+def test_paridade_cobre_as_372_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 371
+    assert len(com_permissao) == 372
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #188 (ROTA_NOVA_ACADEMIA_FABRICANTE, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #140 (DELETE /nutrition/foods/{food_id}, 2D-2, com classe `autenticado` no retrato)
     # + 1 do #195 (ROTA_NOVA_ALIMENTOS_LISTA, so em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 == 371
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 18 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    # + 1 do #216 (ROTA_NOVA_REGISTRO_EXERCICIO, so em ROTAS_NOVAS_POS_RETRATO)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 == 372
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 19 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29
@@ -1543,7 +1545,8 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
     problemas: list[str] = []
     for rota in sorted(
         set(ROTAS_NOVAS_POS_RETRATO)
-        - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA}
+        - {ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
+        ROTA_NOVA_REGISTRO_EXERCICIO}
     ):
         declaradas = vivas[rota]
         assert [(d[0], d[1]) for d in declaradas] == [ROTAS_NOVAS_POS_RETRATO[rota]], rota
@@ -1587,6 +1590,21 @@ def test_rota_nova_do_195_tem_a_permissao_da_busca_irma_e_decisao_de_usuario_com
     ]
     assert ROTA_NOVA_ALIMENTOS_LISTA not in carregar_retrato()["rotas"]
     declaradas = vivas[ROTA_NOVA_ALIMENTOS_LISTA]
+    for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),
+                        ("admin", "master_token")):
+        assert decisao_nova("autenticado", declaradas, permissoes_do_papel(papel, tipo), tipo) is True, (papel, tipo)
+    assert decisao_nova("autenticado", declaradas, EffectivePermissions(), "session") is False
+
+
+def test_rota_nova_do_216_tem_a_permissao_do_put_irmao_e_decisao_de_usuario_comum():
+    """POST /exercises/logs (exercicio novo em treino encerrado): treino.registro/editar, igual ao
+    `PUT /exercises/logs/{id}`; usuario, PT, admin e token mestre passam; sem grupo e negado."""
+    vivas = _declaradas_com_escopo()
+    assert vivas[ROTA_NOVA_REGISTRO_EXERCICIO] == vivas["PUT /exercises/logs/{exercise_id}"] == [
+        ("treino.registro", "editar", None)
+    ]
+    assert ROTA_NOVA_REGISTRO_EXERCICIO not in carregar_retrato()["rotas"]
+    declaradas = vivas[ROTA_NOVA_REGISTRO_EXERCICIO]
     for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),
                         ("admin", "master_token")):
         assert decisao_nova("autenticado", declaradas, permissoes_do_papel(papel, tipo), tipo) is True, (papel, tipo)

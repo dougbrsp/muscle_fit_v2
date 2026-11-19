@@ -36,7 +36,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping, Optional, Sequence, Union
 
-from ..set_types import is_working_set
+from ..set_types import is_preparatory_set, is_working_set
 from . import prescription as prescription_domain
 from .set_measures import is_rep_based
 from .training_goal import goal_value
@@ -365,6 +365,43 @@ def with_protocol_target(intensity: EffectiveIntensity, protocol_target: Any) ->
     if target is None:
         return intensity
     return replace(intensity, rpe_target_effective=target)
+
+
+def stored_rpe_target(
+    set_type: Any,
+    intensity: EffectiveIntensity,
+    *,
+    protocol_target: Any = None,
+    deload_source: Any = None,
+    technique_code: Any = None,
+    protocol_kept: bool = False,
+) -> Optional[Union[int, float]]:
+    """`exercise_sets.rpe_target_effective` a GRAVAR numa serie: a regra unica
+    do POST de serie, do recalculo do deload e do PUT do exercicio.
+
+    - `protocol_kept` (PUT, `keeps_protocol_target` verdadeiro): o protocolo
+      vale mesmo com o alvo gravado nulo; devolve NULL, nunca cai na
+      prescricao.
+
+    - serie preparatoria: sem alvo (NULL), salvo alvo de protocolo;
+    - `protocol_target` (serie com `rpe_target_source='protocol'`; no PUT, o
+      gravado quando `exercise_set_update_merge.keeps_protocol_target`): vale
+      o do protocolo;
+    - sessao de deload (`deload_source`): o alvo e o do deload
+      (`deload.deload_effort_target`; o protocolo so vale para tecnica que o
+      deload permite) e so existe se ha alvo a cobrar;
+    - senao, o alvo efetivo da prescricao."""
+    from .deload import deload_effort_target, is_deload_session
+
+    deload = is_deload_session(deload_source)
+    if protocol_target is not None:
+        return deload_effort_target(protocol_target, technique_code) if deload else protocol_target
+    if protocol_kept:
+        return None
+    target = None if is_preparatory_set(set_type) else intensity.rpe_target_effective
+    if target is not None and deload:
+        return deload_effort_target(None)
+    return target
 
 
 def frozen_snapshot(prescription_json: Any) -> Mapping[str, Any]:
