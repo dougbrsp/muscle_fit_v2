@@ -20,8 +20,9 @@ precisa interpolar `sql_set_confirmed(...)` - direto ou por uma constante de
 módulo atribuída a partir dele - ao menos uma vez por ocorrência da tabela.
 As exceções são leituras OPERACIONAIS (idempotência, numeração, edição,
 listagem que mostra a série pendente ao usuário, posição ordinal da série),
-cada uma em `EXCECOES` com o motivo e a contagem exata de literais. A lista
-só encolhe: exceção que sumiu do código também falha.
+cada uma em `EXCECOES` com o motivo e a contagem exata de literais. Exceção
+nova só para leitura operacional que não alimenta motor nem agregado, com
+motivo e contagem exata; exceção que sumiu do código também falha.
 
 Rodar: cd api && python -m pytest tests/unit/test_guarda_series_pendentes.py
 """

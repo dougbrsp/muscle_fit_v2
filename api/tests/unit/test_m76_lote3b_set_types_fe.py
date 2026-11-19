@@ -60,6 +60,7 @@ def gerado() -> dict[str, Any]:
         "preparatory": sorted(st.PREPARATORY_SET_TYPES),
         "technique_application": sorted(st.TECHNIQUE_APPLICATION_SET_TYPES),
         "known": sorted(st.KNOWN_SET_TYPES),
+        "swappable": list(st.SWAPPABLE_SET_TYPES),
         "cases": [
             {
                 "input": valor,
@@ -67,6 +68,7 @@ def gerado() -> dict[str, Any]:
                 "is_working": st.is_working_set(valor),
                 "is_preparatory": st.is_preparatory_set(valor),
                 "is_technique_application": st.is_technique_application(valor),
+                "is_swappable": st.is_swappable_set_type(valor),
             }
             for valor in _entradas()
         ],
@@ -103,7 +105,11 @@ def test_casos_cobrem_apelidos_backoff_e_legado():
         "is_working": False,
         "is_preparatory": False,
         "is_technique_application": False,
+        "is_swappable": False,
     }
+    # troca na edicao pos-treino (#219): so serie comum; tecnica e laboral nao
+    assert por_entrada["warm-up"]["is_swappable"] and por_entrada[None]["is_swappable"]
+    assert not por_entrada["laboral"]["is_swappable"] and not por_entrada["dropset"]["is_swappable"]
 
 
 if __name__ == "__main__":

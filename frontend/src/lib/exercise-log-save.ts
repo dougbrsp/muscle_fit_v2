@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
 import { newMeasuredSetFromLast, setEditFields, setUpdatePayload, type ExerciseFormSet } from '@/lib/exercise-set-edit';
 import type { SideField } from '@/lib/set-sides';
 import {
@@ -49,6 +49,7 @@ export async function saveExerciseLog(args: {
         muscle_pain: form.muscle_pain,
         joint_pain: form.joint_pain,
         form_practice: form.form_practice,
+        ...trainingGoalPayload(form),
         sets: form.sets.map(setUpdatePayload),
       }),
     });
@@ -90,6 +91,26 @@ export async function saveExerciseLog(args: {
   }
 
   return exerciseResult;
+}
+
+/** `training_goal` só vai no corpo quando o usuário mudou o valor (ausente = o servidor preserva o gravado). */
+export function trainingGoalPayload(form: Pick<ExerciseFormState, 'training_goal' | 'initial_training_goal'>) {
+  const goal = form.training_goal;
+  return goal && goal !== (form.initial_training_goal ?? null) ? { training_goal: goal } : {};
+}
+
+/** Mensagem do 422 do servidor (`set_type_locked`, `set_measure_locked`, `training_goal_invalid`); senão a do erro. */
+export function exerciseLogSaveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.detail && typeof error.detail === 'object') {
+    const message = (error.detail as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Aplica um ajuste parcial (tipo, medida, dor...) a uma série. */
+export function patchSet(sets: SetList, index: number, patch: (set: ExerciseFormSet) => ExerciseFormSet): SetList {
+  return sets.map((set, i) => (i === index ? patch(set) : set));
 }
 
 /** Corpo do `PATCH /workout-sessions/{id}/meta` ao editar o cabeçalho do treino. */

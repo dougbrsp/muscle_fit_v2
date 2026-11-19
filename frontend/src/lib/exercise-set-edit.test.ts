@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canEditSetKind,
+  changeSetMeasure,
   describeSets,
   formatLoggedSets,
   newMeasuredSetFromLast,
   repsFieldLabel,
   setEditFields,
   setFormFromRow,
+  setPainRollup,
+  setTypeSelectData,
   setUpdatePayload,
 } from './exercise-set-edit';
 import { MEASURE_LIMITS, MEASURE_VALUES } from './set-measures';
@@ -281,5 +285,39 @@ describe('Lote T5: medida e segundos no round-trip da edição', () => {
     );
     // Sem `measure_text` (resposta antiga com medida), o espelho do dono.
     expect(formatLoggedSets([{ ...PRANCHA, measure_text: null }])).toBe('Série 1: 58 s @RPE 8');
+  });
+});
+
+describe('#219 edição de tipo, medida e dor', () => {
+  const row = (extra: object) => setFormFromRow({ set_number: 1, reps: 10, weight_kg: 50, ...extra } as never, 0);
+
+  it('trocar para tempo limpa reps, lados e segundos; payload leva a medida', () => {
+    const next = changeSetMeasure(row({ reps_left: 8, reps_right: 9 }), MEASURE_VALUES.duration);
+    expect(next).toMatchObject({ measure: MEASURE_VALUES.duration, reps: null, reps_left: null, reps_right: null, duration_seconds: null });
+    expect(setUpdatePayload(next, 0)).toMatchObject({ measure: MEASURE_VALUES.duration, reps: null, duration_seconds: null });
+  });
+
+  it('voltar para reps limpa os segundos e mantém a medida coerente com setEditFields', () => {
+    const timed = row({ measure: MEASURE_VALUES.duration, reps: null, duration_seconds: 40 });
+    const next = changeSetMeasure(timed, MEASURE_VALUES.reps);
+    expect(next.duration_seconds).toBeNull();
+    expect(setEditFields(next.measure).showReps).toBe(true);
+    expect(changeSetMeasure(next, MEASURE_VALUES.reps)).toBe(next);
+  });
+
+  it('seletor de tipo só nos trocáveis do espelho', () => {
+    expect(setTypeSelectData().map((o) => o.value)).toEqual(['working', 'backoff', 'warmup', 'feeler']);
+    expect(canEditSetKind({ set_type: 'working' })).toBe(true);
+    expect(canEditSetKind({})).toBe(true);
+    expect(canEditSetKind({ set_type: 'drop_set' })).toBe(false);
+    expect(canEditSetKind({ set_type: 'laboral' })).toBe(false);
+  });
+
+  it('dor por série vai no payload e o máximo é calculado só para exibição', () => {
+    const sets = [row({ muscle_pain: 3, joint_pain: false }), row({ muscle_pain: 7, joint_pain: true }), row({})];
+    expect(setUpdatePayload(sets[1], 1)).toMatchObject({ muscle_pain: 7, joint_pain: true });
+    expect(setPainRollup(sets)).toEqual({ muscle_pain: 7, joint_pain: true });
+    expect(setPainRollup([row({})])).toEqual({ muscle_pain: null, joint_pain: null });
+    expect(setPainRollup([row({ joint_pain: false })]).joint_pain).toBe(false);
   });
 });

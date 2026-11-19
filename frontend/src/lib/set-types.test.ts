@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import vocabulary from './set-types.generated.json';
 import {
   isPreparatorySetType,
+  isSwappableSetType,
+  SWAPPABLE_SET_TYPES,
   isTechniqueApplicationSetType,
   isWorkingSetType,
   normalizeSetType,
@@ -25,5 +27,14 @@ describe('set-types — paridade com api/app/set_types.py', () => {
 
   it('undefined vale como legado sem tipo', () => {
     expect(normalizeSetType(undefined)).toBe('working');
+  });
+});
+
+describe('trocáveis (#219)', () => {
+  it('lê o espelho gerado e respeita is_swappable de cada caso', () => {
+    expect(SWAPPABLE_SET_TYPES).toEqual(vocabulary.swappable);
+    for (const item of vocabulary.cases) {
+      expect(isSwappableSetType(item.input as string | null)).toBe(item.is_swappable);
+    }
   });
 });

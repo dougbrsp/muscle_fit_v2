@@ -193,6 +193,8 @@ class ExerciseLogUpdateIn(BaseModel):
     joint_pain: Optional[bool] = None
     # Aprimoramento de técnica (#205): None/omitido preserva a marca gravada.
     form_practice: Optional[bool] = None
+    # #219: objetivo do treino do exercício; ausente/null preserva; validado pelo dono `training_goal`.
+    training_goal: Optional[str] = None
     sets: list[ExerciseSetUpdateIn] = Field(default_factory=list, max_length=MAX_SETS_PER_LOGGED_EXERCISE)
 
 

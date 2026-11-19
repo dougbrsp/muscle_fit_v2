@@ -429,6 +429,37 @@ def _get_finishable_activity(cur, activity_id: int, user_id: int) -> dict[str, A
     return row
 
 
+def _read_pain_rollup(cur, exercise_id: int) -> dict:
+    """Rollup de dor por serie -> exercises.muscle_pain/joint_pain (decisao de
+    arquitetura do plano "Modo de Treino - previa/dor por serie": mantem os
+    campos legados de exercises sempre sincronizados com o agregado das
+    series reais, para NAO precisar alterar volume_service.py/
+    muscle_recovery_service.py/workout_plan_ai.py, que continuam lendo
+    exclusivamente de exercises.muscle_pain/joint_pain). MAX() ignora NULL e
+    a serie pendente; sem dor em nenhuma serie, os dois valores sao None."""
+    cur.execute(
+        "SELECT MAX(muscle_pain) AS muscle_pain, MAX(joint_pain) AS joint_pain FROM exercise_sets "
+        f"WHERE exercise_id = %s AND {sql_set_confirmed('reps_pending')}",
+        (exercise_id,),
+    )
+    return cur.fetchone() or {}
+
+
+def rollup_exercise_pain(cur, exercise_id: int, *, keep_stored_when_empty: bool = True) -> None:
+    """Regrava `exercises.muscle_pain/joint_pain` com o MAXIMO das series
+    confirmadas do exercicio (dono unico do rollup). Sem dor em nenhuma serie:
+    `keep_stored_when_empty=True` (padrao, igual ao Modo Treino) PRESERVA o valor
+    gravado no exercicio (COALESCE); `False` grava NULL (edicao que limpou toda a
+    dor por serie). Cada coluna e tratada separadamente."""
+    pain = _read_pain_rollup(cur, exercise_id)
+    muscle, joint = pain.get("muscle_pain"), pain.get("joint_pain")
+    if keep_stored_when_empty:
+        sql = "UPDATE exercises SET muscle_pain = COALESCE(%s, muscle_pain), joint_pain = COALESCE(%s, joint_pain) WHERE id = %s"
+    else:
+        sql = "UPDATE exercises SET muscle_pain = %s, joint_pain = %s WHERE id = %s"
+    cur.execute(sql, (muscle, joint, exercise_id))
+
+
 def _refresh_exercise_aggregates(cur, exercise_id: int) -> None:
     cur.execute(
         f"""
@@ -444,21 +475,7 @@ def _refresh_exercise_aggregates(cur, exercise_id: int) -> None:
     # dor abaixo continua considerando TODAS as series.
     stats = compute_exercise_stats(cur.fetchall())
 
-    # Rollup de dor por serie -> exercises.muscle_pain/joint_pain (decisao de
-    # arquitetura do plano "Modo de Treino - previa/dor por serie": mantem os
-    # campos legados de exercises sempre sincronizados com o agregado das
-    # series reais, para NAO precisar alterar volume_service.py/
-    # muscle_recovery_service.py/workout_plan_ai.py, que continuam lendo
-    # exclusivamente de exercises.muscle_pain/joint_pain. MAX() ignora NULL;
-    # se nenhuma serie deste exercicio tiver dor informada, o rollup fica
-    # NULL e o COALESCE abaixo preserva o valor gravado diretamente no
-    # exercicio (ex: fluxo /registro-exercicios, sem dor por serie).
-    cur.execute(
-        "SELECT MAX(muscle_pain) AS muscle_pain, MAX(joint_pain) AS joint_pain FROM exercise_sets "
-        f"WHERE exercise_id = %s AND {sql_set_confirmed('reps_pending')}",
-        (exercise_id,),
-    )
-    pain_rollup = cur.fetchone() or {}
+    pain_rollup = _read_pain_rollup(cur, exercise_id)
 
     cur.execute(
         """
@@ -1532,7 +1549,7 @@ def add_session_set(
             # Aquecimento/ajuste nao tem alvo de esforco a cobrar: a coluna
             # fica NULL neles (serie preparatoria nunca alimenta intensidade).
             # M97 D: o alvo gravado é o do deload numa sessão de deload (o mesmo cobrado no status).
-            # O alvo já chega ajustado pelo deload (L1072); `stored_rpe_target` é idempotente, reaplicar é inócuo.
+            # `protocol_target` chega cru: quem aplica o deload ao alvo gravado é `stored_rpe_target`.
             rpe_target_effective = effective_intensity.stored_rpe_target(
                 set_type,
                 intensity,

@@ -45,7 +45,7 @@ class _Cursor(LoopingExecuteMany):
             assert "wp.user_id=%s" in flat
             self.ownership_queries.append(params)
             self._result = [{"id": params[0]}] if params == (MEU_ITEM, 7) else []
-        elif flat.startswith("UPDATE exercises"):
+        elif flat.startswith("UPDATE exercises SET original_name"):
             self.update_exercises_params = params
             self._result = []
         elif flat.startswith("SELECT set_number,"):

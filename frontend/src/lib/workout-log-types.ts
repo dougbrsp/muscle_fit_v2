@@ -167,6 +167,8 @@ export type ExerciseLogRow = {
   workout_plan_exercise_id?: number | null;
   /** #196: exercício de aprimoramento de técnica (fora da progressão). */
   form_practice?: boolean;
+  /** #219: objetivo do treino gravado no exercício (`SELECT e.*`). */
+  training_goal?: string | null;
   planned_mapping_id?: number | null;
   planned_exercise_name?: string | null;
   // Nome/descrição do exercício REALMENTE lançado (`exercise_catalog` do
@@ -337,6 +339,9 @@ export type ExerciseFormState = {
   muscle_pain: number | null;
   joint_pain: boolean;
   form_practice: boolean;
+  // #219: objetivo gravado (`initial_`) e o escolhido; o PUT só leva o escolhido se mudou.
+  training_goal?: string | null;
+  initial_training_goal?: string | null;
   sets: Array<{
     set_number: number;
     // `null` só em série por tempo (Lote T5).
