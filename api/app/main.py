@@ -17,6 +17,7 @@ from .db import get_conn
 from .exercise_set_update_merge import validate_sent_technique_codes
 from .models import (
     ActivityIn,
+    ExerciseLogCreateIn,
     ExerciseLogUpdateIn,
     ExerciseMappingIn,
     InsightsGenerateIn,
@@ -39,6 +40,8 @@ from .services import (
     high_rpe_sets,
     list_exercise_logs,
     latest_activities,
+    SessionNotClosedError,
+    create_exercise_log,
     update_exercise_log,
     WorkoutPlanExerciseNotFoundError,
     update_activity,
@@ -257,23 +260,31 @@ def get_exercise_logs(
     }
 
 
-@app.put("/exercises/logs/{exercise_id}")
-def update_exercise_log_by_id(
-    exercise_id: int,
-    payload: ExerciseLogUpdateIn,
-    identity: Identity = Depends(require_permission("treino.registro", "editar")),
-):
+def _exercise_log_data(payload: ExerciseLogUpdateIn) -> dict:
     data = payload.model_dump()
     # workout_plan_exercise_id precisa distinguir "não enviado" (preserva
     # vínculo atual) de "enviado como null" (desvincula); model_dump() sem
     # exclude_unset não deixa essa distinção explícita, então sinalizamos
     # separadamente com base em model_fields_set.
     data["workout_plan_exercise_id_provided"] = "workout_plan_exercise_id" in payload.model_fields_set
+    # Dor do exercício: null enviado limpa, campo ausente preserva (mesma distinção).
+    data["muscle_pain_provided"] = "muscle_pain" in payload.model_fields_set
+    data["joint_pain_provided"] = "joint_pain" in payload.model_fields_set
     # Por série, só as chaves ENVIADAS: campo omitido preserva o valor gravado
     # (ver app/exercise_set_update_merge.py). Sem exclude_unset, o default
     # `set_type="working"` apagaria um drop-set/aquecimento na edição.
     data["sets"] = [s.model_dump(exclude_unset=True) for s in payload.sets]
     validate_sent_technique_codes(data["sets"])
+    return data
+
+
+@app.put("/exercises/logs/{exercise_id}")
+def update_exercise_log_by_id(
+    exercise_id: int,
+    payload: ExerciseLogUpdateIn,
+    identity: Identity = Depends(require_permission("treino.registro", "editar")),
+):
+    data = _exercise_log_data(payload)
     try:
         result = update_exercise_log(exercise_id, data, user_id=identity.user_id)
     except WorkoutPlanExerciseNotFoundError:
@@ -283,6 +294,26 @@ def update_exercise_log_by_id(
         raise HTTPException(status_code=422, detail=exc.detail())
     if not result:
         raise HTTPException(status_code=404, detail="Exercício não encontrado.")
+    return {"status": "ok", **result}
+
+
+@app.post("/exercises/logs")
+def create_exercise_log_in_closed_session(
+    payload: ExerciseLogCreateIn,
+    identity: Identity = Depends(require_permission("treino.registro", "editar")),
+):
+    """Exercício novo, com séries, numa sessão encerrada do próprio usuário (Registro)."""
+    data = _exercise_log_data(payload)
+    try:
+        result = create_exercise_log(payload.activity_id, data, user_id=identity.user_id)
+    except SessionNotClosedError:
+        raise HTTPException(status_code=409, detail="O treino não está encerrado.")
+    except WorkoutPlanExerciseNotFoundError:
+        raise HTTPException(status_code=404, detail="Item de ficha não encontrado.")
+    except SetMeasureInputError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail())
+    if not result:
+        raise HTTPException(status_code=404, detail="Treino não encontrado.")
     return {"status": "ok", **result}
 
 

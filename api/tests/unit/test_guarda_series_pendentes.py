@@ -62,7 +62,12 @@ EXCECOES: dict[tuple[str, str], tuple[int, str]] = {
         "posição ORDINAL da série entre as de trabalho (rampa planejada): conta a pendente, não lê reps/carga",
     ),
     ("workout_sessions.py", "update_session_set"): (1, "o PATCH lê justamente a série a confirmar/corrigir"),
-    ("services.py", "update_exercise_log"): (
+    ("workout_sessions.py", "_SESSION_SETS_TARGET_SQL"): (
+        1,
+        "regrava `rpe_target_effective` da linha gravada quando o deload da sessao encerrada muda: a pendente "
+        "tambem tem alvo (como no POST); nao alimenta motor, so le o alvo para reescreve-lo",
+    ),
+    ("services.py", "_update_exercise_log_tx"): (
         1,
         "edição pelo PUT /exercises/logs recria as séries: lê todas (inclusive pendentes) para preservar "
         "as colunas omitidas e a pendência (exercise_set_update_merge)",

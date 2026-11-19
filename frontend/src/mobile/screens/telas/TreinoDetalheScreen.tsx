@@ -10,11 +10,12 @@ import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import { ApiError, apiFetch } from '@/lib/api';
-import { deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
+import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import { FORM_PRACTICE_LABEL, FORM_PRACTICE_REGISTRO_HELP, isFormPracticeRow } from '@/lib/form-practice';
 import {
   describeSets,
   formatLoggedSets,
+  repsFieldLabel,
   setEditFields,
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
@@ -538,7 +539,7 @@ export function TreinoDetalheScreen() {
                     </>
                   ) : null}
                   {!hasSides(set) && fields.showReps ? (
-                    <StepperField label="Repetições" min={fields.repsMin ?? 1} max={100} step={1} value={set.reps} onChange={(v) => updateSet(index, 'reps', v)} />
+                    <StepperField label={repsFieldLabel(set)} min={fields.repsMin ?? 1} max={100} step={1} value={set.reps} onChange={(v) => updateSet(index, 'reps', v)} />
                   ) : null}
                   {fields.showDuration ? (
                     <StepperField label="Tempo (s)" min={fields.durationMin} max={fields.durationMax} step={1} value={set.duration_seconds} onChange={(v) => updateSet(index, 'duration_seconds', v)} />
@@ -699,7 +700,7 @@ export function TreinoDetalheScreen() {
           <ListBlock>
             <Switch
               size="md"
-              label="Deload"
+              label={DELOAD_LABEL}
               description={deloadBannerTitle(deloadStatus) ?? undefined}
               checked={deloadStatus.active}
               disabled={!deloadStatus.can_toggle || deloadMutation.isPending}

@@ -33,10 +33,11 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
-import { deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
+import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import {
   describeSets,
   formatLoggedSets,
+  repsFieldLabel,
   setEditFields,
   setFormFromRow,
 } from '@/lib/exercise-set-edit';
@@ -629,7 +630,7 @@ export function WorkoutDetailClient() {
         <Stack gap={4} data-testid="workout-deload-control">
           <Group gap="sm">
             <Switch
-              label="Deload"
+              label={DELOAD_LABEL}
               checked={deloadStatus.active}
               disabled={!deloadStatus.can_toggle || deloadMutation.isPending}
               onChange={(e) => deloadMutation.mutate(e.currentTarget.checked)}
@@ -888,7 +889,7 @@ export function WorkoutDetailClient() {
                 )}
                 {!hasSides(set) && setEditFields(set.measure).showReps && (
                   <NumberInput
-                    label="Repetições"
+                    label={repsFieldLabel(set)}
                     min={setEditFields(set.measure).repsMin ?? 1}
                     max={100}
                     value={set.reps ?? undefined}

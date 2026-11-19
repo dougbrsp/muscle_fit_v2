@@ -66,8 +66,9 @@ class _Cursor:
     def execute(self, sql, params=()):
         flat = " ".join(sql.split())
         self.executed.append(flat)
-        if flat.startswith("SELECT id, gym_id FROM activities"):
-            self._pending = {"id": params[0], "gym_id": None}
+        if flat.startswith("SELECT id, gym_id"):
+            self._pending = {"id": params[0], "gym_id": None, "local_date": _dt.date(2026, 10, 25),
+                             "started_at": _dt.datetime(2026, 10, 25, 9, 0), "session_status": self.status}
         elif flat.startswith("SELECT a.deload_source"):
             self._pending = {
                 "deload_source": self.source,
@@ -84,6 +85,9 @@ class _Cursor:
     def fetchone(self):
         return self._pending
 
+    def fetchall(self):
+        return []  # sem séries gravadas a recalcular (o recálculo tem teste próprio)
+
 
 def _patch(monkeypatch, cursor, reavaliar, **payload):
     monkeypatch.setattr(workout_sessions, "transaction", fake_transaction(cursor))
@@ -95,9 +99,9 @@ def test_encerrada_muda_e_reavalia_depois_do_update(monkeypatch):
     cursor = _Cursor()
     chamadas = []
 
-    def reavaliar(conn, user_id, activity_id):
+    def reavaliar(conn, user_id, activity_id, **kw):
         chamadas.append((user_id, activity_id, len(cursor.executed)))
-        assert cursor.executed[-1].startswith("UPDATE activities")  # depois do UPDATE
+        assert any(s.startswith("UPDATE activities") for s in cursor.executed)  # depois do UPDATE
         return {"changed": 1}
 
     out = _patch(monkeypatch, cursor, reavaliar, deload=True)
@@ -108,12 +112,12 @@ def test_encerrada_muda_e_reavalia_depois_do_update(monkeypatch):
 
 def test_encerrada_desligar_tambem_reavalia(monkeypatch):
     cursor = _Cursor(source=MANUAL)
-    out = _patch(monkeypatch, cursor, lambda *a: {"ok": 1}, deload=False)
+    out = _patch(monkeypatch, cursor, lambda *a, **k: {"ok": 1}, deload=False)
     assert out["deload"]["active"] is False and out["progression_reevaluated"] is True
 
 
 def test_reavaliacao_devolvendo_none_vira_falso(monkeypatch):
-    out = _patch(monkeypatch, _Cursor(), lambda *a: None, deload=True)
+    out = _patch(monkeypatch, _Cursor(), lambda *a, **k: None, deload=True)
     assert out["progression_reevaluated"] is False
 
 
@@ -137,7 +141,7 @@ def test_em_andamento_nao_reavalia_e_com_serie_trava(monkeypatch):
 
 
 def test_erro_na_reavaliacao_propaga(monkeypatch):
-    def quebra(*a):
+    def quebra(*a, **k):
         raise RuntimeError("boom")
 
     with pytest.raises(RuntimeError):
@@ -145,7 +149,7 @@ def test_erro_na_reavaliacao_propaga(monkeypatch):
 
 
 def test_meta_sem_deload_nao_traz_o_campo_novo(monkeypatch):
-    out = _patch(monkeypatch, _Cursor(), lambda *a: None, name="Treino A")
+    out = _patch(monkeypatch, _Cursor(), lambda *a, **k: None, name="Treino A")
     assert "progression_reevaluated" not in out and "deload" not in out
 
 

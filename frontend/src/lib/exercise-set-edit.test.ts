@@ -3,11 +3,51 @@ import {
   describeSets,
   formatLoggedSets,
   newMeasuredSetFromLast,
+  repsFieldLabel,
   setEditFields,
   setFormFromRow,
   setUpdatePayload,
 } from './exercise-set-edit';
 import { MEASURE_LIMITS, MEASURE_VALUES } from './set-measures';
+import { updateSetField } from './exercise-log-save';
+
+describe('edição do registro: pendência e pareamento (#216, #219)', () => {
+  const rows = [
+    { set_number: 1, reps: 10, weight_kg: 50 },
+    { set_number: 2, reps: null, reps_pending: true, weight_kg: 50 },
+    { set_number: 3, reps: null, reps_pending: true, weight_kg: 50 },
+  ];
+
+  it('série pendente de reps continua com reps nulas no formulário e no payload', () => {
+    const form = rows.map(setFormFromRow);
+    expect(form[1].reps).toBeNull();
+    expect(setUpdatePayload(form[1], 1, form).reps).toBeNull();
+    expect(repsFieldLabel(form[1])).toBe('Repetições (pendente)');
+    expect(repsFieldLabel(form[0])).toBe('Repetições');
+  });
+
+  it('série não pendente sem reps continua virando 0 (comportamento de sempre)', () => {
+    expect(setFormFromRow({ set_number: 1, reps: null, weight_kg: 20 }, 0).reps).toBe(0);
+  });
+
+  it('preencher as reps confirma; esvaziar de novo mantém pendente', () => {
+    const form = rows.map(setFormFromRow);
+    const filled = updateSetField(form, 1, 'reps', 8);
+    expect(setUpdatePayload(filled[1], 1, filled).reps).toBe(8);
+    expect(repsFieldLabel(filled[1])).toBe('Repetições');
+    expect(updateSetField(filled, 1, 'reps', null)[1].reps).toBeNull();
+  });
+
+  it('remover a série do meio envia source_set_number de cada série e null na nova', () => {
+    const form = [...rows.map(setFormFromRow).filter((_, i) => i !== 1), { set_number: 3, reps: 8, weight_kg: 50, rpe: null }];
+    const payload = form.map(setUpdatePayload);
+    expect(payload.map((s) => [s.set_number, s.source_set_number, s.reps])).toEqual([
+      [1, 1, 10],
+      [2, 3, null],
+      [3, null, 8],
+    ]);
+  });
+});
 
 describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
   it('carrega e reenvia set_type, pausa, notas, FC e dor sem perder nada', () => {
@@ -31,6 +71,7 @@ describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
 
     expect(payload).toEqual({
       set_number: 3,
+      source_set_number: 3,
       reps: 8,
       weight_kg: 40,
       rpe: 9.5,
@@ -59,6 +100,7 @@ describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
 
     expect(payload).toEqual({
       set_number: 5,
+      source_set_number: null,
       reps: 10,
       weight_kg: 20,
       rpe: null,

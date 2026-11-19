@@ -29,7 +29,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from .advanced_techniques import ensure_valid_codes
@@ -50,7 +50,6 @@ from .domain.form_practice import (
 from . import deload_periods
 from .domain.deload import (
     DELOAD_SOURCE_COLUMN,
-    SESSION_STATUS_DONE,
     DeloadSource,
     DeloadToggleLocked,
     can_toggle_deload,
@@ -84,14 +83,17 @@ from .intelligence.dashboard.time_windows import user_now, user_timezone
 from .intelligence.session_fatigue_reader import load_session_prior_fatigue
 from .next_set_load_rules import load_published_ruleset
 from .observability import EVENT_SAFETY_CLAMP, EVENT_SAFETY_RPE_ABOVE_CEILING, log_event
-from .progression_state import on_session_finish, reevaluate_after_correction
+from .domain.session_status import SESSION_STATUS_DONE, is_closed_session, reevaluates_progression
+from .progression_state import correction_anchor, on_session_finish, reevaluate_after_correction
 from .access import require_permission
+from .access.deps import permissions_for_request
+from .access.service import has_permission
 from .security import Identity, get_current_identity
 from .domain.session_loads import LOAD_ADJUST_SOURCES
 from .domain.set_measures import SetMeasure, is_rep_based, normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical_to_model, sides_text
 from .domain.training_safety import RPE_TARGET_SOURCE_PROTOCOL, RPE_TARGET_SOURCES
-from .exercise_set_update_merge import merge_set_patch
+from .exercise_set_update_merge import keeps_protocol_target, merge_set_patch
 from .set_measure_input import ensure_valid_set_measure, set_measure_columns
 from .laboral_catalog import load_laboral_ids
 from .set_types import (
@@ -361,7 +363,7 @@ def _get_owned_session(cur, activity_id: int, user_id: int) -> dict[str, Any]:
 
 
 def _ensure_not_finished(session: dict[str, Any]) -> None:
-    if session.get("session_status") == "done":
+    if is_closed_session(session.get("session_status")):
         raise HTTPException(status_code=409, detail="Este treino já foi finalizado.")
 
 
@@ -616,28 +618,85 @@ def _session_deload_row(cur, session_id: int, user_id: int) -> dict[str, Any]:
     return {**row, "saved_sets": int(saved)}
 
 
-def _session_deload_status(cur, user_id: int, row: dict[str, Any], source: Optional[str]) -> dict[str, Any]:
+def _session_deload_status(
+    cur, user_id: int, row: dict[str, Any], source: Optional[str], *, can_edit: bool = True
+) -> dict[str, Any]:
     """Bloco `deload` da sessao (o mesmo do `start`) + se ainda pode mudar.
-    O periodo so aparece quando e ele a origem gravada (desligado = sessao normal)."""
+    O periodo so aparece quando e ele a origem gravada (desligado = sessao normal).
+    `can_edit=False` (so le): `can_toggle` falso, o PATCH exige `editar`."""
     period = None
     if source == DeloadSource.PERIOD.value and row.get("local_date") is not None:
         period = deload_periods.active_period_on_safe(cur, user_id, row["local_date"])
     status = deload_periods.deload_status(source, period)
-    status["can_toggle"] = can_toggle_deload(row.get("saved_sets"), session_status=row.get("session_status"))
+    status["can_toggle"] = bool(can_edit) and can_toggle_deload(
+        row.get("saved_sets"), session_status=row.get("session_status")
+    )
     return status
+
+
+_SESSION_SETS_TARGET_SQL = """
+SELECT s.id AS set_id, s.set_type, s.technique_code, s.rpe_target_source, s.rpe_target_effective,
+       e.id AS exercise_id, e.equipment_id AS gym_equipment_id, COALESCE(e.mapping_id, wpe.mapping_id) AS mapping_id,
+       wpe.advanced_technique AS plan_technique, wpe.prescription_json
+FROM exercise_sets s
+JOIN exercises e ON e.id = s.exercise_id
+LEFT JOIN workout_plan_exercises wpe ON wpe.id = e.workout_plan_exercise_id
+WHERE e.activity_id = %s
+"""
+
+
+def _refresh_deload_targets(conn, cur, session_id: int, deload_source: Optional[str]) -> int:
+    """Deload de sessao ENCERRADA mudou: regrava `rpe_target_effective` das
+    series ja gravadas com o alvo que o POST gravaria hoje
+    (`effective_intensity.stored_rpe_target`, a regra unica). So ele e
+    derivado do alvo e persistido: `safety_event` depende do teto/RPE (nao do
+    deload) e o status de esforco e lido das series na consulta. Devolve
+    quantas series mudaram."""
+    # shortcut: o alvo de protocolo GRAVADO ja e o de deload ao ligar, e nao volta ao desligar; reavaliar quando o deload passar a permitir tecnica.
+    cur.execute(_SESSION_SETS_TARGET_SQL, (session_id,))
+    rows = list(cur.fetchall() or [])
+    intensities: dict[int, effective_intensity.EffectiveIntensity] = {}
+    changed = 0
+    for row in rows:
+        exercise_id = int(row["exercise_id"])
+        if exercise_id not in intensities:
+            intensities[exercise_id] = effective_intensity.resolve_for_logged_exercise(conn, exercise_id)
+        # Igual ao PUT do exercicio (services.py): o alvo de protocolo GRAVADO e mantido,
+        # nao recalculado ao vivo (o teto do par de equipamento pode ter mudado).
+        kept = keeps_protocol_target(row)
+        target = effective_intensity.stored_rpe_target(
+            row.get("set_type"),
+            intensities[exercise_id],
+            protocol_target=row.get("rpe_target_effective") if kept else None,
+            protocol_kept=kept,
+            deload_source=deload_source,
+            technique_code=row.get("technique_code") or row.get("plan_technique"),
+        )
+        stored = row.get("rpe_target_effective")
+        if (target is None) == (stored is None) and (target is None or float(target) == float(stored)):
+            continue
+        cur.execute("UPDATE exercise_sets SET rpe_target_effective = %s WHERE id = %s", (target, row["set_id"]))
+        changed += 1
+    return changed
 
 
 @router.get("/workout-sessions/{session_id}/deload")
 def get_session_deload(
-    session_id: int, identity: Identity = Depends(require_permission("treino.modo_treino", "ver"))
+    session_id: int,
+    request: Request = None,  # type: ignore[assignment]  # o FastAPI sempre injeta; None so em chamada direta (testes)
+    identity: Identity = Depends(require_permission("treino.modo_treino", "ver")),
 ):
     """M97 F3: deload da sessao em andamento (origem gravada no `start` ou no
-    PATCH meta) e se ainda pode ser ligado/desligado (sem serie gravada)."""
+    PATCH meta) e se ainda pode ser ligado/desligado (sem serie gravada).
+    `can_toggle` e falso para quem so le: o PATCH meta exige `editar`."""
+    can_edit = request is None or has_permission(
+        permissions_for_request(request, identity), "treino.modo_treino", "editar"
+    )
     with transaction() as conn:
         with conn.cursor() as cur:
             row = _session_deload_row(cur, session_id, identity.user_id)
             source = deload_source_value(row.get("deload_source"))
-            status = _session_deload_status(cur, identity.user_id, row, source)
+            status = _session_deload_status(cur, identity.user_id, row, source, can_edit=can_edit)
     return {"session_id": session_id, "deload": status}
 
 
@@ -659,7 +718,8 @@ def update_session_meta(
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, gym_id FROM activities WHERE id = %s AND user_id = %s",
+                "SELECT id, gym_id, local_date, started_at, session_status FROM activities "
+                "WHERE id = %s AND user_id = %s",
                 (session_id, identity.user_id),
             )
             existing = cur.fetchone()
@@ -715,7 +775,8 @@ def update_session_meta(
                 updates["workout_plan_id"] = workout_plan_id
 
             deload_block: Optional[dict[str, Any]] = None
-            reevaluate = False
+            deload_changed = False
+            new_deload_source: Optional[str] = None
             reevaluated: Optional[bool] = None
             if fields.get("deload") is not None:
                 # M97 F3: liga/desliga o deload so sem serie gravada (dono
@@ -743,8 +804,8 @@ def update_session_meta(
                     ) from exc
                 if new_source != current:
                     updates[DELOAD_SOURCE_COLUMN] = new_source
-                    # Sessão encerrada: a origem mudou depois do fato, então a progressão é reavaliada.
-                    reevaluate = deload_row.get("session_status") == SESSION_STATUS_DONE
+                    deload_changed = True
+                    new_deload_source = new_source
                 deload_block = _session_deload_status(
                     cur, identity.user_id, {**deload_row, "local_date": local_date}, new_source
                 )
@@ -755,13 +816,27 @@ def update_session_meta(
                     f"UPDATE activities SET {set_clause} WHERE id = %s",
                     (*updates.values(), session_id),
                 )
-            if reevaluate:
+            # Sessão encerrada, corrigida depois do fato: deload, data ou hora mudou -> o alvo gravado
+            # das séries (deload) e a progressão são refeitos (dono `domain/session_status`).
+            old_date, old_started = existing.get("local_date"), existing.get("started_at")
+            timing_changed = ("local_date" in updates and updates["local_date"] != old_date) or (
+                "started_at" in updates and updates["started_at"] != old_started
+            )
+            if reevaluates_progression(existing.get("session_status"), changed=deload_changed or timing_changed):
                 # Mesma transação, depois do UPDATE; exceção sobe e desfaz tudo.
-                reevaluated = reevaluate_after_correction(conn, identity.user_id, session_id) is not None
+                if deload_changed:
+                    _refresh_deload_targets(conn, cur, session_id, new_deload_source)
+                anchor = correction_anchor(
+                    old_date, old_started, updates.get("local_date", old_date), updates.get("started_at", old_started)
+                )
+                reevaluated = (
+                    reevaluate_after_correction(conn, identity.user_id, session_id, anchor_at=anchor) is not None
+                )
 
     out: dict[str, Any] = {"status": "ok", "session_id": session_id, "updated_fields": list(updates.keys())}
     if deload_block is not None:
         out["deload"] = deload_block
+    if deload_block is not None or reevaluated is not None:
         out["progression_reevaluated"] = bool(reevaluated)
     return out
 
@@ -1456,12 +1531,15 @@ def add_session_set(
             measure, duration_seconds = set_measure_columns(payload.model_dump())
             # Aquecimento/ajuste nao tem alvo de esforco a cobrar: a coluna
             # fica NULL neles (serie preparatoria nunca alimenta intensidade).
-            rpe_target_effective = None if is_preparatory_set(set_type) else intensity.rpe_target_effective
-            if protocol_target is not None:
-                rpe_target_effective = protocol_target
-            elif rpe_target_effective is not None and is_deload_session(exercise_row.get("deload_source")):
-                # M97 D: o alvo gravado é o do deload (o mesmo cobrado no status).
-                rpe_target_effective = deload_effort_target(None)
+            # M97 D: o alvo gravado é o do deload numa sessão de deload (o mesmo cobrado no status).
+            # O alvo já chega ajustado pelo deload (L1072); `stored_rpe_target` é idempotente, reaplicar é inócuo.
+            rpe_target_effective = effective_intensity.stored_rpe_target(
+                set_type,
+                intensity,
+                protocol_target=protocol_target,
+                deload_source=exercise_row.get("deload_source"),
+                technique_code=technique_code or exercise_row.get("plan_technique"),
+            )
             completed_at = None
             if payload.completed_at is not None:
                 completed_at = _to_user_wall_clock(payload.completed_at, user_timezone(conn, identity.user_id))
@@ -1728,7 +1806,7 @@ def finish_session(
             # (seria a hora da 2ª tentativa, distorcendo duração e
             # recuperação muscular), nem a ficha, nem o motor de progressão
             # em sombra, que já rodou na primeira chamada.
-            if session.get("session_status") == "done":
+            if is_closed_session(session.get("session_status")):
                 cur.execute(
                     "SELECT COUNT(*) AS exercises FROM exercises WHERE activity_id = %s",
                     (session_id,),
@@ -1736,7 +1814,7 @@ def finish_session(
                 return {
                     "status": "ok",
                     "session_id": session_id,
-                    "session_status": "done",
+                    "session_status": SESSION_STATUS_DONE,
                     "ended_at": _iso_or_none(session.get("ended_at")),
                     "duration_seconds": session.get("duration_seconds"),
                     "exercises": cur.fetchone()["exercises"],
@@ -1773,7 +1851,7 @@ def finish_session(
                 duration = max(0, int((ended_at - session["started_at"]).total_seconds()))
 
             cur.execute(
-                """
+                f"""
                 UPDATE activities
                 SET ended_at = COALESCE(%s, ended_at),
                     duration_seconds = COALESCE(%s, duration_seconds),
@@ -1781,7 +1859,7 @@ def finish_session(
                     avg_hr_bpm = COALESCE(%s, avg_hr_bpm),
                     max_hr_bpm = COALESCE(%s, max_hr_bpm),
                     notes = COALESCE(%s, notes),
-                    session_status = 'done'
+                    session_status = '{SESSION_STATUS_DONE}'
                 WHERE id = %s
                 """,
                 (
@@ -1833,7 +1911,7 @@ def finish_session(
     return {
         "status": "ok",
         "session_id": session_id,
-        "session_status": "done",
+        "session_status": SESSION_STATUS_DONE,
         "ended_at": _iso_or_none(final_ended_at),
         "duration_seconds": duration,
         "exercises": exercises_count,

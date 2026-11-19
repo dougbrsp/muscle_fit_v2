@@ -186,7 +186,7 @@ class _MetaCursor:
     def execute(self, sql, params=()):
         flat = " ".join(sql.split())
         self.executed.append((flat, params))
-        if flat.startswith("SELECT id, gym_id FROM activities"):
+        if flat.startswith("SELECT id, gym_id"):
             self._pending = {"id": params[0], "gym_id": None}
         elif flat.startswith("SELECT a.deload_source"):
             self._pending = {"deload_source": self.source, "local_date": self.local_date}

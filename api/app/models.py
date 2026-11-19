@@ -159,6 +159,13 @@ class ExerciseSetUpdateIn(ExerciseSetIn):
     # exercise_set_update_merge.link_technique_applications).
     technique_code: Optional[str] = Field(default=None, max_length=20)
     anchor_set_number: Optional[int] = Field(default=None, ge=1)
+    # Número da série GRAVADA de origem (null = série nova); não é persistido.
+    # Alguma série com o campo -> pareamento por ele (ver exercise_set_update_merge).
+    source_set_number: Optional[int] = Field(default=None, ge=1)
+
+
+# Teto folgado de séries por exercício registrado (sem dono no projeto; uso real < 30).
+MAX_SETS_PER_LOGGED_EXERCISE = 100
 
 
 class ExerciseLogUpdateIn(BaseModel):
@@ -186,7 +193,15 @@ class ExerciseLogUpdateIn(BaseModel):
     joint_pain: Optional[bool] = None
     # Aprimoramento de técnica (#205): None/omitido preserva a marca gravada.
     form_practice: Optional[bool] = None
-    sets: list[ExerciseSetUpdateIn] = Field(default_factory=list)
+    sets: list[ExerciseSetUpdateIn] = Field(default_factory=list, max_length=MAX_SETS_PER_LOGGED_EXERCISE)
+
+
+class ExerciseLogCreateIn(ExerciseLogUpdateIn):
+    """Exercício novo numa sessão ENCERRADA (`POST /exercises/logs`)."""
+
+    activity_id: int
+    # Criação exige ao menos 1 série; o PUT (herdado) segue aceitando lista vazia.
+    sets: list[ExerciseSetUpdateIn] = Field(min_length=1, max_length=MAX_SETS_PER_LOGGED_EXERCISE)
 
 
 class BodyCompositionIn(BaseModel):

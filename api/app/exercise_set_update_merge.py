@@ -11,7 +11,8 @@ Regra (a mais segura para clientes antigos que não mandam esses campos):
 
 - campo PRESENTE na série enviada -> vale o valor enviado, inclusive `null`
   (é assim que o cliente limpa um campo de propósito);
-- campo AUSENTE -> mantém o valor gravado da série com o mesmo `set_number`;
+- campo AUSENTE -> mantém o valor gravado da série de origem (`source_set_number`
+  quando algum item o traz; senão a de mesmo `set_number`);
 - sem série gravada com esse número (série nova) -> default da coluna
   (`set_type` = `working`, demais NULL).
 
@@ -43,6 +44,7 @@ from typing import Any, Iterable, Mapping
 
 from .advanced_techniques import ensure_valid_codes
 from .domain import technique_accounting
+from .domain.set_measures import REPS_BELOW_MIN, REPS_REQUIRED
 from .domain.set_sides import SIDE_FIELDS, apply_canonical
 from .domain.training_safety import RPE_TARGET_SOURCE_PROTOCOL
 from .set_types import REPS_PENDING_COLUMN, is_pending_set, normalize_set_type
@@ -98,6 +100,17 @@ def resolve_reps_pending(previous: Mapping[str, Any] | None, reps: Any) -> int:
     return 1 if previous is not None and is_pending_set(previous) and reps is None else 0
 
 
+# Códigos de reps que não valem para série que continua pendente.
+PENDING_EXEMPT_MEASURE_CODES: tuple[str, ...] = (REPS_REQUIRED, REPS_BELOW_MIN)
+
+
+def measure_codes_for_merged_set(merged: Mapping[str, Any], codes: Iterable[str]) -> list[str]:
+    """Série ainda pendente não tem reps: os códigos de reps saem, os demais valem."""
+    if not is_pending_set(merged):
+        return list(codes)
+    return [c for c in codes if c not in PENDING_EXEMPT_MEASURE_CODES]
+
+
 def keeps_protocol_target(merged: Mapping[str, Any]) -> bool:
     """A série mantém o `rpe_target_effective` gravado (alvo do protocolo)."""
     return merged.get("rpe_target_source") == RPE_TARGET_SOURCE_PROTOCOL
@@ -110,11 +123,21 @@ def merge_sets_for_update(
     """Devolve as séries a gravar, com os campos omitidos preenchidos a partir
     das séries gravadas (pareadas por `set_number`). Função pura."""
     stored_by_number = {s.get("set_number"): s for s in stored}
+    incoming = list(incoming)
+    # Cliente novo informa a série gravada de origem (`source_set_number`, null =
+    # série nova), então remover/reordenar não desloca o que é preservado.
+    # Nenhuma série trouxe o campo (cliente antigo/PWA em cache): por `set_number`.
+    by_origin = any("source_set_number" in st for st in incoming)
     merged_sets: list[dict[str, Any]] = []
+    used_origins: set[Any] = set()
     for index, st in enumerate(incoming, start=1):
         number = st.get("set_number") or index
-        previous = stored_by_number.get(number)
-        merged = dict(st)
+        origin = st.get("source_set_number") if by_origin else number
+        # Origem repetida: só a primeira herda a série gravada; as demais são séries novas.
+        previous = None if origin in used_origins else stored_by_number.get(origin)
+        if previous is not None:
+            used_origins.add(origin)
+        merged = {k: v for k, v in st.items() if k != "source_set_number"}
         merged["set_number"] = number
         for field in PRESERVED_SET_FIELDS:
             if field not in st:
@@ -122,7 +145,10 @@ def merge_sets_for_update(
         for field in SERVER_KEPT_SET_FIELDS:
             merged[field] = (previous or {}).get(field)
         apply_canonical(merged)
-        merged[REPS_PENDING_COLUMN] = resolve_reps_pending(previous, merged.get("reps"))
+        # Cliente antigo converte reps nulas em 0: série pendente segue pendente.
+        merged[REPS_PENDING_COLUMN] = resolve_reps_pending(previous, None if merged.get("reps") == 0 else merged.get("reps"))
+        if merged[REPS_PENDING_COLUMN]:
+            merged["reps"] = None
         merged["set_type"] = normalize_set_type(merged.get("set_type"))
         merged_sets.append(merged)
     return merged_sets

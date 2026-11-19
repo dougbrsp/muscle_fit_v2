@@ -37,5 +37,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0015](0015-progressao-fonte-unica-no-motor.md) | Progressão com fonte única no motor (issue #188) | Aceita | 2026-11-16 |
 | [0016](0016-kcal-do-intervals-ativa-por-padrao.md) | A kcal informada do Intervals é calorie ativa por padrão (nutrition-v5, issue #138) | Aceita | 2026-11-17 |
 | [0017](0017-aprimoramento-de-tecnica-fora-da-progressao.md) | Execução marcada como aprimoramento de técnica fica fora de progressão, calibração, recorde, e1RM e referência de carga; conta para volume, recuperação e tempo (issue #196) | Aceita | 2026-11-18 |
+| [0018](0018-edicao-de-treino-encerrado-e-reavaliacao.md) | Edição de treino encerrado pelo Registro e reavaliação da progressão (issues #215, #216 e #219) | Aceita | 2026-11-19 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).
