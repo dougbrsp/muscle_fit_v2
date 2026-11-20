@@ -18,6 +18,7 @@ import {
   type RegistrationTab,
 } from '@/lib/nutrition-food-registration';
 import type { ExternalFoodResponse, FoodSaveResponse, LabelPhotoReading } from '@/lib/nutrition-types';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import { BRAND } from '@/theme';
 
 type Props = {
@@ -125,7 +126,7 @@ export function FoodRegistrationFlow({
     setFinish({ food, entregar, titulo });
     onPendingDelivery?.(entregar);
     // O alimento já está gravado: a busca precisa vê-lo mesmo se a pessoa sair da etapa sem concluir.
-    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    void invalidateFoodQueries(queryClient);
   }
 
   function saved(food: FoodSaveResponse) {

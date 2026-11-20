@@ -364,17 +364,6 @@
       ],
       "modulo": "app.nutrition_favorites"
     },
-    "DELETE /nutrition/foods/{food_id}": {
-      "checagem_em_dependencias": [],
-      "checagem_no_handler": [],
-      "classe": "autenticado",
-      "dependencias_proprias": [],
-      "detalhe": [],
-      "guards": [
-        "autenticado"
-      ],
-      "modulo": "app.nutrition_foods"
-    },
     "DELETE /nutrition/meals/{meal_id}": {
       "checagem_em_dependencias": [],
       "checagem_no_handler": [],

@@ -41,6 +41,7 @@ import {
 } from '@/lib/nutrition-favorites';
 import type { FavoriteItem, FavoritesResponse } from '@/lib/nutrition-types';
 import { usePresentationActive } from '@/lib/presentation-slots';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import { BRAND } from '@/theme';
 
 const TOUCH_TARGET_PX = 44;
@@ -151,7 +152,7 @@ export function FavoritesManager() {
   // A busca embutida mostra a estrela de `is_favorite`: relê junto, senão ela fica defasada.
   const relerLista = async () => {
     await queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
-    await queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    await invalidateFoodQueries(queryClient);
   };
   const guardar = (resposta: FavoritesResponse) => queryClient.setQueryData(favoriteKeys.all, resposta);
   const reordenar = useMutation({

@@ -76,6 +76,9 @@ class Padrao:
     # Regex só para `.md` (RAG). Quando definida, substitui `regex` nos `.md`: o
     # texto corrido do RAG tem números que no código seriam regra (× 4, 9).
     regex_md: re.Pattern[str] | None = None
+    # Atribuição quebrada (`NOME =` numa linha, valor na seguinte): a varredura é por linha,
+    # então só os padrões marcados testam a linha junto com a seguinte quando ela termina em `=`.
+    junta_continuacao: bool = False
 
 
 # Módulos de motor: só neles "agora" sem fuso é proibido (B10). Telas, auth,
@@ -1213,6 +1216,8 @@ PADROES: tuple[Padrao, ...] = (
             r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
             # Vocabulário do matching redefinido (o worker do parse, L5, é o risco óbvio).
             r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            # #208: o alfabeto também por `tuple("ABC...")`, `list(...)`, `Array.from(...)`, string literal ou `string.ascii_uppercase`.
+            r"""|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:(?:tuple|list|Array)\b|["'`]|(?:\w+\.)?ascii_uppercase\b)"""
             # #195: balde "outros" e alfabeto da listagem por letra (literal de texto).
             r"""|\bOTHER_BUCKET\s*(?::[^=\n]+)?=\s*["'`]"""
         ),
@@ -2139,11 +2144,15 @@ PADROES: tuple[Padrao, ...] = (
         # Só `DEFAULT_*`/`SHADOW_*` entram: `energy_expenditure.MET_KCAL_CALORIE_MODE = GROSS` é regra própria da MET (sempre
         # bruta), não o padrão do modo, e não casa com o prefixo.
         regex=re.compile(
-            r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*"
-            r"(?:(?:\w+\.)?CalorieMode\.\w+|[\"'](?:active|gross|unknown)[\"'])"
+            r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*(?:[(\\]\s*)?"
+            # `(`/`\` opcionais: Python quebra a linha só com parêntese ou barra invertida.
+            # `CalorieMode.X` (com ou sem `.value`, com qualquer prefixo de módulo), `CalorieMode("x")`, literal
+            # de modo; o `\s*` depois do `=` atravessa a quebra de linha, então a atribuição em duas linhas (#200) também é acusada.
+            r"""(?:(?:\w+\.)*CalorieMode(?:\.\w+|\(\s*["'`]\w+["'`]\s*\))|["'`](?:active|gross|unknown)["'`])"""
         ),
         donos=("api/app/domain/nutrition/activity_energy.py",),
         inventario="NUT-ACABAMENTO (#138)",
+        junta_continuacao=True,
     ),
     Padrao(
         chave="registro_execucoes_sync",
@@ -2795,9 +2804,15 @@ def ocorrencias(padrao: Padrao, raiz: Path = RAIZ) -> dict[str, list[tuple[int, 
         if not _varre(padrao, rel, linguagem):
             continue
         regex = padrao.regex_md if linguagem == "md" and padrao.regex_md is not None else padrao.regex
-        for numero, linha in enumerate(_linhas_de_codigo(caminho, linguagem), start=1):
+        linhas = _linhas_de_codigo(caminho, linguagem)
+        for numero, linha in enumerate(linhas, start=1):
             for _ in regex.finditer(linha):
                 achados.setdefault(rel, []).append((numero, linha.strip()[:120]))
+            # Só quando a linha termina em `=`, `= (` ou `= \`: aí a linha sozinha nunca casa, então não há contagem dupla.
+            if padrao.junta_continuacao and numero < len(linhas) and re.search(r"=\s*[(\\]?$", linha.rstrip()):
+                for m in regex.finditer(f"{linha}\n{linhas[numero]}"):
+                    if m.start() < len(linha):
+                        achados.setdefault(rel, []).append((numero, linha.strip()[:120]))
     return achados
 
 
@@ -3491,10 +3506,14 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("MATCH_MIN_SCORE = 0.6", "MATCH_AUTO_ACCEPT_SCORE: Final[float] = 0.85", "const SEARCH_CANDIDATE_POOL = 60;",
          "PORTION_AMOUNT_MAX: Final[float] = 2000.0", "QUERY_COVERAGE_WEIGHT = (0.3)",
          "export const SEARCH_RESULT_LIMIT_MAX = 50;", "BRAND_MIN_CHARS = 3", "LIST_PAGE_MAX: Final[int] = 100",
-         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'"),
+         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'",
+         'LETTERS: Final[tuple[str, ...]] = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")', "LETTERS = list(string.ascii_uppercase)",
+         "LETTERS = string.ascii_uppercase", "const LETTERS = Array.from('ABC');", 'LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"'),
         ("if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
          "assert ft.MATCH_MIN_SCORE == 0.6", "limite = SEARCH_RESULT_LIMIT_MAX", "amount <= catalog.PORTION_AMOUNT_MAX",
-         "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]"),
+         "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]",
+         "letra = food_text.LETTERS[0]", "ok = codigo in food_text.LETTERS", "tamanho = len(food_text.LETTERS)",
+         "LETTERS == tuple(sorted(x))"),
     ),
     "nota_matching": (
         ("if match.score >= 0.6:", "aceita = nota > .85", "item.score >= 0.85 ? 'ok' : 'x'", 'if m["score"] < 0.6:'),
@@ -3629,10 +3648,17 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "padrao_modo_caloria": (
         ("DEFAULT_REPORTED_CALORIE_MODE: Final[CalorieMode] = CalorieMode.ACTIVE", "DEFAULT_WATCH_CALORIE_MODE = ae.CalorieMode.GROSS",
-         'DEFAULT_CALORIE_MODE = "active"', "SHADOW_CALORIE_MODE = 'gross'", "const DEFAULT_WATCH_CALORIE_MODE = 'active';"),
+         'DEFAULT_CALORIE_MODE = "active"', "SHADOW_CALORIE_MODE = 'gross'", "const DEFAULT_WATCH_CALORIE_MODE = 'active';",
+         # #200: atribuição quebrada em duas linhas (o valor na linha seguinte) e `CalorieMode.X.value`
+         "DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] =\n    CalorieMode.ACTIVE", "DEFAULT_CALORIE_MODE =\n    'active'",
+         "DEFAULT_CALORIE_MODE = CalorieMode.ACTIVE.value", "SHADOW_CALORIE_MODE = ae.CalorieMode.GROSS.value",
+         "DEFAULT_CALORIE_MODE: str = app.domain.nutrition.activity_energy.CalorieMode.ACTIVE.value",
+         'DEFAULT_CALORIE_MODE = CalorieMode("active")', "const SHADOW_CALORIE_MODE = `gross`;"),
         ("DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = DEFAULT_REPORTED_CALORIE_MODE", "DEFAULT_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value",
          "MET_KCAL_CALORIE_MODE: Final[CalorieMode] = activity_energy.CalorieMode.GROSS", "calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE",
-         "SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value"),
+         "SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value", "DEFAULT_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value  # ok",
+         "DEFAULT_CALORIE_MODE =\n    DEFAULT_WATCH_CALORIE_MODE.value", "if modo == CalorieMode.ACTIVE.value:", "ok = DEFAULT_CALORIE_MODE == CalorieMode.ACTIVE.value",
+         "MET_KCAL_CALORIE_MODE: Final[CalorieMode] = ae.CalorieMode.GROSS.value"),
     ),
     "registro_execucoes_sync": (
         ("SYNC_RUN_RETENTION_DAYS: Final[int] = 120", "SYNC_RUN_RETENTION_DAYS = 90",
@@ -3955,6 +3981,39 @@ def test_regex_pega_o_padrao_e_nao_pega_o_vizinho(padrao: Padrao):
         assert padrao.regex.search(exemplo), f"[{padrao.chave}] deveria casar: {exemplo!r}"
     for exemplo in negativos:
         assert not padrao.regex.search(exemplo), f"[{padrao.chave}] não deveria casar: {exemplo!r}"
+
+
+def test_varredura_acusa_atribuicao_do_modo_em_duas_linhas(tmp_path: Path):
+    """#200: a varredura é por linha; a quebra após `=` tem de ser acusada na linha da atribuição."""
+    padrao = PADROES_POR_CHAVE["padrao_modo_caloria"]
+    codigo = tmp_path / "api/app/tela.py"
+    codigo.parent.mkdir(parents=True)
+    codigo.write_text(
+        "DEFAULT_CALORIE_MODE =\n    'active'\n"
+        "DEFAULT_WATCH_CALORIE_MODE = 'gross'\n"
+        "DEFAULT_CALORIE_MODE =\n    DEFAULT_WATCH_CALORIE_MODE.value\n",
+        encoding="utf-8",
+    )
+    assert [n for n, _ in ocorrencias(padrao, tmp_path)["api/app/tela.py"]] == [1, 3]
+
+
+def test_varredura_acusa_atribuicao_do_modo_em_duas_linhas_python_e_ts(tmp_path: Path):
+    """Python quebra com parêntese ou barra invertida; TS termina em `=`. Limite: só a linha seguinte é juntada."""
+    padrao = PADROES_POR_CHAVE["padrao_modo_caloria"]
+    py = tmp_path / "api/app/tela.py"
+    py.parent.mkdir(parents=True)
+    py.write_text(
+        "DEFAULT_CALORIE_MODE: Final[str] = (\n    'active'\n)\n"
+        "SHADOW_CALORIE_MODE = \\\n    CalorieMode.ACTIVE\n"
+        "DEFAULT_CALORIE_MODE = (\n    DEFAULT_WATCH_CALORIE_MODE.value\n)\n",
+        encoding="utf-8",
+    )
+    ts = tmp_path / "frontend/src/lib/x.ts"
+    ts.parent.mkdir(parents=True)
+    ts.write_text("const DEFAULT_CALORIE_MODE =\n  'active';\n", encoding="utf-8")
+    achados = ocorrencias(padrao, tmp_path)
+    assert [n for n, _ in achados["api/app/tela.py"]] == [1, 4]
+    assert [n for n, _ in achados["frontend/src/lib/x.ts"]] == [1]
 
 
 def test_dono_e_ignorado_e_copia_e_contada(tmp_path: Path):

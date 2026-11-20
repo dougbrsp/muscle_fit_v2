@@ -39,6 +39,7 @@ import {
 } from '@/lib/nutrition-api';
 import { editorItemFromFavorite } from '@/lib/nutrition-favorites';
 import { addRegisteredFood } from '@/lib/nutrition-food-registration';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import {
   chooseCandidate,
   chooseEstimate,
@@ -300,7 +301,7 @@ export function MealEditor({ date, meal, initialForm = null, onSaved, onCancel }
     const chave = `novo-${proximaChave.current}`;
     setForm((atual) => addRegisteredFood(atual, alimento, chave, MEAL_ITEMS_LIMIT));
     setCadastro(null);
-    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    void invalidateFoodQueries(queryClient);
   }
 
   /** EAN já cadastrado (409): busca o alimento existente e o adiciona. */

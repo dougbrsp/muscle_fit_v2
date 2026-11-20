@@ -246,7 +246,7 @@ const FIXTURES: Record<string, unknown> = {
   'POST /analytics/muscle-activation-preview': { items: [] },
   'GET /nutrition/weeks': NUTRITION_WEEK,
   'GET /nutrition/days/2026-10-14': NUTRITION_DAY,
-  'GET /nutrition/foods': { letter: 'A', letters: ['A', 'B', 'C', 'outros'], items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')], limit: 50, offset: 0, has_more: false },
+  'GET /nutrition/foods': { letter: 'A', letters: ['A', 'B', 'C', 'outros'], letter_labels: { A: 'A', B: 'B', C: 'C', outros: 'Outros (números e símbolos)' }, items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')], limit: 50, offset: 0, has_more: false },
   'GET /nutrition/foods/search': { query: 'arroz', normalized: 'arroz', items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')] },
   'GET /nutrition/favorites': { items: [], max_items: 30 },
   'GET /sleep-metrics': { items: [{ id: 1, local_date: '2026-10-13', duration_hours: 7.5, regularity_percent: 82, deep_sleep_hours: 1.5, rem_sleep_hours: 1.8, awake_count: 2, awake_hours: 0.4, notes: null }] },
