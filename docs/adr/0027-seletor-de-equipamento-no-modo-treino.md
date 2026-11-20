@@ -48,7 +48,7 @@ Restrições reais:
 
 As quatro decisões do usuário de 20/11/2026, registradas aqui:
 
-- **D1. Catálogo e permissão de acrescentar equipamento: fica para o lote seguinte.** Neste lote o seletor lista só os equipamentos da academia do treino. O catálogo global inteiro e a permissão para acrescentar à academia um equipamento que ela não tem (a princípio só o grupo admin) é a segunda parte da #163.
+- **D1. Catálogo e permissão de acrescentar equipamento: fica para o lote seguinte.** Neste lote o seletor lista só os equipamentos da academia do treino. O catálogo global inteiro e a permissão para acrescentar à academia um equipamento que ela não tem (a princípio só o grupo admin) é a segunda parte da #163, decidida no [ADR 0028](0028-catalogo-global-no-seletor-de-equipamento.md).
 - **D2. Troca antes da 1ª série fica no aparelho.** Não vai ao servidor antes da 1ª série. Como já era, e este lote não muda esse caminho.
 - **D3. Sem troca retroativa no Modo Treino.** A correção das séries já lançadas é pelo Registro, com confirmação.
 - **D4. Convenção de carga diferente: avisar e permitir.**

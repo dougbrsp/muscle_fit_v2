@@ -42,6 +42,10 @@ export type MockWorkoutApi = {
   unhandled: string[];
   /** Cenario do seletor de equipamento (#163): o Crucifixo vem com o equipamento 900 (convencao `total`) e o catalogo ganha opcoes. */
   useEquipmentPickerSeed: () => void;
+  /** Catalogo global (#163b): `GET /equipment-exercises` traz o `Crossover` (equipamento 33), que a academia nao tem; `permitted` poe `treino.academias/editar=todos` em `/auth/me` e libera o POST. */
+  useCatalogAddSeed: (permitted: boolean) => void;
+  /** Corpos recebidos em `POST /gym-equipment-catalog` (inclui os recusados com 403). */
+  catalogAddPosts: Array<Record<string, unknown>>;
   /** `GET /exercises/last-session-sets` passa a responder sem historico (`item: null`); guarda o `equipment_id` de cada consulta. */
   useEmptyLastSessionSets: () => void;
   lastSessionQueries: Array<string | null>;
@@ -75,6 +79,11 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   const sessionOwner = 1;
   let equipmentSeed = false;
   let emptyLastSession = false;
+  let catalogSeed = false;
+  let catalogPermitted = false;
+  let crossoverInGym = false;
+  const catalogAddPosts: Array<Record<string, unknown>> = [];
+  const crossoverLink = { id: 910, gym_id: 1, gym_name: 'Academia Central', mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 33, equipment_name: 'Crossover', is_active: true, load_convention: 'total' };
   const lastSessionQueries: Array<string | null> = [];
 
   // Series por exercicio do servidor: client_key -> serie.
@@ -179,7 +188,26 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         intervals_configured: false,
         timezone: 'America/Sao_Paulo',
         features: { exercise_cards: false },
+        // Sem a semente do catalogo nao ha `permissions` (como antes): `can` devolve false.
+        ...(catalogSeed && catalogPermitted ? { permissions: { 'treino.academias': { ver: 'todos', editar: 'todos' } } } : {}),
       });
+    }
+    if (key === 'GET /equipment-exercises') {
+      return send(200, {
+        items: catalogSeed
+          ? [
+              { id: 1, equipment_id: 30, equipment_name: 'Cabo', has_photo: false, photo_url: null, exercise_id: 12, exercise_name: 'Crucifixo', primary_group: 'Peito', is_active: true, load_convention: 'total' },
+              { id: 2, equipment_id: 33, equipment_name: 'Crossover', has_photo: false, photo_url: null, exercise_id: 12, exercise_name: 'Crucifixo', primary_group: 'Peito', is_active: true, load_convention: 'total' },
+            ]
+          : [],
+      });
+    }
+    if (key === 'POST /gym-equipment-catalog') {
+      const body = JSON.parse(req.postData() ?? '{}') as Record<string, unknown>;
+      catalogAddPosts.push(body);
+      if (!catalogPermitted) return send(403, { detail: 'Sem permissão.' });
+      crossoverInGym = true;
+      return send(200, { status: 'ok', item: { id: 5, gym_id: 1, equipment_id: 33 }, links: [{ id: crossoverLink.id, mapping_id: 12, equipment_id: 33 }] });
     }
     if (key === 'POST /auth/logout') return send(204, null);
 
@@ -205,11 +233,12 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
           items: [
             ...(equipmentSeed
               ? [
-                  { id: 900, gym_id: 1, mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 30, equipment_name: 'Cabo', is_active: true, load_convention: 'total' },
-                  { id: 902, gym_id: 1, mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 32, equipment_name: 'Voador', is_active: true, load_convention: 'total' },
+                  { id: 900, gym_id: 1, gym_name: 'Academia Central', mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 30, equipment_name: 'Cabo', is_active: true, load_convention: 'total' },
+                  { id: 902, gym_id: 1, gym_name: 'Academia Central', mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 32, equipment_name: 'Voador', is_active: true, load_convention: 'total' },
                 ]
               : []),
-            { id: 901, gym_id: 1, mapping_id: 22, mapping_exercise_name: 'Crucifixo na polia', primary_group: 'Peito', equipment_id: 31, equipment_name: 'Polia', is_active: true, load_convention: 'per_side' },
+            ...(crossoverInGym ? [crossoverLink] : []),
+            { id: 901, gym_id: 1, gym_name: 'Academia Central', mapping_id: 22, mapping_exercise_name: 'Crucifixo na polia', primary_group: 'Peito', equipment_id: 31, equipment_name: 'Polia', is_active: true, load_convention: 'per_side' },
           ],
         });
       }
@@ -320,6 +349,11 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     useEquipmentPickerSeed: () => {
       equipmentSeed = true;
     },
+    useCatalogAddSeed: (permitted) => {
+      catalogSeed = true;
+      catalogPermitted = permitted;
+    },
+    catalogAddPosts,
     useEmptyLastSessionSets: () => {
       emptyLastSession = true;
     },

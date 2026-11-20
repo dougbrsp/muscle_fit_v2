@@ -4,16 +4,27 @@ import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Group, Loader, Modal, Rating, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconSearch, IconSparkles } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   buildEquipmentPickerSections,
   currentLoadConvention,
   needsLoadConventionWarning,
+  SECTION_TITLES,
   type EquipmentPickerItem,
 } from '@/lib/equipment-picker';
+import {
+  buildCatalogSection,
+  catalogItemState,
+  CATALOG_ADDED_WITHOUT_LINK_MESSAGE,
+  findAddedItem,
+  formatCatalogAddQuestion,
+  type GymEquipmentCatalogAddResponse,
+} from '@/lib/equipment-catalog-add';
 import { SWAP_REMAINING_NOTE } from '@/lib/equipment-change-confirm';
-import { loadConventionLabel } from '@/lib/equipment-exercises-types';
-import { apiFetch } from '@/lib/api';
+import { loadConventionLabel, type EquipmentExerciseLink } from '@/lib/equipment-exercises-types';
+import { apiFetch, ApiError } from '@/lib/api';
+import { usePermissions } from '@/lib/use-permissions';
+import { useOnlineStatus } from '@/mobile/ui/use-online-status';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
 import {
@@ -104,10 +115,18 @@ export function EquipmentSubstituteModal({
   // Opção cuja convenção de carga difere da atual, aguardando Confirmar/Voltar.
   const [pendingItem, setPendingItem] = useState<EquipmentPickerItem | null>(null);
 
+  // Catálogo global: itens que a academia não tem. Só a ação de acrescentar exige a permissão.
+  const online = useOnlineStatus();
+  const canAddToGym = usePermissions().can('treino.academias', 'editar', 'todos');
+  const [pendingAdd, setPendingAdd] = useState<EquipmentExerciseLink | null>(null);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (!opened) {
       setSearch('');
       setPendingItem(null);
+      setPendingAdd(null);
+      setAddMessage(null);
     }
   }, [opened]);
 
@@ -118,6 +137,37 @@ export function EquipmentSubstituteModal({
         `/gym-equipment?gym_id=${gymId}&primary_group=${encodeURIComponent(primaryGroup || '')}&active_only=true`,
       ),
     enabled: opened && Boolean(gymId && primaryGroup),
+  });
+
+  // Falha aqui só some com a seção: não derruba o seletor.
+  const globalCatalogQuery = useQuery({
+    queryKey: ['workout-mode-substitute-global-catalog', primaryGroup],
+    queryFn: () =>
+      apiFetch<{ items: EquipmentExerciseLink[] }>(
+        `/equipment-exercises?primary_group=${encodeURIComponent(primaryGroup || '')}&active_only=true`,
+      ),
+    enabled: opened && Boolean(gymId && primaryGroup),
+    retry: false,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (pair: EquipmentExerciseLink) =>
+      apiFetch<GymEquipmentCatalogAddResponse>('/gym-equipment-catalog', {
+        method: 'POST',
+        body: JSON.stringify({ gym_id: gymId, equipment_id: pair.equipment_id }),
+      }),
+    onSuccess: async (response, pair) => {
+      const fresh = await catalogQuery.refetch();
+      const found = findAddedItem(response.links, fresh.data?.items ?? [], pair);
+      if (!found) {
+        setAddMessage(CATALOG_ADDED_WITHOUT_LINK_MESSAGE);
+        return;
+      }
+      chooseItem(found);
+    },
+    onError: (error) => {
+      setAddMessage(error instanceof ApiError && error.message ? error.message : 'Não foi possível acrescentar o equipamento à academia.');
+    },
   });
 
   // Sob demanda (`enabled: false` + `refetch()`): a recomendação é uma ação
@@ -155,6 +205,10 @@ export function EquipmentSubstituteModal({
   const allItems: EquipmentPickerItem[] = catalogQuery.data?.items || [];
   const sections = buildEquipmentPickerSections(allItems, mappingId, currentEquipmentLinkId, search);
   const currentConvention = currentLoadConvention(allItems, currentEquipmentLinkId);
+  const catalogItems = gymId
+    ? buildCatalogSection(globalCatalogQuery.data?.items, allItems, mappingId, search)
+    : [];
+  const gymName = allItems.find((item) => item.gym_name)?.gym_name;
 
   function choose(choice: EquipmentSubstituteChoice) {
     if (submitting) return;
@@ -339,6 +393,41 @@ export function EquipmentSubstituteModal({
           </Alert>
         )}
 
+        {pendingAdd && (
+          <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} data-testid="equipment-catalog-add-confirm">
+            <Text size="sm" mb="xs">
+              {formatCatalogAddQuestion(pendingAdd.equipment_name, gymName)}
+            </Text>
+            <Group gap="xs">
+              <Button
+                size="md"
+                radius="xl"
+                h={44}
+                disabled={submitting || addMutation.isPending || !online}
+                loading={addMutation.isPending}
+                onClick={() => {
+                  if (addMutation.isPending) return;
+                  const pair = pendingAdd;
+                  setPendingAdd(null);
+                  setAddMessage(null);
+                  addMutation.mutate(pair);
+                }}
+              >
+                Confirmar
+              </Button>
+              <Button size="md" radius="xl" h={44} variant="default" onClick={() => setPendingAdd(null)}>
+                Voltar
+              </Button>
+            </Group>
+          </Alert>
+        )}
+
+        {addMessage && (
+          <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} data-testid="equipment-catalog-add-message" role="alert">
+            <Text size="sm">{addMessage}</Text>
+          </Alert>
+        )}
+
         <Stack gap="xs">
           {sections.map((section) => (
             <Stack key={section.key} gap="xs" data-testid={`equipment-section-${section.key}`}>
@@ -386,7 +475,69 @@ export function EquipmentSubstituteModal({
               ))}
             </Stack>
           ))}
-          {!catalogQuery.isLoading && sections.length === 0 && search.trim() !== '' && (
+          {catalogItems.length > 0 && (
+            <Stack gap="xs" data-testid="equipment-section-catalog">
+              <Text size="xs" fw={700} c={BRAND.textMuted} tt="uppercase">
+                {SECTION_TITLES.catalog}
+              </Text>
+              {catalogItems.map((pair) => {
+                const state = catalogItemState(canAddToGym, online);
+                const disabled = state.kind === 'disabled';
+                return (
+                  <div
+                    key={pair.id}
+                    data-testid="equipment-catalog-item"
+                    aria-disabled={disabled || undefined}
+                    style={{
+                      padding: 'var(--mantine-spacing-sm)',
+                      borderRadius: 'var(--mantine-radius-xl)',
+                      border: `1px solid ${BRAND.border}`,
+                      opacity: disabled ? 0.6 : 1,
+                    }}
+                  >
+                    <Group gap="sm" wrap="nowrap" align="center">
+                      <EquipmentPhoto photoUrl={pair.photo_url} alt={pair.equipment_name} size={56} />
+                      <div>
+                        <Text fw={700} c={BRAND.textPrimary}>
+                          {pair.exercise_name || pair.equipment_name}
+                        </Text>
+                        <Text size="xs" c={BRAND.textMuted}>
+                          {pair.equipment_name}
+                        </Text>
+                        <Text size="xs" c={BRAND.textMuted}>
+                          Carga: {loadConventionLabel(pair.load_convention)}
+                        </Text>
+                        {state.notice && (
+                          <Text size="xs" c={BRAND.textMuted} fs="italic">
+                            {state.notice}
+                          </Text>
+                        )}
+                      </div>
+                    </Group>
+                    {!disabled && (
+                      <Button
+                        mt="xs"
+                        size="md"
+                        radius="xl"
+                        h={44}
+                        variant="light"
+                        fullWidth
+                        disabled={state.kind !== 'add' || submitting || addMutation.isPending}
+                        aria-label={`Acrescentar ${pair.equipment_name} à academia`}
+                        onClick={() => {
+                          setAddMessage(null);
+                          setPendingAdd(pair);
+                        }}
+                      >
+                        Acrescentar à academia
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </Stack>
+          )}
+          {!catalogQuery.isLoading && sections.length === 0 && catalogItems.length === 0 && search.trim() !== '' && (
             <Stack gap="xs" align="center" py="md">
               <Text size="sm" c={BRAND.textMuted} ta="center">
                 Nenhum equipamento encontrado
@@ -396,7 +547,7 @@ export function EquipmentSubstituteModal({
               </Button>
             </Stack>
           )}
-          {!catalogQuery.isLoading && sections.length === 0 && search.trim() === '' && (
+          {!catalogQuery.isLoading && sections.length === 0 && catalogItems.length === 0 && search.trim() === '' && (
             <Text size="sm" c={BRAND.textMuted} ta="center" py="md">
               Nenhum outro equipamento cadastrado para este grupo muscular nesta academia.
             </Text>
