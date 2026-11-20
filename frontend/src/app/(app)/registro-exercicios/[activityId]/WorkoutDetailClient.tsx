@@ -70,6 +70,7 @@ import {
   updateSetField,
 } from '@/lib/exercise-log-save';
 import { finishWorkoutSession } from '@/lib/workout-session-finish';
+import { equipmentChangeForSave, type EquipmentChangeConfirmation } from '@/lib/equipment-change-confirm';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { MuscleActivationTable } from '@/components/MuscleActivationTable';
@@ -264,6 +265,8 @@ export function WorkoutDetailClient() {
 
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
+  // Troca de equipamento num exercício com séries: pede confirmação antes do PUT.
+  const [equipmentConfirm, setEquipmentConfirm] = useState<EquipmentChangeConfirmation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExerciseLogRow | null>(null);
   const [deleteOpen, { open: openDelete, close: closeDelete }] = useDisclosure(false);
   const [finishConfirmOpen, { open: openFinishConfirm, close: closeFinishConfirm }] = useDisclosure(false);
@@ -400,6 +403,16 @@ export function WorkoutDetailClient() {
         })),
     [planQuery.data],
   );
+
+  function requestSaveExercise() {
+    const confirmation = equipmentChangeForSave({
+      row: editingExerciseId ? activity?.exercises.find((ex) => ex.id === editingExerciseId) : null,
+      formEquipmentId: form.equipment_id,
+      links: gymEquipmentQuery.data?.items || [],
+    });
+    if (confirmation) setEquipmentConfirm(confirmation);
+    else saveExerciseMutation.mutate();
+  }
 
   async function refreshActivity() {
     await queryClient.invalidateQueries({ queryKey: ['activity-detail', activityId] });
@@ -1077,7 +1090,7 @@ export function WorkoutDetailClient() {
           <Group>
             <Button
               leftSection={<IconPlus size={16} />}
-              onClick={() => saveExerciseMutation.mutate()}
+              onClick={requestSaveExercise}
               loading={saveExerciseMutation.isPending}
             >
               {editingExerciseId ? 'Salvar edição' : 'Lançar exercício'}
@@ -1222,6 +1235,35 @@ export function WorkoutDetailClient() {
               onClick={() => deleteTarget && deleteExerciseMutation.mutate(deleteTarget.id)}
             >
               Apagar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={equipmentConfirm != null}
+        onClose={() => setEquipmentConfirm(null)}
+        title="Mudar o equipamento do exercício?"
+        centered
+      >
+        <Stack gap="sm" data-testid="equipment-change-confirm">
+          <Text size="sm">{equipmentConfirm?.message}</Text>
+          {equipmentConfirm?.conventionWarning && (
+            <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+              {equipmentConfirm.conventionWarning}
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setEquipmentConfirm(null)}>
+              Voltar
+            </Button>
+            <Button
+              onClick={() => {
+                setEquipmentConfirm(null);
+                saveExerciseMutation.mutate();
+              }}
+            >
+              Confirmar e salvar
             </Button>
           </Group>
         </Stack>

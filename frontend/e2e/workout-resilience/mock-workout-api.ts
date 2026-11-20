@@ -30,7 +30,7 @@ export type MockWorkoutApi = {
   /** Chamadas `POST .../sets` recebidas (inclui as recusadas por falha forcada). */
   setPosts: Array<{ client_key: string; status: number; exercise_form_practice?: unknown }>;
   /** Chamadas `POST .../exercises` recebidas (client_key, plan item). */
-  exercisePosts: Array<{ client_key: string | null; workout_plan_exercise_id: unknown; duplicate: boolean; form_practice?: unknown }>;
+  exercisePosts: Array<{ client_key: string | null; workout_plan_exercise_id: unknown; duplicate: boolean; form_practice?: unknown; equipment_id?: unknown }>;
   /** Series efetivamente gravadas no "servidor" para o Supino (dedupe por client_key). */
   serverSets: () => StoredSet[];
   /** Series gravadas do Crucifixo (exercicio criado offline nos cenarios). */
@@ -40,6 +40,11 @@ export type MockWorkoutApi = {
   /** Series gravadas de qualquer exercicio do "servidor". */
   setsOf: (exerciseId: number) => StoredSet[];
   unhandled: string[];
+  /** Cenario do seletor de equipamento (#163): o Crucifixo vem com o equipamento 900 (convencao `total`) e o catalogo ganha opcoes. */
+  useEquipmentPickerSeed: () => void;
+  /** `GET /exercises/last-session-sets` passa a responder sem historico (`item: null`); guarda o `equipment_id` de cada consulta. */
+  useEmptyLastSessionSets: () => void;
+  lastSessionQueries: Array<string | null>;
   /** PATCH de series recebidos (id do exercicio na URL, numero, corpo). */
   patches: Array<{ exerciseId: string; setNumber: number; body: Record<string, unknown> }>;
   /** Corpos das series FST-7 recebidas (para conferir a carga efetiva gravada). */
@@ -68,6 +73,9 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   const setPosts: MockWorkoutApi['setPosts'] = [];
   const exercisePosts: MockWorkoutApi['exercisePosts'] = [];
   const sessionOwner = 1;
+  let equipmentSeed = false;
+  let emptyLastSession = false;
+  const lastSessionQueries: Array<string | null> = [];
 
   // Series por exercicio do servidor: client_key -> serie.
   const setsByExercise = new Map<number, Map<string, StoredSet>>([
@@ -179,13 +187,29 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       // GET /activities/{id} e filtrado por usuario no backend real: 404 para outra conta.
       return USERS[user].id === sessionOwner ? send(200, activity()) : send(404, { detail: 'Atividade nao encontrada.' });
     }
-    if (key === `GET /workout-plans/${PLAN_ID}`) return send(200, plan);
+    if (key === `GET /workout-plans/${PLAN_ID}`) {
+      if (!equipmentSeed) return send(200, plan);
+      const exercises = plan.exercises.map((item) =>
+        item.workout_plan_exercise_id === CRUCIFIXO_PLAN_ITEM_ID ? { ...item, preferred_equipment_id: 900, equipment_name: 'Cabo' } : item,
+      );
+      return send(200, { ...plan, exercises });
+    }
+    if (key === 'GET /exercises/last-session-sets' && emptyLastSession) {
+      lastSessionQueries.push(url.searchParams.get('equipment_id'));
+      return send(200, { item: null, current_group_fatigue: null });
+    }
     if (key === 'GET /gym-equipment') {
       // Catalogo do modal de troca (`primary_group`): 1 equipamento alternativo para a continuacao (#225).
       if (url.searchParams.has('primary_group')) {
         return send(200, {
           items: [
-            { id: 901, gym_id: 1, mapping_id: 22, mapping_exercise_name: 'Crucifixo na polia', primary_group: 'Peito', equipment_id: 31, equipment_name: 'Polia', is_active: true },
+            ...(equipmentSeed
+              ? [
+                  { id: 900, gym_id: 1, mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 30, equipment_name: 'Cabo', is_active: true, load_convention: 'total' },
+                  { id: 902, gym_id: 1, mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 32, equipment_name: 'Voador', is_active: true, load_convention: 'total' },
+                ]
+              : []),
+            { id: 901, gym_id: 1, mapping_id: 22, mapping_exercise_name: 'Crucifixo na polia', primary_group: 'Peito', equipment_id: 31, equipment_name: 'Polia', is_active: true, load_convention: 'per_side' },
           ],
         });
       }
@@ -215,7 +239,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       // Como o servidor real: mesma `client_key` devolve o mesmo exercicio (`duplicate`); chave nova cria OUTRO
       // (continuacao do mesmo item da ficha), nunca reaproveita o exercicio ja existente do item.
       const existing = clientKey ? exercisesByKey.get(clientKey) : undefined;
-      exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null, form_practice: body.form_practice });
+      exercisePosts.push({ client_key: clientKey, workout_plan_exercise_id: body.workout_plan_exercise_id, duplicate: existing != null, form_practice: body.form_practice, equipment_id: body.equipment_id });
       let exerciseId = existing ?? meta.id;
       if (existing == null) {
         if (createdExercises.has(meta.id)) {
@@ -293,6 +317,13 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     createdExerciseIds: () => Array.from(createdExercises),
     setsOf: (exerciseId: number) => Array.from(setsByExercise.get(exerciseId)?.values() ?? []),
     unhandled,
+    useEquipmentPickerSeed: () => {
+      equipmentSeed = true;
+    },
+    useEmptyLastSessionSets: () => {
+      emptyLastSession = true;
+    },
+    lastSessionQueries,
     fstBodies,
     patches,
     failNextSetPosts: (count, status = 500) => {

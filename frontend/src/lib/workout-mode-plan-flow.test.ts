@@ -27,6 +27,7 @@ import {
   withContinuationExerciseId,
   withQueueConfirmedContinuationIds,
 } from './workout-mode-plan-flow';
+import { SUGGESTION_FAILED_MESSAGE, targetsWhenSuggestionFails } from './workout-mode-plan-flow';
 import { findLoggedExerciseForPlanItem } from './workout-mode-types';
 import type { AdvancedExerciseCounters } from './workout-mode-plan-flow';
 import type {
@@ -1244,5 +1245,16 @@ describe('withQueueConfirmedContinuationIds (#225)', () => {
     const extras = [mk(-5, null), mk(-6), mk(-7, 9)];
     const out = withQueueConfirmedContinuationIds(extras, [op('k5', 'saved_local'), op('k6', 'synced', 1), op('k7', 'synced', 2)], (id) => `k${-id}`);
     expect(out).toBe(extras);
+  });
+});
+
+describe('targetsWhenSuggestionFails', () => {
+  it('não herda a carga alvo do equipamento anterior e mantém reps e RPE', () => {
+    expect(targetsWhenSuggestionFails({ reps_target: '8-12', load_target: '40', rpe_target: '8' })).toEqual({
+      reps_target: '8-12',
+      load_target: null,
+      rpe_target: '8',
+    });
+    expect(SUGGESTION_FAILED_MESSAGE).toContain('Não foi possível carregar a sugestão para este equipamento');
   });
 });

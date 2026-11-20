@@ -19,6 +19,7 @@ export function ExerciseTitleRow({
   photoUrl,
   photoAlt,
   onPhotoClick,
+  onEquipmentClick,
   meta,
   trailing,
   testId,
@@ -29,6 +30,9 @@ export function ExerciseTitleRow({
   photoAlt?: string;
   // Toque na foto (ex.: ampliar). Ausente ou sem foto: foto estática.
   onPhotoClick?: () => void;
+  // Toque no nome do equipamento = abrir a troca (mesmo handler dos botões
+  // "Trocar"). Ausente: nome só texto (troca não permitida neste ponto).
+  onEquipmentClick?: () => void;
   // Chips depois do equipamento, na mesma linha (fadiga, "Unilateral").
   meta?: ReactNode;
   trailing?: ReactNode;
@@ -52,9 +56,34 @@ export function ExerciseTitleRow({
         {(equipmentName || meta) && (
           <div className={styles.titleMeta}>
             {equipmentName && (
-              <span className={styles.titleMetaText} title={equipmentName}>
-                {equipmentName}
-              </span>
+              onEquipmentClick ? (
+                <button
+                  type="button"
+                  className={styles.titleMetaText}
+                  title={equipmentName}
+                  onClick={onEquipmentClick}
+                  aria-label={`Trocar equipamento: ${equipmentName}`}
+                  data-testid="title-equipment-swap"
+                  style={{
+                    appearance: 'none',
+                    background: 'transparent',
+                    border: 0,
+                    padding: 0,
+                    minHeight: 44,
+                    font: 'inherit',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    textDecoration: 'underline dotted',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {equipmentName}
+                </button>
+              ) : (
+                <span className={styles.titleMetaText} title={equipmentName}>
+                  {equipmentName}
+                </span>
+              )
             )}
             {meta}
           </div>

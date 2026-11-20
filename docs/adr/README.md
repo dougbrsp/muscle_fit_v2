@@ -46,5 +46,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0024](0024-rpe-por-serie-saneamento-da-ia-e-acabamentos.md) | RPE por série com saneamento da saída da IA e acabamentos da ficha e do Modelo (issues #183 e #184) | Aceita | 2026-11-20 |
 | [0025](0025-tendencia-da-janela-e-escopo-na-analise-por-ia.md) | Tendência da janela do exercício (segunda leitura, metades do e1RM) e escopo do snapshot da análise por IA (issues #176 e #177) | Aceita | 2026-11-20 |
 | [0026](0026-rpe-esperado-gravado-na-serie-e-comparacao.md) | RPE esperado gravado na série e comparação com o realizado (issue #182) | Aceita | 2026-11-20 |
+| [0027](0027-seletor-de-equipamento-no-modo-treino.md) | Seletor de equipamento no Modo Treino, validação do equipamento da sessão e convenção de carga nas opções (issue #163, primeira parte) | Aceita | 2026-11-20 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

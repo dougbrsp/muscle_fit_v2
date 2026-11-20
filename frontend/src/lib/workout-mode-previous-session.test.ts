@@ -8,6 +8,7 @@ import {
   selectPreviousSessionRecord,
   selectPreviousSessionWorkingSets,
 } from './workout-mode-previous-session';
+import { previousSessionLabels } from './workout-mode-previous-session';
 import { MEASURE_VALUES } from './set-measures';
 import type { LastSessionSetsResponse, PreviousSessionSet } from './workout-mode-types';
 
@@ -276,5 +277,20 @@ describe('Lote T5: "Treino anterior" formatado pela medida', () => {
     );
     expect(plain[0].text).toBe('1ª série - 10 x 70kg@RPE9');
     expect(explicit).toEqual(plain);
+  });
+});
+
+describe('previousSessionLabels', () => {
+  it('com equipamento, o vazio diz que não há histórico NESTE equipamento', () => {
+    expect(previousSessionLabels(true)).toEqual({
+      lead: 'Treino anterior:',
+      emptyText: 'Sem histórico neste equipamento',
+    });
+  });
+
+  it('sem equipamento, o histórico é rotulado como de qualquer equipamento', () => {
+    const labels = previousSessionLabels(false);
+    expect(labels.lead).toBe('Treino anterior (qualquer equipamento):');
+    expect(labels.emptyText).toBe('Ainda não há execução comparável');
   });
 });

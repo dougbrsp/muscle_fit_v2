@@ -94,7 +94,7 @@ import {
   hasAdvancedFlow as computeHasAdvancedFlow,
   remainingTechniqueApplications,
 } from '@/lib/workout-mode-advanced-stage';
-import { selectPreviousSessionRecord } from '@/lib/workout-mode-previous-session';
+import { previousSessionLabels, selectPreviousSessionRecord } from '@/lib/workout-mode-previous-session';
 import { createSubmitLatch } from '@/lib/submit-latch';
 import { selectPreviousSessionWorkingSets } from '@/lib/workout-mode-previous-session-sets';
 import {
@@ -121,6 +121,8 @@ import {
   withQueueConfirmedContinuationIds,
   type AdvancedExerciseCounters,
   type AdvancedSubStage,
+  SUGGESTION_FAILED_MESSAGE,
+  targetsWhenSuggestionFails,
 } from '@/lib/workout-mode-plan-flow';
 import {
   isExtraRepsTechnique,
@@ -2246,7 +2248,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       // (as séries já logadas continuam no histórico) e injeta uma
       // continuação sintética com o novo equipamento e alvo reduzido ao que
       // ainda falta. Alvos de reps/carga/RPE recalculados para o mapping_id
-      // novo; em caso de falha, mantém os alvos antigos em vez de travar.
+      // novo; em caso de falha, segue sem a carga alvo e avisa (sem travar).
       setSwappingEquipment(true);
       let targets: Parameters<typeof buildSyntheticContinuation>[0]['targets'] = {
         reps_target: current.planExercise.reps_target ?? null,
@@ -2277,7 +2279,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           failure_allowed: suggestion?.failure_allowed ?? null,
         };
       } catch {
-        // Fallback silencioso — mantém os alvos do exercício original.
+        // Sem a sugestão do par novo: não herda a carga alvo do equipamento anterior e avisa.
+        targets = targetsWhenSuggestionFails(targets);
+        notifications.show({ color: 'yellow', message: SUGGESTION_FAILED_MESSAGE });
       }
       setSwappingEquipment(false);
 
@@ -3582,6 +3586,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             // se ela falhar) o card some, em vez de afirmar "Ainda não há
             // execução comparável".
             previousSessionSets={previousSessionSetsQuery.isSuccess ? previousSessionSets : null}
+            previousSessionLabels={previousSessionLabels(Boolean(effectiveEquipmentLinkId))}
             previousSessionRecord={previousSessionRecord}
             currentGroupFatigue={currentGroupFatigue}
             previousSessionHighlight={workingSetNumber}
@@ -3678,6 +3683,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         currentEquipmentLinkId={effectiveEquipmentLinkId}
         requiredTechnique={current.planExercise.advanced_technique ?? null}
         mandatoryChoice={needsEquipmentChoice}
+        keepsLoggedSets={swapRemainingMode && Boolean(current.loggedRow)}
         submitting={swappingEquipment}
         onSelect={handleSubstituteSelect}
       />
@@ -3686,6 +3692,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         opened={finishModalOpened}
         onClose={closeFinishModal}
         remainingSets={Math.max(0, current.targetCount - current.loggedWorkingCount)}
+        hasLoggedSets={Boolean(current.loggedRow)}
         onGoToNext={() => {
           closeFinishModal();
           openSkipModalFor(currentWorkoutPlanExerciseId);
