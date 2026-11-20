@@ -24,6 +24,7 @@ import {
   REST_SECONDS_SANITY_MIN,
 } from '@/lib/prescription-defaults';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft } from '@/lib/workout-plan-generate-payload';
+import { planSaveErrorMessage } from '@/lib/plan-save-error';
 import { buildDraftCreatePayload } from '@/lib/workout-plan-payload';
 import type { AssignedTemplateSummary } from '@/lib/workout-plan-templates-types';
 import {
@@ -215,7 +216,7 @@ export function GerarPlanoView({ onClose }: { onClose: () => void }) {
           {editingRow ? null : <PlanActivationPreviewList exercises={draftExercises} />}
           {createMutation.isError ? (
             <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar" role="alert">
-              {errorMessage(createMutation.error, 'Não foi possível salvar o plano.')}
+              {planSaveErrorMessage(createMutation.error, 'Não foi possível salvar o plano.')}
             </Alert>
           ) : null}
         </Stack>

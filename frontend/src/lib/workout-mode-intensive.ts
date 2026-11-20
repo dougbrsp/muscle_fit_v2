@@ -102,6 +102,8 @@ export type AdvancedTechniqueParameters = {
   continuous_clock?: boolean | null;
   load_factor_per_application?: number | null;
   application_loads_kg?: number[] | null;
+  /** Reps-alvo do protocolo (GVT), valor pronto do motor; o frontend só consome. */
+  target_reps?: number | null;
 };
 
 /** Técnicas que já têm a tela do Modo Intensivo (recorte de entrega, não regra). */

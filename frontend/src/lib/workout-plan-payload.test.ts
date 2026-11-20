@@ -28,6 +28,27 @@ describe('payload de save da ficha', () => {
     expect(JSON.parse(JSON.stringify(toWorkoutPlanExerciseInput(saved, 1)))).not.toHaveProperty('training_goal');
   });
 
+  it('linha carimbada envia o exercício de geração mesmo trocada; manual não envia (#178)', () => {
+    const swapped = { ...saved, mapping_id: 55, generated_mapping_id: 9 } as WorkoutPlanExercise;
+    const input = toWorkoutPlanExerciseInput(swapped, 1);
+    expect(input.mapping_id).toBe(55);
+    expect(input.generated_mapping_id).toBe(9);
+    expect(JSON.parse(JSON.stringify(toWorkoutPlanExerciseInput(saved, 1)))).not.toHaveProperty('generated_mapping_id');
+  });
+
+  it('auditoria da geração vai no nível de cima e em generation_context, idêntica (#178)', () => {
+    const audit = { hash: 'abc', items: [{ a: 1 }] };
+    const raw = buildDraftRawPayload({
+      name: 'A',
+      plan_type: 'full_body',
+      exercises: [],
+      raw_payload: { generation_audit: audit },
+    } as never);
+    expect(raw.generation_audit).toEqual(audit);
+    expect((raw.generation_context as { generation_audit: unknown }).generation_audit).toEqual(raw.generation_audit);
+    expect(buildDraftRawPayload({ name: 'A', plan_type: 'full_body', exercises: [] }).generation_audit).toBeNull();
+  });
+
   it('sempre monta a lista de exercícios (quem decide omitir é a tela)', () => {
     const payload = toWorkoutPlanInput({ name: 'A', plan_type: 'full_body', status: 'planned' }, [saved]);
     expect(payload.exercises).toHaveLength(1);

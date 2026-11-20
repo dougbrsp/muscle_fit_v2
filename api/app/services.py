@@ -3209,6 +3209,11 @@ def _saved_row_of(ex: dict[str, Any], existing_by_id: dict[int, dict[str, Any]])
         return None
 
 
+def _protocol_reps_text(technique: Any) -> str | None:
+    reps = technique_accounting.protocol_reps(technique)
+    return str(reps) if reps else None
+
+
 def _assert_exercise_keeps_primary_group(cur, persisted_mapping_id: Any, new_mapping_id: Any, exercise_name: Any) -> None:
     """Troca de exercicio numa linha salva: o novo tem de ter o MESMO grupo
     PRIMARY do antigo (dono do grupo: `progression_state`)."""
@@ -3423,6 +3428,10 @@ def _replace_plan_exercises(
                 exercise_name=ex["exercise_name"],
             )
             _assert_exercise_keeps_primary_group(cur, saved_row.get("mapping_id"), mapping_id, ex["exercise_name"])
+        elif ex.get("generated_mapping_id") is not None:
+            # #178: linha GERADA (carimbada pela tela) trocada na criacao: mesma trava da edicao.
+            # Linha manual (sem o carimbo) segue livre.
+            _assert_exercise_keeps_primary_group(cur, ex["generated_mapping_id"], mapping_id, ex["exercise_name"])
 
         preferred_equipment_id = None if name_changed_on_edit else ex.get("preferred_equipment_id")
         if not preferred_equipment_id and gym_id and mapping_id:
@@ -3457,7 +3466,9 @@ def _replace_plan_exercises(
             ex.get("equipment_name"),
             preferred_equipment_id,
             ex.get("sets_count"),
-            ex.get("reps_target"),
+            # #224: tecnica com reps de protocolo (GVT) grava as do dono, nao a faixa digitada.
+            (_protocol_reps_text(ex.get("advanced_technique")) if is_rep_based(ex.get("measure")) else None)
+            or ex.get("reps_target"),
             ex.get("load_target"),
             ex.get("rpe_target"),
             ex.get("rest_seconds"),

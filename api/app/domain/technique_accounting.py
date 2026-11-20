@@ -65,6 +65,10 @@ BEYOND_FAILURE_WEIGHTS: Mapping[str, float] = {
 # Técnicas que só preenchem o número de séries (decisão 5).
 SETS_ONLY_CODES: frozenset[str] = frozenset({"fst7", "gvt"})
 
+# GVT: 10 séries de 10 repetições. O FST-7 não entra: segue o topo da faixa.
+GVT_PROTOCOL_REPS = 10
+PROTOCOL_REPS_BY_CODE: Mapping[str, int] = {"gvt": GVT_PROTOCOL_REPS}
+
 # `set_type` da aplicação -> técnica padrão quando nada mais a identifica
 # (mesmo mapeamento do backfill da migração 060).
 DEFAULT_CODE_BY_SET_TYPE: Mapping[str, str] = {
@@ -322,6 +326,13 @@ def is_sets_only_technique(technique_code: Optional[str], catalog: Optional[Mapp
     if code in SETS_ONLY_CODES:
         return True
     return coefficients_for(code, catalog).default_sets_count is not None
+
+
+def protocol_reps(technique_code: Optional[str]) -> Optional[int]:
+    """Repetições por série do PROTOCOLO da técnica (GVT = 10); None quando o
+    protocolo não fixa reps (FST-7 usa o topo da faixa do item). Dono único:
+    linha gerada, congelada e ficha manual só leem este valor."""
+    return PROTOCOL_REPS_BY_CODE.get((technique_code or "").strip())
 
 
 def recovery_factor(

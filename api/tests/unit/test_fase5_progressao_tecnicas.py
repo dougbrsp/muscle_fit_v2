@@ -325,6 +325,7 @@ def _prescribe(track, **kwargs):
                 "source": "model",
                 "sets_only": True,
                 "default_sets_count": 7,
+                "target_reps": None,  # #224: FST-7 sem reps fixas (so o GVT tem)
                 "applications": None,
                 "pause_seconds": None,
                 "planned_equivalent": 0.0,

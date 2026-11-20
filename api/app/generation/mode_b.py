@@ -70,6 +70,7 @@ from ..domain.prescription_defaults import (
     normalize_item_for_goal,
 )
 from ..domain.set_measures import is_rep_based, normalize_measure
+from ..domain.technique_accounting import protocol_reps
 from ..domain.training_goal import resolved_goal_value
 from ..domain.laboral import laboral_row_fields
 from ..domain.effective_intensity import draft_rpe_target
@@ -177,6 +178,11 @@ def item_measure_and_reps(item: Mapping[str, Any], prescription: Any, training_g
             or item_reps_target(training_goal)
         )
         suggested_reps = prescription.decision.suggested_reps_max if prescription else None
+        if not prescription:
+            # #224: sem decisao, o protocolo da tecnica do item ainda manda.
+            protocol = protocol_reps(item.get("advanced_technique"))
+            if protocol:
+                reps_target, suggested_reps = str(protocol), protocol
     return {
         "measure": normalize_measure(measure).value,
         "duration_seconds_target": item.get("duration_seconds_target"),

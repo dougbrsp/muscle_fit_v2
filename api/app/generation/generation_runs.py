@@ -149,6 +149,10 @@ def extract_audit(raw_payload: Any) -> Optional[dict[str, Any]]:
     if not isinstance(raw_payload, Mapping):
         return None
     audit = raw_payload.get("generation_audit")
+    if not isinstance(audit, Mapping):
+        # A tela envia o rascunho inteiro em `generation_context` (e clientes em cache so assim).
+        context = raw_payload.get("generation_context")
+        audit = context.get("generation_audit") if isinstance(context, Mapping) else None
     return audit if isinstance(audit, Mapping) else None
 
 

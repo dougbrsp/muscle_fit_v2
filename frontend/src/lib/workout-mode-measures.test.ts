@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SET_LOGGER_FALLBACK_REPS } from './prescription-defaults';
 import { DEFAULT_MEASURE, MEASURE_LIMITS, MEASURE_VALUES } from './set-measures';
+import { setTargetLine } from './workout-mode-execution-view';
 import {
   executionTimerSpec,
   isDurationSecondsValid,
@@ -79,6 +80,13 @@ describe('measureLoggerDefaults: campos e valores iniciais do card', () => {
       durationRequired: false,
     });
     expect(measureLoggerDefaults({ measure: MAX_REPS, lastSet: { reps: 14 } }).reps).toBe(14);
+  });
+});
+
+describe('GVT: reps_target "10" da linha (#224)', () => {
+  it('a sugestão do campo Reps e o alvo exibido usam o valor pronto', () => {
+    expect(measureLoggerDefaults({ measure: REPS, repsTarget: '10' }).reps).toBe(10);
+    expect(setTargetLine({ measured: false, repsTarget: '10', loadText: null, rpeTarget: null })).toBe('Alvo: 10 reps');
   });
 });
 
