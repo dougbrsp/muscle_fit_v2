@@ -45,5 +45,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0023](0023-pendencias-de-nutricao-208-202-200.md) | Pendências de nutrição: busca por marca e listagem por letra, voltar do cabeçalho mobile, guarda do modo de caloria e mensagem do 422 na tela web (issues #208, #202, #200 e #229) | Aceita | 2026-11-20 |
 | [0024](0024-rpe-por-serie-saneamento-da-ia-e-acabamentos.md) | RPE por série com saneamento da saída da IA e acabamentos da ficha e do Modelo (issues #183 e #184) | Aceita | 2026-11-20 |
 | [0025](0025-tendencia-da-janela-e-escopo-na-analise-por-ia.md) | Tendência da janela do exercício (segunda leitura, metades do e1RM) e escopo do snapshot da análise por IA (issues #176 e #177) | Aceita | 2026-11-20 |
+| [0026](0026-rpe-esperado-gravado-na-serie-e-comparacao.md) | RPE esperado gravado na série e comparação com o realizado (issue #182) | Aceita | 2026-11-20 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

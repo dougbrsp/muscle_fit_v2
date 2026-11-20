@@ -1,4 +1,5 @@
 import type { ManufacturerSource } from './gyms-types';
+import type { RpeVsExpected } from './rpe-expected-vs-actual';
 
 // Tipos compartilhados entre a tela de Registro de Exercícios
 // (`src/app/(app)/registro-exercicios/page.tsx`), a tela de detalhe de um
@@ -119,6 +120,10 @@ export type ExerciseSetRow = {
   // Ambos gravados pelo SERVIDOR; `null` em série anterior ao PR-14.
   rpe_target_effective?: number | null;
   safety_event?: string | null;
+  // #182: RPE ESPERADO da série (o do Modo Treino) e a comparação com o
+  // realizado, prontos da API (somente leitura; nunca enviados no PUT).
+  rpe_target_planned?: number | null;
+  rpe_vs_expected?: RpeVsExpected;
   // Fase 5: técnica aplicada nesta série e a série de trabalho (set_number)
   // de onde ela saiu. `null` em série que não é aplicação de técnica.
   technique_code?: string | null;
