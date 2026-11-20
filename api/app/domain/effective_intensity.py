@@ -40,7 +40,7 @@ from ..set_types import is_preparatory_set, is_working_set
 from . import prescription as prescription_domain
 from .set_measures import is_rep_based
 from .training_goal import goal_value
-from .training_history import is_rpe_ramp, parse_int, parse_reps_range
+from .training_history import format_rpe_step, is_rpe_ramp, parse_int, parse_reps_range
 from .progression_engine import (
     INTENSITY_ABOVE_SAFE_CEILING,
     SAFETY_EVENT_RPE_ABOVE_CEILING,
@@ -498,12 +498,6 @@ def set_intensity_reading(
     )
 
 
-def _format_rpe(value: Decimal) -> str:
-    from .training_history import format_rpe_step
-
-    return format_rpe_step(value)
-
-
 def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target: Any) -> list[float]:
     """Alvo COBRADO em cada serie de trabalho da ficha exibida: o mesmo da
     sessao (`set_effort_target(alvo efetivo ja cortado pelo teto, degrau da
@@ -564,7 +558,7 @@ def clamp_rpe_text(text: Any, ceiling: Optional[int]) -> tuple[Optional[str], li
         return original, []
     while len(clamped) > 1 and clamped[-1] == clamped[-2]:
         clamped.pop()
-    result = "-".join(_format_rpe(step) for step in clamped)
+    result = "-".join(format_rpe_step(step) for step in clamped)
     return result, [Clamp("rpe_target", original, result, REASON_EQUIPMENT_SAFETY).to_dict()]
 
 

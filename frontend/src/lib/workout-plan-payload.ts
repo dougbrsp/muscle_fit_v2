@@ -3,6 +3,7 @@
 // havia três mapeamentos manuais (GenerateDraftModal, PlanDetailClient,
 // ModeSelectScreen) que descartavam os campos avançados do modo
 // 'equipment_series' — ao adicionar um campo no backend, adicione-o AQUI.
+import { rpePayloadFields } from './plan-rpe-per-set';
 import type {
   WorkoutPlan,
   WorkoutPlanDraft,
@@ -25,7 +26,7 @@ export function toWorkoutPlanExerciseInput(ex: WorkoutPlanExercise, sequence: nu
     sets_count: ex.sets_count ?? null,
     reps_target: ex.reps_target ?? null,
     load_target: ex.load_target ?? null,
-    rpe_target: ex.rpe_target ?? null,
+    ...rpePayloadFields(ex),
     rest_seconds: ex.rest_seconds ?? null,
     warmup: !!ex.warmup,
     substitution_options: ex.substitution_options ?? null,

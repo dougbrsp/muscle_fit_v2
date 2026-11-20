@@ -48,6 +48,7 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
+import { templateSaveError } from '@/lib/template-save-error';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
 import type { ApiListResponse as TrainingTypesApiListResponse, MuscleGroupOption, TrainingTypeListItem } from '@/lib/training-types-types';
 import { clearPeriodizationSeed, hasPeriodizationOriginFlag, readPeriodizationSeed } from '@/lib/periodization';
@@ -709,8 +710,9 @@ export function WorkoutPlanTemplateBuilderClient() {
     };
   }
 
-  // "Salvar rascunho" (067): grava o estado do editor como está — mesmo
-  // incompleto ou inválido —, sem criar versão. Só para Modelo já publicado.
+  // "Salvar rascunho" (067): grava o estado do editor sem criar versão, tolerando
+  // modelo incompleto, mas o servidor ainda valida o RPE (fora da escala = 422,
+  // mostrado com o item apontado). Só para Modelo já publicado.
   const saveDraftMutation = useMutation({
     mutationFn: () =>
       apiFetch<WorkoutPlanTemplateDraft>(`/workout-plan-templates/${numericId}/draft`, {
@@ -727,10 +729,12 @@ export function WorkoutPlanTemplateBuilderClient() {
       notifications.show({ color: 'green', message: draftSavedMessage(draft.updated_at) });
     },
     onError: (error: unknown) => {
+      const info = templateSaveError(error, 'Não foi possível salvar o rascunho.', 'Erro ao salvar rascunho');
       notifications.show({
         color: 'red',
-        title: 'Erro ao salvar rascunho',
-        message: errorMessage(error, 'Não foi possível salvar o rascunho.'),
+        title: info.titulo,
+        message: info.mensagem,
+        autoClose: info.seguranca ? false : undefined,
         withCloseButton: true,
       });
     },
@@ -804,16 +808,14 @@ export function WorkoutPlanTemplateBuilderClient() {
       }
     },
     onError: (error: unknown) => {
-      // 422 (PR-12/D14): item NOVO ou ALTERADO com técnica/RPE incompatível
-      // com o teto de segurança. O `detail` já vem em português
-      // identificando slot e item — é exibido literalmente, sem fechar
-      // sozinho, para o usuário conseguir ler e corrigir o item citado.
-      const blockedBySafety = error instanceof ApiError && error.status === 422;
+      // 422 de segurança (PR-12/D14) fica aberto até o usuário ler; validação
+      // (Pydantic/regra do modelo) ganha título próprio e o item apontado.
+      const info = templateSaveError(error, 'Erro ao salvar modelo de treino.');
       notifications.show({
         color: 'red',
-        title: blockedBySafety ? 'Bloqueado por segurança' : 'Erro ao salvar',
-        message: errorMessage(error, 'Erro ao salvar modelo de treino.'),
-        autoClose: blockedBySafety ? false : undefined,
+        title: info.titulo,
+        message: info.mensagem,
+        autoClose: info.seguranca ? false : undefined,
         withCloseButton: true,
       });
     },

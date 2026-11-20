@@ -41,6 +41,22 @@ const MAX_PRIORITIZED_PER_SLOT: number = motorConstants.periodization_limits.max
 /** Escala do controle de RPE esperado por série (dono: backend, via espelho gerado). */
 export const RPE_TARGET_SCALE: { min: number; max: number; step: number } = motorConstants.rpe_target_scale;
 
+/** Casas decimais do passo do espelho (0,5 -> 1; 1 -> 0): só formatação, sem regra de arredondamento. */
+export function stepDecimalScale(step: number): number {
+  return String(step).split('.')[1]?.length ?? 0;
+}
+
+/**
+ * O valor digitado cai num múltiplo do passo? Só barra a digitação fora do passo
+ * (ex.: 8,3); o arredondamento de legado continua só no servidor (`sanitize_rpe_target`).
+ * Texto intermediário ("8.", "") passa: o commit só lê números completos.
+ */
+export function isOnRpeStep(value: number | string, step: number = RPE_TARGET_SCALE.step): boolean {
+  if (typeof value === 'string') return true;
+  const ratio = value / step;
+  return Math.abs(ratio - Math.round(ratio)) < 1e-9;
+}
+
 /** Rascunho de um campo de série: número ou vazio (''/null/undefined). */
 export type RpeDraftValue = number | string | null | undefined;
 
@@ -48,6 +64,23 @@ function filledRpe(v: RpeDraftValue): number | null {
   if (v === '' || v == null) return null;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Número dentro da escala do espelho E no passo; texto intermediário ("8.") passa
+ * na digitação (o commit usa `sanitizeRpeDraft`, que lê o número completo).
+ */
+export function isValidRpeTarget(value: number | string): boolean {
+  if (typeof value === 'string') return true;
+  return value >= RPE_TARGET_SCALE.min && value <= RPE_TARGET_SCALE.max && isOnRpeStep(value);
+}
+
+/** Rascunho -> rascunho confirmável: campo preenchido e inválido volta ao último valor válido (`last`). */
+export function sanitizeRpeDraft(draft: readonly RpeDraftValue[], last: readonly RpeDraftValue[]): RpeDraftValue[] {
+  return draft.map((v, i) => {
+    const n = filledRpe(v);
+    return n === null || isValidRpeTarget(n) ? v : (last[i] ?? '');
+  });
 }
 
 /**

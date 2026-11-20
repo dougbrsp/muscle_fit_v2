@@ -37,8 +37,21 @@ ADVANCED_EXERCISE_FIELDS: tuple[str, ...] = (
 )
 
 
+# Prescrição escrita pelo mesmo UPDATE (#184): numa linha JÁ SALVA (id desta
+# ficha) o PUT parcial que não manda o campo não pode zerá-lo.
+PRESCRIPTION_EXERCISE_FIELDS: tuple[str, ...] = (
+    "sets_count",
+    "reps_target",
+    "load_target",
+    "rpe_target",
+    "rest_seconds",
+)
+
+
 def merge_unsent_advanced_fields(
-    incoming: Mapping[str, Any], existing_row: Optional[Mapping[str, Any]]
+    incoming: Mapping[str, Any],
+    existing_row: Optional[Mapping[str, Any]],
+    fields: tuple[str, ...] = ADVANCED_EXERCISE_FIELDS,
 ) -> dict[str, Any]:
     """Devolve uma cópia de `incoming` com os campos avançados AUSENTES
     (chave não enviada pelo cliente) preenchidos a partir de `existing_row`.
@@ -52,7 +65,7 @@ def merge_unsent_advanced_fields(
     merged = dict(incoming)
     if existing_row is None:
         return merged
-    for field in ADVANCED_EXERCISE_FIELDS:
+    for field in fields:
         if field not in merged and field in existing_row:
             merged[field] = existing_row[field]
     return merged
