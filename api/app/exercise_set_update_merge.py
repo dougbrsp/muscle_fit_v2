@@ -92,6 +92,8 @@ SERVER_KEPT_SET_FIELDS: tuple[str, ...] = (
     "load_adjust_source",
     "rpe_target_source",
     "rpe_target_effective",
+    # #182: RPE esperado da serie, gravado no POST; o Registro so o preserva.
+    "rpe_target_planned",
 )
 
 # PATCH de UMA série do Modo Intensivo (confirmar reps pendentes, corrigir

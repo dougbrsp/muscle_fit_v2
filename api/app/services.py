@@ -962,6 +962,12 @@ def activity_detail(
                 for set_row in cur.fetchall():
                     # Lote T3: `measure_text` pronto do dono ("58 s").
                     # M102: `sides_text` pronto do dono ("reps E 10 · D 8").
+                    # #182: esperado como numero + comparacao pronta do dono
+                    # (`rpe` da serie ja e o representativo; null em serie antiga).
+                    planned = set_row.get("rpe_target_planned")
+                    set_row["rpe_target_planned"] = None if planned is None else float(planned)
+                    vs = effective_intensity.rpe_vs_expected(set_row.get("rpe"), planned)
+                    set_row["rpe_vs_expected"] = None if vs is None else vs.as_dict()
                     sets_by_exercise[set_row["exercise_id"]].append(attach_sides_text(_attach_set_measure(set_row)))
             for ex in exercises:
                 ex["sets"] = _with_canonical_set_type(sets_by_exercise[ex["id"]])
@@ -1443,12 +1449,12 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
         INSERT INTO exercise_sets (
             exercise_id, set_number, set_type, reps, weight_kg, rpe, rest_seconds,
             hr_avg_bpm, hr_max_bpm, notes, muscle_pain, joint_pain,
-            rpe_target_effective, safety_event, technique_code, anchor_set_number,
+            rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number,
             measure, duration_seconds,
             reps_pending, completed_at, planned_weight_kg, load_adjust_source, rpe_target_source,
             reps_left, reps_right, rpe_left, rpe_right
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         [
             (
@@ -1474,6 +1480,7 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
                     deload_source=existing.get(DELOAD_SOURCE_COLUMN),
                     technique_code=st.get("technique_code"),
                 ),
+                st.get("rpe_target_planned"),  # #182: preservado da serie gravada; nova = NULL
                 effective_intensity.safety_event_for(st["set_type"], st.get("rpe"), intensity),
                 st.get("technique_code"),
                 st.get("anchor_set_number"),

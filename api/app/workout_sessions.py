@@ -402,8 +402,8 @@ def _find_set_by_client_key(cur, exercise_id: int, client_key: str, *, locking: 
     `locking`: ver `_find_exercise_by_client_key`."""
     cur.execute(
         "SELECT set_number, set_type, reps, weight_kg, rpe, muscle_pain, joint_pain, "
-        "rpe_target_effective, safety_event, technique_code, anchor_set_number, measure, duration_seconds, "
-        f"{_INTENSIVE_SET_COLUMNS}, {_SIDE_SET_COLUMNS} "
+        "rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number, measure, "
+        f"duration_seconds, {_INTENSIVE_SET_COLUMNS}, {_SIDE_SET_COLUMNS} "
         "FROM exercise_sets "
         "WHERE exercise_id = %s AND client_key = %s" + (" FOR UPDATE" if locking else ""),
         (exercise_id, client_key),
@@ -1242,6 +1242,11 @@ def _evaluate_set(
     return reading, next_set
 
 
+def _plain_number(value: Any) -> Any:
+    """DECIMAL lido do banco (Decimal) vira float para o JSON; nulo segue nulo."""
+    return float(value) if isinstance(value, Decimal) else value
+
+
 def _set_response(
     session_id: int,
     exercise_id: int,
@@ -1252,6 +1257,7 @@ def _set_response(
     rpe_target_effective: Any,
     safety_event: Optional[str],
     intensity,
+    rpe_target_planned: Any = None,
     reading,
     next_set,
     client_key: Optional[str],
@@ -1274,6 +1280,8 @@ def _set_response(
         # O cliente ve o que o servidor decidiu sobre a intensidade desta
         # serie (secao 5.7: o evento aparece na UI).
         "rpe_target_effective": rpe_target_effective,
+        # #182: RPE esperado DESTA serie, gravado no POST (dono `effective_intensity`).
+        "rpe_target_planned": _plain_number(rpe_target_planned),
         "safety_event": safety_event,
         "safety_event_label": safety_event_label(safety_event),
         "effective_rpe_ceiling": intensity.ceiling,
@@ -1396,6 +1404,7 @@ def _duplicate_set_response(
         technique_code=stored["technique_code"],
         anchor_set_number=stored["anchor_set_number"],
         rpe_target_effective=stored["rpe_target_effective"],
+        rpe_target_planned=stored.get("rpe_target_planned"),
         safety_event=stored["safety_event"],
         intensity=intensity,
         reading=reading,
@@ -1601,6 +1610,9 @@ def add_session_set(
                 deload_source=exercise_row.get("deload_source"),
                 technique_code=technique_code or exercise_row.get("plan_technique"),
             )
+            # #182: o RPE esperado desta serie (o alvo cobrado acima), gravado
+            # para comparar com o realizado depois; nunca recalculado.
+            rpe_target_planned = effective_intensity.planned_set_rpe_target(set_type, reading.target)
             completed_at = None
             if payload.completed_at is not None:
                 completed_at = _to_user_wall_clock(payload.completed_at, user_timezone(conn, identity.user_id))
@@ -1628,10 +1640,10 @@ def add_session_set(
                     INSERT INTO exercise_sets (
                       exercise_id, set_number, set_type, reps, weight_kg, rpe,
                       rest_seconds, hr_avg_bpm, hr_max_bpm, muscle_pain, joint_pain, notes,
-                      rpe_target_effective, safety_event, technique_code, anchor_set_number,
+                      rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number,
                       measure, duration_seconds, {_INTENSIVE_SET_COLUMNS}, {_SIDE_SET_COLUMNS}{key_column}
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s{key_value})
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s{key_value})
                     """,
                     (
                         exercise_id,
@@ -1647,6 +1659,7 @@ def add_session_set(
                         payload.joint_pain,
                         payload.notes,
                         rpe_target_effective,
+                        rpe_target_planned,
                         safety_event,
                         technique_code,
                         anchor_set_number,
@@ -1723,6 +1736,7 @@ def add_session_set(
         technique_code=technique_code,
         anchor_set_number=anchor_set_number,
         rpe_target_effective=rpe_target_effective,
+        rpe_target_planned=rpe_target_planned,
         safety_event=safety_event,
         intensity=intensity,
         reading=reading,
@@ -1762,8 +1776,8 @@ def update_session_set(
             exercise_row = _session_exercise_row(cur, session_id, exercise_id)
             cur.execute(
                 "SELECT id, set_number, set_type, reps, weight_kg, rpe, muscle_pain, joint_pain, "
-                "rpe_target_effective, safety_event, technique_code, anchor_set_number, measure, duration_seconds, "
-                f"client_key, {_INTENSIVE_SET_COLUMNS}, {_SIDE_SET_COLUMNS} "
+                "rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number, "
+                f"measure, duration_seconds, client_key, {_INTENSIVE_SET_COLUMNS}, {_SIDE_SET_COLUMNS} "
                 "FROM exercise_sets WHERE exercise_id = %s AND set_number = %s FOR UPDATE",
                 (exercise_id, set_number),
             )
@@ -1837,6 +1851,7 @@ def update_session_set(
         technique_code=stored.get("technique_code"),
         anchor_set_number=stored.get("anchor_set_number"),
         rpe_target_effective=stored.get("rpe_target_effective"),
+        rpe_target_planned=stored.get("rpe_target_planned"),
         safety_event=safety_event,
         intensity=intensity,
         reading=reading,

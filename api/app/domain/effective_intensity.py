@@ -404,6 +404,64 @@ def stored_rpe_target(
     return target
 
 
+def planned_set_rpe_target(set_type: Any, charged_target: Any) -> Optional[Union[int, float]]:
+    """`exercise_sets.rpe_target_planned` a GRAVAR (#182): o RPE esperado DESTA
+    serie, o mesmo que a ficha mostra (`charged_rpe_targets_by_set`). Recebe o
+    alvo COBRADO da serie (`SetIntensityReading.target`: `set_effort_target`
+    com o degrau da rampa, o alvo do protocolo da tecnica ou o do deload, ja
+    resolvidos por `set_intensity_reading`). Preparatoria e sem alvo (treino
+    sem ficha) -> None."""
+    if is_preparatory_set(set_type):
+        return None
+    return _target_number(_decimal(charged_target))
+
+
+# #182: RPE realizado x esperado DA SERIE. Leitura de ESFORCO (so a diferenca),
+# distinta de `set_intensity_status` (progression_engine: alcance do alvo e teto
+# de seguranca). Sem tolerancia: a escala e de meio em meio ponto.
+RPE_VS_BELOW = "below"
+RPE_VS_ON_TARGET = "on_target"
+RPE_VS_ABOVE = "above"
+RPE_VS_LABELS: dict[str, str] = {
+    RPE_VS_BELOW: "Abaixo do esperado",
+    RPE_VS_ON_TARGET: "No esperado",
+    RPE_VS_ABOVE: "Acima do esperado",
+}
+
+
+@dataclass(frozen=True)
+class RpeVsExpected:
+    status: str
+    label: str
+    delta: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"status": self.status, "label": self.label, "delta": self.delta}
+
+
+def rpe_vs_expected(actual: Any, expected: Any) -> Optional[RpeVsExpected]:
+    """Compara o RPE realizado com o esperado da serie (`delta` = realizado -
+    esperado). None quando um dos dois falta."""
+    a, e = _decimal(actual), _decimal(expected)
+    if a is None or e is None:
+        return None
+    delta = a - e
+    status = RPE_VS_BELOW if delta < 0 else RPE_VS_ABOVE if delta > 0 else RPE_VS_ON_TARGET
+    return RpeVsExpected(status, RPE_VS_LABELS[status], float(delta))
+
+
+def rpe_vs_expected_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Agrega series (`rpe` e `rpe_target_planned`) em `{below, on_target,
+    above, compared}`; serie sem um dos dois nao conta."""
+    counts = {RPE_VS_BELOW: 0, RPE_VS_ON_TARGET: 0, RPE_VS_ABOVE: 0, "compared": 0}
+    for row in rows:
+        result = rpe_vs_expected(row.get("rpe"), row.get("rpe_target_planned"))
+        if result is not None:
+            counts[result.status] += 1
+            counts["compared"] += 1
+    return counts
+
+
 def frozen_snapshot(prescription_json: Any) -> Mapping[str, Any]:
     """Prescricao CONGELADA do exercicio lancado ja decodificada (`{}` sem
     snapshot ou JSON invalido). Leitura, sem regra."""

@@ -36,6 +36,7 @@ import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
 import { buildProgressionChart, formPracticeSessionsNote, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
+import { rpeExpectedCountsText } from '@/lib/rpe-expected-vs-actual';
 import { strengthPanelRows, topSetCaption, topSetText } from '@/lib/strength-panel';
 import {
   ALL_GOALS,
@@ -584,6 +585,9 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
         ) : (
           <p className={styles.body}>-</p>
         )}
+        {rpeExpectedCountsText(item.rpe_vs_expected_counts) ? (
+          <p className={styles.meta}>RPE vs esperado: {rpeExpectedCountsText(item.rpe_vs_expected_counts)}</p>
+        ) : null}
         {fatigueContextLabel(item.fatigue_context) ? (
           <p className={styles.meta}>{fatigueContextLabel(item.fatigue_context)}</p>
         ) : null}

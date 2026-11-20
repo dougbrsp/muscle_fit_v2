@@ -1258,6 +1258,7 @@ def _fetch_exercise_set_rows(
             -- serie; base do `intensity_status` da sessao (sem recalcular
             -- prescricao historica). NULL em serie anterior ao PR-14.
             es.rpe_target_effective,
+            es.rpe_target_planned,
             es.safety_event,
             CAST(e.equipment_id AS SIGNED) AS gym_equipment_id,
             e.id AS exercise_row_id,
@@ -1369,10 +1370,17 @@ def _build_progression_sessions(
                     None,
                 ),
                 "failure_allowed": session_failure_allowed,
+                # #182: contagem pronta do dono; null sem nenhuma serie comparada.
+                "rpe_vs_expected_counts": _rpe_counts_or_none(sets),
             }
         )
 
     return results
+
+
+def _rpe_counts_or_none(sets: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+    counts = effective_intensity.rpe_vs_expected_counts(sets)
+    return counts if counts["compared"] else None
 
 
 def _failure_allowed_for_rows(rows: List[Dict[str, Any]]) -> Optional[Dict[Any, bool]]:

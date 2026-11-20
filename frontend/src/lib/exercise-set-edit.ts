@@ -14,6 +14,7 @@
 // `rpe_right`) também vão SEMPRE explícitos; o servidor recalcula reps/RPE
 // oficiais pelo pior lado (`domain/set_sides.py`) — a tela não recalcula.
 import { formatSetMeasureText, isRepBased, MEASURE_LIMITS, MEASURE_VALUES, normalizeMeasure } from './set-measures';
+import { rpeExpectedSuffix, type RpeVsExpected } from './rpe-expected-vs-actual';
 import { sidesFromRow, sidesSuffix } from './set-sides';
 import {
   isSwappableSetType,
@@ -291,6 +292,8 @@ export function formatLoggedSets(
       reps?: number | null;
       weight_kg?: number | string | null;
       rpe?: number | string | null;
+      rpe_target_planned?: number | string | null;
+      rpe_vs_expected?: RpeVsExpected | undefined;
       measure?: string | null;
       duration_seconds?: number | null;
       measure_text?: string | null;
@@ -303,7 +306,7 @@ export function formatLoggedSets(
     .map((set, index) => {
       const row = display[index];
       const weight = Number(set.weight_kg || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-      const rpe = set.rpe != null ? ` @RPE ${Number(set.rpe).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}` : '';
+      const rpe = set.rpe != null ? ` @RPE ${Number(set.rpe).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}${rpeExpectedSuffix(set)}` : '';
       const prefix = row.isApplication ? `↳ ${row.label}` : row.label;
       if (!isRepBased(set.measure)) {
         // Lote T5: texto do dono ("58 s", "15 reps em 30 s"); carga só se houver.
