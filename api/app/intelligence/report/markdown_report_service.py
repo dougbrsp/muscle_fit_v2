@@ -785,9 +785,14 @@ def _collect_cycles(conn: Any, *, user_id: int, window: WindowInfo) -> dict[str,
 
     adherence = build_adherence(conn, user_id=user_id, window=window)
     cycle_sessions, rpe_rows = daily.load_cycle_sessions(conn, user_id=user_id, window=window)
+    try:
+        set_rows = daily.load_session_set_rpe(conn, user_id=user_id, window=window)
+    except Exception:  # noqa: BLE001 - so a linha de RPE esperado x realizado some
+        logger.warning("relatorio markdown: RPE esperado x realizado indisponivel", exc_info=True)
+        set_rows = []
     return {
         "available": True,
-        "timeline": daily.build_cycle_timeline(cycle_sessions, rpe_rows, segments),
+        "timeline": daily.build_cycle_timeline(cycle_sessions, rpe_rows, segments, set_rows),
         "segments": [
             {
                 "date_from": segment.date_from,

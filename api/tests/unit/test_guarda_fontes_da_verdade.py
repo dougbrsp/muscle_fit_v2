@@ -1744,7 +1744,7 @@ PADROES: tuple[Padrao, ...] = (
         # 2026-10-24 (Modo Intensivo, PR 1): `training_safety.protocol_target_rpe` decide 10 (par libera a falha) ou
         # 9; a prescrição leva `target_rpe` e a API grava `rpe_target_effective`. Tela, rota e SQL só leem.
         regex=re.compile(
-            r"""\b(?:\w*target_rpe\w*|targetRpe|rpe_target_effective)['"]?\]?\s*(?:===?|!==?|:|=)\s*(?:9|10)\b""",
+            r"""\b(?:\w*target_rpe\w*|targetRpe|rpe_target_effective|rpe_target_planned)['"]?\]?\s*(?:===?|!==?|:|=)\s*(?:9|10)\b""",
             re.IGNORECASE,
         ),
         donos=("api/app/domain/training_safety.py",),

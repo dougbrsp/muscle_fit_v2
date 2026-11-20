@@ -103,6 +103,7 @@ Nenhuma regra, status, carga ou contagem de motor muda por esta decisão (a fras
 
 ## Fora desta entrega
 
-1. Comparação esperado × realizado em histórico e relatórios. A parte que dependia de gravar o alvo planejado na série foi feita na #182: `exercise_sets.rpe_target_planned` e a comparação em `effective_intensity.rpe_vs_expected` (ADR 0026). Os relatórios em Markdown seguem sem a comparação.
-2. Gravar o alvo planejado na própria série da sessão.
-3. Edição por série nos editores da ficha (`workout_plan_exercises`); a edição por série é só no Modelo.
+1. Gravar o alvo planejado na própria série da sessão.
+2. Edição por série nos editores da ficha (`workout_plan_exercises`); a edição por série é só no Modelo.
+
+Resolvido depois desta ADR, e fora da lista: a comparação esperado × realizado. O histórico e o detalhe do treino saíram no ADR 0026 (#182: `exercise_sets.rpe_target_planned` e `effective_intensity.rpe_vs_expected`); o relatório em Markdown saiu no ADR 0030 (#241: contagem por sessão, feita por `effective_intensity.rpe_vs_expected_counts`).
