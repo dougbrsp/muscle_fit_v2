@@ -5,6 +5,7 @@ import { IconAlertTriangle, IconCircleCheck } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { addFavorite, favoriteKeys, nutritionErrorInfo, promoteFood } from '@/lib/nutrition-api';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import { canOfferPublic, runFinishActions, type FinishDone } from '@/lib/nutrition-food-registration';
 import { favoriteErrorLines } from '@/lib/nutrition-favorites';
 import type { FoodItem } from '@/lib/nutrition-types';
@@ -45,7 +46,7 @@ export function FoodRegistrationFinish({ food, title = 'Alimento salvo', onConcl
     feito.current = resultado.done;
     if (resultado.done.favorite) void queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
     // Sempre: o alimento (e o selo de origem/público) pode ter mudado mesmo sem ação marcada.
-    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+    void invalidateFoodQueries(queryClient);
     setEnviando(false);
     if (resultado.error !== null) {
       const falhouFavorito = favorito && !resultado.done.favorite;

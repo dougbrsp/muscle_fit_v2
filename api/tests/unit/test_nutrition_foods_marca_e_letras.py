@@ -76,7 +76,7 @@ def test_marca_respeita_visibilidade_e_fonte(db):
 
 def test_marca_escapa_curingas_do_usuario(db):
     assert [i["name"] for i in _busca("100% pura")] == ["Pasta de amendoim"]
-    assert _busca("100_ pura") == []  # `_` não é curinga
+    assert _busca("1_0 pura") == []  # `_` não é curinga (e "100_" viraria os termos 100 + pura, #208)
 
 
 def test_marca_curta_nao_consulta_a_marca(db):
@@ -151,7 +151,6 @@ def test_listagem_letra_invalida_e_400(db):
     for ruim in ("ab", "1", "", "#"):
         r = _letra(ruim)
         assert r.status_code == 400 and r.json()["detail"]["error"] == "invalid_letter", ruim
-    assert _client().get("/nutrition/foods").status_code == 422  # letra obrigatória
 
 
 def test_listagem_nao_mostra_privado_de_outro_nem_inativo(db):

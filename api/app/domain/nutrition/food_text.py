@@ -71,6 +71,9 @@ SEARCH_RESULT_LIMIT_MAX: Final[int] = 50
 # Marca (#195): a busca também casa `brand LIKE %termo%` a partir de 3 caracteres
 # (mesmo tamanho mínimo do FULLTEXT); sem índice na coluna, termo curto varreria à toa.
 BRAND_MIN_CHARS: Final[int] = FULLTEXT_MIN_TOKEN_CHARS
+# Busca que mistura nome e marca ("whey growth", #208): cada termo precisa casar no nome OU na marca; só os
+# primeiros termos entram (cada um vira 3 condições LIKE na consulta da marca).
+BRAND_TOKENS_MAX: Final[int] = 5
 # Listagem do cadastro por letra (#195): alfabeto, balde de nomes que não começam
 # por A-Z (dígito, símbolo) e página (defaults de desenho, sem fonte bibliográfica).
 LETTERS: Final[tuple[str, ...]] = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -78,6 +81,13 @@ OTHER_BUCKET: Final[str] = "outros"
 LIST_BUCKETS: Final[tuple[str, ...]] = (*LETTERS, OTHER_BUCKET)
 LIST_PAGE_DEFAULT: Final[int] = 50
 LIST_PAGE_MAX: Final[int] = 100
+# Teto do deslocamento da listagem (#208): acima dele a rota responde 422 em vez de deixar o banco estourar (500).
+# O cadastro tem centenas de alimentos (657 em 19/11/2026); 10 mil de folga cobre o crescimento sem varrer à toa.
+LIST_OFFSET_MAX: Final[int] = 10_000
+# Balde inicial quando a rota não recebe `letter` (#208) e texto de exibição de cada balde (a tela só mostra).
+DEFAULT_LIST_BUCKET: Final[str] = LIST_BUCKETS[0]
+OTHER_BUCKET_LABEL: Final[str] = "Outros (números e símbolos)"
+LIST_BUCKET_LABELS: Final[Mapping[str, str]] = {**{letra: letra for letra in LETTERS}, OTHER_BUCKET: OTHER_BUCKET_LABEL}
 
 # Forma canônica -> variantes regionais/ortográficas (pt-BR), já sem acento.
 # A troca é feita numa passada só, da variante mais longa para a mais curta;
@@ -191,9 +201,9 @@ def brand_score(query: Any, name: Any, brand: Any) -> float:
     """Nota com marca (busca da tela, #195): a MAIOR entre a nota do nome, a da
     marca (mesma `score`, sobre a marca normalizada) e a do texto "nome marca".
     Sem marca = `score(query, name)`. Alimento que só casa pela marca nunca fica
-    abaixo da nota da marca. Limitação: a busca que mistura nome e marca ("whey
-    growth") não recupera o item (o `brand LIKE` exige a frase contígua e o
-    FULLTEXT só olha o nome); o "nome marca" só pontua quem já foi recuperado."""
+    abaixo da nota da marca. A busca que mistura nome e marca ("whey growth") é
+    recuperada por `brand_token_patterns` (cada termo no nome OU na marca); o
+    "nome marca" só pontua quem já foi recuperado."""
     nota = score(query, name)
     if not normalize_name(brand):
         return nota
@@ -255,6 +265,15 @@ def brand_pattern(query: Any) -> Optional[str]:
         return None
     escapado = texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escapado}%"
+
+
+def brand_token_patterns(query: Any) -> tuple[str, ...]:
+    """Padrões `LIKE` `%termo%` (termos normalizados: só [a-z0-9], sem curinga) da busca que mistura
+    nome e marca (#208): cada termo deve casar no nome normalizado OU na marca, e ao menos um na marca.
+    Vazio com menos de 2 termos (um termo só é a busca por frase da marca) ou se o termo não passa
+    do tamanho mínimo do índice. No máximo `BRAND_TOKENS_MAX` termos."""
+    termos = search_terms(query)[:BRAND_TOKENS_MAX]
+    return tuple(f"%{t}%" for t in termos) if len(termos) >= 2 else ()
 
 
 def normalize_letter(raw: Any) -> Optional[str]:

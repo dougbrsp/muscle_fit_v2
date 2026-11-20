@@ -11,8 +11,10 @@ Rotas (prefixo `/nutrition/foods`):
                                            os privados de todos, para promover. Casa também a
                                            MARCA (`brand LIKE`, consulta própria; #195)
 - `GET  /?letter=&limit=&offset=`          cadastro por letra A-Z ou `outros` (#195): nome
-                                           exibido, ordem alfabética, `has_more`
-- `GET  /{id}`                           alimento + porções visíveis + permissões
+                                           exibido, ordem alfabética, `has_more`; `letter`
+                                           ausente = primeiro balde; `offset` acima do teto -> 422;
+                                           `letter_labels` = texto de exibição de cada balde (#208)
+- `GET  /{id}`                             alimento + porções visíveis + permissões
 - `POST /`                                 `FoodItemCreateIn` -> alimento PRIVADO do usuário
                                            (D-G), 201; `barcode` opcional (N3: validado por
                                            `external_sources.normalize_gtin`, gravado em
@@ -148,18 +150,27 @@ def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_
     return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY {ordem} LIMIT %s"
 
 
-def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool = False) -> str:
+def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool = False, tokens: int = 0) -> str:
     """Busca extra pela MARCA (#195): `brand LIKE` (padrão de `food_text.brand_pattern`) com a mesma
-    visibilidade, fonte e restrição a preferidos da busca por nome. Parâmetros: padrão, os da
-    visibilidade, fonte (se filtrada), dono dos preferidos (se `favorites_only`) e o lote. É uma consulta
-    própria para a marca nunca ser cortada do lote do nome."""
-    # shortcut: brand LIKE sem índice varre food_items, criar índice/coluna normalizada se o cadastro crescer a ponto de a busca ficar lenta
-    filtros = ["brand LIKE %s", "is_active = 1", visibility]
+    visibilidade, fonte e restrição a preferidos da busca por nome. Com `tokens` >= 2 (#208, busca que
+    mistura nome e marca) casa também quem tem CADA termo no nome normalizado OU na marca, com ao menos
+    um na marca. Parâmetros: padrão, [termo, termo] por termo (nome/marca), os termos de novo (ao menos um
+    na marca), os da visibilidade, fonte (se filtrada), dono dos preferidos (se `favorites_only`) e o lote.
+    Ordem estável pelo nome normalizado (não pelo cadastro). É uma consulta própria para a marca nunca
+    ser cortada do lote do nome."""
+    # shortcut: brand LIKE sem índice varre food_items (660 linhas em 20/11/2026); criar índice/coluna normalizada
+    # quando o cadastro passar de ~50 mil linhas ou a busca por marca passar de ~200 ms.
+    casa = "brand LIKE %s"
+    if tokens:
+        cada = " AND ".join(["(name_normalized LIKE %s OR brand LIKE %s)"] * tokens)
+        alguma_marca = " OR ".join(["brand LIKE %s"] * tokens)
+        casa = f"(brand LIKE %s OR ({cada} AND ({alguma_marca})))"
+    filtros = [casa, "is_active = 1", visibility]
     if with_source:
         filtros.append("source = %s")
     if favorites_only:
         filtros.append(FAVORITES_ONLY_SQL)
-    return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY id LIMIT %s"
+    return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY name_normalized, id LIMIT %s"
 
 
 def list_sql(*, bucket: bool) -> str:
@@ -391,11 +402,15 @@ def search_foods(
     )
 
     marca = food_text.brand_pattern(q)
+    termos_marca = food_text.brand_token_patterns(q)
     base = [expressao, *params_visibilidade] + ([fonte.value] if fonte is not None else [])
-    # Marca: os mesmos filtros, o padrão da marca no lugar da expressão do nome e sem a expressão de ordem.
-    params_marca = [marca, *base[1:]]
-    sql_marca = brand_search_sql(visibility=visibilidade, with_source=fonte is not None)
-    sql_marca_favoritos = brand_search_sql(visibility=visibilidade, with_source=fonte is not None, favorites_only=True)
+    # Marca: os mesmos filtros, o padrão da marca (e os termos nome/marca) no lugar da expressão do nome e sem a
+    # expressão de ordem.
+    params_marca = [marca, *(p for t in termos_marca for p in (t, t)), *termos_marca, *base[1:]]
+    sql_marca = brand_search_sql(visibility=visibilidade, with_source=fonte is not None, tokens=len(termos_marca))
+    sql_marca_favoritos = brand_search_sql(
+        visibility=visibilidade, with_source=fonte is not None, favorites_only=True, tokens=len(termos_marca)
+    )
 
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -441,15 +456,16 @@ def search_foods(
 @router.get("")
 def list_foods_by_letter(
     request: Request,
-    letter: str = Query(..., max_length=16),
+    letter: Optional[str] = Query(default=None, max_length=16),
     limit: Optional[int] = Query(default=None),
-    offset: Optional[int] = Query(default=None),
+    offset: Optional[int] = Query(default=None, le=food_text.LIST_OFFSET_MAX),
     identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
     """Cadastro por letra (#195): alimentos ativos, públicos + os do usuário, cujo NOME começa pela letra
-    (ou, em `outros`, por dígito/símbolo), em ordem alfabética. Regras de letra, balde e página: `food_text`."""
+    (ou, em `outros`, por dígito/símbolo), em ordem alfabética. Regras de letra, balde e página: `food_text`.
+    Sem `letter` = primeiro balde; `offset` acima de `LIST_OFFSET_MAX` = 422."""
     permissoes = permissions_for_request(request, identity)
-    codigo = food_text.normalize_letter(letter)
+    codigo = food_text.DEFAULT_LIST_BUCKET if letter is None else food_text.normalize_letter(letter)
     if codigo is None:
         raise _error(400, "invalid_letter", "Letra inválida.", allowed=list(food_text.LIST_BUCKETS))
     tamanho, deslocamento = food_text.list_page(limit, offset)
@@ -467,6 +483,7 @@ def list_foods_by_letter(
     return {
         "letter": codigo,
         "letters": list(food_text.LIST_BUCKETS),
+        "letter_labels": dict(food_text.LIST_BUCKET_LABELS),
         "items": [
             {**food_public(linha, identity, permissoes), "is_favorite": int(linha["id"]) in favoritos}
             for linha in linhas[:tamanho]

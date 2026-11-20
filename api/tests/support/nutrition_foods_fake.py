@@ -24,7 +24,7 @@ from app import nutrition_access as access
 from app import nutrition_external_foods as external
 from app import nutrition_foods as foods
 from app.domain.nutrition import catalog
-from app.domain.nutrition.food_text import normalize_name
+from app.domain.nutrition.food_text import BRAND_TOKENS_MAX, normalize_name
 
 AGORA = datetime(2026, 10, 17, 12, 0, 0)
 
@@ -47,14 +47,15 @@ def _ai_ci(texto: Any) -> str:
     return "".join(ch for ch in nfkd if not unicodedata.combining(ch)).lower()
 
 
-def _brand_variants() -> dict[str, tuple[bool, bool, bool]]:
+def _brand_variants() -> dict[str, tuple[bool, bool, bool, int]]:
     return {
-        foods.brand_search_sql(visibility=vis, with_source=src, favorites_only=fav): (
-            vis == access.VISIBLE_FOODS_SQL, src, fav,
+        foods.brand_search_sql(visibility=vis, with_source=src, favorites_only=fav, tokens=n): (
+            vis == access.VISIBLE_FOODS_SQL, src, fav, n,
         )
         for vis in (access.VISIBLE_FOODS_SQL, access.PRIVATE_FOODS_SQL)
         for src in (True, False)
         for fav in (True, False)
+        for n in (0, *range(2, BRAND_TOKENS_MAX + 1))
     }
 
 
@@ -193,11 +194,14 @@ class FakeCursor:
         achados.sort(key=lambda t: (t[0], t[1]))
         return [_publico(linha) for *_chave, linha in achados[:lote]]
 
-    def _buscar_marca(self, variante: tuple[bool, bool, bool], p: tuple) -> list[dict[str, Any]]:
-        """`brand LIKE %termo%` (padrão com `\\` escapando curinga), ORDER BY id LIMIT."""
-        visiveis, com_fonte, so_favoritos = variante
+    def _buscar_marca(self, variante: tuple[bool, bool, bool, int], p: tuple) -> list[dict[str, Any]]:
+        """`brand LIKE %termo%` (padrão com `\\` escapando curinga), ORDER BY name_normalized, id LIMIT; com termos (#208), cada um no nome OU na marca."""
+        visiveis, com_fonte, so_favoritos, n_termos = variante
         resto = list(p)
         padrao = resto.pop(0)
+        pares = [resto.pop(0) for _ in range(2 * n_termos)]
+        termos = [resto.pop(0) for _ in range(n_termos)]
+        assert pares == [t for t in termos for _ in (0, 1)]
         usuario = resto.pop(0) if visiveis else None
         fonte = resto.pop(0) if com_fonte else None
         dono_favoritos = resto.pop(0) if so_favoritos else None
@@ -205,15 +209,24 @@ class FakeCursor:
         assert not resto and padrao.startswith("%") and padrao.endswith("%")
         miolo = re.sub(r"\\(.)", r"\1", padrao[1:-1])
         ids_favoritos = {f["food_id"] for f in self.db.favorites if f["user_id"] == dono_favoritos}
+        def casa(linha: dict[str, Any]) -> bool:
+            marca = _ai_ci(linha["brand"])
+            if _ai_ci(miolo) in marca:
+                return True
+            miolos = [t[1:-1] for t in termos]
+            return bool(miolos) and all(m in linha["_normalized"] or m in marca for m in miolos) and any(
+                m in marca for m in miolos
+            )
+
         achados = [
             linha for linha in self.db.foods.values()
-            if linha["is_active"] and linha["brand"] and _ai_ci(miolo) in _ai_ci(linha["brand"])
+            if linha["is_active"] and linha["brand"] and casa(linha)
             and (not so_favoritos or linha["id"] in ids_favoritos)
             and ((linha["owner_user_id"] is None or linha["owner_user_id"] == usuario) if visiveis
                  else linha["owner_user_id"] is not None)
             and (fonte is None or linha["source"] == fonte)
         ]
-        return [_publico(linha) for linha in sorted(achados, key=lambda r: r["id"])[:lote]]
+        return [_publico(linha) for linha in sorted(achados, key=lambda r: (r["_normalized"], r["id"]))[:lote]]
 
     def _listar(self, bucket: bool, p: tuple) -> list[dict[str, Any]]:
         """Listagem por letra: nome em ai_ci, `NOT(...)` no balde, ORDER BY name, id LIMIT/OFFSET."""

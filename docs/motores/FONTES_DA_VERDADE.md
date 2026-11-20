@@ -534,6 +534,7 @@ são a referência viva.
 - Varre `api/app/**/*.py` e `frontend/src/**/*.ts(x)`, **sem** testes, `node_modules`,
   `.next` e `__pycache__`, e **sem** comentários e docstrings (prosa explicando a regra não
   é cópia). Strings contam: SQL e prompt são onde as cópias moram.
+- Cobertura do frontend (Lote 6, #200; `arquivos_varridos`): `frontend/src/**/*.ts` e `*.tsx`. Ficam de fora `*.test.ts(x)`, `*.spec.ts(x)`, `__tests__/`, o que está em `frontend/` fora de `src/` e os `.js`/`.mjs` (`_linguagem` só reconhece `.ts`/`.tsx`). Estender a varredura é pendência.
 - Varre também `api/privado/rag/markdown/**/*.md` (submódulo privado desde o M103 P0, §73) (inteiro: Markdown injetado em prompt conta como prompt,
   princípio 4), mas só para os padrões que declaram a linguagem `md` (hoje `percentual_de_carga`,
   `dose_reduzida_texto`, `numeros_prompt_volume`, `exposicoes_minimas`, `fator_carga_trabalho_texto`
@@ -3028,9 +3029,10 @@ obrigatórios, fontes e citações do JSON gerado; nota, ordem e permissões da 
 pelas notas do NOME (líder por nome e folga contra o segundo por nome, como antes da marca); a marca só ordena a
 lista e nunca liga nem desliga a pré-seleção. Ressalva: candidato que entra só pela marca conta como "segundo por
 nome" (pode reduzir a folga do líder) e o item com `auto_accept` pode ficar abaixo de itens que subiram pela marca;
-fixado em `test_nutrition_foods_marca_e_letras.py`. Limitação: busca que mistura nome e marca ("whey growth") não
-recupera o item. A guarda `catalogo_alimentos` cobre `BRAND_MIN_CHARS`, `LIST_PAGE_*`, `OTHER_BUCKET`,
-`LETTERS` e `LIST_BUCKETS`.
+fixado em `test_nutrition_foods_marca_e_letras.py`. Busca que mistura nome e marca ("whey growth", Lote 6, #208): cada termo casa no nome normalizado ou na marca, com ao menos um na marca (`food_text.brand_token_patterns`; até `BRAND_TOKENS_MAX` = 5 termos; `nutrition_foods.brand_search_sql(tokens=N)`), e a consulta de marca sai ordenada por nome normalizado e id. A guarda `catalogo_alimentos` cobre `BRAND_MIN_CHARS`, `LIST_PAGE_*`, `OTHER_BUCKET`,
+`LETTERS` e `LIST_BUCKETS`. Não cobre (proibição por revisão, Lote 6): `LIST_OFFSET_MAX`, `DEFAULT_LIST_BUCKET`, `OTHER_BUCKET_LABEL`, `LIST_BUCKET_LABELS`, `BRAND_TOKENS_MAX`.
+
+**Consumidores e proibições do catálogo (Lote 6, #208).** Dono: `api/app/domain/nutrition/food_text.py` (`BRAND_TOKENS_MAX` L76, `brand_token_patterns` L270, `LIST_OFFSET_MAX` L86, `DEFAULT_LIST_BUCKET` L88, `OTHER_BUCKET_LABEL` L89, `LIST_BUCKET_LABELS` L90). Consumidores: `api/app/nutrition_foods.py` (`list_foods_by_letter`: `letter` ausente vale `DEFAULT_LIST_BUCKET`; `offset` acima de `LIST_OFFSET_MAX` responde 422 pelo `Query(le=...)`; a resposta traz `letter_labels`; `search_foods` monta a consulta de marca com `brand_token_patterns`) e `frontend/src/components/nutrition/FoodsAlphabet.tsx` (a aba inicial vem da resposta; o rótulo vem de `letter_labels`, com o código como reserva). Proibido fora do dono: redefinir letras, baldes, rótulos ou o teto da listagem. Decisão: [ADR 0023](../adr/0023-pendencias-de-nutricao-208-202-200.md).
 
 **Impacto em produção (#195), medido por SELECT em 2026-11-18:** 657 alimentos ativos em `food_items`; 43 com marca
 preenchida, todas com 3 ou mais caracteres; 32 marcas distintas; a marca mais frequente tem 4 itens; por fonte:
@@ -7378,7 +7380,7 @@ Decisões do usuário (17/11/2026, issues #138 e #131). Regra e mapa (`CLAUDE.md
 
 ### 104.1 Acabamento (2026-11-18)
 
-Não muda regra de cálculo. Guarda nova `padrao_modo_caloria` (dono `activity_energy.py`, nasce vazia).
+Não muda regra de cálculo. Guarda nova `padrao_modo_caloria` (dono `activity_energy.py`, nasce vazia). Lote 6 (#200): a varredura acusa a atribuição do modo quebrada em duas linhas, e a regex acusa `CalorieMode.X.value`. A varredura é por linha: a linha terminada em `=`, `= (` ou `= \` é testada junto com a seguinte (`Padrao.junta_continuacao`, só em `padrao_modo_caloria`), e a ocorrência é reportada na linha da atribuição, sem contagem dupla (`ocorrencias()` em `api/tests/unit/test_guarda_fontes_da_verdade.py` L2800-2816). Limite: só a linha seguinte é juntada; valor que comece duas ou mais linhas depois do `=` não é acusado. Padrão em L2139-2156; pares no autoteste L3649-3662; testes de ponta a ponta L3986-4016. Allowlist inalterada.
 
 | Regra | Dono | Consumidores | Proibido fora do dono |
 |---|---|---|---|
@@ -7554,3 +7556,19 @@ Não medido:
 - quantas das 7 linhas `SKIP` sem técnica eram de item GVT/FST-7 do Modelo (a linha congelada não guarda a técnica do Modelo);
 - se o hash recalculado da auditoria casa com o `audit_hash` gravado (não comparado com valor real);
 - o 422 da criação contra o banco real (a integração roda no CI, não localmente).
+
+**Lote 6 de 20/11/2026 (#208, #202, #200 e #229).** Sem migração. Nenhum dado gravado muda no deploy. Medido em produção em 20/11/2026, por leitura (só SELECT): `food_items` com 660 alimentos, 33 marcas distintas, a maior marca com 4 itens.
+
+Efeito de cada mudança de semântica:
+
+- (a) Busca: passa a devolver também o alimento em que os termos se dividem entre nome e marca ("whey growth"). Para busca de um termo só o resultado não muda; o resultado só cresce, nunca diminui.
+- (b) Listagem: `letter` ausente vale o primeiro balde; `offset` acima de `LIST_OFFSET_MAX` (10.000) responde 422.
+- (c) `GET /nutrition/foods` ganha `letter_labels` (aditivo; aplicativo antigo ignora).
+- (d) Ordem da consulta por marca: por nome normalizado e id (antes, por id de cadastro). Muda só a ordem dentro do lote de candidatos de marca.
+- (e) Navegação mobile (`nav-active.ts`): cancelar o editor de refeição aberto por entrada direta em `/nutricao/?nova=1`, inclusive quando o usuário volta a essa entrada pelo navegador, passa a ir para `/nutricao/` em vez de usar o voltar do histórico, que podia sair do aplicativo. `invalidateFoodQueries`: alimento criado, editado ou excluído aparece na lista por letra sem recarregar. `planSaveErrorMessage` na tela web de geração (#229): a mensagem do servidor aparece no 422 da criação. Nenhuma regra de cálculo.
+
+Não medido:
+
+- tempo e `EXPLAIN` da consulta de marca (cadastro de 660 linhas; sem índice de marca);
+- o SQL novo contra o MySQL real (a integração roda no CI);
+- ordem de nomes com pontuação na collation real.

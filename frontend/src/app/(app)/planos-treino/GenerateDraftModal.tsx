@@ -32,6 +32,7 @@ import {
   type WorkoutPlanGenerateInput,
   type WorkoutPlanInput,
 } from '@/lib/workout-plans-types';
+import { planSaveErrorMessage } from '@/lib/plan-save-error';
 import { buildDraftCreatePayload } from '@/lib/workout-plan-payload';
 import { AUTO_SLOT_VALUE, buildGeneratePayload, canGenerateDraft } from '@/lib/workout-plan-generate-payload';
 import {
@@ -375,7 +376,7 @@ export function GenerateDraftModal({ opened, onClose }: Props) {
 
             {createMutation.isError && (
               <Alert color="red" icon={<IconAlertTriangle />} title="Erro ao salvar">
-                {errorMessage(createMutation.error, 'Não foi possível salvar o plano.')}
+                {planSaveErrorMessage(createMutation.error, 'Não foi possível salvar o plano.')}
               </Alert>
             )}
 

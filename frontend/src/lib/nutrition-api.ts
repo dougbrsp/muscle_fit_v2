@@ -157,7 +157,10 @@ export const foodKeys = {
   search: (q: string, scope: FoodSearchScope, source: string | null) =>
     ['nutrition-foods-search', q, scope, source] as const,
   detail: (foodId: number) => ['nutrition-food', foodId] as const,
+  searchAll: ['nutrition-foods-search'] as const,
   byLetter: ['nutrition-foods-by-letter'] as const,
+  // Sem letra = primeira carga (a API escolhe o balde); chave própria para não colidir com uma letra.
+  byLetterKey: (letter?: string) => [...foodKeys.byLetter, letter ?? null] as const,
 };
 
 export function searchFoods(
@@ -175,14 +178,17 @@ export function searchFoods(
 export type FoodsByLetterResponse = {
   letter: string;
   letters: string[];
+  /** Rótulo de cada aba por código; ausente em servidor antigo (fallback: o código). */
+  letter_labels?: Record<string, string>;
   items: (FoodItem & { is_favorite?: boolean })[];
   limit: number;
   offset: number;
   has_more: boolean;
 };
 
-export function listFoodsByLetter(letter: string, offset = 0): Promise<FoodsByLetterResponse> {
-  const params = new URLSearchParams({ letter });
+export function listFoodsByLetter(letter: string | undefined, offset = 0): Promise<FoodsByLetterResponse> {
+  const params = new URLSearchParams();
+  if (letter) params.set('letter', letter);
   if (offset > 0) params.set('offset', String(offset));
   return apiFetch<FoodsByLetterResponse>(`/nutrition/foods?${params.toString()}`);
 }
