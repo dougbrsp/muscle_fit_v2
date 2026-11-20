@@ -105,7 +105,7 @@ Resultado por item da issue:
 
 ## Verificação
 
-- Suíte unitária inteira do backend, local: 17.836 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
+- Suíte unitária inteira do backend, local, depois da última correção: 17.838 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Frontend: 329 testes Vitest dos diretórios tocados passaram; `tsc --noEmit` sem erro.
 - Testes de ponta a ponta de layout mobile (`frontend/e2e/mobile-layout`, Playwright), executados em navegador fora do CI pela primeira vez: 84 passaram e 47 falharam, em 46 minutos. As falhas se concentram em cenários que dependem de permissões: a navegação principal é fechada por padrão sem permissões (`frontend/src/mobile/layout/primary-nav.ts`) e as respostas simuladas de `/auth/me` desses cenários não trazem as permissões do RBAC (em produção desde 10 a 15/11/2026); exemplos: a barra de abas com 1 item em vez de 5, botões "Gerar novo plano" e "Gerar insight" ausentes. A suíte não foi executada na `develop` para comparação, então não está provado, teste a teste, que nenhuma falha vem desta entrega. Corrigir as fixtures é pendência própria.
 - Guarda de fontes da verdade (`api/tests/unit/test_guarda_fontes_da_verdade.py`): a guarda inteira passa, com 485 testes.
