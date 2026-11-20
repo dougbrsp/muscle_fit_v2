@@ -515,6 +515,49 @@ test('sem historico no equipamento escolhido: o card "Treino anterior" mostra "S
   expect(api.lastSessionQueries).toContain('901');
 });
 
+async function openPickerWithCatalog(page: Page, permitted: boolean) {
+  api.useCatalogAddSeed(permitted);
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  const section = page.getByTestId('equipment-section-catalog');
+  await expect(section).toContainText('Crossover');
+  // O par que a academia ja tem (Cabo) nao aparece no catalogo.
+  await expect(section).not.toContainText('Cabo');
+  return section;
+}
+
+test('seletor (#163b) COM permissao: acrescenta o equipamento do catalogo, o escolhe e a 1a serie usa o equipment_id novo', async ({ page }) => {
+  const section = await openPickerWithCatalog(page, true);
+  await expect(section.getByText('Outros equipamentos do catálogo')).toBeVisible();
+  await page.getByRole('button', { name: 'Acrescentar Crossover à academia' }).click();
+  const confirm = page.getByTestId('equipment-catalog-add-confirm');
+  await expect(confirm).toContainText('Acrescentar Crossover à academia Academia Central?');
+  await confirm.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Crossover', { timeout: 20_000 });
+  expect(api.catalogAddPosts).toEqual([{ gym_id: 1, equipment_id: 33 }]);
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.exercisePosts.length).toBe(1);
+  expect(api.exercisePosts[0].equipment_id).toBe(910);
+});
+
+test('seletor (#163b) SEM permissao: item do catalogo desabilitado com aviso e nenhum POST de acrescimo', async ({ page }) => {
+  const section = await openPickerWithCatalog(page, false);
+  const item = section.getByTestId('equipment-catalog-item').first();
+  await expect(item).toHaveAttribute('aria-disabled', 'true');
+  await expect(item).toContainText('Não cadastrado nesta academia');
+  await expect(page.getByRole('button', { name: 'Acrescentar Crossover à academia' })).toHaveCount(0);
+  await item.click({ force: true });
+  await expect(page.getByTestId('equipment-catalog-add-confirm')).toHaveCount(0);
+  expect(api.catalogAddPosts).toHaveLength(0);
+});
+
 test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
   await openWorkout(page);
   api.setAuthMeStatus(503);

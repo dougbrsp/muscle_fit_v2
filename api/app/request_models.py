@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.nutrition import activity_energy as _activity_energy
@@ -86,6 +86,13 @@ class GymCreateIn(_StrictIn):
     usual_weekdays: Optional[List[int]] = Field(default=None, max_length=7)
     is_recurring: Optional[bool] = None
     notes: Optional[str] = Field(default=None, max_length=NOTES_MAX)
+
+
+class GymEquipmentCatalogAddIn(_StrictIn):
+    """POST /gym-equipment-catalog (#163b): ids inteiros positivos (sem coercao de texto)."""
+
+    gym_id: StrictInt = Field(gt=0)
+    equipment_id: StrictInt = Field(gt=0)
 
 
 class GymEquipmentManufacturerIn(_StrictIn):

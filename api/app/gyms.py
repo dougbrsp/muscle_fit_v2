@@ -24,7 +24,7 @@ from .domain.equipment_context import (
     manufacturer_join_sql,
     with_manufacturer_fields,
 )
-from .request_models import GymCreateIn, GymEquipmentManufacturerIn
+from .request_models import GymCreateIn, GymEquipmentCatalogAddIn, GymEquipmentManufacturerIn
 from .gym_equipment_sync import sync_gym_equipment_for_gym
 from .load_conventions import equipment_exercises_join_sql, load_convention_select_expr, normalize_load_convention
 
@@ -1134,22 +1134,24 @@ def _assert_gym_equipment_catalog_writable(
 @router.post("/gym-equipment-catalog")
 def create_gym_equipment_catalog(
     request: Request,
-    item: Dict[str, Any] = Body(...),
+    payload: GymEquipmentCatalogAddIn,
     identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    gym_id = item.get("gym_id")
-    equipment_id = item.get("equipment_id")
-
-    if not gym_id or not equipment_id:
-        raise HTTPException(status_code=400, detail="gym_id e equipment_id são obrigatórios.")
+    gym_id = payload.gym_id
+    equipment_id = payload.equipment_id
 
     with _connect() as conn:
         with conn.cursor() as cursor:
+            # Autorizacao ANTES de olhar o equipamento: quem nao pode escrever
+            # nao descobre se ele existe ou esta inativo.
             _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "editar")
 
-            cursor.execute("SELECT id FROM equipment WHERE id = %s", (equipment_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, is_active FROM equipment WHERE id = %s", (equipment_id,))
+            equipment = cursor.fetchone()
+            if not equipment:
                 raise HTTPException(status_code=404, detail="equipment_id não encontrado no catálogo.")
+            if not equipment.get("is_active"):
+                raise HTTPException(status_code=409, detail="Equipamento inativo no catálogo global.")
 
             cursor.execute(
                 """
@@ -1168,7 +1170,15 @@ def create_gym_equipment_catalog(
 
             sync_gym_equipment_for_gym(conn, gym_id)
 
-    return {"status": "ok", "item": _row_jsonable(row)}
+            # Aditivo: associacoes ativas do equipamento, lidas depois do sync.
+            cursor.execute(
+                "SELECT id, mapping_id, equipment_id FROM gym_equipment"
+                " WHERE gym_id = %s AND equipment_id = %s AND is_active = 1 ORDER BY id",
+                (gym_id, equipment_id),
+            )
+            links = [_row_jsonable(r) for r in cursor.fetchall()]
+
+    return {"status": "ok", "item": _row_jsonable(row), "links": links}
 
 
 @router.patch("/gym-equipment-catalog/{link_id}")

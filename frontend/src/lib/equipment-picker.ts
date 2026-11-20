@@ -12,10 +12,12 @@ export type EquipmentPickerSection = {
   items: EquipmentPickerItem[];
 };
 
-// Para uma 3a seção (catálogo global) basta acrescentar uma chave e um título aqui.
-const SECTION_TITLES: Record<EquipmentPickerSectionKey, string> = {
+// A seção `catalog` (equipamentos do catálogo que a academia não tem) é montada em
+// `equipment-catalog-add.ts`; só o título fica aqui, junto dos demais.
+export const SECTION_TITLES: Record<EquipmentPickerSectionKey | 'catalog', string> = {
   same_exercise: 'Mesmo exercício',
   same_group: 'Mesmo grupo muscular',
+  catalog: 'Outros equipamentos do catálogo',
 };
 
 /** Minúsculas e sem acento, para busca. */
