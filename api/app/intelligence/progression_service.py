@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import Any, Mapping, Sequence
 
 from ..domain.form_practice import sql_counts_for_progression
+from ..domain.progression_status_labels import SCOPE_EXERCISE_LAST_VS_PREVIOUS, progression_scope
 from ..set_types import sql_is_working, sql_set_confirmed
 from .base import IntelligenceServiceBase
 from .dashboard.metrics_registry import EXERCISE_PROGRESSION_STATUS_LABELS, ExerciseProgressionStatus
@@ -96,6 +97,8 @@ def exercise_progression_context(
                 "exercise_name": item.get("name"),
                 "status": status,
                 "status_label": label,
+                # Escopo do status (dono): so a tela o usa; `report_ai` o retira do prompt.
+                "status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
                 "status_reasons": list(item.get("status_reasons") or []),
                 # Contexto de fadiga em que o status vale (rotulo do dono).
                 "fatigue_context_label": (item.get("fatigue_context") or {}).get("band_label"),

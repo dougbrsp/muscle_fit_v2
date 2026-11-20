@@ -410,6 +410,21 @@ class ProgressionScopeOut(_Contract):
     description: str
 
 
+class WindowTrendOut(_Contract):
+    """Tendencia da janela do exercicio (#176); dono `comparability.window_trend`.
+    Fracoes (0.05 = +5%); medias e variacao `None` em dados insuficientes."""
+
+    status: str
+    label: str
+    reasons: list[str] = Field(default_factory=list)
+    change_pct: float | None = None
+    initial_mean: float | None = None
+    final_mean: float | None = None
+    exposures_used: int
+    rule_version: str
+    scope: ProgressionScopeOut
+
+
 class ExerciseProgressResponse(DashboardEnvelope):
     """Resposta de `/analytics/dashboard/exercises/{exercise_id}/progress`.
 
@@ -422,6 +437,8 @@ class ExerciseProgressResponse(DashboardEnvelope):
     # O que `status` compara (ultima exposicao vs. anterior).
     status_scope: ProgressionScopeOut
     status_reasons: list[str] = Field(default_factory=list)
+    # Segunda leitura (#176), aditiva: tendencia da janela; `None` sem exposicoes.
+    window_trend: WindowTrendOut | None = None
     # Contexto de fadiga da exposicao mais recente: o status vale para ele.
     fatigue_context: FatigueContextOut | None = None
     exposures: list[ExposureOut] = Field(default_factory=list)

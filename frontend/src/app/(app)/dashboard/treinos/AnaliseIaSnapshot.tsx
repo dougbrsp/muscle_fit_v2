@@ -2,7 +2,7 @@
 
 import { Stack, Table, Text, Title } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { ScopeCaption, StatusBadge } from '@/components/dashboard/StatusBadge';
 import { fmtDate, fmtDecimal, fmtInt, fmtKg, fmtKgTotal, fmtPercent, fmtRpe } from '@/lib/dashboard-format';
 import type {
   ExerciseProgressionContextItem,
@@ -108,6 +108,7 @@ export function AnaliseIaSnapshot({ training }: { training: WorkoutsAnalysisTrai
                     <Table.Td>{item.exercise_name ?? `Exercício ${item.exercise_id}`}</Table.Td>
                     <Table.Td>
                       <StatusBadge domain="exerciseProgression" code={item.status} size="xs" />
+                      <ScopeCaption scope={item.status_scope} />
                     </Table.Td>
                     <Table.Td>{item.equipment_name ?? EM_DASH}</Table.Td>
                     <Table.Td ta="right">{exposicaoResumo(item.previous_comparable)}</Table.Td>

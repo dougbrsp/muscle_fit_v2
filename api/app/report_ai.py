@@ -123,6 +123,11 @@ def _ai_training_payload(training_payload: dict[str, Any]) -> dict[str, Any]:
     payload.pop("progression_highlights", None)
     payload.setdefault("recent_records", [])
     payload.setdefault("exercise_progression", [])
+    # #177: o escopo do status e para a tela; o prompt segue identico ao anterior.
+    payload["exercise_progression"] = [
+        {k: v for k, v in item.items() if k != "status_scope"} if isinstance(item, dict) else item
+        for item in payload["exercise_progression"] or []
+    ]
     correlation = payload.get("intervals_correlation")
     if isinstance(correlation, dict) and isinstance(correlation.get("matched_workouts"), list):
         # IA-17: o id externo do Intervals.icu identifica a conta do usuario

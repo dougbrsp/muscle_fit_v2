@@ -64,6 +64,7 @@ import {
   progressionDecisionLabel,
   statusReasonsText,
 } from '@/lib/exercise-progress';
+import { buildWindowTrendView } from '@/lib/exercise-window-trend';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import {
   defaultGoalValue,
@@ -190,8 +191,10 @@ export function ExerciseProgressClient() {
 function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgressResponse; defaultGoal: string | null }) {
   const currentKey = data.comparability_key;
   const reasons = useMemo(() => statusReasonsText(data.status_reasons), [data.status_reasons]);
+  const windowTrend = useMemo(() => buildWindowTrendView(data.window_trend), [data.window_trend]);
+  const windowTrendReasons = useMemo(() => statusReasonsText(windowTrend?.reasons), [windowTrend]);
   const pair = useMemo(() => buildExposurePair(data), [data]);
-  const trend = useMemo(() => buildTrendSeries(data.exposures, data.trend_metric), [data.exposures, data.trend_metric]);
+  const trend =useMemo(() => buildTrendSeries(data.exposures, data.trend_metric), [data.exposures, data.trend_metric]);
   // M35: RPE médio POR SESSÃO — o que `/exercicios` tinha e o hub não.
   const rpe = useMemo(() => buildRpeSeries(data.exposures, data.avg_rpe_period), [data.exposures, data.avg_rpe_period]);
   // M97 F4: linha ÚNICA de e1RM (todos os objetivos) + marcas de deload.
@@ -255,6 +258,9 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
             </Group>
           </div>
           <Stack gap={4} align="flex-end">
+            <Text size="xs" fw={600} c={BRAND.textMuted}>
+              Leitura atual
+            </Text>
             <StatusBadge domain="exerciseProgression" code={data.status} size="lg" />
             <ScopeCaption scope={data.status_scope} />
             {/* O status vale para o contexto de fadiga da exposição mais
@@ -273,6 +279,29 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
               Por que este status:
             </Text>
             {reasons.map((reason) => (
+              <Text key={reason.code} size="sm" c={BRAND.textMuted}>
+                • {reason.text}
+              </Text>
+            ))}
+          </Stack>
+        )}
+
+        {windowTrend && (
+          <Stack gap={4} mt="md" data-testid="window-trend">
+            <Divider />
+            <Group gap="sm" wrap="wrap" align="center" mt="xs">
+              <Text size="sm" fw={600} c={BRAND.textPrimary}>
+                Tendência da janela
+              </Text>
+              <StatusBadge domain="exerciseProgression" code={windowTrend.statusCode} size="md" />
+              <ScopeCaption scope={windowTrend.scope} />
+            </Group>
+            {windowTrend.changeText && windowTrend.meansText && (
+              <Text size="sm" c={BRAND.textMuted}>
+                Variação {windowTrend.changeText} (e1RM médio {windowTrend.meansText})
+              </Text>
+            )}
+            {windowTrendReasons.map((reason) => (
               <Text key={reason.code} size="sm" c={BRAND.textMuted}>
                 • {reason.text}
               </Text>

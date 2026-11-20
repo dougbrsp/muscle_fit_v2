@@ -78,8 +78,14 @@ from .comparability import (
     trend_metric,
     supports_e1rm,
     top_load_reps,
+    window_trend,
 )
-from ...domain.progression_status_labels import SCOPE_EXERCISE_LAST_VS_PREVIOUS, progression_scope
+from ...domain.progression_status_labels import (
+    EXERCISE_PROGRESSION_LABELS,
+    SCOPE_EXERCISE_LAST_VS_PREVIOUS,
+    SCOPE_EXERCISE_WINDOW_TREND,
+    progression_scope,
+)
 from .contracts import DataQuality, WindowInfo
 from .identity import require_user_id
 from .metrics_registry import HIGH_RPE_MIN, THRESHOLDS, ExerciseProgressionStatus, metric_version
@@ -988,6 +994,24 @@ def _data_quality(
     return quality, limitations
 
 
+def _window_trend_payload(exposures: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Tendencia da janela EXIBIDA (#176); a regra e de `comparability.window_trend`."""
+    if not exposures:
+        return None
+    trend = window_trend(to_summaries(exposures))
+    return {
+        "status": trend.status.value,
+        "label": EXERCISE_PROGRESSION_LABELS[trend.status.value],
+        "reasons": trend.reasons,
+        "change_pct": trend.change_pct,
+        "initial_mean": trend.initial_mean,
+        "final_mean": trend.final_mean,
+        "exposures_used": trend.exposures_used,
+        "rule_version": metric_version("exercise_window_trend"),
+        "scope": progression_scope(SCOPE_EXERCISE_WINDOW_TREND),
+    }
+
+
 def build_exercise_progress(
     conn: Any,
     exercise_id: int,
@@ -1057,6 +1081,7 @@ def build_exercise_progress(
         "status": status.value,
         "status_scope": progression_scope(SCOPE_EXERCISE_LAST_VS_PREVIOUS),
         "status_reasons": reasons,
+        "window_trend": _window_trend_payload(exposures),
         # O status e do contexto de fadiga da exposicao mais recente.
         "fatigue_context": exposures[-1].get("fatigue_context") if exposures else None,
         # Comparavel com a chave atual e, se nao, por que (M76 Lote 3c, C13):

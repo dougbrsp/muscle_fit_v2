@@ -21,6 +21,8 @@ def test_versoes_do_plano_estao_todas_registradas():
         # isso. Fica registrado aqui pelo mesmo motivo das demais - versao
         # emitida no payload.
         "session-records-v2",
+        # #176: tendencia da janela do exercicio (segunda leitura, versao propria).
+        "exercise-window-trend-v1",
         # F1.6: resumo decomponivel da progressao (contagem por status, sem
         # score) e as regras deterministicas de insight do §12.
         "progression-summary-v1",
@@ -95,6 +97,7 @@ def test_limiares_do_plano_8_2():
     assert dict(reg.THRESHOLDS) == {
         "same_load_tolerance_pct": 0.02,
         "e1rm_progress_pct": 0.03,
+        "window_trend_min_exposures": 4,
         "e1rm_max_reliable_reps": 12,
         "rpe_improvement_delta": 0.75,
         "min_comparable_exposures": 2,
