@@ -811,3 +811,21 @@ export function findPlanItemForSubstitutedExercise(params: {
 export function executionPositionOrdinal(items: ReadonlyArray<{ done: boolean }>): number {
   return items.filter((item) => item.done).length + 1;
 }
+
+/** Aviso quando a sugestão do equipamento novo falha na troca com séries lançadas. */
+export const SUGGESTION_FAILED_MESSAGE =
+  'Não foi possível carregar a sugestão para este equipamento; a carga alvo foi removida e os demais alvos mostrados são os do equipamento anterior.';
+
+/**
+ * Alvos da continuação quando a sugestão do equipamento novo falhou: mantém
+ * reps e RPE do item (séries e descanso não dependem dela) e NÃO herda a
+ * carga alvo do equipamento anterior — a carga de outro aparelho não vale
+ * neste (e a tela não inventa uma).
+ */
+export function targetsWhenSuggestionFails(original: {
+  reps_target: string | null;
+  load_target: string | null;
+  rpe_target: string | null;
+}): { reps_target: string | null; load_target: null; rpe_target: string | null } {
+  return { reps_target: original.reps_target, load_target: null, rpe_target: original.rpe_target };
+}

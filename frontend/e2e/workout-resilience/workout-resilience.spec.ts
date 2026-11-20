@@ -450,6 +450,71 @@ test('troca de equipamento (#225) com a continuacao criada e registrada OFFLINE:
   expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
 });
 
+/** Cenario do seletor (#163): Crucifixo com equipamento atual `Cabo` (carga total); a semente vale so na 1a abertura, para o reload manter o que foi escolhido. */
+async function seedEquipmentPicker(page: Page) {
+  api.useEquipmentPickerSeed();
+  await page.addInitScript((session) => {
+    if (window.localStorage.getItem('e2e-seeded-equipment')) return;
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, cancelled_exercise_ids: [7001, 7003] }),
+    );
+    window.localStorage.setItem('e2e-seeded-equipment', '1');
+  }, LEGACY_SESSION);
+}
+
+/** Antes da 1a serie: toca no equipamento, busca "poli" e escolhe a Polia (carga por lado, diferente da atual), confirmando o aviso. */
+async function pickPoliaBeforeFirstSet(page: Page) {
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+
+  const search = page.getByLabel('Buscar equipamento');
+  await expect(page.getByText('Voador')).toBeVisible();
+  await search.fill('poli');
+  await expect(page.getByText('Voador')).toHaveCount(0);
+  await expect(page.getByText('Crucifixo na polia').first()).toBeVisible();
+
+  await page.getByText('Crucifixo na polia').first().click();
+  await expect(page.getByTestId('equipment-convention-warning')).toContainText('Neste equipamento a carga é registrada:');
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Polia');
+}
+
+test('seletor de equipamento (#163): buscar, aviso de convencao, confirmar, 1a serie com o equipment_id escolhido e escolha mantida ao recarregar', async ({
+  page,
+}) => {
+  await seedEquipmentPicker(page);
+  await pickPoliaBeforeFirstSet(page);
+
+  // Recarregar antes da 1a serie mantem a escolha (guardada no aparelho).
+  await page.reload();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Polia', { timeout: 20_000 });
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.exercisePosts.length).toBe(1);
+  expect(api.exercisePosts[0].equipment_id).toBe(901);
+});
+
+test('sem historico no equipamento escolhido: o card "Treino anterior" mostra "Sem historico neste equipamento" (#163)', async ({
+  page,
+}) => {
+  await seedEquipmentPicker(page);
+  api.useEmptyLastSessionSets();
+  await pickPoliaBeforeFirstSet(page);
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await expect(page.getByTestId('previous-session-empty')).toContainText('Sem histórico neste equipamento');
+  expect(api.lastSessionQueries).toContain('901');
+});
+
 test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
   await openWorkout(page);
   api.setAuthMeStatus(503);

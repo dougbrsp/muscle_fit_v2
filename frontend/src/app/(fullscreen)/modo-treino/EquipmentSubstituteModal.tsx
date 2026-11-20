@@ -1,9 +1,18 @@
 'use client';
 
-import { Alert, Badge, Button, Group, Loader, Modal, Rating, Stack, Text, UnstyledButton } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Alert, Badge, Button, Group, Loader, Modal, Rating, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconAlertTriangle, IconSparkles } from '@tabler/icons-react';
+import { IconAlertTriangle, IconSearch, IconSparkles } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  buildEquipmentPickerSections,
+  currentLoadConvention,
+  needsLoadConventionWarning,
+  type EquipmentPickerItem,
+} from '@/lib/equipment-picker';
+import { SWAP_REMAINING_NOTE } from '@/lib/equipment-change-confirm';
+import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { apiFetch } from '@/lib/api';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
@@ -19,11 +28,7 @@ import {
   starsLabel,
   type EquipmentExercisePreferencesResponse,
 } from '@/lib/equipment-recommend';
-import type {
-  ApiList,
-  GymEquipmentLink,
-  GymEquipmentRecommendResponse,
-} from '@/lib/workout-mode-types';
+import type { ApiList, GymEquipmentRecommendResponse } from '@/lib/workout-mode-types';
 import { manufacturerLabel } from '@/lib/gym-equipment-manufacturer';
 import { BRAND } from '@/theme';
 
@@ -54,6 +59,8 @@ type Props = {
   // e a escolha aqui é obrigatória para poder iniciar o exercício. Só muda o
   // título e o texto de apoio — a mecânica de escolha é a mesma da troca.
   mandatoryChoice?: boolean;
+  // true na troca "séries restantes" com séries já lançadas: só explica o escopo.
+  keepsLoggedSets?: boolean;
   onSelect: (choice: EquipmentSubstituteChoice) => void;
   // true enquanto a escolha está sendo processada pelo chamador (ex.:
   // aguardando `GET /exercises/suggested-progression` do novo mapping_id) —
@@ -88,15 +95,26 @@ export function EquipmentSubstituteModal({
   currentEquipmentLinkId,
   requiredTechnique = null,
   mandatoryChoice = false,
+  keepsLoggedSets = false,
   onSelect,
   submitting = false,
 }: Props) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [search, setSearch] = useState('');
+  // Opção cuja convenção de carga difere da atual, aguardando Confirmar/Voltar.
+  const [pendingItem, setPendingItem] = useState<EquipmentPickerItem | null>(null);
+
+  useEffect(() => {
+    if (!opened) {
+      setSearch('');
+      setPendingItem(null);
+    }
+  }, [opened]);
 
   const catalogQuery = useQuery({
     queryKey: ['workout-mode-substitute-catalog', gymId, primaryGroup],
     queryFn: () =>
-      apiFetch<ApiList<GymEquipmentLink>>(
+      apiFetch<ApiList<EquipmentPickerItem>>(
         `/gym-equipment?gym_id=${gymId}&primary_group=${encodeURIComponent(primaryGroup || '')}&active_only=true`,
       ),
     enabled: opened && Boolean(gymId && primaryGroup),
@@ -134,11 +152,22 @@ export function EquipmentSubstituteModal({
   const excluded = recommendQuery.data?.excluded ?? [];
   const excludedByLinkId = exclusionByLinkId(excluded);
   const techniqueName = getAdvancedTechniqueLabel(requiredTechnique) ?? requiredTechnique;
-  const items = (catalogQuery.data?.items || []).filter((item) => item.id !== currentEquipmentLinkId);
+  const allItems: EquipmentPickerItem[] = catalogQuery.data?.items || [];
+  const sections = buildEquipmentPickerSections(allItems, mappingId, currentEquipmentLinkId, search);
+  const currentConvention = currentLoadConvention(allItems, currentEquipmentLinkId);
 
   function choose(choice: EquipmentSubstituteChoice) {
     if (submitting) return;
     onSelect(choice);
+  }
+
+  function chooseItem(item: EquipmentPickerItem) {
+    if (submitting) return;
+    if (needsLoadConventionWarning(item.load_convention, currentConvention)) {
+      setPendingItem(item);
+      return;
+    }
+    choose(itemChoice(item));
   }
 
   return (
@@ -158,6 +187,12 @@ export function EquipmentSubstituteModal({
               A ficha não definiu um equipamento desta academia para este exercício. Escolha um abaixo para poder
               iniciar — a escolha vale só para este treino.
             </Text>
+          </Alert>
+        )}
+
+        {keepsLoggedSets && (
+          <Alert color="blue" variant="light" py={6} data-testid="swap-remaining-note">
+            <Text size="xs">{SWAP_REMAINING_NOTE}</Text>
           </Alert>
         )}
 
@@ -270,49 +305,98 @@ export function EquipmentSubstituteModal({
           </Alert>
         )}
 
+        <TextInput
+          placeholder="Buscar equipamento, exercício ou fabricante"
+          aria-label="Buscar equipamento"
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+        />
+
+        {pendingItem && (
+          <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} data-testid="equipment-convention-warning">
+            <Text size="sm" mb="xs">
+              Neste equipamento a carga é registrada: {loadConventionLabel(pendingItem.load_convention)}.
+            </Text>
+            <Group gap="xs">
+              <Button
+                size="md"
+                radius="xl"
+                h={44}
+                disabled={submitting}
+                onClick={() => {
+                  const chosen = pendingItem;
+                  setPendingItem(null);
+                  choose(itemChoice(chosen));
+                }}
+              >
+                Confirmar
+              </Button>
+              <Button size="md" radius="xl" h={44} variant="default" onClick={() => setPendingItem(null)}>
+                Voltar
+              </Button>
+            </Group>
+          </Alert>
+        )}
+
         <Stack gap="xs">
-          {items.map((item) => (
-            <UnstyledButton
-              key={item.id}
-              p="sm"
-              disabled={submitting}
-              style={{
-                borderRadius: 'var(--mantine-radius-xl)',
-                border: `1px solid ${BRAND.border}`,
-                opacity: submitting ? 0.6 : 1,
-              }}
-              onClick={() =>
-                choose({
-                  mapping_id: item.mapping_id,
-                  equipment_link_id: item.id,
-                  exercise_name: item.mapping_exercise_name || item.equipment_name,
-                  equipment_name: item.equipment_name,
-                })
-              }
-            >
-              <Group gap="sm" wrap="nowrap" align="center">
-                <EquipmentPhoto photoUrl={item.photo_url} alt={item.equipment_name} size={56} />
-                <div>
-                  <Text fw={700} c={BRAND.textPrimary}>
-                    {item.mapping_exercise_name || item.equipment_name}
-                  </Text>
-                  <Text size="xs" c={BRAND.textMuted}>
-                    {item.equipment_name}
-                    {manufacturerLabel(item.manufacturer, item.manufacturer_source)
-                      ? ` · ${manufacturerLabel(item.manufacturer, item.manufacturer_source)}`
-                      : ''}
-                  </Text>
-                  <StarsLine stars={stars.get(pairKey(item.equipment_id, item.mapping_id)) ?? null} />
-                  {excludedByLinkId.has(item.id) && (
-                    <Badge size="xs" color="yellow" variant="light" mt={4}>
-                      incompatível com {techniqueName}
-                    </Badge>
-                  )}
-                </div>
-              </Group>
-            </UnstyledButton>
+          {sections.map((section) => (
+            <Stack key={section.key} gap="xs" data-testid={`equipment-section-${section.key}`}>
+              <Text size="xs" fw={700} c={BRAND.textMuted} tt="uppercase">
+                {section.title}
+              </Text>
+              {section.items.map((item) => (
+                <UnstyledButton
+                  key={item.id}
+                  p="sm"
+                  disabled={submitting}
+                  style={{
+                    borderRadius: 'var(--mantine-radius-xl)',
+                    border: `1px solid ${BRAND.border}`,
+                    opacity: submitting ? 0.6 : 1,
+                  }}
+                  onClick={() => chooseItem(item)}
+                >
+                  <Group gap="sm" wrap="nowrap" align="center">
+                    <EquipmentPhoto photoUrl={item.photo_url} alt={item.equipment_name} size={56} />
+                    <div>
+                      <Text fw={700} c={BRAND.textPrimary}>
+                        {item.mapping_exercise_name || item.equipment_name}
+                      </Text>
+                      <Text size="xs" c={BRAND.textMuted}>
+                        {item.equipment_name}
+                        {manufacturerLabel(item.manufacturer, item.manufacturer_source)
+                          ? ` · ${manufacturerLabel(item.manufacturer, item.manufacturer_source)}`
+                          : ''}
+                      </Text>
+                      {item.load_convention && (
+                        <Text size="xs" c={BRAND.textMuted}>
+                          Carga: {loadConventionLabel(item.load_convention)}
+                        </Text>
+                      )}
+                      <StarsLine stars={stars.get(pairKey(item.equipment_id, item.mapping_id)) ?? null} />
+                      {excludedByLinkId.has(item.id) && (
+                        <Badge size="xs" color="yellow" variant="light" mt={4}>
+                          incompatível com {techniqueName}
+                        </Badge>
+                      )}
+                    </div>
+                  </Group>
+                </UnstyledButton>
+              ))}
+            </Stack>
           ))}
-          {!catalogQuery.isLoading && items.length === 0 && (
+          {!catalogQuery.isLoading && sections.length === 0 && search.trim() !== '' && (
+            <Stack gap="xs" align="center" py="md">
+              <Text size="sm" c={BRAND.textMuted} ta="center">
+                Nenhum equipamento encontrado
+              </Text>
+              <Button size="sm" variant="subtle" onClick={() => setSearch('')}>
+                Limpar busca
+              </Button>
+            </Stack>
+          )}
+          {!catalogQuery.isLoading && sections.length === 0 && search.trim() === '' && (
             <Text size="sm" c={BRAND.textMuted} ta="center" py="md">
               Nenhum outro equipamento cadastrado para este grupo muscular nesta academia.
             </Text>
@@ -321,6 +405,15 @@ export function EquipmentSubstituteModal({
       </Stack>
     </Modal>
   );
+}
+
+function itemChoice(item: EquipmentPickerItem): EquipmentSubstituteChoice {
+  return {
+    mapping_id: item.mapping_id,
+    equipment_link_id: item.id,
+    exercise_name: item.mapping_exercise_name || item.equipment_name,
+    equipment_name: item.equipment_name,
+  };
 }
 
 // Estrelas do usuário para o equipamento; sem avaliação não mostra nada (o

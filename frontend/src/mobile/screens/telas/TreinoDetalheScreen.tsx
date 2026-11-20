@@ -10,6 +10,7 @@ import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { NewWorkoutModal } from '@/components/NewWorkoutModal';
 import { FinishWorkoutConfirmModal } from '@/app/(fullscreen)/modo-treino/FinishWorkoutConfirmModal';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
+import { equipmentChangeForSave, type EquipmentChangeConfirmation } from '@/lib/equipment-change-confirm';
 import { ApiError, apiFetch } from '@/lib/api';
 import { DELOAD_LABEL, deloadBannerTitle, sessionDeloadQueryKey, type SessionDeloadStatus } from '@/lib/deload';
 import { FORM_PRACTICE_LABEL, FORM_PRACTICE_REGISTRO_HELP, isFormPracticeRow } from '@/lib/form-practice';
@@ -95,6 +96,7 @@ export function TreinoDetalheScreen() {
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [form, setForm] = useState<ExerciseFormState>(emptyExerciseForm());
   const [selectedRow, setSelectedRow] = useState<ExerciseLogRow | null>(null);
+  const [equipmentConfirm, setEquipmentConfirm] = useState<EquipmentChangeConfirmation | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [finishConfirmOpen, { open: openFinishConfirm, close: closeFinishConfirm }] = useDisclosure(false);
   const [headerEditOpen, { open: openHeaderEdit, close: closeHeaderEdit }] = useDisclosure(false);
@@ -235,6 +237,16 @@ export function TreinoDetalheScreen() {
       await Promise.all(PROGRESSION_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     },
   });
+
+  function requestSaveExercise() {
+    const confirmation = equipmentChangeForSave({
+      row: editingExerciseId ? activity?.exercises.find((ex) => ex.id === editingExerciseId) : null,
+      formEquipmentId: form.equipment_id,
+      links: gymEquipmentQuery.data?.items || [],
+    });
+    if (confirmation) setEquipmentConfirm(confirmation);
+    else saveExerciseMutation.mutate();
+  }
 
   const deleteExerciseMutation = useMutation({
     mutationFn: async (exerciseId: number) => apiFetch(`/exercises/logs/${exerciseId}`, { method: 'DELETE' }),
@@ -724,6 +736,31 @@ export function TreinoDetalheScreen() {
         >
           <Text>O que você digitou neste lançamento será apagado.</Text>
         </BottomSheet>
+        <BottomSheet
+          opened={equipmentConfirm != null}
+          onClose={() => setEquipmentConfirm(null)}
+          title="Mudar o equipamento do exercício?"
+          footer={
+            <>
+              <SheetButton variant="default" onClick={() => setEquipmentConfirm(null)}>
+                Voltar
+              </SheetButton>
+              <SheetButton
+                onClick={() => {
+                  setEquipmentConfirm(null);
+                  saveExerciseMutation.mutate();
+                }}
+              >
+                Confirmar e salvar
+              </SheetButton>
+            </>
+          }
+        >
+          <Stack gap="sm">
+            <Text>{equipmentConfirm?.message}</Text>
+            {equipmentConfirm?.conventionWarning ? <Text fw={600}>{equipmentConfirm.conventionWarning}</Text> : null}
+          </Stack>
+        </BottomSheet>
         <StickyAction>
           <Button
             fullWidth
@@ -731,7 +768,7 @@ export function TreinoDetalheScreen() {
             color="brand"
             mih={48}
             loading={saveExerciseMutation.isPending}
-            onClick={() => saveExerciseMutation.mutate()}
+            onClick={requestSaveExercise}
           >
             {editingExerciseId ? 'Salvar alterações' : 'Lançar exercício'}
           </Button>

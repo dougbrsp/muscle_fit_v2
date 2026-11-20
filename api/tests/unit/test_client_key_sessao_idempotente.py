@@ -177,6 +177,8 @@ def _install(monkeypatch, fake):
     monkeypatch.setattr(ws, "ensure_valid_codes", lambda codes: None)
     monkeypatch.setattr(ws, "resolve_mapping_id", lambda name, _a, mapping_id, cur=None: mapping_id or 11)
     monkeypatch.setattr(ws, "resolve_equipment_id", lambda cur, mapping_id, gym_id, eq_id, eq_name, user_id=None: 2)
+    # #163: a validação do equipamento explícito tem teste próprio (test_sessao_equipamento_validado).
+    monkeypatch.setattr(ws, "ensure_session_equipment", lambda cur, session, mapping_id, equipment_id: None)
     monkeypatch.setattr(ws, "_refresh_exercise_aggregates", _count("aggregates"))
     monkeypatch.setattr(ws, "_refresh_activity_avg_rpe", _count("avg_rpe"))
     monkeypatch.setattr(ws, "log_event", _count("log_event"))

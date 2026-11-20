@@ -545,6 +545,7 @@ export function ExerciseBriefingView({
         equipmentName={equipmentName || (isLoading ? null : 'Equipamento não definido')}
         photoUrl={photoUrl}
         photoAlt={equipmentName || displayName}
+        onEquipmentClick={onSwap}
         meta={
           <>
             {goalBadge}

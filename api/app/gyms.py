@@ -26,6 +26,7 @@ from .domain.equipment_context import (
 )
 from .request_models import GymCreateIn, GymEquipmentManufacturerIn
 from .gym_equipment_sync import sync_gym_equipment_for_gym
+from .load_conventions import equipment_exercises_join_sql, load_convention_select_expr, normalize_load_convention
 
 router = APIRouter(tags=["gyms"])
 
@@ -759,7 +760,11 @@ def list_gym_equipment(
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
-    sql = f"""
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            convention_expr = load_convention_select_expr(cursor)
+            cursor.execute(
+                f"""
         SELECT
             ge.id, ge.gym_id, g.name AS gym_name, ge.mapping_id,
             zm.name AS mapping_exercise_name,
@@ -774,10 +779,13 @@ def list_gym_equipment(
             ge.equipment_id, eq.name AS equipment_name, (eq.photo_path IS NOT NULL) AS has_photo,
             (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
             ge.is_active, ge.created_at, ge.updated_at,
+            {convention_expr} AS load_convention,
             {manufacturer_columns_sql()}
         FROM gym_equipment ge
         JOIN gyms g ON g.id = ge.gym_id
         JOIN exercise_catalog zm ON zm.id = ge.mapping_id
+        LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = ge.mapping_id
+        {equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, ge.mapping_id)")}
         LEFT JOIN muscle_groups pg ON pg.id = (
             SELECT emc_pri.muscle_group_id
             FROM exercise_muscle_contributions emc_pri
@@ -796,16 +804,20 @@ def list_gym_equipment(
         {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
         {where_sql}
         ORDER BY g.name, pg.name, eq.name
-    """
-
-    with _connect() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(sql, tuple(params))
+""",
+                tuple(params),
+            )
             rows = cursor.fetchall()
 
     # #188: fabricante do aparelho NESTA academia (uq (gym_id, equipment_id): o JOIN nao multiplica linhas)
     can_edit = manufacturer_editor(identity, permissions_for_request(request, identity))
-    return {"items": _rows_jsonable([with_manufacturer_fields(row, can_edit) for row in rows or []])}
+    items = []
+    for row in rows or []:
+        row = dict(row)
+        # NULL (sem cadastro do par) vale a convencao padrao do dono.
+        row["load_convention"] = normalize_load_convention(row.get("load_convention")).value
+        items.append(with_manufacturer_fields(row, can_edit))
+    return {"items": _rows_jsonable(items)}
 
 
 @router.post("/gym-equipment")

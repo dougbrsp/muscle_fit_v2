@@ -88,6 +88,7 @@ from .next_set_load_rules import load_published_ruleset
 from .observability import EVENT_SAFETY_CLAMP, EVENT_SAFETY_RPE_ABOVE_CEILING, log_event
 from .domain.session_status import SESSION_STATUS_DONE, is_closed_session, reevaluates_progression
 from .progression_state import correction_anchor, on_session_finish, reevaluate_after_correction
+from .domain.equipment_pair import is_pair_coherent
 from .access import require_permission
 from .access.deps import permissions_for_request
 from .access.service import has_permission
@@ -906,6 +907,30 @@ def _existing_after_unique_violation(exc: Exception, client_key: Optional[str], 
     return find()
 
 
+def _equipment_refused(code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=422, detail={"code": code, "message": message})
+
+
+def ensure_session_equipment(cur, session: dict[str, Any], mapping_id: Any, equipment_id: Any) -> None:
+    """Valida o `equipment_id` explícito (fronteira de confiança): a associação
+    existe, é da academia da sessão (sem academia na sessão, não compara: aceita e loga) e serve ao exercício
+    (`equipment_pair.is_pair_coherent`, o dono). Associação INATIVA é aceita
+    (ficha em andamento pode referenciar uma desativada depois) e vai a log."""
+    cur.execute("SELECT gym_id, is_active FROM gym_equipment WHERE id = %s", (int(equipment_id),))
+    row = cur.fetchone()
+    if not row:
+        raise _equipment_refused("equipment_not_found", "Equipamento não encontrado.")
+    if not session.get("gym_id"):
+        # Atividade legada/manual sem academia: nada contra o que comparar.
+        log_event("session_equipment_accepted_without_gym", gym_equipment_id=int(equipment_id), mapping_id=mapping_id)
+    elif int(row["gym_id"]) != int(session["gym_id"]):
+        raise _equipment_refused("equipment_not_in_session_gym", "Este equipamento não pertence à academia do treino.")
+    if not is_pair_coherent(cur, mapping_id, equipment_id):
+        raise _equipment_refused("equipment_pair_incoherent", "Este equipamento não serve a este exercício.")
+    if not row["is_active"]:
+        log_event("session_equipment_inactive_accepted", gym_equipment_id=int(equipment_id), mapping_id=mapping_id)
+
+
 @router.post("/workout-sessions/{session_id}/exercises")
 def add_session_exercise(
     session_id: int,
@@ -933,6 +958,8 @@ def add_session_exercise(
                 sequence = cur.fetchone()["seq"]
 
             mapping_id = resolve_mapping_id(payload.original_name, None, payload.mapping_id, cur=cur)
+            if payload.equipment_id:
+                ensure_session_equipment(cur, session, mapping_id, payload.equipment_id)
             equipment_id = resolve_equipment_id(
                 cur,
                 mapping_id,

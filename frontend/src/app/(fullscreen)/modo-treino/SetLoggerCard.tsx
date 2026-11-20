@@ -71,6 +71,7 @@ import { PhotoLightbox, usePhotoLightbox } from './PhotoLightbox';
 import {
   formatPreviousSessionRecordLines,
   formatPreviousSessionSets,
+  type PreviousSessionLabels,
   type PreviousSessionRecordSummary,
 } from '@/lib/workout-mode-previous-session';
 import { formatEquivalent } from '@/lib/technique-accounting';
@@ -325,6 +326,8 @@ type Props = {
   // histórico ainda carregando); lista vazia = "Ainda não há execução
   // comparável".
   previousSessionSets?: ReadonlyArray<PreviousSessionSet> | null;
+  // Rótulo e estado vazio do card por escopo (`previousSessionLabels`); ausente = textos de sempre.
+  previousSessionLabels?: PreviousSessionLabels;
   // Posição (1-based) da série que está sendo registrada agora, destacada na
   // lista acima. `null`/fora da lista = nada destacado.
   previousSessionHighlight?: number | null;
@@ -549,7 +552,9 @@ function PreviousSessionSummary({
   record,
   highlight,
   weightUnit,
+  labels,
 }: {
+  labels?: PreviousSessionLabels;
   sets: ReadonlyArray<PreviousSessionSet>;
   record?: PreviousSessionRecordSummary | null;
   highlight: number | null;
@@ -563,7 +568,7 @@ function PreviousSessionSummary({
   const current = entries.find((entry) => entry.position === highlight) ?? entries[0] ?? null;
   const summary = current ? current.text : recordLines[0];
   const expandable = entries.length > 1 || recordLines.length > 0;
-  const lead = <strong style={{ color: BRAND.textPrimary }}>Treino anterior:</strong>;
+  const lead = <strong style={{ color: BRAND.textPrimary }}>{labels?.lead ?? 'Treino anterior:'}</strong>;
 
   return (
     <section className={styles.tipRow} aria-label="Treino anterior" data-testid="previous-session">
@@ -573,7 +578,7 @@ function PreviousSessionSummary({
       <div className={styles.tipBody}>
         {empty ? (
           <p className={styles.clampText} data-testid="previous-session-empty">
-            {lead} Ainda não há execução comparável
+            {lead} {labels?.emptyText ?? 'Ainda não há execução comparável'}
           </p>
         ) : (
           <>
@@ -650,6 +655,7 @@ export function SetLoggerCard({
   defaultWeight,
   defaultRpe,
   previousSessionSets,
+  previousSessionLabels,
   previousSessionHighlight,
   previousSessionRecord,
   currentGroupFatigue,
@@ -1277,6 +1283,7 @@ export function SetLoggerCard({
         {previousSessionSets != null && (
           <PreviousSessionSummary
             sets={previousSessionSets}
+            labels={previousSessionLabels}
             record={previousSessionRecord}
             highlight={previousSessionHighlight ?? null}
             weightUnit={weightUnit}
@@ -1394,6 +1401,9 @@ export function SetLoggerCard({
         name={exerciseName}
         equipmentName={equipmentName}
         photoUrl={equipmentPhotoUrl}
+        // Antes da 1ª série: troca direta; com séries lançadas: abre o
+        // "Encerrar exercício", que oferece a troca pelas séries restantes.
+        onEquipmentClick={onSubstituteClick ?? onFinishExercise}
         onPhotoClick={() => {
           if (equipmentPhotoUrl) lightbox.open({ src: equipmentPhotoUrl, alt: equipmentName || exerciseName });
         }}
