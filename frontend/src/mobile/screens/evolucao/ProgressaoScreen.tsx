@@ -585,8 +585,10 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
         ) : (
           <p className={styles.body}>-</p>
         )}
-        {rpeExpectedCountsText(item.rpe_vs_expected_counts) ? (
-          <p className={styles.meta}>RPE vs esperado: {rpeExpectedCountsText(item.rpe_vs_expected_counts)}</p>
+        {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels) ? (
+          <p className={styles.meta}>
+            RPE vs esperado: {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels)}
+          </p>
         ) : null}
         {fatigueContextLabel(item.fatigue_context) ? (
           <p className={styles.meta}>{fatigueContextLabel(item.fatigue_context)}</p>

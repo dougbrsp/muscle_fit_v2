@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { formatLoggedSets, setFormFromRow, setUpdatePayload } from './exercise-set-edit';
-import { rpeExpectedCountsText, rpeExpectedReadonly, rpeExpectedSuffix } from './rpe-expected-vs-actual';
+import { rpeExpectedCountsText, rpeExpectedSuffix } from './rpe-expected-vs-actual';
 
 const below = { status: 'below', label: 'Abaixo do esperado', delta: -1 } as const;
 
@@ -20,15 +20,14 @@ describe('rpeExpectedSuffix', () => {
   });
 });
 
-describe('rpeExpectedReadonly', () => {
-  it('texto e nulo', () => {
-    expect(rpeExpectedReadonly({ rpe_target_planned: 9 })).toBe('RPE esperado: 9');
-    expect(rpeExpectedReadonly({})).toBeNull();
-  });
-});
-
 describe('rpeExpectedCountsText', () => {
-  it('contagens', () => {
+  it('com rótulos da API (minúsculas na frase)', () => {
+    const labels = { below: 'Abaixo do esperado', on_target: 'No esperado', above: 'Acima do esperado' };
+    expect(rpeExpectedCountsText({ below: 1, on_target: 2, above: 0, compared: 3 }, labels)).toBe(
+      '3 séries comparadas: 1 abaixo do esperado, 2 no esperado',
+    );
+  });
+  it('contagens (reserva sem rótulos)', () => {
     expect(rpeExpectedCountsText({ below: 0, on_target: 1, above: 1, compared: 2 })).toBe(
       '2 séries comparadas: 1 no esperado, 1 acima',
     );

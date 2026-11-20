@@ -1372,6 +1372,8 @@ def _build_progression_sessions(
                 "failure_allowed": session_failure_allowed,
                 # #182: contagem pronta do dono; null sem nenhuma serie comparada.
                 "rpe_vs_expected_counts": _rpe_counts_or_none(sets),
+                # Rotulos das categorias do contador, do dono (frontend nao escreve texto).
+                "rpe_vs_expected_labels": dict(effective_intensity.RPE_VS_LABELS),
             }
         )
 

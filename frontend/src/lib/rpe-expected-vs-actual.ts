@@ -26,22 +26,25 @@ export function rpeExpectedSuffix(set: {
   return ` (esperado ${fmt(set.rpe_target_planned)}${label ? ` · ${label}` : ''})`;
 }
 
-/** Texto somente leitura da edição: "RPE esperado: 9"; null sem esperado. */
-export function rpeExpectedReadonly(set: { rpe_target_planned?: number | string | null }): string | null {
-  return set.rpe_target_planned == null ? null : `RPE esperado: ${fmt(set.rpe_target_planned)}`;
-}
+/** Rótulos prontos da API (`rpe_vs_expected_labels`); ausentes em resposta antiga em cache. */
+export type RpeVsExpectedLabels = { below: string; on_target: string; above: string } | null;
 
-// Rótulos curtos de apresentação da contagem (a API manda só os números).
-const COUNT_LABELS: ReadonlyArray<readonly [keyof NonNullable<RpeVsExpectedCounts>, string]> = [
+// Reserva para resposta antiga sem `rpe_vs_expected_labels`.
+const COUNT_LABELS: ReadonlyArray<readonly [keyof NonNullable<RpeVsExpectedLabels>, string]> = [
   ['below', 'abaixo'],
   ['on_target', 'no esperado'],
   ['above', 'acima'],
 ];
 
 /** "2 séries comparadas: 1 no esperado, 1 acima"; null sem contagem ou sem série comparada. */
-export function rpeExpectedCountsText(counts: RpeVsExpectedCounts | undefined): string | null {
+export function rpeExpectedCountsText(
+  counts: RpeVsExpectedCounts | undefined,
+  labels?: RpeVsExpectedLabels,
+): string | null {
   if (!counts || !counts.compared) return null;
-  const parts = COUNT_LABELS.filter(([key]) => counts[key] > 0).map(([key, label]) => `${counts[key]} ${label}`);
+  const parts = COUNT_LABELS.filter(([key]) => counts[key] > 0).map(
+    ([key, fallback]) => `${counts[key]} ${labels?.[key]?.toLowerCase() ?? fallback}`,
+  );
   const noun = counts.compared === 1 ? 'série comparada' : 'séries comparadas';
   return `${counts.compared} ${noun}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }

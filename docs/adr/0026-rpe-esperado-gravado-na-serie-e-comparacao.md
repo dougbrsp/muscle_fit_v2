@@ -68,8 +68,8 @@ Restrições reais:
 
 ## Limites e pendências
 
-- (a) O relatório em Markdown não mostra a comparação. `api/app/intelligence/report/daily_breakdown.py` lê só agregados por SQL. Contar por série exigiria consulta nova de séries ou comparar em SQL, o que sai do dono.
-- (b) A tela web de progressão (`frontend/src/app/(app)/dashboard/progressao/DashboardProgressaoClient.tsx`) não mostra a contagem. Só a tela mobile (`ProgressaoScreen.tsx:588`) mostra.
+- (a) O relatório em Markdown não mostra a comparação. `api/app/intelligence/report/daily_breakdown.py` lê só agregados por SQL. Contar por série exigiria consulta nova de séries ou comparar em SQL, o que sai do dono. Resolvido pelo ADR 0030 (#241): o relatório lê as séries numa consulta da janela e a contagem sai de `effective_intensity.rpe_vs_expected_counts`.
+- (b) A tela web de progressão (`frontend/src/app/(app)/dashboard/progressao/DashboardProgressaoClient.tsx`) não mostra a contagem. Só a tela mobile (`ProgressaoScreen.tsx:588`) mostrava. Entregue pelo ADR 0030 (#241): a contagem também aparece na tela web (`DashboardProgressaoClient.tsx`, L407-412).
 - (c) O esperado não aparece na tela de EDIÇÃO da série, só na linha de resumo. `rpeExpectedReadonly` existe e não é usada por nenhuma tela.
 - (d) Em série com repetições pendentes ou medida que não é por repetições, o valor gravado é o alvo do exercício ou do protocolo, e não o degrau da rampa.
 - (e) Séries anteriores ao deploy, criadas pelo Registro ou importadas (inclusive do relógio) ficam sem esperado.

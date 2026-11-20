@@ -49,5 +49,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0027](0027-seletor-de-equipamento-no-modo-treino.md) | Seletor de equipamento no Modo Treino, validação do equipamento da sessão e convenção de carga nas opções (issue #163, primeira parte) | Aceita | 2026-11-20 |
 | [0028](0028-catalogo-global-no-seletor-de-equipamento.md) | Catálogo global no seletor de equipamento e acréscimo à academia com permissão (issue #163, segunda parte) | Aceita | 2026-11-20 |
 | [0029](0029-ciclo-de-carboidratos-com-compensacao-em-gordura.md) | Ciclo de carboidratos com compensação em gordura, política opcional sem migração (issue #242) | Aceita | 2026-11-20 |
+| [0030](0030-rpe-esperado-x-realizado-no-relatorio.md) | RPE esperado × realizado no relatório em Markdown, por sessão, com a contagem do dono (issue #241) | Aceita | 2026-11-20 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

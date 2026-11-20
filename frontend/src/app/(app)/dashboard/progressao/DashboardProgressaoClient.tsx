@@ -35,6 +35,7 @@ import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
+import { rpeExpectedCountsText } from '@/lib/rpe-expected-vs-actual';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
 import { buildProgressionChart, formPracticeSessionsNote, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
 import { fmtDate, fmtInt, fmtKg, fmtRpe } from '@/lib/dashboard-format';
@@ -403,6 +404,12 @@ export function DashboardProgressaoClient() {
                               -
                             </Text>
                           )}
+                          {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels) ? (
+                            <Text size="xs" c={BRAND.textMuted}>
+                              RPE vs esperado:{' '}
+                              {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels)}
+                            </Text>
+                          ) : null}
                         </Table.Td>
                         <Table.Td>{fmtInt(item.sets_count)}</Table.Td>
                         <Table.Td>
