@@ -55,6 +55,7 @@ from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
+from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle
 from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
@@ -232,7 +233,12 @@ def _invalid_plan(codes: tuple[str, ...]) -> HTTPException:
     )
 
 
-def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
+def _validate_payload(payload: NutritionPlanSettingsIn, stored_policy: Optional[CarbCyclePolicy] = None) -> PlanSettings:
+    """`stored_policy` = política do rascunho gravado (só na edição): campo OMITIDO herda, desde que o payload mantenha o
+    ciclo; `null` explícito volta ao padrão; valor explícito vale."""
+    politica: Any = payload.carb_cycle_policy
+    if "carb_cycle_policy" not in payload.model_fields_set and payload.cycle_days is not None and stored_policy is not None:
+        politica = stored_policy.value
     validacao = build_plan_settings(
         strategy=payload.strategy,
         advanced=payload.advanced,
@@ -253,6 +259,7 @@ def _validate_payload(payload: NutritionPlanSettingsIn) -> PlanSettings:
         manual_training_mode=payload.manual_training_mode,
         maintenance_kcal_adjust=payload.maintenance_kcal_adjust,
         energy_params=payload.energy_params,
+        cycle_policy=politica,
     )
     if not validacao.ok:
         raise _invalid_plan(validacao.errors)
@@ -276,7 +283,7 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.meals_per_day,
         settings.macro_priority.value,
         settings.manual_macros.to_dict() if settings.manual_macros else None,
-        settings.cycle_days,
+        join_stored_cycle(settings.cycle_days, settings.carb_cycle_policy),
         notes,
         ENGINE_VERSION,
         settings.maintenance_kcal_adjust,
@@ -294,6 +301,8 @@ def plan_public(row: dict[str, Any]) -> dict[str, Any]:
         "status": row.get("status"),
         "state": plan_state(row.get("status"), row.get("superseded_at")).value,
         **settings.to_dict(),
+        # #242: sempre presente na resposta pública (o `to_dict` do motor só a traz fora do padrão).
+        "carb_cycle_policy": settings.carb_cycle_policy.value,
         "notes": row.get("notes"),
         "engine_version": row.get("engine_version"),
         # Lote C: parâmetros do modelo de gasto (`None` = o padrão do dono, ativa pela ADR 0016) e a versão do algoritmo gravada
@@ -571,13 +580,13 @@ def create_plan(request: Request, payload: NutritionPlanIn, identity: Identity =
 def update_plan(
     request: Request, plan_id: int, payload: NutritionPlanSettingsIn, identity: Identity = Depends(require_permission("nutricao.plano", "editar"))
 ):
-    settings = _validate_payload(payload)
     with _connect() as conn:
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             linha = _fetch_plan(cur, plan_id)
             aluno = resolve_plan_owner(identity, permissions_for_request(request, identity), "editar", int(linha["user_id"]))
             _require_draft(linha)
+        settings = _validate_payload(payload, settings_from_row(linha).carb_cycle_policy)
         _, avisos = _plan_checks(conn, aluno, settings, _today_for(conn, aluno)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
             cur.execute(_UPDATE_DRAFT_SQL, (*_settings_write_values(settings, payload.notes), int(plan_id), DRAFT))

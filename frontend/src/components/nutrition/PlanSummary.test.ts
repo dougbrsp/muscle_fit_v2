@@ -97,4 +97,15 @@ describe('PlanSummary: modelo energético', () => {
     await montar(plano({}), { confidence_level: 'high', valid_days: 18, window_days: 21 });
     expect(host.textContent).not.toContain('Confiança do gasto');
   });
+  it('política do ciclo (#242): rótulo do espelho só com ciclo; sem o campo, nada novo', async () => {
+    const rotulos = motorConstants.nutrition.carb_cycle_policy_labels as Record<string, string>;
+    const fat = motorConstants.nutrition.carb_cycle_policies[1];
+    await montar(plano({ cycle_days: { '0': 'high' }, carb_cycle_policy: fat }));
+    expect(host.textContent).toContain(`Política do ciclo${rotulos[fat]}`);
+    await act(async () => {
+      root?.unmount();
+    });
+    await montar(plano({ cycle_days: { '0': 'high' } }));
+    expect(host.textContent).not.toContain('Política do ciclo');
+  });
 });

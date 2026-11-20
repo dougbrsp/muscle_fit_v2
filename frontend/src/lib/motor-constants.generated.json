@@ -916,6 +916,19 @@
       "5": "Sábado",
       "6": "Domingo"
     },
+    "carb_cycle_policies": [
+      "vary_kcal",
+      "fat_compensation"
+    ],
+    "carb_cycle_policy_labels": {
+      "vary_kcal": "Variar as calorias",
+      "fat_compensation": "Compensar com gordura"
+    },
+    "carb_cycle_policy_hints": {
+      "vary_kcal": "Os dias podem ter calorias diferentes e a gordura segue a configuração do plano.",
+      "fat_compensation": "Menos carboidrato deixa espaço para mais gordura, mantendo a energia já calculada para o dia. O percentual de gordura ou os macros manuais passam a definir a base, não a gordura final de cada dia."
+    },
+    "default_carb_cycle_policy": "vary_kcal",
     "day_kinds": [
       "high",
       "normal",

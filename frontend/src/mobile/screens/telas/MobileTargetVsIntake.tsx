@@ -1,5 +1,6 @@
 'use client';
 
+import { diaryCycleInfo, diaryCycleText } from '@/lib/nutrition-cycle-policy';
 import { Group, Progress, Stack, Text } from '@mantine/core';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { macroRows, ringParts } from '@/lib/nutrition-dashboard';
@@ -123,6 +124,11 @@ export function MobileTargetVsIntake({ day }: { day: NutritionDay }) {
           </>
         )}
       </ListGroup>
+      {diaryCycleInfo(meta) ? (
+        <Text size="xs" c="dimmed">
+          {diaryCycleText(diaryCycleInfo(meta)!)}
+        </Text>
+      ) : null}
       <NutritionLimitations items={day.target_notices} title="Meta do dia" tone="info" />
       <NutritionLimitations items={day.balance.limitations} title="Sobre o balanço" tone="info" />
       {meta ? <NutritionLimitations items={meta.limitations} title="Sobre a meta" tone="info" /> : null}

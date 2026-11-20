@@ -35,6 +35,7 @@ Módulo PURO: sem banco, sem FastAPI, sem I/O.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Final, Mapping, Optional, Sequence
@@ -45,6 +46,7 @@ from .macros import (
     KCAL_PER_G_CARB,
     KCAL_PER_G_FAT,
     KCAL_PER_G_PROTEIN,
+    LIMIT_KCAL_BELOW_PROTEIN_AND_FAT,
     MIN_CARB_G_PER_KG,
     MacroTargets,
     fiber_target_g,
@@ -62,6 +64,8 @@ MIN_LOW_CARB_G_PER_KG: Final[float] = MIN_CARB_G_PER_KG
 LIMIT_WEEK_NOT_SEVEN_DAYS = "week_must_have_seven_days"
 LIMIT_CARB_FLOOR_PREVENTS_CYCLE = "carb_floor_prevents_cycle"
 LIMIT_TARGET_NOT_COMPUTABLE = "target_not_computable"
+LIMIT_FAT_COMPENSATION_INFEASIBLE = "fat_compensation_infeasible"
+LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED = "fat_compensation_target_not_closed"
 ERR_INVALID_DAY_MAP = "invalid_day_map"
 ERR_INVALID_WEEKDAY = "invalid_weekday"  # `invalid_weekday:<chave>`
 ERR_DUPLICATE_WEEKDAY = "duplicate_weekday"  # `duplicate_weekday:<dia>`
@@ -74,6 +78,34 @@ class DayKind(str, Enum):
     NORMAL = "normal"
     LOW = "low"
 
+
+class CarbCyclePolicy(str, Enum):
+    """Política do ciclo (#242): `VARY_KCAL` = comportamento de sempre; `FAT_COMPENSATION` = o carbo varia e a gordura
+    compensa, preservando a energia e a proteína do alvo pré-ciclo de cada data."""
+
+    VARY_KCAL = "vary_kcal"
+    FAT_COMPENSATION = "fat_compensation"
+
+
+DEFAULT_CARB_CYCLE_POLICY: Final[CarbCyclePolicy] = CarbCyclePolicy.VARY_KCAL
+# Chave irmã dos dias em `carb_cycling_json` (sem coluna nova): só existe fora do padrão (o JSON legado fica byte a byte igual).
+STORED_POLICY_KEY: Final[str] = "policy"
+
+
+def join_stored_cycle(day_map: Optional[Mapping[str, str]], policy: CarbCyclePolicy) -> Optional[dict[str, str]]:
+    """Valor gravado em `carb_cycling_json`: o mapa de dias, mais `policy` só quando NÃO é a política padrão."""
+    if day_map is None:
+        return None
+    if policy == DEFAULT_CARB_CYCLE_POLICY:
+        return dict(day_map)
+    return {**day_map, STORED_POLICY_KEY: policy.value}
+
+
+def split_stored_cycle(stored: Any) -> tuple[Any, Any]:
+    """Inverso de `join_stored_cycle`: (mapa de dias, política gravada ou None). Sem a chave (legado) devolve o valor como está."""
+    if isinstance(stored, dict) and STORED_POLICY_KEY in stored:
+        return {k: v for k, v in stored.items() if k != STORED_POLICY_KEY}, stored[STORED_POLICY_KEY]
+    return stored, None
 
 NOMINAL_MULTIPLIERS: Final[Mapping[DayKind, float]] = {
     DayKind.HIGH: HIGH_CARB_MULTIPLIER,
@@ -354,8 +386,12 @@ def apply_cycle_over_base(
     kinds: Sequence[DayKind],
     weight_kg: Any = None,
     keep_fat_share: bool = False,
+    policy: CarbCyclePolicy = DEFAULT_CARB_CYCLE_POLICY,
 ) -> tuple[MacroTargets, tuple[str, ...]]:
     """Meta de UM dia do tipo `kind` quando o ciclo é aplicado dia a dia (a materialização).
+
+    `policy=FAT_COMPENSATION` (opcional, #242): mesmo delta de carbo, mas a energia e a proteína do `target` ficam e a
+    gordura compensa (`_day_with_fat_compensation`); `keep_fat_share` não vale nesse modo. Padrão = comportamento acima.
 
     `target` é a meta do dia sem ciclo (com o treino do dia, se o gasto é explícito) e `base`
     é a meta do mesmo dia SEM o treino (a base do plano, igual em todos os dias da semana
@@ -382,6 +418,9 @@ def apply_cycle_over_base(
         return target, (LIMIT_TARGET_NOT_COMPUTABLE,)
     mult = week_multipliers(tuple(kinds), base.carb_g, weight_kg)
     delta_carbo = float(base.carb_g) * (mult.by_kind[kind] - 1.0)  # type: ignore[arg-type]
+    if policy == CarbCyclePolicy.FAT_COMPENSATION:
+        dia, lim_comp = _day_with_fat_compensation(target, delta_carbo)
+        return dia, mult.limitations + lim_comp
     if keep_fat_share:
         dia, cortou = _day_with_fat_share(target, delta_carbo)
         lim = mult.limitations + ((LIMIT_CARB_FLOOR_PREVENTS_CYCLE,) if cortou and LIMIT_CARB_FLOOR_PREVENTS_CYCLE not in mult.limitations else ())
@@ -389,6 +428,32 @@ def apply_cycle_over_base(
     carbo = max(float(target.carb_g) + delta_carbo, 0.0)  # type: ignore[arg-type]
     kcal = kcal_from_macros(target.protein_g, carbo, target.fat_g)
     return replace(target, carb_g=carbo, kcal=kcal, fiber_g=fiber_target_g(kcal)), mult.limitations
+
+
+def _day_with_fat_compensation(target: MacroTargets, delta_carb_g: float) -> tuple[MacroTargets, tuple[str, ...]]:
+    """Meta do dia com o carbo deslocado por `delta_carb_g` e a gordura compensando a energia.
+
+    Energia de referência = Atwater do `target` (pré-ciclo); proteína fica; carbo = carbo do `target` + delta;
+    gordura = (energia − proteína × 4 − carbo × 4) ÷ 9; kcal final recalculada por Atwater. Sem arredondamento
+    (como os outros modos). Inviável (devolve o `target` sem ciclo + código, nunca recorta): macro nulo, alvo que não
+    fecha por Atwater, carbo ou gordura finais negativos."""
+    energia = kcal_from_macros(target.protein_g, target.carb_g, target.fat_g)
+    if (
+        not target.computable
+        or energia is None
+        or LIMIT_KCAL_BELOW_PROTEIN_AND_FAT in target.limitations
+        or not math.isclose(float(target.kcal), energia)  # type: ignore[arg-type]
+    ):
+        return target, (LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,)
+    if not delta_carb_g:
+        return target, ()
+    proteina = float(target.protein_g)  # type: ignore[arg-type]
+    carbo = float(target.carb_g) + delta_carb_g  # type: ignore[arg-type]
+    gordura = (energia - proteina * KCAL_PER_G_PROTEIN - carbo * KCAL_PER_G_CARB) / KCAL_PER_G_FAT
+    if carbo < 0 or gordura < 0:
+        return target, (LIMIT_FAT_COMPENSATION_INFEASIBLE,)
+    kcal = kcal_from_macros(proteina, carbo, gordura)
+    return replace(target, carb_g=carbo, fat_g=gordura, kcal=kcal, fiber_g=fiber_target_g(kcal)), ()
 
 
 def _day_with_fat_share(target: MacroTargets, delta_carb_g: float) -> tuple[MacroTargets, bool]:

@@ -44,7 +44,16 @@ from .anthropometrics import ActivityLevel, Subject, non_negative_number, normal
 from .body_composition import body_fat_is_valid, resolved_fat_mass_kg, resolved_ffm_kg, target_weight_for_body_fat
 from .bmr import DEFAULT_BMR_FORMULA, BmrFormula
 from ..cardio_envelope import slots_have_weekdays
-from .carb_cycling import CycleDays, DayKind, propose_day_kinds, validate_cycle_days
+from .carb_cycling import (
+    DEFAULT_CARB_CYCLE_POLICY,
+    LIMIT_FAT_COMPENSATION_INFEASIBLE,
+    LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,
+    CarbCyclePolicy,
+    CycleDays,
+    DayKind,
+    propose_day_kinds,
+    validate_cycle_days,
+)
 from .daily_target import PlanParams, compute_daily_target, manual_adds_training, rest_day_context
 from .macros import meals_per_day_is_valid
 from .energy_density import weekly_kg_for_daily_kcal
@@ -131,6 +140,7 @@ FIELD_MANUAL_TARGETS = "manual_targets"
 FIELD_MANUAL_TRAINING_MODE = "manual_training_mode"
 FIELD_MACRO_PRIORITY = "macro_priority"
 FIELD_ENERGY_PARAMS = "energy_params"
+FIELD_CARB_CYCLE_POLICY = "carb_cycle_policy"
 # Chaves das gramas manuais no payload e no JSON gravado.
 MANUAL_KEYS: Final[tuple[str, str, str]] = ("protein_g", "carb_g", "fat_g")
 
@@ -238,6 +248,7 @@ class PlanSettings:
     cycle_kinds: Optional[tuple[DayKind, ...]] = None
     maintenance_kcal_adjust: int = MAINT_KCAL_ADJUST_DEFAULT  # N7: kcal/dia da manutenção (0 = como sempre)
     energy_params: EnergyParams = EnergyParams()  # Lote C: só entra no to_dict/hash quando sai do padrão
+    carb_cycle_policy: CarbCyclePolicy = DEFAULT_CARB_CYCLE_POLICY  # #242: idem (só entra fora do padrão)
 
     @property
     def is_auto_intervals(self) -> bool:
@@ -305,6 +316,7 @@ class PlanSettings:
             manual_macros=self.manual_macros.as_tuple() if self.manual_macros else None,
             manual_training_mode=self.manual_macros.training_mode if self.manual_macros else DEFAULT_MANUAL_TRAINING_MODE,
             cycle_kinds=self.cycle_kinds,
+            carb_cycle_policy=self.carb_cycle_policy,
         )
 
     def fingerprint_dict(self) -> dict[str, Any]:
@@ -345,6 +357,7 @@ class PlanSettings:
             "cycle_days": self.cycle_days,
             "maintenance_kcal_adjust": self.maintenance_kcal_adjust,
             **({} if self.energy_params.is_default else {FIELD_ENERGY_PARAMS: self.energy_params.to_dict()}),
+            **({} if self.carb_cycle_policy == DEFAULT_CARB_CYCLE_POLICY else {FIELD_CARB_CYCLE_POLICY: self.carb_cycle_policy.value}),
         }
 
 
@@ -443,6 +456,7 @@ def build_plan_settings(
     manual_training_mode: Any = None,
     maintenance_kcal_adjust: Any = None,
     energy_params: Any = None,
+    cycle_policy: Any = None,
 ) -> PlanValidation:
     """Normaliza e valida o plano. Campo ausente (None) recebe o default da
     estratégia; valor fora da faixa da fonte vira `param_out_of_range:<campo>`.
@@ -554,6 +568,11 @@ def build_plan_settings(
         dias = validate_cycle_days(cycle_days)
         erros.extend(codigo for codigo in dias.errors if codigo not in erros)
         ciclo = dias.kinds if dias.cycles else None
+    politica_ciclo = _enum_or_error(
+        CarbCyclePolicy, cycle_policy, DEFAULT_CARB_CYCLE_POLICY, FIELD_CARB_CYCLE_POLICY, erros
+    )
+    if politica_ciclo != DEFAULT_CARB_CYCLE_POLICY and ciclo is None:
+        erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_CARB_CYCLE_POLICY))
 
     settings = PlanSettings(
         strategy=estrategia,
@@ -574,6 +593,7 @@ def build_plan_settings(
         cycle_kinds=ciclo,
         maintenance_kcal_adjust=ajuste_manutencao,
         energy_params=parametros_energia or EnergyParams(),
+        carb_cycle_policy=politica_ciclo,
     )
     for codigo in settings.strategy_params().out_of_range():
         if codigo not in erros:
@@ -875,6 +895,13 @@ def _project_plan_goal(
     return _projetar(params)
 
 
+# Limitações da compensação com gordura que, no plano, viram ERRO (a compensação não fecha: não salva).
+_FAT_COMPENSATION_ERRORS: Final[tuple[str, ...]] = (
+    LIMIT_FAT_COMPENSATION_INFEASIBLE,
+    LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,
+)
+
+
 def check_cycle_floors(
     settings: PlanSettings, subject: Subject, scale_bmr: Any = None, ffm_age_days: Optional[int] = None
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -886,11 +913,24 @@ def check_cycle_floors(
     params = settings.plan_params(ffm_age_days)
     erros: list[str] = []
     avisos: list[str] = []
+    compensa = settings.carb_cycle_policy == CarbCyclePolicy.FAT_COMPENSATION
     for tipo in dict.fromkeys(settings.cycle_kinds):
         indice = settings.cycle_kinds.index(tipo)
         meta = compute_daily_target(
             subject, params, rest_day_context(params.tdee_mode, _CYCLE_CHECK_MONDAY + timedelta(days=indice)), scale_bmr=scale_bmr
         )
+        if compensa:
+            inviavel = [c for c in _FAT_COMPENSATION_ERRORS if c in meta.limitations]
+            erros.extend(c for c in inviavel if c not in erros)
+            if not inviavel and meta.macros.computable:
+                # Macros finais do dia pelo mesmo validador das gramas manuais: bloqueio = erro, faixa = aviso.
+                checagem = check_manual_targets(
+                    meta.macros.protein_g, meta.macros.carb_g, meta.macros.fat_g,
+                    params.strategy_params, subject.weight_kg, resolved_ffm_kg(subject),
+                )
+                for campo in checagem.fields:
+                    destino = erros if campo.status == RangeStatus.BLOCKED else avisos
+                    destino.extend(c for c in campo.codes if c not in destino)
         kcal = meta.macros.kcal
         if kcal is None:
             continue
