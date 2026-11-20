@@ -132,6 +132,8 @@ class PlanParams:
     manual_macros: Optional[tuple[float, float, float]] = None
     manual_training_mode: manual_targets.ManualTrainingMode = manual_targets.DEFAULT_MANUAL_TRAINING_MODE
     cycle_kinds: Optional[tuple[carb_cycling.DayKind, ...]] = None
+    # #242: política do ciclo (só vale com `cycle_kinds`); fora do padrão é a compensação carbo ↔ gordura.
+    carb_cycle_policy: carb_cycling.CarbCyclePolicy = carb_cycling.DEFAULT_CARB_CYCLE_POLICY
 
     def to_dict(self) -> dict[str, Any]:
         dados: dict[str, Any] = {
@@ -152,6 +154,8 @@ class PlanParams:
                 dados["manual_training_mode"] = self.manual_training_mode.value
         if self.cycle_kinds is not None:
             dados["cycle_kinds"] = [k.value for k in self.cycle_kinds]
+            if self.carb_cycle_policy != carb_cycling.DEFAULT_CARB_CYCLE_POLICY:
+                dados["carb_cycle_policy"] = self.carb_cycle_policy.value
         return dados
 
 
@@ -251,6 +255,8 @@ class DailyTarget:
     # Só no plano adaptativo: retrato público da estimativa do dia (`DayEnergyEstimate.snapshot_dict`), gravado em
     # `inputs_json.energy`. Nos demais modos fica `None` e NÃO entra no `to_dict`.
     energy: Optional[dict[str, Any]] = None
+    # #242: política do ciclo aplicada no dia; só entra no `to_dict` quando NÃO é o padrão (saídas legadas intactas).
+    carb_cycle_policy: carb_cycling.CarbCyclePolicy = carb_cycling.DEFAULT_CARB_CYCLE_POLICY
 
     @property
     def computable(self) -> bool:
@@ -266,8 +272,13 @@ class DailyTarget:
 
     def to_dict(self) -> dict[str, Any]:
         energia = {"energy": self.energy} if self.energy is not None else {}
+        politica = (
+            {} if self.carb_cycle_policy == carb_cycling.DEFAULT_CARB_CYCLE_POLICY
+            else {"carb_cycle_policy": self.carb_cycle_policy.value}
+        )
         return {
             **energia,
+            **politica,
             "day": self.day.isoformat(),
             "engine_version": self.engine_version,
             "subject": self.subject.to_dict(),
@@ -465,6 +476,7 @@ def compute_daily_target(
         )
 
     tipo_dia = carb_cycling.DayKind.NORMAL
+    politica_aplicada = carb_cycling.DEFAULT_CARB_CYCLE_POLICY
     limitacoes_ciclo: tuple[str, ...] = ()
     if plan_params.cycle_kinds is not None:
         # Dias escolhidos (D5): o ciclo se aplica dia a dia sobre a BASE do plano (a meta do dia
@@ -476,7 +488,12 @@ def compute_daily_target(
         metas, limitacoes_ciclo = carb_cycling.apply_cycle_over_base(
             metas, base, tipo_dia, plan_params.cycle_kinds, subject.weight_kg,
             keep_fat_share=plan_params.manual_macros is None,
+            policy=plan_params.carb_cycle_policy,
         )
+        # Compensação inviável: o dia saiu SEM ciclo, então a política aplicada é a padrão (a limitação explica).
+        inviavel = {carb_cycling.LIMIT_FAT_COMPENSATION_INFEASIBLE, carb_cycling.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED}
+        if not inviavel.intersection(limitacoes_ciclo):
+            politica_aplicada = plan_params.carb_cycle_policy
     elif plan_params.carb_cycling_enabled:
         if day_context.week_training_days is None:
             limitacoes_ciclo = (LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE,)
@@ -498,6 +515,7 @@ def compute_daily_target(
         kcal_target=alvo,
         macros=metas,
         day_kind=tipo_dia,
+        carb_cycle_policy=politica_aplicada,
         phase_kind=fase,
         protein_per_meal_g=por_refeicao,
         extra_activity=extra,

@@ -48,6 +48,7 @@ from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.session_status import SESSION_STATUS_DONE
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.activity_energy import ActivityCorrection, activity_duration_seconds
+from .domain.nutrition.carb_cycling import DEFAULT_CARB_CYCLE_POLICY, split_stored_cycle
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -124,7 +125,8 @@ _TARGET_COLUMNS = (
 _TARGET_JSON_COLUMNS = (
     "JSON_EXTRACT(inputs_json, '$.extra_activity') AS extra_activity_json, "
     "JSON_EXTRACT(inputs_json, '$.tdee_basis') AS tdee_basis_json, "
-    "JSON_EXTRACT(inputs_json, '$.energy') AS energy_json"
+    "JSON_EXTRACT(inputs_json, '$.energy') AS energy_json, "
+    "JSON_EXTRACT(inputs_json, '$.carb_cycle_policy') AS carb_cycle_policy_json"
 )
 _TARGETS_SQL = (
     f"SELECT {_TARGET_COLUMNS}, {_TARGET_JSON_COLUMNS} FROM {TARGETS_TABLE} "
@@ -256,6 +258,7 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     if isinstance(manual, dict):  # o modo mora junto das gramas no JSON (sem coluna nova)
         manual = dict(manual)
         modo_manual = manual.pop("training_mode", None)
+    dias_ciclo, politica_ciclo = split_stored_cycle(_json_value(row.get("carb_cycling_json")))
     validacao = build_plan_settings(
         strategy=row.get("strategy"),
         advanced=bool(int(row.get("advanced") or 0)),
@@ -273,9 +276,10 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         macro_priority=row.get("macro_priority"),
         manual_targets=manual,
         manual_training_mode=modo_manual,
-        cycle_days=_json_value(row.get("carb_cycling_json")),
+        cycle_days=dias_ciclo,
         maintenance_kcal_adjust=int(row["maintenance_kcal_adjust"]) if row.get("maintenance_kcal_adjust") else None,
         energy_params=_json_value(row.get("energy_params_json")),
+        cycle_policy=politica_ciclo,
     )
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")
@@ -559,6 +563,7 @@ def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
         "local_date": comp.day.isoformat(),
         "plan_id": None,
         "day_kind": meta.day_kind.value,
+        "carb_cycle_policy": meta.carb_cycle_policy.value,
         "is_training_day": comp.context.is_training_day,
         "training_known": comp.context.training_known,
         "phase_kind": meta.phase_kind.value if meta.phase_kind else None,
@@ -594,6 +599,8 @@ def target_row_public(row: dict[str, Any], today: date) -> dict[str, Any]:
         "local_date": dia.isoformat() if dia else None,
         "plan_id": int(row["plan_id"]) if row.get("plan_id") is not None else None,
         "day_kind": row.get("day_kind"),
+        # Gravada pelo motor em `inputs_json` só fora do padrão: dia antigo/sem a chave = padrão.
+        "carb_cycle_policy": _json_value(row.get("carb_cycle_policy_json")) or DEFAULT_CARB_CYCLE_POLICY.value,
         "is_training_day": bool(int(row.get("is_training_day") or 0)),
         "training_known": bool(int(row.get("training_known") or 0)),
         "phase_kind": row.get("phase_kind"),

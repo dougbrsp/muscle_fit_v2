@@ -153,6 +153,7 @@ def _linha_meta(dia, basis='"auto_synced"'):
         "water_ml": 3000, "bmr_kcal": 1700, "bmr_formula": "x", "tdee_kcal": 2800, "training_kcal": 300,
         "training_kcal_nature": None, "limitations_json": "[]", "inputs_hash": "h", "engine_version": "v",
         "computed_at": datetime(2026, 11, 1), "extra_activity_json": None, "tdee_basis_json": basis, "energy_json": None,
+        "carb_cycle_policy_json": None,
     }
 
 

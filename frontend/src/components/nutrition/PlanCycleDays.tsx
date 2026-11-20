@@ -5,7 +5,8 @@ import { IconCalendarEvent } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import { NutritionLimitations } from './NutritionLimitations';
 import { fetchCycleDaysFromTemplate, nutritionErrorInfo } from '@/lib/nutrition-api';
-import { DAY_KIND_OPTIONS, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
+import { CARB_CYCLE_POLICY_OPTIONS, DAY_KIND_OPTIONS, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
+import { cyclePolicyHint } from '@/lib/nutrition-cycle-policy';
 import { applyTemplateProposal } from '@/lib/nutrition-plan-form';
 import { BRAND } from '@/theme';
 
@@ -17,6 +18,8 @@ type Props = {
   onEnabledChange: (enabled: boolean) => void;
   value: CycleDaysValue;
   onChange: (value: CycleDaysValue) => void;
+  policy: NutritionCode;
+  onPolicyChange: (policy: NutritionCode) => void;
   /** Dono do plano (admin/PT); sem valor, o próprio usuário. */
   userId?: number | null;
 };
@@ -31,7 +34,7 @@ export function flatCycleDays(normalCode: NutritionCode): CycleDaysValue {
  * baixo, ou puxa a proposta do Modelo de treino e ajusta. A média semanal e os multiplicadores
  * são do motor; aqui só se escolhe o tipo de cada dia.
  */
-export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, userId }: Props) {
+export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId }: Props) {
   const normal = DAY_KIND_OPTIONS.find((tipo) => tipo.value === 'normal')?.value ?? DAY_KIND_OPTIONS[0]?.value ?? '';
   const templateMutation = useMutation({
     mutationFn: () => fetchCycleDaysFromTemplate(userId ?? null),
@@ -76,6 +79,22 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, userI
               {erro.message}
             </Text>
           )}
+          <div>
+            <Text size="sm" fw={500} id="carb-cycle-policy-label">
+              Como compensar nos dias de ciclo
+            </Text>
+            <SegmentedControl
+              fullWidth
+              size="xs"
+              data={CARB_CYCLE_POLICY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              value={policy}
+              onChange={onPolicyChange}
+              aria-labelledby="carb-cycle-policy-label"
+            />
+            <Text size="xs" c={BRAND.textMuted} mt={4}>
+              {cyclePolicyHint(policy)}
+            </Text>
+          </div>
           {WEEKDAY_OPTIONS.map((dia) => (
             <div key={dia.value}>
               <Text size="xs" c="dimmed">

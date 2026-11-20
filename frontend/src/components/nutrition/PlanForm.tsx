@@ -22,6 +22,7 @@ import {
   MANUAL_TRAINING_MODE_HINTS,
   MANUAL_TRAINING_MODE_OPTIONS,
   DEFAULT_TDEE_MODE,
+  DEFAULT_CARB_CYCLE_POLICY,
   MACRO_PRIORITY_OPTIONS,
   NUTRITION_FORM_RANGES,
   PROTEIN_BASIS_OPTIONS,
@@ -35,6 +36,7 @@ import {
   type NutritionCode,
   type StrategyFormRanges,
 } from '@/lib/nutrition-constants';
+import { cyclePolicyPayload, initialCyclePolicy } from '@/lib/nutrition-cycle-policy';
 import { asField, inputNumberOrNull, percentToShare, shareToPercent } from '@/lib/nutrition-format';
 import {
   cycleDaysPayload,
@@ -86,6 +88,7 @@ type FormState = {
   manualFat: NumberField;
   cycleOn: boolean;
   cycleDays: CycleDaysValue;
+  cyclePolicy: NutritionCode;
   notes: string;
 };
 
@@ -130,6 +133,7 @@ function initialState(plan: NutritionPlan | null): FormState {
       manualFat: asField(plan.manual_targets?.fat_g),
       cycleOn: plan.cycle_days != null,
       cycleDays: { ...flatCycleDays(NORMAL_DAY_KIND), ...(plan.cycle_days ?? {}) },
+      cyclePolicy: initialCyclePolicy(plan.carb_cycle_policy),
       notes: plan.notes ?? '',
     };
   }
@@ -156,6 +160,7 @@ function initialState(plan: NutritionPlan | null): FormState {
     manualFat: '',
     cycleOn: false,
     cycleDays: flatCycleDays(NORMAL_DAY_KIND),
+    cyclePolicy: DEFAULT_CARB_CYCLE_POLICY,
     notes: '',
   };
 }
@@ -254,6 +259,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
       modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
     ),
     cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
+    carb_cycle_policy: cyclePolicyPayload(form.cycleOn, form.cyclePolicy),
     maintenance_kcal_adjust: ajusteManutencao,
     // Só o modo adaptativo envia `energy_params`: o payload dos planos legados não muda.
     ...(adaptativo ? { energy_params: { watch_calorie_mode: form.watchCalorieMode } } : {}),
@@ -528,7 +534,10 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
 
           <PlanCycleDays
             enabled={form.cycleOn}
-            onEnabledChange={(cycleOn) => update({ cycleOn })}
+            // Ao limpar o ciclo a política volta ao padrão (o motor recusa compensação sem ciclo).
+            onEnabledChange={(cycleOn) => update(cycleOn ? { cycleOn } : { cycleOn, cyclePolicy: DEFAULT_CARB_CYCLE_POLICY })}
+            policy={form.cyclePolicy}
+            onPolicyChange={(cyclePolicy) => update({ cyclePolicy })}
             value={form.cycleDays}
             onChange={(cycleDays) => update({ cycleDays })}
             userId={userId}

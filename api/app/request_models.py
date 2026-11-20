@@ -175,6 +175,9 @@ class NutritionPlanSettingsIn(_StrictIn):
     # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
     manual_training_mode: Optional[str] = Field(default=None, max_length=24)
     cycle_days: Optional[dict[str, Any]] = None
+    # #242: política do ciclo (`vary_kcal` | `fat_compensation`); o motor valida. Na criação ausente/null = padrão; na edição
+    # ausente herda a gravada, null volta ao padrão (`nutrition_plans._validate_payload`).
+    carb_cycle_policy: Optional[str] = Field(default=None, max_length=24)
     # N7: kcal/dia da manutencao (inteiro; faixa e regra do motor `strategy.MAINT_KCAL_ADJUST_RANGE`).
     maintenance_kcal_adjust: Optional[int] = None
     # Lote C: parâmetros do modelo de gasto (hoje `{"watch_calorie_mode": "active" | "gross" | "unknown"}`, padrão `active` pela ADR 0016), só no modo
