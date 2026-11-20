@@ -75,4 +75,8 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 
 ## Verificação
 
-Preenchida no fechamento da entrega.
+- Revisão independente em duas rodadas. Na primeira, o revisor de código achou que o FST-7 mantido pelo motor em dia sem trabalho direto chegaria à ficha marcado como técnica inválida; corrigido (item 4). Na revisão final (`967d7ce1`), o `code-reviewer` e o `guardiao-motores` aprovaram, sem achado bloqueante.
+- Suíte unitária inteira do backend, local, depois da última correção: 17.821 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
+- Verificação dirigida: guarda dos motores, testes de backend e de frontend do lote, `ruff` e `tsc`.
+- Lido em produção em 20/11/2026: no catálogo `advanced_techniques`, `fst7` é `requires_failure` e `gvt` é `failure_not_required`.
+- Não verificado: nenhuma tela foi vista em navegador nem em iPhone; o 422 da criação e o vínculo da geração não foram exercitados contra banco real (a integração roda no CI); o hash da auditoria não foi comparado com um `audit_hash` real; a coerência entre o motor e a ficha congelada para o GVT mantido foi provada pela mesma validação (`validate_technique`), sem teste que passe por `build_prescription`.
