@@ -7574,7 +7574,7 @@ Não medido:
 - o SQL novo contra o MySQL real (a integração roda no CI);
 - ordem de nomes com pontuação na collation real.
 
-**Lote 7 de 20/11/2026 (#183 e #184).** Sem migração. Nenhum dado gravado muda no deploy. Medido em produção em 20/11/2026, por leitura (só SELECT): `template_generation_logs` com 8 gerações, todas `succeeded`, nenhuma com `SCHEMA_INVALID` nem com "fora da escala" no relatório; nenhum item de Modelo (`workout_plan_template_slot_items`) com letras ou parêntese no texto de RPE; `workout_plan_exercises` com 761 linhas, 0 com `sets_count` nulo e 17 com `rpe_target` nulo.
+**Lote 7 de 20/11/2026 (#183 e #184).** Sem migração. Nenhum dado gravado muda no deploy. Medido em produção em 20/11/2026, por leitura (só SELECT): `template_generation_logs` com 8 gerações, todas `succeeded`, nenhuma com `SCHEMA_INVALID` nem com "fora da escala" no relatório; nenhum item de Modelo (`workout_plan_template_slot_items`) com letras ou parêntese no texto de RPE; `workout_plan_exercises` com 761 linhas, 0 com `sets_count` nulo e 17 com `rpe_target` nulo; `workout_plan_template_slot_items` com 2.131 itens, 1.890 com `rpe_target` preenchido, nenhum com número acima de 10, igual a 0 ou com decimal fora do passo de 0,5; `workout_plan_exercises` com 761 linhas e nenhuma com RPE acima de 10 ou com decimal fora do passo. Não há RPE fora da escala ou do passo gravado em Modelos nem em fichas.
 
 Efeito de cada mudança de semântica:
 
@@ -7586,6 +7586,5 @@ Efeito de cada mudança de semântica:
 
 Não medido:
 
-- se há valor NUMÉRICO de RPE fora da escala em itens de Modelo gravados (a medição foi pelo texto);
-- quantos clientes fazem PUT parcial da ficha;
+- quantos clientes fazem PUT parcial da ficha (o servidor não registra quais campos cada requisição enviou);
 - o SELECT com as colunas novas contra o MySQL real (a integração roda no CI).

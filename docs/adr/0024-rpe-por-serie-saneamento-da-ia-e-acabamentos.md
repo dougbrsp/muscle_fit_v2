@@ -19,7 +19,7 @@ As duas issues são continuação da #146 (ADR 0013). Três problemas reais apar
 
 Restrições: sem migração (o banco de produção não muda); a regra de RPE é do dono `training_history` (`docs/motores/FONTES_DA_VERDADE.md`, regra "Regras só nos motores"); a integração (MySQL real) roda só no CI.
 
-Medição de 20/11/2026, por leitura (só SELECT): `template_generation_logs` com 8 gerações, todas `succeeded`, nenhuma com `SCHEMA_INVALID` nem com "fora da escala" no relatório; nenhum item de Modelo (`workout_plan_template_slot_items`) com letras ou parêntese no texto de RPE; `workout_plan_exercises` com 761 linhas, 0 com `sets_count` nulo e 17 com `rpe_target` nulo. O volume de RPE numérico fora da escala em itens gravados não foi medido.
+Medição de 20/11/2026, por leitura (só SELECT): `template_generation_logs` com 8 gerações, todas `succeeded`, nenhuma com `SCHEMA_INVALID` nem com "fora da escala" no relatório; nenhum item de Modelo (`workout_plan_template_slot_items`) com letras ou parêntese no texto de RPE; `workout_plan_exercises` com 761 linhas, 0 com `sets_count` nulo e 17 com `rpe_target` nulo. Também por leitura: `workout_plan_template_slot_items` com 2.131 itens, 1.890 com `rpe_target` preenchido, nenhum com número acima de 10, igual a 0 ou com decimal fora do passo de 0,5; `workout_plan_exercises` com 761 linhas e nenhuma com RPE acima de 10 ou com decimal fora do passo. Ou seja, não há RPE fora da escala ou do passo gravado em Modelos nem em fichas.
 
 ## Alternativas consideradas
 
@@ -99,4 +99,5 @@ Resultado por item das issues:
 - Suíte unitária inteira do backend, local: 17.862 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Frontend: 301 testes Vitest dos diretórios tocados passaram; `tsc --noEmit` sem erro.
 - Revisão independente em duas rodadas: a primeira achou que o campo de RPE por série podia enviar valor fora da escala e que a ficha não mostraria o motivo da recusa do servidor; o campo foi corrigido.
+- Verificação dirigida: guarda dos motores, testes de backend e de frontend do lote, `ruff` e `tsc`.
 - Não verificado: nenhuma tela foi vista em navegador nem em iPhone (em especial a largura da coluna de RPE na tabela da ficha com vários campos por série); o SELECT com as colunas novas contra o MySQL real (integração no CI); a periodização por IA com resposta real do modelo.
