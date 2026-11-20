@@ -74,6 +74,33 @@ describe('IntensiveBriefing', () => {
     expect(html).toContain('Iniciar FST-7');
   });
 
+  it('GVT com reps_target "10" da linha: briefing e 1ª série mostram a meta 10 (#224)', () => {
+    const briefing = render(
+      createElement(IntensiveBriefing, {
+        profile: profile(),
+        exerciseName: 'Supino',
+        equipmentName: null,
+        plannedKg: 40,
+        weightUnit: 'kg',
+        repsTarget: '10',
+        onStart: noop,
+      }),
+    );
+    expect(briefing).toContain('>10<');
+    const entry = render(
+      createElement(IntensiveSetEntry, {
+        profile: profile(),
+        setIndex: 1,
+        totalSets: 10,
+        plannedKg: 40,
+        weightUnit: 'kg',
+        repsTarget: '10',
+        onComplete: noop,
+      }),
+    );
+    expect(entry.replace(/<!-- -->/g, '')).toContain('meta 10');
+  });
+
   it('sem `target_rpe` no snapshot: não inventa número', () => {
     const html = render(
       createElement(IntensiveBriefing, {

@@ -70,6 +70,7 @@ from .technique_accounting import (
     TechniqueCoefficients,
     is_sets_only_technique,
     planned_equivalent,
+    protocol_reps,
 )
 from .training_goal import DEFAULT_GOAL, TrainingGoal, goal_value, read_goal
 from .session_loads import (
@@ -2658,6 +2659,7 @@ def technique_parameters(
             "source": source,
             "sets_only": True,
             "default_sets_count": coefficients.default_sets_count if coefficients else None,
+            "target_reps": protocol_reps(code),
             "applications": None,
             "pause_seconds": None,
             "planned_equivalent": 0.0,
@@ -2845,6 +2847,41 @@ def prescribe(
     base_safety = {"max_safe_rpe": safety.max_safe_rpe, "source": safety.safety_source}
 
     if readiness.status == NO_DIRECT_WORK:
+        # Decisao de 19/11/2026 (#224): tecnica que so define o numero de series
+        # (GVT/FST-7) MANTEM serie, parametros e reps do protocolo; o RPE do
+        # protocolo fica limitado pelo teto do dia. A decisao segue SKIP.
+        # Valida com a falha composta do dia, como a ficha: GVT segue mantido; FST-7
+        # (exige falha, negada sem trabalho direto) cai, nunca chega marcado invalido.
+        kept, _ = resolve_technique_authority(
+            model_technique=model_technique,
+            safety=safety,
+            composed_failure_allowed=composition.failure_allowed,
+        )
+        entry = catalog.get(kept) if kept else None
+        coefs = {kept: entry.coefficients()} if entry is not None else None
+        kept_sets_only = bool(kept) and is_sets_only_technique(kept, coefs)
+        skip_fields: dict[str, Any] = {}
+        if kept_sets_only:
+            skip_params = technique_parameters(
+                kept,
+                source=TECHNIQUE_SOURCE_MODEL,
+                catalog=catalog,
+                applications=model_technique_applications,
+                pause_seconds=model_technique_duration_seconds,
+                pair_max_safe_rpe=safety.max_safe_rpe,
+            )
+            if composition.ceiling is not None:
+                skip_params["target_rpe"] = min(skip_params["target_rpe"], int(composition.ceiling))
+            kept_sets = int(track.sets_count)
+            if not model_fixed_sets:
+                kept_sets = min(kept_sets, ladder.max_sets_count)
+            skip_fields = {
+                "suggested_sets": kept_sets,
+                "advanced_technique": kept,
+                "advanced_technique_parameters": skip_params,
+            }
+            if skip_params.get("target_reps"):
+                skip_fields["suggested_reps_min"] = skip_fields["suggested_reps_max"] = skip_params["target_reps"]
         return ProgressionDecision(
             group_state_id=group.id,
             muscle_group_id=group.muscle_group_id,
@@ -2861,6 +2898,7 @@ def prescribe(
             blocked_by=(BLOCKED_NO_DIRECT_WORK,),
             evidence=evidence_out,
             reason="Grupo sem trabalho direto pela recuperacao: nenhuma prescricao.",
+            **skip_fields,
         )
 
     sets_count = int(track.sets_count)
@@ -3047,6 +3085,11 @@ def prescribe(
         load_step_kg=track.load_increment_kg,
         pair_max_safe_rpe=safety.max_safe_rpe,
     )
+
+    # #224: o protocolo da tecnica (GVT = 10 reps) manda sobre a faixa do grupo.
+    protocol = (technique_params or {}).get("target_reps")
+    if protocol:
+        reps_min = reps_max = protocol
 
     return ProgressionDecision(
         group_state_id=group.id,

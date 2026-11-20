@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
 from .recovery_signal_summary import RECOVERY_SIGNALS_KEY
-from .set_measures import normalize_measure
+from .set_measures import is_rep_based, normalize_measure
 from .training_goal import goal_value
 from .training_history import parse_rpe_ramp
 from .training_safety import (
@@ -266,6 +266,10 @@ def build_prescription(
             warnings_out.append(WARNING_MODEL_TECHNIQUE_INVALID)
             requires_user_choice = True
 
+    technique_params = _technique_parameters(decision, technique, exercise, safety_constraints.get("max_safe_rpe"))
+    # #224: reps do protocolo da tecnica (GVT = 10) valem tambem na ficha manual.
+    # So em linha medida por repeticoes (mesmo predicado do Modo B).
+    protocol_reps_value = (technique_params or {}).get("target_reps") if is_rep_based(exercise.get("measure")) else None
     snapshot = {
         "schema_version": SCHEMA_VERSION,
         "engine_version": engine_version,
@@ -285,7 +289,7 @@ def build_prescription(
         # linha da ficha pela leitura do dono (`training_goal.goal_value`;
         # ausente = default). Snapshot antigo sem a chave = hipertrofia.
         "training_goal": goal_value(exercise.get("training_goal")),
-        "reps_target": exercise.get("reps_target"),
+        "reps_target": str(protocol_reps_value) if protocol_reps_value else exercise.get("reps_target"),
         "load_target": exercise.get("load_target"),
         "rpe_target": exercise.get("rpe_target"),
         "effective_rpe_target": effective_target,
@@ -303,9 +307,7 @@ def build_prescription(
         # equivalente planejado). Sem decisao do motor para a tecnica da linha
         # (ficha manual, refresh), saem da propria linha pelo mesmo dono
         # (`progression_engine.technique_parameters`). None so sem tecnica.
-        "advanced_technique_parameters": _technique_parameters(
-            decision, technique, exercise, safety_constraints.get("max_safe_rpe")
-        ),
+        "advanced_technique_parameters": technique_params,
         "requires_user_choice": requires_user_choice,
         "safety_constraints": safety_constraints,
         "clamps": clamps,
@@ -317,7 +319,7 @@ def build_prescription(
         "progression": exercise.get("progression"),
         "progression_note": exercise.get("progression_note"),
         "suggested_load_kg": _float(exercise.get("suggested_load_kg")),
-        "suggested_reps": exercise.get("suggested_reps"),
+        "suggested_reps": protocol_reps_value or exercise.get("suggested_reps"),
         "reason": (decision or {}).get("reason") or exercise.get("progression_note") or "",
     }
     from .progression_engine import EVIDENCE_STRENGTH_E1RM_LOAD

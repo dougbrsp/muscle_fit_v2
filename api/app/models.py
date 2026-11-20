@@ -247,6 +247,9 @@ class WorkoutPlanExerciseIn(BaseModel):
     # edicao (`workout_plan_edit_rules`); ausente = linha nova. O UPDATE
     # continua casando por `sequence`.
     workout_plan_exercise_id: Optional[int] = None
+    # `mapping_id` com que a linha GERADA saiu da geracao (carimbo da tela). So
+    # alimenta a trava de grupamento na criacao (#178); nao e persistido.
+    generated_mapping_id: Optional[int] = Field(default=None, ge=1)
     amazfit_name: Optional[str] = None
     # Vínculo resolvido com o catálogo canônico (exercise_zepp_mappings.id) e
     # com o equipamento da academia (gym_equipment.id). Quando ausentes, são

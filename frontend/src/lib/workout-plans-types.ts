@@ -489,6 +489,9 @@ export type WorkoutPlanExerciseInput = {
   time_window_seconds?: number | null;
   // M97 F3: objetivo da linha, ecoado como veio (`undefined` some do JSON).
   training_goal?: string | null;
+  // #178: exercício de GERAÇÃO da linha carimbada; o servidor trava o grupo
+  // muscular contra ele. Ausente em linha manual e em ficha já salva.
+  generated_mapping_id?: number | null;
 };
 
 export type WorkoutPlanListItem = {

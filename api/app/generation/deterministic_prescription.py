@@ -111,6 +111,9 @@ class PairPrescription:
     @property
     def reps_target(self) -> Optional[str]:
         low, high = self.decision.suggested_reps_min, self.decision.suggested_reps_max
+        protocol = (self.decision.advanced_technique_parameters or {}).get("target_reps")
+        if protocol:  # protocolo da tecnica (GVT = 10): alvo unico, nao faixa
+            return str(protocol)
         if low is None or high is None:
             return None
         return f"{low}-{high}"

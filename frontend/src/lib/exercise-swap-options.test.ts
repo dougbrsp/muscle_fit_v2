@@ -110,9 +110,11 @@ describe('elegibilidade do rascunho gerado', () => {
     expect(labels(rowSwapEligibility(saved, indexSwapOptions(response), state()))).toEqual(['Supino reto', 'Supino inclinado']);
   });
 
-  it('a chave local não vai no payload de save', () => {
+  it('o carimbo vai no payload de save (#178); linha sem carimbo não o leva', () => {
     const [row] = rows();
-    expect(JSON.stringify(toWorkoutPlanExerciseInput(row, 1))).not.toContain('generated_mapping_id');
+    expect(toWorkoutPlanExerciseInput(row, 1).generated_mapping_id).toBe(row.generated_mapping_id);
+    const { generated_mapping_id: _omit, ...manual } = row;
+    expect(JSON.stringify(toWorkoutPlanExerciseInput(manual, 1))).not.toContain('generated_mapping_id');
   });
 
   it('ids únicos, ordenados e sem estado quando não há linha mapeada', () => {
