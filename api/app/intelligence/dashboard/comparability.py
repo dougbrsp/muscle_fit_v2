@@ -1355,6 +1355,70 @@ def performance_trend(status: Any) -> Optional[str]:
         return None
 
 
+@dataclass(frozen=True)
+class WindowTrend:
+    """Tendencia da JANELA do exercicio (issue #176): segunda leitura, ao lado
+    de `classify_exercise_progression` (ultima vs. anterior), que ela nao
+    substitui. `status` e do mesmo enum do veredito (rotulos ja existentes)."""
+
+    status: ExerciseProgressionStatus
+    reasons: list[str]
+    change_pct: Optional[float] = None  # fracao: 0.05 = +5%
+    initial_mean: Optional[float] = None
+    final_mean: Optional[float] = None
+    exposures_used: int = 0
+
+
+def window_trend(
+    exposures: Sequence[ExposureSummary],
+    *,
+    thresholds: Mapping[str, Any] = THRESHOLDS,
+) -> WindowTrend:
+    """Media do e1RM da metade inicial vs. da metade final das exposicoes da
+    janela com a MESMA chave de comparabilidade da ultima (`keys_match`) e e1RM
+    confiavel (<= `e1rm_max_reliable_reps` reps, como `e1rm_is_decisive`).
+    `exposures` em ordem cronologica; com N impar a do meio fica de fora.
+    PROGRESSING/REGRESSING a partir de `e1rm_progress_pct`; abaixo de
+    `window_trend_min_exposures` ou em calibracao de maquina: INSUFFICIENT_DATA."""
+    minimo = int(thresholds["window_trend_min_exposures"])
+    max_reps = int(thresholds["e1rm_max_reliable_reps"])
+    last = exposures[-1] if exposures else None
+    valid = (
+        []
+        if last is None or in_equipment_calibration(exposures)
+        else [
+            item.e1rm
+            for item in exposures
+            if keys_match(item.key, last.key)
+            and not item.has_non_rep_sets
+            and item.e1rm is not None
+            and item.e1rm_reps is not None
+            and item.e1rm_reps <= max_reps
+        ]
+    )
+    if len(valid) < minimo or len(valid) < 2:
+        reason = (
+            REASON_EQUIPMENT_CALIBRATING
+            if last is not None and in_equipment_calibration(exposures)
+            else REASON_NOT_ENOUGH_EXPOSURES
+        )
+        return WindowTrend(ExerciseProgressionStatus.INSUFFICIENT_DATA, [reason], exposures_used=len(valid))
+    half = len(valid) // 2
+    initial = sum(valid[:half]) / half
+    final = sum(valid[-half:]) / half
+    if initial <= 0:
+        return WindowTrend(ExerciseProgressionStatus.INSUFFICIENT_DATA, [REASON_NO_E1RM_WITHOUT_RPE], exposures_used=len(valid))
+    change = (final - initial) / initial
+    limit = float(thresholds["e1rm_progress_pct"])
+    if change >= limit:
+        status, reason = ExerciseProgressionStatus.PROGRESSING, REASON_E1RM_UP
+    elif change <= -limit:
+        status, reason = ExerciseProgressionStatus.REGRESSING, REASON_E1RM_DOWN
+    else:
+        status, reason = ExerciseProgressionStatus.STABLE, REASON_NO_CHANGE
+    return WindowTrend(status, [reason], change, initial, final, len(valid))
+
+
 def progression_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     """Contagem por status dos itens de `get_exercises_progression_batch`
     (`item["status"]`). Fonte unica das contagens da home e de
@@ -1597,6 +1661,8 @@ __all__ = [
     "in_equipment_calibration",
     "VERDICT_LOOKBACK_EXPOSURES",
     "performance_trend",
+    "WindowTrend",
+    "window_trend",
     "COMPARABLE_PROGRESSION_STATUSES",
     "GROUP_E1RM_OUTLIER_REASON",
     "PROGRESS_OK_STATUSES",

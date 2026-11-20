@@ -49,6 +49,8 @@ METRIC_VERSIONS: Final[Mapping[str, str]] = MappingProxyType(
         # simetrico com teto de 12 reps nos dois lados e faixa prescrita
         # avaliada por serie.
         "exercise_progression_status": "progression-status-v2",
+        # #176: segunda leitura do exercicio (media do e1RM, metade inicial x final).
+        "exercise_window_trend": "exercise-window-trend-v1",
         "tonnage": "tonnage-v1",
         # v2 (2026-10-02): o denominador mudou - sessoes esperadas saem de um
         # ciclo de UM DIA POR SLOT (`template_cycle_length_days`), nao mais de
@@ -363,6 +365,9 @@ THRESHOLDS: Final[Mapping[str, float | int]] = MappingProxyType(
         "same_load_tolerance_pct": 0.02,
         # PROGRESSING/REGRESSING por e1RM: variacao >= 3% (reps <= 12)
         "e1rm_progress_pct": 0.03,
+        # Tendencia da janela do exercicio (#176): minimo de exposicoes
+        # comparaveis com e1RM para comparar a media da metade inicial com a final.
+        "window_trend_min_exposures": 4,
         # Teto de confiabilidade do Epley: o e1RM so decide sozinho (para
         # progresso E para regressao) quando a serie que o gerou tem ate
         # 12 reps nas DUAS exposicoes; acima disso valem as reps por serie.

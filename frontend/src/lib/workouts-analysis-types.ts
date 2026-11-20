@@ -1,3 +1,5 @@
+import type { ProgressionScope } from './progression-scope';
+
 // Tipos para a tela "Treinos" — análise de evolução de treinos via IA.
 //
 // Contrato confirmado em `C:\muscle_fit\api\app\workouts_analysis.py`
@@ -239,6 +241,8 @@ export type ExerciseProgressionContextItem = {
   exercise_name: string | null;
   status: string;
   status_label: string | null;
+  /** O que o selo compara (pronto do backend); ausente em snapshots antigos. */
+  status_scope?: ProgressionScope | null;
   status_reasons: string[];
   comparable_exposures: number;
   exposures_in_window: number;

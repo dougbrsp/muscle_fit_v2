@@ -35,12 +35,13 @@ def _janela():
     return WindowInfo(kind=WindowKind.ROLLING_28D, date_from=date(2026, 9, 5), date_to=HOJE, timezone="UTC", days=28)
 
 
-def test_quatro_descritores_do_dono():
+def test_cinco_descritores_do_dono():
     assert {c: dono.progression_scope(c)["label"] for c in dono.PROGRESSION_SCOPES} == {
         dono.SCOPE_EXERCISE_LAST_VS_PREVIOUS: "Última exposição vs. anterior",
         dono.SCOPE_GROUP_WEIGHTED_EXERCISES: "Grupo: soma ponderada dos exercícios",
         dono.SCOPE_GROUP_VOLUME_WINDOWS: "Volume: janela atual vs. anterior",
         dono.SCOPE_E1RM_WINDOWS: "e1RM: janela atual vs. anterior",
+        dono.SCOPE_EXERCISE_WINDOW_TREND: "Tendência da janela",
     }
     for codigo, d in dono.PROGRESSION_SCOPES.items():
         assert set(d) == CHAVES and d["code"] == codigo and d["description"]
