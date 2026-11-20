@@ -6,7 +6,10 @@ import { MIN_SETS_COUNT } from '@/lib/prescription-defaults';
 import {
   commitRpeDraft,
   fitRpeTargets,
+  isValidRpeTarget,
   RPE_TARGET_SCALE,
+  sanitizeRpeDraft,
+  stepDecimalScale,
   type RpeDraftValue,
 } from '@/lib/workout-plan-template-form';
 
@@ -21,9 +24,11 @@ type RpePerSetFieldProps = {
   // Alvo gravado só em texto (sem lista, não editado): mostrado literal até o
   // usuário pedir para definir por série (`storedRpeTextOnly`).
   storedText?: string | null;
+  // Dica do objetivo (`itemFieldPlaceholders(...).rpe`), exibida como descrição.
+  hint?: string | null;
 };
 
-export function RpePerSetField({ targets, setsCount, onCommit, storedText = null }: RpePerSetFieldProps) {
+export function RpePerSetField({ targets, setsCount, onCommit, storedText = null, hint = null }: RpePerSetFieldProps) {
   const [opened, setOpened] = useState(false);
   const shown = fitRpeTargets(targets, setsCount);
   // Sem lista, mostra os campos em branco (quantidade = séries do item).
@@ -36,7 +41,7 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
   }, [shownKey]);
 
   const commit = (next: RpeDraftValue[]) => {
-    const list = commitRpeDraft(next);
+    const list = commitRpeDraft(sanitizeRpeDraft(next, shown));
     setDraft(Array.from({ length: count }, (_, i) => list[i] ?? ''));
     if (list.join(',') !== shown.join(',')) onCommit(list);
   };
@@ -60,7 +65,7 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
     <Input.Wrapper
       size="xs"
       label="RPE esperado por série"
-      description={storedText ? `Ao preencher, o alvo gravado (${storedText}) será substituído.` : undefined}
+      description={storedText ? `Ao preencher, o alvo gravado (${storedText}) será substituído.` : (hint ?? undefined)}
     >
       <Group gap={4} wrap="wrap" align="flex-end">
         {draft.map((value, index) => (
@@ -74,9 +79,13 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
             min={RPE_TARGET_SCALE.min}
             max={RPE_TARGET_SCALE.max}
             step={RPE_TARGET_SCALE.step}
-            decimalScale={1}
+            decimalScale={stepDecimalScale(RPE_TARGET_SCALE.step)}
             hideControls
-            onChange={(v) => setDraft((d) => d.map((x, i) => (i === index ? v : x)))}
+            // Fora do passo (ex.: 8,3) a digitação é recusada: fica o valor anterior.
+            onChange={(v) => {
+              if (!isValidRpeTarget(v)) return;
+              setDraft((d) => d.map((x, i) => (i === index ? v : x)));
+            }}
             onBlur={() => commit(draft)}
           />
         ))}

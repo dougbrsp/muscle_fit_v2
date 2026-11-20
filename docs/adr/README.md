@@ -43,5 +43,6 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0021](0021-continuacao-por-troca-de-equipamento-cria-exercicio-proprio.md) | Continuação por troca de equipamento cria exercício próprio (issues #225 e #204) | Aceita | 2026-11-19 |
 | [0022](0022-gvt-reps-do-protocolo-e-grupo-travado-na-criacao-da-ficha.md) | GVT com as reps do protocolo, técnica só de séries mantida sem trabalho direto, trava de grupo na criação da ficha e vínculo da geração (issues #224 e #178) | Aceita | 2026-11-19 |
 | [0023](0023-pendencias-de-nutricao-208-202-200.md) | Pendências de nutrição: busca por marca e listagem por letra, voltar do cabeçalho mobile, guarda do modo de caloria e mensagem do 422 na tela web (issues #208, #202, #200 e #229) | Aceita | 2026-11-20 |
+| [0024](0024-rpe-por-serie-saneamento-da-ia-e-acabamentos.md) | RPE por série com saneamento da saída da IA e acabamentos da ficha e do Modelo (issues #183 e #184) | Aceita | 2026-11-20 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

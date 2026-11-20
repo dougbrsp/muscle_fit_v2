@@ -11,7 +11,7 @@ from typing import Any
 from . import exercise_card_storage
 from .db import transaction
 from .domain import effective_intensity, equipment_pair
-from .domain.training_history import expand_rpe_targets
+from .domain.training_history import compose_rpe_target, expand_rpe_targets
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain import prescription as prescription_domain
 from .domain import progression_engine, technique_accounting
@@ -70,7 +70,11 @@ from .exercise_set_update_merge import (
     measure_codes_for_merged_set,
     merge_sets_for_update,
 )
-from .workout_plan_exercise_merge import ADVANCED_EXERCISE_FIELDS, merge_unsent_advanced_fields
+from .workout_plan_exercise_merge import (
+    ADVANCED_EXERCISE_FIELDS,
+    PRESCRIPTION_EXERCISE_FIELDS,
+    merge_unsent_advanced_fields,
+)
 from .workout_plan_edit_rules import is_plan_editable
 
 logger = logging.getLogger(__name__)
@@ -3209,6 +3213,20 @@ def _saved_row_of(ex: dict[str, Any], existing_by_id: dict[int, dict[str, Any]])
         return None
 
 
+def _compose_rpe_for_saved_sets(steps: list[float], sets_count: Any) -> str | None:
+    """`rpe_targets_by_set` sem `sets_count` no corpo: vale contra o gravado (422 se maior)."""
+    from . import workout_plan_edit_rules as edit_rules
+
+    total = int(sets_count) if sets_count is not None else None
+    if total is not None and len(steps) > total:
+        raise edit_rules.PlanEditError(
+            422,
+            "rpe_targets_by_set_exceeds_sets",
+            f"rpe_targets_by_set tem {len(steps)} alvos para {total} séries de trabalho.",
+        )
+    return compose_rpe_target(steps, collapse_tail=total is not None and total >= 1)
+
+
 def _protocol_reps_text(technique: Any) -> str | None:
     reps = technique_accounting.protocol_reps(technique)
     return str(reps) if reps else None
@@ -3379,7 +3397,7 @@ def _replace_plan_exercises(
     # id antigo pode não corresponder mais ao novo nome digitado.
     cur.execute(
         "SELECT id, sequence, exercise_name, mapping_id, preferred_equipment_id, muscle_primary, "
-        f"{', '.join(ADVANCED_EXERCISE_FIELDS)} "
+        f"{', '.join(ADVANCED_EXERCISE_FIELDS + PRESCRIPTION_EXERCISE_FIELDS)} "
         "FROM workout_plan_exercises WHERE plan_id = %s",
         (plan_id,),
     )
@@ -3406,6 +3424,14 @@ def _replace_plan_exercises(
         # explícito continua limpando. Casamento por sequence, mesma
         # limitação descrita na docstring.
         ex = merge_unsent_advanced_fields(ex, existing_row)
+        saved_row = _saved_row_of(ex, existing_by_id)
+        if saved_row is not None:
+            # #184: linha salva desta ficha (id): prescricao nao enviada preserva o gravado;
+            # a lista de RPE por serie vale contra o `sets_count` efetivo.
+            sets_unsent = "sets_count" not in ex
+            ex = merge_unsent_advanced_fields(ex, saved_row, PRESCRIPTION_EXERCISE_FIELDS)
+            if sets_unsent and ex.get("rpe_targets_by_set") is not None:
+                ex["rpe_target"] = _compose_rpe_for_saved_sets(ex["rpe_targets_by_set"], ex.get("sets_count"))
         name_unchanged = existing_row is not None and existing_row["exercise_name"] == ex["exercise_name"]
         name_changed_on_edit = existing_row is not None and not name_unchanged
 
@@ -3420,7 +3446,6 @@ def _replace_plan_exercises(
         explicit_mapping_id = None if name_changed_on_edit else ex.get("mapping_id")
         mapping_id = resolve_mapping_id(ex["exercise_name"], ex.get("amazfit_name"), explicit_mapping_id, cur=cur)
 
-        saved_row = _saved_row_of(ex, existing_by_id)
         if saved_row is not None:
             edit_rules.assert_muscle_group_text_unchanged(
                 persisted_group=saved_row.get("muscle_primary"),

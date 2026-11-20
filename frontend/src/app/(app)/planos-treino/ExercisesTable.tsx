@@ -33,6 +33,8 @@ import {
 } from '@/lib/workout-plans-types';
 import { fetchSuggestedProgressionPatch } from '@/lib/suggested-progression-apply';
 import { DEFAULT_REPS_TARGET, DEFAULT_RPE_TARGET } from '@/lib/prescription-defaults';
+import { rpePerSetPatch, rpePerSetView } from '@/lib/plan-rpe-per-set';
+import { RpePerSetField } from '@/app/(app)/modelos-treino/[id]/RpePerSetField';
 import { BRAND } from '@/theme';
 import { AdvancedConfigModal, type AdvancedConfigPatch } from './AdvancedConfigModal';
 
@@ -415,7 +417,8 @@ export function ExercisesTable({
       const current = exercisesRef.current;
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      next[index] = { ...next[index], ...patch };
+      // A sugestão traz o RPE em texto: a lista por série antiga sai (senão a tela mostraria uma e o save enviaria outra).
+      next[index] = { ...next[index], ...patch, rpe_targets_by_set: [], rpe_edited: false };
       onChange(next);
     } catch {
       // silencioso: mantém os campos como estavam.
@@ -684,15 +687,23 @@ export function ExercisesTable({
                   />
                 </Table.Td>
                 <Table.Td>
-                  <TextInput
-                    size="xs"
-                    miw={COL_WIDTH.rpe}
-                    disabled={readOnly}
-                    value={exercise.rpe_target || ''}
-                    onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value })}
-                    placeholder={suggestionLoadingIndex === index ? 'Calculando...' : DEFAULT_RPE_TARGET}
-                    rightSection={suggestionLoadingIndex === index ? <Loader size="xs" /> : undefined}
-                  />
+                  {exercise.sets_count != null && !readOnly ? (
+                    <RpePerSetField
+                      {...rpePerSetView(exercise)}
+                      setsCount={exercise.sets_count}
+                      onCommit={(targets) => updateExercise(index, rpePerSetPatch(targets))}
+                    />
+                  ) : (
+                    <TextInput
+                      size="xs"
+                      miw={COL_WIDTH.rpe}
+                      disabled={readOnly}
+                      value={exercise.rpe_target || ''}
+                      onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_edited: false })}
+                      placeholder={suggestionLoadingIndex === index ? 'Calculando...' : DEFAULT_RPE_TARGET}
+                      rightSection={suggestionLoadingIndex === index ? <Loader size="xs" /> : undefined}
+                    />
+                  )}
                 </Table.Td>
                 <Table.Td>
                   <NumberInput

@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_DOWN, Decimal, InvalidOperation
 from typing import Any, Iterable, Optional, Sequence
 
 from ..load_conventions import equipment_exercises_join_sql
@@ -157,6 +157,23 @@ def compose_rpe_target(steps: Iterable[Any], *, collapse_tail: bool = True) -> O
     while collapse_tail and len(ramp) > 1 and ramp[-1] == ramp[-2]:
         ramp.pop()
     return "-".join(format_rpe_step(v) for v in ramp) or None
+
+
+def sanitize_rpe_target(value: Any) -> tuple[Optional[str], bool]:
+    """Saneia o `rpe_target` de SAIDA de LLM para a escala e o passo do dono, em vez
+    de recusar: cada degrau e limitado a [minimo, maximo] e arredondado ao passo
+    mais proximo, empate para BAIXO (8.25 -> 8; o lado seguro, nunca prescreve mais
+    esforco que o pedido). Devolve `(texto, mudou)`; vazio -> (None, False); texto
+    sem numero -> (None, True). So o valor dos degraus conta como mudanca (o
+    colapso de cauda `8-8` -> `8` e formato, nao correcao)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None, False
+    ramp = parse_rpe_ramp(value)
+    if not ramp:
+        return None, True
+    low, high, step = rpe_target_scale()
+    fixed = [(min(max(v, low), high) / step).to_integral_value(ROUND_HALF_DOWN) * step for v in ramp]
+    return compose_rpe_target(fixed), fixed != list(ramp)
 
 
 def normalize_rpe_target(value: Any, *, collapse_tail: bool = True) -> Optional[str]:

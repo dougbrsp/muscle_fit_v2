@@ -208,6 +208,7 @@ export function PercentBudgetItemCard({
           <RpePerSetField
             targets={item.rpe_targets_by_set}
             storedText={storedRpeTextOnly(item)}
+            hint={placeholders?.rpe}
             setsCount={item.sets_count}
             onCommit={(rpe_targets_by_set) => onChangeItem({ rpe_targets_by_set, rpe_target: null, rpe_edited: true })}
           />

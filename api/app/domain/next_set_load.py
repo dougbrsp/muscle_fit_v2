@@ -142,7 +142,7 @@ from .progression_engine import (
 )
 from .training_goal import TrainingGoal, read_goal
 from .set_measures import is_rep_based
-from .training_history import PrescribedSpec, parse_rpe_ramp
+from .training_history import PrescribedSpec, is_rpe_ramp, parse_rpe_ramp
 from .training_safety import FAILURE_RPE, STRENGTH_TARGET_RPE
 
 # --- limiares (regra do usuário, 2026-10-12) ---------------------------------
@@ -874,9 +874,9 @@ def planned_ramp_rpe(rpe_target: Any, working_set_index: Any) -> Optional[Decima
     Alvo único, sem alvo ou sem índice -> None (sem exceção de rampa)."""
     if working_set_index is None:
         return None
-    ramp = parse_rpe_ramp(rpe_target)
-    if len(set(ramp)) < 2:
+    if not is_rpe_ramp(rpe_target):
         return None
+    ramp = parse_rpe_ramp(rpe_target)
     return PrescribedSpec(rpe_target=ramp[-1], rpe_targets=ramp).rpe_target_for_set(max(int(working_set_index), 0))
 
 

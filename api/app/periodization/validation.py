@@ -73,6 +73,7 @@ from pydantic import ValidationError
 
 from ..domain import effective_intensity
 from ..domain import training_safety as ts
+from ..domain.training_history import sanitize_rpe_target
 from ..intelligence.methodology_volume import DEFAULT_VOLUME_COUNTING_MODE
 from ..domain.set_measures import DEFAULT_MEASURE
 from ..models import PeriodizationDraftIn, WorkoutPlanTemplateIn, WorkoutPlanTemplateSlotIn
@@ -111,6 +112,9 @@ SLOT_COUNT_MISMATCH = "SLOT_COUNT_MISMATCH"
 # ACTIVATION_BELOW_MIN / ACTIVATION_ABOVE_MAX / ACTIVATION_COVERAGE vivem em
 # `activation_projection.py` (modulo puro do PR D) e sao reexportados daqui.
 RPE_CLAMPED = "RPE_CLAMPED"
+# RPE da LLM fora da escala/passo (ou sem numero) saneado ANTES do schema do
+# Modelo (#183). Payload: slot, slot_name, item, from, to (None = texto sem numero).
+RPE_SANITIZED = "RPE_SANITIZED"
 TECHNIQUE_REMOVED = "TECHNIQUE_REMOVED"
 # Metodologia de volume por grupo (Fase 4) aplicada ao rascunho - Modo B,
 # independe de perfil de metas. Payload: muscle_group_id, muscle_group_name,
@@ -231,6 +235,7 @@ def validate_draft(
     # 1a. zero em campo opcional "ausente ou >= 1" -> null (auto-fix), ANTES
     # de reler no `WorkoutPlanTemplateIn`, que recusaria o rascunho inteiro.
     _null_optional_zeros(parsed, report)
+    _sanitize_rpe_targets(parsed, report)
     try:
         return _validate_parsed(conn, request, parsed, report, extras, cardio)
     except ValidationError as exc:
@@ -371,6 +376,21 @@ def _null_optional_zeros(parsed: PeriodizationOutput, report: ValidationReport) 
             for name in fields:
                 setattr(item, name, None)
             report.auto_fix(OPTIONAL_ZERO_NULLED, slot=slot.sequence, slot_name=slot.name, item=order, fields=fields)
+
+
+def _sanitize_rpe_targets(parsed: PeriodizationOutput, report: ValidationReport) -> None:
+    """RPE-alvo fora da escala/passo do dono (`8.3`, `11`) ou sem numero -> valor
+    saneado (`sanitize_rpe_target`) com auto-fix, em vez de `SCHEMA_INVALID` no
+    `WorkoutPlanTemplateIn` depois da geracao paga. Os cortes por objetivo e
+    seguranca seguem depois, sobre o valor ja valido."""
+    for slot in parsed.template.slots:
+        for order, item in enumerate(slot.items, start=1):
+            fixed, changed = sanitize_rpe_target(item.rpe_target)
+            if changed:
+                report.auto_fix(
+                    RPE_SANITIZED, slot=slot.sequence, slot_name=slot.name, item=order, **{"from": item.rpe_target, "to": fixed}
+                )
+                item.rpe_target = fixed
 
 
 def _to_template_in(parsed: PeriodizationOutput, request: PeriodizationDraftIn) -> WorkoutPlanTemplateIn:

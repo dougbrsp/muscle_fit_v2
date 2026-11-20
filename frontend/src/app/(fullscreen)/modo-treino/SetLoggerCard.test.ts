@@ -70,6 +70,15 @@ describe('SetLoggerCard — RPE esperado por série (#146)', () => {
     expect(sem).not.toContain('set-expected-rpe');
     expect(sem).not.toContain('RPE esperado');
   });
+
+  it('o RPE realizado não nasce com o alvo: nenhum campo recebe o esperado como valor', () => {
+    const inputs = (html: string) => [...html.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
+    const semPrefill = inputs(render({ expectedRpe: 8.5, defaultRpe: null }));
+    expect(semPrefill.length).toBeGreaterThan(0);
+    expect(semPrefill.some((tag) => tag.includes('8.5'))).toBe(false);
+    // o valor do campo vem só de defaultRpe, mesmo com alvo diferente
+    expect(inputs(render({ expectedRpe: 8.5, defaultRpe: 7 })).some((tag) => tag.includes('value="7"'))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

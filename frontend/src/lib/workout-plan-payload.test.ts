@@ -22,6 +22,17 @@ describe('payload de save da ficha', () => {
     expect(toWorkoutPlanExerciseInput(draft, 2).workout_plan_exercise_id).toBeNull();
   });
 
+  it('RPE por série (#184): intocado envia o texto; definido por série envia só a lista', () => {
+    const row: WorkoutPlanExercise = { ...saved, rpe_target: '7-8', rpe_targets_by_set: [] };
+    const untouched = toWorkoutPlanExerciseInput(row, 1);
+    expect(untouched.rpe_target).toBe('7-8');
+    expect(untouched).not.toHaveProperty('rpe_targets_by_set');
+    const edited = toWorkoutPlanExerciseInput({ ...row, rpe_target: null, rpe_targets_by_set: [8, 8.5, 9], rpe_edited: true }, 1);
+    expect(edited.rpe_targets_by_set).toEqual([8, 8.5, 9, 9]);
+    expect(JSON.parse(JSON.stringify(edited))).not.toHaveProperty('rpe_target');
+    expect(JSON.parse(JSON.stringify(edited))).not.toHaveProperty('rpe_edited');
+  });
+
   it('ecoa o objetivo da linha como veio (M97 F3); ausente some do JSON', () => {
     const goal = parity.payload.items.find((item) => !item.is_default)!.value;
     expect(toWorkoutPlanExerciseInput({ ...saved, training_goal: goal }, 1).training_goal).toBe(goal);

@@ -25,6 +25,8 @@ import {
   progressionBadge,
   formatActivationList,
 } from '@/app/(app)/planos-treino/ExercisesTable';
+import { RpePerSetField } from '@/app/(app)/modelos-treino/[id]/RpePerSetField';
+import { rpePerSetPatch, rpePerSetView } from '@/lib/plan-rpe-per-set';
 import { AdvancedConfigModal, type AdvancedConfigPatch } from '@/app/(app)/planos-treino/AdvancedConfigModal';
 import { toActivationPayloadItem } from '@/lib/activation-payload';
 import { apiFetch } from '@/lib/api';
@@ -175,7 +177,8 @@ export function PlanExercisesEditor({
       const current = exercisesRef.current;
       if (index >= current.length) return; // linha removida enquanto a sugestão carregava
       const next = current.slice();
-      next[index] = { ...next[index], ...patch };
+      // A sugestão traz o RPE em texto: a lista por série antiga sai (senão a tela mostraria uma e o save enviaria outra).
+      next[index] = { ...next[index], ...patch, rpe_targets_by_set: [], rpe_edited: false };
       onChange(next);
     } catch {
       // silencioso: os campos continuam como estavam (igual ao desktop).
@@ -336,14 +339,22 @@ export function PlanExercisesEditor({
                 suggestionLoading ? 'Calculando...' : exercise.suggested_load_kg ? `${exercise.suggested_load_kg} kg (sugerido)` : ''
               }
             />
-            <TextInput
-              size="md"
-              label="RPE"
-              disabled={readOnly}
-              value={exercise.rpe_target || ''}
-              onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value })}
-              placeholder={suggestionLoading ? 'Calculando...' : DEFAULT_RPE_TARGET}
-            />
+            {exercise.sets_count != null && !readOnly ? (
+              <RpePerSetField
+                {...rpePerSetView(exercise)}
+                setsCount={exercise.sets_count}
+                onCommit={(targets) => updateExercise(index, rpePerSetPatch(targets))}
+              />
+            ) : (
+              <TextInput
+                size="md"
+                label="RPE"
+                disabled={readOnly}
+                value={exercise.rpe_target || ''}
+                onChange={(e) => updateExercise(index, { rpe_target: e.currentTarget.value, rpe_edited: false })}
+                placeholder={suggestionLoading ? 'Calculando...' : DEFAULT_RPE_TARGET}
+              />
+            )}
           </Group>
           <Switch
             size="md"

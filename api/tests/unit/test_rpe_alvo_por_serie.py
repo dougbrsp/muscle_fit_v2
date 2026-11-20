@@ -264,4 +264,9 @@ def test_com_series_continua_colapsando_e_a_intensidade_do_dono_e_a_mesma():
 def test_uniforme_sem_series_e_ida_e_volta_estavel():
     item = WorkoutPlanTemplateSlotItemIn(item_order=1, item_kind="equipment", sets_count=None, rpe_targets_by_set=[8, 8, 8])
     assert item.rpe_target == "8-8-8"
+    # volta: texto composto -> lista por série (a que o rascunho/ficha devolve) -> composto de novo
+    volta = th.template_item_rpe_targets(item.rpe_target, None)
+    assert volta == [8.0, 8.0, 8.0]
+    de_novo = WorkoutPlanTemplateSlotItemIn(item_order=1, item_kind="equipment", sets_count=None, rpe_targets_by_set=volta)
+    assert de_novo.rpe_target == item.rpe_target
     assert th.template_item_rpe_targets("7-8-9-9-9", None) == [7.0, 8.0, 9.0, 9.0, 9.0]
