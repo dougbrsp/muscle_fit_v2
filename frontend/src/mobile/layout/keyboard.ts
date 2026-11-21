@@ -57,6 +57,7 @@ export function useKeyboardOpen(): boolean {
       setOpen(text);
     };
     const onPointerDown = () => {
+      clearTimeout(timer); // sync agendado por um focusout (Tab) não pode rodar durante o toque
       pressing = true;
     };
     const onPointerEnd = () => {

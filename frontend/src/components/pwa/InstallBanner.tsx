@@ -8,6 +8,7 @@ import { useMobileUi } from '@/lib/mobile/flags';
 import { useLayoutMode } from '@/lib/mobile/layout-mode';
 import { shouldShowInstallBanner } from '@/lib/pwa/install-banner-policy';
 import { useInstallPrompt } from '@/lib/pwa/use-install-prompt';
+import { useKeyboardOpen } from '@/mobile/layout/keyboard';
 
 /**
  * Convite discreto para instalar o app. Só aparece com a flag mobile ligada e
@@ -20,6 +21,8 @@ export function InstallBanner() {
   const layoutMode = useLayoutMode();
   const { mode, dismissed, promptInstall, dismiss } = useInstallPrompt();
   const flagOn = useMobileUi() === true;
+  // Some com o teclado aberto: ficava sobre a barra de ação e interceptava o toque (#252).
+  const keyboardOpen = useKeyboardOpen();
 
   const show = shouldShowInstallBanner({
     mobileUiEnabled: flagOn,
@@ -28,7 +31,7 @@ export function InstallBanner() {
     dismissed,
     pathname,
   });
-  if (!show) return null;
+  if (!show || keyboardOpen) return null;
 
   return (
     <Paper

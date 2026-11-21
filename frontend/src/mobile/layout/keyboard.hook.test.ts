@@ -76,6 +76,16 @@ describe('useKeyboardOpen — toque em curso (#252)', () => {
     expect(open).toBe(false);
   });
 
+  it('focusout (Tab) agendado e pointerdown antes dos 60 ms: o sync não roda durante o toque', () => {
+    act(() => input.blur());
+    fire(button, 'pointerdown');
+    advance(100);
+    expect(open).toBe(true);
+    fire(button, 'pointerup');
+    advance(10);
+    expect(open).toBe(false);
+  });
+
   it('pointercancel não prende o estado', () => {
     fire(button, 'pointerdown');
     act(() => input.blur());

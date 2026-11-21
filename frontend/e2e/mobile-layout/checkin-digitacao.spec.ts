@@ -145,24 +145,23 @@ test.describe('check-in diario: digitar o comentario (#250)', () => {
     });
     await abrirCheckin(page);
     const texto = 'Nota que não pode se perder 💪';
+    const dica = page.getByTestId('pwa-install-banner');
+    // Só para o log: depende do perfil (a dica é do iOS Safari fora do modo standalone).
+    console.log(`[${test.info().project.name}] dica de instalacao visivel antes do foco: ${await dica.isVisible()}`);
     await page.locator(CAMPO).fill(texto);
     const salvar = page.getByRole('button', { name: /Salvar correção|Registrar/ });
 
-    if (test.info().project.name === 'webkit-iphone') {
-      // No WebKit o toque com o campo em foco ainda se perde (issue #252, aberta): tira o foco antes.
-      await page.locator(CAMPO).blur();
-      await expect(page.locator('[data-mobile-shell="true"] nav')).toBeVisible();
-      await salvar.click();
-    } else {
-      // Toque com o campo em foco (#252): o foco sai no pointerdown e a barra de ação não pode mover
-      // antes da soltura (150 ms > atraso do foco), senão o clique se perde.
-      const box = await salvar.boundingBox();
-      expect(box).not.toBeNull();
-      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-      await page.mouse.down();
-      await page.waitForTimeout(150);
-      await page.mouse.up();
-    }
+    // Com o campo em foco a dica de instalação não pode cobrir o botão Salvar (#252).
+    await expect(dica).toHaveCount(0);
+    await expect(page.getByText(/Safari → Compartilhar/)).toHaveCount(0);
+    // Toque com o campo em foco (#252): o foco sai no pointerdown e a barra de ação não pode mover
+    // antes da soltura (150 ms > atraso do foco), senão o clique se perde.
+    const box = await salvar.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.up();
     await expect.poll(() => envios).toBe(1);
     await expect(page.getByText(/Nota inválida \(e2e\)/)).toBeVisible();
     await intacto(page, erros.filter((e) => !/422/.test(e)), texto, 'depois do 422');
