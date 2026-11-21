@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Group, Loader, Modal, Rating, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconSearch, IconSparkles } from '@tabler/icons-react';
@@ -121,7 +121,14 @@ export function EquipmentSubstituteModal({
   const [pendingAdd, setPendingAdd] = useState<EquipmentExerciseLink | null>(null);
   const [addMessage, setAddMessage] = useState<string | null>(null);
 
+  // Geração de abertura: muda a cada abrir/fechar; o acréscimo que termina depois disso é descartado.
+  const openGeneration = useRef(0);
+  // Confirmar do aviso/confirmação: recebe foco ao aparecer (rola até ele no celular).
+  const conventionConfirmRef = useRef<HTMLButtonElement>(null);
+  const addConfirmRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
+    openGeneration.current += 1;
     if (!opened) {
       setSearch('');
       setPendingItem(null);
@@ -157,7 +164,9 @@ export function EquipmentSubstituteModal({
         body: JSON.stringify({ gym_id: gymId, equipment_id: pair.equipment_id }),
       }),
     onSuccess: async (response, pair) => {
+      const generation = openGeneration.current;
       const fresh = await catalogQuery.refetch();
+      if (generation !== openGeneration.current) return; // fechou (ou reabriu) durante o acréscimo
       const found = findAddedItem(response.links, fresh.data?.items ?? [], pair);
       if (!found) {
         setAddMessage(CATALOG_ADDED_WITHOUT_LINK_MESSAGE);
@@ -206,8 +215,21 @@ export function EquipmentSubstituteModal({
   const sections = buildEquipmentPickerSections(allItems, mappingId, currentEquipmentLinkId, search);
   const currentConvention = currentLoadConvention(allItems, currentEquipmentLinkId);
   const catalogItems = gymId
-    ? buildCatalogSection(globalCatalogQuery.data?.items, allItems, mappingId, search)
+    ? buildCatalogSection(
+        globalCatalogQuery.data?.items,
+        catalogQuery.isSuccess ? allItems : undefined,
+        mappingId,
+        search,
+      )
     : [];
+  const showEmpty = Boolean(gymId) && !catalogQuery.isLoading && !catalogQuery.isError;
+
+  useEffect(() => {
+    if (pendingItem) conventionConfirmRef.current?.focus();
+  }, [pendingItem]);
+  useEffect(() => {
+    if (pendingAdd) addConfirmRef.current?.focus();
+  }, [pendingAdd]);
   const gymName = allItems.find((item) => item.gym_name)?.gym_name;
 
   function choose(choice: EquipmentSubstituteChoice) {
@@ -377,6 +399,7 @@ export function EquipmentSubstituteModal({
                 size="md"
                 radius="xl"
                 h={44}
+                ref={conventionConfirmRef}
                 disabled={submitting}
                 onClick={() => {
                   const chosen = pendingItem;
@@ -403,6 +426,7 @@ export function EquipmentSubstituteModal({
                 size="md"
                 radius="xl"
                 h={44}
+                ref={addConfirmRef}
                 disabled={submitting || addMutation.isPending || !online}
                 loading={addMutation.isPending}
                 onClick={() => {
@@ -537,7 +561,12 @@ export function EquipmentSubstituteModal({
               })}
             </Stack>
           )}
-          {!catalogQuery.isLoading && sections.length === 0 && catalogItems.length === 0 && search.trim() !== '' && (
+          {!gymId && (
+            <Text size="sm" c={BRAND.textMuted} ta="center" py="md">
+              Este treino não tem academia definida. Defina a academia do treino para escolher o equipamento.
+            </Text>
+          )}
+          {showEmpty && sections.length === 0 && catalogItems.length === 0 && search.trim() !== '' && (
             <Stack gap="xs" align="center" py="md">
               <Text size="sm" c={BRAND.textMuted} ta="center">
                 Nenhum equipamento encontrado
@@ -547,7 +576,7 @@ export function EquipmentSubstituteModal({
               </Button>
             </Stack>
           )}
-          {!catalogQuery.isLoading && sections.length === 0 && catalogItems.length === 0 && search.trim() === '' && (
+          {showEmpty && sections.length === 0 && catalogItems.length === 0 && search.trim() === '' && (
             <Text size="sm" c={BRAND.textMuted} ta="center" py="md">
               Nenhum outro equipamento cadastrado para este grupo muscular nesta academia.
             </Text>

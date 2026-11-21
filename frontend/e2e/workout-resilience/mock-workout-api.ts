@@ -44,6 +44,8 @@ export type MockWorkoutApi = {
   useEquipmentPickerSeed: () => void;
   /** Catalogo global (#163b): `GET /equipment-exercises` traz o `Crossover` (equipamento 33), que a academia nao tem; `permitted` poe `treino.academias/editar=todos` em `/auth/me` e libera o POST. */
   useCatalogAddSeed: (permitted: boolean) => void;
+  /** `GET /gym-equipment?primary_group=...` (lista da academia no seletor) passa a responder 500. */
+  failGymEquipmentList: () => void;
   /** Corpos recebidos em `POST /gym-equipment-catalog` (inclui os recusados com 403). */
   catalogAddPosts: Array<Record<string, unknown>>;
   /** `GET /exercises/last-session-sets` passa a responder sem historico (`item: null`); guarda o `equipment_id` de cada consulta. */
@@ -82,6 +84,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
   let catalogSeed = false;
   let catalogPermitted = false;
   let crossoverInGym = false;
+  let gymEquipmentListFails = false;
   const catalogAddPosts: Array<Record<string, unknown>> = [];
   const crossoverLink = { id: 910, gym_id: 1, gym_name: 'Academia Central', mapping_id: 12, mapping_exercise_name: 'Crucifixo', primary_group: 'Peito', equipment_id: 33, equipment_name: 'Crossover', is_active: true, load_convention: 'total' };
   const lastSessionQueries: Array<string | null> = [];
@@ -229,6 +232,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     if (key === 'GET /gym-equipment') {
       // Catalogo do modal de troca (`primary_group`): 1 equipamento alternativo para a continuacao (#225).
       if (url.searchParams.has('primary_group')) {
+        if (gymEquipmentListFails) return send(500, { detail: 'falha forcada' });
         return send(200, {
           items: [
             ...(equipmentSeed
@@ -352,6 +356,9 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     useCatalogAddSeed: (permitted) => {
       catalogSeed = true;
       catalogPermitted = permitted;
+    },
+    failGymEquipmentList: () => {
+      gymEquipmentListFails = true;
     },
     catalogAddPosts,
     useEmptyLastSessionSets: () => {

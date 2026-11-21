@@ -6,7 +6,7 @@ import { MIN_SETS_COUNT } from '@/lib/prescription-defaults';
 import {
   commitRpeDraft,
   fitRpeTargets,
-  isValidRpeTarget,
+  invalidRpePositions,
   RPE_TARGET_SCALE,
   sanitizeRpeDraft,
   stepDecimalScale,
@@ -28,6 +28,8 @@ type RpePerSetFieldProps = {
   hint?: string | null;
 };
 
+const WARNING = 'Valor fora da escala de RPE; mantido o anterior.';
+
 export function RpePerSetField({ targets, setsCount, onCommit, storedText = null, hint = null }: RpePerSetFieldProps) {
   const [opened, setOpened] = useState(false);
   const shown = fitRpeTargets(targets, setsCount);
@@ -40,7 +42,10 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shownKey resume count + shown
   }, [shownKey]);
 
+  const [warned, setWarned] = useState<number[]>([]);
+
   const commit = (next: RpeDraftValue[]) => {
+    setWarned(invalidRpePositions(next));
     const list = commitRpeDraft(sanitizeRpeDraft(next, shown));
     setDraft(Array.from({ length: count }, (_, i) => list[i] ?? ''));
     if (list.join(',') !== shown.join(',')) onCommit(list);
@@ -81,9 +86,12 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
             step={RPE_TARGET_SCALE.step}
             decimalScale={stepDecimalScale(RPE_TARGET_SCALE.step)}
             hideControls
-            // Fora do passo (ex.: 8,3) a digitação é recusada: fica o valor anterior.
+            // Grava sempre o digitado ("15" passa por "1"); a validação é só ao sair (commit),
+            // que restaura o último confirmado e avisa. clampBehavior none: o Mantine não troca 15 por 10.
+            clampBehavior="none"
+            error={warned.includes(index) ? WARNING : undefined}
             onChange={(v) => {
-              if (!isValidRpeTarget(v)) return;
+              setWarned((w) => w.filter((i) => i !== index));
               setDraft((d) => d.map((x, i) => (i === index ? v : x)));
             }}
             onBlur={() => commit(draft)}

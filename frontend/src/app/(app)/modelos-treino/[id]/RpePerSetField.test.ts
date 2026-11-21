@@ -6,6 +6,7 @@ import motorConstants from '@/lib/motor-constants.generated.json';
 import {
   commitRpeDraft,
   fitRpeTargets,
+  invalidRpePositions,
   isOnRpeStep,
   isValidRpeTarget,
   RPE_TARGET_SCALE,
@@ -76,6 +77,13 @@ describe('RPE-alvo válido (escala + passo do espelho)', () => {
     expect(commitRpeDraft(sanitizeRpeDraft([`${max + 5}.`, ''], last))).toEqual([8, 8]);
     expect(commitRpeDraft(sanitizeRpeDraft([max + 5, ''], []))).toEqual([]);
     expect(commitRpeDraft(sanitizeRpeDraft([7, max], last))).toEqual([7, max]);
+  });
+});
+
+describe('invalidRpePositions', () => {
+  it('só posições preenchidas e inválidas', () => {
+    const { max, step } = RPE_TARGET_SCALE;
+    expect(invalidRpePositions([max + step, '', 7, 8 + step / 5, `${max}.`, null])).toEqual([0, 3]);
   });
 });
 

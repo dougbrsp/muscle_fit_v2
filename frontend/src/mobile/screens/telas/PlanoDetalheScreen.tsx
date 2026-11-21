@@ -11,7 +11,8 @@ import { PlanMuscleMap } from '@/app/(app)/planos-treino/PlanMuscleMap';
 import { preloadMarkdown } from '@/components/LazyMarkdown';
 import { CardioRecommendationPanel } from '@/components/cardio/CardioRecommendationPanel';
 import { useIaControls } from '@/lib/screen-permissions';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { planSaveErrorMessage } from '@/lib/plan-save-error';
 import { formatDateOrDash } from '@/lib/format';
 import type { CardioRecommendation, CardioRecommendationsResponse } from '@/lib/analytics-types';
 import { dispatchAndPollJob } from '@/lib/async-job-poll';
@@ -40,7 +41,7 @@ const EquipmentSwapModal = dynamic(
 );
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+  return planSaveErrorMessage(error, fallback);
 }
 
 /**
