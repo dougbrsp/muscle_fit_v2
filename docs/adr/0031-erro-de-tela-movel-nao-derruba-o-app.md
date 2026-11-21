@@ -32,12 +32,13 @@ Restrições reais:
 3. **Formulário refeito só quando muda o dia ou o registro.** `shouldResetCheckinForm` (`dashboard-checkin.ts`, L75-77) compara `day` e `id`. O efeito de `CheckinScreen.tsx` (L74-80) só refaz o formulário quando essa função devolve `true`. Recarga com o mesmo registro não apaga o texto.
 4. **Limite em constante única.** `CHECKIN_NOTES_MAX = 255` (`dashboard-checkin.ts`, L66) é usado pela validação, pelo `maxLength` do campo e pela mensagem de erro. O valor é igual ao da API e ao da coluna.
 5. **Teste de ponta a ponta novo.** `frontend/e2e/mobile-layout/checkin-digitacao.spec.ts` cobre três cenários: digitação progressiva (texto curto, acentos, emoji, perto do limite, apagar, colar); recarga dos dados durante a digitação; envio com 422 e depois 500, com o texto preservado. Roda em WebKit com perfil de iPhone e em Chromium a 390 px. O `playwright.mobile.config.ts` ganhou três projetos, e as specs antigas ficam no projeto `default`.
+6. **Mesmo padrão nas outras telas.** O `e.currentTarget` lido dentro de atualizador foi removido de quatro telas: `DashboardCheckinClient.tsx` (1 handler), `DashboardContextoClient.tsx` (3), `ExternalMappingsPanel.tsx` (5) e `ContextoScreen.tsx` (5), 14 handlers no total. Cada handler lê o valor antes de chamar o setter. O check-in web passou a usar a constante `CHECKIN_NOTES_MAX`. O teste de varredura `frontend/src/lib/event-current-target-guard.test.ts` percorre `frontend/src` e falha, com arquivo e linha, quando há `currentTarget` lido dentro de atualizador funcional de setter; a lista de exceções está vazia.
 
 ## Trade-offs
 
 - Ganha: um erro de tela móvel deixa de derrubar o app inteiro; o defeito de digitação tem teste que reproduz o relato em WebKit com perfil de iPhone e em Chromium a 390 px.
 - Ganha: a regra de reset do formulário fica numa função pura, testada sem React.
-- Paga: o padrão `e.currentTarget` lido dentro do atualizador continua em outras telas (ver Limites). O limite de erro cobre só a tela do registry, não o `children`.
+- Paga: o teste de varredura só cobre setters `setX(...)`; outras formas de atualizador ficam fora (ver Limites). O limite de erro cobre só a tela do registry, não o `children`.
 - Paga: o teste novo roda só localmente e em WebKit com Playwright; não entra no CI.
 
 ## Consequências
@@ -45,15 +46,16 @@ Restrições reais:
 - **Dados.** Nenhuma migração. Nenhum dado gravado muda.
 - **Contrato.** Nenhuma mudança de API. O texto do formulário e as mensagens de validação não mudam; a mensagem de erro de tela ganha um texto novo ("Algo deu errado nesta tela.") no lugar do fallback global, só para erro de renderização de tela móvel.
 - **Operação.** Só frontend. O defeito existe na produção atual (o código envolvido é antigo e não mudou nos lotes recentes) e deixa de ocorrer lá somente com a promoção.
-- **Próximas decisões.** O padrão corrigido deve ser replicado nas telas da lista de Limites (lote seguinte).
+- **Próximas decisões.** As quatro telas listadas na Decisão (item 6) já usam o padrão corrigido; a varredura guarda os setters `setX(...)` contra regressão.
 - **Impacto em produção.** Só frontend, sem migração e sem mudança de API. Não medido: quantas vezes o erro ocorreu em produção, porque o frontend não registra erros no servidor.
 
 ## Limites e pendências
 
-- (a) O mesmo padrão (`e.currentTarget` lido dentro do atualizador) existe em telas ainda não corrigidas, para o lote seguinte: `frontend/src/app/(app)/dashboard/checkin/DashboardCheckinClient.tsx`, `frontend/src/mobile/screens/evolucao/ContextoScreen.tsx`, `frontend/src/app/(app)/dashboard/contexto/DashboardContextoClient.tsx` e `frontend/src/app/(app)/dominio-exercicios/components/ExternalMappingsPanel.tsx`.
-- (b) Nas telas web, o erro de renderização cai no `error.tsx` do segmento, não no global. O `ScreenErrorBoundary` só envolve as telas do registry; rotas que caem em `children` do `MobileShell` seguem sem esse limite.
-- (c) Observado no teste: com o teclado aberto, o botão de salvar muda de posição quando a navegação inferior reaparece, e um toque pode se perder. Não alterado.
-- (d) Não validado em iPhone real. A suíte de e2e mobile não roda no CI.
+- (a) Nas telas web, o erro de renderização cai no `error.tsx` do segmento, não no global. O `ScreenErrorBoundary` só envolve as telas do registry; rotas que caem em `children` do `MobileShell` seguem sem esse limite.
+- (b) Observado no teste: com o teclado aberto, o botão de salvar muda de posição quando a navegação inferior reaparece, e um toque pode se perder. Não alterado.
+- (c) Não validado em iPhone real. A suíte de e2e mobile não roda no CI.
+- (d) O teste de varredura só enxerga setters com nome `setX(...)`; atualizadores via `dispatch` ou função com outro nome não são cobertos.
+- (e) Uma edição do mesmo check-in feita em outro aparelho não aparece no formulário aberto até trocar de dia (consequência da proteção do texto em digitação).
 
 ## Verificação
 
@@ -62,6 +64,10 @@ Resultados reais informados na entrega; nenhum outro foi medido:
 - Código antigo, spec nova: falhou nos dois perfis logo no texto curto, com o fallback global e `TypeError: null is not an object (evaluating 'e.currentTarget.value')` no WebKit e `Cannot read properties of null (reading 'value')` no Chromium.
 - Código corrigido, spec nova: 6 passaram (3 cenários × 2 perfis).
 - Spec antiga `remount` no projeto `default`: 1 passou.
-- Vitest: 127 passaram.
+- Vitest (antes da correção das quatro telas): 127 passaram.
+- Varredura `event-current-target-guard.test.ts` contra o código anterior: acusou exatamente as 14 ocorrências.
+- Varredura depois da correção: sem nenhuma ocorrência.
+- Vitest do lote: 215 passaram.
 - `tsc`: sem erro.
+- As quatro telas corrigidas (check-in web, contexto web, painel de mapeamentos externos e contexto móvel) não foram exercitadas em navegador.
 - Não verificado: CI (a suíte de e2e mobile não roda nele); iPhone real; produção.
