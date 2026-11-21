@@ -27,6 +27,16 @@ export default defineConfig({
     colorScheme: 'dark',
     serviceWorkers: 'block',
   },
+  // `default` mantém as specs antigas com o perfil antigo; a spec de digitação (#250) roda só nos dois perfis abaixo.
+  projects: [
+    { name: 'default', testIgnore: /checkin-digitacao\.spec\.ts/ },
+    { name: 'webkit-iphone', testMatch: /checkin-digitacao\.spec\.ts/, use: { ...devices['iPhone 13'] } },
+    {
+      name: 'chromium-390',
+      testMatch: /checkin-digitacao\.spec\.ts/,
+      use: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
+    },
+  ],
   webServer: {
     command: `node scripts/serve-export.mjs --port ${PORT} --dir out`,
     cwd: '../..',
