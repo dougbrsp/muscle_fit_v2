@@ -174,7 +174,9 @@ export function EquipmentSubstituteModal({
       }
       chooseItem(found);
     },
-    onError: (error) => {
+    onMutate: () => ({ generation: openGeneration.current }),
+    onError: (error, _pair, context) => {
+      if (context?.generation !== openGeneration.current) return; // fechou (ou reabriu) antes da falha
       setAddMessage(error instanceof ApiError && error.message ? error.message : 'Não foi possível acrescentar o equipamento à academia.');
     },
   });
