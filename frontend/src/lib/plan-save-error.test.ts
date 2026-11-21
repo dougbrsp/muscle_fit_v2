@@ -16,6 +16,23 @@ describe('planSaveErrorMessage', () => {
     expect(planSaveErrorMessage(new ApiError('Falhou', 500), 'x')).toBe('Falhou');
   });
 
+  it('lê o primeiro item da lista do Pydantic, sem o prefixo "Value error, "', () => {
+    const list = [
+      { loc: ['body', 'items'], msg: 'Value error, RPE por série excede as séries.' },
+      { loc: ['body'], msg: 'outro' },
+    ];
+    expect(planSaveErrorMessage(new ApiError('Falhou', 422, list), 'x')).toBe('RPE por série excede as séries.');
+    expect(planSaveErrorMessage(new ApiError('Falhou', 422, [{ msg: 'Campo obrigatório' }]), 'x')).toBe(
+      'Campo obrigatório',
+    );
+  });
+
+  it('lista vazia ou formato desconhecido mantém a mensagem do ApiError', () => {
+    expect(planSaveErrorMessage(new ApiError('Falhou', 422, []), 'x')).toBe('Falhou');
+    expect(planSaveErrorMessage(new ApiError('Falhou', 422, [{ loc: ['a'] }]), 'x')).toBe('Falhou');
+    expect(planSaveErrorMessage(new ApiError('Falhou', 422, 42), 'x')).toBe('Falhou');
+  });
+
   it('erro que não é ApiError usa o fallback', () => {
     expect(planSaveErrorMessage(new Error('boom'), 'fallback')).toBe('fallback');
   });

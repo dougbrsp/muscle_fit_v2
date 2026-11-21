@@ -79,6 +79,17 @@ describe('buildCatalogSection', () => {
     expect(buildCatalogSection([], gym, 12, '')).toEqual([]);
     expect(buildCatalogSection(undefined, gym, 12, '')).toEqual([]);
   });
+
+  it('lista da academia ainda não carregada (undefined/null) devolve vazio', () => {
+    expect(buildCatalogSection([pair({})], undefined, 12, '')).toEqual([]);
+    expect(buildCatalogSection([pair({})], null, 12, '')).toEqual([]);
+  });
+
+  it('lista da academia carregada e vazia: todos os pares do catálogo entram', () => {
+    const a = pair({ id: 2, equipment_id: 8 });
+    const b = pair({ id: 3, equipment_id: 9 });
+    expect(buildCatalogSection([a, b], [], 12, '').map((p) => p.id)).toEqual([2, 3]);
+  });
 });
 
 describe('catalogItemState', () => {

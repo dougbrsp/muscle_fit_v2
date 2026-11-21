@@ -558,6 +558,32 @@ test('seletor (#163b) SEM permissao: item do catalogo desabilitado com aviso e n
   expect(api.catalogAddPosts).toHaveLength(0);
 });
 
+test('seletor (#244): lista da academia com 500 mostra o erro e NAO monta o catalogo nem "Nenhum equipamento"', async ({ page }) => {
+  api.useCatalogAddSeed(true);
+  api.failGymEquipmentList();
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  // O react-query repete a consulta antes de marcar erro: espera folgada.
+  await expect(page.getByText('Não foi possível carregar o catálogo de equipamentos.')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('equipment-section-catalog')).toHaveCount(0);
+  await expect(page.getByText('Nenhum outro equipamento cadastrado')).toHaveCount(0);
+  await expect(page.getByText('Nenhum equipamento encontrado')).toHaveCount(0);
+});
+
+test('seletor (#246): o botao Confirmar do aviso de convencao recebe o foco ao aparecer', async ({ page }) => {
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  await page.getByLabel('Buscar equipamento').fill('poli');
+  await page.getByText('Crucifixo na polia').first().click();
+  const warning = page.getByTestId('equipment-convention-warning');
+  await expect(warning).toBeVisible();
+  await expect(warning.getByRole('button', { name: 'Confirmar' })).toBeFocused();
+});
+
 test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
   await openWorkout(page);
   api.setAuthMeStatus(503);

@@ -83,6 +83,14 @@ export function sanitizeRpeDraft(draft: readonly RpeDraftValue[], last: readonly
   });
 }
 
+/** Posições preenchidas e inválidas que `sanitizeRpeDraft` restaura (para avisar o usuário). */
+export function invalidRpePositions(draft: readonly RpeDraftValue[]): number[] {
+  return draft.flatMap((v, i) => {
+    const n = filledRpe(v);
+    return n !== null && !isValidRpeTarget(n) ? [i] : [];
+  });
+}
+
 /**
  * Rascunho do editor -> lista aceita pelo backend (sem buracos). Tudo em branco
  * = [] (sem alvo). Série em branco recebe o valor da anterior; em branco antes

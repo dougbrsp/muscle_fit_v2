@@ -26,7 +26,8 @@ import {
 import { IconAlertTriangle, IconArrowLeft, IconDeviceWatch, IconHeartbeat, IconSparkles, IconTrash } from '@tabler/icons-react';
 import { preloadMarkdown } from '@/components/LazyMarkdown';
 import { CardioRecommendationPanel } from '@/components/cardio/CardioRecommendationPanel';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { planSaveErrorMessage } from '@/lib/plan-save-error';
 import { useDynamicRouteParam } from '@/lib/use-dynamic-route-param';
 import type { ApiListResponse, Gym } from '@/lib/gyms-types';
 import type { CardioRecommendation, CardioRecommendationsResponse } from '@/lib/analytics-types';
@@ -57,7 +58,7 @@ import { usePermissions } from '@/lib/use-permissions';
 const EquipmentSwapModal = dynamic(() => import('../EquipmentSwapModal').then((m) => m.EquipmentSwapModal), { ssr: false });
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+  return planSaveErrorMessage(error, fallback);
 }
 
 /**

@@ -30,11 +30,12 @@ export function isSamePair(pair: EquipmentExerciseLink, item: EquipmentPickerIte
  */
 export function buildCatalogSection(
   catalog: ReadonlyArray<EquipmentExerciseLink> | null | undefined,
-  gymItems: ReadonlyArray<EquipmentPickerItem>,
+  gymItems: ReadonlyArray<EquipmentPickerItem> | null | undefined,
   currentMappingId: number | null | undefined,
   searchText: string,
 ): EquipmentExerciseLink[] {
-  if (!catalog || catalog.length === 0) return [];
+  // Lista da academia ainda não carregada (ou com erro): sem ela todo par pareceria "não cadastrado".
+  if (!gymItems || !catalog || catalog.length === 0) return [];
   const query = normalizeSearchText(searchText);
   const missing = catalog.filter(
     (pair) =>
