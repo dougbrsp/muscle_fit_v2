@@ -56,6 +56,26 @@ describe('buildCatalogSection', () => {
     expect(buildCatalogSection([pair({})], legacy, 12, '')).toEqual([]);
   });
 
+  it('com exercise_id igual ao do par casa mesmo com nome diferente', () => {
+    const item = [gymItem({ mapping_id: 999, exercise_id: 12, mapping_exercise_name: 'Outro nome' })];
+    expect(buildCatalogSection([pair({})], item, 12, '')).toEqual([]);
+  });
+
+  it('com exercise_id diferente e nome igual NÃO é o mesmo par', () => {
+    const item = [gymItem({ mapping_id: 12, exercise_id: 77, mapping_exercise_name: 'Crucifixo' })];
+    const p = pair({});
+    expect(buildCatalogSection([p], item, 12, '')).toEqual([p]);
+  });
+
+  it('sem exercise_id ou com null vale a regra antiga (mapping_id e nome)', () => {
+    for (const exercise_id of [undefined, null]) {
+      const byId = [gymItem({ exercise_id, mapping_id: 12, mapping_exercise_name: 'Outro' })];
+      const byName = [gymItem({ exercise_id, mapping_id: 999, mapping_exercise_name: 'crucifixo' })];
+      expect(buildCatalogSection([pair({})], byId, 12, '')).toEqual([]);
+      expect(buildCatalogSection([pair({})], byName, 12, '')).toEqual([]);
+    }
+  });
+
   it('mesmo equipamento em outro exercício entra', () => {
     const other = pair({ id: 2, exercise_id: 13, exercise_name: 'Peck deck' });
     expect(buildCatalogSection([other], gym, 12, '')).toEqual([other]);

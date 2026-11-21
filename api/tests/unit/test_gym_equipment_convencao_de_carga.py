@@ -52,6 +52,12 @@ def test_resposta_traz_a_convencao_e_o_sql_usa_o_join_do_dono(monkeypatch):
     assert "LEFT JOIN equipment_exercises eqex" in cur.sql
 
 
+def test_resposta_traz_o_id_canonico_do_exercicio(monkeypatch):
+    cur, items = _listar(monkeypatch, [_row("total", exercise_id=42, mapping_id=7)])
+    assert "COALESCE(elm.canonical_exercise_id, ge.mapping_id) AS exercise_id" in cur.sql
+    assert items[0]["exercise_id"] == 42
+
+
 def test_convencao_nula_vira_a_padrao_do_dono(monkeypatch):
     _, items = _listar(monkeypatch, [_row(None)])
     assert items[0]["load_convention"] == DEFAULT_LOAD_CONVENTION.value

@@ -1,7 +1,7 @@
 # ADR 0029: Ciclo de carboidratos com compensação em gordura (issue #242)
 
 - **Status**: Aceita. Branch `feat/ciclo-compensacao-gordura-242`. Não publicada nem promovida a produção.
-- **Data**: 2026-11-20
+- **Data**: 2026-11-20 (verificação complementar em 2026-11-21)
 - **Complementa**: ADR 0007 (gordura segue a fração configurada no ciclo, que o modo padrão preserva) e ADR 0009 (proteína do corte). Nenhuma decisão anterior é substituída.
 
 ## Contexto
@@ -15,7 +15,7 @@ Restrições reais:
 - o plano guarda o ciclo em `nutrition_plans.carb_cycling_json` (mapa dia 0..6 → alto/normal/baixo, validado por `validate_cycle_days`). Não há coluna para a política;
 - há planos em produção com ciclo (medido em 20/11/2026, abaixo), e o comportamento deles não pode mudar;
 - os pisos e tetos das gramas já têm dono: `manual_targets.check_manual_targets` (L249), usado por `plan.check_cycle_floors` (L905) e pelas gramas manuais;
-- as kcal por grama moram em `macros.py` (`KCAL_PER_G_*`, `kcal_from_macros`). Nenhum `* 4` ou `/ 9` pode existir fora dele;
+- as kcal por grama moram em `macros.py` (`KCAL_PER_G_*`, `kcal_from_macros`, tolerância `ATWATER_CLOSE_REL_TOL`). Nenhum `* 4` ou `/ 9` pode existir fora dele;
 - regra permanente de motores (`CLAUDE.md`, mapa `docs/motores/FONTES_DA_VERDADE.md`): nenhuma conta de compensação fora do dono; frontend só exibe.
 
 ## Alternativas consideradas
@@ -46,7 +46,7 @@ Restrições reais:
 
 5. **Compatibilidade.** A chave `carb_cycle_policy` só entra em `PlanSettings.to_dict` e `fingerprint_dict` (`plan.py`), e em `DailyTarget.to_dict` (`daily_target.py`), fora do padrão. Planos legados mantêm resultado e hash. `ENGINE_VERSION` não muda nesta entrega. O teste de ouro `api/tests/unit/test_nutrition_modos_legados_ouro.py` não foi editado.
 
-6. **Edição** (`nutrition_plans._validate_payload`, PUT de substituição total): campo omitido herda a política gravada quando o payload mantém o ciclo; `null` explícito volta ao padrão; valor explícito vale. Na criação, campo ausente = padrão. `update_plan` lê a linha antes de validar o payload, então plano inexistente com payload inválido devolve 404 antes de 400 (mudança lateral).
+6. **Edição** (`nutrition_plans._validate_payload`, PUT de substituição total): campo omitido herda a política gravada somente quando o payload traz um ciclo que existe (`validate_cycle_days(...).cycles`, dono `carb_cycling.py`); `null` explícito volta ao padrão; valor explícito vale. Ciclo vazio ou só com dias normais não herda: salva com a política padrão. Na criação, campo ausente = padrão. `update_plan` lê a linha antes de validar o payload, então plano inexistente com payload inválido devolve 404 antes de 400 (mudança lateral).
 
 7. **Leituras.** O plano devolve `carb_cycle_policy` (`plan_public`, sempre presente). Cada dia da prévia (`day_public`) e cada meta por data (`target_row_public`) devolve `carb_cycle_policy` (a aplicada no dia) e `day_kind`. Dia antigo sai `vary_kcal`. A meta materializada lê a política de `inputs_json` pelo alias `carb_cycle_policy_json` (`_TARGET_JSON_COLUMNS`, em `nutrition_targets_service.py`). O check-in semanal preserva a política (`weekly_checkin._builder_args`).
 
@@ -64,7 +64,7 @@ Restrições reais:
 - **Dados.** Nenhuma coluna nova, nenhuma migração. `RUN_DB_MIGRATIONS` continua `false`.
 - **Contrato.** O plano, a prévia e as metas por data ganham `carb_cycle_policy` (campo aditivo).
 - **Erros.** Política inválida ou sem ciclo: 400 `invalid_plan` com `invalid_code:carb_cycle_policy` ou `param_not_applicable:carb_cycle_policy`.
-- **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` (§3.7, linhas do ciclo, da meta diária e do plano) e o bloco "Lote 12 de 20/11/2026 (#242)". `docs/nutricao/CALCULOS_NUTRI.md` ganha a subseção da conta.
+- **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` (§3.7, linhas do ciclo, da meta diária e do plano) e o bloco "Lote 12 de 20/11/2026 (#242)", com o bloco "Lote 18 de 21/11/2026 (#248, #246)" para a constante e a herança. `docs/nutricao/CALCULOS_NUTRI.md` ganha a subseção da conta.
 - **Impacto em produção (medido por leitura em 20/11/2026, só SELECT).** `nutrition_plans`: 6 planos de 1 usuário; 5 com ciclo de carboidratos (4 publicados e 1 rascunho); nenhum com ciclo e gramas manuais ao mesmo tempo. Nenhum plano muda: todos ficam no padrão `vary_kcal`, com o mesmo JSON gravado, o mesmo resultado e o mesmo hash.
 - **Não medido.** Quantos planos adotarão o modo novo (opção nova, sem uso ainda).
 
@@ -72,18 +72,20 @@ Restrições reais:
 
 - (a) **Rollback** (ver Trade-offs): código anterior lê `policy` como dia inválido e o plano perde o ciclo sem aviso.
 - (b) **Valor desconhecido já gravado** na chave `policy`: `_enum_or_error` devolve o padrão e registra erro, e `settings_from_row` ignora erros de validação na leitura. O plano é lido no padrão e mantém os dias. Não há aviso na tela.
-- (c) **Dia isolado inviável** sai sem ciclo com a limitação. O bloqueio ao salvar avalia os tipos de dia num dia sem treino, então um dia com treino pode sair sem ciclo sem que o bloqueio o tenha visto.
+- (c) **Dia real inviável** sai sem ciclo com a limitação. O bloqueio ao salvar avalia os tipos de dia num dia sem treino, então um dia com treino pode sair sem ciclo sem que o bloqueio o tenha visto.
 - (d) A soma semanal de kcal é conservada, mas a soma semanal de gramas de carbo e de gordura não é conservada.
-- (e) Sem teste dedicado para o modo novo com cálculo automático por Intervals, modo adaptativo, fases/refeed e semana parcial. A política só entra em `apply_cycle_over_base`, e esses caminhos não passam por ela, mas não há prova dirigida.
-- (f) O SQL do alias `carb_cycle_policy_json` foi exercitado só com banco simulado antes do CI (`ci-completo`).
-- (g) Sem teste de integração de ida e volta da política (gravar, reler e publicar).
-- (h) Nenhuma tela foi vista em navegador ou celular. Sem caso novo na prévia do frontend.
+- (e) O SQL do alias `carb_cycle_policy_json` foi exercitado só com banco simulado antes do CI (`ci-completo`).
+- (f) Sem teste de integração de ida e volta da política (gravar, reler e publicar).
+- (g) Nenhuma tela foi vista em navegador ou celular. Sem caso novo na prévia do frontend.
+- (h) Rótulos de campo (não de política) seguem escritos na tela.
 
 ## Verificação
 
 - Suíte unitária inteira do backend, local: 17.970 passaram e 2 falharam. `test_sem_mojibake` falha por arquivos locais não versionados, que não existem no CI. `test_nutrition_report_window` falhou por banco simulado sem a coluna do alias novo; foi corrigido em seguida, e a bateria dirigida depois da correção passou em 155 testes.
-- Testes novos: 24 do motor (`api/tests/unit/test_nutrition_ciclo_compensacao_gordura.py`) e 11 de persistência e rotas (`api/tests/unit/test_nutrition_ciclo_politica_persistencia.py`).
-- Baterias dirigidas do backend: 1.044 e 971 passaram.
+- Testes novos (entrega de 20/11): 24 do motor (`api/tests/unit/test_nutrition_ciclo_compensacao_gordura.py`) e 11 de persistência e rotas (`api/tests/unit/test_nutrition_ciclo_politica_persistencia.py`).
+- Em 21/11/2026, testes dos cenários de Intervals, adaptativo, fases e refeed, semana parcial com peso variável, futuro desconhecido, dia isolado e meta congelada, em `test_nutrition_ciclo_compensacao_gordura.py` (`test_gasto_automatico_do_intervals_com_compensacao_igual_ao_pre_ciclo`, `test_modo_adaptativo_com_compensacao_igual_ao_pre_ciclo`, `test_fases_e_refeed_com_compensacao_igual_ao_pre_ciclo_da_mesma_fase`, `test_semana_parcial_peso_variavel_futuro_desconhecido_e_dia_isolado_com_compensacao`): todos passaram sem alteração no motor. Os testes conferem kcal e proteína do dia iguais às do alvo pré-ciclo, atividade sem dupla contagem, soma semanal de kcal e meta congelada não regravada.
+- Em 21/11/2026, bateria dirigida do backend: 894 passaram.
+- Baterias dirigidas do backend (entrega de 20/11): 1.044 e 971 passaram.
 - Frontend: Vitest da nutrição, 242 passaram; `tsc` sem erro.
 - Guarda dos motores (`api/tests/unit/test_guarda_fontes_da_verdade.py`): 485 passaram.
 - Não verificado: integração contra MySQL real (roda só no CI, com o rótulo `ci-completo`), celular real e navegador.

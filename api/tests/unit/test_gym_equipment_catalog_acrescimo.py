@@ -104,6 +104,16 @@ def test_nao_dono_recebe_403_igual_e_nada_e_gravado(ctx, equip):
     assert not any("FROM equipment" in s for s, _ in cur.executed)
 
 
+def test_academia_inexistente_e_alheia_dao_a_mesma_resposta_sem_escopo_todos(ctx):
+    client, cur = ctx
+    alheia = _post(client, "terceiro", {"gym_id": 5, "equipment_id": 9})
+    inexistente = _post(client, "terceiro", {"gym_id": 999, "equipment_id": 9})
+    assert (alheia.status_code, alheia.json()) == (inexistente.status_code, inexistente.json())
+    assert inexistente.status_code == 403
+    assert cur.writes() == []
+    assert not any("FROM equipment" in s for s, _ in cur.executed)
+
+
 @pytest.mark.parametrize("quem,gym", [("dono", 5), ("admin", 5), ("admin", 6)])
 def test_dono_e_admin_acrescentam_e_recebem_links(ctx, quem, gym):
     client, cur = ctx

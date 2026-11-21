@@ -383,9 +383,11 @@ def test_vinculos_de_academia_orfa_so_com_escopo_todos(ctx, metodo, caminho, cor
         ("POST", "/gym-equipment-catalog", {"gym_id": 999, "equipment_id": 9}),
     ],
 )
-def test_vinculo_em_gym_inexistente_da_404_e_nao_grava(ctx, metodo, caminho, corpo):
+def test_vinculo_em_gym_inexistente_403_sem_escopo_todos_e_404_com_ele(ctx, metodo, caminho, corpo):
     client, cur, _ = ctx
-    assert _chamar(client, "dono", metodo, caminho, corpo).status_code == 404
+    for quem in ("dono", "terceiro"):
+        assert _chamar(client, quem, metodo, caminho, corpo).status_code == 403, quem
+    assert _chamar(client, "admin", metodo, caminho, corpo).status_code == 404
     assert cur.writes() == []
 
 

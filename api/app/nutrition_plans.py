@@ -55,7 +55,7 @@ from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
-from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle
+from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle, validate_cycle_days
 from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
@@ -237,7 +237,13 @@ def _validate_payload(payload: NutritionPlanSettingsIn, stored_policy: Optional[
     """`stored_policy` = política do rascunho gravado (só na edição): campo OMITIDO herda, desde que o payload mantenha o
     ciclo; `null` explícito volta ao padrão; valor explícito vale."""
     politica: Any = payload.carb_cycle_policy
-    if "carb_cycle_policy" not in payload.model_fields_set and payload.cycle_days is not None and stored_policy is not None:
+    # Só herda se o ciclo resultante existir (`{}` ou só dias normais não ciclam: a política herdada daria 400).
+    if (
+        "carb_cycle_policy" not in payload.model_fields_set
+        and payload.cycle_days is not None
+        and stored_policy is not None
+        and validate_cycle_days(payload.cycle_days).cycles
+    ):
         politica = stored_policy.value
     validacao = build_plan_settings(
         strategy=payload.strategy,

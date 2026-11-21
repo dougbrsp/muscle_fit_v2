@@ -12,13 +12,15 @@ export const CATALOG_ADDED_WITHOUT_LINK_MESSAGE =
 
 /**
  * O item da academia é o mesmo par equipamento×exercício do catálogo?
- * `/gym-equipment` devolve `mapping_id` (pode ser id legado) e o catálogo o
- * `exercise_id` canônico, sem o id canônico na rota da academia: casa por id e,
- * como reserva, pelo nome normalizado do exercício (mesmo `equipment_id` sempre).
- * shortcut: dois exercícios com o mesmo nome no mesmo equipamento contam como um só.
+ * Mesmo `equipment_id` sempre. Com `exercise_id` canônico no item da academia, casa só
+ * por ele. Sem ele (resposta antiga), `mapping_id` (pode ser legado) ou, como reserva,
+ * o nome normalizado do exercício.
+ * shortcut: a reserva por nome só vale para resposta sem `exercise_id`; nela, dois
+ * exercícios com o mesmo nome no mesmo equipamento contam como um só.
  */
 export function isSamePair(pair: EquipmentExerciseLink, item: EquipmentPickerItem): boolean {
   if (pair.equipment_id !== item.equipment_id) return false;
+  if (item.exercise_id != null) return pair.exercise_id === item.exercise_id;
   if (pair.exercise_id === item.mapping_id) return true;
   const name = normalizeSearchText(pair.exercise_name);
   return name !== '' && name === normalizeSearchText(item.mapping_exercise_name);

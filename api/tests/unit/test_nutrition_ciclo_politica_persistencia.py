@@ -79,6 +79,18 @@ def test_remover_o_ciclo_sem_enviar_a_politica_nao_da_erro(db):
     assert r.status_code == 200 and r.json()["carb_cycle_policy"] == "vary_kcal" and db.plans[pid]["carb_cycling_json"] is None
 
 
+def test_ciclo_vazio_ou_so_normal_nao_herda_a_politica_e_ciclo_de_verdade_herda(db):
+    cliente = _cliente()
+    pid = _criar(cliente, cycle_days=DIAS_ALTOS, carb_cycle_policy=COMP).json()["id"]
+    for sem_ciclo in ({}, {"0": "normal"}):
+        r = _put(cliente, pid, cycle_days=sem_ciclo)
+        assert r.status_code == 200, r.text
+        assert r.json()["carb_cycle_policy"] == "vary_kcal"
+        _put(cliente, pid, cycle_days=DIAS_ALTOS, carb_cycle_policy=COMP)
+    assert _put(cliente, pid, cycle_days=DIAS_ALTOS).json()["carb_cycle_policy"] == COMP
+    assert "param_not_applicable:carb_cycle_policy" in _codigos(_put(cliente, pid, cycle_days={}, carb_cycle_policy=COMP))
+
+
 def test_politica_explicita_sem_ciclo_e_valor_desconhecido_sao_recusados_com_rotulo(db):
     assert "param_not_applicable:carb_cycle_policy" in _codigos(_criar(_cliente(), carb_cycle_policy=COMP))
     ruim = _criar(_cliente(), cycle_days=DIAS_ALTOS, carb_cycle_policy="xyz")

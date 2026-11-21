@@ -17,6 +17,7 @@ from app.domain.nutrition import strategy as st
 from app.domain.nutrition.anthropometrics import ActivityLevel, Sex, Subject
 from app.domain.nutrition.energy_expenditure import TdeeMode
 from app.domain.nutrition.manual_targets import ManualTrainingMode
+from app.domain.nutrition.phases import PhaseKind
 
 H, N, L = cc.DayKind.HIGH, cc.DayKind.NORMAL, cc.DayKind.LOW
 FAT = cc.CarbCyclePolicy.FAT_COMPENSATION
@@ -217,3 +218,102 @@ def test_rotulos_novos():
     for codigo in (cc.LIMIT_FAT_COMPENSATION_INFEASIBLE, cc.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED):
         assert lb.limitation_label(codigo)
         assert lb.limitation_label(codigo) != codigo
+
+
+# --- #242: a compensação não muda kcal nem proteína do dia em nenhum modo (pré-ciclo = referência) -----------------
+
+
+def _igual_ao_pre_ciclo(pre, dia, idx):
+    assert dia.macros.kcal == pytest.approx(pre.macros.kcal)
+    assert dia.macros.protein_g == pytest.approx(pre.macros.protein_g)
+    assert dia.carb_cycle_policy == FAT and dia.day_kind == SEMANA[idx % 7]
+    # a compensação foi de fato exercida (não é kcal igual por limitação)
+    assert cc.LIMIT_FAT_COMPENSATION_INFEASIBLE not in dia.limitations
+    assert cc.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED not in dia.limitations
+    m, p = dia.macros, pre.macros
+    if dia.day_kind == H:
+        assert m.carb_g > p.carb_g and m.fat_g < p.fat_g
+    elif dia.day_kind == L:
+        assert m.carb_g < p.carb_g and m.fat_g > p.fat_g
+    else:
+        assert m.carb_g == pytest.approx(p.carb_g) and m.fat_g == pytest.approx(p.fat_g)
+
+
+@pytest.mark.parametrize("sincronizado", [True, False], ids=["sincronizado", "sem_sincronia"])
+@pytest.mark.parametrize("sessoes", [(), "forca"], ids=["sem_treino", "forca"])
+def test_gasto_automatico_do_intervals_com_compensacao_igual_ao_pre_ciclo(sincronizado, sessoes):
+    from app.domain.nutrition.daily_target import day_context_for
+    from tests.unit import test_nutrition_atividades_extras as ex
+
+    sessoes = ex.FORCA if sessoes == "forca" else ()
+    extras = ex._extras(("Walk", 130), ("VirtualRun", 265))
+    sem_ciclo = ex._plano()
+    com = ex._plano(cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    for i in range(7):
+        dia = ex.HOJE + timedelta(days=i)
+        ctx = day_context_for(dia, dia, sessoes, extras, intervals_in_sync=sincronizado)
+        pre = compute_daily_target(ex.SUJEITO, sem_ciclo, ctx)
+        meta = compute_daily_target(ex.SUJEITO, com, ctx)
+        assert meta.extra_activity.kcal == pytest.approx(pre.extra_activity.kcal)  # atividade não conta 2x
+        assert meta.tdee.kcal == pytest.approx(pre.tdee.kcal)
+        _igual_ao_pre_ciclo(pre, meta, dia.weekday())
+    if sincronizado and sessoes:
+        assert pre.extra_activity.kcal == pytest.approx(395)
+
+
+def test_modo_adaptativo_com_compensacao_igual_ao_pre_ciclo():
+    from app.domain.nutrition import adaptive_energy as ae
+    from tests.unit import test_nutrition_modo_adaptativo as ad
+
+    estados = ad._estados(40)
+    hoje = ad.D0 + timedelta(days=39)
+    ciclo = {"cycle_days": {i: k.value for i, k in enumerate(SEMANA)}}
+    sem_ciclo = ad._plano()
+    com = ad._plano(**ciclo, cycle_policy="fat_compensation")
+    for i in (*range(30, 37), 39, 41):  # passados, hoje (aberto) e futuro
+        dia = ad.D0 + timedelta(days=i)
+        est = ae.estimate_for_day(estados, dia, hoje)
+        pre = ad._meta(sem_ciclo, dia, est)
+        meta = ad._meta(com, dia, est)
+        _igual_ao_pre_ciclo(pre, meta, dia.weekday())
+
+
+@pytest.mark.parametrize("fase", [None, *PhaseKind])
+def test_fases_e_refeed_com_compensacao_igual_ao_pre_ciclo_da_mesma_fase(fase):
+    from tests.unit.test_nutrition_daily_target import COM_MLG
+
+    sem_ciclo = _plano(st.Strategy.CUTTING)
+    com = _plano(st.Strategy.CUTTING, cycle_kinds=SEMANA, carb_cycle_policy=FAT)
+    for i in range(7):
+        pre = compute_daily_target(COM_MLG, sem_ciclo, _dia(i, phase_kind=fase))
+        meta = compute_daily_target(COM_MLG, com, _dia(i, phase_kind=fase))
+        assert meta.phase_kind == pre.phase_kind
+        _igual_ao_pre_ciclo(pre, meta, i)
+
+
+def test_semana_parcial_peso_variavel_futuro_desconhecido_e_dia_isolado_com_compensacao():
+    from tests.unit.test_nutrition_plano_autogerido_motor import KINDS, _contexto
+
+    sem_ciclo = _plano()
+    com = _plano(cycle_kinds=KINDS, carb_cycle_policy=FAT)
+
+    def kcal(plano, sujeito, i, conhecido=True):
+        return compute_daily_target(sujeito, plano, _contexto(i, conhecido)).macros.kcal
+
+    # congeladas (4 primeiros dias) + abertas com peso novo = alvos pré-ciclo de cada data
+    novo = replace(SUJEITO, weight_kg=80.4)
+    partes = [kcal(com, SUJEITO, i) for i in range(4)] + [kcal(com, novo, i) for i in (4, 5, 6)]
+    pre = [kcal(sem_ciclo, SUJEITO, i) for i in range(4)] + [kcal(sem_ciclo, novo, i) for i in (4, 5, 6)]
+    assert partes == pytest.approx(pre) and sum(partes) == pytest.approx(sum(pre))
+    # treino futuro desconhecido funciona
+    for i in range(7):
+        assert kcal(com, SUJEITO, i, False) == pytest.approx(kcal(sem_ciclo, SUJEITO, i, False))
+    # cada dia depende só de si
+    # dia D isolado (compensação exercida) = dia D dentro da semana com os outros dias com outro peso
+    semana_alterada = [compute_daily_target(SUJEITO if j == 5 else novo, com, _contexto(j)) for j in range(7)]
+    assert semana_alterada[5].macros == compute_daily_target(SUJEITO, com, _contexto(5)).macros
+    for i in range(7):
+        _igual_ao_pre_ciclo(
+            compute_daily_target(SUJEITO, sem_ciclo, _contexto(i)),
+            compute_daily_target(SUJEITO, com, _contexto(i)), i,
+        )
