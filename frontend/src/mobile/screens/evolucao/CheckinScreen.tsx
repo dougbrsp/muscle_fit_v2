@@ -4,10 +4,13 @@ import { Button } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconCheck } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { dashboardKeys, deleteDailyCheckin, fetchDailyCheckins, saveDailyCheckin } from '@/lib/dashboard-api';
 import {
+  CHECKIN_NOTES_MAX,
+  shouldResetCheckinForm,
+  type CheckinFormSource,
   answeredDays,
   checkinForDate,
   emptyCheckinForm,
@@ -66,7 +69,12 @@ export function CheckinScreen() {
   const itens = useMemo(() => query.data?.items ?? [], [query.data]);
   const doDia = useMemo(() => checkinForDate(itens, dia), [itens, dia]);
 
+  // Refetch com os mesmos dados (objeto novo) não pode apagar o que está sendo digitado.
+  const origem = useRef<CheckinFormSource | null>(null);
   useEffect(() => {
+    const next = { day: dia, id: doDia?.id ?? null };
+    if (!shouldResetCheckinForm(origem.current, next)) return;
+    origem.current = next;
     setErrors({});
     setForm(doDia ? formFromCheckin(doDia) : emptyCheckinForm(dia));
   }, [dia, doDia]);
@@ -183,9 +191,13 @@ export function CheckinScreen() {
                     className={styles.dateInput}
                     placeholder="o que mais vale registrar sobre hoje"
                     value={form.notes}
-                    maxLength={255}
+                    maxLength={CHECKIN_NOTES_MAX}
                     disabled={!tabelaDisponivel}
-                    onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))}
+                    onChange={(e) => {
+                      // Lê o valor ANTES: o atualizador roda depois, quando e.currentTarget já é null (TypeError no Safari).
+                      const notes = e.currentTarget.value;
+                      setForm((prev) => ({ ...prev, notes }));
+                    }}
                   />
                   {errors.notes ? <p className={styles.err}>{errors.notes}</p> : null}
                 </div>

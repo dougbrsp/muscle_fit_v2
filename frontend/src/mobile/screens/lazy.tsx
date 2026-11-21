@@ -32,7 +32,7 @@ class ChunkBoundary extends Component<
 
   render() {
     if (this.state.failed) {
-      // so falha de chunk vira "Sem conexao"; o resto sobe para o error.tsx do app
+      // so falha de chunk vira "Sem conexao"; o resto sobe para o ScreenErrorBoundary do shell
       if (!isChunkLoadError(this.state.error)) throw this.state.error;
       return <OfflineState onRetry={this.props.onRetry} />;
     }

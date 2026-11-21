@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHECKIN_NOTES_MAX,
+  shouldResetCheckinForm,
   answeredDays,
   answeredFields,
   checkinForDate,
@@ -75,8 +77,18 @@ describe('formulário', () => {
     expect(validateCheckinForm(form({ energy: 0 })).energy).toBeTruthy();
   });
 
-  it('recusa nota acima de 255 caracteres', () => {
-    expect(validateCheckinForm(form({ energy: 3, notes: 'x'.repeat(256) })).notes).toBeTruthy();
+  it('recusa nota acima do limite e aceita no limite', () => {
+    expect(validateCheckinForm(form({ energy: 3, notes: 'x'.repeat(CHECKIN_NOTES_MAX + 1) })).notes).toContain(String(CHECKIN_NOTES_MAX));
+    expect(validateCheckinForm(form({ energy: 3, notes: 'x'.repeat(CHECKIN_NOTES_MAX) })).notes).toBeUndefined();
+  });
+
+  it('só refaz o formulário quando o dia ou o id do registro muda', () => {
+    const dia = { day: '2026-11-21', id: 7 };
+    expect(shouldResetCheckinForm(null, dia)).toBe(true);
+    expect(shouldResetCheckinForm(dia, { ...dia })).toBe(false); // refetch com os mesmos dados
+    expect(shouldResetCheckinForm(dia, { day: '2026-11-20', id: 7 })).toBe(true);
+    expect(shouldResetCheckinForm({ day: '2026-11-21', id: null }, dia)).toBe(true); // registro passou a existir
+    expect(shouldResetCheckinForm(dia, { day: '2026-11-21', id: null })).toBe(true); // registro apagado
   });
 
   it('exige a data', () => {

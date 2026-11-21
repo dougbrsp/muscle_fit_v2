@@ -20,6 +20,7 @@ import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
 import { DesktopOnlyScreen } from '../screens/DesktopOnlyScreen';
 import { resolveMobileScreen } from '../screens/registry';
+import { ScreenErrorBoundary } from '../screens/ScreenErrorBoundary';
 import { hasOpenView } from '../screens/telas/view-stack';
 import { useKeyboardOpen } from './keyboard';
 import { acaoVoltarCabecalho, temOrigemInterna, registrarRotaAtual, scrollMemoryKey } from './nav-active';
@@ -207,7 +208,15 @@ function Shell({ children }: { children: ReactNode }) {
       <OfflineBanner />
 
       <main id="mobile-main" tabIndex={-1} className={styles.main}>
-        {desktopOnly ? <DesktopOnlyScreen /> : Screen ? <Screen /> : children}
+        {desktopOnly ? (
+          <DesktopOnlyScreen />
+        ) : Screen ? (
+          <ScreenErrorBoundary resetKey={`${pathname ?? ''}?${search}`}>
+            <Screen />
+          </ScreenErrorBoundary>
+        ) : (
+          children
+        )}
       </main>
 
       <nav
