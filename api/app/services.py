@@ -3702,9 +3702,14 @@ def _freeze_plan_prescriptions(
             snapshot = laboral.get(row_id) or (deterministic or {}).get(row_id) or manual[row_id]
             if substitution_by_row and row_id in substitution_by_row:
                 snapshot = prescription_domain.with_substitution(snapshot, substitution_by_row[row_id])
+            # #259: tecnica retirada pelo motor num dia sem trabalho direto (o
+            # snapshot ja diz, pelo aviso): a coluna que as telas leem sai nula.
+            clear_technique = prescription_domain.WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK in (
+                snapshot.get("warnings") or ()
+            )
             cur.execute(
                 "UPDATE workout_plan_exercises SET prescription_json = %s, engine_version = %s, "
-                "requires_user_choice = %s WHERE id = %s",
+                "requires_user_choice = %s" + (", advanced_technique = NULL" if clear_technique else "") + " WHERE id = %s",
                 (to_json(snapshot), snapshot["engine_version"], int(snapshot["requires_user_choice"]), row_id),
             )
     return len(rows)

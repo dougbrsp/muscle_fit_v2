@@ -71,7 +71,7 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 - (f) Fichas já congeladas não mudam.
 - (g) `generated_mapping_id` vem do cliente.
 - (h) Comentários de `frontend/src/lib/exercise-swap-options.ts` (L55-57 e L147) dizem que o campo não entra no payload de save; `workout-plan-payload.ts` (L54) passa a enviá-lo. O comentário está desatualizado.
-- (i) Para um item FST-7 do Modelo em dia sem trabalho direto, a decisão sai sem a técnica e com as séries e a faixa do Modelo (comportamento anterior à entrega); o snapshot da ficha, porém, mantém a técnica (ver Atualização).
+- (i) Resolvido em 22/11/2026 (ver Atualização de 22/11/2026, #259): para um item FST-7 do Modelo em dia sem trabalho direto, a decisão sai sem a técnica e com as séries e a faixa do Modelo, e a ficha também sai sem a técnica, com o aviso `TECHNIQUE_REMOVED_NO_DIRECT_WORK`.
 
 ## Verificação
 
@@ -91,7 +91,7 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 
 **Teste pelo caminho real.** `api/tests/unit/test_tecnica_de_series_sem_trabalho_direto.py::test_snapshot_do_gvt_mantido_sem_trabalho_direto_nao_marca_tecnica_invalida` passa por `build_prescription` (`_snapshot_do_motor`). A ficha com GVT mantido em dia sem trabalho direto não recebe `WARNING_MODEL_TECHNIQUE_INVALID`.
 
-**FST-7 em dia sem trabalho direto (limite conhecido, fixado em teste).** `test_snapshot_do_fst7_sem_trabalho_direto_registra_comportamento_atual` fixa o comportamento atual. A decisão do motor retira o FST-7 (`advanced_technique` nulo, `SKIP`), mas o snapshot da ficha sai sem aviso (`warnings == []`) e mantém `advanced_technique == "fst7"`, copiado do exercício do Modelo. Ficha e decisão divergem nesse caso. O usuário foi informado em 20/11/2026 e não pediu mudança. Esta divergência é o limite (j).
+**FST-7 em dia sem trabalho direto (limite conhecido em 21/11/2026; superado em 22/11/2026, ver Atualização de 22/11/2026).** O teste citado abaixo foi substituído por `test_snapshot_do_fst7_sem_trabalho_direto_retira_a_tecnica_e_avisa`. `test_snapshot_do_fst7_sem_trabalho_direto_registra_comportamento_atual` fixa o comportamento atual. A decisão do motor retira o FST-7 (`advanced_technique` nulo, `SKIP`), mas o snapshot da ficha sai sem aviso (`warnings == []`) e mantém `advanced_technique == "fst7"`, copiado do exercício do Modelo. Ficha e decisão divergem nesse caso. O usuário foi informado em 20/11/2026 e não pediu mudança. Esta divergência é o limite (j).
 
 **Guarda dos motores.** Padrão `reps_protocolo_tecnica` em `api/tests/unit/test_guarda_fontes_da_verdade.py` (L2079-2093). Ele acusa a definição de `GVT_PROTOCOL_REPS`, `PROTOCOL_REPS_BY_CODE` ou `SETS_ONLY_DEFAULT_SETS` fora do dono, e número atrelado ao código `gvt` ou `fst7` escrito à mão. Atribuição cujo valor vem de `RULE` (espelho gerado) é reconhecida como espelho. A allowlist nasce vazia (L2611).
 
@@ -101,7 +101,7 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 - Guarda dos motores depois dos padrões novos: 491 passaram.
 - Vitest do lote: 254 passaram; `tsc` sem erro.
 
-**Limite (j).** Ficha e decisão do motor divergem para FST-7 em dia sem trabalho direto (ver acima). Mudar isso é decisão do usuário.
+**Limite (j).** Resolvido em 22/11/2026 (ver Atualização de 22/11/2026): a ficha segue a decisão do motor.
 
 ## Atualização de 21/11/2026 (#230)
 
@@ -112,3 +112,22 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 **Escolha: não religar as execuções antigas.** Nenhuma migração liga as execuções antigas às fichas. A religação cobriria menos da metade das fichas, com risco de ligar o par errado, e escreveria em dados de produção. As execuções seguem como rascunho não salvo. O usuário foi informado em 21/11/2026 e pode pedir a religação dos 20 pares inequívocos num lote próprio, com decisão nova.
 
 Efeito para o usuário: as fichas antigas passam a aparecer no painel com a limitação de leitura de `raw_payload`; antes não apareciam na lista. Detalhe em `docs/motores/FONTES_DA_VERDADE.md` (Lote 21 de 21/11/2026).
+
+## Atualização de 22/11/2026 (#259)
+
+**Decisão do usuário (22/11/2026).** A ficha segue a decisão do motor. Em dia sem trabalho direto do grupo, quando o motor retira a técnica que exige falha (FST-7), a linha sai sem a técnica, com séries, faixa e descanso da linha e com aviso próprio. A regra do motor não muda; o GVT continua mantido nesses dias (item 4 da Decisão).
+
+**Alternativas.** Manter o descompasso (ficha com o FST-7 e decisão sem ele) foi o comportamento de 21/11/2026, registrado como limite (j). Foi trocado pelo ajuste acima, que deixa ficha e decisão dizendo a mesma coisa.
+
+**O que foi feito.**
+- `api/app/domain/prescription.py::build_prescription` (L264-283): em dia sem trabalho direto, a técnica da linha passa por `progression_engine.resolve_technique_authority` com a falha do dia. Técnica retirada sai do snapshot e gera `WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK` (código `TECHNIQUE_REMOVED_NO_DIRECT_WORK`), que é informativo e não exige escolha. Técnica que o par rejeita mesmo com falha permitida segue com `MODEL_TECHNIQUE_INVALID`.
+- `api/app/services.py::_freeze_plan_prescriptions` (L3705-3712) é o único ponto que grava o snapshot; zera `advanced_technique` da linha só quando o snapshot traz o aviso novo.
+- `api/app/generation/deterministic_prescription.py` (L450-455) emite o código novo no caminho de ficha de Modelo quando a decisão é de dia sem trabalho direto; `api/app/generation/mode_b.py::_warning_text` tem o texto do rascunho.
+- `frontend/src/lib/workout-plans-types.ts`: rótulo, explicação e cor do aviso. Sem regra na tela; a tela mobile da ficha não mostra avisos por linha.
+
+**Impacto.** Sem migração. Medido em 22/11/2026 no banco de desenvolvimento (cópia de produção), só leitura: 7 linhas de ficha com `fst7` e snapshot (5 com decisão `HOLD`, 2 com `INCREASE_LOAD`), nenhuma com `NO_DIRECT_WORK` no bloqueio. Nenhuma ficha existente muda; vale para fichas criadas ou atualizadas depois do deploy. Detalhe em `docs/motores/FONTES_DA_VERDADE.md` (Lote 24 de 22/11/2026).
+
+**Limites.**
+- A técnica retirada não volta num refresh posterior, mesmo em dia com trabalho direto, porque o refresh lê a coluna `advanced_technique`, que ficou nula. O Modelo continua com a técnica.
+- A validação antiga da técnica em `build_prescription` (L285) usa `composition.failure_allowed`, não o `failure_allowed` da decisão. Em dia de dose reduzida pode haver descompasso para técnica que exige falha. Fora do escopo; registrado.
+- Não medido: com que frequência um dia futuro cai em "sem trabalho direto" para os grupos dos itens com FST-7.
