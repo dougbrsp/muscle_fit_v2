@@ -1269,6 +1269,35 @@ def _evaluate_set(
     return reading, next_set
 
 
+def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: int, exercise_row: dict, intensity: Any) -> None:
+    """#241 (decisao do usuario, 21/11/2026): serie de trabalho que chega fora
+    de ordem muda a posicao ordinal das seguintes; regrava o `rpe_target_planned`
+    delas (mesma transacao, mesma composicao do POST, dono `effective_intensity`).
+    Posicao = ordem entre TODAS as de trabalho, pendentes inclusive (como o COUNT
+    do POST). So regrava as confirmadas, de repeticoes, sem protocolo e com
+    esperado ja gravado; so quando o valor muda. Nao toca `rpe_target_effective`."""
+    plan_rpe = effective_intensity.plan_rpe_target(exercise_row.get("prescription_json"), exercise_row.get("plan_rpe_target"))
+    if not effective_intensity.has_planned_rpe_ramp(plan_rpe):
+        return
+    cur.execute(
+        "SELECT id, set_number, reps_pending, measure, rpe_target_source, rpe_target_planned FROM exercise_sets "
+        f"WHERE exercise_id = %s AND {sql_is_working('set_type')} ORDER BY set_number",
+        (exercise_id,),
+    )
+    for position, row in enumerate(cur.fetchall() or []):
+        if (
+            row["set_number"] <= set_number
+            or row.get("reps_pending")
+            or not is_rep_based(row.get("measure"))
+            or row.get("rpe_target_source") is not None
+            or row.get("rpe_target_planned") is None
+        ):
+            continue
+        new = effective_intensity.ramp_planned_rpe_for_position(plan_rpe, intensity.rpe_target_effective, position)
+        if new is not None and float(new) != float(row["rpe_target_planned"]):
+            cur.execute("UPDATE exercise_sets SET rpe_target_planned = %s WHERE id = %s", (new, row["id"]))
+
+
 def _plain_number(value: Any) -> Any:
     """DECIMAL lido do banco (Decimal) vira float para o JSON; nulo segue nulo."""
     return float(value) if isinstance(value, Decimal) else value
@@ -1638,7 +1667,8 @@ def add_session_set(
                 technique_code=technique_code or exercise_row.get("plan_technique"),
             )
             # #182: o RPE esperado desta serie (o alvo cobrado acima), gravado
-            # para comparar com o realizado depois; nunca recalculado.
+            # para comparar com o realizado depois. Gravado no envio; corrigido so
+            # por chegada fora de ordem na mesma sessao (#241, ADR 0026, decisao de 21/11/2026).
             rpe_target_planned = effective_intensity.planned_set_rpe_target(set_type, reading.target)
             completed_at = None
             if payload.completed_at is not None:
@@ -1724,6 +1754,16 @@ def add_session_set(
                 return _duplicate_set_response(
                     conn, cur, session_id, exercise_id, exercise_row, stored, client_key, user_id=identity.user_id
                 )
+
+            if (
+                set_type == WORKING
+                and not payload.reps_pending
+                and is_rep_based(measure)
+                and rpe_target_source is None
+                and not is_deload_session(exercise_row.get("deload_source"))
+                and not is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN))
+            ):
+                _resync_planned_rpe_after_late_set(cur, exercise_id, set_number, exercise_row, intensity)
 
             for clamp in intensity.clamps:
                 log_event(

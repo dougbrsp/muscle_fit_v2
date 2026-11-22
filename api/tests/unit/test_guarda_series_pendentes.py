@@ -68,6 +68,11 @@ EXCECOES: dict[tuple[str, str], tuple[int, str]] = {
         1,
         "posição ORDINAL da série entre as de trabalho (rampa planejada): conta a pendente, não lê reps/carga",
     ),
+    ("workout_sessions.py", "_resync_planned_rpe_after_late_set"): (
+        1,
+        "#241: posição ORDINAL entre as séries de trabalho (conta a pendente, como o COUNT do POST) para "
+        "regravar o esperado das confirmadas seguintes; a pendente não é regravada, só ocupa posição",
+    ),
     ("workout_sessions.py", "update_session_set"): (1, "o PATCH lê justamente a série a confirmar/corrigir"),
     ("workout_sessions.py", "_SESSION_SETS_TARGET_SQL"): (
         1,

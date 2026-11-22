@@ -1,6 +1,6 @@
 # ADR 0026: RPE esperado gravado na série e comparação com o realizado (issue #182)
 
-- **Status**: Aceita. Branch `feat/rpe-esperado-realizado-182`. Não publicada nem promovida a produção.
+- **Status**: Aceita; regra de gravação revista pela #241 em 21/11/2026 (ver "Revisão pela #241"). Branch `feat/rpe-esperado-realizado-182`; revisão na branch `fix/rpe-fora-de-ordem-l19`. Não publicada nem promovida a produção.
 - **Data**: 2026-11-20
 - **Complementa**: ADR 0013, pendência 1 de "Fora desta entrega" (comparação esperado × realizado em histórico). Nenhuma decisão anterior é substituída. O alvo efetivo da série (`rpe_target_effective`, ADRs 0013 e 0024) não muda de sentido.
 
@@ -29,7 +29,7 @@ Restrições reais:
 
 1. **Coluna e migração.** `exercise_sets.rpe_target_planned DECIMAL(3,1) NULL DEFAULT NULL`, em `api/db/migrations/121_rpe_alvo_planejado_da_serie.py` (`add_column_sql`, com `ALGORITHM=INSTANT`). Sem FK, sem índice e sem backfill. `plan(db)` é idempotente: coluna ausente gera o `ADD COLUMN`; coluna presente com o tipo esperado não faz nada; coluna divergente levanta `RpeTargetPlannedError` antes de qualquer statement. `down` executa `DROP COLUMN`. Plano coberto por `api/tests/unit/test_migration_121_plano.py`.
 2. **Dono do valor.** `effective_intensity.planned_set_rpe_target(set_type, charged_target)` (L407) devolve o alvo cobrado da série. Devolve nulo quando a série é preparatória (`PREPARATORY_SET_TYPES` em `api/app/set_types.py:54`: `warmup`, `feeler`, `laboral`) ou quando não há alvo. Recebe `SetIntensityReading.target`, que `set_intensity_reading` calcula para qualquer tipo de série.
-3. **Gravação.** `workout_sessions.add_session_set` (`api/app/workout_sessions.py`, L1477) calcula o valor (L1615) e o grava no INSERT (L1643-1662). A resposta o devolve (L1739). Na repetição idempotente (mesmo `client_key`), `_duplicate_set_response` (L1359; L1407) devolve o valor GRAVADO, e não o recalculado. O PATCH, `update_session_set` (L1753), não grava o campo: ele não está em `PATCHABLE_SET_FIELDS` (`api/app/exercise_set_update_merge.py:102`).
+3. **Gravação** (revista pela #241 para série que chega fora de ordem; ver "Revisão pela #241"). `workout_sessions.add_session_set` (`api/app/workout_sessions.py`, L1477) calcula o valor (L1615) e o grava no INSERT (L1643-1662). A resposta o devolve (L1739). Na repetição idempotente (mesmo `client_key`), `_duplicate_set_response` (L1359; L1407) devolve o valor GRAVADO, e não o recalculado. O PATCH, `update_session_set` (L1753), não grava o campo: ele não está em `PATCHABLE_SET_FIELDS` (`api/app/exercise_set_update_merge.py:102`).
 4. **Preservação.** `SERVER_KEPT_SET_FIELDS` (`api/app/exercise_set_update_merge.py:89-97`) inclui `rpe_target_planned`. Na edição pelo Registro, `services._update_exercise_log_tx` (`api/app/services.py:1275`; L1452 e L1483) mantém o valor da série gravada com o mesmo número. Série criada pelo Registro fica nula. A importação (`upsert_activity`, `services.py:467`) não cita a coluna e fica nula.
 5. **Comparação sem tolerância.** `effective_intensity.rpe_vs_expected(actual, expected)` (L442) devolve `None` se faltar um dos dois valores. Senão, `delta` = realizado − esperado, e `status` é `below`, `on_target` ou `above` (constantes `RPE_VS_BELOW`, `RPE_VS_ON_TARGET` e `RPE_VS_ABOVE`, L422-424). Os rótulos estão em `RPE_VS_LABELS` (L425): "Abaixo do esperado", "No esperado", "Acima do esperado". A conta é em `Decimal`. `rpe_vs_expected_counts(rows)` (L453) agrega `below`, `on_target`, `above` e `compared`; série sem os dois valores não conta.
 6. **Leituras.**
@@ -45,9 +45,39 @@ Restrições reais:
    - protocolo de técnica: o alvo do protocolo, quando a série o tem.
    Séries de backoff e de aplicação de técnica (`rest_pause`, `drop_set`, `forced_rep`) não são preparatórias, então recebem o alvo cobrado. O detalhe as compara; a contagem do histórico não (ver Limites, h).
 
+## Revisão pela #241 (21/11/2026)
+
+Decisão do usuário de 21/11/2026, opção "Regravar na mesma sessão". A regra de gravação única das Decisões 3 e dos Trade-offs deixa de valer para a chegada fora de ordem. O restante desta decisão continua valendo.
+
+**Motivo.** A posição ordinal de uma série de trabalho depende das séries anteriores já gravadas. Com a rampa 7-8-9 enviada na ordem 1, 3, 2, a série 3 gravava 8 (o degrau da série 2, que ainda não estava no banco) e a comparação esperado × realizado ficava um degrau errada.
+
+**Regra nova.**
+- O esperado continua gravado no envio da série.
+- Depois de gravar uma série de trabalho confirmada, por repetições, sem protocolo, fora de deload e sem a marca de técnica, num exercício com rampa de RPE, o servidor relê as séries de trabalho do exercício por número e regrava o `rpe_target_planned` das de número maior cujo degrau mudou. Isso ocorre na mesma transação do envio (`workout_sessions._resync_planned_rpe_after_late_set`, chamada por `add_session_set` depois do INSERT).
+- A posição é a ordinal entre as séries de trabalho, contando a pendente, como no envio.
+- O degrau sai de `effective_intensity.ramp_planned_rpe_for_position`, o dono da composição. Só `rpe_target_planned` é escrito; `rpe_target_effective` não muda.
+
+**Não muda.**
+- Edição de série (PATCH) e repetição idempotente (mesmo `client_key`) não recalculam nem regravam.
+- O Registro não recalcula.
+- Séries de técnica, de protocolo, de backoff, preparatórias e de deload não são regravadas.
+- Exercício sem rampa não ganha leitura extra: a verificação de rampa sai antes de qualquer consulta.
+
+**Limites da revisão.**
+- A carga sugerida da próxima série, já devolvida ao aparelho antes da correção, não é corrigida.
+- Série que chega PENDENTE e é confirmada depois (PATCH) não dispara a regravação: fica com o alvo efetivo, sem o degrau da rampa, e não é regravada.
+- Exclusão de série (renumeração) não dispara a correção.
+- Concorrência entre dois envios do mesmo exercício não foi analisada além da chave única de número da série (409 `set_number_conflict`).
+- A sequência de composição existe em dois pontos: `set_intensity_reading` (usada pelo POST) e `ramp_planned_rpe_for_position` (usada pela regravação). A paridade entre elas é garantida só por `test_dono_igual_ao_post`, que cobre 3 alvos efetivos e 4 posições.
+
+**Verificação** (resultados reportados pelo autor da entrega; não reexecutados por este documento):
+- 16 testes em `api/tests/unit/test_rpe_esperado_fora_de_ordem.py` (contagem conferida no arquivo): ordens 1,3,2; 3,2,1; 2,1,3; 2,3,1; 3,1,2 terminando em 7, 8, 9; ordem certa sem regravação; aquecimento atrasado; backoff e esperado nulo intactos; deload e alvo único sem leitura extra; repetição idempotente; PATCH; pendente; rampa mais curta que as séries; paridade com o POST.
+- Com a função de regravação desligada, 8 dos 16 testes falham.
+- Bateria dirigida do backend: 675 passaram.
+
 ## Trade-offs
 
-- Ganha: o esperado fica fixo no momento em que o atleta o viu. A comparação não muda quando o teto ou o Modelo mudam depois. Não há tabela nova nem leitura nova de prescrição.
+- Ganha: o esperado fica fixo no momento em que o atleta o viu (revisto pela #241: fixo no envio, com correção só para série de trabalho que chega fora de ordem). A comparação não muda quando o teto ou o Modelo mudam depois. Não há tabela nova nem leitura nova de prescrição.
 - Paga: séries anteriores ao deploy ficam sem comparação para sempre.
 - Paga: a comparação usa um número por série, sem tolerância. Um realizado de 8,5 frente a um esperado de 8 conta como "acima do esperado".
 - Paga: o campo novo é coluna de `exercise_sets`, com janela de migração (ver Plano).
@@ -57,7 +87,7 @@ Restrições reais:
 - **Dados.** Uma coluna nova, nula, sem efeito nos dados existentes.
 - **Contrato.** `services.activity_detail` e o histórico de progressão ganham campos aditivos.
 - **Operação.** A promoção exige `RUN_DB_MIGRATIONS=true` (ver Plano).
-- **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` ganha a linha do alvo gravado da série (§105) e o bloco "Lote 9 de 20/11/2026 (#182)" em "Impacto em produção". A linha de RPE-alvo (§3.1) deixa de dizer que a comparação está fora.
+- **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` ganha a linha do alvo gravado da série (§105) e o bloco "Lote 9 de 20/11/2026 (#182)" em "Impacto em produção". A linha de RPE-alvo (§3.1) deixa de dizer que a comparação está fora. Pela revisão de 21/11/2026 ganha também o bloco "Lote 19 de 21/11/2026 (#241)".
 - **Próximas decisões.** Tolerância, comparação no relatório Markdown e uso na progressão são decisões novas, com replay pelo motor antes.
 
 ## Plano de migração e rollback
