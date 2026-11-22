@@ -1,6 +1,6 @@
 # ADR 0026: RPE esperado gravado na série e comparação com o realizado (issue #182)
 
-- **Status**: Aceita; regra de gravação revista pela #241 em 21/11/2026 (ver "Revisão pela #241"). Branch `feat/rpe-esperado-realizado-182`; revisão na branch `fix/rpe-fora-de-ordem-l19`. Não publicada nem promovida a produção.
+- **Status**: Aceita; regra de gravação revista pela #241 em 21/11/2026 (ver "Revisão pela #241"); critério de comparação do detalhe alinhado ao histórico e ao relatório em 22/11/2026 (limite (h) resolvido; ver "Atualização de 22/11/2026"). Branch `feat/rpe-esperado-realizado-182`; revisão na branch `fix/rpe-fora-de-ordem-l19`. Não publicada nem promovida a produção.
 - **Data**: 2026-11-20
 - **Complementa**: ADR 0013, pendência 1 de "Fora desta entrega" (comparação esperado × realizado em histórico). Nenhuma decisão anterior é substituída. O alvo efetivo da série (`rpe_target_effective`, ADRs 0013 e 0024) não muda de sentido.
 
@@ -33,7 +33,7 @@ Restrições reais:
 4. **Preservação.** `SERVER_KEPT_SET_FIELDS` (`api/app/exercise_set_update_merge.py:89-97`) inclui `rpe_target_planned`. Na edição pelo Registro, `services._update_exercise_log_tx` (`api/app/services.py:1275`; L1452 e L1483) mantém o valor da série gravada com o mesmo número. Série criada pelo Registro fica nula. A importação (`upsert_activity`, `services.py:467`) não cita a coluna e fica nula.
 5. **Comparação sem tolerância.** `effective_intensity.rpe_vs_expected(actual, expected)` (L442) devolve `None` se faltar um dos dois valores. Senão, `delta` = realizado − esperado, e `status` é `below`, `on_target` ou `above` (constantes `RPE_VS_BELOW`, `RPE_VS_ON_TARGET` e `RPE_VS_ABOVE`, L422-424). Os rótulos estão em `RPE_VS_LABELS` (L425): "Abaixo do esperado", "No esperado", "Acima do esperado". A conta é em `Decimal`. `rpe_vs_expected_counts(rows)` (L453) agrega `below`, `on_target`, `above` e `compared`; série sem os dois valores não conta.
 6. **Leituras.**
-   - Detalhe da atividade: `services.activity_detail` (`services.py:967-970`) devolve em cada série `rpe_target_planned` (número ou nulo) e `rpe_vs_expected` (objeto ou nulo). Em série por lado, o RPE comparado é `exercise_sets.rpe`, que é o canônico da série.
+   - Detalhe da atividade: `services.activity_detail` devolve em cada série `rpe_target_planned` (número ou nulo) e `rpe_vs_expected` (objeto ou nulo). A comparação sai de `effective_intensity.set_rpe_vs_expected`, que só compara série de trabalho desde 22/11/2026 (ver "Atualização de 22/11/2026"). Em série por lado, o RPE comparado é `exercise_sets.rpe`, que é o canônico da série.
    - Histórico de progressão: `analytics._fetch_exercise_set_rows` (`api/app/analytics.py:1179`, SELECT com `es.rpe_target_planned` em L1261) alimenta `analytics._build_progression_sessions` (L1279). Só séries de trabalho entram na contagem (L1310). O ponto de sessão ganha `rpe_vs_expected_counts` (L1374), nulo quando nenhuma série foi comparada (`_rpe_counts_or_none`, L1381).
    - Frontend, só formatação: `frontend/src/lib/rpe-expected-vs-actual.ts` (`rpeExpectedSuffix`, `rpeExpectedCountsText`, `rpeExpectedReadonly`). `frontend/src/lib/exercise-set-edit.ts::formatLoggedSets` (L289) mostra `@RPE 8 (esperado 9 · Abaixo do esperado)` na linha de resumo, usada em `frontend/src/app/(app)/registro-exercicios/[activityId]/WorkoutDetailClient.tsx:1153` (web) e `frontend/src/mobile/screens/telas/TreinoDetalheScreen.tsx:937` (mobile). `ProgressaoScreen.tsx:588-589` mostra a contagem da sessão. O PUT do Registro (`setUpdatePayload`) não envia os campos novos, como cobre `frontend/src/lib/rpe-expected-vs-actual.test.ts` (L55-58).
 7. **Casos de borda.** O valor gravado é o que a ficha mostrou no Modo Treino, e não o degrau cru da rampa:
@@ -43,7 +43,7 @@ Restrições reais:
    - treino sem ficha: nulo;
    - deload: o alvo que `set_intensity_reading` resolve para a sessão de deload;
    - protocolo de técnica: o alvo do protocolo, quando a série o tem.
-   Séries de backoff e de aplicação de técnica (`rest_pause`, `drop_set`, `forced_rep`) não são preparatórias, então recebem o alvo cobrado. O detalhe as compara; a contagem do histórico não (ver Limites, h).
+   Séries de backoff e de aplicação de técnica (`rest_pause`, `drop_set`, `forced_rep`) não são preparatórias, então recebem o alvo cobrado. Desde 22/11/2026, nem o detalhe nem a contagem as comparam: o critério de série de trabalho é o mesmo em todas as leituras (ver Limites, h).
 
 ## Revisão pela #241 (21/11/2026)
 
@@ -105,8 +105,25 @@ Decisão do usuário de 21/11/2026, opção "Regravar na mesma sessão". A regra
 - (e) Séries anteriores ao deploy, criadas pelo Registro ou importadas (inclusive do relógio) ficam sem esperado.
 - (f) Os rótulos da contagem no histórico ("abaixo", "no esperado", "acima") são texto de apresentação definido na função pura do frontend (`rpeExpectedCountsText`), porque a API manda só os números. Mudar o rótulo não muda a comparação.
 - (g) Nenhuma tela foi vista em navegador nem em iPhone.
-- (h) O detalhe (`services.py:967-970`) compara também séries de backoff e de aplicação de técnica, porque elas recebem alvo cobrado. A contagem do histórico (`analytics.py:1310`) conta só séries de trabalho. As duas leituras divergem nesse ponto, e falta decidir se o detalhe deve seguir a mesma regra.
+- (h) RESOLVIDO em 22/11/2026 (#241, escolha do usuário). Antes, o detalhe comparava também séries de backoff e de aplicação de técnica, e o histórico e o relatório contavam só séries de trabalho. Agora o detalhe segue o mesmo critério, no dono (`set_rpe_vs_expected`). O `rpe_target_planned` dessas séries continua gravado e na resposta do detalhe; só a comparação some.
 - (i) A expressão "alvo do exercício" no docstring da migração 121 (L6) não corresponde à coluna, que é gravada por série (`037_prescricao_congelada.py:22`).
+
+## Atualização de 22/11/2026 (#241, detalhe do treino)
+
+Escolha do usuário de 22/11/2026: o detalhe do treino compara o RPE esperado com o realizado só nas séries de trabalho, pelo mesmo critério do histórico e do relatório (limite (h)).
+
+Estado atual:
+
+- Dono: `effective_intensity.set_rpe_vs_expected(row)` devolve a comparação só para série de trabalho (`set_types.is_working_set`, que inclui o legado sem tipo). `rpe_vs_expected_counts` passou a usar essa mesma função. `services.activity_detail` a chama por série.
+- Backoff, técnica e preparatória saem sem comparação no detalhe. O `rpe_target_planned` continua na resposta.
+- Histórico (`analytics`) e relatório (`daily_breakdown`) não mudaram de número: já filtravam antes de contar.
+- Frontend: `rpeExpectedSuffix` (`frontend/src/lib/rpe-expected-vs-actual.ts`) só mostra "(esperado X)" quando o servidor manda a comparação. Rótulo vazio cai na reserva do módulo.
+
+Impacto em produção (medição do Tech Lead em 22/11/2026, só leitura, no banco de desenvolvimento, cópia da produção do usuário 1): `exercise_sets` por tipo: working 2.533, feeler 260, warmup 63, rest_pause 50, forced_rep 19, drop_set 16, laboral 15. Nenhuma série tem `rpe_target_planned` gravado (a coluna entrou em produção em 22/11/2026, migração 121). Logo nenhum detalhe de treino existente muda; a mudança vale para treinos registrados depois.
+
+Não medido: nada em tela.
+
+Limite: PWA antigo em cache mostra "(esperado X)" sem rótulo em série que não é de trabalho, até atualizar.
 
 ## Verificação
 

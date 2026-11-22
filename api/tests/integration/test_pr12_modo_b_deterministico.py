@@ -586,6 +586,7 @@ def test_d14_criacao_com_tecnica_invalida_e_422(db_conn, catalog, gym_equipment)
         wpt._enforce_template_safety(_payload(catalog, advanced_technique="rest_pause"), None)
     assert exc.value.status_code == 422
     assert "rest_pause" in exc.value.detail
+    assert exc.value.code == "template_safety_blocked"
 
 
 def test_d14_rpe_acima_do_teto_em_item_novo_e_422(db_conn, catalog, gym_equipment):
@@ -600,6 +601,7 @@ def test_d14_rpe_acima_do_teto_em_item_novo_e_422(db_conn, catalog, gym_equipmen
         wpt._enforce_template_safety(_payload(catalog, rpe_target="10"), None)
     assert exc.value.status_code == 422
     assert "teto seguro" in exc.value.detail
+    assert exc.value.code == "template_safety_blocked"
 
 
 def test_d14_item_legado_nao_tocado_passa_e_vira_warning(db_conn, catalog, gym_equipment):

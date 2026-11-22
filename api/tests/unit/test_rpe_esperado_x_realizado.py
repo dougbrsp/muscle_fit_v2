@@ -40,6 +40,42 @@ def test_contagem_ignora_series_sem_esperado_ou_realizado():
     assert ei.rpe_vs_expected_counts(rows) == {"below": 1, "on_target": 1, "above": 1, "compared": 3}
 
 
+def test_serie_de_trabalho_e_legada_comparam_e_nao_trabalho_nao():
+    for tipo in ("backoff", "technique", "warmup"):
+        assert ei.set_rpe_vs_expected({"set_type": tipo, "rpe": 9, "rpe_target_planned": 8}) is None
+    assert ei.set_rpe_vs_expected({"set_type": "working", "rpe": 9, "rpe_target_planned": 8}).status == ei.RPE_VS_ABOVE
+    assert ei.set_rpe_vs_expected({"rpe": 7, "rpe_target_planned": 8}).status == ei.RPE_VS_BELOW
+
+
+def test_contagem_do_dono_ignora_nao_trabalho():
+    rows = [
+        {"set_type": "working", "rpe": 9, "rpe_target_planned": 8},
+        {"set_type": "backoff", "rpe": 9, "rpe_target_planned": 8},
+        {"set_type": "technique", "rpe": 7, "rpe_target_planned": 8},
+    ]
+    assert ei.rpe_vs_expected_counts(rows) == {"below": 0, "on_target": 0, "above": 1, "compared": 1}
+
+
+def test_detalhe_nao_compara_backoff_mas_mantem_esperado_cru(monkeypatch):
+    class _Cur(_LastCursor):
+        def execute(self, sql, params=None):
+            flat = " ".join(sql.split())
+            super().execute(sql, params)
+            if flat.startswith("SELECT a.*"):
+                self._one = {"id": 9, "user_id": 1, "calories_kcal": None, "calories_source": None}
+            elif flat.startswith("SELECT e.*,"):
+                self._all = [{"id": 1}]
+            elif flat.startswith("SELECT * FROM exercise_sets"):
+                self._all = [
+                    {"id": 1, "exercise_id": 1, "set_number": 1, "set_type": "backoff", "reps": 10,
+                     "rpe": Decimal("9"), "rpe_target_planned": Decimal("8")},
+                ]
+
+    monkeypatch.setattr(services, "transaction", fake_transaction(_Cur([])))
+    (serie,) = services.activity_detail(9, user_id=1)["exercises"][0]["sets"]
+    assert serie["rpe_vs_expected"] is None and serie["rpe_target_planned"] == 8.0
+
+
 def test_detalhe_do_treino_devolve_esperado_e_comparacao(monkeypatch):
     class _Cur(_LastCursor):
         def execute(self, sql, params=None):

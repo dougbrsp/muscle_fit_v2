@@ -6,7 +6,7 @@ import pytest
 
 from app import services
 from app.models import WorkoutPlanExerciseIn
-from app.workout_plan_edit_rules import PlanEditError
+from app.workout_plan_edit_rules import REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS, PlanEditError
 from tests.unit.test_ficha_edicao_nao_finalizada import _Cursor  # noqa: F401 (fixture autouse abaixo)
 from tests.unit.test_ficha_edicao_nao_finalizada import _sem_resolucao  # noqa: F401
 
@@ -67,6 +67,7 @@ def test_lista_maior_que_o_sets_count_gravado_da_422():
     with pytest.raises(PlanEditError) as erro:
         _put(rpe_targets_by_set=[7, 8, 9, 9, 10])
     assert erro.value.status == 422
+    assert erro.value.reason == REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS == "rpe_targets_by_set_exceeds_sets"
 
 
 def test_lista_menor_que_o_sets_count_gravado_segue_a_regra_do_modelo():

@@ -8,6 +8,11 @@ describe('templateSaveError', () => {
     expect(templateSaveError(e, 'x')).toMatchObject({ titulo: 'Bloqueado por segurança', seguranca: true });
   });
 
+  it('bloqueio de segurança reconhecido pelo código, mesmo com texto diferente', () => {
+    const e = new ApiError('Texto novo qualquer.', 422, undefined, 'template_safety_blocked');
+    expect(templateSaveError(e, 'x')).toMatchObject({ titulo: 'Bloqueado por segurança', seguranca: true });
+  });
+
   it('validação com loc de item aponta slot, item e campo (base 1) sem o prefixo técnico', () => {
     const e = new ApiError('HTTP 422', 422, [
       { loc: ['body', 'slots', 0, 'items', 2, 'rpe_targets_by_set'], msg: 'Value error, RPE fora da escala', type: 'value_error' },

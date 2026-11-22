@@ -81,18 +81,26 @@ Resultado por item das issues:
 ## Consequências
 
 - **Dados.** Sem migração. Nenhum dado gravado muda no deploy. O resultado do job de periodização ganha `rpe_targets_by_set` (aditivo).
-- **Contrato.** `PUT /workout-plans/{id}` (ficha): campos de prescrição não enviados em linha salva são preservados; lista por série maior que `sets_count` gravado responde 422 `rpe_targets_by_set_exceeds_sets`. O código novo não está no catálogo `workout_plan_edit_rules.py` (ver Limites, e).
+- **Contrato.** `PUT /workout-plans/{id}` (ficha): campos de prescrição não enviados em linha salva são preservados; lista por série maior que `sets_count` gravado responde 422 `rpe_targets_by_set_exceeds_sets`. O código está no catálogo `workout_plan_edit_rules.py` desde 22/11/2026 (ver Limites, e).
 - **Operação.** A frequência de ajustes de RPE sai de `template_generation_logs.validation_report` (`auto_fixes` com `RPE_SANITIZED`). Não há painel.
 - **Próximas decisões.** Novo limite ou passo de RPE entra em `training_history.py` (`RPE_TARGET_STEP`, `rpe_target_scale`) e no espelho gerado; a tela e a IA não copiam número. Mudar a regra de empate ou endurecer o parser (RIR) é decisão de motor, com replay dos casos com RIR.
 
 ## Limites e pendências
 
-- (a) O bloqueio de segurança é reconhecido pelo começo do texto devolvido pelo servidor (`SAFETY_PREFIX` em `template-save-error.ts` L14; texto em `workout_plan_templates.py` L1290). Não há código estruturado para isso.
+- (a) RESOLVIDO em 22/11/2026 (#237): o bloqueio de segurança do Modelo manda o código estável `template_safety_blocked` num campo irmão de `detail`. O frontend reconhece pelo código e usa o começo do texto (`SAFETY_PREFIX` em `template-save-error.ts`) só como reserva. Ver a Atualização abaixo.
 - (b) O rascunho do Modelo (`PUT /workout-plan-templates/{id}/draft`) continua recusando RPE legado fora da escala, porque a validação roda no parse do corpo (`WorkoutPlanTemplateIn`).
 - (c) RIR em texto de RPE ainda é lido como degrau (`parse_rpe_ramp`; shortcut em `training_history.py` L184).
 - (d) Os editores da ficha (`ExercisesTable.tsx` e `PlanExercisesEditor.tsx`) não têm teste de renderização.
-- (e) O código `rpe_targets_by_set_exceeds_sets` não está catalogado em `api/app/workout_plan_edit_rules.py`; ele é levantado em `services.py` L3222-3226.
+- (e) RESOLVIDO em 22/11/2026 (#237): o código `rpe_targets_by_set_exceeds_sets` está na constante `REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS` de `api/app/workout_plan_edit_rules.py`, usada por `services._compose_rpe_for_saved_sets`. O valor do código não mudou.
 - (f) As telas de detalhe da ficha (`frontend/src/app/(app)/planos-treino/[id]/PlanDetailClient.tsx`, `errorMessage` L59-61, e `frontend/src/mobile/screens/telas/PlanoDetalheScreen.tsx`, L42-44) mostram só a mensagem genérica quando o servidor responde 422 com `detail` em lista (erro de validação do Pydantic) ou em objeto (`{reason, message}`, como `rpe_targets_by_set_exceeds_sets` em `workout_plans.py` L92). Só `detail` em string aparece na tela (`api.ts` L198-199). O campo de RPE por série não dispara mais o 422 de lista por série, porque o número de campos vem de `sets_count` (`RpePerSetField.tsx` L35); outros erros de salvar da ficha continuam sem o motivo. Pendência.
+
+## Atualização de 22/11/2026 (#237, código do bloqueio de segurança; constante do motivo de recusa)
+
+- **Código do bloqueio do Modelo.** O 422 de bloqueio de segurança no salvamento do Modelo (`template_safety_validation.TemplateSafetyBlocked`, levantado por `workout_plan_templates._enforce_template_safety`) passa a responder o corpo `{"detail": "<texto>", "code": "template_safety_blocked"}`. A constante é `TEMPLATE_SAFETY_BLOCKED_CODE`; o manipulador é o mesmo do erro de troca de senha, registrado em `main.py`.
+- **Por que o campo é aditivo.** `detail` continua texto. Trocar `detail` por objeto quebraria o PWA antigo em cache, que lê `detail` como texto. O código entra num campo irmão, e a tela antiga segue mostrando o texto.
+- **Frontend.** `ApiError.code` (`frontend/src/lib/api.ts`) recebe o código. `template-save-error.ts` reconhece o bloqueio pelo código e mantém o texto como reserva.
+- **Motivo de recusa do RPE por série.** A constante `REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS` (`workout_plan_edit_rules.py`) fecha o limite (e). O valor e o status 422 não mudam.
+- **Impacto em produção.** Nenhum dado gravado muda: o código é um campo novo na resposta de erro, e a constante não altera valor. Não medido: a tela do Modelo em navegador.
 
 ## Verificação
 
