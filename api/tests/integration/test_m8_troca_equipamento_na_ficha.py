@@ -39,6 +39,10 @@ def gym(db_conn, catalog):
     """Crucifixo na Polia e no Banco reto; Supino reto no Banco reto. Tudo com
     teto 10 e `rest_pause` compativel."""
     with db_conn.cursor() as cur:
+        # historico de OUTRO teste deixaria o grupo em NO_DIRECT_WORK no congelamento
+        cur.execute("DELETE es FROM exercise_sets es JOIN exercises e ON e.id = es.exercise_id")
+        cur.execute("DELETE FROM exercises")
+        cur.execute("DELETE FROM activities")
         for table in (
             "workout_plans",
             "workout_plan_templates",
