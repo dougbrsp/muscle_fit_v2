@@ -2,6 +2,56 @@ import type { ReactNode } from 'react';
 import styles from '../workout-mode.module.css';
 import { ExerciseThumbnail } from './ExerciseThumbnail';
 
+/** Nome do equipamento como botão que abre a troca (mesmo handler dos botões "Trocar"). */
+export function EquipmentSwapButton({
+  equipmentName,
+  onClick,
+  className,
+  testId,
+}: {
+  equipmentName: string;
+  onClick: () => void;
+  className?: string;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={className}
+      title={equipmentName}
+      onClick={onClick}
+      aria-label={`Trocar equipamento: ${equipmentName}`}
+      data-testid={testId}
+    >
+      {equipmentName}
+    </button>
+  );
+}
+
+/**
+ * Descanso ENTRE séries: nome do equipamento atual tocável. Na transição de
+ * exercício (o card é o do PRÓXIMO) ou sem equipamento definido, não mostra nada.
+ */
+export function RestEquipmentSwap({
+  equipmentName,
+  isExerciseTransition,
+  onSwap,
+}: {
+  equipmentName?: string | null;
+  isExerciseTransition: boolean;
+  onSwap: () => void;
+}) {
+  if (isExerciseTransition || !equipmentName) return null;
+  return (
+    <EquipmentSwapButton
+      equipmentName={equipmentName}
+      onClick={onSwap}
+      className={styles.restEquipmentSwap}
+      testId="rest-equipment-swap"
+    />
+  );
+}
+
 /** Tamanho da foto no título compacto (PR4: ~48–56 px). */
 export const TITLE_THUMB_SIZE = 52;
 
@@ -57,28 +107,12 @@ export function ExerciseTitleRow({
           <div className={styles.titleMeta}>
             {equipmentName && (
               onEquipmentClick ? (
-                <button
-                  type="button"
-                  className={styles.titleMetaText}
-                  title={equipmentName}
+                <EquipmentSwapButton
+                  equipmentName={equipmentName}
                   onClick={onEquipmentClick}
-                  aria-label={`Trocar equipamento: ${equipmentName}`}
-                  data-testid="title-equipment-swap"
-                  style={{
-                    appearance: 'none',
-                    background: 'transparent',
-                    border: 0,
-                    padding: 0,
-                    minHeight: 44,
-                    font: 'inherit',
-                    color: 'inherit',
-                    textAlign: 'left',
-                    textDecoration: 'underline dotted',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {equipmentName}
-                </button>
+                  className={styles.titleMetaButton}
+                  testId="title-equipment-swap"
+                />
               ) : (
                 <span className={styles.titleMetaText} title={equipmentName}>
                   {equipmentName}
