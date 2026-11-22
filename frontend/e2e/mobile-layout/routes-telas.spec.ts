@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
-import { installAdminSession, installCheckinProposal, installTelasFixtures } from './telas-fixtures';
+import { installAdminSession, installSession,installCheckinProposal, installTelasFixtures } from './telas-fixtures';
 
 /**
  * Mobile v2, frente C: as telas migradas (treino, corpo, nutricao e conta)
@@ -62,6 +62,7 @@ for (const vp of VIEWPORTS) {
       await page.clock.setFixedTime(FROZEN_NOW);
       unhandled = (await installMockApi(page)).unhandled;
       await installTelasFixtures(page);
+      await installSession(page);
       await page.addInitScript(() => window.localStorage.setItem('musclefit.flag.mobile-ui', 'on'));
     });
 
@@ -370,7 +371,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByRole('button', { name: 'Novo rascunho' })).toHaveCount(0);
     });
 
-    test('lancamento novo: POST do exercicio e da serie', async ({ page }) => {
+    test('lancamento novo: POST unico em /exercises/logs (treino encerrado)', async ({ page }) => {
       test.setTimeout(120_000);
       await open(page, '/registro-exercicios/1/');
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
@@ -380,15 +381,14 @@ for (const vp of VIEWPORTS) {
       await page.getByRole('dialog').getByRole('button', { name: 'Banco reto' }).click();
       await page.getByRole('button', { name: /Exercício canônico/ }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Supino reto com barra' }).click();
-      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises'));
-      const setPost = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises/21/sets'));
+      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/exercises/logs'));
       await page.getByRole('button', { name: 'Lançar exercício' }).click();
       const body = JSON.parse((await post).postData() ?? '{}');
+      expect(body.activity_id).toBe(1);
       expect(body.original_name).toBe('Supino reto com barra');
       expect(body.mapping_id).toBe(1);
       expect(body.equipment_id).toBe(1);
-      const setBody = JSON.parse((await setPost).postData() ?? '{}');
-      expect(setBody).toMatchObject({ set_number: 1, reps: 10, weight_kg: 20 });
+      expect(body.sets[0]).toMatchObject({ set_number: 1, reps: 10, weight_kg: 20 });
     });
 
     test('diario: POST da refeicao com item da busca (mealItems sem tabela)', async ({ page }) => {

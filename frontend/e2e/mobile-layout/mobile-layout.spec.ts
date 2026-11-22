@@ -1,10 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  FROZEN_NOW,
-  MOCK_API_ORIGIN,
-  SESSION_USER,
-  installMockApi,
-} from '../desktop-baseline/mock-api';
+import { FROZEN_NOW, MOCK_API_ORIGIN, installMockApi } from '../desktop-baseline/mock-api';
+import { installSession } from './telas-fixtures';
 
 /**
  * Layout mobile (mobile v2, frente A): seletor atras da flag, shell com tab bar
@@ -50,34 +46,17 @@ const DESKTOP_ONLY_LABELS = [
 const ROLES = ['user', 'personal_trainer', 'admin'] as const;
 type Role = (typeof ROLES)[number];
 
-/** Responde `/auth/me` com o papel pedido (registrada depois do mock-base, vence). */
-async function asRole(page: Page, role: Role) {
-  await page.route(`${MOCK_API_ORIGIN}/auth/me`, async (route) => {
-    const origin = route.request().headers()['origin'] ?? '*';
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      headers: {
-        'access-control-allow-origin': origin,
-        'access-control-allow-credentials': 'true',
-        'access-control-allow-headers': '*',
-      },
-      body: JSON.stringify({ ...SESSION_USER, role, intervals_configured: role === 'admin' }),
-    });
-  });
-}
-
 async function open(
   page: Page,
   path: string,
   flag: 'on' | 'off' | null,
   size: { width: number; height: number },
-  role?: Role,
+  role: Role = 'user',
 ) {
   await page.setViewportSize(size);
   await page.clock.setFixedTime(FROZEN_NOW);
   await installMockApi(page);
-  if (role) await asRole(page, role);
+  await installSession(page, role);
   if (flag) {
     await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, flag]);
   }
@@ -168,6 +147,7 @@ for (const d of DEVICES) {
     const page = await ctx.newPage();
     await page.clock.setFixedTime(FROZEN_NOW);
     await installMockApi(page);
+    await installSession(page);
     await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, 'on']);
     await page.goto('/dashboard/');
     // prova que o contexto emula o que o caso diz: toque => pointer coarse
@@ -324,7 +304,7 @@ for (const role of ROLES) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.clock.setFixedTime(FROZEN_NOW);
     await installMockApi(page);
-    await asRole(page, role);
+    await installSession(page, role);
     await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [FLAG_KEY, 'on']);
     const apiCalls: string[] = [];
     page.on('request', (req) => {

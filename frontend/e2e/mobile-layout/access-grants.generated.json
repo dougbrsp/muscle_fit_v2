@@ -1,0 +1,467 @@
+{
+  "admin": {
+    "groups": [
+      "admin"
+    ],
+    "permissions": {
+      "admin.catalogos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "admin.grupos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "admin.regras_carga": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "admin.seguranca_treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "admin.usuarios": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "cardio": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "conta.dispositivos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "corpo.checkin": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "corpo.indicadores": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "dashboards": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "exercicios.catalogo": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.analise_treinos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.cardio": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.cards_exercicio": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.geracao_plano": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.insights": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.modelo_periodizacao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.modo_treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.nutricao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "integracoes.intervals": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "modelos.metas_ativacao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "modelos.tipos_treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "modelos.treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "nutricao.alimentos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "nutricao.checkin": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "nutricao.diario": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "nutricao.plano": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "progressao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "relatorios": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "treino.academias": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "treino.modo_treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "treino.planos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "treino.preferencias": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "treino.registro": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "volume.grupamentos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      }
+    }
+  },
+  "personal_trainer": {
+    "groups": [
+      "personal_trainer"
+    ],
+    "permissions": {
+      "cardio": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "conta.dispositivos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "corpo.checkin": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "corpo.indicadores": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "dashboards": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "exercicios.catalogo": {
+        "ver": "todos"
+      },
+      "ia.analise_treinos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.cardio": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.geracao_plano": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.insights": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.modelo_periodizacao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "ia.modo_treino": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.nutricao": {
+        "editar": "alunos",
+        "excluir": "alunos",
+        "ver": "alunos"
+      },
+      "integracoes.intervals": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "modelos.metas_ativacao": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "modelos.tipos_treino": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
+      "modelos.treino": {
+        "editar": "alunos",
+        "excluir": "alunos",
+        "ver": "alunos"
+      },
+      "nutricao.alimentos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "nutricao.checkin": {
+        "editar": "alunos",
+        "excluir": "alunos",
+        "ver": "alunos"
+      },
+      "nutricao.diario": {
+        "editar": "alunos",
+        "excluir": "alunos",
+        "ver": "alunos"
+      },
+      "nutricao.plano": {
+        "editar": "alunos",
+        "excluir": "alunos",
+        "ver": "alunos"
+      },
+      "progressao": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "relatorios": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.academias": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.modo_treino": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.planos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.preferencias": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.registro": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "volume.grupamentos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      }
+    }
+  },
+  "user": {
+    "groups": [
+      "usuario"
+    ],
+    "permissions": {
+      "cardio": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "conta.dispositivos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "corpo.checkin": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "corpo.indicadores": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "dashboards": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "exercicios.catalogo": {
+        "ver": "todos"
+      },
+      "ia.analise_treinos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.cardio": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.geracao_plano": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.insights": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.modo_treino": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "ia.nutricao": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "integracoes.intervals": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "modelos.treino": {
+        "ver": "proprios"
+      },
+      "nutricao.alimentos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "nutricao.checkin": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "nutricao.diario": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "nutricao.plano": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "progressao": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "relatorios": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.academias": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.modo_treino": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.planos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.preferencias": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.registro": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "volume.grupamentos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      }
+    }
+  }
+}
