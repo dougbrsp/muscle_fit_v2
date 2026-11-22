@@ -966,7 +966,7 @@ def activity_detail(
                     # (`rpe` da serie ja e o representativo; null em serie antiga).
                     planned = set_row.get("rpe_target_planned")
                     set_row["rpe_target_planned"] = None if planned is None else float(planned)
-                    vs = effective_intensity.rpe_vs_expected(set_row.get("rpe"), planned)
+                    vs = effective_intensity.set_rpe_vs_expected(set_row)
                     set_row["rpe_vs_expected"] = None if vs is None else vs.as_dict()
                     sets_by_exercise[set_row["exercise_id"]].append(attach_sides_text(_attach_set_measure(set_row)))
             for ex in exercises:
@@ -3228,7 +3228,7 @@ def _compose_rpe_for_saved_sets(steps: list[float], sets_count: Any) -> str | No
     if total is not None and len(steps) > total:
         raise edit_rules.PlanEditError(
             422,
-            "rpe_targets_by_set_exceeds_sets",
+            edit_rules.REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS,
             f"rpe_targets_by_set tem {len(steps)} alvos para {total} séries de trabalho.",
         )
     return compose_rpe_target(steps, collapse_tail=total is not None and total >= 1)

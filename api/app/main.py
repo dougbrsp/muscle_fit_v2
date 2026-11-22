@@ -25,6 +25,7 @@ from .models import (
 )
 from .training_goal_query import GOAL_QUERY_DESCRIPTION, goal_query_value
 from .access import require_permission
+from .template_safety_validation import TemplateSafetyBlocked
 from .security import (
     Identity,
     MustChangePasswordRequired,
@@ -113,6 +114,8 @@ app.add_middleware(RequestMemoMiddleware)
 # SEG-06: corpo `{"detail": ..., "code": "must_change_password"}` (o frontend
 # reconhece o `code` e leva o usuario a troca de senha).
 app.add_exception_handler(MustChangePasswordRequired, must_change_password_handler)
+# #237: o mesmo corpo `{"detail", "code"}` (o handler so le `status_code`, `detail` e `code`).
+app.add_exception_handler(TemplateSafetyBlocked, must_change_password_handler)
 
 
 @app.get("/health")

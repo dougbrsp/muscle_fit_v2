@@ -1,6 +1,6 @@
 # ADR 0030: RPE esperado × realizado no relatório em Markdown (issue #241)
 
-- **Status**: Aceita. Branch `feat/rpe-relatorio-241`. Não publicada nem promovida a produção.
+- **Status**: Aceita. Branch `feat/rpe-relatorio-241`. Não publicada nem promovida a produção. Atualizada em 22/11/2026: o detalhe do treino passou a usar o mesmo critério de série de trabalho (ver "Atualização de 22/11/2026").
 - **Data**: 2026-11-20
 - **Complementa**: ADR 0026, limite (a), e ADR 0013, pendência 1 de "Fora desta entrega". Nenhuma decisão anterior é substituída.
 
@@ -21,7 +21,7 @@ Restrições reais:
 - **Contar no renderizador.** Recusada: `markdown_renderer.py` é função pura que só formata (cabeçalho do módulo). A contagem ficaria em dois lugares.
 - **Uma consulta por sessão ou por dia.** Recusada: o relatório segue uma consulta por fonte e por janela (cabeçalho de `daily_breakdown.py`).
 - **Listar as séries no relatório.** Recusada: o relatório é cortado por dia e por sessão. Uma linha por série tornaria a seção ilegível e não traz decisão nova.
-- **Incluir backoff e técnica na contagem, como o detalhe.** Recusada: relatório e histórico contam só séries de trabalho (`is_working_set`), para dar o mesmo número. A divergência com o detalhe fica registrada em Limites.
+- **Incluir backoff e técnica na contagem, como o detalhe.** Recusada: relatório e histórico contam só séries de trabalho (`is_working_set`), para dar o mesmo número. Na data desta decisão o detalhe ainda comparava backoff e técnica; desde 22/11/2026 ele também não compara (ver Atualização).
 
 ## Decisão
 
@@ -36,7 +36,7 @@ Restrições reais:
 Itens da #241 descartados neste lote, com o motivo (ficam para issue):
 
 - (a) série enviada fora de ordem pela fila offline: deixou de ser pendente. A correção entrou nesta #241; ver "Revisão pela #241" no ADR 0026;
-- (b) o detalhe do treino compara toda série com esperado gravado, inclusive backoff e técnica; a contagem do histórico e do relatório conta só séries de trabalho. Alinhar é decisão de produto;
+- (b) o detalhe do treino comparava toda série com esperado gravado, inclusive backoff e técnica; a contagem do histórico e do relatório conta só séries de trabalho. RESOLVIDO em 22/11/2026 (#241, escolha do usuário): o detalhe também compara só série de trabalho (ver Atualização);
 - (c) série com repetições pendentes, medida que não é por repetições ou marcada como técnica grava o alvo do exercício ou do protocolo: não conferido na tela;
 - (d) trava no pipeline de produção contra publicar código que depende de migração com `RUN_DB_MIGRATIONS` desligado: é mudança de workflow de deploy, fora deste lote.
 
@@ -44,7 +44,7 @@ Itens da #241 descartados neste lote, com o motivo (ficam para issue):
 
 - Ganha: uma única regra de contagem (`rpe_vs_expected_counts`) para histórico e relatório; uma consulta por geração de relatório; nenhuma coluna nova e nenhuma tabela nova.
 - Paga: a linha "RPE realizado x esperado por série" depende da coluna da migração 121. Sem ela, essa linha some e o resto da seção de ciclos segue (ver Consequências).
-- Paga: relatório e detalhe do treino dão números diferentes quando há backoff ou técnica com esperado gravado (item (b)).
+- Paga (resolvida em 22/11/2026): relatório e detalhe do treino davam números diferentes com backoff ou técnica com esperado gravado (item (b)). Hoje os dois usam o mesmo critério no dono.
 - Paga: uma consulta a mais por geração, limitada à janela.
 
 ## Consequências
@@ -58,12 +58,16 @@ Itens da #241 descartados neste lote, com o motivo (ficam para issue):
 ## Limites e pendências
 
 - (a) O relatório mostra a comparação por sessão, não por série.
-- (b) Detalhe × relatório/histórico divergem em backoff e técnica (item (b) descartado acima; ADR 0026, limite (h)).
+- (b) RESOLVIDO em 22/11/2026: o detalhe e o relatório/histórico usam o mesmo critério de série de trabalho (`effective_intensity.set_rpe_vs_expected`); ver ADR 0026, limite (h), e a Atualização abaixo.
 - (c) Sem teste de renderização da tela web. Nenhuma tela foi vista em navegador nem em iPhone.
 - (d) O SQL novo foi exercitado só com banco simulado antes do CI (`ci-completo`).
 - (e) O teste de integração do relatório não ganhou caso com esperado gravado.
 - (f) O esperado não aparece na tela de edição da série (ADR 0026, limite (c)).
 - (g) A docstring da migração 121 (L6) continua chamando `rpe_target_effective` de "alvo do exercício", embora a coluna seja por série. O texto permanece no arquivo, porque a migração não pode ser editada depois de aplicada (Decisão, 7).
+
+## Atualização de 22/11/2026 (#241, detalhe do treino)
+
+Decisão do usuário de 22/11/2026: o detalhe do treino compara só séries de trabalho, como o histórico e o relatório. Mudança no dono: `effective_intensity.set_rpe_vs_expected` (usa `is_working_set`) é o único filtro; `rpe_vs_expected_counts` passou a usar essa função; `services.activity_detail` a chama por série. O relatório e o histórico não mudaram de número, porque já filtravam antes de contar. Limite (b) fechado. Impacto medido e limites: ver ADR 0026, "Atualização de 22/11/2026".
 
 ## Verificação
 

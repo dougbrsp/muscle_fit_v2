@@ -29,9 +29,25 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from fastapi import HTTPException
+
 from .domain.effective_intensity import clamp_rpe_text
 from .domain.prescription import parse_rpe
 from .domain.training_safety import READY, compose, readiness_for_status, resolve_training_safety_bulk, validate_technique
+
+# #237: codigo estavel do 422 de bloqueio no save (campo irmao `code`, `detail` segue texto).
+TEMPLATE_SAFETY_BLOCKED_CODE = "template_safety_blocked"
+
+
+class TemplateSafetyBlocked(HTTPException):
+    """422 com `code = template_safety_blocked`; o corpo `{"detail", "code"}` sai
+    do handler registrado em `main.py` (sem ele, 422 com `detail` em texto)."""
+
+    code = TEMPLATE_SAFETY_BLOCKED_CODE
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=422, detail=detail)
+
 
 CODE_TECHNIQUE_INVALID = "MODEL_TECHNIQUE_INVALID"
 CODE_RPE_ABOVE_CEILING = "RPE_ABOVE_SAFE_CEILING"

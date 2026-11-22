@@ -26,6 +26,7 @@ EDITABLE_PLAN_STATUSES: frozenset[str] = frozenset({PLANNED_PLAN_STATUS})
 
 REASON_PLAN_FINALIZED = "plan_finalized"  # 409
 REASON_MUSCLE_GROUP_LOCKED = "muscle_group_locked"  # 422
+REASON_RPE_TARGETS_BY_SET_EXCEEDS_SETS = "rpe_targets_by_set_exceeds_sets"  # 422
 
 # Campos de uma linha JA SALVA que, quando mudam no PUT, fazem o servidor
 # re-congelar a prescricao dela: o exercicio, o equipamento e a tecnica sao o

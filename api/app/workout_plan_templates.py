@@ -70,6 +70,7 @@ from .access import require_permission
 from .access.deps import permissions_for_request
 from .security import Identity
 from .template_safety_validation import (
+    TemplateSafetyBlocked,
     build_safety_report,
     has_safety_relevant_input,
     split_report_by_authorship,
@@ -1284,12 +1285,9 @@ def _enforce_template_safety(payload: WorkoutPlanTemplateIn, existing: Optional[
         return
     errors, _ = split_report_by_authorship(report, payload.slots, (existing or {}).get("slots"))
     if errors:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Itens novos ou alterados com incompatibilidade de segurança: "
-                + " ".join(entry["message"] for entry in errors)
-            ),
+        raise TemplateSafetyBlocked(
+            "Itens novos ou alterados com incompatibilidade de segurança: "
+            + " ".join(entry["message"] for entry in errors)
         )
 
 

@@ -9,7 +9,9 @@ export type TemplateSaveError = {
   seguranca: boolean;
 };
 
-// Prefixo do 422 de segurança do servidor (`workout_plan_templates.py`, D14):
+/** `code` do 422 de segurança do servidor (#237); escrito à mão, como `MUST_CHANGE_PASSWORD_CODE`. */
+export const TEMPLATE_SAFETY_BLOCKED_CODE = 'template_safety_blocked';
+// Reserva para resposta antiga (durante o deploy): prefixo do 422 de segurança do servidor (`workout_plan_templates.py`, D14):
 // `detail` string, sem `loc`. A validação do FastAPI/Pydantic traz `detail` lista.
 const SAFETY_PREFIX = 'Itens novos ou alterados com incompatibilidade de segurança';
 const PYDANTIC_PREFIX = /^Value error,\s*/i;
@@ -45,7 +47,7 @@ export function templateSaveError(error: unknown, fallback: string, defaultTitle
     }
     return { titulo: 'Dados inválidos', mensagem: msg, seguranca: false };
   }
-  if (error.message.startsWith(SAFETY_PREFIX)) {
+  if (error.code === TEMPLATE_SAFETY_BLOCKED_CODE || error.message.startsWith(SAFETY_PREFIX)) {
     return { titulo: 'Bloqueado por segurança', mensagem: error.message, seguranca: true };
   }
   // 422 de regra de negócio do servidor (detail string em português).

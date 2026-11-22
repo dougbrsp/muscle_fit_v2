@@ -15,12 +15,15 @@ export class ApiError extends Error {
    * quem precisa do código lê daqui (ver `toExerciseCardError`).
    */
   detail?: unknown;
+  /** `code` de topo da resposta (ex.: `template_safety_blocked`), quando a API manda. */
+  code?: string | null;
 
-  constructor(message: string, status: number, detail?: unknown) {
+  constructor(message: string, status: number, detail?: unknown, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+    this.code = code;
   }
 }
 
@@ -190,11 +193,13 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     let detail =
       response.status === 503 ? TRANSIENT_ERROR_MESSAGE : `Erro ao consultar ${path} (HTTP ${response.status}).`;
     let structuredDetail: unknown;
+    let code: string | undefined;
     try {
       const body = await response.json();
       if (response.status === 403 && body?.code === MUST_CHANGE_PASSWORD_CODE) {
         redirectToPasswordChange();
       }
+      if (typeof body?.code === 'string') code = body.code;
       if (typeof body?.detail === 'string') {
         detail = body.detail;
       } else if (body?.detail != null) {
@@ -206,7 +211,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     } catch {
       // corpo sem JSON válido — mantém a mensagem padrão
     }
-    throw new ApiError(detail, response.status, structuredDetail);
+    throw new ApiError(detail, response.status, structuredDetail, code);
   }
 
   if (response.status === 204) {

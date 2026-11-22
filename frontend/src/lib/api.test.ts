@@ -191,6 +191,21 @@ describe('apiFetch — detail estruturado', () => {
   });
 });
 
+describe('apiFetch — code de topo (#237)', () => {
+  it('preenche error.code e mantém message = detail', async () => {
+    fetchMock.mockResolvedValue(json(422, { detail: 'Bloqueado.', code: 'template_safety_blocked' }));
+    const error = (await settle(api.apiFetch('/x'))) as PromiseRejectedResult;
+    expect(error.reason.code).toBe('template_safety_blocked');
+    expect(error.reason.message).toBe('Bloqueado.');
+  });
+
+  it('sem code: indefinido', async () => {
+    fetchMock.mockResolvedValue(json(422, { detail: 'Bloqueado.' }));
+    const error = (await settle(api.apiFetch('/x'))) as PromiseRejectedResult;
+    expect(error.reason.code).toBeUndefined();
+  });
+});
+
 describe('apiFetch — erros da troca de senha não deslogam (bug de 2026-10-10)', () => {
   const body = JSON.stringify({ current_password: 'temporaria', new_password: 'NovaSenha123' });
 
@@ -209,6 +224,7 @@ describe('apiFetch — erros da troca de senha não deslogam (bug de 2026-10-10)
     expect(error).toBeInstanceOf(api.ApiError);
     expect(error.status).toBe(status);
     expect(error.message).toBe(payload.detail);
+    expect(error.code).toBe(payload.code);
     expect(clearSession).not.toHaveBeenCalled();
     expect(redirectedToLogin()).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
