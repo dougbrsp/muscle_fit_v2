@@ -347,7 +347,7 @@ class FakeCursor:
             for r in sorted(linhas, key=lambda r: r["local_date"]):
                 linha = {c: r.get(c) for c in pedidas}
                 entradas = r.get("inputs_json") or {}
-                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json"), ("energy", "energy_json")):
+                for chave, alias in (("extra_activity", "extra_activity_json"), ("tdee_basis", "tdee_basis_json"), ("energy", "energy_json"), ("carb_cycle_policy", "carb_cycle_policy_json")):
                     if f"AS {alias}" in svc._TARGET_JSON_COLUMNS:
                         linha[alias] = json.dumps(entradas[chave]) if chave in entradas else None
                 projetadas.append(linha)

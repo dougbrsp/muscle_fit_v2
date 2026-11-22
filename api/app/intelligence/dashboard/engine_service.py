@@ -83,6 +83,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from ...domain.free_exercise_item import is_free_exercise_item
 from ...observability import log_event
+from ...generation.generation_runs import audit_sql_expr
 from ...template_versions import plan_version_expr
 from ...set_types import sql_is_technique_application, sql_not_preparatory, sql_set_confirmed
 from .adherence_service import (
@@ -207,7 +208,9 @@ LIMIT %s
 # Fichas da janela cuja auditoria SO existe no `raw_payload` - as anteriores
 # ao M16. O `LEFT JOIN ... IS NULL` evita que uma ficha ja coberta pela tabela
 # apareca duas vezes; e uma consulta, nao uma por ficha.
-RAW_PAYLOAD_RUNS_SQL = """
+_RAW_AUDIT = audit_sql_expr("wp.raw_payload")
+
+RAW_PAYLOAD_RUNS_SQL = f"""
 SELECT
   wp.id                       AS workout_plan_id,
   wp.name                     AS plan_name,
@@ -215,18 +218,18 @@ SELECT
   wp.created_at               AS created_at,
   wp.template_id              AS template_id,
   wp.template_slot_sequence   AS template_slot_sequence,
-  JSON_UNQUOTE(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.volume_mode'))    AS volume_mode,
-  JSON_UNQUOTE(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.engine_version')) AS engine_version,
-  JSON_EXTRACT(wp.raw_payload, '$.generation_audit.llm_used')                     AS llm_used,
-  JSON_LENGTH(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.selection'))     AS selection_count,
-  JSON_LENGTH(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.safety_clamps')) AS safety_clamp_count,
-  JSON_LENGTH(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.substitutions')) AS substitution_count,
-  JSON_LENGTH(JSON_EXTRACT(wp.raw_payload, '$.generation_audit.fallbacks'))     AS fallback_count
+  JSON_UNQUOTE(JSON_EXTRACT({_RAW_AUDIT}, '$.volume_mode'))    AS volume_mode,
+  JSON_UNQUOTE(JSON_EXTRACT({_RAW_AUDIT}, '$.engine_version')) AS engine_version,
+  JSON_EXTRACT({_RAW_AUDIT}, '$.llm_used')                     AS llm_used,
+  JSON_LENGTH(JSON_EXTRACT({_RAW_AUDIT}, '$.selection'))     AS selection_count,
+  JSON_LENGTH(JSON_EXTRACT({_RAW_AUDIT}, '$.safety_clamps')) AS safety_clamp_count,
+  JSON_LENGTH(JSON_EXTRACT({_RAW_AUDIT}, '$.substitutions')) AS substitution_count,
+  JSON_LENGTH(JSON_EXTRACT({_RAW_AUDIT}, '$.fallbacks'))     AS fallback_count
 FROM workout_plans wp
 LEFT JOIN generation_runs gr ON gr.workout_plan_id = wp.id AND gr.user_id = wp.user_id
 WHERE wp.user_id = %s
   AND wp.plan_date BETWEEN %s AND %s
-  AND JSON_EXTRACT(wp.raw_payload, '$.generation_audit') IS NOT NULL
+  AND JSON_TYPE({_RAW_AUDIT}) = 'OBJECT'
   AND gr.id IS NULL
 ORDER BY wp.plan_date DESC, wp.id DESC
 LIMIT %s
@@ -253,7 +256,7 @@ SELECT
   wptv.version_number       AS template_version_number,
   wpts.id                   AS slot_id,
   wpts.name                 AS slot_name,
-  JSON_EXTRACT(wp.raw_payload, '$.generation_audit') AS payload_audit
+  {audit_expr} AS payload_audit
 FROM workout_plans wp
 LEFT JOIN workout_plan_templates wpt ON wpt.id = wp.template_id
 LEFT JOIN workout_plan_template_versions wptv ON wptv.id = {version_expr}
@@ -264,7 +267,9 @@ WHERE wp.user_id = %s AND wp.id = %s
 """
 
 # Versao da ficha (gravada nela ou vigente no `plan_date`).
-PLAN_HEADER_SQL = _PLAN_HEADER_TEMPLATE.format(version_expr=plan_version_expr("wp", by_date=True))
+PLAN_HEADER_SQL = _PLAN_HEADER_TEMPLATE.format(
+    version_expr=plan_version_expr("wp", by_date=True), audit_expr=_RAW_AUDIT
+)
 
 PLAN_RUN_SQL = f"""
 SELECT

@@ -1996,14 +1996,14 @@ Targets com `min=target=max=0` não são persistidos.
 | GET | `/equipment/{equipment_id}/photo` | — | — | imagem | mID | 404 |
 | DELETE | `/equipment/{equipment_id}/photo` | — | — | `{"status":"ok","id","has_photo":false}` | mADMIN | 404 |
 | GET | `/gym-equipment` | `gym_id`, `mapping_id`, `primary_group`, `active_only` | — | `{"items"}` (join `exercise_catalog`, `muscle_groups` via `exercise_muscle_contributions`, `equipment`) | mID | — |
-| POST | `/gym-equipment` | — | `gym_id`, `mapping_id`, `equipment_id` (obrig.) | `{"status":"ok","item"}` | mID | 400, 404 equipment |
-| PUT | `/gym-equipment/{link_id}` | — | `equipment_id`, `is_active` | `{"status":"ok","item"}` | mID | 404 |
-| DELETE | `/gym-equipment/{link_id}` | — | — | soft delete | mID | 404 |
+| POST | `/gym-equipment` | — | corpo `GymEquipmentCreateIn`: `gym_id`, `mapping_id`, `equipment_id` (obrig., inteiros positivos; campo extra → 422) | `{"status":"ok","item"}` | mID + `treino.academias` `editar` + posse da academia (`_assert_gym_equipment_catalog_writable`) | 422 corpo inválido ou campo extra; 403 sem posse; 404 `gym_id` (só com `todos`) ou `equipment_id` |
+| PUT | `/gym-equipment/{link_id}` | — | corpo `GymEquipmentUpdateIn`: `equipment_id` (inteiro positivo), `is_active` (bool ou 0/1); ausente/null não altera; campo extra → 422 | `{"status":"ok","item"}` | mID + `treino.academias` `editar` + posse da academia do vínculo | 422 corpo inválido ou campo extra; vínculo inexistente: 403 sem escopo `todos`, 404 com `todos` (`gyms._link_not_found`); 403 sem posse |
+| DELETE | `/gym-equipment/{link_id}` | — | — | soft delete | mID + `treino.academias` `excluir` + posse da academia do vínculo | vínculo inexistente: 403 sem escopo `todos`, 404 com `todos`; 403 sem posse |
 | GET | `/gym-equipment/recommend` | `gym_id` (obrig.), `mapping_id`, `primary_group`, `exclude_equipment_id` | — | `{"ok","gym_id","primary_group","excluded_equipment_id","has_equipment_for_group","recommended","alternatives","items"}` | mID | 400 "Informe mapping_id ou primary_group.", 404 mapping, 422 sem grupo |
 | GET | `/gym-equipment/recommend-all` | `gym_id` | — | `{"ok","gym_id","groups":{nome:{has_equipment_for_group,recommended,alternatives}},"groups_by_id":{id:{...}}}` | mID | — |
 | GET | `/gym-equipment-catalog` | `gym_id`, `equipment_id`, `active_only` | — | `{"items"}` | mID | — |
 | POST | `/gym-equipment-catalog` | — | `gym_id`, `equipment_id` | `{"status":"ok","item"}` + `sync_gym_equipment_for_gym` | mID + `_assert_gym_equipment_catalog_writable` (dono ou admin; 403) | 400, 404, 403 |
-| DELETE | `/gym-equipment-catalog/{link_id}` | — | — | soft delete + sync | mID + dono/admin | 404, 403 |
+| DELETE | `/gym-equipment-catalog/{link_id}` | — | — | soft delete + sync | mID + dono/admin | vínculo inexistente: 403 sem escopo `todos`, 404 com `todos`; 403 sem posse |
 
 #### 2.17 `muscle_group_equipment.py` (prefixo `/muscle-groups`, 3 rotas, ID)
 
@@ -2250,7 +2250,7 @@ Em `users.py`, `_ALLOWED_ROLES = {"admin", "regular"}` — o papel `personal_tra
 - Recurso de outro usuário → funções retornam `None`/`False` e o router responde 404 (não 403).
 - Services de `intelligence/*` aceitam `user_id` opcional: quando `None`, as queries rodam sem filtro. Chamadores atuais: rotas de `analytics.py`/`dashboard_*` passam `identity.user_id`; em `DashboardAggregatorService.build_training_evolution_payload`, `compute_rolling_weekly_trend(weekly_trend_days)` é chamado sem `user_id`; `IntervalsCorrelationService._fetch_strength_activities(days)` não filtra por usuário; `template_volume_planner._load_projected_recovery` obtém recuperação via self-call com token mestre (usuário admin).
 - Tabelas compartilhadas sem filtro por usuário: `gyms` (leitura), `equipment`, `gym_equipment`, `equipment_exercise_mappings`, `equipment_exercises`, `gym_equipment_catalog`, `exercise_catalog`, `exercise_aliases`, `exercise_external_mappings`, `exercise_muscle_contributions`, `muscle_groups`, `muscle_group_body_map`, `exercise_mappings`, `exercise_zepp_mappings`, `workout_plan_templates`, `training_types`, `equipment_types`.
-- Regras de dono em `gyms.py`: escrita em `gyms` exige `owner_user_id == identity.user_id` ou admin (`_assert_gym_writable`, 404); `POST/DELETE /gym-equipment-catalog` idem (403); campos `name/opens_at/closes_at` de gym são admin-only. `POST/PUT/DELETE /gym-equipment` exigem apenas identidade.
+- Regras de dono em `gyms.py`: escrita em `gyms` exige `owner_user_id == identity.user_id` ou admin (`_assert_gym_writable`, 404); `POST/DELETE /gym-equipment-catalog` idem (403); campos `name/opens_at/closes_at` de gym são admin-only. `POST/PUT/DELETE /gym-equipment` exigem `treino.academias` (`editar`/`excluir`) e posse da academia (`_assert_gym_equipment_catalog_writable`, 403). Vínculo inexistente nas rotas por id (`PUT`/`DELETE /gym-equipment/{link_id}`, `PATCH`/`DELETE /gym-equipment-catalog/{link_id}`): 403 sem escopo `todos` na ação, 404 com `todos` (`_link_not_found`).
 - `reports`: `GET /reports/{id}` e `/pdf` permitem admin ler de qualquer usuário; `DELETE` só do dono.
 - `GET /jobs/{job_id}` não compara o `user_id` do job com a identidade.
 

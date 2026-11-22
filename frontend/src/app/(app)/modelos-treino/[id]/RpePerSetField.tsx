@@ -6,7 +6,10 @@ import { MIN_SETS_COUNT } from '@/lib/prescription-defaults';
 import {
   commitRpeDraft,
   fitRpeTargets,
+  invalidRpePositions,
   RPE_TARGET_SCALE,
+  sanitizeRpeDraft,
+  stepDecimalScale,
   type RpeDraftValue,
 } from '@/lib/workout-plan-template-form';
 
@@ -21,9 +24,13 @@ type RpePerSetFieldProps = {
   // Alvo gravado só em texto (sem lista, não editado): mostrado literal até o
   // usuário pedir para definir por série (`storedRpeTextOnly`).
   storedText?: string | null;
+  // Dica do objetivo (`itemFieldPlaceholders(...).rpe`), exibida como descrição.
+  hint?: string | null;
 };
 
-export function RpePerSetField({ targets, setsCount, onCommit, storedText = null }: RpePerSetFieldProps) {
+const WARNING = 'Valor fora da escala de RPE; mantido o anterior.';
+
+export function RpePerSetField({ targets, setsCount, onCommit, storedText = null, hint = null }: RpePerSetFieldProps) {
   const [opened, setOpened] = useState(false);
   const shown = fitRpeTargets(targets, setsCount);
   // Sem lista, mostra os campos em branco (quantidade = séries do item).
@@ -35,8 +42,11 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shownKey resume count + shown
   }, [shownKey]);
 
+  const [warned, setWarned] = useState<number[]>([]);
+
   const commit = (next: RpeDraftValue[]) => {
-    const list = commitRpeDraft(next);
+    setWarned(invalidRpePositions(next));
+    const list = commitRpeDraft(sanitizeRpeDraft(next, shown));
     setDraft(Array.from({ length: count }, (_, i) => list[i] ?? ''));
     if (list.join(',') !== shown.join(',')) onCommit(list);
   };
@@ -60,7 +70,7 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
     <Input.Wrapper
       size="xs"
       label="RPE esperado por série"
-      description={storedText ? `Ao preencher, o alvo gravado (${storedText}) será substituído.` : undefined}
+      description={storedText ? `Ao preencher, o alvo gravado (${storedText}) será substituído.` : (hint ?? undefined)}
     >
       <Group gap={4} wrap="wrap" align="flex-end">
         {draft.map((value, index) => (
@@ -74,9 +84,16 @@ export function RpePerSetField({ targets, setsCount, onCommit, storedText = null
             min={RPE_TARGET_SCALE.min}
             max={RPE_TARGET_SCALE.max}
             step={RPE_TARGET_SCALE.step}
-            decimalScale={1}
+            decimalScale={stepDecimalScale(RPE_TARGET_SCALE.step)}
             hideControls
-            onChange={(v) => setDraft((d) => d.map((x, i) => (i === index ? v : x)))}
+            // Grava sempre o digitado ("15" passa por "1"); a validação é só ao sair (commit),
+            // que restaura o último confirmado e avisa. clampBehavior none: o Mantine não troca 15 por 10.
+            clampBehavior="none"
+            error={warned.includes(index) ? WARNING : undefined}
+            onChange={(v) => {
+              setWarned((w) => w.filter((i) => i !== index));
+              setDraft((d) => d.map((x, i) => (i === index ? v : x)));
+            }}
             onBlur={() => commit(draft)}
           />
         ))}

@@ -1,5 +1,5 @@
-import { apiFetch } from '@/lib/api';
-import { newMeasuredSetFromLast, setEditFields, setUpdatePayload } from '@/lib/exercise-set-edit';
+import { ApiError, apiFetch } from '@/lib/api';
+import { newMeasuredSetFromLast, setEditFields, setUpdatePayload, type ExerciseFormSet } from '@/lib/exercise-set-edit';
 import type { SideField } from '@/lib/set-sides';
 import {
   buildStartedAt,
@@ -27,10 +27,14 @@ export async function saveExerciseLog(args: {
     throw new Error('Selecione um exercício.');
   }
 
-  if (editingExerciseId) {
-    return apiFetch(`/exercises/logs/${editingExerciseId}`, {
-      method: 'PUT',
+  // Treino encerrado: as rotas da sessão respondem 409; o exercício novo vai por POST /exercises/logs.
+  const isEnded = activity?.session_status === 'done';
+
+  if (editingExerciseId || isEnded) {
+    return apiFetch(editingExerciseId ? `/exercises/logs/${editingExerciseId}` : '/exercises/logs', {
+      method: editingExerciseId ? 'PUT' : 'POST',
       body: JSON.stringify({
+        ...(editingExerciseId ? {} : { activity_id: activityId }),
         local_date: activity?.local_date,
         started_at: activity?.started_at || null,
         original_name: form.exercise_name,
@@ -45,6 +49,7 @@ export async function saveExerciseLog(args: {
         muscle_pain: form.muscle_pain,
         joint_pain: form.joint_pain,
         form_practice: form.form_practice,
+        ...trainingGoalPayload(form),
         sets: form.sets.map(setUpdatePayload),
       }),
     });
@@ -88,6 +93,26 @@ export async function saveExerciseLog(args: {
   return exerciseResult;
 }
 
+/** `training_goal` só vai no corpo quando o usuário mudou o valor (ausente = o servidor preserva o gravado). */
+export function trainingGoalPayload(form: Pick<ExerciseFormState, 'training_goal' | 'initial_training_goal'>) {
+  const goal = form.training_goal;
+  return goal && goal !== (form.initial_training_goal ?? null) ? { training_goal: goal } : {};
+}
+
+/** Mensagem do 422 do servidor (`set_type_locked`, `set_measure_locked`, `training_goal_invalid`); senão a do erro. */
+export function exerciseLogSaveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.detail && typeof error.detail === 'object') {
+    const message = (error.detail as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Aplica um ajuste parcial (tipo, medida, dor...) a uma série. */
+export function patchSet(sets: SetList, index: number, patch: (set: ExerciseFormSet) => ExerciseFormSet): SetList {
+  return sets.map((set, i) => (i === index ? patch(set) : set));
+}
+
 /** Corpo do `PATCH /workout-sessions/{id}/meta` ao editar o cabeçalho do treino. */
 export function headerMetaPayload(headerForm: WorkoutHeaderForm) {
   return {
@@ -122,7 +147,7 @@ export function emptyExerciseForm(): ExerciseFormState {
 /** Consultas em cache que mostram progressão/recorde/e1RM: a reavaliação do servidor as muda. */
 export const PROGRESSION_QUERY_KEYS = [['dashboard'], ['analytics-exercise-progress'], ['exercise-briefing']] as const;
 
-type SetList = ExerciseFormState['sets'];
+type SetList = ExerciseFormSet[];
 
 /** Nova série copiando a última (ou o padrão). */
 export function appendSet(sets: SetList): SetList {
@@ -147,7 +172,9 @@ export function updateSetField(
     if (field === 'rpe' || field === 'duration_seconds' || field.endsWith('_left') || field.endsWith('_right')) {
       return { ...set, [field]: value == null || Number.isNaN(Number(value)) ? null : Number(value) };
     }
-    if (field === 'reps' && setEditFields(set.measure).repsMin != null && (value == null || Number.isNaN(Number(value)))) {
+    // Pendente esvaziada continua pendente (nula), como o máximo de reps.
+    const keepsEmpty = setEditFields(set.measure).repsMin != null || set.reps_pending;
+    if (field === 'reps' && keepsEmpty && (value == null || Number.isNaN(Number(value)))) {
       return { ...set, reps: null };
     }
     return { ...set, [field]: Number(value) || 0 };

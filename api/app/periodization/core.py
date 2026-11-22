@@ -280,8 +280,11 @@ def run_periodization_draft(
             },
         )
 
+    # Import tardio: `workout_plan_templates` importa `periodization.limits`.
+    from ..workout_plan_templates import decorate_draft_payload
+
     return {
-        "draft": draft,
+        "draft": decorate_draft_payload(draft),
         "validation_report": report,
         "rationale": extras["rationale"],
         "source_citations": extras["source_citations"],

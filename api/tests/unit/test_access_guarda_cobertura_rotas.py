@@ -82,6 +82,8 @@ ROTA_NOVA_TREINO = "POST /workout-plans/exercise-swap-options"
 ROTA_NOVA_TREINO_EQUIP = "POST /workout-plans/equipment-options"  # #179
 ROTA_NOVA_ACADEMIA_FABRICANTE = "PATCH /gym-equipment-catalog/{link_id}"  # #188: fabricante por academia
 ROTA_NOVA_ALIMENTOS_LISTA = "GET /nutrition/foods"  # #195: listagem por letra
+ROTA_NOVA_REGISTRO_EXERCICIO = "POST /exercises/logs"  # #216: exercicio novo em treino encerrado
+ROTA_NOVA_ALIMENTOS_EXCLUIR = "DELETE /nutrition/foods/{food_id}"  # #140: exclusao logica; fora do retrato congelado
 
 
 # Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
@@ -114,6 +116,10 @@ ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
     ROTA_NOVA_ACADEMIA_FABRICANTE: ("treino.academias", "editar"),
     # #195: listagem de alimentos por letra (mesma permissao da busca `GET /nutrition/foods/search`)
     ROTA_NOVA_ALIMENTOS_LISTA: ("nutricao.alimentos", "ver"),
+    # #216/#215: exercicio novo em treino encerrado (mesma permissao do `PUT /exercises/logs/{id}`)
+    ROTA_NOVA_REGISTRO_EXERCICIO: ("treino.registro", "editar"),
+    # #140: exclusao logica de alimento (mesma permissao dos irmaos, acao `excluir`)
+    ROTA_NOVA_ALIMENTOS_EXCLUIR: ("nutricao.alimentos", "excluir"),
 }
 
 
@@ -546,10 +552,11 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # #188: + PATCH /gym-equipment-catalog/{link_id}: 369 e 385.
     # #140: + DELETE /nutrition/foods/{food_id}: 370 e 386.
     # #195: + GET /nutrition/foods: 371 e 387.
-    assert len(com_permissao) == 371
+    # #216: + POST /exercises/logs: 372 e 388.
+    assert len(com_permissao) == 372
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 387
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 388
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -564,13 +571,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 371
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 372
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 387
+    assert len(vivas) == 388
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
@@ -588,10 +595,11 @@ def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_adm
                     assert declared_permissions(route) == []  # so autenticacao, pinada a parte
                     continue
                 vivas[chave] = declared_permissions(route)
-    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1
+    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)  + 1 de registro (#216) + 1 de exclusao de alimento (#140)
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1 + 1 + 1
     esperadas = set(ROTAS_NOVAS_POS_RETRATO) - {
         ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
+        ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR,
     }
     assert set(vivas) == esperadas, sorted(set(vivas) ^ esperadas)
     acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}

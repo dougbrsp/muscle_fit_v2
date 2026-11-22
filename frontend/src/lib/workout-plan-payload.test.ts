@@ -22,10 +22,42 @@ describe('payload de save da ficha', () => {
     expect(toWorkoutPlanExerciseInput(draft, 2).workout_plan_exercise_id).toBeNull();
   });
 
+  it('RPE por série (#184): intocado envia o texto; definido por série envia só a lista', () => {
+    const row: WorkoutPlanExercise = { ...saved, rpe_target: '7-8', rpe_targets_by_set: [] };
+    const untouched = toWorkoutPlanExerciseInput(row, 1);
+    expect(untouched.rpe_target).toBe('7-8');
+    expect(untouched).not.toHaveProperty('rpe_targets_by_set');
+    const edited = toWorkoutPlanExerciseInput({ ...row, rpe_target: null, rpe_targets_by_set: [8, 8.5, 9], rpe_edited: true }, 1);
+    expect(edited.rpe_targets_by_set).toEqual([8, 8.5, 9, 9]);
+    expect(JSON.parse(JSON.stringify(edited))).not.toHaveProperty('rpe_target');
+    expect(JSON.parse(JSON.stringify(edited))).not.toHaveProperty('rpe_edited');
+  });
+
   it('ecoa o objetivo da linha como veio (M97 F3); ausente some do JSON', () => {
     const goal = parity.payload.items.find((item) => !item.is_default)!.value;
     expect(toWorkoutPlanExerciseInput({ ...saved, training_goal: goal }, 1).training_goal).toBe(goal);
     expect(JSON.parse(JSON.stringify(toWorkoutPlanExerciseInput(saved, 1)))).not.toHaveProperty('training_goal');
+  });
+
+  it('linha carimbada envia o exercício de geração mesmo trocada; manual não envia (#178)', () => {
+    const swapped = { ...saved, mapping_id: 55, generated_mapping_id: 9 } as WorkoutPlanExercise;
+    const input = toWorkoutPlanExerciseInput(swapped, 1);
+    expect(input.mapping_id).toBe(55);
+    expect(input.generated_mapping_id).toBe(9);
+    expect(JSON.parse(JSON.stringify(toWorkoutPlanExerciseInput(saved, 1)))).not.toHaveProperty('generated_mapping_id');
+  });
+
+  it('auditoria da geração vai no nível de cima e em generation_context, idêntica (#178)', () => {
+    const audit = { hash: 'abc', items: [{ a: 1 }] };
+    const raw = buildDraftRawPayload({
+      name: 'A',
+      plan_type: 'full_body',
+      exercises: [],
+      raw_payload: { generation_audit: audit },
+    } as never);
+    expect(raw.generation_audit).toEqual(audit);
+    expect((raw.generation_context as { generation_audit: unknown }).generation_audit).toEqual(raw.generation_audit);
+    expect(buildDraftRawPayload({ name: 'A', plan_type: 'full_body', exercises: [] }).generation_audit).toBeNull();
   });
 
   it('sempre monta a lista de exercícios (quem decide omitir é a tela)', () => {

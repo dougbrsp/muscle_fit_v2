@@ -14,6 +14,7 @@ import {
   isSessionClosedOnServer,
   mergeResumedSession,
   progressAfterEquipmentSwap,
+  queuedContinuationExerciseIds,
   reorderPendingBySkip,
   resolveAdvancedSubStage,
   resolveEffectiveExerciseDisplay,
@@ -23,7 +24,11 @@ import {
   shouldDiscardLocalSession,
   shouldSwapAsOverride,
   syntheticExtraToPlanExercise,
+  withContinuationExerciseId,
+  withQueueConfirmedContinuationIds,
 } from './workout-mode-plan-flow';
+import { SUGGESTION_FAILED_MESSAGE, targetsWhenSuggestionFails } from './workout-mode-plan-flow';
+import { findLoggedExerciseForPlanItem } from './workout-mode-types';
 import type { AdvancedExerciseCounters } from './workout-mode-plan-flow';
 import type {
   ExerciseLogRow,
@@ -1122,5 +1127,134 @@ describe('isSavedPlanStartable', () => {
   });
   it('ficha gravada com exercícios inicia', () => {
     expect(isSavedPlanStartable([{}])).toBe(true);
+  });
+});
+
+describe('continuação com exercício próprio (#225)', () => {
+  const baseExtra = {
+    localId: -1,
+    exercise_name: 'Supino',
+    mapping_id: 5,
+    equipment_link_id: 9,
+    equipment_name: 'Máquina',
+    sets_count: 2,
+    originalWorkoutPlanExerciseId: 12,
+  } as MidExerciseExtra;
+  const original = { id: 100, workout_plan_exercise_id: 12, mapping_id: 5, sets: [] } as unknown as ExerciseLogRow;
+  const own = { id: 101, workout_plan_exercise_id: 12, mapping_id: 5, sets: [] } as unknown as ExerciseLogRow;
+  const activity = { exercises: [original, own] } as never;
+  const find = (extra: MidExerciseExtra) =>
+    findLoggedExerciseForPlanItem(activity, syntheticExtraToPlanExercise(extra), [extra]);
+
+  it('com id próprio e MESMO mapping_id do original acha a linha dela', () => {
+    expect(find({ ...baseExtra, exerciseId: 101 })?.id).toBe(101);
+  });
+
+  it('continuação nova ainda sem exercício (null) não acha a linha do original', () => {
+    expect(find({ ...baseExtra, exerciseId: null })).toBeUndefined();
+  });
+
+  it('extra legado (sem o campo) resolve por mapping_id, como antes', () => {
+    expect(find(baseExtra)?.id).toBe(100);
+  });
+
+  it('withContinuationExerciseId grava o id só na continuação certa e é idempotente', () => {
+    const other = { ...baseExtra, localId: -2 };
+    const next = withContinuationExerciseId([baseExtra, other], -1, 101);
+    expect(next.map((e) => e.exerciseId)).toEqual([101, undefined]);
+    expect(withContinuationExerciseId(next, -1, 101)).toBe(next);
+  });
+});
+
+describe('continuação criada offline (#225): linha sintética da fila', () => {
+  const extra = { localId: -1, mapping_id: 5, exerciseId: null, originalWorkoutPlanExerciseId: 12 } as unknown as MidExerciseExtra;
+  const original = { id: 100, workout_plan_exercise_id: 12, mapping_id: 5, sets: [] } as unknown as ExerciseLogRow;
+  const queued = { id: -50, workout_plan_exercise_id: 12, mapping_id: 5, sets: [{ set_number: 1 }, { set_number: 2 }] } as unknown as ExerciseLogRow;
+  const real = { id: 101, workout_plan_exercise_id: 12, mapping_id: 5, sets: [] } as unknown as ExerciseLogRow;
+  const op = (localId?: number, serverId?: number) => ({
+    kind: 'addExercise',
+    clientKey: 'k1',
+    localId,
+    serverResponse: serverId == null ? undefined : { exercise_id: serverId },
+  });
+  const keyOf = (id: number) => (id === -1 ? 'k1' : undefined);
+  const find = (exercises: ExerciseLogRow[], ids: Map<number, number[]>, e: MidExerciseExtra = extra) =>
+    findLoggedExerciseForPlanItem({ exercises } as never, syntheticExtraToPlanExercise(e), [e], ids);
+
+  it('mapa: id local da op; real primeiro quando a op já sincronizou; sem op, vazio; id real com op na fila também; legado ignorado', () => {
+    expect(queuedContinuationExerciseIds([extra], [op(-50)], keyOf).get(-1)).toEqual([-50]);
+    expect(queuedContinuationExerciseIds([extra], [op(-50, 101)], keyOf).get(-1)).toEqual([101, -50]);
+    expect(queuedContinuationExerciseIds([extra], [], keyOf).size).toBe(0);
+    expect(queuedContinuationExerciseIds([{ ...extra, exerciseId: 101 }], [op(-50, 101)], keyOf).get(-1)).toEqual([101, -50]);
+    expect(queuedContinuationExerciseIds([{ ...extra, exerciseId: 101 }], [], keyOf).size).toBe(0);
+    const legacy = { ...extra, exerciseId: undefined } as unknown as MidExerciseExtra;
+    expect(queuedContinuationExerciseIds([legacy], [op(-50, 101)], keyOf).size).toBe(0);
+  });
+
+  it('transição id real gravado, GET pendente: resolve a sintética com as séries; após recarga, a real', () => {
+    const e = { ...extra, exerciseId: 101 } as MidExerciseExtra;
+    const ids = queuedContinuationExerciseIds([e], [op(-50, 101)], keyOf);
+    const row = find([original, queued], ids, e);
+    expect(row?.id).toBe(-50);
+    expect(row?.sets.map((s) => s.set_number)).toEqual([1, 2]);
+    expect(find([original, real], ids, e)?.id).toBe(101);
+  });
+
+  it('id real ausente da atividade e sem op na fila: undefined, nunca a do original', () => {
+    const e = { ...extra, exerciseId: 101 } as MidExerciseExtra;
+    expect(find([original], queuedContinuationExerciseIds([e], [], keyOf), e)).toBeUndefined();
+  });
+
+  it('exerciseId null + id local conhecido acha a linha sintética com as séries enfileiradas', () => {
+    const row = find([original, queued], queuedContinuationExerciseIds([extra], [op(-50)], keyOf));
+    expect(row?.id).toBe(-50);
+    expect(row?.sets.map((s) => s.set_number)).toEqual([1, 2]);
+  });
+
+  it('sem id local (nem real) segue undefined, nunca a linha do original', () => {
+    expect(find([original, queued], new Map())).toBeUndefined();
+  });
+
+  it('transição: op sincronizada com a linha real já na atividade resolve pela real; senão, pela local', () => {
+    const ids = queuedContinuationExerciseIds([extra], [op(-50, 101)], keyOf);
+    expect(find([original, real], ids)?.id).toBe(101);
+    expect(find([original, queued], ids)?.id).toBe(-50);
+  });
+
+  it('id real persistido tem prioridade sobre o mapa local; legado não muda', () => {
+    const ids = new Map([[-1, [-50]]]);
+    expect(find([original, queued, real], ids, { ...extra, exerciseId: 101 })?.id).toBe(101);
+    const legacy = { ...extra, exerciseId: undefined } as unknown as MidExerciseExtra;
+    expect(find([original, queued], ids, legacy)?.id).toBe(100);
+  });
+});
+
+describe('withQueueConfirmedContinuationIds (#225)', () => {
+  const mk = (localId: number, exerciseId?: number | null) => ({ localId, exerciseId }) as unknown as MidExerciseExtra;
+  const op = (clientKey: string, status: string, id?: number) => ({
+    kind: 'addExercise',
+    clientKey,
+    status,
+    serverResponse: id == null ? undefined : { exercise_id: id },
+  });
+  it('grava o id real da continuação nova quando a fila já sincronizou a criação', () => {
+    const out = withQueueConfirmedContinuationIds([mk(-5, null)], [op('k5', 'synced', 77)], (id) => (id === -5 ? 'k5' : undefined));
+    expect(out[0].exerciseId).toBe(77);
+  });
+  it('não mexe em pendente, em legado (undefined) nem em quem já tem id; mesma lista', () => {
+    const extras = [mk(-5, null), mk(-6), mk(-7, 9)];
+    const out = withQueueConfirmedContinuationIds(extras, [op('k5', 'saved_local'), op('k6', 'synced', 1), op('k7', 'synced', 2)], (id) => `k${-id}`);
+    expect(out).toBe(extras);
+  });
+});
+
+describe('targetsWhenSuggestionFails', () => {
+  it('não herda a carga alvo do equipamento anterior e mantém reps e RPE', () => {
+    expect(targetsWhenSuggestionFails({ reps_target: '8-12', load_target: '40', rpe_target: '8' })).toEqual({
+      reps_target: '8-12',
+      load_target: null,
+      rpe_target: '8',
+    });
+    expect(SUGGESTION_FAILED_MESSAGE).toContain('Não foi possível carregar a sugestão para este equipamento');
   });
 });

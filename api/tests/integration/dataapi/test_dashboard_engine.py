@@ -141,10 +141,27 @@ def _modelo(raw, *, user_id, volume_mode="percent_budget", itens=()):
     return template_id
 
 
-def _ficha(raw, *, user_id, itens, template_id=None, audit=None, nome="Ficha F3.1"):
+def _raw_payload(audit, onde):
+    """`raw_payload` com a auditoria no nivel de cima (`topo`), so no contexto
+    (`contexto`, fichas antigas), com `null` em cima + contexto
+    (`nulo_e_contexto`) ou so com o `null` em cima (`nulo`)."""
+    if onde == "nulo":
+        return json.dumps({"generation_audit": None})
+    if audit is None:
+        return None
+    return json.dumps(
+        {
+            "topo": {"generation_audit": audit},
+            "contexto": {"generation_context": {"generation_audit": audit}},
+            "nulo_e_contexto": {"generation_audit": None, "generation_context": {"generation_audit": audit}},
+        }[onde]
+    )
+
+
+def _ficha(raw, *, user_id, itens, template_id=None, audit=None, nome="Ficha F3.1", onde="topo"):
     """Ficha salva. `audit` != None grava o bloco no `raw_payload` (o caminho
-    das fichas anteriores ao M16)."""
-    raw_payload = json.dumps({"generation_audit": audit}) if audit is not None else None
+    das fichas anteriores ao M16); `onde` escolhe o lugar (ver `_raw_payload`)."""
+    raw_payload = _raw_payload(audit, onde)
     with raw.cursor() as cur:
         cur.execute(
             "INSERT INTO workout_plans (user_id, plan_date, name, plan_type, status, template_id, "
@@ -427,6 +444,40 @@ def test_ficha_antiga_cai_no_raw_payload_com_a_limitacao_escrita(db_backend, raw
     assert any(r["code"] == "RECOVERY" for r in corpo["items"][0]["reasons"])
 
 
+def test_ficha_com_auditoria_so_no_contexto_tem_a_mesma_origem_e_campos_da_de_cima(db_backend, raw, seed):
+    """Ficha antiga (#230): a auditoria so em `generation_context` nao vira
+    "criada a mao"; o detalhe e igual ao da ficha com a auditoria no topo."""
+    template_id = _modelo(raw, user_id=seed["dono"], itens=(("muscle_group", None, seed["Peitoral"], 3),))
+    audit = _audit(seed, template_id)
+    corpos = []
+    for onde in ("topo", "contexto", "nulo_e_contexto"):
+        plan_id, _ = _ficha(
+            raw,
+            user_id=seed["dono"],
+            template_id=template_id,
+            audit=audit,
+            itens=[{"name": "Supino reto", "mapping_id": SUPINO}],
+            onde=onde,
+        )
+        corpos.append(_plano(seed["dono"], plan_id, window="28d").json())
+
+    assert all(c["run"]["source"] == "plan_raw_payload" for c in corpos)
+    assert all(engine_service.AUDIT_FROM_RAW_PAYLOAD_LIMITATION in c["limitations"] for c in corpos)
+    assert all(any(r["code"] == "RECOVERY" for r in c["items"][0]["reasons"]) for c in corpos)
+    assert corpos[0]["items"][0]["reasons"] == corpos[1]["items"][0]["reasons"] == corpos[2]["items"][0]["reasons"]
+
+
+def test_ficha_com_auditoria_nula_no_topo_e_sem_contexto_nao_e_gerada(db_backend, raw, seed):
+    plan_id, _ = _ficha(
+        raw, user_id=seed["dono"], itens=[{"name": "Supino reto", "mapping_id": SUPINO}], onde="nulo"
+    )
+
+    corpo = _plano(seed["dono"], plan_id, window="28d").json()
+
+    assert corpo["run"]["source"] == "unavailable"
+    assert engine_service.AUDIT_UNAVAILABLE_LIMITATION in corpo["limitations"]
+
+
 def test_ficha_sem_auditoria_nenhuma_diz_isso_em_vez_de_tabela_vazia(db_backend, raw, seed):
     plan_id, _ = _ficha(raw, user_id=seed["dono"], itens=[{"name": "Supino reto", "mapping_id": SUPINO}])
 
@@ -522,6 +573,27 @@ def test_lista_une_as_duas_fontes_sem_duplicar_a_mesma_ficha(db_backend, raw, se
     assert sorted(fontes) == ["generation_runs", "plan_raw_payload"]
     ids = [item["workout_plan_id"] for item in corpo["items"]]
     assert len(ids) == len(set(ids)), "a mesma ficha apareceu por duas fontes"
+
+
+def test_lista_inclui_ficha_antiga_so_com_contexto_e_ignora_o_nulo_do_topo(db_backend, raw, seed):
+    template_id = _modelo(raw, user_id=seed["dono"], itens=(("muscle_group", None, seed["Peitoral"], 3),))
+    audit = _audit(seed, template_id)
+    itens = [{"name": "Supino reto", "mapping_id": SUPINO}]
+    ids = {}
+    for onde, aud in (("topo", audit), ("contexto", audit), ("nulo", None)):
+        ids[onde], _ = _ficha(
+            raw, user_id=seed["dono"], template_id=template_id, audit=aud, itens=itens, nome=onde, onde=onde
+        )
+
+    corpo = _runs(seed["dono"], window="28d").json()
+    por_plano = {i["workout_plan_id"]: i for i in corpo["items"]}
+
+    assert corpo["raw_payload_total"] == 2
+    assert ids["nulo"] not in por_plano
+    a, b = por_plano[ids["topo"]], por_plano[ids["contexto"]]
+    assert a["source"] == b["source"] == "plan_raw_payload"
+    campos = ("volume_mode", "engine_version", "llm_used", "selection_count", "safety_clamp_count")
+    assert {k: a[k] for k in campos} == {k: b[k] for k in campos}
 
 
 def test_geracao_cujo_rascunho_nao_virou_ficha_aparece_com_a_frase_propria(db_backend, raw, seed):

@@ -60,7 +60,11 @@ def get_plan(
 def create_plan(
     payload: WorkoutPlanIn, identity: Identity = Depends(require_permission("treino.planos", "editar"))
 ):
-    return services.create_workout_plan(payload.model_dump(), user_id=identity.user_id)
+    try:
+        return services.create_workout_plan(payload.model_dump(), user_id=identity.user_id)
+    except workout_plan_edit_rules.PlanEditError as exc:
+        # 422 = grupamento muscular da linha gerada trocado; a transacao ja foi desfeita.
+        raise HTTPException(status_code=exc.status, detail={"reason": exc.reason, "message": exc.message})
 
 
 @router.put("/workout-plans/{plan_id}")

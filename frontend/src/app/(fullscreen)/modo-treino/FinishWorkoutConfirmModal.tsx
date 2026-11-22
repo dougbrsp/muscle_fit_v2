@@ -10,10 +10,12 @@ type Props = {
   error: string | null;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Rótulo do botão que desiste; o padrão é o do Modo Treino. */
+  cancelLabel?: string;
 };
 
 /** Confirmação antes de encerrar o treino (toque em "Encerrar treino"). */
-export function FinishWorkoutConfirmModal({ opened, finishing, error, onConfirm, onCancel }: Props) {
+export function FinishWorkoutConfirmModal({ opened, finishing, error, onConfirm, onCancel, cancelLabel = 'Continuar treino' }: Props) {
   return (
     <Modal
       opened={opened}
@@ -48,7 +50,7 @@ export function FinishWorkoutConfirmModal({ opened, finishing, error, onConfirm,
           Confirmar encerramento
         </Button>
         <Button fullWidth size="lg" h={56} variant="light" radius="xl" disabled={finishing} onClick={onCancel}>
-          Continuar treino
+          {cancelLabel}
         </Button>
       </div>
     </Modal>

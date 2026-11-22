@@ -56,6 +56,13 @@ TECHNIQUE_APPLICATION_SET_TYPES: frozenset[str] = frozenset({REST_PAUSE, DROP_SE
 KNOWN_SET_TYPES: frozenset[str] = frozenset({WORKING, BACKOFF}) | PREPARATORY_SET_TYPES | TECHNIQUE_APPLICATION_SET_TYPES
 
 
+# Edicao pos-treino (#219, Registro de exercicios): so a serie COMUM troca de
+# tipo entre si. Aplicacao de tecnica e laboral nascem de fluxo proprio (vinculo
+# com a ancora, regra do exercicio laboral) e mantem o tipo; nenhuma serie vira
+# tecnica ou laboral pela edicao.
+SWAPPABLE_SET_TYPES: tuple[str, ...] = (WORKING, BACKOFF, WARMUP, FEELER)
+
+
 def normalize_set_type(value: Any) -> str:
     """Normaliza um `set_type` para o vocabulario canonico.
 
@@ -77,6 +84,25 @@ def _type_of(set_or_type: Any) -> str:
     if isinstance(set_or_type, Mapping):
         return normalize_set_type(set_or_type.get("set_type"))
     return normalize_set_type(set_or_type)
+
+
+def is_swappable_set_type(value: Any) -> bool:
+    """True para serie comum (`working`/`backoff`/`warmup`/`feeler`), a unica que troca de tipo na edicao."""
+    return normalize_set_type(value) in SWAPPABLE_SET_TYPES
+
+
+def can_change_set_type(stored: Any, requested: Any) -> bool:
+    """Edicao pos-treino de serie GRAVADA: o tipo pedido e permitido? Igual ao
+    gravado (apos normalizar apelidos) sempre passa (round-trip de cliente
+    antigo); fora isso, so entre series comuns."""
+    if normalize_set_type(stored) == normalize_set_type(requested):
+        return True
+    return is_swappable_set_type(stored) and is_swappable_set_type(requested)
+
+
+def can_add_set_type(requested: Any) -> bool:
+    """Edicao pos-treino de serie NOVA: o tipo pedido tem de ser de serie comum."""
+    return is_swappable_set_type(requested)
 
 
 def is_working_set(set_or_type: Any) -> bool:

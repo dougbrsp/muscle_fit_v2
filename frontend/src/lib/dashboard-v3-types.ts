@@ -274,6 +274,20 @@ export type ExerciseRef = {
   amazfit_name: string | null;
 };
 
+/** Tendência da janela (#176): leitura separada do `status`; tudo pronto do backend. */
+export type WindowTrend = {
+  status: string;
+  label: string | null;
+  reasons: string[];
+  /** Fração (0.1235 = +12,35%); nulo em dados insuficientes. */
+  change_pct: number | null;
+  initial_mean: number | null;
+  final_mean: number | null;
+  exposures_used: number;
+  rule_version: string | null;
+  scope: ProgressionScope | null;
+};
+
 export type ExerciseProgressResponse = {
   window: DashboardWindow;
   exercise: ExerciseRef;
@@ -283,6 +297,8 @@ export type ExerciseProgressResponse = {
   status: string;
   /** O que o status compara (rótulo e frase prontos do backend); ausente em respostas antigas. */
   status_scope?: ProgressionScope | null;
+  /** Tendência da janela (#176); nulo sem exposições, ausente em servidor antigo. */
+  window_trend?: WindowTrend | null;
   /** Códigos `comparability.REASON_*`; texto em `lib/exercise-progress.ts`. */
   status_reasons: string[];
   /** Contexto de fadiga em que o status vale (o da exposição mais recente). */

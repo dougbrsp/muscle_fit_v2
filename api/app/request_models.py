@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.nutrition import activity_energy as _activity_energy
@@ -86,6 +86,29 @@ class GymCreateIn(_StrictIn):
     usual_weekdays: Optional[List[int]] = Field(default=None, max_length=7)
     is_recurring: Optional[bool] = None
     notes: Optional[str] = Field(default=None, max_length=NOTES_MAX)
+
+
+class GymEquipmentCatalogAddIn(_StrictIn):
+    """POST /gym-equipment-catalog (#163b): ids inteiros positivos (sem coercao de texto)."""
+
+    gym_id: StrictInt = Field(gt=0)
+    equipment_id: StrictInt = Field(gt=0)
+
+
+class GymEquipmentCreateIn(_StrictIn):
+    """POST /gym-equipment (#246): ids inteiros positivos (sem coercao de texto)."""
+
+    gym_id: StrictInt = Field(gt=0)
+    mapping_id: StrictInt = Field(gt=0)
+    equipment_id: StrictInt = Field(gt=0)
+
+
+class GymEquipmentUpdateIn(_StrictIn):
+    """PUT /gym-equipment/{link_id} (#246). Campo ausente/null nao altera (COALESCE no SQL).
+    `is_active` aceita 0/1 e true/false (gravado como veio); texto e recusado."""
+
+    equipment_id: Optional[StrictInt] = Field(default=None, gt=0)
+    is_active: Optional[Union[StrictBool, Literal[0, 1]]] = None
 
 
 class GymEquipmentManufacturerIn(_StrictIn):
@@ -168,6 +191,9 @@ class NutritionPlanSettingsIn(_StrictIn):
     # Gramas manuais com o treino (N2 rodada 4): `fixed` (padrão) ou `add_training`. O motor valida.
     manual_training_mode: Optional[str] = Field(default=None, max_length=24)
     cycle_days: Optional[dict[str, Any]] = None
+    # #242: política do ciclo (`vary_kcal` | `fat_compensation`); o motor valida. Na criação ausente/null = padrão; na edição
+    # ausente herda a gravada, null volta ao padrão (`nutrition_plans._validate_payload`).
+    carb_cycle_policy: Optional[str] = Field(default=None, max_length=24)
     # N7: kcal/dia da manutencao (inteiro; faixa e regra do motor `strategy.MAINT_KCAL_ADJUST_RANGE`).
     maintenance_kcal_adjust: Optional[int] = None
     # Lote C: parâmetros do modelo de gasto (hoje `{"watch_calorie_mode": "active" | "gross" | "unknown"}`, padrão `active` pela ADR 0016), só no modo

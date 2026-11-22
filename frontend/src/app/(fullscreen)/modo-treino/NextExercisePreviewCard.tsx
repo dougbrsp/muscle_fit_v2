@@ -5,7 +5,7 @@ import { measureTargetText, setMeasureOf } from '@/lib/workout-mode-measures';
 import type { GroupFatigueReading, WorkoutModePlanExercise } from '@/lib/workout-mode-types';
 import { BRAND } from '@/theme';
 import { ExerciseThumbnail } from './ui/ExerciseThumbnail';
-import { IconAction } from './ui/IconAction';
+import { IconAction, type WorkoutIconAction } from './ui/IconAction';
 import { MuscleFatigueChip } from './ui/MuscleFatigueChip';
 import { StatusChip } from './ui/StatusChip';
 import styles from './workout-mode.module.css';
@@ -34,6 +34,22 @@ type Props = {
   // (descanso entre séries).
   actions?: Actions | null;
 };
+
+/**
+ * #213: "Encerrar treino" no descanso ENTRE SÉRIES (na transição de exercício a ação
+ * continua no card do próximo). Mesmo `requestFinish` de quem chama.
+ */
+export function buildRestFinishWorkoutAction(onClick: () => void, loading = false): WorkoutIconAction {
+  return {
+    key: 'finish-workout',
+    label: 'Encerrar treino',
+    caption: 'Encerrar',
+    icon: <IconPlayerStop size={20} />,
+    onClick,
+    loading,
+    testId: 'rest-finish-workout',
+  };
+}
 
 /**
  * Prévia do próximo exercício da ficha no descanso, numa linha compacta

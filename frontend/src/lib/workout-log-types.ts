@@ -1,4 +1,5 @@
 import type { ManufacturerSource } from './gyms-types';
+import type { RpeVsExpected } from './rpe-expected-vs-actual';
 
 // Tipos compartilhados entre a tela de Registro de Exercícios
 // (`src/app/(app)/registro-exercicios/page.tsx`), a tela de detalhe de um
@@ -119,6 +120,10 @@ export type ExerciseSetRow = {
   // Ambos gravados pelo SERVIDOR; `null` em série anterior ao PR-14.
   rpe_target_effective?: number | null;
   safety_event?: string | null;
+  // #182: RPE ESPERADO da série (o do Modo Treino) e a comparação com o
+  // realizado, prontos da API (somente leitura; nunca enviados no PUT).
+  rpe_target_planned?: number | null;
+  rpe_vs_expected?: RpeVsExpected;
   // Fase 5: técnica aplicada nesta série e a série de trabalho (set_number)
   // de onde ela saiu. `null` em série que não é aplicação de técnica.
   technique_code?: string | null;
@@ -167,6 +172,8 @@ export type ExerciseLogRow = {
   workout_plan_exercise_id?: number | null;
   /** #196: exercício de aprimoramento de técnica (fora da progressão). */
   form_practice?: boolean;
+  /** #219: objetivo do treino gravado no exercício (`SELECT e.*`). */
+  training_goal?: string | null;
   planned_mapping_id?: number | null;
   planned_exercise_name?: string | null;
   // Nome/descrição do exercício REALMENTE lançado (`exercise_catalog` do
@@ -243,6 +250,8 @@ export type GymEquipmentLink = {
   gym_id: number;
   gym_name?: string | null;
   mapping_id: number;
+  // Id canônico do exercício (aditivo; resposta antiga não traz).
+  exercise_id?: number | null;
   mapping_exercise_name?: string | null;
   mapping_amazfit_name?: string | null;
   // Descrição do exercício da associação (`exercise_catalog.description`).
@@ -337,6 +346,9 @@ export type ExerciseFormState = {
   muscle_pain: number | null;
   joint_pain: boolean;
   form_practice: boolean;
+  // #219: objetivo gravado (`initial_`) e o escolhido; o PUT só leva o escolhido se mudou.
+  training_goal?: string | null;
+  initial_training_goal?: string | null;
   sets: Array<{
     set_number: number;
     // `null` só em série por tempo (Lote T5).

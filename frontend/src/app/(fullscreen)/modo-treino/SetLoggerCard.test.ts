@@ -70,6 +70,15 @@ describe('SetLoggerCard — RPE esperado por série (#146)', () => {
     expect(sem).not.toContain('set-expected-rpe');
     expect(sem).not.toContain('RPE esperado');
   });
+
+  it('o RPE realizado não nasce com o alvo: nenhum campo recebe o esperado como valor', () => {
+    const inputs = (html: string) => [...html.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
+    const semPrefill = inputs(render({ expectedRpe: 8.5, defaultRpe: null }));
+    expect(semPrefill.length).toBeGreaterThan(0);
+    expect(semPrefill.some((tag) => tag.includes('8.5'))).toBe(false);
+    // o valor do campo vem só de defaultRpe, mesmo com alvo diferente
+    expect(inputs(render({ expectedRpe: 8.5, defaultRpe: 7 })).some((tag) => tag.includes('value="7"'))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -298,5 +307,21 @@ describe('SetLoggerCard — aprimoramento de técnica (#196)', () => {
 
   it('sem a marcação, nenhum selo', () => {
     expect(render({})).not.toContain('execution-form-practice');
+  });
+
+  it('#213: ação de marcar/desmarcar só com o callback; travada fica desabilitada', () => {
+    expect(render({})).not.toContain('execution-form-practice-toggle');
+    expect(render({ onToggleFormPractice: () => {} })).toContain('data-testid="execution-form-practice-toggle"');
+    const locked = render({ onToggleFormPractice: () => {}, formPracticeLocked: true });
+    expect(locked).toMatch(/data-testid="execution-form-practice-toggle"[^>]*disabled|disabled[^>]*data-testid="execution-form-practice-toggle"/);
+  });
+});
+
+describe('SetLoggerCard — encerrar treino entre séries (#213)', () => {
+  it('mostra "Encerrar treino" só quando quem chama oferece a ação', () => {
+    expect(render({})).not.toContain('execution-finish-workout');
+    const html = render({ onFinishWorkout: () => {} });
+    expect(html).toContain('data-testid="execution-finish-workout"');
+    expect(html).toContain('Encerrar treino');
   });
 });

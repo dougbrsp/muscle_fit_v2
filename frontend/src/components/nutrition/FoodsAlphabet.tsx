@@ -3,14 +3,10 @@
 import { Alert, Button, Group, Loader, Paper, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { foodKeys, listFoodsByLetter, nutritionErrorInfo } from '@/lib/nutrition-api';
 import type { FoodItem } from '@/lib/nutrition-types';
 import { BRAND } from '@/theme';
-
-// A primeira chamada precisa de uma letra e a lista de abas só vem na resposta (fonte única: a API).
-// Este é o único valor escrito aqui; depois dela, abas e balde de não-letras vêm de `letters`.
-const INITIAL_LETTER = 'A';
 
 /** Seção "Alimentos cadastrados" (#195): navegação por letra e lista paginada; ordem, abas e página são da API. */
 export function FoodsAlphabet({
@@ -20,9 +16,10 @@ export function FoodsAlphabet({
   selectedId: number | null;
   onSelect: (item: FoodItem) => void;
 }) {
-  const [letter, setLetter] = useState(INITIAL_LETTER);
+  // undefined = primeira carga: a API escolhe o balde e o devolve em `letter`.
+  const [letter, setLetter] = useState<string | undefined>(undefined);
   const query = useInfiniteQuery({
-    queryKey: [...foodKeys.byLetter, letter],
+    queryKey: foodKeys.byLetterKey(letter),
     queryFn: ({ pageParam }) => listFoodsByLetter(letter, pageParam),
     initialPageParam: 0,
     getNextPageParam: (last) => (last.has_more && last.limit > 0 ? (last.offset ?? 0) + last.limit : undefined), // resposta malformada: sem NaN nem laço
@@ -31,10 +28,19 @@ export function FoodsAlphabet({
   });
 
   const pages = query.data?.pages ?? [];
-  // Últimas abas recebidas da API: um erro ao trocar de letra não pode apagar a navegação.
-  const lastLetters = useRef<string[]>([]);
-  if (pages[0]?.letters?.length) lastLetters.current = pages[0].letters;
-  const letters = lastLetters.current;
+  // Últimas abas e rótulos recebidos da API: um erro ao trocar de letra não pode apagar a navegação.
+  const [nav, setNav] = useState<{ letters: string[]; labels: Record<string, string>; active?: string }>({
+    letters: [],
+    labels: {},
+  });
+  const first = pages[0];
+  useEffect(() => {
+    if (first?.letters?.length) {
+      setNav({ letters: first.letters, labels: first.letter_labels ?? {}, active: first.letter });
+    }
+  }, [first]);
+  const letters = nav.letters;
+  const ativa = letter ?? nav.active;
   // Dedup por id (alimento criado/excluído entre páginas pode repetir); mantém a ordem da API.
   const items = pages.flatMap((p) => p.items ?? []).filter((it, i, all) => all.findIndex((o) => o.id === it.id) === i);
   const trocando = query.isPlaceholderData;
@@ -51,13 +57,12 @@ export function FoodsAlphabet({
               <Button
                 key={l}
                 size="compact-sm"
-                variant={l === letter ? 'filled' : 'light'}
-                aria-pressed={l === letter}
-                aria-current={l === letter ? 'true' : undefined}
+                variant={l === ativa ? 'filled' : 'light'}
+                aria-pressed={l === ativa}
                 miw={36}
-                onClick={() => setLetter(l)}
+                onClick={() => l !== ativa && setLetter(l)}
               >
-                {l}
+                {nav.labels[l] ?? l}
               </Button>
             ))}
           </Group>

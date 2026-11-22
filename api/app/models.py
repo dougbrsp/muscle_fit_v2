@@ -159,6 +159,13 @@ class ExerciseSetUpdateIn(ExerciseSetIn):
     # exercise_set_update_merge.link_technique_applications).
     technique_code: Optional[str] = Field(default=None, max_length=20)
     anchor_set_number: Optional[int] = Field(default=None, ge=1)
+    # Número da série GRAVADA de origem (null = série nova); não é persistido.
+    # Alguma série com o campo -> pareamento por ele (ver exercise_set_update_merge).
+    source_set_number: Optional[int] = Field(default=None, ge=1)
+
+
+# Teto folgado de séries por exercício registrado (sem dono no projeto; uso real < 30).
+MAX_SETS_PER_LOGGED_EXERCISE = 100
 
 
 class ExerciseLogUpdateIn(BaseModel):
@@ -186,7 +193,17 @@ class ExerciseLogUpdateIn(BaseModel):
     joint_pain: Optional[bool] = None
     # Aprimoramento de técnica (#205): None/omitido preserva a marca gravada.
     form_practice: Optional[bool] = None
-    sets: list[ExerciseSetUpdateIn] = Field(default_factory=list)
+    # #219: objetivo do treino do exercício; ausente/null preserva; validado pelo dono `training_goal`.
+    training_goal: Optional[str] = None
+    sets: list[ExerciseSetUpdateIn] = Field(default_factory=list, max_length=MAX_SETS_PER_LOGGED_EXERCISE)
+
+
+class ExerciseLogCreateIn(ExerciseLogUpdateIn):
+    """Exercício novo numa sessão ENCERRADA (`POST /exercises/logs`)."""
+
+    activity_id: int
+    # Criação exige ao menos 1 série; o PUT (herdado) segue aceitando lista vazia.
+    sets: list[ExerciseSetUpdateIn] = Field(min_length=1, max_length=MAX_SETS_PER_LOGGED_EXERCISE)
 
 
 class BodyCompositionIn(BaseModel):
@@ -230,6 +247,9 @@ class WorkoutPlanExerciseIn(BaseModel):
     # edicao (`workout_plan_edit_rules`); ausente = linha nova. O UPDATE
     # continua casando por `sequence`.
     workout_plan_exercise_id: Optional[int] = None
+    # `mapping_id` com que a linha GERADA saiu da geracao (carimbo da tela). So
+    # alimenta a trava de grupamento na criacao (#178); nao e persistido.
+    generated_mapping_id: Optional[int] = Field(default=None, ge=1)
     amazfit_name: Optional[str] = None
     # Vínculo resolvido com o catálogo canônico (exercise_zepp_mappings.id) e
     # com o equipamento da academia (gym_equipment.id). Quando ausentes, são
@@ -301,13 +321,15 @@ class WorkoutPlanExerciseIn(BaseModel):
 
     @model_validator(mode="after")
     def _rpe_target_resolved(self):
-        return _resolve_rpe_target(self)
+        return _resolve_rpe_target(self, keep_steps_if_sets_unsent=True)
 
 
-def _resolve_rpe_target(model):
+def _resolve_rpe_target(model, *, keep_steps_if_sets_unsent: bool = False):
     """Valida/normaliza `rpe_target` (texto) ou o compõe de `rpe_targets_by_set`,
     sempre pelo dono `training_history`. Lista maior que `sets_count` é erro.
-    Campo não enviado fica como está (o save preserva o gravado)."""
+    Campo não enviado fica como está (o save preserva o gravado).
+    `keep_steps_if_sets_unsent` (ficha, #184): sem `sets_count` no corpo a lista
+    segue no modelo; o save a valida e recompõe contra o `sets_count` gravado."""
     steps = model.rpe_targets_by_set
     # Sem séries definidas o tamanho da rampa é o nº de séries: não colapsa o fim.
     collapse = model.sets_count is not None and model.sets_count >= 1
@@ -317,7 +339,8 @@ def _resolve_rpe_target(model):
                 f"rpe_targets_by_set tem {len(steps)} alvos para {model.sets_count} séries de trabalho."
             )
         model.rpe_target = compose_rpe_target(steps, collapse_tail=collapse)
-        model.rpe_targets_by_set = None
+        if not (keep_steps_if_sets_unsent and "sets_count" not in model.model_fields_set):
+            model.rpe_targets_by_set = None
     elif "rpe_target" in model.model_fields_set:
         model.rpe_target = normalize_rpe_target(model.rpe_target, collapse_tail=collapse)
     return model

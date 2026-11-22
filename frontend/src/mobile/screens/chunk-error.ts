@@ -1,7 +1,7 @@
 /**
  * Falha de download de chunk (rede, rota nunca visitada offline) ou de
  * `import()` dinamico: so isso vira "Sem conexao". Qualquer outro erro de
- * render deve subir para o `error.tsx` do app.
+ * render deve subir para o `ScreenErrorBoundary` do shell.
  */
 const CHUNK_MESSAGE =
   /loading (css )?chunk|dynamically imported module|importing a module script failed|failed to fetch dynamically/i;

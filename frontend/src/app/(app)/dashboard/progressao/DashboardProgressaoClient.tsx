@@ -35,8 +35,9 @@ import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
+import { rpeExpectedCountsText } from '@/lib/rpe-expected-vs-actual';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
-import { buildProgressionChart, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
+import { buildProgressionChart, formPracticeSessionsNote, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
 import { fmtDate, fmtInt, fmtKg, fmtRpe } from '@/lib/dashboard-format';
 import { TrainingGoalBadge } from '@/components/TrainingGoalBadge';
 import {
@@ -137,7 +138,7 @@ export function DashboardProgressaoClient() {
     retry: false,
   });
 
-  const items = progressionQuery.data?.items ?? [];
+  const items = useMemo(() => progressionQuery.data?.items ?? [], [progressionQuery.data?.items]);
 
   // Um único eixo Y: e1RM e carga de topo estão ambos em kg, então dividem a
   // mesma escala. Nunca usar dual-axis (regra das Etapas 26a/26b). Só as
@@ -314,8 +315,7 @@ export function DashboardProgressaoClient() {
                 {(chart.strengthPoints ?? 0) > 0 && ' Pontos destacados: sessões de força (o 1RM estimado é um só).'}
                 {(chart.deloadSessions ?? 0) > 0 &&
                   ` ${fmtInt(chart.deloadSessions ?? 0)} sessão(ões) de deload marcada(s), fora da linha do 1RM estimado.`}
-                {(chart.formPracticeSessions ?? 0) > 0 &&
-                  ` ${fmtInt(chart.formPracticeSessions ?? 0)} sessão(ões) de ${FORM_PRACTICE_LABEL.toLowerCase()} marcada(s), fora da linha do 1RM estimado.`}
+                {(chart.formPracticeSessions ?? 0) > 0 && ` ${formPracticeSessionsNote(chart.formPracticeSessions)}`}
               </Text>
               <div style={{ height: 300 }}>
                 <ProgressaoChart chartData={chartData} />
@@ -377,7 +377,14 @@ export function DashboardProgressaoClient() {
                             </Group>
                           )}
                         </Table.Td>
-                        <Table.Td>{fmtKg(sessionLoad(item))}</Table.Td>
+                        {/* Técnica: carga leve, fora da linha de carga do gráfico; não é carga de topo. */}
+                        <Table.Td>
+                          {isFormPracticeRow(item) ? (
+                            <span aria-label={`Sem carga de topo: sessão de ${FORM_PRACTICE_LABEL.toLowerCase()}`}>—</span>
+                          ) : (
+                            fmtKg(sessionLoad(item))
+                          )}
+                        </Table.Td>
                         <Table.Td>{sessionRepsText(item) ?? '-'}</Table.Td>
                         <Table.Td>{fmtRpe(item.avg_rpe)}</Table.Td>
                         {/* §5.7: o status é do servidor (alvo efetivo gravado na
@@ -397,6 +404,12 @@ export function DashboardProgressaoClient() {
                               -
                             </Text>
                           )}
+                          {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels) ? (
+                            <Text size="xs" c={BRAND.textMuted}>
+                              RPE vs esperado:{' '}
+                              {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels)}
+                            </Text>
+                          ) : null}
                         </Table.Td>
                         <Table.Td>{fmtInt(item.sets_count)}</Table.Td>
                         <Table.Td>

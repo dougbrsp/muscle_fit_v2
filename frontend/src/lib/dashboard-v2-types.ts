@@ -12,6 +12,7 @@
 import type { ComparabilityKey, FatigueContext } from './dashboard-v3-types';
 import type { LoadConvention } from './equipment-exercises-types';
 import type { ProgressionScope } from './progression-scope';
+import type { RpeVsExpectedCounts, RpeVsExpectedLabels } from './rpe-expected-vs-actual';
 
 // ---------------------------------------------------------------------------
 // Comuns
@@ -49,6 +50,10 @@ export type ProgressionSessionItem = {
   intensity_status: 'REACHED' | 'BELOW_TARGET' | 'FAILURE_NOT_ALLOWED_REACHED_CEILING' | 'ABOVE_SAFE_CEILING' | null;
   rpe_target_effective: number | null;
   failure_allowed: boolean | null;
+  /** #182: contagem pronta de séries abaixo/no/acima do RPE esperado; `null` sem comparação. */
+  rpe_vs_expected_counts?: RpeVsExpectedCounts;
+  /** Rótulos prontos das categorias da contagem; ausente em resposta antiga em cache. */
+  rpe_vs_expected_labels?: RpeVsExpectedLabels;
   /**
    * Seta "Evolução" PRONTA do backend: `compare_exposures` da sessão contra a
    * exposição imediatamente anterior, se for da mesma chave (exercício,

@@ -7,6 +7,7 @@ import {
   repsEmparelhadas,
 } from '@/app/(app)/dashboard/treinos/AnaliseIaSnapshot';
 import { EM_DASH, fmtDate, fmtDecimal, fmtInt, fmtKgTotal, fmtPercent, fmtRpe } from '@/lib/dashboard-format';
+import { scopeLabel } from '@/lib/progression-scope';
 import type { WorkoutsAnalysisTraining } from '@/lib/workouts-analysis-types';
 import { ListGroup, ListRow } from '../../ui';
 
@@ -56,7 +57,7 @@ export function AnaliseIaSnapshotMobile({ training }: { training: WorkoutsAnalys
             <ListRow
               key={i.exercise_id}
               title={i.exercise_name ?? `Exercício ${i.exercise_id}`}
-              subtitle={`${i.equipment_name ?? EM_DASH} · anterior ${exposicaoResumo(i.previous_comparable)} · última ${exposicaoResumo(i.latest)}${i.paired_top_reps ? ` · ${repsEmparelhadas(i.paired_top_reps)}` : ''}`}
+              subtitle={`${i.equipment_name ?? EM_DASH} · anterior ${exposicaoResumo(i.previous_comparable)} · última ${exposicaoResumo(i.latest)}${i.paired_top_reps ? ` · ${repsEmparelhadas(i.paired_top_reps)}` : ''}${scopeLabel(i.status_scope) ? ` · Selo: ${scopeLabel(i.status_scope)}` : ''}`}
               trailing={<StatusBadge domain="exerciseProgression" code={i.status} size="xs" />}
             />
           ))}

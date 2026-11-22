@@ -3,6 +3,7 @@
 // havia três mapeamentos manuais (GenerateDraftModal, PlanDetailClient,
 // ModeSelectScreen) que descartavam os campos avançados do modo
 // 'equipment_series' — ao adicionar um campo no backend, adicione-o AQUI.
+import { rpePayloadFields } from './plan-rpe-per-set';
 import type {
   WorkoutPlan,
   WorkoutPlanDraft,
@@ -25,7 +26,7 @@ export function toWorkoutPlanExerciseInput(ex: WorkoutPlanExercise, sequence: nu
     sets_count: ex.sets_count ?? null,
     reps_target: ex.reps_target ?? null,
     load_target: ex.load_target ?? null,
-    rpe_target: ex.rpe_target ?? null,
+    ...rpePayloadFields(ex),
     rest_seconds: ex.rest_seconds ?? null,
     warmup: !!ex.warmup,
     substitution_options: ex.substitution_options ?? null,
@@ -50,6 +51,8 @@ export function toWorkoutPlanExerciseInput(ex: WorkoutPlanExercise, sequence: nu
     // carimba o do Modelo no congelamento (`plan_goal_stamp`), mas o cliente
     // não perde o campo do rascunho nem da ficha gravada.
     training_goal: ex.training_goal,
+    // #178: carimbo só existe em linha vinda da geração; `undefined` some do JSON.
+    generated_mapping_id: (ex as { generated_mapping_id?: number | null }).generated_mapping_id ?? undefined,
   };
 }
 
@@ -87,6 +90,8 @@ export function buildDraftRawPayload(draft: WorkoutPlanDraft): Record<string, un
     insufficient_target_volume_groups: draft.insufficient_target_volume_groups ?? [],
     adjusted_due_to_catalog_mismatch: draft.adjusted_due_to_catalog_mismatch ?? [],
     generation_context: draft.raw_payload ?? null,
+    // #178: o servidor procura a auditoria no nível de cima; conteúdo intocado (hash).
+    generation_audit: draft.raw_payload?.generation_audit ?? null,
     // M98 C0: a ficha não tem coluna de cardio; sem isto o cardio do slot do
     // Modelo se perdia no save (o `WorkoutPlanIn` descarta campo desconhecido).
     cardio_minutes: draft.cardio_minutes ?? null,

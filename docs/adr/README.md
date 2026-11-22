@@ -37,5 +37,19 @@ Uma ADR não é reescrita para mudar de decisão. Se a decisão mudar, cria-se u
 | [0015](0015-progressao-fonte-unica-no-motor.md) | Progressão com fonte única no motor (issue #188) | Aceita | 2026-11-16 |
 | [0016](0016-kcal-do-intervals-ativa-por-padrao.md) | A kcal informada do Intervals é calorie ativa por padrão (nutrition-v5, issue #138) | Aceita | 2026-11-17 |
 | [0017](0017-aprimoramento-de-tecnica-fora-da-progressao.md) | Execução marcada como aprimoramento de técnica fica fora de progressão, calibração, recorde, e1RM e referência de carga; conta para volume, recuperação e tempo (issue #196) | Aceita | 2026-11-18 |
+| [0018](0018-edicao-de-treino-encerrado-e-reavaliacao.md) | Edição de treino encerrado pelo Registro e reavaliação da progressão (issues #215, #216 e #219) | Aceita | 2026-11-19 |
+| [0019](0019-campos-do-treino-editaveis-depois-do-treino.md) | Tipo de série, medida, dor por série e objetivo editáveis depois do treino pelo Registro (issue #219, lote 2) | Aceita | 2026-11-19 |
+| [0020](0020-tecnica-ate-a-serie-de-trabalho-e-encerrar-treino.md) | Marca de técnica até a 1ª série de trabalho, encerrar treino entre séries e dor zero sem dor (issues #213 e #211) | Aceita | 2026-11-19 |
+| [0021](0021-continuacao-por-troca-de-equipamento-cria-exercicio-proprio.md) | Continuação por troca de equipamento cria exercício próprio (issues #225 e #204) | Aceita | 2026-11-19 |
+| [0022](0022-gvt-reps-do-protocolo-e-grupo-travado-na-criacao-da-ficha.md) | GVT com as reps do protocolo, técnica só de séries mantida sem trabalho direto, trava de grupo na criação da ficha e vínculo da geração (issues #224 e #178) | Aceita | 2026-11-19 |
+| [0023](0023-pendencias-de-nutricao-208-202-200.md) | Pendências de nutrição: busca por marca e listagem por letra, voltar do cabeçalho mobile, guarda do modo de caloria e mensagem do 422 na tela web (issues #208, #202, #200 e #229) | Aceita | 2026-11-20 |
+| [0024](0024-rpe-por-serie-saneamento-da-ia-e-acabamentos.md) | RPE por série com saneamento da saída da IA e acabamentos da ficha e do Modelo (issues #183 e #184) | Aceita | 2026-11-20 |
+| [0025](0025-tendencia-da-janela-e-escopo-na-analise-por-ia.md) | Tendência da janela do exercício (segunda leitura, metades do e1RM) e escopo do snapshot da análise por IA (issues #176 e #177) | Aceita | 2026-11-20 |
+| [0026](0026-rpe-esperado-gravado-na-serie-e-comparacao.md) | RPE esperado gravado na série e comparação com o realizado (issue #182) | Aceita | 2026-11-20 |
+| [0027](0027-seletor-de-equipamento-no-modo-treino.md) | Seletor de equipamento no Modo Treino, validação do equipamento da sessão e convenção de carga nas opções (issue #163, primeira parte) | Aceita | 2026-11-20 |
+| [0028](0028-catalogo-global-no-seletor-de-equipamento.md) | Catálogo global no seletor de equipamento e acréscimo à academia com permissão (issue #163, segunda parte) | Aceita | 2026-11-20 |
+| [0029](0029-ciclo-de-carboidratos-com-compensacao-em-gordura.md) | Ciclo de carboidratos com compensação em gordura, política opcional sem migração (issue #242) | Aceita | 2026-11-20 |
+| [0030](0030-rpe-esperado-x-realizado-no-relatorio.md) | RPE esperado × realizado no relatório em Markdown, por sessão, com a contagem do dono (issue #241) | Aceita | 2026-11-20 |
+| [0031](0031-erro-de-tela-movel-nao-derruba-o-app.md) | Erro de tela móvel não derruba o app e digitação no check-in não dispara erro (issue #250) | Aceita | 2026-11-21 |
 
 Documentação operacional da frente mobile: [docs/mobile/README.md](../mobile/README.md). Plano e status: [docs/mobile/MOBILE_IMPLEMENTATION_PLAN.md](../mobile/MOBILE_IMPLEMENTATION_PLAN.md).

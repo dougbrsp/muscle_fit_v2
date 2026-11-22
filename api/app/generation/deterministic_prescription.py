@@ -50,6 +50,7 @@ from ..domain.progression_engine import (
     resolve_track,
     uses_e1rm_load,
 )
+from ..domain.technique_accounting import format_reps_range
 from ..domain.training_goal import goal_value
 from ..observability import log_event
 from ..domain.training_safety import TrainingSafety, build_training_safety, resolve_training_safety_bulk
@@ -111,9 +112,12 @@ class PairPrescription:
     @property
     def reps_target(self) -> Optional[str]:
         low, high = self.decision.suggested_reps_min, self.decision.suggested_reps_max
+        protocol = (self.decision.advanced_technique_parameters or {}).get("target_reps")
+        if protocol:  # protocolo da tecnica (GVT = 10): alvo unico, nao faixa
+            return str(protocol)
         if low is None or high is None:
             return None
-        return f"{low}-{high}"
+        return format_reps_range(low, high)
 
     @property
     def suggested_load_kg(self) -> Optional[float]:

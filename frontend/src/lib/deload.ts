@@ -11,6 +11,9 @@
 import { formatLoadIn } from './exercise-briefing';
 import type { WeightUnit } from './weight-units';
 
+/** Rótulo único de "Deload" nas telas (interruptor do registro, painel do Modo Treino). */
+export const DELOAD_LABEL = 'Deload';
+
 export type DeloadConstants = {
   load_factor: number;
   target_rpe: number;

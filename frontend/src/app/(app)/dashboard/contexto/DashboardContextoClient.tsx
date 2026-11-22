@@ -389,7 +389,7 @@ function RegistroDeEvento({ tabelaDisponivel }: { tabelaDisponivel: boolean }) {
           type="date"
           value={form.local_date}
           error={errors.local_date}
-          onChange={(e) => setForm((prev) => ({ ...prev, local_date: e.currentTarget.value }))}
+          onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, local_date: value })); }}
           disabled={!tabelaDisponivel}
         />
         <TextInput
@@ -397,7 +397,7 @@ function RegistroDeEvento({ tabelaDisponivel }: { tabelaDisponivel: boolean }) {
           type="date"
           value={form.end_local_date}
           error={errors.end_local_date}
-          onChange={(e) => setForm((prev) => ({ ...prev, end_local_date: e.currentTarget.value }))}
+          onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, end_local_date: value })); }}
           disabled={!tabelaDisponivel}
         />
         <NumberInput
@@ -417,7 +417,7 @@ function RegistroDeEvento({ tabelaDisponivel }: { tabelaDisponivel: boolean }) {
           value={form.notes}
           error={errors.notes}
           maxLength={255}
-          onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))}
+          onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, notes: value })); }}
           disabled={!tabelaDisponivel}
         />
       </SimpleGrid>

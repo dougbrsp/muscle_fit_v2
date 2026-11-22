@@ -21,7 +21,8 @@ módulo atribuída a partir dele - ao menos uma vez por ocorrência da tabela.
 As exceções são leituras OPERACIONAIS (idempotência, numeração, edição,
 listagem que mostra a série pendente ao usuário, posição ordinal da série),
 cada uma em `EXCECOES` com o motivo e a contagem exata de literais. A lista
-só encolhe: exceção que sumiu do código também falha.
+só cresce para leitura operacional que não alimenta motor nem agregado, com
+motivo e contagem exata; exceção que sumiu do código também falha.
 
 Rodar: cd api && python -m pytest tests/unit/test_guarda_series_pendentes.py
 """
@@ -48,6 +49,12 @@ EXCECOES: dict[tuple[str, str], tuple[int, str]] = {
         "trava do deload numa sessão já iniciada (M97 F3, `deload.can_toggle_deload`): QUALQUER série "
         "gravada, pendente ou não, trava a troca; não lê reps/carga",
     ),
+    # Conta a série pendente DE PROPÓSITO: a trava da marca vale a partir de qualquer série de
+    # trabalho, confirmada ou não. A variante `locking=True` é o mesmo literal (+ FOR SHARE).
+    ("domain/form_practice.py", "sql_working_sets_recorded"): (
+        1,
+        "trava da marca de técnica (#213): conta QUALQUER série de trabalho gravada, pendente ou não; não lê reps/carga",
+    ),
     ("workout_sessions.py", "_find_set_by_client_key"): (
         1,
         "idempotência por client_key: a repetição devolve a série gravada, pendente ou não",
@@ -61,8 +68,18 @@ EXCECOES: dict[tuple[str, str], tuple[int, str]] = {
         1,
         "posição ORDINAL da série entre as de trabalho (rampa planejada): conta a pendente, não lê reps/carga",
     ),
+    ("workout_sessions.py", "_resync_planned_rpe_after_late_set"): (
+        1,
+        "#241: posição ORDINAL entre as séries de trabalho (conta a pendente, como o COUNT do POST) para "
+        "regravar o esperado das confirmadas seguintes; a pendente não é regravada, só ocupa posição",
+    ),
     ("workout_sessions.py", "update_session_set"): (1, "o PATCH lê justamente a série a confirmar/corrigir"),
-    ("services.py", "update_exercise_log"): (
+    ("workout_sessions.py", "_SESSION_SETS_TARGET_SQL"): (
+        1,
+        "regrava `rpe_target_effective` da linha gravada quando o deload da sessao encerrada muda: a pendente "
+        "tambem tem alvo (como no POST); nao alimenta motor, so le o alvo para reescreve-lo",
+    ),
+    ("services.py", "_update_exercise_log_tx"): (
         1,
         "edição pelo PUT /exercises/logs recria as séries: lê todas (inclusive pendentes) para preservar "
         "as colunas omitidas e a pendência (exercise_set_update_merge)",
@@ -184,7 +201,8 @@ def test_toda_leitura_de_series_exclui_as_pendentes():
 
 
 def test_excecoes_existem_e_tem_a_contagem_exata():
-    """Ratchet: a exceção que sumiu (ou ganhou/perdeu leitura) falha - a lista só encolhe."""
+    """Cada exceção existe e tem a contagem exata: a que sumiu (ou ganhou/perdeu leitura) falha.
+    A lista só cresce para leitura operacional que não alimenta motor nem agregado, com motivo."""
     sem_predicado = Counter((rel, escopo) for rel, escopo, _l, oc, usos in _leituras() if usos < oc)
     divergentes = {
         chave: (esperado, sem_predicado.get(chave, 0))

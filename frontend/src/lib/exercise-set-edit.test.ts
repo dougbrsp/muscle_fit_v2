@@ -1,13 +1,58 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canEditSetKind,
+  changeSetMeasure,
   describeSets,
   formatLoggedSets,
   newMeasuredSetFromLast,
+  repsFieldLabel,
   setEditFields,
   setFormFromRow,
+  setPainRollup,
+  setTypeSelectData,
   setUpdatePayload,
 } from './exercise-set-edit';
+import painParity from './pain-rollup.parity.json';
 import { MEASURE_LIMITS, MEASURE_VALUES } from './set-measures';
+import { updateSetField } from './exercise-log-save';
+
+describe('edição do registro: pendência e pareamento (#216, #219)', () => {
+  const rows = [
+    { set_number: 1, reps: 10, weight_kg: 50 },
+    { set_number: 2, reps: null, reps_pending: true, weight_kg: 50 },
+    { set_number: 3, reps: null, reps_pending: true, weight_kg: 50 },
+  ];
+
+  it('série pendente de reps continua com reps nulas no formulário e no payload', () => {
+    const form = rows.map(setFormFromRow);
+    expect(form[1].reps).toBeNull();
+    expect(setUpdatePayload(form[1], 1, form).reps).toBeNull();
+    expect(repsFieldLabel(form[1])).toBe('Repetições (pendente)');
+    expect(repsFieldLabel(form[0])).toBe('Repetições');
+  });
+
+  it('série não pendente sem reps continua virando 0 (comportamento de sempre)', () => {
+    expect(setFormFromRow({ set_number: 1, reps: null, weight_kg: 20 }, 0).reps).toBe(0);
+  });
+
+  it('preencher as reps confirma; esvaziar de novo mantém pendente', () => {
+    const form = rows.map(setFormFromRow);
+    const filled = updateSetField(form, 1, 'reps', 8);
+    expect(setUpdatePayload(filled[1], 1, filled).reps).toBe(8);
+    expect(repsFieldLabel(filled[1])).toBe('Repetições');
+    expect(updateSetField(filled, 1, 'reps', null)[1].reps).toBeNull();
+  });
+
+  it('remover a série do meio envia source_set_number de cada série e null na nova', () => {
+    const form = [...rows.map(setFormFromRow).filter((_, i) => i !== 1), { set_number: 3, reps: 8, weight_kg: 50, rpe: null }];
+    const payload = form.map(setUpdatePayload);
+    expect(payload.map((s) => [s.set_number, s.source_set_number, s.reps])).toEqual([
+      [1, 1, 10],
+      [2, 3, null],
+      [3, null, 8],
+    ]);
+  });
+});
 
 describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
   it('carrega e reenvia set_type, pausa, notas, FC e dor sem perder nada', () => {
@@ -31,6 +76,7 @@ describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
 
     expect(payload).toEqual({
       set_number: 3,
+      source_set_number: 3,
       reps: 8,
       weight_kg: 40,
       rpe: 9.5,
@@ -59,6 +105,7 @@ describe('edição do registro: round-trip da série (Fase 5 · PR 1)', () => {
 
     expect(payload).toEqual({
       set_number: 5,
+      source_set_number: null,
       reps: 10,
       weight_kg: 20,
       rpe: null,
@@ -239,5 +286,52 @@ describe('Lote T5: medida e segundos no round-trip da edição', () => {
     );
     // Sem `measure_text` (resposta antiga com medida), o espelho do dono.
     expect(formatLoggedSets([{ ...PRANCHA, measure_text: null }])).toBe('Série 1: 58 s @RPE 8');
+  });
+});
+
+describe('#219 edição de tipo, medida e dor', () => {
+  const row = (extra: object) => setFormFromRow({ set_number: 1, reps: 10, weight_kg: 50, ...extra } as never, 0);
+
+  it('trocar para tempo limpa reps, lados e segundos; payload leva a medida', () => {
+    const next = changeSetMeasure(row({ reps_left: 8, reps_right: 9 }), MEASURE_VALUES.duration);
+    expect(next).toMatchObject({ measure: MEASURE_VALUES.duration, reps: null, reps_left: null, reps_right: null, duration_seconds: null });
+    expect(setUpdatePayload(next, 0)).toMatchObject({ measure: MEASURE_VALUES.duration, reps: null, duration_seconds: null });
+  });
+
+  it('voltar para reps limpa os segundos e mantém a medida coerente com setEditFields', () => {
+    const timed = row({ measure: MEASURE_VALUES.duration, reps: null, duration_seconds: 40 });
+    const next = changeSetMeasure(timed, MEASURE_VALUES.reps);
+    expect(next.duration_seconds).toBeNull();
+    expect(setEditFields(next.measure).showReps).toBe(true);
+    expect(changeSetMeasure(next, MEASURE_VALUES.reps)).toBe(next);
+  });
+
+  it('seletor de tipo só nos trocáveis do espelho', () => {
+    expect(setTypeSelectData().map((o) => o.value)).toEqual(['working', 'backoff', 'warmup', 'feeler']);
+    expect(canEditSetKind({ set_type: 'working' })).toBe(true);
+    expect(canEditSetKind({})).toBe(true);
+    expect(canEditSetKind({ set_type: 'drop_set' })).toBe(false);
+    expect(canEditSetKind({ set_type: 'laboral' })).toBe(false);
+  });
+
+  it('dor por série vai no payload e o máximo é calculado só para exibição', () => {
+    const sets = [row({ muscle_pain: 3, joint_pain: false }), row({ muscle_pain: 7, joint_pain: true }), row({})];
+    expect(setUpdatePayload(sets[1], 1)).toMatchObject({ muscle_pain: 7, joint_pain: true });
+    expect(setPainRollup(sets)).toMatchObject({ muscle_pain: 7, joint_pain: true, derived_muscle: true, derived_joint: true });
+    expect(setPainRollup([row({})])).toEqual({ muscle_pain: null, joint_pain: null, derived_muscle: false, derived_joint: false });
+  });
+
+  it.each(painParity.cases)('paridade do rollup de dor com o backend: $name', (c) => {
+    const got = setPainRollup(
+      c.sets.map((s) => ({ ...s, reps: null })) as never,
+      c.exercise as never,
+    );
+    const j = c.expected.joint_pain;
+    expect(got).toEqual({
+      muscle_pain: c.expected.muscle_pain,
+      joint_pain: j == null ? null : Boolean(j),
+      derived_muscle: c.expected.derived_muscle,
+      derived_joint: c.expected.derived_joint,
+    });
   });
 });

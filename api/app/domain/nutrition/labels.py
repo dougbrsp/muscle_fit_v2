@@ -118,6 +118,21 @@ MANUAL_TRAINING_MODE_HINTS: Final[Mapping[manual_mod.ManualTrainingMode, str]] =
     ),
 }
 
+CARB_CYCLE_POLICY_LABELS: Final[Mapping[cc_mod.CarbCyclePolicy, str]] = {
+    cc_mod.CarbCyclePolicy.VARY_KCAL: "Variar as calorias",
+    cc_mod.CarbCyclePolicy.FAT_COMPENSATION: "Compensar com gordura",
+}
+
+CARB_CYCLE_POLICY_HINTS: Final[Mapping[cc_mod.CarbCyclePolicy, str]] = {
+    cc_mod.CarbCyclePolicy.VARY_KCAL: (
+        "Os dias podem ter calorias diferentes e a gordura segue a configuração do plano."
+    ),
+    cc_mod.CarbCyclePolicy.FAT_COMPENSATION: (
+        "Menos carboidrato deixa espaço para mais gordura, mantendo a energia já calculada para o dia. "
+        "O percentual de gordura ou os macros manuais passam a definir a base, não a gordura final de cada dia."
+    ),
+}
+
 RANGE_STATUS_LABELS: Final[Mapping[RangeStatus, str]] = {
     RangeStatus.WITHIN_RANGE: "Dentro da faixa recomendada",
     RangeStatus.WARNING: "Fora da faixa recomendada (salva com aviso)",
@@ -644,6 +659,7 @@ PLAN_FIELD_LABELS: Final[Mapping[str, str]] = {
     plan_mod.FIELD_MANUAL_TARGETS: "Gramas manuais",
     plan_mod.FIELD_ENERGY_PARAMS: "Parâmetros de energia",
     plan_mod.FIELD_MANUAL_TRAINING_MODE: "Gramas manuais e treino",
+    plan_mod.FIELD_CARB_CYCLE_POLICY: "Política do ciclo de carboidrato",
     "maintenance_kcal_adjust": "Ajuste da manutenção (kcal por dia)",
     "manual_macros": "Gramas manuais",
     "cycle_kinds": "Dias de mais e menos gasto",
@@ -702,6 +718,13 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     cc_mod.LIMIT_WEEK_NOT_SEVEN_DAYS: "A semana do ciclo de carbo precisa ter sete dias.",
     cc_mod.LIMIT_CARB_FLOOR_PREVENTS_CYCLE: "O piso de carboidrato impede o ciclo nesta semana.",
     cc_mod.LIMIT_TARGET_NOT_COMPUTABLE: "Meta não calculável.",
+    cc_mod.LIMIT_FAT_COMPENSATION_INFEASIBLE: (
+        "A compensação com gordura não fecha neste plano: a gordura do dia alto ficaria abaixo do mínimo ou a do "
+        "dia baixo acima do máximo. Reduza a oscilação do ciclo ou ajuste a gordura base."
+    ),
+    cc_mod.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED: (
+        "A meta base não fecha em calorias, proteína, carboidrato e gordura; a compensação com gordura não pode ser aplicada."
+    ),
     # %G.
     bc_mod.LIMIT_BODY_FAT_MISSING: "Sem % de gordura (bioimpedância ou fita).",
     cc_mod.ERR_INVALID_DAY_MAP: "Escolha de dias do ciclo de carbo inválida: esperado um mapa dia da semana → tipo.",

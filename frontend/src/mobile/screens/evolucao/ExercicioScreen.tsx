@@ -12,6 +12,7 @@ import { dashboardKeys, fetchExerciseProgress } from '@/lib/dashboard-api';
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtDecimal, fmtInt, fmtKg, fmtRpe, fmtSignedPercent } from '@/lib/dashboard-format';
 import type { ExerciseProgressResponse, Exposure } from '@/lib/dashboard-v3-types';
+import { buildWindowTrendView, windowTrendHeading } from '@/lib/exercise-window-trend';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import {
   COMPARABILITY_MISMATCH_HINTS,
@@ -143,6 +144,8 @@ function ExercicioContent() {
 function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defaultGoal: string | null }) {
   const currentKey = data.comparability_key;
   const reasons = useMemo(() => statusReasonsText(data.status_reasons), [data.status_reasons]);
+  const windowTrend = useMemo(() => buildWindowTrendView(data.window_trend), [data.window_trend]);
+  const windowTrendReasons = useMemo(() => statusReasonsText(windowTrend?.reasons), [windowTrend]);
   const pair = useMemo(() => buildExposurePair(data), [data]);
   const trend = useMemo(() => buildTrendSeries(data.exposures, data.trend_metric), [data.exposures, data.trend_metric]);
   const rpe = useMemo(() => buildRpeSeries(data.exposures, data.avg_rpe_period), [data.exposures, data.avg_rpe_period]);
@@ -166,6 +169,7 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
           </StatGrid>
         </ListBlock>
         <ListBlock>
+          <p className={styles.meta} style={{ marginTop: 0, fontWeight: 600 }}>Leitura atual</p>
           <div className={styles.badges}>
             <StatusBadge domain="exerciseProgression" code={data.status} size="lg" />
           </div>
@@ -192,6 +196,24 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
                 <p key={r.code} className={styles.body}>• {r.text}</p>
               ))}
             </>
+          ) : null}
+          {windowTrend ? (
+            <div data-testid="window-trend">
+              <p className={styles.meta} style={{ fontWeight: 600 }} title={windowTrendHeading(windowTrend.scope).description ?? undefined}>
+                {windowTrendHeading(windowTrend.scope).title}
+              </p>
+              <div className={styles.badges}>
+                <StatusBadge domain="exerciseProgression" code={windowTrend.statusCode} size="md" />
+              </div>
+              {windowTrend.changeText && windowTrend.meansText ? (
+                <p className={styles.body}>
+                  Variação {windowTrend.changeText} (e1RM médio {windowTrend.meansText})
+                </p>
+              ) : null}
+              {windowTrendReasons.map((r) => (
+                <p key={r.code} className={styles.body}>• {r.text}</p>
+              ))}
+            </div>
           ) : null}
           <p className={styles.meta}>
             Período de {fmtDate(data.window.date_from)} a {fmtDate(data.window.date_to)} · {plural(data.exposures.length, 'exposição', 'exposições')} · regra{' '}

@@ -178,3 +178,23 @@ export function formatPreviousSessionRecordLines(
   }
   return lines;
 }
+
+export type PreviousSessionLabels = {
+  /** Rótulo da linha "Treino anterior". */
+  lead: string;
+  /** Estado vazio (sem série de trabalho nem recorde na resposta). */
+  emptyText: string;
+};
+
+/**
+ * Apresentação do histórico por escopo (R2). Com equipamento definido a
+ * consulta é filtrada por ele: vazio = "Sem histórico neste equipamento".
+ * Sem equipamento a consulta não filtra: o histórico é do exercício em
+ * qualquer equipamento, e a linha diz isso em vez de parecer de uma máquina.
+ * Só rótulo; o que entra no histórico é decidido pelo servidor.
+ */
+export function previousSessionLabels(hasEquipment: boolean): PreviousSessionLabels {
+  return hasEquipment
+    ? { lead: 'Treino anterior:', emptyText: 'Sem histórico neste equipamento' }
+    : { lead: 'Treino anterior (qualquer equipamento):', emptyText: 'Ainda não há execução comparável' };
+}

@@ -36,11 +36,11 @@ from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping, Optional, Sequence, Union
 
-from ..set_types import is_working_set
+from ..set_types import is_preparatory_set, is_working_set
 from . import prescription as prescription_domain
 from .set_measures import is_rep_based
 from .training_goal import goal_value
-from .training_history import is_rpe_ramp, parse_int, parse_reps_range
+from .training_history import format_rpe_step, is_rpe_ramp, parse_int, parse_reps_range
 from .progression_engine import (
     INTENSITY_ABOVE_SAFE_CEILING,
     SAFETY_EVENT_RPE_ABOVE_CEILING,
@@ -367,6 +367,101 @@ def with_protocol_target(intensity: EffectiveIntensity, protocol_target: Any) ->
     return replace(intensity, rpe_target_effective=target)
 
 
+def stored_rpe_target(
+    set_type: Any,
+    intensity: EffectiveIntensity,
+    *,
+    protocol_target: Any = None,
+    deload_source: Any = None,
+    technique_code: Any = None,
+    protocol_kept: bool = False,
+) -> Optional[Union[int, float]]:
+    """`exercise_sets.rpe_target_effective` a GRAVAR numa serie: a regra unica
+    do POST de serie, do recalculo do deload e do PUT do exercicio.
+
+    - `protocol_kept` (PUT, `keeps_protocol_target` verdadeiro): o protocolo
+      vale mesmo com o alvo gravado nulo; devolve NULL, nunca cai na
+      prescricao.
+
+    - serie preparatoria: sem alvo (NULL), salvo alvo de protocolo;
+    - `protocol_target` (serie com `rpe_target_source='protocol'`; no PUT, o
+      gravado quando `exercise_set_update_merge.keeps_protocol_target`): vale
+      o do protocolo;
+    - sessao de deload (`deload_source`): o alvo e o do deload
+      (`deload.deload_effort_target`; o protocolo so vale para tecnica que o
+      deload permite) e so existe se ha alvo a cobrar;
+    - senao, o alvo efetivo da prescricao."""
+    from .deload import deload_effort_target, is_deload_session
+
+    deload = is_deload_session(deload_source)
+    if protocol_target is not None:
+        return deload_effort_target(protocol_target, technique_code) if deload else protocol_target
+    if protocol_kept:
+        return None
+    target = None if is_preparatory_set(set_type) else intensity.rpe_target_effective
+    if target is not None and deload:
+        return deload_effort_target(None)
+    return target
+
+
+def planned_set_rpe_target(set_type: Any, charged_target: Any) -> Optional[Union[int, float]]:
+    """`exercise_sets.rpe_target_planned` a GRAVAR (#182): o RPE esperado DESTA
+    serie, o mesmo que a ficha mostra (`charged_rpe_targets_by_set`). Recebe o
+    alvo COBRADO da serie (`SetIntensityReading.target`: `set_effort_target`
+    com o degrau da rampa, o alvo do protocolo da tecnica ou o do deload, ja
+    resolvidos por `set_intensity_reading`). Preparatoria e sem alvo (treino
+    sem ficha) -> None."""
+    if is_preparatory_set(set_type):
+        return None
+    return _target_number(_decimal(charged_target))
+
+
+# #182: RPE realizado x esperado DA SERIE. Leitura de ESFORCO (so a diferenca),
+# distinta de `set_intensity_status` (progression_engine: alcance do alvo e teto
+# de seguranca). Sem tolerancia: a escala e de meio em meio ponto.
+RPE_VS_BELOW = "below"
+RPE_VS_ON_TARGET = "on_target"
+RPE_VS_ABOVE = "above"
+RPE_VS_LABELS: dict[str, str] = {
+    RPE_VS_BELOW: "Abaixo do esperado",
+    RPE_VS_ON_TARGET: "No esperado",
+    RPE_VS_ABOVE: "Acima do esperado",
+}
+
+
+@dataclass(frozen=True)
+class RpeVsExpected:
+    status: str
+    label: str
+    delta: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"status": self.status, "label": self.label, "delta": self.delta}
+
+
+def rpe_vs_expected(actual: Any, expected: Any) -> Optional[RpeVsExpected]:
+    """Compara o RPE realizado com o esperado da serie (`delta` = realizado -
+    esperado). None quando um dos dois falta."""
+    a, e = _decimal(actual), _decimal(expected)
+    if a is None or e is None:
+        return None
+    delta = a - e
+    status = RPE_VS_BELOW if delta < 0 else RPE_VS_ABOVE if delta > 0 else RPE_VS_ON_TARGET
+    return RpeVsExpected(status, RPE_VS_LABELS[status], float(delta))
+
+
+def rpe_vs_expected_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Agrega series (`rpe` e `rpe_target_planned`) em `{below, on_target,
+    above, compared}`; serie sem um dos dois nao conta."""
+    counts = {RPE_VS_BELOW: 0, RPE_VS_ON_TARGET: 0, RPE_VS_ABOVE: 0, "compared": 0}
+    for row in rows:
+        result = rpe_vs_expected(row.get("rpe"), row.get("rpe_target_planned"))
+        if result is not None:
+            counts[result.status] += 1
+            counts["compared"] += 1
+    return counts
+
+
 def frozen_snapshot(prescription_json: Any) -> Mapping[str, Any]:
     """Prescricao CONGELADA do exercicio lancado ja decodificada (`{}` sem
     snapshot ou JSON invalido). Leitura, sem regra."""
@@ -461,10 +556,28 @@ def set_intensity_reading(
     )
 
 
-def _format_rpe(value: Decimal) -> str:
-    from .training_history import format_rpe_step
+def _charged_for_position(plan_rpe: Any, effective_target: Any, position: int) -> Any:
+    """Alvo cobrado na posicao ordinal `position` (series de trabalho antes dela):
+    `set_effort_target(alvo efetivo, degrau da rampa)`. Unico ponto desta conta."""
+    from .next_set_load import planned_ramp_rpe
 
-    return format_rpe_step(value)
+    return set_effort_target(effective_target, planned_ramp_rpe(plan_rpe, position))
+
+
+def ramp_planned_rpe_for_position(plan_rpe: Any, effective_target: Any, previous_working: Any) -> Optional[Union[int, float]]:
+    """#241: `rpe_target_planned` de uma serie de trabalho de repeticoes sem
+    protocolo na posicao ordinal `previous_working` + 1 (series de trabalho
+    antes dela): a MESMA composicao do POST (`planned_ramp_rpe` ->
+    `set_effort_target` -> `planned_set_rpe_target`), para regravar o esperado
+    quando uma serie chega fora de ordem. Sem alvo efetivo -> None."""
+    return planned_set_rpe_target("working", _charged_for_position(plan_rpe, effective_target, previous_working))
+
+
+def has_planned_rpe_ramp(plan_rpe: Any) -> bool:
+    """A ficha tem rampa de RPE (so ela pode ter esperado por posicao)."""
+    from .next_set_load import planned_ramp_rpe
+
+    return planned_ramp_rpe(plan_rpe, 0) is not None
 
 
 def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target: Any) -> list[float]:
@@ -472,14 +585,9 @@ def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target:
     sessao (`set_effort_target(alvo efetivo ja cortado pelo teto, degrau da
     serie)`, degrau por `next_set_load.planned_ramp_rpe`). So restringe. Sem
     alvo efetivo ou sem series -> []. Preparatoria e tecnica nao entram."""
-    from .next_set_load import planned_ramp_rpe
-
     if effective_target is None:
         return []
-    return [
-        float(set_effort_target(effective_target, planned_ramp_rpe(rpe_text, index)))
-        for index in range(_positive_int(sets_count))
-    ]
+    return [float(_charged_for_position(rpe_text, effective_target, index)) for index in range(_positive_int(sets_count))]
 
 
 def _positive_int(value: Any) -> int:
@@ -527,7 +635,7 @@ def clamp_rpe_text(text: Any, ceiling: Optional[int]) -> tuple[Optional[str], li
         return original, []
     while len(clamped) > 1 and clamped[-1] == clamped[-2]:
         clamped.pop()
-    result = "-".join(_format_rpe(step) for step in clamped)
+    result = "-".join(format_rpe_step(step) for step in clamped)
     return result, [Clamp("rpe_target", original, result, REASON_EQUIPMENT_SAFETY).to_dict()]
 
 

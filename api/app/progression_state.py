@@ -34,7 +34,8 @@ import json
 import logging
 import os
 from dataclasses import replace
-from datetime import datetime
+from time import monotonic
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Mapping, Optional, Sequence
 
@@ -57,10 +58,16 @@ from .domain.progression_evaluator import (
     SessionInputs,
     evaluate_history_by_goal,
     evaluate_session_by_goal,
+    session_moment,
 )
 from .domain.technique_accounting import LazyCatalog
 from .domain.training_goal import DEFAULT_GOAL, TRAINING_GOAL_COLUMN, goal_value, sql_goal_is
-from .domain.training_history import DEFAULT_SESSION_WINDOW, SessionRecord, TrainingHistoryRepository
+from .domain.training_history import (
+    DEFAULT_SESSION_WINDOW,
+    SessionRecord,
+    TrainingHistoryRepository,
+)
+from .domain.session_status import SESSION_STATUS_DONE
 from .domain.training_safety import resolve_training_safety_bulk
 from .intelligence.methodology_volume import DEFAULT_VOLUME_COUNTING_MODE
 from .intelligence.methodology_volume_service import (
@@ -993,12 +1000,46 @@ def _delete_by_ids(conn: Any, table: str, user_id: int, ids: Sequence[int]) -> i
     return removed
 
 
+def _moment(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    return None
+
+
+def _first_index_from(sessions: Sequence[SessionRecord], anchor_at: datetime) -> int:
+    """Indice da primeira sessao nao anterior a `anchor_at` (mesmo instante entra; len = nenhuma)."""
+    return next((i for i, item in enumerate(sessions) if session_moment(item) >= anchor_at), len(sessions))
+
+
+def correction_anchor(*moments: Any) -> Optional[datetime]:
+    """Instante mais antigo entre `moments` (`date` vale a meia-noite; `None`
+    e ignorado): a ancora cronologica de uma correcao. A edicao de data/hora
+    passa a antiga e a nova da sessao (e a data/hora da sessao cujo unico
+    exercicio foi excluido, que ja nao esta no historico)."""
+    found = [m for m in (_moment(value) for value in moments) if m is not None]
+    return min(found) if found else None
+
+
+def _has_legacy_decisions(conn: Any, user_id: int) -> bool:
+    """Decisoes EVALUATION sem sessao (replay anterior ao `per_session`)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT 1 AS n FROM {DECISIONS_TABLE} WHERE user_id = %s AND kind = 'EVALUATION' "
+            "AND activity_id IS NULL LIMIT 1",
+            (int(user_id),),
+        )
+        return bool(cur.fetchone())
+
+
 def reevaluate_after_correction(
     conn: Any,
     user_id: int,
     activity_id: int,
     *,
     sessions: Optional[Sequence[SessionRecord]] = None,
+    anchor_at: Optional[datetime] = None,
 ) -> Optional[dict[str, Any]]:
     """Reavalia o historico depois de uma correcao retroativa (#205: marcar ou
     desmarcar Aprimoramento de tecnica numa sessao encerrada) e grava SO a
@@ -1010,15 +1051,23 @@ def reevaluate_after_correction(
     - sombra desligada (`shadow_enabled()` falso): devolve None, sem tocar em nada;
     - grupos/trilhas: gravacao seletiva contra o estado carregado; os que nao
       existem mais no resultado sao apagados (a FK apaga em cascata as decisoes);
-    - decisoes EVALUATION: apaga e regrava as das sessoes de `activity_id` em
-      diante (as anteriores nao dependem da correcao). `activity_id` fora do
-      historico: regrava as de todas as sessoes. Excecoes sobem (sem try).
+    - decisoes EVALUATION: apaga e regrava as das sessoes da posicao
+      cronologica mais antiga entre a de `activity_id` (no historico) e
+      `anchor_at` (`correction_anchor(...)`: a data/hora da sessao, antiga e
+      nova) em diante; as anteriores nao dependem da correcao. Sessao fora do
+      historico (o unico exercicio foi excluido) sem `anchor_at`: regrava
+      todas. As decisoes da propria `activity_id` sempre saem (nao ficam
+      orfas). Decisoes legadas sem sessao (`activity_id` NULL): existindo
+      alguma, regrava todas e apaga as legadas (o estado final e o do
+      `rebuild_for_user`, sem duplicata nem orfa). Excecoes sobem (sem try).
 
     Resumo: `groups`/`tracks` = avaliados (so os alterados sao escritos),
     `decisions` = escritas, `sessions` = tamanho do historico, `rewritten_sessions`,
-    `removed_groups`, `removed_tracks`."""
+    `removed_groups`, `removed_tracks`. Log `progression.reevaluated` com
+    `duration_ms`, `sessions_read` e `sessions_rewritten`."""
     if not shadow_enabled():
         return None
+    started = monotonic()
     if sessions is None:
         from .replay_progression import fetch_sessions_paged  # import tardio: ele importa este modulo
 
@@ -1038,18 +1087,26 @@ def reevaluate_after_correction(
     request_memo.forget(TRACKS_MEMO)
 
     order = [item.activity_id for item in sessions]
-    start = order.index(int(activity_id)) if int(activity_id) in order else 0
+    legacy = _has_legacy_decisions(conn, user_id)
+    starts = [order.index(int(activity_id))] if int(activity_id) in order else []
+    if anchor_at is not None:
+        starts.append(_first_index_from(sessions, anchor_at))
+    start = 0 if legacy or not starts else min(starts)
     rewritten = frozenset(order[start:])
-    if rewritten:
-        with conn.cursor() as cur:
-            ids = sorted(rewritten)
-            for i in range(0, len(ids), 500):
-                chunk = ids[i : i + 500]
-                cur.execute(
-                    f"DELETE FROM {DECISIONS_TABLE} WHERE user_id = %s AND kind = 'EVALUATION' "
-                    f"AND activity_id IN ({', '.join(['%s'] * len(chunk))})",
-                    (int(user_id), *chunk),
-                )
+    to_delete = sorted(rewritten | {int(activity_id)})
+    with conn.cursor() as cur:
+        for i in range(0, len(to_delete), 500):
+            chunk = to_delete[i : i + 500]
+            cur.execute(
+                f"DELETE FROM {DECISIONS_TABLE} WHERE user_id = %s AND kind = 'EVALUATION' "
+                f"AND activity_id IN ({', '.join(['%s'] * len(chunk))})",
+                (int(user_id), *chunk),
+            )
+        if legacy:
+            cur.execute(
+                f"DELETE FROM {DECISIONS_TABLE} WHERE user_id = %s AND kind = 'EVALUATION' AND activity_id IS NULL",
+                (int(user_id),),
+            )
     counts = persist_goal_evaluation(
         conn,
         user_id,
@@ -1058,6 +1115,22 @@ def reevaluate_after_correction(
         baseline_groups=loaded_groups,
         baseline_tracks=loaded_tracks,
         only_activity_ids=rewritten,
+    )
+    logger.info(
+        json.dumps(
+            {
+                "event": "progression.reevaluated",
+                "user_id": int(user_id),
+                "activity_id": int(activity_id),
+                "engine_version": ENGINE_VERSION,
+                "duration_ms": round((monotonic() - started) * 1000),
+                "sessions_read": len(sessions),
+                "sessions_rewritten": len(rewritten),
+                "decisions_written": counts["decisions"],
+                "legacy_decisions_replaced": legacy,
+            },
+            ensure_ascii=False,
+        )
     )
     return {
         "user_id": int(user_id),
@@ -1072,7 +1145,7 @@ def reevaluate_after_correction(
 def users_with_history(conn: Any) -> list[int]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT DISTINCT a.user_id FROM activities a WHERE a.session_status = 'done' "
+            f"SELECT DISTINCT a.user_id FROM activities a WHERE a.session_status = '{SESSION_STATUS_DONE}' "
             "AND EXISTS (SELECT 1 FROM exercises e JOIN exercise_sets es ON es.exercise_id = e.id "
             f"AND {sql_set_confirmed('es.reps_pending')} "
             "WHERE e.activity_id = a.id) ORDER BY a.user_id"

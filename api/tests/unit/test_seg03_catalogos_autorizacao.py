@@ -142,6 +142,17 @@ def test_put_gym_equipment_vinculo_inexistente_da_404(ctx):
     assert cur.writes() == []
 
 
+@pytest.mark.parametrize("who", ["other", "owner"])
+@pytest.mark.parametrize("metodo,corpo", [("put", {"is_active": 0}), ("delete", None)])
+def test_vinculo_inexistente_sem_todos_da_403_sem_escrita(ctx, who, metodo, corpo):
+    # #246: antes devolvia 404 e so o 403 de posse revelava quais ids existem.
+    client, cur = ctx
+    kwargs = {"json": corpo} if corpo else {}
+    resp = getattr(client, metodo)("/gym-equipment/12345", headers=_h(who), **kwargs)
+    assert resp.status_code == 403
+    assert cur.writes() == []
+
+
 @pytest.mark.parametrize("who,status", [("other", 403), ("owner", 200), ("admin", 200)])
 def test_delete_gym_equipment_matriz(ctx, who, status):
     client, cur = ctx

@@ -58,6 +58,7 @@ from .progression_engine import (
 from .session_loads import load_step
 from .set_measures import is_rep_based, normalize_measure
 from .progression_evaluator import goal_tracks
+from .technique_accounting import format_reps_range
 from .training_history import SetRecord
 
 # Rótulo do motor gravado no snapshot de linha acrescentada à mão na ficha
@@ -142,7 +143,7 @@ class PairSuggestion:
         low, high = self.decision.get("suggested_reps_min"), self.decision.get("suggested_reps_max")
         if low is None or high is None:
             return None
-        return f"{low}-{high}"
+        return format_reps_range(low, high)
 
     @property
     def rpe_target(self) -> Optional[str]:

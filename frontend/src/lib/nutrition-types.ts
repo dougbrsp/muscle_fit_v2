@@ -41,6 +41,8 @@ export type NutritionPlanSettings = {
   manual_targets: NutritionManualTargets | null;
   /** Dias alto/normal/baixo (D5): chave = dia 0..6 (segunda = 0), valor = código de `DAY_KIND_OPTIONS`. */
   cycle_days: Record<string, NutritionCode> | null;
+  /** Política do ciclo (#242); código de `CARB_CYCLE_POLICY_OPTIONS`. Respostas antigas em cache podem não trazer. */
+  carb_cycle_policy?: NutritionCode;
   /** Ajuste de kcal/dia da manutenção (N7; 0 = sem ajuste). Quem o muda é o check-in semanal. */
   maintenance_kcal_adjust?: number;
   /** `null` nos legados e no adaptativo com o padrão do motor (`default_watch_calorie_mode`); o formulário usa o padrão. */
@@ -115,6 +117,8 @@ export type NutritionPlanSettingsPayload = {
   /** Como as gramas manuais convivem com o treino; null quando não há gramas manuais. */
   manual_training_mode: NutritionCode | null;
   cycle_days: Record<string, NutritionCode> | null;
+  /** Política do ciclo; com ciclo vai sempre explícita, sem ciclo `null`. */
+  carb_cycle_policy?: NutritionCode | null;
   /** Preserva o ajuste da manutenção que o check-in gravou (a tela não o edita); null fora da manutenção. */
   maintenance_kcal_adjust?: number | null;
   /** Só no modo adaptativo: legados NÃO enviam a chave. */
@@ -160,6 +164,8 @@ export type NutritionDayTarget = {
   local_date: string;
   plan_id: number | null;
   day_kind: NutritionCode;
+  /** Política aplicada no dia (#242); ausente em respostas antigas. */
+  carb_cycle_policy?: NutritionCode;
   is_training_day: boolean;
   /** `false` = dia futuro: o treino ainda não entrou no gasto. */
   training_known: boolean;

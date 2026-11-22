@@ -24,6 +24,20 @@ async function openWorkout(page: Page) {
   await expect(page.getByTestId('set-save')).toBeVisible();
 }
 
+/** Shell mobile: o "Sair" fica na folha da aba "Mais". */
+async function openLogout(page: Page) {
+  await page.getByRole('button', { name: 'Mais' }).click();
+  await page.getByText('Sair', { exact: true }).click();
+}
+
+/** Exercicio cujo grupo ainda nao foi ativado abre no aquecimento opcional; pula para a serie. */
+async function skipWarmupIfShown(page: Page) {
+  const skip = page.getByRole('button', { name: 'Pular aquecimento' });
+  await expect(skip.or(page.getByTestId('set-save'))).toBeVisible();
+  if (await skip.isVisible()) await skip.click();
+  await expect(page.getByTestId('set-save')).toBeVisible();
+}
+
 async function logSet(page: Page, reps: number, weight: number, rpe = 8) {
   const inputs = page.locator('input[inputmode="numeric"]');
   await inputs.nth(0).fill(String(reps));
@@ -74,6 +88,23 @@ test('migra a sessao legada para o IndexedDB do usuario e remove a chave antiga'
   const keys = await idbKeys(page);
   expect(keys.some((k) => k.startsWith('workout_session/v1:1:session'))).toBe(true);
   expect(await page.evaluate(() => window.localStorage.getItem('musclefit.workout-mode-session'))).toBeNull();
+});
+
+test('marcar Aprimoramento de tecnica na apresentacao: o POST de criacao do exercicio leva form_practice true', async ({ page }) => {
+  // O Supino ja existe no servidor falso (sem POST de criacao); o Crucifixo (item 7002) ainda nao.
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  const start = page.getByRole('button', { name: 'Iniciar exercício' });
+  await expect(start).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('briefing-form-practice').click();
+  await expect(page.getByTestId('briefing-form-practice-on')).toBeVisible();
+  await start.click();
+  await skipWarmupIfShown(page);
+  await logSet(page, 10, 40);
+  await expect(page.getByTestId('rest-clock')).toBeVisible();
+  expect(api.exercisePosts).toHaveLength(1);
+  expect(api.exercisePosts[0].form_practice).toBe(true);
+  expect(api.setPosts.at(0)?.exercise_form_practice).toBe(true);
 });
 
 test('registra serie, descanso, vai ao segundo plano e volta com dados integros e cronometro correto', async ({ page }) => {
@@ -182,10 +213,9 @@ test('logout apaga os dados locais do usuario e outra conta nao ve a sessao ante
   await openWorkout(page);
   expect((await idbKeys(page)).some((k) => k.includes('v1:1:'))).toBe(true);
 
-  // Logout real pelo menu do AppShell.
+  // Logout real pelo shell mobile (390px): aba "Mais" > "Sair".
   await page.goto('/dashboard/');
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
 
@@ -313,7 +343,7 @@ test('exercicio novo offline: addExercise + series na fila, e ao reconectar 1 ex
   await seedCrucifixoOnly(page);
   await page.goto('/modo-treino/');
   await page.getByTestId('briefing-start').click();
-  await expect(page.getByTestId('set-save')).toBeVisible();
+  await skipWarmupIfShown(page);
 
   api.setNetworkDown(true);
   await context.setOffline(true);
@@ -337,6 +367,221 @@ test('exercicio novo offline: addExercise + series na fila, e ao reconectar 1 ex
   expect(Array.from(perKey.values()).every((n) => n === 1)).toBe(true);
   expect(perKey.size).toBe(2);
   await expect(page.getByTestId('sync-indicator')).toHaveCount(0, { timeout: 20_000 });
+});
+
+test('troca de equipamento no meio do exercicio (#225): a continuacao e um exercicio proprio, com serie 1 no exercicio novo', async ({
+  page,
+}) => {
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await skipWarmupIfShown(page);
+
+  // Serie 1 no equipamento original: cria o exercicio (chave A).
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.crucifixoSets().length).toBe(1);
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+
+  // Encerra o exercicio trocando de equipamento pelas series restantes.
+  await page.getByTestId('execution-finish-exercise').click();
+  await page.getByRole('button', { name: /Trocar de equipamento \(séries restantes\)/ }).click();
+  await page.getByText('Crucifixo na polia').first().click();
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+
+  // Serie na continuacao: exercicio novo (chave B), serie numero 1 nele.
+  await logSet(page, 10, 15);
+  await expect.poll(() => api.exercisePosts.length).toBe(2);
+  const keys = api.exercisePosts.map((p) => p.client_key);
+  expect(new Set(keys).size).toBe(2);
+  expect(api.exercisePosts.every((p) => !p.duplicate)).toBe(true);
+  expect(api.exercisePosts.every((p) => p.workout_plan_exercise_id === 7002)).toBe(true);
+  const created = api.createdExerciseIds();
+  const continuationId = created[created.length - 1];
+  expect(continuationId).not.toBe(502);
+  await expect.poll(() => api.setsOf(continuationId).map((s) => s.set_number)).toEqual([1]);
+  expect(api.crucifixoSets().map((s) => s.set_number)).toEqual([1]);
+  expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
+});
+
+test('troca de equipamento (#225) com a continuacao criada e registrada OFFLINE: series 1 e 2 no exercicio novo, sem 409', async ({
+  page,
+  context,
+}) => {
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await skipWarmupIfShown(page);
+
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.crucifixoSets().length).toBe(1);
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+
+  // A troca (lista de equipamentos) ainda online; a CRIACAO da continuacao e as series, offline.
+  await page.getByTestId('execution-finish-exercise').click();
+  await page.getByRole('button', { name: /Trocar de equipamento \(séries restantes\)/ }).click();
+  await page.getByText('Crucifixo na polia').first().click();
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+
+  api.setNetworkDown(true);
+  await context.setOffline(true);
+  await logSet(page, 10, 15);
+  await expect(page.getByTestId('set-local-chip')).toContainText('salva no aparelho');
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+  await expect(page.getByText(/SÉRIE 2 DE/i)).toBeVisible(); // a continuacao enxerga a serie local dela
+  await logSet(page, 9, 15);
+  expect(api.exercisePosts).toHaveLength(1); // so o original; a continuacao esta na fila
+
+  api.setNetworkDown(false);
+  await context.setOffline(false);
+  await expect.poll(() => api.exercisePosts.filter((p) => !p.duplicate).length, { timeout: 40_000 }).toBe(2);
+  const keys = api.exercisePosts.map((p) => p.client_key);
+  expect(new Set(keys).size).toBe(2);
+  const created = api.createdExerciseIds();
+  const continuationId = created[created.length - 1];
+  expect(continuationId).not.toBe(502);
+  await expect.poll(() => api.setsOf(continuationId).map((s) => s.set_number), { timeout: 40_000 }).toEqual([1, 2]);
+  expect(api.crucifixoSets().map((s) => s.set_number)).toEqual([1]);
+  expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
+});
+
+/** Cenario do seletor (#163): Crucifixo com equipamento atual `Cabo` (carga total); a semente vale so na 1a abertura, para o reload manter o que foi escolhido. */
+async function seedEquipmentPicker(page: Page) {
+  api.useEquipmentPickerSeed();
+  await page.addInitScript((session) => {
+    if (window.localStorage.getItem('e2e-seeded-equipment')) return;
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, cancelled_exercise_ids: [7001, 7003] }),
+    );
+    window.localStorage.setItem('e2e-seeded-equipment', '1');
+  }, LEGACY_SESSION);
+}
+
+/** Antes da 1a serie: toca no equipamento, busca "poli" e escolhe a Polia (carga por lado, diferente da atual), confirmando o aviso. */
+async function pickPoliaBeforeFirstSet(page: Page) {
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+
+  const search = page.getByLabel('Buscar equipamento');
+  await expect(page.getByText('Voador')).toBeVisible();
+  await search.fill('poli');
+  await expect(page.getByText('Voador')).toHaveCount(0);
+  await expect(page.getByText('Crucifixo na polia').first()).toBeVisible();
+
+  await page.getByText('Crucifixo na polia').first().click();
+  await expect(page.getByTestId('equipment-convention-warning')).toContainText('Neste equipamento a carga é registrada:');
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Polia');
+}
+
+test('seletor de equipamento (#163): buscar, aviso de convencao, confirmar, 1a serie com o equipment_id escolhido e escolha mantida ao recarregar', async ({
+  page,
+}) => {
+  await seedEquipmentPicker(page);
+  await pickPoliaBeforeFirstSet(page);
+
+  // Recarregar antes da 1a serie mantem a escolha (guardada no aparelho).
+  await page.reload();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Polia', { timeout: 20_000 });
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.exercisePosts.length).toBe(1);
+  expect(api.exercisePosts[0].equipment_id).toBe(901);
+});
+
+test('sem historico no equipamento escolhido: o card "Treino anterior" mostra "Sem historico neste equipamento" (#163)', async ({
+  page,
+}) => {
+  await seedEquipmentPicker(page);
+  api.useEmptyLastSessionSets();
+  await pickPoliaBeforeFirstSet(page);
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await expect(page.getByTestId('previous-session-empty')).toContainText('Sem histórico neste equipamento');
+  expect(api.lastSessionQueries).toContain('901');
+});
+
+async function openPickerWithCatalog(page: Page, permitted: boolean) {
+  api.useCatalogAddSeed(permitted);
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  const section = page.getByTestId('equipment-section-catalog');
+  await expect(section).toContainText('Crossover');
+  // O par que a academia ja tem (Cabo) nao aparece no catalogo.
+  await expect(section).not.toContainText('Cabo');
+  return section;
+}
+
+test('seletor (#163b) COM permissao: acrescenta o equipamento do catalogo, o escolhe e a 1a serie usa o equipment_id novo', async ({ page }) => {
+  const section = await openPickerWithCatalog(page, true);
+  await expect(section.getByText('Outros equipamentos do catálogo')).toBeVisible();
+  await page.getByRole('button', { name: 'Acrescentar Crossover à academia' }).click();
+  const confirm = page.getByTestId('equipment-catalog-add-confirm');
+  await expect(confirm).toContainText('Acrescentar Crossover à academia Academia Central?');
+  await confirm.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByTestId('title-equipment-swap').first()).toContainText('Crossover', { timeout: 20_000 });
+  expect(api.catalogAddPosts).toEqual([{ gym_id: 1, equipment_id: 33 }]);
+
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.exercisePosts.length).toBe(1);
+  expect(api.exercisePosts[0].equipment_id).toBe(910);
+});
+
+test('seletor (#163b) SEM permissao: item do catalogo desabilitado com aviso e nenhum POST de acrescimo', async ({ page }) => {
+  const section = await openPickerWithCatalog(page, false);
+  const item = section.getByTestId('equipment-catalog-item').first();
+  await expect(item).toHaveAttribute('aria-disabled', 'true');
+  await expect(item).toContainText('Não cadastrado nesta academia');
+  await expect(page.getByRole('button', { name: 'Acrescentar Crossover à academia' })).toHaveCount(0);
+  await item.click({ force: true });
+  await expect(page.getByTestId('equipment-catalog-add-confirm')).toHaveCount(0);
+  expect(api.catalogAddPosts).toHaveLength(0);
+});
+
+test('seletor (#244): lista da academia com 500 mostra o erro e NAO monta o catalogo nem "Nenhum equipamento"', async ({ page }) => {
+  api.useCatalogAddSeed(true);
+  api.failGymEquipmentList();
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  // O react-query repete a consulta antes de marcar erro: espera folgada.
+  await expect(page.getByText('Não foi possível carregar o catálogo de equipamentos.')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('equipment-section-catalog')).toHaveCount(0);
+  await expect(page.getByText('Nenhum outro equipamento cadastrado')).toHaveCount(0);
+  await expect(page.getByText('Nenhum equipamento encontrado')).toHaveCount(0);
+});
+
+test('seletor (#246): o botao Confirmar do aviso de convencao recebe o foco ao aparecer', async ({ page }) => {
+  await seedEquipmentPicker(page);
+  await page.goto('/modo-treino/');
+  await expect(page.getByTestId('briefing-start')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('title-equipment-swap').first().click();
+  await page.getByLabel('Buscar equipamento').fill('poli');
+  await page.getByText('Crucifixo na polia').first().click();
+  const warning = page.getByTestId('equipment-convention-warning');
+  await expect(warning).toBeVisible();
+  await expect(warning.getByRole('button', { name: 'Confirmar' })).toBeFocused();
 });
 
 test('depois de aberto, 503 na revalidacao (/auth/me) ao voltar a rede NAO derruba o treino', async ({ page }) => {
@@ -437,16 +682,14 @@ test('logout com serie pendente pede confirmacao; cancelar mantem a fila, confir
   });
 
   await page.goto('/dashboard/');
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect.poll(() => messages.length).toBe(1);
   expect(messages[0]).toMatch(/1 série não sincronizada/);
   await expect(page).toHaveURL(/dashboard/); // cancelou: continua logado
   expect((await idbKeys(page)).filter((k) => k.startsWith('op_queue/v1:1:op:'))).toHaveLength(1);
 
   accept = true;
-  await page.getByRole('banner').getByRole('button').last().click();
-  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await openLogout(page);
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(async () => (await idbKeys(page)).filter((k) => k.includes('v1:1:')).length).toBe(0);
 });

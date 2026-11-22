@@ -34,6 +34,7 @@ import { formatWithUnit } from '@/lib/nutrition-format';
 import { FoodOriginBadge } from './FoodOriginBadge';
 import type { FoodSearchItem, FoodSearchScope } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import { BRAND } from '@/theme';
 
 // Colunas resumidas da tabela de resultados: os campos que o dono exige no
@@ -93,7 +94,7 @@ export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, register
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
-      await queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+      await invalidateFoodQueries(queryClient);
     },
   });
   const Alternative = usePresentationSlot('foodResults');

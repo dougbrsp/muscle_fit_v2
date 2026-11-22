@@ -97,4 +97,28 @@ describe('overlayQueuedSets: exercício criado offline', () => {
     expect(result?.exercises).toHaveLength(2);
     expect(result?.exercises[1].sets).toHaveLength(1);
   });
+
+  it('#225: continuação e original do mesmo item são duas linhas; a série de cada uma aparece na dela', () => {
+    const base = activity([]);
+    const cont = exOp({ opId: 'o2', localId: -1002, clientKey: 'ex:B' });
+    const result = overlayQueuedSets(base, [
+      exOp(),
+      cont,
+      op({ opId: 's1', exerciseId: -1001, clientKey: 'k1', payload: { set_number: 1, reps: 8 } }),
+      op({ opId: 's2', exerciseId: -1002, clientKey: 'k2', payload: { set_number: 1, reps: 9 } }),
+    ]);
+    const orig = result?.exercises.find((e) => e.id === -1001);
+    const next = result?.exercises.find((e) => e.id === -1002);
+    expect(orig?.sets.map((s) => s.reps)).toEqual([8]);
+    expect(next?.sets.map((s) => s.reps)).toEqual([9]);
+  });
+
+  it('#225: duas séries offline da continuação ficam com set_number 1 e 2 na linha local dela', () => {
+    const result = overlayQueuedSets(activity([{ set_number: 1 }]), [
+      exOp({ opId: 'o2', localId: -1002, clientKey: 'ex:B' }),
+      op({ opId: 's1', exerciseId: -1002, clientKey: 'k1', payload: { set_number: 1, reps: 8 } }),
+      op({ opId: 's2', exerciseId: -1002, clientKey: 'k2', payload: { set_number: 2, reps: 9 } }),
+    ]);
+    expect(result?.exercises.find((e) => e.id === -1002)?.sets.map((s) => s.set_number)).toEqual([1, 2]);
+  });
 });

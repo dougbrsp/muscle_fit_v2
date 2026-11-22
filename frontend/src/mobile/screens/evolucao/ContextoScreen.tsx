@@ -265,7 +265,7 @@ function RegistroSheet({
             className={styles.dateInput}
             value={form.event_type}
             disabled={!tabelaDisponivel}
-            onChange={(e) => setForm((prev) => ({ ...prev, event_type: e.currentTarget.value as ContextEventType }))}
+            onChange={(e) => { const value = e.currentTarget.value as ContextEventType; setForm((prev) => ({ ...prev, event_type: value })); }}
           >
             {CONTEXT_EVENT_TYPE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -276,13 +276,13 @@ function RegistroSheet({
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="mob-ctx-data">Data</label>
           <input id="mob-ctx-data" type="date" className={styles.dateInput} value={form.local_date} disabled={!tabelaDisponivel}
-            onChange={(e) => setForm((prev) => ({ ...prev, local_date: e.currentTarget.value }))} />
+            onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, local_date: value })); }} />
           {errors.local_date ? <p className={styles.err}>{errors.local_date}</p> : null}
         </div>
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="mob-ctx-fim">Data final (opcional)</label>
           <input id="mob-ctx-fim" type="date" className={styles.dateInput} value={form.end_local_date} disabled={!tabelaDisponivel}
-            onChange={(e) => setForm((prev) => ({ ...prev, end_local_date: e.currentTarget.value }))} />
+            onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, end_local_date: value })); }} />
           {errors.end_local_date ? <p className={styles.err}>{errors.end_local_date}</p> : null}
         </div>
         <div className={styles.field}>
@@ -297,14 +297,14 @@ function RegistroSheet({
             className={styles.dateInput}
             value={form.intensity}
             disabled={!tabelaDisponivel}
-            onChange={(e) => setForm((prev) => ({ ...prev, intensity: e.currentTarget.value === '' ? '' : Number(e.currentTarget.value) }))}
+            onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, intensity: value === '' ? '' : Number(value) })); }}
           />
           {errors.intensity ? <p className={styles.err}>{errors.intensity}</p> : null}
         </div>
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="mob-ctx-nota">Nota (opcional)</label>
           <input id="mob-ctx-nota" type="text" className={styles.dateInput} maxLength={255} value={form.notes} disabled={!tabelaDisponivel}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))} />
+            onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, notes: value })); }} />
           {errors.notes ? <p className={styles.err}>{errors.notes}</p> : null}
         </div>
       </div>

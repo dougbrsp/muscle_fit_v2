@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { FROZEN_NOW, installMockApi } from '../desktop-baseline/mock-api';
-import { installTelasFixtures, installTimedSession } from './telas-fixtures';
+import { installSession, installTelasFixtures,installTimedSession } from './telas-fixtures';
 
 /**
  * Mobile v2, acabamento dos formularios (Perfil, Lancar exercicio, Preferencias
@@ -58,6 +58,7 @@ for (const vp of VIEWPORTS) {
       await page.clock.setFixedTime(FROZEN_NOW);
       await installMockApi(page);
       await installTelasFixtures(page);
+      await installSession(page);
       await page.addInitScript(() => window.localStorage.setItem('musclefit.flag.mobile-ui', 'on'));
     });
 
@@ -113,17 +114,18 @@ for (const vp of VIEWPORTS) {
       await page.getByRole('dialog').getByRole('button', { name: 'Supino reto com barra' }).click();
       await expect(page.getByRole('button', { name: /Supino reto com barra.*Exercício canônico/ })).toBeVisible();
 
-      // Primeira serie visivel sem rolar (viewport do iPhone) e RPE acima da barra fixa.
+      // Primeira serie visivel sem rolar (viewport do iPhone); RPE alcancavel rolando e acima da barra fixa.
       const serie = page.getByRole('region', { name: 'Série 1' });
       await expect(serie).toBeVisible();
       const bar = page.getByRole('button', { name: 'Lançar exercício' });
       const rpe = serie.getByRole('textbox', { name: 'RPE (esforço)' });
       const sb = (await serie.boundingBox())!;
       const barBox = (await bar.boundingBox())!;
-      if (vp.height >= 844) {
-        const rb = (await rpe.boundingBox())!;
-        expect(rb.y + rb.height, 'RPE acima da barra fixa sem rolar').toBeLessThanOrEqual(barBox.y);
-      }
+      // #219: Tipo/Medida da serie empurram o RPE para baixo da barra sem rolar; posicao sem rolar e pendencia de UX da #234.
+      await rpe.scrollIntoViewIfNeeded();
+      const rb = (await rpe.boundingBox())!;
+      const barRolada = (await bar.boundingBox())!;
+      expect(rb.y + rb.height, 'RPE acima da barra fixa depois de rolado').toBeLessThanOrEqual(barRolada.y);
       expect(sb.y).toBeLessThan(barBox.y);
 
       for (const nome of ['Diminuir Repetições', 'Aumentar Repetições', 'Diminuir Carga (kg)', 'Aumentar Carga (kg)']) {
@@ -138,14 +140,14 @@ for (const vp of VIEWPORTS) {
       await expect(mais.locator('svg'), 'chevron de expandir').toHaveCount(1);
       await expectEndClearOfSticky(page, 'lancar');
 
-      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises'));
-      const setPost = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/workout-sessions/1/exercises/21/sets'));
+      // Treino encerrado: um unico POST /exercises/logs com as series no corpo (#216).
+      const post = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/exercises/logs'));
       await bar.click();
       const body = JSON.parse((await post).postData() ?? '{}');
+      expect(body.activity_id).toBe(1);
       expect(body.original_name).toBe('Supino reto com barra');
-      const setBody = JSON.parse((await setPost).postData() ?? '{}');
       // 10 + 1 repeticao e 20 + 0,5 kg (passo do campo do desktop); carga sempre total.
-      expect(setBody).toMatchObject({ set_number: 1, reps: 11, weight_kg: 20.5 });
+      expect(body.sets[0]).toMatchObject({ set_number: 1, reps: 11, weight_kg: 20.5 });
     });
 
     test('limpar campos numericos: a tela fica vazia e o payload vai null (RPE, RPE E/D, Reps E/D, Tempo, Repetições)', async ({ page }) => {

@@ -2,12 +2,15 @@
 
 import { Button, Modal, Stack, Text } from '@mantine/core';
 import { IconArrowRight, IconRepeat } from '@tabler/icons-react';
+import { SWAP_REMAINING_NOTE } from '@/lib/equipment-change-confirm';
 import { BRAND } from '@/theme';
 
 type Props = {
   opened: boolean;
   onClose: () => void;
   remainingSets: number;
+  /** Já há série lançada: a troca vale só para as restantes (sem troca retroativa). */
+  hasLoggedSets?: boolean;
   onGoToNext: () => void;
   onSwapEquipment: () => void;
 };
@@ -20,7 +23,7 @@ type Props = {
  * muscular, aplicando o alvo de séries restantes (`EquipmentSubstituteModal`,
  * Parte B).
  */
-export function FinishExerciseModal({ opened, onClose, remainingSets, onGoToNext, onSwapEquipment }: Props) {
+export function FinishExerciseModal({ opened, onClose, remainingSets, hasLoggedSets = false, onGoToNext, onSwapEquipment }: Props) {
   return (
     <Modal opened={opened} onClose={onClose} title="Encerrar exercício" radius="xl" centered>
       <Stack gap="md">
@@ -43,6 +46,11 @@ export function FinishExerciseModal({ opened, onClose, remainingSets, onGoToNext
         >
           Trocar de equipamento (séries restantes)
         </Button>
+        {hasLoggedSets && (
+          <Text size="xs" c={BRAND.textMuted} data-testid="swap-remaining-note">
+            {SWAP_REMAINING_NOTE}
+          </Text>
+        )}
       </Stack>
     </Modal>
   );

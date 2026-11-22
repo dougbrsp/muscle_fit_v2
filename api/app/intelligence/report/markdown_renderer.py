@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from ...domain.effective_intensity import RPE_VS_ABOVE, RPE_VS_BELOW, RPE_VS_LABELS, RPE_VS_ON_TARGET
 from ...domain.nutrition.labels import CONFIDENCE_LEVEL_LABELS, TDEE_BASIS_LABELS
 from ...domain.set_measures import SetMeasure, format_set_measure
 from ...domain.set_sides import WORST_SIDE_RULE_TEXT
@@ -896,6 +897,21 @@ def _timeline_session(row: Mapping[str, Any]) -> Any:
     return f"{row.get('name') or TRACO} ({label})"
 
 
+def _rpe_vs_expected_lines(timeline: Sequence[Mapping[str, Any]]) -> list[str]:
+    """RPE realizado x esperado por sessao (#241); so sessao com esperado gravado.
+    Contagem e rotulos vem do dono (`effective_intensity`)."""
+    lines = []
+    for row in timeline:
+        counts = row.get("rpe_vs_expected_counts")
+        if not counts:
+            continue
+        parts = ", ".join(f"{RPE_VS_LABELS[k].lower()}: {counts[k]}" for k in (RPE_VS_BELOW, RPE_VS_ON_TARGET, RPE_VS_ABOVE))
+        lines.append(f"- {fmt_date(row.get('local_date'))}, {row.get('name') or TRACO}: {parts}")
+    if not lines:
+        return []
+    return ["RPE realizado x esperado por série (séries de trabalho com esperado gravado):\n" + "\n".join(lines)]
+
+
 def _cycles(data: Mapping[str, Any]) -> str:
     out = ["## 6. Ciclos de treino"]
     section = _section(data, "cycles")
@@ -978,6 +994,7 @@ def _cycles(data: Mapping[str, Any]) -> str:
                 timeline,
             )
         )
+        out.extend(_rpe_vs_expected_lines(timeline))
     else:
         out.append(SEM_DADOS)
 

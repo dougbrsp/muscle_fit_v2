@@ -35,188 +35,220 @@
     "warmup",
     "working"
   ],
+  "swappable": [
+    "working",
+    "backoff",
+    "warmup",
+    "feeler"
+  ],
   "cases": [
     {
       "input": null,
       "normalized": "working",
       "is_working": true,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "",
       "normalized": "working",
       "is_working": true,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "   ",
       "normalized": "working",
       "is_working": true,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "WARMUP",
       "normalized": "warmup",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": " Drop-Set ",
       "normalized": "drop_set",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "Rest Pause",
       "normalized": "rest_pause",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "BACKOFF",
       "normalized": "backoff",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "superset",
       "normalized": "superset",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": false
     },
     {
       "input": "backoff",
       "normalized": "backoff",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "drop_set",
       "normalized": "drop_set",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "feeler",
       "normalized": "feeler",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "forced_rep",
       "normalized": "forced_rep",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "laboral",
       "normalized": "laboral",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": false
     },
     {
       "input": "rest_pause",
       "normalized": "rest_pause",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "warmup",
       "normalized": "warmup",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "working",
       "normalized": "working",
       "is_working": true,
       "is_preparatory": false,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "drop set",
       "normalized": "drop_set",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "drop-set",
       "normalized": "drop_set",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "dropset",
       "normalized": "drop_set",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "feeler_set",
       "normalized": "feeler",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "forced_reps",
       "normalized": "forced_rep",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "rest pause",
       "normalized": "rest_pause",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "rest-pause",
       "normalized": "rest_pause",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "restpause",
       "normalized": "rest_pause",
       "is_working": false,
       "is_preparatory": false,
-      "is_technique_application": true
+      "is_technique_application": true,
+      "is_swappable": false
     },
     {
       "input": "warm-up",
       "normalized": "warmup",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     },
     {
       "input": "warm_up",
       "normalized": "warmup",
       "is_working": false,
       "is_preparatory": true,
-      "is_technique_application": false
+      "is_technique_application": false,
+      "is_swappable": true
     }
   ]
 }

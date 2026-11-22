@@ -38,7 +38,58 @@ export function toggleFormPracticePending<T extends NonNullable<PendingSession>>
   return { ...session, form_practice_plan_exercise_ids: next };
 }
 
+/** Remove o id das marcações pendentes (exercício criado no servidor, pulado ou treino encerrado). */
+export function removeFormPracticePending(ids: readonly number[], planExerciseId: number | null | undefined): number[] {
+  return ids.filter((id) => id !== planExerciseId);
+}
+
+/** Estado da marca devolvido pelo servidor na resposta de série (quem decide o travamento é ele). */
+export type FormPracticeMark = { marked: boolean; locked: boolean };
+
+/** Marca + id do EXERCÍCIO a que o estado se refere (continuação/2ª execução do item não herdam o travamento). */
+export type FormPracticeServerState = FormPracticeMark & { exerciseId: number };
+
+/** Lê `form_practice`/`form_practice_locked` da resposta de série; sem os campos (resposta antiga) = null. */
+export function formPracticeStateFromSetResponse(
+  saved: { form_practice?: boolean | null; form_practice_locked?: boolean | null } | null | undefined,
+): FormPracticeMark | null {
+  if (!saved || typeof saved.form_practice_locked !== 'boolean') return null;
+  return { marked: isFormPracticeRow(saved), locked: saved.form_practice_locked };
+}
+
+/** Exercício criado/enfileirado: mantém o estado já conhecido do MESMO exercício (não reabre um travado). */
+export function nextServerStateOnCreated(
+  prev: FormPracticeServerState | undefined,
+  exerciseId: number,
+  marked: boolean,
+): FormPracticeServerState {
+  return prev && prev.exerciseId === exerciseId ? prev : { exerciseId, marked, locked: false };
+}
+
+/** Corpo da criação do exercício: marca sempre explícita (vale também `false`). */
+export function formPracticeCreateField(marked: boolean): { form_practice: boolean } {
+  return { form_practice: marked };
+}
+
+/** Corpo do POST de série: leva a marca vigente enquanto não travada; o servidor ignora se já travou. */
+export function exerciseFormPracticeField(state: FormPracticeMark): { exercise_form_practice?: boolean } {
+  return state.locked ? {} : { exercise_form_practice: state.marked };
+}
+
 /** Linha da API (atividade/exercício): ausente ou null = false. */
 export function isFormPracticeRow(row: { form_practice?: boolean | null } | null | undefined): boolean {
   return row?.form_practice === true;
+}
+
+/**
+ * Resposta de série em voo: se o usuário mexeu na marca depois de o POST partir e o servidor ainda não
+ * travou, vale a escolha mais recente (vai no próximo POST); travado, vale o servidor.
+ */
+export function reconcileMarkAfterResponse(
+  sent: FormPracticeMark,
+  latest: FormPracticeMark,
+  fromServer: FormPracticeMark,
+): FormPracticeMark {
+  if (fromServer.locked || latest.locked || latest.marked === sent.marked) return fromServer;
+  return { marked: latest.marked, locked: false };
 }

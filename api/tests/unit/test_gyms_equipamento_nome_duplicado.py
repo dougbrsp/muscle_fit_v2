@@ -20,6 +20,7 @@ class _Banco:
     def __init__(self, linhas, corrida=False):
         self.linhas = linhas
         self.corrida = corrida  # SELECT nao ve a linha, mas o INSERT bate no UNIQUE
+        self.erro_insert = None  # excecao qualquer no INSERT (nao e nome duplicado)
         self.writes = []
         self._rows = []
         self._next = 100
@@ -47,6 +48,8 @@ class _Banco:
         elif flat.startswith("SELECT * FROM equipment WHERE id"):
             self._rows = [dict(r) for r in self.linhas if r["id"] == params[0]]
         elif flat.startswith("INSERT INTO equipment"):
+            if self.erro_insert is not None:
+                raise self.erro_insert
             if self._por_nome(params[0]):  # violacao do UNIQUE: nada e gravado
                 raise RuntimeError("Duplicate entry 'x' for key 'uq_equipment_name'")
             self.writes.append(flat)
@@ -54,7 +57,8 @@ class _Banco:
         elif flat.startswith("UPDATE equipment SET notes"):
             self.writes.append(flat)
             alvo = next(r for r in self.linhas if r["id"] == params[-1])
-            alvo.update(notes=params[0], is_active=1)
+            alvo.update(notes=params[0], equipment_type_id=params[1], manufacturer=params[2],
+                        model=params[3], location=params[4], is_active=1)
         elif flat.startswith("UPDATE equipment SET name"):
             novo = params[0]
             if any(r["name"] == novo and r["id"] != params[-1] for r in self.linhas):
@@ -91,8 +95,8 @@ def _linhas():
     ]
 
 
-def _post(client, nome, notes="novo"):
-    return client.post("/equipment", json={"name": nome, "notes": notes}, headers={"X-API-Token": "t"})
+def _post(client, nome, notes="novo", **extra):
+    return client.post("/equipment", json={"name": nome, "notes": notes, **extra}, headers={"X-API-Token": "t"})
 
 
 def test_post_nome_de_ativo_da_409_e_nao_altera_o_original(monkeypatch):
@@ -107,10 +111,16 @@ def test_post_nome_de_ativo_da_409_e_nao_altera_o_original(monkeypatch):
 
 def test_post_nome_de_inativo_reativa_com_valores_enviados(monkeypatch):
     banco = _Banco(_linhas())
-    resp = _post(_client(monkeypatch, banco), "Antigo", notes="reativado")
+    resp = _post(
+        _client(monkeypatch, banco), "Antigo", notes="reativado",
+        equipment_type_id=5, manufacturer="Fab", model="Mod", location="Sala 2",
+    )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["item"]["is_active"] == 1
-    assert resp.json()["item"]["notes"] == "reativado"
+    item = resp.json()["item"]
+    assert item["is_active"] == 1
+    assert (item["notes"], item["equipment_type_id"], item["manufacturer"], item["model"], item["location"]) == (
+        "reativado", 5, "Fab", "Mod", "Sala 2",
+    )
     assert not any("INSERT" in w for w in banco.writes)
 
 
@@ -119,6 +129,18 @@ def test_post_nome_novo_insere(monkeypatch):
     resp = _post(_client(monkeypatch, banco), "Cadeira")
     assert resp.status_code == 200, resp.text
     assert resp.json()["item"]["name"] == "Cadeira"
+    # #186: o defeito original era um upsert que sobrescrevia o existente
+    inserts = [w for w in banco.writes if w.startswith("INSERT INTO equipment")]
+    assert inserts and not any("ON DUPLICATE" in w.upper() for w in inserts)
+
+
+def test_post_erro_de_banco_que_nao_e_duplicado_nao_vira_409(monkeypatch):
+    banco = _Banco(_linhas())
+    banco.erro_insert = RuntimeError("Lost connection to MySQL server")
+    antes = [dict(r) for r in banco.linhas]
+    resp = _post(_client(monkeypatch, banco), "Cadeira")
+    assert resp.status_code == 500, resp.text
+    assert banco.linhas == antes
 
 
 def test_post_corrida_insert_em_duplicate_key_vira_409(monkeypatch):

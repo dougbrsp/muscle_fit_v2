@@ -167,15 +167,12 @@ def test_detalhe_da_atividade_devolve_booleano(monkeypatch):
     assert [ex["form_practice"] for ex in detalhe["exercises"]] == [True, False, False]
 
 
-def test_edicao_no_historico_pode_corrigir_a_marcacao():
-    # #205: o Registro aceita o campo (None preserva) e o UPDATE grava a coluna.
-    import inspect
+def test_edicao_no_historico_pode_corrigir_a_marcacao(monkeypatch):
+    # #205: o Registro grava a marca enviada (UPDATE exercises); None preserva a gravada.
+    from tests.unit.test_registro_edicao_treino_encerrado import _Cur, _body, _setup
 
-    fonte = inspect.getsource(services.update_exercise_log)
-    update = fonte[fonte.index("UPDATE exercises") : fonte.index("WHERE", fonte.index("UPDATE exercises"))]
-    assert "FORM_PRACTICE_COLUMN" in update
-    campo = ws.SessionExerciseIn.model_fields["form_practice"]
-    assert campo.default is False
-    from app.models import ExerciseLogUpdateIn
-
-    assert ExerciseLogUpdateIn.model_fields["form_practice"].default is None
+    cur = _Cur(marked=1)
+    _setup(monkeypatch, cur)
+    services.update_exercise_log(10, {**_body(), "form_practice": False}, user_id=7)
+    services.update_exercise_log(10, {**_body(), "form_practice": None}, user_id=7)
+    assert [u[-3] for u in cur.starting("UPDATE exercises SET original_name")] == [0, 1]

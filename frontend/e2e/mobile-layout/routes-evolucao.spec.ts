@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { FROZEN_NOW, installMockApi, MOCK_API_ORIGIN } from '../desktop-baseline/mock-api';
 import { resolveFixture } from './evolucao-fixtures';
+import { installSession } from './telas-fixtures';
 
 /**
  * Mobile v2, frente B (Evolucao e dashboards): as 18 rotas migradas montam a
@@ -54,6 +55,7 @@ async function prepare(page: Page, width: number, height: number) {
     if (payload === undefined) return route.fallback();
     return fulfillJson(route, payload);
   });
+  await installSession(page);
   await page.addInitScript(() => window.localStorage.setItem('musclefit.flag.mobile-ui', 'on'));
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message.slice(0, 200)));

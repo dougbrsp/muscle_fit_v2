@@ -51,7 +51,13 @@ describe('foto do prato: upload e leitura', () => {
     const etapas: string[] = [];
     const original = new Blob(['cru']);
 
-    await readMealPhoto(original, CONTEXTO, (etapa) => etapas.push(etapa));
+    const lido = await readMealPhoto(original, CONTEXTO, (etapa) => etapas.push(etapa));
+
+    // Devolve a versão reduzida (a enviada), nunca o original; o corpo enviado é o de sempre.
+    expect(lido.photo).toBe(reduzida);
+    expect(lido.photo).not.toBe(original);
+    expect(lido.result).toEqual({ items: [], limitations: [] });
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ ...CONTEXTO, image_base64: '/9j/4A' });
 
     expect(resizeImageForUpload).toHaveBeenCalledWith(original, {
       maxEdge: MEAL_PHOTO.resize_max_edge_px,

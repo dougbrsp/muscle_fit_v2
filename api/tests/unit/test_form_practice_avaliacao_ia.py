@@ -37,7 +37,7 @@ RESPOSTA_AUMENTO = {
 }
 
 
-def _dispatch(monkeypatch, engine, resposta=RESPOSTA_NEUTRA, saida=None):
+def _dispatch(monkeypatch, engine, resposta=RESPOSTA_NEUTRA, saida=None, *, limite_real=False):
     recebido, lidos = {}, []
 
     def fake_evaluate_set(payload, **kwargs):
@@ -53,7 +53,8 @@ def _dispatch(monkeypatch, engine, resposta=RESPOSTA_NEUTRA, saida=None):
     monkeypatch.setattr(core, "_evaluate_set_engine", lambda payload, user_id: engine)
     monkeypatch.setattr(core, "_evaluate_set_intensity", lambda payload: INTENSIDADE)
     monkeypatch.setattr(core, "_evaluate_set_logged_intensity", lambda engine: None)
-    monkeypatch.setattr(core, "apply_engine_load_bound", lambda result, *a, **k: {**result, "clamps": []})
+    if not limite_real:
+        monkeypatch.setattr(core, "apply_engine_load_bound", lambda result, *a, **k: {**result, "clamps": []})
     resultado = core.dispatch_evaluate_set(dict(PAYLOAD), user_id=1)
     if saida is not None:
         saida.update(resultado)
@@ -87,6 +88,15 @@ def test_saida_da_ia_marcada_sai_neutra_mesmo_com_aumento(monkeypatch):
     assert saida["category_from_ai"] == pe.INCREASE_LOAD
 
 
+def test_saida_da_ia_marcada_sai_neutra_com_o_limite_de_carga_real(monkeypatch):
+    """Sem trocar `apply_engine_load_bound`: o limite real do motor tambem nao devolve carga/aumento."""
+    saida = {}
+    _dispatch(monkeypatch, replace(MOTOR, form_practice_marked=True), RESPOSTA_AUMENTO, saida, limite_real=True)
+    assert saida["suggested_next_load_kg"] is None and saida["suggested_next_reps"] is None
+    assert saida["category"] == pe.HOLD
+    assert saida["engine_decision"] is None
+
+
 def test_saida_da_ia_normal_mantem_carga_reps_e_categoria(monkeypatch):
     saida = {}
     _dispatch(monkeypatch, MOTOR, RESPOSTA_AUMENTO, saida)
@@ -112,6 +122,42 @@ def test_engine_marca_pela_linha_do_payload(monkeypatch):
     assert core._evaluate_set_engine({"exercise_id": 7}, 1).form_practice_marked is True
     assert core._evaluate_set_engine({"exercise_id": 8}, 1).form_practice_marked is False
     assert core._evaluate_set_engine({}, 1) is MOTOR and vistos == [7, 8]
+
+
+def _engine_com_falhas(monkeypatch, *, par_falha, marca):
+    @contextmanager
+    def fake_tx():
+        yield object()
+
+    def par(conn, user_id, mapping_id, equipment_id):
+        if par_falha:
+            raise RuntimeError("par fora do ar")
+        return MOTOR
+
+    def leitor(conn, user_id, exercise_id):
+        if isinstance(marca, Exception):
+            raise marca
+        return marca
+
+    monkeypatch.setattr(core, "transaction", fake_tx)
+    monkeypatch.setattr(core, "load_pair_context", par)
+    monkeypatch.setattr(core, "read_exercise_form_practice", leitor)
+    return core._evaluate_set_engine({"exercise_id": 7}, 1)
+
+
+def test_falha_do_par_nao_perde_a_marca_e_o_resultado_segue_neutro(monkeypatch):
+    engine = _engine_com_falhas(monkeypatch, par_falha=True, marca=True)
+    assert engine.form_practice_marked is True and engine.decision is None
+    saida = {}
+    recebido, lidos = _dispatch(monkeypatch, engine, RESPOSTA_AUMENTO, saida)
+    assert recebido["next_set"] is None and recebido["set_reading"].status is None
+    assert saida["suggested_next_load_kg"] is None and saida["category"] == pe.HOLD and lidos == []
+
+
+def test_falha_da_marca_com_par_ok_avalia_como_normal_e_loga(monkeypatch, caplog):
+    engine = _engine_com_falhas(monkeypatch, par_falha=False, marca=RuntimeError("marca fora do ar"))
+    assert engine is MOTOR and engine.form_practice_marked is False
+    assert "evaluate_set.form_practice_failed" in caplog.text
 
 
 def test_leitor_da_marcacao_le_a_coluna_do_dono(monkeypatch):

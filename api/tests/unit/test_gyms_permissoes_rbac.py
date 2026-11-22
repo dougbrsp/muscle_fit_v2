@@ -383,10 +383,62 @@ def test_vinculos_de_academia_orfa_so_com_escopo_todos(ctx, metodo, caminho, cor
         ("POST", "/gym-equipment-catalog", {"gym_id": 999, "equipment_id": 9}),
     ],
 )
-def test_vinculo_em_gym_inexistente_da_404_e_nao_grava(ctx, metodo, caminho, corpo):
+def test_vinculo_em_gym_inexistente_403_sem_escopo_todos_e_404_com_ele(ctx, metodo, caminho, corpo):
     client, cur, _ = ctx
-    assert _chamar(client, "dono", metodo, caminho, corpo).status_code == 404
+    for quem in ("dono", "terceiro"):
+        assert _chamar(client, quem, metodo, caminho, corpo).status_code == 403, quem
+    assert _chamar(client, "admin", metodo, caminho, corpo).status_code == 404
     assert cur.writes() == []
+
+
+@pytest.mark.parametrize(
+    "metodo,caminho,corpo",
+    [
+        ("PUT", "/gym-equipment/12345", {"is_active": 0}),
+        ("DELETE", "/gym-equipment/12345", None),
+        ("PATCH", "/gym-equipment-catalog/12345", {"manufacturer": "X"}),
+        ("DELETE", "/gym-equipment-catalog/12345", None),
+    ],
+)
+def test_vinculo_inexistente_403_sem_escopo_todos_e_404_com_ele(ctx, metodo, caminho, corpo):
+    # #246: igual ao 403 de posse (mesmo status e mensagem), sem escrita.
+    client, cur, _ = ctx
+    for quem in ("dono", "terceiro", "pt", "disp_dono"):
+        resp = _chamar(client, quem, metodo, caminho, corpo)
+        assert resp.status_code == 403, quem
+        assert "permissão para gerenciar equipamentos" in resp.json()["detail"]
+    assert cur.writes() == []
+    assert _chamar(client, "admin", metodo, caminho, corpo).status_code == 404
+    assert cur.writes() == []
+
+
+@pytest.mark.parametrize(
+    "metodo,caminho,corpo",
+    [
+        ("POST", "/gym-equipment", {"gym_id": "5", "mapping_id": 3, "equipment_id": 9}),
+        ("POST", "/gym-equipment", {"gym_id": 5, "mapping_id": 0, "equipment_id": 9}),
+        ("POST", "/gym-equipment", {"gym_id": 5, "mapping_id": 3, "equipment_id": -1}),
+        ("POST", "/gym-equipment", {"gym_id": 5, "mapping_id": 3, "equipment_id": 9, "x": 1}),
+        ("POST", "/gym-equipment", {"gym_id": 5, "equipment_id": 9}),
+        ("PUT", "/gym-equipment/77", {"equipment_id": "9"}),
+        ("PUT", "/gym-equipment/77", {"equipment_id": 0}),
+        ("PUT", "/gym-equipment/77", {"equipment_id": -2}),
+        ("PUT", "/gym-equipment/77", {"is_active": "sim"}),
+        ("PUT", "/gym-equipment/77", {"is_active": 2}),
+        ("PUT", "/gym-equipment/77", {"x": 1}),
+    ],
+)
+def test_corpo_invalido_dos_vinculos_e_422_sem_escrita(ctx, metodo, caminho, corpo):
+    client, cur, _ = ctx
+    assert _chamar(client, "dono", metodo, caminho, corpo).status_code == 422
+    assert cur.writes() == []
+
+
+@pytest.mark.parametrize("valor", [0, 1, True, False])
+def test_put_vinculo_aceita_is_active_numerico_ou_booleano(ctx, valor):
+    client, cur, _ = ctx
+    assert _chamar(client, "dono", "PUT", "/gym-equipment/77", {"is_active": valor}).status_code == 200
+    assert cur.writes()[-1:] and any("UPDATE gym_equipment" in w for w in cur.writes())
 
 
 def test_leituras_de_vinculos_seguem_abertas_a_quem_tem_ver(ctx):

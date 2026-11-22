@@ -53,8 +53,8 @@ export type DraftSwapOptions = SwapEligibilityIndex | 'loading' | 'error';
 /**
  * Chave local da linha gerada: o `mapping_id` com que o servidor a entregou.
  * Vive na própria linha (sobrevive a reordenar, remover e ao spread de cada
- * edição) e NÃO entra no payload de save, que copia campo a campo
- * (`toWorkoutPlanExerciseInput`). Linha adicionada à mão não a tem.
+ * edição) e entra no payload de save (`workout-plan-payload.ts`).
+ * Linha adicionada à mão não a tem.
  */
 export type DraftRowKey = { generated_mapping_id?: number | null };
 
@@ -144,7 +144,7 @@ export function applyDraftEquipmentChoice<T extends { preferred_equipment_id?: n
 
 /**
  * Último exercício vinculado à linha antes de a digitação zerar `mapping_id`.
- * Campo só do cliente (como `generated_mapping_id`): fica fora do payload de save.
+ * Campo só do cliente: fica fora do payload de save (ao contrário de `generated_mapping_id`).
  */
 export type LinkedRowKey = { last_linked_mapping_id?: number | null };
 

@@ -2,9 +2,11 @@
 
 DONO da regra "esta execucao conta para a progressao?". Python puro, sem
 banco. A marca e por linha de `exercises` (coluna `form_practice`, migracao
-120): no Modo Treino o usuario marca so antes da 1a serie do exercicio e a
-marca fica travada ali (D2); pelo Registro de exercicios ela pode ser
-corrigida depois (#205), com a progressao reavaliada (`resolve_form_practice`).
+120): no Modo Treino a marca pode ser feita ou desfeita ate a 1a serie de
+TRABALHO do exercicio e trava ali (D2; `form_practice_locked`,
+`resolve_form_practice_before_work`, `sql_working_sets_recorded`); pelo
+Registro de exercicios ela pode ser corrigida depois (#205), com a progressao
+reavaliada (`resolve_form_practice`).
 
 A execucao marcada (D1):
 
@@ -95,17 +97,48 @@ def sql_plan_item_marked(alias: str) -> str:
 
 
 def inherit_form_practice(sent: Any, inherited: Any = None) -> bool:
-    """Marca da nova linha de `exercises` da sessao (D2: no Modo Treino so na
-    criacao; a correcao posterior e pelo Registro, `resolve_form_practice`).
+    """Marca da nova linha de `exercises` da sessao. O valor ENVIADO pelo
+    cliente (True ou False) vale, inclusive para desmarcar a continuacao por
+    troca de equipamento ou a 2a execucao do mesmo item (#213). `sent` None =
+    campo nao enviado (fila offline antiga, relogio): vale a heranca, isto e,
+    marcada qualquer linha anterior do MESMO item da ficha na sessao, a nova
+    nasce marcada. Treino livre (sem item): a rota passa `inherited=None`."""
+    return is_form_practice(inherited) if sent is None else is_form_practice(sent)
 
-    Regra: marcada a 1a passagem de um item da ficha na sessao, toda
-    continuacao do MESMO item na MESMA sessao (troca de equipamento = nova
-    linha) herda a marca, mesmo que o cliente nao a envie (fila offline
-    antiga, relogio): a execucao marcada nunca vira normal pela troca. No
-    treino livre (sem item da ficha) nao ha o que herdar: a rota passa
-    `inherited=None` e vale o que o cliente envia. Desmarcar pela continuacao
-    nao e possivel (`enviado or herdado`)."""
-    return is_form_practice(sent) or is_form_practice(inherited)
+
+def form_practice_locked(working_sets_recorded: Any) -> bool:
+    """A marca do exercicio esta travada? Ela pode ser feita ou desfeita ate a
+    1a serie de TRABALHO gravada (#213/#211); aquecimento, ajuste e demais
+    preparatorias nao travam. `working_sets_recorded` = quantas series de
+    trabalho o exercicio ja tem (`sql_working_sets_recorded`). Depois de travada
+    so o Registro muda a marca (`resolve_form_practice`)."""
+    try:
+        return int(working_sets_recorded or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def resolve_form_practice_before_work(requested: Any, stored: Any, working_sets_recorded: Any) -> bool:
+    """Marca vigente apos um pedido de mudanca no registro de serie: `requested`
+    None (nao enviado) ou exercicio travado = a gravada vale, sem erro (a fila
+    offline pode reenviar o pedido tarde); senao vale o pedido."""
+    if requested is None or form_practice_locked(working_sets_recorded):
+        return is_form_practice(stored)
+    return is_form_practice(requested)
+
+
+def sql_working_sets_recorded(alias: str = "es", *, locking: bool = False) -> str:
+    """SQL com `exercise_id = %s`: quantas series de trabalho (qualquer estado,
+    pendente ou nao) o exercicio ja tem, coluna `n`. `locking=True`: leitura
+    corrente (`FOR SHARE`), que enxerga o que outra transacao ja confirmou
+    (a leitura comum ficaria no snapshot do REPEATABLE READ)."""
+    from ..set_types import sql_is_working
+
+    return (
+        f"SELECT COUNT(*) AS n FROM exercise_sets {_alias(alias)} "
+        f"WHERE {alias}.exercise_id = %s AND {sql_is_working(alias + '.set_type')}"
+        + (" FOR SHARE" if locking else "")
+    )
 
 
 def resolve_form_practice(sent: Any, stored: Any) -> bool:
@@ -174,7 +207,10 @@ __all__ = [
     "FORM_PRACTICE_COLUMN",
     "SKIP_REASON_FORM_PRACTICE",
     "counts_for_progression",
+    "form_practice_locked",
     "inherit_form_practice",
+    "resolve_form_practice_before_work",
+    "sql_working_sets_recorded",
     "is_form_practice",
     "neutral_ai_suggestion",
     "neutral_engine_context",

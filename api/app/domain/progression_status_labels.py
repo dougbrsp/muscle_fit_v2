@@ -45,6 +45,7 @@ SCOPE_EXERCISE_LAST_VS_PREVIOUS: Final[str] = "exercise_last_vs_previous_exposur
 SCOPE_GROUP_WEIGHTED_EXERCISES: Final[str] = "group_weighted_exercise_status"
 SCOPE_GROUP_VOLUME_WINDOWS: Final[str] = "group_volume_current_vs_previous_window"
 SCOPE_E1RM_WINDOWS: Final[str] = "e1rm_current_vs_previous_window"
+SCOPE_EXERCISE_WINDOW_TREND: Final[str] = "exercise_window_e1rm_trend"
 
 ENTITY_EXERCISE: Final[str] = "exercise"
 ENTITY_MUSCLE_GROUP: Final[str] = "muscle_group"
@@ -104,6 +105,21 @@ PROGRESSION_SCOPES: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
                 "description": (
                     "Compara o melhor e1RM do mesmo exercício (mesma máquina e convenção) na janela "
                     "atual com o da janela anterior. É informativo: não define o status."
+                ),
+            }
+        ),
+        SCOPE_EXERCISE_WINDOW_TREND: MappingProxyType(
+            {
+                "code": SCOPE_EXERCISE_WINDOW_TREND,
+                "entity": ENTITY_EXERCISE,
+                "metric": "e1rm_mean",
+                "comparator": "first_half_vs_second_half_of_window",
+                "label": "Tendência da janela",
+                "description": (
+                    "Compara a média do e1RM da primeira metade das exposições da janela com a da "
+                    "segunda metade, só nas exposições na mesma máquina, convenção de carga, contexto "
+                    "de fadiga e academia da última. É informativo: não substitui o status da última "
+                    "exposição vs. a anterior."
                 ),
             }
         ),

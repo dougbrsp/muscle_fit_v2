@@ -37,7 +37,8 @@ from ...load_conventions import (
 from ...domain.deload import deload_source_label, deload_source_value
 from ...domain.set_measures import sql_duration_seconds, sql_is_rep_based
 from ...domain.training_goal import goal_value, goals_in, is_default
-from ...set_types import sql_is_working, sql_not_preparatory, sql_set_confirmed
+from ...domain.effective_intensity import rpe_vs_expected_counts
+from ...set_types import is_working_set, sql_is_working, sql_not_preparatory, sql_set_confirmed
 from ...template_versions import plan_version_expr
 from ...timezones import DEFAULT_TIMEZONE
 from ..dashboard.time_windows import TRAINED_AT_TOKEN, with_trained_at
@@ -187,6 +188,24 @@ WHERE a.user_id = %s
   AND a.local_date BETWEEN %s AND %s
   AND {sql_not_preparatory("es.set_type")}
 GROUP BY a.id
+"""
+
+# #241: RPE realizado + esperado gravado por serie, UMA leitura da janela. A
+# contagem abaixo/no esperado/acima NAO e feita aqui nem em SQL: e do dono
+# (`effective_intensity.rpe_vs_expected_counts`), sobre as series de trabalho
+# (`is_working_set`, o mesmo criterio do historico de progressao).
+SESSION_SET_RPE_SQL = f"""
+SELECT
+  a.id                    AS activity_id,
+  es.set_type             AS set_type,
+  es.rpe                  AS rpe,
+  es.rpe_target_planned   AS rpe_target_planned
+FROM activities a
+JOIN exercises e ON e.activity_id = a.id
+JOIN exercise_sets es ON es.exercise_id = e.id AND {sql_set_confirmed('es.reps_pending')}
+WHERE a.user_id = %s
+  AND a.local_date BETWEEN %s AND %s
+  AND {sql_not_preparatory("es.set_type")}
 """
 
 
@@ -672,12 +691,17 @@ def build_cycle_timeline(
     sessions: Iterable[Mapping[str, Any]],
     rpe_rows: Iterable[Mapping[str, Any]],
     segments: Sequence[Any],
+    set_rows: Iterable[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Uma linha por sessao de musculacao, em ordem cronologica: Modelo
     vigente no dia (trecho de `segment_window`), dia do Modelo quando a
     sessao veio de uma ficha, duracao, FC (`hr`: ja normalizada por
     `normalize_session_hr_row`) e RPE medio das series."""
     rpe = {int(r["activity_id"]): r for r in rpe_rows if r.get("activity_id") is not None}
+    sets_by_activity: dict[int, list[Mapping[str, Any]]] = {}
+    for row in set_rows:
+        if row.get("activity_id") is not None and is_working_set(row):
+            sets_by_activity.setdefault(int(row["activity_id"]), []).append(row)
     out = []
     for session in sessions:
         day = to_date(session.get("local_date"))
@@ -690,6 +714,7 @@ def build_cycle_timeline(
         if sequence is not None:
             slot = f"{int(_num(sequence))}" + (f" — {session['slot_name']}" if session.get("slot_name") else "")
         duration = to_float(session.get("duration_seconds"))
+        counts = rpe_vs_expected_counts(sets_by_activity.get(int(session.get("activity_id") or 0), ()))
         out.append(
             {
                 "local_date": day,
@@ -702,6 +727,7 @@ def build_cycle_timeline(
                 "max_hr_bpm": session.get("max_hr_bpm"),
                 "physical_sets": int(_num(totals.get("physical_sets"))),
                 "avg_rpe": _avg(_num(totals.get("rpe_sum")), _num(totals.get("rpe_n"))),
+                "rpe_vs_expected_counts": counts if counts["compared"] else None,
                 # M97 F4: sessao de deload sinalizada (rotulo do dono `deload`).
                 "deload_source": deload_source_value(session.get("deload_source")),
                 "deload_label": deload_source_label(session.get("deload_source")),
@@ -789,6 +815,10 @@ def load_cycle_sessions(conn: Any, *, user_id: int, window: Any) -> tuple[list[d
     return sessions, _fetchall(conn, SESSION_RPE_SQL, params)
 
 
+def load_session_set_rpe(conn: Any, *, user_id: int, window: Any) -> list[dict[str, Any]]:
+    return _fetchall(conn, SESSION_SET_RPE_SQL, (user_id, window.date_from, window.date_to))
+
+
 __all__ = [
     "BODY_COMPOSITION_FIELDS",
     "EQUIPMENT_DAILY_SQL_TEMPLATE",
@@ -807,6 +837,7 @@ __all__ = [
     "load_cycle_sessions",
     "load_equipment",
     "load_group_days",
+    "load_session_set_rpe",
     "load_sleep_rows",
     "load_wellness_rows",
     "sleep_stats",

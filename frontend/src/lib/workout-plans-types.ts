@@ -375,6 +375,9 @@ export type WorkoutPlanExercise = {
   rpe_target?: string | null;
   // #146: RPE planejado de cada série (expandido pelo backend).
   rpe_targets_by_set?: number[];
+  // Só do navegador: o usuário definiu o RPE por série; só então a lista vai no
+  // payload (e o `rpe_target` não). Nunca vem da API.
+  rpe_edited?: boolean;
   rest_seconds?: number | null;
   warmup?: boolean;
   substitution_options?: string[] | null;
@@ -452,6 +455,8 @@ export type WorkoutPlanExercise = {
 
 export type WorkoutPlanExerciseInput = {
   sequence: number;
+  // #184: RPE por série; quando enviada é a fonte e o servidor compõe `rpe_target`.
+  rpe_targets_by_set?: number[];
   // Id da linha já salva, ecoado no PUT: o servidor trava o grupamento
   // muscular dela (`workout_plan_edit_rules`). null = linha nova.
   workout_plan_exercise_id?: number | null;
@@ -489,6 +494,9 @@ export type WorkoutPlanExerciseInput = {
   time_window_seconds?: number | null;
   // M97 F3: objetivo da linha, ecoado como veio (`undefined` some do JSON).
   training_goal?: string | null;
+  // #178: exercício de GERAÇÃO da linha carimbada; o servidor trava o grupo
+  // muscular contra ele. Ausente em linha manual e em ficha já salva.
+  generated_mapping_id?: number | null;
 };
 
 export type WorkoutPlanListItem = {

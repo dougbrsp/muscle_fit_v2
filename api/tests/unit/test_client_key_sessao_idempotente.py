@@ -111,6 +111,8 @@ class FakeSessionDB(NullContext):
         elif flat.startswith("SELECT set_number, set_type, reps, weight_kg, rpe, muscle_pain"):
             pool = self.sets + (self.hidden_sets if locking else [])
             self._result = next((dict(s) for s in pool if s["exercise_id"] == p[0] and s["client_key"] == p[1]), None)
+        elif flat.startswith("SELECT COUNT(*) AS n FROM exercise_sets es"):
+            self._result = {"n": sum(1 for s in self.sets if s["exercise_id"] == p[0] and s["set_type"] in ("", "working"))}
         elif "COALESCE(MAX(set_number), 0) + 1" in flat:
             self._result = {"n": 1 + max((s["set_number"] for s in self.sets if s["exercise_id"] == p[0]), default=0)}
         elif flat.startswith("INSERT INTO exercises "):
@@ -175,6 +177,8 @@ def _install(monkeypatch, fake):
     monkeypatch.setattr(ws, "ensure_valid_codes", lambda codes: None)
     monkeypatch.setattr(ws, "resolve_mapping_id", lambda name, _a, mapping_id, cur=None: mapping_id or 11)
     monkeypatch.setattr(ws, "resolve_equipment_id", lambda cur, mapping_id, gym_id, eq_id, eq_name, user_id=None: 2)
+    # #163: a validação do equipamento explícito tem teste próprio (test_sessao_equipamento_validado).
+    monkeypatch.setattr(ws, "ensure_session_equipment", lambda cur, session, mapping_id, equipment_id: None)
     monkeypatch.setattr(ws, "_refresh_exercise_aggregates", _count("aggregates"))
     monkeypatch.setattr(ws, "_refresh_activity_avg_rpe", _count("avg_rpe"))
     monkeypatch.setattr(ws, "log_event", _count("log_event"))
@@ -225,6 +229,19 @@ def test_exercicio_chaves_diferentes_e_pais_diferentes_criam(db):
     c = _add_exercise(session_id=OUTRA_SESSAO, client_key="ex-1")
     assert len({a["exercise_id"], b["exercise_id"], c["exercise_id"]}) == 3
     assert not any(r["duplicate"] for r in (a, b, c))
+
+
+def test_continuacao_mesmo_item_da_ficha_com_chave_nova_cria_linha_propria(db):
+    original = _add_exercise(client_key="ex-1", workout_plan_exercise_id=77, mapping_id=13, equipment_id=2)
+    cont = _add_exercise(client_key="ex-2", workout_plan_exercise_id=77, mapping_id=14, equipment_id=2)
+    assert cont["duplicate"] is False and cont["exercise_id"] != original["exercise_id"]
+    linha = next(e for e in db.exercises if e["id"] == cont["exercise_id"])
+    assert (linha["workout_plan_exercise_id"], linha["mapping_id"], linha["equipment_id"]) == (77, 14, 2)
+    assert len(db.exercises) == 2
+    # chave repetida da continuação: mesma linha, sem novo INSERT
+    de_novo = _add_exercise(client_key="ex-2", workout_plan_exercise_id=77, mapping_id=14, equipment_id=2)
+    assert de_novo["duplicate"] is True and de_novo["exercise_id"] == cont["exercise_id"]
+    assert len(db.exercises) == 2
 
 
 def test_exercicio_sem_chave_igual_a_hoje(db):

@@ -62,6 +62,20 @@ export function formFromCheckin(checkin: DailyCheckin): CheckinFormState {
   };
 }
 
+/** Limite do comentário (igual ao da API); a tela e a validação usam esta constante. */
+export const CHECKIN_NOTES_MAX = 255;
+
+/** Quem o formulário está mostrando: o dia e o id do registro gravado (`null` = ainda sem registro). */
+export type CheckinFormSource = { day: string; id: number | null };
+
+/**
+ * Refazer o formulário só quando o dia muda ou o registro do dia passa a existir/muda de id.
+ * Um refetch que devolve o mesmo registro (objeto novo) NÃO pode apagar o que o usuário digita.
+ */
+export function shouldResetCheckinForm(prev: CheckinFormSource | null, next: CheckinFormSource): boolean {
+  return prev === null || prev.day !== next.day || prev.id !== next.id;
+}
+
 /** "1 = sem dor, 5 = muita dor" — a escala sem âncora não quer dizer nada. */
 export function scaleHint(field: CheckinScoreField): string {
   const ends = CHECKIN_SCALE_ENDS[field];
@@ -85,7 +99,7 @@ export function validateCheckinForm(form: CheckinFormState): CheckinFormErrors {
       errors[field] = `Use um valor de ${CHECKIN_SCORE_MIN} a ${CHECKIN_SCORE_MAX}, ou deixe em branco.`;
     }
   }
-  if (form.notes.length > 255) errors.notes = 'Máximo de 255 caracteres.';
+  if (form.notes.length > CHECKIN_NOTES_MAX) errors.notes = `Máximo de ${CHECKIN_NOTES_MAX} caracteres.`;
   if (answeredFields(form).length === 0 && !form.notes.trim()) {
     errors.energy = 'Responda ao menos um item (ou escreva uma nota).';
   }

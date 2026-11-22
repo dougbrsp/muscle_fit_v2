@@ -44,6 +44,9 @@ KCAL_PER_G_CARB: Final[float] = 4.0
 KCAL_PER_G_FAT: Final[float] = 9.0
 KCAL_PER_G_ALCOHOL: Final[float] = 7.0
 
+# Tolerância relativa para dizer que kcal declarada == kcal dos macros (Atwater); igual ao padrão de math.isclose.
+ATWATER_CLOSE_REL_TOL: Final[float] = 1e-9
+
 FIBER_G_PER_1000_KCAL: Final[float] = 14.0
 FIBER_KCAL_REFERENCE: Final[float] = 1000.0
 

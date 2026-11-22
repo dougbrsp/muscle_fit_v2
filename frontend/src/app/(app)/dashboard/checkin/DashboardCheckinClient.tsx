@@ -32,6 +32,7 @@ import {
 } from '@/lib/dashboard-api';
 import {
   answeredDays,
+  CHECKIN_NOTES_MAX,
   checkinForDate,
   emptyCheckinForm,
   formFromCheckin,
@@ -234,8 +235,8 @@ export function DashboardCheckinClient() {
                 placeholder="o que mais vale registrar sobre hoje"
                 value={form.notes}
                 error={errors.notes}
-                maxLength={255}
-                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))}
+                maxLength={CHECKIN_NOTES_MAX}
+                onChange={(e) => { const value = e.currentTarget.value; setForm((prev) => ({ ...prev, notes: value })); }}
                 disabled={!tabelaDisponivel}
               />
 

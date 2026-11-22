@@ -11,7 +11,8 @@ Regra (a mais segura para clientes antigos que não mandam esses campos):
 
 - campo PRESENTE na série enviada -> vale o valor enviado, inclusive `null`
   (é assim que o cliente limpa um campo de propósito);
-- campo AUSENTE -> mantém o valor gravado da série com o mesmo `set_number`;
+- campo AUSENTE -> mantém o valor gravado da série de origem (`source_set_number`
+  quando algum item o traz; senão a de mesmo `set_number`);
 - sem série gravada com esse número (série nova) -> default da coluna
   (`set_type` = `working`, demais NULL).
 
@@ -43,9 +44,17 @@ from typing import Any, Iterable, Mapping
 
 from .advanced_techniques import ensure_valid_codes
 from .domain import technique_accounting
+from .domain.set_measures import REPS_BELOW_MIN, REPS_REQUIRED, normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical
 from .domain.training_safety import RPE_TARGET_SOURCE_PROTOCOL
-from .set_types import REPS_PENDING_COLUMN, is_pending_set, normalize_set_type
+from .set_types import (
+    REPS_PENDING_COLUMN,
+    can_add_set_type,
+    can_change_set_type,
+    is_pending_set,
+    is_swappable_set_type,
+    normalize_set_type,
+)
 
 # Colunas de `exercise_sets` que o cliente pode reenviar e que, se omitidas,
 # são preservadas da série gravada. `reps`/`weight_kg`/`rpe` ficam de fora de
@@ -83,6 +92,8 @@ SERVER_KEPT_SET_FIELDS: tuple[str, ...] = (
     "load_adjust_source",
     "rpe_target_source",
     "rpe_target_effective",
+    # #182: RPE esperado da serie, gravado no POST; o Registro so o preserva.
+    "rpe_target_planned",
 )
 
 # PATCH de UMA série do Modo Intensivo (confirmar reps pendentes, corrigir
@@ -98,31 +109,94 @@ def resolve_reps_pending(previous: Mapping[str, Any] | None, reps: Any) -> int:
     return 1 if previous is not None and is_pending_set(previous) and reps is None else 0
 
 
+# Códigos de reps que não valem para série que continua pendente.
+PENDING_EXEMPT_MEASURE_CODES: tuple[str, ...] = (REPS_REQUIRED, REPS_BELOW_MIN)
+
+
+def measure_codes_for_merged_set(merged: Mapping[str, Any], codes: Iterable[str]) -> list[str]:
+    """Série ainda pendente não tem reps: os códigos de reps saem, os demais valem."""
+    if not is_pending_set(merged):
+        return list(codes)
+    return [c for c in codes if c not in PENDING_EXEMPT_MEASURE_CODES]
+
+
 def keeps_protocol_target(merged: Mapping[str, Any]) -> bool:
     """A série mantém o `rpe_target_effective` gravado (alvo do protocolo)."""
     return merged.get("rpe_target_source") == RPE_TARGET_SOURCE_PROTOCOL
 
 
+SET_TYPE_LOCKED = "set_type_locked"
+SET_MEASURE_LOCKED = "set_measure_locked"
+
+
+class SetEditLockedError(ValueError):
+    """Edição pós-treino (#219) recusada: tipo ou medida da série não mudam
+    (`code` estável: `set_type_locked` | `set_measure_locked`). A rota traduz em 422."""
+
+    def __init__(self, code: str, set_number: Any, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.set_number = set_number
+        self.message = message
+
+
+def _enforce_edit_locks(st: Mapping[str, Any], merged: Mapping[str, Any], previous: Mapping[str, Any] | None) -> None:
+    """Regra do dono (`set_types.can_change_set_type`/`can_add_set_type`): tipo só
+    troca entre séries comuns; a medida só muda onde o tipo é trocável."""
+    number = merged["set_number"]
+    if "set_type" in st:
+        allowed = can_add_set_type(st["set_type"]) if previous is None else can_change_set_type(previous.get("set_type"), st["set_type"])
+        # Série nova sem tipo enviado é `working`: passa.
+        if not allowed:
+            raise SetEditLockedError(SET_TYPE_LOCKED, number, f"Série {number}: o tipo desta série não pode ser alterado na edição.")
+    if previous is not None and not is_swappable_set_type(previous.get("set_type")):
+        if normalize_measure(merged.get("measure")) != normalize_measure(previous.get("measure")) or merged.get(
+            "duration_seconds"
+        ) != previous.get("duration_seconds"):
+            raise SetEditLockedError(SET_MEASURE_LOCKED, number, f"Série {number}: a medida desta série não pode ser alterada na edição.")
+
+
 def merge_sets_for_update(
     incoming: Iterable[Mapping[str, Any]],
     stored: Iterable[Mapping[str, Any]],
+    *,
+    lock_types: bool = False,
 ) -> list[dict[str, Any]]:
     """Devolve as séries a gravar, com os campos omitidos preenchidos a partir
-    das séries gravadas (pareadas por `set_number`). Função pura."""
+    das séries gravadas (pareadas por `set_number`). Função pura.
+
+    `lock_types=True` (edição pós-treino, #219) aplica a trava de tipo e de
+    medida e levanta `SetEditLockedError`. Padrão False: importação e testes
+    antigos criam/convertem séries de técnica pela mescla."""
     stored_by_number = {s.get("set_number"): s for s in stored}
+    incoming = list(incoming)
+    # Cliente novo informa a série gravada de origem (`source_set_number`, null =
+    # série nova), então remover/reordenar não desloca o que é preservado.
+    # Nenhuma série trouxe o campo (cliente antigo/PWA em cache): por `set_number`.
+    by_origin = any("source_set_number" in st for st in incoming)
     merged_sets: list[dict[str, Any]] = []
+    used_origins: set[Any] = set()
     for index, st in enumerate(incoming, start=1):
         number = st.get("set_number") or index
-        previous = stored_by_number.get(number)
-        merged = dict(st)
+        origin = st.get("source_set_number") if by_origin else number
+        # Origem repetida: só a primeira herda a série gravada; as demais são séries novas.
+        previous = None if origin in used_origins else stored_by_number.get(origin)
+        if previous is not None:
+            used_origins.add(origin)
+        merged = {k: v for k, v in st.items() if k != "source_set_number"}
         merged["set_number"] = number
         for field in PRESERVED_SET_FIELDS:
             if field not in st:
                 merged[field] = (previous or {}).get(field)
         for field in SERVER_KEPT_SET_FIELDS:
             merged[field] = (previous or {}).get(field)
+        if lock_types:
+            _enforce_edit_locks(st, merged, previous)
         apply_canonical(merged)
-        merged[REPS_PENDING_COLUMN] = resolve_reps_pending(previous, merged.get("reps"))
+        # Cliente antigo converte reps nulas em 0: série pendente segue pendente.
+        merged[REPS_PENDING_COLUMN] = resolve_reps_pending(previous, None if merged.get("reps") == 0 else merged.get("reps"))
+        if merged[REPS_PENDING_COLUMN]:
+            merged["reps"] = None
         merged["set_type"] = normalize_set_type(merged.get("set_type"))
         merged_sets.append(merged)
     return merged_sets

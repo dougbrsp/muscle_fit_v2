@@ -49,6 +49,23 @@ export function isLaboralSetType(setType?: string | null): boolean {
   return normalizeSetType(setType) === LABORAL_SET_TYPE;
 }
 
+/** Tipos que a edição do registro pode trocar (`swappable` do dono; técnica e laboral ficam de fora). */
+export const SWAPPABLE_SET_TYPES: readonly string[] = vocabulary.swappable;
+const SWAPPABLE: ReadonlySet<string> = new Set(SWAPPABLE_SET_TYPES);
+
+/** Rótulos dos tipos trocáveis: única fonte (seletor "Tipo da série" e Badge das telas). */
+export const SET_TYPE_LABELS: Readonly<Record<string, string>> = {
+  [WORKING_SET_TYPE]: 'Série de trabalho',
+  backoff: 'Backoff',
+  warmup: 'Aquecimento',
+  feeler: 'Série de ajuste',
+};
+
+/** A série pode trocar de tipo na edição? (a decisão final é do servidor: 422 `set_type_locked`). */
+export function isSwappableSetType(setType?: string | null): boolean {
+  return SWAPPABLE.has(normalizeSetType(setType));
+}
+
 /** Aplicação de técnica avançada (rest-pause, drop, reps extras). */
 export function isTechniqueApplicationSetType(setType?: string | null): boolean {
   return TECHNIQUE_APPLICATION.has(normalizeSetType(setType));

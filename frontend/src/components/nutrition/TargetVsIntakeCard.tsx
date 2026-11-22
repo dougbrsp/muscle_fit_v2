@@ -7,6 +7,7 @@ import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { CHART_COLORS } from '@/components/charts/chartTheme';
 import { NutritionLimitations } from './NutritionLimitations';
 import { nutrientField, nutritionNotice } from '@/lib/nutrition-constants';
+import { diaryCycleInfo, diaryCycleText } from '@/lib/nutrition-cycle-policy';
 import { formatKcal, formatSignedKcal, formatTotal, formatWithUnit, shareToPercent } from '@/lib/nutrition-format';
 import { macroRows, ringParts, type RingPart } from '@/lib/nutrition-dashboard';
 import type { BalanceRow, NutritionDay } from '@/lib/nutrition-types';
@@ -145,6 +146,11 @@ export function TargetVsIntakeCard({ day }: { day: NutritionDay }) {
             )}
           </Group>
         </Group>
+        {diaryCycleInfo(meta) && (
+          <Text size="xs" c={BRAND.textMuted}>
+            {diaryCycleText(diaryCycleInfo(meta)!)}
+          </Text>
+        )}
         <NutritionLimitations items={day.target_notices} title="Meta do dia" tone="info" />
         <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xs">
           {macroRows(day.balance.rows).map((row) => (

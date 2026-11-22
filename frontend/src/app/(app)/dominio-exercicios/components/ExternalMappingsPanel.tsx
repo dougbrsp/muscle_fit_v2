@@ -571,13 +571,13 @@ export function ExternalMappingsPanel({ isAdmin }: { isAdmin: boolean }) {
             <TextInput
               label="Provider"
               value={createDraft.provider}
-              onChange={(event) => setCreateDraft((current) => ({ ...current, provider: event.currentTarget.value }))}
+              onChange={(event) => { const value = event.currentTarget.value; setCreateDraft((current) => ({ ...current, provider: value })); }}
               required
             />
             <TextInput
               label="External ID"
               value={createDraft.external_id}
-              onChange={(event) => setCreateDraft((current) => ({ ...current, external_id: event.currentTarget.value }))}
+              onChange={(event) => { const value = event.currentTarget.value; setCreateDraft((current) => ({ ...current, external_id: value })); }}
             />
           </Group>
 
@@ -585,7 +585,7 @@ export function ExternalMappingsPanel({ isAdmin }: { isAdmin: boolean }) {
             label="Nome externo"
             placeholder="Como o exercício aparece no provider"
             value={createDraft.external_name}
-            onChange={(event) => setCreateDraft((current) => ({ ...current, external_name: event.currentTarget.value }))}
+            onChange={(event) => { const value = event.currentTarget.value; setCreateDraft((current) => ({ ...current, external_name: value })); }}
             required
           />
 
@@ -600,7 +600,7 @@ export function ExternalMappingsPanel({ isAdmin }: { isAdmin: boolean }) {
             <TextInput
               label="Fonte"
               value={createDraft.source}
-              onChange={(event) => setCreateDraft((current) => ({ ...current, source: event.currentTarget.value }))}
+              onChange={(event) => { const value = event.currentTarget.value; setCreateDraft((current) => ({ ...current, source: value })); }}
             />
           </Group>
 
@@ -608,7 +608,7 @@ export function ExternalMappingsPanel({ isAdmin }: { isAdmin: boolean }) {
             label="Notas"
             minRows={2}
             value={createDraft.notes}
-            onChange={(event) => setCreateDraft((current) => ({ ...current, notes: event.currentTarget.value }))}
+            onChange={(event) => { const value = event.currentTarget.value; setCreateDraft((current) => ({ ...current, notes: value })); }}
           />
 
           {createMutation.isError && (

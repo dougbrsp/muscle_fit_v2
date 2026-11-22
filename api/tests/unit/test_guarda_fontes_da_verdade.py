@@ -76,6 +76,9 @@ class Padrao:
     # Regex só para `.md` (RAG). Quando definida, substitui `regex` nos `.md`: o
     # texto corrido do RAG tem números que no código seriam regra (× 4, 9).
     regex_md: re.Pattern[str] | None = None
+    # Atribuição quebrada (`NOME =` numa linha, valor na seguinte): a varredura é por linha,
+    # então só os padrões marcados testam a linha junto com a seguinte quando ela termina em `=`.
+    junta_continuacao: bool = False
 
 
 # Módulos de motor: só neles "agora" sem fuso é proibido (B10). Telas, auth,
@@ -1210,9 +1213,15 @@ PADROES: tuple[Padrao, ...] = (
         regex=re.compile(
             r"\b(?:MATCH_(?:MIN_SCORE|AUTO_ACCEPT_\w+)|QUERY_COVERAGE_WEIGHT|TOKEN_JACCARD_WEIGHT|SEQUENCE_RATIO_WEIGHT"
             r"|SEARCH_(?:CANDIDATE_POOL|RESULT_LIMIT_\w+)|FULLTEXT_MIN_TOKEN_CHARS|PORTION_AMOUNT_MAX"
-            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
+            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|BRAND_TOKENS_MAX|LIST_OFFSET_MAX"
+            r"|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
+            # #235: rótulos do balde da listagem (literal de texto) e o mapa de rótulos (vocabulário).
+            r"""|\b(?:DEFAULT_LIST_BUCKET|OTHER_BUCKET_LABEL)\s*(?::[^=\n]+)?=\s*["'`]"""
+            r"|\bLIST_BUCKET_LABELS\s*(?::[^=\n]+)?=\s*(?:[{(\[]|dict\(|Object\.fromEntries|new Map)"
             # Vocabulário do matching redefinido (o worker do parse, L5, é o risco óbvio).
             r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
+            # #208: o alfabeto também por `tuple("ABC...")`, `list(...)`, `Array.from(...)`, string literal ou `string.ascii_uppercase`.
+            r"""|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:(?:tuple|list|Array)\b|["'`]|(?:\w+\.)?ascii_uppercase\b)"""
             # #195: balde "outros" e alfabeto da listagem por letra (literal de texto).
             r"""|\bOTHER_BUCKET\s*(?::[^=\n]+)?=\s*["'`]"""
         ),
@@ -1739,7 +1748,7 @@ PADROES: tuple[Padrao, ...] = (
         # 2026-10-24 (Modo Intensivo, PR 1): `training_safety.protocol_target_rpe` decide 10 (par libera a falha) ou
         # 9; a prescrição leva `target_rpe` e a API grava `rpe_target_effective`. Tela, rota e SQL só leem.
         regex=re.compile(
-            r"""\b(?:\w*target_rpe\w*|targetRpe|rpe_target_effective)['"]?\]?\s*(?:===?|!==?|:|=)\s*(?:9|10)\b""",
+            r"""\b(?:\w*target_rpe\w*|targetRpe|rpe_target_effective|rpe_target_planned)['"]?\]?\s*(?:===?|!==?|:|=)\s*(?:9|10)\b""",
             re.IGNORECASE,
         ),
         donos=("api/app/domain/training_safety.py",),
@@ -1873,6 +1882,11 @@ PADROES: tuple[Padrao, ...] = (
             r"|\bform_practice(?:_column)?\}?\s+is\b"
             r"|(?-i:\bNOT)\s+(?:\w+\.)?\{?form_practice(?:_column)?\b"
             r"|\b(?:max|min|sum|avg|bit_or|bit_and)\s*\(\s*(?:distinct\s+)?(?:\w+\.)?\{?form_practice(?:_column)?\b"
+            # `COALESCE/IFNULL(form_practice, 0) = 0` e comparação com parâmetro em predicado (`AND/OR/WHERE/ON/HAVING
+            # form_practice = %s|:x|?`); o `SET form_practice = %s` de UPDATE/INSERT não é predicado e não é acusado.
+            r"|\b(?:coalesce|ifnull)\s*\(\s*(?:\w+\.)?\{?form_practice(?:_column)?\}?\s*,"
+            r"|\b(?:and|or|where|on|having)\s+\(?\s*(?:\w+\.)?\{?form_practice(?:_column)?\}?\s*"
+            r"(?:<>|!=|==?|>=?|<=?)\s*(?:%s|:\w+|\?)"
         ),
         donos=("api/app/domain/form_practice.py",),
         inventario="#196 (§105)",
@@ -2048,6 +2062,36 @@ PADROES: tuple[Padrao, ...] = (
         inventario="M102 (§71)",
     ),
     Padrao(
+        chave="tendencia_janela_paralela",
+        regra="tendência da janela do exercício recalculada fora do dono: média por metade da janela (`sum(x[:half]) / half`) "
+        "ou atribuição de `initial_mean`/`final_mean`",
+        # 2026-11-21 (#239): dono `comparability.window_trend`. Anotação de contrato (`initial_mean: float | None = None`),
+        # chave de dicionário e leitura (`trend.initial_mean`) não casam: o nome vem seguido direto de `=`. O ramo da fatia
+        # exige `half` na fatia, para não acusar média de fatia de outro domínio.
+        regex=re.compile(
+            r"\bsum\([^)\n]*\[[^\]\n]*half[^\]\n]*\]\s*\)\s*/"
+            r"|\b(?:initial|final)_mean\s*=(?!=)"
+            r"|\b(?:initialMean|finalMean)\s*=(?!=)"
+        ),
+        donos=("api/app/intelligence/dashboard/comparability.py",),
+        inventario="#239",
+    ),
+    Padrao(
+        chave="reps_protocolo_tecnica",
+        regra="séries/repetições de protocolo de técnica (GVT 10x10, FST-7 7 séries) definidas ou atreladas ao código da técnica "
+        "à mão fora do dono",
+        # 2026-11-21 (#231): dono `technique_accounting` (`SETS_ONLY_DEFAULT_SETS`, `PROTOCOL_REPS_BY_CODE`,
+        # `GVT_PROTOCOL_REPS`); o espelho `technique-accounting.ts` as LÊ de `motor-constants.generated.json`
+        # (`= RULE.<campo>`), por isso atribuição cujo valor vem de `RULE` não casa. Leituras (`.get(code)`, `[value]`) não casam.
+        regex=re.compile(
+            r"\b(?:GVT_PROTOCOL_REPS|PROTOCOL_REPS_BY_CODE|SETS_ONLY_DEFAULT_SETS)\s*(?::[^=\n]+)?=(?!=)(?!\s*RULE\b)"
+            r"""|["'`](?:gvt|fst7)["'`]\s*(?:\]\s*)?[:?]\s*\d"""
+            r"""|===?\s*["'`](?:gvt|fst7)["'`]\s*\?\s*\d"""
+        ),
+        donos=("api/app/domain/technique_accounting.py",),
+        inventario="#231",
+    ),
+    Padrao(
         chave="status_progressao_paralelo",
         regra="status de progressão (exercício ou grupo) CLASSIFICADO fora do dono: `return`/atribuição de "
         "`ExerciseProgressionStatus.<status>` ou de PROGREDINDO/ESTAVEL/REGREDINDO, e contagem por status "
@@ -2134,11 +2178,16 @@ PADROES: tuple[Padrao, ...] = (
         # Só `DEFAULT_*`/`SHADOW_*` entram: `energy_expenditure.MET_KCAL_CALORIE_MODE = GROSS` é regra própria da MET (sempre
         # bruta), não o padrão do modo, e não casa com o prefixo.
         regex=re.compile(
-            r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*"
-            r"(?:(?:\w+\.)?CalorieMode\.\w+|[\"'](?:active|gross|unknown)[\"'])"
+            r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*(?:[(\\]\s*)?"
+            # `(`/`\` opcionais: Python quebra a linha só com parêntese ou barra invertida.
+            # `CalorieMode.X` (com ou sem `.value`, com qualquer prefixo de módulo), `CalorieMode("x")`, literal
+            # de modo. A varredura é por linha: a atribuição em duas linhas (#200) é acusada porque `junta_continuacao=True`
+            # faz `ocorrencias()` juntar a linha que termina em `=`, `= (` ou `= \` com a seguinte (só a seguinte).
+            r"""(?:(?:\w+\.)*CalorieMode(?:\.\w+|\(\s*["'`]\w+["'`]\s*\))|["'`](?:active|gross|unknown)["'`])"""
         ),
         donos=("api/app/domain/nutrition/activity_energy.py",),
         inventario="NUT-ACABAMENTO (#138)",
+        junta_continuacao=True,
     ),
     Padrao(
         chave="registro_execucoes_sync",
@@ -2558,6 +2607,8 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     # (`domain/progression_status_labels.py`; FE via `motor-constants.generated.json`).
     # Contagem única de progressão (2026-11-01, C12): nasce vazia.
     "status_progressao_paralelo": {},
+    "tendencia_janela_paralela": {},  # #239 (2026-11-21): nasce vazia
+    "reps_protocolo_tecnica": {},  # #231 (2026-11-21): nasce vazia
     # Issue #188, etapa 3: a tendência de volume ("Estável") sai pronta do dono; a
     # entrada de `VolumeGrupamentosClient.tsx` caiu (falha até a tarefa de frontend).
     "rotulo_progressao": {},
@@ -2790,9 +2841,15 @@ def ocorrencias(padrao: Padrao, raiz: Path = RAIZ) -> dict[str, list[tuple[int, 
         if not _varre(padrao, rel, linguagem):
             continue
         regex = padrao.regex_md if linguagem == "md" and padrao.regex_md is not None else padrao.regex
-        for numero, linha in enumerate(_linhas_de_codigo(caminho, linguagem), start=1):
+        linhas = _linhas_de_codigo(caminho, linguagem)
+        for numero, linha in enumerate(linhas, start=1):
             for _ in regex.finditer(linha):
                 achados.setdefault(rel, []).append((numero, linha.strip()[:120]))
+            # Só quando a linha termina em `=`, `= (` ou `= \`: aí a linha sozinha nunca casa, então não há contagem dupla.
+            if padrao.junta_continuacao and numero < len(linhas) and re.search(r"=\s*[(\\]?$", linha.rstrip()):
+                for m in regex.finditer(f"{linha}\n{linhas[numero]}"):
+                    if m.start() < len(linha):
+                        achados.setdefault(rel, []).append((numero, linha.strip()[:120]))
     return achados
 
 
@@ -2854,7 +2911,9 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "AND e.form_practice IN (0)", "AND e.form_practice NOT IN (1)", "WHERE e.form_practice IS NOT TRUE",
          "AND NOT e.form_practice", "WHERE NOT form_practice", 'f"AND e.{FORM_PRACTICE_COLUMN} = 0"',
          'f"SELECT MAX({FORM_PRACTICE_COLUMN}) AS marked FROM exercises"', "SELECT MAX(e.form_practice) AS m",
-         "BIT_OR(form_practice)", "SUM(e.form_practice) = 0", "if row.form_practice == 1:"),
+         "BIT_OR(form_practice)", "SUM(e.form_practice) = 0", "if row.form_practice == 1:",
+         "AND COALESCE(form_practice, 0) = 0", "AND COALESCE(e.form_practice, 0) = 0", "WHERE IFNULL(e.form_practice,0)=0",
+         "AND e.form_practice = %s", "WHERE form_practice = :marcado", "AND e.form_practice = ?"),
         ("sql_counts_for_progression('e')", "e.form_practice AS form_practice", "form_practice = %s",
          "form_practice: bool = False", "if counts_for_progression(row.get('form_practice')):",
          "CAST(e.form_practice AS CHAR),", "GROUP BY e.id, e.form_practice, e.original_name",
@@ -3484,10 +3543,17 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("MATCH_MIN_SCORE = 0.6", "MATCH_AUTO_ACCEPT_SCORE: Final[float] = 0.85", "const SEARCH_CANDIDATE_POOL = 60;",
          "PORTION_AMOUNT_MAX: Final[float] = 2000.0", "QUERY_COVERAGE_WEIGHT = (0.3)",
          "export const SEARCH_RESULT_LIMIT_MAX = 50;", "BRAND_MIN_CHARS = 3", "LIST_PAGE_MAX: Final[int] = 100",
-         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'"),
-        ("if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
+         "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'",
+         'LETTERS: Final[tuple[str, ...]] = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")', "LETTERS = list(string.ascii_uppercase)",
+         "LETTERS = string.ascii_uppercase", "const LETTERS = Array.from('ABC');", 'LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"',
+         "LIST_OFFSET_MAX = 10000", "BRAND_TOKENS_MAX: Final[int] = 5", "OTHER_BUCKET_LABEL = 'Outros'",
+         'DEFAULT_LIST_BUCKET: Final[str] = "A"', "LIST_BUCKET_LABELS = {", "const LIST_BUCKET_LABELS = new Map(["),
+        ("le=food_text.LIST_OFFSET_MAX", "food_text.DEFAULT_LIST_BUCKET", "dict(food_text.LIST_BUCKET_LABELS)",
+         "rotulo = food_text.OTHER_BUCKET_LABEL", "if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
          "assert ft.MATCH_MIN_SCORE == 0.6", "limite = SEARCH_RESULT_LIMIT_MAX", "amount <= catalog.PORTION_AMOUNT_MAX",
-         "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]"),
+         "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]",
+         "letra = food_text.LETTERS[0]", "ok = codigo in food_text.LETTERS", "tamanho = len(food_text.LETTERS)",
+         "LETTERS == tuple(sorted(x))"),
     ),
     "nota_matching": (
         ("if match.score >= 0.6:", "aceita = nota > .85", "item.score >= 0.85 ? 'ok' : 'x'", 'if m["score"] < 0.6:'),
@@ -3622,10 +3688,17 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "padrao_modo_caloria": (
         ("DEFAULT_REPORTED_CALORIE_MODE: Final[CalorieMode] = CalorieMode.ACTIVE", "DEFAULT_WATCH_CALORIE_MODE = ae.CalorieMode.GROSS",
-         'DEFAULT_CALORIE_MODE = "active"', "SHADOW_CALORIE_MODE = 'gross'", "const DEFAULT_WATCH_CALORIE_MODE = 'active';"),
+         'DEFAULT_CALORIE_MODE = "active"', "SHADOW_CALORIE_MODE = 'gross'", "const DEFAULT_WATCH_CALORIE_MODE = 'active';",
+         # #200: atribuição quebrada em duas linhas (o valor na linha seguinte) e `CalorieMode.X.value`
+         "DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] =\n    CalorieMode.ACTIVE", "DEFAULT_CALORIE_MODE =\n    'active'",
+         "DEFAULT_CALORIE_MODE = CalorieMode.ACTIVE.value", "SHADOW_CALORIE_MODE = ae.CalorieMode.GROSS.value",
+         "DEFAULT_CALORIE_MODE: str = app.domain.nutrition.activity_energy.CalorieMode.ACTIVE.value",
+         'DEFAULT_CALORIE_MODE = CalorieMode("active")', "const SHADOW_CALORIE_MODE = `gross`;"),
         ("DEFAULT_WATCH_CALORIE_MODE: Final[CalorieMode] = DEFAULT_REPORTED_CALORIE_MODE", "DEFAULT_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value",
          "MET_KCAL_CALORIE_MODE: Final[CalorieMode] = activity_energy.CalorieMode.GROSS", "calorie_mode: Any = DEFAULT_TDEE_CALORIE_MODE",
-         "SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value"),
+         "SHADOW_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value", "DEFAULT_CALORIE_MODE = DEFAULT_WATCH_CALORIE_MODE.value  # ok",
+         "DEFAULT_CALORIE_MODE =\n    DEFAULT_WATCH_CALORIE_MODE.value", "if modo == CalorieMode.ACTIVE.value:", "ok = DEFAULT_CALORIE_MODE == CalorieMode.ACTIVE.value",
+         "MET_KCAL_CALORIE_MODE: Final[CalorieMode] = ae.CalorieMode.GROSS.value"),
     ),
     "registro_execucoes_sync": (
         ("SYNC_RUN_RETENTION_DAYS: Final[int] = 120", "SYNC_RUN_RETENTION_DAYS = 90",
@@ -3794,6 +3867,19 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("lastSet?.reps ?? 10", "suggested?.suggested_load_kg ?? 20", "set.weight_kg ?? 20"),
         ("lastSet?.reps ?? SET_LOGGER_FALLBACK_REPS", "set.reps ?? 0", "x.weight_kg ?? null", "anchorRpe ?? 10"),
     ),
+    "tendencia_janela_paralela": (
+        ("initial = sum(valid[:half]) / half", "final = sum(valid[-half:]) / half", "initial_mean = 4.0",
+         "final_mean = sum(xs) / n", "const initialMean = 3;", "finalMean = calc()"),
+        ("initial_mean: float | None = None", '"initial_mean": trend.initial_mean,', "x = trend.initial_mean",
+         "if initial_mean == 0:", "media = sum(xs[:3]) / 3", "const m = t.finalMean;"),
+    ),
+    "reps_protocolo_tecnica": (
+        ("GVT_PROTOCOL_REPS = 10", "SETS_ONLY_DEFAULT_SETS: Final[Mapping[str, int]] = {'fst7': 7}",
+         'PROTOCOL_REPS_BY_CODE = {"gvt": 10}', "const reps = value === 'gvt' ? 10 : 7;", '"gvt": 10,', "'fst7': 7"),
+        ("SETS_ONLY_DEFAULT_SETS.gvt", "SETS_ONLY_DEFAULT_SETS[value]", "PROTOCOL_REPS_BY_CODE.get(code)",
+         "export const SETS_ONLY_DEFAULT_SETS: Readonly<Record<string, number>> = RULE.sets_only_default_sets;",
+         "if (code === 'gvt') return x;", "GVT_PROTOCOL_REPS == 10"),
+    ),
     "status_progressao_paralelo": (
         ("return ExerciseProgressionStatus.PROGRESSING", "status = ExerciseProgressionStatus.REGRESSING",
          "return PROGREDINDO", "status = ESTAVEL", "const n = items.filter((i) => i.status === 'PROGRESSING').length;"),
@@ -3948,6 +4034,39 @@ def test_regex_pega_o_padrao_e_nao_pega_o_vizinho(padrao: Padrao):
         assert padrao.regex.search(exemplo), f"[{padrao.chave}] deveria casar: {exemplo!r}"
     for exemplo in negativos:
         assert not padrao.regex.search(exemplo), f"[{padrao.chave}] não deveria casar: {exemplo!r}"
+
+
+def test_varredura_acusa_atribuicao_do_modo_em_duas_linhas(tmp_path: Path):
+    """#200: a varredura é por linha; a quebra após `=` tem de ser acusada na linha da atribuição."""
+    padrao = PADROES_POR_CHAVE["padrao_modo_caloria"]
+    codigo = tmp_path / "api/app/tela.py"
+    codigo.parent.mkdir(parents=True)
+    codigo.write_text(
+        "DEFAULT_CALORIE_MODE =\n    'active'\n"
+        "DEFAULT_WATCH_CALORIE_MODE = 'gross'\n"
+        "DEFAULT_CALORIE_MODE =\n    DEFAULT_WATCH_CALORIE_MODE.value\n",
+        encoding="utf-8",
+    )
+    assert [n for n, _ in ocorrencias(padrao, tmp_path)["api/app/tela.py"]] == [1, 3]
+
+
+def test_varredura_acusa_atribuicao_do_modo_em_duas_linhas_python_e_ts(tmp_path: Path):
+    """Python quebra com parêntese ou barra invertida; TS termina em `=`. Limite: só a linha seguinte é juntada."""
+    padrao = PADROES_POR_CHAVE["padrao_modo_caloria"]
+    py = tmp_path / "api/app/tela.py"
+    py.parent.mkdir(parents=True)
+    py.write_text(
+        "DEFAULT_CALORIE_MODE: Final[str] = (\n    'active'\n)\n"
+        "SHADOW_CALORIE_MODE = \\\n    CalorieMode.ACTIVE\n"
+        "DEFAULT_CALORIE_MODE = (\n    DEFAULT_WATCH_CALORIE_MODE.value\n)\n",
+        encoding="utf-8",
+    )
+    ts = tmp_path / "frontend/src/lib/x.ts"
+    ts.parent.mkdir(parents=True)
+    ts.write_text("const DEFAULT_CALORIE_MODE =\n  'active';\n", encoding="utf-8")
+    achados = ocorrencias(padrao, tmp_path)
+    assert [n for n, _ in achados["api/app/tela.py"]] == [1, 4]
+    assert [n for n, _ in achados["frontend/src/lib/x.ts"]] == [1]
 
 
 def test_dono_e_ignorado_e_copia_e_contada(tmp_path: Path):

@@ -35,7 +35,8 @@ import { FORM_PRACTICE_LABEL, isFormPracticeRow } from '@/lib/form-practice';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import { exerciseProgressHref, fatigueContextLabel, statusReasonsText } from '@/lib/exercise-progress';
 import { INTENSITY_STATUS_COLORS, INTENSITY_STATUS_LABELS } from '@/lib/intensity-status';
-import { buildProgressionChart, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
+import { buildProgressionChart, formPracticeSessionsNote, isSessionE1rmReliable, sessionLoad, sessionRepsText } from '@/lib/progression-chart';
+import { rpeExpectedCountsText } from '@/lib/rpe-expected-vs-actual';
 import { strengthPanelRows, topSetCaption, topSetText } from '@/lib/strength-panel';
 import {
   ALL_GOALS,
@@ -500,6 +501,11 @@ function ExercicioSection() {
                           .map((p) => (
                             <ReferenceLine key={`d-${p.xKey}`} x={p.xKey} stroke={CHART_COLORS.compare} strokeDasharray="4 4" />
                           ))}
+                        {chart.points
+                          .filter((p) => p.formPractice)
+                          .map((p) => (
+                            <ReferenceLine key={`fp-${p.xKey}`} x={p.xKey} stroke={CHART_COLORS.compare} strokeDasharray="2 4" />
+                          ))}
                         <Line type="monotone" dataKey="e1rm" name="1RM estimado" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} connectNulls />
                         <Line type="monotone" dataKey="carga" name="Carga de topo" stroke={CHART_COLORS.compare} strokeWidth={2} dot={false} connectNulls />
                         {chart.points.some((p) => p.e1rmForca != null) ? (
@@ -520,9 +526,7 @@ function ExercicioSection() {
                       {(chart.deloadSessions ?? 0) > 0
                         ? `${plural(chart.deloadSessions ?? 0, 'sessão', 'sessões')} de deload marcada(s) (linha tracejada), fora da linha do 1RM estimado. `
                         : ''}
-                      {(chart.formPracticeSessions ?? 0) > 0
-                        ? `${plural(chart.formPracticeSessions ?? 0, 'sessão', 'sessões')} de ${FORM_PRACTICE_LABEL.toLowerCase()} marcada(s), fora da linha do 1RM estimado.`
-                        : ''}
+                      {formPracticeSessionsNote(chart.formPracticeSessions)}
                     </p>
                   </ListBlock>
                 </ListGroup>
@@ -581,6 +585,11 @@ function SessaoDetalhe({ item, defaultGoal }: { item: ProgressionSessionItem; de
         ) : (
           <p className={styles.body}>-</p>
         )}
+        {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels) ? (
+          <p className={styles.meta}>
+            RPE vs esperado: {rpeExpectedCountsText(item.rpe_vs_expected_counts, item.rpe_vs_expected_labels)}
+          </p>
+        ) : null}
         {fatigueContextLabel(item.fatigue_context) ? (
           <p className={styles.meta}>{fatigueContextLabel(item.fatigue_context)}</p>
         ) : null}

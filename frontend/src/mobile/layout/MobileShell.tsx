@@ -20,9 +20,10 @@ import { OfflineBanner } from '../ui';
 import { useCurrentUser } from '../use-current-user';
 import { DesktopOnlyScreen } from '../screens/DesktopOnlyScreen';
 import { resolveMobileScreen } from '../screens/registry';
+import { ScreenErrorBoundary } from '../screens/ScreenErrorBoundary';
 import { hasOpenView } from '../screens/telas/view-stack';
 import { useKeyboardOpen } from './keyboard';
-import { marcarNavegacaoInterna, scrollMemoryKey, voltarDoEditorNova } from './nav-active';
+import { acaoVoltarCabecalho, temOrigemInterna, registrarRotaAtual, scrollMemoryKey } from './nav-active';
 import { MoreSheet } from './MoreSheet';
 import {
   MORE_TAB,
@@ -76,10 +77,9 @@ function Shell({ children }: { children: ReactNode }) {
   }, [pathname, search, closeMore]);
 
   // Primeira rota = abertura direta; as seguintes têm origem a que o voltar pode retornar.
-  const primeiraRota = useRef(true);
+  // Idempotente por rota: o efeito em dobro do StrictMode não vira "navegação interna".
   useEffect(() => {
-    if (primeiraRota.current) primeiraRota.current = false;
-    else marcarNavegacaoInterna();
+    registrarRotaAtual(`${pathname ?? ''}?${search ?? ''}`);
   }, [pathname, search]);
 
   // Voltar/gesto do navegador: o navegador restaura a rolagem sozinho; a posicao
@@ -167,10 +167,14 @@ function Shell({ children }: { children: ReactNode }) {
                 className={styles.back}
                 aria-label={`Voltar para ${back.label}`}
                 onClick={() => {
-                  const novaUrl = voltarDoEditorNova(pathname, search);
-                  if (hasOpenView()) router.back();
-                  else if (novaUrl === 'back') router.back();
-                  else if (novaUrl === 'replace') router.replace('/nutricao/');
+                  const acao = acaoVoltarCabecalho({
+                    pathname,
+                    search,
+                    origemInterna: temOrigemInterna(),
+                    temVisaoAberta: hasOpenView(),
+                  });
+                  if (acao === 'back') router.back();
+                  else if (acao === 'replace-nutricao') router.replace('/nutricao/');
                   else openMore();
                 }}
               >
@@ -204,7 +208,15 @@ function Shell({ children }: { children: ReactNode }) {
       <OfflineBanner />
 
       <main id="mobile-main" tabIndex={-1} className={styles.main}>
-        {desktopOnly ? <DesktopOnlyScreen /> : Screen ? <Screen /> : children}
+        {desktopOnly ? (
+          <DesktopOnlyScreen />
+        ) : Screen ? (
+          <ScreenErrorBoundary resetKey={`${pathname ?? ''}?${search}`}>
+            <Screen />
+          </ScreenErrorBoundary>
+        ) : (
+          children
+        )}
       </main>
 
       <nav

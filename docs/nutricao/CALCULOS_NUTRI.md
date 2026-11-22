@@ -157,6 +157,32 @@ Dono: `api/app/domain/nutrition/carb_cycling.py`. Vale quando o plano tem `cycle
 - **Gordura**: com `keep_fat_share=True`, a kcal final é a kcal do dia mais 4 × delta de carbo. A gordura recebe a fração efetiva do dia sobre essa kcal final, e o carbo fica com o resto (`_day_with_fat_share`).
 - **Dias do usuário**: o mapa é `"0"` a `"6"`, com `"0"` = segunda-feira. O código usa `day.weekday()`. `plan.cycle_days` confirma a convenção.
 
+#### 3.6.1 Compensar com gordura (issue #242)
+
+Dono: `carb_cycling._day_with_fat_compensation`, chamada por `apply_cycle_over_base(policy=FAT_COMPENSATION)`. Política `fat_compensation` (rótulo "Compensar com gordura"); o padrão `vary_kcal` segue a conta acima, sem mudança. ADR 0029.
+
+- Energia de referência: Atwater do alvo do dia SEM ciclo (`kcal_from_macros` de proteína, carbo e gordura pré-ciclo). Proteína fica como está.
+- Carbo do dia: carbo do alvo pré-ciclo + `base.carb_g × (multiplicador do tipo − 1)`, o mesmo delta do modo padrão.
+- Gordura: `(energia − proteína × 4 − carbo × 4) ÷ 9`. Sem arredondamento no motor; a kcal do dia é recalculada por Atwater.
+- Resultado: kcal e proteína do dia são as do alvo pré-ciclo. O que o carbo ganha ou perde em energia (4 kcal/g) a gordura devolve ou recebe em gramas (9 kcal/g).
+
+Exemplo medido no motor (alvo com gramas manuais de 160 g P / 250 g C / 70 g G = 2.270 kcal; semana de 2 dias altos, 2 normais e 3 baixos, com escala 7 ÷ 6,75 = 1,037):
+
+| Tipo do dia | Carbo | Gordura | Kcal | Proteína |
+|---|---|---|---|---|
+| Alto (×1,296) | 324,1 g | 37,1 g | 2.270 | 160 g |
+| Normal (×1,037) | 259,3 g | 65,9 g | 2.270 | 160 g |
+| Baixo (×0,778) | 194,4 g | 94,7 g | 2.270 | 160 g |
+
+A composição da semana não vem do registro da medição: é a que reproduz os números (2 × 1,25 + 2 × 1,0 + 3 × 0,75 = 6,75). Em relação ao alvo (250 g C / 70 g G): nos dias altos o carbo sobe 74,1 g e a gordura cai 32,9 g; nos baixos o carbo cai 55,6 g e a gordura sobe 24,7 g, sempre com a energia de 2.270 kcal.
+
+Inviabilidade (o dia sai SEM ciclo, com a limitação; nunca há recorte silencioso):
+
+- `fat_compensation_infeasible`: carbo ou gordura finais negativos;
+- `fat_compensation_target_not_closed`: alvo que não fecha por Atwater, ou com macro nulo.
+
+No plano, o bloqueio dos macros finais de cada tipo de dia (`plan.check_cycle_floors` → `manual_targets.check_manual_targets`) impede salvar e publicar; a faixa da estratégia vira aviso.
+
 ### 3.7 Macros
 
 Dono: `api/app/domain/nutrition/macros.py`.

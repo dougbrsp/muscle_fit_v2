@@ -1,5 +1,6 @@
 'use client';
 
+import { planPolicyLabel } from '@/lib/nutrition-cycle-policy';
 import { Badge, Card, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { formatNumberOrDash } from '@/lib/format';
 import {
@@ -100,6 +101,8 @@ export function PlanSummary({
       value: WEEKDAY_OPTIONS.map((dia) => `${dia.label.slice(0, 3)}: ${nutritionLabel(DAY_KIND_OPTIONS, dias[dia.value]) ?? '-'}`).join(' · '),
     });
   }
+  const politica = planPolicyLabel(plan);
+  if (politica) linhas.push({ label: 'Política do ciclo', value: politica });
   linhas.push(
     { label: 'Fórmula da TMB', value: nutritionLabel(BMR_FORMULA_OPTIONS, plan.bmr_formula) ?? '-' },
     { label: 'Gasto do treino', value: nutritionLabel(TDEE_MODE_OPTIONS, plan.tdee_mode) ?? '-' },

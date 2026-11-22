@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invalidateFoodQueries } from '@/lib/nutrition-food-queries';
 import { FoodsAlphabet } from './FoodsAlphabet';
 
 const listFoodsByLetter = vi.hoisted(() => vi.fn());
@@ -14,6 +15,7 @@ vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
 
 let root: Root | null = null;
 let host: HTMLElement;
+let client: QueryClient;
 
 const LETTERS = ['A', 'B', 'outros'];
 const food = (id: number, name: string, brand: string | null = null) => ({ id, name, brand, category: null });
@@ -62,7 +64,7 @@ afterEach(async () => {
 });
 
 async function render(onSelect = vi.fn()) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(host);
   await act(async () => {
     root!.render(
@@ -90,6 +92,27 @@ describe('FoodsAlphabet', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
   });
 
+  it('primeira carga vai sem letra, usa o balde devolvido e mostra o rótulo da API (fallback: o código)', async () => {
+    listFoodsByLetter.mockResolvedValue({ ...page('B', [food(1, 'Banana')]), letter_labels: { outros: 'Outros (números e símbolos)' } });
+    await render();
+    await flush();
+    expect(listFoodsByLetter).toHaveBeenCalledTimes(1);
+    expect(listFoodsByLetter).toHaveBeenCalledWith(undefined, 0);
+    expect(tab('B').getAttribute('aria-pressed')).toBe('true');
+    expect(tab('B').hasAttribute('aria-current')).toBe(false);
+    expect(tabLabels()).toEqual(['A', 'B', 'Outros (números e símbolos)']);
+  });
+
+  it('invalidateFoodQueries recarrega a lista por letra (#208)', async () => {
+    listFoodsByLetter.mockResolvedValueOnce(page('A', [food(1, 'Aveia')])).mockResolvedValue(page('A', [food(1, 'Aveia'), food(2, 'Arroz')]));
+    await render();
+    await flush();
+    expect(host.textContent).not.toContain('Arroz');
+    await act(async () => { await invalidateFoodQueries(client); });
+    await flush();
+    expect(host.textContent).toContain('Arroz');
+  });
+
   it('resposta sem items/letters não derruba a seção', async () => {
     listFoodsByLetter.mockResolvedValue({ role: 'regular' });
     await render();
@@ -99,7 +122,7 @@ describe('FoodsAlphabet', () => {
   });
 
   it('troca de letra e mostra o estado vazio', async () => {
-    listFoodsByLetter.mockImplementation(async (l: string) => (l === 'A' ? page('A', [food(1, 'Aveia')]) : page(l, [])));
+    listFoodsByLetter.mockImplementation(async (l: string) => (l === 'B' ? page('B', []) : page('A', [food(1, 'Aveia')])));
     await render();
     await flush();
     await act(async () => tab('B').click());
@@ -119,7 +142,7 @@ describe('FoodsAlphabet', () => {
       Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Carregar mais')!.click();
     });
     await flush();
-    expect(listFoodsByLetter).toHaveBeenLastCalledWith('A', 2);
+    expect(listFoodsByLetter).toHaveBeenLastCalledWith(undefined, 2);
     expect(['Aveia', 'Arroz', 'Atum'].every((n) => host.textContent?.includes(n))).toBe(true);
     expect(host.textContent).not.toContain('Carregar mais');
   });
@@ -131,7 +154,7 @@ describe('FoodsAlphabet', () => {
   it('erro ao trocar de letra mantém as abas, mostra o erro e não mostra itens da anterior; tentar de novo recupera', async () => {
     let falha = true;
     listFoodsByLetter.mockImplementation(async (l: string) => {
-      if (l === 'A') return page('A', [food(1, 'Aveia')]);
+      if (l !== 'B') return page('A', [food(1, 'Aveia')]);
       if (falha) throw new Error('boom');
       return page('B', [food(2, 'Banana')]);
     });

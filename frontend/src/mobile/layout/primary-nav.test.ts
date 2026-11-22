@@ -22,7 +22,6 @@ import {
 } from './primary-nav';
 import {
   isNavGroupItemActive,
-  marcarNavegacaoInterna,
   scrollMemoryKey,
   voltarDoEditorNova,
 } from './nav-active';
@@ -344,12 +343,11 @@ describe('auxiliares', () => {
 
 describe('voltar do cabeçalho com o editor de refeição dirigido por ?nova=1', () => {
   it('só vale em /nutricao com nova=1', () => {
-    expect(voltarDoEditorNova('/nutricao/', '')).toBeNull();
-    expect(voltarDoEditorNova('/treinos/', 'nova=1')).toBeNull();
+    expect(voltarDoEditorNova('/nutricao/', '', true)).toBeNull();
+    expect(voltarDoEditorNova('/treinos/', 'nova=1', true)).toBeNull();
   });
   it('sem origem interna fecha por replace; com origem volta no histórico', () => {
-    expect(voltarDoEditorNova('/nutricao/', 'nova=1')).toBe('replace');
-    marcarNavegacaoInterna();
-    expect(voltarDoEditorNova('/nutricao/', 'nova=1')).toBe('back');
+    expect(voltarDoEditorNova('/nutricao/', 'nova=1', false)).toBe('replace');
+    expect(voltarDoEditorNova('/nutricao/', 'nova=1', true)).toBe('back');
   });
 });

@@ -23,7 +23,7 @@ import { fetchWithSnapshot, readSnapshot } from '@/lib/offline/snapshots';
 import { opQueue } from '@/lib/offline/queue';
 import { useOpQueue, useOpStatus } from '@/lib/offline/use-op-queue';
 import { initialRpe } from '@/lib/workout-mode-execution-view';
-import { postSetOrQueue } from './offline-set-post';
+import { postSetOrQueue, type SetPostResult } from './offline-set-post';
 import styles from './workout-mode.module.css';
 import {
   buildMuscleMapItems,
@@ -52,7 +52,18 @@ import {
 } from '@/lib/workout-mode-types';
 import { fetchWorkoutAiResult } from '@/lib/workout-mode-ai';
 import { loadStoredSession, restoreBriefedKeys, saveStoredSession } from '@/lib/workout-mode-storage';
-import { toggleFormPracticePending } from '@/lib/form-practice';
+import { exerciseKeySlot } from '@/lib/workout-mode-exercise-key';
+import {
+  type FormPracticeServerState,
+  exerciseFormPracticeField,
+  formPracticeCreateField,
+  formPracticeStateFromSetResponse,
+  nextServerStateOnCreated,
+  reconcileMarkAfterResponse,
+  removeFormPracticePending,
+  resolveFormPracticePlanExerciseId,
+  toggleFormPracticePending,
+} from '@/lib/form-practice';
 import {
   feelerSetLoad,
   techniqueApplicationLoad,
@@ -83,7 +94,7 @@ import {
   hasAdvancedFlow as computeHasAdvancedFlow,
   remainingTechniqueApplications,
 } from '@/lib/workout-mode-advanced-stage';
-import { selectPreviousSessionRecord } from '@/lib/workout-mode-previous-session';
+import { previousSessionLabels, selectPreviousSessionRecord } from '@/lib/workout-mode-previous-session';
 import { createSubmitLatch } from '@/lib/submit-latch';
 import { selectPreviousSessionWorkingSets } from '@/lib/workout-mode-previous-session-sets';
 import {
@@ -105,8 +116,13 @@ import {
   resolveSessionPairLimits,
   shouldSwapAsOverride,
   syntheticExtraToPlanExercise,
+  withContinuationExerciseId,
+  queuedContinuationExerciseIds,
+  withQueueConfirmedContinuationIds,
   type AdvancedExerciseCounters,
   type AdvancedSubStage,
+  SUGGESTION_FAILED_MESSAGE,
+  targetsWhenSuggestionFails,
 } from '@/lib/workout-mode-plan-flow';
 import {
   isExtraRepsTechnique,
@@ -134,7 +150,7 @@ import { EquipmentSubstituteModal, type EquipmentSubstituteChoice } from './Equi
 import { FinishExerciseModal } from './FinishExerciseModal';
 import { FreeformScreen } from './FreeformScreen';
 import { MuscleMapDisclosure } from './MuscleMapDisclosure';
-import { LastExerciseNotice, NextExercisePreviewCard } from './NextExercisePreviewCard';
+import { LastExerciseNotice, NextExercisePreviewCard, buildRestFinishWorkoutAction } from './NextExercisePreviewCard';
 import { RemainingExercisesList, type RemainingExerciseRow } from './RemainingExercisesList';
 import { ExerciseBriefingScreen, resolveFormPracticeState } from './ExerciseBriefingScreen';
 import { RestTimerHero } from './RestTimer';
@@ -479,8 +495,36 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     Object.fromEntries(Object.entries(session.advanced_stage_progress || {}).map(([k, v]) => [Number(k), v])),
   );
   const [midExerciseExtras, setMidExerciseExtras] = useState<MidExerciseExtra[]>(session.mid_exercise_extras || []);
+  const exerciseKeysRef = useRef(new Map<string, string>(Object.entries(session.exercise_client_keys ?? {})));
   // #196: marcações de técnica ainda sem exercício no servidor (ids ORIGINAIS da ficha).
   const [formPracticeIds, setFormPracticeIds] = useState<number[]>(session.form_practice_plan_exercise_ids || []);
+  // Espelho síncrono: callbacks assíncronos (persistSession) não regravam uma lista antiga.
+  const formPracticeIdsRef = useRef(formPracticeIds);
+  function setFormPracticePending(next: number[]) {
+    formPracticeIdsRef.current = next;
+    setFormPracticeIds(next);
+    // Só este campo, sobre o salvo mais recente: a confirmação assíncrona da criação não desfaz o resto.
+    const stored = loadStoredSession();
+    if (!stored || stored.session_id !== session.session_id) {
+      persistSession({ form_practice_plan_exercise_ids: next });
+    } else if (JSON.stringify(stored.form_practice_plan_exercise_ids ?? []) !== JSON.stringify(next)) {
+      saveStoredSession({ ...stored, form_practice_plan_exercise_ids: next });
+    }
+  }
+  // #213: último estado da marca devolvido pelo servidor, por item da ficha (não persistido).
+  const [formPracticeServer, setFormPracticeServer] = useState<Record<number, FormPracticeServerState>>({});
+  // Escolha do usuário para a continuação ainda não criada, por id sintético dela (não afeta o exercício original).
+  const [continuationChoices, setContinuationChoices] = useState<Record<number, boolean>>({});
+  // Id do exercício criado (real ou local da fila) por id atual da ficha, válido antes de a linha local da atividade existir.
+  const [createdExerciseIds, setCreatedExerciseIds] = useState<Record<number, number>>({});
+  function dropContinuationChoice(key: number | null | undefined) {
+    if (key == null) return;
+    setContinuationChoices((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }
   // Modo Intensivo (FST-7): estado do bloco por `workout_plan_exercise_id`
   // (`workout-mode-intensive.ts`). Espelho síncrono no ref: as respostas do
   // POST chegam depois do render e gravam sobre o valor mais novo.
@@ -657,6 +701,23 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncedOpsCount]);
   const plan = planQuery.data;
+  // #225: a fila pode confirmar a criação da continuação sozinha; grava o id real dela assim que ele existe.
+  useEffect(() => {
+    const keyOf = (localId: number) =>
+      exerciseKeysRef.current.get(exerciseKeySlot({ sessionId: session.session_id, planItemId: localId, originalPlanItemId: null, exerciseName: '' }));
+    setMidExerciseExtras((prev) => withQueueConfirmedContinuationIds(prev, opQueueSnapshot.ops, keyOf));
+    persistContinuationIds((extras) => withQueueConfirmedContinuationIds(extras, opQueueSnapshot.ops, keyOf));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opQueueSnapshot.ops]);
+  // #225 offline: continuação com a criação ainda na fila resolve a linha pelo id local da op.
+  const queuedContinuationIds = useMemo(
+    () =>
+      queuedContinuationExerciseIds(midExerciseExtras, opQueueSnapshot.ops, (localId) =>
+        exerciseKeysRef.current.get(exerciseKeySlot({ sessionId: session.session_id, planItemId: localId, originalPlanItemId: null, exerciseName: '' })),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [midExerciseExtras, opQueueSnapshot.ops],
+  );
 
   // Modo avançado da sessão: desde o PR B4 da Evolução ZEPP decidido pela
   // ficha ao iniciar (`resolveWorkoutModeFromPlan`, em `ModeSelectScreen`) e
@@ -675,7 +736,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       equipment_overrides: overrides,
       warmup_state: warmup,
       mid_exercise_extras: midExerciseExtras,
-      form_practice_plan_exercise_ids: formPracticeIds,
+      form_practice_plan_exercise_ids: formPracticeIdsRef.current,
       advanced_stage_progress: advancedProgress,
       briefed_keys: Array.from(briefedKeys),
       rest_timer: restTimerRef.current,
@@ -683,6 +744,15 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       exercise_client_keys: Object.fromEntries(exerciseKeysRef.current),
       ...next,
     });
+  }
+
+  // Grava SÓ `mid_exercise_extras` sobre a sessão salva mais recente, e só se algo mudou (#225).
+  function persistContinuationIds(update: (extras: MidExerciseExtra[]) => MidExerciseExtra[]) {
+    const stored = loadStoredSession();
+    if (!stored || stored.session_id !== session.session_id) return;
+    const before = stored.mid_exercise_extras ?? [];
+    const after = update(before);
+    if (after !== before) saveStoredSession({ ...stored, mid_exercise_extras: after });
   }
 
   // Grava SÓ o estado dos blocos do Modo Intensivo sobre a sessão salva (mesmo
@@ -875,7 +945,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       loggedExercises: activity?.exercises || [],
     });
     const base: ProgressItem[] = orderedExercises.map((planExercise) => {
-      const loggedRow = findLoggedExerciseForPlanItem(activity, planExercise);
+      const loggedRow = findLoggedExerciseForPlanItem(activity, planExercise, midExerciseExtras, queuedContinuationIds);
       // `loggedCount` conta só séries de TRABALHO e aplicações de técnica
       // gravadas no backend. Aquecimento/ajuste (`warmup`/`feeler`) também
       // são gravados, mas NÃO entram aqui — mantém "Série N de S", o alvo de
@@ -922,7 +992,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     });
     return reorderPendingBySkip(base, (item) => item.planExercise.workout_plan_exercise_id ?? -1, skippedIds, priorityId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedExercises, activity, skippedIds, priorityId, JSON.stringify(overrideAdjustedSetsCount), advancedMode, advancedProgress, techniqueCatalogItems, intensiveBlocks]);
+  }, [orderedExercises, activity, midExerciseExtras, queuedContinuationIds, skippedIds, priorityId, JSON.stringify(overrideAdjustedSetsCount), advancedMode, advancedProgress, techniqueCatalogItems, intensiveBlocks]);
 
   const currentIndex = progress.findIndex((item) => !item.done);
   const current = currentIndex >= 0 ? progress[currentIndex] : null;
@@ -1052,20 +1122,41 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   const currentItemGoal = current?.planExercise.training_goal ?? null;
   const currentPlanItemId = originalPlanItemId(currentWorkoutPlanExerciseId, midExerciseExtras);
   // #196: marcado/travado do exercício atual (linha do servidor vence a marcação pendente).
+  const currentExerciseId =
+    current?.loggedRow?.id ??
+    (currentWorkoutPlanExerciseId != null ? createdExerciseIds[currentWorkoutPlanExerciseId] : undefined) ??
+    null;
+  const formPracticeLatestRef = useRef<{ itemId: number | null; marked: boolean; locked: boolean } | null>(null);
   const formPractice = resolveFormPracticeState({
     planExerciseId: currentWorkoutPlanExerciseId,
+    currentExerciseId,
     midExerciseExtras,
     loggedRow: current?.loggedRow,
     loggedExercises: activity?.exercises,
     pendingIds: formPracticeIds,
+    serverStates: formPracticeServer,
+    continuationChoices,
   });
+  formPracticeLatestRef.current = formPractice;
   function toggleFormPractice() {
-    if (formPractice.locked || formPractice.itemId == null) return;
-    const next =
-      toggleFormPracticePending({ form_practice_plan_exercise_ids: formPracticeIds }, formPractice.itemId)
-        .form_practice_plan_exercise_ids ?? [];
-    setFormPracticeIds(next);
-    persistSession({ form_practice_plan_exercise_ids: next });
+    const itemId = formPractice.itemId;
+    if (formPractice.locked || itemId == null) return;
+    const loggedId = currentExerciseId;
+    if (formPractice.onServer && loggedId != null) {
+      // Exercício já existe: a escolha vai no próximo POST de série (`exercise_form_practice`).
+      setFormPracticeServer((prev) => ({ ...prev, [itemId]: { exerciseId: loggedId, marked: !formPractice.marked, locked: false } }));
+      return;
+    }
+    if (itemId !== currentWorkoutPlanExerciseId) {
+      // Continuação ainda não criada: a escolha é só dela, vai em `form_practice` na criação.
+      const key = currentWorkoutPlanExerciseId;
+      if (key != null) setContinuationChoices((prev) => ({ ...prev, [key]: !formPractice.marked }));
+      return;
+    }
+    setFormPracticePending(
+      toggleFormPracticePending({ form_practice_plan_exercise_ids: formPracticeIdsRef.current }, itemId)
+        .form_practice_plan_exercise_ids ?? [],
+    );
   }
   const suggestedProgressionQuery = useQuery({
     queryKey: [
@@ -1403,9 +1494,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   }
 
   // ── Lançamento de séries ────────────────────────────────────────────────
-  const exerciseKeysRef = useRef(new Map<string, string>(Object.entries(session.exercise_client_keys ?? {})));
   const ensureExerciseMutation = useMutation({
-    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    // Offline a gravacao NAO pausa: cai na fila local (`postSet`) na hora.
     networkMode: 'always',
     mutationFn: async () => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
@@ -1422,7 +1512,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
 
       // `client_key` do exercício: estável entre tentativas (o servidor deduplica por
       // ela), então reenviar ou enfileirar nunca cria um segundo exercício.
-      const slot = `${session.session_id}#${workoutPlanExerciseId ?? effectiveExerciseName}`;
+      const slot = exerciseKeySlot({
+        sessionId: session.session_id,
+        planItemId,
+        originalPlanItemId: workoutPlanExerciseId,
+        exerciseName: effectiveExerciseName,
+      });
       let exerciseKey = exerciseKeysRef.current.get(slot);
       if (!exerciseKey) {
         exerciseKey = newIdempotencyKey();
@@ -1433,11 +1528,24 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           saveStoredSession({ ...stored, exercise_client_keys: Object.fromEntries(exerciseKeysRef.current) });
         }
       }
+      // #225: a continuação guarda o id REAL do exercício que criou (persistido com a sessão).
+      const recordRealId = (exerciseId: number) => {
+        if (planItemId == null || !isSyntheticPlanExerciseId(planItemId)) return;
+        setMidExerciseExtras((prev) => withContinuationExerciseId(prev, planItemId, exerciseId));
+        persistContinuationIds((extras) => withContinuationExerciseId(extras, planItemId, exerciseId));
+      };
       const queuedExercise = opQueue.findExerciseOp(exerciseKey);
       if (queuedExercise) {
         // Já está na fila offline: usa o id real se o servidor já respondeu, senão o id LOCAL.
         const realId = (queuedExercise.serverResponse as { exercise_id?: unknown } | undefined)?.exercise_id;
-        return typeof realId === 'number' ? realId : (queuedExercise.localId as number);
+        if (typeof realId === 'number') {
+          recordRealId(realId);
+          // O id REAL passa a ser o atual: o estado do servidor (gravado com ele) casa com `currentExerciseId`.
+          const key = current.planExercise.workout_plan_exercise_id;
+          if (key != null) setCreatedExerciseIds((prev) => (prev[key] === realId ? prev : { ...prev, [key]: realId }));
+          return realId;
+        }
+        return queuedExercise.localId as number;
       }
       const exerciseBody = {
         original_name: effectiveExerciseName,
@@ -1446,13 +1554,28 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         workout_plan_exercise_id: workoutPlanExerciseId,
         client_key: exerciseKey,
         // #196: sempre explícito (o mesmo corpo vai para a fila offline).
-        form_practice: formPractice.marked,
+        ...formPracticeCreateField(formPractice.marked),
+      };
+      // #213: com o exercício criado (ou na fila), a marca passa a viver no estado do servidor.
+      // A pendência local só sai com a confirmação do servidor (enfileirado, o selo sobrevive a um reload offline).
+      const markCreated = (exerciseId: number, marked: boolean, confirmed: boolean) => {
+        if (formPractice.itemId == null) return;
+        const itemId = formPractice.itemId;
+        const currentKey = current.planExercise.workout_plan_exercise_id;
+        // O estado do servidor e o id atual entram ANTES de a pendência sair: nunca fica sem fonte.
+        if (currentKey != null) setCreatedExerciseIds((prev) => ({ ...prev, [currentKey]: exerciseId }));
+        setFormPracticeServer((prev) => ({ ...prev, [itemId]: nextServerStateOnCreated(prev[itemId], exerciseId, marked) }));
+        if (!confirmed) return;
+        setFormPracticePending(removeFormPracticePending(formPracticeIdsRef.current, itemId));
+        dropContinuationChoice(currentKey);
       };
       try {
-        const created = await apiFetch<{ exercise_id: number }>(`/workout-sessions/${session.session_id}/exercises`, {
-          method: 'POST',
-          body: JSON.stringify(exerciseBody),
-        });
+        const created = await apiFetch<{ exercise_id: number; form_practice?: boolean | null }>(
+          `/workout-sessions/${session.session_id}/exercises`,
+          { method: 'POST', body: JSON.stringify(exerciseBody) },
+        );
+        recordRealId(created.exercise_id);
+        markCreated(created.exercise_id, created.form_practice ?? formPractice.marked, true);
         return created.exercise_id;
       } catch (error) {
         if (!isTransientApiError(error)) throw error;
@@ -1465,6 +1588,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           payload: exerciseBody,
           clientKey: exerciseKey,
         });
+        markCreated(queued.localId as number, formPractice.marked, false);
         return queued.localId as number;
       }
     },
@@ -1496,15 +1620,35 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
 
   // Trava síncrona contra toque duplo também nas séries preparatórias (mesma
   // proteção do "Finalizar série", ver `saveSetLatchRef`).
+  // #213: todo POST de série leva a marca vigente (`exercise_form_practice`) enquanto o servidor não
+  // travou; a resposta traz `form_practice`/`form_practice_locked`, guardados por item da ficha.
+  async function postSet<T>(args: Parameters<typeof postSetOrQueue>[0]): Promise<SetPostResult<T>> {
+    const itemId = formPractice.itemId;
+    const result = await postSetOrQueue<T>({
+      ...args,
+      body: { ...args.body, ...exerciseFormPracticeField(formPractice) },
+    });
+    const fromServer = result.queued ? null : formPracticeStateFromSetResponse(result.saved as Record<string, never>);
+    // Enfileirada: sem resposta; série de trabalho travará a marca no servidor (previsão local do que ele fará).
+    const latest = formPracticeLatestRef.current;
+    const reconciled =
+      fromServer && latest && latest.itemId === itemId ? reconcileMarkAfterResponse(formPractice, latest, fromServer) : fromServer;
+    const state = reconciled ?? (result.queued && isWorkingSetType(args.body.set_type as string | undefined)
+      ? { marked: formPractice.marked, locked: true }
+      : null);
+    if (state && itemId != null) setFormPracticeServer((prev) => ({ ...prev, [itemId]: { ...state, exerciseId: args.exerciseId } }));
+    return result;
+  }
+
   const savePreparatoryLatchRef = useRef(createSubmitLatch());
   const savePreparatorySetMutation = useMutation({
-    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    // Offline a gravacao NAO pausa: cai na fila local (`postSet`) na hora.
     networkMode: 'always',
     mutationFn: async (input: PreparatorySetInput) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
       const exerciseId = await ensureExerciseMutation.mutateAsync();
       const physicalSetNumber = nextPhysicalSetNumber(current.loggedRow?.sets);
-      const preparatoryPosted = await postSetOrQueue({
+      const preparatoryPosted = await postSet({
         sessionId: session.session_id,
         exerciseId,
         body: {
@@ -1531,7 +1675,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // activity trouxer as séries (`isLaboralItemDone`).
   const saveLaboralLatchRef = useRef(createSubmitLatch());
   const saveLaboralMutation = useMutation({
-    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    // Offline a gravacao NAO pausa: cai na fila local (`postSet`) na hora.
     networkMode: 'always',
     mutationFn: async () => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
@@ -1541,7 +1685,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       const records = laboralSetRecords(prescription, nextPhysicalSetNumber(current.loggedRow?.sets));
       let laboralQueued = false;
       for (const record of records) {
-        const laboralPosted = await postSetOrQueue({
+        const laboralPosted = await postSet({
           sessionId: session.session_id,
           exerciseId,
           body: {
@@ -1576,7 +1720,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // no `onSettled` do PRÓPRIO hook (sempre dispara, sucesso ou erro).
   const saveSetLatchRef = useRef(createSubmitLatch());
   const saveSetMutation = useMutation({
-    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    // Offline a gravacao NAO pausa: cai na fila local (`postSet`) na hora.
     networkMode: 'always',
     mutationFn: async (values: SetLoggerValues) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
@@ -1614,7 +1758,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       const previousSets = (current.loggedRow?.sets || []).filter((set) => !isPreparatorySetType(set.set_type));
 
       const mainClientKey = setClientKeyFor(exerciseId, physicalSetNumber);
-      const posted = await postSetOrQueue<SavedSetIntensity>({
+      const posted = await postSet<SavedSetIntensity>({
         sessionId: session.session_id,
         exerciseId,
         body: {
@@ -1649,7 +1793,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       const extraReps = values.extra_reps ?? 0;
       let extraQueued = false;
       if (extraReps > 0 && current.planExercise.advanced_technique) {
-        const extraPosted = await postSetOrQueue({
+        const extraPosted = await postSet({
           sessionId: session.session_id,
           exerciseId,
           body: {
@@ -1780,7 +1924,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   };
   const saveApplicationLatchRef = useRef(createSubmitLatch());
   const saveApplicationMutation = useMutation({
-    // Offline a gravacao NAO pausa: cai na fila local (`postSetOrQueue`) na hora.
+    // Offline a gravacao NAO pausa: cai na fila local (`postSet`) na hora.
     networkMode: 'always',
     mutationFn: async (input: ApplicationSaveInput) => {
       if (!current) throw new ApiError('Nenhum exercício atual.', 0);
@@ -1794,7 +1938,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       });
       const evalKey = currentKey;
       const applicationClientKey = setClientKeyFor(exerciseId, physicalSetNumber);
-      const applicationPosted = await postSetOrQueue({
+      const applicationPosted = await postSet({
         sessionId: session.session_id,
         exerciseId,
         body: {
@@ -2021,6 +2165,12 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     nextSkipped.add(skipTargetId);
     setSkippedIds(nextSkipped);
     setPriorityId(chosenWorkoutPlanExerciseId);
+    // #213: pulado, a marca pendente não vale mais.
+    dropContinuationChoice(skipTargetId);
+    setFormPracticePending(removeFormPracticePending(
+      formPracticeIdsRef.current,
+      resolveFormPracticePlanExerciseId(skipTargetId, midExerciseExtras),
+    ));
     persistSession({
       skipped_exercise_ids: Array.from(nextSkipped),
       jump_target_exercise_id: chosenWorkoutPlanExerciseId,
@@ -2098,7 +2248,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       // (as séries já logadas continuam no histórico) e injeta uma
       // continuação sintética com o novo equipamento e alvo reduzido ao que
       // ainda falta. Alvos de reps/carga/RPE recalculados para o mapping_id
-      // novo; em caso de falha, mantém os alvos antigos em vez de travar.
+      // novo; em caso de falha, segue sem a carga alvo e avisa (sem travar).
       setSwappingEquipment(true);
       let targets: Parameters<typeof buildSyntheticContinuation>[0]['targets'] = {
         reps_target: current.planExercise.reps_target ?? null,
@@ -2129,7 +2279,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           failure_allowed: suggestion?.failure_allowed ?? null,
         };
       } catch {
-        // Fallback silencioso — mantém os alvos do exercício original.
+        // Sem a sugestão do par novo: não herda a carga alvo do equipamento anterior e avisa.
+        targets = targetsWhenSuggestionFails(targets);
+        notifications.show({ color: 'yellow', message: SUGGESTION_FAILED_MESSAGE });
       }
       setSwappingEquipment(false);
 
@@ -2142,14 +2294,19 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       // Herda aquecimento/ajuste/técnica do item original: o ajuste volta a
       // ser oferecido com o equipamento novo (nunca pulado em silêncio); o
       // aquecimento já feito/pulado do grupo muscular continua valendo.
-      const extra: MidExerciseExtra = buildSyntheticContinuation({
-        localId,
-        current: current.planExercise,
-        remainingSets,
-        choice,
-        targets,
-        existingExtras: midExerciseExtras,
-      });
+      const extra: MidExerciseExtra = {
+        ...buildSyntheticContinuation({
+          localId,
+          current: current.planExercise,
+          remainingSets,
+          choice,
+          targets,
+          existingExtras: midExerciseExtras,
+        }),
+        // #225: `null` (não `undefined`) marca a continuação nova: exercício próprio, criado na 1ª série.
+        // Fica fora do núcleo compartilhado (golden do relógio).
+        exerciseId: null,
+      };
 
       const nextExtras = [...midExerciseExtras, extra];
       const nextCancelled = new Set(cancelledIds);
@@ -2207,7 +2364,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
 
   const finishMutation = useMutation({
     mutationFn: () => finishWorkoutSession(session.session_id),
-    onSuccess: () => onFinish(session.session_id),
+    onSuccess: () => {
+      setFormPracticePending([]);
+      setContinuationChoices({});
+      onFinish(session.session_id);
+    },
   });
 
   // "Finalizar treino": séries com reps pendentes são confirmadas ANTES (depois
@@ -2641,7 +2802,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
     try {
       const exerciseId = await ensureIntensiveExerciseId();
       const main = intensiveSetPayload(record, restSeconds);
-      const posted = await postSetOrQueue({
+      const posted = await postSet({
         sessionId: session.session_id,
         exerciseId,
         body: { ...main, client_key: record.clientKey },
@@ -2652,7 +2813,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
       });
       const queuedKeys: string[] = posted.queued ? [posted.clientKey] : [];
       if (extra) {
-        const extraPosted = await postSetOrQueue({
+        const extraPosted = await postSet({
           sessionId: session.session_id,
           exerciseId,
           body: { ...extra, client_key: extra.client_key as string },
@@ -2822,6 +2983,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
               openSubstitute();
             },
           },
+          buildRestFinishWorkoutAction(requestFinish, finishMutation.isPending),
         ]
       : [];
 
@@ -3035,6 +3197,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             openSubstitute();
           }}
           onSkipExercise={() => openSkipModalFor(currentWorkoutPlanExerciseId)}
+          formPractice={formPractice.marked}
+          onToggleFormPractice={toggleFormPractice}
+          formPracticeLocked={formPractice.locked}
         />
       ) : needsEquipmentChoice ? (
         // Exercício travado até o usuário escolher o equipamento: nenhum
@@ -3207,6 +3372,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           exerciseName={effectiveExerciseName}
           goalBadge={currentGoalBadge}
           formPractice={formPractice.marked}
+          onToggleFormPractice={toggleFormPractice}
+          formPracticeLocked={formPractice.locked}
+          onFinishWorkout={requestFinish}
           description={effectiveExerciseDescription}
           exerciseCard={effectiveExerciseCard}
           equipmentName={effectiveEquipmentName}
@@ -3275,6 +3443,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           exerciseName={effectiveExerciseName}
           goalBadge={currentGoalBadge}
           formPractice={formPractice.marked}
+          onToggleFormPractice={toggleFormPractice}
+          formPracticeLocked={formPractice.locked}
+          onFinishWorkout={requestFinish}
           description={effectiveExerciseDescription}
           exerciseCard={effectiveExerciseCard}
           equipmentName={effectiveEquipmentName}
@@ -3376,6 +3547,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             exerciseName={effectiveExerciseName}
             goalBadge={currentGoalBadge}
             formPractice={formPractice.marked}
+            onToggleFormPractice={toggleFormPractice}
+            formPracticeLocked={formPractice.locked}
+            onFinishWorkout={requestFinish}
             description={effectiveExerciseDescription}
             exerciseCard={effectiveExerciseCard}
             equipmentName={effectiveEquipmentName}
@@ -3412,6 +3586,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             // se ela falhar) o card some, em vez de afirmar "Ainda não há
             // execução comparável".
             previousSessionSets={previousSessionSetsQuery.isSuccess ? previousSessionSets : null}
+            previousSessionLabels={previousSessionLabels(Boolean(effectiveEquipmentLinkId))}
             previousSessionRecord={previousSessionRecord}
             currentGroupFatigue={currentGroupFatigue}
             previousSessionHighlight={workingSetNumber}
@@ -3508,6 +3683,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         currentEquipmentLinkId={effectiveEquipmentLinkId}
         requiredTechnique={current.planExercise.advanced_technique ?? null}
         mandatoryChoice={needsEquipmentChoice}
+        keepsLoggedSets={swapRemainingMode && Boolean(current.loggedRow)}
         submitting={swappingEquipment}
         onSelect={handleSubstituteSelect}
       />
@@ -3516,6 +3692,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
         opened={finishModalOpened}
         onClose={closeFinishModal}
         remainingSets={Math.max(0, current.targetCount - current.loggedWorkingCount)}
+        hasLoggedSets={Boolean(current.loggedRow)}
         onGoToNext={() => {
           closeFinishModal();
           openSkipModalFor(currentWorkoutPlanExerciseId);

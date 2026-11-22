@@ -444,6 +444,7 @@ def _builder_args(settings: PlanSettings) -> dict[str, Any]:
         ),
         "manual_training_mode": manual.training_mode.value if manual else None,
         "cycle_days": settings.cycle_days,
+        "cycle_policy": settings.carb_cycle_policy.value,
         "maintenance_kcal_adjust": settings.maintenance_kcal_adjust,
         # Só fora do padrão (None = padrão): o modo da kcal do relógio do plano adaptativo não pode voltar a `unknown`.
         "energy_params": None if settings.energy_params.is_default else settings.energy_params.to_dict(),

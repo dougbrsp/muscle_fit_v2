@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 from . import exercise_card_storage
 from .db import transaction
 from .domain import effective_intensity, equipment_pair
-from .domain.training_history import expand_rpe_targets
+from .domain.training_history import compose_rpe_target, expand_rpe_targets
 from .domain.calories_source import calories_source_label, resolve_calories_source
 from .domain import prescription as prescription_domain
 from .domain import progression_engine, technique_accounting
@@ -18,14 +19,22 @@ from .domain.equipment_pair import is_pair_coherent
 from .domain.recovery_signal_summary import summarize_signals
 from .domain.set_measures import normalize_measure
 from .domain.set_sides import SIDE_FIELDS, apply_canonical, attach_sides_text
-from .domain.deload import sql_not_deload
+from .domain.deload import DELOAD_SOURCE_COLUMN, sql_not_deload
+from .domain.session_status import is_closed_session, reevaluates_progression
 from .domain.form_practice import (
     FORM_PRACTICE_COLUMN,
     is_form_practice,
     resolve_form_practice,
     sql_counts_for_progression,
 )
-from .domain.training_goal import goal_value, sql_goal_is
+from .domain.training_goal import (
+    SQL_PLAN_EXERCISE_GOAL,
+    TRAINING_GOAL_COLUMN,
+    goal_value,
+    optional_goal_value,
+    plan_exercise_goal_params,
+    sql_goal_is,
+)
 from .domain.training_safety import resolve_training_safety_bulk
 from .equipment_recommender import rank_gym_equipment_rows
 from .domain.equipment_record import current_mark_with_exposures, record_payload, summarize_equipment_history
@@ -35,8 +44,13 @@ from .load_conventions import (
     load_convention_select_expr,
     normalize_load_convention,
 )
-from .domain.set_measures import format_set_measure, is_rep_based, sql_is_rep_based
-from .set_measure_input import ensure_valid_set_measure, set_measure_columns
+from .domain.set_measures import (
+    format_set_measure,
+    is_rep_based,
+    sql_is_rep_based,
+    validate_set_measure,
+)
+from .set_measure_input import SetMeasureInputError, set_measure_columns
 from .domain import laboral as laboral_domain
 from .set_types import (
     confirmed_sets,
@@ -53,9 +67,14 @@ from .exercise_set_update_merge import (
     SERVER_KEPT_SET_FIELDS,
     keeps_protocol_target,
     link_technique_applications,
+    measure_codes_for_merged_set,
     merge_sets_for_update,
 )
-from .workout_plan_exercise_merge import ADVANCED_EXERCISE_FIELDS, merge_unsent_advanced_fields
+from .workout_plan_exercise_merge import (
+    ADVANCED_EXERCISE_FIELDS,
+    PRESCRIPTION_EXERCISE_FIELDS,
+    merge_unsent_advanced_fields,
+)
 from .workout_plan_edit_rules import is_plan_editable
 
 logger = logging.getLogger(__name__)
@@ -482,7 +501,19 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
             else:
                 cur.execute("SELECT id FROM activities WHERE source_id=%s AND external_id=%s", (sid, ext_id))
             existing = cur.fetchone()
+            kept_marks: dict[tuple[Any, Any], tuple[bool, Any]] = {}
             if existing:
+                # Chave (sequence, original_name): o source_row_hash inclui as series e muda quando elas mudam;
+                # limite: renumerar ou renomear o exercicio no payload perde a marca.
+                cur.execute(
+                    f"SELECT sequence, original_name, {FORM_PRACTICE_COLUMN}, {TRAINING_GOAL_COLUMN} "
+                    "FROM exercises WHERE activity_id=%s",
+                    (existing["id"],),
+                )
+                kept_marks = {
+                    (r["sequence"], r["original_name"]): (is_form_practice(r[FORM_PRACTICE_COLUMN]), r[TRAINING_GOAL_COLUMN])
+                    for r in cur.fetchall() or []
+                }
                 cur.execute("DELETE FROM activities WHERE id=%s", (existing["id"],))
 
             exercise_rpes = []
@@ -597,6 +628,13 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                 )
                 exercise_id = cur.lastrowid
                 inserted_exercises += 1
+                kept = kept_marks.get((ex["sequence"], ex["original_name"]))
+                if kept:
+                    cur.execute(
+                        f"UPDATE exercises SET {FORM_PRACTICE_COLUMN}=%s, {TRAINING_GOAL_COLUMN}=COALESCE(%s, {TRAINING_GOAL_COLUMN}) "
+                        "WHERE id=%s",
+                        (kept[0], kept[1], exercise_id),
+                    )
 
                 for st in set_dicts:
                     set_type = normalize_set_type(st.get("set_type"))
@@ -924,6 +962,12 @@ def activity_detail(
                 for set_row in cur.fetchall():
                     # Lote T3: `measure_text` pronto do dono ("58 s").
                     # M102: `sides_text` pronto do dono ("reps E 10 · D 8").
+                    # #182: esperado como numero + comparacao pronta do dono
+                    # (`rpe` da serie ja e o representativo; null em serie antiga).
+                    planned = set_row.get("rpe_target_planned")
+                    set_row["rpe_target_planned"] = None if planned is None else float(planned)
+                    vs = effective_intensity.rpe_vs_expected(set_row.get("rpe"), planned)
+                    set_row["rpe_vs_expected"] = None if vs is None else vs.as_dict()
                     sets_by_exercise[set_row["exercise_id"]].append(attach_sides_text(_attach_set_measure(set_row)))
             for ex in exercises:
                 ex["sets"] = _with_canonical_set_type(sets_by_exercise[ex["id"]])
@@ -947,9 +991,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
         with conn.cursor() as cur:
             if user_id is not None:
                 cur.execute(
-                    """
+                    f"""
                     SELECT e.id, e.original_name, e.notes, e.muscle_pain, e.joint_pain,
-                           e.training_goal, a.deload_source,
+                           e.training_goal, e.{FORM_PRACTICE_COLUMN}, a.deload_source,
                            wpe.reps_target, wpe.load_target, wpe.rpe_target
                     FROM exercises e
                     JOIN activities a ON a.id = e.activity_id
@@ -960,9 +1004,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
                 )
             else:
                 cur.execute(
-                    """
+                    f"""
                     SELECT e.id, e.original_name, e.notes, e.muscle_pain, e.joint_pain,
-                           e.training_goal, a.deload_source,
+                           e.training_goal, e.{FORM_PRACTICE_COLUMN}, a.deload_source,
                            wpe.reps_target, wpe.load_target, wpe.rpe_target
                     FROM exercises e
                     JOIN activities a ON a.id = e.activity_id
@@ -986,6 +1030,9 @@ def exercise_summary_context(exercise_id: int, user_id: int | None = None) -> di
             # M95b: `technique_code`/`anchor_set_number` (059) rotulam a serie de
             # tecnica pelo nome do catalogo (`set_labels.set_display_label`).
             exercise["sets"] = _with_canonical_set_type(cur.fetchall())
+            # Resumo de UM exercicio, sem media historica: o contexto so informa a
+            # marca (dono `form_practice`); o texto do prompt ainda nao a usa.
+            exercise[FORM_PRACTICE_COLUMN] = is_form_practice(exercise.get(FORM_PRACTICE_COLUMN))
             return exercise
 
 
@@ -1207,235 +1254,340 @@ class WorkoutPlanExerciseNotFoundError(LookupError):
     """workout_plan_exercise_id inexistente ou de ficha de outro usuario (SEG-09)."""
 
 
+def _ensure_plan_item_owned(cur: Any, workout_plan_exercise_id: int, user_id: int) -> None:
+    """SEG-09: item de ficha inexistente ou de outro usuario -> WorkoutPlanExerciseNotFoundError."""
+    cur.execute(
+        "SELECT wpe.id FROM workout_plan_exercises wpe "
+        "JOIN workout_plans wp ON wp.id = wpe.plan_id "
+        "WHERE wpe.id=%s AND wp.user_id=%s",
+        (workout_plan_exercise_id, user_id),
+    )
+    if not cur.fetchone():
+        raise WorkoutPlanExerciseNotFoundError(workout_plan_exercise_id)
+
+
 def update_exercise_log(exercise_id: int, payload: dict[str, Any], user_id: int | None = None) -> dict[str, Any] | None:
     with transaction() as conn:
         with conn.cursor() as cur:
-            if user_id is not None:
-                cur.execute(
-                    "SELECT e.id, e.activity_id, e.original_name, e.mapping_id, e.workout_plan_exercise_id, "
-                    f"e.equipment_id, e.muscle_pain, e.joint_pain, e.{FORM_PRACTICE_COLUMN}, a.session_status "
-                    "FROM exercises e "
-                    "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
-                    (exercise_id, user_id),
-                )
-            else:
-                cur.execute(
-                    "SELECT id, activity_id, original_name, mapping_id, workout_plan_exercise_id, "
-                    f"equipment_id, muscle_pain, joint_pain, {FORM_PRACTICE_COLUMN}, "
-                    "(SELECT session_status FROM activities WHERE id = exercises.activity_id) AS session_status "
-                    "FROM exercises WHERE id=%s",
-                    (exercise_id,),
-                )
-            existing = cur.fetchone()
-            if not existing:
-                return None
+            return _update_exercise_log_tx(conn, cur, exercise_id, payload, user_id)
 
-            activity_id = existing["activity_id"]
-            # #205: ausente/None preserva a marca gravada; a regra é do dono.
-            form_practice = resolve_form_practice(payload.get(FORM_PRACTICE_COLUMN), existing.get(FORM_PRACTICE_COLUMN))
-            # As séries são recriadas (DELETE + INSERT) mais abaixo: lê as
-            # gravadas ANTES para preservar os campos que o cliente não
-            # reenviou (set_type, rest_seconds, notes, hr_*, dor) - ver
-            # exercise_set_update_merge. Os agregados usam as séries já
-            # mescladas, senão um aquecimento omitido contaria como trabalho.
-            cur.execute(
-                f"SELECT set_number, reps_pending, {', '.join((*SERVER_KEPT_SET_FIELDS, *PRESERVED_SET_FIELDS))} "
-                "FROM exercise_sets WHERE exercise_id=%s",
-                (exercise_id,),
-            )
-            sets = merge_sets_for_update(payload.get("sets") or [], cur.fetchall() or [])
-            # Lote T3: a forma da medida vale para a série JÁ mesclada (medida
-            # omitida preserva a gravada) -> 422 na rota.
-            for st in sets:
-                ensure_valid_set_measure(
-                    st.get("measure"), st.get("reps"), st.get("duration_seconds"), set_number=st.get("set_number")
-                )
-            stats = compute_exercise_stats(sets)
 
-            # Telegram/update payloads frequently omit mapping fields; preserve current values.
-            original_name = payload.get("original_name") or existing.get("original_name")
-            if payload.get("mapping_id") or payload.get("mapped_name") is not None:
-                mapping_id = resolve_mapping_id(original_name, payload.get("mapped_name"), payload.get("mapping_id"), cur=cur)
-            else:
-                mapping_id = existing.get("mapping_id")
+def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict[str, Any], user_id: int | None) -> dict[str, Any] | None:
+    """Corpo do PUT, na transação do chamador (o POST de exercício novo em treino encerrado reusa)."""
+    if user_id is not None:
+        cur.execute(
+            "SELECT e.id, e.activity_id, e.original_name, e.mapping_id, e.workout_plan_exercise_id, "
+            f"e.equipment_id, e.muscle_pain, e.joint_pain, e.{FORM_PRACTICE_COLUMN}, a.session_status, a.{DELOAD_SOURCE_COLUMN}, "
+            "a.local_date, a.started_at, a.ended_at "
+            "FROM exercises e "
+            "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
+            (exercise_id, user_id),
+        )
+    else:
+        cur.execute(
+            "SELECT id, activity_id, original_name, mapping_id, workout_plan_exercise_id, "
+            f"equipment_id, muscle_pain, joint_pain, {FORM_PRACTICE_COLUMN}, "
+            "(SELECT session_status FROM activities WHERE id = exercises.activity_id) AS session_status, "
+            f"(SELECT {DELOAD_SOURCE_COLUMN} FROM activities WHERE id = exercises.activity_id) AS {DELOAD_SOURCE_COLUMN} "
+            "FROM exercises WHERE id=%s",
+            (exercise_id,),
+        )
+    existing = cur.fetchone()
+    if not existing:
+        return None
 
-            gym_id = resolve_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"))
-            if payload.get("equipment_id") or payload.get("equipment_name") is not None:
-                equipment_id = resolve_equipment_id(
-                    cur, mapping_id, gym_id, payload.get("equipment_id"), payload.get("equipment_name"), user_id=user_id
-                )
-            else:
-                equipment_id = existing.get("equipment_id")
+    activity_id = existing["activity_id"]
+    # #205: ausente/None preserva a marca gravada; a regra é do dono.
+    form_practice = resolve_form_practice(payload.get(FORM_PRACTICE_COLUMN), existing.get(FORM_PRACTICE_COLUMN))
+    # As séries são recriadas (DELETE + INSERT) mais abaixo: lê as
+    # gravadas ANTES para preservar os campos que o cliente não
+    # reenviou (set_type, rest_seconds, notes, hr_*, dor) - ver
+    # exercise_set_update_merge. Os agregados usam as séries já
+    # mescladas, senão um aquecimento omitido contaria como trabalho.
+    cur.execute(
+        f"SELECT set_number, reps_pending, {', '.join((*SERVER_KEPT_SET_FIELDS, *PRESERVED_SET_FIELDS))} "
+        "FROM exercise_sets WHERE exercise_id=%s",
+        (exercise_id,),
+    )
+    # #219: validado pelo dono antes de qualquer escrita (inválido -> InvalidTrainingGoal, 422);
+    # ausente/null = None = preserva (COALESCE no UPDATE).
+    training_goal = optional_goal_value(payload.get("training_goal"))
+    # lock_types: tipo/medida travados na edição pela rota (dono `exercise_set_update_merge`).
+    sets = merge_sets_for_update(payload.get("sets") or [], cur.fetchall() or [], lock_types=True)
+    # Lote T3: a forma da medida vale para a série JÁ mesclada (medida
+    # omitida preserva a gravada) -> 422 na rota.
+    # Pendência e códigos isentos: dono `measure_codes_for_merged_set`.
+    for st in sets:
+        codes = measure_codes_for_merged_set(
+            st, validate_set_measure(st.get("measure"), st.get("reps"), st.get("duration_seconds"))
+        )
+        if codes:
+            raise SetMeasureInputError(codes, st.get("set_number"))
+    stats = compute_exercise_stats(sets)
 
-            cur.execute(
-                "UPDATE activities SET local_date=%s, gym_id=COALESCE(%s, gym_id), conducted_by=COALESCE(%s, conducted_by), started_at=COALESCE(%s, started_at) WHERE id=%s",
-                (payload["local_date"], gym_id, payload.get("conducted_by"), payload.get("started_at"), activity_id),
-            )
+    # Telegram/update payloads frequently omit mapping fields; preserve current values.
+    original_name = payload.get("original_name") or existing.get("original_name")
+    if payload.get("mapping_id") or payload.get("mapped_name") is not None:
+        mapping_id = resolve_mapping_id(original_name, payload.get("mapped_name"), payload.get("mapping_id"), cur=cur)
+    else:
+        mapping_id = existing.get("mapping_id")
 
-            # muscle_pain/joint_pain sao opcionais e frequentemente omitidos em
-            # updates parciais (Telegram/MCP, que serializam o payload via
-            # pydantic model_dump() e sempre incluem a chave com None quando
-            # nao informada): preserva o valor existente quando o payload
-            # trouxer None, em vez de sobrescrever com null (mesma regra ja
-            # seguida para mapping/equipment acima).
-            muscle_pain = payload.get("muscle_pain") if payload.get("muscle_pain") is not None else existing.get("muscle_pain")
-            joint_pain = payload.get("joint_pain") if payload.get("joint_pain") is not None else existing.get("joint_pain")
+    gym_id = resolve_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"))
+    if payload.get("equipment_id") or payload.get("equipment_name") is not None:
+        equipment_id = resolve_equipment_id(
+            cur, mapping_id, gym_id, payload.get("equipment_id"), payload.get("equipment_name"), user_id=user_id
+        )
+    else:
+        equipment_id = existing.get("equipment_id")
 
-            # Diferente dos campos acima, workout_plan_exercise_id precisa
-            # permitir desvincular explicitamente (payload enviando null),
-            # então usa a flag de presença em vez de checar apenas is not None.
-            if payload.get("workout_plan_exercise_id_provided"):
-                workout_plan_exercise_id = payload.get("workout_plan_exercise_id")
-                # SEG-09: o vinculo so pode apontar para item de ficha do proprio
-                # usuario (reenviar o vinculo ja gravado segue valido; null desvincula).
-                if (
-                    workout_plan_exercise_id is not None
-                    and user_id is not None
-                    and workout_plan_exercise_id != existing.get("workout_plan_exercise_id")
-                ):
-                    cur.execute(
-                        "SELECT wpe.id FROM workout_plan_exercises wpe "
-                        "JOIN workout_plans wp ON wp.id = wpe.plan_id "
-                        "WHERE wpe.id=%s AND wp.user_id=%s",
-                        (workout_plan_exercise_id, user_id),
-                    )
-                    if not cur.fetchone():
-                        raise WorkoutPlanExerciseNotFoundError(workout_plan_exercise_id)
-            else:
-                workout_plan_exercise_id = existing.get("workout_plan_exercise_id")
+    cur.execute(
+        "UPDATE activities SET local_date=%s, gym_id=COALESCE(%s, gym_id), conducted_by=COALESCE(%s, conducted_by), started_at=COALESCE(%s, started_at) WHERE id=%s",
+        (payload["local_date"], gym_id, payload.get("conducted_by"), payload.get("started_at"), activity_id),
+    )
 
-            cur.execute(
-                f"""
-                UPDATE exercises
-                SET
-                    original_name=%s,
-                    mapping_id=%s,
-                    workout_plan_exercise_id=%s,
-                    equipment_id=%s,
-                    sets_count=%s,
-                    reps_total=%s,
-                    volume_kg=%s,
-                    min_weight_kg=%s,
-                    best_weight_kg=%s,
-                    avg_rpe=%s,
-                    muscle_pain=%s,
-                    joint_pain=%s,
-                    {FORM_PRACTICE_COLUMN}=%s
-                WHERE id=%s
-                """,
-                (
-                    original_name,
-                    mapping_id,
-                    workout_plan_exercise_id,
-                    equipment_id,
-                    stats["sets_count"],
-                    stats["reps_total"],
-                    stats["volume_kg"],
-                    stats["min_weight_kg"],
-                    stats["best_weight_kg"],
-                    stats["avg_rpe"],
-                    muscle_pain,
-                    joint_pain,
-                    1 if form_practice else 0,
-                    exercise_id,
+    # muscle_pain/joint_pain sao opcionais e frequentemente omitidos em
+    # updates parciais (Telegram/MCP, que serializam o payload via
+    # pydantic model_dump() e sempre incluem a chave com None quando
+    # nao informada): preserva o valor existente quando o payload
+    # trouxer None, em vez de sobrescrever com null (mesma regra ja
+    # seguida para mapping/equipment acima).
+    # PUT da tela: null ENVIADO limpa (`*_provided`, de model_fields_set); ausente preserva.
+    muscle_pain = (
+        payload.get("muscle_pain")
+        if payload.get("muscle_pain_provided") or payload.get("muscle_pain") is not None
+        else existing.get("muscle_pain")
+    )
+    joint_pain = (
+        payload.get("joint_pain")
+        if payload.get("joint_pain_provided") or payload.get("joint_pain") is not None
+        else existing.get("joint_pain")
+    )
+
+    # Diferente dos campos acima, workout_plan_exercise_id precisa
+    # permitir desvincular explicitamente (payload enviando null),
+    # então usa a flag de presença em vez de checar apenas is not None.
+    if payload.get("workout_plan_exercise_id_provided"):
+        workout_plan_exercise_id = payload.get("workout_plan_exercise_id")
+        # SEG-09: o vinculo so pode apontar para item de ficha do proprio
+        # usuario (reenviar o vinculo ja gravado segue valido; null desvincula).
+        if (
+            workout_plan_exercise_id is not None
+            and user_id is not None
+            and workout_plan_exercise_id != existing.get("workout_plan_exercise_id")
+        ):
+            _ensure_plan_item_owned(cur, workout_plan_exercise_id, user_id)
+    else:
+        workout_plan_exercise_id = existing.get("workout_plan_exercise_id")
+
+    cur.execute(
+        f"""
+        UPDATE exercises
+        SET
+            original_name=%s,
+            mapping_id=%s,
+            workout_plan_exercise_id=%s,
+            equipment_id=%s,
+            sets_count=%s,
+            reps_total=%s,
+            volume_kg=%s,
+            min_weight_kg=%s,
+            best_weight_kg=%s,
+            avg_rpe=%s,
+            muscle_pain=%s,
+            joint_pain=%s,
+            {FORM_PRACTICE_COLUMN}=%s,
+            {TRAINING_GOAL_COLUMN}=COALESCE(%s, {TRAINING_GOAL_COLUMN})
+        WHERE id=%s
+        """,
+        (
+            original_name,
+            mapping_id,
+            workout_plan_exercise_id,
+            equipment_id,
+            stats["sets_count"],
+            stats["reps_total"],
+            stats["volume_kg"],
+            stats["min_weight_kg"],
+            stats["best_weight_kg"],
+            stats["avg_rpe"],
+            muscle_pain,
+            joint_pain,
+            1 if form_practice else 0,
+            training_goal,
+            exercise_id,
+        ),
+    )
+
+    cur.execute("DELETE FROM exercise_sets WHERE exercise_id=%s", (exercise_id,))
+
+    # PR-14: este caminho RECRIA as series (delete + insert). Sem
+    # recalcular a intensidade efetiva, editar um exercicio pela tela
+    # /registro-exercicios APAGARIA o `rpe_target_effective` e o
+    # `safety_event` gravados pelo Modo Treino. A fonte e a mesma do
+    # Modo Treino (`domain/effective_intensity.py`), com o exercicio ja
+    # atualizado acima - inclusive o vinculo com a ficha.
+    intensity = effective_intensity.resolve_for_logged_exercise(conn, exercise_id)
+
+    # Fase 5: aplicação de técnica sem vínculo (série nova, legado sem
+    # backfill) recebe o derivado, com a técnica do item da ficha JÁ
+    # atualizado acima - mesma regra do Modo Treino.
+    plan_technique = None
+    if any(
+        st["set_type"] in technique_accounting.TECHNIQUE_APPLICATION_SET_TYPES
+        and (not st.get("technique_code") or st.get("anchor_set_number") is None)
+        for st in sets
+    ) and workout_plan_exercise_id:
+        cur.execute(
+            "SELECT advanced_technique FROM workout_plan_exercises WHERE id=%s", (workout_plan_exercise_id,)
+        )
+        plan_technique = (cur.fetchone() or {}).get("advanced_technique")
+    link_technique_applications(sets, plan_technique)
+
+    # COD-12: series recriadas em lote, na ordem recebida.
+    cur.executemany(
+        """
+        INSERT INTO exercise_sets (
+            exercise_id, set_number, set_type, reps, weight_kg, rpe, rest_seconds,
+            hr_avg_bpm, hr_max_bpm, notes, muscle_pain, joint_pain,
+            rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number,
+            measure, duration_seconds,
+            reps_pending, completed_at, planned_weight_kg, load_adjust_source, rpe_target_source,
+            reps_left, reps_right, rpe_left, rpe_right
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """,
+        [
+            (
+                exercise_id,
+                st["set_number"],
+                st["set_type"],
+                st.get("reps"),
+                st.get("weight_kg"),
+                st.get("rpe"),
+                st.get("rest_seconds"),
+                st.get("hr_avg_bpm"),
+                st.get("hr_max_bpm"),
+                st.get("notes"),
+                st.get("muscle_pain"),
+                st.get("joint_pain"),
+                # Alvo gravado: dono `effective_intensity.stored_rpe_target`
+                # (preparatória, protocolo mantido, deload da sessão).
+                effective_intensity.stored_rpe_target(
+                    st["set_type"],
+                    intensity,
+                    protocol_target=st.get("rpe_target_effective") if keeps_protocol_target(st) else None,
+                    protocol_kept=keeps_protocol_target(st),
+                    deload_source=existing.get(DELOAD_SOURCE_COLUMN),
+                    technique_code=st.get("technique_code"),
                 ),
+                st.get("rpe_target_planned"),  # #182: preservado da serie gravada; nova = NULL
+                effective_intensity.safety_event_for(st["set_type"], st.get("rpe"), intensity),
+                st.get("technique_code"),
+                st.get("anchor_set_number"),
+                *set_measure_columns(st),
+                st.get("reps_pending") or 0,
+                st.get("completed_at"),
+                st.get("planned_weight_kg"),
+                st.get("load_adjust_source"),
+                st.get("rpe_target_source"),
+                # M102: lados preservados pela mescla (canônico já recalculado).
+                *(st.get(field) for field in SIDE_FIELDS),
             )
+            for st in sets
+        ],
+    )
 
-            cur.execute("DELETE FROM exercise_sets WHERE exercise_id=%s", (exercise_id,))
+    # #219: com dor em alguma série, o exercício recebe o máximo (dono `rollup_exercise_pain`);
+    # sem dor nas séries, COALESCE mantém o campo do exercício já gravado acima (inclusive null).
+    from .workout_sessions import rollup_exercise_pain
 
-            # PR-14: este caminho RECRIA as series (delete + insert). Sem
-            # recalcular a intensidade efetiva, editar um exercicio pela tela
-            # /registro-exercicios APAGARIA o `rpe_target_effective` e o
-            # `safety_event` gravados pelo Modo Treino. A fonte e a mesma do
-            # Modo Treino (`domain/effective_intensity.py`), com o exercicio ja
-            # atualizado acima - inclusive o vinculo com a ficha.
-            intensity = effective_intensity.resolve_for_logged_exercise(conn, exercise_id)
+    rollup_exercise_pain(cur, exercise_id, keep_stored_when_empty=True)
 
-            # Fase 5: aplicação de técnica sem vínculo (série nova, legado sem
-            # backfill) recebe o derivado, com a técnica do item da ficha JÁ
-            # atualizado acima - mesma regra do Modo Treino.
-            plan_technique = None
-            if any(
-                st["set_type"] in technique_accounting.TECHNIQUE_APPLICATION_SET_TYPES
-                and (not st.get("technique_code") or st.get("anchor_set_number") is None)
-                for st in sets
-            ) and workout_plan_exercise_id:
-                cur.execute(
-                    "SELECT advanced_technique FROM workout_plan_exercises WHERE id=%s", (workout_plan_exercise_id,)
-                )
-                plan_technique = (cur.fetchone() or {}).get("advanced_technique")
-            link_technique_applications(sets, plan_technique)
+    _recompute_activity_avg_rpe(cur, activity_id)
 
-            # COD-12: series recriadas em lote, na ordem recebida.
-            cur.executemany(
-                """
-                INSERT INTO exercise_sets (
-                    exercise_id, set_number, set_type, reps, weight_kg, rpe, rest_seconds,
-                    hr_avg_bpm, hr_max_bpm, notes, muscle_pain, joint_pain,
-                    rpe_target_effective, safety_event, technique_code, anchor_set_number,
-                    measure, duration_seconds,
-                    reps_pending, completed_at, planned_weight_kg, load_adjust_source, rpe_target_source,
-                    reps_left, reps_right, rpe_left, rpe_right
-                )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                [
-                    (
-                        exercise_id,
-                        st["set_number"],
-                        st["set_type"],
-                        st.get("reps"),
-                        st.get("weight_kg"),
-                        st.get("rpe"),
-                        st.get("rest_seconds"),
-                        st.get("hr_avg_bpm"),
-                        st.get("hr_max_bpm"),
-                        st.get("notes"),
-                        st.get("muscle_pain"),
-                        st.get("joint_pain"),
-                        # Modo Intensivo: alvo do PROTOCOLO da técnica é mantido
-                        # (`exercise_set_update_merge.keeps_protocol_target`).
-                        st.get("rpe_target_effective")
-                        if keeps_protocol_target(st)
-                        else None if is_preparatory_set(st["set_type"]) else intensity.rpe_target_effective,
-                        effective_intensity.safety_event_for(st["set_type"], st.get("rpe"), intensity),
-                        st.get("technique_code"),
-                        st.get("anchor_set_number"),
-                        *set_measure_columns(st),
-                        st.get("reps_pending") or 0,
-                        st.get("completed_at"),
-                        st.get("planned_weight_kg"),
-                        st.get("load_adjust_source"),
-                        st.get("rpe_target_source"),
-                        # M102: lados preservados pela mescla (canônico já recalculado).
-                        *(st.get(field) for field in SIDE_FIELDS),
-                    )
-                    for st in sets
-                ],
-            )
+    # #205: toda edição em sessão encerrada reavalia a progressão na MESMA
+    # transação, depois da coluna e das séries (erro propaga e desfaz tudo).
+    # Data editada: a reavaliação parte da posição mais antiga (antiga ou nova).
+    # Também vale a hora de início editada (posição = `ended_at or started_at`);
+    # `started_at` ausente/nulo no corpo não muda nada (COALESCE no UPDATE).
+    anchor_at = None
+    new_started = payload.get("started_at")
+    if isinstance(new_started, str):
+        new_started = datetime.fromisoformat(new_started)
+    if new_started is not None and new_started.tzinfo is not None:
+        # Mesma conversão do PATCH /meta: com fuso -> hora de parede do usuário (naive).
+        from .intelligence.dashboard.time_windows import user_timezone
+        from .workout_sessions import _to_user_wall_clock
 
-            _recompute_activity_avg_rpe(cur, activity_id)
+        new_started = _to_user_wall_clock(new_started, user_timezone(conn, user_id))
+    date_changed = existing.get("local_date") is not None and payload["local_date"] != existing["local_date"]
+    started_changed = new_started is not None and new_started != existing.get("started_at")
+    if date_changed or started_changed:
+        from . import progression_state
 
-            # #205: toda edição em sessão encerrada reavalia a progressão na MESMA
-            # transação, depois da coluna e das séries (erro propaga e desfaz tudo).
-            reevaluated = _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
+        anchor_at = progression_state.correction_anchor(
+            existing.get("local_date"),
+            payload["local_date"],
+            existing.get("started_at"),
+            new_started,
+            existing.get("ended_at"),
+        )
+    reevaluated = _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"), anchor_at=anchor_at)
 
-            return {
-                "exercise_id": exercise_id,
-                "activity_id": activity_id,
-                "sets": len(sets),
-                FORM_PRACTICE_COLUMN: form_practice,
-                "progression_reevaluated": reevaluated,
-            }
+    return {
+        "exercise_id": exercise_id,
+        "activity_id": activity_id,
+        "sets": len(sets),
+        FORM_PRACTICE_COLUMN: form_practice,
+        "progression_reevaluated": reevaluated,
+    }
 
 
-def _reevaluate_if_done(conn: Any, user_id: int | None, activity_id: int, session_status: Any) -> bool:
+def _reevaluate_if_done(
+    conn: Any, user_id: int | None, activity_id: int, session_status: Any, anchor_at: datetime | None = None
+) -> bool:
     """#205: reavalia a progressão (dono: progression_state) se a sessão está encerrada."""
-    if user_id is None or session_status != "done":
+    if user_id is None or not reevaluates_progression(session_status):
         return False
     from . import progression_state
 
-    return progression_state.reevaluate_after_correction(conn, user_id, activity_id) is not None
+    return progression_state.reevaluate_after_correction(conn, user_id, activity_id, anchor_at=anchor_at) is not None
+
+
+class SessionNotClosedError(ValueError):
+    """POST /exercises/logs só vale para sessão encerrada (o Modo Treino usa /workout-sessions)."""
+
+
+def create_exercise_log(activity_id: int, payload: dict[str, Any], user_id: int) -> dict[str, Any] | None:
+    """Exercício NOVO (com suas séries) numa sessão ENCERRADA do próprio usuário.
+    Cria a linha e reaproveita `_update_exercise_log_tx` (mescla, agregados, alvo
+    efetivo, vínculo de técnica e UMA reavaliação da progressão no fim)."""
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT session_status FROM activities WHERE id=%s AND user_id=%s", (activity_id, user_id))
+            activity = cur.fetchone()
+            if not activity:
+                return None
+            if not is_closed_session(activity.get("session_status")):
+                raise SessionNotClosedError(activity_id)
+            cur.execute("SELECT COALESCE(MAX(sequence), 0) + 1 AS seq FROM exercises WHERE activity_id=%s", (activity_id,))
+            sequence = cur.fetchone()["seq"]
+            plan_item = payload.get("workout_plan_exercise_id") if payload.get("workout_plan_exercise_id_provided") else None
+            if plan_item is not None:
+                _ensure_plan_item_owned(cur, plan_item, user_id)  # SEG-09 antes de ler a meta do item
+            cur.execute(
+                f"INSERT INTO exercises (activity_id, sequence, original_name, sets_count, source_row_hash, training_goal) "
+                f"VALUES (%s,%s,%s,0,%s,{SQL_PLAN_EXERCISE_GOAL})",
+                (
+                    activity_id,
+                    sequence,
+                    payload["original_name"],
+                    f"registro-{uuid.uuid4().hex}",
+                    *plan_exercise_goal_params(plan_item),
+                ),
+            )
+            exercise_id = cur.lastrowid
+            return _update_exercise_log_tx(conn, cur, exercise_id, payload, user_id)
 
 
 def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[str, Any] | None:
@@ -1443,13 +1595,13 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
         with conn.cursor() as cur:
             if user_id is not None:
                 cur.execute(
-                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
+                    "SELECT e.id, e.activity_id, a.session_status, a.local_date, a.started_at, a.ended_at FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
                     (exercise_id, user_id),
                 )
             else:
                 cur.execute(
-                    "SELECT e.id, e.activity_id, a.session_status FROM exercises e "
+                    "SELECT e.id, e.activity_id, a.session_status, a.local_date, a.started_at, a.ended_at FROM exercises e "
                     "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s",
                     (exercise_id,),
                 )
@@ -1463,7 +1615,18 @@ def delete_exercise_log(exercise_id: int, user_id: int | None = None) -> dict[st
             cur.execute("DELETE FROM exercises WHERE id=%s", (exercise_id,))
 
             _recompute_activity_avg_rpe(cur, activity_id)
-            _reevaluate_if_done(conn, user_id, activity_id, existing.get("session_status"))
+            from . import progression_state
+
+            # Sem o exercício, a sessão pode sumir do histórico: ancora no momento dela.
+            _reevaluate_if_done(
+                conn,
+                user_id,
+                activity_id,
+                existing.get("session_status"),
+                anchor_at=progression_state.correction_anchor(
+                    existing.get("local_date"), existing.get("started_at"), existing.get("ended_at")
+                ),
+            )
 
             # O treino (activity) permanece existindo mesmo esvaziado (0 exercicios):
             # o usuario decide explicitamente quando excluir o treino inteiro, via
@@ -3057,6 +3220,25 @@ def _saved_row_of(ex: dict[str, Any], existing_by_id: dict[int, dict[str, Any]])
         return None
 
 
+def _compose_rpe_for_saved_sets(steps: list[float], sets_count: Any) -> str | None:
+    """`rpe_targets_by_set` sem `sets_count` no corpo: vale contra o gravado (422 se maior)."""
+    from . import workout_plan_edit_rules as edit_rules
+
+    total = int(sets_count) if sets_count is not None else None
+    if total is not None and len(steps) > total:
+        raise edit_rules.PlanEditError(
+            422,
+            "rpe_targets_by_set_exceeds_sets",
+            f"rpe_targets_by_set tem {len(steps)} alvos para {total} séries de trabalho.",
+        )
+    return compose_rpe_target(steps, collapse_tail=total is not None and total >= 1)
+
+
+def _protocol_reps_text(technique: Any) -> str | None:
+    reps = technique_accounting.protocol_reps(technique)
+    return str(reps) if reps else None
+
+
 def _assert_exercise_keeps_primary_group(cur, persisted_mapping_id: Any, new_mapping_id: Any, exercise_name: Any) -> None:
     """Troca de exercicio numa linha salva: o novo tem de ter o MESMO grupo
     PRIMARY do antigo (dono do grupo: `progression_state`)."""
@@ -3222,7 +3404,7 @@ def _replace_plan_exercises(
     # id antigo pode não corresponder mais ao novo nome digitado.
     cur.execute(
         "SELECT id, sequence, exercise_name, mapping_id, preferred_equipment_id, muscle_primary, "
-        f"{', '.join(ADVANCED_EXERCISE_FIELDS)} "
+        f"{', '.join(ADVANCED_EXERCISE_FIELDS + PRESCRIPTION_EXERCISE_FIELDS)} "
         "FROM workout_plan_exercises WHERE plan_id = %s",
         (plan_id,),
     )
@@ -3249,6 +3431,14 @@ def _replace_plan_exercises(
         # explícito continua limpando. Casamento por sequence, mesma
         # limitação descrita na docstring.
         ex = merge_unsent_advanced_fields(ex, existing_row)
+        saved_row = _saved_row_of(ex, existing_by_id)
+        if saved_row is not None:
+            # #184: linha salva desta ficha (id): prescricao nao enviada preserva o gravado;
+            # a lista de RPE por serie vale contra o `sets_count` efetivo.
+            sets_unsent = "sets_count" not in ex
+            ex = merge_unsent_advanced_fields(ex, saved_row, PRESCRIPTION_EXERCISE_FIELDS)
+            if sets_unsent and ex.get("rpe_targets_by_set") is not None:
+                ex["rpe_target"] = _compose_rpe_for_saved_sets(ex["rpe_targets_by_set"], ex.get("sets_count"))
         name_unchanged = existing_row is not None and existing_row["exercise_name"] == ex["exercise_name"]
         name_changed_on_edit = existing_row is not None and not name_unchanged
 
@@ -3263,7 +3453,6 @@ def _replace_plan_exercises(
         explicit_mapping_id = None if name_changed_on_edit else ex.get("mapping_id")
         mapping_id = resolve_mapping_id(ex["exercise_name"], ex.get("amazfit_name"), explicit_mapping_id, cur=cur)
 
-        saved_row = _saved_row_of(ex, existing_by_id)
         if saved_row is not None:
             edit_rules.assert_muscle_group_text_unchanged(
                 persisted_group=saved_row.get("muscle_primary"),
@@ -3271,6 +3460,10 @@ def _replace_plan_exercises(
                 exercise_name=ex["exercise_name"],
             )
             _assert_exercise_keeps_primary_group(cur, saved_row.get("mapping_id"), mapping_id, ex["exercise_name"])
+        elif ex.get("generated_mapping_id") is not None:
+            # #178: linha GERADA (carimbada pela tela) trocada na criacao: mesma trava da edicao.
+            # Linha manual (sem o carimbo) segue livre.
+            _assert_exercise_keeps_primary_group(cur, ex["generated_mapping_id"], mapping_id, ex["exercise_name"])
 
         preferred_equipment_id = None if name_changed_on_edit else ex.get("preferred_equipment_id")
         if not preferred_equipment_id and gym_id and mapping_id:
@@ -3305,7 +3498,9 @@ def _replace_plan_exercises(
             ex.get("equipment_name"),
             preferred_equipment_id,
             ex.get("sets_count"),
-            ex.get("reps_target"),
+            # #224: tecnica com reps de protocolo (GVT) grava as do dono, nao a faixa digitada.
+            (_protocol_reps_text(ex.get("advanced_technique")) if is_rep_based(ex.get("measure")) else None)
+            or ex.get("reps_target"),
             ex.get("load_target"),
             ex.get("rpe_target"),
             ex.get("rest_seconds"),

@@ -46,13 +46,36 @@ export function useKeyboardOpen(): boolean {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sync = () => setOpen(isTextEntry(document.activeElement as HTMLElement | null));
+    // Toque em curso (#252): o navegador move o foco no pointerdown (Chromium: focusin no botão);
+    // enquanto pressiona, nada fecha o estado (focusin fora de campo, focusout, observer): ao soltar,
+    // o sync agendado roda depois do click.
+    let pressing = false;
     const onFocusIn = (event: FocusEvent) => {
       clearTimeout(timer);
-      setOpen(isTextEntry(event.target as HTMLElement | null));
+      const text = isTextEntry(event.target as HTMLElement | null);
+      if (pressing && !text) return;
+      setOpen(text);
+    };
+    const onPointerDown = () => {
+      clearTimeout(timer); // sync agendado por um focusout (Tab) não pode rodar durante o toque
+      pressing = true;
+    };
+    const onPointerEnd = () => {
+      if (!pressing) return;
+      pressing = false;
+      clearTimeout(timer);
+      timer = setTimeout(sync, 0);
+    };
+    // Janela perdeu o foco/ficou oculta no meio do toque: não deixa "pressionando" preso.
+    const onWindowLeave = () => {
+      pressing = false;
+      clearTimeout(timer);
+      timer = setTimeout(sync, 0);
     };
     // focusout dispara antes do novo foco existir: espera um tick.
     const onFocusOut = () => {
       clearTimeout(timer);
+      if (pressing) return;
       timer = setTimeout(sync, 60);
     };
     // Campo focado que SAI da tela (visão fechada pelo voltar, rota trocada): o navegador não
@@ -60,14 +83,24 @@ export function useKeyboardOpen(): boolean {
     // PRÓPRIO toque seguinte (a barra fixa mudaria de lugar entre o toque e a soltura e o
     // toque se perderia). Reconcilia com o foco real quando a árvore muda.
     const observer = new MutationObserver(() => {
-      if (!isTextEntry(document.activeElement as HTMLElement | null)) setOpen(false);
+      if (!pressing && !isTextEntry(document.activeElement as HTMLElement | null)) setOpen(false);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerEnd, true);
+    document.addEventListener('pointercancel', onPointerEnd, true);
+    window.addEventListener('blur', onWindowLeave);
+    document.addEventListener('visibilitychange', onWindowLeave);
     return () => {
       observer.disconnect();
       clearTimeout(timer);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerEnd, true);
+      document.removeEventListener('pointercancel', onPointerEnd, true);
+      window.removeEventListener('blur', onWindowLeave);
+      document.removeEventListener('visibilitychange', onWindowLeave);
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
     };

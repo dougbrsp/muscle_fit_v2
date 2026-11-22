@@ -14,11 +14,30 @@
 // `rpe_right`) também vão SEMPRE explícitos; o servidor recalcula reps/RPE
 // oficiais pelo pior lado (`domain/set_sides.py`) — a tela não recalcula.
 import { formatSetMeasureText, isRepBased, MEASURE_LIMITS, MEASURE_VALUES, normalizeMeasure } from './set-measures';
+import { rpeExpectedSuffix, type RpeVsExpected } from './rpe-expected-vs-actual';
 import { sidesFromRow, sidesSuffix } from './set-sides';
-import { isTechniqueApplicationSetType, isWorkingSetType, normalizeSetType } from './set-types';
+import {
+  isSwappableSetType,
+  isTechniqueApplicationSetType,
+  isWorkingSetType,
+  normalizeSetType,
+  SET_TYPE_LABELS,
+  SWAPPABLE_SET_TYPES,
+} from './set-types';
 import type { ExerciseFormState, ExerciseSetRow } from './workout-log-types';
 
-export type ExerciseFormSet = ExerciseFormState['sets'][number];
+// `reps_pending`: marca gravada pelo servidor (só leitura; não vai no PUT).
+export type ExerciseFormSet = ExerciseFormState['sets'][number] & { reps_pending?: boolean };
+
+/** Série gravada pendente e ainda sem reps preenchidas (a decisão é do servidor). */
+export function isRepsPending(set: Pick<ExerciseFormSet, 'reps' | 'reps_pending'>): boolean {
+  return Boolean(set.reps_pending) && set.reps == null;
+}
+
+/** Rótulo do campo de reps na edição, sinalizando a série pendente. */
+export function repsFieldLabel(set: Pick<ExerciseFormSet, 'reps' | 'reps_pending'>): string {
+  return isRepsPending(set) ? 'Repetições (pendente)' : 'Repetições';
+}
 
 function toNumberOrNull(value: number | string | null | undefined): number | null {
   if (value == null || value === '') return null;
@@ -31,7 +50,8 @@ export function setFormFromRow(set: ExerciseSetRow, index: number): ExerciseForm
   return {
     set_number: index + 1,
     // Série por tempo grava reps NULL (dono `validate_set_measure`): sem o `|| 0`.
-    reps: set.reps == null && !isRepBased(measure) ? null : Number(set.reps || 0),
+    // Pendente (`reps_pending`) também fica nula: com 0 o PUT a confirmaria.
+    reps: set.reps == null && (set.reps_pending || !isRepBased(measure)) ? null : Number(set.reps || 0),
     weight_kg: Number(set.weight_kg || 0),
     rpe: toNumberOrNull(set.rpe),
     set_type: set.set_type || 'working',
@@ -47,6 +67,7 @@ export function setFormFromRow(set: ExerciseSetRow, index: number): ExerciseForm
     duration_seconds: set.duration_seconds ?? null,
     ...sidesFromRow(set),
     source_set_number: set.set_number,
+    ...(set.reps_pending ? { reps_pending: true } : {}),
   };
 }
 
@@ -93,6 +114,51 @@ export function newMeasuredSetFromLast(last: ExerciseFormSet | undefined, setNum
   };
 }
 
+// #219: rótulos de exibição dos tipos trocáveis; QUAIS são trocáveis vem do espelho (`swappable`).
+/** Opções do seletor "Tipo da série" na edição (só os tipos trocáveis do espelho). */
+export function setTypeSelectData(): { value: string; label: string }[] {
+  return SWAPPABLE_SET_TYPES.map((value) => ({ value, label: SET_TYPE_LABELS[value] ?? value }));
+}
+
+/** Mostra seletor de tipo/medida? Técnica e laboral só exibem o Badge (o servidor decide em 422). */
+export function canEditSetKind(set: Pick<ExerciseFormSet, 'set_type'>): boolean {
+  return isSwappableSetType(set.set_type);
+}
+
+/**
+ * Troca a medida da série e limpa o que deixa de valer: os segundos sempre
+ * (janela do máximo ≠ tempo da série) e, para tempo, reps e lados.
+ */
+export function changeSetMeasure(set: ExerciseFormSet, measure: string): ExerciseFormSet {
+  const next = normalizeMeasure(measure);
+  if (next === normalizeMeasure(set.measure)) return set;
+  const base = { ...set, measure: next, duration_seconds: null };
+  if (setEditFields(next).showReps) return base;
+  return { ...base, reps: null, reps_left: null, reps_right: null, rpe_left: null, rpe_right: null };
+}
+
+/**
+ * Espelho de EXIBIÇÃO de `rollup_exercise_pain` (dono: api/app/workout_sessions.py;
+ * paridade: pain-rollup.parity.json). Por coluna: dor > 0 em série confirmada
+ * (boolean true = 1) vira o máximo e `derived_*` = true (campo somente leitura);
+ * senão vale o campo do exercício. Dor zero conta como sem dor.
+ */
+export function setPainRollup(
+  sets: readonly Pick<ExerciseFormSet, 'muscle_pain' | 'joint_pain' | 'reps' | 'reps_pending'>[],
+  exercise: { muscle_pain?: number | null; joint_pain?: boolean | number | null } = {},
+): { muscle_pain: number | null; joint_pain: boolean | null; derived_muscle: boolean; derived_joint: boolean } {
+  const confirmed = sets.filter((set) => !isRepsPending(set));
+  const muscle = confirmed.map((set) => Number(set.muscle_pain ?? 0)).filter((v) => v > 0);
+  const joint = confirmed.map((set) => Number(set.joint_pain ?? 0)).filter((v) => v > 0);
+  const exerciseJoint = exercise.joint_pain;
+  return {
+    muscle_pain: muscle.length ? Math.max(...muscle) : (exercise.muscle_pain ?? null),
+    joint_pain: joint.length ? true : exerciseJoint == null ? null : Boolean(exerciseJoint),
+    derived_muscle: muscle.length > 0,
+    derived_joint: joint.length > 0,
+  };
+}
+
 function remapAnchor(set: ExerciseFormSet, all?: readonly ExerciseFormSet[]): number | null {
   const anchor = set.anchor_set_number ?? null;
   if (anchor == null || !all) return anchor;
@@ -103,6 +169,8 @@ function remapAnchor(set: ExerciseFormSet, all?: readonly ExerciseFormSet[]): nu
 export function setUpdatePayload(set: ExerciseFormSet, index: number, all?: readonly ExerciseFormSet[]) {
   return {
     set_number: index + 1,
+    // Série gravada de origem (null = nova): o servidor pareia por ele.
+    source_set_number: set.source_set_number ?? null,
     reps: set.reps,
     weight_kg: set.weight_kg,
     rpe: set.rpe,
@@ -134,11 +202,6 @@ const APPLICATION_NOUNS: Record<string, string> = {
   rest_pause: 'Mini-bloco',
   drop_set: 'Drop',
   forced_rep: 'Reps extras',
-};
-
-const PREPARATORY_LABELS: Record<string, string> = {
-  warmup: 'Aquecimento',
-  feeler: 'Série de ajuste',
 };
 
 export type SetDisplayRow = {
@@ -189,7 +252,7 @@ export function describeSets(sets: readonly SetLike[]): SetDisplayRow[] {
     }
     if (!isTechniqueApplicationSetType(setType)) {
       return {
-        label: PREPARATORY_LABELS[setType] ?? setType,
+        label: SET_TYPE_LABELS[setType] ?? setType,
         setType,
         isApplication: false,
         anchorIndex: null,
@@ -229,6 +292,8 @@ export function formatLoggedSets(
       reps?: number | null;
       weight_kg?: number | string | null;
       rpe?: number | string | null;
+      rpe_target_planned?: number | string | null;
+      rpe_vs_expected?: RpeVsExpected | undefined;
       measure?: string | null;
       duration_seconds?: number | null;
       measure_text?: string | null;
@@ -241,7 +306,7 @@ export function formatLoggedSets(
     .map((set, index) => {
       const row = display[index];
       const weight = Number(set.weight_kg || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-      const rpe = set.rpe != null ? ` @RPE ${Number(set.rpe).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}` : '';
+      const rpe = set.rpe != null ? ` @RPE ${Number(set.rpe).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}${rpeExpectedSuffix(set)}` : '';
       const prefix = row.isApplication ? `↳ ${row.label}` : row.label;
       if (!isRepBased(set.measure)) {
         // Lote T5: texto do dono ("58 s", "15 reps em 30 s"); carga só se houver.

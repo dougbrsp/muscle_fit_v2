@@ -1,5 +1,6 @@
 'use client';
 
+import { diaryCycleInfo, diaryCycleText } from '@/lib/nutrition-cycle-policy';
 import { Badge, Group, Table, Text, Tooltip } from '@mantine/core';
 import { IconLock } from '@tabler/icons-react';
 import { TRAINING_KCAL_NATURE_OPTIONS, nutritionLabel, nutritionNotice } from '@/lib/nutrition-constants';
@@ -10,6 +11,11 @@ import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
 export type WeekRow = { local_date: string; target: NutritionDayTarget | null };
+
+function cycleText(target: NutritionDayTarget): string {
+  const info = diaryCycleInfo(target);
+  return info ? diaryCycleText(info) : '';
+}
 
 export function trainingText(target: NutritionDayTarget): string {
   if (!target.training_known) return 'A definir';
@@ -63,6 +69,11 @@ export function WeekTargetsTable({ rows, today }: { rows: WeekRow[]; today: stri
                   <>
                     <Table.Td>
                       <Text size="sm">{trainingText(target)}</Text>
+                      {cycleText(target) && (
+                        <Text size="xs" c="dimmed">
+                          {cycleText(target)}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td ta="right">{formatKcal(target.kcal)}</Table.Td>
                     <Table.Td ta="right">{formatGrams(target.protein_g)}</Table.Td>

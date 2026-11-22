@@ -65,6 +65,13 @@ logger = logging.getLogger("musclefit.generation.runs")
 
 TABLE = "generation_runs"
 
+# Chaves do `raw_payload` onde a auditoria mora; `extract_audit` e
+# `audit_sql_expr` leem as mesmas, na mesma ordem de preferencia.
+AUDIT_KEY = "generation_audit"
+AUDIT_CONTEXT_KEY = "generation_context"
+AUDIT_JSON_PATH = f"$.{AUDIT_KEY}"
+AUDIT_CONTEXT_JSON_PATH = f"$.{AUDIT_CONTEXT_KEY}.{AUDIT_KEY}"
+
 # `job_id` do DynamoDB da invocacao corrente. Ele NAO entra na assinatura de
 # `dispatch_plan_generation`: essa funcao e o contrato da geracao, e a
 # auditoria nao tem direito de mudar contrato de quem ela audita. Quando isso
@@ -148,8 +155,24 @@ def extract_audit(raw_payload: Any) -> Optional[dict[str, Any]]:
     persistir nem a ligar."""
     if not isinstance(raw_payload, Mapping):
         return None
-    audit = raw_payload.get("generation_audit")
+    audit = raw_payload.get(AUDIT_KEY)
+    if not isinstance(audit, Mapping):
+        # A tela envia o rascunho inteiro em `generation_context` (e clientes em cache so assim).
+        context = raw_payload.get(AUDIT_CONTEXT_KEY)
+        audit = context.get(AUDIT_KEY) if isinstance(context, Mapping) else None
     return audit if isinstance(audit, Mapping) else None
+
+
+def audit_sql_expr(column: str) -> str:
+    """Espelho em SQL de `extract_audit`: expressao JSON do `generation_audit`
+    da ficha, preferindo o nivel de cima e caindo no `generation_context`.
+
+    `column` e SEMPRE texto fixo do servidor (ex.: "wp.raw_payload"), nunca
+    dado do usuario: e interpolado no SQL. Um `null` de JSON no nivel de cima
+    nao conta como auditoria (`JSON_TYPE` = 'NULL'), como em `extract_audit`."""
+    top = f"JSON_EXTRACT({column}, '{AUDIT_JSON_PATH}')"
+    ctx = f"JSON_EXTRACT({column}, '{AUDIT_CONTEXT_JSON_PATH}')"
+    return f"(CASE WHEN JSON_TYPE({top}) = 'OBJECT' THEN {top} ELSE {ctx} END)"
 
 
 def _as_int(value: Any) -> Optional[int]:

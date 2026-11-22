@@ -165,8 +165,11 @@ def test_update_grava_o_vinculo_preservado_e_o_derivado(monkeypatch):
          "notes": None, "muscle_pain": None, "joint_pain": None, "technique_code": None, "anchor_set_number": None},
         {"set_number": 2, "set_type": "forced_rep", "rest_seconds": None, "hr_avg_bpm": None, "hr_max_bpm": None,
          "notes": None, "muscle_pain": None, "joint_pain": None, "technique_code": "cheat_reps", "anchor_set_number": 1},
+        # #219: série de técnica não nasce na edição; a 3 já está gravada, sem vínculo.
+        {"set_number": 3, "set_type": "forced_rep", "rest_seconds": None, "hr_avg_bpm": None, "hr_max_bpm": None,
+         "notes": None, "muscle_pain": None, "joint_pain": None, "technique_code": None, "anchor_set_number": None},
     ]
-    sets = [_serie(1), _serie(2), _serie(3, set_type="forced_rep")]  # a 3 é nova
+    sets = [_serie(1), _serie(2), _serie(3, set_type="forced_rep")]  # a 3 reenvia o tipo gravado
 
     linhas, leu_ficha = _run_update(monkeypatch, sets, stored, plan_technique="negative_reps")
     assert leu_ficha
@@ -180,7 +183,11 @@ def test_update_grava_o_vinculo_preservado_e_o_derivado(monkeypatch):
 
 def test_update_sem_aplicacao_pendente_nao_le_a_ficha(monkeypatch):
     sets = [_serie(1), _serie(2, set_type="drop_set", technique_code="drop_set", anchor_set_number=1)]
-    linhas, leu_ficha = _run_update(monkeypatch, sets, [])
+    stored = [
+        {"set_number": 1, "set_type": "working", "technique_code": None, "anchor_set_number": None},
+        {"set_number": 2, "set_type": "drop_set", "technique_code": "drop_set", "anchor_set_number": 1},
+    ]
+    linhas, leu_ficha = _run_update(monkeypatch, sets, stored)
 
     assert not leu_ficha
     assert linhas == [(1, "working", None, None), (2, "drop_set", "drop_set", 1)]

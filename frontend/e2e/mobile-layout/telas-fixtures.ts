@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Page, Route } from '@playwright/test';
-import { MOCK_API_ORIGIN } from '../desktop-baseline/mock-api';
+import { MOCK_API_ORIGIN, SESSION_USER } from '../desktop-baseline/mock-api';
 
 /**
  * Dados realistas para as telas da frente C (sem alterar `mock-api.ts`): as
@@ -176,6 +178,7 @@ const FIXTURES: Record<string, unknown> = {
   'POST /workout-plans/generate': { job_id: 'j1', status: 'pending' },
   'GET /jobs/j1': { status: 'done', result: PLAN_DRAFT },
   'POST /workout-plans': PLAN_DETAIL,
+  'POST /workout-plans/exercise-swap-options': { items: [{ mapping_id: 1, primary_group_id: 1, exercise_ids: null }] },
   'GET /training-goals': { default: 'hypertrophy', items: [] },
   'GET /analytics/muscle-groups-recent-exercise-volume': {
     items: [],
@@ -204,12 +207,14 @@ const FIXTURES: Record<string, unknown> = {
   'POST /nutrition/meals/preview': { items: [MEAL_ITEM], totals: MEAL_TOTALS, warnings: [] },
   'GET /nutrition/meals/last-time': { time: null },
   'POST /nutrition/meals': MEAL,
+  'GET /workout-sessions/1/deload': { session_id: 1, deload: { active: false, source: null, period: null, can_toggle: false } },
   'POST /workout-sessions/1/exercises': { exercise_id: 21 },
   'POST /workout-sessions/1/exercises/21/sets': { ok: true },
   'DELETE /users/2': { status: 'ok', id: 2, is_active: false },
 
   'GET /activities': ACTIVITY_LIST,
   'GET /activities/1': ACTIVITY_DETAIL,
+  'POST /exercises/logs': { ok: true, exercise_id: 22 },
   'PUT /exercises/logs/12': { ok: true },
   'PUT /exercises/logs/13': { ok: true },
   'PUT /exercises/logs/14': { ok: true },
@@ -246,7 +251,7 @@ const FIXTURES: Record<string, unknown> = {
   'POST /analytics/muscle-activation-preview': { items: [] },
   'GET /nutrition/weeks': NUTRITION_WEEK,
   'GET /nutrition/days/2026-10-14': NUTRITION_DAY,
-  'GET /nutrition/foods': { letter: 'A', letters: ['A', 'B', 'C', 'outros'], items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')], limit: 50, offset: 0, has_more: false },
+  'GET /nutrition/foods': { letter: 'A', letters: ['A', 'B', 'C', 'outros'], letter_labels: { A: 'A', B: 'B', C: 'C', outros: 'Outros (números e símbolos)' }, items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')], limit: 50, offset: 0, has_more: false },
   'GET /nutrition/foods/search': { query: 'arroz', normalized: 'arroz', items: [FOOD(1, 'Arroz, integral, cozido'), FOOD(2, 'Arroz, tipo 1, cozido')] },
   'GET /nutrition/favorites': { items: [], max_items: 30 },
   'GET /sleep-metrics': { items: [{ id: 1, local_date: '2026-10-13', duration_hours: 7.5, regularity_percent: 82, deep_sleep_hours: 1.5, rem_sleep_hours: 1.8, awake_count: 2, awake_hours: 0.4, notes: null }] },
@@ -320,8 +325,16 @@ export async function installTelasFixtures(page: Page) {
   });
 }
 
-/** `/auth/me` como admin (a sessão base do mock é de usuário comum). */
-export async function installAdminSession(page: Page) {
+const ACCESS_GRANTS = JSON.parse(
+  readFileSync(join(__dirname, 'access-grants.generated.json'), 'utf8'),
+) as Record<string, { permissions: unknown; groups: string[] }>;
+
+/**
+ * `/auth/me` com o papel pedido e as permissões reais do catálogo (JSON gerado pelo
+ * backend). Registrar depois de `installMockApi`: a última rota registrada vence.
+ */
+export async function installSession(page: Page, role: 'user' | 'personal_trainer' | 'admin' = 'user') {
+  const grants = ACCESS_GRANTS[role];
   await page.route(`${MOCK_API_ORIGIN}/auth/me`, async (route: Route) => {
     const origin = route.request().headers()['origin'] ?? '*';
     if (route.request().method() === 'OPTIONS') {
@@ -330,11 +343,20 @@ export async function installAdminSession(page: Page) {
     }
     await route.fulfill({
       status: 200,
-      headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' },
+      headers: {
+        'access-control-allow-origin': origin,
+        'access-control-allow-credentials': 'true',
+        'access-control-allow-headers': '*',
+      },
       contentType: 'application/json',
-      body: JSON.stringify({ id: 1, username: 'ana', full_name: 'Ana Teste', role: 'admin', must_change_password: false, intervals_configured: false, timezone: 'America/Sao_Paulo', features: { exercise_cards: false } }),
+      body: JSON.stringify({ ...SESSION_USER, role, intervals_configured: role === 'admin', permissions: grants.permissions, groups: grants.groups }),
     });
   });
+}
+
+/** `/auth/me` como admin (a sessão base do mock é de usuário comum). */
+export async function installAdminSession(page: Page) {
+  await installSession(page, 'admin');
 }
 
 export async function installTimedSession(page: Page) {
