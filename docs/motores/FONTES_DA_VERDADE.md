@@ -4871,7 +4871,7 @@ A tela não compara mais texto de grupo (`sameGroupName`/`lockedGroupOf` removid
 
 ### 61.1 Vínculo da ficha com a geração (`generation_runs`, #178, 2026-11-19)
 
-Uma ficha salva liga-se à linha de `generation_runs` que a originou pelo `audit_hash` (sha256 do JSON canônico de `generation_audit`). A auditoria é aceita em dois lugares, nesta ordem: `raw_payload.generation_audit` e, na falta, `raw_payload.generation_context.generation_audit` (dono: `api/app/generation/generation_runs.py::extract_audit`, L143-156). Usada por `record_generation_run` e por `link_run_to_plan` (L225), chamado por `services.create_workout_plan` (`api/app/services.py` L3832-3834). O frontend envia a auditoria nos dois lugares (`frontend/src/lib/workout-plan-payload.ts::buildDraftRawPayload`, L91-93). Consumidor que lê só o nível de cima: `api/app/intelligence/dashboard/engine_service.py` (SQL em L218-229). Proibido: ler `generation_audit` em outro ponto para ligar rascunho e ficha, ou carimbar `generation_run_id` dentro do bloco (muda o formato do bloco; `generation_runs.py` L41-48).
+Uma ficha salva liga-se à linha de `generation_runs` que a originou pelo `audit_hash` (sha256 do JSON canônico de `generation_audit`). A regra de onde está a auditoria da geração na ficha é única no dono `api/app/generation/generation_runs.py`, em duas formas equivalentes: `extract_audit` (Python, L150-163) e `audit_sql_expr(coluna)` (SQL, L166-175), ambas com as constantes de caminho `AUDIT_JSON_PATH` (`$.generation_audit`) e `AUDIT_CONTEXT_JSON_PATH` (`$.generation_context.generation_audit`). A preferência é o nível de cima quando é objeto JSON e, senão, o `generation_context`; um `null` de JSON no nível de cima não conta. Usada por `record_generation_run` e por `link_run_to_plan`, chamado por `services.create_workout_plan` (`api/app/services.py` L3832-3834). O frontend envia a auditoria nos dois lugares (`frontend/src/lib/workout-plan-payload.ts::buildDraftRawPayload`, L91-93). O painel do motor (`api/app/intelligence/dashboard/engine_service.py`, `_RAW_AUDIT = audit_sql_expr("wp.raw_payload")`, na lista de fichas sem run e no cabeçalho do detalhe) consome essa expressão e considera a ficha "com auditoria" só quando o valor é objeto (`JSON_TYPE(...) = 'OBJECT'`). Proibido: qualquer consumidor escrever o caminho JSON da auditoria à mão (`$.generation_audit`, `$.generation_context...`); ler `generation_audit` em outro ponto para ligar rascunho e ficha; ou carimbar `generation_run_id` dentro do bloco (muda o formato do bloco; `generation_runs.py` L41-48).
 
 ## 62. Modo Intensivo para técnicas avançadas — PR 1, backend (2026-10-24)
 
@@ -7555,7 +7555,7 @@ Efeito de cada mudança de semântica:
 - (a) GVT com reps do protocolo (linha "Reps do protocolo da técnica" acima): a partir do deploy, linha GVT gerada, congelada ou gravada (criação, edição e ficha manual) sai com 10. Fichas já congeladas mantêm a faixa antiga até serem geradas de novo.
 - (b) Técnica só de séries em grupo `NO_DIRECT_WORK`: o GVT passa a ser mantido (série, parâmetros e reps do protocolo) na decisão `SKIP`, com o RPE do protocolo limitado pelo teto do dia. O FST-7 não muda no `SKIP`: exige falha, e a falha está negada nesses dias, então a técnica cai como antes (sem técnica; séries e faixa do Modelo na linha). As demais técnicas também caem no `SKIP` sem técnica.
 - (c) Trava de grupo na criação (#178): linha gerada (com `generated_mapping_id`) trocada por exercício de outro grupo PRIMARY sai com 422 `muscle_group_locked` (`api/app/workout_plans.py::create_plan`, L63-67). Linha manual e cliente antigo continuam livres.
-- (d) Vínculo da geração: fichas salvas a partir do deploy passam a ter `generation_runs.workout_plan_id` gravado quando a auditoria chega no nível de cima ou em `generation_context`. As 70 execuções antigas não são religadas.
+- (d) Vínculo da geração: fichas salvas a partir do deploy passam a ter `generation_runs.workout_plan_id` gravado quando a auditoria chega no nível de cima ou em `generation_context`. As 70 execuções antigas não são religadas. Medição de 21/11/2026 no banco de desenvolvimento (cópia de produção, só leitura): 58 execuções sem ficha ligada (não 70; a diferença não foi explicada aqui). Escolha: não religar por migração (ver Lote 21 de 21/11/2026).
 
 Não medido:
 
@@ -7704,3 +7704,21 @@ Descartado:
 - juntar mais de duas linhas na guarda: nenhuma ocorrência real usa;
 - recriar o script do replay da #195: não é recuperável;
 - FST-7 em dia sem trabalho direto: comportamento mantido e fixado em teste.
+
+**Lote 21 de 21/11/2026 (#230, #233).** Auditoria da geração no painel e rascunho da refeição. Mudanças:
+
+- Auditoria da geração: a regra de onde está o `generation_audit` na ficha é única no dono `api/app/generation/generation_runs.py` (`extract_audit` em Python e `audit_sql_expr` em SQL, com `AUDIT_JSON_PATH` e `AUDIT_CONTEXT_JSON_PATH`). O painel do motor (`api/app/intelligence/dashboard/engine_service.py`) usa a expressão do dono na lista e no cabeçalho do detalhe e passa a enxergar as fichas com a auditoria só em `generation_context`.
+- Fora dos motores, sem regra de motor: o rascunho da refeição guarda só a foto reduzida. `readMealPhoto` (`frontend/src/lib/nutrition-api.ts`) devolve a versão reduzida, e `frontend/src/components/nutrition/MealParseModal.tsx` reinicia a mutação depois do sucesso (`lerFoto.reset()`).
+
+Impacto em produção: sem migração; nenhuma escrita em dados existentes; só o texto de duas consultas de leitura do painel muda, sem consulta nova. Medido em 21/11/2026 no banco de desenvolvimento (cópia de produção), só com leitura:
+
+- 45 fichas com a auditoria guardada só em `generation_context` e nenhuma com ela no nível de cima. A expressão nova encontra as 45.
+- 58 execuções de geração sem ficha ligada. 53 delas casam com alguma ficha pela igualdade do `audit_hash`, mas só 20 fichas casam com exatamente uma execução.
+- Efeito para o usuário: as fichas antigas passam a aparecer no painel com a limitação `AUDIT_FROM_RAW_PAYLOAD_LIMITATION` ("Auditoria lida de `workout_plans.raw_payload`"). Antes não apareciam na lista e, no detalhe, apareciam com `AUDIT_UNAVAILABLE_LIMITATION` (sem auditoria).
+
+Escolha registrada: as execuções antigas NÃO são religadas por migração. A religação cobriria menos da metade das fichas, tem risco de ligar o par errado e escreveria em dados de produção. Elas continuam aparecendo como rascunho não salvo (`AUDIT_DRAFT_NOT_SAVED_LIMITATION`). O usuário foi informado em 21/11/2026 e pode pedir a religação dos 20 pares inequívocos num lote próprio.
+
+Não medido:
+
+- o comportamento da expressão `audit_sql_expr` no Aurora pela RDS Data API, antes do CI;
+- se o `audit_hash` muda quando um número com casas decimais zeradas passa pelo navegador (risco apontado na #230; não conferido).

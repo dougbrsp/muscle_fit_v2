@@ -459,7 +459,7 @@ export async function readMealPhoto(
   file: Blob,
   context: MealPhotoContext,
   onStage?: (stage: LabelPhotoStage) => void,
-): Promise<MealPhotoResult> {
+): Promise<{ result: MealPhotoResult; photo: Blob }> {
   onStage?.('resizing');
   const reduzida = await resizeImageForUpload(file, {
     maxEdge: MEAL_PHOTO.resize_max_edge_px,
@@ -470,11 +470,13 @@ export async function readMealPhoto(
   const despacho = await uploadMealPhoto(reduzida, context);
   onStage?.('reading');
   const prazo = despacho.poll_timeout_seconds;
-  return pollAsyncJob<MealPhotoResult>(despacho.job_id, {
+  const result = await pollAsyncJob<MealPhotoResult>(despacho.job_id, {
     timeoutMs: prazo ? prazo * MS_PER_SECOND : ASYNC_JOB_POLL_TIMEOUT_MS,
     failedFallbackMessage: 'Não foi possível analisar a foto. Tente de novo.',
     timeoutMessage: 'A análise da foto demorou demais. Tente de novo em instantes.',
   });
+  // A versão reduzida (a que o servidor recebeu) é a que o rascunho guarda; o original não.
+  return { result, photo: reduzida };
 }
 
 type StructuredDetail = {

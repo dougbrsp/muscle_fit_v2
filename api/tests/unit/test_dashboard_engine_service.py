@@ -361,3 +361,15 @@ def test_as_frases_de_limitacao_sao_todas_diferentes():
         es.NO_RUNS_IN_WINDOW_LIMITATION,
     }
     assert len(frases) == 9
+
+
+def test_consultas_do_painel_leem_a_auditoria_pela_expressao_do_dono():
+    from app.generation.generation_runs import audit_sql_expr
+
+    expr = audit_sql_expr("wp.raw_payload")
+    for sql in (es.RAW_PAYLOAD_RUNS_SQL, es.PLAN_HEADER_SQL):
+        assert expr in sql
+        # sem o caminho direto antigo fora da expressao
+        assert sql.replace(expr, "").count("$.generation_audit") == 0
+    assert f"JSON_TYPE({expr}) = 'OBJECT'" in es.RAW_PAYLOAD_RUNS_SQL
+    assert "IS NOT NULL" not in es.RAW_PAYLOAD_RUNS_SQL.split("WHERE", 1)[1].split("gr.id")[0]
