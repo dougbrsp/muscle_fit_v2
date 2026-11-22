@@ -14,8 +14,10 @@ type Perms = Permissions | null | undefined;
 /** Academias (`/gyms*`, `/gym-equipment-catalog`). */
 export function academiasControls(perms: Perms) {
   return {
-    /** `POST /gyms` e `PUT /gyms/{id}` (dias, avulsa) e vínculo de equipamento: treino.academias/editar. */
+    /** `POST /gyms` e `PUT /gyms/{id}` (dias, avulsa): treino.academias/editar. */
     canEdit: can(perms, 'treino.academias', 'editar'),
+    /** `POST /gym-equipment-catalog` (acrescentar equipamento à academia): treino.academias.equipamentos/editar. */
+    canAddEquipment: can(perms, 'treino.academias.equipamentos', 'editar'),
     /** `DELETE /gyms/{id}` e `DELETE /gym-equipment-catalog/{id}`: treino.academias/excluir. */
     canDelete: can(perms, 'treino.academias', 'excluir'),
     /** Nome/horário (`PUT /gyms/{id}` com campos admin) e envio de logo: admin.catalogos/editar. */

@@ -154,6 +154,11 @@
         "excluir": "todos",
         "ver": "todos"
       },
+      "treino.academias.equipamentos": {
+        "editar": "todos",
+        "excluir": "todos",
+        "ver": "todos"
+      },
       "treino.modo_treino": {
         "editar": "todos",
         "excluir": "todos",
@@ -304,6 +309,11 @@
         "excluir": "proprios",
         "ver": "proprios"
       },
+      "treino.academias.equipamentos": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
       "treino.modo_treino": {
         "editar": "proprios",
         "excluir": "proprios",
@@ -433,6 +443,11 @@
         "ver": "proprios"
       },
       "treino.academias": {
+        "editar": "proprios",
+        "excluir": "proprios",
+        "ver": "proprios"
+      },
+      "treino.academias.equipamentos": {
         "editar": "proprios",
         "excluir": "proprios",
         "ver": "proprios"

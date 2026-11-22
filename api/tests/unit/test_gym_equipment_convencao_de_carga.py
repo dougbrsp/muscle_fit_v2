@@ -11,6 +11,7 @@ class _Cur:
     def __init__(self, rows):
         self.rows = rows
         self.sql = None
+        self.owner_sql = None
 
     def __enter__(self):
         return self
@@ -22,7 +23,14 @@ class _Cur:
         return self
 
     def execute(self, sql, params=None):
-        self.sql = sql
+        if "FROM gyms WHERE id" in sql:
+            self.owner_sql = sql
+        else:
+            self.sql = sql
+
+    def fetchone(self):
+        assert self.owner_sql is not None, "fetchone so e valido apos a consulta do dono"
+        return {"owner_user_id": 1}
 
     def fetchall(self):
         return [dict(r) for r in self.rows]
@@ -34,9 +42,11 @@ def _listar(monkeypatch, rows):
     monkeypatch.setattr(gyms, "load_convention_select_expr", lambda cursor: "eqex.load_convention")
     monkeypatch.setattr(gyms, "permissions_for_request", lambda request, identity: None)
     monkeypatch.setattr(gyms, "manufacturer_editor", lambda identity, perms: False)
+    monkeypatch.setattr(gyms, "owns_row_or_all", lambda identity, perms, resource, action, owner: owner == 1)
     out = gyms.list_gym_equipment(
         request=None, gym_id=3, mapping_id=None, primary_group=None, active_only=True, identity=None
     )
+    assert out["can_add_to_gym"] is True  # campo aditivo de topo; fora de `items`
     return cur, out["items"]
 
 
