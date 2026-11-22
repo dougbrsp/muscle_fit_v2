@@ -485,6 +485,60 @@ def test_linha_manual_sem_decisao_compoe_com_o_contrato_do_grupo(monkeypatch):
     assert (snap["effective_rpe_ceiling"], snap["failure_allowed"], snap["effective_rpe_target"]) == (9, False, 9)
 
 
+class _GravaCursor:
+    def __init__(self, rows, executed):
+        self.rows, self.executed = rows, executed
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+
+    def fetchall(self):
+        return self.rows
+
+
+class _GravaConn:
+    def __init__(self, rows):
+        self.rows, self.executed = rows, []
+
+    def cursor(self):
+        return _GravaCursor(self.rows, self.executed)
+
+
+def test_congelamento_zera_a_coluna_so_quando_a_tecnica_foi_retirada_sem_trabalho_direto(monkeypatch):
+    from app import services
+    from app.generation import freeze_mode_a, freeze_mode_b, plan_goal_stamp
+
+    rows = [{"workout_plan_exercise_id": 1}, {"workout_plan_exercise_id": 2}]
+    monkeypatch.setattr(plan_goal_stamp, "stamp_plan_row_goals", lambda conn, plan_id, r: r)
+    monkeypatch.setattr(services, "_safety_by_exercise_row", lambda conn, r: {})
+    monkeypatch.setattr(freeze_mode_a, "freeze_mode_a", lambda *a, **k: None)
+    monkeypatch.setattr(freeze_mode_b, "freeze_mode_b", lambda *a, **k: None)
+    monkeypatch.setattr(services, "_laboral_rows_snapshots", lambda *a, **k: {})
+    base = {"engine_version": "x", "requires_user_choice": False}
+    monkeypatch.setattr(
+        services,
+        "_manual_rows_snapshots",
+        lambda *a, **k: {
+            1: {**base, "warnings": [pd.WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK]},
+            2: {**base, "warnings": [pd.WARNING_MODEL_TECHNIQUE_INVALID]},
+        },
+    )
+    conn = _GravaConn(rows)
+
+    services._freeze_plan_prescriptions(conn, 9, user_id=1, plan_type=None)
+
+    updates = [(sql, params[-1]) for sql, params in conn.executed if sql.startswith("UPDATE")]
+    assert len(updates) == 2
+    assert "advanced_technique = NULL" in updates[0][0] and updates[0][1] == 1
+    assert "advanced_technique" not in updates[1][0] and updates[1][1] == 2
+
+
 def test_round_to_equipment_step_e_o_helper_publico_unico():
     assert pe.round_to_equipment_step("42,4", 5) == 40.0
     assert pe.round_to_equipment_step(43.75, None) == 45.0  # passo default 2,5
