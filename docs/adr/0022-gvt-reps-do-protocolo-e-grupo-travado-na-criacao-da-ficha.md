@@ -40,7 +40,7 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
    - Pelo mesmo motivo, o RPE mantido não pode passar do teto do dia: o `target_rpe` do protocolo é limitado por `composition.ceiling`.
    - A proibição por objetivo de força (`training_safety.STRENGTH_DISALLOWED_TECHNIQUES`, L104) não foi alterada.
 5. **Trava de grupo na criação (#178).** `api/app/models.py::WorkoutPlanExerciseIn.generated_mapping_id` (L252, opcional, não persistido). `services._replace_plan_exercises` (L3431-3434): linha sem linha salva e com o campo passa por `_assert_exercise_keeps_primary_group` (L3217), o mesmo predicado da edição (`api/app/workout_plan_edit_rules.py::assert_same_primary_group`, L113-124, 422 `muscle_group_locked`). Linha sem o campo (manual) e cliente antigo ficam livres. `api/app/workout_plans.py::create_plan` (L63-67) responde o 422 no mesmo formato da edição (`detail.reason` e `detail.message`).
-6. **Vínculo da geração.** `api/app/generation/generation_runs.py::extract_audit` (L143-156) lê `raw_payload.generation_audit` e, na falta, `raw_payload.generation_context.generation_audit`. `link_run_to_plan` (L225), chamado por `services.create_workout_plan` (L3832-3834), usa a mesma leitura. `frontend/src/lib/workout-plan-payload.ts::buildDraftRawPayload` (L93) envia a auditoria também no nível de cima, sem alterar o conteúdo (o hash continua o mesmo).
+6. **Vínculo da geração.** `api/app/generation/generation_runs.py::extract_audit` (L150-163; a forma SQL é `audit_sql_expr`, L166-175) lê `raw_payload.generation_audit` e, na falta, `raw_payload.generation_context.generation_audit`. `link_run_to_plan` (L225), chamado por `services.create_workout_plan` (L3832-3834), usa a mesma leitura. `frontend/src/lib/workout-plan-payload.ts::buildDraftRawPayload` (L93) envia a auditoria também no nível de cima, sem alterar o conteúdo (o hash continua o mesmo).
 7. **Frontend sem regra.** `frontend/src/lib/exercise-swap-options.ts::stampGeneratedRows` (L61-63) carimba `generated_mapping_id` na linha gerada; `frontend/src/lib/workout-plan-payload.ts` (L54) envia o campo quando existe; `frontend/src/lib/plan-save-error.ts::planSaveErrorMessage` (L6-10) mostra a mensagem do servidor na tela mobile de geração (`GerarPlanoView.tsx`, L219).
 8. **Reps do protocolo só em linha medida por repetições.** `api/app/services.py::_replace_plan_exercises` (L3470) e `api/app/domain/prescription.py::build_prescription` (L272) aplicam `target_reps` só quando `set_measures.is_rep_based` vale, o mesmo predicado de `generation/mode_b.item_measure_and_reps`. Linha GVT medida por tempo mantém o alvo enviado.
 
@@ -64,7 +64,7 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 ## Limites conhecidos e pendências
 
 - (a) A tela web de geração (`frontend/src/app/(app)/planos-treino/GenerateDraftModal.tsx`) ainda mostra a mensagem genérica do 422; só a tela mobile usa `planSaveErrorMessage`.
-- (b) O painel do motor (`api/app/intelligence/dashboard/engine_service.py`) só enxerga a auditoria no nível de cima; as 52 fichas com a auditoria em `generation_context` continuam fora dele.
+- (b) Resolvido em 21/11/2026 (ver Atualização #230): o painel (`api/app/intelligence/dashboard/engine_service.py`) usa a expressão do dono (`audit_sql_expr`) e enxerga as fichas com a auditoria em `generation_context`.
 - (c) As 70 execuções antigas de `generation_runs` não são religadas a fichas.
 - (d) `frontend/src/lib/advanced-techniques.ts` mantém um fallback escrito à mão para GVT e FST-7 (`fallbackItem('gvt', …)`, L108-111), alcançado só se o catálogo não trouxer o valor. Desde 21/11/2026 os números de séries deste fallback vêm de `SETS_ONLY_DEFAULT_SETS` (ver Atualização).
 - (e) O `rpe_target` da linha continua o do item do Modelo; o RPE do protocolo vai nos parâmetros da técnica (`target_rpe`).
@@ -102,3 +102,13 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 - Vitest do lote: 254 passaram; `tsc` sem erro.
 
 **Limite (j).** Ficha e decisão do motor divergem para FST-7 em dia sem trabalho direto (ver acima). Mudar isso é decisão do usuário.
+
+## Atualização de 21/11/2026 (#230)
+
+**Painel do motor pelo dono.** O painel (`engine_service.py`, lista e cabeçalho do detalhe) lê a auditoria pela expressão `audit_sql_expr` de `api/app/generation/generation_runs.py`, a mesma regra de `extract_audit`. Com isso ele enxerga as fichas com a auditoria só em `generation_context`, e o limite (b) está resolvido. Nenhum consumidor escreve o caminho JSON à mão.
+
+**Medição (leitura, banco de desenvolvimento, cópia de produção).** 45 fichas com a auditoria só em `generation_context`; a expressão nova encontra as 45. 58 execuções sem ficha ligada (o texto acima diz 70, número de outra medição); 53 casam com alguma ficha pelo `audit_hash`, mas só 20 fichas casam com exatamente uma execução.
+
+**Escolha: não religar as execuções antigas.** Nenhuma migração liga as execuções antigas às fichas. A religação cobriria menos da metade das fichas, com risco de ligar o par errado, e escreveria em dados de produção. As execuções seguem como rascunho não salvo. O usuário foi informado em 21/11/2026 e pode pedir a religação dos 20 pares inequívocos num lote próprio, com decisão nova.
+
+Efeito para o usuário: as fichas antigas passam a aparecer no painel com a limitação de leitura de `raw_payload`; antes não apareciam na lista. Detalhe em `docs/motores/FONTES_DA_VERDADE.md` (Lote 21 de 21/11/2026).
