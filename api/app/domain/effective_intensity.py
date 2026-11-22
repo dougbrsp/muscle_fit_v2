@@ -556,6 +556,25 @@ def set_intensity_reading(
     )
 
 
+def ramp_planned_rpe_for_position(plan_rpe: Any, effective_target: Any, previous_working: Any) -> Optional[Union[int, float]]:
+    """#241: `rpe_target_planned` de uma serie de trabalho de repeticoes sem
+    protocolo na posicao ordinal `previous_working` + 1 (series de trabalho
+    antes dela): a MESMA composicao do POST (`planned_ramp_rpe` ->
+    `set_effort_target` -> `planned_set_rpe_target`), para regravar o esperado
+    quando uma serie chega fora de ordem. Sem alvo efetivo -> None."""
+    from .next_set_load import planned_ramp_rpe
+
+    charged = set_effort_target(effective_target, planned_ramp_rpe(plan_rpe, previous_working))
+    return planned_set_rpe_target("working", charged)
+
+
+def has_planned_rpe_ramp(plan_rpe: Any) -> bool:
+    """A ficha tem rampa de RPE (so ela pode ter esperado por posicao)."""
+    from .next_set_load import planned_ramp_rpe
+
+    return planned_ramp_rpe(plan_rpe, 0) is not None
+
+
 def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target: Any) -> list[float]:
     """Alvo COBRADO em cada serie de trabalho da ficha exibida: o mesmo da
     sessao (`set_effort_target(alvo efetivo ja cortado pelo teto, degrau da

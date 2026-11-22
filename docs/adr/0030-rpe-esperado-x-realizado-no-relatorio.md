@@ -35,7 +35,7 @@ Restrições reais:
 
 Itens da #241 descartados neste lote, com o motivo (ficam para issue):
 
-- (a) série enviada fora de ordem pela fila offline grava o esperado do degrau vizinho (`api/app/workout_sessions.py`, contagem das séries de trabalho já gravadas com número menor). A correção mexe na gravação da série e pede teste próprio;
+- (a) série enviada fora de ordem pela fila offline: deixou de ser pendente. A correção entrou nesta #241; ver "Revisão pela #241" no ADR 0026;
 - (b) o detalhe do treino compara toda série com esperado gravado, inclusive backoff e técnica; a contagem do histórico e do relatório conta só séries de trabalho. Alinhar é decisão de produto;
 - (c) série com repetições pendentes, medida que não é por repetições ou marcada como técnica grava o alvo do exercício ou do protocolo: não conferido na tela;
 - (d) trava no pipeline de produção contra publicar código que depende de migração com `RUN_DB_MIGRATIONS` desligado: é mudança de workflow de deploy, fora deste lote.
