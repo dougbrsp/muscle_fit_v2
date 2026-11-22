@@ -24,7 +24,6 @@ import {
 import { SWAP_REMAINING_NOTE } from '@/lib/equipment-change-confirm';
 import { loadConventionLabel, type EquipmentExerciseLink } from '@/lib/equipment-exercises-types';
 import { apiFetch, ApiError } from '@/lib/api';
-import { usePermissions } from '@/lib/use-permissions';
 import { useOnlineStatus } from '@/mobile/ui/use-online-status';
 import { EquipmentPhoto } from '@/components/EquipmentPhoto';
 import { getAdvancedTechniqueLabel } from '@/lib/advanced-techniques';
@@ -118,7 +117,6 @@ export function EquipmentSubstituteModal({
 
   // Catálogo global: itens que a academia não tem. Só a ação de acrescentar exige a permissão.
   const online = useOnlineStatus();
-  const canAddToGym = usePermissions().can('treino.academias', 'editar', 'todos');
   const [pendingAdd, setPendingAdd] = useState<EquipmentExerciseLink | null>(null);
   const [addMessage, setAddMessage] = useState<string | null>(null);
 
@@ -141,7 +139,7 @@ export function EquipmentSubstituteModal({
   const catalogQuery = useQuery({
     queryKey: ['workout-mode-substitute-catalog', gymId, primaryGroup],
     queryFn: () =>
-      apiFetch<ApiList<EquipmentPickerItem>>(
+      apiFetch<ApiList<EquipmentPickerItem> & { can_add_to_gym?: boolean }>(
         `/gym-equipment?gym_id=${gymId}&primary_group=${encodeURIComponent(primaryGroup || '')}&active_only=true`,
       ),
     enabled: opened && Boolean(gymId && primaryGroup),
@@ -214,6 +212,8 @@ export function EquipmentSubstituteModal({
   const excluded = recommendQuery.data?.excluded ?? [];
   const excludedByLinkId = exclusionByLinkId(excluded);
   const techniqueName = getAdvancedTechniqueLabel(requiredTechnique) ?? requiredTechnique;
+  // Pronto do servidor (dono/escopo); sem a lista carregada, não habilita.
+  const canAddToGym = catalogQuery.isSuccess && catalogQuery.data?.can_add_to_gym === true;
   const allItems: EquipmentPickerItem[] = catalogQuery.data?.items || [];
   const sections = buildEquipmentPickerSections(allItems, mappingId, currentEquipmentLinkId, search);
   const currentConvention = currentLoadConvention(allItems, currentEquipmentLinkId);

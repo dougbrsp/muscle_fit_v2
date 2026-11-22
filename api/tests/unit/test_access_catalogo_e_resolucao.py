@@ -33,6 +33,7 @@ MIGRATION_113 = m.DEFAULT_MIGRATIONS_DIR / "113_access_grants_conta_dispositivos
 MIGRATION_114 = m.DEFAULT_MIGRATIONS_DIR / "114_access_grants_modelos_tipos_treino.py"
 MIGRATION_115 = m.DEFAULT_MIGRATIONS_DIR / "115_access_grants_pt_nutricao_alunos.py"
 MIGRATION_116 = m.DEFAULT_MIGRATIONS_DIR / "116_modelos_visibilidade_e_escopo_pt.py"
+MIGRATION_122 = m.DEFAULT_MIGRATIONS_DIR / "122_access_grants_academias_equipamentos.py"
 
 # Grupos que a migracao 111 semeia com is_system=1 (free e comum e vem com 0).
 GRUPOS_DE_SISTEMA = frozenset({"admin", "personal_trainer", "usuario"})
@@ -65,10 +66,15 @@ def _migration_116_globals() -> dict:
     return m.load_python_migration(MIGRATION_116).__globals__
 
 
+@functools.lru_cache(maxsize=1)
+def _migration_122_globals() -> dict:
+    return m.load_python_migration(MIGRATION_122).__globals__
+
+
 def _matriz_acumulada_das_migracoes() -> dict[str, list[tuple[str, str, str]]]:
     """Retrato congelado acumulado: matriz da 111 + concessoes da 113/114 + escopos da 115."""
     acumulado = {g: list(linhas) for g, linhas in _migration_globals()["GRANTS_BY_GROUP"].items()}
-    for globais in (_migration_113_globals(), _migration_114_globals()):
+    for globais in (_migration_113_globals(), _migration_114_globals(), _migration_122_globals()):
         for grupo, linhas in globais["GRANTS_BY_GROUP"].items():
             acumulado[grupo].extend(linhas)
     # 115 e 116: UPDATE de escopo sobre linhas existentes (nao acrescenta pares novos)
@@ -547,7 +553,7 @@ def test_tipos_treino_so_o_personal_trainer_recebe_com_escopo_todos():
     assert {l for l in DEFAULT_GRANTS_BY_GROUP["personal_trainer"] if l[0] == "modelos.tipos_treino"} == esperado
     for grupo in ("usuario", "free", "admin"):
         assert not [l for l in DEFAULT_GRANTS_BY_GROUP[grupo] if l[0] == "modelos.tipos_treino"]
-    assert len(DEFAULT_GRANTS_BY_GROUP["personal_trainer"]) == 85
+    assert len(DEFAULT_GRANTS_BY_GROUP["personal_trainer"]) == 88
 
 
 def test_conta_dispositivos_usuario_e_pt_proprios_free_e_admin_vazios():
@@ -589,6 +595,10 @@ def test_paridade_vocabulario_acoes_escopos_e_grupos():
     assert tuple(g116["ACTIONS"]) == catalog.ACTIONS
     assert set(g116["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
     assert set(g116["RESOURCES"]) == {"modelos.treino"}
+    g122 = _migration_122_globals()
+    assert tuple(g122["ACTIONS"]) == catalog.ACTIONS
+    assert set(g122["GRANTS_BY_GROUP"]) <= {k for k, *_ in g["SEED_GROUPS"]}
+    assert g122["RESOURCE"] == "treino.academias.equipamentos" and g122["SOURCE_RESOURCE"] == "treino.academias"
     assert {k for k, *_ in g["SEED_GROUPS"]} == set(DEFAULT_GRANTS_BY_GROUP)
 
 
