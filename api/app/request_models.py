@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.nutrition import activity_energy as _activity_energy
@@ -93,6 +93,22 @@ class GymEquipmentCatalogAddIn(_StrictIn):
 
     gym_id: StrictInt = Field(gt=0)
     equipment_id: StrictInt = Field(gt=0)
+
+
+class GymEquipmentCreateIn(_StrictIn):
+    """POST /gym-equipment (#246): ids inteiros positivos (sem coercao de texto)."""
+
+    gym_id: StrictInt = Field(gt=0)
+    mapping_id: StrictInt = Field(gt=0)
+    equipment_id: StrictInt = Field(gt=0)
+
+
+class GymEquipmentUpdateIn(_StrictIn):
+    """PUT /gym-equipment/{link_id} (#246). Campo ausente/null nao altera (COALESCE no SQL).
+    `is_active` aceita 0/1 e true/false (gravado como veio); texto e recusado."""
+
+    equipment_id: Optional[StrictInt] = Field(default=None, gt=0)
+    is_active: Optional[Union[StrictBool, Literal[0, 1]]] = None
 
 
 class GymEquipmentManufacturerIn(_StrictIn):

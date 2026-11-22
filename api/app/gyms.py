@@ -24,7 +24,13 @@ from .domain.equipment_context import (
     manufacturer_join_sql,
     with_manufacturer_fields,
 )
-from .request_models import GymCreateIn, GymEquipmentCatalogAddIn, GymEquipmentManufacturerIn
+from .request_models import (
+    GymCreateIn,
+    GymEquipmentCatalogAddIn,
+    GymEquipmentCreateIn,
+    GymEquipmentManufacturerIn,
+    GymEquipmentUpdateIn,
+)
 from .gym_equipment_sync import sync_gym_equipment_for_gym
 from .load_conventions import equipment_exercises_join_sql, load_convention_select_expr, normalize_load_convention
 
@@ -822,18 +828,23 @@ def list_gym_equipment(
     return {"items": _rows_jsonable(items)}
 
 
+def _link_not_found(request: Request, identity: security.Identity, action: str) -> HTTPException:
+    """Vinculo inexistente: sem escopo `todos` na `action` da rota, 403 igual ao de
+    posse (nao enumera ids); com `todos`, 404. Chamar antes de qualquer escrita."""
+    if not owns_row_or_all(identity, permissions_for_request(request, identity), "treino.academias", action, None):
+        return HTTPException(status_code=403, detail=_LINK_FORBIDDEN_DETAIL)
+    return HTTPException(status_code=404, detail="Associação não encontrada.")
+
+
 @router.post("/gym-equipment")
 def create_gym_equipment(
     request: Request,
-    item: Dict[str, Any] = Body(...),
+    item: GymEquipmentCreateIn,
     identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
-    gym_id = item.get("gym_id")
-    mapping_id = item.get("mapping_id")
-    equipment_id = item.get("equipment_id")
-
-    if not gym_id or not mapping_id or not equipment_id:
-        raise HTTPException(status_code=400, detail="gym_id, mapping_id e equipment_id são obrigatórios.")
+    gym_id = item.gym_id
+    mapping_id = item.mapping_id
+    equipment_id = item.equipment_id
 
     with _connect() as conn:
         with conn.cursor() as cursor:
@@ -865,7 +876,7 @@ def create_gym_equipment(
 def update_gym_equipment(
     link_id: int,
     request: Request,
-    item: Dict[str, Any] = Body(...),
+    item: GymEquipmentUpdateIn,
     identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
 ):
     with _connect() as conn:
@@ -873,7 +884,7 @@ def update_gym_equipment(
             cursor.execute("SELECT id, gym_id FROM gym_equipment WHERE id = %s", (link_id,))
             link = cursor.fetchone()
             if not link:
-                raise HTTPException(status_code=404, detail="Associação não encontrada.")
+                raise _link_not_found(request, identity, "editar")
             # SEG-03: so dono da academia ou admin escreve no vinculo.
             _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], request, identity, "editar")
 
@@ -884,7 +895,7 @@ def update_gym_equipment(
                     is_active = COALESCE(%s, is_active)
                 WHERE id = %s
                 """,
-                (item.get("equipment_id"), item.get("is_active"), link_id),
+                (item.equipment_id, item.is_active, link_id),
             )
             cursor.execute("SELECT * FROM gym_equipment WHERE id = %s", (link_id,))
             row = cursor.fetchone()
@@ -903,7 +914,7 @@ def deactivate_gym_equipment(
             cursor.execute("SELECT gym_id FROM gym_equipment WHERE id = %s", (link_id,))
             link = cursor.fetchone()
             if not link:
-                raise HTTPException(status_code=404, detail="Associação não encontrada.")
+                raise _link_not_found(request, identity, "excluir")
             # SEG-03: so dono da academia ou admin desativa o vinculo.
             _assert_gym_equipment_catalog_writable(cursor, link["gym_id"], request, identity, "excluir")
             cursor.execute("UPDATE gym_equipment SET is_active = 0 WHERE id = %s", (link_id,))
@@ -1106,6 +1117,9 @@ def _catalog_item(row: Dict[str, Any], can_edit) -> Dict[str, Any]:
     return _row_jsonable(item)
 
 
+_LINK_FORBIDDEN_DETAIL = "Você não tem permissão para gerenciar equipamentos desta academia."
+
+
 def _assert_gym_equipment_catalog_writable(
     cursor,
     gym_id: int,
@@ -1129,7 +1143,7 @@ def _assert_gym_equipment_catalog_writable(
         action,
         row.get("owner_user_id"),
     ):
-        raise HTTPException(status_code=403, detail="Você não tem permissão para gerenciar equipamentos desta academia.")
+        raise HTTPException(status_code=403, detail=_LINK_FORBIDDEN_DETAIL)
     if not row:
         raise HTTPException(status_code=404, detail="gym_id não encontrado.")
 
@@ -1199,7 +1213,7 @@ def update_gym_equipment_catalog_manufacturer(
             cursor.execute("SELECT gym_id FROM gym_equipment_catalog WHERE id = %s", (link_id,))
             row = cursor.fetchone()
             if not row:
-                raise HTTPException(status_code=404, detail="Associação não encontrada.")
+                raise _link_not_found(request, identity, "editar")
 
             _assert_gym_equipment_catalog_writable(cursor, row["gym_id"], request, identity, "editar")
 
@@ -1234,7 +1248,7 @@ def deactivate_gym_equipment_catalog(
             cursor.execute("SELECT gym_id FROM gym_equipment_catalog WHERE id = %s", (link_id,))
             row = cursor.fetchone()
             if not row:
-                raise HTTPException(status_code=404, detail="Associação não encontrada.")
+                raise _link_not_found(request, identity, "excluir")
             gym_id = row["gym_id"]
 
             _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "excluir")

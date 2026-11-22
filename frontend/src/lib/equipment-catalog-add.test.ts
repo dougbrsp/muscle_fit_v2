@@ -5,6 +5,7 @@ import {
   CATALOG_NEEDS_ONLINE_NOTICE,
   CATALOG_NOT_IN_GYM_NOTICE,
   findAddedItem,
+  findRecommendedItem,
   formatCatalogAddQuestion,
 } from './equipment-catalog-add';
 import type { EquipmentExerciseLink } from './equipment-exercises-types';
@@ -136,6 +137,17 @@ describe('formatCatalogAddQuestion', () => {
     expect(formatCatalogAddQuestion('Crossover', null)).toBe(expected);
     expect(formatCatalogAddQuestion('Crossover', undefined)).toBe(expected);
     expect(formatCatalogAddQuestion('Crossover', '  ')).toBe(expected);
+  });
+});
+
+describe('findRecommendedItem', () => {
+  const items = [gymItem({ id: 5, load_convention: 'per_side' }), gymItem({ id: 6 })];
+  it('recomendado na lista: devolve o item com a convenção', () => {
+    expect(findRecommendedItem(items, 5)?.load_convention).toBe('per_side');
+  });
+  it('recomendado fora da lista: undefined', () => {
+    expect(findRecommendedItem(items, 99)).toBeUndefined();
+    expect(findRecommendedItem([], 5)).toBeUndefined();
   });
 });
 

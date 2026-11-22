@@ -162,6 +162,51 @@ def test_usuario_opera_o_proprio_plano_nos_dois_backends(usuarios, raw, monkeypa
         assert minha.status_code == 200 and minha.json()["plan"]["cycle_days"] == DIAS
 
 
+def test_politica_do_ciclo_ida_e_volta_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    """#248: a política vai na chave `policy` do `carb_cycling_json`; o padrão (`vary_kcal`) grava só os dias."""
+
+    def _json_gravado(plano_id):
+        with raw.cursor() as cur:
+            cur.execute("SELECT carb_cycling_json FROM nutrition_plans WHERE id = %s", (plano_id,))
+            valor = cur.fetchone()["carb_cycling_json"]
+        return json.loads(valor) if isinstance(valor, (str, bytes)) else valor
+
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        with raw.cursor() as cur:
+            cur.execute("TRUNCATE TABLE nutrition_daily_targets")
+            cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+            cur.execute("TRUNCATE TABLE nutrition_plans")
+            cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+        raw.commit()
+        aluno = _client(usuarios["aluno"])
+
+        criado = aluno.post(
+            "/nutrition/plans",
+            json={"strategy": "maintenance", "cycle_days": DIAS, "carb_cycle_policy": "fat_compensation"},
+        )
+        assert criado.status_code == 201, (backend, criado.text)
+        plano_id = criado.json()["id"]
+        assert criado.json()["carb_cycle_policy"] == "fat_compensation" and criado.json()["cycle_days"] == DIAS
+        assert _json_gravado(plano_id) == {**DIAS, "policy": "fat_compensation"}, backend
+
+        lido = next(p for p in aluno.get("/nutrition/plans").json()["items"] if p["id"] == plano_id)
+        assert lido["carb_cycle_policy"] == "fat_compensation" and lido["cycle_days"] == DIAS
+
+        herdou = aluno.put(f"/nutrition/plans/{plano_id}", json={"strategy": "maintenance", "cycle_days": DIAS})
+        assert herdou.status_code == 200, (backend, herdou.text)
+        assert herdou.json()["carb_cycle_policy"] == "fat_compensation"
+        assert _json_gravado(plano_id)["policy"] == "fat_compensation"
+
+        padrao = aluno.put(
+            f"/nutrition/plans/{plano_id}",
+            json={"strategy": "maintenance", "cycle_days": DIAS, "carb_cycle_policy": "vary_kcal"},
+        )
+        assert padrao.status_code == 200, (backend, padrao.text)
+        assert padrao.json()["carb_cycle_policy"] == "vary_kcal"
+        assert _json_gravado(plano_id) == DIAS, backend
+
+
 def test_gramas_manuais_sem_peso_do_aluno_nao_gravam(usuarios, raw, db_backend):
     sem_peso = _client(usuarios["outro"])
     resposta = sem_peso.post("/nutrition/plans", json={"strategy": "maintenance", "manual_targets": MANUAL})
