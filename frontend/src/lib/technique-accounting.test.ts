@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import motorConstants from './motor-constants.generated.json';
 import parity from './technique-accounting.parity.json';
 import {
+  PROTOCOL_REPS_BY_CODE,
+  SETS_ONLY_CODES,
+  SETS_ONLY_DEFAULT_SETS,
   applicationEquivalent,
   effortFactor,
   formatEquivalent,
@@ -25,6 +29,14 @@ type ApplicationJson = { technique_code: string | null; reps: number | null; rpe
 function toApplication(app: ApplicationJson): TechniqueApplication {
   return { techniqueCode: app.technique_code, reps: app.reps, rpe: app.rpe };
 }
+
+describe('mapas de protocolo (espelho)', () => {
+  it('séries padrão e reps de protocolo são os do espelho gerado', () => {
+    expect(SETS_ONLY_DEFAULT_SETS).toEqual(motorConstants.technique_accounting.sets_only_default_sets);
+    expect(PROTOCOL_REPS_BY_CODE).toEqual(motorConstants.technique_accounting.protocol_reps_by_code);
+    for (const code of SETS_ONLY_CODES) expect(SETS_ONLY_DEFAULT_SETS[code]).toBeGreaterThan(0);
+  });
+});
 
 describe('effortFactor (paridade)', () => {
   it.each(parity.effort_factor.map((c) => [c.rpe_application, c.rpe_reference, c] as const))(

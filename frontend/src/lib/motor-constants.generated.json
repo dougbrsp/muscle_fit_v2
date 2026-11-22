@@ -686,6 +686,13 @@
       "fst7",
       "gvt"
     ],
+    "sets_only_default_sets": {
+      "fst7": 7,
+      "gvt": 10
+    },
+    "protocol_reps_by_code": {
+      "gvt": 10
+    },
     "default_max_equivalent": 1.0,
     "full_effort_rpe": 9.0,
     "default_reference_rpe": 10.0,

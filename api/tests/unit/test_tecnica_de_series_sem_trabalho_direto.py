@@ -80,3 +80,29 @@ def test_proibicao_por_objetivo_forca_continua_valendo():
 def test_fst7_em_par_sem_falha_continua_removido():
     d = _skip("fst7", safety=fx.safety(max_safe_rpe=9))
     assert d.decision == pe.SKIP and d.advanced_technique is None
+
+
+def _snapshot_do_motor(technique):
+    from app.domain.prescription import build_prescription
+
+    s = fx.safety(max_safe_rpe=10)
+    d = _skip(technique, safety=s)
+    exercise = {"advanced_technique": technique, "reps_target": "10", "sets_count": 10}
+    snap = build_prescription(exercise, safety=s, source="x", engine_version="x", decision=d.to_dict())
+    return d, snap
+
+
+def test_snapshot_do_gvt_mantido_sem_trabalho_direto_nao_marca_tecnica_invalida():
+    from app.domain.prescription import WARNING_MODEL_TECHNIQUE_INVALID
+
+    d, snap = _snapshot_do_motor("gvt")
+    assert d.advanced_technique == "gvt"
+    assert WARNING_MODEL_TECHNIQUE_INVALID not in snap["warnings"]
+
+
+def test_snapshot_do_fst7_sem_trabalho_direto_registra_comportamento_atual():
+    # Hoje o motor nao mantem o FST-7 nesses dias (exige falha); fixa o que o snapshot faz.
+    d, snap = _snapshot_do_motor("fst7")
+    assert d.advanced_technique is None
+    assert snap["warnings"] == []
+    assert snap.get("advanced_technique") == "fst7"

@@ -38,7 +38,7 @@ recuperação só cobre séries que não são técnica).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Final, Iterable, Mapping, Optional, Sequence
 
 from ..set_types import (
     DROP_SET,
@@ -68,6 +68,14 @@ SETS_ONLY_CODES: frozenset[str] = frozenset({"fst7", "gvt"})
 # GVT: 10 séries de 10 repetições. O FST-7 não entra: segue o topo da faixa.
 GVT_PROTOCOL_REPS = 10
 PROTOCOL_REPS_BY_CODE: Mapping[str, int] = {"gvt": GVT_PROTOCOL_REPS}
+
+# Número padrão de séries (semeado na migração 060, `default_sets_count`; reserva do frontend).
+SETS_ONLY_DEFAULT_SETS: Final[Mapping[str, int]] = {"fst7": 7, "gvt": 10}
+
+
+def format_reps_range(low: Any, high: Any) -> str:
+    """Faixa "min-max" de repetições; com mínimo igual ao máximo, só o número."""
+    return str(low) if low == high else f"{low}-{high}"
 
 # `set_type` da aplicação -> técnica padrão quando nada mais a identifica
 # (mesmo mapeamento do backfill da migração 060).
@@ -535,6 +543,8 @@ def export_for_frontend() -> dict[str, Any]:
         "reps_weighted_codes": sorted(REPS_WEIGHTED_CODES),
         "beyond_failure_weights": dict(BEYOND_FAILURE_WEIGHTS),
         "sets_only_codes": sorted(SETS_ONLY_CODES),
+        "sets_only_default_sets": dict(SETS_ONLY_DEFAULT_SETS),
+        "protocol_reps_by_code": dict(PROTOCOL_REPS_BY_CODE),
         "default_max_equivalent": DEFAULT_MAX_EQUIVALENT,
         "full_effort_rpe": FULL_EFFORT_RPE,
         "default_reference_rpe": DEFAULT_REFERENCE_RPE,

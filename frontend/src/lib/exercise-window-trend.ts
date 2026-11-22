@@ -1,6 +1,6 @@
 import { fmtKg, fmtSignedPercent } from './dashboard-format';
 import type { WindowTrend } from './dashboard-v3-types';
-import type { ProgressionScope } from './progression-scope';
+import { scopeDescription, scopeLabel, type ProgressionScope } from './progression-scope';
 
 /** O que a tela mostra da tendência da janela (#176); só formata o que o backend mandou. */
 export type WindowTrendView = {
@@ -14,6 +14,16 @@ export type WindowTrendView = {
   /** Versão da regra, para o rodapé; `null` sem ela. */
   ruleVersion: string | null;
 };
+
+/** Título da seção = rótulo do escopo vindo da API (reserva: texto fixo); a descrição vira tooltip do título. */
+export const WINDOW_TREND_FALLBACK_TITLE = 'Tendência da janela';
+
+export function windowTrendHeading(scope: ProgressionScope | null | undefined): {
+  title: string;
+  description: string | null;
+} {
+  return { title: scopeLabel(scope) ?? WINDOW_TREND_FALLBACK_TITLE, description: scopeDescription(scope) };
+}
 
 /** `null` com tendência nula/ausente (servidor antigo): a seção não aparece. */
 export function buildWindowTrendView(trend: WindowTrend | null | undefined): WindowTrendView | null {

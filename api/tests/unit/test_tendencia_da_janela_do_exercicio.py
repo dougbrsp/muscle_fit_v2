@@ -135,3 +135,9 @@ def test_contrato_do_detalhe_traz_tendencia_com_escopo_e_versao():
     ExerciseProgressResponse.model_validate(payload)
     vazio = svc.build_exercise_progress(FakeDb([]), EXERCICIO, user_id=USUARIO, window=JANELA)
     assert vazio["window_trend"] is None
+
+
+def test_media_inicial_nao_positiva_usa_motivo_de_exposicoes_insuficientes():
+    tendencia = cmp.window_trend(serie(100, 100, 100, 100, e1rm=0.0))
+    assert tendencia.status is S.INSUFFICIENT_DATA
+    assert tendencia.reasons == [cmp.REASON_NOT_ENOUGH_EXPOSURES]

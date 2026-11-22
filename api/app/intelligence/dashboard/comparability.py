@@ -1407,7 +1407,7 @@ def window_trend(
     initial = sum(valid[:half]) / half
     final = sum(valid[-half:]) / half
     if initial <= 0:
-        return WindowTrend(ExerciseProgressionStatus.INSUFFICIENT_DATA, [REASON_NO_E1RM_WITHOUT_RPE], exposures_used=len(valid))
+        return WindowTrend(ExerciseProgressionStatus.INSUFFICIENT_DATA, [REASON_NOT_ENOUGH_EXPOSURES], exposures_used=len(valid))
     change = (final - initial) / initial
     limit = float(thresholds["e1rm_progress_pct"])
     if change >= limit:

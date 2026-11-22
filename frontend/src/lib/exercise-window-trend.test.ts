@@ -40,14 +40,14 @@ describe('buildWindowTrendView', () => {
     const view = buildWindowTrendView({
       ...COM_NUMEROS,
       status: 'INSUFFICIENT_DATA',
-      reasons: ['not_enough_exposures'],
+      reasons: ['not_enough_comparable_exposures'],
       change_pct: null,
       initial_mean: null,
       final_mean: null,
       exposures_used: 1,
     });
     expect(view?.statusCode).toBe('INSUFFICIENT_DATA');
-    expect(view?.reasons).toEqual(['not_enough_exposures']);
+    expect(view?.reasons).toEqual(['not_enough_comparable_exposures']);
     expect(view?.changeText).toBeNull();
     expect(view?.meansText).toBeNull();
   });

@@ -12,7 +12,7 @@ import { dashboardKeys, fetchExerciseProgress } from '@/lib/dashboard-api';
 import { useDashboardFilters } from '@/lib/dashboard-filters';
 import { EM_DASH, fmtDate, fmtDecimal, fmtInt, fmtKg, fmtRpe, fmtSignedPercent } from '@/lib/dashboard-format';
 import type { ExerciseProgressResponse, Exposure } from '@/lib/dashboard-v3-types';
-import { buildWindowTrendView } from '@/lib/exercise-window-trend';
+import { buildWindowTrendView, windowTrendHeading } from '@/lib/exercise-window-trend';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import {
   COMPARABILITY_MISMATCH_HINTS,
@@ -199,15 +199,12 @@ function Conteudo({ data, defaultGoal }: { data: ExerciseProgressResponse; defau
           ) : null}
           {windowTrend ? (
             <div data-testid="window-trend">
-              <p className={styles.meta} style={{ fontWeight: 600 }}>Tendência da janela</p>
+              <p className={styles.meta} style={{ fontWeight: 600 }} title={windowTrendHeading(windowTrend.scope).description ?? undefined}>
+                {windowTrendHeading(windowTrend.scope).title}
+              </p>
               <div className={styles.badges}>
                 <StatusBadge domain="exerciseProgression" code={windowTrend.statusCode} size="md" />
               </div>
-              {windowTrend.scope?.label ? (
-                <p className={styles.meta} style={{ marginTop: 0 }} title={windowTrend.scope.description || undefined}>
-                  {windowTrend.scope.label}
-                </p>
-              ) : null}
               {windowTrend.changeText && windowTrend.meansText ? (
                 <p className={styles.body}>
                   Variação {windowTrend.changeText} (e1RM médio {windowTrend.meansText})

@@ -35,6 +35,10 @@ export const BEYOND_FAILURE_WEIGHTS: Readonly<Record<string, number>> = RULE.bey
 // Técnicas que só preenchem o número de séries (não abrem sub-etapa).
 export const SETS_ONLY_CODES: ReadonlySet<string> = new Set(RULE.sets_only_codes);
 
+// Séries padrão (FST-7, GVT) e reps do protocolo (GVT), por código da técnica.
+export const SETS_ONLY_DEFAULT_SETS: Readonly<Record<string, number>> = RULE.sets_only_default_sets;
+export const PROTOCOL_REPS_BY_CODE: Readonly<Record<string, number>> = RULE.protocol_reps_by_code;
+
 export const DEFAULT_MAX_EQUIVALENT: number = RULE.default_max_equivalent;
 export const FULL_EFFORT_RPE: number = RULE.full_effort_rpe;
 export const DEFAULT_REFERENCE_RPE: number = RULE.default_reference_rpe;

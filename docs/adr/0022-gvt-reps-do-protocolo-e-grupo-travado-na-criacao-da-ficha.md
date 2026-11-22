@@ -66,12 +66,12 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 - (a) A tela web de geração (`frontend/src/app/(app)/planos-treino/GenerateDraftModal.tsx`) ainda mostra a mensagem genérica do 422; só a tela mobile usa `planSaveErrorMessage`.
 - (b) O painel do motor (`api/app/intelligence/dashboard/engine_service.py`) só enxerga a auditoria no nível de cima; as 52 fichas com a auditoria em `generation_context` continuam fora dele.
 - (c) As 70 execuções antigas de `generation_runs` não são religadas a fichas.
-- (d) `frontend/src/lib/advanced-techniques.ts` mantém um fallback escrito à mão para GVT e FST-7 (`fallbackItem('gvt', …)`, L108-111), alcançado só se o catálogo não trouxer o valor.
+- (d) `frontend/src/lib/advanced-techniques.ts` mantém um fallback escrito à mão para GVT e FST-7 (`fallbackItem('gvt', …)`, L108-111), alcançado só se o catálogo não trouxer o valor. Desde 21/11/2026 os números de séries deste fallback vêm de `SETS_ONLY_DEFAULT_SETS` (ver Atualização).
 - (e) O `rpe_target` da linha continua o do item do Modelo; o RPE do protocolo vai nos parâmetros da técnica (`target_rpe`).
 - (f) Fichas já congeladas não mudam.
 - (g) `generated_mapping_id` vem do cliente.
 - (h) Comentários de `frontend/src/lib/exercise-swap-options.ts` (L55-57 e L147) dizem que o campo não entra no payload de save; `workout-plan-payload.ts` (L54) passa a enviá-lo. O comentário está desatualizado.
-- (i) Para um item FST-7 do Modelo em dia sem trabalho direto, a linha continua sem a técnica e com as séries e a faixa do Modelo (comportamento anterior à entrega).
+- (i) Para um item FST-7 do Modelo em dia sem trabalho direto, a decisão sai sem a técnica e com as séries e a faixa do Modelo (comportamento anterior à entrega); o snapshot da ficha, porém, mantém a técnica (ver Atualização).
 
 ## Verificação
 
@@ -79,4 +79,26 @@ Restrições: `generation_runs` não pode mudar a forma do `generation_audit` (M
 - Suíte unitária inteira do backend, local, depois da última correção: 17.821 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Verificação dirigida: guarda dos motores, testes de backend e de frontend do lote, `ruff` e `tsc`.
 - Lido em produção em 20/11/2026: no catálogo `advanced_techniques`, `fst7` é `requires_failure` e `gvt` é `failure_not_required`.
-- Não verificado: nenhuma tela foi vista em navegador nem em iPhone; o 422 da criação e o vínculo da geração não foram exercitados contra banco real (a integração roda no CI); o hash da auditoria não foi comparado com um `audit_hash` real; a coerência entre o motor e a ficha congelada para o GVT mantido foi provada pela mesma validação (`validate_technique`), sem teste que passe por `build_prescription`.
+- Não verificado: nenhuma tela foi vista em navegador nem em iPhone; o 422 da criação e o vínculo da geração não foram exercitados contra banco real (a integração roda no CI); o hash da auditoria não foi comparado com um `audit_hash` real; a coerência entre o motor e a ficha congelada para o GVT mantido foi provada pela mesma validação (`validate_technique`), com teste que passa por `build_prescription` desde 21/11/2026 (ver Atualização).
+
+## Atualização de 21/11/2026 (#231)
+
+**Número padrão de séries no dono.** `api/app/domain/technique_accounting.py::SETS_ONLY_DEFAULT_SETS` (L73, `{"fst7": 7, "gvt": 10}`) é a fonte das séries das técnicas só de séries (FST-7 e GVT). Teste de paridade com a semeadura da migração 060 em `api/tests/unit/test_technique_accounting.py` (L121-128). A migração 060 não foi editada: migração aplicada não se edita, e o executor compara o checksum do arquivo.
+
+**Espelho.** `export_for_frontend` (L546-547) exporta `sets_only_default_sets` e `protocol_reps_by_code` junto de `PROTOCOL_REPS_BY_CODE`, no `frontend/src/lib/motor-constants.generated.json`. `frontend/src/lib/technique-accounting.ts` (L39-40) os lê de `RULE`. `frontend/src/lib/advanced-techniques.ts` deixou de ter 7 e 10 escritos à mão: lê `SETS_ONLY_DEFAULT_SETS` nos valores e no texto de ajuda (L257-258). O fallback do item (d) continua na estrutura, com as séries vindas do espelho.
+
+**Faixa com mínimo igual ao máximo.** `format_reps_range` (`technique_accounting.py` L76-78) devolve "10" em vez de "10-10". É usada nos dois pontos que montavam a faixa: `api/app/domain/prescription_service.py` (L146) e `api/app/generation/deterministic_prescription.py` (L120).
+
+**Teste pelo caminho real.** `api/tests/unit/test_tecnica_de_series_sem_trabalho_direto.py::test_snapshot_do_gvt_mantido_sem_trabalho_direto_nao_marca_tecnica_invalida` passa por `build_prescription` (`_snapshot_do_motor`). A ficha com GVT mantido em dia sem trabalho direto não recebe `WARNING_MODEL_TECHNIQUE_INVALID`.
+
+**FST-7 em dia sem trabalho direto (limite conhecido, fixado em teste).** `test_snapshot_do_fst7_sem_trabalho_direto_registra_comportamento_atual` fixa o comportamento atual. A decisão do motor retira o FST-7 (`advanced_technique` nulo, `SKIP`), mas o snapshot da ficha sai sem aviso (`warnings == []`) e mantém `advanced_technique == "fst7"`, copiado do exercício do Modelo. Ficha e decisão divergem nesse caso. O usuário foi informado em 20/11/2026 e não pediu mudança. Esta divergência é o limite (j).
+
+**Guarda dos motores.** Padrão `reps_protocolo_tecnica` em `api/tests/unit/test_guarda_fontes_da_verdade.py` (L2079-2093). Ele acusa a definição de `GVT_PROTOCOL_REPS`, `PROTOCOL_REPS_BY_CODE` ou `SETS_ONLY_DEFAULT_SETS` fora do dono, e número atrelado ao código `gvt` ou `fst7` escrito à mão. Atribuição cujo valor vem de `RULE` (espelho gerado) é reconhecida como espelho. A allowlist nasce vazia (L2611).
+
+**Verificação (resultados reportados na entrega; não reexecutados por este documento).**
+- Bateria dirigida do backend com a guarda: 643 passaram.
+- Suíte unitária inteira do backend, local: 18.015 passaram e 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
+- Guarda dos motores depois dos padrões novos: 491 passaram.
+- Vitest do lote: 254 passaram; `tsc` sem erro.
+
+**Limite (j).** Ficha e decisão do motor divergem para FST-7 em dia sem trabalho direto (ver acima). Mudar isso é decisão do usuário.
