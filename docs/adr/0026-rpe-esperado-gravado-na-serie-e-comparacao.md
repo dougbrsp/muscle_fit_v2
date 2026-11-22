@@ -65,10 +65,10 @@ Decisão do usuário de 21/11/2026, opção "Regravar na mesma sessão". A regra
 
 **Limites da revisão.**
 - A carga sugerida da próxima série, já devolvida ao aparelho antes da correção, não é corrigida.
-- Série que chega PENDENTE e é confirmada depois (PATCH) não dispara a regravação: fica com o alvo efetivo, sem o degrau da rampa, e não é regravada.
+- Série que chega PENDENTE e é confirmada depois (PATCH): o PATCH não dispara a regravação, e a série fica com o esperado gravado no envio (o alvo efetivo, sem o degrau da rampa). Se depois chegar uma série de trabalho de número menor, a regravação a alcança como às demais confirmadas e grava o degrau da posição dela (`reps_pending` é lido do banco no momento da regravação; o PATCH o atualiza em `workout_sessions.py`).
 - Exclusão de série (renumeração) não dispara a correção.
 - Concorrência entre dois envios do mesmo exercício não foi analisada além da chave única de número da série (409 `set_number_conflict`).
-- A sequência de composição existe em dois pontos: `set_intensity_reading` (usada pelo POST) e `ramp_planned_rpe_for_position` (usada pela regravação). A paridade entre elas é garantida só por `test_dono_igual_ao_post`, que cobre 3 alvos efetivos e 4 posições.
+- A conta do degrau cobrado tem um helper único no dono, `effective_intensity._charged_for_position`, usado por `ramp_planned_rpe_for_position` (regravação) e `charged_rpe_targets_by_set` (ficha). O envio da série (POST, em `workout_sessions.py`) continua compondo por `set_intensity_reading`, de propósito: a rota precisa do degrau cru para a carga da próxima série e decide protocolo e deload. A paridade entre o POST e o dono é garantida por `test_dono_igual_ao_post` (`api/tests/unit/test_rpe_esperado_fora_de_ordem.py`), que cobre 3 alvos efetivos e 4 posições.
 
 **Verificação** (resultados reportados pelo autor da entrega; não reexecutados por este documento):
 - 16 testes em `api/tests/unit/test_rpe_esperado_fora_de_ordem.py` (contagem conferida no arquivo): ordens 1,3,2; 3,2,1; 2,1,3; 2,3,1; 3,1,2 terminando em 7, 8, 9; ordem certa sem regravação; aquecimento atrasado; backoff e esperado nulo intactos; deload e alvo único sem leitura extra; repetição idempotente; PATCH; pendente; rampa mais curta que as séries; paridade com o POST.

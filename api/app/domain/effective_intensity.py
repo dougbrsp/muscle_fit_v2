@@ -556,16 +556,21 @@ def set_intensity_reading(
     )
 
 
+def _charged_for_position(plan_rpe: Any, effective_target: Any, position: int) -> Any:
+    """Alvo cobrado na posicao ordinal `position` (series de trabalho antes dela):
+    `set_effort_target(alvo efetivo, degrau da rampa)`. Unico ponto desta conta."""
+    from .next_set_load import planned_ramp_rpe
+
+    return set_effort_target(effective_target, planned_ramp_rpe(plan_rpe, position))
+
+
 def ramp_planned_rpe_for_position(plan_rpe: Any, effective_target: Any, previous_working: Any) -> Optional[Union[int, float]]:
     """#241: `rpe_target_planned` de uma serie de trabalho de repeticoes sem
     protocolo na posicao ordinal `previous_working` + 1 (series de trabalho
     antes dela): a MESMA composicao do POST (`planned_ramp_rpe` ->
     `set_effort_target` -> `planned_set_rpe_target`), para regravar o esperado
     quando uma serie chega fora de ordem. Sem alvo efetivo -> None."""
-    from .next_set_load import planned_ramp_rpe
-
-    charged = set_effort_target(effective_target, planned_ramp_rpe(plan_rpe, previous_working))
-    return planned_set_rpe_target("working", charged)
+    return planned_set_rpe_target("working", _charged_for_position(plan_rpe, effective_target, previous_working))
 
 
 def has_planned_rpe_ramp(plan_rpe: Any) -> bool:
@@ -580,14 +585,9 @@ def charged_rpe_targets_by_set(rpe_text: Any, sets_count: Any, effective_target:
     sessao (`set_effort_target(alvo efetivo ja cortado pelo teto, degrau da
     serie)`, degrau por `next_set_load.planned_ramp_rpe`). So restringe. Sem
     alvo efetivo ou sem series -> []. Preparatoria e tecnica nao entram."""
-    from .next_set_load import planned_ramp_rpe
-
     if effective_target is None:
         return []
-    return [
-        float(set_effort_target(effective_target, planned_ramp_rpe(rpe_text, index)))
-        for index in range(_positive_int(sets_count))
-    ]
+    return [float(_charged_for_position(rpe_text, effective_target, index)) for index in range(_positive_int(sets_count))]
 
 
 def _positive_int(value: Any) -> int:

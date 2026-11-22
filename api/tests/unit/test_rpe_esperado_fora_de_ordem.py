@@ -164,3 +164,21 @@ def test_dono_igual_ao_post(eff):
         intensity = ei.EffectiveIntensity(rpe_target_effective=eff, ceiling=10, failure_allowed=True)
         reading = ei.set_intensity_reading("working", 8, intensity, planned_rpe=planned_ramp_rpe("7-8-9", i))
         assert ei.ramp_planned_rpe_for_position("7-8-9", eff, i) == ei.planned_set_rpe_target("working", reading.target)
+
+
+@pytest.mark.parametrize("texto", ["8", "8-9-10", "7-8-9", None])
+@pytest.mark.parametrize("eff", [None, 9, 7.5])
+def test_degrau_cobrado_num_ponto_so_paridade_posicao_a_posicao(texto, eff):
+    cobrados = ei.charged_rpe_targets_by_set(texto, 5, eff)  # posicao 3 e 4 alem do tamanho de "8-9-10"
+    if eff is None:
+        assert cobrados == []
+        assert all(ei.ramp_planned_rpe_for_position(texto, eff, i) is None for i in range(5))
+        return
+    assert len(cobrados) == 5
+    for i, valor in enumerate(cobrados):
+        assert float(ei.ramp_planned_rpe_for_position(texto, eff, i)) == valor
+
+
+def test_ficha_uniforme_e_rampa_alem_do_tamanho():
+    assert [float(ei.ramp_planned_rpe_for_position("8", 9, i)) for i in range(3)] == [9, 9, 9]  # sem rampa: vale o alvo efetivo
+    assert float(ei.ramp_planned_rpe_for_position("8-9-10", 10, 7)) == float(ei.ramp_planned_rpe_for_position("8-9-10", 10, 2))

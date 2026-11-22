@@ -114,7 +114,7 @@ def test_editar_fabricante_nao_reativa_nem_cria_vinculo(ctx, monkeypatch):  # no
     monkeypatch.setitem(rbac.TABELAS, "gym_equipment_catalog", inativo)
     assert _chamar(client, "dono", "PATCH", "/gym-equipment-catalog/88", {"manufacturer": "X"}).status_code == 200
     assert all("is_active" not in sql and not sql.startswith("INSERT") for sql in cur.writes())
-    assert _chamar(client, "dono", "PATCH", "/gym-equipment-catalog/999", {"manufacturer": "X"}).status_code == 404
+    assert _chamar(client, "dono", "PATCH", "/gym-equipment-catalog/999", {"manufacturer": "X"}).status_code == 403  # #246: sem `todos`, nao enumera
     assert len(cur.writes()) == 1
 
 

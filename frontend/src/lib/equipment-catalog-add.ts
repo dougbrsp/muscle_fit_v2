@@ -74,6 +74,17 @@ export type GymEquipmentCatalogAddResponse = {
 };
 
 /**
+ * Item da lista da academia que é o recomendado (mesmo id de associação
+ * `gym_equipment.id`); só ele traz `load_convention`. Ausente: undefined.
+ */
+export function findRecommendedItem(
+  items: ReadonlyArray<EquipmentPickerItem>,
+  recommendedLinkId: number,
+): EquipmentPickerItem | undefined {
+  return items.find((item) => item.id === recommendedLinkId);
+}
+
+/**
  * Associação recém-criada do par: o `id` de `links` com o `mapping_id` do par
  * (e que exista na lista recarregada); na falta, o item da lista recarregada.
  */

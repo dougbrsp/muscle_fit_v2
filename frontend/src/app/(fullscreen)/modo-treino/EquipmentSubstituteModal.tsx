@@ -17,6 +17,7 @@ import {
   catalogItemState,
   CATALOG_ADDED_WITHOUT_LINK_MESSAGE,
   findAddedItem,
+  findRecommendedItem,
   formatCatalogAddQuestion,
   type GymEquipmentCatalogAddResponse,
 } from '@/lib/equipment-catalog-add';
@@ -327,14 +328,20 @@ export function EquipmentSubstituteModal({
               border: `1px solid ${BRAND.orange}`,
               opacity: submitting ? 0.6 : 1,
             }}
-            onClick={() =>
+            onClick={() => {
+              // Mesmo caminho dos demais (aviso de convenção); sem o item na lista, escolhe direto.
+              const listed = findRecommendedItem(allItems, recommended.id);
+              if (listed) {
+                chooseItem(listed);
+                return;
+              }
               choose({
                 mapping_id: recommended.mapping_id,
                 equipment_link_id: recommended.id,
                 exercise_name: recommended.mapping_exercise_name,
                 equipment_name: recommended.equipment_name,
-              })
-            }
+              });
+            }}
           >
             <Group gap="sm" wrap="nowrap" align="center">
               <EquipmentPhoto photoUrl={recommended.photo_url} alt={recommended.equipment_name} size={56} />

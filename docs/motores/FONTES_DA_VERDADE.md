@@ -7718,6 +7718,14 @@ Impacto em produção: sem migração; nenhuma escrita em dados existentes; só 
 
 Escolha registrada: as execuções antigas NÃO são religadas por migração. A religação cobriria menos da metade das fichas, tem risco de ligar o par errado e escreveria em dados de produção. Elas continuam aparecendo como rascunho não salvo (`AUDIT_DRAFT_NOT_SAVED_LIMITATION`). O usuário foi informado em 21/11/2026 e pode pedir a religação dos 20 pares inequívocos num lote próprio.
 
+**Lote 23 de 22/11/2026 (sobras das issues #241, #244, #246 e #248).** Sem migração (o início da tarefa não mostrava arquivo novo em `api/db/migrations/`). Mudanças:
+
+- Degrau cobrado: a conta fica num helper único do dono, `effective_intensity._charged_for_position`, usado por `ramp_planned_rpe_for_position` (regravação do esperado, ADR 0026) e `charged_rpe_targets_by_set` (ficha). O envio da série (`set_intensity_reading`, em `workout_sessions.py`) continua compondo por conta própria, de propósito: a rota precisa do degrau cru para a carga da próxima série e decide protocolo e deload. A paridade é coberta por `test_dono_igual_ao_post` em `api/tests/unit/test_rpe_esperado_fora_de_ordem.py`.
+- Modo Treino: o seletor do equipamento recomendado (botão "Sugerir substituto" em `EquipmentSubstituteModal.tsx`) passa pelo mesmo aviso de convenção de carga dos demais itens. A convenção vem do `load_convention` do item da lista do catálogo (`findRecommendedItem`), que já vem pronto do dono `api/app/load_conventions.py`; a tela não tem regra.
+- Limite conhecido: recomendado ausente da lista listada segue sem aviso e é escolhido direto.
+
+Impacto em produção: nenhum dado gravado muda; o helper é refactor com resultado igual e paridade testada. No seletor, muda só a interação daqui para frente (aviso antes de escolher o recomendado com convenção de carga diferente). Não medido em produção; a verificação de tela não foi feita.
+
 Não medido:
 
 - o comportamento da expressão `audit_sql_expr` no Aurora pela RDS Data API, antes do CI;
