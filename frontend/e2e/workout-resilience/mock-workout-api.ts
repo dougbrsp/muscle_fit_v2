@@ -42,7 +42,7 @@ export type MockWorkoutApi = {
   unhandled: string[];
   /** Cenario do seletor de equipamento (#163): o Crucifixo vem com o equipamento 900 (convencao `total`) e o catalogo ganha opcoes. */
   useEquipmentPickerSeed: () => void;
-  /** Catalogo global (#163b): `GET /equipment-exercises` traz o `Crossover` (equipamento 33), que a academia nao tem; `permitted` poe `treino.academias/editar=todos` em `/auth/me` e libera o POST. */
+  /** Catalogo global (#163b): `GET /equipment-exercises` traz o `Crossover` (equipamento 33), que a academia nao tem; `permitted` devolve `can_add_to_gym: true` em `GET /gym-equipment` (lista com `primary_group`) e libera o POST. */
   useCatalogAddSeed: (permitted: boolean) => void;
   /** `GET /gym-equipment?primary_group=...` (lista da academia no seletor) passa a responder 500. */
   failGymEquipmentList: () => void;
@@ -191,8 +191,6 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         intervals_configured: false,
         timezone: 'America/Sao_Paulo',
         features: { exercise_cards: false },
-        // Sem a semente do catalogo nao ha `permissions` (como antes): `can` devolve false.
-        ...(catalogSeed && catalogPermitted ? { permissions: { 'treino.academias': { ver: 'todos', editar: 'todos' } } } : {}),
       });
     }
     if (key === 'GET /equipment-exercises') {
@@ -234,6 +232,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
       if (url.searchParams.has('primary_group')) {
         if (gymEquipmentListFails) return send(500, { detail: 'falha forcada' });
         return send(200, {
+          can_add_to_gym: catalogSeed && catalogPermitted,
           items: [
             ...(equipmentSeed
               ? [

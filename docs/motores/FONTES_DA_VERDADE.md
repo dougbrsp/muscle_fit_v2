@@ -7768,3 +7768,23 @@ Limites:
 
 - PWA antigo em cache mostra "(esperado X)" sem rótulo em série que não é de trabalho, até atualizar.
 - O detalhe de séries de treinos já registrados não muda, mas séries futuras de backoff e técnica passam a aparecer sem comparação: decisão de produto já tomada pelo usuário em 22/11/2026.
+
+**Lote 26 de 22/11/2026 (#246, permissão própria para acrescentar equipamento à academia).** Sem regra de motor: nenhuma fonte deste mapa muda. É RBAC (ADR 0011 e ADR 0032), não motor. Mudanças:
+
+- Permissão `treino.academias.equipamentos`/`editar` (`api/app/access/catalog.py`) para `POST /gym-equipment-catalog` (`api/app/gyms.py::create_gym_equipment_catalog`). O dono da academia vê a ação no seletor do Modo Treino pelo campo `can_add_to_gym` de `GET /gym-equipment` (`gyms.py::can_write_gym_catalog`); o frontend só lê o campo (`EquipmentSubstituteModal.tsx`). Tela de Academias: `academiasControls.canAddEquipment` (`frontend/src/lib/screen-permissions.ts`).
+- Migração 122 (`api/db/migrations/122_access_grants_academias_equipamentos.py`): só DML em `access_group_grants`, idempotente, copia o escopo de `treino.academias` para o recurso novo.
+- `POST /gym-equipment` devolve 404 para `mapping_id` inexistente, depois da checagem de posse.
+
+Impacto em produção: medido pelo Tech Lead em 22/11/2026, só leitura. Grupos `usuario` e `personal_trainer` têm `treino.academias`/`editar` em `proprios`; a migração 122 insere 6 linhas (3 ações × 2 grupos) em `proprios`. Nenhum grupo ganha ou perde acesso no deploy. Nenhuma regra de motor, número de prescrição ou tela de cálculo muda.
+
+Não medido:
+
+- nada em tela (nenhum navegador nem iPhone);
+- a migração 122 não foi executada em banco; roda pela pipeline com `RUN_DB_MIGRATIONS=true`.
+
+Limites:
+
+- só `editar` do recurso novo tem efeito;
+- o acréscimo reativa vínculo inativo (`ON DUPLICATE KEY UPDATE is_active = 1`);
+- `POST /gym-equipment` e `PUT /gym-equipment/{id}` seguem em `treino.academias`/`editar`;
+- quem tiver só `treino.academias`/`editar` e não tiver o recurso novo deixa de acrescentar pela API (no deploy, nenhum grupo existente está nessa situação).

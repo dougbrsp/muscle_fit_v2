@@ -25,7 +25,7 @@ from app.access import service as access_service
 from app.access.service import FORBIDDEN_DETAIL
 from app.security import Identity
 
-DONO, TERCEIRO, PT, ADMIN_ID, SEM_GRUPO, SO_EDITAR, CAT_EDITAR = 10, 11, 12, 1, 13, 14, 15
+DONO, TERCEIRO, PT, ADMIN_ID, SEM_GRUPO, SO_EDITAR, CAT_EDITAR, SO_NOVO, NOVO_TODOS = 10, 11, 12, 1, 13, 14, 15, 16, 17
 
 IDENTIDADES = {
     "dono": Identity(user_id=DONO, role="regular", source="session"),
@@ -35,6 +35,8 @@ IDENTIDADES = {
     "sem_grupo": Identity(user_id=SEM_GRUPO, role="regular", source="session"),
     "so_editar": Identity(user_id=SO_EDITAR, role="regular", source="session"),
     "cat_editar": Identity(user_id=CAT_EDITAR, role="regular", source="session"),
+    "so_novo": Identity(user_id=SO_NOVO, role="regular", source="session"),
+    "novo_todos": Identity(user_id=NOVO_TODOS, role="regular", source="session"),
     "mestre": Identity(user_id=ADMIN_ID, role="admin", source="master_token"),
     "disp_dono": Identity(user_id=DONO, role="regular", source="device", device_id=3),
     "disp_terceiro": Identity(user_id=TERCEIRO, role="regular", source="device", device_id=4),
@@ -66,6 +68,12 @@ class FakePermissoes:
             PT: _linhas_do_grupo("personal_trainer"),
             ADMIN_ID: _linhas_do_grupo("admin"),
             SO_EDITAR: _linhas_sinteticas([("treino.academias", "editar", "proprios"), ("treino.academias", "ver", "proprios")]),
+            SO_NOVO: _linhas_sinteticas(
+                [("treino.academias.equipamentos", "editar", "proprios"), ("treino.academias", "ver", "proprios")]
+            ),
+            NOVO_TODOS: _linhas_sinteticas(
+                [("treino.academias.equipamentos", "editar", "todos"), ("treino.academias", "ver", "proprios")]
+            ),
             CAT_EDITAR: _linhas_sinteticas(
                 [("admin.catalogos", "editar", "todos"), ("treino.academias", "ver", "proprios")]
             ),
@@ -85,14 +93,19 @@ TABELAS = {
         {**GYM_BASE, "id": 5, "owner_user_id": DONO},
         {**GYM_BASE, "id": 6, "owner_user_id": None},
         {**GYM_BASE, "id": 7, "owner_user_id": TERCEIRO},
+        {**GYM_BASE, "id": 8, "owner_user_id": SO_NOVO},
+        {**GYM_BASE, "id": 9, "owner_user_id": SO_EDITAR},
     ],
+    "exercise_catalog": [{"id": 3}],
     "gym_equipment": [
         {"id": 77, "gym_id": 5, "mapping_id": 3, "equipment_id": 9, "is_active": 1},
         {"id": 78, "gym_id": 6, "mapping_id": 3, "equipment_id": 9, "is_active": 1},
+        {"id": 79, "gym_id": 9, "mapping_id": 3, "equipment_id": 9, "is_active": 1},
     ],
     "gym_equipment_catalog": [
         {"id": 88, "gym_id": 5, "equipment_id": 9, "is_active": 1},
         {"id": 89, "gym_id": 6, "equipment_id": 9, "is_active": 1},
+        {"id": 90, "gym_id": 8, "equipment_id": 9, "is_active": 1},
     ],
     "equipment": [
         {"id": 9, "name": "Leg press", "notes": None, "is_active": 1, "equipment_type_id": None,
@@ -577,3 +590,59 @@ def test_so_editar_nao_desativa_nem_a_propria_academia(ctx):
         assert _chamar(client, "so_editar", "PUT", "/gyms/50", {"notes": "x"}).status_code == 200
     finally:
         TABELAS["gyms"].pop()
+
+
+# ---------------------------------------------------------------------------
+# #246: acrescentar equipamento tem recurso proprio (treino.academias.equipamentos)
+# ---------------------------------------------------------------------------
+
+
+def test_so_o_recurso_novo_acrescenta_na_propria_academia_mas_nao_edita_nem_exclui(ctx):
+    client, cur, _ = ctx
+    corpo = {"gym_id": 8, "equipment_id": 9}
+    assert _chamar(client, "so_novo", "POST", "/gym-equipment-catalog", corpo).status_code == 200
+    for metodo, caminho, c in (
+        ("PATCH", "/gym-equipment-catalog/88", {"manufacturer": "X"}),
+        ("DELETE", "/gym-equipment-catalog/88", None),
+        ("POST", "/gym-equipment", {"gym_id": 8, "mapping_id": 3, "equipment_id": 9}),
+    ):
+        _negado(_chamar(client, "so_novo", metodo, caminho, c))
+
+
+def test_so_treino_academias_editar_nao_acrescenta_mas_continua_editando_e_excluindo(ctx):
+    client, cur, _ = ctx
+    _negado(_chamar(client, "so_editar", "POST", "/gym-equipment-catalog", {"gym_id": 9, "equipment_id": 9}))
+    assert cur.writes() == []
+    assert _chamar(client, "so_editar", "POST", "/gym-equipment", {"gym_id": 9, "mapping_id": 3, "equipment_id": 9}).status_code == 200
+
+
+def test_recurso_novo_com_escopo_todos_acrescenta_em_academia_de_terceiro(ctx):
+    client, _, _ = ctx
+    assert _chamar(client, "novo_todos", "POST", "/gym-equipment-catalog", {"gym_id": 5, "equipment_id": 9}).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "quem,gym_id,esperado",
+    [("dono", 5, True), ("terceiro", 5, False), ("novo_todos", 5, True), ("dono", 999, False),
+     ("novo_todos", 999, False), ("admin", 5, True), ("so_editar", 9, False)],
+)
+def test_can_add_to_gym_do_get_gym_equipment(ctx, quem, gym_id, esperado):
+    client, _, _ = ctx
+    resp = _chamar(client, quem, "GET", f"/gym-equipment?gym_id={gym_id}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["can_add_to_gym"] is esperado
+    assert "items" in resp.json()
+
+
+def test_get_gym_equipment_sem_gym_id_nao_traz_can_add_to_gym(ctx):
+    client, _, _ = ctx
+    assert "can_add_to_gym" not in _chamar(client, "dono", "GET", "/gym-equipment").json()
+
+
+def test_post_vinculo_com_mapping_id_inexistente_404_para_dono_e_403_para_nao_dono(ctx):
+    client, cur, _ = ctx
+    corpo = {"gym_id": 5, "mapping_id": 12345, "equipment_id": 9}
+    resp = _chamar(client, "dono", "POST", "/gym-equipment", corpo)
+    assert resp.status_code == 404 and "mapping_id" in resp.json()["detail"]
+    assert _chamar(client, "terceiro", "POST", "/gym-equipment", corpo).status_code == 403
+    assert cur.writes() == []

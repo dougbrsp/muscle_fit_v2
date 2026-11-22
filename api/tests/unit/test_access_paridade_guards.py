@@ -1566,14 +1566,13 @@ def test_paridade_das_11_rotas_do_3a_admin_e_token_mestre_permitidos_regular_pt_
 
 
 def test_rota_nova_do_188_tem_a_permissao_do_post_irmao_e_decisao_de_usuario_comum():
-    """PATCH /gym-equipment-catalog/{link_id} (fabricante por academia): treino.academias/editar,
-    igual ao POST irmao; usuario, PT, admin e token mestre passam o guard de entrada (a posse do
+    """PATCH /gym-equipment-catalog/{link_id} (fabricante por academia): treino.academias/editar; usuario, PT, admin e token mestre passam o guard de entrada (a posse do
     dono ou escopo `todos` e provada por HTTP em test_gyms_permissoes_rbac/test_fabricante_por_academia);
     sem grupo e negado. Sem classe antiga no retrato."""
     vivas = _declaradas_com_escopo()
-    assert vivas[ROTA_NOVA_ACADEMIA_FABRICANTE] == vivas["POST /gym-equipment-catalog"] == [
-        ("treino.academias", "editar", None)
-    ]
+    assert vivas[ROTA_NOVA_ACADEMIA_FABRICANTE] == [("treino.academias", "editar", None)]
+    # #246: o acrescimo (POST) tem recurso proprio; PATCH/DELETE seguem em treino.academias.
+    assert vivas["POST /gym-equipment-catalog"] == [("treino.academias.equipamentos", "editar", None)]
     assert ROTA_NOVA_ACADEMIA_FABRICANTE not in carregar_retrato()["rotas"]
     declaradas = vivas[ROTA_NOVA_ACADEMIA_FABRICANTE]
     for papel, tipo in (("regular", "session"), ("personal_trainer", "session"), ("admin", "session"),

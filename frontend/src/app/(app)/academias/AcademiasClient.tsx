@@ -624,7 +624,7 @@ export function AcademiasClient() {
                           checked={gymHasEquipmentId.has(eq.id)}
                           disabled={
                             !activeGymId ||
-                            !(gymHasEquipmentId.has(eq.id) ? controls.canDelete : controls.canEdit)
+                            !(gymHasEquipmentId.has(eq.id) ? controls.canDelete : controls.canAddEquipment)
                           }
                           onChange={(event) => toggleGymEquipment(eq, event.currentTarget.checked)}
                         />

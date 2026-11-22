@@ -75,6 +75,7 @@ RESOURCES: Final[tuple[Resource, ...]] = (
     Resource("treino.planos", "Planos de treino", DOMAIN_TREINO),
     Resource("treino.preferencias", "Preferências de treino", DOMAIN_TREINO),
     Resource("treino.academias", "Academias", DOMAIN_TREINO),
+    Resource("treino.academias.equipamentos", "Acrescentar equipamento à academia", DOMAIN_TREINO),
     Resource("progressao", "Progressão", DOMAIN_TREINO),
     Resource("volume.grupamentos", "Volume por grupamento", DOMAIN_TREINO),
     Resource("cardio", "Cardio", DOMAIN_TREINO),
@@ -182,6 +183,8 @@ _DADOS_PROPRIOS: Final[tuple[str, ...]] = (
     "treino.planos",
     "treino.preferencias",
     "treino.academias",
+    # So `editar` tem efeito (POST /gym-equipment-catalog); migracao 122 (issue #246).
+    "treino.academias.equipamentos",
     "progressao",
     "volume.grupamentos",
     "corpo.indicadores",
@@ -250,7 +253,7 @@ def _build_personal_trainer() -> tuple[Grant, ...]:
     return tuple((resource, action, scope) for (resource, action), scope in rows.items())
 
 
-# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113, 114, 115 e 116). `admin`
+# Matriz padrao (mesmas chaves de `GRANTS_BY_GROUP` das migracoes 111, 113, 114, 115, 116 e 122). `admin`
 # fica vazio (acesso total implicito) e `free` e criado vazio (nao e de sistema).
 DEFAULT_GRANTS_BY_GROUP: Final[dict[str, tuple[Grant, ...]]] = {
     GROUP_ADMIN: (),

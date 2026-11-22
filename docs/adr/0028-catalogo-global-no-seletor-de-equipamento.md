@@ -1,7 +1,7 @@
 # ADR 0028: Catálogo global no seletor de equipamento e acréscimo à academia com permissão (issue #163, segunda parte)
 
 - **Status**: Aceita. Branch `feat/catalogo-global-163b`. Não publicada nem promovida a produção.
-- **Data**: 2026-11-20 (verificação complementar em 2026-11-21)
+- **Data**: 2026-11-20 (verificação complementar em 2026-11-21; notas de resolução em 2026-11-22, ver ADR 0032)
 - **Complementa**: ADR 0027 (seletor de equipamento, primeira parte). Nenhuma decisão anterior é substituída.
 
 ## Contexto
@@ -31,7 +31,7 @@ Restrições reais:
 
 2. **Permissão reutiliza `treino.academias` / `editar` com escopo `todos`.** Nenhuma ação nova, nenhuma permissão nova, nenhuma migração. A rota de acréscimo continua sendo `POST /gym-equipment-catalog`, a mesma usada pela tela de Academias. **Consequência declarada:** conceder `treino.academias` com escopo `todos` a um grupo também dá edição e exclusão de todas as academias, porque as ações são fixas. Não há granularidade menor sem uma ação nova, e a ação nova fica como decisão futura se o usuário quiser separar.
 
-3. **Dono da academia continua podendo acrescentar.** A regra do servidor não muda: dono ou escopo `todos` (`_assert_gym_equipment_catalog_writable`). No seletor, porém, o botão só aparece com o escopo `todos` (`EquipmentSubstituteModal.tsx`, `usePermissions().can('treino.academias', 'editar', 'todos')`). **Diferença conhecida em relação a "só admin":** o dono da academia pode acrescentar pela tela de Academias e pela API, mas não pelo seletor do Modo Treino, a não ser que tenha o escopo `todos`.
+3. **Dono da academia continua podendo acrescentar.** A regra do servidor não muda: dono ou escopo `todos` (`_assert_gym_equipment_catalog_writable`). No seletor, porém, o botão só aparece com o escopo `todos` (`EquipmentSubstituteModal.tsx`, `usePermissions().can('treino.academias', 'editar', 'todos')`). **Diferença conhecida em relação a "só admin":** o dono da academia pode acrescentar pela tela de Academias e pela API, mas não pelo seletor do Modo Treino, a não ser que tenha o escopo `todos`. **Resolvido em 22/11/2026 (ADR 0032):** o seletor usa o campo `can_add_to_gym` do servidor, e o dono vê a ação na academia dele sem o escopo `todos`.
 
 4. **Sem permissão, o item aparece desabilitado.** O texto é "Não cadastrado nesta academia" (`CATALOG_NOT_IN_GYM_NOTICE`, `catalogItemState`).
 
@@ -51,8 +51,8 @@ Restrições reais:
 
 - Ganha: a academia cresce sem sair do treino, e quem tem o escopo `todos` não precisa ir à tela de Academias.
 - Ganha: o servidor deixa de aceitar equipamento inativo e de revelar a existência de ids para quem não pode escrever.
-- Paga: o escopo `todos` de `treino.academias` dá edição e exclusão de todas as academias a quem o recebe. A granularidade menor depende de uma ação nova.
-- Paga: o dono da academia perde o atalho no seletor. A permissão de acrescentar pela tela de Academias segue como estava.
+- Paga: o escopo `todos` de `treino.academias` dá edição e exclusão de todas as academias a quem o recebe. A granularidade menor depende de uma ação nova. Resolvido em 22/11/2026 (ADR 0032): a permissão própria é o recurso `treino.academias.equipamentos`, sem ação nova.
+- Paga: o dono da academia perde o atalho no seletor. A permissão de acrescentar pela tela de Academias segue como estava. Resolvido em 22/11/2026 (ADR 0032): a permissão de acrescentar passou a ser própria, e o dono vê a ação no seletor.
 - Paga: a seção mostra só pares com vínculo no grupo, o que é mais estreito que a decisão.
 - Paga: o acréscimo depende de rede, e o item fica indisponível offline.
 
@@ -64,7 +64,7 @@ Restrições reais:
 - **Impacto para clientes existentes.** Corpo incompleto passa de 400 para 422. Equipamento inativo passa a ser recusado. A tela de Academias envia o mesmo corpo e continua aceita.
 - **Não medido.** Volume de resposta de `GET /equipment-exercises?primary_group` por grupo (a rota não tem paginação; o teto hoje é 145 pares no total). Quantas chamadas com equipamento inativo ocorreram, pois o servidor não registrava. Quantas chamadas de escrita de vínculo com academia inexistente ocorreram.
 - **Mapa.** Nenhuma regra de motor foi criada, e `docs/motores/FONTES_DA_VERDADE.md` não muda nesta entrega.
-- **Próximas decisões.** Ação própria de RBAC para acrescentar equipamento, se o usuário quiser separar de editar e excluir. Incluir equipamentos sem vínculo a exercício na seção, se o usuário quiser o catálogo inteiro (desvio 1).
+- **Próximas decisões.** Resolvido em 22/11/2026 (ADR 0032): a permissão própria de acrescentar equipamento é o recurso `treino.academias.equipamentos`. Incluir equipamentos sem vínculo a exercício na seção, se o usuário quiser o catálogo inteiro (desvio 1).
 
 ## Limites e pendências
 
@@ -72,7 +72,7 @@ Restrições reais:
 - (b) Perda de rede entre o acréscimo e a recarga da lista mostra "O equipamento foi acrescentado à academia, mas não está ligado a este exercício no catálogo" (`CATALOG_ADDED_WITHOUT_LINK_MESSAGE`), embora o acréscimo tenha ocorrido.
 - (c) Sem teste de renderização do modal. A cobertura é o e2e de resiliência do Modo Treino.
 - (d) O nome da academia vem dos itens de `/gym-equipment`. Academia sem nenhum item no grupo mostra "esta academia" na pergunta de confirmação.
-- (e) Sem o escopo `todos` o dono não vê a ação no seletor (decisão 3).
+- (e) Resolvido em 22/11/2026 (ADR 0032): o dono vê a ação no seletor pelo campo `can_add_to_gym`, sem o escopo `todos` (decisão 3).
 - (f) As rotas que recebem o vínculo por `link_id` (`PUT`/`DELETE /gym-equipment/{link_id}`, `PATCH`/`DELETE /gym-equipment-catalog/{link_id}`) ainda distinguem vínculo inexistente (404) de vínculo de outra academia (403). Esta entrega não mudou isso.
 
 ## Verificação

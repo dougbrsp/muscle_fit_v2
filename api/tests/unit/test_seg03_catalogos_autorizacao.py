@@ -65,6 +65,8 @@ class _Cursor:
             self._result = {"id": params[0], "gym_id": 5} if params == (77,) else None
         elif flat.startswith("SELECT gym_id FROM gym_equipment"):
             self._result = {"gym_id": 5} if params == (77,) else None
+        elif flat.startswith("SELECT id FROM exercise_catalog"):
+            self._result = {"id": params[0]}
         elif flat.startswith("SELECT id FROM equipment"):
             self._result = {"id": params[0]}
         elif flat.startswith("SELECT * FROM gym_equipment"):
