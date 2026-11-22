@@ -165,6 +165,7 @@ def export_for_frontend() -> dict[str, Any]:
         "carb_cycle_policy_hints": lb.labels_by_code(lb.CARB_CYCLE_POLICY_HINTS),
         "default_carb_cycle_policy": carb_cycling.DEFAULT_CARB_CYCLE_POLICY.value,
         "day_kinds": _codes(carb_cycling.DayKind),
+        "default_day_kind": carb_cycling.DayKind.NORMAL.value,
         "day_kind_labels": lb.labels_by_code(lb.DAY_KIND_LABELS),
         "meal_slots": _codes(lb.MealSlot),
         "meal_slot_labels": lb.labels_by_code(lb.MEAL_SLOT_LABELS),

@@ -16,13 +16,15 @@ export type RpeVsExpectedCounts = {
 
 const fmt = (value: number | string) => Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
-/** Sufixo da linha de resumo: " (esperado 9 · Abaixo do esperado)"; "" sem esperado. */
+/** Sufixo da linha de resumo: " (esperado 9 · Abaixo do esperado)"; "" sem comparação do servidor. */
 export function rpeExpectedSuffix(set: {
   rpe_target_planned?: number | string | null;
   rpe_vs_expected?: RpeVsExpected | undefined;
 }): string {
-  if (set.rpe_target_planned == null) return '';
-  const label = set.rpe_vs_expected?.label;
+  const cmp = set.rpe_vs_expected;
+  // A decisão de mostrar é do servidor (só série de trabalho traz comparação).
+  if (!cmp || set.rpe_target_planned == null) return '';
+  const label = cmp.label || COUNT_LABELS.find(([key]) => key === cmp.status)?.[1];
   return ` (esperado ${fmt(set.rpe_target_planned)}${label ? ` · ${label}` : ''})`;
 }
 

@@ -20,7 +20,7 @@ type Perms = Record<string, Record<string, string>>;
 const ACTIONS = ['ver', 'editar', 'excluir'];
 const ALL_RESOURCES = [
   'dashboards', 'treino.registro', 'treino.modo_treino', 'treino.planos', 'treino.preferencias',
-  'treino.academias', 'progressao', 'volume.grupamentos', 'cardio', 'integracoes.intervals',
+  'treino.academias', 'treino.academias.equipamentos', 'progressao', 'volume.grupamentos', 'cardio', 'integracoes.intervals',
   'relatorios', 'exercicios.catalogo', 'corpo.indicadores', 'corpo.checkin', 'nutricao.diario',
   'nutricao.plano', 'nutricao.alimentos', 'nutricao.checkin', 'modelos.treino',
   'modelos.metas_ativacao', 'ia.modo_treino', 'ia.insights', 'ia.analise_treinos',
@@ -30,7 +30,7 @@ const ALL_RESOURCES = [
 ];
 const DADOS_PROPRIOS = [
   'dashboards', 'treino.registro', 'treino.modo_treino', 'treino.planos', 'treino.preferencias',
-  'treino.academias', 'progressao', 'volume.grupamentos', 'corpo.indicadores', 'corpo.checkin',
+  'treino.academias', 'treino.academias.equipamentos', 'progressao', 'volume.grupamentos', 'corpo.indicadores', 'corpo.checkin',
   'cardio', 'integracoes.intervals', 'nutricao.diario', 'nutricao.plano', 'nutricao.alimentos',
   'nutricao.checkin', 'relatorios',
 ];
@@ -110,7 +110,7 @@ describe('controles das telas de gestão (paridade com o que cada papel via por 
   it('usuário comum: só academias próprias; nada de catálogo, modelos, usuários, grupos', () => {
     const p = usuario();
     expect(academiasControls(p)).toEqual({
-      canEdit: true, canDelete: true, canEditAdminFields: false, canRemoveLogo: false,
+      canEdit: true, canAddEquipment: true, canDelete: true, canEditAdminFields: false, canRemoveLogo: false,
     });
     expect(allFalse(catalogosControls(p))).toBe(true);
     expect(allFalse(segurancaTreinoControls(p))).toBe(true);
@@ -121,6 +121,12 @@ describe('controles das telas de gestão (paridade com o que cada papel via por 
     expect(allFalse(gruposControls(p))).toBe(true);
     expect(allFalse(alimentosControls(p))).toBe(true);
     expect(allFalse(planoNutricionalControls(p))).toBe(true);
+  });
+
+  it('acrescentar equipamento e editar academia são permissões independentes', () => {
+    const so = (resource: string, action: string): Perms => ({ [resource]: { [action]: 'proprios' } });
+    expect(academiasControls(so('treino.academias.equipamentos', 'editar'))).toMatchObject({ canAddEquipment: true, canEdit: false });
+    expect(academiasControls(so('treino.academias', 'editar'))).toMatchObject({ canAddEquipment: false, canEdit: true });
   });
 
   it('personal trainer: metas, modelos e plano de outros; sem catálogo, usuários e grupos', () => {

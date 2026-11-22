@@ -15,8 +15,14 @@ describe('rpeExpectedSuffix', () => {
     expect(rpeExpectedSuffix({})).toBe('');
     expect(rpeExpectedSuffix({ rpe_target_planned: null, rpe_vs_expected: null })).toBe('');
   });
-  it('esperado com comparação nula', () => {
-    expect(rpeExpectedSuffix({ rpe_target_planned: 8.5, rpe_vs_expected: null })).toBe(' (esperado 8,5)');
+  it('comparação nula ou ausente: vazio (a decisão é do servidor)', () => {
+    expect(rpeExpectedSuffix({ rpe_target_planned: 8.5, rpe_vs_expected: null })).toBe('');
+    expect(rpeExpectedSuffix({ rpe_target_planned: 8.5 })).toBe('');
+  });
+  it('rótulo vazio da API cai na reserva do módulo', () => {
+    expect(rpeExpectedSuffix({ rpe_target_planned: 9, rpe_vs_expected: { ...below, label: '' } })).toBe(
+      ' (esperado 9 · abaixo)',
+    );
   });
 });
 

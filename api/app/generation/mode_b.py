@@ -49,6 +49,7 @@ from ..domain.prescription import (
     WARNING_EQUIPMENT_UNRESOLVED,
     WARNING_EXERCISE_AUTO_CHOSEN,
     WARNING_MODEL_TECHNIQUE_INVALID,
+    WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK,
     parse_rpe,
 )
 from ..domain.training_safety import resolve_training_safety_bulk, validate_technique
@@ -667,6 +668,11 @@ def _warning_text(
             f"{label}: a técnica avançada configurada no modelo não é válida para este equipamento "
             "(incompatível ou exige falha onde ela não é permitida) e foi removida da prescrição. "
             "O modelo continua salvo."
+        )
+    if code == WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK:
+        return (
+            f"{label}: a técnica avançada do modelo exige falha e este dia não tem trabalho direto do "
+            "grupo; ela foi retirada da prescrição neste dia. O modelo continua salvo."
         )
     return f"{label}: {code}"
 

@@ -9,6 +9,7 @@ import { MuscleMapDisclosure } from './MuscleMapDisclosure';
 import { LastExerciseNotice, NextExercisePreviewCard, buildRestFinishWorkoutAction } from './NextExercisePreviewCard';
 import { RestAiEvaluationCard, RestSavedSetPanel, type RestSetEditProps } from './RestRecommendation';
 import { RestTimerHero } from './RestTimer';
+import { RestEquipmentSwap } from './ui/ExerciseTitleRow';
 
 function render(element: ReactElement): string {
   // Sem os <style> globais do MantineProvider: "vazio" = o componente não desenhou nada.
@@ -29,6 +30,22 @@ const NEXT_EXERCISE = {
   load_target: '40 kg',
   rpe_target: '8',
 } as unknown as WorkoutModePlanExercise;
+
+describe('RestEquipmentSwap (#244)', () => {
+  it('mostra o nome do equipamento como botão fora da transição de exercício', () => {
+    const html = render(
+      createElement(RestEquipmentSwap, { equipmentName: 'Cadeira flexora', isExerciseTransition: false, onSwap: () => {} }),
+    );
+    expect(html).toContain('data-testid="rest-equipment-swap"');
+    expect(html).toContain('aria-label="Trocar equipamento: Cadeira flexora"');
+  });
+
+  it('não mostra na transição nem sem equipamento', () => {
+    const props = { equipmentName: 'Cadeira flexora', isExerciseTransition: true, onSwap: () => {} };
+    expect(render(createElement(RestEquipmentSwap, props))).toBe('');
+    expect(render(createElement(RestEquipmentSwap, { ...props, isExerciseTransition: false, equipmentName: null }))).toBe('');
+  });
+});
 
 describe('RestTimerHero', () => {
   beforeEach(() => {

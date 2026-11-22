@@ -816,6 +816,12 @@ def list_gym_equipment(
                 tuple(params),
             )
             rows = cursor.fetchall()
+            # #246: so com gym_id (sem ele o campo e omitido); uma consulta a mais.
+            can_add = (
+                can_write_gym_catalog(cursor, gym_id, request, identity, _RESOURCE_GYM_ADD_EQUIPMENT, "editar")
+                if gym_id is not None
+                else None
+            )
 
     # #188: fabricante do aparelho NESTA academia (uq (gym_id, equipment_id): o JOIN nao multiplica linhas)
     can_edit = manufacturer_editor(identity, permissions_for_request(request, identity))
@@ -825,7 +831,10 @@ def list_gym_equipment(
         # NULL (sem cadastro do par) vale a convencao padrao do dono.
         row["load_convention"] = normalize_load_convention(row.get("load_convention")).value
         items.append(with_manufacturer_fields(row, can_edit))
-    return {"items": _rows_jsonable(items)}
+    payload: Dict[str, Any] = {"items": _rows_jsonable(items)}
+    if can_add is not None:
+        payload["can_add_to_gym"] = can_add
+    return payload
 
 
 def _link_not_found(request: Request, identity: security.Identity, action: str) -> HTTPException:
@@ -853,6 +862,9 @@ def create_gym_equipment(
             cursor.execute("SELECT id FROM equipment WHERE id = %s", (equipment_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=404, detail="equipment_id não encontrado no catálogo.")
+            cursor.execute("SELECT id FROM exercise_catalog WHERE id = %s", (mapping_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="mapping_id não encontrado no catálogo.")
 
             cursor.execute(
                 """
@@ -1120,29 +1132,48 @@ def _catalog_item(row: Dict[str, Any], can_edit) -> Dict[str, Any]:
 _LINK_FORBIDDEN_DETAIL = "Você não tem permissão para gerenciar equipamentos desta academia."
 
 
+_RESOURCE_GYMS = "treino.academias"
+# Acrescentar equipamento a academia (#246): recurso proprio, so `editar` tem efeito.
+_RESOURCE_GYM_ADD_EQUIPMENT = "treino.academias.equipamentos"
+
+
+def _gym_row_if_allowed(
+    cursor, gym_id: int, request: Request, identity: security.Identity, resource: str, action: str
+) -> tuple[bool, Dict[str, Any]]:
+    """(permitido, linha da academia); linha vazia se a academia nao existe."""
+    cursor.execute("SELECT owner_user_id FROM gyms WHERE id = %s", (gym_id,))
+    row = cursor.fetchone() or {}
+    allowed = owns_row_or_all(
+        identity, permissions_for_request(request, identity), resource, action, row.get("owner_user_id")
+    )
+    return allowed, row
+
+
+def can_write_gym_catalog(
+    cursor, gym_id: int, request: Request, identity: security.Identity, resource: str, action: str
+) -> bool:
+    """Booleano da posse da academia: existe e (dono ou `resource` na `action` com
+    escopo `todos`). Inexistente = False, sem erro (nao vaza existencia)."""
+    allowed, row = _gym_row_if_allowed(cursor, gym_id, request, identity, resource, action)
+    return bool(allowed and row)
+
+
 def _assert_gym_equipment_catalog_writable(
     cursor,
     gym_id: int,
     request: Request,
     identity: security.Identity,
     action: str,
+    resource: str = _RESOURCE_GYMS,
 ) -> None:
     """Posse da linha para POST/DELETE /gym-equipment-catalog (e vinculos de
-    /gym-equipment): dono da academia ou `treino.academias` na `action` da rota
-    com escopo `todos`; 403 caso contrario (diferente de _assert_gym_writable,
-    que usa 404 - aqui o gym_id ja veio explicito no payload do chamador).
+    /gym-equipment): dono da academia ou `resource` (padrao `treino.academias`)
+    na `action` da rota com escopo `todos`; 403 caso contrario (diferente de
+    _assert_gym_writable, que usa 404 - aqui o gym_id ja veio explicito no payload).
     Academia inexistente conta como sem dono: quem nao tem escopo `todos` recebe
     403 igual ao de academia alheia (nao enumera ids); so quem tem `todos` recebe 404."""
-    cursor.execute("SELECT owner_user_id FROM gyms WHERE id = %s", (gym_id,))
-    row = cursor.fetchone() or {}
-
-    if not owns_row_or_all(
-        identity,
-        permissions_for_request(request, identity),
-        "treino.academias",
-        action,
-        row.get("owner_user_id"),
-    ):
+    allowed, row = _gym_row_if_allowed(cursor, gym_id, request, identity, resource, action)
+    if not allowed:
         raise HTTPException(status_code=403, detail=_LINK_FORBIDDEN_DETAIL)
     if not row:
         raise HTTPException(status_code=404, detail="gym_id não encontrado.")
@@ -1152,7 +1183,7 @@ def _assert_gym_equipment_catalog_writable(
 def create_gym_equipment_catalog(
     request: Request,
     payload: GymEquipmentCatalogAddIn,
-    identity: security.Identity = Depends(require_permission("treino.academias", "editar")),
+    identity: security.Identity = Depends(require_permission(_RESOURCE_GYM_ADD_EQUIPMENT, "editar")),
 ):
     gym_id = payload.gym_id
     equipment_id = payload.equipment_id
@@ -1161,7 +1192,9 @@ def create_gym_equipment_catalog(
         with conn.cursor() as cursor:
             # Autorizacao ANTES de olhar o equipamento: quem nao pode escrever
             # nao descobre se ele existe ou esta inativo.
-            _assert_gym_equipment_catalog_writable(cursor, gym_id, request, identity, "editar")
+            _assert_gym_equipment_catalog_writable(
+                cursor, gym_id, request, identity, "editar", _RESOURCE_GYM_ADD_EQUIPMENT
+            )
 
             cursor.execute("SELECT id, is_active FROM equipment WHERE id = %s", (equipment_id,))
             equipment = cursor.fetchone()

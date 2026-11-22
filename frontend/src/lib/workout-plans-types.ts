@@ -87,7 +87,9 @@ export type PrescriptionWarning =
   // Fix M97: a geração ajustou valores do Modelo ao objetivo do item (detalhe em `goal_adjustments`).
   | 'GOAL_NORMALIZED'
   // M101b: exercício livre no Modelo, escolhido pela geração (não é substituição).
-  | 'EXERCISE_AUTO_CHOSEN';
+  | 'EXERCISE_AUTO_CHOSEN'
+  // #259: dia sem trabalho direto do grupo; o motor retirou a técnica que exige falha.
+  | 'TECHNIQUE_REMOVED_NO_DIRECT_WORK';
 
 // Fix M97 (2026-10-26): faixa de carga de FORÇA por %1RM congelada pelo motor
 // (`progression_engine.e1rm_load_range`). Tudo pronto do backend: a tela só
@@ -197,6 +199,7 @@ export const PRESCRIPTION_WARNING_LABELS: Record<PrescriptionWarning, string> = 
   EQUIPMENT_UNRESOLVED: 'Equipamento não identificado',
   GOAL_NORMALIZED: 'Ajustado ao objetivo',
   EXERCISE_AUTO_CHOSEN: 'Exercício escolhido pelo motor',
+  TECHNIQUE_REMOVED_NO_DIRECT_WORK: 'Técnica retirada hoje',
 };
 
 // Tooltip específico por código (PR-12): o genérico "aviso registrado ao
@@ -213,6 +216,8 @@ export const PRESCRIPTION_WARNING_TOOLTIPS: Record<PrescriptionWarning, string> 
     'O modelo deixou o exercício livre para este grupo muscular. A geração escolheu um exercício (e o equipamento dele) desta academia pelas suas estrelas e pelo uso mais antigo (treinos e fichas geradas), variando a cada ficha. Você pode trocá-lo no modo treino.',
   GOAL_NORMALIZED:
     'O modelo tinha valores incompatíveis com o objetivo deste exercício (descanso, repetições, RPE, séries ou técnica). A geração ajustou a ficha ao perfil do objetivo; o modelo continua salvo como foi digitado.',
+  TECHNIQUE_REMOVED_NO_DIRECT_WORK:
+    'A técnica avançada exige falha e este dia não tem trabalho direto do grupo. Ela foi retirada desta ficha; séries e repetições seguem as da linha. O modelo continua salvo.',
 };
 
 // M6: quando nem o equipamento nem outro equipamento do exercício existem na
@@ -244,6 +249,7 @@ export const PRESCRIPTION_WARNING_COLORS: Record<PrescriptionWarning, string> = 
   EQUIPMENT_UNRESOLVED: 'red',
   GOAL_NORMALIZED: 'orange',
   EXERCISE_AUTO_CHOSEN: 'blue',
+  TECHNIQUE_REMOVED_NO_DIRECT_WORK: 'blue',
 };
 
 export type RefreshPrescriptionResponse = {

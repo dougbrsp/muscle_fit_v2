@@ -450,12 +450,20 @@ def rpe_vs_expected(actual: Any, expected: Any) -> Optional[RpeVsExpected]:
     return RpeVsExpected(status, RPE_VS_LABELS[status], float(delta))
 
 
+def set_rpe_vs_expected(row: Mapping[str, Any]) -> Optional[RpeVsExpected]:
+    """#241: comparacao da serie (`rpe` x `rpe_target_planned`) SO para serie de
+    trabalho (`working` ou legada sem tipo); backoff, tecnica etc. -> None."""
+    if not is_working_set(row):
+        return None
+    return rpe_vs_expected(row.get("rpe"), row.get("rpe_target_planned"))
+
+
 def rpe_vs_expected_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
-    """Agrega series (`rpe` e `rpe_target_planned`) em `{below, on_target,
-    above, compared}`; serie sem um dos dois nao conta."""
+    """Agrega series de trabalho (`rpe` e `rpe_target_planned`) em `{below,
+    on_target, above, compared}`; serie sem um dos dois nao conta."""
     counts = {RPE_VS_BELOW: 0, RPE_VS_ON_TARGET: 0, RPE_VS_ABOVE: 0, "compared": 0}
     for row in rows:
-        result = rpe_vs_expected(row.get("rpe"), row.get("rpe_target_planned"))
+        result = set_rpe_vs_expected(row)
         if result is not None:
             counts[result.status] += 1
             counts["compared"] += 1

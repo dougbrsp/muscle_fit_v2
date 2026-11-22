@@ -171,8 +171,8 @@ def test_build_plan_settings_valida_a_politica():
     assert pl.build_plan_settings(strategy="maintenance", cycle_days=CICLO, cycle_policy="x").errors == (
         "invalid_code:carb_cycle_policy",
     )
-    sem_ciclo = pl.build_plan_settings(strategy="maintenance", cycle_policy="fat_compensation")
-    assert sem_ciclo.errors == ("param_not_applicable:carb_cycle_policy",)
+    sem_ciclo = pl.build_plan_settings(strategy="maintenance", cycle_policy="fat_compensation")  # lembrada sem ciclo
+    assert sem_ciclo.ok and sem_ciclo.settings.carb_cycle_policy == FAT
     assert pl.build_plan_settings(strategy="maintenance").settings.carb_cycle_policy == cc.DEFAULT_CARB_CYCLE_POLICY
     assert _cfg(cycle_policy="fat_compensation").plan_params().carb_cycle_policy == FAT
 
@@ -183,6 +183,16 @@ def test_to_dict_e_hash_so_com_a_chave_fora_do_padrao():
         assert "carb_cycle_policy" not in d
     for d in (novo.to_dict(), novo.fingerprint_dict()):
         assert d["carb_cycle_policy"] == "fat_compensation"
+
+
+def test_politica_sem_ciclo_nao_muda_impressao_digital_nem_metas():
+    padrao = pl.build_plan_settings(strategy="maintenance").settings
+    lembrada = pl.build_plan_settings(strategy="maintenance", cycle_policy="fat_compensation").settings
+    assert lembrada.carb_cycle_policy == FAT and padrao.fingerprint_dict() == lembrada.fingerprint_dict()
+    assert "carb_cycle_policy" not in lembrada.fingerprint_dict()
+    assert _semana(padrao.plan_params()) == _semana(lembrada.plan_params())
+    # Com ciclo a política continua diferenciando (impressão digital e metas).
+    assert _cfg().fingerprint_dict() != _cfg(cycle_policy="fat_compensation").fingerprint_dict()
 
 
 def test_check_cycle_floors_modo_novo_viavel_sem_erro_e_padrao_inalterado():

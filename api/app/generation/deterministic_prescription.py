@@ -36,8 +36,13 @@ from decimal import Decimal
 from typing import Any, Mapping, Optional, Sequence
 
 from ..domain.equipment_context import context_gym_id
-from ..domain.prescription import WARNING_MODEL_TECHNIQUE_INVALID, parse_rpe
+from ..domain.prescription import (
+    WARNING_MODEL_TECHNIQUE_INVALID,
+    parse_rpe,
+    removed_technique_warning,
+)
 from ..domain.progression_engine import (
+    BLOCKED_NO_DIRECT_WORK,
     DEFAULT_FATIGUE_CONTEXT,
     EVIDENCE_STRENGTH_E1RM_LOAD,
     READY_CONTRACT,
@@ -53,7 +58,7 @@ from ..domain.progression_engine import (
 from ..domain.technique_accounting import format_reps_range
 from ..domain.training_goal import goal_value
 from ..observability import log_event
-from ..domain.training_safety import TrainingSafety, build_training_safety, resolve_training_safety_bulk
+from ..domain.training_safety import TrainingSafety, build_training_safety, resolve_training_safety_bulk, safety_for_goal
 
 # `engine_version` gravado no snapshot pelo Modo B deterministico. O contrato
 # do snapshot (`domain/prescription.py`) nao muda - so a ORIGEM.
@@ -442,7 +447,18 @@ def prescribe_pairs(
         if request.model_technique and decision.advanced_technique != request.model_technique:
             # Tecnica fixa do modelo removida pela seguranca (secao 5.9): o
             # modelo continua salvo; a ficha avisa.
-            warnings.append(WARNING_MODEL_TECHNIQUE_INVALID)
+            # #259: se o motor a retirou por ser dia sem trabalho direto, o
+            # aviso e o proprio (informativo); demais divergencias, o antigo.
+            # Mesma checagem do `build_prescription` (uma funcao so, no dono); a
+            # seguranca e a do motor: o par com a politica do objetivo.
+            if BLOCKED_NO_DIRECT_WORK in decision.blocked_by:
+                warnings.append(
+                    removed_technique_warning(
+                        request.model_technique, safety_for_goal(effective_safety, request.training_goal)
+                    )
+                )
+            else:
+                warnings.append(WARNING_MODEL_TECHNIQUE_INVALID)
 
         result[request.key] = PairPrescription(
             decision=decision,

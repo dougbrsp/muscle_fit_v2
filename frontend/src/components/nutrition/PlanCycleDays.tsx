@@ -5,7 +5,7 @@ import { IconCalendarEvent } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import { NutritionLimitations } from './NutritionLimitations';
 import { fetchCycleDaysFromTemplate, nutritionErrorInfo } from '@/lib/nutrition-api';
-import { CARB_CYCLE_POLICY_OPTIONS, DAY_KIND_OPTIONS, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
+import { CARB_CYCLE_POLICY_OPTIONS, DAY_KIND_OPTIONS, DEFAULT_DAY_KIND, WEEKDAY_OPTIONS, type NutritionCode } from '@/lib/nutrition-constants';
 import { cyclePolicyHint } from '@/lib/nutrition-cycle-policy';
 import { applyTemplateProposal } from '@/lib/nutrition-plan-form';
 import { BRAND } from '@/theme';
@@ -35,7 +35,7 @@ export function flatCycleDays(normalCode: NutritionCode): CycleDaysValue {
  * são do motor; aqui só se escolhe o tipo de cada dia.
  */
 export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, policy, onPolicyChange, userId }: Props) {
-  const normal = DAY_KIND_OPTIONS.find((tipo) => tipo.value === 'normal')?.value ?? DAY_KIND_OPTIONS[0]?.value ?? '';
+  const normal = DEFAULT_DAY_KIND;
   const templateMutation = useMutation({
     mutationFn: () => fetchCycleDaysFromTemplate(userId ?? null),
     onSuccess: (proposta) => {

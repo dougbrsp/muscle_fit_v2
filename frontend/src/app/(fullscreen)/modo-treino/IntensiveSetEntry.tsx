@@ -6,6 +6,7 @@ import { formatWeight, type WeightUnit } from '@/lib/weight-units';
 import { parseNumericTarget } from '@/lib/workout-mode-types';
 import type { IntensiveProfile } from '@/lib/workout-mode-intensive';
 import { intensiveTargetRpeText } from './IntensiveBriefing';
+import { EquipmentSwapButton } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import { WorkoutActionBar } from './ui/WorkoutActionBar';
 import styles from './intensive.module.css';
@@ -54,6 +55,9 @@ type Props = {
   extraRepsEnabled?: boolean;
   onComplete: (reps: number | null, rpe: number | null, extraReps: number | null) => void;
   onSkipSet?: () => void;
+  /** Nome do equipamento atual e a troca; só aparece com os dois. */
+  equipmentName?: string | null;
+  onEquipmentClick?: () => void;
 };
 
 /** Contador de "reps extras" (além da falha): cada toque soma uma; sem RPE. */
@@ -111,6 +115,8 @@ export function IntensiveSetEntry({
   extraRepsEnabled = false,
   onComplete,
   onSkipSet,
+  equipmentName = null,
+  onEquipmentClick,
 }: Props) {
   const [repsText, setRepsText] = useState('');
   const [extraReps, setExtraReps] = useState(0);
@@ -145,6 +151,14 @@ export function IntensiveSetEntry({
           </span>
           <span className={styles.headline}>{profile.techniqueName}</span>
         </div>
+        {equipmentName && onEquipmentClick && (
+          <EquipmentSwapButton
+            equipmentName={equipmentName}
+            onClick={onEquipmentClick}
+            className={styles.equipmentSwap}
+            testId="intensive-equipment-swap"
+          />
+        )}
         <div>
           <span className={styles.tileLabel}>Carga planejada</span>
           <div className={styles.load} data-testid="intensive-planned-load">

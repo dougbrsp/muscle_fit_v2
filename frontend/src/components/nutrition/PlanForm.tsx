@@ -14,7 +14,7 @@ import {
   ROUTINE_LEVEL_OPTIONS,
   TDEE_MODE_HINTS,
   BMR_FORMULA_OPTIONS,
-  DAY_KIND_OPTIONS,
+  DEFAULT_DAY_KIND,
   DEFAULT_BMR_FORMULA,
   DEFAULT_MACRO_PRIORITY,
   DEFAULT_MANUAL_TRAINING_MODE,
@@ -93,7 +93,7 @@ type FormState = {
 };
 
 /** Tipo "normal" do dia (código do motor em `DAY_KIND_OPTIONS`). */
-const NORMAL_DAY_KIND: NutritionCode = DAY_KIND_OPTIONS.find((tipo) => tipo.value === 'normal')?.value ?? '';
+const NORMAL_DAY_KIND: NutritionCode = DEFAULT_DAY_KIND;
 
 /** Defaults da estratégia exatamente como o motor exporta (`form_ranges`). */
 function strategyDefaults(ranges: StrategyFormRanges | null, advanced: boolean): Partial<FormState> {
@@ -108,7 +108,7 @@ function strategyDefaults(ranges: StrategyFormRanges | null, advanced: boolean):
   };
 }
 
-function initialState(plan: NutritionPlan | null): FormState {
+export function initialState(plan: NutritionPlan | null): FormState {
   if (plan) {
     return {
       strategy: plan.strategy,
@@ -259,7 +259,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
       modosManuais.includes(form.manualMode) ? form.manualMode : DEFAULT_MANUAL_TRAINING_MODE,
     ),
     cycle_days: cycleDaysPayload(form.cycleOn, form.cycleDays),
-    carb_cycle_policy: cyclePolicyPayload(form.cycleOn, form.cyclePolicy),
+    carb_cycle_policy: cyclePolicyPayload(form.cyclePolicy),
     maintenance_kcal_adjust: ajusteManutencao,
     // Só o modo adaptativo envia `energy_params`: o payload dos planos legados não muda.
     ...(adaptativo ? { energy_params: { watch_calorie_mode: form.watchCalorieMode } } : {}),
@@ -535,7 +535,7 @@ export function PlanForm({ userId, plan, inheritedMaintenanceAdjust = null, onSa
           <PlanCycleDays
             enabled={form.cycleOn}
             // Ao limpar o ciclo a política volta ao padrão (o motor recusa compensação sem ciclo).
-            onEnabledChange={(cycleOn) => update(cycleOn ? { cycleOn } : { cycleOn, cyclePolicy: DEFAULT_CARB_CYCLE_POLICY })}
+            onEnabledChange={(cycleOn) => update({ cycleOn })}
             policy={form.cyclePolicy}
             onPolicyChange={(cyclePolicy) => update({ cyclePolicy })}
             value={form.cycleDays}

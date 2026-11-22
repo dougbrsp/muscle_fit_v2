@@ -406,6 +406,46 @@ test('troca de equipamento no meio do exercicio (#225): a continuacao e um exerc
   expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
 });
 
+test('troca de equipamento pelo nome no DESCANSO (#244): vai direto ao seletor em modo continuacao, sem Encerrar exercicio', async ({
+  page,
+}) => {
+  // O item do cenario so tem nome de equipamento com a semente do seletor (Cabo); sem nome nao ha botao.
+  api.useEquipmentPickerSeed();
+  await seedCrucifixoOnly(page);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await skipWarmupIfShown(page);
+
+  await logSet(page, 12, 20);
+  await expect.poll(() => api.crucifixoSets().length).toBe(1);
+
+  // Descanso entre series: o nome do equipamento atual e tocavel e abre o seletor.
+  await expect(page.getByTestId('rest-clock')).toBeVisible();
+  await page.getByTestId('rest-equipment-swap').click();
+  await page.getByText('Crucifixo na polia').first().click();
+  // Cabo (total) -> Polia (por lado): a troca de convencao de carga pede confirmacao.
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  // O descanso em curso continua na tela, ja apontando para a continuacao (serie 1 no equipamento novo).
+  await expect(page.getByTestId('rest-equipment-swap')).toContainText('Polia');
+  await page.getByRole('button', { name: /pular descanso/i }).click();
+  const start = page.getByTestId('briefing-start');
+  await expect(start.or(page.getByTestId('set-save'))).toBeVisible({ timeout: 20_000 });
+  if (await start.isVisible()) await start.click();
+  await skipWarmupIfShown(page);
+
+  // Mesmo resultado do #225: continuacao com exercicio proprio e serie 1 nele.
+  await logSet(page, 10, 15);
+  await expect.poll(() => api.exercisePosts.length).toBe(2);
+  expect(new Set(api.exercisePosts.map((p) => p.client_key)).size).toBe(2);
+  expect(api.exercisePosts.every((p) => !p.duplicate)).toBe(true);
+  const created = api.createdExerciseIds();
+  const continuationId = created[created.length - 1];
+  expect(continuationId).not.toBe(502);
+  await expect.poll(() => api.setsOf(continuationId).map((s) => s.set_number)).toEqual([1]);
+  expect(api.crucifixoSets().map((s) => s.set_number)).toEqual([1]);
+  expect(api.setPosts.filter((p) => p.status === 409)).toHaveLength(0);
+});
+
 test('troca de equipamento (#225) com a continuacao criada e registrada OFFLINE: series 1 e 2 no exercicio novo, sem 409', async ({
   page,
   context,

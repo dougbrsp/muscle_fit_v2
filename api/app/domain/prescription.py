@@ -38,6 +38,7 @@ from .training_safety import (
     DEFAULT_MAX_SAFE_RPE,
     FAILURE_DENIED_BY_PAIR,
     FAILURE_DENIED_BY_RECOVERY,
+    NO_DIRECT_WORK,
     READY,
     REASON_EQUIPMENT_SAFETY,
     Clamp,
@@ -83,6 +84,10 @@ WARNING_EXERCISE_AUTO_CHOSEN = "EXERCISE_AUTO_CHOSEN"
 # objetivo do item (descanso, reps, RPE, series, tecnica); o detalhe auditado
 # fica em `goal_adjustments` (dono `prescription_defaults.normalize_item_for_goal`).
 WARNING_GOAL_NORMALIZED = "GOAL_NORMALIZED"
+# #259: dia SEM trabalho direto do grupo e a tecnica da linha exige falha (FST-7):
+# o motor (`progression_engine.resolve_technique_authority`) a retira e a ficha
+# segue sem ela. Informativo: NAO exige escolha do usuario.
+WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK = "TECHNIQUE_REMOVED_NO_DIRECT_WORK"
 
 # `prescription_status` devolvido pelo GET da ficha.
 STATUS_FROZEN = "FROZEN"
@@ -152,6 +157,15 @@ def _utc_stamp() -> datetime:
     em vez de `datetime.now()` do processo (M76 Lote 2b) - nao e "dia" de
     nada, so registra quando a prescricao foi congelada."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def removed_technique_warning(technique: str, safety: TrainingSafety) -> str:
+    """#259: aviso de tecnica retirada em dia sem trabalho direto. `safety` e o do
+    par JA ajustado ao objetivo (`safety_for_goal`). Codigo novo so se o par a
+    aceitaria com falha permitida; senao e tecnica invalida (aviso antigo)."""
+    if validate_technique(technique, safety, failure_allowed=True).valid:
+        return WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK
+    return WARNING_MODEL_TECHNIQUE_INVALID
 
 
 def build_prescription(
@@ -257,6 +271,25 @@ def build_prescription(
         recovery_signals = (decision.get("evidence") or {}).get(RECOVERY_SIGNALS_KEY)
 
     technique = exercise.get("advanced_technique") or None
+    # #259: dia sem trabalho direto = a decisao do motor bloqueou por isso, ou
+    # (sem decisao) a prontidao projetada e NO_DIRECT_WORK. A tecnica passa pela
+    # autoridade do motor com a falha DO DIA; so cai por esse motivo se o par a
+    # aceitaria com falha permitida (senao e tecnica invalida: aviso antigo).
+    from .progression_engine import BLOCKED_NO_DIRECT_WORK, resolve_technique_authority
+
+    no_direct_work = (
+        BLOCKED_NO_DIRECT_WORK in ((decision or {}).get("blocked_by") or ())
+        if decision
+        else readiness.status == NO_DIRECT_WORK
+    )
+    if technique and no_direct_work:
+        day_safety = safety if safety is not None else UNKNOWN_PAIR_SAFETY
+        kept, _ = resolve_technique_authority(
+            model_technique=technique, safety=day_safety, composed_failure_allowed=failure_allowed
+        )
+        if kept is None and removed_technique_warning(technique, day_safety) == WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK:
+            warnings_out.append(WARNING_TECHNIQUE_REMOVED_NO_DIRECT_WORK)
+            technique = None
     if technique and safety is not None:
         validation = validate_technique(technique, safety, failure_allowed=composition.failure_allowed)
         if not validation.valid:

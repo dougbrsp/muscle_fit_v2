@@ -16,6 +16,7 @@ import {
   PROJECTION_STATUS_OPTIONS,
   RANGE_STATUS_OPTIONS,
   DEFAULT_BMR_FORMULA,
+  DEFAULT_DAY_KIND,
   DEFAULT_FOOD_BASIS,
   DEFAULT_TDEE_MODE,
   ENERGY_NUTRIENT,
@@ -136,6 +137,8 @@ describe('nutrition-constants: paridade com o bloco `nutrition` do dono', () => 
 
   it('versão, unidades, porções, RDC 429 e faixas vêm do JSON gerado', () => {
     expect(NUTRITION_ENGINE_VERSION).toBe(N.engine_version);
+    expect(DEFAULT_DAY_KIND).toBe(N.default_day_kind);
+    expect(N.day_kinds).toContain(DEFAULT_DAY_KIND);
     expect(DEFAULT_TDEE_MODE).toBe(N.default_tdee_mode);
     expect(N.tdee_modes).toContain(DEFAULT_TDEE_MODE);
     expect(MEAL_UNITS).toEqual(N.units);

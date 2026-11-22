@@ -72,7 +72,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 ## Limites e pendências
 
 - (a) O catálogo global e a permissão de acrescentar equipamento à academia ficam para a segunda parte da #163.
-- (b) No descanso e no bloco intensivo o nome do equipamento não é tocável; segue o botão de trocar. A troca fica disponível pelo botão.
+- (b) RESOLVIDO em 22/11/2026 (#244): o nome do equipamento agora é tocável no descanso entre séries e no bloco intensivo (ver "Atualização de 22/11/2026"). Restam os limites listados nela.
 - (c) Com série já lançada, tocar no nome abre o "Encerrar exercício" (`SetLoggerCard.tsx:1406`, `onSubstituteClick ?? onFinishExercise`), que oferece a troca para as séries restantes.
 - (d) `recommend` e `recommend-all` não trazem a convenção de carga.
 - (e) Sessão sem academia não tem seletor na tela. O servidor aceita equipamento existente e coerente sem comparar academia e registra em log (`session_equipment_accepted_without_gym`).
@@ -80,7 +80,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - (g) Os outros caminhos que gravam equipamento (importação e Registro, via `services.resolve_equipment_id`) continuam sem a validação do Modo Treino.
 - (h) Treino offline cujo equipamento foi REMOVIDO da academia antes da sincronização é recusado com `equipment_not_found`.
 - (i) Nenhuma tela vista em celular real.
-- (j) Os 67 exercícios antigos com par incoerente (49 pares, medidos no banco de desenvolvimento, cópia de produção) não são corrigidos. A validação vale só para o POST novo.
+- (j) Os 67 exercícios antigos com par incoerente (49 pares, medidos no banco de desenvolvimento, cópia de produção) não são corrigidos. A validação vale só para o POST novo. RESOLVIDO em 22/11/2026 (#244) por escolha do usuário: 23 são corrigidos pela migração 124 e os outros 44 ficam como registrados (ver "Atualização de 22/11/2026 (#244, correção dos 23 registros antigos)").
 - (k) O aviso de convenção do seletor (`EquipmentSubstituteModal.tsx`, L316) não recebe foco nem rolagem automática. Se a lista estiver rolada, o aviso pode ficar fora da área visível ao tocar numa opção.
 - (l) Sem academia, a lista do seletor não carrega e o seletor mostra a mensagem genérica de lista vazia ("Nenhum outro equipamento cadastrado para este grupo muscular nesta academia.", `EquipmentSubstituteModal.tsx` L399-402).
 
@@ -91,3 +91,53 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - Não verificado: nenhuma tela vista em celular real; a confirmação do Registro contra o backend real; o join da convenção de carga contra o MySQL real (integração no CI).
 - Suíte unitária inteira do backend, local, depois da última correção: 17.916 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Revisão independente em duas rodadas: a primeira achou três testes existentes quebrados pela mudança em `GET /gym-equipment` e a recusa de equipamento em atividade sem academia; os dois foram corrigidos.
+
+## Atualização de 22/11/2026 (#244, nome tocável no descanso e no bloco intensivo)
+
+**Escolha do usuário (22/11/2026).** O nome do equipamento fica tocável também durante o descanso entre séries e no bloco intensivo, abrindo o mesmo seletor. Isso resolve o limite (b).
+
+**Implementação** (`frontend/src/app/(fullscreen)/modo-treino/`):
+
+- `openEquipmentSwap` (em `PlanExecutionScreen.tsx`) foi extraída; o mesmo corpo estava repetido nos três botões "Trocar". Com série já lançada, vai direto ao seletor em modo de continuação (séries restantes), sem passar pelo "Encerrar exercício".
+- `RestEquipmentSwap` (em `ui/ExerciseTitleRow.tsx`, testId `rest-equipment-swap`) é renderizado dentro do `RestTimerHero`.
+- No bloco intensivo, `IntensiveBriefing.tsx`, `IntensiveSetEntry.tsx`, `IntensiveRest.tsx` (inclusive no relógio contínuo) e `IntensiveBlock.tsx` usam `EquipmentSwapButton` com testId `intensive-equipment-swap`.
+- O botão do nome no título (`EquipmentSwapButton`) deixou o estilo inline por classe em `workout-mode.module.css`.
+
+| Fase | O nome aparece? | O que o toque faz |
+|---|---|---|
+| Antes da 1ª série (título) | Sim | Abre o seletor (troca limpa) |
+| Registro da série, com série lançada | Sim | Abre o "Encerrar exercício" (um passo a mais), que oferece a troca das séries restantes |
+| Descanso entre séries do mesmo exercício | Sim, se há equipamento definido | Abre direto o seletor em modo de continuação, se há série lançada |
+| Descanso na transição para o próximo exercício | Não | Não se aplica |
+| Bloco intensivo (briefing, série, descanso e relógio contínuo) | Sim | Abre o seletor via `openEquipmentSwap` |
+| Aplicação da técnica (`IntensiveApplicationCard`) | Não | Segue o ícone de troca existente |
+
+**Verificação.** Vitest da pasta do Modo Treino: 151 passando. Testes de ponta a ponta do Modo Treino sobre build novo: 30 passando, com caso novo de troca pelo nome durante o descanso com série lançada.
+
+**Limites.**
+
+- Na aplicação da técnica intensiva (`IntensiveApplicationCard`) o nome não foi acrescentado; segue o ícone de troca existente.
+- Com série lançada, o toque no nome no registro da série continua abrindo "Encerrar exercício", enquanto no descanso e no bloco intensivo vai direto ao seletor. O comportamento difere por fase, como já diferia nos botões "Trocar".
+- Depois de trocar durante o descanso, o cronômetro continua e o painel da última série salva ainda é o do exercício anterior até o descanso acabar (lido no código, não medido); o mesmo vale para o botão "Trocar" que já existia.
+- A troca durante o descanso do bloco intensivo não foi exercitada por teste de ponta a ponta.
+- Nada conferido no navegador nem em celular real.
+
+## Atualização de 22/11/2026 (#244, correção dos 23 registros antigos)
+
+**Escolha do usuário (22/11/2026).** Dos 67 exercícios antigos com par exercício × equipamento incoerente (limite (j)), corrigir só os 23 que têm, na mesma academia, exatamente um vínculo do mesmo aparelho físico com o exercício do registro. Os outros 44 ficam como foram registrados; a pendência está encerrada para eles. Alternativa não adotada: corrigir os 67, o que exigiria escolher aparelho sem evidência para 44 deles.
+
+**Medição em produção** (Tech Lead, só leitura, 22/11/2026): 67 exercícios em 49 pares, um usuário, o mais recente de 19/09/2026, nenhum criado pelo Modo Treino, nenhum com vínculo inexistente. Os 23: de 23/07 a 05/09/2026, academias 1 (20 registros) e 10 (3 registros); 17 apontam para vínculo novo ativo e 6 para vínculo novo inativo (aceitos).
+
+**O que a migração faz** (`api/db/migrations/124_corrige_vinculo_equipamento_de_exercicios_antigos.py`, só dados, molde da 117): para cada um dos 23 (tuplas em `FIXES`), `UPDATE exercises SET equipment_id = <vínculo novo>`, guardado pelos valores exatos do registro (id, atividade, exercício, vínculo antigo) e pela existência do vínculo novo com academia, aparelho e exercício exatos. Cada linha também exige que o vínculo ANTIGO exista com a mesma academia e o mesmo aparelho físico da medição; o `down` confere o vínculo antigo por id, academia e aparelho. Idempotente; plano vazio em banco sem as linhas; `down` devolve o vínculo antigo. Só `exercises` é escrita. `up` e `down` registram no log quantas linhas estavam no plano, quantas foram aplicadas e quantas puladas, de 23.
+
+**Por que histórico, progressão e carga não mudam.** `exercises.equipment_id` guarda o vínculo (`gym_equipment.id`), mas o histórico e a progressão usam o aparelho físico do vínculo e o exercício do registro (`api/app/domain/training_history.py`; chave de comparação em `api/app/intelligence/dashboard/comparability.py`). Os dois não mudam; portanto a chave, a convenção de carga, o e1RM e as trilhas ficam iguais. Nenhuma trilha derivada é apagada (diferente da 117).
+
+**O que muda: recência por vínculo no recomendador.** `equipment_recommender.load_user_recency` (`api/app/equipment_recommender.py`) agrupa por `exercises.equipment_id`, o id do vínculo. O "último uso" desses 23 registros (treinos de 23/07 a 05/09/2026) passa dos vínculos antigos para os novos. Efeito: só o desempate de rodízio e a recência na escolha de equipamento ao gerar fichas, para esses vínculos; é o efeito pretendido (o uso passa para o vínculo que de fato serve o exercício). Não medido em números.
+
+**Não medido.** A migração não foi executada em banco (roda pela pipeline; no DEV, pelo script de atualização). Nada em tela. No deploy de produção, conferir no log a linha "migracao 124: plano=… aplicadas=… puladas=… de 23".
+
+**Limites.**
+
+- Os 44 restantes continuam com par incoerente.
+- 6 registros passam a apontar para vínculo inativo; eles não somem do histórico (nenhum leitor do histórico filtra por vínculo ativo).
+- A promoção exige `RUN_DB_MIGRATIONS=true` (já exigido pelas migrações 122 e 123).

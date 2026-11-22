@@ -3,7 +3,7 @@ import { normalizeSearchText, type EquipmentPickerItem } from './equipment-picke
 
 // Terceira seção do seletor de equipamento (#163, parte 2): equipamentos do catálogo
 // global que a academia do treino ainda NÃO tem. Só cruza listas da API por ids; a
-// autorização real (`treino.academias`/`editar`) é do servidor.
+// autorização real (`treino.academias.equipamentos`/`editar` (`can_add_to_gym`)) é do servidor.
 
 export const CATALOG_NOT_IN_GYM_NOTICE = 'Não cadastrado nesta academia';
 export const CATALOG_NEEDS_ONLINE_NOTICE = 'Acrescentar à academia exige conexão';
