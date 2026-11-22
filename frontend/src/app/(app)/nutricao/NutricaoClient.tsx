@@ -124,6 +124,7 @@ export function NutricaoClient() {
             date={date}
             today={weekQuery.data?.today ?? dia?.today ?? null}
             onDateChange={trocarDia}
+            priority={dia?.target}
           />
           {erroSemana && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>

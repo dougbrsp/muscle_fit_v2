@@ -2,6 +2,8 @@
 
 import { ActionIcon, Button, Group, Stack, Text, TextInput, Title, Tooltip } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import type { NutritionDayTarget } from '@/lib/nutrition-types';
+import { DayPriorityBadge } from './DayPriorityBadge';
 import { formatDayLong, shiftIsoDate } from '@/lib/nutrition-format';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
@@ -11,14 +13,26 @@ type Props = {
   /** "Hoje" do ALUNO, como a API devolve (fuso do perfil). */
   today: string | null;
   onDateChange: (date: string) => void;
+  /** Meta do dia, só para o selo de prioridade; ausente/carregando = sem selo. */
+  priority?: NutritionDayTarget | null;
 };
 
 /** Data do diário (dia anterior/seguinte, calendário, voltar para hoje); o diário é sempre do usuário logado. */
-export function DayHeader({ date, today, onDateChange }: Props) {
+export function DayHeader({ date, today, onDateChange, priority }: Props) {
   const Alternative = usePresentationSlot('dayHeader');
-  if (Alternative) return <Alternative date={date} today={today} onDateChange={onDateChange} />;
+  if (Alternative) {
+    // O selo fica fora do slot do celular (o contrato do slot não muda).
+    return (
+      <Stack gap="xs" align="flex-start">
+        <div style={{ width: '100%' }}>
+          <Alternative date={date} today={today} onDateChange={onDateChange} />
+        </div>
+        <DayPriorityBadge target={priority} />
+      </Stack>
+    );
+  }
   return (
-    <Stack gap="xs">
+    <Stack gap="xs" align="flex-start">
       <Group gap="xs" align="flex-end" wrap="wrap">
         <Tooltip label="Dia anterior">
           <ActionIcon
@@ -65,6 +79,7 @@ export function DayHeader({ date, today, onDateChange }: Props) {
           {formatDayLong(date)}
         </Title>
       )}
+      <DayPriorityBadge target={priority} />
     </Stack>
   );
 }

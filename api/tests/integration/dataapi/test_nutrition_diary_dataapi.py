@@ -284,3 +284,48 @@ def test_fluxo_do_diario_identico_nos_dois_backends(usuarios, raw, monkeypatch, 
 
         resultados[backend] = _sem_volateis({"dia": final, "semana": semana.json(), "retro": retro})
     assert resultados["pymysql"] == resultados["data-api"]
+
+
+def test_prioridade_do_dia_lida_pelo_alias_json_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
+    """#272: `JSON_EXTRACT(inputs_json, '$.nutrition_priority')` devolve o código gravado pelo motor e a API entrega o
+    rótulo/explicação oficiais; dia de ciclo com compensação: alto prioriza carboidrato, baixo prioriza gordura."""
+    dias = {"0": "high", "1": "low", "2": "high", "3": "low", "4": "high", "5": "low", "6": "low"}
+    esperado = {"high": "carb", "low": "fat"}
+    for backend in BACKENDS:
+        use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+        _limpar(raw)
+        with raw.cursor() as cur:
+            cur.execute(
+                "INSERT INTO body_composition (user_id, local_date, weight_kg, source) VALUES (%s, %s, 80.0, 'manual')",
+                (usuarios["aluno"], HOJE - _dt.timedelta(days=20)),
+            )
+        raw.commit()
+        admin = _client(usuarios["admin"], "admin")
+        aluno = _client(usuarios["aluno"], "regular")
+        plano = admin.post("/nutrition/plans", json={
+            "user_id": usuarios["aluno"], "strategy": "maintenance", "cycle_days": dias,
+            "carb_cycle_policy": "fat_compensation",
+        })
+        assert plano.status_code in (200, 201), (backend, plano.text)
+        assert admin.post(f"/nutrition/plans/{plano.json()['id']}/publish", json={"expected_current_id": None}).status_code == 200
+        with raw.cursor() as cur:
+            cur.execute("UPDATE nutrition_plans SET effective_from = %s WHERE id = %s",
+                        (HOJE - _dt.timedelta(days=10), plano.json()["id"]))
+            cur.execute("DELETE FROM nutrition_daily_targets WHERE user_id = %s", (usuarios["aluno"],))
+        raw.commit()
+
+        resposta = aluno.get(f"/nutrition/days/{HOJE.isoformat()}")
+        assert resposta.status_code == 200, (backend, resposta.text)
+        alvo = resposta.json()["target"]
+        codigo = esperado[dias[str(HOJE.weekday())]]
+        assert alvo["nutrition_priority"] == codigo, backend
+        assert alvo["nutrition_priority_label"] == {"carb": "Priorizar carboidrato", "fat": "Priorizar gordura"}[codigo], backend
+        assert alvo["nutrition_priority_explanation"], backend
+        # Dia gravado ANTES da entrega (sem a chave no `inputs_json`): os três campos nulos, sem estourar.
+        with raw.cursor() as cur:
+            cur.execute(
+                "UPDATE nutrition_daily_targets SET inputs_json = JSON_REMOVE(inputs_json, '$.nutrition_priority') "
+                "WHERE user_id = %s AND local_date = %s", (usuarios["aluno"], HOJE))
+        raw.commit()
+        antigo = aluno.get(f"/nutrition/days/{HOJE.isoformat()}").json()["target"]
+        assert antigo["nutrition_priority"] is None and antigo["nutrition_priority_label"] is None, backend
