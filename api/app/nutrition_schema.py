@@ -67,6 +67,11 @@ PLAN_ENERGY_MISSING_MESSAGE = (
     "`published_preview_json` de `nutrition_plans` (migração 106, modo de gasto adaptativo) ainda não existem neste banco."
 )
 
+# Coluna da política do ciclo de carbo em `nutrition_plans` (123, #248): ADITIVA e tolerada. Sem ela a leitura usa a chave
+# `policy` do `carb_cycling_json` (reserva) e a escrita só grava a chave; nenhuma rota responde 503 por isso.
+PLAN_POLICY_COLUMN = "carb_cycle_policy"
+PLAN_POLICY_MIGRATION = "123"
+
 MEALS_TABLE = "meals"
 MEAL_ITEMS_TABLE = "meal_items"
 DAYS_TABLE = "nutrition_days"
@@ -191,6 +196,11 @@ def require_nutrition_tables(cursor: Any) -> None:
 def has_plan_energy_columns(cursor: Any) -> bool:
     """As colunas do modo de gasto adaptativo (106) existem NESTE schema? Sem DDL."""
     return all(_has_column(cursor, PLANS_TABLE, coluna) for coluna in PLAN_ENERGY_COLUMNS)
+
+
+def has_plan_policy_column(cursor: Any) -> bool:
+    """A coluna da política do ciclo (123) existe NESTE schema? Sem DDL; cache só do positivo."""
+    return _has_column(cursor, PLANS_TABLE, PLAN_POLICY_COLUMN)
 
 
 def plan_energy_columns_missing_error() -> HTTPException:

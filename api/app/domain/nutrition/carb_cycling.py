@@ -89,7 +89,8 @@ class CarbCyclePolicy(str, Enum):
 
 
 DEFAULT_CARB_CYCLE_POLICY: Final[CarbCyclePolicy] = CarbCyclePolicy.VARY_KCAL
-# Chave irmã dos dias em `carb_cycling_json` (sem coluna nova): só existe fora do padrão (o JSON legado fica byte a byte igual).
+# Chave irmã dos dias em `carb_cycling_json`: só existe fora do padrão (o JSON legado fica byte a byte igual). Desde a
+# migração 123 a política mora também na coluna `nutrition_plans.carb_cycle_policy` (dona da leitura; a chave é a reserva).
 STORED_POLICY_KEY: Final[str] = "policy"
 
 

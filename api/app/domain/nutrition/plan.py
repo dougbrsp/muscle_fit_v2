@@ -331,6 +331,7 @@ class PlanSettings:
             dados["manual_targets"] = {k: v for k, v in dados["manual_targets"].items() if k != "training_mode"}
         if self.cycle_kinds is None:
             dados.pop("cycle_days")
+            dados.pop(FIELD_CARB_CYCLE_POLICY, None)  # sem ciclo a política não altera a conta: o hash não muda
         if self.maintenance_kcal_adjust == MAINT_KCAL_ADJUST_DEFAULT:
             dados.pop("maintenance_kcal_adjust")  # plano antigo mantém o hash das entradas
         return dados  # `energy_params` já só está no `to_dict` quando sai do padrão
@@ -571,8 +572,7 @@ def build_plan_settings(
     politica_ciclo = _enum_or_error(
         CarbCyclePolicy, cycle_policy, DEFAULT_CARB_CYCLE_POLICY, FIELD_CARB_CYCLE_POLICY, erros
     )
-    if politica_ciclo != DEFAULT_CARB_CYCLE_POLICY and ciclo is None:
-        erros.append(_code(ERR_PARAM_NOT_APPLICABLE, FIELD_CARB_CYCLE_POLICY))
+    # A política é lembrada mesmo sem ciclo (#248): sem ciclo ela não entra na conta nem na impressão digital.
 
     settings = PlanSettings(
         strategy=estrategia,

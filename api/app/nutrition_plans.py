@@ -55,7 +55,7 @@ from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
-from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle, validate_cycle_days
+from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle
 from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
@@ -97,7 +97,7 @@ from .intelligence.methodology_volume import is_training_slot_type
 from .access import require_permission
 from .access.deps import permissions_for_request
 from .nutrition_access import fetch_target_user, resolve_plan_owner, resolve_target_user
-from .nutrition_schema import require_nutrition_tables, require_plan_energy_columns
+from .nutrition_schema import has_plan_policy_column, require_nutrition_tables, require_plan_energy_columns
 from .nutrition_targets_service import (
     DayComputation,
     UserInputs,
@@ -130,9 +130,12 @@ _PLAN_COLUMNS = (
     "training_kcal_mode, goal_body_fat_percent, goal_weight_kg, weekly_rate_share, surplus_share, "
     "protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, notes, engine_version, "
     "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, "
-    "energy_params_json, energy_model_version, "
+    "energy_params_json, energy_model_version, carb_cycle_policy, "
     "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
+# Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política fica
+# só na chave `policy` do `carb_cycling_json`, a reserva). Nenhuma rota responde 503 por isso.
+_PLAN_COLUMNS_NO_POLICY = _PLAN_COLUMNS.replace("carb_cycle_policy, ", "")
 # `published_preview_json` (106) fica FORA de `_PLAN_COLUMNS` de propósito: é a prévia gravada na publicação (dezenas de KB
 # por plano) e nenhuma leitura de plano a usa; as listas de planos não pagam o peso (teto de 1 MiB da Data API).
 
@@ -141,16 +144,26 @@ _SETTINGS_WRITE_COLUMNS = (
     "strategy", "advanced", "bmr_formula", "activity_level", "training_kcal_mode", "goal_body_fat_percent",
     "goal_weight_kg", "weekly_rate_share", "surplus_share", "protein_g_per_kg", "fat_kcal_share",
     "carb_min_g_per_kg", "meals_per_day", "macro_priority", "manual_targets_json", "carb_cycling_json", "notes",
-    "engine_version", "maintenance_kcal_adjust", "energy_params_json",
+    "engine_version", "maintenance_kcal_adjust", "energy_params_json", "carb_cycle_policy",
 )
+_WRITE_COLUMNS_NO_POLICY = _SETTINGS_WRITE_COLUMNS[:-1]  # a política é sempre a ÚLTIMA (a variante sem a 123 a corta)
 
-_INSERT_SQL = (
-    f"INSERT INTO {TABLE} (user_id, created_by, status, {', '.join(_SETTINGS_WRITE_COLUMNS)}) "
-    f"VALUES (%s, %s, %s, {', '.join(['%s'] * len(_SETTINGS_WRITE_COLUMNS))})"
-)
-_UPDATE_DRAFT_SQL = (
-    f"UPDATE {TABLE} SET {', '.join(f'{c} = %s' for c in _SETTINGS_WRITE_COLUMNS)} WHERE id = %s AND status = %s"
-)
+
+def _insert_sql(colunas: tuple[str, ...]) -> str:
+    return (
+        f"INSERT INTO {TABLE} (user_id, created_by, status, {', '.join(colunas)}) "
+        f"VALUES (%s, %s, %s, {', '.join(['%s'] * len(colunas))})"
+    )
+
+
+def _update_draft_sql(colunas: tuple[str, ...]) -> str:
+    return f"UPDATE {TABLE} SET {', '.join(f'{c} = %s' for c in colunas)} WHERE id = %s AND status = %s"
+
+
+_INSERT_SQL = _insert_sql(_SETTINGS_WRITE_COLUMNS)
+_INSERT_NO_POLICY_SQL = _insert_sql(_WRITE_COLUMNS_NO_POLICY)
+_UPDATE_DRAFT_SQL = _update_draft_sql(_SETTINGS_WRITE_COLUMNS)
+_UPDATE_DRAFT_NO_POLICY_SQL = _update_draft_sql(_WRITE_COLUMNS_NO_POLICY)
 _DELETE_DRAFT_SQL = f"DELETE FROM {TABLE} WHERE id = %s AND status = %s"
 # Trava da publicação: a linha vigente do aluno (a do UNIQUE da 078). Com
 # `FOR UPDATE`, duas publicações para o mesmo aluno se enfileiram aqui; a
@@ -188,6 +201,9 @@ _BY_USER_VISIBLE_SQL = (
     f"SELECT {_PLAN_COLUMNS} FROM {TABLE} WHERE user_id = %s AND archived_at IS NULL "
     "ORDER BY created_at DESC, id DESC LIMIT %s"
 )
+_BY_ID_NO_POLICY_SQL = _BY_ID_SQL.replace(_PLAN_COLUMNS, _PLAN_COLUMNS_NO_POLICY)
+_BY_USER_NO_POLICY_SQL = _BY_USER_SQL.replace(_PLAN_COLUMNS, _PLAN_COLUMNS_NO_POLICY)
+_BY_USER_VISIBLE_NO_POLICY_SQL = _BY_USER_VISIBLE_SQL.replace(_PLAN_COLUMNS, _PLAN_COLUMNS_NO_POLICY)
 # Arquivar só oculta: o guarda de estado (`is_archivable_plan`) é conferido na rota; o UPDATE repete a condição
 # (publicado e substituído) para uma publicação concorrente não arquivar o plano que acabou de virar vigente.
 _ARCHIVE_SQL = (
@@ -234,16 +250,10 @@ def _invalid_plan(codes: tuple[str, ...]) -> HTTPException:
 
 
 def _validate_payload(payload: NutritionPlanSettingsIn, stored_policy: Optional[CarbCyclePolicy] = None) -> PlanSettings:
-    """`stored_policy` = política do rascunho gravado (só na edição): campo OMITIDO herda, desde que o payload mantenha o
-    ciclo; `null` explícito volta ao padrão; valor explícito vale."""
+    """`stored_policy` = política do rascunho gravado (só na edição): campo OMITIDO herda (com ou sem ciclo, #248);
+    `null` explícito volta ao padrão; valor explícito vale."""
     politica: Any = payload.carb_cycle_policy
-    # Só herda se o ciclo resultante existir (`{}` ou só dias normais não ciclam: a política herdada daria 400).
-    if (
-        "carb_cycle_policy" not in payload.model_fields_set
-        and payload.cycle_days is not None
-        and stored_policy is not None
-        and validate_cycle_days(payload.cycle_days).cycles
-    ):
+    if "carb_cycle_policy" not in payload.model_fields_set and stored_policy is not None:
         politica = stored_policy.value
     validacao = build_plan_settings(
         strategy=payload.strategy,
@@ -295,7 +305,24 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.maintenance_kcal_adjust,
         # Só o que sai do padrão (a coluna fica NULL nos planos legados e nos adaptativos com o padrão).
         None if settings.energy_params.is_default else settings.energy_params.to_dict(),
+        # Sempre o código explícito (inclusive o padrão): "voltar ao padrão" fica gravado e a reserva do JSON não o desfaz.
+        settings.carb_cycle_policy.value,
     )
+
+
+def _insert_draft_row(cur: Any, aluno: int, actor_id: int, settings: PlanSettings, notes: Optional[str]) -> Any:
+    """INSERT do rascunho; sem a coluna da 123 grava sem ela (a chave `policy` do JSON segue sendo gravada)."""
+    valores = _settings_write_values(settings, notes)
+    if has_plan_policy_column(cur):
+        return cur.execute(_INSERT_SQL, (int(aluno), int(actor_id), DRAFT, *valores))
+    return cur.execute(_INSERT_NO_POLICY_SQL, (int(aluno), int(actor_id), DRAFT, *valores[:-1]))
+
+
+def _update_draft_row(cur: Any, plan_id: int, settings: PlanSettings, notes: Optional[str]) -> Any:
+    valores = _settings_write_values(settings, notes)
+    if has_plan_policy_column(cur):
+        return cur.execute(_UPDATE_DRAFT_SQL, (*valores, int(plan_id), DRAFT))
+    return cur.execute(_UPDATE_DRAFT_NO_POLICY_SQL, (*valores[:-1], int(plan_id), DRAFT))
 
 
 def plan_public(row: dict[str, Any]) -> dict[str, Any]:
@@ -329,7 +356,7 @@ def plan_public(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fetch_plan(cur: Any, plan_id: int) -> dict[str, Any]:
-    cur.execute(_BY_ID_SQL, (int(plan_id),))
+    cur.execute(_BY_ID_SQL if has_plan_policy_column(cur) else _BY_ID_NO_POLICY_SQL, (int(plan_id),))
     row = cur.fetchone()
     if not row:
         raise _error(404, "plan_not_found", "Plano não encontrado.")
@@ -551,7 +578,12 @@ def list_plans(
         with conn.cursor() as cur:
             _require_plan_tables(cur)
             usuario = fetch_target_user(cur, alvo)
-            cur.execute(_BY_USER_SQL if include_archived else _BY_USER_VISIBLE_SQL, (alvo, PLAN_LIST_MAX))
+            com = has_plan_policy_column(cur)
+            if include_archived:
+                sql = _BY_USER_SQL if com else _BY_USER_NO_POLICY_SQL
+            else:
+                sql = _BY_USER_VISIBLE_SQL if com else _BY_USER_VISIBLE_NO_POLICY_SQL
+            cur.execute(sql, (alvo, PLAN_LIST_MAX))
             linhas = cur.fetchall() or []
     return {"user": usuario, "items": [plan_public(linha) for linha in linhas]}
 
@@ -574,7 +606,7 @@ def create_plan(request: Request, payload: NutritionPlanIn, identity: Identity =
                 )
         _, avisos = _plan_checks(conn, alvo, settings, _today_for(conn, alvo)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
-            cur.execute(_INSERT_SQL, (alvo, identity.user_id, DRAFT, *_settings_write_values(settings, payload.notes)))
+            _insert_draft_row(cur, alvo, identity.user_id, settings, payload.notes)
             novo_id = cur.lastrowid
             if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
                 raise _error(500, "plan_insert_failed", "Plano não encontrado após gravar.")
@@ -595,7 +627,7 @@ def update_plan(
         settings = _validate_payload(payload, settings_from_row(linha).carb_cycle_policy)
         _, avisos = _plan_checks(conn, aluno, settings, _today_for(conn, aluno)) if _needs_checks(settings) else (None, ())
         with conn.cursor() as cur:
-            cur.execute(_UPDATE_DRAFT_SQL, (*_settings_write_values(settings, payload.notes), int(plan_id), DRAFT))
+            _update_draft_row(cur, plan_id, settings, payload.notes)
             if int(cur.rowcount or 0) == 0:
                 # Publicado ou apagado por outra chamada entre a leitura e o UPDATE.
                 raise _error(409, "plan_not_draft", "O rascunho mudou durante a edição; recarregue.")
@@ -704,7 +736,7 @@ def _preview_within_cap(previa: Optional[dict[str, Any]]) -> Optional[dict[str, 
 
 def insert_draft(cur: Any, aluno: int, actor_id: int, settings: PlanSettings, notes: Optional[str]) -> dict[str, Any]:
     """Grava `settings` como RASCUNHO do aluno e devolve a linha (o mesmo INSERT de `POST /plans`)."""
-    cur.execute(_INSERT_SQL, (int(aluno), int(actor_id), DRAFT, *_settings_write_values(settings, notes)))
+    _insert_draft_row(cur, aluno, actor_id, settings, notes)
     novo_id = cur.lastrowid
     if not novo_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
         raise _error(500, "plan_insert_failed", "Plano não encontrado após gravar.")
