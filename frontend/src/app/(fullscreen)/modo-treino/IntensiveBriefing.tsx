@@ -4,6 +4,7 @@ import { IconPlayerPlay } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { formatWeight, type WeightUnit } from '@/lib/weight-units';
 import { intensiveRestSeconds, type IntensiveProfile } from '@/lib/workout-mode-intensive';
+import { EquipmentSwapButton } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import { WorkoutActionBar } from './ui/WorkoutActionBar';
 import styles from './intensive.module.css';
@@ -32,6 +33,8 @@ type Props = {
   /** Ajuste da carga inicial (o mesmo `QuickLoadAdjustment`). */
   adjustSlot?: ReactNode;
   onStart: () => void;
+  /** Toque no nome do equipamento = abrir a troca; ausente = só texto. */
+  onEquipmentClick?: () => void;
 };
 
 /** Briefing do bloco da técnica, antes da 1ª série de trabalho. */
@@ -46,6 +49,7 @@ export function IntensiveBriefing({
   iconActions = [],
   adjustSlot = null,
   onStart,
+  onEquipmentClick,
 }: Props) {
   const rest = intensiveRestSeconds(profile);
   return (
@@ -53,7 +57,17 @@ export function IntensiveBriefing({
       <section className={styles.card} aria-label={`Briefing ${profile.techniqueName}`} data-testid="intensive-briefing">
         <span className={styles.headline}>{intensiveHeadline(profile)}</span>
         <div className={styles.title}>{exerciseName}</div>
-        {equipmentName && <span className={styles.muted}>{equipmentName}</span>}
+        {equipmentName &&
+          (onEquipmentClick ? (
+            <EquipmentSwapButton
+              equipmentName={equipmentName}
+              onClick={onEquipmentClick}
+              className={styles.equipmentSwap}
+              testId="intensive-equipment-swap"
+            />
+          ) : (
+            <span className={styles.muted}>{equipmentName}</span>
+          ))}
         <div className={styles.tiles}>
           <div className={styles.tile}>
             <div className={styles.tileLabel}>Carga inicial</div>

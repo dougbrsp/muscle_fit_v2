@@ -205,6 +205,31 @@
   white-space: nowrap;
 }
 
+/* Nome do equipamento tocável (abre a troca): mesma aparência do texto, sublinhado pontilhado, alvo de 44 px. */
+.titleMetaButton {
+  composes: titleMetaText;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  min-height: 44px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+/* Linha discreta do equipamento atual no descanso entre séries. */
+.restEquipmentSwap {
+  composes: titleMetaButton;
+  align-self: flex-start;
+  max-width: 100%;
+  color: var(--wm-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .titleMeta > :not(.titleMetaText) {
   flex: 0 0 auto;
 }

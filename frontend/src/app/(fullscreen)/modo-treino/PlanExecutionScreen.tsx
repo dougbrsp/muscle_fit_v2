@@ -238,6 +238,7 @@ import { IntensiveBlock } from './IntensiveBlock';
 import { FinishWorkoutConfirmModal } from './FinishWorkoutConfirmModal';
 import { PendingRepsFinishModal } from './PendingRepsFinishModal';
 import type { IntensiveSetCorrection } from './IntensiveReview';
+import { RestEquipmentSwap } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import { NextExerciseLine } from './ui/NextExerciseLine';
 import { WorkoutOverallProgress } from './ui/WorkoutOverallProgress';
@@ -2964,6 +2965,13 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
   // cards de série que já o exibiam (padrão e série de trabalho do avançado).
   const showMuscleMap = !resting && (loggerVariant === 'default' || loggerVariant === 'advancedWorking');
 
+  // Toque de troca (botão "Trocar" e nome do equipamento): com série já lançada
+  // vai direto ao seletor em modo de continuação (séries restantes, #225).
+  function openEquipmentSwap() {
+    setSwapRemainingMode(Boolean(current?.loggedRow));
+    openSubstitute();
+  }
+
   // "Trocar exercício" no descanso ENTRE séries: o mesmo fluxo que a execução
   // já oferece — antes da 1ª série gravada, troca limpa (override); depois,
   // "Trocar de equipamento (séries restantes)" do `FinishExerciseModal`. Na
@@ -2978,10 +2986,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             caption: 'Trocar',
             icon: <IconArrowsExchange size={20} />,
             testId: 'rest-swap-exercise',
-            onClick: () => {
-              setSwapRemainingMode(Boolean(current.loggedRow));
-              openSubstitute();
-            },
+            onClick: openEquipmentSwap,
           },
           buildRestFinishWorkoutAction(requestFinish, finishMutation.isPending),
         ]
@@ -3061,6 +3066,11 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           nextSet={nextSetPreview}
           weightUnit={weightUnit}
         >
+          <RestEquipmentSwap
+            equipmentName={effectiveEquipmentName}
+            isExerciseTransition={restIsExerciseTransition}
+            onSwap={openEquipmentSwap}
+          />
           {restLocalClientKey != null && (
             <div className={styles.restNext} data-testid="set-local-chip" role="status">
               <span>
@@ -3192,10 +3202,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
           onRetry={handleIntensiveRetry}
           onCorrect={handleIntensiveCorrect}
           onFinish={handleIntensiveFinish}
-          onSwap={() => {
-            setSwapRemainingMode(Boolean(current.loggedRow));
-            openSubstitute();
-          }}
+          onSwap={openEquipmentSwap}
           onSkipExercise={() => openSkipModalFor(currentWorkoutPlanExerciseId)}
           formPractice={formPractice.marked}
           onToggleFormPractice={toggleFormPractice}
@@ -3333,10 +3340,7 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
               caption: 'Trocar',
               icon: <IconArrowsExchange size={20} />,
               testId: 'intensive-application-swap',
-              onClick: () => {
-                setSwapRemainingMode(Boolean(current.loggedRow));
-                openSubstitute();
-              },
+              onClick: openEquipmentSwap,
             },
             {
               key: 'skip',

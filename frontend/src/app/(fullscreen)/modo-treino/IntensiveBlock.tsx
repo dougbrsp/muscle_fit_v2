@@ -20,6 +20,7 @@ import { RestTimerHero } from './RestTimer';
 import { IntensiveReview, type IntensiveSetCorrection } from './IntensiveReview';
 import { IntensiveSetEntry } from './IntensiveSetEntry';
 import { QuickLoadAdjustment } from './QuickLoadAdjustment';
+import { EquipmentSwapButton } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import styles from './intensive.module.css';
 
@@ -103,6 +104,15 @@ export function IntensiveBlock({
       testId: 'execution-form-practice-toggle',
     });
   }
+  const equipmentSwapButton =
+    equipmentName && onSwap ? (
+      <EquipmentSwapButton
+        equipmentName={equipmentName}
+        onClick={onSwap}
+        className={styles.equipmentSwap}
+        testId="intensive-equipment-swap"
+      />
+    ) : null;
   const skipAction: WorkoutIconAction = {
     key: 'skip',
     label: 'Pular exercício',
@@ -162,6 +172,7 @@ export function IntensiveBlock({
           repsTarget={repsTarget}
           iconActions={[...swapAction, skipAction]}
           adjustSlot={adjust}
+          onEquipmentClick={onSwap}
           onStart={() => dispatch({ type: 'START' })}
         />
       );
@@ -194,6 +205,7 @@ export function IntensiveBlock({
           >
             <section className={styles.card} aria-label="Durante a série" data-testid="intensive-series-panel">
               <IntensiveSyncNotice records={state.records} onRetry={onRetry} correctionError={correctionError} />
+              {equipmentSwapButton}
               {state.planned.kg != null && (
                 <span className={styles.info} data-testid="intensive-series-load">
                   Carga: {formatWeight(state.planned.kg, weightUnit)}
@@ -222,6 +234,8 @@ export function IntensiveBlock({
             beforeActions={nextExerciseLine}
             iconActions={[...swapAction, skipAction, endAction]}
             extraRepsEnabled={intensiveExtraRepsEnabled(profile, state.currentSet, state.totalSets)}
+            equipmentName={equipmentName}
+            onEquipmentClick={onSwap}
             onComplete={onCompleteSet}
             onSkipSet={() => dispatch({ type: 'SKIP_SET' })}
           />
@@ -235,6 +249,8 @@ export function IntensiveBlock({
           profile={profile}
           weightUnit={weightUnit}
           adjustSlot={adjust}
+          equipmentName={equipmentName}
+          onEquipmentClick={onSwap}
           iconActions={[...swapAction, endAction]}
           onRestAdjusted={(endsAt, totalSeconds) => dispatch({ type: 'REST_ADJUSTED', endsAt, totalSeconds })}
           onRestExpired={() => dispatch({ type: 'REST_EXPIRED' })}

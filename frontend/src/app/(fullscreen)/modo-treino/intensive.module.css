@@ -162,6 +162,25 @@
   cursor: pointer;
 }
 
+/* Nome do equipamento tocável (abre a troca): linha discreta, alvo de 44 px. */
+.equipmentSwap {
+  align-self: flex-start;
+  max-width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 44px;
+  color: var(--wm-text-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  text-decoration: underline dotted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .inlineRow {
   display: flex;
   gap: 8px;

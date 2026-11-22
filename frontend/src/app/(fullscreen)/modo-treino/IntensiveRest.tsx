@@ -6,6 +6,7 @@ import type { IntensiveBlockState, IntensiveProfile, IntensiveSetRecord } from '
 import { clampReducedReps, pendingRepsRecords, reducibleRecord } from '@/lib/workout-mode-intensive';
 import { parseRepsInput } from './IntensiveSetEntry';
 import { RestTimerHero } from './RestTimer';
+import { EquipmentSwapButton } from './ui/ExerciseTitleRow';
 import type { WorkoutIconAction } from './ui/IconAction';
 import styles from './intensive.module.css';
 
@@ -193,6 +194,9 @@ type Props = {
   /** Relógio contínuo: reduz as reps da série recém-gravada (PATCH). */
   onReduceReps?: (record: IntensiveSetRecord, reps: number) => Promise<void>;
   correctionError?: string | null;
+  /** Nome do equipamento atual e a troca; só aparece com os dois. */
+  equipmentName?: string | null;
+  onEquipmentClick?: () => void;
 };
 
 /**
@@ -213,6 +217,8 @@ export function IntensiveRest({
   onConfirmReps,
   onReduceReps,
   correctionError = null,
+  equipmentName = null,
+  onEquipmentClick,
 }: Props) {
   const rest = state.rest;
   if (!rest) return null;
@@ -243,6 +249,14 @@ export function IntensiveRest({
             <span className={styles.stretch} data-testid="intensive-stretch">
               {profile.stretchGuidance}
             </span>
+          )}
+          {equipmentName && onEquipmentClick && (
+            <EquipmentSwapButton
+              equipmentName={equipmentName}
+              onClick={onEquipmentClick}
+              className={styles.equipmentSwap}
+              testId="intensive-equipment-swap"
+            />
           )}
           {continuous && onReduceReps && <ReduceRepsStepper state={state} onReduce={onReduceReps} />}
           {adjustSlot}

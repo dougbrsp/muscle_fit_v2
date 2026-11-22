@@ -422,6 +422,24 @@ describe('IntensiveBlock (fase -> tela)', () => {
     expect(tagOf(html, 'intensive-rpe-input')).toContain('value="10"');
   });
 
+  it('#244: nome do equipamento tocável no briefing, na série e no descanso (série a série)', () => {
+    const swap = { ...base, equipmentName: 'Peck deck', onSwap: noop };
+    const briefing = createIntensiveBlock(profile(), 40);
+    const executing = run(briefing, { type: 'START' });
+    const resting = run(executing, {
+      type: 'COMPLETE_SET', reps: 10, rpe: 8, clientKey: 'a', setNumber: 1, now: T0, restSeconds: 30,
+    });
+    expect(resting.phase).toBe('DESCANSO');
+    for (const state of [briefing, executing, resting]) {
+      const html = render(createElement(IntensiveBlock, { ...swap, state }));
+      expect(tagOf(html, 'intensive-equipment-swap')).toContain('aria-label="Trocar equipamento: Peck deck"');
+      const noHandler = render(createElement(IntensiveBlock, { ...swap, onSwap: undefined, state }));
+      expect(noHandler).not.toContain('intensive-equipment-swap');
+    }
+    // Briefing sem handler segue mostrando o nome, só como texto.
+    expect(render(createElement(IntensiveBlock, { ...swap, onSwap: undefined, state: briefing }))).toContain('Peck deck');
+  });
+
   it('briefing, série com Trocar/Pular/Encerrar técnica e registro pendente', () => {
     const briefing = createIntensiveBlock(profile(), 40);
     expect(render(createElement(IntensiveBlock, { ...base, state: briefing }))).toContain('data-testid="intensive-briefing"');
@@ -515,6 +533,24 @@ describe('IntensiveBlock: FST-7 com relógio contínuo', () => {
     const minus = html.match(/<button[^>]*aria-label="Menos uma repetição"[^>]*>/)?.[0] ?? '';
     expect(minus).not.toBe('');
     expect(minus).not.toContain('disabled');
+  });
+
+  it('#244: o nome do equipamento é botão na série e no descanso do relógio contínuo (só com nome e handler)', () => {
+    const executing = run(createIntensiveBlock(continuousProfile, 40), { type: 'START', now: T0 });
+    const resting = run(
+      executing,
+      { type: 'COMPLETE_SET', reps: 12, rpe: 10, clientKey: 'k1', setNumber: 1, now: T0, restSeconds: 30 },
+    );
+    for (const state of [executing, resting]) {
+      const withBtn = render(createElement(IntensiveBlock, { ...base, state, equipmentName: 'Peck deck', onSwap: noop }));
+      expect(tagOf(withBtn, 'intensive-equipment-swap')).toContain('aria-label="Trocar equipamento: Peck deck"');
+      expect(render(createElement(IntensiveBlock, { ...base, state, equipmentName: 'Peck deck' }))).not.toContain(
+        'intensive-equipment-swap',
+      );
+      expect(render(createElement(IntensiveBlock, { ...base, state, equipmentName: null, onSwap: noop }))).not.toContain(
+        'intensive-equipment-swap',
+      );
+    }
   });
 
   it('erro da correção fica no bloco (descanso e série), não só no stepper', () => {

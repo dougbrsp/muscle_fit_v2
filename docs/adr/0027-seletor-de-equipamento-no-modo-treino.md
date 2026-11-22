@@ -72,7 +72,7 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 ## Limites e pendências
 
 - (a) O catálogo global e a permissão de acrescentar equipamento à academia ficam para a segunda parte da #163.
-- (b) No descanso e no bloco intensivo o nome do equipamento não é tocável; segue o botão de trocar. A troca fica disponível pelo botão.
+- (b) RESOLVIDO em 22/11/2026 (#244): o nome do equipamento agora é tocável no descanso entre séries e no bloco intensivo (ver "Atualização de 22/11/2026"). Restam os limites listados nela.
 - (c) Com série já lançada, tocar no nome abre o "Encerrar exercício" (`SetLoggerCard.tsx:1406`, `onSubstituteClick ?? onFinishExercise`), que oferece a troca para as séries restantes.
 - (d) `recommend` e `recommend-all` não trazem a convenção de carga.
 - (e) Sessão sem academia não tem seletor na tela. O servidor aceita equipamento existente e coerente sem comparar academia e registra em log (`session_equipment_accepted_without_gym`).
@@ -91,3 +91,33 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - Não verificado: nenhuma tela vista em celular real; a confirmação do Registro contra o backend real; o join da convenção de carga contra o MySQL real (integração no CI).
 - Suíte unitária inteira do backend, local, depois da última correção: 17.916 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Revisão independente em duas rodadas: a primeira achou três testes existentes quebrados pela mudança em `GET /gym-equipment` e a recusa de equipamento em atividade sem academia; os dois foram corrigidos.
+
+## Atualização de 22/11/2026 (#244, nome tocável no descanso e no bloco intensivo)
+
+**Escolha do usuário (22/11/2026).** O nome do equipamento fica tocável também durante o descanso entre séries e no bloco intensivo, abrindo o mesmo seletor. Isso resolve o limite (b).
+
+**Implementação** (`frontend/src/app/(fullscreen)/modo-treino/`):
+
+- `openEquipmentSwap` (em `PlanExecutionScreen.tsx`) foi extraída; o mesmo corpo estava repetido nos três botões "Trocar". Com série já lançada, vai direto ao seletor em modo de continuação (séries restantes), sem passar pelo "Encerrar exercício".
+- `RestEquipmentSwap` (em `ui/ExerciseTitleRow.tsx`, testId `rest-equipment-swap`) é renderizado dentro do `RestTimerHero`.
+- No bloco intensivo, `IntensiveBriefing.tsx`, `IntensiveSetEntry.tsx`, `IntensiveRest.tsx` (inclusive no relógio contínuo) e `IntensiveBlock.tsx` usam `EquipmentSwapButton` com testId `intensive-equipment-swap`.
+- O botão do nome no título (`EquipmentSwapButton`) deixou o estilo inline por classe em `workout-mode.module.css`.
+
+| Fase | O nome aparece? | O que o toque faz |
+|---|---|---|
+| Antes da 1ª série (título) | Sim | Abre o seletor (troca limpa) |
+| Registro da série, com série lançada | Sim | Abre o "Encerrar exercício" (um passo a mais), que oferece a troca das séries restantes |
+| Descanso entre séries do mesmo exercício | Sim, se há equipamento definido | Abre direto o seletor em modo de continuação, se há série lançada |
+| Descanso na transição para o próximo exercício | Não | Não se aplica |
+| Bloco intensivo (briefing, série, descanso e relógio contínuo) | Sim | Abre o seletor via `openEquipmentSwap` |
+| Aplicação da técnica (`IntensiveApplicationCard`) | Não | Segue o ícone de troca existente |
+
+**Verificação.** Vitest da pasta do Modo Treino: 151 passando. Testes de ponta a ponta do Modo Treino sobre build novo: 30 passando, com caso novo de troca pelo nome durante o descanso com série lançada.
+
+**Limites.**
+
+- Na aplicação da técnica intensiva (`IntensiveApplicationCard`) o nome não foi acrescentado; segue o ícone de troca existente.
+- Com série lançada, o toque no nome no registro da série continua abrindo "Encerrar exercício", enquanto no descanso e no bloco intensivo vai direto ao seletor. O comportamento difere por fase, como já diferia nos botões "Trocar".
+- Depois de trocar durante o descanso, o cronômetro continua e o painel da última série salva ainda é o do exercício anterior até o descanso acabar (lido no código, não medido); o mesmo vale para o botão "Trocar" que já existia.
+- A troca durante o descanso do bloco intensivo não foi exercitada por teste de ponta a ponta.
+- Nada conferido no navegador nem em celular real.
