@@ -6,6 +6,7 @@ import {
   CARB_CYCLE_POLICY_OPTIONS,
   DAY_KIND_OPTIONS,
   DEFAULT_CARB_CYCLE_POLICY,
+  DEFAULT_DAY_KIND,
   nutritionLabel,
   type NutritionCode,
 } from './nutrition-constants';
@@ -24,9 +25,9 @@ export function initialCyclePolicy(policy: NutritionCode | null | undefined): Nu
   return isKnown(policy) ? (policy as NutritionCode) : DEFAULT_CARB_CYCLE_POLICY;
 }
 
-/** Com ciclo, sempre explícita; sem ciclo, `null` (o motor recusa a compensação sem ciclo). */
-export function cyclePolicyPayload(on: boolean, policy: NutritionCode): NutritionCode | null {
-  return on ? initialCyclePolicy(policy) : null;
+/** Sempre explícita: o servidor guarda a escolha mesmo com o ciclo desligado (sem ciclo ela não muda meta). */
+export function cyclePolicyPayload(policy: NutritionCode): NutritionCode {
+  return initialCyclePolicy(policy);
 }
 
 /** Dica da opção escolhida (texto do dono). */
@@ -55,7 +56,7 @@ export function diaryCycleInfo(
   if (!target || !target.carb_cycle_policy) return null;
   const compensa = isCompensation(target.carb_cycle_policy);
   const kind = target.day_kind;
-  const dayKind = kind && (kind !== 'normal' || compensa) ? (nutritionLabel(DAY_KIND_OPTIONS, kind) ?? null) : null;
+  const dayKind = kind && (kind !== DEFAULT_DAY_KIND || compensa) ? (nutritionLabel(DAY_KIND_OPTIONS, kind) ?? null) : null;
   const policy = compensa ? (nutritionLabel(CARB_CYCLE_POLICY_OPTIONS, target.carb_cycle_policy) ?? null) : null;
   return dayKind || policy ? { dayKind, policy } : null;
 }

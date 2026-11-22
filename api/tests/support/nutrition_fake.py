@@ -63,6 +63,7 @@ class FakeNutritionDB:
         self.adjustment_tables = True
         # As colunas da 106 existem neste banco? (False simula o código novo sobre o schema antigo.)
         self.plan_energy_columns = True
+        self.plan_policy_column = True  # 123: o teste a tira para simular o código novo sem a migração
         self.timezone = "America/Sao_Paulo"  # `users.timezone` (a sombra e a meta adaptativa convertem a sincronização por ele)
         # Conexão e idade (min) da última sincronização do Intervals: padrão = desconectado.
         self.intervals_connected = False
@@ -131,7 +132,7 @@ class FakeNutritionDB:
             "fat_kcal_share": Decimal("0.2500"), "carb_min_g_per_kg": None, "meals_per_day": None, "notes": None,
             "macro_priority": "balanced", "manual_targets_json": None, "carb_cycling_json": None, "maintenance_kcal_adjust": 0,
             "engine_version": "nutrition-v1", "effective_from": effective_from, "superseded_at": superseded_at,
-            "energy_params_json": None, "energy_model_version": None, "published_preview_json": None,
+            "energy_params_json": None, "energy_model_version": None, "published_preview_json": None, "carb_cycle_policy": None,
             "archived_at": None, "published_at": published_at, "created_at": self.now, "updated_at": self.now,
         }
         base.update(settings)
@@ -242,6 +243,11 @@ class FakeCursor:
             db.writes.append(f"uncorrect {p[1]}")
         return self._result([])
 
+    def _guard_policy_column(self, sql: str) -> None:
+        """O banco recusaria a SQL que cita `carb_cycle_policy` sem a coluna (123)."""
+        if not self.db.plan_policy_column and "carb_cycle_policy" in sql:
+            raise AssertionError("SQL cita carb_cycle_policy sem a coluna da 123 (a variante sem a coluna deveria ter sido usada)")
+
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement
         db = self.db
         p = tuple(params or ())
@@ -249,7 +255,8 @@ class FakeCursor:
         if sql == _CURRENT_SCHEMA_SQL:
             return self._result([{"db": "nutrition_test"}])
         if sql == schema_mod.column_sql():  # colunas do plano (106): presentes, salvo se o teste as tirar
-            return self._result([{"n": 1 if db.plan_energy_columns else 0}])
+            presente = db.plan_policy_column if p[1:] == (schema_mod.PLAN_POLICY_COLUMN,) else db.plan_energy_columns
+            return self._result([{"n": 1 if presente else 0}])
         if sql == schema_mod.tables_sql(1) and p == (schema_mod.SYNC_RUNS_TABLE,):  # tabela da 107
             return self._result([{"n": 1 if db.sync_runs_table else 0}])
         if sql == schema_mod.tables_sql(2) and p == schema_mod.ADJUSTMENT_TABLES:  # tabelas da 108
@@ -335,7 +342,8 @@ class FakeCursor:
                 self.rowcount = 1
                 db.writes.append(f"preview plan {p[1]}")
             return self._result([])
-        if sql in (svc._PUBLISHED_PLANS_SQL, svc._PUBLISHED_PLANS_WITHOUT_ENERGY_SQL):
+        if sql in (svc._PUBLISHED_PLANS_SQL, svc._PUBLISHED_PLANS_WITHOUT_POLICY_SQL, svc._PUBLISHED_PLANS_WITHOUT_ENERGY_SQL):
+            self._guard_policy_column(sql)
             return self._result(self._project(sql, [r for r in db.plans.values()
                                                     if r["user_id"] == p[0] and r["status"] == p[1] and r["effective_from"] is not None]))
         if sql == svc._TARGETS_SQL:
@@ -366,8 +374,10 @@ class FakeCursor:
             return self._result([{"weekday": dia, "slot_type": tipo} for dia, tipo in (modelo["slots"] if modelo else [])])
         if sql == "SELECT NOW() AS agora":
             return self._result([{"agora": db.now}])
-        if sql == plans_mod._INSERT_SQL:
-            cols = ("user_id", "created_by", "status", *plans_mod._SETTINGS_WRITE_COLUMNS)
+        if sql in (plans_mod._INSERT_SQL, plans_mod._INSERT_NO_POLICY_SQL):
+            self._guard_policy_column(sql)
+            colunas = plans_mod._SETTINGS_WRITE_COLUMNS if sql == plans_mod._INSERT_SQL else plans_mod._WRITE_COLUMNS_NO_POLICY
+            cols = ("user_id", "created_by", "status", *colunas)
             valores = dict(zip(cols, p))
             valores["energy_params_json"] = self._json_column(valores["energy_params_json"])
             plano_id = db.add_plan(valores["user_id"])
@@ -376,13 +386,16 @@ class FakeCursor:
             self.rowcount = 1
             db.writes.append(f"insert plan {plano_id}")
             return self._result([])
-        if sql == plans_mod._BY_ID_SQL:
+        if sql in (plans_mod._BY_ID_SQL, plans_mod._BY_ID_NO_POLICY_SQL):
+            self._guard_policy_column(sql)
             plano = db.plans.get(int(p[0]))
             return self._result(self._project(sql, [plano]) if plano else [])
-        if sql == plans_mod._BY_USER_SQL:
+        if sql in (plans_mod._BY_USER_SQL, plans_mod._BY_USER_NO_POLICY_SQL):
+            self._guard_policy_column(sql)
             linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0]), key=lambda r: -r["id"])
             return self._result(self._project(sql, linhas[: int(p[1])]))
-        if sql == plans_mod._BY_USER_VISIBLE_SQL:
+        if sql in (plans_mod._BY_USER_VISIBLE_SQL, plans_mod._BY_USER_VISIBLE_NO_POLICY_SQL):
+            self._guard_policy_column(sql)
             linhas = sorted((r for r in db.plans.values() if r["user_id"] == p[0] and r["archived_at"] is None),
                             key=lambda r: -r["id"])
             return self._result(self._project(sql, linhas[: int(p[1])]))
@@ -407,11 +420,13 @@ class FakeCursor:
             db.locks.append(("current", p[0]))
             return self._result([{"id": r["id"]} for r in db.plans.values()
                                  if r["user_id"] == p[0] and r["status"] == p[1] and r["superseded_at"] is None])
-        if sql == plans_mod._UPDATE_DRAFT_SQL:
+        if sql in (plans_mod._UPDATE_DRAFT_SQL, plans_mod._UPDATE_DRAFT_NO_POLICY_SQL):
+            self._guard_policy_column(sql)
+            colunas = plans_mod._SETTINGS_WRITE_COLUMNS if sql == plans_mod._UPDATE_DRAFT_SQL else plans_mod._WRITE_COLUMNS_NO_POLICY
             *valores, plano_id, status = p
             plano = db.plans.get(int(plano_id))
             if plano and plano["status"] == status:
-                escritos = dict(zip(plans_mod._SETTINGS_WRITE_COLUMNS, valores))
+                escritos = dict(zip(colunas, valores))
                 escritos["energy_params_json"] = self._json_column(escritos["energy_params_json"])
                 plano.update(escritos)
                 plano["updated_at"] = db.now + timedelta(seconds=len(db.writes) + 1)  # o banco atualiza updated_at

@@ -52,6 +52,8 @@ export const WEEKDAY_OPTIONS = optionsOf(Object.keys(NUTRITION.weekday_names), N
 export const CARB_CYCLE_POLICY_OPTIONS = optionsOf(NUTRITION.carb_cycle_policies, NUTRITION.carb_cycle_policy_labels);
 export const CARB_CYCLE_POLICY_HINTS: Readonly<Record<NutritionCode, string>> = NUTRITION.carb_cycle_policy_hints;
 export const DEFAULT_CARB_CYCLE_POLICY: NutritionCode = NUTRITION.default_carb_cycle_policy;
+/** Código do dia normal do ciclo (dono: `carb_cycling`). */
+export const DEFAULT_DAY_KIND: NutritionCode = NUTRITION.default_day_kind;
 export const DEFAULT_MACRO_PRIORITY: NutritionCode = NUTRITION.default_macro_priority;
 /** Gramas manuais e treino (N2 rodada 4): código, rótulo e explicação de cada modo, do dono. */
 export const MANUAL_TRAINING_MODE_OPTIONS = optionsOf(NUTRITION.manual_training_modes, NUTRITION.manual_training_mode_labels);

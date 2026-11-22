@@ -941,6 +941,7 @@
       "normal",
       "low"
     ],
+    "default_day_kind": "normal",
     "day_kind_labels": {
       "high": "Dia alto em carbo",
       "normal": "Dia normal",

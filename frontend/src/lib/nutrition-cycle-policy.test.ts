@@ -15,10 +15,9 @@ const lab = N.carb_cycle_policy_labels as Record<string, string>;
 const kind = N.day_kind_labels as Record<string, string>;
 
 describe('política do ciclo (#242)', () => {
-  it('payload: com ciclo explícito, sem ciclo null', () => {
-    expect(cyclePolicyPayload(true, FAT)).toBe(FAT);
-    expect(cyclePolicyPayload(true, VARY)).toBe(VARY);
-    expect(cyclePolicyPayload(false, FAT)).toBeNull();
+  it('payload: sempre a política escolhida, com ou sem ciclo (nunca null)', () => {
+    expect(cyclePolicyPayload(FAT)).toBe(FAT);
+    expect(cyclePolicyPayload(VARY)).toBe(VARY);
   });
   it('valor inicial: do plano, sem campo ou desconhecido = padrão', () => {
     expect(initialCyclePolicy(FAT)).toBe(FAT);

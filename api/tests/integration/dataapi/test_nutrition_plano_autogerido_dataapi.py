@@ -163,7 +163,13 @@ def test_usuario_opera_o_proprio_plano_nos_dois_backends(usuarios, raw, monkeypa
 
 
 def test_politica_do_ciclo_ida_e_volta_nos_dois_backends(usuarios, raw, monkeypatch, fake_rds, mysql_schema):
-    """#248: a política vai na chave `policy` do `carb_cycling_json`; o padrão (`vary_kcal`) grava só os dias."""
+    """#248: a política vai na coluna `carb_cycle_policy` (123) e na chave `policy` do `carb_cycling_json`; o padrão
+    (`vary_kcal`) grava só os dias no JSON e o código na coluna; desligar o ciclo mantém a política na coluna."""
+
+    def _coluna_gravada(plano_id):
+        with raw.cursor() as cur:
+            cur.execute("SELECT carb_cycle_policy FROM nutrition_plans WHERE id = %s", (plano_id,))
+            return cur.fetchone()["carb_cycle_policy"]
 
     def _json_gravado(plano_id):
         with raw.cursor() as cur:
@@ -189,6 +195,7 @@ def test_politica_do_ciclo_ida_e_volta_nos_dois_backends(usuarios, raw, monkeypa
         plano_id = criado.json()["id"]
         assert criado.json()["carb_cycle_policy"] == "fat_compensation" and criado.json()["cycle_days"] == DIAS
         assert _json_gravado(plano_id) == {**DIAS, "policy": "fat_compensation"}, backend
+        assert _coluna_gravada(plano_id) == "fat_compensation", backend
 
         lido = next(p for p in aluno.get("/nutrition/plans").json()["items"] if p["id"] == plano_id)
         assert lido["carb_cycle_policy"] == "fat_compensation" and lido["cycle_days"] == DIAS
@@ -197,6 +204,7 @@ def test_politica_do_ciclo_ida_e_volta_nos_dois_backends(usuarios, raw, monkeypa
         assert herdou.status_code == 200, (backend, herdou.text)
         assert herdou.json()["carb_cycle_policy"] == "fat_compensation"
         assert _json_gravado(plano_id)["policy"] == "fat_compensation"
+        assert _coluna_gravada(plano_id) == "fat_compensation", backend
 
         padrao = aluno.put(
             f"/nutrition/plans/{plano_id}",
@@ -205,6 +213,21 @@ def test_politica_do_ciclo_ida_e_volta_nos_dois_backends(usuarios, raw, monkeypa
         assert padrao.status_code == 200, (backend, padrao.text)
         assert padrao.json()["carb_cycle_policy"] == "vary_kcal"
         assert _json_gravado(plano_id) == DIAS, backend
+        assert _coluna_gravada(plano_id) == "vary_kcal", backend
+
+        # Desligar o ciclo (campo omitido) mantém a política na coluna; religar a devolve.
+        aluno.put(
+            f"/nutrition/plans/{plano_id}",
+            json={"strategy": "maintenance", "cycle_days": DIAS, "carb_cycle_policy": "fat_compensation"},
+        )
+        desligado = aluno.put(f"/nutrition/plans/{plano_id}", json={"strategy": "maintenance"})
+        assert desligado.status_code == 200, (backend, desligado.text)
+        assert desligado.json()["carb_cycle_policy"] == "fat_compensation" and desligado.json()["cycle_days"] is None
+        assert _json_gravado(plano_id) is None and _coluna_gravada(plano_id) == "fat_compensation", backend
+        religado = aluno.put(f"/nutrition/plans/{plano_id}", json={"strategy": "maintenance", "cycle_days": DIAS})
+        assert religado.status_code == 200, (backend, religado.text)
+        assert religado.json()["carb_cycle_policy"] == "fat_compensation"
+        assert _json_gravado(plano_id) == {**DIAS, "policy": "fat_compensation"}, backend
 
 
 def test_gramas_manuais_sem_peso_do_aluno_nao_gravam(usuarios, raw, db_backend):
