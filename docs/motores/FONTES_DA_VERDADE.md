@@ -7629,7 +7629,7 @@ Medições novas, de 20/11/2026. Em produção, por leitura (só SELECT): 110 at
 
 Efeito de cada mudança:
 
-- (a) Validação do equipamento explícito no Modo Treino (`workout_sessions.ensure_session_equipment`): a partir do deploy, o POST de exercício recusa com 422 o equipamento inexistente (`equipment_not_found`), o de outra academia numa sessão com academia (`equipment_not_in_session_gym`) e o par incoerente com o exercício (`equipment_pair_incoherent`), com ou sem academia na sessão. Sessão sem academia não é recusada por academia: o equipamento existente e coerente é aceito e registrado em log (`session_equipment_accepted_without_gym`, só com ids). Associação inativa continua aceita e vai a log. Nenhum caso de equipamento inexistente ou de outra academia foi encontrado em produção. Os 67 exercícios com par incoerente, medidos no banco de desenvolvimento, não são corrigidos por este lote e não são revalidados.
+- (a) Validação do equipamento explícito no Modo Treino (`workout_sessions.ensure_session_equipment`): a partir do deploy, o POST de exercício recusa com 422 o equipamento inexistente (`equipment_not_found`), o de outra academia numa sessão com academia (`equipment_not_in_session_gym`) e o par incoerente com o exercício (`equipment_pair_incoherent`), com ou sem academia na sessão. Sessão sem academia não é recusada por academia: o equipamento existente e coerente é aceito e registrado em log (`session_equipment_accepted_without_gym`, só com ids). Associação inativa continua aceita e vai a log. Nenhum caso de equipamento inexistente ou de outra academia foi encontrado em produção. Os 67 exercícios com par incoerente, medidos no banco de desenvolvimento, não são corrigidos por este lote e não são revalidados. (Atualização de 22/11/2026: 23 desses 67 são corrigidos pelo Lote 29, #244, migração 124; os outros 44 ficam como registrados.)
 - (b) Nenhum dado gravado muda. O reenvio idempotente (mesmo `client_key`) não revalida o equipamento.
 - (c) `GET /gym-equipment` ganha `load_convention` em cada item (campo aditivo). A tela só exibe.
 - (d) Nenhuma regra de carga, progressão, status de intensidade ou teto muda.
@@ -7813,3 +7813,24 @@ Limites:
 - escrita dupla e leitura com reserva são temporárias (um ciclo de deploy); a limpeza fica para lote posterior (migração que remove a chave do JSON, e código que deixa de gravar e de ler a reserva);
 - o envio do botão de salvar com o ciclo desligado só tem teste de unidade da função que monta o payload;
 - rollback para código anterior à ADR 0029 segue com o risco descrito nela.
+
+**Lote 29 de 22/11/2026 (#244, correção do vínculo de equipamento de 23 exercícios antigos).** Escolha do usuário de 22/11/2026: dos 67 exercícios antigos com par exercício × equipamento incoerente (Lote 10), corrigir só os 23 que têm, na mesma academia, exatamente um vínculo do mesmo aparelho físico com o exercício do registro; os outros 44 ficam como foram registrados (pendência encerrada para eles). Nenhuma regra de motor muda: nenhuma fonte deste mapa é alterada; o predicado `equipment_pair.is_pair_coherent` só serviu para medir. Mudanças:
+
+- Migração 124 (`api/db/migrations/124_corrige_vinculo_equipamento_de_exercicios_antigos.py`), só dados, no molde da 117: para cada um dos 23 (tupla em `FIXES`), `UPDATE exercises SET equipment_id = <vínculo novo>`, guardado pelos valores exatos do registro (id, atividade, exercício, vínculo antigo) e pela existência do vínculo novo com academia, aparelho e exercício exatos. Cada linha também exige que o vínculo ANTIGO exista com a mesma academia e o mesmo aparelho físico da medição; o `down` confere o vínculo antigo por id, academia e aparelho. Idempotente; plano vazio em banco sem as linhas; `down` devolve o vínculo antigo. Só `exercises` é escrita. `up` e `down` registram no log quantas linhas estavam no plano, quantas foram aplicadas e quantas puladas, de 23.
+- Histórico, progressão, e1RM, convenção de carga e trilhas não mudam: `exercises.equipment_id` guarda o vínculo (`gym_equipment.id`), mas o histórico e a progressão usam o aparelho físico do vínculo e o exercício do registro (`api/app/domain/training_history.py`; chave em `api/app/intelligence/dashboard/comparability.py`). Os dois não mudam, então chave de comparação, convenção de carga, e1RM e trilhas ficam iguais. Nenhuma trilha derivada é apagada (diferente da 117).
+- Muda a recência de uso por vínculo do recomendador de equipamento: `equipment_recommender.load_user_recency` (`api/app/equipment_recommender.py`) agrupa por `exercises.equipment_id`, o id do vínculo. O "último uso" desses 23 registros (treinos de 23/07 a 05/09/2026) passa dos vínculos antigos para os novos. Efeito: só o desempate de rodízio e a recência na escolha de equipamento ao gerar fichas, para esses vínculos; é o efeito pretendido da correção. Não medido em números.
+
+Impacto em produção: medido pelo Tech Lead em 22/11/2026, só leitura. 67 exercícios em 49 pares, um usuário, o mais recente de 19/09/2026, nenhum criado pelo Modo Treino, nenhum com vínculo inexistente. Os 23 corrigidos: de 23/07 a 05/09/2026, academias 1 (20 registros) e 10 (3 registros); 17 passam a apontar para vínculo ativo e 6 para vínculo inativo (aceitos). Nenhum número de prescrição, meta, progressão ou e1RM muda; muda só a recência de uso por vínculo do recomendador de equipamento, descrita acima.
+
+Não medido:
+
+- a migração 124 não foi executada em banco; roda pela pipeline com `RUN_DB_MIGRATIONS=true` (no DEV, pelo script de atualização);
+- no deploy de produção, conferir no log a linha "migracao 124: plano=… aplicadas=… puladas=… de 23";
+- o efeito da recência no recomendador não foi medido em números;
+- nada em tela.
+
+Limites:
+
+- os 44 restantes seguem com par incoerente;
+- 6 registros passam a apontar para vínculo inativo; eles não somem do histórico (nenhum leitor do histórico filtra por vínculo ativo);
+- a promoção exige `RUN_DB_MIGRATIONS=true` (já exigido pelas migrações 122 e 123).
