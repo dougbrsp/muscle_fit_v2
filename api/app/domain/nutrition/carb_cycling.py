@@ -89,6 +89,36 @@ class CarbCyclePolicy(str, Enum):
 
 
 DEFAULT_CARB_CYCLE_POLICY: Final[CarbCyclePolicy] = CarbCyclePolicy.VARY_KCAL
+
+
+class DayPriority(str, Enum):
+    """Prioridade nutricional do dia (#272), derivada dos macros FINAIS contra os pré-ciclo; rótulos em `labels.py`."""
+
+    CARB = "carb"
+    FAT = "fat"
+    REDUCED_CARB = "reduced_carb"
+    NORMAL = "normal"
+    UNAVAILABLE = "unavailable"
+
+
+# Diferença mínima (g) para o ciclo contar como efeito real nos macros finais; abaixo disso (ruído de ponto flutuante
+# ou arredondamento) o dia é "normal".
+DAY_PRIORITY_CARB_TOLERANCE_G: Final[float] = 0.5
+
+
+def day_priority(kind: DayKind, before: MacroTargets, after: MacroTargets) -> DayPriority:
+    """Prioridade do dia. `before`/`after` = metas ANTES e DEPOIS do ciclo. Usa o `kind` E o delta: dia normal nunca vira
+    "reduzido" (mesmo com multiplicador ≠ 1) e dia alto/baixo sem efeito nos macros finais (piso, inviabilidade, semana
+    plana) é "normal"."""
+    if not before.computable or not after.computable:
+        return DayPriority.UNAVAILABLE
+    delta_carb = float(after.carb_g) - float(before.carb_g)  # type: ignore[arg-type]
+    if kind == DayKind.HIGH and delta_carb > DAY_PRIORITY_CARB_TOLERANCE_G:
+        return DayPriority.CARB
+    if kind == DayKind.LOW and delta_carb < -DAY_PRIORITY_CARB_TOLERANCE_G:
+        delta_fat = float(after.fat_g) - float(before.fat_g)  # type: ignore[arg-type]
+        return DayPriority.FAT if delta_fat > DAY_PRIORITY_CARB_TOLERANCE_G else DayPriority.REDUCED_CARB
+    return DayPriority.NORMAL
 # Chave irmã dos dias em `carb_cycling_json`: só existe fora do padrão (o JSON legado fica byte a byte igual). Desde a
 # migração 123 a política mora também na coluna `nutrition_plans.carb_cycle_policy` (dona da leitura; a chave é a reserva).
 STORED_POLICY_KEY: Final[str] = "policy"

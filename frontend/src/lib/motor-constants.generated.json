@@ -799,7 +799,7 @@
     "neck_site": "neck"
   },
   "nutrition": {
-    "engine_version": "nutrition-v5",
+    "engine_version": "nutrition-v6",
     "sexes": [
       "male",
       "female",

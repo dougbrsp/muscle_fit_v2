@@ -2,6 +2,7 @@
 
 import { diaryCycleInfo, diaryCycleText } from '@/lib/nutrition-cycle-policy';
 import { Group, Progress, Stack, Text } from '@mantine/core';
+import { DayPriorityBadge } from '@/components/nutrition/DayPriorityBadge';
 import { NutritionLimitations } from '@/components/nutrition/NutritionLimitations';
 import { macroRows, ringParts } from '@/lib/nutrition-dashboard';
 import { nutrientField, nutritionNotice } from '@/lib/nutrition-constants';
@@ -107,6 +108,7 @@ export function MobileTargetVsIntake({ day }: { day: NutritionDay }) {
     .join(' ');
   return (
     <>
+      <DayPriorityBadge target={meta} />
       <ListGroup title="Meta × ingestão" footer={avisos || undefined}>
         {vazio ? (
           <ListBlock>

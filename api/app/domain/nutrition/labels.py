@@ -123,6 +123,22 @@ CARB_CYCLE_POLICY_LABELS: Final[Mapping[cc_mod.CarbCyclePolicy, str]] = {
     cc_mod.CarbCyclePolicy.FAT_COMPENSATION: "Compensar com gordura",
 }
 
+# #272: `UNAVAILABLE` não tem rótulo (a API devolve o código com texto nulo). Só a API entrega estes textos; o espelho do
+# frontend não os exporta.
+DAY_PRIORITY_LABELS: Final[Mapping[cc_mod.DayPriority, str]] = {
+    cc_mod.DayPriority.CARB: "Priorizar carboidrato",
+    cc_mod.DayPriority.FAT: "Priorizar gordura",
+    cc_mod.DayPriority.REDUCED_CARB: "Carboidrato reduzido",
+    cc_mod.DayPriority.NORMAL: "Distribuição normal",
+}
+
+DAY_PRIORITY_EXPLANATIONS: Final[Mapping[cc_mod.DayPriority, str]] = {
+    cc_mod.DayPriority.CARB: "Hoje o plano concentra mais carboidratos.",
+    cc_mod.DayPriority.FAT: "Hoje o plano reduz carboidratos e transfere parte da energia para gorduras.",
+    cc_mod.DayPriority.REDUCED_CARB: "Hoje o plano reduz carboidratos e também pode ter menor ingestão energética.",
+    cc_mod.DayPriority.NORMAL: "Hoje o plano não tem prioridade especial entre carboidrato e gordura.",
+}
+
 CARB_CYCLE_POLICY_HINTS: Final[Mapping[cc_mod.CarbCyclePolicy, str]] = {
     cc_mod.CarbCyclePolicy.VARY_KCAL: (
         "Os dias podem ter calorias diferentes e a gordura segue a configuração do plano."
