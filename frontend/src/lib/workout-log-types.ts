@@ -250,6 +250,8 @@ export type GymEquipmentLink = {
   gym_id: number;
   gym_name?: string | null;
   mapping_id: number;
+  // Id canônico do exercício (aditivo; resposta antiga não traz).
+  exercise_id?: number | null;
   mapping_exercise_name?: string | null;
   mapping_amazfit_name?: string | null;
   // Descrição do exercício da associação (`exercise_catalog.description`).

@@ -295,6 +295,30 @@ def test_meta_congelada_do_plano_adaptativo_nao_e_regravada_quando_o_historico_m
     assert banco.targets[(ALUNO, dia_antigo)] == linha
 
 
+def test_meta_congelada_com_compensacao_em_gordura_nao_e_regravada(banco_adaptativo):
+    """#242: plano com `policy: fat_compensation` no ciclo; o dia congelado não é regravado quando o histórico muda."""
+    banco = banco_adaptativo
+    ciclo = {str(i): ("high" if i % 2 == 0 else "low") for i in range(7)} | {"policy": "fat_compensation"}
+    for plano in banco.plans.values():
+        plano["carb_cycling_json"] = ciclo
+    dia_antigo = HOJE - timedelta(days=4)
+    _ensure(banco, dia_antigo, dia_antigo, hoje=dia_antigo + timedelta(days=1))
+    linha = dict(banco.targets[(ALUNO, dia_antigo)])
+    assert linha["inputs_json"]["carb_cycle_policy"] == "fat_compensation"
+    # compensação de fato aplicada: dia alto, sem as limitações de "sem ciclo"
+    assert linha["day_kind"] == "high"
+    limitacoes = json.loads(linha["limitations_json"])
+    from app.domain.nutrition import carb_cycling as cc
+
+    assert cc.LIMIT_FAT_COMPENSATION_INFEASIBLE not in limitacoes
+    assert cc.LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED not in limitacoes
+    _refeicao(banco, ALUNO, dia_antigo - timedelta(days=1), energy_kcal=500.0)
+    banco.add_body(ALUNO, dia_antigo - timedelta(days=1), weight=90.0, body_fat=20.0)
+    banco.writes.clear()
+    _ensure(banco, dia_antigo, dia_antigo, hoje=HOJE)
+    assert banco.writes == [] and banco.targets[(ALUNO, dia_antigo)] == linha
+
+
 def test_dia_nao_congelado_acompanha_o_historico_e_o_congelado_fica(banco_adaptativo):
     banco = banco_adaptativo
     _ensure(banco, HOJE - timedelta(days=1), HOJE, hoje=HOJE)

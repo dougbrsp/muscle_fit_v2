@@ -43,6 +43,7 @@ from typing import Any, Final, Mapping, Optional, Sequence
 from .anthropometrics import positive_number
 from .energy_density import DAYS_PER_WEEK
 from .macros import (
+    ATWATER_CLOSE_REL_TOL,
     KCAL_PER_G_CARB,
     KCAL_PER_G_FAT,
     KCAL_PER_G_PROTEIN,
@@ -442,7 +443,7 @@ def _day_with_fat_compensation(target: MacroTargets, delta_carb_g: float) -> tup
         not target.computable
         or energia is None
         or LIMIT_KCAL_BELOW_PROTEIN_AND_FAT in target.limitations
-        or not math.isclose(float(target.kcal), energia)  # type: ignore[arg-type]
+        or not math.isclose(float(target.kcal), energia, rel_tol=ATWATER_CLOSE_REL_TOL)  # type: ignore[arg-type]
     ):
         return target, (LIMIT_FAT_COMPENSATION_TARGET_NOT_CLOSED,)
     if not delta_carb_g:

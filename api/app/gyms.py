@@ -763,10 +763,12 @@ def list_gym_equipment(
     with _connect() as conn:
         with conn.cursor() as cursor:
             convention_expr = load_convention_select_expr(cursor)
+            canonical_exercise_expr = "COALESCE(elm.canonical_exercise_id, ge.mapping_id)"
             cursor.execute(
                 f"""
         SELECT
             ge.id, ge.gym_id, g.name AS gym_name, ge.mapping_id,
+            {canonical_exercise_expr} AS exercise_id,
             zm.name AS mapping_exercise_name,
             zm.description AS mapping_exercise_description,
             (
@@ -785,7 +787,7 @@ def list_gym_equipment(
         JOIN gyms g ON g.id = ge.gym_id
         JOIN exercise_catalog zm ON zm.id = ge.mapping_id
         LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = ge.mapping_id
-        {equipment_exercises_join_sql(canonical_expr="COALESCE(elm.canonical_exercise_id, ge.mapping_id)")}
+        {equipment_exercises_join_sql(canonical_expr=canonical_exercise_expr)}
         LEFT JOIN muscle_groups pg ON pg.id = (
             SELECT emc_pri.muscle_group_id
             FROM exercise_muscle_contributions emc_pri
@@ -1114,12 +1116,11 @@ def _assert_gym_equipment_catalog_writable(
     """Posse da linha para POST/DELETE /gym-equipment-catalog (e vinculos de
     /gym-equipment): dono da academia ou `treino.academias` na `action` da rota
     com escopo `todos`; 403 caso contrario (diferente de _assert_gym_writable,
-    que usa 404 - aqui o gym_id ja veio explicito no payload do chamador, entao
-    nao ha risco de vazar existencia)."""
+    que usa 404 - aqui o gym_id ja veio explicito no payload do chamador).
+    Academia inexistente conta como sem dono: quem nao tem escopo `todos` recebe
+    403 igual ao de academia alheia (nao enumera ids); so quem tem `todos` recebe 404."""
     cursor.execute("SELECT owner_user_id FROM gyms WHERE id = %s", (gym_id,))
-    row = cursor.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="gym_id não encontrado.")
+    row = cursor.fetchone() or {}
 
     if not owns_row_or_all(
         identity,
@@ -1129,6 +1130,8 @@ def _assert_gym_equipment_catalog_writable(
         row.get("owner_user_id"),
     ):
         raise HTTPException(status_code=403, detail="Você não tem permissão para gerenciar equipamentos desta academia.")
+    if not row:
+        raise HTTPException(status_code=404, detail="gym_id não encontrado.")
 
 
 @router.post("/gym-equipment-catalog")
