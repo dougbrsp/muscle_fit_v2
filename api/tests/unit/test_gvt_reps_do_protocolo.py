@@ -125,3 +125,20 @@ def test_gvt_em_linha_por_tempo_nao_aplica_reps_do_protocolo(monkeypatch):
 def test_pair_prescription_sem_tecnica_mantem_faixa():
     decision = SimpleNamespace(suggested_reps_min=8, suggested_reps_max=12, advanced_technique_parameters=None)
     assert PairPrescription(decision=decision, safety=None, technique=None).reps_target == "8-12"
+
+
+def test_faixa_com_minimo_igual_ao_maximo_vira_um_numero():
+    from app.domain.prescription_service import PairSuggestion
+
+    decision = SimpleNamespace(suggested_reps_min=10, suggested_reps_max=10, advanced_technique_parameters=None)
+    assert PairPrescription(decision=decision, safety=None, technique=None).reps_target == "10"
+    sug = PairSuggestion(
+        exercise_id=1, equipment_id=None, decision={"suggested_reps_min": 10, "suggested_reps_max": 10},
+        suggested_load_kg=None, load_source=None, load_increment_kg=1.0,
+    )
+    assert sug.reps_target == "10"
+    sug = PairSuggestion(
+        exercise_id=1, equipment_id=None, decision={"suggested_reps_min": 8, "suggested_reps_max": 12},
+        suggested_load_kg=None, load_source=None, load_increment_kg=1.0,
+    )
+    assert sug.reps_target == "8-12"

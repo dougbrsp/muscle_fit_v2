@@ -50,6 +50,7 @@ from ..domain.progression_engine import (
     resolve_track,
     uses_e1rm_load,
 )
+from ..domain.technique_accounting import format_reps_range
 from ..domain.training_goal import goal_value
 from ..observability import log_event
 from ..domain.training_safety import TrainingSafety, build_training_safety, resolve_training_safety_bulk
@@ -116,7 +117,7 @@ class PairPrescription:
             return str(protocol)
         if low is None or high is None:
             return None
-        return f"{low}-{high}"
+        return format_reps_range(low, high)
 
     @property
     def suggested_load_kg(self) -> Optional[float]:

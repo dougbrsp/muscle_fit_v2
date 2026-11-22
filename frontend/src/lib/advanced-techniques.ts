@@ -16,7 +16,7 @@
 // `useAdvancedTechniques` (`use-advanced-techniques.ts`) para disparar a
 // carga e re-renderizar quando ela chega.
 
-import { SETS_ONLY_CODES } from './technique-accounting';
+import { PROTOCOL_REPS_BY_CODE, SETS_ONLY_CODES, SETS_ONLY_DEFAULT_SETS } from './technique-accounting';
 
 export type AdvancedTechniqueCode = string;
 export type { AdvancedTechniqueCode as AdvancedTechniqueValue };
@@ -104,10 +104,10 @@ export const FALLBACK_ADVANCED_TECHNIQUES: readonly AdvancedTechniqueCatalogItem
     min_experience: 'intermediate',
     ...coefficients(0.5, 1.0, 1.15),
   }),
-  fallbackItem('fst7', 'FST-7', 'requires_failure', 'working', coefficients(0, 0, 1.0, 7)),
+  fallbackItem('fst7', 'FST-7', 'requires_failure', 'working', coefficients(0, 0, 1.0, SETS_ONLY_DEFAULT_SETS.fst7)),
   fallbackItem('gvt', 'GVT (German Volume Training)', 'failure_not_required', 'working', {
     min_experience: 'intermediate',
-    ...coefficients(0, 0, 1.0, 10),
+    ...coefficients(0, 0, 1.0, SETS_ONLY_DEFAULT_SETS.gvt),
   }),
   fallbackItem('forced_reps', 'Repetições forçadas', 'beyond_failure', EXTRA_REPS_SET_TYPE, {
     requires_partner: true,
@@ -231,7 +231,7 @@ export function isApplicationStageTechnique(value: string | null | undefined): b
 export function getAdvancedTechniqueDefaultSetsCount(value: string | null | undefined): number | null {
   const item = findTechnique(value);
   if (item?.default_sets_count != null) return item.default_sets_count;
-  if (value && SETS_ONLY_CODES.has(value)) return value === 'gvt' ? 10 : 7;
+  if (value && SETS_ONLY_CODES.has(value)) return SETS_ONLY_DEFAULT_SETS[value] ?? null;
   return null;
 }
 
@@ -254,8 +254,8 @@ export function getAdvancedTechniqueSetType(technique: string): string {
 const ADVANCED_TECHNIQUE_DESCRIPTIONS: Record<string, string> = {
   rest_pause: 'Após a falha, pause 5–15s e retome com a mesma carga para mais repetições. Repita por mini-blocos.',
   drop_set: 'Ao atingir a falha, reduza a carga (~20%) sem descanso e continue até nova falha. Repita a cada drop.',
-  fst7: '7 séries até a falha com 30s de intervalo, alongando a musculatura durante a pausa para expandir a fáscia.',
-  gvt: '10 séries de 10 repetições com carga moderada e 1 min de intervalo, focando em volume total (German Volume Training).',
+  fst7: `${SETS_ONLY_DEFAULT_SETS.fst7} séries até a falha com 30s de intervalo, alongando a musculatura durante a pausa para expandir a fáscia.`,
+  gvt: `${SETS_ONLY_DEFAULT_SETS.gvt} séries de ${PROTOCOL_REPS_BY_CODE.gvt} repetições com carga moderada e 1 min de intervalo, focando em volume total (German Volume Training).`,
   forced_reps: 'Após a falha, receba ajuda mínima de um parceiro (ou mão oposta) para completar 2–3 repetições extras.',
   negative_reps: 'O parceiro realiza a fase concêntrica; você controla apenas a descida (fase excêntrica) de forma lenta.',
   partial_reps: 'Após a falha em amplitude completa, continue com repetições em amplitude reduzida.',

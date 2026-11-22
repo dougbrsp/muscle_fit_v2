@@ -60,8 +60,8 @@ Frontend: `frontend/src/lib/progression-scope.ts` (formatação pura: `scopeLabe
 
 ## Fora desta decisão
 
-1. Separar, no detalhe do exercício, "última exposição vs. anterior" de "tendência da janela". Hoje só existe a primeira leitura. Criar a tendência seria uma regra nova de motor, não feita aqui.
-2. `frontend/src/app/(app)/dashboard/treinos/AnaliseIaSnapshot.tsx` e `frontend/src/mobile/screens/evolucao/AnaliseIaSnapshotMobile.tsx`: o selo do exercício vem do snapshot da análise de IA, outro contrato, ainda sem escopo.
+1. Separar, no detalhe do exercício, "última exposição vs. anterior" de "tendência da janela". Hoje só existe a primeira leitura. Criar a tendência seria uma regra nova de motor, não feita aqui. **Resolvido** pelo [ADR 0025](0025-tendencia-da-janela-e-escopo-na-analise-por-ia.md), em 21/11/2026.
+2. `frontend/src/app/(app)/dashboard/treinos/AnaliseIaSnapshot.tsx` e `frontend/src/mobile/screens/evolucao/AnaliseIaSnapshotMobile.tsx`: o selo do exercício vem do snapshot da análise de IA, outro contrato, ainda sem escopo. **Resolvido** pelo [ADR 0025](0025-tendencia-da-janela-e-escopo-na-analise-por-ia.md), em 21/11/2026: o snapshot leva `status_scope` em cada item e a tela mostra o escopo.
 3. Card mobile do grupo: o percentual em destaque não tem rótulo próprio; a explicação fica no rodapé e no detalhe.
 
 ## Ver também

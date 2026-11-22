@@ -1213,7 +1213,11 @@ PADROES: tuple[Padrao, ...] = (
         regex=re.compile(
             r"\b(?:MATCH_(?:MIN_SCORE|AUTO_ACCEPT_\w+)|QUERY_COVERAGE_WEIGHT|TOKEN_JACCARD_WEIGHT|SEQUENCE_RATIO_WEIGHT"
             r"|SEARCH_(?:CANDIDATE_POOL|RESULT_LIMIT_\w+)|FULLTEXT_MIN_TOKEN_CHARS|PORTION_AMOUNT_MAX"
-            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
+            r"|ML_BASIS_MAX_DENSITY_G_PER_ML|BRAND_MIN_CHARS|BRAND_TOKENS_MAX|LIST_OFFSET_MAX"
+            r"|LIST_PAGE_(?:DEFAULT|MAX))\s*(?::[^=\n]+)?=\s*[\d(]"
+            # #235: rótulos do balde da listagem (literal de texto) e o mapa de rótulos (vocabulário).
+            r"""|\b(?:DEFAULT_LIST_BUCKET|OTHER_BUCKET_LABEL)\s*(?::[^=\n]+)?=\s*["'`]"""
+            r"|\bLIST_BUCKET_LABELS\s*(?::[^=\n]+)?=\s*(?:[{(\[]|dict\(|Object\.fromEntries|new Map)"
             # Vocabulário do matching redefinido (o worker do parse, L5, é o risco óbvio).
             r"|\b(?:SYNONYMS|STOPWORDS|NOISE_TOKENS|LETTERS|LIST_BUCKETS)\s*(?::[^=\n]+)?=\s*(?:[{(\[]|frozenset|new Set)"
             # #208: o alfabeto também por `tuple("ABC...")`, `list(...)`, `Array.from(...)`, string literal ou `string.ascii_uppercase`.
@@ -2058,6 +2062,36 @@ PADROES: tuple[Padrao, ...] = (
         inventario="M102 (§71)",
     ),
     Padrao(
+        chave="tendencia_janela_paralela",
+        regra="tendência da janela do exercício recalculada fora do dono: média por metade da janela (`sum(x[:half]) / half`) "
+        "ou atribuição de `initial_mean`/`final_mean`",
+        # 2026-11-21 (#239): dono `comparability.window_trend`. Anotação de contrato (`initial_mean: float | None = None`),
+        # chave de dicionário e leitura (`trend.initial_mean`) não casam: o nome vem seguido direto de `=`. O ramo da fatia
+        # exige `half` na fatia, para não acusar média de fatia de outro domínio.
+        regex=re.compile(
+            r"\bsum\([^)\n]*\[[^\]\n]*half[^\]\n]*\]\s*\)\s*/"
+            r"|\b(?:initial|final)_mean\s*=(?!=)"
+            r"|\b(?:initialMean|finalMean)\s*=(?!=)"
+        ),
+        donos=("api/app/intelligence/dashboard/comparability.py",),
+        inventario="#239",
+    ),
+    Padrao(
+        chave="reps_protocolo_tecnica",
+        regra="séries/repetições de protocolo de técnica (GVT 10x10, FST-7 7 séries) definidas ou atreladas ao código da técnica "
+        "à mão fora do dono",
+        # 2026-11-21 (#231): dono `technique_accounting` (`SETS_ONLY_DEFAULT_SETS`, `PROTOCOL_REPS_BY_CODE`,
+        # `GVT_PROTOCOL_REPS`); o espelho `technique-accounting.ts` as LÊ de `motor-constants.generated.json`
+        # (`= RULE.<campo>`), por isso atribuição cujo valor vem de `RULE` não casa. Leituras (`.get(code)`, `[value]`) não casam.
+        regex=re.compile(
+            r"\b(?:GVT_PROTOCOL_REPS|PROTOCOL_REPS_BY_CODE|SETS_ONLY_DEFAULT_SETS)\s*(?::[^=\n]+)?=(?!=)(?!\s*RULE\b)"
+            r"""|["'`](?:gvt|fst7)["'`]\s*(?:\]\s*)?[:?]\s*\d"""
+            r"""|===?\s*["'`](?:gvt|fst7)["'`]\s*\?\s*\d"""
+        ),
+        donos=("api/app/domain/technique_accounting.py",),
+        inventario="#231",
+    ),
+    Padrao(
         chave="status_progressao_paralelo",
         regra="status de progressão (exercício ou grupo) CLASSIFICADO fora do dono: `return`/atribuição de "
         "`ExerciseProgressionStatus.<status>` ou de PROGREDINDO/ESTAVEL/REGREDINDO, e contagem por status "
@@ -2147,7 +2181,8 @@ PADROES: tuple[Padrao, ...] = (
             r"\b(?:DEFAULT_\w*CALORIE_MODE|SHADOW_CALORIE_MODE)\s*(?::[^=\n]+)?=\s*(?:[(\\]\s*)?"
             # `(`/`\` opcionais: Python quebra a linha só com parêntese ou barra invertida.
             # `CalorieMode.X` (com ou sem `.value`, com qualquer prefixo de módulo), `CalorieMode("x")`, literal
-            # de modo; o `\s*` depois do `=` atravessa a quebra de linha, então a atribuição em duas linhas (#200) também é acusada.
+            # de modo. A varredura é por linha: a atribuição em duas linhas (#200) é acusada porque `junta_continuacao=True`
+            # faz `ocorrencias()` juntar a linha que termina em `=`, `= (` ou `= \` com a seguinte (só a seguinte).
             r"""(?:(?:\w+\.)*CalorieMode(?:\.\w+|\(\s*["'`]\w+["'`]\s*\))|["'`](?:active|gross|unknown)["'`])"""
         ),
         donos=("api/app/domain/nutrition/activity_energy.py",),
@@ -2572,6 +2607,8 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     # (`domain/progression_status_labels.py`; FE via `motor-constants.generated.json`).
     # Contagem única de progressão (2026-11-01, C12): nasce vazia.
     "status_progressao_paralelo": {},
+    "tendencia_janela_paralela": {},  # #239 (2026-11-21): nasce vazia
+    "reps_protocolo_tecnica": {},  # #231 (2026-11-21): nasce vazia
     # Issue #188, etapa 3: a tendência de volume ("Estável") sai pronta do dono; a
     # entrada de `VolumeGrupamentosClient.tsx` caiu (falha até a tarefa de frontend).
     "rotulo_progressao": {},
@@ -3508,8 +3545,11 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "export const SEARCH_RESULT_LIMIT_MAX = 50;", "BRAND_MIN_CHARS = 3", "LIST_PAGE_MAX: Final[int] = 100",
          "const LETTERS = ['A', 'B'];", "OTHER_BUCKET = 'outros'",
          'LETTERS: Final[tuple[str, ...]] = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")', "LETTERS = list(string.ascii_uppercase)",
-         "LETTERS = string.ascii_uppercase", "const LETTERS = Array.from('ABC');", 'LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"'),
-        ("if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
+         "LETTERS = string.ascii_uppercase", "const LETTERS = Array.from('ABC');", 'LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"',
+         "LIST_OFFSET_MAX = 10000", "BRAND_TOKENS_MAX: Final[int] = 5", "OTHER_BUCKET_LABEL = 'Outros'",
+         'DEFAULT_LIST_BUCKET: Final[str] = "A"', "LIST_BUCKET_LABELS = {", "const LIST_BUCKET_LABELS = new Map(["),
+        ("le=food_text.LIST_OFFSET_MAX", "food_text.DEFAULT_LIST_BUCKET", "dict(food_text.LIST_BUCKET_LABELS)",
+         "rotulo = food_text.OTHER_BUCKET_LABEL", "if nota >= food_text.MATCH_MIN_SCORE:", "params.append(food_text.SEARCH_CANDIDATE_POOL)",
          "assert ft.MATCH_MIN_SCORE == 0.6", "limite = SEARCH_RESULT_LIMIT_MAX", "amount <= catalog.PORTION_AMOUNT_MAX",
          "for alias in SYNONYMS:", "palavras = [p for p in texto.split() if p not in STOPWORDS]",
          "letra = food_text.LETTERS[0]", "ok = codigo in food_text.LETTERS", "tamanho = len(food_text.LETTERS)",
@@ -3826,6 +3866,19 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "fallback_registro_serie_cadeia": (
         ("lastSet?.reps ?? 10", "suggested?.suggested_load_kg ?? 20", "set.weight_kg ?? 20"),
         ("lastSet?.reps ?? SET_LOGGER_FALLBACK_REPS", "set.reps ?? 0", "x.weight_kg ?? null", "anchorRpe ?? 10"),
+    ),
+    "tendencia_janela_paralela": (
+        ("initial = sum(valid[:half]) / half", "final = sum(valid[-half:]) / half", "initial_mean = 4.0",
+         "final_mean = sum(xs) / n", "const initialMean = 3;", "finalMean = calc()"),
+        ("initial_mean: float | None = None", '"initial_mean": trend.initial_mean,', "x = trend.initial_mean",
+         "if initial_mean == 0:", "media = sum(xs[:3]) / 3", "const m = t.finalMean;"),
+    ),
+    "reps_protocolo_tecnica": (
+        ("GVT_PROTOCOL_REPS = 10", "SETS_ONLY_DEFAULT_SETS: Final[Mapping[str, int]] = {'fst7': 7}",
+         'PROTOCOL_REPS_BY_CODE = {"gvt": 10}', "const reps = value === 'gvt' ? 10 : 7;", '"gvt": 10,', "'fst7': 7"),
+        ("SETS_ONLY_DEFAULT_SETS.gvt", "SETS_ONLY_DEFAULT_SETS[value]", "PROTOCOL_REPS_BY_CODE.get(code)",
+         "export const SETS_ONLY_DEFAULT_SETS: Readonly<Record<string, number>> = RULE.sets_only_default_sets;",
+         "if (code === 'gvt') return x;", "GVT_PROTOCOL_REPS == 10"),
     ),
     "status_progressao_paralelo": (
         ("return ExerciseProgressionStatus.PROGRESSING", "status = ExerciseProgressionStatus.REGRESSING",

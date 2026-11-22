@@ -112,3 +112,17 @@ def test_derivacao_da_ancora_e_a_ultima_serie_de_trabalho_anterior():
     assert ta.derive_anchor_set_number(5, anteriores) == 3
     assert ta.derive_anchor_set_number(None, anteriores) == 5
     assert ta.derive_anchor_set_number(2, anteriores) is None
+
+
+def test_sets_only_default_sets_paridade_com_a_semeadura_da_migracao_060():
+    import importlib.util
+    from pathlib import Path
+
+    from app.domain.technique_accounting import SETS_ONLY_CODES, SETS_ONLY_DEFAULT_SETS
+
+    path = Path(__file__).resolve().parents[2] / "db" / "migrations" / "060_tecnicas_coeficientes_e_backfill.py"
+    spec = importlib.util.spec_from_file_location("mig060_paridade", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    semeado = {c: v[3] for c, v in mod.COEFFICIENTS.items() if c in SETS_ONLY_CODES}
+    assert dict(SETS_ONLY_DEFAULT_SETS) == semeado

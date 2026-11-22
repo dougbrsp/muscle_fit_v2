@@ -62,18 +62,39 @@ Restrições reais:
 
 ## Limites e pendências
 
-- (a) Exposição sem RPE não entra na tendência, porque sem RPE não há e1RM confiável (`REASON_NO_E1RM_WITHOUT_RPE` quando a média inicial não é positiva; caso geral: menos de 4 válidas).
+- (a) Exposição sem RPE não entra na tendência, porque sem RPE não há e1RM confiável (caso geral: menos de 4 válidas, `REASON_NOT_ENOUGH_EXPOSURES`; média inicial não positiva também devolve `REASON_NOT_ENOUGH_EXPOSURES`, corrigido em 21/11/2026, ver Atualização).
 - (b) A janela é a exibida no detalhe: mudar o período muda a tendência. Isso é intencional (a tendência é do período que a tela mostra), mas precisa ser lido com o selo "Tendência da janela".
 - (c) Com N ímpar a exposição do meio não conta nas médias.
 - (d) A tendência não está no painel geral (`overview_service`), na progressão por grupo nem na análise por IA.
 - (e) Não há teste de renderização do detalhe do exercício (`ExerciseProgressClient.tsx`, `ExercicioScreen.tsx`). A cobertura é da função pura `window_trend`, do contrato e de `buildWindowTrendView`.
 - (f) No mobile do snapshot, o escopo aparece como texto no subtítulo da linha, não como selo.
 - (g) Nenhuma tela foi vista em navegador nem em iPhone.
-- (h) A distribuição real dos status da tendência não foi medida. Replay pelo próprio motor não feito; a medição de quantos dos 93 pares têm 4 exposições comparáveis com e1RM confiável também não foi feita (ver o Lote 8 no mapa).
+- (h) Resolvido em 21/11/2026 pelo replay no banco de desenvolvimento (ver Atualização): 10 de 81 pares atingem 4 exposições comparáveis. A base de 93 pares citada no Lote 8 do mapa não coincide com a do replay (81 pares, janela de 90 dias).
 
 ## Verificação
 
 - Suíte unitária inteira do backend, local: 17.877 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).
 - Guarda dos motores, executada depois das mudanças do frontend: 485 passaram; a allowlist não mudou.
 - Frontend: 61 testes Vitest dos diretórios tocados passaram; `tsc --noEmit` sem erro.
-- Não verificado: nenhuma tela foi vista em navegador nem em iPhone; a tendência com dados reais de produção.
+- Não verificado: nenhuma tela foi vista em navegador nem em iPhone; a tendência em produção (o replay de 21/11/2026 rodou no banco de desenvolvimento, cópia de produção).
+
+## Atualização de 21/11/2026 (#239 e #177)
+
+**Replay com dados reais (#239).** Feito em 21/11/2026 no banco de desenvolvimento (cópia de produção), pelo próprio motor e só com leitura: `exposure_service.build_exercise_progress` para cada item de `get_exercises_progression_batch`, janela de 90 dias, por objetivo. Um usuário, 81 pares exercício×objetivo:
+
+- 71 com dados insuficientes: 51 por `not_enough_comparable_exposures` e 20 por `equipment_context_in_calibration`;
+- 8 progredindo (`e1rm_up`), 2 estáveis (`no_change`), nenhum regredindo.
+
+Exposições comparáveis usadas por par: 0 em 33 pares, 1 em 20, 2 em 10, 3 em 8 e 4 ou mais em 10.
+
+Consequência: só 10 de 81 pares atingem o mínimo de 4 exposições comparáveis (`THRESHOLDS.window_trend_min_exposures`, `metrics_registry.py` L370). A tendência aparece hoje em cerca de um a cada oito exercícios. O mínimo e a janela não mudaram, por decisão do usuário de 19/11/2026 (metades da janela, mínimo de 4). Mudar um dos dois é decisão nova, com replay antes.
+
+**Motivo na média inicial não positiva.** `comparability.window_trend` (L1409-1410) devolve `REASON_NOT_ENOUGH_EXPOSURES` quando a média inicial não é positiva. A versão anterior devolvia `REASON_NO_E1RM_WITHOUT_RPE`, que fala de RPE e não descrevia o caso. O item (a) dos limites está corrigido.
+
+**Título do bloco (web e mobile).** `frontend/src/lib/exercise-window-trend.ts::windowTrendHeading(scope)` devolve o rótulo do escopo enviado pela API como título, e a descrição do escopo como `title` do elemento. Sem o campo `scope`, o título é `WINDOW_TREND_FALLBACK_TITLE` ("Tendência da janela"). Usado em `ExerciseProgressClient.tsx` (L293-294) e `ExercicioScreen.tsx` (L202-203). A legenda que repetia o escopo saiu do bloco.
+
+**Testes do frontend.** `frontend/src/lib/exercise-window-trend.test.ts` usa o código de motivo real (`not_enough_comparable_exposures`). `frontend/src/app/(app)/dashboard/exercicios/[exerciseId]/ExerciseProgressClient.titulos.test.ts` cobre `windowTrendHeading`, inclusive a reserva sem escopo.
+
+**Guarda dos motores.** `api/tests/unit/test_guarda_fontes_da_verdade.py` ganha o padrão `tendencia_janela_paralela` (L2064-2078). Ele acusa média por metade de janela (`sum(...[...half...]) / half`) e atribuição de `initial_mean`/`final_mean` (ou `initialMean`/`finalMean`) fora de `comparability.py`. A allowlist nasce vazia (L2610). O ramo de média de fatia depende do nome `half`: uma média de fatia com outro nome não é acusada.
+
+**Limites que continuam.** (e), (f) e (g) acima seguem valendo: sem teste de renderização do detalhe, telas não vistas em navegador nem em iPhone, e o escopo do mobile do snapshot como texto. A tendência continua fora do painel geral, da progressão por grupo e da análise por IA (item d).

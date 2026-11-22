@@ -64,7 +64,7 @@ import {
   progressionDecisionLabel,
   statusReasonsText,
 } from '@/lib/exercise-progress';
-import { buildWindowTrendView } from '@/lib/exercise-window-trend';
+import { buildWindowTrendView, windowTrendHeading } from '@/lib/exercise-window-trend';
 import { loadConventionLabel } from '@/lib/equipment-exercises-types';
 import {
   defaultGoalValue,
@@ -290,11 +290,10 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
           <Stack gap={4} mt="md" data-testid="window-trend">
             <Divider />
             <Group gap="sm" wrap="wrap" align="center" mt="xs">
-              <Text size="sm" fw={600} c={BRAND.textPrimary}>
-                Tendência da janela
+              <Text size="sm" fw={600} c={BRAND.textPrimary} title={windowTrendHeading(windowTrend.scope).description ?? undefined}>
+                {windowTrendHeading(windowTrend.scope).title}
               </Text>
               <StatusBadge domain="exerciseProgression" code={windowTrend.statusCode} size="md" />
-              <ScopeCaption scope={windowTrend.scope} />
             </Group>
             {windowTrend.changeText && windowTrend.meansText && (
               <Text size="sm" c={BRAND.textMuted}>

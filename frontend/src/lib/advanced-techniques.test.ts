@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import motorConstants from './motor-constants.generated.json';
+
 import {
   ADVANCED_TECHNIQUES_PATH,
   FALLBACK_ADVANCED_TECHNIQUES,
   getAdvancedTechniqueApplicationNoun,
   getAdvancedTechniqueCatalog,
+  getAdvancedTechniqueDefaultSetsCount,
   getAdvancedTechniqueDescription,
   getAdvancedTechniqueLabel,
   getAdvancedTechniqueOptions,
@@ -52,6 +55,18 @@ describe('fallback local (antes da API responder)', () => {
     expect(getAdvancedTechniqueApplicationNoun(code)).toBe(noun);
     expect(getAdvancedTechniqueLabel(code)).toBe(label);
     expect(getAdvancedTechniqueDescription(code)).toBeTruthy();
+  });
+
+  it('séries padrão de FST-7 e GVT vêm do espelho (fallback e função)', () => {
+    const rule = motorConstants.technique_accounting;
+    for (const code of ['fst7', 'gvt']) {
+      expect(getAdvancedTechniqueDefaultSetsCount(code)).toBe(rule.sets_only_default_sets[code as 'fst7' | 'gvt']);
+      expect(FALLBACK_ADVANCED_TECHNIQUES.find((i) => i.code === code)?.default_sets_count).toBe(
+        rule.sets_only_default_sets[code as 'fst7' | 'gvt'],
+      );
+    }
+    expect(getAdvancedTechniqueDescription('gvt')).toContain(String(rule.protocol_reps_by_code.gvt));
+    expect(getAdvancedTechniqueDefaultSetsCount('drop_set')).toBeNull();
   });
 
   it('código desconhecido/nulo não quebra', () => {
