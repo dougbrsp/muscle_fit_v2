@@ -62,6 +62,7 @@ router = APIRouter(tags=["equipment-exercises"])
 logger = logging.getLogger(__name__)
 
 PUBLIC_ASSETS_DOMAIN = "app.musclefit.com.br"
+EQUIPMENT_EXERCISES_MAX_LIMIT = 1000  # teto de `limit` em GET /equipment-exercises (#246)
 NOTES_MAX_LENGTH = 500  # equipment_exercises.notes VARCHAR(500)
 
 MIRROR_OK = "mirrored"
@@ -472,6 +473,8 @@ def list_equipment_exercises(
     exercise_id: Optional[int] = Query(default=None),
     primary_group: Optional[str] = Query(default=None),
     active_only: bool = Query(default=True),
+    limit: Optional[int] = Query(default=None, ge=1, le=EQUIPMENT_EXERCISES_MAX_LIMIT),  # #246: ausente = tudo
+    offset: Optional[int] = Query(default=None, ge=0),
 ):
 
     where: List[str] = []
@@ -524,8 +527,12 @@ def list_equipment_exercises(
             ORDER BY emc_sec.id ASC LIMIT 1
         )
         {where_sql}
-        ORDER BY eq.name, pg.name, ec.name
+        ORDER BY eq.name, pg.name, ec.name, eqex.id
     """
+    if limit is not None or offset:
+        # offset sem limit: MySQL exige LIMIT; o teto cobre o catalogo inteiro.
+        sql_template += " LIMIT %s OFFSET %s"
+        params.extend([limit if limit is not None else EQUIPMENT_EXERCISES_MAX_LIMIT, offset or 0])
 
     with _connect() as conn:
         with conn.cursor() as cursor:

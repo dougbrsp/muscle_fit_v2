@@ -46,6 +46,8 @@ from .progression_engine import (
     EVIDENCE_TRANSITION_DEFERRED,
     INCREASE_LOAD,
     LOAD_NOT_APPLICABLE,
+    NO_DIRECT_WORK_NO_LOAD_REASON,
+    NO_DIRECT_WORK_REASON,
     SET_REP_RANGE_10_12,
     SKIP,
     cap_load_to_ceiling,
@@ -301,7 +303,7 @@ def progression_note(suggestion: PairSuggestion) -> str:
             return f"{NO_HISTORY_ON_EQUIPMENT_NOTE} — comece conservador dentro da faixa {reps or 'prescrita'}."
         return f"{NO_HISTORY_NOTE} — comece conservador dentro da faixa {reps or 'prescrita'}."
     if code == SKIP:
-        return "Grupo sem trabalho direto pela recuperação: sem progressão nesta sessão."
+        return NO_DIRECT_WORK_REASON if suggestion.suggested_load_kg is not None else NO_DIRECT_WORK_NO_LOAD_REASON
     partes: list[str] = []
     if evidence.get(EVIDENCE_TRANSITION_DEFERRED):
         partes.append("Dose reduzida pela recuperação: manter a carga e adiar a progressão.")

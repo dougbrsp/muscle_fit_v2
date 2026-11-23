@@ -1281,7 +1281,7 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
         return
     cur.execute(
         "SELECT id, set_number, reps_pending, measure, rpe_target_source, rpe_target_planned FROM exercise_sets "
-        f"WHERE exercise_id = %s AND {sql_is_working('set_type')} ORDER BY set_number",
+        f"WHERE exercise_id = %s AND {sql_is_working('set_type')} ORDER BY set_number FOR UPDATE",
         (exercise_id,),
     )
     for position, row in enumerate(cur.fetchall() or []):
@@ -1560,14 +1560,14 @@ def add_session_set(
 
             # #213: a marca muda ANTES de avaliar/gravar, para a própria 1ª série
             # de trabalho já ser tratada pelo valor novo; travada = ignora.
-            if payload.exercise_form_practice is not None:
-                # Serializa POSTs simultâneos da 1ª série de trabalho com marcas diferentes.
-                # Depois do lock tudo é leitura CORRENTE (o snapshot do REPEATABLE READ nasceu
-                # antes dele): a marca gravada e a contagem de séries de trabalho.
-                cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
-                locked_row = cur.fetchone()
-                if locked_row:
-                    exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
+            # #241: trava a linha do exercicio em todo envio, para dois POSTs simultaneos do
+            # mesmo exercicio nao calcularem posicao/`set_number` sobre o mesmo retrato.
+            # Depois do lock tudo e leitura CORRENTE (o snapshot do REPEATABLE READ nasceu
+            # antes dele): a marca gravada e a contagem de series de trabalho.
+            cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
+            locked_row = cur.fetchone()
+            if locked_row and payload.exercise_form_practice is not None:
+                exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
             # Sem o campo ainda conta (sem trava): a resposta informa `form_practice_locked`.
             working_before = _working_sets_recorded(cur, exercise_id, locking=payload.exercise_form_practice is not None)
             stored_mark = is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN))
@@ -1841,6 +1841,11 @@ def update_session_set(
         with conn.cursor() as cur:
             _get_live_session(cur, session_id, identity.user_id)
             exercise_row = _session_exercise_row(cur, session_id, exercise_id)
+            # Ordem unica de travas (igual ao POST): exercises -> exercise_sets (evita deadlock 1213).
+            cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
+            locked_row = cur.fetchone()
+            if locked_row:
+                exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
             cur.execute(
                 "SELECT id, set_number, set_type, reps, weight_kg, rpe, muscle_pain, joint_pain, "
                 "rpe_target_effective, rpe_target_planned, safety_event, technique_code, anchor_set_number, "
@@ -1879,6 +1884,24 @@ def update_session_set(
                 protocol_target=_stored_protocol_target(stored),
             )
             safety_event = reading.safety_event
+            # #241: serie que chegou pendente e so agora e confirmada (e a de trabalho, de
+            # repeticoes, sem protocolo, com esperado ja gravado) ganha o esperado do degrau da
+            # rampa da sua posicao, pela mesma composicao do POST; as seguintes sao corrigidas
+            # como na chegada fora de ordem.
+            replan = (
+                stored.get("reps_pending")
+                and not merged["reps_pending"]
+                and set_type == WORKING
+                and is_rep_based(merged.get("measure"))
+                and stored.get("rpe_target_source") is None
+                and stored.get("rpe_target_planned") is not None
+                and not stored.get("technique_code")
+                and not is_deload_session(exercise_row.get("deload_source"))
+                and not is_form_practice(exercise_row.get(FORM_PRACTICE_COLUMN))
+            )
+            planned_now = (
+                effective_intensity.planned_set_rpe_target(set_type, reading.target) if replan else None
+            )
             cur.execute(
                 "UPDATE exercise_sets SET reps = %s, weight_kg = %s, rpe = %s, reps_pending = %s, safety_event = %s, "
                 "reps_left = %s, reps_right = %s, rpe_left = %s, rpe_right = %s "
@@ -1893,6 +1916,12 @@ def update_session_set(
                     stored["id"],
                 ),
             )
+            if replan:
+                if planned_now is not None and float(planned_now) != float(stored["rpe_target_planned"]):
+                    cur.execute(
+                        "UPDATE exercise_sets SET rpe_target_planned = %s WHERE id = %s", (planned_now, stored["id"])
+                    )
+                _resync_planned_rpe_after_late_set(cur, exercise_id, set_number, exercise_row, intensity)
             if safety_event in SAFETY_ALERT_EVENTS and safety_event != stored.get("safety_event"):
                 log_event(
                     EVENT_SAFETY_RPE_ABOVE_CEILING,

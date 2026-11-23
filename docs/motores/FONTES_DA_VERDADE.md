@@ -7884,3 +7884,20 @@ Limites:
 - a carga mantida é a última carga da trilha, sem ajuste pela prontidão do dia; ela pode ter sido executada em sessão antiga;
 - trilha sem carga continua sem carga (caso da elevação tibial);
 - a carga mantida só vale para fichas geradas ou congeladas depois do deploy.
+
+**Lote 32 de 22/11/2026 (acabamentos de backend do treino: #237, #239, #241, #244, #246, #277).** Sem migração. Escolhas do usuário de 22/11/2026, todas "não fazer": esperado no formulário de edição da série; isolar a falha da correção do esperado; trava no deploy contra migração desligada; corrigir o comentário da migração 121; carga pela última execução quando a progressão não tem carga; investigar dois exercícios sem carga com grupo liberado. Mudanças:
+
+- Envio da série (`api/app/workout_sessions.py`): trava a linha do exercício (`FOR UPDATE`) em todo POST e na leitura de `_resync_planned_rpe_after_late_set`, serializando envios simultâneos do mesmo exercício. Ao confirmar série pendente, grava `rpe_target_planned` com o degrau pela mesma composição do envio (`planned_set_rpe_target`) e regrava as seguintes. Ordem única de travas, no envio e na confirmação: primeiro a linha do exercício (`exercises`), depois as séries (`exercise_sets`). Série de técnica (`technique_code`) fica fora da regravação.
+- Motivo de sem trabalho direto: `NO_DIRECT_WORK_REASON` e `NO_DIRECT_WORK_NO_LOAD_REASON` (dono `api/app/domain/progression_engine.py`) ganharam acentos; `api/app/domain/prescription_service.py` usa as constantes na nota, sem texto próprio.
+- Guarda: o padrão `tendencia_janela_paralela` pega média de fatia de janela com qualquer nome de variável, exigindo `:` na fatia (ex.: positivo `sum(x[:k]) / k`, `sum(x[-k:]) / k`, `sum(x[:len(x)//2]) / n`; negativo `sum(x) / len(x)`, média sem fatia). Mantém a forma antiga com `half` e qualquer divisor. Allowlist vazia.
+- Equipamento explícito (`services.validate_explicit_equipment`, `api/app/services.py`): Importação e Registro validam o `equipment_id` pela mesma função do Modo Treino (`ensure_session_equipment`), só quando o equipamento informado difere do gravado ou em registro novo.
+- `GET /gym-equipment/recommend` e `/recommend-all` devolvem `load_convention` normalizada pelo dono.
+- `GET /equipment-exercises` aceita `limit` e `offset` opcionais (`EQUIPMENT_EXERCISES_MAX_LIMIT`).
+
+Impacto em produção: medido no DEV (cópia dos dados de produção de 22/11/2026). A consulta nova do recomendador devolve os mesmos ids da antiga (academia 48: 89 candidatos; academia 1: 133). O esperado gravado muda só daí em diante, para séries pendentes confirmadas; sem retroativo. A confirmação de série pendente também regrava o esperado das séries de trabalho seguintes já gravadas do mesmo exercício na sessão em curso, não só o da série confirmada. O texto do motivo de sem trabalho direto passa a ter acentos. Importação e Registro passam a recusar com 422 equipamento inexistente, de outra academia ou incoerente, só quando o equipamento muda; o mesmo equipamento já gravado segue aceito (registros antigos incoerentes continuam editáveis).
+
+Não medido:
+
+- quantos clientes enviam o `equipment_id` na Importação;
+- a trava `FOR UPDATE` sob concorrência real;
+- a integração, que roda só no CI.

@@ -16,6 +16,7 @@ def _item():
         "manufacturer_source": "gym",
         "can_edit_manufacturer": True,
         "gym_equipment_id": 1,
+        "load_convention": "total",
     }
 
 
@@ -34,3 +35,4 @@ def test_trim_tira_campos_do_fabricante_e_mantem_os_demais():
     for item in itens:
         assert set(item) == {"id", "equipment_name"}
         assert not set(FABRICANTE) & set(item)
+        assert "load_convention" not in item  # #244: so rotas e tela consomem
