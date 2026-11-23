@@ -97,6 +97,22 @@ def test_fluxo_da_receita_identico_nos_dois_backends(aluno_id, raw, monkeypatch,
         assert editada.json()["recipe"]["version"] == 2, backend
         assert [r["id"] for r in c.get("/nutrition/recipes").json()["items"]] == [rid], backend
 
+        # Edição preserva o snapshot (sem refresh), versões e cópia (#286, fatia 2 parte 1).
+        with raw.cursor() as cur:
+            cur.execute("SELECT energy_kcal FROM food_items WHERE id = %s", (taco[TACO_ARROZ],))
+            kcal_arroz = float(cur.fetchone()["energy_kcal"])
+        ingredientes = editada.json()["recipe"]["ingredients"]
+        assert [i["catalog_status"] for i in ingredientes] == ["current", "current"], backend
+        assert ingredientes[0]["per_100"]["energy_kcal"] == pytest.approx(kcal_arroz), backend
+        versoes = c.get(f"/nutrition/recipes/{rid}/versions")
+        assert versoes.status_code == 200 and [v["version"] for v in versoes.json()["items"]] == [2, 1], backend
+        copia = c.post(f"/nutrition/recipes/{rid}/duplicate")
+        assert copia.status_code == 201, (backend, copia.text)
+        assert copia.json()["id"] != rid and copia.json()["name"].startswith("Arroz refogado"), backend
+        assert copia.json()["recipe"]["version"] == 1, backend
+        assert [r["id"] for r in c.get("/nutrition/recipes").json()["items"]].count(copia.json()["id"]) == 1, backend
+        assert c.delete(f"/nutrition/foods/{copia.json()['id']}").status_code == 200, backend
+
         busca = c.get("/nutrition/foods/search", params={"q": "arroz refogado"}).json()["items"]
         assert any(i["id"] == rid for i in busca), backend
         sem = c.get("/nutrition/foods/search", params={"q": "arroz refogado", "exclude_recipes": "true"}).json()["items"]

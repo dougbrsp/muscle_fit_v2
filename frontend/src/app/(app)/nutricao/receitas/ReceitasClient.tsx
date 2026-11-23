@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { RecipeEditor } from '@/components/nutrition/RecipeEditor';
-import { deleteFood, fetchRecipe, fetchRecipes, nutritionErrorInfo, recipeKeys } from '@/lib/nutrition-api';
+import { deleteFood, duplicateRecipe, fetchRecipe, fetchRecipes, nutritionErrorInfo, recipeKeys } from '@/lib/nutrition-api';
 import { usePresentationSlot } from '@/lib/presentation-slots';
 import { BRAND } from '@/theme';
 
@@ -47,8 +47,17 @@ export function ReceitasClient() {
     },
   });
 
+  const duplicate = useMutation({
+    mutationFn: (id: number) => duplicateRecipe(id),
+    onSuccess: async (copia) => {
+      await refresh();
+      if (copia?.id != null) setEditing(copia.id);
+    },
+  });
+
   function open(target: 'new' | number) {
     archive.reset();
+    duplicate.reset();
     setEditing(target);
   }
 
@@ -104,6 +113,11 @@ export function ReceitasClient() {
               {nutritionErrorInfo(archive.error, 'Não foi possível arquivar a receita.').message}
             </Alert>
           )}
+          {duplicate.isError && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+              {nutritionErrorInfo(duplicate.error, 'Não foi possível duplicar a receita.').message}
+            </Alert>
+          )}
           {list.isLoading && <Loader size="sm" aria-label="Carregando as receitas" />}
           {list.isError && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
@@ -145,6 +159,16 @@ export function ReceitasClient() {
                   <Group gap="xs">
                     <Button variant="light" size="xs" onClick={() => open(r.id)} aria-label={`Editar ${r.name}`}>
                       Editar
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="xs"
+                      loading={duplicate.isPending && duplicate.variables === r.id}
+                      disabled={duplicate.isPending}
+                      onClick={() => duplicate.mutate(r.id)}
+                      aria-label={`Duplicar ${r.name}`}
+                    >
+                      Duplicar
                     </Button>
                     <Button variant="subtle" color="red" size="xs" onClick={() => {
                         archive.reset();

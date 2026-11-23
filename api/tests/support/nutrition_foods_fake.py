@@ -117,7 +117,9 @@ class FakeFoodsDB:
             sqls = {
                 recipes.CURRENT_VERSION_SQL: "current", recipes.MAX_VERSION_SQL: "max",
                 recipes.MAX_VERSION_FOR_UPDATE_SQL: "max",
-                recipes.INSERT_VERSION_SQL: "ins_version", recipes.INGREDIENTS_OF_VERSION_SQL: "ingredients",
+                f"{recipes.CURRENT_VERSION_SQL} FOR UPDATE": "current",
+                f"{recipes.INGREDIENTS_OF_VERSION_SQL} FOR UPDATE": "ingredients",
+                recipes.VERSIONS_LIST_SQL: "versions", recipes.INSERT_VERSION_SQL: "ins_version", recipes.INGREDIENTS_OF_VERSION_SQL: "ingredients",
                 recipes.INSERT_INGREDIENT_SQL: "ins_ingredient", recipes.LIST_SQL: "list",
             }
             for n in range(1, 41):
@@ -290,6 +292,8 @@ class FakeCursor:
         elif tipo == "current":
             versoes = [v for v in db.recipe_versions.values() if v["food_id"] == p[0]]
             self._rows = sorted(versoes, key=lambda v: -v["version"])[:1]
+        elif tipo == "versions":
+            self._rows = sorted((v for v in db.recipe_versions.values() if v["food_id"] == p[0]), key=lambda v: -v["version"])
         elif tipo == "max":
             self._rows = [{"v": max((v["version"] for v in db.recipe_versions.values() if v["food_id"] == p[0]), default=0)}]
         elif tipo == "ins_version":

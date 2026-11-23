@@ -9,7 +9,12 @@ Rotas (prefixo `/nutrition/recipes`; `nutricao.alimentos`: `ver` nas leituras, `
 - `POST /`             `RecipeSaveIn` -> 201: alimento + versão 1 + ingredientes, numa transação
 - `GET  /`             as receitas ativas do próprio usuário (sem ingredientes)
 - `GET  /{food_id}`    receita + versão atual + ingredientes (`instructions` só para o dono)
-- `PUT  /{food_id}`    `RecipeSaveIn` -> versão nova (version + 1) e atualiza a linha do alimento
+- `PUT  /{food_id}`    `RecipeSaveIn` -> versão nova (version + 1) e atualiza a linha do alimento; ingrediente igual
+                       ao da versão atual (food_id, quantity, unit, portion_id) reaproveita o snapshot gravado, salvo
+                       `refresh_ingredients: true` (todos resolvem do catálogo atual)
+- `GET  /{food_id}/versions`    versões (número, criado em, peso final, energia por 100 g efetiva), só do dono
+- `POST /{food_id}/duplicate`   201: receita nova privada a partir da versão atual (snapshots, ajustes, modo de preparo)
+Leitura: cada ingrediente traz `catalog_status` (`current`|`outdated`|`unavailable`) contra o catálogo de hoje.
 
 Erros, três formatos para a tela: (1) 422 do corpo, no formato do pydantic (`detail` é lista); (2) 422 tipado
 `{error, code, message}` (`recipe_*` do motor e dos ingredientes); (3) 400 `invalid_food` com `errors` (valores do
@@ -40,7 +45,7 @@ from .access import EffectivePermissions, require_permission
 from .access.deps import permissions_for_request
 from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
-from .domain.nutrition import catalog, diary, meal_math
+from .domain.nutrition import catalog, meal_math
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition import recipe as recipe_engine
 from .nutrition_access import can_log_food, can_log_portion
@@ -64,6 +69,9 @@ _VERSION_COLUMNS = (
     "effective_json, engine_version, created_by, created_at"
 )
 CURRENT_VERSION_SQL = f"SELECT {_VERSION_COLUMNS} FROM {VERSIONS} WHERE food_id = %s ORDER BY version DESC LIMIT 1"
+VERSIONS_LIST_SQL = (
+    f"SELECT version, created_at, final_weight_g, effective_json FROM {VERSIONS} WHERE food_id = %s ORDER BY version DESC"
+)
 MAX_VERSION_SQL = f"SELECT COALESCE(MAX(version), 0) AS v FROM {VERSIONS} WHERE food_id = %s"
 MAX_VERSION_FOR_UPDATE_SQL = f"{MAX_VERSION_SQL} FOR UPDATE"
 INSERT_VERSION_SQL = (
@@ -142,36 +150,61 @@ def _by_ids(cur: Any, sql_for: Any, ids: Sequence[int]) -> dict[int, dict[str, A
     return {int(row["id"]): row for row in cur.fetchall() or []}
 
 
-def _resolve_ingredients(cur: Any, identity: Identity, payload: RecipePreviewIn) -> list[_Resolved]:
+def _snapshot_valido(bruto: Any) -> bool:
+    try:
+        snapshot = _json(bruto)
+    except ValueError:
+        return False
+    food = snapshot.get("food") if isinstance(snapshot, dict) else None
+    return isinstance(food, dict) and isinstance(food.get("per_100"), dict)
+
+
+def _item_key(row: dict[str, Any]) -> tuple[int, float, str, Optional[int]]:
+    return recipe_engine.ingredient_key(row["food_id"], row["quantity"], row["unit"], row.get("portion_id"))
+
+
+def _resolve_ingredients(
+    cur: Any, identity: Identity, payload: RecipePreviewIn, reuse: Optional[dict[Any, dict[str, Any]]] = None
+) -> list[_Resolved]:
     """Alimento que o usuário pode usar (regra do diário), não receita; porção do alimento; quantidade na base
-    pelo `meal_math`. 422 com o índice antes de qualquer escrita."""
+    pelo `meal_math`. 422 com o índice antes de qualquer escrita. `reuse` (edição): ingrediente com a mesma chave da
+    versão atual usa o snapshot gravado (sem catálogo, sem checar acesso: a receita salva continua válida)."""
     uid = int(identity.user_id)
     itens = payload.ingredients
-    alimentos = _by_ids(cur, meals_mod.foods_by_ids_sql, [i.food_id for i in itens])
-    porcoes = _by_ids(cur, meals_mod.portions_by_ids_sql, [i.portion_id for i in itens if i.portion_id is not None])
+    reuse = reuse or {}
+    antigos = [reuse.get(recipe_engine.ingredient_key(i.food_id, i.quantity, i.unit, i.portion_id)) for i in itens]
+    # Snapshot gravado nulo/malformado não serve: o ingrediente é resolvido do catálogo como novo.
+    antigos = [a if a is not None and _snapshot_valido(a.get("catalog_snapshot_json")) else None for a in antigos]
+    novos = [i for i, antigo in zip(itens, antigos) if antigo is None]
+    alimentos = _by_ids(cur, meals_mod.foods_by_ids_sql, [i.food_id for i in novos])
+    porcoes = _by_ids(cur, meals_mod.portions_by_ids_sql, [i.portion_id for i in novos if i.portion_id is not None])
     resolvidos: list[_Resolved] = []
-    for indice, item in enumerate(itens):
-        alimento = alimentos.get(int(item.food_id))
-        if alimento is None or not can_log_food(identity, uid, alimento):
-            raise _error(422, f"{ERR_INGREDIENT_NOT_FOUND}:{indice}", index=indice)
-        if catalog.is_recipe_source(alimento.get("source")):
-            raise _error(422, f"{ERR_INGREDIENT_IS_RECIPE}:{indice}", index=indice)
-        porcao = None
-        if item.portion_id is not None:
-            porcao = porcoes.get(int(item.portion_id))
-            if porcao is None or int(porcao["food_id"]) != int(item.food_id) or not can_log_portion(identity, uid, porcao):
-                raise _error(422, f"{ERR_INGREDIENT_PORTION}:{indice}", index=indice)
+    for indice, (item, antigo) in enumerate(zip(itens, antigos)):
+        if antigo is not None:
+            snapshot = _json(antigo.get("catalog_snapshot_json"))
+            alimento, porcao = snapshot["food"], snapshot.get("portion")
+        else:
+            alimento = alimentos.get(int(item.food_id))
+            if alimento is None or not can_log_food(identity, uid, alimento):
+                raise _error(422, f"{ERR_INGREDIENT_NOT_FOUND}:{indice}", index=indice)
+            if catalog.is_recipe_source(alimento.get("source")):
+                raise _error(422, f"{ERR_INGREDIENT_IS_RECIPE}:{indice}", index=indice)
+            porcao = None
+            if item.portion_id is not None:
+                porcao = porcoes.get(int(item.portion_id))
+                if porcao is None or int(porcao["food_id"]) != int(item.food_id) or not can_log_portion(identity, uid, porcao):
+                    raise _error(422, f"{ERR_INGREDIENT_PORTION}:{indice}", index=indice)
+            snapshot = {
+                "food": meals_mod.food_snapshot(alimento),
+                "portion": meals_mod.portion_snapshot(porcao) if porcao else None,
+            }
         quantidade_porcao = meal_math.portion_amount_for(
             item.unit, porcao.get("amount") if porcao else None, alimento.get("serving_size")
         )
         resolucao = meal_math.resolve_amount(item.quantity, item.unit, alimento.get("basis"), quantidade_porcao)
-        erros = diary.item_amount_errors(resolucao)
+        erros = recipe_engine.ingredient_amount_errors(resolucao)
         if erros:
             raise _error(422, f"{erros[0]}:{indice}", index=indice)
-        snapshot = {
-            "food": meals_mod.food_snapshot(alimento),
-            "portion": meals_mod.portion_snapshot(porcao) if porcao else None,
-        }
         resolvidos.append(
             _Resolved(
                 position=indice,
@@ -193,9 +226,9 @@ def _resolve_ingredients(cur: Any, identity: Identity, payload: RecipePreviewIn)
 
 
 def _compute(
-    cur: Any, identity: Identity, payload: RecipePreviewIn
+    cur: Any, identity: Identity, payload: RecipePreviewIn, reuse: Optional[dict[Any, dict[str, Any]]] = None
 ) -> tuple[list[_Resolved], recipe_engine.RecipeResult, recipe_engine.RecipeEffective]:
-    resolvidos = _resolve_ingredients(cur, identity, payload)
+    resolvidos = _resolve_ingredients(cur, identity, payload, reuse)
     try:
         resultado = recipe_engine.calculate_recipe([r.ingredient for r in resolvidos], payload.final_weight_g)
         efetivo = recipe_engine.apply_overrides(resultado.per_100_g, payload.overrides)
@@ -311,6 +344,35 @@ def _recipe_row(cur: Any, food_id: int, identity: Identity, lock: bool = False) 
     return linha
 
 
+def _current_ingredients(
+    cur: Any, food_id: int, lock: bool = False
+) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+    """`lock`: leituras com FOR UPDATE (veem a versão confirmada mais recente, não o retrato da transação)."""
+    sufixo = " FOR UPDATE" if lock else ""
+    cur.execute(CURRENT_VERSION_SQL + sufixo, (int(food_id),))
+    versao = cur.fetchone()
+    if versao is None:
+        return None, []
+    cur.execute(INGREDIENTS_OF_VERSION_SQL + sufixo, (int(versao["id"]),))
+    return versao, cur.fetchall() or []
+
+
+def _create(
+    cur: Any, identity: Identity, permissoes: EffectivePermissions, payload: RecipeSaveIn,
+    reuse: Optional[dict[Any, dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    uid = int(identity.user_id)
+    resolvidos, resultado, efetivo = _compute(cur, identity, payload, reuse)
+    valores = _food_values(payload, efetivo)
+    cur.execute(foods_mod.INSERT_FOOD_SQL, (catalog.FoodSource.RECIPE.value, None, *valores, uid, uid))
+    food_id = cur.lastrowid
+    if not food_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
+        raise _error(500, "food_insert_failed", "Receita não encontrada após gravar.")
+    _insert_version(cur, int(food_id), 1, payload, resolvidos, resultado, efetivo, uid)
+    linha = _recipe_row(cur, int(food_id), identity)
+    return _recipe_public(cur, linha, identity, permissoes)
+
+
 def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permissoes: EffectivePermissions) -> dict[str, Any]:
     cur.execute(CURRENT_VERSION_SQL, (int(linha["id"]),))
     versao = cur.fetchone()
@@ -318,6 +380,16 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
         raise _not_found()
     cur.execute(INGREDIENTS_OF_VERSION_SQL, (int(versao["id"]),))
     ingredientes = cur.fetchall() or []
+    atuais = _by_ids(cur, meals_mod.foods_by_ids_sql, [i["food_id"] for i in ingredientes])  # uma consulta, sem N+1
+    uid = int(identity.user_id)
+
+    def _status(ingrediente: dict[str, Any]) -> str:
+        alimento = atuais.get(int(ingrediente["food_id"]))
+        visivel = alimento is not None and alimento.get("is_active", 1) and can_log_food(identity, uid, alimento)
+        valores = meals_mod.food_snapshot(alimento)["per_100"] if visivel else None
+        gravado = (_json(ingrediente.get("catalog_snapshot_json")) or {}).get("food", {}).get("per_100")
+        return recipe_engine.ingredient_catalog_status(gravado, valores)
+
     dono = linha.get("owner_user_id") is not None and int(linha["owner_user_id"]) == int(identity.user_id)
     calculo = _json(versao.get("calculated_json")) or {}
     return {
@@ -345,6 +417,7 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
                     "amount": _num(i.get("amount")),
                     "basis": i.get("basis"),
                     "per_100": (_json(i.get("catalog_snapshot_json")) or {}).get("food", {}).get("per_100"),
+                    "catalog_status": _status(i),
                 }
                 for i in ingredientes
             ],
@@ -372,20 +445,11 @@ def create_recipe(
     request: Request, payload: RecipeSaveIn, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))
 ):
     permissoes = permissions_for_request(request, identity)
-    uid = int(identity.user_id)
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
             require_recipe_tables(cur)
-            resolvidos, resultado, efetivo = _compute(cur, identity, payload)
-            valores = _food_values(payload, efetivo)
-            cur.execute(foods_mod.INSERT_FOOD_SQL, (catalog.FoodSource.RECIPE.value, None, *valores, uid, uid))
-            food_id = cur.lastrowid
-            if not food_id:  # pragma: no cover - defesa: Data API sempre devolve o id gerado
-                raise _error(500, "food_insert_failed", "Receita não encontrada após gravar.")
-            _insert_version(cur, int(food_id), 1, payload, resolvidos, resultado, efetivo, uid)
-            linha = _recipe_row(cur, int(food_id), identity)
-            return _recipe_public(cur, linha, identity, permissoes)
+            return _create(cur, identity, permissoes, payload)
 
 
 @router.get("")
@@ -445,7 +509,10 @@ def update_recipe(
             # mesmas condições valem de novo sobre a linha travada (arquivar concorrente -> 404).
             for lock in (False, True):
                 linha = _recipe_row(cur, food_id, identity, lock=lock)
-            resolvidos, resultado, efetivo = _compute(cur, identity, payload)
+            reuse = {} if payload.refresh_ingredients else {
+                _item_key(i): i for i in _current_ingredients(cur, int(food_id), lock=True)[1]
+            }
+            resolvidos, resultado, efetivo = _compute(cur, identity, payload, reuse)
             valores = _food_values(payload, efetivo, linha)
             # Leitura com trava: sem ela o MAX viria do retrato antigo (REPEATABLE READ) e repetiria a versão.
             cur.execute(MAX_VERSION_FOR_UPDATE_SQL, (int(food_id),))
@@ -459,3 +526,56 @@ def update_recipe(
                 raise
             linha = _recipe_row(cur, food_id, identity)
             return _recipe_public(cur, linha, identity, permissoes)
+
+
+@router.get("/{food_id}/versions")
+def list_versions(food_id: int, identity: Identity = Depends(require_permission("nutricao.alimentos", "ver"))):
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_food_tables(cur)
+            require_recipe_tables(cur)
+            _recipe_row(cur, food_id, identity)
+            cur.execute(VERSIONS_LIST_SQL, (int(food_id),))
+            versoes = cur.fetchall() or []
+    return {
+        "items": [
+            {
+                "version": int(v["version"]),
+                "created_at": _iso(v.get("created_at")),
+                "final_weight_g": _num(v.get("final_weight_g")),
+                "energy_kcal_per_100g": ((_json(v.get("effective_json")) or {}).get("effective") or {}).get("energy_kcal"),
+            }
+            for v in versoes
+        ]
+    }
+
+
+@router.post("/{food_id}/duplicate", status_code=201)
+def duplicate_recipe(
+    request: Request, food_id: int, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))
+):
+    """Cópia privada do chamador: só o dono duplica (`_recipe_row`); ingredientes com o snapshot da versão atual."""
+    permissoes = permissions_for_request(request, identity)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            require_food_tables(cur)
+            require_recipe_tables(cur)
+            linha = _recipe_row(cur, food_id, identity)
+            versao, ingredientes = _current_ingredients(cur, int(food_id))
+            if versao is None:
+                raise _not_found()
+            payload = RecipeSaveIn(
+                name=recipe_engine.copy_name(str(linha.get("name") or "")),
+                ingredients=[
+                    {
+                        "food_id": int(i["food_id"]), "quantity": _num(i["quantity"]), "unit": i["unit"],
+                        "portion_id": None if i.get("portion_id") is None else int(i["portion_id"]),
+                    }
+                    for i in ingredientes
+                ],
+                final_weight_g=_num(versao["final_weight_g"]),
+                overrides=recipe_engine.overrides_from_effective(_json(versao.get("effective_json"))) or None,
+                serving_size=_num(linha.get("serving_size")),
+                instructions=versao.get("instructions"),
+            )
+            return _create(cur, identity, permissoes, payload, {_item_key(i): i for i in ingredientes})

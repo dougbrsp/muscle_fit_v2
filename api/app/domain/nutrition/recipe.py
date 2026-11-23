@@ -29,10 +29,12 @@ from typing import Any, Final, Mapping, Optional, Sequence
 from . import catalog, diary
 from .macros import Macros
 from .meal_math import (
+    AmountResolution,
     AtwaterCheck,
     Unit,
     atwater_check,
     non_negative_number,
+    normalize_unit,
     per_reference_from_serving,
     positive_number,
     sum_scaled_fields,
@@ -43,7 +45,17 @@ RECIPE_MAX_INGREDIENTS: Final[int] = diary.MEAL_MAX_ITEMS
 RECIPE_YIELD_MIN_SHARE: Final[float] = 0.10
 RECIPE_YIELD_MAX_SHARE: Final[float] = 5.0
 RECIPE_FINAL_WEIGHT_MAX_G: Final[float] = 20000.0
+RECIPE_INGREDIENT_AMOUNT_MAX: Final[float] = RECIPE_FINAL_WEIGHT_MAX_G  # teto próprio (não o do item do diário)
+RECIPE_NAME_MAX_CHARS: Final[int] = 255
+RECIPE_COPY_SUFFIX: Final[str] = " (cópia)"
 YIELD_PERCENT_SCALE: Final[float] = 100.0  # converte razão em percentual; não é fator de nutriente
+
+CATALOG_CURRENT: Final[str] = "current"
+CATALOG_OUTDATED: Final[str] = "outdated"
+CATALOG_UNAVAILABLE: Final[str] = "unavailable"
+_PER_100_TOLERANCE: Final[float] = 1e-9
+
+ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE = "recipe_ingredient_amount_out_of_range"  # `:<índice>`
 
 ERR_NO_INGREDIENTS = "recipe_no_ingredients"
 ERR_TOO_MANY_INGREDIENTS = "recipe_too_many_ingredients"
@@ -208,3 +220,49 @@ def apply_overrides(calculated_per_100: Mapping[str, Any], overrides: Optional[M
         atwater=validacao.atwater,
         warnings=tuple(validacao.warnings),
     )
+
+
+def ingredient_amount_errors(resolution: AmountResolution) -> tuple[str, ...]:
+    """Quantidade de UM ingrediente: sem conversão, o erro do diário; na base, até `RECIPE_INGREDIENT_AMOUNT_MAX`
+    (teto próprio da receita, maior que o do item do diário)."""
+    if resolution.amount is None:
+        return diary.item_amount_errors(resolution)
+    return (ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE,) if resolution.amount > RECIPE_INGREDIENT_AMOUNT_MAX else ()
+
+
+def ingredient_key(food_id: Any, quantity: Any, unit: Any, portion_id: Any) -> tuple[int, float, str, Optional[int]]:
+    """Identidade de um ingrediente na edição: igual à da versão atual = reaproveita o snapshot gravado."""
+    normalizada = normalize_unit(unit)
+    return (
+        int(food_id), float(quantity), normalizada.value if normalizada else str(unit),
+        None if portion_id is None else int(portion_id),
+    )
+
+
+def ingredient_catalog_status(snapshot_per_100: Optional[Mapping[str, Any]], current_per_100: Optional[Mapping[str, Any]]) -> str:
+    """`unavailable` (alimento inativo/inacessível: `current_per_100` None), `outdated` (valores por 100 diferentes
+    do snapshot) ou `current`."""
+    if current_per_100 is None:
+        return CATALOG_UNAVAILABLE
+    antigo, novo = snapshot_per_100 or {}, current_per_100
+    for campo in set(antigo) | set(novo):
+        a, b = antigo.get(campo), novo.get(campo)
+        if a is None or b is None:
+            if a is not b:
+                return CATALOG_OUTDATED
+        elif not math.isclose(float(a), float(b), rel_tol=_PER_100_TOLERANCE, abs_tol=_PER_100_TOLERANCE):
+            return CATALOG_OUTDATED
+    return CATALOG_CURRENT
+
+
+def overrides_from_effective(effective_json: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """Substituições manuais de uma versão gravada (`RecipeEffective.to_dict()`): campo -> valor efetivo."""
+    efetivo = effective_json or {}
+    valores = efetivo.get("effective") or {}
+    return {campo: valores.get(campo) for campo in efetivo.get("overridden_fields") or ()}
+
+
+def copy_name(name: str) -> str:
+    """Nome da cópia: sufixo `RECIPE_COPY_SUFFIX`, cortando o nome para caber em `RECIPE_NAME_MAX_CHARS`."""
+    limite = RECIPE_NAME_MAX_CHARS - len(RECIPE_COPY_SUFFIX)
+    return f"{(name or '').strip()[:limite]}{RECIPE_COPY_SUFFIX}"

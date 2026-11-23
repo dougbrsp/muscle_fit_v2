@@ -25,7 +25,8 @@ from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 from .domain.nutrition.catalog import PER_100_FIELDS as _PER_100_FIELDS
 from .domain.nutrition.recipe import RECIPE_FINAL_WEIGHT_MAX_G as _RECIPE_FINAL_WEIGHT_MAX_G
-from .domain.nutrition.diary import ITEM_AMOUNT_MAX as _ITEM_AMOUNT_MAX
+from .domain.nutrition.recipe import RECIPE_INGREDIENT_AMOUNT_MAX as _RECIPE_INGREDIENT_AMOUNT_MAX
+from .domain.nutrition.recipe import RECIPE_NAME_MAX_CHARS as _RECIPE_NAME_MAX_CHARS
 from .domain.nutrition.recipe import RECIPE_MAX_INGREDIENTS as _RECIPE_MAX_INGREDIENTS
 
 NOTES_MAX = 2000
@@ -347,7 +348,7 @@ class RecipeIngredientIn(_StrictIn):
     `nutrition_access` (a rota responde 422 com o código e o índice)."""
 
     food_id: StrictInt
-    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_ITEM_AMOUNT_MAX)
+    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_INGREDIENT_AMOUNT_MAX)
     unit: str = Field(min_length=1, max_length=24)
     portion_id: Optional[StrictInt] = None
 
@@ -356,7 +357,7 @@ class RecipePreviewIn(_StrictIn):
     """POST /nutrition/recipes/preview e base do POST/PUT: ingredientes, peso final pronto, substituições
     manuais por campo (valor por 100 g) e porção padrão (g). Cálculo e limites finos: `domain/nutrition/recipe`."""
 
-    name: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=_RECIPE_NAME_MAX_CHARS)
     ingredients: List[RecipeIngredientIn] = Field(max_length=_RECIPE_MAX_INGREDIENTS)
     final_weight_g: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
     overrides: Optional[dict[Annotated[str, StringConstraints(max_length=64)], Optional[Annotated[_RecipeNumber, Field(allow_inf_nan=False)]]]] = Field(
@@ -367,8 +368,11 @@ class RecipePreviewIn(_StrictIn):
 class RecipeSaveIn(RecipePreviewIn):
     """POST e PUT /nutrition/recipes: o nome é obrigatório; `instructions` é privado do dono."""
 
-    name: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=_RECIPE_NAME_MAX_CHARS)
     instructions: Optional[str] = Field(default=None, max_length=20000)
+    # PUT: true = todos os ingredientes resolvem do catálogo atual; false = os iguais aos da versão atual
+    # reaproveitam o snapshot gravado. Ignorado no POST.
+    refresh_ingredients: bool = False
 
 
 class FavoriteDefaultIn(_StrictIn):

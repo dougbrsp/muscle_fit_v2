@@ -1110,6 +1110,9 @@ NOTICE_LABELS: Final[Mapping[str, str]] = {
 # Códigos com campo (`<prefixo>:<campo>`): o texto recebe o rótulo do campo.
 PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
     recipe_mod.ERR_INVALID_INGREDIENT_AMOUNT: "Ingrediente {field}: quantidade inválida.",
+    recipe_mod.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE: (
+        f"Ingrediente {{field}}: quantidade acima de {recipe_mod.RECIPE_INGREDIENT_AMOUNT_MAX:g} g ou ml."
+    ),
     recipe_mod.ERR_OVERRIDE_FIELD: "{field}: nutriente não editável na receita.",
     recipe_mod.ERR_OVERRIDE_VALUE: "{field}: valor inválido.",
     recipe_mod.LIMIT_INCOMPLETE: "{field}: nutriente ausente em algum ingrediente; o total é parcial.",

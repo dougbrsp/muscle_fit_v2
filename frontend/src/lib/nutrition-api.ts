@@ -59,6 +59,7 @@ import type {
   RecipePreview,
   RecipePreviewPayload,
   RecipeSavePayload,
+  RecipeVersionSummary,
   UsdaSearchResponse,
 } from './nutrition-types';
 
@@ -222,6 +223,7 @@ export const recipeKeys = {
   all: ['nutrition-recipes'] as const,
   list: () => [...recipeKeys.all, 'list'] as const,
   detail: (foodId: number) => [...recipeKeys.all, 'detail', foodId] as const,
+  versions: (foodId: number) => [...recipeKeys.all, 'versions', foodId] as const,
 };
 
 export function previewRecipe(payload: RecipePreviewPayload): Promise<RecipePreview> {
@@ -242,6 +244,14 @@ export function fetchRecipe(foodId: number): Promise<RecipeDetail> {
 
 export function updateRecipe(foodId: number, payload: RecipeSavePayload): Promise<RecipeDetail> {
   return apiFetch<RecipeDetail>(`/nutrition/recipes/${foodId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function fetchRecipeVersions(foodId: number): Promise<{ items: RecipeVersionSummary[] }> {
+  return apiFetch<{ items: RecipeVersionSummary[] }>(`/nutrition/recipes/${foodId}/versions`);
+}
+
+export function duplicateRecipe(foodId: number): Promise<RecipeDetail> {
+  return apiFetch<RecipeDetail>(`/nutrition/recipes/${foodId}/duplicate`, { method: 'POST' });
 }
 
 // ---------------------------------------------------------------------------

@@ -11,19 +11,36 @@ import { RecipeEditor } from './RecipeEditor';
 const previewRecipe = vi.hoisted(() => vi.fn());
 const createRecipe = vi.hoisted(() => vi.fn());
 const updateRecipe = vi.hoisted(() => vi.fn());
+const fetchRecipeVersions = vi.hoisted(() => vi.fn());
+const fetchFood = vi.hoisted(() => vi.fn(async () => ({ id: 9, name: 'Leite', portions: [], basis: 'g' })));
 vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/nutrition-api')>()),
   previewRecipe,
   createRecipe,
   updateRecipe,
-  fetchFood: async () => ({ portions: [], basis: 'g' }),
+  fetchRecipeVersions,
+  fetchFood,
 }));
 vi.mock('./FoodSearch', () => ({
-  FoodSearch: (p: { excludeRecipes?: boolean; onSelect: (i: unknown) => void }) =>
+  FoodSearch: (p: { excludeRecipes?: boolean; onSelect: (i: unknown) => void; onRegister?: (t: string) => void }) =>
     createElement(
-      'button',
-      { 'data-exclude': String(p.excludeRecipes), onClick: () => p.onSelect({ id: 5, name: 'Farinha', basis: 'g' }) },
-      'add-farinha',
+      'div',
+      null,
+      createElement(
+        'button',
+        { 'data-exclude': String(p.excludeRecipes), onClick: () => p.onSelect({ id: 5, name: 'Farinha', basis: 'g' }) },
+        'add-farinha',
+      ),
+      createElement('button', { onClick: () => p.onRegister?.('iogurte') }, 'abrir-cadastro'),
+    ),
+}));
+vi.mock('./FoodRegistrationFlow', () => ({
+  FoodRegistrationFlow: (p: { initialName?: string; onSaved: (f: unknown) => void; onUseExisting: (id: number) => void }) =>
+    createElement(
+      'div',
+      null,
+      createElement('button', { onClick: () => p.onSaved({ id: 8, name: p.initialName, basis: 'g' }) }, 'salvar-cadastro'),
+      createElement('button', { onClick: () => p.onUseExisting(9) }, 'usar-existente'),
     ),
 }));
 
@@ -52,6 +69,8 @@ beforeEach(() => {
   previewRecipe.mockReset();
   createRecipe.mockReset();
   updateRecipe.mockReset();
+  fetchRecipeVersions.mockReset();
+  fetchRecipeVersions.mockResolvedValue({ items: [] });
 });
 afterEach(async () => {
   await act(async () => root?.unmount());
@@ -249,6 +268,123 @@ describe('RecipeEditor', () => {
     expect(onCancel).not.toHaveBeenCalled();
     await click('Descartar alterações');
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  const existente = (status: string) =>
+    ({
+      id: 3,
+      name: 'Bolo',
+      recipe: {
+        instructions: null,
+        final_weight_g: 90,
+        effective: null,
+        ingredients: [{ position: 0, food_id: 5, portion_id: null, label: 'Farinha', quantity: 100, unit: 'g', catalog_status: status }],
+      },
+    }) as never;
+
+  it('marca ingrediente desatualizado e indisponível', async () => {
+    await mount({ recipe: existente('outdated') });
+    expect(host.querySelector('[data-testid="status-ingrediente"]')!.textContent).toContain('mudaram no catálogo');
+    await act(async () => root?.unmount());
+    host.remove();
+    await mount({ recipe: existente('unavailable') });
+    expect(host.querySelector('[data-testid="status-ingrediente"]')!.textContent).toContain('mantido com os valores gravados');
+    expect(host.textContent).not.toContain('Atualizar ingredientes e recalcular');
+  });
+
+  it('atualizar ingredientes pede confirmação e salva com refresh_ingredients', async () => {
+    updateRecipe.mockResolvedValue({ id: 3 });
+    await mount({ recipe: existente('outdated') });
+    await click('Atualizar ingredientes e recalcular');
+    expect(host.textContent).toContain('substitui os valores gravados');
+    expect(updateRecipe).not.toHaveBeenCalled();
+    await click('Confirmar atualização');
+    expect(updateRecipe).toHaveBeenCalledWith(3, expect.objectContaining({ refresh_ingredients: true }));
+  });
+
+  it('mudar a quantidade zera o aviso da linha', async () => {
+    await mount({ recipe: existente('outdated') });
+    expect(host.querySelector('[data-testid="status-ingrediente"]')).not.toBeNull();
+    await type(byLabel('Quantidade'), '120');
+    expect(host.querySelector('[data-testid="status-ingrediente"]')).toBeNull();
+  });
+
+  it('com ajuste inválido não abre a confirmação e mostra o aviso de ajuste inválido', async () => {
+    previewRecipe.mockResolvedValue(previa());
+    await mount({ recipe: existente('outdated') });
+    await click('Calcular');
+    await type(host.querySelector('input[aria-label^="Ajustar "]')!, '1e999');
+    await click('Atualizar ingredientes e recalcular');
+    expect(host.textContent).not.toContain('substitui os valores gravados');
+    expect(host.querySelector('[data-testid="ajuste-invalido"]')).not.toBeNull();
+    expect(updateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('falha ao buscar alimento existente mostra erro e não rejeita', async () => {
+    fetchFood.mockRejectedValueOnce(new Error('rede'));
+    await mount();
+    await click('abrir-cadastro');
+    await click('usar-existente');
+    await flush();
+    expect(host.querySelector('[data-testid="erro-existente"]')).not.toBeNull();
+    await click('usar-existente');
+    await flush();
+    expect(host.querySelector('[data-testid="ingrediente"]')!.textContent).toContain('Leite');
+  });
+
+  it('salvar normal não envia refresh_ingredients', async () => {
+    updateRecipe.mockResolvedValue({ id: 3 });
+    await mount({ recipe: existente('outdated') });
+    await click('Salvar receita');
+    expect(updateRecipe.mock.calls[0][1]).not.toHaveProperty('refresh_ingredients');
+  });
+
+  it('mostra o histórico de versões', async () => {
+    fetchRecipeVersions.mockResolvedValue({ items: [{ version: 2, created_at: null, final_weight_g: 90, energy_kcal_per_100g: 250 }] });
+    await mount({ recipe: existente('current') });
+    await flush();
+    expect(host.querySelector('[data-testid="historico-versoes"]')!.textContent).toContain('Versão 2 · peso final 90 g · 250 kcal por 100 g');
+  });
+
+  it('cadastra alimento novo sem sair da receita e o adiciona como ingrediente', async () => {
+    await mount();
+    await click('abrir-cadastro');
+    await click('salvar-cadastro');
+    expect(host.querySelector('[data-testid="cadastro-alimento"]')).toBeNull();
+    expect(host.querySelector('[data-testid="ingrediente"]')!.textContent).toContain('iogurte');
+  });
+
+  it('link interno com alterações pede confirmação; remove o listener ao desmontar', async () => {
+    const a = document.createElement('a');
+    a.setAttribute('href', '/treino');
+    document.body.appendChild(a);
+    const nav = vi.fn();
+    const onDoc = (e: Event) => {
+      if (e.target !== a) return;
+      nav();
+      e.preventDefault();
+    };
+    document.addEventListener("click", onDoc);
+    await mount();
+    await act(async () => a.click());
+    expect(nav).toHaveBeenCalledTimes(1); // sem alteração: segue
+    await type(byLabel('Nome da receita'), 'X');
+    nav.mockClear();
+    await act(async () => a.click());
+    expect(nav).not.toHaveBeenCalled(); // interceptado na captura
+    expect(host.textContent).toContain('Sair sem salvar?');
+    await click('Continuar editando');
+    expect(host.textContent).not.toContain('Sair sem salvar?');
+    await act(async () => a.click());
+    await click('Sair e descartar');
+    expect(nav).toHaveBeenCalledTimes(1); // liberado
+    nav.mockClear();
+    await act(async () => root?.unmount());
+    root = null;
+    await act(async () => a.click());
+    expect(nav).toHaveBeenCalledTimes(1);
+    document.removeEventListener("click", onDoc);
+    a.remove();
   });
 
   it('cancelar sem alterações sai direto', async () => {

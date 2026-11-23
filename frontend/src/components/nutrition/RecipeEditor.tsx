@@ -2,14 +2,16 @@
 
 import { ActionIcon, Alert, Button, Group, Paper, Select, Stack, Table, Text, TextInput, Textarea, Title } from '@mantine/core';
 import { IconAlertTriangle, IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FoodSearch } from './FoodSearch';
+import { FoodRegistrationFlow } from './FoodRegistrationFlow';
 import { NutritionLimitations } from './NutritionLimitations';
 import { RDC429_FIELDS, UNIT_OPTIONS } from '@/lib/nutrition-constants';
-import { createRecipe, fetchFood, foodKeys, nutritionErrorInfo, previewRecipe, updateRecipe } from '@/lib/nutrition-api';
+import { createRecipe, fetchFood, fetchRecipeVersions, foodKeys, nutritionErrorInfo, previewRecipe, recipeKeys, updateRecipe } from '@/lib/nutrition-api';
 import { unitUsesPortion } from '@/lib/nutrition-meal-form';
 import type {
+  RecipeCatalogStatus,
   RecipeDetail,
   RecipeIngredientPayload,
   RecipePreview,
@@ -18,7 +20,12 @@ import type {
 import { ApiError } from '@/lib/api';
 import { BRAND } from '@/theme';
 
-type Row = { key: number; food_id: number; label: string; quantity: string; unit: string; portion_id: number | null };
+type Row = { key: number; food_id: number; label: string; quantity: string; unit: string; portion_id: number | null; status?: RecipeCatalogStatus };
+
+const STATUS_AVISO: Record<'outdated' | 'unavailable', string> = {
+  outdated: 'Valores do alimento mudaram no catálogo.',
+  unavailable: 'Alimento não está mais disponível; mantido com os valores gravados.',
+};
 
 type Props = {
   /** Receita em edição ou `null` (nova). */
@@ -76,6 +83,7 @@ function initialState(recipe: RecipeDetail | null) {
       quantity: text(i.quantity),
       unit: i.unit ?? 'g',
       portion_id: i.portion_id,
+      status: i.catalog_status,
     })),
   };
 }
@@ -90,6 +98,17 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
   const [preview, setPreview] = useState<RecipePreview | null>(null);
   const [stale, setStale] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmRefresh, setConfirmRefresh] = useState(false);
+  const [cadastro, setCadastro] = useState<{ nome: string } | null>(null);
+  const [linkPendente, setLinkPendente] = useState<HTMLAnchorElement | null>(null);
+  const liberaLink = useRef(false);
+  const queryClient = useQueryClient();
+  const versions = useQuery({
+    queryKey: recipeKeys.versions(recipe?.id ?? 0),
+    queryFn: () => fetchRecipeVersions(recipe!.id),
+    enabled: recipe != null,
+    retry: false,
+  });
   const nextKey = useRef(initial.rows.length);
 
   const snapshot = (s: { name: string; instructions: string; finalWeight: string; overrides: unknown; rows: unknown }) => JSON.stringify(s);
@@ -104,6 +123,35 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
+
+  // Navegação interna (Link) não dispara beforeunload: intercepta o clique em link interno enquanto há alterações.
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (e: MouseEvent) => {
+      if (liberaLink.current) {
+        liberaLink.current = false;
+        return;
+      }
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+      const href = a.getAttribute('href') ?? '';
+      if (!href.startsWith('/') || href.startsWith('//')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setLinkPendente(a);
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [dirty]);
+
+  function seguirLink() {
+    const a = linkPendente;
+    setLinkPendente(null);
+    if (!a) return;
+    liberaLink.current = true;
+    a.click();
+  }
 
   function edit<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -138,7 +186,8 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     },
   });
   const saveMutation = useMutation({
-    mutationFn: () => (recipe ? updateRecipe(recipe.id, payload()) : createRecipe(payload())),
+    mutationFn: (refresh?: boolean) =>
+      recipe ? updateRecipe(recipe.id, refresh ? { ...payload(), refresh_ingredients: true } : payload()) : createRecipe(payload()),
     onSuccess: onSaved,
   });
 
@@ -147,7 +196,8 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
   const errorInfo = error ? nutritionErrorInfo(error, 'Não foi possível processar a receita.') : null;
 
   function updateRow(i: number, patch: Partial<Row>) {
-    edit(setRows)(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+    // Mudou quantidade/unidade/porção: o salvar resolve do catálogo, o aviso gravado deixa de valer.
+    edit(setRows)(rows.map((r, n) => (n === i ? { ...r, ...patch, status: undefined } : r)));
   }
   // Ajuste digitado que não é número: não envia (viraria null e seria descartado em silêncio).
   const invalidOverrides = Object.entries(overrides).filter(([, v]) => v.trim() !== '' && Number.isNaN(toNumber(v))).map(([c]) => c);
@@ -166,6 +216,29 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     const novo = [...rows];
     [novo[i], novo[i + d]] = [novo[i + d], novo[i]];
     edit(setRows)(novo);
+  }
+  const temDesatualizado = rows.some((r) => r.status === 'outdated');
+  function atualizarIngredientes() {
+    setConfirmRefresh(false);
+    if (invalidOverrides.length > 0) return;
+    previewMutation.reset();
+    saveMutation.mutate(true);
+  }
+  function adicionarCadastrado(food: { id: number; name: string; basis: string }) {
+    const key = nextKey.current++;
+    setRows((atual) => [...atual, { key, food_id: food.id, label: food.name, quantity: '', unit: food.basis, portion_id: null }]);
+    setStale(true);
+    setCadastro(null);
+    void queryClient.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+  const [erroExistente, setErroExistente] = useState<string | null>(null);
+  async function usarExistente(foodId: number) {
+    setErroExistente(null);
+    try {
+      adicionarCadastrado(await queryClient.fetchQuery({ queryKey: foodKeys.detail(foodId), queryFn: () => fetchFood(foodId) }));
+    } catch (e) {
+      setErroExistente(nutritionErrorInfo(e, 'Não foi possível carregar o alimento existente.').message);
+    }
   }
   function leave() {
     if (dirty) setConfirmLeave(true);
@@ -203,6 +276,7 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
             isAdmin={false}
             selectedId={null}
             excludeRecipes
+            onRegister={(termo) => setCadastro({ nome: termo })}
             onSelect={(item) => {
               edit(setRows)([
                 ...rows,
@@ -210,6 +284,42 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
               ]);
             }}
           />
+          {cadastro && (
+            <Paper withBorder radius="md" p="md" data-testid="cadastro-alimento">
+              <FoodRegistrationFlow
+                initialName={cadastro.nome}
+                onSaved={adicionarCadastrado}
+                onFound={adicionarCadastrado}
+                onUseExisting={usarExistente}
+                onCancel={() => setCadastro(null)}
+              />
+              {erroExistente && (
+                <Text size="xs" c="red" role="alert" data-testid="erro-existente">
+                  {erroExistente}
+                </Text>
+              )}
+            </Paper>
+          )}
+          {temDesatualizado && recipe && (
+            <Group>
+              <Button variant="light" color="yellow" onClick={() => setConfirmRefresh(invalidOverrides.length === 0)}>
+                Atualizar ingredientes e recalcular
+              </Button>
+            </Group>
+          )}
+          {confirmRefresh && (
+            <Alert color="yellow" title="Atualizar ingredientes?" icon={<IconAlertTriangle size={16} />}>
+              Isso substitui os valores gravados de todos os ingredientes pelos do catálogo atual e salva uma nova versão da receita.
+              <Group mt="xs">
+                <Button size="xs" onClick={atualizarIngredientes}>
+                  Confirmar atualização
+                </Button>
+                <Button variant="default" size="xs" onClick={() => setConfirmRefresh(false)}>
+                  Manter valores gravados
+                </Button>
+              </Group>
+            </Alert>
+          )}
           {rows.length === 0 && (
             <Text size="sm" c={BRAND.textMuted}>
               Nenhum ingrediente. Busque um alimento acima para adicionar.
@@ -258,6 +368,11 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
                   <IconTrash size={16} />
                 </ActionIcon>
               </Group>
+              {(r.status === 'outdated' || r.status === 'unavailable') && (
+                <Text size="xs" c="yellow" data-testid="status-ingrediente">
+                  {STATUS_AVISO[r.status]}
+                </Text>
+              )}
               {errorIndex === i && errorInfo && (
                 <Text size="xs" c="red" role="alert">
                   {errorInfo.message}
@@ -378,6 +493,40 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
             <NutritionLimitations items={preview.warnings} title="Avisos" tone="warning" />
             <NutritionLimitations items={preview.limitations} title="Limitações do cálculo" tone="info" />
           </Stack>
+        )}
+
+        {recipe && versions.data && versions.data.items.length > 0 && (
+          <Stack gap={4} data-testid="historico-versoes">
+            <Text fw={600} c={BRAND.textPrimary}>
+              Histórico de versões
+            </Text>
+            {versions.data.items.map((v) => (
+              <Text key={v.version} size="sm" c={BRAND.textMuted}>
+                Versão {v.version}
+                {v.created_at ? ` · ${new Date(v.created_at).toLocaleDateString('pt-BR')}` : ''} · peso final {fmt(v.final_weight_g)} g ·{' '}
+                {fmt(v.energy_kcal_per_100g)} kcal por 100 g
+              </Text>
+            ))}
+          </Stack>
+        )}
+        {recipe && versions.isError && (
+          <Text size="sm" c="red">
+            Não foi possível carregar o histórico de versões.
+          </Text>
+        )}
+
+        {linkPendente && (
+          <Alert color="yellow" title="Sair sem salvar?" icon={<IconAlertTriangle size={16} />}>
+            Você tem alterações não salvas nesta receita.
+            <Group mt="xs">
+              <Button color="red" size="xs" onClick={seguirLink}>
+                Sair e descartar
+              </Button>
+              <Button variant="default" size="xs" onClick={() => setLinkPendente(null)}>
+                Continuar editando
+              </Button>
+            </Group>
+          </Alert>
         )}
 
         {confirmLeave && (
