@@ -133,8 +133,8 @@ _PLAN_COLUMNS = (
     "energy_params_json, energy_model_version, carb_cycle_policy, "
     "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
-# Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política fica
-# não é gravada nem lida: vale a padrão). Nenhuma rota responde 503 por isso.
+# Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política não
+# é gravada nem lida: vale a padrão). Nenhuma rota responde 503 por isso.
 _PLAN_COLUMNS_NO_POLICY = _PLAN_COLUMNS.replace("carb_cycle_policy, ", "")
 # `published_preview_json` (106) fica FORA de `_PLAN_COLUMNS` de propósito: é a prévia gravada na publicação (dezenas de KB
 # por plano) e nenhuma leitura de plano a usa; as listas de planos não pagam o peso (teto de 1 MiB da Data API).

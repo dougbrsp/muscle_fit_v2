@@ -26,11 +26,13 @@ class FakeLateDB(FakeRampDB):
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         p = tuple(params or ())
-        if flat.startswith("SELECT id, set_number, reps_pending, measure, rpe_target_source, rpe_target_planned FROM exercise_sets"):
+        if flat.startswith(
+            "SELECT id, set_number, reps_pending, measure, rpe_target_source, technique_code, rpe_target_planned FROM exercise_sets"
+        ):
             self.sql.append(sql)
             self.resync_selects += 1
             rows = [
-                {"id": i, **{k: s.get(k) for k in ("set_number", "reps_pending", "measure", "rpe_target_source", "rpe_target_planned")}}
+                {"id": i, **{k: s.get(k) for k in ("set_number", "reps_pending", "measure", "rpe_target_source", "technique_code", "rpe_target_planned")}}
                 for i, s in enumerate(self.sets)
                 if s["exercise_id"] == p[0] and s["set_type"] in ("", "working")
             ]
@@ -105,6 +107,17 @@ def test_backoff_posterior_nao_e_regravado_e_nulo_continua_nulo(db):
     db.sets[0]["rpe_target_planned"] = None  # importada/sem ficha: nula
     _post(ex, 1)
     assert db.sets[1] == backoff and db.sets[0]["rpe_target_planned"] is None
+
+
+def test_serie_com_tecnica_nao_e_regravada(db):
+    """#284 (ADR 0026): serie de tecnica fica fora da regravacao."""
+    ex = db.add_exercise()
+    _post(ex, 3)
+    _post(ex, 2)
+    db.sets[1]["technique_code"] = "drop_set"
+    db.sets[1]["rpe_target_planned"] = Decimal("5")
+    _post(ex, 1)
+    assert float(db.sets[1]["rpe_target_planned"]) == 5
 
 
 def test_deload_e_sem_rampa_nao_leem_nem_escrevem(monkeypatch):

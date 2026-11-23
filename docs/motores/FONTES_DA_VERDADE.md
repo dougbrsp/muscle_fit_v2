@@ -7814,7 +7814,7 @@ Não medido:
 Limites:
 
 - com a coluna ausente e o ciclo desligado a política não é lembrada (só na janela sem a migração);
-- escrita dupla e leitura com reserva são temporárias (um ciclo de deploy); a limpeza fica para lote posterior (migração que remove a chave do JSON, e código que deixa de gravar e de ler a reserva);
+- escrita dupla e leitura com reserva são temporárias (um ciclo de deploy); a limpeza fica para lote posterior (migração que remove a chave do JSON, e código que deixa de gravar e de ler a reserva); Superado no lote 33 (23/11/2026): a política vive só na coluna.
 - o envio do botão de salvar com o ciclo desligado só tem teste de unidade da função que monta o payload;
 - rollback para código anterior à ADR 0029 segue com o risco descrito nela.
 
@@ -7891,7 +7891,7 @@ Limites:
 - Motivo de sem trabalho direto: `NO_DIRECT_WORK_REASON` e `NO_DIRECT_WORK_NO_LOAD_REASON` (dono `api/app/domain/progression_engine.py`) ganharam acentos; `api/app/domain/prescription_service.py` usa as constantes na nota, sem texto próprio.
 - Guarda: o padrão `tendencia_janela_paralela` pega média de fatia de janela com qualquer nome de variável, exigindo `:` na fatia (ex.: positivo `sum(x[:k]) / k`, `sum(x[-k:]) / k`, `sum(x[:len(x)//2]) / n`; negativo `sum(x) / len(x)`, média sem fatia). Mantém a forma antiga com `half` e qualquer divisor. Allowlist vazia.
 - Equipamento explícito (`services.validate_explicit_equipment`, `api/app/services.py`): Importação e Registro validam o `equipment_id` pela mesma função do Modo Treino (`ensure_session_equipment`), só quando o equipamento informado difere do gravado ou em registro novo.
-- `GET /gym-equipment/recommend` e `/recommend-all` devolvem `load_convention` normalizada pelo dono.
+- `GET /gym-equipment/recommend` e `/recommend-all` devolvem `load_convention` normalizada pelo dono. `load_convention` fica FORA do contexto do prompt da geração de ficha por IA (`workout_plan_ai._RECOMMENDATION_FIELDS_OUT_OF_PROMPT`), cujo formato não muda.
 - `GET /equipment-exercises` aceita `limit` e `offset` opcionais (`EQUIPMENT_EXERCISES_MAX_LIMIT`).
 
 Impacto em produção: medido no DEV (cópia dos dados de produção de 22/11/2026). A consulta nova do recomendador devolve os mesmos ids da antiga (academia 48: 89 candidatos; academia 1: 133). O esperado gravado muda só daí em diante, para séries pendentes confirmadas; sem retroativo. A confirmação de série pendente também regrava o esperado das séries de trabalho seguintes já gravadas do mesmo exercício na sessão em curso, não só o da série confirmada. O texto do motivo de sem trabalho direto passa a ter acentos. Importação e Registro passam a recusar com 422 equipamento inexistente, de outra academia ou incoerente, só quando o equipamento muda; o mesmo equipamento já gravado segue aceito (registros antigos incoerentes continuam editáveis).
@@ -7900,6 +7900,7 @@ Não medido:
 
 - quantos clientes enviam o `equipment_id` na Importação;
 - a trava `FOR UPDATE` sob concorrência real;
+- quantas séries pendentes existem em sessões em curso;
 - a integração, que roda só no CI.
 
 **Lote 33 de 23/11/2026 (#248, limpeza da chave antiga da política do ciclo).** Sem migração e sem regra nova de motor: a conta da compensação, os códigos de limitação e a impressão digital do plano não mudam. Escolha herdada da ADR 0033: a política fica só na coluna `nutrition_plans.carb_cycle_policy`. Mudanças:
@@ -7916,3 +7917,18 @@ Não medido:
 
 - planos de outros usuários: a cópia do DEV traz só o usuário 1;
 - a integração da política, que roda só no CI (`ci-completo`).
+
+**Lote 36 de 23/11/2026 (#280 e #284, sobras de revisão).** Sem migração. Mudanças:
+
+- Envio da série (`api/app/workout_sessions.py`): a marca de prática de forma vem sempre da linha travada. A regravação do esperado das séries seguintes (`_resync_planned_rpe_after_late_set`) deixa fora a série com código de técnica, além da série com protocolo.
+- Aviso de política desconhecida (`api/app/nutrition_targets_service.py`): o conjunto de planos avisados tem teto (`MAX_INVALID_POLICY_LOGGED_PLANS`).
+- Comentários de código corrigidos em `api/app/nutrition_schema.py` e `api/app/nutrition_plans.py`.
+- Testes de integração: `api/tests/integration/conftest.py` espera a virada do dia no fuso do usuário de teste antes da coleta quando faltar menos que `MARGEM_VIRADA_DO_DIA` (20 min), por `segundos_de_espera_ate_a_virada` em `api/tests/support/relogio_usuario.py`.
+- Frontend: o limite de erro do celular não registra erros de navegação do Next; a descrição do escopo da tendência é anunciada uma vez; teste da visão do descanso.
+
+Impacto em produção: nenhum valor de meta, carga ou esperado já gravado muda. A regravação das seguintes passa a pular séries de técnica daqui em diante. Sem migração.
+
+Não medido:
+
+- quantas séries de técnica tinham protocolo nulo (as que a regra nova passa a pular);
+- a integração, que roda só no CI.

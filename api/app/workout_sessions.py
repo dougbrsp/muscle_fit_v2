@@ -1280,7 +1280,7 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
     if not effective_intensity.has_planned_rpe_ramp(plan_rpe):
         return
     cur.execute(
-        "SELECT id, set_number, reps_pending, measure, rpe_target_source, rpe_target_planned FROM exercise_sets "
+        "SELECT id, set_number, reps_pending, measure, rpe_target_source, technique_code, rpe_target_planned FROM exercise_sets "
         f"WHERE exercise_id = %s AND {sql_is_working('set_type')} ORDER BY set_number FOR UPDATE",
         (exercise_id,),
     )
@@ -1290,6 +1290,7 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
             or row.get("reps_pending")
             or not is_rep_based(row.get("measure"))
             or row.get("rpe_target_source") is not None
+            or row.get("technique_code")  # ADR 0026: serie de tecnica fica fora
             or row.get("rpe_target_planned") is None
         ):
             continue
@@ -1566,7 +1567,7 @@ def add_session_set(
             # antes dele): a marca gravada e a contagem de series de trabalho.
             cur.execute(f"SELECT {FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE", (exercise_id,))
             locked_row = cur.fetchone()
-            if locked_row and payload.exercise_form_practice is not None:
+            if locked_row:
                 exercise_row[FORM_PRACTICE_COLUMN] = locked_row.get(FORM_PRACTICE_COLUMN)
             # Sem o campo ainda conta (sem trava): a resposta informa `form_practice_locked`.
             working_before = _working_sets_recorded(cur, exercise_id, locking=payload.exercise_form_practice is not None)
