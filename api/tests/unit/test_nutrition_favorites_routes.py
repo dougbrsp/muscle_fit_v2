@@ -443,3 +443,13 @@ def test_unidade_gravada_e_a_canonica_do_motor_e_so_com_motor_sem_erros(db):
     assert _favoritar(cliente, db.arroz, default_quantity=10, default_unit=" G ").json()["default"]["unit"] == "g"
     assert _favoritar(cliente, db.feijao, default_quantity=10, default_unit="balde").status_code == 400
     assert [f["default_unit"] for f in db.favorites] == ["g"]
+
+
+def test_receita_favorita_e_desfavorita_como_alimento(db):
+    rid = db.add_food("Receita de arroz", source="recipe", owner=ALUNO, energy_kcal=150, carbohydrates_g=30,
+                      protein_g=3, total_fat_g=1)
+    cliente = _client()
+    assert _favoritar(cliente, rid).status_code == 201
+    assert _ids(cliente.get("/nutrition/favorites")) == [rid]
+    assert cliente.delete(f"/nutrition/favorites/{rid}").status_code == 200
+    assert _ids(cliente.get("/nutrition/favorites")) == []

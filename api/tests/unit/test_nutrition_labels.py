@@ -35,6 +35,7 @@ from app.domain.nutrition import macros as _macros
 from app.domain.nutrition import manual_targets as _mt
 from app.domain.nutrition import diary as _diary
 from app.domain.nutrition import plan as _plan
+from app.domain.nutrition import recipe as _recipe
 from app.domain.nutrition import strategy as _st
 from app.domain.nutrition import weekly_budget as _wb
 from app.domain.nutrition.phases import BreakProtocol, PhaseKind
@@ -211,6 +212,17 @@ _PREFIXADOS = {
     _ps.ERR_SUGGESTION_FIELD_INVALID,
     _diary.ERR_QUICK_ABOVE_WEIGHT,
     _diary.ERR_QUICK_VALUE_TOO_HIGH,
+    # L37: receita (`<código>:<índice ou campo>`).
+    _recipe.ERR_INVALID_INGREDIENT_AMOUNT,
+    _recipe.ERR_OVERRIDE_FIELD,
+    _recipe.ERR_OVERRIDE_VALUE,
+    _recipe.LIMIT_INCOMPLETE,
+    "recipe_ingredient_not_found",
+    "recipe_ingredient_is_recipe",
+    "recipe_ingredient_portion_not_found",
+    _mm.LIMIT_MISSING_QUANTITY,
+    _diary.ERR_UNIT_WITHOUT_CONVERSION,
+    _diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE,
 }
 
 
@@ -227,6 +239,29 @@ def test_todo_codigo_de_limitacao_da_meta_e_do_plano_tem_texto():
     sem_texto = sorted(c for c in _codigos_do_motor() if c not in lb.LIMITATION_LABELS and c not in _PREFIXADOS)
     assert sem_texto == []
     assert set(lb.PREFIXED_LIMITATION_LABELS) == _PREFIXADOS
+
+
+def test_todo_codigo_de_receita_tem_rotulo_pt_br():
+    do_motor = {v for n, v in vars(_recipe).items() if n.startswith(("ERR_", "LIMIT_")) and isinstance(v, str)}
+    das_rotas = {"food_is_recipe", "recipe_promote_not_supported", "recipe_ingredient_not_found",
+                 "recipe_ingredient_is_recipe", "recipe_ingredient_portion_not_found",
+                 "recipe_version_conflict"}
+    assert do_motor
+    for codigo in do_motor | das_rotas:
+        rotulo = lb.LIMITATION_LABELS.get(codigo) or lb.PREFIXED_LIMITATION_LABELS.get(codigo)
+        assert rotulo, codigo
+        assert rotulo != codigo and "_" not in rotulo, codigo
+
+
+def test_erros_de_quantidade_do_ingrediente_tem_rotulo_com_indice():
+    codigos = set(_diary._AMOUNT_ERRORS.values()) | {_diary.ERR_ITEM_AMOUNT_OUT_OF_RANGE}
+    assert len(codigos) == 3
+    for codigo in codigos:
+        texto = lb.limitation_label(f"{codigo}:2")
+        assert texto != f"{codigo}:2" and "_" not in texto, codigo
+        assert texto.startswith("Ingrediente 3: "), codigo  # código 0-based, texto 1-based
+        assert lb.limitation_label(f"{codigo}:0").startswith("Ingrediente 1: "), codigo
+        assert lb.limitation_label(codigo) == lb.LIMITATION_LABELS[codigo]  # diário inalterado
 
 
 def test_codigo_com_campo_recebe_o_rotulo_do_campo():

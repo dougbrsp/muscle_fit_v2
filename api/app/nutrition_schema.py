@@ -101,6 +101,14 @@ FAVORITES_TABLE_MISSING_MESSAGE = (
     "Alimentos preferidos indisponíveis: a tabela `user_favorite_foods` (migração 102) ainda não existe neste banco."
 )
 
+# Receitas (125, issue #286): versoes e ingredientes; escrita e leitura das rotas de receita exigem as duas.
+RECIPE_TABLES: tuple[str, ...] = ("food_recipe_versions", "food_recipe_ingredients")
+RECIPE_MIGRATION = "125"
+RECIPE_TABLES_MISSING_MESSAGE = (
+    "Receitas indisponíveis: as tabelas `food_recipe_versions` e `food_recipe_ingredients` (migração 125) "
+    "ainda não existem neste banco."
+)
+
 CHECKINS_TABLE = "nutrition_checkins"
 CHECKIN_SETTINGS_TABLE = "nutrition_checkin_settings"
 CHECKIN_TABLES: tuple[str, ...] = (CHECKINS_TABLE, CHECKIN_SETTINGS_TABLE)
@@ -331,6 +339,31 @@ def require_favorites_table(cursor: Any) -> None:
     """503 citando a 102 quando `user_favorite_foods` ainda não existe."""
     if not has_favorites_table(cursor):
         raise favorites_table_missing_error()
+
+
+def has_recipe_tables(cursor: Any) -> bool:
+    """As duas tabelas das receitas (125) existem NESTE schema? Sem DDL."""
+    return _has_tables(cursor, RECIPE_TABLES)
+
+
+def recipe_tables_missing_error() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={"error": "food_recipe_tables_missing", "migration": RECIPE_MIGRATION,
+                "message": RECIPE_TABLES_MISSING_MESSAGE},
+    )
+
+
+def require_recipe_tables(cursor: Any) -> None:
+    """503 citando a 125 quando as tabelas das receitas ainda não existem."""
+    if not has_recipe_tables(cursor):
+        raise recipe_tables_missing_error()
+
+
+def reset_recipe_tables_cache() -> None:
+    """Só para testes: esquece o cache positivo das tabelas de receita."""
+    for chave in [c for c in _present if c[1] == RECIPE_TABLES]:
+        _present.discard(chave)
 
 
 def has_checkin_tables(cursor: Any) -> bool:

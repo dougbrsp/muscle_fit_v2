@@ -221,3 +221,18 @@ def test_get_jobs_worker_lost_da_nutricao_dispara_o_sweep(monkeypatch, job_type,
     monkeypatch.setattr(jobs, "_sweep_nutrition_ai_usage", lambda: varridas.append(1))
     assert jobs.get_job_status("j", Identity(user_id=1, role="regular", source="session")) == job
     assert bool(varridas) is varre
+
+
+def test_leitura_por_ia_nao_casa_com_receita(monkeypatch):
+    class _Cur:
+        sql = ""
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            return []
+
+    cur = _Cur()
+    worker.search_candidates(cur, "arroz branco", registrant_user_id=1, diary_user_id=1)
+    assert "source <> 'recipe'" in cur.sql

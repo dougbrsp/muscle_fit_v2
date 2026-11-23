@@ -399,6 +399,35 @@ def test_tabela_mista_copia_publicos_e_do_usuario_nunca_privados_de_terceiros():
     assert ("food_items", "owner_user_id") in set(p2d.MIXED_OWNER_TABLES)
 
 
+def test_receitas_so_do_usuario_versao_e_ingrediente_de_outros_nao_entram():
+    base = _schema_nutricao()
+    extra = [
+        _table("food_recipe_versions", ["id", "food_id", "instructions", "created_by"]),
+        _table("food_recipe_ingredients", ["id", "version_id", "food_id"]),
+    ]
+    schema = p2d.Schema(
+        {**base.tables, **{x.name: x for x in extra}},
+        base.foreign_keys
+        + [("food_recipe_versions", "created_by", "users", "id"), ("food_recipe_ingredients", "version_id", "food_recipe_versions", "id")],
+    )
+    data = _dados_nutricao()
+    data["food_recipe_versions"] = [
+        {"id": 1, "food_id": 2, "instructions": "minha", "created_by": UID},
+        {"id": 2, "food_id": 3, "instructions": "privada de terceiro", "created_by": OTHER},
+        {"id": 3, "food_id": 1, "instructions": "receita pública", "created_by": OTHER},
+    ]
+    data["food_recipe_ingredients"] = [
+        {"id": 1, "version_id": 1, "food_id": 1},
+        {"id": 2, "version_id": 1, "food_id": 3},  # ingrediente privado de terceiro: linha cai
+        {"id": 3, "version_id": 2, "food_id": 1},
+        {"id": 4, "version_id": 3, "food_id": 1},
+    ]
+    snap, _ = p2d.prepare(FakeReader(data), schema, UID)
+    assert {r["id"] for r in snap["food_recipe_versions"]} == {1}
+    assert {r["id"] for r in snap["food_recipe_ingredients"]} == {1}
+    assert p2d.classified_tables()["food_recipe_versions"] == "user_child"
+
+
 def test_verificacao_final_recusa_linha_privada_de_terceiro_em_tabela_mista():
     schema = _schema_nutricao()
     snap = {"users": [{"id": UID}], "food_items": [{"id": 3, "name": "x", "owner_user_id": UID + 5, "created_by": None}]}

@@ -43,6 +43,7 @@ class FakeDiaryDB(FakeNutritionDB):
         self.items: dict[int, dict[str, Any]] = {}
         self.day_logs: dict[tuple[int, date], dict[str, Any]] = {}
         self.links: dict[int, Decimal] = {}
+        self.recipe_versions: dict[int, dict[str, Any]] = {}  # `food_recipe_versions`: id -> {id, food_id, version}
         self.next_id = 100
         self.users[4] = {"id": 4, "username": "outro", "full_name": "Outro Aluno"}
         self.profiles[4] = dict(self.profiles[2])
@@ -150,6 +151,12 @@ class FakeDiaryCursor(FakeCursor):
         n = len(p)
         if sql == meals_mod.foods_by_ids_sql(n):
             return self._result([dict(db.foods[i]) for i in p if i in db.foods])
+        if n and sql == meals_mod.recipe_versions_sql(n):
+            ultimas: dict[int, dict[str, Any]] = {}
+            for v in db.recipe_versions.values():
+                if v["food_id"] in p and (v["food_id"] not in ultimas or v["version"] > ultimas[v["food_id"]]["version"]):
+                    ultimas[v["food_id"]] = v
+            return self._result([dict(v) for v in ultimas.values()])
         if sql == meals_mod.portions_by_ids_sql(n):
             return self._result([dict(db.portions[i]) for i in p if i in db.portions])
         if sql == meals_mod.items_of_meals_sql(n):
