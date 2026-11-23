@@ -40,6 +40,7 @@ from . import meal_photo as mp_mod
 from . import phases as phases_mod
 from . import plan as plan_mod
 from . import plan_suggestion as ps_mod
+from . import recipe as recipe_mod
 from . import strategy as strategy_mod
 from . import weekly_budget as wb_mod
 from . import weekly_checkin as wc_mod
@@ -500,6 +501,7 @@ FOOD_SOURCE_LABELS: Final[Mapping[FoodSource, str]] = {
     FoodSource.USER: "Cadastro próprio",
     FoodSource.LABEL_PHOTO: "Foto do rótulo",
     FoodSource.AI_ESTIMATE: "Estimativa da IA",
+    FoodSource.RECIPE: "Receita",
 }
 
 # Origem do alimento na lista (`catalog.food_origin`).
@@ -512,6 +514,7 @@ FOOD_ORIGIN_LABELS: Final[Mapping[catalog_mod.FoodOrigin, str]] = {
     catalog_mod.FoodOrigin.TACO: "TACO",
     catalog_mod.FoodOrigin.TBCA_MANUAL: "TBCA",
     catalog_mod.FoodOrigin.AI: "IA",
+    catalog_mod.FoodOrigin.RECIPE: "Receita",
 }
 
 # Tipos de dado do USDA FoodData Central importados (L3b; códigos do FDC em `external_sources`).
@@ -693,6 +696,18 @@ def _decimal(value: float) -> str:
 
 # Código de limitação/clamp/erro -> texto exibido. Número no texto vem do dono.
 LIMITATION_LABELS: Final[Mapping[str, str]] = {
+    # Receita (L37): erros e limitações do motor; os três `recipe_ingredient_*` são da rota (`nutrition_recipes`).
+    recipe_mod.ERR_NO_INGREDIENTS: "A receita precisa de ao menos um ingrediente.",
+    recipe_mod.ERR_TOO_MANY_INGREDIENTS: "Ingredientes demais na receita.",
+    recipe_mod.ERR_INVALID_FINAL_WEIGHT: "Peso final da receita inválido.",
+    recipe_mod.ERR_YIELD_IMPLAUSIBLE: "Rendimento implausível: confira o peso final e os ingredientes.",
+    recipe_mod.LIMIT_RAW_WEIGHT_EXCLUDES_ML: "Há ingrediente em ml: o rendimento (peso cru) não foi calculado.",
+    "recipe_ingredient_not_found": "Ingrediente não encontrado.",
+    "recipe_ingredient_is_recipe": "Receita não pode ser ingrediente de outra receita.",
+    "recipe_ingredient_portion_not_found": "Porção não encontrada para o ingrediente.",
+    "food_is_recipe": "Receita se edita pela tela de receita.",
+    "recipe_promote_not_supported": "Receita ainda não pode ser promovida a pública.",
+    "recipe_version_conflict": "Outra edição da receita foi salva ao mesmo tempo. Tente de novo.",
     # Dado do sujeito (o 422 do preview lista estes).
     bmr_mod.LIMIT_MISSING_SEX: "Sexo não informado no perfil.",
     bmr_mod.LIMIT_SEX_OTHER_REQUIRES_FFM: "Sexo \"Outro\" exige a massa livre de gordura (bioimpedância) para a TMB.",
@@ -1094,6 +1109,22 @@ NOTICE_LABELS: Final[Mapping[str, str]] = {
 
 # Códigos com campo (`<prefixo>:<campo>`): o texto recebe o rótulo do campo.
 PREFIXED_LIMITATION_LABELS: Final[Mapping[str, str]] = {
+    recipe_mod.ERR_INVALID_INGREDIENT_AMOUNT: "Ingrediente {field}: quantidade inválida.",
+    recipe_mod.ERR_OVERRIDE_FIELD: "{field}: nutriente não editável na receita.",
+    recipe_mod.ERR_OVERRIDE_VALUE: "{field}: valor inválido.",
+    recipe_mod.LIMIT_INCOMPLETE: "{field}: nutriente ausente em algum ingrediente; o total é parcial.",
+    "recipe_ingredient_not_found": "Ingrediente {field}: não encontrado.",
+    "recipe_ingredient_is_recipe": "Ingrediente {field}: receita não pode ser ingrediente.",
+    "recipe_ingredient_portion_not_found": "Ingrediente {field}: porção não encontrada.",
+    # Erros de quantidade do ingrediente (`diary.item_amount_errors` + `:<índice>`); sem sufixo, saem no diário.
+    **{
+        codigo: "Ingrediente {field}: " + LIMITATION_LABELS[codigo][0].lower() + LIMITATION_LABELS[codigo][1:]
+        for codigo in (
+            meal_math_mod.LIMIT_MISSING_QUANTITY,
+            diary_mod.ERR_UNIT_WITHOUT_CONVERSION,
+            diary_mod.ERR_ITEM_AMOUNT_OUT_OF_RANGE,
+        )
+    },
     strategy_mod.LIMIT_PARAM_OUT_OF_RANGE: "{field}: fora da faixa da fonte.",
     plan_mod.ERR_INVALID_CODE: "{field}: código inválido.",
     # Gramas manuais (N1, D6): `<código>:<campo>`.
@@ -1225,6 +1256,9 @@ def limitation_label(code: str) -> str:
     modelo = PREFIXED_LIMITATION_LABELS.get(prefixo)
     if modelo is None or not campo:
         return code
+    # Índice do ingrediente é número puro: `_FIELD_LABELS` mapeia "2" para dia da semana.
+    if modelo.startswith("Ingrediente {field}") and campo.isdigit():
+        return modelo.format(field=int(campo) + 1)  # índice 0-based no código, posição 1-based no texto
     return modelo.format(field=_FIELD_LABELS.get(campo, campo))
 
 

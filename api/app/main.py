@@ -755,6 +755,17 @@ except Exception as exc:
     )
 # END nutrition foods router
 
+# Receitas do usuario (issue #286, migracao 125): alimento source=recipe + versoes + ingredientes.
+try:
+    from app.nutrition_recipes import router as nutrition_recipes_router
+    app.include_router(nutrition_recipes_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.nutrition_recipes").exception(
+        "Nutrition recipes router não foi carregado. Erro: %s", exc
+    )
+# END nutrition recipes router
+
 # BEGIN nutrition external foods router (plano de nutricao, Lote L3b; sem migracao)
 # Codigo de barras (Open Food Facts, cache em food_items source='off', limite
 # diario do motor) e busca/importacao do USDA FoodData Central. So a api-core

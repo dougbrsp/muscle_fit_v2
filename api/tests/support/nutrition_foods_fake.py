@@ -23,17 +23,20 @@ from typing import Any, Optional
 from app import nutrition_access as access
 from app import nutrition_external_foods as external
 from app import nutrition_foods as foods
+from app import nutrition_meals as meals
+from app import nutrition_recipes as recipes
 from app.domain.nutrition import catalog
 from app.domain.nutrition.food_text import BRAND_TOKENS_MAX, normalize_name
 
 AGORA = datetime(2026, 10, 17, 12, 0, 0)
 
 
-def _search_variants() -> dict[str, tuple[bool, str, bool, bool]]:
+def _search_variants() -> dict[str, tuple[bool, str, bool, bool, bool]]:
     return {
-        foods.search_sql(fulltext=ft, visibility=vis, with_source=src, favorites_only=fav): (
-            ft, vis == access.VISIBLE_FOODS_SQL, src, fav,
+        foods.search_sql(fulltext=ft, visibility=vis, with_source=src, favorites_only=fav, exclude_recipes=exc): (
+            ft, vis == access.VISIBLE_FOODS_SQL, src, fav, exc,
         )
+        for exc in (False, True)
         for ft in (True, False)
         for vis in (access.VISIBLE_FOODS_SQL, access.PRIVATE_FOODS_SQL)
         for src in (True, False)
@@ -47,11 +50,12 @@ def _ai_ci(texto: Any) -> str:
     return "".join(ch for ch in nfkd if not unicodedata.combining(ch)).lower()
 
 
-def _brand_variants() -> dict[str, tuple[bool, bool, bool, int]]:
+def _brand_variants() -> dict[str, tuple[bool, bool, bool, int, bool]]:
     return {
-        foods.brand_search_sql(visibility=vis, with_source=src, favorites_only=fav, tokens=n): (
-            vis == access.VISIBLE_FOODS_SQL, src, fav, n,
+        foods.brand_search_sql(visibility=vis, with_source=src, favorites_only=fav, tokens=n, exclude_recipes=exc): (
+            vis == access.VISIBLE_FOODS_SQL, src, fav, n, exc,
         )
+        for exc in (False, True)
         for vis in (access.VISIBLE_FOODS_SQL, access.PRIVATE_FOODS_SQL)
         for src in (True, False)
         for fav in (True, False)
@@ -68,9 +72,16 @@ class FakeFoodsDB:
         self.favorites: list[dict[str, Any]] = []  # `user_favorite_foods` (N3): {user_id, food_id, ...}
         self.queries: list[tuple[str, tuple]] = []
         self.now = AGORA  # `created_at` das linhas gravadas pela importação externa
+        # Receitas (125): `food_recipe_versions` e `food_recipe_ingredients`.
+        self.recipe_versions: dict[int, dict[str, Any]] = {}
+        self.recipe_ingredients: dict[int, dict[str, Any]] = {}
+        self.next_version_id = 1
+        self.next_ingredient_id = 1
         self._search = _search_variants()
         self._brand = _brand_variants()
-        self._list = {foods.list_sql(bucket=False): False, foods.list_sql(bucket=True): True}
+        self._list = {
+            foods.list_sql(bucket=b, exclude_recipes=exc): (b, exc) for b in (False, True) for exc in (False, True)
+        }
 
     # --- cenário -------------------------------------------------------------
     def add_food(self, name: str, *, source: str = "taco", owner: Optional[int] = None, active: bool = True,
@@ -100,6 +111,24 @@ class FakeFoodsDB:
         }
         return portion_id
 
+    def _recipe_sql(self) -> dict[str, str]:
+        """Statements das receitas (nutrition_recipes) e as buscas por ids que ela usa -> tipo."""
+        if not hasattr(self, "_recipe_cache"):
+            sqls = {
+                recipes.CURRENT_VERSION_SQL: "current", recipes.MAX_VERSION_SQL: "max",
+                recipes.MAX_VERSION_FOR_UPDATE_SQL: "max",
+                recipes.INSERT_VERSION_SQL: "ins_version", recipes.INGREDIENTS_OF_VERSION_SQL: "ingredients",
+                recipes.INSERT_INGREDIENT_SQL: "ins_ingredient", recipes.LIST_SQL: "list",
+            }
+            for n in range(1, 41):
+                sqls[meals.recipe_versions_sql(n)] = "latest_ids"
+            for n in range(1, 41):
+                sqls[recipes.latest_versions_sql(n)] = "latest"
+                sqls[meals.foods_by_ids_sql(n)] = "foods_ids"
+                sqls[meals.portions_by_ids_sql(n)] = "portions_ids"
+            self._recipe_cache = sqls
+        return self._recipe_cache
+
     def conn(self) -> "FakeConn":
         return FakeConn(self)
 
@@ -107,18 +136,20 @@ class FakeFoodsDB:
 class FakeConn:
     def __init__(self, db: FakeFoodsDB) -> None:
         self.db = db
-        self._snapshot: Optional[tuple[Any, Any]] = None
+        self._snapshot: Optional[tuple[Any, ...]] = None
 
     def cursor(self) -> "FakeCursor":
         return FakeCursor(self.db)
 
     def __enter__(self) -> "FakeConn":
-        self._snapshot = (copy.deepcopy(self.db.foods), copy.deepcopy(self.db.portions))
+        d = self.db
+        self._snapshot = tuple(copy.deepcopy(x) for x in (d.foods, d.portions, d.recipe_versions, d.recipe_ingredients))
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         if exc_type is not None and self._snapshot is not None:
-            self.db.foods, self.db.portions = self._snapshot
+            d = self.db
+            d.foods, d.portions, d.recipe_versions, d.recipe_ingredients = self._snapshot
         return False
 
 
@@ -158,8 +189,8 @@ class FakeCursor:
     def fetchall(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self._rows]
 
-    def _buscar(self, variante: tuple[bool, str, bool, bool], p: tuple) -> list[dict[str, Any]]:
-        fulltext, visiveis, com_fonte, so_favoritos = variante
+    def _buscar(self, variante: tuple[bool, str, bool, bool, bool], p: tuple) -> list[dict[str, Any]]:
+        fulltext, visiveis, com_fonte, so_favoritos, sem_receita = variante
         resto = list(p)
         termo = resto.pop(0)
         usuario = resto.pop(0) if visiveis else None
@@ -184,6 +215,8 @@ class FakeCursor:
                 continue
             if fonte is not None and linha["source"] != fonte:
                 continue
+            if sem_receita and linha["source"] == "recipe":
+                continue
             palavras = linha["_normalized"].split()
             if fulltext:
                 relevancia = sum(1 for pre in prefixos if any(w.startswith(pre) for w in palavras))
@@ -194,9 +227,9 @@ class FakeCursor:
         achados.sort(key=lambda t: (t[0], t[1]))
         return [_publico(linha) for *_chave, linha in achados[:lote]]
 
-    def _buscar_marca(self, variante: tuple[bool, bool, bool, int], p: tuple) -> list[dict[str, Any]]:
+    def _buscar_marca(self, variante: tuple[bool, bool, bool, int, bool], p: tuple) -> list[dict[str, Any]]:
         """`brand LIKE %termo%` (padrão com `\\` escapando curinga), ORDER BY name_normalized, id LIMIT; com termos (#208), cada um no nome OU na marca."""
-        visiveis, com_fonte, so_favoritos, n_termos = variante
+        visiveis, com_fonte, so_favoritos, n_termos, sem_receita = variante
         resto = list(p)
         padrao = resto.pop(0)
         pares = [resto.pop(0) for _ in range(2 * n_termos)]
@@ -225,11 +258,13 @@ class FakeCursor:
             and ((linha["owner_user_id"] is None or linha["owner_user_id"] == usuario) if visiveis
                  else linha["owner_user_id"] is not None)
             and (fonte is None or linha["source"] == fonte)
+            and not (sem_receita and linha["source"] == "recipe")
         ]
         return [_publico(linha) for linha in sorted(achados, key=lambda r: (r["_normalized"], r["id"]))[:lote]]
 
-    def _listar(self, bucket: bool, p: tuple) -> list[dict[str, Any]]:
+    def _listar(self, variante: tuple[bool, bool], p: tuple) -> list[dict[str, Any]]:
         """Listagem por letra: nome em ai_ci, `NOT(...)` no balde, ORDER BY name, id LIMIT/OFFSET."""
+        bucket, sem_receita = variante
         usuario, *prefixos, limite, deslocamento = p
         letras = tuple(x.rstrip("%").lower() for x in prefixos)
         assert len(letras) == (26 if bucket else 1)
@@ -237,11 +272,70 @@ class FakeCursor:
         for linha in self.db.foods.values():
             if not linha["is_active"] or not (linha["owner_user_id"] is None or linha["owner_user_id"] == usuario):
                 continue
+            if sem_receita and linha["source"] == "recipe":
+                continue
             casa = any(_ai_ci(linha["name"]).startswith(letra) for letra in letras)
             if casa != bucket:
                 achados.append(linha)
         achados.sort(key=lambda r: (_ai_ci(r["name"]), r["id"]))
         return [_publico(linha) for linha in achados[deslocamento:deslocamento + limite]]
+
+    def _recipes(self, sql: str, p: tuple) -> None:
+        db = self.db
+        tipo = db._recipe_sql()[sql]
+        if tipo == "foods_ids":
+            self._rows = [_publico(db.foods[i]) for i in p if i in db.foods]
+        elif tipo == "portions_ids":
+            self._rows = [db.portions[i] for i in p if i in db.portions]
+        elif tipo == "current":
+            versoes = [v for v in db.recipe_versions.values() if v["food_id"] == p[0]]
+            self._rows = sorted(versoes, key=lambda v: -v["version"])[:1]
+        elif tipo == "max":
+            self._rows = [{"v": max((v["version"] for v in db.recipe_versions.values() if v["food_id"] == p[0]), default=0)}]
+        elif tipo == "ins_version":
+            food_id, version, final, raw, yld, instr, calc, eff, engine, user = p
+            if any(v["food_id"] == food_id and v["version"] == version for v in db.recipe_versions.values()):
+                raise AssertionError("UNIQUE (food_id, version) violada")
+            vid = db.next_version_id
+            db.next_version_id += 1
+            db.recipe_versions[vid] = {
+                "id": vid, "food_id": food_id, "version": version, "final_weight_g": Decimal(str(final)),
+                "raw_weight_g": None if raw is None else Decimal(str(raw)),
+                "yield_percent": None if yld is None else Decimal(str(yld)), "instructions": instr,
+                "calculated_json": calc, "effective_json": eff, "engine_version": engine, "created_by": user,
+                "created_at": db.now,
+            }
+            self.lastrowid, self.rowcount = vid, 1
+        elif tipo == "ingredients":
+            linhas = [r for r in db.recipe_ingredients.values() if r["version_id"] == p[0]]
+            self._rows = sorted(linhas, key=lambda r: (r["position"], r["id"]))
+        elif tipo == "ins_ingredient":
+            iid = db.next_ingredient_id
+            db.next_ingredient_id += 1
+            colunas = ("version_id", "position", "food_id", "item_label", "quantity", "unit", "portion_id", "amount",
+                       "basis", "catalog_snapshot_json")
+            linha = dict(zip(colunas, p), id=iid)
+            assert linha["version_id"] in db.recipe_versions  # FK
+            for c in ("quantity", "amount"):
+                linha[c] = Decimal(str(linha[c]))
+            db.recipe_ingredients[iid] = linha
+            self.lastrowid, self.rowcount = iid, 1
+        elif tipo == "latest_ids":
+            ultimas = {}
+            for v in db.recipe_versions.values():
+                if v["food_id"] in p and (v["food_id"] not in ultimas or v["version"] > ultimas[v["food_id"]]["version"]):
+                    ultimas[v["food_id"]] = v
+            self._rows = list(ultimas.values())
+        elif tipo == "latest":
+            ultimas: dict[int, dict[str, Any]] = {}
+            for v in db.recipe_versions.values():
+                if v["food_id"] in p and (v["food_id"] not in ultimas or v["version"] > ultimas[v["food_id"]]["version"]):
+                    ultimas[v["food_id"]] = v
+            self._rows = list(ultimas.values())
+        elif tipo == "list":
+            fonte, dono = p
+            achados = [r for r in db.foods.values() if r["source"] == fonte and r["owner_user_id"] == dono and r["is_active"]]
+            self._rows = [_publico(r) for r in sorted(achados, key=lambda r: (r["_normalized"], r["id"]))]
 
     def execute(self, sql: str, params: Any = None) -> None:  # noqa: C901 - despacho por statement
         p = tuple(params or ())
@@ -260,7 +354,7 @@ class FakeCursor:
             self.rowcount = len(self._rows)
         elif sql == foods.FAVORITE_IDS_SQL:
             self._rows = [{"food_id": f["food_id"]} for f in db.favorites if f["user_id"] == p[0]]
-        elif sql == foods.FOOD_BY_ID_SQL:
+        elif sql in (foods.FOOD_BY_ID_SQL, f"{foods.FOOD_BY_ID_SQL} FOR UPDATE"):
             linha = db.foods.get(int(p[0]))
             self._rows = [_publico(linha)] if linha else []
         elif sql == foods.INSERT_FOOD_SQL:
@@ -328,6 +422,8 @@ class FakeCursor:
             linha["_normalized"] = linha["name_normalized"]
             db.foods[food_id] = linha
             self.lastrowid, self.rowcount = food_id, 1
+        elif sql in db._recipe_sql():
+            self._recipes(sql, p)
         elif sql == foods.PROMOTE_PORTIONS_SQL:
             for r in db.portions.values():
                 if r["food_id"] == p[0] and r["owner_user_id"] == p[1]:

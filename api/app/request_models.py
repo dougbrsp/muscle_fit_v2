@@ -18,11 +18,14 @@ import unicodedata
 from datetime import date, time
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
 from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
+from .domain.nutrition.catalog import PER_100_FIELDS as _PER_100_FIELDS
+from .domain.nutrition.recipe import RECIPE_FINAL_WEIGHT_MAX_G as _RECIPE_FINAL_WEIGHT_MAX_G
+from .domain.nutrition.recipe import RECIPE_MAX_INGREDIENTS as _RECIPE_MAX_INGREDIENTS
 
 NOTES_MAX = 2000
 SHORT_TEXT_MAX = 160
@@ -331,6 +334,40 @@ class FoodPortionIn(_StrictIn):
 
     label: str = Field(min_length=1, max_length=120)
     amount: Number
+
+
+# Só nos modelos de receita: bool e string numérica viram 422 (o `Number` global segue lenient).
+_RecipeNumber = Union[StrictInt, StrictFloat]
+
+
+class RecipeIngredientIn(_StrictIn):
+    """Ingrediente de uma receita (issue #286): alimento do catálogo, quantidade e unidade (códigos de
+    `meal_math.Unit`) e porção opcional. Conversão e visibilidade NÃO são validadas aqui: `meal_math` e
+    `nutrition_access` (a rota responde 422 com o código e o índice)."""
+
+    food_id: StrictInt
+    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+    unit: str = Field(min_length=1, max_length=24)
+    portion_id: Optional[StrictInt] = None
+
+
+class RecipePreviewIn(_StrictIn):
+    """POST /nutrition/recipes/preview e base do POST/PUT: ingredientes, peso final pronto, substituições
+    manuais por campo (valor por 100 g) e porção padrão (g). Cálculo e limites finos: `domain/nutrition/recipe`."""
+
+    name: Optional[str] = Field(default=None, max_length=255)
+    ingredients: List[RecipeIngredientIn] = Field(max_length=_RECIPE_MAX_INGREDIENTS)
+    final_weight_g: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+    overrides: Optional[dict[Annotated[str, StringConstraints(max_length=64)], Optional[Annotated[_RecipeNumber, Field(allow_inf_nan=False)]]]] = Field(
+        default=None, max_length=len(_PER_100_FIELDS))
+    serving_size: Optional[_RecipeNumber] = Field(default=None, gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+
+
+class RecipeSaveIn(RecipePreviewIn):
+    """POST e PUT /nutrition/recipes: o nome é obrigatório; `instructions` é privado do dono."""
+
+    name: str = Field(min_length=1, max_length=255)
+    instructions: Optional[str] = Field(default=None, max_length=20000)
 
 
 class FavoriteDefaultIn(_StrictIn):

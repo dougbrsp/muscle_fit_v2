@@ -440,3 +440,54 @@ def test_segunda_exclusao_e_inexistente_sao_404(db):
     assert segunda.status_code == 404 and segunda.json()["detail"]["error"] == "food_not_found"
     assert aluno.delete("/nutrition/foods/999").status_code == 404
     assert aluno.delete("/nutrition/foods/7").status_code == 404  # já inativo desde o cenário
+
+
+# ---------------------------------------------------------------------------
+# Receita no catálogo (L37, #286)
+# ---------------------------------------------------------------------------
+
+
+def _receita(db) -> int:
+    rid = db.add_food("Receita de arroz", source="recipe", owner=ALUNO, energy_kcal=150, carbohydrates_g=30,
+                      protein_g=3, total_fat_g=1)
+    db.favorites.append({"user_id": ALUNO, "food_id": rid})
+    return rid
+
+
+def test_put_de_receita_e_409_food_is_recipe_e_nao_grava(db):
+    rid = _receita(db)
+    resposta = _client().put(f"/nutrition/foods/{rid}", json={**ARROZ, "name": "Outro nome"})
+    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "food_is_recipe"
+    assert db.foods[rid]["name"] == "Receita de arroz"
+
+
+def test_receita_nao_e_promovida_e_can_promote_e_falso(db):
+    rid = _receita(db)
+    admin = _client("admin", ADMIN)
+    resposta = admin.post(f"/nutrition/foods/{rid}/promote")
+    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "recipe_promote_not_supported"
+    assert db.foods[rid]["owner_user_id"] == ALUNO
+    assert _client().get(f"/nutrition/foods/{rid}").json()["permissions"]["can_promote"] is False
+
+
+def test_excluir_receita_arquiva_e_sai_dos_favoritos_e_porcao_vale(db):
+    rid = _receita(db)
+    aluno = _client()
+    assert aluno.post(f"/nutrition/foods/{rid}/portions", json={"label": "fatia", "amount": 80}).status_code == 201
+    assert aluno.delete(f"/nutrition/foods/{rid}").status_code == 200
+    assert db.foods[rid]["is_active"] == 0
+    assert not [f for f in db.favorites if f["food_id"] == rid]
+    assert aluno.get(f"/nutrition/foods/{rid}").status_code == 404
+
+
+def test_busca_e_lista_devolvem_receita_e_exclude_recipes_a_tira(db):
+    _receita(db)
+    aluno = _client()
+    com = _busca(aluno, "arroz")["items"]
+    assert any(i["source"] == "recipe" and i["origin"]["label"] == "Receita" for i in com)
+    sem = _busca(aluno, "arroz", exclude_recipes="true")["items"]
+    assert sem and not any(i["source"] == "recipe" for i in sem)
+    lista = aluno.get("/nutrition/foods", params={"letter": "r"}).json()["items"]
+    assert [i["source"] for i in lista] == ["recipe"]
+    lista = aluno.get("/nutrition/foods", params={"letter": "r", "exclude_recipes": "true"}).json()["items"]
+    assert lista == []
