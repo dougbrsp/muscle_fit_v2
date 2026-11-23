@@ -203,6 +203,30 @@ describe('RecipeEditor', () => {
     expect(createRecipe).not.toHaveBeenCalled();
   });
 
+  it('ajuste inválido mostra aviso visível e valor não finito também é inválido', async () => {
+    previewRecipe.mockResolvedValue(previa());
+    await mount();
+    await preencher();
+    await click('Calcular');
+    expect(host.querySelector('[data-testid="ajuste-invalido"]')).toBeNull();
+    await type(host.querySelector('input[aria-label^="Ajustar "]')!, '1e999');
+    expect(host.querySelector('[data-testid="ajuste-invalido"]')).not.toBeNull();
+    await type(host.querySelector('input[aria-label^="Ajustar "]')!, '12,5');
+    expect(host.querySelector('[data-testid="ajuste-invalido"]')).toBeNull();
+  });
+
+  it('quantidade não finita não é enviada como número válido e modo de preparo vai com trim', async () => {
+    previewRecipe.mockResolvedValue(previa());
+    await mount();
+    await preencher();
+    await type(host.querySelector('textarea')!, '  misture  ');
+    await type(byLabel('Quantidade'), 'Infinity');
+    await click('Calcular');
+    expect(previewRecipe).toHaveBeenCalledWith(
+      expect.objectContaining({ instructions: 'misture', ingredients: [expect.objectContaining({ quantity: NaN })] }),
+    );
+  });
+
   it('prévia bem-sucedida limpa o erro de salvar', async () => {
     createRecipe.mockRejectedValue(new ApiError('falhou ao salvar', 422, { error: 'final_weight_invalid', code: 'final_weight_invalid', message: 'falhou ao salvar' }));
     previewRecipe.mockResolvedValue(previa());

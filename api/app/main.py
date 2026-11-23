@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -30,6 +31,7 @@ from .security import (
     Identity,
     MustChangePasswordRequired,
     must_change_password_handler,
+    validation_error_handler,
 )
 from .services import (
     activity_detail,
@@ -116,6 +118,9 @@ app.add_middleware(RequestMemoMiddleware)
 app.add_exception_handler(MustChangePasswordRequired, must_change_password_handler)
 # #237: o mesmo corpo `{"detail", "code"}` (o handler so le `status_code`, `detail` e `code`).
 app.add_exception_handler(TemplateSafetyBlocked, must_change_password_handler)
+
+
+app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 
 @app.get("/health")

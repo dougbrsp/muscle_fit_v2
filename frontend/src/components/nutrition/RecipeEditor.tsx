@@ -29,7 +29,8 @@ type Props = {
 
 const text = (n: number | null | undefined) => (n == null ? '' : String(n));
 // Texto digitado -> número da API (vírgula decimal); vazio ou inválido vira `null`/NaN e a API acusa.
-const toNumber = (s: string) => (s.trim() === '' ? NaN : Number(s.trim().replace(',', '.')));
+const toNumber = (s: string) => (s.trim() === '' ? NaN : finiteOrNaN(Number(s.trim().replace(',', '.'))));
+const finiteOrNaN = (n: number) => (Number.isFinite(n) ? n : NaN);
 const fmt = (n: number | null | undefined) => (n == null ? '—' : String(n));
 
 /** `index` do erro de ingrediente: campo `index` da API ou sufixo `:<índice>` do `code`. */
@@ -116,7 +117,7 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
     for (const [campo, valor] of Object.entries(overrides)) if (valor.trim() !== '') ov[campo] = toNumber(valor);
     return {
       name: name.trim(),
-      instructions: instructions.trim() === '' ? null : instructions,
+      instructions: instructions.trim() === '' ? null : instructions.trim(),
       ingredients: rows.map((r): RecipeIngredientPayload => ({
         food_id: r.food_id,
         quantity: toNumber(r.quantity),
@@ -280,6 +281,12 @@ export function RecipeEditor({ recipe, onSaved, onCancel }: Props) {
             Calcular
           </Button>
         </Group>
+
+        {invalidOverrides.length > 0 && (
+          <Alert color="yellow" icon={<IconAlertTriangle size={16} />} data-testid="ajuste-invalido">
+            Há ajuste manual com número inválido. Corrija ou use &quot;Voltar ao calculado&quot; para calcular e salvar.
+          </Alert>
+        )}
 
         {errorInfo && errorIndex === null && (
           <Alert color="red" icon={<IconAlertTriangle size={16} />} title="Não foi possível concluir">

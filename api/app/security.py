@@ -1,11 +1,14 @@
 import hashlib
 import hmac
 import logging
+import math
 import os
 from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import Cookie, Header, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .db import transaction
@@ -366,6 +369,23 @@ def must_change_password_handler(_request: Request, exc: MustChangePasswordRequi
     `main_engines.py`: corpo `{"detail": ..., "code": "must_change_password"}`
     (o frontend reconhece o `code` e leva o usuario a troca de senha)."""
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
+
+
+def _sem_nao_finitos(valor):
+    """#291: troca float inf/nan (em qualquer profundidade) por texto, para o JSON do 422 serializar."""
+    if isinstance(valor, float) and not math.isfinite(valor):
+        return str(valor)
+    if isinstance(valor, dict):
+        return {k: _sem_nao_finitos(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_sem_nao_finitos(v) for v in valor]
+    return valor
+
+
+async def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """#291: handler de `RequestValidationError` em `main.py` e `main_engines.py`. Mesmo formato do
+    padrao do FastAPI; so os floats nao finitos de `input`/`ctx` mudam (antes davam 500)."""
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(_sem_nao_finitos(exc.errors()))})
 
 
 def _is_must_change_exempt(request: Request) -> bool:

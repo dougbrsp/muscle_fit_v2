@@ -126,6 +126,20 @@ describe('ReceitasClient', () => {
     expect(host.textContent).not.toContain('Não foi possível arquivar a receita.');
   });
 
+  it('erro de arquivar some ao clicar Arquivar em outra linha', async () => {
+    fetchRecipes.mockResolvedValue({ items: [item(), item({ id: 4, name: 'Pão' })] });
+    deleteFood.mockRejectedValue(new Error('x'));
+    await mount();
+    await click('Arquivar');
+    await click('Confirmar arquivamento');
+    await settle();
+    expect(host.textContent).toContain('Não foi possível arquivar a receita.');
+    await act(async () => {
+      (host.querySelector('button[aria-label="Arquivar Pão"]') as HTMLElement).click();
+    });
+    expect(host.textContent).not.toContain('Não foi possível arquivar a receita.');
+  });
+
   it('Nova receita abre o editor', async () => {
     fetchRecipes.mockResolvedValue({ items: [] });
     await mount();

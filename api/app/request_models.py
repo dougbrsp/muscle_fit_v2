@@ -25,6 +25,7 @@ from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 from .domain.nutrition.catalog import PER_100_FIELDS as _PER_100_FIELDS
 from .domain.nutrition.recipe import RECIPE_FINAL_WEIGHT_MAX_G as _RECIPE_FINAL_WEIGHT_MAX_G
+from .domain.nutrition.diary import ITEM_AMOUNT_MAX as _ITEM_AMOUNT_MAX
 from .domain.nutrition.recipe import RECIPE_MAX_INGREDIENTS as _RECIPE_MAX_INGREDIENTS
 
 NOTES_MAX = 2000
@@ -346,7 +347,7 @@ class RecipeIngredientIn(_StrictIn):
     `nutrition_access` (a rota responde 422 com o código e o índice)."""
 
     food_id: StrictInt
-    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_RECIPE_FINAL_WEIGHT_MAX_G)
+    quantity: _RecipeNumber = Field(gt=0, allow_inf_nan=False, le=_ITEM_AMOUNT_MAX)
     unit: str = Field(min_length=1, max_length=24)
     portion_id: Optional[StrictInt] = None
 
