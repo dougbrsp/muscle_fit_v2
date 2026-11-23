@@ -1,0 +1,161 @@
+'use client';
+
+import { Alert, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
+import { RecipeEditor } from '@/components/nutrition/RecipeEditor';
+import { deleteFood, fetchRecipe, fetchRecipes, nutritionErrorInfo, recipeKeys } from '@/lib/nutrition-api';
+import { usePresentationSlot } from '@/lib/presentation-slots';
+import { BRAND } from '@/theme';
+
+const DESCRICAO =
+  'Receita é um alimento composto: você lista os ingredientes crus e o peso final pronto, e o app calcula os valores por 100 g. Depois ela entra no diário como qualquer alimento.';
+
+/** `/nutricao/receitas` — minhas receitas (#286). Todo cálculo é da API (`nutrition_recipes`); a tela só exibe. */
+export function ReceitasClient() {
+  const qc = useQueryClient();
+  const Header = usePresentationSlot('nutritionHeader');
+  // `null` = lista; `'new'` = receita nova; número = receita aberta para editar.
+  const [editing, setEditing] = useState<'new' | number | null>(null);
+  const [archiving, setArchiving] = useState<number | null>(null);
+
+  const list = useQuery({ queryKey: recipeKeys.list(), queryFn: fetchRecipes, retry: false });
+  const detail = useQuery({
+    queryKey: recipeKeys.detail(typeof editing === 'number' ? editing : 0),
+    queryFn: () => fetchRecipe(editing as number),
+    enabled: typeof editing === 'number',
+    retry: false,
+    // Sempre a versão corrente do servidor: o editor parte dela.
+    gcTime: 0,
+    // Refetch automático que falhasse trocaria o editor pelo alerta e perderia edições.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  async function refresh() {
+    await qc.invalidateQueries({ queryKey: recipeKeys.all });
+    await qc.invalidateQueries({ queryKey: ['nutrition-foods-search'] });
+  }
+
+  const archive = useMutation({
+    mutationFn: (id: number) => deleteFood(id),
+    onSuccess: async () => {
+      setArchiving(null);
+      await refresh();
+    },
+  });
+
+  function open(target: 'new' | number) {
+    archive.reset();
+    setEditing(target);
+  }
+
+  return (
+    <Stack gap="xl">
+      {Header ? (
+        <Header active="/nutricao/receitas" title="Receitas" description={DESCRICAO} />
+      ) : (
+        <Stack gap="xs">
+          <NutritionSubnav active="/nutricao/receitas" />
+          <Title order={1} c={BRAND.textPrimary}>
+            Receitas
+          </Title>
+          <Text c={BRAND.textMuted} size="md">
+            {DESCRICAO}
+          </Text>
+        </Stack>
+      )}
+
+      {editing !== null ? (
+        detail.isError && !detail.data ? (
+          <Stack>
+            <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+              {nutritionErrorInfo(detail.error, 'Não foi possível carregar a receita.').message}
+            </Alert>
+            <Group>
+              <Button variant="default" onClick={() => setEditing(null)}>
+                Voltar
+              </Button>
+            </Group>
+          </Stack>
+        ) : typeof editing === 'number' && !detail.data ? (
+          <Loader size="sm" aria-label="Carregando a receita" />
+        ) : (
+          <RecipeEditor
+            key={editing}
+            recipe={typeof editing === 'number' ? (detail.data ?? null) : null}
+            onSaved={async () => {
+              setEditing(null);
+              await refresh();
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        )
+      ) : (
+        <Stack gap="md">
+          <Group>
+            <Button onClick={() => open('new')}>Nova receita</Button>
+          </Group>
+
+          {archive.isError && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+              {nutritionErrorInfo(archive.error, 'Não foi possível arquivar a receita.').message}
+            </Alert>
+          )}
+          {list.isLoading && <Loader size="sm" aria-label="Carregando as receitas" />}
+          {list.isError && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />}>
+              {nutritionErrorInfo(list.error, 'Não foi possível carregar as receitas.').message}
+            </Alert>
+          )}
+          {list.data && list.data.items.length === 0 && (
+            <Text c={BRAND.textMuted}>
+              Você ainda não tem receitas. Crie uma para registrar pratos preparados em casa, com os valores por 100 g calculados dos
+              ingredientes.
+            </Text>
+          )}
+          {list.data?.items.map((r) => (
+            <Paper key={r.id} withBorder radius="md" p="md" bg={BRAND.bgElevated} data-testid="receita">
+              <Group justify="space-between" wrap="wrap">
+                <Stack gap={2}>
+                  <Text fw={600} c={BRAND.textPrimary}>
+                    {r.name}
+                  </Text>
+                  <Text size="sm" c={BRAND.textMuted}>
+                    {r.per_100.energy_kcal != null ? `${r.per_100.energy_kcal} kcal por 100 g` : 'Energia não calculada'}
+                    {r.version != null && ` · versão ${r.version}`}
+                  </Text>
+                </Stack>
+                {archiving === r.id ? (
+                  <Group gap="xs">
+                    <Text size="sm">Arquivar {r.name}?</Text>
+                    <Button color="red" size="xs" loading={archive.isPending} onClick={() => archive.mutate(r.id)}>
+                      Confirmar arquivamento
+                    </Button>
+                    <Button variant="default" size="xs" onClick={() => {
+                        archive.reset();
+                        setArchiving(null);
+                      }}>
+                      Manter
+                    </Button>
+                  </Group>
+                ) : (
+                  <Group gap="xs">
+                    <Button variant="light" size="xs" onClick={() => open(r.id)} aria-label={`Editar ${r.name}`}>
+                      Editar
+                    </Button>
+                    <Button variant="subtle" color="red" size="xs" onClick={() => setArchiving(r.id)} aria-label={`Arquivar ${r.name}`}>
+                      Arquivar
+                    </Button>
+                  </Group>
+                )}
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+}

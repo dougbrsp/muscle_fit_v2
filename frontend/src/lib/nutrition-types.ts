@@ -1006,3 +1006,91 @@ export type FavoriteDefaultPayload = {
 
 /** Corpo de `POST /nutrition/favorites` (`FavoriteCreateIn`). */
 export type FavoriteCreatePayload = { food_id: number } & Partial<FavoriteDefaultPayload>;
+
+// ---------------------------------------------------------------------------
+// Receitas (#286, fatia 1): formato de `api/app/nutrition_recipes.py` e `RecipeIngredientIn`,
+// `RecipePreviewIn`, `RecipeSaveIn`. Todo cálculo (totais, por 100 g, rendimento) vem da API.
+// ---------------------------------------------------------------------------
+
+/** Ingrediente enviado: `unit` é código de `meal_math.Unit`; sem porção, `portion_id` ausente ou null. */
+export type RecipeIngredientPayload = {
+  food_id: number;
+  quantity: number;
+  unit: string;
+  portion_id?: number | null;
+};
+
+/** Corpo de `POST /nutrition/recipes/preview`. `overrides`: valor por 100 g por campo (null = sem substituição). */
+export type RecipePreviewPayload = {
+  name?: string | null;
+  ingredients: RecipeIngredientPayload[];
+  final_weight_g: number;
+  overrides?: Record<string, number | null> | null;
+  serving_size?: number | null;
+};
+
+/** Corpo de `POST /nutrition/recipes` e `PUT /nutrition/recipes/{id}`: nome obrigatório. */
+export type RecipeSavePayload = RecipePreviewPayload & {
+  name: string;
+  instructions?: string | null;
+};
+
+export type RecipeIngredientView = {
+  position: number;
+  food_id: number;
+  portion_id: number | null;
+  label: string | null;
+  quantity: number | null;
+  unit: string | null;
+  amount: number | null;
+  basis: string | null;
+  per_100: FoodPer100 | null;
+};
+
+/** Resposta de `POST /nutrition/recipes/preview` (`_preview_public`). */
+export type RecipePreview = {
+  ingredients: RecipeIngredientView[];
+  totals: FoodPer100;
+  per_100_calculated: FoodPer100;
+  per_100_effective: FoodPer100;
+  overridden_fields: string[];
+  raw_weight_g: number | null;
+  final_weight_g: number | null;
+  yield_percent: number | null;
+  incomplete_fields: string[];
+  missing_by_field: Record<string, unknown[]>;
+  atwater: Record<string, unknown> | null;
+  limitations: NutritionLimitation[];
+  warnings: NutritionLimitation[];
+  engine_version: string;
+};
+
+/** Versão corrente da receita (`_recipe_public`); `instructions` só vem para o dono. */
+export type RecipeVersion = {
+  version: number;
+  created_at: string | null;
+  final_weight_g: number | null;
+  raw_weight_g: number | null;
+  yield_percent: number | null;
+  instructions: string | null;
+  engine_version: string | null;
+  calculation: Record<string, unknown> | null;
+  limitations: NutritionLimitation[];
+  effective: Record<string, unknown> | null;
+  ingredients: RecipeIngredientView[];
+};
+
+/** Resposta de POST (201), GET e PUT por id: o alimento composto + a versão. */
+export type RecipeDetail = FoodItem & { recipe: RecipeVersion };
+
+/** Item de `GET /nutrition/recipes`. */
+export type RecipeListItem = {
+  id: number;
+  name: string | null;
+  per_100: FoodPer100;
+  serving_size: number | null;
+  version: number | null;
+  version_created_at: string | null;
+};
+
+export type RecipeListResponse = { items: RecipeListItem[] };
