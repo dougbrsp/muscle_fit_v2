@@ -1454,7 +1454,8 @@
       "tbca_manual",
       "user",
       "label_photo",
-      "ai_estimate"
+      "ai_estimate",
+      "recipe"
     ],
     "food_source_labels": {
       "taco": "TACO 4ª ed.",
@@ -1463,7 +1464,8 @@
       "tbca_manual": "TBCA (digitado)",
       "user": "Cadastro próprio",
       "label_photo": "Foto do rótulo",
-      "ai_estimate": "Estimativa da IA"
+      "ai_estimate": "Estimativa da IA",
+      "recipe": "Receita"
     },
     "food_bases": [
       "g",
