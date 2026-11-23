@@ -208,7 +208,7 @@ def test_check_cycle_floors_dia_alto_abaixo_do_piso_de_gordura_e_erro():
     cfg = _cfg(manual_targets={"protein_g": 160, "carb_g": 250, "fat_g": 40}, cycle_policy="fat_compensation")
     erros, _ = pl.check_cycle_floors(cfg, SUJEITO)
     assert erros and all(isinstance(e, str) for e in erros)
-    assert cc.LIMIT_FAT_COMPENSATION_INFEASIBLE in erros or any(e.startswith("manual_blocked_below:fat") for e in erros)
+    assert erros == ("manual_blocked_below:fat_g",)  # o código que o dono (`plan.check_cycle_floors`) devolve
 
 
 def test_check_cycle_floors_alvo_inviavel_vira_erro_e_aviso_de_faixa_vira_aviso():
@@ -318,10 +318,11 @@ def test_semana_parcial_peso_variavel_futuro_desconhecido_e_dia_isolado_com_comp
     # treino futuro desconhecido funciona
     for i in range(7):
         assert kcal(com, SUJEITO, i, False) == pytest.approx(kcal(sem_ciclo, SUJEITO, i, False))
-    # cada dia depende só de si
-    # dia D isolado (compensação exercida) = dia D dentro da semana com os outros dias com outro peso
-    semana_alterada = [compute_daily_target(SUJEITO if j == 5 else novo, com, _contexto(j)) for j in range(7)]
-    assert semana_alterada[5].macros == compute_daily_target(SUJEITO, com, _contexto(5)).macros
+    # cada dia depende só de si: mudar o peso SÓ do dia 5 muda o dia 5 e deixa as metas dos outros 6 dias idênticas
+    antes = [compute_daily_target(SUJEITO, com, _contexto(j)).macros for j in range(7)]
+    depois = [compute_daily_target(novo if j == 5 else SUJEITO, com, _contexto(j)).macros for j in range(7)]
+    assert depois[5] != antes[5]
+    assert [m for j, m in enumerate(depois) if j != 5] == [m for j, m in enumerate(antes) if j != 5]
     for i in range(7):
         _igual_ao_pre_ciclo(
             compute_daily_target(SUJEITO, sem_ciclo, _contexto(i)),

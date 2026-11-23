@@ -55,7 +55,7 @@ from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION
 from .domain.nutrition import labels as nutrition_labels
-from .domain.nutrition.carb_cycling import CarbCyclePolicy, join_stored_cycle
+from .domain.nutrition.carb_cycling import CarbCyclePolicy
 from .domain.nutrition.energy_expenditure import tdee_breakdown
 from .domain.nutrition.daily_target import (
     TARGET_RECOMPUTE_MAX_DAYS,
@@ -134,7 +134,7 @@ _PLAN_COLUMNS = (
     "effective_from, superseded_at, archived_at, published_at, created_at, updated_at"
 )
 # Sem a migração 123 a coluna `carb_cycle_policy` não existe: leitura e escrita usam as variantes SEM ela (a política fica
-# só na chave `policy` do `carb_cycling_json`, a reserva). Nenhuma rota responde 503 por isso.
+# não é gravada nem lida: vale a padrão). Nenhuma rota responde 503 por isso.
 _PLAN_COLUMNS_NO_POLICY = _PLAN_COLUMNS.replace("carb_cycle_policy, ", "")
 # `published_preview_json` (106) fica FORA de `_PLAN_COLUMNS` de propósito: é a prévia gravada na publicação (dezenas de KB
 # por plano) e nenhuma leitura de plano a usa; as listas de planos não pagam o peso (teto de 1 MiB da Data API).
@@ -299,19 +299,19 @@ def _settings_write_values(settings: PlanSettings, notes: Optional[str]) -> tupl
         settings.meals_per_day,
         settings.macro_priority.value,
         settings.manual_macros.to_dict() if settings.manual_macros else None,
-        join_stored_cycle(settings.cycle_days, settings.carb_cycle_policy),
+        settings.cycle_days,  # só os dias; a política vai na coluna (a chave `policy` não é mais gravada)
         notes,
         ENGINE_VERSION,
         settings.maintenance_kcal_adjust,
         # Só o que sai do padrão (a coluna fica NULL nos planos legados e nos adaptativos com o padrão).
         None if settings.energy_params.is_default else settings.energy_params.to_dict(),
-        # Sempre o código explícito (inclusive o padrão): "voltar ao padrão" fica gravado e a reserva do JSON não o desfaz.
+        # Sempre o código explícito (inclusive o padrão): única fonte da política.
         settings.carb_cycle_policy.value,
     )
 
 
 def _insert_draft_row(cur: Any, aluno: int, actor_id: int, settings: PlanSettings, notes: Optional[str]) -> Any:
-    """INSERT do rascunho; sem a coluna da 123 grava sem ela (a chave `policy` do JSON segue sendo gravada)."""
+    """INSERT do rascunho; sem a coluna da 123 grava sem ela (a política não é gravada)."""
     valores = _settings_write_values(settings, notes)
     if has_plan_policy_column(cur):
         return cur.execute(_INSERT_SQL, (int(aluno), int(actor_id), DRAFT, *valores))
