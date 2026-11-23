@@ -71,3 +71,12 @@ Resultados reais informados na entrega; nenhum outro foi medido:
 - `tsc`: sem erro.
 - As quatro telas corrigidas (check-in web, contexto web, painel de mapeamentos externos e contexto móvel) não foram exercitadas em navegador.
 - Não verificado: CI (a suíte de e2e mobile não roda nele); iPhone real; produção.
+
+## Atualização de 23/11/2026 (lote 35)
+
+- **Limite também no conteúdo da página (item a, parte mobile resolvida).** `frontend/src/mobile/layout/MobileShell.tsx` envolve com `ScreenErrorBoundary` também o conteúdo vindo da página (`children`) e a tela "só no desktop" (`DesktopOnlyScreen`), com `resetKey` por caminho e query (L211-213). Rotas que caíam em `children` agora têm o limite. Teste: `frontend/src/mobile/layout/MobileShell.erro.test.ts` (1 caso: filho que lança é contido; cabeçalho e navegação seguem na tela). A parte web do item (a) não mudou: nas telas web, o erro ainda cai no `error.tsx` do segmento.
+- **Erros de navegação do Next são relançados.** Em `frontend/src/mobile/screens/ScreenErrorBoundary.tsx`, `isNextNavigationError` reconhece os digests `NEXT_REDIRECT` e `NEXT_NOT_FOUND`, e o limite os relança (L47) em vez de mostrar tela de erro.
+- **Erro de carregamento de parte da aplicação (chunk) recarrega a página.** Quando `isChunkLoadError` é verdadeiro, o estado mostra `OfflineState` e "Tentar de novo" chama `window.location.reload()` (L42, L48). Nos demais erros, "Tentar de novo" só reabre o estado, sem recarregar. Teste: `frontend/src/mobile/screens/ScreenErrorBoundary.recarga.test.ts` (4 casos: 2 de digests de navegação via `it.each`, 1 de chunk que recarrega, 1 de erro comum que não recarrega).
+- **Escolhas do usuário de 22/11/2026, mantidas.** Não reportar erros de tela ao servidor, e não rodar a suíte de ponta a ponta do celular no CI. Por isso o item (c) segue como está.
+- **Continua dependendo do usuário.** Validação em iPhone real: toque em Salvar com o teclado aberto (item b) e dica de instalação. Nenhuma dessas validações foi feita.
+- **Verificação.** Os testes novos estão listados acima. Esta atualização é só documental: nenhum resultado de execução dos testes foi informado nesta tarefa.

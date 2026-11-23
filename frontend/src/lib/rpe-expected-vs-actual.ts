@@ -24,7 +24,7 @@ export function rpeExpectedSuffix(set: {
   const cmp = set.rpe_vs_expected;
   // A decisão de mostrar é do servidor (só série de trabalho traz comparação).
   if (!cmp || set.rpe_target_planned == null) return '';
-  const label = cmp.label || COUNT_LABELS.find(([key]) => key === cmp.status)?.[1];
+  const label = cmp.label?.trim() || COUNT_LABELS.find(([key]) => key === cmp.status)?.[1];
   return ` (esperado ${fmt(set.rpe_target_planned)}${label ? ` · ${label}` : ''})`;
 }
 
@@ -45,7 +45,7 @@ export function rpeExpectedCountsText(
 ): string | null {
   if (!counts || !counts.compared) return null;
   const parts = COUNT_LABELS.filter(([key]) => counts[key] > 0).map(
-    ([key, fallback]) => `${counts[key]} ${labels?.[key]?.toLowerCase() ?? fallback}`,
+    ([key, fallback]) => `${counts[key]} ${labels?.[key]?.trim().toLowerCase() || fallback}`,
   );
   const noun = counts.compared === 1 ? 'série comparada' : 'séries comparadas';
   return `${counts.compared} ${noun}${parts.length ? `: ${parts.join(', ')}` : ''}`;

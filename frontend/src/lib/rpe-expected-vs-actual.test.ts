@@ -33,6 +33,12 @@ describe('rpeExpectedCountsText', () => {
       '3 séries comparadas: 1 abaixo do esperado, 2 no esperado',
     );
   });
+  it('rótulo vazio ou só espaços cai na reserva', () => {
+    const labels = { below: '', on_target: '   ', above: 'Acima do esperado' };
+    expect(rpeExpectedCountsText({ below: 1, on_target: 1, above: 1, compared: 3 }, labels)).toBe(
+      '3 séries comparadas: 1 abaixo, 1 no esperado, 1 acima do esperado',
+    );
+  });
   it('contagens (reserva sem rótulos)', () => {
     expect(rpeExpectedCountsText({ below: 0, on_target: 1, above: 1, compared: 2 })).toBe(
       '2 séries comparadas: 1 no esperado, 1 acima',

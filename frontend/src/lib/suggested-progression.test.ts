@@ -14,7 +14,7 @@ const skip: SuggestedProgressionResponse = {
   reps_target: null,
   load_target: '45,25kg',
   rpe_target: '8',
-  progression_note: 'Grupo sem trabalho direto pela recuperação: sem progressão nesta sessão.',
+  progression_note: 'Grupo sem trabalho direto pela recuperação: carga mantida, sem progressão.',
   has_history: true,
   suggested_reps: null,
   suggested_load_kg: 45.25,
@@ -30,7 +30,7 @@ describe('suggestedProgressionTargets', () => {
       reps_target: '',
       load_target: '45,25kg',
       rpe_target: '8',
-      progression_note: 'Grupo sem trabalho direto pela recuperação: sem progressão nesta sessão.',
+      progression_note: 'Grupo sem trabalho direto pela recuperação: carga mantida, sem progressão.',
     });
     // Os consumidores fazem parse do texto: vazio não quebra e não vira número.
     expect(parseNumericTarget(targets.reps_target)).toBeNull();
