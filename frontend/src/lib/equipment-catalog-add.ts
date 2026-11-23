@@ -1,5 +1,5 @@
 import type { EquipmentExerciseLink } from './equipment-exercises-types';
-import { normalizeSearchText, type EquipmentPickerItem } from './equipment-picker';
+import { normalizeSearchText, type EquipmentPickerItem, type EquipmentSwapCandidate } from './equipment-picker';
 
 // Terceira seção do seletor de equipamento (#163, parte 2): equipamentos do catálogo
 // global que a academia do treino ainda NÃO tem. Só cruza listas da API por ids; a
@@ -82,6 +82,44 @@ export function findRecommendedItem(
   recommendedLinkId: number,
 ): EquipmentPickerItem | undefined {
   return items.find((item) => item.id === recommendedLinkId);
+}
+
+/**
+ * Candidato da escolha do recomendado: o item da lista da academia, se estiver nela;
+ * senão o próprio recomendado (a API também devolve `load_convention` nele). Nos dois
+ * casos a escolha passa pelo mesmo aviso de convenção.
+ */
+export function resolveRecommendedCandidate(
+  items: ReadonlyArray<EquipmentPickerItem>,
+  recommended: EquipmentSwapCandidate,
+): EquipmentSwapCandidate {
+  return findRecommendedItem(items, recommended.id) ?? recommended;
+}
+
+/** Itens da academia para o cruzamento do catálogo: com dado anterior (recarga falhou) continua valendo. */
+export function loadedGymItems(
+  data: { items?: ReadonlyArray<EquipmentPickerItem> } | null | undefined,
+): ReadonlyArray<EquipmentPickerItem> | undefined {
+  return data ? (data.items ?? []) : undefined;
+}
+
+export const CATALOG_ADDED_REFRESH_FAILED_MESSAGE =
+  'O equipamento foi acrescentado à academia, mas não foi possível atualizar a lista agora. Tente de novo em instantes.';
+
+export type CatalogAddOutcome =
+  | { kind: 'choose'; item: EquipmentPickerItem }
+  | { kind: 'no_link' }
+  | { kind: 'refresh_failed' };
+
+/** Depois do acréscimo e da recarga da lista: escolher, avisar que não há vínculo ou que a recarga falhou. */
+export function catalogAddOutcome(
+  links: GymEquipmentCatalogAddResponse['links'],
+  fresh: { isError: boolean; data?: { items?: ReadonlyArray<EquipmentPickerItem> } | null },
+  pair: EquipmentExerciseLink,
+): CatalogAddOutcome {
+  if (fresh.isError) return { kind: 'refresh_failed' };
+  const item = findAddedItem(links, fresh.data?.items ?? [], pair);
+  return item ? { kind: 'choose', item } : { kind: 'no_link' };
 }
 
 /**

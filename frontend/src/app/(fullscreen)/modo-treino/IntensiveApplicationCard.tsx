@@ -15,6 +15,7 @@ import { intensiveTargetRpeText } from './IntensiveBriefing';
 import { parseRepsInput } from './IntensiveSetEntry';
 import { QuickLoadAdjustment } from './QuickLoadAdjustment';
 import type { WorkoutIconAction } from './ui/IconAction';
+import { EquipmentSwapButton } from './ui/ExerciseTitleRow';
 import { WorkoutActionBar } from './ui/WorkoutActionBar';
 import styles from './intensive.module.css';
 
@@ -97,6 +98,9 @@ type Props = {
   onSkipApplication?: () => void;
   iconActions?: WorkoutIconAction[];
   beforeActions?: ReactNode;
+  /** Nome do equipamento como botão de troca (mesmo handler do "Trocar"); sem os dois, não aparece. */
+  equipmentName?: string | null;
+  onEquipmentSwap?: () => void;
 };
 
 /**
@@ -126,6 +130,8 @@ export function IntensiveApplicationCard({
   onSkipApplication,
   iconActions = [],
   beforeActions = null,
+  equipmentName = null,
+  onEquipmentSwap,
 }: Props) {
   const [repsText, setRepsText] = useState('');
   const reps = parseRepsInput(repsText);
@@ -161,6 +167,14 @@ export function IntensiveApplicationCard({
           </span>
           <span className={styles.headline}>{profile.techniqueName}</span>
         </div>
+        {equipmentName && onEquipmentSwap && (
+          <EquipmentSwapButton
+            equipmentName={equipmentName}
+            onClick={onEquipmentSwap}
+            className={styles.equipmentSwap}
+            testId="intensive-equipment-swap"
+          />
+        )}
         {appliedItems.length > 0 && (
           <ul className={styles.steps} data-testid="intensive-application-done">
             {appliedItems.map((item) => (
