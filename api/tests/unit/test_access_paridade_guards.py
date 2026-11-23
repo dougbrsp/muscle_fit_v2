@@ -856,17 +856,17 @@ def _permitido(rota: str, papel: str, tipo: str = "session") -> bool:
     return decisao_nova(classe, _rotas_convertidas()[0][rota], permissoes_do_papel(papel, tipo), tipo)
 
 
-def test_paridade_cobre_as_377_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
+def test_paridade_cobre_as_379_rotas_com_permissao_352_do_retrato_mais_14_do_3a_e_5a_e_1_do_164():
     com_permissao, _ = _rotas_convertidas()
-    assert len(com_permissao) == 377
-    # + 5 do #286 (ROTAS_NOVAS_RECEITAS, so em ROTAS_NOVAS_POS_RETRATO)
+    assert len(com_permissao) == 379
+    # + 7 do #286 (ROTAS_NOVAS_RECEITAS, so em ROTAS_NOVAS_POS_RETRATO)
     # 55 do 2F-2 originais + 1 do #164 (ROTA_NOVA_TREINO, em CONTRATO_2F2 e em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #188 (ROTA_NOVA_ACADEMIA_FABRICANTE, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #140 (ROTA_NOVA_ALIMENTOS_EXCLUIR, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #195 (ROTA_NOVA_ALIMENTOS_LISTA, so em ROTAS_NOVAS_POS_RETRATO)
     # + 1 do #216 (ROTA_NOVA_REGISTRO_EXERCICIO, so em ROTAS_NOVAS_POS_RETRATO)
-    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 + 5 == 377
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 25 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
+    assert 9 + 34 + 72 + 39 + 16 + 57 + 29 + 56 + 42 + 14 + 1 + 1 + 1 + 1 + 7 == 379
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 27 and set(ROTAS_NOVAS_POS_RETRATO) <= set(com_permissao)
     assert len(_rotas_2f3()) == 42
     assert len(_rotas_2f2()) == 57
     assert len(_rotas_2f1()) == 29

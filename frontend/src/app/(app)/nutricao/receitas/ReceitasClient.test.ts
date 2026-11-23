@@ -10,8 +10,10 @@ import { ReceitasClient } from './ReceitasClient';
 const fetchRecipes = vi.hoisted(() => vi.fn());
 const deleteFood = vi.hoisted(() => vi.fn());
 const fetchRecipe = vi.hoisted(() => vi.fn());
+const duplicateRecipe = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/nutrition-api')>()),
+  duplicateRecipe,
   fetchRecipes,
   fetchRecipe,
   deleteFood,
@@ -41,6 +43,7 @@ beforeEach(() => {
   fetchRecipes.mockReset();
   deleteFood.mockReset();
   fetchRecipe.mockReset();
+  duplicateRecipe.mockReset();
 });
 afterEach(async () => {
   await act(async () => root?.unmount());
@@ -138,6 +141,28 @@ describe('ReceitasClient', () => {
       (host.querySelector('button[aria-label="Arquivar Pão"]') as HTMLElement).click();
     });
     expect(host.textContent).not.toContain('Não foi possível arquivar a receita.');
+  });
+
+  it('Duplicar chama a API e abre a cópia', async () => {
+    fetchRecipes.mockResolvedValue({ items: [item()] });
+    duplicateRecipe.mockResolvedValue({ id: 9 });
+    fetchRecipe.mockResolvedValue({ id: 9 });
+    await mount();
+    await click('Duplicar');
+    await settle();
+    expect(duplicateRecipe).toHaveBeenCalledWith(3);
+    expect(fetchRecipe).toHaveBeenCalledWith(9);
+    expect(host.textContent).toContain('editor-aberto');
+  });
+
+  it('erro ao duplicar aparece e mantém a lista', async () => {
+    fetchRecipes.mockResolvedValue({ items: [item()] });
+    duplicateRecipe.mockRejectedValue(new Error('x'));
+    await mount();
+    await click('Duplicar');
+    await settle();
+    expect(host.textContent).toContain('Não foi possível duplicar a receita.');
+    expect(host.textContent).toContain('Bolo');
   });
 
   it('Nova receita abre o editor', async () => {

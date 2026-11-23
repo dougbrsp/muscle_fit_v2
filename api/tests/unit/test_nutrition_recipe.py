@@ -177,3 +177,30 @@ def test_conjunto_obrigatorio_da_receita_exige_so_energia():
     assert f"{catalog.ERR_MISSING_FIELD}:energy_kcal" in sem_energia.errors
     padrao = catalog.validate_food_values({"energy_kcal": 100, "total_fat_g": 1})
     assert f"{catalog.ERR_MISSING_FIELD}:carbohydrates_g" in padrao.errors
+
+
+def test_status_do_ingrediente_no_catalogo_current_outdated_unavailable():
+    base = {"energy_kcal": 130.0, "protein_g": None}
+    assert rc.ingredient_catalog_status(base, dict(base)) == rc.CATALOG_CURRENT
+    assert rc.ingredient_catalog_status(base, {**base, "energy_kcal": 131.0}) == rc.CATALOG_OUTDATED
+    assert rc.ingredient_catalog_status(base, {**base, "protein_g": 1.0}) == rc.CATALOG_OUTDATED
+    assert rc.ingredient_catalog_status(base, None) == rc.CATALOG_UNAVAILABLE
+
+
+def test_teto_do_ingrediente_e_proprio_e_a_chave_normaliza_a_unidade():
+    from app.domain.nutrition import meal_math
+
+    assert rc.RECIPE_INGREDIENT_AMOUNT_MAX > diary.ITEM_AMOUNT_MAX
+    ok = meal_math.resolve_amount(diary.ITEM_AMOUNT_MAX + 1, "g", "g")
+    assert rc.ingredient_amount_errors(ok) == ()
+    acima = meal_math.resolve_amount(rc.RECIPE_INGREDIENT_AMOUNT_MAX + 1, "g", "g")
+    assert rc.ingredient_amount_errors(acima) == (rc.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE,)
+    assert rc.ingredient_key(1, 100, " G ", None) == rc.ingredient_key(1, 100.0, "g", None)
+
+
+def test_overrides_da_versao_gravada_e_nome_da_copia():
+    efetivo = {"effective": {"energy_kcal": 170, "protein_g": 25}, "overridden_fields": ["energy_kcal"]}
+    assert rc.overrides_from_effective(efetivo) == {"energy_kcal": 170}
+    assert rc.overrides_from_effective(None) == {}
+    copia = rc.copy_name("x" * rc.RECIPE_NAME_MAX_CHARS)
+    assert len(copia) == rc.RECIPE_NAME_MAX_CHARS and copia.endswith(rc.RECIPE_COPY_SUFFIX)

@@ -1033,9 +1033,23 @@ export type RecipePreviewPayload = {
 export type RecipeSavePayload = RecipePreviewPayload & {
   name: string;
   instructions?: string | null;
+  /** Só no PUT: true recalcula todos os ingredientes do catálogo atual (padrão da API: false). */
+  refresh_ingredients?: boolean;
+};
+
+/** Situação do ingrediente frente ao catálogo atual (decidida pela API). */
+export type RecipeCatalogStatus = 'current' | 'outdated' | 'unavailable';
+
+/** Item de `GET /nutrition/recipes/{id}/versions`. */
+export type RecipeVersionSummary = {
+  version: number;
+  created_at: string | null;
+  final_weight_g: number | null;
+  energy_kcal_per_100g: number | null;
 };
 
 export type RecipeIngredientView = {
+  catalog_status?: RecipeCatalogStatus;
   position: number;
   food_id: number;
   portion_id: number | null;

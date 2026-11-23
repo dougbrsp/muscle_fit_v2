@@ -453,7 +453,10 @@ Dono do cálculo: `api/app/domain/nutrition/recipe.py`. Decisão e contrato: [AD
 - **Ajuste manual**: `apply_overrides` devolve os efetivos, preserva os calculados e lista os campos substituídos. Só campos de `PER_100_FIELDS`, valor não negativo e plausível. Valor nulo significa "sem substituição": o campo usa o calculado.
 - **Limitações**: as do cálculo e as dos ingredientes (ex.: densidade gramas↔ml, de `meal_math.resolve_amount`). A versão grava os códigos em `limitation_codes`, e a leitura devolve a mesma lista (lote 37b).
 - **Não modelado**: retenção ou perda de nutriente no cozimento.
+- **Teto da quantidade do ingrediente** (lote 40): `RECIPE_INGREDIENT_AMOUNT_MAX` = 20000 g ou ml na base, por ingrediente (igual a `RECIPE_FINAL_WEIGHT_MAX_G`). É maior que o do item do diário (2 kg, `diary.ITEM_AMOUNT_MAX`), porque a receita junta mais massa que uma porção. Decisão do usuário de 23/11/2026. Sem conversão de unidade, vale o erro do diário (`ingredient_amount_errors`).
+- **Edição preserva o snapshot** (lote 40): ingrediente igual ao da versão atual (`ingredient_key`: alimento, quantidade, unidade e porção) reaproveita o snapshot gravado, mesmo que o catálogo tenha mudado. "Atualizar ingredientes e recalcular" (`refresh_ingredients`) adota o catálogo atual. Ingrediente indisponível continua válido pelo snapshot. Estado por ingrediente: `ingredient_catalog_status` (`current`, `outdated` ou `unavailable`).
+- **Cópia** (lote 40): `copy_name` = nome sem espaços nas pontas + ` (cópia)`, cortado para `RECIPE_NAME_MAX_CHARS` = 255.
 
-Constantes em `recipe.py`: `RECIPE_ENGINE_VERSION = "recipe-v1"`, `RECIPE_MAX_INGREDIENTS` = `diary.MEAL_MAX_ITEMS` (hoje 30), `RECIPE_YIELD_MIN_SHARE = 0.10`, `RECIPE_YIELD_MAX_SHARE = 5.0`, `RECIPE_FINAL_WEIGHT_MAX_G = 20000.0`.
+Constantes em `recipe.py`: `RECIPE_ENGINE_VERSION = "recipe-v1"`, `RECIPE_MAX_INGREDIENTS` = `diary.MEAL_MAX_ITEMS` (hoje 30), `RECIPE_YIELD_MIN_SHARE = 0.10`, `RECIPE_YIELD_MAX_SHARE = 5.0`, `RECIPE_FINAL_WEIGHT_MAX_G = 20000.0`, `RECIPE_INGREDIENT_AMOUNT_MAX` (igual), `RECIPE_NAME_MAX_CHARS = 255`, `RECIPE_COPY_SUFFIX = " (cópia)"`.
 
 Obrigatório da linha de receita não é de `recipe.py`: é `catalog.RECIPE_REQUIRED_PER_100_FIELDS = ("energy_kcal",)` (`api/app/domain/nutrition/catalog.py`, lote 37c), aplicado em `nutrition_recipes.py::_food_values`.

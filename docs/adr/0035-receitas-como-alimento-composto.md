@@ -1,6 +1,6 @@
 # ADR 0035: Receitas como alimento composto, primeira fatia do backend (issue #286)
 
-- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`. Não promovida a produção.
+- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`; fatia 2, parte 1 (lote 40) na branch `feat/receitas-edicao-l40`, sem commit. Não promovida a produção.
 - **Data**: 2026-11-23
 - **Relaciona-se a**: [ADR 0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) (formato e seções deste registro); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (a regra de ter um único dono por cálculo, aplicada aqui aos nutrientes da receita).
 
@@ -84,15 +84,37 @@ Fatia 1 das telas, sobre o backend do lote 37c (branch `feat/receitas-telas-l38`
   - busca de ingrediente com `excludeRecipes` (`frontend/src/components/nutrition/FoodSearch.tsx`), para que receita não entre como ingrediente.
 - **Regra das telas:** nenhuma conta no frontend. Totais, valores por 100 g, rendimento, energia e avisos vêm da resposta do backend; o código do frontend só converte texto em número.
 - **Saída com alterações:** pede confirmação ao cancelar o editor e ao fechar ou recarregar a aba (`beforeunload`). Trocar de rota pela subnavegação ainda não pede confirmação.
-- **Fica para a fatia 2:** versões com "atualizar ingredientes e recalcular"; duplicar; publicar e filtros minhas, públicas e favoritas; rascunho; cadastrar ingrediente novo sem sair da receita (o editor não passa `onRegister` ao `FoodSearch`); confirmação ao trocar de rota com alterações.
+- **Ficou para a fatia 2** (feito no lote 40: versões, "atualizar ingredientes e recalcular", duplicar pelo dono e cadastro de ingrediente novo sem sair da receita; o resto segue): publicar e filtros minhas, públicas e favoritas; rascunho; confirmação ao trocar de rota com alterações.
 - **Dependência:** a tela só funciona com a migração 125 aplicada; sem ela, as rotas respondem 503.
 
 ## Ajustes do lote 39 (issue #291 e sobras #290)
 
-- **Teto do ingrediente.** A quantidade usa `diary.ITEM_AMOUNT_MAX` (`api/app/request_models.py::RecipeIngredientIn`), o teto oficial do item do diário. Já era o teto efetivo pelo motor, então nenhuma regra muda. O teto do peso final segue `RECIPE_FINAL_WEIGHT_MAX_G`.
+- **Teto do ingrediente (superado no lote 40, ver abaixo).** No lote 39 a quantidade usava `diary.ITEM_AMOUNT_MAX` (`api/app/request_models.py::RecipeIngredientIn`), o teto oficial do item do diário, já efetivo pelo motor. O teto do peso final segue `RECIPE_FINAL_WEIGHT_MAX_G`.
 - **Editor.** `RecipeEditor.tsx` trata número não finito como inválido e avisa o ajuste manual (`ajuste-invalido`), com o envio interrompido.
 - **422 em vez de 500 (geral do app).** Em `api/app/security.py` (`_sem_nao_finitos`, `validation_error_handler`), registrado em `api/app/main.py` (api-core) e `api/app/main_engines.py` (engines), infinito e NaN no corpo viram texto no 422; o formato do FastAPI não muda.
 - **Verificação.** Teste novo `api/tests/unit/test_main_erro_validacao_numero_nao_finito.py`, executado pelo Tech Lead e aprovado junto com os testes das rotas de receita e das engines (42 passed). Ele afirma o registro do handler de validação nos dois apps (api-core e engines) e compara o 422 com o do FastAPI padrão. O CI é quem roda a suíte de integração.
+
+## Ajustes do lote 40 (issue #286, fatia 2 parte 1)
+
+Escolhas do usuário (23/11/2026):
+
+- **Teto próprio do ingrediente: `RECIPE_INGREDIENT_AMOUNT_MAX` = 20 kg** (igual a `RECIPE_FINAL_WEIGHT_MAX_G`), maior que o do item do diário (2 kg). Substitui o teto do lote 39. Alternativa recusada: manter o teto do diário. Sem conversão de unidade, o erro segue o do diário (`recipe.ingredient_amount_errors`). `request_models.RecipeIngredientIn` usa a mesma constante.
+- **Edição preserva o snapshot.** `PUT` sem `refresh_ingredients` reaproveita o snapshot gravado dos ingredientes iguais aos da versão atual (`recipe.ingredient_key`: alimento, quantidade, unidade, porção); só os novos ou alterados são resolvidos no catálogo de hoje. Alternativa recusada: resolver tudo de novo a cada edição, o que mudaria o cálculo sem pedido do usuário.
+- **Atualizar ingredientes e recalcular** = `PUT` com `refresh_ingredients: true`: todos resolvem do catálogo atual.
+- **Ingrediente indisponível** (inativo ou sem acesso) continua válido pelo snapshot. A leitura traz `catalog_status` por ingrediente: `current`, `outdated` (valores por 100 g diferentes do gravado) ou `unavailable` (`recipe.ingredient_catalog_status`).
+- **Versões:** `GET /nutrition/recipes/{food_id}/versions` (número, criação, peso final, energia efetiva por 100 g), só do dono.
+- **Duplicar:** `POST /nutrition/recipes/{food_id}/duplicate` (201), só do dono. Cria receita privada com os snapshots dos ingredientes, os ajustes (`recipe.overrides_from_effective`) e o modo de preparo. Nome: `recipe.copy_name` (sufixo `RECIPE_COPY_SUFFIX`, corte em `RECIPE_NAME_MAX_CHARS` = 255).
+- **Telas:** editor com "atualizar ingredientes" e histórico de versões (`RecipeEditor.tsx`); cadastro de ingrediente novo pelo editor, com `onRegister` do `FoodSearch` e o fluxo `components/nutrition/FoodRegistrationFlow.tsx`; "Duplicar" na lista (`ReceitasClient.tsx`). Só exibem o que a API devolve.
+- **Edição com trava:** `update_recipe` trava a linha da receita (`FOR UPDATE`) e só depois lê os ingredientes da versão atual com trava (`FOR UPDATE`), para que a base do reuso de snapshot não mude durante a gravação (`api/app/nutrition_recipes.py`).
+- **Snapshot inválido:** snapshot gravado nulo ou malformado não é reaproveitado; o ingrediente é resolvido do catálogo de hoje, como novo (`_snapshot_valido`).
+
+Contrato: campo novo `refresh_ingredients` (opcional, padrão falso) no corpo do `PUT`; campo novo `catalog_status` por ingrediente na leitura; rotas `versions` e `duplicate`. Fora do dono, 404 `food_not_found`.
+
+Fica para a parte 2: publicar receita (regras de receita pública e privacidade do modo de preparo), duplicar pública, filtros minhas, públicas e favoritas, e rascunho.
+
+Impacto em produção: nenhum dado. 0 receitas em produção em 23/11/2026 (medido no lote 37c); a mudança de teto só afeta receita nova.
+
+Verificação: este ADR não registra execução. Testes unitários, guarda de fontes e tela no navegador do lote 40 não foram rodados nesta tarefa.
 
 ## Impacto em produção
 
@@ -106,13 +128,12 @@ Conferência depois do deploy (na promoção, só leitura): (b) as duas tabelas 
 
 ## Limites
 
-- **Fica para a segunda fatia:**
-  - telas: a fatia 1 está no lote 38 (seção "Telas (lote 38)"); o restante segue nesta lista;
-  - histórico de versões com "atualizar ingredientes e recalcular";
-  - duplicar receita;
-  - promover a pública, com as regras de receita pública;
+- **Fica para a parte 2 da fatia 2:**
+  - promover a pública, com as regras de receita pública e a privacidade do modo de preparo;
+  - duplicar receita pública;
   - filtros minhas, públicas e favoritas;
   - rascunho retomável.
+- Feito no lote 40 (seção própria): histórico de versões, atualizar ingredientes e recalcular, e duplicar pelo dono.
 - O diário soma seis nutrientes. Açúcares, gordura saturada e gordura trans da receita ficam nos valores por 100 g e no snapshot, sem entrar no total do diário nesta fatia.
 - Risco residual: violação da unicidade de `(food_id, version)`, mitigada por trava de linha e, em último caso, respondida com 409; a trava sob concorrência real não foi medida.
 - Corpo com número infinito devolvia 500 por um problema geral do app na serialização do erro de validação; corrigido no lote 39 (issue #291): agora 422, e o valor não chega ao motor.

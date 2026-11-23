@@ -6,6 +6,7 @@ Banco em memória: `tests/support/nutrition_foods_fake.py`. Números: 100 g de a
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI
@@ -421,3 +422,130 @@ def test_substituicao_nula_usa_o_calculado_e_nao_conta_como_substituida(db):
     corpo = previa.json()
     assert corpo["per_100_effective"]["protein_g"] == corpo["per_100_calculated"]["protein_g"]
     assert "protein_g" not in corpo["overridden_fields"]
+
+
+def _ingredientes_gravados(db, food_id, version):
+    vid = next(v["id"] for v in db.recipe_versions.values() if v["food_id"] == food_id and v["version"] == version)
+    return sorted((i for i in db.recipe_ingredients.values() if i["version_id"] == vid), key=lambda i: i["position"])
+
+
+def _kcal(ingrediente):
+    return json.loads(ingrediente["catalog_snapshot_json"])["food"]["per_100"]["energy_kcal"]
+
+
+def test_ingrediente_acima_de_2000_g_ate_20000_g_e_aceito_e_acima_do_teto_da_422(db):
+    corpo = _corpo(db, final_weight_g=12000)
+    corpo["ingredients"][0]["quantity"] = 10000
+    r = _client().post("/nutrition/recipes/preview", json=corpo)
+    assert r.status_code == 200, r.text
+    assert r.json()["ingredients"][0]["amount"] == 10000
+    corpo["ingredients"][0].update(quantity=1000, unit="portion", portion_id=db.add_portion(db.arroz, "Prato", 30))
+    r = _client().post("/nutrition/recipes/preview", json=corpo)  # 1000 x 30 g = 30.000 g na base
+    assert r.status_code == 422 and _codigo(r) == "recipe_ingredient_amount_out_of_range:0"
+    assert r.json()["detail"]["message"].startswith("Ingrediente 1: ") and "20000" in r.json()["detail"]["message"]
+
+
+def test_editar_sem_refresh_preserva_o_snapshot_mesmo_com_catalogo_alterado(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    db.foods[db.arroz]["energy_kcal"] += 100  # catálogo mudou
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))
+    assert r.status_code == 200, r.text
+    assert float(db.foods[novo["id"]]["energy_kcal"]) == pytest.approx(180)  # valores gravados, não os do catálogo
+    assert _kcal(_ingredientes_gravados(db, novo["id"], 2)[0]) == 130
+    assert [i["catalog_status"] for i in r.json()["recipe"]["ingredients"]] == ["outdated", "current"]
+
+
+def test_chave_com_unidade_e_quantidade_em_formato_diferente_reaproveita_e_porcao_nula_tambem(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    for ing in _ingredientes_gravados(db, novo["id"], 1):
+        ing["unit"], ing["quantity"] = " G ", Decimal("100.0") if ing["position"] == 0 else Decimal("200.000")
+        assert ing["portion_id"] is None
+    db.foods[db.arroz]["energy_kcal"] += 100
+    assert _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R")).status_code == 200
+    assert _kcal(_ingredientes_gravados(db, novo["id"], 2)[0]) == 130  # snapshot reaproveitado
+
+
+@pytest.mark.parametrize("bruto", [None, "null", "{bad", '{"portion": null}', '{"food": {"name": "x"}}', "[]"])
+def test_snapshot_gravado_invalido_nao_e_reaproveitado_e_resolve_do_catalogo(db, bruto):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    _ingredientes_gravados(db, novo["id"], 1)[0]["catalog_snapshot_json"] = bruto
+    db.foods[db.arroz]["energy_kcal"] += 100
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))
+    assert r.status_code == 200, r.text
+    assert [_kcal(i) for i in _ingredientes_gravados(db, novo["id"], 2)] == [230, 160]
+
+
+def test_put_le_a_versao_atual_com_for_update_depois_da_trava_da_linha(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    db.queries.clear()
+    assert _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R")).status_code == 200
+    sqls = [s for s, _ in db.queries]
+    trava = sqls.index(f"{recipes_mod.foods_mod.FOOD_BY_ID_SQL} FOR UPDATE")
+    atual = f"{recipes_mod.CURRENT_VERSION_SQL} FOR UPDATE"
+    ingredientes = f"{recipes_mod.INGREDIENTS_OF_VERSION_SQL} FOR UPDATE"
+    assert trava < sqls.index(atual) < sqls.index(ingredientes) < sqls.index(recipes_mod.MAX_VERSION_FOR_UPDATE_SQL)
+    assert recipes_mod.CURRENT_VERSION_SQL not in sqls[: sqls.index(ingredientes)]
+
+
+def test_ingrediente_alterado_resolve_do_catalogo_e_refresh_resolve_todos(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    db.foods[db.arroz]["energy_kcal"] += 100
+    db.foods[db.frango]["energy_kcal"] += 100
+    corpo = _corpo(db, name="R")
+    corpo["ingredients"][1]["quantity"] = 150  # só o frango mudou
+    assert _client().put(f"/nutrition/recipes/{novo['id']}", json=corpo).status_code == 200
+    assert [_kcal(i) for i in _ingredientes_gravados(db, novo["id"], 2)] == [130, 260]
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R", refresh_ingredients=True))
+    assert r.status_code == 200
+    assert [_kcal(i) for i in _ingredientes_gravados(db, novo["id"], 3)] == [230, 260]
+    assert [i["catalog_status"] for i in r.json()["recipe"]["ingredients"]] == ["current", "current"]
+
+
+def test_ingrediente_reaproveitado_inacessivel_continua_valido_e_aparece_como_indisponivel(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    db.foods[db.frango]["is_active"] = 0
+    lida = _client().get(f"/nutrition/recipes/{novo['id']}").json()
+    assert [i["catalog_status"] for i in lida["recipe"]["ingredients"]] == ["current", "unavailable"]
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))
+    assert r.status_code == 200, r.text
+    assert r.json()["recipe"]["version"] == 2
+    refresh = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R", refresh_ingredients=True))
+    assert refresh.status_code == 422 and _codigo(refresh) == "recipe_ingredient_not_found:1"
+
+
+def test_leitura_consulta_os_alimentos_da_versao_uma_vez(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    db.queries.clear()
+    _client().get(f"/nutrition/recipes/{novo['id']}")
+    assert len([s for s, _ in db.queries if s == recipes_mod.meals_mod.foods_by_ids_sql(2)]) == 1
+
+
+def test_versoes_so_para_o_dono_com_energia_efetiva(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R", final_weight_g=300))
+    r = _client().get(f"/nutrition/recipes/{novo['id']}/versions")
+    assert r.status_code == 200, r.text
+    itens = r.json()["items"]
+    assert [i["version"] for i in itens] == [2, 1]
+    assert itens[0]["final_weight_g"] == 300 and itens[0]["energy_kcal_per_100g"] == pytest.approx(150)
+    assert itens[1]["energy_kcal_per_100g"] == pytest.approx(180) and itens[1]["created_at"]
+    inexistente = _client(OUTRO).get("/nutrition/recipes/9999/versions")
+    alheia = _client(OUTRO).get(f"/nutrition/recipes/{novo['id']}/versions")
+    assert alheia.status_code == inexistente.status_code == 404 and alheia.json() == inexistente.json()
+
+
+def test_duplicar_cria_receita_privada_nova_com_snapshot_ajustes_e_modo_de_preparo(db):
+    corpo = _corpo(db, name="Original", instructions="Misturar.", serving_size=200, overrides={"energy_kcal": 170})
+    novo = _client().post("/nutrition/recipes", json=corpo).json()
+    db.foods[db.arroz]["energy_kcal"] += 100  # a cópia leva o snapshot, não o catálogo
+    r = _client().post(f"/nutrition/recipes/{novo['id']}/duplicate")
+    assert r.status_code == 201, r.text
+    copia = r.json()
+    assert copia["id"] != novo["id"] and copia["name"] == "Original (cópia)" and copia["is_own"] and not copia["is_public"]
+    assert copia["recipe"]["version"] == 1 and copia["recipe"]["instructions"] == "Misturar."
+    assert copia["recipe"]["final_weight_g"] == 250 and copia["recipe"]["effective"]["overridden_fields"] == ["energy_kcal"]
+    linha = db.foods[copia["id"]]
+    assert float(linha["energy_kcal"]) == pytest.approx(170) and float(linha["serving_size"]) == 200
+    assert linha["owner_user_id"] == DONO and db.foods[novo["id"]]["name"] == "Original"
+    assert _kcal(_ingredientes_gravados(db, copia["id"], 1)[0]) == 130
+    assert _client(OUTRO).post(f"/nutrition/recipes/{novo['id']}/duplicate").status_code == 404

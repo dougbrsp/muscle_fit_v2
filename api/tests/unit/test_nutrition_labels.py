@@ -218,6 +218,7 @@ _PREFIXADOS = {
     _recipe.ERR_OVERRIDE_VALUE,
     _recipe.LIMIT_INCOMPLETE,
     "recipe_ingredient_not_found",
+    "recipe_ingredient_amount_out_of_range",
     "recipe_ingredient_is_recipe",
     "recipe_ingredient_portion_not_found",
     _mm.LIMIT_MISSING_QUANTITY,
@@ -311,3 +312,10 @@ def test_campos_do_plano_tem_rotulo():
     assert _ee.LIMIT_MISSING_ACTIVITY_LEVEL in lb.LIMITATION_LABELS
     assert _macros.LIMIT_MISSING_PROTEIN_BASIS in lb.LIMITATION_LABELS
     assert _cc.LIMIT_CARB_FLOOR_PREVENTS_CYCLE in lb.LIMITATION_LABELS
+
+
+def test_rotulo_do_teto_do_ingrediente_da_receita_cita_o_teto_do_motor():
+    from app.domain.nutrition import recipe
+
+    texto = lb.limitation_label(f"{recipe.ERR_INGREDIENT_AMOUNT_OUT_OF_RANGE}:2")
+    assert texto.startswith("Ingrediente 3: ") and f"{recipe.RECIPE_INGREDIENT_AMOUNT_MAX:g}" in texto
