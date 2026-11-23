@@ -4,6 +4,15 @@ import type { GymEquipmentLink } from './workout-mode-types';
 /** Item de `GET /gym-equipment`; `load_convention` ausente = servidor antigo. */
 export type EquipmentPickerItem = GymEquipmentLink & { load_convention?: LoadConvention | null };
 
+/** O mínimo que a escolha de troca precisa: item da lista da academia ou o recomendado. */
+export type EquipmentSwapCandidate = {
+  id: number;
+  mapping_id: number;
+  equipment_name: string;
+  mapping_exercise_name?: string | null;
+  load_convention?: LoadConvention | null;
+};
+
 export type EquipmentPickerSectionKey = 'same_exercise' | 'same_group';
 
 export type EquipmentPickerSection = {

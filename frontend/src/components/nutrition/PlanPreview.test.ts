@@ -187,6 +187,15 @@ describe('TodayTargetCard: composição do gasto (só renderiza `tdee_breakdown`
     expect(host.querySelector('[data-testid="adaptativo-confianca"]')).toBeNull();
   });
 
+  it('ciclo com compensação em gordura: dia baixo mostra a gordura maior que a API mandou, sem recalcular', async () => {
+    // Dados de exemplo da resposta da API (dia baixo em carbo com política fat_compensation).
+    await montar(alvo({ carbs_g: 120, fat_g: 95, day_kind: 'low', carb_cycle_policy: 'fat_compensation' }));
+    const texto = (host.textContent ?? '').replace(/ /g, ' ');
+    expect(texto).toMatch(/Gordura\s*95 g/);
+    expect(texto).toMatch(/Carboidrato\s*120 g/);
+    expect(texto).toMatch(/Alvo calórico\s*2\.400 kcal/);
+  });
+
   it('o card Plano e a prévia compartilham a mesma queryKey (um só POST)', () => {
     const plano = { id: 7, updated_at: '2026-11-05T10:00:00', state: 'draft' };
     expect(planPreviewQuery(plano).queryKey).toEqual(planPreviewQuery({ ...plano }).queryKey);

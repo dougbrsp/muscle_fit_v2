@@ -12,6 +12,7 @@
 // (`workout-mode-types.ts`) eram duas cópias do mesmo item (G20) — agora são
 // aliases de `EquipmentRecommendItem`.
 
+import type { LoadConvention } from './equipment-exercises-types';
 import type { ManufacturerSource } from './gyms-types';
 import type { SafetySource, TechniquePermission } from './training-safety';
 import { normalizeSearch } from './unmapped-exercises';
@@ -50,6 +51,8 @@ export type EquipmentRecommendItem = {
   manufacturer?: string | null;
   manufacturer_source?: ManufacturerSource;
   can_edit_manufacturer?: boolean;
+  // Mesmo campo e valores de `GET /gym-equipment`; ausente = servidor antigo.
+  load_convention?: LoadConvention | null;
 };
 
 export type RecommendExclusionReason = 'TECHNIQUE_INCOMPATIBLE' | 'FAILURE_REQUIRED_NOT_ALLOWED';

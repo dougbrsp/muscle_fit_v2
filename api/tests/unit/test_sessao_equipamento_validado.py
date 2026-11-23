@@ -18,14 +18,35 @@ class FakeDB(FakeSessionDB):
     def __init__(self):
         super().__init__()
         self.ge = {2: {"gym_id": GYM, "is_active": 1}}
-        self.coherent = True
+        self.serves = {2: 11}  # gym_equipment.id -> exercicio que ele serve (11 = o da sessao no fake)
+        self._all: list = []
+
+    @property
+    def coherent(self):
+        return self.serves[2] == 11
+
+    @coherent.setter
+    def coherent(self, value):
+        self.serves[2] = 11 if value else 99
 
     def execute(self, sql, params=None):
-        if " ".join(sql.split()).startswith("SELECT gym_id, is_active FROM gym_equipment"):
+        flat = " ".join(sql.split())
+        # Consultas REAIS de `equipment_pair.is_pair_coherent`, respondidas com dados do fake.
+        if flat.startswith("SELECT ge.id, COALESCE(elm.canonical_exercise_id"):
+            self.sql.append(sql)
+            self._all = [{"id": i, "exercise_id": self.serves[i]} for i in params if i in self.serves]
+        elif flat.startswith("SELECT old_exercise_id, canonical_exercise_id FROM exercise_legacy_id_map"):
+            self.sql.append(sql)
+            self._all = []  # nenhum id absorvido: cada um e o proprio canonico
+        elif flat.startswith("SELECT gym_id, is_active FROM gym_equipment"):
             self.sql.append(sql)
             self._result = self.ge.get(params[0])
-            return
-        super().execute(sql, params)
+        else:
+            super().execute(sql, params)
+
+    def fetchall(self):
+        out, self._all = self._all, []
+        return out
 
 
 @pytest.fixture
@@ -33,7 +54,6 @@ def db(monkeypatch):
     fake = _install(monkeypatch, FakeDB())
     # `_install` troca so o que o idempotente precisa; aqui a validacao e a real.
     monkeypatch.setattr(ws, "ensure_session_equipment", base_validator)
-    monkeypatch.setattr(ws, "is_pair_coherent", lambda cur, mapping, eq: fake.coherent)
     return fake
 
 

@@ -41,7 +41,7 @@ Restrições reais:
    - par recusado por `is_pair_coherent`, com ou sem academia: 422 `equipment_pair_incoherent` (L928-929);
    - associação INATIVA: aceita, e o evento `session_equipment_inactive_accepted` vai a log (L930-931).
 2. **Dono da coerência.** `api/app/domain/equipment_pair.py::is_pair_coherent` (L102). A rota só chama o predicado e não repete a regra.
-3. **Convenção de carga nas opções.** `GET /gym-equipment` (`api/app/gyms.py::list_gym_equipment`, L737) devolve em cada item `load_convention`. A consulta fica no corpo da rota. A expressão e o join vêm do dono (`load_conventions.load_convention_select_expr`, L344, e `equipment_exercises_join_sql`, L181), chamados em `gyms.list_gym_equipment` (L765 e L788). O campo é lido com `row.get`, e o nulo ou ausente é normalizado por `load_conventions.normalize_load_convention` (L71; `gyms.py:818`). `GET /gym-equipment/recommend` e `/recommend-all` não trazem o campo (`api/app/equipment_recommender.py` não lê a convenção).
+3. **Convenção de carga nas opções.** `GET /gym-equipment` (`api/app/gyms.py::list_gym_equipment`, L737) devolve em cada item `load_convention`. A consulta fica no corpo da rota. A expressão e o join vêm do dono (`load_conventions.load_convention_select_expr`, L344, e `equipment_exercises_join_sql`, L181), chamados em `gyms.list_gym_equipment` (L765 e L788). O campo é lido com `row.get`, e o nulo ou ausente é normalizado por `load_conventions.normalize_load_convention` (L71; `gyms.py:818`). `GET /gym-equipment/recommend` e `/recommend-all` também trazem o campo desde o lote 32 (ver a atualização de 22/11/2026, #244).
 4. **Seletor no Modo Treino (web e celular).** `frontend/src/app/(fullscreen)/modo-treino/EquipmentSubstituteModal.tsx` tem busca e as seções "Mesmo exercício" e "Mesmo grupo muscular", montadas por `frontend/src/lib/equipment-picker.ts` (`buildEquipmentPickerSections`, L41; `normalizeSearchText`, L22; `currentLoadConvention`, L65; `needsLoadConventionWarning`, L74). Cada opção mostra a convenção pelo rótulo do dono (`loadConventionLabel`, `frontend/src/lib/equipment-exercises-types.ts:52`). Ao escolher convenção diferente, a tela avisa e permite.
 5. **Nome do equipamento tocável.** `frontend/src/app/(fullscreen)/modo-treino/ui/ExerciseTitleRow.tsx` (prop `onEquipmentClick`, L35 e L59-64) é usado na apresentação do exercício (`ExerciseBriefingScreen.tsx:548`) e na tela de registro de série (`SetLoggerCard.tsx:1406`).6. **Confirmação da troca com séries lançadas.** `frontend/src/lib/equipment-change-confirm.ts`: `equipmentChangeConfirmation` (L26), `equipmentChangeForSave` (L43) e `SWAP_REMAINING_NOTE` (L63). `FinishExerciseModal.tsx` (L51) e `EquipmentSubstituteModal.tsx` (L195) mostram a nota `SWAP_REMAINING_NOTE`: as séries já lançadas continuam no equipamento atual, a troca vale só para as séries restantes, e a correção das já lançadas é pelo Registro. `WorkoutDetailClient.tsx` (L408, web) e `TreinoDetalheScreen.tsx` (L242, celular) pedem confirmação ao mudar o equipamento de um exercício com séries.
 7. **Histórico e falha da sugestão.** `frontend/src/lib/workout-mode-previous-session.ts::previousSessionLabels` (L196): "Sem histórico neste equipamento" quando há equipamento definido; sem equipamento, o rótulo é "Treino anterior (qualquer equipamento):" com "Ainda não há execução comparável". `frontend/src/lib/workout-mode-plan-flow.ts::targetsWhenSuggestionFails` (L825) e `SUGGESTION_FAILED_MESSAGE` (L816): quando a sugestão do equipamento novo falha, a carga alvo herdada é removida e o usuário é avisado (`PlanExecutionScreen.tsx:2283-2284`).
@@ -67,17 +67,17 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - **Contrato.** `POST /workout-sessions/{id}/exercises` pode responder 422 com os três códigos novos. `GET /gym-equipment` ganha `load_convention` por item (campo aditivo).
 - **Medições (20/11/2026).** Em produção, por leitura: 110 atividades, 12 sem academia (nenhuma do Modo Treino); 85 fichas, nenhuma sem academia; nenhuma ficha com equipamento de outra academia; nenhum treino feito em academia diferente da academia da ficha. No banco de desenvolvimento, cópia de produção: 67 exercícios com par incoerente (49 pares), o mais recente de 19/09/2026, nenhum criado pelo Modo Treino; os 108 criados pelo Modo Treino (desde 03/11/2026) são todos coerentes. Conclusão: a recusa de par incoerente não atinge o uso atual do Modo Treino; os pares incoerentes antigos vieram de importação e edição, que não são validadas. Detalhes no mapa, "Lote 10 de 20/11/2026".
 - **Mapa.** `docs/motores/FONTES_DA_VERDADE.md` ganha duas linhas na tabela de regras: "Equipamento explícito da sessão no Modo Treino" (logo após a linha "Carga da sessão e adoção pela trilha", antes da linha "Trilha", L119) e "Convenção de carga nas opções de academia" (logo após a convenção de carga). O bloco de impacto do Lote 10 fica depois do bloco do Lote 9.
-- **Próximas decisões.** Catálogo global e permissão de acrescentar equipamento (segunda parte da #163). Validação dos outros caminhos que gravam equipamento (importação e Registro), se o usuário quiser.
+- **Próximas decisões.** Catálogo global e permissão de acrescentar equipamento (segunda parte da #163). A validação dos outros caminhos (importação e Registro) foi feita no lote 32.
 
 ## Limites e pendências
 
 - (a) O catálogo global e a permissão de acrescentar equipamento à academia ficam para a segunda parte da #163.
 - (b) RESOLVIDO em 22/11/2026 (#244): o nome do equipamento agora é tocável no descanso entre séries e no bloco intensivo (ver "Atualização de 22/11/2026"). Restam os limites listados nela.
 - (c) Com série já lançada, tocar no nome abre o "Encerrar exercício" (`SetLoggerCard.tsx:1406`, `onSubstituteClick ?? onFinishExercise`), que oferece a troca para as séries restantes.
-- (d) `recommend` e `recommend-all` não trazem a convenção de carga.
+- (d) RESOLVIDO no lote 32: `recommend` e `recommend-all` trazem `load_convention` em cada item.
 - (e) Sessão sem academia não tem seletor na tela. O servidor aceita equipamento existente e coerente sem comparar academia e registra em log (`session_equipment_accepted_without_gym`).
 - (f) No Registro, o aviso de convenção só aparece quando a convenção do equipamento antigo é conhecida: ele precisa estar na lista do grupo muscular do formulário (`equipment-change-confirm.ts`, L52: sem o vínculo na lista, a convenção vira nula).
-- (g) Os outros caminhos que gravam equipamento (importação e Registro, via `services.resolve_equipment_id`) continuam sem a validação do Modo Treino.
+- (g) RESOLVIDO no lote 32: importação e Registro validam o equipamento explícito pela mesma função do Modo Treino, com a regra de compatibilidade da atualização. O caminho por nome (`equipment_name`, `resolve_equipment_id`) não é validado.
 - (h) Treino offline cujo equipamento foi REMOVIDO da academia antes da sincronização é recusado com `equipment_not_found`.
 - (i) Nenhuma tela vista em celular real.
 - (j) Os 67 exercícios antigos com par incoerente (49 pares, medidos no banco de desenvolvimento, cópia de produção) não são corrigidos. A validação vale só para o POST novo. RESOLVIDO em 22/11/2026 (#244) por escolha do usuário: 23 são corrigidos pela migração 124 e os outros 44 ficam como registrados (ver "Atualização de 22/11/2026 (#244, correção dos 23 registros antigos)").
@@ -141,3 +141,41 @@ As quatro decisões do usuário de 20/11/2026, registradas aqui:
 - Os 44 restantes continuam com par incoerente.
 - 6 registros passam a apontar para vínculo inativo; eles não somem do histórico (nenhum leitor do histórico filtra por vínculo ativo).
 - A promoção exige `RUN_DB_MIGRATIONS=true` (já exigido pelas migrações 122 e 123).
+
+## Atualização de 22/11/2026 (lote 32, #244: validação na Importação e no Registro, convenção nas recomendações)
+
+**Validação do equipamento explícito fora do Modo Treino.** `services.validate_explicit_equipment` (`api/app/services.py`) aplica a MESMA validação do Modo Treino (`workout_sessions.ensure_session_equipment`), com os mesmos 422 (`equipment_not_found`, `equipment_not_in_session_gym`, `equipment_pair_incoherent`). Chamadores:
+
+- `upsert_activity` (`POST /activities`, e `PUT /activities/{id}` por `update_activity`), para cada exercício com `equipment_id` explícito;
+- `_update_exercise_log_tx` (`PUT /exercises/logs/{id}`, o Registro).
+
+**Regra de compatibilidade.** A validação não roda quando o equipamento informado é igual ao já gravado:
+
+- na importação, o gravado é o do exercício de mesma sequência e nome na atividade anterior (`prev_equipment`); sem esse exercício anterior, todo equipamento explícito é validado;
+- no Registro, o gravado é o do exercício; sem equipamento gravado, o explícito é validado.
+
+Com isso, os registros antigos de par incoerente seguem aceitos enquanto ninguém troca o equipamento. Atividade sem academia segue a regra da primeira parte: aceita o equipamento existente e coerente, sem comparar academia.
+
+**Convenção de carga nas recomendações.** `GET /gym-equipment/recommend` e `/recommend-all` trazem `load_convention` em cada item (`api/app/equipment_recommender.py`, `_load_candidates`, com a expressão do dono de `load_conventions.py`; normalizada em `_enrich_and_rank` por `normalize_load_convention`). Campo aditivo; a tela não calcula.
+
+**Limites.**
+
+- Não medido: quantos clientes enviam `equipment_id` na Importação (a validação só recusa id inexistente, de outra academia ou incoerente, e só quando o equipamento muda).
+- Nenhuma tela foi vista em navegador nem em celular para este caminho (a forma como a tela mostra o 422 não foi conferida).
+- O caminho por nome (`equipment_name`) segue por `resolve_equipment_id` sem validação.
+
+## Atualização de 23/11/2026 (lote 34, #244: recomendado fora da lista, nome na técnica intensiva e painel do descanso)
+
+**Recomendado fora da lista.** A escolha do recomendado usa `resolveRecommendedCandidate` (`frontend/src/lib/equipment-catalog-add.ts`): se o item não está na lista exibida, o próprio recomendado vira o candidato. Ele passa pelo mesmo aviso de convenção de carga dos itens da lista (`chooseItem` em `frontend/src/app/(fullscreen)/modo-treino/EquipmentSubstituteModal.tsx`, L248, com `needsLoadConventionWarning` de `frontend/src/lib/equipment-picker.ts`). A convenção vem de `load_convention` de `GET /gym-equipment/recommend`, entregue no lote 32.
+
+**Estilo.** O seletor não tem estilo inline (conferido por busca em 23/11/2026 em `EquipmentSubstituteModal.tsx`); as classes ficam em `workout-mode.module.css`.
+
+**Nome tocável na aplicação da técnica.** `IntensiveApplicationCard.tsx` usa `EquipmentSwapButton` (`ui/ExerciseTitleRow.tsx`) com testId `intensive-equipment-swap` e abre o mesmo seletor. Fecha o item da seção de 22/11 que dizia que o nome não tinha sido acrescentado a essa tela.
+
+**Painel da última série após a troca no descanso.** Depois da troca no descanso, o painel da última série não mostra mais a recomendação de carga do equipamento anterior.
+
+**Limites da seção de 22/11 que este lote fecha.** Três itens: a aplicação da técnica sem o nome; a troca no descanso do bloco intensivo sem teste de ponta a ponta; o painel da última série com a recomendação do equipamento anterior. Continuam abertos: a diferença por fase (com série lançada, o toque no nome abre "Encerrar exercício") e a falta de conferência em navegador e em celular real.
+
+**Verificação.** Relatado pelo lote 34 e executado fora do CI; não reexecutado nesta atualização de documentação: suíte de resiliência do Modo Treino (`frontend/e2e/workout-resilience`, chromium 390) com 31 casos passando, incluindo a troca pelo nome no descanso do bloco intensivo. Vitest das alterações: não reexecutado aqui.
+
+**Pendente de usuário.** Validação em celular real (seletor, nome tocável, tela baixa) e em navegador.

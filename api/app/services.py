@@ -340,6 +340,18 @@ def resolve_gym_id(cur, gym_id_explicit: Any = None, gym_name_hint: Any = None) 
     return row["id"] if row else None
 
 
+def validate_explicit_equipment(cur, gym_id, mapping_id, equipment_id, previous_equipment_id=None) -> None:
+    """Fronteira de confianca (#244): `equipment_id` vindo do cliente passa pela
+    MESMA validacao do Modo Treino (`ensure_session_equipment`: existe, da
+    academia, par coerente), com o mesmo 422 tipado. Equipamento igual ao ja
+    gravado nao revalida: os registros antigos de par incoerente seguem aceitos."""
+    if not equipment_id or (previous_equipment_id and int(equipment_id) == int(previous_equipment_id)):
+        return
+    from .workout_sessions import ensure_session_equipment  # import tardio: workout_sessions importa services
+
+    ensure_session_equipment(cur, {"gym_id": gym_id}, mapping_id, equipment_id)
+
+
 def resolve_equipment_id(
     cur,
     mapping_id: Any,
@@ -502,18 +514,21 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                 cur.execute("SELECT id FROM activities WHERE source_id=%s AND external_id=%s", (sid, ext_id))
             existing = cur.fetchone()
             kept_marks: dict[tuple[Any, Any], tuple[bool, Any]] = {}
+            prev_equipment: dict[tuple[Any, Any], Any] = {}
             if existing:
                 # Chave (sequence, original_name): o source_row_hash inclui as series e muda quando elas mudam;
                 # limite: renumerar ou renomear o exercicio no payload perde a marca.
                 cur.execute(
-                    f"SELECT sequence, original_name, {FORM_PRACTICE_COLUMN}, {TRAINING_GOAL_COLUMN} "
+                    f"SELECT sequence, original_name, equipment_id, {FORM_PRACTICE_COLUMN}, {TRAINING_GOAL_COLUMN} "
                     "FROM exercises WHERE activity_id=%s",
                     (existing["id"],),
                 )
+                prev_rows = cur.fetchall() or []
                 kept_marks = {
                     (r["sequence"], r["original_name"]): (is_form_practice(r[FORM_PRACTICE_COLUMN]), r[TRAINING_GOAL_COLUMN])
-                    for r in cur.fetchall() or []
+                    for r in prev_rows
                 }
+                prev_equipment = {(r["sequence"], r["original_name"]): r.get("equipment_id") for r in prev_rows}
                 cur.execute("DELETE FROM activities WHERE id=%s", (existing["id"],))
 
             exercise_rpes = []
@@ -595,6 +610,9 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                 stats = compute_exercise_stats(set_dicts)
                 rhash = row_hash(ext_id, ex)
                 mapping_id = resolve_mapping_id(ex["original_name"], ex.get("mapped_name"), ex.get("mapping_id"), cur=cur)
+                validate_explicit_equipment(
+                    cur, gym_id, mapping_id, ex.get("equipment_id"), prev_equipment.get((ex["sequence"], ex["original_name"]))
+                )
                 equipment_id = resolve_equipment_id(
                     cur, mapping_id, gym_id, ex.get("equipment_id"), ex.get("equipment_name"), user_id=user_id
                 )
@@ -1334,6 +1352,14 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
 
     gym_id = resolve_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"))
     if payload.get("equipment_id") or payload.get("equipment_name") is not None:
+        explicit_eq = payload.get("equipment_id")
+        if explicit_eq and int(explicit_eq) != int(existing.get("equipment_id") or 0):
+            # Academia efetiva = a do payload ou a gravada na atividade (o UPDATE usa COALESCE).
+            cur.execute("SELECT gym_id FROM activities WHERE id=%s", (activity_id,))
+            act = cur.fetchone() or {}
+            validate_explicit_equipment(
+                cur, gym_id or act.get("gym_id"), mapping_id, explicit_eq, existing.get("equipment_id")
+            )
         equipment_id = resolve_equipment_id(
             cur, mapping_id, gym_id, payload.get("equipment_id"), payload.get("equipment_name"), user_id=user_id
         )

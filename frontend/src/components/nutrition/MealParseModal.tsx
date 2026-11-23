@@ -102,6 +102,7 @@ export function MealParseModal({ opened, onClose, date, onParsed, mode = 'text' 
   });
 
   const lerFoto = useMutation({
+    gcTime: 0, // o cache de mutações não guarda o arquivo original (`variables`) depois que o observador solta
     mutationFn: (file: File) =>
       readMealPhoto(file, { local_date: date, meal_slot: slotFoto }, setStage),
     onSuccess: ({ result, photo }) => {

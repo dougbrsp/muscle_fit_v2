@@ -3088,7 +3088,9 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             view={restSavedSetView({
               setSaved: restSetSaved,
               saved: lastSavedSet?.saved,
-              isExerciseTransition: restIsExerciseTransition,
+              // Troca de equipamento no descanso: a recomendação de carga era do anterior.
+              isExerciseTransition:
+                restIsExerciseTransition || (lastSavedSet?.forKey != null && lastSavedSet.forKey !== currentKey),
               weightUnit,
             })}
             // A carga da próxima série já está no relógio: aqui não se repete.
@@ -3366,6 +3368,8 @@ export function PlanExecutionScreen({ session, perSetAiEnabled, onFinish, header
             },
           ]}
           beforeActions={nextExerciseLine}
+          equipmentName={effectiveEquipmentName}
+          onEquipmentSwap={openEquipmentSwap}
         />
       ) : advancedStage?.kind === 'technique' && advancedTechniqueValue ? (
         // Fase 5 — uma aplicação da técnica (mini-bloco de rest-pause, drop),

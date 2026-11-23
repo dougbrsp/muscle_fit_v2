@@ -58,3 +58,10 @@ def test_gvt_mantem_tecnica_e_carga():
     d = _skip(fx.track(load=40, sets_count=10), "gvt")
     assert d.advanced_technique == "gvt" and d.suggested_sets == 10
     assert d.suggested_load_kg == 40.0
+
+
+def test_partida_de_outra_academia_e_cortada_no_teto():
+    d = _skip(replace(fx.track(load=40), max_load_kg=Decimal("30"), start_from_other_gym=True))
+    assert d.suggested_load_kg == 30.0
+    assert d.evidence[pe.EVIDENCE_EQUIPMENT_LOAD_CEILING] == pe.EQUIPMENT_CEILING_START_LIMITED
+    assert "load_increment_kg" not in d.evidence

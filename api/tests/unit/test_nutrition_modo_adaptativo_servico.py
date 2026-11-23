@@ -296,11 +296,12 @@ def test_meta_congelada_do_plano_adaptativo_nao_e_regravada_quando_o_historico_m
 
 
 def test_meta_congelada_com_compensacao_em_gordura_nao_e_regravada(banco_adaptativo):
-    """#242: plano com `policy: fat_compensation` no ciclo; o dia congelado não é regravado quando o histórico muda."""
+    """#242: plano com a política `fat_compensation` na coluna; o dia congelado não é regravado quando o histórico muda."""
     banco = banco_adaptativo
-    ciclo = {str(i): ("high" if i % 2 == 0 else "low") for i in range(7)} | {"policy": "fat_compensation"}
+    ciclo = {str(i): ("high" if i % 2 == 0 else "low") for i in range(7)}
     for plano in banco.plans.values():
         plano["carb_cycling_json"] = ciclo
+        plano["carb_cycle_policy"] = "fat_compensation"
     dia_antigo = HOJE - timedelta(days=4)
     _ensure(banco, dia_antigo, dia_antigo, hoje=dia_antigo + timedelta(days=1))
     linha = dict(banco.targets[(ALUNO, dia_antigo)])

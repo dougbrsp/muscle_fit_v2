@@ -42,7 +42,7 @@ Restrições reais:
    - `plan.check_cycle_floors`, no modo `fat_compensation`, passa os macros finais de cada tipo de dia por `manual_targets.check_manual_targets`. Bloqueio vira erro (impede salvar, 400 `invalid_plan`, e publicar, `can_publish: false` na prévia); faixa da estratégia vira aviso;
    - política `fat_compensation` sem ciclo: `param_not_applicable:carb_cycle_policy` (recusada na validação de `build_plan_settings`). **[Superado pela ADR 0033: a política é aceita e guardada sem ciclo.]**
 
-4. **Persistência sem migração.** `carb_cycling_json` passa a ter a chave irmã `policy`, gravada só quando a política não é a padrão (`join_stored_cycle`). A leitura separa as duas partes (`split_stored_cycle`). Sem a chave, o valor é legado. **[Superado em parte pela ADR 0033: há a migração 123 e a política também fica em `nutrition_plans.carb_cycle_policy`; a chave continua como reserva.]**
+4. **Persistência sem migração.** `carb_cycling_json` passa a ter a chave irmã `policy`, gravada só quando a política não é a padrão (`join_stored_cycle`). A leitura separa as duas partes (`split_stored_cycle`). Sem a chave, o valor é legado. **[Superado em parte pela ADR 0033: há a migração 123 e a política também fica em `nutrition_plans.carb_cycle_policy`; a chave continua como reserva.]** Desde o lote 33 (23/11/2026) a política vive só na coluna (ADR 0033), e a chave `policy` não é mais gravada nem lida.
 
 5. **Compatibilidade.** A chave `carb_cycle_policy` só entra em `PlanSettings.to_dict` e `fingerprint_dict` (`plan.py`), e em `DailyTarget.to_dict` (`daily_target.py`), fora do padrão. **[Superado em parte pela ADR 0033: no `fingerprint_dict` a política só entra com ciclo.]** Planos legados mantêm resultado e hash. `ENGINE_VERSION` não muda nesta entrega. O teste de ouro `api/tests/unit/test_nutrition_modos_legados_ouro.py` não foi editado.
 
@@ -56,8 +56,8 @@ Restrições reais:
 
 - Ganha: o modo novo sem migração, sem mudança de formato para quem não o usa e sem perda de dados.
 - Ganha: um dono só para a conta, os códigos de limitação e o formato gravado.
-- Paga: `carb_cycling_json` passa a ter dois formatos (mapa puro e mapa com `policy`). Todo leitor deve usar `split_stored_cycle`.
-- Paga, **risco de rollback**: código anterior a esta entrega lê a chave `policy` como dia inválido. Um plano salvo com a política nova perde o ciclo, sem aviso, se voltar ao código antigo. Só afeta planos que optaram pelo modo novo. Com coluna nova, o rollback levaria o plano apenas ao modo legado, sem perda de ciclo. **[Superado em parte pela ADR 0033: a coluna existe desde a migração 123; o rollback do código sem reverter a migração perde só a política lembrada com o ciclo desligado.]**
+- Paga: `carb_cycling_json` passa a ter dois formatos (mapa puro e mapa com `policy`). Todo leitor deve usar `split_stored_cycle` (hoje `stored_cycle_days`). **[Lote 33 (23/11/2026): a chave não é mais gravada nem lida; a política vive só na coluna (ADR 0033).]**
+- Paga, **risco de rollback**: código anterior a esta entrega lê a chave `policy` como dia inválido. Um plano salvo com a política nova perde o ciclo, sem aviso, se voltar ao código antigo. Só afeta planos que optaram pelo modo novo. Com coluna nova, o rollback levaria o plano apenas ao modo legado, sem perda de ciclo. **[Superado em parte pela ADR 0033: a coluna existe desde a migração 123; o rollback do código sem reverter a migração perde só a política lembrada com o ciclo desligado.]** Desde o lote 33 a chave não é mais gravada nem lida (ADR 0033): planos salvos depois dele não a carregam, então esse risco vale só para os gravados antes.
 
 ## Consequências
 

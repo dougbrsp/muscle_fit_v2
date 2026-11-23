@@ -35,6 +35,7 @@ from typing import Any, Callable, Optional
 from .domain import equipment_ranking as ranking
 from .domain.equipment_context import manufacturer_columns_sql, manufacturer_join_sql, with_manufacturer_fields
 from .domain.laboral import sql_not_laboral
+from .load_conventions import equipment_exercises_join_sql, load_convention_select_expr, normalize_load_convention
 from .domain import training_safety as ts
 from .workout_plan_edit_rules import PLANNED_PLAN_STATUS
 
@@ -188,9 +189,12 @@ def _load_candidates(cursor: Any, gym_id: int, group: Optional[str]) -> list[dic
     if group is not None:
         where.append("pg.name = %s")
         params.append(group)
+    canonical_exercise_expr = "COALESCE(elm.canonical_exercise_id, ge.mapping_id)"
+    convention_expr = load_convention_select_expr(cursor)  # #244: convencao do dono, a mesma de GET /gym-equipment
     cursor.execute(
         f"""
         SELECT
+            {convention_expr} AS load_convention,
             ge.id, ge.mapping_id, ge.equipment_id, eq.name AS equipment_name,
             (CASE WHEN eq.photo_path IS NOT NULL THEN CONCAT('https://{PUBLIC_ASSETS_DOMAIN}/', eq.photo_path) ELSE NULL END) AS photo_url,
             zm.name AS mapping_exercise_name,
@@ -205,12 +209,14 @@ def _load_candidates(cursor: Any, gym_id: int, group: Optional[str]) -> list[dic
             {manufacturer_columns_sql()}
         FROM gym_equipment ge
         JOIN exercise_catalog zm ON zm.id = ge.mapping_id
+        LEFT JOIN exercise_legacy_id_map elm ON elm.old_exercise_id = ge.mapping_id
+        {equipment_exercises_join_sql(canonical_expr=canonical_exercise_expr)}
         {_PRIMARY_GROUP_JOIN}
         JOIN equipment eq ON eq.id = ge.equipment_id
         {manufacturer_join_sql("ge.gym_id", "ge.equipment_id")}
         LEFT JOIN exercise_aliases ea ON ea.exercise_id = ge.mapping_id
         WHERE {' AND '.join(where)}
-        GROUP BY ge.id, ge.mapping_id, ge.equipment_id, eq.name, eq.photo_path, zm.name, pg.id, pg.name,
+        GROUP BY ge.id, ge.mapping_id, ge.equipment_id, eq.name, eq.photo_path, zm.name, pg.id, pg.name, eqex.id,
                  gec.id, gec.manufacturer, eq.manufacturer, gec_g.owner_user_id
         ORDER BY ge.id ASC
         """,
@@ -279,6 +285,7 @@ def _enrich_and_rank(
     items: list[dict[str, Any]] = []
     for row in candidates:
         item = with_manufacturer_fields(row, can_edit_manufacturer)  # #188: fabricante nesta academia
+        item["load_convention"] = normalize_load_convention(item.get("load_convention")).value  # NULL = padrao do dono
         raw_aliases = item.pop("mapping_aliases_raw", None)
         item["mapping_aliases"] = raw_aliases.split(_ALIAS_SEPARATOR) if raw_aliases else []
         used = recency.get(int(item["id"])) or {}

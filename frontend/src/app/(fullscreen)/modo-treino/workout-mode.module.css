@@ -1436,3 +1436,27 @@
     transition: none;
   }
 }
+
+/* Seletor de equipamento (modal em portal: fora do escopo das variáveis --wm-*, por isso as cores do tema). */
+.substituteOption {
+  border-radius: var(--mantine-radius-xl);
+  border: 1px solid #2a2a2a;
+}
+
+.substituteOptionRecommended {
+  border-color: #ff9500;
+}
+
+.substituteOption:disabled {
+  opacity: 0.6;
+}
+
+.substituteCatalogItem {
+  padding: var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-xl);
+  border: 1px solid #2a2a2a;
+}
+
+.substituteCatalogItem[aria-disabled='true'] {
+  opacity: 0.6;
+}

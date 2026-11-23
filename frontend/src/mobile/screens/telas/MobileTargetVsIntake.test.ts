@@ -102,6 +102,15 @@ describe('MobileTargetVsIntake: consumido e restante das 4 linhas', () => {
     expect(html(createElement(MobileTargetVsIntake, { day: com }))).toContain('Meta × ingestão');
   });
 
+  it('compensação em gordura: dia baixo aparece como a API manda (rótulos, gordura maior), sem cálculo na tela', () => {
+    const base = dia([linha('energy_kcal'), linha('carbohydrates_g', { target: 120 }), linha('total_fat_g', { target: 95, intake: 40, to_consume: 55 })]);
+    const com = { ...base, target: { ...base.target, day_kind: 'low', carb_cycle_policy: 'fat_compensation' } } as unknown as NutritionDay;
+    const markup = html(createElement(MobileTargetVsIntake, { day: com }));
+    expect(markup).toContain('Dia baixo em carbo · Compensar com gordura');
+    expect(markup).toMatch(/95[^<]*g/);
+    expect(markup).toMatch(/Restante: 55[^<]*g/);
+  });
+
   it('sem meta: o mesmo texto de sem gráfico, sem barra', () => {
     const markup = html(
       createElement(MobileTargetVsIntake, {

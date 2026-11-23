@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCatalogSection,
+  catalogAddOutcome,
   catalogItemState,
   CATALOG_NEEDS_ONLINE_NOTICE,
   CATALOG_NOT_IN_GYM_NOTICE,
   findAddedItem,
   findRecommendedItem,
   formatCatalogAddQuestion,
+  loadedGymItems,
+  resolveRecommendedCandidate,
 } from './equipment-catalog-add';
 import type { EquipmentExerciseLink } from './equipment-exercises-types';
 import type { EquipmentPickerItem } from './equipment-picker';
@@ -167,5 +170,41 @@ describe('findAddedItem', () => {
   });
   it('não encontra em lugar nenhum: null', () => {
     expect(findAddedItem([], [], target)).toBeNull();
+  });
+});
+
+describe('resolveRecommendedCandidate (#244)', () => {
+  const items = [gymItem({ id: 5, load_convention: 'per_side' })];
+  const recommended = { id: 9, mapping_id: 12, equipment_name: 'Peck deck', load_convention: 'total' as const };
+  it('fora da lista: o próprio recomendado, com a convenção que a API devolveu', () => {
+    expect(resolveRecommendedCandidate(items, recommended)).toBe(recommended);
+  });
+  it('na lista: o item da lista', () => {
+    expect(resolveRecommendedCandidate(items, { ...recommended, id: 5 }).load_convention).toBe('per_side');
+  });
+});
+
+describe('loadedGymItems (#246)', () => {
+  it('sem dado: undefined (esconde o catálogo)', () => {
+    expect(loadedGymItems(undefined)).toBeUndefined();
+  });
+  it('com dado anterior mantido na recarga com erro: a lista continua', () => {
+    const items = [gymItem({ id: 5 })];
+    expect(loadedGymItems({ items })).toBe(items);
+    expect(loadedGymItems({})).toEqual([]);
+  });
+});
+
+describe('catalogAddOutcome (#246)', () => {
+  const target = pair({ equipment_id: 31, exercise_id: 12 });
+  const fresh = { items: [gymItem({ id: 77, equipment_id: 31, mapping_id: 12 })] };
+  it('recarga com erro: refresh_failed, mesmo com dado anterior', () => {
+    expect(catalogAddOutcome([], { isError: true, data: fresh }, target)).toEqual({ kind: 'refresh_failed' });
+  });
+  it('recarga ok com o par: escolhe', () => {
+    expect(catalogAddOutcome([], { isError: false, data: fresh }, target)).toMatchObject({ kind: 'choose' });
+  });
+  it('recarga ok sem o par: no_link', () => {
+    expect(catalogAddOutcome([], { isError: false, data: { items: [] } }, target)).toEqual({ kind: 'no_link' });
   });
 });
