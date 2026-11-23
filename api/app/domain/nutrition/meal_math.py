@@ -626,6 +626,28 @@ def combine_totals(parts: Sequence[NutritionTotals]) -> Optional[NutritionTotals
     )
 
 
+def sum_scaled_fields(
+    parts: Sequence[tuple[float, Mapping[str, Any]]], field_codes: Sequence[str]
+) -> tuple[dict[str, Optional[float]], dict[str, tuple[int, ...]]]:
+    """Receita: soma, por campo, de (quantidade na base × valor por 100 g/ml) de cada parte. Total `None` se nenhuma
+    parte informa o campo; `missing[campo]` = índices das partes que NÃO informam (o total é então um mínimo,
+    nunca um valor completo)."""
+    totais: dict[str, Optional[float]] = {}
+    faltam: dict[str, tuple[int, ...]] = {}
+    for campo in field_codes:
+        conhecidos: list[float] = []
+        ausentes: list[int] = []
+        for indice, (quantidade, valores) in enumerate(parts):
+            valor = non_negative_number(valores.get(campo))
+            if valor is None:
+                ausentes.append(indice)
+            else:
+                conhecidos.append(valor * quantidade / PER_100G_REFERENCE)
+        totais[campo] = float(sum(conhecidos)) if conhecidos else None
+        faltam[campo] = tuple(ausentes)
+    return totais, faltam
+
+
 def normalize_meal_nature(raw: Any) -> Optional[MealNature]:
     if raw is None:
         return None

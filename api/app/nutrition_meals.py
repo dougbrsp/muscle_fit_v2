@@ -50,7 +50,7 @@ from .db_helpers import connect_or_503
 from .domain.nutrition import ENGINE_VERSION, catalog, diary, meal_math, meal_parse
 from .domain.nutrition import labels as nutrition_labels
 from .nutrition_access import can_log_food, can_log_portion, fetch_target_user, resolve_target_user
-from .nutrition_schema import require_diary_tables, require_food_tables
+from .nutrition_schema import has_recipe_tables, require_diary_tables, require_food_tables
 from .request_models import MealBodyIn, MealIn, MealItemIn, MealPreviewIn
 from .security import Identity
 
@@ -274,11 +274,31 @@ def day_totals(rows: Sequence[dict[str, Any]]) -> Optional[meal_math.NutritionTo
 # ---------------------------------------------------------------------------
 
 
-def food_snapshot(food: dict[str, Any]) -> dict[str, Any]:
+RECIPE_VERSIONS = "food_recipe_versions"
+
+
+def recipe_versions_sql(count: int) -> str:
+    """Versão atual (id e número) de cada receita pedida: um `%s` por `food_id` (tabela da migração 125)."""
+    marcas = ", ".join(["%s"] * count)
+    return (
+        f"SELECT id, food_id, version FROM {RECIPE_VERSIONS} v WHERE food_id IN ({marcas}) "
+        f"AND version = (SELECT MAX(version) FROM {RECIPE_VERSIONS} WHERE food_id = v.food_id)"
+    )
+
+
+def _recipe_versions(cur: Any, alimentos: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    ids = [fid for fid, a in alimentos.items() if catalog.is_recipe_source(a.get("source"))]
+    if not ids or not has_recipe_tables(cur):  # sem a 125 a refeição grava sem a versão (sem 503)
+        return {}
+    cur.execute(recipe_versions_sql(len(ids)), tuple(ids))
+    return {int(r["food_id"]): r for r in cur.fetchall() or []}
+
+
+def food_snapshot(food: dict[str, Any], recipe_version: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """O alimento como estava na gravação (E4): valores por 100 com os códigos
     da RDC 429, base, porção do rótulo, citação e a origem dos valores que
     vieram de outra fonte (`field_sources`, M85; snapshot anterior não tem)."""
-    return {
+    snapshot = {
         "id": int(food["id"]),
         "source": food.get("source"),
         "source_id": food.get("source_id"),
@@ -292,6 +312,10 @@ def food_snapshot(food: dict[str, Any]) -> dict[str, Any]:
         "citation": food.get("citation"),
         "field_sources": catalog.field_sources_snapshot(food.get("field_sources_json")),
     }
+    if recipe_version is not None:  # só receita: a versão usada; alimento comum fica igual
+        snapshot["recipe_version"] = int(recipe_version["version"])
+        snapshot["recipe_version_id"] = int(recipe_version["id"])
+    return snapshot
 
 
 def portion_snapshot(portion: dict[str, Any]) -> dict[str, Any]:
@@ -427,6 +451,7 @@ def resolve_items(
         if alimento is None or not can_log_food(identity, diary_user_id, alimento):
             raise _error(404, "food_not_found", "Alimento não encontrado.", index=indice, food_id=int(item.food_id))
 
+    versoes_receita = _recipe_versions(cur, alimentos)
     porcoes_novas = [
         item.portion_id
         for indice, item in enumerate(items)
@@ -441,7 +466,7 @@ def resolve_items(
     for indice, item in enumerate(items):
         snapshot = snapshots.get(indice)
         if snapshot is None and item.food_id is not None:
-            snapshot = {"food": food_snapshot(alimentos[int(item.food_id)]), "portion": None}
+            snapshot = {"food": food_snapshot(alimentos[int(item.food_id)], versoes_receita.get(int(item.food_id))), "portion": None}
         elif snapshot is None and item.quick_entry is not None:
             lancamento = diary.validate_quick_entry(item.quick_entry.model_dump())
             if lancamento.entry is None:

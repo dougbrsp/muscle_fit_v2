@@ -69,7 +69,7 @@ def search_candidates(
     if fulltext:
         params.append(expressao)
     params.append(food_text.SEARCH_CANDIDATE_POOL)
-    cur.execute(nutrition_foods.search_sql(fulltext=fulltext, visibility=visibilidade, with_source=False), tuple(params))
+    cur.execute(nutrition_foods.search_sql(fulltext=fulltext, visibility=visibilidade, with_source=False, exclude_recipes=True), tuple(params))
     por_id = {int(linha["id"]): linha for linha in cur.fetchall() or []}
     ranking = food_text.rank_candidates(query, [(food_id, linha["name"]) for food_id, linha in por_id.items()])
     return ranking, por_id

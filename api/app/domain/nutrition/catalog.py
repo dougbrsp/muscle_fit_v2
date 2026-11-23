@@ -72,6 +72,12 @@ class FoodSource(str, Enum):
     USER = "user"
     LABEL_PHOTO = "label_photo"
     AI_ESTIMATE = "ai_estimate"
+    # Receita do usuário (issue #286): gravada só pela rota de receitas, nunca pelo cadastro comum nem editável por ele.
+    RECIPE = "recipe"
+
+
+def is_recipe_source(source: Any) -> bool:
+    return normalize_source(source) == FoodSource.RECIPE
 
 
 # TACO 4ª ed. (seed da migração 081; a migração embute o MESMO texto, teste de paridade).
@@ -215,6 +221,7 @@ class FoodOrigin(str, Enum):
     TACO = "taco"
     TBCA_MANUAL = "tbca_manual"
     AI = "ai"
+    RECIPE = "recipe"
 
 
 def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
@@ -232,6 +239,7 @@ def food_origin(source: Any, barcode: Any) -> Optional[FoodOrigin]:
         FoodSource.TACO: FoodOrigin.TACO,
         FoodSource.TBCA_MANUAL: FoodOrigin.TBCA_MANUAL,
         FoodSource.AI_ESTIMATE: FoodOrigin.AI,
+        FoodSource.RECIPE: FoodOrigin.RECIPE,
     }.get(fonte)
 
 

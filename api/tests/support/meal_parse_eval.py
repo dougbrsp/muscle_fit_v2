@@ -64,7 +64,7 @@ class _Cursor:
 
         p = tuple(params or ())
         expressao, lote = p[0], int(p[-1])
-        if sql == nutrition_foods.search_sql(fulltext=True, visibility=DIARY_FOODS_SQL, with_source=False):
+        if sql == nutrition_foods.search_sql(fulltext=True, visibility=DIARY_FOODS_SQL, with_source=False, exclude_recipes=True):
             termos = [t.rstrip("*") for t in str(expressao).split()]
             pontuadas = []
             for linha in catalogo_taco():
@@ -74,7 +74,7 @@ class _Cursor:
                     pontuadas.append((casados, linha))
             pontuadas.sort(key=lambda par: (-par[0], par[1]["id"]))
             self._linhas = [dict(linha) for _, linha in pontuadas[:lote]]
-        elif sql == nutrition_foods.search_sql(fulltext=False, visibility=DIARY_FOODS_SQL, with_source=False):
+        elif sql == nutrition_foods.search_sql(fulltext=False, visibility=DIARY_FOODS_SQL, with_source=False, exclude_recipes=True):
             prefixo = str(expressao).rstrip("%")
             achadas = sorted(
                 (linha for linha in catalogo_taco() if linha["name_normalized"].startswith(prefixo)),

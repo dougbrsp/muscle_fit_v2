@@ -135,7 +135,12 @@ FAVORITE_IDS_SQL = "SELECT food_id FROM user_favorite_foods WHERE user_id = %s"
 FAVORITES_ONLY_SQL = "id IN (SELECT food_id FROM user_favorite_foods WHERE user_id = %s)"
 
 
-def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_only: bool = False) -> str:
+# Tira receitas (tela de ingrediente, leitura por IA): constante do dono, sem parâmetro novo.
+NOT_RECIPE_SQL = f"source <> '{catalog.FoodSource.RECIPE.value}'"
+
+
+def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_only: bool = False,
+               exclude_recipes: bool = False) -> str:
     """SELECT da busca. Parâmetros, na ordem: expressão (FULLTEXT ou prefixo
     LIKE, ambas de `food_text`), os da visibilidade (`nutrition_access`), fonte
     (se filtrada), dono dos preferidos (se `favorites_only`: a busca extra que
@@ -146,11 +151,14 @@ def search_sql(*, fulltext: bool, visibility: str, with_source: bool, favorites_
         filtros.append("source = %s")
     if favorites_only:
         filtros.append(FAVORITES_ONLY_SQL)
+    if exclude_recipes:
+        filtros.append(NOT_RECIPE_SQL)
     ordem = f"{MATCH_EXPR} DESC, id" if fulltext else "name_normalized, id"
     return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY {ordem} LIMIT %s"
 
 
-def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool = False, tokens: int = 0) -> str:
+def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool = False, tokens: int = 0,
+                     exclude_recipes: bool = False) -> str:
     """Busca extra pela MARCA (#195): `brand LIKE` (padrão de `food_text.brand_pattern`) com a mesma
     visibilidade, fonte e restrição a preferidos da busca por nome. Com `tokens` >= 2 (#208, busca que
     mistura nome e marca) casa também quem tem CADA termo no nome normalizado OU na marca, com ao menos
@@ -170,18 +178,22 @@ def brand_search_sql(*, visibility: str, with_source: bool, favorites_only: bool
         filtros.append("source = %s")
     if favorites_only:
         filtros.append(FAVORITES_ONLY_SQL)
+    if exclude_recipes:
+        filtros.append(NOT_RECIPE_SQL)
     return f"{_SELECT_FOODS} WHERE {' AND '.join(filtros)} ORDER BY name_normalized, id LIMIT %s"
 
 
-def list_sql(*, bucket: bool) -> str:
+def list_sql(*, bucket: bool, exclude_recipes: bool = False) -> str:
     """Listagem por letra (#195): nome EXIBIDO (`name`, collation `utf8mb4_0900_ai_ci` da 080: ignora acento
     e caixa no LIKE e no ORDER BY), públicos + os do usuário, ativos. Parâmetros: visibilidade, padrão(ões) de
     `food_text.letter_prefixes` (1 letra; 26 no balde, com NOT), limite+1 e deslocamento."""
     prefixos = len(food_text.letter_prefixes(food_text.OTHER_BUCKET if bucket else "A"))
     cond = " OR ".join(["name LIKE %s"] * prefixos)
     filtro = f"NOT ({cond})" if bucket else cond
+    extra = f" AND {NOT_RECIPE_SQL}" if exclude_recipes else ""
     return (
-        f"{_SELECT_FOODS} WHERE is_active = 1 AND {VISIBLE_FOODS_SQL} AND {filtro} ORDER BY name, id LIMIT %s OFFSET %s"
+        f"{_SELECT_FOODS} WHERE is_active = 1 AND {VISIBLE_FOODS_SQL} AND {filtro}{extra} "
+        "ORDER BY name, id LIMIT %s OFFSET %s"
     )
 
 
@@ -259,7 +271,7 @@ def food_public(row: dict[str, Any], identity: Identity, permissoes: EffectivePe
             "can_edit": can_edit_food(identity, permissoes, row),
             "can_delete": can_delete_food(identity, permissoes, row),
             "can_add_portion": can_add_portion(identity, row),
-            "can_promote": can_promote_food(permissoes, row),
+            "can_promote": can_promote_food(permissoes, row) and not catalog.is_recipe_source(row.get("source")),
         },
         "created_at": _iso(row.get("created_at")),
         "updated_at": _iso(row.get("updated_at")),
@@ -366,6 +378,7 @@ def search_foods(
     source: Optional[str] = Query(default=None, max_length=16),
     scope: str = Query(default=SCOPE_VISIBLE, max_length=16),
     limit: Optional[int] = Query(default=None),
+    exclude_recipes: bool = Query(default=False),
     identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
     permissoes = permissions_for_request(request, identity)
@@ -396,9 +409,11 @@ def search_foods(
     if fulltext:
         params.append(expressao)
     params.append(food_text.SEARCH_CANDIDATE_POOL)
-    sql = search_sql(fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None)
+    sem_receita = exclude_recipes
+    sql = search_sql(fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None, exclude_recipes=sem_receita)
     sql_favoritos = search_sql(
-        fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None, favorites_only=True
+        fulltext=fulltext, visibility=visibilidade, with_source=fonte is not None, favorites_only=True,
+        exclude_recipes=sem_receita,
     )
 
     marca = food_text.brand_pattern(q)
@@ -407,9 +422,12 @@ def search_foods(
     # Marca: os mesmos filtros, o padrão da marca (e os termos nome/marca) no lugar da expressão do nome e sem a
     # expressão de ordem.
     params_marca = [marca, *(p for t in termos_marca for p in (t, t)), *termos_marca, *base[1:]]
-    sql_marca = brand_search_sql(visibility=visibilidade, with_source=fonte is not None, tokens=len(termos_marca))
+    sql_marca = brand_search_sql(
+        visibility=visibilidade, with_source=fonte is not None, tokens=len(termos_marca), exclude_recipes=sem_receita
+    )
     sql_marca_favoritos = brand_search_sql(
-        visibility=visibilidade, with_source=fonte is not None, favorites_only=True, tokens=len(termos_marca)
+        visibility=visibilidade, with_source=fonte is not None, favorites_only=True, tokens=len(termos_marca),
+        exclude_recipes=sem_receita,
     )
 
     with _connect() as conn:
@@ -459,6 +477,7 @@ def list_foods_by_letter(
     letter: Optional[str] = Query(default=None, max_length=16),
     limit: Optional[int] = Query(default=None),
     offset: Optional[int] = Query(default=None, le=food_text.LIST_OFFSET_MAX),
+    exclude_recipes: bool = Query(default=False),
     identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
     """Cadastro por letra (#195): alimentos ativos, públicos + os do usuário, cujo NOME começa pela letra
@@ -474,7 +493,7 @@ def list_foods_by_letter(
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
-            cur.execute(list_sql(bucket=bucket), params)
+            cur.execute(list_sql(bucket=bucket, exclude_recipes=exclude_recipes), params)
             linhas = cur.fetchall() or []
             favoritos: set[int] = set()
             if has_favorites_table(cur):
@@ -542,6 +561,8 @@ def update_food(request: Request, food_id: int, payload: FoodItemIn, identity: I
         with conn.cursor() as cur:
             require_food_tables(cur)
             linha = _fetch_food(cur, food_id, identity, permissoes)
+            if catalog.is_recipe_source(linha.get("source")):
+                raise _error(409, "food_is_recipe", nutrition_labels.limitation_label("food_is_recipe"))
             if catalog.is_read_only(linha.get("source")):
                 raise _error(409, catalog.ERR_SOURCE_READ_ONLY, nutrition_labels.limitation_label(catalog.ERR_SOURCE_READ_ONLY))
             if not can_edit_food(identity, permissoes, linha):
@@ -608,6 +629,8 @@ def promote_food(request: Request, food_id: int, identity: Identity = Depends(re
         with conn.cursor() as cur:
             require_food_tables(cur)
             linha = _fetch_food(cur, food_id, identity, permissoes)
+            if catalog.is_recipe_source(linha.get("source")):
+                raise _error(409, "recipe_promote_not_supported", nutrition_labels.limitation_label("recipe_promote_not_supported"))
             if not can_promote_food(permissoes, linha):
                 raise _error(409, "food_already_public", "O alimento já é público.")
             dono = int(linha["owner_user_id"])

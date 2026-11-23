@@ -41,6 +41,7 @@ def db(monkeypatch):
     monkeypatch.setattr(meals_mod, "get_conn", banco.conn)
     monkeypatch.setattr(meals_mod, "require_diary_tables", lambda cur: None)
     monkeypatch.setattr(meals_mod, "require_food_tables", lambda cur: None)
+    monkeypatch.setattr(meals_mod, "has_recipe_tables", lambda cur: True)
     banco.arroz = banco.add_food("Arroz, tipo 1, cozido", **ARROZ)
     banco.oleo = banco.add_food("Óleo, de soja", **OLEO)
     banco.sal = banco.add_food("Sal, grosso", **SAL)
@@ -309,3 +310,58 @@ def test_apagar_leva_os_itens_e_refeicao_inexistente_e_404(db):
     assert db.meals == {} and db.items == {}
     assert cliente.delete(f"/nutrition/meals/{criada['id']}").status_code == 404
     assert cliente.put("/nutrition/meals/123456", json=_refeicao(db)).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Receita no diário (L37, #286)
+# ---------------------------------------------------------------------------
+
+
+def _com_receita(db, versao: int = 3) -> int:
+    rid = db.add_food("Receita de arroz", source="recipe", owner=ALUNO, **ARROZ)
+    db.recipe_versions[900] = {"id": 900, "food_id": rid, "version": versao - 1}
+    db.recipe_versions[901] = {"id": 901, "food_id": rid, "version": versao}
+    return rid
+
+
+def test_snapshot_de_receita_guarda_a_versao_usada_e_o_comum_nao_muda(db):
+    rid = _com_receita(db)
+    corpo = {"local_date": DIA.isoformat(), "meal_slot": "lunch",
+             "items": [{"food_id": rid, "quantity": 100, "unit": "g"},
+                       {"food_id": db.arroz, "quantity": 100, "unit": "g"}]}
+    assert _client().post("/nutrition/meals", json=corpo).status_code == 201
+    receita, comum = (json.loads(i["catalog_snapshot_json"])["food"] for i in db.items.values())
+    assert receita["recipe_version"] == 3 and receita["recipe_version_id"] == 901
+    assert "recipe_version" not in comum and "recipe_version_id" not in comum
+    assert comum == meals_mod.food_snapshot(db.foods[db.arroz])
+
+
+def test_receita_sem_as_tabelas_da_125_grava_sem_a_versao_e_sem_erro(db, monkeypatch):
+    rid = _com_receita(db)
+    monkeypatch.setattr(meals_mod, "has_recipe_tables", lambda cur: False)
+    corpo = {"local_date": DIA.isoformat(), "meal_slot": "lunch", "items": [{"food_id": rid, "quantity": 100, "unit": "g"}]}
+    assert _client().post("/nutrition/meals", json=corpo).status_code == 201
+    (item,) = db.items.values()
+    food = json.loads(item["catalog_snapshot_json"])["food"]
+    assert "recipe_version" not in food and "recipe_version_id" not in food
+
+
+def test_editar_a_receita_depois_nao_muda_a_refeicao_gravada(db):
+    rid = _com_receita(db)
+    corpo = {"local_date": DIA.isoformat(), "meal_slot": "lunch", "items": [{"food_id": rid, "quantity": 200, "unit": "g"}]}
+    criada = _client().post("/nutrition/meals", json=corpo).json()
+    antes = {k: json.loads(v["catalog_snapshot_json"]) for k, v in db.items.items()}
+    db.foods[rid].update(energy_kcal=meals_mod_dec(999), name="Receita editada")
+    db.recipe_versions[902] = {"id": 902, "food_id": rid, "version": 4}
+    # Relê pelo PUT que mantém o item (id): reaproveita o snapshot, não o catálogo editado.
+    item = {"id": criada["items"][0]["id"], "food_id": rid, "quantity": 200, "unit": "g"}
+    lida = _client().put(f"/nutrition/meals/{criada['id']}", json={**corpo, "items": [item]})
+    assert lida.status_code == 200, lida.text
+    sem_id = lambda itens: [{k: v for k, v in i.items() if k != "id"} for i in itens]  # noqa: E731 - o PUT regrava o item
+    assert sem_id(lida.json()["items"]) == sem_id(criada["items"]) and lida.json()["totals"] == criada["totals"]
+    assert [json.loads(v["catalog_snapshot_json"]) for v in db.items.values()] == list(antes.values())
+
+
+def meals_mod_dec(valor):
+    from decimal import Decimal
+    return Decimal(str(valor))
