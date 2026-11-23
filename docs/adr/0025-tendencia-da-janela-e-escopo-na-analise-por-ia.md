@@ -104,3 +104,10 @@ Consequência: só 10 de 81 pares atingem o mínimo de 4 exposições comparáve
 - **Guarda.** O ramo de média de fatia de `tendencia_janela_paralela` (`api/tests/unit/test_guarda_fontes_da_verdade.py`) acusa `sum(x[:k]) / k`, `sum(x[-k:]) / k` e `sum(x[:len(x)//2]) / n`. Antes só acusava a forma com o nome `half`; agora acusa também a média de fatia com qualquer nome de variável, e a forma com `half` foi mantida. A allowlist continua vazia.
 - **Sem mudança de número.** Status, tendência, limiar, janela e contrato não mudaram. Não há replay novo: o replay de 21/11/2026 segue valendo.
 - **Limites (e), (f) e (g) seguem.**
+
+## Atualização de 23/11/2026 (lote 35)
+
+- **Dica do escopo acessível por toque (#239, web).** Em `frontend/src/app/(app)/dashboard/exercicios/[exerciseId]/ExerciseProgressClient.tsx`, a descrição do escopo deixou de ser `title` nativo e virou `Tooltip` do Mantine com `events={{ hover: true, focus: true, touch: true }}`, o mesmo padrão de `frontend/src/components/nutrition/DayPriorityBadge.tsx`. A dica abre com mouse, foco de teclado e toque. O título ganha `tabIndex`, `role="note"` e `aria-label` só quando há descrição. O texto não mudou: vem da API.
+- **Teste de renderização do detalhe (web).** `frontend/src/app/(app)/dashboard/exercicios/[exerciseId]/ExerciseProgressClient.render.test.ts` tem 3 casos: Leitura atual com o bloco de título e descrição acessível; sem descrição, o título não vira foco nem nota; resposta sem o campo não mostra o bloco.
+- **Limites.** O item (e) fica resolvido para `ExerciseProgressClient.tsx`. `ExercicioScreen.tsx` (tela móvel) segue sem teste de renderização e sem a dica, porque não foi alterado neste lote. O item (f) segue: no mobile, o escopo continua como texto. O item (g) segue: nenhuma tela foi vista em navegador nem em iPhone.
+- **Verificação.** Os testes novos estão listados acima. Esta atualização é só documental: nenhum resultado de execução dos testes foi informado nesta tarefa.

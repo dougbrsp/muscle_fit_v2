@@ -85,7 +85,6 @@ export function PlanCycleDays({ enabled, onEnabledChange, value, onChange, polic
             </Text>
             <SegmentedControl
               fullWidth
-              size="xs"
               data={CARB_CYCLE_POLICY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               value={policy}
               onChange={onPolicyChange}

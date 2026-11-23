@@ -208,15 +208,9 @@ function Shell({ children }: { children: ReactNode }) {
       <OfflineBanner />
 
       <main id="mobile-main" tabIndex={-1} className={styles.main}>
-        {desktopOnly ? (
-          <DesktopOnlyScreen />
-        ) : Screen ? (
-          <ScreenErrorBoundary resetKey={`${pathname ?? ''}?${search}`}>
-            <Screen />
-          </ScreenErrorBoundary>
-        ) : (
-          children
-        )}
+        <ScreenErrorBoundary resetKey={`${pathname ?? ''}?${search}`}>
+          {desktopOnly ? <DesktopOnlyScreen /> : Screen ? <Screen /> : children}
+        </ScreenErrorBoundary>
       </main>
 
       <nav

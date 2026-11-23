@@ -4,6 +4,11 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { ErrorState, OfflineState } from '../ui';
 import { isChunkLoadError } from './chunk-error';
 
+function isNextNavigationError(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+  return typeof digest === 'string' && (digest.startsWith('NEXT_REDIRECT') || digest.startsWith('NEXT_NOT_FOUND'));
+}
+
 type Props = { children: ReactNode; resetKey: string };
 type State = { failed: boolean; error: unknown };
 
@@ -33,9 +38,14 @@ export class ScreenErrorBoundary extends Component<Props, State> {
 
   retry = () => this.setState({ failed: false, error: null });
 
+  // Chunk que não baixou só volta com a página recarregada; os demais erros só zeram o estado.
+  retryChunk = () => window.location.reload();
+
   render() {
     if (!this.state.failed) return this.props.children;
-    if (isChunkLoadError(this.state.error)) return <OfflineState onRetry={this.retry} />;
+    // redirect()/notFound() do Next chegam como erro com digest; o Next os trata acima daqui.
+    if (isNextNavigationError(this.state.error)) throw this.state.error;
+    if (isChunkLoadError(this.state.error)) return <OfflineState onRetry={this.retryChunk} />;
     return (
       <ErrorState
         title="Algo deu errado nesta tela."

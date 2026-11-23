@@ -188,7 +188,7 @@ export function ExerciseProgressClient() {
   );
 }
 
-function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgressResponse; defaultGoal: string | null }) {
+export function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgressResponse; defaultGoal: string | null }) {
   const currentKey = data.comparability_key;
   const reasons = useMemo(() => statusReasonsText(data.status_reasons), [data.status_reasons]);
   const windowTrend = useMemo(() => buildWindowTrendView(data.window_trend), [data.window_trend]);
@@ -290,9 +290,29 @@ function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseProgress
           <Stack gap={4} mt="md" data-testid="window-trend">
             <Divider />
             <Group gap="sm" wrap="wrap" align="center" mt="xs">
-              <Text size="sm" fw={600} c={BRAND.textPrimary} title={windowTrendHeading(windowTrend.scope).description ?? undefined}>
-                {windowTrendHeading(windowTrend.scope).title}
-              </Text>
+              {(() => {
+                const { title, description } = windowTrendHeading(windowTrend.scope);
+                const heading = (
+                  <Text
+                    size="sm"
+                    fw={600}
+                    c={BRAND.textPrimary}
+                    data-testid="window-trend-title"
+                    tabIndex={description ? 0 : undefined}
+                    role={description ? 'note' : undefined}
+                    aria-label={description ? `${title}. ${description}` : undefined}
+                    style={description ? { cursor: 'help' } : undefined}
+                  >
+                    {title}
+                  </Text>
+                );
+                if (!description) return heading;
+                return (
+                  <Tooltip label={description} multiline w={280} withArrow events={{ hover: true, focus: true, touch: true }}>
+                    {heading}
+                  </Tooltip>
+                );
+              })()}
               <StatusBadge domain="exerciseProgression" code={windowTrend.statusCode} size="md" />
             </Group>
             {windowTrend.changeText && windowTrend.meansText && (

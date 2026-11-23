@@ -109,5 +109,7 @@ describe('foto do prato: o modal entrega a versão reduzida', () => {
     const form = onParsed.mock.calls[0][0];
     expect(form.photo).toBe(reduzida);
     expect(form.photo).not.toBe(original);
+    // Depois do sucesso, nenhuma mutação guardada (cache/observador) segue referenciando o arquivo original.
+    expect(client.getMutationCache().getAll().some((m) => m.state.variables === original)).toBe(false);
   });
 });
