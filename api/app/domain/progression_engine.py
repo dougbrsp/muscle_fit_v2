@@ -136,8 +136,8 @@ BLOCKED_ACTIVATION_MAX = "ACTIVATION_MAX"
 BLOCKED_VOLUME_IN_RANGE = "VOLUME_IN_RANGE"
 BLOCKED_NEXT_ELIGIBLE_AT = "NEXT_ELIGIBLE_PROGRESSION_AT"
 BLOCKED_NO_DIRECT_WORK = "NO_DIRECT_WORK"
-NO_DIRECT_WORK_REASON = "Grupo sem trabalho direto pela recuperacao: carga mantida, sem progressao."
-NO_DIRECT_WORK_NO_LOAD_REASON = "Grupo sem trabalho direto pela recuperacao: sem progressao."
+NO_DIRECT_WORK_REASON = "Grupo sem trabalho direto pela recuperação: carga mantida, sem progressão."
+NO_DIRECT_WORK_NO_LOAD_REASON = "Grupo sem trabalho direto pela recuperação: sem progressão."
 BLOCKED_MAX_SETS = "MAX_SETS_REACHED"
 
 # --- status de carga da trilha ---------------------------------------------

@@ -121,12 +121,14 @@ def test_contagem_usada_e_a_da_leitura_travada(monkeypatch):
     assert out["form_practice"] is True and getattr(db, "updates", 0) == 0
 
 
-def test_sem_o_campo_nao_ha_trava_e_ha_uma_unica_contagem_sem_trava(monkeypatch):
-    """Sem o campo: nenhuma trava, UMA contagem comum (a resposta informa `form_practice_locked`), sem UPDATE."""
+def test_sem_o_campo_so_ha_a_trava_da_linha_do_exercicio_e_uma_unica_contagem_sem_trava(monkeypatch):
+    """Sem o campo: a única trava é a da linha do exercício (#241, serializa POSTs); a contagem é UMA, comum
+    (sem FOR SHARE; a resposta informa `form_practice_locked`), sem UPDATE da marca."""
     db = _db(monkeypatch)
     ex = _ex(client_key="ex-1")
     out = _set(ex)
-    assert not any("FOR UPDATE" in q or "FOR SHARE" in q for q in db.flat_sql)
+    travas = [q for q in db.flat_sql if "FOR UPDATE" in q or "FOR SHARE" in q]
+    assert travas == [f"SELECT {fp.FORM_PRACTICE_COLUMN} FROM exercises WHERE id = %s FOR UPDATE"]
     contagens = [q for q in db.flat_sql if q.startswith("SELECT COUNT(*) AS n FROM exercise_sets es")]
     assert len(contagens) == 1 and contagens[0] == " ".join(fp.sql_working_sets_recorded().split())
     assert getattr(db, "updates", 0) == 0 and not any(q.startswith("UPDATE exercises SET form_practice") for q in db.flat_sql)

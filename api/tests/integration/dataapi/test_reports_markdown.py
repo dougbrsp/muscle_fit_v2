@@ -342,3 +342,31 @@ def test_periodo_vazio_tem_detalhamento_vazio_sem_quebrar(seed, raw, db_backend)
     assert dados["muscles"]["days"] == []
     assert dados["recovery"]["days"] == []
     assert dados["cycles"]["timeline"] == []
+
+
+def test_relatorio_compara_rpe_esperado_gravado_com_o_realizado(seed, raw, db_backend):
+    """#241: `rpe_target_planned` gravado na serie vira a comparacao esperado x realizado
+    da sessao (dono `effective_intensity.rpe_vs_expected_counts`)."""
+    from app.domain.effective_intensity import RPE_VS_ABOVE, RPE_VS_ON_TARGET
+    from app.db import get_conn
+
+    _historico(raw, seed)
+    with raw.cursor() as cur:
+        # Supino do dono: RPE realizado 8 e 9; esperado 8 nas duas de trabalho.
+        cur.execute(
+            "UPDATE exercise_sets es JOIN exercises e ON e.id = es.exercise_id "
+            "JOIN activities a ON a.id = e.activity_id "
+            "SET es.rpe_target_planned = 8 "
+            "WHERE a.user_id = %s AND e.mapping_id = %s AND es.set_type = 'working'",
+            (seed["dono"], SUPINO),
+        )
+    janela = resolve_window(WindowKind.ROLLING_90D, today=HOJE, timezone_name="America/Sao_Paulo")
+    with get_conn() as conn:
+        dados = markdown_report_service.collect_report_data(conn, user_id=seed["dono"], window=janela)
+
+    assert dados["quality"]["unavailable_sections"] == [], db_backend
+    timeline = dados["cycles"]["timeline"]
+    com_esperado = [t["rpe_vs_expected_counts"] for t in timeline if t["rpe_vs_expected_counts"]]
+    assert len(com_esperado) == 1, db_backend  # so a sessao do supino tem esperado gravado
+    assert com_esperado[0]["compared"] == 2
+    assert com_esperado[0][RPE_VS_ON_TARGET] == 1 and com_esperado[0][RPE_VS_ABOVE] == 1

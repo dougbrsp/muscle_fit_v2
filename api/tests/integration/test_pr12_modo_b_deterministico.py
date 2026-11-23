@@ -495,6 +495,52 @@ def test_ficha_congelada_vem_do_motor_deterministico(db_conn, catalog, gym_equip
     assert again["exercises"][0]["prescription"] == prescription
 
 
+def test_ficha_congelada_mantem_a_carga_em_grupo_sem_trabalho_direto(db_conn, catalog, gym_equipment, monkeypatch):
+    """#277/#274: grupo em NO_DIRECT_WORK (dor articular) + trilha com carga: a ficha
+    congelada no Modo B sai com a carga da trilha mantida, sem progressao."""
+    from app import workout_plan_ai
+
+    group_id = catalog.muscle_groups["Peitoral"]
+    monkeypatch.setattr(
+        workout_plan_ai,
+        "gather_ficha_context",
+        lambda gym_id, user_id: {
+            "muscle_recovery": [
+                {
+                    "muscle_group_id": group_id,
+                    "muscle_pain": None,
+                    "joint_pain": True,
+                    "session_dose": 0,
+                    "estimated_recovery_hours": 0,
+                    "hours_since_trained": 0,
+                }
+            ],
+            "gyms": [],
+            "recent_exercise_logs": [],
+        },
+    )
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO progression_group_states (user_id, muscle_group_id, phase, reps_min, reps_max, "
+            "phase_entered_at, engine_version) VALUES (%s, %s, 'F2', 10, 12, NOW(), 'progression-v2.0.0')",
+            (catalog.user_id, group_id),
+        )
+        cur.execute(
+            "INSERT INTO progression_tracks (user_id, exercise_id, equipment_id, muscle_group_id, load_status, "
+            "working_load_kg, sets_count, engine_version) "
+            "VALUES (%s, %s, %s, %s, 'ACTIVE', 42.5, 3, 'progression-v2.0.0')",
+            (catalog.user_id, catalog.exercises["Crucifixo"], catalog.equipment["Polia"], group_id),
+        )
+    db_conn.commit()
+    template, slot = _make_template(db_conn, catalog, [_item(catalog)])
+    draft = _generate(template, slot, catalog)
+    assert draft["exercises"][0]["suggested_load_kg"] == 42.5
+    plan = _save(draft, catalog, template["id"])
+    frozen = plan["exercises"][0]
+    assert frozen["prescription_status"] == "FROZEN"
+    assert frozen["load_target"] == draft["exercises"][0]["load_target"] == "42,5kg"
+
+
 def test_congelamento_registra_substituicao_e_escolha_pendente(db_conn, catalog, gym_equipment):
     template, slot = _make_template(
         db_conn,

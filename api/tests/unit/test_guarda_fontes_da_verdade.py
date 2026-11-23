@@ -2067,9 +2067,11 @@ PADROES: tuple[Padrao, ...] = (
         "ou atribuição de `initial_mean`/`final_mean`",
         # 2026-11-21 (#239): dono `comparability.window_trend`. Anotação de contrato (`initial_mean: float | None = None`),
         # chave de dicionário e leitura (`trend.initial_mean`) não casam: o nome vem seguido direto de `=`. O ramo da fatia
-        # exige `half` na fatia, para não acusar média de fatia de outro domínio.
+        # exige a MESMA variável na fatia e no divisor (qualquer nome) ou `// 2`; fatia literal (`xs[:3]) / 3`) não casa.
         regex=re.compile(
-            r"\bsum\([^)\n]*\[[^\]\n]*half[^\]\n]*\]\s*\)\s*/"
+            r"\bsum\([^)\n]*\[(?=[^\]\n]*:)\s*[:-]?\s*([A-Za-z_]\w*)\s*:?\s*\]\s*\)\s*/\s*\1\b"  # sum(x[:k]) / k, sum(x[-k:]) / k
+            r"|\bsum\([^)\n]*\[[^\]\n]*//\s*2[^\]\n]*\]\s*\)\s*/"  # sum(x[:len(x)//2]) / ...
+            r"|\bsum\([^)\n]*\[[^\]\n]*half[^\]\n]*\]\s*\)\s*/"  # sum(x[:half]) / 2, sum(x[-half:]) / n
             r"|\b(?:initial|final)_mean\s*=(?!=)"
             r"|\b(?:initialMean|finalMean)\s*=(?!=)"
         ),
@@ -3905,9 +3907,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "tendencia_janela_paralela": (
         ("initial = sum(valid[:half]) / half", "final = sum(valid[-half:]) / half", "initial_mean = 4.0",
-         "final_mean = sum(xs) / n", "const initialMean = 3;", "finalMean = calc()"),
+         "final_mean = sum(xs) / n", "const initialMean = 3;", "finalMean = calc()",
+         "a = sum(e1rms[:k]) / k", "b = sum(e1rms[-metade:]) / metade", "m = sum(v[:len(v) // 2]) / n",
+         "a = sum(valid[:half]) / 2", "b = sum(xs[:half]) / len(xs[:half])", "c = sum(valid[-half:]) / n"),
         ("initial_mean: float | None = None", '"initial_mean": trend.initial_mean,', "x = trend.initial_mean",
-         "if initial_mean == 0:", "media = sum(xs[:3]) / 3", "const m = t.finalMean;"),
+         "if initial_mean == 0:", "media = sum(xs[:3]) / 3", "const m = t.finalMean;",
+         "m = sum(xs[:k]) / n", "total = sum(xs[:k])", "m = sum(a[n]) / n"),
     ),
     "reps_protocolo_tecnica": (
         ("GVT_PROTOCOL_REPS = 10", "SETS_ONLY_DEFAULT_SETS: Final[Mapping[str, int]] = {'fst7': 7}",
