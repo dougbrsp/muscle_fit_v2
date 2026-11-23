@@ -57,13 +57,15 @@ type Props = {
   onQuickEntry?: () => void;
   /** Chamado só depois de o favorito ser gravado com sucesso (marcar a estrela, nunca ao desmarcar). */
   onFavorited?: (item: FoodSearchItem) => void;
+  /** Quando verdadeiro, a busca não devolve receitas (ex.: ingrediente de receita). */
+  excludeRecipes?: boolean;
 };
 
 /**
  * Busca no catálogo. A API filtra (FULLTEXT), ordena pela nota do motor
  * (`food_text`) e diz de que fonte é cada item, com a citação; a tela só exibe.
  */
-export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false, onQuickEntry, onFavorited }: Props) {
+export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, registerDisabled = false, onQuickEntry, onFavorited, excludeRecipes = false }: Props) {
   const [texto, setTexto] = useState('');
   const [fonte, setFonte] = useState<string | null>(null);
   const [privados, setPrivados] = useState(false);
@@ -71,8 +73,8 @@ export function FoodSearch({ isAdmin, selectedId, onSelect, onRegister, register
   const scope: FoodSearchScope = isAdmin && privados ? 'private_all' : 'visible';
 
   const query = useQuery({
-    queryKey: foodKeys.search(busca, scope, fonte),
-    queryFn: () => searchFoods(busca, { scope, source: fonte }),
+    queryKey: foodKeys.search(busca, scope, fonte, excludeRecipes),
+    queryFn: () => searchFoods(busca, { scope, source: fonte, excludeRecipes }),
     enabled: busca.length > 0,
     retry: false,
     staleTime: 30_000,

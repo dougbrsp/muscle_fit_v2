@@ -30,6 +30,9 @@ export const SCREENS_C: Readonly<Record<string, ComponentType>> = {
   '/nutricao/alimentos': lazyScreen(() =>
     import('./telas/NutricaoAlimentosScreen').then((m) => ({ default: m.NutricaoAlimentosScreen })),
   ),
+  '/nutricao/receitas': lazyScreen(() =>
+    import('./telas/NutricaoReceitasScreen').then((m) => ({ default: m.NutricaoReceitasScreen })),
+  ),
   '/indicadores-fisicos': lazyScreen(() =>
     import('./telas/IndicadoresScreen').then((m) => ({ default: m.IndicadoresScreen })),
   ),

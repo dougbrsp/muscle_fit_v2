@@ -20,6 +20,7 @@ const ROUTES = [
   '/nutricao/plano/',
   '/nutricao/checkin/',
   '/nutricao/alimentos/',
+  '/nutricao/receitas/',
   '/nutricao/favoritos/',
   '/indicadores-fisicos/',
   '/volume-grupamentos/',

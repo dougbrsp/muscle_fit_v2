@@ -72,7 +72,24 @@
 - **Mapa.** O domínio de receita tem dono único em `recipe.py`, registrado em `docs/motores/FONTES_DA_VERDADE.md`. Constantes e fórmulas estão em [docs/nutricao/CALCULOS_NUTRI.md](../nutricao/CALCULOS_NUTRI.md), seção "Receitas (alimento composto)".
 - **Próximas decisões.** A segunda fatia decide telas, histórico de versões, duplicação, promoção a pública e filtros.
 
+## Telas (lote 38)
+
+Fatia 1 das telas, sobre o backend do lote 37c (branch `feat/receitas-telas-l38`, #286). Sem mudança de backend.
+
+- **Entrou:**
+  - rota web `/nutricao/receitas` (`frontend/src/app/(app)/nutricao/receitas/`), entrada "Receitas" na subnavegação (`frontend/src/components/nutrition/NutritionSubnav.tsx`) e no celular (`frontend/src/mobile/screens/telas/NutricaoNav.tsx`);
+  - tela do celular `frontend/src/mobile/screens/telas/NutricaoReceitasScreen.tsx`, registrada em `frontend/src/mobile/screens/registry.c.ts`, que reusa `ReceitasClient`;
+  - editor `frontend/src/components/nutrition/RecipeEditor.tsx`: ingredientes em peso cru, peso final, prévia, ajuste manual em `overrides` e modo de preparo como texto puro;
+  - cliente `previewRecipe`, `createRecipe`, `fetchRecipes`, `fetchRecipe` e `updateRecipe` em `frontend/src/lib/nutrition-api.ts`;
+  - busca de ingrediente com `excludeRecipes` (`frontend/src/components/nutrition/FoodSearch.tsx`), para que receita não entre como ingrediente.
+- **Regra das telas:** nenhuma conta no frontend. Totais, valores por 100 g, rendimento, energia e avisos vêm da resposta do backend; o código do frontend só converte texto em número.
+- **Saída com alterações:** pede confirmação ao cancelar o editor e ao fechar ou recarregar a aba (`beforeunload`). Trocar de rota pela subnavegação ainda não pede confirmação.
+- **Fica para a fatia 2:** versões com "atualizar ingredientes e recalcular"; duplicar; publicar e filtros minhas, públicas e favoritas; rascunho; cadastrar ingrediente novo sem sair da receita (o editor não passa `onRegister` ao `FoodSearch`); confirmação ao trocar de rota com alterações.
+- **Dependência:** a tela só funciona com a migração 125 aplicada; sem ela, as rotas respondem 503.
+
 ## Impacto em produção
+
+Lote 38: só tela nova; nenhuma mudança de backend nem de migração. Os números de produção são os medidos acima para o lote 37c.
 
 Medido pelo Tech Lead em 23/11/2026, só leitura (SELECT), direto na produção: 665 alimentos, nenhum com origem de receita (`source='recipe'`), 10 alimentos privados, e as duas tabelas novas ainda não existem. A medição anterior, na cópia de produção do banco de desenvolvimento (carga de 22/11/2026), dava 664 alimentos; a cópia só traz o usuário escolhido e o catálogo público. Logo nenhum alimento, refeição ou meta existente muda. O ajuste do lote 37b (limitações na resposta e rótulo de ingrediente a partir de 1) também não tem efeito em produção: não há receita nem tabela de receita, então nenhuma versão antiga fica sem os avisos. O lote 37c (obrigatório da linha de receita só energia) tem impacto nulo: 0 receitas em produção, medido em 23/11/2026 por SELECT; a regra só se aplica a linha com `source='recipe'`. Que alimento comum não muda de formato em nenhuma resposta é garantido por testes unitários (snapshot de alimento comum inalterado; SQL de busca idêntico sem o filtro de receitas), a confirmar no CI. O script de cópia de produção para o desenvolvimento (`scripts/prod_to_dev.py`) copia só as receitas do próprio usuário.
 
@@ -83,7 +100,7 @@ Conferência depois do deploy (na promoção, só leitura): (b) as duas tabelas 
 ## Limites
 
 - **Fica para a segunda fatia:**
-  - telas (lote seguinte);
+  - telas: a fatia 1 está no lote 38 (seção "Telas (lote 38)"); o restante segue nesta lista;
   - histórico de versões com "atualizar ingredientes e recalcular";
   - duplicar receita;
   - promover a pública, com as regras de receita pública;
