@@ -119,25 +119,17 @@ def day_priority(kind: DayKind, before: MacroTargets, after: MacroTargets) -> Da
         delta_fat = float(after.fat_g) - float(before.fat_g)  # type: ignore[arg-type]
         return DayPriority.FAT if delta_fat > DAY_PRIORITY_CARB_TOLERANCE_G else DayPriority.REDUCED_CARB
     return DayPriority.NORMAL
-# Chave irmã dos dias em `carb_cycling_json`: só existe fora do padrão (o JSON legado fica byte a byte igual). Desde a
-# migração 123 a política mora também na coluna `nutrition_plans.carb_cycle_policy` (dona da leitura; a chave é a reserva).
+# Chave legada em `carb_cycling_json` (ADR 0029): não é mais gravada nem lida (a política mora na coluna
+# `nutrition_plans.carb_cycle_policy`, migração 123); só é descartada na leitura se ainda existir.
 STORED_POLICY_KEY: Final[str] = "policy"
 
 
-def join_stored_cycle(day_map: Optional[Mapping[str, str]], policy: CarbCyclePolicy) -> Optional[dict[str, str]]:
-    """Valor gravado em `carb_cycling_json`: o mapa de dias, mais `policy` só quando NÃO é a política padrão."""
-    if day_map is None:
-        return None
-    if policy == DEFAULT_CARB_CYCLE_POLICY:
-        return dict(day_map)
-    return {**day_map, STORED_POLICY_KEY: policy.value}
-
-
-def split_stored_cycle(stored: Any) -> tuple[Any, Any]:
-    """Inverso de `join_stored_cycle`: (mapa de dias, política gravada ou None). Sem a chave (legado) devolve o valor como está."""
+def stored_cycle_days(stored: Any) -> Any:
+    """Mapa de dias de `carb_cycling_json`. A chave `policy` (legado, ADR 0029) já não é gravada nem lida: é descartada
+    sem erro; a política mora só na coluna `carb_cycle_policy`."""
     if isinstance(stored, dict) and STORED_POLICY_KEY in stored:
-        return {k: v for k, v in stored.items() if k != STORED_POLICY_KEY}, stored[STORED_POLICY_KEY]
-    return stored, None
+        return {k: v for k, v in stored.items() if k != STORED_POLICY_KEY}
+    return stored
 
 NOMINAL_MULTIPLIERS: Final[Mapping[DayKind, float]] = {
     DayKind.HIGH: HIGH_CARB_MULTIPLIER,

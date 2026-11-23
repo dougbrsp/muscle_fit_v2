@@ -48,7 +48,7 @@ from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.session_status import SESSION_STATUS_DONE
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.activity_energy import ActivityCorrection, activity_duration_seconds
-from .domain.nutrition.carb_cycling import DEFAULT_CARB_CYCLE_POLICY, DayPriority, split_stored_cycle
+from .domain.nutrition.carb_cycling import DEFAULT_CARB_CYCLE_POLICY, DayPriority, stored_cycle_days
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -100,7 +100,7 @@ PLAN_SETTINGS_COLUMNS = (
     "weekly_rate_share, surplus_share, protein_g_per_kg, fat_kcal_share, carb_min_g_per_kg, meals_per_day, "
     "macro_priority, manual_targets_json, carb_cycling_json, maintenance_kcal_adjust, energy_params_json, carb_cycle_policy"
 )
-# Sem a migração 123 a coluna da política não existe: a leitura cai na chave `policy` do `carb_cycling_json` (reserva).
+# Sem a migração 123 a coluna da política não existe: a leitura usa a lista SEM ela (política padrão).
 PLAN_SETTINGS_COLUMNS_WITHOUT_POLICY = PLAN_SETTINGS_COLUMNS.replace(", carb_cycle_policy", "")
 # Sem a migração 106 a coluna `energy_params_json` não existe: a leitura dos planos publicados usa a lista SEM ela (planos
 # legados seguem funcionando como antes); as rotas de PLANO é que respondem 503 `nutrition_plan_migration_pending`.
@@ -259,6 +259,10 @@ def _json_value(value: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
+# Planos cujo aviso de política inválida já foi emitido neste processo (evita um log por leitura).
+_PLANS_WITH_INVALID_POLICY_LOGGED: set[Any] = set()
+
+
 def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     """`PlanSettings` de uma linha de `nutrition_plans`. Linha gravada já passou
     pela validação; se a faixa do motor mudar depois, o orquestrador avisa
@@ -268,9 +272,9 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     if isinstance(manual, dict):  # o modo mora junto das gramas no JSON (sem coluna nova)
         manual = dict(manual)
         modo_manual = manual.pop("training_mode", None)
-    dias_ciclo, politica_json = split_stored_cycle(_json_value(row.get("carb_cycling_json")))
-    # Coluna (123) quando preenchida; senão a chave `policy` do JSON (reserva: plano antigo ou banco sem a migração).
-    politica_ciclo = row.get("carb_cycle_policy") if row.get("carb_cycle_policy") is not None else politica_json
+    dias_ciclo = stored_cycle_days(_json_value(row.get("carb_cycling_json")))
+    # Só a coluna (123); nula = política padrão (o `build_plan_settings` trata None). A chave `policy` antiga é ignorada.
+    politica_ciclo = row.get("carb_cycle_policy")
     validacao = build_plan_settings(
         strategy=row.get("strategy"),
         advanced=bool(int(row.get("advanced") or 0)),
@@ -296,9 +300,12 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
     if validacao.settings is None:  # pragma: no cover - estratégia gravada sempre veio do motor
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")
     if f"{ERR_INVALID_CODE}:{FIELD_CARB_CYCLE_POLICY}" in validacao.errors:  # lida como a padrão; só ids no log
-        logger.warning(
-            "nutrition.plan_carb_cycle_policy_invalid plan_id=%s user_id=%s", row.get("id"), row.get("user_id")
-        )
+        plano_id = row.get("id")
+        if plano_id not in _PLANS_WITH_INVALID_POLICY_LOGGED:  # uma vez por plano por processo
+            _PLANS_WITH_INVALID_POLICY_LOGGED.add(plano_id)
+            logger.warning(
+                "nutrition.plan_carb_cycle_policy_invalid plan_id=%s user_id=%s", plano_id, row.get("user_id")
+            )
     return validacao.settings
 
 
@@ -317,7 +324,7 @@ def load_published_plans(cur: Any, user_id: int) -> PublishedPlans:
     # `has_plan_energy_columns` tem cache SÓ do positivo: depois da 106 não custa SELECT; antes dela checa a cada leitura.
     if not has_plan_energy_columns(cur):
         sql = _PUBLISHED_PLANS_WITHOUT_ENERGY_SQL
-    else:  # sem a 123 a política vem da chave do JSON (reserva); mesma regra de cache só do positivo
+    else:  # sem a 123 a política é a padrão; mesma regra de cache só do positivo
         sql = _PUBLISHED_PLANS_SQL if has_plan_policy_column(cur) else _PUBLISHED_PLANS_WITHOUT_POLICY_SQL
     cur.execute(sql, (int(user_id), PUBLISHED))
     refs: list[PublishedPlanRef] = []
