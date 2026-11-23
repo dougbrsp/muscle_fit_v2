@@ -896,6 +896,44 @@ PK `id`; UK `uq_equipment_name(name)`; IDX `idx_equipment_type`; FK `fk_equipmen
 
 PK `id`; UK `uq_equipment_exercises_equipment_exercise(equipment_id, exercise_id)`; IDX `idx_eqex_equipment_active(equipment_id, is_active)`, `idx_eqex_exercise_active(exercise_id, is_active)`; FKs `equipment_id`→`equipment(id)` CASCADE, `exercise_id`→`exercise_catalog(id)` CASCADE.
 
+##### `equipment_exercise_resistance_profiles` (migração 126 — perfil de resistência do par, #288)
+
+Uma linha por par `equipment_exercises`. Dono do vocabulário e dos defaults: `api/app/domain/resistance_profile.py`.
+
+| Coluna | Tipo | Null | Default |
+|---|---|---|---|
+| id | bigint | não | AUTO_INCREMENT |
+| equipment_exercise_id | bigint | não | |
+| source, mechanism, trajectory, profile, line, direction_changes | varchar(32) | não | `'unknown'` |
+| flags_json | mediumtext | não | |
+| confidence | varchar(16) | não | `'low'` |
+| status | varchar(16) | não | `'suggested'` |
+| origin | varchar(16) | não | `'ai'` |
+| rationale, evidence | text | sim | |
+| vocabulary_version | varchar(32) | não | |
+| model_version | varchar(64) | sim | |
+| created_by, reviewed_by | bigint | sim | |
+| reviewed_at | datetime | sim | |
+| created_at, updated_at | datetime | não | CURRENT_TIMESTAMP |
+
+PK `id`; UK `uq_erp_pair(equipment_exercise_id)`; FK `fk_erp_pair` → `equipment_exercises(id)` CASCADE; FKs `fk_erp_created` e `fk_erp_reviewed` → `users(id)` SET NULL. Sem FK para `exercise_catalog`.
+
+##### `equipment_exercise_resistance_profile_history` (migração 126)
+
+Trilha de cada gravação do perfil (`before_json` é nulo na criação).
+
+| Coluna | Tipo | Null | Default |
+|---|---|---|---|
+| id | bigint | não | AUTO_INCREMENT |
+| profile_id | bigint | não | |
+| before_json, after_json | mediumtext | sim (`before_json`) / não (`after_json`) | |
+| actor_user_id | bigint | sim | |
+| origin | varchar(16) | não | |
+| reason | varchar(500) | sim | |
+| created_at | datetime | não | CURRENT_TIMESTAMP |
+
+PK `id`; IDX `idx_erph_profile(profile_id, id)`; FK `fk_erph_profile` → perfil CASCADE; FK `fk_erph_actor` → `users(id)` SET NULL.
+
 ##### `equipment_exercise_mappings` (AUTO_INCREMENT=242)
 
 | Coluna | Tipo | Null | Default |
@@ -2183,6 +2221,19 @@ Fluxo completo em 6.6. Toda rota `card-generations` exige **admin** (403) e a fl
 
 ---
 
+
+#### 2.18 `resistance_profiles.py` (prefixo `/resistance-profiles`, 6 rotas, #288)
+
+Montado em `main.py` (bloco "resistance profiles router"). Sem as tabelas da migração 126, responde 503 `resistance_profile_tables_missing`. Dono das regras: `api/app/domain/resistance_profile.py`.
+
+| Método | Caminho | Query/Path | Corpo | Resposta | Permissão | Erros |
+|---|---|---|---|---|---|---|
+| GET | `/vocabulary` | — | — | `export_vocabulary()` do dono | `exercicios.catalogo`/`ver` | — |
+| GET | `/coverage` | — | — | pares ativos, com e sem perfil, por status e `unknown` | `exercicios.catalogo`/`ver` | 503 |
+| GET | `` | `status`, `confidence`, `equipment_id`, `exercise_id`, `pending`, `limit` (1–200, padrão 50), `offset` | — | `{items, total, limit, offset}`; par sem perfil = `has_profile: false` com componentes `unknown` | `exercicios.catalogo`/`ver` | 422 (`invalid_code`) |
+| GET | `/{equipment_exercise_id}` | path | — | item do par | `exercicios.catalogo`/`ver` | 404 `pair_not_found` |
+| GET | `/{equipment_exercise_id}/history` | `limit` (1–100), `offset` | — | `{items}` com `before`, `after`, `actor_user_id`, `origin`, `reason`, `created_at` | `exercicios.catalogo`/`ver` | 404 |
+| PUT | `/{equipment_exercise_id}` | path | `ResistanceProfileIn` (substituição completa; `status` obrigatório; `origin` forçado a `admin`) | item atualizado | `admin.catalogos`/`editar` | 404; 422 com `code` e `field`; 409 `profile_conflict` (outra gravação primeiro, ou deadlock na criação concorrente) |
 
 ### 3. Autenticação e autorização
 

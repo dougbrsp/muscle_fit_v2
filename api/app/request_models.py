@@ -540,6 +540,24 @@ class ActivityCorrectionIn(_StrictIn):
         return self
 
 
+class ResistanceProfileIn(_StrictIn):
+    """PUT /resistance-profiles/{id} (admin). Codigos e regras sao validados pelo dono `domain/resistance_profile.py`;
+    aqui so formato e tamanho. Substituicao completa: componentes ausentes viram `unknown`; `status` obrigatorio."""
+
+    source: Optional[str] = Field(default=None, max_length=32)
+    mechanism: Optional[str] = Field(default=None, max_length=32)
+    trajectory: Optional[str] = Field(default=None, max_length=32)
+    profile: Optional[str] = Field(default=None, max_length=32)
+    line: Optional[str] = Field(default=None, max_length=32)
+    direction_changes: Optional[str] = Field(default=None, max_length=32)
+    flags: Optional[List[Annotated[str, Field(max_length=32)]]] = Field(default=None, max_length=16)
+    confidence: Optional[str] = Field(default=None, max_length=16)
+    status: str = Field(max_length=16)
+    rationale: Optional[str] = Field(default=None, max_length=2000)
+    evidence: Optional[str] = Field(default=None, max_length=4000)
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
 __all__ = [
     "ActivityCorrectionIn",
     "BodyCompositionUpdateIn",
@@ -560,6 +578,7 @@ __all__ = [
     "NutritionPlanSettingsIn",
     "PlanSuggestionCurrentIn",
     "PlanSuggestionIn",
+    "ResistanceProfileIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

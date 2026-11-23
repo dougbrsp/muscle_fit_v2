@@ -950,6 +950,17 @@ except Exception as exc:
     )
 # END equipment_exercises router
 
+# BEGIN resistance profiles router (#288: perfil de resistencia por par equipamento x exercicio)
+try:
+    from app.resistance_profiles import router as resistance_profiles_router
+    app.include_router(resistance_profiles_router)
+except Exception as exc:
+    import logging
+    logging.getLogger("fitness.resistance_profiles").exception(
+        "Resistance profiles router não foi carregado. Erro: %s", exc
+    )
+# END resistance profiles router
+
 # BEGIN muscle group <-> equipment/exercise navigation router (Fase 4 da
 # reestruturacao de dominio - leitura aditiva via
 # vw_muscle_group_equipment_exercises, ver muscle_group_equipment.py)
