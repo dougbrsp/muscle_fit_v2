@@ -146,7 +146,10 @@ export function ReceitasClient() {
                     <Button variant="light" size="xs" onClick={() => open(r.id)} aria-label={`Editar ${r.name}`}>
                       Editar
                     </Button>
-                    <Button variant="subtle" color="red" size="xs" onClick={() => setArchiving(r.id)} aria-label={`Arquivar ${r.name}`}>
+                    <Button variant="subtle" color="red" size="xs" onClick={() => {
+                        archive.reset();
+                        setArchiving(r.id);
+                      }} aria-label={`Arquivar ${r.name}`}>
                       Arquivar
                     </Button>
                   </Group>

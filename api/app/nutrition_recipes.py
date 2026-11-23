@@ -455,7 +455,7 @@ def update_recipe(
                 _insert_version(cur, int(food_id), proxima, payload, resolvidos, resultado, efetivo, uid)
             except Exception as exc:
                 if is_duplicate_key_error(exc):
-                    raise _error(409, "recipe_version_conflict")
+                    raise _error(409, "recipe_version_conflict") from exc
                 raise
             linha = _recipe_row(cur, food_id, identity)
             return _recipe_public(cur, linha, identity, permissoes)

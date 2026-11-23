@@ -1,6 +1,6 @@
 # ADR 0035: Receitas como alimento composto, primeira fatia do backend (issue #286)
 
-- **Status**: Aceita. Branch `feat/receitas-backend-l37`; o ajuste do lote 37b está em `feat/receitas-backend-l37b`; o do lote 37c (obrigatório da linha de receita só energia) está em `feat/receitas-backend-l37c`. Não publicada nem promovida a produção.
+- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`. Não promovida a produção.
 - **Data**: 2026-11-23
 - **Relaciona-se a**: [ADR 0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) (formato e seções deste registro); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (a regra de ter um único dono por cálculo, aplicada aqui aos nutrientes da receita).
 
@@ -87,6 +87,13 @@ Fatia 1 das telas, sobre o backend do lote 37c (branch `feat/receitas-telas-l38`
 - **Fica para a fatia 2:** versões com "atualizar ingredientes e recalcular"; duplicar; publicar e filtros minhas, públicas e favoritas; rascunho; cadastrar ingrediente novo sem sair da receita (o editor não passa `onRegister` ao `FoodSearch`); confirmação ao trocar de rota com alterações.
 - **Dependência:** a tela só funciona com a migração 125 aplicada; sem ela, as rotas respondem 503.
 
+## Ajustes do lote 39 (issue #291 e sobras #290)
+
+- **Teto do ingrediente.** A quantidade usa `diary.ITEM_AMOUNT_MAX` (`api/app/request_models.py::RecipeIngredientIn`), o teto oficial do item do diário. Já era o teto efetivo pelo motor, então nenhuma regra muda. O teto do peso final segue `RECIPE_FINAL_WEIGHT_MAX_G`.
+- **Editor.** `RecipeEditor.tsx` trata número não finito como inválido e avisa o ajuste manual (`ajuste-invalido`), com o envio interrompido.
+- **422 em vez de 500 (geral do app).** Em `api/app/security.py` (`_sem_nao_finitos`, `validation_error_handler`), registrado em `api/app/main.py` (api-core) e `api/app/main_engines.py` (engines), infinito e NaN no corpo viram texto no 422; o formato do FastAPI não muda.
+- **Verificação.** Teste novo `api/tests/unit/test_main_erro_validacao_numero_nao_finito.py`, executado pelo Tech Lead e aprovado junto com os testes das rotas de receita e das engines (42 passed). Ele afirma o registro do handler de validação nos dois apps (api-core e engines) e compara o 422 com o do FastAPI padrão. O CI é quem roda a suíte de integração.
+
 ## Impacto em produção
 
 Lote 38: só tela nova; nenhuma mudança de backend nem de migração. Os números de produção são os medidos acima para o lote 37c.
@@ -108,7 +115,7 @@ Conferência depois do deploy (na promoção, só leitura): (b) as duas tabelas 
   - rascunho retomável.
 - O diário soma seis nutrientes. Açúcares, gordura saturada e gordura trans da receita ficam nos valores por 100 g e no snapshot, sem entrar no total do diário nesta fatia.
 - Risco residual: violação da unicidade de `(food_id, version)`, mitigada por trava de linha e, em último caso, respondida com 409; a trava sob concorrência real não foi medida.
-- Corpo com número infinito ainda devolve 500 por um problema geral do app na serialização do erro de validação. Essa falha é anterior a este lote, e o valor não chega ao motor.
+- Corpo com número infinito devolvia 500 por um problema geral do app na serialização do erro de validação; corrigido no lote 39 (issue #291): agora 422, e o valor não chega ao motor.
 - A integração não roda localmente; só o CI a executa.
 - Posse estrita: quem administra o catálogo não lê nem edita receita privada de outro usuário; a resposta é 404 `food_not_found`, sem 403 (ver Decisão 7).
 - Linha de alimento: quem administra o catálogo ainda vê, pela busca de alimentos privados e por `GET /nutrition/foods/{id}`, a linha de alimento da receita de outro usuário (nome e valores por 100 g, sem ingredientes, versões nem modo de preparo). É a regra já existente dos alimentos privados; essa pessoa não pode editar, excluir nem promover a receita.
