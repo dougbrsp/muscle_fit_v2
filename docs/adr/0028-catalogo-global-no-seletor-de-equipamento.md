@@ -69,7 +69,7 @@ Restrições reais:
 ## Limites e pendências
 
 - (a) Casamento catálogo × academia: `GET /gym-equipment` devolve `exercise_id` (campo aditivo, `COALESCE(elm.canonical_exercise_id, ge.mapping_id)`, a mesma expressão canônica do join da convenção de carga, em `list_gym_equipment`). `isSamePair` casa por esse id quando o campo vem. A reserva por nome normalizado do exercício só vale para resposta antiga sem o campo, e só quando o `mapping_id` também não casa (`frontend/src/lib/equipment-catalog-add.ts`). Se o `mapping_id` do treino for id legado, o item do exercício atual pode cair no bloco dos demais.
-- (b) Perda de rede entre o acréscimo e a recarga da lista mostra "O equipamento foi acrescentado à academia, mas não está ligado a este exercício no catálogo" (`CATALOG_ADDED_WITHOUT_LINK_MESSAGE`), embora o acréscimo tenha ocorrido.
+- (b) RESOLVIDO em 23/11/2026 (lote 34): a perda de rede na recarga agora mostra mensagem própria (`CATALOG_ADDED_REFRESH_FAILED_MESSAGE`, ver a atualização abaixo). Antes, a perda de rede entre o acréscimo e a recarga da lista mostrava "O equipamento foi acrescentado à academia, mas não está ligado a este exercício no catálogo" (`CATALOG_ADDED_WITHOUT_LINK_MESSAGE`), embora o acréscimo tenha ocorrido.
 - (c) Sem teste de renderização do modal. A cobertura é o e2e de resiliência do Modo Treino.
 - (d) O nome da academia vem dos itens de `/gym-equipment`. Academia sem nenhum item no grupo mostra "esta academia" na pergunta de confirmação.
 - (e) Resolvido em 22/11/2026 (ADR 0032): o dono vê a ação no seletor pelo campo `can_add_to_gym`, sem o escopo `todos` (decisão 3).
@@ -93,3 +93,15 @@ Restrições reais:
 - A ordenação (`ORDER BY eq.name, pg.name, ec.name, eqex.id`) é a mesma, então a paginação é estável.
 
 Impacto: clientes atuais não mudam. Nenhum código de `frontend/src` envia `limit` ou `offset` para esta rota (conferido por busca em 22/11/2026). Não medido: volume de resposta por grupo em produção.
+
+## Atualização de 23/11/2026 (lote 34, #246: recarga falha e acréscimo)
+
+**Catálogo com recarga falha.** O catálogo continua visível quando a recarga da lista da academia falha havendo dados anteriores. A decisão é pela existência de dados (`loadedGymItems` em `frontend/src/lib/equipment-catalog-add.ts`), não pelo sucesso da última consulta. Fecha o item (b) de "Limites e pendências".
+
+**Acréscimo com recarga falha.** `catalogAddOutcome` devolve `refresh_failed` quando a recarga falha. O seletor mostra `CATALOG_ADDED_REFRESH_FAILED_MESSAGE` ("O equipamento foi acrescentado à academia, mas não foi possível atualizar a lista agora...") e não dispara a escolha. Antes, esse caso caía no aviso sem vínculo.
+
+**Geração do acréscimo.** `EquipmentSubstituteModal.tsx` compara a geração do início da operação (`openGeneration`, capturada em `onMutate`) com a atual antes de disparar a escolha. Fechar o seletor durante o acréscimo, portanto, não dispara a escolha. O defeito foi achado pelo teste novo `frontend/src/app/(fullscreen)/modo-treino/EquipmentSubstituteModal.test.ts` (5 casos) e corrigido no lote 34; a execução desse teste não foi repetida nesta atualização de documentação.
+
+**Verificação.** `frontend/src/lib/equipment-catalog-add.test.ts` cobre `resolveRecommendedCandidate` e `catalogAddOutcome` (casos `refresh_failed`, escolha e sem vínculo). Estado da execução: relatado pelo lote 34, não reexecutado aqui.
+
+**Pendente de usuário.** Validação em celular real e em navegador, como no ADR 0027.

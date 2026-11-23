@@ -12,6 +12,7 @@ import {
   type IntensiveProfile,
 } from '@/lib/workout-mode-intensive';
 import { theme } from '@/theme';
+import { IntensiveApplicationCard } from './IntensiveApplicationCard';
 import { IntensiveBlock, type IntensiveBlockProps } from './IntensiveBlock';
 import { IntensiveBriefing, intensiveHeadline } from './IntensiveBriefing';
 import { IntensiveRest } from './IntensiveRest';
@@ -564,5 +565,27 @@ describe('IntensiveBlock: FST-7 com relógio contínuo', () => {
     const executing = run(resting, { type: 'REST_EXPIRED' });
     expect(executing.phase).toBe('SERIE_EM_EXECUCAO');
     expect(render(createElement(IntensiveBlock, { ...base, state: executing, correctionError: message }))).toContain(message);
+  });
+});
+
+describe('IntensiveApplicationCard: equipamento tocável (#244)', () => {
+  const props = {
+    profile: profile(),
+    stageLabel: 'Drop 1 de 2',
+    stageNoun: 'Drop',
+    planned: { kg: 40, source: null },
+    weightUnit: 'kg' as const,
+    loadIncrementKg: 2.5,
+    saving: false,
+    canUndo: false,
+    onAdjust: noop,
+    onUndo: noop,
+    onComplete: noop,
+  };
+  it('com nome e handler: botão de troca; sem um dos dois, não aparece', () => {
+    const html = render(createElement(IntensiveApplicationCard, { ...props, equipmentName: 'Peck deck', onEquipmentSwap: noop }));
+    expect(tagOf(html, 'intensive-equipment-swap')).toContain('aria-label="Trocar equipamento: Peck deck"');
+    expect(render(createElement(IntensiveApplicationCard, { ...props, equipmentName: 'Peck deck' }))).not.toContain('intensive-equipment-swap');
+    expect(render(createElement(IntensiveApplicationCard, { ...props, onEquipmentSwap: noop }))).not.toContain('intensive-equipment-swap');
   });
 });

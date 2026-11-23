@@ -271,6 +271,28 @@ test('FST-7: 7 series, reducao de carga em um toque durante o descanso e carga e
   expect(new Set(api.fstBodies.map((body) => body.client_key)).size).toBe(7);
 });
 
+test('troca de equipamento pelo nome no DESCANSO do bloco intensivo (#244): abre o seletor e o nome passa a ser o novo', async ({ page }) => {
+  api.useEquipmentPickerSeed();
+  await page.addInitScript((session) => {
+    window.localStorage.setItem(
+      'musclefit.workout-mode-session',
+      JSON.stringify({ ...session, advanced_mode: true, cancelled_exercise_ids: [7001, 7002] }),
+    );
+  }, LEGACY_SESSION);
+  await page.goto('/modo-treino/');
+  await page.getByTestId('briefing-start').click();
+  await page.getByTestId('intensive-start').click();
+  await page.getByTestId('intensive-reps-input').fill('10');
+  await page.getByTestId('intensive-complete-set').click();
+  await expect(page.getByTestId('rest-clock')).toBeVisible();
+
+  await page.getByTestId('intensive-equipment-swap').click();
+  await page.getByText('Crucifixo na polia').first().click();
+  // Total -> por lado: a troca de convencao de carga pede confirmacao.
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByTestId('intensive-equipment-swap')).toContainText('Polia');
+});
+
 test('descanso do FST-7 vencido em segundo plano mostra "expirado ha mm:ss" ao voltar', async ({ page }) => {
   await page.clock.install();
   await page.addInitScript((session) => {

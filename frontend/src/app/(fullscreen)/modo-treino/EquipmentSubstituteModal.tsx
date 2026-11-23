@@ -11,13 +11,16 @@ import {
   needsLoadConventionWarning,
   SECTION_TITLES,
   type EquipmentPickerItem,
+  type EquipmentSwapCandidate,
 } from '@/lib/equipment-picker';
 import {
   buildCatalogSection,
   catalogItemState,
+  CATALOG_ADDED_REFRESH_FAILED_MESSAGE,
   CATALOG_ADDED_WITHOUT_LINK_MESSAGE,
-  findAddedItem,
-  findRecommendedItem,
+  catalogAddOutcome,
+  loadedGymItems,
+  resolveRecommendedCandidate,
   formatCatalogAddQuestion,
   type GymEquipmentCatalogAddResponse,
 } from '@/lib/equipment-catalog-add';
@@ -42,6 +45,7 @@ import {
 import type { ApiList, GymEquipmentRecommendResponse } from '@/lib/workout-mode-types';
 import { manufacturerLabel } from '@/lib/gym-equipment-manufacturer';
 import { BRAND } from '@/theme';
+import styles from './workout-mode.module.css';
 
 export type EquipmentSubstituteChoice = {
   mapping_id: number;
@@ -113,7 +117,7 @@ export function EquipmentSubstituteModal({
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [search, setSearch] = useState('');
   // Opção cuja convenção de carga difere da atual, aguardando Confirmar/Voltar.
-  const [pendingItem, setPendingItem] = useState<EquipmentPickerItem | null>(null);
+  const [pendingItem, setPendingItem] = useState<EquipmentSwapCandidate | null>(null);
 
   // Catálogo global: itens que a academia não tem. Só a ação de acrescentar exige a permissão.
   const online = useOnlineStatus();
@@ -162,16 +166,14 @@ export function EquipmentSubstituteModal({
         method: 'POST',
         body: JSON.stringify({ gym_id: gymId, equipment_id: pair.equipment_id }),
       }),
-    onSuccess: async (response, pair) => {
-      const generation = openGeneration.current;
+    onSuccess: async (response, pair, context) => {
+      // Geração do clique (onMutate), não a de agora: o POST pode terminar depois de fechar.
+      if (context?.generation !== openGeneration.current) return;
       const fresh = await catalogQuery.refetch();
-      if (generation !== openGeneration.current) return; // fechou (ou reabriu) durante o acréscimo
-      const found = findAddedItem(response.links, fresh.data?.items ?? [], pair);
-      if (!found) {
-        setAddMessage(CATALOG_ADDED_WITHOUT_LINK_MESSAGE);
-        return;
-      }
-      chooseItem(found);
+      if (context.generation !== openGeneration.current) return; // fechou (ou reabriu) durante a recarga
+      const outcome = catalogAddOutcome(response.links, fresh, pair);
+      if (outcome.kind === 'choose') chooseItem(outcome.item);
+      else setAddMessage(outcome.kind === 'refresh_failed' ? CATALOG_ADDED_REFRESH_FAILED_MESSAGE : CATALOG_ADDED_WITHOUT_LINK_MESSAGE);
     },
     onMutate: () => ({ generation: openGeneration.current }),
     onError: (error, _pair, context) => {
@@ -213,14 +215,15 @@ export function EquipmentSubstituteModal({
   const excludedByLinkId = exclusionByLinkId(excluded);
   const techniqueName = getAdvancedTechniqueLabel(requiredTechnique) ?? requiredTechnique;
   // Pronto do servidor (dono/escopo); sem a lista carregada, não habilita.
-  const canAddToGym = catalogQuery.isSuccess && catalogQuery.data?.can_add_to_gym === true;
+  const canAddToGym = catalogQuery.data?.can_add_to_gym === true;
   const allItems: EquipmentPickerItem[] = catalogQuery.data?.items || [];
   const sections = buildEquipmentPickerSections(allItems, mappingId, currentEquipmentLinkId, search);
   const currentConvention = currentLoadConvention(allItems, currentEquipmentLinkId);
   const catalogItems = gymId
     ? buildCatalogSection(
         globalCatalogQuery.data?.items,
-        catalogQuery.isSuccess ? allItems : undefined,
+        // Recarga com erro mantém os dados anteriores; sem dado nenhum, esconde.
+        loadedGymItems(catalogQuery.data),
         mappingId,
         search,
       )
@@ -240,7 +243,7 @@ export function EquipmentSubstituteModal({
     onSelect(choice);
   }
 
-  function chooseItem(item: EquipmentPickerItem) {
+  function chooseItem(item: EquipmentSwapCandidate) {
     if (submitting) return;
     if (needsLoadConventionWarning(item.load_convention, currentConvention)) {
       setPendingItem(item);
@@ -323,25 +326,9 @@ export function EquipmentSubstituteModal({
           <UnstyledButton
             p="sm"
             disabled={submitting}
-            style={{
-              borderRadius: 'var(--mantine-radius-xl)',
-              border: `1px solid ${BRAND.orange}`,
-              opacity: submitting ? 0.6 : 1,
-            }}
-            onClick={() => {
-              // Mesmo caminho dos demais (aviso de convenção); sem o item na lista, escolhe direto.
-              const listed = findRecommendedItem(allItems, recommended.id);
-              if (listed) {
-                chooseItem(listed);
-                return;
-              }
-              choose({
-                mapping_id: recommended.mapping_id,
-                equipment_link_id: recommended.id,
-                exercise_name: recommended.mapping_exercise_name,
-                equipment_name: recommended.equipment_name,
-              });
-            }}
+            className={`${styles.substituteOption} ${styles.substituteOptionRecommended}`}
+            // Mesmo caminho dos demais (aviso de convenção), na lista ou fora dela.
+            onClick={() => chooseItem(resolveRecommendedCandidate(allItems, recommended))}
           >
             <Group gap="sm" wrap="nowrap" align="center">
               <EquipmentPhoto photoUrl={recommended.photo_url} alt={recommended.equipment_name} size={56} />
@@ -472,11 +459,7 @@ export function EquipmentSubstituteModal({
                   key={item.id}
                   p="sm"
                   disabled={submitting}
-                  style={{
-                    borderRadius: 'var(--mantine-radius-xl)',
-                    border: `1px solid ${BRAND.border}`,
-                    opacity: submitting ? 0.6 : 1,
-                  }}
+                  className={styles.substituteOption}
                   onClick={() => chooseItem(item)}
                 >
                   <Group gap="sm" wrap="nowrap" align="center">
@@ -521,12 +504,7 @@ export function EquipmentSubstituteModal({
                     key={pair.id}
                     data-testid="equipment-catalog-item"
                     aria-disabled={disabled || undefined}
-                    style={{
-                      padding: 'var(--mantine-spacing-sm)',
-                      borderRadius: 'var(--mantine-radius-xl)',
-                      border: `1px solid ${BRAND.border}`,
-                      opacity: disabled ? 0.6 : 1,
-                    }}
+                    className={styles.substituteCatalogItem}
                   >
                     <Group gap="sm" wrap="nowrap" align="center">
                       <EquipmentPhoto photoUrl={pair.photo_url} alt={pair.equipment_name} size={56} />
@@ -596,7 +574,7 @@ export function EquipmentSubstituteModal({
   );
 }
 
-function itemChoice(item: EquipmentPickerItem): EquipmentSubstituteChoice {
+function itemChoice(item: EquipmentSwapCandidate): EquipmentSubstituteChoice {
   return {
     mapping_id: item.mapping_id,
     equipment_link_id: item.id,

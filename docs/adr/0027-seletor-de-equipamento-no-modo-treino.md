@@ -163,3 +163,19 @@ Com isso, os registros antigos de par incoerente seguem aceitos enquanto ningué
 - Não medido: quantos clientes enviam `equipment_id` na Importação (a validação só recusa id inexistente, de outra academia ou incoerente, e só quando o equipamento muda).
 - Nenhuma tela foi vista em navegador nem em celular para este caminho (a forma como a tela mostra o 422 não foi conferida).
 - O caminho por nome (`equipment_name`) segue por `resolve_equipment_id` sem validação.
+
+## Atualização de 23/11/2026 (lote 34, #244: recomendado fora da lista, nome na técnica intensiva e painel do descanso)
+
+**Recomendado fora da lista.** A escolha do recomendado usa `resolveRecommendedCandidate` (`frontend/src/lib/equipment-catalog-add.ts`): se o item não está na lista exibida, o próprio recomendado vira o candidato. Ele passa pelo mesmo aviso de convenção de carga dos itens da lista (`chooseItem` em `frontend/src/app/(fullscreen)/modo-treino/EquipmentSubstituteModal.tsx`, L248, com `needsLoadConventionWarning` de `frontend/src/lib/equipment-picker.ts`). A convenção vem de `load_convention` de `GET /gym-equipment/recommend`, entregue no lote 32.
+
+**Estilo.** O seletor não tem estilo inline (conferido por busca em 23/11/2026 em `EquipmentSubstituteModal.tsx`); as classes ficam em `workout-mode.module.css`.
+
+**Nome tocável na aplicação da técnica.** `IntensiveApplicationCard.tsx` usa `EquipmentSwapButton` (`ui/ExerciseTitleRow.tsx`) com testId `intensive-equipment-swap` e abre o mesmo seletor. Fecha o item da seção de 22/11 que dizia que o nome não tinha sido acrescentado a essa tela.
+
+**Painel da última série após a troca no descanso.** Depois da troca no descanso, o painel da última série não mostra mais a recomendação de carga do equipamento anterior.
+
+**Limites da seção de 22/11 que este lote fecha.** Três itens: a aplicação da técnica sem o nome; a troca no descanso do bloco intensivo sem teste de ponta a ponta; o painel da última série com a recomendação do equipamento anterior. Continuam abertos: a diferença por fase (com série lançada, o toque no nome abre "Encerrar exercício") e a falta de conferência em navegador e em celular real.
+
+**Verificação.** Relatado pelo lote 34 e executado fora do CI; não reexecutado nesta atualização de documentação: suíte de resiliência do Modo Treino (`frontend/e2e/workout-resilience`, chromium 390) com 31 casos passando, incluindo a troca pelo nome no descanso do bloco intensivo. Vitest das alterações: não reexecutado aqui.
+
+**Pendente de usuário.** Validação em celular real (seletor, nome tocável, tela baixa) e em navegador.

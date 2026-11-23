@@ -154,6 +154,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
         workout_plan_exercise_id: FST_PLAN_ITEM_ID,
         sequence: 3,
         exercise_name: 'Peck deck',
+        muscle_primary: 'Peito',
         mapping_id: 13,
         sets_count: 7,
         reps_target: '10-12',
@@ -219,7 +220,7 @@ export async function installWorkoutApi(page: Page, initialUser: UserKey = 'ana'
     if (key === `GET /workout-plans/${PLAN_ID}`) {
       if (!equipmentSeed) return send(200, plan);
       const exercises = plan.exercises.map((item) =>
-        item.workout_plan_exercise_id === CRUCIFIXO_PLAN_ITEM_ID ? { ...item, preferred_equipment_id: 900, equipment_name: 'Cabo' } : item,
+        item.workout_plan_exercise_id === CRUCIFIXO_PLAN_ITEM_ID || item.workout_plan_exercise_id === FST_PLAN_ITEM_ID ? { ...item, preferred_equipment_id: 900, equipment_name: 'Cabo' } : item,
       );
       return send(200, { ...plan, exercises });
     }
