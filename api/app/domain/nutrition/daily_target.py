@@ -84,7 +84,7 @@ from .weekly_budget import week_days
 # dono). A troca de versão faz `nutrition_targets_service._unchanged` regravar as metas NÃO congeladas (D-1, hoje e
 # futuras); congeladas ficam como estão.
 # v4 (ADR 0009): a proteína do corte passa a g/kg de PESO TOTAL (antes massa livre de gordura), faixa 1,8 a 2,7, padrão 2,6.
-ENGINE_VERSION: Final[str] = "nutrition-v5"  # v5: kcal informada do Intervals entra ativa (ADR 0016)
+ENGINE_VERSION: Final[str] = "nutrition-v6"  # v6: prioridade nutricional do dia (#272); v5: kcal informada do Intervals entra ativa (ADR 0016)
 
 LIMIT_WEEK_FLAGS_REQUIRED_FOR_CYCLE = "week_training_days_required_for_carb_cycle"
 # Dia futuro: o treino ainda não aconteceu e a atribuição de Modelo só entra no
@@ -257,6 +257,8 @@ class DailyTarget:
     energy: Optional[dict[str, Any]] = None
     # #242: política do ciclo aplicada no dia; só entra no `to_dict` quando NÃO é o padrão (saídas legadas intactas).
     carb_cycle_policy: carb_cycling.CarbCyclePolicy = carb_cycling.DEFAULT_CARB_CYCLE_POLICY
+    # #272: prioridade nutricional do dia (dono: `carb_cycling.day_priority`); SAÍDA, nunca entra no hash das entradas.
+    nutrition_priority: Optional[carb_cycling.DayPriority] = None
 
     @property
     def computable(self) -> bool:
@@ -276,9 +278,11 @@ class DailyTarget:
             {} if self.carb_cycle_policy == carb_cycling.DEFAULT_CARB_CYCLE_POLICY
             else {"carb_cycle_policy": self.carb_cycle_policy.value}
         )
+        prioridade = {"nutrition_priority": self.nutrition_priority.value} if self.nutrition_priority is not None else {}
         return {
             **energia,
             **politica,
+            **prioridade,
             "day": self.day.isoformat(),
             "engine_version": self.engine_version,
             "subject": self.subject.to_dict(),
@@ -475,6 +479,7 @@ def compute_daily_target(
             alvo.kcal, params, plan_params.macro_priority, subject.weight_kg, mlg
         )
 
+    metas_pre_ciclo = metas
     tipo_dia = carb_cycling.DayKind.NORMAL
     politica_aplicada = carb_cycling.DEFAULT_CARB_CYCLE_POLICY
     limitacoes_ciclo: tuple[str, ...] = ()
@@ -502,6 +507,8 @@ def compute_daily_target(
             tipo_dia = tipos[day_context.day.weekday()]
             metas, limitacoes_ciclo = carb_cycling.apply_cycle(metas, tipo_dia, tipos, subject.weight_kg)
 
+    # #272: o dono compara a meta antes e depois do ciclo; sem ciclo ativo o dia é "normal" (ou indisponível).
+    prioridade = carb_cycling.day_priority(tipo_dia, metas_pre_ciclo, metas)
     por_refeicao = macros_mod.protein_per_meal(metas.protein_g, plan_params.meals_per_day)
 
     return DailyTarget(
@@ -516,6 +523,7 @@ def compute_daily_target(
         macros=metas,
         day_kind=tipo_dia,
         carb_cycle_policy=politica_aplicada,
+        nutrition_priority=prioridade,
         phase_kind=fase,
         protein_per_meal_g=por_refeicao,
         extra_activity=extra,

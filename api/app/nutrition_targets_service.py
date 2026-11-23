@@ -48,7 +48,7 @@ from .domain.nutrition import ENGINE_VERSION, compute_daily_target
 from .domain.session_status import SESSION_STATUS_DONE
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition.activity_energy import ActivityCorrection, activity_duration_seconds
-from .domain.nutrition.carb_cycling import DEFAULT_CARB_CYCLE_POLICY, split_stored_cycle
+from .domain.nutrition.carb_cycling import DEFAULT_CARB_CYCLE_POLICY, DayPriority, split_stored_cycle
 from .domain.nutrition.energy_expenditure import (
     NO_EXTRA_ACTIVITY_KCAL as NO_EXTRA_ACTIVITY,
     ExtraActivity,
@@ -135,7 +135,8 @@ _TARGET_JSON_COLUMNS = (
     "JSON_EXTRACT(inputs_json, '$.extra_activity') AS extra_activity_json, "
     "JSON_EXTRACT(inputs_json, '$.tdee_basis') AS tdee_basis_json, "
     "JSON_EXTRACT(inputs_json, '$.energy') AS energy_json, "
-    "JSON_EXTRACT(inputs_json, '$.carb_cycle_policy') AS carb_cycle_policy_json"
+    "JSON_EXTRACT(inputs_json, '$.carb_cycle_policy') AS carb_cycle_policy_json, "
+    "JSON_EXTRACT(inputs_json, '$.nutrition_priority') AS nutrition_priority_json"
 )
 _TARGETS_SQL = (
     f"SELECT {_TARGET_COLUMNS}, {_TARGET_JSON_COLUMNS} FROM {TARGETS_TABLE} "
@@ -575,6 +576,23 @@ def inputs_fingerprint(plan_id: int, comp: DayComputation) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()
 
 
+def priority_public(valor: Any) -> dict[str, Optional[str]]:
+    """Código da prioridade do dia (#272) com rótulo e explicação do vocabulário oficial. Ausente (dia congelado antes da
+    entrega) ou código desconhecido: os três nulos. `unavailable` leva o código sem texto."""
+    codigo = _json_value(valor)
+    if codigo is None and isinstance(valor, str):
+        codigo = valor  # texto cru (sem aspas JSON)
+    try:
+        prioridade = DayPriority(codigo)
+    except ValueError:
+        return {"nutrition_priority": None, "nutrition_priority_label": None, "nutrition_priority_explanation": None}
+    return {
+        "nutrition_priority": prioridade.value,
+        "nutrition_priority_label": nutrition_labels.DAY_PRIORITY_LABELS.get(prioridade),
+        "nutrition_priority_explanation": nutrition_labels.DAY_PRIORITY_EXPLANATIONS.get(prioridade),
+    }
+
+
 def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
     """Um dia calculado (preview), no mesmo formato da linha materializada."""
     meta = comp.target
@@ -583,6 +601,7 @@ def day_public(comp: DayComputation, today: date) -> dict[str, Any]:
         "plan_id": None,
         "day_kind": meta.day_kind.value,
         "carb_cycle_policy": meta.carb_cycle_policy.value,
+        **priority_public(meta.nutrition_priority),
         "is_training_day": comp.context.is_training_day,
         "training_known": comp.context.training_known,
         "phase_kind": meta.phase_kind.value if meta.phase_kind else None,
@@ -620,6 +639,7 @@ def target_row_public(row: dict[str, Any], today: date) -> dict[str, Any]:
         "day_kind": row.get("day_kind"),
         # Gravada pelo motor em `inputs_json` só fora do padrão: dia antigo/sem a chave = padrão.
         "carb_cycle_policy": _json_value(row.get("carb_cycle_policy_json")) or DEFAULT_CARB_CYCLE_POLICY.value,
+        **priority_public(row.get("nutrition_priority_json")),
         "is_training_day": bool(int(row.get("is_training_day") or 0)),
         "training_known": bool(int(row.get("training_known") or 0)),
         "phase_kind": row.get("phase_kind"),

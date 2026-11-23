@@ -136,6 +136,8 @@ BLOCKED_ACTIVATION_MAX = "ACTIVATION_MAX"
 BLOCKED_VOLUME_IN_RANGE = "VOLUME_IN_RANGE"
 BLOCKED_NEXT_ELIGIBLE_AT = "NEXT_ELIGIBLE_PROGRESSION_AT"
 BLOCKED_NO_DIRECT_WORK = "NO_DIRECT_WORK"
+NO_DIRECT_WORK_REASON = "Grupo sem trabalho direto pela recuperacao: carga mantida, sem progressao."
+NO_DIRECT_WORK_NO_LOAD_REASON = "Grupo sem trabalho direto pela recuperacao: sem progressao."
 BLOCKED_MAX_SETS = "MAX_SETS_REACHED"
 
 # --- status de carga da trilha ---------------------------------------------
@@ -2882,6 +2884,12 @@ def prescribe(
             }
             if skip_params.get("target_reps"):
                 skip_fields["suggested_reps_min"] = skip_fields["suggested_reps_max"] = skip_params["target_reps"]
+        # #274: mantem a ultima carga da trilha (sem aumento; o teto do
+        # equipamento so limita). Sem carga na trilha, segue nulo.
+        kept_load = Decimal(track.working_load_kg) if track.working_load_kg is not None else None
+        skip_reasons = [NO_DIRECT_WORK_REASON if kept_load is not None else NO_DIRECT_WORK_NO_LOAD_REASON]
+        kept_load, _ = _clamp_to_equipment_ceiling(track, kept_load, SKIP, evidence_out, skip_reasons)
+        kept_load = float(kept_load) if kept_load is not None else None
         return ProgressionDecision(
             group_state_id=group.id,
             muscle_group_id=group.muscle_group_id,
@@ -2890,6 +2898,7 @@ def prescribe(
             phase_before=group.phase,
             phase_after=group.phase,
             decision=SKIP,
+            suggested_load_kg=kept_load,
             failure_allowed=composition.failure_allowed,
             effective_rpe_target=composition.target,
             effective_rpe_ceiling=composition.ceiling,
@@ -2897,7 +2906,7 @@ def prescribe(
             can_progress=False,
             blocked_by=(BLOCKED_NO_DIRECT_WORK,),
             evidence=evidence_out,
-            reason="Grupo sem trabalho direto pela recuperacao: nenhuma prescricao.",
+            reason=" ".join(skip_reasons),
             **skip_fields,
         )
 

@@ -166,6 +166,10 @@ export type NutritionDayTarget = {
   day_kind: NutritionCode;
   /** Política aplicada no dia (#242); ausente em respostas antigas. */
   carb_cycle_policy?: NutritionCode;
+  /** Prioridade do dia (#272): rótulo e explicação prontos da API; ausentes/null em dia antigo ou indisponível. */
+  nutrition_priority?: NutritionCode | null;
+  nutrition_priority_label?: string | null;
+  nutrition_priority_explanation?: string | null;
   is_training_day: boolean;
   /** `false` = dia futuro: o treino ainda não entrou no gasto. */
   training_known: boolean;

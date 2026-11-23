@@ -93,6 +93,15 @@ describe('MobileTargetVsIntake: consumido e restante das 4 linhas', () => {
     expect(markup).not.toContain('progressbar');
   });
 
+  it('selo da prioridade só com rótulo; a linha do ciclo continua', () => {
+    const base = dia([linha('energy_kcal')]);
+    const rotulo = 'Priorizar carboidrato';
+    const com = { ...base, target: { ...base.target, nutrition_priority: 'carb', nutrition_priority_label: rotulo, nutrition_priority_explanation: 'Hoje o plano concentra mais carboidratos.' } } as unknown as NutritionDay;
+    expect(html(createElement(MobileTargetVsIntake, { day: com }))).toContain(rotulo);
+    expect(html(createElement(MobileTargetVsIntake, { day: base }))).not.toContain('day-priority-badge');
+    expect(html(createElement(MobileTargetVsIntake, { day: com }))).toContain('Meta × ingestão');
+  });
+
   it('sem meta: o mesmo texto de sem gráfico, sem barra', () => {
     const markup = html(
       createElement(MobileTargetVsIntake, {

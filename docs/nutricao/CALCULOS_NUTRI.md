@@ -1,7 +1,7 @@
 # Cálculos de nutrição: como a meta do dia é montada
 
 - **Data de referência**: 08/11/2026. Atualizado em 17/11/2026 só nas regras da kcal informada (ADR 0016); os exemplos numéricos da seção 6 são de 08/11 (`nutrition-v3`, com a kcal da sessão descontada do repouso) e NÃO foram refeitos: em `nutrition-v5` a kcal informada entra ativa, sem esse desconto.
-- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v5"` (`daily_target.py`).
+- **Motor**: `api/app/domain/nutrition/`, `ENGINE_VERSION = "nutrition-v6"` (`daily_target.py`).
 - **Código lido**: worktree `agent-a9b5f1502049a983d`, branch `fix/tdee-desconta-repouso-sessao`. A leitura não usou git, então o commit `a091ddb3` informado pelo líder não foi conferido aqui. As linhas citadas foram conferidas nesta leitura e podem deslocar com novos commits; onde não há linha, a referência é o nome da função.
 - **Fontes**: ADR 0005 (gasto adaptativo), ADR 0007 (gordura pela fração configurada), ADR 0008 (desconto do repouso, atividades do Intervals e dedup; o desconto da kcal informada foi substituído pela ADR 0016), ADR 0016 (kcal informada ativa por padrão), `docs/motores/FONTES_DA_VERDADE.md` (§3.7 e §100).
 - **Convenção**: todo número abaixo vem de uma constante nomeada ou de uma fórmula do código, com o arquivo indicado. Os valores do exemplo da seção 6 são os medidos em produção pela ADR 0008 (só leitura), salvo quando marcados como derivados.
@@ -54,7 +54,7 @@ O modo fica em `PlanParams.tdee_mode` (`energy_expenditure.TdeeMode`). O padrão
 
 - Atividade do Intervals que não é treino do app não faz o dia virar dia de treino. `is_training_day` e o tipo de dia do ciclo de carbo não mudam.
 - Dia de treino é definido pela existência de sessão concluída do app, não pela kcal líquida. Uma sessão com kcal líquida igual a zero continua sendo dia de treino (`training_kcal_of_day` trata zero como valor conhecido).
-- `ENGINE_VERSION` é `nutrition-v5` (ADR 0016).
+- `ENGINE_VERSION` é `nutrition-v6` (ADR 0034: só para recalcular os dias em aberto e gravar a prioridade do dia; nenhum valor de meta muda). A `nutrition-v5` trouxe a kcal informada ativa (ADR 0016).
 - A meta de hoje e a dos dias não congelados recalcula quando chega atividade nova, porque o `inputs_hash` inclui as atividades do contexto do dia. Dia já congelado (`hoje >= dia + TARGET_FREEZE_LAG_DAYS`, 2) não é recalculado, nem por correção manual de atividade (`days_to_materialize`, `daily_target.py`).
 
 ### 3.1 Modo explícito (`explicit_training`)
@@ -182,6 +182,20 @@ Inviabilidade (o dia sai SEM ciclo, com a limitação; nunca há recorte silenci
 - `fat_compensation_target_not_closed`: alvo que não fecha por Atwater, ou com macro nulo.
 
 No plano, o bloqueio dos macros finais de cada tipo de dia (`plan.check_cycle_floors` → `manual_targets.check_manual_targets`) impede salvar e publicar; a faixa da estratégia vira aviso.
+
+### 3.6.1 Prioridade nutricional do dia
+
+Dono: `carb_cycling.day_priority` (ADR 0034, issue #272). Compara os macros do dia antes e depois do ciclo. Diferença só conta acima de `DAY_PRIORITY_CARB_TOLERANCE_G` (0,5 g). O resultado é gravado em `DailyTarget.nutrition_priority` e, no banco, dentro de `inputs_json` (chave `nutrition_priority`); não entra no hash das entradas.
+
+| Caso | Código | Rótulo na tela |
+|---|---|---|
+| Dia alto, carboidrato maior | `carb` | Priorizar carboidrato |
+| Dia baixo, carboidrato menor e gordura maior | `fat` | Priorizar gordura |
+| Dia baixo, carboidrato menor e gordura sem aumento | `reduced_carb` | Carboidrato reduzido |
+| Dia normal; ciclo sem efeito nos macros finais (piso, compensação inviável, semana plana); plano sem ciclo | `normal` | Distribuição normal |
+| Meta não calculável | `unavailable` | (sem selo) |
+
+A tela mostra um selo com o rótulo e a explicação em dica, no cabeçalho do dia e no cartão de meta (web e celular). Texto e explicação vêm prontos da API (`labels.DAY_PRIORITY_LABELS`, `DAY_PRIORITY_EXPLANATIONS`). Dia gravado antes da `nutrition-v6` não tem a chave: a API devolve os campos nulos e não há selo.
 
 ### 3.7 Macros
 

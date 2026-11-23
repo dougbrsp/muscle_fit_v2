@@ -174,7 +174,7 @@ function NutricaoDiarioContent() {
       {currentUserQuery.isSuccess ? (
         <Stack gap="md">
           <CheckinCard />
-          <DayHeader date={date} today={weekQuery.data?.today ?? dia?.today ?? null} onDateChange={trocarDia} />
+          <DayHeader date={date} today={weekQuery.data?.today ?? dia?.today ?? null} onDateChange={trocarDia} priority={dia?.target} />
           {erroSemana ? (
             <Alert color="red" icon={<IconAlertTriangle size={16} />} role="alert">
               {erroSemana.message}

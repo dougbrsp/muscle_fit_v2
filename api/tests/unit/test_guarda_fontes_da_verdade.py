@@ -2239,6 +2239,30 @@ PADROES: tuple[Padrao, ...] = (
         inventario="NUT-ADAPT (§97)",
     ),
     Padrao(
+        chave="rotulo_prioridade_do_dia",
+        regra='rótulo da prioridade nutricional do dia escrito à mão ("Priorizar carboidrato", "Priorizar gordura", '
+        '"Carboidrato reduzido", "Distribuição normal")',
+        # #272 (2026-11-22): o dono do vocabulário é `labels.DAY_PRIORITY_LABELS/EXPLANATIONS`; o selo da tela mostra o
+        # texto que a API devolve. Varredura real com os quatro rótulos: só `labels.py` e testes casam, então a regex
+        # cobre todos. Sem `escopo` de propósito: as telas mobile ficam fora de `ESCOPO_NUTRICAO`. Só o rótulo entre
+        # aspas ou texto JSX (comentário em prosa não casa).
+        regex=re.compile(
+            r"""["'`](?:Priorizar (?:carboidrato|gordura)|Carboidrato reduzido|Distribui[çc][ãa]o normal)"""
+            r"|>\s*(?:Priorizar (?:carboidrato|gordura)|Carboidrato reduzido|Distribui[çc][ãa]o normal)\s*<"
+        ),
+        donos=("api/app/domain/nutrition/labels.py",),
+        inventario="#272",
+    ),
+    Padrao(
+        chave="prioridade_do_dia_literal",
+        regra="o código da prioridade nutricional do dia com carboidrato reduzido (`reduced_carb`) escrito como literal fora do dono",
+        # #272 (2026-11-22): o dono é `carb_cycling.DayPriority`/`day_priority`. Só `reduced_carb` é específico o bastante:
+        # `"carb"`, `"fat"` e `"normal"` são genéricos demais (macros, tipos, estados) e dariam falso positivo.
+        regex=re.compile(r"[\"'`]reduced_carb[\"'`]"),
+        donos=("api/app/domain/nutrition/carb_cycling.py",),
+        inventario="#272",
+    ),
+    Padrao(
         chave="contexto_maquina_academia",
         regra="códigos de tipo de máquina (`MACHINE`, `PLATE_LOADED`, `CABLE_STATION`) como literal ou o limiar de "
         "calibração (`CALIBRATION_MIN_COMPARABLE_SESSIONS`) fora do dono, ou a janela do veredito "
@@ -2640,6 +2664,8 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "registro_execucoes_sync": {},  # NUT-ADAPT (2026-11-06): nasce vazia
     "composicao_gasto_previa": {},  # NUT-ADAPT (2026-11-05): nasce vazia
     "modo_adaptativo_literal": {},  # NUT-ADAPT (2026-11-06): nasce vazia
+    "rotulo_prioridade_do_dia": {},  # #272 (2026-11-22): nasce vazia
+    "prioridade_do_dia_literal": {},  # #272 (2026-11-22): nasce vazia
     "fechamento_dia_correcao_atividade": {},  # NUT-ADAPT (2026-11-06, lote G): nasce vazia
     "soma_nutrientes": {},  # NUT-L4 (2026-10-17): nasce vazia (totais, semana e balanço vêm do motor)
     "cota_ia_nutricao": {},  # NUT-L5A (2026-10-18): nasce vazia (o serviço do ai_usage_log consome o dono)
@@ -3716,6 +3742,16 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "modo_adaptativo_literal": (
         ('tdee_mode = "adaptive_balance"', "if modo === 'adaptive_balance'", "{'tdee_mode': 'adaptive_balance'}"),
         ("TdeeMode.ADAPTIVE_BALANCE", "nutrition.adaptive_tdee_mode", "adaptive_balance_x", "adaptive_balanced"),
+    ),
+    "rotulo_prioridade_do_dia": (
+        ("label: 'Priorizar carboidrato'", 'LABEL = "Priorizar gordura"', "`Carboidrato reduzido`",
+         "<Badge>Distribuição normal</Badge>", "<Text> Carboidrato reduzido </Text>", "'Distribuicao normal'"),
+        ("DAY_PRIORITY_LABELS[p]", "nutrition_priority_label", "<Text>{priorityLabel}</Text>",
+         "Dia de carboidrato reduzido no jantar", "'Priorizar proteína'"),
+    ),
+    "prioridade_do_dia_literal": (
+        ('priority = "reduced_carb"', "if (p === 'reduced_carb')", "{'nutrition_priority': 'reduced_carb'}", "`reduced_carb`"),
+        ("DayPriority.REDUCED_CARB", "nutrition_priority", "reduced_carb_x", "'carb'", "'normal'"),
     ),
     "composicao_gasto_previa": (
         ("BREAKDOWN_KCAL_ROUNDING_STEP: Final[float] = 1.0", "BREAKDOWN_STRENGTH = 'training'", 'BREAKDOWN_BASE: Final[str] = "base"',

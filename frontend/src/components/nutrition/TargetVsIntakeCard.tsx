@@ -5,6 +5,7 @@ import { IconHistory, IconLock } from '@tabler/icons-react';
 import dynamic from 'next/dynamic';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 import { CHART_COLORS } from '@/components/charts/chartTheme';
+import { DayPriorityBadge } from './DayPriorityBadge';
 import { NutritionLimitations } from './NutritionLimitations';
 import { nutrientField, nutritionNotice } from '@/lib/nutrition-constants';
 import { diaryCycleInfo, diaryCycleText } from '@/lib/nutrition-cycle-policy';
@@ -130,6 +131,7 @@ export function TargetVsIntakeCard({ day }: { day: NutritionDay }) {
             Meta × ingestão
           </Title>
           <Group gap={6}>
+            <DayPriorityBadge target={meta} />
             {meta?.frozen && (
               <Tooltip label={nutritionNotice('target_frozen')} multiline w={300} withArrow>
                 <Badge size="sm" color="gray" variant="light" leftSection={<IconLock size={12} />}>
