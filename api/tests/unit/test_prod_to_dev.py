@@ -428,6 +428,38 @@ def test_receitas_so_do_usuario_versao_e_ingrediente_de_outros_nao_entram():
     assert p2d.classified_tables()["food_recipe_versions"] == "user_child"
 
 
+def test_perfis_de_resistencia_sao_globais_e_autoria_de_outro_usuario_e_anulada():
+    base = _schema_nutricao()
+    extra = [
+        _table("equipment_exercises", ["id", "equipment_id", "exercise_id"]),
+        _table("equipment_exercise_resistance_profiles", ["id", "equipment_exercise_id", "created_by", "reviewed_by"],
+               nullable=("created_by", "reviewed_by")),
+        _table("equipment_exercise_resistance_profile_history", ["id", "profile_id", "actor_user_id"],
+               nullable=("actor_user_id",)),
+    ]
+    schema = p2d.Schema(
+        {**base.tables, **{x.name: x for x in extra}},
+        base.foreign_keys + [
+            ("equipment_exercise_resistance_profiles", "equipment_exercise_id", "equipment_exercises", "id"),
+            ("equipment_exercise_resistance_profiles", "created_by", "users", "id"),
+            ("equipment_exercise_resistance_profiles", "reviewed_by", "users", "id"),
+            ("equipment_exercise_resistance_profile_history", "profile_id", "equipment_exercise_resistance_profiles", "id"),
+            ("equipment_exercise_resistance_profile_history", "actor_user_id", "users", "id"),
+        ],
+    )
+    data = _dados_nutricao()
+    data["equipment_exercises"] = [{"id": 1, "equipment_id": 1, "exercise_id": 1}]
+    data["equipment_exercise_resistance_profiles"] = [
+        {"id": 1, "equipment_exercise_id": 1, "created_by": OTHER, "reviewed_by": UID}]
+    data["equipment_exercise_resistance_profile_history"] = [{"id": 1, "profile_id": 1, "actor_user_id": OTHER}]
+    snap, _ = p2d.prepare(FakeReader(data), schema, UID)
+    assert p2d.classified_tables()["equipment_exercise_resistance_profiles"] == "global"
+    assert p2d.classified_tables()["equipment_exercise_resistance_profile_history"] == "global"
+    perfil = snap["equipment_exercise_resistance_profiles"][0]
+    assert (perfil["created_by"], perfil["reviewed_by"]) == (None, UID)
+    assert snap["equipment_exercise_resistance_profile_history"][0]["actor_user_id"] is None
+
+
 def test_verificacao_final_recusa_linha_privada_de_terceiro_em_tabela_mista():
     schema = _schema_nutricao()
     snap = {"users": [{"id": UID}], "food_items": [{"id": 3, "name": "x", "owner_user_id": UID + 5, "created_by": None}]}

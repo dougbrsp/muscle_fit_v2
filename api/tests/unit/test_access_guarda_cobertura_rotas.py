@@ -97,6 +97,17 @@ ROTAS_NOVAS_RECEITAS: dict[str, tuple[str, str]] = {
 }
 
 
+# #288: perfis de resistencia (`app.resistance_profiles`), mesmas permissoes de `equipment_exercises.py`:
+# leitura `exercicios.catalogo`/`ver`, escrita (PUT, so admin) `admin.catalogos`/`editar`.
+ROTAS_NOVAS_PERFIS_RESISTENCIA: dict[str, tuple[str, str]] = {
+    "GET /resistance-profiles/vocabulary": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/coverage": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/{equipment_exercise_id}": ("exercicios.catalogo", "ver"),
+    "GET /resistance-profiles/{equipment_exercise_id}/history": ("exercicios.catalogo", "ver"),
+    "PUT /resistance-profiles/{equipment_exercise_id}": ("admin.catalogos", "editar"),
+}
+
 # Rotas criadas DEPOIS do retrato congelado dos guards antigos (lote 3A, `app.access_admin`).
 # Unico lugar da lista: os testes que exigem "toda rota viva/convertida esta no retrato" aceitam
 # SO estas e continuam falhando para qualquer outra rota nova. O retrato NAO e regenerado.
@@ -132,6 +143,7 @@ ROTAS_NOVAS_POS_RETRATO: dict[str, tuple[str, str]] = {
     # #140: exclusao logica de alimento (mesma permissao dos irmaos, acao `excluir`)
     ROTA_NOVA_ALIMENTOS_EXCLUIR: ("nutricao.alimentos", "excluir"),
     **ROTAS_NOVAS_RECEITAS,
+    **ROTAS_NOVAS_PERFIS_RESISTENCIA,
 }
 
 
@@ -565,11 +577,11 @@ def test_divida_real_tem_teto_0_e_nao_contem_as_rotas_convertidas():
     # #140: + DELETE /nutrition/foods/{food_id}: 370 e 386.
     # #195: + GET /nutrition/foods: 371 e 387.
     # #216: + POST /exercises/logs: 372 e 388.
-    # #286: + 7 rotas de receitas: 379 e 395.
-    assert len(com_permissao) == 379
+    # #286: + 7 rotas de receitas; #288: + 6 de perfis de resistencia: 385 e 401.
+    assert len(com_permissao) == 385
     assert set(ROTAS_NOVAS_POS_RETRATO) <= com_permissao
     assert not com_permissao & set(divida["rotas"])
-    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 395
+    assert len(divida["rotas"]) + len(allowlist["publicas"]) + len(allowlist["so_autenticacao"]) + len(com_permissao) == 401
     assert not com_permissao & {item["rota"] for item in allowlist["publicas"] + allowlist["so_autenticacao"]}
 
 
@@ -584,13 +596,13 @@ def test_com_divida_zerada_toda_rota_viva_esta_em_exatamente_uma_das_tres_catego
     publicas = {item["rota"] for item in allowlist["publicas"]}
     so_autenticacao = {item["rota"] for item in allowlist["so_autenticacao"]}
     assert so_autenticacao == SO_AUTENTICACAO_APROVADAS
-    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 379
+    assert len(publicas) == 6 and len(so_autenticacao) == 10 and len(com_permissao) == 385
     assert not (com_permissao & publicas) and not (com_permissao & so_autenticacao) and not (publicas & so_autenticacao)
     sem_categoria = set(vivas) - com_permissao - publicas - so_autenticacao
     assert sem_categoria == set(), sorted(sem_categoria)
     # e nenhuma categoria lista rota que nao existe mais
     assert (publicas | so_autenticacao) <= set(vivas)
-    assert len(vivas) == 395
+    assert len(vivas) == 401
 
 
 def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_admin_grupos():
@@ -608,11 +620,12 @@ def test_rotas_novas_pos_retrato_sao_exatamente_as_vivas_de_access_admin_com_adm
                     assert declared_permissions(route) == []  # so autenticacao, pinada a parte
                     continue
                 vivas[chave] = declared_permissions(route)
-    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)  + 1 de registro (#216) + 1 de exclusao de alimento (#140) + 7 de receitas (#286)
-    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1 + 1 + 1 + 7
+    # 14 de access_admin + 2 de treino (#164, #179) + 1 de academia (#188) + 1 de alimentos (#195)  + 1 de registro (#216) + 1 de exclusao de alimento (#140) + 7 de receitas (#286) + 6 de perfis de resistencia (#288)
+    assert len(ROTAS_NOVAS_POS_RETRATO) == 14 + 2 + 1 + 1 + 1 + 1 + 7 + 6
     esperadas = set(ROTAS_NOVAS_POS_RETRATO) - {
         ROTA_NOVA_TREINO, ROTA_NOVA_TREINO_EQUIP, ROTA_NOVA_ACADEMIA_FABRICANTE, ROTA_NOVA_ALIMENTOS_LISTA,
         ROTA_NOVA_REGISTRO_EXERCICIO, ROTA_NOVA_ALIMENTOS_EXCLUIR, *ROTAS_NOVAS_RECEITAS,
+        *ROTAS_NOVAS_PERFIS_RESISTENCIA,
     }
     assert set(vivas) == esperadas, sorted(set(vivas) ^ esperadas)
     acao_por_metodo = {"GET": "ver", "POST": "editar", "PUT": "editar", "PATCH": "editar", "DELETE": "excluir"}

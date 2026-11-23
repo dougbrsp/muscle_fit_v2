@@ -82,6 +82,8 @@ GLOBAL_TABLES: tuple[str, ...] = (
     "equipment_exercises",
     "equipment_exercise_mappings",
     "equipment_exercise_technique_overrides",
+    "equipment_exercise_resistance_profiles",  # 126 (#288): perfil por par, todos os pares sao copiados; created_by/reviewed_by anulados
+    "equipment_exercise_resistance_profile_history",  # 126: trilha do perfil; actor_user_id anulado
     "equipment_technique_compatibility",
     "exercise_catalog",
     "exercise_aliases",
