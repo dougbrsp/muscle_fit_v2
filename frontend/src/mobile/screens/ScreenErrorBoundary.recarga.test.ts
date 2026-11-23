@@ -71,6 +71,19 @@ describe('ScreenErrorBoundary: navegação e recarga', () => {
     expect(host.textContent).not.toContain('Algo deu errado');
   });
 
+  it('o console só é chamado por erro comum, não pelo digest de navegação do Next', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ours = (n: number) => spy.mock.calls.filter((c) => c[0] === error).length === n;
+    error = Object.assign(new Error('nav'), { digest: 'NEXT_REDIRECT;replace;/login;307;' });
+    await render();
+    expect(ours(0)).toBe(true);
+    await act(async () => root?.unmount());
+    host.remove();
+    error = new Error('boom');
+    await render();
+    expect(ours(1)).toBe(true);
+  });
+
   it('erro de chunk: "Tentar de novo" recarrega a página', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const reload = vi.fn();

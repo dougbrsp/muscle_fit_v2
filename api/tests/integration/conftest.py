@@ -26,6 +26,7 @@ eles sao obrigatorios, e um skip silencioso esconderia regressao.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 
 import pymysql
@@ -33,6 +34,20 @@ import pytest
 
 from tests.support import schema_lifecycle
 from tests.support.migrations import recreate_schema_with_all_migrations
+from tests.support.relogio_usuario import agora_do_usuario, segundos_de_espera_ate_a_virada
+
+
+def pytest_configure(config):
+    """Espera a virada do dia do usuario ANTES de importar os modulos de teste.
+
+    Os testes fazem `HOJE = hoje_do_usuario()` no import; se a suite atravessar
+    a meia-noite, a rota passa a calcular outro dia (#280). `pytest_configure`
+    e historico: roda ao registrar este conftest, antes da coleta do diretorio.
+    """
+    espera = segundos_de_espera_ate_a_virada(agora_do_usuario())
+    if espera > 0:
+        print(f"[integracao] perto da meia-noite do usuario: aguardando {espera:.0f}s", flush=True)
+        time.sleep(espera)
 
 # Tabelas escritas pelo catalogo/testes. Limpas (TRUNCATE) antes de cada uso
 # de `catalog`, inclusive linhas-semente que as migrations possam inserir.

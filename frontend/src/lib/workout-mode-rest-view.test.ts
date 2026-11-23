@@ -62,6 +62,12 @@ describe('restSavedSetView — série salva + recomendação do motor', () => {
     expect(view.engine).toBeNull();
   });
 
+  it('troca de equipamento no descanso (chave do exercício mudou): sem carga da próxima série; sem troca, com carga', () => {
+    const base = { setSaved: true, saved: SAVED, weightUnit: 'kg' } as const;
+    expect(restSavedSetView({ ...base, isExerciseTransition: true }).engine).toBeNull();
+    expect(restSavedSetView({ ...base, isExerciseTransition: false }).engine?.loadText).toBe('47.5 kg');
+  });
+
   it('etapa gravada sem resposta do motor: só o chip', () => {
     expect(restSavedSetView({ setSaved: true, saved: null, isExerciseTransition: false, weightUnit: 'kg' })).toEqual({
       showSavedChip: true,

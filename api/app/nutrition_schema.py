@@ -67,8 +67,8 @@ PLAN_ENERGY_MISSING_MESSAGE = (
     "`published_preview_json` de `nutrition_plans` (migração 106, modo de gasto adaptativo) ainda não existem neste banco."
 )
 
-# Coluna da política do ciclo de carbo em `nutrition_plans` (123, #248): ADITIVA e tolerada. Sem ela a leitura usa a chave
-# `policy` do `carb_cycling_json` (reserva) e a escrita só grava a chave; nenhuma rota responde 503 por isso.
+# Coluna da política do ciclo de carbo em `nutrition_plans` (123, #248): ADITIVA e tolerada. A política vive só nesta coluna
+# (o JSON não a guarda); sem ela (banco sem a 123) vale a política padrão; nenhuma rota responde 503 por isso.
 PLAN_POLICY_COLUMN = "carb_cycle_policy"
 PLAN_POLICY_MIGRATION = "123"
 

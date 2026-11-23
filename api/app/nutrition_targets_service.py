@@ -261,6 +261,8 @@ def _json_value(value: Any) -> Any:
 
 # Planos cujo aviso de política inválida já foi emitido neste processo (evita um log por leitura).
 _PLANS_WITH_INVALID_POLICY_LOGGED: set[Any] = set()
+# Teto do conjunto (processo longo): acima dele, para de acrescentar e de avisar.
+MAX_INVALID_POLICY_LOGGED_PLANS = 1000
 
 
 def settings_from_row(row: dict[str, Any]) -> PlanSettings:
@@ -301,7 +303,10 @@ def settings_from_row(row: dict[str, Any]) -> PlanSettings:
         raise ValueError(f"plano {row.get('id')} com estratégia desconhecida: {row.get('strategy')!r}")
     if f"{ERR_INVALID_CODE}:{FIELD_CARB_CYCLE_POLICY}" in validacao.errors:  # lida como a padrão; só ids no log
         plano_id = row.get("id")
-        if plano_id not in _PLANS_WITH_INVALID_POLICY_LOGGED:  # uma vez por plano por processo
+        if (
+            plano_id not in _PLANS_WITH_INVALID_POLICY_LOGGED  # uma vez por plano por processo
+            and len(_PLANS_WITH_INVALID_POLICY_LOGGED) < MAX_INVALID_POLICY_LOGGED_PLANS
+        ):
             _PLANS_WITH_INVALID_POLICY_LOGGED.add(plano_id)
             logger.warning(
                 "nutrition.plan_carb_cycle_policy_invalid plan_id=%s user_id=%s", plano_id, row.get("user_id")

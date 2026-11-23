@@ -95,6 +95,16 @@ def test_aviso_de_politica_invalida_sai_uma_vez_por_plano_por_processo(db, caplo
     assert len(avisos) == 2 and f"plan_id={linha['id']}" in avisos[0] and f"plan_id={outra['id']}" in avisos[1]
 
 
+def test_conjunto_de_avisos_tem_teto(db, caplog, monkeypatch):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(svc, "MAX_INVALID_POLICY_LOGGED_PLANS", 1)
+    linha = _linha(db, carb_cycling_json=DIAS_ALTOS, carb_cycle_policy="xyz")
+    svc.settings_from_row(linha)
+    svc.settings_from_row({**linha, "id": linha["id"] + 100})  # acima do teto: nao acrescenta nem avisa
+    avisos = [r for r in caplog.records if "plan_carb_cycle_policy_invalid" in r.getMessage()]
+    assert len(avisos) == 1 and len(svc._PLANS_WITH_INVALID_POLICY_LOGGED) == 1
+
+
 def test_politica_valida_ou_ausente_nao_avisa(db, caplog):
     caplog.set_level(logging.WARNING)
     svc.settings_from_row(_linha(db, carb_cycling_json=DIAS_ALTOS, carb_cycle_policy=COMP))

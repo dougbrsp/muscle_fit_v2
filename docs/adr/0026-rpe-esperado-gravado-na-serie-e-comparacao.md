@@ -140,6 +140,8 @@ Limite: PWA antigo em cache mostra "(esperado X)" sem rótulo em série que não
 
 Impacto em produção e medições: ver o bloco "Lote 32" em `docs/motores/FONTES_DA_VERDADE.md`.
 
+**Lote 36 (23/11/2026):** a regravação das séries seguintes também deixa fora a série com código de técnica; no envio, a marca de prática de forma vem sempre da linha travada.
+
 ## Verificação
 
 - Suíte unitária inteira do backend, local: 17.903 passaram; 1 falhou (`test_sem_mojibake`, por arquivos locais não versionados que não existem no CI).

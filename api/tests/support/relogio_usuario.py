@@ -33,4 +33,28 @@ def agora_do_usuario(timezone_name: str = TZ_USUARIO) -> _dt.datetime:
     return user_now(timezone_name)
 
 
-__all__ = ["TZ_USUARIO", "agora_do_usuario", "hoje_do_usuario"]
+# A suite de integracao leva ~13 min no CI; ate esta distancia da meia-noite
+# local o dia congelado na coleta (`HOJE = hoje_do_usuario()`) viraria no meio.
+MARGEM_VIRADA_DO_DIA = _dt.timedelta(minutes=20)
+FOLGA_APOS_VIRADA = _dt.timedelta(seconds=30)
+
+
+def segundos_de_espera_ate_a_virada(
+    agora_local: _dt.datetime, margem: _dt.timedelta = MARGEM_VIRADA_DO_DIA
+) -> float:
+    """0 se faltar mais que `margem` para a meia-noite local; senao, segundos ate ela + folga."""
+    meia_noite = _dt.datetime.combine(agora_local.date() + _dt.timedelta(days=1), _dt.time())
+    falta = meia_noite - agora_local.replace(tzinfo=None)
+    if falta > margem:
+        return 0.0
+    return (falta + FOLGA_APOS_VIRADA).total_seconds()
+
+
+__all__ = [
+    "FOLGA_APOS_VIRADA",
+    "MARGEM_VIRADA_DO_DIA",
+    "TZ_USUARIO",
+    "agora_do_usuario",
+    "hoje_do_usuario",
+    "segundos_de_espera_ate_a_virada",
+]

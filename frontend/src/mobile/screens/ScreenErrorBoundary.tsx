@@ -28,6 +28,8 @@ export class ScreenErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, _info: ErrorInfo) {
+    // redirect()/notFound() são fluxo normal (relançados no render): não vão para o log.
+    if (isNextNavigationError(error)) return;
     // Só o erro técnico; nada do que o usuário digitou entra no log.
     console.error(error);
   }

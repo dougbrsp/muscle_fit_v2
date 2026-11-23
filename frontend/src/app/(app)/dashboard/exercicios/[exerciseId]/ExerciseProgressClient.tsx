@@ -300,7 +300,6 @@ export function ExerciseProgressContent({ data, defaultGoal }: { data: ExerciseP
                     data-testid="window-trend-title"
                     tabIndex={description ? 0 : undefined}
                     role={description ? 'note' : undefined}
-                    aria-label={description ? `${title}. ${description}` : undefined}
                     style={description ? { cursor: 'help' } : undefined}
                   >
                     {title}
