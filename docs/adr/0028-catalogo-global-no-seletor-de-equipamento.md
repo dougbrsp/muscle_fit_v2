@@ -59,10 +59,10 @@ Restrições reais:
 ## Consequências
 
 - **Dados.** Nenhuma coluna nova, nenhuma migração, nenhum registro existente muda por esta entrega.
-- **Contrato.** `POST /gym-equipment-catalog` responde 422 para corpo inválido (antes 400) e 409 para equipamento inativo (novo). A resposta de sucesso ganha `links`. `GET /gym-equipment` ganha `exercise_id` (campo aditivo). As escritas de vínculo (`/gym-equipment`, `/gym-equipment-catalog`) respondem 403 (antes 404) para academia inexistente a quem não tem escopo `todos`.
+- **Contrato.** `POST /gym-equipment-catalog` responde 422 para corpo inválido (antes 400) e 409 para equipamento inativo (novo). A resposta de sucesso ganha `links`. `GET /gym-equipment` ganha `exercise_id` (campo aditivo). `GET /equipment-exercises` aceita `limit` e `offset` opcionais (lote 32). As escritas de vínculo (`/gym-equipment`, `/gym-equipment-catalog`) respondem 403 (antes 404) para academia inexistente a quem não tem escopo `todos`.
 - **Medições (20/11/2026).** Lidas em produção, só SELECT: 77 equipamentos ativos e 1 inativo no catálogo; 145 vínculos ativos em `equipment_exercises`, de 74 equipamentos distintos; 7 academias, todas com dono (um único usuário), com 65, 19, 11, 1, 9, 26 e 40 itens ativos de catálogo.
 - **Impacto para clientes existentes.** Corpo incompleto passa de 400 para 422. Equipamento inativo passa a ser recusado. A tela de Academias envia o mesmo corpo e continua aceita.
-- **Não medido.** Volume de resposta de `GET /equipment-exercises?primary_group` por grupo (a rota não tem paginação; o teto hoje é 145 pares no total). Quantas chamadas com equipamento inativo ocorreram, pois o servidor não registrava. Quantas chamadas de escrita de vínculo com academia inexistente ocorreram.
+- **Não medido.** Volume de resposta de `GET /equipment-exercises?primary_group` por grupo (a rota ganhou paginação opcional no lote 32, mas sem `limit` ela segue devolvendo tudo; o teto hoje é 145 pares no total). Quantas chamadas com equipamento inativo ocorreram, pois o servidor não registrava. Quantas chamadas de escrita de vínculo com academia inexistente ocorreram.
 - **Mapa.** Nenhuma regra de motor foi criada, e `docs/motores/FONTES_DA_VERDADE.md` não muda nesta entrega.
 - **Próximas decisões.** Resolvido em 22/11/2026 (ADR 0032): a permissão própria de acrescentar equipamento é o recurso `treino.academias.equipamentos`. Incluir equipamentos sem vínculo a exercício na seção, se o usuário quiser o catálogo inteiro (desvio 1).
 
@@ -83,3 +83,13 @@ Restrições reais:
 - Frontend: 281 testes Vitest do lote passaram; `tsc` sem erro. Em 21/11/2026, Vitest: 30 passaram.
 - Testes de ponta a ponta do Modo Treino (`frontend/e2e/workout-resilience`, Playwright, projeto `chromium-390`), executados fora do CI: 27 passaram, incluindo os dois cenários novos (com e sem a permissão).
 - Não verificado: celular real; SQL novo contra MySQL real, que roda só no CI com o rótulo `ci-completo`.
+
+## Atualização de 22/11/2026 (lote 32, #246: paginação opcional)
+
+`GET /equipment-exercises` (`api/app/equipment_exercises.py::list_equipment_exercises`) aceita `limit` (de 1 a `EQUIPMENT_EXERCISES_MAX_LIMIT`, hoje 1000) e `offset` (maior ou igual a 0), ambos opcionais.
+
+- Sem os dois parâmetros, o SQL não tem `LIMIT` e a resposta é a mesma de antes.
+- Com `offset` e sem `limit`, o `LIMIT` usa o teto de 1000.
+- A ordenação (`ORDER BY eq.name, pg.name, ec.name, eqex.id`) é a mesma, então a paginação é estável.
+
+Impacto: clientes atuais não mudam. Nenhum código de `frontend/src` envia `limit` ou `offset` para esta rota (conferido por busca em 22/11/2026). Não medido: volume de resposta por grupo em produção.

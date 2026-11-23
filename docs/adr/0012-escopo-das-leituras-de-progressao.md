@@ -54,7 +54,7 @@ Frontend: `frontend/src/lib/progression-scope.ts` (formatação pura: `scopeLabe
 ## Consequências
 
 - Mesmo status com escopos diferentes passa a ser distinguível pelo texto: o selo do exercício não se confunde com o do grupo.
-- Nenhum consumidor novo de regra: a guarda de motores não ganha padrão novo. O mapa cobre a regra por teste de comportamento (ver `docs/motores/FONTES_DA_VERDADE.md`, linha "Escopo das leituras de progressão").
+- Nenhum consumidor novo de regra: esta decisão não muda a guarda de motores. O mapa cobre a regra por teste de comportamento (ver `docs/motores/FONTES_DA_VERDADE.md`, linha "Escopo das leituras de progressão"). A guarda ganhou depois o padrão `tendencia_janela_paralela` (ADR 0025, #239), generalizado no lote 32 (22/11/2026); esse padrão não vem desta decisão.
 - Qualquer tela nova que mostre status de progressão deve anexar o escopo da resposta. Isso vira requisito de revisão.
 - O "Impacto em produção" é só de metadados: nenhum status, contagem ou percentual muda, conforme a issue. A verificação é feita pelos testes `api/tests/unit/test_escopo_leituras_progressao.py` e `api/tests/unit/test_progressao_tela_mesma_regra.py` (mesmo status e mesmo escopo no Início, no detalhe e na tendência) e por `frontend/src/lib/progression-scope.test.ts`.
 

@@ -165,6 +165,8 @@ _RECOMMENDATION_FIELDS_OUT_OF_PROMPT = (
     "manufacturer",
     "manufacturer_source",
     "can_edit_manufacturer",
+    # Convencao de carga (#244): so as rotas e a tela consomem.
+    "load_convention",
 )
 
 

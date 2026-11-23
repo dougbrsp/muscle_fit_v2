@@ -117,3 +117,49 @@ def test_renderer_mostra_linha_com_rotulos_e_omite_sessao_sem_esperado():
         assert label.lower() in md
     assert "abaixo do esperado: 1, no esperado: 2, acima do esperado: 3" in md
     assert ", Sem: " not in md
+
+
+def test_depois_da_falha_o_relatorio_segue_com_cursor_novo_e_o_quebrado_fechado(monkeypatch):
+    """O `except` de `_collect_cycles` nao reaproveita o cursor da leitura quebrada:
+    cada leitura abre o seu (`with conn.cursor()`), e o quebrado e fechado pelo `with`."""
+    from app import template_assignments
+    from app.intelligence.dashboard import adherence_service
+    from app.intelligence.report import markdown_report_service as svc
+
+    opened = []
+
+    class _Cur:
+        def __init__(self, broken):
+            self.broken, self.closed = broken, False
+            opened.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.closed = True
+            return False
+
+        def execute(self, sql, params=None):
+            if self.broken:
+                raise RuntimeError("coluna rpe_target_planned ausente")
+
+    conn = SimpleNamespace(cursor=lambda: _Cur(broken=not opened))
+    seen = {}
+
+    def _next_read(c, **k):
+        with c.cursor() as cur:  # leitura seguinte do mesmo relatorio
+            cur.execute("SELECT 1")
+        seen["fresh"] = opened[-1]
+
+    sessions = [{"activity_id": 1, "local_date": D, "name": "Push", "slot_sequence": None}]
+    monkeypatch.setattr(template_assignments, "segment_window", lambda *a, **k: [])
+    monkeypatch.setattr(adherence_service, "build_adherence", lambda *a, **k: {})
+    monkeypatch.setattr(svc, "_fetchall", lambda *a, **k: [])
+    monkeypatch.setattr(svc, "_training_type_names", lambda *a, **k: {})
+    monkeypatch.setattr(svc, "_current_template", _next_read)
+    monkeypatch.setattr(daily, "load_cycle_sessions", lambda *a, **k: (sessions, []))
+    out = svc._collect_cycles(conn, user_id=7, window=SimpleNamespace(date_from=D, date_to=D))
+    assert out["timeline"][0]["rpe_vs_expected_counts"] is None
+    assert opened[0].closed is True
+    assert seen["fresh"] is not opened[0] and not seen["fresh"].broken
