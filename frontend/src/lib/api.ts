@@ -1,4 +1,5 @@
 import { clearSession } from './auth';
+import { clearRecipeDrafts } from './app-logout';
 import { getApiBaseUrl } from './config';
 import { sanitizeInternalPath } from './safe-path';
 
@@ -87,6 +88,7 @@ function redirectToLogin(): void {
 
   // 401: sessão morta, sem como pedir confirmação. Apaga os dados da conta,
   // mas preserva (isoladas por usuário) as séries ainda não sincronizadas.
+  clearRecipeDrafts();
   void clearSession({ keepUnsynced: true });
 
   const currentPath = `${window.location.pathname}${window.location.search}`;

@@ -1273,7 +1273,8 @@ def _resync_planned_rpe_after_late_set(cur: Any, exercise_id: int, set_number: i
     de ordem muda a posicao ordinal das seguintes; regrava o `rpe_target_planned`
     delas (mesma transacao, mesma composicao do POST, dono `effective_intensity`).
     Posicao = ordem entre TODAS as de trabalho, pendentes inclusive (como o COUNT
-    do POST). So regrava as confirmadas, de repeticoes, sem protocolo e com
+    do POST). So regrava as seguintes confirmadas, de repeticoes, sem protocolo,
+    SEM `technique_code` (serie de tecnica fica fora, ADR 0026/PR #287) e com
     esperado ja gravado; so quando o valor muda. Nao toca `rpe_target_effective`."""
     plan_rpe = effective_intensity.plan_rpe_target(exercise_row.get("prescription_json"), exercise_row.get("plan_rpe_target"))
     if not effective_intensity.has_planned_rpe_ramp(plan_rpe):

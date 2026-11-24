@@ -17,7 +17,7 @@ import type {
   RecipePreview,
   RecipeSavePayload,
 } from '@/lib/nutrition-types';
-import { ApiError } from '@/lib/api';
+import { ApiError, isLoggingOut } from '@/lib/api';
 import { BRAND } from '@/theme';
 
 type Row = { key: number; food_id: number; label: string; quantity: string; unit: string; portion_id: number | null; status?: RecipeCatalogStatus };
@@ -157,7 +157,10 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
   // Rascunho no aparelho: só dados do formulário, gravado com debounce enquanto há alterações.
   useEffect(() => {
     if (!dirty || !storageKey) return;
-    const t = setTimeout(() => writeDraft(storageKey, currentRef.current), DRAFT_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      // Logout em curso: não regrava o rascunho que o logout acabou de apagar.
+      if (!isLoggingOut()) writeDraft(storageKey, currentRef.current);
+    }, DRAFT_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [dirty, storageKey, name, instructions, finalWeight, overrides, rows]);
   function descartarRascunho() {
@@ -377,11 +380,16 @@ export function RecipeEditor({ recipe, onSaved, onCancel, userId, onDuplicate, d
         {publishMutation.isError && (
           <Alert color="red" icon={<IconAlertTriangle size={16} />} title="Não foi possível publicar" data-testid="erro-publicar">
             {nutritionErrorInfo(publishMutation.error, 'Não foi possível publicar a receita.').message}
-            <ul>
-              {nutritionErrorInfo(publishMutation.error, '').items.map((it) => (
-                <li key={it.code}>{it.label}</li>
-              ))}
-            </ul>
+            {(() => {
+              const items = nutritionErrorInfo(publishMutation.error, '').items;
+              return items.length > 0 && (
+                <ul>
+                  {items.map((it, i) => (
+                    <li key={`${it.code}-${i}`}>{it.label}</li>
+                  ))}
+                </ul>
+              );
+            })()}
           </Alert>
         )}
 

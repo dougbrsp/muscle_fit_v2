@@ -200,3 +200,23 @@ Impacto em produção: medido em 24/11/2026 pelo Tech Lead, em produção, só l
 Conclusão: nenhum dado existente passa a falhar em reenvio ou edição. Nenhuma migração e nenhum dado gravado muda.
 
 Smoke da promoção (pós-deploy, obrigatório): `POST /activities` com academia inexistente deve responder 422 `gym_not_found`; `PUT /exercises/logs/{id}` com equipamento de outra academia deve responder 422 `equipment_not_in_session_gym`.
+
+## Lote 49 (fechamento da #284, branch `fix/sobras-284-l49`, sem commit)
+
+Não verificado: execução dos testes nesta entrega (o lote só registra o que está no código; a integração roda no CI).
+
+**(a) O que mudou**
+
+- Testes do Registro em `api/tests/unit/test_registro_importacao_academia_validada.py`: equipamento por nome resolvido na academia gravada (`test_registro_sem_academia_no_corpo_resolve_equipamento_por_nome_na_gravada`); adoção de academia pelo equipamento gravada no UPDATE (`test_registro_adocao_grava_a_academia_do_equipamento_no_update`, que confere o `gym_id` enviado ao `UPDATE activities`); e os casos de academia gravada inativa repetida e de equipamento de outra academia (`test_registro_equipamento_valida_na_academia_do_corpo_nao_na_gravada`).
+- `services._update_exercise_log_tx` (`api/app/services.py`, L1329): a academia da atividade vem junto com o exercício, no SELECT já existente (`a.gym_id AS activity_gym_id`, L1335), sem leitura extra de `gym_id`; o teste do arquivo acima confere que o caminho não faz SELECT extra.
+- `user_id` é obrigatório (sem valor padrão) em `upsert_activity` (L518), `update_activity` (L756) e `delete_activity` (L782), em `api/app/services.py`. Nenhum chamador passa a depender de padrão.
+
+**(b) Decisões de não mudar, com o motivo**
+
+1. **Cores do seletor no Modo Treino.** O seletor usa as classes de `frontend/src/app/(fullscreen)/modo-treino/workout-mode.module.css`, que lê os tokens `--wm-*` (surface, border, orange, text, success etc.; 101 ocorrências de `var(--` no arquivo). Esses tokens são o tema escuro próprio do Modo Treino e não seguem o tema global do app. Não mudamos: a tela inteira do Modo Treino usa o mesmo conjunto. Conferência visual fica com o usuário, no aparelho. Correção ao pedido original: o arquivo não usa cores fixas em todo o conteúdo; a razão é o tema próprio via tokens.
+2. **Travas de envio e de confirmação sob concorrência.** Cobertas pela transação do servidor e pelos testes com fake. Sem teste em banco real: a integração roda só no CI e não tem cenário de concorrência. Risco aceito e registrado.
+3. **Aviso de convenção de carga no Registro.** O aviso lê `load_convention` da API (`GET /gym-equipment`, lote 32) e não calcula nada no frontend. Os rótulos de convenção são espelhados do dono (`frontend/src/lib/equipment-exercises-types.ts`, `loadConventionLabel`, L52), com teste de espelho. Limite (f) acima segue valendo: sem o vínculo na lista do grupo muscular, a convenção antiga vira nula. Não reconferido nesta passada: o teste de espelho.
+
+## Impacto em produção
+
+Lote 49: nenhuma mudança de dado, de migração nem de contrato. Os testes e a leitura do SELECT não alteram nada gravado; `user_id` obrigatório só afeta chamada interna sem o argumento, que o código atual não tem (conferido por busca em `api/app`). Sem medição nova.

@@ -515,11 +515,10 @@ def is_gym_equipment_pair_active(gym_id: int, mapping_id: int, equipment_id: int
             return cur.fetchone() is not None
 
 
-def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dict[str, Any]:
-    """`user_id` (Multiusuario Parte 4): dono do treino. Sempre resolvido a
-    partir de `identity.user_id` no router (main.py) - nunca aceito do
-    payload do cliente. `None` preserva o comportamento legado (consumidores
-    internos que ainda nao propagam identidade)."""
+def upsert_activity(activity: dict[str, Any], user_id: int) -> dict[str, Any]:
+    """`user_id` (Multiusuario Parte 4): dono do treino, obrigatorio. Sempre
+    resolvido a partir de `identity.user_id` no router (main.py) - nunca aceito
+    do payload do cliente. Nenhum chamador de producao passa `None`."""
     with transaction() as conn:
         sid = source_id(conn, activity.get("source_name", "openclaw"), "api")
         ext_id = make_external_id(activity)
@@ -544,13 +543,10 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
             )
             import_id = cur.fetchone()["id"]
 
-            if user_id is not None:
-                cur.execute(
-                    "SELECT id FROM activities WHERE source_id=%s AND external_id=%s AND user_id=%s",
-                    (sid, ext_id, user_id),
-                )
-            else:
-                cur.execute("SELECT id FROM activities WHERE source_id=%s AND external_id=%s", (sid, ext_id))
+            cur.execute(
+                "SELECT id FROM activities WHERE source_id=%s AND external_id=%s AND user_id=%s",
+                (sid, ext_id, user_id),
+            )
             existing = cur.fetchone()
             kept_marks: dict[tuple[Any, Any], tuple[bool, Any]] = {}
             prev_equipment: dict[tuple[Any, Any], Any] = {}
@@ -757,19 +753,16 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
             }
 
 
-def update_activity(activity_id: int, activity: dict[str, Any], user_id: int | None = None) -> dict[str, Any] | None:
-    """`user_id` (Multiusuario Parte 4): quando informado, so atualiza uma
-    activity que pertenca a esse usuario (retorna None caso contrario, para
-    o caller devolver 404 sem vazar existencia do recurso)."""
+def update_activity(activity_id: int, activity: dict[str, Any], user_id: int) -> dict[str, Any] | None:
+    """`user_id` (Multiusuario Parte 4): so atualiza uma activity que pertenca
+    a esse usuario (retorna None caso contrario, para o caller devolver 404
+    sem vazar existencia do recurso)."""
     with transaction() as conn:
         with conn.cursor() as cur:
-            if user_id is not None:
-                cur.execute(
-                    "SELECT source_id, external_id, user_id FROM activities WHERE id=%s AND user_id=%s",
-                    (activity_id, user_id),
-                )
-            else:
-                cur.execute("SELECT source_id, external_id, user_id FROM activities WHERE id=%s", (activity_id,))
+            cur.execute(
+                "SELECT source_id, external_id, user_id FROM activities WHERE id=%s AND user_id=%s",
+                (activity_id, user_id),
+            )
             existing = cur.fetchone()
 
             if not existing:
@@ -783,16 +776,13 @@ def update_activity(activity_id: int, activity: dict[str, Any], user_id: int | N
                 source = cur.fetchone()
                 activity["source_name"] = (source or {}).get("name") or "frontend"
 
-    return upsert_activity(activity, user_id=user_id if user_id is not None else existing.get("user_id"))
+    return upsert_activity(activity, user_id=user_id)
 
 
-def delete_activity(activity_id: int, user_id: int | None = None) -> bool:
+def delete_activity(activity_id: int, user_id: int) -> bool:
     with transaction() as conn:
         with conn.cursor() as cur:
-            if user_id is not None:
-                cur.execute("SELECT id FROM activities WHERE id=%s AND user_id=%s", (activity_id, user_id))
-            else:
-                cur.execute("SELECT id FROM activities WHERE id=%s", (activity_id,))
+            cur.execute("SELECT id FROM activities WHERE id=%s AND user_id=%s", (activity_id, user_id))
             existing = cur.fetchone()
             if not existing:
                 return False
@@ -1342,7 +1332,7 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
         cur.execute(
             "SELECT e.id, e.activity_id, e.original_name, e.mapping_id, e.workout_plan_exercise_id, "
             f"e.equipment_id, e.muscle_pain, e.joint_pain, e.{FORM_PRACTICE_COLUMN}, a.session_status, a.{DELOAD_SOURCE_COLUMN}, "
-            "a.local_date, a.started_at, a.ended_at "
+            "a.local_date, a.started_at, a.ended_at, a.gym_id AS activity_gym_id "
             "FROM exercises e "
             "JOIN activities a ON a.id = e.activity_id WHERE e.id=%s AND a.user_id=%s",
             (exercise_id, user_id),
@@ -1352,7 +1342,8 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
             "SELECT id, activity_id, original_name, mapping_id, workout_plan_exercise_id, "
             f"equipment_id, muscle_pain, joint_pain, {FORM_PRACTICE_COLUMN}, "
             "(SELECT session_status FROM activities WHERE id = exercises.activity_id) AS session_status, "
-            f"(SELECT {DELOAD_SOURCE_COLUMN} FROM activities WHERE id = exercises.activity_id) AS {DELOAD_SOURCE_COLUMN} "
+            f"(SELECT {DELOAD_SOURCE_COLUMN} FROM activities WHERE id = exercises.activity_id) AS {DELOAD_SOURCE_COLUMN}, "
+            "(SELECT gym_id FROM activities WHERE id = exercises.activity_id) AS activity_gym_id "
             "FROM exercises WHERE id=%s",
             (exercise_id,),
         )
@@ -1396,8 +1387,7 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
     else:
         mapping_id = existing.get("mapping_id")
 
-    cur.execute("SELECT gym_id FROM activities WHERE id=%s", (activity_id,))
-    act = cur.fetchone() or {}
+    act = {"gym_id": existing.get("activity_gym_id")}  # academia gravada, lida junto com o exercício
     gym_id = resolve_active_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"), act.get("gym_id"))
     if payload.get("equipment_id") or payload.get("equipment_name") is not None:
         explicit_eq = payload.get("equipment_id")
