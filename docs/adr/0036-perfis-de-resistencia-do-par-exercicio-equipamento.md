@@ -38,7 +38,6 @@
 
 ## O que fica para depois
 
-- Padrão do equipamento canônico e variação de exemplar ou fabricante: níveis 1 e 3 da issue #288.
 - Sugestão por IA a partir da base do RAG: lote 42.
 - Tela de revisão do admin: lote 43.
 - Motor de redundância (uso do perfil na decisão): fatia 2, entregue no lote 45.
@@ -141,7 +140,7 @@ Branch `feat/perfis-resistencia-tela-l43`, sem commit. Não promovido a produç�
 **Próximas fatias.**
 - **Fatia 2: motor de redundância.** Uso do perfil na decisão, com aviso no editor manual de Modelo quando o exercício escolhido for redundante com outro. O motor dono fica registrado no mapa antes de qualquer consumidor. A regra de redundância é decisão a tomar com o usuário.
 - **Fatia 3: geração automática e diagnóstico.** Geração de perfis em lote e diagnóstico de cobertura e qualidade.
-- **Fora das fatias 1 a 3:** padrão do equipamento canônico e variação de exemplar (níveis 1 e 3 da #288).
+- **Fora de escopo (decisão de 24/11/2026):** níveis 1 e 3 da #288; ver a seção "Decisão de 24/11/2026: níveis 1 e 3 fora de escopo".
 
 **Impacto em produção** (por leitura do código, não medido em produção): só usuários com acesso ao catálogo veem a aba, e só depois da promoção. A aba só chama rotas que respondem 503 enquanto a migração 126 não estiver aplicada.
 
@@ -231,9 +230,23 @@ Branch `feat/redundancia-geracao-l47`, sem commit. Não promovida a produção.
 - Fatia 2 (redundância, lote 45): entregue.
 - Fatia 3 (critério na geração e diagnóstico, lote 47): entregue nesta branch, sem testes executados e sem promoção.
 - "Geração automática de perfis em lote": coberta pela sugestão por IA em lote (lote 42), que grava só `suggested`; a revisão humana continua obrigatória.
-- **Não fechado:** níveis 1 e 3 da #288 (padrão do equipamento canônico e variação de exemplar). Estão fora das três fatias e sem decisão. A #288 segue aberta por eles até decisão ou issue própria.
+- **Fechado em 24/11/2026:** níveis 1 e 3 da #288 saíram de escopo por decisão do usuário. A #288 fica concluída com as três fatias (lotes 41 a 47).
 
 **Não verificado neste lote:** execução de `test_modo_a_redundancia.py`, `test_redundancy_candidates.py`, `test_exercise_redundancy_routes.py` e `RedundancyDiagnosticPanel.test.ts`; guarda de fontes; rota contra MySQL; tela no navegador.
+
+## Decisão de 24/11/2026: níveis 1 e 3 fora de escopo
+
+- **Contexto.** A issue #288 listava dois níveis além das três fatias: (1) padrão de resistência do equipamento canônico herdado pelos pares sem perfil; (3) variação por exemplar ou fabricante de uma academia.
+- **Decisão do usuário (24/11/2026).** Nenhum dos dois é feito.
+- **Motivos.**
+  - O mesmo equipamento executa exercícios com linhas de força e curvas diferentes (crossover em crucifixo, elevação lateral e tríceps). Um padrão herdado do equipamento erraria.
+  - Não há dado de fabricante hoje: 0 perfis revisados em produção (medido na fatia 1).
+  - A regra "à risca" já exige perfil revisado do próprio par para alta e moderada (seção "Fatia 2").
+- **Alternativas recusadas.** Padrão herdado do equipamento canônico (nível 1); variação por exemplar (nível 3), que exigiria medição ou dado de fabricante inexistentes.
+- **Decisão.** O par exercício+equipamento revisado continua a única fonte. Par sem perfil segue `unknown` e nunca herda classe. Nenhuma migração, rota ou código novo nesta decisão.
+- **Trade-off.** A cobertura de resistência depende de revisão humana par a par. Pares sem perfil ficam sem classe em vez de receber um palpite.
+- **Consequência.** Nenhuma pendência de nível 1 ou 3 permanece. Reabrir só com issue própria e dado de fabricante ou medição revisado.
+- **Impacto em produção.** Nenhum. Decisão de escopo, sem código novo; medido por leitura do código e da seção de pendências.
 
 ## Verificação
 
