@@ -10,6 +10,11 @@ Vocabulario, validacao, transicao de status, confiabilidade e assinatura sao do 
     GET  /resistance-profiles/{equipment_exercise_id}
     GET  /resistance-profiles/{equipment_exercise_id}/history
     PUT  /resistance-profiles/{equipment_exercise_id}   admin; substituicao completa (status obrigatorio)
+    POST /resistance-profiles/suggest                    admin; job assincrono de sugestao por IA (202 `{job_id}`)
+
+A sugestao por IA (`resistance_profile_ai.py`, Lambda `musclefit-workout-ai`) e de ate `SUGGEST_MAX_PAIRS` pares
+por job, sem cota de IA por usuario (admin do catalogo); a IA so cria `suggested`. Sem ids, escolhe pares pendentes
+(sem perfil primeiro, depois os sugeridos mais antigos); sem pares, nao cria job (`job_id` nulo).
 
 Permissoes como `equipment_exercises.py`: leitura `exercicios.catalogo`/`ver`, escrita `admin.catalogos`/`editar`.
 Sem as tabelas (migracao 126): 503 citando a 126. Erro tipado do dono: 422 com `code` e `field`.
@@ -18,17 +23,21 @@ Sem as tabelas (migracao 126): 503 citando a 126. Erro tipado do dono: 422 com `
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from . import async_jobs
 from .access import require_permission
 from .db import get_conn, is_duplicate_key_error
 from .db_helpers import connect_or_503, jsonable
 from .domain import resistance_profile as rp
-from .request_models import ResistanceProfileIn
+from .request_models import ResistanceProfileIn, ResistanceSuggestIn
+from .domain.resistance_profile import SUGGEST_JOB_TYPE
 from .security import Identity
 
+logger = logging.getLogger("musclefit.resistance_profiles")
 router = APIRouter(prefix="/resistance-profiles", tags=["resistance-profiles"])
 
 PROFILES = "equipment_exercise_resistance_profiles"
@@ -88,6 +97,10 @@ HISTORY_INSERT_SQL = (
 HISTORY_LIST_SQL = (
     "SELECT id, before_json, after_json, actor_user_id, origin, reason, created_at "
     f"FROM {HISTORY} WHERE profile_id = %s ORDER BY id DESC LIMIT %s OFFSET %s"
+)
+SUGGEST_PENDING_SQL = (
+    f"SELECT eqex.id AS equipment_exercise_id {_PAIR_FROM}{{filters}} "
+    "ORDER BY (p.id IS NOT NULL), p.updated_at, eqex.id LIMIT %s"
 )
 PROFILE_ID_SQL = f"SELECT id FROM {PROFILES} WHERE equipment_exercise_id = %s"
 TABLES_SQL = (
@@ -229,6 +242,46 @@ def _where(status: Optional[str], confidence: Optional[str], equipment_id: Optio
 # ---------------------------------------------------------------------------
 # Rotas (as estaticas antes de `/{equipment_exercise_id}`)
 # ---------------------------------------------------------------------------
+
+
+@router.post("/suggest", status_code=202)
+def suggest_profiles(
+    payload: ResistanceSuggestIn,
+    identity: Identity = Depends(require_permission("admin.catalogos", "editar")),
+):
+    ids = list(dict.fromkeys(payload.equipment_exercise_ids or []))
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            _require_tables(cur)
+            if not ids:
+                filtros, params = _where(None, None, None, None, True)
+                cur.execute(SUGGEST_PENDING_SQL.format(filters=filtros), (*params, payload.limit))
+                ids = [int(r["equipment_exercise_id"]) for r in cur.fetchall() or []]
+    if not ids:
+        return {"job_id": None, "pairs": 0}
+    solicitante = int(identity.user_id)
+    try:
+        job_id = async_jobs.create_job(
+            SUGGEST_JOB_TYPE,
+            request={"payload": {"equipment_exercise_ids": ids}, "user_id": solicitante},
+            owner_user_id=solicitante,
+        )
+        async_jobs.invoke_async(
+            "WORKOUT_AI_FUNCTION_NAME",
+            {
+                "job_id": job_id,
+                "job_type": SUGGEST_JOB_TYPE,
+                "payload": {"equipment_exercise_ids": ids},
+                "user_id": solicitante,
+            },
+        )
+    except Exception as exc:
+        logger.exception("Falha ao despachar a sugestao de perfis de resistencia por IA")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "suggest_dispatch_failed", "message": "Não foi possível iniciar a sugestão por IA."},
+        ) from exc
+    return {"job_id": job_id, "pairs": len(ids)}
 
 
 @router.get("/vocabulary", dependencies=[Depends(require_permission("exercicios.catalogo", "ver"))])

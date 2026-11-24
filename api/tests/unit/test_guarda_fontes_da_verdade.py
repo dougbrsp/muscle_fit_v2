@@ -2285,6 +2285,22 @@ PADROES: tuple[Padrao, ...] = (
         inventario="#188",
     ),
     Padrao(
+        chave="resistencia_codigos_fora_do_dono",
+        regra="códigos distintivos do vocabulário de perfil de resistência (`cable_free_path`, `compound_pulley`, "
+        "`mid_peak`, `ends_peak`...) escritos como literal, SQL, prompt ou tela fora do dono",
+        # Issue #288 (2026-11-23, lote 42): vocabulário, validação, transições e o esquema da saída da IA moram em
+        # `domain/resistance_profile.py`. Rota, worker, prompt e tela só consomem (`export_vocabulary`,
+        # `suggestion_output_schema`). Só os códigos específicos entram; `cable`, `lever`, `free` e afins são genéricos.
+        regex=re.compile(
+            r"\b(?:cable_free_path|simple_pulley|movable_pulley|compound_pulley|rail_guide|wheel_axle|semi_guided"
+            r"|guided_linear|guided_arc|variable_imposed|approximately_constant|mid_peak|ends_peak|variable_custom"
+            r"|setup_dependent(?:_range)?|vertical_gravity|direct_gravity|cable_angle_variable|joint_axis_relative"
+            r"|bench_adjustment|trunk_hip_position|reaction_forces)\b"
+        ),
+        donos=("api/app/domain/resistance_profile.py",),
+        inventario="#288",
+    ),
+    Padrao(
         chave="progressao_calculo_no_frontend",
         regra="refazer no frontend a anterior por posição (`.length - 2]`), a variação (`pctChange`), a direção "
         "(`loadBetterWhen`), o e1RM decisivo (`isE1rmDecisive`) ou o desfecho pelo sinal do delta",
@@ -2688,6 +2704,7 @@ ALLOWLIST: dict[str, dict[str, int]] = {
     "motivo_manter_carga": {},  # M96 (2026-10-25): nasce vazia
     "padrao_laboral": {},  # M100 (2026-10-27): nasce vazia
     "contexto_maquina_academia": {},  # issue #188 (2026-11-16): nasce vazia
+    "resistencia_codigos_fora_do_dono": {},  # issue #288 (2026-11-23): nasce vazia
     "progressao_comparacao_fora_do_dono": {},  # issue #188 (2026-11-16): nasce vazia
     "progressao_anterior_fora_do_dono": {},  # issue #188 (2026-11-16): nasce vazia
     "progressao_calculo_no_frontend": {},  # issue #188, rodada 1B (2026-11-16): nasce vazia
@@ -2778,6 +2795,7 @@ CONSUMIDOR_DO_PROMPT: dict[str, str] = {
     "api/privado/prompts/nutrition_meal_parse/": "api/app/nutrition_meal_parse_ai.py",
     "api/privado/prompts/nutrition_meal_photo/": "api/app/nutrition_meal_photo_ai.py",
     "api/privado/prompts/nutrition_plan_suggestion/": "api/app/nutrition_plan_suggestion_ai.py",
+    "api/privado/prompts/resistance_profile/": "api/app/resistance_profile_ai.py",  # #288 (lote 42)
     # M103 P2: insights, "Análise por IA", resumos e os fragmentos compartilhados.
     "api/privado/prompts/insights/": "api/app/insights_prompt.py",
     "api/privado/prompts/workouts_analysis/": "api/app/report_ai.py",
@@ -3983,6 +4001,12 @@ EXEMPLOS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
          "CALIBRATION_LOOKBACK", "MAX_BATCH_EXPOSURES_PER_EXERCISE = VERDICT_LOOKBACK_EXPOSURES",
          "if n == VERDICT_LOOKBACK_EXPOSURES:", "max(VERDICT_LOOKBACK_EXPOSURES, limit)",
          "def f(n: int = VERDICT_LOOKBACK_EXPOSURES):"),
+    ),
+    "resistencia_codigos_fora_do_dono": (
+        ("if mechanism == 'compound_pulley':", 'perfil = "mid_peak"', "AND p.line = 'cable_angle_variable'",
+         "trajectory: 'cable_free_path'", "`ends_peak`", "setup_dependent_range"),
+        ("rp.PROFILES['mid']", "cable", "free_weight", "const mechanism = vocabulary.mechanism",
+         "compound_pulleys_total", "resistance_profile"),
     ),
     "progressao_comparacao_fora_do_dono": (
         ("status, _ = compare_exposures(previous, current)", "if keys_match(a.key, b.key):",

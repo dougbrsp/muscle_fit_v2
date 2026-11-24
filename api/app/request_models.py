@@ -21,6 +21,7 @@ from typing import Annotated, Any, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
 
 from .domain.equipment_context import MANUFACTURER_MAX_LENGTH
+from .domain.resistance_profile import SUGGEST_MAX_PAIRS
 from .domain.nutrition import activity_energy as _activity_energy
 from .domain.nutrition.plan_suggestion import CURRENT_NUMBER_MAX
 from .domain.nutrition.catalog import PER_100_FIELDS as _PER_100_FIELDS
@@ -558,6 +559,16 @@ class ResistanceProfileIn(_StrictIn):
     reason: Optional[str] = Field(default=None, max_length=500)
 
 
+class ResistanceSuggestIn(_StrictIn):
+    """POST /resistance-profiles/suggest (admin). `equipment_exercise_ids` vence `limit`; sem ids, o job escolhe pares
+    pendentes. Teto de pares por job: `SUGGEST_MAX_PAIRS` do dono."""
+
+    limit: StrictInt = Field(default=SUGGEST_MAX_PAIRS, ge=1, le=SUGGEST_MAX_PAIRS)
+    equipment_exercise_ids: Optional[List[Annotated[StrictInt, Field(ge=1)]]] = Field(
+        default=None, min_length=1, max_length=SUGGEST_MAX_PAIRS
+    )
+
+
 __all__ = [
     "ActivityCorrectionIn",
     "BodyCompositionUpdateIn",
@@ -579,6 +590,7 @@ __all__ = [
     "PlanSuggestionCurrentIn",
     "PlanSuggestionIn",
     "ResistanceProfileIn",
+    "ResistanceSuggestIn",
     "NutritionTargetsRecomputeIn",
     "SleepMetricsUpdateIn",
     "UserCreateIn",

@@ -92,6 +92,34 @@ Medido em 23/11/2026 por leitura (SELECT), sem escrita: 145 pares ativos em `equ
 - Contagem corrigida: são seis rotas, não sete.
 - Sem padrão de guarda para o vocabulário ainda; entra com os lotes 42 e 43.
 
+## Lote 42 (2026-11-23, #288, sugestão de perfil por IA)
+
+Branch `feat/perfis-resistencia-ia-l42`, sem commit. Não promovido a produção.
+
+- **Fluxo.** O admin do catálogo chama `POST /resistance-profiles/suggest` (`admin.catalogos`/`editar`, `api/app/resistance_profiles.py`). Com `equipment_exercise_ids`, usa esses pares; sem ids, pega os pares pendentes até `limit`. A rota cria um job (`SUGGEST_JOB_TYPE` = `resistance-profile-suggest`, no dono) e o despacha para a Lambda `musclefit-workout-ai`, pelo roteador de `workout_ai_generation_core.py` (import tardio de `resistance_profile_ai`). Responde 202 com `{job_id}`; o status sai de `GET /jobs/{job_id}`. Sem pares, responde `{job_id: null, pairs: 0}`.
+- **Worker** (`api/app/resistance_profile_ai.py`). Lê os pares numa consulta; por par, uma chamada do modelo leve; valida pelo dono (`validate_response` força origem `ai` e status `suggested`); grava só se `can_transition` permitir. A IA só cria `suggested` e nunca sobrescreve `reviewed`, `verified` ou `rejected`: esses pares viram `skipped`, sem chamada à IA. Falha por par (IA, resposta inválida, gravação, par inexistente) entra em `failed` com código (`ai_failed`, `invalid_response`, `write_failed`, `pair_not_found`) e não derruba o lote. Cada gravação gera linha na trilha, com `origin = ai`.
+- **Limites.** Teto de `SUGGEST_MAX_PAIRS` pares por job, constante do dono (6 desde o lote 42b; era 10). O orçamento de 40 s (`TIME_BUDGET_SECONDS`) saiu: vale o timeout da Lambda, ver lote 42b. Pares sem tempo saem como `not_processed` e o admin repete.
+- **Onde ficam prompt e RAG.** Prompt `resistance_profile/suggest` em `api/privado/prompts/resistance_profile/`, no submódulo privado `api/privado` (repositório `muscle_fit_privado`). RAG `PERFIS_RESISTENCIA.md`, lido por `rag_chunking` com teto `RAG_MAX_CHARS`. Origem e SHA ficam no cabeçalho do arquivo dentro do submódulo; nada do texto vai para este repositório público. O vocabulário entra no prompt interpolado de `export_vocabulary()`. A decisão de 23/11 citava `PERFIS_RESISTENCIA_RAG.md`; o nome em uso no código é `PERFIS_RESISTENCIA.md`.
+- **Custo.** Uma chamada do modelo leve por par. Default `gpt-5.4-mini` (env `OPENAI_RESISTANCE_PROFILE_MODEL`); feature `exercise_summary`, que o roteamento do provedor leva ao Haiku. Com 145 pares ativos em produção (23/11), a base inteira são até 145 chamadas, em jobs de até 10 pares.
+- **Sem cota por usuário.** A rota é só do admin do catálogo, então não há cota de IA por usuário (sem `ai_usage_log`). O teto é por job.
+- **Guarda.** Padrão `resistencia_codigos_fora_do_dono` (allowlist vazia) em `api/tests/unit/test_guarda_fontes_da_verdade.py`.
+- **Impacto em produção** (medido em 23/11/2026 por leitura, sem escrita): nenhuma tela de usuário final muda. A rota só responde ao admin, e o job só grava `suggested`.
+- **Pendências e não verificado (atualizado no lote 42b).** (a) Pares acima do teto: o worker agora marca `not_processed`, mas não conferi se a rota corta as ids em 6; `resistance_profiles.py` responde `pairs: len(ids)`. (b) Resolvido por leitura: cada chamada usa `min(50 s, restante)`, então nunca passa do orçamento da Lambda (lote 42b). (c) SHA do texto privado não conferido. (d) Nenhum teste executado neste lote.
+
+## Lote 42b (2026-11-23, #288, tempo, worker perdido e RAG)
+
+Branch `feat/perfis-resistencia-ia-l42b`, sem commit. Não promovido a produção. Corrige o lote 42 acima (teto 10 e orçamento de 40 s estavam obsoletos). Conferido no código do checkout.
+
+- **Tempo.** `musclefit-workout-ai` tem timeout de 60 s (`infra/lambda_workout_ai.tf`; `infra/` não mudou nesta branch). `suggest_pairs` marca o início antes de ler os pares e o RAG, e reserva `RESERVE_SECONDS` = 8 s (cold start e escrita do resultado). Cada chamada usa `min(CALL_TIMEOUT_SECONDS, restante)`, com `CALL_TIMEOUT_SECONDS` = `LLM_TIMEOUT_LIVE_SECONDS` = 50 s (`openai_client.py`). Com menos de `MIN_CALL_SECONDS` = 5 s de restante, o par sai em `failed` como `not_processed`.
+- **Teto.** `SUGGEST_MAX_PAIRS` = 6 (`api/app/domain/resistance_profile.py`), para ~52 s úteis e ~8 s por chamada. **Não medido:** os ~8 s são estimativa, não medição de p95 do modelo.
+- **Worker perdido.** `async_jobs.JOB_TYPE_LAMBDA` mapeia `resistance-profile-suggest` → `musclefit-workout-ai`. Job sem resultado vira `failed`/`worker_lost` após 60 + 60 s (M73). Sem mudança no `get_job`.
+- **RAG.** `_rag_text` chama `rag_storage.ensure_rag_local()` antes de ler `PERFIS_RESISTENCIA.md`. Em produção o arquivo vem do S3 para `/tmp/rag`. Sem o arquivo, a sugestão segue com `(trecho indisponível)`. O objeto é publicado por `aws_s3_object.musclefit_rag_markdown` (`infra/s3_rag.tf`, fileset sobre `api/privado/rag/markdown`).
+- **Impacto em produção** (23/11/2026): nenhuma tela de usuário final muda; a rota é só do admin. Para a promoção:
+  1. O commit do submódulo `api/privado` precisa estar publicado no repositório privado `muscle_fit_privado` antes do push do repositório público. Sem isso, o CI não tem o prompt nem o RAG.
+  2. A promoção precisa aplicar o terraform do RAG com `run_terraform=true`, para publicar `PERFIS_RESISTENCIA.md` no S3. Plan esperado: 1 objeto novo. **Não verificado:** o plan não foi executado.
+  3. Smoke pós-promoção: `POST /resistance-profiles/suggest` com 1 par ativo; depois `GET /jobs/{job_id}` até `done` ou `failed`. Conferir que o par ficou `suggested` e que a trilha tem `origin = ai`.
+- **Não verificado nesta rodada:** build do `api/Dockerfile.ai` (não executado); plan do terraform (não executado); testes unitários e guarda (não executados); SHA do texto privado (não conferido).
+
 ## Verificação
 
 Este ADR não registra execução de testes. Arquivos de teste da entrega (não executados nesta tarefa):

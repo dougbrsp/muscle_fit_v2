@@ -2222,7 +2222,7 @@ Fluxo completo em 6.6. Toda rota `card-generations` exige **admin** (403) e a fl
 ---
 
 
-#### 2.18 `resistance_profiles.py` (prefixo `/resistance-profiles`, 6 rotas, #288)
+#### 2.18 `resistance_profiles.py` (prefixo `/resistance-profiles`, 7 rotas, #288)
 
 Montado em `main.py` (bloco "resistance profiles router"). Sem as tabelas da migração 126, responde 503 `resistance_profile_tables_missing`. Dono das regras: `api/app/domain/resistance_profile.py`.
 
@@ -2234,6 +2234,7 @@ Montado em `main.py` (bloco "resistance profiles router"). Sem as tabelas da mig
 | GET | `/{equipment_exercise_id}` | path | — | item do par | `exercicios.catalogo`/`ver` | 404 `pair_not_found` |
 | GET | `/{equipment_exercise_id}/history` | `limit` (1–100), `offset` | — | `{items}` com `before`, `after`, `actor_user_id`, `origin`, `reason`, `created_at` | `exercicios.catalogo`/`ver` | 404 |
 | PUT | `/{equipment_exercise_id}` | path | `ResistanceProfileIn` (substituição completa; `status` obrigatório; `origin` forçado a `admin`) | item atualizado | `admin.catalogos`/`editar` | 404; 422 com `code` e `field`; 409 `profile_conflict` (outra gravação primeiro, ou deadlock na criação concorrente) |
+| POST | `/suggest` | — | `ResistanceSuggestIn` (`equipment_exercise_ids` opcional; sem ids, usa os pares pendentes até `limit`) | 202 `{job_id}` (sem pares: `{job_id: null, pairs: 0}`); status pela `GET /jobs/{job_id}` | `admin.catalogos`/`editar` | 503 `resistance_profile_tables_missing`; 503 `suggest_dispatch_failed` (job não despachado). Sugestão só cria `suggested` (worker `resistance_profile_ai.py`); teto de 6 pares por job (`SUGGEST_MAX_PAIRS`; pares acima do teto saem `not_processed` no job) |
 
 ### 3. Autenticação e autorização
 
