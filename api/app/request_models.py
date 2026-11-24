@@ -559,6 +559,29 @@ class ResistanceProfileIn(_StrictIn):
     reason: Optional[str] = Field(default=None, max_length=500)
 
 
+REDUNDANCY_PREVIEW_MAX_ITEMS = 30
+
+
+class RedundancyPreviewItemIn(_StrictIn):
+    mapping_id: StrictInt = Field(ge=1)
+    equipment_id: Optional[StrictInt] = Field(default=None, ge=1)
+
+
+class RedundancyPreviewIn(_StrictIn):
+    """POST /workout-plan-templates/redundancy-preview. `target_index` (item novo/trocado) compara só o alvo com os
+    demais; sem ele, todos os pares. `min_level` omite pares abaixo do nível (ordem do dono `exercise_redundancy`)."""
+
+    items: List[RedundancyPreviewItemIn] = Field(min_length=1, max_length=REDUNDANCY_PREVIEW_MAX_ITEMS)
+    target_index: Optional[StrictInt] = Field(default=None, ge=0)
+    min_level: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+
+    @model_validator(mode="after")
+    def _target_in_range(self):
+        if self.target_index is not None and self.target_index >= len(self.items):
+            raise ValueError("target_index fora de items")
+        return self
+
+
 class ResistanceSuggestIn(_StrictIn):
     """POST /resistance-profiles/suggest (admin). `equipment_exercise_ids` vence `limit`; sem ids, o job escolhe pares
     pendentes. Teto de pares por job: `SUGGEST_MAX_PAIRS` do dono."""
