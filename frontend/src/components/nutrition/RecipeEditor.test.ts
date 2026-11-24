@@ -423,6 +423,19 @@ describe('RecipeEditor', () => {
       expect(window.localStorage.getItem(KEY)).toBeNull();
     });
 
+    it('logout em curso: o debounce pendente não regrava o rascunho', async () => {
+      const { beginLogout, endLogout } = await import('@/lib/api');
+      await mount({ userId: 7 });
+      await type(byLabel('Nome da receita'), 'Bolo');
+      beginLogout();
+      try {
+        await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
+        expect(window.localStorage.getItem(KEY)).toBeNull();
+      } finally {
+        endLogout();
+      }
+    });
+
     it('rascunho de versão diferente da receita avisa', async () => {
       const rec = existente('current');
       (rec as unknown as { recipe: { version: number } }).recipe.version = 4;
