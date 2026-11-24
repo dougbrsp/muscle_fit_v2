@@ -1105,6 +1105,11 @@ export type RecipeListItem = {
   serving_size: number | null;
   version: number | null;
   version_created_at: string | null;
+  is_public: boolean;
+  is_own: boolean;
 };
+
+/** `scope` de `GET /nutrition/recipes`. */
+export type RecipeScope = 'mine' | 'public' | 'favorites';
 
 export type RecipeListResponse = { items: RecipeListItem[] };

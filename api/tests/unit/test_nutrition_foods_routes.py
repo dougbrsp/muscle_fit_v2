@@ -9,6 +9,8 @@ Banco em memória: `tests/support/nutrition_foods_fake.py`."""
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -461,13 +463,55 @@ def test_put_de_receita_e_409_food_is_recipe_e_nao_grava(db):
     assert db.foods[rid]["name"] == "Receita de arroz"
 
 
-def test_receita_nao_e_promovida_e_can_promote_e_falso(db):
+def _versao(db, rid, peso=250, ingredientes=1):
+    """Versão atual gravada da receita (o que a rota de receitas grava), para a promoção ler."""
+    vid = db.next_version_id
+    db.next_version_id += 1
+    db.recipe_versions[vid] = {"id": vid, "food_id": rid, "version": 1, "final_weight_g": peso}
+    for i in range(ingredientes):
+        iid = db.next_ingredient_id
+        db.next_ingredient_id += 1
+        db.recipe_ingredients[iid] = {"id": iid, "version_id": vid, "position": i}
+
+
+def test_receita_promovida_pelo_admin_fica_publica_com_as_porcoes(db):
     rid = _receita(db)
-    admin = _client("admin", ADMIN)
-    resposta = admin.post(f"/nutrition/foods/{rid}/promote")
-    assert resposta.status_code == 409 and resposta.json()["detail"]["error"] == "recipe_promote_not_supported"
+    _versao(db, rid)
+    porcao = db.add_portion(rid, "fatia", 80, owner=ALUNO)
+    assert _client().get(f"/nutrition/foods/{rid}").json()["permissions"]["can_promote"] is False  # sem admin.catalogos
+    assert _client().post(f"/nutrition/foods/{rid}/promote").status_code == 403
+    resposta = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")
+    assert resposta.status_code == 200, resposta.text
+    assert db.foods[rid]["owner_user_id"] is None and db.portions[porcao]["owner_user_id"] is None
+    assert resposta.json()["is_public"] is True
+    assert _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote").status_code == 409  # já pública
+
+
+@pytest.mark.parametrize("quebra,codigo", [
+    ({"name": "   "}, "recipe_publish_name_required"),
+    ({"energy_kcal": None}, "recipe_publish_invalid_values"),
+    ({"protein_g": 500}, "recipe_publish_invalid_values"),
+])
+def test_promocao_de_receita_sem_requisito_e_422_tipado_e_nao_publica(db, quebra, codigo):
+    rid = _receita(db)
+    _versao(db, rid)
+    db.foods[rid].update({k: (None if v is None else Decimal(str(v)) if not isinstance(v, str) else v) for k, v in quebra.items()})
+    r = _client("admin", ADMIN).post(f"/nutrition/foods/{rid}/promote")
+    detalhe = r.json()["detail"]
+    assert r.status_code == 422 and detalhe["code"] == detalhe["error"] == codigo and "_" not in detalhe["message"]
+    assert detalhe["errors"][0]["code"] == codigo
     assert db.foods[rid]["owner_user_id"] == ALUNO
-    assert _client().get(f"/nutrition/foods/{rid}").json()["permissions"]["can_promote"] is False
+
+
+def test_promocao_de_receita_sem_peso_final_ou_sem_ingrediente_e_422(db):
+    sem_versao, sem_ingrediente = _receita(db), _receita(db)
+    _versao(db, sem_ingrediente, ingredientes=0)
+    admin = _client("admin", ADMIN)
+    r1 = admin.post(f"/nutrition/foods/{sem_versao}/promote").json()["detail"]
+    assert {i["code"] for i in r1["errors"]} == {"recipe_publish_final_weight_required", "recipe_publish_no_ingredients"}
+    r2 = admin.post(f"/nutrition/foods/{sem_ingrediente}/promote").json()["detail"]
+    assert r2["code"] == "recipe_publish_no_ingredients"
+    assert db.foods[sem_versao]["owner_user_id"] == db.foods[sem_ingrediente]["owner_user_id"] == ALUNO
 
 
 def test_excluir_receita_arquiva_e_sai_dos_favoritos_e_porcao_vale(db):

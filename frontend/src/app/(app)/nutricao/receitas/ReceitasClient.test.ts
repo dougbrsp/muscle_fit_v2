@@ -18,6 +18,10 @@ vi.mock('@/lib/nutrition-api', async (importOriginal) => ({
   fetchRecipe,
   deleteFood,
 }));
+vi.mock('@/lib/use-is-admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/use-is-admin')>()),
+  fetchCurrentUser: async () => ({ id: 7, permissions: null }),
+}));
 vi.mock('@/components/nutrition/NutritionSubnav', () => ({ NutritionSubnav: () => null }));
 vi.mock('@/components/nutrition/RecipeEditor', () => ({ RecipeEditor: () => createElement('div', null, 'editor-aberto') }));
 vi.mock('@/lib/presentation-slots', () => ({ usePresentationSlot: () => null }));
@@ -28,7 +32,12 @@ let client: QueryClient;
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  window.matchMedia ??= ((q: string) => ({
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  window.matchMedia ??=((q: string) => ({
     matches: false,
     media: q,
     addEventListener() {},
@@ -68,7 +77,14 @@ const click = (label: string) =>
   act(async () => {
     [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(label))!.click();
   });
-const item = (over = {}) => ({ id: 3, name: 'Bolo', per_100: { energy_kcal: 321 }, serving_size: null, version: 2, version_created_at: null, ...over });
+const item = (over = {}) => ({
+  id: 3, name: 'Bolo', per_100: { energy_kcal: 321 }, serving_size: null, version: 2, version_created_at: null, is_public: false, is_own: true, ...over,
+});
+const segment = (label: string) =>
+  act(async () => {
+    const l = [...host.querySelectorAll('label')].find((x) => x.textContent === label)!;
+    (document.getElementById(l.htmlFor) as HTMLInputElement).click();
+  });
 
 describe('ReceitasClient', () => {
   it('estado vazio explica o que são receitas', async () => {
@@ -163,6 +179,27 @@ describe('ReceitasClient', () => {
     await settle();
     expect(host.textContent).toContain('Não foi possível duplicar a receita.');
     expect(host.textContent).toContain('Bolo');
+  });
+
+  it('abas pedem o escopo certo e mostram selo Pública e autoria', async () => {
+    fetchRecipes.mockImplementation(async (s: string) => ({
+      items: s === 'public' ? [item({ id: 5, name: 'Sopa', is_public: true, is_own: false })] : [item()],
+    }));
+    await mount();
+    expect(fetchRecipes).toHaveBeenCalledWith('mine');
+    expect(host.querySelector('[data-testid="autoria"]')!.textContent).toBe('Sua');
+    expect(host.querySelector('[data-testid="selo-publica"]')).toBeNull();
+    await segment('Públicas');
+    await settle();
+    expect(fetchRecipes).toHaveBeenCalledWith('public');
+    expect(host.textContent).toContain('Sopa');
+    expect(host.textContent).toContain('Catálogo');
+    expect(host.querySelector('[data-testid="selo-publica"]')!.textContent).toBe('Pública');
+    expect(host.querySelector('button[aria-label="Abrir Sopa"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Arquivar Sopa"]')).toBeNull();
+    await segment('Favoritas');
+    await settle();
+    expect(fetchRecipes).toHaveBeenCalledWith('favorites');
   });
 
   it('Nova receita abre o editor', async () => {

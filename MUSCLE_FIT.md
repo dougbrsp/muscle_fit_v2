@@ -1807,6 +1807,8 @@ Contagem de decorators de rota por arquivo (grep `@router.|@app.|@me_router.|@mu
 | `main_engines.py` | 2 | `jobs.py` | 1 |
 | `workouts_analysis.py` | 1 | | |
 
+**Receitas (`api/app/nutrition_recipes.py`, prefixo `/nutrition/recipes`, permissão `nutricao.alimentos`; lote 46, issue #286, parte 2).** Leitura: `GET /` com `scope=mine` (padrão), `public` ou `favorites`; `GET /{food_id}` lê a receita própria ou a pública (privada alheia = 404 `food_not_found`), com `instructions`. Edição: `PUT /{food_id}` só o dono na privada; na pública só quem tem `admin.catalogos:editar`, e os outros recebem 403 `recipe_public_edit_forbidden`. `POST /{food_id}/duplicate` (201) copia a receita própria ou a pública para uma privada do chamador. Publicação: `POST /nutrition/foods/{id}/promote` (`nutrition_foods.py`, permissão `admin.catalogos:editar`) aplica os requisitos do motor (422 `recipe_publish_*`) e torna a linha e as porções públicas. Regras: `api/app/domain/nutrition/recipe.py`. Rascunho da tela de receita só no `localStorage` do aparelho; nada disso vai ao servidor.
+
 Distribuição por Lambda HTTP: `musclefit-engines` = `analytics` (27) + `dashboard_modules` (7) + `dashboard_intelligence` (3) + `engines_extra` (2) + `main_engines` (2) = **41**; `musclefit-api-core` = **177**.
 
 Legenda de autenticação usada abaixo:

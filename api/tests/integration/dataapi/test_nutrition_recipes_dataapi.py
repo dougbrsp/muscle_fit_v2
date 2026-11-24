@@ -133,3 +133,50 @@ def test_fluxo_da_receita_identico_nos_dois_backends(aluno_id, raw, monkeypatch,
 
         assert c.delete(f"/nutrition/foods/{rid}").status_code == 200, backend
         assert c.get("/nutrition/recipes").json()["items"] == [], backend
+
+
+ADMIN_USUARIO = "admin_receitas"
+
+
+def test_promover_receita_ler_como_outro_usuario_e_duplicar_nos_dois_backends(
+    aluno_id, raw, monkeypatch, fake_rds, mysql_schema, conceder_grupo
+):
+    with raw.cursor() as cur:
+        cur.execute("DELETE FROM users WHERE username = %s", (ADMIN_USUARIO,))
+        cur.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, 'x', 'admin')", (ADMIN_USUARIO,))
+        admin_id = cur.lastrowid
+        conceder_grupo(cur, admin_id, "admin")
+    raw.commit()
+    try:
+        for backend in BACKENDS:
+            use_backend(backend, monkeypatch, fake_rds, mysql_schema)
+            _limpar(raw)
+            taco = _taco(raw)
+            autor, admin = _client(aluno_id), _client(admin_id)
+            rid = autor.post("/nutrition/recipes", json={
+                "name": "Arroz publicável", "instructions": "Refogar.",
+                "ingredients": [{"food_id": taco[TACO_ARROZ], "quantity": 200, "unit": "g"}],
+                "final_weight_g": 180,
+            }).json()["id"]
+            assert admin.get(f"/nutrition/recipes/{rid}").status_code == 404, backend  # privada alheia
+            assert autor.post(f"/nutrition/foods/{rid}/promote").status_code == 403, backend
+
+            promovida = admin.post(f"/nutrition/foods/{rid}/promote")
+            assert promovida.status_code == 200 and promovida.json()["is_public"], (backend, promovida.text)
+
+            lida = admin.get(f"/nutrition/recipes/{rid}")
+            assert lida.status_code == 200 and lida.json()["recipe"]["instructions"] == "Refogar.", backend
+            assert [r["id"] for r in admin.get("/nutrition/recipes", params={"scope": "public"}).json()["items"]] == [rid], backend
+            assert admin.get("/nutrition/recipes").json()["items"] == [], backend  # `mine`: não é dele
+            assert autor.put(f"/nutrition/recipes/{rid}", json={
+                "name": "X", "ingredients": [{"food_id": taco[TACO_ARROZ], "quantity": 200, "unit": "g"}], "final_weight_g": 180,
+            }).status_code == 403, backend
+
+            copia = admin.post(f"/nutrition/recipes/{rid}/duplicate")
+            assert copia.status_code == 201 and copia.json()["is_own"] and not copia.json()["is_public"], (backend, copia.text)
+            assert [r["id"] for r in admin.get("/nutrition/recipes").json()["items"]] == [copia.json()["id"]], backend
+    finally:
+        _limpar(raw)
+        with raw.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE username = %s", (ADMIN_USUARIO,))
+        raw.commit()

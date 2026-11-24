@@ -7,13 +7,18 @@ VERSÃO (`food_recipe_versions`, migração 125) com os ingredientes e o snapsho
 Rotas (prefixo `/nutrition/recipes`; `nutricao.alimentos`: `ver` nas leituras, `editar` nas demais):
 - `POST /preview`      `RecipePreviewIn` -> cálculo SEM gravar
 - `POST /`             `RecipeSaveIn` -> 201: alimento + versão 1 + ingredientes, numa transação
-- `GET  /`             as receitas ativas do próprio usuário (sem ingredientes)
-- `GET  /{food_id}`    receita + versão atual + ingredientes (`instructions` só para o dono)
-- `PUT  /{food_id}`    `RecipeSaveIn` -> versão nova (version + 1) e atualiza a linha do alimento; ingrediente igual
+- `GET  /?scope=`      `mine` (padrão, ativas do usuário) | `public` | `favorites` (favoritas visíveis); sem ingredientes
+- `GET  /{food_id}`    receita + versão atual + ingredientes e `instructions` (própria ou PÚBLICA; privada alheia = 404)
+- `PUT  /{food_id}`    privada: só o dono; pública: só `admin.catalogos:editar` (outro -> 403 `recipe_public_edit_forbidden`,
+                       inclusive o autor sem a concessão). `RecipeSaveIn` -> versão nova (version + 1) e atualiza a linha; ingrediente igual
                        ao da versão atual (food_id, quantity, unit, portion_id) reaproveita o snapshot gravado, salvo
                        `refresh_ingredients: true` (todos resolvem do catálogo atual)
-- `GET  /{food_id}/versions`    versões (número, criado em, peso final, energia por 100 g efetiva), só do dono
-- `POST /{food_id}/duplicate`   201: receita nova privada a partir da versão atual (snapshots, ajustes, modo de preparo)
+- `GET  /{food_id}/versions`    versões (número, criado em, peso final, energia por 100 g efetiva), receita visível
+- `POST /{food_id}/duplicate`   201: receita nova privada do chamador a partir da versão atual de receita pública ou própria
+Publicar: `POST /nutrition/foods/{id}/promote` (`admin.catalogos:editar`, em `nutrition_foods`) aplica
+`recipe.publish_blockers` (422 `recipe_publish_*`) e torna a linha e as porções públicas no lugar.
+Ingrediente de pública vindo de alimento privado do autor: só o snapshot gravado; `catalog_status` de quem não é o
+autor sai `unavailable`.
 Leitura: cada ingrediente traz `catalog_status` (`current`|`outdated`|`unavailable`) contra o catálogo de hoje.
 
 Erros, três formatos para a tela: (1) 422 do corpo, no formato do pydantic (`detail` é lista); (2) 422 tipado
@@ -34,7 +39,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional, Sequence
+from typing import Any, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
@@ -48,7 +53,7 @@ from .db_helpers import connect_or_503
 from .domain.nutrition import catalog, meal_math
 from .domain.nutrition import labels as nutrition_labels
 from .domain.nutrition import recipe as recipe_engine
-from .nutrition_access import can_log_food, can_log_portion
+from .nutrition_access import administers_public_catalog, can_log_food, can_log_portion, ownership
 from .nutrition_schema import require_food_tables, require_recipe_tables
 from .request_models import FoodItemIn, RecipePreviewIn, RecipeSaveIn
 from .security import Identity
@@ -86,9 +91,16 @@ INSERT_INGREDIENT_SQL = (
     f"INSERT INTO {INGREDIENTS} (version_id, position, food_id, item_label, quantity, unit, portion_id, amount, "
     "basis, catalog_snapshot_json) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 )
-LIST_SQL = (
-    f"SELECT id, name, serving_size, {', '.join(catalog.PER_100_FIELDS)}, updated_at FROM {foods_mod.FOODS} "
-    f"WHERE source = %s AND owner_user_id = %s AND is_active = 1 ORDER BY name_normalized, id LIMIT {LIST_LIMIT}"
+_LIST_HEAD = (
+    f"SELECT id, name, serving_size, owner_user_id, {', '.join(catalog.PER_100_FIELDS)}, updated_at "
+    f"FROM {foods_mod.FOODS} WHERE source = %s AND is_active = 1"
+)
+_LIST_TAIL = f"ORDER BY name_normalized, id LIMIT {LIST_LIMIT}"
+LIST_SQL = f"{_LIST_HEAD} AND owner_user_id = %s {_LIST_TAIL}"
+LIST_PUBLIC_SQL = f"{_LIST_HEAD} AND owner_user_id IS NULL {_LIST_TAIL}"
+# Favoritas (tabela dos alimentos, migração 102): só as que o usuário pode ver (públicas ou dele).
+LIST_FAVORITES_SQL = (
+    f"{_LIST_HEAD} AND {foods_mod.FAVORITES_ONLY_SQL} AND (owner_user_id IS NULL OR owner_user_id = %s) {_LIST_TAIL}"
 )
 
 
@@ -335,13 +347,20 @@ def _recipe_row(cur: Any, food_id: int, identity: Identity, lock: bool = False) 
         not linha
         or not linha.get("is_active", 1)
         or not catalog.is_recipe_source(linha.get("source"))
-        # Estritamente do dono, inclusive para quem administra o catálogo; quando a receita puder ser pública
-        # (segunda fatia), a regra de leitura será revista.
-        or linha.get("owner_user_id") is None
-        or int(linha["owner_user_id"]) != int(identity.user_id)
+        # Pública ou do próprio usuário (inclusive para quem administra o catálogo: privada alheia segue 404).
+        or not recipe_engine.can_view_recipe(linha.get("owner_user_id"), int(identity.user_id))
     ):
         raise _not_found()
     return linha
+
+
+def promotion_blockers(cur: Any, linha: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Requisitos de publicação da receita `linha` (regra do motor) sobre a versão atual gravada."""
+    versao, ingredientes = _current_ingredients(cur, int(linha["id"]))
+    return recipe_engine.publish_blockers(
+        linha.get("name"), versao.get("final_weight_g") if versao else None, len(ingredientes),
+        {c: _num(linha.get(c)) for c in catalog.PER_100_FIELDS},
+    )
 
 
 def _current_ingredients(
@@ -384,13 +403,13 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
     uid = int(identity.user_id)
 
     def _status(ingrediente: dict[str, Any]) -> str:
+        # Alimento privado do autor, visto por outro usuário: `can_log_food` nega -> "unavailable" (sem o estado atual).
         alimento = atuais.get(int(ingrediente["food_id"]))
         visivel = alimento is not None and alimento.get("is_active", 1) and can_log_food(identity, uid, alimento)
         valores = meals_mod.food_snapshot(alimento)["per_100"] if visivel else None
         gravado = (_json(ingrediente.get("catalog_snapshot_json")) or {}).get("food", {}).get("per_100")
         return recipe_engine.ingredient_catalog_status(gravado, valores)
 
-    dono = linha.get("owner_user_id") is not None and int(linha["owner_user_id"]) == int(identity.user_id)
     calculo = _json(versao.get("calculated_json")) or {}
     return {
         **foods_mod.food_public(linha, identity, permissoes),
@@ -400,7 +419,7 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
             "final_weight_g": _num(versao.get("final_weight_g")),
             "raw_weight_g": _num(versao.get("raw_weight_g")),
             "yield_percent": _num(versao.get("yield_percent")),
-            "instructions": versao.get("instructions") if dono else None,
+            "instructions": versao.get("instructions"),  # a linha já passou por `_recipe_row`: pública ou do usuário
             "engine_version": versao.get("engine_version"),
             "calculation": calculo or None,
             # Versão anterior a este campo não tem `limitation_codes`: cai nas do resultado.
@@ -453,13 +472,23 @@ def create_recipe(
 
 
 @router.get("")
-def list_recipes(identity: Identity = Depends(require_permission("nutricao.alimentos", "ver"))):
+def list_recipes(
+    scope: Literal["mine", "public", "favorites"] = "mine",
+    identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
+):
+    """`scope`: `mine` (padrão: as do usuário), `public` (do catálogo) ou `favorites` (favoritadas, públicas e próprias)."""
     uid = int(identity.user_id)
+    fonte = catalog.FoodSource.RECIPE.value
+    sql, params = {
+        "mine": (LIST_SQL, (fonte, uid)),
+        "public": (LIST_PUBLIC_SQL, (fonte,)),
+        "favorites": (LIST_FAVORITES_SQL, (fonte, uid, uid)),
+    }[scope]
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
             require_recipe_tables(cur)
-            cur.execute(LIST_SQL, (catalog.FoodSource.RECIPE.value, uid))
+            cur.execute(sql, params)
             linhas = cur.fetchall() or []
             versoes: dict[int, dict[str, Any]] = {}
             if linhas:
@@ -475,6 +504,7 @@ def list_recipes(identity: Identity = Depends(require_permission("nutricao.alime
                 "name": r.get("name"),
                 "per_100": {c: _num(r.get(c)) for c in catalog.PER_100_FIELDS},
                 "serving_size": _num(r.get("serving_size")),
+                **ownership(identity, r.get("owner_user_id")),
                 "version": int(versao["version"]) if versao else None,
                 "version_created_at": _iso(versao.get("created_at")) if versao else None,
             }
@@ -509,6 +539,11 @@ def update_recipe(
             # mesmas condições valem de novo sobre a linha travada (arquivar concorrente -> 404).
             for lock in (False, True):
                 linha = _recipe_row(cur, food_id, identity, lock=lock)
+                # Pública: só quem administra o catálogo edita (403 tipado: a pública existe para todos).
+                if not recipe_engine.can_edit_recipe(
+                    linha.get("owner_user_id"), uid, administers_public_catalog(permissoes, "editar")
+                ):
+                    raise _error(recipe_engine.ERR_PUBLIC_EDIT_FORBIDDEN_STATUS, recipe_engine.ERR_PUBLIC_EDIT_FORBIDDEN)
             reuse = {} if payload.refresh_ingredients else {
                 _item_key(i): i for i in _current_ingredients(cur, int(food_id), lock=True)[1]
             }
@@ -554,7 +589,7 @@ def list_versions(food_id: int, identity: Identity = Depends(require_permission(
 def duplicate_recipe(
     request: Request, food_id: int, identity: Identity = Depends(require_permission("nutricao.alimentos", "editar"))
 ):
-    """Cópia privada do chamador: só o dono duplica (`_recipe_row`); ingredientes com o snapshot da versão atual."""
+    """Cópia privada do chamador, de receita pública ou própria (`_recipe_row`); ingredientes com o snapshot da versão atual."""
     permissoes = permissions_for_request(request, identity)
     with _connect() as conn:
         with conn.cursor() as cur:

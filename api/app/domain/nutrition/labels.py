@@ -706,7 +706,11 @@ LIMITATION_LABELS: Final[Mapping[str, str]] = {
     "recipe_ingredient_is_recipe": "Receita não pode ser ingrediente de outra receita.",
     "recipe_ingredient_portion_not_found": "Porção não encontrada para o ingrediente.",
     "food_is_recipe": "Receita se edita pela tela de receita.",
-    "recipe_promote_not_supported": "Receita ainda não pode ser promovida a pública.",
+    recipe_mod.ERR_PUBLISH_NAME_REQUIRED: "A receita precisa de nome para ser publicada.",
+    recipe_mod.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED: "A receita precisa do peso final para ser publicada.",
+    recipe_mod.ERR_PUBLISH_NO_INGREDIENTS: "A receita precisa de ao menos um ingrediente para ser publicada.",
+    recipe_mod.ERR_PUBLISH_INVALID_VALUES: "Os valores por 100 g da receita estão fora das regras do catálogo.",
+    recipe_mod.ERR_PUBLIC_EDIT_FORBIDDEN: "Receita pública só é editada por quem administra o catálogo.",
     "recipe_version_conflict": "Outra edição da receita foi salva ao mesmo tempo. Tente de novo.",
     # Dado do sujeito (o 422 do preview lista estes).
     bmr_mod.LIMIT_MISSING_SEX: "Sexo não informado no perfil.",

@@ -244,7 +244,7 @@ def test_todo_codigo_de_limitacao_da_meta_e_do_plano_tem_texto():
 
 def test_todo_codigo_de_receita_tem_rotulo_pt_br():
     do_motor = {v for n, v in vars(_recipe).items() if n.startswith(("ERR_", "LIMIT_")) and isinstance(v, str)}
-    das_rotas = {"food_is_recipe", "recipe_promote_not_supported", "recipe_ingredient_not_found",
+    das_rotas = {"food_is_recipe", "recipe_ingredient_not_found",
                  "recipe_ingredient_is_recipe", "recipe_ingredient_portion_not_found",
                  "recipe_version_conflict"}
     assert do_motor

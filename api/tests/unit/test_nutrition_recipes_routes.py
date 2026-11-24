@@ -38,10 +38,10 @@ def db(monkeypatch):
     return banco
 
 
-def _client(user_id: int = DONO) -> TestClient:
+def _client(user_id: int = DONO, role: str = "regular") -> TestClient:
     app = FastAPI()
     app.include_router(recipes_mod.router)
-    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=user_id, role="regular", source="session")
+    app.dependency_overrides[get_current_identity] = lambda: Identity(user_id=user_id, role=role, source="session")
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -103,8 +103,10 @@ def test_ler_traz_versao_atual_e_instructions_so_para_o_dono(db):
     novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R", instructions="Segredo")).json()
     dono = _client().get(f"/nutrition/recipes/{novo['id']}")
     assert dono.status_code == 200 and dono.json()["recipe"]["instructions"] == "Segredo"
-    db.foods[novo["id"]]["owner_user_id"] = None  # nesta fatia receita sem dono não é lida por ninguém (404)
-    assert _client(OUTRO).get(f"/nutrition/recipes/{novo['id']}").status_code == 404
+    assert _client(OUTRO).get(f"/nutrition/recipes/{novo['id']}").status_code == 404  # privada alheia
+    db.foods[novo["id"]]["owner_user_id"] = None  # pública: o modo de preparo vai junto
+    outro = _client(OUTRO).get(f"/nutrition/recipes/{novo['id']}")
+    assert outro.status_code == 200 and outro.json()["recipe"]["instructions"] == "Segredo"
 
 
 def test_editar_cria_versao_2_e_atualiza_o_por_100_do_alimento(db):
@@ -549,3 +551,89 @@ def test_duplicar_cria_receita_privada_nova_com_snapshot_ajustes_e_modo_de_prepa
     assert linha["owner_user_id"] == DONO and db.foods[novo["id"]]["name"] == "Original"
     assert _kcal(_ingredientes_gravados(db, copia["id"], 1)[0]) == 130
     assert _client(OUTRO).post(f"/nutrition/recipes/{novo['id']}/duplicate").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Publicação (#286, parte 2): leitura, edição, duplicação e listagem da receita pública
+# ---------------------------------------------------------------------------
+
+
+def _publica(db, user: int = DONO, **extra) -> int:
+    """Receita criada pela rota e tornada pública (o que a promoção do catálogo faz: dono NULL)."""
+    rid = _client(user).post("/nutrition/recipes", json=_corpo(db, name="Pública", instructions="Cozinhar.", **extra)).json()["id"]
+    db.foods[rid]["owner_user_id"] = None
+    return rid
+
+
+def test_publica_e_lida_por_qualquer_usuario_com_ingredientes_e_versoes_privada_alheia_segue_404(db):
+    rid = _publica(db)
+    r = _client(OUTRO).get(f"/nutrition/recipes/{rid}")
+    assert r.status_code == 200 and r.json()["is_public"] and not r.json()["is_own"]
+    assert len(r.json()["recipe"]["ingredients"]) == 2 and r.json()["recipe"]["instructions"] == "Cozinhar."
+    assert [v["version"] for v in _client(OUTRO).get(f"/nutrition/recipes/{rid}/versions").json()["items"]] == [1]
+    privada = _client().post("/nutrition/recipes", json=_corpo(db, name="P")).json()["id"]
+    assert _client(OUTRO).get(f"/nutrition/recipes/{privada}").json() == _client(OUTRO).get("/nutrition/recipes/9999").json()
+    db.foods[rid]["is_active"] = 0
+    assert _client(OUTRO).get(f"/nutrition/recipes/{rid}").status_code == 404
+
+
+def test_editar_publica_so_o_admin_do_catalogo_cria_versao_e_o_autor_comum_leva_403_tipado(db):
+    rid = _publica(db)
+    for quem in (_client(OUTRO), _client(DONO)):  # inclusive o autor original, sem `admin.catalogos`
+        r = quem.put(f"/nutrition/recipes/{rid}", json=_corpo(db, name="X"))
+        assert r.status_code == 403 and _codigo(r) == "recipe_public_edit_forbidden"
+        assert "_" not in r.json()["detail"]["message"]
+    assert len(db.recipe_versions) == 1 and db.foods[rid]["name"] == "Pública"
+    ok = _client(99, "admin").put(f"/nutrition/recipes/{rid}", json=_corpo(db, name="Revisada", final_weight_g=300))
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["recipe"]["version"] == 2 and ok.json()["is_public"] and db.foods[rid]["owner_user_id"] is None
+    assert sorted(v["version"] for v in db.recipe_versions.values()) == [1, 2]
+
+
+def test_duplicar_publica_de_outro_gera_copia_privada_do_chamador(db):
+    rid = _publica(db)
+    r = _client(OUTRO).post(f"/nutrition/recipes/{rid}/duplicate")
+    assert r.status_code == 201, r.text
+    copia = r.json()
+    assert copia["is_own"] and not copia["is_public"] and db.foods[copia["id"]]["owner_user_id"] == OUTRO
+    assert copia["recipe"]["instructions"] == "Cozinhar." and db.foods[rid]["owner_user_id"] is None
+
+
+def test_listar_por_escopo_mine_public_favorites(db):
+    minha = _client().post("/nutrition/recipes", json=_corpo(db, name="Minha")).json()["id"]
+    publica = _publica(db, OUTRO)
+    alheia = _client(OUTRO).post("/nutrition/recipes", json=_corpo(db, name="Alheia privada")).json()["id"]
+
+    def ids(escopo=None, user=DONO):
+        params = {} if escopo is None else {"scope": escopo}
+        return [i["id"] for i in _client(user).get("/nutrition/recipes", params=params).json()["items"]]
+
+    assert ids() == ids("mine") == [minha]
+    assert ids("public") == [publica] and ids("favorites") == []
+    db.favorites += [{"user_id": DONO, "food_id": f} for f in (minha, publica, alheia, db.arroz)]
+    assert sorted(ids("favorites")) == sorted([minha, publica])  # nem a privada alheia nem alimento comum
+    item = _client().get("/nutrition/recipes", params={"scope": "public"}).json()["items"][0]
+    assert item["is_public"] and not item["is_own"]
+    assert _client().get("/nutrition/recipes", params={"scope": "todas"}).status_code == 422
+
+
+def test_listar_publicas_nao_tem_n_mais_1(db):
+    for _ in range(3):
+        _publica(db, OUTRO)
+    db.queries.clear()
+    assert len(_client().get("/nutrition/recipes", params={"scope": "public"}).json()["items"]) == 3
+    assert len([s for s, _ in db.queries if s.startswith("SELECT food_id, version")]) == 1
+
+
+def test_ingrediente_privado_do_autor_so_aparece_pelo_snapshot_e_sem_status_para_os_outros(db):
+    rid = _client(OUTRO).post(
+        "/nutrition/recipes",
+        json={"name": "Com molho", "ingredients": [{"food_id": db.privado, "quantity": 100, "unit": "g"}], "final_weight_g": 100},
+    ).json()["id"]
+    db.foods[rid]["owner_user_id"] = None
+    db.foods[db.privado]["energy_kcal"] = Decimal("999")  # o alimento privado mudou depois
+    visto = _client(DONO).get(f"/nutrition/recipes/{rid}").json()["recipe"]["ingredients"][0]
+    assert visto["per_100"]["energy_kcal"] == 50 and visto["catalog_status"] == "unavailable"
+    assert "999" not in json.dumps(visto)
+    autor = _client(OUTRO).get(f"/nutrition/recipes/{rid}").json()["recipe"]["ingredients"][0]
+    assert autor["per_100"]["energy_kcal"] == 50 and autor["catalog_status"] == "outdated"

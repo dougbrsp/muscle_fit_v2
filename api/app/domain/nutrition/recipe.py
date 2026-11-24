@@ -65,6 +65,13 @@ ERR_YIELD_IMPLAUSIBLE = "recipe_yield_implausible"
 ERR_OVERRIDE_FIELD = "recipe_override_field_invalid"  # `:<campo>`
 ERR_OVERRIDE_VALUE = "recipe_override_value_invalid"  # `:<campo>`
 
+ERR_PUBLISH_NAME_REQUIRED = "recipe_publish_name_required"
+ERR_PUBLISH_FINAL_WEIGHT_REQUIRED = "recipe_publish_final_weight_required"
+ERR_PUBLISH_NO_INGREDIENTS = "recipe_publish_no_ingredients"
+ERR_PUBLISH_INVALID_VALUES = "recipe_publish_invalid_values"
+ERR_PUBLIC_EDIT_FORBIDDEN = "recipe_public_edit_forbidden"
+ERR_PUBLIC_EDIT_FORBIDDEN_STATUS = 403  # pública existe para todos: não há o que esconder (privada alheia é 404)
+
 LIMIT_RAW_WEIGHT_EXCLUDES_ML = "recipe_raw_weight_excludes_ml"
 LIMIT_INCOMPLETE = "recipe_incomplete"  # `:<campo>`
 WARN_ATWATER = catalog.WARN_ATWATER
@@ -260,6 +267,36 @@ def overrides_from_effective(effective_json: Optional[Mapping[str, Any]]) -> dic
     efetivo = effective_json or {}
     valores = efetivo.get("effective") or {}
     return {campo: valores.get(campo) for campo in efetivo.get("overridden_fields") or ()}
+
+
+def publish_blockers(
+    name: Any, final_weight_g: Any, ingredient_count: int, per_100: Mapping[str, Any]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Requisitos para tornar a receita pública (como alimento): nome, peso final, ao menos um ingrediente e valores
+    por 100 g válidos pela regra do catálogo. Devolve (códigos `recipe_publish_*`, erros do catálogo dos valores)."""
+    codigos: list[str] = []
+    if not str(name or "").strip():
+        codigos.append(ERR_PUBLISH_NAME_REQUIRED)
+    if positive_number(final_weight_g) is None:
+        codigos.append(ERR_PUBLISH_FINAL_WEIGHT_REQUIRED)
+    if ingredient_count < 1:
+        codigos.append(ERR_PUBLISH_NO_INGREDIENTS)
+    erros = tuple(catalog.validate_food_values(per_100, "g", required=catalog.RECIPE_REQUIRED_PER_100_FIELDS).errors)
+    if erros:
+        codigos.append(ERR_PUBLISH_INVALID_VALUES)
+    return tuple(codigos), erros
+
+
+def can_view_recipe(owner_user_id: Optional[int], user_id: int) -> bool:
+    """Pública (dono NULL) ou do próprio usuário; o resto é inexistente para ele. Vale também para o modo de preparo."""
+    return owner_user_id is None or int(owner_user_id) == int(user_id)
+
+
+def can_edit_recipe(owner_user_id: Optional[int], user_id: int, administers_catalog: bool) -> bool:
+    """Privada: só o dono. Pública: só quem administra o catálogo (o autor original sem a concessão não edita)."""
+    if owner_user_id is None:
+        return bool(administers_catalog)
+    return int(owner_user_id) == int(user_id)
 
 
 def copy_name(name: str) -> str:

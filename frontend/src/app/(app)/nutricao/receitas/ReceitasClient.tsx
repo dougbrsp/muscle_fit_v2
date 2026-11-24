@@ -1,13 +1,26 @@
 'use client';
 
-import { Alert, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Group, Loader, Paper, SegmentedControl, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NutritionSubnav } from '@/components/nutrition/NutritionSubnav';
 import { RecipeEditor } from '@/components/nutrition/RecipeEditor';
 import { deleteFood, duplicateRecipe, fetchRecipe, fetchRecipes, nutritionErrorInfo, recipeKeys } from '@/lib/nutrition-api';
+import type { RecipeScope } from '@/lib/nutrition-types';
 import { usePresentationSlot } from '@/lib/presentation-slots';
+import { fetchCurrentUser } from '@/lib/use-is-admin';
+
+const SCOPES: { value: RecipeScope; label: string }[] = [
+  { value: 'mine', label: 'Minhas' },
+  { value: 'public', label: 'Públicas' },
+  { value: 'favorites', label: 'Favoritas' },
+];
+const VAZIO: Record<RecipeScope, string> = {
+  mine: 'Você ainda não tem receitas. Crie uma para registrar pratos preparados em casa, com os valores por 100 g calculados dos ingredientes.',
+  public: 'Ainda não há receitas públicas no catálogo.',
+  favorites: 'Você ainda não favoritou receitas.',
+};
 import { BRAND } from '@/theme';
 
 const DESCRICAO =
@@ -21,7 +34,11 @@ export function ReceitasClient() {
   const [editing, setEditing] = useState<'new' | number | null>(null);
   const [archiving, setArchiving] = useState<number | null>(null);
 
-  const list = useQuery({ queryKey: recipeKeys.list(), queryFn: fetchRecipes, retry: false });
+  const [scope, setScope] = useState<RecipeScope>('mine');
+  // Sessão para a chave do rascunho no aparelho (mesma query de `usePermissions`).
+  const me = useQuery({ queryKey: ['current-user'], queryFn: fetchCurrentUser, staleTime: 60_000, retry: false });
+
+  const list = useQuery({ queryKey: recipeKeys.list(scope), queryFn: () => fetchRecipes(scope), retry: false });
   const detail = useQuery({
     queryKey: recipeKeys.detail(typeof editing === 'number' ? editing : 0),
     queryFn: () => fetchRecipe(editing as number),
@@ -95,7 +112,14 @@ export function ReceitasClient() {
           <RecipeEditor
             key={editing}
             recipe={typeof editing === 'number' ? (detail.data ?? null) : null}
+            userId={me.data?.id}
+            onDuplicate={typeof editing === 'number' ? () => duplicate.mutate(editing) : undefined}
+            duplicating={duplicate.isPending}
             onSaved={async () => {
+              setEditing(null);
+              await refresh();
+            }}
+            onPublished={async () => {
               setEditing(null);
               await refresh();
             }}
@@ -104,7 +128,17 @@ export function ReceitasClient() {
         )
       ) : (
         <Stack gap="md">
-          <Group>
+          <Group justify="space-between">
+            <SegmentedControl
+              aria-label="Escopo das receitas"
+              value={scope}
+              onChange={(v) => {
+                archive.reset();
+                setArchiving(null);
+                setScope(v as RecipeScope);
+              }}
+              data={SCOPES}
+            />
             <Button onClick={() => open('new')}>Nova receita</Button>
           </Group>
 
@@ -124,19 +158,24 @@ export function ReceitasClient() {
               {nutritionErrorInfo(list.error, 'Não foi possível carregar as receitas.').message}
             </Alert>
           )}
-          {list.data && list.data.items.length === 0 && (
-            <Text c={BRAND.textMuted}>
-              Você ainda não tem receitas. Crie uma para registrar pratos preparados em casa, com os valores por 100 g calculados dos
-              ingredientes.
-            </Text>
-          )}
+          {list.data && list.data.items.length === 0 && <Text c={BRAND.textMuted}>{VAZIO[scope]}</Text>}
           {list.data?.items.map((r) => (
             <Paper key={r.id} withBorder radius="md" p="md" bg={BRAND.bgElevated} data-testid="receita">
               <Group justify="space-between" wrap="wrap">
                 <Stack gap={2}>
-                  <Text fw={600} c={BRAND.textPrimary}>
-                    {r.name}
-                  </Text>
+                  <Group gap="xs">
+                    <Text fw={600} c={BRAND.textPrimary}>
+                      {r.name}
+                    </Text>
+                    {r.is_public && (
+                      <Badge variant="light" data-testid="selo-publica">
+                        Pública
+                      </Badge>
+                    )}
+                    <Badge variant="outline" color="gray" data-testid="autoria">
+                      {r.is_own ? 'Sua' : 'Catálogo'}
+                    </Badge>
+                  </Group>
                   <Text size="sm" c={BRAND.textMuted}>
                     {r.per_100.energy_kcal != null ? `${r.per_100.energy_kcal} kcal por 100 g` : 'Energia não calculada'}
                     {r.version != null && ` · versão ${r.version}`}
@@ -157,8 +196,8 @@ export function ReceitasClient() {
                   </Group>
                 ) : (
                   <Group gap="xs">
-                    <Button variant="light" size="xs" onClick={() => open(r.id)} aria-label={`Editar ${r.name}`}>
-                      Editar
+                    <Button variant="light" size="xs" onClick={() => open(r.id)} aria-label={`${r.is_own ? 'Editar' : 'Abrir'} ${r.name}`}>
+                      {r.is_own ? 'Editar' : 'Abrir'}
                     </Button>
                     <Button
                       variant="default"
@@ -170,12 +209,14 @@ export function ReceitasClient() {
                     >
                       Duplicar
                     </Button>
-                    <Button variant="subtle" color="red" size="xs" onClick={() => {
-                        archive.reset();
-                        setArchiving(r.id);
-                      }} aria-label={`Arquivar ${r.name}`}>
-                      Arquivar
-                    </Button>
+                    {r.is_own && (
+                      <Button variant="subtle" color="red" size="xs" onClick={() => {
+                          archive.reset();
+                          setArchiving(r.id);
+                        }} aria-label={`Arquivar ${r.name}`}>
+                        Arquivar
+                      </Button>
+                    )}
                   </Group>
                 )}
               </Group>

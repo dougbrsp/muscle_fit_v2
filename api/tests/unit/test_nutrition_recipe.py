@@ -204,3 +204,33 @@ def test_overrides_da_versao_gravada_e_nome_da_copia():
     assert rc.overrides_from_effective(None) == {}
     copia = rc.copy_name("x" * rc.RECIPE_NAME_MAX_CHARS)
     assert len(copia) == rc.RECIPE_NAME_MAX_CHARS and copia.endswith(rc.RECIPE_COPY_SUFFIX)
+
+
+# --- publicação (#286, parte 2) -------------------------------------------------
+
+
+_VALORES = {"energy_kcal": 150.0, "protein_g": 5.0, "carbohydrates_g": 20.0, "total_fat_g": 4.0}
+
+
+def test_publish_blockers_completa_nao_tem_bloqueio():
+    assert rc.publish_blockers("Bolo", 300, 2, _VALORES) == ((), ())
+
+
+def test_publish_blockers_acusa_cada_requisito_que_falta():
+    codigos, erros = rc.publish_blockers(" ", None, 0, {"energy_kcal": None})
+    assert codigos == (
+        rc.ERR_PUBLISH_NAME_REQUIRED, rc.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED,
+        rc.ERR_PUBLISH_NO_INGREDIENTS, rc.ERR_PUBLISH_INVALID_VALUES,
+    )
+    assert erros  # códigos do catálogo para a tela
+
+
+def test_publish_blockers_peso_zero_e_valor_fora_da_regra():
+    assert rc.publish_blockers("Bolo", 0, 1, _VALORES)[0] == (rc.ERR_PUBLISH_FINAL_WEIGHT_REQUIRED,)
+    assert rc.publish_blockers("Bolo", 300, 1, {**_VALORES, "protein_g": 500.0})[0] == (rc.ERR_PUBLISH_INVALID_VALUES,)
+
+
+def test_visibilidade_e_edicao_de_receita():
+    assert rc.can_view_recipe(None, 1) and rc.can_view_recipe(1, 1) and not rc.can_view_recipe(2, 1)
+    assert rc.can_edit_recipe(1, 1, False) and not rc.can_edit_recipe(2, 1, True)  # privada: só o dono
+    assert rc.can_edit_recipe(None, 9, True) and not rc.can_edit_recipe(None, 1, False)  # pública: só admin
