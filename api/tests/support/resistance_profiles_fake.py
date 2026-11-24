@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from app import resistance_profile_ai as ai_mod
 from app import resistance_profiles as rp_mod
 
 AGORA = datetime(2026, 11, 23, 12, 0, 0)
@@ -140,6 +141,40 @@ class FakeCursor:
                     cont[chave] = cont.get(chave, 0) + 1
             nomes = ("status", "source", "mechanism", "trajectory", "profile", "line", "direction_changes")
             self.rows = [{**dict(zip(nomes, k)), "n": n} for k, n in cont.items()]
+        elif sql.startswith("SELECT eqex.id AS equipment_exercise_id FROM"):  # escolha dos pendentes (suggest)
+            filtros = sql.split("WHERE eqex.is_active = 1", 1)[1].split(" ORDER BY")[0]
+            linhas = self._filtered(filtros, p[:-1])
+            linhas.sort(key=lambda r: (r["profile_id"] is not None, r["updated_at"] or AGORA, r["equipment_exercise_id"]))
+            self.rows = [{"equipment_exercise_id": r["equipment_exercise_id"]} for r in linhas[: p[-1]]]
+        elif sql == ai_mod.PAIR_INPUT_SQL.format(marks=", ".join(["%s"] * len(p))):
+            for pid in p:
+                pair = db.pairs.get(int(pid))
+                if pair and pair["is_active"]:
+                    j = self._joined(pair)
+                    self.rows.append({"equipment_exercise_id": pair["id"], "exercise_name": j["exercise_name"],
+                                      "equipment_name": j["equipment_name"], "profile_status": j["status"],
+                                      "body_position": None, "movement": None, "trajectory": None,
+                                      "biomechanical_pattern": None, "primary_joint": None,
+                                      "resistance_vector": None, "equipment_type": None, "manufacturer": None})
+        elif sql == ai_mod.PROFILE_FOR_UPDATE_SQL:
+            atual = self._profile_of(int(p[0]))
+            self.rows = [{"id": atual["id"], "status": atual["status"]}] if atual else []
+        elif sql == ai_mod.INSERT_SQL:
+            if self._profile_of(int(p[0])):
+                raise _Duplicate()
+            chaves = (*_PROFILE_KEYS[:7], "confidence", "status", "origin", "rationale", "vocabulary_version")
+            row = {"equipment_exercise_id": p[0], **dict(zip(chaves, p[1:13])), "evidence": None,
+                   "model_version": p[13], "created_by": p[14], "reviewed_by": None, "reviewed_at": None,
+                   "updated_at": AGORA}
+            row["id"] = self.lastrowid = db.next_id
+            db.next_id += 1
+            db.profiles[row["id"]] = row
+        elif sql == ai_mod.UPDATE_SQL:
+            chaves = (*_PROFILE_KEYS[:7], "confidence", "status", "origin", "rationale", "vocabulary_version")
+            db.profiles[int(p[-1])].update(dict(zip(chaves, p[:12])), model_version=p[12], updated_at=AGORA)
+        elif sql == ai_mod.HISTORY_INSERT_SQL:
+            db.history.append({"id": len(db.history) + 1, "profile_id": p[0], "before_json": p[1], "after_json": p[2],
+                               "actor_user_id": p[3], "origin": p[4], "reason": p[5], "created_at": AGORA})
         elif sql == rp_mod.PROFILE_FOR_UPDATE_SQL:
             atual = self._profile_of(int(p[0]))
             self.rows = [dict(atual)] if atual else []  # copia: o banco real nao devolve a linha viva

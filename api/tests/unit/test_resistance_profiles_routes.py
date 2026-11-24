@@ -229,3 +229,76 @@ def test_sem_as_tabelas_503_citando_a_126_em_todas_as_rotas(db):
 
 def test_regular_le_a_cobertura(db):
     assert _client("regular").get("/resistance-profiles/coverage").status_code == 200
+
+
+# --- POST /suggest (job assincrono de sugestao por IA) ---
+
+
+@pytest.fixture
+def despacho(monkeypatch):
+    chamadas: dict = {"jobs": [], "invokes": []}
+    monkeypatch.setattr(mod.async_jobs, "create_job",
+                        lambda tipo, request=None, *, owner_user_id: chamadas["jobs"].append((tipo, request, owner_user_id)) or "job-1")
+    monkeypatch.setattr(mod.async_jobs, "invoke_async", lambda env, payload: chamadas["invokes"].append((env, payload)))
+    return chamadas
+
+
+def test_suggest_com_ids_cria_job_para_a_lambda_de_ia(db, despacho):
+    r = _client().post("/resistance-profiles/suggest", json={"equipment_exercise_ids": [100, 101, 100]})
+    assert r.status_code == 202 and r.json() == {"job_id": "job-1", "pairs": 2}
+    assert despacho["jobs"] == [(dono.SUGGEST_JOB_TYPE, {"payload": {"equipment_exercise_ids": [100, 101]}, "user_id": ADMIN}, ADMIN)]
+    env, evento = despacho["invokes"][0]
+    assert env == "WORKOUT_AI_FUNCTION_NAME"
+    assert evento["job_type"] == dono.SUGGEST_JOB_TYPE and evento["payload"] == {"equipment_exercise_ids": [100, 101]}
+
+
+def test_suggest_sem_ids_escolhe_pendentes_sem_revisado_sem_perfil_primeiro(db, despacho):
+    db.add_profile(100, status="reviewed", origin="admin")
+    db.add_profile(101, status="suggested")
+    r = _client().post("/resistance-profiles/suggest", json={})
+    assert r.status_code == 202
+    assert despacho["invokes"][0][1]["payload"]["equipment_exercise_ids"] == [102, 101]  # 103 inativo, 100 revisado
+
+
+def test_suggest_limit_corta_a_escolha(db, despacho):
+    _client().post("/resistance-profiles/suggest", json={"limit": 1})
+    assert despacho["invokes"][0][1]["payload"]["equipment_exercise_ids"] == [100]
+
+
+def test_suggest_sem_pendentes_nao_cria_job(db, despacho):
+    for pid in (100, 101, 102):
+        db.add_profile(pid, status="verified", origin="admin")
+    r = _client().post("/resistance-profiles/suggest", json={})
+    assert r.status_code == 202 and r.json() == {"job_id": None, "pairs": 0}
+    assert not despacho["jobs"] and not despacho["invokes"]
+
+
+@pytest.mark.parametrize("corpo", [
+    {"limit": dono.SUGGEST_MAX_PAIRS + 1}, {"limit": 0}, {"limit": True}, {"equipment_exercise_ids": []},
+    {"equipment_exercise_ids": list(range(1, dono.SUGGEST_MAX_PAIRS + 2))}, {"equipment_exercise_ids": [0]},
+    {"equipment_exercise_ids": ["a"]}, {"equipment_exercise_ids": [True]}, {"extra": 1},
+])
+def test_suggest_corpo_estrito_e_teto_422(db, despacho, corpo):
+    assert _client().post("/resistance-profiles/suggest", json=corpo).status_code == 422
+    assert not despacho["jobs"]
+
+
+def test_suggest_so_admin_do_catalogo(db, despacho):
+    assert _client("regular").post("/resistance-profiles/suggest", json={}).status_code == 403
+    assert not despacho["jobs"]
+
+
+def test_suggest_falha_de_despacho_503(db, monkeypatch):
+    monkeypatch.setattr(mod.async_jobs, "create_job", lambda *a, **k: "job-1")
+
+    def _falha(*a, **k):
+        raise RuntimeError("lambda fora")
+
+    monkeypatch.setattr(mod.async_jobs, "invoke_async", _falha)
+    r = _client().post("/resistance-profiles/suggest", json={"equipment_exercise_ids": [100]})
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "suggest_dispatch_failed"
+
+
+def test_suggest_sem_as_tabelas_503(db, despacho):
+    db.tables = False
+    assert _client().post("/resistance-profiles/suggest", json={}).status_code == 503

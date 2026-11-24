@@ -23,6 +23,8 @@ from typing import Any, Final, Mapping, NamedTuple, Optional
 
 RESISTANCE_VOCABULARY_VERSION: Final = "resistance-v1"
 UNKNOWN: Final = "unknown"
+# `async_jobs.JOB_TYPE_LAMBDA` (musclefit-workout-ai); no dono para a api-core nao importar a cadeia da IA.
+SUGGEST_JOB_TYPE: Final = "resistance-profile-suggest"
 
 SOURCES: Final[dict[str, str]] = {
     "free_weight": "Peso livre",
@@ -92,8 +94,9 @@ SENSITIVITY_FLAGS: Final[dict[str, str]] = {
     "setup_dependent_range": "Amplitude dependente da regulagem",
 }
 CONFIDENCES: Final[dict[str, str]] = {"low": "Baixa", "medium": "Média", "high": "Alta"}
+STATUS_SUGGESTED: Final = "suggested"
 REVIEW_STATUSES: Final[dict[str, str]] = {
-    "suggested": "Sugerido",
+    STATUS_SUGGESTED: "Sugerido",
     "reviewed": "Revisado",
     "verified": "Verificado",
     "rejected": "Rejeitado",
@@ -105,6 +108,12 @@ ORIGINS: Final[dict[str, str]] = {ORIGIN_AI: "IA", ORIGIN_ADMIN: "Admin"}
 RELIABLE_STATUSES: Final = frozenset({"reviewed", "verified"})
 PENDING_STATUSES: Final = frozenset({"suggested"})
 HUMAN_REVIEW_STATUSES: Final = frozenset(REVIEW_STATUSES) - PENDING_STATUSES
+
+# Teto de pares por job de sugestão da IA. Limite operacional (não é regra de domínio): o job roda na Lambda de
+# 60 s (`async_jobs.LAMBDA_TIMEOUT_SECONDS`), uma chamada leve por par, ~52 s úteis (60 menos a reserva do worker).
+# 6 pares deixam ~8 s por chamada (p95 de um modelo leve); 10 não cabem. Mora no dono para a rota, o corpo da
+# requisição e o worker compartilharem o mesmo valor.
+SUGGEST_MAX_PAIRS: Final = 6
 
 _VOCAB_FIELDS: Final[dict[str, dict[str, str]]] = {
     "source": SOURCES,
@@ -234,3 +243,18 @@ def export_vocabulary() -> dict[str, Any]:
         "status": dict(REVIEW_STATUSES),
         "origin": dict(ORIGINS),
     }
+
+
+def suggestion_output_schema() -> dict[str, Any]:
+    """JSON Schema (strict) da saída da IA, gerado do vocabulário: enums dos componentes, das flags, da confiança
+    e do status (só os pendentes: a IA nunca confirma). A semântica é de `validate_profile`."""
+
+    def enum(codes: Any) -> dict[str, Any]:
+        return {"type": "string", "enum": list(codes)}
+
+    properties: dict[str, Any] = {f: enum(vocab) for f, vocab in _VOCAB_FIELDS.items()}
+    properties["flags"] = {"type": "array", "items": enum(SENSITIVITY_FLAGS)}
+    properties["confidence"] = enum(CONFIDENCES)
+    properties["status"] = enum(sorted(PENDING_STATUSES))
+    properties["rationale"] = {"type": "string"}
+    return {"type": "object", "additionalProperties": False, "required": list(properties), "properties": properties}
