@@ -98,3 +98,14 @@ def test_level_order_helpers():
 def test_to_dict_has_labels_and_accepts_dataclass():
     d = er.to_dict(er.compare(er.Candidate(**c()), er.Candidate(**other())))
     assert d["level_label"] == "Alta" and d["reasons"][0]["label"] and d["version"] == er.REDUNDANCY_VERSION
+
+
+def test_generation_penalty_level_and_max_level_against():
+    assert er.GENERATION_PENALTY_MIN_LEVEL == er.HIGH
+    assert er.max_level_against(c(), []) is None
+    same = c(exercise_id=1, equipment_id=1)
+    low = other(contributions={99: "PRIMARY"})
+    level, found, result = er.max_level_against(c(), [low, same])
+    assert level == er.NEAR_DUPLICATE and found is same and result.level == level
+    level, found, _ = er.max_level_against(c(), [low])
+    assert found is low and er.level_rank(level) < er.level_rank(er.NEAR_DUPLICATE)

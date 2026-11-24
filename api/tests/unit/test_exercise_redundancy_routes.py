@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import exercise_redundancy_routes as mod
+from app.intelligence import redundancy_candidates as loader
 from app.security import Identity, get_current_identity
 
 pytestmark = pytest.mark.usefixtures("permissoes_por_papel")
@@ -82,7 +83,7 @@ def db(monkeypatch):
         return {10: prim, 11: prim, 12: [{"muscle_group_id": 9, "role": "PRIMARY"}], 13: [{"muscle_group_id": None, "role": "PRIMARY"}]}
 
     monkeypatch.setattr(mod, "get_conn", banco.conn)
-    monkeypatch.setattr(mod, "resolve_muscle_contributions_with_cursor", _contrib)
+    monkeypatch.setattr(loader, "resolve_muscle_contributions_with_cursor", _contrib)
     banco.contrib_calls = chamadas
     return banco
 
@@ -158,3 +159,29 @@ def test_permissao_e_entrada_invalida(db):
     assert c.post(URL, json={"items": _itens((10, 1)), "target_index": 1}).status_code == 422
     assert c.post(URL, json={"items": _itens((10, 1)), "extra": 1}).status_code == 422
     assert c.post(URL, json={"items": [{"mapping_id": "a"}]}).status_code == 422
+
+
+def _diag_template():
+    item = lambda i, m, e: {"id": i, "mapping_id": m, "equipment_id": e}  # noqa: E731
+    return {"id": 7, "slots": [
+        {"id": 1, "sequence": 1, "name": "A", "weekday": 1, "items": [item(1, 10, 1), item(2, 11, 2), item(3, 12, 3)]},
+        {"id": 2, "sequence": 2, "name": "B", "weekday": 3, "items": [item(4, 10, 1), {"id": 5, "mapping_id": None}]},
+    ]}
+
+
+def test_diagnostico_pares_por_slot_so_do_piso_para_cima(db, monkeypatch):
+    monkeypatch.setattr(mod.wpt, "_get_template", lambda tid: _diag_template() if tid == 7 else None)
+    r = _client().get("/workout-plan-templates/7/redundancy-diagnostic")
+    assert r.status_code == 200, r.text
+    corpo = r.json()
+    assert corpo["template_id"] == 7 and [s["slot_id"] for s in corpo["slots"]] == [1, 2]
+    pares = corpo["slots"][0]["pairs"]
+    assert [(p["a_mapping_id"], p["b_mapping_id"]) for p in pares] == [(10, 11)] and pares[0]["level"] == "high"
+    assert "a_exercise_name" in pares[0] and "b_exercise_name" in pares[0]  # aditivo; sem nome no fake -> None
+    assert corpo["slots"][1]["pairs"] == []  # um item com exercicio so; o outro e de grupo muscular
+
+
+def test_diagnostico_inexistente_404_e_nivel_invalido(db, monkeypatch):
+    monkeypatch.setattr(mod.wpt, "_get_template", lambda tid: None)
+    assert _client().get("/workout-plan-templates/9/redundancy-diagnostic").status_code == 404
+    assert _client().get("/workout-plan-templates/7/redundancy-diagnostic?min_level=xx").status_code == 422

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock('./api', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api')>()), apiFetch }));
 
-import { previewRedundancy } from './exercise-redundancy-api';
+import { fetchRedundancyDiagnostic, previewRedundancy } from './exercise-redundancy-api';
 
 describe('cliente da prévia de redundância', () => {
   beforeEach(() => {
@@ -22,5 +22,13 @@ describe('cliente da prévia de redundância', () => {
       items: [{ mapping_id: 1, equipment_id: 5 }, { mapping_id: 2 }],
       target_index: 1,
     });
+  });
+
+  it('diagnóstico: GET do Modelo, sem corpo nem filtro de nível', async () => {
+    apiFetch.mockResolvedValue({ template_id: 7, slots: [] });
+    const ctrl = new AbortController();
+    const r = await fetchRedundancyDiagnostic(7, ctrl.signal);
+    expect(apiFetch).toHaveBeenCalledWith('/workout-plan-templates/7/redundancy-diagnostic', { signal: ctrl.signal });
+    expect(r.slots).toEqual([]);
   });
 });

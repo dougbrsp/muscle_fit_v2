@@ -2238,13 +2238,14 @@ Montado em `main.py` (bloco "resistance profiles router"). Sem as tabelas da mig
 | PUT | `/{equipment_exercise_id}` | path | `ResistanceProfileIn` (substituição completa; `status` obrigatório; `origin` forçado a `admin`) | item atualizado | `admin.catalogos`/`editar` | 404; 422 com `code` e `field`; 409 `profile_conflict` (outra gravação primeiro, ou deadlock na criação concorrente) |
 | POST | `/suggest` | — | `ResistanceSuggestIn` (`equipment_exercise_ids` opcional; sem ids, usa os pares pendentes até `limit`) | 202 `{job_id}` (sem pares: `{job_id: null, pairs: 0}`); status pela `GET /jobs/{job_id}` | `admin.catalogos`/`editar` | 503 `resistance_profile_tables_missing`; 503 `suggest_dispatch_failed` (job não despachado). Sugestão só cria `suggested` (worker `resistance_profile_ai.py`); teto de 6 pares por job (`SUGGEST_MAX_PAIRS`; pares acima do teto saem `not_processed` no job) |
 
-#### 2.19 `exercise_redundancy_routes.py` (prefixo `/workout-plan-templates`, 1 rota, #288 fatia 2)
+#### 2.19 `exercise_redundancy_routes.py` (prefixo `/workout-plan-templates`, 2 rotas, #288 fatias 2 e 3)
 
 Montado em `main.py` antes do router com `/{template_id}`. Só orquestra; o nível sai de `api/app/domain/exercise_redundancy.py`. Sem escrita. Em lote: uma leitura do catálogo, uma do resolvedor de contribuição e uma de perfis.
 
 | Método | Caminho | Query/Path | Corpo | Resposta | Permissão | Erros |
 |---|---|---|---|---|---|---|
 | POST | `/redundancy-preview` | — | `RedundancyPreviewIn`: `items` (de 1 a `REDUNDANCY_PREVIEW_MAX_ITEMS`, com `mapping_id` e `equipment_id` opcional), `target_index` opcional, `min_level` opcional (sem ele, o piso é o `DISPLAY_MIN_LEVEL` do dono: moderada) | `{items}` com `a_index`, `b_index`, `level`, `level_label`, `confidence`, `reasons`, `matching`, `diverging`, `limitations`, `version`; do mais para o menos redundante (ordem `level_rank`) | `modelos.treino`/`editar` (min_scope `alunos`) | 422 `invalid_min_level`; 422 de validação (`target_index` fora de `items`); 503 pela conexão (`connect_or_503`) |
+| GET | `/{template_id}/redundancy-diagnostic` (lote 47) | Path `template_id`; query `min_level` opcional (sem ele, `DISPLAY_MIN_LEVEL`) | — | `{template_id, slots}`: todo slot com `pairs` (pode ser vazio), com `a_item_id`, `b_item_id`, `a_mapping_id`, `b_mapping_id`, `level`, `level_label`, `confidence`, `reasons`, `matching`, `diverging`, `limitations`, `version`; do mais para o menos redundante. Só leitura da versão salva | `template_guard('ver', for_write=False)` | 422 `invalid_min_level`; 404 modelo não encontrado; 503 pela conexão |
 
 ### 3. Autenticação e autorização
 

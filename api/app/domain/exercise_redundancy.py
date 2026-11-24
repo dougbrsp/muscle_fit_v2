@@ -26,7 +26,7 @@ Confiança: perfis confiáveis nos dois lados -> a menor confiança entre eles; 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import Any, Final, Mapping, Optional
+from typing import Any, Final, Iterable, Mapping, Optional
 
 from . import resistance_profile as rp
 
@@ -56,6 +56,11 @@ def level_rank(level: str) -> int:
 
 def at_least(level: str, min_level: str) -> bool:
     return level_rank(level) >= level_rank(min_level)
+
+
+# Nível a partir do qual a geração penaliza o candidato. HIGH exige a mesma assinatura de resistência confiável (par
+# revisado), então não pune só por dado ausente nem por complementaridade; NEAR_DUPLICATE já entra por ser mais alto.
+GENERATION_PENALTY_MIN_LEVEL: Final = HIGH
 
 
 ROLE_PRIMARY: Final = "primary"
@@ -238,6 +243,19 @@ def compare(a: Candidate | Mapping[str, Any], b: Candidate | Mapping[str, Any]) 
         return _res(MODERATE, confidence, reasons, matching, diverging, limitations)
     reasons.append("same_resistance_signature")
     return _res(HIGH, confidence, reasons, matching, diverging, limitations)
+
+
+def max_level_against(
+    candidate: Candidate | Mapping[str, Any], chosen: Iterable[Candidate | Mapping[str, Any]]
+) -> Optional[tuple[str, Candidate | Mapping[str, Any], RedundancyResult]]:
+    """O mais redundante de `chosen` contra `candidate`: (nível, outro, resultado); None se `chosen` vazio.
+    Empate: vence o primeiro da lista."""
+    best = None
+    for other in chosen:
+        result = compare(candidate, other)
+        if best is None or level_rank(result.level) > level_rank(best[2].level):
+            best = (result.level, other, result)
+    return best
 
 
 def to_dict(r: RedundancyResult) -> dict[str, Any]:

@@ -41,8 +41,9 @@
 - Padrão do equipamento canônico e variação de exemplar ou fabricante: níveis 1 e 3 da issue #288.
 - Sugestão por IA a partir da base do RAG: lote 42.
 - Tela de revisão do admin: lote 43.
-- Motor de redundância (uso do perfil na decisão): fatia 2.
-- Geração automática de perfis em lote: fatia 3.
+- Motor de redundância (uso do perfil na decisão): fatia 2, entregue no lote 45.
+- Geração automática de perfis em lote: coberta pela sugestão por IA (lote 42), sempre `suggested`.
+- Critério de redundância na geração e diagnóstico de Modelos salvos: fatia 3, entregue no lote 47 (seção "Fatia 3").
 
 ## Modelo de dados (migração 126, `api/db/migrations/126_resistance_profiles.py`)
 
@@ -189,6 +190,50 @@ Branch `feat/redundancia-l45`, sem commit. Não promovida a produção.
 **Impacto em produção** (por leitura do código, 24/11/2026; não medido em produção). Nada muda para quem não edita Modelos. A rota é nova e não escreve. A tabela de perfis ainda não existe em produção (medido na fatia 1, em 23/11). Sem perfil revisado nos dois lados, nenhum par passa de baixa, e não há aviso, salvo para duplicata exata (quase duplicado).
 
 **Não verificado neste lote:** testes unitários, guarda de fontes, rota contra MySQL e a tela no navegador.
+
+## Fatia 3 — geração e diagnóstico (lote 47, 2026-11-24, #288)
+
+Branch `feat/redundancia-geracao-l47`, sem commit. Não promovida a produção.
+
+**Contexto.** A fatia 2 avisa redundância só na edição do Modelo. A fatia 3 leva o perfil revisado à geração do Modo A (só como desempate) e mostra, num Modelo já salvo, os pares redundantes de cada dia.
+
+**Decisão 1: critério na geração (`api/app/generation/mode_a.py`).**
+- `_rank_key` recebe `redundant` (0 ou 1) logo depois de `exercise_already_in_session` e antes de `equipment.name`. A ordem base (estrelas, último uso) continua na frente.
+- Penalidade = 1 quando o candidato atinge `GENERATION_PENALTY_MIN_LEVEL` (= `HIGH`, dono `domain/exercise_redundancy`) contra algum já escolhido na sessão, via `max_level_against`. O Modo A não tem constante própria.
+- Nunca remove candidato. Volume (`_headroom_violation`), prescrição (`SKIP`) e as recusas existentes continuam valendo na mesma passada; a redundância só muda a ordem em que os candidatos são tentados.
+- Correção ao pedido: o critério não vem "depois de segurança, coerência, disponibilidade e volume" como etapa posterior. Ele ordena os candidatos antes da alocação; volume e prescrição são checados depois, dentro da passada. Segurança, coerência e disponibilidade filtram a lista de candidatos antes de `rank_candidates` (não reverificado nesta rodada).
+- Exercício já usado na sessão é pulado em `_allocate_group`. Por isso a duplicata exata (quase duplicado) nunca é candidato vivo, e a penalidade só pesa entre exercícios diferentes com redundância alta.
+- Carregador: `_load_redundancy` chama `intelligence/redundancy_candidates.load_candidates` uma vez por geração. Falha (tabela ausente, erro de banco) vira `{}` com log `warning`; a geração segue igual à anterior.
+
+**Decisão 2: audit (`selection_audit`).** Cada escolha cuja redundância com um escolhido atinge `DISPLAY_MIN_LEVEL` (moderada) ganha `redundancy` com `level`, `other_exercise_id` e `confidence`. Nada além disso: a penalidade não vai para o audit, e a rejeição de candidato não é registrada como redundância.
+
+**Decisão 3: diagnóstico somente leitura (`GET /workout-plan-templates/{id}/redundancy-diagnostic`, `api/app/exercise_redundancy_routes.py`).**
+- Permissão `template_guard('ver', for_write=False)`, a mesma da leitura do Modelo. Sem escrita.
+- Compara pares de itens do mesmo slot da versão salva. Piso = `DISPLAY_MIN_LEVEL`, ou `min_level` com a mesma validação da prévia (422 `invalid_min_level`).
+- Tela: `frontend/src/app/(app)/modelos-treino/[id]/RedundancyDiagnosticPanel.tsx`. Carrega ao abrir e mostra que alterações não salvas não entram.
+
+**Decisões do usuário (valem também aqui).** Redundância só desempata, nunca remove; o diagnóstico é somente leitura; "à risca": sem perfil revisado nos dois lados, o nível é no máximo baixa e não há aviso.
+
+**Impacto em produção** (24/11/2026; por leitura do código e teste sintético, não medido em produção):
+- Hoje há 0 perfis revisados (medido na fatia 1, em 23/11; não remedido). Sem perfil revisado, o teto é baixa, abaixo de `HIGH`; sem candidato vivo quase duplicado. Logo a penalidade nunca vale e a geração do Modo A fica igual à atual. Prova: `api/tests/unit/test_modo_a_redundancia.py::test_sem_dado_a_ordem_e_identica_a_atual`, que cobre ausência de dado e perfis só sugeridos. Não executado nesta rodada.
+- O diagnóstico não fica vazio sem perfil revisado: mostra quase duplicados (mesmo exercício e equipamento em dois itens do mesmo dia). Moderada e alta exigem perfil revisado dos dois lados.
+- Modo B não lê redundância: nenhuma mudança nele.
+
+**Limites.**
+- O diagnóstico identifica itens por mapeamento e id do item, sem nome do exercício. O editor não tem o nome por item.
+- Item sem `mapping_id` não entra na comparação, sem aviso na tela.
+- O painel não recarrega após salvar. Com o painel aberto, o diagnóstico mostra a versão anterior até reabrir.
+- **Defeito de texto (corrigir antes da promoção, fora deste lote):** a tela diz "Só aparecem pares ... com perfis de resistência revisados". Isso é falso para quase duplicados, que aparecem sem perfil revisado.
+- Se o carregador falhar, a geração segue sem o critério e sem erro visível; só o log registra.
+
+**Fechamento das pendências da #288.**
+- Fatia 1 (perfil no par, lotes 41, 42/42b e 43): entregue.
+- Fatia 2 (redundância, lote 45): entregue.
+- Fatia 3 (critério na geração e diagnóstico, lote 47): entregue nesta branch, sem testes executados e sem promoção.
+- "Geração automática de perfis em lote": coberta pela sugestão por IA em lote (lote 42), que grava só `suggested`; a revisão humana continua obrigatória.
+- **Não fechado:** níveis 1 e 3 da #288 (padrão do equipamento canônico e variação de exemplar). Estão fora das três fatias e sem decisão. A #288 segue aberta por eles até decisão ou issue própria.
+
+**Não verificado neste lote:** execução de `test_modo_a_redundancia.py`, `test_redundancy_candidates.py`, `test_exercise_redundancy_routes.py` e `RedundancyDiagnosticPanel.test.ts`; guarda de fontes; rota contra MySQL; tela no navegador.
 
 ## Verificação
 

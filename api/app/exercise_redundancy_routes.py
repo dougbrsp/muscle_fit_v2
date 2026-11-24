@@ -2,6 +2,8 @@
 
     POST /workout-plan-templates/redundancy-preview   modelos.treino/editar (a mesma do editor)
 
+    GET  /workout-plan-templates/{id}/redundancy-diagnostic   modelos.treino/ver (a mesma da leitura do Modelo)
+
 Só orquestra: o nível sai de `domain/exercise_redundancy` (dono), a contribuição muscular de
 `intelligence/muscle_contribution_resolver` (reduzida a grupo -> papel, sem recalcular pesos) e o perfil de resistência
 da tabela `equipment_exercise_resistance_profiles` (validado pelo dono `resistance_profile` dentro de `compare`).
@@ -11,9 +13,8 @@ catálogo, 2 do resolvedor, 1 de perfis, qualquer que seja o número de itens. S
 
 from __future__ import annotations
 
-import json
 from itertools import combinations
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -21,64 +22,11 @@ from .access import require_permission
 from .db import get_conn
 from .db_helpers import connect_or_503
 from .domain import exercise_redundancy as red
-from .intelligence.muscle_contribution_resolver import resolve_muscle_contributions_with_cursor
+from . import workout_plan_templates as wpt
+from .intelligence.redundancy_candidates import load_candidates, load_candidates_with_names
 from .request_models import RedundancyPreviewIn
-from .resistance_profiles import PROFILES
 
 router = APIRouter(prefix="/workout-plan-templates", tags=["workout-plan-templates"])
-
-_RESISTANCE_COLUMNS = ("source", "mechanism", "trajectory", "profile", "line", "direction_changes", "confidence",
-                       "status", "origin")
-_TABLE_SQL = "SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s"
-_EXERCISES_SQL = (
-    "SELECT id, biomechanical_pattern, primary_joint, movement, body_position, trajectory, is_unilateral "
-    "FROM exercise_catalog WHERE id IN ({ids})"
-)
-_PROFILES_SQL = (
-    "SELECT eqex.equipment_id, eqex.exercise_id, p.flags_json, "
-    + ", ".join(f"p.{c}" for c in _RESISTANCE_COLUMNS)
-    + f" FROM equipment_exercises eqex JOIN {PROFILES} p ON p.equipment_exercise_id = eqex.id WHERE {{pairs}}"
-)
-
-
-def _flags(raw: Any) -> list[str]:
-    if isinstance(raw, (bytes, bytearray)):
-        raw = raw.decode("utf-8")
-    try:
-        bruto = json.loads(raw) if isinstance(raw, str) else raw
-    except ValueError:
-        return []
-    return list(bruto) if isinstance(bruto, list) else []
-
-
-def _groups(rows: list[dict[str, Any]]) -> dict[int, str]:
-    """grupo -> papel a partir do que o resolvedor emitiu; 'Outros' (sem grupo) não é grupo; primário vence."""
-    out: dict[int, str] = {}
-    for row in rows:
-        gid = row.get("muscle_group_id")
-        if gid is None:
-            continue
-        role = str(row.get("role") or "").lower()
-        if out.get(gid) != red.ROLE_PRIMARY:
-            out[gid] = role
-    return out
-
-
-def _profiles(cur: Any, pairs: list[tuple[int, int]]) -> dict[tuple[int, int], dict[str, Any]]:
-    if not pairs:
-        return {}
-    cur.execute(_TABLE_SQL, (PROFILES,))
-    if not int((cur.fetchone() or {}).get("n") or 0):
-        return {}
-    params = [v for pair in pairs for v in pair]
-    where = " OR ".join(["(eqex.equipment_id = %s AND eqex.exercise_id = %s)"] * len(pairs))
-    cur.execute(_PROFILES_SQL.format(pairs=where), tuple(params))
-    out: dict[tuple[int, int], dict[str, Any]] = {}
-    for r in cur.fetchall() or []:
-        out[(int(r["equipment_id"]), int(r["exercise_id"]))] = {
-            **{c: r.get(c) for c in _RESISTANCE_COLUMNS}, "flags": _flags(r.get("flags_json"))
-        }
-    return out
 
 
 @router.post(
@@ -89,34 +37,11 @@ def redundancy_preview(payload: RedundancyPreviewIn) -> dict[str, Any]:
     if payload.min_level is not None and payload.min_level not in red.LEVEL_ORDER:
         raise HTTPException(status_code=422, detail={"error": "invalid_min_level", "field": "min_level"})
     items = payload.items
-    exercise_ids = sorted({int(i.mapping_id) for i in items})
-    pairs = sorted({(int(i.equipment_id), int(i.mapping_id)) for i in items if i.equipment_id})
+    pairs = [(int(i.mapping_id), int(i.equipment_id) if i.equipment_id else None) for i in items]
     with connect_or_503(get_conn) as conn:
         with conn.cursor() as cur:
-            cur.execute(_EXERCISES_SQL.format(ids=",".join(["%s"] * len(exercise_ids))), tuple(exercise_ids))
-            catalog = {int(r["id"]): r for r in cur.fetchall() or []}
-            contributions = resolve_muscle_contributions_with_cursor(cur, set(exercise_ids))
-            profiles = _profiles(cur, pairs)
-
-    candidates: list[Optional[red.Candidate]] = []
-    for i in items:
-        ex = catalog.get(int(i.mapping_id))
-        if ex is None:
-            candidates.append(None)  # exercício fora do catálogo: sem dado, sem par
-            continue
-        eq = int(i.equipment_id) if i.equipment_id else None
-        candidates.append(red.Candidate(
-            exercise_id=int(i.mapping_id),
-            equipment_id=eq,
-            contributions=_groups(contributions.get(int(i.mapping_id), [])),
-            biomechanical_pattern=ex.get("biomechanical_pattern"),
-            primary_joint=ex.get("primary_joint"),
-            movement=ex.get("movement"),
-            body_position=ex.get("body_position"),
-            trajectory=ex.get("trajectory"),
-            unilateral=None if ex.get("is_unilateral") is None else bool(ex["is_unilateral"]),
-            resistance=profiles.get((eq, int(i.mapping_id))) if eq else None,
-        ))
+            loaded = load_candidates(cur, pairs)
+    candidates = [loaded.get(p) for p in pairs]  # fora do catálogo: None, sem par
 
     target = payload.target_index
     indexes = (
@@ -139,3 +64,56 @@ def redundancy_preview(payload: RedundancyPreviewIn) -> dict[str, Any]:
         })
     out.sort(key=lambda r: (-red.level_rank(r["level"]), r["a_index"], r["b_index"]))
     return {"items": out}
+
+
+@router.get("/{template_id}/redundancy-diagnostic")
+def redundancy_diagnostic(
+    template_id: int,
+    min_level: str | None = None,
+    viewer: wpt.TemplateViewer = Depends(wpt.template_guard("ver", for_write=False)),
+) -> dict[str, Any]:
+    """Somente leitura: pares redundantes dentro de cada dia/slot da versão vigente (posse = a da leitura do Modelo)."""
+    if min_level is not None and min_level not in red.LEVEL_ORDER:
+        raise HTTPException(status_code=422, detail={"error": "invalid_min_level", "field": "min_level"})
+    # Acoplamento: sem equivalente público em workout_plan_templates (get_template é a rota); mesma leitura do GET do Modelo.
+    template = wpt._get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Modelo de treino não encontrado.")
+    slots = [
+        (slot, [i for i in slot.get("items") or [] if i.get("mapping_id")]) for slot in template.get("slots") or []
+    ]
+    pairs = [
+        (int(i["mapping_id"]), int(i["equipment_id"]) if i.get("equipment_id") else None)
+        for _, its in slots
+        for i in its
+    ]
+    loaded: dict[Any, red.Candidate] = {}
+    names: dict[int, str] = {}
+    if pairs:
+        with connect_or_503(get_conn) as conn:
+            with conn.cursor() as cur:
+                loaded, names = load_candidates_with_names(cur, pairs)
+    floor = min_level or red.DISPLAY_MIN_LEVEL
+    out_slots: list[dict[str, Any]] = []
+    for slot, its in slots:
+        found: list[dict[str, Any]] = []
+        for a, b in combinations(its, 2):
+            ca = loaded.get((int(a["mapping_id"]), int(a["equipment_id"]) if a.get("equipment_id") else None))
+            cb = loaded.get((int(b["mapping_id"]), int(b["equipment_id"]) if b.get("equipment_id") else None))
+            if ca is None or cb is None:
+                continue
+            result = red.compare(ca, cb)
+            if red.at_least(result.level, floor):
+                found.append({
+                    "a_item_id": a.get("id"), "b_item_id": b.get("id"),
+                    "a_mapping_id": int(a["mapping_id"]), "b_mapping_id": int(b["mapping_id"]),
+                    "a_exercise_name": names.get(int(a["mapping_id"])),
+                    "b_exercise_name": names.get(int(b["mapping_id"])),
+                    **red.to_dict(result),
+                })
+        found.sort(key=lambda r: -red.level_rank(r["level"]))
+        out_slots.append({
+            "slot_id": slot.get("id"), "sequence": slot.get("sequence"), "name": slot.get("name"),
+            "weekday": slot.get("weekday"), "pairs": found,
+        })
+    return {"template_id": int(template_id), "slots": out_slots}

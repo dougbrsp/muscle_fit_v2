@@ -33,3 +33,25 @@ export function previewRedundancy(
     signal,
   });
 }
+
+export type RedundancyDiagnosticPair = Omit<RedundancyPair, 'a_index' | 'b_index' | 'version'> & {
+  a_item_id: number | null;
+  b_item_id: number | null;
+  a_exercise_name?: string | null;
+  b_exercise_name?: string | null;
+};
+
+export type RedundancyDiagnosticSlot = {
+  slot_id: number | null;
+  sequence: number | null;
+  name: string | null;
+  weekday: number | null;
+  pairs: RedundancyDiagnosticPair[];
+};
+
+export type RedundancyDiagnostic = { template_id: number; slots: RedundancyDiagnosticSlot[] };
+
+/** Somente leitura: pares redundantes por dia da versão vigente do Modelo (o nível vem pronto da API). */
+export function fetchRedundancyDiagnostic(templateId: number, signal?: AbortSignal): Promise<RedundancyDiagnostic> {
+  return apiFetch(`/workout-plan-templates/${templateId}/redundancy-diagnostic`, { signal });
+}
