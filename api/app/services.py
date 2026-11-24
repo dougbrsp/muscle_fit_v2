@@ -8,6 +8,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from fastapi import HTTPException
+
 from . import exercise_card_storage
 from .db import transaction
 from .domain import effective_intensity, equipment_pair
@@ -334,22 +336,59 @@ def resolve_gym_id(cur, gym_id_explicit: Any = None, gym_name_hint: Any = None) 
 
     cur.execute(
         "SELECT id FROM gyms WHERE is_active = 1 AND LOWER(name) LIKE LOWER(%s) LIMIT 1",
-        (f"%{gym_name_hint}%",),
+        # Escapa \ % _ (nessa ordem): o nome vira texto literal no "contem".
+        ("%" + str(gym_name_hint).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",),
     )
     row = cur.fetchone()
     return row["id"] if row else None
 
 
-def validate_explicit_equipment(cur, gym_id, mapping_id, equipment_id, previous_equipment_id=None) -> None:
+def resolve_active_gym_id(
+    cur, gym_id_explicit: Any = None, gym_name_hint: Any = None, current_gym_id: Any = None
+) -> int | None:
+    """Fronteira de confianca (#284) de Importacao e Registro: a academia do corpo
+    (id ou nome) precisa existir e estar ativa, senao 422 `gym_not_found` (antes
+    do banco). Academias sao compartilhadas por desenho: nao exige posse.
+    A academia ja gravada na atividade (`current_gym_id`) e sempre aceita, mesmo
+    inativa: reenvio offline/edicao de treino antigo nao pode falhar; o 422 vale
+    so para MUDANCA para academia inexistente/inativa. Nome sem match com
+    academia ja gravada mantem a gravada."""
+    if gym_id_explicit and current_gym_id and int(gym_id_explicit) == int(current_gym_id):
+        return int(current_gym_id)
+    if gym_id_explicit:
+        cur.execute("SELECT id FROM gyms WHERE id = %s AND is_active = 1", (int(gym_id_explicit),))
+        row = cur.fetchone()
+        gym_id = row["id"] if row else None
+    else:
+        gym_id = resolve_gym_id(cur, None, gym_name_hint)
+    if not gym_id and not gym_id_explicit and current_gym_id:
+        return int(current_gym_id)
+    if (gym_id_explicit or gym_name_hint) and not gym_id:
+        raise HTTPException(status_code=422, detail={"code": "gym_not_found", "message": "Academia não encontrada."})
+    return gym_id
+
+
+def validate_explicit_equipment(cur, gym_id, mapping_id, equipment_id, previous_equipment_id=None) -> int | None:
     """Fronteira de confianca (#244): `equipment_id` vindo do cliente passa pela
     MESMA validacao do Modo Treino (`ensure_session_equipment`: existe, da
     academia, par coerente), com o mesmo 422 tipado. Equipamento igual ao ja
-    gravado nao revalida: os registros antigos de par incoerente seguem aceitos."""
+    gravado nao revalida: os registros antigos de par incoerente seguem aceitos.
+    Devolve a academia efetiva (#284): sem academia no treino, a do equipamento."""
     if not equipment_id or (previous_equipment_id and int(equipment_id) == int(previous_equipment_id)):
-        return
-    from .workout_sessions import ensure_session_equipment  # import tardio: workout_sessions importa services
+        return gym_id
+    from .workout_sessions import _equipment_refused, ensure_session_equipment  # import tardio: workout_sessions importa services
 
+    if not gym_id:
+        cur.execute("SELECT ge.gym_id, ge.is_active FROM gym_equipment ge JOIN gyms g ON g.id = ge.gym_id "
+            "WHERE ge.id = %s AND g.is_active = 1",
+            (int(equipment_id),),
+        )
+        row = cur.fetchone()
+        gym_id = row["gym_id"] if row else None
+        if not gym_id:  # inexistente ou de academia inativa: mesmo 422 unificado do ensure
+            raise _equipment_refused("equipment_not_in_session_gym", "Equipamento não disponível nesta academia.")
     ensure_session_equipment(cur, {"gym_id": gym_id}, mapping_id, equipment_id)
+    return gym_id
 
 
 def resolve_equipment_id(
@@ -515,7 +554,10 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
             existing = cur.fetchone()
             kept_marks: dict[tuple[Any, Any], tuple[bool, Any]] = {}
             prev_equipment: dict[tuple[Any, Any], Any] = {}
+            prev_gym_id = None
             if existing:
+                cur.execute("SELECT gym_id FROM activities WHERE id=%s", (existing["id"],))
+                prev_gym_id = (cur.fetchone() or {}).get("gym_id")
                 # Chave (sequence, original_name): o source_row_hash inclui as series e muda quando elas mudam;
                 # limite: renumerar ou renomear o exercicio no payload perde a marca.
                 cur.execute(
@@ -538,7 +580,7 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                     exercise_rpes.append(stats["avg_rpe"])
 
             avg_rpe = (sum(exercise_rpes) / Decimal(len(exercise_rpes))) if exercise_rpes else None
-            gym_id = resolve_gym_id(cur, activity.get("gym_id"), activity.get("gym_name"))
+            gym_id = resolve_active_gym_id(cur, activity.get("gym_id"), activity.get("gym_name"), prev_gym_id) or prev_gym_id
             training_type_id = activity.get("training_type_id")
 
             cur.execute(
@@ -610,9 +652,13 @@ def upsert_activity(activity: dict[str, Any], user_id: int | None = None) -> dic
                 stats = compute_exercise_stats(set_dicts)
                 rhash = row_hash(ext_id, ex)
                 mapping_id = resolve_mapping_id(ex["original_name"], ex.get("mapped_name"), ex.get("mapping_id"), cur=cur)
-                validate_explicit_equipment(
+                effective_gym_id = validate_explicit_equipment(
                     cur, gym_id, mapping_id, ex.get("equipment_id"), prev_equipment.get((ex["sequence"], ex["original_name"]))
                 )
+                if effective_gym_id and effective_gym_id != gym_id:
+                    # #284: treino sem academia adota a do equipamento; o proximo exercicio de outra academia recusa.
+                    gym_id = effective_gym_id
+                    cur.execute("UPDATE activities SET gym_id = %s WHERE id = %s", (gym_id, activity_id))
                 equipment_id = resolve_equipment_id(
                     cur, mapping_id, gym_id, ex.get("equipment_id"), ex.get("equipment_name"), user_id=user_id
                 )
@@ -1350,16 +1396,17 @@ def _update_exercise_log_tx(conn: Any, cur: Any, exercise_id: int, payload: dict
     else:
         mapping_id = existing.get("mapping_id")
 
-    gym_id = resolve_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"))
+    cur.execute("SELECT gym_id FROM activities WHERE id=%s", (activity_id,))
+    act = cur.fetchone() or {}
+    gym_id = resolve_active_gym_id(cur, payload.get("gym_id"), payload.get("gym_name"), act.get("gym_id"))
     if payload.get("equipment_id") or payload.get("equipment_name") is not None:
         explicit_eq = payload.get("equipment_id")
         if explicit_eq and int(explicit_eq) != int(existing.get("equipment_id") or 0):
             # Academia efetiva = a do payload ou a gravada na atividade (o UPDATE usa COALESCE).
-            cur.execute("SELECT gym_id FROM activities WHERE id=%s", (activity_id,))
-            act = cur.fetchone() or {}
-            validate_explicit_equipment(
+            # #284: sem academia em nenhum dos dois, adota a do equipamento (gravada no UPDATE abaixo).
+            gym_id = validate_explicit_equipment(
                 cur, gym_id or act.get("gym_id"), mapping_id, explicit_eq, existing.get("equipment_id")
-            )
+            ) or gym_id
         equipment_id = resolve_equipment_id(
             cur, mapping_id, gym_id, payload.get("equipment_id"), payload.get("equipment_name"), user_id=user_id
         )
