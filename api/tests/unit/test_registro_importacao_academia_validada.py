@@ -130,16 +130,17 @@ class _CurRegistro(_Cur):
     def __init__(self, act_gym):
         super().__init__([])
         self.act_gym = act_gym
+        self.todas = []  # todo SQL executado, inclusive o que o fake nao reconhece
 
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
+        self.todas.append(flat)
         if flat.startswith("SELECT id, activity_id"):
             self.calls.append((flat, params))
-            self._row = {"id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": None}
-        elif flat.startswith("SELECT gym_id FROM activities"):
-            self.calls.append((flat, params))
-            self._row = {"gym_id": self.act_gym}
-
+            self._row = {
+                "id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": None,
+                "activity_gym_id": self.act_gym,  # lida junto com o exercicio (sem SELECT extra)
+            }
         elif "FROM exercise_sets" in flat:
             self._rows = []
         else:
@@ -150,13 +151,17 @@ class _Parada(Exception):
     pass
 
 
+def _registrar_base(monkeypatch, cur, **corpo):
+    monkeypatch.setattr(services, "resolve_gym_id", lambda c, *a: None)
+    services._update_exercise_log_tx(None, cur, 7, {"local_date": "2026-11-01", "sets": [], **corpo}, None)
+
+
 def _registrar(monkeypatch, cur, **corpo):
     def _parar(*a, **k):
         raise _Parada
 
     monkeypatch.setattr(services, "resolve_equipment_id", _parar)
-    monkeypatch.setattr(services, "resolve_gym_id", lambda c, *a: None)
-    services._update_exercise_log_tx(None, cur, 7, {"local_date": "2026-11-01", "sets": [], **corpo}, None)
+    _registrar_base(monkeypatch, cur, **corpo)
 
 
 def test_registro_academia_do_corpo_inexistente_ou_inativa_422(monkeypatch):
@@ -181,6 +186,26 @@ def test_registro_treino_sem_academia_adota_a_do_equipamento(monkeypatch):
         _registrar(monkeypatch, cur, equipment_id=10)
     # sem o UPDATE (a parada o precede), prova pelo retorno do helper que alimenta gym_id:
     assert services.validate_explicit_equipment(_Cur([]), None, 11, 10) == 1
+
+
+def test_registro_adocao_grava_a_academia_do_equipamento_no_update(monkeypatch):
+    cur = _CurRegistro(act_gym=None)
+    monkeypatch.setattr(services, "resolve_equipment_id", lambda *a, **k: 10)
+    monkeypatch.setattr(services, "resolve_gym_id", lambda c, *a: None)
+    monkeypatch.setattr(services.effective_intensity, "resolve_for_logged_exercise", lambda *a: (_ for _ in ()).throw(_Parada()))
+    with pytest.raises(_Parada):  # para depois do UPDATE de activities
+        services._update_exercise_log_tx(None, cur, 7, {"local_date": "2026-11-01", "sets": [], "equipment_id": 10}, None)
+    assert [p[1] for _, p in cur.writes("UPDATE activities SET")] == [1]  # gym_id gravado = academia do equipamento
+    # a academia vem na leitura inicial: um SELECT gym_id FROM activities separado registraria esta consulta
+    assert not [s for s in cur.todas if s.startswith("SELECT gym_id FROM activities")]
+
+
+def test_registro_sem_academia_no_corpo_resolve_equipamento_por_nome_na_gravada(monkeypatch):
+    usados = []
+    monkeypatch.setattr(services, "resolve_equipment_id", lambda cur, m, gym, *a, **k: usados.append(gym) or (_ for _ in ()).throw(_Parada()))
+    with pytest.raises(_Parada):
+        _registrar_base(monkeypatch, _CurRegistro(act_gym=2), equipment_name="Hack")
+    assert usados == [2]
 
 
 # --- Rodada de correcao: academia ja gravada e sempre aceita; escape do LIKE ---

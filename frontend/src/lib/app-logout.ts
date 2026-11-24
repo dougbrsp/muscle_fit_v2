@@ -1,21 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { apiFetch, beginLogout, endLogout } from '@/lib/api';
-import { RECIPE_DRAFT_PREFIX } from '@/lib/nutrition-api';
+import { clearRecipeDrafts } from '@/lib/recipe-draft-storage';
 import { clearSession, confirmLogoutWithUnsyncedOps } from '@/lib/auth';
 
-/** Rascunhos de receita (texto digitado) não sobrevivem ao logout: aparelho compartilhado. */
-export function clearRecipeDrafts(): void {
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const k = window.localStorage.key(i);
-      if (k?.startsWith(RECIPE_DRAFT_PREFIX)) keys.push(k);
-    }
-    keys.forEach((k) => window.localStorage.removeItem(k));
-  } catch {
-    // storage indisponível: sem rascunho a apagar.
-  }
-}
+export { clearRecipeDrafts };
 
 /**
  * Ponto UNICO de logout da UI (shell desktop e shell mobile). Com series ainda

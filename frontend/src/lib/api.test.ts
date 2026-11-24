@@ -58,6 +58,26 @@ describe('apiFetch — 401 é o único que desloga', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('401 apaga os rascunhos de receita junto com a sessão', async () => {
+    const store = new Map<string, string>([
+      ['muscle_fit:receita-rascunho:7:new', '{}'],
+      ['outra', 'x'],
+    ]);
+    vi.stubGlobal('window', {
+      location,
+      localStorage: {
+        get length() { return store.size; },
+        key: (i: number) => [...store.keys()][i] ?? null,
+        removeItem: (k: string) => { store.delete(k); },
+      },
+    });
+    fetchMock.mockResolvedValue(json(401));
+
+    await settle(api.apiFetch('/auth/me'));
+
+    expect([...store.keys()]).toEqual(['outra']);
+  });
+
   it('logout em andamento: 401 de poller não redireciona nem limpa a sessão com next', async () => {
     fetchMock.mockResolvedValue(json(401, { detail: 'Token inválido.' }));
     api.beginLogout();

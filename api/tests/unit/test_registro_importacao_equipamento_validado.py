@@ -113,9 +113,7 @@ class _CurRegistro(_Cur):
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         if flat.startswith("SELECT id, activity_id"):
-            self._one = {"id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": self.gravado}
-        elif flat.startswith("SELECT gym_id FROM activities"):
-            self._one = {"gym_id": GYM}
+            self._one = {"id": 7, "activity_id": 5, "original_name": "Supino", "mapping_id": 11, "equipment_id": self.gravado, "activity_gym_id": GYM}
         elif "FROM exercise_sets" in flat:
             self._all = []
         else:

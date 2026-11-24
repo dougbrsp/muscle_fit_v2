@@ -212,3 +212,12 @@ Arquivos de teste da entrega (este ADR não registra resultado de execução):
 - `api/tests/integration/dataapi/test_nutrition_recipes_dataapi.py` (novo; só roda no CI).
 
 Não verificado neste ADR: a execução desses testes; a aplicação da migração em banco real; qualquer tela. Lote 37c: a regra da linha só energia tem teste unitário em `api/tests/unit/test_nutrition_recipes_routes.py` (`test_ingrediente_sem_carboidrato_e_proteina_grava_nulo_e_lista_como_incompleto` e `test_valores_efetivos_sem_energia_dao_400_do_catalogo_e_nada_grava`), mas a execução desses testes não foi feita aqui. O que segue sem prova é a integração com MySQL real, só no CI. O motivo do ajuste foi a falha que o CI encontrou no PR #289 (teste de integração `test_nutrition_recipes_dataapi.py`, com arroz e óleo), não reexecutada aqui.
+
+## Lote 49 — nota sobre o rascunho no logout e na sessão expirada
+
+Não verificado: execução dos testes nesta entrega.
+
+- O rascunho de receita (`localStorage`, chave pelo id do usuário; `frontend/src/components/nutrition/RecipeEditor.tsx`) não é regravado durante o logout: há um guarda "Logout em curso", para não regravar o que o logout acabou de apagar.
+- O rascunho também é apagado quando a sessão expira (401): `frontend/src/lib/api.test.ts`, teste "401 apaga os rascunhos de receita junto com a sessão". O 401 que não é de logout segue o redirect de login do `apiFetch`.
+- A limpeza dos rascunhos fica no módulo folha `frontend/src/lib/recipe-draft-storage.ts` (`clearRecipeDrafts`, sem imports), usado por `api.ts` no 401 e por `app-logout.ts`. É folha para não criar ciclo de import com `api.ts`.
+- Regra de aparelho, sem servidor: o rascunho não sai do aparelho e não tem tabela. Ver também a nota do lote 48 sobre `frontend/src/lib/app-logout.ts`.

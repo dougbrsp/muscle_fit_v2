@@ -221,7 +221,7 @@ export function deleteFood(foodId: number): Promise<{ status: string; id: number
 // ---------------------------------------------------------------------------
 
 /** Prefixo das chaves do rascunho de receita no aparelho (apagadas no logout). */
-export const RECIPE_DRAFT_PREFIX = 'muscle_fit:receita-rascunho:';
+export { RECIPE_DRAFT_PREFIX } from './recipe-draft-storage';
 
 export const recipeKeys = {
   all: ['nutrition-recipes'] as const,
