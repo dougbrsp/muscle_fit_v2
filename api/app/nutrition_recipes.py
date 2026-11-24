@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, Optional, Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from . import nutrition_foods as foods_mod
@@ -62,12 +62,11 @@ router = APIRouter(prefix="/nutrition/recipes", tags=["nutrition"])
 
 VERSIONS = "food_recipe_versions"
 INGREDIENTS = "food_recipe_ingredients"
-LIST_LIMIT = 500
 
 ERR_NOT_FOUND = "food_not_found"
-ERR_INGREDIENT_NOT_FOUND = "recipe_ingredient_not_found"  # `:<índice>`
-ERR_INGREDIENT_IS_RECIPE = "recipe_ingredient_is_recipe"  # `:<índice>`
-ERR_INGREDIENT_PORTION = "recipe_ingredient_portion_not_found"  # `:<índice>`
+ERR_INGREDIENT_NOT_FOUND = recipe_engine.ERR_INGREDIENT_NOT_FOUND
+ERR_INGREDIENT_IS_RECIPE = recipe_engine.ERR_INGREDIENT_IS_RECIPE
+ERR_INGREDIENT_PORTION = recipe_engine.ERR_INGREDIENT_PORTION_NOT_FOUND
 
 _VERSION_COLUMNS = (
     "id, food_id, version, final_weight_g, raw_weight_g, yield_percent, instructions, calculated_json, "
@@ -95,7 +94,7 @@ _LIST_HEAD = (
     f"SELECT id, name, serving_size, owner_user_id, {', '.join(catalog.PER_100_FIELDS)}, updated_at "
     f"FROM {foods_mod.FOODS} WHERE source = %s AND is_active = 1"
 )
-_LIST_TAIL = f"ORDER BY name_normalized, id LIMIT {LIST_LIMIT}"
+_LIST_TAIL = "ORDER BY name_normalized, id LIMIT %s OFFSET %s"  # + (limit, offset) ao fim dos parâmetros
 LIST_SQL = f"{_LIST_HEAD} AND owner_user_id = %s {_LIST_TAIL}"
 LIST_PUBLIC_SQL = f"{_LIST_HEAD} AND owner_user_id IS NULL {_LIST_TAIL}"
 # Favoritas (tabela dos alimentos, migração 102): só as que o usuário pode ver (públicas ou dele).
@@ -151,7 +150,6 @@ class _Resolved:
     unit: str
     snapshot: dict[str, Any]
     ingredient: recipe_engine.RecipeIngredient
-    limitations: tuple[str, ...] = ()  # do `meal_math.resolve_amount` (ex.: densidade assumida g<->ml)
 
 
 def _by_ids(cur: Any, sql_for: Any, ids: Sequence[int]) -> dict[int, dict[str, Any]]:
@@ -162,13 +160,27 @@ def _by_ids(cur: Any, sql_for: Any, ids: Sequence[int]) -> dict[int, dict[str, A
     return {int(row["id"]): row for row in cur.fetchall() or []}
 
 
-def _snapshot_valido(bruto: Any) -> bool:
+def _snapshot_parts(bruto: Any) -> Optional[tuple[dict[str, Any], Optional[dict[str, Any]]]]:
+    """(food, portion) do snapshot gravado, ou `None` se não tem a forma esperada (food dict com `per_100` dict;
+    `portion` ausente/nula ou dict). Nunca levanta: snapshot estranho não pode virar 500."""
     try:
         snapshot = _json(bruto)
     except ValueError:
-        return False
+        return None
     food = snapshot.get("food") if isinstance(snapshot, dict) else None
-    return isinstance(food, dict) and isinstance(food.get("per_100"), dict)
+    porcao = snapshot.get("portion") if isinstance(snapshot, dict) else None
+    if not isinstance(food, dict) or not isinstance(food.get("per_100"), dict):
+        return None
+    return (food, porcao) if porcao is None or isinstance(porcao, dict) else None
+
+
+def _snapshot_valido(bruto: Any) -> bool:
+    return _snapshot_parts(bruto) is not None
+
+
+def _snapshot_per_100(bruto: Any) -> Optional[dict[str, Any]]:
+    partes = _snapshot_parts(bruto)
+    return partes[0]["per_100"] if partes else None
 
 
 def _item_key(row: dict[str, Any]) -> tuple[int, float, str, Optional[int]]:
@@ -188,13 +200,17 @@ def _resolve_ingredients(
     # Snapshot gravado nulo/malformado não serve: o ingrediente é resolvido do catálogo como novo.
     antigos = [a if a is not None and _snapshot_valido(a.get("catalog_snapshot_json")) else None for a in antigos]
     novos = [i for i, antigo in zip(itens, antigos) if antigo is None]
-    alimentos = _by_ids(cur, meals_mod.foods_by_ids_sql, [i.food_id for i in novos])
-    porcoes = _by_ids(cur, meals_mod.portions_by_ids_sql, [i.portion_id for i in novos if i.portion_id is not None])
+    # Id fora de 1..RECIPE_ID_MAX nem vai ao banco: cai nos mesmos "não encontrado" abaixo.
+    alimentos = _by_ids(cur, meals_mod.foods_by_ids_sql, [i.food_id for i in novos if recipe_engine.is_valid_id(i.food_id)])
+    porcoes = _by_ids(
+        cur, meals_mod.portions_by_ids_sql,
+        [i.portion_id for i in novos if i.portion_id is not None and recipe_engine.is_valid_id(i.portion_id)],
+    )
     resolvidos: list[_Resolved] = []
     for indice, (item, antigo) in enumerate(zip(itens, antigos)):
         if antigo is not None:
             snapshot = _json(antigo.get("catalog_snapshot_json"))
-            alimento, porcao = snapshot["food"], snapshot.get("portion")
+            alimento, porcao = snapshot["food"], snapshot.get("portion")  # forma já garantida por `_snapshot_parts`
         else:
             alimento = alimentos.get(int(item.food_id))
             if alimento is None or not can_log_food(identity, uid, alimento):
@@ -225,12 +241,12 @@ def _resolve_ingredients(
                 quantity=float(item.quantity),
                 unit=resolucao.unit.value if resolucao.unit else str(item.unit),
                 snapshot=snapshot,
-                limitations=tuple(resolucao.limitations),
                 ingredient=recipe_engine.RecipeIngredient(
                     label=str(alimento.get("name") or ""),
                     amount=float(resolucao.amount),  # type: ignore[arg-type]
                     basis=resolucao.basis,  # type: ignore[arg-type]
                     per_100=snapshot["food"]["per_100"],
+                    limitations=tuple(resolucao.limitations),
                 ),
             )
         )
@@ -247,11 +263,6 @@ def _compute(
     except recipe_engine.RecipeError as exc:
         raise _error(422, exc.code) from exc
     return resolvidos, resultado, efetivo
-
-
-def _limitation_codes(resultado: recipe_engine.RecipeResult, resolvidos: Sequence[_Resolved]) -> list[str]:
-    """Limitações do resultado + dos ingredientes: a mesma lista na prévia e na versão gravada."""
-    return [*resultado.limitations, *(c for r in resolvidos for c in r.limitations)]
 
 
 def _preview_public(
@@ -282,8 +293,8 @@ def _preview_public(
         "incomplete_fields": list(resultado.incomplete_fields),
         "missing_by_field": {c: list(r) for c, r in resultado.missing_by_field.items()},
         "atwater": efetivo.atwater.to_dict() if efetivo.atwater else None,
-        "limitations": nutrition_labels.limitation_items(_limitation_codes(resultado, resolvidos)),
-        "warnings": nutrition_labels.limitation_items([*resultado.warnings, *efetivo.warnings]),
+        "limitations": nutrition_labels.limitation_items(resultado.limitations),
+        "warnings": nutrition_labels.limitation_items(recipe_engine.merged_warnings(resultado, efetivo)),
         "engine_version": resultado.engine_version,
     }
 
@@ -319,7 +330,7 @@ def _insert_version(
     resultado: recipe_engine.RecipeResult, efetivo: recipe_engine.RecipeEffective, user_id: int,
 ) -> None:
     instrucoes = (payload.instructions or "").strip() or None
-    calculado = {**resultado.to_dict(), "limitation_codes": _limitation_codes(resultado, resolvidos)}
+    calculado = resultado.to_dict()  # `limitations` já traz as dos ingredientes (versões antigas: `limitation_codes`)
     cur.execute(
         INSERT_VERSION_SQL,
         (
@@ -355,11 +366,13 @@ def _recipe_row(cur: Any, food_id: int, identity: Identity, lock: bool = False) 
 
 
 def promotion_blockers(cur: Any, linha: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Requisitos de publicação da receita `linha` (regra do motor) sobre a versão atual gravada."""
+    """Requisitos de publicação da receita `linha` (regra do motor) sobre a versão atual gravada. Sem as tabelas da
+    migração 125: 503 (nunca um erro de SQL)."""
+    require_recipe_tables(cur)
     versao, ingredientes = _current_ingredients(cur, int(linha["id"]))
     return recipe_engine.publish_blockers(
         linha.get("name"), versao.get("final_weight_g") if versao else None, len(ingredientes),
-        {c: _num(linha.get(c)) for c in catalog.PER_100_FIELDS},
+        {c: _num(linha.get(c)) for c in catalog.PER_100_FIELDS}, linha.get("is_active", 1),
     )
 
 
@@ -407,7 +420,7 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
         alimento = atuais.get(int(ingrediente["food_id"]))
         visivel = alimento is not None and alimento.get("is_active", 1) and can_log_food(identity, uid, alimento)
         valores = meals_mod.food_snapshot(alimento)["per_100"] if visivel else None
-        gravado = (_json(ingrediente.get("catalog_snapshot_json")) or {}).get("food", {}).get("per_100")
+        gravado = _snapshot_per_100(ingrediente.get("catalog_snapshot_json"))
         return recipe_engine.ingredient_catalog_status(gravado, valores)
 
     calculo = _json(versao.get("calculated_json")) or {}
@@ -435,7 +448,7 @@ def _recipe_public(cur: Any, linha: dict[str, Any], identity: Identity, permisso
                     "unit": i.get("unit"),
                     "amount": _num(i.get("amount")),
                     "basis": i.get("basis"),
-                    "per_100": (_json(i.get("catalog_snapshot_json")) or {}).get("food", {}).get("per_100"),
+                    "per_100": _snapshot_per_100(i.get("catalog_snapshot_json")),
                     "catalog_status": _status(i),
                 }
                 for i in ingredientes
@@ -474,9 +487,12 @@ def create_recipe(
 @router.get("")
 def list_recipes(
     scope: Literal["mine", "public", "favorites"] = "mine",
+    limit: int = Query(default=recipe_engine.RECIPE_LIST_DEFAULT_LIMIT, ge=1, le=recipe_engine.RECIPE_LIST_MAX_LIMIT),
+    offset: int = Query(default=0, ge=0, le=recipe_engine.RECIPE_LIST_MAX_OFFSET),
     identity: Identity = Depends(require_permission("nutricao.alimentos", "ver")),
 ):
-    """`scope`: `mine` (padrão: as do usuário), `public` (do catálogo) ou `favorites` (favoritadas, públicas e próprias)."""
+    """`scope`: `mine` (padrão: as do usuário), `public` (do catálogo) ou `favorites` (favoritadas, públicas e próprias).
+    `limit`/`offset` paginam (tetos do motor); sem eles vale o comportamento anterior (até o teto, do início)."""
     uid = int(identity.user_id)
     fonte = catalog.FoodSource.RECIPE.value
     sql, params = {
@@ -484,6 +500,7 @@ def list_recipes(
         "public": (LIST_PUBLIC_SQL, (fonte,)),
         "favorites": (LIST_FAVORITES_SQL, (fonte, uid, uid)),
     }[scope]
+    params = (*params, int(limit), int(offset))
     with _connect() as conn:
         with conn.cursor() as cur:
             require_food_tables(cur)
@@ -557,7 +574,7 @@ def update_recipe(
                 _insert_version(cur, int(food_id), proxima, payload, resolvidos, resultado, efetivo, uid)
             except Exception as exc:
                 if is_duplicate_key_error(exc):
-                    raise _error(409, "recipe_version_conflict") from exc
+                    raise _error(409, recipe_engine.ERR_VERSION_CONFLICT) from exc
                 raise
             linha = _recipe_row(cur, food_id, identity)
             return _recipe_public(cur, linha, identity, permissoes)

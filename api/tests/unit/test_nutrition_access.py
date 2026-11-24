@@ -184,6 +184,20 @@ def test_grupo_de_sistema_de_cada_papel_mantem_o_acesso_de_hoje_ao_catalogo(role
     assert access.portion_owner_for(eu, perms, _PRIVADO_PROPRIO) == 10
 
 
+@pytest.mark.parametrize("role", ["admin", "personal_trainer", "regular"])
+@pytest.mark.parametrize("dono", [None, 10, 20])
+def test_posse_da_edicao_de_alimento_e_a_da_receita_decidida_so_no_motor(role, dono, monkeypatch):
+    from app.domain.nutrition import recipe as recipe_engine
+
+    perms, eu = _perms(role), _ident(role)
+    alimento = {"owner_user_id": dono, "source": "user"}
+    esperado = recipe_engine.can_edit_recipe(dono, 10, access.administers_public_catalog(perms, "editar"))
+    assert access.can_edit_food(eu, perms, alimento) is esperado
+    # Delega: trocar a regra do motor muda a do alimento (um só lugar decide).
+    monkeypatch.setattr(recipe_engine, "can_edit_recipe", lambda *_a: not esperado)
+    assert access.can_edit_food(eu, perms, alimento) is (not esperado)
+
+
 def test_grupo_sintetico_so_com_catalogo_ver_ve_e_lista_privados_mas_nao_edita_nem_promove():
     perms, eu = _so_catalogo("ver"), _ident("regular")
     assert access.can_view_food(eu, perms, _PRIVADO_ALHEIO) is True

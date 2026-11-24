@@ -49,6 +49,10 @@ RECIPE_INGREDIENT_AMOUNT_MAX: Final[float] = RECIPE_FINAL_WEIGHT_MAX_G  # teto p
 RECIPE_NAME_MAX_CHARS: Final[int] = 255
 RECIPE_COPY_SUFFIX: Final[str] = " (cópia)"
 YIELD_PERCENT_SCALE: Final[float] = 100.0  # converte razão em percentual; não é fator de nutriente
+RECIPE_ID_MAX: Final[int] = 2_147_483_647  # teto de id de ingrediente/porção aceito (INT com sinal): acima, "não encontrado"
+RECIPE_LIST_DEFAULT_LIMIT: Final[int] = 500  # sem `limit`, a lista traz até aqui (o comportamento anterior da tela)
+RECIPE_LIST_MAX_LIMIT: Final[int] = 500
+RECIPE_LIST_MAX_OFFSET: Final[int] = 100_000
 
 CATALOG_CURRENT: Final[str] = "current"
 CATALOG_OUTDATED: Final[str] = "outdated"
@@ -62,13 +66,20 @@ ERR_TOO_MANY_INGREDIENTS = "recipe_too_many_ingredients"
 ERR_INVALID_FINAL_WEIGHT = "recipe_invalid_final_weight"
 ERR_INVALID_INGREDIENT_AMOUNT = "recipe_invalid_ingredient_amount"  # `:<índice>`
 ERR_YIELD_IMPLAUSIBLE = "recipe_yield_implausible"
-ERR_OVERRIDE_FIELD = "recipe_override_field_invalid"  # `:<campo>`
-ERR_OVERRIDE_VALUE = "recipe_override_value_invalid"  # `:<campo>`
+ERR_OVERRIDE_FIELD = "recipe_override_field_invalid"  # sem sufixo: a chave recebida não é ecoada
+ERR_OVERRIDE_VALUE = "recipe_override_value_invalid"  # `:<campo>` (campo já validado contra PER_100_FIELDS)
+
+# Códigos da rota de receitas (a rota só os devolve; texto em `labels`).
+ERR_INGREDIENT_NOT_FOUND = "recipe_ingredient_not_found"  # `:<índice>`
+ERR_INGREDIENT_IS_RECIPE = "recipe_ingredient_is_recipe"  # `:<índice>`
+ERR_INGREDIENT_PORTION_NOT_FOUND = "recipe_ingredient_portion_not_found"  # `:<índice>`
+ERR_VERSION_CONFLICT = "recipe_version_conflict"
 
 ERR_PUBLISH_NAME_REQUIRED = "recipe_publish_name_required"
 ERR_PUBLISH_FINAL_WEIGHT_REQUIRED = "recipe_publish_final_weight_required"
 ERR_PUBLISH_NO_INGREDIENTS = "recipe_publish_no_ingredients"
 ERR_PUBLISH_INVALID_VALUES = "recipe_publish_invalid_values"
+ERR_PUBLISH_ARCHIVED = "recipe_publish_archived"
 ERR_PUBLIC_EDIT_FORBIDDEN = "recipe_public_edit_forbidden"
 ERR_PUBLIC_EDIT_FORBIDDEN_STATUS = 403  # pública existe para todos: não há o que esconder (privada alheia é 404)
 
@@ -94,6 +105,7 @@ class RecipeIngredient:
     amount: float
     basis: Unit
     per_100: Mapping[str, Any]
+    limitations: tuple[str, ...] = ()  # códigos da resolução da quantidade (ex.: densidade assumida)
 
 
 @dataclass(frozen=True)
@@ -151,6 +163,8 @@ def calculate_recipe(ingredients: Sequence[RecipeIngredient], final_weight_g: An
     tem_ml = any(i.basis == Unit.MILLILITER for i in ingredients)
     if tem_ml:
         limitacoes.append(LIMIT_RAW_WEIGHT_EXCLUDES_ML)
+    # `<código>:<índice>` diz QUAL ingrediente (o texto sai "Ingrediente N: ...").
+    limitacoes.extend(f"{codigo}:{indice}" for indice, i in enumerate(ingredients) for codigo in i.limitations)
     rendimento: Optional[float] = None
     # Com ml o peso cru é parcial: sem rendimento e sem a trava da faixa.
     if peso_cru > 0 and not tem_ml:
@@ -202,6 +216,19 @@ class RecipeEffective:
         }
 
 
+def merged_warnings(result: RecipeResult, effective: RecipeEffective) -> tuple[str, ...]:
+    """Avisos da prévia sem repetir: o do calculado e o do efetivo são o mesmo código (Atwater). Com substituição, vale
+    só o do efetivo (os valores que serão gravados); o do calculado já não descreve a receita."""
+    if effective.overridden_fields:
+        return tuple(dict.fromkeys(effective.warnings))
+    return tuple(dict.fromkeys((*result.warnings, *effective.warnings)))
+
+
+def is_valid_id(value: Any) -> bool:
+    """Id de alimento/porção de ingrediente dentro de 1..`RECIPE_ID_MAX` (fora disso a rota trata como inexistente)."""
+    return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= RECIPE_ID_MAX
+
+
 def apply_overrides(calculated_per_100: Mapping[str, Any], overrides: Optional[Mapping[str, Any]]) -> RecipeEffective:
     """Aplica substituições manuais por campo sobre o por 100 g calculado. Só campos de `PER_100_FIELDS`, valor
     não negativo e plausível (mesma checagem de `catalog.validate_food_values`, base g); o resto -> `RecipeError`."""
@@ -210,7 +237,7 @@ def apply_overrides(calculated_per_100: Mapping[str, Any], overrides: Optional[M
     substituicoes = {campo: valor for campo, valor in (overrides or {}).items() if valor is not None}
     for campo in overrides or {}:
         if campo not in catalog.PER_100_FIELDS:
-            raise RecipeError(f"{ERR_OVERRIDE_FIELD}:{campo}")
+            raise RecipeError(ERR_OVERRIDE_FIELD)
     for campo, valor in substituicoes.items():
         if non_negative_number(valor) is None:
             raise RecipeError(f"{ERR_OVERRIDE_VALUE}:{campo}")
@@ -257,7 +284,12 @@ def ingredient_catalog_status(snapshot_per_100: Optional[Mapping[str, Any]], cur
         if a is None or b is None:
             if a is not b:
                 return CATALOG_OUTDATED
-        elif not math.isclose(float(a), float(b), rel_tol=_PER_100_TOLERANCE, abs_tol=_PER_100_TOLERANCE):
+            continue
+        try:
+            igual = math.isclose(float(a), float(b), rel_tol=_PER_100_TOLERANCE, abs_tol=_PER_100_TOLERANCE)
+        except (TypeError, ValueError):  # snapshot gravado com valor estranho: não é igual ao atual
+            return CATALOG_OUTDATED
+        if not igual:
             return CATALOG_OUTDATED
     return CATALOG_CURRENT
 
@@ -270,11 +302,14 @@ def overrides_from_effective(effective_json: Optional[Mapping[str, Any]]) -> dic
 
 
 def publish_blockers(
-    name: Any, final_weight_g: Any, ingredient_count: int, per_100: Mapping[str, Any]
+    name: Any, final_weight_g: Any, ingredient_count: int, per_100: Mapping[str, Any], is_active: Any = True
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Requisitos para tornar a receita pública (como alimento): nome, peso final, ao menos um ingrediente e valores
-    por 100 g válidos pela regra do catálogo. Devolve (códigos `recipe_publish_*`, erros do catálogo dos valores)."""
+    """Requisitos para tornar a receita pública (como alimento): ativa (arquivada não publica), nome, peso final, ao
+    menos um ingrediente e valores por 100 g válidos pela regra do catálogo. Devolve (códigos `recipe_publish_*`,
+    erros do catálogo dos valores)."""
     codigos: list[str] = []
+    if not is_active:
+        codigos.append(ERR_PUBLISH_ARCHIVED)
     if not str(name or "").strip():
         codigos.append(ERR_PUBLISH_NAME_REQUIRED)
     if positive_number(final_weight_g) is None:
@@ -293,7 +328,8 @@ def can_view_recipe(owner_user_id: Optional[int], user_id: int) -> bool:
 
 
 def can_edit_recipe(owner_user_id: Optional[int], user_id: int, administers_catalog: bool) -> bool:
-    """Privada: só o dono. Pública: só quem administra o catálogo (o autor original sem a concessão não edita)."""
+    """Privada: só o dono. Pública: só quem administra o catálogo (o autor original sem a concessão não edita).
+    Regra única de posse de edição: `nutrition_access.can_edit_food` delega aqui."""
     if owner_user_id is None:
         return bool(administers_catalog)
     return int(owner_user_id) == int(user_id)

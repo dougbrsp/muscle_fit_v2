@@ -26,6 +26,7 @@ vi.mock('@/lib/auth', () => ({
 import { apiFetch } from '@/lib/api';
 import { clearSession, confirmLogoutWithUnsyncedOps } from '@/lib/auth';
 import { logoutAndRedirect, resetSessionCache } from './app-logout';
+import { RECIPE_DRAFT_PREFIX } from './nutrition-api';
 
 const PERMS = { id: 1, permissions: { admin: { ver: 'todos' } } };
 
@@ -170,5 +171,25 @@ describe('resetSessionCache (fronteira do login)', () => {
 
     expect(qc.getQueryCache().getAll()).toHaveLength(0);
     expect(qc.getQueryData(['current-user'])).toBeUndefined();
+  });
+});
+
+describe('rascunho de receita no logout', () => {
+  it('apaga só as chaves de rascunho de receita', async () => {
+    const store = new Map<string, string>([
+      [`${RECIPE_DRAFT_PREFIX}7:new`, '{}'],
+      [`${RECIPE_DRAFT_PREFIX}7:3`, '{}'],
+      ['outra', 'x'],
+    ]);
+    vi.stubGlobal('window', {
+      localStorage: {
+        get length() { return store.size; },
+        key: (i: number) => [...store.keys()][i] ?? null,
+        removeItem: (k: string) => store.delete(k),
+      },
+    });
+    await logoutAndRedirect(() => {}, new QueryClient());
+    vi.unstubAllGlobals();
+    expect([...store.keys()]).toEqual(['outra']);
   });
 });

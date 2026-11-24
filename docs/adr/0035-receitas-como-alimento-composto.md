@@ -1,6 +1,6 @@
 # ADR 0035: Receitas como alimento composto, primeira fatia do backend (issue #286)
 
-- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`; fatia 2, parte 1 (lote 40) na branch `feat/receitas-edicao-l40`, sem commit; fatia 2, parte 2 (lote 46) na branch `feat/receitas-publicas-l46`, sem commit. Não promovida a produção.
+- **Status**: Aceita. Backend (lotes 37 a 37c) no PR #293 e telas (lote 38) no PR #294, ambos mesclados na `develop`; ajustes do lote 39 na branch `fix/validacao-e-sobras-receitas-l39`; fatia 2, parte 1 (lote 40) na branch `feat/receitas-edicao-l40`, sem commit; fatia 2, parte 2 (lote 46) na branch `feat/receitas-publicas-l46`, sem commit; sobras e revisão (lote 48) na branch `fix/receitas-sobras-l48`, sem commit. Não promovida a produção.
 - **Data**: 2026-11-23
 - **Relaciona-se a**: [ADR 0034](0034-prioridade-do-dia-no-diario-da-nutricao.md) (formato e seções deste registro); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (a regra de ter um único dono por cálculo, aplicada aqui aos nutrientes da receita).
 
@@ -152,6 +152,30 @@ Consequências:
 - **Dados.** Sem migração nova nesta parte. Publicar altera a linha de `food_items` (`owner_user_id` vira NULL) e as porções.
 
 Impacto em produção: 0 receitas em produção (medido em 23/11/2026, lote 37c; receitas ainda não promovidas). Nada muda para alimentos comuns, exceto que `can_promote_food` (em `api/app/nutrition_access.py`) passa a valer para linha de receita. Nenhum dado existente muda de forma.
+
+## Lote 48 — sobras da #290 e revisão (issue #290, branch `fix/receitas-sobras-l48`, sem commit)
+
+Não verificado: execução de testes unitários nesta entrega (a integração só roda no CI) e navegador.
+
+O que mudou (dono `api/app/domain/nutrition/recipe.py`, salvo indicação):
+
+- `merged_warnings`: junta avisos do cálculo e dos efetivos numa lista só; a prévia e a receita (`api/app/nutrition_recipes.py`) usam essa função.
+- `is_valid_id` e `RECIPE_ID_MAX` (2.147.483.647, teto do INT com sinal): id de ingrediente ou porção acima disso responde "não encontrado" em vez de erro de banco.
+- Paginação da lista: `GET /nutrition/recipes?limit=&offset=`, com `RECIPE_LIST_DEFAULT_LIMIT` = 500, `RECIPE_LIST_MAX_LIMIT` = 500 e `RECIPE_LIST_MAX_OFFSET` = 100.000. Sem parâmetros vale o comportamento anterior (até 500, do início).
+- `ERR_PUBLISH_ARCHIVED` (`recipe_publish_archived`): receita arquivada não publica. Segue o formato tipado dos demais `recipe_publish_*`.
+- `ERR_VERSION_CONFLICT` (`recipe_version_conflict`) e `ERR_INGREDIENT_*` (`recipe_ingredient_not_found`, `recipe_ingredient_is_recipe`, `recipe_ingredient_portion_not_found`, `recipe_ingredient_amount_out_of_range`), com `:<índice>`.
+- Limitação por ingrediente sai do motor como `<código>:<índice>`, e `api/app/domain/nutrition/labels.py` rotula citando o ingrediente.
+- `limitation_codes` deixa de ser gravado. A leitura de versão antiga que ainda tem a chave continua funcionando (`nutrition_recipes.py`, cai em `limitations` quando a chave falta).
+- `nutrition_access.can_edit_food` (`api/app/nutrition_access.py`) delega a `recipe.can_edit_recipe`. Antes havia regra paralela; agora só há uma.
+- Promoção de receita exige linha ativa e tabelas; sem as tabelas responde 503.
+- Frontend: o rascunho local guarda a versão e é apagado no logout (`frontend/src/lib/app-logout.ts`); Publicar fica desabilitado com edição pendente; a confirmação de publicação cita ingredientes e modo de preparo (`RecipeEditor.tsx`).
+
+Decisões de não mudar, com o motivo:
+
+1. **`_has_tables` (`api/app/nutrition_schema.py`) guarda só cache positivo.** Ausência não é cacheada, para que a migração 125 aplicada depois não exija reinício. Consequência: após um `down` da 125, as Lambdas que já viram a tabela precisam ser reiniciadas, porque o cache positivo continua.
+2. **A validação de tabela existente da 125 não confere chaves estrangeiras.** A migração 125 já foi aplicada no DEV e não se edita (checksum). A lacuna segue registrada em "Não medido" no mapa.
+3. **Administrador do catálogo vê nome e valor por 100 g de receita privada alheia.** É a regra já existente da linha de alimento privado, e quem administra é quem publica. Ele não vê ingredientes nem modo de preparo (teste de rota) e não edita nem promove receita de outro usuário sem a concessão.
+4. **`DELETE /nutrition/foods/{id}` e as porções seguem aceitando receita.** A tela de receita arquiva por esse `DELETE`; uma rota nova duplicaria o que já existe.
 
 ## Impacto em produção
 

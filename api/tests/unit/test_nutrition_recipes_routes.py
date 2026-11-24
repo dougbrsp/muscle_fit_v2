@@ -9,7 +9,7 @@ import json
 from decimal import Decimal
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app import nutrition_recipes as recipes_mod
@@ -174,7 +174,7 @@ def test_limitacoes_dos_ingredientes_chegam_em_criar_ler_e_editar_como_na_previa
     corpo = _corpo(db, name="R")
     corpo["ingredients"][1].update(quantity=200, unit="ml")  # ml sem densidade: assume densidade
     previa = _client().post("/nutrition/recipes/preview", json=corpo).json()["limitations"]
-    assert any(i["code"] == "assumed_density" for i in previa)
+    assert any(i["code"] == "assumed_density:1" and i["label"].startswith("Ingrediente 2: ") for i in previa)
     criada = _client().post("/nutrition/recipes", json=corpo).json()
     lida = _client().get(f"/nutrition/recipes/{criada['id']}").json()
     editada = _client().put(f"/nutrition/recipes/{criada['id']}", json=corpo).json()
@@ -208,7 +208,7 @@ def test_substituicao_manual_preserva_o_calculado(db):
     "extra, codigo",
     [
         ({"final_weight_g": 5000}, "recipe_yield_implausible"),
-        ({"overrides": {"campo_falso": 1}}, "recipe_override_field_invalid:campo_falso"),
+        ({"overrides": {"campo_falso": 1}}, "recipe_override_field_invalid"),  # sem ecoar a chave
         ({"overrides": {"protein_g": -1}}, "recipe_override_value_invalid:protein_g"),
         ({"ingredients": []}, "recipe_no_ingredients"),
     ],
@@ -289,6 +289,21 @@ def test_editar_trava_a_linha_do_alimento_antes_de_ler_o_maximo_da_versao(db):
     assert sqls.index(f"{recipes_mod.foods_mod.FOOD_BY_ID_SQL} FOR UPDATE") < sqls.index(recipes_mod.MAX_VERSION_FOR_UPDATE_SQL)
     assert recipes_mod.MAX_VERSION_FOR_UPDATE_SQL.endswith(" FOR UPDATE") and recipes_mod.MAX_VERSION_SQL not in sqls
     assert sqls.index(recipes_mod.foods_mod.FOOD_BY_ID_SQL) < sqls.index(f"{recipes_mod.foods_mod.FOOD_BY_ID_SQL} FOR UPDATE")
+
+
+def test_409_de_versao_depois_do_update_desfaz_o_update_do_alimento(db, monkeypatch):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    antes = dict(db.foods[novo["id"]])
+
+    def _duplica(*_a, **_k):
+        raise RuntimeError("(1062, \"Duplicate entry '1-2' for key 'uq_food_version'\")")
+
+    monkeypatch.setattr(recipes_mod, "_insert_version", _duplica)
+    corpo = _corpo(db, name="Nome novo", final_weight_g=400)  # muda nome e valores por 100 g (UPDATE já executado)
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=corpo)
+    assert r.status_code == 409 and _codigo(r) == engine.ERR_VERSION_CONFLICT
+    assert any(s == recipes_mod.foods_mod.UPDATE_FOOD_SQL for s, _ in db.queries)  # o UPDATE rodou antes do 409
+    assert db.foods[novo["id"]] == antes and len(db.recipe_versions) == 1  # e foi desfeito
 
 
 def test_put_com_versao_duplicada_na_insercao_da_409(db, monkeypatch):
@@ -475,6 +490,88 @@ def test_snapshot_gravado_invalido_nao_e_reaproveitado_e_resolve_do_catalogo(db,
     r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))
     assert r.status_code == 200, r.text
     assert [_kcal(i) for i in _ingredientes_gravados(db, novo["id"], 2)] == [230, 160]
+
+
+@pytest.mark.parametrize("portion", ["texto", 5, [1], True])
+def test_snapshot_com_portion_que_nao_e_dict_nao_da_500_e_resolve_do_catalogo(db, portion):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    ingrediente = _ingredientes_gravados(db, novo["id"], 1)[0]
+    snapshot = json.loads(ingrediente["catalog_snapshot_json"])
+    ingrediente["catalog_snapshot_json"] = json.dumps({**snapshot, "portion": portion})
+    db.foods[db.arroz]["energy_kcal"] += 100
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))
+    assert r.status_code == 200, r.text
+    assert _kcal(_ingredientes_gravados(db, novo["id"], 2)[0]) == 230  # não reaproveitou o snapshot estranho
+
+
+def test_snapshot_com_per_100_de_valores_estranhos_nao_da_500_e_vira_incompleto_e_desatualizado(db):
+    novo = _client().post("/nutrition/recipes", json=_corpo(db, name="R")).json()
+    ingrediente = _ingredientes_gravados(db, novo["id"], 1)[0]
+    snapshot = json.loads(ingrediente["catalog_snapshot_json"])
+    snapshot["food"]["per_100"] = {"energy_kcal": 130, "protein_g": [1], "carbohydrates_g": "abc"}
+    ingrediente["catalog_snapshot_json"] = json.dumps(snapshot)
+    lida = _client().get(f"/nutrition/recipes/{novo['id']}")
+    assert lida.status_code == 200, lida.text
+    assert lida.json()["recipe"]["ingredients"][0]["catalog_status"] == "outdated"
+    r = _client().put(f"/nutrition/recipes/{novo['id']}", json=_corpo(db, name="R"))  # reaproveita o snapshot
+    assert r.status_code == 200, r.text
+    assert any(i["code"].startswith("recipe_incomplete:") for i in r.json()["recipe"]["limitations"])
+
+
+def test_ids_de_ingrediente_acima_do_teto_sao_nao_encontrados_sem_ir_ao_banco(db):
+    grande = engine.RECIPE_ID_MAX + 1
+    db.queries.clear()
+    corpo = _corpo(db)
+    corpo["ingredients"][1]["food_id"] = grande
+    r = _client().post("/nutrition/recipes/preview", json=corpo)
+    assert r.status_code == 422 and _codigo(r) == "recipe_ingredient_not_found:1"
+    assert all(grande not in params for _, params in db.queries)
+    corpo = _corpo(db)
+    corpo["ingredients"][0].update(portion_id=grande, unit="unit")
+    r = _client().post("/nutrition/recipes/preview", json=corpo)
+    assert r.status_code == 422 and _codigo(r) == "recipe_ingredient_portion_not_found:0"
+
+
+def test_listar_pagina_com_limit_e_offset_com_teto_e_sem_parametros_vale_o_padrao(db):
+    for n in range(3):
+        _client().post("/nutrition/recipes", json=_corpo(db, name=f"R{n}"))
+    db.queries.clear()
+    padrao = _client().get("/nutrition/recipes")
+    assert padrao.status_code == 200 and len(padrao.json()["items"]) == 3
+    assert db.queries[0][1][-2:] == (engine.RECIPE_LIST_DEFAULT_LIMIT, 0)
+    assert recipes_mod.LIST_SQL.endswith("LIMIT %s OFFSET %s")
+    db.queries.clear()
+    assert _client().get("/nutrition/recipes?scope=public&limit=2&offset=4").status_code == 200
+    assert db.queries[0][1][-2:] == (2, 4)
+    for ruim in ("limit=0", f"limit={engine.RECIPE_LIST_MAX_LIMIT + 1}", "offset=-1",
+                 f"offset={engine.RECIPE_LIST_MAX_OFFSET + 1}"):
+        assert _client().get(f"/nutrition/recipes?{ruim}").status_code == 422, ruim
+
+
+def test_previa_nao_repete_o_aviso_de_energia_do_calculado_e_do_efetivo(db):
+    db.foods[db.arroz]["energy_kcal"] = Decimal("900")  # kcal muito acima dos macros
+    corpo = {"ingredients": [{"food_id": db.arroz, "quantity": 100, "unit": "g"}], "final_weight_g": 100}
+    avisos = _client().post("/nutrition/recipes/preview", json=corpo).json()["warnings"]
+    assert [a["code"] for a in avisos] == [engine.WARN_ATWATER]
+    corpo["overrides"] = {"energy_kcal": 126}  # coerente com os macros do arroz cozido
+    assert _client().post("/nutrition/recipes/preview", json=corpo).json()["warnings"] == []
+
+
+def test_promocao_de_receita_arquivada_tem_bloqueio_do_dono_e_sem_tabelas_da_125_da_503(db, monkeypatch):
+    rid = _publica(db)
+    linha = {**db.foods[rid], "is_active": 0}
+    with db.conn() as conn, conn.cursor() as cur:
+        codigos, _ = recipes_mod.promotion_blockers(cur, linha)
+        assert engine.ERR_PUBLISH_ARCHIVED in codigos
+        assert recipes_mod.promotion_blockers(cur, db.foods[rid])[0] == ()
+
+        def _falta(_cur):
+            raise recipe_tables_missing_error()
+
+        monkeypatch.setattr(recipes_mod, "require_recipe_tables", _falta)
+        with pytest.raises(HTTPException) as erro:
+            recipes_mod.promotion_blockers(cur, linha)
+        assert erro.value.status_code == 503
 
 
 def test_put_le_a_versao_atual_com_for_update_depois_da_trava_da_linha(db):
