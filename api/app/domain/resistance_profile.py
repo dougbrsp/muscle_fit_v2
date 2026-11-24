@@ -108,6 +108,11 @@ ORIGINS: Final[dict[str, str]] = {ORIGIN_AI: "IA", ORIGIN_ADMIN: "Admin"}
 RELIABLE_STATUSES: Final = frozenset({"reviewed", "verified"})
 PENDING_STATUSES: Final = frozenset({"suggested"})
 HUMAN_REVIEW_STATUSES: Final = frozenset(REVIEW_STATUSES) - PENDING_STATUSES
+# Estados que as ações "aprovar" e "rejeitar" da tela gravam (a tela só consome, via export_vocabulary).
+APPROVE_STATUS: Final = "reviewed"
+REJECT_STATUS: Final = "rejected"
+# Estado inicial do editor para um par sem perfil: o admin que cria à mão já é a revisão humana.
+ADMIN_DEFAULT_STATUS: Final = APPROVE_STATUS
 
 # Teto de pares por job de sugestão da IA. Limite operacional (não é regra de domínio): o job roda na Lambda de
 # 60 s (`async_jobs.LAMBDA_TIMEOUT_SECONDS`), uma chamada leve por par, ~52 s úteis (60 menos a reserva do worker).
@@ -242,6 +247,11 @@ def export_vocabulary() -> dict[str, Any]:
         "confidence": dict(CONFIDENCES),
         "status": dict(REVIEW_STATUSES),
         "origin": dict(ORIGINS),
+        "default_status": ADMIN_DEFAULT_STATUS,
+        "actions": {"approve": APPROVE_STATUS, "reject": REJECT_STATUS},
+        "pending_statuses": sorted(PENDING_STATUSES),
+        "human_review_statuses": sorted(HUMAN_REVIEW_STATUSES),
+        "suggest_max_pairs": SUGGEST_MAX_PAIRS,
     }
 
 

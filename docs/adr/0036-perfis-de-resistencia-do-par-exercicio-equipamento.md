@@ -1,6 +1,6 @@
 # ADR 0036: Perfis de resistência do par exercício+equipamento, com vocabulário controlado e revisão humana (issue #288)
 
-- **Status**: Aceita. Fatia 1, parte A (lote 41) na branch `feat/perfis-resistencia-l41`, sem commit. Não promovida a produção.
+- **Status**: Aceita. Fatia 1 (lotes 41, 42/42b e 43) nas branches `feat/perfis-resistencia-l41`, `feat/perfis-resistencia-ia-l42b` e `feat/perfis-resistencia-tela-l43`, sem commit. Não promovida a produção.
 - **Data**: 2026-11-23
 - **Relaciona-se a**: [ADR 0014](0014-contexto-de-equipamento-e-calibracao.md) (equipamento por academia); [ADR 0015](0015-progressao-fonte-unica-no-motor.md) (um único dono por cálculo); [ADR 0035](0035-receitas-como-alimento-composto.md) (molde da estrutura deste registro e da migração com `down` guardado).
 
@@ -100,11 +100,11 @@ Branch `feat/perfis-resistencia-ia-l42`, sem commit. Não promovido a produção
 - **Worker** (`api/app/resistance_profile_ai.py`). Lê os pares numa consulta; por par, uma chamada do modelo leve; valida pelo dono (`validate_response` força origem `ai` e status `suggested`); grava só se `can_transition` permitir. A IA só cria `suggested` e nunca sobrescreve `reviewed`, `verified` ou `rejected`: esses pares viram `skipped`, sem chamada à IA. Falha por par (IA, resposta inválida, gravação, par inexistente) entra em `failed` com código (`ai_failed`, `invalid_response`, `write_failed`, `pair_not_found`) e não derruba o lote. Cada gravação gera linha na trilha, com `origin = ai`.
 - **Limites.** Teto de `SUGGEST_MAX_PAIRS` pares por job, constante do dono (6 desde o lote 42b; era 10). O orçamento de 40 s (`TIME_BUDGET_SECONDS`) saiu: vale o timeout da Lambda, ver lote 42b. Pares sem tempo saem como `not_processed` e o admin repete.
 - **Onde ficam prompt e RAG.** Prompt `resistance_profile/suggest` em `api/privado/prompts/resistance_profile/`, no submódulo privado `api/privado` (repositório `muscle_fit_privado`). RAG `PERFIS_RESISTENCIA.md`, lido por `rag_chunking` com teto `RAG_MAX_CHARS`. Origem e SHA ficam no cabeçalho do arquivo dentro do submódulo; nada do texto vai para este repositório público. O vocabulário entra no prompt interpolado de `export_vocabulary()`. A decisão de 23/11 citava `PERFIS_RESISTENCIA_RAG.md`; o nome em uso no código é `PERFIS_RESISTENCIA.md`.
-- **Custo.** Uma chamada do modelo leve por par. Default `gpt-5.4-mini` (env `OPENAI_RESISTANCE_PROFILE_MODEL`); feature `exercise_summary`, que o roteamento do provedor leva ao Haiku. Com 145 pares ativos em produção (23/11), a base inteira são até 145 chamadas, em jobs de até 10 pares.
+- **Custo.** Uma chamada do modelo leve por par. Default `gpt-5.4-mini` (env `OPENAI_RESISTANCE_PROFILE_MODEL`); feature `exercise_summary`, que o roteamento do provedor leva ao Haiku. Com 145 pares ativos em produção (23/11), a base inteira são até 145 chamadas, em jobs de até 6 pares (`SUGGEST_MAX_PAIRS`; o trecho dos 10 pares estava obsoleto, ver lote 42b).
 - **Sem cota por usuário.** A rota é só do admin do catálogo, então não há cota de IA por usuário (sem `ai_usage_log`). O teto é por job.
 - **Guarda.** Padrão `resistencia_codigos_fora_do_dono` (allowlist vazia) em `api/tests/unit/test_guarda_fontes_da_verdade.py`.
 - **Impacto em produção** (medido em 23/11/2026 por leitura, sem escrita): nenhuma tela de usuário final muda. A rota só responde ao admin, e o job só grava `suggested`.
-- **Pendências e não verificado (atualizado no lote 42b).** (a) Pares acima do teto: o worker agora marca `not_processed`, mas não conferi se a rota corta as ids em 6; `resistance_profiles.py` responde `pairs: len(ids)`. (b) Resolvido por leitura: cada chamada usa `min(50 s, restante)`, então nunca passa do orçamento da Lambda (lote 42b). (c) SHA do texto privado não conferido. (d) Nenhum teste executado neste lote.
+- **Pendências e não verificado (atualizado no lote 42b).** (a) Resolvido no lote 43, por leitura: a rota não corta as ids. `ResistanceSuggestIn` (`api/app/request_models.py`) recusa mais de `SUGGEST_MAX_PAIRS` (6) com 422 antes de criar o job; o worker marca como `not_processed` só os pares sem tempo. (b) Resolvido por leitura: cada chamada usa `min(50 s, restante)`, então nunca passa do orçamento da Lambda (lote 42b). (c) SHA do texto privado não conferido. (d) Nenhum teste executado neste lote.
 
 ## Lote 42b (2026-11-23, #288, tempo, worker perdido e RAG)
 
@@ -119,6 +119,30 @@ Branch `feat/perfis-resistencia-ia-l42b`, sem commit. Não promovido a produçã
   2. A promoção precisa aplicar o terraform do RAG com `run_terraform=true`, para publicar `PERFIS_RESISTENCIA.md` no S3. Plan esperado: 1 objeto novo. **Não verificado:** o plan não foi executado.
   3. Smoke pós-promoção: `POST /resistance-profiles/suggest` com 1 par ativo; depois `GET /jobs/{job_id}` até `done` ou `failed`. Conferir que o par ficou `suggested` e que a trilha tem `origin = ai`.
 - **Não verificado nesta rodada:** build do `api/Dockerfile.ai` (não executado); plan do terraform (não executado); testes unitários e guarda (não executados); SHA do texto privado (não conferido).
+
+## Lote 43 (2026-11-23, #288, fatia 1 parte C: tela)
+
+Branch `feat/perfis-resistencia-tela-l43`, sem commit. Não promovido a produção. Sem mudança de API nem de banco: a tela só consome as rotas dos lotes 41 e 42b.
+
+- **Cobertura.** `ResistanceProfilesTab` (`frontend/src/app/(app)/equipamentos-exercicios/ResistanceProfilesTab.tsx`) lê `GET /resistance-profiles/coverage`: pares ativos, com perfil, sem perfil, desconhecidos e contagem por estado, com rótulos do vocabulário.
+- **Lista.** `GET /resistance-profiles` com filtros de estado, confiança, equipamento, exercício e "só pendentes" (`pending`); 25 por página (`PAGE_SIZE`). Par sem perfil aparece como "Sem perfil", nunca como erro. Cliente: `frontend/src/lib/resistance-profiles-api.ts` (`fetchProfiles`, `buildListQuery`).
+- **Editor.** Um seletor por componente, com as opções de `GET /resistance-profiles/vocabulary` (`source`, `mechanism`, `trajectory`, `profile`, `line`, `direction_changes`); `flags` em múltipla escolha; confiança, estado, justificativa, evidência e motivo. Salva com `PUT /resistance-profiles/{id}` (substituição completa). O admin escolhe o estado entre todos os do vocabulário, inclusive `verified`.
+- **Aprovar e rejeitar.** Os botões rápidos gravam o estado que a API informa em `actions` (`APPROVE_STATUS` = `reviewed`; `REJECT_STATUS` = `rejected`, no dono). O front não escreve código de estado. Aparecem só para par com perfil. `verified` não tem botão rápido: sai pelo editor.
+- **Estado inicial e confirmação.** O editor começa no estado que o dono informa em `export_vocabulary()["default_status"]` (`ADMIN_DEFAULT_STATUS` = `APPROVE_STATUS`, hoje `reviewed`) quando o par não tem perfil; par com perfil abre com o estado gravado. O front não deduz o estado pela ordem da lista nem por outro campo. Aprovar e rejeitar abrem um diálogo de confirmação com motivo opcional ("Motivo (opcional)") e só gravam ao confirmar. Razão da confirmação: o botão da lista grava de imediato, sem o par à vista; o diálogo dá a chance de revisar antes.
+- **Histórico.** `GET /resistance-profiles/{id}/history`; a tela mostra data, origem, motivo e campos alterados (`changedFields`).
+- **Sugerir por IA.** Sem seleção, pede os pendentes; com seleção, pede os pares marcados. O teto vem de `suggest_max_pairs` (`SUGGEST_MAX_PAIRS`, 6): acima dele o botão fica desligado e a mensagem mostra o limite. O resultado vem do job (`pollAsyncJob`) e mostra sugeridos, pulados e falhas com código. Quem decide o teto é o dono e `ResistanceSuggestIn` (422 acima de 6); a tela só o exibe.
+- **Permissões.** A aba só aparece com leitura (`exercicios.catalogo`/`ver`). Checkboxes, sugerir, aprovar, rejeitar e editar exigem `canEdit` (`admin.catalogos`/`editar`). Servidor é a autoridade: 403 vira mensagem; 422 tipado vira campo e código.
+- **Sem regra no front.** A tela não tem código de vocabulário, transição, assinatura nem regra de revisão. `FIELD_TITLES` são rótulos de apresentação dos componentes.
+- **Não verificado neste lote:** a origem de `canView`/`canEdit` no componente pai `EquipamentosExerciciosClient.tsx` (não relido aqui); os testes e a guarda (não executados); a tela no navegador.
+
+**Fechamento da fatia 1.** Lote 41: dono, tabelas (migração 126) e seis rotas. Lotes 42 e 42b: sugestão por IA. Lote 43: tela. Pendências antes da promoção: aplicar a migração 126 antes do código (sem ela, as rotas respondem 503); publicar o commit do `api/privado` (prompt e RAG) antes do push do repositório público, como no lote 42b; rodar o smoke de sugestão e a guarda.
+
+**Próximas fatias.**
+- **Fatia 2: motor de redundância.** Uso do perfil na decisão, com aviso no editor manual de Modelo quando o exercício escolhido for redundante com outro. O motor dono fica registrado no mapa antes de qualquer consumidor. A regra de redundância é decisão a tomar com o usuário.
+- **Fatia 3: geração automática e diagnóstico.** Geração de perfis em lote e diagnóstico de cobertura e qualidade.
+- **Fora das fatias 1 a 3:** padrão do equipamento canônico e variação de exemplar (níveis 1 e 3 da #288).
+
+**Impacto em produção** (por leitura do código, não medido em produção): só usuários com acesso ao catálogo veem a aba, e só depois da promoção. A aba só chama rotas que respondem 503 enquanto a migração 126 não estiver aplicada.
 
 ## Verificação
 
